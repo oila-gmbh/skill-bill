@@ -64,6 +64,55 @@ class TelemetryLevelMutationServiceTest {
   }
 
   @Test
+  fun `downgrade from full to anonymous clears the outbox inside a transaction`() {
+    val outboxRepository = MutationTelemetryOutboxRepository(mutableListOf(outboxRecord(1), outboxRecord(2)))
+    val database = FakeTelemetryDatabaseSessionFactory(outboxRepository)
+    val service = TelemetryLevelMutationService(
+      database = database,
+      settingsProvider = LeveledMutationTelemetrySettingsProvider("full"),
+      configStore = FakeMutationTelemetryConfigStore(),
+    )
+
+    val result = service.setLevel("anonymous", dbOverride = null)
+
+    assertEquals(listOf("transaction"), database.calls)
+    assertEquals(2, result.clearedEvents, "full-level payloads must not survive a downgrade")
+    assertEquals(0, outboxRepository.pendingCount())
+  }
+
+  @Test
+  fun `upgrade and same level writes leave the outbox untouched`() {
+    for ((current, next) in listOf("anonymous" to "full", "full" to "full")) {
+      val outboxRepository = MutationTelemetryOutboxRepository(mutableListOf(outboxRecord(1)))
+      val database = FakeTelemetryDatabaseSessionFactory(outboxRepository)
+      val service = TelemetryLevelMutationService(
+        database = database,
+        settingsProvider = LeveledMutationTelemetrySettingsProvider(current),
+        configStore = FakeMutationTelemetryConfigStore(),
+      )
+
+      val result = service.setLevel(next, dbOverride = null)
+
+      assertEquals(emptyList<String>(), database.calls, "$current to $next must not open a clearing transaction")
+      assertEquals(0, result.clearedEvents)
+      assertEquals(1, outboxRepository.pendingCount())
+    }
+  }
+
+  @Test
+  fun `an unrecognized current level fails closed and clears the outbox`() {
+    val outboxRepository = MutationTelemetryOutboxRepository(mutableListOf(outboxRecord(1)))
+    val service = TelemetryLevelMutationService(
+      database = FakeTelemetryDatabaseSessionFactory(outboxRepository),
+      settingsProvider = LeveledMutationTelemetrySettingsProvider("bogus"),
+      configStore = FakeMutationTelemetryConfigStore(),
+    )
+
+    assertEquals(1, service.setLevel("anonymous", dbOverride = null).clearedEvents)
+    assertEquals(0, outboxRepository.pendingCount())
+  }
+
+  @Test
   fun `disable rewrites the config file in place instead of deleting it`() {
     val fixture = telemetryStoreFixture(
       seed = """{"install_id":"seeded-id","telemetry":{"level":"anonymous","proxy_url":"","batch_size":50}}""",
@@ -288,6 +337,18 @@ private class MutationTelemetryOutboxRepository(
     rows.clear()
     return count
   }
+}
+
+private class LeveledMutationTelemetrySettingsProvider(private val level: String) : TelemetrySettingsProvider {
+  override fun load(materialize: Boolean): TelemetrySettings = TelemetrySettings(
+    configPath = Path.of("/fake/config.json"),
+    level = level,
+    enabled = level != "off",
+    installId = "existing",
+    proxyUrl = "",
+    customProxyUrl = null,
+    batchSize = 50,
+  )
 }
 
 private object DisabledMutationTelemetrySettingsProvider : TelemetrySettingsProvider {

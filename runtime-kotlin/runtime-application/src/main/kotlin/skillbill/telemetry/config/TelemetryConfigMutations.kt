@@ -17,10 +17,16 @@ object TelemetryConfigMutations {
     require(level in telemetryLevels) {
       "Telemetry level must be one of: ${telemetryLevels.joinToString(", ")}."
     }
+    val currentLevel = settingsProvider.load(materialize = false).level
     return if (level == "off") {
       disableTelemetry(configStore, settingsProvider, outbox)
     } else {
-      enableTelemetry(configStore, settingsProvider, level)
+      enableTelemetry(
+        configStore = configStore,
+        settingsProvider = settingsProvider,
+        level = level,
+        outbox = outbox.takeIf { clearsPendingOutbox(currentLevel, level) },
+      )
     }
   }
 
@@ -37,13 +43,26 @@ object TelemetryConfigMutations {
   )
 }
 
+/**
+ * A downgrade narrows what may leave the machine, but payloads already sitting in the outbox were
+ * built under the looser level and would still upload raw values on the next sync. Treat an
+ * unrecognized current level as the loosest one so an unresolvable state fails closed and clears.
+ */
+fun clearsPendingOutbox(currentLevel: String, newLevel: String): Boolean {
+  if (newLevel == "off") return true
+  val current = telemetryLevels.indexOf(currentLevel).takeIf { it >= 0 } ?: telemetryLevels.lastIndex
+  return telemetryLevels.indexOf(newLevel) < current
+}
+
 private fun enableTelemetry(
   configStore: TelemetryConfigStore,
   settingsProvider: TelemetrySettingsProvider,
   level: String,
+  outbox: TelemetryOutboxRepository?,
 ): Pair<TelemetrySettings, Int> {
   configStore.writeTelemetryLevel(level)
-  return settingsProvider.load(materialize = true) to 0
+  val clearedEvents = outbox?.clear().orEmpty()
+  return settingsProvider.load(materialize = true) to clearedEvents
 }
 
 /**

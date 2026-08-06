@@ -7,6 +7,7 @@ import skillbill.ports.telemetry.TelemetryLevelMutator
 import skillbill.ports.telemetry.TelemetrySettingsProvider
 import skillbill.ports.telemetry.model.TelemetryLevelMutationResult
 import skillbill.telemetry.config.TelemetryConfigMutations
+import skillbill.telemetry.config.clearsPendingOutbox
 
 @Inject
 class TelemetryLevelMutationService(
@@ -15,8 +16,9 @@ class TelemetryLevelMutationService(
   private val configStore: TelemetryConfigStore,
 ) : TelemetryLevelMutator {
   override fun setLevel(level: String, dbOverride: String?): TelemetryLevelMutationResult {
+    val currentLevel = settingsProvider.load(materialize = false).level
     val (settings, clearedEvents) =
-      if (level == "off" && database.databaseExists(dbOverride)) {
+      if (clearsPendingOutbox(currentLevel, level) && database.databaseExists(dbOverride)) {
         database.transaction(dbOverride) { unitOfWork ->
           TelemetryConfigMutations.setTelemetryLevel(
             level = level,
