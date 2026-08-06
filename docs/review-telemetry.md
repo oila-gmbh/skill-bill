@@ -279,8 +279,17 @@ Telemetry has three levels:
 | Level | What is sent |
 |-------|-------------|
 | `off` | Nothing. No events are queued or sent. |
-| `anonymous` | Aggregate counts, finding ids with issue category/severity/confidence/outcome type, anonymized learning references. No file paths, descriptions, notes, or learning content. |
-| `full` | Everything in `anonymous` plus: finding descriptions/titles, file locations, rejection notes, and learning content (title, rule text). Useful for teams that want actionable detail. |
+| `anonymous` | Aggregate counts, finding ids with issue category/severity/confidence/outcome type, anonymized learning references, and `install_id` plus `skill_bill_version` on every uploaded event. Issue keys — and issue keys embedded in correlation ids such as `SKILL-1:subtask:2` — are replaced with a salted SHA-256 prefix. `skillbill_runtime_exception` carries `error_message` as `[redacted]` and keeps only `skillbill.` stack frames. No file paths, descriptions, notes, learning content, or repository name. |
+| `full` | Everything in `anonymous` plus: finding descriptions/titles, file locations, rejection notes, learning content (title, rule text), raw issue keys and correlation ids, and unredacted `error_message` and stack frames. Useful for teams that want actionable detail. |
+
+`skill_bill_version` is attached from the `telemetry_outbox.skill_bill_version` column by
+`telemetryProperties`; a row enqueued before release attribution existed omits the property rather
+than sending a sentinel. No repository name is uploaded at any level: `resolve_learnings` accepts a
+`repo` learning scope, but that value is validated locally and never enters an outbox payload.
+
+The per-field breakdown across all events lives in
+[Telemetry Privacy](telemetry-privacy.md), which uses the same field names and per-level verdicts
+as this table.
 
 The default level is `anonymous`. Existing configs with `telemetry.enabled: true` are migrated to `anonymous`; `enabled: false` becomes `off`.
 
@@ -893,7 +902,7 @@ Recommended auth model:
 
 ## Remote sync defaults
 
-Fresh installs default telemetry to `anonymous`, with a level prompt during `./install.sh`. When telemetry level is not `off`, Skill Bill generates an install id, writes telemetry config to `~/.skill-bill/config.json`, and can batch-sync queued telemetry to the hosted Skill Bill relay. If you configure a custom proxy, Skill Bill sends telemetry to that proxy only.
+Fresh installs default telemetry to `anonymous`, with a level prompt during `./install.sh`. When telemetry level is not `off`, Skill Bill generates an install id, writes telemetry config to `~/.config/skill-bill/config.json`, and can batch-sync queued telemetry to the hosted Skill Bill relay. If you configure a custom proxy, Skill Bill sends telemetry to that proxy only.
 
 - enabled telemetry (`anonymous` or `full`) can enqueue local telemetry events in SQLite before sync
 - the helper can batch-sync pending events automatically after local writes to the hosted relay, or to a configured custom proxy override
@@ -902,7 +911,7 @@ Fresh installs default telemetry to `anonymous`, with a level prompt during `./i
 - reconciliation is best-effort: a reconciliation failure is recorded diagnostically and does not prevent the requested telemetry flush
 - if the remote destination is missing or unavailable, local workflows still succeed and the enabled telemetry outbox stays pending
 - `off` telemetry is a no-op: no telemetry config is required, no telemetry events are queued locally, and telemetry payload-building is skipped
-- `skill-bill telemetry disable` removes local telemetry config and clears any queued telemetry events without deleting non-telemetry review data
+- `skill-bill telemetry disable` sets the level to `off` and clears any queued telemetry events without deleting non-telemetry review data; it is an in-place level write, so `install_id` and every other key in `config.json` are retained and re-enabling reuses the same install identity
 
 Default hosted relay:
 
