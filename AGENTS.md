@@ -48,7 +48,7 @@ Per-repo customization: top-level custom fields allowed; runtime-consumed fields
 
 Product vs extension: horizontal `skills/bill-*/` and `.bill-shared` are protected; `platform-packs/<slug>/` (including shipped `kotlin`/`kmp`) are removable — no paired `skills/<platform>/` trees; shipped removals use CLI `--allow-shipped` only.
 
-`kmp` adds platform-correctness, UI, and UX/accessibility on Kotlin's areas and routes quality checks to `bill-kmp-code-check` (no Kotlin fallback). `bill-feature-verify` remains pre-shell.
+`kmp` covers Android and Kotlin Multiplatform, declaring platform-correctness, persistence, reliability, UI, and UX/accessibility on the required Kotlin baseline, and routes quality checks to `bill-kmp-code-check` (no Kotlin fallback). `bill-feature-verify` remains pre-shell.
 
 ## Runtime Contract Schemas
 
