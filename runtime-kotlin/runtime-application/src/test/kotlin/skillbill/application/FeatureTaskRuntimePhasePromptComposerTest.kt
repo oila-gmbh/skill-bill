@@ -544,6 +544,23 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
+  fun `review prompt is the producer seam for commit-focused accounting`() {
+    val reviewPrompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("review"))
+
+    assertContains(reviewPrompt, "\"commit_focused_accounting\"", false, "review names the accounting key")
+    assertContains(reviewPrompt, "commit_sequence_digest", false, "the sequence identity is required")
+    assertContains(reviewPrompt, "integration_terminal_outcome", false, "the integration terminal state is required")
+    assertContains(reviewPrompt, "skipped_not_applicable", false, "the skipped outcome is in the named vocabulary")
+    assertContains(reviewPrompt, "incomplete_lanes", false, "incomplete lanes are reported as non-clean coverage")
+    assertContains(reviewPrompt, "OMITS the key entirely", false, "an inline pass omits rather than fabricates")
+    assertFalse(
+      FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("audit"))
+        .contains("commit_focused_accounting"),
+      "only the review phase produces the accounting record",
+    )
+  }
+
+  @Test
   fun `follow-up audit prompt binds recurring dispositions to the original failure evidence`() {
     val followUpPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
