@@ -3,7 +3,7 @@ status: Prepared
 issue_key: SKILL-136
 feature_name: android-native-review-specialists
 preparation_mode: decomposed
-source: inline user request, informed by a live capmo-android WE-4596 delegated review; scope redesigned 2026-08-05 to pack aliasing plus two declared areas, replacing an earlier four-specialist draft and an interim generic-baseline-sourcing draft
+source: inline user request, informed by a live acme-android WE-4596 delegated review; scope redesigned 2026-08-05 to pack aliasing plus two declared areas, replacing an earlier four-specialist draft and an interim generic-baseline-sourcing draft
 ---
 
 # SKILL-136: Treat Android and KMP as one pack, with Android-native persistence and reliability
@@ -23,7 +23,7 @@ Kotlin baseline unchanged, and the generic Kotlin pack is not modified.
 
 ## Motivation
 
-A delegated `bill-code-review` run against capmo-android commit `5077e9c58`
+A delegated `bill-code-review` run against acme-android commit `5077e9c58`
 (WE-4596, a 24-file/613-line Room + DataStore + DI refactor, no KMP
 multiplatform source sets) routed to the generic Kotlin pack. Its two most
 expensive lanes were `persistence` (25 tool calls, ~89.6k tokens) and
@@ -48,7 +48,7 @@ Room code contains `@Transaction` and `RoomDatabase`, so `transaction` and
 `database` match with no backend present. WorkManager `Result.retry()` and
 `SupervisorJob` match `retry` and `supervisor`. Jetpack Compose matches
 `compose`, whose intent in that list is Compose Desktop — which is why a
-second capmo-android review selected `bill-kotlin-code-review-ui` for a
+second acme-android review selected `bill-kotlin-code-review-ui` for a
 Jetpack Compose Navigation diff, despite that specialist's own `Ignore`
 section reading *"Android and Compose Multiplatform source-set or
 target-specific behavior, which belongs to KMP."*

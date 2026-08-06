@@ -144,6 +144,130 @@ Resolution stays local-first and explicit:
 
 This is intentionally not hidden auto-learning. The learnings layer remains inspectable, editable, disable-able, and deletable by the user.
 
+## Stored review-run attribution
+
+The `review_runs` table stores review attribution twice: the raw text exactly as reported, and
+a canonical identifier resolved from it. The raw columns `routed_skill`, `detected_stack`, and
+`detected_scope` are never rewritten; their canonical counterparts are
+`routed_skill_canonical`, `detected_stack_canonical`, and `detected_scope_canonical`, plus
+`detected_scope_detail` for the parenthesized remainder of a scope string (for example the
+branch pair in `commit range (main...HEAD)`).
+
+This is the stored-column contract, distinct from the emitted-payload normalization the
+`skillbill_review_finished` event performs — the payload's `routed_skill`, `platform_slug`, and
+`scope_type` fields are derived for the wire, while these columns are what the local store keeps.
+
+| Canonical column | Resolves against |
+|---|---|
+| `routed_skill_canonical` | Known pack skill names of the form `bill-<slug>-code-review` (the discovered pack skills unioned with the canonical set: `kmp`, `kotlin`, `ios`, `python`, `php`, `go`, `rust`, `typescript`, `android`, `java`, `ruby`, `docs`, `generic`) |
+| `detected_stack_canonical` | The same platform slugs; `kotlin multiplatform` and `kmp` both resolve to `kmp` |
+| `detected_scope_canonical` | The controlled scope vocabulary: `working_tree`, `staged`, `commit_range`, `pull_request`, `other` |
+
+### The unresolved-value convention
+
+A value that cannot be resolved unambiguously is never silently bucketed into a plausible
+category and never guessed. The raw text is retained as reported and the canonical column is
+set to the explicit marker `unresolved` — the default of all three canonical columns. Ambiguity
+counts as unresolvable: a raw `routed_skill` mentioning two pack skills, or a raw stack matching
+two slugs, resolves to `unresolved` rather than picking one. The same marker is used for
+`execution_mode`, which is `delegated` only when the run's own recorded specialist reviews prove
+delegation and `unresolved` otherwise.
+
+The canonical backfill for pre-existing rows is unambiguous-only under the same rule: it writes
+only columns still holding `unresolved`, never touches the raw columns, and leaves rows whose
+raw text does not resolve at `unresolved`.
+
+## Per-lane review attribution
+
+`specialist_reviews` is recorded from the composed launch plan at run time — the lanes the
+runtime actually planned and launched — not from agent narration in the review text. It is
+stored per lane in `review_run_lanes`, one row per lane, rather than as one comma-joined string:
+
+| `review_run_lanes` column | Meaning |
+|---|---|
+| `lane_skill_name` | The specialist skill that ran, for example `bill-kmp-code-review-persistence` |
+| `pack_slug`, `area` | The pack and declared area the lane came from |
+| `depth`, `required`, `order_index` | Composition position of the lane in the launch plan |
+| `origin_layer_chain` | Baseline-layer chain the lane was composed through |
+| `resolution_state` | `resolved`, or `unresolved` when the lane could not be matched to a composed plan lane |
+
+Every finding carries the lane that produced it. `findings.lane_skill_name` is the authoritative
+attribution the runtime records from its own merge result before the review text is imported;
+`review_run_finding_lanes` holds that same run-time mapping keyed by `(review_run_id,
+finding_id)`. Provenance parsed out of review text is only the fallback for externally supplied
+reviews.
+
+Together with the canonical routed skill this makes pack-and-area effectiveness measurable —
+which specialist area produces findings that survive triage:
+
+```sql
+SELECT r.routed_skill_canonical,
+       l.pack_slug,
+       l.area,
+       COUNT(*)                                                   AS findings,
+       SUM(CASE WHEN e.event_type = 'fix_applied' THEN 1 ELSE 0 END)   AS applied,
+       SUM(CASE WHEN e.event_type = 'false_positive' THEN 1 ELSE 0 END) AS false_positives
+FROM findings f
+JOIN review_runs r ON r.review_run_id = f.review_run_id
+LEFT JOIN review_run_lanes l
+  ON l.review_run_id = f.review_run_id AND l.lane_skill_name = f.lane_skill_name
+LEFT JOIN feedback_events e
+  ON e.review_run_id = f.review_run_id AND e.finding_id = f.finding_id
+WHERE r.routed_skill_canonical != 'unresolved'
+GROUP BY r.routed_skill_canonical, l.pack_slug, l.area;
+```
+
+## The shared finding key
+
+Findings recorded through review-run import (`review_runs` / `findings`, keyed by
+`(review_run_id, finding_id)`) and findings raised inside the workflow review loop
+(`unaddressed_findings`, keyed by `(workflow_id, review_pass_number, finding_ordinal)`) are
+joined by the shared key `(review_run_id, finding_id)`, carried on both stores.
+
+- `unaddressed_findings` gained nullable `review_run_id` and `finding_id` columns plus the
+  `idx_unaddressed_findings_run` index.
+- `review_finding_outcomes` records each workflow-loop finding's terminal disposition
+  (`addressed`, `carried`, `rejected`) against that same key, with `key_state` being `resolved`
+  only when both key columns are present and `unresolved` otherwise. It is a table of its own
+  rather than columns on `unaddressed_findings` because that ledger is retracted and rewritten
+  each pass, which would destroy an outcome stored on it.
+- There is deliberately no foreign key to `findings`: a workflow-loop finding need not have been
+  imported as a review run.
+
+Through this key a triage disposition or `feedback_events` row on an imported finding resolves
+back to the routed pack via `review_runs.routed_skill_canonical`, and a workflow-loop outcome
+resolves to the same pack whenever its key is `resolved`.
+
+Backfill coverage is honest about its limits: the key columns are added with no default and no
+historical backfill. Rows written before the key existed — and any pass for which no review run
+was imported — keep both columns NULL and read as `unresolved` rather than being attached to a
+guessed review run. Those rows stay unjoined, so pack attribution over workflow-loop history is
+complete only from the point the key was introduced.
+
+## Snapshot retention and pruning
+
+`~/.skill-bill/review-metrics.<label>.db` files are snapshots: hand-named copies of the live
+store taken before a risky migration or to preserve a point-in-time reading.
+
+Retention policy: snapshots are operator artifacts with no expiry. Nothing in the runtime
+creates, rotates, or deletes them, so they accumulate until you prune them — one observed home
+had accumulated 37 snapshots totalling roughly 2.9 GB. Pruning is opt-in and operator-driven:
+the command below is the only code path in the runtime that removes a snapshot, and existing
+snapshots are never deleted automatically. Selection is by filename pattern; the live
+`review-metrics.db` never matches it and is therefore never a candidate.
+
+```bash
+# Dry run (default): lists candidate snapshots and deletes nothing.
+skill-bill prune-snapshots
+
+# Actually delete the listed snapshots.
+skill-bill prune-snapshots --confirm
+```
+
+`--confirm` is the only flag that deletes; without it the command lists candidates only.
+`--format json` returns the live database path, the confirm flag, the candidate list, and the
+list actually deleted.
+
 ## Telemetry levels
 
 Telemetry has three levels:
