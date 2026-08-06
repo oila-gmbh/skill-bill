@@ -87,13 +87,10 @@ fun GovernedReviewLaunch.toLaunchEnvelope(
     "rubric" to rubric,
     "assigned_paths" to assignment.assignedPaths.sorted(),
     "assigned_hunks" to assignment.assignedHunks.sorted(),
-    "assigned_commit_units" to assignedUnits().map { (unit, _) -> unit.toAssignedEnvelope() },
+    "assigned_commit_units" to assignedCommitUnits().map { it.toAssignedEnvelope() },
     "lane_routing" to assignment.laneRouting.map { it.toEnvelope() },
     "coverage_fact" to packet.coverageFact.toEnvelope(),
-    "assigned_hunk_bodies" to assignedUnits().flatMap { (unit, hunks) ->
-      hunks.sortedWith(compareBy(ReviewChangedHunk::path, ReviewChangedHunk::newStart))
-        .map { it.toCommitAttributedEnvelope(unit) }
-    },
+    "bundle" to assembledBundle.toLaunchEnvelope(segmentation, completionState),
     "brokered_evidence" to brokeredEvidence.map { (path, content) ->
       linkedMapOf("path" to path, "content" to content)
     },
@@ -111,13 +108,10 @@ fun GovernedReviewLaunch.toLaunchEnvelope(
   ),
 )
 
-/** The lane's assigned units in packet commit order, each with the hunk bodies it owns. */
-private fun GovernedReviewLaunch.assignedUnits(): List<Pair<ReviewCommitUnit, List<ReviewChangedHunk>>> {
-  val hunksById = packet.changedHunks.associateBy { it.hunkId }
+/** The lane's assigned commit units in packet order (identity metadata only). */
+private fun GovernedReviewLaunch.assignedCommitUnits(): List<ReviewCommitUnit> {
   val unitsBySha = packet.commitUnits.associateBy { it.commitSha }
-  return assignment.assignedBundle.entries.map { entry ->
-    unitsBySha.getValue(entry.commitSha) to entry.hunkIds.map { hunksById.getValue(it) }
-  }
+  return assignment.assignedBundle.entries.map { entry -> unitsBySha.getValue(entry.commitSha) }
 }
 
 internal fun String.normalizeLineEndings(): String = replace("\r\n", "\n")

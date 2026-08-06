@@ -68,8 +68,9 @@ class ParallelCodeReviewEndToEndTest {
     reviewHarness(kotlinConfig(), recorder).run(harnessRequest())
 
     recorder.parentPrompts.forEach { prompt ->
-      assertTrue(prompt.contains("## Changed file: \"src/Repo.kt\""))
-      assertTrue(prompt.contains("Use the exact diff below as authoritative"))
+      assertTrue(prompt.contains("## Assigned bundle:"))
+      assertTrue(prompt.contains("\"src/Repo.kt\""))
+      assertTrue(prompt.contains("Use the assigned bundle evidence below as authoritative"))
     }
   }
 

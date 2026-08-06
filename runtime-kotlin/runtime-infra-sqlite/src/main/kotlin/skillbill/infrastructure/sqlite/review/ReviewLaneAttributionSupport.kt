@@ -4,6 +4,7 @@ import skillbill.review.model.ImportedFinding
 import skillbill.review.model.ImportedReview
 import skillbill.review.model.ReviewLaneEffectivenessRow
 import skillbill.review.model.ReviewRunLane
+import skillbill.review.model.toStoredSegmentIdList
 import java.sql.Connection
 
 /** Bucket for a finding whose producing lane was never recorded; never silently dropped. */
@@ -32,8 +33,13 @@ fun replaceReviewRunLanes(connection: Connection, reviewRunId: String, lanes: Li
         required,
         order_index,
         origin_layer_chain,
-        resolution_state
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        resolution_state,
+        review_disposition,
+        bundle_composition_digest,
+        segment_accounting_json,
+        unreviewed_segment_ids,
+        budget_dimension
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       """.trimIndent(),
     ).use { statement ->
       statement.setString(PARAM_ONE, reviewRunId)
@@ -45,6 +51,11 @@ fun replaceReviewRunLanes(connection: Connection, reviewRunId: String, lanes: Li
       statement.setInt(PARAM_SEVEN, lane.orderIndex)
       statement.setString(PARAM_EIGHT, lane.originLayerChain.joinToString("->"))
       statement.setString(PARAM_NINE, lane.resolutionState)
+      statement.setString(PARAM_TEN, lane.reviewDisposition)
+      statement.setString(PARAM_ELEVEN, lane.bundleCompositionDigest)
+      statement.setString(PARAM_TWELVE, lane.segmentAccountingJson)
+      statement.setString(PARAM_THIRTEEN, lane.unreviewedSegmentIds.toStoredSegmentIdList())
+      statement.setString(PARAM_FOURTEEN, lane.budgetDimension)
       statement.executeUpdate()
     }
   }
@@ -84,6 +95,11 @@ fun fetchReviewRunLanes(connection: Connection, reviewRunId: String): List<Revie
                 .split("->")
                 .filter(String::isNotEmpty),
               resolutionState = resultSet.getString("resolution_state"),
+              reviewDisposition = resultSet.getString("review_disposition") ?: "complete",
+              bundleCompositionDigest = resultSet.getString("bundle_composition_digest"),
+              segmentAccountingJson = resultSet.getString("segment_accounting_json"),
+              unreviewedSegmentIds = resultSet.getString("unreviewed_segment_ids").orEmpty().toStoredSegmentIdList(),
+              budgetDimension = resultSet.getString("budget_dimension"),
             ),
           )
         }

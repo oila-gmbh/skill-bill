@@ -1,11 +1,15 @@
 package skillbill.application.review
 
-import skillbill.review.context.model.ReviewChangedHunk
 import skillbill.review.context.model.ReviewCommitCoverageFact
 import skillbill.review.context.model.ReviewCommitLaneDecision
 import skillbill.review.context.model.ReviewCommitLaneRoutingMatrix
 import skillbill.review.context.model.ReviewCommitUnit
+import skillbill.review.context.model.ReviewLaneAssembledBundle
+import skillbill.review.context.model.ReviewLaneAssembledEntry
 import skillbill.review.context.model.ReviewLaneBundle
+import skillbill.review.context.model.ReviewLaneBundleSegment
+import skillbill.review.context.model.ReviewLaneBundleSegmentation
+import skillbill.review.context.model.ReviewLaneCompletionState
 
 internal fun ReviewCommitUnit.toEnvelope(): Map<String, Any?> = linkedMapOf(
   "commit_unit_id" to commitUnitId,
@@ -59,6 +63,41 @@ internal fun ReviewLaneBundle.toEnvelope(): Map<String, Any?> = linkedMapOf(
   },
 )
 
-/** Commit attribution travels with the body, so a worker never needs Git to place a hunk. */
-internal fun ReviewChangedHunk.toCommitAttributedEnvelope(commit: ReviewCommitUnit): Map<String, Any?> =
-  linkedMapOf<String, Any?>("commit_sha" to commit.commitSha, "order_index" to commit.orderIndex) + toEnvelope()
+internal fun ReviewLaneAssembledBundle.toLaunchEnvelope(
+  segmentation: ReviewLaneBundleSegmentation,
+  completion: ReviewLaneCompletionState,
+): Map<String, Any?> = linkedMapOf(
+  "composition_digest" to compositionDigest,
+  "lane_disposition" to completion.disposition.wireValue,
+  "unreviewed_segment_ids" to completion.unreviewedSegmentIds,
+  "entries" to entries.map { it.toEnvelope() },
+  "segments" to segmentation.segments.map { it.toEnvelope() },
+) + completion.budgetDimension?.let { mapOf("budget_dimension" to it) }.orEmpty()
+
+internal fun ReviewLaneAssembledEntry.toEnvelope(): Map<String, Any?> = linkedMapOf(
+  "commit_sha" to commitSha,
+  "parent_sha" to parentSha,
+  "subject" to subject.normalizeLineEndings(),
+  "order_index" to orderIndex,
+  "hunk_id" to hunkId,
+  "path" to hunk.path,
+  "old_start" to hunk.oldStart,
+  "old_count" to hunk.oldCount,
+  "new_start" to hunk.newStart,
+  "new_count" to hunk.newCount,
+  "content" to hunk.content.normalizeLineEndings(),
+)
+
+internal fun ReviewLaneBundleSegment.toEnvelope(): Map<String, Any?> = linkedMapOf(
+  "segment_id" to segmentId,
+  "measured_bytes" to measuredBytes,
+  "composition_digest" to compositionDigest,
+  "entries" to entries.map {
+    linkedMapOf(
+      "commit_sha" to it.commitSha,
+      "order_index" to it.orderIndex,
+      "hunk_id" to it.hunkId,
+      "path" to it.hunk.path,
+    )
+  },
+)

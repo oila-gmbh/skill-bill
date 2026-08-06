@@ -98,6 +98,58 @@ class ParallelReviewMergerTest {
   )}\" | line=${location.substringAfterLast(":")} | $description"
 
   @Test
+  fun `root-cause dedup preserves surviving finding commit attribution`() {
+    val sharedDescription = "Shared contract drift spans the earlier intro and later change"
+    val baseline = ParallelReviewRawFinding(
+      ParallelReviewSeverity.MINOR,
+      "Medium",
+      "src/contract/Api.yaml:1",
+      sharedDescription,
+      repositoryPath = "src/contract/Api.yaml",
+      line = 1,
+      commitShas = listOf("c4"),
+    )
+    val override = baseline.copy(
+      severity = ParallelReviewSeverity.MAJOR,
+      confidence = "High",
+      commitShas = listOf("c4", "head"),
+    )
+
+    val merged = ParallelReviewMerger.merge(
+      ParallelReviewLaneResult("security", listOf(baseline)),
+      ParallelReviewLaneResult("security", listOf(override)),
+    ).findings.single()
+
+    assertEquals(listOf("c4", "head"), merged.commitShas)
+    assertEquals(ParallelReviewSeverity.MAJOR, merged.severity)
+    assertEquals("High", merged.confidence)
+  }
+
+  @Test
+  fun `findings that differ only by commit attribution are not collapsed`() {
+    val description = "Contract surface changed without updating downstream callers"
+    val earlier = ParallelReviewRawFinding(
+      ParallelReviewSeverity.MAJOR,
+      "High",
+      "src/contract/Api.yaml:1",
+      description,
+      repositoryPath = "src/contract/Api.yaml",
+      line = 1,
+      commitShas = listOf("c4"),
+    )
+    val later = earlier.copy(commitShas = listOf("head"))
+
+    val merged = ParallelReviewMerger.merge(
+      ParallelReviewLaneResult("claude", listOf(earlier)),
+      ParallelReviewLaneResult("codex", listOf(later)),
+    )
+
+    assertEquals(2, merged.findings.size)
+    assertEquals(listOf("c4"), merged.findings.first { it.agentIds == listOf("claude") }.commitShas)
+    assertEquals(listOf("head"), merged.findings.first { it.agentIds == listOf("codex") }.commitShas)
+  }
+
+  @Test
   fun `both lanes empty produces empty result`() {
     val result = ParallelReviewMerger.merge(
       laneResult("claude", ""),

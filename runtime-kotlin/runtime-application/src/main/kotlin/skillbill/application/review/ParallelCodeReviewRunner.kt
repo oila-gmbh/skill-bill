@@ -40,6 +40,7 @@ import skillbill.review.ReviewRunLaneResolver
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.ReviewExecutionModePolicy
 import skillbill.review.context.ReviewTreeAccounting
+import skillbill.review.context.model.GovernedReviewLaunch
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ResolvedReviewExecutionMode
 import skillbill.review.context.model.ReviewAccountingCounters
@@ -49,13 +50,17 @@ import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewBudgetEvaluator
 import skillbill.review.context.model.ReviewContextBudgetExceededException
 import skillbill.review.context.model.ReviewContextBudgetPolicy
+import skillbill.review.context.model.ReviewLaneAssembledBundle
+import skillbill.review.context.model.ReviewLaneCompletionState
 import skillbill.review.context.model.ReviewLaneIdentity
+import skillbill.review.context.model.ReviewLaneReviewDisposition
 import skillbill.review.context.model.TokenOwnership
 import skillbill.review.context.model.structuredString
 import skillbill.review.context.model.toCodeReviewExecutionMode
 import skillbill.review.model.ParallelReviewLaneResult
 import skillbill.review.model.ParallelReviewRawFinding
 import skillbill.review.model.ReviewRunLane
+import skillbill.review.model.ReviewRunLaneSegmentAccountingJson
 import skillbill.review.plan.ReviewLaneInclusionPolicy
 import skillbill.review.plan.ReviewLaunchPlanPolicy
 import skillbill.review.plan.ReviewStackRouting
@@ -93,6 +98,7 @@ class ParallelCodeReviewRunner(
   fun run(originalRequest: ParallelCodeReviewRequest): ParallelCodeReviewResult {
     val initial = prepareInitialRun(originalRequest)
     val outcomes = runLanes(initial)
+    recordLaneDispositions(initial, outcomes)
     val result = parallelResult(initial.agent1Id, initial.agent2Id, outcomes)
     recordMergedFindingLanes(initial.request.reviewRunId, result)
     result.accountingSummary?.let { summary ->
@@ -196,7 +202,6 @@ class ParallelCodeReviewRunner(
     budget: skillbill.review.context.model.ReviewContextBudgetPolicy,
   ): List<ReviewSpecialistLaunchRequest> {
     val plannedRubrics = resolvePlannedRubrics(evidence, routedManifests, manifests, ownedPathsBySlug)
-    recordPlannedLanes(request.reviewRunId, plannedRubrics)
     val (baseRevision, headRevision) = revisions
     val commitSequence = ReviewCommitSequenceResolver(diffResolver).resolve(
       scope = request.scope,
@@ -205,7 +210,7 @@ class ParallelCodeReviewRunner(
       aggregate = evidence,
       suppliedDiff = hasSuppliedDiff(request),
     )
-    return ParallelReviewPreparationCompiler.compile(
+    val compiled = ParallelReviewPreparationCompiler.compile(
       input = ParallelReviewPreparationInput(
         diff = diffText,
         evidence = evidence,
@@ -225,27 +230,104 @@ class ParallelCodeReviewRunner(
       envelopeValidator = reviewContextEnvelopeValidator,
       specialistContract = reviewSpecialistContractProvider.authoritativeContract(),
     )
+    val selected = selectLaunchesForResume(request.reviewRunId, compiled)
+    recordPlannedLanes(request.reviewRunId, plannedRubrics, selected)
+    return selected
+  }
+
+  /**
+   * A resume re-runs only lanes whose durable disposition is not complete. Fresh runs keep the full
+   * compiled set; completed durable results are never re-launched.
+   */
+  private fun selectLaunchesForResume(
+    reviewRunId: String?,
+    launches: List<ReviewSpecialistLaunchRequest>,
+  ): List<ReviewSpecialistLaunchRequest> {
+    if (reviewRunId == null || launches.isEmpty()) return launches
+    val existing = database.transaction { unitOfWork -> unitOfWork.reviews.fetchReviewRunLanes(reviewRunId) }
+    if (existing.isEmpty()) return launches
+    val resumeNames = ReviewRunLaneResolver.lanesToResume(existing)
+      .map { it.laneSkillName }
+      .toSet()
+    return launches.filter { launch ->
+      launch.assignment.laneDecision.specialistSkillName in resumeNames
+    }
   }
 
   /**
    * Records the launch plan for a runtime-launched review at the moment it is resolved, so the run's
    * lane attribution comes from the plan itself rather than round-tripping through review text.
+   * Disposition stays non-complete until [recordLaneDispositions] observes a durable single-pass
+   * result, except budget-unreviewable segments which are incomplete immediately.
    */
-  private fun recordPlannedLanes(reviewRunId: String?, plannedRubrics: List<PlannedReviewRubric>) {
-    if (reviewRunId == null || plannedRubrics.isEmpty()) return
-    val lanes = plannedRubrics.map { planned ->
-      ReviewRunLane(
-        laneSkillName = planned.descriptor.skillName,
-        packSlug = planned.descriptor.packSlug,
-        area = planned.descriptor.area,
-        depth = planned.descriptor.depth,
-        required = planned.descriptor.required,
-        orderIndex = planned.descriptor.orderIndex,
-        originLayerChain = planned.descriptor.originLayerChain,
-        resolutionState = ReviewRunLaneResolver.RESOLVED,
+  private fun recordPlannedLanes(
+    reviewRunId: String?,
+    plannedRubrics: List<PlannedReviewRubric>,
+    launches: List<ReviewSpecialistLaunchRequest>,
+  ) {
+    if (reviewRunId == null || launches.isEmpty()) return
+    val existing = database.transaction { unitOfWork -> unitOfWork.reviews.fetchReviewRunLanes(reviewRunId) }
+    val preservedComplete = existing.filter {
+      it.reviewDisposition == ReviewRunLaneResolver.COMPLETE_DISPOSITION
+    }
+    val completionBySkill = launches.associate { launch ->
+      requireNotNull(launch.assignment.laneDecision.specialistSkillName) to
+        governedLaunchFor(launch).completionState
+    }
+    val relaunchNames = completionBySkill.keys
+    val pending = plannedRubrics
+      .filter { it.descriptor.skillName in relaunchNames }
+      .map { planned ->
+        val completion = completionBySkill.getValue(planned.descriptor.skillName)
+        ReviewRunLane(
+          laneSkillName = planned.descriptor.skillName,
+          packSlug = planned.descriptor.packSlug,
+          area = planned.descriptor.area,
+          depth = planned.descriptor.depth,
+          required = planned.descriptor.required,
+          orderIndex = planned.descriptor.orderIndex,
+          originLayerChain = planned.descriptor.originLayerChain,
+          resolutionState = ReviewRunLaneResolver.RESOLVED,
+          reviewDisposition = ReviewLaneReviewDisposition.INCOMPLETE.wireValue,
+          bundleCompositionDigest = completion.bundleCompositionDigest,
+          segmentAccountingJson = ReviewRunLaneSegmentAccountingJson.encode(completion.segments),
+          unreviewedSegmentIds = completion.unreviewedSegmentIds,
+          budgetDimension = completion.budgetDimension,
+        )
+      }
+    val merged = preservedComplete.filter { it.laneSkillName !in relaunchNames } + pending
+    database.transaction { unitOfWork -> unitOfWork.reviews.replaceReviewRunLanes(reviewRunId, merged) }
+  }
+
+  /** Writes final per-lane disposition after the parallel pass so resume stays lane-granular. */
+  private fun recordLaneDispositions(initial: InitialRun, outcomes: ParallelReviewLaneRunResult) {
+    val reviewRunId = initial.request.reviewRunId ?: return
+    val existing = database.transaction { unitOfWork -> unitOfWork.reviews.fetchReviewRunLanes(reviewRunId) }
+    if (existing.isEmpty()) return
+    val completionBySkill = initial.preparedLaunchRequests.associate { launch ->
+      requireNotNull(launch.assignment.laneDecision.specialistSkillName) to
+        governedLaunchFor(launch).completionState
+    }
+    // Both parallel agents review the same specialist skills; a skill is durably complete only when
+    // its bundle was reviewable and both parent agents finished successfully.
+    val bothAgentsSucceeded = outcomes.lane1.success && outcomes.lane2.success
+    val updated = existing.map { lane ->
+      val completion = completionBySkill[lane.laneSkillName] ?: return@map lane
+      val durableComplete = completion.disposition == ReviewLaneReviewDisposition.COMPLETE &&
+        bothAgentsSucceeded
+      lane.copy(
+        reviewDisposition = if (durableComplete) {
+          ReviewRunLaneResolver.COMPLETE_DISPOSITION
+        } else {
+          ReviewLaneReviewDisposition.INCOMPLETE.wireValue
+        },
+        bundleCompositionDigest = completion.bundleCompositionDigest,
+        segmentAccountingJson = ReviewRunLaneSegmentAccountingJson.encode(completion.segments),
+        unreviewedSegmentIds = completion.unreviewedSegmentIds,
+        budgetDimension = completion.budgetDimension,
       )
     }
-    database.transaction { unitOfWork -> unitOfWork.reviews.replaceReviewRunLanes(reviewRunId, lanes) }
+    database.transaction { unitOfWork -> unitOfWork.reviews.replaceReviewRunLanes(reviewRunId, updated) }
   }
 
   /**
@@ -523,9 +605,20 @@ class ParallelCodeReviewRunner(
     modelOverride: String?,
     resolvedMode: ResolvedReviewExecutionMode,
   ): ParallelReviewLaneOutcome {
-    require(launchRequests.isNotEmpty()) { "Review selected no resolved assignments for '$agentId'." }
+    // Resume may leave one or both parent agents with no incomplete specialists; that is a no-op
+    // pass, not a routing failure. A fresh run still fails loudly when compile produced no launches.
+    if (launchRequests.isEmpty()) {
+      return ParallelReviewLaneOutcome(
+        success = true,
+        rawOutput = "",
+        reviewDisposition = ReviewLaneReviewDisposition.COMPLETE,
+        bundleCompositionDigest = ReviewLaneAssembledBundle.EMPTY.compositionDigest,
+      )
+    }
     val selected = launchRequests.sortedBy { it.assignment.laneDecision.orderIndex }
-    val prompt = parentPrompt(selected, launchRequests, routedManifests, resolvedMode)
+    val bundleStates = selected.map(::governedLaunchFor).map { it.completionState }
+    val aggregateBundleState = aggregateBundleCompletion(bundleStates)
+    val prompt = parentPrompt(selected, routedManifests, resolvedMode)
     val outcome = parentReviewLauncher.launch(
       GoalRunnerSubtaskLaunchRequest(
         invokedAgentId = agentId,
@@ -545,7 +638,19 @@ class ParallelCodeReviewRunner(
         success = false,
         rawOutput = "",
         failureReason = "unsupported agent: ${outcome.reason}",
-        accounting = inlineParentAccounting(agentId, inlineAssignment, prompt, "unsupported_provider", null),
+        accounting = inlineParentAccounting(
+          agentId,
+          inlineAssignment,
+          prompt,
+          "unsupported_provider",
+          null,
+          aggregateBundleState,
+        ),
+        reviewDisposition = aggregateBundleState.disposition,
+        bundleCompositionDigest = aggregateBundleState.bundleCompositionDigest,
+        segmentAccounting = aggregateBundleState.segments,
+        unreviewedSegmentIds = aggregateBundleState.unreviewedSegmentIds,
+        budgetDimension = aggregateBundleState.budgetDimension,
       )
       is AgentRunLaunchFacts -> {
         val budgetOutcome = ReviewBudgetEvaluator.laneResultOutcome(
@@ -555,6 +660,7 @@ class ParallelCodeReviewRunner(
         )
         val reason = budgetOutcome?.let { ReviewContextBudgetExceededException(it).message }
           ?: laneFailureReason(outcome)
+        val terminalStatus = inlineTerminalStatus(outcome, aggregateBundleState.disposition)
         ParallelReviewLaneOutcome(
           success = reason == null,
           rawOutput = outcome.stdout,
@@ -565,10 +671,16 @@ class ParallelCodeReviewRunner(
             agentId,
             inlineAssignment,
             prompt,
-            inlineTerminalStatus(outcome),
+            terminalStatus,
             outcome,
+            aggregateBundleState,
           ),
           findings = if (reason == null) attributeInlineFindings(outcome.stdout, selected) else emptyList(),
+          reviewDisposition = aggregateBundleState.disposition,
+          bundleCompositionDigest = aggregateBundleState.bundleCompositionDigest,
+          segmentAccounting = aggregateBundleState.segments,
+          unreviewedSegmentIds = aggregateBundleState.unreviewedSegmentIds,
+          budgetDimension = aggregateBundleState.budgetDimension,
         )
       }
     }
@@ -598,7 +710,6 @@ class ParallelCodeReviewRunner(
 
   private fun parentPrompt(
     selected: List<ReviewSpecialistLaunchRequest>,
-    launchRequests: List<ReviewSpecialistLaunchRequest>,
     routedManifests: List<PlatformManifest>,
     resolvedMode: ResolvedReviewExecutionMode,
   ): String {
@@ -621,7 +732,7 @@ class ParallelCodeReviewRunner(
         appendLine("Owned paths: ${launch.assignment.assignedPaths.joinToString(",") { structuredString(it) }}")
         launch.rubrics.forEach { rubric -> appendLine(rubric.body) }
       }
-      appendLine("Use the exact diff below as authoritative; do not rediscover or replace its scope.")
+      appendLine("Use the assigned bundle evidence below as authoritative; do not rediscover or replace its scope.")
       if (inline) {
         appendLine(
           "Merge every routed rubric above into one combined checklist, then traverse the diff exactly " +
@@ -647,17 +758,56 @@ class ParallelCodeReviewRunner(
           "path=<JSON string> | line=<positive integer> | description' lines.",
       )
       appendLine()
-      // Hunks carry only line-number headers, never their file path, so grouping by path here is
-      // the only place that attribution survives; a flat concatenation across files leaves the
-      // agent unable to tell which hunk belongs to which changed file.
-      launchRequests.first().packet.changedHunks
-        .groupBy { it.path }
-        .toSortedMap()
-        .forEach { (path, hunks) ->
-          appendLine("## Changed file: ${structuredString(path)}")
-          hunks.forEach { hunk -> appendLine(hunk.content) }
-        }
+      selected.forEach { launch ->
+        val decision = launch.assignment.laneDecision
+        appendLine("## Assigned bundle: ${decision.specialistSkillName}")
+        appendLine("Owned paths: ${launch.assignment.assignedPaths.joinToString(",") { structuredString(it) }}")
+        appendAssignedBundleEvidence(launch)
+      }
     }
+  }
+
+  private fun StringBuilder.appendAssignedBundleEvidence(launch: ReviewSpecialistLaunchRequest) {
+    val bundle = governedLaunchFor(launch).assembledBundle
+    bundle.entries.forEach { entry ->
+      appendLine(
+        "### Commit ${structuredString(entry.commitSha)} (order=${entry.orderIndex}, " +
+          "path=${structuredString(entry.hunk.path)})",
+      )
+      appendLine("Subject: ${structuredString(entry.subject.replace("\r\n", "\n"))}")
+      appendLine(entry.hunk.content)
+    }
+  }
+
+  private fun governedLaunchFor(request: ReviewSpecialistLaunchRequest): GovernedReviewLaunch =
+    GovernedReviewLaunch(
+      assignment = request.assignment,
+      packet = request.packet,
+      specialistContract = request.specialistContract,
+      rubric = request.rubrics.first().body,
+      brokerId = request.brokerId,
+      budget = request.budget,
+    )
+
+  private fun aggregateBundleCompletion(states: List<ReviewLaneCompletionState>): ReviewLaneCompletionState {
+    if (states.isEmpty()) {
+      return ReviewLaneCompletionState(
+        disposition = ReviewLaneReviewDisposition.COMPLETE,
+        bundleCompositionDigest = ReviewLaneAssembledBundle.EMPTY.compositionDigest,
+        segments = emptyList(),
+      )
+    }
+    val incomplete = states.filter { it.disposition == ReviewLaneReviewDisposition.INCOMPLETE }
+    if (incomplete.isEmpty()) {
+      return states.first()
+    }
+    return ReviewLaneCompletionState(
+      disposition = ReviewLaneReviewDisposition.INCOMPLETE,
+      bundleCompositionDigest = incomplete.first().bundleCompositionDigest,
+      segments = incomplete.flatMap { it.segments }.distinctBy { it.segmentId },
+      unreviewedSegmentIds = incomplete.flatMap { it.unreviewedSegmentIds }.distinct(),
+      budgetDimension = incomplete.first().budgetDimension,
+    )
   }
 
   private fun attributeInlineFindings(
@@ -804,7 +954,7 @@ private fun parallelAccountingSummary(
       lane = "parallel-agent-${index + 1}",
       assignmentDigest = sha256HexUtf8("parallel-agent-${index + 1}"),
       children = outcome.specialistAccounting.map(ReviewLaneAccounting::toInput),
-      terminalOutcome = if (outcome.success) "completed" else "partial_failure",
+      terminalOutcome = laneTerminalOutcome(outcome),
     )
   }
   return ReviewTreeAccounting.summarize(
@@ -812,6 +962,12 @@ private fun parallelAccountingSummary(
     packetDigest = specialists.first().packetDigest,
     root = ReviewAccountingInput("parallel-review", sha256HexUtf8("parallel-review"), children = roots),
   )
+}
+
+private fun laneTerminalOutcome(outcome: ParallelReviewLaneOutcome): String = when {
+  outcome.reviewDisposition == ReviewLaneReviewDisposition.INCOMPLETE -> "incomplete"
+  outcome.success -> "completed"
+  else -> "partial_failure"
 }
 
 /**
@@ -824,6 +980,7 @@ private fun inlineParentAccounting(
   prompt: String,
   terminalStatus: String,
   outcome: AgentRunLaunchFacts?,
+  bundleState: ReviewLaneCompletionState,
 ) = ReviewLaneAccounting(
   lane = agentId,
   reviewId = assignment.reviewId,
@@ -837,9 +994,18 @@ private fun inlineParentAccounting(
   resultBytes = outcome?.stdout?.toByteArray(Charsets.UTF_8)?.size?.toLong() ?: 0,
   providerUsage = outcome?.let(::providerTokenUsage),
   terminalStatus = terminalStatus,
+  reviewDisposition = bundleState.disposition,
+  bundleCompositionDigest = bundleState.bundleCompositionDigest,
+  segmentAccounting = bundleState.segments,
+  unreviewedSegmentIds = bundleState.unreviewedSegmentIds,
+  budgetDimension = bundleState.budgetDimension,
 )
 
-private fun inlineTerminalStatus(facts: AgentRunLaunchFacts): String = when {
+private fun inlineTerminalStatus(
+  facts: AgentRunLaunchFacts,
+  disposition: ReviewLaneReviewDisposition,
+): String = when {
+  disposition == ReviewLaneReviewDisposition.INCOMPLETE -> "incomplete"
   facts.timedOut -> "timeout"
   facts.interrupted -> "interrupted"
   facts.spawnFailed -> "spawn_failure"

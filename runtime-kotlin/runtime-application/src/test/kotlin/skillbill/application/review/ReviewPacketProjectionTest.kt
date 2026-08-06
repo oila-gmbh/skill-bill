@@ -239,13 +239,48 @@ class ReviewPacketProjectionTest {
     assertEquals(ReviewPacketConsumerContract.CONSUMER_CONTRACT, envelope["consumer_contract"])
     assertEquals(ReviewPacketConsumerContract.EVIDENCE_SURFACE_RULES, envelope["evidence_surface_rules"])
     assertEquals(ReviewPacketConsumerContract.REPORT_STRUCTURE, envelope["report_structure"])
-    val bodies = envelope["assigned_hunk_bodies"] as List<*>
-    assertEquals(2, bodies.size)
-    assertEquals(setOf(hunkA.content, hunkB.content), bodies.map { (it as Map<*, *>)["content"] }.toSet())
+    @Suppress("UNCHECKED_CAST")
+    val bundle = envelope["bundle"] as Map<String, Any?>
+    @Suppress("UNCHECKED_CAST")
+    val entries = bundle["entries"] as List<Map<String, Any?>>
+    assertEquals(2, entries.size)
+    assertEquals(setOf(hunkA.content, hunkB.content), entries.map { it["content"] }.toSet())
+    assertEquals(true, entries.all { it.containsKey("commit_sha") && it.containsKey("order_index") })
+    assertEquals(false, envelope.containsKey("assigned_hunk_bodies"))
     assertEquals(false, envelope.containsKey("complete_diff"))
     assertEquals(false, envelope.containsKey("diff_path"))
     assertEquals(false, envelope.containsKey("parent_packet"))
     assertEquals("fresh", envelope["isolation"])
     assertEquals(mapOf("session_id" to "rvs-1", "run_revision" to 3), envelope["review_revision"])
+  }
+
+  @Test fun `launch envelope bundle matches canonical payload bundle content`() {
+    val assignment = ReviewAssignment(
+      reviewId = base.reviewId,
+      packetDigest = base.digest,
+      lane = "security",
+      baseRevision = base.baseRevision,
+      headRevision = base.headRevision,
+      assignedPaths = listOf("src/A.kt", "src/B.kt"),
+      assignedHunks = listOf(hunkA.hunkId, hunkB.hunkId),
+      assignedBundle = bundle(hunkA.hunkId, hunkB.hunkId),
+      laneRouting = base.routingMatrix.decisionsFor("security"),
+      reviewRevision = revision,
+      laneDecision = base.laneDecisions.first { it.lane == "security" },
+      matchedRules = base.matchedRules,
+      evidenceTargets = base.evidenceTargets,
+      dependencyAllowlist = base.dependencyAllowlist,
+    )
+    val launch =
+      GovernedReviewLaunch(assignment, base, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
+    val envelope = launch.toLaunchEnvelope().asWireMap()
+    @Suppress("UNCHECKED_CAST")
+    val envelopeEntries = (envelope["bundle"] as Map<String, Any?>)["entries"] as List<Map<String, Any?>>
+    val payloadHunkIds = Regex("""hunk_id: ([a-f0-9]{64})""")
+      .findAll(launch.canonicalPayload)
+      .map { it.groupValues[1] }
+      .toSet()
+    assertEquals(envelopeEntries.map { it["hunk_id"] }.toSet(), payloadHunkIds)
+    assertEquals(launch.assembledBundle.compositionDigest, (envelope["bundle"] as Map<*, *>)["composition_digest"])
   }
 }

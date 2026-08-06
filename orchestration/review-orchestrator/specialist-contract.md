@@ -31,7 +31,7 @@ Do not reference this repo-relative path directly from installable skills — us
 Every downstream routed layer and delegated specialist consumes the authoritative review packet exactly as launched. The packet is the single source of scope, routing, guidance, and measurement facts; a consumer that re-derives any of them produces a divergent review and breaks digest-backed attribution.
 
 ```authoritative-launch-contract
-Consume only the immutable lane projection supplied at launch. Do not rediscover, widen, recompute, or read sibling-lane or parent review context.
+Consume only the immutable lane projection supplied at launch. Do not rediscover, widen, recompute, or read sibling-lane or parent review context. Review the whole assembled bundle in one operation; commit order is readable metadata to relate earlier and later commits within that pass. Do not step commit-by-commit, re-decide relevance, or restart from an aggregate diff.
 ```
 
 Consumers must not rediscover any of the following:
@@ -57,6 +57,9 @@ Consumers must not rediscover any of the following:
 - `contract_rediscovery` — specialist and consumer contracts are supplied directly at launch
 - `rules_rediscovery` — review rules are supplied directly at launch
 - `repeated_evidence_read` — a normalized evidence target may be read only once
+- `per_commit_stepping` — the bundle is reviewed in one pass; do not iterate commits as separate review steps
+- `worker_relevance_redecision` — routing and focus/skip dispositions are fixed at launch; do not re-decide relevance
+- `aggregate_diff_restart` — never restart review from the aggregate PR diff or a complete-diff artifact
 
 ```evidence-surface-rules
 Use only the measured evidence broker. Assigned evidence is limited to projected hunk windows. A complete-file expansion requires a launch-authorized record with a nonblank reachability reason. Each normalized evidence target may be read once.
@@ -84,6 +87,7 @@ Every finding in `### 2. Risk Register` must use this authoritative machine-read
 
 ```report-structure
 - [F-001] <Severity> | <Confidence> | <file:line> | <description>
+Findings naming commits use: - [F-001] <Severity> | <Confidence> | commits=<sha>[,<sha>] | <file:line> | <description>
 ```
 
 Do NOT use markdown tables, numbered lists, or any other format for findings. The bullet format above is required for downstream tooling (triage, telemetry, stats) to parse findings correctly.

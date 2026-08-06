@@ -269,7 +269,7 @@ class ReviewContextModelsTest {
         "lane", "base_revision",
         "head_revision", "broker_id", "specialist_contract", "rubric", "consumer_contract",
         "assigned_paths", "assigned_hunks", "coverage_fact", "assigned_commit_units", "lane_routing",
-        "assigned_hunk_bodies",
+        "bundle",
         "criteria_references", "matched_rules", "evidence_targets", "dependency_allowlist",
         "baseline_untracked_policy",
         "forbidden_rediscovery", "evidence_surface_rules", "report_structure", "budgets",
@@ -313,7 +313,7 @@ class ReviewContextModelsTest {
     }
   }
 
-  @Test fun `oversized compact launch returns typed budget evidence`() {
+  @Test fun `oversized compact launch segments instead of failing the whole payload`() {
     val packet = launchPacket()
     val assignment = launchAssignment(packet)
     val policy =
@@ -324,9 +324,9 @@ class ReviewContextModelsTest {
         maxEvidenceResultBytes = 50,
         maxLaneResultBytes = 50,
       )
-    val outcome =
-      GovernedReviewLaunch(assignment, packet, "contract", "rubric", "broker", policy).budgetOutcomeOrNull()
-    assertEquals(REVIEW_CONTEXT_BUDGET_EXCEEDED, outcome?.type)
+    val launch = GovernedReviewLaunch(assignment, packet, "contract", "rubric", "broker", policy)
+    // Fixed overhead alone exceeds the tiny budget, so preparation still gets typed evidence.
+    assertEquals(REVIEW_CONTEXT_BUDGET_EXCEEDED, launch.budgetOutcomeOrNull()?.type)
   }
 
   @Test fun `inclusive parent is not double counted`() {

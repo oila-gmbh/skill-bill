@@ -13,6 +13,7 @@ const val PARAM_TEN: Int = 10
 const val PARAM_ELEVEN: Int = 11
 const val PARAM_TWELVE: Int = 12
 const val PARAM_THIRTEEN: Int = 13
+const val PARAM_FOURTEEN: Int = 14
 
 val reviewSummarySql =
   """
@@ -45,7 +46,20 @@ val importedFindingsSql =
 
 val reviewRunLanesSql =
   """
-  SELECT lane_skill_name, pack_slug, area, depth, required, order_index, origin_layer_chain, resolution_state
+  SELECT
+    lane_skill_name,
+    pack_slug,
+    area,
+    depth,
+    required,
+    order_index,
+    origin_layer_chain,
+    resolution_state,
+    review_disposition,
+    bundle_composition_digest,
+    segment_accounting_json,
+    unreviewed_segment_ids,
+    budget_dimension
   FROM review_run_lanes
   WHERE review_run_id = ?
   ORDER BY order_index, lane_skill_name

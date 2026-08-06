@@ -36,6 +36,7 @@ import skillbill.review.context.model.ReviewLaneBundleEntry
 import skillbill.review.context.model.ReviewLaneDecision
 import skillbill.review.context.model.ReviewLearningsReference
 import skillbill.review.context.model.ReviewPacketConsumerContract
+import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
 import skillbill.review.context.model.ReviewRevision
 import skillbill.review.context.model.ReviewRuleReference
 import kotlin.test.Test
@@ -278,6 +279,79 @@ class ReviewContextSchemaValidatorTest {
     val failure =
       assertFailsWith<InvalidReviewContextSchemaError> { ReviewContextSchemaValidator.validate(envelope, "packet") }
     assertTrue(secret !in failure.message.orEmpty())
+  }
+
+  @Test fun `bundled multi-segment launch envelope validates against the schema`() {
+    val launch =
+      GovernedReviewLaunch(assignment, packet, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
+    val envelope = launch.toLaunchEnvelope().asWireMap().toMutableMap()
+    @Suppress("UNCHECKED_CAST")
+    val bundle = (envelope["bundle"] as Map<String, Any?>).toMutableMap()
+    @Suppress("UNCHECKED_CAST")
+    val entries = bundle["entries"] as List<Map<String, Any?>>
+    require(entries.size >= 2) { "Fixture needs at least two bundle entries to split." }
+    val first = entries.first()
+    val second = entries[1]
+    bundle["segments"] = listOf(
+      linkedMapOf(
+        "segment_id" to "seg-000",
+        "measured_bytes" to 1_024L,
+        "composition_digest" to "a".repeat(64),
+        "entries" to listOf(
+          linkedMapOf(
+            "commit_sha" to first["commit_sha"],
+            "order_index" to first["order_index"],
+            "hunk_id" to first["hunk_id"],
+            "path" to first["path"],
+          ),
+        ),
+      ),
+      linkedMapOf(
+        "segment_id" to "seg-001",
+        "measured_bytes" to 2_048L,
+        "composition_digest" to "b".repeat(64),
+        "entries" to listOf(
+          linkedMapOf(
+            "commit_sha" to second["commit_sha"],
+            "order_index" to second["order_index"],
+            "hunk_id" to second["hunk_id"],
+            "path" to second["path"],
+          ),
+        ),
+      ),
+    )
+    envelope["bundle"] = bundle
+    ReviewContextSchemaValidator.validateLaunch(envelope, "launch")
+  }
+
+  @Test fun `launch envelope bundle entry missing commit_sha or order_index is rejected`() {
+    val launch =
+      GovernedReviewLaunch(assignment, packet, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
+    val envelope = launch.toLaunchEnvelope().asWireMap().toMutableMap()
+    @Suppress("UNCHECKED_CAST")
+    val bundle = (envelope["bundle"] as Map<String, Any?>).toMutableMap()
+    @Suppress("UNCHECKED_CAST")
+    val entries = (bundle["entries"] as List<Map<String, Any?>>).map { it.toMutableMap() }
+    bundle["entries"] = listOf(entries.first() - "commit_sha")
+    envelope["bundle"] = bundle
+    assertFailsWith<InvalidReviewContextSchemaError> {
+      ReviewContextSchemaValidator.validateLaunch(envelope, "launch")
+    }
+
+    bundle["entries"] = listOf(entries.first() - "order_index")
+    envelope["bundle"] = bundle
+    assertFailsWith<InvalidReviewContextSchemaError> {
+      ReviewContextSchemaValidator.validateLaunch(envelope, "launch")
+    }
+  }
+
+  @Test fun `projected envelopes carry contract version 0_9`() {
+    val launch =
+      GovernedReviewLaunch(assignment, packet, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
+    assertEquals(REVIEW_CONTEXT_CONTRACT_VERSION, packet.toParentPacketEnvelope().asWireMap()["contract_version"])
+    assertEquals(REVIEW_CONTEXT_CONTRACT_VERSION, assignment.toAssignmentEnvelope().asWireMap()["contract_version"])
+    assertEquals(REVIEW_CONTEXT_CONTRACT_VERSION, launch.toLaunchEnvelope().asWireMap()["contract_version"])
+    assertEquals("0.9", REVIEW_CONTEXT_CONTRACT_VERSION)
   }
 
   @Test fun `the real service validates its own projections against the canonical schema`() {

@@ -132,6 +132,7 @@ Every finding in `### 2. Risk Register` must use this authoritative machine-read
 
 ```report-structure
 - [F-001] <Severity> | <Confidence> | <file:line> | <description>
+Findings naming commits use: - [F-001] <Severity> | <Confidence> | commits=<sha>[,<sha>] | <file:line> | <description>
 ```
 
 Do NOT use markdown tables, numbered lists, or any other format for findings. The bullet format above is required for downstream tooling (triage, telemetry, stats) to parse findings correctly.

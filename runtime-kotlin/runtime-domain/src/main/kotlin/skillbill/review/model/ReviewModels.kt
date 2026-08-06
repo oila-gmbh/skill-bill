@@ -25,6 +25,11 @@ data class ReviewRunLane(
   val orderIndex: Int,
   val originLayerChain: List<String>,
   val resolutionState: String,
+  val reviewDisposition: String = "complete",
+  val bundleCompositionDigest: String? = null,
+  val segmentAccountingJson: String? = null,
+  val unreviewedSegmentIds: List<String> = emptyList(),
+  val budgetDimension: String? = null,
 )
 
 data class ReviewLaneEffectivenessRow(

@@ -560,6 +560,7 @@ private fun addReviewRunLaneAttribution(connection: Connection) {
     connection.createStatement().use { statement -> statement.execute(sql) }
   }
   DatabaseColumnMigrations.ensureFindingLaneColumns(connection)
+  DatabaseColumnMigrations.ensureReviewRunLaneDispositionColumns(connection)
 }
 
 // The unaddressed_findings key columns go through ensureColumn (which also runs unconditionally on

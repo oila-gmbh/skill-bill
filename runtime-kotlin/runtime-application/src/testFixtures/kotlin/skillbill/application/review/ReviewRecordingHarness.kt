@@ -194,6 +194,7 @@ private fun recordingDatabase(recorder: ReviewRecorder): DatabaseSessionFactory 
       // Lane attribution carries no measured content, so this harness only has to tolerate it;
       // what the runner actually writes is asserted in ParallelCodeReviewRunnerTest.
       "replaceReviewRunLanes", "recordFindingLaneAttribution" -> Unit
+      "fetchReviewRunLanes" -> emptyList<skillbill.review.model.ReviewRunLane>()
       else -> error("Unexpected review repository call: ${method.name}")
     }
   } as ReviewRepository

@@ -225,12 +225,34 @@ $defs:
       subject: { type: string }
       order_index: { type: integer, minimum: 0 }
       source: { enum: [commit_range, synthetic_working_tree, synthetic_supplied_diff, synthetic_aggregate_pr_diff] }
-  commit_attributed_hunk:
+  launch_bundle_segment_entry:
     type: object
     additionalProperties: false
-    required: [commit_sha, order_index, hunk_id, path, old_start, old_count, new_start, new_count, content]
+    required: [commit_sha, order_index, hunk_id, path]
     properties:
       commit_sha: { $ref: "#/$defs/identifier" }
+      order_index: { type: integer, minimum: 0 }
+      hunk_id: { $ref: "#/$defs/hunk_id" }
+      path: { $ref: "#/$defs/path" }
+  launch_bundle_segment:
+    type: object
+    additionalProperties: false
+    required: [segment_id, measured_bytes, composition_digest, entries]
+    properties:
+      segment_id: { $ref: "#/$defs/identifier" }
+      measured_bytes: { type: integer, minimum: 0 }
+      composition_digest: { $ref: "#/$defs/digest" }
+      entries:
+        type: array
+        items: { $ref: "#/$defs/launch_bundle_segment_entry" }
+  launch_bundle_entry:
+    type: object
+    additionalProperties: false
+    required: [commit_sha, parent_sha, subject, order_index, hunk_id, path, old_start, old_count, new_start, new_count, content]
+    properties:
+      commit_sha: { $ref: "#/$defs/identifier" }
+      parent_sha: { $ref: "#/$defs/identifier" }
+      subject: { type: string }
       order_index: { type: integer, minimum: 0 }
       hunk_id: { $ref: "#/$defs/hunk_id" }
       path: { $ref: "#/$defs/path" }
@@ -239,6 +261,30 @@ $defs:
       new_start: { type: integer, minimum: 0 }
       new_count: { type: integer, minimum: 0 }
       content: { type: string }
+  launch_bundle:
+    type: object
+    additionalProperties: false
+    required: [composition_digest, lane_disposition, unreviewed_segment_ids, entries, segments]
+    properties:
+      composition_digest: { $ref: "#/$defs/digest" }
+      lane_disposition: { enum: [complete, incomplete] }
+      budget_dimension: { $ref: "#/$defs/identifier" }
+      unreviewed_segment_ids:
+        type: array
+        items: { $ref: "#/$defs/identifier" }
+      entries:
+        type: array
+        items: { $ref: "#/$defs/launch_bundle_entry" }
+      segments:
+        type: array
+        items: { $ref: "#/$defs/launch_bundle_segment" }
+    allOf:
+      - if:
+          properties:
+            lane_disposition: { const: incomplete }
+          required: [lane_disposition]
+        then:
+          required: [budget_dimension]
   parent_packet:
     type: object
     additionalProperties: false
@@ -305,7 +351,7 @@ $defs:
   launch:
     type: object
     additionalProperties: false
-    required: [contract_version, kind, review_id, packet_digest, assignment_digest, review_revision, lane, base_revision, head_revision, specialist_contract, consumer_contract, rubric, assigned_paths, assigned_hunks, assigned_commit_units, lane_routing, coverage_fact, assigned_hunk_bodies, brokered_evidence, criteria_references, matched_rules, evidence_targets, dependency_allowlist, baseline_untracked_policy, forbidden_rediscovery, evidence_surface_rules, report_structure, broker_id, isolation, budget]
+    required: [contract_version, kind, review_id, packet_digest, assignment_digest, review_revision, lane, base_revision, head_revision, specialist_contract, consumer_contract, rubric, assigned_paths, assigned_hunks, assigned_commit_units, lane_routing, coverage_fact, bundle, brokered_evidence, criteria_references, matched_rules, evidence_targets, dependency_allowlist, baseline_untracked_policy, forbidden_rediscovery, evidence_surface_rules, report_structure, broker_id, isolation, budget]
     properties:
       contract_version: { const: "0.9" }
       kind: { const: launch }
@@ -326,9 +372,7 @@ $defs:
         items: { $ref: "#/$defs/assigned_commit_unit" }
       lane_routing: { $ref: "#/$defs/lane_routing" }
       coverage_fact: { $ref: "#/$defs/coverage_fact" }
-      assigned_hunk_bodies:
-        type: array
-        items: { $ref: "#/$defs/commit_attributed_hunk" }
+      bundle: { $ref: "#/$defs/launch_bundle" }
       brokered_evidence:
         type: array
         items:
@@ -456,7 +500,7 @@ $defs:
       direct_usage: { $ref: "#/$defs/usage" }
       inclusive_usage: { $ref: "#/$defs/usage" }
       terminal_outcome:
-        enum: [completed, review_context_budget_exceeded, budget_regression, failed, timeout, interrupted, spawn_failure, process_failure, unsupported_provider, forbidden_operation, partial_failure]
+        enum: [completed, incomplete, review_context_budget_exceeded, budget_regression, failed, timeout, interrupted, spawn_failure, process_failure, unsupported_provider, forbidden_operation, partial_failure]
 x-coherence-checks:
   - Digests are SHA-256 over canonical UTF-8 serialization with digest fields omitted.
   - Assignment revisions and lane identity equal their parent packet values.
@@ -481,7 +525,8 @@ x-coherence-checks:
   - A commit_range sequence chains parent to child from base_revision to head_revision; a synthetic source is the sole unit of its packet and never carries a fabricated commit SHA.
   - The coverage fact reports a checked chain-and-ownership property over the authoritative base-to-head delta, never textual equality of concatenated incremental diffs.
   - A lane bundle covers exactly its assignment's assigned_hunks, names only packet-owned commits, preserves packet commit order, and contributes to assignment_digest.
-  - Launch payloads project only the assigned commit units and their hunk bodies; no aggregate or complete-diff artifact reaches a worker.
+  - Launch payloads project only the assigned commit units and the assembled bundle object; no aggregate or complete-diff artifact reaches a worker.
+  - A launch bundle's lane_disposition is complete only when every assigned segment is reviewable within budget; incomplete lanes name unreviewed segments and the stopping budget dimension.
   - The routing matrix carries exactly one final disposition — focused or skipped — for every analyzed commit/lane pair, with no deferred candidate state, since no worker re-decides relevance downstream.
   - Every routing decision carries a non-blank bounded reason, and a skip reason names the commit's changed paths and the lane signals that failed to match them, so it is falsifiable against the changed hunks.
   - A required baseline lane is focused for every commit unit and can never be dropped by sparse routing.

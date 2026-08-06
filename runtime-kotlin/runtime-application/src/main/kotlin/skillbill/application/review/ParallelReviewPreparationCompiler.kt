@@ -235,6 +235,12 @@ internal object ParallelReviewPreparationCompiler {
           }
           .map { ReviewExpansionAuthorizationRequest(assignment.lane, it.path, it.reachabilityReason) },
       )
+    }.also { launches ->
+      val selectedLaneCount = preparation.packet.selectedLanes.size
+      require(launches.size == selectedLaneCount) {
+        "Review must launch exactly one specialist worker per selected lane ($selectedLaneCount); " +
+          "synthesized ${launches.size} launch(es). Commit or segment count must not multiply worker launches."
+      }
     }
   }
 

@@ -74,6 +74,13 @@ class ReviewPreparationService(
     if (assignments.map { it.lane }.distinct().size != assignments.size) {
       reject(parentLabel(packet), "Assignments contain duplicate lanes.")
     }
+    if (assignments.size != packet.selectedLanes.size) {
+      reject(
+        parentLabel(packet),
+        "Review must assign exactly one specialist lane per selected lane (${packet.selectedLanes.size}); " +
+          "synthesized ${assignments.size} assignment(s). Commit or segment count must not multiply lanes.",
+      )
+    }
     if (assignments.map { it.lane }.toSet() != packet.selectedLanes.toSet()) {
       reject(parentLabel(packet), "Assignments must cover exactly the packet's selected lanes.")
     }

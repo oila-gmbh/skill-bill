@@ -295,8 +295,10 @@ class ParallelCodeReviewRunnerTest {
       val prompt = request.skillRunRequest.promptOverride.orEmpty()
       assertContains(prompt, "Resolved execution mode: inline")
       assertContains(prompt, "Owned paths: \"Child.kt\"")
-      assertContains(prompt, "## Changed file: \"Child.kt\"")
+      assertContains(prompt, "## Assigned bundle:")
+      assertContains(prompt, "\"Child.kt\"")
       assertContains(prompt, "+owned change")
+      assertContains(prompt, "Use the assigned bundle evidence below as authoritative")
       assertFalse(prompt.contains("unexpected branch diff"), "the supplied diff must replace branch resolution")
       assertEquals(null, request.skillRunRequest.nativeReviewWorkerName)
     }
@@ -842,13 +844,18 @@ class ParallelCodeReviewRunnerFailureTest {
 
     runner.run(request)
 
-    val (runId, lanes) = database.laneWrites.single()
+    val (runId, lanes) = database.laneWrites.last()
     assertEquals(request.reviewRunId, runId)
     assertTrue(lanes.isNotEmpty(), "A runtime-launched review must record the lanes it planned.")
     assertTrue(lanes.all { it.resolutionState == "resolved" })
     assertTrue(lanes.all { it.packSlug.isNotBlank() && it.area.isNotBlank() })
     assertEquals(lanes.map { it.laneSkillName }.distinct().size, lanes.size)
     assertEquals(lanes.map { it.orderIndex }.sorted(), lanes.map { it.orderIndex })
+    assertTrue(
+      lanes.all { it.reviewDisposition == "complete" },
+      "Successful parallel pass must persist complete disposition for every planned lane.",
+    )
+    assertTrue(database.laneWrites.size >= 2, "Plan recording and disposition finalization must both write.")
   }
 
   // AC-003: the lane that produced a finding is recorded from the runtime's own merge result, so it
@@ -880,7 +887,7 @@ class ParallelCodeReviewRunnerFailureTest {
     val (runId, attribution) = database.findingLaneWrites.single()
     assertEquals(request.reviewRunId, runId)
     assertEquals(
-      database.laneWrites.single().second.map { it.laneSkillName }.toSet(),
+      database.laneWrites.last().second.map { it.laneSkillName }.toSet(),
       attribution.values.toSet(),
       "Attribution must name a lane the run actually planned.",
     )
@@ -1076,6 +1083,7 @@ private class RecordingReviewDatabase : DatabaseSessionFactory {
         @Suppress("UNCHECKED_CAST")
         laneWrites += args[0] as String to (args[1] as List<ReviewRunLane>)
       }
+      "fetchReviewRunLanes" -> laneWrites.lastOrNull()?.second.orEmpty()
       "recordFindingLaneAttribution" -> {
         @Suppress("UNCHECKED_CAST")
         findingLaneWrites += args[0] as String to (args[1] as Map<String, String>)

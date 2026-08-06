@@ -9,6 +9,7 @@ internal object DatabaseColumnMigrations {
   fun apply(connection: Connection) {
     ensureFeatureVerifyWorkflowColumns(connection)
     ensureReviewRunColumns(connection)
+    ensureReviewRunLaneDispositionColumns(connection)
     ensureFindingColumns(connection)
     ensureUnaddressedFindingColumns(connection)
     ensureReviewFindingOutcomeColumns(connection)
@@ -489,6 +490,15 @@ internal object DatabaseColumnMigrations {
         "CREATE INDEX IF NOT EXISTS idx_findings_lane ON findings(lane_skill_name, review_run_id)",
       )
     }
+  }
+
+  internal fun ensureReviewRunLaneDispositionColumns(connection: Connection) {
+    if (!tableExists(connection, "review_run_lanes")) return
+    ensureColumn(connection, "review_run_lanes", "review_disposition", "TEXT NOT NULL DEFAULT 'complete'")
+    ensureColumn(connection, "review_run_lanes", "bundle_composition_digest", "TEXT")
+    ensureColumn(connection, "review_run_lanes", "segment_accounting_json", "TEXT")
+    ensureColumn(connection, "review_run_lanes", "unreviewed_segment_ids", "TEXT NOT NULL DEFAULT ''")
+    ensureColumn(connection, "review_run_lanes", "budget_dimension", "TEXT")
   }
 
   private fun backfillReviewSessionIds(connection: Connection) {

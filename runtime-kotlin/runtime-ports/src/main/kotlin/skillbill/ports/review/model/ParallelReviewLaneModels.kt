@@ -2,6 +2,8 @@ package skillbill.ports.review.model
 
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewBudgetOutcome
+import skillbill.review.context.model.ReviewLaneReviewDisposition
+import skillbill.review.context.model.ReviewLaneSegmentAccounting
 import skillbill.review.model.ParallelReviewRawFinding
 import kotlin.time.Duration
 
@@ -26,4 +28,9 @@ data class ParallelReviewLaneOutcome(
   val specialistAccounting: List<ReviewLaneAccounting> = accounting?.let(::listOf) ?: emptyList(),
   val findings: List<ParallelReviewRawFinding> = emptyList(),
   val interrupted: Boolean = false,
+  val reviewDisposition: ReviewLaneReviewDisposition? = null,
+  val bundleCompositionDigest: String? = null,
+  val segmentAccounting: List<ReviewLaneSegmentAccounting> = emptyList(),
+  val unreviewedSegmentIds: List<String> = emptyList(),
+  val budgetDimension: String? = null,
 )

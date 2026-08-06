@@ -21,6 +21,11 @@ internal object DatabaseReviewLedgerSchema {
         origin_layer_chain TEXT NOT NULL DEFAULT '',
         resolution_state TEXT NOT NULL DEFAULT 'resolved'
           CHECK (resolution_state IN ('resolved', 'unresolved')),
+        review_disposition TEXT NOT NULL DEFAULT 'complete',
+        bundle_composition_digest TEXT,
+        segment_accounting_json TEXT,
+        unreviewed_segment_ids TEXT NOT NULL DEFAULT '',
+        budget_dimension TEXT,
         recorded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (review_run_id, lane_skill_name),
         FOREIGN KEY (review_run_id) REFERENCES review_runs(review_run_id) ON DELETE CASCADE

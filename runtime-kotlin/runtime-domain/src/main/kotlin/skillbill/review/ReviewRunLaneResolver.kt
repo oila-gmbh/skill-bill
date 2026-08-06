@@ -18,6 +18,11 @@ import skillbill.review.plan.model.ReviewLaunchPlan
 object ReviewRunLaneResolver {
   const val RESOLVED: String = "resolved"
   const val UNRESOLVED: String = "unresolved"
+  const val COMPLETE_DISPOSITION: String = "complete"
+
+  /** Lanes whose single-pass review did not finish with a complete disposition and may be resumed. */
+  fun lanesToResume(lanes: List<ReviewRunLane>): List<ReviewRunLane> =
+    lanes.filter { it.reviewDisposition != COMPLETE_DISPOSITION }
 
   fun resolve(plan: ReviewLaunchPlan, reportedLaneNames: List<String>): List<ReviewRunLane> {
     // Narration reports a lane by skill name or by bare area ("Specialist reviews: architecture"),

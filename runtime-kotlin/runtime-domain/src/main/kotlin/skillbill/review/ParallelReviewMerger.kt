@@ -31,6 +31,7 @@ object ParallelReviewMerger {
         originLayerChains = candidate.originLayerChains,
         repositoryPath = candidate.repositoryPath,
         line = candidate.line,
+        commitShas = candidate.commitShas,
       )
     }
 
@@ -60,14 +61,16 @@ object ParallelReviewMerger {
     allEntries.forEach { entry ->
       val entryFilePath = entry.finding.repositoryPath ?: filePathOf(entry.finding.location)
       val entryTokens = tokens(entry.finding.description)
+      val entryCommitKey = entry.finding.commitShas.sorted()
       val cluster = clusters.firstOrNull { head ->
         head.representativeFilePath == entryFilePath &&
+          head.representativeCommitShas == entryCommitKey &&
           jaccard(head.representativeTokens, entryTokens) > FUZZY_DEDUP_THRESHOLD
       }
       if (cluster != null) {
         cluster.entries += entry
       } else {
-        clusters += ClusterHead(mutableListOf(entry), entryFilePath, entryTokens)
+        clusters += ClusterHead(mutableListOf(entry), entryFilePath, entryCommitKey, entryTokens)
       }
     }
 
@@ -89,8 +92,13 @@ object ParallelReviewMerger {
     } else {
       finding.location
     }
+    val commitAttribution = if (finding.commitShas.isNotEmpty()) {
+      "commits=${finding.commitShas.joinToString(",")} | "
+    } else {
+      ""
+    }
     return "- [${finding.fNumber}] [$agentLabel] ${finding.severity.displayName} | ${finding.confidence} | " +
-      "$structuredLocation | ${finding.description}$provenance"
+      "$commitAttribution$structuredLocation | ${finding.description}$provenance"
   }
 
   private fun toCandidate(head: ClusterHead): MergedCandidate {
@@ -115,6 +123,7 @@ object ParallelReviewMerger {
       originLayerChains = entries.flatMap { it.finding.originLayerChains }.distinct(),
       repositoryPath = firstEntry.finding.repositoryPath,
       line = firstEntry.finding.line,
+      commitShas = firstEntry.finding.commitShas,
     )
   }
 
@@ -154,6 +163,7 @@ object ParallelReviewMerger {
   private data class ClusterHead(
     val entries: MutableList<FindingEntry>,
     val representativeFilePath: String,
+    val representativeCommitShas: List<String>,
     val representativeTokens: Set<String>,
   )
 
@@ -169,5 +179,6 @@ object ParallelReviewMerger {
     val originLayerChains: List<List<String>>,
     val repositoryPath: String?,
     val line: Int?,
+    val commitShas: List<String>,
   )
 }

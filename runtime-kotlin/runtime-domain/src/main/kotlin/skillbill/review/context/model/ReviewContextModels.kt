@@ -997,21 +997,85 @@ data class GovernedReviewLaunch(
     }
   }
 
-  /** The assigned units in packet order, each paired with the lane's hunk bodies it owns. */
-  private val projectedUnits: List<Pair<ReviewCommitUnit, List<ReviewChangedHunk>>>
+  /** Assigned commit units in packet order (identity metadata for the launch envelope). */
+  private val projectedUnits: List<ReviewCommitUnit>
     get() {
-      val hunksById = packet.changedHunks.associateBy { it.hunkId }
       val unitsBySha = packet.commitUnits.associateBy { it.commitSha }
-      return assignment.assignedBundle.entries.map { entry ->
-        unitsBySha.getValue(entry.commitSha) to entry.hunkIds.map { hunksById.getValue(it) }
-      }
+      return assignment.assignedBundle.entries.map { entry -> unitsBySha.getValue(entry.commitSha) }
     }
+
+  /** Ordered assigned hunk bodies with commit identity; never the aggregate PR diff. */
+  val assembledBundle: ReviewLaneAssembledBundle by lazy(LazyThreadSafetyMode.PUBLICATION) {
+    ReviewLaneAssembledBundle.assemble(assignment, packet)
+  }
+
+  /**
+   * Size-driven segmentation of [assembledBundle]. Segments are consumed inside one lane worker
+   * operation; segmentation never multiplies worker launches.
+   */
+  val segmentation: ReviewLaneBundleSegmentation by lazy(LazyThreadSafetyMode.PUBLICATION) {
+    segmentAssembledBundle(assembledBundle, budget.maxLaneLaunchBytes, ::measureBundleEntries)
+  }
+
+  val completionState: ReviewLaneCompletionState by lazy(LazyThreadSafetyMode.PUBLICATION) {
+    segmentation.toCompletionState(assembledBundle.compositionDigest)
+  }
 
   fun requireCodexForkTurns(forkTurns: String?) {
     require(forkTurns == "none") { "Governed Codex review launches require fork_turns none." }
   }
 
-  val canonicalPayload: String get() = buildString {
+  val canonicalPayload: String get() = renderCanonicalPayload(assembledBundle.entries, segmentation)
+
+  /**
+   * Returns a typed budget breach only when the fixed launch overhead alone exceeds the lane budget
+   * (nothing can be reviewed). Oversized assigned bodies are segmented or marked unreviewable and
+   * surface as an incomplete disposition instead of a whole-payload failure.
+   */
+  fun budgetOutcomeOrNull(): ReviewContextBudgetExceeded? {
+    val overhead = measureBundleEntries(emptyList())
+    return if (overhead > budget.maxLaneLaunchBytes) {
+      ReviewContextBudgetExceeded(
+        lane = assignment.lane,
+        budgetKind = "lane_launch_bytes",
+        configuredLimit = budget.maxLaneLaunchBytes,
+        observedValue = overhead,
+        packetDigest = assignment.packetDigest,
+        assignmentDigest = assignment.digest,
+        enforceable = true,
+      )
+    } else {
+      null
+    }
+  }
+
+  private fun measureBundleEntries(entries: List<ReviewLaneAssembledEntry>): Long {
+    val synthetic = if (entries.isEmpty()) {
+      ReviewLaneBundleSegmentation(emptyList(), emptyList(), budget.maxLaneLaunchBytes)
+    } else {
+      ReviewLaneBundleSegmentation(
+        segments = listOf(
+          ReviewLaneBundleSegment(segmentId = "measure", entries = entries, measuredBytes = 1),
+        ),
+        unreviewableEntries = emptyList(),
+        budgetLimitBytes = budget.maxLaneLaunchBytes,
+      )
+    }
+    return renderCanonicalPayload(entries, synthetic).toByteArray(StandardCharsets.UTF_8).size.toLong()
+  }
+
+  private fun renderCanonicalPayload(
+    entries: List<ReviewLaneAssembledEntry>,
+    segments: ReviewLaneBundleSegmentation,
+  ): String {
+    val disposition = if (segments.incomplete) {
+      ReviewLaneReviewDisposition.INCOMPLETE
+    } else {
+      ReviewLaneReviewDisposition.COMPLETE
+    }
+    val unreviewed = segments.unreviewedSegmentIds
+    val budgetDimension = "lane_launch_bytes".takeIf { segments.incomplete }
+    return buildString {
     appendLine("contract_version: \"$REVIEW_CONTEXT_CONTRACT_VERSION\"")
     appendLine("kind: launch")
     appendLine("review_id: ${assignment.reviewId}")
@@ -1039,7 +1103,7 @@ data class GovernedReviewLaunch(
         "degraded_reason=${structuredString(packet.coverageFact.degradedReason.orEmpty())}",
     )
     appendLine("assigned_commit_units:")
-    projectedUnits.forEach { (unit, _) ->
+    projectedUnits.forEach { unit ->
       appendLine("  - commit_sha: ${structuredString(unit.commitSha)}")
       appendLine("    parent_sha: ${structuredString(unit.parentSha)}")
       appendLine("    subject: ${structuredString(unit.subject.replace("\r\n", "\n"))}")
@@ -1053,15 +1117,40 @@ data class GovernedReviewLaunch(
       appendLine("    disposition: ${decision.disposition.name.lowercase()}")
       appendLine("    reason: ${structuredString(decision.reason)}")
     }
-    appendLine("assigned_hunk_bodies:")
-    projectedUnits.forEach { (unit, hunks) ->
-      hunks.sortedWith(compareBy(ReviewChangedHunk::path, ReviewChangedHunk::newStart)).forEach { hunk ->
-        appendLine("  - commit_sha: ${structuredString(unit.commitSha)}")
-        appendLine("    order_index: ${unit.orderIndex}")
-        appendLine("    path: ${structuredString(hunk.path)}")
-        appendLine("    hunk_id: ${hunk.hunkId}")
-        appendLine("    content: |")
-        hunk.content.replace("\r\n", "\n").lineSequence().forEach { appendLine("      $it") }
+    appendLine("bundle:")
+    appendLine("  composition_digest: ${assembledBundle.compositionDigest}")
+    appendLine("  lane_disposition: ${disposition.wireValue}")
+    if (budgetDimension != null) {
+      appendLine("  budget_dimension: $budgetDimension")
+    }
+    appendLine("  unreviewed_segment_ids:")
+    unreviewed.forEach { appendLine("    - $it") }
+    appendLine("  entries:")
+    entries.forEach { entry ->
+      appendLine("    - commit_sha: ${structuredString(entry.commitSha)}")
+      appendLine("      parent_sha: ${structuredString(entry.parentSha)}")
+      appendLine("      subject: ${structuredString(entry.subject.replace("\r\n", "\n"))}")
+      appendLine("      order_index: ${entry.orderIndex}")
+      appendLine("      path: ${structuredString(entry.hunk.path)}")
+      appendLine("      hunk_id: ${entry.hunkId}")
+      appendLine("      old_start: ${entry.hunk.oldStart}")
+      appendLine("      old_count: ${entry.hunk.oldCount}")
+      appendLine("      new_start: ${entry.hunk.newStart}")
+      appendLine("      new_count: ${entry.hunk.newCount}")
+      appendLine("      content: |")
+      entry.hunk.content.replace("\r\n", "\n").lineSequence().forEach { appendLine("        $it") }
+    }
+    appendLine("  segments:")
+    segments.segments.forEach { segment ->
+      appendLine("    - segment_id: ${segment.segmentId}")
+      appendLine("      measured_bytes: ${segment.measuredBytes}")
+      appendLine("      composition_digest: ${segment.compositionDigest}")
+      appendLine("      entries:")
+      segment.entries.forEach { entry ->
+        appendLine("        - commit_sha: ${structuredString(entry.commitSha)}")
+        appendLine("          order_index: ${entry.orderIndex}")
+        appendLine("          hunk_id: ${entry.hunkId}")
+        appendLine("          path: ${structuredString(entry.hunk.path)}")
       }
     }
     appendLine("criteria_references:")
@@ -1097,24 +1186,7 @@ data class GovernedReviewLaunch(
         "tool_calls=${budget.maxSpecialistToolCalls}, model_turns=${budget.maxSpecialistModelTurns}",
     )
   }.trimEnd()
-
-  fun budgetOutcomeOrNull(): ReviewContextBudgetExceeded? {
-    val observed = canonicalPayload.toByteArray(StandardCharsets.UTF_8).size.toLong()
-    return if (observed > budget.maxLaneLaunchBytes) {
-      ReviewContextBudgetExceeded(
-        lane = assignment.lane,
-        budgetKind = "lane_launch_bytes",
-        configuredLimit = budget.maxLaneLaunchBytes,
-        observedValue = observed,
-        packetDigest = assignment.packetDigest,
-        assignmentDigest = assignment.digest,
-        enforceable = true,
-      )
-    } else {
-      null
-    }
   }
-}
 
 sealed interface ReviewBudgetOutcome {
   val lane: String

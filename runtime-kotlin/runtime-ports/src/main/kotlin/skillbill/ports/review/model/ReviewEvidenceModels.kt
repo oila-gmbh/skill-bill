@@ -4,6 +4,8 @@ import skillbill.review.context.model.ForbiddenReviewOperation
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewBudgetOutcome
 import skillbill.review.context.model.ReviewExpansionRecord
+import skillbill.review.context.model.ReviewLaneReviewDisposition
+import skillbill.review.context.model.ReviewLaneSegmentAccounting
 import skillbill.review.context.model.ReviewOperationKind
 
 enum class ReviewProcessOutcome {
@@ -99,6 +101,11 @@ data class ReviewLaneAccounting(
   val providerUsage: ProviderTokenUsage? = null,
   val terminalStatus: String = "completed",
   val terminalOutcome: ReviewBudgetOutcome? = null,
+  val reviewDisposition: ReviewLaneReviewDisposition? = null,
+  val bundleCompositionDigest: String? = null,
+  val segmentAccounting: List<ReviewLaneSegmentAccounting> = emptyList(),
+  val unreviewedSegmentIds: List<String> = emptyList(),
+  val budgetDimension: String? = null,
 ) {
   init {
     require(lane.isNotBlank() && reviewId.isNotBlank() && packetDigest.isNotBlank() && assignmentDigest.isNotBlank())
