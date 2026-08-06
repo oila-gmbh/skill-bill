@@ -2,6 +2,7 @@ package skillbill.review
 
 import skillbill.error.ReviewAggregationIntegrityError
 import skillbill.review.context.model.ReviewLaneReviewDisposition
+import skillbill.review.model.ReviewLaneAggregationInput
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -104,7 +105,7 @@ class ReviewLaneAggregationTest {
       commitSequenceDigest = sequence,
     ).copy(
       integrationNotApplicableReason =
-        "the review scope resolved to a synthetic unit, so there is no commit sequence to integrate over",
+      "the review scope resolved to a synthetic unit, so there is no commit sequence to integrate over",
     ).render()
 
     assertTrue("not applicable" in rendered, rendered)

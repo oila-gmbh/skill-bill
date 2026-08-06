@@ -1,5 +1,6 @@
 package skillbill.ports.persistence
 
+import skillbill.ports.persistence.model.ReviewIntegrationPassRecord
 import skillbill.review.model.ReviewLaneEffectivenessRow
 import skillbill.review.model.ReviewRunLane
 
@@ -39,17 +40,6 @@ interface ReviewRunCompletenessRepository {
 
   /** The durable integration state, or null when this run has not settled one yet. */
   fun fetchIntegrationPass(runId: String): ReviewIntegrationPassRecord?
-}
-
-/** Durable integration-pass boundary: which sequence it covered and how it ended. */
-data class ReviewIntegrationPassRecord(
-  val commitSequenceDigest: String,
-  val terminalOutcome: String,
-) {
-  init {
-    require(commitSequenceDigest.isNotBlank()) { "Integration pass record must name its commit sequence." }
-    require(terminalOutcome.isNotBlank()) { "Integration pass record must name its terminal outcome." }
-  }
 }
 
 /**

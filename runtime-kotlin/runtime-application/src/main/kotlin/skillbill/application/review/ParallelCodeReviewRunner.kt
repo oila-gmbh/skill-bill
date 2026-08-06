@@ -7,6 +7,7 @@ import skillbill.application.model.ParallelCodeReviewRequest
 import skillbill.application.model.ParallelCodeReviewResult
 import skillbill.application.model.ParallelReviewLaneStatus
 import skillbill.application.model.ParallelReviewScope
+import skillbill.application.model.ReviewLaneIntegrationInput
 import skillbill.application.model.StackDetectionException
 import skillbill.application.model.UsageValidationException
 import skillbill.application.review.model.ReviewRubricProjection
@@ -24,8 +25,8 @@ import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.persistence.DatabaseSessionFactory
-import skillbill.ports.persistence.ReviewIntegrationPassRecord
 import skillbill.ports.persistence.model.ReviewAccountingRecord
+import skillbill.ports.persistence.model.ReviewIntegrationPassRecord
 import skillbill.ports.review.InstalledReviewCatalogPort
 import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewRubricResolver
@@ -38,9 +39,7 @@ import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.ports.review.model.ReviewOwnedFileEvidence
 import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.ParallelReviewMerger
-import skillbill.review.ReviewCoverageReport
 import skillbill.review.ReviewLaneAggregation
-import skillbill.review.ReviewLaneAggregationInput
 import skillbill.review.ReviewRunLaneResolver
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.ReviewExecutionModePolicy
@@ -70,6 +69,8 @@ import skillbill.review.context.model.structuredString
 import skillbill.review.context.model.toCodeReviewExecutionMode
 import skillbill.review.model.ParallelReviewLaneResult
 import skillbill.review.model.ParallelReviewRawFinding
+import skillbill.review.model.ReviewCoverageReport
+import skillbill.review.model.ReviewLaneAggregationInput
 import skillbill.review.model.ReviewRunLane
 import skillbill.review.model.ReviewRunLaneSegmentAccountingJson
 import skillbill.review.plan.ReviewLaneInclusionPolicy
@@ -275,7 +276,9 @@ class ParallelCodeReviewRunner(
 
   /**
    * A resume re-runs only lanes whose durable disposition is not complete. Fresh runs keep the full
-   * compiled set; completed durable results are never re-launched.
+   * compiled set; completed durable results are never re-launched. A compiled lane that holds no
+   * durable row at all is new routing since the last attempt, so it must launch: skipping it would
+   * leave a selected lane with neither a run nor a durable result, which aggregation rejects.
    */
   private fun selectLaunchesForResume(
     reviewRunId: String?,
@@ -284,11 +287,12 @@ class ParallelCodeReviewRunner(
     if (reviewRunId == null || launches.isEmpty()) return launches
     val existing = database.transaction { unitOfWork -> unitOfWork.reviews.fetchReviewRunLanes(reviewRunId) }
     if (existing.isEmpty()) return launches
-    val resumeNames = ReviewRunLaneResolver.lanesToResume(existing)
+    val completeNames = existing
+      .filter { it.reviewDisposition == ReviewRunLaneResolver.COMPLETE_DISPOSITION }
       .map { it.laneSkillName }
       .toSet()
-    return launches.filter { launch ->
-      launch.assignment.laneDecision.specialistSkillName in resumeNames
+    return launches.filterNot { launch ->
+      launch.assignment.laneDecision.specialistSkillName in completeNames
     }
   }
 
@@ -386,6 +390,7 @@ class ParallelCodeReviewRunner(
    * A durable integration result is reusable only for the sequence it was minted against; a resume
    * whose sequence moved re-runs the pass rather than reporting a state that describes other code.
    */
+  @Suppress("ReturnCount") // each early return is a distinct reason the durable result is unusable
   private fun durableIntegrationOutcome(
     reviewRunId: String?,
     commitSequenceDigest: String,
@@ -974,10 +979,10 @@ class ParallelCodeReviewRunner(
     launch: ReviewSpecialistLaunchRequest,
     outcomes: ParallelReviewLaneRunResult,
   ): ReviewLaneCompletionState {
-    val completion = governedLaunchFor(launch).completionState
-    if (outcomes.lane1.success && outcomes.lane2.success) return completion
-    return completion.asFailedLaneRun(
-      launch.assignment.assignedBundle.entries.map { "${it.commitSha}@${it.hunk.path}" },
+    val governed = governedLaunchFor(launch)
+    if (outcomes.lane1.success && outcomes.lane2.success) return governed.completionState
+    return governed.completionState.asFailedLaneRun(
+      governed.assembledBundle.entries.map { "${it.commitSha}@${it.hunk.path}" },
     )
   }
 
@@ -1089,6 +1094,7 @@ class ParallelCodeReviewRunner(
   )
 }
 
+@Suppress("LongParameterList") // assembles the full result record; every part is required
 private fun parallelResult(
   agent1Id: String,
   agent2Id: String,

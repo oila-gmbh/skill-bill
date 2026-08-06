@@ -1,6 +1,6 @@
 package skillbill.application.review
 
-import skillbill.application.review.model.ReviewSpecialistLaunchRequest
+import skillbill.application.model.ReviewLaneIntegrationInput
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
@@ -13,20 +13,12 @@ import skillbill.review.context.model.GovernedReviewIntegrationLaunch
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewContextPacket
 import skillbill.review.context.model.ReviewIntegrationTerminalOutcome
-import skillbill.review.context.model.ReviewLaneCompletionState
 import skillbill.review.context.model.ReviewPacketConsumerContract
 import skillbill.review.context.model.ReviewSpecialistSummary
 import skillbill.review.context.model.structuredString
 import skillbill.review.model.ParallelReviewRawFinding
 import java.nio.file.Path
 import kotlin.time.Duration
-
-/** One lane's finished state as the integration pass sees it: coverage plus a finding count. */
-data class ReviewLaneIntegrationInput(
-  val launch: ReviewSpecialistLaunchRequest,
-  val completion: ReviewLaneCompletionState,
-  val findingCount: Int,
-)
 
 /**
  * Runs the single bounded integration pass after every specialist lane reaches a terminal state.

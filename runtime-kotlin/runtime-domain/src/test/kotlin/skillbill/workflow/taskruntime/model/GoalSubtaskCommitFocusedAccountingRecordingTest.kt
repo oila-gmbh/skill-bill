@@ -29,7 +29,9 @@ class GoalSubtaskCommitFocusedAccountingRecordingTest {
   private fun reservedFirstPass() = GoalSubtaskReviewState.initial(
     reviewBaseSha = "b".repeat(40),
     baselineUntrackedPaths = emptyList(),
-    codeReviewMode = CodeReviewExecutionMode.AUTO,
+    // Pinned delegated: under AUTO the first pass resolves to the inline lane, which by contract
+    // carries no commit-focused accounting at all.
+    codeReviewMode = CodeReviewExecutionMode.DELEGATED,
   ).reserveNextPass()
 
   @Test

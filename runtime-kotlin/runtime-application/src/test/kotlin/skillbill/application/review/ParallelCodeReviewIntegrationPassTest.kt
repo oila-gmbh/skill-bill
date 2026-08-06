@@ -191,6 +191,28 @@ class ParallelCodeReviewIntegrationPassTest {
     assertEquals(afterFirst, recorder.parentLaunches.size, "A settled review re-launches nothing on resume.")
   }
 
+  @Test fun `a resume whose routing grew launches the newly routed lane instead of failing aggregation`() {
+    val recorder = ReviewRecorder()
+    val narrow = listOf("src/api/Auth.kt")
+    // First attempt: the only routed lane times out, so it holds a durable incomplete row.
+    reviewHarness(
+      delegatedConfig(narrow) { RecordedWorkerResponse(timedOut = true) },
+      recorder,
+    ).run(delegatedRequest(reviewRunId = RUN_ID))
+    val afterFirst = recorder.specialistLaunches.size
+
+    // The resume compiles a lane that has no durable row at all. It must launch, not be dropped.
+    val resumed = reviewHarness(delegatedConfig(narrow + "src/db/Repo.kt"), recorder)
+      .run(delegatedRequest(reviewRunId = RUN_ID))
+
+    val relaunched = recorder.specialistLaunches.drop(afterFirst)
+    assertTrue(
+      relaunched.isNotEmpty(),
+      "A compiled lane with no durable row is new routing and must be launched by the resume.",
+    )
+    assertTrue(assertNotNull(resumed.coverage).isCleanCoverage)
+  }
+
   @Test fun `an integration pass that times out is not a durable boundary`() {
     val recorder = ReviewRecorder()
 

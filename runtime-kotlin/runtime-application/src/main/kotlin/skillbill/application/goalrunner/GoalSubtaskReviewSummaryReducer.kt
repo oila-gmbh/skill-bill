@@ -30,6 +30,7 @@ internal data class GoalSubtaskReviewOutputOutcome(
   val unresolvedFindingCount: Int,
 )
 
+@Suppress("TooManyFunctions") // one reduction pipeline; each step is a named redaction stage
 internal object GoalSubtaskReviewSummaryReducer {
   private const val MAX_TEXT_LENGTH: Int = 180
   private val pathLikeToken = Regex("(?:[A-Za-z]:)?(?:[/\\\\][^\\s:|]+)+|(?:[A-Za-z0-9_.-]+[/\\\\])+[A-Za-z0-9_.-]+")

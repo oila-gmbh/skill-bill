@@ -22,6 +22,7 @@ import skillbill.cli.core.DocumentedCliCommand
 import skillbill.cli.core.refuseRuntimeRefusedAgents
 import skillbill.cli.model.CliExecutionResult
 import skillbill.contracts.JsonSupport
+import skillbill.error.ReviewAggregationIntegrityError
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InvokingAgentContextResolver
 import skillbill.workflow.model.CodeReviewExecutionMode
@@ -117,32 +118,18 @@ class CodeReviewParallelCommand(
     }
 
     val result = try {
-      runner.run(
-        ParallelCodeReviewRequest(
-          agent1Id = resolvedAgent1,
-          agent2Id = resolvedAgent2,
-          agent2Model = model2?.takeIf(String::isNotBlank),
-          scope = resolvedScope,
-          repoRoot = Path.of(repoRoot).toAbsolutePath().normalize(),
-          timeout = timeoutMinutes?.minutes,
-          codeReviewMode = parseExecutionMode(codeReviewMode),
-          suppliedDiffPath = suppliedDiffPath(),
-          reviewRunId = reviewRunId?.takeIf(String::isNotBlank),
-          baseRevision = baseRevision?.takeIf(String::isNotBlank),
-          headRevision = headRevision?.takeIf(String::isNotBlank),
-          prelaunchExpansions = expandFiles.map(::parseExpansion),
-          baselineUntrackedPolicy = ParallelCodeReviewRequest.baselineUntrackedPolicy(
-            baselineUntrackedIncludes,
-            baselineUntrackedExcludes,
-          ),
-        ),
-      )
+      runner.run(request(resolvedAgent1, resolvedAgent2, resolvedScope))
     } catch (@Suppress("SwallowedException") e: UsageValidationException) {
       throw UsageError(e.message.orEmpty())
     } catch (@Suppress("SwallowedException") e: DiffResolutionException) {
       throw UsageError(e.message.orEmpty())
     } catch (@Suppress("SwallowedException") e: StackDetectionException) {
       throw UsageError(e.message.orEmpty())
+    } catch (e: ReviewAggregationIntegrityError) {
+      // An aggregation breach is a coverage report, not a crash: the reader has to be told which
+      // lanes could not be merged rather than seeing an uncaught exception and no register at all.
+      state.result = CliExecutionResult(exitCode = 1, stdout = e.message.orEmpty())
+      return
     }
 
     val lanes = listOf(result.lane1, result.lane2)
@@ -163,6 +150,26 @@ class CodeReviewParallelCommand(
     }
     state.result = CliExecutionResult(exitCode = exitCode, stdout = output)
   }
+
+  private fun request(resolvedAgent1: String, resolvedAgent2: String, resolvedScope: ParallelReviewScope) =
+    ParallelCodeReviewRequest(
+      agent1Id = resolvedAgent1,
+      agent2Id = resolvedAgent2,
+      agent2Model = model2?.takeIf(String::isNotBlank),
+      scope = resolvedScope,
+      repoRoot = Path.of(repoRoot).toAbsolutePath().normalize(),
+      timeout = timeoutMinutes?.minutes,
+      codeReviewMode = parseExecutionMode(codeReviewMode),
+      suppliedDiffPath = suppliedDiffPath(),
+      reviewRunId = reviewRunId?.takeIf(String::isNotBlank),
+      baseRevision = baseRevision?.takeIf(String::isNotBlank),
+      headRevision = headRevision?.takeIf(String::isNotBlank),
+      prelaunchExpansions = expandFiles.map(::parseExpansion),
+      baselineUntrackedPolicy = ParallelCodeReviewRequest.baselineUntrackedPolicy(
+        baselineUntrackedIncludes,
+        baselineUntrackedExcludes,
+      ),
+    )
 
   // On any lane failure, prepend a single status line naming which lane failed and why. The line is
   // not in `- [F-NNN]` form, so the finding parser ignores it; the merged register stays intact.

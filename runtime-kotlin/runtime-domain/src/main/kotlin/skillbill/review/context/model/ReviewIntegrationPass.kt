@@ -35,6 +35,7 @@ data class ReviewSpecialistSummary(
   companion object {
     const val MAX_SUMMARY_LENGTH: Int = 2000
 
+    @Suppress("LongParameterList") // one lane summary; every field is part of its identity
     fun of(
       lane: String,
       assignmentDigest: String,

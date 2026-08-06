@@ -1105,6 +1105,8 @@ private class RecordingReviewDatabase : DatabaseSessionFactory {
         laneWrites += args[0] as String to (args[1] as List<ReviewRunLane>)
       }
       "fetchReviewRunLanes" -> laneWrites.lastOrNull()?.second.orEmpty()
+      "fetchIntegrationPass" -> null
+      "recordIntegrationPass" -> Unit
       "recordFindingLaneAttribution" -> {
         @Suppress("UNCHECKED_CAST")
         findingLaneWrites += args[0] as String to (args[1] as Map<String, String>)

@@ -325,22 +325,21 @@ class ReviewPacketProjectionTest {
     }
   }
 
-  private fun integrationLaunch(base: ReviewContextPacket, lane: String = "security") =
-    GovernedReviewIntegrationLaunch(
-      packet = base,
-      specialistSummaries = listOf(
-        ReviewSpecialistSummary(
-          lane = lane,
-          assignmentDigest = "a".repeat(64),
-          disposition = ReviewLaneReviewDisposition.COMPLETE,
-          assignedPaths = listOf("src/A.kt"),
-          commitShas = listOf("head"),
-          findingCount = 1,
-          summary = "Reviewed one bundle in one pass.",
-        ),
+  private fun integrationLaunch(base: ReviewContextPacket, lane: String = "security") = GovernedReviewIntegrationLaunch(
+    packet = base,
+    specialistSummaries = listOf(
+      ReviewSpecialistSummary(
+        lane = lane,
+        assignmentDigest = "a".repeat(64),
+        disposition = ReviewLaneReviewDisposition.COMPLETE,
+        assignedPaths = listOf("src/A.kt"),
+        commitShas = listOf("head"),
+        findingCount = 1,
+        summary = "Reviewed one bundle in one pass.",
       ),
-      integrationContract = ReviewPacketConsumerContract.INTEGRATION_CONTRACT,
-      brokerId = "broker",
-      budget = ReviewContextBudgetPolicy.DEFAULT,
-    )
+    ),
+    integrationContract = ReviewPacketConsumerContract.INTEGRATION_CONTRACT,
+    brokerId = "broker",
+    budget = ReviewContextBudgetPolicy.DEFAULT,
+  )
 }

@@ -1,6 +1,6 @@
 package skillbill.infrastructure.sqlite.review
 
-import skillbill.ports.persistence.ReviewIntegrationPassRecord
+import skillbill.ports.persistence.model.ReviewIntegrationPassRecord
 import skillbill.review.ReviewRunLaneResolver
 import skillbill.review.model.ImportedFinding
 import skillbill.review.model.ImportedReview

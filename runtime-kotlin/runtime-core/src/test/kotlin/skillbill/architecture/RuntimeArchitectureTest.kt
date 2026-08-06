@@ -2038,6 +2038,8 @@ class RuntimeArchitectureTest {
       "skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder.decode",
       "skillbill.workflow.taskruntime.model.GoalSubtaskReviewState.toArtifactMap",
       "skillbill.workflow.taskruntime.model.GoalSubtaskReviewState.fromArtifactMap",
+      "skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting.toArtifactMap",
+      "skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting.fromArtifactMap",
       "skillbill.ports.workflow.model.GoalSubtaskReviewInput.toArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome.toArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome.fromArtifactMap",

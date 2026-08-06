@@ -20,7 +20,12 @@ private fun requireBoundedAccountingPayload(payload: Map<String, Any?>) {
     "contract_version", "kind", "review_id", "packet_digest", "parent", "lanes", "aggregate_counters",
     "aggregate_direct_usage", "aggregate_inclusive_usage", "budget_regression",
   )
-  require(payload.keys == topKeys) { "Review accounting must match the bounded projection contract." }
+  require(payload.keys - COMMIT_FOCUSED_KEYS == topKeys) {
+    "Review accounting must match the bounded projection contract."
+  }
+  COMMIT_FOCUSED_KEYS.forEach { key ->
+    payload[key]?.let { require(it is Map<*, *>) { "Review accounting '$key' must be an object when present." } }
+  }
   require(payload["contract_version"] == REVIEW_CONTEXT_CONTRACT_VERSION && payload["kind"] == "accounting_summary")
   require(payload["review_id"] is String && payload["packet_digest"] is String)
   requireAccountingNode(payload["parent"])
@@ -30,6 +35,11 @@ private fun requireBoundedAccountingPayload(payload: Map<String, Any?>) {
   requireUsage(payload["aggregate_inclusive_usage"], ownershipRequired = false)
   require(payload["budget_regression"] is Boolean)
 }
+
+// Commit-focused sequencing adds these three sections; absent (or null) on a review that carried no
+// commit sequence, so a non-commit-focused payload stays exactly what it was.
+private val COMMIT_FOCUSED_KEYS =
+  setOf("commit_routing_accounting", "parent_analysis_consumption", "integration")
 
 private fun requireAccountingNode(value: Any?) {
   val node = value as? Map<*, *> ?: error("Review accounting node must be an object.")

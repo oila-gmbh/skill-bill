@@ -77,8 +77,10 @@ data class ReviewCommitRoutingAccounting(
   init {
     require(commitSequenceDigest.isNotBlank() && routingDigest.isNotBlank())
     require(commitCount >= 1) { "A routed review covers at least one commit." }
-    require(listOf(laneCount, focusedCommitCount, skippedCommitCount, focusedPairCount, skippedPairCount)
-      .all { it >= 0 })
+    require(
+      listOf(laneCount, focusedCommitCount, skippedCommitCount, focusedPairCount, skippedPairCount)
+        .all { it >= 0 },
+    )
     require(focusedCommitCount + skippedCommitCount == commitCount) {
       "Every commit is either focused by some lane or skipped by all of them."
     }

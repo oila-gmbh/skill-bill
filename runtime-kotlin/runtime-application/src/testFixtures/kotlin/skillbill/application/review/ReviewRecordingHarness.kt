@@ -19,10 +19,10 @@ import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.persistence.DatabaseSessionFactory
-import skillbill.ports.persistence.ReviewIntegrationPassRecord
 import skillbill.ports.persistence.ReviewRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.model.ReviewAccountingRecord
+import skillbill.ports.persistence.model.ReviewIntegrationPassRecord
 import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewRubricResolver
 import skillbill.ports.review.model.ParallelReviewLaneOutcome

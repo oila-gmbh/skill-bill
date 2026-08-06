@@ -11,7 +11,10 @@ import skillbill.review.context.model.ReviewIntegrationAccounting
 import skillbill.review.context.model.ReviewLaneSegmentAccounting
 import skillbill.review.context.model.ReviewParentAnalysisConsumption
 
-/** The sole durable/wire projection for review accounting. Content-bearing inputs are intentionally absent. */
+/**
+ * The sole durable/wire projection for review accounting. Content-bearing inputs are intentionally
+ * absent.
+ */
 @OpenBoundaryMap("Schema-bounded review-accounting wire projection")
 fun ReviewAccountingSummary.toBoundedPayload(): Map<String, Any?> = linkedMapOf(
   "contract_version" to REVIEW_CONTEXT_CONTRACT_VERSION,
@@ -39,15 +42,17 @@ private fun ReviewAccountingNode.toPayload(): Map<String, Any?> = linkedMapOf(
   "tool_calls" to counters.toolCalls.toLong(),
   "model_turns" to counters.modelTurns.toLong(),
   "inclusive_counters" to inclusiveCounters.toPayload(),
-  "provider_usage" to providerUsage.toPayload() + ("ownership" to providerUsage.ownership.name.lowercase()),
+  "provider_usage" to providerUsage.toOwnedPayload(),
   "direct_usage" to directUsage.toPayload(),
   "inclusive_usage" to inclusiveUsage.toPayload(),
   "terminal_outcome" to terminalOutcome,
-) + bundleCompositionDigest?.let { mapOf("bundle_composition_digest" to it) }.orEmpty() +
-  segmentAccounting.takeIf { it.isNotEmpty() }?.let { segments ->
-    mapOf("segment_accounting" to segments.map { it.toPayload() })
-  }.orEmpty() +
-  unreviewedSegmentIds.takeIf { it.isNotEmpty() }?.let { mapOf("unreviewed_segment_ids" to it) }.orEmpty()
+).apply {
+  // Bundle keys are present-or-absent, never null: a lane with no bundle stays byte-identical.
+  bundleCompositionDigest?.let { put("bundle_composition_digest", it) }
+  segmentAccounting.takeIf { it.isNotEmpty() }
+    ?.let { segments -> put("segment_accounting", segments.map { it.toPayload() }) }
+  unreviewedSegmentIds.takeIf { it.isNotEmpty() }?.let { put("unreviewed_segment_ids", it) }
+}
 
 // Identity, counts, and lane names only. No commit subject, no path, no diff text: a routing shape
 // is safe to persist, the code it routed is not.
@@ -77,7 +82,9 @@ private fun ReviewIntegrationAccounting.toPayload(): Map<String, Any?> = linkedM
   "finding_count" to findingCount,
   "counters" to counters.toPayload(),
   "usage" to usage.toPayload(),
-) + skipReason?.let { mapOf("skip_reason" to it) }.orEmpty()
+).apply {
+  skipReason?.let { put("skip_reason", it) }
+}
 
 private fun ReviewLaneSegmentAccounting.toPayload(): Map<String, Any?> = linkedMapOf(
   "segment_id" to segmentId,
@@ -94,6 +101,9 @@ private fun ReviewAccountingCounters.toPayload(): Map<String, Long> = linkedMapO
   "tool_calls" to toolCalls.toLong(),
   "model_turns" to modelTurns.toLong(),
 )
+
+private fun ProviderTokenUsage.toOwnedPayload(): Map<String, Any?> =
+  toPayload() + ("ownership" to ownership.name.lowercase())
 
 private fun ProviderTokenUsage.toPayload(): Map<String, Long> = linkedMapOf<String, Long>().apply {
   inputTokens?.let { put("input_tokens", it) }
