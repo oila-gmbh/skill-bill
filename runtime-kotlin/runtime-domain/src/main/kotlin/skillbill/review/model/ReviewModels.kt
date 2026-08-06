@@ -25,7 +25,12 @@ data class ReviewRunLane(
   val orderIndex: Int,
   val originLayerChain: List<String>,
   val resolutionState: String,
-  val reviewDisposition: String = "complete",
+  /**
+   * Durable single-pass disposition. Deliberately has no default: a row may only claim `complete`
+   * where a durable complete result was observed, so every writer states it explicitly and an
+   * unknown disposition can never fail open into skipped resume coverage.
+   */
+  val reviewDisposition: String,
   val bundleCompositionDigest: String? = null,
   val segmentAccountingJson: String? = null,
   val unreviewedSegmentIds: List<String> = emptyList(),

@@ -189,6 +189,7 @@ class ReviewRunLaneAttributionTest {
         orderIndex = 0,
         originLayerChain = listOf("kmp"),
         resolutionState = ReviewRunLaneResolver.RESOLVED,
+        reviewDisposition = ReviewRunLaneResolver.INCOMPLETE_DISPOSITION,
       ),
       ReviewRunLane(
         laneSkillName = "bill-kotlin-code-review-testing",
@@ -199,6 +200,7 @@ class ReviewRunLaneAttributionTest {
         orderIndex = 1,
         originLayerChain = listOf("kmp", "kotlin"),
         resolutionState = ReviewRunLaneResolver.RESOLVED,
+        reviewDisposition = ReviewRunLaneResolver.INCOMPLETE_DISPOSITION,
       ),
     ),
   )

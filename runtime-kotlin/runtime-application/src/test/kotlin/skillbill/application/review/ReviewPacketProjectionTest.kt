@@ -241,6 +241,7 @@ class ReviewPacketProjectionTest {
     assertEquals(ReviewPacketConsumerContract.REPORT_STRUCTURE, envelope["report_structure"])
     @Suppress("UNCHECKED_CAST")
     val bundle = envelope["bundle"] as Map<String, Any?>
+
     @Suppress("UNCHECKED_CAST")
     val entries = bundle["entries"] as List<Map<String, Any?>>
     assertEquals(2, entries.size)
@@ -255,6 +256,7 @@ class ReviewPacketProjectionTest {
   }
 
   @Test fun `launch envelope bundle matches canonical payload bundle content`() {
+    val base = packet()
     val assignment = ReviewAssignment(
       reviewId = base.reviewId,
       packetDigest = base.digest,
@@ -274,6 +276,7 @@ class ReviewPacketProjectionTest {
     val launch =
       GovernedReviewLaunch(assignment, base, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
     val envelope = launch.toLaunchEnvelope().asWireMap()
+
     @Suppress("UNCHECKED_CAST")
     val envelopeEntries = (envelope["bundle"] as Map<String, Any?>)["entries"] as List<Map<String, Any?>>
     val payloadHunkIds = Regex("""hunk_id: ([a-f0-9]{64})""")

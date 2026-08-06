@@ -49,20 +49,22 @@ data class ReviewLaneAssembledBundle(val entries: List<ReviewLaneAssembledEntry>
 
   val hunkIds: List<String> get() = entries.map { it.hunkId }
 
-  val canonical: String get() = canonicalFields(*entries.map { it.canonical }.toTypedArray())
+  val canonical: String get() = canonicalFieldList(entries.map { it.canonical })
 
   /** Stable identity of the bundle's composition for launch, result, and resume records. */
   val compositionDigest: String get() = sha256Hex(canonical)
 
   companion object {
-    val EMPTY: ReviewLaneAssembledBundle = ReviewLaneAssembledBundle(emptyList())
-
+    // Declared before EMPTY: the constructor's ordering check reads ENTRY_ORDER, so initializing
+    // EMPTY first would run that check against a still-null comparator and fail class init.
     val ENTRY_ORDER: Comparator<ReviewLaneAssembledEntry> = compareBy(
       ReviewLaneAssembledEntry::orderIndex,
       { it.hunk.path },
       { it.hunk.newStart },
       { it.hunk.oldStart },
     )
+
+    val EMPTY: ReviewLaneAssembledBundle = ReviewLaneAssembledBundle(emptyList())
 
     /**
      * Materializes the assignment's commit-grouped hunk ids into ordered body entries using the
@@ -109,8 +111,7 @@ data class ReviewLaneBundleSegment(
     require(entries == ordered) { "Bundle segment entries must preserve assembled-bundle order." }
   }
 
-  val compositionDigest: String get() =
-    sha256Hex(canonicalFields(*entries.map { it.canonical }.toTypedArray()))
+  val compositionDigest: String get() = sha256Hex(canonicalFieldList(entries.map { it.canonical }))
 }
 
 /**
@@ -257,31 +258,28 @@ fun segmentAssembledBundle(
   return ReviewLaneBundleSegmentation(segments, unreviewable, maxLaneLaunchBytes)
 }
 
-fun ReviewLaneBundleSegmentation.toCompletionState(
-  bundleCompositionDigest: String,
-): ReviewLaneCompletionState = if (incomplete) {
-  ReviewLaneCompletionState(
-    disposition = ReviewLaneReviewDisposition.INCOMPLETE,
-    bundleCompositionDigest = bundleCompositionDigest,
-    segments = segments.map { it.toAccounting() } +
-      ReviewLaneSegmentAccounting(
-        segmentId = ReviewLaneBundleSegmentation.UNREVIEWABLE_SEGMENT_ID,
-        measuredBytes = 0,
-        entryCount = unreviewableEntries.size,
-        compositionDigest = sha256Hex(
-          canonicalFields(*unreviewableEntries.map { it.canonical }.toTypedArray()),
+fun ReviewLaneBundleSegmentation.toCompletionState(bundleCompositionDigest: String): ReviewLaneCompletionState =
+  if (incomplete) {
+    ReviewLaneCompletionState(
+      disposition = ReviewLaneReviewDisposition.INCOMPLETE,
+      bundleCompositionDigest = bundleCompositionDigest,
+      segments = segments.map { it.toAccounting() } +
+        ReviewLaneSegmentAccounting(
+          segmentId = ReviewLaneBundleSegmentation.UNREVIEWABLE_SEGMENT_ID,
+          measuredBytes = 0,
+          entryCount = unreviewableEntries.size,
+          compositionDigest = sha256Hex(canonicalFieldList(unreviewableEntries.map { it.canonical })),
         ),
-      ),
-    unreviewedSegmentIds = listOf(ReviewLaneBundleSegmentation.UNREVIEWABLE_SEGMENT_ID),
-    budgetDimension = "lane_launch_bytes",
-  )
-} else {
-  ReviewLaneCompletionState(
-    disposition = ReviewLaneReviewDisposition.COMPLETE,
-    bundleCompositionDigest = bundleCompositionDigest,
-    segments = segments.map { it.toAccounting() },
-  )
-}
+      unreviewedSegmentIds = listOf(ReviewLaneBundleSegmentation.UNREVIEWABLE_SEGMENT_ID),
+      budgetDimension = "lane_launch_bytes",
+    )
+  } else {
+    ReviewLaneCompletionState(
+      disposition = ReviewLaneReviewDisposition.COMPLETE,
+      bundleCompositionDigest = bundleCompositionDigest,
+      segments = segments.map { it.toAccounting() },
+    )
+  }
 
 fun ReviewLaneBundleSegment.toAccounting(): ReviewLaneSegmentAccounting = ReviewLaneSegmentAccounting(
   segmentId = segmentId,

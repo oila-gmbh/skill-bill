@@ -61,16 +61,14 @@ object ParallelReviewMerger {
     allEntries.forEach { entry ->
       val entryFilePath = entry.finding.repositoryPath ?: filePathOf(entry.finding.location)
       val entryTokens = tokens(entry.finding.description)
-      val entryCommitKey = entry.finding.commitShas.sorted()
       val cluster = clusters.firstOrNull { head ->
         head.representativeFilePath == entryFilePath &&
-          head.representativeCommitShas == entryCommitKey &&
           jaccard(head.representativeTokens, entryTokens) > FUZZY_DEDUP_THRESHOLD
       }
       if (cluster != null) {
         cluster.entries += entry
       } else {
-        clusters += ClusterHead(mutableListOf(entry), entryFilePath, entryCommitKey, entryTokens)
+        clusters += ClusterHead(mutableListOf(entry), entryFilePath, entryTokens)
       }
     }
 
@@ -123,7 +121,9 @@ object ParallelReviewMerger {
       originLayerChains = entries.flatMap { it.finding.originLayerChains }.distinct(),
       repositoryPath = firstEntry.finding.repositoryPath,
       line = firstEntry.finding.line,
-      commitShas = firstEntry.finding.commitShas,
+      // Commit attribution is the union across the cluster, in first-appearance order: coalescing
+      // two reports of one root cause must not drop the commits only the later report named.
+      commitShas = entries.sortedBy { it.appearanceOrder }.flatMap { it.finding.commitShas }.distinct(),
     )
   }
 
@@ -163,7 +163,6 @@ object ParallelReviewMerger {
   private data class ClusterHead(
     val entries: MutableList<FindingEntry>,
     val representativeFilePath: String,
-    val representativeCommitShas: List<String>,
     val representativeTokens: Set<String>,
   )
 

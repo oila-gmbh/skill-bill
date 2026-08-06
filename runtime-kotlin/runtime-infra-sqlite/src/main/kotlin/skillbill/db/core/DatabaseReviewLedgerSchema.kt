@@ -21,7 +21,7 @@ internal object DatabaseReviewLedgerSchema {
         origin_layer_chain TEXT NOT NULL DEFAULT '',
         resolution_state TEXT NOT NULL DEFAULT 'resolved'
           CHECK (resolution_state IN ('resolved', 'unresolved')),
-        review_disposition TEXT NOT NULL DEFAULT 'complete',
+        review_disposition TEXT NOT NULL DEFAULT 'incomplete',
         bundle_composition_digest TEXT,
         segment_accounting_json TEXT,
         unreviewed_segment_ids TEXT NOT NULL DEFAULT '',

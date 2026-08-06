@@ -36,7 +36,6 @@ import skillbill.review.context.model.ReviewLaneBundleEntry
 import skillbill.review.context.model.ReviewLaneDecision
 import skillbill.review.context.model.ReviewLearningsReference
 import skillbill.review.context.model.ReviewPacketConsumerContract
-import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
 import skillbill.review.context.model.ReviewRevision
 import skillbill.review.context.model.ReviewRuleReference
 import kotlin.test.Test
@@ -285,8 +284,10 @@ class ReviewContextSchemaValidatorTest {
     val launch =
       GovernedReviewLaunch(assignment, packet, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
     val envelope = launch.toLaunchEnvelope().asWireMap().toMutableMap()
+
     @Suppress("UNCHECKED_CAST")
     val bundle = (envelope["bundle"] as Map<String, Any?>).toMutableMap()
+
     @Suppress("UNCHECKED_CAST")
     val entries = bundle["entries"] as List<Map<String, Any?>>
     require(entries.size >= 2) { "Fixture needs at least two bundle entries to split." }
@@ -328,8 +329,10 @@ class ReviewContextSchemaValidatorTest {
     val launch =
       GovernedReviewLaunch(assignment, packet, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
     val envelope = launch.toLaunchEnvelope().asWireMap().toMutableMap()
+
     @Suppress("UNCHECKED_CAST")
     val bundle = (envelope["bundle"] as Map<String, Any?>).toMutableMap()
+
     @Suppress("UNCHECKED_CAST")
     val entries = (bundle["entries"] as List<Map<String, Any?>>).map { it.toMutableMap() }
     bundle["entries"] = listOf(entries.first() - "commit_sha")

@@ -19,6 +19,7 @@ object ReviewRunLaneResolver {
   const val RESOLVED: String = "resolved"
   const val UNRESOLVED: String = "unresolved"
   const val COMPLETE_DISPOSITION: String = "complete"
+  const val INCOMPLETE_DISPOSITION: String = "incomplete"
 
   /** Lanes whose single-pass review did not finish with a complete disposition and may be resumed. */
   fun lanesToResume(lanes: List<ReviewRunLane>): List<ReviewRunLane> =
@@ -39,6 +40,9 @@ object ReviewRunLaneResolver {
         orderIndex = lane.orderIndex,
         originLayerChain = lane.originLayerChain,
         resolutionState = if (lane.skillName in reported || lane.area in reported) RESOLVED else UNRESOLVED,
+        // Narration is not evidence of a durable single-pass result, so an imported lane is never
+        // complete: it stays resumable until a runtime pass records completion.
+        reviewDisposition = INCOMPLETE_DISPOSITION,
       )
     }
     val plannedNames = planned.flatMap { listOf(it.laneSkillName, it.area) }.toSet()
@@ -53,6 +57,7 @@ object ReviewRunLaneResolver {
         orderIndex = planned.size + index,
         originLayerChain = emptyList(),
         resolutionState = UNRESOLVED,
+        reviewDisposition = INCOMPLETE_DISPOSITION,
       )
     }
   }

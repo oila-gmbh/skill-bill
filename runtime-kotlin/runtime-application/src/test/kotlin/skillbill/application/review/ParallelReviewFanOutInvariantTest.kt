@@ -16,6 +16,7 @@ import skillbill.ports.review.model.ReviewScopeFacts
 import skillbill.ports.review.model.ReviewStackRoutingFacts
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.model.GovernedReviewLaunch
+import skillbill.review.context.model.ReviewBuildTestFact
 import skillbill.review.context.model.ReviewChangedHunk
 import skillbill.review.context.model.ReviewCommitCoverageFact
 import skillbill.review.context.model.ReviewCommitLaneDecision
@@ -26,7 +27,9 @@ import skillbill.review.context.model.ReviewCommitUnit
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewLaneAssembledBundle
 import skillbill.review.context.model.ReviewLaneDecision
+import skillbill.review.context.model.ReviewLearningsReference
 import skillbill.review.context.model.ReviewRevision
+import skillbill.review.context.model.ReviewRuleReference
 import skillbill.review.context.model.segmentAssembledBundle
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -69,9 +72,13 @@ class ParallelReviewFanOutInvariantTest {
       override fun resolveStackRouting(scope: ReviewScopeFacts) =
         ReviewStackRoutingFacts("kotlin", "kotlin", emptyList(), listOf("kotlin"))
 
-      override fun resolveMatchedRules(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) = emptyList()
-      override fun resolveLearnings(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) = emptyList()
-      override fun resolveBuildTestFacts(scope: ReviewScopeFacts) = emptyList()
+      override fun resolveMatchedRules(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) =
+        emptyList<ReviewRuleReference>()
+
+      override fun resolveLearnings(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) =
+        emptyList<ReviewLearningsReference>()
+
+      override fun resolveBuildTestFacts(scope: ReviewScopeFacts) = emptyList<ReviewBuildTestFact>()
       override fun decideLanes(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) =
         ReviewLaneSelection(decisions, focusedMatrix(scope, decisions.filter { it.included }.map { it.lane }))
     }
@@ -86,7 +93,13 @@ class ParallelReviewFanOutInvariantTest {
   private fun scopeWithCommitCount(count: Int): ReviewScopeFacts {
     val units = (0 until count).map { index ->
       val sha = if (index == count - 1) "head" else "c$index"
-      val parent = if (index == 0) "base" else if (index == count - 1 && count > 1) "c${index - 1}" else "c${index - 1}"
+      val parent = if (index == 0) {
+        "base"
+      } else if (index == count - 1 && count > 1) {
+        "c${index - 1}"
+      } else {
+        "c${index - 1}"
+      }
       val hunk = hunkTemplate.copy(path = "src/File$index.kt", content = "+line-$index")
       ReviewCommitUnit(sha, parent, "commit $sha", index, listOf(hunk), ReviewCommitSource.COMMIT_RANGE)
     }
@@ -144,7 +157,15 @@ class ParallelReviewFanOutInvariantTest {
 
   @Test fun `synthesized launch set larger than selected lane count is rejected loudly`() {
     val prepared = prepare(2)
-    val extra = prepared.assignments.first().copy(lane = "forged-lane")
+    val source = prepared.assignments.first()
+    val extra = source.copy(
+      lane = "forged-lane",
+      laneRouting = source.laneRouting.map { it.copy(lane = "forged-lane") },
+      laneDecision = source.laneDecision.copy(
+        lane = "forged-lane",
+        specialistSkillName = "bill-kotlin-code-review-forged-lane",
+      ),
+    )
     val failure = assertFailsWith<InvalidReviewContextSchemaError> {
       service(scopeWithCommitCount(2), prepared.packet.laneDecisions).validateAgainstPacket(
         prepared.packet,

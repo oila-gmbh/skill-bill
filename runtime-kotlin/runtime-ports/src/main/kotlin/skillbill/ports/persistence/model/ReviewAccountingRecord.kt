@@ -38,13 +38,41 @@ private fun requireAccountingNode(value: Any?) {
     "tool_calls", "model_turns", "inclusive_counters", "provider_usage", "direct_usage", "inclusive_usage",
     "terminal_outcome",
   )
-  require(node.keys == keys)
+  require(node.keys.containsAll(keys))
+  require(BUNDLE_KEYS.containsAll(node.keys - keys))
   require(node["lane"] is String && node["assignment_digest"] is String && node["terminal_outcome"] is String)
   COUNTER_KEYS.forEach { key -> require((node[key] as? Number)?.toLong()?.let { it >= 0 } == true) }
   requireCounters(node["inclusive_counters"])
   requireUsage(node["provider_usage"], ownershipRequired = true)
   requireUsage(node["direct_usage"], ownershipRequired = false)
   requireUsage(node["inclusive_usage"], ownershipRequired = false)
+  requireBundleAccounting(node)
+}
+
+// A lane that carried an assembled bundle also reports its composition and per-segment accounting.
+// The keys are present-or-absent rather than nullable, so a non-bundled lane stays byte-identical.
+private val BUNDLE_KEYS = setOf("bundle_composition_digest", "segment_accounting", "unreviewed_segment_ids")
+
+private fun requireBundleAccounting(node: Map<*, *>) {
+  node["bundle_composition_digest"]?.let { require(it is String && it.isNotBlank()) }
+  node["segment_accounting"]?.let { segments ->
+    val entries = segments as? List<*> ?: error("Review segment accounting must be a list.")
+    require(entries.isNotEmpty())
+    entries.forEach { requireSegmentAccounting(it) }
+  }
+  node["unreviewed_segment_ids"]?.let { ids ->
+    val list = ids as? List<*> ?: error("Unreviewed segment ids must be a list.")
+    require(list.isNotEmpty() && list.all { it is String && it.isNotBlank() })
+  }
+}
+
+private fun requireSegmentAccounting(value: Any?) {
+  val segment = value as? Map<*, *> ?: error("Review segment accounting entry must be an object.")
+  require(segment.keys == setOf("segment_id", "measured_bytes", "entry_count", "composition_digest"))
+  require(segment["segment_id"] is String && segment["composition_digest"] is String)
+  listOf("measured_bytes", "entry_count").forEach { key ->
+    require((segment[key] as? Number)?.toLong()?.let { it >= 0 } == true)
+  }
 }
 
 private fun requireCounters(value: Any?) {

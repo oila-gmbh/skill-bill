@@ -1,5 +1,6 @@
 package skillbill.infrastructure.sqlite.review
 
+import skillbill.review.ReviewRunLaneResolver
 import skillbill.review.model.ImportedFinding
 import skillbill.review.model.ImportedReview
 import skillbill.review.model.ReviewLaneEffectivenessRow
@@ -95,7 +96,10 @@ fun fetchReviewRunLanes(connection: Connection, reviewRunId: String): List<Revie
                 .split("->")
                 .filter(String::isNotEmpty),
               resolutionState = resultSet.getString("resolution_state"),
-              reviewDisposition = resultSet.getString("review_disposition") ?: "complete",
+              // A missing disposition (legacy row written before the column existed) is unknown, not
+              // complete: reading it as complete would silently drop the lane from resume coverage.
+              reviewDisposition = resultSet.getString("review_disposition")
+                ?: ReviewRunLaneResolver.INCOMPLETE_DISPOSITION,
               bundleCompositionDigest = resultSet.getString("bundle_composition_digest"),
               segmentAccountingJson = resultSet.getString("segment_accounting_json"),
               unreviewedSegmentIds = resultSet.getString("unreviewed_segment_ids").orEmpty().toStoredSegmentIdList(),

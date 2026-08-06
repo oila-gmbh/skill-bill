@@ -17,6 +17,7 @@ import skillbill.ports.review.model.ReviewStackRoutingFacts
 import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.model.GovernedReviewLaunch
+import skillbill.review.context.model.ReviewBuildTestFact
 import skillbill.review.context.model.ReviewChangedHunk
 import skillbill.review.context.model.ReviewCommitCoverageFact
 import skillbill.review.context.model.ReviewCommitLaneDecision
@@ -26,7 +27,9 @@ import skillbill.review.context.model.ReviewCommitSource
 import skillbill.review.context.model.ReviewCommitUnit
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewLaneDecision
+import skillbill.review.context.model.ReviewLearningsReference
 import skillbill.review.context.model.ReviewRevision
+import skillbill.review.context.model.ReviewRuleReference
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -105,13 +108,15 @@ class ParallelCodeReviewBundledLaneReviewTest {
           ReviewStackRoutingFacts("kotlin", "kotlin", emptyList(), listOf("kotlin"))
       },
       object : ReviewGuidancePort {
-        override fun resolveMatchedRules(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) = emptyList()
+        override fun resolveMatchedRules(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) =
+          emptyList<ReviewRuleReference>()
       },
       object : ReviewLearningsPort {
-        override fun resolveLearnings(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) = emptyList()
+        override fun resolveLearnings(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) =
+          emptyList<ReviewLearningsReference>()
       },
       object : ReviewBuildTestFactsPort {
-        override fun resolveBuildTestFacts(scope: ReviewScopeFacts) = emptyList()
+        override fun resolveBuildTestFacts(scope: ReviewScopeFacts) = emptyList<ReviewBuildTestFact>()
       },
       object : ReviewLaneSelectionPort {
         override fun decideLanes(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) = ReviewLaneSelection(
@@ -155,7 +160,10 @@ class ParallelCodeReviewBundledLaneReviewTest {
     val ui = prepared.assignments.single { it.lane == "ui" }
 
     assertEquals(listOf(hunkUi.hunkId), ui.assignedHunks)
-    assertEquals(setOf(hunkApi.hunkId, hunkContractIntro.hunkId, hunkContractChange.hunkId), security.assignedHunks.toSet())
+    assertEquals(
+      setOf(hunkApi.hunkId, hunkContractIntro.hunkId, hunkContractChange.hunkId),
+      security.assignedHunks.toSet(),
+    )
     assertFalse(hunkUi.hunkId in security.assignedHunks)
     assertEquals(setOf("c2", "c4", "head"), security.assignedBundle.entries.map { it.commitSha }.toSet())
   }
@@ -191,7 +199,8 @@ class ParallelCodeReviewBundledLaneReviewTest {
 
   @Test fun `cross-commit contract finding retains both commits from one pass`() {
     val finding = ParallelReviewFindingParser.parse(
-      "[F-001] Major | High | commits=c4,head | path=\"src/contract/Api.yaml\" | line=1 | contract drift across commits",
+      "[F-001] Major | High | commits=c4,head | path=\"src/contract/Api.yaml\" | line=1 | " +
+        "contract drift across commits",
     ).single()
     assertEquals(listOf("c4", "head"), finding.commitShas)
   }
@@ -233,13 +242,15 @@ class ParallelCodeReviewBundledLaneReviewTest {
             ReviewStackRoutingFacts("kotlin", "kotlin", emptyList(), listOf("kotlin"))
         },
         object : ReviewGuidancePort {
-          override fun resolveMatchedRules(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) = emptyList()
+          override fun resolveMatchedRules(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) =
+            emptyList<ReviewRuleReference>()
         },
         object : ReviewLearningsPort {
-          override fun resolveLearnings(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) = emptyList()
+          override fun resolveLearnings(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) =
+            emptyList<ReviewLearningsReference>()
         },
         object : ReviewBuildTestFactsPort {
-          override fun resolveBuildTestFacts(scope: ReviewScopeFacts) = emptyList()
+          override fun resolveBuildTestFacts(scope: ReviewScopeFacts) = emptyList<ReviewBuildTestFact>()
         },
         object : ReviewLaneSelectionPort {
           override fun decideLanes(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) = ReviewLaneSelection(

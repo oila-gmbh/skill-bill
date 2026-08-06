@@ -344,7 +344,8 @@ class ReviewPreparationServiceTest {
     val failure = assertFailsWith<InvalidReviewContextSchemaError> {
       service(ports()).validateAgainstPacket(prepared.packet, prepared.assignments.dropLast(1))
     }
-    assertTrue("cover exactly" in failure.message.orEmpty())
+    // A dropped lane trips the one-assignment-per-selected-lane count check before lane-set coverage.
+    assertTrue("exactly one specialist lane per selected lane" in failure.message.orEmpty(), failure.message.orEmpty())
   }
 
   @Test fun `assignment must match its packet lane decision paths and hunks`() {

@@ -83,5 +83,4 @@ object ReviewRunLaneSegmentAccountingJson {
 
 fun List<String>.toStoredSegmentIdList(): String = joinToString(",")
 
-fun String.toStoredSegmentIdList(): List<String> =
-  split(',').map { it.trim() }.filter { it.isNotEmpty() }
+fun String.toStoredSegmentIdList(): List<String> = split(',').map { it.trim() }.filter { it.isNotEmpty() }

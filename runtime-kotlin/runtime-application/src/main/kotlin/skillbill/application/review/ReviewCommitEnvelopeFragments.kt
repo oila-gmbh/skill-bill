@@ -66,13 +66,15 @@ internal fun ReviewLaneBundle.toEnvelope(): Map<String, Any?> = linkedMapOf(
 internal fun ReviewLaneAssembledBundle.toLaunchEnvelope(
   segmentation: ReviewLaneBundleSegmentation,
   completion: ReviewLaneCompletionState,
-): Map<String, Any?> = linkedMapOf(
+): Map<String, Any?> = linkedMapOf<String, Any?>(
   "composition_digest" to compositionDigest,
   "lane_disposition" to completion.disposition.wireValue,
   "unreviewed_segment_ids" to completion.unreviewedSegmentIds,
   "entries" to segmentation.segments.flatMap { it.entries }.map { it.toEnvelope() },
   "segments" to segmentation.segments.map { it.toEnvelope() },
-) + completion.budgetDimension?.let { mapOf("budget_dimension" to it) }.orEmpty()
+).apply {
+  completion.budgetDimension?.let { put("budget_dimension", it) }
+}
 
 internal fun ReviewLaneAssembledEntry.toEnvelope(): Map<String, Any?> = linkedMapOf(
   "commit_sha" to commitSha,

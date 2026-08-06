@@ -1075,15 +1075,15 @@ data class GovernedReviewLaunch(
   private fun renderCanonicalPayload(
     entries: List<ReviewLaneAssembledEntry>,
     segments: ReviewLaneBundleSegmentation,
-  ): String {
-    val disposition = if (segments.incomplete) {
-      ReviewLaneReviewDisposition.INCOMPLETE
-    } else {
-      ReviewLaneReviewDisposition.COMPLETE
-    }
-    val unreviewed = segments.unreviewedSegmentIds
-    val budgetDimension = "lane_launch_bytes".takeIf { segments.incomplete }
-    return buildString {
+  ): String = buildString {
+    appendLaunchIdentity()
+    appendGovernanceText()
+    appendAssignedSurface()
+    appendBundleSection(entries, segments)
+    appendPolicySurface()
+  }.trimEnd()
+
+  private fun StringBuilder.appendLaunchIdentity() {
     appendLine("contract_version: \"$REVIEW_CONTEXT_CONTRACT_VERSION\"")
     appendLine("kind: launch")
     appendLine("review_id: ${assignment.reviewId}")
@@ -1094,12 +1094,18 @@ data class GovernedReviewLaunch(
     appendLine("base_revision: ${assignment.baseRevision}")
     appendLine("head_revision: ${assignment.headRevision}")
     appendLine("broker_id: $brokerId")
+  }
+
+  private fun StringBuilder.appendGovernanceText() {
     appendLine("specialist_contract: |")
     specialistContract.replace("\r\n", "\n").lineSequence().forEach { appendLine("  $it") }
     appendLine("rubric: |")
     rubric.replace("\r\n", "\n").lineSequence().forEach { appendLine("  $it") }
     appendLine("consumer_contract: |")
     ReviewPacketConsumerContract.CONSUMER_CONTRACT.lineSequence().forEach { appendLine("  $it") }
+  }
+
+  private fun StringBuilder.appendAssignedSurface() {
     appendLine("assigned_paths:")
     assignment.assignedPaths.sorted().forEach { appendLine("  - ${structuredString(it)}") }
     appendLine("assigned_hunks:")
@@ -1125,14 +1131,25 @@ data class GovernedReviewLaunch(
       appendLine("    disposition: ${decision.disposition.name.lowercase()}")
       appendLine("    reason: ${structuredString(decision.reason)}")
     }
+  }
+
+  private fun StringBuilder.appendBundleSection(
+    entries: List<ReviewLaneAssembledEntry>,
+    segments: ReviewLaneBundleSegmentation,
+  ) {
+    val disposition = if (segments.incomplete) {
+      ReviewLaneReviewDisposition.INCOMPLETE
+    } else {
+      ReviewLaneReviewDisposition.COMPLETE
+    }
     appendLine("bundle:")
     appendLine("  composition_digest: ${assembledBundle.compositionDigest}")
     appendLine("  lane_disposition: ${disposition.wireValue}")
-    if (budgetDimension != null) {
-      appendLine("  budget_dimension: $budgetDimension")
+    if (segments.incomplete) {
+      appendLine("  budget_dimension: lane_launch_bytes")
     }
     appendLine("  unreviewed_segment_ids:")
-    unreviewed.forEach { appendLine("    - $it") }
+    segments.unreviewedSegmentIds.forEach { appendLine("    - $it") }
     appendLine("  entries:")
     entries.forEach { entry ->
       appendLine("    - commit_sha: ${structuredString(entry.commitSha)}")
@@ -1161,6 +1178,9 @@ data class GovernedReviewLaunch(
         appendLine("          path: ${structuredString(entry.hunk.path)}")
       }
     }
+  }
+
+  private fun StringBuilder.appendPolicySurface() {
     appendLine("criteria_references:")
     assignment.criteriaReferences.sorted().forEach { appendLine("  - $it") }
     appendLine("matched_rules:")
@@ -1193,8 +1213,8 @@ data class GovernedReviewLaunch(
         "result=${budget.maxLaneResultBytes}, expansions=${budget.maxAssignmentExpansions}, " +
         "tool_calls=${budget.maxSpecialistToolCalls}, model_turns=${budget.maxSpecialistModelTurns}",
     )
-  }.trimEnd()
   }
+}
 
 sealed interface ReviewBudgetOutcome {
   val lane: String
@@ -1364,7 +1384,10 @@ private fun String.hasWellFormedUtf16(): Boolean {
 }
 
 /** Injective UTF-8 length-prefixed encoding used by every content-addressed review identity. */
-internal fun canonicalFields(vararg values: Any): String = values.joinToString("") { value ->
+internal fun canonicalFields(vararg values: Any): String = canonicalFieldList(values.asList())
+
+/** List form of [canonicalFields] for callers that already hold a collection. */
+internal fun canonicalFieldList(values: List<Any>): String = values.joinToString("") { value ->
   val text = value.toString()
   "${text.toByteArray(StandardCharsets.UTF_8).size}:$text"
 }

@@ -126,7 +126,7 @@ class ParallelReviewMergerTest {
   }
 
   @Test
-  fun `findings that differ only by commit attribution are not collapsed`() {
+  fun `findings that differ only by commit attribution coalesce into a union attribution`() {
     val description = "Contract surface changed without updating downstream callers"
     val earlier = ParallelReviewRawFinding(
       ParallelReviewSeverity.MAJOR,
@@ -144,9 +144,9 @@ class ParallelReviewMergerTest {
       ParallelReviewLaneResult("codex", listOf(later)),
     )
 
-    assertEquals(2, merged.findings.size)
-    assertEquals(listOf("c4"), merged.findings.first { it.agentIds == listOf("claude") }.commitShas)
-    assertEquals(listOf("head"), merged.findings.first { it.agentIds == listOf("codex") }.commitShas)
+    val single = merged.findings.single()
+    assertEquals(listOf("claude", "codex"), single.agentIds)
+    assertEquals(listOf("c4", "head"), single.commitShas)
   }
 
   @Test

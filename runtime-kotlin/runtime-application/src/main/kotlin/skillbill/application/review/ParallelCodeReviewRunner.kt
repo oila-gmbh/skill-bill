@@ -606,19 +606,18 @@ class ParallelCodeReviewRunner(
     resolvedMode: ResolvedReviewExecutionMode,
   ): ParallelReviewLaneOutcome {
     // Resume may leave one or both parent agents with no incomplete specialists; that is a no-op
-    // pass, not a routing failure. A fresh run still fails loudly when compile produced no launches.
-    if (launchRequests.isEmpty()) {
-      return ParallelReviewLaneOutcome(
-        success = true,
-        rawOutput = "",
-        reviewDisposition = ReviewLaneReviewDisposition.COMPLETE,
-        bundleCompositionDigest = ReviewLaneAssembledBundle.EMPTY.compositionDigest,
-      )
-    }
+    // pass, not a routing failure. The compiled launch set is non-empty on a fresh run, so an empty
+    // set here means every lane already held a durable result. It launches no worker, so it emits an
+    // explicit no-op accounting record rather than passing silently as a completed review.
+    if (launchRequests.isEmpty()) return noOpResumeOutcome(agentId)
     val selected = launchRequests.sortedBy { it.assignment.laneDecision.orderIndex }
     val bundleStates = selected.map(::governedLaunchFor).map { it.completionState }
-    val aggregateBundleState = aggregateBundleCompletion(bundleStates)
-    val prompt = parentPrompt(selected, routedManifests, resolvedMode)
+    val launch = InlineParentLaunch(
+      agentId = agentId,
+      selected = selected,
+      prompt = parentPrompt(selected, routedManifests, resolvedMode),
+      bundleState = aggregateBundleCompletion(bundleStates),
+    )
     val outcome = parentReviewLauncher.launch(
       GoalRunnerSubtaskLaunchRequest(
         invokedAgentId = agentId,
@@ -627,63 +626,66 @@ class ParallelCodeReviewRunner(
           issueKey = "code-review-parallel",
           repoRoot = request.repoRoot,
           timeout = request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes,
-          promptOverride = prompt,
+          promptOverride = launch.prompt,
           modelOverride = modelOverride,
         ),
       ),
     )
-    val inlineAssignment = selected.first().assignment
     return when (outcome) {
-      is UnsupportedAgentRunLaunch -> ParallelReviewLaneOutcome(
-        success = false,
-        rawOutput = "",
-        failureReason = "unsupported agent: ${outcome.reason}",
-        accounting = inlineParentAccounting(
-          agentId,
-          inlineAssignment,
-          prompt,
-          "unsupported_provider",
-          null,
-          aggregateBundleState,
-        ),
-        reviewDisposition = aggregateBundleState.disposition,
-        bundleCompositionDigest = aggregateBundleState.bundleCompositionDigest,
-        segmentAccounting = aggregateBundleState.segments,
-        unreviewedSegmentIds = aggregateBundleState.unreviewedSegmentIds,
-        budgetDimension = aggregateBundleState.budgetDimension,
-      )
-      is AgentRunLaunchFacts -> {
-        val budgetOutcome = ReviewBudgetEvaluator.laneResultOutcome(
-          ReviewLaneIdentity.of(inlineAssignment),
-          budget,
-          outcome.stdout.toByteArray().size.toLong(),
-        )
-        val reason = budgetOutcome?.let { ReviewContextBudgetExceededException(it).message }
-          ?: laneFailureReason(outcome)
-        val terminalStatus = inlineTerminalStatus(outcome, aggregateBundleState.disposition)
-        ParallelReviewLaneOutcome(
-          success = reason == null,
-          rawOutput = outcome.stdout,
-          failureReason = reason,
-          budgetOutcome = budgetOutcome,
-          tokenUsage = providerTokenUsage(outcome),
-          accounting = inlineParentAccounting(
-            agentId,
-            inlineAssignment,
-            prompt,
-            terminalStatus,
-            outcome,
-            aggregateBundleState,
-          ),
-          findings = if (reason == null) attributeInlineFindings(outcome.stdout, selected) else emptyList(),
-          reviewDisposition = aggregateBundleState.disposition,
-          bundleCompositionDigest = aggregateBundleState.bundleCompositionDigest,
-          segmentAccounting = aggregateBundleState.segments,
-          unreviewedSegmentIds = aggregateBundleState.unreviewedSegmentIds,
-          budgetDimension = aggregateBundleState.budgetDimension,
-        )
-      }
+      is UnsupportedAgentRunLaunch -> unsupportedParentOutcome(launch, outcome)
+      is AgentRunLaunchFacts -> launchedParentOutcome(launch, outcome, budget)
     }
+  }
+
+  private fun unsupportedParentOutcome(
+    launch: InlineParentLaunch,
+    outcome: UnsupportedAgentRunLaunch,
+  ): ParallelReviewLaneOutcome {
+    val bundleState = launch.bundleState
+    return ParallelReviewLaneOutcome(
+      success = false,
+      rawOutput = "",
+      failureReason = "unsupported agent: ${outcome.reason}",
+      accounting = inlineParentAccounting(launch, "unsupported_provider", null),
+      reviewDisposition = bundleState.disposition,
+      bundleCompositionDigest = bundleState.bundleCompositionDigest,
+      segmentAccounting = bundleState.segments,
+      unreviewedSegmentIds = bundleState.unreviewedSegmentIds,
+      budgetDimension = bundleState.budgetDimension,
+    )
+  }
+
+  private fun launchedParentOutcome(
+    launch: InlineParentLaunch,
+    outcome: AgentRunLaunchFacts,
+    budget: ReviewContextBudgetPolicy,
+  ): ParallelReviewLaneOutcome {
+    val bundleState = launch.bundleState
+    val budgetOutcome = ReviewBudgetEvaluator.laneResultOutcome(
+      ReviewLaneIdentity.of(launch.assignment),
+      budget,
+      outcome.stdout.toByteArray().size.toLong(),
+    )
+    val reason = budgetOutcome?.let { ReviewContextBudgetExceededException(it).message }
+      ?: laneFailureReason(outcome)
+    return ParallelReviewLaneOutcome(
+      success = reason == null,
+      rawOutput = outcome.stdout,
+      failureReason = reason,
+      budgetOutcome = budgetOutcome,
+      tokenUsage = providerTokenUsage(outcome),
+      accounting = inlineParentAccounting(
+        launch,
+        inlineTerminalStatus(outcome, bundleState.disposition),
+        outcome,
+      ),
+      findings = if (reason == null) attributeInlineFindings(outcome.stdout, launch.selected) else emptyList(),
+      reviewDisposition = bundleState.disposition,
+      bundleCompositionDigest = bundleState.bundleCompositionDigest,
+      segmentAccounting = bundleState.segments,
+      unreviewedSegmentIds = bundleState.unreviewedSegmentIds,
+      budgetDimension = bundleState.budgetDimension,
+    )
   }
 
   private fun modeFraming(resolvedMode: ResolvedReviewExecutionMode): String = buildString {
@@ -781,15 +783,14 @@ class ParallelCodeReviewRunner(
     }
   }
 
-  private fun governedLaunchFor(request: ReviewSpecialistLaunchRequest): GovernedReviewLaunch =
-    GovernedReviewLaunch(
-      assignment = request.assignment,
-      packet = request.packet,
-      specialistContract = request.specialistContract,
-      rubric = request.rubrics.first().body,
-      brokerId = request.brokerId,
-      budget = request.budget,
-    )
+  private fun governedLaunchFor(request: ReviewSpecialistLaunchRequest): GovernedReviewLaunch = GovernedReviewLaunch(
+    assignment = request.assignment,
+    packet = request.packet,
+    specialistContract = request.specialistContract,
+    rubric = request.rubrics.first().body,
+    brokerId = request.brokerId,
+    budget = request.budget,
+  )
 
   private fun aggregateBundleCompletion(states: List<ReviewLaneCompletionState>): ReviewLaneCompletionState {
     if (states.isEmpty()) {
@@ -978,41 +979,68 @@ private fun laneTerminalOutcome(outcome: ParallelReviewLaneOutcome): String = wh
   else -> "partial_failure"
 }
 
+/** One parent-session review pass: the lanes it covers, the prompt it sent, and its bundle state. */
+private class InlineParentLaunch(
+  val agentId: String,
+  val selected: List<ReviewSpecialistLaunchRequest>,
+  val prompt: String,
+  val bundleState: ReviewLaneCompletionState,
+) {
+  val assignment: ReviewAssignment get() = selected.first().assignment
+}
+
 /**
  * An inline lane runs the whole review in one parent session, so its accounting node owns the
  * parent's own launch and result bytes and exactly one model turn. It has no specialist children.
  */
-private fun inlineParentAccounting(
-  agentId: String,
-  assignment: ReviewAssignment,
-  prompt: String,
-  terminalStatus: String,
-  outcome: AgentRunLaunchFacts?,
-  bundleState: ReviewLaneCompletionState,
-) = ReviewLaneAccounting(
-  lane = agentId,
-  reviewId = assignment.reviewId,
-  packetDigest = assignment.packetDigest,
-  assignmentDigest = assignment.digest,
-  launchBytes = prompt.toByteArray(Charsets.UTF_8).size.toLong(),
-  evidenceBytes = 0,
-  expansions = emptyList(),
-  toolCalls = 0,
-  modelTurns = 1,
-  resultBytes = outcome?.stdout?.toByteArray(Charsets.UTF_8)?.size?.toLong() ?: 0,
-  providerUsage = outcome?.let(::providerTokenUsage),
-  terminalStatus = terminalStatus,
-  reviewDisposition = bundleState.disposition,
-  bundleCompositionDigest = bundleState.bundleCompositionDigest,
-  segmentAccounting = bundleState.segments,
-  unreviewedSegmentIds = bundleState.unreviewedSegmentIds,
-  budgetDimension = bundleState.budgetDimension,
+private fun inlineParentAccounting(launch: InlineParentLaunch, terminalStatus: String, outcome: AgentRunLaunchFacts?) =
+  ReviewLaneAccounting(
+    lane = launch.agentId,
+    reviewId = launch.assignment.reviewId,
+    packetDigest = launch.assignment.packetDigest,
+    assignmentDigest = launch.assignment.digest,
+    launchBytes = launch.prompt.toByteArray(Charsets.UTF_8).size.toLong(),
+    evidenceBytes = 0,
+    expansions = emptyList(),
+    toolCalls = 0,
+    modelTurns = 1,
+    resultBytes = outcome?.stdout?.toByteArray(Charsets.UTF_8)?.size?.toLong() ?: 0,
+    providerUsage = outcome?.let(::providerTokenUsage),
+    terminalStatus = terminalStatus,
+    reviewDisposition = launch.bundleState.disposition,
+    bundleCompositionDigest = launch.bundleState.bundleCompositionDigest,
+    segmentAccounting = launch.bundleState.segments,
+    unreviewedSegmentIds = launch.bundleState.unreviewedSegmentIds,
+    budgetDimension = launch.bundleState.budgetDimension,
+  )
+
+/** Terminal status of a resume pass that had no incomplete lane left to launch a worker for. */
+internal const val NO_OP_RESUME_TERMINAL_STATUS: String = "no_op_resume"
+
+/**
+ * A parent pass that launched no worker because every lane already held a durable result. It records
+ * an explicit no-op instead of returning silently, so a run that reviewed nothing is distinguishable
+ * from one that reviewed everything cleanly.
+ */
+private fun noOpResumeOutcome(agentId: String) = ParallelReviewLaneOutcome(
+  success = true,
+  rawOutput = "",
+  accounting = ReviewLaneAccounting(
+    lane = agentId,
+    evidenceBytes = 0,
+    expansions = emptyList(),
+    toolCalls = 0,
+    modelTurns = 0,
+    resultBytes = 0,
+    terminalStatus = NO_OP_RESUME_TERMINAL_STATUS,
+    reviewDisposition = ReviewLaneReviewDisposition.COMPLETE,
+    bundleCompositionDigest = ReviewLaneAssembledBundle.EMPTY.compositionDigest,
+  ),
+  reviewDisposition = ReviewLaneReviewDisposition.COMPLETE,
+  bundleCompositionDigest = ReviewLaneAssembledBundle.EMPTY.compositionDigest,
 )
 
-private fun inlineTerminalStatus(
-  facts: AgentRunLaunchFacts,
-  disposition: ReviewLaneReviewDisposition,
-): String = when {
+private fun inlineTerminalStatus(facts: AgentRunLaunchFacts, disposition: ReviewLaneReviewDisposition): String = when {
   disposition == ReviewLaneReviewDisposition.INCOMPLETE -> "incomplete"
   facts.timedOut -> "timeout"
   facts.interrupted -> "interrupted"

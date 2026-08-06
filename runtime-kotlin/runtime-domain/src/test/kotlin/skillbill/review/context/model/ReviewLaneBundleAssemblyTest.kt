@@ -33,20 +33,32 @@ class ReviewLaneBundleAssemblyTest {
     specialistSkillName = "bill-kotlin-code-review-$name",
   )
 
-  private fun focusedMatrix(units: List<ReviewCommitUnit>, lanes: List<String>) = ReviewCommitLaneRoutingMatrix(
-    units.sortedBy { it.orderIndex }.map { it.commitSha },
-    lanes,
-    units.sortedBy { it.orderIndex }.flatMap { commit ->
-      lanes.map {
-        ReviewCommitLaneDecision(commit.commitSha, commit.orderIndex, it, ReviewCommitLaneDisposition.FOCUSED, "focused")
-      }
-    },
-  )
+  private fun focusedMatrix(units: List<ReviewCommitUnit>, lanes: List<String>, focusedShas: Set<String>) =
+    ReviewCommitLaneRoutingMatrix(
+      units.sortedBy { it.orderIndex }.map { it.commitSha },
+      lanes,
+      units.sortedBy { it.orderIndex }.flatMap { commit ->
+        lanes.map {
+          ReviewCommitLaneDecision(
+            commit.commitSha,
+            commit.orderIndex,
+            it,
+            if (commit.commitSha in focusedShas) {
+              ReviewCommitLaneDisposition.FOCUSED
+            } else {
+              ReviewCommitLaneDisposition.SKIPPED
+            },
+            if (commit.commitSha in focusedShas) "focused" else "skipped for $it",
+          )
+        }
+      },
+    )
 
   private fun packet(
     units: List<ReviewCommitUnit>,
     hunks: List<ReviewChangedHunk> = units.flatMap { it.hunks },
     lanes: List<String> = listOf("security"),
+    focusedShas: Set<String> = units.map { it.commitSha }.toSet(),
   ): ReviewContextPacket {
     val ordered = units.sortedBy { it.orderIndex }
     return ReviewContextPacket(
@@ -68,32 +80,34 @@ class ReviewLaneBundleAssemblyTest {
         chainVerified = true,
         pathCoverageVerified = true,
       ),
-      routingMatrix = focusedMatrix(units, lanes),
+      routingMatrix = focusedMatrix(units, lanes, focusedShas),
       reviewRevision = ReviewRevision("rvs", 1),
       laneDecisions = lanes.map { lane(it, hunks.map { hunk -> hunk.path }.distinct()) },
     )
   }
 
-  private fun assignment(
+  private fun assignment(built: ReviewContextPacket, bundle: ReviewLaneBundle, hunks: List<String> = bundle.hunkIds) =
+    ReviewAssignment(
+      reviewId = built.reviewId,
+      packetDigest = built.digest,
+      lane = "security",
+      baseRevision = built.baseRevision,
+      headRevision = built.headRevision,
+      // Mirrors preparation: a lane's assigned paths are the paths it owns, while its assigned hunks
+      // are narrowed to the commits routing focused for it.
+      assignedPaths = built.laneDecisions.single { it.lane == "security" }.normalizedOwnedPaths.sorted(),
+      assignedHunks = hunks,
+      assignedBundle = bundle,
+      laneRouting = built.routingMatrix.decisionsFor("security"),
+      reviewRevision = built.reviewRevision,
+      laneDecision = built.laneDecisions.single { it.lane == "security" },
+    )
+
+  private fun launch(
     built: ReviewContextPacket,
     bundle: ReviewLaneBundle,
-    hunks: List<String> = bundle.hunkIds,
-  ) = ReviewAssignment(
-    reviewId = built.reviewId,
-    packetDigest = built.digest,
-    lane = "security",
-    baseRevision = built.baseRevision,
-    headRevision = built.headRevision,
-    assignedPaths = hunks.mapNotNull { id -> built.changedHunks.find { it.hunkId == id }?.path }.distinct().sorted(),
-    assignedHunks = hunks,
-    assignedBundle = bundle,
-    laneRouting = built.routingMatrix.decisionsFor("security"),
-    reviewRevision = built.reviewRevision,
-    laneDecision = built.laneDecisions.single { it.lane == "security" },
-  )
-
-  private fun launch(built: ReviewContextPacket, bundle: ReviewLaneBundle, budget: ReviewContextBudgetPolicy = ReviewContextBudgetPolicy.DEFAULT) =
-    GovernedReviewLaunch(assignment(built, bundle), built, "contract", "rubric", "broker", budget)
+    budget: ReviewContextBudgetPolicy = ReviewContextBudgetPolicy.DEFAULT,
+  ) = GovernedReviewLaunch(assignment(built, bundle), built, "contract", "rubric", "broker", budget)
 
   private val twoCommits = listOf(
     unit("c1", "base", 0, listOf(hunkA)),
@@ -108,7 +122,7 @@ class ReviewLaneBundleAssemblyTest {
   )
 
   @Test fun `assembled bundle contains exactly assigned hunk ids and no unassigned hunk body`() {
-    val built = packet(twoCommits)
+    val built = packet(twoCommits, focusedShas = setOf("c1"))
     val partialBundle = ReviewLaneBundle(listOf(ReviewLaneBundleEntry("c1", 0, listOf(hunkA.hunkId))))
     val assembled = ReviewLaneAssembledBundle.assemble(assignment(built, partialBundle), built)
 
@@ -160,7 +174,10 @@ class ReviewLaneBundleAssemblyTest {
 
     assertNotEquals(base.compositionDigest, partial.compositionDigest)
     assertNotEquals(base.compositionDigest, alternate.compositionDigest)
-    assertEquals(base.compositionDigest, ReviewLaneAssembledBundle.assemble(assignment(built, fullBundle), built).compositionDigest)
+    assertEquals(
+      base.compositionDigest,
+      ReviewLaneAssembledBundle.assemble(assignment(built, fullBundle), built).compositionDigest,
+    )
   }
 
   @Test fun `oversized bundle splits into the minimal segment count for a configured budget`() {
@@ -205,7 +222,7 @@ class ReviewLaneBundleAssemblyTest {
 
     assertEquals(2, segmentation.segments.size)
     assertEquals(setOf("c1"), segmentation.segments.flatMap { it.entries }.map { it.commitSha }.toSet())
-    assertEquals(listOf(0, 0), segmentation.segments.map { it.entries.first().orderIndex }.distinct())
+    assertEquals(listOf(0, 0), segmentation.segments.map { it.entries.first().orderIndex })
   }
 
   @Test fun `every segment carries commit identity and order plus byte accounting`() {
@@ -254,14 +271,17 @@ class ReviewLaneBundleAssemblyTest {
   }
 
   @Test fun `canonical payload renders each segment with commit metadata and segment id`() {
-    val largeContent = "+${"x".repeat(400)}"
-    val bigHunk = ReviewChangedHunk("src/Big.kt", 1, 1, 1, 1, largeContent)
-    val built = packet(listOf(unit("c1", "base", 0, listOf(hunkA, bigHunk))))
-    val bundle = ReviewLaneBundle(listOf(ReviewLaneBundleEntry("c1", 0, listOf(hunkA.hunkId, bigHunk.hunkId))))
+    val firstBig = ReviewChangedHunk("src/BigA.kt", 1, 1, 1, 1, "+${"x".repeat(400)}")
+    val secondBig = ReviewChangedHunk("src/BigB.kt", 1, 1, 1, 1, "+${"y".repeat(400)}")
+    val built = packet(listOf(unit("c1", "base", 0, listOf(firstBig, secondBig))))
+    val bundle = ReviewLaneBundle(listOf(ReviewLaneBundleEntry("c1", 0, listOf(firstBig.hunkId, secondBig.hunkId))))
+    // The budget is derived from the single-segment payload so the fixed governance overhead, which
+    // dwarfs any hand-picked byte count, cannot make every entry unreviewable instead of split.
+    val singleSegmentBytes = launch(built, bundle).canonicalPayload.toByteArray(Charsets.UTF_8).size.toLong()
     val governed = launch(
       built,
       bundle,
-      ReviewContextBudgetPolicy.DEFAULT.copy(maxLaneLaunchBytes = 500),
+      ReviewContextBudgetPolicy.DEFAULT.copy(maxLaneLaunchBytes = singleSegmentBytes - 200),
     )
 
     assertTrue(governed.segmentation.segments.size >= 2, "Fixture must force multiple segments.")
@@ -279,7 +299,10 @@ class ReviewLaneBundleAssemblyTest {
     val oversized = ReviewChangedHunk("src/Huge.kt", 1, 1, 1, 1, "+${"z".repeat(4_000)}")
     val built = packet(listOf(unit("c1", "base", 0, listOf(hunkA, oversized))))
     val bundle = ReviewLaneBundle(listOf(ReviewLaneBundleEntry("c1", 0, listOf(hunkA.hunkId, oversized.hunkId))))
-    val governed = launch(built, bundle, ReviewContextBudgetPolicy.DEFAULT.copy(maxLaneLaunchBytes = 2_000))
+    // Budget derived from the full payload so it clears the fixed overhead plus the small body, and
+    // still leaves the oversized body unable to fit even on its own.
+    val fullBytes = launch(built, bundle).canonicalPayload.toByteArray(Charsets.UTF_8).size.toLong()
+    val governed = launch(built, bundle, ReviewContextBudgetPolicy.DEFAULT.copy(maxLaneLaunchBytes = fullBytes - 3_000))
 
     assertEquals(listOf(oversized.hunkId), governed.segmentation.unreviewableEntries.map { it.hunkId })
     assertEquals(listOf(hunkA.hunkId), governed.deliveredEntries.map { it.hunkId })
