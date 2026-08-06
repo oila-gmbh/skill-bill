@@ -278,7 +278,7 @@ Telemetry has three levels:
 
 | Level | What is sent |
 |-------|-------------|
-| `off` | Nothing. No events are queued or sent. |
+| `off` | Nothing is transmitted; `sync` and `autoSync` short-circuit on the disabled level. Two events are still queued locally: `skillbill_runtime_exception` (message redacted to `[redacted]`, `skillbill.` frames only) and `skillbill_feature_task_runtime_projection_measurement` (bounded counters and the repository checkpoint fingerprint). Enabling telemetry later does not discard those rows — `clearsPendingOutbox("off", "anonymous")` is `false` — so they can upload on the next sync. |
 | `anonymous` | Aggregate counts, finding ids with issue category/severity/confidence/outcome type, anonymized learning references, and `install_id` plus `skill_bill_version` on every uploaded event. Issue keys — and issue keys embedded in correlation ids such as `SKILL-1:subtask:2` — are replaced with a salted SHA-256 prefix. `skillbill_runtime_exception` carries `error_message` as `[redacted]` and keeps only `skillbill.` stack frames. No file paths, descriptions, notes, learning content, or repository name. |
 | `full` | Everything in `anonymous` plus: finding descriptions/titles, file locations, rejection notes, learning content (title, rule text), raw issue keys and correlation ids, and unredacted `error_message` and stack frames. Useful for teams that want actionable detail. |
 

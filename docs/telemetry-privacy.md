@@ -9,14 +9,35 @@ The default telemetry level is `anonymous`. Collection is on unless you disable 
 
 | Level | Behavior |
 |-------|----------|
-| `off` | Nothing is collected. No event is queued locally and nothing is sent. |
+| `off` | Nothing is transmitted: `sync` and `autoSync` short-circuit on the disabled level. Two events are still written to the local outbox — `skillbill_runtime_exception` and `skillbill_feature_task_runtime_projection_measurement` — see [What is still queued at `off`](#what-is-still-queued-at-off). |
 | `anonymous` | Counts, enums, durations, and identifiers derived by one-way hash. No file paths, descriptions, notes, learning text, error messages, or non-Skill-Bill stack frames. |
 | `full` | Everything in `anonymous`, plus the free-text and path fields marked below. |
 
 ## Per-level collection
 
 `✓` = collected as-is. `hashed` = replaced with a salted SHA-256 prefix. `redacted` = replaced
-with a fixed placeholder. `—` = not present in the payload.
+with a fixed placeholder. `—` = not present in the payload. `queued only` = written to the local
+outbox but never transmitted while the level is `off`.
+
+### What is still queued at `off`
+
+Two producers enqueue without consulting the telemetry level:
+
+- `TelemetryService.captureException` enqueues `skillbill_runtime_exception` guarded only by
+  `database.databaseExists`; the level is used solely to choose redaction, so at `off` the row is
+  written with the redacted `error_message` (`[redacted]`) and `skillbill.` frames only.
+- `FeatureTaskRuntimePhaseRecorder.recordProjectionMeasurements` enqueues
+  `skillbill_feature_task_runtime_projection_measurement` with no telemetry gate; the row carries
+  the bounded counters and the repository checkpoint fingerprint.
+
+Nothing is transmitted while the level is `off`: `TelemetryService.sync` and
+`TelemetryService.autoSync` return before upload when the resolved settings are disabled.
+
+Enabling telemetry later does not discard those rows. `clearsPendingOutbox("off", "anonymous")` is
+`false` — the pending outbox is cleared only on a downgrade or a move to `off` — so rows enqueued
+while `off` remain pending and upload on the next sync after you enable. Clear them by running
+`skill-bill telemetry disable` (or `set-level off`), which clears the pending outbox, before
+enabling.
 
 ### Envelope, on every uploaded event
 
@@ -65,7 +86,9 @@ with a fixed placeholder. `—` = not present in the payload.
 
 | Field | off | anonymous | full | Source |
 |-------|-----|-----------|------|--------|
-| `projection_contract_id`, `producer_iteration`, `repository_checkpoint_fingerprint`, `projected_utf8_bytes`, `projected_collection_items`, `estimated_tokens`, `private_evidence_utf8_bytes`, `delivered_projection_utf8_bytes`, `failure_classification` | — | ✓ | ✓ | `FeatureTaskRuntimeProjectionMeasurement.toTelemetryMap` |
+| `projection_contract_id`, `producer_iteration`, `repository_checkpoint_fingerprint`, `projected_utf8_bytes`, `projected_collection_items`, `estimated_tokens`, `private_evidence_utf8_bytes`, `delivered_projection_utf8_bytes`, `failure_classification` | queued only | ✓ | ✓ | `FeatureTaskRuntimeProjectionMeasurement.toTelemetryMap` |
+
+This event is enqueued regardless of level. At `off` the row is written locally and not sent.
 
 ### `skillbill_quality_check_started` / `skillbill_quality_check_finished`
 
@@ -106,9 +129,12 @@ with a fixed placeholder. `—` = not present in the payload.
 
 | Field | off | anonymous | full | Source |
 |-------|-----|-----------|------|--------|
-| `workflow_phase`, `error_type` (exception class simple name) | — | ✓ | ✓ | `enqueueRuntimeException` |
-| `error_message` | — | redacted to `[redacted]` | ✓ (first 512 characters) | `enqueueRuntimeException` |
-| `stack_trace` | — | `skillbill.` frames only, first 12 | first 12 frames | `redactedStackTrace` |
+| `workflow_phase`, `error_type` (exception class simple name) | queued only | ✓ | ✓ | `enqueueRuntimeException` |
+| `error_message` | queued only, redacted to `[redacted]` | redacted to `[redacted]` | ✓ (first 512 characters) | `enqueueRuntimeException` |
+| `stack_trace` | queued only, `skillbill.` frames only, first 12 | `skillbill.` frames only, first 12 | first 12 frames | `redactedStackTrace` |
+
+This event is enqueued regardless of level. At `off` the row is written locally with the redacted
+message and `skillbill.` frames, and not sent.
 
 An unresolved or unrecognized level falls to the redacted branch, not the `full` branch.
 
@@ -133,13 +159,19 @@ and no outbox payload carries a `repo` property.
 Every supported mechanism:
 
 - `skill-bill telemetry disable` — sets the level to `off`.
+- `skill-bill telemetry set-level off` — equivalent to `telemetry disable`; `TelemetrySetLevelCommand`
+  reaches the same `TelemetryService.setLevel` path.
 - Choose `off` at the telemetry level prompt during `./install.sh`.
 - `SKILL_BILL_TELEMETRY_LEVEL=off`.
 - `SKILL_BILL_TELEMETRY_ENABLED=false` — legacy override, maps to `off` (`true` maps to
   `anonymous`).
+- Writing `telemetry.level: "off"` (or the legacy `telemetry.enabled: false`) directly into
+  `~/.config/skill-bill/config.json` has the same effect.
 
-At `off`, payload building is skipped, nothing is queued in the local outbox, and no telemetry
-config is required.
+At `off`, no telemetry is transmitted and no telemetry config is required. Payload building is
+skipped for every event except the two listed in
+[What is still queued at `off`](#what-is-still-queued-at-off), which are enqueued locally without
+consulting the level and are not discarded when telemetry is later enabled.
 
 ## What correlates events
 
@@ -171,5 +203,6 @@ Stated as what is true today:
 - Self-hosters set their own retention. Pointing `SKILL_BILL_TELEMETRY_PROXY_URL` at your own
   relay puts retention entirely under your control.
 - Local queued telemetry is not retained indefinitely: `skill-bill telemetry disable` and any
-  level downgrade clear the pending outbox. Local review snapshots have no expiry and are pruned
+  level downgrade clear the pending outbox. An upgrade — including `off` to `anonymous` — does not,
+  so rows enqueued while `off` survive until the next sync or the next downgrade. Local review snapshots have no expiry and are pruned
   with `skill-bill prune-snapshots --confirm`.
