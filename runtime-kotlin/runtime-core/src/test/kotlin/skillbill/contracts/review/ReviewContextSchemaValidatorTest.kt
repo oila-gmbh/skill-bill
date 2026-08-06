@@ -27,6 +27,11 @@ import skillbill.review.context.model.ReviewEvidenceTarget
 import skillbill.review.context.model.ReviewLaneDecision
 import skillbill.review.context.model.ReviewLearningsReference
 import skillbill.review.context.model.ReviewPacketConsumerContract
+import skillbill.review.context.model.ReviewCommitCoverageFact
+import skillbill.review.context.model.ReviewCommitSource
+import skillbill.review.context.model.ReviewCommitUnit
+import skillbill.review.context.model.ReviewLaneBundle
+import skillbill.review.context.model.ReviewLaneBundleEntry
 import skillbill.review.context.model.ReviewRevision
 import skillbill.review.context.model.ReviewRuleReference
 import kotlin.test.Test
@@ -45,6 +50,17 @@ class ReviewContextSchemaValidatorTest {
     ReviewRuleReference.digestOf("Prefer named strategies."),
   )
 
+  private val commitUnit = ReviewCommitUnit(
+    commitSha = "head",
+    parentSha = "base",
+    subject = "change A and B",
+    orderIndex = 0,
+    hunks = listOf(hunkA, hunkB),
+    source = ReviewCommitSource.COMMIT_RANGE,
+  )
+  private val coverageFact =
+    ReviewCommitCoverageFact("base", "head", 1, chainVerified = true, pathCoverageVerified = true)
+
   private val packet = ReviewContextPacket(
     reviewId = "review",
     repositoryIdentity = "acme/repo",
@@ -56,6 +72,8 @@ class ReviewContextSchemaValidatorTest {
     addOns = listOf("addon-a"),
     selectedLanes = listOf("security"),
     changedHunks = listOf(hunkA, hunkB),
+    commitUnits = listOf(commitUnit),
+    coverageFact = coverageFact,
     reviewRevision = revision,
     laneDecisions = listOf(
       ReviewLaneDecision(
@@ -85,6 +103,9 @@ class ReviewContextSchemaValidatorTest {
     headRevision = packet.headRevision,
     assignedPaths = listOf("src/A.kt", "src/B.kt"),
     assignedHunks = listOf(hunkA.hunkId, hunkB.hunkId),
+    assignedBundle = ReviewLaneBundle(
+      listOf(ReviewLaneBundleEntry("head", 0, listOf(hunkA.hunkId, hunkB.hunkId))),
+    ),
     criteriaReferences = listOf("AC-002"),
     matchedRules = listOf(rule),
     evidenceTargets = packet.evidenceTargets,
@@ -262,7 +283,7 @@ class ReviewContextSchemaValidatorTest {
     ReviewBuildTestFactsPort,
     ReviewLaneSelectionPort {
     override fun resolveScope(reviewId: String) =
-      ReviewScopeFacts("acme/repo", "base", "head", "clean", listOf(hunkA, hunkB))
+      ReviewScopeFacts("acme/repo", "base", "head", "clean", listOf(hunkA, hunkB), listOf(commitUnit), coverageFact)
 
     override fun resolveStackRouting(scope: ReviewScopeFacts) =
       ReviewStackRoutingFacts("kotlin", "kotlin", listOf("addon-a"), listOf("kotlin"))

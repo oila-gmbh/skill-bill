@@ -16,6 +16,8 @@ import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewContextPacket
 import skillbill.review.context.model.ReviewEvidenceTarget
 import skillbill.review.context.model.ReviewExpansionRecord
+import skillbill.review.context.model.ReviewLaneBundle
+import skillbill.review.context.model.ReviewLaneBundleEntry
 import skillbill.review.context.model.ReviewLaneDecision
 import skillbill.review.context.model.ReviewLearningsReference
 import skillbill.review.context.model.ReviewRuleReference
@@ -68,6 +70,7 @@ class ReviewPreparationService(
     assignments.forEach { assignment ->
       rejectRevisionDrift(packet, assignment)
       rejectOwnershipViolations(packet, assignment)
+      rejectBundleViolations(packet, assignment)
       if (assignment.expansions.size > budget.maxAssignmentExpansions) {
         throw ReviewContextBudgetExceededException(
           ReviewContextBudgetExceeded(
@@ -120,6 +123,8 @@ class ReviewPreparationService(
       composedLayers = resolved.routing.composedLayers,
       selectedLanes = includedLanes,
       changedHunks = resolved.scope.changedHunks,
+      commitUnits = resolved.scope.commitUnits,
+      coverageFact = resolved.scope.coverageFact,
       reviewRevision = request.reviewRevision,
       laneDecisions = resolved.laneDecisions,
       matchedRules = resolved.matchedRules,
@@ -169,6 +174,7 @@ class ReviewPreparationService(
       }
       val laneHunkIds = lanePaths.flatMap { path -> hunksByPath[path].orEmpty().map { it.hunkId } }.sorted()
       ReviewAssignment(
+        assignedBundle = laneBundle(packet, laneHunkIds.toSet()),
         reviewId = packet.reviewId,
         packetDigest = packetDigest,
         lane = lane,
@@ -184,6 +190,37 @@ class ReviewPreparationService(
         dependencyAllowlist = packet.dependencyAllowlist,
         baselineUntrackedPolicy = packet.baselineUntrackedPolicy,
       )
+    }
+  }
+
+  /** The full commit-grouped projection of a lane's already-assigned hunks, in packet commit order. */
+  private fun laneBundle(packet: ReviewContextPacket, laneHunkIds: Set<String>) = ReviewLaneBundle(
+    packet.commitUnits.sortedBy { it.orderIndex }.mapNotNull { unit ->
+      unit.hunkIds.filter { it in laneHunkIds }
+        .takeIf { it.isNotEmpty() }
+        ?.let { ReviewLaneBundleEntry(unit.commitSha, unit.orderIndex, it) }
+    },
+  )
+
+  private fun rejectBundleViolations(packet: ReviewContextPacket, assignment: ReviewAssignment) {
+    val label = assignmentLabel(assignment)
+    val unitsBySha = packet.commitUnits.associateBy { it.commitSha }
+    val outside = assignment.assignedBundle.entries.map { it.commitSha }.filterNot { it in unitsBySha }
+    if (outside.isNotEmpty()) {
+      reject(label, "Assignment claims commit units the packet does not own: ${outside.sorted()}.")
+    }
+    assignment.assignedBundle.entries.forEach { entry ->
+      val unit = unitsBySha.getValue(entry.commitSha)
+      if (entry.orderIndex != unit.orderIndex) {
+        reject(label, "Assignment bundle entry '${entry.commitSha}' diverges from the packet commit order.")
+      }
+      val stray = entry.hunkIds.filterNot { it in unit.hunkIds }
+      if (stray.isNotEmpty()) {
+        reject(label, "Assignment bundle attributes hunks to '${entry.commitSha}' that the commit does not own.")
+      }
+    }
+    if (assignment.assignedBundle.hunkIds.toSet() != assignment.assignedHunks.toSet()) {
+      reject(label, "Assignment bundle does not cover exactly the assigned hunks for '${assignment.lane}'.")
     }
   }
 

@@ -11,6 +11,11 @@ import skillbill.review.context.model.ReviewContextPacket
 import skillbill.review.context.model.ReviewDependencyAllowlist
 import skillbill.review.context.model.ReviewEvidenceTarget
 import skillbill.review.context.model.ReviewExpansionRecord
+import skillbill.review.context.model.ReviewCommitCoverageFact
+import skillbill.review.context.model.ReviewCommitSource
+import skillbill.review.context.model.ReviewCommitUnit
+import skillbill.review.context.model.ReviewLaneBundle
+import skillbill.review.context.model.ReviewLaneBundleEntry
 import skillbill.review.context.model.ReviewLaneDecision
 import skillbill.review.context.model.ReviewLearningsReference
 import skillbill.review.context.model.ReviewPacketConsumerContract
@@ -61,6 +66,8 @@ class ReviewPacketProjectionTest {
     addOns = listOf("z-addon", "a-addon"),
     selectedLanes = lanes,
     changedHunks = hunks,
+    commitUnits = listOf(commitUnit(hunks)),
+    coverageFact = ReviewCommitCoverageFact("base", "head", 1, chainVerified = true, pathCoverageVerified = true),
     reviewRevision = revision,
     laneDecisions = decisions,
     matchedRules = listOf(rule),
@@ -69,6 +76,18 @@ class ReviewPacketProjectionTest {
     dependencyAllowlist = allowlist,
     evidenceTargets = listOf(ReviewEvidenceTarget("src/A.kt", "src/A.kt", listOf(hunkA.hunkId))),
   )
+
+  private fun commitUnit(hunks: List<ReviewChangedHunk>) = ReviewCommitUnit(
+    commitSha = "head",
+    parentSha = "base",
+    subject = "single commit",
+    orderIndex = 0,
+    hunks = hunks.sortedBy { it.path },
+    source = ReviewCommitSource.COMMIT_RANGE,
+  )
+
+  private fun bundle(vararg hunkIds: String) =
+    ReviewLaneBundle(listOf(ReviewLaneBundleEntry("head", 0, hunkIds.toList())))
 
   @Test fun `hunk ids are content addressed not positional`() {
     assertEquals(hunkA.hunkId, ReviewChangedHunk("src/A.kt", 1, 1, 1, 2, "+alpha").hunkId)
@@ -171,6 +190,7 @@ class ReviewPacketProjectionTest {
       headRevision = base.headRevision,
       assignedPaths = listOf("src/A.kt", "src/B.kt"),
       assignedHunks = listOf(hunkB.hunkId, hunkA.hunkId),
+      assignedBundle = bundle(hunkA.hunkId, hunkB.hunkId),
       matchedRules = listOf(rule),
       evidenceTargets = base.evidenceTargets,
       reviewRevision = revision,
@@ -194,6 +214,7 @@ class ReviewPacketProjectionTest {
       headRevision = base.headRevision,
       assignedPaths = listOf("src/A.kt", "src/B.kt"),
       assignedHunks = listOf(hunkA.hunkId, hunkB.hunkId),
+      assignedBundle = bundle(hunkA.hunkId, hunkB.hunkId),
       reviewRevision = revision,
       laneDecision = base.laneDecisions.first { it.lane == "security" },
       matchedRules = base.matchedRules,

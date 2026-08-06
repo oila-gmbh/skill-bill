@@ -7,6 +7,8 @@ import skillbill.ports.review.ReviewLearningsPort
 import skillbill.ports.review.ReviewScopeResolverPort
 import skillbill.ports.review.ReviewStackRoutingPort
 import skillbill.review.context.model.ReviewChangedHunk
+import skillbill.review.context.model.ReviewCommitCoverageFact
+import skillbill.review.context.model.ReviewCommitUnit
 
 data class ReviewScopeFacts(
   val repositoryIdentity: String,
@@ -14,6 +16,8 @@ data class ReviewScopeFacts(
   val headRevision: String,
   val status: String,
   val changedHunks: List<ReviewChangedHunk>,
+  val commitUnits: List<ReviewCommitUnit>,
+  val coverageFact: ReviewCommitCoverageFact,
 )
 
 data class ReviewStackRoutingFacts(

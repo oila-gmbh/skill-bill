@@ -49,9 +49,21 @@ class ReviewContextModelsTest {
 
   private val launchHunk = ReviewChangedHunk("A.kt", 1, 1, 1, 2, "+alpha")
 
+  private fun syntheticUnit(hunks: List<ReviewChangedHunk>) =
+    ReviewCommitUnit.synthetic(ReviewCommitSource.SYNTHETIC_WORKING_TREE, hunks)
+
+  private fun fact(count: Int = 1) = ReviewCommitCoverageFact(
+    "base", "head", count, chainVerified = false, pathCoverageVerified = true,
+    degradedReason = "synthetic working-tree unit",
+  )
+
   private fun launchPacket(path: String = "A.kt") = ReviewContextPacket(
     "review", "repo", "base", "head", "clean", "kotlin", "kotlin", emptyList(), listOf("security"),
     listOf(if (path == launchHunk.path) launchHunk else launchHunk.copy(path = path)),
+    commitUnits = listOf(
+      syntheticUnit(listOf(if (path == launchHunk.path) launchHunk else launchHunk.copy(path = path))),
+    ),
+    coverageFact = fact(),
     reviewRevision = revision(),
     laneDecisions = listOf(lane("security", listOf(path))),
   )
@@ -61,6 +73,13 @@ class ReviewContextModelsTest {
     hunks: List<String> = packet.changedHunks.map { it.hunkId },
   ) = ReviewAssignment(
     "review", packet.digest, "security", "base", "head", packet.changedHunks.map { it.path }, hunks,
+    assignedBundle = ReviewLaneBundle(
+      packet.commitUnits.sortedBy { it.orderIndex }.mapNotNull { unit ->
+        unit.hunkIds.filter { it in hunks }
+          .takeIf { it.isNotEmpty() }
+          ?.let { ReviewLaneBundleEntry(unit.commitSha, unit.orderIndex, it) }
+      },
+    ),
     reviewRevision = revision(), laneDecision = lane("security", packet.changedHunks.map { it.path }),
     baselineUntrackedPolicy = packet.baselineUntrackedPolicy,
   )
@@ -150,6 +169,8 @@ class ReviewContextModelsTest {
     fun packet(path: String, status: String) = ReviewContextPacket(
       "review", "repo", "base", "head", status, "kotlin", "kotlin", listOf("z", "a"), listOf("testing"),
       listOf(ReviewChangedHunk(path, 1, 1, 1, 1, "+line\r\n")),
+      commitUnits = listOf(syntheticUnit(listOf(ReviewChangedHunk(path, 1, 1, 1, 1, "+line\r\n")))),
+      coverageFact = fact(),
       reviewRevision = revision(),
       laneDecisions = listOf(lane("testing", listOf(path))),
     )
@@ -162,6 +183,8 @@ class ReviewContextModelsTest {
     val second = ReviewChangedHunk("A.kt", 3, 1, 5, 2, "+second")
     fun packet(hunks: List<ReviewChangedHunk>) = ReviewContextPacket(
       "review", "repo", "base", "head", "clean", "kotlin", "kotlin", emptyList(), listOf("security"), hunks,
+      commitUnits = listOf(syntheticUnit(hunks.sortedBy { it.hunkId })),
+      coverageFact = fact(),
       reviewRevision = revision(),
       laneDecisions = listOf(lane("security", listOf("A.kt"))),
     )
@@ -220,7 +243,7 @@ class ReviewContextModelsTest {
         "contract_version", "kind", "review_id", "review_revision", "packet_digest", "assignment_digest",
         "lane", "base_revision",
         "head_revision", "broker_id", "specialist_contract", "rubric", "consumer_contract",
-        "assigned_paths", "assigned_hunks", "assigned_hunk_bodies",
+        "assigned_paths", "assigned_hunks", "coverage_fact", "assigned_commit_units", "assigned_hunk_bodies",
         "criteria_references", "matched_rules", "evidence_targets", "dependency_allowlist",
         "baseline_untracked_policy",
         "forbidden_rediscovery", "evidence_surface_rules", "report_structure", "budgets",

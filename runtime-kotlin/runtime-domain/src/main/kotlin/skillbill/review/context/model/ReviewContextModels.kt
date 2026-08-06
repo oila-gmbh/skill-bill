@@ -320,6 +320,7 @@ data class ReviewAssignment(
   val headRevision: String,
   val assignedPaths: List<String>,
   val assignedHunks: List<String>,
+  val assignedBundle: ReviewLaneBundle = ReviewLaneBundle.EMPTY,
   val criteriaReferences: List<String> = emptyList(),
   val matchedRules: List<ReviewRuleReference> = emptyList(),
   val evidenceTargets: List<ReviewEvidenceTarget> = emptyList(),
@@ -335,6 +336,11 @@ data class ReviewAssignment(
     require(assignedPaths.distinct().size == assignedPaths.size) { "Assigned paths must be unique." }
     assignedPaths.forEach(::requireRepositoryRelativePath)
     require(assignedHunks.distinct().size == assignedHunks.size) { "Assigned hunk ids must be unique." }
+    // Full coverage is asserted where the packet is in hand (preparation validation and launch);
+    // here the bundle can only be checked against the assignment's own hunk surface.
+    require(assignedBundle.hunkIds.all { it in assignedHunks }) {
+      "Assignment '$lane' bundle attributes hunks that are not assigned to the lane."
+    }
     require(laneDecision.lane == lane) { "Lane decision '${laneDecision.lane}' does not describe lane '$lane'." }
     require(laneDecision.included) { "Assignments exist only for included lanes; '$lane' is excluded." }
     require(matchedRules.map { it.ruleId }.distinct().size == matchedRules.size) { "Matched rules must be unique." }
@@ -377,6 +383,7 @@ data class ReviewAssignment(
         headRevision,
         canonicalFields(*assignedPaths.sorted().toTypedArray()),
         canonicalFields(*assignedHunks.sorted().toTypedArray()),
+        assignedBundle.canonical,
         canonicalFields(*criteriaReferences.sorted().toTypedArray()),
         canonicalFields(*matchedRules.map { it.canonical }.sorted().toTypedArray()),
         canonicalFields(*evidenceTargets.map { it.canonical }.sorted().toTypedArray()),
@@ -384,6 +391,149 @@ data class ReviewAssignment(
         baselineUntrackedPolicy.canonical,
       ).let { canonicalFields(*it.toTypedArray()) }.replace("\r\n", "\n"),
     )
+}
+
+/** Placeholder identity prefix for a review unit that is not a real commit; never a fabricated SHA. */
+const val REVIEW_SYNTHETIC_COMMIT_PREFIX: String = "synthetic:"
+
+enum class ReviewCommitSource {
+  COMMIT_RANGE,
+  SYNTHETIC_WORKING_TREE,
+  SYNTHETIC_SUPPLIED_DIFF,
+  SYNTHETIC_AGGREGATE_PR_DIFF,
+  ;
+
+  val isSynthetic: Boolean get() = this != COMMIT_RANGE
+}
+
+/** One ordered review unit: a real commit's incremental hunks, or a synthetic whole-delta unit. */
+data class ReviewCommitUnit(
+  val commitSha: String,
+  val parentSha: String,
+  val subject: String,
+  val orderIndex: Int,
+  val hunks: List<ReviewChangedHunk>,
+  val source: ReviewCommitSource,
+) {
+  init {
+    require(commitSha.isNotBlank()) { "Review commit unit identity must not be blank." }
+    require(parentSha.isNotBlank()) { "Review commit unit parent identity must not be blank." }
+    require(orderIndex >= 0) { "Review commit unit order index cannot be negative." }
+    require(hunks.map { it.hunkId }.distinct().size == hunks.size) {
+      "Review commit unit '$commitSha' repeats a hunk id; a commit owns each hunk exactly once."
+    }
+    require(
+      hunks.map { it.path to listOf(it.oldStart, it.newStart) }.distinct().size == hunks.size,
+    ) { "Review commit unit '$commitSha' carries two hunks at the same position in one file." }
+    if (source.isSynthetic) {
+      require(
+        commitSha.startsWith(REVIEW_SYNTHETIC_COMMIT_PREFIX) && parentSha.startsWith(REVIEW_SYNTHETIC_COMMIT_PREFIX),
+      ) {
+        "Synthetic review unit from source '$source' must carry a '$REVIEW_SYNTHETIC_COMMIT_PREFIX' placeholder " +
+          "identity, never a fabricated commit SHA."
+      }
+      require(orderIndex == 0) { "A synthetic review unit is the sole unit of its packet and must be first." }
+    } else {
+      require(
+        !commitSha.startsWith(REVIEW_SYNTHETIC_COMMIT_PREFIX) && !parentSha.startsWith(REVIEW_SYNTHETIC_COMMIT_PREFIX),
+      ) { "A COMMIT_RANGE review unit must carry real Git identities, not synthetic placeholders." }
+    }
+  }
+
+  val hunkIds: List<String> get() = hunks.map { it.hunkId }
+
+  val commitUnitId: String by lazy(LazyThreadSafetyMode.PUBLICATION) { sha256(canonicalValue()) }
+
+  internal fun canonicalValue(): String = canonicalFields(
+    commitSha,
+    parentSha,
+    subject.replace("\r\n", "\n"),
+    orderIndex,
+    source.name,
+    canonicalFields(*hunks.map { it.canonicalValue() }.toTypedArray()),
+  )
+
+  companion object {
+    fun synthetic(source: ReviewCommitSource, hunks: List<ReviewChangedHunk>): ReviewCommitUnit {
+      require(source.isSynthetic) { "A synthetic review unit cannot declare the COMMIT_RANGE source." }
+      return ReviewCommitUnit(
+        commitSha = REVIEW_SYNTHETIC_COMMIT_PREFIX + source.name.lowercase(),
+        parentSha = REVIEW_SYNTHETIC_COMMIT_PREFIX + "base",
+        subject = "synthetic review unit for ${source.name.lowercase()}",
+        orderIndex = 0,
+        hunks = hunks,
+        source = source,
+      )
+    }
+  }
+}
+
+/**
+ * The checked base-to-head equivalence fact: the ordered units cover the authoritative delta with
+ * no silent omission or duplication. A unit sequence that cannot assert the chain must say why.
+ */
+data class ReviewCommitCoverageFact(
+  val baseRevision: String,
+  val headRevision: String,
+  val commitCount: Int,
+  val chainVerified: Boolean,
+  val pathCoverageVerified: Boolean,
+  val degradedReason: String? = null,
+) {
+  init {
+    require(baseRevision.isNotBlank() && headRevision.isNotBlank()) {
+      "Commit coverage fact must carry non-blank base and head revisions."
+    }
+    require(commitCount >= 1) { "Commit coverage fact must describe at least one review unit." }
+    require(degradedReason == null || degradedReason.isNotBlank()) {
+      "A commit coverage fact degraded reason must not be blank."
+    }
+    require((chainVerified && pathCoverageVerified) || !degradedReason.isNullOrBlank()) {
+      "An unverified commit coverage fact must name the reason it could not be verified."
+    }
+  }
+
+  val canonical: String get() = canonicalFields(
+    baseRevision,
+    headRevision,
+    commitCount,
+    chainVerified,
+    pathCoverageVerified,
+    degradedReason.orEmpty(),
+  )
+}
+
+/** One lane's assigned hunks grouped by their owning commit, in packet commit order. */
+data class ReviewLaneBundleEntry(val commitSha: String, val orderIndex: Int, val hunkIds: List<String>) {
+  init {
+    require(commitSha.isNotBlank()) { "Lane bundle entry commit identity must not be blank." }
+    require(orderIndex >= 0) { "Lane bundle entry order index cannot be negative." }
+    require(hunkIds.isNotEmpty()) { "Lane bundle entry for '$commitSha' must carry at least one hunk." }
+    require(hunkIds.distinct().size == hunkIds.size) { "Lane bundle entry hunk ids must be unique." }
+  }
+
+  val canonical: String get() = canonicalFields(commitSha, orderIndex, canonicalFields(*hunkIds.toTypedArray()))
+}
+
+data class ReviewLaneBundle(val entries: List<ReviewLaneBundleEntry> = emptyList()) {
+  init {
+    require(entries.map { it.commitSha }.distinct().size == entries.size) {
+      "Lane bundle must carry one entry per commit."
+    }
+    require(entries.map { it.orderIndex }.zipWithNext().all { (previous, next) -> previous < next }) {
+      "Lane bundle entries must preserve packet commit order."
+    }
+    val ids = entries.flatMap { it.hunkIds }
+    require(ids.distinct().size == ids.size) { "Lane bundle claims a hunk id under more than one commit." }
+  }
+
+  val hunkIds: List<String> get() = entries.flatMap { it.hunkIds }
+  val canonical: String get() = canonicalFields(*entries.map { it.canonical }.toTypedArray())
+  val bundleDigest: String get() = sha256(canonical)
+
+  companion object {
+    val EMPTY: ReviewLaneBundle = ReviewLaneBundle()
+  }
 }
 
 data class ReviewChangedHunk(
@@ -422,6 +572,8 @@ data class ReviewContextPacket(
   val addOns: List<String>,
   val selectedLanes: List<String>,
   val changedHunks: List<ReviewChangedHunk>,
+  val commitUnits: List<ReviewCommitUnit>,
+  val coverageFact: ReviewCommitCoverageFact,
   val reviewRevision: ReviewRevision,
   val laneDecisions: List<ReviewLaneDecision>,
   val matchedRules: List<ReviewRuleReference> = emptyList(),
@@ -439,7 +591,6 @@ data class ReviewContextPacket(
     require(selectedLanes.isNotEmpty() && selectedLanes.distinct().size == selectedLanes.size)
     require(addOns.distinct().size == addOns.size)
     require(composedLayers.all(String::isNotBlank) && composedLayers.distinct().size == composedLayers.size)
-    require(changedHunks.map { it.path to listOf(it.oldStart, it.newStart) }.distinct().size == changedHunks.size)
     require(changedHunks.map { it.hunkId }.distinct().size == changedHunks.size) { "Changed hunk ids must be unique." }
     require(laneDecisions.map { it.lane }.distinct().size == laneDecisions.size) {
       "Lane decisions must carry one entry per lane."
@@ -471,6 +622,51 @@ data class ReviewContextPacket(
     require(targetPaths.isEmpty()) { "Evidence targets name paths the packet does not own: ${targetPaths.sorted()}." }
     val targetHunks = evidenceTargets.flatMap { it.hunkIds }.filterNot { it in ownedHunks }
     require(targetHunks.isEmpty()) { "Evidence targets name hunk ids the packet does not own." }
+    requireCommitEvidence(ownedHunks)
+  }
+
+  @Suppress("CyclomaticComplexMethod")
+  private fun requireCommitEvidence(ownedHunks: Set<String>) {
+    require(commitUnits.isNotEmpty()) {
+      "A review packet is missing its commit sequence; at least one unit is required."
+    }
+    require(commitUnits.map { it.commitSha }.distinct().size == commitUnits.size) {
+      "Review packet carries a duplicate commit identity."
+    }
+    require(commitUnits.map { it.orderIndex }.sorted() == commitUnits.indices.toList()) {
+      "Review packet commit units are out of order; order indices must form a contiguous 0..n-1 sequence."
+    }
+    require(coverageFact.commitCount == commitUnits.size) {
+      "Coverage fact counts ${coverageFact.commitCount} commits but the packet carries ${commitUnits.size}."
+    }
+    val ordered = commitUnits.sortedBy { it.orderIndex }
+    if (ordered.any { it.source.isSynthetic }) {
+      require(ordered.size == 1) { "A synthetic review unit must be the only unit in its packet." }
+    } else {
+      require(ordered.first().parentSha == baseRevision) {
+        "Review packet commit chain does not start at the base revision '$baseRevision'."
+      }
+      require(ordered.last().commitSha == headRevision) {
+        "Review packet commit chain does not end at the head revision '$headRevision'."
+      }
+      ordered.zipWithNext().forEach { (previous, next) ->
+        require(next.parentSha == previous.commitSha) {
+          "Review packet commit chain is broken: '${next.commitSha}' does not descend from '${previous.commitSha}'."
+        }
+      }
+    }
+    val unitHunkIds = ordered.flatMap { it.hunkIds }
+    require(unitHunkIds.distinct().size == unitHunkIds.size) {
+      "A changed hunk is claimed by more than one commit unit; commit units must partition the packet hunks."
+    }
+    val absent = unitHunkIds.filterNot { it in ownedHunks }
+    require(absent.isEmpty()) { "A commit unit references a hunk absent from the packet changed hunks." }
+    val unowned = ownedHunks - unitHunkIds.toSet()
+    require(unowned.isEmpty()) { "Packet changed hunks are unowned by any commit unit: ${unowned.size} hunk(s)." }
+  }
+
+  val ownedCommitIds: Set<String> by lazy(LazyThreadSafetyMode.PUBLICATION) {
+    commitUnits.map { it.commitSha }.toSet()
   }
 
   val ownedPaths: Set<String> by lazy(LazyThreadSafetyMode.PUBLICATION) {
@@ -508,6 +704,10 @@ data class ReviewContextPacket(
       .map { it.canonical }.let { canonicalFields(*it.toTypedArray()) },
     changedHunks.sortedBy { it.canonicalValue() }
       .map { it.canonicalValue() }.let { canonicalFields(*it.toTypedArray()) },
+    // Declared order, never sorted by content: reordering commits must stay digest-visible.
+    commitUnits.sortedBy { it.orderIndex }
+      .map { it.canonicalValue() }.let { canonicalFields(*it.toTypedArray()) },
+    coverageFact.canonical,
     canonicalFields(*matchedRules.map { it.canonical }.sorted().toTypedArray()),
     canonicalFields(*learningsReferences.map { it.canonical }.sorted().toTypedArray()),
     canonicalFields(*buildTestFacts.map { it.canonical }.sorted().toTypedArray()),
@@ -574,7 +774,39 @@ data class GovernedReviewLaunch(
     require(assignment.evidenceTargets.toSet() == expectedTargets) {
       "Launch evidence targets differ from the packet targets for the lane."
     }
+    requireBundleMatchesPacket()
   }
+
+  private fun requireBundleMatchesPacket() {
+    val unitsBySha = packet.commitUnits.associateBy { it.commitSha }
+    val outside = assignment.assignedBundle.entries.map { it.commitSha }.filterNot { it in unitsBySha }
+    require(outside.isEmpty()) {
+      "Launch assignment claims commit units outside its packet: ${outside.sorted()}."
+    }
+    assignment.assignedBundle.entries.forEach { entry ->
+      val unit = unitsBySha.getValue(entry.commitSha)
+      require(entry.orderIndex == unit.orderIndex) {
+        "Launch bundle entry '${entry.commitSha}' order differs from the packet commit order."
+      }
+      val strayHunks = entry.hunkIds.filterNot { it in unit.hunkIds }
+      require(strayHunks.isEmpty()) {
+        "Launch bundle attributes hunks to commit '${entry.commitSha}' that the commit does not own."
+      }
+    }
+    require(assignment.assignedBundle.hunkIds.toSet() == assignment.assignedHunks.toSet()) {
+      "Launch bundle must cover exactly the assigned hunks so every projected body is commit-attributable."
+    }
+  }
+
+  /** The assigned units in packet order, each paired with the lane's hunk bodies it owns. */
+  private val projectedUnits: List<Pair<ReviewCommitUnit, List<ReviewChangedHunk>>>
+    get() {
+      val hunksById = packet.changedHunks.associateBy { it.hunkId }
+      val unitsBySha = packet.commitUnits.associateBy { it.commitSha }
+      return assignment.assignedBundle.entries.map { entry ->
+        unitsBySha.getValue(entry.commitSha) to entry.hunkIds.map { hunksById.getValue(it) }
+      }
+    }
 
   fun requireCodexForkTurns(forkTurns: String?) {
     require(forkTurns == "none") { "Governed Codex review launches require fork_turns none." }
@@ -601,15 +833,31 @@ data class GovernedReviewLaunch(
     assignment.assignedPaths.sorted().forEach { appendLine("  - ${structuredString(it)}") }
     appendLine("assigned_hunks:")
     assignment.assignedHunks.sorted().forEach { appendLine("  - $it") }
+    appendLine(
+      "coverage_fact: base=${packet.coverageFact.baseRevision}, head=${packet.coverageFact.headRevision}, " +
+        "commits=${packet.coverageFact.commitCount}, chain_verified=${packet.coverageFact.chainVerified}, " +
+        "path_coverage_verified=${packet.coverageFact.pathCoverageVerified}, " +
+        "degraded_reason=${structuredString(packet.coverageFact.degradedReason.orEmpty())}",
+    )
+    appendLine("assigned_commit_units:")
+    projectedUnits.forEach { (unit, _) ->
+      appendLine("  - commit_sha: ${structuredString(unit.commitSha)}")
+      appendLine("    parent_sha: ${structuredString(unit.parentSha)}")
+      appendLine("    subject: ${structuredString(unit.subject.replace("\r\n", "\n"))}")
+      appendLine("    order_index: ${unit.orderIndex}")
+      appendLine("    source: ${unit.source.name.lowercase()}")
+    }
     appendLine("assigned_hunk_bodies:")
-    packet.changedHunks.filter { it.hunkId in assignment.assignedHunks }
-      .sortedWith(compareBy(ReviewChangedHunk::path, ReviewChangedHunk::newStart))
-      .forEach { hunk ->
-        appendLine("  - path: ${structuredString(hunk.path)}")
+    projectedUnits.forEach { (unit, hunks) ->
+      hunks.sortedWith(compareBy(ReviewChangedHunk::path, ReviewChangedHunk::newStart)).forEach { hunk ->
+        appendLine("  - commit_sha: ${structuredString(unit.commitSha)}")
+        appendLine("    order_index: ${unit.orderIndex}")
+        appendLine("    path: ${structuredString(hunk.path)}")
         appendLine("    hunk_id: ${hunk.hunkId}")
         appendLine("    content: |")
         hunk.content.replace("\r\n", "\n").lineSequence().forEach { appendLine("      $it") }
       }
+    }
     appendLine("criteria_references:")
     assignment.criteriaReferences.sorted().forEach { appendLine("  - $it") }
     appendLine("matched_rules:")

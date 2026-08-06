@@ -32,7 +32,9 @@ internal object ParallelReviewPreparationCompiler {
     envelopeValidator: ReviewContextEnvelopeValidator,
     specialistContract: String,
   ): List<ReviewSpecialistLaunchRequest> {
-    val hunks = input.evidence.hunks
+    // Commit units are the authoritative hunk surface: the packet's flat changedHunks is exactly
+    // their union, so every hunk stays attributable to the commit that introduced it.
+    val hunks = input.commitSequence.units.flatMap { it.hunks }
     val routes = specialistRoutes(input)
     val decisions = routes.map { route ->
       ReviewLaneDecision(
@@ -108,6 +110,8 @@ internal object ParallelReviewPreparationCompiler {
       input.headRevision,
       "authoritative supplied parallel-review diff",
       hunks,
+      input.commitSequence.units,
+      input.commitSequence.coverageFact,
     )
     val routing = ReviewStackRoutingFacts(
       input.stack,
@@ -222,6 +226,7 @@ internal data class PlannedReviewRubric(
 internal data class ParallelReviewPreparationInput(
   val diff: String,
   val evidence: ReviewDiffEvidence,
+  val commitSequence: ResolvedCommitSequence,
   val stack: String?,
   val agents: List<String>,
   val repoRoot: Path,

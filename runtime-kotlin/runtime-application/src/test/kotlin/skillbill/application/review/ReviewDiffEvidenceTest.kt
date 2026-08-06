@@ -7,6 +7,89 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class ReviewDiffEvidenceTest {
+  // AC-001, AC-007
+  @Test
+  fun `commit units reuse the record parser across additions renames and deletions`() {
+    val units = ReviewDiffEvidence.parseCommitUnits(
+      listOf(
+        RawCommitDiff(
+          "c1",
+          "base",
+          "add a new file",
+          """
+          diff --git a/src/New.kt b/src/New.kt
+          new file mode 100644
+          --- /dev/null
+          +++ b/src/New.kt
+          @@ -0,0 +1,1 @@
+          +val fresh = 1
+          """.trimIndent(),
+        ),
+        RawCommitDiff(
+          "c2",
+          "c1",
+          "rename it",
+          """
+          diff --git a/src/New.kt b/src/Renamed.kt
+          similarity index 90%
+          rename from src/New.kt
+          rename to src/Renamed.kt
+          --- a/src/New.kt
+          +++ b/src/Renamed.kt
+          @@ -1,1 +1,1 @@
+          -val fresh = 1
+          +val renamed = 1
+          """.trimIndent(),
+        ),
+        RawCommitDiff("c3", "c2", "empty commit", ""),
+        RawCommitDiff(
+          "c4",
+          "c3",
+          "delete it",
+          """
+          diff --git a/src/Renamed.kt b/src/Renamed.kt
+          deleted file mode 100644
+          --- a/src/Renamed.kt
+          +++ /dev/null
+          @@ -1,1 +0,0 @@
+          -val renamed = 1
+          """.trimIndent(),
+        ),
+      ),
+    )
+
+    assertEquals(listOf("c1", "c2", "c3", "c4"), units.map { it.commitSha })
+    assertEquals(listOf(0, 1, 2, 3), units.map { it.orderIndex })
+    assertEquals(listOf("src/New.kt"), units[0].hunks.map { it.path })
+    assertEquals(listOf("src/Renamed.kt"), units[1].hunks.map { it.path })
+    assertTrue(units[2].hunks.isEmpty())
+    assertEquals(listOf("src/Renamed.kt"), units[3].hunks.map { it.path })
+  }
+
+  // AC-007
+  @Test
+  fun `a malformed record inside a commit keeps the existing loud failure`() {
+    val failure = assertFailsWith<IllegalArgumentException> {
+      ReviewDiffEvidence.parseCommitUnits(
+        listOf(
+          RawCommitDiff(
+            "c1",
+            "base",
+            "malformed",
+            """
+            diff --git a/src/A.kt b/src/A.kt
+            --- /dev/null
+            +++ /dev/null
+            @@ -1,1 +1,1 @@
+            +broken
+            """.trimIndent(),
+          ),
+        ),
+      )
+    }
+    assertTrue("/dev/null on both sides" in failure.message.orEmpty())
+  }
+
   @Test
   fun `routing evidence contains changed lines but not unchanged hunk context`() {
     val evidence = ReviewDiffEvidence.parse(

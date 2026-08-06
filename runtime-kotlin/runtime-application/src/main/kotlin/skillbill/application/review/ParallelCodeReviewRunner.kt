@@ -195,10 +195,19 @@ class ParallelCodeReviewRunner(
     val plannedRubrics = resolvePlannedRubrics(evidence, routedManifests, manifests, ownedPathsBySlug)
     recordPlannedLanes(request.reviewRunId, plannedRubrics)
     val (baseRevision, headRevision) = resolveReviewRevisions(request)
+    val commitSequence = ReviewCommitSequenceResolver(diffResolver).resolve(
+      scope = request.scope,
+      repoRoot = request.repoRoot,
+      baseRevision = baseRevision,
+      headRevision = headRevision,
+      aggregate = evidence,
+      suppliedDiff = request.suppliedDiff != null || request.suppliedDiffPath != null,
+    )
     return ParallelReviewPreparationCompiler.compile(
       input = ParallelReviewPreparationInput(
         diff = diffText,
         evidence = evidence,
+        commitSequence = commitSequence,
         stack = routedManifests.joinToString("+") { it.slug }.ifBlank { null },
         agents = agentIds,
         repoRoot = request.repoRoot,

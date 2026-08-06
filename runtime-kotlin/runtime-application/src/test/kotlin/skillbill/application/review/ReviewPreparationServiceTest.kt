@@ -16,6 +16,9 @@ import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewBaselineUntrackedPolicy
 import skillbill.review.context.model.ReviewBuildTestFact
 import skillbill.review.context.model.ReviewChangedHunk
+import skillbill.review.context.model.ReviewCommitCoverageFact
+import skillbill.review.context.model.ReviewCommitSource
+import skillbill.review.context.model.ReviewCommitUnit
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewDependencyAllowlist
 import skillbill.review.context.model.ReviewExpansionRecord
@@ -88,7 +91,15 @@ class ReviewPreparationServiceTest {
       ReviewLaneDecision("ui", false, "no UI files changed"),
     ),
   ) = CountingPorts(
-    scope = ReviewScopeFacts("acme/repo", "base", "head", "clean", hunks),
+    scope = ReviewScopeFacts(
+      "acme/repo",
+      "base",
+      "head",
+      "clean",
+      hunks,
+      listOf(ReviewCommitUnit("head", "base", "one commit", 0, hunks, ReviewCommitSource.COMMIT_RANGE)),
+      ReviewCommitCoverageFact("base", "head", 1, chainVerified = true, pathCoverageVerified = true),
+    ),
     routing = ReviewStackRoutingFacts("kotlin", "kotlin", listOf("addon-b", "addon-a"), listOf("kotlin")),
     rules = listOf(
       ReviewRuleReference(

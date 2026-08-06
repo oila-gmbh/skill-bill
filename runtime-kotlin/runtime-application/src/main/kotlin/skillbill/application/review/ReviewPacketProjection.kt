@@ -5,6 +5,7 @@ import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
 import skillbill.review.context.model.GovernedReviewLaunch
 import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewChangedHunk
+import skillbill.review.context.model.ReviewCommitUnit
 import skillbill.review.context.model.ReviewContextPacket
 import skillbill.review.context.model.ReviewLaneDecision
 import skillbill.review.context.model.ReviewPacketConsumerContract
@@ -31,6 +32,8 @@ fun ReviewContextPacket.toParentPacketEnvelope(): ReviewContextEnvelope = Review
     "changed_hunks" to changedHunks
       .sortedWith(compareBy(ReviewChangedHunk::path, ReviewChangedHunk::newStart))
       .map { it.toEnvelope() },
+    "commit_units" to commitUnits.sortedBy { it.orderIndex }.map { it.toEnvelope() },
+    "coverage_fact" to coverageFact.toEnvelope(),
     "matched_rules" to matchedRules.sortedBy { it.ruleId }.map { it.toEnvelope() },
     "learnings_references" to learningsReferences.sortedBy { it.learningId }.map { it.toEnvelope() },
     "build_test_facts" to buildTestFacts.sortedWith(compareBy({ it.kind }, { it.command })).map { it.toEnvelope() },
@@ -55,6 +58,7 @@ fun ReviewAssignment.toAssignmentEnvelope(): ReviewContextEnvelope = ReviewConte
     "head_revision" to headRevision,
     "assigned_paths" to assignedPaths.sorted(),
     "assigned_hunks" to assignedHunks.sorted(),
+    "assigned_bundle" to assignedBundle.toEnvelope(),
     "criteria_references" to criteriaReferences.sorted(),
     "matched_rules" to matchedRules.sortedBy { it.ruleId }.map { it.toEnvelope() },
     "evidence_targets" to evidenceTargets.sortedBy { it.targetId }.map { it.toEnvelope() },
@@ -81,10 +85,12 @@ fun GovernedReviewLaunch.toLaunchEnvelope(
     "rubric" to rubric,
     "assigned_paths" to assignment.assignedPaths.sorted(),
     "assigned_hunks" to assignment.assignedHunks.sorted(),
-    "assigned_hunk_bodies" to packet.changedHunks
-      .filter { it.hunkId in assignment.assignedHunks }
-      .sortedWith(compareBy(ReviewChangedHunk::path, ReviewChangedHunk::newStart))
-      .map { it.toEnvelope() },
+    "assigned_commit_units" to assignedUnits().map { (unit, _) -> unit.toAssignedEnvelope() },
+    "coverage_fact" to packet.coverageFact.toEnvelope(),
+    "assigned_hunk_bodies" to assignedUnits().flatMap { (unit, hunks) ->
+      hunks.sortedWith(compareBy(ReviewChangedHunk::path, ReviewChangedHunk::newStart))
+        .map { it.toCommitAttributedEnvelope(unit) }
+    },
     "brokered_evidence" to brokeredEvidence.map { (path, content) ->
       linkedMapOf("path" to path, "content" to content)
     },
@@ -101,6 +107,15 @@ fun GovernedReviewLaunch.toLaunchEnvelope(
     "budget" to budget.toEnvelope(),
   ),
 )
+/** The lane's assigned units in packet commit order, each with the hunk bodies it owns. */
+private fun GovernedReviewLaunch.assignedUnits(): List<Pair<ReviewCommitUnit, List<ReviewChangedHunk>>> {
+  val hunksById = packet.changedHunks.associateBy { it.hunkId }
+  val unitsBySha = packet.commitUnits.associateBy { it.commitSha }
+  return assignment.assignedBundle.entries.map { entry ->
+    unitsBySha.getValue(entry.commitSha) to entry.hunkIds.map { hunksById.getValue(it) }
+  }
+}
+
 internal fun String.normalizeLineEndings(): String = replace("\r\n", "\n")
 
 private fun skillbill.review.context.model.ReviewBaselineUntrackedPolicy.toEnvelope() = linkedMapOf(

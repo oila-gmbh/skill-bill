@@ -144,12 +144,81 @@ $defs:
       new_start: { type: integer, minimum: 0 }
       new_count: { type: integer, minimum: 0 }
       content: { type: string }
+  commit_unit:
+    type: object
+    additionalProperties: false
+    required: [commit_unit_id, commit_sha, parent_sha, subject, order_index, source, hunk_ids]
+    properties:
+      commit_unit_id: { $ref: "#/$defs/digest" }
+      commit_sha: { $ref: "#/$defs/identifier" }
+      parent_sha: { $ref: "#/$defs/identifier" }
+      subject: { type: string }
+      order_index: { type: integer, minimum: 0 }
+      source: { enum: [commit_range, synthetic_working_tree, synthetic_supplied_diff, synthetic_aggregate_pr_diff] }
+      hunk_ids: { $ref: "#/$defs/hunk_ids" }
+  commit_sequence:
+    type: array
+    minItems: 1
+    items: { $ref: "#/$defs/commit_unit" }
+  coverage_fact:
+    type: object
+    additionalProperties: false
+    required: [base_revision, head_revision, commit_count, chain_verified, path_coverage_verified, degraded_reason]
+    properties:
+      base_revision: { $ref: "#/$defs/identifier" }
+      head_revision: { $ref: "#/$defs/identifier" }
+      commit_count: { type: integer, minimum: 1 }
+      chain_verified: { type: boolean }
+      path_coverage_verified: { type: boolean }
+      degraded_reason: { type: [string, "null"] }
+  lane_bundle_entry:
+    type: object
+    additionalProperties: false
+    required: [commit_sha, order_index, hunk_ids]
+    properties:
+      commit_sha: { $ref: "#/$defs/identifier" }
+      order_index: { type: integer, minimum: 0 }
+      hunk_ids: { $ref: "#/$defs/hunk_ids", minItems: 1 }
+  lane_bundle:
+    type: object
+    additionalProperties: false
+    required: [bundle_digest, entries]
+    properties:
+      bundle_digest: { $ref: "#/$defs/digest" }
+      entries:
+        type: array
+        items: { $ref: "#/$defs/lane_bundle_entry" }
+  assigned_commit_unit:
+    type: object
+    additionalProperties: false
+    required: [commit_unit_id, commit_sha, parent_sha, subject, order_index, source]
+    properties:
+      commit_unit_id: { $ref: "#/$defs/digest" }
+      commit_sha: { $ref: "#/$defs/identifier" }
+      parent_sha: { $ref: "#/$defs/identifier" }
+      subject: { type: string }
+      order_index: { type: integer, minimum: 0 }
+      source: { enum: [commit_range, synthetic_working_tree, synthetic_supplied_diff, synthetic_aggregate_pr_diff] }
+  commit_attributed_hunk:
+    type: object
+    additionalProperties: false
+    required: [commit_sha, order_index, hunk_id, path, old_start, old_count, new_start, new_count, content]
+    properties:
+      commit_sha: { $ref: "#/$defs/identifier" }
+      order_index: { type: integer, minimum: 0 }
+      hunk_id: { $ref: "#/$defs/hunk_id" }
+      path: { $ref: "#/$defs/path" }
+      old_start: { type: integer, minimum: 0 }
+      old_count: { type: integer, minimum: 0 }
+      new_start: { type: integer, minimum: 0 }
+      new_count: { type: integer, minimum: 0 }
+      content: { type: string }
   parent_packet:
     type: object
     additionalProperties: false
-    required: [contract_version, kind, review_id, packet_digest, review_revision, repository_identity, base_revision, head_revision, status, composed_layers, selected_lanes, lane_decisions, changed_hunks, matched_rules, learnings_references, build_test_facts, dependency_allowlist, evidence_targets, expansion_ledger, baseline_untracked_policy]
+    required: [contract_version, kind, review_id, packet_digest, review_revision, repository_identity, base_revision, head_revision, status, composed_layers, selected_lanes, lane_decisions, changed_hunks, commit_units, coverage_fact, matched_rules, learnings_references, build_test_facts, dependency_allowlist, evidence_targets, expansion_ledger, baseline_untracked_policy]
     properties:
-      contract_version: { const: "0.8" }
+      contract_version: { const: "0.9" }
       kind: { const: parent_packet }
       review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
@@ -168,6 +237,8 @@ $defs:
         minItems: 1
         items: { $ref: "#/$defs/lane_decision" }
       changed_hunks: { type: array, items: { $ref: "#/$defs/hunk" } }
+      commit_units: { $ref: "#/$defs/commit_sequence" }
+      coverage_fact: { $ref: "#/$defs/coverage_fact" }
       matched_rules: { $ref: "#/$defs/rule_references" }
       learnings_references:
         type: array
@@ -182,9 +253,9 @@ $defs:
   assignment:
     type: object
     additionalProperties: false
-    required: [contract_version, kind, review_id, packet_digest, assignment_digest, review_revision, lane, lane_decision, base_revision, head_revision, assigned_paths, assigned_hunks, criteria_references, matched_rules, evidence_targets, dependency_allowlist, expansions, baseline_untracked_policy]
+    required: [contract_version, kind, review_id, packet_digest, assignment_digest, review_revision, lane, lane_decision, base_revision, head_revision, assigned_paths, assigned_hunks, assigned_bundle, criteria_references, matched_rules, evidence_targets, dependency_allowlist, expansions, baseline_untracked_policy]
     properties:
-      contract_version: { const: "0.8" }
+      contract_version: { const: "0.9" }
       kind: { const: assignment }
       review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
@@ -196,6 +267,7 @@ $defs:
       head_revision: { $ref: "#/$defs/identifier" }
       assigned_paths: { type: array, uniqueItems: true, items: { $ref: "#/$defs/path" } }
       assigned_hunks: { $ref: "#/$defs/hunk_ids" }
+      assigned_bundle: { $ref: "#/$defs/lane_bundle" }
       criteria_references: { $ref: "#/$defs/strings" }
       matched_rules: { $ref: "#/$defs/rule_references" }
       evidence_targets: { $ref: "#/$defs/evidence_targets" }
@@ -205,9 +277,9 @@ $defs:
   launch:
     type: object
     additionalProperties: false
-    required: [contract_version, kind, review_id, packet_digest, assignment_digest, review_revision, lane, base_revision, head_revision, specialist_contract, consumer_contract, rubric, assigned_paths, assigned_hunks, assigned_hunk_bodies, brokered_evidence, criteria_references, matched_rules, evidence_targets, dependency_allowlist, baseline_untracked_policy, forbidden_rediscovery, evidence_surface_rules, report_structure, broker_id, isolation, budget]
+    required: [contract_version, kind, review_id, packet_digest, assignment_digest, review_revision, lane, base_revision, head_revision, specialist_contract, consumer_contract, rubric, assigned_paths, assigned_hunks, assigned_commit_units, coverage_fact, assigned_hunk_bodies, brokered_evidence, criteria_references, matched_rules, evidence_targets, dependency_allowlist, baseline_untracked_policy, forbidden_rediscovery, evidence_surface_rules, report_structure, broker_id, isolation, budget]
     properties:
-      contract_version: { const: "0.8" }
+      contract_version: { const: "0.9" }
       kind: { const: launch }
       review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
@@ -221,9 +293,13 @@ $defs:
       rubric: { type: string, minLength: 1, pattern: '.*\S.*' }
       assigned_paths: { type: array, uniqueItems: true, items: { $ref: "#/$defs/path" } }
       assigned_hunks: { $ref: "#/$defs/hunk_ids" }
+      assigned_commit_units:
+        type: array
+        items: { $ref: "#/$defs/assigned_commit_unit" }
+      coverage_fact: { $ref: "#/$defs/coverage_fact" }
       assigned_hunk_bodies:
         type: array
-        items: { $ref: "#/$defs/hunk" }
+        items: { $ref: "#/$defs/commit_attributed_hunk" }
       brokered_evidence:
         type: array
         items:
@@ -273,7 +349,7 @@ $defs:
     additionalProperties: false
     required: [contract_version, kind, review_id, packet_digest, assignment_digest, lane, terminal_outcome, budget_kind, configured_limit, observed_value, enforceable]
     properties:
-      contract_version: { const: "0.8" }
+      contract_version: { const: "0.9" }
       kind: { const: budget_outcome }
       review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
@@ -301,7 +377,7 @@ $defs:
     additionalProperties: false
     required: [contract_version, kind, review_id, packet_digest, parent, lanes, aggregate_counters, aggregate_direct_usage, aggregate_inclusive_usage, budget_regression]
     properties:
-      contract_version: { const: "0.8" }
+      contract_version: { const: "0.9" }
       kind: { const: accounting_summary }
       review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
@@ -370,3 +446,8 @@ x-coherence-checks:
   - Every inclusive usage value equals the node's direct usage plus each child node's direct usage exactly once.
   - Aggregate direct usage sums direct ownership only; aggregate inclusive usage is the parent root and nested sessions are never added twice.
   - Hunk ids are content-addressed over path, spans, and normalized content, not positional.
+  - Commit units partition the parent packet's changed_hunks exactly once, with contiguous order indices from zero.
+  - A commit_range sequence chains parent to child from base_revision to head_revision; a synthetic source is the sole unit of its packet and never carries a fabricated commit SHA.
+  - The coverage fact reports a checked chain-and-ownership property over the authoritative base-to-head delta, never textual equality of concatenated incremental diffs.
+  - A lane bundle covers exactly its assignment's assigned_hunks, names only packet-owned commits, preserves packet commit order, and contributes to assignment_digest.
+  - Launch payloads project only the assigned commit units and their hunk bodies; no aggregate or complete-diff artifact reaches a worker.
