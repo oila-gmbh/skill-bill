@@ -10,6 +10,7 @@ import skillbill.infrastructure.fs.ReviewContextEnvelopeValidatorAdapter
 import skillbill.ports.review.ReviewBuildTestFactsPort
 import skillbill.ports.review.ReviewGuidancePort
 import skillbill.ports.review.ReviewLaneSelectionPort
+import skillbill.ports.review.model.ReviewLaneSelection
 import skillbill.ports.review.ReviewLearningsPort
 import skillbill.ports.review.ReviewScopeResolverPort
 import skillbill.ports.review.ReviewStackRoutingPort
@@ -21,6 +22,9 @@ import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewBuildTestFact
 import skillbill.review.context.model.ReviewChangedHunk
 import skillbill.review.context.model.ReviewCommitCoverageFact
+import skillbill.review.context.model.ReviewCommitLaneDecision
+import skillbill.review.context.model.ReviewCommitLaneDisposition
+import skillbill.review.context.model.ReviewCommitLaneRoutingMatrix
 import skillbill.review.context.model.ReviewCommitSource
 import skillbill.review.context.model.ReviewCommitUnit
 import skillbill.review.context.model.ReviewContextBudgetPolicy
@@ -61,6 +65,21 @@ class ReviewContextSchemaValidatorTest {
   private val coverageFact =
     ReviewCommitCoverageFact("base", "head", 1, chainVerified = true, pathCoverageVerified = true)
 
+  private val securityRouting = ReviewCommitLaneRoutingMatrix(
+    listOf("head"),
+    listOf("security"),
+    listOf(
+      ReviewCommitLaneDecision(
+        "head",
+        0,
+        "security",
+        ReviewCommitLaneDisposition.FOCUSED,
+        "commit head changed evidence matching security signals [path:src/]",
+        signals = listOf("path:src/"),
+      ),
+    ),
+  )
+
   private val packet = ReviewContextPacket(
     reviewId = "review",
     repositoryIdentity = "acme/repo",
@@ -74,6 +93,7 @@ class ReviewContextSchemaValidatorTest {
     changedHunks = listOf(hunkA, hunkB),
     commitUnits = listOf(commitUnit),
     coverageFact = coverageFact,
+    routingMatrix = securityRouting,
     reviewRevision = revision,
     laneDecisions = listOf(
       ReviewLaneDecision(
@@ -106,6 +126,7 @@ class ReviewContextSchemaValidatorTest {
     assignedBundle = ReviewLaneBundle(
       listOf(ReviewLaneBundleEntry("head", 0, listOf(hunkA.hunkId, hunkB.hunkId))),
     ),
+    laneRouting = securityRouting.decisionsFor("security"),
     criteriaReferences = listOf("AC-002"),
     matchedRules = listOf(rule),
     evidenceTargets = packet.evidenceTargets,
@@ -295,17 +316,20 @@ class ReviewContextSchemaValidatorTest {
     override fun resolveBuildTestFacts(scope: ReviewScopeFacts) =
       listOf(ReviewBuildTestFact("test", "gradle test", "passed"))
 
-    override fun decideLanes(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) = listOf(
-      ReviewLaneDecision(
-        "security",
-        true,
-        "auth surface changed",
-        ownedPaths = listOf("src/A.kt"),
-        originLayerChains = listOf(listOf("kotlin")),
-        owningPack = "kotlin",
-        specialistSkillName = "bill-kotlin-code-review-security",
+    override fun decideLanes(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) = ReviewLaneSelection(
+      listOf(
+        ReviewLaneDecision(
+          "security",
+          true,
+          "auth surface changed",
+          ownedPaths = listOf("src/A.kt"),
+          originLayerChains = listOf(listOf("kotlin")),
+          owningPack = "kotlin",
+          specialistSkillName = "bill-kotlin-code-review-security",
+        ),
+        ReviewLaneDecision("ui", false, "no UI files changed"),
       ),
-      ReviewLaneDecision("ui", false, "no UI files changed"),
+      securityRouting,
     )
   }
 }

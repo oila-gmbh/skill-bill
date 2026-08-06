@@ -278,6 +278,25 @@ fun reviewPack(
   codeReviewComposition = layers.takeIf { it.isNotEmpty() }?.let(::CodeReviewComposition),
 )
 
+/**
+ * Pack whose specialist path signals drive sparse commit/lane routing in harness fixtures: a required
+ * baseline plus optional areas keyed by the given path prefixes.
+ */
+fun sparseReviewPack(
+  slug: String,
+  requiredArea: String,
+  pathAreas: Map<String, List<String>>,
+  routingSignals: List<String> = listOf("*.kt"),
+): PlatformManifest {
+  val areas = listOf(requiredArea) + pathAreas.keys.toList()
+  return reviewPack(slug, areas, routingSignals = routingSignals).copy(
+    laneConditions = buildMap {
+      put(requiredArea, ReviewLaneCondition(required = true))
+      pathAreas.forEach { (area, paths) -> put(area, ReviewLaneCondition(path = paths)) }
+    },
+  )
+}
+
 fun reviewLayer(slug: String, required: Boolean = true) = CodeReviewBaselineLayer(
   platform = slug,
   skill = "bill-$slug-code-review",

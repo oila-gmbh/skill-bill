@@ -7,6 +7,9 @@ import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewBuildTestFact
 import skillbill.review.context.model.ReviewChangedHunk
 import skillbill.review.context.model.ReviewCommitCoverageFact
+import skillbill.review.context.model.ReviewCommitLaneDecision
+import skillbill.review.context.model.ReviewCommitLaneDisposition
+import skillbill.review.context.model.ReviewCommitLaneRoutingMatrix
 import skillbill.review.context.model.ReviewCommitSource
 import skillbill.review.context.model.ReviewCommitUnit
 import skillbill.review.context.model.ReviewContextBudgetPolicy
@@ -68,6 +71,7 @@ class ReviewPacketProjectionTest {
     changedHunks = hunks,
     commitUnits = listOf(commitUnit(hunks)),
     coverageFact = ReviewCommitCoverageFact("base", "head", 1, chainVerified = true, pathCoverageVerified = true),
+    routingMatrix = focusedMatrix(lanes),
     reviewRevision = revision,
     laneDecisions = decisions,
     matchedRules = listOf(rule),
@@ -84,6 +88,12 @@ class ReviewPacketProjectionTest {
     orderIndex = 0,
     hunks = hunks.sortedBy { it.path },
     source = ReviewCommitSource.COMMIT_RANGE,
+  )
+
+  private fun focusedMatrix(lanes: List<String>) = ReviewCommitLaneRoutingMatrix(
+    listOf("head"),
+    lanes,
+    lanes.map { ReviewCommitLaneDecision("head", 0, it, ReviewCommitLaneDisposition.FOCUSED, "focused") },
   )
 
   private fun bundle(vararg hunkIds: String) =
@@ -215,6 +225,7 @@ class ReviewPacketProjectionTest {
       assignedPaths = listOf("src/A.kt", "src/B.kt"),
       assignedHunks = listOf(hunkA.hunkId, hunkB.hunkId),
       assignedBundle = bundle(hunkA.hunkId, hunkB.hunkId),
+      laneRouting = base.routingMatrix.decisionsFor("security"),
       reviewRevision = revision,
       laneDecision = base.laneDecisions.first { it.lane == "security" },
       matchedRules = base.matchedRules,

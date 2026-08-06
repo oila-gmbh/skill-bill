@@ -52,6 +52,16 @@ class ReviewContextModelsTest {
   private fun syntheticUnit(hunks: List<ReviewChangedHunk>) =
     ReviewCommitUnit.synthetic(ReviewCommitSource.SYNTHETIC_WORKING_TREE, hunks)
 
+  private fun focusedMatrix(units: List<ReviewCommitUnit>, lanes: List<String>) = ReviewCommitLaneRoutingMatrix(
+    units.sortedBy { it.orderIndex }.map { it.commitSha },
+    lanes,
+    units.sortedBy { it.orderIndex }.flatMap { unit ->
+      lanes.map {
+        ReviewCommitLaneDecision(unit.commitSha, unit.orderIndex, it, ReviewCommitLaneDisposition.FOCUSED, "focused")
+      }
+    },
+  )
+
   private fun fact(count: Int = 1) = ReviewCommitCoverageFact(
     "base",
     "head",
@@ -68,6 +78,10 @@ class ReviewContextModelsTest {
       syntheticUnit(listOf(if (path == launchHunk.path) launchHunk else launchHunk.copy(path = path))),
     ),
     coverageFact = fact(),
+    routingMatrix = focusedMatrix(
+      listOf(syntheticUnit(listOf(if (path == launchHunk.path) launchHunk else launchHunk.copy(path = path)))),
+      listOf("security"),
+    ),
     reviewRevision = revision(),
     laneDecisions = listOf(lane("security", listOf(path))),
   )
@@ -84,6 +98,7 @@ class ReviewContextModelsTest {
           ?.let { ReviewLaneBundleEntry(unit.commitSha, unit.orderIndex, it) }
       },
     ),
+    laneRouting = packet.routingMatrix.decisionsFor("security"),
     reviewRevision = revision(), laneDecision = lane("security", packet.changedHunks.map { it.path }),
     baselineUntrackedPolicy = packet.baselineUntrackedPolicy,
   )
@@ -176,6 +191,10 @@ class ReviewContextModelsTest {
       listOf(ReviewChangedHunk(path, 1, 1, 1, 1, "+line\r\n")),
       commitUnits = listOf(syntheticUnit(listOf(ReviewChangedHunk(path, 1, 1, 1, 1, "+line\r\n")))),
       coverageFact = fact(),
+      routingMatrix = focusedMatrix(
+        listOf(syntheticUnit(listOf(ReviewChangedHunk(path, 1, 1, 1, 1, "+line\r\n")))),
+        listOf("testing"),
+      ),
       reviewRevision = revision(),
       laneDecisions = listOf(lane("testing", listOf(path))),
     )
@@ -190,6 +209,7 @@ class ReviewContextModelsTest {
       "review", "repo", "base", "head", "clean", "kotlin", "kotlin", emptyList(), listOf("security"), hunks,
       commitUnits = listOf(syntheticUnit(hunks.sortedBy { it.hunkId })),
       coverageFact = fact(),
+      routingMatrix = focusedMatrix(listOf(syntheticUnit(hunks.sortedBy { it.hunkId })), listOf("security")),
       reviewRevision = revision(),
       laneDecisions = listOf(lane("security", listOf("A.kt"))),
     )

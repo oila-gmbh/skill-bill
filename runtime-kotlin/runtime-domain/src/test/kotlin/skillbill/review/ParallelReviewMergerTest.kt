@@ -59,6 +59,31 @@ class ParallelReviewMergerTest {
     assertEquals(ParallelReviewSeverity.MAJOR, merged.severity)
     assertEquals("High", merged.confidence)
   }
+
+  @Test
+  fun `identical routing provenance stays stable across two aggregation runs`() {
+    val finding = ParallelReviewRawFinding(
+      ParallelReviewSeverity.MAJOR,
+      "High",
+      "Auth.kt:10",
+      "Token logged",
+      "bill-kotlin-code-review-security",
+      listOf(listOf("kotlin")),
+    )
+    val first = ParallelReviewMerger.merge(
+      ParallelReviewLaneResult("claude", listOf(finding)),
+      ParallelReviewLaneResult("codex", listOf(finding)),
+    )
+    val second = ParallelReviewMerger.merge(
+      ParallelReviewLaneResult("claude", listOf(finding)),
+      ParallelReviewLaneResult("codex", listOf(finding)),
+    )
+
+    assertEquals(first.findings.single().specialistSkillNames, second.findings.single().specialistSkillNames)
+    assertEquals(first.findings.single().originLayerChains, second.findings.single().originLayerChains)
+    assertEquals(first.findings.single().agentIds, second.findings.single().agentIds)
+    assertEquals(first.formattedOutput, second.formattedOutput)
+  }
   private fun laneResult(agentId: String, rawOutput: String) =
     ParallelReviewLaneResult(agentId = agentId, findings = ParallelReviewFindingParser.parse(rawOutput))
 

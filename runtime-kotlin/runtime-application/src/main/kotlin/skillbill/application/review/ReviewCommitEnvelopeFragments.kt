@@ -2,6 +2,8 @@ package skillbill.application.review
 
 import skillbill.review.context.model.ReviewChangedHunk
 import skillbill.review.context.model.ReviewCommitCoverageFact
+import skillbill.review.context.model.ReviewCommitLaneDecision
+import skillbill.review.context.model.ReviewCommitLaneRoutingMatrix
 import skillbill.review.context.model.ReviewCommitUnit
 import skillbill.review.context.model.ReviewLaneBundle
 
@@ -32,6 +34,22 @@ internal fun ReviewCommitCoverageFact.toEnvelope(): Map<String, Any?> = linkedMa
   "chain_verified" to chainVerified,
   "path_coverage_verified" to pathCoverageVerified,
   "degraded_reason" to degradedReason,
+)
+
+internal fun ReviewCommitLaneDecision.toEnvelope(): Map<String, Any?> = linkedMapOf(
+  "commit_sha" to commitSha,
+  "order_index" to orderIndex,
+  "lane" to lane,
+  "disposition" to disposition.name.lowercase(),
+  "reason" to reason.normalizeLineEndings(),
+  "signals" to signals.sorted(),
+)
+
+internal fun ReviewCommitLaneRoutingMatrix.toEnvelope(): Map<String, Any?> = linkedMapOf(
+  "routing_digest" to routingDigest,
+  "commit_shas" to commitShas,
+  "lanes" to lanes,
+  "decisions" to decisions.sortedWith(compareBy({ it.orderIndex }, { it.lane })).map { it.toEnvelope() },
 )
 
 internal fun ReviewLaneBundle.toEnvelope(): Map<String, Any?> = linkedMapOf(

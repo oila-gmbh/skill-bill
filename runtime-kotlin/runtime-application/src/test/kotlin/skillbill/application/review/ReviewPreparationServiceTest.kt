@@ -9,6 +9,7 @@ import skillbill.ports.review.ReviewLearningsPort
 import skillbill.ports.review.ReviewScopeResolverPort
 import skillbill.ports.review.ReviewStackRoutingPort
 import skillbill.ports.review.model.ReviewFactPorts
+import skillbill.ports.review.model.ReviewLaneSelection
 import skillbill.ports.review.model.ReviewScopeFacts
 import skillbill.ports.review.model.ReviewStackRoutingFacts
 import skillbill.review.context.ReviewContextEnvelopeValidator
@@ -17,6 +18,9 @@ import skillbill.review.context.model.ReviewBaselineUntrackedPolicy
 import skillbill.review.context.model.ReviewBuildTestFact
 import skillbill.review.context.model.ReviewChangedHunk
 import skillbill.review.context.model.ReviewCommitCoverageFact
+import skillbill.review.context.model.ReviewCommitLaneDecision
+import skillbill.review.context.model.ReviewCommitLaneDisposition
+import skillbill.review.context.model.ReviewCommitLaneRoutingMatrix
 import skillbill.review.context.model.ReviewCommitSource
 import skillbill.review.context.model.ReviewCommitUnit
 import skillbill.review.context.model.ReviewContextBudgetPolicy
@@ -31,6 +35,17 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+
+/** Every fixture commit is relevant to every selected lane unless a test says otherwise. */
+private fun focusedMatrix(scope: ReviewScopeFacts, lanes: List<String>) = ReviewCommitLaneRoutingMatrix(
+  scope.commitUnits.sortedBy { it.orderIndex }.map { it.commitSha },
+  lanes,
+  scope.commitUnits.sortedBy { it.orderIndex }.flatMap { unit ->
+    lanes.map {
+      ReviewCommitLaneDecision(unit.commitSha, unit.orderIndex, it, ReviewCommitLaneDisposition.FOCUSED, "focused")
+    }
+  },
+)
 
 class ReviewPreparationServiceTest {
   private val hunkA = ReviewChangedHunk("src/A.kt", 1, 1, 1, 2, "+alpha")
@@ -74,7 +89,10 @@ class ReviewPreparationServiceTest {
       record("learnings", learnings)
 
     override fun resolveBuildTestFacts(scope: ReviewScopeFacts) = record("facts", facts)
-    override fun decideLanes(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) = record("lanes", decisions)
+    override fun decideLanes(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) = record(
+      "lanes",
+      ReviewLaneSelection(decisions, focusedMatrix(scope, decisions.filter { it.included }.map { it.lane })),
+    )
   }
 
   private class RecordingValidator : ReviewContextEnvelopeValidator {
@@ -335,7 +353,7 @@ class ReviewPreparationServiceTest {
     )
     val crossLaneHunk = first.copy(assignedHunks = other.assignedHunks, assignedBundle = other.assignedBundle)
     assertTrue(
-      "packet-owned hunks" in assertFailsWith<InvalidReviewContextSchemaError> {
+      "focused-commit hunks" in assertFailsWith<InvalidReviewContextSchemaError> {
         service(ports()).validateAgainstPacket(prepared.packet, listOf(crossLaneHunk, other))
       }.message.orEmpty(),
     )

@@ -62,6 +62,8 @@ class FileSystemRepoLocalConfig : RepoLocalConfigPort {
         "max_assignment_expansions",
         "max_specialist_tool_calls",
         "max_specialist_model_turns",
+        "max_routing_analysis_pairs",
+        "max_routing_analysis_bytes",
         "provider_token_thresholds",
       ),
     )
@@ -78,6 +80,18 @@ class FileSystemRepoLocalConfig : RepoLocalConfigPort {
         maxAssignmentExpansions = assignmentExpansions(path, raw, defaults.maxAssignmentExpansions),
         maxSpecialistToolCalls = budgetInt(path, raw, "max_specialist_tool_calls", defaults.maxSpecialistToolCalls),
         maxSpecialistModelTurns = budgetInt(path, raw, "max_specialist_model_turns", defaults.maxSpecialistModelTurns),
+        maxRoutingAnalysisPairs = budgetInt(
+          path,
+          raw,
+          "max_routing_analysis_pairs",
+          defaults.maxRoutingAnalysisPairs,
+        ),
+        maxRoutingAnalysisBytes = budgetLong(
+          path,
+          raw,
+          "max_routing_analysis_bytes",
+          defaults.maxRoutingAnalysisBytes,
+        ),
         providerTokenThresholds = ProviderTokenThresholds(
           inputTokens = tokenLong(path, tokenRaw, "input_tokens", tokenDefaults.inputTokens),
           cachedInputTokens = tokenLong(path, tokenRaw, "cached_input_tokens", tokenDefaults.cachedInputTokens),

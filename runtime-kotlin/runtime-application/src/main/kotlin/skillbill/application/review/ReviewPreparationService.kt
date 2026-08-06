@@ -10,6 +10,7 @@ import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewBuildTestFact
 import skillbill.review.context.model.ReviewChangedHunk
+import skillbill.review.context.model.ReviewCommitLaneRoutingMatrix
 import skillbill.review.context.model.ReviewContextBudgetExceeded
 import skillbill.review.context.model.ReviewContextBudgetExceededException
 import skillbill.review.context.model.ReviewContextBudgetPolicy
@@ -29,6 +30,7 @@ private data class ResolvedReviewFacts(
   val learningsReferences: List<ReviewLearningsReference>,
   val buildTestFacts: List<ReviewBuildTestFact>,
   val laneDecisions: List<ReviewLaneDecision>,
+  val routingMatrix: ReviewCommitLaneRoutingMatrix,
 )
 
 class ReviewPreparationService(
@@ -42,9 +44,18 @@ class ReviewPreparationService(
     val matchedRules = ports.guidance.resolveMatchedRules(scope, routing)
     val learningsReferences = ports.learnings.resolveLearnings(scope, routing)
     val facts = ports.buildTestFacts.resolveBuildTestFacts(scope)
-    val laneDecisions = ports.laneSelection.decideLanes(scope, routing)
+    val selection = ports.laneSelection.decideLanes(scope, routing)
+    val laneDecisions = selection.decisions
 
-    val resolved = ResolvedReviewFacts(scope, routing, matchedRules, learningsReferences, facts, laneDecisions)
+    val resolved = ResolvedReviewFacts(
+      scope,
+      routing,
+      matchedRules,
+      learningsReferences,
+      facts,
+      laneDecisions,
+      selection.routingMatrix,
+    )
     val packet = composePacket(request, resolved)
     val assignments = composeAssignments(request, packet, laneDecisions)
     validateAgainstPacket(packet, assignments)
@@ -125,6 +136,7 @@ class ReviewPreparationService(
       changedHunks = resolved.scope.changedHunks,
       commitUnits = resolved.scope.commitUnits,
       coverageFact = resolved.scope.coverageFact,
+      routingMatrix = resolved.routingMatrix,
       reviewRevision = request.reviewRevision,
       laneDecisions = resolved.laneDecisions,
       matchedRules = resolved.matchedRules,
@@ -164,7 +176,6 @@ class ReviewPreparationService(
     laneDecisions: List<ReviewLaneDecision>,
   ): List<ReviewAssignment> {
     val packetDigest = packet.digest
-    val hunksByPath = packet.changedHunks.groupBy { it.path }
 
     /** The full commit-grouped projection of a lane's already-assigned hunks, in packet commit order. */
     fun laneBundle(laneHunkIds: Set<String>) = ReviewLaneBundle(
@@ -177,14 +188,17 @@ class ReviewPreparationService(
 
     return packet.selectedLanes.map { lane ->
       val decision = laneDecisions.first { it.lane == lane }
-      val lanePaths = decision.normalizedOwnedPaths.sorted()
-      val unowned = lanePaths.filterNot { it in packet.ownedPaths }
+      val unowned = decision.normalizedOwnedPaths.filterNot { it in packet.ownedPaths }
       if (unowned.isNotEmpty()) {
         reject(request.reviewId, "Lane '$lane' claims paths the packet does not own: ${unowned.sorted()}.")
       }
-      val laneHunkIds = lanePaths.flatMap { path -> hunksByPath[path].orEmpty().map { it.hunkId } }.sorted()
+      // Sparse routing narrows the lane to the commits it focused, so a path this lane owns
+      // contributes only the hunks the focused commits introduced there.
+      val laneHunkIds = packet.focusedHunkIds(decision).sorted()
+      val lanePaths = decision.normalizedOwnedPaths.sorted()
       ReviewAssignment(
         assignedBundle = laneBundle(laneHunkIds.toSet()),
+        laneRouting = packet.routingMatrix.decisionsFor(lane),
         reviewId = packet.reviewId,
         packetDigest = packetDigest,
         lane = lane,
@@ -222,6 +236,44 @@ class ReviewPreparationService(
     }
     if (assignment.assignedBundle.hunkIds.toSet() != assignment.assignedHunks.toSet()) {
       reject(label, "Assignment bundle does not cover exactly the assigned hunks for '${assignment.lane}'.")
+    }
+  }
+
+  /**
+   * Relevance was decided once, on the parent: a lane sees exactly the hunks its focused commits
+   * introduced under its owned paths. Claiming a skipped commit's hunk is a routing violation, not
+   * a widening a worker is allowed to make.
+   */
+  private fun rejectRoutingViolations(
+    packet: ReviewContextPacket,
+    assignment: ReviewAssignment,
+    expectedPaths: Set<String>,
+  ) {
+    val label = assignmentLabel(assignment)
+    val laneRouting = packet.routingMatrix.decisionsFor(assignment.lane)
+    if (assignment.laneRouting != laneRouting) {
+      reject(label, "Assignment lane routing differs from the packet routing matrix for '${assignment.lane}'.")
+    }
+    val focused = packet.routingMatrix.focusedCommits(assignment.lane).toSet()
+    val hunkOwners = packet.commitUnits.flatMap { unit -> unit.hunkIds.map { it to unit.commitSha } }.toMap()
+    val fromSkipped = assignment.assignedHunks.filter { hunkOwners[it] !in focused }
+    if (fromSkipped.isNotEmpty()) {
+      val commits = fromSkipped.mapNotNull { hunkOwners[it] }.distinct().sorted()
+      reject(
+        label,
+        "Assignment claims hunks from commits routing skipped for '${assignment.lane}': $commits.",
+      )
+    }
+    val expectedHunks = packet.focusedHunkIds(assignment.laneDecision)
+    if (assignment.assignedHunks.toSet() != expectedHunks) {
+      reject(label, "Assignment hunks differ from the focused-commit hunks routed to '${assignment.lane}'.")
+    }
+    val coveredPaths = packet.changedHunks.filter { it.hunkId in expectedHunks }.map { it.path }.toSet()
+    if (coveredPaths != expectedPaths) {
+      reject(
+        label,
+        "Assignment paths for '${assignment.lane}' are not exactly the paths its focused commits changed.",
+      )
     }
   }
 
@@ -276,13 +328,7 @@ class ReviewPreparationService(
     if (unownedHunks.isNotEmpty()) {
       reject(label, "Assignment claims hunk ids not owned by the packet: ${unownedHunks.sorted()}.")
     }
-    val expectedHunks = packet.changedHunks
-      .filter { it.path in expectedPaths }
-      .map { it.hunkId }
-      .toSet()
-    if (assignment.assignedHunks.toSet() != expectedHunks) {
-      reject(label, "Assignment hunks differ from the packet-owned hunks for '${assignment.lane}'.")
-    }
+    rejectRoutingViolations(packet, assignment, expectedPaths)
     val allowlist = packet.dependencyAllowlist.normalized.toSet()
     val escaping = assignment.dependencyAllowlist.normalized.filterNot { it in allowlist }
     if (escaping.isNotEmpty()) {

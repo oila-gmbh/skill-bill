@@ -34,6 +34,7 @@ fun ReviewContextPacket.toParentPacketEnvelope(): ReviewContextEnvelope = Review
       .map { it.toEnvelope() },
     "commit_units" to commitUnits.sortedBy { it.orderIndex }.map { it.toEnvelope() },
     "coverage_fact" to coverageFact.toEnvelope(),
+    "routing_matrix" to routingMatrix.toEnvelope(),
     "matched_rules" to matchedRules.sortedBy { it.ruleId }.map { it.toEnvelope() },
     "learnings_references" to learningsReferences.sortedBy { it.learningId }.map { it.toEnvelope() },
     "build_test_facts" to buildTestFacts.sortedWith(compareBy({ it.kind }, { it.command })).map { it.toEnvelope() },
@@ -59,6 +60,7 @@ fun ReviewAssignment.toAssignmentEnvelope(): ReviewContextEnvelope = ReviewConte
     "assigned_paths" to assignedPaths.sorted(),
     "assigned_hunks" to assignedHunks.sorted(),
     "assigned_bundle" to assignedBundle.toEnvelope(),
+    "lane_routing" to laneRouting.map { it.toEnvelope() },
     "criteria_references" to criteriaReferences.sorted(),
     "matched_rules" to matchedRules.sortedBy { it.ruleId }.map { it.toEnvelope() },
     "evidence_targets" to evidenceTargets.sortedBy { it.targetId }.map { it.toEnvelope() },
@@ -86,6 +88,7 @@ fun GovernedReviewLaunch.toLaunchEnvelope(
     "assigned_paths" to assignment.assignedPaths.sorted(),
     "assigned_hunks" to assignment.assignedHunks.sorted(),
     "assigned_commit_units" to assignedUnits().map { (unit, _) -> unit.toAssignedEnvelope() },
+    "lane_routing" to assignment.laneRouting.map { it.toEnvelope() },
     "coverage_fact" to packet.coverageFact.toEnvelope(),
     "assigned_hunk_bodies" to assignedUnits().flatMap { (unit, hunks) ->
       hunks.sortedWith(compareBy(ReviewChangedHunk::path, ReviewChangedHunk::newStart))

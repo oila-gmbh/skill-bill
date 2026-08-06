@@ -30,6 +30,9 @@ import skillbill.ports.review.model.ParallelReviewLaneRunResult
 import skillbill.ports.review.model.ResolvedReviewRubric
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
+import skillbill.review.context.model.REVIEW_ROUTING_ANALYSIS_PAIRS_BUDGET
+import skillbill.review.context.model.ReviewContextBudgetExceededException
+import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.model.ReviewRunLane
 import skillbill.scaffold.model.BaselineReviewCatalog
 import skillbill.scaffold.model.DeclaredFiles
@@ -912,6 +915,95 @@ class ParallelCodeReviewRunnerFailureTest {
       },
     )
   }
+
+  // AC-004, AC-007, AC-008: synthetic staged/unstaged scopes keep required coverage and drop clear
+  // irrelevant optional specialists before launch.
+  @Test
+  fun `sparse routing on a staged UI-only diff drops security and keeps the required baseline`() {
+    val launcher = ParallelSubtaskLauncher()
+    val pack = sparsePlatformManifest(
+      requiredArea = "architecture",
+      pathAreas = mapOf(
+        "ui" to listOf("ui/"),
+        "security" to listOf("auth/"),
+      ),
+    )
+    val runner = createRunner(
+      launcher,
+      RunnerFixtureConfig(
+        catalogGateway = stubCatalogGateway(listOf(pack)),
+        diffResolver = RecordingDiffResolver(default = diffFor("ui/Screen.kt")),
+      ),
+    )
+
+    runner.run(baseRequest(scope = ParallelReviewScope.STAGED))
+
+    val rubrics = launcher.requests.flatMap { request ->
+      Regex("## Resolved rubric: (\\S+)")
+        .findAll(request.skillRunRequest.promptOverride.orEmpty())
+        .map { it.groupValues[1] }
+        .toList()
+    }.toSet()
+    assertTrue("bill-kotlin-code-review-architecture" in rubrics, rubrics.toString())
+    assertTrue("bill-kotlin-code-review-ui" in rubrics, rubrics.toString())
+    assertFalse("bill-kotlin-code-review-security" in rubrics, rubrics.toString())
+  }
+
+  @Test
+  fun `sparse routing on an unstaged UI-only diff matches the staged lane selection`() {
+    val pack = sparsePlatformManifest(
+      requiredArea = "architecture",
+      pathAreas = mapOf(
+        "ui" to listOf("ui/"),
+        "security" to listOf("auth/"),
+      ),
+    )
+    fun launchedRubrics(scope: ParallelReviewScope): Set<String> {
+      val launcher = ParallelSubtaskLauncher()
+      createRunner(
+        launcher,
+        RunnerFixtureConfig(
+          catalogGateway = stubCatalogGateway(listOf(pack)),
+          diffResolver = RecordingDiffResolver(default = diffFor("ui/Screen.kt")),
+        ),
+      ).run(baseRequest(scope = scope))
+      return launcher.requests.flatMap { request ->
+        Regex("## Resolved rubric: (\\S+)")
+          .findAll(request.skillRunRequest.promptOverride.orEmpty())
+          .map { it.groupValues[1] }
+          .toList()
+      }.toSet()
+    }
+
+    assertEquals(launchedRubrics(ParallelReviewScope.STAGED), launchedRubrics(ParallelReviewScope.UNSTAGED))
+  }
+
+  // AC-010
+  @Test
+  fun `a parent routing-analysis budget breach fails loudly before launch`() {
+    val launcher = ParallelSubtaskLauncher()
+    val pack = sparsePlatformManifest(
+      requiredArea = "architecture",
+      pathAreas = mapOf(
+        "ui" to listOf("ui/"),
+        "security" to listOf("auth/"),
+      ),
+    )
+    val runner = createRunner(
+      launcher,
+      RunnerFixtureConfig(
+        catalogGateway = stubCatalogGateway(listOf(pack)),
+        diffResolver = RecordingDiffResolver(default = diffFor("ui/Screen.kt")),
+        budget = ReviewContextBudgetPolicy.DEFAULT.copy(maxRoutingAnalysisPairs = 1),
+      ),
+    )
+
+    val error = assertFailsWith<ReviewContextBudgetExceededException> {
+      runner.run(baseRequest(scope = ParallelReviewScope.STAGED))
+    }
+    assertEquals(REVIEW_ROUTING_ANALYSIS_PAIRS_BUDGET, error.outcome.budgetKind)
+    assertTrue(launcher.requests.isEmpty(), "routing budget breach must not launch specialists")
+  }
 }
 private data class RunnerFixtureConfig(
   val catalogGateway: ScaffoldCatalogGateway = stubCatalogGateway(),
@@ -922,6 +1014,7 @@ private data class RunnerFixtureConfig(
   },
   val installedReviewCatalog: InstalledReviewCatalogPort = InstalledReviewCatalogPort.NONE,
   val database: RecordingReviewDatabase = RecordingReviewDatabase(),
+  val budget: ReviewContextBudgetPolicy = ReviewContextBudgetPolicy.DEFAULT,
 )
 
 private fun runner(
@@ -957,7 +1050,7 @@ private fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFixt
     parallelLaneRunner = config.parallelLaneRunner,
     repoLocalConfig = object : RepoLocalConfigPort {
       override fun readRepoLocalConfig(request: skillbill.ports.config.model.ReadRepoLocalConfigRequest) =
-        ReadRepoLocalConfigResult(RepoLocalConfig.defaults())
+        ReadRepoLocalConfigResult(RepoLocalConfig.defaults().copy(reviewContextBudget = config.budget))
     },
     reviewContextEnvelopeValidator = object : skillbill.review.context.ReviewContextEnvelopeValidator {
       override fun validate(envelope: Map<String, Any?>, sourceLabel: String) = Unit
@@ -1177,6 +1270,31 @@ private fun platformManifest(slug: String, strongSignals: List<String>) = Platfo
     "testing" to ReviewLaneCondition(path = listOf("Test.kt")),
   ),
 )
+
+private fun sparsePlatformManifest(
+  requiredArea: String,
+  pathAreas: Map<String, List<String>>,
+  slug: String = "kotlin",
+  strongSignals: List<String> = listOf("*.kt"),
+): PlatformManifest {
+  val areas = listOf(requiredArea) + pathAreas.keys.toList()
+  return PlatformManifest(
+    slug = slug,
+    packRoot = Path.of("platform-packs/$slug"),
+    contractVersion = "1.2",
+    routingSignals = RoutingSignals(strong = strongSignals, tieBreakers = emptyList()),
+    declaredCodeReviewAreas = areas,
+    declaredFiles = DeclaredFiles(
+      baseline = Path.of("content.md"),
+      areas = areas.associateWith { Path.of("$it.md") },
+    ),
+    areaMetadata = emptyMap(),
+    laneConditions = buildMap {
+      put(requiredArea, ReviewLaneCondition(required = true))
+      pathAreas.forEach { (area, paths) -> put(area, ReviewLaneCondition(path = paths)) }
+    },
+  )
+}
 
 private fun fallbackManifest(): PlatformManifest = platformManifest("generic", listOf("fallback-only")).copy(
   routingSignals = RoutingSignals(

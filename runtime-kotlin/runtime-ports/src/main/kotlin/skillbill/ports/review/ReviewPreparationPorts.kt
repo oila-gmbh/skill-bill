@@ -1,9 +1,9 @@
 package skillbill.ports.review
 
+import skillbill.ports.review.model.ReviewLaneSelection
 import skillbill.ports.review.model.ReviewScopeFacts
 import skillbill.ports.review.model.ReviewStackRoutingFacts
 import skillbill.review.context.model.ReviewBuildTestFact
-import skillbill.review.context.model.ReviewLaneDecision
 import skillbill.review.context.model.ReviewLearningsReference
 import skillbill.review.context.model.ReviewRuleReference
 
@@ -28,5 +28,5 @@ interface ReviewBuildTestFactsPort {
 }
 
 interface ReviewLaneSelectionPort {
-  fun decideLanes(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts): List<ReviewLaneDecision>
+  fun decideLanes(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts): ReviewLaneSelection
 }

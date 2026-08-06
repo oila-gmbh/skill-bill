@@ -53,8 +53,19 @@ class ReviewCommitEvidenceTest {
     changedHunks = hunks,
     commitUnits = units,
     coverageFact = coverage,
+    routingMatrix = focusedMatrix(units, listOf("security")),
     reviewRevision = ReviewRevision("rvs", 1),
     laneDecisions = listOf(lane("security", paths)),
+  )
+
+  private fun focusedMatrix(units: List<ReviewCommitUnit>, lanes: List<String>) = ReviewCommitLaneRoutingMatrix(
+    units.sortedBy { it.orderIndex }.map { it.commitSha },
+    lanes,
+    units.sortedBy { it.orderIndex }.flatMap { unit ->
+      lanes.map {
+        ReviewCommitLaneDecision(unit.commitSha, unit.orderIndex, it, ReviewCommitLaneDisposition.FOCUSED, "focused")
+      }
+    },
   )
 
   private val twoCommits = listOf(
@@ -224,6 +235,7 @@ class ReviewCommitEvidenceTest {
     assignedPaths = listOf("src/A.kt", "src/B.kt"),
     assignedHunks = listOf(hunkA.hunkId, hunkB.hunkId),
     assignedBundle = bundle,
+    laneRouting = built.routingMatrix.decisionsFor("security"),
     reviewRevision = built.reviewRevision,
     laneDecision = built.laneDecisions.single(),
   )

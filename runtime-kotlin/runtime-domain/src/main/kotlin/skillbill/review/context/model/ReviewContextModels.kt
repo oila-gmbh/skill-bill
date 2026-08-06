@@ -12,6 +12,11 @@ const val REVIEW_BUDGET_REGRESSION: String = "budget_regression"
 
 const val REVIEW_RULE_EXCERPT_MAX_CHARS: Int = 2_000
 
+/** Budget kinds for the parent-side routing analysis, reported on a loud routing-budget breach. */
+const val REVIEW_ROUTING_ANALYSIS_PAIRS_BUDGET: String = "routing_analysis_pairs"
+
+const val REVIEW_ROUTING_ANALYSIS_BYTES_BUDGET: String = "routing_analysis_bytes"
+
 enum class ResolvedReviewExecutionMode { INLINE, DELEGATED }
 
 /** A resolved depth is always a concrete tier, so it maps back onto the requested-mode vocabulary. */
@@ -189,6 +194,102 @@ data class ReviewLaneDecision(
       .let { canonicalFields(*it.toTypedArray()) }
 }
 
+const val REVIEW_ROUTING_REASON_MAX_CHARS: Int = 600
+
+/**
+ * A commit/lane pair has exactly two final states. There is deliberately no deferred `candidate`
+ * state: relevance is decided once, on the parent, and no worker re-decides it downstream.
+ */
+enum class ReviewCommitLaneDisposition { FOCUSED, SKIPPED }
+
+/** One final, auditable routing decision for a single (commit unit, lane) pair. */
+data class ReviewCommitLaneDecision(
+  val commitSha: String,
+  val orderIndex: Int,
+  val lane: String,
+  val disposition: ReviewCommitLaneDisposition,
+  val reason: String,
+  val signals: List<String> = emptyList(),
+) {
+  init {
+    require(commitSha.isNotBlank()) { "Commit/lane decision commit identity must not be blank." }
+    require(orderIndex >= 0) { "Commit/lane decision order index cannot be negative." }
+    require(lane.isNotBlank()) { "Commit/lane decision lane must not be blank." }
+    require(reason.isNotBlank()) {
+      "Commit/lane decision '$commitSha'/'$lane' must carry a non-blank reason; a skip with no reason is unfalsifiable."
+    }
+    require(reason.length <= REVIEW_ROUTING_REASON_MAX_CHARS) {
+      "Commit/lane decision reason exceeds the bounded limit of $REVIEW_ROUTING_REASON_MAX_CHARS characters."
+    }
+    require(signals.distinct().size == signals.size) { "Commit/lane decision signals must be unique." }
+    require(signals.all(String::isNotBlank)) { "Commit/lane decision signals must not be blank." }
+  }
+
+  val focused: Boolean get() = disposition == ReviewCommitLaneDisposition.FOCUSED
+
+  val canonical: String get() = canonicalFields(
+    commitSha,
+    orderIndex,
+    lane,
+    disposition.name,
+    reason.replace("\r\n", "\n"),
+    canonicalFields(*signals.sorted().toTypedArray()),
+  )
+}
+
+/**
+ * The complete commit-by-lane routing result: every analyzed pair carries one final disposition,
+ * so a lane's assignment is derivable from focused commits alone with nothing left to re-decide.
+ */
+data class ReviewCommitLaneRoutingMatrix(
+  val commitShas: List<String>,
+  val lanes: List<String>,
+  val decisions: List<ReviewCommitLaneDecision>,
+) {
+  init {
+    require(commitShas.isNotEmpty()) { "A routing matrix must analyze at least one commit unit." }
+    require(commitShas.distinct().size == commitShas.size) { "Routing matrix commit identities must be unique." }
+    require(lanes.isNotEmpty()) { "A routing matrix must analyze at least one lane." }
+    require(lanes.distinct().size == lanes.size) { "Routing matrix lanes must be unique." }
+    val pairs = decisions.map { it.commitSha to it.lane }
+    require(pairs.distinct().size == pairs.size) { "Routing matrix carries a duplicate commit/lane decision." }
+    val expected = commitShas.flatMap { sha -> lanes.map { sha to it } }.toSet()
+    val missing = expected - pairs.toSet()
+    require(missing.isEmpty()) {
+      "Routing matrix is missing a final decision for ${missing.size} commit/lane pair(s); every pair must be decided."
+    }
+    val unknown = pairs.toSet() - expected
+    require(unknown.isEmpty()) { "Routing matrix decides commit/lane pairs it does not analyze: $unknown." }
+    val orderBySha = commitShas.withIndex().associate { (index, sha) -> sha to index }
+    require(decisions.all { it.orderIndex == orderBySha.getValue(it.commitSha) }) {
+      "Routing matrix decision order index diverges from the analyzed commit order."
+    }
+  }
+
+  /** The lane's focused commit identities in packet commit order. */
+  fun focusedCommits(lane: String): List<String> = decisions
+    .filter { it.lane == lane && it.focused }
+    .sortedBy { it.orderIndex }
+    .map { it.commitSha }
+
+  fun decisionsFor(lane: String): List<ReviewCommitLaneDecision> = decisions
+    .filter { it.lane == lane }
+    .sortedBy { it.orderIndex }
+
+  val focusedPairCount: Int get() = decisions.count { it.focused }
+  val analyzedPairCount: Int get() = decisions.size
+
+  val canonical: String get() = canonicalFields(
+    canonicalFields(*commitShas.toTypedArray()),
+    canonicalFields(*lanes.toTypedArray()),
+    canonicalFields(
+      *decisions.sortedWith(compareBy({ it.orderIndex }, { it.lane })).map { it.canonical }.toTypedArray(),
+    ),
+  )
+
+  val routingDigest: String get() = sha256(canonical)
+}
+
 data class ReviewExpansionRecord(
   val expansionId: String,
   val assignmentDigest: String,
@@ -241,6 +342,8 @@ data class ReviewContextBudgetPolicy(
   val maxAssignmentExpansions: Int = 3,
   val maxSpecialistToolCalls: Int = 40,
   val maxSpecialistModelTurns: Int = 24,
+  val maxRoutingAnalysisPairs: Int = 4_096,
+  val maxRoutingAnalysisBytes: Long = 33_554_432,
   val providerTokenThresholds: ProviderTokenThresholds = ProviderTokenThresholds(),
 ) {
   init {
@@ -255,6 +358,8 @@ data class ReviewContextBudgetPolicy(
     require(maxAssignmentExpansions >= 0) { "Assignment expansions cannot be negative." }
     require(maxSpecialistToolCalls > 0) { "Specialist tool-call budget must be positive." }
     require(maxSpecialistModelTurns > 0) { "Specialist model-turn budget must be positive." }
+    require(maxRoutingAnalysisPairs > 0) { "Routing-analysis commit/lane pair budget must be positive." }
+    require(maxRoutingAnalysisBytes > 0) { "Routing-analysis hunk-material byte budget must be positive." }
     require(maxEvidenceResultBytes <= maxLaneEvidenceBytes) {
       "Evidence-result bytes cannot exceed cumulative lane-evidence bytes."
     }
@@ -321,6 +426,8 @@ data class ReviewAssignment(
   val assignedPaths: List<String>,
   val assignedHunks: List<String>,
   val assignedBundle: ReviewLaneBundle = ReviewLaneBundle.EMPTY,
+  /** This lane's column of the routing matrix: why each commit was focused into or skipped for it. */
+  val laneRouting: List<ReviewCommitLaneDecision> = emptyList(),
   val criteriaReferences: List<String> = emptyList(),
   val matchedRules: List<ReviewRuleReference> = emptyList(),
   val evidenceTargets: List<ReviewEvidenceTarget> = emptyList(),
@@ -340,6 +447,21 @@ data class ReviewAssignment(
     // here the bundle can only be checked against the assignment's own hunk surface.
     require(assignedBundle.hunkIds.all { it in assignedHunks }) {
       "Assignment '$lane' bundle attributes hunks that are not assigned to the lane."
+    }
+    require(laneRouting.all { it.lane == lane }) { "Assignment '$lane' carries routing for a different lane." }
+    require(laneRouting.map { it.commitSha }.distinct().size == laneRouting.size) {
+      "Assignment '$lane' routing repeats a commit."
+    }
+    require(laneRouting.map { it.orderIndex }.zipWithNext().all { (previous, next) -> previous < next }) {
+      "Assignment '$lane' routing must preserve packet commit order."
+    }
+    // A focused commit contributes no bundle entry when it owns no hunk under the lane's paths, so
+    // the bundle is a subset here; exact equality is asserted where the packet's hunks are in hand.
+    val focusedCommits = laneRouting.filter { it.focused }.map { it.commitSha }.toSet()
+    val skipped = assignedBundle.entries.map { it.commitSha }
+      .filterNot { laneRouting.isEmpty() || it in focusedCommits }
+    require(skipped.isEmpty()) {
+      "Assignment '$lane' claims hunks from commits routing skipped for the lane: ${skipped.sorted()}."
     }
     require(laneDecision.lane == lane) { "Lane decision '${laneDecision.lane}' does not describe lane '$lane'." }
     require(laneDecision.included) { "Assignments exist only for included lanes; '$lane' is excluded." }
@@ -384,6 +506,7 @@ data class ReviewAssignment(
         canonicalFields(*assignedPaths.sorted().toTypedArray()),
         canonicalFields(*assignedHunks.sorted().toTypedArray()),
         assignedBundle.canonical,
+        canonicalFields(*laneRouting.sortedBy { it.orderIndex }.map { it.canonical }.toTypedArray()),
         canonicalFields(*criteriaReferences.sorted().toTypedArray()),
         canonicalFields(*matchedRules.map { it.canonical }.sorted().toTypedArray()),
         canonicalFields(*evidenceTargets.map { it.canonical }.sorted().toTypedArray()),
@@ -617,6 +740,7 @@ data class ReviewContextPacket(
   val changedHunks: List<ReviewChangedHunk>,
   val commitUnits: List<ReviewCommitUnit>,
   val coverageFact: ReviewCommitCoverageFact,
+  val routingMatrix: ReviewCommitLaneRoutingMatrix,
   val reviewRevision: ReviewRevision,
   val laneDecisions: List<ReviewLaneDecision>,
   val matchedRules: List<ReviewRuleReference> = emptyList(),
@@ -666,6 +790,34 @@ data class ReviewContextPacket(
     val targetHunks = evidenceTargets.flatMap { it.hunkIds }.filterNot { it in ownedHunks }
     require(targetHunks.isEmpty()) { "Evidence targets name hunk ids the packet does not own." }
     requireCommitEvidence(ownedHunks)
+    requireRoutingMatrix()
+  }
+
+  /**
+   * Sparse routing decides lane selection: a lane survives exactly when it focused at least one
+   * commit, so a selected lane with no focused commit — or a dropped lane that focused one — is a
+   * routing/selection contradiction rather than a recoverable state.
+   */
+  private fun requireRoutingMatrix() {
+    val orderedShas = commitUnits.sortedBy { it.orderIndex }.map { it.commitSha }
+    require(routingMatrix.commitShas == orderedShas) {
+      "Routing matrix commit order does not match the packet commit sequence."
+    }
+    val unanalyzed = selectedLanes.filterNot { it in routingMatrix.lanes }
+    require(unanalyzed.isEmpty()) { "Selected lanes were never routed: ${unanalyzed.sorted()}." }
+    val unfocused = selectedLanes.filter { routingMatrix.focusedCommits(it).isEmpty() }
+    require(unfocused.isEmpty()) {
+      "Selected lanes focused no commit, so they would review nothing: ${unfocused.sorted()}."
+    }
+  }
+
+  /** The hunks a lane may claim: its owned paths restricted to the commits routing focused for it. */
+  fun focusedHunkIds(laneDecision: ReviewLaneDecision): Set<String> {
+    val focused = routingMatrix.focusedCommits(laneDecision.lane).toSet()
+    val ownedPaths = laneDecision.normalizedOwnedPaths.toSet()
+    return commitUnits.filter { it.commitSha in focused }
+      .flatMap { unit -> unit.canonicalHunks.filter { it.path in ownedPaths }.map { it.hunkId } }
+      .toSet()
   }
 
   @Suppress("CyclomaticComplexMethod")
@@ -751,6 +903,7 @@ data class ReviewContextPacket(
     commitUnits.sortedBy { it.orderIndex }
       .map { it.canonicalValue() }.let { canonicalFields(*it.toTypedArray()) },
     coverageFact.canonical,
+    routingMatrix.canonical,
     canonicalFields(*matchedRules.map { it.canonical }.sorted().toTypedArray()),
     canonicalFields(*learningsReferences.map { it.canonical }.sorted().toTypedArray()),
     canonicalFields(*buildTestFacts.map { it.canonical }.sorted().toTypedArray()),
@@ -798,12 +951,14 @@ data class GovernedReviewLaunch(
     }
     val unownedHunks = assignment.assignedHunks.filterNot { it in packet.ownedHunkIds }
     require(unownedHunks.isEmpty()) { "Launch claims hunk ids the packet does not own." }
-    val expectedHunks = packet.changedHunks
-      .filter { it.path in packetDecision.normalizedOwnedPaths }
-      .map { it.hunkId }
-      .toSet()
+    // Sparse routing owns the expected surface: a lane sees its owned paths only in the commits it
+    // focused, never every hunk that ever touched those paths.
+    val expectedHunks = packet.focusedHunkIds(packetDecision)
     require(assignment.assignedHunks.toSet() == expectedHunks) {
-      "Launch hunks differ from the packet-owned hunks for the lane."
+      "Launch hunks differ from the focused-commit hunks the packet routed to the lane."
+    }
+    require(assignment.laneRouting == packet.routingMatrix.decisionsFor(assignment.lane)) {
+      "Launch lane routing differs from the packet routing matrix for lane '${assignment.lane}'."
     }
     require(assignment.dependencyAllowlist.normalized.all { it in packet.dependencyAllowlist.normalized }) {
       "Launch dependency allowlist escapes the packet allowlist."
@@ -889,6 +1044,13 @@ data class GovernedReviewLaunch(
       appendLine("    subject: ${structuredString(unit.subject.replace("\r\n", "\n"))}")
       appendLine("    order_index: ${unit.orderIndex}")
       appendLine("    source: ${unit.source.name.lowercase()}")
+    }
+    appendLine("lane_routing:")
+    assignment.laneRouting.forEach { decision ->
+      appendLine("  - commit_sha: ${structuredString(decision.commitSha)}")
+      appendLine("    order_index: ${decision.orderIndex}")
+      appendLine("    disposition: ${decision.disposition.name.lowercase()}")
+      appendLine("    reason: ${structuredString(decision.reason)}")
     }
     appendLine("assigned_hunk_bodies:")
     projectedUnits.forEach { (unit, hunks) ->
