@@ -201,10 +201,9 @@ class ParallelCodeReviewRunner(
     val commitSequence = ReviewCommitSequenceResolver(diffResolver).resolve(
       scope = request.scope,
       repoRoot = request.repoRoot,
-      baseRevision = baseRevision,
-      headRevision = headRevision,
+      range = ReviewCommitRange(baseRevision, headRevision),
       aggregate = evidence,
-      suppliedDiff = request.suppliedDiff != null || request.suppliedDiffPath != null,
+      suppliedDiff = hasSuppliedDiff(request),
     )
     return ParallelReviewPreparationCompiler.compile(
       input = ParallelReviewPreparationInput(
@@ -269,16 +268,41 @@ class ParallelCodeReviewRunner(
    * fact, and the aggregate delta and the sequence are guaranteed to span the same range.
    */
   private fun resolveReviewRevisions(request: ParallelCodeReviewRequest): Pair<String, String> {
-    val head = canonicalRevision(request.headRevision ?: "HEAD", request.repoRoot)
-    val base = request.baseRevision?.let { canonicalRevision(it, request.repoRoot) } ?: when (request.scope) {
-      ParallelReviewScope.BRANCH -> detectBranchBase(request.repoRoot)
-      ParallelReviewScope.PR -> detectPrBase(request.repoRoot)
-      else -> head
-    }
+    val (base, head) = if (spansCommitRange(request)) canonicalRange(request) else declaredRange(request)
     if (base.isBlank() || head.isBlank()) {
       throw DiffResolutionException("Review base and head revisions must resolve to non-blank immutable identities.")
     }
     return base to head
+  }
+
+  /**
+   * Only a range scope without an exact supplied diff derives its delta from a Git revision range.
+   * Canonicalizing anywhere else would shell out for labels nothing compares, and would fail a
+   * supplied-diff or working-tree review whose declared revisions are not commits in this checkout.
+   */
+  private fun spansCommitRange(request: ParallelCodeReviewRequest): Boolean = !hasSuppliedDiff(request) &&
+    (request.scope == ParallelReviewScope.BRANCH || request.scope == ParallelReviewScope.PR)
+
+  private fun hasSuppliedDiff(request: ParallelCodeReviewRequest): Boolean =
+    request.suppliedDiff != null || request.suppliedDiffPath != null
+
+  private fun canonicalRange(request: ParallelCodeReviewRequest): Pair<String, String> {
+    val head = canonicalRevision(request.headRevision ?: HEAD_REVISION, request.repoRoot)
+    val base = request.baseRevision?.let { canonicalRevision(it, request.repoRoot) } ?: when (request.scope) {
+      ParallelReviewScope.PR -> detectPrBase(request.repoRoot)
+      else -> detectBranchBase(request.repoRoot)
+    }
+    return base to head
+  }
+
+  /**
+   * A working-tree review still pins the commit its delta was taken against; an exact supplied diff
+   * has no repository range to pin and must not reach for Git at all.
+   */
+  private fun declaredRange(request: ParallelCodeReviewRequest): Pair<String, String> {
+    val head = request.headRevision
+      ?: if (hasSuppliedDiff(request)) HEAD_REVISION else canonicalRevision(HEAD_REVISION, request.repoRoot)
+    return (request.baseRevision ?: head) to head
   }
 
   private fun canonicalRevision(revision: String, repoRoot: Path): String =
@@ -708,6 +732,7 @@ class ParallelCodeReviewRunner(
     const val STDERR_EXCERPT_MAX_LENGTH = 120
     const val MAX_SUPPLIED_DIFF_BYTES = 1_000_000L
     const val FIRST_SOURCE_LINE = 1
+    const val HEAD_REVISION = "HEAD"
   }
 
   private data class StackDetection(

@@ -107,6 +107,7 @@ fun GovernedReviewLaunch.toLaunchEnvelope(
     "budget" to budget.toEnvelope(),
   ),
 )
+
 /** The lane's assigned units in packet commit order, each with the hunk bodies it owns. */
 private fun GovernedReviewLaunch.assignedUnits(): List<Pair<ReviewCommitUnit, List<ReviewChangedHunk>>> {
   val hunksById = packet.changedHunks.associateBy { it.hunkId }

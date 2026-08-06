@@ -13,6 +13,27 @@ internal data class ResolvedCommitSequence(
   val coverageFact: ReviewCommitCoverageFact,
 )
 
+/** Base and head always travel together; naming the pair keeps a range from being split or swapped. */
+internal data class ReviewCommitRange(val baseRevision: String, val headRevision: String) {
+  val span: String get() = "$baseRevision..$headRevision"
+}
+
+/**
+ * Ordered per-commit units built from each commit's incremental diff. Reuses the single record
+ * parser, so malformed records fail loudly here exactly as they do for an aggregate diff. An
+ * empty commit yields a zero-hunk unit rather than vanishing from the sequence.
+ */
+internal fun parseCommitUnits(commits: List<RawCommitDiff>): List<ReviewCommitUnit> =
+  commits.mapIndexed { index, commit ->
+    ReviewCommitUnit.ofCommit(
+      commitSha = commit.commitSha,
+      parentSha = commit.parentSha,
+      subject = commit.subject,
+      orderIndex = index,
+      hunks = if (commit.diff.isBlank()) emptyList() else ReviewDiffEvidence.parse(commit.diff).hunks,
+    )
+  }
+
 /**
  * Resolves the ordered commit sequence a review packet is built from. All Git access stays here in
  * the parent, behind the existing [DiffResolverPort] seam; workers gain no Git capability.
@@ -21,8 +42,7 @@ internal class ReviewCommitSequenceResolver(private val diffResolver: DiffResolv
   fun resolve(
     scope: ParallelReviewScope,
     repoRoot: Path,
-    baseRevision: String,
-    headRevision: String,
+    range: ReviewCommitRange,
     aggregate: ReviewDiffEvidence,
     suppliedDiff: Boolean,
   ): ResolvedCommitSequence {
@@ -33,26 +53,37 @@ internal class ReviewCommitSequenceResolver(private val diffResolver: DiffResolv
       else -> null
     }
     if (syntheticSource != null) {
-      return synthetic(syntheticSource, aggregate, baseRevision, headRevision, "non-commit review scope")
+      return synthetic(syntheticSource, aggregate, range, "non-commit review scope")
     }
-    val shas = revList(repoRoot, baseRevision, headRevision)
+    val shas = revList(repoRoot, range)
     if (shas.isEmpty()) {
       // A PR whose commits are not present locally is a declared synthetic source, never a fabricated chain.
       return synthetic(
         ReviewCommitSource.SYNTHETIC_AGGREGATE_PR_DIFF,
         aggregate,
-        baseRevision,
-        headRevision,
-        "git enumerated no commits for $baseRevision..$headRevision in the local object store",
+        range,
+        "git enumerated no commits for ${range.span} in the local object store",
       )
     }
-    val units = ReviewDiffEvidence.parseCommitUnits(shas.map { readCommit(repoRoot, it, baseRevision) })
-    verifyCoverage(units, aggregate, baseRevision, headRevision)
+    val units = parseCommitUnits(shas.map { readCommit(repoRoot, it, range.baseRevision) })
+    if (units.first().parentSha != range.baseRevision) {
+      // Once main has been merged into the branch, the first-parent walk starts at the original
+      // branch point rather than the merge base, so the sequence cannot own the whole delta. That
+      // is ordinary topology, not corruption: declare the degradation instead of aborting the review.
+      return synthetic(
+        ReviewCommitSource.SYNTHETIC_AGGREGATE_PR_DIFF,
+        aggregate,
+        range,
+        "the first-parent sequence for ${range.span} starts at '${units.first().parentSha}', " +
+          "not the review base; commit attribution would omit merged-in history",
+      )
+    }
+    verifyCoverage(units, aggregate, range)
     return ResolvedCommitSequence(
       units,
       ReviewCommitCoverageFact(
-        baseRevision,
-        headRevision,
+        range.baseRevision,
+        range.headRevision,
         units.size,
         chainVerified = true,
         pathCoverageVerified = true,
@@ -63,14 +94,13 @@ internal class ReviewCommitSequenceResolver(private val diffResolver: DiffResolv
   private fun synthetic(
     source: ReviewCommitSource,
     aggregate: ReviewDiffEvidence,
-    baseRevision: String,
-    headRevision: String,
+    range: ReviewCommitRange,
     reason: String,
   ) = ResolvedCommitSequence(
-    listOf(ReviewDiffEvidence.syntheticUnit(source, aggregate.hunks)),
+    listOf(ReviewCommitUnit.synthetic(source, aggregate.hunks)),
     ReviewCommitCoverageFact(
-      baseRevision = baseRevision,
-      headRevision = headRevision,
+      baseRevision = range.baseRevision,
+      headRevision = range.headRevision,
       commitCount = 1,
       chainVerified = false,
       pathCoverageVerified = true,
@@ -82,12 +112,10 @@ internal class ReviewCommitSequenceResolver(private val diffResolver: DiffResolv
    * A null result is a failed git invocation, never an absent-commit degradation: reporting it as
    * the latter would attach a false degraded_reason to a packet whose sequence was simply unread.
    */
-  private fun revList(repoRoot: Path, baseRevision: String, headRevision: String): List<String> {
+  private fun revList(repoRoot: Path, range: ReviewCommitRange): List<String> {
     val output = diffResolver
-      .runProcess(listOf("git", "rev-list", "--first-parent", "--reverse", "$baseRevision..$headRevision"), repoRoot)
-      ?: throw DiffResolutionException(
-        "Could not enumerate the commit sequence for $baseRevision..$headRevision.",
-      )
+      .runProcess(listOf("git", "rev-list", "--first-parent", "--reverse", range.span), repoRoot)
+      ?: throw DiffResolutionException("Could not enumerate the commit sequence for ${range.span}.")
     return output.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList()
   }
 
@@ -107,38 +135,32 @@ internal class ReviewCommitSequenceResolver(private val diffResolver: DiffResolv
    * A checked chain-and-ownership property, never textual concatenation equality: every path the
    * authoritative base-to-head delta touches is attributable to some commit in the sequence.
    */
-  private fun verifyCoverage(
+  private fun verifyCoverage(units: List<ReviewCommitUnit>, aggregate: ReviewDiffEvidence, range: ReviewCommitRange) {
+    coverageViolation(units, aggregate, range)?.let { throw DiffResolutionException(it) }
+  }
+
+  private fun coverageViolation(
     units: List<ReviewCommitUnit>,
     aggregate: ReviewDiffEvidence,
-    baseRevision: String,
-    headRevision: String,
-  ) {
-    if (units.first().parentSha != baseRevision || units.last().commitSha != headRevision) {
-      throw DiffResolutionException(
-        "Resolved commit sequence does not span $baseRevision..$headRevision; the review delta would be incomplete.",
-      )
-    }
+    range: ReviewCommitRange,
+  ): String? {
     val shas = units.map { it.commitSha }
-    if (shas.distinct().size != shas.size) {
-      throw DiffResolutionException("Resolved commit sequence lists the same commit more than once.")
-    }
-    units.zipWithNext().forEach { (previous, next) ->
-      if (next.parentSha != previous.commitSha) {
-        throw DiffResolutionException(
-          "Resolved commit sequence is broken between '${previous.commitSha}' and '${next.commitSha}'.",
-        )
-      }
-    }
+    val brokenLink = units.zipWithNext().firstOrNull { (previous, next) -> next.parentSha != previous.commitSha }
     val hunkIds = units.flatMap { it.hunkIds }
-    if (hunkIds.distinct().size != hunkIds.size) {
-      throw DiffResolutionException("Resolved commit sequence attributes the same hunk to more than one commit.")
-    }
-    val uncovered = aggregate.hunks.map { it.path }.toSet() - units.flatMap { unit -> unit.hunks.map { it.path } }
-      .toSet()
-    if (uncovered.isNotEmpty()) {
-      throw DiffResolutionException(
-        "Resolved commit sequence omits paths the base-to-head delta changes: ${uncovered.sorted()}.",
-      )
+    val uncovered = aggregate.hunks.map { it.path }.toSet() -
+      units.flatMap { unit -> unit.hunks.map { it.path } }.toSet()
+    return when {
+      units.last().commitSha != range.headRevision ->
+        "Resolved commit sequence does not span ${range.span}; the review delta would be incomplete."
+      shas.distinct().size != shas.size -> "Resolved commit sequence lists the same commit more than once."
+      brokenLink != null ->
+        "Resolved commit sequence is broken between '${brokenLink.first.commitSha}' and " +
+          "'${brokenLink.second.commitSha}'."
+      hunkIds.distinct().size != hunkIds.size ->
+        "Resolved commit sequence attributes the same hunk to more than one commit."
+      uncovered.isNotEmpty() ->
+        "Resolved commit sequence omits paths the base-to-head delta changes: ${uncovered.sorted()}."
+      else -> null
     }
   }
 }

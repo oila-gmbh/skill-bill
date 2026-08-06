@@ -53,7 +53,11 @@ class ReviewContextModelsTest {
     ReviewCommitUnit.synthetic(ReviewCommitSource.SYNTHETIC_WORKING_TREE, hunks)
 
   private fun fact(count: Int = 1) = ReviewCommitCoverageFact(
-    "base", "head", count, chainVerified = false, pathCoverageVerified = true,
+    "base",
+    "head",
+    count,
+    chainVerified = false,
+    pathCoverageVerified = true,
     degradedReason = "synthetic working-tree unit",
   )
 
@@ -102,7 +106,8 @@ class ReviewContextModelsTest {
 
   @Test fun `assignment digest is stable`() {
     fun value(paths: List<String>, criteria: List<String>) = ReviewAssignment(
-      "review", "a".repeat(64), "security", "base", "head", paths, listOf("hunk"), criteria,
+      "review", "a".repeat(64), "security", "base", "head", paths, listOf("hunk"),
+      criteriaReferences = criteria,
       reviewRevision = revision(), laneDecision = lane("security", paths),
     )
     assertEquals(

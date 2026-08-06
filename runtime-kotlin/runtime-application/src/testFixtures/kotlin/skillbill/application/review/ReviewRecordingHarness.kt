@@ -122,7 +122,13 @@ fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): Parall
     diffResolver = object : DiffResolverPort {
       override fun runProcess(args: List<String>, workDir: Path): String? {
         recorder.diffCommands += args
-        return config.diff
+        return when (args.getOrNull(1)) {
+          // Declared revisions canonicalize to themselves and the range enumerates no local commits,
+          // so the harness reviews one synthetic unit over config.diff, never a fabricated chain.
+          "rev-parse" -> args.last().removeSuffix("^{commit}")
+          "rev-list" -> ""
+          else -> config.diff
+        }
       }
     },
     parallelLaneRunner = SequentialLaneRunner(),

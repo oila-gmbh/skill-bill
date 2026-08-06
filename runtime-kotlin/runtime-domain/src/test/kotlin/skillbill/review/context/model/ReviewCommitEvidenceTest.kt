@@ -190,10 +190,10 @@ class ReviewCommitEvidenceTest {
   @Test fun `packet digest tracks commit order parent and coverage status`() {
     val built = packet(twoCommits)
     assertEquals(built.digest, packet(twoCommits).digest)
-    val reordered = packet(
-      listOf(unit("c1", "base", 1, listOf(hunkA)), unit("head", "c1", 0, listOf(hunkB))),
-    )
-    assertNotEquals(built.digest, reordered.digest)
+    // Reordering the chain is not merely a different digest: the packet refuses to exist at all.
+    assertFailsWith<IllegalArgumentException> {
+      packet(listOf(unit("c1", "base", 1, listOf(hunkA)), unit("head", "c1", 0, listOf(hunkB))))
+    }
     assertNotEquals(
       built.digest,
       packet(

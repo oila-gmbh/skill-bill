@@ -165,6 +165,16 @@ class ReviewPreparationService(
   ): List<ReviewAssignment> {
     val packetDigest = packet.digest
     val hunksByPath = packet.changedHunks.groupBy { it.path }
+
+    /** The full commit-grouped projection of a lane's already-assigned hunks, in packet commit order. */
+    fun laneBundle(laneHunkIds: Set<String>) = ReviewLaneBundle(
+      packet.commitUnits.sortedBy { it.orderIndex }.mapNotNull { unit ->
+        unit.hunkIds.filter { it in laneHunkIds }
+          .takeIf { it.isNotEmpty() }
+          ?.let { ReviewLaneBundleEntry(unit.commitSha, unit.orderIndex, it) }
+      },
+    )
+
     return packet.selectedLanes.map { lane ->
       val decision = laneDecisions.first { it.lane == lane }
       val lanePaths = decision.normalizedOwnedPaths.sorted()
@@ -174,7 +184,7 @@ class ReviewPreparationService(
       }
       val laneHunkIds = lanePaths.flatMap { path -> hunksByPath[path].orEmpty().map { it.hunkId } }.sorted()
       ReviewAssignment(
-        assignedBundle = laneBundle(packet, laneHunkIds.toSet()),
+        assignedBundle = laneBundle(laneHunkIds.toSet()),
         reviewId = packet.reviewId,
         packetDigest = packetDigest,
         lane = lane,
@@ -192,15 +202,6 @@ class ReviewPreparationService(
       )
     }
   }
-
-  /** The full commit-grouped projection of a lane's already-assigned hunks, in packet commit order. */
-  private fun laneBundle(packet: ReviewContextPacket, laneHunkIds: Set<String>) = ReviewLaneBundle(
-    packet.commitUnits.sortedBy { it.orderIndex }.mapNotNull { unit ->
-      unit.hunkIds.filter { it in laneHunkIds }
-        .takeIf { it.isNotEmpty() }
-        ?.let { ReviewLaneBundleEntry(unit.commitSha, unit.orderIndex, it) }
-    },
-  )
 
   private fun rejectBundleViolations(packet: ReviewContextPacket, assignment: ReviewAssignment) {
     val label = assignmentLabel(assignment)

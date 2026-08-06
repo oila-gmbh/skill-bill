@@ -22,6 +22,7 @@ import skillbill.review.context.model.ReviewCommitUnit
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewDependencyAllowlist
 import skillbill.review.context.model.ReviewExpansionRecord
+import skillbill.review.context.model.ReviewLaneBundle
 import skillbill.review.context.model.ReviewLaneDecision
 import skillbill.review.context.model.ReviewLearningsReference
 import skillbill.review.context.model.ReviewRevision
@@ -264,7 +265,14 @@ class ReviewPreparationServiceTest {
 
   @Test fun `assignment claiming an unowned hunk id is rejected`() {
     val prepared = service(ports()).prepare(request())
-    val foreign = prepared.assignments.first().copy(assignedHunks = listOf("f".repeat(64)))
+    val forged = "f".repeat(64)
+    // The bundle is rewritten with the hunk surface: an assignment whose bundle contradicts its own
+    // hunks cannot be constructed at all, so a coherent forgery is what packet validation must catch.
+    val owning = prepared.assignments.first().assignedBundle.entries.first()
+    val foreign = prepared.assignments.first().copy(
+      assignedHunks = listOf(forged),
+      assignedBundle = ReviewLaneBundle(listOf(owning.copy(hunkIds = listOf(forged)))),
+    )
     val failure = assertFailsWith<InvalidReviewContextSchemaError> {
       service(ports()).validateAgainstPacket(prepared.packet, listOf(foreign) + prepared.assignments.drop(1))
     }
@@ -325,7 +333,7 @@ class ReviewPreparationServiceTest {
         service(ports()).validateAgainstPacket(prepared.packet, listOf(changedDecision, other))
       }.message.orEmpty(),
     )
-    val crossLaneHunk = first.copy(assignedHunks = other.assignedHunks)
+    val crossLaneHunk = first.copy(assignedHunks = other.assignedHunks, assignedBundle = other.assignedBundle)
     assertTrue(
       "packet-owned hunks" in assertFailsWith<InvalidReviewContextSchemaError> {
         service(ports()).validateAgainstPacket(prepared.packet, listOf(crossLaneHunk, other))

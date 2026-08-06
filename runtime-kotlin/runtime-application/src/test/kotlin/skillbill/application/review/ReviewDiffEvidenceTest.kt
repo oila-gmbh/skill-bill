@@ -10,7 +10,7 @@ class ReviewDiffEvidenceTest {
   // AC-001, AC-007
   @Test
   fun `commit units reuse the record parser across additions renames and deletions`() {
-    val units = ReviewDiffEvidence.parseCommitUnits(
+    val units = parseCommitUnits(
       listOf(
         RawCommitDiff(
           "c1",
@@ -70,7 +70,7 @@ class ReviewDiffEvidenceTest {
   @Test
   fun `a malformed record inside a commit keeps the existing loud failure`() {
     val failure = assertFailsWith<IllegalArgumentException> {
-      ReviewDiffEvidence.parseCommitUnits(
+      parseCommitUnits(
         listOf(
           RawCommitDiff(
             "c1",

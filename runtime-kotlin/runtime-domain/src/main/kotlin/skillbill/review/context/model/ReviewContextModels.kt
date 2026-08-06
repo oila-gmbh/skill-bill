@@ -444,7 +444,17 @@ data class ReviewCommitUnit(
     }
   }
 
-  val hunkIds: List<String> get() = hunks.map { it.hunkId }
+  /**
+   * A commit owns its hunks as a set, so every identity and projection reads this order rather than
+   * the order a fact port or parser happened to enumerate them in. The unit's own uniqueness
+   * invariant makes (path, newStart, oldStart) a total order over its hunks.
+   */
+  val canonicalHunks: List<ReviewChangedHunk>
+    get() = hunks.sortedWith(
+      compareBy(ReviewChangedHunk::path, ReviewChangedHunk::newStart, ReviewChangedHunk::oldStart),
+    )
+
+  val hunkIds: List<String> get() = canonicalHunks.map { it.hunkId }
 
   val commitUnitId: String by lazy(LazyThreadSafetyMode.PUBLICATION) { sha256(canonicalValue()) }
 
@@ -454,7 +464,7 @@ data class ReviewCommitUnit(
     subject.replace("\r\n", "\n"),
     orderIndex,
     source.name,
-    canonicalFields(*hunks.map { it.canonicalValue() }.toTypedArray()),
+    canonicalFields(*canonicalHunks.map { it.canonicalValue() }.toTypedArray()),
   )
 
   companion object {

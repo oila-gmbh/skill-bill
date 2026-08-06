@@ -31,11 +31,7 @@ class ReviewCommitSequenceResolverTest {
     }
   }
 
-  private fun branchRepo(
-    shas: List<String>,
-    diffs: Map<String, String>,
-    parents: Map<String, String>,
-  ): FakeGit {
+  private fun branchRepo(shas: List<String>, diffs: Map<String, String>, parents: Map<String, String>): FakeGit {
     val responses = mutableMapOf<String, String?>(
       "git rev-list --first-parent --reverse base..head" to shas.joinToString("\n"),
     )
@@ -50,7 +46,7 @@ class ReviewCommitSequenceResolverTest {
   private fun sixCommitRepo(): FakeGit {
     val shas = (1..5).map { "c$it" } + "head"
     val parents = shas.mapIndexed { index, sha -> sha to if (index == 0) "base" else shas[index - 1] }.toMap()
-    val diffs = shas.associateWith { diffFor("src/${it}.kt", "line-$it") }
+    val diffs = shas.associateWith { diffFor("src/$it.kt", "line-$it") }
     return branchRepo(shas, diffs, parents)
   }
 
@@ -59,15 +55,13 @@ class ReviewCommitSequenceResolverTest {
     scope: ParallelReviewScope,
     aggregateDiff: String,
     supplied: Boolean = false,
-  ) =
-    ReviewCommitSequenceResolver(git).resolve(
-      scope,
-      repoRoot,
-      "base",
-      "head",
-      ReviewDiffEvidence.parse(aggregateDiff),
-      supplied,
-    )
+  ) = ReviewCommitSequenceResolver(git).resolve(
+    scope,
+    repoRoot,
+    ReviewCommitRange("base", "head"),
+    ReviewDiffEvidence.parse(aggregateDiff),
+    supplied,
+  )
 
   // AC-001, AC-004
   @Test fun `a six commit branch resolves an ordered first-parent sequence`() {
@@ -82,15 +76,45 @@ class ReviewCommitSequenceResolverTest {
     assertTrue(resolved.units.all { it.source == ReviewCommitSource.COMMIT_RANGE })
   }
 
-  // AC-001, AC-007
+  // AC-001, AC-007: a real two-parent merge commit is traversed by its first parent only.
   @Test fun `a merge commit is traversed by first parent only`() {
-    val git = sixCommitRepo()
-    resolve(
+    val mergeDiff = diffFor("src/Merged.kt", "merged")
+    val headDiff = diffFor("src/head.kt", "line-head")
+    val responses = mutableMapOf<String, String?>(
+      "git rev-list --first-parent --reverse base..head" to "c1\nmerge\nhead",
+      "git show -s --format=%P%n%s c1" to "base\nsubject c1",
+      "git diff base c1" to diffFor("src/c1.kt", "line-c1"),
+      // Two parents: the second is the merged-in branch tip and must never be walked.
+      "git show -s --format=%P%n%s merge" to "c1 other\nMerge branch 'other'",
+      "git diff c1 merge" to mergeDiff,
+      "git show -s --format=%P%n%s head" to "merge\nsubject head",
+      "git diff merge head" to headDiff,
+    )
+    val git = FakeGit(responses)
+    val resolved = resolve(
       git,
       ParallelReviewScope.BRANCH,
-      (1..5).joinToString("\n") { diffFor("src/c$it.kt", "line-c$it") } + "\n" + diffFor("src/head.kt", "line-head"),
+      diffFor("src/c1.kt", "line-c1") + "\n" + mergeDiff + "\n" + headDiff,
     )
-    assertTrue(git.invoked.any { it == "git rev-list --first-parent --reverse base..head" })
+    assertEquals(listOf("c1", "merge", "head"), resolved.units.map { it.commitSha })
+    assertEquals(listOf("base", "c1", "merge"), resolved.units.map { it.parentSha })
+    assertTrue(git.invoked.none { it.startsWith("git diff other") })
+    assertTrue(resolved.coverageFact.chainVerified)
+  }
+
+  // AC-004: main merged into the branch leaves the merge base off the first-parent chain.
+  @Test fun `a base outside the first-parent chain degrades instead of aborting the review`() {
+    val headDiff = diffFor("src/head.kt", "line-head")
+    val git = branchRepo(
+      listOf("head"),
+      mapOf("head" to headDiff),
+      mapOf("head" to "branchpoint"),
+    )
+    val resolved = resolve(git, ParallelReviewScope.BRANCH, headDiff)
+    assertEquals(1, resolved.units.size)
+    assertEquals(ReviewCommitSource.SYNTHETIC_AGGREGATE_PR_DIFF, resolved.units.single().source)
+    assertTrue("branchpoint" in resolved.coverageFact.degradedReason.orEmpty())
+    assertEquals(false, resolved.coverageFact.chainVerified)
   }
 
   // AC-007

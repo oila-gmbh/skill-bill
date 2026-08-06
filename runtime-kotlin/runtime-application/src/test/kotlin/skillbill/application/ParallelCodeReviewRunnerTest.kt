@@ -240,7 +240,9 @@ class ParallelCodeReviewRunnerTest {
     val launcher = ParallelSubtaskLauncher()
     val runner = runner(launcher, diffResolver = resolver)
 
-    runner.run(baseRequest(agent1Id = "claude", agent2Id = "codex", scope = ParallelReviewScope.BRANCH))
+    runner.run(
+      baseRequest(agent1Id = "claude", agent2Id = "codex", scope = ParallelReviewScope.BRANCH).detectingRevisions(),
+    )
 
     assertContains(resolver.calls, listOf("git", "merge-base", "HEAD", "main"))
     assertContains(resolver.calls, listOf("git", "diff", "base-sha", "head-sha"))
@@ -260,7 +262,9 @@ class ParallelCodeReviewRunnerTest {
     )
     val runner = runner(ParallelSubtaskLauncher(), diffResolver = resolver)
 
-    runner.run(baseRequest(agent1Id = "claude", agent2Id = "codex", scope = ParallelReviewScope.PR))
+    runner.run(
+      baseRequest(agent1Id = "claude", agent2Id = "codex", scope = ParallelReviewScope.PR).detectingRevisions(),
+    )
 
     assertContains(resolver.calls, listOf("gh", "pr", "view", "--json", "baseRefOid", "--jq", ".baseRefOid"))
     assertContains(
@@ -1028,9 +1032,14 @@ private fun baseRequest(
   timeout = timeout,
   codeReviewMode = CodeReviewExecutionMode.INLINE,
   reviewRunId = "runner-test-${runnerRequestSequence.incrementAndGet()}",
+  // Pinned so most fixtures never reach for Git; a scope test that exercises base or head detection
+  // clears them with `detectingRevisions()` to leave the resolution the runner performs visible.
   baseRevision = "base-revision",
   headRevision = "head-revision",
 )
+
+/** Drops the pinned revisions so the runner resolves the scope's own base and head. */
+private fun ParallelCodeReviewRequest.detectingRevisions() = copy(baseRevision = null, headRevision = null)
 
 private fun alwaysSuccessLauncher(stdout: String = "NO_FINDINGS") = GoalRunnerSubtaskLauncher { request ->
   AgentRunLaunchFacts(

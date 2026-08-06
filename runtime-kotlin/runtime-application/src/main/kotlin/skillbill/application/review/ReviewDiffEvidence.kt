@@ -1,8 +1,6 @@
 package skillbill.application.review
 
 import skillbill.review.context.model.ReviewChangedHunk
-import skillbill.review.context.model.ReviewCommitSource
-import skillbill.review.context.model.ReviewCommitUnit
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.nio.charset.CodingErrorAction
@@ -26,25 +24,6 @@ internal data class ReviewDiffEvidence(
      */
     fun parseAttributable(diff: String): ReviewDiffEvidence? =
       diffRecords(diff).takeIf { it.isNotEmpty() }?.let { runCatching { parse(it.joinToString("\n")) }.getOrNull() }
-
-    /**
-     * Ordered per-commit units built from each commit's incremental diff. Reuses the single record
-     * parser, so malformed records fail loudly here exactly as they do for an aggregate diff. An
-     * empty commit yields a zero-hunk unit rather than vanishing from the sequence.
-     */
-    fun parseCommitUnits(commits: List<RawCommitDiff>): List<ReviewCommitUnit> = commits.mapIndexed { index, commit ->
-      ReviewCommitUnit.ofCommit(
-        commitSha = commit.commitSha,
-        parentSha = commit.parentSha,
-        subject = commit.subject,
-        orderIndex = index,
-        hunks = if (commit.diff.isBlank()) emptyList() else parse(commit.diff).hunks,
-      )
-    }
-
-    /** Wraps one aggregate diff as the single unit a non-commit scope owns, inventing no identity. */
-    fun syntheticUnit(source: ReviewCommitSource, hunks: List<ReviewChangedHunk>): ReviewCommitUnit =
-      ReviewCommitUnit.synthetic(source, hunks)
 
     fun parse(diff: String): ReviewDiffEvidence {
       val normalized = diff.replace("\r\n", "\n")

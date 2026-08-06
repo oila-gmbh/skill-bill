@@ -35,27 +35,33 @@ In scope:
    context to detect interactions between commits, while unrelated raw lane
    evidence and parent transcripts remain excluded.
 3. Lifecycle and telemetry schemas record commit sequence identity, lane
-   assignment/disposition counts, focused/skipped units, completed watermarks,
-   authorized revisits, and integration-pass terminal state with stable
+   assignment/disposition counts, focused/skipped commits, per-lane bundle size
+   and segment counts, incomplete lanes from budget exhaustion, parent analysis
+   budget consumption, and integration-pass terminal state with stable
    attribution.
 4. Crash, cancellation, timeout, retry, and resume tests prove that specialist
-   completion and integration completion are distinct durable boundaries and
-   that aggregation rejects missing, duplicate, or mismatched commit/lane
-   results.
-5. Governed prose consistently says that specialists receive sparse ordered
-   commit units, preserve cumulative context within a lane, skip irrelevant
-   commits with reasons, and use one final integration pass for cross-commit
-   behavior.
+   completion and integration completion are distinct durable boundaries, that
+   retry is lane-granular, and that aggregation rejects missing, duplicate, or
+   mismatched commit/lane results.
+5. Governed prose consistently says that the parent owns discovery and relevance,
+   that specialists receive one assembled bundle of assigned hunks with commit
+   metadata and review it in a single pass, that irrelevant commits are excluded
+   before launch with recorded reasons, and that one final integration pass
+   covers cross-commit behavior.
 6. Generated native-agent prompts and provider launch projections contain the
-   same rules and do not instruct workers to run broad diff discovery or review
-   every commit by default.
+   same rules and do not instruct workers to run broad diff discovery, re-decide
+   relevance, step through commits individually, or review every commit by
+   default.
 7. Inline and non-commit review paths retain their existing semantics and
    explicitly report when commit-focused delegated sequencing is unavailable or
    not applicable.
 8. `./install.sh` refreshes local installed staging after governed source
    changes, and generated install output remains absent from version control.
-9. `skill-bill validate`, `(cd runtime-kotlin && ./gradlew check)`,
-   `npx --yes agnix --strict .`, and `scripts/validate_agent_configs` pass.
+9. Aggregation and reporting treat a lane that ended incomplete from budget
+   exhaustion as non-clean coverage, naming its unreviewed units, and the
+   integration pass is not presented as compensating for that gap.
+10. `skill-bill validate`, `(cd runtime-kotlin && ./gradlew check)`,
+    `npx --yes agnix --strict .`, and `scripts/validate_agent_configs` pass.
 
 ## Non-Goals
 
@@ -69,14 +75,15 @@ In scope:
 Depends on: 1, 2, 3
 
 This unit closes the feature after the evidence model, sparse routing, and
-sequential lane execution are stable.
+single-pass lane review are stable.
 
 ## Validation Strategy
 
 Run full contract, lifecycle, aggregation, native-agent, and end-to-end review
 fixtures. Verify a mixed six-commit PR produces sparse specialist work followed
-by one integration pass, while a single-commit and working-tree review preserve
-existing output. Finish with all validation commands in Acceptance Criterion 9.
+by one integration pass, with worker count equal to lane count regardless of
+commit count, while a single-commit and working-tree review preserve existing
+output. Finish with all validation commands in Acceptance Criterion 10.
 
 ## Next Path
 
