@@ -755,7 +755,10 @@ class ParallelCodeReviewRunner(
       }
       appendLine(
         "Return only '[F-XXX] Severity | Confidence | specialist=<exact resolved rubric identity> | " +
-          "path=<JSON string> | line=<positive integer> | description' lines.",
+          "commits=<sha>[,<sha>] | path=<JSON string> | line=<positive integer> | description' lines. " +
+          "The commits= segment is optional for a finding confined to a single assigned commit and " +
+          "required whenever a finding relates code from more than one assigned commit; list the " +
+          "involved commit shas in the bundle's commit order.",
       )
       appendLine()
       selected.forEach { launch ->
@@ -768,8 +771,7 @@ class ParallelCodeReviewRunner(
   }
 
   private fun StringBuilder.appendAssignedBundleEvidence(launch: ReviewSpecialistLaunchRequest) {
-    val bundle = governedLaunchFor(launch).assembledBundle
-    bundle.entries.forEach { entry ->
+    governedLaunchFor(launch).deliveredEntries.forEach { entry ->
       appendLine(
         "### Commit ${structuredString(entry.commitSha)} (order=${entry.orderIndex}, " +
           "path=${structuredString(entry.hunk.path)})",
@@ -948,6 +950,9 @@ private fun parallelAccountingSummary(
     ),
     usage = providerUsage ?: ProviderTokenUsage(),
     terminalOutcome = terminalStatus,
+    bundleCompositionDigest = bundleCompositionDigest,
+    segmentAccounting = segmentAccounting,
+    unreviewedSegmentIds = unreviewedSegmentIds,
   )
   val roots = listOf(outcomes.lane1, outcomes.lane2).mapIndexed { index, outcome ->
     ReviewAccountingInput(
@@ -955,6 +960,9 @@ private fun parallelAccountingSummary(
       assignmentDigest = sha256HexUtf8("parallel-agent-${index + 1}"),
       children = outcome.specialistAccounting.map(ReviewLaneAccounting::toInput),
       terminalOutcome = laneTerminalOutcome(outcome),
+      bundleCompositionDigest = outcome.bundleCompositionDigest,
+      segmentAccounting = outcome.segmentAccounting,
+      unreviewedSegmentIds = outcome.unreviewedSegmentIds,
     )
   }
   return ReviewTreeAccounting.summarize(

@@ -501,6 +501,22 @@ $defs:
       inclusive_usage: { $ref: "#/$defs/usage" }
       terminal_outcome:
         enum: [completed, incomplete, review_context_budget_exceeded, budget_regression, failed, timeout, interrupted, spawn_failure, process_failure, unsupported_provider, forbidden_operation, partial_failure]
+      bundle_composition_digest: { $ref: "#/$defs/digest" }
+      segment_accounting:
+        type: array
+        items: { $ref: "#/$defs/accounting_segment" }
+      unreviewed_segment_ids:
+        type: array
+        items: { $ref: "#/$defs/identifier" }
+  accounting_segment:
+    type: object
+    additionalProperties: false
+    required: [segment_id, measured_bytes, entry_count, composition_digest]
+    properties:
+      segment_id: { $ref: "#/$defs/identifier" }
+      measured_bytes: { type: integer, minimum: 0 }
+      entry_count: { type: integer, minimum: 0 }
+      composition_digest: { $ref: "#/$defs/digest" }
 x-coherence-checks:
   - Digests are SHA-256 over canonical UTF-8 serialization with digest fields omitted.
   - Assignment revisions and lane identity equal their parent packet values.

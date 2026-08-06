@@ -46,6 +46,9 @@ object ReviewTreeAccounting {
       direct,
       inclusive,
       input.terminalOutcome,
+      input.bundleCompositionDigest,
+      input.segmentAccounting,
+      input.unreviewedSegmentIds,
       children,
     )
   }

@@ -29,6 +29,9 @@ data class ReviewAccountingInput(
   val counters: ReviewAccountingCounters = ReviewAccountingCounters(),
   val usage: ProviderTokenUsage = ProviderTokenUsage(),
   val terminalOutcome: String = "completed",
+  val bundleCompositionDigest: String? = null,
+  val segmentAccounting: List<ReviewLaneSegmentAccounting> = emptyList(),
+  val unreviewedSegmentIds: List<String> = emptyList(),
   val children: List<ReviewAccountingInput> = emptyList(),
 ) {
   init {
@@ -48,6 +51,10 @@ data class ReviewAccountingNode(
   val directUsage: ProviderTokenUsage,
   val inclusiveUsage: ProviderTokenUsage,
   val terminalOutcome: String,
+  /** Bundle composition this lane actually reviewed, so result records preserve it. */
+  val bundleCompositionDigest: String?,
+  val segmentAccounting: List<ReviewLaneSegmentAccounting>,
+  val unreviewedSegmentIds: List<String>,
   val children: List<ReviewAccountingNode>,
 )
 

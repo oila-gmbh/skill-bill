@@ -30,6 +30,7 @@ import skillbill.ports.review.model.ParallelReviewLaneRunResult
 import skillbill.ports.review.model.ResolvedReviewRubric
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
+import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.context.model.REVIEW_ROUTING_ANALYSIS_PAIRS_BUDGET
 import skillbill.review.context.model.ReviewContextBudgetExceededException
 import skillbill.review.context.model.ReviewContextBudgetPolicy
@@ -302,6 +303,26 @@ class ParallelCodeReviewRunnerTest {
       assertFalse(prompt.contains("unexpected branch diff"), "the supplied diff must replace branch resolution")
       assertEquals(null, request.skillRunRequest.nativeReviewWorkerName)
     }
+  }
+
+  @Test
+  fun `review prompt asks for the commit attribution segment the parser reads`() {
+    val launcher = ParallelSubtaskLauncher()
+    val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))
+
+    runner.run(baseRequest(scope = ParallelReviewScope.STAGED))
+
+    assertTrue(launcher.requests.isNotEmpty())
+    launcher.requests.forEach { request ->
+      val prompt = request.skillRunRequest.promptOverride.orEmpty()
+      assertContains(prompt, "commits=<sha>[,<sha>] | path=<JSON string>")
+      assertContains(prompt, "required whenever a finding relates code from more than one assigned commit")
+    }
+    val parsed = ParallelReviewFindingParser.parse(
+      "[F-001] Major | High | specialist=generic-security | commits=aaa111,bbb222 | " +
+        "path=\"A.kt\" | line=4 | contract introduced then changed",
+    )
+    assertEquals(listOf("aaa111", "bbb222"), parsed.single().commitShas)
   }
 
   @Test

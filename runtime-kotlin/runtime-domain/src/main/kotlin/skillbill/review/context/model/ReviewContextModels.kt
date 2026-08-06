@@ -1025,21 +1025,29 @@ data class GovernedReviewLaunch(
     require(forkTurns == "none") { "Governed Codex review launches require fork_turns none." }
   }
 
-  val canonicalPayload: String get() = renderCanonicalPayload(assembledBundle.entries, segmentation)
+  /** Entries the segmentation retained; unreviewable bodies are named, never delivered. */
+  val deliveredEntries: List<ReviewLaneAssembledEntry> get() = segmentation.segments.flatMap { it.entries }
+
+  val canonicalPayload: String get() = renderCanonicalPayload(deliveredEntries, segmentation)
 
   /**
-   * Returns a typed budget breach only when the fixed launch overhead alone exceeds the lane budget
-   * (nothing can be reviewed). Oversized assigned bodies are segmented or marked unreviewable and
-   * surface as an incomplete disposition instead of a whole-payload failure.
+   * Returns a typed budget breach when the fixed launch overhead alone exceeds the lane budget
+   * (nothing can be reviewed), or when the rendered payload exceeds the lane allowance. Each
+   * segment is separately accounted against [ReviewContextBudgetPolicy.maxLaneLaunchBytes], so the
+   * allowance for a delivered payload is that budget once per segment; anything beyond it is an
+   * overflow the segmentation did not account for and must surface as a typed breach rather than
+   * ship silently.
    */
   fun budgetOutcomeOrNull(): ReviewContextBudgetExceeded? {
     val overhead = measureBundleEntries(emptyList())
-    return if (overhead > budget.maxLaneLaunchBytes) {
+    val renderedBytes = canonicalPayload.toByteArray(StandardCharsets.UTF_8).size.toLong()
+    val allowance = budget.maxLaneLaunchBytes * maxOf(1, segmentation.segments.size)
+    return if (overhead > budget.maxLaneLaunchBytes || renderedBytes > allowance) {
       ReviewContextBudgetExceeded(
         lane = assignment.lane,
         budgetKind = "lane_launch_bytes",
         configuredLimit = budget.maxLaneLaunchBytes,
-        observedValue = overhead,
+        observedValue = maxOf(overhead, renderedBytes),
         packetDigest = assignment.packetDigest,
         assignmentDigest = assignment.digest,
         enforceable = true,

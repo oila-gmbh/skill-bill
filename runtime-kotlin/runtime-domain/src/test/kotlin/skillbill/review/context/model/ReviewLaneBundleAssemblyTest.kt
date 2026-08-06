@@ -275,6 +275,30 @@ class ReviewLaneBundleAssemblyTest {
     }
   }
 
+  @Test fun `an unreviewable body is named but never delivered in the canonical payload`() {
+    val oversized = ReviewChangedHunk("src/Huge.kt", 1, 1, 1, 1, "+${"z".repeat(4_000)}")
+    val built = packet(listOf(unit("c1", "base", 0, listOf(hunkA, oversized))))
+    val bundle = ReviewLaneBundle(listOf(ReviewLaneBundleEntry("c1", 0, listOf(hunkA.hunkId, oversized.hunkId))))
+    val governed = launch(built, bundle, ReviewContextBudgetPolicy.DEFAULT.copy(maxLaneLaunchBytes = 2_000))
+
+    assertEquals(listOf(oversized.hunkId), governed.segmentation.unreviewableEntries.map { it.hunkId })
+    assertEquals(listOf(hunkA.hunkId), governed.deliveredEntries.map { it.hunkId })
+    val payload = governed.canonicalPayload
+    assertTrue(hunkA.content in payload)
+    assertTrue(oversized.content !in payload, "An unreviewed body must never ship in the launch payload.")
+    assertTrue(UNREVIEWABLE_SEGMENT_ID in payload)
+    assertEquals(null, governed.budgetOutcomeOrNull(), "The reduced payload fits the lane allowance.")
+  }
+
+  @Test fun `a launch whose fixed overhead alone exceeds the lane budget yields a typed breach`() {
+    val built = packet(twoCommits)
+    val governed = launch(built, fullBundle, ReviewContextBudgetPolicy.DEFAULT.copy(maxLaneLaunchBytes = 1))
+
+    val outcome = governed.budgetOutcomeOrNull()
+    assertEquals("lane_launch_bytes", outcome?.budgetKind)
+    assertTrue((outcome?.observedValue ?: 0) > 1)
+  }
+
   @Test fun `segmentation rejects duplicate hunk claims`() {
     val assembled = ReviewLaneAssembledBundle.assemble(assignment(packet(twoCommits), fullBundle), packet(twoCommits))
     assertFailsWith<IllegalArgumentException> {

@@ -70,7 +70,7 @@ internal fun ReviewLaneAssembledBundle.toLaunchEnvelope(
   "composition_digest" to compositionDigest,
   "lane_disposition" to completion.disposition.wireValue,
   "unreviewed_segment_ids" to completion.unreviewedSegmentIds,
-  "entries" to entries.map { it.toEnvelope() },
+  "entries" to segmentation.segments.flatMap { it.entries }.map { it.toEnvelope() },
   "segments" to segmentation.segments.map { it.toEnvelope() },
 ) + completion.budgetDimension?.let { mapOf("budget_dimension" to it) }.orEmpty()
 

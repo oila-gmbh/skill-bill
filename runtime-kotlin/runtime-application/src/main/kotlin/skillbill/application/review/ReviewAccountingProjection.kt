@@ -6,6 +6,7 @@ import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewAccountingCounters
 import skillbill.review.context.model.ReviewAccountingNode
 import skillbill.review.context.model.ReviewAccountingSummary
+import skillbill.review.context.model.ReviewLaneSegmentAccounting
 
 /** The sole durable/wire projection for review accounting. Content-bearing inputs are intentionally absent. */
 @OpenBoundaryMap("Schema-bounded review-accounting wire projection")
@@ -36,6 +37,17 @@ private fun ReviewAccountingNode.toPayload(): Map<String, Any?> = linkedMapOf(
   "direct_usage" to directUsage.toPayload(),
   "inclusive_usage" to inclusiveUsage.toPayload(),
   "terminal_outcome" to terminalOutcome,
+) + bundleCompositionDigest?.let { mapOf("bundle_composition_digest" to it) }.orEmpty() +
+  segmentAccounting.takeIf { it.isNotEmpty() }?.let { segments ->
+    mapOf("segment_accounting" to segments.map { it.toPayload() })
+  }.orEmpty() +
+  unreviewedSegmentIds.takeIf { it.isNotEmpty() }?.let { mapOf("unreviewed_segment_ids" to it) }.orEmpty()
+
+private fun ReviewLaneSegmentAccounting.toPayload(): Map<String, Any?> = linkedMapOf(
+  "segment_id" to segmentId,
+  "measured_bytes" to measuredBytes,
+  "entry_count" to entryCount,
+  "composition_digest" to compositionDigest,
 )
 
 private fun ReviewAccountingCounters.toPayload(): Map<String, Long> = linkedMapOf(
