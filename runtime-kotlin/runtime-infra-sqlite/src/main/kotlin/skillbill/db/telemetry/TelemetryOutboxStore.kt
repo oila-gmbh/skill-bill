@@ -18,9 +18,7 @@ class TelemetryOutboxStore(
       VALUES (?, ?, ?)
       """.trimIndent(),
     ).use { statement ->
-      statement.setString(1, eventName)
-      statement.setString(2, payloadJson)
-      statement.setString(3, version)
+      statement.bind(eventName, payloadJson, version)
       statement.executeUpdate()
     }
     return connection.createStatement().use { statement ->

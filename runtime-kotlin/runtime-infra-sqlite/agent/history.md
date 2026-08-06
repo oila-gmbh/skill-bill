@@ -1,3 +1,13 @@
+## [2026-08-06] SKILL-163 Subtask 1 telemetry release attribution
+Areas: runtime-kotlin/runtime-infra-sqlite db/core + db/telemetry, runtime-kotlin/runtime-infra-http telemetry proxy mappers, runtime-kotlin/runtime-ports persistence model, runtime-kotlin/runtime-core telemetry tests
+- Telemetry events now carry the release that *produced* them: `telemetry_outbox.skill_bill_version` is stamped at enqueue time from `SkillBillVersion.VALUE` (constructor-injectable for tests), not read at upload time. An event enqueued under version A and uploaded under version B reports A. reusable
+- `ensureColumn(telemetry_outbox, skill_bill_version)` must live in the `DatabaseColumnMigrations` pass that runs *after* `DatabaseMigrations.apply`: `TelemetryOutboxLastErrorMigration` rebuilds the table from an explicit column list and would silently drop a column added earlier. Ordering constraint documented inline. reusable
+- Legacy/NULL version is a first-class case, not an error: `telemetryProperties` omits `skill_bill_version` entirely when null or blank rather than sending a sentinel, so pre-attribution rows still upload and are never dropped. Consumers must treat absence as "unknown release". reusable
+- `TelemetryOutboxRecord.skillBillVersion` defaults to null so existing construction sites compile unchanged; the proxy payload keeps `install_id` and `$process_person_profile` untouched.
+- Deliberately no change to `orchestration/contracts/telemetry-event-schema.yaml` — attribution rides as an event property, so the governed event schema stays untouched (verified by diff assertion).
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-08-06] SKILL-136 Subtask 6 review store integrity, outbox signal, and lifecycle
 Areas: runtime-kotlin/runtime-infra-sqlite db/core + db/telemetry + sqlite goal/review, runtime-kotlin/runtime-application review + goalrunner, runtime-kotlin/runtime-infra-fs snapshot gateway, runtime-kotlin/runtime-ports review + persistence, runtime-kotlin/runtime-cli review
 - `telemetry_outbox.last_error` is now nullable-as-healthy: success writes `NULL`, `TelemetryOutboxLastErrorMigration` backfills legacy empty strings, and `latestError` excludes both `NULL` and legacy-empty rows so "has an error" is a real signal. Migration is idempotent on re-application. reusable
