@@ -132,6 +132,20 @@ fun SkillBillStatusOutcome.toCacheSnapshotOrNull(): LastKnownDisplayCache? =
                 observedAt = observedAt,
             )
 
+        is SkillBillStatusOutcome.Done ->
+            LastKnownDisplayCache(
+                display = CachedDisplaySnapshot(
+                    summary = summary,
+                    repositoryIdentity = repositoryIdentity,
+                    issueKey = issueKey,
+                    progressCompleted = progressCompleted,
+                    progressTotal = progressTotal,
+                    startedAt = startedAt,
+                    updatedAt = updatedAt,
+                ),
+                observedAt = observedAt,
+            )
+
         is SkillBillStatusOutcome.Idle,
         is SkillBillStatusOutcome.Unavailable,
         is SkillBillStatusOutcome.Incompatible,

@@ -20,6 +20,19 @@ object StatusUiMapper {
                     stale = outcome.stale,
                 )
 
+            is SkillBillStatusOutcome.Done ->
+                SkillBillStatusUiState.Done(
+                    headline = doneHeadline(outcome),
+                    detail = outcome.summary,
+                    goalElapsed = elapsed(outcome.startedAt, settledAt(outcome.updatedAt, now)),
+                    progressCompleted = outcome.progressCompleted,
+                    progressTotal = outcome.progressTotal,
+                    issueKey = outcome.issueKey,
+                    startedAt = outcome.startedAt,
+                    lastUpdated = outcome.updatedAt ?: outcome.observedAt,
+                    stale = outcome.stale,
+                )
+
             is SkillBillStatusOutcome.Active ->
                 SkillBillStatusUiState.Active(
                     headline = activeHeadline(outcome),
@@ -187,6 +200,11 @@ object StatusUiMapper {
         if (planning == null || planning.state == "prepared") return null
         if (!currentSubtaskId.isNullOrBlank() || (progressCompleted ?: 0) > 0) return null
         return planning
+    }
+
+    private fun doneHeadline(outcome: SkillBillStatusOutcome.Done): String {
+        val key = outcome.issueKey?.let { "$it · " }.orEmpty()
+        return "Skill Bill: ${key}done"
     }
 
     private fun activeHeadline(outcome: SkillBillStatusOutcome.Active): String {

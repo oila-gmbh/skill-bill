@@ -49,6 +49,7 @@ import skillbill.ports.persistence.model.FeatureVerifySessionSummary
 import skillbill.ports.persistence.model.WorkItem
 import skillbill.ports.persistence.model.WorkItemKind
 import skillbill.ports.persistence.model.WorkflowStateRecord
+import skillbill.ports.system.CheckedOutBranchSource
 import skillbill.workflow.IdeStatusValidator
 import skillbill.workflow.NoopIdeStatusValidator
 import skillbill.workflow.WorkflowSnapshotValidator
@@ -291,6 +292,89 @@ class IdeStatusServiceTest {
     assertNull(result.snapshot.problem)
     assertEquals("w-verify", result.snapshot.workflowId)
     assertEquals(IdeStatusWorkflowFamily.FEATURE_VERIFY, result.snapshot.workflowFamily)
+  }
+
+  @Test
+  fun `branch scoping hides work whose issue key is not in the checked-out branch`() {
+    val fixture = gitRepoFixture("ide-status-branch-scope", branch = "feat/OTHER-9-unrelated")
+    val identity = goalRepositoryIdentity(fixture)
+    val workflows = IdeStatusWorkflowStates()
+    workflows.saveFeatureImplementWorkflow(proseRecord("w-active", "2026-08-06T10:00:00Z"))
+    workflows.saveFeatureTaskExecutionIdentity(identityFor("w-active", identity))
+    val database = TrackingDatabase(
+      work = listOf(workItem("w-active", WorkItemKind.FEATURE_TASK_PROSE, "running", "2026-08-06T10:00:00Z")),
+      workflows = workflows,
+    )
+
+    val result = service(database).status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = observedAt))
+
+    assertEquals(IdeStatusProblemCode.NO_MATCHING_WORK, result.snapshot.problem?.code)
+    assertEquals("No recent Skill Bill work for branch 'feat/OTHER-9-unrelated'.", result.snapshot.summary)
+  }
+
+  @Test
+  fun `branch scoping requires a whole issue-key token, not a prefix hit`() {
+    // SKILL-14 must not match the SKILL-148 fixture work: '8' continues the token.
+    val fixture = gitRepoFixture("ide-status-branch-token", branch = "feat/SKILL-14-prefix")
+    val identity = goalRepositoryIdentity(fixture)
+    val workflows = IdeStatusWorkflowStates()
+    workflows.saveFeatureImplementWorkflow(proseRecord("w-active", "2026-08-06T10:00:00Z"))
+    workflows.saveFeatureTaskExecutionIdentity(identityFor("w-active", identity))
+    val database = TrackingDatabase(
+      work = listOf(workItem("w-active", WorkItemKind.FEATURE_TASK_PROSE, "running", "2026-08-06T10:00:00Z")),
+      workflows = workflows,
+    )
+
+    val result = service(database).status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = observedAt))
+
+    assertEquals(IdeStatusProblemCode.NO_MATCHING_WORK, result.snapshot.problem?.code)
+  }
+
+  @Test
+  fun `unresolvable checkout disables branch scoping instead of hiding work`() {
+    val fixture = gitRepoFixture("ide-status-branch-detached", branch = null)
+    val identity = goalRepositoryIdentity(fixture)
+    val workflows = IdeStatusWorkflowStates()
+    workflows.saveFeatureImplementWorkflow(proseRecord("w-active", "2026-08-06T10:00:00Z"))
+    workflows.saveFeatureTaskExecutionIdentity(identityFor("w-active", identity))
+    val database = TrackingDatabase(
+      work = listOf(workItem("w-active", WorkItemKind.FEATURE_TASK_PROSE, "running", "2026-08-06T10:00:00Z")),
+      workflows = workflows,
+    )
+
+    val result = service(database).status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = observedAt))
+
+    assertEquals(IdeStatusWorkflowFamily.FEATURE_TASK_PROSE, result.snapshot.workflowFamily)
+    assertEquals(IdeStatusLifecycleState.ACTIVE, result.snapshot.lifecycleState)
+  }
+
+  @Test
+  fun `running goal row with every subtask settled projects terminal complete`() {
+    val fixture = gitRepoFixture("ide-status-goal-settled")
+    val identity = goalRepositoryIdentity(fixture)
+    val service = service(
+      goalOnlyDatabase(),
+      manifestStore = StubGoalManifestStore(
+        completedGoalManifestState(fixture, identity),
+      ),
+    )
+
+    val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = observedAt))
+
+    assertEquals(IdeStatusLifecycleState.TERMINAL, result.snapshot.lifecycleState)
+    assertEquals("done", result.snapshot.currentStep.id)
+    assertEquals("Complete", result.snapshot.currentStep.label)
+    assertEquals("Goal SKILL-148 is complete.", result.snapshot.summary)
+  }
+
+  private fun completedGoalManifestState(fixture: Path, identity: String): GoalRunnerManifestState {
+    val base = goalManifestState(fixture, identity, childWorkflowId = "w-child")
+    return base.copy(
+      manifest = base.manifest.copy(
+        currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 0, action = "complete"),
+        subtasks = base.manifest.subtasks.map { it.copy(status = "complete", lastResumableStep = null) },
+      ),
+    )
   }
 
   @Test
@@ -608,10 +692,17 @@ class IdeStatusServiceTest {
       database = database,
       projector = projector,
       ideStatusValidator = EmitShapeValidator,
+      branchSource = CheckedOutBranchSource(::fixtureCheckedOutBranch),
       clock = clock,
     )
   }
 }
+
+private fun fixtureCheckedOutBranch(repoRoot: Path): String? =
+  runCatching { Files.readString(repoRoot.resolve(".git").resolve("HEAD")) }.getOrNull()
+    ?.trim()
+    ?.takeIf { it.startsWith("ref: refs/heads/") }
+    ?.removePrefix("ref: refs/heads/")
 
 private object EmitShapeValidator : IdeStatusValidator by NoopIdeStatusValidator {
   override fun validate(snapshot: Map<String, Any?>, sourceLabel: String) {
@@ -621,9 +712,17 @@ private object EmitShapeValidator : IdeStatusValidator by NoopIdeStatusValidator
   }
 }
 
-private fun gitRepoFixture(prefix: String): Path {
+/**
+ * Selection is scoped to the checked-out branch, so the fixture checks out a branch
+ * referencing the harness issue key unless a test overrides it. `branch = null` writes
+ * no HEAD, modelling a detached/unresolvable checkout that disables scoping.
+ */
+private fun gitRepoFixture(prefix: String, branch: String? = "feat/SKILL-148-fixture"): Path {
   val root = Files.createTempDirectory(prefix)
   Files.createDirectory(root.resolve(".git"))
+  if (branch != null) {
+    Files.writeString(root.resolve(".git").resolve("HEAD"), "ref: refs/heads/$branch\n")
+  }
   return root.toRealPath()
 }
 

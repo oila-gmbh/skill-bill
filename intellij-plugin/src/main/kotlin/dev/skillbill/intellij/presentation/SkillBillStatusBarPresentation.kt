@@ -40,6 +40,9 @@ object SkillBillStatusBarPresentation {
             is SkillBillStatusUiState.Stale ->
                 buildRunBar("Skill Bill · stale", step, planningSegment, goalText, subtaskText, progressText)
 
+            is SkillBillStatusUiState.Done ->
+                buildRunBar("Skill Bill · done", step, null, goalText, subtaskText, progressText)
+
             is SkillBillStatusUiState.Blocked -> "Skill Bill · blocked"
             is SkillBillStatusUiState.Failed -> "Skill Bill · failed"
             is SkillBillStatusUiState.Unavailable -> "Skill Bill · unavailable"
@@ -240,6 +243,7 @@ object SkillBillStatusBarPresentation {
             is SkillBillStatusUiState.Blocked,
             is SkillBillStatusUiState.Failed,
             is SkillBillStatusUiState.Paused,
+            is SkillBillStatusUiState.Done,
             -> "ran"
 
             else -> "elapsed"
@@ -248,6 +252,7 @@ object SkillBillStatusBarPresentation {
     private fun lifecycleLabel(state: SkillBillStatusUiState): String =
         when (state) {
             is SkillBillStatusUiState.Idle -> "idle"
+            is SkillBillStatusUiState.Done -> "done"
             is SkillBillStatusUiState.Active -> "active"
             is SkillBillStatusUiState.Paused -> "paused"
             is SkillBillStatusUiState.Stale -> "stale"

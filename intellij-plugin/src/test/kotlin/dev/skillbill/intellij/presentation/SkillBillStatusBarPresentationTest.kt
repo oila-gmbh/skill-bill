@@ -170,6 +170,28 @@ class SkillBillStatusBarPresentationTest {
     }
 
     @Test
+    fun `done bar shows the settled run without claiming liveness`() {
+        val done = SkillBillStatusUiState.Done(
+            headline = "Skill Bill: SKILL-167 · done",
+            detail = "Goal SKILL-167 is complete.",
+            goalElapsed = Duration.ofMinutes(86),
+            progressCompleted = 3,
+            progressTotal = 3,
+            issueKey = "SKILL-167",
+            lastUpdated = now,
+        )
+        val mapped = SkillBillStatusBarPresentation.map(done, now)
+        assertTrue(mapped.barText.startsWith("Skill Bill · done"))
+        // Final progress renders as-is; the in-flight position shift must not apply.
+        assertTrue(mapped.barText.contains("3/3"))
+        assertFalse(mapped.showActivityAnimation)
+        assertFalse(mapped.isStaleMarked)
+        assertEquals("done", mapped.details.lifecycleState)
+        assertEquals("ran", mapped.details.elapsedNoun)
+        assertTrue(mapped.tooltipText.contains("Issue: SKILL-167"))
+    }
+
+    @Test
     fun `a stale terminal reading still carries the caveat`() {
         val mapped = SkillBillStatusBarPresentation.map(SkillBillStatusUiState.Idle(stale = true), now)
         assertTrue(mapped.isStaleMarked)

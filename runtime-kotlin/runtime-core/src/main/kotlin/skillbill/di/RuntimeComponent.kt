@@ -61,6 +61,7 @@ import skillbill.infrastructure.fs.FeatureTaskRuntimeQuarantineValidatorAdapter
 import skillbill.infrastructure.fs.FileExternalAddonSourceConfigStore
 import skillbill.infrastructure.fs.FileExternalAgentAddonSourceConfigStore
 import skillbill.infrastructure.fs.FileSystemBaselineManifestPersistence
+import skillbill.infrastructure.fs.FileSystemCheckedOutBranchSource
 import skillbill.infrastructure.fs.FileSystemDeclaredReviewSpecialists
 import skillbill.infrastructure.fs.FileSystemDecompositionManifestFileStore
 import skillbill.infrastructure.fs.FileSystemDiffResolver
@@ -181,6 +182,7 @@ import skillbill.ports.scaffold.manifest.ScaffoldManifestPersistencePort
 import skillbill.ports.scaffold.repo.ScaffoldRepoValidationPort
 import skillbill.ports.scaffold.source.ScaffoldSourceLoaderPort
 import skillbill.ports.scaffold.staging.ScaffoldGeneratedStagingPort
+import skillbill.ports.system.CheckedOutBranchSource
 import skillbill.ports.system.UninstallFileSystemGateway
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
@@ -719,6 +721,10 @@ abstract class RuntimeComponent(
   @Provides
   @JvmSynthetic
   internal fun ideStatusValidator(adapter: IdeStatusValidatorAdapter): IdeStatusValidator = adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun checkedOutBranchSource(source: FileSystemCheckedOutBranchSource): CheckedOutBranchSource = source
 
   abstract val parallelCodeReviewRunner: ParallelCodeReviewRunner
 

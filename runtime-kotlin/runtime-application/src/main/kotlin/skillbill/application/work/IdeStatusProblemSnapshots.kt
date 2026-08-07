@@ -44,16 +44,23 @@ internal object IdeStatusProblemSnapshots {
     ),
   )
 
-  fun noMatchingWork(repositoryIdentity: String, observedAt: Instant): IdeStatusSnapshot = problemSnapshot(
-    ProblemParts(
-      repositoryIdentity = repositoryIdentity,
-      observedAt = observedAt,
-      code = IdeStatusProblemCode.NO_MATCHING_WORK,
-      message = "No matching Skill Bill work for this repository.",
-      summary = "No matching Skill Bill work for this repository.",
-      stepLabel = "No matching work",
-    ),
-  )
+  fun noMatchingWork(repositoryIdentity: String, observedAt: Instant, branch: String? = null): IdeStatusSnapshot {
+    val message = if (branch == null) {
+      "No matching Skill Bill work for this repository."
+    } else {
+      "No recent Skill Bill work for branch '$branch'."
+    }
+    return problemSnapshot(
+      ProblemParts(
+        repositoryIdentity = repositoryIdentity,
+        observedAt = observedAt,
+        code = IdeStatusProblemCode.NO_MATCHING_WORK,
+        message = message,
+        summary = message,
+        stepLabel = "No matching work",
+      ),
+    )
+  }
 
   fun incompatibleRecord(
     repositoryIdentity: String,

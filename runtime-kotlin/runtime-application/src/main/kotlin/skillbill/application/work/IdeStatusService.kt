@@ -16,6 +16,7 @@ import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.model.FeatureTaskRouteScope
 import skillbill.ports.persistence.model.WorkItem
 import skillbill.ports.persistence.model.WorkItemKind
+import skillbill.ports.system.CheckedOutBranchSource
 import skillbill.workflow.IdeStatusValidator
 import java.nio.file.Path
 import java.time.Clock
@@ -33,6 +34,7 @@ class IdeStatusService(
   private val database: DatabaseSessionFactory,
   private val projector: IdeStatusProjector,
   private val ideStatusValidator: IdeStatusValidator,
+  private val branchSource: CheckedOutBranchSource,
   private val clock: Clock = Clock.systemUTC(),
 ) {
 
@@ -52,11 +54,12 @@ class IdeStatusService(
       return emit(IdeStatusProblemSnapshots.absentDatabase(repositoryIdentity, observedAt))
     }
 
+    val currentBranch = branchSource.checkedOutBranch(repoRoot)
     return try {
       database.read(request.dbOverride) { unitOfWork ->
-        val candidates = collectCandidates(unitOfWork, repositoryIdentity)
+        val candidates = scopeToBranch(collectCandidates(unitOfWork, repositoryIdentity), currentBranch)
         val selected = IdeStatusSelectionPolicy.select(candidates, observedAt)
-          ?: return@read emit(IdeStatusProblemSnapshots.noMatchingWork(repositoryIdentity, observedAt))
+          ?: return@read emit(IdeStatusProblemSnapshots.noMatchingWork(repositoryIdentity, observedAt, currentBranch))
         val snapshot = projector.project(
           candidate = selected,
           context = IdeStatusProjectionContext(
@@ -85,6 +88,18 @@ class IdeStatusService(
           message = error.message ?: "Incompatible workflow record.",
         ),
       )
+    }
+  }
+
+  /**
+   * The widget answers "what is happening on the branch I am looking at", so candidates
+   * whose issue key does not appear in the checked-out branch name are dropped. With no
+   * resolvable branch (detached HEAD, rebase) scoping is disabled instead of hiding work.
+   */
+  private fun scopeToBranch(candidates: List<IdeStatusCandidate>, branch: String?): List<IdeStatusCandidate> {
+    if (branch == null) return candidates
+    return candidates.filter { candidate ->
+      candidate.issueKey?.let { IdeStatusBranchScope.branchReferencesIssueKey(branch, it) } == true
     }
   }
 

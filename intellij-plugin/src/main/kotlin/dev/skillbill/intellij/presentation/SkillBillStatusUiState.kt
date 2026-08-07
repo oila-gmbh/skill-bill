@@ -50,6 +50,21 @@ sealed class SkillBillStatusUiState {
         override val accessibilityText: String = headline
     }
 
+    data class Done(
+        override val headline: String,
+        override val detail: String? = null,
+        override val goalElapsed: Duration? = null,
+        override val subtaskElapsed: Duration? = null,
+        override val progressCompleted: Int? = null,
+        override val progressTotal: Int? = null,
+        override val issueKey: String? = null,
+        override val startedAt: Instant? = null,
+        override val lastUpdated: Instant? = null,
+        override val stale: Boolean = false,
+    ) : SkillBillStatusUiState() {
+        override val accessibilityText: String = "$headline (done)"
+    }
+
     data class Active(
         override val headline: String,
         override val detail: String?,
