@@ -3,27 +3,23 @@ contract_version: "0.5"
 issue_key: "SKILL-168"
 feature_name: "ide-status-goal-controls"
 parent_spec_path: ".feature-specs/SKILL-168-ide-status-goal-controls/spec.md"
-status: "blocked"
+status: "in_progress"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-168-ide-status-goal-controls"
 stack_branches: []
 current_subtask_intent:
   subtask_id: 1
-  action: "blocked"
+  action: "resume"
 subtasks:
 - id: 1
   name: "Plugin transient-idle smoothing"
   spec_path: ".feature-specs/SKILL-168-ide-status-goal-controls/spec_subtask_1_plugin-transient-idle-smoothing.md"
-  status: "blocked"
+  status: "in_progress"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260807-183820-9dhy"
-  blocked_reason: "git: owned path(s) '.feature-specs/SKILL-168-ide-status-goal-controls/spec_subtask_1_plugin-transient-idle-smoothing.md'\
-    \ are already staged outside this workflow, so the checkpoint cannot tell which\
-    \ content to commit. The runtime will not resolve this for you: either commit\
-    \ or unstage those paths yourself (git restore --staged -- <path>) and then resume.\
-    \ Both the index and worktree versions have been left untouched."
+  blocked_reason: null
   last_resumable_step: "audit"
   linear_issue_id: null
   finalizing_agent_id: null

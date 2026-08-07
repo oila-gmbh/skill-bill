@@ -1,3 +1,14 @@
+## [2026-08-07] SKILL-168 plugin transient-idle smoothing (subtask 1)
+Areas: intellij-plugin/{application,domain,infrastructure/cli}
+- A `no_matching_work` problem code now marks its derived `Idle` via the existing `StatusDiagnostic.reasonCode` channel rather than a new outcome variant or boolean — the presentation `when` stays exhaustive with zero new branches. Reuse this marker pattern for any "origin of an outcome" distinction. reusable
+- Sequential display policy lives in `StatusRefreshCoordinator.refreshOnce`, the single place owning emit + cache write + sequential state. The mapper stays a pure per-response translation and presentation stays a pure function of one outcome; do not add memory to either. reusable
+- Corroboration policy: an unconfirmed idle following a live outcome re-emits the previous in-memory outcome and returns early; `UNCORROBORATED_IDLE_TOLERANCE = 1` in `domain/Constants.kt` settles genuine idleness on the second consecutive sample. Any other outcome resets the counter.
+- New domain predicates `isUncorroboratedIdle()` / `isLiveOutcome()` on `SkillBillStatusOutcome`; `isLiveOutcome` enumerates Active/Paused/Blocked/Failed/Stale exhaustively, so a new outcome variant forces an explicit liveness decision. reusable
+- A hold re-emits the **in-memory** prior outcome only — never a `LastKnownDisplayCache` read, and never a cache write. This preserves the standing contract that a cached display may surface only as `Stale`, and keeps `observedAt` from advancing on a sample that observed nothing.
+- Limitation: plugin-side smoothing only; the bad sample still originates in the runtime (subtask 2). Tolerance is a constant, not user-configurable, and `UnavailableReason.NO_MATCHING_WORK` stays retained-for-compatibility and untouched.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-08-07] SKILL-167 plugin release workflow and docs (subtask 3)
 Areas: .github/workflows/plugin-release.yml, intellij-plugin/README.md, RELEASING.md
 - Plugin ships on its own `plugin-v*.*.*` tag stream via a dedicated `plugin-release.yml`; `release.yml` and the other runtime workflows stay byte-identical and gain no plugin references. A runtime tag never builds the plugin and vice versa. reusable
