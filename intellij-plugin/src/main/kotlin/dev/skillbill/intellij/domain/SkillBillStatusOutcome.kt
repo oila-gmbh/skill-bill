@@ -38,6 +38,30 @@ sealed class SkillBillStatusOutcome {
         val subtaskStartedAt: Instant?,
         val updatedAt: Instant,
         override val diagnostic: StatusDiagnostic? = null,
+        val planning: GoalPlanningInfo? = null,
+    ) : SkillBillStatusOutcome()
+
+    /**
+     * A live lifecycle that is not running. Distinct from [Active] because spinner and
+     * ticking-clock decisions key off the type: a paused goal must show neither.
+     */
+    data class Paused(
+        override val observedAt: Instant,
+        val summary: String,
+        val repositoryIdentity: String,
+        val issueKey: String?,
+        val workflowId: String?,
+        val workflowFamily: String?,
+        val currentStepId: String,
+        val currentStepLabel: String,
+        val progressCompleted: Int?,
+        val progressTotal: Int?,
+        val startedAt: Instant?,
+        val currentSubtaskId: String?,
+        val subtaskStartedAt: Instant?,
+        val updatedAt: Instant,
+        override val diagnostic: StatusDiagnostic? = null,
+        val planning: GoalPlanningInfo? = null,
     ) : SkillBillStatusOutcome()
 
     data class Stale(
@@ -55,6 +79,7 @@ sealed class SkillBillStatusOutcome {
         val updatedAt: Instant?,
         val fromCache: Boolean = false,
         override val diagnostic: StatusDiagnostic? = null,
+        val planning: GoalPlanningInfo? = null,
     ) : SkillBillStatusOutcome()
 
     data class Blocked(
@@ -104,6 +129,19 @@ sealed class SkillBillStatusOutcome {
         override val diagnostic: StatusDiagnostic? = null,
     ) : SkillBillStatusOutcome()
 }
+
+/**
+ * Goal planning progress carried alongside a live goal snapshot. [state] holds the raw
+ * wire value; the plugin never restates the runtime's planning-state vocabulary.
+ */
+data class GoalPlanningInfo(
+    val state: String,
+    val sharedPreplanPrepared: Boolean,
+    val plannedSubtaskCount: Int,
+    val totalSubtaskCount: Int,
+    val currentPlanningSubtaskId: String? = null,
+    val reason: String? = null,
+)
 
 enum class UnavailableReason {
     MISSING_EXECUTABLE,

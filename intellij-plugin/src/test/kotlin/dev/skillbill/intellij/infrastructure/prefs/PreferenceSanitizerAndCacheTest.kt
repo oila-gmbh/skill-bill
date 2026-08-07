@@ -2,6 +2,7 @@ package dev.skillbill.intellij.infrastructure.prefs
 
 import dev.skillbill.intellij.domain.CachedDisplaySnapshot
 import dev.skillbill.intellij.domain.LastKnownDisplayCache
+import dev.skillbill.intellij.domain.toCacheSnapshotOrNull
 import dev.skillbill.intellij.domain.toStaleOutcome
 import dev.skillbill.intellij.fakes.FakePreferenceCache
 import java.time.Instant
@@ -27,6 +28,33 @@ class PreferenceSanitizerAndCacheTest {
         val outcome = cache.toStaleOutcome()
         assertTrue(outcome.fromCache)
         assertTrue(outcome is dev.skillbill.intellij.domain.SkillBillStatusOutcome.Stale)
+    }
+
+    @Test
+    fun `a paused outcome round-trips through the cache and re-emerges as stale`() {
+        val paused = dev.skillbill.intellij.domain.SkillBillStatusOutcome.Paused(
+            observedAt = Instant.parse("2026-08-06T09:00:00Z"),
+            summary = "paused by operator",
+            repositoryIdentity = "repo",
+            issueKey = "SKILL-165",
+            workflowId = "wfl-1",
+            workflowFamily = "feature-goal",
+            currentStepId = "implement",
+            currentStepLabel = "Implement",
+            progressCompleted = 1,
+            progressTotal = 4,
+            startedAt = Instant.parse("2026-08-06T08:00:00Z"),
+            currentSubtaskId = "2",
+            subtaskStartedAt = Instant.parse("2026-08-06T08:30:00Z"),
+            updatedAt = Instant.parse("2026-08-06T08:59:00Z"),
+        )
+        val cached = paused.toCacheSnapshotOrNull()
+        assertNotNull(cached)
+        val stale = cached!!.toStaleOutcome()
+        assertTrue(stale.fromCache)
+        assertEquals("SKILL-165", stale.issueKey)
+        assertEquals(1, stale.progressCompleted)
+        assertEquals(4, stale.progressTotal)
     }
 
     @Test

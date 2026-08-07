@@ -1,5 +1,6 @@
 package dev.skillbill.intellij.presentation
 
+import dev.skillbill.intellij.domain.GoalPlanningInfo
 import dev.skillbill.intellij.domain.SkillBillStatusOutcome
 import dev.skillbill.intellij.domain.UnavailableReason
 import java.time.Duration
@@ -19,6 +20,7 @@ class StatusUiMapperTest {
         val outcomes = listOf(
             SkillBillStatusOutcome.Idle(now, "idle"),
             active(),
+            paused(updatedAt = now),
             SkillBillStatusOutcome.Stale(
                 observedAt = now,
                 summary = "stale",
@@ -73,6 +75,7 @@ class StatusUiMapperTest {
             listOf(
                 SkillBillStatusUiState.Idle::class,
                 SkillBillStatusUiState.Active::class,
+                SkillBillStatusUiState.Paused::class,
                 SkillBillStatusUiState.Stale::class,
                 SkillBillStatusUiState.Blocked::class,
                 SkillBillStatusUiState.Failed::class,
@@ -169,9 +172,116 @@ class StatusUiMapperTest {
         assertEquals(ui, StatusUiMapper.withElapsed(ui, muchLater.plusSeconds(3_600)))
     }
 
+    @Test
+    fun `paused maps to Paused with elapsed anchored to updatedAt not now`() {
+        val lastUpdate = Instant.parse("2026-08-06T10:30:00Z")
+        val muchLater = Instant.parse("2026-08-09T10:30:00Z")
+        val ui = StatusUiMapper.map(paused(updatedAt = lastUpdate), muchLater)
+        assertTrue(ui is SkillBillStatusUiState.Paused)
+        ui as SkillBillStatusUiState.Paused
+        // 10:00 start → 10:30 last update, not → observation three days later.
+        assertEquals(Duration.ofMinutes(30), ui.goalElapsed)
+        assertTrue(ui.headline.contains("paused"))
+        assertEquals(false, ui.stale)
+    }
+
+    @Test
+    fun `withElapsed does not tick a paused state but still re-anchors active`() {
+        val lastUpdate = Instant.parse("2026-08-06T10:30:00Z")
+        val paused = StatusUiMapper.map(paused(updatedAt = lastUpdate), lastUpdate)
+        assertEquals(paused, StatusUiMapper.withElapsed(paused, lastUpdate.plusSeconds(3_600)))
+
+        val active = StatusUiMapper.map(active(startedAt = started), started)
+        val ticked = StatusUiMapper.withElapsed(active, started.plusSeconds(45))
+            as SkillBillStatusUiState.Active
+        assertEquals(Duration.ofSeconds(45), ticked.goalElapsed)
+    }
+
+    @Test
+    fun `planning is carried only while it is still relevant`() {
+        val planning = GoalPlanningInfo(
+            state = "partially_planned",
+            sharedPreplanPrepared = false,
+            plannedSubtaskCount = 1,
+            totalSubtaskCount = 4,
+        )
+        val relevant = StatusUiMapper.map(
+            active(planning = planning, currentSubtaskId = null, progressCompleted = 0),
+            now,
+        ) as SkillBillStatusUiState.Active
+        assertEquals(planning, relevant.planning)
+
+        val prepared = StatusUiMapper.map(
+            active(planning = planning.copy(state = "prepared"), currentSubtaskId = null, progressCompleted = 0),
+            now,
+        ) as SkillBillStatusUiState.Active
+        assertNull(prepared.planning)
+
+        val executing = StatusUiMapper.map(
+            active(planning = planning, currentSubtaskId = "2", progressCompleted = 0),
+            now,
+        ) as SkillBillStatusUiState.Active
+        assertNull(executing.planning)
+
+        val progressed = StatusUiMapper.map(
+            active(planning = planning, currentSubtaskId = null, progressCompleted = 1),
+            now,
+        ) as SkillBillStatusUiState.Active
+        assertNull(progressed.planning)
+    }
+
+    @Test
+    fun `stale mid-planning retains the planning value`() {
+        val planning = GoalPlanningInfo(
+            state = "preplanned",
+            sharedPreplanPrepared = true,
+            plannedSubtaskCount = 0,
+            totalSubtaskCount = 4,
+        )
+        val ui = StatusUiMapper.map(
+            SkillBillStatusOutcome.Stale(
+                observedAt = now,
+                summary = "stale",
+                repositoryIdentity = "repo",
+                issueKey = "SKILL-165",
+                currentStepId = "plan",
+                currentStepLabel = "Plan",
+                progressCompleted = 0,
+                progressTotal = 4,
+                startedAt = started,
+                currentSubtaskId = null,
+                subtaskStartedAt = null,
+                updatedAt = now,
+                planning = planning,
+            ),
+            now,
+        ) as SkillBillStatusUiState.Stale
+        assertEquals(planning, ui.planning)
+    }
+
+    private fun paused(updatedAt: Instant) = SkillBillStatusOutcome.Paused(
+        observedAt = now,
+        summary = "paused",
+        repositoryIdentity = "repo-root-realpath-v1:/repo",
+        issueKey = "SKILL-165",
+        workflowId = "wfl-1",
+        workflowFamily = "feature-goal",
+        currentStepId = "implement",
+        currentStepLabel = "Implement",
+        progressCompleted = 1,
+        progressTotal = 4,
+        startedAt = started,
+        currentSubtaskId = "2",
+        subtaskStartedAt = subtaskStarted,
+        updatedAt = updatedAt,
+    )
+
     private fun active(
         startedAt: Instant? = started,
         subtaskStartedAt: Instant? = subtaskStarted,
+        planning: GoalPlanningInfo? = null,
+        currentSubtaskId: String? = "2",
+        progressCompleted: Int? = 3,
     ) = SkillBillStatusOutcome.Active(
         observedAt = now,
         summary = "active",
@@ -181,11 +291,12 @@ class StatusUiMapperTest {
         workflowFamily = "feature-task-runtime",
         currentStepId = "implement",
         currentStepLabel = "Implement",
-        progressCompleted = 3,
+        progressCompleted = progressCompleted,
         progressTotal = 9,
         startedAt = startedAt,
-        currentSubtaskId = "2",
+        currentSubtaskId = currentSubtaskId,
         subtaskStartedAt = subtaskStartedAt,
         updatedAt = now,
+        planning = planning,
     )
 }
