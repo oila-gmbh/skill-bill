@@ -53,4 +53,17 @@ data class FeatureTaskRuntimeSharedEvidenceResolution(
   val artifact: FeatureTaskRuntimeSharedEvidenceArtifact,
   val diffPayload: String,
   val storePath: String? = null,
+  /**
+   * Whether this resolution derived fresh, reused a fingerprint hit, or re-derived because the
+   * workflow already held evidence at a different checkpoint fingerprint. Telemetry attributes
+   * consumers from this field alone.
+   */
+  val outcome: FeatureTaskRuntimeSharedEvidenceResolveOutcome =
+    FeatureTaskRuntimeSharedEvidenceResolveOutcome.DERIVATION,
 )
+
+enum class FeatureTaskRuntimeSharedEvidenceResolveOutcome {
+  DERIVATION,
+  REUSE,
+  CHECKPOINT_CHANGE_REDERIVATION,
+}

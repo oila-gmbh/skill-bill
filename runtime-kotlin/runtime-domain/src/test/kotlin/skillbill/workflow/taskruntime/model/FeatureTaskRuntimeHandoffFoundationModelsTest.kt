@@ -58,6 +58,35 @@ class FeatureTaskRuntimeHandoffFoundationModelsTest {
   }
 
   @Test
+  fun `shared evidence measurement emits exactly the declared fields for each outcome`() {
+    FeatureTaskRuntimeSharedEvidenceOutcome.entries.forEach { outcome ->
+      val wire = FeatureTaskRuntimeSharedEvidenceMeasurement(
+        workflowId = "wftr-1",
+        checkpointFingerprint = "fp-1",
+        consumerPhaseId = "audit",
+        outcome = outcome,
+        fileIndexCount = 2,
+        hunkIndexCount = 3,
+      ).toTelemetryMap()
+
+      assertEquals(
+        setOf(
+          "contract_version",
+          "workflow_id",
+          "checkpoint_fingerprint",
+          "consumer_phase_id",
+          "outcome",
+          "file_index_count",
+          "hunk_index_count",
+        ),
+        wire.keys,
+      )
+      assertEquals(outcome.wireValue, wire["outcome"])
+      assertFalse(wire.keys.any { it in setOf("prompt", "payload", "diff", "path", "file_path") })
+    }
+  }
+
+  @Test
   fun `producer iteration rejects blank identity and non-positive attempts`() {
     assertFailsWith<IllegalArgumentException> { FeatureTaskRuntimeProducerIteration("", 1) }
     assertFailsWith<IllegalArgumentException> { FeatureTaskRuntimeProducerIteration("plan", 0) }
@@ -95,4 +124,5 @@ private object AcceptingFoundationValidator : FeatureTaskRuntimeHandoffFoundatio
   override fun validateDeclaration(payload: Map<String, Any?>, sourceLabel: String) = Unit
   override fun validatePersistenceRecord(payload: Map<String, Any?>, sourceLabel: String) = Unit
   override fun validateMeasurement(payload: Map<String, Any?>, sourceLabel: String) = Unit
+  override fun validateSharedEvidenceProjection(payload: Map<String, Any?>, sourceLabel: String) = Unit
 }

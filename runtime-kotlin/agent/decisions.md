@@ -4,6 +4,26 @@ This file records architectural and implementation decisions that span the
 `runtime-kotlin/` boundary. Each entry is dated and explains the trade-off,
 not the implementation detail.
 
+## 2026-08-07 — reject audit/review single-pass merge (SKILL-164)
+
+Context: Checkpoint-keyed shared review evidence made it tempting to collapse
+`audit` and `review` into one agent pass over the same derived artifact.
+
+Decision: Keep audit and review as separate phases. The single-pass merge is
+rejected and not to be re-litigated.
+
+Reason: The phases read divergent evidence sets (audit still needs unchanged
+files that produce no diff), they settle into divergent backward edges
+(`audit_gap` → `implement` versus `review_fix` → `implement_fix` under
+`MUST_MATCH`), audit-first ordering is itself the cost optimization that keeps
+specialist fan-out off trees about to be rewritten, and one agent holding both
+evidence bars degrades the audit.
+
+Alternatives considered: Merge audit and review into a single pass over the
+shared evidence — rejected for the four reasons above.
+
+Revisit when: none; settled for this feature.
+
 ## 2026-08-05 — `--include-shared-preplan` cascades every sibling plan row (SKILL-160)
 
 Context: Discarding the goal-wide shared preplan while leaving sibling

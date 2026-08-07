@@ -5,11 +5,23 @@ import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceDerivation
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceRequest
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolveOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceFileEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceHunkEntry
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceOutcome
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceMeasurement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedReviewEvidenceReference
 import java.nio.file.Path
+
+/**
+ * One successful shared-evidence resolve: the prompt-visible reference plus the content-free
+ * measurement the recorder enqueues for this consumer.
+ */
+internal data class FeatureTaskRuntimeSharedReviewEvidenceResolved(
+  val reference: FeatureTaskRuntimeSharedReviewEvidenceReference,
+  val measurement: FeatureTaskRuntimeSharedEvidenceMeasurement,
+)
 
 /**
  * Resolves the shared review evidence a phase launch delivers, keyed on the launch's own repository
@@ -34,13 +46,25 @@ internal class FeatureTaskRuntimeSharedReviewEvidenceResolver(
     repoRoot: Path,
     workflowId: String?,
     checkpoint: FeatureTaskRuntimeRepositoryCheckpoint?,
-  ): FeatureTaskRuntimeSharedReviewEvidenceReference? {
+    consumerPhaseId: String,
+  ): FeatureTaskRuntimeSharedReviewEvidenceResolved? {
     if (workflowId.isNullOrBlank() || checkpoint == null) return null
     val resolution = sharedEvidenceResolver.resolve(
       FeatureTaskRuntimeSharedEvidenceRequest(repoRoot, workflowId, checkpoint),
     ) { requested -> derive(repoRoot, requested) }
     val storePath = resolution.storePath?.takeIf(String::isNotBlank) ?: return null
-    return FeatureTaskRuntimeSharedReviewEvidenceReference.of(storePath, resolution.artifact)
+    val reference = FeatureTaskRuntimeSharedReviewEvidenceReference.of(storePath, resolution.artifact)
+    return FeatureTaskRuntimeSharedReviewEvidenceResolved(
+      reference = reference,
+      measurement = FeatureTaskRuntimeSharedEvidenceMeasurement(
+        workflowId = workflowId,
+        checkpointFingerprint = resolution.artifact.fingerprint,
+        consumerPhaseId = consumerPhaseId,
+        outcome = resolution.outcome.toMeasurementOutcome(),
+        fileIndexCount = resolution.artifact.files.size,
+        hunkIndexCount = resolution.artifact.hunks.size,
+      ),
+    )
   }
 
   private fun derive(
@@ -71,4 +95,14 @@ internal class FeatureTaskRuntimeSharedReviewEvidenceResolver(
     oldPath != newPath -> "renamed"
     else -> "modified"
   }
+}
+
+private fun FeatureTaskRuntimeSharedEvidenceResolveOutcome.toMeasurementOutcome():
+  FeatureTaskRuntimeSharedEvidenceOutcome = when (this) {
+  FeatureTaskRuntimeSharedEvidenceResolveOutcome.DERIVATION ->
+    FeatureTaskRuntimeSharedEvidenceOutcome.DERIVATION
+  FeatureTaskRuntimeSharedEvidenceResolveOutcome.REUSE ->
+    FeatureTaskRuntimeSharedEvidenceOutcome.REUSE
+  FeatureTaskRuntimeSharedEvidenceResolveOutcome.CHECKPOINT_CHANGE_REDERIVATION ->
+    FeatureTaskRuntimeSharedEvidenceOutcome.CHECKPOINT_CHANGE_REDERIVATION
 }

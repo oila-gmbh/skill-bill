@@ -4,6 +4,7 @@
 
 package skillbill.application.featuretask
 
+import skillbill.application.evidence.FeatureTaskRuntimeSharedReviewEvidenceResolved
 import skillbill.application.evidence.FeatureTaskRuntimeSharedReviewEvidenceResolver
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointDecision
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointScopeInput
@@ -79,7 +80,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoi
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewPassSequence
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedReviewEvidenceReference
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
@@ -3375,7 +3375,7 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun resolveSharedReviewEvidence(
     run: PhaseRun,
     checkpoint: FeatureTaskRuntimeRepositoryCheckpoint?,
-  ): FeatureTaskRuntimeSharedReviewEvidenceReference? {
+  ): FeatureTaskRuntimeSharedReviewEvidenceResolved? {
     val declared = run.declaration.projectionDeclarations.any {
       it.sourceRef == FeatureTaskRuntimeHandoffSourceRef.SharedReviewEvidence
     }
@@ -3383,7 +3383,7 @@ internal class FeatureTaskRuntimeRunLoop(
     return FeatureTaskRuntimeSharedReviewEvidenceResolver(
       phaseGates.sharedEvidenceResolver,
       phaseGates.diffResolver,
-    ).resolve(run.request.repoRoot, run.request.workflowId, checkpoint)
+    ).resolve(run.request.repoRoot, run.request.workflowId, checkpoint, run.phaseId)
   }
 
   /**
@@ -4201,14 +4201,20 @@ internal class FeatureTaskRuntimeRunLoop(
       baseBranch = resolvedBranchRecord?.baseBranch ?: "main",
     )
     recorder.validateHandoffDeclarations(handoff.projectionDeclarations)
+    val sharedEvidence = resolveSharedReviewEvidence(run, repositoryCheckpoint)
     val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(
       handoff,
       run.request.workflowId,
       planningProjectionValidator,
       run.request.agentAddonSelection,
-      resolveSharedReviewEvidence(run, repositoryCheckpoint),
+      sharedEvidence?.reference,
     )
-    recorder.recordPhaseBriefing(run.request.workflowId, briefing, run.request.dbPathOverride)
+    recorder.recordPhaseBriefing(
+      run.request.workflowId,
+      briefing,
+      run.request.dbPathOverride,
+      sharedEvidence?.measurement,
+    )
     val passNumber = reviewPassNumber(run, state)
     val depthResolution = passNumber?.let { pass ->
       FeatureTaskRuntimeReviewPassSequence.resolveForPass(run.request.runInvariants.codeReviewMode, pass)

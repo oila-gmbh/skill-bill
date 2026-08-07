@@ -9,6 +9,7 @@ import com.networknt.schema.SpecVersion
 import skillbill.error.InvalidFeatureTaskRuntimePersistenceSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseHandoffSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimeProjectionMeasurementSchemaError
+import skillbill.error.InvalidFeatureTaskRuntimeSharedEvidenceProjectionSchemaError
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -39,6 +40,15 @@ object FeatureTaskRuntimeProjectionMeasurementSchemaValidator {
     FeatureTaskRuntimeProjectionMeasurementSchemaPaths.CLASSPATH_RESOURCE,
     FeatureTaskRuntimeProjectionMeasurementSchemaPaths.EXPECTED_SCHEMA_ID,
   ) { reason -> InvalidFeatureTaskRuntimeProjectionMeasurementSchemaError(sourceLabel, reason) }
+}
+
+object FeatureTaskRuntimeSharedEvidenceProjectionSchemaValidator {
+  fun validate(payload: Map<String, Any?>, sourceLabel: String) = validateAgainst(
+    payload,
+    FeatureTaskRuntimeSharedEvidenceProjectionSchemaPaths.REPO_RELATIVE_PATH,
+    FeatureTaskRuntimeSharedEvidenceProjectionSchemaPaths.CLASSPATH_RESOURCE,
+    FeatureTaskRuntimeSharedEvidenceProjectionSchemaPaths.EXPECTED_SCHEMA_ID,
+  ) { reason -> InvalidFeatureTaskRuntimeSharedEvidenceProjectionSchemaError(sourceLabel, reason) }
 }
 
 private fun validateAgainst(

@@ -3,6 +3,7 @@ package skillbill.ports.taskruntime
 import skillbill.error.ShellContentContractException
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceRequest
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolution
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolveOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceDiffPayloadRef
 
@@ -60,6 +61,7 @@ fun interface FeatureTaskRuntimeSharedEvidenceResolverPort {
             ),
           ),
           diffPayload = derivation.diffPayload,
+          outcome = FeatureTaskRuntimeSharedEvidenceResolveOutcome.DERIVATION,
         )
       }
 

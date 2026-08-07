@@ -905,3 +905,25 @@ internal fun auditGapLauncher(convergeOnAudit: Int): RuntimeRecordingLauncher {
     }
   }
 }
+
+class FeatureTaskRuntimeAuditGapSharedEvidenceTest {
+  @Test
+  fun `audit_gap at an unchanged checkpoint reuses shared evidence without a second derivation`() {
+    val store = CountingSharedEvidenceStore()
+    val harness = runnerHarness(
+      launcher = auditGapLauncher(convergeOnAudit = 2),
+      runtimeConfig = RuntimeHarnessConfig(
+        repoRoot = kotlin.io.path.createTempDirectory("audit-gap-shared-evidence"),
+        sharedEvidenceResolver = store,
+        diffResolver = object : skillbill.ports.diff.DiffResolverPort {
+          override fun runProcess(args: List<String>, workDir: java.nio.file.Path): String =
+            "diff --git a/src/A.kt b/src/A.kt\n@@ -1 +1 @@\n+x\n"
+        },
+      ),
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+    assertTrue(store.derivationCount >= 1)
+    assertTrue(store.reuseCount >= 1, "unchanged checkpoint must reuse at least once")
+  }
+}

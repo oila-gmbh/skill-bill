@@ -430,6 +430,7 @@ runtime-ports
     - `skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration.fromArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionMeasurement.toTelemetryMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceMeasurement.toTelemetryMap`
     - `skillbill.workflow.FeatureTaskRuntimeQuarantineValidator.validateQuarantineRecord`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry.fromArtifactMap`
@@ -454,6 +455,7 @@ runtime-ports
     - `skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator.validateDeclaration`
     - `skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator.validatePersistenceRecord`
     - `skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator.validateMeasurement`
+    - `skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator.validateSharedEvidenceProjection`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.fromArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch.toArtifactMap`
@@ -804,6 +806,22 @@ re-derives the consumer scope. The domain stays git-agnostic: the application la
 the checkpoint in `FeatureTaskRuntimeRunLoop` through the existing
 `WorkflowGitOperations` port, reusing the same `repositoryFingerprint` extension
 the audit-repair path already depends on. No new git port was introduced.
+
+**Shared review evidence (SKILL-164).** Branch/commit review evidence is derived
+once per `FeatureTaskRuntimeRepositoryCheckpoint.fingerprint` into a repo-local
+artifact under `.skill-bill/run-evidence/<workflowId>/<fingerprint>/`. The
+delivered projection is a reference only — `store_path` plus a bounded
+file/hunk index — never inlined diff bytes, so the planning-projection budget
+stays independent of branch diff size. The contract is
+`orchestration/contracts/feature-task-runtime-shared-evidence-projection-schema.yaml`,
+pinned by `FEATURE_TASK_RUNTIME_SHARED_EVIDENCE_PROJECTION_CONTRACT_VERSION` and
+validated on every store read: schema-invalid or unreadable content re-derives,
+while a fingerprint that contradicts its addressed location loud-fails. Audit
+consumes this projection as a floor alongside `scoped_repository_state`; it
+never replaces audit's scoped repository read, because audit's highest-value
+finding is a criterion with no code behind it and therefore no diff. Telemetry
+records each resolve as `skillbill_feature_task_runtime_shared_evidence` with
+outcome `derivation`, `reuse`, or `checkpoint_change_rederivation`.
 
 Finalization path inventories come from the checkpoint's runtime-resolved
 base/head and scoped owned-path comparison. Implementation receipt paths are
@@ -1195,6 +1213,7 @@ Categories:
 - `skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration.fromArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionMeasurement.toTelemetryMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceMeasurement.toTelemetryMap`
 - `skillbill.workflow.FeatureTaskRuntimeQuarantineValidator.validateQuarantineRecord`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry.fromArtifactMap`
@@ -1219,6 +1238,7 @@ Categories:
 - `skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator.validateDeclaration`
 - `skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator.validatePersistenceRecord`
 - `skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator.validateMeasurement`
+- `skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator.validateSharedEvidenceProjection`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry.fromArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch.toArtifactMap`

@@ -208,3 +208,20 @@ object FeatureTaskRuntimeAuditRepairPlanSchemaPaths {
   const val EXPECTED_SCHEMA_ID: String =
     "https://skill-bill.dev/contracts/feature-task-runtime-audit-repair-plan-schema.yaml"
 }
+
+/**
+ * Runtime-side mirror of the shared-evidence projection schema's `contract_version`;
+ * `FeatureTaskRuntimeSharedEvidenceProjectionSchemaContractVersionTest` fails the build if they diverge.
+ * Pins the reference-only projection (store path plus file/hunk index) delivered to audit, review,
+ * and every review lane for one repository checkpoint.
+ */
+const val FEATURE_TASK_RUNTIME_SHARED_EVIDENCE_PROJECTION_CONTRACT_VERSION: String = "0.1"
+
+object FeatureTaskRuntimeSharedEvidenceProjectionSchemaPaths {
+  const val REPO_RELATIVE_PATH: String =
+    "orchestration/contracts/feature-task-runtime-shared-evidence-projection-schema.yaml"
+  const val CLASSPATH_RESOURCE: String =
+    "skillbill/contracts/feature-task-runtime-shared-evidence-projection-schema.yaml"
+  const val EXPECTED_SCHEMA_ID: String =
+    "https://skill-bill.dev/contracts/feature-task-runtime-shared-evidence-projection-schema.yaml"
+}

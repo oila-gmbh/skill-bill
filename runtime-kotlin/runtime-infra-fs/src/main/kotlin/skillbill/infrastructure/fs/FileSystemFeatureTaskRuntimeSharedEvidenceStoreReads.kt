@@ -2,6 +2,9 @@ package skillbill.infrastructure.fs
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.ObjectNode
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_SHARED_EVIDENCE_PROJECTION_CONTRACT_VERSION
+import skillbill.contracts.workflow.FeatureTaskRuntimeSharedEvidenceProjectionSchemaValidator
+import skillbill.error.InvalidFeatureTaskRuntimeSharedEvidenceProjectionSchemaError
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceFingerprintContradictionError
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolution
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceArtifact
@@ -13,14 +16,16 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /**
- * Returns the stored artifact only on a clean fingerprint hit. Anything missing, unparseable, or
- * truncated returns null so the caller re-derives; only a well-formed envelope that contradicts
- * its own address throws.
+ * Returns the stored artifact only on a clean fingerprint hit whose projection passes schema
+ * validation. Anything missing, unparseable, truncated, or schema-invalid returns null so the
+ * caller re-derives; only a well-formed envelope that contradicts its own address throws.
  */
 internal fun readStored(
   mapper: ObjectMapper,
   artifactDir: Path,
   fingerprint: String,
+  workflowId: String,
+  storePath: String,
 ): FeatureTaskRuntimeSharedEvidenceResolution? {
   val envelopePath = artifactDir.resolve(SHARED_EVIDENCE_ENVELOPE_FILE)
   val envelopeLabel = envelopePath.toString()
@@ -28,7 +33,7 @@ internal fun readStored(
   val recorded = recordedFingerprint(envelope, envelopeLabel, fingerprint) ?: return null
   return intactPayloadRef(artifactDir, envelope, envelopeLabel)?.let { payloadRef ->
     readPayloadText(artifactDir.resolve(payloadRef.relativePath))?.let { payloadText ->
-      resolutionOf(envelope, recorded, payloadRef, payloadText, envelopeLabel)
+      resolutionOf(envelope, recorded, payloadRef, payloadText, envelopeLabel, workflowId, storePath)
     }
   }
 }
@@ -55,18 +60,54 @@ private fun resolutionOf(
   payloadRef: FeatureTaskRuntimeSharedEvidenceDiffPayloadRef,
   payloadText: String,
   envelopeLabel: String,
+  workflowId: String,
+  storePath: String,
 ): FeatureTaskRuntimeSharedEvidenceResolution? = try {
+  val files = envelope.path("files").map {
+    FeatureTaskRuntimeSharedEvidenceFileEntry(it.path("path").asText(""), it.path("change_kind").asText(""))
+  }
+  val hunks = envelope.path("hunks").map {
+    FeatureTaskRuntimeSharedEvidenceHunkEntry(it.path("path").asText(""), it.path("header").asText(""))
+  }
+  val baseRef = envelope.path("base_ref").takeIf { !it.isNull && !it.isMissingNode }?.asText()
+  val headRef = envelope.path("head_ref").takeIf { !it.isNull && !it.isMissingNode }?.asText()
+  val contractVersion = envelope.path("contract_version").asText("").ifBlank {
+    FEATURE_TASK_RUNTIME_SHARED_EVIDENCE_PROJECTION_CONTRACT_VERSION
+  }
+  val projection = linkedMapOf<String, Any?>(
+    "contract_version" to contractVersion,
+    "workflow_id" to workflowId,
+    "repository_checkpoint_fingerprint" to recorded,
+    "store_path" to storePath,
+    "file_hunk_index" to files.map { file ->
+      val hunkCount = hunks.count { it.path == file.path }
+      "${file.changeKind} ${file.path} hunks=$hunkCount"
+    },
+  ).apply {
+    baseRef?.takeIf { it.isNotBlank() }?.let { put("base_ref", it) }
+    headRef?.takeIf { it.isNotBlank() }?.let { put("head_ref", it) }
+    // A stored payload that inlined diff content is schema-invalid: never serve it.
+    if (envelope.has("diff_content") || envelope.has("diff_bytes")) {
+      put("diff_content", envelope.path("diff_content").asText("present"))
+    }
+  }
+  try {
+    FeatureTaskRuntimeSharedEvidenceProjectionSchemaValidator.validate(projection, envelopeLabel)
+  } catch (error: InvalidFeatureTaskRuntimeSharedEvidenceProjectionSchemaError) {
+    return degraded(
+      seam = "stored_projection_schema",
+      used = "re-derive",
+      expected = "schema-valid shared evidence projection at $envelopeLabel",
+      cause = error.reason,
+    )
+  }
   FeatureTaskRuntimeSharedEvidenceResolution(
     artifact = FeatureTaskRuntimeSharedEvidenceArtifact(
       fingerprint = recorded,
-      baseRef = envelope.path("base_ref").takeIf { !it.isNull && !it.isMissingNode }?.asText(),
-      headRef = envelope.path("head_ref").takeIf { !it.isNull && !it.isMissingNode }?.asText(),
-      files = envelope.path("files").map {
-        FeatureTaskRuntimeSharedEvidenceFileEntry(it.path("path").asText(""), it.path("change_kind").asText(""))
-      },
-      hunks = envelope.path("hunks").map {
-        FeatureTaskRuntimeSharedEvidenceHunkEntry(it.path("path").asText(""), it.path("header").asText(""))
-      },
+      baseRef = baseRef,
+      headRef = headRef,
+      files = files,
+      hunks = hunks,
       diffPayload = payloadRef,
     ),
     diffPayload = payloadText,

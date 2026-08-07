@@ -2,6 +2,7 @@ package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PROJECTION_MEASUREMENT_CONTRACT_VERSION
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_SHARED_EVIDENCE_PROJECTION_CONTRACT_VERSION
 
 const val FEATURE_TASK_RUNTIME_INCOMPATIBLE_RECORD_GUIDANCE: String =
   "restart the active run or use the documented out-of-band migration procedure"
@@ -78,6 +79,52 @@ data class FeatureTaskRuntimeProjectionMeasurement(
   ).apply {
     failureClassification?.let { put("failure_classification", it.wireValue) }
   }
+}
+
+/**
+ * Privacy-safe shared-evidence accounting. Carries identifiers, the resolve outcome, and bounded
+ * index counters only — never file paths, diff content, or prompt bodies — so reuse rate is
+ * computable from the emitted fields alone.
+ */
+data class FeatureTaskRuntimeSharedEvidenceMeasurement(
+  val workflowId: String,
+  val checkpointFingerprint: String,
+  val consumerPhaseId: String,
+  val outcome: FeatureTaskRuntimeSharedEvidenceOutcome,
+  val fileIndexCount: Int,
+  val hunkIndexCount: Int,
+) {
+  init {
+    require(workflowId.isNotBlank()) {
+      "FeatureTaskRuntimeSharedEvidenceMeasurement.workflowId must be non-blank."
+    }
+    require(checkpointFingerprint.isNotBlank()) {
+      "FeatureTaskRuntimeSharedEvidenceMeasurement.checkpointFingerprint must be non-blank."
+    }
+    require(consumerPhaseId.isNotBlank()) {
+      "FeatureTaskRuntimeSharedEvidenceMeasurement.consumerPhaseId must be non-blank."
+    }
+    require(fileIndexCount >= 0 && hunkIndexCount >= 0) {
+      "FeatureTaskRuntimeSharedEvidenceMeasurement counts must be non-negative."
+    }
+  }
+
+  @OpenBoundaryMap("Content-free feature-task-runtime shared-evidence measurement telemetry seam")
+  fun toTelemetryMap(): Map<String, Any?> = linkedMapOf(
+    "contract_version" to FEATURE_TASK_RUNTIME_SHARED_EVIDENCE_PROJECTION_CONTRACT_VERSION,
+    "workflow_id" to workflowId,
+    "checkpoint_fingerprint" to checkpointFingerprint,
+    "consumer_phase_id" to consumerPhaseId,
+    "outcome" to outcome.wireValue,
+    "file_index_count" to fileIndexCount,
+    "hunk_index_count" to hunkIndexCount,
+  )
+}
+
+enum class FeatureTaskRuntimeSharedEvidenceOutcome(val wireValue: String) {
+  DERIVATION("derivation"),
+  REUSE("reuse"),
+  CHECKPOINT_CHANGE_REDERIVATION("checkpoint_change_rederivation"),
 }
 
 enum class FeatureTaskRuntimeProjectionFailureClassification(val wireValue: String) {

@@ -7,6 +7,7 @@ import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceDerivation
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceRequest
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolution
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolveOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceDiffPayloadRef
 import java.nio.file.AtomicMoveNotSupportedException
@@ -53,8 +54,33 @@ open class FileSystemFeatureTaskRuntimeSharedEvidenceStore : FeatureTaskRuntimeS
     val fingerprint = request.checkpoint.fingerprint
     val artifactDir = artifactDir(request)
     val storePath = storePath(request.repoRoot, artifactDir)
-    readStored(mapper, artifactDir, fingerprint)?.let { return it.copy(storePath = storePath) }
-    return persist(artifactDir, fingerprint, deriver.derive(request.checkpoint)).copy(storePath = storePath)
+    readStored(mapper, artifactDir, fingerprint, request.workflowId, storePath)?.let {
+      return it.copy(storePath = storePath, outcome = FeatureTaskRuntimeSharedEvidenceResolveOutcome.REUSE)
+    }
+    val outcome = if (siblingFingerprintsExist(artifactDir)) {
+      FeatureTaskRuntimeSharedEvidenceResolveOutcome.CHECKPOINT_CHANGE_REDERIVATION
+    } else {
+      FeatureTaskRuntimeSharedEvidenceResolveOutcome.DERIVATION
+    }
+    return persist(artifactDir, fingerprint, deriver.derive(request.checkpoint))
+      .copy(storePath = storePath, outcome = outcome)
+  }
+
+  /**
+   * True when this workflow already holds at least one published fingerprint directory other than
+   * the one about to be derived. That is the store-local signal that a miss is a checkpoint-change
+   * re-derivation rather than the workflow's first derivation.
+   */
+  private fun siblingFingerprintsExist(artifactDir: Path): Boolean {
+    val parent = artifactDir.parent ?: return false
+    if (!Files.isDirectory(parent)) return false
+    return Files.list(parent).use { stream ->
+      stream.anyMatch { candidate ->
+        candidate.fileName.toString() != artifactDir.fileName.toString() &&
+          !candidate.fileName.toString().contains(STAGING_SUFFIX) &&
+          Files.isDirectory(candidate)
+      }
+    }
   }
 
   /**
