@@ -8,6 +8,7 @@ import skillbill.application.featuretask.FeatureTaskRuntimeRunInvariantsStore
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.goalrunner.GoalRunnerStatusService
 import skillbill.application.goalrunner.goalRepositoryIdentity
+import skillbill.application.model.IdeStatusFreshness
 import skillbill.application.model.IdeStatusLifecycleState
 import skillbill.application.model.IdeStatusProblemCode
 import skillbill.application.model.IdeStatusRequest
@@ -311,6 +312,70 @@ class IdeStatusServiceTest {
     assertEquals(Instant.parse("2026-08-06T08:00:00Z"), result.snapshot.startedAt)
   }
 
+  @Test
+  fun `feature-goal freshness follows the newest same-repo child workflow write`() {
+    val fixture = gitRepoFixture("ide-status-goal-freshness")
+    val identity = goalRepositoryIdentity(fixture)
+    // The goal row's state_entered_at is 2h stale; the running child wrote 15m ago.
+    val database = goalWithChildWrittenAt(identity, childUpdatedAt = "2026-08-06T11:45:00Z")
+    val service = service(database)
+
+    val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = observedAt))
+
+    assertEquals(IdeStatusWorkflowFamily.FEATURE_GOAL, result.snapshot.workflowFamily)
+    assertEquals(IdeStatusLifecycleState.ACTIVE, result.snapshot.lifecycleState)
+    assertEquals(Instant.parse("2026-08-06T11:45:00Z"), result.snapshot.updatedAt)
+    assertEquals(IdeStatusFreshness.FRESH, result.snapshot.freshness)
+  }
+
+  @Test
+  fun `child workflow timestamps written by SQLite CURRENT_TIMESTAMP are parsed as UTC`() {
+    val fixture = gitRepoFixture("ide-status-sqlite-timestamp")
+    val identity = goalRepositoryIdentity(fixture)
+    val database = goalWithChildWrittenAt(identity, childUpdatedAt = "2026-08-06 11:45:00")
+    val service = service(database)
+
+    val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = observedAt))
+
+    assertEquals(Instant.parse("2026-08-06T11:45:00Z"), result.snapshot.updatedAt)
+    assertEquals(IdeStatusFreshness.FRESH, result.snapshot.freshness)
+  }
+
+  @Test
+  fun `feature-goal with no child writes stays anchored to its own durable state`() {
+    val fixture = gitRepoFixture("ide-status-goal-no-children")
+    val database = TrackingDatabase(
+      work = listOf(workItem("goal-1", WorkItemKind.FEATURE_GOAL, "running", "2026-08-06T10:00:00Z")),
+      workflows = IdeStatusWorkflowStates(),
+    )
+    val service = service(database)
+
+    val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = observedAt))
+
+    assertEquals(Instant.parse("2026-08-06T10:00:00Z"), result.snapshot.updatedAt)
+    assertEquals(IdeStatusFreshness.STALE, result.snapshot.freshness)
+  }
+
+  private fun goalWithChildWrittenAt(identity: String, childUpdatedAt: String): TrackingDatabase {
+    val workflows = IdeStatusWorkflowStates()
+    workflows.saveFeatureImplementWorkflow(proseRecord("w-child", childUpdatedAt))
+    workflows.saveFeatureTaskExecutionIdentity(
+      identityFor("w-child", identity).copy(routeScope = FeatureTaskRouteScope.GOAL_CHILD),
+    )
+    val controls = object : GoalRunnerControlRepository by EmptyGoalRunnerControlRepository {
+      override fun controlState(parentWorkflowId: String): GoalRunnerControlState =
+        GoalRunnerControlState(repositoryIdentity = identity)
+    }
+    return TrackingDatabase(
+      work = listOf(
+        workItem("goal-1", WorkItemKind.FEATURE_GOAL, "running", "2026-08-06T10:00:00Z"),
+        workItem("w-child", WorkItemKind.FEATURE_TASK_PROSE, "running", "2026-08-06T10:00:00Z"),
+      ),
+      workflows = workflows,
+      controls = controls,
+    )
+  }
+
   private fun goalWithLaunchedChildDatabase(identity: String, childStarted: Instant): TrackingDatabase {
     val workflows = IdeStatusWorkflowStates()
     workflows.saveFeatureImplementWorkflow(
@@ -559,7 +624,15 @@ private class IdeStatusWorkflowStates : WorkflowStateRepository {
   override fun findGoalChildFeatureTaskCandidates(
     normalizedIssueKey: String,
     repositoryIdentity: String,
-  ): List<FeatureTaskWorkflowCandidate> = emptyList()
+  ): List<FeatureTaskWorkflowCandidate> = identities.values
+    .filter {
+      it.routeScope == FeatureTaskRouteScope.GOAL_CHILD &&
+        it.normalizedIssueKey == normalizedIssueKey &&
+        it.repositoryIdentity == repositoryIdentity
+    }
+    .mapNotNull { identity ->
+      implement[identity.workflowId]?.let { FeatureTaskWorkflowCandidate(identity = identity, workflow = it) }
+    }
 
   override fun countGoalChildIdentities(normalizedIssueKey: String): Int = identities.values.count {
     it.normalizedIssueKey == normalizedIssueKey && it.routeScope == FeatureTaskRouteScope.GOAL_CHILD

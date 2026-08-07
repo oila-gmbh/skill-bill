@@ -447,6 +447,26 @@ val copyFeatureTaskRuntimeProjectionMeasurementSchema =
     }
   }
 
+val canonicalFeatureTaskRuntimeSharedEvidenceProjectionSchemaPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/feature-task-runtime-shared-evidence-projection-schema.yaml")
+    .absolutePath
+
+val copyFeatureTaskRuntimeSharedEvidenceProjectionSchema =
+  tasks.register<Copy>("copyFeatureTaskRuntimeSharedEvidenceProjectionSchema") {
+    val schemaPath = canonicalFeatureTaskRuntimeSharedEvidenceProjectionSchemaPath
+    from(schemaPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    inputs.file(schemaPath)
+    doFirst {
+      require(File(schemaPath).exists()) {
+        "SKILL-164: canonical shared-evidence projection schema is missing at " +
+          "orchestration/contracts/feature-task-runtime-shared-evidence-projection-schema.yaml " +
+          "(resolved path: $schemaPath)."
+      }
+    }
+  }
+
 val canonicalFeatureTaskRuntimeAuditRepairPlanSchemaPath: String =
   rootProject.projectDir.parentFile
     .resolve("orchestration/contracts/feature-task-runtime-audit-repair-plan-schema.yaml")
@@ -600,6 +620,7 @@ tasks.named("processResources") {
   dependsOn(copyFeatureTaskRuntimePhaseHandoffSchema)
   dependsOn(copyFeatureTaskRuntimePersistenceSchema)
   dependsOn(copyFeatureTaskRuntimeProjectionMeasurementSchema)
+  dependsOn(copyFeatureTaskRuntimeSharedEvidenceProjectionSchema)
   dependsOn(copyFeatureTaskExecutionIdentitySchema)
   dependsOn(copyFeatureTaskRuntimeWorkerOwnershipSchema)
   dependsOn(copyGoalPlanningPreparationSchema)
@@ -631,6 +652,7 @@ tasks.named("processTestResources") {
   dependsOn(copyFeatureTaskRuntimePhaseHandoffSchema)
   dependsOn(copyFeatureTaskRuntimePersistenceSchema)
   dependsOn(copyFeatureTaskRuntimeProjectionMeasurementSchema)
+  dependsOn(copyFeatureTaskRuntimeSharedEvidenceProjectionSchema)
   dependsOn(copyFeatureTaskExecutionIdentitySchema)
   dependsOn(copyFeatureTaskRuntimeWorkerOwnershipSchema)
   dependsOn(copyGoalPlanningPreparationSchema)

@@ -1,3 +1,13 @@
+## [2026-08-07] SKILL-164 checkpoint-keyed shared review evidence: integration contracts, telemetry, and validation (subtask 4)
+Areas: runtime-kotlin/{runtime-contracts,runtime-domain,runtime-ports,runtime-application,runtime-infra-fs,runtime-infra-sqlite,runtime-core}, orchestration/contracts, docs, .feature-specs/SKILL-164-checkpoint-keyed-shared-review-evidence
+- Shared evidence projection is a versioned contract (`feature-task-runtime-shared-evidence-projection-schema.yaml`) validated on every store read: schema-invalid/unreadable content re-derives; fingerprint/location contradiction loud-fails. reusable
+- Telemetry event `skillbill_feature_task_runtime_shared_evidence` records per-run outcomes `derivation`, `reuse`, and `checkpoint_change_rederivation` so reuse rate is measurable rather than assumed. reusable
+- E2E: one derivation shared by audit, review, and every review lane at an unchanged checkpoint; audit_gap reuses when the tree is unchanged and re-derives after remediation moves it.
+- Delivery stays reference-not-bytes (`store_path` + bounded file/hunk index); audit consumes the projection as a floor beside scoped repository state, never as a replacement. reusable
+- Boundary decision rejects merging audit and review into one pass (divergent evidence sets, divergent backward edges, audit-first cost ordering, evidence-bar degradation) — settled, not to be re-litigated.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-08-06] SKILL-148 IDE status contract and read-only work status CLI (subtask 1)
 Areas: runtime-kotlin/{runtime-contracts,runtime-domain,runtime-application,runtime-infra-fs,runtime-cli,runtime-core}, orchestration/contracts, .feature-specs/SKILL-148-intellij-progress-status-bar
 - Schema-first `ide-status-schema.yaml` (pinned version, strict nested shapes, lifecycle/freshness/family/error enums) with Kotlin constant, parity test, typed `InvalidIdeStatusSchemaError`, classpath copy, and loud-fail validation before CLI emit. reusable

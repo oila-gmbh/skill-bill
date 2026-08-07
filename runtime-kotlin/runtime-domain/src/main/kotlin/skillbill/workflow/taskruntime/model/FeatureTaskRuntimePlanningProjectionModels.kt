@@ -51,6 +51,7 @@ object FeatureTaskRuntimePlanningProjectionContract {
   const val EXECUTABLE_PLAN_ID: String = "feature_task_runtime.executable_plan"
   const val PLAN_COMMITMENT_ID: String = "feature_task_runtime.plan_commitment"
   const val IMPLEMENTATION_RECEIPT_ID: String = "feature_task_runtime.implementation_receipt"
+  const val SHARED_REVIEW_EVIDENCE_ID: String = "feature_task_runtime.shared_review_evidence"
   val VERSION: String = FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION
 
   /**
@@ -833,6 +834,119 @@ private fun FeatureTaskRuntimeImplementationReceipt.Companion.fromMap(
       workingTreeOwnedPaths = checkpointMap.optionalStringList("working_tree_owned_paths"),
     ),
   )
+}
+
+/**
+ * The phase-neutral shared review evidence artifact, delivered as a reference rather than as content.
+ *
+ * Deliberately not a [FeatureTaskRuntimePlanningProjection]: that family is parsed from a producing
+ * phase's schema-validated `produced_outputs`, and no phase produces this. It is derived by the runtime
+ * from the repository at a checkpoint, so it has no producer envelope to parse and no
+ * [FeatureTaskRuntimeProjectionKind] a phase could be gated against.
+ *
+ * Every field is a locator or a bounded index; no field can hold diff text. [fileHunkIndex] carries one
+ * entry per changed file recording that file's hunk count rather than the hunks themselves, so the
+ * delivered projection's serialized size tracks the number of changed files and stays independent of how
+ * large the diff those files contain actually is. A consumer that needs the bytes dereferences
+ * [storePath]; nothing pushes them through the prompt.
+ */
+data class FeatureTaskRuntimeSharedReviewEvidenceReference(
+  val storePath: String,
+  val checkpointFingerprint: String,
+  val baseRef: String?,
+  val headRef: String?,
+  val fileHunkIndex: List<String>,
+) {
+  init {
+    require(storePath.isNotBlank()) {
+      "FeatureTaskRuntimeSharedReviewEvidenceReference.storePath must be non-blank; a reference that " +
+        "cannot name its artifact is not dereferenceable."
+    }
+    require(checkpointFingerprint.isNotBlank()) {
+      "FeatureTaskRuntimeSharedReviewEvidenceReference.checkpointFingerprint must be non-blank; the " +
+        "fingerprint is the artifact's only reuse key."
+    }
+    require(fileHunkIndex.size <= FEATURE_TASK_RUNTIME_CHANGED_PATH_MAX_COUNT) {
+      "FeatureTaskRuntimeSharedReviewEvidenceReference.fileHunkIndex allows at most " +
+        "$FEATURE_TASK_RUNTIME_CHANGED_PATH_MAX_COUNT entries, had ${fileHunkIndex.size}."
+    }
+  }
+
+  /**
+   * Renders exactly the allowlisted fields. A null [baseRef] or [headRef] is omitted rather than
+   * delivered blank, because a blank ref would read as a resolved ref that happens to be empty.
+   */
+  fun toProjectionFields(): List<FeatureTaskRuntimeHandoffProjectionField> = listOfNotNull(
+    FeatureTaskRuntimeHandoffProjectionField(
+      name = FIELD_STORE_PATH,
+      value = FeatureTaskRuntimeHandoffProjectionValue.CompactReference(
+        kind = FeatureTaskRuntimeCompactReferenceKind.PRIVATE_EVIDENCE_ARTIFACT,
+        value = storePath,
+      ),
+    ),
+    FeatureTaskRuntimeHandoffProjectionField(
+      name = FIELD_CHECKPOINT_FINGERPRINT,
+      value = FeatureTaskRuntimeHandoffProjectionValue.CompactReference(
+        kind = FeatureTaskRuntimeCompactReferenceKind.REPOSITORY_CHECKPOINT,
+        value = checkpointFingerprint,
+      ),
+    ),
+    baseRef?.let {
+      FeatureTaskRuntimeHandoffProjectionField(FIELD_BASE_REF, FeatureTaskRuntimeHandoffProjectionValue.Text(it))
+    },
+    headRef?.let {
+      FeatureTaskRuntimeHandoffProjectionField(FIELD_HEAD_REF, FeatureTaskRuntimeHandoffProjectionValue.Text(it))
+    },
+    FeatureTaskRuntimeHandoffProjectionField(
+      name = FIELD_FILE_HUNK_INDEX,
+      value = FeatureTaskRuntimeHandoffProjectionValue.TextList(fileHunkIndex),
+    ),
+  )
+
+  companion object {
+    const val FIELD_STORE_PATH: String = "store_path"
+    const val FIELD_CHECKPOINT_FINGERPRINT: String = "checkpoint_fingerprint"
+    const val FIELD_BASE_REF: String = "base_ref"
+    const val FIELD_HEAD_REF: String = "head_ref"
+    const val FIELD_FILE_HUNK_INDEX: String = "file_hunk_index"
+
+    /** The closed allowlist. A field outside it is undeclared, not a silently accepted extension. */
+    val DECLARED_FIELD_NAMES: List<String> = listOf(
+      FIELD_STORE_PATH,
+      FIELD_CHECKPOINT_FINGERPRINT,
+      FIELD_BASE_REF,
+      FIELD_HEAD_REF,
+      FIELD_FILE_HUNK_INDEX,
+    )
+
+    /**
+     * Binds the reference to the subtask-1 artifact shape. Files past
+     * [FEATURE_TASK_RUNTIME_CHANGED_PATH_MAX_COUNT] are replaced by a single explicit omission entry
+     * rather than dropped, so a truncated index never reads as a complete one.
+     */
+    fun of(
+      storePath: String,
+      artifact: FeatureTaskRuntimeSharedEvidenceArtifact,
+    ): FeatureTaskRuntimeSharedReviewEvidenceReference {
+      val hunkCounts = artifact.hunks.groupingBy { it.path }.eachCount()
+      val entries = artifact.files.map { file ->
+        "${file.changeKind} ${file.path} hunks=${hunkCounts[file.path] ?: 0}"
+      }
+      val bounded = if (entries.size <= FEATURE_TASK_RUNTIME_CHANGED_PATH_MAX_COUNT) {
+        entries
+      } else {
+        entries.take(FEATURE_TASK_RUNTIME_CHANGED_PATH_MAX_COUNT - 1) +
+          "omitted ${entries.size - (FEATURE_TASK_RUNTIME_CHANGED_PATH_MAX_COUNT - 1)} further changed files"
+      }
+      return FeatureTaskRuntimeSharedReviewEvidenceReference(
+        storePath = storePath,
+        checkpointFingerprint = artifact.fingerprint,
+        baseRef = artifact.baseRef?.takeIf(String::isNotBlank),
+        headRef = artifact.headRef?.takeIf(String::isNotBlank),
+        fileHunkIndex = bounded,
+      )
+    }
+  }
 }
 
 private fun malformed(field: String, reason: String): Nothing =

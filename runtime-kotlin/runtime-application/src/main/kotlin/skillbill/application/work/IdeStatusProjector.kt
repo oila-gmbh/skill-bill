@@ -19,7 +19,10 @@ import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
 import java.nio.file.Path
 import java.time.Instant
+import java.time.LocalDateTime
 import java.time.OffsetDateTime
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
 
 /** Shared projection inputs so family projectors stay under LongParameterList. */
@@ -253,8 +256,15 @@ internal fun parseInstantOrNull(value: String?): Instant? {
     Instant.parse(value)
   } catch (_: DateTimeParseException) {
     runCatching { OffsetDateTime.parse(value).toInstant() }.getOrNull()
+      // Workflow timestamp columns are written with SQLite CURRENT_TIMESTAMP, which is
+      // offset-less UTC. Without this the value reads as unparseable and the caller falls
+      // back to a coarser anchor.
+      ?: runCatching { LocalDateTime.parse(value.trim(), SQLITE_TIMESTAMP_FORMATTER).toInstant(ZoneOffset.UTC) }
+        .getOrNull()
   }
 }
+
+private val SQLITE_TIMESTAMP_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
 
 internal fun WorkItemKind.toIdeFamily(): IdeStatusWorkflowFamily = when (this) {
   WorkItemKind.FEATURE_TASK_PROSE -> IdeStatusWorkflowFamily.FEATURE_TASK_PROSE

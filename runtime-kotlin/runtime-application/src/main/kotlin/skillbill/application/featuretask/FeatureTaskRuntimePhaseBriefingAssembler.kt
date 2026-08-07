@@ -19,6 +19,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseHandoff
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairBatch
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariantPromptField
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedReviewEvidenceReference
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 import java.nio.charset.StandardCharsets
 
@@ -92,6 +93,7 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
     planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator =
       NoopFeatureTaskRuntimePlanningProjectionValidator,
     agentAddonSelection: HydratedAgentAddonSelection = HydratedAgentAddonSelection(),
+    sharedReviewEvidence: FeatureTaskRuntimeSharedReviewEvidenceReference? = null,
   ): FeatureTaskRuntimePhaseLaunchBriefing {
     val boundedAddonSelection = FeatureTaskRuntimePhasePromptComposer.budgetedAddonsFor(
       handoff.phaseId,
@@ -119,6 +121,7 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
         resolvedUpstream = handoff.upstreamOutputs,
         runInvariants = handoff.runInvariants,
         resolvedCheckpoint = handoff.repositoryCheckpoint,
+        sharedReviewEvidence = sharedReviewEvidence,
         expectedCheckpoint = handoff.expectedRepositoryCheckpoint,
         auditRepairPlan = handoff.auditRepairPlan,
         auditRepairState = handoff.auditRepairState,
@@ -278,9 +281,17 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
       // A derived-context key names evidence the phase must acquire itself, so the bare key leaves the
       // obligation implicit; each known key carries the instruction that makes it actionable, and an
       // unknown key still renders so a newly declared one is visible rather than silently dropped.
+      // diff / current_unit_of_work name the shared_review_evidence projection only when that
+      // projection was actually delivered; on the required=false omit path they fall back to
+      // self-read so the agent is never told to dereference a missing reference.
+      val sharedEvidenceDelivered = envelope.projections.any {
+        it.projectionName == SHARED_EVIDENCE_PROJECTION
+      }
       append(
         handoff.derivedContextKeys.joinToString(separator = "\n") { key ->
-          DERIVED_CONTEXT_INSTRUCTIONS[key]?.let { instruction -> "- $key: $instruction" } ?: "- $key"
+          derivedContextInstruction(key, sharedEvidenceDelivered)
+            ?.let { instruction -> "- $key: $instruction" }
+            ?: "- $key"
         },
       )
     }
@@ -328,14 +339,36 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
     )
   }
 
-  private val DERIVED_CONTEXT_INSTRUCTIONS: Map<String, String> = mapOf(
-    FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_DIFF to
-      "read the branch diff yourself; it is not delivered in this briefing",
-    FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_SCOPED_REPOSITORY_STATE to
+  private const val SHARED_EVIDENCE_PROJECTION: String =
+    FeatureTaskRuntimePhaseWorkflowDefinition.SHARED_REVIEW_EVIDENCE_PROJECTION_NAME
+
+  private const val SELF_READ_DIFF_INSTRUCTION: String =
+    "read the branch diff yourself; it is not delivered in this briefing"
+
+  private const val SHARED_EVIDENCE_DIFF_INSTRUCTION: String =
+    "the branch diff is already derived for you: the '$SHARED_EVIDENCE_PROJECTION' projection above " +
+      "carries its store_path, checkpoint_fingerprint, base_ref/head_ref, and per-file hunk index; " +
+      "work from that reference, and dereference store_path when you need the diff bytes themselves"
+
+  private const val SHARED_EVIDENCE_UNIT_INSTRUCTION: String =
+    "the current unit of work is already derived for you: the '$SHARED_EVIDENCE_PROJECTION' projection " +
+      "above carries its store_path, checkpoint_fingerprint, base_ref/head_ref, and per-file hunk index; " +
+      "work from that reference, and dereference store_path when you need the diff bytes themselves"
+
+  private const val SELF_READ_UNIT_INSTRUCTION: String =
+    "read the current unit of work yourself; the shared evidence projection is not delivered in this briefing"
+
+  private fun derivedContextInstruction(key: String, sharedEvidenceDelivered: Boolean): String? = when (key) {
+    FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_DIFF ->
+      if (sharedEvidenceDelivered) SHARED_EVIDENCE_DIFF_INSTRUCTION else SELF_READ_DIFF_INSTRUCTION
+    "current_unit_of_work" ->
+      if (sharedEvidenceDelivered) SHARED_EVIDENCE_UNIT_INSTRUCTION else SELF_READ_UNIT_INSTRUCTION
+    FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_SCOPED_REPOSITORY_STATE ->
       "read the repository at the resolved checkpoint above — the diff over base_ref/head_ref plus " +
-      "the listed scoped_owned_paths — and treat that actual state, not any upstream receipt claim, " +
-      "as the evidence for every criterion",
-    "current_unit_of_work" to
-      "read the current unit of work yourself; it is not delivered in this briefing",
-  )
+        "the listed scoped_owned_paths — and treat that actual state, not any upstream receipt claim, " +
+        "as the evidence for every criterion"
+    FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_PR_BRANCH_DIFF ->
+      SELF_READ_DIFF_INSTRUCTION
+    else -> null
+  }
 }

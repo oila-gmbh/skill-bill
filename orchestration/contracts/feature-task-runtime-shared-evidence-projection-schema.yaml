@@ -1,0 +1,95 @@
+# Feature-task-runtime shared evidence projection schema (canonical source of truth).
+#
+# This file describes the bounded reference projection delivered to audit, review, and every
+# review lane for one repository checkpoint. The projection names a store path and a file/hunk
+# index only: it never carries inlined diff bytes, so the planning-projection budget stays
+# independent of branch diff size.
+#
+# Why this exists:
+#
+# - AC-001 (SKILL-164): the shared evidence artifact is a derived cache keyed on
+#   FeatureTaskRuntimeRepositoryCheckpoint.fingerprint. The projection is the only prompt-visible
+#   view of it, and this schema is what the read seam validates before reuse.
+# - A schema-invalid or unreadable projection degrades to re-derivation; a fingerprint that
+#   contradicts its addressed location still loud-fails.
+#
+# What lives here vs. in Kotlin:
+#
+# - This file defines the SHAPE: required fields, the pinned contract version, and strict
+#   additionalProperties:false so an undeclared wire field (including any diff-content carrier)
+#   fails loudly.
+# - Derive-once reuse, atomic publish, and fingerprint-contradiction loud-fail live in
+#   FileSystemFeatureTaskRuntimeSharedEvidenceStore and are documented under x-coherence-checks.
+#
+# Versioning rule:
+#
+# - contract_version is pinned by FEATURE_TASK_RUNTIME_SHARED_EVIDENCE_PROJECTION_CONTRACT_VERSION in
+#   runtime-kotlin/runtime-contracts/src/main/kotlin/skillbill/contracts/workflow/FeatureTaskRuntimeSchemaPaths.kt.
+# - The parity test FeatureTaskRuntimeSharedEvidenceProjectionSchemaContractVersionTest fails the
+#   build if this file and that constant diverge.
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://skill-bill.dev/contracts/feature-task-runtime-shared-evidence-projection-schema.yaml"
+title: "Feature-task-runtime shared evidence projection"
+description: >-
+  Strict reference-only projection for checkpoint-keyed shared review evidence: workflow id,
+  repository checkpoint fingerprint, store path, and bounded file/hunk index. No property may
+  accept inlined diff content.
+type: object
+additionalProperties: false
+required:
+  - contract_version
+  - workflow_id
+  - repository_checkpoint_fingerprint
+  - store_path
+  - file_hunk_index
+properties:
+  contract_version:
+    type: string
+    const: "0.1"
+  workflow_id:
+    type: string
+    minLength: 1
+    maxLength: 4096
+    pattern: ".*\\S.*"
+  repository_checkpoint_fingerprint:
+    type: string
+    minLength: 1
+    maxLength: 4096
+    pattern: ".*\\S.*"
+  store_path:
+    type: string
+    minLength: 1
+    maxLength: 1024
+    pattern: ".*\\S.*"
+  base_ref:
+    type: string
+    minLength: 1
+    maxLength: 4096
+    pattern: ".*\\S.*"
+  head_ref:
+    type: string
+    minLength: 1
+    maxLength: 4096
+    pattern: ".*\\S.*"
+  file_hunk_index:
+    type: array
+    maxItems: 512
+    items:
+      type: string
+      minLength: 1
+      maxLength: 4096
+      pattern: ".*\\S.*"
+
+x-coherence-checks:
+  - id: reference-not-bytes
+    description: >-
+      No property accepts inlined diff content. Diff bytes live only under the store path named by
+      store_path; the projection budget therefore stays independent of branch diff size.
+  - id: checkpoint-keying
+    description: >-
+      repository_checkpoint_fingerprint is the only reuse key and must equal the fingerprint the
+      artifact was derived against. A contradiction with the addressed location loud-fails.
+  - id: contract-version-parity
+    description: >-
+      contract_version.const equals FEATURE_TASK_RUNTIME_SHARED_EVIDENCE_PROJECTION_CONTRACT_VERSION,
+      pinned by FeatureTaskRuntimeSharedEvidenceProjectionSchemaContractVersionTest.

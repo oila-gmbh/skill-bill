@@ -71,7 +71,12 @@ class FeatureTaskRuntimeLeastContextEndToEndTest {
     delivered: FeatureTaskRuntimeDeliveredProjectionRecord,
   ) {
     val declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations.getValue(phaseId)
-    val expectedDeclarations = declaration.projectionDeclarations + invariantDeclarations(phaseId)
+    // required=false declarations (shared_review_evidence) may omit when the resolver has no
+    // store path; the closed world still forbids undeclared projections and requires every
+    // required declaration plus all run-invariant projections.
+    val declared = declaration.projectionDeclarations + invariantDeclarations(phaseId)
+    val deliveredNames = delivered.envelope.projections.map { it.projectionName }.toSet()
+    val expectedDeclarations = declared.filter { it.required || it.projectionName in deliveredNames }
     val envelope = delivered.envelope
 
     assertEquals(phaseId, briefing.phaseId)
@@ -82,15 +87,21 @@ class FeatureTaskRuntimeLeastContextEndToEndTest {
       envelope.projections.map { it.projectionName },
       "$phaseId received a projection outside its closed declaration or missed a required projection",
     )
-    expectedDeclarations.zip(envelope.projections).forEach { (declared, actual) ->
-      assertEquals(declared.sourceRef, actual.sourceRef, "${actual.projectionName} changed source")
+    declared.filter { it.required }.forEach { required ->
+      assertTrue(
+        required.projectionName in deliveredNames,
+        "$phaseId missed required projection ${required.projectionName}",
+      )
+    }
+    expectedDeclarations.zip(envelope.projections).forEach { (declaredProjection, actual) ->
+      assertEquals(declaredProjection.sourceRef, actual.sourceRef, "${actual.projectionName} changed source")
       assertEquals(
-        declared.projectionContractId to declared.projectionContractVersion,
+        declaredProjection.projectionContractId to declaredProjection.projectionContractVersion,
         actual.projectionContractId to actual.projectionContractVersion,
         "${actual.projectionName} changed contract identity",
       )
       assertEquals(
-        declared.declaredFieldNames,
+        declaredProjection.declaredFieldNames,
         actual.fields.map { it.name },
         "${actual.projectionName} changed its required-field shape",
       )

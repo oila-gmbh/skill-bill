@@ -44,6 +44,15 @@ class FeatureTaskRuntimeHandoffFoundationSchemaContractVersionTest {
     )
   }
 
+  @Test
+  fun `shared evidence projection schema id version and classpath resource match Kotlin pins`() {
+    assertSchemaPin(
+      FeatureTaskRuntimeSharedEvidenceProjectionSchemaPaths.CLASSPATH_RESOURCE,
+      FeatureTaskRuntimeSharedEvidenceProjectionSchemaPaths.EXPECTED_SCHEMA_ID,
+      FEATURE_TASK_RUNTIME_SHARED_EVIDENCE_PROJECTION_CONTRACT_VERSION,
+    )
+  }
+
   private fun assertSchemaPin(resource: String, expectedId: String, expectedVersion: String) {
     val schema = classpathSchema(resource)
     assertEquals(expectedId, schema.path("\$id").asText())

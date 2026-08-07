@@ -5,9 +5,12 @@ import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdgeCapScope
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseEntryGate
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePlanningProjectionContract
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedReviewEvidenceReference
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import kotlin.test.Test
@@ -220,7 +223,7 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
   }
 
   @Test
-  fun `phase declarations mirror the dependency set and review plus pr declare derived diff context`() {
+  fun `phase declarations mirror the dependency set and pr is split off the review diff key`() {
     val declarations = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations
     definition.stepIds.forEach { phaseId ->
       val declaration = declarations.getValue(phaseId)
@@ -230,9 +233,30 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
       listOf("diff"),
       declarations.getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW).derivedContextKeys,
     )
+    // PR is delivered no shared evidence projection, so it keeps its own read-it-yourself key rather
+    // than the review key that now names a delivered reference.
+    assertEquals(
+      listOf(FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_PR_BRANCH_DIFF),
+      declarations.getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR).derivedContextKeys,
+    )
+    assertTrue(
+      declarations.getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR).projectionDeclarations.none {
+        it.sourceRef == FeatureTaskRuntimeHandoffSourceRef.SharedReviewEvidence
+      },
+    )
+    assertEquals(
+      listOf("current_unit_of_work"),
+      FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclaration(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+        FeatureTaskRuntimeFeatureSize.SMALL,
+      ).derivedContextKeys,
+    )
     assertEquals(
       listOf("diff"),
-      declarations.getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR).derivedContextKeys,
+      FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclaration(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+        FeatureTaskRuntimeFeatureSize.MEDIUM,
+      ).derivedContextKeys,
     )
     assertEquals(
       emptyList(),
@@ -280,7 +304,12 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
       ),
     )
     expected.forEach { (consumer, expectedEdges) ->
-      val actual = def.phaseDeclarations.getValue(consumer).projectionDeclarations.map { declaration ->
+      // The shared review evidence has no producing phase — the runtime derives it — so it is not an
+      // upstream edge and is asserted separately below.
+      val upstream = def.phaseDeclarations.getValue(consumer).projectionDeclarations.filter {
+        it.sourceRef is FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput
+      }
+      val actual = upstream.map { declaration ->
         val source = declaration.sourceRef as FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput
         source.producingPhaseId to declaration.projectionContractId
       }.toSet()
@@ -291,7 +320,7 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
         },
         "$consumer must not receive a complete upstream phase receipt",
       )
-      def.phaseDeclarations.getValue(consumer).projectionDeclarations.forEach { declaration ->
+      upstream.forEach { declaration ->
         assertTrue(declaration.required, "${declaration.projectionName} must reject missing required fields")
         assertTrue("phase_output_receipt" !in declaration.declaredFieldNames)
         assertTrue(
@@ -499,6 +528,73 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
         "backward edge '${edge.loopId}' must explicitly declare PER_SUBTASK capScope",
       )
     }
+  }
+
+  @Test
+  fun `review and audit both declare the shared review evidence projection`() {
+    val def = FeatureTaskRuntimePhaseWorkflowDefinition
+    listOf(def.PHASE_REVIEW, def.PHASE_AUDIT).forEach { phaseId ->
+      val shared = def.phaseDeclarations.getValue(phaseId).projectionDeclarations.single {
+        it.sourceRef == FeatureTaskRuntimeHandoffSourceRef.SharedReviewEvidence
+      }
+      assertEquals(def.SHARED_REVIEW_EVIDENCE_PROJECTION_NAME, shared.projectionName)
+      assertEquals(
+        FeatureTaskRuntimePlanningProjectionContract.SHARED_REVIEW_EVIDENCE_ID,
+        shared.projectionContractId,
+      )
+      assertEquals(FeatureTaskRuntimeSharedReviewEvidenceReference.DECLARED_FIELD_NAMES, shared.declaredFieldNames)
+      // AC-010: an absent artifact must re-derive, never fail the launch, so the declaration cannot be
+      // required — a required one turns absence into a MISSING_REQUIRED_SOURCE rejection.
+      assertEquals(false, shared.required)
+      assertEquals(
+        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+        shared.checkpointPolicy,
+      )
+    }
+  }
+
+  @Test
+  fun `audit keeps its existing projections and scoped repository state alongside the shared evidence`() {
+    val def = FeatureTaskRuntimePhaseWorkflowDefinition
+    val audit = def.phaseDeclarations.getValue(def.PHASE_AUDIT)
+    assertEquals(
+      listOf(
+        FeatureTaskRuntimePlanningProjectionContract.PLAN_COMMITMENT_ID,
+        FeatureTaskRuntimePlanningProjectionContract.IMPLEMENTATION_RECEIPT_ID,
+        FeatureTaskRuntimePlanningProjectionContract.SHARED_REVIEW_EVIDENCE_ID,
+      ),
+      audit.projectionDeclarations.map { it.projectionContractId },
+    )
+    assertEquals(
+      listOf(FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_SCOPED_REPOSITORY_STATE),
+      audit.derivedContextKeys,
+    )
+  }
+
+  @Test
+  fun `phase topology is unchanged by the shared evidence delivery`() {
+    val transitions = FeatureTaskRuntimePhaseWorkflowDefinition.transitions
+    val def = FeatureTaskRuntimePhaseWorkflowDefinition
+    assertEquals(definition.stepIds, transitions.forwardPhaseIds)
+    assertEquals(
+      listOf(
+        FeatureTaskRuntimePhaseEntryGate(
+          phaseId = def.PHASE_REVIEW,
+          requiredPhaseId = def.PHASE_AUDIT,
+          requiredVerdict = FeatureTaskRuntimeVerdict.SATISFIED,
+        ),
+      ),
+      transitions.entryGates,
+    )
+    val semantic = transitions.backwardEdges.filterNot { def.isRegenerationLoopId(it.loopId) }
+    assertEquals(
+      listOf(
+        Triple(def.PHASE_REVIEW, FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, def.PHASE_IMPLEMENT_FIX),
+        Triple(def.PHASE_AUDIT, FeatureTaskRuntimeVerdict.GAPS_FOUND, def.PHASE_IMPLEMENT),
+      ),
+      semantic.map { Triple(it.fromPhaseId, it.triggeringVerdict, it.destinationPhaseId) },
+    )
+    assertTrue(semantic.all { it.perEdgeCap == null })
   }
 
   private fun dependenciesOf(phaseId: String): List<String> = definition.requiredArtifactsByStep.getValue(phaseId)

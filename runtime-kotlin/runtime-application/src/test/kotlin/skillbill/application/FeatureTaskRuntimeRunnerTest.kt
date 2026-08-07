@@ -26,6 +26,7 @@ import skillbill.application.featuretask.SpecSourceResolver
 import skillbill.application.featuretask.reconcileCheckpointPathInventory
 import skillbill.application.model.FeatureTaskRuntimeAgentAssignment
 import skillbill.application.model.FeatureTaskRuntimeGoalContinuationContext
+import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.application.model.FeatureTaskRuntimeRunEvent
 import skillbill.application.model.FeatureTaskRuntimeRunEventSink
 import skillbill.application.model.FeatureTaskRuntimeRunReport
@@ -427,8 +428,18 @@ class FeatureTaskRuntimeRunnerTest {
     assertContains(briefings.getValue("implement").briefingText, "Fixture task.")
     assertEquals(listOf("current_unit_of_work"), briefings.getValue("review").derivedContextKeys)
     assertContains(briefings.getValue("review").briefingText, "current_unit_of_work")
-    assertEquals(listOf("diff"), briefings.getValue("pr").derivedContextKeys)
-    assertContains(briefings.getValue("pr").briefingText, "diff")
+    assertPrKeepsSelfReadBranchDiff(briefings.getValue("pr"))
+  }
+
+  private fun assertPrKeepsSelfReadBranchDiff(briefing: FeatureTaskRuntimePhaseLaunchBriefing) {
+    // PR is split off the review diff key: it keeps a self-read instruction and is not delivered the
+    // shared evidence projection (AC-003/AC-005).
+    assertEquals(
+      listOf(FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_PR_BRANCH_DIFF),
+      briefing.derivedContextKeys,
+    )
+    assertContains(briefing.briefingText, "pr_branch_diff")
+    assertContains(briefing.briefingText, "read the branch diff yourself")
   }
 
   @Test
@@ -4611,6 +4622,11 @@ internal data class RuntimeHarnessConfig(
     NoopFeatureTaskRuntimePlanningProjectionValidator,
   val parallelReviewAgent: String? = null,
   val codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.DEFAULT,
+  val sharedEvidenceResolver: skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort =
+    skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort.NONE,
+  val diffResolver: skillbill.ports.diff.DiffResolverPort = object : skillbill.ports.diff.DiffResolverPort {
+    override fun runProcess(args: List<String>, workDir: java.nio.file.Path): String? = null
+  },
 )
 
 private fun runtimeSpecSourceResolver(): SpecSourceResolver =
@@ -4625,6 +4641,11 @@ private fun runtimePhaseGates(
   specGate: FeatureTaskRuntimeSpecGate = testSpecGate(),
   planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator =
     NoopFeatureTaskRuntimePlanningProjectionValidator,
+  sharedEvidenceResolver: skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort =
+    skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort.NONE,
+  diffResolver: skillbill.ports.diff.DiffResolverPort = object : skillbill.ports.diff.DiffResolverPort {
+    override fun runProcess(args: List<String>, workDir: java.nio.file.Path): String? = null
+  },
 ): FeatureTaskRuntimePhaseGates = FeatureTaskRuntimePhaseGates(
   branchSetupRunner,
   planningStopper,
@@ -4632,6 +4653,8 @@ private fun runtimePhaseGates(
   gitOperations,
   specGate,
   planningProjectionValidator,
+  sharedEvidenceResolver,
+  diffResolver,
 )
 
 private fun testSpecGate(
@@ -4729,6 +4752,8 @@ internal fun runnerHarness(
       runtimeConfig.branchSetup.gitOperations,
       testSpecGate(specScratchStore, specStatusWriter),
       runtimeConfig.planningProjectionValidator,
+      runtimeConfig.sharedEvidenceResolver,
+      runtimeConfig.diffResolver,
     ),
     FeatureTaskRuntimeCrashReconciler(database, crashSupervisor),
     diagnostics,
@@ -4810,6 +4835,8 @@ internal fun telemetryRunnerHarness(
         LifecycleTelemetryService(database, EnabledRuntimeTelemetrySettingsProvider),
       ),
       runtimeConfig.branchSetup.gitOperations,
+      sharedEvidenceResolver = runtimeConfig.sharedEvidenceResolver,
+      diffResolver = runtimeConfig.diffResolver,
     ),
     // Telemetry harness validates event emission, not crash reconciliation; the no-op supervisor keeps
     // the startup reconcile pass a harmless no-op so it never perturbs telemetry assertions.
@@ -5839,6 +5866,14 @@ private object EnabledRuntimeTelemetrySettingsProvider : TelemetrySettingsProvid
 internal class RecordingLifecycleTelemetryRepository : LifecycleTelemetryRepository {
   val startedRecords = mutableListOf<FeatureTaskRuntimeStartedRecord>()
   val finishedRecords = mutableListOf<FeatureTaskRuntimeFinishedRecord>()
+  val sharedEvidenceMeasurements =
+    mutableListOf<skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceMeasurement>()
+
+  override fun featureTaskRuntimeSharedEvidence(
+    record: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceMeasurement,
+  ) {
+    sharedEvidenceMeasurements += record
+  }
 
   override fun featureTaskRuntimeStarted(record: FeatureTaskRuntimeStartedRecord, level: String) {
     startedRecords += record

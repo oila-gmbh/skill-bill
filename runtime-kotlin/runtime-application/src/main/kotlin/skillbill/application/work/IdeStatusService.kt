@@ -130,7 +130,7 @@ class IdeStatusService(
       currentState = item.currentState,
       lifecycleState = lifecycle,
       selectionTier = IdeStatusSelectionPolicy.selectionTier(lifecycle),
-      updatedAt = authoritativeUpdatedAt(unitOfWork, item, family) ?: item.stateEnteredAt,
+      updatedAt = authoritativeUpdatedAt(unitOfWork, item, family, repositoryIdentity) ?: item.stateEnteredAt,
       startedAt = item.startedAt,
       routeScope = routeScope,
       isGoalAuthoritative = family == IdeStatusWorkflowFamily.FEATURE_GOAL,
@@ -275,17 +275,38 @@ class IdeStatusService(
     unitOfWork: UnitOfWork,
     item: WorkItem,
     family: IdeStatusWorkflowFamily,
+    repositoryIdentity: String,
   ): Instant? {
-    val snapshot = when (family) {
+    val fromWorkflow = when (family) {
       IdeStatusWorkflowFamily.FEATURE_TASK_PROSE ->
         WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, item.workflowId)
       IdeStatusWorkflowFamily.FEATURE_TASK_RUNTIME ->
         WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, item.workflowId)
       IdeStatusWorkflowFamily.FEATURE_VERIFY ->
         WorkflowFamily.VERIFY.get(unitOfWork.workflowStates, item.workflowId)
+      // A goal parent carries no workflow snapshot of its own, and its durable
+      // `state_entered_at` only advances on a status transition. A goal that stays running
+      // therefore ages into staleness while its child task is actively writing, so the newest
+      // same-repo child write is the authoritative liveness anchor.
       IdeStatusWorkflowFamily.FEATURE_GOAL -> null
-    }
-    return parseInstantOrNull(snapshot?.updatedAt) ?: item.stateEnteredAt
+    }?.let { parseInstantOrNull(it.updatedAt) }
+      ?: latestGoalChildUpdatedAt(unitOfWork, item, family, repositoryIdentity)
+
+    return listOfNotNull(fromWorkflow, item.stateEnteredAt).maxOrNull()
+  }
+
+  private fun latestGoalChildUpdatedAt(
+    unitOfWork: UnitOfWork,
+    item: WorkItem,
+    family: IdeStatusWorkflowFamily,
+    repositoryIdentity: String,
+  ): Instant? {
+    if (family != IdeStatusWorkflowFamily.FEATURE_GOAL) return null
+    val issueKey = item.issueKey?.trim()?.uppercase()?.takeIf { it.isNotEmpty() } ?: return null
+    return unitOfWork.workflowStates
+      .findGoalChildFeatureTaskCandidates(issueKey, repositoryIdentity)
+      .mapNotNull { parseInstantOrNull(it.workflow.updatedAt) }
+      .maxOrNull()
   }
 
   private fun emit(snapshot: IdeStatusSnapshot): IdeStatusResult {

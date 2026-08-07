@@ -21,6 +21,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePrePlanningDigest
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePreplanCeremony
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewScope
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedReviewEvidenceReference
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
@@ -49,6 +50,11 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
 
   const val DERIVED_CONTEXT_DIFF: String = "diff"
   const val DERIVED_CONTEXT_SCOPED_REPOSITORY_STATE: String = "scoped_repository_state"
+
+  // `review` is delivered the shared evidence projection and `pr` is not, so the two can no longer share
+  // one diff key: the review keys now name a delivered reference, while PR keeps reading the branch diff
+  // itself. Splitting the key rather than the instruction keeps PR's behaviour byte-identical.
+  const val DERIVED_CONTEXT_PR_BRANCH_DIFF: String = "pr_branch_diff"
 
   // The M1 review->implement_fix remediation loop id, named once so durable accounting and telemetry
   // (the finished-event review-fix iteration count) reference the same loop the backward edge mints.
@@ -352,6 +358,30 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
   )
 
   /**
+   * The phase-neutral shared review evidence for the current checkpoint, delivered as a reference.
+   *
+   * `required = false` is load-bearing: the artifact is a derived cache, and a required declaration would
+   * turn an absent or unreadable one into a hard launch rejection instead of the re-derivation AC-010
+   * mandates. Absent evidence omits the projection; the phase still launches.
+   */
+  fun sharedReviewEvidenceDeclaration(consumerPhaseId: String): PhaseHandoffProjectionDeclaration =
+    PhaseHandoffProjectionDeclaration(
+      consumerPhaseId = consumerPhaseId,
+      sourceRef = FeatureTaskRuntimeHandoffSourceRef.SharedReviewEvidence,
+      projectionName = SHARED_REVIEW_EVIDENCE_PROJECTION_NAME,
+      projectionContractId = FeatureTaskRuntimePlanningProjectionContract.SHARED_REVIEW_EVIDENCE_ID,
+      projectionContractVersion = FeatureTaskRuntimePlanningProjectionContract.VERSION,
+      promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
+      budget = FeatureTaskRuntimeHandoffProjectionBudget.PLANNING_PROJECTION,
+      declaredFieldNames = FeatureTaskRuntimeSharedReviewEvidenceReference.DECLARED_FIELD_NAMES,
+      checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+      required = false,
+    )
+
+  /** The projection name the rewritten derived-context instructions point the agent at. */
+  const val SHARED_REVIEW_EVIDENCE_PROJECTION_NAME: String = "shared_review_evidence"
+
+  /**
    * Closed-world projection matrix for every phase. Every upstream edge has an explicit typed
    * declaration; an omitted phase or edge is a contract error rather than permission to deliver a
    * complete producer receipt.
@@ -360,9 +390,12 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     PHASE_PREPLAN to emptyList(),
     PHASE_PLAN to listOf(preplanningDigestDeclaration(PHASE_PLAN)),
     PHASE_IMPLEMENT to listOf(executablePlanDeclaration(PHASE_IMPLEMENT)),
+    // The shared evidence is a floor for audit, never a replacement for its scoped repository read: it is
+    // appended to the existing declarations, which stay exactly as they were.
     PHASE_AUDIT to listOf(
       planCommitmentDeclaration(PHASE_AUDIT),
       implementationReceiptDeclaration(PHASE_AUDIT),
+      sharedReviewEvidenceDeclaration(PHASE_AUDIT),
     ),
     PHASE_IMPLEMENT_FIX to listOf(
       phaseProjection(
@@ -383,6 +416,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
         listOf("clearance_status", "review_scope", "repository_checkpoint"),
         FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
       ),
+      sharedReviewEvidenceDeclaration(PHASE_REVIEW),
     ),
     PHASE_VALIDATE to listOf(
       phaseProjection(
@@ -506,7 +540,8 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
           "No closed-world projection declaration for runtime phase '$phaseId'."
         },
         derivedContextKeys = when (phaseId) {
-          PHASE_REVIEW, PHASE_PR -> listOf(DERIVED_CONTEXT_DIFF)
+          PHASE_REVIEW -> listOf(DERIVED_CONTEXT_DIFF)
+          PHASE_PR -> listOf(DERIVED_CONTEXT_PR_BRANCH_DIFF)
           // Audit compares the plan commitment and the receipt against the tree itself, so it needs
           // the scoped repository state at the envelope's checkpoint, not the branch-wide diff.
           PHASE_AUDIT -> listOf(DERIVED_CONTEXT_SCOPED_REPOSITORY_STATE)

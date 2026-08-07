@@ -70,6 +70,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionMeasurem
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItemResult
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceMeasurement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
@@ -800,6 +801,7 @@ class FeatureTaskRuntimePhaseRecorder(
     workflowId: String,
     briefing: FeatureTaskRuntimePhaseLaunchBriefing,
     dbOverride: String? = null,
+    sharedEvidenceMeasurement: FeatureTaskRuntimeSharedEvidenceMeasurement? = null,
   ): Boolean = database.transaction(dbOverride) { unitOfWork ->
     val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
       ?: return@transaction false
@@ -818,6 +820,7 @@ class FeatureTaskRuntimePhaseRecorder(
       "delivered-projection:${briefing.phaseId}",
     )
     recordProjectionMeasurements(unitOfWork, workflowId, briefing, delivered, artifacts)
+    recordSharedEvidenceMeasurement(unitOfWork, sharedEvidenceMeasurement)
     val updatedDelivered = LinkedHashMap(deliveredHistory)
       .apply { put(deliveredProjectionKey(delivered), delivered) }
     val patch = mapOf(
@@ -879,6 +882,22 @@ class FeatureTaskRuntimePhaseRecorder(
         "projection-delivery:${briefing.phaseId}:${projection.projectionName}",
       )
       unitOfWork.lifecycleTelemetry.featureTaskRuntimeProjectionMeasurement(measurement)
+    }
+  }
+
+  /**
+   * Enqueues the shared-evidence derivation/reuse record when a consumer resolved evidence for this
+   * briefing. Telemetry failure must never alter evidence resolution or fail the run.
+   */
+  private fun recordSharedEvidenceMeasurement(
+    unitOfWork: UnitOfWork,
+    measurement: FeatureTaskRuntimeSharedEvidenceMeasurement?,
+  ) {
+    if (measurement == null) return
+    try {
+      unitOfWork.lifecycleTelemetry.featureTaskRuntimeSharedEvidence(measurement)
+    } catch (@Suppress("TooGenericExceptionCaught") _: Exception) {
+      // Telemetry must never fail the run or change evidence resolution outcomes.
     }
   }
 

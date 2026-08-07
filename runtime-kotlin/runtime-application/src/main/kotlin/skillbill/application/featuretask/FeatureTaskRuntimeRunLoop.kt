@@ -4,6 +4,8 @@
 
 package skillbill.application.featuretask
 
+import skillbill.application.evidence.FeatureTaskRuntimeSharedReviewEvidenceResolved
+import skillbill.application.evidence.FeatureTaskRuntimeSharedReviewEvidenceResolver
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointDecision
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointScopeInput
 import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
@@ -63,6 +65,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeNextPhase
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
@@ -3366,6 +3369,24 @@ internal class FeatureTaskRuntimeRunLoop(
   }
 
   /**
+   * The shared review evidence for this launch, or null when the phase declares none or nothing is
+   * resolvable. Only the phases that declare the projection pay for the resolution.
+   */
+  private fun resolveSharedReviewEvidence(
+    run: PhaseRun,
+    checkpoint: FeatureTaskRuntimeRepositoryCheckpoint?,
+  ): FeatureTaskRuntimeSharedReviewEvidenceResolved? {
+    val declared = run.declaration.projectionDeclarations.any {
+      it.sourceRef == FeatureTaskRuntimeHandoffSourceRef.SharedReviewEvidence
+    }
+    if (!declared) return null
+    return FeatureTaskRuntimeSharedReviewEvidenceResolver(
+      phaseGates.sharedEvidenceResolver,
+      phaseGates.diffResolver,
+    ).resolve(run.request.repoRoot, run.request.workflowId, checkpoint, run.phaseId)
+  }
+
+  /**
    * Resolves a repository checkpoint only when some declaration actually needs one, reusing the same
    * `WorkflowGitOperations` fingerprint the audit-repair path already depends on. No new git port is
    * introduced and the domain stays git-agnostic: the checkpoint arrives as a plain value.
@@ -4180,13 +4201,20 @@ internal class FeatureTaskRuntimeRunLoop(
       baseBranch = resolvedBranchRecord?.baseBranch ?: "main",
     )
     recorder.validateHandoffDeclarations(handoff.projectionDeclarations)
+    val sharedEvidence = resolveSharedReviewEvidence(run, repositoryCheckpoint)
     val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(
       handoff,
       run.request.workflowId,
       planningProjectionValidator,
       run.request.agentAddonSelection,
+      sharedEvidence?.reference,
     )
-    recorder.recordPhaseBriefing(run.request.workflowId, briefing, run.request.dbPathOverride)
+    recorder.recordPhaseBriefing(
+      run.request.workflowId,
+      briefing,
+      run.request.dbPathOverride,
+      sharedEvidence?.measurement,
+    )
     val passNumber = reviewPassNumber(run, state)
     val depthResolution = passNumber?.let { pass ->
       FeatureTaskRuntimeReviewPassSequence.resolveForPass(run.request.runInvariants.codeReviewMode, pass)

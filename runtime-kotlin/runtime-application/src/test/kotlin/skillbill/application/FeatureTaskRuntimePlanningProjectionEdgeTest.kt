@@ -450,12 +450,153 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
       derivedContextKeys = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_SCOPED_REPOSITORY_STATE),
     )
 
-    // The bare key left the obligation implicit, so an audit could satisfy the phase from claims alone.
+    // AC-006: the scoped_repository_state wording is pinned byte-identical — actual state, not any
+    // upstream receipt claim, is the criterion evidence. Do not reword, reflow, or reindent.
+    val scopedInstruction =
+      "read the repository at the resolved checkpoint above — the diff over base_ref/head_ref plus " +
+        "the listed scoped_owned_paths — and treat that actual state, not any upstream receipt claim, " +
+        "as the evidence for every criterion"
     assertContains(
       briefing.briefingText,
-      "- ${FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_SCOPED_REPOSITORY_STATE}: read the repository",
+      "- ${FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_SCOPED_REPOSITORY_STATE}: $scopedInstruction",
     )
-    assertContains(briefing.briefingText, "not any upstream receipt claim")
+  }
+
+  @Test
+  fun `diff and current_unit_of_work name the delivered shared evidence projection instead of self-read`() {
+    val evidence = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedReviewEvidenceReference(
+      storePath = ".skill-bill/run-evidence/wf/fp",
+      checkpointFingerprint = "fp",
+      baseRef = "base",
+      headRef = "head",
+      fileHunkIndex = listOf("modified a.kt hunks=1"),
+    )
+    val projectionName = FeatureTaskRuntimePhaseWorkflowDefinition.SHARED_REVIEW_EVIDENCE_PROJECTION_NAME
+
+    val reviewBriefing = assemble(
+      consumer = phaseReview,
+      declarations = listOf(
+        FeatureTaskRuntimePhaseWorkflowDefinition.sharedReviewEvidenceDeclaration(phaseReview),
+      ),
+      recordedOutputs = emptyList(),
+      runInvariants = runInvariants(),
+      derivedContextKeys = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_DIFF),
+      sharedReviewEvidence = evidence,
+    )
+    assertContains(reviewBriefing.briefingText, "- diff: the branch diff is already derived for you")
+    assertContains(reviewBriefing.briefingText, "'$projectionName' projection")
+    assertFalse(
+      reviewBriefing.briefingText.contains("read the branch diff yourself"),
+      "review must not be told to read the diff itself once the shared evidence is delivered",
+    )
+
+    val unitBriefing = assemble(
+      consumer = phaseReview,
+      declarations = listOf(
+        FeatureTaskRuntimePhaseWorkflowDefinition.sharedReviewEvidenceDeclaration(phaseReview),
+      ),
+      recordedOutputs = emptyList(),
+      runInvariants = runInvariants(),
+      derivedContextKeys = listOf("current_unit_of_work"),
+      sharedReviewEvidence = evidence,
+    )
+    assertContains(unitBriefing.briefingText, "- current_unit_of_work: the current unit of work is already derived")
+    assertContains(unitBriefing.briefingText, "'$projectionName' projection")
+    assertFalse(
+      unitBriefing.briefingText.contains("read the current unit of work yourself"),
+      "current_unit_of_work must name the delivered reference, not instruct a self-read",
+    )
+  }
+
+  @Test
+  fun `omitted shared evidence falls back to self-read rather than naming a missing projection`() {
+    // required=false omit path (AC-010): declaration present, resolver returned null, projection absent.
+    val reviewBriefing = assemble(
+      consumer = phaseReview,
+      declarations = listOf(
+        FeatureTaskRuntimePhaseWorkflowDefinition.sharedReviewEvidenceDeclaration(phaseReview),
+      ),
+      recordedOutputs = emptyList(),
+      runInvariants = runInvariants(),
+      derivedContextKeys = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_DIFF),
+      sharedReviewEvidence = null,
+    )
+    assertContains(
+      reviewBriefing.briefingText,
+      "- diff: read the branch diff yourself; it is not delivered in this briefing",
+    )
+    assertFalse(
+      reviewBriefing.briefingText.contains("already derived for you"),
+      "omit path must not claim the shared_review_evidence projection was delivered",
+    )
+    assertFalse(
+      reviewBriefing.briefingText.contains("### shared_review_evidence"),
+      "omitted optional projection must not appear in the briefing",
+    )
+
+    val unitBriefing = assemble(
+      consumer = phaseReview,
+      declarations = listOf(
+        FeatureTaskRuntimePhaseWorkflowDefinition.sharedReviewEvidenceDeclaration(phaseReview),
+      ),
+      recordedOutputs = emptyList(),
+      runInvariants = runInvariants(),
+      derivedContextKeys = listOf("current_unit_of_work"),
+      sharedReviewEvidence = null,
+    )
+    assertContains(
+      unitBriefing.briefingText,
+      "- current_unit_of_work: read the current unit of work yourself; " +
+        "the shared evidence projection is not delivered in this briefing",
+    )
+    assertFalse(
+      unitBriefing.briefingText.contains("already derived for you"),
+      "omit path must not claim the shared_review_evidence projection was delivered",
+    )
+  }
+
+  @Test
+  fun `pr keeps the self-read branch-diff instruction on its own derived-context key`() {
+    val briefing = assemble(
+      consumer = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR,
+      declarations = emptyList(),
+      recordedOutputs = emptyList(),
+      runInvariants = runInvariants(),
+      derivedContextKeys = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_PR_BRANCH_DIFF),
+    )
+
+    assertContains(
+      briefing.briefingText,
+      "- ${FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_PR_BRANCH_DIFF}: " +
+        "read the branch diff yourself; it is not delivered in this briefing",
+    )
+    assertFalse(
+      briefing.briefingText.contains("shared_review_evidence"),
+      "PR must not receive the shared evidence projection",
+    )
+  }
+
+  @Test
+  fun `review_fix MUST_MATCH routes through the existing checkpoint policy with no new invalidation rule`() {
+    val implementFix = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations
+      .getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX)
+    val repair = implementFix.projectionDeclarations.single()
+    assertEquals(
+      skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
+      repair.checkpointPolicy,
+    )
+    // Shared evidence on review/audit stays REFRESH_FROM_REPOSITORY — fingerprint equality alone
+    // decides reuse; MUST_MATCH is not extended with a new invalidation concept.
+    val shared = FeatureTaskRuntimePhaseWorkflowDefinition.sharedReviewEvidenceDeclaration(phaseReview)
+    assertEquals(
+      skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+      shared.checkpointPolicy,
+    )
+    val edge = FeatureTaskRuntimePhaseWorkflowDefinition.transitions.backwardEdges.single {
+      it.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID
+    }
+    assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW, edge.fromPhaseId)
+    assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX, edge.destinationPhaseId)
   }
 
   @Test
@@ -747,6 +888,8 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
     derivedContextKeys: List<String> = emptyList(),
     planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator =
       NoopFeatureTaskRuntimePlanningProjectionValidator,
+    sharedReviewEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedReviewEvidenceReference? =
+      null,
   ) = FeatureTaskRuntimePhaseBriefingAssembler.assemble(
     FeatureTaskRuntimeHandoffContract.assembleHandoff(
       declaration = FeatureTaskRuntimePhaseDeclaration(consumer, declarations, derivedContextKeys),
@@ -756,6 +899,7 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
       expectedRepositoryCheckpoint = expectedCheckpoint,
     ),
     planningProjectionValidator = planningProjectionValidator,
+    sharedReviewEvidence = sharedReviewEvidence,
   )
 
   private fun phaseOutput(phaseId: String, payload: String) =
@@ -842,6 +986,7 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
   private val phasePlan = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN
   private val phaseImplement = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT
   private val phaseAudit = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT
+  private val phaseReview = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW
 }
 
 /** Records what the canonical schema gate was actually handed, proving it has a production caller. */

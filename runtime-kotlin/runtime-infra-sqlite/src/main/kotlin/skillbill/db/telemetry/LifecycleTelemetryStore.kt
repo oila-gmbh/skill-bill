@@ -15,6 +15,7 @@ import skillbill.telemetry.model.PrDescriptionGeneratedRecord
 import skillbill.telemetry.model.QualityCheckFinishedRecord
 import skillbill.telemetry.model.QualityCheckStartedRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionMeasurement
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceMeasurement
 import java.sql.Connection
 
 // SKILL-66 Subtask 2: implements the full lifecycle telemetry contract
@@ -26,6 +27,10 @@ class LifecycleTelemetryStore(
 ) : LifecycleTelemetryRepository {
   override fun featureTaskRuntimeProjectionMeasurement(record: FeatureTaskRuntimeProjectionMeasurement) {
     enqueueTelemetry(connection, "skillbill_feature_task_runtime_projection_measurement", record.toTelemetryMap())
+  }
+
+  override fun featureTaskRuntimeSharedEvidence(record: FeatureTaskRuntimeSharedEvidenceMeasurement) {
+    enqueueTelemetry(connection, "skillbill_feature_task_runtime_shared_evidence", record.toTelemetryMap())
   }
 
   override fun featureImplementStarted(record: FeatureImplementStartedRecord, level: String) {

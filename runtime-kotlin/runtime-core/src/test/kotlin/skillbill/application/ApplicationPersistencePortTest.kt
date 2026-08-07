@@ -125,6 +125,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionFailureClassification
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionMeasurement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceMeasurement
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -2053,9 +2054,14 @@ private class FakeDatabaseSessionFactory(
 private class RecordingProjectionLifecycleTelemetryRepository : LifecycleTelemetryRepository by
 NoopLifecycleTelemetryRepository {
   val projectionMeasurements = mutableListOf<FeatureTaskRuntimeProjectionMeasurement>()
+  val sharedEvidenceMeasurements = mutableListOf<FeatureTaskRuntimeSharedEvidenceMeasurement>()
 
   override fun featureTaskRuntimeProjectionMeasurement(record: FeatureTaskRuntimeProjectionMeasurement) {
     projectionMeasurements += record
+  }
+
+  override fun featureTaskRuntimeSharedEvidence(record: FeatureTaskRuntimeSharedEvidenceMeasurement) {
+    sharedEvidenceMeasurements += record
   }
 }
 

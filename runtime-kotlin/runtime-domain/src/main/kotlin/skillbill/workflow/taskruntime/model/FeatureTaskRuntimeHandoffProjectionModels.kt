@@ -46,6 +46,15 @@ sealed interface FeatureTaskRuntimeHandoffSourceRef {
     override val wireValue: String get() = DERIVED_CEREMONY_SCALING_WIRE
   }
 
+  /**
+   * The runtime-derived shared review evidence artifact for the current checkpoint. It has no producing
+   * phase: the runtime derives it from the repository, so it is its own source kind rather than an
+   * upstream phase output.
+   */
+  object SharedReviewEvidence : FeatureTaskRuntimeHandoffSourceRef {
+    override val wireValue: String get() = SHARED_REVIEW_EVIDENCE_WIRE
+  }
+
   /** Hydrated content of one selected add-on, budgeted separately from phase receipts. */
   data class AddonContentRef(val slug: String) : FeatureTaskRuntimeHandoffSourceRef {
     init {
@@ -60,9 +69,11 @@ sealed interface FeatureTaskRuntimeHandoffSourceRef {
     const val RUN_INVARIANT_FIELD_PREFIX: String = "run_invariant_field:"
     const val ADDON_CONTENT_PREFIX: String = "addon_content:"
     const val DERIVED_CEREMONY_SCALING_WIRE: String = "derived_ceremony_scaling"
+    const val SHARED_REVIEW_EVIDENCE_WIRE: String = "shared_review_evidence"
 
     fun fromWire(value: String): FeatureTaskRuntimeHandoffSourceRef = when {
       value == DERIVED_CEREMONY_SCALING_WIRE -> DerivedCeremonyScaling
+      value == SHARED_REVIEW_EVIDENCE_WIRE -> SharedReviewEvidence
       value.startsWith(UPSTREAM_PHASE_OUTPUT_PREFIX) ->
         UpstreamPhaseOutput(value.removePrefix(UPSTREAM_PHASE_OUTPUT_PREFIX))
       value.startsWith(RUN_INVARIANT_FIELD_PREFIX) ->
@@ -79,6 +90,7 @@ sealed interface FeatureTaskRuntimeHandoffSourceRef {
     is UpstreamPhaseOutput -> mapOf("kind" to "upstream_phase_output", "id" to producingPhaseId)
     is RunInvariantField -> mapOf("kind" to "run_invariant_field", "id" to invariantField.wireValue)
     DerivedCeremonyScaling -> mapOf("kind" to "derived_ceremony_scaling", "id" to "ceremony_scaling")
+    SharedReviewEvidence -> mapOf("kind" to SHARED_REVIEW_EVIDENCE_WIRE, "id" to SHARED_REVIEW_EVIDENCE_WIRE)
     is AddonContentRef -> mapOf("kind" to "addon_content", "id" to slug)
   }
 }
@@ -432,15 +444,7 @@ data class PhaseHandoffProjectionDeclaration(
           raw["contract_version"] != FEATURE_TASK_RUNTIME_PHASE_HANDOFF_CONTRACT_VERSION,
       )
       val source = raw["source"] as? Map<*, *> ?: invalid()
-      val sourceRef = when (source["kind"]) {
-        "upstream_phase_output" -> FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(source.string("id"))
-        "run_invariant_field" -> FeatureTaskRuntimeHandoffSourceRef.RunInvariantField(
-          FeatureTaskRuntimeRunInvariantPromptField.fromWire(source.string("id")),
-        )
-        "derived_ceremony_scaling" -> FeatureTaskRuntimeHandoffSourceRef.DerivedCeremonyScaling
-        "addon_content" -> FeatureTaskRuntimeHandoffSourceRef.AddonContentRef(source.string("id"))
-        else -> invalid()
-      }
+      val sourceRef = sourceRefOf(source)
       val contract = raw["projection_contract"] as? Map<*, *> ?: invalid()
       val budget = raw["budget"] as? Map<*, *> ?: invalid()
       val producer = raw["producer_iteration"] as? Map<*, *> ?: invalid()
@@ -471,6 +475,18 @@ data class PhaseHandoffProjectionDeclaration(
         inlineAlternative = inlineAlternative,
         authorizedReferenceKinds = references,
       )
+    }
+
+    private fun sourceRefOf(source: Map<*, *>): FeatureTaskRuntimeHandoffSourceRef = when (source["kind"]) {
+      "upstream_phase_output" -> FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(source.string("id"))
+      "run_invariant_field" -> FeatureTaskRuntimeHandoffSourceRef.RunInvariantField(
+        FeatureTaskRuntimeRunInvariantPromptField.fromWire(source.string("id")),
+      )
+      "derived_ceremony_scaling" -> FeatureTaskRuntimeHandoffSourceRef.DerivedCeremonyScaling
+      "addon_content" -> FeatureTaskRuntimeHandoffSourceRef.AddonContentRef(source.string("id"))
+      FeatureTaskRuntimeHandoffSourceRef.SHARED_REVIEW_EVIDENCE_WIRE ->
+        FeatureTaskRuntimeHandoffSourceRef.SharedReviewEvidence
+      else -> invalid()
     }
 
     private fun Map<*, *>.string(key: String): String = (this[key] as? String)?.takeIf(String::isNotBlank) ?: invalid()
@@ -682,6 +698,12 @@ data class FeatureTaskRuntimeHandoffProjectionInputs(
   val resolvedCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
   /** Checkpoint recorded in durable state, compared against the resolved one under `must_match`. */
   val expectedCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
+  /**
+   * The shared review evidence the application layer resolved for this launch, or null when none was
+   * resolvable. Null omits the non-required declaration rather than delivering it empty; the domain
+   * never reaches a filesystem to find one.
+   */
+  val sharedReviewEvidence: FeatureTaskRuntimeSharedReviewEvidenceReference? = null,
   /** Durable runtime-owned repair state used to construct audit-remediation projections. */
   val auditRepairPlan: FeatureTaskRuntimeAuditRepairPlan? = null,
   val auditRepairState: FeatureTaskRuntimeAuditRepairState? = null,

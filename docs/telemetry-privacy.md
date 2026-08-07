@@ -9,7 +9,7 @@ The default telemetry level is `anonymous`. Collection is on unless you disable 
 
 | Level | Behavior |
 |-------|----------|
-| `off` | Nothing is transmitted: `sync` and `autoSync` short-circuit on the disabled level. Two events are still written to the local outbox — `skillbill_runtime_exception` and `skillbill_feature_task_runtime_projection_measurement` — see [What is still queued at `off`](#what-is-still-queued-at-off). |
+| `off` | Nothing is transmitted: `sync` and `autoSync` short-circuit on the disabled level. Three events are still written to the local outbox — `skillbill_runtime_exception`, `skillbill_feature_task_runtime_projection_measurement`, and `skillbill_feature_task_runtime_shared_evidence` — see [What is still queued at `off`](#what-is-still-queued-at-off). |
 | `anonymous` | Counts, enums, durations, and identifiers derived by one-way hash. No file paths, descriptions, notes, learning text, error messages, or non-Skill-Bill stack frames. |
 | `full` | Everything in `anonymous`, plus the free-text and path fields marked below. |
 
@@ -21,7 +21,7 @@ outbox but never transmitted while the level is `off`.
 
 ### What is still queued at `off`
 
-Two producers enqueue without consulting the telemetry level:
+Three producers enqueue without consulting the telemetry level:
 
 - `TelemetryService.captureException` enqueues `skillbill_runtime_exception` guarded only by
   `database.databaseExists`; the level is used solely to choose redaction, so at `off` the row is
@@ -29,6 +29,10 @@ Two producers enqueue without consulting the telemetry level:
 - `FeatureTaskRuntimePhaseRecorder.recordProjectionMeasurements` enqueues
   `skillbill_feature_task_runtime_projection_measurement` with no telemetry gate; the row carries
   the bounded counters and the repository checkpoint fingerprint.
+- `FeatureTaskRuntimePhaseRecorder.recordSharedEvidenceMeasurement` enqueues
+  `skillbill_feature_task_runtime_shared_evidence` with no telemetry gate; the row carries the
+  checkpoint fingerprint, consuming phase id, outcome (`derivation` / `reuse` /
+  `checkpoint_change_rederivation`), and bounded index counters only.
 
 Nothing is transmitted while the level is `off`: `TelemetryService.sync` and
 `TelemetryService.autoSync` return before upload when the resolved settings are disabled.
@@ -96,6 +100,17 @@ Unlike the goal events above, this event's `workflow_id` is **not** redacted at 
 `LifecycleTelemetryStore.featureTaskRuntimeProjectionMeasurement` takes no level parameter and
 enqueues `toTelemetryMap` verbatim, so an issue key embedded in the workflow id (for example
 `SKILL-163:...`) is uploaded as-is once telemetry is at `anonymous` or `full`.
+
+### `skillbill_feature_task_runtime_shared_evidence`
+
+| Field | off | anonymous | full | Source |
+|-------|-----|-----------|------|--------|
+| `contract_version`, `consumer_phase_id`, `outcome` | queued only | ✓ | ✓ | `FeatureTaskRuntimeSharedEvidenceMeasurement.toTelemetryMap` |
+| `workflow_id` | queued only | ✓ raw, not hashed | ✓ | `FeatureTaskRuntimeSharedEvidenceMeasurement.toTelemetryMap` |
+| `checkpoint_fingerprint`, `file_index_count`, `hunk_index_count` | queued only | ✓ | ✓ | `FeatureTaskRuntimeSharedEvidenceMeasurement.toTelemetryMap` |
+
+This event is enqueued regardless of level. It carries no file paths, diff content, or prompt
+bodies — only the identifiers and counters needed to compute reuse rate.
 
 ### `skillbill_quality_check_started` / `skillbill_quality_check_finished`
 
