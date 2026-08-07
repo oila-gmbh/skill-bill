@@ -156,10 +156,11 @@ class SkillBillStatusBarWidget(
             details.workflowId?.let { add("Workflow: $it") }
             details.stepLabel?.let { add("Step: $it") }
             details.progressText?.let { add("Progress: $it") }
-            add("Goal elapsed: ${details.goalElapsedText}")
-            add("Subtask elapsed: ${details.subtaskElapsedText}")
+            add("Goal ${details.elapsedNoun}: ${details.goalElapsedText}")
+            add("Subtask ${details.elapsedNoun}: ${details.subtaskElapsedText}")
             details.lastUpdateText?.let { add("Last update: $it") }
             details.problemSummary?.let { add(it) }
+            details.staleNote?.let { add(it) }
         }
         val html = lines.joinToString("<br/>") { escapeXml(it) }
         val popup = JBPopupFactory.getInstance()

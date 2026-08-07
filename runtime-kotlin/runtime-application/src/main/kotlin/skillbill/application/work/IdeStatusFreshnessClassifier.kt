@@ -15,7 +15,8 @@ import java.time.Instant
  *   (clock skew / impossible age)
  */
 object IdeStatusFreshnessClassifier {
-  val FRESH_WINDOW: Duration = Duration.ofMinutes(30)
+  private const val FRESH_WINDOW_MINUTES = 30L
+  val FRESH_WINDOW: Duration = Duration.ofMinutes(FRESH_WINDOW_MINUTES)
 
   fun classify(updatedAt: Instant?, observedAt: Instant): IdeStatusFreshness {
     if (updatedAt == null) return IdeStatusFreshness.UNKNOWN

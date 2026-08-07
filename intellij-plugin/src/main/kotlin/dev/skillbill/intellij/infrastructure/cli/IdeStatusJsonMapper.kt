@@ -93,6 +93,16 @@ object IdeStatusJsonMapper {
         val subtaskStartedAt = subtask?.getAsInstant("started_at")
         val updatedAt = root.getAsInstant("updated_at")
 
+        // "No work here" is a healthy idle repository, not a broken status source.
+        // Every other problem code is a genuine failure to obtain status.
+        if (problemCode == "no_matching_work") {
+            return SkillBillStatusOutcome.Idle(
+                observedAt = observedAt,
+                summary = safeSummary(problem?.getAsString("message"), summary),
+                repositoryIdentity = repositoryIdentity,
+            )
+        }
+
         if (problemCode != null) {
             val unavailable = when (problemCode) {
                 "missing_repository_identity" -> UnavailableReason.MISSING_REPOSITORY
@@ -110,7 +120,12 @@ object IdeStatusJsonMapper {
             )
         }
 
-        if (freshness == "stale") {
+        val isStale = freshness == "stale"
+
+        // Staleness only *replaces* a lifecycle that claims to be live. A settled
+        // lifecycle (blocked/failed/terminal/idle) is the more specific truth and
+        // outranks it; there it degrades to a modifier on the lifecycle outcome.
+        if (isStale && (lifecycle == "active" || lifecycle == "paused")) {
             return SkillBillStatusOutcome.Stale(
                 observedAt = observedAt,
                 summary = summary,
@@ -163,6 +178,7 @@ object IdeStatusJsonMapper {
                 currentSubtaskId = subtaskId,
                 subtaskStartedAt = subtaskStartedAt,
                 updatedAt = updatedAt,
+                stale = isStale,
             )
 
             "failed" -> SkillBillStatusOutcome.Failed(
@@ -176,12 +192,14 @@ object IdeStatusJsonMapper {
                 currentSubtaskId = subtaskId,
                 subtaskStartedAt = subtaskStartedAt,
                 updatedAt = updatedAt,
+                stale = isStale,
             )
 
             "idle", "terminal" -> SkillBillStatusOutcome.Idle(
                 observedAt = observedAt,
                 summary = summary,
                 repositoryIdentity = repositoryIdentity,
+                stale = isStale,
             )
 
             else -> SkillBillStatusOutcome.Unavailable(

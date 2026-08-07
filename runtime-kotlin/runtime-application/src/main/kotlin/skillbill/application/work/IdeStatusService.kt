@@ -28,6 +28,7 @@ import java.time.Instant
  * rewrite, lease acquisition, telemetry mutation, or database write.
  */
 @Inject
+@Suppress("TooManyFunctions") // repository-matching helpers stay colocated with selection
 class IdeStatusService(
   private val database: DatabaseSessionFactory,
   private val projector: IdeStatusProjector,
@@ -54,15 +55,17 @@ class IdeStatusService(
     return try {
       database.read(request.dbOverride) { unitOfWork ->
         val candidates = collectCandidates(unitOfWork, repositoryIdentity)
-        val selected = IdeStatusSelectionPolicy.select(candidates)
+        val selected = IdeStatusSelectionPolicy.select(candidates, observedAt)
           ?: return@read emit(IdeStatusProblemSnapshots.noMatchingWork(repositoryIdentity, observedAt))
         val snapshot = projector.project(
           candidate = selected,
-          unitOfWork = unitOfWork,
-          repositoryIdentity = repositoryIdentity,
-          observedAt = observedAt,
-          dbOverride = request.dbOverride,
-          repoRoot = repoRoot,
+          context = IdeStatusProjectionContext(
+            unitOfWork = unitOfWork,
+            repositoryIdentity = repositoryIdentity,
+            observedAt = observedAt,
+            dbOverride = request.dbOverride,
+            repoRoot = repoRoot,
+          ),
         )
         emit(snapshot)
       }
@@ -85,10 +88,7 @@ class IdeStatusService(
     }
   }
 
-  private fun collectCandidates(
-    unitOfWork: UnitOfWork,
-    repositoryIdentity: String,
-  ): List<IdeStatusCandidate> {
+  private fun collectCandidates(unitOfWork: UnitOfWork, repositoryIdentity: String): List<IdeStatusCandidate> {
     val work = unitOfWork.workList.list(limit = null)
     val issueKeysWithGoals = work
       .filter { it.workflowKind == WorkItemKind.FEATURE_GOAL }
@@ -107,22 +107,21 @@ class IdeStatusService(
     issueKeysWithGoals: Set<String>,
   ): IdeStatusCandidate? {
     val family = item.workflowKind.toIdeFamily()
-    val identityMatch = matchesRepository(unitOfWork, item, family, repositoryIdentity) ?: return null
-    if (!identityMatch) return null
+    if (matchesRepository(unitOfWork, item, family, repositoryIdentity) != true) return null
 
-    val lifecycle = IdeStatusSelectionPolicy.lifecycleFromDurableState(item.currentState) ?: return null
+    val lifecycle = IdeStatusSelectionPolicy.lifecycleFromDurableState(item.currentState)
+      ?: return null
     val routeScope = when (item.workflowKind) {
       WorkItemKind.FEATURE_TASK_PROSE, WorkItemKind.FEATURE_TASK_RUNTIME ->
         unitOfWork.workflowStates.getFeatureTaskExecutionIdentity(item.workflowId)?.routeScope
       else -> null
     }
     // Within a tier, never prefer a goal-child over an authoritative feature-goal for the same issue.
-    val suppressedChild = routeScope == FeatureTaskRouteScope.GOAL_CHILD &&
+    if (routeScope == FeatureTaskRouteScope.GOAL_CHILD &&
       item.issueKey?.uppercase() in issueKeysWithGoals
-    if (suppressedChild) return null
-
-    val updatedAt = authoritativeUpdatedAt(unitOfWork, item, family) ?: item.stateEnteredAt
-    val startedAt = item.startedAt
+    ) {
+      return null
+    }
 
     return IdeStatusCandidate(
       workflowId = item.workflowId,
@@ -131,8 +130,8 @@ class IdeStatusService(
       currentState = item.currentState,
       lifecycleState = lifecycle,
       selectionTier = IdeStatusSelectionPolicy.selectionTier(lifecycle),
-      updatedAt = updatedAt,
-      startedAt = startedAt,
+      updatedAt = authoritativeUpdatedAt(unitOfWork, item, family) ?: item.stateEnteredAt,
+      startedAt = item.startedAt,
       routeScope = routeScope,
       isGoalAuthoritative = family == IdeStatusWorkflowFamily.FEATURE_GOAL,
     )
@@ -150,40 +149,48 @@ class IdeStatusService(
   ): Boolean? = when (family) {
     IdeStatusWorkflowFamily.FEATURE_TASK_PROSE,
     IdeStatusWorkflowFamily.FEATURE_TASK_RUNTIME,
-    -> {
-      val identity = unitOfWork.workflowStates.getFeatureTaskExecutionIdentity(item.workflowId)
-      when {
-        identity == null -> null
-        identity.repositoryIdentity == repositoryIdentity -> true
-        else -> false
+    -> matchesFeatureTaskRepository(unitOfWork, item.workflowId, repositoryIdentity)
+    IdeStatusWorkflowFamily.FEATURE_GOAL ->
+      matchesGoalRepository(unitOfWork, item, repositoryIdentity)
+    IdeStatusWorkflowFamily.FEATURE_VERIFY ->
+      matchesVerifyRepository(unitOfWork, item, repositoryIdentity)
+  }
+
+  private fun matchesFeatureTaskRepository(
+    unitOfWork: UnitOfWork,
+    workflowId: String,
+    repositoryIdentity: String,
+  ): Boolean? {
+    val identity = unitOfWork.workflowStates.getFeatureTaskExecutionIdentity(workflowId) ?: return null
+    return identity.repositoryIdentity == repositoryIdentity
+  }
+
+  private fun matchesGoalRepository(unitOfWork: UnitOfWork, item: WorkItem, repositoryIdentity: String): Boolean? {
+    val bound = unitOfWork.goalRunnerControls.controlState(item.workflowId).repositoryIdentity
+    return when {
+      bound == null -> {
+        // Infer from children: children in this repository bind the goal here; a goal with no
+        // children anywhere is treated as belonging to the asking repository (unlaunched).
+        val issueKey = item.issueKey?.trim()?.uppercase() ?: return null
+        val childrenHere = unitOfWork.workflowStates
+          .findGoalChildFeatureTaskCandidates(issueKey, repositoryIdentity)
+        val childCountAnywhere = unitOfWork.workflowStates.countGoalChildIdentities(issueKey)
+        childrenHere.isNotEmpty() || childCountAnywhere == 0
       }
+      bound == repositoryIdentity -> true
+      else -> false
     }
-    IdeStatusWorkflowFamily.FEATURE_GOAL -> {
-      val bound = unitOfWork.goalRunnerControls.controlState(item.workflowId).repositoryIdentity
-      when {
-        bound == null -> {
-          // Infer from children: children in this repository bind the goal here; a goal with no
-          // children anywhere is treated as belonging to the asking repository (unlaunched).
-          val issueKey = item.issueKey?.trim()?.uppercase() ?: return null
-          val childrenHere = unitOfWork.workflowStates
-            .findGoalChildFeatureTaskCandidates(issueKey, repositoryIdentity)
-          val childCountAnywhere = unitOfWork.workflowStates.countGoalChildIdentities(issueKey)
-          childrenHere.isNotEmpty() || childCountAnywhere == 0
-        }
-        bound == repositoryIdentity -> true
-        else -> false
-      }
-    }
-    IdeStatusWorkflowFamily.FEATURE_VERIFY -> {
-      // Verify workflows have no durable repository_identity. Exclude unbound rows (same as a
-      // missing feature-task identity). Include only when issue_key correlates to same-repo
-      // feature-task or goal identity; never default-include every verify row.
-      val issueKey = item.issueKey?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-      when (verifyIssueRepositoryCorrelation(unitOfWork, issueKey, repositoryIdentity)) {
-        VerifyRepoCorrelation.SAME_REPO -> true
-        VerifyRepoCorrelation.OTHER_REPO -> false
-        VerifyRepoCorrelation.UNKNOWN -> null
-      }
+  }
+
+  private fun matchesVerifyRepository(unitOfWork: UnitOfWork, item: WorkItem, repositoryIdentity: String): Boolean? {
+    // Verify workflows have no durable repository_identity. Exclude unbound rows (same as a
+    // missing feature-task identity). Include only when issue_key correlates to same-repo
+    // feature-task or goal identity; never default-include every verify row.
+    val issueKey = item.issueKey?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    return when (verifyIssueRepositoryCorrelation(unitOfWork, issueKey, repositoryIdentity)) {
+      VerifyRepoCorrelation.SAME_REPO -> true
+      VerifyRepoCorrelation.OTHER_REPO -> false
+      VerifyRepoCorrelation.UNKNOWN -> null
     }
   }
 
@@ -202,41 +209,65 @@ class IdeStatusService(
     var sawOtherRepo = false
     for (other in unitOfWork.workList.list(limit = null)) {
       if (other.issueKey?.trim()?.uppercase() != normalized) continue
-      when (other.workflowKind) {
-        WorkItemKind.FEATURE_TASK_PROSE,
-        WorkItemKind.FEATURE_TASK_RUNTIME,
-        -> {
-          val identity = unitOfWork.workflowStates.getFeatureTaskExecutionIdentity(other.workflowId)
-          when {
-            identity == null -> Unit
-            identity.repositoryIdentity == repositoryIdentity -> sawSameRepo = true
-            else -> sawOtherRepo = true
-          }
-        }
-        WorkItemKind.FEATURE_GOAL -> {
-          val bound = unitOfWork.goalRunnerControls.controlState(other.workflowId).repositoryIdentity
-          when {
-            bound == repositoryIdentity -> sawSameRepo = true
-            bound == null -> {
-              val childrenHere = unitOfWork.workflowStates
-                .findGoalChildFeatureTaskCandidates(normalized, repositoryIdentity)
-              val childCountAnywhere = unitOfWork.workflowStates.countGoalChildIdentities(normalized)
-              when {
-                childrenHere.isNotEmpty() -> sawSameRepo = true
-                childCountAnywhere > 0 -> sawOtherRepo = true
-                // Unlaunched goal with no children is not positive same-repo evidence for verify.
-              }
-            }
-            else -> sawOtherRepo = true
-          }
-        }
-        WorkItemKind.FEATURE_VERIFY -> Unit
+      when (correlateSameIssueWork(unitOfWork, other, normalized, repositoryIdentity)) {
+        VerifyRepoCorrelation.SAME_REPO -> sawSameRepo = true
+        VerifyRepoCorrelation.OTHER_REPO -> sawOtherRepo = true
+        VerifyRepoCorrelation.UNKNOWN -> Unit
       }
     }
     return when {
       sawSameRepo -> VerifyRepoCorrelation.SAME_REPO
       sawOtherRepo -> VerifyRepoCorrelation.OTHER_REPO
       else -> VerifyRepoCorrelation.UNKNOWN
+    }
+  }
+
+  private fun correlateSameIssueWork(
+    unitOfWork: UnitOfWork,
+    other: WorkItem,
+    normalizedIssueKey: String,
+    repositoryIdentity: String,
+  ): VerifyRepoCorrelation = when (other.workflowKind) {
+    WorkItemKind.FEATURE_TASK_PROSE,
+    WorkItemKind.FEATURE_TASK_RUNTIME,
+    -> {
+      val identity = unitOfWork.workflowStates.getFeatureTaskExecutionIdentity(other.workflowId)
+      when {
+        identity == null -> VerifyRepoCorrelation.UNKNOWN
+        identity.repositoryIdentity == repositoryIdentity -> VerifyRepoCorrelation.SAME_REPO
+        else -> VerifyRepoCorrelation.OTHER_REPO
+      }
+    }
+    WorkItemKind.FEATURE_GOAL -> correlateGoalForVerify(
+      unitOfWork = unitOfWork,
+      workflowId = other.workflowId,
+      normalizedIssueKey = normalizedIssueKey,
+      repositoryIdentity = repositoryIdentity,
+    )
+    WorkItemKind.FEATURE_VERIFY -> VerifyRepoCorrelation.UNKNOWN
+  }
+
+  private fun correlateGoalForVerify(
+    unitOfWork: UnitOfWork,
+    workflowId: String,
+    normalizedIssueKey: String,
+    repositoryIdentity: String,
+  ): VerifyRepoCorrelation {
+    val bound = unitOfWork.goalRunnerControls.controlState(workflowId).repositoryIdentity
+    return when {
+      bound == repositoryIdentity -> VerifyRepoCorrelation.SAME_REPO
+      bound == null -> {
+        val childrenHere = unitOfWork.workflowStates
+          .findGoalChildFeatureTaskCandidates(normalizedIssueKey, repositoryIdentity)
+        val childCountAnywhere = unitOfWork.workflowStates.countGoalChildIdentities(normalizedIssueKey)
+        when {
+          childrenHere.isNotEmpty() -> VerifyRepoCorrelation.SAME_REPO
+          childCountAnywhere > 0 -> VerifyRepoCorrelation.OTHER_REPO
+          // Unlaunched goal with no children is not positive same-repo evidence for verify.
+          else -> VerifyRepoCorrelation.UNKNOWN
+        }
+      }
+      else -> VerifyRepoCorrelation.OTHER_REPO
     }
   }
 
@@ -258,7 +289,7 @@ class IdeStatusService(
   }
 
   private fun emit(snapshot: IdeStatusSnapshot): IdeStatusResult {
-    val wire = snapshot.toWireMap()
+    val wire = snapshot.toStatusWireMap()
     ideStatusValidator.validate(wire, sourceLabel = "ide-status")
     return IdeStatusResult(snapshot = snapshot, exitCode = snapshot.exitCode())
   }
@@ -270,33 +301,30 @@ class IdeStatusService(
  */
 internal fun resolveRepositoryIdentity(repoRootArg: String): IdeStatusRepositoryResolution {
   val resolvedStart = runCatching { Path.of(repoRootArg).toAbsolutePath().normalize().toRealPath() }
-    .getOrElse {
-      return IdeStatusRepositoryResolution.Invalid("Repository root cannot be resolved: $repoRootArg")
-    }
-  var candidate = resolvedStart
-  var gitRoot: Path? = null
-  while (true) {
-    val gitMarker = runCatching { candidate.resolve(".git").toRealPath() }.getOrNull()
-    if (gitMarker != null) {
-      gitRoot = candidate
-      break
-    }
-    candidate = candidate.parent ?: break
-  }
-  if (gitRoot == null) {
-    return IdeStatusRepositoryResolution.Invalid("Path is not inside a Git repository: $repoRootArg")
-  }
-  val canonicalGitRoot = runCatching { gitRoot.toRealPath() }
-    .getOrElse {
-      return IdeStatusRepositoryResolution.Invalid("Git repository root cannot be resolved: $repoRootArg")
-    }
+    .getOrNull()
+    ?: return IdeStatusRepositoryResolution.Invalid("Repository root cannot be resolved: $repoRootArg")
+  val gitRoot = findGitRoot(resolvedStart)
+    ?: return IdeStatusRepositoryResolution.Invalid("Path is not inside a Git repository: $repoRootArg")
+  val canonicalGitRoot = runCatching { gitRoot.toRealPath() }.getOrNull()
+    ?: return IdeStatusRepositoryResolution.Invalid("Git repository root cannot be resolved: $repoRootArg")
   val identity = goalRepositoryIdentity(canonicalGitRoot)
-  if (identity.isBlank() || !identity.startsWith("repo-root-realpath-v1:")) {
-    return IdeStatusRepositoryResolution.Missing(
+  return if (identity.isBlank() || !identity.startsWith("repo-root-realpath-v1:")) {
+    IdeStatusRepositoryResolution.Missing(
       "Could not form canonical repository identity for: $repoRootArg",
     )
+  } else {
+    IdeStatusRepositoryResolution.Ok(identity = identity, repoRoot = canonicalGitRoot)
   }
-  return IdeStatusRepositoryResolution.Ok(identity = identity, repoRoot = canonicalGitRoot)
+}
+
+private fun findGitRoot(start: Path): Path? {
+  var candidate: Path? = start
+  while (candidate != null) {
+    val gitMarker = runCatching { candidate.resolve(".git").toRealPath() }.getOrNull()
+    if (gitMarker != null) return candidate
+    candidate = candidate.parent
+  }
+  return null
 }
 
 private enum class VerifyRepoCorrelation {

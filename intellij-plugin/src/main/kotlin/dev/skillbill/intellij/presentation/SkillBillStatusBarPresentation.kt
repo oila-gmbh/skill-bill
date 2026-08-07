@@ -12,6 +12,7 @@ import java.time.format.DateTimeFormatter
 object SkillBillStatusBarPresentation {
     const val BAR_TEXT_MAX_LENGTH: Int = 48
     const val UNAVAILABLE_ELAPSED: String = "—"
+    const val STALE_NOTE: String = "(Stale — not live)"
 
     private val lastUpdateFormatter: DateTimeFormatter =
         DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss'Z'").withZone(ZoneOffset.UTC)
@@ -55,6 +56,7 @@ object SkillBillStatusBarPresentation {
             subtaskText = subtaskText,
             progressText = progressText,
             detail = anchored.detail,
+            elapsedNoun = elapsedNoun(anchored),
         )
 
         return MappedPresentation(
@@ -63,7 +65,7 @@ object SkillBillStatusBarPresentation {
             accessibleName = accessibleName,
             accessibleDescription = accessibleDescription,
             showActivityAnimation = anchored is SkillBillStatusUiState.Active,
-            isStaleMarked = anchored is SkillBillStatusUiState.Stale,
+            isStaleMarked = anchored.stale,
             details = StatusBarDetails(
                 issueKey = anchored.issueKey,
                 workflowId = anchored.workflowId,
@@ -72,8 +74,10 @@ object SkillBillStatusBarPresentation {
                 progressText = progressText,
                 goalElapsedText = goalText,
                 subtaskElapsedText = subtaskText,
+                elapsedNoun = elapsedNoun(anchored),
                 lastUpdateText = anchored.lastUpdated?.let { lastUpdateFormatter.format(it) },
                 problemSummary = anchored.problemSummary ?: anchored.detail,
+                staleNote = STALE_NOTE.takeIf { anchored.stale },
             ),
         )
     }
@@ -132,16 +136,17 @@ object SkillBillStatusBarPresentation {
             state.issueKey?.let { append("\nIssue: ").append(it) }
             state.workflowId?.let { append("\nWorkflow: ").append(it) }
             step?.let { append("\nStep: ").append(it) }
-            append("\nGoal elapsed: ").append(goalText)
-            append("\nSubtask elapsed: ").append(subtaskText)
+            val elapsedNoun = elapsedNoun(state)
+            append("\nGoal ").append(elapsedNoun).append(": ").append(goalText)
+            append("\nSubtask ").append(elapsedNoun).append(": ").append(subtaskText)
             progressText?.let { append("\nProgress: ").append(it) }
             state.lastUpdated?.let { append("\nLast update: ").append(lastUpdateFormatter.format(it)) }
             val problem = state.problemSummary ?: state.detail
             if (!problem.isNullOrBlank()) {
                 append("\n").append(problem)
             }
-            if (state is SkillBillStatusUiState.Stale) {
-                append("\n(Stale — not live)")
+            if (state.stale) {
+                append('\n').append(STALE_NOTE)
             }
             if (state is SkillBillStatusUiState.Unavailable) {
                 append("\nReason: ").append(state.reasonCode)
@@ -158,14 +163,31 @@ object SkillBillStatusBarPresentation {
         subtaskText: String,
         progressText: String?,
         detail: String?,
+        elapsedNoun: String,
     ): String =
         buildString {
             append("Skill Bill. State: ").append(lifecycle).append('.')
             step?.let { append(" Step: ").append(it).append('.') }
-            append(" Goal elapsed: ").append(goalText).append('.')
-            append(" Subtask elapsed: ").append(subtaskText).append('.')
+            append(" Goal ").append(elapsedNoun).append(": ").append(goalText).append('.')
+            append(" Subtask ").append(elapsedNoun).append(": ").append(subtaskText).append('.')
             progressText?.let { append(" Progress: ").append(it).append('.') }
             detail?.let { append(' ').append(it) }
+        }
+
+    /**
+     * A live run has "elapsed" time; a settled one has a duration it "ran" for. The
+     * frozen number must not read as a still-running clock. States that describe no
+     * run at all (idle, unavailable, incompatible) keep the neutral noun — "ran"
+     * there would assert a past execution that never happened.
+     */
+    private fun elapsedNoun(state: SkillBillStatusUiState): String =
+        when (state) {
+            is SkillBillStatusUiState.Stale,
+            is SkillBillStatusUiState.Blocked,
+            is SkillBillStatusUiState.Failed,
+            -> "ran"
+
+            else -> "elapsed"
         }
 
     private fun lifecycleLabel(state: SkillBillStatusUiState): String =
@@ -197,7 +219,11 @@ object SkillBillStatusBarPresentation {
         val progressText: String?,
         val goalElapsedText: String,
         val subtaskElapsedText: String,
+        /** "elapsed" while live, "ran" once settled — the duration stops advancing. */
+        val elapsedNoun: String,
         val lastUpdateText: String?,
         val problemSummary: String?,
+        /** Caveat for surfaces that render these numbers; null when the reading is live. */
+        val staleNote: String?,
     )
 }

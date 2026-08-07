@@ -15,6 +15,8 @@ sealed class SkillBillStatusOutcome {
         override val observedAt: Instant,
         val summary: String,
         val repositoryIdentity: String? = null,
+        /** Freshness modifies a settled lifecycle; it never replaces it. */
+        val stale: Boolean = false,
         override val diagnostic: StatusDiagnostic? = null,
     ) : SkillBillStatusOutcome()
 
@@ -66,6 +68,8 @@ sealed class SkillBillStatusOutcome {
         val currentSubtaskId: String?,
         val subtaskStartedAt: Instant?,
         val updatedAt: Instant?,
+        /** Freshness modifies a settled lifecycle; it never replaces it. */
+        val stale: Boolean = false,
         override val diagnostic: StatusDiagnostic? = null,
     ) : SkillBillStatusOutcome()
 
@@ -80,6 +84,8 @@ sealed class SkillBillStatusOutcome {
         val currentSubtaskId: String?,
         val subtaskStartedAt: Instant?,
         val updatedAt: Instant?,
+        /** Freshness modifies a settled lifecycle; it never replaces it. */
+        val stale: Boolean = false,
         override val diagnostic: StatusDiagnostic? = null,
     ) : SkillBillStatusOutcome()
 
@@ -104,6 +110,10 @@ enum class UnavailableReason {
     MISCONFIGURED,
     MISSING_REPOSITORY,
     ABSENT_DATABASE,
+    /**
+     * Retained for wire compatibility only. The `no_matching_work` contract code maps
+     * to [SkillBillStatusOutcome.Idle] — an empty repository is idle, not unavailable.
+     */
     NO_MATCHING_WORK,
     INVALID_REPOSITORY_INPUT,
     PROCESS_FAILURE,

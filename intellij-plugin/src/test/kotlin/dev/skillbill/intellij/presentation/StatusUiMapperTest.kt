@@ -124,6 +124,51 @@ class StatusUiMapperTest {
         assertEquals(start, reanchored.startedAt)
     }
 
+    @Test
+    fun `settled elapsed is frozen at last update and never ticks with wall clock`() {
+        val lastUpdate = Instant.parse("2026-08-06T10:15:00Z")
+        val muchLater = Instant.parse("2026-08-09T10:15:00Z")
+        val blocked = SkillBillStatusOutcome.Blocked(
+            observedAt = muchLater,
+            summary = "blocked",
+            repositoryIdentity = "repo",
+            issueKey = "SKILL-148",
+            currentStepId = "implement",
+            currentStepLabel = "Implement",
+            startedAt = started,
+            currentSubtaskId = "2",
+            subtaskStartedAt = subtaskStarted,
+            updatedAt = lastUpdate,
+        )
+        val ui = StatusUiMapper.map(blocked, muchLater) as SkillBillStatusUiState.Blocked
+        // 10:00 start → 10:15 last update, not → observation three days later.
+        assertEquals(Duration.ofMinutes(15), ui.goalElapsed)
+        assertEquals(ui, StatusUiMapper.withElapsed(ui, muchLater.plusSeconds(3_600)))
+    }
+
+    @Test
+    fun `stale elapsed is frozen at last update`() {
+        val lastUpdate = Instant.parse("2026-08-06T10:20:00Z")
+        val muchLater = Instant.parse("2026-08-09T10:20:00Z")
+        val stale = SkillBillStatusOutcome.Stale(
+            observedAt = muchLater,
+            summary = "stale",
+            repositoryIdentity = "repo",
+            issueKey = "SKILL-148",
+            currentStepId = "implement",
+            currentStepLabel = "Implement",
+            progressCompleted = 0,
+            progressTotal = 1,
+            startedAt = started,
+            currentSubtaskId = "2",
+            subtaskStartedAt = null,
+            updatedAt = lastUpdate,
+        )
+        val ui = StatusUiMapper.map(stale, muchLater) as SkillBillStatusUiState.Stale
+        assertEquals(Duration.ofMinutes(20), ui.goalElapsed)
+        assertEquals(ui, StatusUiMapper.withElapsed(ui, muchLater.plusSeconds(3_600)))
+    }
+
     private fun active(
         startedAt: Instant? = started,
         subtaskStartedAt: Instant? = subtaskStarted,

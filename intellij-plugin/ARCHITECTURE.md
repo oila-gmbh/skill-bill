@@ -47,6 +47,21 @@ shortcuts and forbidden runtime/JDBC/SQLite imports as pure JVM source scans.
 4. **Elapsed time** — derived from authoritative `started_at` / `subtask_started_at`
    via an injected clock. Absent timestamps stay absent (shown as unavailable);
    never synthesized from `updated_at`. Clock-skew negatives clamp to zero.
+   Only **active** work ticks against wall-clock now: a settled state (stale,
+   blocked, failed) measures to its last authoritative `updated_at` and stays
+   frozen there, so an abandoned run cannot grow a duration that reads as ongoing
+   execution. Labels follow suit — "elapsed" while live, "ran" once settled. States
+   that describe no run at all (idle, unavailable, incompatible) keep the neutral
+   "elapsed"; "ran" there would assert an execution that never happened.
+
+### Freshness versus lifecycle
+
+Freshness is a **modifier**, not a state. It replaces the lifecycle only when the
+lifecycle claims to be live (`active` / `paused`), which is the genuine
+went-silent case. Against a settled lifecycle (`blocked` / `failed` / `terminal` /
+`idle`) the lifecycle is the more specific truth and wins; staleness is carried
+alongside it and surfaces as the stale marker plus a tooltip note. A stale
+`terminal` row therefore reads idle, never as work in progress.
 
 ## Status-bar expected states
 
@@ -55,10 +70,10 @@ Documented presentations (no screenshot asset required for this release):
 | UI state | Status-bar text (concise) | Animation | Notes |
 | --- | --- | --- | --- |
 | Active | `Skill Bill · <step> · <goal> · <subtask> [· c/t]` | Yes | Progress `c/t` only when bounds are valid |
-| Idle | `Skill Bill · idle` | No | No matching work / idle contract |
-| Stale | `Skill Bill · stale · …` | No | Cached/observation-marked; tooltip says stale |
-| Blocked | `Skill Bill · blocked` | No | Distinct from failed |
-| Failed | `Skill Bill · failed` | No | Distinct from blocked |
+| Idle | `Skill Bill · idle` | No | No matching work / idle or terminal contract; a terminal row may additionally carry the stale marker |
+| Stale | `Skill Bill · stale · …` | No | Cached/observation-marked; only reachable from an `active`/`paused` lifecycle |
+| Blocked | `Skill Bill · blocked` | No | Distinct from failed; may additionally carry the stale marker; retained 24h |
+| Failed | `Skill Bill · failed` | No | Distinct from blocked; may additionally carry the stale marker; retained 6h |
 | Unavailable | `Skill Bill · unavailable` | No | Missing CLI, timeout, malformed, etc. |
 | Incompatible | `Skill Bill · incompatible` | No | Contract-version mismatch |
 

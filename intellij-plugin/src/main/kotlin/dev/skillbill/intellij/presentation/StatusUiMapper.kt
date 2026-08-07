@@ -16,6 +16,7 @@ object StatusUiMapper {
                     headline = "Skill Bill: idle",
                     detail = outcome.summary,
                     lastUpdated = outcome.observedAt,
+                    stale = outcome.stale,
                 )
 
             is SkillBillStatusOutcome.Active ->
@@ -38,8 +39,8 @@ object StatusUiMapper {
                 SkillBillStatusUiState.Stale(
                     headline = staleHeadline(outcome),
                     detail = outcome.summary,
-                    goalElapsed = elapsed(outcome.startedAt, now),
-                    subtaskElapsed = elapsed(outcome.subtaskStartedAt, now),
+                    goalElapsed = elapsed(outcome.startedAt, settledAt(outcome.updatedAt, now)),
+                    subtaskElapsed = elapsed(outcome.subtaskStartedAt, settledAt(outcome.updatedAt, now)),
                     progressCompleted = outcome.progressCompleted,
                     progressTotal = outcome.progressTotal,
                     issueKey = outcome.issueKey,
@@ -55,8 +56,8 @@ object StatusUiMapper {
                 SkillBillStatusUiState.Blocked(
                     headline = "Skill Bill: blocked",
                     detail = outcome.summary,
-                    goalElapsed = elapsed(outcome.startedAt, now),
-                    subtaskElapsed = elapsed(outcome.subtaskStartedAt, now),
+                    goalElapsed = elapsed(outcome.startedAt, settledAt(outcome.updatedAt, now)),
+                    subtaskElapsed = elapsed(outcome.subtaskStartedAt, settledAt(outcome.updatedAt, now)),
                     issueKey = outcome.issueKey,
                     workflowId = null,
                     stepLabel = outcome.currentStepLabel,
@@ -64,14 +65,15 @@ object StatusUiMapper {
                     subtaskStartedAt = outcome.subtaskStartedAt,
                     lastUpdated = outcome.updatedAt ?: outcome.observedAt,
                     problemSummary = outcome.summary,
+                    stale = outcome.stale,
                 )
 
             is SkillBillStatusOutcome.Failed ->
                 SkillBillStatusUiState.Failed(
                     headline = "Skill Bill: failed",
                     detail = outcome.summary,
-                    goalElapsed = elapsed(outcome.startedAt, now),
-                    subtaskElapsed = elapsed(outcome.subtaskStartedAt, now),
+                    goalElapsed = elapsed(outcome.startedAt, settledAt(outcome.updatedAt, now)),
+                    subtaskElapsed = elapsed(outcome.subtaskStartedAt, settledAt(outcome.updatedAt, now)),
                     issueKey = outcome.issueKey,
                     workflowId = null,
                     stepLabel = outcome.currentStepLabel,
@@ -79,6 +81,7 @@ object StatusUiMapper {
                     subtaskStartedAt = outcome.subtaskStartedAt,
                     lastUpdated = outcome.updatedAt ?: outcome.observedAt,
                     problemSummary = outcome.summary,
+                    stale = outcome.stale,
                 )
 
             is SkillBillStatusOutcome.Unavailable ->
@@ -105,6 +108,14 @@ object StatusUiMapper {
         }
 
     /**
+     * Anchor for work that is no longer running. Elapsed for a settled state is measured
+     * to its last authoritative update, not to wall-clock now — otherwise an abandoned
+     * goal reports an ever-growing duration that reads as ongoing execution. Falls back
+     * to [now] only when no authoritative update exists.
+     */
+    fun settledAt(updatedAt: Instant?, now: Instant): Instant = updatedAt ?: now
+
+    /**
      * Elapsed from an authoritative start. Returns null when start is absent.
      * Wall-clock rollback (now before start) yields [Duration.ZERO], never negative.
      */
@@ -114,18 +125,21 @@ object StatusUiMapper {
         return if (millis <= 0L) Duration.ZERO else Duration.ofMillis(millis)
     }
 
-    /** Re-anchors elapsed clocks from retained start timestamps without a new poll. */
-    fun withElapsed(state: SkillBillStatusUiState, now: Instant): SkillBillStatusUiState {
-        val goal = elapsed(state.startedAt, now)
-        val subtask = elapsed(state.subtaskStartedAt, now)
-        return when (state) {
-            is SkillBillStatusUiState.Active -> state.copy(goalElapsed = goal, subtaskElapsed = subtask)
-            is SkillBillStatusUiState.Stale -> state.copy(goalElapsed = goal, subtaskElapsed = subtask)
-            is SkillBillStatusUiState.Blocked -> state.copy(goalElapsed = goal, subtaskElapsed = subtask)
-            is SkillBillStatusUiState.Failed -> state.copy(goalElapsed = goal, subtaskElapsed = subtask)
+    /**
+     * Re-anchors elapsed clocks from retained start timestamps without a new poll.
+     *
+     * Only live work ticks. Settled states (stale/blocked/failed) already carry a
+     * duration frozen at their last authoritative update and are returned untouched;
+     * ticking them would keep counting long after execution stopped.
+     */
+    fun withElapsed(state: SkillBillStatusUiState, now: Instant): SkillBillStatusUiState =
+        when (state) {
+            is SkillBillStatusUiState.Active -> state.copy(
+                goalElapsed = elapsed(state.startedAt, now),
+                subtaskElapsed = elapsed(state.subtaskStartedAt, now),
+            )
             else -> state
         }
-    }
 
     private fun activeHeadline(outcome: SkillBillStatusOutcome.Active): String {
         val key = outcome.issueKey?.let { "$it · " }.orEmpty()

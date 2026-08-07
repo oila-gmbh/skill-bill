@@ -16,7 +16,6 @@ import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerSupervisionEvent
-import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.model.GoalRunnerAttemptLedgerRecordRequest
@@ -25,6 +24,7 @@ import skillbill.ports.goalrunner.model.GoalRunnerObservabilityRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerProgressEventRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
 import skillbill.ports.goalrunner.model.GoalRunnerSessionAccountingRecordRequest
+import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.EmptyGoalPlanningPreparationRepository
 import skillbill.ports.persistence.EmptyGoalRunnerControlRepository
@@ -294,6 +294,24 @@ class IdeStatusServiceTest {
     val fixture = gitRepoFixture("ide-status-goal-subtask-start")
     val identity = goalRepositoryIdentity(fixture)
     val childStarted = Instant.parse("2026-08-06T09:15:00Z")
+    val database = goalWithLaunchedChildDatabase(identity, childStarted)
+    val service = service(
+      database,
+      manifestStore = StubGoalManifestStore(
+        goalManifestState(fixture, identity, childWorkflowId = "w-child"),
+      ),
+    )
+
+    val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = observedAt))
+
+    assertEquals("goal-1", result.snapshot.workflowId)
+    assertEquals(IdeStatusWorkflowFamily.FEATURE_GOAL, result.snapshot.workflowFamily)
+    assertEquals("2", result.snapshot.currentSubtask?.id)
+    assertEquals(childStarted, result.snapshot.currentSubtask?.startedAt)
+    assertEquals(Instant.parse("2026-08-06T08:00:00Z"), result.snapshot.startedAt)
+  }
+
+  private fun goalWithLaunchedChildDatabase(identity: String, childStarted: Instant): TrackingDatabase {
     val workflows = IdeStatusWorkflowStates()
     workflows.saveFeatureImplementWorkflow(
       proseRecord("w-child", "2026-08-06T11:00:00Z").copy(startedAt = childStarted.toString()),
@@ -305,7 +323,19 @@ class IdeStatusServiceTest {
       override fun controlState(parentWorkflowId: String): GoalRunnerControlState =
         GoalRunnerControlState(repositoryIdentity = identity)
     }
-    val manifestState = GoalRunnerManifestState(
+    return TrackingDatabase(
+      work = listOf(
+        workItem("goal-1", WorkItemKind.FEATURE_GOAL, "running", "2026-08-06T10:00:00Z"),
+        workItem("w-child", WorkItemKind.FEATURE_TASK_PROSE, "running", "2026-08-06T11:00:00Z")
+          .copy(startedAt = childStarted),
+      ),
+      workflows = workflows,
+      controls = controls,
+    )
+  }
+
+  private fun goalManifestState(fixture: Path, identity: String, childWorkflowId: String): GoalRunnerManifestState =
+    GoalRunnerManifestState(
       parentWorkflowId = "goal-1",
       dbPath = "/fake/ide-status.db",
       manifest = DecompositionManifest(
@@ -328,7 +358,7 @@ class IdeStatusServiceTest {
             name = "Two",
             specPath = "spec_2.md",
             status = "in_progress",
-            workflowId = "w-child",
+            workflowId = childWorkflowId,
             lastResumableStep = "implement",
           ),
         ),
@@ -336,25 +366,6 @@ class IdeStatusServiceTest {
       controlState = GoalRunnerControlState(repositoryIdentity = identity),
       repoRoot = fixture,
     )
-    val database = TrackingDatabase(
-      work = listOf(
-        workItem("goal-1", WorkItemKind.FEATURE_GOAL, "running", "2026-08-06T10:00:00Z"),
-        workItem("w-child", WorkItemKind.FEATURE_TASK_PROSE, "running", "2026-08-06T11:00:00Z")
-          .copy(startedAt = childStarted),
-      ),
-      workflows = workflows,
-      controls = controls,
-    )
-    val service = service(database, manifestStore = StubGoalManifestStore(manifestState))
-
-    val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = observedAt))
-
-    assertEquals("goal-1", result.snapshot.workflowId)
-    assertEquals(IdeStatusWorkflowFamily.FEATURE_GOAL, result.snapshot.workflowFamily)
-    assertEquals("2", result.snapshot.currentSubtask?.id)
-    assertEquals(childStarted, result.snapshot.currentSubtask?.startedAt)
-    assertEquals(Instant.parse("2026-08-06T08:00:00Z"), result.snapshot.startedAt)
-  }
 
   private fun service(
     database: TrackingDatabase,
@@ -405,12 +416,7 @@ private fun gitRepoFixture(prefix: String): Path {
   return root.toRealPath()
 }
 
-private fun workItem(
-  workflowId: String,
-  kind: WorkItemKind,
-  state: String,
-  updatedAt: String,
-): WorkItem = WorkItem(
+private fun workItem(workflowId: String, kind: WorkItemKind, state: String, updatedAt: String): WorkItem = WorkItem(
   issueKey = "SKILL-148",
   workflowKind = kind,
   workflowId = workflowId,
@@ -420,16 +426,14 @@ private fun workItem(
   stateEnteredAtEstimated = false,
 )
 
-private fun identityFor(
-  workflowId: String,
-  repositoryIdentity: String,
-): FeatureTaskExecutionIdentity = FeatureTaskExecutionIdentity(
-  workflowId = workflowId,
-  normalizedIssueKey = "SKILL-148",
-  repositoryIdentity = repositoryIdentity,
-  governedSpecPath = "spec.md",
-  mode = FeatureTaskWorkflowMode.PROSE,
-)
+private fun identityFor(workflowId: String, repositoryIdentity: String): FeatureTaskExecutionIdentity =
+  FeatureTaskExecutionIdentity(
+    workflowId = workflowId,
+    normalizedIssueKey = "SKILL-148",
+    repositoryIdentity = repositoryIdentity,
+    governedSpecPath = "spec.md",
+    mode = FeatureTaskWorkflowMode.PROSE,
+  )
 
 private fun proseRecord(
   workflowId: String,
@@ -557,10 +561,9 @@ private class IdeStatusWorkflowStates : WorkflowStateRepository {
     repositoryIdentity: String,
   ): List<FeatureTaskWorkflowCandidate> = emptyList()
 
-  override fun countGoalChildIdentities(normalizedIssueKey: String): Int =
-    identities.values.count {
-      it.normalizedIssueKey == normalizedIssueKey && it.routeScope == FeatureTaskRouteScope.GOAL_CHILD
-    }
+  override fun countGoalChildIdentities(normalizedIssueKey: String): Int = identities.values.count {
+    it.normalizedIssueKey == normalizedIssueKey && it.routeScope == FeatureTaskRouteScope.GOAL_CHILD
+  }
 
   override fun saveFeatureImplementWorkflow(row: WorkflowStateRecord) {
     implement[row.workflowId] = row
@@ -581,8 +584,7 @@ private class IdeStatusWorkflowStates : WorkflowStateRepository {
 
   override fun getFeatureVerifyWorkflow(workflowId: String): WorkflowStateRecord? = verify[workflowId]
 
-  override fun listFeatureVerifyWorkflows(limit: Int): List<WorkflowStateRecord> =
-    verify.values.toList().take(limit)
+  override fun listFeatureVerifyWorkflows(limit: Int): List<WorkflowStateRecord> = verify.values.toList().take(limit)
 
   override fun latestFeatureVerifyWorkflow(): WorkflowStateRecord? = verify.values.lastOrNull()
 
@@ -600,11 +602,7 @@ private class IdeStatusWorkflowStates : WorkflowStateRepository {
 private class StubGoalManifestStore(
   private val state: GoalRunnerManifestState,
 ) : GoalRunnerManifestStore {
-  override fun loadByIssueKey(
-    issueKey: String,
-    dbPathOverride: String?,
-    repoRoot: Path?,
-  ): GoalRunnerManifestState? =
+  override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? =
     state.takeIf { it.manifest.issueKey.equals(issueKey, ignoreCase = true) }
 
   override fun save(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState = state
@@ -631,11 +629,8 @@ private class StubGoalManifestStore(
 }
 
 private object EmptyManifestStore : GoalRunnerManifestStore {
-  override fun loadByIssueKey(
-    issueKey: String,
-    dbPathOverride: String?,
-    repoRoot: Path?,
-  ): GoalRunnerManifestState? = null
+  override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? =
+    null
 
   override fun save(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState = state
 
@@ -707,10 +702,8 @@ private object EmptyOutcomeStore : GoalRunnerWorkflowOutcomeStore {
     dbPathOverride: String?,
   ): Boolean = false
 
-  override fun recordProgressEvent(
-    request: GoalRunnerProgressEventRecordRequest,
-    dbPathOverride: String?,
-  ): Boolean = false
+  override fun recordProgressEvent(request: GoalRunnerProgressEventRecordRequest, dbPathOverride: String?): Boolean =
+    false
 
   override fun recordSessionAccounting(
     request: GoalRunnerSessionAccountingRecordRequest,

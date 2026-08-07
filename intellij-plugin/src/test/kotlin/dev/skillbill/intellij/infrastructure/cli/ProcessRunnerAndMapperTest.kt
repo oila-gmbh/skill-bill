@@ -157,14 +157,68 @@ class IdeStatusJsonMapperTest {
 
     @Test
     fun `stale freshness maps to stale`() {
-        val json = fixture("active-runtime.json").replace("\"fresh\"", "\"stale\"")
-        val outcome = IdeStatusJsonMapper.map(json, now, 0)
+        val outcome = IdeStatusJsonMapper.map(runtimeFixture(freshness = "stale"), now, 0)
         assertTrue(outcome is SkillBillStatusOutcome.Stale)
+    }
+
+    @Test
+    fun `stale freshness does not mask a blocked lifecycle`() {
+        val json = runtimeFixture(lifecycle = "blocked", freshness = "stale")
+        val outcome = IdeStatusJsonMapper.map(json, now, 0)
+        assertTrue(outcome is SkillBillStatusOutcome.Blocked)
+        assertTrue((outcome as SkillBillStatusOutcome.Blocked).stale)
+    }
+
+    @Test
+    fun `stale freshness does not resurrect terminal work as an execution`() {
+        val json = runtimeFixture(lifecycle = "terminal", freshness = "stale")
+        val outcome = IdeStatusJsonMapper.map(json, now, 0)
+        assertTrue(outcome is SkillBillStatusOutcome.Idle)
+        // The lifecycle wins, but the stale reading still has to reach the surface.
+        assertTrue((outcome as SkillBillStatusOutcome.Idle).stale)
+    }
+
+    @Test
+    fun `fresh terminal work carries no stale marker`() {
+        val outcome = IdeStatusJsonMapper.map(runtimeFixture(lifecycle = "terminal"), now, 0)
+        assertTrue(outcome is SkillBillStatusOutcome.Idle)
+        assertFalse((outcome as SkillBillStatusOutcome.Idle).stale)
+    }
+
+    @Test
+    fun `no matching work is idle rather than unavailable`() {
+        val json = """
+            {"contract_version":"$IDE_STATUS_CONTRACT_VERSION","repository_identity":"repo",
+             "lifecycle_state":"idle","current_step":{"id":"none","label":"No matching work"},
+             "freshness":"fresh","updated_at":"2026-08-07T06:15:10Z",
+             "summary":"No matching Skill Bill work for this repository.",
+             "problem":{"code":"no_matching_work","message":"No matching Skill Bill work for this repository."}}
+        """.trimIndent()
+        val outcome = IdeStatusJsonMapper.map(json, now, 0)
+        assertTrue(outcome is SkillBillStatusOutcome.Idle)
     }
 
     @Test
     fun `expected contract version constant matches fixture`() {
         assertTrue(fixture("active-runtime.json").contains("\"contract_version\": \"$IDE_STATUS_CONTRACT_VERSION\""))
+    }
+
+    /**
+     * Rewrites the named fields only. A blanket string replace would also rewrite any
+     * other occurrence of the same value (workflow family, summary text, step id), so
+     * the test would silently exercise a payload it does not describe.
+     */
+    private fun runtimeFixture(lifecycle: String? = null, freshness: String? = null): String {
+        var json = fixture("active-runtime.json")
+        lifecycle?.let { json = json.replaceField("lifecycle_state", "active", it) }
+        freshness?.let { json = json.replaceField("freshness", "fresh", it) }
+        return json
+    }
+
+    private fun String.replaceField(field: String, from: String, to: String): String {
+        val original = "\"$field\": \"$from\""
+        check(contains(original)) { "Fixture no longer contains $original" }
+        return replace(original, "\"$field\": \"$to\"")
     }
 
     private fun fixture(name: String): String =

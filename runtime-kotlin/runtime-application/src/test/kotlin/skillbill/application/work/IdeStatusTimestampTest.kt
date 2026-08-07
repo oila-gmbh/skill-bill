@@ -17,8 +17,8 @@ class IdeStatusTimestampTest {
   @Test
   fun `started_at stays stable across repeated wire maps`() {
     val started = Instant.parse("2026-08-06T08:00:00Z")
-    val first = snapshot(startedAt = started).toWireMap()
-    val second = snapshot(startedAt = started).toWireMap()
+    val first = snapshot(startedAt = started).toStatusWireMap()
+    val second = snapshot(startedAt = started).toStatusWireMap()
     assertEquals(first["started_at"], second["started_at"])
     assertEquals("2026-08-06T08:00:00Z", first["started_at"])
   }
@@ -28,7 +28,7 @@ class IdeStatusTimestampTest {
     val wire = snapshot(
       startedAt = null,
       currentSubtask = IdeStatusCurrentSubtask(id = "1", startedAt = null),
-    ).toWireMap()
+    ).toStatusWireMap()
     assertFalse(wire.containsKey("started_at"))
     @Suppress("UNCHECKED_CAST")
     val subtask = wire["current_subtask"] as Map<String, Any?>
@@ -42,7 +42,8 @@ class IdeStatusTimestampTest {
     val wire = snapshot(
       startedAt = Instant.parse("2026-08-06T08:00:00Z"),
       currentSubtask = IdeStatusCurrentSubtask(id = "2", startedAt = subtaskStarted),
-    ).toWireMap()
+    ).toStatusWireMap()
+
     @Suppress("UNCHECKED_CAST")
     val subtask = wire["current_subtask"] as Map<String, Any?>
     assertEquals("2", subtask["id"])
@@ -52,7 +53,7 @@ class IdeStatusTimestampTest {
   @Test
   fun `updated_at is never copied into started_at`() {
     val updated = Instant.parse("2026-08-06T12:00:00Z")
-    val wire = snapshot(startedAt = null, updatedAt = updated).toWireMap()
+    val wire = snapshot(startedAt = null, updatedAt = updated).toStatusWireMap()
     assertFalse(wire.containsKey("started_at"))
     assertEquals(updated.toString(), wire["updated_at"])
   }

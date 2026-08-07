@@ -148,6 +148,69 @@ class SkillBillStatusBarPresentationTest {
     }
 
     @Test
+    fun `a stale caveat reaches every surface that renders the frozen numbers`() {
+        val staleBlocked = SkillBillStatusUiState.Blocked(
+            headline = "Skill Bill: blocked",
+            detail = "Goal SKILL-161 is blocked (1 subtask).",
+            goalElapsed = Duration.ofMinutes(14),
+            subtaskElapsed = Duration.ofSeconds(5),
+            stepLabel = "Implement",
+            stale = true,
+        )
+        val mapped = SkillBillStatusBarPresentation.map(staleBlocked, now)
+        assertTrue(mapped.isStaleMarked)
+        assertTrue(mapped.tooltipText.contains(SkillBillStatusBarPresentation.STALE_NOTE))
+        assertEquals(SkillBillStatusBarPresentation.STALE_NOTE, mapped.details.staleNote)
+
+        val live = SkillBillStatusBarPresentation.map(active(), now)
+        assertFalse(live.isStaleMarked)
+        assertEquals(null, live.details.staleNote)
+    }
+
+    @Test
+    fun `a stale terminal reading still carries the caveat`() {
+        val mapped = SkillBillStatusBarPresentation.map(SkillBillStatusUiState.Idle(stale = true), now)
+        assertTrue(mapped.isStaleMarked)
+        assertTrue(mapped.tooltipText.contains(SkillBillStatusBarPresentation.STALE_NOTE))
+        assertEquals(SkillBillStatusBarPresentation.STALE_NOTE, mapped.details.staleNote)
+    }
+
+    @Test
+    fun `states describing no run never claim one ran`() {
+        // "Goal ran: —" on an empty repository or a missing CLI asserts an execution
+        // that never happened; only settled work has a duration it "ran" for.
+        val neutral = listOf(
+            SkillBillStatusUiState.Idle(),
+            SkillBillStatusUiState.Unavailable(
+                headline = "Skill Bill: unavailable",
+                detail = null,
+                reasonCode = "MISSING_EXECUTABLE",
+            ),
+            SkillBillStatusUiState.Incompatible(
+                headline = "Skill Bill: incompatible",
+                detail = null,
+                foundContractVersion = "9.9",
+            ),
+        )
+        for (state in neutral) {
+            val mapped = SkillBillStatusBarPresentation.map(state, now)
+            assertEquals("elapsed", mapped.details.elapsedNoun)
+            assertFalse(mapped.tooltipText.contains("Goal ran"))
+        }
+
+        val settled = SkillBillStatusBarPresentation.map(
+            SkillBillStatusUiState.Failed(
+                headline = "Skill Bill: failed",
+                detail = null,
+                goalElapsed = Duration.ofMinutes(3),
+                subtaskElapsed = null,
+            ),
+            now,
+        )
+        assertEquals("ran", settled.details.elapsedNoun)
+    }
+
+    @Test
     fun `accessibility includes Skill Bill state step both clocks and progress`() {
         val mapped = SkillBillStatusBarPresentation.map(active(), now)
         assertTrue(mapped.accessibleName.contains("Skill Bill"))

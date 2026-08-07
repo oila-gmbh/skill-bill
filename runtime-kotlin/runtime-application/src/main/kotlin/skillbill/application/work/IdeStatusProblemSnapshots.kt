@@ -9,28 +9,30 @@ import skillbill.application.model.IdeStatusStep
 import java.time.Instant
 
 internal object IdeStatusProblemSnapshots {
-  fun invalidRepositoryInput(observedAt: Instant, message: String): IdeStatusSnapshot =
-    problemSnapshot(
+  fun invalidRepositoryInput(observedAt: Instant, message: String): IdeStatusSnapshot = problemSnapshot(
+    ProblemParts(
       repositoryIdentity = "repo-root-realpath-v1:invalid",
       observedAt = observedAt,
       code = IdeStatusProblemCode.INVALID_REPOSITORY_INPUT,
       message = message,
       summary = message,
       stepLabel = "Invalid repository",
-    )
+    ),
+  )
 
-  fun missingRepositoryIdentity(observedAt: Instant, message: String): IdeStatusSnapshot =
-    problemSnapshot(
+  fun missingRepositoryIdentity(observedAt: Instant, message: String): IdeStatusSnapshot = problemSnapshot(
+    ProblemParts(
       repositoryIdentity = "repo-root-realpath-v1:missing",
       observedAt = observedAt,
       code = IdeStatusProblemCode.MISSING_REPOSITORY_IDENTITY,
       message = message,
       summary = message,
       stepLabel = "Missing repository identity",
-    )
+    ),
+  )
 
-  fun absentDatabase(repositoryIdentity: String, observedAt: Instant): IdeStatusSnapshot =
-    problemSnapshot(
+  fun absentDatabase(repositoryIdentity: String, observedAt: Instant): IdeStatusSnapshot = problemSnapshot(
+    ProblemParts(
       repositoryIdentity = repositoryIdentity,
       observedAt = observedAt,
       code = IdeStatusProblemCode.ABSENT_DATABASE,
@@ -39,25 +41,27 @@ internal object IdeStatusProblemSnapshots {
       stepLabel = "Database unavailable",
       exitLifecycle = IdeStatusLifecycleState.IDLE,
       freshness = IdeStatusFreshness.UNKNOWN,
-    )
+    ),
+  )
 
-  fun noMatchingWork(repositoryIdentity: String, observedAt: Instant): IdeStatusSnapshot =
-    problemSnapshot(
+  fun noMatchingWork(repositoryIdentity: String, observedAt: Instant): IdeStatusSnapshot = problemSnapshot(
+    ProblemParts(
       repositoryIdentity = repositoryIdentity,
       observedAt = observedAt,
       code = IdeStatusProblemCode.NO_MATCHING_WORK,
       message = "No matching Skill Bill work for this repository.",
       summary = "No matching Skill Bill work for this repository.",
       stepLabel = "No matching work",
-    )
+    ),
+  )
 
   fun incompatibleRecord(
     repositoryIdentity: String,
     observedAt: Instant,
     message: String,
     workflowId: String? = null,
-  ): IdeStatusSnapshot =
-    problemSnapshot(
+  ): IdeStatusSnapshot = problemSnapshot(
+    ProblemParts(
       repositoryIdentity = repositoryIdentity,
       observedAt = observedAt,
       code = IdeStatusProblemCode.INCOMPATIBLE_RECORD,
@@ -67,27 +71,31 @@ internal object IdeStatusProblemSnapshots {
       workflowId = workflowId,
       exitLifecycle = IdeStatusLifecycleState.IDLE,
       freshness = IdeStatusFreshness.UNKNOWN,
-    )
+    ),
+  )
 
-  private fun problemSnapshot(
-    repositoryIdentity: String,
-    observedAt: Instant,
-    code: IdeStatusProblemCode,
-    message: String,
-    summary: String,
-    stepLabel: String,
-    workflowId: String? = null,
-    exitLifecycle: IdeStatusLifecycleState = IdeStatusLifecycleState.IDLE,
-    freshness: IdeStatusFreshness = IdeStatusFreshness.FRESH,
-  ): IdeStatusSnapshot = IdeStatusSnapshot(
-    repositoryIdentity = repositoryIdentity,
-    workflowId = workflowId,
-    lifecycleState = exitLifecycle,
-    currentStep = IdeStatusStep(id = "none", label = stepLabel),
-    updatedAt = observedAt,
-    freshness = freshness,
-    summary = summary,
-    problem = IdeStatusProblem(code = code, message = message),
+  private fun problemSnapshot(parts: ProblemParts): IdeStatusSnapshot = IdeStatusSnapshot(
+    repositoryIdentity = parts.repositoryIdentity,
+    workflowId = parts.workflowId,
+    lifecycleState = parts.exitLifecycle,
+    currentStep = IdeStatusStep(id = "none", label = parts.stepLabel),
+    updatedAt = parts.observedAt,
+    freshness = parts.freshness,
+    summary = parts.summary,
+    problem = IdeStatusProblem(code = parts.code, message = parts.message),
+  )
+
+  @Suppress("LongParameterList") // private problem bag; every field maps onto IdeStatusSnapshot
+  private data class ProblemParts(
+    val repositoryIdentity: String,
+    val observedAt: Instant,
+    val code: IdeStatusProblemCode,
+    val message: String,
+    val summary: String,
+    val stepLabel: String,
+    val workflowId: String? = null,
+    val exitLifecycle: IdeStatusLifecycleState = IdeStatusLifecycleState.IDLE,
+    val freshness: IdeStatusFreshness = IdeStatusFreshness.FRESH,
   )
 }
 

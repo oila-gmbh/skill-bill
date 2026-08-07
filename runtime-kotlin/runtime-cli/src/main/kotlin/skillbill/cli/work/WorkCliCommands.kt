@@ -73,7 +73,7 @@ class WorkStatusCommand(
         dbOverride = state.dbOverride,
       ),
     )
-    state.complete(result.snapshot.toWireMap(), CliFormat.JSON, exitCode = result.exitCode)
+    state.complete(result.snapshot.toStatusWireMap(), CliFormat.JSON, exitCode = result.exitCode)
   }
 }
 

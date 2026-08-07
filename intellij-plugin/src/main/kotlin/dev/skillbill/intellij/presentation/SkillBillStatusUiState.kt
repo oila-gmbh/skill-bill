@@ -27,6 +27,9 @@ sealed class SkillBillStatusUiState {
     open val lastUpdated: Instant? get() = null
     open val problemSummary: String? get() = null
 
+    /** True when this state is not live. Always true for [Stale]; a modifier elsewhere. */
+    open val stale: Boolean get() = this is Stale
+
     data class Idle(
         override val headline: String = "Skill Bill: idle",
         override val detail: String? = null,
@@ -35,6 +38,7 @@ sealed class SkillBillStatusUiState {
         override val progressCompleted: Int? = null,
         override val progressTotal: Int? = null,
         override val lastUpdated: Instant? = null,
+        override val stale: Boolean = false,
     ) : SkillBillStatusUiState() {
         override val accessibilityText: String = headline
     }
@@ -93,6 +97,7 @@ sealed class SkillBillStatusUiState {
         override val subtaskStartedAt: Instant? = null,
         override val lastUpdated: Instant? = null,
         override val problemSummary: String? = null,
+        override val stale: Boolean = false,
     ) : SkillBillStatusUiState() {
         override val accessibilityText: String = "$headline (blocked)"
     }
@@ -111,6 +116,7 @@ sealed class SkillBillStatusUiState {
         override val subtaskStartedAt: Instant? = null,
         override val lastUpdated: Instant? = null,
         override val problemSummary: String? = null,
+        override val stale: Boolean = false,
     ) : SkillBillStatusUiState() {
         override val accessibilityText: String = "$headline (failed)"
     }

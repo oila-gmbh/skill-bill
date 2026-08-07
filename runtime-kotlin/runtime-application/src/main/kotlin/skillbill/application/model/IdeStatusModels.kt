@@ -38,13 +38,16 @@ enum class IdeStatusProblemCode(val wireValue: String) {
 }
 
 /** Selection-tier ranking used only inside the application selector (not on the wire). */
-enum class IdeStatusSelectionTier(val rank: Int) {
-  ACTIVE(0),
-  PAUSED(1),
-  BLOCKED(2),
-  FAILED(3),
-  RECENTLY_TERMINAL(4),
-  IDLE(5),
+enum class IdeStatusSelectionTier {
+  ACTIVE,
+  PAUSED,
+  BLOCKED,
+  FAILED,
+  RECENTLY_TERMINAL,
+  IDLE,
+  ;
+
+  val rank: Int get() = ordinal
 }
 
 data class IdeStatusStep(
@@ -102,7 +105,7 @@ sealed class IdeStatusRepositoryResolution {
 }
 
 /**
- * Application-layer IDE status snapshot. [toWireMap] is the schema-validated emit shape.
+ * Application-layer IDE status snapshot. [toStatusWireMap] is the schema-validated emit shape.
  */
 data class IdeStatusSnapshot(
   val repositoryIdentity: String,
@@ -129,7 +132,7 @@ data class IdeStatusSnapshot(
   }
 
   @OpenBoundaryMap("IDE status snapshot wire map at the schema-validation emit seam")
-  fun toWireMap(): Map<String, Any?> = buildMap {
+  fun toStatusWireMap(): Map<String, Any?> = buildMap {
     put("contract_version", contractVersion)
     put("repository_identity", repositoryIdentity)
     issueKey?.takeIf(String::isNotBlank)?.let { put("issue_key", it) }
