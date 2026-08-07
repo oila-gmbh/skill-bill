@@ -33,7 +33,10 @@ internal fun readStored(
   val recorded = recordedFingerprint(envelope, envelopeLabel, fingerprint) ?: return null
   return intactPayloadRef(artifactDir, envelope, envelopeLabel)?.let { payloadRef ->
     readPayloadText(artifactDir.resolve(payloadRef.relativePath))?.let { payloadText ->
-      resolutionOf(envelope, recorded, payloadRef, payloadText, envelopeLabel, workflowId, storePath)
+      resolutionOf(
+        StoredEnvelopePayload(envelope, recorded, payloadRef, payloadText),
+        StoredReadContext(envelopeLabel, workflowId, storePath),
+      )
     }
   }
 }
@@ -54,31 +57,39 @@ private fun recordedFingerprint(envelope: ObjectNode, envelopeLabel: String, add
   return recorded
 }
 
+private data class StoredEnvelopePayload(
+  val envelope: ObjectNode,
+  val recorded: String,
+  val payloadRef: FeatureTaskRuntimeSharedEvidenceDiffPayloadRef,
+  val payloadText: String,
+)
+
+private data class StoredReadContext(
+  val envelopeLabel: String,
+  val workflowId: String,
+  val storePath: String,
+)
+
 private fun resolutionOf(
-  envelope: ObjectNode,
-  recorded: String,
-  payloadRef: FeatureTaskRuntimeSharedEvidenceDiffPayloadRef,
-  payloadText: String,
-  envelopeLabel: String,
-  workflowId: String,
-  storePath: String,
+  stored: StoredEnvelopePayload,
+  context: StoredReadContext,
 ): FeatureTaskRuntimeSharedEvidenceResolution? = try {
-  val files = envelope.path("files").map {
+  val files = stored.envelope.path("files").map {
     FeatureTaskRuntimeSharedEvidenceFileEntry(it.path("path").asText(""), it.path("change_kind").asText(""))
   }
-  val hunks = envelope.path("hunks").map {
+  val hunks = stored.envelope.path("hunks").map {
     FeatureTaskRuntimeSharedEvidenceHunkEntry(it.path("path").asText(""), it.path("header").asText(""))
   }
-  val baseRef = envelope.path("base_ref").takeIf { !it.isNull && !it.isMissingNode }?.asText()
-  val headRef = envelope.path("head_ref").takeIf { !it.isNull && !it.isMissingNode }?.asText()
-  val contractVersion = envelope.path("contract_version").asText("").ifBlank {
+  val baseRef = stored.envelope.path("base_ref").takeIf { !it.isNull && !it.isMissingNode }?.asText()
+  val headRef = stored.envelope.path("head_ref").takeIf { !it.isNull && !it.isMissingNode }?.asText()
+  val contractVersion = stored.envelope.path("contract_version").asText("").ifBlank {
     FEATURE_TASK_RUNTIME_SHARED_EVIDENCE_PROJECTION_CONTRACT_VERSION
   }
   val projection = linkedMapOf<String, Any?>(
     "contract_version" to contractVersion,
-    "workflow_id" to workflowId,
-    "repository_checkpoint_fingerprint" to recorded,
-    "store_path" to storePath,
+    "workflow_id" to context.workflowId,
+    "repository_checkpoint_fingerprint" to stored.recorded,
+    "store_path" to context.storePath,
     "file_hunk_index" to files.map { file ->
       val hunkCount = hunks.count { it.path == file.path }
       "${file.changeKind} ${file.path} hunks=$hunkCount"
@@ -87,37 +98,37 @@ private fun resolutionOf(
     baseRef?.takeIf { it.isNotBlank() }?.let { put("base_ref", it) }
     headRef?.takeIf { it.isNotBlank() }?.let { put("head_ref", it) }
     // A stored payload that inlined diff content is schema-invalid: never serve it.
-    if (envelope.has("diff_content") || envelope.has("diff_bytes")) {
-      put("diff_content", envelope.path("diff_content").asText("present"))
+    if (stored.envelope.has("diff_content") || stored.envelope.has("diff_bytes")) {
+      put("diff_content", stored.envelope.path("diff_content").asText("present"))
     }
   }
   try {
-    FeatureTaskRuntimeSharedEvidenceProjectionSchemaValidator.validate(projection, envelopeLabel)
+    FeatureTaskRuntimeSharedEvidenceProjectionSchemaValidator.validate(projection, context.envelopeLabel)
   } catch (error: InvalidFeatureTaskRuntimeSharedEvidenceProjectionSchemaError) {
     return degraded(
       seam = "stored_projection_schema",
       used = "re-derive",
-      expected = "schema-valid shared evidence projection at $envelopeLabel",
+      expected = "schema-valid shared evidence projection at ${context.envelopeLabel}",
       cause = error.reason,
     )
   }
   FeatureTaskRuntimeSharedEvidenceResolution(
     artifact = FeatureTaskRuntimeSharedEvidenceArtifact(
-      fingerprint = recorded,
+      fingerprint = stored.recorded,
       baseRef = baseRef,
       headRef = headRef,
       files = files,
       hunks = hunks,
-      diffPayload = payloadRef,
+      diffPayload = stored.payloadRef,
     ),
-    diffPayload = payloadText,
+    diffPayload = stored.payloadText,
   )
 } catch (error: IllegalArgumentException) {
   // A well-formed envelope carrying blank index entries is still a corrupt cache entry.
   degraded(
     seam = "stored_envelope_index",
     used = "re-derive",
-    expected = "non-blank file and hunk entries at $envelopeLabel",
+    expected = "non-blank file and hunk entries at ${context.envelopeLabel}",
     cause = "IllegalArgumentException: ${error.message.orEmpty()}",
   )
 }

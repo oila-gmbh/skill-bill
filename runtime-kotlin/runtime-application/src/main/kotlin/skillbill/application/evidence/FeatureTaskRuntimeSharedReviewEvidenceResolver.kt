@@ -9,8 +9,8 @@ import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolve
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceFileEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceHunkEntry
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceMeasurement
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedReviewEvidenceReference
 import java.nio.file.Path
 
@@ -98,11 +98,12 @@ internal class FeatureTaskRuntimeSharedReviewEvidenceResolver(
 }
 
 private fun FeatureTaskRuntimeSharedEvidenceResolveOutcome.toMeasurementOutcome():
-  FeatureTaskRuntimeSharedEvidenceOutcome = when (this) {
-  FeatureTaskRuntimeSharedEvidenceResolveOutcome.DERIVATION ->
-    FeatureTaskRuntimeSharedEvidenceOutcome.DERIVATION
-  FeatureTaskRuntimeSharedEvidenceResolveOutcome.REUSE ->
-    FeatureTaskRuntimeSharedEvidenceOutcome.REUSE
-  FeatureTaskRuntimeSharedEvidenceResolveOutcome.CHECKPOINT_CHANGE_REDERIVATION ->
-    FeatureTaskRuntimeSharedEvidenceOutcome.CHECKPOINT_CHANGE_REDERIVATION
-}
+  FeatureTaskRuntimeSharedEvidenceOutcome =
+  when (this) {
+    FeatureTaskRuntimeSharedEvidenceResolveOutcome.DERIVATION ->
+      FeatureTaskRuntimeSharedEvidenceOutcome.DERIVATION
+    FeatureTaskRuntimeSharedEvidenceResolveOutcome.REUSE ->
+      FeatureTaskRuntimeSharedEvidenceOutcome.REUSE
+    FeatureTaskRuntimeSharedEvidenceResolveOutcome.CHECKPOINT_CHANGE_REDERIVATION ->
+      FeatureTaskRuntimeSharedEvidenceOutcome.CHECKPOINT_CHANGE_REDERIVATION
+  }

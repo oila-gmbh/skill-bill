@@ -4,7 +4,7 @@ import skillbill.application.InMemoryRuntimeWorkflowRepository
 import skillbill.application.RecordingLifecycleTelemetryRepository
 import skillbill.application.RuntimeFakeDatabaseSessionFactory
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
-import skillbill.workflow.NoopWorkflowSnapshotValidator
+import skillbill.workflow.WorkflowSnapshotValidator
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceMeasurement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceOutcome
@@ -98,16 +98,17 @@ class FeatureTaskRuntimeSharedEvidenceRecorderTest {
     briefingText = "briefing",
   )
 
-  private fun measurement(
-    phaseId: String,
-    fingerprint: String,
-    outcome: FeatureTaskRuntimeSharedEvidenceOutcome,
-  ) = FeatureTaskRuntimeSharedEvidenceMeasurement(
-    workflowId = "wf-shared",
-    checkpointFingerprint = fingerprint,
-    consumerPhaseId = phaseId,
-    outcome = outcome,
-    fileIndexCount = 1,
-    hunkIndexCount = 1,
-  )
+  private fun measurement(phaseId: String, fingerprint: String, outcome: FeatureTaskRuntimeSharedEvidenceOutcome) =
+    FeatureTaskRuntimeSharedEvidenceMeasurement(
+      workflowId = "wf-shared",
+      checkpointFingerprint = fingerprint,
+      consumerPhaseId = phaseId,
+      outcome = outcome,
+      fileIndexCount = 1,
+      hunkIndexCount = 1,
+    )
+
+  private object NoopWorkflowSnapshotValidator : WorkflowSnapshotValidator {
+    override fun validate(snapshot: Map<String, Any?>, slug: String) = Unit
+  }
 }

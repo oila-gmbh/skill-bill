@@ -11,7 +11,7 @@ import kotlin.test.assertTrue
 class FeatureTaskRuntimeSharedEvidenceTelemetryStoreTest {
   @Test
   fun `shared evidence measurement is enqueued under the new event name with its bounded payload`() {
-    val dbPath = Files.createTempFile("shared-evidence-telemetry", ".db").toString()
+    val dbPath = Files.createTempDirectory("shared-evidence-telemetry").resolve("metrics.db")
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       val store = LifecycleTelemetryStore(connection)
       val record = FeatureTaskRuntimeSharedEvidenceMeasurement(
