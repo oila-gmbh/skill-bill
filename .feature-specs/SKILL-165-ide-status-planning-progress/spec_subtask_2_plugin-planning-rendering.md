@@ -29,8 +29,10 @@ Plugin side only (`intellij-plugin`):
   whose headline names the paused state (e.g. `Skill Bill: SKILL-165 · paused`)
   and whose tooltip keeps step, progress, and elapsed anchors. Elapsed durations
   for paused work anchor to the last authoritative update (settled), not
-  wall-clock now. Stale masking is unchanged: a stale paused snapshot still maps
-  to the `Stale` outcome.
+  wall-clock now: no live-activity spinner and no ticking clocks (observed live
+  2026-08-07 09:58Z — a paused SKILL-164 goal with no running process showed the
+  Active spinner and a subtask timer advancing in real time). Stale masking is
+  unchanged: a stale paused snapshot still maps to the `Stale` outcome.
 
 ## Acceptance Criteria (this subtask)
 
