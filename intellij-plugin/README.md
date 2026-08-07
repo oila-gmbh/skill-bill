@@ -14,6 +14,25 @@ source-of-truth rules, status-bar expected states, and the deferred tool-window 
 - IntelliJ IDEA 2025.2–2026.1 (Community or Ultimate) for `runIde`
 - A `skill-bill` CLI on `PATH`, or a preference override to the executable
 
+## Installing the plugin
+
+Primary path — install the released zip:
+
+1. Open the GitHub Release for the `plugin-vX.Y.Z` tag you want.
+2. Download `skill-bill-intellij-plugin-<version>.zip` (its `.sha256` sidecar is
+   published alongside it if you want to verify the download).
+3. In the IDE: **Settings → Plugins → ⚙ → Install Plugin from Disk…**, pick the zip.
+4. Restart the IDE when prompted.
+
+Fallback — build from source:
+
+```bash
+cd intellij-plugin
+./gradlew buildPlugin    # archive lands in build/distributions/
+```
+
+Then install that archive with the same *Install Plugin from Disk…* step.
+
 ## Setup: Skill Bill CLI path
 
 1. Optional preference override (`SkillBillApplicationSettings.cliExecutableOverride`)
