@@ -1,0 +1,137 @@
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://skill-bill.dev/contracts/ide-status-schema.yaml"
+title: "IDE status snapshot"
+description: >
+  SKILL-148 Subtask 1: single read-only status snapshot for IDE consumers.
+  Projects the currently relevant Skill Bill work for an explicit repository
+  root without exposing SQLite row shapes, workflow snapshot artifacts,
+  prompts, diffs, or database paths.
+type: object
+additionalProperties: false
+required:
+  - contract_version
+  - repository_identity
+  - lifecycle_state
+  - current_step
+  - updated_at
+  - freshness
+  - summary
+properties:
+  contract_version:
+    type: string
+    const: "0.1"
+    description: >
+      Pinned to IDE_STATUS_CONTRACT_VERSION. Bump the schema const and Kotlin
+      constant together.
+  repository_identity:
+    type: string
+    minLength: 1
+    description: "Canonical repo-root-realpath-v1 identity for the queried repository."
+  issue_key:
+    type: string
+    minLength: 1
+  workflow_id:
+    type: string
+    minLength: 1
+  workflow_family:
+    type: string
+    enum:
+      - feature-task-prose
+      - feature-task-runtime
+      - feature-verify
+      - feature-goal
+    description: >
+      Present when matching work was selected. Omitted for idle/unavailable
+      problem snapshots that carry no work identity.
+  lifecycle_state:
+    type: string
+    enum:
+      - active
+      - paused
+      - blocked
+      - failed
+      - terminal
+      - idle
+  current_step:
+    type: object
+    additionalProperties: false
+    required:
+      - id
+      - label
+    properties:
+      id:
+        type: string
+        minLength: 1
+      label:
+        type: string
+        minLength: 1
+  progress:
+    type: object
+    additionalProperties: false
+    required:
+      - completed
+      - total
+    properties:
+      completed:
+        type: integer
+        minimum: 0
+      total:
+        type: integer
+        minimum: 0
+  started_at:
+    type: string
+    minLength: 1
+    description: >
+      Authoritative goal/work start instant from durable runtime state. Omitted
+      when the scope does not exist or legacy state cannot provide it. Never
+      synthesized from updated_at.
+  current_subtask:
+    type: object
+    additionalProperties: false
+    required:
+      - id
+    properties:
+      id:
+        type: string
+        minLength: 1
+      started_at:
+        type: string
+        minLength: 1
+        description: >
+          Durable current-subtask start instant. Omitted when the subtask scope
+          does not exist or legacy state cannot provide it.
+  updated_at:
+    type: string
+    minLength: 1
+    description: "Authoritative update time used for freshness classification."
+  freshness:
+    type: string
+    enum:
+      - fresh
+      - stale
+      - unknown
+  summary:
+    type: string
+    minLength: 1
+  problem:
+    type: object
+    additionalProperties: false
+    required:
+      - code
+      - message
+    properties:
+      code:
+        type: string
+        enum:
+          - missing_repository_identity
+          - absent_database
+          - no_matching_work
+          - incompatible_record
+          - invalid_repository_input
+          - schema_incompatible
+      message:
+        type: string
+        minLength: 1
+      details:
+        type: object
+        additionalProperties: true

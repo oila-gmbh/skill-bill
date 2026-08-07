@@ -374,6 +374,9 @@ runtime-ports
     - `skillbill.workflow.model.WorkflowInputProjection.artifacts`
     - `skillbill.workflow.WorkflowEngine.continueDecision`
     - `skillbill.workflow.WorkflowSnapshotValidator.validate`
+    - `skillbill.workflow.IdeStatusValidator.validate`
+    - `skillbill.application.model.IdeStatusSnapshot.toStatusWireMap`
+    - `skillbill.application.model.IdeStatusProblem.details`
     - `skillbill.install.model.InstallPlanWireValidator.validate`
     - `skillbill.workflow.DecompositionManifestValidator.validate`
     - `skillbill.workflow.DecompositionManifestValidator.validateYamlText`
@@ -687,6 +690,34 @@ skillbill.workflow.verify
   `goal_progress_latest_event` workflow artifacts. The supervisor read seam
   (`WorkflowGoalRunnerOutcomeStore.progress`) decodes the latest declared event
   softly so a malformed stored record cannot disable deterministic liveness.
+- IDE status schema validation
+  (`orchestration/contracts/ide-status-schema.yaml`) is owned by
+  `skillbill.contracts.workflow.IdeStatusSchemaValidator` in
+  `runtime-infra-fs`, reached through the domain-owned port
+  `skillbill.workflow.IdeStatusValidator` (wired in `RuntimeComponent` to
+  `IdeStatusValidatorAdapter`). The owning emit seam is
+  `skillbill.application.work.IdeStatusService`, which validates before CLI
+  JSON emission.
+- IDE status selection has a **retention ceiling**
+  (`skillbill.application.work.IdeStatusSelectionPolicy.retainedAt`). The IDE
+  surface reports work the runtime is currently reporting on, never a ledger of
+  every unresolved row. Each tier ages out against its authoritative
+  `updated_at`: active/paused after `LIVE_RETENTION` (24h, generous enough that a
+  long quiet phase never drops a genuine run), blocked after `BLOCKED_RETENTION`
+  (also 24h — blocked work is a prompt awaiting the user, not a finished event),
+  and failed/terminal after `SETTLED_RETENTION` (6h). Past the ceiling the
+  candidate is dropped and the repository reports `no_matching_work`, so a
+  settled or abandoned workflow reads as idle rather than occupying the widget.
+  Clock skew (observation before update) never drops work.
+  `SETTLED_RETENTION` must stay strictly greater than
+  `IdeStatusFreshnessClassifier.FRESH_WINDOW`: equal values make retention and
+  freshness exact complements, and no settled snapshot could ever be emitted with
+  `freshness: "stale"`.
+- The authoritative `updated_at` for a candidate is resolved once, in
+  `IdeStatusService.authoritativeUpdatedAt`, and reused for retention, freshness
+  classification, and the emitted wire field. Projectors must not re-derive it —
+  two anchors for one candidate let the widget freeze its elapsed clocks against a
+  timestamp the selection never saw.
 
 ## Phase Context Boundary (SKILL-137 handoff projections)
 
@@ -1123,6 +1154,9 @@ Categories:
 - `skillbill.workflow.model.WorkflowContinuationArtifactSummary.value`
 - `skillbill.workflow.model.WorkflowInputProjection.artifacts`
 - `skillbill.workflow.WorkflowSnapshotValidator.validate`
+- `skillbill.workflow.IdeStatusValidator.validate`
+- `skillbill.application.model.IdeStatusSnapshot.toStatusWireMap`
+- `skillbill.application.model.IdeStatusProblem.details`
 - `skillbill.install.model.InstallPlanWireValidator.validate`
 - `skillbill.workflow.DecompositionManifestValidator.validate`
 - `skillbill.workflow.DecompositionManifestValidator.validateYamlText`

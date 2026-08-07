@@ -43,6 +43,7 @@ import skillbill.application.system.UninstallFileSystemService
 import skillbill.application.telemetry.LifecycleTelemetryService
 import skillbill.application.telemetry.TelemetryLevelMutationService
 import skillbill.application.telemetry.TelemetryService
+import skillbill.application.work.IdeStatusService
 import skillbill.application.work.WorkListService
 import skillbill.application.workflow.GoalPlanningPreparationCheckpoint
 import skillbill.application.workflow.WorkflowService
@@ -106,6 +107,7 @@ import skillbill.infrastructure.fs.GitWorkflowGitOperations
 import skillbill.infrastructure.fs.GoalObservabilityEventValidatorAdapter
 import skillbill.infrastructure.fs.GoalPlanningPreparationEnvelopeValidatorAdapter
 import skillbill.infrastructure.fs.GoalProgressEventValidatorAdapter
+import skillbill.infrastructure.fs.IdeStatusValidatorAdapter
 import skillbill.infrastructure.fs.InstallPlanWireValidatorAdapter
 import skillbill.infrastructure.fs.JdkFeatureTaskRuntimeWorkerSupervisor
 import skillbill.infrastructure.fs.JdkParallelReviewLaneRunner
@@ -205,6 +207,7 @@ import skillbill.workflow.FeatureTaskRuntimeQuarantineValidator
 import skillbill.workflow.GoalObservabilityEventValidator
 import skillbill.workflow.GoalPlanningPreparationEnvelopeValidator
 import skillbill.workflow.GoalProgressEventValidator
+import skillbill.workflow.IdeStatusValidator
 import skillbill.workflow.WorkflowSnapshotValidator
 import java.nio.file.Path
 
@@ -705,6 +708,10 @@ abstract class RuntimeComponent(
   internal fun goalProgressEventValidator(adapter: GoalProgressEventValidatorAdapter): GoalProgressEventValidator =
     adapter
 
+  @Provides
+  @JvmSynthetic
+  internal fun ideStatusValidator(adapter: IdeStatusValidatorAdapter): IdeStatusValidator = adapter
+
   abstract val parallelCodeReviewRunner: ParallelCodeReviewRunner
 
   // Exposed as a pre-built object so the CLI consumer need not resolve the infra-fs
@@ -748,4 +755,5 @@ abstract class RuntimeComponent(
   abstract val unsupportedScaffoldService: UnsupportedScaffoldService
   abstract val workflowService: WorkflowService
   abstract val workListService: WorkListService
+  abstract val ideStatusService: IdeStatusService
 }

@@ -100,7 +100,11 @@ fun agentLauncherUnavailableMessage(agent: InstallAgent, executable: String, ins
     "Having the ${agent.id} editor or its home directory installed is not enough — the headless CLI is a " +
     "separate install. Either $installHint, or relaunch with a different --agent."
 
-val MODEL_DIRECTIVE_CAPABLE_AGENTS: Set<InstallAgent> = setOf(InstallAgent.CLAUDE, InstallAgent.CODEX)
+val MODEL_DIRECTIVE_CAPABLE_AGENTS: Set<InstallAgent> = setOf(
+  InstallAgent.CLAUDE,
+  InstallAgent.CODEX,
+  InstallAgent.CURSOR,
+)
 
 fun supportsModelDirective(agentId: String?): Boolean {
   if (agentId == null) return false

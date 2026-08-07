@@ -459,64 +459,54 @@ class RuntimeArchitectureTest {
 
   @Test
   fun `runtime schema validators and schema resources are owned by runtime infra-fs`() {
-    // SKILL-52.3 subtask 1: the three schema validators + the coherence
-    // validator moved from `runtime-contracts` to `runtime-infra-fs`
-    // (the module that already owns `PlatformPackSchemaValidator` and
-    // `NativeAgentCompositionSchemaValidator`). Only the pure `*SchemaPaths`
-    // + contract-version constants stay in `runtime-contracts`. Validator
-    // ownership now lives in `runtime-infra-fs`; the validators are reached
-    // only through domain-owned ports.
-    val infraValidatorFiles =
+    // SKILL-52.3 subtask 1: validators moved to runtime-infra-fs; contracts keep path constants.
+    assertRegularFiles(
       listOf(
         "runtime-infra-fs/src/main/kotlin/skillbill/contracts/install/InstallPlanSchemaValidator.kt",
         "runtime-infra-fs/src/main/kotlin/skillbill/contracts/workflow/WorkflowStateSchemaValidator.kt",
         "runtime-infra-fs/src/main/kotlin/skillbill/contracts/workflow/DecompositionManifestSchemaValidator.kt",
         "runtime-infra-fs/src/main/kotlin/skillbill/contracts/workflow/DecompositionManifestCoherenceValidator.kt",
-      )
-    infraValidatorFiles.forEach { relative ->
-      assertTrue(Files.isRegularFile(runtimeRoot.resolve(relative)), "Missing infra-fs-owned validator: $relative")
-    }
-    val contractsPathFiles =
+        "runtime-infra-fs/src/main/kotlin/skillbill/contracts/workflow/IdeStatusSchemaValidator.kt",
+      ),
+      present = true,
+    )
+    assertRegularFiles(
       listOf(
         "runtime-contracts/src/main/kotlin/skillbill/contracts/install/InstallPlanSchemaPaths.kt",
         "runtime-contracts/src/main/kotlin/skillbill/contracts/workflow/WorkflowStateSchemaPaths.kt",
         "runtime-contracts/src/main/kotlin/skillbill/contracts/workflow/DecompositionManifestSchemaPaths.kt",
-      )
-    contractsPathFiles.forEach { relative ->
-      assertTrue(Files.isRegularFile(runtimeRoot.resolve(relative)), "Missing contract-owned paths file: $relative")
-    }
-    val absentLegacyValidatorFiles =
+        "runtime-contracts/src/main/kotlin/skillbill/contracts/workflow/IdeStatusSchemaPaths.kt",
+      ),
+      present = true,
+    )
+    assertRegularFiles(
       listOf(
-        // Legacy contracts-owned validators (now in infra-fs).
         "runtime-contracts/src/main/kotlin/skillbill/contracts/install/InstallPlanSchemaValidator.kt",
         "runtime-contracts/src/main/kotlin/skillbill/contracts/workflow/WorkflowStateSchemaValidator.kt",
         "runtime-contracts/src/main/kotlin/skillbill/contracts/workflow/DecompositionManifestSchemaValidator.kt",
         "runtime-contracts/src/main/kotlin/skillbill/contracts/workflow/DecompositionManifestCoherenceValidator.kt",
-        // Legacy domain shims (must stay absent).
         "runtime-domain/src/main/kotlin/skillbill/workflow/DecompositionManifestSchemaValidator.kt",
         "runtime-domain/src/main/kotlin/skillbill/workflow/DecompositionManifestSchemaPaths.kt",
         "runtime-domain/src/main/kotlin/skillbill/workflow/WorkflowStateSchemaValidator.kt",
         "runtime-domain/src/main/kotlin/skillbill/workflow/WorkflowStateSchemaPaths.kt",
         "runtime-domain/src/main/kotlin/skillbill/install/model/InstallPlanSchemaValidator.kt",
         "runtime-domain/src/main/kotlin/skillbill/install/model/InstallPlanSchemaPaths.kt",
-      )
-    absentLegacyValidatorFiles.forEach { relative ->
-      assertTrue(
-        !Files.exists(runtimeRoot.resolve(relative)),
-        "Legacy contract/domain validator shim must stay absent: $relative",
-      )
-    }
+      ),
+      present = false,
+    )
 
     val runtimeInfraFsBuild = Files.readString(runtimeRoot.resolve("runtime-infra-fs/build.gradle.kts"))
     assertContains(runtimeInfraFsBuild, "copyWorkflowStateSchema")
     assertContains(runtimeInfraFsBuild, "copyInstallPlanSchema")
     assertContains(runtimeInfraFsBuild, "copyDecompositionManifestSchema")
+    assertContains(runtimeInfraFsBuild, "copyIdeStatusSchema")
 
     val runtimeContractsBuild = Files.readString(runtimeRoot.resolve("runtime-contracts/build.gradle.kts"))
     assertTrue(
       "copyWorkflowStateSchema" !in runtimeContractsBuild &&
         "copyInstallPlanSchema" !in runtimeContractsBuild &&
-        "copyDecompositionManifestSchema" !in runtimeContractsBuild,
+        "copyDecompositionManifestSchema" !in runtimeContractsBuild &&
+        "copyIdeStatusSchema" !in runtimeContractsBuild,
       "runtime-contracts must no longer own runtime schema copy tasks.",
     )
 
@@ -524,9 +514,21 @@ class RuntimeArchitectureTest {
     assertTrue(
       "copyWorkflowStateSchema" !in runtimeDomainBuild &&
         "copyInstallPlanSchema" !in runtimeDomainBuild &&
-        "copyDecompositionManifestSchema" !in runtimeDomainBuild,
+        "copyDecompositionManifestSchema" !in runtimeDomainBuild &&
+        "copyIdeStatusSchema" !in runtimeDomainBuild,
       "runtime-domain must not own runtime contract schema copy tasks.",
     )
+  }
+
+  private fun assertRegularFiles(relativePaths: List<String>, present: Boolean) {
+    relativePaths.forEach { relative ->
+      val path = runtimeRoot.resolve(relative)
+      if (present) {
+        assertTrue(Files.isRegularFile(path), "Missing infra-fs-owned validator: $relative")
+      } else {
+        assertTrue(!Files.exists(path), "Legacy contract/domain validator shim must stay absent: $relative")
+      }
+    }
   }
 
   @Test
@@ -1909,6 +1911,13 @@ class RuntimeArchitectureTest {
       // port stays raw-map at the validation seam because the schema itself
       // validates against the canonical map envelope.
       "skillbill.workflow.WorkflowSnapshotValidator.validate",
+      // SKILL-148 subtask 1: IDE status wire map at the schema-validation seam.
+      // The domain validator port and the application emit/problem details bag
+      // stay raw-map because the Draft 2020-12 schema validates the canonical
+      // map envelope before CLI JSON emission.
+      "skillbill.workflow.IdeStatusValidator.validate",
+      "skillbill.application.model.IdeStatusSnapshot.toStatusWireMap",
+      "skillbill.application.model.IdeStatusProblem.details",
       // SKILL-52.3 subtask 1: domain-owned install-plan + decomposition
       // validator ports. Each stays raw-map at the validation seam because
       // the canonical schema validates against the wire-map envelope, the

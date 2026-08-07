@@ -1,0 +1,130 @@
+package dev.skillbill.intellij.infrastructure.prefs
+
+import dev.skillbill.intellij.domain.CachedDisplaySnapshot
+import dev.skillbill.intellij.domain.LastKnownDisplayCache
+import dev.skillbill.intellij.domain.toStaleOutcome
+import dev.skillbill.intellij.fakes.FakePreferenceCache
+import java.time.Instant
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class PreferenceSanitizerAndCacheTest {
+    @Test
+    fun `cache fallback produces stale UI outcome only`() {
+        val cache = LastKnownDisplayCache(
+            display = CachedDisplaySnapshot(
+                summary = "last known implement",
+                issueKey = "SKILL-148",
+                currentStepId = "implement",
+                currentStepLabel = "Implement",
+                startedAt = Instant.parse("2026-08-06T08:00:00Z"),
+            ),
+            observedAt = Instant.parse("2026-08-06T09:00:00Z"),
+        )
+        val outcome = cache.toStaleOutcome()
+        assertTrue(outcome.fromCache)
+        assertTrue(outcome is dev.skillbill.intellij.domain.SkillBillStatusOutcome.Stale)
+    }
+
+    @Test
+    fun `preference sanitizer rejects tokens prompts stderr and unbounded blobs`() {
+        assertNull(PreferenceSanitizer.sanitizeExecutablePath("token=abc123"))
+        assertNull(PreferenceSanitizer.sanitizeExecutablePath("Bearer secret-value"))
+        assertTrue(PreferenceSanitizer.looksLikeSecret("api_key=xyz"))
+        assertTrue(PreferenceSanitizer.looksLikeSecret("stderr dump"))
+        assertTrue(PreferenceSanitizer.looksLikeUnboundedBlob("x".repeat(5_000)))
+        assertNull(
+            PreferenceSanitizer.sanitizeCache(
+                LastKnownDisplayCache(
+                    display = CachedDisplaySnapshot(summary = "token=leak"),
+                    observedAt = Instant.parse("2026-08-06T09:00:00Z"),
+                ),
+            ),
+        )
+        // Unbounded / phase-artifact blobs are rejected at the raw preference-state seam;
+        // CachedDisplaySnapshot already forbids oversize summaries in-domain.
+        val cleared = PreferenceSanitizer.sanitizeCacheState(
+            SkillBillProjectDisplayCache.State(
+                summary = "phase artifact\n".repeat(40),
+                observedAt = "2026-08-06T09:00:00Z",
+            ),
+        )
+        assertNull(cleared.summary)
+        assertNull(cleared.observedAt)
+    }
+
+    @Test
+    fun `sanitizeCache omits repositoryIdentity that embeds absolute paths`() {
+        val withHomePath = PreferenceSanitizer.sanitizeCache(
+            LastKnownDisplayCache(
+                display = CachedDisplaySnapshot(
+                    summary = "cached implement",
+                    repositoryIdentity = "repo-root-realpath-v1:/home/user/StudioProjects/skill-bill",
+                ),
+                observedAt = Instant.parse("2026-08-06T09:00:00Z"),
+            ),
+        )
+        assertNotNull(withHomePath)
+        assertNull(withHomePath!!.display.repositoryIdentity)
+
+        val withFixturePath = PreferenceSanitizer.sanitizeCache(
+            LastKnownDisplayCache(
+                display = CachedDisplaySnapshot(
+                    summary = "cached implement",
+                    repositoryIdentity = "repo-root-realpath-v1:/repo",
+                ),
+                observedAt = Instant.parse("2026-08-06T09:00:00Z"),
+            ),
+        )
+        assertNotNull(withFixturePath)
+        assertNull(withFixturePath!!.display.repositoryIdentity)
+
+        val opaque = PreferenceSanitizer.sanitizeCache(
+            LastKnownDisplayCache(
+                display = CachedDisplaySnapshot(
+                    summary = "cached implement",
+                    repositoryIdentity = "opaque-repo-id",
+                ),
+                observedAt = Instant.parse("2026-08-06T09:00:00Z"),
+            ),
+        )
+        assertEquals("opaque-repo-id", opaque!!.display.repositoryIdentity)
+    }
+
+    @Test
+    fun `sanitizeCacheState omits absolute-path repositoryIdentity on load`() {
+        val state = PreferenceSanitizer.sanitizeCacheState(
+            SkillBillProjectDisplayCache.State(
+                summary = "cached implement",
+                repositoryIdentity = "repo-root-realpath-v1:/Users/me/proj",
+                observedAt = "2026-08-06T09:00:00Z",
+            ),
+        )
+        assertEquals("cached implement", state.summary)
+        assertNull(state.repositoryIdentity)
+    }
+
+    @Test
+    fun `CLI executable absolute path remains allowed as settings exception`() {
+        val path = "/home/user/bin/skill-bill"
+        assertEquals(path, PreferenceSanitizer.sanitizeExecutablePath(path))
+    }
+
+    @Test
+    fun `fake preference port rejects forbidden preference writes`() {
+        val prefs = FakePreferenceCache()
+        prefs.setCliExecutableOverride("token=abc")
+        prefs.setLastKnownDisplayCache(
+            LastKnownDisplayCache(
+                display = CachedDisplaySnapshot(summary = "stderr dump"),
+                observedAt = Instant.parse("2026-08-06T09:00:00Z"),
+            ),
+        )
+        assertNull(prefs.getCliExecutableOverride())
+        assertNull(prefs.getLastKnownDisplayCache())
+        assertTrue(prefs.rejectedWrites.isNotEmpty())
+    }
+}

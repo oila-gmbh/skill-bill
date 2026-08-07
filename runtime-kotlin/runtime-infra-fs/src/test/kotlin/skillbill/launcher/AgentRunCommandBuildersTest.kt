@@ -268,13 +268,24 @@ class AgentRunCommandBuildersTest {
 
   @Test
   fun `directive capable agents have builders that render their directives`() {
-    val builders = listOf(ClaudeAgentRunCommandBuilder(), CodexAgentRunCommandBuilder())
+    val builders = listOf(
+      ClaudeAgentRunCommandBuilder(),
+      CodexAgentRunCommandBuilder(),
+      CursorAgentRunCommandBuilder(),
+    )
 
     assertEquals(MODEL_DIRECTIVE_CAPABLE_AGENTS, builders.map { it.agent }.toSet())
     builders.forEach { builder ->
       val command = builder.build(request(model = "model", effort = "high")).command
       assertTrue(command.contains("--model"))
-      assertTrue(command.any { it == "high" || it == "model_reasoning_effort=high" })
+      assertTrue(
+        command.any { arg ->
+          arg == "high" ||
+            arg == "model_reasoning_effort=high" ||
+            arg.contains("[effort=high]")
+        },
+        "builder ${builder.agent.id} must render effort for a model+effort directive: $command",
+      )
     }
   }
 

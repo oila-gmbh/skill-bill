@@ -513,6 +513,22 @@ class InvalidGoalProgressEventSchemaError(
   cause,
 )
 
+/**
+ * SKILL-148 Subtask 1: surfaced when an IDE status snapshot fails the canonical
+ * `orchestration/contracts/ide-status-schema.yaml` Draft 2020-12 schema, or when
+ * the bundled schema resource itself is missing or identity-mismatched.
+ */
+class InvalidIdeStatusSchemaError(
+  val sourceLabel: String,
+  val fieldPath: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "IDE status '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation at " +
+    "'${fieldPath.ifBlank { "<root>" }}': $reason",
+  cause,
+)
+
 class InvalidGoalSubtaskReviewStateSchemaError(
   val sourceLabel: String,
   val fieldPath: String,

@@ -1,3 +1,21 @@
+## [2026-08-06] SKILL-148 IDE status contract and read-only work status CLI (subtask 1)
+Areas: runtime-kotlin/{runtime-contracts,runtime-domain,runtime-application,runtime-infra-fs,runtime-cli,runtime-core}, orchestration/contracts, .feature-specs/SKILL-148-intellij-progress-status-bar
+- Schema-first `ide-status-schema.yaml` (pinned version, strict nested shapes, lifecycle/freshness/family/error enums) with Kotlin constant, parity test, typed `InvalidIdeStatusSchemaError`, classpath copy, and loud-fail validation before CLI emit. reusable
+- Read-only `skill-bill work status --repo-root <path> --format json` emits one schema-valid snapshot for IDE polling; no workflow transition, lease, telemetry write, or DB mutation.
+- Selection and projection live in application (`IdeStatusService` + `IdeStatusSelectionPolicy` + `IdeStatusProjector`): deterministic repo match and multi-work precedence; prose FT, runtime FT, verify, and goals project through existing authorities into one wire model — never SQLite row shapes. reusable
+- Goal/work and current-subtask `started_at` come only from durable runtime state and stay stable across polls/restarts; never synthesized from `updated_at`. Freshness is classified for consumers; idle/unavailable stay typed problems without stack traces on stdout.
+- Pattern for external IDE consumers: contract owns the wire shape, application owns selection/projection, infra validates schema, CLI is a thin read-only emit seam. reusable
+- Limitation (by design): IntelliJ plugin UI and streaming/JSONL are out of scope for this subtask.
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
+## [2026-08-06] Cursor model-directive capability for execution_matrix
+Areas: runtime-kotlin/{runtime-domain,runtime-cli,runtime-infra-fs}
+- `MODEL_DIRECTIVE_CAPABLE_AGENTS` now includes `CURSOR` alongside Claude and Codex, so machine `execution_matrix` / `--phase-model` entries for Cursor pass the CLI preflight instead of refusing while the Cursor builder already rendered `--model` and `[effort=…]`. reusable
+- Gap closed: matrix config accepted any `InstallAgent` key, and `CursorAgentRunCommandBuilder` already honored directives, but the allowlist gate still listed only Claude/Codex — Cursor runs with matrix models failed at launch with the 241-byte UsageError seen on SKILL-148. reusable
+Feature flag: N/A
+Acceptance criteria: N/A (gap close)
+
 ## [2026-08-06] SKILL-158 commit-focused sparse specialist review: integration pass, contracts, validation (subtask 4)
 Areas: runtime-kotlin/{runtime-domain,runtime-ports,runtime-contracts,runtime-application,runtime-cli,runtime-infra-fs,runtime-infra-sqlite}, orchestration/{contracts,review-orchestrator,review-delegation,review-scope}, skills/bill-code-review{,-inline}
 - A delegated review now ends with exactly one bounded integration pass after specialist lanes finish; specialist completion and integration completion are separate durable boundaries, so a crash between them resumes into integration rather than relaunching rubrics. reusable

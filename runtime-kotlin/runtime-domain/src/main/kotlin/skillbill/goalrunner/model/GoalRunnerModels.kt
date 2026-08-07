@@ -336,6 +336,8 @@ data class GoalRunnerStatusProjection(
   val pendingCount: Int,
   val blockedCount: Int,
   val currentSubtaskId: Int?,
+  /** Launched child workflow id for [currentSubtaskId], when the subtask has one. */
+  val currentChildWorkflowId: String? = null,
   val currentStep: String?,
   val activeAgent: String?,
   val executionLiveness: ExecutionLiveness = ExecutionLiveness.UNKNOWN,
@@ -424,6 +426,7 @@ object GoalRunnerStatusProjector {
       pendingCount = manifest.subtasks.count { statusOf(it) !in setOf("complete", "skipped", "blocked") },
       blockedCount = manifest.subtasks.count { statusOf(it) == "blocked" },
       currentSubtaskId = currentSubtask?.id,
+      currentChildWorkflowId = currentSubtask?.workflowId?.takeIf(String::isNotBlank),
       currentStep = extras.currentStepOverride?.takeIf(String::isNotBlank)
         ?: currentSubtask?.lastResumableStep
         ?: currentSubtask?.let { s -> if (s.workflowId.isNullOrBlank()) "pending_launch" else "initializing" },

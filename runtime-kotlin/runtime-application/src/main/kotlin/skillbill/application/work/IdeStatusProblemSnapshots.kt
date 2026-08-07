@@ -1,0 +1,112 @@
+package skillbill.application.work
+
+import skillbill.application.model.IdeStatusFreshness
+import skillbill.application.model.IdeStatusLifecycleState
+import skillbill.application.model.IdeStatusProblem
+import skillbill.application.model.IdeStatusProblemCode
+import skillbill.application.model.IdeStatusSnapshot
+import skillbill.application.model.IdeStatusStep
+import java.time.Instant
+
+internal object IdeStatusProblemSnapshots {
+  fun invalidRepositoryInput(observedAt: Instant, message: String): IdeStatusSnapshot = problemSnapshot(
+    ProblemParts(
+      repositoryIdentity = "repo-root-realpath-v1:invalid",
+      observedAt = observedAt,
+      code = IdeStatusProblemCode.INVALID_REPOSITORY_INPUT,
+      message = message,
+      summary = message,
+      stepLabel = "Invalid repository",
+    ),
+  )
+
+  fun missingRepositoryIdentity(observedAt: Instant, message: String): IdeStatusSnapshot = problemSnapshot(
+    ProblemParts(
+      repositoryIdentity = "repo-root-realpath-v1:missing",
+      observedAt = observedAt,
+      code = IdeStatusProblemCode.MISSING_REPOSITORY_IDENTITY,
+      message = message,
+      summary = message,
+      stepLabel = "Missing repository identity",
+    ),
+  )
+
+  fun absentDatabase(repositoryIdentity: String, observedAt: Instant): IdeStatusSnapshot = problemSnapshot(
+    ProblemParts(
+      repositoryIdentity = repositoryIdentity,
+      observedAt = observedAt,
+      code = IdeStatusProblemCode.ABSENT_DATABASE,
+      message = "Skill Bill database is not present.",
+      summary = "Skill Bill database is not present for this repository.",
+      stepLabel = "Database unavailable",
+      exitLifecycle = IdeStatusLifecycleState.IDLE,
+      freshness = IdeStatusFreshness.UNKNOWN,
+    ),
+  )
+
+  fun noMatchingWork(repositoryIdentity: String, observedAt: Instant): IdeStatusSnapshot = problemSnapshot(
+    ProblemParts(
+      repositoryIdentity = repositoryIdentity,
+      observedAt = observedAt,
+      code = IdeStatusProblemCode.NO_MATCHING_WORK,
+      message = "No matching Skill Bill work for this repository.",
+      summary = "No matching Skill Bill work for this repository.",
+      stepLabel = "No matching work",
+    ),
+  )
+
+  fun incompatibleRecord(
+    repositoryIdentity: String,
+    observedAt: Instant,
+    message: String,
+    workflowId: String? = null,
+  ): IdeStatusSnapshot = problemSnapshot(
+    ProblemParts(
+      repositoryIdentity = repositoryIdentity,
+      observedAt = observedAt,
+      code = IdeStatusProblemCode.INCOMPATIBLE_RECORD,
+      message = message,
+      summary = message,
+      stepLabel = "Incompatible record",
+      workflowId = workflowId,
+      exitLifecycle = IdeStatusLifecycleState.IDLE,
+      freshness = IdeStatusFreshness.UNKNOWN,
+    ),
+  )
+
+  private fun problemSnapshot(parts: ProblemParts): IdeStatusSnapshot = IdeStatusSnapshot(
+    repositoryIdentity = parts.repositoryIdentity,
+    workflowId = parts.workflowId,
+    lifecycleState = parts.exitLifecycle,
+    currentStep = IdeStatusStep(id = "none", label = parts.stepLabel),
+    updatedAt = parts.observedAt,
+    freshness = parts.freshness,
+    summary = parts.summary,
+    problem = IdeStatusProblem(code = parts.code, message = parts.message),
+  )
+
+  @Suppress("LongParameterList") // private problem bag; every field maps onto IdeStatusSnapshot
+  private data class ProblemParts(
+    val repositoryIdentity: String,
+    val observedAt: Instant,
+    val code: IdeStatusProblemCode,
+    val message: String,
+    val summary: String,
+    val stepLabel: String,
+    val workflowId: String? = null,
+    val exitLifecycle: IdeStatusLifecycleState = IdeStatusLifecycleState.IDLE,
+    val freshness: IdeStatusFreshness = IdeStatusFreshness.FRESH,
+  )
+}
+
+internal fun IdeStatusSnapshot.exitCode(): Int = when (problem?.code) {
+  IdeStatusProblemCode.INVALID_REPOSITORY_INPUT,
+  IdeStatusProblemCode.MISSING_REPOSITORY_IDENTITY,
+  IdeStatusProblemCode.INCOMPATIBLE_RECORD,
+  IdeStatusProblemCode.SCHEMA_INCOMPATIBLE,
+  -> 1
+  IdeStatusProblemCode.ABSENT_DATABASE,
+  IdeStatusProblemCode.NO_MATCHING_WORK,
+  null,
+  -> 0
+}
