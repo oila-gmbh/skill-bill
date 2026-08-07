@@ -1,8 +1,8 @@
 package skillbill.infrastructure.fs
 
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceDeriver
-import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceDerivation
-import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceRequest
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceDerivation
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceRequest
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceFileEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceHunkEntry

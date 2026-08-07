@@ -1,10 +1,13 @@
 package skillbill.infrastructure.fs
 
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceFingerprintContradictionError
-import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceRequest
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceRequest
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.logging.Handler
+import java.util.logging.LogRecord
 import kotlin.io.path.createTempDirectory
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -56,6 +59,54 @@ class FileSystemFeatureTaskRuntimeSharedEvidenceStoreTest {
     val deriver = CountingDeriver()
     assertEquals("fp-interrupted", store.resolve(request("fp-interrupted"), deriver).fingerprint)
     assertEquals(1, deriver.invocations)
+  }
+
+  @Test
+  fun `a failure between the staged writes leaves nothing at the address and a later resolve re-derives`() {
+    val failing = object : FileSystemFeatureTaskRuntimeSharedEvidenceStore() {
+      override fun writeStaged(staging: Path, payloadBytes: ByteArray, envelopeJson: String) {
+        Files.write(staging.resolve(FileSystemFeatureTaskRuntimeSharedEvidenceStore.PAYLOAD_FILE_NAME), payloadBytes)
+        throw IOException("write interrupted after the payload and before the envelope")
+      }
+    }
+
+    assertFailsWith<IOException> { failing.resolve(request("fp-midwrite"), CountingDeriver()) }
+
+    val address = artifactDir(request("fp-midwrite"))
+    assertFalse(Files.exists(address.resolve(FileSystemFeatureTaskRuntimeSharedEvidenceStore.PAYLOAD_FILE_NAME)))
+    assertFalse(Files.exists(address.resolve(FileSystemFeatureTaskRuntimeSharedEvidenceStore.ENVELOPE_FILE_NAME)))
+    val deriver = CountingDeriver()
+    assertEquals("fp-midwrite", store.resolve(request("fp-midwrite"), deriver).fingerprint)
+    assertEquals(1, deriver.invocations)
+  }
+
+  @Test
+  fun `every cache degradation emits a record naming the seam and the cause`() {
+    val records = mutableListOf<LogRecord>()
+    val handler = object : Handler() {
+      override fun publish(record: LogRecord) {
+        records += record
+      }
+      override fun flush() = Unit
+      override fun close() = Unit
+    }
+    sharedEvidenceStoreLog.addHandler(handler)
+    try {
+      store.resolve(request("fp-observed"), CountingDeriver())
+      val envelope = artifactDir(request("fp-observed"))
+        .resolve(FileSystemFeatureTaskRuntimeSharedEvidenceStore.ENVELOPE_FILE_NAME)
+      Files.writeString(envelope, "{ not json")
+      records.clear()
+
+      store.resolve(request("fp-observed"), CountingDeriver())
+
+      val messages = records.map { it.message }
+      val parse = messages.single { it.contains("seam=stored_envelope_parse") }
+      assertTrue(parse.contains("JsonParseException"), parse)
+      assertTrue(messages.any { it.contains("seam=artifact_publish") }, messages.toString())
+    } finally {
+      sharedEvidenceStoreLog.removeHandler(handler)
+    }
   }
 
   @Test

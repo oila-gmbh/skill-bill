@@ -1,9 +1,8 @@
 package skillbill.ports.taskruntime
 
 import skillbill.error.ShellContentContractException
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceRequest
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceArtifact
-import java.nio.file.Path
 
 /**
  * Derive-once resolution of shared review evidence for one repository checkpoint.
@@ -36,23 +35,6 @@ fun interface FeatureTaskRuntimeSharedEvidenceResolverPort {
     request: FeatureTaskRuntimeSharedEvidenceRequest,
     deriver: FeatureTaskRuntimeSharedEvidenceDeriver,
   ): FeatureTaskRuntimeSharedEvidenceArtifact
-}
-
-/**
- * Address of one resolution: [repoRoot] anchors the repo-local store, and [workflowId] plus the
- * [checkpoint] fingerprint together address the artifact within it.
- */
-data class FeatureTaskRuntimeSharedEvidenceRequest(
-  val repoRoot: Path,
-  val workflowId: String,
-  val checkpoint: FeatureTaskRuntimeRepositoryCheckpoint,
-) {
-  init {
-    require(workflowId.isNotBlank()) {
-      "FeatureTaskRuntimeSharedEvidenceRequest.workflowId must be non-blank; an unaddressed " +
-        "resolution would share one cache slot across every workflow."
-    }
-  }
 }
 
 /**

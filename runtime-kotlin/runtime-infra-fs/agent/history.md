@@ -1,5 +1,15 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
+## [2026-08-07] SKILL-164 checkpoint-keyed shared review evidence store (subtask 1)
+Areas: runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-ports/taskruntime, runtime-kotlin/runtime-domain/workflow/taskruntime/model
+- New derive-once seam: `FeatureTaskRuntimeSharedEvidenceResolverPort` resolves shared review evidence keyed solely on `FeatureTaskRuntimeRepositoryCheckpoint.fingerprint` (+ workflow id); a fingerprint hit returns the stored artifact with zero repository traversal.
+- `FileSystemFeatureTaskRuntimeSharedEvidenceStore` persists artifacts under the already-ignored repo-local `.skill-bill/` run store, addressed by workflow id + fingerprint; writes stage-then-replace so an interrupted write leaves nothing a later resolve would serve. No new `.gitignore` entry.
+- Outcome contract is exhaustive and documented on the port: hit / absent / fingerprint-mismatch / unreadable-or-truncated all fall through to derivation and never fail the run; only a well-formed envelope whose recorded fingerprint contradicts its address loud-fails, via `FeatureTaskRuntimeSharedEvidenceFingerprintContradictionError` naming both fingerprints.
+- Pattern followed: port request/derivation DTOs live in `skillbill.ports.taskruntime.model` (public-model-package rule enforced by `RuntimeArchitectureTest`); the deriver returns raw diff bytes and the store owns materialization. reusable seam for any future checkpoint-keyed derived cache.
+- Known limitation: scope is per-workflow only — no cross-run or global cache, and fingerprint equality is the sole invalidation concept. Nothing consumes the store yet (no projection, briefing, review-lane, or telemetry wiring); that lands in later subtasks.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
 ## [2026-08-05] SKILL-136 declare KMP persistence/reliability areas and route to them (subtask 3)
 Areas: runtime-kotlin/runtime-infra-fs (scaffold tests), platform-packs/kmp, .feature-specs/SKILL-136-android-native-review-specialists
 - The `kmp` pack now declares `persistence` and `reliability` itself, so `ReviewLaunchPlanPolicy` resolves them at composition depth 0 and shadows the Kotlin baseline's backend-framework lanes.
