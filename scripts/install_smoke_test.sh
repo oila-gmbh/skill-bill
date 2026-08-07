@@ -681,5 +681,19 @@ else
   fail "release-asset listing requested the plugin tag: $PLUGIN_ASSET_URLS"
 fi
 
+# The downloader must pin the same resolved tag rather than follow GitHub's
+# latest-release redirect, which the plugin-v* release would win.
+if [[ "$PLUGIN_ASSET_URLS" != *"/releases/latest/download/"* ]]; then
+  pass "asset download never used the latest-release redirect"
+else
+  fail "asset download used the latest-release redirect: $PLUGIN_ASSET_URLS"
+fi
+
+if [[ "$PLUGIN_ASSET_URLS" == *"/releases/download/v0.4.0/"* ]]; then
+  pass "asset download pinned the resolved runtime tag"
+else
+  fail "asset download did not pin v0.4.0: $PLUGIN_ASSET_URLS"
+fi
+
 echo ""
 echo "=== all scenarios passed ==="
