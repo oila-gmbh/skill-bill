@@ -349,7 +349,14 @@ make_plugin_tag_curl_shim() {
   cat >"$work/curl" <<'CURL'
 #!/usr/bin/env bash
 set -euo pipefail
-url="${@: -1}"
+# The URL is not always the last argument (asset downloads end with `-o <dest>`),
+# so pick the https:// argument instead of a positional guess.
+url=""
+for arg in "$@"; do
+  case "$arg" in
+    https://*) url="$arg" ;;
+  esac
+done
 printf '%s\n' "$url" >>"$SMOKE_CURL_LOG"
 case "$url" in
   "https://api.github.com/repos/oila-gmbh/skill-bill/releases?per_page=100")

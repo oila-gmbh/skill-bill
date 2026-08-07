@@ -1,3 +1,13 @@
+## [2026-08-07] SKILL-167 subtask 2 latest-release resolution hardening
+Areas: install.sh, scripts, runtime-kotlin/runtime-application (updatecheck tests), .feature-specs/SKILL-167-intellij-plugin-ci-and-release
+- `install.sh` no longer calls `/releases/latest`: that endpoint returns the most recently *published* release of any kind, so an IntelliJ `plugin-v*` release would win and the installer would try to fetch runtime assets from a plugin tag. It now lists `/releases?per_page=100` and picks the highest plain `vMAJOR.MINOR.PATCH` tag. reusable — reuse this shape for any repo publishing more than one release series.
+- Version comparison is a zero-padded `%010d.%010d.%010d` awk sort key compared with `>`, not list order and not `sort -V`; keeps the resolver pure POSIX-ish and bash 3.2 compatible (no jq, no bash 4+ constructs), which the macOS-ships-3.2 constraint requires.
+- The resolved tag is memoized in `RESOLVED_LATEST_RUNTIME_TAG` and primed by `init_latest_runtime_release_tag` in the *parent* shell. Non-obvious: an assignment inside `$(...)` is discarded, so without the priming call the API is re-queried per asset, per `.sha256` sibling and per asset listing — enough unauthenticated requests to hit rate limits.
+- `RELEASE_TAG` / `SKILL_BILL_RELEASE_DIR` short-circuits are preserved ahead of resolution, so pinned and offline installs still make no network call.
+- `scripts/install_smoke_test.sh` gained scenario 9 (a `plugin-v*` newest release must still resolve the runtime tag on both the installer-tag and asset-listing paths); scenarios 1-8 assert byte-identical tags to the old behavior, which is the regression guard for this swap.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-08-06] SKILL-163 subtask 4 telemetry privacy documentation
 Areas: docs, README.md, .feature-specs/SKILL-163-telemetry-release-attribution
 - Added `docs/telemetry-privacy.md`: a per-event, per-level (`off`/`anonymous`/`full`) field table covering the envelope, every `skillbill_*` event, destination and self-hosting, opt-out mechanisms, the correlating identifier, and retention. reusable
