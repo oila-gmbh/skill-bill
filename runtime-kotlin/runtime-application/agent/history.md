@@ -1,3 +1,13 @@
+## [2026-08-07] SKILL-165 subtask 1 — IDE status planning progress wiring
+Areas: runtime-application/{model,work}, orchestration/contracts, runtime-cli, runtime-infra-fs/contracts/workflow, .feature-specs/SKILL-165
+- IDE status gains an optional `planning` block (snake_case wire keys, omitted entirely when null) so goal decomposition progress is visible before any subtask exists; additive-only, so `contract_version` stays at `0.1`. reusable
+- `IdeStatusProjector` maps non-prepared planning to step `planning`/label `Planning` with a progress summary; prepared or absent planning keeps prior projection behavior, and non-goal families never carry planning.
+- Pattern: schema-first additive wire extension — canonical schema (`ide-status-schema.yaml`) with `additionalProperties:false` plus a contract-version parity test pins the shape, then models/projector/goldens follow. reusable
+- Pause precedence reconfirmed by test: a blocked candidate stays blocked under `paused`/`pause_requested`; only an active candidate projects `paused`.
+- Limitation: planning is projection-only (no consumer-side IDE rendering in this subtask); golden fixtures cover a single mid-planning goal shape.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-08-07] SKILL-164 subtask 3 — Audit and review projection delivery
 Areas: runtime-application/{evidence,featuretask}, runtime-domain/workflow/taskruntime, runtime-ports/taskruntime, runtime-infra-fs, orchestration/contracts, .feature-specs/SKILL-164
 - `FeatureTaskRuntimeSharedReviewEvidenceReference` is a closed-world projection (store_path, checkpoint_fingerprint, base_ref/head_ref, file/hunk index only) with an explicit field allowlist; no diff bytes cross the handoff boundary, so projection size stays independent of branch diff size. reusable

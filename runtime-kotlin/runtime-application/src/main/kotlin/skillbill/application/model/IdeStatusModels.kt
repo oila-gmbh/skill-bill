@@ -184,20 +184,7 @@ data class IdeStatusSnapshot(
         },
       )
     }
-    planning?.let { planning ->
-      put(
-        "planning",
-        buildMap {
-          put("state", planning.state.wireValue)
-          put("shared_preplan_prepared", planning.sharedPreplanPrepared)
-          put("planned_subtask_count", planning.plannedSubtaskCount)
-          put("total_subtask_count", planning.totalSubtaskCount)
-          planning.currentPlanningSubtaskId?.takeIf(String::isNotBlank)
-            ?.let { put("current_planning_subtask_id", it) }
-          planning.reason?.takeIf(String::isNotBlank)?.let { put("reason", it) }
-        },
-      )
-    }
+    planning?.let { put("planning", planningWireMap(it)) }
     put("updated_at", updatedAt.toString())
     put("freshness", freshness.wireValue)
     put("summary", summary)
@@ -211,6 +198,16 @@ data class IdeStatusSnapshot(
         },
       )
     }
+  }
+
+  private fun planningWireMap(planning: IdeStatusPlanning): Map<String, Any?> = buildMap {
+    put("state", planning.state.wireValue)
+    put("shared_preplan_prepared", planning.sharedPreplanPrepared)
+    put("planned_subtask_count", planning.plannedSubtaskCount)
+    put("total_subtask_count", planning.totalSubtaskCount)
+    planning.currentPlanningSubtaskId?.takeIf(String::isNotBlank)
+      ?.let { put("current_planning_subtask_id", it) }
+    planning.reason?.takeIf(String::isNotBlank)?.let { put("reason", it) }
   }
 }
 

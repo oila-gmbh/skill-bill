@@ -488,7 +488,7 @@ class IdeStatusServiceTest {
   @Test
   fun `blocked goal candidate stays blocked under paused and pause_requested controls`() {
     listOf(
-      GoalRunnerControlState(paused = true),
+      GoalRunnerControlState(paused = true, pauseReason = "operator_request"),
       GoalRunnerControlState(pauseRequested = true),
     ).forEachIndexed { index, controlState ->
       val fixture = gitRepoFixture("ide-status-goal-blocked-pause-$index")
@@ -511,7 +511,7 @@ class IdeStatusServiceTest {
   @Test
   fun `active goal candidate still projects paused under pause controls`() {
     listOf(
-      GoalRunnerControlState(paused = true),
+      GoalRunnerControlState(paused = true, pauseReason = "operator_request"),
       GoalRunnerControlState(pauseRequested = true),
     ).forEachIndexed { index, controlState ->
       val fixture = gitRepoFixture("ide-status-goal-active-pause-$index")
@@ -536,15 +536,14 @@ class IdeStatusServiceTest {
     workflows = IdeStatusWorkflowStates(),
   )
 
-  private fun planningSnapshot(state: GoalPlanningStatusState): GoalPlanningStatusSnapshot =
-    GoalPlanningStatusSnapshot(
-      state = state,
-      sharedPreplanPrepared = true,
-      plannedSubtaskCount = 1,
-      totalSubtaskCount = 2,
-      currentPlanningSubtaskId = 2,
-      reason = null,
-    )
+  private fun planningSnapshot(state: GoalPlanningStatusState): GoalPlanningStatusSnapshot = GoalPlanningStatusSnapshot(
+    state = state,
+    sharedPreplanPrepared = true,
+    plannedSubtaskCount = 1,
+    totalSubtaskCount = 2,
+    currentPlanningSubtaskId = 2,
+    reason = null,
+  )
 
   private fun goalManifestState(fixture: Path, identity: String, childWorkflowId: String): GoalRunnerManifestState =
     GoalRunnerManifestState(
