@@ -13,6 +13,7 @@ import skillbill.application.model.IdeStatusLifecycleState
 import skillbill.application.model.IdeStatusProblemCode
 import skillbill.application.model.IdeStatusRequest
 import skillbill.application.model.IdeStatusWorkflowFamily
+import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
 import skillbill.goalrunner.model.GoalPlanningStatusState
 import skillbill.goalrunner.model.GoalRunnerControlState
@@ -118,6 +119,44 @@ class IdeStatusServiceTest {
     assertEquals(IdeStatusProblemCode.NO_MATCHING_WORK, result.snapshot.problem?.code)
     assertEquals(1, database.readCalls)
     assertEquals(0, database.writeCalls)
+  }
+
+  @Test
+  fun `a genuinely empty repository still yields the unchanged no_matching_work snapshot`() {
+    val fixture = gitRepoFixture("ide-status-no-matching-work-shape")
+    val service = service(TrackingDatabase(work = emptyList(), workflows = IdeStatusWorkflowStates()))
+
+    val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = observedAt))
+
+    assertEquals(0, result.exitCode)
+    assertEquals(IdeStatusProblemCode.NO_MATCHING_WORK, result.snapshot.problem?.code)
+    assertEquals(
+      "No recent Skill Bill work for branch 'feat/SKILL-148-fixture'.",
+      result.snapshot.problem?.message,
+    )
+    assertEquals(result.snapshot.problem?.message, result.snapshot.summary)
+    assertEquals(IdeStatusLifecycleState.IDLE, result.snapshot.lifecycleState)
+    assertEquals(IdeStatusFreshness.FRESH, result.snapshot.freshness)
+    assertEquals("none", result.snapshot.currentStep.id)
+    assertEquals("No matching work", result.snapshot.currentStep.label)
+    assertEquals(observedAt, result.snapshot.updatedAt)
+    assertNull(result.snapshot.workflowId)
+  }
+
+  @Test
+  fun `a typed workflow-schema failure during collection surfaces as an incompatible record`() {
+    val fixture = gitRepoFixture("ide-status-orphaned-workflow-row")
+    val database = TrackingDatabase(
+      work = listOf(workItem("w-orphan", WorkItemKind.FEATURE_TASK_PROSE, "running", "2026-08-06T11:00:00Z")),
+      workflows = OrphanedIdentityWorkflowStates("Feature-task identity 'w-orphan' has no workflow row."),
+    )
+    val service = service(database)
+
+    val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = observedAt))
+
+    assertEquals(IdeStatusProblemCode.INCOMPATIBLE_RECORD, result.snapshot.problem?.code)
+    assertEquals("Feature-task identity 'w-orphan' has no workflow row.", result.snapshot.problem?.message)
+    assertEquals(1, result.exitCode)
   }
 
   @Test
@@ -917,6 +956,18 @@ private class TrackingDatabase(
       get() = error("Not exercised by IdeStatusServiceTest.")
     override val goalPlanningPreparations = EmptyGoalPlanningPreparationRepository
   }
+}
+
+/**
+ * Models the orphaned-row seam: `WorkflowStateStore` raises a typed [InvalidWorkflowStateSchemaError]
+ * when a feature-task identity has no workflow row, so the service must report it rather than let an
+ * uncaught failure escape.
+ */
+private class OrphanedIdentityWorkflowStates(
+  private val message: String,
+) : WorkflowStateRepository by IdeStatusWorkflowStates() {
+  override fun getFeatureTaskExecutionIdentity(workflowId: String): FeatureTaskExecutionIdentity? =
+    throw InvalidWorkflowStateSchemaError(message)
 }
 
 private class IdeStatusWorkflowStates : WorkflowStateRepository {

@@ -150,6 +150,123 @@ class SQLiteDatabaseSessionFactoryTest {
   }
 
   @Test
+  fun `two statements in one read block observe one snapshot across a writer commit`() {
+    val tempDir = Files.createTempDirectory("skillbill-sqlite-read-snapshot")
+    val dbPath = tempDir.resolve("metrics.db")
+    val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
+    val workflowId = "wfl-read-snapshot"
+    database.transaction(dbPath.toString()) { unitOfWork ->
+      unitOfWork.workflowStates.saveFeatureImplementWorkflow(workflowRecord(workflowId))
+    }
+
+    val observed = database.read(dbPath.toString()) { unitOfWork ->
+      val before = unitOfWork.workflowStates.getFeatureImplementWorkflow(workflowId)?.workflowStatus
+      DriverManager.getConnection("jdbc:sqlite:$dbPath").use { writer ->
+        writer.createStatement().use { it.execute("PRAGMA busy_timeout = 5000") }
+        writer.prepareStatement("UPDATE feature_task_workflows SET workflow_status = ? WHERE workflow_id = ?")
+          .use { statement ->
+            statement.setString(1, "complete")
+            statement.setString(2, workflowId)
+            assertEquals(1, statement.executeUpdate())
+          }
+      }
+      before to unitOfWork.workflowStates.getFeatureImplementWorkflow(workflowId)?.workflowStatus
+    }
+
+    assertEquals("running" to "running", observed, "A read block must not observe a writer commit landing inside it.")
+    assertEquals(
+      "complete",
+      database.read(dbPath.toString()) {
+        it.workflowStates.getFeatureImplementWorkflow(workflowId)?.workflowStatus
+      },
+      "The next read block must start from a fresh snapshot carrying the committed write.",
+    )
+  }
+
+  @Test
+  fun `a writer commits while a read block holds its snapshot open`() {
+    val tempDir = Files.createTempDirectory("skillbill-sqlite-read-snapshot-writer")
+    val dbPath = tempDir.resolve("metrics.db")
+    val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
+    val workflowId = "wfl-read-snapshot-writer"
+    database.transaction(dbPath.toString()) { unitOfWork ->
+      unitOfWork.workflowStates.saveFeatureImplementWorkflow(workflowRecord(workflowId))
+    }
+    val executor = Executors.newSingleThreadExecutor()
+
+    try {
+      database.read(dbPath.toString()) { unitOfWork ->
+        // Materialize the snapshot first: BEGIN DEFERRED takes its read mark at the first statement.
+        assertEquals("running", unitOfWork.workflowStates.getFeatureImplementWorkflow(workflowId)?.workflowStatus)
+        val writer = executor.submit {
+          database.transaction(dbPath.toString()) { writerWork ->
+            val row = requireNotNull(writerWork.workflowStates.getFeatureImplementWorkflow(workflowId))
+            writerWork.workflowStates.saveFeatureImplementWorkflow(row.copy(artifactsJson = "{\"writer\":1}"))
+          }
+        }
+        // A deferred read takes no write lock, so this commit must land without waiting for the block.
+        writer.get(10, TimeUnit.SECONDS)
+      }
+    } finally {
+      executor.shutdownNow()
+    }
+  }
+
+  @Test
+  fun `read path databases stay in wal mode so a held snapshot never blocks a writer`() {
+    val tempDir = Files.createTempDirectory("skillbill-sqlite-read-journal-mode")
+    val dbPath = tempDir.resolve("metrics.db")
+    val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
+    database.transaction(dbPath.toString()) { unitOfWork ->
+      unitOfWork.workflowStates.saveFeatureImplementWorkflow(workflowRecord("wfl-journal-mode"))
+    }
+
+    // openReadDb configures its own connection with enableWal = false and a read-only connection cannot
+    // change the mode, so WAL is asserted against the file rather than assumed from the writer's PRAGMA.
+    DatabaseRuntime.openReadDb(cliValue = dbPath.toString(), environment = emptyMap(), userHome = tempDir)
+      .use { openDb -> assertEquals("wal", journalMode(openDb.connection)) }
+  }
+
+  @Test
+  fun `a rollback-journal database still yields a consistent read snapshot`() {
+    val tempDir = Files.createTempDirectory("skillbill-sqlite-read-rollback-journal")
+    val dbPath = tempDir.resolve("metrics.db")
+    val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
+    val workflowId = "wfl-rollback-journal"
+    database.transaction(dbPath.toString()) { unitOfWork ->
+      unitOfWork.workflowStates.saveFeatureImplementWorkflow(workflowRecord(workflowId))
+    }
+    // Every factory-opened writer re-asserts WAL, so the non-WAL case is reached with a raw connection.
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+      connection.createStatement().use { it.execute("PRAGMA journal_mode = DELETE") }
+      assertEquals("delete", journalMode(connection))
+    }
+    val executor = Executors.newSingleThreadExecutor()
+
+    try {
+      val observed = database.read(dbPath.toString()) { unitOfWork ->
+        val before = unitOfWork.workflowStates.getFeatureImplementWorkflow(workflowId)?.workflowStatus
+        val writer = executor.submit { rawWriterCommit(dbPath.toString(), workflowId, "complete") }
+        val after = unitOfWork.workflowStates.getFeatureImplementWorkflow(workflowId)?.workflowStatus
+        // Under a rollback journal the writer waits out the reader's shared lock — the tradeoff WAL
+        // removes, which is why the journal mode of read-path databases is asserted rather than assumed.
+        Triple(before, after, writer)
+      }
+      assertEquals(observed.first, observed.second, "A rollback-journal read block must still see one snapshot.")
+      assertEquals("running", observed.first)
+      observed.third.get(10, TimeUnit.SECONDS)
+      assertEquals(
+        "complete",
+        database.read(dbPath.toString()) {
+          it.workflowStates.getFeatureImplementWorkflow(workflowId)?.workflowStatus
+        },
+      )
+    } finally {
+      executor.shutdownNow()
+    }
+  }
+
+  @Test
   fun `write transactions reserve the writer before entering the transaction block`() {
     val tempDir = Files.createTempDirectory("skillbill-sqlite-write-reservation")
     val dbPath = tempDir.resolve("metrics.db")
@@ -260,6 +377,24 @@ class SQLiteDatabaseSessionFactoryTest {
     phaseId = "implement",
     phaseAttempt = 1,
   )
+
+  private fun journalMode(connection: Connection): String? = connection.createStatement().use { statement ->
+    statement.executeQuery("PRAGMA journal_mode").use { rows ->
+      if (rows.next()) rows.getString(1)?.lowercase() else null
+    }
+  }
+
+  private fun rawWriterCommit(dbPath: String, workflowId: String, status: String) {
+    DriverManager.getConnection("jdbc:sqlite:$dbPath").use { writer ->
+      writer.createStatement().use { it.execute("PRAGMA busy_timeout = 10000") }
+      writer.prepareStatement("UPDATE feature_task_workflows SET workflow_status = ? WHERE workflow_id = ?")
+        .use { statement ->
+          statement.setString(1, status)
+          statement.setString(2, workflowId)
+          statement.executeUpdate()
+        }
+    }
+  }
 
   private fun workflowStatus(connection: Connection, workflowId: String): String? = connection
     .prepareStatement("SELECT workflow_status FROM feature_task_workflows WHERE workflow_id = ?")

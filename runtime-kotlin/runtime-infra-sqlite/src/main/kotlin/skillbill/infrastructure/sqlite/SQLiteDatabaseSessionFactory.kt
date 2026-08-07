@@ -32,7 +32,9 @@ class SQLiteDatabaseSessionFactory(
     userHome = resolvedContext.userHome,
   ).use { openDb ->
     try {
-      block(SQLiteUnitOfWork(openDb.connection, openDb.dbPath))
+      openDb.connection.inReadTransaction(openDb.dbPath) {
+        block(SQLiteUnitOfWork(openDb.connection, openDb.dbPath))
+      }
     } catch (error: SQLException) {
       throw databaseAccessError(openDb.dbPath, DatabaseAccessOperation.READ, error)
     }
@@ -73,10 +75,10 @@ private fun EnvironmentContext.withProcessDefaults(): EnvironmentContext {
 
 @Suppress("TooGenericExceptionCaught")
 private fun <T> Connection.inTransaction(dbPath: Path, block: () -> T): T {
-  typedStatement(dbPath, "BEGIN IMMEDIATE")
+  typedStatement(dbPath, "BEGIN IMMEDIATE", DatabaseAccessOperation.OPEN)
   return try {
     val result = block()
-    typedStatement(dbPath, "COMMIT")
+    typedStatement(dbPath, "COMMIT", DatabaseAccessOperation.OPEN)
     result
   } catch (error: Throwable) {
     runCatching { createStatement().use { it.execute("ROLLBACK") } }
@@ -84,10 +86,28 @@ private fun <T> Connection.inTransaction(dbPath: Path, block: () -> T): T {
   }
 }
 
-private fun Connection.typedStatement(dbPath: Path, sql: String) {
+/**
+ * BEGIN DEFERRED — never IMMEDIATE — gives every statement in the block one consistent snapshot
+ * without taking a write lock, so a concurrent goal-runtime writer is not blocked for the read's
+ * duration. Acquisition and release failures classify as READ, not OPEN.
+ */
+@Suppress("TooGenericExceptionCaught")
+private fun <T> Connection.inReadTransaction(dbPath: Path, block: () -> T): T {
+  typedStatement(dbPath, "BEGIN DEFERRED", DatabaseAccessOperation.READ)
+  return try {
+    val result = block()
+    typedStatement(dbPath, "COMMIT", DatabaseAccessOperation.READ)
+    result
+  } catch (error: Throwable) {
+    runCatching { createStatement().use { it.execute("ROLLBACK") } }
+    throw error
+  }
+}
+
+private fun Connection.typedStatement(dbPath: Path, sql: String, operation: DatabaseAccessOperation) {
   try {
     createStatement().use { it.execute(sql) }
   } catch (error: SQLException) {
-    throw databaseAccessError(dbPath, DatabaseAccessOperation.OPEN, error)
+    throw databaseAccessError(dbPath, operation, error)
   }
 }
