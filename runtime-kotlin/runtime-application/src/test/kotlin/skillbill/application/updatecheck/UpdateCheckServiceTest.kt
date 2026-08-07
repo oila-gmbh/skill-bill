@@ -56,6 +56,17 @@ class UpdateCheckServiceTest {
   }
 
   @Test
+  fun `ignores a newer plugin release and selects the newest runtime semver`() {
+    val body = "[${releaseEntry("plugin-v9.9.9", prerelease = false)},${releaseEntry("v0.4.0")}]"
+
+    val result = service(responseBody = body).check(includePrereleases = false)
+
+    assertEquals("v0.4.0", result.latestVersion)
+    assertEquals(UpdateCheckStatus.UPDATE_AVAILABLE, result.status)
+    assertNull(result.reason)
+  }
+
+  @Test
   fun `maps soft failures to unknown`() {
     assertEquals(UpdateCheckStatus.UNKNOWN, service(responseBody = "not-json").check(false).status)
     assertEquals(UpdateCheckStatus.UNKNOWN, service(responseBody = "[]").check(false).status)
@@ -80,17 +91,17 @@ class UpdateCheckServiceTest {
   )
 }
 
-private fun releases(vararg tags: String): String = tags.joinToString(prefix = "[", postfix = "]") { tag ->
-  val prerelease = tag.contains("-")
-  """
+private fun releases(vararg tags: String): String =
+  tags.joinToString(prefix = "[", postfix = "]") { tag -> releaseEntry(tag) }
+
+private fun releaseEntry(tag: String, prerelease: Boolean = tag.contains("-")): String = """
       {
         "tag_name":"$tag",
         "prerelease":$prerelease,
         "draft":false,
         "html_url":"https://github.com/oila-gmbh/skill-bill/releases/tag/$tag"
       }
-  """.trimIndent()
-}
+""".trimIndent()
 
 private class TestDatabaseSessionFactory : DatabaseSessionFactory {
   private val dbPath = Files.createTempDirectory("skillbill-update-check-db").resolve("metrics.db")

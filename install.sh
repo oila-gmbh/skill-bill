@@ -169,19 +169,47 @@ resolve_install_source() {
   fi
 }
 
+# Resolve the newest runtime release tag from the GitHub Releases list.
+# The GitHub "latest release" endpoint cannot be used because it returns the most
+# recently published release of any kind, which a plugin-v* release would win. Only plain
+# vMAJOR.MINOR.PATCH tags are considered, and the winner is the highest version
+# rather than the first list entry.
+resolve_latest_runtime_release_tag() {
+  local api_url json tags tag key best best_key
+  api_url="https://api.github.com/repos/$RELEASE_REPO/releases?per_page=100"
+  if ! json="$(curl -fsSL -H 'Accept: application/vnd.github+json' "$api_url")"; then
+    err "Failed to query releases: $api_url"
+    return 1
+  fi
+  tags="$(printf '%s' "$json" | grep -o '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' \
+    | sed -E 's/.*:[[:space:]]*"([^"]*)"/\1/')"
+  best=""
+  best_key=""
+  while IFS= read -r tag; do
+    [[ -n "$tag" ]] || continue
+    key="$(printf '%s' "${tag#v}" \
+      | awk -F. 'NF==3 && $1 ~ /^[0-9]+$/ && $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ {
+          printf "%010d.%010d.%010d", $1, $2, $3
+        }')"
+    [[ -n "$key" ]] || continue
+    if [[ -z "$best_key" || "$key" > "$best_key" ]]; then
+      best_key="$key"
+      best="$tag"
+    fi
+  done <<< "$tags"
+  if [[ -z "$best" ]]; then
+    err "Failed to resolve latest runtime release tag from: $api_url"
+    return 1
+  fi
+  printf '%s' "$best"
+}
+
 resolve_release_installer_tag() {
   if [[ -n "$RELEASE_TAG" ]]; then
     printf '%s' "$RELEASE_TAG"
     return 0
   fi
-  local api_url tag
-  api_url="https://api.github.com/repos/$RELEASE_REPO/releases/latest"
-  tag="$(curl -fsSL "$api_url" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
-  if [[ -z "$tag" ]]; then
-    err "Failed to resolve latest release tag from: $api_url"
-    return 1
-  fi
-  printf '%s' "$tag"
+  resolve_latest_runtime_release_tag
 }
 
 bootstrap_release_installer_if_needed() {
@@ -448,11 +476,14 @@ list_release_asset_names() {
     return 0
   fi
 
-  local api_url
+  local api_url tag
   if [[ -n "$RELEASE_TAG" ]]; then
     api_url="https://api.github.com/repos/$RELEASE_REPO/releases/tags/$RELEASE_TAG"
   else
-    api_url="https://api.github.com/repos/$RELEASE_REPO/releases/latest"
+    if ! tag="$(resolve_latest_runtime_release_tag)"; then
+      return 1
+    fi
+    api_url="https://api.github.com/repos/$RELEASE_REPO/releases/tags/$tag"
   fi
   local json
   if ! json="$(curl -fsSL -H 'Accept: application/vnd.github+json' "$api_url")"; then
