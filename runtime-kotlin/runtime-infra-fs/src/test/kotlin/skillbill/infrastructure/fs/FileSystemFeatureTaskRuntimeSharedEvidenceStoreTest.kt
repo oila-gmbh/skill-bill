@@ -90,6 +90,19 @@ class FileSystemFeatureTaskRuntimeSharedEvidenceStoreTest {
   }
 
   @Test
+  fun `an envelope with no recorded fingerprint re-derives instead of failing the run`() {
+    store.resolve(request("fp-absent-field"), CountingDeriver())
+    val envelope = artifactDir(request("fp-absent-field"))
+      .resolve(FileSystemFeatureTaskRuntimeSharedEvidenceStore.ENVELOPE_FILE_NAME)
+    Files.writeString(envelope, "{\"diff_payload\":{\"relative_path\":\"diff.patch\",\"size_bytes\":0}}")
+    val deriver = CountingDeriver()
+
+    store.resolve(request("fp-absent-field"), deriver)
+
+    assertEquals(1, deriver.invocations)
+  }
+
+  @Test
   fun `persisting mutates no gitignore in the repo root`() {
     val gitignore = repoRoot.resolve(".gitignore")
     Files.writeString(gitignore, "/.skill-bill/\n")

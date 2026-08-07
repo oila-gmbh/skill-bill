@@ -49,10 +49,11 @@ class FileSystemFeatureTaskRuntimeSharedEvidenceStore : FeatureTaskRuntimeShared
   private fun readStored(artifactDir: Path, fingerprint: String): FeatureTaskRuntimeSharedEvidenceArtifact? {
     val envelope = readEnvelope(artifactDir.resolve(ENVELOPE_FILE_NAME)) ?: return null
     val recorded = envelope.path("fingerprint").asText("")
+    if (recorded.isBlank()) return null
     if (recorded != fingerprint) {
       throw FeatureTaskRuntimeSharedEvidenceFingerprintContradictionError(
         addressedFingerprint = fingerprint,
-        recordedFingerprint = recorded.ifBlank { "<absent>" },
+        recordedFingerprint = recorded,
         sourceLabel = artifactDir.resolve(ENVELOPE_FILE_NAME).toString(),
       )
     }
