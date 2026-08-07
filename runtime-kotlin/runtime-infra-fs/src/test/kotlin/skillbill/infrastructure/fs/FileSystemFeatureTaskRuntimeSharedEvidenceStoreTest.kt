@@ -43,7 +43,8 @@ class FileSystemFeatureTaskRuntimeSharedEvidenceStoreTest {
   fun `a new adapter instance reuses the persisted artifact without re-deriving`() {
     store.resolve(request("fp-durable"), CountingDeriver())
 
-    val artifact = FileSystemFeatureTaskRuntimeSharedEvidenceStore().resolve(request("fp-durable"), ThrowingDeriver)
+    val artifact = FileSystemFeatureTaskRuntimeSharedEvidenceStore()
+      .resolve(request("fp-durable"), ThrowingDeriver).artifact
 
     assertEquals("fp-durable", artifact.fingerprint)
     assertEquals("main", artifact.baseRef)
@@ -57,7 +58,7 @@ class FileSystemFeatureTaskRuntimeSharedEvidenceStoreTest {
     val address = artifactDir(request("fp-interrupted"))
     assertFalse(Files.exists(address))
     val deriver = CountingDeriver()
-    assertEquals("fp-interrupted", store.resolve(request("fp-interrupted"), deriver).fingerprint)
+    assertEquals("fp-interrupted", store.resolve(request("fp-interrupted"), deriver).artifact.fingerprint)
     assertEquals(1, deriver.invocations)
   }
 
@@ -76,7 +77,7 @@ class FileSystemFeatureTaskRuntimeSharedEvidenceStoreTest {
     assertFalse(Files.exists(address.resolve(FileSystemFeatureTaskRuntimeSharedEvidenceStore.PAYLOAD_FILE_NAME)))
     assertFalse(Files.exists(address.resolve(FileSystemFeatureTaskRuntimeSharedEvidenceStore.ENVELOPE_FILE_NAME)))
     val deriver = CountingDeriver()
-    assertEquals("fp-midwrite", store.resolve(request("fp-midwrite"), deriver).fingerprint)
+    assertEquals("fp-midwrite", store.resolve(request("fp-midwrite"), deriver).artifact.fingerprint)
     assertEquals(1, deriver.invocations)
   }
 

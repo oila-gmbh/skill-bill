@@ -21,7 +21,7 @@ class FeatureTaskRuntimeSharedEvidenceResolveOutcomeTest {
   fun `absent artifact derives exactly once and returns the derivation`() {
     val deriver = CountingDeriver()
 
-    val artifact = store.resolve(request("fp-absent"), deriver)
+    val artifact = store.resolve(request("fp-absent"), deriver).artifact
 
     assertEquals(1, deriver.invocations)
     assertEquals("fp-absent", artifact.fingerprint)
@@ -32,7 +32,7 @@ class FeatureTaskRuntimeSharedEvidenceResolveOutcomeTest {
   fun `fingerprint hit serves the stored artifact with zero repository traversal`() {
     store.resolve(request("fp-hit"), CountingDeriver())
 
-    val artifact = store.resolve(request("fp-hit"), ThrowingDeriver)
+    val artifact = store.resolve(request("fp-hit"), ThrowingDeriver).artifact
 
     assertEquals("fp-hit", artifact.fingerprint)
   }
@@ -42,7 +42,7 @@ class FeatureTaskRuntimeSharedEvidenceResolveOutcomeTest {
     store.resolve(request("fp-old"), CountingDeriver(baseRef = "old-base"))
     val deriver = CountingDeriver(baseRef = "new-base")
 
-    val artifact = store.resolve(request("fp-new"), deriver)
+    val artifact = store.resolve(request("fp-new"), deriver).artifact
 
     assertEquals(1, deriver.invocations)
     assertEquals("fp-new", artifact.fingerprint)
@@ -57,7 +57,7 @@ class FeatureTaskRuntimeSharedEvidenceResolveOutcomeTest {
     Files.writeString(payload, "")
     val deriver = CountingDeriver()
 
-    val artifact = store.resolve(request("fp-corrupt"), deriver)
+    val artifact = store.resolve(request("fp-corrupt"), deriver).artifact
 
     assertEquals(1, deriver.invocations)
     assertEquals("fp-corrupt", artifact.fingerprint)
@@ -71,7 +71,7 @@ class FeatureTaskRuntimeSharedEvidenceResolveOutcomeTest {
     Files.writeString(envelope, "{\"fingerprint\": ")
     val deriver = CountingDeriver()
 
-    val artifact = store.resolve(request("fp-unparseable"), deriver)
+    val artifact = store.resolve(request("fp-unparseable"), deriver).artifact
 
     assertEquals(1, deriver.invocations)
     assertTrue(Files.isRegularFile(envelope))

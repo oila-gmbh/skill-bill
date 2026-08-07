@@ -8,6 +8,7 @@ import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceFingerprintCo
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceDerivation
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceRequest
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolution
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceDiffPayloadRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceFileEntry
@@ -50,7 +51,7 @@ open class FileSystemFeatureTaskRuntimeSharedEvidenceStore : FeatureTaskRuntimeS
   override fun resolve(
     request: FeatureTaskRuntimeSharedEvidenceRequest,
     deriver: FeatureTaskRuntimeSharedEvidenceDeriver,
-  ): FeatureTaskRuntimeSharedEvidenceArtifact {
+  ): FeatureTaskRuntimeSharedEvidenceResolution {
     val fingerprint = request.checkpoint.fingerprint
     val artifactDir = artifactDir(request)
     readStored(artifactDir, fingerprint)?.let { return it }
@@ -62,7 +63,7 @@ open class FileSystemFeatureTaskRuntimeSharedEvidenceStore : FeatureTaskRuntimeS
    * truncated returns null so the caller re-derives; only a well-formed envelope that contradicts
    * its own address throws.
    */
-  private fun readStored(artifactDir: Path, fingerprint: String): FeatureTaskRuntimeSharedEvidenceArtifact? {
+  private fun readStored(artifactDir: Path, fingerprint: String): FeatureTaskRuntimeSharedEvidenceResolution? {
     val envelope = readEnvelope(artifactDir.resolve(ENVELOPE_FILE_NAME)) ?: return null
     val envelopeLabel = artifactDir.resolve(ENVELOPE_FILE_NAME).toString()
     val recorded = envelope.path("fingerprint").asText("")
@@ -77,18 +78,22 @@ open class FileSystemFeatureTaskRuntimeSharedEvidenceStore : FeatureTaskRuntimeS
       )
     }
     val payloadRef = intactPayloadRef(artifactDir, envelope, envelopeLabel) ?: return null
+    val payloadText = readPayloadText(artifactDir.resolve(payloadRef.relativePath)) ?: return null
     return try {
-      FeatureTaskRuntimeSharedEvidenceArtifact(
-        fingerprint = recorded,
-        baseRef = envelope.path("base_ref").takeIf { !it.isNull && !it.isMissingNode }?.asText(),
-        headRef = envelope.path("head_ref").takeIf { !it.isNull && !it.isMissingNode }?.asText(),
-        files = envelope.path("files").map {
-          FeatureTaskRuntimeSharedEvidenceFileEntry(it.path("path").asText(""), it.path("change_kind").asText(""))
-        },
-        hunks = envelope.path("hunks").map {
-          FeatureTaskRuntimeSharedEvidenceHunkEntry(it.path("path").asText(""), it.path("header").asText(""))
-        },
-        diffPayload = payloadRef,
+      FeatureTaskRuntimeSharedEvidenceResolution(
+        artifact = FeatureTaskRuntimeSharedEvidenceArtifact(
+          fingerprint = recorded,
+          baseRef = envelope.path("base_ref").takeIf { !it.isNull && !it.isMissingNode }?.asText(),
+          headRef = envelope.path("head_ref").takeIf { !it.isNull && !it.isMissingNode }?.asText(),
+          files = envelope.path("files").map {
+            FeatureTaskRuntimeSharedEvidenceFileEntry(it.path("path").asText(""), it.path("change_kind").asText(""))
+          },
+          hunks = envelope.path("hunks").map {
+            FeatureTaskRuntimeSharedEvidenceHunkEntry(it.path("path").asText(""), it.path("header").asText(""))
+          },
+          diffPayload = payloadRef,
+        ),
+        diffPayload = payloadText,
       )
     } catch (error: IllegalArgumentException) {
       // A well-formed envelope carrying blank index entries is still a corrupt cache entry.
@@ -118,6 +123,18 @@ open class FileSystemFeatureTaskRuntimeSharedEvidenceStore : FeatureTaskRuntimeS
       return degraded("stored_payload_size", "re-derive", "$expectedSize bytes", "truncated to $actualSize bytes")
     }
     return FeatureTaskRuntimeSharedEvidenceDiffPayloadRef(relativePath, actualSize)
+  }
+
+  /** An unreadable payload is a corrupt cache entry like any other: record it and re-derive. */
+  private fun readPayloadText(payload: Path): String? = try {
+    Files.readString(payload)
+  } catch (@Suppress("TooGenericExceptionCaught") error: Exception) {
+    degraded(
+      seam = "stored_payload_read",
+      used = "re-derive",
+      expected = "readable payload at $payload",
+      cause = "${error::class.simpleName.orEmpty()}: ${error.message.orEmpty()}",
+    )
   }
 
   private fun readableSize(payload: Path): Long? = try {
@@ -162,7 +179,7 @@ open class FileSystemFeatureTaskRuntimeSharedEvidenceStore : FeatureTaskRuntimeS
     artifactDir: Path,
     fingerprint: String,
     derivation: FeatureTaskRuntimeSharedEvidenceDerivation,
-  ): FeatureTaskRuntimeSharedEvidenceArtifact {
+  ): FeatureTaskRuntimeSharedEvidenceResolution {
     val payloadBytes = derivation.diffPayload.toByteArray()
     val artifact = FeatureTaskRuntimeSharedEvidenceArtifact(
       fingerprint = fingerprint,
@@ -180,7 +197,7 @@ open class FileSystemFeatureTaskRuntimeSharedEvidenceStore : FeatureTaskRuntimeS
     } finally {
       deleteRecursively(staging)
     }
-    return artifact
+    return FeatureTaskRuntimeSharedEvidenceResolution(artifact, derivation.diffPayload)
   }
 
   /**

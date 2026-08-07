@@ -2,7 +2,9 @@ package skillbill.ports.taskruntime
 
 import skillbill.error.ShellContentContractException
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceRequest
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolution
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceArtifact
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceDiffPayloadRef
 
 /**
  * Derive-once resolution of shared review evidence for one repository checkpoint.
@@ -34,7 +36,36 @@ fun interface FeatureTaskRuntimeSharedEvidenceResolverPort {
   fun resolve(
     request: FeatureTaskRuntimeSharedEvidenceRequest,
     deriver: FeatureTaskRuntimeSharedEvidenceDeriver,
-  ): FeatureTaskRuntimeSharedEvidenceArtifact
+  ): FeatureTaskRuntimeSharedEvidenceResolution
+
+  companion object {
+    /**
+     * No store at all: every resolution derives in line and nothing is persisted. This is the same
+     * path a cache miss takes, so a caller wired to [NONE] behaves exactly as it did before any
+     * store existed.
+     */
+    val NONE: FeatureTaskRuntimeSharedEvidenceResolverPort =
+      FeatureTaskRuntimeSharedEvidenceResolverPort { request, deriver ->
+        val derivation = deriver.derive(request.checkpoint)
+        FeatureTaskRuntimeSharedEvidenceResolution(
+          artifact = FeatureTaskRuntimeSharedEvidenceArtifact(
+            fingerprint = request.checkpoint.fingerprint,
+            baseRef = derivation.baseRef,
+            headRef = derivation.headRef,
+            files = derivation.files,
+            hunks = derivation.hunks,
+            diffPayload = FeatureTaskRuntimeSharedEvidenceDiffPayloadRef(
+              relativePath = UNPERSISTED_PAYLOAD_NAME,
+              sizeBytes = derivation.diffPayload.toByteArray().size.toLong(),
+            ),
+          ),
+          diffPayload = derivation.diffPayload,
+        )
+      }
+
+    /** Names a payload that was never written; [NONE] persists nothing, so nothing dereferences it. */
+    private const val UNPERSISTED_PAYLOAD_NAME = "unpersisted.patch"
+  }
 }
 
 /**

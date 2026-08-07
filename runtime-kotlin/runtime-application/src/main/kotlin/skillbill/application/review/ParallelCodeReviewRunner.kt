@@ -1,6 +1,9 @@
 package skillbill.application.review
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.application.evidence.SharedReviewEvidenceCommits
+import skillbill.application.evidence.SharedReviewEvidenceProjection
+import skillbill.application.evidence.SharedReviewEvidenceResolution
 import skillbill.application.featuretask.sha256HexUtf8
 import skillbill.application.model.DiffResolutionException
 import skillbill.application.model.ParallelCodeReviewRequest
@@ -37,6 +40,7 @@ import skillbill.ports.review.model.ParallelReviewLaneRunResult
 import skillbill.ports.review.model.ReviewIntegrationPassOutcome
 import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.ports.review.model.ReviewOwnedFileEvidence
+import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
 import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.ParallelReviewMerger
 import skillbill.review.ReviewLaneAggregation
@@ -96,6 +100,12 @@ class ParallelCodeReviewRunner(
   private val reviewSpecialistContractProvider: ReviewSpecialistContractProvider,
   private val database: DatabaseSessionFactory,
   private val installedReviewCatalog: InstalledReviewCatalogPort = InstalledReviewCatalogPort.NONE,
+  /**
+   * Absent in a fixture that wires no store: the review then derives its evidence in line exactly as
+   * it did before the hoist, which is also the degradation path a cache miss takes.
+   */
+  private val sharedEvidenceResolver: FeatureTaskRuntimeSharedEvidenceResolverPort =
+    FeatureTaskRuntimeSharedEvidenceResolverPort.NONE,
 ) {
   private data class InitialRun(
     val request: ParallelCodeReviewRequest,
@@ -157,7 +167,15 @@ class ParallelCodeReviewRunner(
       )
     }
     val revisions = resolveReviewRevisions(originalRequest)
-    val diffText = resolveDiff(originalRequest, revisions)
+    val sharedEvidence = SharedReviewEvidenceResolution(sharedEvidenceResolver, diffResolver).resolve(
+      repoRoot = originalRequest.repoRoot,
+      workflowId = originalRequest.reviewRunId ?: SHARED_EVIDENCE_WORKFLOW_ID,
+      scope = originalRequest.scope,
+      range = ReviewCommitRange(revisions.first, revisions.second),
+      suppliedDiff = hasSuppliedDiff(originalRequest),
+      resolveAggregateDiff = { resolveDiff(originalRequest, revisions) },
+    )
+    val diffText = sharedEvidence.aggregateDiff
     val evidence = ReviewDiffEvidence.parse(diffText)
     val detection = detectStack(evidence, originalRequest.repoRoot)
     val budget = repoLocalConfig.readRepoLocalConfig(ReadRepoLocalConfigRequest(originalRequest.repoRoot))
@@ -172,6 +190,7 @@ class ParallelCodeReviewRunner(
       revisions,
       diffText,
       evidence,
+      sharedEvidence.sequence,
       detection.routed,
       detection.manifests,
       detection.ownedPathsBySlug,
@@ -234,6 +253,7 @@ class ParallelCodeReviewRunner(
     revisions: Pair<String, String>,
     diffText: String,
     evidence: ReviewDiffEvidence,
+    sharedSequence: SharedReviewEvidenceCommits,
     routedManifests: List<PlatformManifest>,
     manifests: List<PlatformManifest>,
     ownedPathsBySlug: Map<String, Set<String>>,
@@ -242,13 +262,9 @@ class ParallelCodeReviewRunner(
   ): CompiledLaunches {
     val plannedRubrics = resolvePlannedRubrics(evidence, routedManifests, manifests, ownedPathsBySlug)
     val (baseRevision, headRevision) = revisions
-    val commitSequence = ReviewCommitSequenceResolver(diffResolver).resolve(
-      scope = request.scope,
-      repoRoot = request.repoRoot,
-      range = ReviewCommitRange(baseRevision, headRevision),
-      aggregate = evidence,
-      suppliedDiff = hasSuppliedDiff(request),
-    )
+    // Every specialist lane the compiler routes reads this one projection of the shared evidence, so
+    // N lanes over one checkpoint never provoke a second derivation.
+    val commitSequence = SharedReviewEvidenceProjection.project(sharedSequence, evidence)
     val compiled = ParallelReviewPreparationCompiler.compile(
       input = ParallelReviewPreparationInput(
         diff = diffText,
@@ -1081,6 +1097,10 @@ class ParallelCodeReviewRunner(
     const val MAX_SUPPLIED_DIFF_BYTES = 1_000_000L
     const val FIRST_SOURCE_LINE = 1
     const val HEAD_REVISION = "HEAD"
+
+    // A standalone review carries no run id; its evidence is still addressed by checkpoint
+    // fingerprint, so one shared slot per repo is correct rather than a collision.
+    const val SHARED_EVIDENCE_WORKFLOW_ID = "code-review"
 
     // Stands in for a sequence identity on a resume that compiled no packet, so the skipped
     // integration outcome still names something rather than carrying a blank digest.
