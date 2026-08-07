@@ -110,8 +110,9 @@ $defs:
         minLength: 1
         description: >-
           Wire form of the single declared source: `upstream_phase_output:<phase_id>`,
-          `run_invariant_field:<field>`, `derived_ceremony_scaling`, or `addon_content:<slug>`.
-        pattern: "^(upstream_phase_output:.+|run_invariant_field:.+|addon_content:.+|derived_ceremony_scaling)$"
+          `run_invariant_field:<field>`, `derived_ceremony_scaling`, `shared_review_evidence`,
+          or `addon_content:<slug>`.
+        pattern: "^(upstream_phase_output:.+|run_invariant_field:.+|addon_content:.+|derived_ceremony_scaling|shared_review_evidence)$"
       projection_contract_id:
         type: string
         minLength: 1

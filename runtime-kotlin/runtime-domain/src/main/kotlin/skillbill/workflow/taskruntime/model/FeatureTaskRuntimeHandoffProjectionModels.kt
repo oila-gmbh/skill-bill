@@ -451,6 +451,8 @@ data class PhaseHandoffProjectionDeclaration(
         )
         "derived_ceremony_scaling" -> FeatureTaskRuntimeHandoffSourceRef.DerivedCeremonyScaling
         "addon_content" -> FeatureTaskRuntimeHandoffSourceRef.AddonContentRef(source.string("id"))
+        FeatureTaskRuntimeHandoffSourceRef.SHARED_REVIEW_EVIDENCE_WIRE ->
+          FeatureTaskRuntimeHandoffSourceRef.SharedReviewEvidence
         else -> invalid()
       }
       val contract = raw["projection_contract"] as? Map<*, *> ?: invalid()
