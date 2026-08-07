@@ -48,8 +48,6 @@ covered by an explicit test, not assumed.
 
 ## Acceptance Criteria
 
-### CI
-
 1. A new workflow (separate file, not folded into `validate-agent-configs.yml`) runs
    `cd intellij-plugin && ./gradlew check` on pull requests and pushes to `main`, gated on
    `paths: ['intellij-plugin/**']` plus the workflow's own file, with `setup-java`
@@ -62,9 +60,6 @@ covered by an explicit test, not assumed.
    plugin release workflow, with `failureLevel` unchanged from `build.gradle.kts:61-66`.
 4. A deliberately broken plugin test fails the new workflow, and a change touching only
    `runtime-kotlin/**` does not trigger it — both demonstrated before the feature is done.
-
-### Release
-
 5. Plugin releases run on their own tag stream, `plugin-v*.*.*`, in a dedicated workflow.
    The existing `release.yml` is untouched, and a runtime tag never builds the plugin.
 6. The workflow publishes a GitHub Release for that tag carrying exactly
