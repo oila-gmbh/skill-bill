@@ -19,8 +19,23 @@ Plugin side only (`intellij-plugin`):
   - tooltip/detail includes `Pre-planning: Done` when
     `shared_preplan_prepared` is true, otherwise `Pre-planning: In progress`;
   - tooltip/detail includes `Planning: <planned>/<total> subtasks`.
-  When planning is absent or `prepared`, rendering is byte-for-byte today's
-  behavior (execution progress and step label).
+  Planning is relevant only until implementation starts. Once it starts —
+  planning state is `prepared`, or the snapshot reports execution work (a current
+  subtask present, or `progress.completed > 0`) — the planning segment and the
+  pre-planning line are dropped from both headline and tooltip, and rendering
+  keeps today's behavior (execution progress and step label) apart from the
+  progress-numerator fix below. Planning info is never re-shown after execution
+  has been observed.
+- `SkillBillStatusBarPresentation.validProgress`/`progressText`: the rendered
+  numerator becomes the **current** subtask position rather than the completed
+  count. With `completed = 1, total = 4` and a subtask in flight the widget must
+  read `2/4`, not `1/4` — today's output reads as "1 of 4 done" and contradicts
+  the step/subtask elapsed shown beside it. Rule: for `Active`/`Stale` with
+  `completed < total`, render `min(completed + 1, total)`; otherwise render
+  `completed`. `total` and the wire fields are unchanged. This is independent of
+  the planning segment above — planning counts subtasks planned so far, execution
+  progress marks the running subtask; both may appear at once with different
+  numerators, and neither derives from the other.
 - Distinct paused presentation: `IdeStatusJsonMapper` currently folds a fresh
   `lifecycle_state: "paused"` into the `Active` outcome (`"active", "paused" ->
   Active`), so a paused goal is indistinguishable from a running one. Introduce a
@@ -48,19 +63,32 @@ Plugin side only (`intellij-plugin`):
 3. With planning absent, `prepared`, or on non-goal families, headline and
    tooltip are unchanged from current behavior (regression-asserted in
    presentation tests).
+3a. Planning disappears once implementation starts: a snapshot with planning
+   state `prepared`, and a snapshot with a non-`prepared` planning state but
+   execution work reported (current subtask present or
+   `progress.completed > 0`), both render no planning segment and no
+   pre-planning line — asserted in presentation tests for headline and tooltip.
 4. Stale goal snapshots mid-planning keep the stale treatment and still show
    the planning segment.
-5. Plugin architecture test (`PluginArchitectureTest`) and existing
-   presentation/mapper suites stay green.
+5. Execution progress renders the current position: an `Active` state with
+   `completed = 1, total = 4` produces `2/4` in both the bar segment and the
+   `Progress:` tooltip line; `completed = 0, total = 4` produces `1/4`;
+   `completed = 4, total = 4` produces `4/4` (never `5/4`). Covered by
+   `SkillBillStatusBarPresentationTest` cases for in-flight, zero-completed, and
+   all-complete, plus a `Stale` case.
 6. A fresh `lifecycle_state: "paused"` payload renders the paused presentation
    (headline names the paused state; tooltip keeps step/progress/elapsed); a
    stale paused payload still renders the `Stale` treatment; `active` payload
    rendering is byte-for-byte unchanged (mapper and presentation tests cover
    all three).
+7. Plugin architecture test (`PluginArchitectureTest`) and existing
+   presentation/mapper suites stay green (existing progress assertions updated
+   to the new numerator, not deleted).
 
 ## Non-Goals
 
-- No runtime/schema changes (done in subtask 1).
+- No runtime/schema changes (done in subtask 1); the progress-numerator fix is
+  presentation-only and must not touch `progress.completed` on the wire.
 - No new plugin settings, actions, or widget popups.
 - No rendering changes for Blocked/Failed/Idle/Unavailable/Incompatible states
   beyond leaving them untouched (the paused presentation is new, not a change

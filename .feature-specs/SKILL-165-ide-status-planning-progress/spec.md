@@ -69,7 +69,13 @@ planning:
 5. The IntelliJ plugin parses `planning` into its domain outcome, and the status bar
    widget shows `Planning: <planned>/<total>` in the headline while planning is
    relevant (state not `prepared`), with `Pre-planning: In progress|Done` surfaced
-   in the tooltip/detail.
+   in the tooltip/detail. Once implementation has started, planning is no longer
+   relevant and both the planning segment and the pre-planning line disappear
+   entirely from the headline and the tooltip — the widget shows only execution
+   state. "Implementation started" means planning state is `prepared`, or the
+   snapshot already reports execution work (a current subtask, or
+   `progress.completed > 0`), whichever comes first; the planning segment must
+   not reappear once execution has been observed.
 6. Absent `planning` on the wire renders exactly today's behavior in the plugin
    (no regression for non-goal families, older CLIs, and prepared/executing goals).
 7. A goal whose durable state is `blocked` projects `lifecycle_state: "blocked"`
@@ -79,6 +85,18 @@ planning:
    presentation (headline names the paused state; tooltip keeps step, progress, and
    elapsed anchors) instead of the `Active` rendering. A stale paused snapshot
    keeps today's stale treatment; blocked/failed rendering is unchanged.
+9. Execution progress in the plugin reads as the **current** subtask position, not
+   the completed count. Today `progress.completed = 1` with 4 subtasks renders
+   `Progress: 1/4` while subtask 2 is actually running, which reads as "1 of 4
+   done" and is off by one against the step/subtask elapsed shown next to it.
+   While a subtask is in flight (`Active`/`Stale`), the plugin renders
+   `min(completed + 1, total)` as the numerator; when no subtask is in flight, or
+   `completed == total`, it renders `completed`. The wire stays `completed`/`total`
+   — this is a presentation-only reinterpretation, no schema or projector change.
+   The planning segment and the execution progress segment measure different
+   things and stay independent: planning is a done-count of subtasks planned so
+   far (`planned_subtask_count`/`total_subtask_count`), execution progress marks
+   which subtask is currently running. Do not unify their semantics or labels.
 
 ## Constraints
 
@@ -91,6 +109,8 @@ planning:
 
 ## Non-Goals
 
+- No wire/schema change to `progress` (`completed`/`total` keep their meaning);
+  the current-position reading is applied at the plugin presentation seam only.
 - No changes to goal planning behavior, checkpointing, or `planningStatus`
   computation itself.
 - No new CLI commands or MCP tools.
@@ -104,5 +124,5 @@ planning:
    runtime tests/fixtures. Includes the goal lifecycle precedence fix
    (blocked outranks the pause override, AC 7).
 2. Plugin planning rendering: JSON mapper + domain outcome + presentation +
-   plugin tests. Includes the distinct paused presentation (AC 8). Depends on
-   subtask 1's wire shape.
+   plugin tests. Includes the distinct paused presentation (AC 8) and the
+   current-position progress numerator (AC 9). Depends on subtask 1's wire shape.
