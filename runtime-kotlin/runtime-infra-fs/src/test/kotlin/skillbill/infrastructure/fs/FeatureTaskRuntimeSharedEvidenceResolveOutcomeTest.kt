@@ -21,11 +21,12 @@ class FeatureTaskRuntimeSharedEvidenceResolveOutcomeTest {
   fun `absent artifact derives exactly once and returns the derivation`() {
     val deriver = CountingDeriver()
 
-    val artifact = store.resolve(request("fp-absent"), deriver).artifact
+    val resolution = store.resolve(request("fp-absent"), deriver)
 
     assertEquals(1, deriver.invocations)
-    assertEquals("fp-absent", artifact.fingerprint)
-    assertEquals("src/A.kt", artifact.files.single().path)
+    assertEquals("fp-absent", resolution.artifact.fingerprint)
+    assertEquals("src/A.kt", resolution.artifact.files.single().path)
+    assertEquals(".skill-bill/run-evidence/wf-1/fp-absent", resolution.storePath)
   }
 
   @Test

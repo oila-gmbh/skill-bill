@@ -243,6 +243,8 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
           ),
         ),
       )
+      FeatureTaskRuntimeHandoffSourceRef.SharedReviewEvidence ->
+        inputs.sharedReviewEvidence?.toProjectionFields()
       is FeatureTaskRuntimeHandoffSourceRef.AddonContentRef ->
         inputs.addonContentBySlug[sourceRef.slug]?.let { content ->
           listOf(

@@ -43,8 +43,14 @@ data class FeatureTaskRuntimeSharedEvidenceDerivation(
  * path from outside the store. Returning both keeps the payload's address private to the adapter
  * while still making a fingerprint hit self-sufficient: nothing has to re-traverse the repository to
  * recover what the derivation already produced.
+ *
+ * [storePath] is the one address the adapter does publish: the repo-relative directory the artifact
+ * lives in, which a delivered projection carries so a phase can dereference the evidence it was told
+ * about. It is null when the resolution persisted nothing, so a caller can never hand out an address
+ * with no artifact behind it.
  */
 data class FeatureTaskRuntimeSharedEvidenceResolution(
   val artifact: FeatureTaskRuntimeSharedEvidenceArtifact,
   val diffPayload: String,
+  val storePath: String? = null,
 )

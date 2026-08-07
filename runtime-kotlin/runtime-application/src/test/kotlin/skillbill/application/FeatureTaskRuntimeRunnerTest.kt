@@ -427,8 +427,14 @@ class FeatureTaskRuntimeRunnerTest {
     assertContains(briefings.getValue("implement").briefingText, "Fixture task.")
     assertEquals(listOf("current_unit_of_work"), briefings.getValue("review").derivedContextKeys)
     assertContains(briefings.getValue("review").briefingText, "current_unit_of_work")
-    assertEquals(listOf("diff"), briefings.getValue("pr").derivedContextKeys)
-    assertContains(briefings.getValue("pr").briefingText, "diff")
+    // PR is split off the review diff key: it keeps a self-read instruction and is not delivered the
+    // shared evidence projection (AC-003/AC-005).
+    assertEquals(
+      listOf(FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_PR_BRANCH_DIFF),
+      briefings.getValue("pr").derivedContextKeys,
+    )
+    assertContains(briefings.getValue("pr").briefingText, "pr_branch_diff")
+    assertContains(briefings.getValue("pr").briefingText, "read the branch diff yourself")
   }
 
   @Test

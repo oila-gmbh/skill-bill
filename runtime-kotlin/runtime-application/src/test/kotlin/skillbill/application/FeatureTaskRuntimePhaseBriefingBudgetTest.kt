@@ -252,6 +252,61 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
     }
   }
 
+  @Test
+  fun `shared evidence projection size is independent of branch diff size for review and audit`() {
+    fun evidence(hunksPerFile: Int) =
+      skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedReviewEvidenceReference(
+        storePath = ".skill-bill/run-evidence/wf/fp",
+        checkpointFingerprint = "fp",
+        baseRef = "base",
+        headRef = "head",
+        fileHunkIndex = (1..8).map { "modified f$it.kt hunks=$hunksPerFile" },
+      )
+
+    fun projectionBytes(phaseId: String, hunksPerFile: Int): Int {
+      val declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations.getValue(phaseId)
+      val handoff = FeatureTaskRuntimePhaseHandoff(
+        phaseId = phaseId,
+        runInvariants = FeatureTaskRuntimeRunInvariants(
+          specReference = ".feature-specs/SKILL-164/spec.md",
+          acceptanceCriteria = listOf("AC-002"),
+          mandatesAndOverrides = emptyList(),
+        ),
+        upstreamOutputs = FeatureTaskRuntimeResolvedUpstreamOutputs(emptyMap()),
+        derivedContextKeys = declaration.derivedContextKeys,
+        projectionDeclarations = listOf(
+          FeatureTaskRuntimePhaseWorkflowDefinition.sharedReviewEvidenceDeclaration(phaseId),
+        ),
+        repositoryCheckpoint = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint(
+          fingerprint = "fp",
+        ),
+      )
+      val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(
+        handoff,
+        sharedReviewEvidence = evidence(hunksPerFile),
+      )
+      assertFalse(briefing.briefingText.contains("@@"), "diff hunk bodies must not reach the briefing")
+      assertFalse(briefing.briefingText.contains("+val "), "diff bytes must not reach the briefing")
+      val marker = "file_hunk_index:"
+      val start = briefing.briefingText.indexOf(marker)
+      assertTrue(start >= 0, "shared evidence projection must render for $phaseId")
+      return briefing.briefingText.substring(start).toByteArray(Charsets.UTF_8).size
+    }
+
+    listOf(
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
+    ).forEach { phaseId ->
+      val small = projectionBytes(phaseId, hunksPerFile = 1)
+      val large = projectionBytes(phaseId, hunksPerFile = 400)
+      // Digits of the hunk counter may grow slightly; the payload must not scale with hunk bodies.
+      assertTrue(
+        large - small <= 8 * 2,
+        "shared evidence briefing size for $phaseId grew from $small to $large across hunk counts",
+      )
+    }
+  }
+
   private fun multiUpstreamInvariants() = FeatureTaskRuntimeRunInvariants(
     specReference = ".feature-specs/SKILL-65-experimental-feature-task-runtime/spec.md",
     acceptanceCriteria = (1..11).map { "AC-$it: ${"criterion-detail ".repeat(20)}" },

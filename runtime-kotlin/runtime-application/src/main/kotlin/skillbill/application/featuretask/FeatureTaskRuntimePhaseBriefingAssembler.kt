@@ -19,6 +19,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseHandoff
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairBatch
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariantPromptField
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedReviewEvidenceReference
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 import java.nio.charset.StandardCharsets
 
@@ -92,6 +93,7 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
     planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator =
       NoopFeatureTaskRuntimePlanningProjectionValidator,
     agentAddonSelection: HydratedAgentAddonSelection = HydratedAgentAddonSelection(),
+    sharedReviewEvidence: FeatureTaskRuntimeSharedReviewEvidenceReference? = null,
   ): FeatureTaskRuntimePhaseLaunchBriefing {
     val boundedAddonSelection = FeatureTaskRuntimePhasePromptComposer.budgetedAddonsFor(
       handoff.phaseId,
@@ -119,6 +121,7 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
         resolvedUpstream = handoff.upstreamOutputs,
         runInvariants = handoff.runInvariants,
         resolvedCheckpoint = handoff.repositoryCheckpoint,
+        sharedReviewEvidence = sharedReviewEvidence,
         expectedCheckpoint = handoff.expectedRepositoryCheckpoint,
         auditRepairPlan = handoff.auditRepairPlan,
         auditRepairState = handoff.auditRepairState,
@@ -328,14 +331,23 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
     )
   }
 
+  private const val SHARED_EVIDENCE_PROJECTION: String =
+    FeatureTaskRuntimePhaseWorkflowDefinition.SHARED_REVIEW_EVIDENCE_PROJECTION_NAME
+
   private val DERIVED_CONTEXT_INSTRUCTIONS: Map<String, String> = mapOf(
     FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_DIFF to
-      "read the branch diff yourself; it is not delivered in this briefing",
+      "the branch diff is already derived for you: the '$SHARED_EVIDENCE_PROJECTION' projection above " +
+      "carries its store_path, checkpoint_fingerprint, base_ref/head_ref, and per-file hunk index; " +
+      "work from that reference, and dereference store_path when you need the diff bytes themselves",
     FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_SCOPED_REPOSITORY_STATE to
       "read the repository at the resolved checkpoint above — the diff over base_ref/head_ref plus " +
       "the listed scoped_owned_paths — and treat that actual state, not any upstream receipt claim, " +
       "as the evidence for every criterion",
+    FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_PR_BRANCH_DIFF to
+      "read the branch diff yourself; it is not delivered in this briefing",
     "current_unit_of_work" to
-      "read the current unit of work yourself; it is not delivered in this briefing",
+      "the current unit of work is already derived for you: the '$SHARED_EVIDENCE_PROJECTION' projection " +
+      "above carries its store_path, checkpoint_fingerprint, base_ref/head_ref, and per-file hunk index; " +
+      "work from that reference, and dereference store_path when you need the diff bytes themselves",
   )
 }

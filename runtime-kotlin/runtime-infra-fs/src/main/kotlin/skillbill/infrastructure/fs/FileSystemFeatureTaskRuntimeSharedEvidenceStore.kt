@@ -54,8 +54,9 @@ open class FileSystemFeatureTaskRuntimeSharedEvidenceStore : FeatureTaskRuntimeS
   ): FeatureTaskRuntimeSharedEvidenceResolution {
     val fingerprint = request.checkpoint.fingerprint
     val artifactDir = artifactDir(request)
-    readStored(mapper, artifactDir, fingerprint)?.let { return it }
-    return persist(artifactDir, fingerprint, deriver.derive(request.checkpoint))
+    val storePath = storePath(request.repoRoot, artifactDir)
+    readStored(mapper, artifactDir, fingerprint)?.let { return it.copy(storePath = storePath) }
+    return persist(artifactDir, fingerprint, deriver.derive(request.checkpoint)).copy(storePath = storePath)
   }
 
   /**
@@ -299,6 +300,17 @@ private fun readEnvelope(mapper: ObjectMapper, path: Path): ObjectNode? {
  * [configPath] rather than the userHome convention other adapters in this module use. Both address
  * segments are sanitized to a single path element so neither can escape the store root.
  */
+/**
+ * The published address: repo-relative, so it stays a short portable token in a delivered projection
+ * rather than an absolute path that leaks the checkout location. Falls back to the absolute path when
+ * the artifact dir is not under the repo root, which only a non-normalizable [repoRoot] can produce.
+ */
+internal fun storePath(repoRoot: Path, artifactDir: Path): String =
+  runCatching { repoRoot.toAbsolutePath().normalize().relativize(artifactDir).toString() }
+    .getOrNull()
+    ?.takeIf { it.isNotBlank() && !it.startsWith("..") }
+    ?: artifactDir.toString()
+
 internal fun artifactDir(request: FeatureTaskRuntimeSharedEvidenceRequest): Path = request.repoRoot
   .resolve(".skill-bill")
   .resolve("run-evidence")
