@@ -2,6 +2,15 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# The JVM cannot resolve a Git-bash path such as /d/a/repo, so hand it a native
+# Windows path with forward slashes instead.
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*)
+    repo_root="$(cygpath -m "$repo_root")"
+    ;;
+esac
+
 args=(--repo-root "$repo_root" "$@")
 gradle_args="validate-release-ref"
 for arg in "${args[@]}"; do

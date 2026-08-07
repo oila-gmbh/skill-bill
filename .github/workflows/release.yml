@@ -132,11 +132,15 @@ jobs:
           done
           scripts/verify_release_artifact_licenses "${artifacts[@]}"
           verifier_probe="$(mktemp -d)"
-          cp scripts/verify_release_artifact_licenses "${verifier_probe}/verify_release_artifact_licenses"
+          # The verifier resolves its repo root as <script dir>/.., so the probe
+          # copy must sit under scripts/ for the drifted LICENSE to be the one
+          # it compares against.
+          mkdir -p "${verifier_probe}/scripts"
+          cp scripts/verify_release_artifact_licenses "${verifier_probe}/scripts/verify_release_artifact_licenses"
           printf '%s\n' 'intentional license drift probe' > "${verifier_probe}/LICENSE"
           for artifact in "${artifacts[@]}"; do
             probe_log="${verifier_probe}/$(basename "${artifact}").log"
-            if "${verifier_probe}/verify_release_artifact_licenses" "${artifact}" >"${probe_log}" 2>&1; then
+            if "${verifier_probe}/scripts/verify_release_artifact_licenses" "${artifact}" >"${probe_log}" 2>&1; then
               echo "License drift probe unexpectedly accepted ${artifact}." >&2
               exit 1
             fi
