@@ -1,5 +1,6 @@
 package dev.skillbill.intellij.presentation
 
+import dev.skillbill.intellij.domain.GoalPlanningInfo
 import java.time.Duration
 import java.time.Instant
 
@@ -26,6 +27,12 @@ sealed class SkillBillStatusUiState {
     open val subtaskStartedAt: Instant? get() = null
     open val lastUpdated: Instant? get() = null
     open val problemSummary: String? get() = null
+
+    /**
+     * Non-null only while planning progress is worth showing. Relevance is decided once,
+     * in [StatusUiMapper]; renderers must not re-derive it.
+     */
+    open val planning: GoalPlanningInfo? get() = null
 
     /** True when this state is not live. Always true for [Stale]; a modifier elsewhere. */
     open val stale: Boolean get() = this is Stale
@@ -56,6 +63,7 @@ sealed class SkillBillStatusUiState {
         override val startedAt: Instant?,
         override val subtaskStartedAt: Instant?,
         override val lastUpdated: Instant?,
+        override val planning: GoalPlanningInfo? = null,
     ) : SkillBillStatusUiState() {
         override val accessibilityText: String =
             buildString {
@@ -63,6 +71,24 @@ sealed class SkillBillStatusUiState {
                 goalElapsed?.let { append(", goal elapsed ").append(formatDuration(it)) }
                 subtaskElapsed?.let { append(", subtask elapsed ").append(formatDuration(it)) }
             }
+    }
+
+    data class Paused(
+        override val headline: String,
+        override val detail: String?,
+        override val goalElapsed: Duration?,
+        override val subtaskElapsed: Duration?,
+        override val progressCompleted: Int?,
+        override val progressTotal: Int?,
+        override val issueKey: String?,
+        override val workflowId: String?,
+        override val stepLabel: String,
+        override val startedAt: Instant?,
+        override val subtaskStartedAt: Instant?,
+        override val lastUpdated: Instant?,
+        override val planning: GoalPlanningInfo? = null,
+    ) : SkillBillStatusUiState() {
+        override val accessibilityText: String = "$headline (paused)"
     }
 
     data class Stale(
@@ -79,6 +105,7 @@ sealed class SkillBillStatusUiState {
         override val subtaskStartedAt: Instant? = null,
         override val lastUpdated: Instant? = null,
         override val problemSummary: String? = "Cached status is stale",
+        override val planning: GoalPlanningInfo? = null,
     ) : SkillBillStatusUiState() {
         override val accessibilityText: String = "$headline (stale)"
     }

@@ -16,6 +16,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -106,6 +107,11 @@ class ProcessRunnerTest {
         assertEquals(2, result.exitCode)
     }
 }
+
+private const val VALID_PLANNING =
+    """"planning": {"state": "partially_planned", "shared_preplan_prepared": true,
+       "planned_subtask_count": 1, "total_subtask_count": 4,
+       "current_planning_subtask_id": "subtask-2"}"""
 
 class IdeStatusJsonMapperTest {
     private val now = java.time.Instant.parse("2026-08-06T10:00:00Z")
@@ -199,6 +205,69 @@ class IdeStatusJsonMapperTest {
     }
 
     @Test
+    fun `goal payload carrying planning maps into the outcome`() {
+        val outcome = IdeStatusJsonMapper.map(goalPayload(planning = VALID_PLANNING), now, 0)
+        assertTrue(outcome is SkillBillStatusOutcome.Active)
+        val planning = (outcome as SkillBillStatusOutcome.Active).planning
+        assertEquals("partially_planned", planning?.state)
+        assertEquals(true, planning?.sharedPreplanPrepared)
+        assertEquals(1, planning?.plannedSubtaskCount)
+        assertEquals(4, planning?.totalSubtaskCount)
+        assertEquals("subtask-2", planning?.currentPlanningSubtaskId)
+    }
+
+    @Test
+    fun `payload without planning maps exactly as today`() {
+        val outcome = IdeStatusJsonMapper.map(goalPayload(planning = null), now, 0)
+        assertTrue(outcome is SkillBillStatusOutcome.Active)
+        outcome as SkillBillStatusOutcome.Active
+        assertNull(outcome.planning)
+        assertEquals("SKILL-165", outcome.issueKey)
+        assertEquals("implement", outcome.currentStepId)
+        assertEquals(1, outcome.progressCompleted)
+        assertEquals(4, outcome.progressTotal)
+    }
+
+    @Test
+    fun `malformed planning degrades to null without failing the mapping`() {
+        val malformed = mapOf(
+            "non-object" to "\"planning\": \"nope\"",
+            "missing required key" to """"planning": {"state": "preplanned", "planned_subtask_count": 1, "total_subtask_count": 4}""",
+            "wrong type" to """"planning": {"state": "preplanned", "shared_preplan_prepared": "yes", "planned_subtask_count": 1, "total_subtask_count": 4}""",
+            "negative count" to """"planning": {"state": "preplanned", "shared_preplan_prepared": false, "planned_subtask_count": -1, "total_subtask_count": 4}""",
+        )
+        for ((case, block) in malformed) {
+            val outcome = IdeStatusJsonMapper.map(goalPayload(planning = block), now, 0)
+            assertTrue("$case must still map to Active", outcome is SkillBillStatusOutcome.Active)
+            assertNull("$case must degrade planning to null", (outcome as SkillBillStatusOutcome.Active).planning)
+        }
+    }
+
+    @Test
+    fun `fresh paused maps to Paused and stale paused still maps to Stale`() {
+        val fresh = IdeStatusJsonMapper.map(runtimeFixture(lifecycle = "paused"), now, 0)
+        assertTrue(fresh is SkillBillStatusOutcome.Paused)
+        assertEquals("implement", (fresh as SkillBillStatusOutcome.Paused).currentStepId)
+
+        val stale = IdeStatusJsonMapper.map(
+            runtimeFixture(lifecycle = "paused", freshness = "stale"),
+            now,
+            0,
+        )
+        assertTrue(stale is SkillBillStatusOutcome.Stale)
+    }
+
+    @Test
+    fun `active payload mapping is unchanged by the paused split`() {
+        val outcome = IdeStatusJsonMapper.map(fixture("active-runtime.json"), now, 0)
+        assertTrue(outcome is SkillBillStatusOutcome.Active)
+        outcome as SkillBillStatusOutcome.Active
+        assertEquals("SKILL-148", outcome.issueKey)
+        assertEquals("implement", outcome.currentStepId)
+        assertNull(outcome.planning)
+    }
+
+    @Test
     fun `expected contract version constant matches fixture`() {
         assertTrue(fixture("active-runtime.json").contains("\"contract_version\": \"$IDE_STATUS_CONTRACT_VERSION\""))
     }
@@ -220,6 +289,22 @@ class IdeStatusJsonMapperTest {
         check(contains(original)) { "Fixture no longer contains $original" }
         return replace(original, "\"$field\": \"$to\"")
     }
+
+    private fun goalPayload(planning: String?): String =
+        buildString {
+            append("{\"contract_version\":\"$IDE_STATUS_CONTRACT_VERSION\",")
+            append("\"repository_identity\":\"repo-root-realpath-v1:/repo\",")
+            append("\"lifecycle_state\":\"active\",\"freshness\":\"fresh\",")
+            append("\"issue_key\":\"SKILL-165\",\"workflow_id\":\"wfl-1\",")
+            append("\"workflow_family\":\"feature-goal\",")
+            append("\"current_step\":{\"id\":\"implement\",\"label\":\"Implement\"},")
+            append("\"progress\":{\"completed\":1,\"total\":4},")
+            append("\"started_at\":\"2026-08-06T08:00:00Z\",")
+            append("\"updated_at\":\"2026-08-06T09:59:00Z\",")
+            append("\"summary\":\"Goal SKILL-165 in progress.\"")
+            planning?.let { append(',').append(it) }
+            append('}')
+        }
 
     private fun fixture(name: String): String =
         javaClass.classLoader.getResourceAsStream("fixtures/$name")!!

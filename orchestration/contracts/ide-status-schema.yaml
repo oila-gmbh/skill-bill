@@ -100,6 +100,40 @@ properties:
         description: >
           Durable current-subtask start instant. Omitted when the subtask scope
           does not exist or legacy state cannot provide it.
+  planning:
+    type: object
+    additionalProperties: false
+    description: >
+      Goal planning progress. Present only for feature-goal snapshots whose goal
+      status projection carries a planning block.
+    required:
+      - state
+      - shared_preplan_prepared
+      - planned_subtask_count
+      - total_subtask_count
+    properties:
+      state:
+        type: string
+        enum:
+          - not_started
+          - preplanned
+          - partially_planned
+          - blocked
+          - prepared
+      shared_preplan_prepared:
+        type: boolean
+      planned_subtask_count:
+        type: integer
+        minimum: 0
+      total_subtask_count:
+        type: integer
+        minimum: 0
+      current_planning_subtask_id:
+        type: string
+        minLength: 1
+      reason:
+        type: string
+        minLength: 1
   updated_at:
     type: string
     minLength: 1

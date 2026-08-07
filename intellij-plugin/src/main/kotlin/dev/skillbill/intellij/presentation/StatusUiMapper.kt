@@ -1,5 +1,6 @@
 package dev.skillbill.intellij.presentation
 
+import dev.skillbill.intellij.domain.GoalPlanningInfo
 import dev.skillbill.intellij.domain.SkillBillStatusOutcome
 import java.time.Duration
 import java.time.Instant
@@ -33,6 +34,32 @@ object StatusUiMapper {
                     startedAt = outcome.startedAt,
                     subtaskStartedAt = outcome.subtaskStartedAt,
                     lastUpdated = outcome.updatedAt,
+                    planning = relevantPlanning(
+                        outcome.planning,
+                        outcome.currentSubtaskId,
+                        outcome.progressCompleted,
+                    ),
+                )
+
+            is SkillBillStatusOutcome.Paused ->
+                SkillBillStatusUiState.Paused(
+                    headline = pausedHeadline(outcome),
+                    detail = outcome.summary,
+                    goalElapsed = elapsed(outcome.startedAt, settledAt(outcome.updatedAt, now)),
+                    subtaskElapsed = elapsed(outcome.subtaskStartedAt, settledAt(outcome.updatedAt, now)),
+                    progressCompleted = outcome.progressCompleted,
+                    progressTotal = outcome.progressTotal,
+                    issueKey = outcome.issueKey,
+                    workflowId = outcome.workflowId,
+                    stepLabel = outcome.currentStepLabel,
+                    startedAt = outcome.startedAt,
+                    subtaskStartedAt = outcome.subtaskStartedAt,
+                    lastUpdated = outcome.updatedAt,
+                    planning = relevantPlanning(
+                        outcome.planning,
+                        outcome.currentSubtaskId,
+                        outcome.progressCompleted,
+                    ),
                 )
 
             is SkillBillStatusOutcome.Stale ->
@@ -50,6 +77,11 @@ object StatusUiMapper {
                     subtaskStartedAt = outcome.subtaskStartedAt,
                     lastUpdated = outcome.updatedAt ?: outcome.observedAt,
                     problemSummary = if (outcome.fromCache) "Cached status is stale" else "Status is stale",
+                    planning = relevantPlanning(
+                        outcome.planning,
+                        outcome.currentSubtaskId,
+                        outcome.progressCompleted,
+                    ),
                 )
 
             is SkillBillStatusOutcome.Blocked ->
@@ -141,9 +173,30 @@ object StatusUiMapper {
             else -> state
         }
 
+    /**
+     * The one place planning relevance is decided, so bar, tooltip, and accessibility
+     * text cannot diverge. Planning stops being relevant once implementation starts:
+     * state `prepared`, or the snapshot already reports execution work. Snapshot-derived
+     * with no latch — `progress.completed` only moves forward.
+     */
+    private fun relevantPlanning(
+        planning: GoalPlanningInfo?,
+        currentSubtaskId: String?,
+        progressCompleted: Int?,
+    ): GoalPlanningInfo? {
+        if (planning == null || planning.state == "prepared") return null
+        if (!currentSubtaskId.isNullOrBlank() || (progressCompleted ?: 0) > 0) return null
+        return planning
+    }
+
     private fun activeHeadline(outcome: SkillBillStatusOutcome.Active): String {
         val key = outcome.issueKey?.let { "$it · " }.orEmpty()
         return "Skill Bill: $key${outcome.currentStepLabel}"
+    }
+
+    private fun pausedHeadline(outcome: SkillBillStatusOutcome.Paused): String {
+        val key = outcome.issueKey?.let { "$it · " }.orEmpty()
+        return "Skill Bill: ${key}paused"
     }
 
     private fun staleHeadline(outcome: SkillBillStatusOutcome.Stale): String {

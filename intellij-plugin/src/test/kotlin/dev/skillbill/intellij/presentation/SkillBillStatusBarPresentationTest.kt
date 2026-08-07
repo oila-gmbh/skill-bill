@@ -1,5 +1,7 @@
 package dev.skillbill.intellij.presentation
 
+import dev.skillbill.intellij.domain.GoalPlanningInfo
+import dev.skillbill.intellij.domain.SkillBillStatusOutcome
 import java.time.Duration
 import java.time.Instant
 import org.junit.Assert.assertEquals
@@ -18,7 +20,7 @@ class SkillBillStatusBarPresentationTest {
         assertTrue(mapped.barText.startsWith("Skill Bill · Implement"))
         assertTrue(mapped.barText.contains("2h 00m"))
         assertTrue(mapped.barText.contains("30m 00s"))
-        assertTrue(mapped.barText.contains("3/9"))
+        assertTrue(mapped.barText.contains("4/9"))
         assertTrue(mapped.showActivityAnimation)
         assertFalse(mapped.isStaleMarked)
     }
@@ -220,7 +222,7 @@ class SkillBillStatusBarPresentationTest {
         assertTrue(mapped.accessibleDescription.contains("Implement"))
         assertTrue(mapped.accessibleDescription.contains("Goal elapsed"))
         assertTrue(mapped.accessibleDescription.contains("Subtask elapsed"))
-        assertTrue(mapped.accessibleDescription.contains("3/9"))
+        assertTrue(mapped.accessibleDescription.contains("4/9"))
     }
 
     @Test
@@ -231,7 +233,7 @@ class SkillBillStatusBarPresentationTest {
         assertEquals("wfl-1", d.workflowId)
         assertEquals("active", d.lifecycleState)
         assertEquals("Implement", d.stepLabel)
-        assertEquals("3/9", d.progressText)
+        assertEquals("4/9", d.progressText)
         assertEquals("2h 00m", d.goalElapsedText)
         assertEquals("30m 00s", d.subtaskElapsedText)
         assertTrue(d.lastUpdateText!!.contains("2026-08-07"))
@@ -262,6 +264,210 @@ class SkillBillStatusBarPresentationTest {
         assertEquals(SkillBillStatusBarPresentation.UNAVAILABLE_ELAPSED, mapped.details.subtaskElapsedText)
     }
 
+    @Test
+    fun `planning renders a bar segment and both tooltip lines for either pre-planning state`() {
+        for (preplanPrepared in listOf(true, false)) {
+            val mapped = SkillBillStatusBarPresentation.map(
+                active(
+                    progressCompleted = 0,
+                    progressTotal = 4,
+                    planning = planning(sharedPreplanPrepared = preplanPrepared),
+                ),
+                now,
+            )
+            // The bar budget drops the redundant progress pair and the subtask clock so
+            // the planning segment and the goal clock both survive within 48 chars.
+            assertEquals("Skill Bill · Implement · Planning 1/4 · 2h 00m", mapped.barText)
+            assertTrue(
+                mapped.barText.length <= SkillBillStatusBarPresentation.BAR_TEXT_MAX_LENGTH,
+            )
+            assertTrue(
+                mapped.tooltipText,
+                mapped.tooltipText.contains(
+                    if (preplanPrepared) "Pre-planning: Done" else "Pre-planning: In progress",
+                ),
+            )
+            assertTrue(mapped.tooltipText, mapped.tooltipText.contains("Planning: 1/4 subtasks"))
+            assertTrue(mapped.accessibleDescription.contains("Planning: 1/4 subtasks"))
+            // Planning counts planned subtasks; execution progress marks the running one.
+            assertEquals("1/4", mapped.details.progressText)
+        }
+    }
+
+    @Test
+    fun `absent planning leaves bar and tooltip byte-for-byte unchanged`() {
+        val withoutPlanning = SkillBillStatusBarPresentation.map(active(), now)
+        assertEquals(
+            "Skill Bill · Implement · 2h 00m · 30m 00s · 4/9",
+            withoutPlanning.barText,
+        )
+        assertEquals(
+            "Skill Bill — active\nIssue: SKILL-148\nWorkflow: wfl-1\nStep: Implement" +
+                "\nGoal elapsed: 2h 00m\nSubtask elapsed: 30m 00s\nProgress: 4/9" +
+                "\nLast update: 2026-08-07 12:00:00Z\nworking",
+            withoutPlanning.tooltipText,
+        )
+    }
+
+    @Test
+    fun `a non-goal family snapshot renders no planning segment or pre-planning line`() {
+        // Non-goal families never carry planning on the wire, so the ui value is null.
+        val mapped = SkillBillStatusBarPresentation.map(active(planning = null), now)
+        assertFalse(mapped.barText.contains("Planning"))
+        assertFalse(mapped.tooltipText.contains("Pre-planning"))
+        assertFalse(mapped.accessibleDescription.contains("Pre-planning"))
+    }
+
+    @Test
+    fun `planning disappears once implementation starts`() {
+        // Relevance is decided in StatusUiMapper; by the time presentation sees a
+        // prepared or executing snapshot the ui planning value is already null.
+        val prepared = StatusUiMapper.map(
+            activeOutcome(planning = domainPlanning("prepared"), currentSubtaskId = null, completed = 0),
+            now,
+        )
+        val executing = StatusUiMapper.map(
+            activeOutcome(planning = domainPlanning("partially_planned"), currentSubtaskId = "2", completed = 0),
+            now,
+        )
+        val progressed = StatusUiMapper.map(
+            activeOutcome(planning = domainPlanning("partially_planned"), currentSubtaskId = null, completed = 1),
+            now,
+        )
+        for (state in listOf(prepared, executing, progressed)) {
+            val mapped = SkillBillStatusBarPresentation.map(state, now)
+            assertFalse(mapped.barText, mapped.barText.contains("Planning"))
+            assertFalse(mapped.tooltipText, mapped.tooltipText.contains("Pre-planning"))
+            assertFalse(mapped.tooltipText, mapped.tooltipText.contains("Planning:"))
+        }
+    }
+
+    @Test
+    fun `stale mid-planning keeps the stale treatment and the planning segment`() {
+        val mapped = SkillBillStatusBarPresentation.map(
+            SkillBillStatusUiState.Stale(
+                headline = "Skill Bill: Plan (stale)",
+                detail = "cached",
+                goalElapsed = Duration.ofMinutes(5),
+                subtaskElapsed = null,
+                progressCompleted = 0,
+                progressTotal = 4,
+                stepLabel = "Plan",
+                planning = planning(sharedPreplanPrepared = false),
+            ),
+            now,
+        )
+        assertTrue(mapped.isStaleMarked)
+        assertTrue(mapped.tooltipText.contains(SkillBillStatusBarPresentation.STALE_NOTE))
+        assertEquals("Skill Bill · stale · Plan · Planning 1/4", mapped.barText)
+        assertTrue(mapped.tooltipText.contains("Planning: 1/4 subtasks"))
+    }
+
+    @Test
+    fun `execution progress renders the current position never one past the total`() {
+        val inFlight = SkillBillStatusBarPresentation.map(
+            active(progressCompleted = 1, progressTotal = 4),
+            now,
+        )
+        assertTrue(inFlight.barText, inFlight.barText.contains("2/4"))
+        assertEquals("2/4", inFlight.details.progressText)
+        assertTrue(inFlight.tooltipText.contains("\nProgress: 2/4"))
+
+        val zeroCompleted = SkillBillStatusBarPresentation.map(
+            active(progressCompleted = 0, progressTotal = 4),
+            now,
+        )
+        assertEquals("1/4", zeroCompleted.details.progressText)
+        assertTrue(zeroCompleted.tooltipText.contains("\nProgress: 1/4"))
+
+        val allComplete = SkillBillStatusBarPresentation.map(
+            active(progressCompleted = 4, progressTotal = 4),
+            now,
+        )
+        assertEquals("4/4", allComplete.details.progressText)
+        assertFalse(allComplete.barText.contains("5/4"))
+
+        val stale = SkillBillStatusBarPresentation.map(
+            SkillBillStatusUiState.Stale(
+                headline = "Skill Bill: Implement (stale)",
+                detail = "cached",
+                goalElapsed = Duration.ofMinutes(5),
+                subtaskElapsed = null,
+                progressCompleted = 1,
+                progressTotal = 4,
+                stepLabel = "Implement",
+            ),
+            now,
+        )
+        assertEquals("2/4", stale.details.progressText)
+    }
+
+    @Test
+    fun `paused names the state keeps the tooltip anchors and never animates`() {
+        val mapped = SkillBillStatusBarPresentation.map(
+            SkillBillStatusUiState.Paused(
+                headline = "Skill Bill: SKILL-165 · paused",
+                detail = "paused by operator",
+                goalElapsed = Duration.ofHours(2),
+                subtaskElapsed = Duration.ofMinutes(30),
+                progressCompleted = 1,
+                progressTotal = 4,
+                issueKey = "SKILL-165",
+                workflowId = "wfl-1",
+                stepLabel = "Implement",
+                startedAt = started,
+                subtaskStartedAt = subtaskStarted,
+                lastUpdated = now,
+            ),
+            now,
+        )
+        assertEquals("Skill Bill · paused · Implement · 2h 00m · 2/4", mapped.barText)
+        assertTrue(mapped.barText.length <= SkillBillStatusBarPresentation.BAR_TEXT_MAX_LENGTH)
+        assertEquals("paused", mapped.details.lifecycleState)
+        assertTrue(mapped.tooltipText.contains("\nStep: Implement"))
+        assertTrue(mapped.tooltipText.contains("\nProgress: 2/4"))
+        assertTrue(mapped.tooltipText.contains("Goal ran: 2h 00m"))
+        assertEquals("ran", mapped.details.elapsedNoun)
+        assertFalse(mapped.showActivityAnimation)
+        assertFalse(mapped.isStaleMarked)
+    }
+
+    private fun planning(sharedPreplanPrepared: Boolean) = GoalPlanningInfo(
+        state = "partially_planned",
+        sharedPreplanPrepared = sharedPreplanPrepared,
+        plannedSubtaskCount = 1,
+        totalSubtaskCount = 4,
+    )
+
+    private fun domainPlanning(state: String) = GoalPlanningInfo(
+        state = state,
+        sharedPreplanPrepared = true,
+        plannedSubtaskCount = 1,
+        totalSubtaskCount = 4,
+    )
+
+    private fun activeOutcome(
+        planning: GoalPlanningInfo?,
+        currentSubtaskId: String?,
+        completed: Int,
+    ) = SkillBillStatusOutcome.Active(
+        observedAt = now,
+        summary = "working",
+        repositoryIdentity = "repo",
+        issueKey = "SKILL-165",
+        workflowId = "wfl-1",
+        workflowFamily = "feature-goal",
+        currentStepId = "implement",
+        currentStepLabel = "Implement",
+        progressCompleted = completed,
+        progressTotal = 4,
+        startedAt = started,
+        currentSubtaskId = currentSubtaskId,
+        subtaskStartedAt = subtaskStarted,
+        updatedAt = now,
+        planning = planning,
+    )
+
     private fun active(
         stepLabel: String = "Implement",
         headline: String = "Skill Bill: SKILL-148 · Implement",
@@ -271,6 +477,7 @@ class SkillBillStatusBarPresentationTest {
         progressTotal: Int? = 9,
         startedAt: Instant? = started,
         subtaskStartedAt: Instant? = subtaskStarted,
+        planning: GoalPlanningInfo? = null,
     ) = SkillBillStatusUiState.Active(
         headline = headline,
         detail = "working",
@@ -284,5 +491,6 @@ class SkillBillStatusBarPresentationTest {
         startedAt = startedAt,
         subtaskStartedAt = subtaskStartedAt,
         lastUpdated = now,
+        planning = planning,
     )
 }

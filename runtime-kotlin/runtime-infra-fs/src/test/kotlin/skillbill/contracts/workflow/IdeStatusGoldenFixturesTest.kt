@@ -93,6 +93,36 @@ class IdeStatusGoldenFixturesTest {
   }
 
   @Test
+  fun `feature-goal mid-planning golden validates`() {
+    IdeStatusSchemaValidator.validate(
+      linkedMapOf(
+        "contract_version" to IDE_STATUS_CONTRACT_VERSION,
+        "repository_identity" to "repo-root-realpath-v1:/repo",
+        "issue_key" to "SKILL-165",
+        "workflow_id" to "goal-2",
+        "workflow_family" to "feature-goal",
+        "lifecycle_state" to "active",
+        "current_step" to linkedMapOf("id" to "planning", "label" to "Planning"),
+        "progress" to linkedMapOf("completed" to 0, "total" to 5),
+        "started_at" to "2026-08-06T08:00:00Z",
+        // Both required and optional planning properties in one fixture.
+        "planning" to linkedMapOf(
+          "state" to "partially_planned",
+          "shared_preplan_prepared" to true,
+          "planned_subtask_count" to 2,
+          "total_subtask_count" to 5,
+          "current_planning_subtask_id" to "3",
+          "reason" to "Planning subtask 3.",
+        ),
+        "updated_at" to "2026-08-06T10:00:00Z",
+        "freshness" to "fresh",
+        "summary" to "Goal SKILL-165 is planning subtasks (2/5 planned).",
+      ),
+      "golden-goal-planning",
+    )
+  }
+
+  @Test
   fun `typed problem goldens validate`() {
     listOf(
       "missing_repository_identity",

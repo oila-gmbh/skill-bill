@@ -4,6 +4,7 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.google.gson.JsonSyntaxException
+import dev.skillbill.intellij.domain.GoalPlanningInfo
 import dev.skillbill.intellij.domain.IDE_STATUS_CONTRACT_VERSION
 import dev.skillbill.intellij.domain.SkillBillStatusOutcome
 import dev.skillbill.intellij.domain.StatusDiagnostic
@@ -92,6 +93,7 @@ object IdeStatusJsonMapper {
         val subtaskId = subtask?.getAsString("id")
         val subtaskStartedAt = subtask?.getAsInstant("started_at")
         val updatedAt = root.getAsInstant("updated_at")
+        val planning = root.parsePlanning()
 
         // "No work here" is a healthy idle repository, not a broken status source.
         // Every other problem code is a genuine failure to obtain status.
@@ -140,6 +142,7 @@ object IdeStatusJsonMapper {
                 subtaskStartedAt = subtaskStartedAt,
                 updatedAt = updatedAt,
                 fromCache = false,
+                planning = planning,
             )
         }
 
@@ -147,6 +150,24 @@ object IdeStatusJsonMapper {
             "active", "paused" -> {
                 if (repositoryIdentity.isNullOrBlank() || stepId.isNullOrBlank() || stepLabel.isNullOrBlank() || updatedAt == null) {
                     malformed(observedAt, "incomplete_active_payload")
+                } else if (lifecycle == "paused") {
+                    SkillBillStatusOutcome.Paused(
+                        observedAt = observedAt,
+                        summary = summary,
+                        repositoryIdentity = repositoryIdentity,
+                        issueKey = issueKey,
+                        workflowId = workflowId,
+                        workflowFamily = workflowFamily,
+                        currentStepId = stepId,
+                        currentStepLabel = stepLabel,
+                        progressCompleted = progressCompleted,
+                        progressTotal = progressTotal,
+                        startedAt = startedAt,
+                        currentSubtaskId = subtaskId,
+                        subtaskStartedAt = subtaskStartedAt,
+                        updatedAt = updatedAt,
+                        planning = planning,
+                    )
                 } else {
                     SkillBillStatusOutcome.Active(
                         observedAt = observedAt,
@@ -163,6 +184,7 @@ object IdeStatusJsonMapper {
                         currentSubtaskId = subtaskId,
                         subtaskStartedAt = subtaskStartedAt,
                         updatedAt = updatedAt,
+                        planning = planning,
                     )
                 }
             }
@@ -236,6 +258,28 @@ object IdeStatusJsonMapper {
         return AbsolutePathGuard.redact(value).take(512)
     }
 
+    /**
+     * Planning is optional context, never a reason to lose a whole status reading:
+     * any missing, mistyped, or out-of-range field degrades the block to null and the
+     * surrounding outcome still maps normally.
+     */
+    private fun JsonObject.parsePlanning(): GoalPlanningInfo? {
+        val planning = getAsJsonObjectOrNull("planning") ?: return null
+        val state = planning.getAsString("state")?.takeUnless { it.isBlank() } ?: return null
+        val sharedPreplanPrepared = planning.getAsBoolean("shared_preplan_prepared") ?: return null
+        val planned = planning.getAsInt("planned_subtask_count")?.takeIf { it >= 0 } ?: return null
+        val total = planning.getAsInt("total_subtask_count")?.takeIf { it >= 0 } ?: return null
+        return GoalPlanningInfo(
+            state = state,
+            sharedPreplanPrepared = sharedPreplanPrepared,
+            plannedSubtaskCount = planned,
+            totalSubtaskCount = total,
+            currentPlanningSubtaskId = planning.getAsString("current_planning_subtask_id")
+                ?.takeUnless { it.isBlank() },
+            reason = planning.getAsString("reason")?.let { safeSummary(it, "") }?.takeUnless { it.isEmpty() },
+        )
+    }
+
     private fun JsonObject.getAsString(key: String): String? =
         get(key)?.takeUnless { it.isJsonNull }?.asStringOrNull()
 
@@ -243,6 +287,10 @@ object IdeStatusJsonMapper {
         get(key)?.takeUnless { it.isJsonNull }?.let {
             runCatching { it.asInt }.getOrNull()
         }
+
+    /** Strict: a JSON string "true" is a type error, not a boolean. */
+    private fun JsonObject.getAsBoolean(key: String): Boolean? =
+        get(key)?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isBoolean }?.asBoolean
 
     private fun JsonObject.getAsInstant(key: String): Instant? {
         val raw = getAsString(key) ?: return null

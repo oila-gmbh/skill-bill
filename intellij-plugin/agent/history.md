@@ -1,3 +1,13 @@
+## [2026-08-07] SKILL-165 planning progress rendering (subtask 2)
+Areas: intellij-plugin/{domain,infrastructure/cli,presentation}
+- `IdeStatusJsonMapper` parses the optional planning block from `work status --format json`; absent or malformed planning degrades to no planning state rather than failing the whole status parse. reusable
+- Planning surfaces as an extra bar segment plus two tooltip lines (planning phase + `Progress: n/m`); when planning is absent the rendered output stays byte-identical to the pre-change baseline. reusable
+- Paused/pre-planning goals anchor elapsed at observation time in `StatusUiMapper` (paused states do not tick with the local UI clock); stale observations keep the STALE_NOTE alongside the planning segment. reusable
+- Planning state round-trips through `LastKnownDisplayCache`, so a stale cached render keeps planning context instead of dropping to a bare status.
+- Limitation: planning rendering is read-only display; no new CLI transport, no planning-driven refresh cadence, non-goal status families render unchanged.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-08-07] SKILL-148 status-bar widget (subtask 3)
 Areas: intellij-plugin/{ui,presentation}, plugin.xml, docs
 - Registered `SkillBillStatusBarWidget` StatusBarWidgetFactory (id matches factory/widget) for normal project windows with resolvable project context. reusable

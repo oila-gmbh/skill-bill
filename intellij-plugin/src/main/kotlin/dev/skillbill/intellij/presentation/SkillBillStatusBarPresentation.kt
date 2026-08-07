@@ -24,20 +24,21 @@ object SkillBillStatusBarPresentation {
         val goalText = elapsedLabel(anchored.goalElapsed)
         val subtaskText = elapsedLabel(anchored.subtaskElapsed)
         val progress = validProgress(anchored.progressCompleted, anchored.progressTotal)
-        val progressText = progress?.let { "${it.first}/${it.second}" }
+        val progressText = progress?.let { (completed, total) ->
+            "${renderedPosition(anchored, completed, total)}/$total"
+        }
+        val planning = anchored.planning
+        val planningSegment = planning?.let { "Planning ${it.plannedSubtaskCount}/${it.totalSubtaskCount}" }
 
         val fullBar = when (anchored) {
             is SkillBillStatusUiState.Active ->
-                buildActiveBar(step ?: anchored.stepLabel, goalText, subtaskText, progressText)
+                buildRunBar("Skill Bill", step ?: anchored.stepLabel, planningSegment, goalText, subtaskText, progressText)
+
+            is SkillBillStatusUiState.Paused ->
+                buildRunBar("Skill Bill · paused", step, planningSegment, goalText, subtaskText, progressText)
 
             is SkillBillStatusUiState.Stale ->
-                buildString {
-                    append("Skill Bill · stale")
-                    step?.let { append(" · ").append(it) }
-                    append(" · ").append(goalText)
-                    append(" · ").append(subtaskText)
-                    progressText?.let { append(" · ").append(it) }
-                }
+                buildRunBar("Skill Bill · stale", step, planningSegment, goalText, subtaskText, progressText)
 
             is SkillBillStatusUiState.Blocked -> "Skill Bill · blocked"
             is SkillBillStatusUiState.Failed -> "Skill Bill · failed"
@@ -47,7 +48,18 @@ object SkillBillStatusBarPresentation {
         }
 
         val barText = truncateForBar(normalizeLabel(fullBar) ?: fullBar)
-        val tooltip = buildTooltip(anchored, lifecycle, step, goalText, subtaskText, progressText)
+        val preplanLine = planning?.let { "Pre-planning: " + if (it.sharedPreplanPrepared) "Done" else "In progress" }
+        val planningLine = planning?.let { "Planning: ${it.plannedSubtaskCount}/${it.totalSubtaskCount} subtasks" }
+        val tooltip = buildTooltip(
+            anchored,
+            lifecycle,
+            step,
+            goalText,
+            subtaskText,
+            progressText,
+            preplanLine,
+            planningLine,
+        )
         val accessibleName = "Skill Bill status: $lifecycle"
         val accessibleDescription = buildAccessibilityDescription(
             lifecycle = lifecycle,
@@ -57,6 +69,8 @@ object SkillBillStatusBarPresentation {
             progressText = progressText,
             detail = anchored.detail,
             elapsedNoun = elapsedNoun(anchored),
+            preplanLine = preplanLine,
+            planningLine = planningLine,
         )
 
         return MappedPresentation(
@@ -110,18 +124,50 @@ object SkillBillStatusBarPresentation {
     fun elapsedLabel(duration: Duration?): String =
         if (duration == null) UNAVAILABLE_ELAPSED else formatDuration(duration)
 
-    private fun buildActiveBar(
-        stepLabel: String,
+    /**
+     * The rendered numerator is the *current* position, not the completed count: with a
+     * subtask in flight "1/4" reads as "1 of 4 done" and contradicts the running subtask
+     * clock beside it. Only in-flight lifecycles shift; the wire fields are untouched.
+     */
+    private fun renderedPosition(state: SkillBillStatusUiState, completed: Int, total: Int): Int {
+        val inFlight = state is SkillBillStatusUiState.Active ||
+            state is SkillBillStatusUiState.Stale ||
+            state is SkillBillStatusUiState.Paused
+        return if (inFlight && completed < total) completed + 1 else completed
+    }
+
+    /**
+     * The bar has a hard 48-char budget, and prefix + step + planning + two clocks +
+     * progress overflows it, so a plain concatenation loses whichever segment lands last.
+     * Segments are therefore dropped by ascending value until the line fits: the progress
+     * pair is redundant while planning is shown (planning only renders before execution
+     * starts), and the subtask clock is the least informative of the two clocks.
+     */
+    private fun buildRunBar(
+        prefix: String,
+        stepLabel: String?,
+        planningSegment: String?,
         goalText: String,
         subtaskText: String,
         progressText: String?,
-    ): String =
-        buildString {
-            append("Skill Bill · ").append(stepLabel)
-            append(" · ").append(goalText)
-            append(" · ").append(subtaskText)
-            progressText?.let { append(" · ").append(it) }
+    ): String {
+        val progressRank = if (planningSegment == null) 2 else 0
+        val optional = listOf(subtaskText to 1, progressText to progressRank)
+        var dropRank = -1
+        while (true) {
+            val bar = buildString {
+                append(prefix)
+                stepLabel?.let { append(" · ").append(it) }
+                planningSegment?.let { append(" · ").append(it) }
+                if (dropRank < 3) append(" · ").append(goalText)
+                for ((text, rank) in optional) {
+                    if (text != null && rank > dropRank) append(" · ").append(text)
+                }
+            }
+            if (bar.length <= BAR_TEXT_MAX_LENGTH || dropRank >= 3) return bar
+            dropRank++
         }
+    }
 
     private fun buildTooltip(
         state: SkillBillStatusUiState,
@@ -130,12 +176,16 @@ object SkillBillStatusBarPresentation {
         goalText: String,
         subtaskText: String,
         progressText: String?,
+        preplanLine: String?,
+        planningLine: String?,
     ): String =
         buildString {
             append("Skill Bill — ").append(lifecycle)
             state.issueKey?.let { append("\nIssue: ").append(it) }
             state.workflowId?.let { append("\nWorkflow: ").append(it) }
             step?.let { append("\nStep: ").append(it) }
+            preplanLine?.let { append('\n').append(it) }
+            planningLine?.let { append('\n').append(it) }
             val elapsedNoun = elapsedNoun(state)
             append("\nGoal ").append(elapsedNoun).append(": ").append(goalText)
             append("\nSubtask ").append(elapsedNoun).append(": ").append(subtaskText)
@@ -164,10 +214,14 @@ object SkillBillStatusBarPresentation {
         progressText: String?,
         detail: String?,
         elapsedNoun: String,
+        preplanLine: String?,
+        planningLine: String?,
     ): String =
         buildString {
             append("Skill Bill. State: ").append(lifecycle).append('.')
             step?.let { append(" Step: ").append(it).append('.') }
+            preplanLine?.let { append(' ').append(it).append('.') }
+            planningLine?.let { append(' ').append(it).append('.') }
             append(" Goal ").append(elapsedNoun).append(": ").append(goalText).append('.')
             append(" Subtask ").append(elapsedNoun).append(": ").append(subtaskText).append('.')
             progressText?.let { append(" Progress: ").append(it).append('.') }
@@ -185,6 +239,7 @@ object SkillBillStatusBarPresentation {
             is SkillBillStatusUiState.Stale,
             is SkillBillStatusUiState.Blocked,
             is SkillBillStatusUiState.Failed,
+            is SkillBillStatusUiState.Paused,
             -> "ran"
 
             else -> "elapsed"
@@ -194,6 +249,7 @@ object SkillBillStatusBarPresentation {
         when (state) {
             is SkillBillStatusUiState.Idle -> "idle"
             is SkillBillStatusUiState.Active -> "active"
+            is SkillBillStatusUiState.Paused -> "paused"
             is SkillBillStatusUiState.Stale -> "stale"
             is SkillBillStatusUiState.Blocked -> "blocked"
             is SkillBillStatusUiState.Failed -> "failed"

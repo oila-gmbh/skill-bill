@@ -60,6 +60,24 @@ fun SkillBillStatusOutcome.toCacheSnapshotOrNull(): LastKnownDisplayCache? =
                 observedAt = observedAt,
             )
 
+        is SkillBillStatusOutcome.Paused ->
+            LastKnownDisplayCache(
+                display = CachedDisplaySnapshot(
+                    summary = summary,
+                    repositoryIdentity = repositoryIdentity,
+                    issueKey = issueKey,
+                    currentStepId = currentStepId,
+                    currentStepLabel = currentStepLabel,
+                    progressCompleted = progressCompleted,
+                    progressTotal = progressTotal,
+                    startedAt = startedAt,
+                    currentSubtaskId = currentSubtaskId,
+                    subtaskStartedAt = subtaskStartedAt,
+                    updatedAt = updatedAt,
+                ),
+                observedAt = observedAt,
+            )
+
         is SkillBillStatusOutcome.Stale ->
             if (fromCache) {
                 null

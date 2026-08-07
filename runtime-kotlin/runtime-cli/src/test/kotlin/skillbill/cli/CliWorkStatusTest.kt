@@ -1,12 +1,21 @@
 package skillbill.cli
 
+import skillbill.application.model.IdeStatusFreshness
+import skillbill.application.model.IdeStatusLifecycleState
+import skillbill.application.model.IdeStatusPlanning
+import skillbill.application.model.IdeStatusProgress
+import skillbill.application.model.IdeStatusSnapshot
+import skillbill.application.model.IdeStatusStep
+import skillbill.application.model.IdeStatusWorkflowFamily
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliRuntimeContext
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.IdeStatusSchemaValidator
 import skillbill.db.core.DatabaseRuntime
+import skillbill.goalrunner.model.GoalPlanningStatusState
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -89,6 +98,37 @@ class CliWorkStatusTest {
 
     assertEquals(0, result.exitCode, result.stdout)
     assertTrue(before.contentEquals(Files.readAllBytes(dbPath)))
+  }
+
+  /**
+   * SKILL-165 Subtask 1: the CLI work-status fixture harness has no goal work item, so the
+   * end-to-end obligation is met at the emit-shape seam — the same `toStatusWireMap()` the CLI
+   * prints, validated by the same canonical schema validator the CLI runs.
+   */
+  @Test
+  fun `mid-planning goal emit shape validates against the canonical schema`() {
+    val snapshot = IdeStatusSnapshot(
+      repositoryIdentity = "repo-root-realpath-v1:/repo",
+      issueKey = "SKILL-165",
+      workflowId = "goal-1",
+      workflowFamily = IdeStatusWorkflowFamily.FEATURE_GOAL,
+      lifecycleState = IdeStatusLifecycleState.ACTIVE,
+      currentStep = IdeStatusStep(id = "planning", label = "Planning"),
+      progress = IdeStatusProgress(completed = 0, total = 5),
+      planning = IdeStatusPlanning(
+        state = GoalPlanningStatusState.PARTIALLY_PLANNED,
+        sharedPreplanPrepared = true,
+        plannedSubtaskCount = 2,
+        totalSubtaskCount = 5,
+        currentPlanningSubtaskId = "3",
+        reason = "Planning subtask 3.",
+      ),
+      updatedAt = Instant.parse("2026-08-06T10:00:00Z"),
+      freshness = IdeStatusFreshness.FRESH,
+      summary = "Goal SKILL-165 is planning subtasks (2/5 planned).",
+    )
+
+    IdeStatusSchemaValidator.validate(snapshot.toStatusWireMap(), "cli-goal-planning")
   }
 
   @Test
