@@ -67,6 +67,7 @@ import skillbill.infrastructure.fs.FileSystemDiffResolver
 import skillbill.infrastructure.fs.FileSystemExternalAddonOverlay
 import skillbill.infrastructure.fs.FileSystemFeatureSpecPathResolver
 import skillbill.infrastructure.fs.FileSystemFeatureTaskRuntimeRunInvariantsSource
+import skillbill.infrastructure.fs.FileSystemFeatureTaskRuntimeSharedEvidenceStore
 import skillbill.infrastructure.fs.FileSystemFeatureTaskRuntimeSpecStatusWriter
 import skillbill.infrastructure.fs.FileSystemInstallAgentTargets
 import skillbill.infrastructure.fs.FileSystemInstallApplyExecution
@@ -182,6 +183,7 @@ import skillbill.ports.scaffold.source.ScaffoldSourceLoaderPort
 import skillbill.ports.scaffold.staging.ScaffoldGeneratedStagingPort
 import skillbill.ports.system.UninstallFileSystemGateway
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
+import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSpecStatusWriter
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.telemetry.TelemetryClient
@@ -506,6 +508,12 @@ abstract class RuntimeComponent(
   @Provides
   @JvmSynthetic
   internal fun diffResolverPort(adapter: FileSystemDiffResolver): DiffResolverPort = adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun sharedEvidenceResolverPort(
+    adapter: FileSystemFeatureTaskRuntimeSharedEvidenceStore,
+  ): FeatureTaskRuntimeSharedEvidenceResolverPort = adapter
 
   @Provides
   @JvmSynthetic

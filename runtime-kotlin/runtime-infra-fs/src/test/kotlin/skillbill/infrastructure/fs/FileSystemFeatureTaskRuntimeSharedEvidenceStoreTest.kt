@@ -1,0 +1,108 @@
+package skillbill.infrastructure.fs
+
+import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceFingerprintContradictionError
+import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceRequest
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
+import java.nio.file.Files
+import java.nio.file.Path
+import kotlin.io.path.createTempDirectory
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+
+class FileSystemFeatureTaskRuntimeSharedEvidenceStoreTest {
+  private val repoRoot: Path = createTempDirectory("shared-evidence-store")
+  private val store = FileSystemFeatureTaskRuntimeSharedEvidenceStore()
+
+  @Test
+  fun `persists under the workflow id and fingerprint address beneath the repo-local store`() {
+    store.resolve(request("fp-1"), CountingDeriver())
+
+    val expected = repoRoot.resolve(".skill-bill").resolve("run-evidence").resolve("wf-1").resolve("fp-1")
+    assertTrue(Files.isDirectory(expected))
+    val envelope = FileSystemFeatureTaskRuntimeSharedEvidenceStore.ENVELOPE_FILE_NAME
+    val payload = FileSystemFeatureTaskRuntimeSharedEvidenceStore.PAYLOAD_FILE_NAME
+    assertTrue(Files.isRegularFile(expected.resolve(envelope)))
+    assertTrue(Files.isRegularFile(expected.resolve(payload)))
+  }
+
+  @Test
+  fun `store root resolves beneath the repo root and never beneath the user home`() {
+    val resolved = artifactDir(request("fp-1"))
+
+    assertTrue(resolved.startsWith(repoRoot.toAbsolutePath().normalize().resolve(".skill-bill")))
+    assertFalse(resolved.startsWith(Path.of(System.getProperty("user.home")).toAbsolutePath().normalize()))
+  }
+
+  @Test
+  fun `a new adapter instance reuses the persisted artifact without re-deriving`() {
+    store.resolve(request("fp-durable"), CountingDeriver())
+
+    val artifact = FileSystemFeatureTaskRuntimeSharedEvidenceStore().resolve(request("fp-durable"), ThrowingDeriver)
+
+    assertEquals("fp-durable", artifact.fingerprint)
+    assertEquals("main", artifact.baseRef)
+    assertEquals("src/A.kt", artifact.files.single().path)
+  }
+
+  @Test
+  fun `an interrupted write leaves no artifact a later resolve would serve`() {
+    assertFailsWith<IllegalStateException> { store.resolve(request("fp-interrupted"), ThrowingDeriver) }
+
+    val address = artifactDir(request("fp-interrupted"))
+    assertFalse(Files.exists(address))
+    val deriver = CountingDeriver()
+    assertEquals("fp-interrupted", store.resolve(request("fp-interrupted"), deriver).fingerprint)
+    assertEquals(1, deriver.invocations)
+  }
+
+  @Test
+  fun `a leftover staging directory is never served as an artifact`() {
+    val address = artifactDir(request("fp-staged"))
+    Files.createDirectories(address.parent)
+    val staging = Files.createTempDirectory(address.parent, "${address.fileName}.staging.")
+    Files.writeString(
+      staging.resolve(FileSystemFeatureTaskRuntimeSharedEvidenceStore.ENVELOPE_FILE_NAME),
+      "{\"fingerprint\":\"fp-staged\"}",
+    )
+    val deriver = CountingDeriver()
+
+    store.resolve(request("fp-staged"), deriver)
+
+    assertEquals(1, deriver.invocations)
+  }
+
+  @Test
+  fun `a contradictory recorded fingerprint loud-fails naming both fingerprints`() {
+    store.resolve(request("fp-addressed"), CountingDeriver())
+    val envelope = artifactDir(request("fp-addressed"))
+      .resolve(FileSystemFeatureTaskRuntimeSharedEvidenceStore.ENVELOPE_FILE_NAME)
+    Files.writeString(envelope, Files.readString(envelope).replace("\"fp-addressed\"", "\"fp-recorded\""))
+
+    val error = assertFailsWith<FeatureTaskRuntimeSharedEvidenceFingerprintContradictionError> {
+      store.resolve(request("fp-addressed"), ThrowingDeriver)
+    }
+
+    assertTrue(error.message!!.contains("fp-addressed"), error.message)
+    assertTrue(error.message!!.contains("fp-recorded"), error.message)
+  }
+
+  @Test
+  fun `persisting mutates no gitignore in the repo root`() {
+    val gitignore = repoRoot.resolve(".gitignore")
+    Files.writeString(gitignore, "/.skill-bill/\n")
+    val before = Files.readAllBytes(gitignore)
+
+    store.resolve(request("fp-gitignore"), CountingDeriver())
+
+    assertTrue(before.contentEquals(Files.readAllBytes(gitignore)))
+  }
+
+  private fun request(fingerprint: String) = FeatureTaskRuntimeSharedEvidenceRequest(
+    repoRoot = repoRoot,
+    workflowId = "wf-1",
+    checkpoint = FeatureTaskRuntimeRepositoryCheckpoint(fingerprint),
+  )
+}
