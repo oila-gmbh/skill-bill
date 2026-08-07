@@ -1,3 +1,14 @@
+## [2026-08-07] SKILL-167 plugin release workflow and docs (subtask 3)
+Areas: .github/workflows/plugin-release.yml, intellij-plugin/README.md, RELEASING.md
+- Plugin ships on its own `plugin-v*.*.*` tag stream via a dedicated `plugin-release.yml`; `release.yml` and the other runtime workflows stay byte-identical and gain no plugin references. A runtime tag never builds the plugin and vice versa. reusable
+- Version flows only through `-Pversion=<derived-from-tag>`; `gradle.properties` keeps `0.1.0-SNAPSHOT` and no file is rewritten during release. Tag remainder must be plain semver or the job fails closed. reusable
+- Release job is hosted-only (`ubuntu-latest`, `intellij-plugin/gradlew`, Temurin 21) and runs `check verifyPlugin buildPlugin` with `failureLevel` unchanged — self-hosted runner is off-limits for plugin work. reusable
+- Asset staging is fail-closed and verified: exactly one `skill-bill-intellij-plugin-<version>.zip` plus a `sha256sum -c`-verifiable `.sha256` sidecar in `release.yml`'s format; the asset check precedes release creation, so a bad build never publishes a partial release. reusable
+- Docs pattern for future streams: RELEASING.md documents tag format + never-cross-streams; plugin README points at the released zip first and build-from-source only as fallback.
+- Limitation: no JetBrains Marketplace publishing, no signing, no plugin-side changelog automation.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-08-07] SKILL-165 planning progress rendering (subtask 2)
 Areas: intellij-plugin/{domain,infrastructure/cli,presentation}
 - `IdeStatusJsonMapper` parses the optional planning block from `work status --format json`; absent or malformed planning degrades to no planning state rather than failing the whole status parse. reusable
