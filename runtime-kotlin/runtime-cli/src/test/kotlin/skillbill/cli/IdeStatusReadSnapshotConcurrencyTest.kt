@@ -1,6 +1,5 @@
 package skillbill.cli
 
-import skillbill.application.goalrunner.goalRepositoryIdentity
 import skillbill.application.model.IdeStatusProblemCode
 import skillbill.application.model.IdeStatusRequest
 import skillbill.application.model.IdeStatusResult
@@ -84,7 +83,7 @@ class IdeStatusReadSnapshotConcurrencyTest {
     Files.writeString(repoRoot.resolve(".git").resolve("HEAD"), "ref: refs/heads/feat/$ISSUE_KEY-snapshot\n")
     val dbPath = home.resolve("metrics.db")
     val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = home))
-    val identity = goalRepositoryIdentity(repoRoot.toRealPath())
+    val identity = "$REPOSITORY_IDENTITY_PREFIX${repoRoot.toRealPath()}"
     seed(dbPath, database, identity)
     return SnapshotFixture(home, repoRoot, dbPath, database, observedAt)
   }
@@ -136,7 +135,7 @@ class IdeStatusReadSnapshotConcurrencyTest {
   private fun foreignChildIdentity(): FeatureTaskExecutionIdentity = FeatureTaskExecutionIdentity(
     workflowId = FOREIGN_CHILD_WORKFLOW_ID,
     normalizedIssueKey = ISSUE_KEY,
-    repositoryIdentity = "repo-root-realpath-v1:/other-repo",
+    repositoryIdentity = "${REPOSITORY_IDENTITY_PREFIX}/other-repo",
     governedSpecPath = "spec.md",
     mode = FeatureTaskWorkflowMode.RUNTIME,
     routeScope = FeatureTaskRouteScope.GOAL_CHILD,
@@ -146,6 +145,9 @@ class IdeStatusReadSnapshotConcurrencyTest {
     const val ISSUE_KEY = "SKILL-999"
     const val GOAL_WORKFLOW_ID = "goal-snapshot"
     const val FOREIGN_CHILD_WORKFLOW_ID = "wfl-foreign-child"
+
+    // Mirrors goalRepositoryIdentity, which is internal to runtime-application.
+    const val REPOSITORY_IDENTITY_PREFIX = "repo-root-realpath-v1:"
 
     // Candidate collection issues more statements than this; covering the first N interleave points
     // asserts the mechanism rather than the one torn pair that produced the observed report.
@@ -244,10 +246,8 @@ private class CountingWorkflowStates(
   override fun getFeatureTaskExecutionIdentity(workflowId: String): FeatureTaskExecutionIdentity? =
     delegate.getFeatureTaskExecutionIdentity(workflowId).also { trigger() }
 
-  override fun findGoalChildFeatureTaskCandidates(
-    normalizedIssueKey: String,
-    repositoryIdentity: String,
-  ) = delegate.findGoalChildFeatureTaskCandidates(normalizedIssueKey, repositoryIdentity).also { trigger() }
+  override fun findGoalChildFeatureTaskCandidates(normalizedIssueKey: String, repositoryIdentity: String) =
+    delegate.findGoalChildFeatureTaskCandidates(normalizedIssueKey, repositoryIdentity).also { trigger() }
 
   override fun countGoalChildIdentities(normalizedIssueKey: String): Int =
     delegate.countGoalChildIdentities(normalizedIssueKey).also { trigger() }

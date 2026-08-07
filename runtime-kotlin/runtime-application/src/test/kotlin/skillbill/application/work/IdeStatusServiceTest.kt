@@ -73,6 +73,7 @@ import kotlin.test.assertNull
  * SKILL-148 Subtask 1: application-layer coverage for read-only IDE status selection,
  * repository isolation, and typed problem outcomes.
  */
+@Suppress("LargeClass") // cohesive service suite spanning selection, isolation, and typed problem outcomes
 class IdeStatusServiceTest {
   private val observedAt: Instant = Instant.parse("2026-08-06T12:00:00Z")
   private val clock: Clock = Clock.fixed(observedAt, ZoneOffset.UTC)

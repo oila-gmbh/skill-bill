@@ -34,19 +34,6 @@ internal inline fun <T> Connection.inImmediateTransaction(block: Connection.() -
   }
 }
 
-@Suppress("TooGenericExceptionCaught")
-internal inline fun <T> Connection.inReadTransaction(block: Connection.() -> T): T {
-  createStatement().use { it.execute("BEGIN") }
-  return try {
-    val result = block()
-    createStatement().use { it.execute("COMMIT") }
-    result
-  } catch (error: Throwable) {
-    rollbackImmediateTransaction()
-    throw error
-  }
-}
-
 private fun Connection.rollbackImmediateTransaction() {
   runCatching { createStatement().use { it.execute("ROLLBACK") } }
 }
