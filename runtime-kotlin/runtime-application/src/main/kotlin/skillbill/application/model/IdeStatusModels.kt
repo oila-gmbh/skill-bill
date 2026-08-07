@@ -2,6 +2,7 @@ package skillbill.application.model
 
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.workflow.IDE_STATUS_CONTRACT_VERSION
+import skillbill.goalrunner.model.GoalPlanningStatusState
 import skillbill.ports.persistence.model.FeatureTaskRouteScope
 import java.nio.file.Path
 import java.time.Instant
@@ -70,6 +71,22 @@ data class IdeStatusCurrentSubtask(
   val startedAt: Instant? = null,
 )
 
+/** Goal planning progress mirrored from [skillbill.goalrunner.model.GoalPlanningStatusSnapshot]. */
+data class IdeStatusPlanning(
+  val state: GoalPlanningStatusState,
+  val sharedPreplanPrepared: Boolean,
+  val plannedSubtaskCount: Int,
+  val totalSubtaskCount: Int,
+  /** Wire-shaped subtask id; the goal projection carries it as an Int. */
+  val currentPlanningSubtaskId: String? = null,
+  val reason: String? = null,
+) {
+  init {
+    require(plannedSubtaskCount >= 0) { "plannedSubtaskCount must be non-negative." }
+    require(totalSubtaskCount >= 0) { "totalSubtaskCount must be non-negative." }
+  }
+}
+
 data class IdeStatusProblem(
   val code: IdeStatusProblemCode,
   val message: String,
@@ -120,6 +137,8 @@ data class IdeStatusSnapshot(
   val progress: IdeStatusProgress? = null,
   val startedAt: Instant? = null,
   val currentSubtask: IdeStatusCurrentSubtask? = null,
+  // Null default: only projectGoal populates planning, so every other family stays wire-identical.
+  val planning: IdeStatusPlanning? = null,
   val problem: IdeStatusProblem? = null,
   val contractVersion: String = IDE_STATUS_CONTRACT_VERSION,
 ) {
@@ -162,6 +181,20 @@ data class IdeStatusSnapshot(
         buildMap {
           put("id", subtask.id)
           subtask.startedAt?.let { put("started_at", it.toString()) }
+        },
+      )
+    }
+    planning?.let { planning ->
+      put(
+        "planning",
+        buildMap {
+          put("state", planning.state.wireValue)
+          put("shared_preplan_prepared", planning.sharedPreplanPrepared)
+          put("planned_subtask_count", planning.plannedSubtaskCount)
+          put("total_subtask_count", planning.totalSubtaskCount)
+          planning.currentPlanningSubtaskId?.takeIf(String::isNotBlank)
+            ?.let { put("current_planning_subtask_id", it) }
+          planning.reason?.takeIf(String::isNotBlank)?.let { put("reason", it) }
         },
       )
     }

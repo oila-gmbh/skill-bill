@@ -13,6 +13,8 @@ import skillbill.application.model.IdeStatusLifecycleState
 import skillbill.application.model.IdeStatusProblemCode
 import skillbill.application.model.IdeStatusRequest
 import skillbill.application.model.IdeStatusWorkflowFamily
+import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
+import skillbill.goalrunner.model.GoalPlanningStatusState
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
@@ -62,6 +64,7 @@ import java.time.Instant
 import java.time.ZoneOffset
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 
 /**
@@ -399,6 +402,150 @@ class IdeStatusServiceTest {
     )
   }
 
+  @Test
+  fun `goal mid-planning projects the planning step label and a planning-progress summary`() {
+    val fixture = gitRepoFixture("ide-status-goal-planning")
+    val identity = goalRepositoryIdentity(fixture)
+    val service = service(
+      goalOnlyDatabase(),
+      manifestStore = StubGoalManifestStore(
+        goalManifestState(fixture, identity, childWorkflowId = "w-child"),
+        planning = planningSnapshot(GoalPlanningStatusState.PARTIALLY_PLANNED),
+      ),
+    )
+
+    val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = observedAt))
+
+    // The manifest carries lastResumableStep=implement, so this also proves the planning
+    // override is ordered ahead of the projection currentStep preference.
+    assertEquals("planning", result.snapshot.currentStep.id)
+    assertEquals("Planning", result.snapshot.currentStep.label)
+    assertEquals("Goal SKILL-148 is planning subtasks (1/2 planned).", result.snapshot.summary)
+    assertEquals(GoalPlanningStatusState.PARTIALLY_PLANNED, result.snapshot.planning?.state)
+    assertEquals("2", result.snapshot.planning?.currentPlanningSubtaskId)
+  }
+
+  @Test
+  fun `goal with prepared planning keeps todays step and summary`() {
+    val fixture = gitRepoFixture("ide-status-goal-planning-prepared")
+    val identity = goalRepositoryIdentity(fixture)
+    val service = service(
+      goalOnlyDatabase(),
+      manifestStore = StubGoalManifestStore(
+        goalManifestState(fixture, identity, childWorkflowId = "w-child"),
+        planning = planningSnapshot(GoalPlanningStatusState.PREPARED),
+      ),
+    )
+
+    val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = observedAt))
+
+    assertEquals("implement", result.snapshot.currentStep.id)
+    assertEquals("implement", result.snapshot.currentStep.label)
+    assertEquals("Goal SKILL-148 is active on implement.", result.snapshot.summary)
+    assertEquals(GoalPlanningStatusState.PREPARED, result.snapshot.planning?.state)
+  }
+
+  @Test
+  fun `goal with a null planning projection keeps todays step and summary and emits no planning`() {
+    val fixture = gitRepoFixture("ide-status-goal-planning-absent")
+    val identity = goalRepositoryIdentity(fixture)
+    val service = service(
+      goalOnlyDatabase(),
+      manifestStore = StubGoalManifestStore(
+        goalManifestState(fixture, identity, childWorkflowId = "w-child"),
+        planning = null,
+      ),
+    )
+
+    val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = observedAt))
+
+    assertEquals("implement", result.snapshot.currentStep.id)
+    assertEquals("implement", result.snapshot.currentStep.label)
+    assertEquals("Goal SKILL-148 is active on implement.", result.snapshot.summary)
+    assertNull(result.snapshot.planning)
+    assertFalse(result.snapshot.toStatusWireMap().containsKey("planning"))
+  }
+
+  @Test
+  fun `non-goal families never carry planning`() {
+    val fixture = gitRepoFixture("ide-status-planning-non-goal")
+    val identity = goalRepositoryIdentity(fixture)
+    val workflows = IdeStatusWorkflowStates()
+    workflows.saveFeatureImplementWorkflow(proseRecord("w-active", "2026-08-06T10:00:00Z"))
+    workflows.saveFeatureTaskExecutionIdentity(identityFor("w-active", identity))
+    val database = TrackingDatabase(
+      work = listOf(workItem("w-active", WorkItemKind.FEATURE_TASK_PROSE, "running", "2026-08-06T10:00:00Z")),
+      workflows = workflows,
+    )
+
+    val result = service(database).status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = observedAt))
+
+    assertEquals(IdeStatusWorkflowFamily.FEATURE_TASK_PROSE, result.snapshot.workflowFamily)
+    assertNull(result.snapshot.planning)
+    assertFalse(result.snapshot.toStatusWireMap().containsKey("planning"))
+  }
+
+  @Test
+  fun `blocked goal candidate stays blocked under paused and pause_requested controls`() {
+    listOf(
+      GoalRunnerControlState(paused = true),
+      GoalRunnerControlState(pauseRequested = true),
+    ).forEachIndexed { index, controlState ->
+      val fixture = gitRepoFixture("ide-status-goal-blocked-pause-$index")
+      val identity = goalRepositoryIdentity(fixture)
+      val service = service(
+        goalOnlyDatabase(goalState = "blocked"),
+        manifestStore = StubGoalManifestStore(
+          goalManifestState(fixture, identity, childWorkflowId = "w-child")
+            .copy(controlState = controlState.copy(repositoryIdentity = identity)),
+        ),
+      )
+
+      val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = observedAt))
+
+      assertEquals(IdeStatusLifecycleState.BLOCKED, result.snapshot.lifecycleState)
+      assertEquals("Goal SKILL-148 is blocked.", result.snapshot.summary)
+    }
+  }
+
+  @Test
+  fun `active goal candidate still projects paused under pause controls`() {
+    listOf(
+      GoalRunnerControlState(paused = true),
+      GoalRunnerControlState(pauseRequested = true),
+    ).forEachIndexed { index, controlState ->
+      val fixture = gitRepoFixture("ide-status-goal-active-pause-$index")
+      val identity = goalRepositoryIdentity(fixture)
+      val service = service(
+        goalOnlyDatabase(),
+        manifestStore = StubGoalManifestStore(
+          goalManifestState(fixture, identity, childWorkflowId = "w-child")
+            .copy(controlState = controlState.copy(repositoryIdentity = identity)),
+        ),
+      )
+
+      val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = observedAt))
+
+      assertEquals(IdeStatusLifecycleState.PAUSED, result.snapshot.lifecycleState)
+      assertEquals("Goal SKILL-148 is paused.", result.snapshot.summary)
+    }
+  }
+
+  private fun goalOnlyDatabase(goalState: String = "running"): TrackingDatabase = TrackingDatabase(
+    work = listOf(workItem("goal-1", WorkItemKind.FEATURE_GOAL, goalState, "2026-08-06T10:00:00Z")),
+    workflows = IdeStatusWorkflowStates(),
+  )
+
+  private fun planningSnapshot(state: GoalPlanningStatusState): GoalPlanningStatusSnapshot =
+    GoalPlanningStatusSnapshot(
+      state = state,
+      sharedPreplanPrepared = true,
+      plannedSubtaskCount = 1,
+      totalSubtaskCount = 2,
+      currentPlanningSubtaskId = 2,
+      reason = null,
+    )
+
   private fun goalManifestState(fixture: Path, identity: String, childWorkflowId: String): GoalRunnerManifestState =
     GoalRunnerManifestState(
       parentWorkflowId = "goal-1",
@@ -674,9 +821,18 @@ private class IdeStatusWorkflowStates : WorkflowStateRepository {
 
 private class StubGoalManifestStore(
   private val state: GoalRunnerManifestState,
+  private val planning: GoalPlanningStatusSnapshot? = null,
 ) : GoalRunnerManifestStore {
   override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? =
     state.takeIf { it.manifest.issueKey.equals(issueKey, ignoreCase = true) }
+
+  override fun planningStatus(
+    parentWorkflowId: String,
+    orderedSubtaskIds: List<Int>,
+    blockedSubtaskId: Int?,
+    blockedReason: String?,
+    dbPathOverride: String?,
+  ): GoalPlanningStatusSnapshot? = planning
 
   override fun save(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState = state
 

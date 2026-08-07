@@ -1,0 +1,89 @@
+package skillbill.application.model
+
+import skillbill.goalrunner.model.GoalPlanningStatusState
+import java.time.Instant
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+
+/**
+ * SKILL-165 Subtask 1: the emitted `planning` block must stay byte-identical to the
+ * snake_case property names in orchestration/contracts/ide-status-schema.yaml.
+ */
+class IdeStatusModelsTest {
+  @Test
+  fun `toStatusWireMap emits planning with snake_case keys matching the schema`() {
+    val wire = snapshot(
+      IdeStatusPlanning(
+        state = GoalPlanningStatusState.PARTIALLY_PLANNED,
+        sharedPreplanPrepared = true,
+        plannedSubtaskCount = 2,
+        totalSubtaskCount = 5,
+        currentPlanningSubtaskId = "3",
+        reason = "Planning subtask 3.",
+      ),
+    ).toStatusWireMap()
+
+    val planning = wire["planning"] as Map<*, *>
+    assertEquals(
+      listOf(
+        "state",
+        "shared_preplan_prepared",
+        "planned_subtask_count",
+        "total_subtask_count",
+        "current_planning_subtask_id",
+        "reason",
+      ),
+      planning.keys.map { it as String },
+    )
+    assertEquals("partially_planned", planning["state"])
+    assertEquals(true, planning["shared_preplan_prepared"])
+    assertEquals(2, planning["planned_subtask_count"])
+    assertEquals(5, planning["total_subtask_count"])
+    assertEquals("3", planning["current_planning_subtask_id"])
+    assertEquals("Planning subtask 3.", planning["reason"])
+  }
+
+  @Test
+  fun `toStatusWireMap omits optional planning sub-keys when they are null`() {
+    val wire = snapshot(
+      IdeStatusPlanning(
+        state = GoalPlanningStatusState.NOT_STARTED,
+        sharedPreplanPrepared = false,
+        plannedSubtaskCount = 0,
+        totalSubtaskCount = 0,
+      ),
+    ).toStatusWireMap()
+
+    val planning = wire["planning"] as Map<*, *>
+    assertEquals(
+      listOf("state", "shared_preplan_prepared", "planned_subtask_count", "total_subtask_count"),
+      planning.keys.map { it as String },
+    )
+    assertFalse(planning.containsKey("current_planning_subtask_id"))
+    assertFalse(planning.containsKey("reason"))
+  }
+
+  @Test
+  fun `toStatusWireMap omits the planning key entirely when planning is null`() {
+    val wire = snapshot(planning = null).toStatusWireMap()
+
+    // A present-but-null entry would fail schema validation differently; assert true absence.
+    assertFalse(wire.containsKey("planning"))
+    assertTrue(wire.containsKey("current_step"))
+  }
+
+  private fun snapshot(planning: IdeStatusPlanning?): IdeStatusSnapshot = IdeStatusSnapshot(
+    repositoryIdentity = "repo-root-realpath-v1:/repo",
+    issueKey = "SKILL-165",
+    workflowId = "goal-1",
+    workflowFamily = IdeStatusWorkflowFamily.FEATURE_GOAL,
+    lifecycleState = IdeStatusLifecycleState.ACTIVE,
+    currentStep = IdeStatusStep(id = "planning", label = "Planning"),
+    planning = planning,
+    updatedAt = Instant.parse("2026-08-06T10:00:00Z"),
+    freshness = IdeStatusFreshness.FRESH,
+    summary = "Goal SKILL-165 is planning subtasks (2/5 planned).",
+  )
+}

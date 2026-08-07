@@ -8,11 +8,14 @@ import skillbill.application.model.GoalRunnerStatusRequest
 import skillbill.application.model.IdeStatusCandidate
 import skillbill.application.model.IdeStatusCurrentSubtask
 import skillbill.application.model.IdeStatusLifecycleState
+import skillbill.application.model.IdeStatusPlanning
 import skillbill.application.model.IdeStatusProgress
 import skillbill.application.model.IdeStatusSnapshot
 import skillbill.application.model.IdeStatusStep
 import skillbill.application.model.IdeStatusWorkflowFamily
 import skillbill.application.workflow.WorkflowFamily
+import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
+import skillbill.goalrunner.model.GoalPlanningStatusState
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.model.WorkItemKind
 import skillbill.workflow.WorkflowEngine
@@ -68,14 +71,19 @@ class IdeStatusProjector(
         repoRoot = context.repoRoot,
       ),
     )
+    val pauseRequestedOnControls = projection?.paused == true || projection?.pauseRequested == true
     val lifecycle = when {
-      projection?.paused == true || projection?.pauseRequested == true -> IdeStatusLifecycleState.PAUSED
+      // Pause controls only override an active candidate; a durable blocked/failed/terminal
+      // state is the stronger signal and must survive a stale pause flag.
+      pauseRequestedOnControls && candidate.lifecycleState == IdeStatusLifecycleState.ACTIVE ->
+        IdeStatusLifecycleState.PAUSED
       else -> candidate.lifecycleState
     }
-    val stepId = projection?.currentStep?.takeIf(String::isNotBlank)
-      ?: if (lifecycle == IdeStatusLifecycleState.TERMINAL) "done" else "goal"
-    val stepLabel = projection?.currentStep?.takeIf(String::isNotBlank)
-      ?: if (lifecycle == IdeStatusLifecycleState.TERMINAL) "Complete" else "Goal"
+    val planning = projection?.planning?.toIdeStatusPlanning()
+    // Ordered ahead of the currentStep preference: a mid-planning goal can already carry a
+    // stale currentStep string, and planning is the more accurate label while it runs.
+    val planningStep = planning?.takeIf { it.state != GoalPlanningStatusState.PREPARED && !lifecycle.isSettled() }
+    val step = goalStep(planningStep, projection?.currentStep, lifecycle)
     val total = (projection?.let { it.completeCount + it.pendingCount + it.blockedCount })
       ?.takeIf { it > 0 }
     val progress = total?.let {
@@ -98,13 +106,15 @@ class IdeStatusProjector(
       workflowId = candidate.workflowId,
       workflowFamily = IdeStatusWorkflowFamily.FEATURE_GOAL,
       lifecycleState = lifecycle,
-      currentStep = IdeStatusStep(id = stepId, label = stepLabel),
+      currentStep = step,
       progress = progress,
       startedAt = candidate.startedAt,
       currentSubtask = currentSubtask,
+      planning = planning,
       updatedAt = candidate.updatedAt,
       freshness = freshness,
-      summary = goalSummary(issueKey, lifecycle, stepLabel, projection?.blockedCount ?: 0),
+      summary = planningStep?.let { goalPlanningSummary(issueKey, it) }
+        ?: goalSummary(issueKey, lifecycle, step.label, projection?.blockedCount ?: 0),
     )
   }
 
@@ -215,6 +225,38 @@ class IdeStatusProjector(
     workflowId = candidate.workflowId,
   )
 }
+
+private fun goalStep(
+  planningStep: IdeStatusPlanning?,
+  projectedStep: String?,
+  lifecycle: IdeStatusLifecycleState,
+): IdeStatusStep {
+  if (planningStep != null) return IdeStatusStep(id = "planning", label = "Planning")
+  val projected = projectedStep?.takeIf(String::isNotBlank)
+  if (projected != null) return IdeStatusStep(id = projected, label = projected)
+  return if (lifecycle == IdeStatusLifecycleState.TERMINAL) {
+    IdeStatusStep(id = "done", label = "Complete")
+  } else {
+    IdeStatusStep(id = "goal", label = "Goal")
+  }
+}
+
+private fun GoalPlanningStatusSnapshot.toIdeStatusPlanning(): IdeStatusPlanning = IdeStatusPlanning(
+  state = state,
+  sharedPreplanPrepared = sharedPreplanPrepared,
+  plannedSubtaskCount = plannedSubtaskCount,
+  totalSubtaskCount = totalSubtaskCount,
+  currentPlanningSubtaskId = currentPlanningSubtaskId?.toString(),
+  reason = reason,
+)
+
+private fun IdeStatusLifecycleState.isSettled(): Boolean = this == IdeStatusLifecycleState.BLOCKED ||
+  this == IdeStatusLifecycleState.FAILED ||
+  this == IdeStatusLifecycleState.TERMINAL
+
+private fun goalPlanningSummary(issueKey: String, planning: IdeStatusPlanning): String =
+  "Goal $issueKey is planning subtasks " +
+    "(${planning.plannedSubtaskCount}/${planning.totalSubtaskCount} planned)."
 
 private fun goalSummary(
   issueKey: String,
