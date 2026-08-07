@@ -18,6 +18,9 @@ class FakePreferenceCache(
 ) : PreferenceCachePort {
     val rejectedWrites = CopyOnWriteArrayList<String>()
 
+    /** Counts every attempted display-cache write, accepted or rejected. */
+    val cacheWriteAttempts = AtomicInteger(0)
+
     override fun getCliExecutableOverride(): String? = cliOverride
 
     override fun setCliExecutableOverride(path: String?) {
@@ -37,6 +40,7 @@ class FakePreferenceCache(
     override fun getLastKnownDisplayCache(): LastKnownDisplayCache? = cache
 
     override fun setLastKnownDisplayCache(cache: LastKnownDisplayCache?) {
+        cacheWriteAttempts.incrementAndGet()
         if (cache != null && looksForbidden(cache.display.summary)) {
             rejectedWrites += cache.display.summary
             return

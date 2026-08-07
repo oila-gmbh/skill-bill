@@ -1,7 +1,9 @@
 package dev.skillbill.intellij.application
 
 import dev.skillbill.intellij.composition.SkillBillStatusCompositionRoot
+import dev.skillbill.intellij.domain.NO_MATCHING_WORK_REASON_CODE
 import dev.skillbill.intellij.domain.SkillBillStatusOutcome
+import dev.skillbill.intellij.domain.StatusDiagnostic
 import dev.skillbill.intellij.domain.UnavailableReason
 import dev.skillbill.intellij.fakes.FakePreferenceCache
 import dev.skillbill.intellij.fakes.FakeStatusRepository
@@ -137,6 +139,180 @@ class StatusRefreshCoordinatorTest {
         rootB.viewModel.onWidgetActivated()
         rootB.dispose()
     }
+
+    @Test
+    fun `a single unconfirmed idle holds the previously emitted live outcome`() = runBlocking {
+        val prefs = FakePreferenceCache(refreshIntervalSeconds = 60)
+        val repo = scripted(active(), noMatchingWork())
+        val coordinator = StatusRefreshCoordinator(repo, prefs, scope, Path.of("/tmp/hold"))
+        pollTimes(coordinator, repo, 2)
+        assertEquals(active(), coordinator.outcomes.value)
+        coordinator.dispose()
+    }
+
+    @Test
+    fun `two consecutive unconfirmed idles settle to idle`() = runBlocking {
+        val prefs = FakePreferenceCache(refreshIntervalSeconds = 60)
+        val repo = scripted(active(), noMatchingWork(), noMatchingWork())
+        val coordinator = StatusRefreshCoordinator(repo, prefs, scope, Path.of("/tmp/settle"))
+        pollTimes(coordinator, repo, 3)
+        assertEquals(noMatchingWork(), coordinator.outcomes.value)
+        coordinator.dispose()
+    }
+
+    @Test
+    fun `an unconfirmed idle with no prior outcome emits idle immediately`() = runBlocking {
+        val prefs = FakePreferenceCache(refreshIntervalSeconds = 60)
+        val repo = scripted(noMatchingWork())
+        val coordinator = StatusRefreshCoordinator(repo, prefs, scope, Path.of("/tmp/first"))
+        pollTimes(coordinator, repo, 1)
+        assertEquals(noMatchingWork(), coordinator.outcomes.value)
+        coordinator.dispose()
+    }
+
+    @Test
+    fun `a non-live prior outcome never holds`() = runBlocking {
+        val priors = listOf(
+            idle(),
+            SkillBillStatusOutcome.Unavailable(
+                observedAt = Instant.parse("2026-08-06T10:00:00Z"),
+                summary = "cli missing",
+                reasonCode = UnavailableReason.MISSING_EXECUTABLE,
+            ),
+            SkillBillStatusOutcome.Incompatible(
+                observedAt = Instant.parse("2026-08-06T10:00:00Z"),
+                summary = "incompatible",
+                foundContractVersion = "0.0",
+            ),
+        )
+        for (prior in priors) {
+            val prefs = FakePreferenceCache(refreshIntervalSeconds = 60)
+            val repo = scripted(prior, noMatchingWork())
+            val coordinator = StatusRefreshCoordinator(repo, prefs, scope, Path.of("/tmp/non-live"))
+            pollTimes(coordinator, repo, 2)
+            assertEquals("prior $prior must not hold", noMatchingWork(), coordinator.outcomes.value)
+            coordinator.dispose()
+        }
+    }
+
+    @Test
+    fun `a good sample between two unconfirmed idles resets the counter`() = runBlocking {
+        val prefs = FakePreferenceCache(refreshIntervalSeconds = 60)
+        val repo = scripted(active(), noMatchingWork(), active(), noMatchingWork())
+        val coordinator = StatusRefreshCoordinator(repo, prefs, scope, Path.of("/tmp/reset"))
+        pollTimes(coordinator, repo, 4)
+        assertEquals(active(), coordinator.outcomes.value)
+        coordinator.dispose()
+    }
+
+    @Test
+    fun `a paused goal counts as live and is held`() = runBlocking {
+        val prefs = FakePreferenceCache(refreshIntervalSeconds = 60)
+        val repo = scripted(paused(), noMatchingWork())
+        val coordinator = StatusRefreshCoordinator(repo, prefs, scope, Path.of("/tmp/paused"))
+        pollTimes(coordinator, repo, 2)
+        assertEquals(paused(), coordinator.outcomes.value)
+        coordinator.dispose()
+    }
+
+    @Test
+    fun `the unavailable cache fallback still works after a held poll`() = runBlocking {
+        val prefs = FakePreferenceCache(refreshIntervalSeconds = 60)
+        val repo = scripted(
+            active(),
+            noMatchingWork(),
+            SkillBillStatusOutcome.Unavailable(
+                observedAt = Instant.parse("2026-08-06T11:00:00Z"),
+                summary = "cli missing",
+                reasonCode = UnavailableReason.MISSING_EXECUTABLE,
+            ),
+        )
+        val coordinator = StatusRefreshCoordinator(repo, prefs, scope, Path.of("/tmp/fallback"))
+        pollTimes(coordinator, repo, 3)
+        val outcome = coordinator.outcomes.value
+        assertTrue(outcome is SkillBillStatusOutcome.Stale)
+        assertTrue((outcome as SkillBillStatusOutcome.Stale).fromCache)
+        assertEquals(active().summary, outcome.summary)
+        coordinator.dispose()
+    }
+
+    @Test
+    fun `a held poll neither writes nor advances the persisted cache`() = runBlocking {
+        val prefs = FakePreferenceCache(refreshIntervalSeconds = 60)
+        val repo = scripted(active(), noMatchingWork())
+        val coordinator = StatusRefreshCoordinator(repo, prefs, scope, Path.of("/tmp/cache"))
+        pollTimes(coordinator, repo, 1)
+        val writesAfterLive = prefs.cacheWriteAttempts.get()
+        val cacheAfterLive = prefs.getLastKnownDisplayCache()
+        pollTimes(coordinator, repo, 1)
+        assertEquals(writesAfterLive, prefs.cacheWriteAttempts.get())
+        assertEquals(cacheAfterLive, prefs.getLastKnownDisplayCache())
+        // The held emission is the prior live outcome, never a cache-derived stale one.
+        assertEquals(active(), coordinator.outcomes.value)
+        coordinator.dispose()
+    }
+
+    private suspend fun pollTimes(
+        coordinator: StatusRefreshCoordinator,
+        repo: FakeStatusRepository,
+        times: Int,
+    ) {
+        repeat(times) {
+            val target = repo.callCount.get() + 1
+            coordinator.requestRefresh()
+            awaitCallCount(repo, target)
+            delay(50)
+        }
+    }
+
+    private fun scripted(vararg outcomes: SkillBillStatusOutcome): FakeStatusRepository {
+        val index = java.util.concurrent.atomic.AtomicInteger(0)
+        return FakeStatusRepository { outcomes[minOf(index.getAndIncrement(), outcomes.size - 1)] }
+    }
+
+    private fun noMatchingWork() =
+        SkillBillStatusOutcome.Idle(
+            observedAt = Instant.parse("2026-08-06T10:00:00Z"),
+            summary = "No matching Skill Bill work for this repository.",
+            repositoryIdentity = "repo",
+            diagnostic = StatusDiagnostic(reasonCode = NO_MATCHING_WORK_REASON_CODE),
+        )
+
+    private fun active() =
+        SkillBillStatusOutcome.Active(
+            observedAt = Instant.parse("2026-08-06T10:00:00Z"),
+            summary = "implementing",
+            repositoryIdentity = "repo",
+            issueKey = "SKILL-168",
+            workflowId = "wf",
+            workflowFamily = "feature-task",
+            currentStepId = "implement",
+            currentStepLabel = "Implement",
+            progressCompleted = 1,
+            progressTotal = 4,
+            startedAt = Instant.parse("2026-08-06T09:00:00Z"),
+            currentSubtaskId = "subtask-1",
+            subtaskStartedAt = Instant.parse("2026-08-06T09:30:00Z"),
+            updatedAt = Instant.parse("2026-08-06T10:00:00Z"),
+        )
+
+    private fun paused() =
+        SkillBillStatusOutcome.Paused(
+            observedAt = Instant.parse("2026-08-06T10:00:00Z"),
+            summary = "paused",
+            repositoryIdentity = "repo",
+            issueKey = "SKILL-168",
+            workflowId = "wf",
+            workflowFamily = "feature-task",
+            currentStepId = "implement",
+            currentStepLabel = "Implement",
+            progressCompleted = 1,
+            progressTotal = 4,
+            startedAt = Instant.parse("2026-08-06T09:00:00Z"),
+            currentSubtaskId = "subtask-1",
+            subtaskStartedAt = Instant.parse("2026-08-06T09:30:00Z"),
+            updatedAt = Instant.parse("2026-08-06T10:00:00Z"),
+        )
 
     private fun idle(summary: String = "idle") =
         SkillBillStatusOutcome.Idle(

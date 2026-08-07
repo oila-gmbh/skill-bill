@@ -6,6 +6,7 @@ import com.google.gson.JsonParser
 import com.google.gson.JsonSyntaxException
 import dev.skillbill.intellij.domain.GoalPlanningInfo
 import dev.skillbill.intellij.domain.IDE_STATUS_CONTRACT_VERSION
+import dev.skillbill.intellij.domain.NO_MATCHING_WORK_REASON_CODE
 import dev.skillbill.intellij.domain.SkillBillStatusOutcome
 import dev.skillbill.intellij.domain.StatusDiagnostic
 import dev.skillbill.intellij.domain.UnavailableReason
@@ -97,11 +98,12 @@ object IdeStatusJsonMapper {
 
         // "No work here" is a healthy idle repository, not a broken status source.
         // Every other problem code is a genuine failure to obtain status.
-        if (problemCode == "no_matching_work") {
+        if (problemCode == NO_MATCHING_WORK_REASON_CODE) {
             return SkillBillStatusOutcome.Idle(
                 observedAt = observedAt,
                 summary = safeSummary(problem?.getAsString("message"), summary),
                 repositoryIdentity = repositoryIdentity,
+                diagnostic = StatusDiagnostic(reasonCode = NO_MATCHING_WORK_REASON_CODE),
             )
         }
 

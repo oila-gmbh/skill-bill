@@ -1,7 +1,9 @@
 package dev.skillbill.intellij.presentation
 
 import dev.skillbill.intellij.domain.GoalPlanningInfo
+import dev.skillbill.intellij.domain.NO_MATCHING_WORK_REASON_CODE
 import dev.skillbill.intellij.domain.SkillBillStatusOutcome
+import dev.skillbill.intellij.domain.StatusDiagnostic
 import dev.skillbill.intellij.domain.UnavailableReason
 import java.time.Duration
 import java.time.Instant
@@ -86,6 +88,13 @@ class StatusUiMapperTest {
             ),
             mapped,
         )
+    }
+
+    @Test
+    fun `an idle carrying the unconfirmed marker renders exactly like a plain idle`() {
+        val plain = SkillBillStatusOutcome.Idle(now, "idle", repositoryIdentity = "repo")
+        val marked = plain.copy(diagnostic = StatusDiagnostic(reasonCode = NO_MATCHING_WORK_REASON_CODE))
+        assertEquals(StatusUiMapper.map(plain, now), StatusUiMapper.map(marked, now))
     }
 
     @Test

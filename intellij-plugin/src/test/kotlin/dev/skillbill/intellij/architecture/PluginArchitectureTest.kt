@@ -1,5 +1,6 @@
 package dev.skillbill.intellij.architecture
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -86,6 +87,19 @@ class PluginArchitectureTest {
                 ?.let { "$file contains $it" }
         }
         assertTrue("forbidden runtime/JDBC imports: $violations", violations.isEmpty())
+    }
+
+    @Test
+    fun `plugin declares only the platform dependency`() {
+        val descriptor = listOf(
+            Path.of("src/main/resources/META-INF/plugin.xml"),
+            Path.of("intellij-plugin/src/main/resources/META-INF/plugin.xml"),
+        ).firstOrNull { it.isRegularFile() } ?: error("Cannot locate plugin.xml")
+        val depends = Regex("<depends[^>]*>([^<]*)</depends>")
+            .findAll(descriptor.readText())
+            .map { it.groupValues[1].trim() }
+            .toList()
+        assertEquals(listOf("com.intellij.modules.platform"), depends)
     }
 
     private fun scanPackage(relative: String, check: (String, Path) -> String?): List<String> {

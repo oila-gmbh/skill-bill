@@ -1,6 +1,7 @@
 package dev.skillbill.intellij.infrastructure.cli
 
 import dev.skillbill.intellij.domain.IDE_STATUS_CONTRACT_VERSION
+import dev.skillbill.intellij.domain.NO_MATCHING_WORK_REASON_CODE
 import dev.skillbill.intellij.domain.SkillBillStatusOutcome
 import dev.skillbill.intellij.domain.UnavailableReason
 import java.io.ByteArrayInputStream
@@ -204,6 +205,42 @@ class IdeStatusJsonMapperTest {
         """.trimIndent()
         val outcome = IdeStatusJsonMapper.map(json, now, 0)
         assertTrue(outcome is SkillBillStatusOutcome.Idle)
+        outcome as SkillBillStatusOutcome.Idle
+        assertEquals(NO_MATCHING_WORK_REASON_CODE, outcome.diagnostic?.reasonCode)
+        assertEquals("No matching Skill Bill work for this repository.", outcome.summary)
+        assertEquals("repo", outcome.repositoryIdentity)
+    }
+
+    @Test
+    fun `lifecycle idle maps to idle without the unconfirmed marker`() {
+        val json = """
+            {"contract_version":"$IDE_STATUS_CONTRACT_VERSION","repository_identity":"repo",
+             "lifecycle_state":"idle","freshness":"fresh","summary":"Nothing running."}
+        """.trimIndent()
+        val outcome = IdeStatusJsonMapper.map(json, now, 0)
+        assertTrue(outcome is SkillBillStatusOutcome.Idle)
+        assertNull((outcome as SkillBillStatusOutcome.Idle).diagnostic)
+    }
+
+    @Test
+    fun `lifecycle terminal keeps its outcome and carries no marker`() {
+        val outcome = IdeStatusJsonMapper.map(runtimeFixture(lifecycle = "terminal"), now, 0)
+        assertTrue(outcome is SkillBillStatusOutcome.Done)
+        assertNull((outcome as SkillBillStatusOutcome.Done).diagnostic)
+    }
+
+    @Test
+    fun `an unrelated problem code is unaffected by the marker`() {
+        val json = """
+            {"contract_version":"$IDE_STATUS_CONTRACT_VERSION","repository_identity":"repo",
+             "lifecycle_state":"idle","freshness":"fresh","summary":"No database.",
+             "problem":{"code":"absent_database","message":"No database."}}
+        """.trimIndent()
+        val outcome = IdeStatusJsonMapper.map(json, now, 0)
+        assertTrue(outcome is SkillBillStatusOutcome.Unavailable)
+        outcome as SkillBillStatusOutcome.Unavailable
+        assertEquals(UnavailableReason.ABSENT_DATABASE, outcome.reasonCode)
+        assertEquals("absent_database", outcome.diagnostic?.reasonCode)
     }
 
     @Test

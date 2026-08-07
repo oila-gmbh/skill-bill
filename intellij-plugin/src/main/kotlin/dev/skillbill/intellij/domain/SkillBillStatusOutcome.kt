@@ -150,6 +150,33 @@ sealed class SkillBillStatusOutcome {
 }
 
 /**
+ * True only for an [SkillBillStatusOutcome.Idle] derived from the `no_matching_work`
+ * problem code — an idle reading the runtime has not corroborated with a settled
+ * lifecycle. Lifecycle-derived idles carry no diagnostic and are never uncorroborated.
+ */
+fun SkillBillStatusOutcome.isUncorroboratedIdle(): Boolean =
+    this is SkillBillStatusOutcome.Idle && diagnostic?.reasonCode == NO_MATCHING_WORK_REASON_CODE
+
+/**
+ * A lifecycle the runtime is actively tracking. Distinct from settled or absent
+ * readings because only a live display is worth holding across an unconfirmed idle.
+ */
+fun SkillBillStatusOutcome.isLiveOutcome(): Boolean = when (this) {
+    is SkillBillStatusOutcome.Active,
+    is SkillBillStatusOutcome.Paused,
+    is SkillBillStatusOutcome.Blocked,
+    is SkillBillStatusOutcome.Failed,
+    is SkillBillStatusOutcome.Stale,
+    -> true
+
+    is SkillBillStatusOutcome.Idle,
+    is SkillBillStatusOutcome.Done,
+    is SkillBillStatusOutcome.Unavailable,
+    is SkillBillStatusOutcome.Incompatible,
+    -> false
+}
+
+/**
  * Goal planning progress carried alongside a live goal snapshot. [state] holds the raw
  * wire value; the plugin never restates the runtime's planning-state vocabulary.
  */

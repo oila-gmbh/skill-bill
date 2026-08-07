@@ -6,6 +6,19 @@ package dev.skillbill.intellij.domain
  */
 const val IDE_STATUS_CONTRACT_VERSION: String = "0.1"
 
+/**
+ * Wire problem code for "no work matches this repository". Marked on the derived
+ * [SkillBillStatusOutcome.Idle] so the coordinator can tell it apart from a
+ * lifecycle-derived idle without string-matching a summary.
+ */
+const val NO_MATCHING_WORK_REASON_CODE: String = "no_matching_work"
+
+/**
+ * Consecutive unconfirmed `no_matching_work` samples tolerated before a live display
+ * settles to idle. One held poll absorbs a single-poll gap between runtime records.
+ */
+const val UNCORROBORATED_IDLE_TOLERANCE: Int = 1
+
 /** Default poll interval — seconds-scale, never sub-second. */
 const val DEFAULT_REFRESH_INTERVAL_SECONDS: Long = 15L
 
