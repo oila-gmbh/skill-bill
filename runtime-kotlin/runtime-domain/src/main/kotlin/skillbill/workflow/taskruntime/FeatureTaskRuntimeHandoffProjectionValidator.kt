@@ -214,47 +214,7 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
     inputs: FeatureTaskRuntimeHandoffProjectionInputs,
     declaration: PhaseHandoffProjectionDeclaration,
   ): List<FeatureTaskRuntimeHandoffProjectionField>? {
-    val fields = when (val sourceRef = declaration.sourceRef) {
-      is FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput ->
-        inputs.resolvedUpstream.outputsByPhaseId[sourceRef.producingPhaseId]?.let { output ->
-          planningProjectionFields(inputs, declaration, sourceRef.producingPhaseId, output)
-            ?: phaseProjectionFields(inputs, declaration, output)
-            ?: listOf(
-              FeatureTaskRuntimeHandoffProjectionField(
-                name = PHASE_OUTPUT_RECEIPT_FIELD,
-                value = declaration.inlineAlternative?.let { kind ->
-                  FeatureTaskRuntimeHandoffProjectionValue.CompactReference(
-                    kind = kind,
-                    value = privateEvidenceReference(sourceRef.producingPhaseId, output.iteration),
-                  )
-                } ?: FeatureTaskRuntimeHandoffProjectionValue.Text(output.payload),
-              ),
-            )
-        } ?: durableAuditRepairProjectionFields(inputs, declaration)
-      is FeatureTaskRuntimeHandoffSourceRef.RunInvariantField ->
-        runInvariantFields(inputs.runInvariants, sourceRef.invariantField)
-      FeatureTaskRuntimeHandoffSourceRef.DerivedCeremonyScaling -> listOf(
-        FeatureTaskRuntimeHandoffProjectionField(
-          name = CEREMONY_SCALING_FIELD,
-          value = FeatureTaskRuntimeHandoffProjectionValue.TextList(
-            FeatureTaskRuntimePhaseWorkflowDefinition
-              .ceremonyScaling(inputs.runInvariants.featureSize)
-              .toBriefingLines(),
-          ),
-        ),
-      )
-      FeatureTaskRuntimeHandoffSourceRef.SharedReviewEvidence ->
-        inputs.sharedReviewEvidence?.toProjectionFields()
-      is FeatureTaskRuntimeHandoffSourceRef.AddonContentRef ->
-        inputs.addonContentBySlug[sourceRef.slug]?.let { content ->
-          listOf(
-            FeatureTaskRuntimeHandoffProjectionField(
-              name = ADDON_CONTENT_FIELD,
-              value = FeatureTaskRuntimeHandoffProjectionValue.Text(content),
-            ),
-          )
-        }
-    }
+    val fields = fieldsFor(inputs, declaration)
     if (fields == null && declaration.required) {
       reject(
         inputs,
@@ -264,6 +224,51 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
       )
     }
     return fields
+  }
+
+  private fun fieldsFor(
+    inputs: FeatureTaskRuntimeHandoffProjectionInputs,
+    declaration: PhaseHandoffProjectionDeclaration,
+  ): List<FeatureTaskRuntimeHandoffProjectionField>? = when (val sourceRef = declaration.sourceRef) {
+    is FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput ->
+      inputs.resolvedUpstream.outputsByPhaseId[sourceRef.producingPhaseId]?.let { output ->
+        planningProjectionFields(inputs, declaration, sourceRef.producingPhaseId, output)
+          ?: phaseProjectionFields(inputs, declaration, output)
+          ?: listOf(
+            FeatureTaskRuntimeHandoffProjectionField(
+              name = PHASE_OUTPUT_RECEIPT_FIELD,
+              value = declaration.inlineAlternative?.let { kind ->
+                FeatureTaskRuntimeHandoffProjectionValue.CompactReference(
+                  kind = kind,
+                  value = privateEvidenceReference(sourceRef.producingPhaseId, output.iteration),
+                )
+              } ?: FeatureTaskRuntimeHandoffProjectionValue.Text(output.payload),
+            ),
+          )
+      } ?: durableAuditRepairProjectionFields(inputs, declaration)
+    is FeatureTaskRuntimeHandoffSourceRef.RunInvariantField ->
+      runInvariantFields(inputs.runInvariants, sourceRef.invariantField)
+    FeatureTaskRuntimeHandoffSourceRef.DerivedCeremonyScaling -> listOf(
+      FeatureTaskRuntimeHandoffProjectionField(
+        name = CEREMONY_SCALING_FIELD,
+        value = FeatureTaskRuntimeHandoffProjectionValue.TextList(
+          FeatureTaskRuntimePhaseWorkflowDefinition
+            .ceremonyScaling(inputs.runInvariants.featureSize)
+            .toBriefingLines(),
+        ),
+      ),
+    )
+    FeatureTaskRuntimeHandoffSourceRef.SharedReviewEvidence ->
+      inputs.sharedReviewEvidence?.toProjectionFields()
+    is FeatureTaskRuntimeHandoffSourceRef.AddonContentRef ->
+      inputs.addonContentBySlug[sourceRef.slug]?.let { content ->
+        listOf(
+          FeatureTaskRuntimeHandoffProjectionField(
+            name = ADDON_CONTENT_FIELD,
+            value = FeatureTaskRuntimeHandoffProjectionValue.Text(content),
+          ),
+        )
+      }
   }
 
   private fun durableAuditRepairProjectionFields(

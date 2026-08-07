@@ -444,17 +444,7 @@ data class PhaseHandoffProjectionDeclaration(
           raw["contract_version"] != FEATURE_TASK_RUNTIME_PHASE_HANDOFF_CONTRACT_VERSION,
       )
       val source = raw["source"] as? Map<*, *> ?: invalid()
-      val sourceRef = when (source["kind"]) {
-        "upstream_phase_output" -> FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(source.string("id"))
-        "run_invariant_field" -> FeatureTaskRuntimeHandoffSourceRef.RunInvariantField(
-          FeatureTaskRuntimeRunInvariantPromptField.fromWire(source.string("id")),
-        )
-        "derived_ceremony_scaling" -> FeatureTaskRuntimeHandoffSourceRef.DerivedCeremonyScaling
-        "addon_content" -> FeatureTaskRuntimeHandoffSourceRef.AddonContentRef(source.string("id"))
-        FeatureTaskRuntimeHandoffSourceRef.SHARED_REVIEW_EVIDENCE_WIRE ->
-          FeatureTaskRuntimeHandoffSourceRef.SharedReviewEvidence
-        else -> invalid()
-      }
+      val sourceRef = sourceRefOf(source)
       val contract = raw["projection_contract"] as? Map<*, *> ?: invalid()
       val budget = raw["budget"] as? Map<*, *> ?: invalid()
       val producer = raw["producer_iteration"] as? Map<*, *> ?: invalid()
@@ -485,6 +475,18 @@ data class PhaseHandoffProjectionDeclaration(
         inlineAlternative = inlineAlternative,
         authorizedReferenceKinds = references,
       )
+    }
+
+    private fun sourceRefOf(source: Map<*, *>): FeatureTaskRuntimeHandoffSourceRef = when (source["kind"]) {
+      "upstream_phase_output" -> FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(source.string("id"))
+      "run_invariant_field" -> FeatureTaskRuntimeHandoffSourceRef.RunInvariantField(
+        FeatureTaskRuntimeRunInvariantPromptField.fromWire(source.string("id")),
+      )
+      "derived_ceremony_scaling" -> FeatureTaskRuntimeHandoffSourceRef.DerivedCeremonyScaling
+      "addon_content" -> FeatureTaskRuntimeHandoffSourceRef.AddonContentRef(source.string("id"))
+      FeatureTaskRuntimeHandoffSourceRef.SHARED_REVIEW_EVIDENCE_WIRE ->
+        FeatureTaskRuntimeHandoffSourceRef.SharedReviewEvidence
+      else -> invalid()
     }
 
     private fun Map<*, *>.string(key: String): String = (this[key] as? String)?.takeIf(String::isNotBlank) ?: invalid()

@@ -22,8 +22,9 @@ import java.nio.file.Path
  * unchanged, and remediation that moved the tree changes the fingerprint and therefore re-derives.
  *
  * Resolution lives in the application layer because it touches git and the filesystem; `runtime-domain`
- * receives only the resolved value. A resolution that cannot be produced returns null so the
- * non-required declaration is omitted and the launch still succeeds.
+ * receives only the resolved value. A resolution that cannot produce a store path returns null so the
+ * non-required declaration is omitted and the launch still succeeds. A fingerprint contradiction from
+ * the port is a broken store invariant and propagates — it must never become a silent null omit.
  */
 internal class FeatureTaskRuntimeSharedReviewEvidenceResolver(
   private val sharedEvidenceResolver: FeatureTaskRuntimeSharedEvidenceResolverPort,
@@ -35,11 +36,9 @@ internal class FeatureTaskRuntimeSharedReviewEvidenceResolver(
     checkpoint: FeatureTaskRuntimeRepositoryCheckpoint?,
   ): FeatureTaskRuntimeSharedReviewEvidenceReference? {
     if (workflowId.isNullOrBlank() || checkpoint == null) return null
-    val resolution = runCatching {
-      sharedEvidenceResolver.resolve(
-        FeatureTaskRuntimeSharedEvidenceRequest(repoRoot, workflowId, checkpoint),
-      ) { requested -> derive(repoRoot, requested) }
-    }.getOrNull() ?: return null
+    val resolution = sharedEvidenceResolver.resolve(
+      FeatureTaskRuntimeSharedEvidenceRequest(repoRoot, workflowId, checkpoint),
+    ) { requested -> derive(repoRoot, requested) }
     val storePath = resolution.storePath?.takeIf(String::isNotBlank) ?: return null
     return FeatureTaskRuntimeSharedReviewEvidenceReference.of(storePath, resolution.artifact)
   }

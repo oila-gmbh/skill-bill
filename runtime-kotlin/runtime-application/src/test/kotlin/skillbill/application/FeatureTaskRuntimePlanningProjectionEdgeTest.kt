@@ -509,6 +509,53 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
   }
 
   @Test
+  fun `omitted shared evidence falls back to self-read rather than naming a missing projection`() {
+    // required=false omit path (AC-010): declaration present, resolver returned null, projection absent.
+    val reviewBriefing = assemble(
+      consumer = phaseReview,
+      declarations = listOf(
+        FeatureTaskRuntimePhaseWorkflowDefinition.sharedReviewEvidenceDeclaration(phaseReview),
+      ),
+      recordedOutputs = emptyList(),
+      runInvariants = runInvariants(),
+      derivedContextKeys = listOf(FeatureTaskRuntimePhaseWorkflowDefinition.DERIVED_CONTEXT_DIFF),
+      sharedReviewEvidence = null,
+    )
+    assertContains(
+      reviewBriefing.briefingText,
+      "- diff: read the branch diff yourself; it is not delivered in this briefing",
+    )
+    assertFalse(
+      reviewBriefing.briefingText.contains("already derived for you"),
+      "omit path must not claim the shared_review_evidence projection was delivered",
+    )
+    assertFalse(
+      reviewBriefing.briefingText.contains("### shared_review_evidence"),
+      "omitted optional projection must not appear in the briefing",
+    )
+
+    val unitBriefing = assemble(
+      consumer = phaseReview,
+      declarations = listOf(
+        FeatureTaskRuntimePhaseWorkflowDefinition.sharedReviewEvidenceDeclaration(phaseReview),
+      ),
+      recordedOutputs = emptyList(),
+      runInvariants = runInvariants(),
+      derivedContextKeys = listOf("current_unit_of_work"),
+      sharedReviewEvidence = null,
+    )
+    assertContains(
+      unitBriefing.briefingText,
+      "- current_unit_of_work: read the current unit of work yourself; " +
+        "the shared evidence projection is not delivered in this briefing",
+    )
+    assertFalse(
+      unitBriefing.briefingText.contains("already derived for you"),
+      "omit path must not claim the shared_review_evidence projection was delivered",
+    )
+  }
+
+  @Test
   fun `pr keeps the self-read branch-diff instruction on its own derived-context key`() {
     val briefing = assemble(
       consumer = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR,

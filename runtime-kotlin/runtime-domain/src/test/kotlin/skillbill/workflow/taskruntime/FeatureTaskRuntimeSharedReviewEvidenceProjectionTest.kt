@@ -66,14 +66,13 @@ class FeatureTaskRuntimeSharedReviewEvidenceProjectionTest {
     assertNull(envelope.projections.firstOrNull { it.projectionName == def.SHARED_REVIEW_EVIDENCE_PROJECTION_NAME })
   }
 
-  private fun evidence(fileCount: Int, hunksPerFile: Int = 1) =
-    FeatureTaskRuntimeSharedReviewEvidenceReference(
-      storePath = ".skill-bill/run-evidence/wftr-1/fp",
-      checkpointFingerprint = "fp",
-      baseRef = "base-sha",
-      headRef = "head-sha",
-      fileHunkIndex = (1..fileCount).map { "modified f$it.kt hunks=$hunksPerFile" },
-    )
+  private fun evidence(fileCount: Int, hunksPerFile: Int = 1) = FeatureTaskRuntimeSharedReviewEvidenceReference(
+    storePath = ".skill-bill/run-evidence/wftr-1/fp",
+    checkpointFingerprint = "fp",
+    baseRef = "base-sha",
+    headRef = "head-sha",
+    fileHunkIndex = (1..fileCount).map { "modified f$it.kt hunks=$hunksPerFile" },
+  )
 
   private fun inputs(evidence: FeatureTaskRuntimeSharedReviewEvidenceReference?) =
     FeatureTaskRuntimeHandoffProjectionInputs(

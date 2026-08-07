@@ -1,3 +1,13 @@
+## [2026-08-07] SKILL-164 subtask 3 — Audit and review projection delivery
+Areas: runtime-application/{evidence,featuretask}, runtime-domain/workflow/taskruntime, runtime-ports/taskruntime, runtime-infra-fs, orchestration/contracts, .feature-specs/SKILL-164
+- `FeatureTaskRuntimeSharedReviewEvidenceReference` is a closed-world projection (store_path, checkpoint_fingerprint, base_ref/head_ref, file/hunk index only) with an explicit field allowlist; no diff bytes cross the handoff boundary, so projection size stays independent of branch diff size. reusable
+- `PHASE_PROJECTION_MATRIX` delivers that reference to both `PHASE_REVIEW` and `PHASE_AUDIT`; audit retains `scoped_repository_state` unchanged — the shared diff is a floor, never audit's whole evidence set. reusable
+- Briefing `diff` / `current_unit_of_work` instructions name the delivered reference when present (and fall back to self-read only on the omit path); `scoped_repository_state` still requires actual repository state over upstream receipt claims.
+- Backward edges (`audit_gap`, `review_fix`) reuse or re-derive via existing `REFRESH_FROM_REPOSITORY` / `MUST_MATCH` checkpoint policies; an absent referenced artifact re-derives instead of failing the run. reusable
+- Pattern: deliver shared checkpoint-keyed evidence as a reference projection, not inlined bytes; keep topology, entry gates, and verdict semantics untouched. Limitation: schema registration, telemetry, and e2e wiring remain subtask 4.
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
 ## [2026-08-07] SKILL-164 subtask 2 — Phase-neutral shared review evidence assembly
 Areas: runtime-application/evidence, runtime-application/review, runtime-ports/taskruntime, runtime-infra-fs, .feature-specs/SKILL-164
 - Commit evidence assembly (`ReviewCommitUnit`/`ReviewChangedHunk`/`ReviewEvidenceTarget`) moved out of `ReviewCommitSequenceResolver` into a phase-neutral `SharedReviewEvidenceAssembly` invoked by the checkpoint-keyed shared deriver; review is now the first consumer, not the owner. reusable

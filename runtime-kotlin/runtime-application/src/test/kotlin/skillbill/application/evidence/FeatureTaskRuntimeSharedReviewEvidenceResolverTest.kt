@@ -2,17 +2,17 @@ package skillbill.application.evidence
 
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceDeriver
+import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceFingerprintContradictionError
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceRequest
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolution
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceDiffPayloadRef
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceFileEntry
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceHunkEntry
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -166,7 +166,8 @@ class FeatureTaskRuntimeSharedReviewEvidenceResolverTest {
 
     val same = FeatureTaskRuntimeSharedReviewEvidenceResolver(store, FakeGit(emptyMap()))
       .resolve(repoRoot, "wf-review-fix", checkpoint("fp-review-1"))
-    assertEquals(first!!.checkpointFingerprint, same!!.checkpointFingerprint)
+    assertNotNull(same)
+    assertEquals(first.checkpointFingerprint, same.checkpointFingerprint)
     assertEquals(1, store.derivations)
 
     val next = FeatureTaskRuntimeSharedReviewEvidenceResolver(
@@ -201,6 +202,25 @@ class FeatureTaskRuntimeSharedReviewEvidenceResolverTest {
     ).resolve(repoRoot, "wf-1", checkpoint("fp"))
 
     assertNull(reference)
+  }
+
+  @Test
+  fun `a fingerprint contradiction from the port loud-fails instead of becoming a silent null omit`() {
+    val contradicted = FeatureTaskRuntimeSharedEvidenceResolverPort { _, _ ->
+      throw FeatureTaskRuntimeSharedEvidenceFingerprintContradictionError(
+        addressedFingerprint = "fp-addressed",
+        recordedFingerprint = "fp-recorded",
+        sourceLabel = "envelope.json",
+      )
+    }
+    val error = assertFailsWith<FeatureTaskRuntimeSharedEvidenceFingerprintContradictionError> {
+      FeatureTaskRuntimeSharedReviewEvidenceResolver(
+        contradicted,
+        FakeGit(emptyMap()),
+      ).resolve(repoRoot, "wf-1", checkpoint("fp-addressed"))
+    }
+    assertEquals("fp-addressed", error.addressedFingerprint)
+    assertEquals("fp-recorded", error.recordedFingerprint)
   }
 
   @Test
