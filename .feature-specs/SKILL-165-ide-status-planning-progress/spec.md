@@ -12,6 +12,19 @@ populated via `GoalRunnerStatusService` → `manifestStore.planningStatus(...)`;
 currently dropped at the IDE wire seam. This feature threads it through the
 versioned `ide-status` contract and renders it in the plugin.
 
+The widget must also report goal lifecycle truthfully. Two fidelity gaps observed
+live on SKILL-164 (2026-08-07):
+
+- `IdeStatusProjector.projectGoal` lets the goal-runner pause controls override the
+  candidate lifecycle unconditionally, so a durably **blocked** goal
+  (`goal_issue_progress.status = 'blocked'`, e.g. a `needs_human` foreign-spec
+  block) reads `paused` whenever a pause was requested. Blocked is the one state
+  the widget exists to prompt about and must outrank the pause override.
+- The plugin maps a fresh `lifecycle_state: "paused"` to the same `Active`
+  rendering as a running goal (`IdeStatusJsonMapper`: `"active", "paused" ->
+  Active`), so an operator cannot see from the widget that a goal is sitting
+  paused and waiting on them.
+
 ## Wire Contract Decision
 
 The `planning` object is an **additive, optional** property on the IDE status
@@ -59,6 +72,13 @@ planning:
    in the tooltip/detail.
 6. Absent `planning` on the wire renders exactly today's behavior in the plugin
    (no regression for non-goal families, older CLIs, and prepared/executing goals).
+7. A goal whose durable state is `blocked` projects `lifecycle_state: "blocked"`
+   even while the goal-runner controls carry `paused`/`pause_requested`; the pause
+   override applies only to a goal whose candidate lifecycle is active.
+8. The plugin renders a fresh `lifecycle_state: "paused"` goal as a distinct paused
+   presentation (headline names the paused state; tooltip keeps step, progress, and
+   elapsed anchors) instead of the `Active` rendering. A stale paused snapshot
+   keeps today's stale treatment; blocked/failed rendering is unchanged.
 
 ## Constraints
 
@@ -81,6 +101,8 @@ planning:
 ## Subtasks
 
 1. Runtime wire planning: schema + `IdeStatusModels` + `IdeStatusProjector` +
-   runtime tests/fixtures.
+   runtime tests/fixtures. Includes the goal lifecycle precedence fix
+   (blocked outranks the pause override, AC 7).
 2. Plugin planning rendering: JSON mapper + domain outcome + presentation +
-   plugin tests. Depends on subtask 1's wire shape.
+   plugin tests. Includes the distinct paused presentation (AC 8). Depends on
+   subtask 1's wire shape.

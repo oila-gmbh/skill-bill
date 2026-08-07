@@ -21,6 +21,16 @@ Plugin side only (`intellij-plugin`):
   - tooltip/detail includes `Planning: <planned>/<total> subtasks`.
   When planning is absent or `prepared`, rendering is byte-for-byte today's
   behavior (execution progress and step label).
+- Distinct paused presentation: `IdeStatusJsonMapper` currently folds a fresh
+  `lifecycle_state: "paused"` into the `Active` outcome (`"active", "paused" ->
+  Active`), so a paused goal is indistinguishable from a running one. Introduce a
+  paused representation (a `Paused` outcome or an equivalent flag carried through
+  `StatusUiMapper` / `SkillBillStatusUiState` / `SkillBillStatusBarPresentation`)
+  whose headline names the paused state (e.g. `Skill Bill: SKILL-165 · paused`)
+  and whose tooltip keeps step, progress, and elapsed anchors. Elapsed durations
+  for paused work anchor to the last authoritative update (settled), not
+  wall-clock now. Stale masking is unchanged: a stale paused snapshot still maps
+  to the `Stale` outcome.
 
 ## Acceptance Criteria (this subtask)
 
@@ -40,13 +50,22 @@ Plugin side only (`intellij-plugin`):
    the planning segment.
 5. Plugin architecture test (`PluginArchitectureTest`) and existing
    presentation/mapper suites stay green.
+6. A fresh `lifecycle_state: "paused"` payload renders the paused presentation
+   (headline names the paused state; tooltip keeps step/progress/elapsed); a
+   stale paused payload still renders the `Stale` treatment; `active` payload
+   rendering is byte-for-byte unchanged (mapper and presentation tests cover
+   all three).
 
 ## Non-Goals
 
 - No runtime/schema changes (done in subtask 1).
 - No new plugin settings, actions, or widget popups.
 - No rendering changes for Blocked/Failed/Idle/Unavailable/Incompatible states
-  beyond leaving them untouched.
+  beyond leaving them untouched (the paused presentation is new, not a change
+  to those states).
+- No pause-reason plumbing on the wire (e.g. distinguishing an operator pause
+  from a needs-operator-decision pause); the wire summary line remains the only
+  reason carrier.
 
 ## Dependency Notes
 

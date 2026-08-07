@@ -21,6 +21,13 @@ Runtime side only (`runtime-kotlin` + `orchestration/contracts`):
   goal execution `progress` field semantics unchanged (subtask completion counts).
 - Non-goal projections (`projectRuntime`, `projectWorkflowFamily`, problem
   snapshots) must never populate `planning`.
+- `IdeStatusProjector.projectGoal` lifecycle precedence: the pause-controls
+  override (`projection.paused` / `projection.pauseRequested` → `PAUSED`)
+  currently wins over every candidate lifecycle. Restrict it so it only replaces
+  an `ACTIVE` candidate lifecycle; a candidate that is `BLOCKED` (or `FAILED` /
+  `TERMINAL`) keeps its durable lifecycle. Observed live: SKILL-164's
+  `needs_human` foreign-spec block would read `paused` whenever a pause request
+  coexisted, hiding the one state the widget exists to prompt about.
 
 ## Acceptance Criteria (this subtask)
 
@@ -40,6 +47,10 @@ Runtime side only (`runtime-kotlin` + `orchestration/contracts`):
    `IdeStatusGoldenFixturesTest` includes at least one goal-with-planning fixture).
 5. The runtime/schema contract-version parity test
    (`IdeStatusSchemaContractVersionTest`) still passes with version `"0.1"`.
+6. A goal candidate with durable state `blocked` projects
+   `lifecycle_state: "blocked"` even when the goal-runner control state carries
+   `paused = true` or `pause_requested = true`; an `active` candidate with those
+   controls still projects `paused` (projector tests cover both orderings).
 
 ## Non-Goals
 
