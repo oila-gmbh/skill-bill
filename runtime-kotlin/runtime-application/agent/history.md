@@ -1,3 +1,13 @@
+## [2026-08-07] SKILL-164 subtask 2 — Phase-neutral shared review evidence assembly
+Areas: runtime-application/evidence, runtime-application/review, runtime-ports/taskruntime, runtime-infra-fs, .feature-specs/SKILL-164
+- Commit evidence assembly (`ReviewCommitUnit`/`ReviewChangedHunk`/`ReviewEvidenceTarget`) moved out of `ReviewCommitSequenceResolver` into a phase-neutral `SharedReviewEvidenceAssembly` invoked by the checkpoint-keyed shared deriver; review is now the first consumer, not the owner. reusable
+- Derivation happens once per checkpoint+scope key; a fingerprint hit resolves with zero git traversal and every specialist lane (incl. `ReviewLaneBundleAssembly`) reads the same stored artifact instead of re-deriving per lane. reusable
+- `SharedReviewEvidenceCodec` gives byte-for-byte identity round-trip for stored evidence, including synthetic sources (`SYNTHETIC_WORKING_TREE`/`SUPPLIED_DIFF`/`AGGREGATE_PR_DIFF`) and degraded-reason fidelity; corrupt payloads degrade to fresh derivation rather than failing the phase. reusable
+- Pattern: key shared phase evidence by (repository checkpoint fingerprint, scope) at a port seam, derive once, and prove reuse with a zero-traversal assertion rather than a cache-hit counter. reusable
+- Limitations: only review consumes the store; audit consumption, projection contract changes, and briefing instruction changes remain out of scope. Observable review behaviour is unchanged by design.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-08-06] SKILL-158 subtask 2 — Sparse commit-to-lane routing
 Areas: runtime-domain/review/plan, runtime-domain/review/context/model, runtime-application/review, runtime-ports/review, runtime-infra-fs, orchestration/contracts/review-context-schema.yaml, .feature-specs/SKILL-158
 - Specialist selection is now a final commit×lane matrix (`focused`|`skipped` + falsifiable reason/signals) decided once from each commit's own hunk paths/content — never the commit subject — before launch; workers do not re-decide relevance. reusable

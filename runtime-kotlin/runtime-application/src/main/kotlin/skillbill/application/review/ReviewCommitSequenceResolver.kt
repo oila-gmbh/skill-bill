@@ -2,12 +2,12 @@ package skillbill.application.review
 
 import skillbill.application.evidence.SharedReviewEvidenceAssembler
 import skillbill.application.evidence.SharedReviewEvidenceProjection
-import skillbill.application.evidence.parseCommitUnits as sharedParseCommitUnits
 import skillbill.application.model.ParallelReviewScope
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.review.context.model.ReviewCommitCoverageFact
 import skillbill.review.context.model.ReviewCommitUnit
 import java.nio.file.Path
+import skillbill.application.evidence.parseCommitUnits as sharedParseCommitUnits
 
 internal data class ResolvedCommitSequence(
   val units: List<ReviewCommitUnit>,
@@ -20,8 +20,7 @@ internal data class ReviewCommitRange(val baseRevision: String, val headRevision
 }
 
 /** Alias keeping the review-side call name while the assembly itself lives in the phase-neutral package. */
-internal fun parseCommitUnits(commits: List<RawCommitDiff>): List<ReviewCommitUnit> =
-  sharedParseCommitUnits(commits)
+internal fun parseCommitUnits(commits: List<RawCommitDiff>): List<ReviewCommitUnit> = sharedParseCommitUnits(commits)
 
 /**
  * Thin review-side caller over the phase-neutral assembly. The Git traversal and the unit

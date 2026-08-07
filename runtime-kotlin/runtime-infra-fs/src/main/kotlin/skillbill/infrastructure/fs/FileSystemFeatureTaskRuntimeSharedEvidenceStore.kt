@@ -54,120 +54,8 @@ open class FileSystemFeatureTaskRuntimeSharedEvidenceStore : FeatureTaskRuntimeS
   ): FeatureTaskRuntimeSharedEvidenceResolution {
     val fingerprint = request.checkpoint.fingerprint
     val artifactDir = artifactDir(request)
-    readStored(artifactDir, fingerprint)?.let { return it }
+    readStored(mapper, artifactDir, fingerprint)?.let { return it }
     return persist(artifactDir, fingerprint, deriver.derive(request.checkpoint))
-  }
-
-  /**
-   * Returns the stored artifact only on a clean fingerprint hit. Anything missing, unparseable, or
-   * truncated returns null so the caller re-derives; only a well-formed envelope that contradicts
-   * its own address throws.
-   */
-  private fun readStored(artifactDir: Path, fingerprint: String): FeatureTaskRuntimeSharedEvidenceResolution? {
-    val envelope = readEnvelope(artifactDir.resolve(ENVELOPE_FILE_NAME)) ?: return null
-    val envelopeLabel = artifactDir.resolve(ENVELOPE_FILE_NAME).toString()
-    val recorded = envelope.path("fingerprint").asText("")
-    if (recorded.isBlank()) {
-      return degraded("stored_envelope_fingerprint", "re-derive", fingerprint, "blank at $envelopeLabel")
-    }
-    if (recorded != fingerprint) {
-      throw FeatureTaskRuntimeSharedEvidenceFingerprintContradictionError(
-        addressedFingerprint = fingerprint,
-        recordedFingerprint = recorded,
-        sourceLabel = envelopeLabel,
-      )
-    }
-    val payloadRef = intactPayloadRef(artifactDir, envelope, envelopeLabel) ?: return null
-    val payloadText = readPayloadText(artifactDir.resolve(payloadRef.relativePath)) ?: return null
-    return try {
-      FeatureTaskRuntimeSharedEvidenceResolution(
-        artifact = FeatureTaskRuntimeSharedEvidenceArtifact(
-          fingerprint = recorded,
-          baseRef = envelope.path("base_ref").takeIf { !it.isNull && !it.isMissingNode }?.asText(),
-          headRef = envelope.path("head_ref").takeIf { !it.isNull && !it.isMissingNode }?.asText(),
-          files = envelope.path("files").map {
-            FeatureTaskRuntimeSharedEvidenceFileEntry(it.path("path").asText(""), it.path("change_kind").asText(""))
-          },
-          hunks = envelope.path("hunks").map {
-            FeatureTaskRuntimeSharedEvidenceHunkEntry(it.path("path").asText(""), it.path("header").asText(""))
-          },
-          diffPayload = payloadRef,
-        ),
-        diffPayload = payloadText,
-      )
-    } catch (error: IllegalArgumentException) {
-      // A well-formed envelope carrying blank index entries is still a corrupt cache entry.
-      degraded(
-        seam = "stored_envelope_index",
-        used = "re-derive",
-        expected = "non-blank file and hunk entries at $envelopeLabel",
-        cause = "IllegalArgumentException: ${error.message.orEmpty()}",
-      )
-    }
-  }
-
-  /** The stored payload ref, or null once the defect that makes it unservable has been recorded. */
-  private fun intactPayloadRef(
-    artifactDir: Path,
-    envelope: ObjectNode,
-    envelopeLabel: String,
-  ): FeatureTaskRuntimeSharedEvidenceDiffPayloadRef? {
-    val relativePath = envelope.path("diff_payload").path("relative_path").asText("")
-    if (relativePath.isBlank()) {
-      return degraded("stored_payload_relative_path", "re-derive", PAYLOAD_FILE_NAME, "blank at $envelopeLabel")
-    }
-    val expectedSize = envelope.path("diff_payload").path("size_bytes").asLong(-1)
-    val payload = artifactDir.resolve(relativePath)
-    val actualSize = readableSize(payload) ?: return null
-    if (expectedSize != actualSize) {
-      return degraded("stored_payload_size", "re-derive", "$expectedSize bytes", "truncated to $actualSize bytes")
-    }
-    return FeatureTaskRuntimeSharedEvidenceDiffPayloadRef(relativePath, actualSize)
-  }
-
-  /** An unreadable payload is a corrupt cache entry like any other: record it and re-derive. */
-  private fun readPayloadText(payload: Path): String? = try {
-    Files.readString(payload)
-  } catch (@Suppress("TooGenericExceptionCaught") error: Exception) {
-    degraded(
-      seam = "stored_payload_read",
-      used = "re-derive",
-      expected = "readable payload at $payload",
-      cause = "${error::class.simpleName.orEmpty()}: ${error.message.orEmpty()}",
-    )
-  }
-
-  private fun readableSize(payload: Path): Long? = try {
-    if (Files.isRegularFile(payload)) {
-      Files.size(payload)
-    } else {
-      degraded("stored_payload_file", "re-derive", "regular file at $payload", "absent or not a regular file")
-    }
-  } catch (error: IOException) {
-    degraded(
-      seam = "stored_payload_size",
-      used = "re-derive",
-      expected = "readable size of $payload",
-      cause = "${error::class.simpleName.orEmpty()}: ${error.message.orEmpty()}",
-    )
-  }
-
-  private fun readEnvelope(path: Path): ObjectNode? {
-    if (!Files.isRegularFile(path)) {
-      return degraded("stored_envelope_file", "re-derive", "regular file at $path", "absent or not a regular file")
-    }
-    return try {
-      mapper.readTree(Files.readString(path)) as? ObjectNode
-        ?: degraded("stored_envelope_parse", "re-derive", "JSON object at $path", "parsed to a non-object node")
-    } catch (@Suppress("TooGenericExceptionCaught") error: Exception) {
-      // Unreadable or unparseable: the cache misses, the run continues, the record explains why.
-      degraded(
-        seam = "stored_envelope_parse",
-        used = "re-derive",
-        expected = "JSON object at $path",
-        cause = "${error::class.simpleName.orEmpty()}: ${error.message.orEmpty()}",
-      )
-    }
   }
 
   /**
@@ -264,9 +152,145 @@ open class FileSystemFeatureTaskRuntimeSharedEvidenceStore : FeatureTaskRuntimeS
   }
 
   internal companion object {
-    const val ENVELOPE_FILE_NAME: String = "evidence.json"
-    const val PAYLOAD_FILE_NAME: String = "diff.patch"
+    const val ENVELOPE_FILE_NAME: String = ENVELOPE_FILE
+    const val PAYLOAD_FILE_NAME: String = PAYLOAD_FILE
     private const val STAGING_SUFFIX: String = ".staging."
+  }
+}
+
+private const val ENVELOPE_FILE: String = "evidence.json"
+private const val PAYLOAD_FILE: String = "diff.patch"
+
+/**
+ * Returns the stored artifact only on a clean fingerprint hit. Anything missing, unparseable, or
+ * truncated returns null so the caller re-derives; only a well-formed envelope that contradicts
+ * its own address throws.
+ */
+private fun readStored(
+  mapper: ObjectMapper,
+  artifactDir: Path,
+  fingerprint: String,
+): FeatureTaskRuntimeSharedEvidenceResolution? {
+  val envelopePath = artifactDir.resolve(ENVELOPE_FILE)
+  val envelopeLabel = envelopePath.toString()
+  val envelope = readEnvelope(mapper, envelopePath) ?: return null
+  val recorded = recordedFingerprint(envelope, envelopeLabel, fingerprint) ?: return null
+  return intactPayloadRef(artifactDir, envelope, envelopeLabel)?.let { payloadRef ->
+    readPayloadText(artifactDir.resolve(payloadRef.relativePath))?.let { payloadText ->
+      resolutionOf(envelope, recorded, payloadRef, payloadText, envelopeLabel)
+    }
+  }
+}
+
+/** The envelope's own fingerprint, or null once a blank one has been recorded as a corrupt entry. */
+private fun recordedFingerprint(envelope: ObjectNode, envelopeLabel: String, addressed: String): String? {
+  val recorded = envelope.path("fingerprint").asText("")
+  if (recorded.isBlank()) {
+    return degraded("stored_envelope_fingerprint", "re-derive", addressed, "blank at $envelopeLabel")
+  }
+  if (recorded != addressed) {
+    throw FeatureTaskRuntimeSharedEvidenceFingerprintContradictionError(
+      addressedFingerprint = addressed,
+      recordedFingerprint = recorded,
+      sourceLabel = envelopeLabel,
+    )
+  }
+  return recorded
+}
+
+private fun resolutionOf(
+  envelope: ObjectNode,
+  recorded: String,
+  payloadRef: FeatureTaskRuntimeSharedEvidenceDiffPayloadRef,
+  payloadText: String,
+  envelopeLabel: String,
+): FeatureTaskRuntimeSharedEvidenceResolution? = try {
+  FeatureTaskRuntimeSharedEvidenceResolution(
+    artifact = FeatureTaskRuntimeSharedEvidenceArtifact(
+      fingerprint = recorded,
+      baseRef = envelope.path("base_ref").takeIf { !it.isNull && !it.isMissingNode }?.asText(),
+      headRef = envelope.path("head_ref").takeIf { !it.isNull && !it.isMissingNode }?.asText(),
+      files = envelope.path("files").map {
+        FeatureTaskRuntimeSharedEvidenceFileEntry(it.path("path").asText(""), it.path("change_kind").asText(""))
+      },
+      hunks = envelope.path("hunks").map {
+        FeatureTaskRuntimeSharedEvidenceHunkEntry(it.path("path").asText(""), it.path("header").asText(""))
+      },
+      diffPayload = payloadRef,
+    ),
+    diffPayload = payloadText,
+  )
+} catch (error: IllegalArgumentException) {
+  // A well-formed envelope carrying blank index entries is still a corrupt cache entry.
+  degraded(
+    seam = "stored_envelope_index",
+    used = "re-derive",
+    expected = "non-blank file and hunk entries at $envelopeLabel",
+    cause = "IllegalArgumentException: ${error.message.orEmpty()}",
+  )
+}
+
+/** The stored payload ref, or null once the defect that makes it unservable has been recorded. */
+private fun intactPayloadRef(
+  artifactDir: Path,
+  envelope: ObjectNode,
+  envelopeLabel: String,
+): FeatureTaskRuntimeSharedEvidenceDiffPayloadRef? {
+  val relativePath = envelope.path("diff_payload").path("relative_path").asText("")
+  if (relativePath.isBlank()) {
+    return degraded("stored_payload_relative_path", "re-derive", PAYLOAD_FILE, "blank at $envelopeLabel")
+  }
+  val expectedSize = envelope.path("diff_payload").path("size_bytes").asLong(-1)
+  val payload = artifactDir.resolve(relativePath)
+  val actualSize = readableSize(payload) ?: return null
+  if (expectedSize != actualSize) {
+    return degraded("stored_payload_size", "re-derive", "$expectedSize bytes", "truncated to $actualSize bytes")
+  }
+  return FeatureTaskRuntimeSharedEvidenceDiffPayloadRef(relativePath, actualSize)
+}
+
+/** An unreadable payload is a corrupt cache entry like any other: record it and re-derive. */
+private fun readPayloadText(payload: Path): String? = try {
+  Files.readString(payload)
+} catch (@Suppress("TooGenericExceptionCaught") error: Exception) {
+  degraded(
+    seam = "stored_payload_read",
+    used = "re-derive",
+    expected = "readable payload at $payload",
+    cause = "${error::class.simpleName.orEmpty()}: ${error.message.orEmpty()}",
+  )
+}
+
+private fun readableSize(payload: Path): Long? = try {
+  if (Files.isRegularFile(payload)) {
+    Files.size(payload)
+  } else {
+    degraded("stored_payload_file", "re-derive", "regular file at $payload", "absent or not a regular file")
+  }
+} catch (error: IOException) {
+  degraded(
+    seam = "stored_payload_size",
+    used = "re-derive",
+    expected = "readable size of $payload",
+    cause = "${error::class.simpleName.orEmpty()}: ${error.message.orEmpty()}",
+  )
+}
+
+private fun readEnvelope(mapper: ObjectMapper, path: Path): ObjectNode? {
+  if (!Files.isRegularFile(path)) {
+    return degraded("stored_envelope_file", "re-derive", "regular file at $path", "absent or not a regular file")
+  }
+  return try {
+    mapper.readTree(Files.readString(path)) as? ObjectNode
+      ?: degraded("stored_envelope_parse", "re-derive", "JSON object at $path", "parsed to a non-object node")
+  } catch (@Suppress("TooGenericExceptionCaught") error: Exception) {
+    // Unreadable or unparseable: the cache misses, the run continues, the record explains why.
+    degraded(
+      seam = "stored_envelope_parse",
+      used = "re-derive",
+      expected = "JSON object at $path",
+      cause = "${error::class.simpleName.orEmpty()}: ${error.message.orEmpty()}",
+    )
   }
 }
 

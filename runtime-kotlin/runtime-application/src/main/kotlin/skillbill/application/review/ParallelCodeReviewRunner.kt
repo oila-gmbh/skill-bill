@@ -3,6 +3,7 @@ package skillbill.application.review
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.evidence.SharedReviewEvidenceCommits
 import skillbill.application.evidence.SharedReviewEvidenceProjection
+import skillbill.application.evidence.SharedReviewEvidenceQuery
 import skillbill.application.evidence.SharedReviewEvidenceResolution
 import skillbill.application.featuretask.sha256HexUtf8
 import skillbill.application.model.DiffResolutionException
@@ -168,13 +169,14 @@ class ParallelCodeReviewRunner(
     }
     val revisions = resolveReviewRevisions(originalRequest)
     val sharedEvidence = SharedReviewEvidenceResolution(sharedEvidenceResolver, diffResolver).resolve(
-      repoRoot = originalRequest.repoRoot,
-      workflowId = originalRequest.reviewRunId ?: SHARED_EVIDENCE_WORKFLOW_ID,
-      scope = originalRequest.scope,
-      range = ReviewCommitRange(revisions.first, revisions.second),
-      suppliedDiff = hasSuppliedDiff(originalRequest),
-      resolveAggregateDiff = { resolveDiff(originalRequest, revisions) },
-    )
+      SharedReviewEvidenceQuery(
+        repoRoot = originalRequest.repoRoot,
+        workflowId = originalRequest.reviewRunId ?: SHARED_EVIDENCE_WORKFLOW_ID,
+        scope = originalRequest.scope,
+        range = ReviewCommitRange(revisions.first, revisions.second),
+        suppliedDiff = hasSuppliedDiff(originalRequest),
+      ),
+    ) { resolveDiff(originalRequest, revisions) }
     val diffText = sharedEvidence.aggregateDiff
     val evidence = ReviewDiffEvidence.parse(diffText)
     val detection = detectStack(evidence, originalRequest.repoRoot)

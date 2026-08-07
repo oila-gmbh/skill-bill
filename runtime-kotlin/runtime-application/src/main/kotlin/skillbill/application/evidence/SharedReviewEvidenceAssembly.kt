@@ -95,17 +95,14 @@ internal class SharedReviewEvidenceAssembler(private val diffResolver: DiffResol
     )
   }
 
-  private fun synthetic(
-    range: ReviewCommitRange,
-    source: ReviewCommitSource,
-    reason: String,
-  ) = SharedReviewEvidenceCommits(
-    baseRevision = range.baseRevision,
-    headRevision = range.headRevision,
-    commits = emptyList(),
-    syntheticSource = source,
-    syntheticReason = reason,
-  )
+  private fun synthetic(range: ReviewCommitRange, source: ReviewCommitSource, reason: String) =
+    SharedReviewEvidenceCommits(
+      baseRevision = range.baseRevision,
+      headRevision = range.headRevision,
+      commits = emptyList(),
+      syntheticSource = source,
+      syntheticReason = reason,
+    )
 
   /**
    * A null result is a failed git invocation, never an absent-commit degradation: reporting it as
@@ -169,11 +166,7 @@ internal object SharedReviewEvidenceProjection {
    * A checked chain-and-ownership property, never textual concatenation equality: every path the
    * authoritative base-to-head delta touches is attributable to some commit in the sequence.
    */
-  private fun verifyCoverage(
-    units: List<ReviewCommitUnit>,
-    aggregate: ReviewDiffEvidence,
-    range: ReviewCommitRange,
-  ) {
+  private fun verifyCoverage(units: List<ReviewCommitUnit>, aggregate: ReviewDiffEvidence, range: ReviewCommitRange) {
     coverageViolation(units, aggregate, range)?.let { throw DiffResolutionException(it) }
   }
 

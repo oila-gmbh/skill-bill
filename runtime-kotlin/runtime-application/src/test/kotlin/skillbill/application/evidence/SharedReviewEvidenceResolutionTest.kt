@@ -94,22 +94,22 @@ class SharedReviewEvidenceResolutionTest {
     return git to (diffs.getValue("c1") + "\n" + diffs.getValue("head"))
   }
 
+  private fun queryOf(
+    scope: ParallelReviewScope = ParallelReviewScope.BRANCH,
+    supplied: Boolean = false,
+    workflowId: String = "wf-1",
+  ) = SharedReviewEvidenceQuery(repoRoot, workflowId, scope, range, supplied)
+
   private fun resolve(
     store: FeatureTaskRuntimeSharedEvidenceResolverPort,
     git: DiffResolverPort,
     aggregate: String,
-    scope: ParallelReviewScope = ParallelReviewScope.BRANCH,
-    supplied: Boolean = false,
-    workflowId: String = "wf-1",
+    query: SharedReviewEvidenceQuery = queryOf(),
     aggregateReads: MutableList<String>? = null,
-  ) = SharedReviewEvidenceResolution(store, git).resolve(
-    repoRoot = repoRoot,
-    workflowId = workflowId,
-    scope = scope,
-    range = range,
-    suppliedDiff = supplied,
-    resolveAggregateDiff = { aggregateReads?.add("aggregate"); aggregate },
-  )
+  ) = SharedReviewEvidenceResolution(store, git).resolve(query) {
+    aggregateReads?.add("aggregate")
+    aggregate
+  }
 
   // AC-002, AC-003: N consumers over one checkpoint derive exactly once and traverse nothing after.
   @Test fun `a fingerprint hit serves the stored evidence with zero repository traversal`() {
@@ -164,8 +164,9 @@ class SharedReviewEvidenceResolutionTest {
     cases.forEach { (scope, supplied, expected) ->
       val store = InMemoryStore()
       val git = FakeGit(mapOf("git rev-list --first-parent --reverse base..head" to ""))
-      val first = resolve(store, git, aggregate, scope = scope, supplied = supplied, workflowId = scope.name)
-      val reloaded = resolve(store, git, aggregate, scope = scope, supplied = supplied, workflowId = scope.name)
+      val query = queryOf(scope = scope, supplied = supplied, workflowId = scope.name)
+      val first = resolve(store, git, aggregate, query)
+      val reloaded = resolve(store, git, aggregate, query)
 
       val projected = SharedReviewEvidenceProjection.project(reloaded.sequence, parsed)
       val unit = projected.units.single()
@@ -200,11 +201,11 @@ class SharedReviewEvidenceResolutionTest {
     val aggregate = diffFor("src/A.kt", "alpha")
     val noGit = FakeGit(mapOf("git rev-list --first-parent --reverse base..head" to ""))
 
-    resolve(store, noGit, aggregate, scope = ParallelReviewScope.BRANCH)
-    resolve(store, noGit, aggregate, scope = ParallelReviewScope.PR)
+    resolve(store, noGit, aggregate, queryOf(scope = ParallelReviewScope.BRANCH))
+    resolve(store, noGit, aggregate, queryOf(scope = ParallelReviewScope.PR))
     val branchAndPr = store.derivations
-    resolve(store, noGit, aggregate, scope = ParallelReviewScope.STAGED)
-    resolve(store, noGit, aggregate, scope = ParallelReviewScope.UNSTAGED)
+    resolve(store, noGit, aggregate, queryOf(scope = ParallelReviewScope.STAGED))
+    resolve(store, noGit, aggregate, queryOf(scope = ParallelReviewScope.UNSTAGED))
 
     // BRANCH and PR are distinct checkpoints; neither working-tree scope reaches the store at all.
     assertEquals(2, branchAndPr)
@@ -218,8 +219,8 @@ class SharedReviewEvidenceResolutionTest {
     val first = diffFor("src/A.kt", "alpha")
     val second = diffFor("src/B.kt", "beta")
 
-    val firstRecord = resolve(store, noGit, first, supplied = true)
-    val secondRecord = resolve(store, noGit, second, supplied = true)
+    val firstRecord = resolve(store, noGit, first, queryOf(supplied = true))
+    val secondRecord = resolve(store, noGit, second, queryOf(supplied = true))
 
     assertEquals(0, store.derivations, "a supplied-diff review must bypass the checkpoint-keyed store")
     assertEquals(first, firstRecord.aggregateDiff)
@@ -234,13 +235,14 @@ class SharedReviewEvidenceResolutionTest {
 
     val otherGit = FakeGit(mapOf("git rev-list --first-parent --reverse base..other-head" to ""))
     val otherRange = SharedReviewEvidenceResolution(store, otherGit).resolve(
-      repoRoot = repoRoot,
-      workflowId = "wf-1",
-      scope = ParallelReviewScope.BRANCH,
-      range = ReviewCommitRange("base", "other-head"),
-      suppliedDiff = false,
-      resolveAggregateDiff = { aggregate },
-    )
+      SharedReviewEvidenceQuery(
+        repoRoot = repoRoot,
+        workflowId = "wf-1",
+        scope = ParallelReviewScope.BRANCH,
+        range = ReviewCommitRange("base", "other-head"),
+        suppliedDiff = false,
+      ),
+    ) { aggregate }
 
     assertEquals(2, store.derivations)
     assertNotEquals("head", otherRange.sequence.headRevision)

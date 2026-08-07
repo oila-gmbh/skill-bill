@@ -9,18 +9,18 @@ base_branch: "main"
 feature_branch: "feat/SKILL-164-checkpoint-keyed-shared-review-evidence"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 1
+  subtask_id: 2
   action: "resume"
 subtasks:
 - id: 1
   name: "Checkpoint-keyed evidence store and deriver"
   spec_path: ".feature-specs/SKILL-164-checkpoint-keyed-shared-review-evidence/spec_subtask_1_checkpoint-keyed-evidence-store.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260807-071901-4o9m"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -28,12 +28,12 @@ subtasks:
 - id: 2
   name: "Phase-neutral evidence assembly hoist"
   spec_path: ".feature-specs/SKILL-164-checkpoint-keyed-shared-review-evidence/spec_subtask_2_phase-neutral-evidence-assembly-hoist.md"
-  status: "pending"
+  status: "in_progress"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260807-083053-miu6"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "audit"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
