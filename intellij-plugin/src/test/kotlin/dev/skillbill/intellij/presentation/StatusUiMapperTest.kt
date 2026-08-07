@@ -59,6 +59,7 @@ class StatusUiMapperTest {
                 subtaskStartedAt = null,
                 updatedAt = now,
             ),
+            done(),
             SkillBillStatusOutcome.Unavailable(
                 observedAt = now,
                 summary = "missing cli",
@@ -79,12 +80,48 @@ class StatusUiMapperTest {
                 SkillBillStatusUiState.Stale::class,
                 SkillBillStatusUiState.Blocked::class,
                 SkillBillStatusUiState.Failed::class,
+                SkillBillStatusUiState.Done::class,
                 SkillBillStatusUiState.Unavailable::class,
                 SkillBillStatusUiState.Incompatible::class,
             ),
             mapped,
         )
     }
+
+    @Test
+    fun `done keeps issue key final progress and a duration frozen at the last update`() {
+        val updated = Instant.parse("2026-08-06T11:30:00Z")
+        val ui = StatusUiMapper.map(done(updatedAt = updated), now)
+        assertTrue(ui is SkillBillStatusUiState.Done)
+        ui as SkillBillStatusUiState.Done
+        assertEquals("Skill Bill: SKILL-148 · done", ui.headline)
+        assertEquals("SKILL-148", ui.issueKey)
+        assertEquals(3, ui.progressCompleted)
+        assertEquals(3, ui.progressTotal)
+        // Frozen at updatedAt, not ticking against now.
+        assertEquals(Duration.ofMinutes(90), ui.goalElapsed)
+    }
+
+    @Test
+    fun `a stale done reading keeps the stale marker`() {
+        val ui = StatusUiMapper.map(done(stale = true), now) as SkillBillStatusUiState.Done
+        assertTrue(ui.stale)
+    }
+
+    private fun done(
+        updatedAt: Instant = now,
+        stale: Boolean = false,
+    ): SkillBillStatusOutcome.Done = SkillBillStatusOutcome.Done(
+        observedAt = now,
+        summary = "Goal SKILL-148 is complete.",
+        repositoryIdentity = "repo",
+        issueKey = "SKILL-148",
+        progressCompleted = 3,
+        progressTotal = 3,
+        startedAt = started,
+        updatedAt = updatedAt,
+        stale = stale,
+    )
 
     @Test
     fun `elapsed ticking is deterministic from injected clock`() {

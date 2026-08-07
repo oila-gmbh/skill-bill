@@ -1,5 +1,15 @@
 # .github/workflows — Boundary History
 
+## [2026-08-07] SKILL-167 subtask 1 plugin-ci-workflow
+Areas: .github/workflows/plugin-ci.yml
+- New `plugin-ci.yml` gates `intellij-plugin/**` on PR + push-to-main via a `check` job running the exact command `(cd intellij-plugin && ./gradlew check)`; the plugin build is a standalone Gradle build, so CI must `cd` into it rather than invoke the root wrapper.
+- Split-job event gating pattern (reusable): one workflow, two jobs keyed on `if: github.event_name != 'schedule'` / `== 'schedule'`, so the expensive `verifyPlugin` leg (downloads two full IDEs) runs only on the nightly `cron: 17 3 * * *` and never on push/PR. Schedule events ignore `paths` filters by design — relying on that is intentional, not an oversight.
+- Both jobs pin `runs-on: ubuntu-latest` and `actions/setup-java@v5` with temurin 21 + `cache: gradle`. Unlike `validate-agent-configs.yml`, nothing in this workflow may reach the self-hosted runner for any event.
+- `verifyPlugin` deliberately carries no `failureLevel` override — the plugin build script owns that setting; overriding it in CI would silently diverge from local runs.
+- `concurrency` group `${{ github.workflow }}-${{ github.ref }}` with `cancel-in-progress: true`, matching the repo's other PR workflows.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented (subtask 1 of 3; release workflow + docs in subtask 3)
+
 ## [2026-06-13] SKILL-82 subtask 1 skills-bundle-step
 Areas: .github/workflows/release.yml
 - Bundle step guarded by `if: matrix.host_token == 'linux-x64'` on the build job; tars skills/, platform-packs/, orchestration/, uninstall.sh into skill-bill-skills-${RELEASE_VERSION}.tar.gz + .sha256 (sha256sum available on ubuntu-latest). reusable

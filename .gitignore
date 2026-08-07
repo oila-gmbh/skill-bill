@@ -7,6 +7,9 @@ docs/cloudflare-telemetry-proxy/.wrangler/
 _migration_backup/
 /.skill-bill/
 
+# Kotlin 2.x compiler-daemon session markers.
+.kotlin/
+
 # SKILL-98 specs describe a private external app — keep local, not public
 .feature-specs/SKILL-98-ios-platform-pack/
 

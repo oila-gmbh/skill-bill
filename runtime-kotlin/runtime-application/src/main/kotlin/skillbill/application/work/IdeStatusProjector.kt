@@ -14,8 +14,10 @@ import skillbill.application.model.IdeStatusSnapshot
 import skillbill.application.model.IdeStatusStep
 import skillbill.application.model.IdeStatusWorkflowFamily
 import skillbill.application.workflow.WorkflowFamily
+import skillbill.goalrunner.model.ExecutionLiveness
 import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
 import skillbill.goalrunner.model.GoalPlanningStatusState
+import skillbill.goalrunner.model.GoalRunnerStatusProjection
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.model.WorkItemKind
 import skillbill.workflow.WorkflowEngine
@@ -71,19 +73,17 @@ class IdeStatusProjector(
         repoRoot = context.repoRoot,
       ),
     )
-    val pauseRequestedOnControls = projection?.paused == true || projection?.pauseRequested == true
-    val lifecycle = when {
-      // Pause controls only override an active candidate; a durable blocked/failed/terminal
-      // state is the stronger signal and must survive a stale pause flag.
-      pauseRequestedOnControls && candidate.lifecycleState == IdeStatusLifecycleState.ACTIVE ->
-        IdeStatusLifecycleState.PAUSED
-      else -> candidate.lifecycleState
-    }
+    val lifecycle = goalLifecycle(candidate, projection)
     val planning = projection?.planning?.toIdeStatusPlanning()
     // Ordered ahead of the currentStep preference: a mid-planning goal can already carry a
     // stale currentStep string, and planning is the more accurate label while it runs.
     val planningStep = planning?.takeIf { it.state != GoalPlanningStatusState.PREPARED && !lifecycle.isSettled() }
-    val step = goalStep(planningStep, projection?.currentStep, lifecycle)
+    // A finished goal can carry a leftover step string; "Complete" is the honest label.
+    val step = goalStep(
+      planningStep,
+      projection?.currentStep?.takeUnless { lifecycle == IdeStatusLifecycleState.TERMINAL },
+      lifecycle,
+    )
     val total = (projection?.let { it.completeCount + it.pendingCount + it.blockedCount })
       ?.takeIf { it > 0 }
     val progress = total?.let {
@@ -113,9 +113,46 @@ class IdeStatusProjector(
       planning = planning,
       updatedAt = candidate.updatedAt,
       freshness = freshness,
-      summary = planningStep?.let { goalPlanningSummary(issueKey, it) }
+      // "is planning subtasks" describes work in flight, so a paused goal keeps the Planning
+      // step label and the planning block but takes the paused sentence; the alternative
+      // contradicts the lifecycle state in the one line the widget shows as detail.
+      summary = planningStep?.takeIf { lifecycle != IdeStatusLifecycleState.PAUSED }
+        ?.let { goalPlanningSummary(issueKey, it) }
         ?: goalSummary(issueKey, lifecycle, step.label, projection?.blockedCount ?: 0),
     )
+  }
+
+  /**
+   * Only an active candidate is reinterpreted. Every subtask settled with no live worker
+   * lease means a parent row stuck `running` (finalization died after the last subtask,
+   * goal finished out-of-band) — the settled truth wins. Pause controls likewise only
+   * override an active candidate; a durable blocked/failed/terminal state is the stronger
+   * signal and must survive a stale pause flag.
+   *
+   * A `running` row whose parent lease is no longer live means no goal runner holds the
+   * goal: the process was stopped or died without writing a terminal state. Reporting that
+   * as active is the surface's worst lie — it counts an elapsed clock upward for work that
+   * is not happening. Operator stop and crash are indistinguishable here (a killed process
+   * records no intent), and both leave durable state resumable, so both report `paused`.
+   * Only [ExecutionLiveness.IDLE] qualifies; UNKNOWN is a lease-read failure and must not
+   * be read as absence.
+   */
+  private fun goalLifecycle(
+    candidate: IdeStatusCandidate,
+    projection: GoalRunnerStatusProjection?,
+  ): IdeStatusLifecycleState {
+    if (candidate.lifecycleState != IdeStatusLifecycleState.ACTIVE) return candidate.lifecycleState
+    val settledComplete = projection != null &&
+      projection.pendingCount == 0 &&
+      projection.blockedCount == 0 &&
+      projection.completeCount > 0 &&
+      projection.executionLiveness != ExecutionLiveness.LIVE
+    return when {
+      settledComplete -> IdeStatusLifecycleState.TERMINAL
+      projection?.paused == true || projection?.pauseRequested == true -> IdeStatusLifecycleState.PAUSED
+      projection?.executionLiveness == ExecutionLiveness.IDLE -> IdeStatusLifecycleState.PAUSED
+      else -> IdeStatusLifecycleState.ACTIVE
+    }
   }
 
   /**
@@ -270,7 +307,7 @@ private fun goalSummary(
   }
   IdeStatusLifecycleState.PAUSED -> "Goal $issueKey is paused."
   IdeStatusLifecycleState.FAILED -> "Goal $issueKey failed."
-  IdeStatusLifecycleState.TERMINAL -> "Goal $issueKey is terminal."
+  IdeStatusLifecycleState.TERMINAL -> "Goal $issueKey is complete."
   IdeStatusLifecycleState.ACTIVE -> "Goal $issueKey is active on $stepLabel."
   IdeStatusLifecycleState.IDLE -> "No matching Skill Bill work for this repository."
 }

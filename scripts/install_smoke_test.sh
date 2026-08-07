@@ -285,8 +285,29 @@ run_piped_bootstrap_latest_release() {
 set -euo pipefail
 url="${@: -1}"
 case "$url" in
-  https://api.github.com/repos/oila-gmbh/skill-bill/releases/latest)
-    printf '{"tag_name":"v9.9.9"}\n'
+  "https://api.github.com/repos/oila-gmbh/skill-bill/releases?per_page=100")
+    cat <<'JSON'
+[
+  {
+    "tag_name":"v9.9.9",
+    "prerelease":false,
+    "draft":false,
+    "html_url":"https://github.com/oila-gmbh/skill-bill/releases/tag/v9.9.9",
+    "assets":[{"name":"skill-bill-skills-9.9.9.tar.gz"}]
+  }
+]
+JSON
+    ;;
+  https://api.github.com/repos/oila-gmbh/skill-bill/releases/tags/v9.9.9)
+    cat <<'JSON'
+{
+  "tag_name":"v9.9.9",
+  "prerelease":false,
+  "draft":false,
+  "html_url":"https://github.com/oila-gmbh/skill-bill/releases/tag/v9.9.9",
+  "assets":[{"name":"skill-bill-skills-9.9.9.tar.gz"}]
+}
+JSON
     ;;
   https://raw.githubusercontent.com/oila-gmbh/skill-bill/v9.9.9/install.sh)
     cat <<'INSTALLER'
@@ -315,6 +336,79 @@ CURL
       bash -c 'cat install.sh | bash -s --' \
       </dev/null
   )
+}
+
+# Fake curl for the plugin-tag regression: the newest release in the list is a
+# plugin-v* release, so any resolver that trusts list order picks the wrong tag.
+# Every requested URL is appended to $SMOKE_CURL_LOG so the scenario can assert
+# which release tag each consumer path resolved.
+make_plugin_tag_curl_shim() {
+  local work
+  work="$(mktemp -d)"
+  WORK_TMPDIRS+=("$work")
+  cat >"$work/curl" <<'CURL'
+#!/usr/bin/env bash
+set -euo pipefail
+# The URL is not always the last argument (asset downloads end with `-o <dest>`),
+# so pick the https:// argument instead of a positional guess.
+url=""
+for arg in "$@"; do
+  case "$arg" in
+    https://*) url="$arg" ;;
+  esac
+done
+printf '%s\n' "$url" >>"$SMOKE_CURL_LOG"
+case "$url" in
+  "https://api.github.com/repos/oila-gmbh/skill-bill/releases?per_page=100")
+    cat <<'JSON'
+[
+  {
+    "tag_name":"plugin-v9.9.9",
+    "prerelease":false,
+    "draft":false,
+    "html_url":"https://github.com/oila-gmbh/skill-bill/releases/tag/plugin-v9.9.9",
+    "assets":[{"name":"skill-bill-intellij-plugin-9.9.9.zip"}]
+  },
+  {
+    "tag_name":"v0.4.0",
+    "prerelease":false,
+    "draft":false,
+    "html_url":"https://github.com/oila-gmbh/skill-bill/releases/tag/v0.4.0",
+    "assets":[{"name":"skill-bill-skills-0.4.0.tar.gz"}]
+  }
+]
+JSON
+    ;;
+  https://api.github.com/repos/oila-gmbh/skill-bill/releases/tags/*)
+    cat <<'JSON'
+{
+  "tag_name":"v0.4.0",
+  "prerelease":false,
+  "draft":false,
+  "html_url":"https://github.com/oila-gmbh/skill-bill/releases/tag/v0.4.0",
+  "assets":[{"name":"skill-bill-skills-0.4.0.tar.gz"}]
+}
+JSON
+    ;;
+  https://raw.githubusercontent.com/oila-gmbh/skill-bill/*/install.sh)
+    cat <<'INSTALLER'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'release_args:'
+for arg in "$@"; do
+  printf ' [%s]' "$arg"
+done
+printf '\n'
+INSTALLER
+    ;;
+  *)
+    printf 'unexpected curl url: %s\n' "$url" >&2
+    exit 1
+    ;;
+esac
+CURL
+  chmod +x "$work/curl"
+  printf '%s' "$work"
 }
 
 echo "=== install smoke test ==="
@@ -535,6 +629,77 @@ if [[ "$GATE_OUTPUT" == *"Agents:"* ]]; then
   pass "fresh-machine install completed end-to-end"
 else
   fail "fresh-machine install did not complete: $GATE_OUTPUT"
+fi
+
+echo ""
+echo "--- scenario 9: plugin-v* release newest still resolves the runtime tag ---"
+PLUGIN_SHIM_DIR="$(make_plugin_tag_curl_shim)"
+PLUGIN_CURL_LOG="$PLUGIN_SHIM_DIR/curl.log"
+: >"$PLUGIN_CURL_LOG"
+
+FAKE_HOME="$(mktemp -d)"
+PLUGIN_TAG_OUTPUT="$(
+  cd "$REPO_ROOT"
+  env \
+    HOME="$FAKE_HOME" \
+    PATH="$PLUGIN_SHIM_DIR:$PATH" \
+    SMOKE_CURL_LOG="$PLUGIN_CURL_LOG" \
+    bash -c 'cat install.sh | bash -s --' \
+    </dev/null
+)"
+
+if [[ "$PLUGIN_TAG_OUTPUT" == *"release installer v0.4.0."* &&
+  "$PLUGIN_TAG_OUTPUT" == *"release_args: [--release] [v0.4.0]"* ]]; then
+  pass "installer-tag resolution picked the runtime tag over the newer plugin-v* release"
+else
+  fail "installer-tag resolution did not pick v0.4.0: $PLUGIN_TAG_OUTPUT"
+fi
+
+# The asset-listing path resolves the tag and then queries /releases/tags/<tag>;
+# the shim has no asset download URL, so the run aborts after that request. The
+# recorded URL is the assertion.
+FAKE_HOME="$(mktemp -d)"
+PLUGIN_ASSET_DIR="$(mktemp -d)"
+WORK_TMPDIRS+=("$PLUGIN_ASSET_DIR")
+: >"$PLUGIN_CURL_LOG"
+(
+  cd "$PLUGIN_ASSET_DIR"
+  env \
+    HOME="$FAKE_HOME" \
+    PATH="$PLUGIN_SHIM_DIR:$PATH" \
+    SMOKE_CURL_LOG="$PLUGIN_CURL_LOG" \
+    SKILL_BILL_RELEASE_INSTALLER_BOOTSTRAPPED=1 \
+    SKILL_BILL_SKIP_PREINSTALL_UNINSTALL=1 \
+    SKILL_BILL_BIN_DIR="$FAKE_HOME/.local/bin" \
+    bash -c 'cat "$1" | bash -s --' _ "$INSTALL_SH" \
+    </dev/null
+) >/dev/null 2>&1 || true
+
+PLUGIN_ASSET_URLS="$(cat "$PLUGIN_CURL_LOG")"
+if [[ "$PLUGIN_ASSET_URLS" == *"/releases/tags/v0.4.0"* ]]; then
+  pass "release-asset listing queried the runtime tag"
+else
+  fail "release-asset listing did not query /releases/tags/v0.4.0: $PLUGIN_ASSET_URLS"
+fi
+
+if [[ "$PLUGIN_ASSET_URLS" != *"plugin-v9.9.9"* ]]; then
+  pass "release-asset listing never requested the plugin-v* tag"
+else
+  fail "release-asset listing requested the plugin tag: $PLUGIN_ASSET_URLS"
+fi
+
+# The downloader must pin the same resolved tag rather than follow GitHub's
+# latest-release redirect, which the plugin-v* release would win.
+if [[ "$PLUGIN_ASSET_URLS" != *"/releases/latest/download/"* ]]; then
+  pass "asset download never used the latest-release redirect"
+else
+  fail "asset download used the latest-release redirect: $PLUGIN_ASSET_URLS"
+fi
+
+if [[ "$PLUGIN_ASSET_URLS" == *"/releases/download/v0.4.0/"* ]]; then
+  pass "asset download pinned the resolved runtime tag"
+else
+  fail "asset download did not pin v0.4.0: $PLUGIN_ASSET_URLS"
 fi
 
 echo ""

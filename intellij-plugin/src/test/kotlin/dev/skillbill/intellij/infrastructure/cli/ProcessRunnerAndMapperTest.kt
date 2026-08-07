@@ -179,16 +179,18 @@ class IdeStatusJsonMapperTest {
     fun `stale freshness does not resurrect terminal work as an execution`() {
         val json = runtimeFixture(lifecycle = "terminal", freshness = "stale")
         val outcome = IdeStatusJsonMapper.map(json, now, 0)
-        assertTrue(outcome is SkillBillStatusOutcome.Idle)
+        assertTrue(outcome is SkillBillStatusOutcome.Done)
         // The lifecycle wins, but the stale reading still has to reach the surface.
-        assertTrue((outcome as SkillBillStatusOutcome.Idle).stale)
+        assertTrue((outcome as SkillBillStatusOutcome.Done).stale)
     }
 
     @Test
-    fun `fresh terminal work carries no stale marker`() {
+    fun `fresh terminal work maps to done with its issue key and progress`() {
         val outcome = IdeStatusJsonMapper.map(runtimeFixture(lifecycle = "terminal"), now, 0)
-        assertTrue(outcome is SkillBillStatusOutcome.Idle)
-        assertFalse((outcome as SkillBillStatusOutcome.Idle).stale)
+        assertTrue(outcome is SkillBillStatusOutcome.Done)
+        outcome as SkillBillStatusOutcome.Done
+        assertFalse(outcome.stale)
+        assertEquals("SKILL-148", outcome.issueKey)
     }
 
     @Test

@@ -1,6 +1,7 @@
 package skillbill.application.work
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.application.featuretask.FeatureTaskRuntimeBranchSetup
 import skillbill.application.goalrunner.goalRepositoryIdentity
 import skillbill.application.model.IdeStatusCandidate
 import skillbill.application.model.IdeStatusRepositoryResolution
@@ -16,6 +17,7 @@ import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.model.FeatureTaskRouteScope
 import skillbill.ports.persistence.model.WorkItem
 import skillbill.ports.persistence.model.WorkItemKind
+import skillbill.ports.system.CheckedOutBranchSource
 import skillbill.workflow.IdeStatusValidator
 import java.nio.file.Path
 import java.time.Clock
@@ -33,6 +35,7 @@ class IdeStatusService(
   private val database: DatabaseSessionFactory,
   private val projector: IdeStatusProjector,
   private val ideStatusValidator: IdeStatusValidator,
+  private val branchSource: CheckedOutBranchSource,
   private val clock: Clock = Clock.systemUTC(),
 ) {
 
@@ -52,11 +55,12 @@ class IdeStatusService(
       return emit(IdeStatusProblemSnapshots.absentDatabase(repositoryIdentity, observedAt))
     }
 
+    val currentBranch = branchSource.checkedOutBranch(repoRoot)
     return try {
       database.read(request.dbOverride) { unitOfWork ->
-        val candidates = collectCandidates(unitOfWork, repositoryIdentity)
+        val candidates = scopeToBranch(collectCandidates(unitOfWork, repositoryIdentity), currentBranch)
         val selected = IdeStatusSelectionPolicy.select(candidates, observedAt)
-          ?: return@read emit(IdeStatusProblemSnapshots.noMatchingWork(repositoryIdentity, observedAt))
+          ?: return@read emit(IdeStatusProblemSnapshots.noMatchingWork(repositoryIdentity, observedAt, currentBranch))
         val snapshot = projector.project(
           candidate = selected,
           context = IdeStatusProjectionContext(
@@ -85,6 +89,25 @@ class IdeStatusService(
           message = error.message ?: "Incompatible workflow record.",
         ),
       )
+    }
+  }
+
+  /**
+   * The widget answers "what is happening on the branch I am looking at", so candidates
+   * whose issue key does not appear in the checked-out branch name are dropped. With no
+   * resolvable branch (detached HEAD, rebase) scoping is disabled instead of hiding work.
+   *
+   * A protected base branch (`main`/`master`/`trunk`) also disables scoping. Work only
+   * acquires its issue-named branch at the `create_branch` step, which for a goal runs at
+   * the first subtask launch — so between goal start and that step the run sits on the base
+   * branch and name-matching would hide the very work the surface exists to report. A base
+   * branch is not a feature context to scope to, so the answer there is repository-wide.
+   */
+  private fun scopeToBranch(candidates: List<IdeStatusCandidate>, branch: String?): List<IdeStatusCandidate> {
+    if (branch == null) return candidates
+    if (FeatureTaskRuntimeBranchSetup.protectedBranchName(branch) != null) return candidates
+    return candidates.filter { candidate ->
+      candidate.issueKey?.let { IdeStatusBranchScope.branchReferencesIssueKey(branch, it) } == true
     }
   }
 
@@ -292,7 +315,26 @@ class IdeStatusService(
     }?.let { parseInstantOrNull(it.updatedAt) }
       ?: latestGoalChildUpdatedAt(unitOfWork, item, family, repositoryIdentity)
 
-    return listOfNotNull(fromWorkflow, item.stateEnteredAt).maxOrNull()
+    return listOfNotNull(fromWorkflow, item.stateEnteredAt, goalLeaseHeartbeatAt(unitOfWork, item, family))
+      .maxOrNull()
+  }
+
+  /**
+   * The goal runner heartbeats its execution lease while it holds the goal, so the last
+   * heartbeat is the newest authoritative write about a goal that never reached a status
+   * transition — and, for a run that was stopped or killed, the closest durable record of
+   * when it stopped (accurate to the heartbeat interval). Without it a goal that dies during
+   * a long quiet phase reports its start as its last update, and the settled elapsed clock
+   * understates the run.
+   */
+  private fun goalLeaseHeartbeatAt(
+    unitOfWork: UnitOfWork,
+    item: WorkItem,
+    family: IdeStatusWorkflowFamily,
+  ): Instant? {
+    if (family != IdeStatusWorkflowFamily.FEATURE_GOAL) return null
+    val lease = unitOfWork.goalRunnerControls.controlState(item.workflowId).executionLease ?: return null
+    return parseInstantOrNull(lease.heartbeatAt)
   }
 
   private fun latestGoalChildUpdatedAt(

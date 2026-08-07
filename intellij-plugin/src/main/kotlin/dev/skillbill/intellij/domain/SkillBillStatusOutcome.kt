@@ -20,6 +20,25 @@ sealed class SkillBillStatusOutcome {
         override val diagnostic: StatusDiagnostic? = null,
     ) : SkillBillStatusOutcome()
 
+    /**
+     * A terminal lifecycle with a finished run to show. Distinct from [Idle] because a
+     * completed goal keeps its issue key and final progress on screen for the runtime's
+     * settled-retention window instead of blanking to an empty repository.
+     */
+    data class Done(
+        override val observedAt: Instant,
+        val summary: String,
+        val repositoryIdentity: String?,
+        val issueKey: String?,
+        val progressCompleted: Int?,
+        val progressTotal: Int?,
+        val startedAt: Instant?,
+        val updatedAt: Instant?,
+        /** Freshness modifies a settled lifecycle; it never replaces it. */
+        val stale: Boolean = false,
+        override val diagnostic: StatusDiagnostic? = null,
+    ) : SkillBillStatusOutcome()
+
     data class Active(
         override val observedAt: Instant,
         val summary: String,

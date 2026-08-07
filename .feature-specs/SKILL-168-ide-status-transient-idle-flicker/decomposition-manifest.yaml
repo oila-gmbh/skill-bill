@@ -3,13 +3,14 @@ contract_version: "0.5"
 issue_key: "SKILL-168"
 feature_name: "ide-status-transient-idle-flicker"
 parent_spec_path: ".feature-specs/SKILL-168-ide-status-transient-idle-flicker/spec.md"
+status: "pending"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-168-ide-status-transient-idle-flicker"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 0
-  action: "none"
+  subtask_id: 1
+  action: "start"
 subtasks:
 - id: 1
   name: "Plugin transient-idle smoothing"
@@ -21,6 +22,8 @@ subtasks:
   blocked_reason: null
   last_resumable_step: null
   linear_issue_id: null
+  finalizing_agent_id: null
+  participating_agent_ids: []
   dependencies: []
 - id: 2
   name: "Consistent read snapshot for ide-status candidate collection"
@@ -32,6 +35,8 @@ subtasks:
   blocked_reason: null
   last_resumable_step: null
   linear_issue_id: null
+  finalizing_agent_id: null
+  participating_agent_ids: []
   dependencies:
   - subtask_id: 1
     optional: false

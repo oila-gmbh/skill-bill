@@ -217,10 +217,22 @@ object IdeStatusJsonMapper {
                 stale = isStale,
             )
 
-            "idle", "terminal" -> SkillBillStatusOutcome.Idle(
+            "idle" -> SkillBillStatusOutcome.Idle(
                 observedAt = observedAt,
                 summary = summary,
                 repositoryIdentity = repositoryIdentity,
+                stale = isStale,
+            )
+
+            "terminal" -> SkillBillStatusOutcome.Done(
+                observedAt = observedAt,
+                summary = summary,
+                repositoryIdentity = repositoryIdentity,
+                issueKey = issueKey,
+                progressCompleted = progressCompleted,
+                progressTotal = progressTotal,
+                startedAt = startedAt,
+                updatedAt = updatedAt,
                 stale = isStale,
             )
 

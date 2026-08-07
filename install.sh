@@ -33,6 +33,10 @@ REUSE_LAST_SELECTION=0
 PREFER_UPSTREAM=0
 CLEAN_INSTALL=0
 RELEASE_REPO="${SKILL_BILL_RELEASE_REPO:-oila-gmbh/skill-bill}"
+# Memoized result of resolve_latest_runtime_release_tag. The tag is consumed once per
+# asset plus once per .sha256 sibling and by both list_release_asset_names callers, so
+# resolving each time would multiply unauthenticated api.github.com requests.
+RESOLVED_LATEST_RUNTIME_TAG=""
 # Offline / test overrides. When SKILL_BILL_RELEASE_DIR is set, assets are copied
 # from that local directory (no network). When SKILL_BILL_RELEASE_BASE_URL is set,
 # curl is pointed at that base URL (supports file://) instead of the GitHub API.
@@ -169,19 +173,66 @@ resolve_install_source() {
   fi
 }
 
+# Resolve the newest runtime release tag from the GitHub Releases list.
+# The GitHub "latest release" endpoint cannot be used because it returns the most
+# recently published release of any kind, which a plugin-v* release would win. Only plain
+# vMAJOR.MINOR.PATCH tags are considered, and the winner is the highest version
+# rather than the first list entry.
+resolve_latest_runtime_release_tag() {
+  local api_url json tags tag key best best_key
+  if [[ -n "$RESOLVED_LATEST_RUNTIME_TAG" ]]; then
+    printf '%s' "$RESOLVED_LATEST_RUNTIME_TAG"
+    return 0
+  fi
+  api_url="https://api.github.com/repos/$RELEASE_REPO/releases?per_page=100"
+  if ! json="$(curl -fsSL -H 'Accept: application/vnd.github+json' "$api_url")"; then
+    err "Failed to query releases: $api_url"
+    return 1
+  fi
+  tags="$(printf '%s' "$json" | grep -o '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' \
+    | sed -E 's/.*:[[:space:]]*"([^"]*)"/\1/')"
+  best=""
+  best_key=""
+  while IFS= read -r tag; do
+    [[ -n "$tag" ]] || continue
+    key="$(printf '%s' "${tag#v}" \
+      | awk -F. 'NF==3 && $1 ~ /^[0-9]+$/ && $2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/ {
+          printf "%010d.%010d.%010d", $1, $2, $3
+        }')"
+    [[ -n "$key" ]] || continue
+    if [[ -z "$best_key" || "$key" > "$best_key" ]]; then
+      best_key="$key"
+      best="$tag"
+    fi
+  done <<< "$tags"
+  if [[ -z "$best" ]]; then
+    err "Failed to resolve latest runtime release tag from: $api_url"
+    return 1
+  fi
+  RESOLVED_LATEST_RUNTIME_TAG="$best"
+  printf '%s' "$best"
+}
+
+# Prime the memo in the PARENT shell, before any command-substitution helper needs the
+# tag: an assignment made inside `$(...)` would be discarded, so without this the API
+# would be queried once per asset, once per .sha256 sibling and once per asset listing.
+# Best effort — a failure here is re-reported loudly by the resolver at the point of use.
+init_latest_runtime_release_tag() {
+  if [[ -n "$RELEASE_TAG" || -n "$SKILL_BILL_RELEASE_DIR" ]]; then
+    return 0
+  fi
+  if [[ -z "$RESOLVED_LATEST_RUNTIME_TAG" ]]; then
+    RESOLVED_LATEST_RUNTIME_TAG="$(resolve_latest_runtime_release_tag 2>/dev/null || true)"
+  fi
+  return 0
+}
+
 resolve_release_installer_tag() {
   if [[ -n "$RELEASE_TAG" ]]; then
     printf '%s' "$RELEASE_TAG"
     return 0
   fi
-  local api_url tag
-  api_url="https://api.github.com/repos/$RELEASE_REPO/releases/latest"
-  tag="$(curl -fsSL "$api_url" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
-  if [[ -z "$tag" ]]; then
-    err "Failed to resolve latest release tag from: $api_url"
-    return 1
-  fi
-  printf '%s' "$tag"
+  resolve_latest_runtime_release_tag
 }
 
 bootstrap_release_installer_if_needed() {
@@ -366,7 +417,8 @@ compute_sha256() {
 # Resolution order (overrides win, no network when an override is set):
 #   1. SKILL_BILL_RELEASE_DIR  → copy the named file from that local directory.
 #   2. SKILL_BILL_RELEASE_BASE_URL → curl "<base>/<name>" (supports file://).
-#   3. GitHub release download URL for RELEASE_REPO/RELEASE_TAG.
+#   3. GitHub release download URL for RELEASE_REPO at RELEASE_TAG, or at the resolved
+#      newest runtime tag when RELEASE_TAG is unset.
 # Fails loudly and removes any partial download on error.
 fetch_release_asset() {
   local name="$1"
@@ -388,11 +440,16 @@ fetch_release_asset() {
   if [[ -n "$SKILL_BILL_RELEASE_BASE_URL" ]]; then
     url="${SKILL_BILL_RELEASE_BASE_URL%/}/$name"
   else
-    local ref
+    local ref tag
     if [[ -n "$RELEASE_TAG" ]]; then
       ref="download/$RELEASE_TAG"
     else
-      ref="latest/download"
+      # The latest-release redirect would be won by a plugin-v* release, so pin the
+      # download to the same runtime tag list_release_asset_names resolved.
+      if ! tag="$(resolve_latest_runtime_release_tag)"; then
+        return 1
+      fi
+      ref="download/$tag"
     fi
     url="https://github.com/$RELEASE_REPO/releases/$ref/$name"
   fi
@@ -448,11 +505,14 @@ list_release_asset_names() {
     return 0
   fi
 
-  local api_url
+  local api_url tag
   if [[ -n "$RELEASE_TAG" ]]; then
     api_url="https://api.github.com/repos/$RELEASE_REPO/releases/tags/$RELEASE_TAG"
   else
-    api_url="https://api.github.com/repos/$RELEASE_REPO/releases/latest"
+    if ! tag="$(resolve_latest_runtime_release_tag)"; then
+      return 1
+    fi
+    api_url="https://api.github.com/repos/$RELEASE_REPO/releases/tags/$tag"
   fi
   local json
   if ! json="$(curl -fsSL -H 'Accept: application/vnd.github+json' "$api_url")"; then
@@ -505,6 +565,7 @@ bundle_bootstrap_if_needed() {
   fi
   check_prebuilt_dependencies || return 1
   init_prebuilt_work_dir
+  init_latest_runtime_release_tag
 
   local asset_name
   if ! asset_name="$(resolve_skills_bundle_asset_name)"; then
@@ -580,6 +641,7 @@ resolve_release_assets() {
   fi
 
   local names name
+  init_latest_runtime_release_tag
   if ! names="$(list_release_asset_names)"; then
     return 1
   fi
@@ -1040,6 +1102,7 @@ unpack_runtime_image() {
 install_prebuilt_runtime_distributions() {
   local work_dir cli_archive mcp_archive cli_src mcp_src
   init_prebuilt_work_dir
+  init_latest_runtime_release_tag
   work_dir="$(prebuilt_work_dir)"
 
   info "Fetching prebuilt runtime images for host token: $(host_token)"
