@@ -9,18 +9,18 @@ base_branch: "main"
 feature_branch: "feat/SKILL-165-ide-status-planning-progress"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 1
+  subtask_id: 2
   action: "resume"
 subtasks:
 - id: 1
   name: "Emit goal planning status on the IDE status wire"
   spec_path: ".feature-specs/SKILL-165-ide-status-planning-progress/spec_subtask_1_runtime-wire-planning.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260807-121238-7e9m"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -31,7 +31,7 @@ subtasks:
   status: "pending"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260807-124620-bycf"
   blocked_reason: null
   last_resumable_step: null
   linear_issue_id: null

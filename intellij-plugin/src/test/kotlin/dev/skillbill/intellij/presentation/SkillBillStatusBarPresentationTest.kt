@@ -275,7 +275,12 @@ class SkillBillStatusBarPresentationTest {
                 ),
                 now,
             )
-            assertTrue(mapped.barText, mapped.barText.contains("Planning 1/4"))
+            // The bar budget drops the redundant progress pair and the subtask clock so
+            // the planning segment and the goal clock both survive within 48 chars.
+            assertEquals("Skill Bill · Implement · Planning 1/4 · 2h 00m", mapped.barText)
+            assertTrue(
+                mapped.barText.length <= SkillBillStatusBarPresentation.BAR_TEXT_MAX_LENGTH,
+            )
             assertTrue(
                 mapped.tooltipText,
                 mapped.tooltipText.contains(
@@ -354,7 +359,7 @@ class SkillBillStatusBarPresentationTest {
         )
         assertTrue(mapped.isStaleMarked)
         assertTrue(mapped.tooltipText.contains(SkillBillStatusBarPresentation.STALE_NOTE))
-        assertTrue(mapped.barText, mapped.barText.contains("Planning 1/4"))
+        assertEquals("Skill Bill · stale · Plan · Planning 1/4", mapped.barText)
         assertTrue(mapped.tooltipText.contains("Planning: 1/4 subtasks"))
     }
 
@@ -416,7 +421,8 @@ class SkillBillStatusBarPresentationTest {
             ),
             now,
         )
-        assertTrue(mapped.barText, mapped.barText.contains("paused"))
+        assertEquals("Skill Bill · paused · Implement · 2h 00m · 2/4", mapped.barText)
+        assertTrue(mapped.barText.length <= SkillBillStatusBarPresentation.BAR_TEXT_MAX_LENGTH)
         assertEquals("paused", mapped.details.lifecycleState)
         assertTrue(mapped.tooltipText.contains("\nStep: Implement"))
         assertTrue(mapped.tooltipText.contains("\nProgress: 2/4"))

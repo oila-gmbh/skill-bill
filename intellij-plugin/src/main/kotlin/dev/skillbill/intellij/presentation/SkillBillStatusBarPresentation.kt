@@ -32,27 +32,13 @@ object SkillBillStatusBarPresentation {
 
         val fullBar = when (anchored) {
             is SkillBillStatusUiState.Active ->
-                buildActiveBar(step ?: anchored.stepLabel, planningSegment, goalText, subtaskText, progressText)
+                buildRunBar("Skill Bill", step ?: anchored.stepLabel, planningSegment, goalText, subtaskText, progressText)
 
             is SkillBillStatusUiState.Paused ->
-                buildString {
-                    append("Skill Bill · paused")
-                    step?.let { append(" · ").append(it) }
-                    planningSegment?.let { append(" · ").append(it) }
-                    append(" · ").append(goalText)
-                    append(" · ").append(subtaskText)
-                    progressText?.let { append(" · ").append(it) }
-                }
+                buildRunBar("Skill Bill · paused", step, planningSegment, goalText, subtaskText, progressText)
 
             is SkillBillStatusUiState.Stale ->
-                buildString {
-                    append("Skill Bill · stale")
-                    step?.let { append(" · ").append(it) }
-                    planningSegment?.let { append(" · ").append(it) }
-                    append(" · ").append(goalText)
-                    append(" · ").append(subtaskText)
-                    progressText?.let { append(" · ").append(it) }
-                }
+                buildRunBar("Skill Bill · stale", step, planningSegment, goalText, subtaskText, progressText)
 
             is SkillBillStatusUiState.Blocked -> "Skill Bill · blocked"
             is SkillBillStatusUiState.Failed -> "Skill Bill · failed"
@@ -150,20 +136,38 @@ object SkillBillStatusBarPresentation {
         return if (inFlight && completed < total) completed + 1 else completed
     }
 
-    private fun buildActiveBar(
-        stepLabel: String,
+    /**
+     * The bar has a hard 48-char budget, and prefix + step + planning + two clocks +
+     * progress overflows it, so a plain concatenation loses whichever segment lands last.
+     * Segments are therefore dropped by ascending value until the line fits: the progress
+     * pair is redundant while planning is shown (planning only renders before execution
+     * starts), and the subtask clock is the least informative of the two clocks.
+     */
+    private fun buildRunBar(
+        prefix: String,
+        stepLabel: String?,
         planningSegment: String?,
         goalText: String,
         subtaskText: String,
         progressText: String?,
-    ): String =
-        buildString {
-            append("Skill Bill · ").append(stepLabel)
-            planningSegment?.let { append(" · ").append(it) }
-            append(" · ").append(goalText)
-            append(" · ").append(subtaskText)
-            progressText?.let { append(" · ").append(it) }
+    ): String {
+        val progressRank = if (planningSegment == null) 2 else 0
+        val optional = listOf(subtaskText to 1, progressText to progressRank)
+        var dropRank = -1
+        while (true) {
+            val bar = buildString {
+                append(prefix)
+                stepLabel?.let { append(" · ").append(it) }
+                planningSegment?.let { append(" · ").append(it) }
+                if (dropRank < 3) append(" · ").append(goalText)
+                for ((text, rank) in optional) {
+                    if (text != null && rank > dropRank) append(" · ").append(text)
+                }
+            }
+            if (bar.length <= BAR_TEXT_MAX_LENGTH || dropRank >= 3) return bar
+            dropRank++
         }
+    }
 
     private fun buildTooltip(
         state: SkillBillStatusUiState,
