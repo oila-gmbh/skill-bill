@@ -87,7 +87,8 @@ class GoalPlanningSweepTest {
       "parent_spec" to "parent body",
       "decomposition_manifest" to "contract_version: \"0.1\"\nissue_key: SKILL-172\n",
       "platform_packs" to mapOf(
-        "platform-packs/kotlin/platform.yaml" to "routing_signals: [kotlin]\ndeclared_code_review_areas: [architecture]\n",
+        "platform-packs/kotlin/platform.yaml" to
+          "routing_signals: [kotlin]\ndeclared_code_review_areas: [architecture]\n",
       ),
       "boundary_memory" to mapOf(
         "platform-packs/kotlin/agent/history.md" to "prior decision",

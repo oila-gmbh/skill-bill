@@ -1,5 +1,15 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
+## [2026-08-08] SKILL-172 goal-planning context discovery stops buying platform.yaml (subtask 1)
+Areas: runtime-kotlin/runtime-infra-fs/goalplanning, runtime-kotlin/runtime-application (GoalPlanningSweep packet validation), .feature-specs/SKILL-172-goal-planning-burst-and-context
+- `FileSystemGoalPlanningContextDiscovery` no longer reads `platform-packs/*/platform.yaml`; `platform_packs` stays in the shared context packet as `{}` so `PACKET_FIELDS` / integrity stay resume-compatible without a VERSION bump.
+- Discovery priority under `DiscoveryBudget` is load-bearing and documented: boundary_memory (history then decisions, sorted packs) before validation_guidance (`AGENTS.md`); budget exhaustion omits later categories entirely rather than silent argument-order truncation.
+- Nine oversized-pack fixture proves boundary memory and AGENTS guidance survive when platform.yaml would previously exhaust the 32KB budget; allowlist/file-count and symlink-escape tests retargeted to history.md.
+- Packet fixture with populated `platform_packs` still passes `GoalPlanningSharedContextPacket.validate` at VERSION `0.1`. reusable pattern: keep empty packet keys until a versioned migration removes them.
+- Known limitation: `platform_packs` key and `validation_guidance` name remain until deferred versioned packet work; `MAX_DISCOVERY_*` caps unchanged.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-08-07] SKILL-164 checkpoint-keyed shared review evidence store (subtask 1)
 Areas: runtime-kotlin/runtime-infra-fs, runtime-kotlin/runtime-ports/taskruntime, runtime-kotlin/runtime-domain/workflow/taskruntime/model
 - New derive-once seam: `FeatureTaskRuntimeSharedEvidenceResolverPort` resolves shared review evidence keyed solely on `FeatureTaskRuntimeRepositoryCheckpoint.fingerprint` (+ workflow id); a fingerprint hit returns the stored artifact with zero repository traversal.
