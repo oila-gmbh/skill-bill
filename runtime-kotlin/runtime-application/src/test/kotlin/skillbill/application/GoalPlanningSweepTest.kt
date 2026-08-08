@@ -88,10 +88,13 @@ class GoalPlanningSweepTest {
     val subtasks = listOf(
       DecompositionSubtask(id = 1, name = "planning-context-discovery", specPath = "spec_subtask_1.md"),
     )
-    val legacy = legacyV01Packet(subtasks, platformPacks = mapOf(
-      "platform-packs/kotlin/platform.yaml" to
-        "routing_signals: [kotlin]\ndeclared_code_review_areas: [architecture]\n",
-    ))
+    val legacy = legacyV01Packet(
+      subtasks,
+      platformPacks = mapOf(
+        "platform-packs/kotlin/platform.yaml" to
+          "routing_signals: [kotlin]\ndeclared_code_review_areas: [architecture]\n",
+      ),
+    )
 
     val migrated = GoalPlanningSharedContextPacket.migrate(legacy)
 
