@@ -13,6 +13,8 @@ import skillbill.ports.agentrun.ExecutableLookup
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunLaunchRequest
+import skillbill.ports.telemetry.HttpRequester
+import skillbill.ports.telemetry.UnconfiguredHttpRequester
 import skillbill.ports.workflow.GoalSubtaskReviewGitOperations
 import skillbill.ports.workflow.GoalSubtaskReviewGitOperationsProvider
 import skillbill.ports.workflow.RepositoryFingerprintGitOperations
@@ -1831,13 +1833,102 @@ class CliFeatureTaskRuntimeSpecLookupTest {
     assertContains(resumed.stdout, "was persisted in prose mode")
     assertEquals(emptyList(), resumeLauncher.requests)
   }
+
+  @Test
+  fun `feature-task runtime completion drains a non-empty telemetry outbox`() {
+    val fixture = runtimeFixture()
+    val requester = RecordingTelemetryRequester()
+    fixture.materializeDatabaseWithTelemetry(level = "anonymous", requester = requester)
+    seedTelemetryOutbox(fixture.dbPath, "skillbill_fixture_event")
+    assertEquals(1, pendingTelemetryOutboxCount(fixture.dbPath))
+
+    val run = CliRuntime.run(
+      fixture.runCommand(extra = listOf("--agent", "codex")),
+      fixture.context(RecordingPhaseLauncher(), requester = requester),
+    )
+
+    assertEquals(0, run.exitCode, run.stdout)
+    assertEquals(0, pendingTelemetryOutboxCount(fixture.dbPath))
+    // The run records its own events too, so the batch count is incidental; every request must
+    // still be the fixture proxy, which is what proves nothing reached a real relay.
+    assertTrue(requester.requests.isNotEmpty())
+    assertTrue(requester.requests.all { it.contains(TELEMETRY_FIXTURE_PROXY_URL) }, requester.requests.toString())
+  }
+
+  @Test
+  fun `feature-task runtime completion with telemetry off transmits nothing and retains the outbox`() {
+    val fixture = runtimeFixture()
+    val requester = RecordingTelemetryRequester()
+    // The database only materializes through an enabled read, so enable first and then resolve
+    // the install back to 'off' for the run under assertion.
+    fixture.materializeDatabaseWithTelemetry(level = "anonymous", requester = requester)
+    seedTelemetryOutbox(fixture.dbPath, "skillbill_fixture_event")
+    writeTelemetryConfig(fixture.tempDir, level = "off", proxyUrl = TELEMETRY_FIXTURE_PROXY_URL)
+
+    val run = CliRuntime.run(
+      fixture.runCommand(extra = listOf("--agent", "codex")),
+      fixture.context(RecordingPhaseLauncher(), requester = requester),
+    )
+
+    assertEquals(0, run.exitCode, run.stdout)
+    assertEquals(emptyList(), requester.requests)
+    assertEquals(0, syncedTelemetryOutboxCount(fixture.dbPath))
+    assertTrue(pendingTelemetryOutboxCount(fixture.dbPath) >= 1)
+  }
+
+  @Test
+  @Suppress("TooGenericExceptionThrown")
+  fun `a throwing telemetry drain leaves the feature-task runtime outcome byte-for-byte unchanged`() {
+    val passing = runtimeDrainOutcome(RecordingTelemetryRequester())
+    val throwing = runtimeDrainOutcome(
+      // RuntimeException is caught by neither autoSyncTelemetry nor CliRuntime, so it is the type
+      // that would reach the operator's result if the drain were not isolated.
+      RecordingTelemetryRequester(failure = { throw RuntimeException("telemetry proxy exploded") }),
+    )
+
+    assertEquals(0, passing.exitCode)
+    assertEquals(passing.exitCode, throwing.exitCode)
+    assertEquals(passing.stdout, throwing.stdout)
+    assertEquals(passing.payload, throwing.payload)
+    assertEquals("", passing.stderr)
+    assertEquals("", throwing.stderr)
+  }
+
+  private fun runtimeDrainOutcome(requester: RecordingTelemetryRequester): DrainOutcome {
+    val fixture = runtimeFixture()
+    val stderr = StringBuilder()
+    fixture.materializeDatabaseWithTelemetry(level = "anonymous", requester = requester)
+    seedTelemetryOutbox(fixture.dbPath, "skillbill_fixture_event")
+
+    val run = CliRuntime.run(
+      fixture.runCommand(extra = listOf("--agent", "codex")),
+      fixture.context(RecordingPhaseLauncher(), requester = requester, liveStderr = { stderr.append(it) }),
+    )
+
+    // workflow_id is minted per run, so it is the one field two runs may legitimately differ on.
+    val workflowId = run.payload?.get("workflow_id")?.toString().orEmpty()
+    return DrainOutcome(
+      exitCode = run.exitCode,
+      stdout = run.stdout.replace(workflowId, "<workflow-id>"),
+      payload = run.payload.orEmpty().filterKeys { it != "workflow_id" },
+      stderr = stderr.toString(),
+    )
+  }
 }
+
+private data class DrainOutcome(
+  val exitCode: Int,
+  val stdout: String,
+  val payload: Map<String, Any?>,
+  val stderr: String,
+)
 
 private data class FeatureTaskRuntimeCliFixture(
   val tempDir: Path,
   val dbPath: Path,
   val specPath: Path,
 ) {
+  @Suppress("LongParameterList")
   fun context(
     launcher: AgentRunLauncher,
     environment: Map<String, String> = emptyMap(),
@@ -1847,16 +1938,21 @@ private data class FeatureTaskRuntimeCliFixture(
     // existing completion/blocked expectations stand; branch-setup tests override this to start on
     // the default branch. The real git adapter is bypassed because the tempDir is not a git repo.
     workflowGitOperations: WorkflowGitOperations = FakeRuntimeGitOperations(),
+    requester: HttpRequester = UnconfiguredHttpRequester,
   ): CliRuntimeContext = CliRuntimeContext(
     userHome = tempDir,
     agentRunLauncher = launcher,
     environment = environment,
+    requester = requester,
     liveStdout = liveStdout,
     liveStderr = liveStderr,
     workflowGitOperations = workflowGitOperations,
     // CLI unit tests assert orchestration, not host PATH; production still uses PathExecutableLookup.
     executableLookup = ExecutableLookup { true },
   )
+
+  fun materializeDatabaseWithTelemetry(level: String, requester: HttpRequester) =
+    materializeTelemetryDatabase(tempDir, dbPath, level, context(RecordingPhaseLauncher(), requester = requester))
 
   fun runCommand(extra: List<String> = emptyList()): List<String> = buildList {
     add("--db")

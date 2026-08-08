@@ -29,7 +29,7 @@ class TelemetryService(
   fun status(dbOverride: String?): TelemetryStatusResult {
     val dbPath = database.resolveDbPath(dbOverride)
     val settings = loadTelemetrySettings(settingsProvider)
-    if (!settings.enabled) {
+    if (!database.databaseExists(dbOverride)) {
       return TelemetrySyncRuntime.telemetryStatusPayload(dbPath, settings)
     }
     return database.read(dbOverride) { unitOfWork ->
@@ -38,6 +38,7 @@ class TelemetryService(
         settings = settings,
         pendingEvents = unitOfWork.telemetryOutbox.pendingCount(),
         latestError = unitOfWork.telemetryOutbox.latestError(),
+        lastSyncedAt = unitOfWork.telemetryOutbox.lastSyncedAt(),
       )
     }
   }
@@ -134,6 +135,9 @@ private fun sessionTelemetryOutboxRepository(
 
   override fun latestError(): String? =
     database.read(dbOverride) { unitOfWork -> unitOfWork.telemetryOutbox.latestError() }
+
+  override fun lastSyncedAt(): String? =
+    database.read(dbOverride) { unitOfWork -> unitOfWork.telemetryOutbox.lastSyncedAt() }
 
   override fun markSynced(id: Long, syncedAt: String) {
     database.transaction(dbOverride) { unitOfWork -> unitOfWork.telemetryOutbox.markSynced(id, syncedAt) }

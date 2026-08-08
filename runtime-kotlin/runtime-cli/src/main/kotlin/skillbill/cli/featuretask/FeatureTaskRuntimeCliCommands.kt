@@ -42,6 +42,7 @@ import skillbill.application.model.WorkflowFamilyKind
 import skillbill.application.model.WorkflowOpenResult
 import skillbill.application.model.WorkflowUpdateResult
 import skillbill.application.review.RequestedReviewMode
+import skillbill.application.telemetry.TelemetryService
 import skillbill.application.workflow.WorkflowService
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
@@ -49,6 +50,7 @@ import skillbill.cli.core.formatOption
 import skillbill.cli.core.refuseRuntimeRefusedAgents
 import skillbill.cli.core.refuseUnavailableAgentLaunchers
 import skillbill.cli.core.refuseUnsupportedModelDirectives
+import skillbill.cli.telemetry.drainTelemetryOnCompletion
 import skillbill.cli.workflow.toCliMap
 import skillbill.config.model.CompactionSettings
 import skillbill.config.model.PhaseModelDirective
@@ -82,6 +84,7 @@ data class FeatureTaskRuntimeRunDependencies(
   val configResolutionService: ConfigResolutionService,
   val agentAddonSelectionPort: AgentAddonSelectionPort,
   val executableLookup: ExecutableLookup,
+  val telemetryService: TelemetryService,
   val state: CliRunState,
 )
 
@@ -250,6 +253,7 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
     }
     val payload = report.toRuntimeRunCliMap()
     state.completeText(runtimeRunText(payload), payload, exitCode = payload.runtimeRunExitCode())
+    drainTelemetryOnCompletion(deps.telemetryService, state.dbOverride)
   }
 
   private fun prepareRuntimeRun(deps: FeatureTaskRuntimeRunDependencies): PreparedRuntimeRun {

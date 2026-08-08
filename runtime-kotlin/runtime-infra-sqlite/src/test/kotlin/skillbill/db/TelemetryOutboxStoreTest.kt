@@ -7,6 +7,7 @@ import java.nio.file.Files
 import java.sql.Connection
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class TelemetryOutboxStoreTest {
@@ -132,6 +133,22 @@ class TelemetryOutboxStoreTest {
         scalarString(connection, "SELECT skill_bill_version FROM telemetry_outbox WHERE id = $id"),
       )
       assertEquals("9.9.9-injected", store.listPending().single { it.id == id }.skillBillVersion)
+    }
+  }
+
+  // SKILL-170 AC-002: the status surface needs a never-synced/synced distinction that survives a non-empty outbox.
+  @Test
+  fun `lastSyncedAt is null until a row is marked synced`() {
+    withOutbox { _, store ->
+      val id = store.enqueue(eventName = "skillbill_goal_finished", payloadJson = "{}")
+      store.enqueue(eventName = "skillbill_review_finished", payloadJson = "{}")
+
+      assertEquals(null, store.lastSyncedAt(), "An outbox that never delivered has no successful sync timestamp.")
+
+      store.markSynced(listOf(id))
+
+      assertNotNull(store.lastSyncedAt(), "A delivered row must expose a successful sync timestamp.")
+      assertEquals(1, store.pendingCount(), "The still-pending row must remain queued alongside the sync timestamp.")
     }
   }
 

@@ -1,3 +1,26 @@
+## [2026-08-08] SKILL-170 telemetry outbox visibility and drain-gap cause record (subtask 2)
+Areas: runtime-kotlin/{runtime-ports,runtime-infra-sqlite,runtime-application,runtime-cli}, .feature-specs/SKILL-170-cli-telemetry-outbox-drain
+- `TelemetryOutboxRepository.lastSyncedAt()` (SQLite: `SELECT MAX(synced_at)`) plus `TelemetryStatusResult.lastSyncedAt` make `telemetry status` answer "has this install ever delivered?"; the CLI emits `last_synced_at` and an always-present `last_sync_state` of `never_synced`/`synced` because the text formatter drops null values and a nullable timestamp alone cannot carry the distinction. reusable
+- `telemetry status` became level-independent: it reads pending count, latest error, and last sync for every resolved level including `off`, gated only on the database existing. `install_id` and `batch_size` stay gated on `enabled`, so an off install still shows its queue depth without leaking its identity.
+- Status is now strictly a read — it no longer materializes the database as a side effect. Test fixtures that relied on that side effect create the database through `DatabaseRuntime.ensureDatabase` instead.
+- Confirmed root cause of the drain gap: `TelemetryService.autoSync` was wired only into `McpRuntime`; `runtime-cli/src/main` contained no `telemetryService` reference at all, so CLI-only installs queued events forever and never delivered them. Subtask 1 added the CLI completion-boundary drain.
+- Evidence that surfaced it: 10,690 projection-measurement rows spanning 148 distinct `workflow_id`s but exactly one distinct `install_id` over 21 days, plus a user-observed workflow (`wftr-20260807-123754-11fb`) with zero rows while its chronological neighbours were present. Ruled out: a blank `proxy_url` (it resolves to the hosted relay, not a no-op) and a default-off level (the default is `anonymous`).
+- Unresolved: the drain gap does not account for installs deliberately set to `off`, or for installs that never completed a runtime boundary at all. This cannot be settled until subtask 1 ships and new `install_id`s either do or do not appear in the relay — the investigation stays open.
+- Known limitation: `last_synced_at` derives from `MAX(synced_at)`, so the outbox `clear()` that `setLevel` performs erases it and a level change resets an install to `never_synced`.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
+## [2026-08-08] SKILL-170 CLI completion telemetry outbox drain (subtask 1)
+Areas: runtime-kotlin/runtime-cli/{telemetry,featuretask,goal}, .feature-specs/SKILL-170-cli-telemetry-outbox-drain
+- New `skillbill.cli.telemetry.drainTelemetryOnCompletion(telemetryService, dbOverride)` flushes the outbox at CLI completion boundaries by reusing `TelemetryService.autoSync` — no second sync path, settings resolution, or outbox query. reusable
+- Called from exactly two completion boundaries: `FeatureTaskRuntimeCliCommands` and `GoalCliCommands`. Non-runtime verbs (status, config, review) deliberately do not drain.
+- Failure isolation is the contract: the drain runs on a daemon thread joined with a 5s bound and swallows every `Exception`, so an unreachable/blackholed proxy can never change exit code, stdout, or reported outcome, and never delays process exit. Nothing is written to stdout or stderr.
+- Level gating is inherited free from `autoSync`'s early return — resolved level `off` invokes no requester and marks nothing synced; no new gate was added.
+- Test support: `RecordingTelemetryRequester` plus `CliCompletionTelemetryDrainSupport` seed a non-empty outbox and assert it drained; call-site-removal mutation check confirms both drain tests fail without the call sites. reusable
+- Limits: no retry, backoff, or scheduling for a failed sync; `autoSync` reconciler cadence and the emitted event set are unchanged.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-08-08] SKILL-168 goal stop verb and durable pause timestamp (subtask 3)
 Areas: runtime-kotlin/{runtime-domain,runtime-ports,runtime-application,runtime-infra-sqlite,runtime-cli}, .feature-specs/SKILL-168-ide-status-goal-controls
 - `GoalRunnerControlState` gained a nullable pause timestamp with a construction invariant mirroring `pauseReason`: `paused = true` without a timestamp is rejected. Legacy rows without the column decode through the store, so the invariant is enforced at construction, not at read. reusable
