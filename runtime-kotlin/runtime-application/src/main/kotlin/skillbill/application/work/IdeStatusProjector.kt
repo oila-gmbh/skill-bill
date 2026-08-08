@@ -111,6 +111,10 @@ class IdeStatusProjector(
       startedAt = candidate.startedAt,
       currentSubtask = currentSubtask,
       planning = planning,
+      pauseRequested = projection?.pauseRequested == true && projection.paused != true,
+      // Durable record only: a lease-expiry-inferred pause has no recorded instant, and
+      // back-filling from heartbeat_at/updated_at would sell an inference as a record.
+      pausedAt = parseInstantOrNull(projection?.pausedAt),
       updatedAt = candidate.updatedAt,
       freshness = freshness,
       // "is planning subtasks" describes work in flight, so a paused goal keeps the Planning
@@ -127,7 +131,9 @@ class IdeStatusProjector(
    * lease means a parent row stuck `running` (finalization died after the last subtask,
    * goal finished out-of-band) — the settled truth wins. Pause controls likewise only
    * override an active candidate; a durable blocked/failed/terminal state is the stronger
-   * signal and must survive a stale pause flag.
+   * signal and must survive a stale pause flag. Only a *consumed* pause downgrades to
+   * PAUSED: a requested-but-unconsumed pause is still genuinely running its current subtask,
+   * and is reported as the `pause_requested` modifier on an active goal instead.
    *
    * A `running` row whose parent lease is no longer live means no goal runner holds the
    * goal: the process was stopped or died without writing a terminal state. Reporting that
@@ -149,7 +155,7 @@ class IdeStatusProjector(
       projection.executionLiveness != ExecutionLiveness.LIVE
     return when {
       settledComplete -> IdeStatusLifecycleState.TERMINAL
-      projection?.paused == true || projection?.pauseRequested == true -> IdeStatusLifecycleState.PAUSED
+      projection?.paused == true -> IdeStatusLifecycleState.PAUSED
       projection?.executionLiveness == ExecutionLiveness.IDLE -> IdeStatusLifecycleState.PAUSED
       else -> IdeStatusLifecycleState.ACTIVE
     }

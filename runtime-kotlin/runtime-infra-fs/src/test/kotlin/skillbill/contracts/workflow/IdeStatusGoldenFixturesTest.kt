@@ -123,6 +123,74 @@ class IdeStatusGoldenFixturesTest {
   }
 
   @Test
+  fun `feature-goal pause-requested-not-consumed golden validates`() {
+    IdeStatusSchemaValidator.validate(
+      linkedMapOf(
+        "contract_version" to IDE_STATUS_CONTRACT_VERSION,
+        "repository_identity" to "repo-root-realpath-v1:/repo",
+        "issue_key" to "SKILL-168",
+        "workflow_id" to "goal-3",
+        "workflow_family" to "feature-goal",
+        // Still genuinely running its current subtask; the request is a modifier, not a lifecycle.
+        "lifecycle_state" to "active",
+        "current_step" to linkedMapOf("id" to "implement", "label" to "Implement"),
+        "progress" to linkedMapOf("completed" to 1, "total" to 3),
+        "started_at" to "2026-08-06T08:00:00Z",
+        "pause_requested" to true,
+        "updated_at" to "2026-08-06T10:00:00Z",
+        "freshness" to "fresh",
+        "summary" to "Goal SKILL-168 is active on Implement.",
+      ),
+      "golden-goal-pause-requested",
+    )
+  }
+
+  @Test
+  fun `feature-goal pause-consumed-with-timestamp golden validates`() {
+    IdeStatusSchemaValidator.validate(
+      linkedMapOf(
+        "contract_version" to IDE_STATUS_CONTRACT_VERSION,
+        "repository_identity" to "repo-root-realpath-v1:/repo",
+        "issue_key" to "SKILL-168",
+        "workflow_id" to "goal-4",
+        "workflow_family" to "feature-goal",
+        "lifecycle_state" to "paused",
+        "current_step" to linkedMapOf("id" to "implement", "label" to "Implement"),
+        "progress" to linkedMapOf("completed" to 1, "total" to 3),
+        "started_at" to "2026-08-06T08:00:00Z",
+        "paused_at" to "2026-08-06T09:45:00Z",
+        "updated_at" to "2026-08-06T10:00:00Z",
+        "freshness" to "fresh",
+        "summary" to "Goal SKILL-168 is paused.",
+      ),
+      "golden-goal-pause-consumed",
+    )
+  }
+
+  @Test
+  fun `feature-goal lease-expired-without-timestamp golden validates`() {
+    IdeStatusSchemaValidator.validate(
+      linkedMapOf(
+        "contract_version" to IDE_STATUS_CONTRACT_VERSION,
+        "repository_identity" to "repo-root-realpath-v1:/repo",
+        "issue_key" to "SKILL-168",
+        "workflow_id" to "goal-5",
+        "workflow_family" to "feature-goal",
+        // Paused by lease-expiry inference: no durable pause record, so no paused_at.
+        // updated_at carries the inferred stop anchor instead.
+        "lifecycle_state" to "paused",
+        "current_step" to linkedMapOf("id" to "implement", "label" to "Implement"),
+        "progress" to linkedMapOf("completed" to 1, "total" to 3),
+        "started_at" to "2026-08-06T08:00:00Z",
+        "updated_at" to "2026-08-06T09:50:00Z",
+        "freshness" to "fresh",
+        "summary" to "Goal SKILL-168 is paused.",
+      ),
+      "golden-goal-lease-expired",
+    )
+  }
+
+  @Test
   fun `typed problem goldens validate`() {
     listOf(
       "missing_repository_identity",

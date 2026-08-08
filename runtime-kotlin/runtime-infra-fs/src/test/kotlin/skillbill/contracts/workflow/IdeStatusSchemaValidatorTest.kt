@@ -1,8 +1,11 @@
 package skillbill.contracts.workflow
 
+import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import skillbill.error.InvalidIdeStatusSchemaError
 import kotlin.test.Test
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 
 class IdeStatusSchemaValidatorTest {
   @Test
@@ -192,6 +195,56 @@ class IdeStatusSchemaValidatorTest {
       )
     }
   }
+
+  @Test
+  fun `goal snapshot carrying both pause signals passes`() {
+    val snapshot = validGoalSnapshot()
+    snapshot["pause_requested"] = true
+    snapshot["paused_at"] = "2026-08-06T10:08:00Z"
+    IdeStatusSchemaValidator.validate(snapshot, "test-pause-signals-present")
+  }
+
+  @Test
+  fun `an otherwise identical goal snapshot carrying neither pause signal passes`() {
+    IdeStatusSchemaValidator.validate(validGoalSnapshot(), "test-pause-signals-absent")
+  }
+
+  @Test
+  fun `blank paused_at fails loudly with typed error`() {
+    val malformed = validGoalSnapshot()
+    malformed["paused_at"] = ""
+    assertFailsWith<InvalidIdeStatusSchemaError> {
+      IdeStatusSchemaValidator.validate(malformed, "test-blank-paused-at")
+    }
+  }
+
+  @Test
+  fun `neither pause signal is in the schema required list`() {
+    val required = schemaRequiredNames()
+    assertFalse(required.contains("pause_requested"), "pause_requested must stay optional; required=$required")
+    assertFalse(required.contains("paused_at"), "paused_at must stay optional; required=$required")
+  }
+
+  private fun schemaRequiredNames(): List<String> {
+    val resourceStream = IdeStatusSchemaValidator::class.java.classLoader
+      .getResourceAsStream(IdeStatusSchemaPaths.CLASSPATH_RESOURCE)
+    assertNotNull(resourceStream, "Canonical IDE status schema is missing from the classpath.")
+    val yamlText = resourceStream.use { it.readBytes().toString(Charsets.UTF_8) }
+    return YAMLMapper().readTree(yamlText).path("required").map { it.asText() }
+  }
+
+  private fun validGoalSnapshot(): LinkedHashMap<String, Any?> = linkedMapOf(
+    "contract_version" to IDE_STATUS_CONTRACT_VERSION,
+    "repository_identity" to "repo-root-realpath-v1:/repo",
+    "issue_key" to "SKILL-148",
+    "workflow_id" to "goal-1",
+    "workflow_family" to "feature-goal",
+    "lifecycle_state" to "active",
+    "current_step" to linkedMapOf("id" to "implement", "label" to "Implement"),
+    "updated_at" to "2026-08-06T10:10:00Z",
+    "freshness" to "fresh",
+    "summary" to "Goal SKILL-148 is active on implement.",
+  )
 
   private fun goalSnapshotWithPlanning(planning: Map<String, Any?>): LinkedHashMap<String, Any?> = linkedMapOf(
     "contract_version" to IDE_STATUS_CONTRACT_VERSION,

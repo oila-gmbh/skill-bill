@@ -372,6 +372,7 @@ data class GoalRunnerStatusProjection(
   val paused: Boolean = false,
   val pauseRequested: Boolean = false,
   val pauseReason: String? = null,
+  val pausedAt: String? = null,
   val stopAfterSubtaskId: Int? = null,
 )
 
@@ -412,6 +413,7 @@ data class GoalRunnerStatusProjectionExtras(
   val paused: Boolean = false,
   val pauseRequested: Boolean = false,
   val pauseReason: String? = null,
+  val pausedAt: String? = null,
   val stopAfterSubtaskId: Int? = null,
 )
 
@@ -462,6 +464,7 @@ object GoalRunnerStatusProjector {
       paused = extras.paused,
       pauseRequested = extras.pauseRequested,
       pauseReason = extras.pauseReason,
+      pausedAt = extras.pausedAt,
       stopAfterSubtaskId = extras.stopAfterSubtaskId,
     )
   }

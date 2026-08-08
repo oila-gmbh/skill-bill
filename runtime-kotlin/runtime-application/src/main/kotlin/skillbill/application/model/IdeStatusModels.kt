@@ -139,6 +139,10 @@ data class IdeStatusSnapshot(
   val currentSubtask: IdeStatusCurrentSubtask? = null,
   // Null default: only projectGoal populates planning, so every other family stays wire-identical.
   val planning: IdeStatusPlanning? = null,
+  // Null defaults: only projectGoal populates the pause signals, so every other family stays
+  // wire-identical. pause_requested is never emitted as false for the same reason.
+  val pauseRequested: Boolean? = null,
+  val pausedAt: Instant? = null,
   val problem: IdeStatusProblem? = null,
   val contractVersion: String = IDE_STATUS_CONTRACT_VERSION,
 ) {
@@ -185,6 +189,8 @@ data class IdeStatusSnapshot(
       )
     }
     planning?.let { put("planning", planningWireMap(it)) }
+    pauseRequested?.takeIf { it }?.let { put("pause_requested", true) }
+    pausedAt?.let { put("paused_at", it.toString()) }
     put("updated_at", updatedAt.toString())
     put("freshness", freshness.wireValue)
     put("summary", summary)

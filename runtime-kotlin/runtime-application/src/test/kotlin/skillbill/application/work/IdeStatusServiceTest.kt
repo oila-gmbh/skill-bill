@@ -12,6 +12,7 @@ import skillbill.application.model.IdeStatusFreshness
 import skillbill.application.model.IdeStatusLifecycleState
 import skillbill.application.model.IdeStatusProblemCode
 import skillbill.application.model.IdeStatusRequest
+import skillbill.application.model.IdeStatusResult
 import skillbill.application.model.IdeStatusWorkflowFamily
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
@@ -602,6 +603,11 @@ class IdeStatusServiceTest {
     assertEquals(IdeStatusLifecycleState.PAUSED, result.snapshot.lifecycleState)
     // The elapsed clock settles at the stop time, not at the goal's state_entered_at.
     assertEquals(heartbeatAt, result.snapshot.updatedAt)
+    // Inferred, not recorded: no durable pause row, so no paused_at may be synthesized —
+    // updated_at alone carries the inferred stop anchor.
+    val wire = result.snapshot.toStatusWireMap()
+    assertFalse(wire.containsKey("paused_at"))
+    assertEquals(heartbeatAt.toString(), wire["updated_at"])
     // The detail line must not describe planning as in flight while the goal is paused,
     // but the planning block itself is still reported.
     assertEquals("Goal SKILL-148 is paused.", result.snapshot.summary)
@@ -703,26 +709,88 @@ class IdeStatusServiceTest {
   }
 
   @Test
-  fun `active goal candidate still projects paused under pause controls`() {
-    listOf(
+  fun `active goal candidate projects paused once the pause is consumed`() {
+    val wire = goalWireMapUnderControls(
+      "ide-status-goal-active-pause-consumed",
       GoalRunnerControlState(paused = true, pauseReason = "operator_request", pausedAt = "2026-08-02T10:00:00Z"),
-      GoalRunnerControlState(pauseRequested = true),
-    ).forEachIndexed { index, controlState ->
-      val fixture = gitRepoFixture("ide-status-goal-active-pause-$index")
-      val identity = goalRepositoryIdentity(fixture)
-      val service = service(
-        goalOnlyDatabase(),
-        manifestStore = StubGoalManifestStore(
-          goalManifestState(fixture, identity, childWorkflowId = "w-child")
-            .copy(controlState = controlState.copy(repositoryIdentity = identity)),
-        ),
-      )
-
-      val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = observedAt))
-
+    ) { result ->
       assertEquals(IdeStatusLifecycleState.PAUSED, result.snapshot.lifecycleState)
       assertEquals("Goal SKILL-148 is paused.", result.snapshot.summary)
     }
+
+    assertEquals("paused", wire["lifecycle_state"])
+    assertEquals("2026-08-02T10:00:00Z", wire["paused_at"])
+    assertFalse(wire.containsKey("pause_requested"))
+  }
+
+  @Test
+  fun `active goal candidate with an unconsumed pause request stays active and reports the request`() {
+    // A requested-but-unconsumed pause is still genuinely running its current subtask;
+    // collapsing it into paused would reintroduce the "says stopped while working" lie.
+    val wire = goalWireMapUnderControls(
+      "ide-status-goal-active-pause-requested",
+      GoalRunnerControlState(pauseRequested = true),
+    ) { result ->
+      assertEquals(IdeStatusLifecycleState.ACTIVE, result.snapshot.lifecycleState)
+    }
+
+    assertEquals("active", wire["lifecycle_state"])
+    assertEquals(true, wire["pause_requested"])
+    assertFalse(wire.containsKey("paused_at"))
+  }
+
+  @Test
+  fun `plain active goal emits neither pause signal`() {
+    val wire = goalWireMapUnderControls(
+      "ide-status-goal-active-no-pause",
+      GoalRunnerControlState(),
+    ) { result ->
+      assertEquals(IdeStatusLifecycleState.ACTIVE, result.snapshot.lifecycleState)
+    }
+
+    assertFalse(wire.containsKey("pause_requested"))
+    assertFalse(wire.containsKey("paused_at"))
+  }
+
+  @Test
+  fun `non-goal families never carry pause signals`() {
+    val fixture = gitRepoFixture("ide-status-pause-non-goal")
+    val identity = goalRepositoryIdentity(fixture)
+    val workflows = IdeStatusWorkflowStates()
+    workflows.saveFeatureImplementWorkflow(proseRecord("w-active", "2026-08-06T10:00:00Z"))
+    workflows.saveFeatureTaskExecutionIdentity(identityFor("w-active", identity))
+    val database = TrackingDatabase(
+      work = listOf(workItem("w-active", WorkItemKind.FEATURE_TASK_PROSE, "running", "2026-08-06T10:00:00Z")),
+      workflows = workflows,
+    )
+
+    val result = service(database).status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = observedAt))
+
+    val wire = result.snapshot.toStatusWireMap()
+    assertEquals(IdeStatusWorkflowFamily.FEATURE_TASK_PROSE, result.snapshot.workflowFamily)
+    assertFalse(wire.containsKey("pause_requested"))
+    assertFalse(wire.containsKey("paused_at"))
+  }
+
+  private fun goalWireMapUnderControls(
+    fixtureName: String,
+    controlState: GoalRunnerControlState,
+    assertSnapshot: (IdeStatusResult) -> Unit,
+  ): Map<String, Any?> {
+    val fixture = gitRepoFixture(fixtureName)
+    val identity = goalRepositoryIdentity(fixture)
+    val service = service(
+      goalOnlyDatabase(),
+      manifestStore = StubGoalManifestStore(
+        goalManifestState(fixture, identity, childWorkflowId = "w-child")
+          .copy(controlState = controlState.copy(repositoryIdentity = identity)),
+      ),
+    )
+
+    val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = observedAt))
+
+    assertSnapshot(result)
+    return result.snapshot.toStatusWireMap()
   }
 
   private fun goalOnlyDatabase(goalState: String = "running"): TrackingDatabase = TrackingDatabase(
