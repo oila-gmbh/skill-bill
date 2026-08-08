@@ -10,7 +10,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension
 import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
 
-private const val JDK_VERSION = 17
+private const val JDK_VERSION = 21
 
 // Gates for the opt-in real-store harnesses. Test workers inherit the long-lived daemon's
 // environment rather than the invoking shell's, so an exported gate never reaches the test JVM and
@@ -35,7 +35,7 @@ internal fun Project.configureKotlinJvm() {
 
   tasks.withType<KotlinJvmCompile>().configureEach {
     compilerOptions {
-      jvmTarget.set(JvmTarget.JVM_17)
+      jvmTarget.set(JvmTarget.JVM_21)
       allWarningsAsErrors.set(true)
       freeCompilerArgs.add("-Xjsr305=strict")
     }

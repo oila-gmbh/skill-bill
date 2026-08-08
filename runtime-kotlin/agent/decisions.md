@@ -4,6 +4,19 @@ This file records architectural and implementation decisions that span the
 `runtime-kotlin/` boundary. Each entry is dated and explains the trade-off,
 not the implementation detail.
 
+## 2026-08-08 — link and compile toolchain pin is JDK 21 (SKILL-166)
+
+Context: The Kotlin runtime compiled and linked against JDK 17 while the
+intellij-plugin and host JDKs had already moved to 21.
+
+Decision: Raise `JDK_VERSION`, `LINK_JDK_VERSION`, build-logic source/target,
+and the four CI Temurin pins to 21 in one change; keep Badass Runtime and the
+explicit additive `IMAGE_MODULES` strategy unchanged.
+
+Reason: One pinned toolchain across compile, jlink, CI, and release docs
+avoids mixed-JDK drift; membership of `IMAGE_MODULES` needed no add/remove on
+the JDK 21 module graph.
+
 ## 2026-08-07 — reject audit/review single-pass merge (SKILL-164)
 
 Context: Checkpoint-keyed shared review evidence made it tempting to collapse
@@ -297,7 +310,7 @@ Badass **JLink** (`org.beryx.jlink`). Badass JLink requires a modular app and a
 module-info.java". Badass Runtime is the Beryx plugin built for non-modular apps:
 it links a trimmed JDK runtime with `jlink` and wraps the existing `application`
 distribution, keeping the `bin/runtime-cli` / `bin/runtime-mcp` launchers. We pin
-the link toolchain to Java 17 (matching `build-logic` `Jvm.kt` `JDK_VERSION`), set
+the link toolchain to Java 21 (matching `build-logic` `Jvm.kt` `JDK_VERSION`), set
 an explicit `additive` module set (java.base/logging/management/naming/net.http/
 sql/xml/desktop, jdk.crypto.ec, jdk.unsupported) instead of relying on jdeps (which
 cannot resolve the automatic modules cleanly), and trim with `--strip-debug
