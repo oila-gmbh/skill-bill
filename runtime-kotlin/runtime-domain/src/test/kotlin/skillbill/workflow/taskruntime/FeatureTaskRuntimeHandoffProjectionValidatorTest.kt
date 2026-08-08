@@ -31,6 +31,7 @@ import kotlin.test.assertTrue
 private const val CONSUMER = "implement"
 private const val PRODUCER = "plan"
 
+@Suppress("LargeClass") // single suite over one validator; splitting would scatter projection-contract cases
 class FeatureTaskRuntimeHandoffProjectionValidatorTest {
   @Test
   fun `projection byte budget counts the complete canonical delivered representation`() {

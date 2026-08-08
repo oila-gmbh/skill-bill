@@ -246,7 +246,7 @@ internal fun goalContinuationValidateDepthDirective(phaseId: String, validationD
 }
 
 /** Task-line text for validate when [ValidationDepth.BUILD_ONLY]; keeps [phaseDirectives] untouched. */
-internal val BUILD_ONLY_VALIDATE_PHASE_TASK: String =
+internal const val BUILD_ONLY_VALIDATE_PHASE_TASK: String =
   "Prove compile/buildability of the changed modules only. Fix only compile/build failures. Do not " +
     "run tests, detekt, spotless, lint, dependency scanners, or the full bill-code-check / " +
     "repository validation gate. Emit a bounded validation_result containing validation_status, " +

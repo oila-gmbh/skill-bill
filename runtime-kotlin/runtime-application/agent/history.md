@@ -1,3 +1,13 @@
+## [2026-08-08] SKILL-173 subtask 2 — Validate honors build_only vs full
+Areas: runtime-application/featuretask, runtime-domain/workflow/taskruntime, docs, .feature-specs/SKILL-173
+- Phase 6 validate consumes goal-continuation `validation_depth`: `build_only` swaps Task text + addendum to compile/buildability only (no tests, detekt, spotless, lint, scanners, or full `bill-code-check`); `full` / non-goal keeps today's Phase 6 directive byte-stable.
+- Handoff projection `required_checks` under `BUILD_ONLY` is a single compile/buildability obligation; plan `test_obligations` and strategy lines are not forwarded. `FULL` retains strategy + test obligations.
+- `validation_receipt` field set unchanged (`validation_status`, `checks`, `repository_checkpoint`) so `write_history` / `commit_push` need no schema bump. reusable
+- Depth threads briefing assembler → prompt composer → run-loop handoff; composer and projection tests cover `build_only` vs `full`/default.
+- Limitation: enforcement is prompt + narrowed `required_checks` only; no first-class `bill-code-check` compile-only mode.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-08-08] SKILL-173 subtask 1 — Thread validation_depth on goal continuation
 Areas: runtime-application/{goalrunner,featuretask,model}, runtime-domain/workflow/{model,taskruntime}, runtime-ports/agentrun, runtime-infra-fs/launcher/agentrun, runtime-cli/featuretask, .feature-specs/SKILL-173
 - Goal-continuation models carry `validation_depth` (`build_only` | `full`); omitted / legacy / non-goal defaults to `full`.
