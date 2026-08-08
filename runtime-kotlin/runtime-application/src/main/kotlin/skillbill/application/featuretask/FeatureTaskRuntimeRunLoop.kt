@@ -56,6 +56,7 @@ import skillbill.ports.workflow.stagedPaths
 import skillbill.telemetry.estimation.estimateTokens
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.model.SpecSource
+import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeTransitionFunction
@@ -4199,6 +4200,7 @@ internal class FeatureTaskRuntimeRunLoop(
         ?.let(::FeatureTaskRuntimeRepositoryCheckpoint),
       branchIdentity = resolvedBranch,
       baseBranch = resolvedBranchRecord?.baseBranch ?: "main",
+      validationDepth = run.request.goalContinuation?.validationDepth ?: ValidationDepth.DEFAULT,
     )
     recorder.validateHandoffDeclarations(handoff.projectionDeclarations)
     val sharedEvidence = resolveSharedReviewEvidence(run, repositoryCheckpoint)
@@ -4240,6 +4242,7 @@ internal class FeatureTaskRuntimeRunLoop(
         ?.takeIf { it.phaseId == run.phaseId && !operatorBlockRetryCompleted },
       specReference = run.request.runInvariants.specReference,
       implementationContinuation = implementationContinuationFor(run),
+      validationDepth = run.request.goalContinuation?.validationDepth ?: ValidationDepth.DEFAULT,
     )
     return PreparedLaunch(briefing, prompt)
   }

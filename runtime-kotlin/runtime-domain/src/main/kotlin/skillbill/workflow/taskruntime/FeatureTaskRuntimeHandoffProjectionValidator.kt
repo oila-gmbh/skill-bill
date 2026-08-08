@@ -25,6 +25,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 import skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope
+import skillbill.workflow.model.ValidationDepth
 
 /**
  * Builds the delivered handoff envelope from static declarations, rejecting rather than repairing.
@@ -36,6 +37,13 @@ import skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjection
 @Suppress("TooManyFunctions", "LargeClass")
 object FeatureTaskRuntimeHandoffProjectionValidator {
   const val COMPACT_REFERENCE_MAX_LENGTH: Int = 512
+
+  /**
+   * Sole [required_checks] entry under [ValidationDepth.BUILD_ONLY]. Encodes compile/buildability
+   * instead of forwarding plan test_obligations or validation_strategy entries.
+   */
+  const val BUILD_ONLY_COMPILE_BUILDABILITY_CHECK: String =
+    "Prove compile/buildability of the changed modules; fix only compile/build failures."
 
   @Suppress("ThrowsCount") // one rejection per AC-007 failure mode; collapsing them would blur diagnoses
   fun validate(inputs: FeatureTaskRuntimeHandoffProjectionInputs): FeatureTaskRuntimeHandoffEnvelope {
@@ -655,12 +663,15 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
       .distinct()
       .sorted()
     val excludedClaims = claimedChangedPaths.filterNot { it in changedPaths }.sorted()
-    val requiredChecks = (
-      (plan["validation_strategy"] as? List<*>).orEmpty() +
-        (plan["tasks"] as? List<*>).orEmpty().flatMap { task ->
-          JsonSupport.anyToStringAnyMap(task)?.get("test_obligations") as? List<*> ?: emptyList<Any?>()
-        }
-      ).filterIsInstance<String>().distinct()
+    val requiredChecks = when (inputs.validationDepth) {
+      ValidationDepth.BUILD_ONLY -> listOf(BUILD_ONLY_COMPILE_BUILDABILITY_CHECK)
+      ValidationDepth.FULL -> (
+        (plan["validation_strategy"] as? List<*>).orEmpty() +
+          (plan["tasks"] as? List<*>).orEmpty().flatMap { task ->
+            JsonSupport.anyToStringAnyMap(task)?.get("test_obligations") as? List<*> ?: emptyList<Any?>()
+          }
+        ).filterIsInstance<String>().distinct()
+    }
     return FinalizationProjectionContext(
       plan = plan,
       implementation = implementation,

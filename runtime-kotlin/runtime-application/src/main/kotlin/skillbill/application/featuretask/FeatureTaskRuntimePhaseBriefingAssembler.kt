@@ -130,6 +130,7 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
         workflowId = workflowId,
         planningProjectionValidator = planningProjectionValidator,
         addonContentBySlug = boundedAddonSelection.entries.associate { it.persisted.slug to it.content },
+        validationDepth = handoff.validationDepth,
       ),
     )
     val projectedHandoff = handoff.copy(projectionDeclarations = promptDeclarations)

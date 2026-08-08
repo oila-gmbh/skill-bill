@@ -14,7 +14,9 @@ import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.SpecSource
+import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
+import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffProjectionValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.AUDIT_REPAIR_CONTRACT_VERSION
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGap
@@ -159,6 +161,57 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(prompt, "only then run the gate again to verify")
     assertContains(prompt, "Never rerun the gate after an individual fix")
     assertContains(prompt, "share one root cause are one fix")
+  }
+
+  @Test
+  fun `build_only validate prompt carries compile-only language and excludes full-gate instructions`() {
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+        validationDepth = ValidationDepth.BUILD_ONLY,
+      ),
+      validationDepth = ValidationDepth.BUILD_ONLY,
+    )
+
+    assertContains(prompt, "Goal-continuation validate depth")
+    assertContains(prompt, "validation_depth=build_only")
+    assertContains(prompt, "Prove compile/buildability")
+    assertContains(prompt, "Do not run tests")
+    assertFalse(prompt.contains("Run tests written during the implement phase"))
+    assertFalse(prompt.contains("then run the repository validation gate"))
+    assertFalse(prompt.contains("Never rerun the gate after an individual fix"))
+    assertContains(
+      prompt,
+      FeatureTaskRuntimeHandoffProjectionValidator.BUILD_ONLY_COMPILE_BUILDABILITY_CHECK,
+    )
+    assertFalse(prompt.contains("Focused test."))
+  }
+
+  @Test
+  fun `full and non-goal validate prompts retain implement-written tests and repository gate wording`() {
+    val fullPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+        validationDepth = ValidationDepth.FULL,
+      ),
+      validationDepth = ValidationDepth.FULL,
+    )
+    val defaultPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE),
+    )
+
+    listOf(fullPrompt, defaultPrompt).forEach { prompt ->
+      assertContains(prompt, "Run tests written during the implement phase")
+      assertContains(prompt, "then run the repository validation gate")
+      assertContains(prompt, "read the complete finding set from one gate run")
+      assertFalse(prompt.contains("Goal-continuation validate depth"))
+      assertFalse(prompt.contains("validation_depth=build_only"))
+      assertContains(prompt, "Focused runtime tests.")
+      assertContains(prompt, "Focused test.")
+    }
   }
 
   @Test
@@ -1123,6 +1176,7 @@ private fun briefingFor(
   phaseId: String,
   featureSize: FeatureTaskRuntimeFeatureSize = FeatureTaskRuntimeFeatureSize.MEDIUM,
   auditRepairState: FeatureTaskRuntimeAuditRepairState? = null,
+  validationDepth: ValidationDepth = ValidationDepth.DEFAULT,
 ): FeatureTaskRuntimePhaseLaunchBriefing {
   val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint(fingerprint = "fixture-checkpoint-1")
   return FeatureTaskRuntimePhaseBriefingAssembler.assemble(
@@ -1148,6 +1202,7 @@ private fun briefingFor(
       // audit's implementation-receipt edge refreshes from a resolved checkpoint (AC-012).
       repositoryCheckpoint = checkpoint,
       expectedRepositoryCheckpoint = checkpoint,
+      validationDepth = validationDepth,
     ),
   )
 }
