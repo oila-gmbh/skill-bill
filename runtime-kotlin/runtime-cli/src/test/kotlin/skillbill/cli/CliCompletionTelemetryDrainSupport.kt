@@ -2,33 +2,9 @@ package skillbill.cli
 
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliRuntimeContext
-import skillbill.ports.telemetry.HttpRequester
-import skillbill.ports.telemetry.model.HttpResponse
 import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.DriverManager
-
-/**
- * Records every request instead of touching the network, so a completion drain in a CLI test can
- * never reach a real relay. [failure] makes the sync path throw the escaping exception type the
- * failure-isolation contract exists to contain.
- */
-internal class RecordingTelemetryRequester(
-  private val failure: (() -> Nothing)? = null,
-) : HttpRequester {
-  val requests: MutableList<String> = mutableListOf()
-
-  override fun execute(
-    method: String,
-    url: String,
-    bodyJson: String?,
-    headers: Map<String, String>,
-  ): HttpResponse {
-    requests += url
-    failure?.invoke()
-    return HttpResponse(statusCode = 200, body = "{}")
-  }
-}
 
 /**
  * Writes the durable config the telemetry settings provider resolves from [userHome], so a CLI
@@ -72,9 +48,13 @@ internal fun seedTelemetryOutbox(dbPath: Path, eventName: String) {
   }
 }
 
-internal fun pendingTelemetryOutboxCount(dbPath: Path): Int =
+internal fun pendingTelemetryOutboxCount(dbPath: Path): Int = telemetryOutboxCount(dbPath, "synced_at IS NULL")
+
+internal fun syncedTelemetryOutboxCount(dbPath: Path): Int = telemetryOutboxCount(dbPath, "synced_at IS NOT NULL")
+
+private fun telemetryOutboxCount(dbPath: Path, predicate: String): Int =
   DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
-    connection.prepareStatement("SELECT COUNT(*) FROM telemetry_outbox WHERE synced_at IS NULL").use { statement ->
+    connection.prepareStatement("SELECT COUNT(*) FROM telemetry_outbox WHERE $predicate").use { statement ->
       statement.executeQuery().use { rows ->
         rows.next()
         rows.getInt(1)

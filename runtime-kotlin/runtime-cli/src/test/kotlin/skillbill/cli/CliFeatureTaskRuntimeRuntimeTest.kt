@@ -1849,8 +1849,10 @@ class CliFeatureTaskRuntimeSpecLookupTest {
 
     assertEquals(0, run.exitCode, run.stdout)
     assertEquals(0, pendingTelemetryOutboxCount(fixture.dbPath))
-    assertEquals(1, requester.requests.size, requester.requests.toString())
-    assertContains(requester.requests.single(), TELEMETRY_FIXTURE_PROXY_URL)
+    // The run records its own events too, so the batch count is incidental; every request must
+    // still be the fixture proxy, which is what proves nothing reached a real relay.
+    assertTrue(requester.requests.isNotEmpty())
+    assertTrue(requester.requests.all { it.contains(TELEMETRY_FIXTURE_PROXY_URL) }, requester.requests.toString())
   }
 
   @Test
@@ -1870,7 +1872,8 @@ class CliFeatureTaskRuntimeSpecLookupTest {
 
     assertEquals(0, run.exitCode, run.stdout)
     assertEquals(emptyList(), requester.requests)
-    assertEquals(1, pendingTelemetryOutboxCount(fixture.dbPath))
+    assertEquals(0, syncedTelemetryOutboxCount(fixture.dbPath))
+    assertTrue(pendingTelemetryOutboxCount(fixture.dbPath) >= 1)
   }
 
   @Test
@@ -1925,6 +1928,7 @@ private data class FeatureTaskRuntimeCliFixture(
   val dbPath: Path,
   val specPath: Path,
 ) {
+  @Suppress("LongParameterList")
   fun context(
     launcher: AgentRunLauncher,
     environment: Map<String, String> = emptyMap(),

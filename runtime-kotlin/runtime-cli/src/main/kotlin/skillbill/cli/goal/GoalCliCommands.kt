@@ -79,6 +79,7 @@ class GoalRunSubcommands(
 )
 
 @Inject
+@Suppress("LongParameterList")
 class GoalRunCommand(
   private val goalRunner: GoalRunner,
   private val runtimeProvenanceService: RuntimeProvenanceService,

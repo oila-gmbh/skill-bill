@@ -1,3 +1,14 @@
+## [2026-08-08] SKILL-170 CLI completion telemetry outbox drain (subtask 1)
+Areas: runtime-kotlin/runtime-cli/{telemetry,featuretask,goal}, .feature-specs/SKILL-170-cli-telemetry-outbox-drain
+- New `skillbill.cli.telemetry.drainTelemetryOnCompletion(telemetryService, dbOverride)` flushes the outbox at CLI completion boundaries by reusing `TelemetryService.autoSync` — no second sync path, settings resolution, or outbox query. reusable
+- Called from exactly two completion boundaries: `FeatureTaskRuntimeCliCommands` and `GoalCliCommands`. Non-runtime verbs (status, config, review) deliberately do not drain.
+- Failure isolation is the contract: the drain runs on a daemon thread joined with a 5s bound and swallows every `Exception`, so an unreachable/blackholed proxy can never change exit code, stdout, or reported outcome, and never delays process exit. Nothing is written to stdout or stderr.
+- Level gating is inherited free from `autoSync`'s early return — resolved level `off` invokes no requester and marks nothing synced; no new gate was added.
+- Test support: `RecordingTelemetryRequester` plus `CliCompletionTelemetryDrainSupport` seed a non-empty outbox and assert it drained; call-site-removal mutation check confirms both drain tests fail without the call sites. reusable
+- Limits: no retry, backoff, or scheduling for a failed sync; `autoSync` reconciler cadence and the emitted event set are unchanged.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-08-08] SKILL-168 goal stop verb and durable pause timestamp (subtask 3)
 Areas: runtime-kotlin/{runtime-domain,runtime-ports,runtime-application,runtime-infra-sqlite,runtime-cli}, .feature-specs/SKILL-168-ide-status-goal-controls
 - `GoalRunnerControlState` gained a nullable pause timestamp with a construction invariant mirroring `pauseReason`: `paused = true` without a timestamp is rejected. Legacy rows without the column decode through the store, so the invariant is enforced at construction, not at read. reusable
