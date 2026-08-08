@@ -61,11 +61,33 @@ class RealValidatorReceiptFixLoopConvergenceTest {
     )
   }
 
+  /**
+   * SKILL-169: the fourth field-observed class, and the one that actually reached a user. An over-length
+   * `evidence` differs from the three above in that the producer's content is not wrong — only its size —
+   * so the echoed reason alone left the agent re-arguing the same case at the same length until the cap
+   * exhausted. Convergence here proves the retry carries the compression directive, not just the constraint.
+   */
+  @Test
+  fun `an over-length reconciliation evidence converges instead of exhausting the cap`() {
+    assertConvergesFromConstraintText(
+      malformedReceipt = RECEIPT_EVIDENCE_TOO_LONG,
+      expectedConstraintFragments = arrayOf("must be at most 4,096 characters long"),
+      expectedRetryGuidance = arrayOf(
+        "bounded SUMMARY, not a verification transcript",
+        "rejected for length alone",
+      ),
+    )
+  }
+
   // The producer emits the malformed receipt once, then — as an agent reading an actionable rejection
   // would — emits a valid one. Convergence is the assertion: the run completes, implement launched exactly
   // twice, and that is strictly under the cap. A regression that drops the constraint text does not fail
   // here by leaking; it fails at the retry-prompt assertion, which is the signal this test exists for.
-  private fun assertConvergesFromConstraintText(malformedReceipt: String, expectedConstraintFragments: Array<String>) {
+  private fun assertConvergesFromConstraintText(
+    malformedReceipt: String,
+    expectedConstraintFragments: Array<String>,
+    expectedRetryGuidance: Array<String> = emptyArray(),
+  ) {
     var implementAttempts = 0
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
@@ -95,6 +117,9 @@ class RealValidatorReceiptFixLoopConvergenceTest {
       .map { requireNotNull(it.skillRunRequest.promptOverride) }
       .filter { phaseIdFromPrompt(it) == "implement" }[1]
     assertRetryPromptNamesConstraint(retryPrompt, "producer-projection", *expectedConstraintFragments)
+    expectedRetryGuidance.forEach { guidance ->
+      assertTrue(retryPrompt.contains(guidance), "the retry prompt withheld the correction '$guidance'.")
+    }
   }
 }
 
@@ -119,3 +144,13 @@ private val RECEIPT_MISSING_EVIDENCE: String = receiptEnvelope("""{"reconciled":
 // Class 3: a string where the closed object belongs. Canonicalization never coerces a type, so the schema
 // rejects and the producer must emit the object.
 private val RECEIPT_EVIDENCE_AS_STRING: String = receiptEnvelope(""""tree is at target state"""")
+
+// Class 4: every governed key present and well-typed, but `evidence` past its 4096-char cap — the shape a
+// no-op reconciliation segment produces when it proves convergence path by path instead of reporting it.
+// Built from a repeated clause so the fixture reads as the verification prose it stands in for.
+private val RECEIPT_EVIDENCE_TOO_LONG: String = receiptEnvelope(
+  "{\"reconciled\":true,\"evidence\":\"" +
+    "Verified src/Foo.kt matches the plan commitment at checkpoint 8ffee05e; no edit was required. "
+      .repeat(50) +
+    "\"}",
+)

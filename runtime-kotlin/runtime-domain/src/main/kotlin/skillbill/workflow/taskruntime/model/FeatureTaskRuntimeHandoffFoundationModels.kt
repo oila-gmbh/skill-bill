@@ -2,6 +2,7 @@ package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PROJECTION_MEASUREMENT_CONTRACT_VERSION
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_REJECTION_MEASUREMENT_CONTRACT_VERSION
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_SHARED_EVIDENCE_PROJECTION_CONTRACT_VERSION
 
 const val FEATURE_TASK_RUNTIME_INCOMPATIBLE_RECORD_GUIDANCE: String =
@@ -126,6 +127,104 @@ enum class FeatureTaskRuntimeSharedEvidenceOutcome(val wireValue: String) {
   REUSE("reuse"),
   CHECKPOINT_CHANGE_REDERIVATION("checkpoint_change_rederivation"),
 }
+
+/**
+ * Privacy-safe accounting for an attempt the schema gate REJECTED. The projection measurement above
+ * records only projections that passed, so without this type an exhausted fix loop is invisible to
+ * everyone except the operator reading the block — which is how a recurring over-length receipt field
+ * reached users before anyone could see it happening.
+ *
+ * The same payload-free boundary the retry path enforces applies here: the pointer and the
+ * classification are emitted, never the offending value. [observedLength] is a length, not content.
+ */
+data class FeatureTaskRuntimeRejectionMeasurement(
+  val workflowId: String,
+  val phaseId: String,
+  val iteration: Int,
+  val rule: String,
+  val pointerPath: String,
+  val violationClass: FeatureTaskRuntimeRejectionViolationClass,
+  val declaredCap: Int? = null,
+  val observedLength: Int? = null,
+  val exhaustedFixLoop: Boolean = false,
+) {
+  init {
+    require(workflowId.isNotBlank()) { "FeatureTaskRuntimeRejectionMeasurement.workflowId must be non-blank." }
+    require(phaseId.isNotBlank()) { "FeatureTaskRuntimeRejectionMeasurement.phaseId must be non-blank." }
+    require(iteration >= 1) { "FeatureTaskRuntimeRejectionMeasurement.iteration must be >= 1." }
+    require(rule.isNotBlank()) { "FeatureTaskRuntimeRejectionMeasurement.rule must be non-blank." }
+    require(pointerPath.isNotBlank()) {
+      "FeatureTaskRuntimeRejectionMeasurement.pointerPath must be non-blank."
+    }
+    require(declaredCap == null || declaredCap >= 0) {
+      "FeatureTaskRuntimeRejectionMeasurement.declaredCap must be non-negative."
+    }
+    require(observedLength == null || observedLength >= 0) {
+      "FeatureTaskRuntimeRejectionMeasurement.observedLength must be non-negative."
+    }
+  }
+
+  @OpenBoundaryMap("Content-free feature-task-runtime rejection measurement telemetry seam")
+  fun toTelemetryMap(): Map<String, Any?> = linkedMapOf(
+    "contract_version" to FEATURE_TASK_RUNTIME_REJECTION_MEASUREMENT_CONTRACT_VERSION,
+    "workflow_id" to workflowId,
+    "phase_id" to phaseId,
+    "iteration" to iteration,
+    "rule" to rule,
+    "pointer_path" to pointerPath,
+    "violation_class" to violationClass.wireValue,
+    "exhausted_fix_loop" to exhaustedFixLoop,
+  ).apply {
+    declaredCap?.let { put("declared_cap", it) }
+    observedLength?.let { put("observed_length", it) }
+  }
+}
+
+/**
+ * Why the gate rejected, at the coarsest granularity that still separates repairable field errors from
+ * an unparseable response. [LENGTH] is the one this vocabulary exists to make countable.
+ */
+enum class FeatureTaskRuntimeRejectionViolationClass(val wireValue: String) {
+  LENGTH("length"),
+  MISSING("missing"),
+  TYPE("type"),
+  CONST("const"),
+  MALFORMED("malformed"),
+  OTHER("other"),
+}
+
+// The validator groups digits past a thousand ("4,096"), so the separator belongs to the number.
+private val REJECTION_LENGTH_PATTERN =
+  Regex("""(?:must be|allows) at most ([0-9][0-9,]*) characters""", RegexOption.IGNORE_CASE)
+
+/**
+ * The declared cap a validator reason names, or null when it names none. Reading the figure from the
+ * message rather than from a constant is what lets one classifier serve every bounded field regardless
+ * of its cap.
+ */
+fun featureTaskRuntimeRejectionCapOf(validationReason: String): Int? =
+  REJECTION_LENGTH_PATTERN.find(validationReason)?.groupValues?.get(1)?.replace(",", "")?.toIntOrNull()
+
+/**
+ * Classifies a validator reason into the countable vocabulary. Ordered most-specific first: a length
+ * violation is recognised by its stated cap (or a bare `maxLength` mention) before the broader type and
+ * shape phrasings, which would otherwise absorb it — "must be at most N characters" also matches "must
+ * be a".
+ */
+fun featureTaskRuntimeRejectionViolationClassOf(validationReason: String): FeatureTaskRuntimeRejectionViolationClass =
+  when {
+    featureTaskRuntimeRejectionCapOf(validationReason) != null || validationReason.contains("maxLength") ->
+      FeatureTaskRuntimeRejectionViolationClass.LENGTH
+    validationReason.contains("is malformed") || validationReason.contains("must be an object") ->
+      FeatureTaskRuntimeRejectionViolationClass.MALFORMED
+    validationReason.contains("must be the constant value") ->
+      FeatureTaskRuntimeRejectionViolationClass.CONST
+    validationReason.contains("is missing") || validationReason.contains("is not defined in the schema") ->
+      FeatureTaskRuntimeRejectionViolationClass.MISSING
+    validationReason.contains("expected") || validationReason.contains("must be a") ->
+      FeatureTaskRuntimeRejectionViolationClass.TYPE
+    else -> FeatureTaskRuntimeRejectionViolationClass.OTHER
+  }
 
 enum class FeatureTaskRuntimeProjectionFailureClassification(val wireValue: String) {
   INVALID_CONTRACT("invalid_contract"),

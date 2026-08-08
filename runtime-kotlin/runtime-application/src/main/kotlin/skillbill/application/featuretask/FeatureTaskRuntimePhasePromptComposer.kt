@@ -16,7 +16,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionBudget
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting
-import skillbill.workflow.taskruntime.model.MAX_AUDIT_REPAIR_REF_LENGTH
 
 /**
  * Pure composer of the full prompt a feature-task-runtime phase agent receives. The persisted
@@ -172,54 +171,8 @@ object FeatureTaskRuntimePhasePromptComposer {
     }
     return base + remediationCorrection +
       unparseableRootCorrection(briefing, priorSchemaFailure) +
-      boundedReferenceCorrection(priorSchemaFailure) +
-      unreconciledReceiptCorrection(priorSchemaFailure)
-  }
-
-  // The receipt's `reconciled` is `const: true`, so a producer that reports 'completed' while asserting
-  // `reconciled: false` is not describing a repairable field error — it is describing work it did not
-  // finish, and no edit to that field makes the claim true. This names the envelope that carries
-  // unfinished work instead; what happens after that envelope is not this directive's business.
-  private fun unreconciledReceiptCorrection(priorSchemaFailure: String): String {
-    val namesReconciled = priorSchemaFailure.contains("reconciliation_evidence.reconciled") ||
-      priorSchemaFailure.contains("reconciliation_evidence/reconciled")
-    if (!namesReconciled || !priorSchemaFailure.contains("must be the constant value")) {
-      return ""
-    }
-    return """
-
-      A 'completed' implementation_receipt asserts a reconciled working tree: reconciliation_evidence.reconciled
-      must be true, and 'completed' is the only status that may carry this receipt. Do not report 'completed'
-      with reconciled false, and do not flip the flag to true unless the tree really is at target. If the work
-      is genuinely incomplete, leave this phase through a 'blocked' or 'failed' envelope instead.
-    """.trimIndent()
-  }
-
-  private fun boundedReferenceCorrection(priorSchemaFailure: String): String {
-    val field = when {
-      priorSchemaFailure.contains("artifact_ref") -> "artifact_ref"
-      priorSchemaFailure.contains("check_ref") -> "check_ref"
-      else -> return ""
-    }
-    val reportsLengthViolation = priorSchemaFailure.contains("must be at most") ||
-      priorSchemaFailure.contains("allows at most") ||
-      priorSchemaFailure.contains("maxLength")
-    if (!reportsLengthViolation) {
-      return ""
-    }
-    val replacement = if (field == "artifact_ref") {
-      "one repository-relative path, optionally followed by one :symbol, such as " +
-        "runtime-kotlin/runtime-mcp/src/test/kotlin/skillbill/mcp/McpStdioServerTest.kt"
-    } else {
-      "one acceptance-criterion, finding, test, or check identifier, such as AC-005 or McpStdioServerTest"
-    }
-    return """
-
-      The rejected $field is a bounded pointer, not an evidence container. Replace it with $replacement.
-      It MUST be at most $MAX_AUDIT_REPAIR_REF_LENGTH characters. Do not concatenate multiple paths,
-      symbols, findings, commands, or explanations into this field. Put necessary detail in the issue,
-      fix, or other schema-authorized descriptive fields.
-    """.trimIndent()
+      FeatureTaskRuntimeSchemaFailureCorrections.lengthViolation(priorSchemaFailure) +
+      FeatureTaskRuntimeSchemaFailureCorrections.unreconciledReceipt(priorSchemaFailure)
   }
 
   // The `<root> must be an object` / malformed-output failures mean the runtime could not extract ANY
