@@ -1,11 +1,11 @@
 ## [2026-08-08] SKILL-166 runtime JDK 21 toolchain bump
 Areas: runtime-kotlin/build-logic/convention, .github/workflows/{validate-agent-configs,install-smoke-test,release}, RELEASING.md, runtime-kotlin/agent
 - Raised compile (`JDK_VERSION` / `JvmTarget.JVM_21`), build-logic source/target, and jlink (`LINK_JDK_VERSION`) pins from 17 to 21; left `allWarningsAsErrors` and the Badass Runtime / explicit additive `IMAGE_MODULES` strategy unchanged.
-- Re-checked `IMAGE_MODULES` against the JDK 21 module graph (`java --list-modules`): every pinned module remains present, so membership was left as-is with no F-002 add/remove comments required.
-- Retargeted the four Temurin `setup-java` pins (validate-agent-configs, install-smoke-test, release×2) and updated pin comments / RELEASING.md so release policy states JDK 21.
-- Local `./gradlew check` and `runtimeZip` proofs, plus staging-matrix and install-smoke confirmation, remain for validate/CI — implement does not execute them.
+- Re-checked `IMAGE_MODULES` against the JDK 21 module graph: every pinned module remains present, so membership was left as-is with no F-002 add/remove comments required.
+- Retargeted the four Temurin `setup-java` pins and updated pin comments / RELEASING.md so release policy states JDK 21.
+- Validate confirmed local `./gradlew check`, included-build configure, and CLI/MCP `runtimeZip` + entrypoint proofs; staging-matrix (AC-006) and install-smoke CI (AC-007) stay post-merge host proofs.
 Feature flag: N/A
-Acceptance criteria: 5/7 tree pins landed (AC-001–005); AC-006/007 deferred to staging/CI proof
+Acceptance criteria: 5/7 tree pins + local proofs (AC-001–005); AC-006/007 deferred to staging/CI
 
 ## [2026-08-08] SKILL-170 telemetry outbox visibility and drain-gap cause record (subtask 2)
 Areas: runtime-kotlin/{runtime-ports,runtime-infra-sqlite,runtime-application,runtime-cli}, .feature-specs/SKILL-170-cli-telemetry-outbox-drain
