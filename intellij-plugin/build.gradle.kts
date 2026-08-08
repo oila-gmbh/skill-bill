@@ -37,8 +37,11 @@ intellijPlatform {
         version = providers.gradleProperty("version")
         description = """
             Shows Skill Bill feature-work status in IntelliJ IDEA. Consumes the
-            versioned read-only <code>skill-bill work status</code> contract;
-            does not mutate workflows or read Skill Bill databases.
+            versioned <code>skill-bill work status</code> contract, and from the
+            status details popup invokes exactly two mutating verbs,
+            <code>skill-bill goal stop</code> and <code>skill-bill goal pause</code>,
+            for the active goal. It reads no Skill Bill databases and terminates no
+            processes itself.
         """.trimIndent()
 
         ideaVersion {

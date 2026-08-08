@@ -2,6 +2,7 @@ package dev.skillbill.intellij.ui
 
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.wm.StatusBarWidgetFactory
+import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import dev.skillbill.intellij.application.GoalStopOutcome
 import dev.skillbill.intellij.application.StatusRefreshCoordinator
@@ -300,19 +301,25 @@ class SkillBillStatusBarWidgetFixtureTest : BasePlatformTestCase() {
         val built = widget.buildPopupContent(SkillBillStatusBarPresentation.map(activeUiState()))
         built.buttonFor(GoalControlKind.STOP)!!.doClick()
 
-        runBlocking(Dispatchers.Default) {
-            val deadline = System.currentTimeMillis() + 2_000
-            while (built.messageText() == null && System.currentTimeMillis() < deadline) {
-                delay(20)
-            }
+        // The summary arrives through invokeLater and this test body runs on the EDT, so
+        // the queue must be pumped rather than blocked while waiting for it.
+        val messageDeadline = System.currentTimeMillis() + 2_000
+        while (built.messageText() == null && System.currentTimeMillis() < messageDeadline) {
+            PlatformTestUtil.dispatchAllInvocationEventsInIdeEventQueue()
+            Thread.sleep(20)
         }
         assertEquals("Skill Bill declined the stop request", built.messageText())
         assertTrue("a failed mutation must not stop the ticker", widget.isTickerRunning())
 
         val before = refreshCount.get()
         widget.clickForTest()
-        runBlocking(Dispatchers.Default) { delay(150) }
-        assertTrue("polling continues after a failure", refreshCount.get() >= before)
+        runBlocking(Dispatchers.Default) {
+            val deadline = System.currentTimeMillis() + 2_000
+            while (refreshCount.get() <= before && System.currentTimeMillis() < deadline) {
+                delay(20)
+            }
+        }
+        assertTrue("polling continues after a failure", refreshCount.get() > before)
 
         widget.dispose()
         vm.dispose()

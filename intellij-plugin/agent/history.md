@@ -1,3 +1,16 @@
+## [2026-08-08] SKILL-168 plugin goal Stop/Pause controls (subtask 5)
+
+Areas: intellij-plugin/{application,composition,domain,infrastructure/cli,presentation,ui}, intellij-plugin/src/main/resources/META-INF
+- The plugin now mutates workflow state: `GoalStopRepository` / pause repository issue `goal stop` and `goal pause` for the snapshot's issue key and canonical project root, dispatched off the EDT. Any doc or manifest text claiming "read-only, no workflow mutation" is now false and was removed from README, ARCHITECTURE, plugin.xml and `build.gradle.kts` `pluginConfiguration.description` — that Gradle field silently overrides plugin.xml, so scrub both. reusable
+- Control eligibility is a pure function in `presentation/GoalControlsPresentation.kt`: visible only for `lifecycle_state: active` + `workflow_family: feature-goal` + non-null issue key. Keep eligibility in presentation, never in the widget. reusable
+- Each mutating repository gets its own `ProcessRunner` instance from the composition root — three distinct runners total (status poll, stop, pause) — so a mutation can never return a poll's result. `ProcessRunnerIsolationTest` locks this in behaviourally, not just by identity. reusable
+- Failure surfacing is a bounded, human-readable summary only; raw stdout/stderr and filesystem paths never reach the UI, and a failed mutation leaves polling running with the next snapshot authoritative.
+- Pause disabled-state is driven by the snapshot's durable pause-requested signal (subtask 4 wire fields), so a CLI-originated pause and an IDE restart both render disabled — no local UI memory.
+- `StatusDetailsPopupContent` isolates popup construction so it is testable without showing a Swing popup, following the widget's existing unit-test-mode handling; theme-derived colours only, no hardcoded palette.
+- Limitations: Stop/Pause only — no resume, start, retry, abandon, replan, launching, tool window, or settings UI. Dependency surface unchanged (`com.intellij.modules.platform` only), no DB reads, no process termination by the plugin.
+Feature flag: N/A
+Acceptance criteria: 11/11 implemented
+
 ## [2026-08-07] SKILL-168 plugin transient-idle smoothing (subtask 1)
 Areas: intellij-plugin/{application,domain,infrastructure/cli}
 - A `no_matching_work` problem code now marks its derived `Idle` via the existing `StatusDiagnostic.reasonCode` channel rather than a new outcome variant or boolean — the presentation `when` stays exhaustive with zero new branches. Reuse this marker pattern for any "origin of an outcome" distinction. reusable
