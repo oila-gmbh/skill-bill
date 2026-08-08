@@ -37,12 +37,16 @@ internal class GoalRunnerControlStore(
   }
 
   override fun clearControlState(parentWorkflowId: String) {
-    val executionLease = controlState(parentWorkflowId).executionLease
-    if (executionLease != null) {
-      persistControlState(
-        parentWorkflowId,
-        GoalRunnerControlState(executionLease = executionLease),
-      )
+    val existing = controlState(parentWorkflowId)
+    // The lease and the accumulated execution total are runtime bookkeeping, not operator intent.
+    // Clearing a pause must not restart the goal's execution clock at zero.
+    val retained = GoalRunnerControlState(
+      executionLease = existing.executionLease,
+      activeDurationMs = existing.activeDurationMs,
+      activeDurationAsOf = existing.activeDurationAsOf,
+    )
+    if (retained != GoalRunnerControlState()) {
+      persistControlState(parentWorkflowId, retained)
       return
     }
     connection.prepareStatement(
@@ -177,6 +181,8 @@ private fun GoalRunnerControlState.toArtifactMap(): Map<String, Any?> = mapOf(
   "stop_after_consumed" to stopAfterConsumed,
   "repository_identity" to repositoryIdentity,
   "execution_lease" to executionLease?.toArtifactMap(),
+  "active_duration_ms" to activeDurationMs,
+  "active_duration_as_of" to activeDurationAsOf,
 )
 
 /**
@@ -198,6 +204,8 @@ private fun decodeControlState(raw: String): GoalRunnerControlState {
     "stop_after_consumed",
     "repository_identity",
     "execution_lease",
+    "active_duration_ms",
+    "active_duration_as_of",
   )
   state.keys.forEach { key ->
     require(key in allowedKeys) { "Goal runner control state has unsupported field '$key'." }
@@ -212,8 +220,23 @@ private fun decodeControlState(raw: String): GoalRunnerControlState {
     stopAfterConsumed = state.booleanOrDefault("stop_after_consumed", false),
     repositoryIdentity = state.nullableString("repository_identity"),
     executionLease = state["execution_lease"]?.let(::decodeExecutionLease),
+    activeDurationMs = state.nonNegativeLongOrDefault("active_duration_ms"),
+    activeDurationAsOf = state.nullableString("active_duration_as_of"),
   )
 }
+
+// A record written before the active clock existed simply has no accumulated time yet, which reads
+// as "never observed executing" and starts accumulating on the next heartbeat. Numeric coercion
+// matches the sibling decoders: a surprising-but-integral primitive must not fail the whole control
+// row, because that would take status, pause, resume, and the lease down with it.
+private fun Map<String, Any?>.nonNegativeLongOrDefault(key: String): Long = when (val value = this[key]) {
+  null -> 0L
+  is java.math.BigInteger -> runCatching { value.longValueExact() }.getOrNull()
+  is java.math.BigDecimal -> runCatching { value.toBigIntegerExact().longValueExact() }.getOrNull()
+  is Number -> value.toLong()
+  else -> null
+}?.takeIf { it >= 0 }
+  ?: error("Goal runner control state field '$key' must be a non-negative integer.")
 
 /**
  * Pause timestamp for a durable record written before `paused_at` existed. Downstream consumers read

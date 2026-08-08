@@ -7,13 +7,23 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import com.networknt.schema.JsonSchema
 import com.networknt.schema.JsonSchemaFactory
+import com.networknt.schema.PathType
+import com.networknt.schema.SchemaValidatorsConfig
 import com.networknt.schema.SpecVersion
 import com.networknt.schema.ValidationMessage
 import skillbill.error.InvalidTelemetryEventSchemaError
+import java.util.Locale
 import java.util.logging.Level
 import java.util.logging.Logger
 
 private val log: Logger = Logger.getLogger("skillbill.mcp.TelemetryEventSchemaValidator")
+
+// Mirrors runtime-infra-fs's locale pin (this module does not depend on it): networknt renders violation
+// messages through MessageFormat under the JVM default locale, so a rejection reason would otherwise
+// regroup numbers or translate outright depending on the host. `pathType` restates the factory's LEGACY
+// default, which supplying any config would otherwise switch to JSON_POINTER.
+private val LOCALE_STABLE_SCHEMA_CONFIG: SchemaValidatorsConfig =
+  SchemaValidatorsConfig.builder().locale(Locale.ENGLISH).pathType(PathType.LEGACY).build()
 
 /**
  * SKILL-48 Subtask 2d: validates a telemetry-event-shaped
@@ -202,7 +212,7 @@ private fun loadSchema(): JsonSchema {
     TelemetryEventSchemaValidator.assertIdentity(yamlNode)
     val jsonText = ObjectMapper().writeValueAsString(yamlNode)
     val factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012)
-    return factory.getSchema(jsonText)
+    return factory.getSchema(jsonText, LOCALE_STABLE_SCHEMA_CONFIG)
   } catch (typed: InvalidTelemetryEventSchemaError) {
     // F-403 (carried over from 2a/2b): a misbuilt deploy artifact
     // (missing classpath resource, corrupt YAML, or a shadowed copy)

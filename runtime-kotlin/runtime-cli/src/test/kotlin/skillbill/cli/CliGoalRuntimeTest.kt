@@ -805,6 +805,13 @@ class CliGoalSharedPreplanReplanTest {
     val cascaded = replan.payload?.get("cascaded_plan_subtask_ids") as? List<*>
     assertTrue(!cascaded.isNullOrEmpty(), "cascade must name at least one sibling plan")
     assertFalse(3 in cascaded.mapNotNull { (it as? Number)?.toInt() ?: (it as? String)?.toIntOrNull() })
+    // The replan deletes children hydrated from a discarded plan, but never a completed subtask's:
+    // that would drop the commit_sha and workflow_id mapping this cascade is required to preserve.
+    val clearedChildren = (replan.payload.get("cleared_child_subtask_ids") as? List<*>)
+      ?.mapNotNull { (it as? Number)?.toInt() ?: (it as? String)?.toIntOrNull() }
+      .orEmpty()
+    assertFalse(1 in clearedChildren, "a completed subtask's child must survive the cascade")
+    assertFalse(2 in clearedChildren, "a completed subtask's child must survive the cascade")
     val statusAfter = goalStatus(fixture, launcher)
     assertContains(statusAfter.stdout, "shared_preplan=false")
     assertContains(statusAfter.stdout, "complete: 2")

@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import com.networknt.schema.JsonSchemaFactory
 import com.networknt.schema.SpecVersion
+import skillbill.contracts.LOCALE_STABLE_SCHEMA_CONFIG
 import skillbill.error.InvalidFeatureTaskRuntimePersistenceSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseHandoffSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimeProjectionMeasurementSchemaError
@@ -62,7 +63,7 @@ private fun validateAgainst(
     val document = YAMLMapper().readTree(readContract(classpathResource, repoPath))
     require(document.path("\$id").asText() == expectedId) { "schema identity mismatch" }
     val schema = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012)
-      .getSchema(ObjectMapper().writeValueAsString(document))
+      .getSchema(ObjectMapper().writeValueAsString(document), LOCALE_STABLE_SCHEMA_CONFIG)
     schema.validate(ObjectMapper().valueToTree(payload))
   }
   if (failures.isNotEmpty()) {

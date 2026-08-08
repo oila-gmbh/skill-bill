@@ -143,6 +143,9 @@ data class IdeStatusSnapshot(
   // wire-identical. pause_requested is never emitted as false for the same reason.
   val pauseRequested: Boolean? = null,
   val pausedAt: Instant? = null,
+  // Execution time rather than wall clock since startedAt; see the contract's active_duration_ms.
+  val activeDurationMs: Long? = null,
+  val activeDurationAsOf: Instant? = null,
   val problem: IdeStatusProblem? = null,
   val contractVersion: String = IDE_STATUS_CONTRACT_VERSION,
 ) {
@@ -191,6 +194,7 @@ data class IdeStatusSnapshot(
     planning?.let { put("planning", planningWireMap(it)) }
     pauseRequested?.takeIf { it }?.let { put("pause_requested", true) }
     pausedAt?.let { put("paused_at", it.toString()) }
+    putActiveDuration()
     put("updated_at", updatedAt.toString())
     put("freshness", freshness.wireValue)
     put("summary", summary)
@@ -204,6 +208,12 @@ data class IdeStatusSnapshot(
         },
       )
     }
+  }
+
+  /** Both keys are optional and goal-family-only, so a snapshot without them stays wire-identical. */
+  private fun MutableMap<String, Any?>.putActiveDuration() {
+    activeDurationMs?.let { put("active_duration_ms", it) }
+    activeDurationAsOf?.let { put("active_duration_as_of", it.toString()) }
   }
 
   private fun planningWireMap(planning: IdeStatusPlanning): Map<String, Any?> = buildMap {

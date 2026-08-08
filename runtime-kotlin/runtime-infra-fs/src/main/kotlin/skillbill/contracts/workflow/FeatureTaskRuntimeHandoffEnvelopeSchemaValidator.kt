@@ -9,6 +9,7 @@ import com.networknt.schema.JsonSchema
 import com.networknt.schema.JsonSchemaFactory
 import com.networknt.schema.SpecVersion
 import com.networknt.schema.ValidationMessage
+import skillbill.contracts.LOCALE_STABLE_SCHEMA_CONFIG
 import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import java.nio.file.Files
@@ -74,7 +75,7 @@ private fun loadHandoffEnvelopeSchema(): JsonSchema = try {
   val yamlNode = YAMLMapper().readTree(readHandoffEnvelopeSchemaText())
   FeatureTaskRuntimeHandoffEnvelopeSchemaValidator.assertIdentity(yamlNode)
   JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012)
-    .getSchema(ObjectMapper().writeValueAsString(yamlNode))
+    .getSchema(ObjectMapper().writeValueAsString(yamlNode), LOCALE_STABLE_SCHEMA_CONFIG)
 } catch (error: InvalidFeatureTaskRuntimeHandoffProjectionError) {
   throw error
 } catch (error: Exception) {

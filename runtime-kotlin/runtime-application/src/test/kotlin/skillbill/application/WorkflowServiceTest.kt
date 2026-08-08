@@ -1072,6 +1072,85 @@ class WorkflowServiceTest {
     )
   }
 
+  /**
+   * A scoped replan discards the subtask's stored plan, but a child hydrated from that plan keeps the
+   * old planning bytes as its own import. Leaving the child behind made the next launch fail the
+   * hydration provenance check and strand the goal on advice to hard reset, discarding every
+   * completed subtask's commit mapping to recover one amended subtask.
+   */
+  @Test
+  fun `scoped replan deletes the replanned subtask's hydrated child and preserves completed siblings`() {
+    val workflows = RecordingGoalChildDeletionWorkflowStates()
+    val before = decompositionRuntime(status = "in_progress").copy(
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 2, action = "start"),
+      subtasks = listOf(
+        decompositionRuntime(status = "complete").subtasks.single().copy(
+          id = 1,
+          status = "complete",
+          commitSha = "sha-done",
+          workflowId = "wfl-child-1",
+          lastResumableStep = "commit_push",
+        ),
+        decompositionRuntime(status = "blocked").subtasks.single().copy(
+          id = 2,
+          status = "blocked",
+          workflowId = "wfl-child-2",
+          blockedReason = "planning import conflicts",
+          lastResumableStep = "audit",
+        ),
+      ),
+    )
+    val result = scopedReplanStore(workflows, before).saveScopedReplan(
+      state = scopedReplanState(before, "skillbill-scoped-replan-child"),
+      subtaskId = 2,
+      dbPathOverride = null,
+      options = skillbill.ports.goalrunner.model.GoalRunnerScopedReplanOptions(),
+    )
+
+    assertEquals(listOf(2), result.clearedChildSubtaskIds)
+    assertEquals(listOf(Triple("wfl-parent", 2, "wfl-child-2")), workflows.scopedDeletions)
+    val replanned = result.state.manifest.subtasks.single { it.id == 2 }
+    assertEquals("pending", replanned.status)
+    assertNull(replanned.workflowId, "A stale hydrated child must not survive the replan.")
+    assertNull(replanned.blockedReason)
+    assertNull(replanned.lastResumableStep)
+    val completed = result.state.manifest.subtasks.single { it.id == 1 }
+    assertEquals("complete", completed.status)
+    assertEquals("sha-done", completed.commitSha, "Scoped replan must preserve completed commit mappings.")
+    assertEquals("wfl-child-1", completed.workflowId)
+    assertEquals(
+      CurrentSubtaskIntent(subtaskId = 2, action = "start"),
+      result.state.manifest.currentSubtaskIntent,
+      "Child deletion must not retarget the intent the replan already set.",
+    )
+  }
+
+  @Test
+  fun `scoped replan keeps a live child that scoped deletion refuses to remove`() {
+    val workflows = RecordingGoalChildDeletionWorkflowStates(deletable = false)
+    val before = decompositionRuntime(status = "in_progress").copy(
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "resume"),
+      subtasks = listOf(
+        decompositionRuntime(status = "in_progress").subtasks.single().copy(
+          id = 1,
+          status = "in_progress",
+          workflowId = "wfl-child-1",
+          lastResumableStep = "implement",
+        ),
+      ),
+    )
+    val result = scopedReplanStore(workflows, before).saveScopedReplan(
+      state = scopedReplanState(before, "skillbill-scoped-replan-live-child"),
+      subtaskId = 1,
+      dbPathOverride = null,
+      options = skillbill.ports.goalrunner.model.GoalRunnerScopedReplanOptions(),
+    )
+
+    assertEquals(emptyList(), result.clearedChildSubtaskIds)
+    assertEquals("wfl-child-1", result.state.manifest.subtasks.single().workflowId)
+    assertEquals("implement", result.state.manifest.subtasks.single().lastResumableStep)
+  }
+
   @Test
   fun `goal completion boundary persists terminal child state into the parent workflow`() {
     val workflows = InMemoryWorkflowStates()
@@ -2807,6 +2886,38 @@ private fun rejectingDecompositionManifestValidator(rejectedSources: Set<String>
     }
   }
 
+private fun scopedReplanStore(
+  workflows: RecordingGoalChildDeletionWorkflowStates,
+  manifest: DecompositionManifest,
+): WorkflowGoalRunnerManifestStore {
+  workflows.saveFeatureImplementWorkflow(
+    workflowRecord(
+      workflowId = "wfl-parent",
+      artifactsPatch = mapOf(
+        "plan" to mapOf("mode" to "decompose"),
+        DECOMPOSITION_RUNTIME_ARTIFACT_KEY to
+          encodeDecompositionManifestMap(manifest, testDecompositionManifestValidator),
+      ),
+    ),
+  )
+  return WorkflowGoalRunnerManifestStore(
+    database = FakeDatabaseSessionFactory(workflows),
+    workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    decompositionManifestValidator = testDecompositionManifestValidator,
+    decompositionManifestFileStore = TestDecompositionManifestFileStore,
+    phaseOutputValidator = AlwaysValidValidator,
+    planningProjectionValidator = realPlanningProjectionValidator,
+  )
+}
+
+// A temp repoRoot keeps the projection writer off the process cwd, which other tests assert stays clean.
+private fun scopedReplanState(manifest: DecompositionManifest, tempPrefix: String) = GoalRunnerManifestState(
+  "wfl-parent",
+  "/fake/metrics.db",
+  manifest,
+  repoRoot = Files.createTempDirectory(tempPrefix),
+)
+
 private fun decompositionRuntime(status: String): DecompositionManifest = DecompositionManifest(
   issueKey = "SKILL-52.1",
   featureName = "install-policy-extraction",
@@ -3550,6 +3661,22 @@ private class RecordingGoalRunnerControlRepository : GoalRunnerControlRepository
   ): GoalRunnerOutOfBandAcceptance {
     acceptances.getOrPut(parentWorkflowId, ::mutableMapOf)[acceptance.subtaskId] = acceptance
     return acceptance
+  }
+}
+
+/**
+ * Mirrors `WorkflowStateStore.deleteGoalChildWorkflow`, which deletes only terminal goal children;
+ * [deletable] stands in for a live or resumable child the SQL predicate refuses to remove.
+ */
+internal class RecordingGoalChildDeletionWorkflowStates(
+  private val deletable: Boolean = true,
+  delegate: InMemoryWorkflowStates = InMemoryWorkflowStates(),
+) : WorkflowStateRepository by delegate {
+  val scopedDeletions = mutableListOf<Triple<String, Int, String>>()
+
+  override fun deleteGoalChildWorkflow(parentWorkflowId: String, subtaskId: Int, workflowId: String): Int {
+    scopedDeletions += Triple(parentWorkflowId, subtaskId, workflowId)
+    return if (deletable) 1 else 0
   }
 }
 

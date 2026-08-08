@@ -115,6 +115,8 @@ class IdeStatusProjector(
       // Durable record only: a lease-expiry-inferred pause has no recorded instant, and
       // back-filling from heartbeat_at/updated_at would sell an inference as a record.
       pausedAt = parseInstantOrNull(projection?.pausedAt),
+      activeDurationMs = projection?.recordedActiveDurationMs(),
+      activeDurationAsOf = projection?.liveActiveDurationAnchor(),
       updatedAt = candidate.updatedAt,
       freshness = freshness,
       // "is planning subtasks" describes work in flight, so a paused goal keeps the Planning
@@ -143,6 +145,24 @@ class IdeStatusProjector(
    * Only [ExecutionLiveness.IDLE] qualifies; UNKNOWN is a lease-read failure and must not
    * be read as absence.
    */
+  /**
+   * Zero accumulated time with no live anchor is not an observation that the goal did no work — it
+   * is a goal the runtime never watched execute, including every goal that predates the accumulator.
+   * Emitting the zero would have a consumer render "0s" as fact; omitting it lets the consumer fall
+   * back to its own clock.
+   */
+  private fun GoalRunnerStatusProjection.recordedActiveDurationMs(): Long? =
+    activeDurationMs.takeIf { it > 0 || liveActiveDurationAnchor() != null }
+
+  /**
+   * The anchor is a licence to add `now - anchor`, so it is published only while the lease is
+   * genuinely live. A killed runner never reaches `releaseExecutionLease`, leaving a stale anchor
+   * behind; honouring it would grow an unbounded tail and restore the inflated clock this exists to
+   * remove. UNKNOWN is a lease-read failure and is not evidence of a live lease.
+   */
+  private fun GoalRunnerStatusProjection.liveActiveDurationAnchor(): Instant? =
+    parseInstantOrNull(activeDurationAsOf).takeIf { executionLiveness == ExecutionLiveness.LIVE }
+
   private fun goalLifecycle(
     candidate: IdeStatusCandidate,
     projection: GoalRunnerStatusProjection?,

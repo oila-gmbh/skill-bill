@@ -37,7 +37,12 @@ object StatusUiMapper {
                 SkillBillStatusUiState.Active(
                     headline = activeHeadline(outcome),
                     detail = outcome.summary,
-                    goalElapsed = elapsed(outcome.startedAt, now),
+                    goalElapsed = activeElapsed(
+                        outcome.activeDurationMs,
+                        outcome.activeDurationAsOf,
+                        outcome.startedAt,
+                        now,
+                    ),
                     subtaskElapsed = elapsed(outcome.subtaskStartedAt, now),
                     progressCompleted = outcome.progressCompleted,
                     progressTotal = outcome.progressTotal,
@@ -54,13 +59,20 @@ object StatusUiMapper {
                     ),
                     workflowFamily = outcome.workflowFamily,
                     pauseRequested = outcome.pauseRequested,
+                    activeDurationMs = outcome.activeDurationMs,
+                    activeDurationAsOf = outcome.activeDurationAsOf,
                 )
 
             is SkillBillStatusOutcome.Paused ->
                 SkillBillStatusUiState.Paused(
                     headline = pausedHeadline(outcome),
                     detail = outcome.summary,
-                    goalElapsed = elapsed(outcome.startedAt, settledAt(outcome.updatedAt, now)),
+                    goalElapsed = activeElapsed(
+                        outcome.activeDurationMs,
+                        outcome.activeDurationAsOf,
+                        outcome.startedAt,
+                        settledAt(outcome.updatedAt, now),
+                    ),
                     subtaskElapsed = elapsed(outcome.subtaskStartedAt, settledAt(outcome.updatedAt, now)),
                     progressCompleted = outcome.progressCompleted,
                     progressTotal = outcome.progressTotal,
@@ -175,6 +187,27 @@ object StatusUiMapper {
     }
 
     /**
+     * The goal clock. Prefers the runtime's accumulated execution time, which excludes the stretches
+     * a goal spends blocked, paused, or simply unattended between runs — `now - startedAt` counts all
+     * of those as work and reports an overnight gap as hours of progress.
+     *
+     * [asOf] is present only while a lease is live; the tail since then is added so the clock ticks
+     * between polls, and the next heartbeat folds that same tail into [accumulatedMs] without
+     * double counting. Falls back to wall clock when the snapshot carries no accumulated value,
+     * which keeps older runtimes and non-goal families rendering exactly as before.
+     */
+    fun activeElapsed(
+        accumulatedMs: Long?,
+        asOf: Instant?,
+        startedAt: Instant?,
+        now: Instant,
+    ): Duration? {
+        if (accumulatedMs == null) return elapsed(startedAt, now)
+        val tailMillis = asOf?.let { (now.toEpochMilli() - it.toEpochMilli()).coerceAtLeast(0L) } ?: 0L
+        return Duration.ofMillis(accumulatedMs + tailMillis)
+    }
+
+    /**
      * Re-anchors elapsed clocks from retained start timestamps without a new poll.
      *
      * Only live work ticks. Settled states (stale/blocked/failed) already carry a
@@ -184,7 +217,12 @@ object StatusUiMapper {
     fun withElapsed(state: SkillBillStatusUiState, now: Instant): SkillBillStatusUiState =
         when (state) {
             is SkillBillStatusUiState.Active -> state.copy(
-                goalElapsed = elapsed(state.startedAt, now),
+                goalElapsed = activeElapsed(
+                    state.activeDurationMs,
+                    state.activeDurationAsOf,
+                    state.startedAt,
+                    now,
+                ),
                 subtaskElapsed = elapsed(state.subtaskStartedAt, now),
             )
             else -> state

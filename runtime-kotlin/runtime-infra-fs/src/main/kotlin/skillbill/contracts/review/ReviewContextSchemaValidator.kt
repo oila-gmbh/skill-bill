@@ -9,6 +9,7 @@ import com.networknt.schema.JsonSchema
 import com.networknt.schema.JsonSchemaFactory
 import com.networknt.schema.SpecVersion
 import com.networknt.schema.ValidationMessage
+import skillbill.contracts.LOCALE_STABLE_SCHEMA_CONFIG
 import skillbill.error.InvalidReviewContextSchemaError
 import java.nio.file.Files
 import java.nio.file.Path
@@ -173,7 +174,7 @@ private fun loadReviewContextSchema(): ReviewContextSchemas {
     ReviewContextSchemaValidator.assertIdentity(yamlNode)
     val mapper = ObjectMapper()
     val factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012)
-    val envelopeSchema = factory.getSchema(mapper.writeValueAsString(yamlNode))
+    val envelopeSchema = factory.getSchema(mapper.writeValueAsString(yamlNode), LOCALE_STABLE_SCHEMA_CONFIG)
     val defs = yamlNode.path("\$defs")
     val branches = yamlNode.path("oneOf").asSequence()
       .map { branch -> branch.path("\$ref").asText("").substringAfterLast('/') }
@@ -183,7 +184,7 @@ private fun loadReviewContextSchema(): ReviewContextSchemas {
         wrapper.put("\$schema", yamlNode.path("\$schema").asText())
         wrapper.put("\$ref", "#/\$defs/" + name)
         wrapper.set<com.fasterxml.jackson.databind.node.ObjectNode>("\$defs", defs.deepCopy())
-        factory.getSchema(mapper.writeValueAsString(wrapper))
+        factory.getSchema(mapper.writeValueAsString(wrapper), LOCALE_STABLE_SCHEMA_CONFIG)
       }
     return ReviewContextSchemas(envelopeSchema, branches)
   } catch (error: Throwable) {

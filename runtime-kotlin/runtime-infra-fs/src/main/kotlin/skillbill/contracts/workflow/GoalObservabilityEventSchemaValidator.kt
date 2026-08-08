@@ -9,6 +9,7 @@ import com.networknt.schema.JsonSchema
 import com.networknt.schema.JsonSchemaFactory
 import com.networknt.schema.SpecVersion
 import com.networknt.schema.ValidationMessage
+import skillbill.contracts.LOCALE_STABLE_SCHEMA_CONFIG
 import skillbill.error.InvalidGoalObservabilityEventSchemaError
 import java.nio.file.Files
 import java.nio.file.Path
@@ -104,7 +105,8 @@ private fun loadGoalObservabilityEventSchema(): JsonSchema {
     val yamlNode = YAMLMapper().readTree(yamlText)
     GoalObservabilityEventSchemaValidator.assertIdentity(yamlNode)
     val jsonText = ObjectMapper().writeValueAsString(yamlNode)
-    return JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012).getSchema(jsonText)
+    return JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012)
+      .getSchema(jsonText, LOCALE_STABLE_SCHEMA_CONFIG)
   } catch (error: Throwable) {
     goalObservabilityLog.log(
       Level.SEVERE,

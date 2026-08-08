@@ -1219,6 +1219,7 @@ private fun GoalRunnerReplanResult?.toGoalReplanCliMap(issueKey: String): Map<St
     "discarded_plan" to it.discardedPlan,
     "discarded_shared_preplan" to it.discardedSharedPreplan,
     "cascaded_plan_subtask_ids" to it.cascadedPlanSubtaskIds,
+    "cleared_child_subtask_ids" to it.clearedChildSubtaskIds,
     "before" to replanSnapshotMap(it.before),
     "after" to replanSnapshotMap(it.after),
   )

@@ -253,6 +253,13 @@ const val GOAL_PAUSE_REASON_OPERATOR_STOP: String = "operator_stop"
 /** The runner process was terminated from outside; its shutdown hook recorded the interruption. */
 const val GOAL_PAUSE_REASON_RUNNER_INTERRUPTED: String = "runner_interrupted"
 
+/**
+ * Longest heartbeat gap that still counts as execution. A live runner heartbeats every
+ * `GoalRunnerExecutionCoordinator.HEARTBEAT_SECONDS`; a larger gap means the runner was gone and the
+ * interval was downtime, so it must not be folded into the active total.
+ */
+const val GOAL_ACTIVE_HEARTBEAT_GAP_LIMIT_MS: Long = 20_000
+
 /** Durable parent-owned pause, stop-after, and execution state, separate from the checked-in manifest. */
 data class GoalRunnerControlState(
   val stopAfterSubtaskId: Int? = null,
@@ -264,9 +271,17 @@ data class GoalRunnerControlState(
   val stopAfterConsumed: Boolean = false,
   val repositoryIdentity: String? = null,
   val executionLease: GoalRunnerExecutionLease? = null,
+  // Time this goal spent actually executing, which is not the wall clock since it was opened: a goal
+  // sits blocked, paused, or simply unattended between runs, and those gaps are not work.
+  val activeDurationMs: Long = 0,
+  // The instant activeDurationMs is current as of, set while a lease is live. A reader adds
+  // now - activeDurationAsOf to get the live total; the next heartbeat folds that same tail in.
+  val activeDurationAsOf: String? = null,
 ) {
   init {
     stopAfterSubtaskId?.let { require(it > 0) { "stopAfterSubtaskId must be positive when provided." } }
+    require(activeDurationMs >= 0) { "activeDurationMs must not be negative." }
+    activeDurationAsOf?.let { require(it.isNotBlank()) { "activeDurationAsOf must not be blank when provided." } }
     require(!pauseConsumed || pauseRequested) {
       "pauseConsumed cannot be true when pauseRequested is false."
     }
@@ -374,6 +389,8 @@ data class GoalRunnerStatusProjection(
   val pauseReason: String? = null,
   val pausedAt: String? = null,
   val stopAfterSubtaskId: Int? = null,
+  val activeDurationMs: Long = 0,
+  val activeDurationAsOf: String? = null,
 )
 
 /**
@@ -415,6 +432,8 @@ data class GoalRunnerStatusProjectionExtras(
   val pauseReason: String? = null,
   val pausedAt: String? = null,
   val stopAfterSubtaskId: Int? = null,
+  val activeDurationMs: Long = 0,
+  val activeDurationAsOf: String? = null,
 )
 
 object GoalRunnerStatusProjector {
@@ -466,6 +485,8 @@ object GoalRunnerStatusProjector {
       pauseReason = extras.pauseReason,
       pausedAt = extras.pausedAt,
       stopAfterSubtaskId = extras.stopAfterSubtaskId,
+      activeDurationMs = extras.activeDurationMs,
+      activeDurationAsOf = extras.activeDurationAsOf,
     )
   }
 

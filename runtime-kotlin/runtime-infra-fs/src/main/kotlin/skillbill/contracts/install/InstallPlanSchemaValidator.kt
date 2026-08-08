@@ -9,6 +9,7 @@ import com.networknt.schema.JsonSchema
 import com.networknt.schema.JsonSchemaFactory
 import com.networknt.schema.SpecVersion
 import com.networknt.schema.ValidationMessage
+import skillbill.contracts.LOCALE_STABLE_SCHEMA_CONFIG
 import skillbill.error.InvalidInstallPlanSchemaError
 import java.nio.file.Files
 import java.nio.file.Path
@@ -163,7 +164,7 @@ private fun loadSchema(): JsonSchema {
     InstallPlanSchemaValidator.assertIdentity(yamlNode)
     val jsonText = ObjectMapper().writeValueAsString(yamlNode)
     val factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012)
-    return factory.getSchema(jsonText)
+    return factory.getSchema(jsonText, LOCALE_STABLE_SCHEMA_CONFIG)
   } catch (error: Throwable) {
     // F-403 (carried over from 2a): a misbuilt deploy artifact (missing
     // classpath resource, corrupt YAML, or a shadowed copy) would

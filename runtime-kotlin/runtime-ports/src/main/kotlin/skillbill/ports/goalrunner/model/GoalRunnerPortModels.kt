@@ -33,6 +33,9 @@ data class GoalRunnerScopedReplanWriteResult(
   val sharedPreplanPreparedBefore: Boolean = sharedPreplanPrepared,
   val discardedSharedPreplan: Boolean = false,
   val cascadedPlanSubtaskIds: List<Int> = emptyList(),
+  // Subtasks whose already-hydrated child workflow was deleted because the discarded plan left its
+  // imported planning bytes stale. Without this the next launch fails the hydration provenance check.
+  val clearedChildSubtaskIds: List<Int> = emptyList(),
 )
 
 /**

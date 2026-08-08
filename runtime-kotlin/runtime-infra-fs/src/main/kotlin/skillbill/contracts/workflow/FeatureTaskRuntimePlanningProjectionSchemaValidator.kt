@@ -10,6 +10,7 @@ import com.networknt.schema.JsonSchema
 import com.networknt.schema.JsonSchemaFactory
 import com.networknt.schema.SpecVersion
 import com.networknt.schema.ValidationMessage
+import skillbill.contracts.LOCALE_STABLE_SCHEMA_CONFIG
 import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import java.nio.file.Files
 import java.nio.file.Path
@@ -52,7 +53,7 @@ object FeatureTaskRuntimePlanningProjectionSchemaValidator {
     }
 
   private fun compile(document: JsonNode): JsonSchema = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012)
-    .getSchema(ObjectMapper().writeValueAsString(document))
+    .getSchema(ObjectMapper().writeValueAsString(document), LOCALE_STABLE_SCHEMA_CONFIG)
 
   private val PROJECTION_VARIANT_DEFS: Set<String> = setOf(
     "preplanning_digest",

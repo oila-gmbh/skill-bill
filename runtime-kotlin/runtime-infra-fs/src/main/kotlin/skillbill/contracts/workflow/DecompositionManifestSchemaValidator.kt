@@ -12,6 +12,7 @@ import com.networknt.schema.JsonSchema
 import com.networknt.schema.JsonSchemaFactory
 import com.networknt.schema.SpecVersion
 import com.networknt.schema.ValidationMessage
+import skillbill.contracts.LOCALE_STABLE_SCHEMA_CONFIG
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import java.nio.file.Files
 import java.nio.file.Path
@@ -183,7 +184,7 @@ private fun loadDecompositionManifestSchema(): JsonSchema {
     DecompositionManifestSchemaValidator.assertIdentity(yamlNode)
     val jsonText = ObjectMapper().writeValueAsString(yamlNode)
     val factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012)
-    return factory.getSchema(jsonText)
+    return factory.getSchema(jsonText, LOCALE_STABLE_SCHEMA_CONFIG)
   } catch (error: Throwable) {
     decompositionManifestLog.log(
       Level.SEVERE,

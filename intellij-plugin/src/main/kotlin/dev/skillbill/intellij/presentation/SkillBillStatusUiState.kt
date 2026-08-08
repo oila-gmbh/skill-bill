@@ -94,6 +94,9 @@ sealed class SkillBillStatusUiState {
         override val planning: GoalPlanningInfo? = null,
         override val workflowFamily: String? = null,
         override val pauseRequested: Boolean? = null,
+        /** Retained so the 1s ticker re-anchors the active clock without a new poll. */
+        val activeDurationMs: Long? = null,
+        val activeDurationAsOf: Instant? = null,
     ) : SkillBillStatusUiState() {
         override val accessibilityText: String =
             buildString {

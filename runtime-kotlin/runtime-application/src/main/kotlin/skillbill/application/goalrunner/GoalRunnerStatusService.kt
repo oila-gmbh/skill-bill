@@ -132,6 +132,8 @@ class GoalRunnerStatusService(
             pauseReason = loadedState.controlState.pauseReason,
             pausedAt = loadedState.controlState.pausedAt,
             stopAfterSubtaskId = loadedState.controlState.stopAfterSubtaskId,
+            activeDurationMs = loadedState.controlState.activeDurationMs,
+            activeDurationAsOf = loadedState.controlState.activeDurationAsOf,
           ),
         )
       }
@@ -512,6 +514,7 @@ class GoalRunnerStatusService(
     discardedPlan = written.deletedPlanCount > 0,
     discardedSharedPreplan = written.discardedSharedPreplan,
     cascadedPlanSubtaskIds = written.cascadedPlanSubtaskIds,
+    clearedChildSubtaskIds = written.clearedChildSubtaskIds,
     before = GoalRunnerReplanSnapshot(
       status = before.manifest.status,
       currentSubtaskId = before.manifest.currentSubtaskIntent.subtaskId.takeIf { it > 0 },

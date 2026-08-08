@@ -9,6 +9,7 @@ import com.networknt.schema.JsonSchema
 import com.networknt.schema.JsonSchemaFactory
 import com.networknt.schema.SpecVersion
 import com.networknt.schema.ValidationMessage
+import skillbill.contracts.LOCALE_STABLE_SCHEMA_CONFIG
 import skillbill.error.InvalidNativeAgentCompositionSchemaError
 import java.nio.file.Files
 import java.nio.file.Path
@@ -149,7 +150,7 @@ object NativeAgentCompositionSchemaValidator {
       assertIdentity(yamlNode)
       val jsonText = jsonMapper.writeValueAsString(yamlNode)
       val factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012)
-      return factory.getSchema(jsonText)
+      return factory.getSchema(jsonText, LOCALE_STABLE_SCHEMA_CONFIG)
     } catch (error: Throwable) {
       // F-403 (carried over from 2a/2b): a misbuilt deploy artifact
       // (missing classpath resource, corrupt YAML, or a shadowed copy)

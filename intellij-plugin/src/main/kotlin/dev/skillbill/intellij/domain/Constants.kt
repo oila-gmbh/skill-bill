@@ -28,6 +28,10 @@ const val PAUSE_REQUESTED_WIRE_KEY: String = "pause_requested"
 /** Wire key carrying the instant a recorded pause took effect. Optional. */
 const val PAUSED_AT_WIRE_KEY: String = "paused_at"
 
+const val ACTIVE_DURATION_MS_WIRE_KEY: String = "active_duration_ms"
+
+const val ACTIVE_DURATION_AS_OF_WIRE_KEY: String = "active_duration_as_of"
+
 /** `workflow_family` value identifying a decomposed feature goal. */
 const val FEATURE_GOAL_WORKFLOW_FAMILY: String = "feature-goal"
 

@@ -413,9 +413,13 @@ class WorkflowGoalRunnerManifestStore(
       }
       val plannedAfter = preparations.listPreparedPlanSubtaskIds(state.parentWorkflowId)
       val sharedAfter = preparations.hasPreparedSharedPreplan(state.parentWorkflowId)
+      // A child hydrated from the discarded plan still holds those planning bytes as its own import.
+      // Leaving it behind makes the next launch fail the hydration provenance check, which used to
+      // strand a scoped replan on advice to hard reset.
+      val clearedChildIds = deleteStaleReplanChildren(unitOfWork, state, listOf(subtaskId) + cascadedIds)
       val projection = saveWorkflowProjectionInTransaction(
         unitOfWork,
-        state,
+        state.copy(manifest = state.manifest.afterReplanChildDeletion(clearedChildIds)),
         mergeConcurrentProgress = false,
       )
       GoalRunnerScopedReplanWriteResult(
@@ -427,6 +431,7 @@ class WorkflowGoalRunnerManifestStore(
         sharedPreplanPreparedBefore = sharedBefore,
         discardedSharedPreplan = sharedBefore && !sharedAfter,
         cascadedPlanSubtaskIds = cascadedIds,
+        clearedChildSubtaskIds = clearedChildIds,
       ) to projection.projectionArtifactsJson
     }
     DecompositionManifestWriter.writeProjectionFromWorkflowState(
@@ -1320,6 +1325,45 @@ private fun DecompositionManifest.afterIncompatibleChildDeletion(subtaskId: Int)
     }
   },
 ).withParentStatus()
+
+// Terminal subtasks keep their child workflow: a scoped replan preserves every completed subtask's
+// commit_sha and workflow_id, and a finished child is never re-hydrated from the discarded plan.
+private fun deleteStaleReplanChildren(
+  unitOfWork: UnitOfWork,
+  state: GoalRunnerManifestState,
+  subtaskIds: List<Int>,
+): List<Int> = subtaskIds.distinct().sorted().filter { id ->
+  val subtask = state.manifest.subtasks.singleOrNull { it.id == id }
+  val childWorkflowId = subtask?.workflowId?.takeIf(String::isNotBlank)
+  if (subtask == null || childWorkflowId == null || subtask.status in setOf("complete", "skipped")) {
+    false
+  } else {
+    // Only terminal children are deletable here, so a live or resumable child is left untouched.
+    unitOfWork.workflowStates.deleteGoalChildWorkflow(state.parentWorkflowId, id, childWorkflowId) == 1
+  }
+}
+
+// Unlike afterIncompatibleChildDeletion this preserves the caller's currentSubtaskIntent, which the
+// replan path has already retargeted at the replanned subtask.
+private fun DecompositionManifest.afterReplanChildDeletion(subtaskIds: List<Int>): DecompositionManifest {
+  if (subtaskIds.isEmpty()) return this
+  return copy(
+    subtasks = subtasks.map { subtask ->
+      if (subtask.id !in subtaskIds) {
+        subtask
+      } else {
+        subtask.copy(
+          status = "pending",
+          branch = null,
+          commitSha = null,
+          workflowId = null,
+          blockedReason = null,
+          lastResumableStep = null,
+        )
+      }
+    },
+  ).withParentStatus()
+}
 
 private data class ProjectedManifestCandidate(
   val path: Path,

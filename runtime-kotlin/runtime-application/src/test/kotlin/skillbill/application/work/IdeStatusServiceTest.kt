@@ -752,6 +752,45 @@ class IdeStatusServiceTest {
     assertFalse(wire.containsKey("paused_at"))
   }
 
+  /**
+   * Zero is not an observation that the goal did no work. Emitting it would have the widget render
+   * "Goal elapsed: 0s" as fact for every goal predating the accumulator, instead of letting the
+   * consumer fall back to its own clock.
+   */
+  @Test
+  fun `a goal with no recorded execution omits the active duration rather than publishing zero`() {
+    val wire = goalWireMapUnderControls(
+      "ide-status-goal-active-duration-unrecorded",
+      GoalRunnerControlState(),
+    ) { result ->
+      assertEquals(IdeStatusLifecycleState.ACTIVE, result.snapshot.lifecycleState)
+    }
+
+    assertFalse(wire.containsKey("active_duration_ms"))
+    assertFalse(wire.containsKey("active_duration_as_of"))
+  }
+
+  /**
+   * A killed runner never reaches releaseExecutionLease, so its anchor survives in the durable
+   * record. Publishing it would license the consumer to add an unbounded `now - anchor` tail and
+   * rebuild the inflated clock the accumulator exists to remove.
+   */
+  @Test
+  fun `a stale anchor from a dead runner is withheld while the accumulated total still ships`() {
+    val wire = goalWireMapUnderControls(
+      "ide-status-goal-active-duration-stale-anchor",
+      GoalRunnerControlState(
+        activeDurationMs = 90_000,
+        activeDurationAsOf = "2026-08-06T09:00:00Z",
+      ),
+    ) { result ->
+      assertEquals(IdeStatusLifecycleState.ACTIVE, result.snapshot.lifecycleState)
+    }
+
+    assertEquals(90_000L, wire["active_duration_ms"])
+    assertFalse(wire.containsKey("active_duration_as_of"))
+  }
+
   @Test
   fun `non-goal families never carry pause signals`() {
     val fixture = gitRepoFixture("ide-status-pause-non-goal")
