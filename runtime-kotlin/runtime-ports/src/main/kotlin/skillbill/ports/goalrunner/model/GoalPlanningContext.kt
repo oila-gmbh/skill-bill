@@ -5,7 +5,6 @@ package skillbill.ports.goalrunner.model
  * manifest metadata, the current subtask index, and terminal outcomes only.
  */
 data class GoalPlanningContext(
-  val platformPacks: Map<String, String>,
   val boundaryMemory: Map<String, String>,
   val validationGuidance: String,
 ) {

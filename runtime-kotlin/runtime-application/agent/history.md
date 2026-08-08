@@ -1,3 +1,21 @@
+## [2026-08-08] Goal planning shared-context packet v0.2
+Areas: runtime-application/goalrunner, .feature-specs/SKILL-172-goal-planning-burst-and-context (deferred follow-on)
+- `GoalPlanningSharedContextPacket.VERSION` is `0.2`; `platform_packs` removed from `PACKET_FIELDS`.
+- Resume migrates intact 0.1 checkpoints in memory (verify legacy integrity, drop key, re-digest) without rewriting immutable preplan rows; `validate` stays strict on current keys only.
+- Fresh assembly and `GoalPlanningContext` no longer produce or carry platform packs. `validation_guidance` rename remains deferred.
+Feature flag: N/A
+Acceptance criteria: N/A (follow-on to SKILL-172 deferred packet cleanup)
+
+## [2026-08-08] SKILL-172 planning burst control: pace + empty-turn backoff (subtask 2)
+Areas: runtime-application/{goalrunner,model}, .feature-specs/SKILL-172-goal-planning-burst-and-context
+- Planning sweep no longer launches consecutive per-subtask plans back-to-back: `GoalPlanningBurstSchedule` applies a configurable pace between launches only (default 20s; never before first or after last).
+- `EmptyProviderTurn` retries back off before relaunch (default base 30s, factor 2 → 30s then 60s); attempt 1 stays unpreceded and `MAX_FIX_LOOP_ITERATIONS` is unchanged.
+- Waits go through injected `RuntimeTimingPort` in `waitSlice` chunks so durable pause and thread interrupt terminate the same way as a launch interrupt — no `Thread.sleep`, no agent/model/provider identity reads. reusable
+- Defaults arithmetic is documented on the schedule: 15-subtask happy path adds `14 * 20s = 280s` (4m40s), inside default planning budget; tests drive ordinal wait recording, backoff schedule, pause-mid-wait, and interrupt-during-wait.
+- Limitation: pacing/backoff apply only to the planning sweep; no adaptive rate control and no non-planning launch pacing.
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
 ## [2026-08-08] SKILL-168 subtask 4 — IDE status pause signals contract
 Areas: runtime-application/{model,work,goalrunner}, runtime-domain/goalrunner/model, orchestration/contracts, runtime-infra-fs/contracts/workflow, .feature-specs/SKILL-168
 - IDE status gains two optional additive wire fields, `pause_requested` (boolean) and `paused_at` (string instant); neither is in the schema `required` list and `contract_version` stays `0.1`, so the plugin pin needs no change.

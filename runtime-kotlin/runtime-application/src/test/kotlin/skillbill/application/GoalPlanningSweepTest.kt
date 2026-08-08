@@ -5,8 +5,10 @@ import skillbill.application.featuretask.sha256HexUtf8
 import skillbill.application.goalrunner.DefaultGoalPlanningSweep
 import skillbill.application.goalrunner.GoalPlanningAttemptRecorder
 import skillbill.application.goalrunner.GoalPlanningRejectionRecorder
+import skillbill.application.goalrunner.GoalPlanningSharedContextPacket
 import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.model.GoalPlanningAttemptRecord
+import skillbill.application.model.GoalPlanningBurstSchedule
 import skillbill.application.model.GoalPlanningRejectionRecord
 import skillbill.application.model.GoalPlanningSweepOutcome
 import skillbill.application.model.GoalRunnerRunRequest
@@ -15,8 +17,10 @@ import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
+import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.goalrunner.model.GoalRunnerRunReport
+import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
@@ -43,12 +47,16 @@ import skillbill.ports.persistence.model.GoalPlanningIdentity
 import skillbill.ports.persistence.model.GoalPlanningPreparationRecord
 import skillbill.ports.persistence.model.GoalPlanningPreparationStatus
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
+import skillbill.ports.time.NoopRuntimeTimingPort
+import skillbill.ports.time.RuntimeTimingPort
+import skillbill.ports.time.model.RuntimeWaitResult
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.NoopFeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.NoopGoalPlanningPreparationEnvelopeValidator
 import skillbill.workflow.model.DecompositionManifest
+import skillbill.workflow.model.DecompositionSubtask
 import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFormat
@@ -63,15 +71,127 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 
 @Suppress("LargeClass") // one suite over the sweep's recovery, gate, and stop paths; they share a harness
 class GoalPlanningSweepTest {
+  @Test
+  fun `migrate projects 0_1 packets with platform_packs to 0_2`() {
+    val subtasks = listOf(
+      DecompositionSubtask(id = 1, name = "planning-context-discovery", specPath = "spec_subtask_1.md"),
+    )
+    val legacy = legacyV01Packet(
+      subtasks,
+      platformPacks = mapOf(
+        "platform-packs/kotlin/platform.yaml" to
+          "routing_signals: [kotlin]\ndeclared_code_review_areas: [architecture]\n",
+      ),
+    )
+
+    val migrated = GoalPlanningSharedContextPacket.migrate(legacy)
+
+    assertEquals(GoalPlanningSharedContextPacket.VERSION, migrated["packet_version"])
+    assertFalse(migrated.containsKey("platform_packs"))
+    GoalPlanningSharedContextPacket.validate(
+      packet = migrated,
+      repositoryIdentity = "repo-root-realpath-v1:/tmp/fixture",
+      normalizedIssueKey = "SKILL-172",
+      parentSpecPath = ".feature-specs/SKILL-172/spec.md",
+      subtasks = subtasks,
+    )
+    assertEquals("0.2", GoalPlanningSharedContextPacket.VERSION)
+  }
+
+  @Test
+  fun `migrate projects 0_1 packets with empty platform_packs to 0_2`() {
+    val subtasks = listOf(
+      DecompositionSubtask(id = 1, name = "planning-context-discovery", specPath = "spec_subtask_1.md"),
+    )
+    val migrated = GoalPlanningSharedContextPacket.migrate(
+      legacyV01Packet(subtasks, platformPacks = emptyMap()),
+    )
+
+    assertFalse(migrated.containsKey("platform_packs"))
+    GoalPlanningSharedContextPacket.validate(
+      packet = migrated,
+      repositoryIdentity = "repo-root-realpath-v1:/tmp/fixture",
+      normalizedIssueKey = "SKILL-172",
+      parentSpecPath = ".feature-specs/SKILL-172/spec.md",
+      subtasks = subtasks,
+    )
+  }
+
+  @Test
+  fun `validate rejects raw 0_1 packets without migrate`() {
+    val subtasks = listOf(
+      DecompositionSubtask(id = 1, name = "planning-context-discovery", specPath = "spec_subtask_1.md"),
+    )
+    val legacy = legacyV01Packet(subtasks, platformPacks = emptyMap())
+
+    val rawFailure = assertFailsWith<IllegalArgumentException> {
+      GoalPlanningSharedContextPacket.validate(
+        packet = legacy,
+        repositoryIdentity = "repo-root-realpath-v1:/tmp/fixture",
+        normalizedIssueKey = "SKILL-172",
+        parentSpecPath = ".feature-specs/SKILL-172/spec.md",
+        subtasks = subtasks,
+      )
+    }
+    assertTrue(
+      rawFailure.message.orEmpty().contains("fields are invalid") ||
+        rawFailure.message.orEmpty().contains("version is invalid"),
+    )
+  }
+
+  @Test
+  fun `migrate rejects unknown versions and tampered 0_1 integrity`() {
+    val subtasks = listOf(
+      DecompositionSubtask(id = 1, name = "planning-context-discovery", specPath = "spec_subtask_1.md"),
+    )
+    val legacy = legacyV01Packet(subtasks, platformPacks = emptyMap())
+
+    val unknownFailure = assertFailsWith<IllegalStateException> {
+      GoalPlanningSharedContextPacket.migrate(legacy + ("packet_version" to "0.0"))
+    }
+    assertContains(unknownFailure.message.orEmpty(), "unsupported")
+
+    val tamperedFailure = assertFailsWith<IllegalArgumentException> {
+      GoalPlanningSharedContextPacket.migrate(legacy + ("integrity_sha256" to "not-a-real-digest"))
+    }
+    assertContains(tamperedFailure.message.orEmpty(), "integrity is invalid")
+  }
+
+  @Test
+  fun `resume migrates an on-disk 0_1 shared packet without stopping`() {
+    val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
+    val state = harness.stateFor(manifest(subtaskCount = 1))
+    harness.sweep.prepare(state, harness.request())
+    val prepared = requireNotNull(harness.recordFor(1))
+    harness.fixtures.database.repository.markPrepared(
+      prepared.withSharedPacket { packet ->
+        packet +
+          ("packet_version" to GoalPlanningSharedContextPacket.LEGACY_VERSION_0_1) +
+          (
+            "platform_packs" to mapOf(
+              "platform-packs/kotlin/platform.yaml" to "routing_signals: [kotlin]\n",
+            )
+            )
+      },
+    )
+
+    val outcome = harness.sweep.prepare(state, harness.request())
+
+    assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
+  }
+
   @Test
   fun `prepared sweep reports absent hydration context for a sibling added after preparation`() {
     val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
@@ -1118,6 +1238,93 @@ class GoalPlanningSweepTest {
     assertEquals(evidence, shared.repairEvidence)
     assertNotNull(harness.recordFor(1), "the repaired shared preplan must reach the plan checkpoint")
   }
+
+  @Test
+  fun `inter-plan pace waits only between consecutive plan launches`() {
+    val pace = 20.seconds
+    val events = mutableListOf<String>()
+    val timing = RecordingRuntimeTimingPort { events += "wait" }
+    var planOrdinal = 0
+    val harness = sweepHarness(
+      timingPort = timing,
+      // One wait() call per logical pace gap so ordinals stay readable.
+      burstSchedule = GoalPlanningBurstSchedule(planLaunchPace = pace, waitSlice = pace),
+    ) { phase, subtaskId, _ ->
+      if (phase == "plan") {
+        planOrdinal += 1
+        events += "plan-$planOrdinal:$subtaskId"
+      }
+      validPhaseOutcome(phase)
+    }
+
+    val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 3)), harness.request())
+
+    assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
+    assertEquals(
+      listOf("plan-1:1", "wait", "plan-2:2", "wait", "plan-3:3"),
+      events,
+      "pace applies only between plan launches — never before the first or after the last",
+    )
+    assertEquals(listOf(pace, pace), timing.waits)
+  }
+
+  @Test
+  fun `empty provider turn backoff waits grow before attempts two and three`() {
+    val timing = RecordingRuntimeTimingPort()
+    val schedule = GoalPlanningBurstSchedule(
+      emptyTurnBackoffBase = 30.seconds,
+      emptyTurnBackoffFactor = 2,
+      waitSlice = 60.seconds,
+    )
+    val harness = sweepHarness(timingPort = timing, burstSchedule = schedule) { _, _, _ ->
+      emptyProviderTurnOutcome()
+    }
+
+    val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
+
+    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
+    assertEquals(FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS, harness.launcher.phases.size)
+    assertEquals(listOf(30.seconds, 60.seconds), timing.waits)
+    assertContains(stopped.blockedReason, "EmptyProviderTurn")
+  }
+
+  @Test
+  fun `a pause requested mid-wait stops the sweep without launching further`() {
+    val pauseStore = MutablePauseGoalPlanningManifestStore()
+    val timing = RecordingRuntimeTimingPort { pauseStore.pauseRequested = true }
+    val harness = sweepHarness(
+      manifestStore = pauseStore,
+      timingPort = timing,
+      burstSchedule = GoalPlanningBurstSchedule(planLaunchPace = 20.seconds, waitSlice = 1.seconds),
+    ) { phase, _, _ -> validPhaseOutcome(phase) }
+
+    val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 2)), harness.request())
+
+    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
+    assertEquals(GoalRunnerStopReason.PAUSED, stopped.reason)
+    assertEquals(listOf("preplan", "plan"), harness.launcher.phases)
+    assertTrue(timing.waits.isNotEmpty())
+  }
+
+  @Test
+  fun `an interrupt during wait stops with the launch-interrupt terminal shape`() {
+    val timing = RecordingRuntimeTimingPort(result = RuntimeWaitResult.INTERRUPTED)
+    val harness = sweepHarness(
+      timingPort = timing,
+      burstSchedule = GoalPlanningBurstSchedule(planLaunchPace = 20.seconds, waitSlice = 20.seconds),
+    ) { phase, _, _ -> validPhaseOutcome(phase) }
+
+    val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 2)), harness.request())
+
+    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
+    assertEquals(GoalRunnerStopReason.BLOCKED, stopped.reason)
+    assertContains(stopped.blockedReason, "interrupted")
+    assertFalse(
+      stopped.blockedReason.contains("failed before its output could be checkpointed"),
+      "a wait interrupt must not be laundered as unexpectedPlanningFailure",
+    )
+    assertEquals(listOf("preplan", "plan"), harness.launcher.phases)
+  }
 }
 
 private fun emptyTestObligationsPlanPayload(): String =
@@ -1157,6 +1364,27 @@ private class RepairingPreplanOutputValidator(
   override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
     validatePhaseOutput(phaseOutputText, sourceLabel)
   }
+}
+
+private fun legacyV01Packet(
+  subtasks: List<DecompositionSubtask>,
+  platformPacks: Map<String, String>,
+): Map<String, Any?> {
+  val body = linkedMapOf<String, Any?>(
+    "packet_version" to GoalPlanningSharedContextPacket.LEGACY_VERSION_0_1,
+    "repository_identity" to "repo-root-realpath-v1:/tmp/fixture",
+    "normalized_issue_key" to "SKILL-172",
+    "parent_spec_path" to ".feature-specs/SKILL-172/spec.md",
+    "parent_spec" to "parent body",
+    "decomposition_manifest" to "contract_version: \"0.1\"\nissue_key: SKILL-172\n",
+    "platform_packs" to platformPacks,
+    "boundary_memory" to mapOf(
+      "platform-packs/kotlin/agent/history.md" to "prior decision",
+    ),
+    "validation_guidance" to "repo conventions",
+    "ordered_subtasks" to GoalPlanningSharedContextPacket.orderedSubtasks(subtasks),
+  )
+  return body + ("integrity_sha256" to GoalPlanningSharedContextPacket.digest(body))
 }
 
 private fun normalizedPlanningOutput(payload: String): NormalizedFeatureTaskRuntimePhaseOutput {
@@ -1684,6 +1912,8 @@ private fun sweepHarness(
   planningAttemptRecorder: GoalPlanningAttemptRecorder = GoalPlanningAttemptRecorder.NONE,
   manifestStore: GoalRunnerManifestStore = NoopGoalPlanningManifestStore,
   planningRejectionRecorder: GoalPlanningRejectionRecorder = GoalPlanningRejectionRecorder.NONE,
+  timingPort: RuntimeTimingPort = NoopRuntimeTimingPort,
+  burstSchedule: GoalPlanningBurstSchedule = GoalPlanningBurstSchedule(),
   behavior: (phase: String, subtaskId: Int, request: GoalRunnerSubtaskLaunchRequest) -> AgentRunLaunchOutcome,
 ): SweepHarness {
   val fixtures = sharedSweepFixtures(
@@ -1703,8 +1933,55 @@ private fun sweepHarness(
     planningAttemptRecorder,
     manifestStore = manifestStore,
     planningRejectionRecorder = planningRejectionRecorder,
+    timingPort = timingPort,
+    burstSchedule = burstSchedule,
   )
   return SweepHarness(fixtures, launcher, sweep)
+}
+
+private class RecordingRuntimeTimingPort(
+  private val result: RuntimeWaitResult = RuntimeWaitResult.COMPLETED,
+  private val onWait: (() -> Unit)? = null,
+) : RuntimeTimingPort {
+  val waits = mutableListOf<Duration>()
+
+  override fun wait(duration: Duration): RuntimeWaitResult {
+    waits += duration
+    onWait?.invoke()
+    return result
+  }
+}
+
+private class MutablePauseGoalPlanningManifestStore : GoalRunnerManifestStore {
+  var pauseRequested: Boolean = false
+
+  override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? =
+    null
+
+  override fun save(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState = state
+
+  override fun controlState(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerControlState =
+    GoalRunnerControlState(pauseRequested = pauseRequested)
+
+  override fun acquireExecutionLease(
+    parentWorkflowId: String,
+    lease: GoalRunnerExecutionLease,
+    expectedOwnerToken: String?,
+    dbPathOverride: String?,
+  ): Boolean = true
+
+  override fun heartbeatExecutionLease(
+    parentWorkflowId: String,
+    lease: GoalRunnerExecutionLease,
+    dbPathOverride: String?,
+  ): Boolean = true
+
+  override fun releaseExecutionLease(
+    parentWorkflowId: String,
+    ownerToken: String,
+    generation: Long,
+    dbPathOverride: String?,
+  ): Boolean = true
 }
 
 private object RejectingSweepPlanningProjectionValidator : FeatureTaskRuntimePlanningProjectionValidator {
@@ -1717,7 +1994,6 @@ private object RejectingSweepPlanningProjectionValidator : FeatureTaskRuntimePla
 
 private val fakeContextDiscovery = GoalPlanningContextDiscovery {
   GoalPlanningContext(
-    platformPacks = mapOf("platform-packs/kotlin/platform.yaml" to "contract_version: '1.2'"),
     boundaryMemory = mapOf("platform-packs/kotlin/agent/history.md" to "history"),
     validationGuidance = "Run focused Gradle checks.",
   )

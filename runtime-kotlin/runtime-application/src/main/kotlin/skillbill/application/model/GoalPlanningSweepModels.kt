@@ -6,6 +6,8 @@ import skillbill.ports.persistence.model.GoalPlanningIdentity
 import skillbill.ports.persistence.model.GovernedGoalSubtaskDescriptor
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 sealed interface GoalPlanningSweepOutcome {
   data class PreparedAll(
@@ -101,3 +103,50 @@ data class GoalPlanningRejectionRecord(
   val agentId: String,
   val rawEvidence: String,
 )
+
+/**
+ * Fixed pacing and empty-turn backoff for the planning sweep. Injected so tests can drive waits
+ * without real elapsed time; production uses these defaults.
+ *
+ * Defaults and wall-clock arithmetic:
+ * - [planLaunchPace] = 20s between consecutive per-subtask plan launches (never before the first
+ *   or after the last of a `prepare()` call).
+ * - [emptyTurnBackoffBase] = 30s with [emptyTurnBackoffFactor] = 2, so waits before EmptyProviderTurn
+ *   attempts 2 and 3 are `base * factor^(attempt-1)` after each failed attempt: 30s then 60s
+ *   (90s max empty-turn backoff per phase across both waits).
+ * - A 15-subtask goal adds `14 * 20s = 280s` (4m40s) of pace wait on the happy path, which is inside
+ *   [DEFAULT_GOAL_PLANNING_BUDGET] (30m) and does not require or breach the default uncapped
+ *   `--max-wall-clock-minutes`.
+ * - The fix-loop attempt cap (`MAX_FIX_LOOP_ITERATIONS`) stays unchanged.
+ *
+ * [waitSlice] bounds how long each `RuntimeTimingPort.wait` call may block before the sweep
+ * re-checks the durable pause boundary; it is an interruptibility knob, not a rate-control input.
+ */
+data class GoalPlanningBurstSchedule(
+  val planLaunchPace: Duration = DEFAULT_PLAN_LAUNCH_PACE,
+  val emptyTurnBackoffBase: Duration = DEFAULT_EMPTY_TURN_BACKOFF_BASE,
+  val emptyTurnBackoffFactor: Int = DEFAULT_EMPTY_TURN_BACKOFF_FACTOR,
+  val waitSlice: Duration = DEFAULT_WAIT_SLICE,
+) {
+  init {
+    require(planLaunchPace.isPositive()) { "planLaunchPace must be positive." }
+    require(emptyTurnBackoffBase.isPositive()) { "emptyTurnBackoffBase must be positive." }
+    require(emptyTurnBackoffFactor >= 2) { "emptyTurnBackoffFactor must be at least 2." }
+    require(waitSlice.isPositive()) { "waitSlice must be positive." }
+  }
+
+  /** Backoff to wait after a failed EmptyProviderTurn [failedAttempt] before the next relaunch. */
+  fun emptyTurnBackoffAfterAttempt(failedAttempt: Int): Duration {
+    require(failedAttempt >= 1) { "failedAttempt must be at least 1." }
+    var scale = 1
+    repeat(failedAttempt - 1) { scale *= emptyTurnBackoffFactor }
+    return emptyTurnBackoffBase * scale
+  }
+
+  companion object {
+    val DEFAULT_PLAN_LAUNCH_PACE: Duration = 20.seconds
+    val DEFAULT_EMPTY_TURN_BACKOFF_BASE: Duration = 30.seconds
+    const val DEFAULT_EMPTY_TURN_BACKOFF_FACTOR: Int = 2
+    val DEFAULT_WAIT_SLICE: Duration = 1.seconds
+  }
+}
