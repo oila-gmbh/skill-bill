@@ -323,6 +323,21 @@ class IdeStatusJsonMapperTest {
         return json
     }
 
+    @Test
+    fun `pause signals parse when present and stay absent when omitted`() {
+        val withSignals = goalPayload(null).dropLast(1) +
+            ",\"pause_requested\":true,\"paused_at\":\"2026-08-06T09:30:00Z\"}"
+        val parsed = IdeStatusJsonMapper.map(withSignals, now, 0) as SkillBillStatusOutcome.Active
+        assertEquals(true, parsed.pauseRequested)
+        assertEquals(java.time.Instant.parse("2026-08-06T09:30:00Z"), parsed.pausedAt)
+
+        // Omitting both keys must stay absent — not coerced to false — and must not
+        // turn a valid payload into a malformed outcome.
+        val without = IdeStatusJsonMapper.map(goalPayload(null), now, 0) as SkillBillStatusOutcome.Active
+        assertNull(without.pauseRequested)
+        assertNull(without.pausedAt)
+    }
+
     private fun String.replaceField(field: String, from: String, to: String): String {
         val original = "\"$field\": \"$from\""
         check(contains(original)) { "Fixture no longer contains $original" }

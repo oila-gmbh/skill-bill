@@ -1,9 +1,11 @@
 # IntelliJ plugin architecture
 
 This module is an isolated IntelliJ Platform plugin. It is an external consumer of
-Skill Bill's versioned read-only IDE status contract (`skill-bill work status
---format json`). It never imports `runtime-kotlin` persistence, workflow engines,
-filesystem manifest parsers, JDBC, or SQLite.
+Skill Bill's versioned IDE status contract (`skill-bill work status --format json`)
+and, from the details popup only, of two mutating CLI verbs: `skill-bill goal stop`
+and `skill-bill goal pause`. It never imports `runtime-kotlin` persistence, workflow
+engines, filesystem manifest parsers, JDBC, or SQLite, and it reads no Skill Bill
+database.
 
 ## Adapted starter principles
 
@@ -79,7 +81,28 @@ Documented presentations (no screenshot asset required for this release):
 
 Long or unsafe labels are normalized/truncated on the bar; full safe context stays
 in the tooltip and accessibility description. Click → coalesced refresh + details
-popup (read-only).
+popup.
+
+### Goal controls
+
+The popup carries a **Stop goal** and a **Pause after current subtask** control, shown
+only for an active `feature-goal` snapshot carrying an issue key. Eligibility and label
+text are decided once in `GoalControlsPresentation` and consumed — never re-derived — by
+the popup.
+
+- `Stop goal` → `skill-bill goal stop <issue-key> --repo-root <canonical>`
+- `Pause after current subtask` → `skill-bill goal pause <issue-key> --repo-root <canonical>`
+
+Each mutating repository owns a `ProcessRunner` instance distinct from the status-poll
+runner: `runCoalesced` coalesces per instance, so a shared runner would let a mutation
+join an in-flight poll and return that poll's exit code. Calls dispatch off the EDT,
+failures collapse to bounded summaries that never carry stdout, stderr, exception text,
+or paths, and the plugin terminates no process itself — termination belongs to the
+runtime verb. Pause disablement is snapshot-derived (`pause_requested`), so a request
+made from the CLI or observed after an IDE restart still disables the control.
+
+Resume is deliberately absent: it selects an agent, profile, and launch environment the
+IDE does not own.
 
 ### Troubleshooting unavailable / incompatible
 
@@ -128,5 +151,7 @@ remains deferred** and should:
 ## Deferred
 
 Marketplace publishing, plugin signing, Remote Development / Split Mode support,
-the full Skill Bill tool window, and any workflow mutation commands remain out of
-scope for this status-bar release.
+the full Skill Bill tool window, and every workflow mutation beyond the two goal
+controls above — goal launching, resume, retry, and abandon — remain out of scope
+for this status-bar release. `install.sh`, `uninstall.sh`, and `skill-bill install
+apply` are never invoked from this module.

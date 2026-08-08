@@ -58,6 +58,13 @@ sealed class SkillBillStatusOutcome {
         val updatedAt: Instant,
         override val diagnostic: StatusDiagnostic? = null,
         val planning: GoalPlanningInfo? = null,
+        /**
+         * A pause is requested but not yet consumed at a boundary. Optional on the wire:
+         * null means the snapshot said nothing, which is not the same as an explicit false.
+         */
+        val pauseRequested: Boolean? = null,
+        /** Instant a recorded pause took effect; absent for an inferred pause. */
+        val pausedAt: Instant? = null,
     ) : SkillBillStatusOutcome()
 
     /**
@@ -81,6 +88,10 @@ sealed class SkillBillStatusOutcome {
         val updatedAt: Instant,
         override val diagnostic: StatusDiagnostic? = null,
         val planning: GoalPlanningInfo? = null,
+        /** See [Active.pauseRequested]; null means the snapshot said nothing. */
+        val pauseRequested: Boolean? = null,
+        /** Instant a recorded pause took effect; absent for an inferred pause. */
+        val pausedAt: Instant? = null,
     ) : SkillBillStatusOutcome()
 
     data class Stale(

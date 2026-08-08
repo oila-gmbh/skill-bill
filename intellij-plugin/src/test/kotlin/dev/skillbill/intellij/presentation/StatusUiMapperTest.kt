@@ -305,6 +305,41 @@ class StatusUiMapperTest {
         assertEquals(planning, ui.planning)
     }
 
+    @Test
+    fun `workflow family and pause flag survive Active and Paused mapping`() {
+        val activeUi = StatusUiMapper.map(
+            active().copy(workflowFamily = "feature-goal", pauseRequested = true),
+            now,
+        ) as SkillBillStatusUiState.Active
+        assertEquals("feature-goal", activeUi.workflowFamily)
+        assertEquals(true, activeUi.pauseRequested)
+
+        val pausedUi = StatusUiMapper.map(
+            paused(now).copy(pauseRequested = false),
+            now,
+        ) as SkillBillStatusUiState.Paused
+        assertEquals("feature-goal", pausedUi.workflowFamily)
+        assertEquals(false, pausedUi.pauseRequested)
+
+        // An absent flag stays absent rather than collapsing into an explicit false.
+        val absent = StatusUiMapper.map(active(), now) as SkillBillStatusUiState.Active
+        assertNull(absent.pauseRequested)
+    }
+
+    @Test
+    fun `every other outcome type carries no goal-control inputs`() {
+        val outcomes = listOf(
+            SkillBillStatusOutcome.Idle(now, "idle"),
+            SkillBillStatusOutcome.Unavailable(now, "gone", dev.skillbill.intellij.domain.UnavailableReason.TIMEOUT),
+            SkillBillStatusOutcome.Incompatible(now, "mismatch", "0.9"),
+        )
+        for (outcome in outcomes) {
+            val ui = StatusUiMapper.map(outcome, now)
+            assertNull(ui.workflowFamily)
+            assertNull(ui.pauseRequested)
+        }
+    }
+
     private fun paused(updatedAt: Instant) = SkillBillStatusOutcome.Paused(
         observedAt = now,
         summary = "paused",

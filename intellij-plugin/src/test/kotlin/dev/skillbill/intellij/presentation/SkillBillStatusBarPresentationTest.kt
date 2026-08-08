@@ -468,6 +468,41 @@ class SkillBillStatusBarPresentationTest {
         totalSubtaskCount = 4,
     )
 
+    @Test
+    fun `controls are populated for an eligible active state and empty otherwise`() {
+        val eligible = SkillBillStatusBarPresentation.map(
+            active().copy(workflowFamily = "feature-goal", issueKey = "SKILL-168"),
+        )
+        assertEquals(
+            listOf(GoalControlKind.STOP, GoalControlKind.PAUSE),
+            eligible.controls.map { it.kind },
+        )
+
+        val wrongFamily = SkillBillStatusBarPresentation.map(
+            active().copy(workflowFamily = "feature-task-runtime", issueKey = "SKILL-168"),
+        )
+        assertTrue(wrongFamily.controls.isEmpty())
+        assertTrue(SkillBillStatusBarPresentation.map(SkillBillStatusUiState.Idle()).controls.isEmpty())
+    }
+
+    @Test
+    fun `adding controls leaves bar text tooltip and detail lines unchanged`() {
+        // The same state with and without control eligibility must render identically
+        // everywhere except the controls list — AC-008 requires the lines untouched.
+        val base = active().copy(issueKey = "SKILL-168", workflowFamily = "feature-task-runtime")
+        val eligible = base.copy(workflowFamily = "feature-goal")
+        val withoutControls = SkillBillStatusBarPresentation.map(base)
+        val withControls = SkillBillStatusBarPresentation.map(eligible)
+
+        assertEquals(withoutControls.barText, withControls.barText)
+        assertEquals(withoutControls.tooltipText, withControls.tooltipText)
+        assertEquals(withoutControls.accessibleName, withControls.accessibleName)
+        assertEquals(withoutControls.accessibleDescription, withControls.accessibleDescription)
+        assertEquals(withoutControls.details, withControls.details)
+        assertTrue(withoutControls.controls.isEmpty())
+        assertFalse(withControls.controls.isEmpty())
+    }
+
     private fun activeOutcome(
         planning: GoalPlanningInfo?,
         currentSubtaskId: String?,

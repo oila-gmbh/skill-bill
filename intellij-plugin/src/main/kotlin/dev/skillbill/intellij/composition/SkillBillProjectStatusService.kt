@@ -3,6 +3,8 @@ package dev.skillbill.intellij.composition
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
+import dev.skillbill.intellij.application.GoalPauseRepository
+import dev.skillbill.intellij.application.GoalStopRepository
 import dev.skillbill.intellij.application.StatusRefreshCoordinator
 import dev.skillbill.intellij.infrastructure.prefs.IntelliJPreferenceCache
 import dev.skillbill.intellij.presentation.SkillBillStatusViewModel
@@ -28,6 +30,12 @@ class SkillBillProjectStatusService(
 
     val coordinator: StatusRefreshCoordinator
         get() = root.coordinator
+
+    val goalPauseRepository: GoalPauseRepository
+        get() = root.goalPauseRepository
+
+    val goalStopRepository: GoalStopRepository
+        get() = root.goalStopRepository
 
     init {
         Disposer.register(project, this)

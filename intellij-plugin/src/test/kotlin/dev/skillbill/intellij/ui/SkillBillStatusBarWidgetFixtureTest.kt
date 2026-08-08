@@ -3,12 +3,18 @@ package dev.skillbill.intellij.ui
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.wm.StatusBarWidgetFactory
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import dev.skillbill.intellij.application.GoalStopOutcome
 import dev.skillbill.intellij.application.StatusRefreshCoordinator
 import dev.skillbill.intellij.composition.SkillBillProjectStatusService
 import dev.skillbill.intellij.domain.SkillBillStatusOutcome
 import dev.skillbill.intellij.fakes.ControllableClock
+import dev.skillbill.intellij.fakes.FakeGoalPauseRepository
+import dev.skillbill.intellij.fakes.FakeGoalStopRepository
 import dev.skillbill.intellij.fakes.FakePreferenceCache
 import dev.skillbill.intellij.fakes.FakeStatusRepository
+import dev.skillbill.intellij.fakes.activeUiState
+import dev.skillbill.intellij.presentation.GoalControlKind
+import dev.skillbill.intellij.presentation.SkillBillStatusBarPresentation
 import dev.skillbill.intellij.presentation.SkillBillStatusUiState
 import dev.skillbill.intellij.presentation.SkillBillStatusViewModel
 import java.nio.file.Path
@@ -187,6 +193,155 @@ class SkillBillStatusBarWidgetFixtureTest : BasePlatformTestCase() {
         coordA.dispose()
         coordB.dispose()
         scope.cancel()
+    }
+
+    fun testPopupPanelIsConstructibleWithoutShowingAPopup() {
+        val widget = newWidget()
+        val eligible = SkillBillStatusBarPresentation.map(activeUiState())
+        val built = widget.buildPopupContent(eligible)
+
+        val insets = built.panel.border.getBorderInsets(built.panel)
+        assertTrue("panel must be padded", insets.top > 0 && insets.left > 0)
+        assertNotNull("action row must be present", built.actionRow)
+        assertNotNull("separator must be present", built.separator)
+        assertEquals("exactly two controls when eligible", 2, built.buttons.size)
+        built.buttons.values.forEach { button ->
+            assertTrue("accessible name must be non-blank", button.accessibleContext.accessibleName.isNotBlank())
+            assertTrue("buttons must be keyboard reachable", button.isFocusable)
+        }
+
+        // The rendered lines are exactly today's detail lines, in today's order.
+        val details = eligible.details
+        assertEquals(
+            listOf(
+                "State" to details.lifecycleState,
+                "Issue" to details.issueKey,
+                "Workflow" to details.workflowId,
+                "Step" to details.stepLabel,
+                "Progress" to details.progressText,
+                "Goal ${details.elapsedNoun}" to details.goalElapsedText,
+                "Subtask ${details.elapsedNoun}" to details.subtaskElapsedText,
+                "" to details.problemSummary,
+            ),
+            StatusDetailsPopupContent.statusLines(eligible),
+        )
+
+        val ineligible = SkillBillStatusBarPresentation.map(SkillBillStatusUiState.Idle())
+        val emptyBuilt = widget.buildPopupContent(ineligible)
+        assertTrue("no controls for an ineligible state", emptyBuilt.buttons.isEmpty())
+        assertNull(emptyBuilt.actionRow)
+        widget.dispose()
+    }
+
+    fun testDisabledPauseKeepsItsAccessibleNameAndRegisteredRequestText() {
+        val widget = newWidget()
+        val built = widget.buildPopupContent(
+            SkillBillStatusBarPresentation.map(activeUiState(pauseRequested = true)),
+        )
+        val pause = built.buttonFor(GoalControlKind.PAUSE)!!
+        assertFalse("a registered request disables pause", pause.isEnabled)
+        assertTrue("text reports the registered request", pause.text.contains("requested", ignoreCase = true))
+        assertTrue(pause.accessibleContext.accessibleName.isNotBlank())
+        assertTrue("a disabled control stays keyboard reachable", pause.isFocusable)
+        widget.dispose()
+    }
+
+    fun testActivatingEachControlInvokesItsRepositoryOffTheEdt() {
+        val pauseRepo = FakeGoalPauseRepository()
+        val stopRepo = FakeGoalStopRepository()
+        val widget = newWidget(pauseRepo, stopRepo)
+        val built = widget.buildPopupContent(SkillBillStatusBarPresentation.map(activeUiState()))
+
+        built.buttonFor(GoalControlKind.STOP)!!.doClick()
+        built.buttonFor(GoalControlKind.PAUSE)!!.doClick()
+        runBlocking(Dispatchers.Default) {
+            val deadline = System.currentTimeMillis() + 2_000
+            while ((stopRepo.invocations.isEmpty() || pauseRepo.invocations.isEmpty()) &&
+                System.currentTimeMillis() < deadline
+            ) {
+                delay(20)
+            }
+        }
+
+        assertEquals("stop invoked exactly once", 1, stopRepo.invocations.size)
+        assertEquals("pause invoked exactly once", 1, pauseRepo.invocations.size)
+        for (invocation in stopRepo.invocations + pauseRepo.invocations) {
+            assertEquals("SKILL-168", invocation.issueKey)
+            assertEquals(Path.of(project.basePath!!), invocation.projectRoot)
+            assertFalse(
+                "the mutating call must not run on the EDT: ${invocation.threadName}",
+                invocation.threadName.contains("AWT-EventQueue"),
+            )
+        }
+        widget.dispose()
+    }
+
+    fun testFailedMutationRendersItsSummaryAndLeavesPollingRunning() {
+        val refreshCount = AtomicInteger(0)
+        val clock = ControllableClock(Instant.parse("2026-08-07T12:00:00Z"))
+        val repo = FakeStatusRepository {
+            refreshCount.incrementAndGet()
+            SkillBillStatusOutcome.Idle(clock.now(), "idle")
+        }
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val prefs = FakePreferenceCache(refreshIntervalSeconds = 60)
+        val coordinator = StatusRefreshCoordinator(repo, prefs, scope, Path.of(project.basePath!!))
+        val vm = SkillBillStatusViewModel(coordinator, clock, scope, tickIntervalMs = 50)
+        val stopRepo = FakeGoalStopRepository(GoalStopOutcome.Failed("Skill Bill declined the stop request"))
+        val widget = SkillBillStatusBarWidget(
+            project,
+            vm,
+            clock,
+            tickIntervalMs = 50,
+            goalPauseRepository = FakeGoalPauseRepository(),
+            goalStopRepository = stopRepo,
+        )
+        widget.activate()
+        val built = widget.buildPopupContent(SkillBillStatusBarPresentation.map(activeUiState()))
+        built.buttonFor(GoalControlKind.STOP)!!.doClick()
+
+        runBlocking(Dispatchers.Default) {
+            val deadline = System.currentTimeMillis() + 2_000
+            while (built.messageText() == null && System.currentTimeMillis() < deadline) {
+                delay(20)
+            }
+        }
+        assertEquals("Skill Bill declined the stop request", built.messageText())
+        assertTrue("a failed mutation must not stop the ticker", widget.isTickerRunning())
+
+        val before = refreshCount.get()
+        widget.clickForTest()
+        runBlocking(Dispatchers.Default) { delay(150) }
+        assertTrue("polling continues after a failure", refreshCount.get() >= before)
+
+        widget.dispose()
+        vm.dispose()
+        coordinator.dispose()
+        scope.cancel()
+    }
+
+    private fun newWidget(
+        pauseRepo: FakeGoalPauseRepository = FakeGoalPauseRepository(),
+        stopRepo: FakeGoalStopRepository = FakeGoalStopRepository(),
+    ): SkillBillStatusBarWidget {
+        val clock = ControllableClock(Instant.parse("2026-08-07T12:00:00Z"))
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val repo = FakeStatusRepository { SkillBillStatusOutcome.Idle(clock.now(), "idle") }
+        val coordinator = StatusRefreshCoordinator(
+            repo,
+            FakePreferenceCache(refreshIntervalSeconds = 60),
+            scope,
+            Path.of(project.basePath!!),
+        )
+        val vm = SkillBillStatusViewModel(coordinator, clock, scope, tickIntervalMs = 50)
+        return SkillBillStatusBarWidget(
+            project,
+            vm,
+            clock,
+            tickIntervalMs = 50,
+            goalPauseRepository = pauseRepo,
+            goalStopRepository = stopRepo,
+        )
     }
 
     fun testProjectServiceIsResolvableAndDisposeCancelsPolling() {
