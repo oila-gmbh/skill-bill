@@ -29,7 +29,7 @@ val copyGoalPlanningDiscoveryExclusions =
     inputs.file(contractPath)
     doFirst {
       require(File(contractPath).exists()) {
-        "SKILL-174: canonical goal-planning discovery exclusion contract is missing at $contractPath."
+        "SKILL-174: goal-planning discovery exclusion contract is missing at $contractPath."
       }
     }
   }

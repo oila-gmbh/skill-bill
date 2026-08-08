@@ -3,36 +3,41 @@ contract_version: "0.5"
 issue_key: "SKILL-174"
 feature_name: "planning-boundary-memory-discovery"
 parent_spec_path: ".feature-specs/SKILL-174-planning-boundary-memory-discovery/spec.md"
+status: "in_progress"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-174-planning-boundary-memory-discovery"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 0
-  action: "none"
+  subtask_id: 1
+  action: "resume"
 subtasks:
-  - id: 1
-    name: "Packs out of planning; exclusion cleanup"
-    spec_path: ".feature-specs/SKILL-174-planning-boundary-memory-discovery/spec_subtask_1_packs-out-exclusion-cleanup.md"
-    status: pending
-    branch: null
-    commit_sha: null
-    workflow_id: null
-    blocked_reason: null
-    last_resumable_step: null
-    linear_issue_id: null
-    dependencies: []
-  - id: 2
-    name: "Intelligent heading walk for history/decisions"
-    spec_path: ".feature-specs/SKILL-174-planning-boundary-memory-discovery/spec_subtask_2_intelligent-heading-walk.md"
-    status: pending
-    branch: null
-    commit_sha: null
-    workflow_id: null
-    blocked_reason: null
-    last_resumable_step: null
-    linear_issue_id: null
-    dependencies:
-      - subtask_id: 1
-        optional: false
-        skipped: false
+- id: 1
+  name: "Packs out of planning; exclusion cleanup"
+  spec_path: ".feature-specs/SKILL-174-planning-boundary-memory-discovery/spec_subtask_1_packs-out-exclusion-cleanup.md"
+  status: "in_progress"
+  branch: null
+  commit_sha: null
+  workflow_id: "wftr-20260808-214206-ji9p"
+  blocked_reason: null
+  last_resumable_step: "audit"
+  linear_issue_id: null
+  finalizing_agent_id: null
+  participating_agent_ids: []
+  dependencies: []
+- id: 2
+  name: "Intelligent heading walk for history/decisions"
+  spec_path: ".feature-specs/SKILL-174-planning-boundary-memory-discovery/spec_subtask_2_intelligent-heading-walk.md"
+  status: "pending"
+  branch: null
+  commit_sha: null
+  workflow_id: null
+  blocked_reason: null
+  last_resumable_step: null
+  linear_issue_id: null
+  finalizing_agent_id: null
+  participating_agent_ids: []
+  dependencies:
+  - subtask_id: 1
+    optional: false
+    skipped: false

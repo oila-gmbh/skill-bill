@@ -35,10 +35,7 @@ class FileSystemGoalPlanningContextDiscovery : GoalPlanningContextDiscovery {
     val memory = linkedMapOf<String, String>()
     for (agentDir in agentDirectories(repoRoot)) {
       for (fileName in BOUNDARY_MEMORY_FILES) {
-        val candidate = agentDir.resolve(fileName)
-        val canonical = candidate.toRealPathOrNull()?.takeIf { it.startsWith(repoRoot) } ?: continue
-        val relative = repoRoot.relativize(canonical).joinToString("/")
-        if (GoalPlanningDiscoveryExclusions.isExcluded(relative)) continue
+        val (canonical, relative) = includedCanonical(repoRoot, agentDir.resolve(fileName)) ?: continue
         readBounded(repoRoot, canonical, relative, budget)?.let { content -> memory[relative] = content }
       }
     }
@@ -53,15 +50,22 @@ class FileSystemGoalPlanningContextDiscovery : GoalPlanningContextDiscovery {
     var visited = 0
     while (pending.isNotEmpty() && visited < MAX_VISITED_DIRECTORIES) {
       visited += 1
-      for (child in sortedChildDirectories(pending.removeFirst())) {
-        val canonical = child.toRealPathOrNull()?.takeIf { it.startsWith(repoRoot) } ?: continue
-        val relative = repoRoot.relativize(canonical).joinToString("/")
-        if (relative.isEmpty() || GoalPlanningDiscoveryExclusions.isExcluded(relative)) continue
+      val included = sortedChildDirectories(pending.removeFirst())
+        .mapNotNull { child -> includedCanonical(repoRoot, child)?.first }
+      for (canonical in included) {
         if (!seen.add(canonical)) continue
         if (canonical.fileName.toString() == AGENT_DIRECTORY) found.add(canonical) else pending.add(canonical)
       }
     }
     return found.sortedBy { agentDir -> repoRoot.relativize(agentDir).joinToString("/") }
+  }
+
+  /** Canonical path plus repo-relative path, or null when it escapes the repo or the exclusion contract denies it. */
+  private fun includedCanonical(repoRoot: Path, candidate: Path): Pair<Path, String>? {
+    val canonical = candidate.toRealPathOrNull()?.takeIf { path -> path.startsWith(repoRoot) } ?: return null
+    val relative = repoRoot.relativize(canonical).joinToString("/")
+    if (relative.isEmpty() || GoalPlanningDiscoveryExclusions.isExcluded(relative)) return null
+    return canonical to relative
   }
 
   private fun sortedChildDirectories(directory: Path): List<Path> = runCatching {

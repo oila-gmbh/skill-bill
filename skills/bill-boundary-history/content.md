@@ -46,7 +46,7 @@ Acceptance criteria: <count>/<count> implemented
 ## File Rules
 
 - File path: `<primary-boundary>/agent/history.md`.
-- **Forbidden — excluded roots:** never create `agent/` under a root listed in `orchestration/contracts/goal-planning-discovery-exclusions.yaml` (`platform-packs/` among them). That contract is the authority; planning discovery denies those roots, so history written there is unreadable memory. Write to the nearest non-excluded owning boundary instead.
+- **Forbidden — excluded roots:** never create `agent/` under `platform-packs/` or any other root the runtime's checked-in goal-planning discovery exclusion contract denies. Planning discovery denies those roots, so history written there is unreadable memory. Write to the nearest non-excluded owning boundary instead.
 - **Exception — skill source directories:** if the primary boundary is a skill source directory (`skills/<skill-name>/`), write to `skills/agent/history.md` instead. Skill source directories may contain only `content.md` and `native-agents/`; placing `agent/` inside them fails `validateAgentConfigs`.
 - If the file does not exist, create it along with any missing parent directories.
 - Newest entry first.

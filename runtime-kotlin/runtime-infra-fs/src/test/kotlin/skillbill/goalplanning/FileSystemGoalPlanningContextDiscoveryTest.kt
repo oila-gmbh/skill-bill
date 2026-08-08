@@ -40,10 +40,15 @@ class FileSystemGoalPlanningContextDiscoveryTest {
   }
 
   @Test
-  fun `every excluded root is pruned from discovery output`() {
+  fun `every excluded root and directory name is pruned at any depth`() {
     val repo = Files.createTempDirectory("goal-context-all-roots")
     GoalPlanningDiscoveryExclusions.excludedRoots.forEach { root ->
       val agent = Files.createDirectories(repo.resolve(root).resolve("nested/agent"))
+      Files.writeString(agent.resolve("history.md"), "excluded history")
+    }
+    GoalPlanningDiscoveryExclusions.excludedDirectoryNames.forEach { name ->
+      // nested, not repo-root: an anchored-prefix-only gate would walk straight into these
+      val agent = Files.createDirectories(repo.resolve("runtime-kotlin/module/$name/nested/agent"))
       Files.writeString(agent.resolve("history.md"), "excluded history")
     }
     val moduleAgent = Files.createDirectories(repo.resolve("tooling/agent"))
@@ -52,11 +57,7 @@ class FileSystemGoalPlanningContextDiscoveryTest {
     val context = FileSystemGoalPlanningContextDiscovery().discover(repo)
 
     assertEquals(listOf("tooling/agent/history.md"), context.boundaryMemory.keys.toList())
-    assertFalse(
-      GoalPlanningDiscoveryExclusions.excludedRoots.any { root ->
-        context.boundaryMemory.keys.any { path -> path.startsWith(root) }
-      },
-    )
+    assertFalse(context.boundaryMemory.values.any { value -> "excluded history" in value })
   }
 
   @Test

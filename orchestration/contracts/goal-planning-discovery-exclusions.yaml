@@ -1,15 +1,23 @@
 # Canonical exclusion contract for goal planning / preplanning context discovery.
 #
-# Every listed root is a normalized, repo-relative directory prefix ending in "/".
-# Paths under a listed root NEVER contribute planning or preplanning memory: they are
+# `excluded_roots` are anchored, normalized, repo-relative directory prefixes ending in "/".
+# `excluded_directory_names` are bare directory names denied at ANY depth, so nested build
+# output (`runtime-kotlin/*/build/`) is pruned as reliably as the repo-root one.
+# Paths matched by either list NEVER contribute planning or preplanning memory: they are
 # not read into boundary_memory, validation_guidance, or any other planning packet field.
-# The list is a discovery gate (prefix deny), not documentation.
+# The lists are a discovery gate (prefix / segment deny), not documentation.
 #
 # An `agent/` tree (agent/history.md, agent/decisions.md) must not exist under any listed
 # root. Platform packs are review-phase inputs only; they carry no boundary memory.
-contract_version: "0.1"
+contract_version: "0.2"
 excluded_roots:
   - "platform-packs/"
-  - ".git/"
-  - "build/"
-  - "node_modules/"
+excluded_directory_names:
+  - ".git"
+  - ".gradle"
+  - ".skill-bill"
+  - "build"
+  - "node_modules"
+  - "target"
+  - "out"
+  - "dist"

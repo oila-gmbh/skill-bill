@@ -414,12 +414,12 @@ selected_diff_line: hunk_index=1 line_index=1 path=runtime-kotlin/runtime-cli/sr
 ### Bounded planning context and thin retention
 
 Planning repository discovery is allowlisted to `AGENTS.md` plus `agent/history.md`
-and `agent/decisions.md` under boundaries that are not denied by the checked-in
-exclusion contract `orchestration/contracts/goal-planning-discovery-exclusions.yaml`.
+and `agent/decisions.md` under boundaries that are not denied by the runtime's
+checked-in goal-planning discovery exclusion contract.
 Excluded roots — `platform-packs/` among them — contribute nothing: platform packs
 are review-phase and quality-check inputs only, and neither pack `platform.yaml` nor
-pack `agent/` is a planning input. Discovery returns targeted excerpts only: at most
-32 files, 4,096 bytes per excerpt, and 32 KiB total. It must not emit unrestricted
+pack `agent/` is a planning input. Discovery returns targeted excerpts only:
+at most 32 files, 4,096 bytes per excerpt, and 32 KiB total. It must not emit unrestricted
 recursive search output.
 
 Child planning payloads, implementation summaries, audits, reviews, diagnostics,

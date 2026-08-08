@@ -17,10 +17,39 @@ class GoalPlanningDiscoveryExclusionsTest {
   }
 
   @Test
+  fun `excluded directory names deny at any depth`() {
+    listOf("build", ".gradle", "node_modules").forEach { name ->
+      assertContains(GoalPlanningDiscoveryExclusions.excludedDirectoryNames, name)
+    }
+    assertTrue(GoalPlanningDiscoveryExclusions.isExcluded("runtime-kotlin/runtime-contracts/build/classes/agent"))
+    assertTrue(GoalPlanningDiscoveryExclusions.isExcluded("tooling/web/node_modules/pkg/agent/history.md"))
+    assertTrue(GoalPlanningDiscoveryExclusions.isExcluded("runtime-kotlin/.gradle/caches"))
+    assertFalse(GoalPlanningDiscoveryExclusions.isExcluded("runtime-kotlin/buildSrc/agent/history.md"))
+  }
+
+  @Test
   fun `prefix matching is segment aware`() {
     assertFalse(GoalPlanningDiscoveryExclusions.isExcluded("platform-packsX/agent/history.md"))
     assertFalse(GoalPlanningDiscoveryExclusions.isExcluded("runtime-kotlin/agent/history.md"))
     assertFalse(GoalPlanningDiscoveryExclusions.isExcluded(""))
+  }
+
+  @Test
+  fun `a contract without excluded directory names loud fails`() {
+    val missing = assertFailsWith<GoalPlanningDiscoveryExclusionsException> {
+      GoalPlanningDiscoveryExclusions.parse(
+        "contract_version: \"0.2\"\nexcluded_roots:\n  - \"platform-packs/\"\n",
+      )
+    }
+    assertContains(missing.message.orEmpty(), "no excluded_directory_names")
+
+    val nested = assertFailsWith<GoalPlanningDiscoveryExclusionsException> {
+      GoalPlanningDiscoveryExclusions.parse(
+        "contract_version: \"0.2\"\nexcluded_roots:\n  - \"platform-packs/\"\n" +
+          "excluded_directory_names:\n  - \"a/b\"\n",
+      )
+    }
+    assertContains(nested.message.orEmpty(), "bare directory name")
   }
 
   @Test
@@ -33,12 +62,15 @@ class GoalPlanningDiscoveryExclusionsTest {
   @Test
   fun `malformed contracts loud fail instead of degrading to allow all`() {
     val emptyRoots = assertFailsWith<GoalPlanningDiscoveryExclusionsException> {
-      GoalPlanningDiscoveryExclusions.parse("contract_version: \"0.1\"\nexcluded_roots: []\n")
+      GoalPlanningDiscoveryExclusions.parse("contract_version: \"0.2\"\nexcluded_roots: []\n")
     }
     assertContains(emptyRoots.message.orEmpty(), "no excluded_roots")
 
     val wrongVersion = assertFailsWith<GoalPlanningDiscoveryExclusionsException> {
-      GoalPlanningDiscoveryExclusions.parse("contract_version: \"9.9\"\nexcluded_roots:\n  - \"platform-packs/\"\n")
+      GoalPlanningDiscoveryExclusions.parse(
+        "contract_version: \"9.9\"\nexcluded_roots:\n  - \"platform-packs/\"\n" +
+          "excluded_directory_names:\n  - \"build\"\n",
+      )
     }
     assertContains(wrongVersion.message.orEmpty(), "unsupported")
 
@@ -47,21 +79,21 @@ class GoalPlanningDiscoveryExclusionsTest {
     }
 
     val absoluteRoot = assertFailsWith<GoalPlanningDiscoveryExclusionsException> {
-      GoalPlanningDiscoveryExclusions.parse("contract_version: \"0.1\"\nexcluded_roots:\n  - \"/etc/\"\n")
+      GoalPlanningDiscoveryExclusions.parse("contract_version: \"0.2\"\nexcluded_roots:\n  - \"/etc/\"\n")
     }
     assertContains(absoluteRoot.message.orEmpty(), "normalized repo-relative prefix")
 
     assertFailsWith<GoalPlanningDiscoveryExclusionsException> {
-      GoalPlanningDiscoveryExclusions.parse("contract_version: \"0.1\"\nexcluded_roots:\n  - \"../escape/\"\n")
+      GoalPlanningDiscoveryExclusions.parse("contract_version: \"0.2\"\nexcluded_roots:\n  - \"../escape/\"\n")
     }
 
     assertFailsWith<GoalPlanningDiscoveryExclusionsException> {
-      GoalPlanningDiscoveryExclusions.parse("contract_version: \"0.1\"\nexcluded_roots:\n  - \"no-trailing-slash\"\n")
+      GoalPlanningDiscoveryExclusions.parse("contract_version: \"0.2\"\nexcluded_roots:\n  - \"no-trailing-slash\"\n")
     }
   }
 
   @Test
   fun `contract version constant matches the shipped contract`() {
-    assertEquals("0.1", GoalPlanningDiscoveryExclusions.CONTRACT_VERSION)
+    assertEquals("0.2", GoalPlanningDiscoveryExclusions.CONTRACT_VERSION)
   }
 }

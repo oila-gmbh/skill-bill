@@ -43,8 +43,8 @@ internal object GoalPlanningSharedContextPacket {
   fun migrate(packet: Map<String, Any?>): Map<String, Any?> {
     return when (val version = packet["packet_version"]) {
       VERSION -> packet
-      LEGACY_VERSION_0_2 -> migrateFromV02(packet)
-      LEGACY_VERSION_0_1 -> migrateFromV02(migrateFromV01(packet))
+      LEGACY_VERSION_0_2 -> Legacy.migrateFromV02(packet)
+      LEGACY_VERSION_0_1 -> Legacy.migrateFromV02(Legacy.migrateFromV01(packet))
       else -> error(
         "shared context packet version '$version' is unsupported; expected '$VERSION', " +
           "'$LEGACY_VERSION_0_2', or '$LEGACY_VERSION_0_1'",
@@ -81,58 +81,57 @@ internal object GoalPlanningSharedContextPacket {
     }
   }
 
-  private fun migrateFromV01(packet: Map<String, Any?>): Map<String, Any?> {
-    require(packet.keys == LEGACY_V01_FIELDS) {
-      "shared context packet fields are invalid for version '$LEGACY_VERSION_0_1'"
-    }
-    require(isStringMap(packet["platform_packs"])) {
-      "shared context platform packs are invalid for version '$LEGACY_VERSION_0_1'"
-    }
-    require(packet["integrity_sha256"] == digest(packet - "integrity_sha256")) {
-      "shared context packet integrity is invalid"
-    }
-    val withoutLegacy = linkedMapOf<String, Any?>()
-    for (field in PACKET_FIELDS) {
-      if (field == "packet_version") {
-        withoutLegacy[field] = LEGACY_VERSION_0_2
-      } else if (field != "integrity_sha256") {
-        withoutLegacy[field] = packet.getValue(field)
+  /** Legacy checkpoint projections, grouped so the packet surface stays the current-version API. */
+  private object Legacy {
+    fun migrateFromV01(packet: Map<String, Any?>): Map<String, Any?> {
+      require(packet.keys == LEGACY_V01_FIELDS) {
+        "shared context packet fields are invalid for version '$LEGACY_VERSION_0_1'"
       }
-    }
-    return withoutLegacy + ("integrity_sha256" to digest(withoutLegacy))
-  }
-
-  /**
-   * SKILL-174: 0.2 packets predate the discovery exclusion contract, so a recovered one can still carry
-   * boundary memory harvested from an excluded root. The filter reads the same checked-in contract
-   * discovery denies against, never a duplicated prefix.
-   */
-  private fun migrateFromV02(packet: Map<String, Any?>): Map<String, Any?> {
-    require(packet.keys == PACKET_FIELDS) {
-      "shared context packet fields are invalid for version '$LEGACY_VERSION_0_2'"
-    }
-    require(isStringMap(packet["boundary_memory"])) {
-      "shared context boundary memory is invalid for version '$LEGACY_VERSION_0_2'"
-    }
-    require(packet["integrity_sha256"] == digest(packet - "integrity_sha256")) {
-      "shared context packet integrity is invalid"
-    }
-    val migrated = linkedMapOf<String, Any?>()
-    for (field in PACKET_FIELDS) {
-      when (field) {
-        "packet_version" -> migrated[field] = VERSION
-        "boundary_memory" -> migrated[field] = withoutExcludedRoots(packet.getValue(field))
-        "integrity_sha256" -> Unit
-        else -> migrated[field] = packet.getValue(field)
+      require(isStringMap(packet["platform_packs"])) {
+        "shared context platform packs are invalid for version '$LEGACY_VERSION_0_1'"
       }
+      require(packet["integrity_sha256"] == digest(packet - "integrity_sha256")) {
+        "shared context packet integrity is invalid"
+      }
+      val withoutLegacy = linkedMapOf<String, Any?>()
+      for (field in PACKET_FIELDS) {
+        if (field == "packet_version") {
+          withoutLegacy[field] = LEGACY_VERSION_0_2
+        } else if (field != "integrity_sha256") {
+          withoutLegacy[field] = packet.getValue(field)
+        }
+      }
+      return withoutLegacy + ("integrity_sha256" to digest(withoutLegacy))
     }
-    return migrated + ("integrity_sha256" to digest(migrated))
-  }
 
-  private fun withoutExcludedRoots(boundaryMemory: Any?): Map<String, String> {
-    val memory = (boundaryMemory as Map<*, *>).entries
-      .associate { (key, value) -> key as String to value as String }
-    return memory.filterKeys { path -> !GoalPlanningDiscoveryExclusions.isExcluded(path) }
+    /**
+     * SKILL-174: 0.2 packets predate the discovery exclusion contract, so a recovered one can still carry
+     * boundary memory harvested from an excluded root. The filter reads the same checked-in contract
+     * discovery denies against, never a duplicated prefix.
+     */
+    fun migrateFromV02(packet: Map<String, Any?>): Map<String, Any?> {
+      require(packet.keys == PACKET_FIELDS) {
+        "shared context packet fields are invalid for version '$LEGACY_VERSION_0_2'"
+      }
+      require(isStringMap(packet["boundary_memory"])) {
+        "shared context boundary memory is invalid for version '$LEGACY_VERSION_0_2'"
+      }
+      require(packet["integrity_sha256"] == digest(packet - "integrity_sha256")) {
+        "shared context packet integrity is invalid"
+      }
+      val migrated = linkedMapOf<String, Any?>()
+      for (field in PACKET_FIELDS) {
+        when (field) {
+          "packet_version" -> migrated[field] = VERSION
+          "boundary_memory" -> migrated[field] = (packet.getValue(field) as Map<*, *>).entries
+            .associate { (key, value) -> key as String to value as String }
+            .filterKeys { path -> !GoalPlanningDiscoveryExclusions.isExcluded(path) }
+          "integrity_sha256" -> Unit
+          else -> migrated[field] = packet.getValue(field)
+        }
+      }
+      return migrated + ("integrity_sha256" to digest(migrated))
+    }
   }
 
   fun orderedSubtasks(subtasks: List<DecompositionSubtask>): List<Map<String, Any?>> = subtasks.map { subtask ->

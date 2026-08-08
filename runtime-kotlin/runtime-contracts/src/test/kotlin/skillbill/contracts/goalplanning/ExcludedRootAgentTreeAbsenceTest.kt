@@ -1,7 +1,6 @@
 package skillbill.contracts.goalplanning
 
 import org.junit.jupiter.api.Assumptions.assumeTrue
-import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -9,18 +8,16 @@ import kotlin.test.assertEquals
 
 /**
  * SKILL-174: an `agent/` tree under an exclusion-list root can never be read into planning memory, so
- * it must not exist in the repository at all. Scope is tracked files — untracked noise roots such as
- * `build/` hold nothing to delete.
+ * it must not exist in the repository at all. The oracle is the working tree, not the git index or
+ * HEAD, so the assertion is independent of staging state and matches what discovery actually walks.
  */
 class ExcludedRootAgentTreeAbsenceTest {
   @Test
-  fun `no tracked path under an excluded root contains an agent segment`() {
+  fun `no working tree path under an excluded root contains an agent segment`() {
     val repoRoot = repoRoot()
     assumeTrue(repoRoot != null, "not running inside a git checkout")
-    val tracked = repoRoot?.let(::trackedFiles)
-    assumeTrue(tracked != null, "git ls-files is unavailable")
 
-    val offenders = tracked.orEmpty().filter { path ->
+    val offenders = workingTreeDirectories(requireNotNull(repoRoot)).filter { path ->
       GoalPlanningDiscoveryExclusions.isExcluded(path) && path.split("/").contains("agent")
     }
 
@@ -32,11 +29,13 @@ class ExcludedRootAgentTreeAbsenceTest {
     val repoRoot = repoRoot()
     assumeTrue(repoRoot != null, "not running inside a git checkout")
     listOf("skills/bill-boundary-history/content.md", "skills/bill-boundary-decisions/content.md").forEach { path ->
+      // Installed skill bodies may not name orchestration/ paths, so they carry the rule inline.
       val content = Files.readString(requireNotNull(repoRoot).resolve(path))
       assertEquals(
         true,
-        content.contains(GoalPlanningDiscoveryExclusions.CONTRACT_FILE) && content.contains("never create `agent/`"),
-        "$path must point at the exclusion contract and forbid agent/ under excluded roots",
+        content.contains("never create `agent/` under `platform-packs/`") &&
+          content.contains("goal-planning discovery exclusion contract"),
+        "$path must forbid agent/ under excluded roots and name the exclusion contract as the authority",
       )
     }
   }
@@ -51,12 +50,22 @@ class ExcludedRootAgentTreeAbsenceTest {
     return null
   }
 
-  private fun trackedFiles(repoRoot: Path): List<String>? = runCatching {
-    val process = ProcessBuilder("git", "ls-files", "-z")
-      .directory(File(repoRoot.toString()))
-      .start()
-    val output = process.inputStream.bufferedReader().use { reader -> reader.readText() }
-    check(process.waitFor() == 0) { "git ls-files failed" }
-    output.split('\u0000').filter { entry -> entry.isNotEmpty() }
-  }.getOrNull()
+  /** Repo-relative directories, with build-noise directory names pruned so the walk stays bounded. */
+  private fun workingTreeDirectories(repoRoot: Path): List<String> {
+    val found = mutableListOf<String>()
+    val pending = ArrayDeque(listOf(repoRoot))
+    while (pending.isNotEmpty()) {
+      val children = runCatching {
+        Files.list(pending.removeFirst()).use { entries ->
+          entries.filter { path -> Files.isDirectory(path) }.toList()
+        }
+      }.getOrDefault(emptyList())
+      for (child in children) {
+        if (child.fileName.toString() in GoalPlanningDiscoveryExclusions.excludedDirectoryNames) continue
+        found.add(repoRoot.relativize(child).joinToString("/"))
+        pending.add(child)
+      }
+    }
+    return found
+  }
 }
