@@ -43,16 +43,12 @@ object TelemetrySyncRuntime {
     settings: TelemetrySettings,
     pendingEvents: Int = 0,
     latestError: String? = null,
-  ): TelemetryStatusResult {
-    val result = baseStatusResult(dbPath, settings)
-    if (!settings.enabled) {
-      return result
-    }
-    return result.copy(
-      pendingEvents = pendingEvents,
-      latestError = latestError,
-    )
-  }
+    lastSyncedAt: String? = null,
+  ): TelemetryStatusResult = baseStatusResult(dbPath, settings).copy(
+    pendingEvents = pendingEvents,
+    latestError = latestError,
+    lastSyncedAt = lastSyncedAt,
+  )
 
   fun autoSyncTelemetry(
     settings: TelemetrySettings,

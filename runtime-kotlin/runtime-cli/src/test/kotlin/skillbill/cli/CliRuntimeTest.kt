@@ -10,6 +10,7 @@ import skillbill.cli.model.CliRuntimeContext
 import skillbill.contracts.JsonSupport
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.telemetry.LifecycleTelemetryStore
+import skillbill.db.telemetry.TelemetryOutboxStore
 import skillbill.ports.telemetry.HttpRequester
 import skillbill.ports.telemetry.model.HttpResponse
 import skillbill.ports.workflow.repositoryFingerprint
@@ -23,7 +24,10 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.test.fail
 
 @Suppress("LargeClass")
 class CliRuntimeTest {
@@ -289,6 +293,63 @@ class CliRuntimeTest {
     val (statsPayload, capturedRequests) = remoteStatsScenario(configPath)
     assertEquals(expectedRemoteStatsPayload(), statsPayload)
     assertEquals(expectedCliRemoteStatsRequests(), capturedRequests)
+  }
+
+  // SKILL-170 AC-001/AC-002/AC-004: queue depth and sync state are visible at every resolved level.
+  @Test
+  fun `telemetry status reports queue depth and sync state across outbox states`() {
+    val empty = telemetryStatusState(level = "anonymous", pendingEvents = 0, priorSync = false)
+    assertEquals(0, empty["pending_events"])
+    assertEquals("never_synced", empty["last_sync_state"])
+    assertNull(empty["last_synced_at"])
+
+    val neverSynced = telemetryStatusState(level = "anonymous", pendingEvents = 2, priorSync = false)
+    assertEquals(2, neverSynced["pending_events"])
+    assertEquals("never_synced", neverSynced["last_sync_state"])
+    assertNull(neverSynced["last_synced_at"])
+
+    val syncedWithPending = telemetryStatusState(level = "anonymous", pendingEvents = 2, priorSync = true)
+    assertEquals(2, syncedWithPending["pending_events"])
+    assertEquals("synced", syncedWithPending["last_sync_state"])
+    assertNotNull(syncedWithPending["last_synced_at"])
+
+    val disabled = telemetryStatusState(level = "off", pendingEvents = 3, priorSync = true)
+    assertEquals(false, disabled["telemetry_enabled"])
+    assertEquals(3, disabled["pending_events"], "An off install must still show what is queued and undelivered.")
+    assertEquals("synced", disabled["last_sync_state"])
+    assertNull(disabled["install_id"], "An off install must not leak the install id.")
+  }
+
+  // The text formatter drops null values, so the distinction has to survive without last_synced_at.
+  @Test
+  fun `telemetry status renders the sync state distinction in text format`() {
+    val neverSynced = telemetryStatusText(level = "anonymous", pendingEvents = 1, priorSync = false)
+    assertContains(neverSynced, "pending_events: 1")
+    assertContains(neverSynced, "last_sync_state: never_synced")
+
+    val synced = telemetryStatusText(level = "anonymous", pendingEvents = 1, priorSync = true)
+    assertContains(synced, "last_sync_state: synced")
+    assertContains(synced, "last_synced_at: ")
+  }
+
+  // AC-003: proven negatively — the requester fails the test if status reaches for the network at all.
+  @Test
+  fun `telemetry status makes no network call and tolerates a missing database`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-telemetry-status-read")
+    val dbPath = tempDir.resolve("metrics.db")
+    writeTelemetryConfig(tempDir, level = "anonymous", proxyUrl = TELEMETRY_FIXTURE_PROXY_URL)
+
+    val result =
+      CliRuntime.run(
+        listOf("--db", dbPath.toString(), "telemetry", "status", "--format", "json"),
+        telemetryStatusContext(tempDir),
+      )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    val payload = decodeJsonObject(result.stdout)
+    assertEquals(0, payload["pending_events"])
+    assertEquals("never_synced", payload["last_sync_state"])
+    assertFalse(Files.exists(dbPath), "telemetry status is a read: it must not create the database.")
   }
 
   @Test
@@ -1158,6 +1219,37 @@ private fun seedGoalStatsDb(dbPath: Path) {
       level = "full",
     )
   }
+}
+
+/** Fails the run rather than reaching the network, so any status-path HTTP call fails the suite. */
+private fun telemetryStatusContext(userHome: Path): CliRuntimeContext = CliRuntimeContext(
+  environment = emptyMap(),
+  userHome = userHome,
+  requester = HttpRequester { _, _, _, _ -> fail("telemetry status must perform no network call") },
+)
+
+private fun telemetryStatusState(level: String, pendingEvents: Int, priorSync: Boolean): Map<String, Any?> =
+  decodeJsonObject(telemetryStatusStdout(level, pendingEvents, priorSync, json = true))
+
+private fun telemetryStatusText(level: String, pendingEvents: Int, priorSync: Boolean): String =
+  telemetryStatusStdout(level, pendingEvents, priorSync, json = false)
+
+private fun telemetryStatusStdout(level: String, pendingEvents: Int, priorSync: Boolean, json: Boolean): String {
+  val tempDir = Files.createTempDirectory("skillbill-cli-telemetry-status")
+  val dbPath = tempDir.resolve("metrics.db")
+  writeTelemetryConfig(tempDir, level = level, proxyUrl = TELEMETRY_FIXTURE_PROXY_URL)
+  DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+    val store = TelemetryOutboxStore(connection)
+    if (priorSync) {
+      store.markSynced(listOf(store.enqueue("skillbill_goal_finished", """{"seed":"delivered"}""")))
+    }
+    repeat(pendingEvents) { index -> store.enqueue("skillbill_review_finished", """{"seed":$index}""") }
+  }
+  val arguments =
+    listOf("--db", dbPath.toString(), "telemetry", "status") + if (json) listOf("--format", "json") else emptyList()
+  val result = CliRuntime.run(arguments, telemetryStatusContext(tempDir))
+  assertEquals(0, result.exitCode, result.stdout)
+  return result.stdout
 }
 
 private fun writeTelemetryConfig(tempDir: Path, level: String): Path {

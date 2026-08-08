@@ -96,6 +96,21 @@ class TelemetryOutboxStore(
     }
   }
 
+  override fun lastSyncedAt(): String? = connection.prepareStatement(
+    """
+      SELECT MAX(synced_at)
+      FROM telemetry_outbox
+      WHERE synced_at IS NOT NULL
+    """.trimIndent(),
+  ).use { statement ->
+    statement.executeQuery().use { resultSet ->
+      if (!resultSet.next()) {
+        return null
+      }
+      resultSet.getString(1)
+    }
+  }
+
   override fun markSynced(id: Long, syncedAt: String) {
     connection.prepareStatement(
       """

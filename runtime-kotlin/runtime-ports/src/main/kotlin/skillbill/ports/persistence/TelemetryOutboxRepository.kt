@@ -11,6 +11,8 @@ interface TelemetryOutboxRepository {
 
   fun latestError(): String?
 
+  fun lastSyncedAt(): String?
+
   fun markSynced(id: Long, syncedAt: String)
 
   fun markSynced(eventIds: List<Long>)

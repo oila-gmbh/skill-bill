@@ -324,6 +324,8 @@ private class MutationTelemetryOutboxRepository(
 
   override fun latestError(): String? = null
 
+  override fun lastSyncedAt(): String? = rows.mapNotNull(TelemetryOutboxRecord::syncedAt).maxOrNull()
+
   override fun markSynced(id: Long, syncedAt: String) = Unit
 
   override fun markSynced(eventIds: List<Long>) = Unit

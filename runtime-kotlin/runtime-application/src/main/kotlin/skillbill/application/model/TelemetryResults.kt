@@ -14,6 +14,7 @@ data class TelemetryStatusResult(
   val installId: String? = null,
   val batchSize: Int? = null,
   val latestError: String? = null,
+  val lastSyncedAt: String? = null,
 )
 
 data class TelemetrySyncStatusResult(

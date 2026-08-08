@@ -2,6 +2,7 @@ package skillbill.cli
 
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliRuntimeContext
+import skillbill.db.core.DatabaseRuntime
 import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.DriverManager
@@ -29,13 +30,14 @@ internal fun writeTelemetryConfig(userHome: Path, level: String, proxyUrl: Strin
 internal const val TELEMETRY_FIXTURE_PROXY_URL = "http://127.0.0.1:9/telemetry"
 
 /**
- * Creates the fixture database through a real CLI invocation rather than hand-authored schema, so
- * seeded outbox rows always match the schema the runtime itself creates.
+ * Creates the fixture database through the runtime's own schema bootstrap rather than hand-authored
+ * DDL, so seeded outbox rows always match the schema the runtime itself creates.
  */
 internal fun materializeTelemetryDatabase(userHome: Path, dbPath: Path, level: String, context: CliRuntimeContext) {
   writeTelemetryConfig(userHome, level = level, proxyUrl = TELEMETRY_FIXTURE_PROXY_URL)
+  DatabaseRuntime.ensureDatabase(dbPath).close()
   val status = CliRuntime.run(listOf("--db", dbPath.toString(), "telemetry", "status"), context)
-  check(status.exitCode == 0) { "telemetry status did not materialize the fixture database: ${status.stdout}" }
+  check(status.exitCode == 0) { "telemetry status did not read the fixture database: ${status.stdout}" }
 }
 
 internal fun seedTelemetryOutbox(dbPath: Path, eventName: String) {

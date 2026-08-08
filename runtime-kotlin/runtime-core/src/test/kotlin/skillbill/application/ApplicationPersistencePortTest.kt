@@ -2392,6 +2392,8 @@ private object NoopTelemetryOutboxRepository : TelemetryOutboxRepository {
 
   override fun latestError(): String? = null
 
+  override fun lastSyncedAt(): String? = null
+
   override fun markSynced(id: Long, syncedAt: String) = Unit
 
   override fun markSynced(eventIds: List<Long>) = Unit
@@ -2430,6 +2432,8 @@ private class InMemoryTelemetryOutboxRepository(
   override fun pendingCount(): Int = rows.count { it.syncedAt == null }
 
   override fun latestError(): String? = rows.lastOrNull { it.syncedAt == null && it.lastError.isNotBlank() }?.lastError
+
+  override fun lastSyncedAt(): String? = rows.mapNotNull { it.syncedAt }.maxOrNull()
 
   override fun markSynced(id: Long, syncedAt: String) {
     markSynced(listOf(id))
