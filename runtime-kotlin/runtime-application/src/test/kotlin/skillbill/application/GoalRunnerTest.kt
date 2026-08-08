@@ -2474,11 +2474,13 @@ internal class InMemoryGoalManifestStore(
         pauseConsumed = true,
         paused = true,
         pauseReason = controlState.pauseReason ?: "operator_request",
+        pausedAt = FAKE_PAUSED_AT,
         stopAfterConsumed = controlState.stopAfterConsumed || targetReached,
       )
       else -> controlState.copy(
         paused = true,
         pauseReason = "stop_after_subtask",
+        pausedAt = FAKE_PAUSED_AT,
         stopAfterConsumed = true,
       )
     }
@@ -2492,6 +2494,7 @@ internal class InMemoryGoalManifestStore(
       pauseConsumed = false,
       paused = false,
       pauseReason = null,
+      pausedAt = null,
     )
     return loadByIssueKey(manifest.issueKey, dbPathOverride, null)!!.copy(controlState = controlState)
   }
@@ -2515,6 +2518,7 @@ internal class InMemoryGoalManifestStore(
           operatorRequested -> "operator_request"
           else -> "stop_after_subtask"
         },
+        pausedAt = controlState.pausedAt ?: FAKE_PAUSED_AT,
         stopAfterConsumed = controlState.stopAfterConsumed || targetReached,
       )
       boundaryTransitionCount += 1
@@ -3670,6 +3674,8 @@ class GoalRunnerStatusAttributionTest {
 // recorder runs over an empty repository (every read returns null) and attribution falls through to
 // the subtask's recorded finalizing/participating agent — letting status attribution tests assert
 // source 2 without a database.
+internal const val FAKE_PAUSED_AT = "2026-08-02T10:00:00Z"
+
 internal fun goalTestPhaseRecorder(): FeatureTaskRuntimePhaseRecorder = FeatureTaskRuntimePhaseRecorder(
   GoalTestEmptyDatabase,
   GoalTestNoopSnapshotValidator,

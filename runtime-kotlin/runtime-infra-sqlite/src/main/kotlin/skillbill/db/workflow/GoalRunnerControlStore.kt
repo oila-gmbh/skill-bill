@@ -173,11 +173,16 @@ private fun GoalRunnerControlState.toArtifactMap(): Map<String, Any?> = mapOf(
   "pause_consumed" to pauseConsumed,
   "paused" to paused,
   "pause_reason" to pauseReason,
+  "paused_at" to pausedAt,
   "stop_after_consumed" to stopAfterConsumed,
   "repository_identity" to repositoryIdentity,
   "execution_lease" to executionLease?.toArtifactMap(),
 )
 
+/**
+ * The allowed-key whitelist is strict in both directions: an older binary reading a record that
+ * carries `paused_at` fails here. Accepted — goal runner durable state is same-binary-version.
+ */
 private fun decodeControlState(raw: String): GoalRunnerControlState {
   val state = JsonSupport.parseObjectOrNull(raw)
     ?.let(JsonSupport::jsonElementToValue)
@@ -189,6 +194,7 @@ private fun decodeControlState(raw: String): GoalRunnerControlState {
     "pause_consumed",
     "paused",
     "pause_reason",
+    "paused_at",
     "stop_after_consumed",
     "repository_identity",
     "execution_lease",
@@ -202,10 +208,28 @@ private fun decodeControlState(raw: String): GoalRunnerControlState {
     pauseConsumed = state.booleanOrDefault("pause_consumed", false),
     paused = state.booleanOrDefault("paused", false),
     pauseReason = state.nullableString("pause_reason"),
+    pausedAt = state.nullableString("paused_at") ?: legacyPausedAt(state),
     stopAfterConsumed = state.booleanOrDefault("stop_after_consumed", false),
     repositoryIdentity = state.nullableString("repository_identity"),
     executionLease = state["execution_lease"]?.let(::decodeExecutionLease),
   )
+}
+
+/**
+ * Pause timestamp for a durable record written before `paused_at` existed. Downstream consumers read
+ * it as "paused, time unknown"; it is deliberately not a plausible pause time.
+ */
+const val LEGACY_UNKNOWN_PAUSED_AT: String = "1970-01-01T00:00:00Z"
+
+/**
+ * Backfill on the raw map, before the [GoalRunnerControlState] constructor runs, so a pre-existing
+ * paused record never hard-fails the paused/pausedAt invariant. The lease heartbeat is the closest
+ * durable evidence of when the runner stopped; the sentinel covers records with no lease at all.
+ */
+private fun legacyPausedAt(state: Map<String, Any?>): String? {
+  if (!state.booleanOrDefault("paused", false)) return null
+  val lease = state["execution_lease"]?.let(JsonSupport::anyToStringAnyMap)
+  return lease?.nullableString("heartbeat_at") ?: LEGACY_UNKNOWN_PAUSED_AT
 }
 
 private fun decodeExecutionLease(raw: Any?): GoalRunnerExecutionLease {

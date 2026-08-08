@@ -107,6 +107,19 @@ interface GoalRunnerManifestStore : GoalRunnerManifestLookup {
 
   fun requestPause(parentWorkflowId: String, dbPathOverride: String? = null): GoalRunnerControlState? = null
 
+  /**
+   * Flip the goal to paused in exactly one durable write, with no status inspection or child
+   * supervision. When [overwriteExistingReason] is false an already-paused record is returned
+   * untouched, which is how the shutdown hook defers to a reason the stop verb already wrote.
+   */
+  fun pauseNow(
+    parentWorkflowId: String,
+    reason: String,
+    pausedAt: String,
+    overwriteExistingReason: Boolean = false,
+    dbPathOverride: String? = null,
+  ): GoalRunnerControlState? = null
+
   fun requestPauseByIssueKey(
     issueKey: String,
     dbPathOverride: String? = null,

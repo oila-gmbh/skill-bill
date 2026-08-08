@@ -130,6 +130,24 @@ over the inferred one when both are present.
   prior stop-verb write.
 - Full runtime suite plus the goal-runner CLI tests.
 
+## Resolved Decisions
+
+- **Legacy decode.** A durable record written before `paused_at` existed is backfilled on the raw
+  map, before the `GoalRunnerControlState` constructor runs, so no pre-existing paused row can
+  hard-fail the new invariant. The backfill prefers `execution_lease.heartbeat_at` and otherwise
+  uses `LEGACY_UNKNOWN_PAUSED_AT` (`1970-01-01T00:00:00Z`), which reads as "paused, time unknown"
+  and is unmistakably not a real pause time.
+- **Pause-reason vocabulary.** Four values, all additive: the existing `operator_request` and
+  `stop_after_subtask`, plus `operator_stop` (the stop verb) and `runner_interrupted` (the shutdown
+  hook). The last two are what make an operator stop distinguishable from an external kill.
+- **Graceful-to-forcible wait.** 5 seconds, polled every 250 ms. Counted polls rather than a
+  wall-clock deadline, so a fixed test clock cannot spin the loop forever.
+- **Shutdown-write budget.** 2 seconds. The hook joins a daemon writer thread for that long and
+  then returns regardless, so a blocked database can never stall JVM exit.
+- **Whitelist strictness.** `paused_at` is added to the allowed-key set and nothing is relaxed. An
+  older binary reading a record that carries `paused_at` fails loudly; goal runner durable state is
+  same-binary-version, so this is accepted rather than worked around.
+
 ## Next Path
 
 Subtask 4 — expose the pause signals on the ide-status contract so the IDE can render them.

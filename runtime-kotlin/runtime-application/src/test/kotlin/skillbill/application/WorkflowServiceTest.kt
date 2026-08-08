@@ -42,6 +42,7 @@ import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_LIMIT
 import skillbill.goalrunner.model.GoalAttemptLedgerAction
 import skillbill.goalrunner.model.GoalAttemptLedgerEntry
+import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequest
 import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskRequestOutcome
@@ -3186,6 +3187,96 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
     assertEquals("preplan", opened.snapshot.currentStepId)
   }
 
+  @Test
+  fun `a boundary pause stamps the pause timestamp from the injected clock`() {
+    val harness = hydrationHarness()
+    val store = harness.newClockedStore()
+
+    store.requestPause("goal-parent")
+    val paused = store.pauseAtBoundary(harness.state).controlState
+
+    assertTrue(paused.paused)
+    assertEquals(PAUSE_CLOCK_INSTANT, paused.pausedAt)
+  }
+
+  @Test
+  fun `a second boundary pause does not move the original pause timestamp`() {
+    val harness = hydrationHarness()
+    val store = harness.newClockedStore()
+
+    store.requestPause("goal-parent")
+    store.pauseAtBoundary(harness.state)
+    val laterStore = harness.newClockedStore(LATER_PAUSE_CLOCK_INSTANT)
+
+    assertEquals(PAUSE_CLOCK_INSTANT, laterStore.pauseAtBoundary(harness.state).controlState.pausedAt)
+  }
+
+  @Test
+  fun `reaching a stop-after target stamps the pause timestamp too`() {
+    val harness = hydrationHarness()
+    val store = harness.newClockedStore()
+
+    store.persistStopAfterSubtask("goal-parent", 1)
+    val result = store.saveCompletedSubtaskAtBoundary(harness.state, 1)
+
+    assertTrue(result.paused)
+    assertEquals("stop_after_subtask", result.state.controlState.pauseReason)
+    assertEquals(PAUSE_CLOCK_INSTANT, result.state.controlState.pausedAt)
+  }
+
+  @Test
+  fun `resume clears the pause timestamp along with the reason`() {
+    val harness = hydrationHarness()
+    val store = harness.newClockedStore()
+    store.requestPause("goal-parent")
+    store.pauseAtBoundary(harness.state)
+
+    val resumed = requireNotNull(store.resume("goal-parent")).controlState
+
+    assertEquals(null, resumed.pausedAt)
+    assertEquals(null, resumed.pauseReason)
+    assertEquals(false, resumed.paused)
+  }
+
+  @Test
+  fun `pauseNow writes the operator stop straight through in one transaction`() {
+    val harness = hydrationHarness()
+    val store = harness.newClockedStore()
+
+    val control = requireNotNull(
+      store.pauseNow("goal-parent", "operator_stop", PAUSE_CLOCK_INSTANT, overwriteExistingReason = true),
+    )
+
+    assertTrue(control.paused)
+    assertTrue(control.pauseRequested)
+    assertTrue(control.pauseConsumed)
+    assertEquals("operator_stop", control.pauseReason)
+    assertEquals(PAUSE_CLOCK_INSTANT, control.pausedAt)
+    assertTrue(control.requiresPauseBoundary(harness.manifest))
+  }
+
+  @Test
+  fun `pauseNow defers to an existing reason when it must not overwrite`() {
+    val harness = hydrationHarness()
+    val store = harness.newClockedStore()
+    store.pauseNow("goal-parent", "operator_stop", PAUSE_CLOCK_INSTANT, overwriteExistingReason = true)
+
+    val control = requireNotNull(
+      store.pauseNow("goal-parent", "runner_interrupted", LATER_PAUSE_CLOCK_INSTANT),
+    )
+
+    assertEquals("operator_stop", control.pauseReason)
+    assertEquals(PAUSE_CLOCK_INSTANT, control.pausedAt)
+  }
+
+  @Test
+  fun `pauseNow reports no goal for an unknown parent workflow`() {
+    assertEquals(
+      null,
+      hydrationHarness().newClockedStore().pauseNow("missing-parent", "operator_stop", PAUSE_CLOCK_INSTANT),
+    )
+  }
+
   private fun hydrationHarness(twoSubtasks: Boolean = false, variant: String = "valid"): HydrationHarness {
     val workflows = InMemoryWorkflowStates()
     val manifest = hydrationManifest(twoSubtasks)
@@ -3221,11 +3312,33 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
     val manifest: DecompositionManifest,
   ) {
     val state = GoalRunnerManifestState("goal-parent", "/fake/metrics.db", manifest)
+
+    /** Shared by every store this harness builds, so control writes survive across stores. */
+    val controls = RecordingGoalRunnerControlRepository()
     val store = newStore()
     val setup = setupFor(1)
 
+    /** Same store, but with a fixed clock so every paused=true write has an assertable timestamp. */
+    fun newClockedStore(instant: String = PAUSE_CLOCK_INSTANT) = WorkflowGoalRunnerManifestStore(
+      database = FakeDatabaseSessionFactory(
+        workflows,
+        planningPreparations = preparations,
+        goalRunnerControls = controls,
+      ),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      decompositionManifestValidator = testDecompositionManifestValidator,
+      decompositionManifestFileStore = NoWriteDecompositionManifestFileStore,
+      phaseOutputValidator = AlwaysValidValidator,
+      planningProjectionValidator = realPlanningProjectionValidator,
+      clock = java.time.Clock.fixed(java.time.Instant.parse(instant), java.time.ZoneOffset.UTC),
+    )
+
     fun newStore() = WorkflowGoalRunnerManifestStore(
-      database = FakeDatabaseSessionFactory(workflows, planningPreparations = preparations),
+      database = FakeDatabaseSessionFactory(
+        workflows,
+        planningPreparations = preparations,
+        goalRunnerControls = controls,
+      ),
       workflowSnapshotValidator = testWorkflowSnapshotValidator,
       decompositionManifestValidator = testDecompositionManifestValidator,
       decompositionManifestFileStore = NoWriteDecompositionManifestFileStore,
@@ -3256,6 +3369,8 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
     }
 
     const val CHILD_ID = "wfl-child-1"
+    const val PAUSE_CLOCK_INSTANT = "2026-08-07T12:00:00Z"
+    const val LATER_PAUSE_CLOCK_INSTANT = "2026-08-07T13:00:00Z"
     val REPOSITORY_IDENTITY = "repo-root-realpath-v1:${Path.of("").toAbsolutePath().normalize()}"
 
     // Hydration payloads carry real bounded projections: the hydrator now runs the shared producer
@@ -3405,6 +3520,19 @@ internal class FakeDatabaseSessionFactory(
 private class RecordingGoalRunnerControlRepository : GoalRunnerControlRepository {
   private val policies = mutableMapOf<String, GoalRunnerReviewPolicy>()
   private val acceptances = mutableMapOf<String, MutableMap<Int, GoalRunnerOutOfBandAcceptance>>()
+  private val controlStates = mutableMapOf<String, GoalRunnerControlState>()
+
+  override fun controlState(parentWorkflowId: String): GoalRunnerControlState =
+    controlStates[parentWorkflowId] ?: GoalRunnerControlState()
+
+  override fun persistControlState(parentWorkflowId: String, state: GoalRunnerControlState): GoalRunnerControlState {
+    controlStates[parentWorkflowId] = state
+    return state
+  }
+
+  override fun clearControlState(parentWorkflowId: String) {
+    controlStates.remove(parentWorkflowId)
+  }
 
   override fun reviewPolicy(parentWorkflowId: String): GoalRunnerReviewPolicy? = policies[parentWorkflowId]
 

@@ -1,3 +1,15 @@
+## [2026-08-08] SKILL-168 goal stop verb and durable pause timestamp (subtask 3)
+Areas: runtime-kotlin/{runtime-domain,runtime-ports,runtime-application,runtime-infra-sqlite,runtime-cli}, .feature-specs/SKILL-168-ide-status-goal-controls
+- `GoalRunnerControlState` gained a nullable pause timestamp with a construction invariant mirroring `pauseReason`: `paused = true` without a timestamp is rejected. Legacy rows without the column decode through the store, so the invariant is enforced at construction, not at read. reusable
+- Every write path that sets `paused = true` — graceful boundary pause, the new stop verb, and the SIGTERM shutdown hook — stamps the timestamp from the injected clock; tests pin it with a fixed clock rather than asserting wall-clock proximity. reusable
+- New `skill-bill goal stop <ISSUE_KEY> [--repo-root]` returns typed outcomes (stopped / already stopped / no live lease / identity mismatch / goal not found) mapped to distinct CLI exit codes; it is idempotent across repeat invocations and no-lease goals.
+- Write-before-terminate is the ordering contract: durable operator intent lands before any termination attempt and stays observable when the supervisor's termination throws or returns false. Termination is graceful-then-forcible over the process tree so the child agent is not orphaned.
+- Identity refusal: the verb declines to terminate when the lease host/boot identity mismatches the current process or the supervisor reports the owner unsupported/ambiguous — it reports the refusal instead of killing by pid.
+- Shutdown hook does at most one bounded durable write on an already-dying JVM, never overwrites a more specific `pauseReason` already written by the stop verb (reason precedence: operator stop > interruption > inferred), and does not block shutdown. SIGKILL stays uninterceptable; lease-expiry inference remains the backstop.
+- Limits: no wire/schema change (subtask 4), no phase-level pause boundary, no resume-semantics change, no plugin consumption (subtask 5).
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
 ## [2026-08-07] SKILL-164 checkpoint-keyed shared review evidence: integration contracts, telemetry, and validation (subtask 4)
 Areas: runtime-kotlin/{runtime-contracts,runtime-domain,runtime-ports,runtime-application,runtime-infra-fs,runtime-infra-sqlite,runtime-core}, orchestration/contracts, docs, .feature-specs/SKILL-164-checkpoint-keyed-shared-review-evidence
 - Shared evidence projection is a versioned contract (`feature-task-runtime-shared-evidence-projection-schema.yaml`) validated on every store read: schema-invalid/unreadable content re-derives; fingerprint/location contradiction loud-fails. reusable

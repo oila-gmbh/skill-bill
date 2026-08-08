@@ -18,8 +18,11 @@ import skillbill.application.model.GoalRunnerResetSnapshot
 import skillbill.application.model.GoalRunnerResetSubtaskSnapshot
 import skillbill.application.model.GoalRunnerResumeResult
 import skillbill.application.model.GoalRunnerStatusRequest
+import skillbill.application.model.GoalRunnerStopStatus
+import skillbill.application.model.GoalRunnerStopVerbResult
 import skillbill.application.workflow.repoRoot
 import skillbill.goalrunner.model.ExecutionLiveness
+import skillbill.goalrunner.model.GOAL_PAUSE_REASON_OPERATOR_STOP
 import skillbill.goalrunner.model.GoalRunnerAcceptedSubtask
 import skillbill.goalrunner.model.GoalRunnerStatusProjection
 import skillbill.goalrunner.model.GoalRunnerStatusProjectionExtras
@@ -33,7 +36,11 @@ import skillbill.ports.goalrunner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
 import skillbill.ports.goalrunner.model.GoalRunnerScopedReplanOptions
 import skillbill.ports.goalrunner.model.GoalRunnerScopedReplanWriteResult
+import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
+import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
+import skillbill.ports.taskruntime.NoopFeatureTaskRuntimeWorkerSupervisor
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
 import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
@@ -55,8 +62,15 @@ private const val SUBTASK_STATUS_PENDING = "pending"
 private const val SUBTASK_STATUS_COMPLETE = "complete"
 private const val SUBTASK_STATUS_SKIPPED = "skipped"
 
+/** How long the stop verb lets the runner exit on its own before escalating to forcible termination. */
+private const val GRACEFUL_TERMINATION_WAIT_MILLIS: Long = 5_000
+private const val GRACEFUL_TERMINATION_POLL_MILLIS: Long = 250
+private const val GRACEFUL_TERMINATION_POLLS: Int =
+  (GRACEFUL_TERMINATION_WAIT_MILLIS / GRACEFUL_TERMINATION_POLL_MILLIS).toInt()
+
 @Inject
-@Suppress("TooManyFunctions") // single cohesive boundary: status projection, reset, accept, and reconciliation
+// single cohesive boundary: status projection, reset, accept, and reconciliation, each with its own collaborator
+@Suppress("TooManyFunctions", "LongParameterList")
 class GoalRunnerStatusService(
   private val manifestStore: GoalRunnerManifestStore,
   private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
@@ -64,6 +78,7 @@ class GoalRunnerStatusService(
   private val gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
   private val attemptLedgerStore: GoalRunnerAttemptLedgerStore = NoopGoalRunnerAttemptLedgerStore,
   private val clock: Clock = Clock.systemUTC(),
+  private val workerSupervisor: FeatureTaskRuntimeWorkerSupervisor = NoopFeatureTaskRuntimeWorkerSupervisor,
 ) {
   fun status(request: GoalRunnerStatusRequest): GoalRunnerStatusProjection? {
     return manifestStore.readByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
@@ -163,6 +178,73 @@ class GoalRunnerStatusService(
       pauseRequested = effectiveControl.pauseRequested,
       pauseReason = effectiveControl.pauseReason,
     )
+  }
+
+  /**
+   * Stop a goal immediately: write durable operator intent first, then terminate the runner that
+   * holds it. The write precedes every supervisor interaction and is never reordered — a stop whose
+   * termination fails still leaves `paused = true`, so the surviving runner halts at its next
+   * boundary anyway. Identity the supervisor cannot confirm is refused, never killed by pid.
+   */
+  fun stop(
+    issueKey: String,
+    dbPathOverride: String?,
+    repoRoot: Path = Path.of("").toAbsolutePath().normalize(),
+  ): GoalRunnerStopVerbResult {
+    val loaded = manifestStore.loadByIssueKey(issueKey, dbPathOverride, repoRoot)
+      ?: return GoalRunnerStopVerbResult(issueKey = issueKey, status = GoalRunnerStopStatus.NOT_FOUND)
+    manifestStore.bindRepositoryIdentity(loaded.parentWorkflowId, goalRepositoryIdentity(repoRoot), dbPathOverride)
+    val alreadyStopped = loaded.controlState.paused &&
+      loaded.controlState.pauseReason == GOAL_PAUSE_REASON_OPERATOR_STOP
+    val control = manifestStore.pauseNow(
+      parentWorkflowId = loaded.parentWorkflowId,
+      reason = GOAL_PAUSE_REASON_OPERATOR_STOP,
+      pausedAt = clock.instant().toString(),
+      overwriteExistingReason = true,
+      dbPathOverride = dbPathOverride,
+    ) ?: return GoalRunnerStopVerbResult(issueKey = issueKey, status = GoalRunnerStopStatus.NOT_FOUND)
+
+    fun outcome(status: GoalRunnerStopStatus, terminationAttempted: Boolean = false) = GoalRunnerStopVerbResult(
+      issueKey = issueKey,
+      status = status,
+      parentWorkflowId = loaded.parentWorkflowId,
+      pauseReason = control.pauseReason,
+      pausedAt = control.pausedAt,
+      terminationAttempted = terminationAttempted,
+    )
+
+    val lease = manifestStore.executionLease(loaded.parentWorkflowId, dbPathOverride)
+    val noLiveLease = if (alreadyStopped) GoalRunnerStopStatus.ALREADY_STOPPED else GoalRunnerStopStatus.NO_LIVE_LEASE
+    if (lease == null) return outcome(noLiveLease)
+    val ownership = lease.asWorkerOwnership(loaded.parentWorkflowId)
+    // The durable write already landed, so a throwing supervisor costs the operator nothing: the
+    // stop is reported as attempted and the still-running goal halts at its next pause boundary.
+    return runCatching {
+      when (workerSupervisor.inspect(ownership)) {
+        is FeatureTaskRuntimeProcessInspection.OwnershipMismatch,
+        is FeatureTaskRuntimeProcessInspection.Unsupported,
+        -> outcome(GoalRunnerStopStatus.IDENTITY_MISMATCH)
+        FeatureTaskRuntimeProcessInspection.NotRunning -> outcome(noLiveLease)
+        FeatureTaskRuntimeProcessInspection.ExactLive -> {
+          terminateOwner(ownership)
+          outcome(GoalRunnerStopStatus.STOPPED, terminationAttempted = true)
+        }
+      }
+    }.getOrElse { outcome(GoalRunnerStopStatus.STOPPED, terminationAttempted = true) }
+  }
+
+  /** Graceful first, forcible only if the process outlives the wait, so the child agent can exit cleanly. */
+  private fun terminateOwner(ownership: FeatureTaskRuntimeWorkerOwnership) {
+    workerSupervisor.terminateGracefully(ownership)
+    // Counted polls rather than a wall-clock deadline: the injected clock never advances on its own,
+    // so a deadline loop would spin forever under a fixed test clock.
+    repeat(GRACEFUL_TERMINATION_POLLS) {
+      if (workerSupervisor.inspect(ownership) != FeatureTaskRuntimeProcessInspection.ExactLive) return
+      workerSupervisor.pause(GRACEFUL_TERMINATION_POLL_MILLIS)
+    }
+    if (workerSupervisor.inspect(ownership) == FeatureTaskRuntimeProcessInspection.ExactLive) {
+      workerSupervisor.terminateForcibly(ownership)
+    }
   }
 
   /**

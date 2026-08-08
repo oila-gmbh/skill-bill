@@ -682,7 +682,7 @@ class IdeStatusServiceTest {
   @Test
   fun `blocked goal candidate stays blocked under paused and pause_requested controls`() {
     listOf(
-      GoalRunnerControlState(paused = true, pauseReason = "operator_request"),
+      GoalRunnerControlState(paused = true, pauseReason = "operator_request", pausedAt = "2026-08-02T10:00:00Z"),
       GoalRunnerControlState(pauseRequested = true),
     ).forEachIndexed { index, controlState ->
       val fixture = gitRepoFixture("ide-status-goal-blocked-pause-$index")
@@ -705,7 +705,7 @@ class IdeStatusServiceTest {
   @Test
   fun `active goal candidate still projects paused under pause controls`() {
     listOf(
-      GoalRunnerControlState(paused = true, pauseReason = "operator_request"),
+      GoalRunnerControlState(paused = true, pauseReason = "operator_request", pausedAt = "2026-08-02T10:00:00Z"),
       GoalRunnerControlState(pauseRequested = true),
     ).forEachIndexed { index, controlState ->
       val fixture = gitRepoFixture("ide-status-goal-active-pause-$index")

@@ -2,6 +2,7 @@ package skillbill.db
 
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.workflow.GoalRunnerControlStore
+import skillbill.db.workflow.LEGACY_UNKNOWN_PAUSED_AT
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.ports.goalrunner.model.GoalRunnerOutOfBandAcceptance
@@ -62,6 +63,7 @@ class GoalRunnerControlStoreTest {
         pauseConsumed = true,
         paused = true,
         pauseReason = "operator_request",
+        pausedAt = "2026-08-02T09:00:00Z",
       )
       store.persistControlState("parent-1", state)
       assertEquals(state, store.controlState("parent-1"))
@@ -86,6 +88,7 @@ class GoalRunnerControlStoreTest {
       pauseConsumed = true,
       paused = true,
       pauseReason = "operator_request",
+      pausedAt = "2026-08-02T09:00:00Z",
     )
 
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
@@ -96,6 +99,57 @@ class GoalRunnerControlStoreTest {
 
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       assertEquals(state, GoalRunnerControlStore(connection).controlState("parent-restart"))
+    }
+  }
+
+  @Test
+  fun `a paused record written before paused_at existed decodes from the lease heartbeat`() {
+    val dbPath = Files.createTempDirectory("skillbill-goal-legacy-paused").resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = GoalRunnerControlStore(connection)
+      store.persistControlState("parent-legacy", GoalRunnerControlState())
+      writeRawControlState(
+        connection,
+        "parent-legacy",
+        """
+        {"paused":true,"pause_requested":true,"pause_consumed":true,"pause_reason":"operator_request",
+         "execution_lease":{"generation":1,"owner_token":"owner-token-123456","host_identity":"host",
+         "boot_identity":"boot","pid":42,"process_birth_token":"birth",
+         "heartbeat_at":"2026-08-02T10:00:10Z","expires_at":"2026-08-02T10:00:40Z"}}
+        """.trimIndent(),
+      )
+
+      val decoded = store.controlState("parent-legacy")
+      assertTrue(decoded.paused)
+      assertEquals("2026-08-02T10:00:10Z", decoded.pausedAt)
+    }
+  }
+
+  @Test
+  fun `a paused legacy record with no lease decodes to the unknown-time sentinel rather than failing`() {
+    val dbPath = Files.createTempDirectory("skillbill-goal-legacy-sentinel").resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = GoalRunnerControlStore(connection)
+      store.persistControlState("parent-legacy", GoalRunnerControlState())
+      writeRawControlState(
+        connection,
+        "parent-legacy",
+        """{"paused":true,"pause_requested":true,"pause_consumed":true,"pause_reason":"operator_request"}""",
+      )
+
+      assertEquals(LEGACY_UNKNOWN_PAUSED_AT, store.controlState("parent-legacy").pausedAt)
+    }
+  }
+
+  private fun writeRawControlState(connection: java.sql.Connection, parentWorkflowId: String, json: String) {
+    connection.prepareStatement(
+      "UPDATE goal_runner_controls SET control_state_json = ? WHERE parent_workflow_id = ?",
+    ).use { statement ->
+      statement.setString(1, json)
+      statement.setString(2, parentWorkflowId)
+      statement.executeUpdate()
     }
   }
 

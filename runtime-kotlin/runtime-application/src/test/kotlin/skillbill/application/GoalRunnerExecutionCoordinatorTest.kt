@@ -2,6 +2,7 @@ package skillbill.application
 
 import skillbill.application.goalrunner.DefaultGoalRunnerExecutionCoordinator
 import skillbill.application.goalrunner.GoalRunnerExecutionAlreadyRunningException
+import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
@@ -15,9 +16,11 @@ import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
+import kotlin.system.measureTimeMillis
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -89,10 +92,119 @@ class GoalRunnerExecutionCoordinatorTest {
 
 private const val PARENT_LEASE_SECONDS = 30L
 
+class GoalRunnerShutdownHookTest {
+  @Test
+  fun `the hook records a runner interruption with the injected clock in one write`() {
+    val store = InMemoryExecutionLeaseStore(null)
+    val coordinator = DefaultGoalRunnerExecutionCoordinator(store, FakeGoalSupervisor(NOT_RUNNING), fixedClock())
+
+    coordinator.recordInterruption("parent-1", null)
+
+    assertEquals(1, store.pauseNowCalls.size)
+    assertEquals("runner_interrupted", store.pauseNowCalls.single().first)
+    assertEquals("2026-08-02T10:00:00Z", store.pauseNowCalls.single().second)
+    assertEquals(false, store.pauseNowCalls.single().third)
+    assertTrue(store.controlStateValue.paused)
+    assertEquals("2026-08-02T10:00:00Z", store.controlStateValue.pausedAt)
+  }
+
+  @Test
+  fun `an interruption reason is distinguishable from an operator stop`() {
+    val store = InMemoryExecutionLeaseStore(null)
+    DefaultGoalRunnerExecutionCoordinator(store, FakeGoalSupervisor(NOT_RUNNING), fixedClock())
+      .recordInterruption("parent-1", null)
+
+    assertEquals("runner_interrupted", store.controlStateValue.pauseReason)
+    assertTrue(store.controlStateValue.pauseReason != "operator_stop")
+  }
+
+  @Test
+  fun `the hook leaves a stop-verb reason alone and performs no second write`() {
+    val store = InMemoryExecutionLeaseStore(null)
+    store.controlStateValue = GoalRunnerControlState(
+      pauseRequested = true,
+      pauseConsumed = true,
+      paused = true,
+      pauseReason = "operator_stop",
+      pausedAt = "2026-08-02T09:00:00Z",
+    )
+
+    DefaultGoalRunnerExecutionCoordinator(store, FakeGoalSupervisor(NOT_RUNNING), fixedClock())
+      .recordInterruption("parent-1", null)
+
+    assertEquals("operator_stop", store.controlStateValue.pauseReason)
+    assertEquals("2026-08-02T09:00:00Z", store.controlStateValue.pausedAt)
+  }
+
+  @Test
+  fun `a blocked durable write cannot stall shutdown past the budget`() {
+    val store = InMemoryExecutionLeaseStore(null)
+    store.pauseNowBlocksForever = true
+    val coordinator = DefaultGoalRunnerExecutionCoordinator(store, FakeGoalSupervisor(NOT_RUNNING), fixedClock())
+
+    val elapsed = measureTimeMillis { coordinator.recordInterruption("parent-1", null) }
+
+    assertTrue(elapsed < SHUTDOWN_BUDGET_CEILING_MILLIS, "hook took ${elapsed}ms")
+  }
+
+  @Test
+  fun `a throwing durable write never escapes the hook`() {
+    val store = InMemoryExecutionLeaseStore(null)
+    store.pauseNowFailure = { error("database is gone") }
+    val coordinator = DefaultGoalRunnerExecutionCoordinator(store, FakeGoalSupervisor(NOT_RUNNING), fixedClock())
+
+    coordinator.recordInterruption("parent-1", null)
+
+    assertEquals(1, store.pauseNowCalls.size)
+    assertFalse(store.controlStateValue.paused)
+  }
+
+  @Test
+  fun `a normally completed owned run leaves no hook behind to write on exit`() {
+    val store = InMemoryExecutionLeaseStore(null)
+    val coordinator = DefaultGoalRunnerExecutionCoordinator(store, FakeGoalSupervisor(NOT_RUNNING), fixedClock())
+
+    coordinator.runOwned("parent-1", null) { "done" }
+
+    assertEquals(emptyList(), store.pauseNowCalls)
+  }
+}
+
+private val NOT_RUNNING = FeatureTaskRuntimeProcessInspection.NotRunning
+private const val SHUTDOWN_BUDGET_CEILING_MILLIS = 10_000L
+
 private class InMemoryExecutionLeaseStore(
   initialLease: GoalRunnerExecutionLease?,
 ) : GoalRunnerManifestStore {
   var executionLeaseValue: GoalRunnerExecutionLease? = initialLease
+  var controlStateValue: GoalRunnerControlState = GoalRunnerControlState()
+  val pauseNowCalls: MutableList<Triple<String, String, Boolean>> = mutableListOf()
+  var pauseNowFailure: (() -> Nothing)? = null
+  var pauseNowBlocksForever: Boolean = false
+
+  override fun controlState(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerControlState =
+    controlStateValue
+
+  override fun pauseNow(
+    parentWorkflowId: String,
+    reason: String,
+    pausedAt: String,
+    overwriteExistingReason: Boolean,
+    dbPathOverride: String?,
+  ): GoalRunnerControlState {
+    pauseNowCalls.add(Triple(reason, pausedAt, overwriteExistingReason))
+    if (pauseNowBlocksForever) Thread.sleep(Long.MAX_VALUE)
+    pauseNowFailure?.invoke()
+    if (controlStateValue.paused && !overwriteExistingReason) return controlStateValue
+    controlStateValue = controlStateValue.copy(
+      pauseRequested = true,
+      pauseConsumed = true,
+      paused = true,
+      pauseReason = reason,
+      pausedAt = pausedAt,
+    )
+    return controlStateValue
+  }
 
   override fun loadByIssueKey(
     issueKey: String,
