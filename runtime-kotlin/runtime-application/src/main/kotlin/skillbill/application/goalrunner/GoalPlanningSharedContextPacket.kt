@@ -8,10 +8,12 @@ import skillbill.workflow.model.DecompositionSubtask
 /**
  * The durable shared-context packet the goal sweep writes into the preplan payload and reads back on
  * resume. Every function here is pure over maps, so the sweep can validate a recovered packet without
- * re-reading the repository.
+ * re-reading the repository. Legacy 0.1 checkpoints keep their on-disk shape; [migrate] projects them
+ * to the current version in memory before [validate].
  */
 internal object GoalPlanningSharedContextPacket {
-  const val VERSION = "0.1"
+  const val VERSION = "0.2"
+  const val LEGACY_VERSION_0_1 = "0.1"
   const val MAX_GOVERNED_CONTEXT_CHARS = 65_536
   private const val MAX_PACKET_CHARS = 524_288
 
@@ -22,15 +24,30 @@ internal object GoalPlanningSharedContextPacket {
     "parent_spec_path",
     "parent_spec",
     "decomposition_manifest",
-    "platform_packs",
     "boundary_memory",
     "validation_guidance",
     "ordered_subtasks",
     "integrity_sha256",
   )
+  private val LEGACY_V01_FIELDS = PACKET_FIELDS + "platform_packs"
   private val SUBTASK_FIELDS = setOf("id", "name", "spec_path", "planning_disposition", "dependencies")
   private val DEPENDENCY_FIELDS = setOf("subtask_id", "optional", "skipped")
   private val DISPOSITIONS = setOf("included", "skipped")
+
+  /**
+   * Projects a recovered shared-context packet to [VERSION]. Immutable 0.1 preplan payloads are not
+   * rewritten; callers migrate then [validate]. Unknown versions and tampered integrity loud-fail.
+   */
+  fun migrate(packet: Map<String, Any?>): Map<String, Any?> {
+    return when (val version = packet["packet_version"]) {
+      VERSION -> packet
+      LEGACY_VERSION_0_1 -> migrateFromV01(packet)
+      else -> error(
+        "shared context packet version '$version' is unsupported; expected '$VERSION' or " +
+          "'$LEGACY_VERSION_0_1'",
+      )
+    }
+  }
 
   fun validate(
     packet: Map<String, Any?>,
@@ -48,7 +65,6 @@ internal object GoalPlanningSharedContextPacket {
     require((packet["decomposition_manifest"] as? String)?.length?.let { it <= MAX_GOVERNED_CONTEXT_CHARS } == true) {
       "shared context decomposition manifest is malformed"
     }
-    require(isStringMap(packet["platform_packs"])) { "shared context platform packs are invalid" }
     require(isStringMap(packet["boundary_memory"])) { "shared context boundary memory is invalid" }
     require(packet["validation_guidance"] is String) { "shared context validation guidance is invalid" }
     val recoveredTopology = normalizedSubtasks(packet["ordered_subtasks"]).map { it - "planning_disposition" }
@@ -60,6 +76,27 @@ internal object GoalPlanningSharedContextPacket {
     require(packet["integrity_sha256"] == digest(packet - "integrity_sha256")) {
       "shared context packet integrity is invalid"
     }
+  }
+
+  private fun migrateFromV01(packet: Map<String, Any?>): Map<String, Any?> {
+    require(packet.keys == LEGACY_V01_FIELDS) {
+      "shared context packet fields are invalid for version '$LEGACY_VERSION_0_1'"
+    }
+    require(isStringMap(packet["platform_packs"])) {
+      "shared context platform packs are invalid for version '$LEGACY_VERSION_0_1'"
+    }
+    require(packet["integrity_sha256"] == digest(packet - "integrity_sha256")) {
+      "shared context packet integrity is invalid"
+    }
+    val withoutLegacy = linkedMapOf<String, Any?>()
+    for (field in PACKET_FIELDS) {
+      if (field == "packet_version") {
+        withoutLegacy[field] = VERSION
+      } else if (field != "integrity_sha256") {
+        withoutLegacy[field] = packet.getValue(field)
+      }
+    }
+    return withoutLegacy + ("integrity_sha256" to digest(withoutLegacy))
   }
 
   fun orderedSubtasks(subtasks: List<DecompositionSubtask>): List<Map<String, Any?>> = subtasks.map { subtask ->

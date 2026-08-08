@@ -1,5 +1,12 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
+## [2026-08-08] Goal planning packet v0.2 drops platform_packs
+Areas: runtime-kotlin/runtime-infra-fs/goalplanning, runtime-kotlin/runtime-ports/goalrunner
+- `GoalPlanningContext` no longer carries `platformPacks`; discovery returns only `boundaryMemory` and `validationGuidance`.
+- Packet key removal lives with the application-side VERSION `0.2` migrate-on-read; this module only stops inventing an empty map.
+Feature flag: N/A
+Acceptance criteria: N/A (follow-on to SKILL-172 deferred packet cleanup)
+
 ## [2026-08-08] SKILL-172 goal-planning context discovery stops buying platform.yaml (subtask 1)
 Areas: runtime-kotlin/runtime-infra-fs/goalplanning, runtime-kotlin/runtime-application (GoalPlanningSweep packet validation), .feature-specs/SKILL-172-goal-planning-burst-and-context
 - `FileSystemGoalPlanningContextDiscovery` no longer reads `platform-packs/*/platform.yaml`; `platform_packs` stays in the shared context packet as `{}` so `PACKET_FIELDS` / integrity stay resume-compatible without a VERSION bump.

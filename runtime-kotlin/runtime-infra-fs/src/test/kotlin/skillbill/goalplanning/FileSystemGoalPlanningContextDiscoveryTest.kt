@@ -28,7 +28,6 @@ class FileSystemGoalPlanningContextDiscoveryTest {
     }
     val context = FileSystemGoalPlanningContextDiscovery().discover(repo)
 
-    assertTrue(context.platformPacks.isEmpty())
     assertEquals(GoalPlanningContext.MAX_DISCOVERY_FILE_COUNT, context.boundaryMemory.size)
     assertTrue(
       context.boundaryMemory.keys.all { path ->
@@ -53,10 +52,9 @@ class FileSystemGoalPlanningContextDiscoveryTest {
     Files.writeString(repo.resolve("AGENTS.md"), oversized)
 
     val context = FileSystemGoalPlanningContextDiscovery().discover(repo)
-    val allExcerpts = context.platformPacks.values + context.boundaryMemory.values + context.validationGuidance
+    val allExcerpts = context.boundaryMemory.values + context.validationGuidance
     val excerptBodies = allExcerpts.map { value -> value.substringBefore("\n…[") }
 
-    assertTrue(context.platformPacks.isEmpty())
     assertFalse(context.boundaryMemory.keys.any { path -> path.contains("platform.yaml") })
     assertTrue(excerptBodies.all { value -> value.length <= GoalPlanningContext.MAX_DISCOVERY_EXCERPT_BYTES })
     assertTrue(excerptBodies.sumOf(String::length) <= GoalPlanningContext.MAX_DISCOVERY_TOTAL_BYTES.toInt())
@@ -85,7 +83,6 @@ class FileSystemGoalPlanningContextDiscoveryTest {
 
     val context = FileSystemGoalPlanningContextDiscovery().discover(repo)
 
-    assertTrue(context.platformPacks.isEmpty())
     assertEquals(listOf("platform-packs/safe/agent/history.md"), context.boundaryMemory.keys.toList())
     assertTrue(context.boundaryMemory.values.all { value -> "outside" !in value })
   }
@@ -110,7 +107,6 @@ class FileSystemGoalPlanningContextDiscoveryTest {
 
     val context = FileSystemGoalPlanningContextDiscovery().discover(repo)
 
-    assertTrue(context.platformPacks.isEmpty())
     assertTrue(context.boundaryMemory.isNotEmpty())
     assertTrue(context.validationGuidance.isNotEmpty())
     assertContains(context.validationGuidance, "repo conventions for planning")

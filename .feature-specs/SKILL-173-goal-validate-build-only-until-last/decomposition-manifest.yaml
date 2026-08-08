@@ -1,0 +1,38 @@
+---
+contract_version: "0.5"
+issue_key: "SKILL-173"
+feature_name: "goal-validate-build-only-until-last"
+parent_spec_path: ".feature-specs/SKILL-173-goal-validate-build-only-until-last/spec.md"
+execution_model: same_branch_commit_per_subtask
+base_branch: main
+feature_branch: feat/SKILL-173-goal-validate-build-only-until-last
+stack_branches: []
+current_subtask_intent:
+  subtask_id: 0
+  action: none
+subtasks:
+  - id: 1
+    name: "Thread validation_depth and assign it in GoalRunner"
+    spec_path: ".feature-specs/SKILL-173-goal-validate-build-only-until-last/spec_subtask_1_thread-validation-depth.md"
+    status: pending
+    branch: null
+    commit_sha: null
+    workflow_id: null
+    blocked_reason: null
+    last_resumable_step: null
+    linear_issue_id: null
+    dependencies: []
+  - id: 2
+    name: "Validate phase honors build_only vs full"
+    spec_path: ".feature-specs/SKILL-173-goal-validate-build-only-until-last/spec_subtask_2_validate-honors-depth.md"
+    status: pending
+    branch: null
+    commit_sha: null
+    workflow_id: null
+    blocked_reason: null
+    last_resumable_step: null
+    linear_issue_id: null
+    dependencies:
+      - subtask_id: 1
+        optional: false
+        skipped: false

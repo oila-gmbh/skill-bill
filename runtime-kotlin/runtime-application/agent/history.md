@@ -1,3 +1,11 @@
+## [2026-08-08] Goal planning shared-context packet v0.2
+Areas: runtime-application/goalrunner, .feature-specs/SKILL-172-goal-planning-burst-and-context (deferred follow-on)
+- `GoalPlanningSharedContextPacket.VERSION` is `0.2`; `platform_packs` removed from `PACKET_FIELDS`.
+- Resume migrates intact 0.1 checkpoints in memory (verify legacy integrity, drop key, re-digest) without rewriting immutable preplan rows; `validate` stays strict on current keys only.
+- Fresh assembly and `GoalPlanningContext` no longer produce or carry platform packs. `validation_guidance` rename remains deferred.
+Feature flag: N/A
+Acceptance criteria: N/A (follow-on to SKILL-172 deferred packet cleanup)
+
 ## [2026-08-08] SKILL-172 planning burst control: pace + empty-turn backoff (subtask 2)
 Areas: runtime-application/{goalrunner,model}, .feature-specs/SKILL-172-goal-planning-burst-and-context
 - Planning sweep no longer launches consecutive per-subtask plans back-to-back: `GoalPlanningBurstSchedule` applies a configurable pace between launches only (default 20s; never before first or after last).

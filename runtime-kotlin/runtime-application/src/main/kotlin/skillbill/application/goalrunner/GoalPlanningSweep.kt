@@ -723,23 +723,23 @@ class DefaultGoalPlanningSweep(
     val parentSpecHash = sha256HexUtf8(parentSpec)
     val decompositionManifestHash = GoalPlanningSharedContextPacket.immutableDecompositionHash(state.manifest)
     val repositoryIdentity = "repo-root-realpath-v1:$canonicalRepository"
-    val planningPacket = recoveredPacket ?: contextDiscovery.discover(canonicalRepository).let { discovered ->
-      val packet = linkedMapOf<String, Any?>(
-        "packet_version" to GoalPlanningSharedContextPacket.VERSION,
-        "repository_identity" to repositoryIdentity,
-        "normalized_issue_key" to state.manifest.issueKey.trim().uppercase(),
-        "parent_spec_path" to parentSpecGoverningPath,
-        "parent_spec" to parentSpec.take(GoalPlanningSharedContextPacket.MAX_GOVERNED_CONTEXT_CHARS),
-        "decomposition_manifest" to decomposition.take(GoalPlanningSharedContextPacket.MAX_GOVERNED_CONTEXT_CHARS),
-        "platform_packs" to discovered.platformPacks,
-        "boundary_memory" to discovered.boundaryMemory,
-        "validation_guidance" to discovered.validationGuidance.take(
-          GoalPlanningSharedContextPacket.MAX_GOVERNED_CONTEXT_CHARS,
-        ),
-        "ordered_subtasks" to GoalPlanningSharedContextPacket.orderedSubtasks(state.manifest.subtasks),
-      )
-      packet + ("integrity_sha256" to GoalPlanningSharedContextPacket.digest(packet))
-    }
+    val planningPacket = recoveredPacket?.let(GoalPlanningSharedContextPacket::migrate)
+      ?: contextDiscovery.discover(canonicalRepository).let { discovered ->
+        val packet = linkedMapOf<String, Any?>(
+          "packet_version" to GoalPlanningSharedContextPacket.VERSION,
+          "repository_identity" to repositoryIdentity,
+          "normalized_issue_key" to state.manifest.issueKey.trim().uppercase(),
+          "parent_spec_path" to parentSpecGoverningPath,
+          "parent_spec" to parentSpec.take(GoalPlanningSharedContextPacket.MAX_GOVERNED_CONTEXT_CHARS),
+          "decomposition_manifest" to decomposition.take(GoalPlanningSharedContextPacket.MAX_GOVERNED_CONTEXT_CHARS),
+          "boundary_memory" to discovered.boundaryMemory,
+          "validation_guidance" to discovered.validationGuidance.take(
+            GoalPlanningSharedContextPacket.MAX_GOVERNED_CONTEXT_CHARS,
+          ),
+          "ordered_subtasks" to GoalPlanningSharedContextPacket.orderedSubtasks(state.manifest.subtasks),
+        )
+        packet + ("integrity_sha256" to GoalPlanningSharedContextPacket.digest(packet))
+      }
     GoalPlanningSharedContextPacket.validate(
       packet = planningPacket,
       repositoryIdentity = repositoryIdentity,

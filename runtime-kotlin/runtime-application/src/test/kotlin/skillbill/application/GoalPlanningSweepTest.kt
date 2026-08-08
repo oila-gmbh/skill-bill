@@ -71,6 +71,7 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
@@ -83,39 +84,109 @@ import kotlin.time.Duration.Companion.seconds
 @Suppress("LargeClass") // one suite over the sweep's recovery, gate, and stop paths; they share a harness
 class GoalPlanningSweepTest {
   @Test
-  fun `shared context packet with populated platform_packs still validates`() {
+  fun `migrate projects 0_1 packets with platform_packs to 0_2`() {
     val subtasks = listOf(
       DecompositionSubtask(id = 1, name = "planning-context-discovery", specPath = "spec_subtask_1.md"),
     )
-    val withoutIntegrity = linkedMapOf<String, Any?>(
-      "packet_version" to GoalPlanningSharedContextPacket.VERSION,
-      "repository_identity" to "repo-root-realpath-v1:/tmp/fixture",
-      "normalized_issue_key" to "SKILL-172",
-      "parent_spec_path" to ".feature-specs/SKILL-172/spec.md",
-      "parent_spec" to "parent body",
-      "decomposition_manifest" to "contract_version: \"0.1\"\nissue_key: SKILL-172\n",
-      "platform_packs" to mapOf(
-        "platform-packs/kotlin/platform.yaml" to
-          "routing_signals: [kotlin]\ndeclared_code_review_areas: [architecture]\n",
-      ),
-      "boundary_memory" to mapOf(
-        "platform-packs/kotlin/agent/history.md" to "prior decision",
-      ),
-      "validation_guidance" to "repo conventions",
-      "ordered_subtasks" to GoalPlanningSharedContextPacket.orderedSubtasks(subtasks),
-    )
-    val packet = withoutIntegrity + (
-      "integrity_sha256" to GoalPlanningSharedContextPacket.digest(withoutIntegrity)
-      )
+    val legacy = legacyV01Packet(subtasks, platformPacks = mapOf(
+      "platform-packs/kotlin/platform.yaml" to
+        "routing_signals: [kotlin]\ndeclared_code_review_areas: [architecture]\n",
+    ))
 
+    val migrated = GoalPlanningSharedContextPacket.migrate(legacy)
+
+    assertEquals(GoalPlanningSharedContextPacket.VERSION, migrated["packet_version"])
+    assertFalse(migrated.containsKey("platform_packs"))
     GoalPlanningSharedContextPacket.validate(
-      packet = packet,
+      packet = migrated,
       repositoryIdentity = "repo-root-realpath-v1:/tmp/fixture",
       normalizedIssueKey = "SKILL-172",
       parentSpecPath = ".feature-specs/SKILL-172/spec.md",
       subtasks = subtasks,
     )
-    assertEquals("0.1", GoalPlanningSharedContextPacket.VERSION)
+    assertEquals("0.2", GoalPlanningSharedContextPacket.VERSION)
+  }
+
+  @Test
+  fun `migrate projects 0_1 packets with empty platform_packs to 0_2`() {
+    val subtasks = listOf(
+      DecompositionSubtask(id = 1, name = "planning-context-discovery", specPath = "spec_subtask_1.md"),
+    )
+    val migrated = GoalPlanningSharedContextPacket.migrate(
+      legacyV01Packet(subtasks, platformPacks = emptyMap()),
+    )
+
+    assertFalse(migrated.containsKey("platform_packs"))
+    GoalPlanningSharedContextPacket.validate(
+      packet = migrated,
+      repositoryIdentity = "repo-root-realpath-v1:/tmp/fixture",
+      normalizedIssueKey = "SKILL-172",
+      parentSpecPath = ".feature-specs/SKILL-172/spec.md",
+      subtasks = subtasks,
+    )
+  }
+
+  @Test
+  fun `validate rejects raw 0_1 packets without migrate`() {
+    val subtasks = listOf(
+      DecompositionSubtask(id = 1, name = "planning-context-discovery", specPath = "spec_subtask_1.md"),
+    )
+    val legacy = legacyV01Packet(subtasks, platformPacks = emptyMap())
+
+    val rawFailure = assertFailsWith<IllegalArgumentException> {
+      GoalPlanningSharedContextPacket.validate(
+        packet = legacy,
+        repositoryIdentity = "repo-root-realpath-v1:/tmp/fixture",
+        normalizedIssueKey = "SKILL-172",
+        parentSpecPath = ".feature-specs/SKILL-172/spec.md",
+        subtasks = subtasks,
+      )
+    }
+    assertTrue(
+      rawFailure.message.orEmpty().contains("fields are invalid") ||
+        rawFailure.message.orEmpty().contains("version is invalid"),
+    )
+  }
+
+  @Test
+  fun `migrate rejects unknown versions and tampered 0_1 integrity`() {
+    val subtasks = listOf(
+      DecompositionSubtask(id = 1, name = "planning-context-discovery", specPath = "spec_subtask_1.md"),
+    )
+    val legacy = legacyV01Packet(subtasks, platformPacks = emptyMap())
+
+    val unknownFailure = assertFailsWith<IllegalStateException> {
+      GoalPlanningSharedContextPacket.migrate(legacy + ("packet_version" to "0.0"))
+    }
+    assertContains(unknownFailure.message.orEmpty(), "unsupported")
+
+    val tamperedFailure = assertFailsWith<IllegalArgumentException> {
+      GoalPlanningSharedContextPacket.migrate(legacy + ("integrity_sha256" to "not-a-real-digest"))
+    }
+    assertContains(tamperedFailure.message.orEmpty(), "integrity is invalid")
+  }
+
+  @Test
+  fun `resume migrates an on-disk 0_1 shared packet without stopping`() {
+    val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
+    val state = harness.stateFor(manifest(subtaskCount = 1))
+    harness.sweep.prepare(state, harness.request())
+    val prepared = requireNotNull(harness.recordFor(1))
+    harness.fixtures.database.repository.markPrepared(
+      prepared.withSharedPacket { packet ->
+        packet +
+          ("packet_version" to GoalPlanningSharedContextPacket.LEGACY_VERSION_0_1) +
+          (
+            "platform_packs" to mapOf(
+              "platform-packs/kotlin/platform.yaml" to "routing_signals: [kotlin]\n",
+            )
+            )
+      },
+    )
+
+    val outcome = harness.sweep.prepare(state, harness.request())
+
+    assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
   }
 
   @Test
@@ -1292,6 +1363,27 @@ private class RepairingPreplanOutputValidator(
   }
 }
 
+private fun legacyV01Packet(
+  subtasks: List<DecompositionSubtask>,
+  platformPacks: Map<String, String>,
+): Map<String, Any?> {
+  val body = linkedMapOf<String, Any?>(
+    "packet_version" to GoalPlanningSharedContextPacket.LEGACY_VERSION_0_1,
+    "repository_identity" to "repo-root-realpath-v1:/tmp/fixture",
+    "normalized_issue_key" to "SKILL-172",
+    "parent_spec_path" to ".feature-specs/SKILL-172/spec.md",
+    "parent_spec" to "parent body",
+    "decomposition_manifest" to "contract_version: \"0.1\"\nissue_key: SKILL-172\n",
+    "platform_packs" to platformPacks,
+    "boundary_memory" to mapOf(
+      "platform-packs/kotlin/agent/history.md" to "prior decision",
+    ),
+    "validation_guidance" to "repo conventions",
+    "ordered_subtasks" to GoalPlanningSharedContextPacket.orderedSubtasks(subtasks),
+  )
+  return body + ("integrity_sha256" to GoalPlanningSharedContextPacket.digest(body))
+}
+
 private fun normalizedPlanningOutput(payload: String): NormalizedFeatureTaskRuntimePhaseOutput {
   val envelope = JsonSupport.parseObjectOrNull(payload)
     ?.let(JsonSupport::jsonElementToValue)
@@ -1899,7 +1991,6 @@ private object RejectingSweepPlanningProjectionValidator : FeatureTaskRuntimePla
 
 private val fakeContextDiscovery = GoalPlanningContextDiscovery {
   GoalPlanningContext(
-    platformPacks = mapOf("platform-packs/kotlin/platform.yaml" to "contract_version: '1.2'"),
     boundaryMemory = mapOf("platform-packs/kotlin/agent/history.md" to "history"),
     validationGuidance = "Run focused Gradle checks.",
   )
