@@ -15,6 +15,7 @@ import skillbill.telemetry.model.PrDescriptionGeneratedRecord
 import skillbill.telemetry.model.QualityCheckFinishedRecord
 import skillbill.telemetry.model.QualityCheckStartedRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionMeasurement
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRejectionMeasurement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceMeasurement
 import java.sql.Connection
 
@@ -31,6 +32,10 @@ class LifecycleTelemetryStore(
 
   override fun featureTaskRuntimeSharedEvidence(record: FeatureTaskRuntimeSharedEvidenceMeasurement) {
     enqueueTelemetry(connection, "skillbill_feature_task_runtime_shared_evidence", record.toTelemetryMap())
+  }
+
+  override fun featureTaskRuntimeRejection(record: FeatureTaskRuntimeRejectionMeasurement) {
+    enqueueTelemetry(connection, "skillbill_feature_task_runtime_rejection", record.toTelemetryMap())
   }
 
   override fun featureImplementStarted(record: FeatureImplementStartedRecord, level: String) {

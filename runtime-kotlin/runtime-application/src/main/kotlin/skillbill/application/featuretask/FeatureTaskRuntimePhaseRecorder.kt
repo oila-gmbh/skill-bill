@@ -68,6 +68,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionFailureC
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionKind
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionMeasurement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRejectionMeasurement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItemResult
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceMeasurement
@@ -89,6 +90,8 @@ import skillbill.workflow.taskruntime.model.featureTaskRuntimeImplementationAtte
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeOwnedPathDigest
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineEntriesFromWire
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineRecordToWire
+import skillbill.workflow.taskruntime.model.featureTaskRuntimeRejectionCapOf
+import skillbill.workflow.taskruntime.model.featureTaskRuntimeRejectionViolationClassOf
 import java.time.Duration
 import java.time.Instant
 
@@ -144,6 +147,35 @@ class FeatureTaskRuntimePhaseRecorder(
       ),
     )
     service.record(request)
+    recordRejectionMeasurement(unitOfWork, request)
+  }
+
+  /**
+   * Counts the rejection itself. The projection measurement seam records only projections that PASSED,
+   * so an attempt rejected by the schema gate — and therefore a fix loop about to exhaust — leaves no
+   * trace outside the operator's block reason and the private diagnostic row. This is the one event that
+   * makes the failure class countable.
+   *
+   * Payload-free by construction: the pointer and the classification are derived from the validator's
+   * own constraint text, never from the rejected response. Telemetry must never fail the run, so a
+   * malformed reason degrades to an unclassified row rather than throwing.
+   */
+  private fun recordRejectionMeasurement(unitOfWork: UnitOfWork, request: RejectedOutputDiagnosticRequest) {
+    try {
+      unitOfWork.lifecycleTelemetry.featureTaskRuntimeRejection(
+        FeatureTaskRuntimeRejectionMeasurement(
+          workflowId = request.workflowId,
+          phaseId = request.phaseId,
+          iteration = request.attempt.coerceAtLeast(1),
+          rule = request.rule,
+          pointerPath = request.path.ifBlank { "/" },
+          violationClass = featureTaskRuntimeRejectionViolationClassOf(request.reason),
+          declaredCap = featureTaskRuntimeRejectionCapOf(request.reason),
+        ),
+      )
+    } catch (@Suppress("TooGenericExceptionCaught") _: Exception) {
+      // Telemetry must never fail the run or change the rejection outcome.
+    }
   }
 
   fun retainProducerOutput(evidence: ProducerOutputEvidence, dbOverride: String? = null) =

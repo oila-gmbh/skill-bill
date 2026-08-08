@@ -780,6 +780,80 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
+  fun `an oversized reconciliation evidence field is told to compress rather than restate`() {
+    // The blocker this branch fixes: three implement attempts rejected identically because the agent
+    // re-argued its no-op convergence case at the same length each time. The validator renders the cap
+    // with digit grouping, so the real message carries "4,096" and the advice must still name 4096.
+    val retry = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("implement"),
+      priorSchemaFailure =
+      "Projection validation failed: implement#produced_outputs: " +
+        "\$.reconciliation_evidence.evidence: must be at most 4,096 characters long",
+    )
+
+    assertContains(retry, "The rejected evidence exceeded 4096 characters")
+    assertContains(retry, "bounded SUMMARY, not a verification transcript")
+    assertContains(retry, "rejected for length alone")
+    assertContains(retry, "applied no edits")
+    assertTrue(
+      !retry.contains("bounded pointer, not an evidence container"),
+      "the pointer-replacement advice belongs to artifact_ref/check_ref only",
+    )
+  }
+
+  @Test
+  fun `any other over-length field receives the compression guidance naming that field`() {
+    val retry = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("implement"),
+      priorSchemaFailure = "\$.deviations[0].note: must be at most 4,096 characters long",
+    )
+
+    assertContains(retry, "The rejected note exceeded 4096 characters")
+    assertContains(retry, "bounded SUMMARY, not a verification transcript")
+  }
+
+  @Test
+  fun `a non-length field violation adds no compression guidance`() {
+    // Guards the byte-for-byte-unchanged retry for violations the echoed reason already resolves.
+    val retry = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("implement"),
+      priorSchemaFailure =
+      "\$.reconciliation_evidence.evidence: property 'evidence' is not defined in the schema",
+    )
+
+    assertTrue(!retry.contains("bounded SUMMARY"), "a missing/undefined property is not a length violation")
+    assertTrue(!retry.contains("bounded pointer"), "no pointer advice either")
+  }
+
+  @Test
+  fun `a length violation whose cap was truncated away adds no guidance and does not crash`() {
+    // boundedSchemaGateDetail caps validator text at 500 chars, so a long reason can lose its tail.
+    val retry = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("implement"),
+      priorSchemaFailure = "Projection validation failed: \$.reconciliation_evidence.ev… [truncated]",
+    )
+
+    assertContains(retry, "Previous attempt was REJECTED by the schema gate", false, "still corrects")
+    assertTrue(!retry.contains("bounded SUMMARY"), "no length advice without a stated violation")
+  }
+
+  @Test
+  fun `a maxLength violation with no readable figure still compresses without naming a cap`() {
+    val retry = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("implement"),
+      priorSchemaFailure = "\$.unresolved_items[0]: maxLength constraint violated",
+    )
+
+    assertContains(retry, "exceeded its declared limit")
+    assertTrue(!retry.contains("exceeded -1 characters"), "the sentinel cap never reaches the prompt")
+  }
+
+  @Test
   fun `audit remediation output contract names every carried item and required evidence field`() {
     val briefing = briefingFor("implement").copy(
       auditRepairItemIds = listOf("ac-004-gap-2-item-1", "ac-005-gap-1-item-1"),

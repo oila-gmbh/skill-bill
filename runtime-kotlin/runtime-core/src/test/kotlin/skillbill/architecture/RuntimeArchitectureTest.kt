@@ -2000,6 +2000,9 @@ class RuntimeArchitectureTest {
       "skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration.fromArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionMeasurement.toTelemetryMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceMeasurement.toTelemetryMap",
+      // SKILL-169: payload-free schema-gate rejection accounting; counts rejected attempts, which the
+      // projection measurement above cannot, since it only records projections that passed.
+      "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRejectionMeasurement.toTelemetryMap",
       // SKILL-140: durable append-only quarantine evidence store (private, prompt-invisible) and its
       // domain-owned schema validator port (infra-fs adapter bound in DI).
       "skillbill.workflow.FeatureTaskRuntimeQuarantineValidator.validateQuarantineRecord",

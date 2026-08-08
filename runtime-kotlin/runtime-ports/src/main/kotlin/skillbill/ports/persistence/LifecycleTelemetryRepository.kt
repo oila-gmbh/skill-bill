@@ -14,6 +14,7 @@ import skillbill.telemetry.model.PrDescriptionGeneratedRecord
 import skillbill.telemetry.model.QualityCheckFinishedRecord
 import skillbill.telemetry.model.QualityCheckStartedRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionMeasurement
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRejectionMeasurement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceMeasurement
 
 // SKILL-66 Subtask 2: the lifecycle telemetry contract spans the
@@ -24,6 +25,8 @@ interface LifecycleTelemetryRepository {
   fun featureTaskRuntimeProjectionMeasurement(record: FeatureTaskRuntimeProjectionMeasurement) = Unit
 
   fun featureTaskRuntimeSharedEvidence(record: FeatureTaskRuntimeSharedEvidenceMeasurement) = Unit
+
+  fun featureTaskRuntimeRejection(record: FeatureTaskRuntimeRejectionMeasurement) = Unit
 
   fun featureImplementStarted(record: FeatureImplementStartedRecord, level: String)
 
