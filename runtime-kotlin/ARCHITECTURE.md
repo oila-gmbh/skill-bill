@@ -171,9 +171,12 @@ runtime-ports
 - `skillbill.goalrunner` and `skillbill.goalrunner.model`: pure goal-runner
   liveness policy, worker-subtask parsing, status projection, accounting, and
   attempt-ledger models owned by `runtime-domain`.
-- `skillbill.goalplanning`: filesystem discovery of shared repository,
-  platform-pack, boundary-memory, and validation context owned by
-  `runtime-infra-fs`.
+- `skillbill.goalplanning`: filesystem discovery of shared repository and
+  validation context owned by `runtime-infra-fs`, plus headings-first boundary
+  memory: a programmatic parse of governed `## [<date>] <title>` entries into a
+  bounded heading catalog (no model call in the indexer), and a separate
+  body resolver that materializes entry bodies only for the heading ids
+  preplanning selected.
 - `skillbill.featurespec` and `skillbill.featurespec.model`: feature-spec
   preparation policy and typed preparation/write models owned by
   `runtime-domain`.

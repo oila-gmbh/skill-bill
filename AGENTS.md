@@ -25,7 +25,7 @@ Bundled skills and packs are defaults, not the framework boundary. Teams may rep
 ## Taxonomy
 
 - `skills/` — canonical user-facing skill sources
-- `platform-packs/<platform>/` — pack roots for review and quality-check only; `addons/` flat pack-owned add-ons. No `agent/` tree: `platform-packs/` is an excluded root in `orchestration/contracts/goal-planning-discovery-exclusions.yaml`, so packs carry no boundary memory and contribute nothing to goal planning discovery
+- `platform-packs/<platform>/` — pack roots for review and quality-check only; `addons/` flat pack-owned add-ons. No `agent/` tree: `platform-packs/` is an excluded root in `orchestration/contracts/goal-planning-discovery-exclusions.yaml`, so packs carry no boundary memory and contribute nothing to goal planning discovery. Eligible `agent/history.md` and `agent/decisions.md` reach planning as a heading catalog, never as file excerpts; bodies are delivered only for headings preplanning selected
 - `orchestration/contracts/` — runtime contract schemas
 
 Naming: `bill-<capability>`; overrides `bill-<platform>-<base-capability>`; review areas `bill-<platform>-code-review-<area>`. Approved areas: `architecture`, `performance`, `platform-correctness`, `security`, `testing`, `api-contracts`, `persistence`, `reliability`, `ui`, `ux-accessibility`.

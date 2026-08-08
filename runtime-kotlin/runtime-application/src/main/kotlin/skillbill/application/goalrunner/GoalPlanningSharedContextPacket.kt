@@ -3,6 +3,7 @@ package skillbill.application.goalrunner
 import skillbill.application.featuretask.sha256HexUtf8
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.goalplanning.GoalPlanningDiscoveryExclusions
+import skillbill.ports.goalrunner.model.GoalPlanningContext
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
 
@@ -13,7 +14,8 @@ import skillbill.workflow.model.DecompositionSubtask
  * them to the current version in memory before [validate].
  */
 internal object GoalPlanningSharedContextPacket {
-  const val VERSION = "0.3"
+  const val VERSION = "0.4"
+  const val LEGACY_VERSION_0_3 = "0.3"
   const val LEGACY_VERSION_0_2 = "0.2"
   const val LEGACY_VERSION_0_1 = "0.1"
   const val MAX_GOVERNED_CONTEXT_CHARS = 65_536
@@ -32,6 +34,9 @@ internal object GoalPlanningSharedContextPacket {
     "integrity_sha256",
   )
   private val LEGACY_V01_FIELDS = PACKET_FIELDS + "platform_packs"
+  private val BOUNDARY_MEMORY_FIELDS = setOf("catalog", "truncated")
+  private val CATALOG_ENTRY_FIELDS = setOf("heading_id", "source_path", "kind", "heading")
+  private val CATALOG_KINDS = setOf(GoalPlanningContext.KIND_HISTORY, GoalPlanningContext.KIND_DECISIONS)
   private val SUBTASK_FIELDS = setOf("id", "name", "spec_path", "planning_disposition", "dependencies")
   private val DEPENDENCY_FIELDS = setOf("subtask_id", "optional", "skipped")
   private val DISPOSITIONS = setOf("included", "skipped")
@@ -43,11 +48,12 @@ internal object GoalPlanningSharedContextPacket {
   fun migrate(packet: Map<String, Any?>): Map<String, Any?> {
     return when (val version = packet["packet_version"]) {
       VERSION -> packet
-      LEGACY_VERSION_0_2 -> Legacy.migrateFromV02(packet)
-      LEGACY_VERSION_0_1 -> Legacy.migrateFromV02(Legacy.migrateFromV01(packet))
+      LEGACY_VERSION_0_3 -> Legacy.migrateFromV03(packet)
+      LEGACY_VERSION_0_2 -> Legacy.migrateFromV03(Legacy.migrateFromV02(packet))
+      LEGACY_VERSION_0_1 -> Legacy.migrateFromV03(Legacy.migrateFromV02(Legacy.migrateFromV01(packet)))
       else -> error(
         "shared context packet version '$version' is unsupported; expected '$VERSION', " +
-          "'$LEGACY_VERSION_0_2', or '$LEGACY_VERSION_0_1'",
+          "'$LEGACY_VERSION_0_3', '$LEGACY_VERSION_0_2', or '$LEGACY_VERSION_0_1'",
       )
     }
   }
@@ -68,7 +74,7 @@ internal object GoalPlanningSharedContextPacket {
     require((packet["decomposition_manifest"] as? String)?.length?.let { it <= MAX_GOVERNED_CONTEXT_CHARS } == true) {
       "shared context decomposition manifest is malformed"
     }
-    require(isStringMap(packet["boundary_memory"])) { "shared context boundary memory is invalid" }
+    requireValidCatalog(packet["boundary_memory"])
     require(packet["validation_guidance"] is String) { "shared context validation guidance is invalid" }
     val recoveredTopology = normalizedSubtasks(packet["ordered_subtasks"]).map { it - "planning_disposition" }
     val expectedTopology = normalizedSubtasks(orderedSubtasks(subtasks)).map { it - "planning_disposition" }
@@ -122,7 +128,7 @@ internal object GoalPlanningSharedContextPacket {
       val migrated = linkedMapOf<String, Any?>()
       for (field in PACKET_FIELDS) {
         when (field) {
-          "packet_version" -> migrated[field] = VERSION
+          "packet_version" -> migrated[field] = LEGACY_VERSION_0_3
           "boundary_memory" -> migrated[field] = (packet.getValue(field) as Map<*, *>).entries
             .associate { (key, value) -> key as String to value as String }
             .filterKeys { path -> !GoalPlanningDiscoveryExclusions.isExcluded(path) }
@@ -131,6 +137,79 @@ internal object GoalPlanningSharedContextPacket {
         }
       }
       return migrated + ("integrity_sha256" to digest(migrated))
+    }
+
+    /**
+     * SKILL-174: 0.3 and earlier carried boundary memory as first-N-byte file excerpts keyed by path.
+     * That payload has no heading identity, so it cannot be projected onto the 0.4 catalog; it is
+     * discarded into an empty catalog rather than reinterpreted, and the resumed goal simply plans
+     * without prior boundary memory instead of revalidating stale prefixes.
+     */
+    fun migrateFromV03(packet: Map<String, Any?>): Map<String, Any?> {
+      require(packet.keys == PACKET_FIELDS) {
+        "shared context packet fields are invalid for version '$LEGACY_VERSION_0_3'"
+      }
+      require(isStringMap(packet["boundary_memory"])) {
+        "shared context boundary memory is invalid for version '$LEGACY_VERSION_0_3'"
+      }
+      require(packet["integrity_sha256"] == digest(packet - "integrity_sha256")) {
+        "shared context packet integrity is invalid"
+      }
+      val migrated = linkedMapOf<String, Any?>()
+      for (field in PACKET_FIELDS) {
+        when (field) {
+          "packet_version" -> migrated[field] = VERSION
+          "boundary_memory" -> migrated[field] = emptyCatalog()
+          "integrity_sha256" -> Unit
+          else -> migrated[field] = packet.getValue(field)
+        }
+      }
+      return migrated + ("integrity_sha256" to digest(migrated))
+    }
+  }
+
+  fun emptyCatalog(): Map<String, Any?> = linkedMapOf("catalog" to emptyList<Map<String, Any?>>(), "truncated" to false)
+
+  fun catalog(context: GoalPlanningContext): Map<String, Any?> = linkedMapOf(
+    "catalog" to context.boundaryCatalog.map { heading ->
+      linkedMapOf<String, Any?>(
+        "heading_id" to heading.headingId,
+        "source_path" to heading.sourcePath,
+        "kind" to heading.kind,
+        "heading" to heading.heading,
+      )
+    },
+    "truncated" to context.boundaryCatalogTruncated,
+  )
+
+  @Suppress("CyclomaticComplexMethod")
+  private fun requireValidCatalog(value: Any?) {
+    val boundaryMemory = value as? Map<*, *> ?: error("shared context boundary memory is invalid")
+    require(boundaryMemory.keys == BOUNDARY_MEMORY_FIELDS) { "shared context boundary memory is invalid" }
+    require(boundaryMemory["truncated"] is Boolean) { "shared context boundary memory truncation flag is invalid" }
+    val catalog = boundaryMemory["catalog"] as? List<*> ?: error("shared context boundary memory catalog is invalid")
+    require(catalog.size <= GoalPlanningContext.MAX_CATALOG_HEADINGS) {
+      "shared context boundary memory catalog exceeds the heading cap"
+    }
+    val headingIds = mutableSetOf<String>()
+    for (raw in catalog) {
+      val entry = raw as? Map<*, *> ?: error("shared context boundary memory catalog entry is invalid")
+      require(entry.keys == CATALOG_ENTRY_FIELDS) { "shared context boundary memory catalog entry fields are invalid" }
+      require(entry.values.all { it is String }) { "shared context boundary memory catalog entry is invalid" }
+      val sourcePath = entry.getValue("source_path") as String
+      require(sourcePath.isNotBlank() && !sourcePath.startsWith("/") && ".." !in sourcePath) {
+        "shared context boundary memory source path is invalid"
+      }
+      require(!GoalPlanningDiscoveryExclusions.isExcluded(sourcePath)) {
+        "shared context boundary memory source path is excluded"
+      }
+      require(entry.getValue("kind") in CATALOG_KINDS) { "shared context boundary memory kind is invalid" }
+      require((entry.getValue("heading") as String).length <= GoalPlanningContext.MAX_HEADING_TEXT_CHARS) {
+        "shared context boundary memory heading exceeds the length cap"
+      }
+      require(headingIds.add(entry.getValue("heading_id") as String)) {
+        "shared context boundary memory heading ids must be unique"
+      }
     }
   }
 

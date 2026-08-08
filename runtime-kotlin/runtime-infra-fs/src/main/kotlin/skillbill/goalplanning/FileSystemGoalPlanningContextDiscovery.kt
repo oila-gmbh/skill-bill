@@ -1,149 +1,79 @@
 package skillbill.goalplanning
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.contracts.goalplanning.GoalPlanningDiscoveryExclusions
 import skillbill.ports.goalrunner.GoalPlanningContextDiscovery
+import skillbill.ports.goalrunner.model.GoalPlanningBoundaryHeading
 import skillbill.ports.goalrunner.model.GoalPlanningContext
-import java.nio.charset.StandardCharsets
-import java.nio.file.Files
 import java.nio.file.Path
 
 @Inject
 class FileSystemGoalPlanningContextDiscovery : GoalPlanningContextDiscovery {
   override fun discover(repoRoot: Path): GoalPlanningContext {
-    val budget = DiscoveryBudget()
-    val canonicalRoot = repoRoot.toRealPathOrNull() ?: repoRoot.toAbsolutePath().normalize()
-    // Load-bearing discovery priority under the shared DiscoveryBudget — not incidental argument order:
-    // (1) boundary_memory — agent/history.md then agent/decisions.md per agent directory, over agent
-    //     directories sorted lexicographically by repo-relative path; (2) validation_guidance — root
-    //     AGENTS.md last. When file-count or total-byte budget exhausts, later categories are omitted
-    //     entirely; within a category, sorted repo-relative order decides which files receive excerpts.
-    // Every candidate directory and file is denied by canonical repo-relative path against the
-    // checked-in exclusion contract, so platform-packs/ never contributes planning memory.
+    val canonicalRoot = GoalPlanningRepositoryScope.canonicalRoot(repoRoot)
+    // Load-bearing discovery order — not incidental argument order: agent/history.md then
+    // agent/decisions.md per agent directory, over agent directories sorted lexicographically by
+    // repo-relative path. Catalog caps truncate at that deterministic boundary, so the same tree
+    // yields the same catalog and the same truncation marker on every run. Every candidate is
+    // canonicalized and denied by repo-relative path against the checked-in exclusion contract, so
+    // platform-packs/ never contributes planning memory. The catalog carries headings only; bodies
+    // are resolved later for selected headings by FileSystemGoalPlanningBoundaryBodyResolver.
+    val catalog = discoverCatalog(canonicalRoot)
     return GoalPlanningContext(
-      boundaryMemory = discoverBoundaryMemory(canonicalRoot, budget),
-      validationGuidance = readBounded(
-        canonicalRoot,
-        canonicalRoot.resolve("AGENTS.md"),
-        "AGENTS.md",
-        budget,
-      ).orEmpty(),
+      boundaryCatalog = catalog.headings,
+      boundaryCatalogTruncated = catalog.truncated,
+      validationGuidance = readValidationGuidance(canonicalRoot),
     )
   }
 
-  private fun discoverBoundaryMemory(repoRoot: Path, budget: DiscoveryBudget): Map<String, String> {
-    val memory = linkedMapOf<String, String>()
-    for (agentDir in agentDirectories(repoRoot)) {
-      for (fileName in BOUNDARY_MEMORY_FILES) {
-        val (canonical, relative) = includedCanonical(repoRoot, agentDir.resolve(fileName)) ?: continue
-        readBounded(repoRoot, canonical, relative, budget)?.let { content -> memory[relative] = content }
-      }
-    }
-    return memory
-  }
-
-  /** Bounded deterministic walk: sorted children, excluded roots pruned before descending, cycles cut. */
-  private fun agentDirectories(repoRoot: Path): List<Path> {
-    val found = mutableListOf<Path>()
-    val seen = mutableSetOf(repoRoot)
-    val pending = ArrayDeque(listOf(repoRoot))
-    var visited = 0
-    while (pending.isNotEmpty() && visited < MAX_VISITED_DIRECTORIES) {
-      visited += 1
-      val included = sortedChildDirectories(pending.removeFirst())
-        .mapNotNull { child -> includedCanonical(repoRoot, child)?.first }
-      for (canonical in included) {
-        if (!seen.add(canonical)) continue
-        if (canonical.fileName.toString() == AGENT_DIRECTORY) found.add(canonical) else pending.add(canonical)
-      }
-    }
-    return found.sortedBy { agentDir -> repoRoot.relativize(agentDir).joinToString("/") }
-  }
-
-  /** Canonical path plus repo-relative path, or null when it escapes the repo or the exclusion contract denies it. */
-  private fun includedCanonical(repoRoot: Path, candidate: Path): Pair<Path, String>? {
-    val canonical = candidate.toRealPathOrNull()?.takeIf { path -> path.startsWith(repoRoot) } ?: return null
-    val relative = repoRoot.relativize(canonical).joinToString("/")
-    if (relative.isEmpty() || GoalPlanningDiscoveryExclusions.isExcluded(relative)) return null
-    return canonical to relative
-  }
-
-  private fun sortedChildDirectories(directory: Path): List<Path> = runCatching {
-    Files.list(directory).use { entries ->
-      entries.filter { path -> Files.isDirectory(path) }
-        .sorted()
-        .toList()
-    }
-  }.getOrDefault(emptyList())
-
-  private fun readBounded(repoRoot: Path, path: Path, relative: String, budget: DiscoveryBudget): String? {
-    val readable = boundedReadableFile(repoRoot, path, budget) ?: return null
-    if (readable.bytesToRead <= 0) {
-      budget.record(0)
-      return null
-    }
-    val bytes = runCatching {
-      Files.newInputStream(readable.path).use { input -> input.readNBytes(readable.bytesToRead) }
-    }.getOrNull() ?: return null
-    budget.record(bytes.size.toLong())
-    val excerpt = bytes.toString(StandardCharsets.UTF_8)
-      .replace("\r\n", "\n")
-      .replace('\r', '\n')
-    val suffix = if (readable.fileBytes > bytes.size) "\n…[$relative excerpt bounded]" else ""
-    return excerpt + suffix
-  }
-
-  private fun boundedReadableFile(repoRoot: Path, path: Path, budget: DiscoveryBudget): BoundedReadableFile? =
-    if (!budget.canRead()) {
-      null
-    } else {
-      path.toRealPathOrNull()
-        ?.takeIf { canonical -> canonical.startsWith(repoRoot) && Files.isRegularFile(canonical) }
-        ?.let { canonical ->
-          runCatching { Files.size(canonical) }.getOrNull()?.let { fileBytes ->
-            BoundedReadableFile(
-              path = canonical,
-              fileBytes = fileBytes,
-              bytesToRead = minOf(
-                fileBytes,
-                MAX_CONTEXT_EXCERPT_BYTES.toLong(),
-                budget.remainingBytes(),
-              ).toInt(),
-            )
-          }
+  private fun discoverCatalog(repoRoot: Path): Catalog {
+    val headings = mutableListOf<GoalPlanningBoundaryHeading>()
+    var truncated = false
+    var files = 0
+    var bytes = 0L
+    for (agentDir in GoalPlanningRepositoryScope.agentDirectories(repoRoot)) {
+      for (fileName in GoalPlanningRepositoryScope.BOUNDARY_MEMORY_FILES) {
+        val (canonical, relative) = GoalPlanningRepositoryScope.included(repoRoot, agentDir.resolve(fileName))
+          ?: continue
+        if (files >= GoalPlanningContext.MAX_DISCOVERY_FILE_COUNT ||
+          bytes >= GoalPlanningContext.MAX_DISCOVERY_TOTAL_BYTES
+        ) {
+          return Catalog(headings, truncated = true)
         }
+        val content = GoalPlanningRepositoryScope.readTextOrNull(
+          canonical,
+          GoalPlanningContext.MAX_DISCOVERY_TOTAL_BYTES - bytes,
+        ) ?: continue
+        files += 1
+        bytes += content.length.toLong()
+        val entries = BoundaryMemoryHeadingParser.parse(relative, content)
+        if (entries.size > GoalPlanningContext.MAX_HEADINGS_PER_FILE) truncated = true
+        for (entry in entries.take(GoalPlanningContext.MAX_HEADINGS_PER_FILE)) {
+          if (headings.size >= GoalPlanningContext.MAX_CATALOG_HEADINGS) return Catalog(headings, truncated = true)
+          headings.add(
+            GoalPlanningBoundaryHeading(
+              headingId = entry.headingId,
+              sourcePath = relative,
+              kind = kindOf(fileName),
+              heading = entry.heading.take(GoalPlanningContext.MAX_HEADING_TEXT_CHARS),
+            ),
+          )
+        }
+      }
     }
-
-  private fun Path.toRealPathOrNull(): Path? = runCatching { toRealPath() }.getOrNull()
-
-  private data class BoundedReadableFile(
-    val path: Path,
-    val fileBytes: Long,
-    val bytesToRead: Int,
-  )
-
-  private class DiscoveryBudget {
-    private var fileCount = 0
-    private var consumedBytes = 0L
-
-    fun canRead(): Boolean = fileCount < MAX_CONTEXT_FILE_COUNT && consumedBytes < MAX_CONTEXT_TOTAL_BYTES
-
-    fun remainingBytes(): Long = MAX_CONTEXT_TOTAL_BYTES - consumedBytes
-
-    fun record(bytes: Long) {
-      fileCount += 1
-      consumedBytes += bytes
-    }
+    return Catalog(headings, truncated)
   }
 
-  private companion object {
-    const val AGENT_DIRECTORY = "agent"
-    val BOUNDARY_MEMORY_FILES = listOf("history.md", "decisions.md")
-
-    // shortcut: flat directory-visit cap, revisit if a repo legitimately nests deeper than this
-    const val MAX_VISITED_DIRECTORIES = 4_096
-    const val MAX_CONTEXT_FILE_COUNT = GoalPlanningContext.MAX_DISCOVERY_FILE_COUNT
-    const val MAX_CONTEXT_EXCERPT_BYTES = GoalPlanningContext.MAX_DISCOVERY_EXCERPT_BYTES
-    const val MAX_CONTEXT_TOTAL_BYTES = GoalPlanningContext.MAX_DISCOVERY_TOTAL_BYTES
+  private fun readValidationGuidance(repoRoot: Path): String {
+    val canonical = GoalPlanningRepositoryScope.includedRegularFile(repoRoot, "AGENTS.md") ?: return ""
+    val content = GoalPlanningRepositoryScope.readTextOrNull(
+      canonical,
+      GoalPlanningContext.MAX_VALIDATION_GUIDANCE_BYTES.toLong(),
+    ) ?: return ""
+    return content.replace("\r\n", "\n").replace('\r', '\n')
   }
+
+  private fun kindOf(fileName: String): String =
+    if (fileName == "history.md") GoalPlanningContext.KIND_HISTORY else GoalPlanningContext.KIND_DECISIONS
+
+  private data class Catalog(val headings: List<GoalPlanningBoundaryHeading>, val truncated: Boolean)
 }

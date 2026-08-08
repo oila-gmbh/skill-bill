@@ -4,6 +4,7 @@ package skillbill.contracts.workflow
 
 import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import skillbill.infrastructure.fs.FeatureTaskRuntimePlanningProjectionValidatorAdapter
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_SELECTED_BOUNDARY_HEADING_MAX_COUNT
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeExecutablePlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePrePlanningDigest
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionKind
@@ -128,6 +129,39 @@ class FeatureTaskRuntimeProjectionCanonicalizationSchemaTest {
     assertEquals(listOf("b"), digest.affectedBoundaries)
     assertEquals(listOf("r"), digest.risks)
     assertEquals("n", digest.rollout.notes)
+  }
+
+  // SKILL-174: selected_boundary_headings is additive and optional, so the contract version stays 0.1.
+  @Test
+  fun `a digest with selected boundary headings round-trips and one without still validates`() {
+    val withSelection = assertIs<FeatureTaskRuntimePrePlanningDigest>(
+      parseDigest(
+        """{"projection_kind":"preplanning_digest","contract_version":"0.1","affected_boundaries":["b"],""" +
+          """"risks":["r"],"rollout":{"flag_required":false,"notes":"n"},"validation_strategy":["v"],""" +
+          """"selected_boundary_headings":["modules/a/agent/history.md#0-abc123abc123"]}""",
+      ),
+    )
+    assertEquals(listOf("modules/a/agent/history.md#0-abc123abc123"), withSelection.selectedBoundaryHeadings)
+
+    val without = assertIs<FeatureTaskRuntimePrePlanningDigest>(
+      parseDigest(
+        """{"projection_kind":"preplanning_digest","contract_version":"0.1","affected_boundaries":["b"],""" +
+          """"risks":["r"],"rollout":{"flag_required":false,"notes":"n"},"validation_strategy":["v"]}""",
+      ),
+    )
+    assertEquals(emptyList(), without.selectedBoundaryHeadings)
+  }
+
+  @Test
+  fun `a selected boundary heading list beyond its declared cap rejects`() {
+    val ids = (0..FEATURE_TASK_RUNTIME_SELECTED_BOUNDARY_HEADING_MAX_COUNT).joinToString(",") { "\"h$it\"" }
+    assertFailsWith<InvalidFeatureTaskRuntimePlanningProjectionSchemaError> {
+      parseDigest(
+        """{"projection_kind":"preplanning_digest","contract_version":"0.1","affected_boundaries":["b"],""" +
+          """"risks":["r"],"rollout":{"flag_required":false,"notes":"n"},"validation_strategy":["v"],""" +
+          """"selected_boundary_headings":[$ids]}""",
+      )
+    }
   }
 
   @Test

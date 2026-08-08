@@ -27,10 +27,14 @@ import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.ports.agentrun.model.AgentRunOutputStream
 import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
+import skillbill.ports.goalrunner.GoalPlanningBoundaryBodyResolver
 import skillbill.ports.goalrunner.GoalPlanningContextDiscovery
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
+import skillbill.ports.goalrunner.model.GoalPlanningBoundaryBody
+import skillbill.ports.goalrunner.model.GoalPlanningBoundaryHeading
 import skillbill.ports.goalrunner.model.GoalPlanningContext
+import skillbill.ports.goalrunner.model.GoalPlanningResolvedBoundaryBodies
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.persistence.DatabaseSessionFactory
@@ -107,15 +111,16 @@ class GoalPlanningSweepTest {
       parentSpecPath = ".feature-specs/SKILL-172/spec.md",
       subtasks = subtasks,
     )
-    assertEquals("0.3", GoalPlanningSharedContextPacket.VERSION)
-    assertTrue(
-      (migrated["boundary_memory"] as Map<*, *>).keys.none { key -> (key as String).startsWith("platform-packs/") },
-      "the 0.1 chain lands on 0.3 with excluded-root boundary memory filtered out",
+    assertEquals("0.4", GoalPlanningSharedContextPacket.VERSION)
+    assertEquals(
+      GoalPlanningSharedContextPacket.emptyCatalog(),
+      migrated["boundary_memory"],
+      "the 0.1 chain lands on 0.4 with the legacy byte-prefix payload discarded",
     )
   }
 
   @Test
-  fun `migrate strips excluded root boundary memory from recovered 0_2 packets`() {
+  fun `migrate discards legacy prefix boundary memory from recovered 0_2 packets`() {
     val subtasks = listOf(
       DecompositionSubtask(id = 1, name = "planning-context-discovery", specPath = "spec_subtask_1.md"),
     )
@@ -131,10 +136,7 @@ class GoalPlanningSweepTest {
     val migrated = GoalPlanningSharedContextPacket.migrate(legacy)
 
     assertEquals(GoalPlanningSharedContextPacket.VERSION, migrated["packet_version"])
-    assertEquals(
-      mapOf("runtime-kotlin/runtime-application/agent/history.md" to "module history"),
-      migrated["boundary_memory"],
-    )
+    assertEquals(GoalPlanningSharedContextPacket.emptyCatalog(), migrated["boundary_memory"])
     GoalPlanningSharedContextPacket.validate(
       packet = migrated,
       repositoryIdentity = "repo-root-realpath-v1:/tmp/fixture",
@@ -231,6 +233,7 @@ class GoalPlanningSweepTest {
       prepared.withSharedPacket { packet ->
         packet +
           ("packet_version" to GoalPlanningSharedContextPacket.LEGACY_VERSION_0_1) +
+          ("boundary_memory" to mapOf("runtime-kotlin/agent/history.md" to "legacy prefix excerpt")) +
           (
             "platform_packs" to mapOf(
               "platform-packs/kotlin/platform.yaml" to "routing_signals: [kotlin]\n",
@@ -242,6 +245,151 @@ class GoalPlanningSweepTest {
     val outcome = harness.sweep.prepare(state, harness.request())
 
     assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
+  }
+
+
+  @Test
+  fun `preplan prompt carries the heading catalog and no entry body`() {
+    val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
+
+    harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
+
+    val preplanPrompt = harness.launcher.requests.first().skillRunRequest.promptOverride.orEmpty()
+    assertContains(preplanPrompt, FIXTURE_HEADING_ID)
+    assertContains(preplanPrompt, "selected_boundary_headings")
+    assertFalse(preplanPrompt.contains(FIXTURE_BODY), "the catalog never carries entry bodies")
+  }
+
+  @Test
+  fun `a selected heading id delivers only that body to the plan prompt`() {
+    val harness = sweepHarness { phase, _, _ ->
+      if (phase == "preplan") launchFacts(stdout = preplanPayloadSelecting(FIXTURE_HEADING_ID))
+      else validPhaseOutcome(phase)
+    }
+
+    harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
+
+    val planPrompt = harness.launcher.requests[1].skillRunRequest.promptOverride.orEmpty()
+    assertContains(planPrompt, "## Selected boundary memory")
+    assertContains(planPrompt, FIXTURE_BODY)
+  }
+
+  @Test
+  fun `a preplan without a selection field yields a catalog only plan prompt`() {
+    val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
+
+    val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
+
+    assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
+    val planPrompt = harness.launcher.requests[1].skillRunRequest.promptOverride.orEmpty()
+    assertContains(planPrompt, FIXTURE_HEADING_ID)
+    assertFalse(planPrompt.contains("## Selected boundary memory"))
+    assertFalse(planPrompt.contains(FIXTURE_BODY))
+  }
+
+  @Test
+  fun `a recovered 0_2 packet resumes without any excluded prefix payload reaching the prompt`() {
+    val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
+    val state = harness.stateFor(manifest(subtaskCount = 1))
+    harness.sweep.prepare(state, harness.request())
+    val prepared = requireNotNull(harness.recordFor(1))
+    harness.fixtures.database.repository.markPrepared(
+      prepared.withSharedPacket { packet ->
+        packet +
+          ("packet_version" to GoalPlanningSharedContextPacket.LEGACY_VERSION_0_2) +
+          (
+            "boundary_memory" to mapOf(
+              "platform-packs/kmp/agent/history.md" to "pack prefix excerpt",
+            )
+            )
+      },
+    )
+
+    val outcome = harness.sweep.prepare(state, harness.request())
+
+    assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
+    assertFalse(
+      harness.launcher.requests.any { request ->
+        request.skillRunRequest.promptOverride.orEmpty().contains("pack prefix excerpt")
+      },
+    )
+  }
+
+  @Test
+  fun `migrate discards legacy prefix boundary memory from recovered 0_3 packets`() {
+    val subtasks = listOf(
+      DecompositionSubtask(id = 1, name = "planning-context-discovery", specPath = "spec_subtask_1.md"),
+    )
+    val legacy = legacyV03Packet(
+      subtasks,
+      boundaryMemory = mapOf("runtime-kotlin/agent/history.md" to "legacy prefix excerpt"),
+    )
+
+    val migrated = GoalPlanningSharedContextPacket.migrate(legacy)
+
+    assertEquals(GoalPlanningSharedContextPacket.VERSION, migrated["packet_version"])
+    assertEquals(GoalPlanningSharedContextPacket.emptyCatalog(), migrated["boundary_memory"])
+    GoalPlanningSharedContextPacket.validate(
+      packet = migrated,
+      repositoryIdentity = "repo-root-realpath-v1:/tmp/fixture",
+      normalizedIssueKey = "SKILL-172",
+      parentSpecPath = ".feature-specs/SKILL-172/spec.md",
+      subtasks = subtasks,
+    )
+  }
+
+  @Test
+  fun `validate rejects a malformed duplicated or oversized 0_4 catalog`() {
+    val subtasks = listOf(
+      DecompositionSubtask(id = 1, name = "planning-context-discovery", specPath = "spec_subtask_1.md"),
+    )
+    val base = GoalPlanningSharedContextPacket.migrate(legacyV03Packet(subtasks, boundaryMemory = emptyMap()))
+
+    fun rejects(catalog: Map<String, Any?>): String {
+      val body = (base - "integrity_sha256") + ("boundary_memory" to catalog)
+      val packet = body + ("integrity_sha256" to GoalPlanningSharedContextPacket.digest(body))
+      return assertFailsWith<Exception> {
+        GoalPlanningSharedContextPacket.validate(
+          packet = packet,
+          repositoryIdentity = "repo-root-realpath-v1:/tmp/fixture",
+          normalizedIssueKey = "SKILL-172",
+          parentSpecPath = ".feature-specs/SKILL-172/spec.md",
+          subtasks = subtasks,
+        )
+      }.message.orEmpty()
+    }
+
+    val entry = linkedMapOf<String, Any?>(
+      "heading_id" to FIXTURE_HEADING_ID,
+      "source_path" to "runtime-kotlin/agent/history.md",
+      "kind" to "history",
+      "heading" to FIXTURE_HEADING,
+    )
+    assertContains(rejects(linkedMapOf("catalog" to listOf(entry - "kind"), "truncated" to false)), "invalid")
+    assertContains(
+      rejects(linkedMapOf("catalog" to listOf(entry, entry), "truncated" to false)),
+      "unique",
+    )
+    assertContains(
+      rejects(
+        linkedMapOf(
+          "catalog" to (0..GoalPlanningContext.MAX_CATALOG_HEADINGS).map { index ->
+            entry + ("heading_id" to "runtime-kotlin/agent/history.md#$index-000000000000")
+          },
+          "truncated" to false,
+        ),
+      ),
+      "cap",
+    )
+    assertContains(
+      rejects(
+        linkedMapOf(
+          "catalog" to listOf(entry + ("source_path" to "platform-packs/kmp/agent/history.md")),
+          "truncated" to false,
+        ),
+      ),
+      "excluded",
+    )
   }
 
   @Test
@@ -1457,6 +1605,24 @@ private fun legacyV02Packet(
   return body + ("integrity_sha256" to GoalPlanningSharedContextPacket.digest(body))
 }
 
+private fun legacyV03Packet(
+  subtasks: List<DecompositionSubtask>,
+  boundaryMemory: Map<String, String>,
+): Map<String, Any?> {
+  val body = linkedMapOf<String, Any?>(
+    "packet_version" to GoalPlanningSharedContextPacket.LEGACY_VERSION_0_3,
+    "repository_identity" to "repo-root-realpath-v1:/tmp/fixture",
+    "normalized_issue_key" to "SKILL-172",
+    "parent_spec_path" to ".feature-specs/SKILL-172/spec.md",
+    "parent_spec" to "parent body",
+    "decomposition_manifest" to "contract_version: \"0.1\"\nissue_key: SKILL-172\n",
+    "boundary_memory" to boundaryMemory,
+    "validation_guidance" to "repo conventions",
+    "ordered_subtasks" to GoalPlanningSharedContextPacket.orderedSubtasks(subtasks),
+  )
+  return body + ("integrity_sha256" to GoalPlanningSharedContextPacket.digest(body))
+}
+
 private fun normalizedPlanningOutput(payload: String): NormalizedFeatureTaskRuntimePhaseOutput {
   val envelope = JsonSupport.parseObjectOrNull(payload)
     ?.let(JsonSupport::jsonElementToValue)
@@ -1528,6 +1694,14 @@ private fun phasePayload(phaseId: String): String =
   """{"contract_version":"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION","phase_id":"$phaseId",""" +
     """"status":"completed","summary":"s","produced_outputs":""" +
     (PlanningProjectionFixtures.producedOutputsOrNull(phaseId) ?: """{"result":"$phaseId"}""") + "}"
+
+private fun preplanPayloadSelecting(vararg headingIds: String): String {
+  val ids = headingIds.joinToString(",") { id -> "\"" + id + "\"" }
+  val digest = PlanningProjectionFixtures.PREPLAN_DIGEST.dropLast(1) +
+    ""","selected_boundary_headings":[""" + ids + "]}"
+  return """{"contract_version":"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION","phase_id":"preplan",""" +
+    """"status":"completed","summary":"s","produced_outputs":""" + digest + "}"
+}
 
 private fun fencedPhasePayload(phaseId: String): String =
   "Here is the $phaseId output.\n```json\n" + phasePayload(phaseId) + "\n```\nLet me know if you need more."
@@ -1984,6 +2158,7 @@ private fun sweepHarness(
   planningRejectionRecorder: GoalPlanningRejectionRecorder = GoalPlanningRejectionRecorder.NONE,
   timingPort: RuntimeTimingPort = NoopRuntimeTimingPort,
   burstSchedule: GoalPlanningBurstSchedule = GoalPlanningBurstSchedule(),
+  boundaryBodyResolver: GoalPlanningBoundaryBodyResolver = fakeBoundaryBodyResolver,
   behavior: (phase: String, subtaskId: Int, request: GoalRunnerSubtaskLaunchRequest) -> AgentRunLaunchOutcome,
 ): SweepHarness {
   val fixtures = sharedSweepFixtures(
@@ -2005,6 +2180,7 @@ private fun sweepHarness(
     planningRejectionRecorder = planningRejectionRecorder,
     timingPort = timingPort,
     burstSchedule = burstSchedule,
+    boundaryBodyResolver = boundaryBodyResolver,
   )
   return SweepHarness(fixtures, launcher, sweep)
 }
@@ -2062,10 +2238,31 @@ private object RejectingSweepPlanningProjectionValidator : FeatureTaskRuntimePla
     )
 }
 
+internal const val FIXTURE_HEADING_ID = "runtime-kotlin/agent/history.md#0-000000000000"
+internal const val FIXTURE_HEADING = "## [2026-08-01] fixture-entry"
+internal const val FIXTURE_BODY = "distinctive fixture body sentence"
+
 private val fakeContextDiscovery = GoalPlanningContextDiscovery {
   GoalPlanningContext(
-    boundaryMemory = mapOf("runtime-kotlin/agent/history.md" to "history"),
+    boundaryCatalog = listOf(
+      GoalPlanningBoundaryHeading(
+        headingId = FIXTURE_HEADING_ID,
+        sourcePath = "runtime-kotlin/agent/history.md",
+        kind = GoalPlanningContext.KIND_HISTORY,
+        heading = FIXTURE_HEADING,
+      ),
+    ),
+    boundaryCatalogTruncated = false,
     validationGuidance = "Run focused Gradle checks.",
+  )
+}
+
+private val fakeBoundaryBodyResolver = GoalPlanningBoundaryBodyResolver { _, ids ->
+  GoalPlanningResolvedBoundaryBodies(
+    bodies = ids.filter { id -> id == FIXTURE_HEADING_ID }.map { id ->
+      GoalPlanningBoundaryBody(id, "runtime-kotlin/agent/history.md", FIXTURE_HEADING, FIXTURE_BODY)
+    },
+    unresolvedHeadingIds = ids.filterNot { id -> id == FIXTURE_HEADING_ID },
   )
 }
 

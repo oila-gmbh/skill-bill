@@ -32,11 +32,13 @@ import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunOutputStream
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
+import skillbill.ports.goalrunner.GoalPlanningBoundaryBodyResolver
 import skillbill.ports.goalrunner.GoalPlanningContextDiscovery
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.model.GoalRunnerLaunchAuthorizationDeniedException
+import skillbill.ports.goalrunner.model.GoalPlanningResolvedBoundaryBodies
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerProgressEventRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
@@ -110,6 +112,7 @@ class DefaultGoalPlanningSweep(
   private val planningRejectionRecorder: GoalPlanningRejectionRecorder = GoalPlanningRejectionRecorder.NONE,
   private val timingPort: RuntimeTimingPort = NoopRuntimeTimingPort,
   private val burstSchedule: GoalPlanningBurstSchedule = GoalPlanningBurstSchedule(),
+  private val boundaryBodyResolver: GoalPlanningBoundaryBodyResolver = GoalPlanningBoundaryBodyResolver.NONE,
 ) : GoalPlanningSweep {
   @Suppress("ReturnCount")
   override fun prepare(state: GoalRunnerManifestState, request: GoalRunnerRunRequest): GoalPlanningSweepOutcome {
@@ -259,6 +262,7 @@ class DefaultGoalPlanningSweep(
       runInvariants,
       PHASE_PLAN,
       listOf(FeatureTaskRuntimePhaseOutput(PHASE_PREPLAN, 1, preplanPayload)),
+      resolvedBodies = resolvedBoundaryBodies(shared, preplanPayload),
     )
     if (planProduction is GoalPlanningPhaseProduction.Stopped) return planProduction.outcome
     val captured = planProduction as GoalPlanningPhaseProduction.Captured
@@ -341,6 +345,7 @@ class DefaultGoalPlanningSweep(
     runInvariants: FeatureTaskRuntimeRunInvariants,
     phaseId: String,
     recordedOutputs: List<FeatureTaskRuntimePhaseOutput>,
+    resolvedBodies: GoalPlanningResolvedBoundaryBodies = GoalPlanningResolvedBoundaryBodies(),
     finalizePayload: (String) -> String = { it },
   ): GoalPlanningPhaseProduction {
     var priorSchemaFailure: String? = null
@@ -355,6 +360,7 @@ class DefaultGoalPlanningSweep(
         phaseId,
         recordedOutputs,
         priorSchemaFailure,
+        resolvedBodies,
       )
       when (production) {
         is GoalPlanningPhaseProduction.Stopped -> {
@@ -440,6 +446,7 @@ class DefaultGoalPlanningSweep(
     phaseId: String,
     recordedOutputs: List<FeatureTaskRuntimePhaseOutput>,
     priorSchemaFailure: String?,
+    resolvedBodies: GoalPlanningResolvedBoundaryBodies,
   ): GoalPlanningPhaseProduction = try {
     produceAttempt(
       shared,
@@ -449,6 +456,7 @@ class DefaultGoalPlanningSweep(
       phaseId,
       recordedOutputs,
       priorSchemaFailure,
+      resolvedBodies,
     )
   } catch (error: Exception) {
     GoalPlanningPhaseProduction.Stopped(
@@ -530,6 +538,7 @@ class DefaultGoalPlanningSweep(
     phaseId: String,
     recordedOutputs: List<FeatureTaskRuntimePhaseOutput>,
     priorSchemaFailure: String?,
+    resolvedBodies: GoalPlanningResolvedBoundaryBodies,
   ): GoalPlanningPhaseProduction {
     val currentSubtaskId = subtask?.id ?: 0
     planningPauseOutcome(shared, currentSubtaskId, phaseId)?.let { return it }
@@ -537,7 +546,16 @@ class DefaultGoalPlanningSweep(
     // so an unhandled rejection would crash the goal driver with no Stopped outcome, no blocked_reason
     // and no closed telemetry segment, then crash identically on every resume. Block durably instead.
     val prompt = runCatching {
-      composePlanningPrompt(shared, request, subtask, runInvariants, phaseId, recordedOutputs, priorSchemaFailure)
+      composePlanningPrompt(
+        shared,
+        request,
+        subtask,
+        runInvariants,
+        phaseId,
+        recordedOutputs,
+        priorSchemaFailure,
+        resolvedBodies,
+      )
     }
       .getOrElse { error ->
         if (error !is InvalidFeatureTaskRuntimePlanningProjectionSchemaError &&
@@ -687,6 +705,7 @@ class DefaultGoalPlanningSweep(
     phaseId: String,
     recordedOutputs: List<FeatureTaskRuntimePhaseOutput>,
     priorSchemaFailure: String?,
+    resolvedBodies: GoalPlanningResolvedBoundaryBodies,
   ): String {
     val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
       declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclaration(phaseId, runInvariants.featureSize),
@@ -706,7 +725,36 @@ class DefaultGoalPlanningSweep(
       specReference = runInvariants.specReference,
       priorSchemaFailure = priorSchemaFailure,
     )
-    return GoalPlanningContextPromptFormatter.append(basePrompt, shared.planningPacket, subtask, phaseId)
+    return GoalPlanningContextPromptFormatter.append(
+      basePrompt,
+      shared.planningPacket,
+      subtask,
+      phaseId,
+      resolvedBodies,
+    )
+  }
+
+  /**
+   * Reads the heading ids the settled preplan selected and resolves exactly those bodies. A missing,
+   * legacy, or malformed selection degrades to catalog-only rather than stopping the sweep or falling
+   * back to a full-file dump.
+   */
+  private fun resolvedBoundaryBodies(
+    shared: GoalPlanningSharedContext,
+    preplanPayload: String,
+  ): GoalPlanningResolvedBoundaryBodies {
+    val selected = runCatching {
+      JsonSupport.parseObjectOrNull(preplanPayload)
+        ?.let(JsonSupport::jsonElementToValue)
+        ?.let(JsonSupport::anyToStringAnyMap)
+        ?.get("produced_outputs")
+        ?.let(JsonSupport::anyToStringAnyMap)
+        ?.get(SELECTED_BOUNDARY_HEADINGS_FIELD)
+        ?.let { value -> (value as? List<*>)?.mapNotNull { id -> (id as? String)?.takeIf(String::isNotBlank) } }
+    }.getOrNull().orEmpty()
+    if (selected.isEmpty()) return GoalPlanningResolvedBoundaryBodies()
+    return runCatching { boundaryBodyResolver.resolve(shared.repoRoot, selected) }
+      .getOrElse { GoalPlanningResolvedBoundaryBodies(unresolvedHeadingIds = selected) }
   }
 
   private fun gatherSharedContext(
@@ -732,7 +780,7 @@ class DefaultGoalPlanningSweep(
           "parent_spec_path" to parentSpecGoverningPath,
           "parent_spec" to parentSpec.take(GoalPlanningSharedContextPacket.MAX_GOVERNED_CONTEXT_CHARS),
           "decomposition_manifest" to decomposition.take(GoalPlanningSharedContextPacket.MAX_GOVERNED_CONTEXT_CHARS),
-          "boundary_memory" to discovered.boundaryMemory,
+          "boundary_memory" to GoalPlanningSharedContextPacket.catalog(discovered),
           "validation_guidance" to discovered.validationGuidance.take(
             GoalPlanningSharedContextPacket.MAX_GOVERNED_CONTEXT_CHARS,
           ),
@@ -943,6 +991,7 @@ class DefaultGoalPlanningSweep(
     const val PHASE_PREPLAN: String = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN
     const val PHASE_PLAN: String = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN
     const val SHARED_CONTEXT_FIELD = "_goal_planning_shared_context"
+    const val SELECTED_BOUNDARY_HEADINGS_FIELD = "selected_boundary_headings"
     const val EMPTY_PLANNING_HARVEST_RULE = "empty-planning-harvest"
     const val NANOS_PER_MILLI = 1_000_000L
   }

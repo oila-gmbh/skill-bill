@@ -2,8 +2,10 @@ package skillbill.goalplanning
 
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import skillbill.contracts.goalplanning.GoalPlanningDiscoveryExclusions
+import skillbill.ports.goalrunner.model.GoalPlanningBoundaryHeading
 import skillbill.ports.goalrunner.model.GoalPlanningContext
 import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -12,15 +14,11 @@ import kotlin.test.assertTrue
 
 class FileSystemGoalPlanningContextDiscoveryTest {
   @Test
-  fun `platform pack agent trees contribute nothing while non excluded module memory survives`() {
-    val repo = Files.createTempDirectory("goal-context-exclusions")
-    val packAgent = Files.createDirectories(repo.resolve("platform-packs/kmp/agent"))
-    Files.writeString(packAgent.resolve("history.md"), "pack history must not be discovered")
-    Files.writeString(packAgent.resolve("decisions.md"), "pack decisions must not be discovered")
-    Files.writeString(repo.resolve("platform-packs/kmp/platform.yaml"), "routing_signals: [kmp]")
+  fun `catalog carries headings only and never entry bodies`() {
+    val repo = Files.createTempDirectory("goal-context-catalog")
     val moduleAgent = Files.createDirectories(repo.resolve("runtime-kotlin/runtime-application/agent"))
-    Files.writeString(moduleAgent.resolve("history.md"), "module history")
-    Files.writeString(moduleAgent.resolve("decisions.md"), "module decision")
+    writeEntries(moduleAgent.resolve("history.md"), "module-history", "distinctive history body sentence")
+    writeEntries(moduleAgent.resolve("decisions.md"), "module-decision", "distinctive decision body sentence")
     Files.writeString(repo.resolve("AGENTS.md"), "repo conventions for planning")
 
     val context = FileSystemGoalPlanningContextDiscovery().discover(repo)
@@ -30,13 +28,41 @@ class FileSystemGoalPlanningContextDiscoveryTest {
         "runtime-kotlin/runtime-application/agent/history.md",
         "runtime-kotlin/runtime-application/agent/decisions.md",
       ),
-      context.boundaryMemory.keys.toList(),
+      context.boundaryCatalog.map(GoalPlanningBoundaryHeading::sourcePath),
     )
-    assertContains(context.boundaryMemory.getValue("runtime-kotlin/runtime-application/agent/history.md"), "module")
-    assertFalse(context.boundaryMemory.keys.any { path -> path.startsWith("platform-packs/") })
-    assertFalse(context.boundaryMemory.values.any { value -> "must not be discovered" in value })
-    assertFalse(context.boundaryMemory.keys.any { path -> path.contains("platform.yaml") })
+    assertEquals(
+      listOf(GoalPlanningContext.KIND_HISTORY, GoalPlanningContext.KIND_DECISIONS),
+      context.boundaryCatalog.map(GoalPlanningBoundaryHeading::kind),
+    )
+    assertContains(context.boundaryCatalog.first().heading, "module-history")
+    assertFalse(
+      context.boundaryCatalog.any { entry -> "distinctive" in entry.heading || "body sentence" in entry.heading },
+      "catalog payload is heading text only",
+    )
+    assertFalse(context.boundaryCatalogTruncated)
     assertContains(context.validationGuidance, "repo conventions for planning")
+  }
+
+  @Test
+  fun `platform pack agent trees contribute zero catalog entries`() {
+    val repo = Files.createTempDirectory("goal-context-exclusions")
+    val packAgent = Files.createDirectories(repo.resolve("platform-packs/kmp/agent"))
+    writeEntries(packAgent.resolve("history.md"), "pack-history", "pack history must not be discovered")
+    writeEntries(packAgent.resolve("decisions.md"), "pack-decision", "pack decisions must not be discovered")
+    val moduleAgent = Files.createDirectories(repo.resolve("runtime-kotlin/runtime-application/agent"))
+    writeEntries(moduleAgent.resolve("history.md"), "module-history", "module body")
+
+    val context = FileSystemGoalPlanningContextDiscovery().discover(repo)
+
+    assertEquals(1, context.boundaryCatalog.size)
+    assertTrue(
+      context.boundaryCatalog.none { entry ->
+        GoalPlanningDiscoveryExclusions.isExcluded(entry.sourcePath) ||
+          GoalPlanningDiscoveryExclusions.excludedRoots.any { root -> entry.headingId.startsWith(root) }
+      },
+      "no catalog entry names an exclusion-list root in its source path or heading id",
+    )
+    assertFalse(context.boundaryCatalog.any { entry -> "pack-" in entry.heading })
   }
 
   @Test
@@ -44,32 +70,32 @@ class FileSystemGoalPlanningContextDiscoveryTest {
     val repo = Files.createTempDirectory("goal-context-all-roots")
     GoalPlanningDiscoveryExclusions.excludedRoots.forEach { root ->
       val agent = Files.createDirectories(repo.resolve(root).resolve("nested/agent"))
-      Files.writeString(agent.resolve("history.md"), "excluded history")
+      writeEntries(agent.resolve("history.md"), "excluded-history", "excluded body")
     }
     GoalPlanningDiscoveryExclusions.excludedDirectoryNames.forEach { name ->
       // nested, not repo-root: an anchored-prefix-only gate would walk straight into these
       val agent = Files.createDirectories(repo.resolve("runtime-kotlin/module/$name/nested/agent"))
-      Files.writeString(agent.resolve("history.md"), "excluded history")
+      writeEntries(agent.resolve("history.md"), "excluded-history", "excluded body")
     }
     val moduleAgent = Files.createDirectories(repo.resolve("tooling/agent"))
-    Files.writeString(moduleAgent.resolve("history.md"), "tooling history")
+    writeEntries(moduleAgent.resolve("history.md"), "tooling-history", "tooling body")
 
     val context = FileSystemGoalPlanningContextDiscovery().discover(repo)
 
-    assertEquals(listOf("tooling/agent/history.md"), context.boundaryMemory.keys.toList())
-    assertFalse(context.boundaryMemory.values.any { value -> "excluded history" in value })
+    assertEquals(listOf("tooling/agent/history.md"), context.boundaryCatalog.map { it.sourcePath })
+    assertFalse(context.boundaryCatalog.any { entry -> "excluded-history" in entry.heading })
   }
 
   @Test
   fun `symlinks into an excluded root stay denied after canonicalization`() {
     val repo = Files.createTempDirectory("goal-context-symlink-exclusion")
     val packAgent = Files.createDirectories(repo.resolve("platform-packs/kmp/agent"))
-    val packHistory = Files.writeString(packAgent.resolve("history.md"), "pack history must not be discovered")
+    val packHistory = writeEntries(packAgent.resolve("history.md"), "pack-history", "pack body")
     val outside = Files.createTempDirectory("goal-context-outside")
     val outsideAgent = Files.createDirectories(outside.resolve("agent"))
-    Files.writeString(outsideAgent.resolve("history.md"), "outside history")
+    writeEntries(outsideAgent.resolve("history.md"), "outside-history", "outside body")
     val safeAgent = Files.createDirectories(repo.resolve("modules/safe/agent"))
-    Files.writeString(safeAgent.resolve("history.md"), "safe history")
+    writeEntries(safeAgent.resolve("history.md"), "safe-history", "safe body")
 
     val linkable = runCatching {
       Files.createSymbolicLink(repo.resolve("modules/linked-dir"), packAgent.parent)
@@ -81,28 +107,27 @@ class FileSystemGoalPlanningContextDiscoveryTest {
 
     val context = FileSystemGoalPlanningContextDiscovery().discover(repo)
 
-    assertEquals(listOf("modules/safe/agent/history.md"), context.boundaryMemory.keys.toList())
-    assertFalse(context.boundaryMemory.values.any { value -> "must not be discovered" in value })
-    assertFalse(context.boundaryMemory.values.any { value -> "outside" in value })
+    assertEquals(listOf("modules/safe/agent/history.md"), context.boundaryCatalog.map { it.sourcePath })
+    assertFalse(context.boundaryCatalog.any { entry -> "pack-history" in entry.heading })
+    assertFalse(context.boundaryCatalog.any { entry -> "outside-history" in entry.heading })
   }
 
   @Test
-  fun `file count and total byte budgets exhaust deterministically in sorted order`() {
+  fun `eligible file and total heading caps truncate at a deterministic boundary`() {
     assertEquals(32, GoalPlanningContext.MAX_DISCOVERY_FILE_COUNT)
-    assertEquals(4_096, GoalPlanningContext.MAX_DISCOVERY_EXCERPT_BYTES)
-    assertEquals(32 * 1_024L, GoalPlanningContext.MAX_DISCOVERY_TOTAL_BYTES)
+    assertEquals(256, GoalPlanningContext.MAX_CATALOG_HEADINGS)
 
     val repo = Files.createTempDirectory("goal-context-bounds")
-    Files.writeString(repo.resolve("AGENTS.md"), "repo conventions")
     repeat(40) { index ->
       val agent = Files.createDirectories(repo.resolve("modules/module-%02d/agent".format(index)))
-      Files.writeString(agent.resolve("history.md"), "history-$index")
-      Files.writeString(agent.resolve("decisions.md"), "decisions-$index")
+      writeEntries(agent.resolve("history.md"), "history-$index", "body")
+      writeEntries(agent.resolve("decisions.md"), "decisions-$index", "body")
     }
 
-    val context = FileSystemGoalPlanningContextDiscovery().discover(repo)
+    val discovery = FileSystemGoalPlanningContextDiscovery()
+    val context = discovery.discover(repo)
 
-    assertEquals(GoalPlanningContext.MAX_DISCOVERY_FILE_COUNT, context.boundaryMemory.size)
+    assertTrue(context.boundaryCatalogTruncated)
     assertEquals(
       (0 until 16).flatMap { index ->
         listOf(
@@ -110,25 +135,30 @@ class FileSystemGoalPlanningContextDiscoveryTest {
           "modules/module-%02d/agent/decisions.md".format(index),
         )
       },
-      context.boundaryMemory.keys.toList(),
+      context.boundaryCatalog.map(GoalPlanningBoundaryHeading::sourcePath),
     )
-    assertTrue(context.validationGuidance.isEmpty(), "file-count exhaustion omits the later category entirely")
+    assertEquals(
+      context.boundaryCatalog,
+      discovery.discover(repo).boundaryCatalog,
+      "the same fixture truncates identically across repeated runs",
+    )
   }
 
   @Test
-  fun `oversized boundary memory files are excerpt bounded`() {
-    val repo = Files.createTempDirectory("goal-context-excerpt")
+  fun `per file heading cap truncates and marks the catalog`() {
+    val repo = Files.createTempDirectory("goal-context-per-file-cap")
     val agent = Files.createDirectories(repo.resolve("modules/big/agent"))
-    val oversized = "x".repeat(10_000)
-    Files.writeString(agent.resolve("history.md"), oversized)
-    Files.writeString(repo.resolve("AGENTS.md"), oversized)
+    val entries = (0 until GoalPlanningContext.MAX_HEADINGS_PER_FILE + 5).joinToString("\n\n") { index ->
+      "## [2026-08-%02d] entry-$index\n\nbody $index".format((index % 28) + 1)
+    }
+    Files.writeString(agent.resolve("history.md"), "# Boundary History\n\n$entries\n")
 
     val context = FileSystemGoalPlanningContextDiscovery().discover(repo)
-    val excerptBodies = (context.boundaryMemory.values + context.validationGuidance)
-      .map { value -> value.substringBefore("\n…[") }
 
-    assertTrue(excerptBodies.all { value -> value.length <= GoalPlanningContext.MAX_DISCOVERY_EXCERPT_BYTES })
-    assertTrue(excerptBodies.sumOf(String::length) <= GoalPlanningContext.MAX_DISCOVERY_TOTAL_BYTES.toInt())
-    assertContains(context.boundaryMemory.getValue("modules/big/agent/history.md"), "…[")
+    assertEquals(GoalPlanningContext.MAX_HEADINGS_PER_FILE, context.boundaryCatalog.size)
+    assertTrue(context.boundaryCatalogTruncated)
   }
+
+  private fun writeEntries(path: Path, title: String, body: String): Path =
+    Files.writeString(path, "# Boundary History\n\n## [2026-08-01] $title\n\n$body\n")
 }
