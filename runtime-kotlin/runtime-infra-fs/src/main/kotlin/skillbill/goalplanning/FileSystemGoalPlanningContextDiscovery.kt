@@ -1,6 +1,7 @@
 package skillbill.goalplanning
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.contracts.goalplanning.GoalPlanningDiscoveryExclusions
 import skillbill.ports.goalrunner.GoalPlanningContextDiscovery
 import skillbill.ports.goalrunner.model.GoalPlanningContext
 import java.nio.charset.StandardCharsets
@@ -12,15 +13,15 @@ class FileSystemGoalPlanningContextDiscovery : GoalPlanningContextDiscovery {
   override fun discover(repoRoot: Path): GoalPlanningContext {
     val budget = DiscoveryBudget()
     val canonicalRoot = repoRoot.toRealPathOrNull() ?: repoRoot.toAbsolutePath().normalize()
-    val packsRoot = canonicalRoot.resolve("platform-packs")
     // Load-bearing discovery priority under the shared DiscoveryBudget — not incidental argument order:
-    // (1) boundary_memory — per-pack agent/history.md then agent/decisions.md over lexicographically
-    //     sorted pack directories; (2) validation_guidance — root AGENTS.md last.
-    // When file-count or total-byte budget exhausts, later categories are omitted entirely; within a
-    // category, sorted pack order decides which files receive excerpts. platform.yaml is never read.
+    // (1) boundary_memory — agent/history.md then agent/decisions.md per agent directory, over agent
+    //     directories sorted lexicographically by repo-relative path; (2) validation_guidance — root
+    //     AGENTS.md last. When file-count or total-byte budget exhausts, later categories are omitted
+    //     entirely; within a category, sorted repo-relative order decides which files receive excerpts.
+    // Every candidate directory and file is denied by canonical repo-relative path against the
+    // checked-in exclusion contract, so platform-packs/ never contributes planning memory.
     return GoalPlanningContext(
-      boundaryMemory = discoverPackFiles(canonicalRoot, packsRoot, "agent/history.md", budget) +
-        discoverPackFiles(canonicalRoot, packsRoot, "agent/decisions.md", budget),
+      boundaryMemory = discoverBoundaryMemory(canonicalRoot, budget),
       validationGuidance = readBounded(
         canonicalRoot,
         canonicalRoot.resolve("AGENTS.md"),
@@ -30,25 +31,46 @@ class FileSystemGoalPlanningContextDiscovery : GoalPlanningContextDiscovery {
     )
   }
 
-  private fun discoverPackFiles(
-    repoRoot: Path,
-    packsRoot: Path,
-    relativeName: String,
-    budget: DiscoveryBudget,
-  ): Map<String, String> {
-    val canonicalPacksRoot = packsRoot.toRealPathOrNull()?.takeIf { it.startsWith(repoRoot) } ?: return emptyMap()
-    if (!Files.isDirectory(canonicalPacksRoot)) return emptyMap()
-    val packDirs = Files.list(canonicalPacksRoot).use { entries ->
+  private fun discoverBoundaryMemory(repoRoot: Path, budget: DiscoveryBudget): Map<String, String> {
+    val memory = linkedMapOf<String, String>()
+    for (agentDir in agentDirectories(repoRoot)) {
+      for (fileName in BOUNDARY_MEMORY_FILES) {
+        val candidate = agentDir.resolve(fileName)
+        val canonical = candidate.toRealPathOrNull()?.takeIf { it.startsWith(repoRoot) } ?: continue
+        val relative = repoRoot.relativize(canonical).joinToString("/")
+        if (GoalPlanningDiscoveryExclusions.isExcluded(relative)) continue
+        readBounded(repoRoot, canonical, relative, budget)?.let { content -> memory[relative] = content }
+      }
+    }
+    return memory
+  }
+
+  /** Bounded deterministic walk: sorted children, excluded roots pruned before descending, cycles cut. */
+  private fun agentDirectories(repoRoot: Path): List<Path> {
+    val found = mutableListOf<Path>()
+    val seen = mutableSetOf(repoRoot)
+    val pending = ArrayDeque(listOf(repoRoot))
+    var visited = 0
+    while (pending.isNotEmpty() && visited < MAX_VISITED_DIRECTORIES) {
+      visited += 1
+      for (child in sortedChildDirectories(pending.removeFirst())) {
+        val canonical = child.toRealPathOrNull()?.takeIf { it.startsWith(repoRoot) } ?: continue
+        val relative = repoRoot.relativize(canonical).joinToString("/")
+        if (relative.isEmpty() || GoalPlanningDiscoveryExclusions.isExcluded(relative)) continue
+        if (!seen.add(canonical)) continue
+        if (canonical.fileName.toString() == AGENT_DIRECTORY) found.add(canonical) else pending.add(canonical)
+      }
+    }
+    return found.sortedBy { agentDir -> repoRoot.relativize(agentDir).joinToString("/") }
+  }
+
+  private fun sortedChildDirectories(directory: Path): List<Path> = runCatching {
+    Files.list(directory).use { entries ->
       entries.filter { path -> Files.isDirectory(path) }
         .sorted()
         .toList()
-    }.mapNotNull { path -> path.toRealPathOrNull()?.takeIf { it.startsWith(repoRoot) } }
-    return packDirs.mapNotNull { packDir ->
-      val candidate = packDir.resolve(relativeName)
-      val relative = repoRoot.relativize(candidate).joinToString("/")
-      readBounded(repoRoot, candidate, relative, budget)?.let { content -> relative to content }
-    }.toMap()
-  }
+    }
+  }.getOrDefault(emptyList())
 
   private fun readBounded(repoRoot: Path, path: Path, relative: String, budget: DiscoveryBudget): String? {
     val readable = boundedReadableFile(repoRoot, path, budget) ?: return null
@@ -111,6 +133,11 @@ class FileSystemGoalPlanningContextDiscovery : GoalPlanningContextDiscovery {
   }
 
   private companion object {
+    const val AGENT_DIRECTORY = "agent"
+    val BOUNDARY_MEMORY_FILES = listOf("history.md", "decisions.md")
+
+    // shortcut: flat directory-visit cap, revisit if a repo legitimately nests deeper than this
+    const val MAX_VISITED_DIRECTORIES = 4_096
     const val MAX_CONTEXT_FILE_COUNT = GoalPlanningContext.MAX_DISCOVERY_FILE_COUNT
     const val MAX_CONTEXT_EXCERPT_BYTES = GoalPlanningContext.MAX_DISCOVERY_EXCERPT_BYTES
     const val MAX_CONTEXT_TOTAL_BYTES = GoalPlanningContext.MAX_DISCOVERY_TOTAL_BYTES

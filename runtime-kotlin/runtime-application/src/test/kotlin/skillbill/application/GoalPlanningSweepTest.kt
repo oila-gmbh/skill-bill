@@ -84,7 +84,7 @@ import kotlin.time.Duration.Companion.seconds
 @Suppress("LargeClass") // one suite over the sweep's recovery, gate, and stop paths; they share a harness
 class GoalPlanningSweepTest {
   @Test
-  fun `migrate projects 0_1 packets with platform_packs to 0_2`() {
+  fun `migrate projects 0_1 packets with platform_packs to the current version`() {
     val subtasks = listOf(
       DecompositionSubtask(id = 1, name = "planning-context-discovery", specPath = "spec_subtask_1.md"),
     )
@@ -107,11 +107,63 @@ class GoalPlanningSweepTest {
       parentSpecPath = ".feature-specs/SKILL-172/spec.md",
       subtasks = subtasks,
     )
-    assertEquals("0.2", GoalPlanningSharedContextPacket.VERSION)
+    assertEquals("0.3", GoalPlanningSharedContextPacket.VERSION)
+    assertTrue(
+      (migrated["boundary_memory"] as Map<*, *>).keys.none { key -> (key as String).startsWith("platform-packs/") },
+      "the 0.1 chain lands on 0.3 with excluded-root boundary memory filtered out",
+    )
   }
 
   @Test
-  fun `migrate projects 0_1 packets with empty platform_packs to 0_2`() {
+  fun `migrate strips excluded root boundary memory from recovered 0_2 packets`() {
+    val subtasks = listOf(
+      DecompositionSubtask(id = 1, name = "planning-context-discovery", specPath = "spec_subtask_1.md"),
+    )
+    val legacy = legacyV02Packet(
+      subtasks,
+      boundaryMemory = mapOf(
+        "platform-packs/kmp/agent/history.md" to "pack history",
+        "platform-packs/kotlin/agent/decisions.md" to "pack decision",
+        "runtime-kotlin/runtime-application/agent/history.md" to "module history",
+      ),
+    )
+
+    val migrated = GoalPlanningSharedContextPacket.migrate(legacy)
+
+    assertEquals(GoalPlanningSharedContextPacket.VERSION, migrated["packet_version"])
+    assertEquals(
+      mapOf("runtime-kotlin/runtime-application/agent/history.md" to "module history"),
+      migrated["boundary_memory"],
+    )
+    GoalPlanningSharedContextPacket.validate(
+      packet = migrated,
+      repositoryIdentity = "repo-root-realpath-v1:/tmp/fixture",
+      normalizedIssueKey = "SKILL-172",
+      parentSpecPath = ".feature-specs/SKILL-172/spec.md",
+      subtasks = subtasks,
+    )
+  }
+
+  @Test
+  fun `migrate rejects tampered 0_2 integrity and unsupported versions`() {
+    val subtasks = listOf(
+      DecompositionSubtask(id = 1, name = "planning-context-discovery", specPath = "spec_subtask_1.md"),
+    )
+    val legacy = legacyV02Packet(subtasks, boundaryMemory = emptyMap())
+
+    val tampered = assertFailsWith<IllegalArgumentException> {
+      GoalPlanningSharedContextPacket.migrate(legacy + ("integrity_sha256" to "not-a-real-digest"))
+    }
+    assertContains(tampered.message.orEmpty(), "integrity is invalid")
+
+    val unsupported = assertFailsWith<IllegalStateException> {
+      GoalPlanningSharedContextPacket.migrate(legacy + ("packet_version" to "0.9"))
+    }
+    assertContains(unsupported.message.orEmpty(), "unsupported")
+  }
+
+  @Test
+  fun `migrate projects 0_1 packets with empty platform_packs to the current version`() {
     val subtasks = listOf(
       DecompositionSubtask(id = 1, name = "planning-context-discovery", specPath = "spec_subtask_1.md"),
     )
@@ -1387,6 +1439,24 @@ private fun legacyV01Packet(
   return body + ("integrity_sha256" to GoalPlanningSharedContextPacket.digest(body))
 }
 
+private fun legacyV02Packet(
+  subtasks: List<DecompositionSubtask>,
+  boundaryMemory: Map<String, String>,
+): Map<String, Any?> {
+  val body = linkedMapOf<String, Any?>(
+    "packet_version" to GoalPlanningSharedContextPacket.LEGACY_VERSION_0_2,
+    "repository_identity" to "repo-root-realpath-v1:/tmp/fixture",
+    "normalized_issue_key" to "SKILL-172",
+    "parent_spec_path" to ".feature-specs/SKILL-172/spec.md",
+    "parent_spec" to "parent body",
+    "decomposition_manifest" to "contract_version: \"0.1\"\nissue_key: SKILL-172\n",
+    "boundary_memory" to boundaryMemory,
+    "validation_guidance" to "repo conventions",
+    "ordered_subtasks" to GoalPlanningSharedContextPacket.orderedSubtasks(subtasks),
+  )
+  return body + ("integrity_sha256" to GoalPlanningSharedContextPacket.digest(body))
+}
+
 private fun normalizedPlanningOutput(payload: String): NormalizedFeatureTaskRuntimePhaseOutput {
   val envelope = JsonSupport.parseObjectOrNull(payload)
     ?.let(JsonSupport::jsonElementToValue)
@@ -1994,7 +2064,7 @@ private object RejectingSweepPlanningProjectionValidator : FeatureTaskRuntimePla
 
 private val fakeContextDiscovery = GoalPlanningContextDiscovery {
   GoalPlanningContext(
-    boundaryMemory = mapOf("platform-packs/kotlin/agent/history.md" to "history"),
+    boundaryMemory = mapOf("runtime-kotlin/agent/history.md" to "history"),
     validationGuidance = "Run focused Gradle checks.",
   )
 }

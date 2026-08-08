@@ -44,6 +44,7 @@ Optional trailing lines (include only when relevant):
 ## File Rules
 
 - File path: `<primary-boundary>/agent/decisions.md`.
+- **Forbidden — excluded roots:** never create `agent/` under a root listed in `orchestration/contracts/goal-planning-discovery-exclusions.yaml` (`platform-packs/` among them). That contract is the authority; planning discovery denies those roots, so decisions written there are unreadable memory. Write to the nearest non-excluded owning boundary instead.
 - If the file does not exist, create it along with any missing parent directories.
 - Newest entry first.
 - No fixed entry cap.

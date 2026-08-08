@@ -2,17 +2,19 @@ package skillbill.application.goalrunner
 
 import skillbill.application.featuretask.sha256HexUtf8
 import skillbill.contracts.JsonSupport
+import skillbill.contracts.goalplanning.GoalPlanningDiscoveryExclusions
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
 
 /**
  * The durable shared-context packet the goal sweep writes into the preplan payload and reads back on
  * resume. Every function here is pure over maps, so the sweep can validate a recovered packet without
- * re-reading the repository. Legacy 0.1 checkpoints keep their on-disk shape; [migrate] projects them
- * to the current version in memory before [validate].
+ * re-reading the repository. Legacy 0.1 and 0.2 checkpoints keep their on-disk shape; [migrate] projects
+ * them to the current version in memory before [validate].
  */
 internal object GoalPlanningSharedContextPacket {
-  const val VERSION = "0.2"
+  const val VERSION = "0.3"
+  const val LEGACY_VERSION_0_2 = "0.2"
   const val LEGACY_VERSION_0_1 = "0.1"
   const val MAX_GOVERNED_CONTEXT_CHARS = 65_536
   private const val MAX_PACKET_CHARS = 524_288
@@ -35,16 +37,17 @@ internal object GoalPlanningSharedContextPacket {
   private val DISPOSITIONS = setOf("included", "skipped")
 
   /**
-   * Projects a recovered shared-context packet to [VERSION]. Immutable 0.1 preplan payloads are not
+   * Projects a recovered shared-context packet to [VERSION]. Immutable 0.1/0.2 preplan payloads are not
    * rewritten; callers migrate then [validate]. Unknown versions and tampered integrity loud-fail.
    */
   fun migrate(packet: Map<String, Any?>): Map<String, Any?> {
     return when (val version = packet["packet_version"]) {
       VERSION -> packet
-      LEGACY_VERSION_0_1 -> migrateFromV01(packet)
+      LEGACY_VERSION_0_2 -> migrateFromV02(packet)
+      LEGACY_VERSION_0_1 -> migrateFromV02(migrateFromV01(packet))
       else -> error(
-        "shared context packet version '$version' is unsupported; expected '$VERSION' or " +
-          "'$LEGACY_VERSION_0_1'",
+        "shared context packet version '$version' is unsupported; expected '$VERSION', " +
+          "'$LEGACY_VERSION_0_2', or '$LEGACY_VERSION_0_1'",
       )
     }
   }
@@ -91,12 +94,45 @@ internal object GoalPlanningSharedContextPacket {
     val withoutLegacy = linkedMapOf<String, Any?>()
     for (field in PACKET_FIELDS) {
       if (field == "packet_version") {
-        withoutLegacy[field] = VERSION
+        withoutLegacy[field] = LEGACY_VERSION_0_2
       } else if (field != "integrity_sha256") {
         withoutLegacy[field] = packet.getValue(field)
       }
     }
     return withoutLegacy + ("integrity_sha256" to digest(withoutLegacy))
+  }
+
+  /**
+   * SKILL-174: 0.2 packets predate the discovery exclusion contract, so a recovered one can still carry
+   * boundary memory harvested from an excluded root. The filter reads the same checked-in contract
+   * discovery denies against, never a duplicated prefix.
+   */
+  private fun migrateFromV02(packet: Map<String, Any?>): Map<String, Any?> {
+    require(packet.keys == PACKET_FIELDS) {
+      "shared context packet fields are invalid for version '$LEGACY_VERSION_0_2'"
+    }
+    require(isStringMap(packet["boundary_memory"])) {
+      "shared context boundary memory is invalid for version '$LEGACY_VERSION_0_2'"
+    }
+    require(packet["integrity_sha256"] == digest(packet - "integrity_sha256")) {
+      "shared context packet integrity is invalid"
+    }
+    val migrated = linkedMapOf<String, Any?>()
+    for (field in PACKET_FIELDS) {
+      when (field) {
+        "packet_version" -> migrated[field] = VERSION
+        "boundary_memory" -> migrated[field] = withoutExcludedRoots(packet.getValue(field))
+        "integrity_sha256" -> Unit
+        else -> migrated[field] = packet.getValue(field)
+      }
+    }
+    return migrated + ("integrity_sha256" to digest(migrated))
+  }
+
+  private fun withoutExcludedRoots(boundaryMemory: Any?): Map<String, String> {
+    val memory = (boundaryMemory as Map<*, *>).entries
+      .associate { (key, value) -> key as String to value as String }
+    return memory.filterKeys { path -> !GoalPlanningDiscoveryExclusions.isExcluded(path) }
   }
 
   fun orderedSubtasks(subtasks: List<DecompositionSubtask>): List<Map<String, Any?>> = subtasks.map { subtask ->

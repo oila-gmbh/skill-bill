@@ -1,0 +1,15 @@
+# Canonical exclusion contract for goal planning / preplanning context discovery.
+#
+# Every listed root is a normalized, repo-relative directory prefix ending in "/".
+# Paths under a listed root NEVER contribute planning or preplanning memory: they are
+# not read into boundary_memory, validation_guidance, or any other planning packet field.
+# The list is a discovery gate (prefix deny), not documentation.
+#
+# An `agent/` tree (agent/history.md, agent/decisions.md) must not exist under any listed
+# root. Platform packs are review-phase inputs only; they carry no boundary memory.
+contract_version: "0.1"
+excluded_roots:
+  - "platform-packs/"
+  - ".git/"
+  - "build/"
+  - "node_modules/"
