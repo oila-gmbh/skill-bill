@@ -34,11 +34,13 @@ import skillbill.application.model.GoalRunnerStopStatus
 import skillbill.application.model.GoalRunnerStopVerbResult
 import skillbill.application.review.RequestedReviewMode
 import skillbill.application.system.RuntimeProvenanceService
+import skillbill.application.telemetry.TelemetryService
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
 import skillbill.cli.core.refuseRuntimeRefusedAgents
 import skillbill.cli.core.refuseUnavailableAgentLaunchers
 import skillbill.cli.featuretask.parseAgentAddonSelection
+import skillbill.cli.telemetry.drainTelemetryOnCompletion
 import skillbill.contracts.system.RuntimeProvenanceContract
 import skillbill.error.DatabaseAccessError
 import skillbill.goalrunner.model.ExecutionLiveness
@@ -83,6 +85,7 @@ class GoalRunCommand(
   private val agentAddonSelectionPort: AgentAddonSelectionPort,
   private val executableLookup: ExecutableLookup,
   goalRunSubcommands: GoalRunSubcommands,
+  private val telemetryService: TelemetryService,
   private val state: CliRunState,
 ) : DocumentedCliCommand("goal", "Run a decomposed goal in the foreground.") {
   private val issueKey by argument(help = "Parent issue key for the decomposed goal.").optional()
@@ -215,6 +218,9 @@ class GoalRunCommand(
     )
     val payload = report.toGoalRunCliMap()
     state.completeText(goalRunText(payload), payload, exitCode = payload.goalExitCode())
+    // Parent completion only: child CLI feature-task processes drain themselves, so a per-child
+    // parent drain would only add concurrent SQLite writers on the same database.
+    drainTelemetryOnCompletion(telemetryService, state.dbOverride)
   }
 
   private fun runRequest(

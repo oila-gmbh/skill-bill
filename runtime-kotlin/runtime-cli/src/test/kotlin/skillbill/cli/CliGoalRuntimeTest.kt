@@ -22,6 +22,8 @@ import skillbill.ports.agentrun.model.AgentRunOutputStream
 import skillbill.ports.goalrunner.GoalPullRequestPort
 import skillbill.ports.goalrunner.model.GoalPullRequestRequest
 import skillbill.ports.goalrunner.model.GoalPullRequestResult
+import skillbill.ports.telemetry.HttpRequester
+import skillbill.ports.telemetry.UnconfiguredHttpRequester
 import skillbill.ports.workflow.GoalSubtaskReviewGitOperations
 import skillbill.ports.workflow.GoalSubtaskReviewGitOperationsProvider
 import skillbill.ports.workflow.RepositoryFingerprintGitOperations
@@ -67,6 +69,26 @@ class CliGoalRuntimeTest {
     assertContains(result.stdout, "reset")
     assertContains(result.stdout, "--debug-child-output")
     assertContains(result.stdout, "raw child streams hidden")
+  }
+
+  @Test
+  fun `goal completion drains a non-empty telemetry outbox`() {
+    val fixture = goalFixture(subtaskCount = 1)
+    val requester = RecordingTelemetryRequester()
+    fixture.materializeDatabaseWithTelemetry(level = "anonymous", requester = requester)
+    seedTelemetryOutbox(fixture.dbPath, "skillbill_fixture_event")
+    assertEquals(1, pendingTelemetryOutboxCount(fixture.dbPath))
+
+    val result = CliRuntime.run(
+      fixture.goalCommand(),
+      fixture.context(launcher = GoalFixtureAgentRunLauncher(fixture), requester = requester),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertContains(result.stdout, "goal SKILL-901: finished")
+    assertEquals(0, pendingTelemetryOutboxCount(fixture.dbPath))
+    assertEquals(1, requester.requests.size, requester.requests.toString())
+    assertContains(requester.requests.single(), TELEMETRY_FIXTURE_PROXY_URL)
   }
 
   @Test
@@ -1862,8 +1884,10 @@ internal data class GoalCliFixture(
     liveStdout: (String) -> Unit = {},
     liveStderr: (String) -> Unit = {},
     workflowGitOperations: WorkflowGitOperations = GoalTestWorkflowGitOperations,
+    requester: HttpRequester = UnconfiguredHttpRequester,
   ): CliRuntimeContext = CliRuntimeContext(
     userHome = tempDir,
+    requester = requester,
     workflowGitOperations = workflowGitOperations,
     agentRunLauncher = launcher,
     goalPullRequestPort = pullRequests,
@@ -1871,6 +1895,13 @@ internal data class GoalCliFixture(
     liveStderr = liveStderr,
     // CLI unit tests assert orchestration, not host PATH; production still uses PathExecutableLookup.
     executableLookup = ExecutableLookup { true },
+  )
+
+  fun materializeDatabaseWithTelemetry(level: String, requester: HttpRequester) = materializeTelemetryDatabase(
+    tempDir,
+    dbPath,
+    level,
+    context(launcher = NoopGoalTestAgentRunLauncher, requester = requester),
   )
 
   fun goalCommand(dbPath: Path = this@GoalCliFixture.dbPath, extra: List<String> = emptyList()): List<String> =
