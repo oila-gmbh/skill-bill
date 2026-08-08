@@ -132,6 +132,8 @@ class GoalRunnerStatusService(
             pauseReason = loadedState.controlState.pauseReason,
             pausedAt = loadedState.controlState.pausedAt,
             stopAfterSubtaskId = loadedState.controlState.stopAfterSubtaskId,
+            activeDurationMs = loadedState.controlState.activeDurationMs,
+            activeDurationAsOf = loadedState.controlState.activeDurationAsOf,
           ),
         )
       }

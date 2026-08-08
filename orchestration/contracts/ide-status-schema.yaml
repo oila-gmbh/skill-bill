@@ -145,6 +145,21 @@ properties:
     description: >
       Instant the pause took effect, from the durable control record. Omitted when
       the paused projection is inferred from lease expiry rather than recorded.
+  active_duration_ms:
+    type: integer
+    minimum: 0
+    description: >
+      Time the goal spent actually executing, accumulated from lease heartbeats. This is
+      not the wall clock since started_at: intervals where the goal sat blocked, paused,
+      or unattended between runs are excluded. Omitted for snapshots with no durable
+      control record. Consumers add now - active_duration_as_of while that field is present.
+  active_duration_as_of:
+    type: string
+    minLength: 1
+    description: >
+      Instant active_duration_ms is current as of. Present only while a lease is live, so
+      a reader can tick the live tail without double counting -- the next heartbeat folds
+      that same tail into active_duration_ms. Absent means the accumulated value is final.
   updated_at:
     type: string
     minLength: 1

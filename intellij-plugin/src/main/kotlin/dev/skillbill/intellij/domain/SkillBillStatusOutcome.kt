@@ -65,6 +65,13 @@ sealed class SkillBillStatusOutcome {
         val pauseRequested: Boolean? = null,
         /** Instant a recorded pause took effect; absent for an inferred pause. */
         val pausedAt: Instant? = null,
+        /**
+         * Execution time the runtime accumulated for this goal, excluding blocked, paused, and
+         * unattended gaps. Null when the snapshot carried none, which is not zero work.
+         */
+        val activeDurationMs: Long? = null,
+        /** Instant [activeDurationMs] is current as of; present only while a lease is live. */
+        val activeDurationAsOf: Instant? = null,
     ) : SkillBillStatusOutcome()
 
     /**
@@ -92,6 +99,10 @@ sealed class SkillBillStatusOutcome {
         val pauseRequested: Boolean? = null,
         /** Instant a recorded pause took effect; absent for an inferred pause. */
         val pausedAt: Instant? = null,
+        /** See [Active.activeDurationMs]. A paused goal accumulates none while it waits. */
+        val activeDurationMs: Long? = null,
+        /** See [Active.activeDurationAsOf]; absent once the runner released its lease. */
+        val activeDurationAsOf: Instant? = null,
     ) : SkillBillStatusOutcome()
 
     data class Stale(

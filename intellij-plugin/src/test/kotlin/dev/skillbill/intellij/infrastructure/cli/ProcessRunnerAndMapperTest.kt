@@ -338,6 +338,41 @@ class IdeStatusJsonMapperTest {
         assertNull(without.pausedAt)
     }
 
+    @Test
+    fun `active duration parses when present and stays absent when omitted`() {
+        val withDuration = goalPayload(null).dropLast(1) +
+            ",\"active_duration_ms\":1380000,\"active_duration_as_of\":\"2026-08-06T09:59:00Z\"}"
+        val parsed = IdeStatusJsonMapper.map(withDuration, now, 0) as SkillBillStatusOutcome.Active
+        assertEquals(1_380_000L, parsed.activeDurationMs)
+        assertEquals(java.time.Instant.parse("2026-08-06T09:59:00Z"), parsed.activeDurationAsOf)
+
+        // Absent must stay null rather than becoming zero: null falls back to the wall clock,
+        // whereas zero would render "0s" as a measurement.
+        val without = IdeStatusJsonMapper.map(goalPayload(null), now, 0) as SkillBillStatusOutcome.Active
+        assertNull(without.activeDurationMs)
+        assertNull(without.activeDurationAsOf)
+    }
+
+    @Test
+    fun `a malformed active duration is dropped rather than rendered as work`() {
+        val cases = listOf(
+            "\"active_duration_ms\":-1",
+            "\"active_duration_ms\":\"1380000\"",
+            "\"active_duration_ms\":null",
+        )
+        cases.forEach { field ->
+            val payload = goalPayload(null).dropLast(1) + ",$field}"
+            val parsed = IdeStatusJsonMapper.map(payload, now, 0) as SkillBillStatusOutcome.Active
+            assertNull("Expected $field to be dropped", parsed.activeDurationMs)
+        }
+
+        val unparseableAnchor = goalPayload(null).dropLast(1) +
+            ",\"active_duration_ms\":1000,\"active_duration_as_of\":\"not-an-instant\"}"
+        val parsed = IdeStatusJsonMapper.map(unparseableAnchor, now, 0) as SkillBillStatusOutcome.Active
+        assertEquals(1_000L, parsed.activeDurationMs)
+        assertNull("An unparseable anchor must not license a live tail", parsed.activeDurationAsOf)
+    }
+
     private fun String.replaceField(field: String, from: String, to: String): String {
         val original = "\"$field\": \"$from\""
         check(contains(original)) { "Fixture no longer contains $original" }

@@ -201,4 +201,139 @@ class GoalRunnerControlStoreTest {
       assertEquals(null, store.executionLease("parent-lease"))
     }
   }
+
+  /** Clearing a pause is operator intent; it must not reset the goal's accumulated execution clock. */
+  @Test
+  fun `clearing control state preserves the accumulated execution clock`() {
+    val dbPath = Files.createTempDirectory("skillbill-goal-clear-active-clock").resolve("metrics.db")
+    val lease = GoalRunnerExecutionLease(
+      generation = 1,
+      ownerToken = "owner-token-123456",
+      hostIdentity = "host",
+      bootIdentity = "boot",
+      pid = 42,
+      processBirthToken = "birth",
+      heartbeatAt = "2026-08-02T10:00:00Z",
+      expiresAt = "2026-08-02T10:00:30Z",
+    )
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = GoalRunnerControlStore(connection)
+      assertTrue(store.acquireExecutionLease("parent-clear", lease))
+      assertTrue(store.heartbeatExecutionLease("parent-clear", lease.copy(heartbeatAt = "2026-08-02T10:00:10Z")))
+      val paused = store.controlState("parent-clear")
+      store.persistControlState(
+        "parent-clear",
+        paused.copy(
+          pauseRequested = true,
+          paused = true,
+          pauseReason = "operator_request",
+          pausedAt = "2026-08-02T10:00:10Z",
+        ),
+      )
+
+      store.clearControlState("parent-clear")
+
+      val cleared = store.controlState("parent-clear")
+      assertEquals(false, cleared.paused)
+      assertEquals(10_000, cleared.activeDurationMs)
+      assertEquals("2026-08-02T10:00:10Z", cleared.activeDurationAsOf)
+    }
+  }
+
+  /**
+   * The goal clock must measure execution, not the wall clock since the goal was opened. A goal that
+   * sits blocked overnight and is relaunched the next morning has not been working for twelve hours.
+   */
+  @Test
+  fun `the active execution clock caps an over-long heartbeat gap instead of counting the downtime`() {
+    val dbPath = Files.createTempDirectory("skillbill-goal-active-clock").resolve("metrics.db")
+    val lease = GoalRunnerExecutionLease(
+      generation = 1,
+      ownerToken = "owner-token-123456",
+      hostIdentity = "host",
+      bootIdentity = "boot",
+      pid = 42,
+      processBirthToken = "birth",
+      heartbeatAt = "2026-08-07T18:22:00Z",
+      expiresAt = "2026-08-07T18:22:30Z",
+    )
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = GoalRunnerControlStore(connection)
+      assertTrue(store.acquireExecutionLease("parent-clock", lease))
+      assertEquals(0, store.controlState("parent-clock").activeDurationMs)
+
+      // Two ten-second heartbeats: twenty seconds of real execution.
+      assertTrue(store.heartbeatExecutionLease("parent-clock", lease.copy(heartbeatAt = "2026-08-07T18:22:10Z")))
+      assertTrue(store.heartbeatExecutionLease("parent-clock", lease.copy(heartbeatAt = "2026-08-07T18:22:20Z")))
+      assertEquals(20_000, store.controlState("parent-clock").activeDurationMs)
+
+      // The runner dies here and the goal sits blocked overnight. A heartbeat landing twelve hours
+      // later cannot mean twelve hours of work: the gap is capped at one interval, so the overnight
+      // downtime stays out of the total while the runner still gets credit for being alive.
+      assertTrue(store.heartbeatExecutionLease("parent-clock", lease.copy(heartbeatAt = "2026-08-08T06:31:00Z")))
+      assertEquals(40_000, store.controlState("parent-clock").activeDurationMs)
+
+      // Work resumes from that anchor and keeps accumulating normally.
+      assertTrue(store.heartbeatExecutionLease("parent-clock", lease.copy(heartbeatAt = "2026-08-08T06:31:10Z")))
+      assertEquals(50_000, store.controlState("parent-clock").activeDurationMs)
+    }
+  }
+
+  /** A late tick from a GC pause or a contended write still covers real execution. */
+  @Test
+  fun `a heartbeat slightly past the limit is credited one interval rather than discarded`() {
+    val dbPath = Files.createTempDirectory("skillbill-goal-late-heartbeat").resolve("metrics.db")
+    val lease = GoalRunnerExecutionLease(
+      generation = 1,
+      ownerToken = "owner-token-123456",
+      hostIdentity = "host",
+      bootIdentity = "boot",
+      pid = 42,
+      processBirthToken = "birth",
+      heartbeatAt = "2026-08-07T18:22:00Z",
+      expiresAt = "2026-08-07T18:22:30Z",
+    )
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = GoalRunnerControlStore(connection)
+      assertTrue(store.acquireExecutionLease("parent-late", lease))
+      assertTrue(store.heartbeatExecutionLease("parent-late", lease.copy(heartbeatAt = "2026-08-07T18:22:20.001Z")))
+      assertEquals(20_000, store.controlState("parent-late").activeDurationMs)
+    }
+  }
+
+  @Test
+  fun `reacquiring a lease after downtime resumes the clock without counting the downtime`() {
+    val dbPath = Files.createTempDirectory("skillbill-goal-active-clock-reacquire").resolve("metrics.db")
+    val lease = GoalRunnerExecutionLease(
+      generation = 1,
+      ownerToken = "owner-token-123456",
+      hostIdentity = "host",
+      bootIdentity = "boot",
+      pid = 42,
+      processBirthToken = "birth",
+      heartbeatAt = "2026-08-07T18:22:00Z",
+      expiresAt = "2026-08-07T18:22:30Z",
+    )
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = GoalRunnerControlStore(connection)
+      assertTrue(store.acquireExecutionLease("parent-reacquire", lease))
+      assertTrue(store.heartbeatExecutionLease("parent-reacquire", lease.copy(heartbeatAt = "2026-08-07T18:22:10Z")))
+      assertTrue(store.releaseExecutionLease("parent-reacquire", lease.ownerToken, lease.generation))
+
+      val nextDay = lease.copy(
+        generation = 2,
+        heartbeatAt = "2026-08-08T06:31:00Z",
+        expiresAt = "2026-08-08T06:31:30Z",
+      )
+      assertTrue(store.acquireExecutionLease("parent-reacquire", nextDay))
+      assertEquals(10_000, store.controlState("parent-reacquire").activeDurationMs)
+
+      assertTrue(store.heartbeatExecutionLease("parent-reacquire", nextDay.copy(heartbeatAt = "2026-08-08T06:31:05Z")))
+      assertEquals(15_000, store.controlState("parent-reacquire").activeDurationMs)
+    }
+  }
 }

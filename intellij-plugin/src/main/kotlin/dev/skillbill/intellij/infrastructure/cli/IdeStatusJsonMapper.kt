@@ -4,6 +4,8 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.google.gson.JsonSyntaxException
+import dev.skillbill.intellij.domain.ACTIVE_DURATION_AS_OF_WIRE_KEY
+import dev.skillbill.intellij.domain.ACTIVE_DURATION_MS_WIRE_KEY
 import dev.skillbill.intellij.domain.GoalPlanningInfo
 import dev.skillbill.intellij.domain.IDE_STATUS_CONTRACT_VERSION
 import dev.skillbill.intellij.domain.NO_MATCHING_WORK_REASON_CODE
@@ -100,6 +102,8 @@ object IdeStatusJsonMapper {
         // Both optional and goal-family-only: a missing key stays null, never false.
         val pauseRequested = root.getAsBoolean(PAUSE_REQUESTED_WIRE_KEY)
         val pausedAt = root.getAsInstant(PAUSED_AT_WIRE_KEY)
+        val activeDurationMs = root.getAsNonNegativeLong(ACTIVE_DURATION_MS_WIRE_KEY)
+        val activeDurationAsOf = root.getAsInstant(ACTIVE_DURATION_AS_OF_WIRE_KEY)
 
         // "No work here" is a healthy idle repository, not a broken status source.
         // Every other problem code is a genuine failure to obtain status.
@@ -176,6 +180,8 @@ object IdeStatusJsonMapper {
                         planning = planning,
                         pauseRequested = pauseRequested,
                         pausedAt = pausedAt,
+                        activeDurationMs = activeDurationMs,
+                        activeDurationAsOf = activeDurationAsOf,
                     )
                 } else {
                     SkillBillStatusOutcome.Active(
@@ -196,6 +202,8 @@ object IdeStatusJsonMapper {
                         planning = planning,
                         pauseRequested = pauseRequested,
                         pausedAt = pausedAt,
+                        activeDurationMs = activeDurationMs,
+                        activeDurationAsOf = activeDurationAsOf,
                     )
                 }
             }
@@ -314,6 +322,12 @@ object IdeStatusJsonMapper {
     /** Strict: a JSON string "true" is a type error, not a boolean. */
     private fun JsonObject.getAsBoolean(key: String): Boolean? =
         get(key)?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isBoolean }?.asBoolean
+
+    /** Strict and non-negative: a malformed or negative duration is dropped, never shown as work. */
+    private fun JsonObject.getAsNonNegativeLong(key: String): Long? =
+        get(key)?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }
+            ?.let { runCatching { it.asLong }.getOrNull() }
+            ?.takeIf { it >= 0 }
 
     private fun JsonObject.getAsInstant(key: String): Instant? {
         val raw = getAsString(key) ?: return null

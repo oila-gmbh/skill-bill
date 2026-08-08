@@ -161,6 +161,93 @@ class StatusUiMapperTest {
         assertNull(ui.subtaskElapsed)
     }
 
+    /**
+     * The reported bug: a goal opened 12h ago that ran for minutes read "12h 10m" under a live
+     * spinner, because the clock was wall time since start and the overnight blocked stretch was
+     * counted as work.
+     */
+    @Test
+    fun `the goal clock counts execution time and excludes the gap a goal spent blocked`() {
+        val openedAt = Instant.parse("2026-08-07T18:22:00Z")
+        val observedAt = Instant.parse("2026-08-08T06:31:00Z")
+        val ui = StatusUiMapper.map(
+            active(startedAt = openedAt, subtaskStartedAt = observedAt).copy(
+                activeDurationMs = Duration.ofMinutes(23).toMillis(),
+                activeDurationAsOf = observedAt,
+            ),
+            observedAt,
+        ) as SkillBillStatusUiState.Active
+
+        assertEquals(Duration.ofMinutes(23), ui.goalElapsed)
+        // The wall clock this replaces still spans the whole overnight gap.
+        assertEquals(Duration.ofHours(12).plusMinutes(9), StatusUiMapper.elapsed(openedAt, observedAt))
+    }
+
+    @Test
+    fun `the live tail ticks between polls and the next heartbeat does not double count it`() {
+        val asOf = Instant.parse("2026-08-08T06:31:00Z")
+        val tenSecondsLater = asOf.plusSeconds(10)
+        val accumulated = Duration.ofMinutes(5)
+        val ui = StatusUiMapper.map(
+            active(startedAt = asOf, subtaskStartedAt = asOf).copy(
+                activeDurationMs = accumulated.toMillis(),
+                activeDurationAsOf = asOf,
+            ),
+            tenSecondsLater,
+        ) as SkillBillStatusUiState.Active
+        assertEquals(accumulated.plusSeconds(10), ui.goalElapsed)
+
+        // The heartbeat folds that same tail in and re-anchors; the total must not jump.
+        val afterHeartbeat = StatusUiMapper.map(
+            active(startedAt = asOf, subtaskStartedAt = asOf).copy(
+                activeDurationMs = accumulated.plusSeconds(10).toMillis(),
+                activeDurationAsOf = tenSecondsLater,
+            ),
+            tenSecondsLater,
+        ) as SkillBillStatusUiState.Active
+        assertEquals(accumulated.plusSeconds(10), afterHeartbeat.goalElapsed)
+    }
+
+    @Test
+    fun `a released lease freezes the goal clock at the accumulated total`() {
+        val asOf = Instant.parse("2026-08-08T06:31:00Z")
+        val ui = StatusUiMapper.map(
+            active(startedAt = asOf, subtaskStartedAt = asOf).copy(
+                activeDurationMs = Duration.ofMinutes(7).toMillis(),
+                activeDurationAsOf = null,
+            ),
+            asOf.plusSeconds(3600),
+        ) as SkillBillStatusUiState.Active
+        assertEquals(Duration.ofMinutes(7), ui.goalElapsed)
+    }
+
+    @Test
+    fun `a snapshot without an accumulated total keeps the previous wall-clock behaviour`() {
+        val start = Instant.parse("2026-08-06T10:00:00Z")
+        val ui = StatusUiMapper.map(
+            active(startedAt = start, subtaskStartedAt = start),
+            start.plusSeconds(45),
+        ) as SkillBillStatusUiState.Active
+        assertEquals(Duration.ofSeconds(45), ui.goalElapsed)
+    }
+
+    @Test
+    fun `withElapsed ticks the active clock from the accumulated total not from startedAt`() {
+        val openedAt = Instant.parse("2026-08-07T18:22:00Z")
+        val asOf = Instant.parse("2026-08-08T06:31:00Z")
+        val active = StatusUiMapper.map(
+            active(startedAt = openedAt, subtaskStartedAt = asOf).copy(
+                activeDurationMs = Duration.ofMinutes(23).toMillis(),
+                activeDurationAsOf = asOf,
+            ),
+            asOf,
+        ) as SkillBillStatusUiState.Active
+
+        val ticked = StatusUiMapper.withElapsed(active, asOf.plusSeconds(5)) as SkillBillStatusUiState.Active
+
+        assertEquals(Duration.ofMinutes(23).plusSeconds(5), ticked.goalElapsed)
+    }
+
     @Test
     fun `withElapsed re-anchors from startedAt and leaves absent subtask absent`() {
         val start = Instant.parse("2026-08-06T10:00:00Z")

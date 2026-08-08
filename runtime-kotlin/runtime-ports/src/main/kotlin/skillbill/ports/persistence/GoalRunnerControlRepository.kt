@@ -1,5 +1,6 @@
 package skillbill.ports.persistence
 
+import skillbill.goalrunner.model.GOAL_ACTIVE_HEARTBEAT_GAP_LIMIT_MS
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.ports.goalrunner.model.GoalRunnerOutOfBandAcceptance
@@ -40,7 +41,12 @@ interface GoalRunnerControlRepository {
   ): Boolean {
     val state = controlState(parentWorkflowId)
     if (state.executionLease?.ownerToken != expectedOwnerToken) return false
-    persistControlState(parentWorkflowId, state.copy(executionLease = lease))
+    // A new run starts the active clock at this instant. The gap since the previous run ended was
+    // downtime and is never folded in, however long the goal sat blocked or unattended.
+    persistControlState(
+      parentWorkflowId,
+      state.copy(executionLease = lease, activeDurationAsOf = lease.heartbeatAt),
+    )
     return true
   }
 
@@ -48,7 +54,7 @@ interface GoalRunnerControlRepository {
     val state = controlState(parentWorkflowId)
     val current = state.executionLease ?: return false
     if (current.ownerToken != lease.ownerToken || current.generation != lease.generation) return false
-    persistControlState(parentWorkflowId, state.copy(executionLease = lease))
+    persistControlState(parentWorkflowId, state.advancedBy(lease.heartbeatAt).copy(executionLease = lease))
     return true
   }
 
@@ -56,9 +62,34 @@ interface GoalRunnerControlRepository {
     val state = controlState(parentWorkflowId)
     val current = state.executionLease ?: return false
     if (current.ownerToken != ownerToken || current.generation != generation) return false
-    persistControlState(parentWorkflowId, state.copy(executionLease = null))
+    // The tail since the last heartbeat is dropped rather than trusted: release carries no clock, and
+    // an unbounded tail is exactly what this accumulator exists to keep out. It is under one interval.
+    persistControlState(
+      parentWorkflowId,
+      state.copy(executionLease = null, activeDurationAsOf = null),
+    )
     return true
   }
+}
+
+/**
+ * Folds the interval since [GoalRunnerControlState.activeDurationAsOf] into the active total.
+ *
+ * The interval is capped at [GOAL_ACTIVE_HEARTBEAT_GAP_LIMIT_MS] rather than discarded when it runs
+ * long. A gap that wide means the runner was not alive for all of it -- a killed run whose lease was
+ * later reacquired -- so the excess is downtime and must not be counted; but a merely late tick from
+ * a GC pause or a contended write still covers real execution, and dropping it outright would make
+ * the accumulator undercount exactly when the machine is busiest. Capping keeps downtime out while
+ * crediting at most one interval of work. An unparseable or backwards timestamp advances nothing and
+ * only re-anchors the marker.
+ */
+private fun GoalRunnerControlState.advancedBy(heartbeatAt: String): GoalRunnerControlState {
+  val previous = activeDurationAsOf ?: return copy(activeDurationAsOf = heartbeatAt)
+  val elapsedMs = runCatching {
+    java.time.Duration.between(java.time.Instant.parse(previous), java.time.Instant.parse(heartbeatAt)).toMillis()
+  }.getOrNull() ?: return copy(activeDurationAsOf = heartbeatAt)
+  val counted = elapsedMs.coerceIn(0, GOAL_ACTIVE_HEARTBEAT_GAP_LIMIT_MS)
+  return copy(activeDurationMs = activeDurationMs + counted, activeDurationAsOf = heartbeatAt)
 }
 
 object EmptyGoalRunnerControlRepository : GoalRunnerControlRepository
