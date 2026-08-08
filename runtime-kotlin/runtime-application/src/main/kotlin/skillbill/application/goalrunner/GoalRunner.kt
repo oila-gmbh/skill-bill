@@ -756,7 +756,8 @@ class GoalRunner(
           "Goal-subtask planning import conflicts with the stored shared preplan or subtask plan. " +
             "This occurs when a shared preplan was regenerated after the child was hydrated, " +
             "making the previously-imported planning bytes stale. " +
-            "Recovery requires hard reset: 'skill-bill goal reset ${state.manifest.issueKey} --hard --yes'. " +
+            "Recover this subtask's child without discarding sibling planning or completed commits: " +
+            "'${scopedChildRecoveryCommand(state.manifest.issueKey, error.subtaskId)}'. " +
             "Planning failure: ${error.message.orEmpty()}",
           "preplan",
         )

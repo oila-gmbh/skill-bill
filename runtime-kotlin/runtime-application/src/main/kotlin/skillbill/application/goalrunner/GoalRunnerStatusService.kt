@@ -512,6 +512,7 @@ class GoalRunnerStatusService(
     discardedPlan = written.deletedPlanCount > 0,
     discardedSharedPreplan = written.discardedSharedPreplan,
     cascadedPlanSubtaskIds = written.cascadedPlanSubtaskIds,
+    clearedChildSubtaskIds = written.clearedChildSubtaskIds,
     before = GoalRunnerReplanSnapshot(
       status = before.manifest.status,
       currentSubtaskId = before.manifest.currentSubtaskIntent.subtaskId.takeIf { it > 0 },

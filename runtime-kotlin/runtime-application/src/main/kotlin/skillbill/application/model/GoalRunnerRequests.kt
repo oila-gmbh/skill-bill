@@ -309,6 +309,7 @@ data class GoalRunnerReplanResult(
   val discardedPlan: Boolean,
   val discardedSharedPreplan: Boolean = false,
   val cascadedPlanSubtaskIds: List<Int> = emptyList(),
+  val clearedChildSubtaskIds: List<Int> = emptyList(),
   val before: GoalRunnerReplanSnapshot,
   val after: GoalRunnerReplanSnapshot,
 )
