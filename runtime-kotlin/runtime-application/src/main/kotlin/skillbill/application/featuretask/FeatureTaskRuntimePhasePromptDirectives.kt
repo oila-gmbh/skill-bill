@@ -5,6 +5,7 @@ import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CO
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.SpecSource
+import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 
 // Phase-scoped prompt directives and the per-phase task directive table, split out of
@@ -227,6 +228,50 @@ internal fun goalContinuationDirective(phaseId: String, suppressDecomposition: B
     yet complete. A blocked plan requires a genuinely missing input or an irreconcilable constraint
     that prevents an implementable plan from being produced.
   """.trimIndent()
+}
+
+/**
+ * Goal-continuation validate-depth directive. Parallel to [goalContinuationDirective]: empty under
+ * [ValidationDepth.FULL] (and non-validate phases) so today's Phase 6 Task text stays byte-for-byte;
+ * under [ValidationDepth.BUILD_ONLY] it is the sole validate Task text (header swaps to it) and also
+ * renders as a titled section that forbids tests and the full repository validation gate.
+ */
+internal fun goalContinuationValidateDepthDirective(phaseId: String, validationDepth: ValidationDepth): String {
+  if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE ||
+    validationDepth != ValidationDepth.BUILD_ONLY
+  ) {
+    return ""
+  }
+  return BUILD_ONLY_VALIDATE_DIRECTIVE_SECTION
+}
+
+/** Task-line text for validate when [ValidationDepth.BUILD_ONLY]; keeps [phaseDirectives] untouched. */
+internal const val BUILD_ONLY_VALIDATE_PHASE_TASK: String =
+  "Prove compile/buildability of the changed modules only. Fix only compile/build failures. Do not " +
+    "run tests, detekt, spotless, lint, dependency scanners, or the full bill-code-check / " +
+    "repository validation gate. Emit a bounded validation_result containing validation_status, " +
+    "checks, and repository_checkpoint; do not embed raw command output or telemetry."
+
+private val BUILD_ONLY_VALIDATE_DIRECTIVE_SECTION: String =
+  """
+    ## Goal-continuation validate depth
+    validation_depth=build_only. Prove compile/buildability only. Fix only compile/build failures.
+    Do not run tests written during implement, do not execute test suites, and do not run detekt,
+    spotless, lint, dependency scanners, or the full bill-code-check / repository validation gate.
+    Batch compile/build repairs the same way full validate batches gate repairs: read the complete
+    finding set from one compile/build run, fix every finding at its root cause, then rerun once to
+    verify. Emit a bounded validation_result containing validation_status, checks, and
+    repository_checkpoint; do not embed raw command output or telemetry.
+  """.trimIndent()
+
+/** Selects the validate Task text from depth; every other phase uses [phaseDirectives] unchanged. */
+internal fun phaseTaskDirective(phaseId: String, validationDepth: ValidationDepth): String {
+  if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE &&
+    validationDepth == ValidationDepth.BUILD_ONLY
+  ) {
+    return BUILD_ONLY_VALIDATE_PHASE_TASK
+  }
+  return phaseDirectives[phaseId] ?: error("No phase directive for runtime phase '$phaseId'.")
 }
 
 // One imperative task directive per phase; the briefing carries the spec-specific scope.

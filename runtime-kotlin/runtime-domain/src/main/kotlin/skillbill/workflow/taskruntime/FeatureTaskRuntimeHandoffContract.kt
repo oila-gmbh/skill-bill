@@ -1,5 +1,6 @@
 package skillbill.workflow.taskruntime
 
+import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
@@ -82,6 +83,7 @@ object FeatureTaskRuntimeHandoffContract {
     expectedRepositoryCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
     branchIdentity: String? = null,
     baseBranch: String = "main",
+    validationDepth: ValidationDepth = ValidationDepth.DEFAULT,
   ): FeatureTaskRuntimePhaseHandoff = FeatureTaskRuntimePhaseHandoff(
     phaseId = declaration.phaseId,
     runInvariants = runInvariants,
@@ -92,6 +94,7 @@ object FeatureTaskRuntimeHandoffContract {
     expectedRepositoryCheckpoint = expectedRepositoryCheckpoint,
     branchIdentity = branchIdentity,
     baseBranch = baseBranch,
+    validationDepth = validationDepth,
     drivingVerdict = drivingVerdict,
     reentryGapCriteria = reentryGapCriteria,
     auditRepairPlan = auditRepairPlan,

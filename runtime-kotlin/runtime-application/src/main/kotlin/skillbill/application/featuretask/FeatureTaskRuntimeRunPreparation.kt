@@ -137,6 +137,7 @@ internal class FeatureTaskRuntimeRunPreparation(
           goalBranch = context.goalBranch,
           parentWorkflowId = context.parentWorkflowId,
           codeReviewMode = selectedMode,
+          validationDepth = context.validationDepth,
           parallelReviewAgent = context.parallelReviewAgent ?: request.parallelReviewAgent,
           agentAddonSelection = context.agentAddonSelection.takeUnless { it.entries.isEmpty() }
             ?: request.agentAddonSelection.persisted,
@@ -232,6 +233,7 @@ private fun goalContinuationContext(
   parentWorkflowId = continuation.parentWorkflowId,
   lastResumableStep = request.goalContinuation?.lastResumableStep,
   codeReviewMode = continuation.codeReviewMode,
+  validationDepth = continuation.validationDepth,
   parallelReviewAgent = continuation.parallelReviewAgent,
   reviewBaseline = baseline,
   agentAddonSelection = continuation.agentAddonSelection,

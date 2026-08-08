@@ -112,6 +112,7 @@ internal fun goalContinuationEnvironment(request: SkillRunRequest): Map<String, 
       context.parentWorkflowId?.let { put("SKILL_BILL_GOAL_PARENT_WORKFLOW_ID", it) }
       context.lastResumableStep?.let { put("SKILL_BILL_GOAL_LAST_RESUMABLE_STEP", it) }
       put("SKILL_BILL_CODE_REVIEW_MODE", context.codeReviewMode.wireValue)
+      put("SKILL_BILL_VALIDATION_DEPTH", context.validationDepth.wireValue)
     }
   }.orEmpty()
 
@@ -449,6 +450,8 @@ private fun MutableList<String>.addGoalContinuationArguments(context: SkillRunGo
   }
   add("--code-review-mode")
   add(context.codeReviewMode.wireValue)
+  add("--validation-depth")
+  add(context.validationDepth.wireValue)
   context.parallelReviewAgent?.takeIf(String::isNotBlank)?.let { parallelAgent ->
     add("--parallel-review-agent")
     add(parallelAgent)

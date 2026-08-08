@@ -11,6 +11,7 @@ import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.review.model.ReviewIssueCategory
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.SpecSource
+import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionBudget
@@ -45,14 +46,16 @@ object FeatureTaskRuntimePhasePromptComposer {
     operatorBlockRetry: FeatureTaskRuntimeOperatorBlockRetry? = null,
     specReference: String? = null,
     implementationContinuation: FeatureTaskRuntimeImplementationContinuation? = null,
+    validationDepth: ValidationDepth = ValidationDepth.DEFAULT,
   ): String {
     require(issueKey.isNotBlank()) { "issueKey is required to compose a phase prompt." }
     return listOf(
-      header(issueKey, briefing.phaseId),
+      header(issueKey, briefing.phaseId, validationDepth),
       ceremonyDirective(briefing, reviewPassNumber),
       mutatingPhaseIdempotencyDirective(briefing.phaseId),
       minimalismDisciplineDirective(briefing.phaseId),
       goalContinuationDirective(briefing.phaseId, suppressDecomposition),
+      goalContinuationValidateDepthDirective(briefing.phaseId, validationDepth),
       reviewExecutionDirective(
         briefing.phaseId,
         ReviewExecutionDirectiveInputs(
@@ -249,9 +252,9 @@ object FeatureTaskRuntimePhasePromptComposer {
       .filterNot { it in FeatureTaskRuntimePhaseWorkflowDefinition.transitions.loopOnlyPhaseIds }
       .joinToString(" -> ")
 
-  private fun header(issueKey: String, phaseId: String): String {
+  private fun header(issueKey: String, phaseId: String, validationDepth: ValidationDepth): String {
     val label = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepLabels[phaseId] ?: phaseId
-    val directive = phaseDirectives[phaseId] ?: error("No phase directive for runtime phase '$phaseId'.")
+    val directive = phaseTaskDirective(phaseId, validationDepth)
     return """
       You are executing exactly one phase of the EXPERIMENTAL skill-bill feature-task-runtime
       loop ($forwardPhaseOrder)

@@ -94,6 +94,7 @@ import skillbill.workflow.model.GoalObservabilityDiffStat
 import skillbill.workflow.model.GoalProgressEventKind
 import skillbill.workflow.model.GoalProgressOutcome
 import skillbill.workflow.model.SpecSource
+import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewPassResult
@@ -636,6 +637,94 @@ class GoalRunnerTest {
     assertEquals("complete", store.manifest.status)
   }
 
+  private fun runRequest(): GoalRunnerRunRequest = GoalRunnerRunRequest(
+    issueKey = "SKILL-56",
+    repoRoot = Path.of("/tmp/skillbill-goal-runner"),
+    invokedAgentId = "claude",
+    dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
+  )
+}
+
+// SKILL-173: validation_depth stamping for non-skipped children. Kept outside [GoalRunnerTest]
+// so that suite stays under the detekt LargeClass threshold.
+class GoalRunnerValidationDepthTest {
+  @Test
+  fun `three non-skipped children stamp build_only then build_only then full`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 3))
+    val outcomes = RecordingOutcomeStore()
+    val launcher = RecordingSubtaskLauncher { request ->
+      val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+      store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
+      outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)
+      launchFacts()
+    }
+    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+
+    assertIs<GoalRunnerRunReport.Completed>(runner.run(runRequest()))
+
+    assertEquals(
+      listOf(ValidationDepth.BUILD_ONLY, ValidationDepth.BUILD_ONLY, ValidationDepth.FULL),
+      launcher.requests.map { requireNotNull(it.skillRunRequest.goalContinuation).validationDepth },
+    )
+  }
+
+  @Test
+  fun `single-subtask goal stamps full validation depth`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
+    val outcomes = RecordingOutcomeStore()
+    val launcher = RecordingSubtaskLauncher { request ->
+      val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+      store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
+      outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)
+      launchFacts()
+    }
+    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+
+    assertIs<GoalRunnerRunReport.Completed>(runner.run(runRequest()))
+
+    assertEquals(
+      ValidationDepth.FULL,
+      requireNotNull(launcher.requests.single().skillRunRequest.goalContinuation).validationDepth,
+    )
+  }
+
+  @Test
+  fun `ordinal-last skipped promotes previous last non-skipped to full`() {
+    val initial = manifest(subtaskCount = 3).copy(
+      subtasks = manifest(subtaskCount = 3).subtasks.map { subtask ->
+        if (subtask.id == 3) subtask.copy(status = "skipped") else subtask
+      },
+    )
+    val store = InMemoryGoalManifestStore(manifest = initial)
+    val outcomes = RecordingOutcomeStore()
+    val launcher = RecordingSubtaskLauncher { request ->
+      val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+      store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
+      outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)
+      launchFacts()
+    }
+    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+
+    assertIs<GoalRunnerRunReport.Completed>(runner.run(runRequest()))
+
+    assertEquals(listOf(1, 2), launcher.requests.map { it.skillRunRequest.subtaskId })
+    assertEquals(
+      listOf(ValidationDepth.BUILD_ONLY, ValidationDepth.FULL),
+      launcher.requests.map { requireNotNull(it.skillRunRequest.goalContinuation).validationDepth },
+    )
+  }
+
+  private fun runRequest(): GoalRunnerRunRequest = GoalRunnerRunRequest(
+    issueKey = "SKILL-56",
+    repoRoot = Path.of("/tmp/skillbill-goal-runner"),
+    invokedAgentId = "claude",
+    dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
+  )
+}
+
+// Linear/local spec-scratch finalize behaviour. Kept outside [GoalRunnerTest] so that suite
+// stays under the detekt LargeClass threshold.
+class GoalRunnerLinearScratchFinalizeTest {
   @Test
   fun `decomposed linear run deletes each subtask spec after its commit and the dir after the final pr`() {
     val repoRoot = Files.createTempDirectory("goal-linear-cleanup")
@@ -768,13 +857,6 @@ class GoalRunnerTest {
     assertEquals(GoalRunnerStopReason.PULL_REQUEST_FAILED, stopped.stop.reason)
     assertContains(stopped.stop.blockedReason, "uncommitted decomposition projection delta")
   }
-
-  private fun runRequest(): GoalRunnerRunRequest = GoalRunnerRunRequest(
-    issueKey = "SKILL-56",
-    repoRoot = Path.of("/tmp/skillbill-goal-runner"),
-    invokedAgentId = "claude",
-    dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
-  )
 
   private fun linearRunRequest(repoRoot: Path): GoalRunnerRunRequest = GoalRunnerRunRequest(
     issueKey = "SKILL-56",

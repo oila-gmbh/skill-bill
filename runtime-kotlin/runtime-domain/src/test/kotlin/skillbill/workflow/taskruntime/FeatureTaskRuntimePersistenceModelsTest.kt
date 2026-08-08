@@ -6,6 +6,7 @@ import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VE
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_RUN_INVARIANTS_CONTRACT_VERSION
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.model.appendBoundedHistoryBySequence
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
@@ -94,51 +95,6 @@ class FeatureTaskRuntimePersistenceModelsTest {
     )
 
     assertEquals(record, FeatureTaskRuntimePhaseRecord.fromArtifactMap(record.toArtifactMap()))
-  }
-
-  @Test
-  fun `goal-continuation artifact retains the immutable review mode and optional parallel lane`() {
-    val artifact = FeatureTaskRuntimeGoalContinuationArtifact(
-      issueKey = "SKILL-119",
-      subtaskId = 2,
-      suppressPr = true,
-      goalBranch = "feat/SKILL-119-subtask-2",
-      parentWorkflowId = "wfl-parent",
-      codeReviewMode = CodeReviewExecutionMode.DELEGATED,
-      parallelReviewAgent = "claude",
-      agentAddonSelection = AgentAddonSelection(
-        listOf(
-          PersistedAgentAddonSelectionEntry(
-            "helper",
-            "/repo/agent-addons/helper/agent-addon.yaml",
-            "a".repeat(64),
-          ),
-        ),
-      ),
-    )
-
-    assertEquals(artifact, FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(artifact.toArtifactMap()))
-  }
-
-  @Test
-  fun `goal-continuation artifact rejects missing mode unknown fields and blank parallel lane`() {
-    val complete = FeatureTaskRuntimeGoalContinuationArtifact(
-      issueKey = "SKILL-119",
-      subtaskId = 2,
-      suppressPr = true,
-      goalBranch = "feat/SKILL-119-subtask-2",
-      codeReviewMode = CodeReviewExecutionMode.INLINE,
-    ).toArtifactMap()
-
-    assertFailsWith<InvalidWorkflowStateSchemaError> {
-      FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(complete - "code_review_mode")
-    }
-    assertFailsWith<InvalidWorkflowStateSchemaError> {
-      FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(complete + ("unexpected" to true))
-    }
-    assertFailsWith<InvalidWorkflowStateSchemaError> {
-      FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(complete + ("parallel_review_agent" to ""))
-    }
   }
 
   @Test
@@ -553,6 +509,118 @@ class FeatureTaskRuntimePersistenceModelsTest {
   }
 
   @Test
+  fun `ledger entry decode loud-fails on missing timestamp`() {
+    val malformed = mapOf(
+      "action" to "start",
+      "sequence_number" to 0,
+      // timestamp missing
+      "phase_id" to "plan",
+      "attempt_count" to 1,
+    )
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      FeatureTaskRuntimePhaseLedgerEntry.fromArtifactMap(malformed)
+    }
+  }
+
+  @Test
+  fun `append-only ledger keeps monotonic sequence order and prunes oldest beyond the limit`() {
+    var ledger = emptyList<Map<String, Any?>>()
+    (0 until FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT + 3).forEach { index ->
+      val entry = FeatureTaskRuntimePhaseLedgerEntry(
+        action = FeatureTaskRuntimePhaseLedgerAction.RETRY,
+        sequenceNumber = index,
+        timestamp = "2026-06-02T10:00:00Z",
+        phaseId = "implement",
+        attemptCount = 1,
+      )
+      ledger = appendBoundedHistoryBySequence(ledger, entry.toArtifactMap(), FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT)
+    }
+    assertEquals(FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT, ledger.size)
+    val sequences = ledger.map { (it["sequence_number"] as Number).toInt() }
+    assertEquals(sequences.sorted(), sequences)
+    assertEquals(3, sequences.first())
+    assertEquals(FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT + 2, sequences.last())
+  }
+}
+
+// Goal-continuation artifact/outcome persistence. Kept outside
+// [FeatureTaskRuntimePersistenceModelsTest] so that suite stays under the detekt LargeClass threshold.
+class FeatureTaskRuntimeGoalContinuationPersistenceModelsTest {
+  @Test
+  fun `goal-continuation artifact retains the immutable review mode and optional parallel lane`() {
+    val artifact = FeatureTaskRuntimeGoalContinuationArtifact(
+      issueKey = "SKILL-119",
+      subtaskId = 2,
+      suppressPr = true,
+      goalBranch = "feat/SKILL-119-subtask-2",
+      parentWorkflowId = "wfl-parent",
+      codeReviewMode = CodeReviewExecutionMode.DELEGATED,
+      validationDepth = ValidationDepth.BUILD_ONLY,
+      parallelReviewAgent = "claude",
+      agentAddonSelection = AgentAddonSelection(
+        listOf(
+          PersistedAgentAddonSelectionEntry(
+            "helper",
+            "/repo/agent-addons/helper/agent-addon.yaml",
+            "a".repeat(64),
+          ),
+        ),
+      ),
+    )
+
+    assertEquals(artifact, FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(artifact.toArtifactMap()))
+  }
+
+  @Test
+  fun `goal-continuation artifact round-trips explicit full and defaults omitted validation_depth`() {
+    val full = FeatureTaskRuntimeGoalContinuationArtifact(
+      issueKey = "SKILL-173",
+      subtaskId = 1,
+      suppressPr = true,
+      goalBranch = "feat/SKILL-173",
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
+      validationDepth = ValidationDepth.FULL,
+    )
+    assertEquals(full, FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(full.toArtifactMap()))
+
+    val legacy = FeatureTaskRuntimeGoalContinuationArtifact(
+      issueKey = "SKILL-173",
+      subtaskId = 1,
+      suppressPr = true,
+      goalBranch = "feat/SKILL-173",
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
+    ).toArtifactMap().toMutableMap().apply { remove("validation_depth") }
+    assertEquals(
+      ValidationDepth.FULL,
+      FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(legacy).validationDepth,
+    )
+  }
+
+  @Test
+  fun `goal-continuation artifact rejects missing mode unknown fields and blank parallel lane`() {
+    val complete = FeatureTaskRuntimeGoalContinuationArtifact(
+      issueKey = "SKILL-119",
+      subtaskId = 2,
+      suppressPr = true,
+      goalBranch = "feat/SKILL-119-subtask-2",
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
+    ).toArtifactMap()
+
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(complete - "code_review_mode")
+    }
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(complete + ("unexpected" to true))
+    }
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(complete + ("parallel_review_agent" to ""))
+    }
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(complete + ("validation_depth" to "partial"))
+    }
+  }
+
+  @Test
   fun `goal-continuation outcome round trips agent attribution through its artifact map`() {
     val outcome = FeatureTaskRuntimeGoalContinuationOutcome(
       issueKey = "SKILL-89",
@@ -626,39 +694,5 @@ class FeatureTaskRuntimePersistenceModelsTest {
     assertFailsWith<InvalidWorkflowStateSchemaError> {
       FeatureTaskRuntimeGoalContinuationOutcome.fromArtifactMap(malformed)
     }
-  }
-
-  @Test
-  fun `ledger entry decode loud-fails on missing timestamp`() {
-    val malformed = mapOf(
-      "action" to "start",
-      "sequence_number" to 0,
-      // timestamp missing
-      "phase_id" to "plan",
-      "attempt_count" to 1,
-    )
-    assertFailsWith<InvalidWorkflowStateSchemaError> {
-      FeatureTaskRuntimePhaseLedgerEntry.fromArtifactMap(malformed)
-    }
-  }
-
-  @Test
-  fun `append-only ledger keeps monotonic sequence order and prunes oldest beyond the limit`() {
-    var ledger = emptyList<Map<String, Any?>>()
-    (0 until FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT + 3).forEach { index ->
-      val entry = FeatureTaskRuntimePhaseLedgerEntry(
-        action = FeatureTaskRuntimePhaseLedgerAction.RETRY,
-        sequenceNumber = index,
-        timestamp = "2026-06-02T10:00:00Z",
-        phaseId = "implement",
-        attemptCount = 1,
-      )
-      ledger = appendBoundedHistoryBySequence(ledger, entry.toArtifactMap(), FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT)
-    }
-    assertEquals(FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT, ledger.size)
-    val sequences = ledger.map { (it["sequence_number"] as Number).toInt() }
-    assertEquals(sequences.sorted(), sequences)
-    assertEquals(3, sequences.first())
-    assertEquals(FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT + 2, sequences.last())
   }
 }

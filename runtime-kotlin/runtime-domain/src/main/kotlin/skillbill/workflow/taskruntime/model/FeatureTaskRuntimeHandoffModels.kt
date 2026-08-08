@@ -3,6 +3,7 @@ package skillbill.workflow.taskruntime.model
 import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.workflow.model.ValidationDepth
 
 /**
  * Domain models for the inter-phase handoff contract. The handoff is an
@@ -158,6 +159,11 @@ data class FeatureTaskRuntimePhaseHandoff(
   val expectedRepositoryCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
   val branchIdentity: String? = null,
   val baseBranch: String = "main",
+  /**
+   * Goal-continuation validate depth for this launch. Defaults to [ValidationDepth.FULL] so
+   * solo/legacy/non-goal runs keep today's validate projection and prompt behavior.
+   */
+  val validationDepth: ValidationDepth = ValidationDepth.DEFAULT,
   /**
    * The driving verdict for a backward-edge re-entry (e.g. the review findings for an
    * `implement_fix` re-entry); null for an ordinary forward launch. Upstream outputs are still

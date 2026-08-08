@@ -61,6 +61,8 @@ Dropping skill files into `~/.claude/skills/` doesn't fix that — they're just 
 - per-project overrides so the same skill behaves differently per repo without forking
 - per-module memory so institutional knowledge lives next to the code
 
+**Long goals don't degrade.** A 25-subtask feature can run overnight because continuity lives in durable state, not in an ever-growing chat — each subtask starts clean, briefed from what was already paid for. [How the token economy works →](docs/token-economy.md)
+
 [Capability deep-dive →](docs/capabilities.md)
 
 ## Reference pack

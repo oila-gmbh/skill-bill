@@ -8,6 +8,7 @@ import skillbill.error.InvalidFeatureTaskRuntimePhaseHandoffSchemaError
 import skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.NoopFeatureTaskRuntimePlanningProjectionValidator
+import skillbill.workflow.model.ValidationDepth
 
 /**
  * Typed handoff-projection primitives. Together they replace the generic upstream-payload map with a
@@ -712,6 +713,13 @@ data class FeatureTaskRuntimeHandoffProjectionInputs(
   val baseBranch: String = "main",
   val addonContentBySlug: Map<String, String> = emptyMap(),
   val workflowId: String? = null,
+  /**
+   * Goal-continuation validate depth used when projecting [VALIDATION_REQUEST] required_checks.
+   * Defaults to [ValidationDepth.FULL] so absent/non-goal launches keep today's merge of plan
+   * validation_strategy + task test_obligations. Domain-safe wire enum — not the application
+   * GoalContinuationContext type.
+   */
+  val validationDepth: ValidationDepth = ValidationDepth.DEFAULT,
   /**
    * Canonical planning-projections schema gate, called before a bounded projection is parsed. The
    * default leaves the schema unenforced and exists only for suites asserting the typed Kotlin rules

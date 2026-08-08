@@ -4,6 +4,7 @@ import skillbill.install.model.InstallAgent
 import skillbill.launcher.agentrun.headlessAgentRunAdapters
 import skillbill.ports.agentrun.model.SkillRunGoalContinuationContext
 import skillbill.ports.agentrun.model.SkillRunRequest
+import skillbill.workflow.model.ValidationDepth
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -54,6 +55,8 @@ class AgentRunGoalContinuationCommandTest {
         "implement",
         "--code-review-mode",
         "inline",
+        "--validation-depth",
+        "full",
         "--agent",
         "claude",
       ),
@@ -64,6 +67,7 @@ class AgentRunGoalContinuationCommandTest {
     assertFalse(request.command.any { value -> value == "claude" && request.command.indexOf(value) == 0 })
     assertEquals("1", request.environment["SKILL_BILL_GOAL_CONTINUATION"])
     assertEquals("inline", request.environment["SKILL_BILL_CODE_REVIEW_MODE"])
+    assertEquals("full", request.environment["SKILL_BILL_VALIDATION_DEPTH"])
     assertTrue(request.inheritEnvironment)
   }
 
@@ -98,6 +102,8 @@ class AgentRunGoalContinuationCommandTest {
         "implement",
         "--code-review-mode",
         "inline",
+        "--validation-depth",
+        "full",
         "--agent",
         "claude",
       ),
@@ -248,6 +254,8 @@ class AgentRunGoalContinuationCommandTest {
         "implement",
         "--code-review-mode",
         "inline",
+        "--validation-depth",
+        "full",
         "--agent",
         "cursor",
       ),
@@ -256,6 +264,7 @@ class AgentRunGoalContinuationCommandTest {
     assertNull(request.stdinText)
     assertEquals("1", request.environment["SKILL_BILL_GOAL_CONTINUATION"])
     assertEquals("inline", request.environment["SKILL_BILL_CODE_REVIEW_MODE"])
+    assertEquals("full", request.environment["SKILL_BILL_VALIDATION_DEPTH"])
     assertTrue(request.inheritEnvironment)
   }
 
@@ -290,6 +299,8 @@ class AgentRunGoalContinuationCommandTest {
         "implement",
         "--code-review-mode",
         "inline",
+        "--validation-depth",
+        "full",
         "--agent",
         "cursor",
       ),
@@ -319,5 +330,29 @@ class AgentRunGoalContinuationCommandTest {
     assertFalse(request.command.contains("resume"))
     assertEquals("cursor", request.command.last())
     assertEquals("--agent", request.command[request.command.size - 2])
+  }
+
+  @Test
+  fun `goal-continuation builder emits stamped build_only and full validation depths`() {
+    val runner = RecordingAgentRunProcessRunner()
+    val adapter = requireNotNull(headlessAgentRunAdapters(runner, ALL_EXECUTABLES_AVAILABLE)[InstallAgent.CLAUDE])
+
+    adapter.launch(
+      skillRunRequest(goalContinuation = goalContinuationContext().copy(validationDepth = ValidationDepth.BUILD_ONLY)),
+    )
+    adapter.launch(
+      skillRunRequest(goalContinuation = goalContinuationContext().copy(validationDepth = ValidationDepth.FULL)),
+    )
+
+    val buildOnly = runner.requests[0]
+    val full = runner.requests[1]
+    val buildOnlyIndex = buildOnly.command.indexOf("--validation-depth")
+    val fullIndex = full.command.indexOf("--validation-depth")
+    assertTrue(buildOnlyIndex >= 0)
+    assertEquals("build_only", buildOnly.command[buildOnlyIndex + 1])
+    assertEquals("build_only", buildOnly.environment["SKILL_BILL_VALIDATION_DEPTH"])
+    assertTrue(fullIndex >= 0)
+    assertEquals("full", full.command[fullIndex + 1])
+    assertEquals("full", full.environment["SKILL_BILL_VALIDATION_DEPTH"])
   }
 }

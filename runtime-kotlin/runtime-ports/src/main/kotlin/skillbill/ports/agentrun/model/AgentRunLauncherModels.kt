@@ -14,6 +14,7 @@ import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.GoalProgressEvent
 import skillbill.workflow.model.GoalProgressEventKind
 import skillbill.workflow.model.GoalProgressOutcome
+import skillbill.workflow.model.ValidationDepth
 import java.nio.file.Path
 import kotlin.time.Duration
 
@@ -109,6 +110,7 @@ data class SkillRunGoalContinuationContext(
   val childWorkflowId: String? = null,
   val assignedWorkflowId: String? = null,
   val codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.DEFAULT,
+  val validationDepth: ValidationDepth = ValidationDepth.DEFAULT,
   val parallelReviewAgent: String? = null,
   val reviewBaseline: GoalSubtaskReviewBaseline? = null,
   val agentAddonSelection: AgentAddonSelection = AgentAddonSelection(),

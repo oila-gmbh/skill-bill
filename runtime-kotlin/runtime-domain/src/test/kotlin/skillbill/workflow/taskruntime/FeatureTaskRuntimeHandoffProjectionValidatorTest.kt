@@ -2,8 +2,11 @@ package skillbill.workflow.taskruntime
 
 import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
+import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCompactReferenceKind
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionBudget
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionField
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionInputs
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionValue
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffPromptVisibility
@@ -28,6 +31,7 @@ import kotlin.test.assertTrue
 private const val CONSUMER = "implement"
 private const val PRODUCER = "plan"
 
+@Suppress("LargeClass") // single suite over one validator; splitting would scatter projection-contract cases
 class FeatureTaskRuntimeHandoffProjectionValidatorTest {
   @Test
   fun `projection byte budget counts the complete canonical delivered representation`() {
@@ -256,6 +260,56 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
       listOf("src/ClaimOnly.kt"),
       assertIs<FeatureTaskRuntimeHandoffProjectionValue.TextList>(fields.getValue("required_exclusions").value).items,
     )
+  }
+
+  @Test
+  fun `build_only validation_request required_checks is compile buildability only`() {
+    val fields = validationRequestFields(ValidationDepth.BUILD_ONLY)
+    val requiredChecks = assertIs<FeatureTaskRuntimeHandoffProjectionValue.TextList>(
+      fields.getValue("required_checks").value,
+    ).items
+    assertEquals(
+      listOf(FeatureTaskRuntimeHandoffProjectionValidator.BUILD_ONLY_COMPILE_BUILDABILITY_CHECK),
+      requiredChecks,
+    )
+    assertFalse(requiredChecks.any { it.contains("test", ignoreCase = true) })
+    assertFalse(requiredChecks.contains("Focused runtime tests."))
+    assertFalse(requiredChecks.contains("Focused unit test."))
+    // Shape stays stable: strategy is still projected, only required_checks contents narrow.
+    assertEquals(
+      listOf("Focused runtime tests."),
+      assertIs<FeatureTaskRuntimeHandoffProjectionValue.TextList>(
+        fields.getValue("validation_strategy").value,
+      ).items,
+    )
+  }
+
+  @Test
+  fun `full and default validation_request required_checks merge strategy and test obligations`() {
+    listOf(ValidationDepth.FULL, ValidationDepth.DEFAULT).forEach { depth ->
+      val requiredChecks = assertIs<FeatureTaskRuntimeHandoffProjectionValue.TextList>(
+        validationRequestFields(depth).getValue("required_checks").value,
+      ).items
+      assertEquals(listOf("Focused runtime tests.", "Focused unit test."), requiredChecks)
+    }
+  }
+
+  @Test
+  fun `validation_receipt declared fields stay validation_status checks repository_checkpoint`() {
+    val expected = listOf("validation_status", "checks", "repository_checkpoint")
+    listOf(
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH,
+    ).forEach { consumer ->
+      val receipt = FeatureTaskRuntimePhaseWorkflowDefinition
+        .phaseDeclaration(consumer, FeatureTaskRuntimeFeatureSize.MEDIUM)
+        .projectionDeclarations
+        .single {
+          it.projectionContractId ==
+            FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_RECEIPT
+        }
+      assertEquals(expected, receipt.declaredFieldNames)
+    }
   }
 
   @Test
@@ -640,6 +694,7 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
     runInvariants: FeatureTaskRuntimeRunInvariants = runInvariants(),
     resolvedCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
     expectedCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
+    validationDepth: ValidationDepth = ValidationDepth.DEFAULT,
   ) = FeatureTaskRuntimeHandoffProjectionInputs(
     consumerPhaseId = consumerPhaseId,
     declarations = declarations,
@@ -648,5 +703,60 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
     resolvedCheckpoint = resolvedCheckpoint,
     expectedCheckpoint = expectedCheckpoint,
     workflowId = "wftr-1",
+    validationDepth = validationDepth,
   )
+
+  private fun validationRequestFields(
+    validationDepth: ValidationDepth,
+  ): Map<String, FeatureTaskRuntimeHandoffProjectionField> {
+    val consumer = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE
+    val declaration = declaration(
+      consumerPhaseId = consumer,
+      sourceRef = FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
+      ),
+      projectionName = "validation_request",
+      projectionContractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_REQUEST,
+      declaredFieldNames = listOf(
+        "validation_strategy",
+        "changed_paths",
+        "required_checks",
+        "repository_checkpoint",
+      ),
+      checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+    )
+    val plan = FeatureTaskRuntimePhaseOutput(
+      phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
+      iteration = 1,
+      payload = """{"produced_outputs":{"projection_kind":"executable_plan","contract_version":"0.1",""" +
+        """"mode":"direct","tasks":[{"task_id":"task-1","description":"Fixture.",""" +
+        """"criterion_refs":["AC-001"],"target_paths_or_symbols":["src/Foo.kt"],""" +
+        """"test_obligations":["Focused unit test."]}],""" +
+        """"validation_strategy":["Focused runtime tests."]}}""",
+    )
+    val implementation = FeatureTaskRuntimePhaseOutput(
+      phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
+      iteration = 1,
+      payload = """{"produced_outputs":{"changed_paths":["src/Foo.kt"]}}""",
+    )
+    val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint(
+      fingerprint = "validate-tree",
+      workingTreeOwnedPaths = listOf("src/Foo.kt"),
+    )
+    val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
+      inputs(
+        consumerPhaseId = consumer,
+        declarations = listOf(declaration),
+        resolvedUpstream = FeatureTaskRuntimeResolvedUpstreamOutputs(
+          mapOf(
+            FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN to plan,
+            FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT to implementation,
+          ),
+        ),
+        resolvedCheckpoint = checkpoint,
+        validationDepth = validationDepth,
+      ),
+    )
+    return envelope.projections.single().fields.associateBy { it.name }
+  }
 }
