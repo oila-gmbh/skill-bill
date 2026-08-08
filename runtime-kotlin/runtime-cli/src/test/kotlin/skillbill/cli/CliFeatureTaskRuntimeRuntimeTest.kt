@@ -2069,9 +2069,11 @@ private fun goalContinuationArtifact(dbPath: Path, workflowId: String): Map<Stri
       }
     }
   }
-  val artifacts = JsonSupport.anyToStringAnyMap(
-    JsonSupport.jsonElementToValue(requireNotNull(JsonSupport.parseObjectOrNull(artifactsJson))),
-  )
+  val artifacts = requireNotNull(
+    JsonSupport.anyToStringAnyMap(
+      JsonSupport.jsonElementToValue(requireNotNull(JsonSupport.parseObjectOrNull(artifactsJson))),
+    ),
+  ) { "artifacts_json for $workflowId is not an object map" }
   return artifacts["goal_continuation"] as Map<String, Any?>?
 }
 

@@ -1,3 +1,13 @@
+## [2026-08-08] SKILL-173 subtask 1 — Thread validation_depth on goal continuation
+Areas: runtime-application/{goalrunner,featuretask,model}, runtime-domain/workflow/{model,taskruntime}, runtime-ports/agentrun, runtime-infra-fs/launcher/agentrun, runtime-cli/featuretask, .feature-specs/SKILL-173
+- Goal-continuation models carry `validation_depth` (`build_only` | `full`); omitted / legacy / non-goal defaults to `full`.
+- `GoalRunner` stamps via `validationDepthForSubtask`: last non-skipped in manifest array order gets `full`, earlier non-skipped get `build_only`; skipped ordinal-last promotes the previous last non-skipped. reusable
+- Status source is `DecompositionSubtask.status`, never dependency.skipped.
+- CLI / command-builder / env round-trip preserves depth on launch and resume; closed-key loud-fail and resume conflict covered in tests.
+- Limitation: validate phase still ignores depth until subtask 2 consumes it; this only threads and stamps the field.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-08-08] Goal planning shared-context packet v0.2
 Areas: runtime-application/goalrunner, .feature-specs/SKILL-172-goal-planning-burst-and-context (deferred follow-on)
 - `GoalPlanningSharedContextPacket.VERSION` is `0.2`; `platform_packs` removed from `PACKET_FIELDS`.

@@ -1681,7 +1681,11 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
     assertEquals(SpecSource.LINEAR, manifest.specSource)
     assertEquals(listOf("linear-subtask-1", "linear-subtask-2"), manifest.subtasks.map { it.linearIssueId })
   }
+}
 
+// Goal-continuation persistence and SHA measurement paths. Kept outside
+// [FeatureTaskRuntimeRunnerPersistenceTest] so that suite stays under the detekt LargeClass threshold.
+class FeatureTaskRuntimeGoalContinuationPersistenceTest {
   @Test
   fun `goal-continuation run suppresses decompose and pr then completes at commit push`() {
     val repoRoot = Files.createTempDirectory("skillbill-runtime-goal-subtask")

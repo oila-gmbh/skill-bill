@@ -11,10 +11,10 @@ import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.model.ReviewProcessOutcome
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.model.CodeReviewExecutionMode
-import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.model.GoalProgressEvent
 import skillbill.workflow.model.GoalProgressEventKind
 import skillbill.workflow.model.GoalProgressOutcome
+import skillbill.workflow.model.ValidationDepth
 import java.nio.file.Path
 import kotlin.time.Duration
 

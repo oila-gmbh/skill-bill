@@ -74,28 +74,26 @@ class FeatureTaskRuntimeGoalContinuationPolicyTest {
     goalContinuation = goalContinuation,
   )
 
-  private fun continuation(
-    validationDepth: ValidationDepth,
-  ): FeatureTaskRuntimeGoalContinuationContext = FeatureTaskRuntimeGoalContinuationContext(
-    parentIssueKey = "SKILL-173",
-    subtaskId = 1,
-    goalBranch = "feat/SKILL-173",
-    suppressPr = true,
-    parentWorkflowId = "wfl-parent",
-    codeReviewMode = CodeReviewExecutionMode.INLINE,
-    validationDepth = validationDepth,
-    reviewBaseline = baseline,
-  )
+  private fun continuation(validationDepth: ValidationDepth): FeatureTaskRuntimeGoalContinuationContext =
+    FeatureTaskRuntimeGoalContinuationContext(
+      parentIssueKey = "SKILL-173",
+      subtaskId = 1,
+      goalBranch = "feat/SKILL-173",
+      suppressPr = true,
+      parentWorkflowId = "wfl-parent",
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
+      validationDepth = validationDepth,
+      reviewBaseline = baseline,
+    )
 
-  private fun durable(
-    validationDepth: ValidationDepth,
-  ): FeatureTaskRuntimeGoalContinuationArtifact = FeatureTaskRuntimeGoalContinuationArtifact(
-    issueKey = "SKILL-173",
-    subtaskId = 1,
-    suppressPr = true,
-    goalBranch = "feat/SKILL-173",
-    parentWorkflowId = "wfl-parent",
-    codeReviewMode = CodeReviewExecutionMode.INLINE,
-    validationDepth = validationDepth,
-  )
+  private fun durable(validationDepth: ValidationDepth): FeatureTaskRuntimeGoalContinuationArtifact =
+    FeatureTaskRuntimeGoalContinuationArtifact(
+      issueKey = "SKILL-173",
+      subtaskId = 1,
+      suppressPr = true,
+      goalBranch = "feat/SKILL-173",
+      parentWorkflowId = "wfl-parent",
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
+      validationDepth = validationDepth,
+    )
 }

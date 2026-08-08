@@ -24,6 +24,7 @@ class AgentRunLauncherModelsTest {
     )
     assertEquals(ValidationDepth.FULL, context.validationDepth)
   }
+
   @Test
   fun `skill run request allows no wall-clock cap and validates positive caps and subtask id`() {
     SkillRunRequest(issueKey = "SKILL-56", repoRoot = Path.of("."))
