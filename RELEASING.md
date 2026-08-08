@@ -52,7 +52,7 @@ archive plus its `.sha256` sidecar to the GitHub Release for that tag:
 The `<os>-<arch>` token is the canonical set `macos-arm64` / `windows-x64` /
 `linux-x64`, so downstream installers can resolve the correct asset by host. Each
 artifact ships with a matching `<name>.sha256` file. The build toolchain is
-pinned to JDK 17 (temurin) on every runner. Before upload, each host extracts or
+pinned to JDK 21 (temurin) on every runner. Before upload, each host extracts or
 mounts its native artifacts and compares the included root `LICENSE` bytes; it
 also verifies the adjacent checksum after the licensed artifact is finalized.
 The Linux skills archive includes the root `LICENSE` directly and is checked the

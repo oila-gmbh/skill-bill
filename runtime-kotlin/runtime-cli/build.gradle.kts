@@ -5,7 +5,7 @@ plugins {
   id("skillbill.quality")
   // SKILL-55 subtask 1 (F-004/F-005): self-contained jlink image wiring is hoisted into
   // the skillbill.runtime-image convention plugin. It applies org.beryx.runtime, the
-  // shared module set (incl. java.net.http), the lazy Java 17 link toolchain, the
+  // shared module set (incl. java.net.http), the lazy Java 21 link toolchain, the
   // versioned imageZip name, the sha256 sidecar, and the CC opt-out. We only declare the
   // varying input below: the launcher / archive base name.
   id("skillbill.runtime-image")

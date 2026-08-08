@@ -62,13 +62,13 @@ jobs:
         with:
           fetch-depth: 0
 
-      # AC7: pin the build toolchain to JDK 17 (temurin) on every runner so the
+      # AC7: pin the build toolchain to JDK 21 (temurin) on every runner so the
       # jlink image + jpackage installer are produced with a consistent JDK.
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
 
       # Derive RELEASE_VERSION from the pushed tag (v0.2.0 → 0.2.0) or the
       # staging_version input (workflow_dispatch). Gradle reads this env var in
@@ -185,12 +185,12 @@ jobs:
           node-version: 20
 
       # validate_release_ref delegates to ./gradlew :runtime-cli:run, and `gradlew
-      # check` runs here too, so this job needs the same pinned JDK 17 (AC7).
-      - name: Set up JDK 17
+      # check` runs here too, so this job needs the same pinned JDK 21 (AC7).
+      - name: Set up JDK 21
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: "21"
           cache: gradle
 
       - name: Run Kotlin runtime checks

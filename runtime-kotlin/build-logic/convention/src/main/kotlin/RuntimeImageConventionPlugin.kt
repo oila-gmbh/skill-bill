@@ -19,7 +19,7 @@ import java.nio.file.Path
 
 class RuntimeImageConventionPlugin : Plugin<Project> {
   private companion object {
-    const val LINK_JDK_VERSION = 17
+    const val LINK_JDK_VERSION = 21
 
     // F-002: explicit additive module set. Non-modular jlink cannot derive the module
     // set via jdeps reliably for the kotlin-inject / kotlinx.serialization automatic
@@ -93,7 +93,7 @@ class RuntimeImageConventionPlugin : Plugin<Project> {
   private fun Project.configureStaticRuntimeWiring(hostRuntimeToken: String?) {
     // F-006: keep the link toolchain LAZY. Map the launcher provider to a path String
     // instead of `.get()`-ing it at config time, so unrelated builds (`check`,
-    // installDist) never provision the JDK17 toolchain on a config-cache miss.
+    // installDist) never provision the JDK21 toolchain on a config-cache miss.
     val toolchains = extensions.getByType<JavaToolchainService>()
     val linkJavaHomeProvider: Provider<String> =
       toolchains
