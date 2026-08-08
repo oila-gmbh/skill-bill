@@ -13,6 +13,7 @@ import com.networknt.schema.JsonSchema
 import com.networknt.schema.JsonSchemaFactory
 import com.networknt.schema.SpecVersion
 import com.networknt.schema.ValidationMessage
+import skillbill.contracts.LOCALE_STABLE_SCHEMA_CONFIG
 import skillbill.error.FeatureTaskRuntimePhaseOutputFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
@@ -476,7 +477,7 @@ internal fun loadAuditRepairPlanSchemaText(text: String, sourceLabel: String): J
       "'$FEATURE_TASK_RUNTIME_AUDIT_REPAIR_CONTRACT_VERSION'."
   }
   JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012)
-    .getSchema(ObjectMapper().writeValueAsString(node))
+    .getSchema(ObjectMapper().writeValueAsString(node), LOCALE_STABLE_SCHEMA_CONFIG)
 } catch (error: InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError) {
   throw error
 } catch (error: Exception) {
@@ -510,7 +511,7 @@ private fun loadFeatureTaskRuntimePhaseOutputSchema(): JsonSchema {
     FeatureTaskRuntimePhaseOutputSchemaValidator.assertIdentity(yamlNode)
     val jsonText = ObjectMapper().writeValueAsString(yamlNode)
     val factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012)
-    return factory.getSchema(jsonText)
+    return factory.getSchema(jsonText, LOCALE_STABLE_SCHEMA_CONFIG)
   } catch (error: Throwable) {
     featureTaskRuntimePhaseOutputLog.log(
       Level.SEVERE,

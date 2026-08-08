@@ -6,6 +6,7 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import com.networknt.schema.JsonSchema
 import com.networknt.schema.JsonSchemaFactory
 import com.networknt.schema.SpecVersion
+import skillbill.contracts.LOCALE_STABLE_SCHEMA_CONFIG
 import skillbill.contracts.agentaddon.AGENT_ADDON_CONTRACT_VERSION
 import skillbill.contracts.agentaddon.AgentAddonSchemaPaths
 import skillbill.error.InvalidAgentAddonSchemaError
@@ -55,7 +56,7 @@ class AgentAddonSchemaValidator(
           "schema contract version '$version' does not match '$AGENT_ADDON_CONTRACT_VERSION'",
         )
       }
-      JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012).getSchema(node)
+      JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012).getSchema(node, LOCALE_STABLE_SCHEMA_CONFIG)
     }
 }
 

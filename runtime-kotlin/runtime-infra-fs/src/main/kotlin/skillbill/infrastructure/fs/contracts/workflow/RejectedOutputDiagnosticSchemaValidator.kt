@@ -6,6 +6,7 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import com.networknt.schema.JsonSchema
 import com.networknt.schema.JsonSchemaFactory
 import com.networknt.schema.SpecVersion
+import skillbill.contracts.LOCALE_STABLE_SCHEMA_CONFIG
 import skillbill.contracts.workflow.REJECTED_OUTPUT_DIAGNOSTIC_CONTRACT_VERSION
 import skillbill.contracts.workflow.RejectedOutputDiagnosticSchemaPaths
 import skillbill.error.InvalidRejectedOutputDiagnosticSchemaError
@@ -48,6 +49,7 @@ object RejectedOutputDiagnosticSchemaValidator {
         "Canonical rejected-output diagnostic schema resource is missing.",
       )
     val document: JsonNode = resource.use { stream -> YAMLMapper().readTree(stream) }
-    return JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012).getSchema(document)
+    return JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012)
+      .getSchema(document, LOCALE_STABLE_SCHEMA_CONFIG)
   }
 }

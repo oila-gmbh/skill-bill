@@ -6,6 +6,7 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import com.networknt.schema.JsonSchema
 import com.networknt.schema.JsonSchemaFactory
 import com.networknt.schema.SpecVersion
+import skillbill.contracts.LOCALE_STABLE_SCHEMA_CONFIG
 import skillbill.contracts.workflow.PRODUCER_OUTPUT_EVIDENCE_CONTRACT_VERSION
 import skillbill.contracts.workflow.ProducerOutputEvidenceSchemaPaths
 import skillbill.error.InvalidProducerOutputEvidenceSchemaError
@@ -45,6 +46,7 @@ object ProducerOutputEvidenceSchemaValidator {
         "Canonical producer output evidence schema resource is missing.",
       )
     val document: JsonNode = resource.use { stream -> YAMLMapper().readTree(stream) }
-    return JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012).getSchema(document)
+    return JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012)
+      .getSchema(document, LOCALE_STABLE_SCHEMA_CONFIG)
   }
 }
