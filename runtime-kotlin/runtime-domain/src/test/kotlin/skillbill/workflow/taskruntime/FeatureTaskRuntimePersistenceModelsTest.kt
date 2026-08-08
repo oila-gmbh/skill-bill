@@ -6,6 +6,7 @@ import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VE
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_RUN_INVARIANTS_CONTRACT_VERSION
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.model.appendBoundedHistoryBySequence
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
@@ -105,6 +106,7 @@ class FeatureTaskRuntimePersistenceModelsTest {
       goalBranch = "feat/SKILL-119-subtask-2",
       parentWorkflowId = "wfl-parent",
       codeReviewMode = CodeReviewExecutionMode.DELEGATED,
+      validationDepth = ValidationDepth.BUILD_ONLY,
       parallelReviewAgent = "claude",
       agentAddonSelection = AgentAddonSelection(
         listOf(
@@ -118,6 +120,31 @@ class FeatureTaskRuntimePersistenceModelsTest {
     )
 
     assertEquals(artifact, FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(artifact.toArtifactMap()))
+  }
+
+  @Test
+  fun `goal-continuation artifact round-trips explicit full and defaults omitted validation_depth`() {
+    val full = FeatureTaskRuntimeGoalContinuationArtifact(
+      issueKey = "SKILL-173",
+      subtaskId = 1,
+      suppressPr = true,
+      goalBranch = "feat/SKILL-173",
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
+      validationDepth = ValidationDepth.FULL,
+    )
+    assertEquals(full, FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(full.toArtifactMap()))
+
+    val legacy = FeatureTaskRuntimeGoalContinuationArtifact(
+      issueKey = "SKILL-173",
+      subtaskId = 1,
+      suppressPr = true,
+      goalBranch = "feat/SKILL-173",
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
+    ).toArtifactMap().toMutableMap().apply { remove("validation_depth") }
+    assertEquals(
+      ValidationDepth.FULL,
+      FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(legacy).validationDepth,
+    )
   }
 
   @Test
@@ -138,6 +165,9 @@ class FeatureTaskRuntimePersistenceModelsTest {
     }
     assertFailsWith<InvalidWorkflowStateSchemaError> {
       FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(complete + ("parallel_review_agent" to ""))
+    }
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(complete + ("validation_depth" to "partial"))
     }
   }
 

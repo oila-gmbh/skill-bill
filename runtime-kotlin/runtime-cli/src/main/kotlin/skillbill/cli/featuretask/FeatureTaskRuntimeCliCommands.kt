@@ -41,7 +41,6 @@ import skillbill.application.model.FeatureTaskRuntimeStatusRequest
 import skillbill.application.model.WorkflowFamilyKind
 import skillbill.application.model.WorkflowOpenResult
 import skillbill.application.model.WorkflowUpdateResult
-import skillbill.application.review.RequestedReviewMode
 import skillbill.application.telemetry.TelemetryService
 import skillbill.application.workflow.WorkflowService
 import skillbill.cli.core.CliRunState
@@ -66,6 +65,7 @@ import skillbill.ports.persistence.model.FeatureTaskRouteScope
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.GoalSubtaskOperatorDecision
 import java.nio.file.Path
@@ -159,6 +159,11 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
       "(also resolves inline on every pass), or delegated (experimental specialist " +
       "fan-out, explicit only). Supply at most once; a resumed workflow remains " +
       "pinned to its original mode.",
+  ).multiple()
+  protected val validationDepths by option(
+    "--validation-depth",
+    help = "Goal-continuation validate depth: build_only or full (default). Supply at most once; " +
+      "a resumed goal child remains pinned to its durable depth.",
   ).multiple()
   protected val operatorDecisions by option(
     "--operator-decision",
@@ -362,6 +367,7 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
       parentWorkflowId = goalParentWorkflowId?.takeIf(String::isNotBlank),
       lastResumableStep = goalLastResumableStep?.takeIf(String::isNotBlank),
       codeReviewMode = requestedReviewMode,
+      validationDepth = requestedValidationDepth(),
       parallelReviewAgent = parallelReviewAgent?.takeIf(String::isNotBlank),
       reviewBaseline = requireNotNull(goalReviewBaseSha?.takeIf(String::isNotBlank)) {
         "--goal-review-base-sha is required with goal-continuation options."
@@ -406,13 +412,39 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
     }
   }
 
+  private fun requestedValidationDepth(): ValidationDepth {
+    val depths = validationDepths.map(::parseRequestedValidationDepth)
+    return when (depths.size) {
+      0 -> ValidationDepth.DEFAULT
+      1 -> depths.single()
+      else -> {
+        val rawDepths = validationDepths.joinToString(", ")
+        if (depths.distinct().size == 1) {
+          throw UsageError(
+            "Duplicate --validation-depth '$rawDepths' is not allowed; supply it at most once.",
+          )
+        }
+        throw UsageError(
+          "Conflicting --validation-depth values '$rawDepths' are not allowed; supply exactly one depth.",
+        )
+      }
+    }
+  }
+
   private fun parseRequestedCodeReviewMode(raw: String): CodeReviewExecutionMode = (
     CodeReviewExecutionMode.entries.firstOrNull { it.wireValue == raw }
       ?: throw UsageError(
         "Unknown code-review execution mode '$raw'. Allowed: " +
           "${CodeReviewExecutionMode.entries.joinToString { it.wireValue }}.",
       )
-    ).let(RequestedReviewMode::validate)
+    )
+
+  private fun parseRequestedValidationDepth(raw: String): ValidationDepth =
+    ValidationDepth.entries.firstOrNull { it.wireValue == raw }
+      ?: throw UsageError(
+        "Unknown validation depth '$raw'. Allowed: " +
+          "${ValidationDepth.entries.joinToString { it.wireValue }}.",
+      )
 
   private fun goalContinuationMissingFields(): List<String> = buildList {
     if (goalParentIssueKey.isNullOrBlank()) add("--goal-parent-issue-key is")

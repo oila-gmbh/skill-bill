@@ -5,6 +5,7 @@ import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.workflow.model.ValidationDepth
 
 data class FeatureTaskRuntimeGoalContinuationArtifact(
   val issueKey: String,
@@ -13,6 +14,7 @@ data class FeatureTaskRuntimeGoalContinuationArtifact(
   val goalBranch: String,
   val parentWorkflowId: String? = null,
   val codeReviewMode: CodeReviewExecutionMode,
+  val validationDepth: ValidationDepth = ValidationDepth.DEFAULT,
   val parallelReviewAgent: String? = null,
   val agentAddonSelection: AgentAddonSelection = AgentAddonSelection(),
 ) {
@@ -32,6 +34,7 @@ data class FeatureTaskRuntimeGoalContinuationArtifact(
     "suppress_pr" to suppressPr,
     "goal_branch" to goalBranch,
     "code_review_mode" to codeReviewMode.wireValue,
+    "validation_depth" to validationDepth.wireValue,
   ).apply {
     parentWorkflowId?.let { put("parent_workflow_id", it) }
     parallelReviewAgent?.let { put("parallel_review_agent", it) }
@@ -60,6 +63,7 @@ data class FeatureTaskRuntimeGoalContinuationArtifact(
         goalBranch = raw.requireStringField("goal_branch"),
         parentWorkflowId = raw.optionalStringField("parent_workflow_id"),
         codeReviewMode = raw.requireGoalContinuationCodeReviewMode(),
+        validationDepth = raw.optionalGoalContinuationValidationDepth(),
         parallelReviewAgent = raw.optionalStringField("parallel_review_agent"),
         agentAddonSelection = raw.optionalGoalAgentAddonSelection(),
       )
@@ -74,6 +78,7 @@ private val goalContinuationKeys: Set<String> = setOf(
   "goal_branch",
   "parent_workflow_id",
   "code_review_mode",
+  "validation_depth",
   "parallel_review_agent",
   "agent_addon_selection",
 )
@@ -126,4 +131,13 @@ private fun Map<String, Any?>.requireGoalContinuationCodeReviewMode(): CodeRevie
   CodeReviewExecutionMode.fromWire(requireStringField("code_review_mode"))
 } catch (error: IllegalArgumentException) {
   throw InvalidWorkflowStateSchemaError("Goal-continuation artifact code_review_mode is invalid.", error)
+}
+
+private fun Map<String, Any?>.optionalGoalContinuationValidationDepth(): ValidationDepth {
+  val raw = optionalStringField("validation_depth") ?: return ValidationDepth.DEFAULT
+  return try {
+    ValidationDepth.fromWire(raw)
+  } catch (error: IllegalArgumentException) {
+    throw InvalidWorkflowStateSchemaError("Goal-continuation artifact validation_depth is invalid.", error)
+  }
 }

@@ -11,6 +11,7 @@ import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.model.ReviewProcessOutcome
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.model.GoalProgressEvent
 import skillbill.workflow.model.GoalProgressEventKind
 import skillbill.workflow.model.GoalProgressOutcome
@@ -109,6 +110,7 @@ data class SkillRunGoalContinuationContext(
   val childWorkflowId: String? = null,
   val assignedWorkflowId: String? = null,
   val codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.DEFAULT,
+  val validationDepth: ValidationDepth = ValidationDepth.DEFAULT,
   val parallelReviewAgent: String? = null,
   val reviewBaseline: GoalSubtaskReviewBaseline? = null,
   val agentAddonSelection: AgentAddonSelection = AgentAddonSelection(),

@@ -86,6 +86,7 @@ import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksResult
 import skillbill.ports.workflow.model.WorkflowWorktreeActivityResult
 import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionDependency
 import skillbill.workflow.model.DecompositionManifest
@@ -142,6 +143,72 @@ class GoalRunnerTest {
     assertEquals(listOf("sha-1", "sha-2"), store.manifest.subtasks.map { it.commitSha })
     assertEquals(listOf(1, 2), store.newChildWorkflowSetups.map { it.subtaskId })
     assertTrue(store.newChildWorkflowSetups.all { it.reviewBaseline.reviewBaseSha == "0".repeat(40) })
+  }
+
+  @Test
+  fun `three non-skipped children stamp build_only then build_only then full`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 3))
+    val outcomes = RecordingOutcomeStore()
+    val launcher = RecordingSubtaskLauncher { request ->
+      val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+      store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
+      outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)
+      launchFacts()
+    }
+    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+
+    assertIs<GoalRunnerRunReport.Completed>(runner.run(runRequest()))
+
+    assertEquals(
+      listOf(ValidationDepth.BUILD_ONLY, ValidationDepth.BUILD_ONLY, ValidationDepth.FULL),
+      launcher.requests.map { requireNotNull(it.skillRunRequest.goalContinuation).validationDepth },
+    )
+  }
+
+  @Test
+  fun `single-subtask goal stamps full validation depth`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
+    val outcomes = RecordingOutcomeStore()
+    val launcher = RecordingSubtaskLauncher { request ->
+      val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+      store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
+      outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)
+      launchFacts()
+    }
+    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+
+    assertIs<GoalRunnerRunReport.Completed>(runner.run(runRequest()))
+
+    assertEquals(
+      ValidationDepth.FULL,
+      requireNotNull(launcher.requests.single().skillRunRequest.goalContinuation).validationDepth,
+    )
+  }
+
+  @Test
+  fun `ordinal-last skipped promotes previous last non-skipped to full`() {
+    val initial = manifest(subtaskCount = 3).copy(
+      subtasks = manifest(subtaskCount = 3).subtasks.map { subtask ->
+        if (subtask.id == 3) subtask.copy(status = "skipped") else subtask
+      },
+    )
+    val store = InMemoryGoalManifestStore(manifest = initial)
+    val outcomes = RecordingOutcomeStore()
+    val launcher = RecordingSubtaskLauncher { request ->
+      val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+      store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
+      outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)
+      launchFacts()
+    }
+    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+
+    assertIs<GoalRunnerRunReport.Completed>(runner.run(runRequest()))
+
+    assertEquals(listOf(1, 2), launcher.requests.map { it.skillRunRequest.subtaskId })
+    assertEquals(
+      listOf(ValidationDepth.BUILD_ONLY, ValidationDepth.FULL),
+      launcher.requests.map { requireNotNull(it.skillRunRequest.goalContinuation).validationDepth },
+    )
   }
 
   @Test

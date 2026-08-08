@@ -48,6 +48,9 @@ private fun suppliedGoalContinuationConflict(
   supplied.codeReviewMode?.takeIf { it != durable.codeReviewMode }?.let {
     "The supplied goal-continuation code-review mode conflicts with its durable child policy."
   },
+  supplied.validationDepth.takeIf { it != durable.validationDepth }?.let {
+    "The supplied goal-continuation validation depth conflicts with its durable child policy."
+  },
   supplied.parallelReviewAgent?.takeIf { it != durable.parallelReviewAgent }?.let {
     "The supplied goal-continuation parallel-review agent conflicts with its durable child policy."
   },

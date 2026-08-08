@@ -6,6 +6,7 @@ import skillbill.application.decomposition.parentSpecPath
 import skillbill.config.model.CompactionSettings
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptDeviation
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptReconciliation
@@ -71,6 +72,7 @@ data class FeatureTaskRuntimeGoalContinuationContext(
   val parentWorkflowId: String? = null,
   val lastResumableStep: String? = null,
   val codeReviewMode: CodeReviewExecutionMode? = null,
+  val validationDepth: ValidationDepth = ValidationDepth.DEFAULT,
   val parallelReviewAgent: String? = null,
   val reviewBaseline: GoalSubtaskReviewBaseline? = null,
   val agentAddonSelection: skillbill.agentaddon.model.AgentAddonSelection =

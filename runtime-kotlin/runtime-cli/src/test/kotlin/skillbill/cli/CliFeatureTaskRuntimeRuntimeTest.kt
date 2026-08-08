@@ -4,6 +4,7 @@ import skillbill.application.model.WorkflowFamilyKind
 import skillbill.application.model.WorkflowOpenResult
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliRuntimeContext
+import skillbill.contracts.JsonSupport
 import skillbill.di.RuntimeComponent
 import skillbill.di.create
 import skillbill.error.MalformedMachineConfigError
@@ -809,6 +810,55 @@ class CliFeatureTaskRuntimeRuntimeTest {
     assertEquals(1, resume.exitCode, resume.stdout)
     assertContains(resume.stdout, "is terminal and cannot be resumed")
     assertEquals(emptyList(), resumeLauncher.requests, resume.stdout)
+  }
+
+  @Test
+  fun `feature-task-runtime parses explicit and omitted validation depths on goal continuation`() {
+    listOf(
+      "build_only" to listOf("--validation-depth", "build_only"),
+      "full" to listOf("--validation-depth", "full"),
+      "full" to emptyList(),
+    ).forEach { (expectedDepth, depthArgs) ->
+      val fixture = runtimeFixture(specFileName = "spec_subtask_5_runtime.md")
+      val launcher = RecordingPhaseLauncher()
+      val goalContinuationArgs = listOf(
+        "--agent",
+        "codex",
+        "--goal-parent-issue-key",
+        "SKILL-650",
+        "--goal-subtask-id",
+        "5",
+        "--goal-branch",
+        "feat/existing-runtime-branch",
+        "--goal-review-base-sha",
+        "0000000000000000000000000000000000000000",
+        "--suppress-pr",
+      ) + depthArgs
+
+      val result = CliRuntime.run(
+        fixture.runCommand(extra = goalContinuationArgs),
+        fixture.context(launcher),
+      )
+
+      assertEquals(0, result.exitCode, "$expectedDepth: ${result.stdout}")
+      val workflowId = result.stdout.lines().single { it.startsWith("workflow_id:") }.substringAfter(":").trim()
+      assertEquals(expectedDepth, goalContinuationValidationDepth(fixture.dbPath, workflowId), expectedDepth)
+    }
+  }
+
+  @Test
+  fun `feature-task-runtime non-goal run leaves goal continuation absent`() {
+    val fixture = runtimeFixture()
+    val launcher = RecordingPhaseLauncher()
+
+    val result = CliRuntime.run(
+      fixture.runCommand(extra = listOf("--agent", "codex")),
+      fixture.context(launcher),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    val workflowId = result.stdout.lines().single { it.startsWith("workflow_id:") }.substringAfter(":").trim()
+    assertNull(goalContinuationArtifact(fixture.dbPath, workflowId))
   }
 
   @Test
@@ -2000,6 +2050,30 @@ private fun featureTaskCommand(fixture: FeatureTaskRuntimeCliFixture, command: S
   "--agent",
   "codex",
 )
+
+private fun goalContinuationValidationDepth(dbPath: Path, workflowId: String): String =
+  requireNotNull(goalContinuationArtifact(dbPath, workflowId)?.get("validation_depth") as? String) {
+    "goal_continuation.validation_depth missing for $workflowId"
+  }
+
+@Suppress("UNCHECKED_CAST")
+private fun goalContinuationArtifact(dbPath: Path, workflowId: String): Map<String, Any?>? {
+  val artifactsJson = DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
+    connection.prepareStatement(
+      "SELECT artifacts_json FROM feature_task_workflows WHERE workflow_id = ?",
+    ).use { statement ->
+      statement.setString(1, workflowId)
+      statement.executeQuery().use { rs ->
+        check(rs.next()) { "workflow $workflowId missing" }
+        rs.getString(1)
+      }
+    }
+  }
+  val artifacts = JsonSupport.anyToStringAnyMap(
+    JsonSupport.jsonElementToValue(requireNotNull(JsonSupport.parseObjectOrNull(artifactsJson))),
+  )
+  return artifacts["goal_continuation"] as Map<String, Any?>?
+}
 
 // Replaces the only non-deterministic stdout line (the generated workflow_id) with a stable token so
 // canonical and alias stdout can be compared byte-for-byte.

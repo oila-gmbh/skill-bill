@@ -1740,6 +1740,7 @@ internal class GoalRunnerLaunchReconciler(
         childWorkflowId = childWorkflowId,
         assignedWorkflowId = assignedWorkflowId,
         codeReviewMode = request.codeReviewMode ?: CodeReviewExecutionMode.DEFAULT,
+        validationDepth = validationDepthForSubtask(state.manifest.subtasks, subtaskId),
         parallelReviewAgent = request.parallelReviewAgent,
         agentAddonSelection = manifestStore.effectiveAgentAddonSelection(state.parentWorkflowId, request),
         reviewBaseline = state.manifest.workflowIdFor(subtaskId)
