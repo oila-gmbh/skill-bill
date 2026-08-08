@@ -244,6 +244,18 @@ data class AgentRunLaunchFacts(
   val totalTokens: Long? = null,
   val tokenOwnership: AgentRunTokenOwnership = AgentRunTokenOwnership.DIRECT,
   val providerUsageEnforceable: Boolean = false,
+  /**
+   * Count of provider assistant turns the decoder observed, when the transport exposes them. A zero
+   * count on a zero-exit launch distinguishes "the provider answered nothing" from "the provider
+   * answered and the harvest lost it"; null means the transport carries no such signal.
+   */
+  val assistantEventCount: Int? = null,
+  /**
+   * Bounded, non-authoritative excerpt of the raw provider transport, retained only when decoding
+   * yielded no usable text. It exists for durable failure evidence and must never be treated as
+   * phase output.
+   */
+  val rawOutputPreview: String? = null,
   /** True when raw output exceeded the retention cap, so [stdout] is missing trailing content. */
   val stdoutTruncated: Boolean = false,
   val stdoutByteSize: Long = stdoutBytes.size.toLong(),
@@ -261,6 +273,7 @@ data class AgentRunLaunchFacts(
     ) {
       "Provider token values cannot be negative."
     }
+    assistantEventCount?.let { count -> require(count >= 0) { "assistantEventCount cannot be negative." } }
   }
 }
 

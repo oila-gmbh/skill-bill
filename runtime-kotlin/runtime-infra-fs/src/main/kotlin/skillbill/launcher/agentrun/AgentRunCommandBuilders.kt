@@ -263,11 +263,15 @@ class CursorAgentRunCommandBuilder : AgentRunCommandBuilder {
 
   override fun build(request: SkillRunRequest): AgentRunCommand {
     requireProcessLaunch(request, reviewIsolation)
-    val streaming = request.streamProviderOutput || request.streamOutputForLiveness
+    // --stream-partial-output turns one answer into a run of incremental assistant deltas. That is
+    // what a caller asking for provider output wants, and precisely what a caller asking only for a
+    // liveness signal does not: the deltas are indistinguishable from finished turns at harvest
+    // time. Liveness falls back to process heartbeat instead, as Codex already does.
+    val streamPartialOutput = request.streamProviderOutput
     val isReviewLaunch = request.reviewEvidenceBroker != null
 
     return goalContinuationCommand(request, agent) ?: AgentRunCommand(
-      command = buildCursorCommand(request, isReviewLaunch, streaming),
+      command = buildCursorCommand(request, isReviewLaunch, streamPartialOutput),
       workingDirectory = request.repoRoot,
       timeout = request.timeout,
       stdinText = launchPrompt(request),
@@ -275,52 +279,54 @@ class CursorAgentRunCommandBuilder : AgentRunCommandBuilder {
       inheritEnvironment = !isReviewLaunch,
       conversationIsolation = request.conversationIsolation,
       idlePolicy = when {
-        request.streamOutputForLiveness -> AgentRunIdlePolicy.OUTPUT_EXTENDED
-        request.readOnlyPhase -> AgentRunIdlePolicy.HEARTBEAT_EXTENDED
-        else -> AgentRunIdlePolicy.DB_PROGRESS_ONLY
+        streamPartialOutput && request.streamOutputForLiveness -> AgentRunIdlePolicy.OUTPUT_EXTENDED
+        else -> unstreamedLivenessPolicy(request)
       },
       environmentPassthroughKeys = if (isReviewLaunch) CURSOR_PROVIDER_PASSTHROUGH_KEYS else emptySet(),
     )
   }
 
-  private fun buildCursorCommand(request: SkillRunRequest, isReviewLaunch: Boolean, streaming: Boolean): List<String> =
-    buildList {
-      add("agent")
-      add("--print")
+  private fun buildCursorCommand(
+    request: SkillRunRequest,
+    isReviewLaunch: Boolean,
+    streamPartialOutput: Boolean,
+  ): List<String> = buildList {
+    add("agent")
+    add("--print")
 
-      if (isReviewLaunch) {
-        request.nativeReviewWorkerName?.let { worker ->
-          add("/$worker")
-        }
-        add("--workspace")
-        add(request.repoRoot.toString())
-      } else {
-        add("--force")
-        add("--trust")
-        add("--approve-mcps")
-        add("--workspace")
-        add(request.repoRoot.toString())
+    if (isReviewLaunch) {
+      request.nativeReviewWorkerName?.let { worker ->
+        add("/$worker")
       }
+      add("--workspace")
+      add(request.repoRoot.toString())
+    } else {
+      add("--force")
+      add("--trust")
+      add("--approve-mcps")
+      add("--workspace")
+      add(request.repoRoot.toString())
+    }
 
-      add("--output-format")
-      add("stream-json")
-      if (streaming) add("--stream-partial-output")
+    add("--output-format")
+    add("stream-json")
+    if (streamPartialOutput) add("--stream-partial-output")
 
-      request.modelOverride?.let { model ->
-        val modelArg = request.effortOverride?.let { effort ->
-          mergeModelEffort(model, effort)
-        } ?: model
-        add("--model")
-        add(modelArg)
-      }
-      request.effortOverride?.let { effort ->
-        if (request.modelOverride == null) {
-          require(false) {
-            "Cursor effort directive requires a model directive; add a model directive or remove the effort assignment."
-          }
+    request.modelOverride?.let { model ->
+      val modelArg = request.effortOverride?.let { effort ->
+        mergeModelEffort(model, effort)
+      } ?: model
+      add("--model")
+      add(modelArg)
+    }
+    request.effortOverride?.let { effort ->
+      if (request.modelOverride == null) {
+        require(false) {
+          "Cursor effort directive requires a model directive; add a model directive or remove the effort assignment."
         }
       }
     }
+  }
 
   private fun mergeModelEffort(model: String, effort: String): String {
     val effortPrefix = "[effort="

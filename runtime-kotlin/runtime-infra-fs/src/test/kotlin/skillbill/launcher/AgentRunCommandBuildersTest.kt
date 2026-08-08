@@ -26,6 +26,8 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
@@ -465,12 +467,28 @@ class AgentRunCommandBuildersTest {
   }
 
   @Test
-  fun `cursor streaming launch adds --stream-partial-output and OUTPUT_EXTENDED idle policy`() {
+  fun `cursor provider-output launch adds --stream-partial-output and OUTPUT_EXTENDED idle policy`() {
     val builder = CursorAgentRunCommandBuilder()
-    val command = builder.build(request().copy(streamOutputForLiveness = true))
+    val command = builder.build(
+      request().copy(streamProviderOutput = true, streamOutputForLiveness = true),
+    )
 
     assertTrue(command.command.contains("--stream-partial-output"))
     assertEquals(AgentRunIdlePolicy.OUTPUT_EXTENDED, command.idlePolicy)
+  }
+
+  @Test
+  fun `cursor liveness-only launch withholds --stream-partial-output and falls back to heartbeat`() {
+    val builder = CursorAgentRunCommandBuilder()
+    val command = builder.build(request().copy(streamOutputForLiveness = true))
+
+    assertFalse(
+      command.command.contains("--stream-partial-output"),
+      "partial deltas must not be requested for liveness alone; they are indistinguishable from " +
+        "finished turns at harvest time",
+    )
+    assertTrue(command.command.contains("stream-json"), "the terminal-event transport is still required")
+    assertEquals(AgentRunIdlePolicy.HEARTBEAT_EXTENDED, command.idlePolicy)
   }
 
   @Test
@@ -562,6 +580,59 @@ class AgentRunCommandBuildersTest {
     assertEquals("final", decoded.text)
     assertEquals("final", decoded.text)
     assertEquals(15, decoded.totalTokens)
+  }
+
+  @Test
+  fun `cursor decoder reads camelCase usage keys the CLI actually emits`() {
+    val usage = """{"inputTokens":28164,"cachedInputTokens":11,"outputTokens":0,"totalTokens":28175}"""
+    val jsonl = """{"type":"result","result":"PLAN-OK","usage":$usage}"""
+
+    val decoded = AgentRunOutputDecoder.CURSOR_STREAM_JSON.decode(jsonl)
+
+    assertEquals(28164, decoded.inputTokens)
+    assertEquals(11, decoded.cachedInputTokens)
+    assertEquals(0, decoded.outputTokens)
+    assertEquals(28175, decoded.totalTokens)
+  }
+
+  @Test
+  fun `cursor decoder reports an empty successful turn with zero assistant events`() {
+    val jsonl = """{"type":"system","subtype":"init"}
+{"type":"user","message":{"content":[{"type":"text","text":"briefing"}]}}
+{"type":"result","subtype":"success","is_error":false,"result":"","usage":{"inputTokens":33110,"outputTokens":0}}"""
+
+    val decoded = AgentRunOutputDecoder.CURSOR_STREAM_JSON.decode(jsonl)
+
+    assertEquals("", decoded.text)
+    assertEquals(0, decoded.assistantEventCount)
+    assertEquals(33110, decoded.inputTokens)
+    assertEquals(0, decoded.outputTokens)
+    assertNotNull(decoded.rawOutputPreview, "an empty harvest must retain bounded transport evidence")
+  }
+
+  @Test
+  fun `cursor decoder falls back to the longest assistant turn when the terminal result is blank`() {
+    val jsonl = """{"type":"assistant","message":{"content":[{"type":"text","text":"short"}]}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"{\"status\":\"completed\"}"}]}}
+{"type":"result","result":"","usage":{"inputTokens":10,"outputTokens":4}}"""
+
+    val decoded = AgentRunOutputDecoder.CURSOR_STREAM_JSON.decode(jsonl)
+
+    assertEquals("""{"status":"completed"}""", decoded.text)
+    assertEquals(2, decoded.assistantEventCount)
+    assertNull(decoded.rawOutputPreview, "a harvested turn is not empty-turn evidence")
+  }
+
+  @Test
+  fun `cursor decoder declares an undecodable stream so the launcher degrades to an empty harvest`() {
+    val decoder = AgentRunOutputDecoder.CURSOR_STREAM_JSON
+
+    assertTrue(decoder.undecodable(CursorReviewStreamMalformedError("truncated", RuntimeException())))
+    assertFalse(decoder.undecodable(CursorReviewStreamError("provider said no")))
+    assertFalse(
+      AgentRunOutputDecoder.PLAIN.undecodable(CursorReviewStreamMalformedError("truncated", RuntimeException())),
+      "the default policy keeps propagating; only a decoder that owns the transport may degrade",
+    )
   }
 
   @Test

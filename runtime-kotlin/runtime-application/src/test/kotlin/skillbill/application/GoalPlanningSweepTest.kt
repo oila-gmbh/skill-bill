@@ -4,8 +4,10 @@ import skillbill.application.featuretask.FeatureTaskRuntimeFixLoopPolicy
 import skillbill.application.featuretask.sha256HexUtf8
 import skillbill.application.goalrunner.DefaultGoalPlanningSweep
 import skillbill.application.goalrunner.GoalPlanningAttemptRecorder
+import skillbill.application.goalrunner.GoalPlanningRejectionRecorder
 import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.model.GoalPlanningAttemptRecord
+import skillbill.application.model.GoalPlanningRejectionRecord
 import skillbill.application.model.GoalPlanningSweepOutcome
 import skillbill.application.model.GoalRunnerRunRequest
 import skillbill.application.workflow.GoalPlanningPreparationCheckpoint
@@ -369,7 +371,9 @@ class GoalPlanningSweepTest {
     val fixtures = sharedSweepFixtures()
     val discovery = CountingContextDiscovery()
     val runOneLauncher = SweepPlanningLauncher { phase, subtaskId, _ ->
-      if (subtaskId == 2 && phase == "plan") launchFacts(stdout = "") else validPhaseOutcome(phase)
+      // A hard launch failure, not an empty harvest: this case is about resume continuing at the
+      // next subtask, and an empty harvest now spends the bounded retry budget before it stops.
+      if (subtaskId == 2 && phase == "plan") spawnBlockedOutcome() else validPhaseOutcome(phase)
     }
     val runOne = DefaultGoalPlanningSweep(
       fixtures.checkpoint,
@@ -594,7 +598,98 @@ class GoalPlanningSweepTest {
     assertEquals("preplan", stopped.lastResumableStep)
     assertEquals(0, harness.preparedCount())
     assertEquals(FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS, harness.launcher.phases.size)
-    assertTrue(stopped.blockedReason.contains("schema-invalid output"), stopped.blockedReason)
+    assertTrue(stopped.blockedReason.contains("no acceptable output"), stopped.blockedReason)
+    assertTrue(stopped.blockedReason.contains("Last failure:"), stopped.blockedReason)
+  }
+
+  @Test
+  fun `empty provider turn on a clean exit is retried under the fix-loop cap instead of blocking at once`() {
+    var launches = 0
+    val harness = sweepHarness { phase, _, _ ->
+      launches += 1
+      if (launches == 1) emptyProviderTurnOutcome() else validPhaseOutcome(phase)
+    }
+
+    val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
+
+    assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
+    assertEquals(listOf("preplan", "preplan", "plan"), harness.launcher.phases)
+    assertEquals(1, harness.preparedCount())
+  }
+
+  @Test
+  fun `empty provider turn retry does not tell the agent its prior output was schema-rejected`() {
+    var launches = 0
+    val harness = sweepHarness { phase, _, _ ->
+      launches += 1
+      if (launches == 1) emptyProviderTurnOutcome() else validPhaseOutcome(phase)
+    }
+
+    harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
+
+    val retryPrompt = harness.launcher.requests[1].skillRunRequest.promptOverride.orEmpty()
+    assertFalse(
+      retryPrompt.contains("Previous attempt was REJECTED by the schema gate"),
+      "there is no rejected output to remediate when the provider returned nothing",
+    )
+  }
+
+  @Test
+  fun `exhausted empty provider turns block with launch facts rather than a schema verdict`() {
+    val harness = sweepHarness { _, _, _ -> emptyProviderTurnOutcome() }
+
+    val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
+
+    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
+    assertEquals(FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS, harness.launcher.phases.size)
+    assertEquals(0, harness.preparedCount())
+    assertContains(stopped.blockedReason, "EmptyProviderTurn")
+    assertContains(stopped.blockedReason, "assistantEvents=0")
+    assertContains(stopped.blockedReason, "outputTokens=0")
+    assertFalse(
+      stopped.blockedReason.contains("schema-invalid"),
+      "an operator must not be told the schema rejected output that was never produced",
+    )
+  }
+
+  @Test
+  fun `empty provider turns are retained as durable rejection evidence`() {
+    val recorded = mutableListOf<GoalPlanningRejectionRecord>()
+    val harness = sweepHarness(planningRejectionRecorder = { recorded += it }) { _, _, _ ->
+      emptyProviderTurnOutcome()
+    }
+
+    harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
+
+    assertEquals(FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS, recorded.size)
+    assertEquals(listOf(1, 2, 3), recorded.map { it.attempt })
+    val first = recorded.first()
+    assertEquals("empty-planning-harvest", first.rule)
+    assertEquals("preplan", first.phaseId)
+    assertEquals("claude", first.agentId)
+    assertContains(first.reason, "EmptyProviderTurn")
+    assertEquals("{\"type\":\"result\",\"result\":\"\"}", first.rawEvidence)
+  }
+
+  @Test
+  fun `a non-zero exit still blocks immediately rather than burning the retry budget`() {
+    val harness = sweepHarness { _, _, _ ->
+      AgentRunLaunchFacts(
+        agent = InstallAgent.CLAUDE,
+        exitStatus = 2,
+        stdout = "",
+        stderr = "boom",
+        timedOut = false,
+        interrupted = false,
+        spawnFailed = false,
+      )
+    }
+
+    val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
+
+    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
+    assertEquals(1, harness.launcher.phases.size)
+    assertContains(stopped.blockedReason, "exited with status 2")
   }
 
   @Test
@@ -1106,6 +1201,21 @@ private fun GoalPlanningPreparationRecord.preplanRoot(): Map<String, Any?> =
 
 private fun validPhaseOutcome(phase: String): AgentRunLaunchOutcome = launchFacts(stdout = phasePayload(phase))
 
+/** A provider turn that charged input, emitted no assistant event, and still exited zero. */
+private fun emptyProviderTurnOutcome(): AgentRunLaunchOutcome = AgentRunLaunchFacts(
+  agent = InstallAgent.CLAUDE,
+  exitStatus = 0,
+  stdout = "",
+  stderr = "",
+  timedOut = false,
+  interrupted = false,
+  spawnFailed = false,
+  inputTokens = 33110,
+  outputTokens = 0,
+  assistantEventCount = 0,
+  rawOutputPreview = "{\"type\":\"result\",\"result\":\"\"}",
+)
+
 private fun spawnBlockedOutcome(): AgentRunLaunchOutcome = AgentRunLaunchFacts(
   agent = InstallAgent.CLAUDE,
   exitStatus = null,
@@ -1573,6 +1683,7 @@ private fun sweepHarness(
     NoopFeatureTaskRuntimePlanningProjectionValidator,
   planningAttemptRecorder: GoalPlanningAttemptRecorder = GoalPlanningAttemptRecorder.NONE,
   manifestStore: GoalRunnerManifestStore = NoopGoalPlanningManifestStore,
+  planningRejectionRecorder: GoalPlanningRejectionRecorder = GoalPlanningRejectionRecorder.NONE,
   behavior: (phase: String, subtaskId: Int, request: GoalRunnerSubtaskLaunchRequest) -> AgentRunLaunchOutcome,
 ): SweepHarness {
   val fixtures = sharedSweepFixtures(
@@ -1591,6 +1702,7 @@ private fun sweepHarness(
     planningProjectionValidator,
     planningAttemptRecorder,
     manifestStore = manifestStore,
+    planningRejectionRecorder = planningRejectionRecorder,
   )
   return SweepHarness(fixtures, launcher, sweep)
 }

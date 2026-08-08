@@ -5,11 +5,15 @@ import skillbill.application.decomposition.DECOMPOSITION_MANIFEST_FILENAME
 import skillbill.application.featuretask.FeatureTaskRuntimeFixLoopPolicy
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
 import skillbill.application.featuretask.FeatureTaskRuntimePhasePromptComposer
+import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
+import skillbill.application.featuretask.RejectedOutputDiagnosticRequest
 import skillbill.application.featuretask.boundedSchemaGateDetail
 import skillbill.application.featuretask.producerProjectionGateReason
 import skillbill.application.featuretask.sha256HexUtf8
 import skillbill.application.model.GoalPlanningAttemptRecord
+import skillbill.application.model.GoalPlanningEmptyTurnEvidence
 import skillbill.application.model.GoalPlanningPhaseProduction
+import skillbill.application.model.GoalPlanningRejectionRecord
 import skillbill.application.model.GoalPlanningSweepOutcome
 import skillbill.application.model.GoalRunnerRunRequest
 import skillbill.application.workflow.GoalPlanningPreparationCheckpoint
@@ -98,6 +102,7 @@ class DefaultGoalPlanningSweep(
   private val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
   private val planningAttemptRecorder: GoalPlanningAttemptRecorder = GoalPlanningAttemptRecorder.NONE,
   private val manifestStore: GoalRunnerManifestStore,
+  private val planningRejectionRecorder: GoalPlanningRejectionRecorder = GoalPlanningRejectionRecorder.NONE,
 ) : GoalPlanningSweep {
   @Suppress("ReturnCount")
   override fun prepare(state: GoalRunnerManifestState, request: GoalRunnerRunRequest): GoalPlanningSweepOutcome {
@@ -325,6 +330,7 @@ class DefaultGoalPlanningSweep(
     finalizePayload: (String) -> String = { it },
   ): GoalPlanningPhaseProduction {
     var priorSchemaFailure: String? = null
+    var lastRejection: String? = null
     repeat(FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS) { attemptIndex ->
       val attempt = attemptIndex + 1
       val production = produceAttemptOrStop(
@@ -345,39 +351,64 @@ class DefaultGoalPlanningSweep(
         is GoalPlanningPhaseProduction.SchemaRejected -> {
           recordPlanningAttempt(shared, phaseId, subtask, attempt, GoalProgressOutcome.FAILED)
           priorSchemaFailure = production.reason
+          lastRejection = production.reason
+          return@repeat
+        }
+
+        is GoalPlanningPhaseProduction.EmptyProviderTurn -> {
+          recordPlanningAttempt(shared, phaseId, subtask, attempt, GoalProgressOutcome.FAILED)
+          recordEmptyProviderTurn(shared, phaseId, subtask, attempt, production)
+          // Deliberately leaves priorSchemaFailure untouched: there is no rejected output to
+          // remediate, and injecting one would describe output the agent never produced.
+          lastRejection = production.reason
           return@repeat
         }
 
         is GoalPlanningPhaseProduction.Captured -> Unit
       }
-      val captured = production
-      val payload = finalizePayload(captured.payload)
-      val accepted = if (payload == captured.payload) {
-        skillbill.workflow.taskruntime.model.AcceptedFeatureTaskRuntimePhaseOutput(
-          normalizedOutput = captured.normalizedOutput,
-          repairEvidence = captured.repairEvidence,
-        )
-      } else {
-        outputValidator.validatePhaseOutput(payload, phaseId).requireAcceptedOutput(phaseId)
-      }
-      val canonicalPayload = accepted.normalizedOutput.canonicalJson
-      val gateReason = projectionGateReason(canonicalPayload, phaseId)
-      if (gateReason == null) {
+      val gated = gateCapturedPayload(production, phaseId, finalizePayload)
+      if (gated is GoalPlanningPhaseProduction.Captured) {
         recordPlanningAttempt(shared, phaseId, subtask, attempt, GoalProgressOutcome.SUCCEEDED)
-        return GoalPlanningPhaseProduction.Captured(
-          canonicalPayload,
-          accepted.normalizedOutput,
-          // Enrichment revalidates the final payload, but it must not discard evidence captured
-          // while structurally repairing the child output before enrichment.
-          accepted.repairEvidence ?: captured.repairEvidence,
-        )
+        return gated
       }
+      val gateReason = (gated as GoalPlanningPhaseProduction.SchemaRejected).reason
       recordPlanningAttempt(shared, phaseId, subtask, attempt, GoalProgressOutcome.FAILED)
       priorSchemaFailure = gateReason
+      lastRejection = gateReason
     }
     return GoalPlanningPhaseProduction.Stopped(
-      stopped(shared, subtask?.id ?: 0, fixLoopExhaustedReason(phaseId, priorSchemaFailure.orEmpty()), phaseId),
+      stopped(shared, subtask?.id ?: 0, fixLoopExhaustedReason(phaseId, lastRejection.orEmpty()), phaseId),
     )
+  }
+
+  /**
+   * Runs the exact bytes that would be checkpointed through the producer projection gate. Returns
+   * the captured production when the gate accepts, or the bounded gate detail as a rejection.
+   */
+  private fun gateCapturedPayload(
+    captured: GoalPlanningPhaseProduction.Captured,
+    phaseId: String,
+    finalizePayload: (String) -> String,
+  ): GoalPlanningPhaseProduction {
+    val payload = finalizePayload(captured.payload)
+    val accepted = if (payload == captured.payload) {
+      skillbill.workflow.taskruntime.model.AcceptedFeatureTaskRuntimePhaseOutput(
+        normalizedOutput = captured.normalizedOutput,
+        repairEvidence = captured.repairEvidence,
+      )
+    } else {
+      outputValidator.validatePhaseOutput(payload, phaseId).requireAcceptedOutput(phaseId)
+    }
+    val canonicalPayload = accepted.normalizedOutput.canonicalJson
+    val gateReason = projectionGateReason(canonicalPayload, phaseId)
+      ?: return GoalPlanningPhaseProduction.Captured(
+        canonicalPayload,
+        accepted.normalizedOutput,
+        // Enrichment revalidates the final payload, but it must not discard evidence captured
+        // while structurally repairing the child output before enrichment.
+        accepted.repairEvidence ?: captured.repairEvidence,
+      )
+    return GoalPlanningPhaseProduction.SchemaRejected(gateReason)
   }
 
   @Suppress("TooGenericExceptionCaught")
@@ -406,6 +437,29 @@ class DefaultGoalPlanningSweep(
         subtask?.id ?: 0,
         unexpectedPlanningFailureReason(phaseId, error),
         phaseId,
+      ),
+    )
+  }
+
+  private fun recordEmptyProviderTurn(
+    shared: GoalPlanningSharedContext,
+    phaseId: String,
+    subtask: DecompositionSubtask?,
+    attempt: Int,
+    production: GoalPlanningPhaseProduction.EmptyProviderTurn,
+  ) {
+    planningRejectionRecorder.record(
+      GoalPlanningRejectionRecord(
+        parentWorkflowId = shared.parentWorkflowId,
+        issueKey = shared.issueKey,
+        dbPathOverride = shared.dbPathOverride,
+        phaseId = phaseId,
+        subtaskId = subtask?.id ?: 0,
+        attempt = attempt,
+        rule = EMPTY_PLANNING_HARVEST_RULE,
+        reason = production.reason,
+        agentId = production.evidence.agentId,
+        rawEvidence = production.evidence.rawOutputPreview.orEmpty(),
       ),
     )
   }
@@ -440,9 +494,12 @@ class DefaultGoalPlanningSweep(
   }
 
   private fun fixLoopExhaustedReason(phaseId: String, lastFailure: String): String =
-    "Goal planning '$phaseId' produced schema-invalid output on every attempt " +
+    "Goal planning '$phaseId' produced no acceptable output on every attempt " +
       "(cap=${FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS}); nothing was checkpointed. " +
-      "Last schema failure: $lastFailure"
+      "Last failure: $lastFailure"
+
+  private fun emptyTurnReason(phaseId: String, evidence: GoalPlanningEmptyTurnEvidence): String =
+    "Goal planning '$phaseId' agent turn exited cleanly and returned no output. ${evidence.summary()}"
 
   @Suppress("ReturnCount")
   private fun produceAttempt(
@@ -472,6 +529,7 @@ class DefaultGoalPlanningSweep(
           stopped(shared, currentSubtaskId, projectionRejectedReason(phaseId, error), phaseId),
         )
       }
+    val startedAtNanos = System.nanoTime()
     val outcome = runCatching { launchPlanningAttempt(shared, request, subtask, phaseId, prompt) }
       .getOrElse { error ->
         if (error is GoalRunnerLaunchAuthorizationDeniedException) {
@@ -480,10 +538,9 @@ class DefaultGoalPlanningSweep(
         }
         throw error
       }
+    val durationMs = (System.nanoTime() - startedAtNanos) / NANOS_PER_MILLI
     val stdout = stdoutFor(outcome)
-      ?: return GoalPlanningPhaseProduction.Stopped(
-        stopped(shared, currentSubtaskId, exhaustedReason(outcome, request.planningBudget), phaseId),
-      )
+      ?: return emptyOrStopped(outcome, shared, request, currentSubtaskId, phaseId, durationMs)
     return validatePlanningAttemptOutput(stdout, shared, currentSubtaskId, phaseId)
   }
 
@@ -692,6 +749,42 @@ class DefaultGoalPlanningSweep(
   private fun preparationStateReadReason(error: Throwable): String =
     "Goal planning preparation state could not be read: ${error.message.orEmpty()}"
 
+  /**
+   * A planning launch that exits zero, reports no failure mode and still harvests nothing is a
+   * provider flake, not a bad prompt. It is retried under the same fix-loop cap instead of blocking
+   * the goal on its first occurrence, and its launch facts are retained so the recurrence is
+   * countable rather than anecdotal.
+   */
+  private fun emptyOrStopped(
+    outcome: AgentRunLaunchOutcome,
+    shared: GoalPlanningSharedContext,
+    request: GoalRunnerRunRequest,
+    currentSubtaskId: Int,
+    phaseId: String,
+    durationMs: Long,
+  ): GoalPlanningPhaseProduction {
+    val evidence = emptyTurnEvidence(outcome, durationMs)
+      ?: return GoalPlanningPhaseProduction.Stopped(
+        stopped(shared, currentSubtaskId, exhaustedReason(outcome, request.planningBudget), phaseId),
+      )
+    return GoalPlanningPhaseProduction.EmptyProviderTurn(emptyTurnReason(phaseId, evidence), evidence)
+  }
+
+  private fun emptyTurnEvidence(outcome: AgentRunLaunchOutcome, durationMs: Long): GoalPlanningEmptyTurnEvidence? {
+    if (outcome !is AgentRunLaunchFacts) return null
+    val cleanExit = !outcome.spawnFailed && !outcome.timedOut && !outcome.interrupted && outcome.exitStatus == 0
+    if (!cleanExit) return null
+    return GoalPlanningEmptyTurnEvidence(
+      agentId = outcome.agent.id,
+      durationMs = durationMs,
+      exitStatus = outcome.exitStatus,
+      inputTokens = outcome.inputTokens,
+      outputTokens = outcome.outputTokens,
+      assistantEventCount = outcome.assistantEventCount,
+      rawOutputPreview = outcome.rawOutputPreview,
+    )
+  }
+
   private fun stdoutFor(outcome: AgentRunLaunchOutcome): String? = when (outcome) {
     is AgentRunLaunchFacts -> outcome.stdout.takeIf { stdout ->
       !outcome.spawnFailed &&
@@ -800,6 +893,46 @@ class DefaultGoalPlanningSweep(
     const val PHASE_PREPLAN: String = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN
     const val PHASE_PLAN: String = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN
     const val SHARED_CONTEXT_FIELD = "_goal_planning_shared_context"
+    const val EMPTY_PLANNING_HARVEST_RULE = "empty-planning-harvest"
+    const val NANOS_PER_MILLI = 1_000_000L
+  }
+}
+
+/**
+ * Durable evidence seam for a planning attempt the run rejected without any output to gate. Kept
+ * separate from [GoalPlanningAttemptRecorder], which counts attempts but retains no launch facts.
+ */
+fun interface GoalPlanningRejectionRecorder {
+  fun record(record: GoalPlanningRejectionRecord)
+
+  companion object {
+    val NONE: GoalPlanningRejectionRecorder = GoalPlanningRejectionRecorder {}
+  }
+}
+
+@Inject
+class DurableGoalPlanningRejectionRecorder(
+  private val recorder: FeatureTaskRuntimePhaseRecorder,
+) : GoalPlanningRejectionRecorder {
+  override fun record(record: GoalPlanningRejectionRecord) {
+    // Evidence must never decide the run's outcome: a diagnostics failure leaves the planning
+    // rejection exactly as classified rather than converting it into a crash.
+    runCatching {
+      recorder.recordRejectedOutput(
+        RejectedOutputDiagnosticRequest(
+          workflowId = record.parentWorkflowId,
+          phaseId = record.phaseId,
+          attempt = record.attempt.coerceAtLeast(1),
+          rule = record.rule,
+          path = "/",
+          reason = record.reason,
+          agentId = record.agentId,
+          model = "unspecified",
+          rawResponse = record.rawEvidence.encodeToByteArray(),
+        ),
+        record.dbPathOverride,
+      )
+    }
   }
 }
 
