@@ -11,6 +11,7 @@ import skillbill.application.featuretask.boundedSchemaGateDetail
 import skillbill.application.featuretask.producerProjectionGateReason
 import skillbill.application.featuretask.sha256HexUtf8
 import skillbill.application.model.GoalPlanningAttemptRecord
+import skillbill.application.model.GoalPlanningBurstSchedule
 import skillbill.application.model.GoalPlanningEmptyTurnEvidence
 import skillbill.application.model.GoalPlanningPhaseProduction
 import skillbill.application.model.GoalPlanningRejectionRecord
@@ -45,6 +46,9 @@ import skillbill.ports.persistence.model.GoalSubtaskPlanCheckpoint
 import skillbill.ports.persistence.model.GovernedGoalSubtaskDescriptor
 import skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
+import skillbill.ports.time.NoopRuntimeTimingPort
+import skillbill.ports.time.RuntimeTimingPort
+import skillbill.ports.time.model.RuntimeWaitResult
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
@@ -62,6 +66,7 @@ import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 import java.nio.file.Path
 import java.time.Instant
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.ZERO
 
 fun interface GoalPlanningSweep {
   fun prepare(state: GoalRunnerManifestState, request: GoalRunnerRunRequest): GoalPlanningSweepOutcome
@@ -103,6 +108,8 @@ class DefaultGoalPlanningSweep(
   private val planningAttemptRecorder: GoalPlanningAttemptRecorder = GoalPlanningAttemptRecorder.NONE,
   private val manifestStore: GoalRunnerManifestStore,
   private val planningRejectionRecorder: GoalPlanningRejectionRecorder = GoalPlanningRejectionRecorder.NONE,
+  private val timingPort: RuntimeTimingPort = NoopRuntimeTimingPort,
+  private val burstSchedule: GoalPlanningBurstSchedule = GoalPlanningBurstSchedule(),
 ) : GoalPlanningSweep {
   @Suppress("ReturnCount")
   override fun prepare(state: GoalRunnerManifestState, request: GoalRunnerRunRequest): GoalPlanningSweepOutcome {
@@ -139,6 +146,9 @@ class DefaultGoalPlanningSweep(
         )
       }
     val subtasksById = activeSubtasks.associateBy(DecompositionSubtask::id)
+    // Pace only between consecutive plan launches in this prepare() call — never before the first
+    // (including the first plan after resume) and never after the last.
+    var plansLaunchedThisPrepare = 0
     while (true) {
       val recovery = runCatching {
         checkpoint.recoveryProgress(identity, descriptors, provenance, shared.dbPathOverride).firstMissingSubtaskId
@@ -153,7 +163,11 @@ class DefaultGoalPlanningSweep(
       val subtask = subtasksById[missingId]
         ?: return stopped(shared, missingId, noSuchSubtaskReason(missingId))
       val descriptor = descriptors.single { it.subtaskId == missingId }
+      if (plansLaunchedThisPrepare > 0) {
+        interruptibleWait(burstSchedule.planLaunchPace, shared, missingId, PHASE_PLAN)?.let { return it }
+      }
       producePlan(shared, request, subtask, descriptor, provenance, sharedCheckpoint.preplanPayload)?.let { return it }
+      plansLaunchedThisPrepare += 1
     }
   }
 
@@ -361,6 +375,12 @@ class DefaultGoalPlanningSweep(
           // Deliberately leaves priorSchemaFailure untouched: there is no rejected output to
           // remediate, and injecting one would describe output the agent never produced.
           lastRejection = production.reason
+          if (attempt < FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS) {
+            val backoff = burstSchedule.emptyTurnBackoffAfterAttempt(attempt)
+            interruptibleWait(backoff, shared, subtask?.id ?: 0, phaseId)?.let { stoppedOutcome ->
+              return GoalPlanningPhaseProduction.Stopped(stoppedOutcome)
+            }
+          }
           return@repeat
         }
 
@@ -562,6 +582,36 @@ class DefaultGoalPlanningSweep(
         GoalRunnerStopReason.PAUSED,
       ),
     )
+  }
+
+  /**
+   * Waits [duration] through [timingPort] in [GoalPlanningBurstSchedule.waitSlice] slices so a durable
+   * pause or thread interrupt can terminate the sweep without sleeping through the boundary. Never
+   * uses Thread APIs; [RuntimeWaitResult.INTERRUPTED] maps to the same Stopped shape as a launch
+   * interrupt (blockedReason names interruption; not [unexpectedPlanningFailureReason]).
+   */
+  private fun interruptibleWait(
+    duration: Duration,
+    shared: GoalPlanningSharedContext,
+    subtaskId: Int,
+    phaseId: String,
+  ): GoalPlanningSweepOutcome.Stopped? {
+    if (duration <= ZERO) return null
+    var remaining = duration
+    while (remaining > ZERO) {
+      planningPauseOutcome(shared, subtaskId, phaseId)?.let { return it.outcome }
+      val slice = remaining.coerceAtMost(burstSchedule.waitSlice)
+      when (timingPort.wait(slice)) {
+        RuntimeWaitResult.COMPLETED -> remaining -= slice
+        RuntimeWaitResult.INTERRUPTED -> return stopped(
+          shared,
+          subtaskId,
+          "Goal planning wait was interrupted before launching phase '$phaseId'.",
+          phaseId,
+        )
+      }
+    }
+    return planningPauseOutcome(shared, subtaskId, phaseId)?.outcome
   }
 
   private fun validatePlanningAttemptOutput(

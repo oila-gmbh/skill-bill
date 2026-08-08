@@ -8,6 +8,7 @@ import skillbill.application.goalrunner.GoalPlanningRejectionRecorder
 import skillbill.application.goalrunner.GoalPlanningSharedContextPacket
 import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.model.GoalPlanningAttemptRecord
+import skillbill.application.model.GoalPlanningBurstSchedule
 import skillbill.application.model.GoalPlanningRejectionRecord
 import skillbill.application.model.GoalPlanningSweepOutcome
 import skillbill.application.model.GoalRunnerRunRequest
@@ -16,8 +17,10 @@ import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
+import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.goalrunner.model.GoalRunnerRunReport
+import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
@@ -44,6 +47,9 @@ import skillbill.ports.persistence.model.GoalPlanningIdentity
 import skillbill.ports.persistence.model.GoalPlanningPreparationRecord
 import skillbill.ports.persistence.model.GoalPlanningPreparationStatus
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
+import skillbill.ports.time.NoopRuntimeTimingPort
+import skillbill.ports.time.RuntimeTimingPort
+import skillbill.ports.time.model.RuntimeWaitResult
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
@@ -70,7 +76,9 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 
 @Suppress("LargeClass") // one suite over the sweep's recovery, gate, and stop paths; they share a harness
 class GoalPlanningSweepTest {
@@ -1156,6 +1164,93 @@ class GoalPlanningSweepTest {
     assertEquals(evidence, shared.repairEvidence)
     assertNotNull(harness.recordFor(1), "the repaired shared preplan must reach the plan checkpoint")
   }
+
+  @Test
+  fun `inter-plan pace waits only between consecutive plan launches`() {
+    val pace = 20.seconds
+    val events = mutableListOf<String>()
+    val timing = RecordingRuntimeTimingPort { events += "wait" }
+    var planOrdinal = 0
+    val harness = sweepHarness(
+      timingPort = timing,
+      // One wait() call per logical pace gap so ordinals stay readable.
+      burstSchedule = GoalPlanningBurstSchedule(planLaunchPace = pace, waitSlice = pace),
+    ) { phase, subtaskId, _ ->
+      if (phase == "plan") {
+        planOrdinal += 1
+        events += "plan-$planOrdinal:$subtaskId"
+      }
+      validPhaseOutcome(phase)
+    }
+
+    val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 3)), harness.request())
+
+    assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
+    assertEquals(
+      listOf("plan-1:1", "wait", "plan-2:2", "wait", "plan-3:3"),
+      events,
+      "pace applies only between plan launches — never before the first or after the last",
+    )
+    assertEquals(listOf(pace, pace), timing.waits)
+  }
+
+  @Test
+  fun `empty provider turn backoff waits grow before attempts two and three`() {
+    val timing = RecordingRuntimeTimingPort()
+    val schedule = GoalPlanningBurstSchedule(
+      emptyTurnBackoffBase = 30.seconds,
+      emptyTurnBackoffFactor = 2,
+      waitSlice = 60.seconds,
+    )
+    val harness = sweepHarness(timingPort = timing, burstSchedule = schedule) { _, _, _ ->
+      emptyProviderTurnOutcome()
+    }
+
+    val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
+
+    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
+    assertEquals(FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS, harness.launcher.phases.size)
+    assertEquals(listOf(30.seconds, 60.seconds), timing.waits)
+    assertContains(stopped.blockedReason, "EmptyProviderTurn")
+  }
+
+  @Test
+  fun `a pause requested mid-wait stops the sweep without launching further`() {
+    val pauseStore = MutablePauseGoalPlanningManifestStore()
+    val timing = RecordingRuntimeTimingPort { pauseStore.pauseRequested = true }
+    val harness = sweepHarness(
+      manifestStore = pauseStore,
+      timingPort = timing,
+      burstSchedule = GoalPlanningBurstSchedule(planLaunchPace = 20.seconds, waitSlice = 1.seconds),
+    ) { phase, _, _ -> validPhaseOutcome(phase) }
+
+    val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 2)), harness.request())
+
+    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
+    assertEquals(GoalRunnerStopReason.PAUSED, stopped.reason)
+    assertEquals(listOf("preplan", "plan"), harness.launcher.phases)
+    assertTrue(timing.waits.isNotEmpty())
+  }
+
+  @Test
+  fun `an interrupt during wait stops with the launch-interrupt terminal shape`() {
+    val timing = RecordingRuntimeTimingPort(result = RuntimeWaitResult.INTERRUPTED)
+    val harness = sweepHarness(
+      timingPort = timing,
+      burstSchedule = GoalPlanningBurstSchedule(planLaunchPace = 20.seconds, waitSlice = 20.seconds),
+    ) { phase, _, _ -> validPhaseOutcome(phase) }
+
+    val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 2)), harness.request())
+
+    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
+    assertEquals(GoalRunnerStopReason.BLOCKED, stopped.reason)
+    assertContains(stopped.blockedReason, "interrupted")
+    assertFalse(
+      stopped.blockedReason.contains("failed before its output could be checkpointed"),
+      "a wait interrupt must not be laundered as unexpectedPlanningFailure",
+    )
+    assertEquals(listOf("preplan", "plan"), harness.launcher.phases)
+  }
 }
 
 private fun emptyTestObligationsPlanPayload(): String =
@@ -1722,6 +1817,8 @@ private fun sweepHarness(
   planningAttemptRecorder: GoalPlanningAttemptRecorder = GoalPlanningAttemptRecorder.NONE,
   manifestStore: GoalRunnerManifestStore = NoopGoalPlanningManifestStore,
   planningRejectionRecorder: GoalPlanningRejectionRecorder = GoalPlanningRejectionRecorder.NONE,
+  timingPort: RuntimeTimingPort = NoopRuntimeTimingPort,
+  burstSchedule: GoalPlanningBurstSchedule = GoalPlanningBurstSchedule(),
   behavior: (phase: String, subtaskId: Int, request: GoalRunnerSubtaskLaunchRequest) -> AgentRunLaunchOutcome,
 ): SweepHarness {
   val fixtures = sharedSweepFixtures(
@@ -1741,8 +1838,55 @@ private fun sweepHarness(
     planningAttemptRecorder,
     manifestStore = manifestStore,
     planningRejectionRecorder = planningRejectionRecorder,
+    timingPort = timingPort,
+    burstSchedule = burstSchedule,
   )
   return SweepHarness(fixtures, launcher, sweep)
+}
+
+private class RecordingRuntimeTimingPort(
+  private val result: RuntimeWaitResult = RuntimeWaitResult.COMPLETED,
+  private val onWait: (() -> Unit)? = null,
+) : RuntimeTimingPort {
+  val waits = mutableListOf<Duration>()
+
+  override fun wait(duration: Duration): RuntimeWaitResult {
+    waits += duration
+    onWait?.invoke()
+    return result
+  }
+}
+
+private class MutablePauseGoalPlanningManifestStore : GoalRunnerManifestStore {
+  var pauseRequested: Boolean = false
+
+  override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? =
+    null
+
+  override fun save(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState = state
+
+  override fun controlState(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerControlState =
+    GoalRunnerControlState(pauseRequested = pauseRequested)
+
+  override fun acquireExecutionLease(
+    parentWorkflowId: String,
+    lease: GoalRunnerExecutionLease,
+    expectedOwnerToken: String?,
+    dbPathOverride: String?,
+  ): Boolean = true
+
+  override fun heartbeatExecutionLease(
+    parentWorkflowId: String,
+    lease: GoalRunnerExecutionLease,
+    dbPathOverride: String?,
+  ): Boolean = true
+
+  override fun releaseExecutionLease(
+    parentWorkflowId: String,
+    ownerToken: String,
+    generation: Long,
+    dbPathOverride: String?,
+  ): Boolean = true
 }
 
 private object RejectingSweepPlanningProjectionValidator : FeatureTaskRuntimePlanningProjectionValidator {
