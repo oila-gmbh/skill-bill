@@ -29,6 +29,19 @@ sealed class SkillBillStatusUiState {
     open val problemSummary: String? get() = null
 
     /**
+     * Wire `workflow_family`. Carried to the UI because goal-control eligibility is a
+     * function of it; renderers must not re-derive the family from anything else.
+     */
+    open val workflowFamily: String? get() = null
+
+    /**
+     * Snapshot-reported "pause requested, not yet consumed". Null means the snapshot
+     * said nothing — never coerced to false, so an absent signal stays distinguishable
+     * from an explicit "no pause pending".
+     */
+    open val pauseRequested: Boolean? get() = null
+
+    /**
      * Non-null only while planning progress is worth showing. Relevance is decided once,
      * in [StatusUiMapper]; renderers must not re-derive it.
      */
@@ -79,6 +92,8 @@ sealed class SkillBillStatusUiState {
         override val subtaskStartedAt: Instant?,
         override val lastUpdated: Instant?,
         override val planning: GoalPlanningInfo? = null,
+        override val workflowFamily: String? = null,
+        override val pauseRequested: Boolean? = null,
     ) : SkillBillStatusUiState() {
         override val accessibilityText: String =
             buildString {
@@ -102,6 +117,8 @@ sealed class SkillBillStatusUiState {
         override val subtaskStartedAt: Instant?,
         override val lastUpdated: Instant?,
         override val planning: GoalPlanningInfo? = null,
+        override val workflowFamily: String? = null,
+        override val pauseRequested: Boolean? = null,
     ) : SkillBillStatusUiState() {
         override val accessibilityText: String = "$headline (paused)"
     }

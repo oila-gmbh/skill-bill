@@ -6,6 +6,8 @@ import dev.skillbill.intellij.application.PreferenceCachePort
 import dev.skillbill.intellij.domain.DEFAULT_CLI_TIMEOUT_MS
 import dev.skillbill.intellij.domain.DEFAULT_STDERR_LIMIT_BYTES
 import dev.skillbill.intellij.domain.DEFAULT_STDOUT_LIMIT_BYTES
+import dev.skillbill.intellij.domain.GOAL_PAUSE_VERB
+import dev.skillbill.intellij.domain.REPO_ROOT_OPTION
 import java.nio.file.Path
 
 /**
@@ -42,7 +44,7 @@ class CliGoalPauseRepository(
         val result = try {
             processRunner.runCoalesced(
                 ProcessSpec(
-                    command = listOf(executable, "goal", "pause", key, "--repo-root", canonicalRoot.toString()),
+                    command = listOf(executable) + GOAL_PAUSE_VERB + listOf(key, REPO_ROOT_OPTION, canonicalRoot.toString()),
                     timeoutMs = timeoutMs,
                     stdoutLimitBytes = DEFAULT_STDOUT_LIMIT_BYTES,
                     stderrLimitBytes = DEFAULT_STDERR_LIMIT_BYTES,

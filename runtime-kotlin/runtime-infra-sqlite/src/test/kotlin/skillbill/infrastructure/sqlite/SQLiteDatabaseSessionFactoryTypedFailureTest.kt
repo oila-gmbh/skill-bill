@@ -62,6 +62,26 @@ class SQLiteDatabaseSessionFactoryTypedFailureTest {
   }
 
   @Test
+  fun `a failing read block releases its snapshot instead of leaving a stuck transaction`() {
+    val tempDir = Files.createTempDirectory("skillbill-typed-read-snapshot-release")
+    val dbPath = tempDir.resolve("metrics.db")
+    val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
+    database.transaction(dbPath.toString()) { }
+
+    assertFailsWith<IllegalStateException> {
+      database.read(dbPath.toString()) { unitOfWork ->
+        unitOfWork.workflowStates.getFeatureTaskExecutionIdentity("missing")
+        error("boom")
+      }
+    }
+
+    // Both a later read and a later writer succeed, proving the deferred snapshot was rolled back rather
+    // than left open by the failing block.
+    database.read(dbPath.toString()) { it.workflowStates.getFeatureTaskExecutionIdentity("missing") }
+    database.transaction(dbPath.toString()) { }
+  }
+
+  @Test
   fun `transaction surfaces the typed error rather than a jdbc exception at the ports boundary`() {
     val tempDir = Files.createTempDirectory("skillbill-typed-transaction")
     val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))

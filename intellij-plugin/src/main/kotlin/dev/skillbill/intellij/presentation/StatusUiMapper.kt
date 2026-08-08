@@ -52,6 +52,8 @@ object StatusUiMapper {
                         outcome.currentSubtaskId,
                         outcome.progressCompleted,
                     ),
+                    workflowFamily = outcome.workflowFamily,
+                    pauseRequested = outcome.pauseRequested,
                 )
 
             is SkillBillStatusOutcome.Paused ->
@@ -73,6 +75,8 @@ object StatusUiMapper {
                         outcome.currentSubtaskId,
                         outcome.progressCompleted,
                     ),
+                    workflowFamily = outcome.workflowFamily,
+                    pauseRequested = outcome.pauseRequested,
                 )
 
             is SkillBillStatusOutcome.Stale ->

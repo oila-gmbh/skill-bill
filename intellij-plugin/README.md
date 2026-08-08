@@ -43,8 +43,9 @@ outcomes — never stack traces in the UI. Contract-version mismatches become
 **incompatible**.
 
 Do **not** run `install.sh`, `uninstall.sh`, or `skill-bill install apply` from this
-plugin module; the plugin only invokes the read-only `skill-bill work status
---format json` contract.
+plugin module. Beyond the read-only `skill-bill work status --format json` contract,
+the plugin invokes exactly two mutating verbs — `skill-bill goal stop` and
+`skill-bill goal pause` — from the goal controls described below.
 
 ## Common tasks
 
@@ -66,15 +67,35 @@ Configuration cache is enabled via `gradle.properties`
 - Elapsed goal/work and subtask clocks advance from a lightweight local UI ticker
   that does **not** launch a CLI poll per tick. A new status snapshot re-anchors
   both clocks; disposal stops the ticker and cancels polling.
-- Click performs a read-only coalesced refresh and opens a small details popup
-  (issue/workflow, state, step, progress, both elapsed clocks, last update, typed
-  problem summary). No start / resume / retry / cancel / abandon actions.
+- Click performs a coalesced refresh and opens a details popup (issue/workflow,
+  state, step, progress, both elapsed clocks, last update, typed problem summary).
+
+### Goal controls
+
+The details popup offers two controls, and only when the snapshot reports an active
+`feature-goal` with an issue key:
+
+- **Stop goal** → `skill-bill goal stop <issue-key> --repo-root <canonical>`. The
+  runtime records the operator stop durably and terminates its own runner.
+- **Pause after current subtask** → `skill-bill goal pause <issue-key> --repo-root
+  <canonical>`. The runtime consumes the request at the next subtask boundary, so
+  nothing in flight is interrupted. The control renders disabled while the snapshot
+  reports a pause already requested, including one made from the CLI.
+
+Why this stays safe: both are bounded CLI invocations, each on its own `ProcessRunner`
+instance so a mutation can never return a status poll's result; the plugin reads no
+Skill Bill database and terminates no process itself — termination belongs to the
+runtime verb. Failures surface as a bounded summary that never carries process output,
+stderr, or filesystem paths, and the next status snapshot remains authoritative.
+
+There is deliberately **no Resume control**: resuming picks an agent, a profile, and a
+launch environment the IDE does not own, so it stays a CLI decision.
 
 ## What this release does not include
 
 - Full Skill Bill tool window (explicitly deferred)
 - Marketplace publish or signing
-- Workflow mutation
+- Goal launching, resume, retry, or abandon actions
 - Remote Development / Split Mode (documented as deferred)
 
 ## Compatibility

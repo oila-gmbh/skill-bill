@@ -96,11 +96,13 @@ advance the cache's `observedAt` on a sample that observed nothing.
 ## Dependency Notes
 
 - No dependency on subtask 2. This subtask alone removes the user-visible flicker.
-- **Must be implemented after SKILL-165 merges.** SKILL-165 subtask 2 edits
-  `IdeStatusJsonMapper` and the plugin presentation seam, and adds a `Paused` outcome variant
-  plus `GoalPlanningInfo` that do not exist on `main`. When enumerating "live" outcomes for
-  the unconfirmed check, include `Paused` — a paused goal is live work and must be held
-  through a transient sample exactly like an active one.
+- **SKILL-165 has merged** (commit `46541c1a`), so the `Paused` outcome variant and
+  `GoalPlanningInfo` now exist on `main`; the earlier sequencing constraint is discharged.
+  When enumerating "live" outcomes for the unconfirmed check, include `Paused` — a paused
+  goal is live work and must be held through a transient sample exactly like an active one.
+- No dependency on subtasks 3–5, and none of them depend on this. Note that a lease-expired
+  goal now projects as `Paused` rather than `Active` (landed before this spec), so `Paused`
+  is a materially more common live state than when this subtask was first written.
 
 ## Validation Strategy
 

@@ -12,8 +12,14 @@ import com.intellij.ui.AnimatedIcon
 import com.intellij.ui.awt.RelativePoint
 import com.intellij.util.Alarm
 import com.intellij.util.ui.JBUI
+import dev.skillbill.intellij.application.GoalPauseOutcome
+import dev.skillbill.intellij.application.GoalPauseRepository
+import dev.skillbill.intellij.application.GoalStopOutcome
+import dev.skillbill.intellij.application.GoalStopRepository
 import dev.skillbill.intellij.composition.SkillBillProjectStatusService
 import dev.skillbill.intellij.domain.StatusClock
+import dev.skillbill.intellij.presentation.GoalControlDescriptor
+import dev.skillbill.intellij.presentation.GoalControlKind
 import dev.skillbill.intellij.presentation.SkillBillStatusBarPresentation
 import dev.skillbill.intellij.presentation.SkillBillStatusUiState
 import dev.skillbill.intellij.presentation.SkillBillStatusViewModel
@@ -21,6 +27,7 @@ import java.awt.Component
 import java.awt.Point
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
+import java.nio.file.Path
 import javax.swing.JLabel
 import javax.swing.SwingConstants
 import kotlinx.coroutines.CoroutineScope
@@ -40,6 +47,10 @@ class SkillBillStatusBarWidget(
         project.getService(SkillBillProjectStatusService::class.java).viewModel,
     private val clock: StatusClock = StatusClock.system(),
     private val tickIntervalMs: Long = 1_000L,
+    private val goalPauseRepository: GoalPauseRepository =
+        project.getService(SkillBillProjectStatusService::class.java).goalPauseRepository,
+    private val goalStopRepository: GoalStopRepository =
+        project.getService(SkillBillProjectStatusService::class.java).goalStopRepository,
 ) : CustomStatusBarWidget, StatusBarWidget.WidgetPresentation {
     private val activityIcon = AnimatedIcon.Default()
     private val idleIcon = AllIcons.General.Information
@@ -55,6 +66,13 @@ class SkillBillStatusBarWidget(
     private var latestPresentation: SkillBillStatusBarPresentation.MappedPresentation =
         SkillBillStatusBarPresentation.map(latestState)
     private var subscriptionScope: CoroutineScope? = null
+
+    /**
+     * Dispatches control activations off the EDT. Separate from [subscriptionScope] so a
+     * control works whether or not status collection is running, and so cancelling a
+     * subscription never cancels an in-flight mutation.
+     */
+    private val actionScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var ticker: Alarm? = null
     private var disposed = false
     private var activated = false
@@ -111,6 +129,7 @@ class SkillBillStatusBarWidget(
         stopTicker()
         subscriptionScope?.cancel()
         subscriptionScope = null
+        actionScope.cancel()
         if (activated) {
             viewModel.onWidgetDeactivated()
             activated = false
@@ -145,27 +164,14 @@ class SkillBillStatusBarWidget(
 
     private fun onClick(owner: Component?, point: Point?) {
         if (disposed || project.isDisposed) return
-        // Coalesced immediate refresh — read-only, no workflow mutation.
+        // Coalesced immediate refresh — read-only; mutation only happens on activation.
         viewModel.refresh()
         lastClickKind = ClickKind.REFRESH_AND_DETAILS
-        val details = latestPresentation.details
-        val lines = buildList {
-            add("Skill Bill details")
-            add("State: ${details.lifecycleState}")
-            details.issueKey?.let { add("Issue: $it") }
-            details.workflowId?.let { add("Workflow: $it") }
-            details.stepLabel?.let { add("Step: $it") }
-            details.progressText?.let { add("Progress: $it") }
-            add("Goal ${details.elapsedNoun}: ${details.goalElapsedText}")
-            add("Subtask ${details.elapsedNoun}: ${details.subtaskElapsedText}")
-            details.lastUpdateText?.let { add("Last update: $it") }
-            details.problemSummary?.let { add(it) }
-            details.staleNote?.let { add(it) }
-        }
-        val html = lines.joinToString("<br/>") { escapeXml(it) }
+        val built = buildPopupContent(latestPresentation)
         val popup = JBPopupFactory.getInstance()
-            .createComponentPopupBuilder(JLabel("<html>$html</html>"), null)
-            .setRequestFocus(false)
+            .createComponentPopupBuilder(built.panel, null)
+            .setRequestFocus(true)
+            .setFocusable(true)
             .setCancelOnClickOutside(true)
             .setTitle("Skill Bill")
             .createPopup()
@@ -178,6 +184,63 @@ class SkillBillStatusBarWidget(
         }
         popup.show(RelativePoint(anchor, relative))
     }
+
+    /**
+     * Builds the details panel and wires activation. Separate from [onClick] so tests can
+     * construct it without a popup or a visible frame.
+     */
+    internal fun buildPopupContent(
+        presentation: SkillBillStatusBarPresentation.MappedPresentation,
+    ): StatusDetailsPopupContent.Built {
+        lateinit var built: StatusDetailsPopupContent.Built
+        built = StatusDetailsPopupContent.build(presentation) { descriptor ->
+            activateControl(descriptor, built)
+        }
+        return built
+    }
+
+    /**
+     * Dispatches a control off the EDT. The click handler runs on the EDT, so the CLI call
+     * is launched on the injected scope and never blocks it — no runBlocking here.
+     */
+    private fun activateControl(
+        descriptor: GoalControlDescriptor,
+        built: StatusDetailsPopupContent.Built,
+    ) {
+        // Optimistic disable is additive to the snapshot-derived disable: it hides the
+        // click-to-next-poll gap and is never the source of truth. The next snapshot,
+        // which carries pause_requested, decides the button's real state.
+        if (descriptor.kind == GoalControlKind.PAUSE) {
+            built.buttonFor(GoalControlKind.PAUSE)?.isEnabled = false
+        }
+        actionScope.launch {
+            val outcome = when (descriptor.kind) {
+                GoalControlKind.STOP ->
+                    when (val result = goalStopRepository.requestStop(projectRoot(), descriptor.issueKey)) {
+                        is GoalStopOutcome.Failed -> result.summary
+                        GoalStopOutcome.Requested -> null
+                    }
+
+                GoalControlKind.PAUSE ->
+                    when (val result = goalPauseRepository.requestPause(projectRoot(), descriptor.issueKey)) {
+                        is GoalPauseOutcome.Failed -> result.summary
+                        GoalPauseOutcome.Requested -> null
+                    }
+            }
+            if (outcome != null) {
+                // A refused call must not strand the optimistic disable; polling and the
+                // ticker are untouched, so the next snapshot stays authoritative.
+                scheduleUi {
+                    built.showMessage(outcome)
+                    if (descriptor.kind == GoalControlKind.PAUSE) {
+                        built.buttonFor(GoalControlKind.PAUSE)?.isEnabled = descriptor.enabled
+                    }
+                }
+            }
+        }
+    }
+
+    private fun projectRoot(): Path = Path.of(project.basePath ?: ".")
 
     private fun startTicker() {
         stopTicker()
@@ -224,13 +287,6 @@ class SkillBillStatusBarWidget(
         component.accessibleContext.accessibleDescription = presentation.accessibleDescription
         statusBar?.updateWidget(ID())
     }
-
-    private fun escapeXml(value: String): String =
-        value
-            .replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-            .replace("\"", "&quot;")
 
     enum class ClickKind {
         REFRESH_AND_DETAILS,

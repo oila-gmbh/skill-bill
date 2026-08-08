@@ -1,7 +1,9 @@
 package dev.skillbill.intellij.presentation
 
 import dev.skillbill.intellij.domain.GoalPlanningInfo
+import dev.skillbill.intellij.domain.NO_MATCHING_WORK_REASON_CODE
 import dev.skillbill.intellij.domain.SkillBillStatusOutcome
+import dev.skillbill.intellij.domain.StatusDiagnostic
 import dev.skillbill.intellij.domain.UnavailableReason
 import java.time.Duration
 import java.time.Instant
@@ -86,6 +88,13 @@ class StatusUiMapperTest {
             ),
             mapped,
         )
+    }
+
+    @Test
+    fun `an idle carrying the unconfirmed marker renders exactly like a plain idle`() {
+        val plain = SkillBillStatusOutcome.Idle(now, "idle", repositoryIdentity = "repo")
+        val marked = plain.copy(diagnostic = StatusDiagnostic(reasonCode = NO_MATCHING_WORK_REASON_CODE))
+        assertEquals(StatusUiMapper.map(plain, now), StatusUiMapper.map(marked, now))
     }
 
     @Test
@@ -294,6 +303,41 @@ class StatusUiMapperTest {
             now,
         ) as SkillBillStatusUiState.Stale
         assertEquals(planning, ui.planning)
+    }
+
+    @Test
+    fun `workflow family and pause flag survive Active and Paused mapping`() {
+        val activeUi = StatusUiMapper.map(
+            active().copy(workflowFamily = "feature-goal", pauseRequested = true),
+            now,
+        ) as SkillBillStatusUiState.Active
+        assertEquals("feature-goal", activeUi.workflowFamily)
+        assertEquals(true, activeUi.pauseRequested)
+
+        val pausedUi = StatusUiMapper.map(
+            paused(now).copy(pauseRequested = false),
+            now,
+        ) as SkillBillStatusUiState.Paused
+        assertEquals("feature-goal", pausedUi.workflowFamily)
+        assertEquals(false, pausedUi.pauseRequested)
+
+        // An absent flag stays absent rather than collapsing into an explicit false.
+        val absent = StatusUiMapper.map(active(), now) as SkillBillStatusUiState.Active
+        assertNull(absent.pauseRequested)
+    }
+
+    @Test
+    fun `every other outcome type carries no goal-control inputs`() {
+        val outcomes = listOf(
+            SkillBillStatusOutcome.Idle(now, "idle"),
+            SkillBillStatusOutcome.Unavailable(now, "gone", dev.skillbill.intellij.domain.UnavailableReason.TIMEOUT),
+            SkillBillStatusOutcome.Incompatible(now, "mismatch", "0.9"),
+        )
+        for (outcome in outcomes) {
+            val ui = StatusUiMapper.map(outcome, now)
+            assertNull(ui.workflowFamily)
+            assertNull(ui.pauseRequested)
+        }
     }
 
     private fun paused(updatedAt: Instant) = SkillBillStatusOutcome.Paused(

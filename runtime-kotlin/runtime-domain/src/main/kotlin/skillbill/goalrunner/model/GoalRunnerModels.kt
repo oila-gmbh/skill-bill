@@ -241,6 +241,18 @@ data class GoalRunnerExecutionLease(
   }
 }
 
+/** An operator asked for a pause and the runner honoured it at its next boundary. */
+const val GOAL_PAUSE_REASON_OPERATOR_REQUEST: String = "operator_request"
+
+/** The runner reached the operator's `stop_after` subtask target. */
+const val GOAL_PAUSE_REASON_STOP_AFTER_SUBTASK: String = "stop_after_subtask"
+
+/** An operator ran `goal stop`: intent written durably before the runner process was terminated. */
+const val GOAL_PAUSE_REASON_OPERATOR_STOP: String = "operator_stop"
+
+/** The runner process was terminated from outside; its shutdown hook recorded the interruption. */
+const val GOAL_PAUSE_REASON_RUNNER_INTERRUPTED: String = "runner_interrupted"
+
 /** Durable parent-owned pause, stop-after, and execution state, separate from the checked-in manifest. */
 data class GoalRunnerControlState(
   val stopAfterSubtaskId: Int? = null,
@@ -248,6 +260,7 @@ data class GoalRunnerControlState(
   val pauseConsumed: Boolean = false,
   val paused: Boolean = false,
   val pauseReason: String? = null,
+  val pausedAt: String? = null,
   val stopAfterConsumed: Boolean = false,
   val repositoryIdentity: String? = null,
   val executionLease: GoalRunnerExecutionLease? = null,
@@ -262,6 +275,8 @@ data class GoalRunnerControlState(
     }
     pauseReason?.let { require(it.isNotBlank()) { "pauseReason must not be blank when provided." } }
     require(!paused || pauseReason != null) { "paused control state requires pauseReason." }
+    pausedAt?.let { require(it.isNotBlank()) { "pausedAt must not be blank when provided." } }
+    require(!paused || pausedAt != null) { "paused control state requires pausedAt." }
     repositoryIdentity?.let {
       require(it.isNotBlank()) { "repositoryIdentity must not be blank when provided." }
     }
@@ -357,6 +372,7 @@ data class GoalRunnerStatusProjection(
   val paused: Boolean = false,
   val pauseRequested: Boolean = false,
   val pauseReason: String? = null,
+  val pausedAt: String? = null,
   val stopAfterSubtaskId: Int? = null,
 )
 
@@ -397,6 +413,7 @@ data class GoalRunnerStatusProjectionExtras(
   val paused: Boolean = false,
   val pauseRequested: Boolean = false,
   val pauseReason: String? = null,
+  val pausedAt: String? = null,
   val stopAfterSubtaskId: Int? = null,
 )
 
@@ -447,6 +464,7 @@ object GoalRunnerStatusProjector {
       paused = extras.paused,
       pauseRequested = extras.pauseRequested,
       pauseReason = extras.pauseReason,
+      pausedAt = extras.pausedAt,
       stopAfterSubtaskId = extras.stopAfterSubtaskId,
     )
   }

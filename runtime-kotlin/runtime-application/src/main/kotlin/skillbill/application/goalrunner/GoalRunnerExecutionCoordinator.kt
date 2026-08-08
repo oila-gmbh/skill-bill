@@ -1,6 +1,7 @@
 package skillbill.application.goalrunner
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.goalrunner.model.GOAL_PAUSE_REASON_RUNNER_INTERRUPTED
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState
@@ -26,6 +27,26 @@ interface GoalRunnerExecutionCoordinator {
 
 class GoalRunnerExecutionAlreadyRunningException(parentWorkflowId: String, detail: String) : IllegalStateException(
   "Goal parent '$parentWorkflowId' cannot start: $detail",
+)
+
+/**
+ * Adapt a goal execution lease into the worker ownership the supervisor inspects and terminates.
+ * Shared by the execution coordinator's reclaim path and the stop verb so both judge liveness and
+ * process identity by exactly the same evidence.
+ */
+internal fun GoalRunnerExecutionLease.asWorkerOwnership(parentWorkflowId: String) = FeatureTaskRuntimeWorkerOwnership(
+  workflowId = parentWorkflowId,
+  generation = generation,
+  ownerToken = ownerToken,
+  hostIdentity = hostIdentity,
+  bootIdentity = bootIdentity,
+  pid = pid,
+  processBirthToken = processBirthToken,
+  leaseState = FeatureTaskRuntimeWorkerLeaseState.ACTIVE,
+  heartbeatAt = heartbeatAt,
+  expiresAt = expiresAt,
+  phaseId = "goal_runner",
+  phaseAttempt = 1,
 )
 
 @Inject
@@ -60,9 +81,15 @@ class DefaultGoalRunnerExecutionCoordinator(
         )
       }
     }
+    // Registered only for the span this process owns the lease: a runner killed from outside records
+    // why it stopped, so an operator stop is never indistinguishable from a crash.
+    val shutdownHook = Thread { recordInterruption(parentWorkflowId, dbPathOverride) }
+    // Both registration and removal tolerate a shutdown already in progress rather than failing the run.
+    runCatching { Runtime.getRuntime().addShutdownHook(shutdownHook) }
     val result = try {
       block()
     } finally {
+      runCatching { Runtime.getRuntime().removeShutdownHook(shutdownHook) }
       heartbeat.stop()
       manifestStore.releaseExecutionLease(
         parentWorkflowId,
@@ -76,6 +103,32 @@ class DefaultGoalRunnerExecutionCoordinator(
       throw GoalRunnerExecutionAlreadyRunningException(parentWorkflowId, reason)
     }
     return result
+  }
+
+  /**
+   * The whole shutdown-hook body: exactly one durable write, bounded, and silent on failure. It runs
+   * on an already-dying JVM, so it never terminates anything, never blocks past
+   * [SHUTDOWN_WRITE_BUDGET], and never lets a throw degrade exit. `overwriteExistingReason = false`
+   * makes it idempotent with the stop verb — a stop that killed this process already wrote the more
+   * specific `operator_stop`, and the hook leaves it alone.
+   */
+  internal fun recordInterruption(parentWorkflowId: String, dbPathOverride: String?) {
+    val writer = Thread {
+      runCatching {
+        manifestStore.pauseNow(
+          parentWorkflowId = parentWorkflowId,
+          reason = GOAL_PAUSE_REASON_RUNNER_INTERRUPTED,
+          pausedAt = clock.instant().toString(),
+          overwriteExistingReason = false,
+          dbPathOverride = dbPathOverride,
+        )
+      }
+    }
+    writer.isDaemon = true
+    runCatching {
+      writer.start()
+      writer.join(SHUTDOWN_WRITE_BUDGET.toMillis())
+    }
   }
 
   private fun reclaimableOwnerToken(parentWorkflowId: String, existing: GoalRunnerExecutionLease): String {
@@ -110,23 +163,11 @@ class DefaultGoalRunnerExecutionCoordinator(
     )
   }
 
-  private fun GoalRunnerExecutionLease.asWorkerOwnership(parentWorkflowId: String) = FeatureTaskRuntimeWorkerOwnership(
-    workflowId = parentWorkflowId,
-    generation = generation,
-    ownerToken = ownerToken,
-    hostIdentity = hostIdentity,
-    bootIdentity = bootIdentity,
-    pid = pid,
-    processBirthToken = processBirthToken,
-    leaseState = FeatureTaskRuntimeWorkerLeaseState.ACTIVE,
-    heartbeatAt = heartbeatAt,
-    expiresAt = expiresAt,
-    phaseId = "goal_runner",
-    phaseAttempt = 1,
-  )
-
   private companion object {
     val LEASE_DURATION: Duration = Duration.ofSeconds(30)
     const val HEARTBEAT_SECONDS: Long = 10
+
+    /** Hard ceiling on how long a blocked database may hold up JVM shutdown. */
+    val SHUTDOWN_WRITE_BUDGET: Duration = Duration.ofSeconds(2)
   }
 }

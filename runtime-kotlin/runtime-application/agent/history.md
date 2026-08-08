@@ -1,3 +1,14 @@
+## [2026-08-08] SKILL-168 subtask 4 — IDE status pause signals contract
+Areas: runtime-application/{model,work,goalrunner}, runtime-domain/goalrunner/model, orchestration/contracts, runtime-infra-fs/contracts/workflow, .feature-specs/SKILL-168
+- IDE status gains two optional additive wire fields, `pause_requested` (boolean) and `paused_at` (string instant); neither is in the schema `required` list and `contract_version` stays `0.1`, so the plugin pin needs no change.
+- Semantic split: only a *consumed* pause projects `lifecycle_state: paused`. A requested-but-unconsumed pause stays `active` and surfaces as the `pause_requested` modifier — the previous projector collapsed both into `paused`.
+- Omission discipline: `pause_requested` is never emitted as `false` and `paused_at` is emitted only from the durable control record; a lease-expiry-inferred pause omits the timestamp rather than back-filling from `heartbeat_at`/`updated_at` (an inference must not be sold as a record). reusable
+- `pausedAt` threaded through `GoalRunnerStatusProjectionExtras` -> `GoalRunnerStatusProjection` -> `GoalRunnerStatusService`; only `projectGoal` populates the pause fields, so every non-`feature-goal` family stays wire-identical.
+- Pattern reused from SKILL-165 subtask 1: schema-first additive extension (canonical schema with `additionalProperties:false` + contract-version parity test), then models/projector/goldens follow; golden fixture diff is additions-only. reusable
+- Limitation: projection-only — plugin consumption of both fields is subtask 5.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-08-07] SKILL-165 subtask 1 — IDE status planning progress wiring
 Areas: runtime-application/{model,work}, orchestration/contracts, runtime-cli, runtime-infra-fs/contracts/workflow, .feature-specs/SKILL-165
 - IDE status gains an optional `planning` block (snake_case wire keys, omitted entirely when null) so goal decomposition progress is visible before any subtask exists; additive-only, so `contract_version` stays at `0.1`. reusable

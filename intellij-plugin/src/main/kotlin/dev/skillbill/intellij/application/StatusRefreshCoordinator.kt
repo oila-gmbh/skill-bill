@@ -1,6 +1,9 @@
 package dev.skillbill.intellij.application
 
 import dev.skillbill.intellij.domain.SkillBillStatusOutcome
+import dev.skillbill.intellij.domain.UNCORROBORATED_IDLE_TOLERANCE
+import dev.skillbill.intellij.domain.isLiveOutcome
+import dev.skillbill.intellij.domain.isUncorroboratedIdle
 import dev.skillbill.intellij.domain.toCacheSnapshotOrNull
 import dev.skillbill.intellij.domain.toStaleOutcome
 import java.nio.file.Path
@@ -40,6 +43,9 @@ class StatusRefreshCoordinator(
 
     private val _events = MutableSharedFlow<CoordinatorEvent>(extraBufferCapacity = 16)
     val events: SharedFlow<CoordinatorEvent> = _events.asSharedFlow()
+
+    /** Guarded by [refreshMutex]; read and written only inside [refreshOnce]. */
+    private var unconfirmedIdleSamples = 0
 
     @Volatile
     private var pollJob: Job? = null
@@ -99,6 +105,21 @@ class StatusRefreshCoordinator(
             } catch (_: Exception) {
                 preferences.getLastKnownDisplayCache()?.toStaleOutcome()
                     ?: return
+            }
+            // A single unconfirmed idle is usually the gap between two runtime records,
+            // not a finished goal: hold the live display until a second sample agrees.
+            if (outcome.isUncorroboratedIdle()) {
+                val held = _outcomes.value
+                if (held != null && held.isLiveOutcome()) {
+                    unconfirmedIdleSamples += 1
+                    if (unconfirmedIdleSamples <= UNCORROBORATED_IDLE_TOLERANCE) {
+                        _outcomes.value = held
+                        _events.tryEmit(CoordinatorEvent.Refreshed(held))
+                        return
+                    }
+                }
+            } else {
+                unconfirmedIdleSamples = 0
             }
             val toEmit = when (outcome) {
                 is SkillBillStatusOutcome.Unavailable,

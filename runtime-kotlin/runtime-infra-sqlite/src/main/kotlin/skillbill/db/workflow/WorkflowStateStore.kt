@@ -394,7 +394,9 @@ private class FeatureTaskWorkflowStateStore(
         while (rows.next()) {
           val workflowId = rows.getString("workflow_id")
           val workflow = connection.getFeatureTaskWorkflowRow(workflowId)
-            ?: error("Feature-task identity '$workflowId' has no workflow row.")
+            ?: throw InvalidWorkflowStateSchemaError(
+              "Feature-task identity '$workflowId' has no workflow row.",
+            )
           add(FeatureTaskWorkflowCandidate(connection.featureTaskIdentity(workflowId), workflow))
         }
       }

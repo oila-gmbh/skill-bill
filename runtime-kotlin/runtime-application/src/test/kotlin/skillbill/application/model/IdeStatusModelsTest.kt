@@ -74,6 +74,36 @@ class IdeStatusModelsTest {
     assertTrue(wire.containsKey("current_step"))
   }
 
+  @Test
+  fun `toStatusWireMap omits both pause signals when they are unset`() {
+    val wire = snapshot(planning = null).toStatusWireMap()
+
+    assertFalse(wire.containsKey("pause_requested"))
+    assertFalse(wire.containsKey("paused_at"))
+  }
+
+  @Test
+  fun `toStatusWireMap never emits pause_requested as false`() {
+    // A false emission changes the bytes an existing consumer sees for every running goal.
+    val wire = snapshot(planning = null).copy(pauseRequested = false).toStatusWireMap()
+
+    assertFalse(wire.containsKey("pause_requested"))
+  }
+
+  @Test
+  fun `toStatusWireMap emits the pause signals ahead of updated_at when set`() {
+    val wire = snapshot(planning = null).copy(
+      pauseRequested = true,
+      pausedAt = Instant.parse("2026-08-06T09:30:00Z"),
+    ).toStatusWireMap()
+
+    assertEquals(true, wire["pause_requested"])
+    assertEquals("2026-08-06T09:30:00Z", wire["paused_at"])
+    val keys = wire.keys.toList()
+    assertTrue(keys.indexOf("pause_requested") < keys.indexOf("updated_at"))
+    assertTrue(keys.indexOf("paused_at") < keys.indexOf("updated_at"))
+  }
+
   private fun snapshot(planning: IdeStatusPlanning?): IdeStatusSnapshot = IdeStatusSnapshot(
     repositoryIdentity = "repo-root-realpath-v1:/repo",
     issueKey = "SKILL-165",

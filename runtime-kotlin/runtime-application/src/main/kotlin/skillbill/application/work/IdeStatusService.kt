@@ -327,11 +327,7 @@ class IdeStatusService(
    * a long quiet phase reports its start as its last update, and the settled elapsed clock
    * understates the run.
    */
-  private fun goalLeaseHeartbeatAt(
-    unitOfWork: UnitOfWork,
-    item: WorkItem,
-    family: IdeStatusWorkflowFamily,
-  ): Instant? {
+  private fun goalLeaseHeartbeatAt(unitOfWork: UnitOfWork, item: WorkItem, family: IdeStatusWorkflowFamily): Instant? {
     if (family != IdeStatusWorkflowFamily.FEATURE_GOAL) return null
     val lease = unitOfWork.goalRunnerControls.controlState(item.workflowId).executionLease ?: return null
     return parseInstantOrNull(lease.heartbeatAt)

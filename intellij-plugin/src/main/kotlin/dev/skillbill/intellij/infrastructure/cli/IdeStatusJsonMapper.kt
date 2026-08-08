@@ -6,6 +6,9 @@ import com.google.gson.JsonParser
 import com.google.gson.JsonSyntaxException
 import dev.skillbill.intellij.domain.GoalPlanningInfo
 import dev.skillbill.intellij.domain.IDE_STATUS_CONTRACT_VERSION
+import dev.skillbill.intellij.domain.NO_MATCHING_WORK_REASON_CODE
+import dev.skillbill.intellij.domain.PAUSED_AT_WIRE_KEY
+import dev.skillbill.intellij.domain.PAUSE_REQUESTED_WIRE_KEY
 import dev.skillbill.intellij.domain.SkillBillStatusOutcome
 import dev.skillbill.intellij.domain.StatusDiagnostic
 import dev.skillbill.intellij.domain.UnavailableReason
@@ -94,14 +97,18 @@ object IdeStatusJsonMapper {
         val subtaskStartedAt = subtask?.getAsInstant("started_at")
         val updatedAt = root.getAsInstant("updated_at")
         val planning = root.parsePlanning()
+        // Both optional and goal-family-only: a missing key stays null, never false.
+        val pauseRequested = root.getAsBoolean(PAUSE_REQUESTED_WIRE_KEY)
+        val pausedAt = root.getAsInstant(PAUSED_AT_WIRE_KEY)
 
         // "No work here" is a healthy idle repository, not a broken status source.
         // Every other problem code is a genuine failure to obtain status.
-        if (problemCode == "no_matching_work") {
+        if (problemCode == NO_MATCHING_WORK_REASON_CODE) {
             return SkillBillStatusOutcome.Idle(
                 observedAt = observedAt,
                 summary = safeSummary(problem?.getAsString("message"), summary),
                 repositoryIdentity = repositoryIdentity,
+                diagnostic = StatusDiagnostic(reasonCode = NO_MATCHING_WORK_REASON_CODE),
             )
         }
 
@@ -167,6 +174,8 @@ object IdeStatusJsonMapper {
                         subtaskStartedAt = subtaskStartedAt,
                         updatedAt = updatedAt,
                         planning = planning,
+                        pauseRequested = pauseRequested,
+                        pausedAt = pausedAt,
                     )
                 } else {
                     SkillBillStatusOutcome.Active(
@@ -185,6 +194,8 @@ object IdeStatusJsonMapper {
                         subtaskStartedAt = subtaskStartedAt,
                         updatedAt = updatedAt,
                         planning = planning,
+                        pauseRequested = pauseRequested,
+                        pausedAt = pausedAt,
                     )
                 }
             }

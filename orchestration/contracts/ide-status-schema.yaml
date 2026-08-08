@@ -134,6 +134,17 @@ properties:
       reason:
         type: string
         minLength: 1
+  pause_requested:
+    type: boolean
+    description: >
+      A pause is requested but not yet consumed at a boundary; the goal is still
+      genuinely running. Present only for feature-goal snapshots.
+  paused_at:
+    type: string
+    minLength: 1
+    description: >
+      Instant the pause took effect, from the durable control record. Omitted when
+      the paused projection is inferred from lease expiry rather than recorded.
   updated_at:
     type: string
     minLength: 1

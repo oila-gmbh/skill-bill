@@ -51,6 +51,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
 
+@Suppress("LargeClass") // one CLI surface per suite; splitting would scatter goal-verb coverage
 class CliGoalRuntimeTest {
   @Test
   fun `goal command is registered with status subcommand`() {
@@ -61,6 +62,7 @@ class CliGoalRuntimeTest {
     assertContains(result.stdout, "status")
     assertContains(result.stdout, "watch")
     assertContains(result.stdout, "pause")
+    assertContains(result.stdout, "stop")
     assertContains(result.stdout, "resume")
     assertContains(result.stdout, "reset")
     assertContains(result.stdout, "--debug-child-output")
@@ -142,6 +144,65 @@ class CliGoalRuntimeTest {
     assertEquals(true, second.payload?.get("pause_requested"))
     assertEquals(true, second.payload?.get("paused"))
     assertEquals(emptyList(), launcher.childLaunches)
+  }
+
+  @Test
+  fun `goal stop records the operator stop and stays idempotent across two invocations`() {
+    val fixture = goalFixture(subtaskCount = 1)
+    val launcher = GoalFixtureAgentRunLauncher(fixture)
+    val command = goalControlCommand(fixture, "stop")
+
+    val first = CliRuntime.run(command, fixture.context(launcher = launcher))
+    val second = CliRuntime.run(command, fixture.context(launcher = launcher))
+
+    // No runner holds this fixture, so the stop is durable-only: exit 0 both times, no termination.
+    assertEquals(0, first.exitCode, first.stdout)
+    assertEquals(0, second.exitCode, second.stdout)
+    assertEquals("no_live_lease", first.payload?.get("status"))
+    assertEquals("operator_stop", first.payload?.get("pause_reason"))
+    assertEquals(false, first.payload?.get("termination_attempted"))
+    assertContains(first.stdout, "reason: operator_stop")
+    assertContains(first.stdout, "paused at: ")
+    assertEquals("already_stopped", second.payload?.get("status"))
+    assertEquals(false, second.payload?.get("termination_attempted"))
+    assertEquals(emptyList(), launcher.childLaunches)
+  }
+
+  @Test
+  fun `goal stop reports the durable pause on status without a second termination`() {
+    val fixture = goalFixture(subtaskCount = 1)
+    val launcher = GoalFixtureAgentRunLauncher(fixture)
+
+    CliRuntime.run(goalControlCommand(fixture, "stop"), fixture.context(launcher = launcher))
+    val status = CliRuntime.run(
+      listOf("--db", fixture.dbPath.toString(), "goal", "status", "SKILL-901", "--agent", "codex"),
+      fixture.context(launcher = launcher),
+    )
+
+    assertContains(status.stdout, "paused: true")
+    assertEquals(emptyList(), launcher.childLaunches)
+  }
+
+  @Test
+  fun `goal stop on an unknown issue key reports not_found with a non-zero exit`() {
+    val fixture = goalFixture(subtaskCount = 1)
+    val launcher = GoalFixtureAgentRunLauncher(fixture)
+
+    val result = CliRuntime.run(
+      listOf(
+        "--db",
+        fixture.dbPath.toString(),
+        "goal",
+        "stop",
+        "SKILL-404",
+        "--repo-root",
+        fixture.tempDir.toString(),
+      ),
+      fixture.context(launcher = launcher),
+    )
+
+    assertEquals(1, result.exitCode, result.stdout)
+    assertEquals("not_found", result.payload?.get("status"))
   }
 
   @Test

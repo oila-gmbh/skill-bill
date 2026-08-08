@@ -96,6 +96,7 @@ object SkillBillStatusBarPresentation {
                 problemSummary = anchored.problemSummary ?: anchored.detail,
                 staleNote = STALE_NOTE.takeIf { anchored.stale },
             ),
+            controls = GoalControlsPresentation.controlsFor(anchored),
         )
     }
 
@@ -270,6 +271,8 @@ object SkillBillStatusBarPresentation {
         val showActivityAnimation: Boolean,
         val isStaleMarked: Boolean,
         val details: StatusBarDetails,
+        /** Already-mapped goal controls; renderers consume these and decide nothing. */
+        val controls: List<GoalControlDescriptor> = emptyList(),
     )
 
     data class StatusBarDetails(

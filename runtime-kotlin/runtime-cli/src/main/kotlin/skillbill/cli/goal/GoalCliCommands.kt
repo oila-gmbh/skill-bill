@@ -30,6 +30,8 @@ import skillbill.application.model.GoalRunnerResetResult
 import skillbill.application.model.GoalRunnerResumeResult
 import skillbill.application.model.GoalRunnerRunRequest
 import skillbill.application.model.GoalRunnerStatusRequest
+import skillbill.application.model.GoalRunnerStopStatus
+import skillbill.application.model.GoalRunnerStopVerbResult
 import skillbill.application.review.RequestedReviewMode
 import skillbill.application.system.RuntimeProvenanceService
 import skillbill.cli.core.CliRunState
@@ -59,6 +61,7 @@ import kotlin.time.Duration.Companion.minutes
 @Inject
 class GoalControlSubcommands(
   val pause: GoalPauseCommand,
+  val stop: GoalStopCommand,
   val resume: GoalResumeCommand,
   val reset: GoalResetCommand,
   val replan: GoalReplanCommand,
@@ -146,6 +149,7 @@ class GoalRunCommand(
       goalRunSubcommands.status,
       goalRunSubcommands.watch,
       goalRunSubcommands.controls.pause,
+      goalRunSubcommands.controls.stop,
       goalRunSubcommands.controls.resume,
       goalRunSubcommands.controls.reset,
       goalRunSubcommands.controls.replan,
@@ -380,6 +384,25 @@ class GoalPauseCommand(
     )
     val payload = result.toGoalPauseCliMap()
     state.completeText(goalPauseText(payload), payload, exitCode = payload.goalPauseExitCode())
+  }
+}
+
+@Inject
+class GoalStopCommand(
+  private val goalRunnerStatusService: GoalRunnerStatusService,
+  private val state: CliRunState,
+) : DocumentedCliCommand("stop", "Stop a running goal now: record the operator stop, then terminate the runner.") {
+  private val issueKey by argument(help = "Parent issue key for the decomposed goal.")
+  private val repoRoot by option("--repo-root", help = "Repository root that owns the goal.")
+
+  override fun run() {
+    val result = goalRunnerStatusService.stop(
+      issueKey,
+      state.dbOverride,
+      repoRoot?.let(Path::of)?.toAbsolutePath()?.normalize() ?: Path.of("").toAbsolutePath().normalize(),
+    )
+    val payload = result.toGoalStopCliMap()
+    state.completeText(goalStopText(payload), payload, exitCode = payload.goalStopExitCode())
   }
 }
 
@@ -757,6 +780,21 @@ private fun goalPauseText(payload: Map<String, Any?>): String = buildString {
   payload["pause_reason"]?.let { appendLine("reason: $it") }
 }
 
+private fun GoalRunnerStopVerbResult.toGoalStopCliMap(): Map<String, Any?> = linkedMapOf(
+  "status" to status.wireValue,
+  "issue_key" to issueKey,
+  "parent_workflow_id" to parentWorkflowId,
+  "pause_reason" to pauseReason,
+  "paused_at" to pausedAt,
+  "termination_attempted" to terminationAttempted,
+)
+
+private fun goalStopText(payload: Map<String, Any?>): String = buildString {
+  appendLine("goal ${payload["issue_key"]}: ${payload["status"]}")
+  payload["pause_reason"]?.let { appendLine("reason: $it") }
+  payload["paused_at"]?.let { appendLine("paused at: $it") }
+}
+
 private fun GoalRunnerResumeResult.toGoalResumeCliMap(): Map<String, Any?> = linkedMapOf(
   "status" to status,
   "issue_key" to issueKey,
@@ -1023,6 +1061,15 @@ private fun goalMonitorStatusText(payload: Map<String, Any?>): String = if (payl
 private fun Map<String, Any?>.goalStatusExitCode(): Int = if (!containsKey("status") || this["status"] == "ok") 0 else 1
 
 private fun Map<String, Any?>.goalPauseExitCode(): Int = if (this["status"] != "not_found") 0 else 1
+
+// Idempotent outcomes exit 0; a refused stop is a non-zero failure the operator must act on.
+private fun Map<String, Any?>.goalStopExitCode(): Int = when (this["status"]) {
+  GoalRunnerStopStatus.STOPPED.wireValue,
+  GoalRunnerStopStatus.ALREADY_STOPPED.wireValue,
+  GoalRunnerStopStatus.NO_LIVE_LEASE.wireValue,
+  -> 0
+  else -> 1
+}
 
 private fun Map<String, Any?>.withWatchRefresh(refreshIndex: Int): Map<String, Any?> =
   linkedMapOf<String, Any?>("refresh_index" to refreshIndex).apply { putAll(this@withWatchRefresh) }

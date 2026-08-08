@@ -31,6 +31,8 @@ import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_ARTIFACT_KEY
 import skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_LIMIT
+import skillbill.goalrunner.model.GOAL_PAUSE_REASON_OPERATOR_REQUEST
+import skillbill.goalrunner.model.GOAL_PAUSE_REASON_STOP_AFTER_SUBTASK
 import skillbill.goalrunner.model.GOAL_SESSION_ACCOUNTING_ARTIFACT_KEY
 import skillbill.goalrunner.model.GOAL_SESSION_ACCOUNTING_LIMIT
 import skillbill.goalrunner.model.GoalRunnerControlState
@@ -113,6 +115,7 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskReviewPassResult
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 import java.nio.file.Path
+import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.time.LocalDateTime
@@ -135,7 +138,8 @@ private data class SavedGoalChildWorkflow(
 )
 
 @Inject
-@Suppress("LargeClass") // parent projection, controls, and child persistence share one transaction boundary
+// parent projection, controls, and child persistence share one transaction boundary and its dependencies
+@Suppress("LargeClass", "LongParameterList")
 class WorkflowGoalRunnerManifestStore(
   private val database: DatabaseSessionFactory,
   private val workflowSnapshotValidator: WorkflowSnapshotValidator,
@@ -143,6 +147,7 @@ class WorkflowGoalRunnerManifestStore(
   private val decompositionManifestFileStore: DecompositionManifestFileStore,
   private val phaseOutputValidator: FeatureTaskRuntimePhaseOutputValidator,
   private val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
+  private val clock: Clock = Clock.systemUTC(),
 ) : GoalRunnerManifestStore {
   override fun planningStatus(
     parentWorkflowId: String,
@@ -185,7 +190,11 @@ class WorkflowGoalRunnerManifestStore(
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
   private val planningHydrator = GoalChildPlanningHydrator(phaseOutputValidator, planningProjectionValidator)
   private val parentProjection = GoalParentProjectionWriter(engine, decompositionManifestValidator)
-  private val controls = GoalRunnerControlCoordinator(database, decompositionManifestValidator) { unitOfWork, state ->
+  private val controls = GoalRunnerControlCoordinator(
+    database,
+    decompositionManifestValidator,
+    clock,
+  ) { unitOfWork, state ->
     saveWorkflowProjectionInTransaction(unitOfWork, state)
   }
 
@@ -273,6 +282,15 @@ class WorkflowGoalRunnerManifestStore(
 
   override fun requestPause(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerControlState? =
     controls.requestPause(parentWorkflowId, dbPathOverride)
+
+  override fun pauseNow(
+    parentWorkflowId: String,
+    reason: String,
+    pausedAt: String,
+    overwriteExistingReason: Boolean,
+    dbPathOverride: String?,
+  ): GoalRunnerControlState? =
+    controls.pauseNow(parentWorkflowId, reason, pausedAt, overwriteExistingReason, dbPathOverride)
 
   override fun requestPauseByIssueKey(
     issueKey: String,
@@ -911,6 +929,7 @@ class WorkflowGoalRunnerManifestStore(
 private class GoalRunnerControlCoordinator(
   private val database: DatabaseSessionFactory,
   private val decompositionManifestValidator: DecompositionManifestValidator,
+  private val clock: Clock,
   private val saveProjection: (UnitOfWork, GoalRunnerManifestState) -> SavedManifestProjection,
 ) {
   fun controlState(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerControlState =
@@ -984,6 +1003,38 @@ private class GoalRunnerControlCoordinator(
       )
   }
 
+  /**
+   * One bounded transaction that flips the goal straight to paused. No status inspection, log read,
+   * file read, or child supervision: the stop verb and the shutdown hook both call this on paths
+   * where anything more is unsafe or unaffordable.
+   */
+  fun pauseNow(
+    parentWorkflowId: String,
+    reason: String,
+    pausedAt: String,
+    overwriteExistingReason: Boolean,
+    dbPathOverride: String?,
+  ): GoalRunnerControlState? = database.transaction(dbPathOverride) { unitOfWork ->
+    val parent = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId)
+      ?: return@transaction null
+    migrateLegacyGoalRunnerControls(unitOfWork, parent)
+    val existing = unitOfWork.goalRunnerControls.controlState(parentWorkflowId)
+    // Reason precedence: an already-paused goal keeps the more specific reason the stop verb wrote.
+    if (existing.paused && !overwriteExistingReason) {
+      return@transaction existing
+    }
+    unitOfWork.goalRunnerControls.persistControlState(
+      parentWorkflowId,
+      existing.copy(
+        pauseRequested = true,
+        pauseConsumed = true,
+        paused = true,
+        pauseReason = reason,
+        pausedAt = pausedAt,
+      ),
+    )
+  }
+
   fun requestPause(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerControlState? =
     database.transaction(dbPathOverride) { unitOfWork ->
       WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId)?.let { parent ->
@@ -1053,6 +1104,7 @@ private class GoalRunnerControlCoordinator(
             pauseConsumed = false,
             paused = false,
             pauseReason = null,
+            pausedAt = null,
           ),
         )
       } else {
@@ -1076,7 +1128,7 @@ private class GoalRunnerControlCoordinator(
       val authoritativeState = state.copy(manifest = authoritativeManifest)
       val targetReached = controls.targetReached(authoritativeState)
       val pausedControls = if (controls.requiresPauseBoundary(authoritativeManifest)) {
-        controls.pauseAtOperatorBoundary(targetReached)
+        controls.pauseAtOperatorBoundary(clock.instant().toString(), targetReached)
       } else {
         controls
       }
@@ -1100,7 +1152,8 @@ private class GoalRunnerControlCoordinator(
     val targetReached = controls.stopAfterSubtaskId == subtaskId && !controls.stopAfterConsumed
     val operatorRequested = controls.pauseRequested && !controls.pauseConsumed
     val shouldPause = controls.requiresPauseBoundary(authoritativeManifest) || targetReached || operatorRequested
-    val nextControls = if (shouldPause) controls.pauseAtOperatorBoundary(targetReached) else controls
+    val nextControls =
+      if (shouldPause) controls.pauseAtOperatorBoundary(clock.instant().toString(), targetReached) else controls
     val saved = saveProjection(unitOfWork, authoritativeState)
     if (nextControls != controls) {
       unitOfWork.goalRunnerControls.persistControlState(parent.workflowId, nextControls)
@@ -1155,7 +1208,7 @@ private class GoalRunnerControlCoordinator(
         existing.copy(
           pauseRequested = true,
           pauseConsumed = false,
-          pauseReason = "operator_request",
+          pauseReason = GOAL_PAUSE_REASON_OPERATOR_REQUEST,
         ),
       )
     }
@@ -1323,22 +1376,27 @@ private fun outOfBandAcceptancesFromLegacyArtifacts(
   }
 }
 
-private fun GoalRunnerControlState.pauseAtOperatorBoundary(targetReached: Boolean = false): GoalRunnerControlState =
-  when {
-    paused -> copy(stopAfterConsumed = stopAfterConsumed || targetReached)
-    pauseRequested -> copy(
-      pauseConsumed = true,
-      paused = true,
-      pauseReason = pauseReason ?: "operator_request",
-      stopAfterConsumed = stopAfterConsumed || targetReached,
-    )
-    targetReached -> copy(
-      paused = true,
-      pauseReason = "stop_after_subtask",
-      stopAfterConsumed = true,
-    )
-    else -> this
-  }
+private fun GoalRunnerControlState.pauseAtOperatorBoundary(
+  pausedAtNow: String,
+  targetReached: Boolean = false,
+): GoalRunnerControlState = when {
+  // Already paused: the original pause instant is the one that matters, so it is never restamped.
+  paused -> copy(stopAfterConsumed = stopAfterConsumed || targetReached)
+  pauseRequested -> copy(
+    pauseConsumed = true,
+    paused = true,
+    pauseReason = pauseReason ?: GOAL_PAUSE_REASON_OPERATOR_REQUEST,
+    pausedAt = pausedAtNow,
+    stopAfterConsumed = stopAfterConsumed || targetReached,
+  )
+  targetReached -> copy(
+    paused = true,
+    pauseReason = GOAL_PAUSE_REASON_STOP_AFTER_SUBTASK,
+    pausedAt = pausedAtNow,
+    stopAfterConsumed = true,
+  )
+  else -> this
+}
 
 private fun decodeGoalAgentAddonSelection(raw: Any?): skillbill.agentaddon.model.AgentAddonSelection {
   val values = raw ?: return skillbill.agentaddon.model.AgentAddonSelection()

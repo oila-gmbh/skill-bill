@@ -58,6 +58,13 @@ sealed class SkillBillStatusOutcome {
         val updatedAt: Instant,
         override val diagnostic: StatusDiagnostic? = null,
         val planning: GoalPlanningInfo? = null,
+        /**
+         * A pause is requested but not yet consumed at a boundary. Optional on the wire:
+         * null means the snapshot said nothing, which is not the same as an explicit false.
+         */
+        val pauseRequested: Boolean? = null,
+        /** Instant a recorded pause took effect; absent for an inferred pause. */
+        val pausedAt: Instant? = null,
     ) : SkillBillStatusOutcome()
 
     /**
@@ -81,6 +88,10 @@ sealed class SkillBillStatusOutcome {
         val updatedAt: Instant,
         override val diagnostic: StatusDiagnostic? = null,
         val planning: GoalPlanningInfo? = null,
+        /** See [Active.pauseRequested]; null means the snapshot said nothing. */
+        val pauseRequested: Boolean? = null,
+        /** Instant a recorded pause took effect; absent for an inferred pause. */
+        val pausedAt: Instant? = null,
     ) : SkillBillStatusOutcome()
 
     data class Stale(
@@ -147,6 +158,33 @@ sealed class SkillBillStatusOutcome {
         val expectedContractVersion: String = IDE_STATUS_CONTRACT_VERSION,
         override val diagnostic: StatusDiagnostic? = null,
     ) : SkillBillStatusOutcome()
+}
+
+/**
+ * True only for an [SkillBillStatusOutcome.Idle] derived from the `no_matching_work`
+ * problem code — an idle reading the runtime has not corroborated with a settled
+ * lifecycle. Lifecycle-derived idles carry no diagnostic and are never uncorroborated.
+ */
+fun SkillBillStatusOutcome.isUncorroboratedIdle(): Boolean =
+    this is SkillBillStatusOutcome.Idle && diagnostic?.reasonCode == NO_MATCHING_WORK_REASON_CODE
+
+/**
+ * A lifecycle the runtime is actively tracking. Distinct from settled or absent
+ * readings because only a live display is worth holding across an unconfirmed idle.
+ */
+fun SkillBillStatusOutcome.isLiveOutcome(): Boolean = when (this) {
+    is SkillBillStatusOutcome.Active,
+    is SkillBillStatusOutcome.Paused,
+    is SkillBillStatusOutcome.Blocked,
+    is SkillBillStatusOutcome.Failed,
+    is SkillBillStatusOutcome.Stale,
+    -> true
+
+    is SkillBillStatusOutcome.Idle,
+    is SkillBillStatusOutcome.Done,
+    is SkillBillStatusOutcome.Unavailable,
+    is SkillBillStatusOutcome.Incompatible,
+    -> false
 }
 
 /**

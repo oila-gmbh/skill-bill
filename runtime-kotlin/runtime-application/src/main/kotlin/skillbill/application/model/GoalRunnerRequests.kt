@@ -63,6 +63,37 @@ data class GoalRunnerPauseResult(
   }
 }
 
+/** Terminal outcomes of `goal stop`. Every one is reported; none falls back to killing by pid. */
+enum class GoalRunnerStopStatus(val wireValue: String) {
+  /** The owning runner process was contacted and terminated. */
+  STOPPED("stopped"),
+
+  /** The goal already carried an operator stop and no live lease remained. */
+  ALREADY_STOPPED("already_stopped"),
+
+  /** Durable stop intent was written, but no live runner process was holding the goal. */
+  NO_LIVE_LEASE("no_live_lease"),
+
+  /** The lease owner is on another host or boot, or the supervisor cannot identify it. Refused. */
+  IDENTITY_MISMATCH("identity_mismatch"),
+
+  /** No decomposed goal exists for the issue key. */
+  NOT_FOUND("not_found"),
+}
+
+data class GoalRunnerStopVerbResult(
+  val issueKey: String,
+  val status: GoalRunnerStopStatus,
+  val parentWorkflowId: String? = null,
+  val pauseReason: String? = null,
+  val pausedAt: String? = null,
+  val terminationAttempted: Boolean = false,
+) {
+  init {
+    require(issueKey.isNotBlank()) { "issueKey is required." }
+  }
+}
+
 data class GoalRunnerResumeResult(
   val issueKey: String,
   val parentWorkflowId: String? = null,

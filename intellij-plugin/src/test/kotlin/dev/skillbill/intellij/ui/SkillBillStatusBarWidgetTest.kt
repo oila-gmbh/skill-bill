@@ -18,7 +18,7 @@ class SkillBillStatusBarWidgetTest {
     }
 
     @Test
-    fun `click kind surface is read-only refresh and details only`() {
+    fun `bar click surface stays refresh and details only`() {
         val kinds = SkillBillStatusBarWidget.ClickKind.entries.map { it.name }.toSet()
         assertEquals(setOf("REFRESH_AND_DETAILS"), kinds)
         assertTrue(kinds.none { it.contains("START") || it.contains("RESUME") || it.contains("CANCEL") })

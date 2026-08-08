@@ -1,3 +1,16 @@
+## [2026-08-07] SKILL-168 Subtask 2 consistent read snapshot for ide-status
+
+Areas: runtime-kotlin/runtime-infra-sqlite infrastructure/sqlite + db/workflow, runtime-kotlin/runtime-application work tests, runtime-kotlin/runtime-cli concurrency tests
+- `DatabaseSessionFactory.read` now wraps its block in `BEGIN DEFERRED` / `COMMIT` (`inReadTransaction`), so every statement in one read block shares a single snapshot. Fixed at the seam, not in `IdeStatusService`, so all read-path consumers inherit it. reusable
+- DEFERRED, never IMMEDIATE: IMMEDIATE would take a write lock and make the read path contend with the goal runtime's writers. Under WAL a deferred read snapshot stays stable without blocking writers, which is what makes holding it open across dozens of SELECTs acceptable. reusable
+- Root cause it removes: untransacted reads let a writer commit mid-collection tear `IdeStatusService.collectCandidates`, dropping the only candidate and reporting `no_matching_work` for a durably `running` goal.
+- `typedStatement` gained an explicit `DatabaseAccessOperation` parameter instead of hardcoding `OPEN`; read-path BEGIN/COMMIT failures now classify as `READ`. Any new transaction helper must pass the operation matching its seam. reusable
+- `WorkflowStateStore` orphan-identity path throws typed `InvalidWorkflowStateSchemaError` instead of `error(...)`, so it lands in `IdeStatusService`'s existing catch list rather than escaping as an uncaught `IllegalStateException`.
+- Deliberately untouched: `IdeStatusSelectionPolicy`, ide-status wire schema, `contract_version`, and golden fixtures (verified by zero-diff assertion).
+- Known limit: correctness relies on the database file being in WAL mode; a rollback-journal database would have a long read transaction block writers. Tests cover both modes.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-08-06] SKILL-163 Subtask 3 anonymous telemetry redaction
 Areas: runtime-kotlin/runtime-infra-sqlite db/telemetry + db/core, runtime-kotlin/runtime-application telemetry + telemetry/config, runtime-kotlin/runtime-core + runtime-mcp telemetry tests
 - Redaction happens at payload construction, never at upload: `telemetry_outbox.payload_json` itself holds the substituted value, so an already-enqueued anonymous row can never leak the raw key even if the level later changes. reusable
