@@ -35,14 +35,13 @@ class ProcessAgentRunAdapter(
       is LauncherResolution.Missing -> return unavailableLauncherFacts(request, built, resolution.message)
     }
     val result = processRunner.run(processRequest(command, request))
-    val decoded = runCatching {
-      (command.outputDecoder ?: commandBuilder.outputDecoder).decode(result.stdout)
-    }.getOrElse { error ->
-      if (error is skillbill.infrastructure.fs.CursorReviewStreamMalformedError) {
-        DecodedAgentRunOutput(result.stdout)
-      } else {
-        throw error
-      }
+    val decoder = command.outputDecoder ?: commandBuilder.outputDecoder
+    val decoded = runCatching { decoder.decode(result.stdout) }.getOrElse { error ->
+      if (!decoder.undecodable(error)) throw error
+      // A stream we could not decode is not phase output. Handing the raw transport back made the
+      // phase schema gate see several conflicting envelopes instead of one undecodable turn, so the
+      // operator was told the agent wrote bad output when it had written none we could read.
+      DecodedAgentRunOutput(text = "", rawOutputPreview = result.stdout.take(RAW_OUTPUT_PREVIEW_MAX_CHARS))
     }
     val normalizedStdout = normalizeStdout(agent, decoded.text)
     val decodedBodyBytes = if (normalizedStdout == result.stdout) {
@@ -80,6 +79,8 @@ class ProcessAgentRunAdapter(
       // This decoder runs after process completion. Completion facts are never an enforceable
       // provider seam, irrespective of what a future command builder can expose in flight.
       providerUsageEnforceable = false,
+      assistantEventCount = decoded.assistantEventCount,
+      rawOutputPreview = decoded.rawOutputPreview,
     )
   }
 
@@ -171,17 +172,43 @@ data class DecodedAgentRunOutput(
   val outputTokens: Long? = null,
   val reasoningTokens: Long? = null,
   val totalTokens: Long? = null,
+  /** Assistant turns observed on transports that expose them; null when the transport has no such event. */
+  val assistantEventCount: Int? = null,
+  /** Bounded raw-transport excerpt, set only when decoding produced no usable text. */
+  val rawOutputPreview: String? = null,
 )
 
-fun interface AgentRunOutputDecoder {
+interface AgentRunOutputDecoder {
   fun decode(stdout: String): DecodedAgentRunOutput
 
+  /**
+   * Decoder-declared classification of a decode failure. A decoder that owns a transport it cannot
+   * always parse says so here; the launcher then degrades that launch to an empty harvest with a
+   * bounded preview instead of promoting undecodable bytes to phase output. Decoders that treat
+   * every failure as fatal inherit the default and keep propagating.
+   */
+  fun undecodable(error: Throwable): Boolean = false
+
   companion object {
-    val PLAIN = AgentRunOutputDecoder { DecodedAgentRunOutput(it) }
-    val CLAUDE_JSON = AgentRunOutputDecoder { stdout -> decodeClaudeJson(stdout) }
-    val CLAUDE_STREAM_JSON = AgentRunOutputDecoder { stdout -> decodeClaudeStreamJson(stdout) }
-    val CODEX_JSONL = AgentRunOutputDecoder { stdout -> decodeCodexJsonl(stdout) }
-    val CURSOR_STREAM_JSON = AgentRunOutputDecoder { stdout -> decodeCursorStreamJson(stdout) }
+    val PLAIN = decoder { DecodedAgentRunOutput(it) }
+    val CLAUDE_JSON = decoder { stdout -> decodeClaudeJson(stdout) }
+    val CLAUDE_STREAM_JSON = decoder { stdout -> decodeClaudeStreamJson(stdout) }
+    val CODEX_JSONL = decoder { stdout -> decodeCodexJsonl(stdout) }
+    val CURSOR_STREAM_JSON: AgentRunOutputDecoder = object : AgentRunOutputDecoder {
+      override fun decode(stdout: String): DecodedAgentRunOutput = decodeCursorStreamJson(stdout)
+
+      /**
+       * A truncated or interleaved Cursor stream is a transport defect, not a provider verdict: the
+       * remaining envelopes carry no answer we can read, so the launch is an empty harvest.
+       */
+      override fun undecodable(error: Throwable): Boolean =
+        error is skillbill.infrastructure.fs.CursorReviewStreamMalformedError
+    }
+
+    private fun decoder(body: (String) -> DecodedAgentRunOutput): AgentRunOutputDecoder =
+      object : AgentRunOutputDecoder {
+        override fun decode(stdout: String): DecodedAgentRunOutput = body(stdout)
+      }
   }
 }
 
@@ -250,6 +277,8 @@ private fun decodeCursorStreamJson(stdout: String): DecodedAgentRunOutput {
   }
 
   var terminalText: String? = null
+  var longestAssistantText: String? = null
+  var assistantEventCount = 0
   var usage: com.fasterxml.jackson.databind.JsonNode? = null
   var decodedEnvelope = false
   var errorEvent = false
@@ -283,6 +312,12 @@ private fun decodeCursorStreamJson(stdout: String): DecodedAgentRunOutput {
         errorMessage = event.path("message").takeIf { it.isTextual }?.asText()
         // Error is stored and thrown later after parsing completes
       }
+      "assistant" -> {
+        assistantEventCount += 1
+        cursorAssistantText(event)?.let { text ->
+          if (text.length > (longestAssistantText?.length ?: 0)) longestAssistantText = text
+        }
+      }
       "result" -> {
         terminalText = event.path("result").takeIf { it.isTextual }?.asText()
         event.path("usage").takeUnless { it.isMissingNode || it.isNull }?.let { usage = it }
@@ -308,19 +343,40 @@ private fun decodeCursorStreamJson(stdout: String): DecodedAgentRunOutput {
     }
   }
 
-  return when {
-    decodedEnvelope && terminalText == null -> DecodedAgentRunOutput("")
-    !decodedEnvelope -> DecodedAgentRunOutput(stdout)
-    else -> DecodedAgentRunOutput(
-      text = terminalText ?: "",
-      inputTokens = usage?.longOrNull("input_tokens"),
-      cachedInputTokens = usage?.longOrNull("cached_input_tokens"),
-      outputTokens = usage?.longOrNull("output_tokens"),
-      reasoningTokens = usage?.longOrNull("reasoning_tokens"),
-      totalTokens = usage?.longOrNull("total_tokens"),
-    )
-  }
+  // A terminal `result` of "" is a real Cursor outcome: the CLI can exit 0 having charged input
+  // tokens and produced no answer at all. Fall back to the longest assistant turn so a blank
+  // terminal event does not discard text the provider actually emitted, and never promote raw
+  // transport bytes to phase output — the phase schema gate reads several JSON envelopes as
+  // conflicting candidates rather than as an empty turn.
+  val harvested = terminalText?.takeIf(String::isNotBlank) ?: longestAssistantText.orEmpty()
+  return DecodedAgentRunOutput(
+    text = harvested,
+    inputTokens = usage.cursorTokens("inputTokens", "input_tokens"),
+    cachedInputTokens = usage.cursorTokens("cachedInputTokens", "cached_input_tokens"),
+    outputTokens = usage.cursorTokens("outputTokens", "output_tokens"),
+    reasoningTokens = usage.cursorTokens("reasoningTokens", "reasoning_tokens"),
+    totalTokens = usage.cursorTokens("totalTokens", "total_tokens"),
+    assistantEventCount = assistantEventCount.takeIf { decodedEnvelope },
+    rawOutputPreview = stdout.take(RAW_OUTPUT_PREVIEW_MAX_CHARS).takeIf { harvested.isBlank() },
+  )
 }
+
+/** Cursor emits camelCase usage keys; older captures and fixtures use snake_case. Accept both. */
+private fun com.fasterxml.jackson.databind.JsonNode?.cursorTokens(vararg fields: String): Long? =
+  this?.let { node -> fields.firstNotNullOfOrNull { field -> node.longOrNull(field) } }
+
+private fun cursorAssistantText(event: com.fasterxml.jackson.databind.JsonNode): String? {
+  val content = event.path("message").path("content")
+  if (content.isArray) {
+    val joined = content.mapNotNull { part -> part.path("text").takeIf { it.isTextual }?.asText() }
+      .joinToString("")
+    return joined.takeIf(String::isNotBlank)
+  }
+  return event.path("message").path("text").takeIf { it.isTextual }?.asText()?.takeIf(String::isNotBlank)
+    ?: event.path("text").takeIf { it.isTextual }?.asText()?.takeIf(String::isNotBlank)
+}
+
+private const val RAW_OUTPUT_PREVIEW_MAX_CHARS = 2_000
 
 private fun com.fasterxml.jackson.databind.JsonNode.longOrNull(field: String): Long? =
   path(field).takeIf { it.isIntegralNumber && it.canConvertToLong() }?.longValue()

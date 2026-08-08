@@ -1115,7 +1115,7 @@ class HeadlessAgentRunAdapterTest {
 
     val captured = runner.requests.single()
     assertEquals(100.milliseconds, captured.timeout)
-    assertTrue(captured.command.contains("--stream-partial-output"))
+    assertTrue(captured.command.contains("stream-json"))
   }
 
   @Test
