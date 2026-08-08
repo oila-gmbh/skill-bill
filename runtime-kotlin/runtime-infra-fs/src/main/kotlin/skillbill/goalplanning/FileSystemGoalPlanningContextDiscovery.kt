@@ -13,8 +13,14 @@ class FileSystemGoalPlanningContextDiscovery : GoalPlanningContextDiscovery {
     val budget = DiscoveryBudget()
     val canonicalRoot = repoRoot.toRealPathOrNull() ?: repoRoot.toAbsolutePath().normalize()
     val packsRoot = canonicalRoot.resolve("platform-packs")
+    // Load-bearing discovery priority under the shared DiscoveryBudget — not incidental argument order:
+    // (1) boundary_memory — per-pack agent/history.md then agent/decisions.md over lexicographically
+    //     sorted pack directories; (2) validation_guidance — root AGENTS.md last.
+    // When file-count or total-byte budget exhausts, later categories are omitted entirely; within a
+    // category, sorted pack order decides which files receive excerpts. platform_packs always survives
+    // as {} because platform.yaml is never read.
     return GoalPlanningContext(
-      platformPacks = discoverPackFiles(canonicalRoot, packsRoot, "platform.yaml", budget),
+      platformPacks = emptyMap(),
       boundaryMemory = discoverPackFiles(canonicalRoot, packsRoot, "agent/history.md", budget) +
         discoverPackFiles(canonicalRoot, packsRoot, "agent/decisions.md", budget),
       validationGuidance = readBounded(

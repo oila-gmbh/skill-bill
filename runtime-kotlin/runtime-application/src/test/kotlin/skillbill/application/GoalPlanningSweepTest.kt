@@ -5,6 +5,7 @@ import skillbill.application.featuretask.sha256HexUtf8
 import skillbill.application.goalrunner.DefaultGoalPlanningSweep
 import skillbill.application.goalrunner.GoalPlanningAttemptRecorder
 import skillbill.application.goalrunner.GoalPlanningRejectionRecorder
+import skillbill.application.goalrunner.GoalPlanningSharedContextPacket
 import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.model.GoalPlanningAttemptRecord
 import skillbill.application.model.GoalPlanningRejectionRecord
@@ -49,6 +50,7 @@ import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.NoopFeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.NoopGoalPlanningPreparationEnvelopeValidator
 import skillbill.workflow.model.DecompositionManifest
+import skillbill.workflow.model.DecompositionSubtask
 import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFormat
@@ -72,6 +74,41 @@ import kotlin.time.Duration.Companion.minutes
 
 @Suppress("LargeClass") // one suite over the sweep's recovery, gate, and stop paths; they share a harness
 class GoalPlanningSweepTest {
+  @Test
+  fun `shared context packet with populated platform_packs still validates`() {
+    val subtasks = listOf(
+      DecompositionSubtask(id = 1, name = "planning-context-discovery", specPath = "spec_subtask_1.md"),
+    )
+    val withoutIntegrity = linkedMapOf<String, Any?>(
+      "packet_version" to GoalPlanningSharedContextPacket.VERSION,
+      "repository_identity" to "repo-root-realpath-v1:/tmp/fixture",
+      "normalized_issue_key" to "SKILL-172",
+      "parent_spec_path" to ".feature-specs/SKILL-172/spec.md",
+      "parent_spec" to "parent body",
+      "decomposition_manifest" to "contract_version: \"0.1\"\nissue_key: SKILL-172\n",
+      "platform_packs" to mapOf(
+        "platform-packs/kotlin/platform.yaml" to "routing_signals: [kotlin]\ndeclared_code_review_areas: [architecture]\n",
+      ),
+      "boundary_memory" to mapOf(
+        "platform-packs/kotlin/agent/history.md" to "prior decision",
+      ),
+      "validation_guidance" to "repo conventions",
+      "ordered_subtasks" to GoalPlanningSharedContextPacket.orderedSubtasks(subtasks),
+    )
+    val packet = withoutIntegrity + (
+      "integrity_sha256" to GoalPlanningSharedContextPacket.digest(withoutIntegrity)
+      )
+
+    GoalPlanningSharedContextPacket.validate(
+      packet = packet,
+      repositoryIdentity = "repo-root-realpath-v1:/tmp/fixture",
+      normalizedIssueKey = "SKILL-172",
+      parentSpecPath = ".feature-specs/SKILL-172/spec.md",
+      subtasks = subtasks,
+    )
+    assertEquals("0.1", GoalPlanningSharedContextPacket.VERSION)
+  }
+
   @Test
   fun `prepared sweep reports absent hydration context for a sibling added after preparation`() {
     val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
