@@ -3792,9 +3792,9 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     assertContains(blocked.blockedReason, "index was restored")
   }
 
-  // The checkpoint commits the tree as it stands, including a path staged from outside the run.
+  // AC-001/AC-002: the checkpoint commits its owned inventory and nothing else, whatever else is dirty.
   @Test
-  fun `checkpoint stages foreign staged paths alongside the run's own work`() {
+  fun `checkpoint stages only owned paths while foreign staged unstaged and untracked files are left alone`() {
     val git = checkpointGit(
       ownedPaths = listOf("src/Owned.kt"),
       stagedPaths = listOf("unrelated/ForeignStaged.kt"),
@@ -3804,13 +3804,17 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
-    assertContains(git.stagePathsCalls, "src/Owned.kt")
-    assertContains(git.stagePathsCalls, "unrelated/ForeignStaged.kt")
+    assertTrue(git.stagePathsCalls.isNotEmpty(), "the owned inventory must be staged")
+    assertEquals(
+      setOf("src/Owned.kt"),
+      git.stagePathsCalls.toSet(),
+      "no foreign path may ever reach the staging call",
+    )
   }
 
-  // Foreign dirt is committed too: the run has no way to tell it from a human's mid-run contribution.
+  // AC-001: foreign dirt alone is not this workflow's work, so it must not produce a checkpoint commit.
   @Test
-  fun `foreign dirt alone still produces a checkpoint commit`() {
+  fun `only foreign dirt present produces no checkpoint commit and does not block the phase transition`() {
     val git = checkpointGit(ownedPaths = emptyList(), stagedPaths = listOf("unrelated/ForeignStaged.kt"))
     git.worktreeStatusValue = " M unrelated/ForeignStaged.kt"
     val harness = checkpointRunHarness(git)
@@ -3818,8 +3822,8 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
-    assertContains(git.stagePathsCalls, "unrelated/ForeignStaged.kt")
-    assertTrue(git.createCommitMessages.isNotEmpty(), "a dirty tree always checkpoints")
+    assertTrue(git.createCommitMessages.isEmpty(), "an empty owned delta must not commit foreign dirt")
+    assertTrue(git.stagePathsCalls.isEmpty())
   }
 
   // AC-005: an owned path staged outside the workflow is adopted on-branch, never a reason to refuse.
@@ -3889,11 +3893,9 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     )
   }
 
-  // A concurrently prepared foreign spec is committed like any other dirty path rather than
-  // stranding the run. Review scope is a separate concern, covered by the pathspec and
-  // untracked-exclusion tests; a spec the inventory reports as owned is reviewed like owned work.
+  // AC-004/AC-010: a concurrently prepared foreign spec is never staged, committed, or reviewed here.
   @Test
-  fun `a concurrently prepared foreign feature spec is committed rather than blocking`() {
+  fun `a concurrently prepared foreign feature spec is never staged committed or reviewed`() {
     val foreignSpec = ".feature-specs/OTHER-999-concurrent/spec_subtask_1.md"
     val git = checkpointGit(ownedPaths = listOf("src/Owned.kt"))
     // The foreign spec exists in the worktree beside this run's work but is not owned by it.
@@ -3902,14 +3904,33 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
 
     val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
-    assertContains(git.stagePathsCalls, foreignSpec)
-    assertTrue(git.createCommitMessages.isNotEmpty())
+    // Either outcome satisfies the contract: checkpoint only this run's paths, or block safely. What
+    // is never permitted is the foreign spec being staged, committed, or entering review input.
+    if (report is FeatureTaskRuntimeRunReport.Completed) {
+      assertFalse(foreignSpec in git.stagePathsCalls, "a foreign issue's spec must never be staged")
+      assertTrue(
+        git.goalReviewBuildInputs.isNotEmpty(),
+        "a completed run must have built review input for the exclusion to be proven on",
+      )
+    } else {
+      val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+      assertContains(blocked.blockedReason, "OTHER-999")
+      assertTrue(git.createCommitMessages.isEmpty())
+    }
+    // Excluded either way it can be: named in the untracked exclusion list, or absent from the
+    // pathspec that bounds the tracked delta. Neither disjunct is satisfiable by doing nothing.
+    git.goalReviewBuildInputs.forEach { baseline ->
+      assertTrue(
+        foreignSpec in baseline.baselineUntrackedPaths || foreignSpec !in baseline.ownedPathspec,
+        "a foreign issue's spec must be excluded from review input, never materialized into it",
+      )
+    }
   }
 
-  // A sibling agent's file appearing mid-run is indistinguishable from a human's, so it is committed.
+  // AC-001/AC-002: a foreign path that appears after the ownership baseline is not this run's work,
+  // so being dirty must not enrol it in the inventory the checkpoint stages and commits.
   @Test
-  fun `a foreign path appearing after the baseline is committed with the run's own work`() {
+  fun `a foreign path appearing after the baseline is never staged merely because it is dirty`() {
     val foreign = "unrelated/SiblingAgentWrote.kt"
     val git = checkpointGit(ownedPaths = listOf("src/Owned.kt"))
     val harness = checkpointRunHarness(git) { phaseId ->
@@ -3920,12 +3941,13 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
-    assertContains(git.stagePathsCalls, foreign)
+    assertFalse(foreign in git.stagePathsCalls, "a path this run never wrote must never be staged")
+    assertTrue(git.stagePathsCalls.isNotEmpty(), "the run's own owned inventory is still checkpointed")
   }
 
-  // A read-only phase that produced a file no longer strands the run: the file is simply committed.
+  // AC-003: a phase with no authority to write produced a file; that blocks before any commit.
   @Test
-  fun `a path introduced by a read-only phase is committed rather than blocking`() {
+  fun `a path introduced by a read-only phase blocks non-retryably before any commit`() {
     val git = checkpointGit(ownedPaths = listOf("src/Owned.kt"))
     val harness = checkpointRunHarness(git) { phaseId ->
       if (phaseId == "review") {
@@ -3936,8 +3958,9 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
 
     val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
-    assertContains(git.stagePathsCalls, "src/ReviewWrote.kt")
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertContains(blocked.blockedReason, "src/ReviewWrote.kt")
+    assertFalse("src/ReviewWrote.kt" in git.stagePathsCalls, "an unowned path must never be staged")
   }
 
   // AC-005: an owned file edited between phases is adopted on-branch like a foreign staged entry,
