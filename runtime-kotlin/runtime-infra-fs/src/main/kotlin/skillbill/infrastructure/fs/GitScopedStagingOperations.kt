@@ -26,9 +26,24 @@ internal object GitScopedStagingOperations : ScopedStagingGitOperations {
   override fun stagePaths(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult {
     val normalized = paths.filter(String::isNotBlank).distinct()
     if (normalized.isEmpty()) return WorkflowGitOperationResult(status = "ok", value = "")
-    normalized.chunked(PATHSPEC_BATCH_SIZE).forEach { batch ->
-      // `--all` scoped to explicit pathspecs, so a deleted owned path is staged as a deletion
-      // instead of being silently skipped. Scope stays the listed paths; there is no `-A` here.
+    // A pathspec that matches nothing makes `git add --all` abort the entire batch with exit 128
+    // ("did not match any files"). That happens legitimately when a checkpoint owns a deletion an
+    // earlier attempt already staged: the path is absent from both the worktree and the index, so it
+    // has nothing left to stage. `ls-files` treats a non-matching pathspec as simply absent rather
+    // than failing, so index presence is resolved here and no-op paths are filtered out first.
+    val indexed = mutableSetOf<String>()
+    for (batch in normalized.chunked(PATHSPEC_BATCH_SIZE)) {
+      val listed = runGitCommand(repoRoot, listOf("ls-files", "--stage", "-z", "--") + batch)
+      if (!listed.ok) return listed
+      listed.value.orEmpty().split(GIT_NUL).filter(String::isNotBlank).forEach { entry ->
+        indexEntryPath(entry)?.let { indexed += it }
+      }
+    }
+    val stageable = normalized.filter { Files.isRegularFile(repoRoot.resolve(it)) || it in indexed }
+    stageable.chunked(PATHSPEC_BATCH_SIZE).forEach { batch ->
+      // `--all` scoped to explicit pathspecs, so a deleted owned path still present in the index is
+      // staged as a deletion instead of being silently skipped. Scope stays the listed paths; there
+      // is no `-A` here.
       val staged = runGitCommand(repoRoot, listOf("add", "--all", "--") + batch)
       if (!staged.ok) return staged
     }

@@ -60,7 +60,11 @@ interface WorkflowGitOperations {
  * must round-trip unchanged, and porcelain's C-quoting would silently rewrite them.
  */
 interface ScopedStagingGitOperations {
-  /** Stages exactly [paths] by literal pathspec, leaving every other index entry untouched. */
+  /**
+   * Stages exactly [paths] by literal pathspec, leaving every other index entry untouched. A path
+   * absent from both the worktree and the index (for example a deletion an earlier attempt already
+   * staged) has nothing left to stage and is skipped as a no-op rather than failing the staging.
+   */
   fun stagePaths(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult
 
   /**

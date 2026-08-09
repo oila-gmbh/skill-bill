@@ -77,6 +77,22 @@ class GitScopedStagingOperationsTest {
   }
 
   @Test
+  fun `stagePaths treats an already-staged deletion as a no-op and still stages live owned paths`() {
+    // A checkpoint owns a deletion that a prior attempt already staged: the path is gone from both the
+    // worktree and the index, so its pathspec matches nothing and `git add --all` would abort the whole
+    // batch with exit 128. The live owned path in the same batch must still be staged.
+    Files.delete(repo.resolve("tracked/Base.kt"))
+    git("add", "--", "tracked/Base.kt")
+    write("owned/Live.kt", "owned\n")
+
+    val result = GitScopedStagingOperations.stagePaths(repo, listOf("tracked/Base.kt", "owned/Live.kt"))
+
+    assertTrue(result.ok, result.error)
+    assertFalse("tracked/Base.kt" in indexSnapshot().keys, "an already-staged deletion must remain staged")
+    assertTrue("owned/Live.kt" in indexSnapshot().keys, "a live owned path in the same batch must still be staged")
+  }
+
+  @Test
   fun `stagePaths round-trips paths carrying spaces and non-ASCII bytes`() {
     write("owned/a file with spaces.kt", "spaces\n")
     write("owned/ünïcødé.kt", "unicode\n")
