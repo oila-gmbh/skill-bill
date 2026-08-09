@@ -4,6 +4,146 @@ This file records architectural and implementation decisions that span the
 `runtime-kotlin/` boundary. Each entry is dated and explains the trade-off,
 not the implementation detail.
 
+## 2026-08-09 — runtime is the only feature engine; prose and OpenCode/zcode are removed from the product (SKILL-175)
+
+Context: Runtime became the default feature engine and now owns the guarantees
+prose cannot deliver: DB-owned phase loop, shared preplan hydration, projection
+budgets, worker leases, agent-independent resume. Keeping prose alongside it
+means a second product with weaker semantics — dual skills, MCP tools, a CLI
+workflow family, telemetry events, IDE status enums, and runtime↔prose parity
+locks. OpenCode and zcode are install-first-class but feature-runtime refused,
+and their refusal message points operators at prose. This entry **supersedes**
+the 2026-06-27 entry "opencode is prose-only: runtime mode refuses whenever the
+resolved agent is opencode" in full. That entry's body is left intact as
+history; its stance no longer governs.
+
+Decision:
+
+1. **Runtime is the sole feature execution engine.** There is no mode selector
+   on feature entry — no `mode:prose`, no `mode:runtime`, no engine choice
+   exposed by skills, CLI, or MCP.
+2. **The prose engine surface is deleted, not renamed.** `bill-feature-task-prose`,
+   `bill-feature-task-subtask-runner`, `feature_task_prose_*` / legacy
+   `feature_implement_*` / `goal_prose_*` MCP tools, the `skill-bill workflow`
+   family (`TASK_PROSE`), `implement-stats`, `FeatureImplement*`,
+   `WorkflowFamily.IMPLEMENT`, and the IDE `feature-task-prose` family go away.
+   Nothing is renamed forward into a runtime-flavoured equivalent.
+3. **OpenCode and zcode are removed from the product entirely.** They are not
+   kept as install targets, not kept as detection signals, and **must not be
+   preserved as a permanent refuse tier or an "unsupported agents" list** —
+   that prohibition is explicit, not implied. `RUNTIME_REFUSED_AGENTS`,
+   `RUNTIME_REFUSED_AGENT_MESSAGE`, and `isRuntimeRefusedAgent` are **deleted**,
+   not rewritten to carry a different rejection reason. `InstallAgent.OPENCODE`
+   and `InstallAgent.ZCODE` and their provider/link/MCP/native-agent cases are
+   deleted with them.
+4. **A future OpenCode return is a clean new integration, never an un-delete.**
+   It starts from a working headless driver and a real runtime child model,
+   with no compatibility shim carried forward from this cut and no prose
+   fallback.
+5. **The cutover is dependency-ordered, not a single sweep.** Prose shares
+   `feature_task_workflows` with runtime through the `mode` column, so that
+   table is never dropped blindly; the order is stance → callers + OpenCode/zcode
+   purge → prose skill deletion → MCP/telemetry → CLI → persistence/IDE →
+   tests/docs, and the row policy below governs every persistence step.
+6. **No dual maintenance survives this feature.** Runtime↔prose parity tests and
+   any "must work on both paths" requirement are retired; runtime is the sole
+   authority and no future change re-establishes a second engine to keep in
+   lockstep.
+
+### In-flight prose row policy (binding on subtask 6)
+
+The policy is **quarantine + loud-fail resume**. It is never silent
+reinterpretation of a prose row as a runtime row, and it is never a one-shot
+migration that rewrites historical rows. Subtask 6 implements exactly this, and
+must not re-decide it. The three row populations each get a distinct rule:
+
+1. **`feature_task_workflows` rows with `mode = 'prose'`.** Rows remain readable
+   for history. Every resume/continue/update path that encounters one **must**
+   raise a typed error naming the runtime re-run path (`skill-bill goal <KEY>`)
+   rather than degrading or reinterpreting. The `'prose'` literal **must be
+   retained** in the `mode` CHECK constraint in
+   `runtime-kotlin/runtime-infra-sqlite/src/main/kotlin/skillbill/db/core/DatabaseMigrations.kt`
+   as a legacy read-only value, so that no SQLite table rebuild is required;
+   every **write** path must refuse `'prose'` above the schema.
+2. **`feature_implement_sessions` rows and their stats builders.** The table and
+   its rows are retained as read-only history. There **must** be no live writer.
+   The stats surfaces built on it (`FeatureImplement*Stats`,
+   `implement-stats`) are removed, and `StaleSessionReconciler` /
+   `StaleReconciliationCandidateQuery` **must** stop treating those sessions as
+   reconciliation candidates.
+3. **`goal_run_sessions` prose attribution.** Existing rows keep their recorded
+   `mode` value verbatim. No new prose attribution is ever written, and goal
+   continuation **must not** treat a prose-attributed session as resumable.
+
+Already-installed databases reach the quarantined state **through the read and
+resume code paths, not through an appended migration body**: appending a
+statement to a migration that has already been applied is a silent no-op on
+existing DBs, so a schema-side quarantine would never reach any real user's
+database. The refusal therefore lives in the store/service read path, which every
+existing DB executes on the next run.
+
+The live `mode = 'prose'` goal-continuation predicate at
+`runtime-kotlin/runtime-infra-sqlite/src/main/kotlin/skillbill/db/core/DatabaseColumnMigrations.kt:188`
+**must** be removed rather than inverted: prose rows stop being goal-continuation
+candidates entirely, and the predicate narrows to `mode = 'runtime'`.
+
+### Keep/delete heuristic and grep allowlist
+
+English "prose" wording is **out of deletion scope**. Only the product mode named
+`prose` is deleted. Concrete keep examples, all present in the tree today:
+
+- `AGENTS.md` writing guidance: "Write direct, active prose".
+- `orchestration/contracts/native-agent-composition-schema.yaml`: "the governed
+  prose already…" — "governed prose" means authored skill/pack body text.
+- `skills/bill-pr-review-fix/content.md`: "write 1-3 sentences in plain prose" —
+  review/PR reply language.
+- `orchestration/contracts/review-context-schema.yaml`: "a bounded prose summary".
+- `orchestration/contracts/platform-pack-schema.yaml`: "Optional prose
+  tie-breakers" and "Short prose describing the area's specialist focus."
+
+The allowlist for `opencode` / `zcode` product-token greps is exactly
+`.feature-specs/SKILL-175-remove-prose-opencode-runtime-support/**` and
+`.feature-specs/done/**`. There is no live product keep-list: any other hit is a
+removal surface.
+
+### Ordering precondition on subtask 3
+
+Runtime phase prompt directives currently lockstep with the prose native agents,
+so `skills/bill-feature-task-prose/native-agents/agents.yaml` holds the only copy
+of some governed briefing text. Before that file and
+`skills/bill-feature-task-subtask-runner/` are deleted, the governed briefing
+text **must** first be re-homed into `skills/bill-feature-task-runtime/content.md`
+and the runtime phase-briefing composition in
+`runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/featuretask/FeatureTaskRuntimePhaseBriefingAssembler.kt`
+(with `FeatureTaskRuntimeBriefingRendering.kt`). This is an ordering precondition
+on subtask 3, not a suggestion: deletion before re-homing loses the only
+surviving copy.
+
+Reason: two engines sharing `feature_task_workflows.mode` doubles the
+maintenance surface while only one of them can honour the durability guarantees
+the product sells. A permanent refuse tier for OpenCode/zcode would keep agent
+matrix noise and advertise a support level that does not exist. Quarantine over
+migration keeps history truthful and makes the failure loud at the exact moment
+an operator would otherwise get a half-executed run.
+
+Alternatives considered: (a) keep OpenCode/zcode as install-only targets with a
+refuse-and-redirect message — rejected, it is a fake support tier and the
+redirect target no longer exists; (b) one-shot migration of prose rows to
+runtime — rejected, the two engines' durable state is not equivalent and a
+rewritten row cannot actually resume; (c) rename the prose stack to a runtime
+variant — rejected, it preserves dead code paths under new names.
+
+Non-goals: implementing an OpenCode or zcode feature runtime; deleting English
+"prose" wording; rewriting historical `.feature-specs/done/**` archives or git
+history; changing review `mode:inline|delegated|auto`; guaranteeing cleanup of
+symlinks already written to user machines under `~/.config/opencode` or
+`~/.zcode` (release-note guidance only).
+
+Revisit when: someone brings a working headless OpenCode (or zcode) driver that
+can sustain the runtime child model, at which point it enters as a new
+integration; or when telemetry shows prose-quarantine loud-fails still firing
+long after the cut, which would mean the operator message is not landing.
+
 ## 2026-08-08 — link and compile toolchain pin is JDK 21 (SKILL-166)
 
 Context: The Kotlin runtime compiled and linked against JDK 17 while the
