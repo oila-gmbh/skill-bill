@@ -29,6 +29,7 @@ internal object RuntimeWorkflowTestSupport {
       .toCliMap(service.goalObservabilityEventValidator)
   }
 
+  @Suppress("LongParameterList") // maps 1:1 onto WorkflowUpdateRequest fields plus the DB/context seam
   fun update(
     dbPath: Path,
     workflowId: String,
@@ -74,17 +75,15 @@ internal object RuntimeWorkflowTestSupport {
     ).toCliMap()
   }
 
-  fun parseStepUpdates(rawJson: String): List<Map<String, Any?>> =
-    JsonSupport.parseArrayOrEmpty(rawJson).map { value ->
-      requireNotNull(JsonSupport.anyToStringAnyMap(value))
-    }
+  fun parseStepUpdates(rawJson: String): List<Map<String, Any?>> = JsonSupport.parseArrayOrEmpty(rawJson).map { value ->
+    requireNotNull(JsonSupport.anyToStringAnyMap(value))
+  }
 
-  fun parseArtifactsPatch(rawJson: String): Map<String, Any?> =
-    requireNotNull(
-      JsonSupport.parseObjectOrNull(rawJson)
-        ?.let(JsonSupport::jsonElementToValue)
-        ?.let(JsonSupport::anyToStringAnyMap),
-    )
+  fun parseArtifactsPatch(rawJson: String): Map<String, Any?> = requireNotNull(
+    JsonSupport.parseObjectOrNull(rawJson)
+      ?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap),
+  )
 
   private fun component(context: CliRuntimeContext): RuntimeComponent =
     RuntimeComponent::class.create(context.toRuntimeContext())

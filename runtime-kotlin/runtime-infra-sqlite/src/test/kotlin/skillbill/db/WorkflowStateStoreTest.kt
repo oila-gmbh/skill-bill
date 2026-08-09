@@ -758,7 +758,7 @@ class WorkflowStateStoreTest {
           workflow_status, current_step_id, steps_json, artifacts_json, issue_key,
           started_at, updated_at, state_entered_at, state_entered_at_estimated, finished_at
         ) VALUES (?, ?, 'bill-feature-task', 'prose', 'bill-feature-task-prose', ?, 'running', 'plan',
-                  '[]', '{}', 'SKILL-901', NULL, NULL, NULL, 0, NULL)
+                  '[]', '{}', 'SKILL-901', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0, NULL)
         """.trimIndent(),
       ).use { statement ->
         statement.setString(1, "wfl-legacy-prose-001")

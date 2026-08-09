@@ -76,7 +76,7 @@ class InstallNativeAgentLinkApplyTest : InstallApplyTestSupport() {
     Files.writeString(
       inventory,
       """
-      {"contract_version":"0.1","entries":[
+      {"contract_version":"0.2","entries":[
         {"logical_name":"bill-code-review-worker","provider":"codex","installed_path":"$installedPath",
          "cache_target_path":"$cacheTargetPath","content_digest":"${"0".repeat(64)}",
          "content_digest":"${"1".repeat(64)}","source_root":"${fixture.repoRoot}"}
@@ -358,7 +358,7 @@ class InstallNativeAgentLinkApplyTest : InstallApplyTestSupport() {
     Files.writeString(
       inventory,
       """
-      {"contract_version":"0.1","entries":[
+      {"contract_version":"0.2","entries":[
         {"logical_name":"bill-kotlin-code-review","provider":"codex","installed_path":"$kotlinLink","cache_target_path":"$kotlinTarget","content_digest":"${"0".repeat(
         64,
       )}","source_root":"${fixture.repoRoot}"},
@@ -836,7 +836,7 @@ class InstallNativeAgentLinkApplyTest : InstallApplyTestSupport() {
   }
 
   private fun inventoryJson(logicalName: String, installedPath: Path, cacheTargetPath: Path, sourceRoot: Path) = """
-    {"contract_version":"0.1","entries":[
+    {"contract_version":"0.2","entries":[
       {"logical_name":"$logicalName","provider":"codex","installed_path":"$installedPath","cache_target_path":"$cacheTargetPath","content_digest":"${"0".repeat(
     64,
   )}","source_root":"$sourceRoot"}

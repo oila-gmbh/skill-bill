@@ -566,58 +566,6 @@ private const val ZERO_FINDING_REVIEW: String =
   No findings.
   """
 
-private fun insertFeatureImplementSession(connection: java.sql.Connection) {
-  connection.createStatement().use { statement ->
-    statement.executeUpdate(
-      """
-      INSERT INTO feature_implement_sessions (
-        session_id,
-        feature_size,
-        rollout_needed,
-        acceptance_criteria_count,
-        spec_word_count,
-        completion_status,
-        feature_flag_used,
-        feature_flag_pattern,
-        files_created,
-        files_modified,
-        tasks_completed,
-        review_iterations,
-        audit_result,
-        audit_iterations,
-        validation_result,
-        boundary_history_written,
-        boundary_history_value,
-        pr_created,
-        started_at,
-        finished_at
-      ) VALUES (
-        'fis-1',
-        'MEDIUM',
-        1,
-        3,
-        200,
-        'completed',
-        0,
-        'none',
-        2,
-        4,
-        5,
-        1,
-        'all_pass',
-        1,
-        'pass',
-        0,
-        'low',
-        1,
-        '2026-04-23 10:00:00',
-        '2026-04-23 10:10:00'
-      )
-      """.trimIndent(),
-    )
-  }
-}
-
 private fun seedMixedReviewHealth(connection: java.sql.Connection, reviewRunId: String) {
   ReviewStatsRuntime.updateReviewFinishedTelemetryState(connection, reviewRunId, enabled = true, level = "full")
   insertFeatureImplementSessionWithChildSteps(
@@ -654,41 +602,6 @@ private fun embeddedReviewChildStep(): Map<String, Any?> = mapOf(
   "rejected_finding_details" to emptyList<Map<String, Any?>>(),
   "latest_outcome_counts" to mapOf("finding_accepted" to 1),
 )
-
-private fun seedFeatureImplementSizeHealth(connection: java.sql.Connection) {
-  insertFeatureImplementSessionWithChildSteps(
-    connection,
-    FeatureImplementSessionFixture(
-      sessionId = "fis-large-completed",
-      featureSize = "LARGE",
-      completionStatus = "completed",
-      childSteps = listOf(
-        mapOf("skill" to "bill-code-check", "result" to "pass", "iterations" to 1),
-        mapOf("skill" to "bill-pr-description", "pr_created" to true),
-      ),
-    ),
-  )
-  insertFeatureImplementSessionWithChildSteps(
-    connection,
-    FeatureImplementSessionFixture(
-      sessionId = "fis-large-error",
-      featureSize = "LARGE",
-      completionStatus = "error",
-      childSteps = listOf(mapOf("skill" to "bill-kotlin-code-review", "rejected_findings" to 1)),
-    ),
-  )
-  insertFeatureImplementSessionWithChildSteps(
-    connection,
-    FeatureImplementSessionFixture(
-      sessionId = "fis-medium-open",
-      featureSize = "MEDIUM",
-      completionStatus = "",
-      childSteps = emptyList(),
-      finishedAt = null,
-    ),
-  )
-  insertMalformedFeatureImplementChildSteps(connection, "fis-malformed-child")
-}
 
 private data class FeatureImplementSessionFixture(
   val sessionId: String,

@@ -941,7 +941,7 @@ private fun cliQualityCheckBody(slug: String): String = """
 """.trimIndent()
 
 private fun cliNativeAgents(slug: String): String = """
-  contract_version: "0.2"
+  contract_version: "0.1"
   agents:
     - name: bill-$slug-code-review-architecture
       description: "$slug architecture specialist — $slug architecture boundary APIs and failure modes."

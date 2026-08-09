@@ -1512,6 +1512,12 @@ class WorkflowGoalRunnerOutcomeStore(
   ): List<GoalSubtaskReviewPassResult> = database.read(dbPathOverride) { unitOfWork ->
     val record = taskRuntimeRecordOrNull(unitOfWork.workflowStates, workflowId) ?: return@read emptyList()
     val artifacts = decodeArtifacts(record.artifactsJson)
+    // SKILL-175: the goal runner initializes goal-subtask review state when IT opens the child. A
+    // child hydrated through the continuation carries `goal_continuation` but no review state yet —
+    // it has no review passes to emit. Skipping here (rather than letting the decoder's
+    // "goal_continuation implies review state" invariant reject the row) mirrors the prose era,
+    // where continuation children were never read by this RUNTIME-only emission path.
+    if (GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY !in artifacts) return@read emptyList()
     val review = goalReviewArtifacts(artifacts) ?: return@read emptyList()
     validatedGoalReviewPasses(review, phaseOutputValidator)
       .drop(review.state.emittedPassCount)

@@ -30,9 +30,10 @@ class ClaudeConfigDirAgentPathTest {
       workConfig.resolve("agents"),
       InstallOperations.claudeAgentsPath(home, environment = env),
     )
-    // Non-claude agents are unaffected by CLAUDE_CONFIG_DIR.
+    // Non-claude agents are unaffected by CLAUDE_CONFIG_DIR. With no .codex dir present, the
+    // codex skill root falls back to the Agents directory (codexPath in InstallPrimitives).
     assertEquals(
-      home.resolve(".codex/skills"),
+      home.resolve(".agents/skills"),
       InstallOperations.agentPath("codex", home, environment = env),
     )
   }

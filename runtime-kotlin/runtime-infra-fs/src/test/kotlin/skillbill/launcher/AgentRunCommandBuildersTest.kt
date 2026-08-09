@@ -98,7 +98,9 @@ class AgentRunCommandBuildersTest {
   @Test
   fun `stream decoding ignores non-terminal events and tolerates a truncated stream`() {
     val noResultEvent = """{"type":"assistant","message":{"model":"claude-opus-4-8"}}"""
-    assertEquals(noResultEvent, AgentRunOutputDecoder.CLAUDE_STREAM_JSON.decode(noResultEvent).text)
+    val undecodable = AgentRunOutputDecoder.CLAUDE_STREAM_JSON.decode(noResultEvent)
+    assertEquals("", undecodable.text, "a stream cut before its terminal event carries no answer")
+    assertEquals(noResultEvent, undecodable.rawOutputPreview)
 
     val laterResultWins = listOf(
       """{"type":"result","subtype":"success","result":"stale"}""",
@@ -520,7 +522,7 @@ class AgentRunCommandBuildersTest {
         "--workspace",
         "/tmp/skillbill-agent-run",
         "--output-format",
-        "stream-json",
+        "json",
       ),
       command.command,
     )

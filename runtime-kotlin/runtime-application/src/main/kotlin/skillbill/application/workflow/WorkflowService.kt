@@ -228,13 +228,25 @@ class WorkflowService(
     WorkflowEngine.validateUpdate(family.definition, input)?.let { error ->
       return WorkflowUpdateResult.Error(request.workflowId, error)
     }
-    return database.transaction(dbOverride) { unitOfWork ->
+    var projectionArtifactsJson: String? = null
+    val result = database.transaction(dbOverride) { unitOfWork ->
       val existing = family.get(unitOfWork.workflowStates, request.workflowId)
         ?: return@transaction WorkflowUpdateResult.Error(
           request.workflowId,
           "Unknown workflow_id '${request.workflowId}'.",
         )
-      val effectiveInput = input.withGoalObservabilityArtifacts(
+      // SKILL-175: the runtime family keeps the decomposition synthesis that the retired prose
+      // IMPLEMENT family previously supplied — updating a row with a decompose plan materializes
+      // the decomposition_runtime artifact (and its on-disk projection) so the goal runner can
+      // resolve the parent by issue key.
+      val runtimeInput = family.withDecompositionRuntime(
+        existing,
+        input,
+        request.workflowId,
+        decompositionManifestValidator,
+        decompositionManifestFileStore,
+      )
+      val effectiveInput = runtimeInput.input.withGoalObservabilityArtifacts(
         existing = existing,
         workflowId = request.workflowId,
         validator = goalObservabilityEventValidator,
@@ -243,8 +255,27 @@ class WorkflowService(
       val updatedRecord = engine.updateRecord(family.definition, existing, effectiveInput)
       family.save(unitOfWork.workflowStates, updatedRecord)
       val updated = family.get(unitOfWork.workflowStates, request.workflowId) ?: updatedRecord
+      if (runtimeInput.updated) {
+        projectionArtifactsJson = updated.artifactsJson
+        engine.syncDecompositionParentRuntime(
+          family,
+          updated,
+          request.workflowId,
+          unitOfWork,
+          decompositionManifestValidator,
+        )
+      }
       updateOk(family.definition, updated, effectiveInput, unitOfWork.dbPath.toString())
     }
+    projectionArtifactsJson?.let { artifactsJson ->
+      DecompositionManifestWriter.writeProjectionFromWorkflowState(
+        Path.of("").toAbsolutePath(),
+        artifactsJson,
+        decompositionManifestValidator,
+        decompositionManifestFileStore,
+      )
+    }
+    return result
   }
 
   fun abandonFeatureTaskRuntime(workflowId: String, reason: String, dbOverride: String? = null): WorkflowUpdateResult {
@@ -600,8 +631,6 @@ class WorkflowService(
         family,
         record,
         unitOfWork,
-        decompositionManifestValidator,
-        decompositionManifestFileStore,
       ).also { continuation ->
         projectionArtifactsJson = continuation.projectionArtifactsJson ?: projectionArtifactsJson
       }.result
@@ -744,6 +773,67 @@ private object FeatureTaskRuntimePhaseLedgerDecoder {
   )
 
   private fun rethrow(error: InvalidWorkflowStateSchemaError): Nothing = throw error
+}
+
+// SKILL-175: the runtime family keeps the decomposition synthesis that the retired prose
+// IMPLEMENT family previously supplied — updating a row with a decompose plan materializes
+// the decomposition_runtime artifact (and its on-disk projection) so the goal runner can
+// resolve the parent by issue key.
+internal fun WorkflowFamily.withDecompositionRuntime(
+  existing: WorkflowStateSnapshot,
+  input: WorkflowUpdateInput,
+  workflowId: String,
+  validator: DecompositionManifestValidator,
+  fileStore: DecompositionManifestFileStore,
+): DecompositionRuntimeInput = if (this != WorkflowFamily.TASK_RUNTIME) {
+  DecompositionRuntimeInput(input = input, updated = false)
+} else {
+  DecompositionManifestWriter.manifestFromWorkflowUpdate(
+    repoRoot = Path.of("").toAbsolutePath(),
+    existingArtifactsJson = existing.artifactsJson,
+    artifactsPatch = input.artifactsPatch,
+    validator = validator,
+    runtimeUpdate = DecompositionManifestRuntimeUpdate(
+      workflowId = workflowId,
+      workflowStatus = input.workflowStatus,
+      currentStepId = input.currentStepId,
+      stepUpdates = input.stepUpdates,
+    ),
+    fileStore = fileStore,
+  )?.let { manifest ->
+    DecompositionRuntimeInput(
+      input = input.copy(
+        artifactsPatch = LinkedHashMap(input.artifactsPatch.orEmpty()).apply {
+          put(
+            DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
+            encodeDecompositionManifestMap(manifest, validator, DECOMPOSITION_RUNTIME_ARTIFACT_KEY),
+          )
+        },
+      ),
+      updated = true,
+    )
+  } ?: DecompositionRuntimeInput(input = input, updated = false)
+}
+
+internal data class DecompositionRuntimeInput(
+  val input: WorkflowUpdateInput,
+  val updated: Boolean,
+)
+
+private fun WorkflowEngine.syncDecompositionParentRuntime(
+  family: WorkflowFamily,
+  updated: WorkflowStateSnapshot,
+  workflowId: String,
+  unitOfWork: UnitOfWork,
+  validator: DecompositionManifestValidator,
+) {
+  val manifest = updated.decompositionRuntime(validator)
+  if (family == WorkflowFamily.TASK_RUNTIME && manifest != null) {
+    val parent = unitOfWork.workflowStates.findDecomposedParentWorkflowForRuntime(manifest, validator)
+    parent?.toSnapshot()
+      ?.takeUnless { it.workflowId == workflowId }
+      ?.let { p -> persistParentDecompositionRuntime(p, manifest, unitOfWork, validator) }
+  }
 }
 
 private fun WorkflowUpdateRequest.toWorkflowUpdateInput(): WorkflowUpdateInput = WorkflowUpdateInput(

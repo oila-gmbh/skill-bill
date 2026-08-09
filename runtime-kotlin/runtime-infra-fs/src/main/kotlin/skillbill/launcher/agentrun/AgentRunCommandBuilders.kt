@@ -300,10 +300,15 @@ class CursorAgentRunCommandBuilder : AgentRunCommandBuilder {
     // liveness signal does not: the deltas are indistinguishable from finished turns at harvest
     // time. Liveness falls back to process heartbeat instead, as Codex already does.
     val streamPartialOutput = request.streamProviderOutput
+    // stream-json carries the whole session — every turn, tool call and tool result — and its only
+    // harvestable event is the terminal one. A launch nobody is streaming pays that transport cost
+    // to have the answer arrive last, behind a capped drain that keeps the head. Buffer instead,
+    // exactly as Claude does, so an unstreamed launch harvests one small object.
+    val streaming = streamPartialOutput || request.streamOutputForLiveness
     val isReviewLaunch = request.reviewEvidenceBroker != null
 
     return goalContinuationCommand(request, agent) ?: AgentRunCommand(
-      command = buildCursorCommand(request, isReviewLaunch, streamPartialOutput),
+      command = buildCursorCommand(request, isReviewLaunch, streamPartialOutput, streaming),
       workingDirectory = request.repoRoot,
       timeout = request.timeout,
       stdinText = launchPrompt(request),
@@ -322,6 +327,7 @@ class CursorAgentRunCommandBuilder : AgentRunCommandBuilder {
     request: SkillRunRequest,
     isReviewLaunch: Boolean,
     streamPartialOutput: Boolean,
+    streaming: Boolean,
   ): List<String> = buildList {
     add("agent")
     add("--print")
@@ -341,7 +347,7 @@ class CursorAgentRunCommandBuilder : AgentRunCommandBuilder {
     }
 
     add("--output-format")
-    add("stream-json")
+    add(if (streaming) "stream-json" else "json")
     if (streamPartialOutput) add("--stream-partial-output")
 
     request.modelOverride?.let { model ->

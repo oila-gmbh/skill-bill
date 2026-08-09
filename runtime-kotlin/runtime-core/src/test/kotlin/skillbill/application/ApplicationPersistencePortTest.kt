@@ -1424,7 +1424,8 @@ class ApplicationPersistencePortTest {
     val continued = service.continueWorkflow(WorkflowFamilyKind.TASK_RUNTIME, "SKILL-51", dbOverride = null)
       as WorkflowContinueResult.DecompositionStandard
     val manifest = loadTestDecompositionManifest(parentSpec.parent.resolve("decomposition-manifest.yaml"))
-    val parent = service.get(WorkflowFamilyKind.TASK_RUNTIME, parentWorkflowId, dbOverride = null) as WorkflowGetResult.Ok
+    val parent =
+      service.get(WorkflowFamilyKind.TASK_RUNTIME, parentWorkflowId, dbOverride = null) as WorkflowGetResult.Ok
     val runtime = parent.snapshot.artifacts["decomposition_runtime"] as Map<*, *>
     val firstRuntimeSubtask = (runtime["subtasks"] as List<*>)
       .filterIsInstance<Map<*, *>>()

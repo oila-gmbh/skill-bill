@@ -184,8 +184,6 @@ internal class DecompositionWorkflowContinuation(
         WorkflowFamily.TASK_RUNTIME,
         alignedRecord,
         unitOfWork,
-        validator,
-        fileStore,
       ).withDecompositionFields(
         issueKey = manifest.issueKey,
         subtaskId = selection.subtask.id,
@@ -278,8 +276,6 @@ internal class DecompositionWorkflowContinuation(
       WorkflowFamily.TASK_RUNTIME,
       saved,
       unitOfWork,
-      validator,
-      fileStore,
     )
       .withProjection(updatedManifest, validator)
       .withDecompositionFields(

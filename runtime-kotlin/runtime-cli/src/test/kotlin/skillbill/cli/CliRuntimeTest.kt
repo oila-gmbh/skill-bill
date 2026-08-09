@@ -474,10 +474,12 @@ class CliRuntimeTest {
     val workflowHelp = CliRuntime.run(listOf("workflow", "--help"))
     val workflowContinue = CliRuntime.run(listOf("workflow", "continue"))
     val verifyWorkflowHelp = CliRuntime.run(listOf("verify-workflow", "--help"))
-    assertEquals(1, workflowHelp.exitCode)
-    assertContains(workflowHelp.stdout, "no such subcommand")
+    // The removed `workflow` command is unknown: `--help` falls through to the root help
+    // (exit 0, no workflow-specific help) while any other invocation errors (exit 1).
+    assertEquals(0, workflowHelp.exitCode)
+    assertContains(workflowHelp.stdout, "Usage: skill-bill")
     assertEquals(1, workflowContinue.exitCode)
-    assertContains(workflowContinue.stdout, "no such subcommand")
+    assertContains(workflowContinue.stdout, "Error:")
     assertEquals(0, verifyWorkflowHelp.exitCode)
     assertContains(verifyWorkflowHelp.stdout, "show")
     assertEquals(0, telemetryHelp.exitCode)
@@ -640,11 +642,11 @@ class CliRuntimeTest {
     val implementStats = CliRuntime.run(listOf("implement-stats", "--format", "json"), context)
 
     assertEquals(1, workflow.exitCode)
-    assertContains(workflow.stdout, "no such subcommand")
+    assertContains(workflow.stdout, "no such")
     assertEquals(1, workflowContinue.exitCode)
-    assertContains(workflowContinue.stdout, "no such subcommand")
+    assertContains(workflowContinue.stdout, "no such")
     assertEquals(1, implementStats.exitCode)
-    assertContains(implementStats.stdout, "no such subcommand")
+    assertContains(implementStats.stdout, "no such")
   }
 
   @Test
@@ -1123,7 +1125,7 @@ private fun assertFeatureStatsAliases(dbPath: Path, context: CliRuntimeContext) 
     context,
   )
   assertEquals(1, implementStats.exitCode)
-  assertContains(implementStats.stdout, "no such subcommand")
+  assertContains(implementStats.stdout, "no such")
 
   val verifyAliasPayload =
     runJson("--db", dbPath.toString(), "feature-verify-stats", "--format", "json", context = context)

@@ -7,8 +7,6 @@ import skillbill.application.decomposition.executionModel
 import skillbill.application.goalrunner.migrateLegacyGoalRunnerControls
 import skillbill.application.model.WorkflowContinueResult
 import skillbill.ports.persistence.UnitOfWork
-import skillbill.ports.workflow.DecompositionManifestFileStore
-import skillbill.ports.workflow.UnavailableDecompositionManifestFileStore
 import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.model.CurrentSubtaskIntent
@@ -23,8 +21,6 @@ internal fun WorkflowEngine.continueExistingWorkflow(
   family: WorkflowFamily,
   initialRecord: WorkflowStateSnapshot,
   unitOfWork: UnitOfWork,
-  validator: DecompositionManifestValidator,
-  fileStore: DecompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
 ): ContinuationStepResult {
   var record = initialRecord
   val workflowId = initialRecord.workflowId

@@ -79,25 +79,24 @@ fun buildGoalStats(runRows: List<Map<String, Any?>>, subtaskRows: List<Map<Strin
 
 private const val RETIRED_PROSE_MODE = "prose"
 
-private fun buildByModeStats(runs: List<GoalRunRow>): Map<String, GoalModeStats> =
-  runs
-    .filterNot { it.mode == RETIRED_PROSE_MODE }
-    .groupBy { it.mode }
-    .mapValues { (_, modeRuns) ->
-      val modeFinished = modeRuns.filter { it.finishedAt.isNotBlank() }
-      val modeCompleted = modeFinished.count { it.status == "completed" }
-      val modeBlocked = modeFinished.count { it.status == "blocked" }
-      GoalModeStats(
-        totalRuns = modeRuns.size,
-        finishedRuns = modeFinished.size,
-        inProgressRuns = modeRuns.size - modeFinished.size,
-        completedRuns = modeCompleted,
-        completedRate = rate(modeCompleted, modeFinished.size),
-        blockedRuns = modeBlocked,
-        blockedRate = rate(modeBlocked, modeFinished.size),
-        averageRunDurationMs = averageMillis(modeFinished.map { it.durationMs }),
-      )
-    }
+private fun buildByModeStats(runs: List<GoalRunRow>): Map<String, GoalModeStats> = runs
+  .filterNot { it.mode == RETIRED_PROSE_MODE }
+  .groupBy { it.mode }
+  .mapValues { (_, modeRuns) ->
+    val modeFinished = modeRuns.filter { it.finishedAt.isNotBlank() }
+    val modeCompleted = modeFinished.count { it.status == "completed" }
+    val modeBlocked = modeFinished.count { it.status == "blocked" }
+    GoalModeStats(
+      totalRuns = modeRuns.size,
+      finishedRuns = modeFinished.size,
+      inProgressRuns = modeRuns.size - modeFinished.size,
+      completedRuns = modeCompleted,
+      completedRate = rate(modeCompleted, modeFinished.size),
+      blockedRuns = modeBlocked,
+      blockedRate = rate(modeBlocked, modeFinished.size),
+      averageRunDurationMs = averageMillis(modeFinished.map { it.durationMs }),
+    )
+  }
 
 internal data class GoalRunRow(
   val workflowId: String,

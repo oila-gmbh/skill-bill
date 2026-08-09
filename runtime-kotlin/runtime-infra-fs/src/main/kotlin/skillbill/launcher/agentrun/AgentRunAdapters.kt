@@ -235,7 +235,14 @@ private fun decodeClaudeStreamJson(stdout: String): DecodedAgentRunOutput {
     .filter(String::isNotBlank)
     .mapNotNull { line -> runCatching { structuredOutputMapper.readTree(line) }.getOrNull() }
     .lastOrNull { event -> event.path("type").takeIf { it.isTextual }?.asText() == "result" }
-    ?: return DecodedAgentRunOutput(stdout)
+    // No terminal event means the stream was cut before Claude finished, not that the raw NDJSON is
+    // the answer. Handing the transport back makes the phase schema gate read a run of per-turn
+    // envelopes as conflicting candidates and blame the agent for output it never wrote, so this
+    // degrades to an empty harvest with a bounded excerpt, as the Cursor decoder already does.
+    ?: return DecodedAgentRunOutput(
+      text = "",
+      rawOutputPreview = stdout.take(RAW_OUTPUT_PREVIEW_MAX_CHARS),
+    )
   val usage = terminal.path("usage")
   return DecodedAgentRunOutput(
     text = terminal.path("result").takeIf { it.isTextual }?.asText().orEmpty(),

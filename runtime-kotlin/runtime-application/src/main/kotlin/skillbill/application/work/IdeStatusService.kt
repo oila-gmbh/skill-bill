@@ -131,8 +131,8 @@ class IdeStatusService(
   ): IdeStatusCandidate? {
     // SKILL-175: a legacy prose work item has no live IDE status family; it stays listed in the
     // work list (via WorkListService) but is excluded from IDE status projection here.
-    val family = item.workflowKind.toIdeFamily() ?: return null
-    if (matchesRepository(unitOfWork, item, family, repositoryIdentity) != true) return null
+    val family = item.workflowKind.toIdeFamily()
+    if (family == null || matchesRepository(unitOfWork, item, family, repositoryIdentity) != true) return null
 
     val lifecycle = IdeStatusSelectionPolicy.lifecycleFromDurableState(item.currentState)
       ?: return null

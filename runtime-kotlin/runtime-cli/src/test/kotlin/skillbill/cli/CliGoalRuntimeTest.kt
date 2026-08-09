@@ -761,7 +761,9 @@ class CliGoalRuntimeTest {
     // SKILL-103 AC1: the CLI child carries no persisted agent attribution, so active_agent
     // is omitted (rendered as none) rather than leaked from the caller's --agent codex.
     assertContains(status.stdout, "active_agent: none")
-    assertContains(status.stdout, "execution_liveness: unknown")
+    // SKILL-175: the continuation child is a RUNTIME-mode workflow with no live worker ownership,
+    // so liveness is idle (UNKNOWN is reserved for lease-read failure / non-runtime-mode rows).
+    assertContains(status.stdout, "execution_liveness: idle")
     assertContains(status.stdout, "latest_liveness_signal: liveness=durable_progress phase=implement")
     assertContains(status.stdout, "role=phase_subagent sequence=12")
     assertContains(status.stdout, "latest_observability: phase=implement role=phase_subagent")
@@ -1289,7 +1291,10 @@ class CliGoalExecutionOptionsTest {
     )
 
     assertEquals("blocked", child["workflow_status"])
-    assertEquals("preplan", child["current_step_id"])
+    // SKILL-175: the goal runner's pre-opened child is hydrated through planning (preplan + plan
+    // completed, implement current), so a no-terminal-outcome block parks at implement — not the
+    // fresh continuation child's initial preplan.
+    assertEquals("implement", child["current_step_id"])
   }
 
   @Test
@@ -1550,13 +1555,12 @@ private fun clearWorkerLease(fixture: GoalCliFixture, workflowId: String) {
   }
 }
 
-private fun startRunningGoalChild(fixture: GoalCliFixture): String =
-  RuntimeWorkflowTestSupport.continueByIssueKey(
-    dbPath = fixture.dbPath,
-    issueKey = "SKILL-901",
-    subtaskId = 1,
-    context = fixture.context(launcher = NoopGoalTestAgentRunLauncher),
-  )["workflow_id"] as String
+private fun startRunningGoalChild(fixture: GoalCliFixture): String = RuntimeWorkflowTestSupport.continueByIssueKey(
+  dbPath = fixture.dbPath,
+  issueKey = "SKILL-901",
+  subtaskId = 1,
+  context = fixture.context(launcher = NoopGoalTestAgentRunLauncher),
+)["workflow_id"] as String
 
 private fun recordRunningGoalChildProgress(
   fixture: GoalCliFixture,
@@ -1955,13 +1959,6 @@ private fun runtimeWorkflowUpdate(
   artifactsPatch = RuntimeWorkflowTestSupport.parseArtifactsPatch(update.artifactsPatch),
   context = fixture.context(launcher = launcher),
 )
-
-private fun runGoalJson(arguments: List<String>, context: CliRuntimeContext): Map<String, Any?> {
-  val result = CliRuntime.run(arguments, context)
-  assertEquals(0, result.exitCode, result.stdout)
-  val parsed = requireNotNull(JsonSupport.parseObjectOrNull(result.stdout))
-  return requireNotNull(JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(parsed)))
-}
 
 private fun jsonString(value: Any?): String = JsonSupport.json.encodeToString(
   kotlinx.serialization.json.JsonElement.serializer(),

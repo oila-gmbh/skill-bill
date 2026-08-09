@@ -164,6 +164,10 @@ class FeatureTaskContinuationLookupServiceTest {
     val opened = fixture.open(REPOSITORY_A)
     val identity = requireNotNull(fixture.states.executionIdentity(opened.workflowId))
     fixture.states.overwriteExecutionIdentity(identity.copy(mode = FeatureTaskWorkflowMode.PROSE))
+    // The durable workflow row must decode as PROSE too: the lookup validates identity-vs-snapshot
+    // consistency before the mode quarantine, so a RUNTIME row would trip the schema error instead.
+    val row = requireNotNull(fixture.states.getFeatureTaskWorkflow(opened.workflowId))
+    fixture.states.saveFeatureTaskRuntimeWorkflow(row.copy(mode = FeatureTaskWorkflowMode.PROSE))
 
     assertFailsWith<LegacyProseWorkflowError> {
       fixture.lookup.lookup("SKILL-120", REPOSITORY_A)

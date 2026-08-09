@@ -807,12 +807,9 @@ private class CappedUtf8Drain(
           decodeAvailable(decoded, withinCap) { decoder.decode(carry, decoded, false) }
           carry.compact()
 
-          val retained = remaining?.coerceAtMost(read) ?: read
-          if (retained > 0) {
-            output.write(buffer, 0, retained)
-            remaining = remaining?.minus(retained)
-          }
-          if (retained < read) truncated = true
+          val forwarded = remaining?.coerceAtMost(read) ?: read
+          if (forwarded > 0) remaining = remaining?.minus(forwarded)
+          retain(buffer, read)
         }
         val withinCap = remaining == null || remaining > 0
         carry.flip()
@@ -822,6 +819,37 @@ private class CappedUtf8Drain(
     } catch (_: IOException) {
       // Forced process teardown can close pipes while drain threads are blocked in read().
     }
+  }
+
+  /**
+   * Retains the TAIL of the stream, not its head. Every structured agent transport puts the only
+   * harvestable event last — Claude's and Cursor's terminal `result`, Codex's final `item.text` —
+   * so keeping the first bytes discards the answer and keeps the preamble. Growth is bounded by
+   * compacting to the last [limitBytes] once the buffer reaches twice that, which costs one copy
+   * per cap's worth of output rather than one per read.
+   */
+  private fun retain(buffer: ByteArray, read: Int) {
+    output.write(buffer, 0, read)
+    val limit = limitBytes ?: return
+    if (totalByteSize > limit) truncated = true
+    if (output.size() > limit * 2) compactToTail(limit)
+  }
+
+  private fun compactToTail(limit: Int) {
+    val retained = output.toByteArray()
+    output.reset()
+    output.write(retained, retained.size - limit, limit)
+  }
+
+  /**
+   * Tail retention cuts into whatever line was in flight at the boundary, and every structured
+   * decoder here parses line by line. Dropping the leading partial line yields a buffer whose first
+   * character starts a real record, so a truncated stream stays parseable instead of failing on a
+   * fragment. A cap-sized run with no newline at all has no boundary to find and is returned whole.
+   */
+  private fun alignToLineStart(bytes: ByteArray): ByteArray {
+    val newline = bytes.indexOf('\n'.code.toByte())
+    return if (newline < 0) bytes else bytes.copyOfRange(newline + 1, bytes.size)
   }
 
   private fun decodeAvailable(decoded: CharBuffer, forwardToSink: Boolean, decode: () -> java.nio.charset.CoderResult) {
@@ -846,9 +874,14 @@ private class CappedUtf8Drain(
     worker.join(DRAIN_JOIN_TIMEOUT_MILLIS)
   }
 
-  fun text(): String = String(output.toByteArray(), StandardCharsets.UTF_8)
+  fun text(): String = String(bytes(), StandardCharsets.UTF_8)
 
-  fun bytes(): ByteArray = output.toByteArray()
+  fun bytes(): ByteArray {
+    val limit = limitBytes ?: return output.toByteArray()
+    val retained = output.toByteArray()
+    if (retained.size <= limit) return retained
+    return alignToLineStart(retained.copyOfRange(retained.size - limit, retained.size))
+  }
 
   /** True once more bytes arrived than the retention cap could keep, so [text] is incomplete. */
   fun wasTruncated(): Boolean = truncated

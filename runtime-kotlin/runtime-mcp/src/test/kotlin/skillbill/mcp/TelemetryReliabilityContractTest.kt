@@ -188,7 +188,6 @@ class TelemetryReliabilityContractTest {
     val reviewFinished = reviewFinishedEnvelope()
     assertEquals(0, reviewFinished["unresolved_findings"])
     TelemetryEventSchemaValidator.validate(envelope = reviewFinished, eventName = "skillbill_review_finished")
-
   }
 
   private fun schemaEnum(name: String): Set<String> =
@@ -478,5 +477,4 @@ class TelemetryReliabilityContractTest {
       statement.executeUpdate()
     }
   }
-
 }

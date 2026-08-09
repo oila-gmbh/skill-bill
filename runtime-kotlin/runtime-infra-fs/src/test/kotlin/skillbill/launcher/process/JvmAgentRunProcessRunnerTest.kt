@@ -11,6 +11,35 @@ import java.util.concurrent.TimeUnit
 
 class JvmAgentRunProcessRunnerTest {
   @Test
+  fun `an over-cap stream retains its terminal event instead of its preamble`() {
+    val flood =
+      """awk 'BEGIN{p=sprintf("%0500d",0); """ +
+        """for(i=0;i<4000;i++) printf "{\"type\":\"assistant\",\"pad\":\"%s\"}\n", p; """ +
+        """printf "{\"type\":\"result\",\"result\":\"TERMINAL\"}\n"}'"""
+    val result = JvmAgentRunProcessRunner().run(
+      AgentRunProcessRequest(
+        command = listOf("sh", "-c", flood),
+        workingDirectory = Path.of("."),
+      ),
+    )
+
+    assertEquals(0, result.exitStatus)
+    assertTrue(result.stdoutTruncated, "the flood must exceed the retention cap for this to prove anything")
+    assertTrue(
+      result.stdout.trimEnd().endsWith("""{"type":"result","result":"TERMINAL"}"""),
+      "the terminal event is the only harvestable one; retaining the head would discard it",
+    )
+    assertTrue(
+      result.stdout.startsWith("{"),
+      "retention must resume at a record boundary so a line-oriented decoder can parse the tail",
+    )
+    assertTrue(
+      result.stdoutByteSize > result.stdoutBytes.size,
+      "the observed total stays the full stream even though only the tail is retained",
+    )
+  }
+
+  @Test
   fun `foreground process result is returned once as the bounded terminal result`() {
     val result = JvmAgentRunProcessRunner().run(
       AgentRunProcessRequest(
