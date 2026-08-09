@@ -24,7 +24,12 @@ object StatusUiMapper {
                 SkillBillStatusUiState.Done(
                     headline = doneHeadline(outcome),
                     detail = outcome.summary,
-                    goalElapsed = elapsed(outcome.startedAt, settledAt(outcome.updatedAt, now)),
+                    goalElapsed = activeElapsed(
+                        outcome.activeDurationMs,
+                        outcome.activeDurationAsOf,
+                        outcome.startedAt,
+                        settledAt(outcome.updatedAt, now),
+                    ),
                     progressCompleted = outcome.progressCompleted,
                     progressTotal = outcome.progressTotal,
                     issueKey = outcome.issueKey,
@@ -95,7 +100,12 @@ object StatusUiMapper {
                 SkillBillStatusUiState.Stale(
                     headline = staleHeadline(outcome),
                     detail = outcome.summary,
-                    goalElapsed = elapsed(outcome.startedAt, settledAt(outcome.updatedAt, now)),
+                    goalElapsed = activeElapsed(
+                        outcome.activeDurationMs,
+                        outcome.activeDurationAsOf,
+                        outcome.startedAt,
+                        settledAt(outcome.updatedAt, now),
+                    ),
                     subtaskElapsed = elapsed(outcome.subtaskStartedAt, settledAt(outcome.updatedAt, now)),
                     progressCompleted = outcome.progressCompleted,
                     progressTotal = outcome.progressTotal,
@@ -117,7 +127,12 @@ object StatusUiMapper {
                 SkillBillStatusUiState.Blocked(
                     headline = "Skill Bill: blocked",
                     detail = outcome.summary,
-                    goalElapsed = elapsed(outcome.startedAt, settledAt(outcome.updatedAt, now)),
+                    goalElapsed = activeElapsed(
+                        outcome.activeDurationMs,
+                        outcome.activeDurationAsOf,
+                        outcome.startedAt,
+                        settledAt(outcome.updatedAt, now),
+                    ),
                     subtaskElapsed = elapsed(outcome.subtaskStartedAt, settledAt(outcome.updatedAt, now)),
                     issueKey = outcome.issueKey,
                     workflowId = null,
@@ -133,7 +148,12 @@ object StatusUiMapper {
                 SkillBillStatusUiState.Failed(
                     headline = "Skill Bill: failed",
                     detail = outcome.summary,
-                    goalElapsed = elapsed(outcome.startedAt, settledAt(outcome.updatedAt, now)),
+                    goalElapsed = activeElapsed(
+                        outcome.activeDurationMs,
+                        outcome.activeDurationAsOf,
+                        outcome.startedAt,
+                        settledAt(outcome.updatedAt, now),
+                    ),
                     subtaskElapsed = elapsed(outcome.subtaskStartedAt, settledAt(outcome.updatedAt, now)),
                     issueKey = outcome.issueKey,
                     workflowId = null,

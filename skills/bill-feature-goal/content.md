@@ -413,11 +413,19 @@ selected_diff_line: hunk_index=1 line_index=1 path=runtime-kotlin/runtime-cli/sr
 
 ### Bounded planning context and thin retention
 
-Planning repository discovery is allowlisted to `AGENTS.md`, each selected
-pack's `platform.yaml`, and each selected pack's `agent/history.md` and
-`agent/decisions.md`. Discovery returns targeted excerpts only: at most 32 files,
-4,096 bytes per excerpt, and 32 KiB total. It must not emit unrestricted
-recursive search output.
+Planning repository discovery is allowlisted to `AGENTS.md` plus `agent/history.md`
+and `agent/decisions.md` under boundaries that are not denied by the runtime's
+checked-in goal-planning discovery exclusion contract.
+Excluded roots — `platform-packs/` among them — contribute nothing: platform packs
+are review-phase and quality-check inputs only, and neither pack `platform.yaml` nor
+pack `agent/` is a planning input. Discovery is headings-first: it parses each eligible
+`history.md` / `decisions.md` programmatically (no model call) into a bounded catalog of
+governed `## [<date>] <title>` entry headings with stable heading ids and source paths — at
+most 32 eligible files, 64 headings per file, and 256 headings in total. Entry bodies never
+travel with the catalog. Preplanning walks the headings and returns the ids it judges
+relevant in `selected_boundary_headings`; the runtime then resolves and delivers only those
+bodies to the plan phase, under its own caps. It must not emit unrestricted recursive search
+output.
 
 Child planning payloads, implementation summaries, audits, reviews, diagnostics,
 and raw child output remain in child context or durable workflow storage. The

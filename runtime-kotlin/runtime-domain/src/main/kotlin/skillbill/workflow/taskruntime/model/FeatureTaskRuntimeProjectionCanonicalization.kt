@@ -451,6 +451,7 @@ internal val FEATURE_TASK_RUNTIME_CLOSED_PROJECTION_OBJECT_KEYS: Map<String, Set
     "validation_strategy",
     "unresolved_questions",
     "evidence_refs",
+    "selected_boundary_headings",
     "_goal_planning_shared_context",
   ),
   "executable_plan" to setOf(

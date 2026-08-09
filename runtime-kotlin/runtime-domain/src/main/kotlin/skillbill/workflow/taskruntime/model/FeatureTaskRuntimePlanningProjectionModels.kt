@@ -91,6 +91,12 @@ const val FEATURE_TASK_RUNTIME_PROJECTION_LIST_MAX_COUNT: Int = 128
 const val FEATURE_TASK_RUNTIME_CHANGED_PATH_MAX_COUNT: Int = 512
 
 /**
+ * SKILL-174: the boundary-memory heading ids a preplan may select for body resolution. The schema
+ * repeats this number as `maxItems` on preplanning_digest.selected_boundary_headings.
+ */
+const val FEATURE_TASK_RUNTIME_SELECTED_BOUNDARY_HEADING_MAX_COUNT: Int = 64
+
+/**
  * The bounded digest `plan` receives from `preplan` (AC-003). Excludes the complete preplan envelope,
  * its summary, derived notes, and any progress diagnostics.
  */
@@ -102,6 +108,7 @@ data class FeatureTaskRuntimePrePlanningDigest(
   val validationStrategy: List<String>,
   val unresolvedQuestions: List<String> = emptyList(),
   val evidenceRefs: List<String> = emptyList(),
+  val selectedBoundaryHeadings: List<String> = emptyList(),
 ) : FeatureTaskRuntimePlanningProjection {
   override val projectionKind: FeatureTaskRuntimeProjectionKind =
     FeatureTaskRuntimeProjectionKind.PREPLANNING_DIGEST
@@ -113,6 +120,10 @@ data class FeatureTaskRuntimePrePlanningDigest(
     requireNonBlankStrings(patternsAndDecisions, "patterns_and_decisions")
     requireNonBlankStrings(unresolvedQuestions, "unresolved_questions")
     requireNonBlankStrings(evidenceRefs, "evidence_refs")
+    requireNonBlankStrings(selectedBoundaryHeadings, "selected_boundary_headings")
+    require(selectedBoundaryHeadings.size <= FEATURE_TASK_RUNTIME_SELECTED_BOUNDARY_HEADING_MAX_COUNT) {
+      "selected_boundary_headings exceeds $FEATURE_TASK_RUNTIME_SELECTED_BOUNDARY_HEADING_MAX_COUNT entries."
+    }
   }
 
   override fun toProjectionFields(): List<FeatureTaskRuntimeHandoffProjectionField> = listOf(
@@ -123,6 +134,10 @@ data class FeatureTaskRuntimePrePlanningDigest(
     field(FIELD_VALIDATION_STRATEGY, FeatureTaskRuntimeHandoffProjectionValue.TextList(validationStrategy)),
     field(FIELD_UNRESOLVED_QUESTIONS, FeatureTaskRuntimeHandoffProjectionValue.TextList(unresolvedQuestions)),
     field(FIELD_EVIDENCE_REFS, FeatureTaskRuntimeHandoffProjectionValue.TextList(evidenceRefs)),
+    field(
+      FIELD_SELECTED_BOUNDARY_HEADINGS,
+      FeatureTaskRuntimeHandoffProjectionValue.TextList(selectedBoundaryHeadings),
+    ),
   )
 
   companion object {
@@ -134,6 +149,7 @@ data class FeatureTaskRuntimePrePlanningDigest(
       FIELD_VALIDATION_STRATEGY,
       FIELD_UNRESOLVED_QUESTIONS,
       FIELD_EVIDENCE_REFS,
+      FIELD_SELECTED_BOUNDARY_HEADINGS,
     )
 
     const val FIELD_AFFECTED_BOUNDARIES: String = "affected_boundaries"
@@ -143,6 +159,7 @@ data class FeatureTaskRuntimePrePlanningDigest(
     const val FIELD_VALIDATION_STRATEGY: String = "validation_strategy"
     const val FIELD_UNRESOLVED_QUESTIONS: String = "unresolved_questions"
     const val FIELD_EVIDENCE_REFS: String = "evidence_refs"
+    const val FIELD_SELECTED_BOUNDARY_HEADINGS: String = "selected_boundary_headings"
   }
 }
 
@@ -720,6 +737,7 @@ private fun FeatureTaskRuntimePrePlanningDigest.Companion.fromMap(
     validationStrategy = map.requireStringList("validation_strategy"),
     unresolvedQuestions = map.optionalStringList("unresolved_questions"),
     evidenceRefs = map.optionalStringList("evidence_refs"),
+    selectedBoundaryHeadings = map.optionalStringList("selected_boundary_headings"),
   )
 }
 

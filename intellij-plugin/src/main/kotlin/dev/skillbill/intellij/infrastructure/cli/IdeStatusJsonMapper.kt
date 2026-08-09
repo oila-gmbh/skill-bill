@@ -154,6 +154,8 @@ object IdeStatusJsonMapper {
                 updatedAt = updatedAt,
                 fromCache = false,
                 planning = planning,
+                activeDurationMs = activeDurationMs,
+                activeDurationAsOf = activeDurationAsOf,
             )
         }
 
@@ -220,6 +222,8 @@ object IdeStatusJsonMapper {
                 subtaskStartedAt = subtaskStartedAt,
                 updatedAt = updatedAt,
                 stale = isStale,
+                activeDurationMs = activeDurationMs,
+                activeDurationAsOf = activeDurationAsOf,
             )
 
             "failed" -> SkillBillStatusOutcome.Failed(
@@ -234,6 +238,8 @@ object IdeStatusJsonMapper {
                 subtaskStartedAt = subtaskStartedAt,
                 updatedAt = updatedAt,
                 stale = isStale,
+                activeDurationMs = activeDurationMs,
+                activeDurationAsOf = activeDurationAsOf,
             )
 
             "idle" -> SkillBillStatusOutcome.Idle(
@@ -253,6 +259,8 @@ object IdeStatusJsonMapper {
                 startedAt = startedAt,
                 updatedAt = updatedAt,
                 stale = isStale,
+                activeDurationMs = activeDurationMs,
+                activeDurationAsOf = activeDurationAsOf,
             )
 
             else -> SkillBillStatusOutcome.Unavailable(

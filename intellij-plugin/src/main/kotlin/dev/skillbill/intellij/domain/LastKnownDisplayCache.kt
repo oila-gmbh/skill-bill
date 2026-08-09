@@ -29,6 +29,12 @@ data class CachedDisplaySnapshot(
     val currentSubtaskId: String? = null,
     val subtaskStartedAt: Instant? = null,
     val updatedAt: Instant? = null,
+    /**
+     * Accumulated execution time, so a cached fallback keeps reporting the runtime's clock
+     * instead of reverting to wall clock since [startedAt]. The live anchor is deliberately
+     * not cached: a cache fallback is never live, so the value it restores is final.
+     */
+    val activeDurationMs: Long? = null,
 ) {
     init {
         require(summary.isNotBlank()) { "summary must not be blank" }
@@ -56,6 +62,7 @@ fun SkillBillStatusOutcome.toCacheSnapshotOrNull(): LastKnownDisplayCache? =
                     currentSubtaskId = currentSubtaskId,
                     subtaskStartedAt = subtaskStartedAt,
                     updatedAt = updatedAt,
+                    activeDurationMs = activeDurationMs,
                 ),
                 observedAt = observedAt,
             )
@@ -74,6 +81,7 @@ fun SkillBillStatusOutcome.toCacheSnapshotOrNull(): LastKnownDisplayCache? =
                     currentSubtaskId = currentSubtaskId,
                     subtaskStartedAt = subtaskStartedAt,
                     updatedAt = updatedAt,
+                    activeDurationMs = activeDurationMs,
                 ),
                 observedAt = observedAt,
             )
@@ -95,6 +103,7 @@ fun SkillBillStatusOutcome.toCacheSnapshotOrNull(): LastKnownDisplayCache? =
                         currentSubtaskId = currentSubtaskId,
                         subtaskStartedAt = subtaskStartedAt,
                         updatedAt = updatedAt,
+                        activeDurationMs = activeDurationMs,
                     ),
                     observedAt = observedAt,
                 )
@@ -112,6 +121,7 @@ fun SkillBillStatusOutcome.toCacheSnapshotOrNull(): LastKnownDisplayCache? =
                     currentSubtaskId = currentSubtaskId,
                     subtaskStartedAt = subtaskStartedAt,
                     updatedAt = updatedAt,
+                    activeDurationMs = activeDurationMs,
                 ),
                 observedAt = observedAt,
             )
@@ -128,6 +138,7 @@ fun SkillBillStatusOutcome.toCacheSnapshotOrNull(): LastKnownDisplayCache? =
                     currentSubtaskId = currentSubtaskId,
                     subtaskStartedAt = subtaskStartedAt,
                     updatedAt = updatedAt,
+                    activeDurationMs = activeDurationMs,
                 ),
                 observedAt = observedAt,
             )
@@ -142,6 +153,7 @@ fun SkillBillStatusOutcome.toCacheSnapshotOrNull(): LastKnownDisplayCache? =
                     progressTotal = progressTotal,
                     startedAt = startedAt,
                     updatedAt = updatedAt,
+                    activeDurationMs = activeDurationMs,
                 ),
                 observedAt = observedAt,
             )
@@ -166,6 +178,7 @@ fun LastKnownDisplayCache.toStaleOutcome(): SkillBillStatusOutcome.Stale =
         currentSubtaskId = display.currentSubtaskId,
         subtaskStartedAt = display.subtaskStartedAt,
         updatedAt = display.updatedAt,
+        activeDurationMs = display.activeDurationMs,
         fromCache = true,
         diagnostic = StatusDiagnostic(reasonCode = "cache_fallback"),
     )

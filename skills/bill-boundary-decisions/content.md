@@ -44,6 +44,7 @@ Optional trailing lines (include only when relevant):
 ## File Rules
 
 - File path: `<primary-boundary>/agent/decisions.md`.
+- **Forbidden — excluded roots:** never create `agent/` under `platform-packs/` or any other root the runtime's checked-in goal-planning discovery exclusion contract denies. Planning discovery denies those roots, so decisions written there are unreadable memory. Write to the nearest non-excluded owning boundary instead.
 - If the file does not exist, create it along with any missing parent directories.
 - Newest entry first.
 - No fixed entry cap.

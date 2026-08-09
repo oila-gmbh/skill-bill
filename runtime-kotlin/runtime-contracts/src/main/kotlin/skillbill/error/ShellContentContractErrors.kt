@@ -133,6 +133,15 @@ class InvalidProducerOutputEvidenceSchemaError(message: String) :
   ShellContentContractException(message)
 
 /**
+ * SKILL-174: surfaced when `orchestration/contracts/goal-planning-discovery-exclusions.yaml` is
+ * missing from the classpath or fails its canonical Draft 2020-12 schema. Extends the governed
+ * contract exception so the MCP server, the CLI config command, and the phase quarantine classifier
+ * recognise it as a contract failure instead of letting it escape as an unmapped runtime crash.
+ */
+class InvalidGoalPlanningDiscoveryExclusionsSchemaError(message: String) :
+  ShellContentContractException(message)
+
+/**
  * SKILL-51: surfaced when a parent decomposition manifest fails the
  * canonical `orchestration/contracts/decomposition-manifest-schema.yaml`
  * Draft 2020-12 schema or its Kotlin-enforced coherence checks. The

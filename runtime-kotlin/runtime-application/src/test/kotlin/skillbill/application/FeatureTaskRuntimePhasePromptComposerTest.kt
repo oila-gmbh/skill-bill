@@ -80,6 +80,24 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
+  fun `preplan shape example itself declares selected_boundary_headings`() {
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN),
+    )
+
+    val shapeExample = prompt.substringAfter("emit these fields DIRECTLY on produced_outputs")
+      .substringAfter("```json")
+      .substringBefore("```")
+    assertContains(
+      shapeExample,
+      "\"selected_boundary_headings\": [",
+      false,
+      "the copyable shape example must name selected_boundary_headings, not only trailing prose",
+    )
+  }
+
+  @Test
   fun `plan prompt names exactly the executable-plan required fields`() {
     val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,

@@ -1,3 +1,14 @@
+## [2026-08-09] SKILL-174 planning discovery exclusion contract (subtask 1)
+Areas: orchestration/contracts, runtime-kotlin/{runtime-contracts,runtime-infra-fs,runtime-application}, platform-packs/*/agent, skills/{bill-feature-goal,bill-boundary-history,bill-boundary-decisions}, AGENTS.md
+- `orchestration/contracts/goal-planning-discovery-exclusions.yaml` (contract_version 0.2) is now the single checked-in source of planning/preplanning discovery denies: `excluded_roots` (anchored repo-relative prefixes, currently `platform-packs/`) plus `excluded_directory_names` denied at ANY depth (`build`, `node_modules`, `.git`, `.gradle`, `.skill-bill`, `target`, `out`, `dist`). Depth-independent segment denial is what makes nested `runtime-kotlin/*/build/` prune as reliably as the repo-root one. reusable
+- The YAML is staged onto the `runtime-contracts` classpath as a resource via `build.gradle.kts`, so the contract file and the parsed `GoalPlanningDiscoveryExclusions` cannot drift; validate asserts the staged copy is byte-identical to the `orchestration/contracts` source. Follow this pattern for any future repo-owned contract the runtime must read.
+- `FileSystemGoalPlanningContextDiscovery` applies the list as a real gate (prefix + segment deny) before reading, not as documentation; `GoalPlanningSharedContextPacket` therefore never carries pack paths in `boundary_memory`, `validation_guidance`, or any other planning field.
+- Deleted every `platform-packs/*/agent/` tree (9 packs). Platform packs are review-phase inputs only and carry no boundary memory; `ExcludedRootAgentTreeAbsenceTest` fails the build if an `agent/` tree reappears under any excluded root, so the cleanup is enforced rather than one-off.
+- `bill-boundary-history` / `bill-boundary-decisions` guidance now forbids creating `agent/` under exclusion-list roots, and `bill-feature-goal` / `AGENTS.md` no longer advertise pack `platform.yaml` or pack `agent/history.md`|`decisions.md` as planning discovery inputs.
+- Known limitation: adding a root to the YAML does not retroactively delete existing `agent/` trees under it — the absence test will fail until they are removed by hand.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-08-08] SKILL-166 runtime JDK 21 toolchain bump
 Areas: runtime-kotlin/build-logic/convention, .github/workflows/{validate-agent-configs,install-smoke-test,release}, RELEASING.md, runtime-kotlin/agent
 - Raised compile (`JDK_VERSION` / `JvmTarget.JVM_21`), build-logic source/target, and jlink (`LINK_JDK_VERSION`) pins from 17 to 21; left `allWarningsAsErrors` and the Badass Runtime / explicit additive `IMAGE_MODULES` strategy unchanged.

@@ -49,7 +49,9 @@ import skillbill.application.work.IdeStatusService
 import skillbill.application.work.WorkListService
 import skillbill.application.workflow.GoalPlanningPreparationCheckpoint
 import skillbill.application.workflow.WorkflowService
+import skillbill.contracts.goalplanning.GoalPlanningDiscoveryExclusions
 import skillbill.domain.skillremove.SkillRemoveFileSystem
+import skillbill.goalplanning.FileSystemGoalPlanningBoundaryBodyResolver
 import skillbill.goalplanning.FileSystemGoalPlanningContextDiscovery
 import skillbill.infrastructure.fs.AgentRunReviewIsolationResolver
 import skillbill.infrastructure.fs.ClasspathReviewSpecialistContractProvider
@@ -140,6 +142,7 @@ import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.featurespec.FeatureSpecPathResolverPort
+import skillbill.ports.goalrunner.GoalPlanningBoundaryBodyResolver
 import skillbill.ports.goalrunner.GoalPlanningContextDiscovery
 import skillbill.ports.goalrunner.GoalPullRequestPort
 import skillbill.ports.goalrunner.GoalRunnerAttemptLedgerStore
@@ -401,6 +404,18 @@ abstract class RuntimeComponent(
   internal fun goalPlanningContextDiscovery(
     adapter: FileSystemGoalPlanningContextDiscovery,
   ): GoalPlanningContextDiscovery = adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun goalPlanningBoundaryBodyResolver(
+    adapter: FileSystemGoalPlanningBoundaryBodyResolver,
+  ): GoalPlanningBoundaryBodyResolver {
+    // SKILL-174: the exclusion contract is read through a lazy classpath singleton rather than an
+    // injected port. Forcing it here turns "the contract is missing from a packaged artifact" into a
+    // typed wiring failure instead of a durable planning block discovered halfway through a goal.
+    GoalPlanningDiscoveryExclusions.excludedRoots
+    return adapter
+  }
 
   // SKILL-66 Subtask 3: GoalRunner reaches lifecycle-telemetry emission only
   // through the application-owned GoalLifecycleTelemetryEmitter seam (backed by

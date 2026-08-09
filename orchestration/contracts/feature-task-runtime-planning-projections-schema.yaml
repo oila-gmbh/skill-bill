@@ -67,8 +67,9 @@ x-coherence-checks:
   - id: list-cap-budget-agreement
     description: >-
       Every `maxItems` here equals the matching Kotlin cap
-      (FEATURE_TASK_RUNTIME_PROJECTION_LIST_MAX_COUNT, or FEATURE_TASK_RUNTIME_CHANGED_PATH_MAX_COUNT
-      for changed_paths and working_tree_owned_paths), and
+      (FEATURE_TASK_RUNTIME_PROJECTION_LIST_MAX_COUNT, FEATURE_TASK_RUNTIME_CHANGED_PATH_MAX_COUNT
+      for changed_paths and working_tree_owned_paths, or
+      FEATURE_TASK_RUNTIME_SELECTED_BOUNDARY_HEADING_MAX_COUNT for selected_boundary_headings), and
       FeatureTaskRuntimeHandoffProjectionBudget.PLANNING_PROJECTION sums the widest variant's caps.
       A schema-valid projection therefore cannot overflow the item budget it is delivered under.
   - id: tests-executed-distinct
@@ -187,6 +188,16 @@ $defs:
       validation_strategy: { $ref: "#/$defs/nonEmptyStrings" }
       unresolved_questions: { $ref: "#/$defs/strings" }
       evidence_refs: { $ref: "#/$defs/strings" }
+      # SKILL-174 heading-selection channel: the boundary-memory heading ids the preplan agent judged
+      # relevant, resolved to bodies for the plan phase only. contract_version stays "0.1" because the
+      # field is additive and optional. The accepted cost: preplanning_digest is
+      # additionalProperties:false, so rolling the runtime back across this change quarantines
+      # in-flight digests as carrying an unknown key. Downgrade is not supported here.
+      # maxItems equals FEATURE_TASK_RUNTIME_SELECTED_BOUNDARY_HEADING_MAX_COUNT (list-cap-budget-agreement).
+      selected_boundary_headings:
+        type: array
+        maxItems: 64
+        items: { $ref: "#/$defs/nonBlank" }
       # Governed co-resident of the goal-planning sweep's preplan produced_outputs, owned by
       # goal-planning-preparation-schema.yaml. Named here only so additionalProperties:false does not
       # reject an output that seam requires; it is not part of the digest this variant delivers.

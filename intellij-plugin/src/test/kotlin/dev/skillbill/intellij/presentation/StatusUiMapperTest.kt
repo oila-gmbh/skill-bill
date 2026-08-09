@@ -117,6 +117,48 @@ class StatusUiMapperTest {
         assertTrue(ui.stale)
     }
 
+    /**
+     * The reported bug, on the settled side: a goal that ran overnight in bursts and finished
+     * reported "8h 03m" — wall clock from start to the final update, counting every hour nobody
+     * was executing it. The runtime's accumulated total is the honest number.
+     */
+    @Test
+    fun `a finished goal reports execution time not wall clock since it started`() {
+        val openedAt = Instant.parse("2026-08-08T21:32:57Z")
+        val finishedAt = Instant.parse("2026-08-09T05:36:49Z")
+        val ui = StatusUiMapper.map(
+            done(updatedAt = finishedAt).copy(
+                activeDurationMs = Duration.ofMinutes(144).toMillis(),
+                activeDurationAsOf = null,
+                startedAt = openedAt,
+            ),
+            finishedAt.plusSeconds(3600),
+        ) as SkillBillStatusUiState.Done
+
+        assertEquals(Duration.ofMinutes(144), ui.goalElapsed)
+        assertEquals(Duration.ofHours(8).plusMinutes(3).plusSeconds(52), StatusUiMapper.elapsed(openedAt, finishedAt))
+    }
+
+    @Test
+    fun `a finished goal without an accumulated total keeps the wall-clock fallback`() {
+        val updated = Instant.parse("2026-08-06T11:30:00Z")
+        val ui = StatusUiMapper.map(done(updatedAt = updated), now) as SkillBillStatusUiState.Done
+        assertEquals(Duration.ofMinutes(90), ui.goalElapsed)
+    }
+
+    @Test
+    fun `a settled goal never adds a tail from a stale live anchor`() {
+        val finishedAt = Instant.parse("2026-08-09T05:36:49Z")
+        val ui = StatusUiMapper.map(
+            done(updatedAt = finishedAt).copy(
+                activeDurationMs = Duration.ofMinutes(144).toMillis(),
+                activeDurationAsOf = finishedAt,
+            ),
+            finishedAt.plusSeconds(7200),
+        ) as SkillBillStatusUiState.Done
+        assertEquals(Duration.ofMinutes(144), ui.goalElapsed)
+    }
+
     private fun done(
         updatedAt: Instant = now,
         stale: Boolean = false,

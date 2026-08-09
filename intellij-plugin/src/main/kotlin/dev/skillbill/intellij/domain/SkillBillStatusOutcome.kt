@@ -37,6 +37,10 @@ sealed class SkillBillStatusOutcome {
         /** Freshness modifies a settled lifecycle; it never replaces it. */
         val stale: Boolean = false,
         override val diagnostic: StatusDiagnostic? = null,
+        /** See [Active.activeDurationMs]. Final for a finished run. */
+        val activeDurationMs: Long? = null,
+        /** See [Active.activeDurationAsOf]; absent once the runner released its lease. */
+        val activeDurationAsOf: Instant? = null,
     ) : SkillBillStatusOutcome()
 
     data class Active(
@@ -121,6 +125,10 @@ sealed class SkillBillStatusOutcome {
         val fromCache: Boolean = false,
         override val diagnostic: StatusDiagnostic? = null,
         val planning: GoalPlanningInfo? = null,
+        /** See [Active.activeDurationMs]. */
+        val activeDurationMs: Long? = null,
+        /** See [Active.activeDurationAsOf]; absent once the runner released its lease. */
+        val activeDurationAsOf: Instant? = null,
     ) : SkillBillStatusOutcome()
 
     data class Blocked(
@@ -137,6 +145,10 @@ sealed class SkillBillStatusOutcome {
         /** Freshness modifies a settled lifecycle; it never replaces it. */
         val stale: Boolean = false,
         override val diagnostic: StatusDiagnostic? = null,
+        /** See [Active.activeDurationMs]. A blocked goal accumulates none while it waits. */
+        val activeDurationMs: Long? = null,
+        /** See [Active.activeDurationAsOf]; absent once the runner released its lease. */
+        val activeDurationAsOf: Instant? = null,
     ) : SkillBillStatusOutcome()
 
     data class Failed(
@@ -153,6 +165,10 @@ sealed class SkillBillStatusOutcome {
         /** Freshness modifies a settled lifecycle; it never replaces it. */
         val stale: Boolean = false,
         override val diagnostic: StatusDiagnostic? = null,
+        /** See [Active.activeDurationMs]. Final for a run that stopped failing. */
+        val activeDurationMs: Long? = null,
+        /** See [Active.activeDurationAsOf]; absent once the runner released its lease. */
+        val activeDurationAsOf: Instant? = null,
     ) : SkillBillStatusOutcome()
 
     data class Unavailable(

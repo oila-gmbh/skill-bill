@@ -569,7 +569,8 @@ object FeatureTaskRuntimePhasePromptComposer {
       "        \"rollout\": { \"flag_required\": false, \"flag_pattern\": \"none\",\n" +
       "          \"notes\": \"<rollout note, or N/A>\" },\n" +
       "        \"validation_strategy\": [\"<how the change is validated>\"],\n" +
-      "        \"unresolved_questions\": [], \"evidence_refs\": [] }\n" +
+      "        \"unresolved_questions\": [], \"evidence_refs\": [],\n" +
+      "        \"selected_boundary_headings\": [\"<heading_id copied verbatim from the boundary catalog>\"] }\n" +
       "      ```\n" +
       "      flag_pattern is one of none, simple_conditional, di_switch, legacy. Optional arrays may be\n" +
       "      omitted or []; every listed string must be non-empty."

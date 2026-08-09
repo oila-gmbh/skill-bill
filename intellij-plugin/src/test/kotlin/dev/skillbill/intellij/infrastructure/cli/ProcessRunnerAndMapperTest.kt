@@ -354,6 +354,15 @@ class IdeStatusJsonMapperTest {
     }
 
     @Test
+    fun `a settled lifecycle keeps the accumulated active duration`() {
+        val terminal = runtimeFixture(lifecycle = "terminal").trimEnd().dropLast(1) +
+            ",\"active_duration_ms\":8667046}"
+        val done = IdeStatusJsonMapper.map(terminal, now, 0) as SkillBillStatusOutcome.Done
+        assertEquals(8_667_046L, done.activeDurationMs)
+        assertNull("A released lease publishes no anchor", done.activeDurationAsOf)
+    }
+
+    @Test
     fun `a malformed active duration is dropped rather than rendered as work`() {
         val cases = listOf(
             "\"active_duration_ms\":-1",
