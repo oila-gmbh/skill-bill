@@ -727,25 +727,14 @@ internal class FeatureTaskRuntimeRunLoop(
     val scope = resolveCheckpointScope(precedingPhaseId, branch, blockedReason) ?: return false
     return when (scope) {
       is FeatureTaskRuntimeCheckpointDecision.Skip -> true
-      is FeatureTaskRuntimeCheckpointDecision.Block -> {
-        blockAt(precedingPhaseId, scope.reason)
-        false
-      }
-      is FeatureTaskRuntimeCheckpointDecision.Stage -> {
-        if (scope.adoptedPaths.isNotEmpty()) {
-          runCatching {
-            diagnostics.warning(FeatureTaskRuntimeCheckpointScope.adoptionWarning(branch, scope.adoptedPaths))
-          }
-        }
-        commitCheckpoint(
-          precedingPhaseId = precedingPhaseId,
-          branch = branch,
-          loopId = loopId,
-          intent = intent,
-          ownedPaths = scope.ownedPaths,
-          blockedReason = blockedReason,
-        )
-      }
+      is FeatureTaskRuntimeCheckpointDecision.Stage -> commitCheckpoint(
+        precedingPhaseId = precedingPhaseId,
+        branch = branch,
+        loopId = loopId,
+        intent = intent,
+        ownedPaths = scope.stagedPaths,
+        blockedReason = blockedReason,
+      )
     }
   }
 
@@ -791,15 +780,10 @@ internal class FeatureTaskRuntimeRunLoop(
     )
     persistOwnedInventory(ownedInventory, resolved?.workflowOwnedPaths.orEmpty())
     checkpointOwnershipDecided = true
-    // Nothing has been staged by this checkpoint yet, so every entry in the index arrived from
-    // outside it. The scope decision keeps only the ones this run also owns: those are the genuinely
-    // ambiguous overlaps. A purely foreign staged path is left alone, which is what lets a
-    // concurrently prepared issue coexist without producing a false block.
     return FeatureTaskRuntimeCheckpointScope.decide(
       FeatureTaskRuntimeCheckpointScopeInput(
         issueKey = request.issueKey,
         ownedPaths = ownedInventory,
-        phaseIntroducedPaths = phaseWritten,
         worktreeDeltaPaths = worktreeDelta,
         foreignStagedPaths = stagedPaths,
         concurrentlyModifiedOwnedPaths = concurrentlyModifiedOwnedPaths(precedingPhaseId, ownedInventory),

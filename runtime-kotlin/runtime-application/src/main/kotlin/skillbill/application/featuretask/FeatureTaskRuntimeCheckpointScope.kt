@@ -4,72 +4,30 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointDecis
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointScopeInput
 import java.util.Locale
 
-private const val GOVERNED_SPEC_ROOT = ".feature-specs/"
-
-/** Bounds a block message so one pathological inventory cannot flood a durable blocked reason. */
-private const val MAX_REPORTED_PATHS = 10
-
-@Suppress("TooManyFunctions") // single cohesive decision surface for the checkpoint scope guards and messages
 internal object FeatureTaskRuntimeCheckpointScope {
+  /**
+   * A checkpoint stages everything dirty in the worktree. It never blocks, and it never warns.
+   *
+   * The run does not have exclusive use of the tree: a human works alongside it, adding files and
+   * edits mid-execution that belong in the same commit. An ownership gate cannot tell that
+   * contribution apart from a stray path, so it either strands a durable run over a file the human
+   * meant to include, or drops that file on the floor. Committing the whole delta keeps the branch
+   * matching what is actually on disk, and the run is already on its own branch by the time this
+   * decision is reached, so the blast radius is that branch alone.
+   *
+   * A divergent index entry needs no announcement either. The working tree is the authority: staging
+   * it overwrites a foreign index entry with the content actually on disk, and the previous index
+   * version stays recoverable through git's own reflog and object store.
+   */
   fun decide(input: FeatureTaskRuntimeCheckpointScopeInput): FeatureTaskRuntimeCheckpointDecision {
-    val owned = input.ownedPaths.filter(String::isNotBlank).distinct().sorted()
-    val ownedAliases = owned.associateBy(::normalizeForAliasComparison)
-
-    blockingDecision(input, ownedAliases)?.let { return it }
-
-    val deltaAliases = input.worktreeDeltaPaths.filter(String::isNotBlank)
-      .map(::normalizeForAliasComparison)
-      .toSet()
-    val adopted = adoptedDivergentPaths(input, ownedAliases)
-    val stageable = (owned.filter { normalizeForAliasComparison(it) in deltaAliases } + adopted).distinct().sorted()
+    val stageable = (
+      input.worktreeDeltaPaths + input.foreignStagedPaths + input.concurrentlyModifiedOwnedPaths
+      ).filter(String::isNotBlank).distinct().sorted()
     return if (stageable.isEmpty()) {
       FeatureTaskRuntimeCheckpointDecision.Skip
     } else {
-      FeatureTaskRuntimeCheckpointDecision.Stage(stageable, adopted)
+      FeatureTaskRuntimeCheckpointDecision.Stage(stageable)
     }
-  }
-
-  /**
-   * Owned paths whose index or working-tree content diverged from what this phase left behind:
-   * someone staged them outside the workflow, or edited them while the run was between phases.
-   *
-   * The checkpoint adopts them rather than refusing. A checkpoint that blocks strands a durable run
-   * that nothing but a human can restart, which costs more than the misattribution it prevents — and
-   * the run is already known to be on its own branch by the time this decision is reached, so the
-   * blast radius of adopting is that branch alone. The working tree is the authority: staging it
-   * overwrites a foreign index entry with the content actually on disk, and the previous index
-   * version stays recoverable through git's own reflog and object store.
-   */
-  private fun adoptedDivergentPaths(
-    input: FeatureTaskRuntimeCheckpointScopeInput,
-    ownedAliases: Map<String, String>,
-  ): List<String> = (input.foreignStagedPaths + input.concurrentlyModifiedOwnedPaths)
-    .filter(String::isNotBlank)
-    .mapNotNull { diverged -> ownedAliases[normalizeForAliasComparison(diverged)] }
-    .distinct()
-    .sorted()
-
-  /**
-   * The guards that block a checkpoint before anything may be staged: a foreign governed spec is the
-   * broadest violation, then phase-introduced paths outside the owned inventory. Both are ownership
-   * questions — the checkpoint would commit a path belonging to another issue or to nobody here.
-   *
-   * A worktree that merely diverged from what the run remembers is NOT one of these. That is handled
-   * by [adoptedDivergentPaths], which continues instead of blocking. Returns null when neither guard
-   * applies, so [decide] may fall through to the stageable set.
-   */
-  private fun blockingDecision(
-    input: FeatureTaskRuntimeCheckpointScopeInput,
-    ownedAliases: Map<String, String>,
-  ): FeatureTaskRuntimeCheckpointDecision.Block? {
-    val foreign = input.phaseIntroducedPaths.filter { isForeignGovernedSpecPath(it, input.issueKey) }
-      .distinct().sorted().takeIf { it.isNotEmpty() }
-      ?.let { blockForeignGovernedSpec(input.issueKey, it) }
-    val outside = input.phaseIntroducedPaths.filter(String::isNotBlank).distinct()
-      .filterNot { path -> normalizeForAliasComparison(path) in ownedAliases }
-      .sorted().takeIf { it.isNotEmpty() }
-      ?.let { blockOutsideInventory(input.issueKey, it) }
-    return listOfNotNull(foreign, outside).firstOrNull()
   }
 
   /**
@@ -87,21 +45,6 @@ internal object FeatureTaskRuntimeCheckpointScope {
       val normalized = normalizeForAliasComparison(path)
       manifest.any { entry -> normalized == entry || normalized.startsWith("$entry/") }
     }.distinct().sorted()
-  }
-
-  /**
-   * A governed spec path belonging to any issue other than the active one. `.feature-specs/` is the
-   * one tree where a concurrently prepared issue is both likely and unmistakably foreign: it is
-   * governed, it is another workflow's authority, and attributing it here would credit this run with
-   * work it never did.
-   */
-  fun isForeignGovernedSpecPath(path: String, issueKey: String): Boolean {
-    val normalized = path.trim()
-    if (!normalized.startsWith(GOVERNED_SPEC_ROOT)) return false
-    val issueDirectory = normalized.removePrefix(GOVERNED_SPEC_ROOT).substringBefore('/')
-    if (issueDirectory.isBlank()) return false
-    val key = issueKey.trim()
-    return issueDirectory != key && !issueDirectory.startsWith("$key-")
   }
 
   /**
@@ -132,33 +75,6 @@ internal object FeatureTaskRuntimeCheckpointScope {
    * silently overwritten by the checkpoint's own staging.
    */
   private fun normalizeForAliasComparison(path: String): String = path.trim().trimEnd('/').lowercase(Locale.ROOT)
-
-  private fun blockForeignGovernedSpec(issueKey: String, paths: List<String>) =
-    FeatureTaskRuntimeCheckpointDecision.Block(
-      "needs_human: the active phase touched governed feature-spec path(s) belonging to another " +
-        "issue: ${formatPaths(paths)}. This workflow's authority boundary is '$issueKey'; another " +
-        "issue's spec is never staged, committed, or reviewed here. Move or revert those paths, then " +
-        "resume.",
-    )
-
-  private fun blockOutsideInventory(issueKey: String, paths: List<String>) = FeatureTaskRuntimeCheckpointDecision.Block(
-    "needs_human: the active phase introduced path(s) outside its owned inventory: " +
-      "${formatPaths(paths)}. This workflow's authority boundary is '$issueKey' and its durable " +
-      "owned-path inventory; a checkpoint never commits a path it does not own. Bring those paths " +
-      "into the run's scope or revert them, then resume.",
-  )
-
-  /** Announces an adoption so the divergence is visible in the run log instead of silent. */
-  fun adoptionWarning(branch: String, paths: List<String>): String =
-    "Feature-task-runtime checkpoint adopted owned path(s) ${formatPaths(paths)} whose index or " +
-      "working-tree content diverged from what this run wrote. The working-tree content is committed " +
-      "to '$branch' as this workflow's work rather than blocking the run."
-
-  private fun formatPaths(paths: List<String>): String {
-    val reported = paths.take(MAX_REPORTED_PATHS).joinToString(", ") { "'$it'" }
-    val overflow = paths.size - MAX_REPORTED_PATHS
-    return if (overflow > 0) "$reported (+$overflow more)" else reported
-  }
 }
 
 /**

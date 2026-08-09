@@ -158,7 +158,7 @@ class AgentRunCommandBuildersTest {
 
   @Test
   fun `claude renders exact commands for each directive shape`() {
-    val builder = ClaudeAgentRunCommandBuilder()
+    val builder = ClaudeAgentRunCommandBuilder(emptyMap())
 
     assertEquals(
       listOf(
@@ -202,6 +202,75 @@ class AgentRunCommandBuildersTest {
       ),
       builder.build(request()).command,
     )
+  }
+
+  @Test
+  fun `claude directive naming an anthropic model falls back to the parent model on a non-anthropic endpoint`() {
+    val builder = ClaudeAgentRunCommandBuilder(
+      mapOf(
+        "ANTHROPIC_BASE_URL" to "https://api.deepseek.com/anthropic",
+        "ANTHROPIC_MODEL" to "deepseek-v4-flash",
+      ),
+    )
+
+    val command = builder.build(request(model = "claude-opus-5", effort = "high")).command
+
+    val modelIndex = command.indexOf("--model")
+    assertTrue(modelIndex >= 0)
+    assertEquals("deepseek-v4-flash", command[modelIndex + 1])
+  }
+
+  @Test
+  fun `claude directive naming a served deepseek model passes through unchanged`() {
+    val builder = ClaudeAgentRunCommandBuilder(
+      mapOf("ANTHROPIC_BASE_URL" to "https://api.deepseek.com/anthropic"),
+    )
+
+    val command = builder.build(request(model = "deepseek-v4-flash")).command
+
+    val modelIndex = command.indexOf("--model")
+    assertTrue(modelIndex >= 0)
+    assertEquals("deepseek-v4-flash", command[modelIndex + 1])
+  }
+
+  @Test
+  fun `claude directive passes through on the official anthropic endpoint`() {
+    val builder = ClaudeAgentRunCommandBuilder(
+      mapOf("ANTHROPIC_BASE_URL" to "https://api.anthropic.com"),
+    )
+
+    val command = builder.build(request(model = "claude-opus-5")).command
+
+    val modelIndex = command.indexOf("--model")
+    assertTrue(modelIndex >= 0)
+    assertEquals("claude-opus-5", command[modelIndex + 1])
+  }
+
+  @Test
+  fun `claude directive without a parent model keeps the directive on a non-anthropic endpoint`() {
+    val builder = ClaudeAgentRunCommandBuilder(
+      mapOf("ANTHROPIC_BASE_URL" to "https://api.deepseek.com/anthropic"),
+    )
+
+    val command = builder.build(request(model = "claude-opus-5")).command
+
+    val modelIndex = command.indexOf("--model")
+    assertTrue(modelIndex >= 0)
+    assertEquals("claude-opus-5", command[modelIndex + 1])
+  }
+
+  @Test
+  fun `claude without a model directive stays flag free so the child inherits the parent model`() {
+    val builder = ClaudeAgentRunCommandBuilder(
+      mapOf(
+        "ANTHROPIC_BASE_URL" to "https://api.deepseek.com/anthropic",
+        "ANTHROPIC_MODEL" to "deepseek-v4-flash",
+      ),
+    )
+
+    val command = builder.build(request()).command
+
+    assertFalse(command.contains("--model"))
   }
 
   @Test

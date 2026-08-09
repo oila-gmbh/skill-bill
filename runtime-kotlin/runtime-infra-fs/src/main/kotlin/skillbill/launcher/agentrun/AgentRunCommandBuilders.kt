@@ -116,7 +116,39 @@ internal fun goalContinuationEnvironment(request: SkillRunRequest): Map<String, 
     }
   }.orEmpty()
 
-class ClaudeAgentRunCommandBuilder : AgentRunCommandBuilder {
+/**
+ * Resolves a feature-task model directive for a claude child against the provider the parent
+ * process was launched with. A directive naming an Anthropic model (`claude-*` or an
+ * opus/sonnet/haiku alias) is only servable by the official Anthropic endpoint. A non-Anthropic
+ * endpoint (for example `api.deepseek.com`) does not serve those names and silently substitutes
+ * its own model, so the child would run on a model the operator never chose. In that case the
+ * child falls back to the model the parent process itself was launched with — the only model the
+ * operator actually selected. A directive naming an explicit model the endpoint serves (for
+ * example `deepseek-v4-flash`) passes through unchanged.
+ */
+internal fun resolveClaudeModelDirective(
+  directive: String?,
+  providerEnvironment: Map<String, String>,
+): String? {
+  if (directive == null) return null
+  val endpoint = providerEnvironment["ANTHROPIC_BASE_URL"]
+  if (endpoint != null && !isOfficialAnthropicEndpoint(endpoint) && isAnthropicModelReference(directive)) {
+    return providerEnvironment["ANTHROPIC_MODEL"]?.takeIf(String::isNotBlank) ?: directive
+  }
+  return directive
+}
+
+private fun isOfficialAnthropicEndpoint(baseUrl: String): Boolean = baseUrl.contains("anthropic.com")
+
+private val ANTHROPIC_MODEL_ALIASES = setOf("opus", "sonnet", "haiku")
+
+private fun isAnthropicModelReference(model: String): Boolean =
+  model.startsWith("claude-") || model in ANTHROPIC_MODEL_ALIASES
+
+class ClaudeAgentRunCommandBuilder(
+  /** Provider environment for model-directive resolution; defaults to the parent process. */
+  private val providerEnvironment: Map<String, String> = System.getenv(),
+) : AgentRunCommandBuilder {
   override val agent: InstallAgent = InstallAgent.CLAUDE
   override val outputDecoder: AgentRunOutputDecoder = AgentRunOutputDecoder.CLAUDE_JSON
   override val reviewIsolation: ReviewLaunchIsolationStrategy = ReviewLaunchIsolationStrategy.FRESH_PROCESS
@@ -133,7 +165,7 @@ class ClaudeAgentRunCommandBuilder : AgentRunCommandBuilder {
         // exit, so a launch with no durable progress signal can still prove it is working.
         add(if (streaming) "stream-json" else "json")
         if (streaming) add("--verbose")
-        request.modelOverride?.let {
+        resolveClaudeModelDirective(request.modelOverride, providerEnvironment)?.let {
           add("--model")
           add(it)
         }
