@@ -75,6 +75,25 @@ must not re-decide it. The three row populations each get a distinct rule:
    `mode` value verbatim. No new prose attribution is ever written, and goal
    continuation **must not** treat a prose-attributed session as resumable.
 
+**Override of parent inventory rows.** This policy **supersedes** three rows of
+the parent inventory in
+`.feature-specs/SKILL-175-remove-prose-opencode-runtime-support/spec.md`: section
+D's `FeatureTaskWorkflowMode.PROSE` / `mode` CHECK including `prose` ("Remove
+after migration") and section D's shared `feature_task_workflows` prose branch as
+it applies to reads, and section E's `feature-task-execution-identity-schema.yaml`
+`prose` enum ("Remove"). Where they conflict, this entry governs. Concretely, the
+mode **decode** path — `FeatureTaskWorkflowMode.PROSE`, its `wireValue` /
+`fromWireValue` lookup, and `decodeIdentityMode` in
+`runtime-kotlin/runtime-infra-sqlite/src/main/kotlin/skillbill/db/workflow/WorkflowStateStore.kt:560`
+— and the identity-schema `prose` enum value **must both be retained as legacy
+read-only values**. A quarantined row must decode successfully so the refusal is
+raised as the typed runtime re-run error from rule 1 above, not as
+`InvalidFeatureTaskExecutionIdentitySchemaError("mode 'prose' is not supported")`
+from the schema decoder. Deleting the enum value or the schema enum would convert
+the mandated loud, actionable refusal into an opaque schema-decode failure and
+would make history rows unreadable. Only the **write** and **resume** paths drop
+prose.
+
 Already-installed databases reach the quarantined state **through the read and
 resume code paths, not through an appended migration body**: appending a
 statement to a migration that has already been applied is a silent no-op on
