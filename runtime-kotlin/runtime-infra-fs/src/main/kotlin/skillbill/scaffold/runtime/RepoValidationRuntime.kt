@@ -133,6 +133,13 @@ object RepoValidationRuntime {
         "(?:\\+(?<build>[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*))?$",
     )
   private val skillReferencePattern = Regex("""(?<![A-Za-z0-9.-])(bill-[a-z0-9-]+)(?![A-Za-z0-9-])""")
+
+  /**
+   * SKILL-175: `skills/agent/` is the boundary ledger (history.md / decisions.md). Its entries are
+   * preserved verbatim as history, so they legitimately name skills that were later deleted.
+   * Scanning it would force every skill deletion to either falsify or erase history.
+   */
+  private val boundaryLedgerDir: Path = Path.of("skills", "agent")
   private val orchestrationPathPattern = Regex("""orchestration/[\w/.-]+""")
   private val readmeSkillRowPattern = Regex("""^\| `/(bill-[a-z0-9-]+)` \|""")
   private val overrideSectionPattern = Regex("""^## (bill-[a-z0-9-]+)$""")
@@ -685,6 +692,9 @@ object RepoValidationRuntime {
 
   private fun isSkillReferenceScanTarget(relativePath: Path): Boolean {
     val parts = relativePath.map(Path::toString)
+    if (relativePath.startsWith(boundaryLedgerDir)) {
+      return false
+    }
     if (NATIVE_AGENT_SOURCE_DIR in parts) {
       return false
     }
