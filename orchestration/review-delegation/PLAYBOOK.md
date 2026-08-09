@@ -36,7 +36,7 @@ This is the canonical review-delegation contract. Installed skills consume it th
 Do not reference this repo-relative path directly from installable skills — use the generated sibling support pointer instead.
 
 The delegated worker rules themselves have one authoritative authored source:
-`orchestration/review-orchestrator/specialist-contract.md`. Runtime, prose, and
+`orchestration/review-orchestrator/specialist-contract.md`. Runtime and
 harness-native launches project its launch contract, forbidden-rediscovery list,
 evidence-surface rules, and report structure into the subagent assignment.
 Workers do not reload those rules from disk, and this playbook does not restate
