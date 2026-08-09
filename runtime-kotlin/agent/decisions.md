@@ -60,11 +60,22 @@ must not re-decide it. The three row populations each get a distinct rule:
 1. **`feature_task_workflows` rows with `mode = 'prose'`.** Rows remain readable
    for history. Every resume/continue/update path that encounters one **must**
    raise a typed error naming the runtime re-run path (`skill-bill goal <KEY>`)
-   rather than degrading or reinterpreting. The `'prose'` literal **must be
-   retained** in the `mode` CHECK constraint in
-   `runtime-kotlin/runtime-infra-sqlite/src/main/kotlin/skillbill/db/core/DatabaseMigrations.kt`
-   as a legacy read-only value, so that no SQLite table rebuild is required;
-   every **write** path must refuse `'prose'` above the schema.
+   rather than degrading or reinterpreting. Two distinct `mode` CHECK
+   constraints spell `'prose'`, and **both must retain it**, for different
+   reasons:
+   - `runtime-kotlin/runtime-infra-sqlite/src/main/kotlin/skillbill/db/core/DatabaseSchema.kt:359`
+     is the `feature_task_workflows` CHECK — the one this rule exists to
+     protect. Retaining `'prose'` here is what avoids a SQLite table rebuild
+     and keeps quarantined rows insert-compatible with their own history.
+   - `runtime-kotlin/runtime-infra-sqlite/src/main/kotlin/skillbill/db/core/DatabaseMigrations.kt:50`
+     is the `feature_task_execution_identities` CHECK — a different table
+     (`DatabaseMigrations.kt` never creates `feature_task_workflows`; it
+     references it only as an FK target at lines 55 and 89). Retaining
+     `'prose'` here is what the identity-schema retention paragraph below
+     depends on, so `decodeIdentityMode` can still decode a quarantined row.
+
+   Both are legacy read-only values; every **write** path must refuse `'prose'`
+   above the schema.
 2. **`feature_implement_sessions` rows and their stats builders.** The table and
    its rows are retained as read-only history. There **must** be no live writer.
    The stats surfaces built on it (`FeatureImplement*Stats`,
@@ -75,7 +86,7 @@ must not re-decide it. The three row populations each get a distinct rule:
    `mode` value verbatim. No new prose attribution is ever written, and goal
    continuation **must not** treat a prose-attributed session as resumable.
 
-**Override of parent inventory rows.** This policy **supersedes** three rows of
+**Override of parent inventory rows.** This policy **supersedes** five rows of
 the parent inventory in
 `.feature-specs/SKILL-175-remove-prose-opencode-runtime-support/spec.md`: section
 D's `FeatureTaskWorkflowMode.PROSE` / `mode` CHECK including `prose` ("Remove
@@ -94,6 +105,35 @@ the mandated loud, actionable refusal into an opaque schema-decode failure and
 would make history rows unreadable. Only the **write** and **resume** paths drop
 prose.
 
+The same rationale extends to a **third decode path over the same retained rows**,
+which supersedes two further parent rows: `spec.md:107`
+(`FeatureImplementWorkflowDefinition` + `FeatureImplement*` stack → "Remove") and
+`spec.md:112` (`WorkItemKind.FEATURE_TASK_PROSE` → "Remove"), **as they apply to
+the work-list read path only**.
+`runtime-kotlin/runtime-infra-sqlite/src/main/kotlin/skillbill/db/worklist/SQLiteWorkListRepository.kt`
+maps `mode = 'prose'` to the wire kind `feature-task-prose` (line ~42) and builds
+`validWorkStates` (line ~120) from
+`FeatureImplementWorkflowDefinition.definition.workflowStatuses`. Deleting either
+symbol outright makes `list()` throw on **any** database holding a single legacy
+prose row — failing the entire work-list read rather than degrading that one row,
+which is the opposite of the mandated per-row refusal and breaks rule 1's
+readability guarantee. Therefore:
+
+- `WorkItemKind.FEATURE_TASK_PROSE` and its `feature-task-prose` wire value are
+  **retained as legacy read-only values**, exactly like
+  `FeatureTaskWorkflowMode.PROSE`. A quarantined row lists; acting on it raises
+  the typed runtime re-run error.
+- Once the `FeatureImplement*` stack is deleted, the retained
+  `FEATURE_TASK_PROSE` kind resolves its valid states from a **frozen literal set
+  of the historical prose workflow statuses**, declared alongside the retained
+  kind rather than by importing a workflow definition. It is a closed constant
+  used only to keep history rows decodable — not a surviving workflow definition,
+  and nothing dispatches on it.
+
+Everything else on `spec.md:107` and `:112` — the prose runner, its services,
+skills, MCP tools, and any dispatch on the kind — is deleted as the parent rows
+say.
+
 Already-installed databases reach the quarantined state **through the read and
 resume code paths, not through an appended migration body**: appending a
 statement to a migration that has already been applied is a silent no-op on
@@ -101,10 +141,27 @@ existing DBs, so a schema-side quarantine would never reach any real user's
 database. The refusal therefore lives in the store/service read path, which every
 existing DB executes on the next run.
 
-The live `mode = 'prose'` goal-continuation predicate at
-`runtime-kotlin/runtime-infra-sqlite/src/main/kotlin/skillbill/db/core/DatabaseColumnMigrations.kt:188`
-**must** be removed rather than inverted: prose rows stop being goal-continuation
-candidates entirely, and the predicate narrows to `mode = 'runtime'`.
+Two separate `mode = 'prose'` surfaces sit near goal continuation and **must not
+be confused for each other**:
+
+1. **The issue-key backfill branch**, `mode = 'prose' AND ...goal_continuation.enabled`
+   inside `recoverGoalContinuationWorkflowIssueKeys` at
+   `runtime-kotlin/runtime-infra-sqlite/src/main/kotlin/skillbill/db/core/DatabaseColumnMigrations.kt:188`.
+   This is an `UPDATE` that backfills `issue_key` from `artifacts_json`; it is
+   **not** a continuation-candidacy predicate and removing it does not stop any
+   row from being resumed. It **must be retained**, because rule 1 guarantees
+   quarantined prose rows stay readable for history, and a legacy prose row
+   whose `issue_key` was never backfilled would otherwise surface in the work
+   list with a null `issueKey`. Backfilling an identifier is a read-side repair,
+   not a prose write path, so it does not violate the "no new prose writes" rule.
+2. **The real continuation candidacy path**, in
+   `runtime-kotlin/runtime-infra-sqlite/src/main/kotlin/skillbill/db/workflow/WorkflowStateStore.kt`,
+   which keys on `identities.route_scope = 'goal_child'` plus the
+   `artifacts_json` `goal_continuation` object (lines ~302, 321-324, 355) and
+   never inspects `mode`. **This** is where the resume refusal from rule 1 is
+   enforced: a candidate row that decodes to `FeatureTaskWorkflowMode.PROSE`
+   raises the typed runtime re-run error instead of being handed back as
+   resumable. Subtask 6 adds the refusal here, not in the column migration.
 
 ### Keep/delete heuristic and grep allowlist
 

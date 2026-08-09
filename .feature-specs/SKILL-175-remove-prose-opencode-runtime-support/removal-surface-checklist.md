@@ -22,6 +22,7 @@ of deletion scope).
 | `runtime-kotlin/runtime-domain/src/main/kotlin/skillbill/domain/skillremove/model/SkillRemovalPreview.kt` | `OPENCODE`, `ZCODE` (AgentSymlinkProvider) | 2 | retarget (drop provider cases) |
 | `runtime-kotlin/runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/FileSystemReviewNativeAgentPreflight.kt` | `opencode`, `zcode` | 2 | retarget (drop preflight branches) |
 | `runtime-kotlin/runtime-cli/src/main/kotlin/skillbill/cli/scaffold/ScaffoldCliCommands.kt` | `Opencode`, `Zcode` | 5 | retarget (drop provider values) |
+| `runtime-kotlin/runtime-cli/src/main/kotlin/skillbill/cli/install/InstallCliCommands.kt` | `opencodeAgentsPath(...)`, `zcodeAgentsPath(...)` call sites | 5 | retarget (drop opencode/zcode install paths) |
 | `runtime-kotlin/runtime-core/src/test/kotlin/skillbill/architecture/InstallerShellDelegationTest.kt` | `opencode` | 7 | retarget (drop agent rows from expectations) |
 | `runtime-kotlin/runtime-infra-sqlite/src/main/kotlin/skillbill/db/core/StaleReconciliationCandidateQuery.kt` | `feature_implement_sessions` | 6 | retarget (stop reconciling prose sessions) |
 | `runtime-kotlin/runtime-infra-sqlite/src/main/kotlin/skillbill/db/core/DatabaseSchema.kt` | `feature_implement_sessions` | 6 | retarget (table retained read-only, no live writer) |
@@ -37,7 +38,7 @@ of deletion scope).
 |------|---------------|----------------|--------|
 | `.agnix.toml` | `opencode = true` | 2 | retarget (drop opencode target) |
 | `.gitignore` | `opencode-agents/` ignore rules | 2 | retarget (drop opencode ignore lines) |
-| `runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/scaffold/InstallAgentService.kt` | `opencodeAgentsPath`, `zcodeAgentsPath` | 2 | delete (path helpers) |
+| `runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/scaffold/InstallAgentService.kt` | `opencodeAgentsPath`, `zcodeAgentsPath` | **5** | delete (path helpers) — see compile-order note below |
 | `runtime-kotlin/runtime-infra-fs/src/main/kotlin/skillbill/scaffold/pointer/GeneratedAgentAddonArtifactDiscovery.kt` | `"opencode-agents"` | 2 | retarget (drop addon dir) |
 | `runtime-kotlin/runtime-infra-fs/src/main/kotlin/skillbill/scaffold/rendering/SubagentScaffoldRendering.kt` | `openCodeSpawnParagraph`, `OpenCode` | 2 | retarget (drop OpenCode rendering branch) |
 | `runtime-kotlin/runtime-infra-fs/src/main/kotlin/skillbill/skillremove/SkillRemoveJvmFileSystem.kt` | `AgentSymlinkProvider.OPENCODE`, `.ZCODE`, `unlinkOpencodeAgents` | 2 | retarget (drop provider cases) |
@@ -49,12 +50,55 @@ of deletion scope).
 | `runtime-kotlin/runtime-infra-fs/src/test/resources/snapshots/scaffold/bill-kmp-code-review.render.txt` | `OpenCode` | 7 | retarget (regenerate snapshot) |
 | `runtime-kotlin/runtime-infra-fs/src/test/resources/snapshots/scaffold/bill-kotlin-code-review.render.txt` | `OpenCode` | 7 | retarget (regenerate snapshot) |
 | `orchestration/review-delegation/PLAYBOOK.md` | `## Opencode` | 7 | delete (section; not "unsupported" row) |
+| `orchestration/shell-content-contract/PLAYBOOK.md:114` | "Opencode delegated review is intentionally unsupported." | 7 | **delete (line)** — a permanent "unsupported agents" statement, which decision item 3 explicitly forbids preserving. The adjacent Junie line stays. |
 | `orchestration/shell-content-contract/SCAFFOLD_PAYLOAD.md` | `OpenCode markdown` | 7 | retarget |
 | `orchestration/telemetry-contract/PLAYBOOK.md` | `feature_task_prose_started/_finished` | 4 | retarget |
 | `orchestration/workflow-contract/PLAYBOOK.md` | `feature_task_prose_workflow_*` | 4 | retarget |
 | `docs/assets/skill-bill-demo-storyboard.md` | `feature_task_prose_workflow_update` | 7 | retarget (runtime surface in storyboard) |
 | `agent/history.md`, `runtime-kotlin/agent/history.md`, `runtime-kotlin/runtime-*/agent/history.md`, `skills/agent/history.md` | `opencode`, `zcode`, prose tokens | — | keep (historical record; never rewritten) |
 | `.idea/**`, `intellij-plugin/.intellijPlatform/sandbox/**`, `.skill-bill/run-evidence/**` | assorted | — | keep (untracked/generated local state, not product code) |
+
+## Compile-order note: the agents-path helper cluster (subtask 5)
+
+`InstallAgentService.opencodeAgentsPath` / `zcodeAgentsPath` **must not** be
+deleted in subtask 2. They have live callers outside subtask 2's scope, and
+deleting the helpers first leaves `runtime-cli` non-compiling through subtasks 2,
+3 and 4 — the validation gate would fail at three consecutive checkpoints and
+every intermediate commit would be broken. The helpers and **all** their callers
+are therefore removed together in **subtask 5**:
+
+| Path | Reference |
+|------|-----------|
+| `runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/scaffold/InstallAgentService.kt` | helper declarations |
+| `runtime-kotlin/runtime-cli/src/main/kotlin/skillbill/cli/install/InstallCliCommands.kt` | direct calls (`:571`, `:601`) |
+| `runtime-kotlin/runtime-cli/src/main/kotlin/skillbill/cli/scaffold/ScaffoldCliCommands.kt` | `InstallOpencodeAgentsPathCommand` / `InstallZcodeAgentsPathCommand` wiring |
+| `runtime-kotlin/runtime-infra-fs/src/main/kotlin/skillbill/infrastructure/fs/FileSystemInstallAdapters.kt` | adapter calls |
+| `runtime-kotlin/runtime-infra-fs/src/main/kotlin/skillbill/install/plan/InstallPrimitives.kt` | own `opencodeAgentsPath` primitive |
+| `runtime-kotlin/runtime-infra-fs/src/main/kotlin/skillbill/install/runtime/InstallOperations.kt` | own `opencodeAgentsPath` / `zcodeAgentsPath` |
+
+The KSP-generated `InjectCliComponent.kt` binding regenerates from the command
+wiring and needs no explicit row.
+
+## Sweep re-run (post-checklist verification)
+
+The declared case-insensitive `opencode|zcode` sweep was re-run after the rows
+above were added, excluding `.git`, `build/`, `.idea/`, `sandbox/`,
+`.skill-bill/`, `.feature-specs/` and `agent/history.md`. Every hit is now owned
+either by a `spec.md` section A–G row (by path or by symbol) or by a row in this
+file. The hits below matched **no** path named in `spec.md`, so they are recorded
+here explicitly rather than left to symbol-level inference:
+
+| Path group | Owning subtask | Action |
+|------------|----------------|--------|
+| `runtime-kotlin/runtime-domain/src/main/kotlin/skillbill/install/model/InstallModels.kt`, `runtime-kotlin/runtime-ports/src/main/kotlin/skillbill/ports/install/model/InstallPortModels.kt` | 2 | retarget (drop `InstallAgent.OPENCODE`/`ZCODE` and provider ids) |
+| `runtime-kotlin/runtime-infra-fs/.../launcher/mcp/McpOpenCodeConfig.kt`, `McpZcodeConfig.kt` | 2 | delete (whole files) |
+| `runtime-kotlin/runtime-infra-fs/.../launcher/mcp/McpRegistrationOperations.kt` | 2 | retarget (drop opencode/zcode registration branches) |
+| `runtime-kotlin/runtime-infra-fs/.../install/nativeagent/{InstallNativeAgentOperations,InstallNativeAgentPrimitives,NativeAgentLinkInventory}.kt`, `install/apply/InstallApplyNativeAgents.kt`, `nativeagent/rendering/NativeAgentRendering.kt` | 2 | retarget (drop provider cases) |
+| `runtime-kotlin/runtime-cli/.../cli/system/UninstallCommand.kt`, `cli/goal/GoalCliCommands.kt`, `cli/featuretask/FeatureTaskRuntimeCliCommands.kt`, `cli/codereview/CodeReviewParallelCommand.kt` | 5 | retarget (drop agent options / refusal text) |
+| `scripts/install_smoke_test.sh`, `scripts/agent_install_smoke_test.sh` | 5 | retarget (drop opencode/zcode install assertions) |
+| `docs/delegated-review/{decision,provider-capability-matrix,provider-failure-dispositions,reliability-contract}.md` | 7 | retarget (drop opencode/zcode provider rows; no "unsupported" residue) |
+| `docs/getting-started.md`, `docs/getting-started-for-teams.md` | 7 | retarget (drop opencode/zcode from agent lists) |
+| all `src/test/**` hits in `runtime-cli`, `runtime-application`, `runtime-domain`, `runtime-infra-fs` (install, native-agent, launcher, scaffold suites) | 7 | retarget (drop opencode/zcode cases and expectations alongside their production surface) |
 
 ## Keep-as-English (do not delete)
 
