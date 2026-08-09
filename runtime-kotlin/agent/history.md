@@ -1,3 +1,13 @@
+## [2026-08-09] SKILL-179 subtask 4 — Final sweep, parity locks, and gates
+Areas: docs, orchestration/review-delegation, runtime-infra-fs (review contracts), runtime-infra-sqlite/db/telemetry, scripts, .feature-specs/SKILL-179
+- Dropped live dual-engine wording from skill-source-generation and review-delegation PLAYBOOK so governed docs describe runtime-only projection.
+- Renamed ReviewPacketConsumerContractParityTest cases off "governed prose" so parity locks assert markdown↔runtime without treating prose as a live engine.
+- Replaced System.err.println in GoalTelemetryPayloadSupport with java.util.logging so production telemetry parse failures leave the println-family debug surface.
+- Install/nesting smokes assert no prose MCP tools or prose skills and do not require mode:prose; install smoke clears SKILL_BILL_GOAL_CONTINUATION for throwaway-home apply under a parent goal.
+- Predecessor SKILL-175 carries an abandonment pointer to this feature; guard allowlist stays unwidened.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-08-09] SKILL-179 subtask 1 — Application/persistence test contract migration
 Areas: runtime-core/application (tests), runtime-application/{application,decomposition}, .feature-specs/SKILL-179
 - Retargeted ApplicationPersistencePortTest and FeatureTaskRouterContinuationTest fixtures from prose top-level artifacts to completed `feature_task_runtime_phase_records` so `requiredArtifactsByStep` / `FeatureTaskRuntimeRequiredArtifactPresenceResolver` yield `canResume`.

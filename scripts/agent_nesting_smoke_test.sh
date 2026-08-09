@@ -6,7 +6,7 @@
 #
 # Subject: runtime goal / feature-task path (not a deleted prose orchestrator). This remains
 # a nesting capability probe for Agent-tool depth plus MCP reachability. It must not require
-# mode:prose, bill-feature-task-prose, or any feature_task_prose_* / goal_prose_* MCP tool.
+# the retired prose mode selector, the retired prose feature skill, or any retired prose MCP tool.
 #
 # Usage: scripts/agent_nesting_smoke_test.sh
 # Env overrides: CLAUDE_BIN, NESTING_TEST_TIMEOUT (default 240s)

@@ -1,6 +1,11 @@
 # SKILL-175: Remove prose mode and OpenCode/zcode support
 
-Status: Prepared
+Status: Abandoned
+
+> **Abandoned.** Subtasks 1–4 landed; subtasks 5–7 were left unfinished.
+> Remaining work continues under successor
+> [SKILL-179](../SKILL-179-complete-prose-engine-retirement/spec.md).
+> Do not resume this tree as an active goal.
 
 ## Intended Outcome
 
