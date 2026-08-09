@@ -1,4 +1,5 @@
 # Canonical exclusion contract for goal planning / preplanning context discovery.
+# Shape is governed by goal-planning-discovery-exclusions-schema.yaml (Draft 2020-12).
 #
 # `excluded_roots` are anchored, normalized, repo-relative directory prefixes ending in "/".
 # `excluded_directory_names` are bare directory names denied at ANY depth, so nested build
@@ -9,15 +10,28 @@
 #
 # An `agent/` tree (agent/history.md, agent/decisions.md) must not exist under any listed
 # root. Platform packs are review-phase inputs only; they carry no boundary memory.
-contract_version: "0.2"
+#
+# 0.3 adds the dependency and tooling directories that otherwise consume the repository
+# walk's visit budget before it reaches real source modules.
+contract_version: "0.3"
 excluded_roots:
   - "platform-packs/"
 excluded_directory_names:
+  - ".cache"
   - ".git"
   - ".gradle"
+  - ".idea"
+  - ".next"
   - ".skill-bill"
+  - ".tox"
+  - ".venv"
+  - "DerivedData"
+  - "Pods"
+  - "__pycache__"
   - "build"
-  - "node_modules"
-  - "target"
-  - "out"
   - "dist"
+  - "node_modules"
+  - "out"
+  - "target"
+  - "vendor"
+  - "venv"

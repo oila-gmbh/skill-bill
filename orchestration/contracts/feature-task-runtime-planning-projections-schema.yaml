@@ -189,9 +189,10 @@ $defs:
       unresolved_questions: { $ref: "#/$defs/strings" }
       evidence_refs: { $ref: "#/$defs/strings" }
       # SKILL-174 heading-selection channel: the boundary-memory heading ids the preplan agent judged
-      # relevant, resolved to bodies for the plan phase only. contract_version stays "0.1" on purpose:
-      # the field is additive and optional, no existing field changed shape, and no consumer that
-      # ignores it misreads a digest. Review should challenge that call here rather than discover it.
+      # relevant, resolved to bodies for the plan phase only. contract_version stays "0.1" because the
+      # field is additive and optional. The accepted cost: preplanning_digest is
+      # additionalProperties:false, so rolling the runtime back across this change quarantines
+      # in-flight digests as carrying an unknown key. Downgrade is not supported here.
       # maxItems equals FEATURE_TASK_RUNTIME_SELECTED_BOUNDARY_HEADING_MAX_COUNT (list-cap-budget-agreement).
       selected_boundary_headings:
         type: array
