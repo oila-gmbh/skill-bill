@@ -1,3 +1,13 @@
+## [2026-08-09] SKILL-175 runtime-only callers and OpenCode/zcode product purge (subtask 2)
+Areas: runtime-kotlin/{runtime-domain,runtime-ports,runtime-infra-fs,runtime-cli,runtime-application,runtime-contracts}, skills/{bill-feature,bill-feature-task,bill-feature-task-runtime,bill-feature-goal,bill-feature-verify,bill-code-review,bill-code-review-parallel}, docs, install.sh, uninstall.sh, orchestration/contracts, scripts
+- Feature entry skills no longer select `mode:prose|runtime`; runtime is the only engine callers document. Prose skill trees (`bill-feature-task-prose`, subtask-runner) remain until subtask 3 — callers just no longer point at them.
+- Deleted OpenCode/zcode from the live product matrix: `InstallAgent` / native-agent / symlink provider enums, detect/link/MCP/CLI path helpers, `McpOpenCodeConfig`/`McpZcodeConfig`, install-plan and native-agent-link-inventory schema enums, shell `SUPPORTED_AGENTS`, smoke matrices, and delegated-review provider rows. No refuse-tier leftover.
+- Removed `RUNTIME_REFUSED_AGENTS` / prose-redirect refusal machinery; unknown/unsupported agent ids use the general unavailable-launcher refusal path (`UnavailableAgentLauncherRefusal`), not an OpenCode-specific permanent tier. reusable for later agent retirements that must not leave a shim.
+- Breaking change: installs and CLI that named `opencode`/`zcode` lose those agents; a future OpenCode return is a clean new integration, never an un-delete of this surface.
+- Known limitation: prose skills, MCP prose tools, and CLI `workflow` family still exist until later SKILL-175 subtasks; English "prose"/"governed prose" language stays by design.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-08-09] SKILL-175 runtime-only stance and prose/OpenCode removal policy (subtask 1)
 Areas: runtime-kotlin/agent, .feature-specs/SKILL-175-remove-prose-opencode-runtime-support, .feature-specs/SKILL-176-goal-child-resume-self-heal
 - Docs/decision-only subtask: no product code, skill, MCP tool, or schema touched. It fixes the stance the destructive subtasks (2+) must execute against, so read `runtime-kotlin/agent/decisions.md` (2026-08-09 entry) before any prose/OpenCode deletion work.
