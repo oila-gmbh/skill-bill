@@ -16,7 +16,7 @@ class ReviewPacketConsumerContractParityTest {
     )
   }
 
-  @Test fun `governed prose and runtime list enumerate the same forbidden rediscovery items`() {
+  @Test fun `governed markdown contract and runtime enum list the same forbidden rediscovery items`() {
     val markdown = Files.readString(contractPath())
     val section = markdown
       .substringAfter(ReviewPacketConsumerContract.SECTION_HEADING, "")
@@ -29,7 +29,7 @@ class ReviewPacketConsumerContractParityTest {
     assertEquals(ReviewPacketConsumerContract.FORBIDDEN_REDISCOVERY, documented)
   }
 
-  @Test fun `governed prose and runtime use authoritative contract bytes`() {
+  @Test fun `governed markdown contract and runtime share authoritative contract bytes`() {
     val markdown = Files.readString(contractPath())
     assertEquals(
       listOf(

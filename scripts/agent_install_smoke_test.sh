@@ -88,7 +88,12 @@ try:
     checks.append(("process_exit_0", completed.returncode == 0))
     checks.append(("initialize", responses["initialize"]["result"]["serverInfo"]["name"] == "skill-bill"))
     names = [tool["name"] for tool in responses["list"]["result"]["tools"]]
+    prose_tools = [
+        n for n in names
+        if n.startswith("feature_task_prose_") or n.startswith("goal_prose_") or n.startswith("feature_implement_")
+    ]
     checks.append(("tools_list", "doctor" in names and "feature_task_runtime_stats" not in names))
+    checks.append(("no_prose_mcp_tools", not prose_tools))
     valid_result, valid_payload = payload(responses["valid"])
     checks.append(
         (
@@ -207,8 +212,16 @@ if data is not None:
     chk("agent_applied", bool(mine))
     skills_path = mine[0].get("path") if mine else None
     if skills_path:
-        n = len(glob.glob(os.path.join(skills_path, "*")))
+        skill_names = [os.path.basename(p) for p in glob.glob(os.path.join(skills_path, "*"))]
+        n = len(skill_names)
         chk("skills_installed", n > 0, f"{n} skills in {skills_path}")
+        prose_skills = [
+            s for s in skill_names
+            if s in ("bill-feature-task-prose", "bill-feature-task-prose.md",
+                     "bill-feature-task-subtask-runner", "bill-feature-task-subtask-runner.md")
+            or "feature-task-prose" in s
+        ]
+        chk("no_prose_skills", not prose_skills, ",".join(prose_skills))
 
     nas = [x for x in data.get("native_agents", []) if x.get("agent") == agent]
     if nas:

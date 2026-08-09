@@ -4,14 +4,18 @@ import skillbill.contracts.JsonSupport
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.ZoneOffset
+import java.util.logging.Logger
 
 private const val MILLIS_PER_SECOND = 1000L
+
+private val goalTelemetryPayloadLog: Logger =
+  Logger.getLogger("skillbill.telemetry.goal.payload")
 
 private fun parseAgentIdArray(rawValue: String, workflowId: String): List<Any?> {
   if (rawValue.isBlank()) return emptyList()
   val trimmed = rawValue.trim()
   if (!trimmed.startsWith("[")) {
-    System.err.println(
+    goalTelemetryPayloadLog.warning(
       "skillbill telemetry: malformed participating_agent_ids for workflow $workflowId; " +
         "expected a JSON array, got: $rawValue",
     )
@@ -19,7 +23,7 @@ private fun parseAgentIdArray(rawValue: String, workflowId: String): List<Any?> 
   }
   return JsonSupport.parseArrayOrEmpty(trimmed).also { result ->
     if (result.isEmpty() && trimmed != "[]") {
-      System.err.println(
+      goalTelemetryPayloadLog.warning(
         "skillbill telemetry: failed to parse participating_agent_ids for workflow $workflowId; " +
           "value: $rawValue",
       )

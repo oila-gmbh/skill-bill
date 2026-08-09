@@ -5,7 +5,8 @@
 # Level-1 has access to the skill-bill MCP tools used by the runtime feature/goal family.
 #
 # Subject: runtime goal / feature-task path (not a deleted prose orchestrator). This remains
-# a nesting capability probe for Agent-tool depth plus MCP reachability.
+# a nesting capability probe for Agent-tool depth plus MCP reachability. It must not require
+# mode:prose, bill-feature-task-prose, or any feature_task_prose_* / goal_prose_* MCP tool.
 #
 # Usage: scripts/agent_nesting_smoke_test.sh
 # Env overrides: CLAUDE_BIN, NESTING_TEST_TIMEOUT (default 240s)
