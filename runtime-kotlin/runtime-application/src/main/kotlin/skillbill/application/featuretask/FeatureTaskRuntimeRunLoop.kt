@@ -774,7 +774,14 @@ internal class FeatureTaskRuntimeRunLoop(
     val stagedPaths = staged.value.orEmpty().split(OWNED_PATH_DELIMITER)
       .map(String::trim)
       .filter(String::isNotBlank)
-    val phaseWritten = phaseWrittenPaths(precedingPhaseId, worktreeDelta, resolved?.workflowOwnedPaths.orEmpty())
+    val persistedOwned = resolved?.workflowOwnedPaths.orEmpty()
+    // Foreign governed specs a previous checkpoint already recorded as owned: the guard must not
+    // re-report them as newly introduced, or the run hard-blocks forever on its own leftover state.
+    val evictedForeign = persistedOwned
+      .filter { FeatureTaskRuntimeCheckpointScope.isForeignGovernedSpecPath(it, request.issueKey) }
+      .toSet()
+    val phaseWritten = phaseWrittenPaths(precedingPhaseId, worktreeDelta, persistedOwned)
+      .filterNot { it in evictedForeign }
     val ownedInventory = reconcileCheckpointPathInventory(
       repoRoot = request.repoRoot,
       issueKey = request.issueKey,
@@ -783,11 +790,14 @@ internal class FeatureTaskRuntimeRunLoop(
       // The persisted inventory is the sole ownership authority. It is extended with the paths the
       // writing phases themselves wrote — never with whatever else happens to be dirty, which is how
       // someone else's concurrent edit used to be adopted and committed as this run's work.
+      // A foreign issue's governed spec never becomes owned, and one a previous checkpoint recorded
+      // is evicted here so the persisted inventory stops asserting authority this run does not have.
       paths = (
         resolved?.workflowOwnedPaths.orEmpty() +
           phaseWritten.takeIf { mayExtendOwnedInventory(precedingPhaseId) }.orEmpty() +
           writingPhaseIntroducedPaths(worktreeDelta)
-        ).distinct(),
+        ).distinct()
+        .filterNot { FeatureTaskRuntimeCheckpointScope.isForeignGovernedSpecPath(it, request.issueKey) },
     )
     persistOwnedInventory(ownedInventory, resolved?.workflowOwnedPaths.orEmpty())
     checkpointOwnershipDecided = true

@@ -91,6 +91,29 @@ class FeatureTaskRuntimeCheckpointScopeTest {
   }
 
   @Test
+  fun `a foreign feature spec inside the owned inventory is evicted rather than staged`() {
+    val decision = decide(
+      ownedPaths = listOf(".feature-specs/OTHER-999-concurrent/spec.md", "src/Owned.kt"),
+      phaseIntroducedPaths = listOf("src/Owned.kt"),
+    )
+
+    val stage = assertIs<FeatureTaskRuntimeCheckpointDecision.Stage>(decision)
+    assertEquals(listOf("src/Owned.kt"), stage.ownedPaths)
+  }
+
+  @Test
+  fun `an already-owned foreign feature spec the phase left dirty does not block the checkpoint`() {
+    val foreign = ".feature-specs/OTHER-999-concurrent/spec.md"
+    val decision = decide(
+      ownedPaths = listOf(foreign, "src/Owned.kt"),
+      phaseIntroducedPaths = listOf(foreign, "src/Owned.kt"),
+    )
+
+    val stage = assertIs<FeatureTaskRuntimeCheckpointDecision.Stage>(decision)
+    assertEquals(listOf("src/Owned.kt"), stage.ownedPaths)
+  }
+
+  @Test
   fun `a foreign feature spec that is merely present and untouched produces no false block`() {
     val decision = decide(
       ownedPaths = listOf("src/Owned.kt"),

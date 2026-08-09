@@ -12,10 +12,15 @@ private const val MAX_REPORTED_PATHS = 10
 @Suppress("TooManyFunctions") // single cohesive decision surface for the checkpoint scope guards and messages
 internal object FeatureTaskRuntimeCheckpointScope {
   fun decide(input: FeatureTaskRuntimeCheckpointScopeInput): FeatureTaskRuntimeCheckpointDecision {
-    val owned = input.ownedPaths.filter(String::isNotBlank).distinct().sorted()
+    val declared = input.ownedPaths.filter(String::isNotBlank).distinct().sorted()
+    val declaredAliases = declared.map(::normalizeForAliasComparison).toSet()
+    // A foreign issue's governed spec is never staged, even when it reached the durable inventory:
+    // ownership is not a licence to commit another workflow's authority. Evicting it here also keeps
+    // an inventory that already carries one from blocking every later checkpoint of this run.
+    val owned = declared.filterNot { isForeignGovernedSpecPath(it, input.issueKey) }
     val ownedAliases = owned.associateBy(::normalizeForAliasComparison)
 
-    blockingDecision(input, ownedAliases)?.let { return it }
+    blockingDecision(input, ownedAliases, declaredAliases)?.let { return it }
 
     val deltaAliases = input.worktreeDeltaPaths.filter(String::isNotBlank)
       .map(::normalizeForAliasComparison)
@@ -61,11 +66,16 @@ internal object FeatureTaskRuntimeCheckpointScope {
   private fun blockingDecision(
     input: FeatureTaskRuntimeCheckpointScopeInput,
     ownedAliases: Map<String, String>,
+    declaredAliases: Set<String>,
   ): FeatureTaskRuntimeCheckpointDecision.Block? {
     val foreign = input.phaseIntroducedPaths.filter { isForeignGovernedSpecPath(it, input.issueKey) }
+      // Already in the durable inventory means a previous checkpoint recorded it; it is evicted from
+      // the stageable set instead, so the run self-heals rather than needing a human to move files.
+      .filterNot { normalizeForAliasComparison(it) in declaredAliases }
       .distinct().sorted().takeIf { it.isNotEmpty() }
       ?.let { blockForeignGovernedSpec(input.issueKey, it) }
     val outside = input.phaseIntroducedPaths.filter(String::isNotBlank).distinct()
+      .filterNot { isForeignGovernedSpecPath(it, input.issueKey) }
       .filterNot { path -> normalizeForAliasComparison(path) in ownedAliases }
       .sorted().takeIf { it.isNotEmpty() }
       ?.let { blockOutsideInventory(input.issueKey, it) }
