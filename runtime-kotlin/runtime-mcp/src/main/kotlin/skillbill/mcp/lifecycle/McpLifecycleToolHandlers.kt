@@ -1,71 +1,17 @@
 package skillbill.mcp.lifecycle
 
-import skillbill.application.model.FeatureImplementFinishedRequest
-import skillbill.application.model.FeatureImplementStartedRequest
 import skillbill.application.model.FeatureVerifyFinishedRequest
 import skillbill.application.model.FeatureVerifyStartedRequest
 import skillbill.application.model.PrDescriptionGeneratedRequest
 import skillbill.application.model.QualityCheckFinishedRequest
 import skillbill.application.model.QualityCheckStartedRequest
-import skillbill.contracts.JsonSupport
 import skillbill.mcp.core.McpRuntime
 import skillbill.mcp.core.McpRuntimeContext
 import skillbill.mcp.core.boolean
 import skillbill.mcp.core.int
-import skillbill.mcp.core.optionalInt
-import skillbill.mcp.core.optionalListMap
-import skillbill.mcp.core.optionalMap
 import skillbill.mcp.core.optionalString
 import skillbill.mcp.core.string
 import skillbill.mcp.core.stringList
-
-internal fun featureImplementStarted(arguments: Map<String, Any?>, context: McpRuntimeContext): Map<String, Any?> =
-  McpRuntime.featureImplementStarted(
-    FeatureImplementStartedRequest(
-      featureSize = arguments.string("feature_size"),
-      source = arguments.optionalString("source") ?: "production",
-      acceptanceCriteriaCount = arguments.int("acceptance_criteria_count", 0),
-      openQuestionsCount = arguments.int("open_questions_count", 0),
-      specInputTypes = arguments.stringList("spec_input_types"),
-      specWordCount = arguments.int("spec_word_count", 0),
-      rolloutNeeded = arguments.boolean("rollout_needed"),
-      featureName = arguments.string("feature_name"),
-      issueKey = arguments.string("issue_key"),
-      issueKeyType = arguments.optionalString("issue_key_type") ?: "none",
-      specSummary = arguments.string("spec_summary"),
-    ),
-    context,
-  )
-
-internal fun featureImplementFinished(arguments: Map<String, Any?>, context: McpRuntimeContext): Map<String, Any?> =
-  McpRuntime.featureImplementFinished(
-    FeatureImplementFinishedRequest(
-      sessionId = arguments.string("session_id"),
-      source = arguments.optionalString("source") ?: "production",
-      completionStatus = arguments.string("completion_status"),
-      planCorrectionCount = arguments.int("plan_correction_count", 0),
-      planTaskCount = arguments.int("plan_task_count", 0),
-      planPhaseCount = arguments.int("plan_phase_count", 0),
-      featureFlagUsed = arguments.boolean("feature_flag_used"),
-      filesCreated = arguments.int("files_created", 0),
-      filesModified = arguments.int("files_modified", 0),
-      tasksCompleted = arguments.int("tasks_completed", 0),
-      reviewIterations = arguments.int("review_iterations", 0),
-      auditResult = arguments.string("audit_result"),
-      auditIterations = arguments.int("audit_iterations", 0),
-      validationResult = arguments.string("validation_result"),
-      boundaryHistoryWritten = arguments.boolean("boundary_history_written"),
-      prCreated = arguments.boolean("pr_created"),
-      featureFlagPattern = arguments.optionalString("feature_flag_pattern") ?: "none",
-      boundaryHistoryValue = arguments.optionalString("boundary_history_value") ?: "none",
-      planDeviationNotes = arguments.string("plan_deviation_notes"),
-      childSteps = arguments.optionalListMap("child_steps").orEmpty(),
-      estimatedPhaseTokenBreakdownJson = arguments.optionalMap("estimated_phase_tokens")
-        ?.let { JsonSupport.mapToJsonString(it) },
-      estimatedTotalTokens = arguments.optionalInt("estimated_total_tokens"),
-    ),
-    context,
-  )
 
 internal fun qualityCheckStarted(arguments: Map<String, Any?>, context: McpRuntimeContext): Map<String, Any?> {
   return McpRuntime.qualityCheckStarted(

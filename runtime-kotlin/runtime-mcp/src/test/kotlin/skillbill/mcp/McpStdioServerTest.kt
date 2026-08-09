@@ -2,7 +2,6 @@ package skillbill.mcp
 
 import skillbill.SAMPLE_REVIEW
 import skillbill.SkillBillVersion
-import skillbill.application.telemetry.specInputTypes
 import skillbill.contracts.JsonSupport
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.telemetry.LifecycleTelemetryStore
@@ -57,30 +56,6 @@ class McpStdioServerTest {
   }
 
   @Test
-  fun `feature task prose lifecycle tools expose required input schemas`() {
-    val response =
-      decodeResponse(
-        McpStdioServer.handleLine(
-          """{"jsonrpc":"2.0","id":"tools","method":"tools/list","params":{}}""",
-        ),
-      )
-    val tools = response.fieldMap("result")["tools"] as List<*>
-
-    val startedSchema = tools.schemaFor("feature_task_prose_started")
-    val finishedSchema = tools.schemaFor("feature_task_prose_finished")
-
-    assertEquals(false, startedSchema["additionalProperties"])
-    assertEquals(false, finishedSchema["additionalProperties"])
-    assertTrue((startedSchema["required"] as List<*>).contains("feature_size"))
-    assertTrue((startedSchema["required"] as List<*>).contains("issue_key"))
-    assertTrue(startedSchema.properties().containsKey("acceptance_criteria_count"))
-    assertEquals(specInputTypes, startedSchema.properties().arrayItemsEnumFor("spec_input_types"))
-    assertTrue((finishedSchema["required"] as List<*>).contains("session_id"))
-    assertTrue((finishedSchema["required"] as List<*>).contains("completion_status"))
-    assertTrue(finishedSchema.properties().containsKey("boundary_history_written"))
-  }
-
-  @Test
   fun `priority validating persisting and telemetry tools expose strict input schemas`() {
     val tools = toolsList()
 
@@ -124,10 +99,6 @@ class McpStdioServerTest {
       tools.schemaFor("feature_verify_finished").properties().enumFor("audit_result"),
     )
     assertEquals(
-      listOf("pending", "running", "completed", "failed", "abandoned", "blocked", "paused"),
-      tools.schemaFor("feature_task_prose_workflow_update").properties().enumFor("workflow_status"),
-    )
-    assertEquals(
       listOf(
         "collect_inputs",
         "extract_criteria",
@@ -141,22 +112,14 @@ class McpStdioServerTest {
       ),
       tools.schemaFor("feature_verify_workflow_update").properties().enumFor("current_step_id"),
     )
-    assertEquals(
-      setOf("workflow_id", "issue_key", "subtask_id"),
-      tools.schemaFor("feature_task_prose_workflow_continue").properties().keys,
-    )
-    assertEquals(
-      "integer",
-      tools.schemaFor("feature_task_prose_workflow_continue").properties().fieldMap("subtask_id")["type"],
-    )
     tools.schemaFor("telemetry_remote_stats").assertRequired("workflow")
     assertEquals(
       listOf(
         "verify",
-        "implement",
-        "bill-feature-task",
+        "goal",
         "bill-feature-verify",
-        "feature-task-prose",
+        "feature-task-runtime",
+        "bill-feature-goal",
       ),
       tools.schemaFor("telemetry_remote_stats").properties().enumFor("workflow"),
     )
@@ -184,7 +147,6 @@ class McpStdioServerTest {
     val tools = toolsList()
 
     listOf(
-      "feature_task_prose_workflow_latest",
       "feature_verify_workflow_latest",
     ).forEach { toolName ->
       val schema = tools.schemaFor(toolName)
@@ -231,14 +193,14 @@ class McpStdioServerTest {
         McpStdioServer.handleLine(
           toolCallRequest(
             id = 100,
-            name = "feature_task_prose_workflow_update",
+            name = "feature_verify_workflow_update",
             arguments = mapOf(
               "workflow_id" to "wfl-test",
               "workflow_status" to "running",
-              "current_step_id" to "implement",
+              "current_step_id" to "code_review",
               "step_updates" to listOf(
                 mapOf(
-                  "step_id" to "implement",
+                  "step_id" to "code_review",
                   "status" to "running",
                   "attempt_count" to 1,
                   "unexpected" to true,
@@ -256,118 +218,28 @@ class McpStdioServerTest {
   }
 
   @Test
-  fun `goal prose blocked subtask with blank reason persists normalized blocked_reason`() {
-    val tempDir = Files.createTempDirectory("skillbill-stdio-goal-subtask-blocked")
-    val context = McpRuntimeContext(environment = enabledStdioTelemetryEnvironment(tempDir), userHome = tempDir)
-
-    val response =
-      decodeResponse(
-        McpStdioServer.handleLine(
-          toolCallRequest(
-            id = 1,
-            name = "goal_prose_subtask_finished",
-            arguments = mapOf(
-              "issue_key" to "SKILL-109",
-              "workflow_id" to "goal-wf-109",
-              "subtask_id" to 3,
-              "subtask_name" to "field population",
-              "status" to "blocked",
-              "started_at" to "2026-07-09T10:00:00Z",
-              "finished_at" to "2026-07-09T10:05:00Z",
-              "duration_ms" to 300_000,
-              "attempt_count" to 1,
-              "blocked_reason" to " ",
-            ),
-          ),
-          context,
-        ),
-      )
-
-    assertEquals(false, response.fieldMap("result")["isError"], response.toString())
-    DatabaseRuntime.ensureDatabase(tempDir.resolve("metrics.db")).use { connection ->
-      connection.createStatement().use { statement ->
-        statement.executeQuery(
-          """
-          SELECT payload_json
-          FROM telemetry_outbox
-          WHERE event_name = 'skillbill_goal_subtask_finished'
-          """.trimIndent(),
-        ).use { resultSet ->
-          assertTrue(resultSet.next())
-          val payload = decodeStdioJsonObject(resultSet.getString("payload_json"))
-          assertEquals("runtime: Goal subtask 3 is blocked.", payload["blocked_reason"])
-        }
-      }
-    }
-  }
-
-  @Test
-  fun `legacy feature_implement hidden aliases stay callable and validate prose payloads`() {
-    // SKILL-86 (AC2 USER-CONFIRMED): feature_implement_* hidden aliases dispatch to the prose handlers
-    // with no behavioral difference (same prose family, same payload validation against the canonical
-    // feature_task_prose_* schema).
-    val tempDir = Files.createTempDirectory("skillbill-stdio-feature-task-alias")
-    val context = McpRuntimeContext(environment = enabledStdioTelemetryEnvironment(tempDir), userHome = tempDir)
-
-    val started =
-      decodeResponse(
-        McpStdioServer.handleLine(
-          toolCallRequest(
-            id = 1,
-            name = "feature_implement_started",
-            arguments = mapOf(
-              "feature_size" to "SMALL",
-              "acceptance_criteria_count" to 3,
-              "open_questions_count" to 0,
-              "spec_input_types" to listOf("markdown_file"),
-              "spec_word_count" to 100,
-              "rollout_needed" to false,
-              "feature_name" to "hidden alias surface",
-              "issue_key" to "SKILL-650",
-              "spec_summary" to "summary",
-            ),
-          ),
-          context,
-        ),
-      )
-    assertEquals(false, started.fieldMap("result")["isError"], started.toString())
-
-    val invalid =
-      decodeResponse(
-        McpStdioServer.handleLine(
-          toolCallRequest(
-            id = 2,
-            name = "feature_implement_started",
-            arguments = mapOf("feature_size" to "SMALL"),
-          ),
-          context,
-        ),
-      )
-    assertEquals(true, invalid.fieldMap("result")["isError"], invalid.toString())
-  }
-
-  @Test
-  fun `the prose canonical leaf exposes strict input schemas`() {
-    val tools = toolsList()
-
-    proseLifecycleToolNames.forEach { prose ->
-      assertEquals(false, tools.schemaFor(prose)["additionalProperties"], prose)
-    }
-  }
-
-  @Test
   fun `canonical leaves carry no deprecation language and legacy families are absent from the registry`() {
     val tools = toolsList()
 
-    proseLifecycleToolNames.forEach { prose ->
-      assertFalse(tools.descriptionFor(prose).contains("Deprecated"), prose)
-      assertFalse(tools.descriptionFor(prose).contains("EXPERIMENTAL"), prose)
+    verifyLifecycleToolNames.forEach { verify ->
+      assertFalse(tools.descriptionFor(verify).contains("Deprecated"), verify)
+      assertFalse(tools.descriptionFor(verify).contains("EXPERIMENTAL"), verify)
     }
 
-    assertNull(tools.toolNamedOrNull("feature_implement_started"))
-    assertNull(tools.toolNamedOrNull("feature_implement_workflow_update"))
     assertNull(tools.toolNamedOrNull("feature_task_started"))
     assertNull(tools.toolNamedOrNull("feature_task_workflow_update"))
+  }
+
+  @Test
+  fun `SKILL-175 the advertised surface carries no prose family name`() {
+    val advertised = toolsList().map { tool -> requireNotNull(JsonSupport.anyToStringAnyMap(tool))["name"].toString() }
+
+    val retired = advertised.filter { name ->
+      name.startsWith("feature_task_prose_") ||
+        name.startsWith("feature_implement_") ||
+        name.startsWith("goal_prose_")
+    }
+    assertEquals(emptyList(), retired, advertised.toString())
   }
 
   @Test
@@ -395,73 +267,6 @@ class McpStdioServerTest {
       assertEquals(true, result["isError"], removed)
       assertContains(textContent["text"].toString(), "Unknown MCP tool '$removed'")
     }
-  }
-
-  @Test
-  fun `SKILL-132 retained compatibility aliases still dispatch`() {
-    // AC-002: no documented removal window or migration guidance exists for the hidden
-    // feature_implement_* aliases, so they stay callable.
-    val tempDir = Files.createTempDirectory("skillbill-stdio-retained-aliases")
-    val context = McpRuntimeContext(environment = enabledStdioTelemetryEnvironment(tempDir), userHome = tempDir)
-
-    val response = decodeResponse(
-      McpStdioServer.handleLine(
-        toolCallRequest(id = 1, name = "feature_implement_workflow_list", arguments = emptyMap()),
-        context,
-      ),
-    )
-    assertEquals(false, response.fieldMap("result")["isError"], response.toString())
-  }
-
-  @Test
-  fun `legacy feature_implement aliases still route through the dispatcher`() {
-    // SKILL-86 (AC2 USER-CONFIRMED): feature_implement_* names are removed from the registry/tools-list
-    // but remain HIDDEN DISPATCHER ALIASES routing to the prose handlers for in-flight runs. Opening via
-    // the legacy alias and reading back through the canonical leaf must observe the SAME prose workflow.
-    val tempDir = Files.createTempDirectory("skillbill-stdio-implement-alias")
-    val context = McpRuntimeContext(environment = enabledStdioTelemetryEnvironment(tempDir), userHome = tempDir)
-
-    var nextId = 0
-    fun call(name: String, arguments: Map<String, Any?> = emptyMap()): Map<String, Any?> =
-      dispatchTool(id = ++nextId, name = name, arguments = arguments, context = context).also {
-        assertEquals("ok", it["status"], it.toString())
-      }
-
-    val aliasOpenedId = call(
-      "feature_implement_workflow_open",
-      mapOf(
-        "issue_key" to "SKILL-120",
-        "repository_identity" to "repo-root-realpath-v1:/test/repository",
-        "governed_spec_path" to ".feature-specs/SKILL-120/spec.md",
-      ),
-    )["workflow_id"].toString()
-    val canonicalLatest = call("feature_task_prose_workflow_latest")
-    assertEquals(aliasOpenedId, canonicalLatest["workflow_id"], canonicalLatest.toString())
-
-    val canonicalGet = call("feature_task_prose_workflow_get", mapOf("workflow_id" to aliasOpenedId))
-    assertEquals(aliasOpenedId, canonicalGet["workflow_id"], canonicalGet.toString())
-  }
-
-  @Test
-  fun `legacy feature_implement alias surface enforces strict unknown-argument rejection`() {
-    // SKILL-86 (F-004): the strict unknown-property gate resolves legacy aliases to their canonical
-    // registry entry, so calling an alias with an unknown argument is rejected like the canonical name.
-    val response =
-      decodeResponse(
-        McpStdioServer.handleLine(
-          toolCallRequest(
-            id = 1,
-            name = "feature_implement_workflow_open",
-            arguments = mapOf("not_a_real_argument" to "x"),
-          ),
-        ),
-      )
-    val result = response.fieldMap("result")
-    val content = result["content"] as List<*>
-    val textContent = requireNotNull(JsonSupport.anyToStringAnyMap(content.first()))
-
-    assertEquals(true, result["isError"], result.toString())
-    assertContains(textContent["text"].toString(), "not_a_real_argument")
   }
 
   @Test
@@ -583,16 +388,6 @@ class McpStdioServerTest {
 private val expectedToolInventory =
   listOf(
     "doctor",
-    "feature_task_prose_finished",
-    "feature_task_prose_stats",
-    "feature_task_prose_started",
-    "feature_task_prose_workflow_get",
-    "feature_task_prose_workflow_latest",
-    "feature_task_prose_workflow_list",
-    "feature_task_prose_workflow_continue",
-    "feature_task_prose_workflow_open",
-    "feature_task_prose_workflow_resume",
-    "feature_task_prose_workflow_update",
     "feature_verify_finished",
     "feature_verify_stats",
     "feature_verify_started",
@@ -603,9 +398,6 @@ private val expectedToolInventory =
     "feature_verify_workflow_open",
     "feature_verify_workflow_resume",
     "feature_verify_workflow_update",
-    "goal_prose_finished",
-    "goal_prose_started",
-    "goal_prose_subtask_finished",
     "goal_stats",
     "import_review",
     "new_skill_scaffold",
@@ -622,8 +414,6 @@ private val expectedToolInventory =
 
 private val priorityStrictToolNames =
   listOf(
-    "feature_task_prose_started",
-    "feature_task_prose_finished",
     "feature_verify_started",
     "feature_verify_finished",
     "quality_check_started",
@@ -632,13 +422,6 @@ private val priorityStrictToolNames =
     "import_review",
     "triage_findings",
     "resolve_learnings",
-    "feature_task_prose_workflow_open",
-    "feature_task_prose_workflow_update",
-    "feature_task_prose_workflow_get",
-    "feature_task_prose_workflow_list",
-    "feature_task_prose_workflow_latest",
-    "feature_task_prose_workflow_resume",
-    "feature_task_prose_workflow_continue",
     "feature_verify_workflow_open",
     "feature_verify_workflow_update",
     "feature_verify_workflow_get",
@@ -649,17 +432,17 @@ private val priorityStrictToolNames =
     "new_skill_scaffold",
   )
 
-private val proseLifecycleToolNames =
+private val verifyLifecycleToolNames =
   listOf(
-    "feature_task_prose_started",
-    "feature_task_prose_finished",
-    "feature_task_prose_workflow_get",
-    "feature_task_prose_workflow_latest",
-    "feature_task_prose_workflow_list",
-    "feature_task_prose_workflow_continue",
-    "feature_task_prose_workflow_open",
-    "feature_task_prose_workflow_resume",
-    "feature_task_prose_workflow_update",
+    "feature_verify_started",
+    "feature_verify_finished",
+    "feature_verify_workflow_get",
+    "feature_verify_workflow_latest",
+    "feature_verify_workflow_list",
+    "feature_verify_workflow_continue",
+    "feature_verify_workflow_open",
+    "feature_verify_workflow_resume",
+    "feature_verify_workflow_update",
   )
 
 private val removedToolNames =
@@ -681,17 +464,31 @@ private val removedToolNames =
     "readian_get_spotlight",
     "readian_mark_story_status",
     "readian_save_candidate",
+    // SKILL-175 subtask 4: the prose MCP family and its hidden feature_implement_* aliases are gone.
+    "feature_task_prose_started",
+    "feature_task_prose_finished",
+    "feature_task_prose_stats",
+    "feature_task_prose_workflow_get",
+    "feature_task_prose_workflow_latest",
+    "feature_task_prose_workflow_list",
+    "feature_task_prose_workflow_continue",
+    "feature_task_prose_workflow_open",
+    "feature_task_prose_workflow_resume",
+    "feature_task_prose_workflow_update",
+    "feature_implement_started",
+    "feature_implement_finished",
+    "feature_implement_stats",
+    "feature_implement_workflow_get",
+    "feature_implement_workflow_latest",
+    "feature_implement_workflow_list",
+    "feature_implement_workflow_continue",
+    "feature_implement_workflow_open",
+    "feature_implement_workflow_resume",
+    "feature_implement_workflow_update",
+    "goal_prose_started",
+    "goal_prose_subtask_finished",
+    "goal_prose_finished",
   )
-
-private fun dispatchTool(
-  id: Int,
-  name: String,
-  arguments: Map<String, Any?>,
-  context: McpRuntimeContext,
-): Map<String, Any?> {
-  val response = decodeResponse(McpStdioServer.handleLine(toolCallRequest(id, name, arguments), context))
-  return toolPayload(response.fieldMap("result"))
-}
 
 private fun toolsList(): List<*> {
   val response =
@@ -728,12 +525,6 @@ private fun Map<String, Any?>.assertRequired(vararg names: String) {
 private fun Map<String, Any?>.enumFor(propertyName: String): List<*> {
   val property = requireNotNull(JsonSupport.anyToStringAnyMap(this[propertyName]))
   return requireNotNull(property["enum"] as? List<*>)
-}
-
-private fun Map<String, Any?>.arrayItemsEnumFor(propertyName: String): List<*> {
-  val property = requireNotNull(JsonSupport.anyToStringAnyMap(this[propertyName]))
-  val items = requireNotNull(JsonSupport.anyToStringAnyMap(property["items"]))
-  return requireNotNull(items["enum"] as? List<*>)
 }
 
 private fun enabledStdioTelemetryEnvironment(tempDir: Path): Map<String, String> {

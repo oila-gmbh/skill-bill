@@ -323,7 +323,6 @@ Every telemeterable skill must be usable alone. When invoked directly by a user,
 - `bill-code-check` lifecycle — `skillbill_quality_check_started` + `_finished`
 - `bill-feature-verify` — `skillbill_feature_verify_started` + `_finished`
 - `bill-pr-description` — `skillbill_pr_description_generated`
-- `bill-feature-task` — `skillbill_feature_task_prose_started` + `_finished`
 
 ### The `orchestrated` flag
 
@@ -340,8 +339,8 @@ When the parent's finished event fires, it embeds each collected `telemetry_payl
 
 ```json
 {
-  "event": "skillbill_feature_task_prose_finished",
-  "session_id": "fis-20260413-104704-l84r",
+  "event": "skillbill_feature_task_runtime_finished",
+  "session_id": "ftr-20260413-104704-l84r",
   "completion_status": "completed",
   "duration_seconds": 1820,
   "child_steps": [
@@ -394,8 +393,6 @@ If a parent skill forgets to pass `orchestrated=true` to a child, the child emit
 
 | Event | Emitted by | Orchestrated alternative |
 |-------|------------|--------------------------|
-| `skillbill_feature_task_prose_started` | `bill-feature-task` (Step 1 confirm) | — (top-level only) |
-| `skillbill_feature_task_prose_finished` | `bill-feature-task` (Step 9 / early exit) | — (top-level only; carries `child_steps`) |
 | `skillbill_review_finished` | top-level code-review lifecycle once findings are resolved | `import_review` / `triage_findings` with `orchestrated=true` return payload instead |
 | `skillbill_quality_check_started` | standalone quality-check lifecycle | skipped in orchestrated mode |
 | `skillbill_quality_check_finished` | standalone quality-check lifecycle | `quality_check_finished(orchestrated=true)` returns payload |
@@ -506,79 +503,6 @@ Both levels:
 |-------|------|-------------|
 | `pr_title` | string | Generated PR title |
 
-## Feature-task telemetry
-
-The feature-task workflow emits two events per session:
-
-- `skillbill_feature_task_prose_started` — emitted after Step 1 assessment is confirmed by the user
-- `skillbill_feature_task_prose_finished` — emitted after Step 9 (PR created) or when the workflow ends early
-
-Each feature-task session uses a `session_id` in the format `fis-YYYYMMDD-HHMMSS-XXXX` (4-char random alphanumeric suffix). The finished event is self-contained — it includes all started fields so each event can be analyzed independently in PostHog.
-
-The MCP server exposes `feature_task_prose_started` and `feature_task_prose_finished` as agent tools. The skill instructions tell the agent when to call each tool.
-
-### Started event payload
-
-Both `anonymous` and `full` levels include:
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `session_id` | string | `fis-YYYYMMDD-HHMMSS-XXXX` |
-| `issue_key_provided` | boolean | Whether the user provided a Jira/Linear/GitHub issue key |
-| `issue_key_type` | string | `jira`, `linear`, `github`, `other`, or `none` |
-| `spec_input_types` | list | Input types: `raw_text`, `pdf`, `markdown_file`, `image`, `directory` |
-| `spec_word_count` | integer | Approximate word count of the design spec |
-| `feature_size` | string | `SMALL`, `MEDIUM`, or `LARGE` |
-| `rollout_needed` | boolean | Whether a feature flag / guarded rollout is needed |
-| `acceptance_criteria_count` | integer | Number of acceptance criteria |
-| `open_questions_count` | integer | Number of open questions before resolution |
-
-`full` level adds:
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `feature_name` | string | Inferred feature name |
-| `spec_summary` | string | One-sentence summary of the feature |
-
-### Finished event payload
-
-Includes all started fields plus:
-
-Both `anonymous` and `full` levels:
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `completion_status` | string | `completed`, `abandoned_at_planning`, `abandoned_at_implementation`, `abandoned_at_review`, or `error` |
-| `plan_correction_count` | integer | Times the user corrected the assessment/plan (0 = confirmed immediately) |
-| `plan_task_count` | integer | Total tasks in the plan |
-| `plan_phase_count` | integer | Number of phases |
-| `feature_flag_used` | boolean | Whether a feature flag was used |
-| `feature_flag_pattern` | string | `simple_conditional`, `di_switch`, `legacy`, or `none` |
-| `files_created` | integer | New files created |
-| `files_modified` | integer | Existing files modified |
-| `tasks_completed` | integer | Tasks completed |
-| `review_iterations` | integer | Code review iteration count |
-| `audit_result` | string | `all_pass`, `had_gaps`, or `skipped` |
-| `audit_iterations` | integer | Completeness audit iteration count |
-| `validation_result` | string | `pass`, `fail`, or `skipped` |
-| `boundary_history_written` | boolean | Whether boundary history was written |
-| `pr_created` | boolean | Whether a PR was created |
-| `duration_seconds` | integer | Wall-clock seconds from started to finished |
-
-`full` level adds:
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `plan_deviation_notes` | string | Brief note if the plan changed during execution |
-
-Both levels also include:
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `child_steps` | list | `telemetry_payload` dicts collected from child tools invoked with `orchestrated=true` during the session (see the "Session correlation" section). Empty list when no children were orchestrated. |
-
-Fields always excluded (both levels): repo name, branch name, raw spec content, raw plan content, file paths, acceptance criteria text.
-
 ## Audit-repair counters
 
 Runtime-mode feature-task sessions report their own terminal event directly from the foreground runtime driver's lifecycle telemetry, emitted as `skillbill_feature_task_runtime_finished`. Alongside `review_fix_iteration_count` and `audit_gap_iteration_count`, that event carries five counters describing how the completeness-audit repair loop behaved. They are compact numbers and one boolean — no gap text, criterion text, diagnoses, evidence strings, paths, or agent output is sent at any telemetry level.
@@ -650,47 +574,6 @@ Mirror to local stats:
 - `average_review_iterations` = average on finished `review_iterations`
 - `average_duration_seconds` = average on finished `duration_seconds`
 
-### Feature-task dashboard
-
-Use `skillbill_feature_task_prose_started` for intake/sizing and `skillbill_feature_task_prose_finished` for outcome metrics.
-
-Recommended tiles:
-
-- `Implement runs started`: count of `skillbill_feature_task_prose_started`
-- `Implement runs finished`: count of `skillbill_feature_task_prose_finished`
-- `Implement completion rate`: `completion_status = completed` on finished events divided by all finished events
-- `Feature size mix`: breakdown of started events by `feature_size`
-- `Rollout-needed rate`: `rollout_needed = true` on started events divided by all started events
-- `Feature-flag usage rate`: `feature_flag_used = true` on finished events divided by all finished events
-- `PR-created rate`: `pr_created = true` on finished events divided by all finished events
-- `Average review iterations`: average `review_iterations` on finished events
-- `Average audit iterations`: average `audit_iterations` on finished events
-- `Average implementation duration`: average `duration_seconds` on finished events
-- `Validation result mix`: breakdown of finished events by `validation_result`
-- `Audit result mix`: breakdown of finished events by `audit_result`
-
-Recommended breakdowns:
-
-- `feature_size`
-- `completion_status`
-- `validation_result`
-- `audit_result`
-- `feature_flag_pattern`
-
-Mirror to local stats:
-
-- `total_runs` ~= count of started events
-- `feature_size_counts` = started breakdown by `feature_size`
-- `completion_status_counts` = finished breakdown by `completion_status`
-- `validation_result_counts` = finished breakdown by `validation_result`
-- `audit_result_counts` = finished breakdown by `audit_result`
-- `rollout_needed_rate` = started filter on `rollout_needed = true`
-- `feature_flag_used_rate` = finished filter on `feature_flag_used = true`
-- `pr_created_rate` = finished filter on `pr_created = true`
-- `average_review_iterations` = average on finished `review_iterations`
-- `average_audit_iterations` = average on finished `audit_iterations`
-- `average_duration_seconds` = average on finished `duration_seconds`
-
 ### Health stat defaults
 
 Local health views use the rows available in the local telemetry database. They exclude `source = test` and `source = synthetic` telemetry from health denominators by default. Excluded and malformed records are still reported as data-quality debt so dashboards do not hide instrumentation problems.
@@ -698,7 +581,7 @@ Local health views use the rows available in the local telemetry database. They 
 Review health combines two review payload sources:
 
 - standalone `skillbill_review_finished` events
-- embedded code-review entries inside `skillbill_feature_task_prose_finished.child_steps`
+- embedded code-review entries inside `skillbill_feature_task_runtime_finished.child_steps`
 
 Do not attempt to de-duplicate standalone and embedded review payloads unless a stable shared key is present. Local stats report `source_counts` for `standalone`, `embedded`, and `malformed`. Rejected findings mean reviewer feedback explicitly rejected or marked a finding false positive. Unresolved findings mean the latest finding outcome is missing or not accepted/rejected.
 
@@ -744,7 +627,7 @@ FROM (
     JSONExtractInt(child_raw, 'unresolved_findings') AS unresolved_findings
   FROM events
   ARRAY JOIN JSONExtractArrayRaw(toString(properties.child_steps)) AS child_raw
-  WHERE event = 'skillbill_feature_task_prose_finished'
+  WHERE event = 'skillbill_feature_task_runtime_finished'
     AND timestamp >= now() - INTERVAL 60 DAY
     AND properties.install_id IS NOT NULL
     AND trim(toString(properties.install_id)) != ''
@@ -752,49 +635,6 @@ FROM (
     AND JSONExtractString(child_raw, 'skill') LIKE '%code-review%'
 )
 GROUP BY source
-```
-
-`feature_task_prose_health_last_60_days`:
-
-```sql
-SELECT
-  properties.feature_size AS feature_size,
-  count() AS denominator_runs,
-  countIf(properties.completion_status = 'completed') AS completed_runs,
-  countIf(properties.completion_status IN ('abandoned_at_planning', 'abandoned_at_implementation', 'abandoned_at_review')) AS abandoned_runs,
-  countIf(properties.completion_status = 'error') AS error_runs,
-  quantile(0.5)(toInt(properties.duration_seconds)) AS median_duration_seconds,
-  quantile(0.9)(toInt(properties.duration_seconds)) AS p90_duration_seconds
-FROM events
-WHERE event = 'skillbill_feature_task_prose_finished'
-  AND timestamp >= now() - INTERVAL 60 DAY
-  AND properties.install_id IS NOT NULL
-  AND trim(toString(properties.install_id)) != ''
-  AND toString(properties.install_id) != 'test-install-id'
-  AND coalesce(properties.source, 'production') = 'production'
-  AND match(toString(properties.session_id), '^fis-[A-Za-z0-9][A-Za-z0-9_-]*$')
-  AND toInt(properties.duration_seconds) > 0
-  AND toInt(properties.duration_seconds) < 86400
-GROUP BY properties.feature_size
-```
-
-`feature_task_prose_data_quality_debt_last_60_days`:
-
-```sql
-SELECT
-  countIf(NOT match(toString(properties.session_id), '^fis-[A-Za-z0-9][A-Za-z0-9_-]*$')) AS malformed_session_id_runs,
-  countIf(coalesce(properties.source, 'production') NOT IN ('production', 'test', 'synthetic')) AS unknown_source_runs,
-  countIf(coalesce(properties.source, 'production') IN ('test', 'synthetic')) AS excluded_non_production_runs,
-  countIf(toInt(properties.duplicate_terminal_finished_events) > 0) AS duplicate_terminal_finished_events,
-  countIf(coalesce(properties.source, 'production') = 'production' AND toInt(properties.duration_seconds) = 0) AS invalid_duration_runs,
-  countIf(coalesce(properties.source, 'production') = 'synthetic' AND toInt(properties.duration_seconds) = 0) AS synthetic_zero_duration_runs,
-  countIf(toInt(properties.duration_seconds) >= 86400) AS long_running_duration_runs
-FROM events
-WHERE event = 'skillbill_feature_task_prose_finished'
-  AND timestamp >= now() - INTERVAL 60 DAY
-  AND properties.install_id IS NOT NULL
-  AND trim(toString(properties.install_id)) != ''
-  AND toString(properties.install_id) != 'test-install-id'
 ```
 
 ### Alignment rule
@@ -846,10 +686,10 @@ Client request contract:
 ```
 
 The MCP tool accepts either canonical workflow ids
-(`bill-feature-verify`, `bill-feature-task`) or short aliases
-(`verify`, `implement`). The dispatcher maps aliases to canonical ids before
-calling the proxy. The CLI subcommands use the short forms
-`skill-bill telemetry stats verify` and `skill-bill telemetry stats implement`.
+(`bill-feature-verify`, `bill-feature-goal`, `feature-task-runtime`) or the
+short aliases (`verify`, `goal`). The dispatcher maps aliases to canonical ids
+before calling the proxy. The bundled proxy answers `/stats` only for
+`bill-feature-verify`.
 
 The client sends that payload to:
 

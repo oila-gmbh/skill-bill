@@ -65,17 +65,6 @@ enabling.
 | `feature_name` | — | — | ✓ | `goalStartedPayload` |
 | `subtask_name`, `finalizing_agent_id`, `participating_agent_ids`, `boundary_history_written`, `boundary_history_value` | — | — | ✓ | `goalSubtaskFinishedPayload` |
 
-### `skillbill_feature_task_prose_started` / `skillbill_feature_task_prose_finished`
-
-| Field | off | anonymous | full | Source |
-|-------|-----|-----------|------|--------|
-| `session_id`, `source` | — | ✓ | ✓ | `featureImplementStartedPayload` |
-| `issue_key_provided`, `issue_key_type` | — | ✓ | ✓ | `featureImplementStartedPayload` |
-| `spec_input_types`, `spec_word_count`, `feature_size`, `rollout_needed`, `acceptance_criteria_count`, `open_questions_count` | — | ✓ | ✓ | `featureImplementStartedPayload` |
-| `completion_status`, `plan_correction_count`, `plan_task_count`, `plan_phase_count`, `feature_flag_used`, `feature_flag_pattern`, `files_created`, `files_modified`, `tasks_completed`, `review_iterations`, `audit_result`, `audit_iterations`, `validation_result`, `boundary_history_written`, `boundary_history_value`, `pr_created`, `child_steps`, `duration_seconds` | — | ✓ | ✓ | `featureImplementFinishedPayload` |
-| `feature_name`, `spec_summary` | — | — | ✓ | `featureImplementStartedPayload` |
-| `plan_deviation_notes` | — | — | ✓ | `featureImplementFinishedPayload` |
-
 ### `skillbill_feature_task_runtime_started` / `skillbill_feature_task_runtime_finished`
 
 | Field | off | anonymous | full | Source |
@@ -228,3 +217,13 @@ Stated as what is true today:
   level downgrade clear the pending outbox. An upgrade — including `off` to `anonymous` — does not,
   so rows enqueued while `off` survive until the next sync or the next downgrade. Local review snapshots have no expiry and are pruned
   with `skill-bill prune-snapshots --confirm`.
+
+## Retired event names
+
+The `skillbill_feature_task_prose_*`, `skillbill_feature_implement_*`, and
+`skillbill_goal_prose_*` events were removed with the prose lane. The bundled
+telemetry proxy silently ignores and drops them: it never rejects a batch that
+carries a retired name, and no `/stats` aggregate counts them. Already-installed
+older clients therefore keep receiving normal success responses instead of
+errors. Locally, the runtime's telemetry-event schema no longer defines those
+events, so an in-tree emitter attempting one loud-fails at the validator.

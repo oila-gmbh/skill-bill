@@ -67,7 +67,7 @@ class TelemetryReliabilityContractTest {
       goalFinishedEnvelope(),
       goalIssueFinishedEnvelope(),
       qualityCheckFinishedEnvelope(),
-      featureTaskProseFinishedEnvelope(),
+      featureVerifyFinishedEnvelope(),
     )
     val runtimeEnvelope = featureTaskRuntimeFinishedEnvelope()
 
@@ -137,7 +137,7 @@ class TelemetryReliabilityContractTest {
   fun `semantic reliability assertions reject mutations of real emitted payloads`() {
     assertFailsWith<AssertionError> { assertPositiveBoundedDuration(goalFinishedEnvelope("duration_seconds" to 0)) }
     assertFailsWith<AssertionError> {
-      assertPositiveBoundedDuration(featureTaskProseFinishedEnvelope("duration_seconds" to 0))
+      assertPositiveBoundedDuration(featureVerifyFinishedEnvelope("duration_seconds" to 0))
     }
     assertFailsWith<AssertionError> {
       assertPositiveBoundedDuration(featureTaskRuntimeFinishedEnvelope("duration_seconds" to null))
@@ -174,7 +174,6 @@ class TelemetryReliabilityContractTest {
   @Test
   fun `stale reconciled terminal payloads validate against the canonical schema`() {
     val schemaEnvelopes = listOf(
-      featureTaskProseFinishedEnvelope("completion_status" to "stale"),
       featureVerifyFinishedEnvelope("completion_status" to "stale"),
       qualityCheckFinishedEnvelope().apply { put("result", "stale") },
     )
@@ -307,15 +306,6 @@ class TelemetryReliabilityContractTest {
         ),
         "full",
       )
-    }
-
-  private fun featureTaskProseFinishedEnvelope(vararg overrides: Pair<String, Any?>): LinkedHashMap<String, Any?> =
-    emittedEnvelope("skillbill_feature_task_prose_finished") { store, connection ->
-      store.featureImplementStarted(featureImplementStartedRecord(), "full")
-      ageSession(connection, "feature_implement_sessions", "fis-reliability", 480)
-      store.featureImplementFinished(featureImplementFinishedRecord(), "full")
-    }.apply {
-      overrides.forEach { (key, value) -> put(key, value) }
     }
 
   private fun featureImplementStartedRecord(): FeatureImplementStartedRecord = FeatureImplementStartedRecord(

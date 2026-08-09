@@ -158,17 +158,11 @@ produce one authoritative completion event.
 
 ## Runtime Pilot Surface
 
-The runtime-facing pilot uses dedicated MCP tools per top-level workflow. The
-first adopter was `bill-feature-task`; `bill-feature-verify` is the second
-adopter and follows the same model with its own state machine and storage:
+The runtime-facing pilot uses dedicated MCP tools per top-level workflow.
+`bill-feature-verify` is the remaining MCP-facing adopter; feature-task and
+goal execution drive their workflow state from the Kotlin runtime driver and
+the CLI instead:
 
-- `feature_task_prose_workflow_list`
-- `feature_task_prose_workflow_latest`
-- `feature_task_prose_workflow_open`
-- `feature_task_prose_workflow_update`
-- `feature_task_prose_workflow_get`
-- `feature_task_prose_workflow_resume`
-- `feature_task_prose_workflow_continue`
 - `feature_verify_workflow_list`
 - `feature_verify_workflow_latest`
 - `feature_verify_workflow_open`
@@ -178,9 +172,8 @@ adopter and follows the same model with its own state machine and storage:
 - `feature_verify_workflow_continue`
 
 These tools persist workflow state independently of telemetry settings. The
-existing `feature_task_prose_started` / `_finished` and
-`feature_verify_started` / `_finished` tools remain telemetry-owned; they are
-linked to workflow state via `session_id` rather than replaced by it.
+existing `feature_verify_started` / `_finished` tools remain telemetry-owned;
+they are linked to workflow state via `session_id` rather than replaced by it.
 
 Workflow update tools return compact acknowledgements by default after the
 validated update has been persisted. The acknowledgement includes write status,
@@ -190,10 +183,9 @@ steps and durable artifacts; callers that need complete state should use the
 read-only `*_workflow_get` MCP tools or CLI `workflow show` /
 `verify-workflow show`.
 
-`feature_task_prose_workflow_continue` is the first activation tool in the pilot:
-it does not execute the workflow itself, but it re-opens resumable state and
-returns a governed compact continuation payload for `bill-feature-task`,
-including the resumed step id, required and available artifact keys, compact
+`skill-bill workflow continue` is the activation surface for feature-task and
+goal runs: it does not execute the workflow itself, but it re-opens resumable
+state and returns a governed compact continuation payload, including the resumed step id, required and available artifact keys, compact
 current-step artifact summaries, reference sections to read, and a paste-ready
 continuation prompt. The compact payload omits the full workflow snapshot and
 full durable `artifacts` map by default. Use `workflow show` as the read-only
@@ -209,7 +201,7 @@ The CLI exposes the same recovery surface through:
 - `skill-bill verify-workflow resume <workflow-id>`
 - `skill-bill verify-workflow continue <workflow-id>`
 
-For decomposed feature parents, `feature_task_prose_workflow_continue` also
+For decomposed feature parents, `skill-bill workflow continue` also
 accepts a parent `issue_key` and optional `subtask_id`. The issue-key path is a
 goal-continuation entry for one subtask: it starts or resumes only the selected
 runnable subtask, derives the subtask contract from persisted artifacts and the
