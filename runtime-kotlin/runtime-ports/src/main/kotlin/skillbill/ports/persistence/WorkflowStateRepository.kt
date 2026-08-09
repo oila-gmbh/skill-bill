@@ -48,6 +48,14 @@ interface FeatureTaskWorkflowStateRepository {
   fun claimFeatureTaskContinuation(workflowId: String, expectedUpdatedAt: String?): Boolean =
     error("Feature-task continuation claiming is not implemented by this persistence adapter.")
 
+  /**
+   * Terminalize an existing legacy prose-mode feature-task row by updating status and artifacts only.
+   * Must preserve stored `mode='prose'` — never route through the refused prose writer or a runtime
+   * upsert that would flip mode.
+   */
+  fun terminalizeLegacyProseFeatureTaskWorkflow(row: WorkflowStateRecord): Unit =
+    error("Legacy prose feature-task terminalization is not implemented by this persistence adapter.")
+
   fun saveFeatureTaskWorkflow(row: WorkflowStateRecord, mode: FeatureTaskWorkflowMode) {
     when (mode) {
       FeatureTaskWorkflowMode.PROSE ->

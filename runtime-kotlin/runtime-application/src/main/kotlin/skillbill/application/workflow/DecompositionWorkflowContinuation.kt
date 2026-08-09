@@ -55,6 +55,10 @@ internal class DecompositionWorkflowContinuation(
         ),
       )
     } else {
+      // Discovery admits legacy prose parents for lookup/status; continue must still refuse them
+      // before any TASK_RUNTIME engine.updateRecord over retired step ids.
+      unitOfWork.workflowStates.getFeatureTaskWorkflow(parentRecord.workflowId)
+        ?.requireRuntimeModeForEngineWrite()
       continueManifest(parentRecord, manifest, unitOfWork, requestedSubtaskId)
     }
     return result
@@ -88,11 +92,13 @@ internal class DecompositionWorkflowContinuation(
     // Single-scan lookup: reuse an existing valid parent or, when none is found, reclaim a parent
     // whose decomposition artifact cannot be decoded (corrupt). Both alternatives are resolved in
     // one table scan to avoid a second full materialisation inside the write lock.
-    val existing = unitOfWork.workflowStates.findDecomposedParentOrCorruptFallback(
+    val existingRecord = unitOfWork.workflowStates.findDecomposedParentOrCorruptFallback(
       manifest.issueKey,
       validator,
       manifest,
-    )?.toSnapshot()
+    )
+    existingRecord?.requireRuntimeModeForEngineWrite()
+    val existing = existingRecord?.toSnapshot()
     val base = existing ?: engine.openRecord(
       WorkflowFamily.TASK_RUNTIME.definition,
       generateWorkflowId(WorkflowFamily.TASK_RUNTIME.definition.workflowIdPrefix),

@@ -120,15 +120,17 @@ class FeatureTaskContinuationLookupServiceTest {
   }
 
   @Test
-  fun `identity-less matching feature-task loud-fails instead of becoming no match`() {
+  fun `identity-less matching feature-task returns needs-identity-repair instead of crashing lookup`() {
     val fixture = fixture()
     assertIs<WorkflowOpenResult.Ok>(
       fixture.service.open(WorkflowFamilyKind.TASK_RUNTIME, issueKey = "SKILL-120"),
     )
 
-    assertFailsWith<InvalidFeatureTaskExecutionIdentitySchemaError> {
-      fixture.lookup.lookup("SKILL-120", REPOSITORY_A)
-    }
+    val repair = assertIs<FeatureTaskContinuationLookupResult.NeedsIdentityRepair>(
+      fixture.lookup.lookup("SKILL-120", REPOSITORY_A),
+    )
+    assertTrue(repair.workflowId.isNotBlank())
+    assertTrue(repair.summary.contains("repair-identity"), repair.summary)
   }
 
   @Test
@@ -219,6 +221,33 @@ class FeatureTaskContinuationLookupServiceTest {
     assertEquals("paused", goal.candidate.status)
     assertEquals(1, goal.candidate.currentSubtaskId)
     assertEquals(1, goal.candidate.pendingCount)
+  }
+
+  @Test
+  fun `lookup surfaces a legacy prose-mode goal parent as goal continuation without no-match`() {
+    // SKILL-179 AC-001/AC-002/AC-007: mode=prose parents with decomposition_runtime must be found;
+    // discovery must not flip mode or assert the runtime workflow schema.
+    val fixture = fixture()
+    fixture.saveProseGoalParent(
+      workflowStatus = "paused",
+      manifestStatus = "in_progress",
+      completeCount = 2,
+      pendingCount = 1,
+      blockedCount = 0,
+    )
+
+    val goal = assertIs<FeatureTaskContinuationLookupResult.GoalContinuation>(
+      fixture.lookup.lookup("SKILL-120", REPOSITORY_A),
+    )
+
+    assertEquals("wfl-prose-goal-parent", goal.candidate.parentWorkflowId)
+    assertEquals("paused", goal.candidate.status)
+    assertEquals(3, goal.candidate.currentSubtaskId)
+    assertEquals(2, goal.candidate.completeCount)
+    assertEquals(1, goal.candidate.pendingCount)
+    assertEquals(0, goal.candidate.blockedCount)
+    val stored = requireNotNull(fixture.states.getFeatureTaskWorkflow("wfl-prose-goal-parent"))
+    assertEquals(FeatureTaskWorkflowMode.PROSE, stored.mode)
   }
 
   @Test
@@ -327,6 +356,85 @@ class FeatureTaskContinuationLookupServiceTest {
             sessionId = "ftr-goal",
           ),
         ).toRecord().copy(issueKey = "SKILL-120"),
+      )
+    }
+
+    fun saveProseGoalParent(
+      workflowStatus: String,
+      manifestStatus: String,
+      completeCount: Int,
+      pendingCount: Int,
+      blockedCount: Int,
+    ) {
+      val subtasks = buildList {
+        repeat(completeCount) { index ->
+          add(
+            DecompositionSubtask(
+              id = index + 1,
+              name = "complete-$index",
+              specPath = ".feature-specs/SKILL-120-goal/spec_subtask_${index + 1}.md",
+              status = "complete",
+            ),
+          )
+        }
+        repeat(blockedCount) { index ->
+          val id = completeCount + index + 1
+          add(
+            DecompositionSubtask(
+              id = id,
+              name = "blocked-$index",
+              specPath = ".feature-specs/SKILL-120-goal/spec_subtask_$id.md",
+              status = "blocked",
+            ),
+          )
+        }
+        repeat(pendingCount) { index ->
+          val id = completeCount + blockedCount + index + 1
+          add(
+            DecompositionSubtask(
+              id = id,
+              name = "pending-$index",
+              specPath = ".feature-specs/SKILL-120-goal/spec_subtask_$id.md",
+              status = "pending",
+            ),
+          )
+        }
+      }
+      val currentId = completeCount + blockedCount + pendingCount
+      val manifest = DecompositionManifest(
+        issueKey = "SKILL-120",
+        featureName = "prose-goal-continuation",
+        parentSpecPath = ".feature-specs/SKILL-120-goal/spec.md",
+        status = manifestStatus,
+        baseBranch = "main",
+        featureBranch = "feat/SKILL-120-goal",
+        currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = currentId, action = "start"),
+        subtasks = subtasks,
+      )
+      val artifacts = mapOf(
+        "plan" to mapOf("mode" to "decompose"),
+        DECOMPOSITION_RUNTIME_ARTIFACT_KEY to
+          encodeDecompositionManifestMap(manifest, testDecompositionManifestValidator),
+      )
+      states.saveFeatureImplementWorkflow(
+        skillbill.ports.persistence.model.WorkflowStateRecord(
+          workflowId = "wfl-prose-goal-parent",
+          sessionId = "fis-prose-goal",
+          workflowName = "bill-feature-task",
+          contractVersion = "0.1",
+          workflowStatus = workflowStatus,
+          // Retired prose step ids — must not be fed to the runtime schema validator.
+          currentStepId = "assess",
+          stepsJson =
+          """[{"step_id":"assess","status":"completed"},{"step_id":"create_branch","status":"pending"}]""",
+          artifactsJson = skillbill.contracts.JsonSupport.mapToJsonString(artifacts),
+          startedAt = null,
+          updatedAt = null,
+          finishedAt = null,
+          mode = FeatureTaskWorkflowMode.PROSE,
+          implementationSkill = "bill-feature-task-prose",
+          issueKey = "SKILL-120",
+        ),
       )
     }
 

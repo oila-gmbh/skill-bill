@@ -21,6 +21,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
@@ -786,6 +787,49 @@ class WorkflowStateStoreTest {
       // The write path refuses any prose write, so the row can never be re-created through the store.
       assertFailsWith<ProseFeatureTaskWorkflowWriteRefusedError> {
         store.saveFeatureImplementWorkflow(prose)
+      }
+    }
+  }
+
+  @Test
+  fun `terminalizeLegacyProseFeatureTaskWorkflow preserves mode and records status artifacts`() {
+    val dbPath = Files.createTempDirectory("legacy-prose-terminalize").resolve("metrics.db")
+
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      connection.prepareStatement(
+        """
+        INSERT INTO feature_task_workflows (
+          workflow_id, session_id, workflow_name, mode, implementation_skill, contract_version,
+          workflow_status, current_step_id, steps_json, artifacts_json, issue_key,
+          started_at, updated_at, state_entered_at, state_entered_at_estimated, finished_at
+        ) VALUES (?, ?, 'bill-feature-task', 'prose', 'bill-feature-task-prose', ?, 'paused', 'assess',
+                  '[{"step_id":"assess","status":"completed"}]', '{"history_note":"retain-me"}', 'SKILL-179',
+                  CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0, NULL)
+        """.trimIndent(),
+      ).use { statement ->
+        statement.setString(1, "wfl-legacy-prose-term-001")
+        statement.setString(2, "fis-legacy-prose-term-001")
+        statement.setString(3, DbConstants.FEATURE_IMPLEMENT_WORKFLOW_CONTRACT_VERSION)
+        statement.executeUpdate()
+      }
+
+      val store = WorkflowStateStore(connection)
+      store.terminalizeLegacyProseFeatureTaskWorkflow(
+        requireNotNull(store.getFeatureTaskWorkflow("wfl-legacy-prose-term-001")).copy(
+          workflowStatus = "abandoned",
+          artifactsJson =
+          """{"history_note":"retain-me","operator_abandonment":{"reason":"retire","abandoned_at":"2026-08-09T00:00:00Z"}}""",
+          finishedAt = "2026-08-09T00:00:00Z",
+        ),
+      )
+
+      val saved = assertNotNull(store.getFeatureTaskWorkflow("wfl-legacy-prose-term-001"))
+      assertEquals(FeatureTaskWorkflowMode.PROSE, saved.mode)
+      assertEquals("abandoned", saved.workflowStatus)
+      assertContains(saved.artifactsJson, "retain-me")
+      assertContains(saved.artifactsJson, "operator_abandonment")
+      assertFailsWith<ProseFeatureTaskWorkflowWriteRefusedError> {
+        store.saveFeatureImplementWorkflow(saved)
       }
     }
   }

@@ -75,23 +75,31 @@ class FeatureTaskContinuationLookupService(
         repositoryIdentity,
       )
     }
-    val validated = candidates.map {
-      it to project(
-        it,
-        unitOfWork.workflowStates.getFeatureTaskRuntimeWorkerOwnership(it.workflow.workflowId),
-        routeScope,
-      )
-    }
     val selected = workflowId?.let { selector ->
       listOf(
-        validated.singleOrNull { it.first.workflow.workflowId == selector }
+        candidates.singleOrNull { it.workflow.workflowId == selector }
           ?: throw InvalidFeatureTaskExecutionIdentitySchemaError(
             "lookup request",
             "workflow selector '$selector' does not match this issue and repository",
           ),
       )
-    } ?: validated
-    val classified = classify(selected.map { it.second })
+    } ?: candidates
+    val identityLess = selected.firstOrNull { it.identity == null }
+    if (identityLess != null) {
+      return@read FeatureTaskContinuationLookupResult.NeedsIdentityRepair(
+        workflowId = identityLess.workflow.workflowId,
+        summary = "Workflow '${identityLess.workflow.workflowId}' has no immutable execution identity; " +
+          "run `skill-bill feature-task repair-identity` for that workflow id before continuing.",
+      )
+    }
+    val validated = selected.map {
+      project(
+        it,
+        unitOfWork.workflowStates.getFeatureTaskRuntimeWorkerOwnership(it.workflow.workflowId),
+        routeScope,
+      )
+    }
+    val classified = classify(validated)
     // A goal parent can only be surfaced when the caller did not pin a specific feature-task
     // workflow, and only once no feature-task row answers the lookup.
     if (classified != FeatureTaskContinuationLookupResult.NoMatch ||

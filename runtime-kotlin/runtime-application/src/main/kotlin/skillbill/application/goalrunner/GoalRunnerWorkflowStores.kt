@@ -21,6 +21,7 @@ import skillbill.application.workflow.findDecomposedParentWorkflow
 import skillbill.application.workflow.generateWorkflowId
 import skillbill.application.workflow.isActiveGoalRuntime
 import skillbill.application.workflow.repoRoot
+import skillbill.application.workflow.requireRuntimeModeForEngineWrite
 import skillbill.application.workflow.toRecord
 import skillbill.application.workflow.toSnapshot
 import skillbill.contracts.JsonSupport
@@ -581,12 +582,14 @@ class WorkflowGoalRunnerManifestStore(
     unitOfWork: UnitOfWork,
     state: GoalRunnerManifestState,
   ): WorkflowStateSnapshot {
-    val existingParent = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, state.parentWorkflowId)
+    val existingRecord = unitOfWork.workflowStates.getFeatureTaskWorkflow(state.parentWorkflowId)
       ?: unitOfWork.workflowStates.findDecomposedParentWorkflow(
         state.manifest.issueKey,
         decompositionManifestValidator,
-      )?.toSnapshot()
+      )
       ?: error("Unknown decomposed parent workflow '${state.parentWorkflowId}'.")
+    existingRecord.requireRuntimeModeForEngineWrite()
+    val existingParent = existingRecord.toSnapshot()
     migrateLegacyGoalRunnerControls(unitOfWork, existingParent)
     val parentUpdated = engine.updateRecord(
       WorkflowFamily.TASK_RUNTIME.definition,
@@ -767,12 +770,14 @@ class WorkflowGoalRunnerManifestStore(
     clearOutOfBandAcceptances: Boolean = false,
     mergeConcurrentProgress: Boolean = true,
   ): SavedManifestProjection {
-    val existing = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, state.parentWorkflowId)
+    val existingRecord = unitOfWork.workflowStates.getFeatureTaskWorkflow(state.parentWorkflowId)
       ?: unitOfWork.workflowStates.findDecomposedParentWorkflow(
         state.manifest.issueKey,
         decompositionManifestValidator,
-      )?.toSnapshot()
+      )
       ?: error("Unknown decomposed parent workflow '${state.parentWorkflowId}'.")
+    existingRecord.requireRuntimeModeForEngineWrite()
+    val existing = existingRecord.toSnapshot()
     val existingSnapshot = existing
     migrateLegacyGoalRunnerControls(unitOfWork, existingSnapshot)
     if (clearOutOfBandAcceptances) {
@@ -846,11 +851,13 @@ class WorkflowGoalRunnerManifestStore(
       // and reuse the row rather than minting a second parent id for the same issue key. The
       // corrupt-fallback path mirrors bootstrapParentWorkflowFromManifest so both entry points
       // reclaim the same row instead of minting a divergent parent id.
-      val existing = unitOfWork.workflowStates.findDecomposedParentOrCorruptFallback(
+      val existingRecord = unitOfWork.workflowStates.findDecomposedParentOrCorruptFallback(
         manifest.issueKey,
         decompositionManifestValidator,
         manifest,
-      )?.toSnapshot()
+      )
+      existingRecord?.requireRuntimeModeForEngineWrite()
+      val existing = existingRecord?.toSnapshot()
       existing?.let { migrateLegacyGoalRunnerControls(unitOfWork, it) }
       val base = existing ?: engine.openRecord(
         WorkflowFamily.TASK_RUNTIME.definition,

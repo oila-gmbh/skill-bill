@@ -1019,6 +1019,38 @@ class CliFeatureTaskRuntimeRuntimeTest {
   }
 
   @Test
+  fun `feature-task lookup names an identity-less workflow and points at repair-identity`() {
+    val fixture = runtimeFixture()
+    val launcher = RecordingPhaseLauncher(invalidFromLaunchIndex = 2)
+    val run = CliRuntime.run(fixture.runCommand(extra = listOf("--agent", "codex")), fixture.context(launcher))
+    val workflowId = run.stdout.lines().single { it.startsWith("workflow_id:") }.substringAfter(":").trim()
+    DriverManager.getConnection("jdbc:sqlite:${fixture.dbPath}").use { connection ->
+      connection.prepareStatement("DELETE FROM feature_task_execution_identities WHERE workflow_id = ?").use {
+        it.setString(1, workflowId)
+        assertEquals(1, it.executeUpdate())
+      }
+    }
+
+    val lookup = CliRuntime.run(
+      listOf(
+        "--db",
+        fixture.dbPath.toString(),
+        "feature-task",
+        "lookup",
+        "SKILL-650",
+        "--repo-root",
+        fixture.tempDir.toString(),
+      ),
+      fixture.context(launcher),
+    )
+
+    assertEquals(0, lookup.exitCode, lookup.stdout)
+    assertContains(lookup.stdout, "needs_identity_repair")
+    assertContains(lookup.stdout, workflowId)
+    assertContains(lookup.stdout, "repair-identity")
+  }
+
+  @Test
   fun `feature-task repair-identity restores an explicitly identified legacy workflow`() {
     val fixture = runtimeFixture()
     val launcher = RecordingPhaseLauncher(invalidFromLaunchIndex = 2)

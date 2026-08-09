@@ -548,6 +548,11 @@ private fun FeatureTaskContinuationLookupResult.toCliPayload(): Map<String, Any?
     mapOf("result" to "terminal_only", "candidates" to candidates.map { it.toMap() })
   is FeatureTaskContinuationLookupResult.GoalContinuation ->
     mapOf("result" to "goal_continuation", "goal" to candidate.toMap())
+  is FeatureTaskContinuationLookupResult.NeedsIdentityRepair -> mapOf(
+    "result" to "needs_identity_repair",
+    "workflow_id" to workflowId,
+    "summary" to summary,
+  )
 }
 
 private fun GoalContinuationCandidate.toMap(): Map<String, Any?> = mapOf(
@@ -634,9 +639,9 @@ class FeatureTaskRuntimeAbandonCommand(
   private val state: CliRunState,
 ) : DocumentedCliCommand(
   "abandon",
-  "Explicitly terminalize a nonterminal runtime workflow while preserving its durable history.",
+  "Explicitly terminalize a nonterminal feature-task workflow while preserving its durable history.",
 ) {
-  private val workflowId by argument(help = "Exact runtime workflow id to abandon.")
+  private val workflowId by argument(help = "Exact feature-task workflow id to abandon.")
   private val reason by option("--reason", help = "Required operator reason recorded with the workflow.").required()
   private val format by formatOption()
 

@@ -287,36 +287,100 @@ class WorkflowService(
       )
     }
     return database.transaction(dbOverride) { unitOfWork ->
-      val family = WorkflowFamily.TASK_RUNTIME
-      val existing = family.get(unitOfWork.workflowStates, workflowId)
+      val existingRecord = unitOfWork.workflowStates.getFeatureTaskWorkflow(workflowId)
         ?: return@transaction WorkflowUpdateResult.Error(
           workflowId,
-          "Unknown runtime workflow_id '$workflowId'.",
+          "Unknown feature-task workflow_id '$workflowId'.",
           unitOfWork.dbPath.toString(),
         )
-      if (existing.workflowStatus in family.definition.terminalStatuses) {
-        return@transaction WorkflowUpdateResult.Error(
-          workflowId,
-          "Runtime workflow '$workflowId' is already terminal with status '${existing.workflowStatus}'.",
-          unitOfWork.dbPath.toString(),
+      when (existingRecord.mode) {
+        FeatureTaskWorkflowMode.RUNTIME -> abandonRuntimeFeatureTask(
+          unitOfWork,
+          existingRecord.toSnapshot(),
+          normalizedReason,
+        )
+        FeatureTaskWorkflowMode.PROSE, null -> abandonLegacyProseFeatureTask(
+          unitOfWork,
+          existingRecord,
+          normalizedReason,
         )
       }
-      val input = WorkflowUpdateInput(
-        workflowStatus = "abandoned",
-        currentStepId = existing.currentStepId.orEmpty(),
-        stepUpdates = null,
-        artifactsPatch = mapOf(
-          FEATURE_TASK_RUNTIME_OPERATOR_ABANDONMENT_ARTIFACT_KEY to mapOf(
-            "reason" to normalizedReason,
-            "abandoned_at" to OffsetDateTime.now(ZoneOffset.UTC).toString(),
-          ),
-        ),
-        sessionId = "",
-      )
-      val updated = engine.updateRecord(family.definition, existing, input)
-      family.save(unitOfWork.workflowStates, updated)
-      updateOk(family.definition, updated, input, unitOfWork.dbPath.toString())
     }
+  }
+
+  private fun abandonRuntimeFeatureTask(
+    unitOfWork: UnitOfWork,
+    existing: skillbill.workflow.model.WorkflowStateSnapshot,
+    normalizedReason: String,
+  ): WorkflowUpdateResult {
+    val family = WorkflowFamily.TASK_RUNTIME
+    if (existing.workflowStatus in family.definition.terminalStatuses) {
+      return WorkflowUpdateResult.Error(
+        existing.workflowId,
+        "Runtime workflow '${existing.workflowId}' is already terminal with status '${existing.workflowStatus}'.",
+        unitOfWork.dbPath.toString(),
+      )
+    }
+    val input = WorkflowUpdateInput(
+      workflowStatus = "abandoned",
+      currentStepId = existing.currentStepId.orEmpty(),
+      stepUpdates = null,
+      artifactsPatch = mapOf(
+        FEATURE_TASK_RUNTIME_OPERATOR_ABANDONMENT_ARTIFACT_KEY to mapOf(
+          "reason" to normalizedReason,
+          "abandoned_at" to OffsetDateTime.now(ZoneOffset.UTC).toString(),
+        ),
+      ),
+      sessionId = "",
+    )
+    val updated = engine.updateRecord(family.definition, existing, input)
+    family.save(unitOfWork.workflowStates, updated)
+    return updateOk(family.definition, updated, input, unitOfWork.dbPath.toString())
+  }
+
+  private fun abandonLegacyProseFeatureTask(
+    unitOfWork: UnitOfWork,
+    existing: WorkflowStateRecord,
+    normalizedReason: String,
+  ): WorkflowUpdateResult {
+    if (existing.workflowStatus in FEATURE_TASK_TERMINAL_STATUSES) {
+      return WorkflowUpdateResult.Error(
+        existing.workflowId,
+        "Feature-task workflow '${existing.workflowId}' is already terminal with status '${existing.workflowStatus}'.",
+        unitOfWork.dbPath.toString(),
+      )
+    }
+    val abandonedAt = OffsetDateTime.now(ZoneOffset.UTC).toString()
+    val artifacts = LinkedHashMap(decodeWorkflowArtifacts(existing.artifactsJson))
+    artifacts[FEATURE_TASK_RUNTIME_OPERATOR_ABANDONMENT_ARTIFACT_KEY] = mapOf(
+      "reason" to normalizedReason,
+      "abandoned_at" to abandonedAt,
+    )
+    val updated = existing.copy(
+      workflowStatus = "abandoned",
+      artifactsJson = JsonSupport.mapToJsonString(artifacts),
+      finishedAt = abandonedAt,
+    )
+    // Narrow status/artifact write: preserve mode=prose and never route through the refused prose
+    // writer or a runtime upsert that would flip mode.
+    unitOfWork.workflowStates.terminalizeLegacyProseFeatureTaskWorkflow(updated)
+    return WorkflowUpdateResult.Ok(
+      workflowId = updated.workflowId,
+      dbPath = unitOfWork.dbPath.toString(),
+      acknowledgement = skillbill.workflow.model.WorkflowUpdateAcknowledgementView(
+        status = "ok",
+        workflowId = updated.workflowId,
+        workflowName = updated.workflowName,
+        workflowStatus = "abandoned",
+        currentStepId = updated.currentStepId,
+        updatedStepIds = emptyList(),
+        updatedArtifactKeys = listOf(FEATURE_TASK_RUNTIME_OPERATOR_ABANDONMENT_ARTIFACT_KEY),
+        readOnlyFullStateGuidance =
+        "Update returns a compact acknowledgement. Use explicit read-only workflow get/show for full state, " +
+          "including steps and the complete durable artifacts map.",
+      ),
+      launchProjection = null,
+    )
   }
 
   fun retryBlockedFeatureTaskRuntimePhase(
@@ -727,6 +791,7 @@ private const val FEATURE_TASK_RUNTIME_OPERATOR_ABANDONMENT_ARTIFACT_KEY: String
 private const val FEATURE_TASK_RUNTIME_IDENTITY_REPAIR_ARTIFACT_KEY: String = "operator_identity_repair"
 private const val WORKFLOW_ID_SUFFIX_LENGTH: Int = 4
 private val FEATURE_TASK_FAMILY_KINDS = setOf(WorkflowFamilyKind.TASK_RUNTIME)
+private val FEATURE_TASK_TERMINAL_STATUSES: Set<String> = setOf("completed", "failed", "abandoned")
 private const val INCOMPLETE_FEATURE_TASK_IDENTITY_ERROR =
   "Feature-task workflows must be opened through openFeatureTask with complete immutable execution identity."
 private const val SUFFIX_CHARS: String = "abcdefghijklmnopqrstuvwxyz0123456789"

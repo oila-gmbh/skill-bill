@@ -438,6 +438,10 @@ private class FeatureTaskWorkflowStateStore(
 
   override fun latestFeatureTaskWorkflow(mode: FeatureTaskWorkflowMode): WorkflowStateRecord? =
     listFeatureTaskWorkflows(mode, 1).firstOrNull()
+
+  override fun terminalizeLegacyProseFeatureTaskWorkflow(row: WorkflowStateRecord) {
+    connection.terminalizeLegacyProseFeatureTaskWorkflowRow(row)
+  }
 }
 
 private fun Connection.insertWorkerOwnership(ownership: FeatureTaskRuntimeWorkerOwnership) {

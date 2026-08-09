@@ -6,6 +6,7 @@ import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.decomposition.decodeDecompositionManifestMap
 import skillbill.application.decomposition.parentSpecPath
 import skillbill.application.featuretask.model.GoalContinuationCandidate
+import skillbill.error.LegacyProseWorkflowError
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.persistence.model.WorkflowStateRecord
@@ -26,6 +27,32 @@ internal fun WorkflowStateSnapshot.hasDecompositionPlan(): Boolean =
 private val IMPLEMENT_TERMINAL_STATUSES: Set<String> = setOf("completed", "failed", "abandoned")
 
 /**
+ * Parent discovery must see both runtime and legacy prose rows. Prose parents still carry a valid
+ * `decomposition_runtime` artifact and are load-bearing for continuation lookup / goal status; they
+ * must never be fed into WorkflowEngine runtime schema validation (see [requireRuntimeModeForEngineWrite]).
+ */
+private fun WorkflowStateRepository.listFeatureTaskWorkflowsForParentDiscovery(): List<WorkflowStateRecord> {
+  val byId = LinkedHashMap<String, WorkflowStateRecord>()
+  listFeatureTaskWorkflows(FeatureTaskWorkflowMode.RUNTIME, Int.MAX_VALUE).forEach { row ->
+    byId[row.workflowId] = row
+  }
+  listFeatureTaskWorkflows(FeatureTaskWorkflowMode.PROSE, Int.MAX_VALUE).forEach { row ->
+    byId.putIfAbsent(row.workflowId, row)
+  }
+  return byId.values.toList()
+}
+
+/**
+ * Expanding parent discovery to mode=prose must not convert resume/continue/save into a runtime
+ * schema assertion over retired step ids. Call this before any TASK_RUNTIME engine.updateRecord.
+ */
+internal fun WorkflowStateRecord.requireRuntimeModeForEngineWrite() {
+  if (mode != FeatureTaskWorkflowMode.RUNTIME) {
+    throw LegacyProseWorkflowError(workflowId, issueKey)
+  }
+}
+
+/**
  * Single-scan lookup that returns a valid parent (or the first non-terminal corrupt-manifest row as
  * a fallback) without issuing a second full table scan when the primary lookup misses. This avoids
  * materialising the table twice inside the caller's BEGIN IMMEDIATE write lock.
@@ -41,7 +68,7 @@ internal fun WorkflowStateRepository.findDecomposedParentOrCorruptFallback(
   val normalizedIssueKey = issueKey.trim()
   val validCandidates = mutableListOf<DecomposedParentCandidate>()
   val corruptCandidates = mutableListOf<WorkflowStateRecord>()
-  listFeatureTaskWorkflows(FeatureTaskWorkflowMode.RUNTIME, Int.MAX_VALUE)
+  listFeatureTaskWorkflowsForParentDiscovery()
     .filter { row ->
       val snapshot = row.toSnapshot()
       !snapshot.isGoalContinuationChildWorkflow() &&
@@ -89,7 +116,7 @@ internal fun WorkflowStateRepository.findDecomposedParentWorkflow(
   currentProjectedManifest: DecompositionManifest? = null,
 ): WorkflowStateRecord? {
   val normalizedIssueKey = issueKey.trim()
-  val candidates = listFeatureTaskWorkflows(FeatureTaskWorkflowMode.RUNTIME, Int.MAX_VALUE).mapNotNull { row ->
+  val candidates = listFeatureTaskWorkflowsForParentDiscovery().mapNotNull { row ->
     val snapshot = row.toSnapshot()
     if (snapshot.isGoalContinuationChildWorkflow()) return@mapNotNull null
     val manifest = snapshot.decompositionRuntime(validator) ?: return@mapNotNull null

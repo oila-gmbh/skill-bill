@@ -209,6 +209,54 @@ class WorkflowServiceTest {
     assertContains(repeated.error, "already terminal")
   }
 
+  @Test
+  fun `abandon terminalizes a legacy prose-mode goal parent without flipping mode`() {
+    // SKILL-179 AC-005/AC-007: prose parents terminalize through abandon with operator reason,
+    // preserved history, and mode left as prose.
+    val workflows = InMemoryWorkflowStates()
+    val service = WorkflowService(
+      database = FakeDatabaseSessionFactory(workflows),
+      decompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      decompositionManifestValidator = testDecompositionManifestValidator,
+    )
+    val historyArtifact = """{"plan":{"mode":"decompose"},"history_note":"retain-me"}"""
+    workflows.saveFeatureImplementWorkflow(
+      WorkflowStateRecord(
+        workflowId = "wfl-legacy-prose-parent",
+        sessionId = "fis-legacy-prose-parent",
+        workflowName = "bill-feature-task",
+        contractVersion = "0.1",
+        workflowStatus = "paused",
+        currentStepId = "assess",
+        stepsJson = """[{"step_id":"assess","status":"completed"}]""",
+        artifactsJson = historyArtifact,
+        startedAt = null,
+        updatedAt = null,
+        finishedAt = null,
+        mode = FeatureTaskWorkflowMode.PROSE,
+        implementationSkill = "bill-feature-task-prose",
+        issueKey = "SKILL-179",
+      ),
+    )
+
+    val abandoned = assertIs<WorkflowUpdateResult.Ok>(
+      service.abandonFeatureTaskRuntime("wfl-legacy-prose-parent", "Retire legacy prose goal parent."),
+    )
+
+    assertEquals("abandoned", abandoned.acknowledgement.workflowStatus)
+    assertEquals(listOf("operator_abandonment"), abandoned.acknowledgement.updatedArtifactKeys)
+    val saved = requireNotNull(workflows.getFeatureTaskWorkflow("wfl-legacy-prose-parent"))
+    assertEquals("abandoned", saved.workflowStatus)
+    assertEquals(FeatureTaskWorkflowMode.PROSE, saved.mode)
+    assertContains(saved.artifactsJson, "Retire legacy prose goal parent.")
+    assertContains(saved.artifactsJson, "retain-me")
+    val repeated = assertIs<WorkflowUpdateResult.Error>(
+      service.abandonFeatureTaskRuntime("wfl-legacy-prose-parent", "Again."),
+    )
+    assertContains(repeated.error, "already terminal")
+  }
+
   /**
    * SKILL-141 Subtask 1 AC-005: the new non-terminal parent status must not soften explicit operator
    * abandonment. That path stays terminal with its reason artifact, and `paused` never enters the
@@ -1278,6 +1326,62 @@ class WorkflowGoalStatusProjectionTest {
     assertNull(projection.latestLivenessSignal)
   }
 
+  @Test
+  fun `goal status reports runner_interrupted pause for a legacy prose-mode parent`() {
+    // SKILL-179 AC-003: discovering a prose parent must not assert the runtime schema; status still
+    // reports the durable control pause including runner_interrupted.
+    val workflows = InMemoryWorkflowStates()
+    val controls = RecordingGoalRunnerControlRepository()
+    val manifest = decompositionRuntime(status = "in_progress")
+    workflows.saveFeatureImplementWorkflow(
+      WorkflowStateRecord(
+        workflowId = "wfl-prose-parent",
+        sessionId = "fis-prose-parent",
+        workflowName = "bill-feature-task",
+        contractVersion = "0.1",
+        workflowStatus = "paused",
+        currentStepId = "assess",
+        stepsJson = """[{"step_id":"assess","status":"completed"},{"step_id":"create_branch","status":"pending"}]""",
+        artifactsJson = skillbill.contracts.JsonSupport.mapToJsonString(
+          mapOf(
+            "plan" to mapOf("mode" to "decompose"),
+            DECOMPOSITION_RUNTIME_ARTIFACT_KEY to
+              encodeDecompositionManifestMap(manifest, testDecompositionManifestValidator),
+          ),
+        ),
+        startedAt = null,
+        updatedAt = null,
+        finishedAt = null,
+        mode = FeatureTaskWorkflowMode.PROSE,
+        implementationSkill = "bill-feature-task-prose",
+        issueKey = "SKILL-52.1",
+      ),
+    )
+    controls.persistControlState(
+      "wfl-prose-parent",
+      GoalRunnerControlState(
+        paused = true,
+        pauseRequested = true,
+        pauseConsumed = true,
+        pauseReason = "runner_interrupted",
+        pausedAt = "2026-08-09T18:46:07Z",
+      ),
+    )
+
+    val projection = newGoalStatusService(workflows, controls).status(
+      GoalRunnerStatusRequest(
+        issueKey = "SKILL-52.1",
+        invokedAgentId = "codex",
+        repoRoot = Path.of("").toAbsolutePath(),
+      ),
+    )
+
+    requireNotNull(projection)
+    assertTrue(projection.paused)
+    assertEquals("runner_interrupted", projection.pauseReason)
+    assertEquals(FeatureTaskWorkflowMode.PROSE, workflows.getFeatureTaskWorkflow("wfl-prose-parent")?.mode)
+  }
+
   private fun saveCompleteGoalParent(workflows: InMemoryWorkflowStates) {
     val manifest = decompositionRuntime(status = "complete").copy(
       currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 0, action = "complete"),
@@ -1381,8 +1485,11 @@ class WorkflowGoalStatusProjectionTest {
     ),
   )
 
-  private fun newGoalStatusService(workflows: InMemoryWorkflowStates): GoalRunnerStatusService {
-    val database = FakeDatabaseSessionFactory(workflows)
+  private fun newGoalStatusService(
+    workflows: InMemoryWorkflowStates,
+    controls: GoalRunnerControlRepository = skillbill.ports.persistence.EmptyGoalRunnerControlRepository,
+  ): GoalRunnerStatusService {
+    val database = FakeDatabaseSessionFactory(workflows, goalRunnerControls = controls)
     return GoalRunnerStatusService(
       manifestStore = WorkflowGoalRunnerManifestStore(
         database = database,
@@ -3685,12 +3792,33 @@ internal class InMemoryWorkflowStates : WorkflowStateRepository {
   override fun getFeatureImplementWorkflow(workflowId: String): WorkflowStateRecord? = implement[workflowId]
   override fun getFeatureVerifyWorkflow(workflowId: String): WorkflowStateRecord? = verify[workflowId]
   override fun listFeatureImplementWorkflows(limit: Int): List<WorkflowStateRecord> =
-    implement.values.toList().take(limit)
+    // Parent discovery lists PROSE via this path; keep parity with SQLite mode='prose' filtering.
+    implement.values.filter { it.mode == null || it.mode == FeatureTaskWorkflowMode.PROSE }.take(limit)
   override fun listFeatureVerifyWorkflows(limit: Int): List<WorkflowStateRecord> = verify.values.toList().take(limit)
-  override fun latestFeatureImplementWorkflow(): WorkflowStateRecord? = implement.values.lastOrNull()
+  override fun latestFeatureImplementWorkflow(): WorkflowStateRecord? =
+    listFeatureImplementWorkflows(Int.MAX_VALUE).lastOrNull()
   override fun latestFeatureVerifyWorkflow(): WorkflowStateRecord? = verify.values.lastOrNull()
   override fun getFeatureImplementSessionSummary(sessionId: String): FeatureImplementSessionSummary? = null
   override fun getFeatureVerifySessionSummary(sessionId: String): FeatureVerifySessionSummary? = null
+
+  override fun terminalizeLegacyProseFeatureTaskWorkflow(row: WorkflowStateRecord) {
+    val existing = getFeatureTaskWorkflow(row.workflowId)
+      ?: error("Legacy prose feature-task workflow '${row.workflowId}' was not terminalized (missing row).")
+    val effectiveMode = existing.mode ?: FeatureTaskWorkflowMode.PROSE
+    require(effectiveMode == FeatureTaskWorkflowMode.PROSE) {
+      "Legacy prose feature-task workflow '${row.workflowId}' was not terminalized (mode is not prose)."
+    }
+    val preserved = row.copy(
+      mode = existing.mode,
+      implementationSkill = existing.implementationSkill,
+      issueKey = row.issueKey ?: existing.issueKey,
+    )
+    when {
+      preserved.workflowId in implement -> implement[preserved.workflowId] = preserved
+      preserved.workflowId in taskRuntime -> taskRuntime[preserved.workflowId] = preserved
+      else -> implement[preserved.workflowId] = preserved
+    }
+  }
 
   // SKILL-175: the prose engine is retired, so feature-task rows live in one logical table and the
   // `mode` column discriminates the family. The fake mirrors that with two maps: `implement` holds
