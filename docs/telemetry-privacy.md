@@ -222,8 +222,9 @@ Stated as what is true today:
 
 The `skillbill_feature_task_prose_*`, `skillbill_feature_implement_*`, and
 `skillbill_goal_prose_*` events were removed with the prose lane. The bundled
-telemetry proxy silently ignores and drops them: it never rejects a batch that
-carries a retired name, and no `/stats` aggregate counts them. Already-installed
-older clients therefore keep receiving normal success responses instead of
-errors. Locally, the runtime's telemetry-event schema no longer defines those
+telemetry proxy accepts them unchanged: a batch carrying a retired name is never
+rejected, and the events are forwarded to the analytics backend as-is and kept
+under its normal retention. The retirement is enforced only on the reporting
+side — no `/stats` aggregate counts a retired name. Already-installed older
+clients therefore keep receiving normal success responses instead of errors. Locally, the runtime's telemetry-event schema no longer defines those
 events, so an in-tree emitter attempting one loud-fails at the validator.
