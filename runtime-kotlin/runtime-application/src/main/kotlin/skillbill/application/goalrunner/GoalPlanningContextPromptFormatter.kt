@@ -1,6 +1,7 @@
 package skillbill.application.goalrunner
 
 import skillbill.contracts.JsonSupport
+import skillbill.ports.goalrunner.model.GoalPlanningContext
 import skillbill.ports.goalrunner.model.GoalPlanningResolvedBoundaryBodies
 import skillbill.workflow.model.DecompositionSubtask
 
@@ -81,9 +82,27 @@ internal object GoalPlanningContextPromptFormatter {
     }
     if (resolved.unresolvedHeadingIds.isNotEmpty()) {
       append("\nUnresolved selections (no body delivered): ")
-      append(resolved.unresolvedHeadingIds.joinToString(", "))
+      append(
+        resolved.unresolvedHeadingIds
+          .take(GoalPlanningContext.MAX_REPORTED_UNRESOLVED_IDS)
+          .joinToString(", ", transform = ::singleLineId),
+      )
+      val omitted = resolved.unresolvedHeadingIds.size - GoalPlanningContext.MAX_REPORTED_UNRESOLVED_IDS
+      if (omitted > 0) append(" (+$omitted more)")
       append("\n")
     }
     if (resolved.truncated) append("\nSelected boundary memory was truncated at its resolved-body cap.\n")
   }
+
+  /**
+   * Heading ids are model-authored output, and an unresolved one is echoed back verbatim. Collapsing
+   * whitespace and capping the length stops a selection from carrying newlines that reproduce the
+   * `### <heading_id>` delimiters above and forge a delivered body the resolver never returned.
+   */
+  private fun singleLineId(headingId: String): String = headingId
+    .replace(WHITESPACE_RUN, " ")
+    .trim()
+    .take(GoalPlanningContext.MAX_REPORTED_UNRESOLVED_ID_CHARS)
+
+  private val WHITESPACE_RUN = Regex("\\s+")
 }

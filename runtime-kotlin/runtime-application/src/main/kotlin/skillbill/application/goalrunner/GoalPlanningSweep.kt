@@ -112,7 +112,7 @@ class DefaultGoalPlanningSweep(
   private val planningRejectionRecorder: GoalPlanningRejectionRecorder = GoalPlanningRejectionRecorder.NONE,
   private val timingPort: RuntimeTimingPort = NoopRuntimeTimingPort,
   private val burstSchedule: GoalPlanningBurstSchedule = GoalPlanningBurstSchedule(),
-  private val boundaryBodyResolver: GoalPlanningBoundaryBodyResolver = GoalPlanningBoundaryBodyResolver.NONE,
+  private val boundaryBodyResolver: GoalPlanningBoundaryBodyResolver,
 ) : GoalPlanningSweep {
   @Suppress("ReturnCount")
   override fun prepare(state: GoalRunnerManifestState, request: GoalRunnerRunRequest): GoalPlanningSweepOutcome {
@@ -149,6 +149,10 @@ class DefaultGoalPlanningSweep(
         )
       }
     val subtasksById = activeSubtasks.associateBy(DecompositionSubtask::id)
+    // The preplan payload is immutable for this prepare(), so every subtask's plan prompt resolves
+    // the same bodies. Resolving inside producePlan re-read and re-parsed every referenced boundary
+    // file once per subtask for a provably identical result.
+    val resolvedBodies = resolvedBoundaryBodies(shared, sharedCheckpoint.preplanPayload)
     // Pace only between consecutive plan launches in this prepare() call — never before the first
     // (including the first plan after resume) and never after the last.
     var plansLaunchedThisPrepare = 0
@@ -169,7 +173,8 @@ class DefaultGoalPlanningSweep(
       if (plansLaunchedThisPrepare > 0) {
         interruptibleWait(burstSchedule.planLaunchPace, shared, missingId, PHASE_PLAN)?.let { return it }
       }
-      producePlan(shared, request, subtask, descriptor, provenance, sharedCheckpoint.preplanPayload)?.let { return it }
+      producePlan(shared, request, subtask, descriptor, provenance, sharedCheckpoint.preplanPayload, resolvedBodies)
+        ?.let { return it }
       plansLaunchedThisPrepare += 1
     }
   }
@@ -249,6 +254,7 @@ class DefaultGoalPlanningSweep(
     descriptor: GovernedGoalSubtaskDescriptor,
     provenance: GoalPlanningContractProvenance,
     preplanPayload: String,
+    resolvedBodies: GoalPlanningResolvedBoundaryBodies,
   ): GoalPlanningSweepOutcome.Stopped? {
     val resolvedSpecPath = resolvedSubSpecPath(shared.repoRoot, subtask.specPath)
       ?: return stopped(shared, subtask.id, unresolvedSpecReason(subtask), PHASE_PLAN)
@@ -262,7 +268,7 @@ class DefaultGoalPlanningSweep(
       runInvariants,
       PHASE_PLAN,
       listOf(FeatureTaskRuntimePhaseOutput(PHASE_PREPLAN, 1, preplanPayload)),
-      resolvedBodies = resolvedBoundaryBodies(shared, preplanPayload),
+      resolvedBodies = resolvedBodies,
     )
     if (planProduction is GoalPlanningPhaseProduction.Stopped) return planProduction.outcome
     val captured = planProduction as GoalPlanningPhaseProduction.Captured
@@ -736,8 +742,10 @@ class DefaultGoalPlanningSweep(
 
   /**
    * Reads the heading ids the settled preplan selected and resolves exactly those bodies. A missing,
-   * legacy, or malformed selection degrades to catalog-only rather than stopping the sweep or falling
-   * back to a full-file dump.
+   * legacy, or malformed selection degrades to catalog-only rather than falling back to a full-file
+   * dump. Resolution failures are not caught here: the resolver already reports unreadable files as
+   * unresolved ids, so anything that escapes it is a contract or wiring fault that must surface
+   * instead of being laundered into a silently body-less plan phase on every resume.
    */
   private fun resolvedBoundaryBodies(
     shared: GoalPlanningSharedContext,
@@ -753,8 +761,11 @@ class DefaultGoalPlanningSweep(
         ?.let { value -> (value as? List<*>)?.mapNotNull { id -> (id as? String)?.takeIf(String::isNotBlank) } }
     }.getOrNull().orEmpty()
     if (selected.isEmpty()) return GoalPlanningResolvedBoundaryBodies()
-    return runCatching { boundaryBodyResolver.resolve(shared.repoRoot, selected) }
-      .getOrElse { GoalPlanningResolvedBoundaryBodies(unresolvedHeadingIds = selected) }
+    return boundaryBodyResolver.resolve(
+      shared.repoRoot,
+      selected,
+      GoalPlanningSharedContextPacket.catalogHeadingIds(shared.planningPacket),
+    )
   }
 
   private fun gatherSharedContext(

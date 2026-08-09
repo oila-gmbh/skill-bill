@@ -49,7 +49,7 @@ internal object GoalPlanningSharedContextPacket {
    */
   fun migrate(packet: Map<String, Any?>): Map<String, Any?> {
     return when (val version = packet["packet_version"]) {
-      VERSION -> packet
+      VERSION -> withoutExcludedCatalogEntries(packet)
       LEGACY_VERSION_0_3 -> Legacy.migrateFromV03(packet)
       LEGACY_VERSION_0_2 -> Legacy.migrateFromV03(Legacy.migrateFromV02(packet))
       LEGACY_VERSION_0_1 -> Legacy.migrateFromV03(Legacy.migrateFromV02(Legacy.migrateFromV01(packet)))
@@ -89,6 +89,33 @@ internal object GoalPlanningSharedContextPacket {
     }
   }
 
+  /**
+   * SKILL-174: the exclusion contract is checked in and expected to grow, and a durable packet is
+   * immutable. Rejecting a recovered catalog because a root was added after it was written would turn
+   * every in-flight goal into a permanently unresumable one — the sweep would re-derive the same block
+   * on every resume. Newly excluded entries are dropped here instead, and the catalog is marked
+   * truncated so the planning agent is told it is no longer complete. Applying this on the
+   * current-version branch too means validation never has to re-decide the rule.
+   */
+  private fun withoutExcludedCatalogEntries(packet: Map<String, Any?>): Map<String, Any?> {
+    val catalog = (packet["boundary_memory"] as? Map<*, *>)?.get("catalog") as? List<*> ?: return packet
+    val retained = catalog.filter { entry ->
+      val sourcePath = (entry as? Map<*, *>)?.get("source_path") as? String
+      sourcePath != null && !GoalPlanningDiscoveryExclusions.isExcluded(sourcePath)
+    }
+    if (retained.size == catalog.size) return packet
+    // Re-signing replaces the digest validate would otherwise check, so the incoming one has to be
+    // checked here first — exactly as every legacy hop does. Without it, appending a single excluded
+    // catalog entry to a tampered packet routes it through this branch and launders the tamper.
+    require(packet["integrity_sha256"] == digest(packet - "integrity_sha256")) {
+      "shared context packet integrity is invalid"
+    }
+    val migrated = packet.toMutableMap()
+    migrated["boundary_memory"] = linkedMapOf<String, Any?>("catalog" to retained, "truncated" to true)
+    migrated.remove("integrity_sha256")
+    return migrated + ("integrity_sha256" to digest(migrated))
+  }
+
   /** Legacy checkpoint projections, grouped so the packet surface stays the current-version API. */
   private object Legacy {
     fun migrateFromV01(packet: Map<String, Any?>): Map<String, Any?> {
@@ -113,9 +140,9 @@ internal object GoalPlanningSharedContextPacket {
     }
 
     /**
-     * SKILL-174: 0.2 packets predate the discovery exclusion contract, so a recovered one can still carry
-     * boundary memory harvested from an excluded root. The filter reads the same checked-in contract
-     * discovery denies against, never a duplicated prefix.
+     * SKILL-174: 0.2 packets predate the discovery exclusion contract. Their path-keyed boundary memory
+     * is not filtered here because [migrateFromV03] discards the whole payload one step later; only the
+     * version and integrity projection matter on this hop.
      */
     fun migrateFromV02(packet: Map<String, Any?>): Map<String, Any?> {
       require(packet.keys == PACKET_FIELDS) {
@@ -131,9 +158,6 @@ internal object GoalPlanningSharedContextPacket {
       for (field in PACKET_FIELDS) {
         when (field) {
           "packet_version" -> migrated[field] = LEGACY_VERSION_0_3
-          "boundary_memory" -> migrated[field] = (packet.getValue(field) as Map<*, *>).entries
-            .associate { (key, value) -> key as String to value as String }
-            .filterKeys { path -> !GoalPlanningDiscoveryExclusions.isExcluded(path) }
           "integrity_sha256" -> Unit
           else -> migrated[field] = packet.getValue(field)
         }
@@ -144,8 +168,9 @@ internal object GoalPlanningSharedContextPacket {
     /**
      * SKILL-174: 0.3 and earlier carried boundary memory as first-N-byte file excerpts keyed by path.
      * That payload has no heading identity, so it cannot be projected onto the 0.4 catalog; it is
-     * discarded into an empty catalog rather than reinterpreted, and the resumed goal simply plans
-     * without prior boundary memory instead of revalidating stale prefixes.
+     * discarded rather than reinterpreted. The replacement catalog is marked truncated so the resumed
+     * goal is told its boundary memory was dropped instead of being handed an empty catalog that is
+     * indistinguishable from a repository with no boundary memory at all.
      */
     fun migrateFromV03(packet: Map<String, Any?>): Map<String, Any?> {
       require(packet.keys == PACKET_FIELDS) {
@@ -161,7 +186,7 @@ internal object GoalPlanningSharedContextPacket {
       for (field in PACKET_FIELDS) {
         when (field) {
           "packet_version" -> migrated[field] = VERSION
-          "boundary_memory" -> migrated[field] = emptyCatalog()
+          "boundary_memory" -> migrated[field] = discardedCatalog()
           "integrity_sha256" -> Unit
           else -> migrated[field] = packet.getValue(field)
         }
@@ -171,6 +196,17 @@ internal object GoalPlanningSharedContextPacket {
   }
 
   fun emptyCatalog(): Map<String, Any?> = linkedMapOf("catalog" to emptyList<Map<String, Any?>>(), "truncated" to false)
+
+  /** An empty catalog that says so: memory existed but this packet version could not carry it forward. */
+  fun discardedCatalog(): Map<String, Any?> =
+    linkedMapOf("catalog" to emptyList<Map<String, Any?>>(), "truncated" to true)
+
+  /** The closed set of ids the catalog published; body resolution honours nothing outside it. */
+  fun catalogHeadingIds(packet: Map<String, Any?>): Set<String> =
+    ((packet["boundary_memory"] as? Map<*, *>)?.get("catalog") as? List<*>)
+      .orEmpty()
+      .mapNotNull { entry -> (entry as? Map<*, *>)?.get("heading_id") as? String }
+      .toSet()
 
   fun catalog(context: GoalPlanningContext): Map<String, Any?> = linkedMapOf(
     "catalog" to context.boundaryCatalog.map { heading ->
@@ -201,9 +237,6 @@ internal object GoalPlanningSharedContextPacket {
       val sourcePath = entry["source_path"] as String
       require(sourcePath.isNotBlank() && !sourcePath.startsWith("/") && ".." !in sourcePath) {
         "shared context boundary memory source path is invalid"
-      }
-      require(!GoalPlanningDiscoveryExclusions.isExcluded(sourcePath)) {
-        "shared context boundary memory source path is excluded"
       }
       require(entry["kind"] as String in CATALOG_KINDS) { "shared context boundary memory kind is invalid" }
       require((entry["heading"] as String).length <= GoalPlanningContext.MAX_HEADING_TEXT_CHARS) {

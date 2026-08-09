@@ -159,6 +159,124 @@ class FileSystemGoalPlanningContextDiscoveryTest {
     assertTrue(context.boundaryCatalogTruncated)
   }
 
+  // Under a sequential take the alphabetically-first modules consume every slot and the rest of the
+  // repository is invisible to planning.
+  @Test
+  fun `a large early module cannot starve later modules out of the catalog`() {
+    val repo = Files.createTempDirectory("goal-context-fairness")
+    val modules = (0 until 6).map { index -> "modules/module-%02d".format(index) }
+    modules.forEach { module ->
+      val agent = Files.createDirectories(repo.resolve("$module/agent"))
+      val entries = (0 until GoalPlanningContext.MAX_HEADINGS_PER_FILE).joinToString("\n\n") { index ->
+        "## [2026-08-%02d] ${module.substringAfterLast('/')}-entry-$index\n\nbody $index".format((index % 28) + 1)
+      }
+      Files.writeString(agent.resolve("history.md"), "# Boundary History\n\n$entries\n")
+    }
+
+    val context = FileSystemGoalPlanningContextDiscovery().discover(repo)
+
+    assertEquals(GoalPlanningContext.MAX_CATALOG_HEADINGS, context.boundaryCatalog.size)
+    assertTrue(context.boundaryCatalogTruncated)
+    assertEquals(
+      modules.map { module -> "$module/agent/history.md" },
+      context.boundaryCatalog.map(GoalPlanningBoundaryHeading::sourcePath).distinct(),
+      "every module must be represented, and in discovery order",
+    )
+    val perModule = context.boundaryCatalog.groupingBy(GoalPlanningBoundaryHeading::sourcePath).eachCount()
+    assertTrue(
+      perModule.values.max() - perModule.values.min() <= 1,
+      "the cap is shared evenly, not spent on whichever module sorts first: $perModule",
+    )
+  }
+
+  // validation_guidance rides into every planning prompt, so an unbounded AGENTS.md rides with it.
+  @Test
+  fun `validation guidance is bounded by its declared cap`() {
+    val repo = Files.createTempDirectory("goal-context-guidance-cap")
+    Files.createDirectories(repo.resolve("modules/a/agent"))
+    writeEntries(repo.resolve("modules/a/agent/history.md"), "history", "body")
+    Files.writeString(repo.resolve("AGENTS.md"), "g".repeat(GoalPlanningContext.MAX_VALIDATION_GUIDANCE_BYTES * 3))
+
+    val context = FileSystemGoalPlanningContextDiscovery().discover(repo)
+
+    assertEquals(GoalPlanningContext.MAX_VALIDATION_GUIDANCE_BYTES, context.validationGuidance.length)
+  }
+
+  @Test
+  fun `heading text is truncated at its declared cap`() {
+    val repo = Files.createTempDirectory("goal-context-heading-cap")
+    val agent = Files.createDirectories(repo.resolve("modules/a/agent"))
+    val longTitle = "t".repeat(GoalPlanningContext.MAX_HEADING_TEXT_CHARS * 2)
+    Files.writeString(agent.resolve("history.md"), "# Boundary History\n\n## [2026-08-01] $longTitle\n\nbody\n")
+
+    val context = FileSystemGoalPlanningContextDiscovery().discover(repo)
+
+    assertEquals(GoalPlanningContext.MAX_HEADING_TEXT_CHARS, context.boundaryCatalog.single().heading.length)
+  }
+
+  // A present-but-unreadable file is not an absent one; skipping it silently claims false completeness.
+  @Test
+  fun `an unreadable boundary file marks the catalog truncated instead of vanishing`() {
+    val repo = Files.createTempDirectory("goal-context-unreadable")
+    val readable = Files.createDirectories(repo.resolve("modules/readable/agent"))
+    writeEntries(readable.resolve("history.md"), "readable-history", "readable body")
+    val blocked = Files.createDirectories(repo.resolve("modules/blocked/agent"))
+    val blockedFile = writeEntries(blocked.resolve("history.md"), "blocked-history", "blocked body")
+    val denied = runCatching {
+      Files.setPosixFilePermissions(blockedFile, emptySet())
+      !Files.isReadable(blockedFile)
+    }.getOrDefault(false)
+    assumeTrue(denied, "filesystem cannot make a file unreadable for this user")
+
+    val context = FileSystemGoalPlanningContextDiscovery().discover(repo)
+
+    assertEquals(
+      listOf("modules/readable/agent/history.md"),
+      context.boundaryCatalog.map(GoalPlanningBoundaryHeading::sourcePath),
+    )
+    assertTrue(context.boundaryCatalogTruncated, "an unreadable file must not read as a complete catalog")
+  }
+
+  // Two different read caps let the passes parse different text and produce disagreeing digests.
+  @Test
+  fun `discovery and body resolution agree on heading ids for the same file`() {
+    val repo = Files.createTempDirectory("goal-context-read-parity")
+    val agent = Files.createDirectories(repo.resolve("modules/a/agent"))
+    val entries = (0 until 20).joinToString("\n\n") { index ->
+      "## [2026-08-%02d] entry-$index\n\n${"filler ".repeat(200)}body $index".format((index % 28) + 1)
+    }
+    Files.writeString(agent.resolve("history.md"), "# Boundary History\n\n$entries\n")
+
+    val catalog = FileSystemGoalPlanningContextDiscovery().discover(repo).boundaryCatalog
+    val ids = catalog.map(GoalPlanningBoundaryHeading::headingId)
+    val resolved = FileSystemGoalPlanningBoundaryBodyResolver().resolve(repo, ids.take(5), ids.toSet())
+
+    assertEquals(ids.take(5), resolved.bodies.map { body -> body.headingId })
+    assertTrue(resolved.unresolvedHeadingIds.isEmpty(), "a catalog id must always resolve against the same read")
+  }
+
+  // A file cut at the per-file read cap loses every entry past the cut; reporting completeness there
+  // is the same silent loss as skipping an unreadable file.
+  @Test
+  fun `a boundary file larger than the per file cap marks the catalog truncated`() {
+    val repo = Files.createTempDirectory("goal-context-file-cap")
+    val agent = Files.createDirectories(repo.resolve("modules/huge/agent"))
+    val filler = "f".repeat(4_096)
+    val entries = (0 until 64).joinToString("\n\n") { index ->
+      "## [2026-08-%02d] entry-$index\n\n$filler".format((index % 28) + 1)
+    }
+    Files.writeString(agent.resolve("history.md"), "# Boundary History\n\n$entries\n")
+    assertTrue(
+      Files.size(agent.resolve("history.md")) > GoalPlanningContext.MAX_BOUNDARY_FILE_BYTES,
+      "fixture must exceed the per-file read cap",
+    )
+
+    val context = FileSystemGoalPlanningContextDiscovery().discover(repo)
+
+    assertTrue(context.boundaryCatalog.isNotEmpty(), "the readable prefix still contributes headings")
+    assertTrue(context.boundaryCatalogTruncated, "a cut file must not read as a complete catalog")
+  }
+
   private fun writeEntries(path: Path, title: String, body: String): Path =
     Files.writeString(path, "# Boundary History\n\n## [2026-08-01] $title\n\n$body\n")
 }

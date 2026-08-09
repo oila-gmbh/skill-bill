@@ -49,6 +49,7 @@ import skillbill.application.work.IdeStatusService
 import skillbill.application.work.WorkListService
 import skillbill.application.workflow.GoalPlanningPreparationCheckpoint
 import skillbill.application.workflow.WorkflowService
+import skillbill.contracts.goalplanning.GoalPlanningDiscoveryExclusions
 import skillbill.domain.skillremove.SkillRemoveFileSystem
 import skillbill.goalplanning.FileSystemGoalPlanningBoundaryBodyResolver
 import skillbill.goalplanning.FileSystemGoalPlanningContextDiscovery
@@ -408,7 +409,13 @@ abstract class RuntimeComponent(
   @JvmSynthetic
   internal fun goalPlanningBoundaryBodyResolver(
     adapter: FileSystemGoalPlanningBoundaryBodyResolver,
-  ): GoalPlanningBoundaryBodyResolver = adapter
+  ): GoalPlanningBoundaryBodyResolver {
+    // SKILL-174: the exclusion contract is read through a lazy classpath singleton rather than an
+    // injected port. Forcing it here turns "the contract is missing from a packaged artifact" into a
+    // typed wiring failure instead of a durable planning block discovered halfway through a goal.
+    GoalPlanningDiscoveryExclusions.excludedRoots
+    return adapter
+  }
 
   // SKILL-66 Subtask 3: GoalRunner reaches lifecycle-telemetry emission only
   // through the application-owned GoalLifecycleTelemetryEmitter seam (backed by

@@ -38,12 +38,13 @@ sourceSets.named("main") {
   resources.srcDir(layout.buildDirectory.dir("generated/skillbill-contracts"))
 }
 
-tasks.named("processResources") {
-  dependsOn(copyGoalPlanningDiscoveryExclusions)
-}
-
-tasks.named("processTestResources") {
-  dependsOn(copyGoalPlanningDiscoveryExclusions)
+// Every task that consumes the generated resource directory must declare the dependency, not just
+// the two obvious ones: skillbill.jvm-library calls withSourcesJar(), so sourcesJar reads this
+// source set too and fails on a clean build without it.
+listOf("processResources", "processTestResources", "sourcesJar").forEach { consumer ->
+  tasks.matching { task -> task.name == consumer }.configureEach {
+    dependsOn(copyGoalPlanningDiscoveryExclusions)
+  }
 }
 
 tasks.withType<Test>().configureEach {

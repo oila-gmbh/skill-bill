@@ -1,10 +1,11 @@
 package skillbill.contracts.goalplanning
 
-import org.junit.jupiter.api.Assumptions.assumeTrue
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 
 /**
  * SKILL-174: an `agent/` tree under an exclusion-list root can never be read into planning memory, so
@@ -14,10 +15,11 @@ import kotlin.test.assertEquals
 class ExcludedRootAgentTreeAbsenceTest {
   @Test
   fun `no working tree path under an excluded root contains an agent segment`() {
-    val repoRoot = repoRoot()
-    assumeTrue(repoRoot != null, "not running inside a git checkout")
+    // Not assumeTrue: skipping turns the invariant off wherever .git is absent, which is exactly
+    // where nobody notices it stopped being checked.
+    val repoRoot = assertNotNull(repoRoot(), "this invariant is asserted against the checked-in working tree")
 
-    val offenders = workingTreeDirectories(requireNotNull(repoRoot)).filter { path ->
+    val offenders = workingTreeDirectories(repoRoot).filter { path ->
       GoalPlanningDiscoveryExclusions.isExcluded(path) && path.split("/").contains("agent")
     }
 
@@ -26,16 +28,18 @@ class ExcludedRootAgentTreeAbsenceTest {
 
   @Test
   fun `boundary writer skills forbid agent trees under excluded roots`() {
-    val repoRoot = repoRoot()
-    assumeTrue(repoRoot != null, "not running inside a git checkout")
+    val repoRoot = assertNotNull(repoRoot(), "this invariant is asserted against the checked-in working tree")
     listOf("skills/bill-boundary-history/content.md", "skills/bill-boundary-decisions/content.md").forEach { path ->
       // Installed skill bodies may not name orchestration/ paths, so they carry the rule inline.
-      val content = Files.readString(requireNotNull(repoRoot).resolve(path))
-      assertEquals(
-        true,
-        content.contains("never create `agent/` under `platform-packs/`") &&
-          content.contains("goal-planning discovery exclusion contract"),
-        "$path must forbid agent/ under excluded roots and name the exclusion contract as the authority",
+      // Asserted separately: one boolean cannot say which of the two conditions regressed.
+      val content = Files.readString(repoRoot.resolve(path))
+      assertTrue(
+        content.contains("never create `agent/` under `platform-packs/`"),
+        "$path must forbid agent/ under excluded roots",
+      )
+      assertTrue(
+        content.contains("goal-planning discovery exclusion contract"),
+        "$path must name the exclusion contract as the authority",
       )
     }
   }

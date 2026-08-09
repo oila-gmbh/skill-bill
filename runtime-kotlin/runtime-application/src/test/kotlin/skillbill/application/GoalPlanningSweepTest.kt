@@ -113,9 +113,9 @@ class GoalPlanningSweepTest {
     )
     assertEquals("0.4", GoalPlanningSharedContextPacket.VERSION)
     assertEquals(
-      GoalPlanningSharedContextPacket.emptyCatalog(),
+      GoalPlanningSharedContextPacket.discardedCatalog(),
       migrated["boundary_memory"],
-      "the 0.1 chain lands on 0.4 with the legacy byte-prefix payload discarded",
+      "the 0.1 chain lands on 0.4 with the legacy byte-prefix payload discarded and marked truncated",
     )
   }
 
@@ -136,7 +136,11 @@ class GoalPlanningSweepTest {
     val migrated = GoalPlanningSharedContextPacket.migrate(legacy)
 
     assertEquals(GoalPlanningSharedContextPacket.VERSION, migrated["packet_version"])
-    assertEquals(GoalPlanningSharedContextPacket.emptyCatalog(), migrated["boundary_memory"])
+    assertEquals(
+      GoalPlanningSharedContextPacket.discardedCatalog(),
+      migrated["boundary_memory"],
+      "a discarded legacy payload must be distinguishable from a repo with no boundary memory",
+    )
     GoalPlanningSharedContextPacket.validate(
       packet = migrated,
       repositoryIdentity = "repo-root-realpath-v1:/tmp/fixture",
@@ -330,7 +334,11 @@ class GoalPlanningSweepTest {
     val migrated = GoalPlanningSharedContextPacket.migrate(legacy)
 
     assertEquals(GoalPlanningSharedContextPacket.VERSION, migrated["packet_version"])
-    assertEquals(GoalPlanningSharedContextPacket.emptyCatalog(), migrated["boundary_memory"])
+    assertEquals(
+      GoalPlanningSharedContextPacket.discardedCatalog(),
+      migrated["boundary_memory"],
+      "a discarded legacy payload must be distinguishable from a repo with no boundary memory",
+    )
     GoalPlanningSharedContextPacket.validate(
       packet = migrated,
       repositoryIdentity = "repo-root-realpath-v1:/tmp/fixture",
@@ -383,14 +391,66 @@ class GoalPlanningSweepTest {
       ),
       "cap",
     )
-    assertContains(
-      rejects(
-        linkedMapOf(
-          "catalog" to listOf(entry + ("source_path" to "platform-packs/kmp/agent/history.md")),
-          "truncated" to false,
-        ),
-      ),
-      "excluded",
+  }
+
+  // Dropping a newly excluded entry re-signs the packet, so the digest it replaces has to be checked
+  // first — otherwise appending one excluded entry launders a tampered checkpoint through migrate.
+  @Test
+  fun `migrate refuses to re-sign a tampered packet while dropping excluded entries`() {
+    val subtasks = listOf(
+      DecompositionSubtask(id = 1, name = "planning-context-discovery", specPath = "spec_subtask_1.md"),
+    )
+    val base = GoalPlanningSharedContextPacket.migrate(legacyV03Packet(subtasks, boundaryMemory = emptyMap()))
+    val excluded = linkedMapOf<String, Any?>(
+      "heading_id" to "platform-packs/kmp/agent/history.md#0-000000000000",
+      "source_path" to "platform-packs/kmp/agent/history.md",
+      "kind" to "history",
+      "heading" to FIXTURE_HEADING,
+    )
+    val body = (base - "integrity_sha256") +
+      ("boundary_memory" to linkedMapOf("catalog" to listOf(excluded), "truncated" to false))
+    val signed = body + ("integrity_sha256" to GoalPlanningSharedContextPacket.digest(body))
+    val tampered = signed + ("validation_guidance" to "injected guidance the digest never covered")
+
+    val failure = assertFailsWith<IllegalArgumentException> { GoalPlanningSharedContextPacket.migrate(tampered) }
+
+    assertContains(failure.message.orEmpty(), "integrity is invalid")
+  }
+
+  // The exclusion contract is checked in and expected to grow, so a newly excluded entry in an
+  // already-durable catalog is dropped on migrate rather than rejected on validate. Rejecting it made
+  // the sweep re-derive the same block on every resume, leaving the goal permanently unresumable.
+  @Test
+  fun `migrate drops newly excluded catalog entries instead of blocking the resume`() {
+    val subtasks = listOf(
+      DecompositionSubtask(id = 1, name = "planning-context-discovery", specPath = "spec_subtask_1.md"),
+    )
+    val base = GoalPlanningSharedContextPacket.migrate(legacyV03Packet(subtasks, boundaryMemory = emptyMap()))
+    val kept = linkedMapOf<String, Any?>(
+      "heading_id" to FIXTURE_HEADING_ID,
+      "source_path" to "runtime-kotlin/agent/history.md",
+      "kind" to "history",
+      "heading" to FIXTURE_HEADING,
+    )
+    val excluded = kept + mapOf(
+      "heading_id" to "platform-packs/kmp/agent/history.md#0-000000000000",
+      "source_path" to "platform-packs/kmp/agent/history.md",
+    )
+    val body = (base - "integrity_sha256") +
+      ("boundary_memory" to linkedMapOf("catalog" to listOf(kept, excluded), "truncated" to false))
+    val stale = body + ("integrity_sha256" to GoalPlanningSharedContextPacket.digest(body))
+
+    val migrated = GoalPlanningSharedContextPacket.migrate(stale)
+
+    val catalog = (migrated["boundary_memory"] as Map<*, *>)["catalog"] as List<*>
+    assertEquals(listOf(kept), catalog, "the excluded entry is dropped, the governed one is kept")
+    assertEquals(true, (migrated["boundary_memory"] as Map<*, *>)["truncated"])
+    GoalPlanningSharedContextPacket.validate(
+      packet = migrated,
+      repositoryIdentity = "repo-root-realpath-v1:/tmp/fixture",
+      normalizedIssueKey = "SKILL-172",
+      parentSpecPath = ".feature-specs/SKILL-172/spec.md",
+      subtasks = subtasks,
     )
   }
 
@@ -706,6 +766,7 @@ class GoalPlanningSweepTest {
       discovery,
       NoopFeatureTaskRuntimePlanningProjectionValidator,
       manifestStore = NoopGoalPlanningManifestStore,
+      boundaryBodyResolver = fakeBoundaryBodyResolver,
     )
 
     val initial = manifest(subtaskCount = 2).copy(specSource = SpecSource.LINEAR)
@@ -724,6 +785,7 @@ class GoalPlanningSweepTest {
       discovery,
       NoopFeatureTaskRuntimePlanningProjectionValidator,
       manifestStore = NoopGoalPlanningManifestStore,
+      boundaryBodyResolver = fakeBoundaryBodyResolver,
     )
 
     val resumed = initial.copy(
@@ -1049,6 +1111,7 @@ class GoalPlanningSweepTest {
       fakeContextDiscovery,
       NoopFeatureTaskRuntimePlanningProjectionValidator,
       manifestStore = NoopGoalPlanningManifestStore,
+      boundaryBodyResolver = fakeBoundaryBodyResolver,
     )
     assertIs<GoalPlanningSweepOutcome.Stopped>(
       settledPreplan.prepare(fixtures.stateFor(manifest(subtaskCount = 1)), fixtures.request()),
@@ -1065,6 +1128,7 @@ class GoalPlanningSweepTest {
       fakeContextDiscovery,
       RejectingSweepPlanningProjectionValidator,
       manifestStore = NoopGoalPlanningManifestStore,
+      boundaryBodyResolver = fakeBoundaryBodyResolver,
     )
 
     val outcome = sweep.prepare(fixtures.stateFor(manifest(subtaskCount = 1)), fixtures.request())
@@ -1111,6 +1175,7 @@ class GoalPlanningSweepTest {
       fakeContextDiscovery,
       NoopFeatureTaskRuntimePlanningProjectionValidator,
       manifestStore = NoopGoalPlanningManifestStore,
+      boundaryBodyResolver = fakeBoundaryBodyResolver,
     )
     val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 2))
     val runner = GoalRunner(
@@ -1180,6 +1245,7 @@ class GoalPlanningSweepTest {
       fakeContextDiscovery,
       NoopFeatureTaskRuntimePlanningProjectionValidator,
       manifestStore = NoopGoalPlanningManifestStore,
+      boundaryBodyResolver = fakeBoundaryBodyResolver,
     )
     val state = GoalRunnerManifestState(
       parentWorkflowId = "wfl-parent",
@@ -2259,7 +2325,7 @@ private val fakeContextDiscovery = GoalPlanningContextDiscovery {
   )
 }
 
-private val fakeBoundaryBodyResolver = GoalPlanningBoundaryBodyResolver { _, ids ->
+private val fakeBoundaryBodyResolver = GoalPlanningBoundaryBodyResolver { _, ids, _ ->
   GoalPlanningResolvedBoundaryBodies(
     bodies = ids.filter { id -> id == FIXTURE_HEADING_ID }.map { id ->
       GoalPlanningBoundaryBody(id, "runtime-kotlin/agent/history.md", FIXTURE_HEADING, FIXTURE_BODY)
