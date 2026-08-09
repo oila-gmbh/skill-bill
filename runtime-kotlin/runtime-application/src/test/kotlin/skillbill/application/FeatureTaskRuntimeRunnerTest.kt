@@ -3963,10 +3963,10 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     assertFalse("src/ReviewWrote.kt" in git.stagePathsCalls, "an unowned path must never be staged")
   }
 
-  // AC-005: an owned file edited by someone else without staging it is just as ambiguous as a
-  // foreign staged entry, and must block rather than be committed as this workflow's work.
+  // AC-005: an owned file edited between phases is adopted on-branch like a foreign staged entry,
+  // never a reason to strand the run.
   @Test
-  fun `an owned path modified concurrently after the phase wrote it blocks before committing`() {
+  fun `an owned path modified concurrently after the phase wrote it is committed rather than blocking`() {
     val git = checkpointGit(ownedPaths = listOf("src/Owned.kt"))
     val harness = checkpointRunHarness(git)
     // Someone edits the owned file after the phase stopped writing and before the checkpoint stages.
@@ -3974,9 +3974,9 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
 
     val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
 
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
-    assertContains(blocked.blockedReason, "src/Owned.kt")
-    assertContains(blocked.blockedReason, "modified in the working tree")
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertContains(git.stagePathsCalls, "src/Owned.kt", "the worktree content is staged")
+    assertTrue(git.createCommitMessages.isNotEmpty(), "the checkpoint must commit rather than refuse")
   }
 
   // AC-009: review input is limited to the owned inventory, so foreign dirt cannot enter its delta.
