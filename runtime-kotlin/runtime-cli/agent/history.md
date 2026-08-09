@@ -4,7 +4,7 @@ Areas: runtime-kotlin/runtime-cli (CliGoalRuntimeTest / GoalFixtureAgentRunLaunc
 - Retained the no-terminal assertion at current_step_id=implement: GoalChildPlanningHydrator hydrates goal children to implement after completed preplan+plan (FeatureTaskRuntimePhaseWorkflowDefinition phase sequence); markBlocked's firstUnfinishedStepId scan parks there. Prior preplan observation was fixture-induced, not contractual.
 - Optional noTerminal stamp marks implement running so the blocked row mirrors a live hydration-boundary child. CLI test surface remains free of retired prose step ids assess/create_branch.
 Feature flag: N/A
-Acceptance criteria: 4/4 implemented (suite execution deferred to validate)
+Acceptance criteria: 4/4 implemented (validate passed: runtime-cli compileKotlin + compileTestKotlin)
 
 ## [2026-08-09] SKILL-175 remove CLI prose workflow family and implement-stats (subtask 5)
 Areas: runtime-kotlin/runtime-cli/{workflow,review}, docs, docs/assets, orchestration/workflow-contract
