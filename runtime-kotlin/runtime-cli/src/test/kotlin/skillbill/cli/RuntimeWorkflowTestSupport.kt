@@ -14,15 +14,15 @@ import java.nio.file.Path
 import kotlin.test.assertIs
 
 /**
- * Seeds and inspects prose-family workflow rows through [WorkflowService] so CLI
+ * Seeds and inspects task-runtime workflow rows through [WorkflowService] so CLI
  * tests can exercise goal/runtime behavior without the removed `skill-bill workflow`
- * command tree. Application types remain until SKILL-175 subtask 6.
+ * command tree.
  */
-internal object ProseWorkflowTestSupport {
+internal object RuntimeWorkflowTestSupport {
   fun open(dbPath: Path, context: CliRuntimeContext): Map<String, Any?> {
     val service = component(context).workflowService
     val result = service.open(
-      kind = WorkflowFamilyKind.TASK_PROSE,
+      kind = WorkflowFamilyKind.TASK_RUNTIME,
       dbOverride = dbPath.toString(),
     )
     return assertIs<WorkflowOpenResult.Ok>(result)
@@ -40,7 +40,7 @@ internal object ProseWorkflowTestSupport {
   ): Map<String, Any?> {
     val service = component(context).workflowService
     val result = service.update(
-      WorkflowFamilyKind.TASK_PROSE,
+      WorkflowFamilyKind.TASK_RUNTIME,
       WorkflowUpdateRequest(
         workflowId = workflowId,
         workflowStatus = workflowStatus,
@@ -55,7 +55,7 @@ internal object ProseWorkflowTestSupport {
 
   fun get(dbPath: Path, workflowId: String, context: CliRuntimeContext): Map<String, Any?> {
     val service = component(context).workflowService
-    val result = service.get(WorkflowFamilyKind.TASK_PROSE, workflowId, dbPath.toString())
+    val result = service.get(WorkflowFamilyKind.TASK_RUNTIME, workflowId, dbPath.toString())
     return assertIs<WorkflowGetResult.Ok>(result).toCliMap(service.goalObservabilityEventValidator)
   }
 
@@ -67,7 +67,7 @@ internal object ProseWorkflowTestSupport {
   ): Map<String, Any?> {
     val service = component(context).workflowService
     return service.continueWorkflow(
-      kind = WorkflowFamilyKind.TASK_PROSE,
+      kind = WorkflowFamilyKind.TASK_RUNTIME,
       workflowId = issueKey,
       subtaskId = subtaskId,
       dbOverride = dbPath.toString(),

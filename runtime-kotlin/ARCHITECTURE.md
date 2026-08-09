@@ -496,8 +496,6 @@ runtime-ports
     - `skillbill.application.telemetry.lifecycleErrorPayload`
     - `skillbill.application.telemetry.orchestratedStartedSkippedPayload`
     - `skillbill.application.telemetry.orchestratedPayload`
-    - `skillbill.application.telemetry.LifecycleTelemetryService.featureImplementStarted`
-    - `skillbill.application.telemetry.LifecycleTelemetryService.featureImplementFinished`
     - `skillbill.application.telemetry.LifecycleTelemetryService.featureTaskRuntimeStarted`
     - `skillbill.application.telemetry.LifecycleTelemetryService.featureTaskRuntimeFinished`
     - `skillbill.application.telemetry.LifecycleTelemetryService.qualityCheckStarted`
@@ -517,7 +515,6 @@ runtime-ports
     - `skillbill.learnings.learningEntryPayload`
     - `skillbill.application.model.WorkflowUpdateRequest.stepUpdates`
     - `skillbill.application.model.WorkflowUpdateRequest.artifactsPatch`
-    - `skillbill.application.model.FeatureImplementFinishedRequest.childSteps`
     - `skillbill.application.model.DecompositionManifestWriteRequest.planningResult`
     - `skillbill.application.model.DecompositionManifestRuntimeUpdate.stepUpdates`
     - `skillbill.application.model.DecompositionManifestRuntimeUpdate.artifactsPatch`
@@ -527,7 +524,6 @@ runtime-ports
     - `skillbill.telemetry.model.TelemetryConfigDocument.payload`
     - `skillbill.telemetry.model.TelemetryProxyCapabilities.additionalFields`
     - `skillbill.telemetry.model.TelemetryRemoteStatsResult.metrics`
-    - `skillbill.telemetry.model.FeatureImplementFinishedRecord.childSteps`
     - `skillbill.workflow.model.WorkflowSnapshotView.artifacts`
     - `skillbill.workflow.model.WorkflowContinueView.stepArtifacts`
     - `skillbill.workflow.model.WorkflowContinueView.extraFields`
@@ -610,9 +606,11 @@ skillbill.workflow.verify
   (id prefix `wftr`, contract version `FEATURE_TASK_RUNTIME_CONTRACT_VERSION`);
   persisted rows use `workflow_name=bill-feature-task`, `mode=runtime`, and
   `implementation_skill=bill-feature-task-runtime`.
-- Legacy `mode=prose` persistence rows may remain until a later SKILL-175
-  subtask removes them; the prose skill trees themselves are deleted and
-  callers no longer select prose as an engine. SKILL-132 removed the duplicate
+- Legacy `mode=prose` rows are quarantined (SKILL-175 subtask 6): they remain
+  historically readable, are never executed as a live prose engine, and resume
+  raises the typed `LegacyProseWorkflowError` naming the runtime re-run path
+  (`skill-bill goal <KEY>`). The prose skill trees are deleted and callers no
+  longer select prose as an engine. SKILL-132 removed the duplicate
   `feature_task_runtime_*` MCP tools: the foreground runtime driver calls
   `WorkflowService`, `LifecycleTelemetryService`, and
   `FeatureTaskContinuationLookupService` directly, and `skill-bill feature-task`
@@ -824,9 +822,9 @@ outcome `derivation`, `reuse`, or `checkpoint_change_rederivation`.
 Finalization path inventories come from the checkpoint's runtime-resolved
 base/head and scoped owned-path comparison. Implementation receipt paths are
 claims only: validation scope, boundary candidates, commit inclusions and
-exclusions, and PR changed paths are derived from the resolved inventory. Both
-runtime and prose continuation expose bounded validation, boundary, history,
-commit, and PR requests or receipts; they never substitute the private audit,
+exclusions, and PR changed paths are derived from the resolved inventory. Runtime
+continuation exposes bounded validation, boundary, history,
+commit, and PR requests or receipts; it never substitutes the private audit,
 review, implementation, validation, or history artifacts.
 
 **4. Phase-local instructions.** Run identity remains durable state on every
@@ -1271,7 +1269,6 @@ Categories:
 - `skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing.fromArtifactMap`
 - `skillbill.application.model.WorkflowUpdateRequest.stepUpdates`
 - `skillbill.application.model.WorkflowUpdateRequest.artifactsPatch`
-- `skillbill.application.model.FeatureImplementFinishedRequest.childSteps`
 - `skillbill.application.model.DecompositionManifestWriteRequest.planningResult`
 - `skillbill.application.model.DecompositionManifestRuntimeUpdate.stepUpdates`
 - `skillbill.application.model.DecompositionManifestRuntimeUpdate.artifactsPatch`
@@ -1281,7 +1278,6 @@ Categories:
 - `skillbill.telemetry.model.TelemetryConfigDocument.payload`
 - `skillbill.telemetry.model.TelemetryProxyCapabilities.additionalFields`
 - `skillbill.telemetry.model.TelemetryRemoteStatsResult.metrics`
-- `skillbill.telemetry.model.FeatureImplementFinishedRecord.childSteps`
 - `skillbill.workflow.model.WorkflowSnapshotView.artifacts`
 - `skillbill.workflow.model.WorkflowContinueView.stepArtifacts`
 - `skillbill.workflow.model.WorkflowContinueView.extraFields`
@@ -1295,8 +1291,6 @@ Categories:
 - `skillbill.application.telemetry.lifecycleErrorPayload`
 - `skillbill.application.telemetry.orchestratedStartedSkippedPayload`
 - `skillbill.application.telemetry.orchestratedPayload`
-- `skillbill.application.telemetry.LifecycleTelemetryService.featureImplementStarted`
-- `skillbill.application.telemetry.LifecycleTelemetryService.featureImplementFinished`
 - `skillbill.application.telemetry.LifecycleTelemetryService.featureTaskRuntimeStarted`
 - `skillbill.application.telemetry.LifecycleTelemetryService.featureTaskRuntimeFinished`
 - `skillbill.application.telemetry.LifecycleTelemetryService.qualityCheckStarted`

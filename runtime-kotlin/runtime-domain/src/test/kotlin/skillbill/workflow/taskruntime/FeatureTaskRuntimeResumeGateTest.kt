@@ -3,8 +3,8 @@ package skillbill.workflow.taskruntime
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
-import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
 import skillbill.workflow.model.WorkflowDefinition
+import skillbill.workflow.verify.FeatureVerifyWorkflowDefinition
 import skillbill.workflow.model.WorkflowStateSnapshot
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -140,21 +140,21 @@ class FeatureTaskRuntimeResumeGateTest {
 
   @Test
   fun `non-runtime family keeps default top-level key presence rule`() {
-    // AC9 family-scoping: the prose implement family still judges presence by top-level keys, so an
+    // AC9 family-scoping: a non-runtime family (verify) still judges presence by top-level keys, so an
     // empty artifacts map blocks resume at a step that requires upstream output.
-    val implement = FeatureImplementWorkflowDefinition.definition
-    val firstRequiredStep = implement.stepIds.first { stepId ->
-      implement.requiredArtifactsByStep[stepId].orEmpty().isNotEmpty()
+    val verify = FeatureVerifyWorkflowDefinition.definition
+    val firstRequiredStep = verify.stepIds.first { stepId ->
+      verify.requiredArtifactsByStep[stepId].orEmpty().isNotEmpty()
     }
-    val requiredKeys = implement.requiredArtifactsByStep.getValue(firstRequiredStep)
+    val requiredKeys = verify.requiredArtifactsByStep.getValue(firstRequiredStep)
 
     val record = implementSnapshot(
-      definition = implement,
+      definition = verify,
       currentStepId = firstRequiredStep,
       stepsJson = stepsJson(firstRequiredStep to "pending"),
     )
 
-    val resume = engine.resumeView(implement, record)
+    val resume = engine.resumeView(verify, record)
     assertEquals(requiredKeys, resume.missingArtifacts)
     assertFalse(resume.canResume)
   }

@@ -7,6 +7,7 @@ import skillbill.application.decomposition.decodeDecompositionManifestMap
 import skillbill.application.decomposition.parentSpecPath
 import skillbill.application.featuretask.model.GoalContinuationCandidate
 import skillbill.ports.persistence.WorkflowStateRepository
+import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.persistence.model.WorkflowStateRecord
 import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.model.DecompositionManifest
@@ -20,7 +21,7 @@ internal fun WorkflowStateSnapshot.decompositionRuntime(
 internal fun WorkflowStateSnapshot.hasDecompositionPlan(): Boolean =
   decodeArtifacts(artifactsJson)["plan"].asStringAnyMapOrNull()?.get("mode") == "decompose"
 
-// Terminal statuses for feature-implement workflows — a reclaimed row carrying one of these
+// Terminal statuses for feature-task workflows — a reclaimed row carrying one of these
 // must not be treated as a live resumable parent.
 private val IMPLEMENT_TERMINAL_STATUSES: Set<String> = setOf("completed", "failed", "abandoned")
 
@@ -40,7 +41,7 @@ internal fun WorkflowStateRepository.findDecomposedParentOrCorruptFallback(
   val normalizedIssueKey = issueKey.trim()
   val validCandidates = mutableListOf<DecomposedParentCandidate>()
   val corruptCandidates = mutableListOf<WorkflowStateRecord>()
-  listFeatureImplementWorkflows(Int.MAX_VALUE)
+  listFeatureTaskWorkflows(FeatureTaskWorkflowMode.RUNTIME, Int.MAX_VALUE)
     .filter { row ->
       val snapshot = row.toSnapshot()
       !snapshot.isGoalContinuationChildWorkflow() &&
@@ -88,7 +89,7 @@ internal fun WorkflowStateRepository.findDecomposedParentWorkflow(
   currentProjectedManifest: DecompositionManifest? = null,
 ): WorkflowStateRecord? {
   val normalizedIssueKey = issueKey.trim()
-  val candidates = listFeatureImplementWorkflows(Int.MAX_VALUE).mapNotNull { row ->
+  val candidates = listFeatureTaskWorkflows(FeatureTaskWorkflowMode.RUNTIME, Int.MAX_VALUE).mapNotNull { row ->
     val snapshot = row.toSnapshot()
     if (snapshot.isGoalContinuationChildWorkflow()) return@mapNotNull null
     val manifest = snapshot.decompositionRuntime(validator) ?: return@mapNotNull null
@@ -116,7 +117,7 @@ internal fun WorkflowStateRepository.findDecomposedParentWorkflow(
 internal fun WorkflowStateRepository.findDecomposedParentWorkflowForRuntime(
   manifest: DecompositionManifest,
   validator: DecompositionManifestValidator,
-): WorkflowStateRecord? = listFeatureImplementWorkflows(Int.MAX_VALUE).firstOrNull { row ->
+): WorkflowStateRecord? = listFeatureTaskWorkflows(FeatureTaskWorkflowMode.RUNTIME, Int.MAX_VALUE).firstOrNull { row ->
   val snapshot = row.toSnapshot()
   !snapshot.isGoalContinuationChildWorkflow() &&
     (snapshot.hasDecompositionPlan() || row.issueKey?.trim() == manifest.issueKey) &&

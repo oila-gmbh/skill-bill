@@ -758,7 +758,7 @@ class CliGoalRuntimeTest {
     assertEquals(0, status.exitCode, status.stdout)
     assertContains(status.stdout, "current_subtask: 1")
     assertContains(status.stdout, "current_step: implement")
-    // SKILL-103 AC1: the prose-mode CLI child carries no persisted agent attribution, so active_agent
+    // SKILL-103 AC1: the CLI child carries no persisted agent attribution, so active_agent
     // is omitted (rendered as none) rather than leaked from the caller's --agent codex.
     assertContains(status.stdout, "active_agent: none")
     assertContains(status.stdout, "execution_liveness: unknown")
@@ -1266,7 +1266,7 @@ class CliGoalExecutionOptionsTest {
     assertContains(status.stdout, "blocked: 1")
     assertContains(status.stdout, "current_subtask: 2")
     assertContains(status.stdout, "current_step: review")
-    // SKILL-103 AC1: prose-mode CLI child carries no persisted agent => active_agent omitted.
+    // SKILL-103 AC1: CLI child carries no persisted agent => active_agent omitted.
     assertContains(status.stdout, "active_agent: none")
   }
 
@@ -1282,7 +1282,7 @@ class CliGoalExecutionOptionsTest {
     assertContains(result.stdout, "without a terminal workflow-store outcome")
     val workflowId = result.payload?.get("workflow_id")?.toString().orEmpty()
     assertTrue(workflowId.isNotBlank())
-    val child = ProseWorkflowTestSupport.get(
+    val child = RuntimeWorkflowTestSupport.get(
       fixture.dbPath,
       workflowId,
       fixture.context(launcher = launcher),
@@ -1356,7 +1356,7 @@ class CliGoalExecutionOptionsTest {
       listOf("--db", fixture.dbPath.toString(), "goal", "status", "SKILL-901", "--agent", "codex"),
       fixture.context(launcher = NoopGoalTestAgentRunLauncher),
     )
-    val staleWorkflow = ProseWorkflowTestSupport.get(
+    val staleWorkflow = RuntimeWorkflowTestSupport.get(
       fixture.dbPath,
       staleChild,
       fixture.context(launcher = NoopGoalTestAgentRunLauncher),
@@ -1387,7 +1387,7 @@ class CliGoalUnaddressedFindingsTest {
           "finding_ordinal, severity, issue_category, location, summary) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
       ).use { statement ->
         statement.setString(1, "SKILL-901")
-        statement.setString(2, "wfl-poison-1")
+        statement.setString(2, "wftr-poison-1")
         statement.setInt(3, 1)
         statement.setInt(4, 1)
         statement.setInt(5, 1)
@@ -1492,7 +1492,7 @@ class CliGoalProgressIdleTimeoutTest {
 }
 
 private fun startRunningRuntimeGoalChild(fixture: GoalCliFixture): String {
-  val proseWorkflowId = startRunningGoalChild(fixture)
+  val childWorkflowId = startRunningGoalChild(fixture)
   val component = RuntimeComponent::class.create(
     fixture.context(launcher = NoopGoalTestAgentRunLauncher).toRuntimeContext(),
   )
@@ -1505,11 +1505,11 @@ private fun startRunningRuntimeGoalChild(fixture: GoalCliFixture): String {
   DatabaseRuntime.ensureDatabase(fixture.dbPath).use { connection ->
     connection.prepareStatement(
       "UPDATE feature_task_workflows SET artifacts_json = replace(artifacts_json, ?, ?) " +
-        "WHERE mode = 'prose' AND instr(artifacts_json, ?) > 0",
+        "WHERE mode = 'runtime' AND instr(artifacts_json, ?) > 0",
     ).use { statement ->
-      statement.setString(1, proseWorkflowId)
+      statement.setString(1, childWorkflowId)
       statement.setString(2, runtimeWorkflow.workflowId)
-      statement.setString(3, proseWorkflowId)
+      statement.setString(3, childWorkflowId)
       assertTrue(statement.executeUpdate() >= 1)
     }
   }
@@ -1551,7 +1551,7 @@ private fun clearWorkerLease(fixture: GoalCliFixture, workflowId: String) {
 }
 
 private fun startRunningGoalChild(fixture: GoalCliFixture): String =
-  ProseWorkflowTestSupport.continueByIssueKey(
+  RuntimeWorkflowTestSupport.continueByIssueKey(
     dbPath = fixture.dbPath,
     issueKey = "SKILL-901",
     subtaskId = 1,
@@ -1564,7 +1564,7 @@ private fun recordRunningGoalChildProgress(
   sequence: Int,
   message: String = "editing runtime files",
 ) {
-  proseWorkflowUpdate(
+  runtimeWorkflowUpdate(
     fixture,
     WorkflowUpdateFixture(
       dbPath = fixture.dbPath,
@@ -1591,7 +1591,7 @@ private fun recordRunningGoalChildProgress(
 }
 
 private fun advanceRunningGoalChildToReview(fixture: GoalCliFixture, childWorkflowId: String) {
-  proseWorkflowUpdate(
+  runtimeWorkflowUpdate(
     fixture,
     WorkflowUpdateFixture(
       dbPath = fixture.dbPath,
@@ -1604,7 +1604,7 @@ private fun advanceRunningGoalChildToReview(fixture: GoalCliFixture, childWorkfl
 }
 
 private fun completeRunningGoalChild(fixture: GoalCliFixture, childWorkflowId: String) {
-  proseWorkflowUpdate(
+  runtimeWorkflowUpdate(
     fixture,
     WorkflowUpdateFixture(
       dbPath = fixture.dbPath,
@@ -1630,11 +1630,11 @@ private fun completeRunningGoalChild(fixture: GoalCliFixture, childWorkflowId: S
 }
 
 private fun seedAuthoritativeCompleteChild(fixture: GoalCliFixture) {
-  val authoritativeChild = ProseWorkflowTestSupport.open(
+  val authoritativeChild = RuntimeWorkflowTestSupport.open(
     fixture.dbPath,
     fixture.context(launcher = NoopGoalTestAgentRunLauncher),
   )["workflow_id"] as String
-  proseWorkflowUpdate(
+  runtimeWorkflowUpdate(
     fixture,
     WorkflowUpdateFixture(
       dbPath = fixture.dbPath,
@@ -1733,13 +1733,13 @@ internal class GoalFixtureAgentRunLauncher(
     skillRequest.outputSink.write(
       AgentRunOutputStream.STDERR,
       "skill-bill: workflow progress: subtask $subtaskId " +
-        "workflow wfl-$subtaskId step implement durable_progress step=implement\n",
+        "workflow wftr-$subtaskId step implement durable_progress step=implement\n",
     )
     repeat(childDiagnosticChatterCount) {
       skillRequest.outputSink.write(
         AgentRunOutputStream.STDERR,
         "skill-bill: status heartbeat (90s): child run still active; workflow: " +
-          "subtask $subtaskId workflow wfl-$subtaskId step implement durable_progress\n",
+          "subtask $subtaskId workflow wftr-$subtaskId step implement durable_progress\n",
       )
     }
     val dbPath = requireNotNull(skillRequest.dbPathOverride)
@@ -1779,7 +1779,7 @@ internal class GoalFixtureAgentRunLauncher(
   }
 
   private fun startSubtaskWorkflow(subtaskId: Int, dbPath: String): String {
-    val payload = ProseWorkflowTestSupport.continueByIssueKey(
+    val payload = RuntimeWorkflowTestSupport.continueByIssueKey(
       dbPath = Path.of(dbPath),
       issueKey = "SKILL-901",
       subtaskId = subtaskId,
@@ -1789,7 +1789,7 @@ internal class GoalFixtureAgentRunLauncher(
   }
 
   private fun completeSubtaskWorkflow(workflowId: String, subtaskId: Int, dbPath: Path) {
-    proseWorkflowUpdate(
+    runtimeWorkflowUpdate(
       fixture,
       WorkflowUpdateFixture(
         dbPath = dbPath,
@@ -1804,7 +1804,7 @@ internal class GoalFixtureAgentRunLauncher(
   }
 
   private fun failSubtaskWorkflow(workflowId: String, dbPath: Path) {
-    proseWorkflowUpdate(
+    runtimeWorkflowUpdate(
       fixture,
       WorkflowUpdateFixture(
         dbPath = dbPath,
@@ -1897,12 +1897,12 @@ internal fun goalFixture(subtaskCount: Int): GoalCliFixture {
 }
 
 private fun seedParentWorkflow(fixture: GoalCliFixture) {
-  val opened = ProseWorkflowTestSupport.open(
+  val opened = RuntimeWorkflowTestSupport.open(
     fixture.dbPath,
     fixture.context(launcher = NoopGoalTestAgentRunLauncher),
   )
   val workflowId = opened["workflow_id"] as String
-  proseWorkflowUpdate(
+  runtimeWorkflowUpdate(
     fixture,
     WorkflowUpdateFixture(
       dbPath = fixture.dbPath,
@@ -1942,17 +1942,17 @@ private data class WorkflowUpdateFixture(
   val artifactsPatch: String,
 )
 
-private fun proseWorkflowUpdate(
+private fun runtimeWorkflowUpdate(
   fixture: GoalCliFixture,
   update: WorkflowUpdateFixture,
   launcher: AgentRunLauncher = NoopGoalTestAgentRunLauncher,
-): Map<String, Any?> = ProseWorkflowTestSupport.update(
+): Map<String, Any?> = RuntimeWorkflowTestSupport.update(
   dbPath = update.dbPath,
   workflowId = update.workflowId,
   workflowStatus = update.workflowStatus,
   currentStepId = update.currentStep,
-  stepUpdates = ProseWorkflowTestSupport.parseStepUpdates(update.stepUpdates),
-  artifactsPatch = ProseWorkflowTestSupport.parseArtifactsPatch(update.artifactsPatch),
+  stepUpdates = RuntimeWorkflowTestSupport.parseStepUpdates(update.stepUpdates),
+  artifactsPatch = RuntimeWorkflowTestSupport.parseArtifactsPatch(update.artifactsPatch),
   context = fixture.context(launcher = launcher),
 )
 

@@ -3,7 +3,6 @@ package skillbill.db
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.worklist.SQLiteWorkListRepository
 import skillbill.error.InvalidWorkListRowError
-import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.verify.FeatureVerifyWorkflowDefinition
 import java.nio.file.Files
@@ -20,10 +19,9 @@ class SQLiteWorkListRepositoryTest {
     val dbPath = Files.createTempDirectory("runtime-kotlin-work-list").resolve("metrics.db")
 
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
-      insertFeatureTask(connection, "wfl-old", "prose", "2026-05-01T12:00:00.000001Z")
       insertFeatureVerify(connection, "wfv-mid", "2026-05-01T12:00:00.000002+00:00")
       insertGoal(connection, "goal-new", "SKILL-117", "2026-05-01 12:00:00.000003")
-      insertFeatureTask(connection, "wfl-tie-a", "runtime", "2026-05-01T12:00:00.000004Z")
+      insertFeatureTask(connection, "wftr-tie-a", "runtime", "2026-05-01T12:00:00.000004Z")
       insertFeatureVerify(connection, "wfv-tie-z", "2026-05-01T12:00:00.000004Z")
       insertGoalChildRows(connection)
 
@@ -31,22 +29,21 @@ class SQLiteWorkListRepositoryTest {
       val all = repository.list()
 
       assertEquals(
-        listOf("wfv-tie-z", "wfl-tie-a", "goal-new", "wfv-mid", "wfl-old"),
+        listOf("wfv-tie-z", "wftr-tie-a", "goal-new", "wfv-mid"),
         all.map { it.workflowId },
       )
       assertEquals(
-        listOf("feature-verify", "feature-task-runtime", "feature-goal", "feature-verify", "feature-task-prose"),
+        listOf("feature-verify", "feature-task-runtime", "feature-goal", "feature-verify"),
         all.map { it.workflowKind.wireValue },
       )
-      assertEquals(listOf("wfv-tie-z", "wfl-tie-a", "goal-new"), repository.list(limit = 3).map { it.workflowId })
+      assertEquals(listOf("wfv-tie-z", "wftr-tie-a", "goal-new"), repository.list(limit = 3).map { it.workflowId })
     }
   }
 
   @Test
   fun `work list accepts every workflow status the workflow definitions declare`() {
     val declaredStatuses =
-      FeatureImplementWorkflowDefinition.definition.workflowStatuses +
-        FeatureTaskRuntimePhaseWorkflowDefinition.definition.workflowStatuses +
+      FeatureTaskRuntimePhaseWorkflowDefinition.definition.workflowStatuses +
         FeatureVerifyWorkflowDefinition.definition.workflowStatuses
 
     DriverManager.getConnection("jdbc:sqlite::memory:").use { connection ->
@@ -55,7 +52,7 @@ class SQLiteWorkListRepositoryTest {
         connection.createStatement().use { statement ->
           statement.executeUpdate(
             featureTaskWorkflowRow(
-              FeatureTaskWorkflowRow(workflowId = "'wfl-$index'", workflowStatus = status),
+              FeatureTaskWorkflowRow(workflowId = "'wftr-$index'", workflowStatus = status),
             ),
           )
         }
@@ -213,7 +210,7 @@ class SQLiteWorkListRepositoryTest {
 
   private data class FeatureTaskWorkflowRow(
     val workflowId: String,
-    val mode: String = "prose",
+    val mode: String = "runtime",
     val startedAt: String = "2026-05-01T12:00:00Z",
     val workflowStatus: String = "running",
     val stateEnteredAt: String = "2026-05-01T12:00:00Z",

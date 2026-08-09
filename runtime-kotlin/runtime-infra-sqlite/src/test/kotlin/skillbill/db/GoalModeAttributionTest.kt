@@ -11,13 +11,14 @@ import java.nio.file.Files
 import java.sql.Connection
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class GoalModeAttributionTest {
 
   @Test
-  fun `prose lifecycle full sequence persists mode=prose and matching subtask rows`() {
+  fun `prose lifecycle full sequence retains mode=prose row but emits runtime-only goal stats`() {
     withConnection { connection ->
       val store = LifecycleTelemetryStore(connection)
 
@@ -40,16 +41,24 @@ class GoalModeAttributionTest {
         level = "full",
       )
 
+      // The legacy prose row is retained verbatim in the store (read-only surface).
+      val storedMode = connection.prepareStatement(
+        "SELECT mode FROM goal_run_sessions WHERE workflow_id = ?",
+      ).use { stmt ->
+        stmt.setString(1, "wf-prose-1")
+        stmt.executeQuery().use { rs ->
+          assertTrue(rs.next(), "prose row should still be present in the store")
+          rs.getString("mode")
+        }
+      }
+      assertEquals("prose", storedMode, "Legacy prose row must remain verbatim in storage")
+
       val stats = ReviewStatsRuntime.goalStats(connection)
 
+      // Prose rows contribute to the overall totals but never surface as a live prose bucket.
       assertEquals(1, stats.totalRuns)
       assertEquals(1, stats.finishedRuns)
-      assertNotNull(stats.byMode["prose"])
-      val proseStats = requireNotNull(stats.byMode["prose"])
-      assertEquals(1, proseStats.totalRuns)
-      assertEquals(1, proseStats.finishedRuns)
-      assertEquals(1, proseStats.blockedRuns)
-      assertEquals(1.0, proseStats.blockedRate)
+      assertFalse(stats.byMode.containsKey("prose"), "goal stats must not emit a live prose bucket")
       assertEquals(2, stats.totalSubtaskEvents)
     }
   }
@@ -65,6 +74,7 @@ class GoalModeAttributionTest {
 
       val stats = ReviewStatsRuntime.goalStats(connection)
       assertEquals(1, stats.totalRuns)
+      assertFalse(stats.byMode.containsKey("prose"), "goal stats must not emit a live prose bucket")
     }
   }
 
@@ -92,6 +102,7 @@ class GoalModeAttributionTest {
       val stats = ReviewStatsRuntime.goalStats(connection)
       assertEquals(1, stats.totalRuns)
       assertEquals(1, stats.finishedRuns)
+      assertFalse(stats.byMode.containsKey("prose"), "goal stats must not emit a live prose bucket")
     }
   }
 
@@ -147,7 +158,7 @@ class GoalModeAttributionTest {
   }
 
   @Test
-  fun `goal_stats byMode breakdown separates prose and runtime rows and legacy null-mode rows count as runtime`() {
+  fun `goal_stats byMode breakdown emits runtime-only buckets and excludes legacy prose rows`() {
     withConnection { connection ->
       val store = LifecycleTelemetryStore(connection)
 
@@ -174,18 +185,15 @@ class GoalModeAttributionTest {
 
       assertEquals(4, stats.totalRuns)
 
+      // The retained prose row contributes to the total but must not produce a live prose bucket.
+      assertFalse(stats.byMode.containsKey("prose"), "goal stats must not emit a live prose bucket")
+
       val runtimeStats = requireNotNull(stats.byMode["runtime"])
-      // 2 explicit runtime + 1 legacy (defaulted to runtime) = 3
+      // 2 explicit runtime + 1 legacy (defaulted to runtime) = 3; prose run excluded from buckets.
       assertEquals(3, runtimeStats.totalRuns)
       assertEquals(3, runtimeStats.finishedRuns)
       assertEquals(2, runtimeStats.completedRuns)
       assertEquals(1, runtimeStats.blockedRuns)
-
-      val proseStats = requireNotNull(stats.byMode["prose"])
-      assertEquals(1, proseStats.totalRuns)
-      assertEquals(1, proseStats.finishedRuns)
-      assertEquals(1, proseStats.completedRuns)
-      assertEquals(0, proseStats.blockedRuns)
     }
   }
 

@@ -5886,16 +5886,6 @@ internal class RecordingLifecycleTelemetryRepository : LifecycleTelemetryReposit
     finishedRecords += record
   }
 
-  override fun featureImplementStarted(
-    record: skillbill.telemetry.model.FeatureImplementStartedRecord,
-    level: String,
-  ) = error("unused")
-
-  override fun featureImplementFinished(
-    record: skillbill.telemetry.model.FeatureImplementFinishedRecord,
-    level: String,
-  ) = error("unused")
-
   override fun qualityCheckStarted(record: skillbill.telemetry.model.QualityCheckStartedRecord, level: String) =
     error("unused")
 

@@ -19,8 +19,6 @@ import skillbill.ports.telemetry.model.toReviewFinishedTelemetryPayload
 import skillbill.review.model.FeedbackRequest
 import skillbill.review.model.FeedbackTelemetryOptions
 import skillbill.review.model.ImportedReview
-import skillbill.telemetry.model.FeatureImplementFinishedRecord
-import skillbill.telemetry.model.FeatureImplementStartedRecord
 import skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord
 import skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord
 import skillbill.tempDbConnection
@@ -284,180 +282,6 @@ class ReviewStatsRuntimeTest {
   }
 
   @Test
-  fun `feature implement stats payload aggregates persisted session rows`() {
-    val (_, connection) = tempDbConnection("workflow-stats")
-    connection.use {
-      insertFeatureImplementSession(connection)
-      insertFeatureVerifySession(connection)
-
-      val implementStats = ReviewStatsRuntime.featureImplementStats(connection)
-
-      assertEquals(1, implementStats.totalRuns)
-      assertEquals(1, implementStats.featureSizeCounts["MEDIUM"])
-    }
-  }
-
-  @Test
-  fun `feature implement stats separate source health data quality and duration buckets`() {
-    val (_, connection) = tempDbConnection("feature-task-health-stats")
-    connection.use {
-      insertFeatureImplementSession(connection)
-      connection.createStatement().use { statement ->
-        statement.executeUpdate(
-          """
-          INSERT INTO feature_implement_sessions (
-            session_id, source, feature_size, completion_status, started_at, finished_at
-          ) VALUES
-            ('fis-open', 'production', 'SMALL', '', '2026-04-23 10:00:00', NULL),
-            ('fis-error', 'production', 'SMALL', 'error', '2026-04-23 10:00:00', '2026-04-23 10:01:00'),
-            ('fis-plan', 'production', 'SMALL', 'abandoned_at_planning', '2026-04-23 10:00:00', '2026-04-23 10:02:00'),
-            ('fis-impl', 'production', 'SMALL', 'abandoned_at_implementation', '2026-04-23 10:00:00', '2026-04-23 10:03:00'),
-            ('fis-review', 'production', 'SMALL', 'abandoned_at_review', '2026-04-23 10:00:00', '2026-04-23 10:04:00'),
-            ('fis-synthetic', 'synthetic', 'SMALL', 'completed', '2026-04-23 10:00:00', '2026-04-23 10:00:00'),
-            ('fis-test', 'test', 'SMALL', 'completed', '2026-04-23 10:00:00', '2026-04-23 10:05:00'),
-            ('bad-session', 'production', 'SMALL', 'completed', '2026-04-23 10:00:00', '2026-04-23 10:05:00'),
-            ('fis-unknown-source', 'fixture', 'SMALL', 'completed', '2026-04-23 10:00:00', '2026-04-23 10:05:00'),
-            ('fis-long', 'production', 'SMALL', 'completed', '2026-04-23 10:00:00', '2026-04-25 10:00:00'),
-            ('fis-invalid-duration', 'production', 'SMALL', 'completed', '2026-04-23 10:00:00', '2026-04-23 10:00:00')
-          """.trimIndent(),
-        )
-      }
-
-      val stats = ReviewStatsRuntime.featureImplementStats(connection)
-
-      assertEquals(12, stats.rawRunCount)
-      assertEquals(9, stats.sourceCounts["production"])
-      assertEquals(1, stats.sourceCounts["test"])
-      assertEquals(1, stats.sourceCounts["synthetic"])
-      assertEquals(8, stats.validHealthDenominatorRuns)
-      assertEquals(1, stats.openRuns)
-      assertEquals(3, stats.completedRuns)
-      assertEquals(1, stats.errorRuns)
-      assertEquals(1, stats.abandonedAtPlanningRuns)
-      assertEquals(1, stats.abandonedAtImplementationRuns)
-      assertEquals(1, stats.abandonedAtReviewRuns)
-      assertEquals(1, stats.malformedSessionIdRuns)
-      assertEquals(1, stats.unknownSourceRuns)
-      assertEquals(1, stats.syntheticZeroDurationRuns)
-      assertEquals(1, stats.longRunningDurationRuns)
-      assertEquals(1, stats.invalidDurationRuns)
-      assertEquals(5, stats.normalDurationRuns)
-      assertEquals(240.0, stats.averageDurationSeconds)
-      assertEquals(180.0, stats.medianDurationSeconds)
-      assertEquals(456.0, stats.p90DurationSeconds)
-    }
-  }
-
-  @Test
-  fun `feature implement stats report child step coverage and large feature segmentation`() {
-    val (_, connection) = tempDbConnection("feature-task-size-health")
-    connection.use {
-      seedFeatureImplementSizeHealth(connection)
-
-      val stats = ReviewStatsRuntime.featureImplementStats(connection)
-
-      assertEquals(4, stats.validHealthDenominatorRuns)
-      assertEquals(2, stats.childStepCoverage.runsWithChildSteps)
-      assertEquals(1, stats.childStepCoverage.reviewChildStepRuns)
-      assertEquals(1, stats.childStepCoverage.qualityCheckChildStepRuns)
-      assertEquals(1, stats.childStepCoverage.prDescriptionChildStepRuns)
-      assertEquals(1, stats.childStepCoverage.malformedChildStepRuns)
-      assertEquals(0.5, stats.childStepCoverage.childStepCoverageRate)
-      val largeStats = stats.featureSizeOutcomeStats.getValue("LARGE")
-      assertEquals(2, largeStats.totalRuns)
-      assertEquals(1, largeStats.completedRuns)
-      assertEquals(1, largeStats.errorRuns)
-      assertEquals(0.5, largeStats.errorRate)
-      assertEquals(2, stats.largeFeatureHealth.denominatorRuns)
-      assertEquals(1, stats.largeFeatureHealth.unhealthyRuns)
-      assertEquals(0.5, stats.largeFeatureHealth.unhealthyRate)
-      assertEquals(
-        "Decompose large features or block earlier before implementation when LARGE runs show abandonment or errors.",
-        stats.largeFeatureHealth.recommendation,
-      )
-    }
-  }
-
-  @Test
-  fun `feature implement duplicate terminal calls preserve one terminal event and record diagnostics`() {
-    val (_, connection) = tempDbConnection("feature-task-duplicate-terminal")
-    connection.use {
-      val store = LifecycleTelemetryStore(connection)
-      val outbox = TelemetryOutboxStore(connection)
-      store.featureImplementStarted(
-        FeatureImplementStartedRecord(
-          sessionId = "fis-duplicate",
-          issueKeyProvided = true,
-          issueKeyType = "other",
-          specInputTypes = listOf("raw_text"),
-          specWordCount = 100,
-          featureSize = "SMALL",
-          featureName = "duplicate-terminal",
-          rolloutNeeded = false,
-          acceptanceCriteriaCount = 1,
-          openQuestionsCount = 0,
-          specSummary = "Duplicate terminal test.",
-        ),
-        level = "anonymous",
-      )
-      val finished = featureImplementFinishedRecord("fis-duplicate")
-      store.featureImplementFinished(finished, level = "anonymous")
-      store.featureImplementFinished(finished, level = "anonymous")
-      connection.createStatement().use { stmt ->
-        stmt.executeUpdate(
-          "UPDATE feature_implement_sessions SET started_at = finished_at WHERE session_id = 'fis-duplicate'",
-        )
-      }
-
-      val pending = outbox.listPending(limit = null)
-      assertEquals(
-        listOf(
-          "skillbill_feature_task_prose_started",
-          "skillbill_feature_task_prose_finished",
-        ),
-        pending.map { it.eventName },
-      )
-      val terminalPayload = telemetryPayloads(pending, "skillbill_feature_task_prose_finished").single()
-      assertTrue("duplicate_terminal_finished_events" !in terminalPayload)
-      val stats = ReviewStatsRuntime.featureImplementStats(connection)
-      assertEquals(1, stats.duplicateTerminalFinishedEvents)
-      assertEquals(2, stats.dataQualityDebtRuns)
-    }
-  }
-
-  @Test
-  fun `feature implement finished preserves started source when finish omits source`() {
-    val (_, connection) = tempDbConnection("feature-task-source-preserved")
-    connection.use {
-      val store = LifecycleTelemetryStore(connection)
-      store.featureImplementStarted(
-        FeatureImplementStartedRecord(
-          sessionId = "fis-source",
-          source = "test",
-          issueKeyProvided = true,
-          issueKeyType = "other",
-          specInputTypes = listOf("raw_text"),
-          specWordCount = 100,
-          featureSize = "SMALL",
-          featureName = "source-preserved",
-          rolloutNeeded = false,
-          acceptanceCriteriaCount = 1,
-          openQuestionsCount = 0,
-          specSummary = "Source preservation test.",
-        ),
-        level = "anonymous",
-      )
-      store.featureImplementFinished(featureImplementFinishedRecord("fis-source"), level = "anonymous")
-
-      val stats = ReviewStatsRuntime.featureImplementStats(connection)
-
-      assertEquals(0, stats.validHealthDenominatorRuns)
-      assertEquals(0, stats.sourceCounts["production"])
-      assertEquals(1, stats.sourceCounts["test"])
-    }
-  }
-
-  @Test
   fun `feature verify stats payload aggregates persisted session rows`() {
     val (_, connection) = tempDbConnection("workflow-verify-stats")
     connection.use {
@@ -564,29 +388,6 @@ class ReviewStatsRuntimeTest {
       }
 
       val stats = ReviewStatsRuntime.featureTaskRuntimeStats(connection)
-
-      assertEquals(2, stats.estimatedTokenRunsWithValue)
-      assertEquals(150.0, stats.averageEstimatedTotalTokens)
-    }
-  }
-
-  @Test
-  fun `feature implement stats excludes null token rows from average and counts only valued rows`() {
-    val (_, connection) = tempDbConnection("feature-task-token-aggregation")
-    connection.use {
-      connection.createStatement().use { statement ->
-        statement.executeUpdate(
-          """
-          INSERT INTO feature_implement_sessions (session_id, source, completion_status, started_at, finished_at, estimated_total_tokens)
-          VALUES
-            ('fis-token-null', 'production', 'completed', '2026-04-23 10:00:00', '2026-04-23 10:05:00', NULL),
-            ('fis-token-100', 'production', 'completed', '2026-04-23 10:00:00', '2026-04-23 10:06:00', 100),
-            ('fis-token-200', 'production', 'completed', '2026-04-23 10:00:00', '2026-04-23 10:07:00', 200)
-          """.trimIndent(),
-        )
-      }
-
-      val stats = ReviewStatsRuntime.featureImplementStats(connection)
 
       assertEquals(2, stats.estimatedTokenRunsWithValue)
       assertEquals(150.0, stats.averageEstimatedTotalTokens)
@@ -937,29 +738,6 @@ private fun insertMalformedFeatureImplementChildSteps(connection: java.sql.Conne
     )
   }
 }
-
-private fun featureImplementFinishedRecord(sessionId: String): FeatureImplementFinishedRecord =
-  FeatureImplementFinishedRecord(
-    sessionId = sessionId,
-    completionStatus = "completed",
-    planCorrectionCount = 0,
-    planTaskCount = 1,
-    planPhaseCount = 1,
-    featureFlagUsed = false,
-    featureFlagPattern = "none",
-    filesCreated = 0,
-    filesModified = 1,
-    tasksCompleted = 1,
-    reviewIterations = 1,
-    auditResult = "all_pass",
-    auditIterations = 1,
-    validationResult = "pass",
-    boundaryHistoryWritten = false,
-    boundaryHistoryValue = "none",
-    prCreated = false,
-    planDeviationNotes = "",
-    childSteps = emptyList(),
-  )
 
 private fun insertFeatureVerifySession(connection: java.sql.Connection) {
   connection.createStatement().use { statement ->

@@ -19,28 +19,28 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * Decomposition continue still lives on WorkflowService for TASK_PROSE until
- * SKILL-175 subtask 6; these tests seed via the service, not the removed CLI.
+ * Decomposition continue lives on WorkflowService for TASK_RUNTIME; these tests
+ * seed via the service, not the removed CLI.
  */
 class CliWorkflowContinuationRuntimeTest {
   @Test
-  fun `prose workflow continue accepts decomposed parent issue key via service`() {
+  fun `runtime workflow continue accepts decomposed parent issue key via service`() {
     val fixture = cliDecompositionFixture()
-    val opened = ProseWorkflowTestSupport.open(fixture.dbPath, fixture.context)
+    val opened = RuntimeWorkflowTestSupport.open(fixture.dbPath, fixture.context)
     val workflowId = opened["workflow_id"] as String
 
-    ProseWorkflowTestSupport.update(
+    RuntimeWorkflowTestSupport.update(
       dbPath = fixture.dbPath,
       workflowId = workflowId,
       workflowStatus = "running",
       currentStepId = "plan",
-      stepUpdates = ProseWorkflowTestSupport.parseStepUpdates(
+      stepUpdates = RuntimeWorkflowTestSupport.parseStepUpdates(
         """[{"step_id":"plan","status":"completed","attempt_count":1}]""",
       ),
-      artifactsPatch = ProseWorkflowTestSupport.parseArtifactsPatch(fixture.artifactsPatch()),
+      artifactsPatch = RuntimeWorkflowTestSupport.parseArtifactsPatch(fixture.artifactsPatch()),
       context = fixture.context,
     )
-    val continued = ProseWorkflowTestSupport.continueByIssueKey(
+    val continued = RuntimeWorkflowTestSupport.continueByIssueKey(
       dbPath = fixture.dbPath,
       issueKey = "SKILL-51",
       subtaskId = 1,
@@ -62,23 +62,23 @@ class CliWorkflowContinuationRuntimeTest {
   }
 
   @Test
-  fun `prose workflow continue reports blocked when requested decomposed subtask is not runnable`() {
+  fun `runtime workflow continue reports blocked when requested decomposed subtask is not runnable`() {
     val fixture = cliDecompositionFixture()
-    val opened = ProseWorkflowTestSupport.open(fixture.dbPath, fixture.context)
+    val opened = RuntimeWorkflowTestSupport.open(fixture.dbPath, fixture.context)
     val workflowId = opened["workflow_id"] as String
 
-    ProseWorkflowTestSupport.update(
+    RuntimeWorkflowTestSupport.update(
       dbPath = fixture.dbPath,
       workflowId = workflowId,
       workflowStatus = "running",
       currentStepId = "plan",
-      stepUpdates = ProseWorkflowTestSupport.parseStepUpdates(
+      stepUpdates = RuntimeWorkflowTestSupport.parseStepUpdates(
         """[{"step_id":"plan","status":"completed","attempt_count":1}]""",
       ),
-      artifactsPatch = ProseWorkflowTestSupport.parseArtifactsPatch(fixture.artifactsPatch()),
+      artifactsPatch = RuntimeWorkflowTestSupport.parseArtifactsPatch(fixture.artifactsPatch()),
       context = fixture.context,
     )
-    val continued = ProseWorkflowTestSupport.continueByIssueKey(
+    val continued = RuntimeWorkflowTestSupport.continueByIssueKey(
       dbPath = fixture.dbPath,
       issueKey = "SKILL-51",
       subtaskId = 2,

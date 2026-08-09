@@ -1,7 +1,6 @@
 package skillbill.workflow.taskruntime
 
 import skillbill.contracts.workflow.WORKFLOW_STATE_CONTRACT_VERSION
-import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdgeCapScope
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior
@@ -23,13 +22,10 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
   private val definition = FeatureTaskRuntimePhaseWorkflowDefinition.definition
 
   @Test
-  fun `definition shares public feature task identity and uses runtime mode`() {
-    val implement = FeatureImplementWorkflowDefinition.definition
-    assertEquals(implement.workflowName, definition.workflowName)
-    assertEquals("runtime", definition.workflowMode)
-    assertEquals("prose", implement.workflowMode)
-    assertTrue(definition.workflowIdPrefix != implement.workflowIdPrefix)
+  fun `definition exposes public feature task identity and uses runtime mode`() {
     assertEquals("bill-feature-task", definition.skillName)
+    assertEquals("bill-feature-task", definition.workflowName)
+    assertEquals("runtime", definition.workflowMode)
     assertEquals("wftr", definition.workflowIdPrefix)
   }
 

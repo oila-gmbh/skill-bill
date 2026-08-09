@@ -71,7 +71,6 @@ import skillbill.ports.persistence.TelemetryReconciliationRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureImplementSessionSummary
-import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.persistence.model.FeatureVerifySessionSummary
 import skillbill.ports.persistence.model.WorkflowStateRecord
 import skillbill.ports.workflow.GoalSubtaskReviewGitOperations
@@ -1271,14 +1270,7 @@ class GoalRunnerStatusProjectionTest {
   }
 
   @Test
-  fun `execution liveness is unknown for prose mode missing workflow identity and lease read failure`() {
-    val proseHarness = GoalStatusPhaseLedgerHarness()
-    proseHarness.openProseWorkflow("wfl-prose")
-    assertEquals(
-      ExecutionLiveness.UNKNOWN,
-      requireNotNull(statusServiceForLiveness(proseHarness, "wfl-prose").status(goalStatusRequest())).executionLiveness,
-    )
-
+  fun `execution liveness is idle when lease or identity is missing and unknown on lease read failure`() {
     // No parent lease after clean exit is idle — not unknown — so watch/replan can proceed at boundaries.
     val missingLeaseStore = InMemoryGoalManifestStore(manifest(subtaskCount = 1))
     assertEquals(
@@ -3787,14 +3779,6 @@ private class GoalStatusPhaseLedgerHarness {
 
   fun openRuntimeWorkflow(workflowId: String) {
     recorder.ensureWorkflowOpen(workflowId, sessionId = "goal-status-test")
-  }
-
-  fun openProseWorkflow(workflowId: String) {
-    openRuntimeWorkflow(workflowId)
-    repository.saveFeatureTaskRuntimeWorkflow(
-      requireNotNull(repository.getFeatureTaskRuntimeWorkflow(workflowId))
-        .copy(mode = FeatureTaskWorkflowMode.PROSE),
-    )
   }
 
   fun seedOwnership(workflowId: String, expiresAt: String) {

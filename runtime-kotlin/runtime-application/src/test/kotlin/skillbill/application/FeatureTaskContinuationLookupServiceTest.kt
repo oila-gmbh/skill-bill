@@ -10,10 +10,11 @@ import skillbill.application.model.WorkflowUpdateRequest
 import skillbill.application.workflow.WorkflowService
 import skillbill.application.workflow.toRecord
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
+import skillbill.error.LegacyProseWorkflowError
 import skillbill.ports.persistence.model.FeatureTaskRouteScope
+import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.workflow.UnavailableDecompositionManifestFileStore
 import skillbill.workflow.WorkflowEngine
-import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
 import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
@@ -155,6 +156,21 @@ class FeatureTaskContinuationLookupServiceTest {
   }
 
   @Test
+  fun `legacy prose-mode candidate loud-fails on continuation with the runtime re-run error`() {
+    // SKILL-175 subtask 6 AC-002: a candidate whose immutable identity decodes to PROSE is
+    // quarantined in FeatureTaskContinuationLookupService.project, raising LegacyProseWorkflowError
+    // (which names the `skill-bill goal <KEY>` re-run path) rather than being handed back as resumable.
+    val fixture = fixture()
+    val opened = fixture.open(REPOSITORY_A)
+    val identity = requireNotNull(fixture.states.executionIdentity(opened.workflowId))
+    fixture.states.overwriteExecutionIdentity(identity.copy(mode = FeatureTaskWorkflowMode.PROSE))
+
+    assertFailsWith<LegacyProseWorkflowError> {
+      fixture.lookup.lookup("SKILL-120", REPOSITORY_A)
+    }
+  }
+
+  @Test
   fun `goal-child identity stays outside standalone continuation lookup`() {
     val fixture = fixture()
     val opened = assertIs<WorkflowOpenResult.Ok>(
@@ -288,10 +304,10 @@ class FeatureTaskContinuationLookupServiceTest {
           ),
         ),
       )
-      val definition = FeatureImplementWorkflowDefinition.definition
+      val definition = skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition.definition
       val engine = WorkflowEngine(testWorkflowSnapshotValidator)
-      val opened = engine.openRecord(definition, "wfl-goal-parent", "fis-goal", "assess")
-      states.saveFeatureImplementWorkflow(
+      val opened = engine.openRecord(definition, "wfl-goal-parent", "ftr-goal", "preplan")
+      states.saveFeatureTaskRuntimeWorkflow(
         engine.updateRecord(
           definition,
           opened,
@@ -304,7 +320,7 @@ class FeatureTaskContinuationLookupServiceTest {
               DECOMPOSITION_RUNTIME_ARTIFACT_KEY to
                 encodeDecompositionManifestMap(manifest, testDecompositionManifestValidator),
             ),
-            sessionId = "fis-goal",
+            sessionId = "ftr-goal",
           ),
         ).toRecord().copy(issueKey = "SKILL-120"),
       )

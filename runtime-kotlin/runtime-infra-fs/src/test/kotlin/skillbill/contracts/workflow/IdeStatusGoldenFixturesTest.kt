@@ -8,27 +8,6 @@ import kotlin.test.Test
  */
 class IdeStatusGoldenFixturesTest {
   @Test
-  fun `feature-task-prose golden validates`() {
-    IdeStatusSchemaValidator.validate(
-      linkedMapOf(
-        "contract_version" to IDE_STATUS_CONTRACT_VERSION,
-        "repository_identity" to "repo-root-realpath-v1:/repo",
-        "issue_key" to "SKILL-148",
-        "workflow_id" to "wfl-prose-1",
-        "workflow_family" to "feature-task-prose",
-        "lifecycle_state" to "active",
-        "current_step" to linkedMapOf("id" to "implement", "label" to "Implement"),
-        "progress" to linkedMapOf("completed" to 2, "total" to 6),
-        "started_at" to "2026-08-06T08:00:00Z",
-        "updated_at" to "2026-08-06T10:00:00Z",
-        "freshness" to "fresh",
-        "summary" to "feature-task-prose SKILL-148 is active on Implement.",
-      ),
-      "golden-prose",
-    )
-  }
-
-  @Test
   fun `feature-task-runtime golden validates`() {
     IdeStatusSchemaValidator.validate(
       linkedMapOf(

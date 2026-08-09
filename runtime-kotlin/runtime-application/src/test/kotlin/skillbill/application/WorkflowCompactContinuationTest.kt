@@ -24,9 +24,9 @@ class WorkflowCompactContinuationTest {
   @Test
   fun `continueWorkflow compact projection inlines small current-step artifacts`() {
     val service = newService()
-    val opened = assertIs<WorkflowOpenResult.Ok>(service.open(WorkflowFamilyKind.TASK_PROSE, sessionId = "fis-001"))
+    val opened = assertIs<WorkflowOpenResult.Ok>(service.open(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001"))
     service.update(
-      WorkflowFamilyKind.TASK_PROSE,
+      WorkflowFamilyKind.TASK_RUNTIME,
       WorkflowUpdateRequest(
         workflowId = opened.workflowId,
         workflowStatus = "blocked",
@@ -43,7 +43,7 @@ class WorkflowCompactContinuationTest {
     )
 
     val standard = assertIs<WorkflowContinueResult.Standard>(
-      service.continueWorkflow(WorkflowFamilyKind.TASK_PROSE, opened.workflowId),
+      service.continueWorkflow(WorkflowFamilyKind.TASK_RUNTIME, opened.workflowId),
     )
     val compact = standard.view.compact
 
@@ -54,7 +54,7 @@ class WorkflowCompactContinuationTest {
     assertEquals(opened.workflowId, compact.workflowId)
     assertEquals("bill-feature-task", compact.skillName)
     assertEquals("implement", compact.resumeStepId)
-    assertEquals("Step 4: Execute Plan", compact.resumeStepLabel)
+    assertEquals("Phase 3: Implement", compact.resumeStepLabel)
     assertEquals(listOf("plan"), compact.requiredArtifactKeys)
     assertEquals(listOf("branch", "plan", "preplan_digest"), compact.availableArtifactKeys)
     assertEquals(listOf("branch", "preplan_digest"), compact.omittedArtifactKeys)
@@ -81,9 +81,9 @@ class WorkflowCompactContinuationTest {
   @Test
   fun `continueWorkflow compact projection losslessly inlines large current-step artifacts`() {
     val service = newService()
-    val opened = assertIs<WorkflowOpenResult.Ok>(service.open(WorkflowFamilyKind.TASK_PROSE, sessionId = "fis-001"))
+    val opened = assertIs<WorkflowOpenResult.Ok>(service.open(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001"))
     service.update(
-      WorkflowFamilyKind.TASK_PROSE,
+      WorkflowFamilyKind.TASK_RUNTIME,
       WorkflowUpdateRequest(
         workflowId = opened.workflowId,
         workflowStatus = "blocked",
@@ -99,7 +99,7 @@ class WorkflowCompactContinuationTest {
     )
 
     val standard = assertIs<WorkflowContinueResult.Standard>(
-      service.continueWorkflow(WorkflowFamilyKind.TASK_PROSE, opened.workflowId),
+      service.continueWorkflow(WorkflowFamilyKind.TASK_RUNTIME, opened.workflowId),
     )
     val planSummary = standard.view.compact.currentStepArtifacts.single { it.key == "plan" }
 
@@ -119,11 +119,11 @@ class WorkflowCompactContinuationTest {
   @Test
   fun `compact continuation stays within projection budget and omits private artifacts`() {
     val service = newService()
-    val opened = assertIs<WorkflowOpenResult.Ok>(service.open(WorkflowFamilyKind.TASK_PROSE, sessionId = "fis-001"))
+    val opened = assertIs<WorkflowOpenResult.Ok>(service.open(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001"))
     // The plan is declared phase input and must remain byte-for-byte lossless.
     // The unrelated preplan digest remains private even though it is also large.
     service.update(
-      WorkflowFamilyKind.TASK_PROSE,
+      WorkflowFamilyKind.TASK_RUNTIME,
       WorkflowUpdateRequest(
         workflowId = opened.workflowId,
         workflowStatus = "blocked",
@@ -139,7 +139,7 @@ class WorkflowCompactContinuationTest {
     )
 
     val standard = assertIs<WorkflowContinueResult.Standard>(
-      service.continueWorkflow(WorkflowFamilyKind.TASK_PROSE, opened.workflowId),
+      service.continueWorkflow(WorkflowFamilyKind.TASK_RUNTIME, opened.workflowId),
     )
     val compactMap = WorkflowEngine.compactContinueMap(standard.view.compact)
     val serialized = JsonSupport.mapToJsonString(compactMap)
@@ -162,9 +162,9 @@ class WorkflowCompactContinuationTest {
   @Test
   fun `full continue projection exercises the full shape distinctly from compact`() {
     val service = newService()
-    val opened = assertIs<WorkflowOpenResult.Ok>(service.open(WorkflowFamilyKind.TASK_PROSE, sessionId = "fis-001"))
+    val opened = assertIs<WorkflowOpenResult.Ok>(service.open(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001"))
     service.update(
-      WorkflowFamilyKind.TASK_PROSE,
+      WorkflowFamilyKind.TASK_RUNTIME,
       WorkflowUpdateRequest(
         workflowId = opened.workflowId,
         workflowStatus = "blocked",
@@ -180,7 +180,7 @@ class WorkflowCompactContinuationTest {
     )
 
     val standard = assertIs<WorkflowContinueResult.Standard>(
-      service.continueWorkflow(WorkflowFamilyKind.TASK_PROSE, opened.workflowId),
+      service.continueWorkflow(WorkflowFamilyKind.TASK_RUNTIME, opened.workflowId),
     )
     // The explicit diagnostic shape is operator-only: its step_artifacts field
     // stays projected, while its resume snapshot may expose private durable state.

@@ -29,10 +29,10 @@ class SQLiteDatabaseSessionFactoryTest {
 
     assertFailsWith<IllegalStateException> {
       database.transaction(dbPath.toString()) { unitOfWork ->
-        unitOfWork.workflowStates.saveFeatureImplementWorkflow(
+        unitOfWork.workflowStates.saveFeatureTaskRuntimeWorkflow(
           WorkflowStateRecord(
-            workflowId = "wfl-rollback",
-            sessionId = "fis-rollback",
+            workflowId = "wftr-rollback",
+            sessionId = "ftr-rollback",
             workflowName = "bill-feature-task",
             contractVersion = "",
             workflowStatus = "running",
@@ -42,6 +42,7 @@ class SQLiteDatabaseSessionFactoryTest {
             startedAt = null,
             updatedAt = null,
             finishedAt = null,
+            mode = FeatureTaskWorkflowMode.RUNTIME,
           ),
         )
         error("force rollback")
@@ -50,7 +51,7 @@ class SQLiteDatabaseSessionFactoryTest {
 
     val saved =
       database.read(dbPath.toString()) { unitOfWork ->
-        unitOfWork.workflowStates.getFeatureImplementWorkflow("wfl-rollback")
+        unitOfWork.workflowStates.getFeatureTaskRuntimeWorkflow("wftr-rollback")
       }
     assertNull(saved)
   }
@@ -72,16 +73,16 @@ class SQLiteDatabaseSessionFactoryTest {
     val tempDir = Files.createTempDirectory("skillbill-sqlite-read-contention")
     val dbPath = tempDir.resolve("metrics.db")
     val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
-    val workflowId = "wfl-read-contention"
+    val workflowId = "wftr-read-contention"
     database.transaction(dbPath.toString()) { unitOfWork ->
-      unitOfWork.workflowStates.saveFeatureImplementWorkflow(workflowRecord(workflowId))
+      unitOfWork.workflowStates.saveFeatureTaskRuntimeWorkflow(workflowRecord(workflowId))
     }
 
     DriverManager.getConnection("jdbc:sqlite:$dbPath").use { writer ->
       writer.createStatement().use { it.execute("BEGIN IMMEDIATE") }
       try {
         val status = database.read(dbPath.toString()) { unitOfWork ->
-          unitOfWork.workflowStates.getFeatureImplementWorkflow(workflowId)?.workflowStatus
+          unitOfWork.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId)?.workflowStatus
         }
         assertEquals("running", status)
       } finally {
@@ -96,14 +97,14 @@ class SQLiteDatabaseSessionFactoryTest {
     val dbPath = tempDir.resolve("metrics.db")
     val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
     database.transaction(dbPath.toString()) { unitOfWork ->
-      unitOfWork.workflowStates.saveFeatureImplementWorkflow(workflowRecord("wfl-read-only"))
+      unitOfWork.workflowStates.saveFeatureTaskRuntimeWorkflow(workflowRecord("wftr-read-only"))
     }
 
     DatabaseRuntime.openReadDb(cliValue = dbPath.toString(), environment = emptyMap(), userHome = tempDir)
       .use { openDb ->
         assertEquals(
           "running",
-          workflowStatus(openDb.connection, "wfl-read-only"),
+          workflowStatus(openDb.connection, "wftr-read-only"),
           "A read-only open must still serve queries against a WAL database closed by its writer.",
         )
         assertFailsWith<SQLException>("The read seam must not hand out a write-capable connection.") {
@@ -117,7 +118,7 @@ class SQLiteDatabaseSessionFactoryTest {
       }
 
     DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
-      assertEquals("running", workflowStatus(connection, "wfl-read-only"))
+      assertEquals("running", workflowStatus(connection, "wftr-read-only"))
       assertFalse(tableExists(connection, "read_path_probe"), "The read seam must leave no schema behind.")
     }
   }
@@ -128,7 +129,7 @@ class SQLiteDatabaseSessionFactoryTest {
     val dbPath = tempDir.resolve("metrics.db")
     val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
     database.transaction(dbPath.toString()) { unitOfWork ->
-      unitOfWork.workflowStates.saveFeatureImplementWorkflow(workflowRecord("wfl-read-only-contention"))
+      unitOfWork.workflowStates.saveFeatureTaskRuntimeWorkflow(workflowRecord("wftr-read-only-contention"))
     }
 
     DriverManager.getConnection("jdbc:sqlite:$dbPath").use { writer ->
@@ -136,7 +137,7 @@ class SQLiteDatabaseSessionFactoryTest {
       try {
         val startedAt = System.nanoTime()
         val status = database.read(dbPath.toString()) { unitOfWork ->
-          unitOfWork.workflowStates.getFeatureImplementWorkflow("wfl-read-only-contention")?.workflowStatus
+          unitOfWork.workflowStates.getFeatureTaskRuntimeWorkflow("wftr-read-only-contention")?.workflowStatus
         }
         val elapsedMillis = (System.nanoTime() - startedAt) / 1_000_000
         assertEquals("running", status)
@@ -154,13 +155,13 @@ class SQLiteDatabaseSessionFactoryTest {
     val tempDir = Files.createTempDirectory("skillbill-sqlite-read-snapshot")
     val dbPath = tempDir.resolve("metrics.db")
     val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
-    val workflowId = "wfl-read-snapshot"
+    val workflowId = "wftr-read-snapshot"
     database.transaction(dbPath.toString()) { unitOfWork ->
-      unitOfWork.workflowStates.saveFeatureImplementWorkflow(workflowRecord(workflowId))
+      unitOfWork.workflowStates.saveFeatureTaskRuntimeWorkflow(workflowRecord(workflowId))
     }
 
     val observed = database.read(dbPath.toString()) { unitOfWork ->
-      val before = unitOfWork.workflowStates.getFeatureImplementWorkflow(workflowId)?.workflowStatus
+      val before = unitOfWork.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId)?.workflowStatus
       DriverManager.getConnection("jdbc:sqlite:$dbPath").use { writer ->
         writer.createStatement().use { it.execute("PRAGMA busy_timeout = 5000") }
         writer.prepareStatement("UPDATE feature_task_workflows SET workflow_status = ? WHERE workflow_id = ?")
@@ -170,14 +171,14 @@ class SQLiteDatabaseSessionFactoryTest {
             assertEquals(1, statement.executeUpdate())
           }
       }
-      before to unitOfWork.workflowStates.getFeatureImplementWorkflow(workflowId)?.workflowStatus
+      before to unitOfWork.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId)?.workflowStatus
     }
 
     assertEquals("running" to "running", observed, "A read block must not observe a writer commit landing inside it.")
     assertEquals(
       "complete",
       database.read(dbPath.toString()) {
-        it.workflowStates.getFeatureImplementWorkflow(workflowId)?.workflowStatus
+        it.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId)?.workflowStatus
       },
       "The next read block must start from a fresh snapshot carrying the committed write.",
     )
@@ -188,20 +189,20 @@ class SQLiteDatabaseSessionFactoryTest {
     val tempDir = Files.createTempDirectory("skillbill-sqlite-read-snapshot-writer")
     val dbPath = tempDir.resolve("metrics.db")
     val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
-    val workflowId = "wfl-read-snapshot-writer"
+    val workflowId = "wftr-read-snapshot-writer"
     database.transaction(dbPath.toString()) { unitOfWork ->
-      unitOfWork.workflowStates.saveFeatureImplementWorkflow(workflowRecord(workflowId))
+      unitOfWork.workflowStates.saveFeatureTaskRuntimeWorkflow(workflowRecord(workflowId))
     }
     val executor = Executors.newSingleThreadExecutor()
 
     try {
       database.read(dbPath.toString()) { unitOfWork ->
         // Materialize the snapshot first: BEGIN DEFERRED takes its read mark at the first statement.
-        assertEquals("running", unitOfWork.workflowStates.getFeatureImplementWorkflow(workflowId)?.workflowStatus)
+        assertEquals("running", unitOfWork.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId)?.workflowStatus)
         val writer = executor.submit {
           database.transaction(dbPath.toString()) { writerWork ->
-            val row = requireNotNull(writerWork.workflowStates.getFeatureImplementWorkflow(workflowId))
-            writerWork.workflowStates.saveFeatureImplementWorkflow(row.copy(artifactsJson = "{\"writer\":1}"))
+            val row = requireNotNull(writerWork.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId))
+            writerWork.workflowStates.saveFeatureTaskRuntimeWorkflow(row.copy(artifactsJson = "{\"writer\":1}"))
           }
         }
         // A deferred read takes no write lock, so this commit must land without waiting for the block.
@@ -218,7 +219,7 @@ class SQLiteDatabaseSessionFactoryTest {
     val dbPath = tempDir.resolve("metrics.db")
     val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
     database.transaction(dbPath.toString()) { unitOfWork ->
-      unitOfWork.workflowStates.saveFeatureImplementWorkflow(workflowRecord("wfl-journal-mode"))
+      unitOfWork.workflowStates.saveFeatureTaskRuntimeWorkflow(workflowRecord("wftr-journal-mode"))
     }
 
     // openReadDb configures its own connection with enableWal = false and a read-only connection cannot
@@ -232,9 +233,9 @@ class SQLiteDatabaseSessionFactoryTest {
     val tempDir = Files.createTempDirectory("skillbill-sqlite-read-rollback-journal")
     val dbPath = tempDir.resolve("metrics.db")
     val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
-    val workflowId = "wfl-rollback-journal"
+    val workflowId = "wftr-rollback-journal"
     database.transaction(dbPath.toString()) { unitOfWork ->
-      unitOfWork.workflowStates.saveFeatureImplementWorkflow(workflowRecord(workflowId))
+      unitOfWork.workflowStates.saveFeatureTaskRuntimeWorkflow(workflowRecord(workflowId))
     }
     // Every factory-opened writer re-asserts WAL, so the non-WAL case is reached with a raw connection.
     DriverManager.getConnection("jdbc:sqlite:$dbPath").use { connection ->
@@ -245,9 +246,9 @@ class SQLiteDatabaseSessionFactoryTest {
 
     try {
       val observed = database.read(dbPath.toString()) { unitOfWork ->
-        val before = unitOfWork.workflowStates.getFeatureImplementWorkflow(workflowId)?.workflowStatus
+        val before = unitOfWork.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId)?.workflowStatus
         val writer = executor.submit { rawWriterCommit(dbPath.toString(), workflowId, "complete") }
-        val after = unitOfWork.workflowStates.getFeatureImplementWorkflow(workflowId)?.workflowStatus
+        val after = unitOfWork.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId)?.workflowStatus
         // Under a rollback journal the writer waits out the reader's shared lock — the tradeoff WAL
         // removes, which is why the journal mode of read-path databases is asserted rather than assumed.
         Triple(before, after, writer)
@@ -258,7 +259,7 @@ class SQLiteDatabaseSessionFactoryTest {
       assertEquals(
         "complete",
         database.read(dbPath.toString()) {
-          it.workflowStates.getFeatureImplementWorkflow(workflowId)?.workflowStatus
+          it.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId)?.workflowStatus
         },
       )
     } finally {
@@ -271,9 +272,9 @@ class SQLiteDatabaseSessionFactoryTest {
     val tempDir = Files.createTempDirectory("skillbill-sqlite-write-reservation")
     val dbPath = tempDir.resolve("metrics.db")
     val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
-    val workflowId = "wfl-write-reservation"
+    val workflowId = "wftr-write-reservation"
     database.transaction(dbPath.toString()) { unitOfWork ->
-      unitOfWork.workflowStates.saveFeatureImplementWorkflow(workflowRecord(workflowId))
+      unitOfWork.workflowStates.saveFeatureTaskRuntimeWorkflow(workflowRecord(workflowId))
     }
     val firstEntered = CountDownLatch(1)
     val releaseFirst = CountDownLatch(1)
@@ -284,10 +285,10 @@ class SQLiteDatabaseSessionFactoryTest {
     try {
       val first = executor.submit {
         database.transaction(dbPath.toString()) { unitOfWork ->
-          val workflow = requireNotNull(unitOfWork.workflowStates.getFeatureImplementWorkflow(workflowId))
+          val workflow = requireNotNull(unitOfWork.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId))
           firstEntered.countDown()
           check(releaseFirst.await(5, TimeUnit.SECONDS))
-          unitOfWork.workflowStates.saveFeatureImplementWorkflow(workflow.copy(artifactsJson = "{\"writer\":1}"))
+          unitOfWork.workflowStates.saveFeatureTaskRuntimeWorkflow(workflow.copy(artifactsJson = "{\"writer\":1}"))
         }
       }
       assertTrue(firstEntered.await(5, TimeUnit.SECONDS))
@@ -295,8 +296,8 @@ class SQLiteDatabaseSessionFactoryTest {
         secondStarted.countDown()
         database.transaction(dbPath.toString()) { unitOfWork ->
           secondEntered.countDown()
-          val workflow = requireNotNull(unitOfWork.workflowStates.getFeatureImplementWorkflow(workflowId))
-          unitOfWork.workflowStates.saveFeatureImplementWorkflow(workflow.copy(artifactsJson = "{\"writer\":2}"))
+          val workflow = requireNotNull(unitOfWork.workflowStates.getFeatureTaskRuntimeWorkflow(workflowId))
+          unitOfWork.workflowStates.saveFeatureTaskRuntimeWorkflow(workflow.copy(artifactsJson = "{\"writer\":2}"))
         }
       }
 
@@ -317,7 +318,7 @@ class SQLiteDatabaseSessionFactoryTest {
     val tempDir = Files.createTempDirectory("skillbill-sqlite-crash-reconcile")
     val dbPath = tempDir.resolve("metrics.db")
     val database = SQLiteDatabaseSessionFactory(EnvironmentContext(userHome = tempDir))
-    val workflowId = "wfl-crash-reconcile"
+    val workflowId = "wftr-crash-reconcile"
     // Seed the row and the expired worker lease exactly as production does: acquisition runs under
     // read (the store method owns its own BEGIN IMMEDIATE), never inside an outer transaction.
     database.transaction(dbPath.toString()) { it.workflowStates.saveFeatureTaskRuntimeWorkflow(runtimeRow(workflowId)) }
@@ -412,7 +413,7 @@ class SQLiteDatabaseSessionFactoryTest {
 
   private fun workflowRecord(workflowId: String) = WorkflowStateRecord(
     workflowId = workflowId,
-    sessionId = "fis-write-reservation",
+    sessionId = "ftr-write-reservation",
     workflowName = "bill-feature-task",
     contractVersion = "1.0",
     workflowStatus = "running",
@@ -422,5 +423,6 @@ class SQLiteDatabaseSessionFactoryTest {
     startedAt = null,
     updatedAt = null,
     finishedAt = null,
+    mode = FeatureTaskWorkflowMode.RUNTIME,
   )
 }

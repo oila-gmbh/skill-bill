@@ -1,7 +1,5 @@
 package skillbill.cli
 
-import skillbill.application.model.WorkflowFamilyKind
-import skillbill.application.model.WorkflowOpenResult
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliRuntimeContext
 import skillbill.contracts.JsonSupport
@@ -44,7 +42,6 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
-import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
@@ -797,7 +794,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
           "--goal-review-base-sha",
           "0000000000000000000000000000000000000000",
           "--goal-parent-workflow-id",
-          "wfl-parent",
+          "wftr-parent",
           "--suppress-pr",
         ),
       ),
@@ -1655,44 +1652,6 @@ class CliFeatureTaskRuntimeSpecLookupTest {
     assertContains(implementPrompt, "### from: plan")
     assertFalse(implementPrompt.contains("### from: preplan"), implementPrompt)
     assertFalse(implementPrompt.contains("preplan_digest"), implementPrompt)
-  }
-
-  @Test
-  fun `feature-task runtime router rejects persisted prose mode before launch`() {
-    val fixture = runtimeFixture()
-    val component = RuntimeComponent::class.create(fixture.context(RecordingPhaseLauncher()).toRuntimeContext())
-    val opened = assertIs<WorkflowOpenResult.Ok>(
-      component.workflowService.openFeatureTask(
-        kind = WorkflowFamilyKind.TASK_PROSE,
-        currentStepId = "implement",
-        dbOverride = fixture.dbPath.toString(),
-        issueKey = "SKILL-650",
-        repositoryIdentity = "repo-root-realpath-v1:${fixture.tempDir.toRealPath()}",
-        governedSpecPath = ".feature-specs/SKILL-650-runtime/spec.md",
-      ),
-    )
-    val resumeLauncher = RecordingPhaseLauncher()
-
-    val resumed = CliRuntime.run(
-      listOf(
-        "--db",
-        fixture.dbPath.toString(),
-        "feature-task",
-        "resume",
-        opened.workflowId,
-        "SKILL-650",
-        fixture.specPath.toString(),
-        "--repo-root",
-        fixture.tempDir.toString(),
-        "--agent",
-        "codex",
-      ),
-      fixture.context(resumeLauncher),
-    )
-
-    assertEquals(1, resumed.exitCode, resumed.stdout)
-    assertContains(resumed.stdout, "was persisted in prose mode")
-    assertEquals(emptyList(), resumeLauncher.requests)
   }
 
   @Test

@@ -1936,8 +1936,8 @@ class WorkflowGoalRunnerOutcomeStore(
       engine.snapshotView(family.definition, record)
       val steps = decodeWorkflowSteps(record.stepsJson)
       val artifacts = decodeArtifacts(record.artifactsJson)
-      val finishCompleted = steps.any { step -> step.stepId == "finish" && step.status == "completed" }
-      val currentStep = if (record.workflowStatus == "completed" || finishCompleted) "finish" else record.currentStepId
+      val finishCompleted = steps.any { step -> step.stepId == "pr" && step.status == "completed" }
+      val currentStep = if (record.workflowStatus == "completed" || finishCompleted) "pr" else record.currentStepId
       val progressEvent = progressEventFrom(artifacts)
       // SKILL-64 Subtask 3 (F-R01): the declared-progress read MUST be
       // independent of the observability parse. Decode the declared event first,

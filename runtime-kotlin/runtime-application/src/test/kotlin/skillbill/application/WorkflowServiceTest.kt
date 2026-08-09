@@ -91,7 +91,7 @@ import skillbill.workflow.GoalObservabilityEventValidator
 import skillbill.workflow.GoalProgressEventValidator
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
-import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionExecutionModel
@@ -114,9 +114,9 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-private fun WorkflowService.openTestProse(sessionId: String = "", currentStepId: String? = null): WorkflowOpenResult =
+private fun WorkflowService.openTestRuntime(sessionId: String = "", currentStepId: String? = null): WorkflowOpenResult =
   openFeatureTask(
-    kind = WorkflowFamilyKind.TASK_PROSE,
+    kind = WorkflowFamilyKind.TASK_RUNTIME,
     sessionId = sessionId,
     currentStepId = currentStepId,
     issueKey = "SKILL-120",
@@ -136,10 +136,10 @@ class WorkflowServiceTest {
   @Test
   fun `open returns Ok with dbPath and snapshot`() {
     val service = newService()
-    val result = service.openTestProse("fis-001")
+    val result = service.openTestRuntime("ftr-001")
     val ok = assertIs<WorkflowOpenResult.Ok>(result)
     assertEquals("running", ok.snapshot.workflowStatus)
-    assertEquals("assess", ok.snapshot.currentStepId)
+    assertEquals("preplan", ok.snapshot.currentStepId)
     assertEquals("/fake/metrics.db", ok.dbPath)
   }
 
@@ -326,7 +326,7 @@ class WorkflowServiceTest {
   @Test
   fun `open returns Error for invalid step id`() {
     val service = newService()
-    val result = service.openTestProse(currentStepId = "not-a-step")
+    val result = service.openTestRuntime(currentStepId = "not-a-step")
     val error = assertIs<WorkflowOpenResult.Error>(result)
     assertTrue(error.error.contains("Invalid current_step_id"))
   }
@@ -337,11 +337,11 @@ class WorkflowServiceTest {
     // Validation-time error: invalid workflow_status string is rejected
     // before the unit of work runs, so the typed error carries no dbPath.
     val result = service.update(
-      WorkflowFamilyKind.TASK_PROSE,
+      WorkflowFamilyKind.TASK_RUNTIME,
       WorkflowUpdateRequest(
         workflowId = "irrelevant",
         workflowStatus = "not-a-status",
-        currentStepId = "assess",
+        currentStepId = "preplan",
         sessionId = "",
       ),
     )
@@ -361,11 +361,11 @@ class WorkflowServiceTest {
     // envelope intentionally omitted `db_path` on this branch, so the
     // typed result must keep dbPath null even though the transaction ran.
     val result = service.update(
-      WorkflowFamilyKind.TASK_PROSE,
+      WorkflowFamilyKind.TASK_RUNTIME,
       WorkflowUpdateRequest(
         workflowId = "missing",
         workflowStatus = "running",
-        currentStepId = "assess",
+        currentStepId = "preplan",
         sessionId = "",
       ),
     )
@@ -382,12 +382,12 @@ class WorkflowServiceTest {
   fun `list returns the opened workflow ids in expected order`() {
     val service = newService()
     val first = assertIs<WorkflowOpenResult.Ok>(
-      service.openTestProse("fis-001"),
+      service.openTestRuntime("ftr-001"),
     )
     val second = assertIs<WorkflowOpenResult.Ok>(
-      service.openTestProse("fis-002"),
+      service.openTestRuntime("ftr-002"),
     )
-    val result = service.list(WorkflowFamilyKind.TASK_PROSE)
+    val result = service.list(WorkflowFamilyKind.TASK_RUNTIME)
     assertEquals(2, result.workflowCount)
     assertEquals(2, result.workflows.size)
     assertEquals(
@@ -399,32 +399,32 @@ class WorkflowServiceTest {
   @Test
   fun `get returns Ok for known workflow`() {
     val service = newService()
-    val opened = assertIs<WorkflowOpenResult.Ok>(service.openTestProse("fis-001"))
-    val got = service.get(WorkflowFamilyKind.TASK_PROSE, opened.workflowId)
+    val opened = assertIs<WorkflowOpenResult.Ok>(service.openTestRuntime("ftr-001"))
+    val got = service.get(WorkflowFamilyKind.TASK_RUNTIME, opened.workflowId)
     val ok = assertIs<WorkflowGetResult.Ok>(got)
     assertEquals(opened.workflowId, ok.workflowId)
   }
 
   @Test
-  fun `TASK_PROSE resolves to the persisted IMPLEMENT family so historical rows stay readable`() {
-    assertEquals(WorkflowFamily.IMPLEMENT, WorkflowFamilyKind.TASK_PROSE.workflowFamily())
+  fun `TASK_RUNTIME resolves to the persisted TASK_RUNTIME family`() {
+    assertEquals(WorkflowFamily.TASK_RUNTIME, WorkflowFamilyKind.TASK_RUNTIME.workflowFamily())
 
     val service = newService()
-    val opened = assertIs<WorkflowOpenResult.Ok>(service.openTestProse("fis-001"))
+    val opened = assertIs<WorkflowOpenResult.Ok>(service.openTestRuntime("ftr-001"))
     assertTrue(
-      opened.workflowId.startsWith(WorkflowFamily.IMPLEMENT.definition.workflowIdPrefix),
-      "Workflow opened under TASK_PROSE must persist under the IMPLEMENT id prefix; got ${opened.workflowId}.",
+      opened.workflowId.startsWith(WorkflowFamily.TASK_RUNTIME.definition.workflowIdPrefix),
+      "Workflow opened under TASK_RUNTIME must persist under the TASK_RUNTIME id prefix; got ${opened.workflowId}.",
     )
-    val got = assertIs<WorkflowGetResult.Ok>(service.get(WorkflowFamilyKind.TASK_PROSE, opened.workflowId))
+    val got = assertIs<WorkflowGetResult.Ok>(service.get(WorkflowFamilyKind.TASK_RUNTIME, opened.workflowId))
     assertEquals(opened.workflowId, got.workflowId)
   }
 
   @Test
   fun `continueWorkflow rejects a missing declared projection with a typed error`() {
     val service = newService()
-    val opened = assertIs<WorkflowOpenResult.Ok>(service.openTestProse("fis-001"))
+    val opened = assertIs<WorkflowOpenResult.Ok>(service.openTestRuntime("ftr-001"))
     service.update(
-      WorkflowFamilyKind.TASK_PROSE,
+      WorkflowFamilyKind.TASK_RUNTIME,
       WorkflowUpdateRequest(
         workflowId = opened.workflowId,
         workflowStatus = "blocked",
@@ -436,7 +436,7 @@ class WorkflowServiceTest {
       ),
     )
     val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
-      service.continueWorkflow(WorkflowFamilyKind.TASK_PROSE, opened.workflowId)
+      service.continueWorkflow(WorkflowFamilyKind.TASK_RUNTIME, opened.workflowId)
     }
     assertContains(error.message.orEmpty(), "missing required artifact keys: plan")
     assertFalse(error.message.orEmpty().contains("preplan_digest"))
@@ -453,12 +453,12 @@ class WorkflowServiceTest {
     // `WorkflowStateSchemaViolationsTest`.
     val workflows = InMemoryWorkflowStates()
     val record = testWorkflowEngine.openRecord(
-      FeatureImplementWorkflowDefinition.definition,
-      "wfl-loud",
-      "fis-001",
-      "assess",
+      FeatureTaskRuntimePhaseWorkflowDefinition.definition,
+      "wftr-loud",
+      "ftr-001",
+      "preplan",
     ).toRecord()
-    workflows.saveFeatureImplementWorkflow(record)
+    workflows.saveFeatureTaskRuntimeWorkflow(record)
     val loudFailValidator = object : WorkflowSnapshotValidator {
       override fun validate(snapshot: Map<String, Any?>, slug: String): Unit =
         throw InvalidWorkflowStateSchemaError("Workflow '$slug': snapshot fails schema validation at '<root>'.")
@@ -470,10 +470,10 @@ class WorkflowServiceTest {
       decompositionManifestValidator = testDecompositionManifestValidator,
     )
     assertFailsWith<InvalidWorkflowStateSchemaError> {
-      service.get(WorkflowFamilyKind.TASK_PROSE, "wfl-loud")
+      service.get(WorkflowFamilyKind.TASK_RUNTIME, "wftr-loud")
     }
     assertFailsWith<InvalidWorkflowStateSchemaError> {
-      service.continueWorkflow(WorkflowFamilyKind.TASK_PROSE, "wfl-loud")
+      service.continueWorkflow(WorkflowFamilyKind.TASK_RUNTIME, "wftr-loud")
     }
   }
 
@@ -481,12 +481,12 @@ class WorkflowServiceTest {
   fun `InvalidWorkflowStateSchemaError loud-fails through WorkflowService update before acknowledgement`() {
     val workflows = InMemoryWorkflowStates()
     val opened = testWorkflowEngine.openRecord(
-      FeatureImplementWorkflowDefinition.definition,
-      "wfl-update-loud",
-      "fis-001",
-      "assess",
+      FeatureTaskRuntimePhaseWorkflowDefinition.definition,
+      "wftr-update-loud",
+      "ftr-001",
+      "preplan",
     ).toRecord()
-    workflows.saveFeatureImplementWorkflow(opened)
+    workflows.saveFeatureTaskRuntimeWorkflow(opened)
     val loudFailValidator = object : WorkflowSnapshotValidator {
       override fun validate(snapshot: Map<String, Any?>, slug: String): Unit =
         throw InvalidWorkflowStateSchemaError("Workflow '$slug': snapshot fails schema validation at '<root>'.")
@@ -500,9 +500,9 @@ class WorkflowServiceTest {
 
     assertFailsWith<InvalidWorkflowStateSchemaError> {
       service.update(
-        WorkflowFamilyKind.TASK_PROSE,
+        WorkflowFamilyKind.TASK_RUNTIME,
         WorkflowUpdateRequest(
-          workflowId = "wfl-update-loud",
+          workflowId = "wftr-update-loud",
           workflowStatus = "running",
           currentStepId = "preplan",
           stepUpdates = listOf(mapOf("step_id" to "preplan", "status" to "running", "attempt_count" to 1)),
@@ -523,10 +523,10 @@ class WorkflowServiceTest {
       decompositionManifestValidator = testDecompositionManifestValidator,
       goalObservabilityEventValidator = testGoalObservabilityEventValidator,
     )
-    val opened = assertIs<WorkflowOpenResult.Ok>(service.openTestProse("fis-001"))
+    val opened = assertIs<WorkflowOpenResult.Ok>(service.openTestRuntime("ftr-001"))
 
     val updated = service.update(
-      WorkflowFamilyKind.TASK_PROSE,
+      WorkflowFamilyKind.TASK_RUNTIME,
       WorkflowUpdateRequest(
         workflowId = opened.workflowId,
         workflowStatus = "running",
@@ -548,14 +548,14 @@ class WorkflowServiceTest {
             "timestamp" to "2026-06-01T00:00:00Z",
           ),
         ),
-        sessionId = "fis-001",
+        sessionId = "ftr-001",
       ),
     )
 
     val ok = assertIs<WorkflowUpdateResult.Ok>(updated)
     assertProgressEventAcknowledgement(ok)
     val persisted = assertIs<WorkflowGetResult.Ok>(
-      service.get(WorkflowFamilyKind.TASK_PROSE, opened.workflowId),
+      service.get(WorkflowFamilyKind.TASK_RUNTIME, opened.workflowId),
     )
     assertPersistedProgressEventArtifacts(persisted, opened.workflowId)
   }
@@ -574,7 +574,7 @@ class WorkflowServiceTest {
         ),
       ),
     )
-    workflows.saveFeatureImplementWorkflow(
+    workflows.saveFeatureTaskRuntimeWorkflow(
       workflowRecord(
         workflowId = "wfl-parent",
         artifactsPatch = mapOf(
@@ -612,7 +612,7 @@ class WorkflowServiceTest {
         ),
       ),
     )
-    workflows.saveFeatureImplementWorkflow(
+    workflows.saveFeatureTaskRuntimeWorkflow(
       workflowRecord(
         workflowId = "wfl-parent",
         artifactsPatch = mapOf(
@@ -634,7 +634,7 @@ class WorkflowServiceTest {
   @Test
   fun `decomposed parent lookup prefers active runtime over completed lineage for same issue key`() {
     val workflows = InMemoryWorkflowStates()
-    workflows.saveFeatureImplementWorkflow(
+    workflows.saveFeatureTaskRuntimeWorkflow(
       workflowRecord(
         workflowId = "wfl-completed-discovery",
         artifactsPatch = mapOf(
@@ -647,7 +647,7 @@ class WorkflowServiceTest {
         ),
       ),
     )
-    workflows.saveFeatureImplementWorkflow(
+    workflows.saveFeatureTaskRuntimeWorkflow(
       workflowRecord(
         workflowId = "wfl-active-implementation",
         artifactsPatch = mapOf(
@@ -679,7 +679,7 @@ class WorkflowServiceTest {
         ),
       ),
     )
-    workflows.saveFeatureImplementWorkflow(
+    workflows.saveFeatureTaskRuntimeWorkflow(
       workflowRecord(
         workflowId = "wfl-abandoned-stale",
         artifactsPatch = mapOf(
@@ -732,7 +732,7 @@ class WorkflowServiceTest {
         ),
       ),
     )
-    workflows.saveFeatureImplementWorkflow(
+    workflows.saveFeatureTaskRuntimeWorkflow(
       workflowRecord(
         workflowId = "wfl-abandoned-progressed",
         artifactsPatch = mapOf(
@@ -781,7 +781,7 @@ class WorkflowServiceTest {
         ),
       ),
     )
-    workflows.saveFeatureImplementWorkflow(
+    workflows.saveFeatureTaskRuntimeWorkflow(
       workflowRecord(
         workflowId = "wfl-paused-parent",
         artifactsPatch = mapOf(
@@ -816,7 +816,7 @@ class WorkflowServiceTest {
   fun `decomposed parent lookup rejects multiple active runtimes for same issue key`() {
     val workflows = InMemoryWorkflowStates()
     listOf("wfl-active-a", "wfl-active-b").forEach { workflowId ->
-      workflows.saveFeatureImplementWorkflow(
+      workflows.saveFeatureTaskRuntimeWorkflow(
         workflowRecord(
           workflowId = workflowId,
           artifactsPatch = mapOf(
@@ -993,7 +993,7 @@ class WorkflowServiceTest {
       ),
     )
     val workflows = InMemoryWorkflowStates()
-    workflows.saveFeatureImplementWorkflow(
+    workflows.saveFeatureTaskRuntimeWorkflow(
       workflowRecord(
         workflowId = "wfl-parent",
         artifactsPatch = mapOf(
@@ -1158,7 +1158,7 @@ class WorkflowServiceTest {
       currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "resume"),
       subtasks = decompositionRuntime(status = "in_progress").subtasks.map { it.copy(status = "pending") },
     )
-    workflows.saveFeatureImplementWorkflow(
+    workflows.saveFeatureTaskRuntimeWorkflow(
       workflowRecord(
         workflowId = "wfl-parent",
         artifactsPatch = mapOf(
@@ -1190,7 +1190,7 @@ class WorkflowServiceTest {
     )
 
     assertEquals("complete", result.state.manifest.status)
-    val persisted = workflows.getFeatureImplementWorkflow("wfl-parent")
+    val persisted = workflows.getFeatureTaskRuntimeWorkflow("wfl-parent")
     val persistedManifest = requireNotNull(persisted).toSnapshot()
       .decompositionRuntime(testDecompositionManifestValidator)
     assertEquals("complete", persistedManifest?.status)
@@ -1288,7 +1288,7 @@ class WorkflowGoalStatusProjectionTest {
         ),
       ),
     )
-    workflows.saveFeatureImplementWorkflow(
+    workflows.saveFeatureTaskRuntimeWorkflow(
       workflowRecord(
         workflowId = "wfl-parent",
         artifactsPatch = mapOf(
@@ -1302,20 +1302,20 @@ class WorkflowGoalStatusProjectionTest {
 
   private fun saveStaleRunningChildWithObservability(workflows: InMemoryWorkflowStates) {
     val opened = testWorkflowEngine.openRecord(
-      FeatureImplementWorkflowDefinition.definition,
+      FeatureTaskRuntimePhaseWorkflowDefinition.definition,
       "wfl-stale",
-      "fis-stale",
+      "ftr-stale",
       "preplan",
     )
     val running = testWorkflowEngine.updateRecord(
-      FeatureImplementWorkflowDefinition.definition,
+      FeatureTaskRuntimePhaseWorkflowDefinition.definition,
       opened,
       skillbill.workflow.model.WorkflowUpdateInput(
         workflowStatus = "running",
         currentStepId = "implement",
         stepUpdates = listOf(mapOf("step_id" to "implement", "status" to "running", "attempt_count" to 1)),
         artifactsPatch = goalContinuationArtifact() + staleObservabilityArtifact(),
-        sessionId = "fis-stale",
+        sessionId = "ftr-stale",
       ),
     )
     workflows.saveFeatureImplementWorkflow(running.toRecord())
@@ -1323,20 +1323,20 @@ class WorkflowGoalStatusProjectionTest {
 
   private fun saveAuthoritativeCompleteChild(workflows: InMemoryWorkflowStates) {
     val opened = testWorkflowEngine.openRecord(
-      FeatureImplementWorkflowDefinition.definition,
+      FeatureTaskRuntimePhaseWorkflowDefinition.definition,
       "wfl-authoritative",
-      "fis-done",
+      "ftr-done",
       "preplan",
     )
     val complete = testWorkflowEngine.updateRecord(
-      FeatureImplementWorkflowDefinition.definition,
+      FeatureTaskRuntimePhaseWorkflowDefinition.definition,
       opened,
       skillbill.workflow.model.WorkflowUpdateInput(
         workflowStatus = "running",
         currentStepId = "commit_push",
         stepUpdates = listOf(mapOf("step_id" to "commit_push", "status" to "completed", "attempt_count" to 1)),
         artifactsPatch = goalContinuationArtifact() + completeOutcomeArtifact(),
-        sessionId = "fis-done",
+        sessionId = "ftr-done",
       ),
     )
     workflows.saveFeatureImplementWorkflow(complete.toRecord())
@@ -1618,13 +1618,13 @@ class GoalRunnerCommitShaRecoveryTest {
 
   private fun commitPushCompletedWithoutCommitSha(workflowId: String): WorkflowStateRecord {
     val opened = testWorkflowEngine.openRecord(
-      FeatureImplementWorkflowDefinition.definition,
+      FeatureTaskRuntimePhaseWorkflowDefinition.definition,
       workflowId,
-      "fis-no-sha",
+      "ftr-no-sha",
       "preplan",
     )
     val completed = testWorkflowEngine.updateRecord(
-      FeatureImplementWorkflowDefinition.definition,
+      FeatureTaskRuntimePhaseWorkflowDefinition.definition,
       opened,
       skillbill.workflow.model.WorkflowUpdateInput(
         workflowStatus = "running",
@@ -1637,7 +1637,7 @@ class GoalRunnerCommitShaRecoveryTest {
             "suppress_pr" to true,
           ),
         ),
-        sessionId = "fis-no-sha",
+        sessionId = "ftr-no-sha",
       ),
     )
     return completed.toRecord()
@@ -1645,13 +1645,13 @@ class GoalRunnerCommitShaRecoveryTest {
 
   private fun blockedCommitPush(workflowId: String): WorkflowStateRecord {
     val opened = testWorkflowEngine.openRecord(
-      FeatureImplementWorkflowDefinition.definition,
+      FeatureTaskRuntimePhaseWorkflowDefinition.definition,
       workflowId,
-      "fis-blocked-push",
+      "ftr-blocked-push",
       "preplan",
     )
     return testWorkflowEngine.updateRecord(
-      FeatureImplementWorkflowDefinition.definition,
+      FeatureTaskRuntimePhaseWorkflowDefinition.definition,
       opened,
       skillbill.workflow.model.WorkflowUpdateInput(
         workflowStatus = "blocked",
@@ -1674,7 +1674,7 @@ class GoalRunnerCommitShaRecoveryTest {
           ),
           "blocked_reason" to "remote branch diverged",
         ),
-        sessionId = "fis-blocked-push",
+        sessionId = "ftr-blocked-push",
       ),
     ).toRecord()
   }
@@ -1683,13 +1683,13 @@ class GoalRunnerCommitShaRecoveryTest {
   // goal_continuation_outcome already records `complete`, but the SHA was dropped.
   private fun completeWithoutShaOutcome(workflowId: String): WorkflowStateRecord {
     val opened = testWorkflowEngine.openRecord(
-      FeatureImplementWorkflowDefinition.definition,
+      FeatureTaskRuntimePhaseWorkflowDefinition.definition,
       workflowId,
-      "fis-stale-complete",
+      "ftr-stale-complete",
       "preplan",
     )
     val completed = testWorkflowEngine.updateRecord(
-      FeatureImplementWorkflowDefinition.definition,
+      FeatureTaskRuntimePhaseWorkflowDefinition.definition,
       opened,
       skillbill.workflow.model.WorkflowUpdateInput(
         workflowStatus = "running",
@@ -1709,7 +1709,7 @@ class GoalRunnerCommitShaRecoveryTest {
             "last_resumable_step" to "commit_push",
           ),
         ),
-        sessionId = "fis-stale-complete",
+        sessionId = "ftr-stale-complete",
       ),
     )
     return completed.toRecord()
@@ -1730,9 +1730,9 @@ class WorkflowUpdateAcknowledgementBudgetTest {
     // + read-only full-state guidance — never the full durable artifacts map or
     // the full per-step list.
     val service = newAckBudgetService()
-    val opened = assertIs<WorkflowOpenResult.Ok>(service.openTestProse("fis-001"))
+    val opened = assertIs<WorkflowOpenResult.Ok>(service.openTestRuntime("ftr-001"))
     val updated = service.update(
-      WorkflowFamilyKind.TASK_PROSE,
+      WorkflowFamilyKind.TASK_RUNTIME,
       WorkflowUpdateRequest(
         workflowId = opened.workflowId,
         workflowStatus = "running",
@@ -1742,7 +1742,7 @@ class WorkflowUpdateAcknowledgementBudgetTest {
           "plan" to mapOf("mode" to "implement", "body" to "x".repeat(12000)),
           "preplan_digest" to mapOf("risk" to "low", "notes" to "y".repeat(8000)),
         ),
-        sessionId = "fis-001",
+        sessionId = "ftr-001",
       ),
     )
 
@@ -1844,8 +1844,8 @@ class WorkflowGoalRunnerReconciliationTest {
   @Suppress("LongMethod")
   fun `goal runner outcome reconciliation closes stale running child in favor of authoritative terminal workflow`() {
     val workflows = InMemoryWorkflowStates()
-    val definition = FeatureImplementWorkflowDefinition.definition
-    val staleOpened = testWorkflowEngine.openRecord(definition, "wfl-stale", "fis-001", "preplan")
+    val definition = FeatureTaskRuntimePhaseWorkflowDefinition.definition
+    val staleOpened = testWorkflowEngine.openRecord(definition, "wfl-stale", "ftr-001", "preplan")
     val staleRunning = testWorkflowEngine.updateRecord(
       definition,
       staleOpened,
@@ -1863,10 +1863,10 @@ class WorkflowGoalRunnerReconciliationTest {
             "suppress_pr" to true,
           ),
         ),
-        sessionId = "fis-001",
+        sessionId = "ftr-001",
       ),
     )
-    val authoritativeOpened = testWorkflowEngine.openRecord(definition, "wfl-authoritative", "fis-002", "preplan")
+    val authoritativeOpened = testWorkflowEngine.openRecord(definition, "wfl-authoritative", "ftr-002", "preplan")
     val authoritative = testWorkflowEngine.updateRecord(
       definition,
       authoritativeOpened,
@@ -1891,7 +1891,7 @@ class WorkflowGoalRunnerReconciliationTest {
             "last_resumable_step" to "commit_push",
           ),
         ),
-        sessionId = "fis-002",
+        sessionId = "ftr-002",
       ),
     )
     workflows.saveFeatureImplementWorkflow(staleRunning.toRecord())
@@ -1915,8 +1915,8 @@ class WorkflowGoalRunnerReconciliationTest {
   @Test
   fun `goal runner outcome reconciliation closes inactive running child without authoritative sibling`() {
     val workflows = InMemoryWorkflowStates()
-    val definition = FeatureImplementWorkflowDefinition.definition
-    val opened = testWorkflowEngine.openRecord(definition, "wfl-orphan", "fis-001", "preplan")
+    val definition = FeatureTaskRuntimePhaseWorkflowDefinition.definition
+    val opened = testWorkflowEngine.openRecord(definition, "wfl-orphan", "ftr-001", "preplan")
     val running = testWorkflowEngine.updateRecord(
       definition,
       opened,
@@ -1933,7 +1933,7 @@ class WorkflowGoalRunnerReconciliationTest {
             "suppress_pr" to true,
           ),
         ),
-        sessionId = "fis-001",
+        sessionId = "ftr-001",
       ),
     )
     workflows.saveFeatureImplementWorkflow(running.toRecord())
@@ -1955,8 +1955,8 @@ class WorkflowGoalRunnerReconciliationTest {
   @Test
   fun `goal runner outcome reconciliation keeps active running child without authoritative terminal outcome`() {
     val workflows = InMemoryWorkflowStates()
-    val definition = FeatureImplementWorkflowDefinition.definition
-    val opened = testWorkflowEngine.openRecord(definition, "wfl-active", "fis-001", "preplan")
+    val definition = FeatureTaskRuntimePhaseWorkflowDefinition.definition
+    val opened = testWorkflowEngine.openRecord(definition, "wfl-active", "ftr-001", "preplan")
     val running = testWorkflowEngine.updateRecord(
       definition,
       opened,
@@ -1973,7 +1973,7 @@ class WorkflowGoalRunnerReconciliationTest {
             "suppress_pr" to true,
           ),
         ),
-        sessionId = "fis-001",
+        sessionId = "ftr-001",
       ),
     )
     workflows.saveFeatureImplementWorkflow(running.toRecord())
@@ -1994,8 +1994,8 @@ class WorkflowGoalRunnerReconciliationTest {
   @Suppress("LongMethod")
   fun `goal runner outcome reconciliation keeps active retry when only blocked sibling exists`() {
     val workflows = InMemoryWorkflowStates()
-    val definition = FeatureImplementWorkflowDefinition.definition
-    val blockedOpened = testWorkflowEngine.openRecord(definition, "wfl-blocked", "fis-001", "preplan")
+    val definition = FeatureTaskRuntimePhaseWorkflowDefinition.definition
+    val blockedOpened = testWorkflowEngine.openRecord(definition, "wfl-blocked", "ftr-001", "preplan")
     val blocked = testWorkflowEngine.updateRecord(
       definition,
       blockedOpened,
@@ -2012,10 +2012,10 @@ class WorkflowGoalRunnerReconciliationTest {
             "suppress_pr" to true,
           ),
         ),
-        sessionId = "fis-001",
+        sessionId = "ftr-001",
       ),
     )
-    val activeOpened = testWorkflowEngine.openRecord(definition, "wfl-active", "fis-002", "preplan")
+    val activeOpened = testWorkflowEngine.openRecord(definition, "wfl-active", "ftr-002", "preplan")
     val active = testWorkflowEngine.updateRecord(
       definition,
       activeOpened,
@@ -2032,7 +2032,7 @@ class WorkflowGoalRunnerReconciliationTest {
             "suppress_pr" to true,
           ),
         ),
-        sessionId = "fis-002",
+        sessionId = "ftr-002",
       ),
     )
     workflows.saveFeatureImplementWorkflow(blocked.toRecord())
@@ -2057,8 +2057,8 @@ class WorkflowGoalRunnerReconciliationTest {
   @Test
   fun `goal runner outcome store blocks active running step instead of stale requested step`() {
     val workflows = InMemoryWorkflowStates()
-    val definition = FeatureImplementWorkflowDefinition.definition
-    val opened = testWorkflowEngine.openRecord(definition, "wfl-child", "fis-001", "preplan")
+    val definition = FeatureTaskRuntimePhaseWorkflowDefinition.definition
+    val opened = testWorkflowEngine.openRecord(definition, "wfl-child", "ftr-001", "preplan")
     val running = testWorkflowEngine.updateRecord(
       definition,
       opened,
@@ -2077,7 +2077,7 @@ class WorkflowGoalRunnerReconciliationTest {
             "suppress_pr" to true,
           ),
         ),
-        sessionId = "fis-001",
+        sessionId = "ftr-001",
       ),
     )
     workflows.saveFeatureImplementWorkflow(running.toRecord())
@@ -2095,52 +2095,6 @@ class WorkflowGoalRunnerReconciliationTest {
     val steps = decodeWorkflowStepsForTest(saved.stepsJson)
     assertEquals("completed", steps.getValue("preplan"))
     assertEquals("blocked", steps.getValue("implement"))
-  }
-
-  @Test
-  fun `goal runner blocks prose implement family at recorded current step not first unfinished step`() {
-    // F-001: the prose IMPLEMENT family must keep its historical current-step fallback. With
-    // completed preplan/plan and no running step, the runtime-only firstUnfinishedStepId boundary
-    // is intentionally NOT applied (definitionStepIds is empty for non-runtime families), so the
-    // block resolves to the record's currentStepId and specifically not to implement.
-    val workflows = InMemoryWorkflowStates()
-    val definition = FeatureImplementWorkflowDefinition.definition
-    val opened = testWorkflowEngine.openRecord(definition, "wfl-child", "fis-001", "preplan")
-    val crashed = testWorkflowEngine.updateRecord(
-      definition,
-      opened,
-      skillbill.workflow.model.WorkflowUpdateInput(
-        workflowStatus = "running",
-        currentStepId = "audit",
-        stepUpdates = listOf(
-          mapOf("step_id" to "preplan", "status" to "completed", "attempt_count" to 1),
-          mapOf("step_id" to "plan", "status" to "completed", "attempt_count" to 1),
-        ),
-        artifactsPatch = mapOf(
-          "goal_continuation" to mapOf(
-            "issue_key" to "SKILL-52.1",
-            "subtask_id" to 1,
-            "suppress_pr" to true,
-          ),
-        ),
-        sessionId = "fis-001",
-      ),
-    )
-    workflows.saveFeatureImplementWorkflow(crashed.toRecord())
-    val store = WorkflowGoalRunnerOutcomeStore(
-      database = FakeDatabaseSessionFactory(workflows),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
-    )
-
-    val blockedStep = store.markBlocked("wfl-child", "no terminal outcome", "preplan")
-
-    assertEquals("audit", blockedStep)
-    val saved = requireNotNull(workflows.getFeatureImplementWorkflow("wfl-child")).toSnapshot()
-    assertEquals("audit", saved.currentStepId)
-    val steps = decodeWorkflowStepsForTest(saved.stepsJson)
-    assertEquals("completed", steps.getValue("preplan"))
-    assertEquals("completed", steps.getValue("plan"))
-    assertEquals("blocked", steps.getValue("audit"))
   }
 
   @Test
@@ -2301,10 +2255,9 @@ class WorkflowGoalRunnerReconciliationTest {
 
   @Test
   fun `only the runtime family carries loop-only steps so non-runtime boundary scans stay strict`() {
-    // The loop-only filter in the resume-boundary scan is family-scoped. IMPLEMENT and VERIFY run
-    // strict forward pipelines, so their loopOnlyStepIds stay empty and their boundary resolution is
-    // unchanged; only TASK_RUNTIME inherits the runtime definition's loop-only phases.
-    assertEquals(emptySet<String>(), WorkflowFamily.IMPLEMENT.loopOnlyStepIds)
+    // The loop-only filter in the resume-boundary scan is family-scoped. VERIFY runs a strict
+    // forward pipeline, so its loopOnlyStepIds stay empty and its boundary resolution is unchanged;
+    // only TASK_RUNTIME inherits the runtime definition's loop-only phases.
     assertEquals(emptySet<String>(), WorkflowFamily.VERIFY.loopOnlyStepIds)
     assertEquals(
       FeatureTaskRuntimePhaseWorkflowDefinition.transitions.loopOnlyPhaseIds,
@@ -2332,38 +2285,6 @@ class WorkflowGoalRunnerReconciliationTest {
 // alignment for the outcome store. Split out of WorkflowGoalRunnerOutcomeStoreTest so each class
 // stays under the detekt LargeClass threshold.
 class WorkflowGoalRunnerProgressStoreTest {
-  @Test
-  fun `goal runner progress reports finish after terminal step completes despite stale current step`() {
-    val workflows = InMemoryWorkflowStates()
-    val definition = FeatureImplementWorkflowDefinition.definition
-    val opened = testWorkflowEngine.openRecord(definition, "wfl-child", "fis-001", "preplan")
-    val finished = testWorkflowEngine.updateRecord(
-      definition,
-      opened,
-      skillbill.workflow.model.WorkflowUpdateInput(
-        workflowStatus = "running",
-        currentStepId = "audit",
-        stepUpdates = listOf(
-          mapOf("step_id" to "commit_push", "status" to "completed", "attempt_count" to 1),
-          mapOf("step_id" to "finish", "status" to "completed", "attempt_count" to 1),
-        ),
-        artifactsPatch = null,
-        sessionId = "fis-001",
-      ),
-    )
-    workflows.saveFeatureImplementWorkflow(finished.toRecord())
-    val store = WorkflowGoalRunnerOutcomeStore(
-      database = FakeDatabaseSessionFactory(workflows),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
-    )
-
-    val progress = store.progress("wfl-child")
-
-    requireNotNull(progress)
-    assertEquals("finish", progress.currentStepId)
-    assertEquals("workflow_status=running; step=finish", progress.latestLivenessSignal)
-  }
-
   @Test
   fun `goal runner progress keeps declared liveness when goal observability latest event is malformed`() {
     // SKILL-64 Subtask 3 (F-R01): a corrupt goal_observability_latest_event must
@@ -2649,8 +2570,8 @@ class WorkflowGoalRunnerProgressStoreTest {
   @Test
   fun `subtask resume alignment keeps later running step over stale manifest step`() {
     val workflows = InMemoryWorkflowStates()
-    val definition = FeatureImplementWorkflowDefinition.definition
-    val opened = testWorkflowEngine.openRecord(definition, "wfl-child", "fis-001", "preplan")
+    val definition = FeatureTaskRuntimePhaseWorkflowDefinition.definition
+    val opened = testWorkflowEngine.openRecord(definition, "wfl-child", "ftr-001", "preplan")
     val running = testWorkflowEngine.updateRecord(
       definition,
       opened,
@@ -2663,7 +2584,7 @@ class WorkflowGoalRunnerProgressStoreTest {
           mapOf("step_id" to "implement", "status" to "running", "attempt_count" to 1),
         ),
         artifactsPatch = null,
-        sessionId = "fis-001",
+        sessionId = "ftr-001",
       ),
     )
     workflows.saveFeatureImplementWorkflow(running.toRecord())
@@ -2839,8 +2760,8 @@ private fun workflowRecord(
   artifactsPatch: Map<String, Any?>,
   workflowStatus: String = "running",
 ): WorkflowStateRecord {
-  val definition = FeatureImplementWorkflowDefinition.definition
-  val opened = testWorkflowEngine.openRecord(definition, workflowId, "fis-001", "assess")
+  val definition = FeatureTaskRuntimePhaseWorkflowDefinition.definition
+  val opened = testWorkflowEngine.openRecord(definition, workflowId, "ftr-001", "preplan")
   return testWorkflowEngine.updateRecord(
     definition,
     opened,
@@ -2849,7 +2770,7 @@ private fun workflowRecord(
       currentStepId = "plan",
       stepUpdates = null,
       artifactsPatch = artifactsPatch,
-      sessionId = "fis-001",
+      sessionId = "ftr-001",
     ),
   ).toRecord()
 }
@@ -2890,7 +2811,7 @@ private fun scopedReplanStore(
   workflows: RecordingGoalChildDeletionWorkflowStates,
   manifest: DecompositionManifest,
 ): WorkflowGoalRunnerManifestStore {
-  workflows.saveFeatureImplementWorkflow(
+  workflows.saveFeatureTaskRuntimeWorkflow(
     workflowRecord(
       workflowId = "wfl-parent",
       artifactsPatch = mapOf(
@@ -3391,7 +3312,7 @@ class GoalChildPlanningHydrationTransactionIntegrationTest {
   private fun hydrationHarness(twoSubtasks: Boolean = false, variant: String = "valid"): HydrationHarness {
     val workflows = InMemoryWorkflowStates()
     val manifest = hydrationManifest(twoSubtasks)
-    workflows.saveFeatureImplementWorkflow(
+    workflows.saveFeatureTaskRuntimeWorkflow(
       workflowRecord(
         "goal-parent",
         mapOf(
@@ -3812,7 +3733,7 @@ internal class InMemoryWorkflowStates : WorkflowStateRepository {
 }
 
 private fun InMemoryWorkflowStates.decomposedParentRows(issueKey: String): List<WorkflowStateRecord> =
-  listFeatureImplementWorkflows(Int.MAX_VALUE).filter { row ->
+  listFeatureTaskRuntimeWorkflows(Int.MAX_VALUE).filter { row ->
     val snapshot = row.toSnapshot()
     row.issueKey == issueKey &&
       !snapshot.isGoalContinuationChildWorkflow() &&
@@ -3842,7 +3763,7 @@ class DecompositionDiskBootstrapTest {
       ),
     )
     val workflows = InMemoryWorkflowStates()
-    workflows.saveFeatureImplementWorkflow(
+    workflows.saveFeatureTaskRuntimeWorkflow(
       workflowRecord(
         workflowId = "wfl-invalid-issue-key",
         artifactsPatch = mapOf(
@@ -3971,7 +3892,7 @@ class DecompositionDiskBootstrapTest {
 
     assertEquals("paused", parent.workflowStatus)
     assertFalse(
-      parent.workflowStatus in FeatureImplementWorkflowDefinition.definition.terminalStatuses,
+      parent.workflowStatus in FeatureTaskRuntimePhaseWorkflowDefinition.definition.terminalStatuses,
       "A bootstrapped parent must not be terminal; it is interrupted work awaiting resume.",
     )
   }
@@ -4013,7 +3934,7 @@ class DecompositionDiskBootstrapTest {
     // Insert existing parent with a corrupt decomposition_runtime artifact. findDecomposedParentWorkflow
     // requires a valid Map decode and silently excludes this row; the secondary legacy-parent
     // search must find it so no second parent id is minted.
-    workflows.saveFeatureImplementWorkflow(
+    workflows.saveFeatureTaskRuntimeWorkflow(
       workflowRecord(
         workflowId = "wfl-corrupt-parent",
         artifactsPatch = mapOf(
@@ -4033,7 +3954,7 @@ class DecompositionDiskBootstrapTest {
     db.transaction<ContinuationStepResult>(null) { unitOfWork ->
       continuation.continueDecomposedParentByIssueKey("SKILL-TEST", unitOfWork)
     }
-    val parentRow = requireNotNull(workflows.getFeatureImplementWorkflow("wfl-corrupt-parent"))
+    val parentRow = requireNotNull(workflows.getFeatureTaskRuntimeWorkflow("wfl-corrupt-parent"))
     assertEquals("paused", parentRow.workflowStatus)
     // No second parent should have been minted: only one row must carry both the
     // decompose-mode plan artifact and the issue key (child subtask rows don't have it).
@@ -4140,7 +4061,7 @@ class DecompositionDiskBootstrapTest {
       encodeDecompositionManifestYaml(manifest, testDecompositionManifestValidator, TestDecompositionManifestFileStore),
     )
     val workflows = InMemoryWorkflowStates()
-    workflows.saveFeatureImplementWorkflow(
+    workflows.saveFeatureTaskRuntimeWorkflow(
       workflowRecord(
         workflowId = "wfl-corrupt-idempotent",
         artifactsPatch = mapOf(

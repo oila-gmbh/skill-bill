@@ -15,7 +15,7 @@ import kotlin.test.assertIs
 
 class FeatureTaskRouterContinuationTest {
   @Test
-  fun `prose router continuation after plan preserves identity and supplies only completed plan`() {
+  fun `runtime router continuation after plan preserves identity and supplies only completed plan`() {
     val states = InMemoryWorkflowStates()
     val database = FakeDatabaseSessionFactory(states)
     val service = WorkflowService(
@@ -31,7 +31,7 @@ class FeatureTaskRouterContinuationTest {
     )
     val opened = assertIs<WorkflowOpenResult.Ok>(
       service.openFeatureTask(
-        kind = WorkflowFamilyKind.TASK_PROSE,
+        kind = WorkflowFamilyKind.TASK_RUNTIME,
         issueKey = "SKILL-120",
         repositoryIdentity = REPOSITORY_IDENTITY,
         governedSpecPath = SPEC_PATH,
@@ -39,7 +39,7 @@ class FeatureTaskRouterContinuationTest {
       ),
     )
     service.update(
-      WorkflowFamilyKind.TASK_PROSE,
+      WorkflowFamilyKind.TASK_RUNTIME,
       WorkflowUpdateRequest(
         workflowId = opened.workflowId,
         workflowStatus = "blocked",
@@ -60,7 +60,7 @@ class FeatureTaskRouterContinuationTest {
       lookup.lookup("skill-120", REPOSITORY_IDENTITY),
     ).candidate
     val continued = assertIs<WorkflowContinueResult.Standard>(
-      service.continueWorkflow(WorkflowFamilyKind.TASK_PROSE, candidate.workflowId),
+      service.continueWorkflow(WorkflowFamilyKind.TASK_RUNTIME, candidate.workflowId),
     ).view
 
     assertEquals(opened.workflowId, candidate.workflowId)

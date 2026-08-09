@@ -4,9 +4,9 @@ import skillbill.contracts.workflow.CanonicalWorkflowStateSchemaValidator
 import skillbill.contracts.workflow.WorkflowStateSchemaValidator
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
-import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
 import skillbill.workflow.model.WorkflowDefinition
 import skillbill.workflow.model.WorkflowUpdateInput
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.verify.FeatureVerifyWorkflowDefinition
 import kotlin.test.Test
 
@@ -18,7 +18,7 @@ import kotlin.test.Test
  * `WorkflowEngine` output instead of a hand-built `snapshotMap` helper.
  * For every shipped `WorkflowDefinition` we:
  *
- *  - Walk every `stepId` (12 for FeatureImplement, 8 for FeatureVerify):
+ *  - Walk every `stepId` (10 for feature-task-runtime, 8 for FeatureVerify):
  *    open a record with `engine.openRecord`, advance it through
  *    `engine.updateRecord` so the targeted step is marked
  *    running, then validate the engine's `fullPayload(...)`,
@@ -26,8 +26,8 @@ import kotlin.test.Test
  *    All three derived snapshot envelopes are pinned to live engine
  *    output so the schema cannot drift from what `WorkflowEngine`
  *    actually emits.
- *  - Walk every `workflow_status` the definition declares (6 statuses
- *    for FeatureImplement incl. `blocked`, 5 statuses for FeatureVerify):
+ *  - Walk every `workflow_status` the definition declares (7 statuses
+ *    for feature-task-runtime incl. `blocked`/`paused`, 5 statuses for FeatureVerify):
  *    drive the engine to that real terminal state via `updateRecord`
  *    (every step `completed` for terminal statuses, plus `finished_at`
  *    where applicable), then validate the engine's emitted `fullPayload`.
@@ -48,7 +48,7 @@ class WorkflowStateSchemaValidatesExistingWorkflowsTest {
 
   @Test
   fun `every feature-task step snapshot from the engine validates clean`() {
-    validateEverySnapshotPerStep(FeatureImplementWorkflowDefinition.definition)
+    validateEverySnapshotPerStep(FeatureTaskRuntimePhaseWorkflowDefinition.definition)
   }
 
   @Test
@@ -58,7 +58,7 @@ class WorkflowStateSchemaValidatesExistingWorkflowsTest {
 
   @Test
   fun `every feature-task workflow_status snapshot from the engine validates clean`() {
-    validateEveryWorkflowStatus(FeatureImplementWorkflowDefinition.definition)
+    validateEveryWorkflowStatus(FeatureTaskRuntimePhaseWorkflowDefinition.definition)
   }
 
   @Test
@@ -83,7 +83,7 @@ class WorkflowStateSchemaValidatesExistingWorkflowsTest {
     definition.stepIds.forEach { activeStepId ->
       val record = engine.openRecord(
         definition = definition,
-        workflowId = "wfl-19700101-000000-aaaa",
+        workflowId = "wftr-19700101-000000-aaaa",
         sessionId = "",
         currentStepId = activeStepId,
       )
@@ -116,7 +116,7 @@ class WorkflowStateSchemaValidatesExistingWorkflowsTest {
     definition.workflowStatuses.forEach { status ->
       val opened = engine.openRecord(
         definition = definition,
-        workflowId = "wfl-19700101-000000-aaaa",
+        workflowId = "wftr-19700101-000000-aaaa",
         sessionId = "",
         currentStepId = definition.defaultInitialStepId,
       )

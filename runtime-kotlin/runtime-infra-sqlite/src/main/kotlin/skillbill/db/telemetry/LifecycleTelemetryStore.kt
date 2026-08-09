@@ -1,8 +1,6 @@
 package skillbill.db.telemetry
 
 import skillbill.ports.persistence.LifecycleTelemetryRepository
-import skillbill.telemetry.model.FeatureImplementFinishedRecord
-import skillbill.telemetry.model.FeatureImplementStartedRecord
 import skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord
 import skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord
 import skillbill.telemetry.model.FeatureVerifyFinishedRecord
@@ -36,17 +34,6 @@ class LifecycleTelemetryStore(
 
   override fun featureTaskRuntimeRejection(record: FeatureTaskRuntimeRejectionMeasurement) {
     enqueueTelemetry(connection, "skillbill_feature_task_runtime_rejection", record.toTelemetryMap())
-  }
-
-  override fun featureImplementStarted(record: FeatureImplementStartedRecord, level: String) {
-    saveFeatureImplementStarted(connection, record)
-    emitFeatureImplementStarted(connection, record.sessionId, level)
-  }
-
-  override fun featureImplementFinished(record: FeatureImplementFinishedRecord, level: String) {
-    if (saveFeatureImplementFinished(connection, record) == TerminalSaveOutcome.FIRST_TERMINAL) {
-      emitFeatureImplementFinished(connection, record.sessionId, level)
-    }
   }
 
   override fun featureTaskRuntimeStarted(record: FeatureTaskRuntimeStartedRecord, level: String) {

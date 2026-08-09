@@ -48,9 +48,9 @@ class McpRuntimeTest {
     val tempDir = Files.createTempDirectory("skillbill-mcp-workflow-open-compat")
     val context = McpRuntimeContext(environment = disabledTelemetryEnvironment(tempDir), userHome = tempDir)
 
-    val opened = McpWorkflowRuntime.open(WorkflowFamilyKind.TASK_PROSE, "fis-compat", null, context)
+    val opened = McpWorkflowRuntime.open(WorkflowFamilyKind.TASK_RUNTIME, "ftr-compat", null, context)
 
-    assertTrue((opened["workflow_id"] as String).startsWith("wfl-"))
+    assertTrue((opened["workflow_id"] as String).startsWith("wftr-"))
   }
 
   @Test

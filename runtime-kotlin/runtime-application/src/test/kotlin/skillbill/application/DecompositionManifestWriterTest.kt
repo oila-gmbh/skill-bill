@@ -11,7 +11,6 @@ import skillbill.application.workflow.repoRoot
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.workflow.WorkflowEngine
-import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
 import skillbill.workflow.model.DecompositionExecutionModel
 import skillbill.workflow.model.WorkflowUpdateInput
 import skillbill.workflow.toWireMap
@@ -469,8 +468,8 @@ class DecompositionManifestWriterTest {
     assertEquals(null, result)
     assertFalse(Files.exists(parentSpecPath.parent.resolve("decomposition-manifest.yaml")))
 
-    val definition = FeatureImplementWorkflowDefinition.definition
-    val opened = engine.openRecord(definition, "fis-compat-001", "session-compat", "plan")
+    val definition = skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition.definition
+    val opened = engine.openRecord(definition, "ftr-compat-001", "session-compat", "plan")
     val updated = engine.updateRecord(
       definition,
       opened,
