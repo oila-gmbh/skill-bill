@@ -339,8 +339,8 @@ When the parent's finished event fires, it embeds each collected `telemetry_payl
 
 ```json
 {
-  "event": "skillbill_feature_task_runtime_finished",
-  "session_id": "ftr-20260413-104704-l84r",
+  "event": "skillbill_<parent>_finished",
+  "session_id": "fis-20260413-104704-l84r",
   "completion_status": "completed",
   "duration_seconds": 1820,
   "child_steps": [
@@ -374,6 +374,8 @@ When the parent's finished event fires, it embeds each collected `telemetry_payl
   ...
 }
 ```
+
+With the prose lane retired, no currently emitted event carries `child_steps`: the runtime finished event (`skillbill_feature_task_runtime_finished`) has no such field. The array stays part of the orchestrator contract for future parents, and historical `skillbill_feature_task_prose_finished` rows still carry it.
 
 ### Graceful degradation
 
@@ -581,7 +583,7 @@ Local health views use the rows available in the local telemetry database. They 
 Review health combines two review payload sources:
 
 - standalone `skillbill_review_finished` events
-- embedded code-review entries inside `skillbill_feature_task_runtime_finished.child_steps`
+- embedded code-review entries inside historical `skillbill_feature_task_prose_finished.child_steps` rows (legacy prose lane; no new rows are produced)
 
 Do not attempt to de-duplicate standalone and embedded review payloads unless a stable shared key is present. Local stats report `source_counts` for `standalone`, `embedded`, and `malformed`. Rejected findings mean reviewer feedback explicitly rejected or marked a finding false positive. Unresolved findings mean the latest finding outcome is missing or not accepted/rejected.
 
@@ -627,7 +629,7 @@ FROM (
     JSONExtractInt(child_raw, 'unresolved_findings') AS unresolved_findings
   FROM events
   ARRAY JOIN JSONExtractArrayRaw(toString(properties.child_steps)) AS child_raw
-  WHERE event = 'skillbill_feature_task_runtime_finished'
+  WHERE event = 'skillbill_feature_task_prose_finished'
     AND timestamp >= now() - INTERVAL 60 DAY
     AND properties.install_id IS NOT NULL
     AND trim(toString(properties.install_id)) != ''
@@ -636,6 +638,8 @@ FROM (
 )
 GROUP BY source
 ```
+
+The `embedded` branch reads the retired `skillbill_feature_task_prose_finished` event and matches only historical rows; once those age out of the window the branch returns nothing and review health is standalone-only.
 
 ### Alignment rule
 

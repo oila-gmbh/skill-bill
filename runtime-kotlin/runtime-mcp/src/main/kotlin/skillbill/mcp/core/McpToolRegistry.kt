@@ -1,7 +1,5 @@
 package skillbill.mcp.core
 
-import skillbill.application.telemetry.specInputTypes
-
 data class McpToolSpec(
   val name: String,
   val description: String,
