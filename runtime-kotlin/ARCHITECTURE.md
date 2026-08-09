@@ -610,9 +610,9 @@ skillbill.workflow.verify
   (id prefix `wftr`, contract version `FEATURE_TASK_RUNTIME_CONTRACT_VERSION`);
   persisted rows use `workflow_name=bill-feature-task`, `mode=runtime`, and
   `implementation_skill=bill-feature-task-runtime`.
-- Legacy `bill-feature-task-prose` skill trees and `mode=prose` persistence rows
-  remain on disk until a later SKILL-175 subtask deletes them; callers no longer
-  select prose as an engine. SKILL-132 removed the duplicate
+- Legacy `mode=prose` persistence rows may remain until a later SKILL-175
+  subtask removes them; the prose skill trees themselves are deleted and
+  callers no longer select prose as an engine. SKILL-132 removed the duplicate
   `feature_task_runtime_*` MCP tools: the foreground runtime driver calls
   `WorkflowService`, `LifecycleTelemetryService`, and
   `FeatureTaskContinuationLookupService` directly, and `skill-bill feature-task`

@@ -45,14 +45,14 @@ requests = [
         "jsonrpc": "2.0",
         "id": "invalid",
         "method": "tools/call",
-        "params": {"name": "feature_task_prose_workflow_get", "arguments": {"unexpected": True}},
+        "params": {"name": "feature_verify_workflow_get", "arguments": {"unexpected": True}},
     },
     {
         "jsonrpc": "2.0",
         "id": "open",
         "method": "tools/call",
         "params": {
-            "name": "feature_task_prose_workflow_open",
+            "name": "feature_verify_workflow_open",
             "arguments": {
                 "issue_key": "SMOKE-1",
                 "repository_identity": "repo-root-realpath-v1:/install-smoke",
@@ -112,7 +112,7 @@ try:
         "id": "get",
         "method": "tools/call",
         "params": {
-            "name": "feature_task_prose_workflow_get",
+            "name": "feature_verify_workflow_get",
             "arguments": {"workflow_id": workflow_id},
         },
     }

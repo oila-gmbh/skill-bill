@@ -29,7 +29,6 @@ class FeatureSpecSkillWiringContractTest {
     val feature = Files.readString(repoRootFromTest().resolve("skills/bill-feature/content.md"))
     val task = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task/content.md"))
     val runtime = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task-runtime/content.md"))
-    val prose = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task-prose/content.md"))
 
     assertContains(feature, "Before discovering or preparing governed artifacts, perform the read-only")
     assertContains(feature, "The workflow database and immutable execution identity are authoritative")
@@ -54,8 +53,6 @@ class FeatureSpecSkillWiringContractTest {
     assertFalse(task.contains("mode:runtime"))
     assertContains(runtime, "skill-bill feature-task resume <workflow_id> <issue_key> <spec_path>")
     assertContains(runtime, "deterministically skips\nalready-complete phases")
-    assertContains(prose, "feature_task_prose_workflow_continue")
-    assertContains(prose, "Do not open a new workflow when continuing an existing run")
   }
 
   @Test
@@ -63,7 +60,6 @@ class FeatureSpecSkillWiringContractTest {
     val feature = Files.readString(repoRootFromTest().resolve("skills/bill-feature/content.md"))
     val task = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task/content.md"))
     val goal = Files.readString(repoRootFromTest().resolve("skills/bill-feature-goal/content.md"))
-    val prose = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task-prose/content.md"))
     val runtime = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task-runtime/content.md"))
 
     assertContains(feature, "Accept zero or more ordered `agent-addon:<slug>` arguments")
@@ -73,8 +69,6 @@ class FeatureSpecSkillWiringContractTest {
     assertEquals(1, countOccurrences(task, "Ask exactly one confirmation question"))
     assertContains(goal, "Show its slugs and descriptions in\ncaller order in the existing single confirmation")
     assertContains(goal, "forward it unchanged to every runtime\nchild and child continuation artifact")
-    assertContains(prose, "Before\nevery initial phase, retry, review-fix, audit re-entry, or continuation")
-    assertContains(prose, "An empty selection adds no artifact content and no prompt\nsection")
     assertContains(runtime, "Do not parse, reorder, or rediscover it")
     assertFalse(runtime.contains("## Single Confirmation Gate"))
   }
@@ -94,19 +88,9 @@ class FeatureSpecSkillWiringContractTest {
   }
 
   @Test
-  fun `bill feature task prose content routes decomposition through shared preparation path`() {
-    val content = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task-prose/content.md"))
-
-    assertContains(content, "## Shared Feature-Spec Preparation Path")
-    assertContains(content, "invoke the shared feature-spec preparation path")
-  }
-
-  @Test
-  fun `issue keyed prose and verify workflow openings forward only normalized issue keys`() {
-    val proseContent = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task-prose/content.md"))
+  fun `issue keyed verify workflow openings forward only normalized issue keys`() {
     val verifyContent = Files.readString(repoRootFromTest().resolve("skills/bill-feature-verify/content.md"))
 
-    assertContains(proseContent, "issue_key: <normalized issue key>")
     assertContains(verifyContent, "issue_key: <normalized issue key>")
     assertContains(verifyContent, "otherwise omit the field")
     assertContains(verifyContent, "rather than deriving one from presentation data, workflow ids, or free text")
@@ -132,12 +116,9 @@ class FeatureSpecSkillWiringContractTest {
   @Test
   fun `prepared feature guidance uses the manifest as sole source authority`() {
     val runtime = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task-runtime/content.md"))
-    val prose = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task-prose/content.md"))
     val verify = Files.readString(repoRootFromTest().resolve("skills/bill-feature-verify/content.md"))
 
     assertContains(runtime, "bare `spec.md` is preparation\nintake, not prepared source authority")
-    assertContains(prose, "A bare `spec.md` is preparation intake, not prepared source\nauthority")
-    assertContains(prose, "exactly one manifest subtask")
     assertContains(verify, "A bare `spec.md` is intake rather than prepared source authority")
   }
 
@@ -148,13 +129,6 @@ class FeatureSpecSkillWiringContractTest {
     val goal = Files.readString(repoRootFromTest().resolve("skills/bill-feature-goal/content.md"))
     val review = Files.readString(repoRootFromTest().resolve("skills/bill-code-review/content.md"))
     val runtime = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task-runtime/content.md"))
-    val prose = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task-prose/content.md"))
-    val subtaskRunner = Files.readString(
-      repoRootFromTest().resolve("skills/bill-feature-task-subtask-runner/content.md"),
-    )
-    val nativeAgents = Files.readString(
-      repoRootFromTest().resolve("skills/bill-feature-task-prose/native-agents/agents.yaml"),
-    )
 
     assertContains(feature, "zero or one `code-review:auto`, `code-review:inline`, or")
     assertContains(feature, "Reject a malformed, unknown, repeated, or conflicting")
@@ -166,13 +140,6 @@ class FeatureSpecSkillWiringContractTest {
     assertContains(runtime, "The `bill-feature-task` router has already rejected invalid review-selection")
     assertContains(runtime, "Do not reparse, default, or\nchange `code-review:<selected-mode>`")
     assertFalse(runtime.contains("## Single Confirmation Gate"))
-    assertContains(prose, "Obtain the normalized `code-review:auto|inline|delegated` selection")
-    assertContains(prose, "durable goal and child workflow state supply the immutable")
-    assertContains(prose, "This sidecar must not reparse the token, present another gate")
-    assertContains(prose, "The router's confirmation is the only gate")
-    assertFalse(prose.contains("Then ask: **Confirm or adjust the above before I plan.**"))
-    assertContains(subtaskRunner, "bill-code-review mode:<code_review_mode>")
-    assertFalse(subtaskRunner.contains("bill-code-review mode:code_review_mode"))
     assertContains(goal, "selected mode is immutable for the parent and every child")
     assertContains(review, "`delegated` always runs the normal routed delegated path")
     // Inline is a distinct, shallower depth tier (SKILL-142), no longer "the same review, run inline".
@@ -181,25 +148,11 @@ class FeatureSpecSkillWiringContractTest {
     assertContains(review, "equivalent to a delegated result")
     assertContains(review, "Omission means `mode:inline`.")
     assertContains(review, "Do not pass `parallel:` into lane 2")
-    assertContains(nativeAgents, "Code-review execution mode: {code_review_mode}")
-    assertContains(nativeAgents, "Parallel review agent: {parallel_review_agent}")
-    assertContains(nativeAgents, "Immutable review base SHA: {review_base_sha}")
-    assertContains(nativeAgents, "Baseline untracked inventory: {baseline_untracked_paths}")
-    assertContains(nativeAgents, "Completed review passes: {completed_review_pass_count}")
-    assertContains(nativeAgents, "Reserved review pass: {reserved_review_pass_number}")
-    assertContains(nativeAgents, "Review cap disposition: {review_cap_disposition}")
   }
 
   @Test
   fun `runtime goal child review contract preserves durable review scope`() {
     val goal = Files.readString(repoRootFromTest().resolve("skills/bill-feature-goal/content.md"))
-    val prose = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task-prose/content.md"))
-    val runner = Files.readString(
-      repoRootFromTest().resolve("skills/bill-feature-task-subtask-runner/content.md"),
-    )
-    val nativeAgents = Files.readString(
-      repoRootFromTest().resolve("skills/bill-feature-task-prose/native-agents/agents.yaml"),
-    )
 
     assertContains(goal, "capture and durably persist that child workflow's `review_base_sha`")
     assertContains(goal, "current untracked paths - baseline untracked inventory")
@@ -207,72 +160,27 @@ class FeatureSpecSkillWiringContractTest {
       goal,
       "They must never contain a path, line number, diff\nhunk, or raw child-review output",
     )
-    assertContains(prose, "Reject an explicit incompatible mode or lane\nbefore any child work starts")
-    assertContains(prose, "An incompatible resume rejection leaves those durable parent and child values\nunchanged")
-    assertContains(prose, "current untracked\npaths minus the baseline inventory")
-    assertContains(runner, "current untracked paths after subtracting\nthe baseline untracked inventory")
-    assertContains(runner, "`baseline_untracked_paths`, `completed_review_pass_count`,")
-    assertContains(runner, "the runner must not default, recompute, or replace\nthem")
-    assertContains(nativeAgents, "current untracked paths after subtracting `{baseline_untracked_paths}`")
-    assertContains(nativeAgents, "Durable review briefing:")
-    assertContains(
-      nativeAgents,
-      "Reject an explicit incompatible mode or lane before child work starts and " +
-        "leave durable state unchanged",
-    )
-    assertContains(runner, "a merge base, or earlier-sibling\nsubtask changes")
   }
 
   @Test
-  fun `prose review lanes count as one pass while decomposed children retain durable pass continuation`() {
+  fun `goal review pass sequence keeps Blocker advancement and ledger-only location evidence`() {
     val goal = Files.readString(repoRootFromTest().resolve("skills/bill-feature-goal/content.md"))
-    val prose = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task-prose/content.md"))
-    val runner = Files.readString(
-      repoRootFromTest().resolve("skills/bill-feature-task-subtask-runner/content.md"),
-    )
-    val nativeAgents = Files.readString(
-      repoRootFromTest().resolve("skills/bill-feature-task-prose/native-agents/agents.yaml"),
-    )
 
-    assertContains(prose, "Do not\npass `parallel:` to either lane")
-    assertContains(prose, "together they count as one pass")
-    assertContains(runner, "The coordinated lanes are exactly one pass")
-    assertContains(nativeAgents, "Invoke both lanes directly and do not pass a parallel argument into either lane")
-    assertContains(runner, "resume that accounted pass instead of reserving another")
-    assertContains(prose, "no pass number ends\nthe loop")
-    assertContains(
-      prose,
-      "Continue past Major, Minor, and Nit findings while preserving them as review evidence",
-    )
-    assertContains(
-      runner,
-      "preserve\ncomplete location-bearing evidence\nonly in the goal-wide unaddressed-findings ledger",
-    )
-    assertContains(runner, "class/symbol-or-sanitized label, and concise text")
     assertContains(
       goal,
       "They must never contain a path, line number, diff\nhunk, or raw child-review output",
     )
-    assertContains(
-      prose,
-      "This applies to every feature task",
-    )
-    assertContains(
-      prose,
-      "standalone prose feature tasks advance only after every Blocker finding clears",
-    )
+    assertContains(goal, "Remediation continues while any unresolved Blocker remains")
   }
 
   @Test
-  fun `the four governed feature surfaces state one audit-first order and reserve locations for the ledger`() {
+  fun `the governed feature surfaces state one audit-first order and reserve locations for the ledger`() {
     val passSequence =
       "Review pass one uses the selected mode, and every later pass runs inline against the " +
         "remediation delta via `context:feature-remediation`."
     val surfaces = listOf(
       "skills/bill-feature-goal/content.md",
       "skills/bill-feature-task-runtime/content.md",
-      "skills/bill-feature-task-prose/content.md",
-      "skills/bill-feature-task-subtask-runner/content.md",
     )
 
     surfaces.forEach { path ->

@@ -1,8 +1,6 @@
 package skillbill.install
 
 import skillbill.install.staging.stageInstalledSkill
-import skillbill.nativeagent.composition.parseNativeAgentBundle
-import skillbill.nativeagent.rendering.NativeAgentProvider
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import java.nio.file.Path
@@ -37,51 +35,25 @@ class FeatureFamilyRenderingIntegrationTest {
     val feature = staged.renderedSkillFile.readText()
     val task = staged.stagingDir.resolve("bill-feature-task.md").readText()
     val goal = staged.stagingDir.resolve("bill-feature-goal.md").readText()
-    val prose = staged.stagingDir.resolve("bill-feature-task-prose.md").readText()
     val runtime = staged.stagingDir.resolve("bill-feature-task-runtime.md").readText()
-    val subtaskRunner = staged.stagingDir.resolve("bill-feature-task-subtask-runner.md").readText()
-    val nativeAgents = repoRoot.resolve("skills/bill-feature-task-prose/native-agents/agents.yaml").readText()
-    val renderedNativeAgents = parseNativeAgentBundle(
-      repoRoot.resolve("skills/bill-feature-task-prose/native-agents/agents.yaml"),
-    ).filter { source -> source.name == "bill-feature-task-subtask-runner" }.flatMap { source ->
-      NativeAgentProvider.entries.map { provider ->
-        val output = home.resolve("native-agents/${provider.directoryName}/${source.name}.md")
-        Files.createDirectories(output.parent)
-        Files.writeString(output, provider.render(source))
-        output.readText()
-      }
-    }
+
+    assertFalse(Files.exists(staged.stagingDir.resolve("bill-feature-task-prose.md")))
+    assertFalse(Files.exists(staged.stagingDir.resolve("bill-feature-task-subtask-runner.md")))
 
     assertContains(feature, "When omitted, do not synthesize a `code-review:` token; preserve")
     assertContains(feature, "omitting the `code-review:` token when the caller did not provide it")
     assertContains(feature, "canonical manifest source identity, content digest, and confirmation description")
     assertContains(task, "Omission resolves to `inline`")
-    assertContains(task, "Forward the resolved selection unchanged to either sidecar")
+    assertContains(task, "Forward the resolved selection unchanged to the runtime sidecar")
     assertContains(task, "selected agent add-on slugs and manifest descriptions in caller order, or `none`")
-    assertContains(goal, "For a prose-goal resume, an omitted `code-review:`")
-    assertContains(goal, "forward it unchanged to every runtime or\nprose child and child continuation artifact")
+    assertContains(goal, "forward it unchanged to every runtime\nchild and child continuation artifact")
     assertContains(goal, "Major, Minor,\nand Nit findings remain durable evidence and never prevent advancement")
     assertContains(goal, "no finite count pauses or advances the run")
-    assertContains(prose, "bill-code-review mode:<selected-mode>")
-    assertContains(prose, "An empty selection adds no artifact content and no prompt\nsection")
     assertContains(runtime, "--code-review-mode <auto|inline|delegated>")
     assertContains(runtime, "--agent-addon-selection-json <structured-json>")
     assertContains(runtime, "Do not parse, reorder, or rediscover it")
     assertContains(stagedReview.renderedSkillFile.readText(), "mode:auto|inline|delegated")
     assertFalse(stagedReview.renderedSkillFile.readText().contains("execution-mode:auto|inline|delegated"))
-    assertContains(subtaskRunner, "bill-code-review mode:<code_review_mode>")
-    assertFalse(subtaskRunner.contains("bill-code-review mode:code_review_mode"))
-    assertContains(nativeAgents, "Completed review passes: {completed_review_pass_count}")
-    assertContains(nativeAgents, "Reserved review pass: {reserved_review_pass_number}")
-    assertContains(nativeAgents, "from `{review_base_sha}`")
-    assertContains(nativeAgents, "No pass number ends the loop.")
-    assertTrue(renderedNativeAgents.isNotEmpty())
-    renderedNativeAgents.forEach { rendered ->
-      assertContains(rendered, "Completed review passes: {completed_review_pass_count}")
-      assertContains(rendered, "No pass number ends the loop.")
-      assertContains(rendered, "never include a path, line number, hunk, or raw review output")
-      assertContains(rendered, "Persist full location-bearing review evidence")
-    }
     assertTrue(sourceFilesBefore.all { (path, bytes) -> bytes.contentEquals(Files.readAllBytes(path)) })
   }
 

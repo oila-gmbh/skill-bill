@@ -92,5 +92,5 @@ Does not apply fixes; only lists them. Test-value judgment stays with
 ## Attribution
 
 Ponytail over-engineering review/audit mechanisms are adapted from DietrichGebert/ponytail
-(MIT). Prefer the single SKILL-162 attribution already recorded in
-`skills/bill-feature-task-prose/content.md` Attribution; do not triplicate license text here.
+(MIT). This file is the SKILL-162 attribution home for that adaptation; do not
+triplicate the license text elsewhere.

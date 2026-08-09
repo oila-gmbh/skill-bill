@@ -1,7 +1,7 @@
 # Peak-Hours Warner
 
-This sidecar applies to `bill-feature`, `bill-feature-task`, and the
-feature-task runtime/prose/subtask-runner launch surfaces.
+This sidecar applies to `bill-feature` and the feature-task runtime launch
+surface.
 
 After any required update check and before intake, confirmation, workflow open,
 or child continuation, read the optional repo-local operator config at
