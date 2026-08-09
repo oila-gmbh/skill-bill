@@ -1291,9 +1291,9 @@ class CliGoalExecutionOptionsTest {
     )
 
     assertEquals("blocked", child["workflow_status"])
-    // SKILL-175: the goal runner's pre-opened child is hydrated through planning (preplan + plan
-    // completed, implement current), so a no-terminal-outcome block parks at implement — not the
-    // fresh continuation child's initial preplan.
+    // GoalChildPlanningHydrator sets currentStepId=implement after completed preplan+plan
+    // (FeatureTaskRuntimePhaseWorkflowDefinition). markBlocked's firstUnfinishedStepId scan parks a
+    // no-terminal hydrated child there — not at preplan.
     assertEquals("implement", child["current_step_id"])
   }
 
@@ -1747,11 +1747,16 @@ internal class GoalFixtureAgentRunLauncher(
       )
     }
     val dbPath = requireNotNull(skillRequest.dbPathOverride)
-    val workflowId = startSubtaskWorkflow(subtaskId, dbPath)
+    // Bind to the GoalRunner-preopened hydrated child (assignedWorkflowId on first open, else
+    // childWorkflowId on resume). continueByIssueKey would Start a second unhydrated preplan row
+    // and overwrite the manifest pointer — the SKILL-179 no-terminal park-at-preplan bug.
+    val workflowId = startSubtaskWorkflow(skillRequest, dbPath)
     if (subtaskId == failSubtask) {
       failSubtaskWorkflow(workflowId, Path.of(dbPath))
     } else if (subtaskId == noTerminalSubtask) {
-      // Leave the child workflow running so goal reconciliation must close it.
+      // Leave the child running so goal reconciliation must close it; stamp implement running so
+      // the blocked row mirrors a live child at the GoalChildPlanningHydrator boundary.
+      stampImplementRunning(workflowId, Path.of(dbPath))
     } else {
       completeSubtaskWorkflow(workflowId, subtaskId, Path.of(dbPath))
     }
@@ -1782,14 +1787,37 @@ internal class GoalFixtureAgentRunLauncher(
     )
   }
 
-  private fun startSubtaskWorkflow(subtaskId: Int, dbPath: String): String {
-    val payload = RuntimeWorkflowTestSupport.continueByIssueKey(
-      dbPath = Path.of(dbPath),
-      issueKey = "SKILL-901",
-      subtaskId = subtaskId,
-      context = fixture.context(launcher = this),
+  private fun startSubtaskWorkflow(
+    skillRequest: skillbill.ports.agentrun.model.SkillRunRequest,
+    dbPath: String,
+  ): String {
+    val continuation = requireNotNull(skillRequest.goalContinuation) {
+      "Goal child launch requires goalContinuation with a pre-opened workflow id."
+    }
+    val workflowId = continuation.assignedWorkflowId?.takeIf(String::isNotBlank)
+      ?: continuation.childWorkflowId?.takeIf(String::isNotBlank)
+      ?: error("Goal child launch requires assignedWorkflowId or childWorkflowId.")
+    // Confirm the GoalRunner-hydrated row exists (get/update of the assigned id, not Start).
+    RuntimeWorkflowTestSupport.get(
+      Path.of(dbPath),
+      workflowId,
+      fixture.context(launcher = this),
     )
-    return payload["workflow_id"] as String
+    return workflowId
+  }
+
+  private fun stampImplementRunning(workflowId: String, dbPath: Path) {
+    runtimeWorkflowUpdate(
+      fixture,
+      WorkflowUpdateFixture(
+        dbPath = dbPath,
+        workflowId = workflowId,
+        currentStep = "implement",
+        stepUpdates = """[{"step_id":"implement","status":"running","attempt_count":1}]""",
+        artifactsPatch = jsonString(emptyMap<String, Any?>()),
+      ),
+      launcher = this,
+    )
   }
 
   private fun completeSubtaskWorkflow(workflowId: String, subtaskId: Int, dbPath: Path) {
