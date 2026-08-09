@@ -1,4 +1,13 @@
-## [2026-08-09] SKILL-175 Kotlin persistence/application/IDE prose branch removal (subtask 6)
+## [2026-08-09] SKILL-179 subtask 1 — Application/persistence test contract migration
+Areas: runtime-core/application (tests), runtime-application/{application,decomposition}, .feature-specs/SKILL-179
+- Retargeted ApplicationPersistencePortTest and FeatureTaskRouterContinuationTest fixtures from prose top-level artifacts to completed `feature_task_runtime_phase_records` so `requiredArtifactsByStep` / `FeatureTaskRuntimeRequiredArtifactPresenceResolver` yield `canResume`.
+- Helpers mark blocked/skipped/complete with runtime step ids (`validate` / `pr`); durable-save failure fails `saveFeatureTaskRuntimeWorkflow`. Compact router continuation asserts `currentStepArtifacts=[plan]` per `WorkflowEngine` repository_evidence filtering + compact fallback to requiredKeys.
+- Deleted `workflow service hydrates implement session summary for continuation payloads`: prose-only `FeatureImplementSessionSummary` hydration — `WorkflowFamilyKind.sessionSummary(TASK_RUNTIME)` returns `emptyMap()` and no runtime session-summary store exists.
+- `DecompositionManifestRuntimeStateSupport` recognizes runtime `pr` as a terminal skip/complete step (keeps legacy `pr_description` for GoalRunner stamps).
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented (validate phase owns the gradle gate)
+
+
 Areas: runtime-kotlin/{runtime-domain,runtime-ports,runtime-application,runtime-infra-sqlite,runtime-infra-fs,runtime-cli,runtime-mcp,runtime-core,runtime-contracts}, orchestration/contracts, skills/bill-unit-test-value-check
 - Removed the live Kotlin prose workflow family (FeatureTaskWorkflowMode.PROSE, WorkflowFamilyKind.TASK_PROSE/IMPLEMENT + `feature-task-prose` humanName, WorkItemKind.FEATURE_TASK_PROSE, FeatureImplementWorkflowDefinition step DAG, IdeStatusWorkflowFamily.FEATURE_TASK_PROSE) from domain, ports, application, SQLite, and IDE/work-list projection — no compile-time public API remains to open/update/continue a prose workflow.
 - Implemented subtask-1 in-flight row policy: legacy prose rows quarantine + loud-fail on resume (never a rewriting migration); `feature_task_workflows` no longer accepts `mode=prose` writes above the schema while CHECKs keep it as legacy read-only; goal children are runtime-only (no prose-shaped child rows).

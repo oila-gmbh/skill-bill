@@ -7,7 +7,9 @@ import skillbill.application.model.WorkflowFamilyKind
 import skillbill.application.model.WorkflowOpenResult
 import skillbill.application.model.WorkflowUpdateRequest
 import skillbill.application.workflow.WorkflowService
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
 import skillbill.ports.workflow.UnavailableDecompositionManifestFileStore
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -16,6 +18,11 @@ import kotlin.test.assertIs
 class FeatureTaskRouterContinuationTest {
   @Test
   fun `runtime router continuation after plan preserves identity and supplies only completed plan`() {
+    // Resume presence SoT is completed private phase records
+    // (FeatureTaskRuntimeRequiredArtifactPresenceResolver), not top-level preplan_digest/plan maps.
+    // compactContinueView falls back to requiredKeys when no declared projection synthesizes
+    // repository_evidence; WorkflowEngine.resumeView also filters RUNTIME_REPOSITORY_EVIDENCE_ARTIFACT_KEY
+    // from missingArtifacts — so currentStepArtifacts is [plan], matching WorkflowCompactContinuationTest.
     val states = InMemoryWorkflowStates()
     val database = FakeDatabaseSessionFactory(states)
     val service = WorkflowService(
@@ -50,8 +57,13 @@ class FeatureTaskRouterContinuationTest {
           mapOf("step_id" to "implement", "status" to "blocked", "attempt_count" to 1),
         ),
         artifactsPatch = mapOf(
-          "preplan_digest" to mapOf("risk" to "bounded"),
-          "plan" to mapOf("tasks" to listOf("add continuation integration coverage")),
+          FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to mapOf(
+            "preplan" to completedPhaseRecord("preplan"),
+            "plan" to completedPhaseRecord(
+              "plan",
+              outputArtifact = """{"tasks":["add continuation integration coverage"]}""",
+            ),
+          ),
         ),
       ),
     )
@@ -68,12 +80,27 @@ class FeatureTaskRouterContinuationTest {
     assertEquals(SESSION_ID, continued.resume.snapshot.sessionId)
     assertEquals("implement", continued.continueStepId)
     assertEquals(listOf("plan"), continued.compact.requiredArtifactKeys)
-    assertEquals(listOf("plan", "repository_evidence"), continued.compact.currentStepArtifacts.map { it.key })
+    assertEquals(listOf("plan"), continued.compact.currentStepArtifacts.map { it.key })
     assertFalse(continued.stepArtifacts.containsKey("preplan_digest"))
     val repeatedLookup = assertIs<FeatureTaskContinuationLookupResult.AlreadyRunning>(
       lookup.lookup("SKILL-120", REPOSITORY_IDENTITY),
     )
     assertEquals(opened.workflowId, repeatedLookup.candidate.workflowId)
+  }
+
+  private fun completedPhaseRecord(phaseId: String, outputArtifact: String? = null): Map<String, Any?> = linkedMapOf(
+    "contract_version" to FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION,
+    "record_kind" to "private_phase_record",
+    "phase_id" to phaseId,
+    "status" to "completed",
+    "attempt_count" to 1,
+    "started_at" to "2026-08-09T10:00:00Z",
+    "first_started_at" to "2026-08-09T10:00:00Z",
+    "finished_at" to "2026-08-09T10:01:00Z",
+    "resolved_agent_id" to "agent-$phaseId",
+    "execution_origin" to "agent-executed",
+  ).apply {
+    outputArtifact?.let { put("output_artifact", it) }
   }
 
   private companion object {

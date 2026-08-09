@@ -1,3 +1,11 @@
+## [2026-08-09] SKILL-179 subtask 1 — Application/persistence test contract migration
+Areas: runtime-application/{application,decomposition}, runtime-core/application (tests), .feature-specs/SKILL-179
+- Runtime router continuation seeds completed preplan+plan phase records; compact `currentStepArtifacts` is `[plan]` citing `WorkflowEngine.resumeView` filtering of `repository_evidence` and `compactContinueView` fallback to requiredKeys (parity with WorkflowCompactContinuationTest).
+- Decomposition terminal step tracking accepts runtime `pr` alongside legacy `pr_description`.
+- Deleted implement session-summary hydration test: prose-only `FeatureImplementSessionSummary` path; TASK_RUNTIME `sessionSummary` is empty by contract.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented (validate phase owns the gradle gate)
+
 ## [2026-08-08] SKILL-173 subtask 2 — Validate honors build_only vs full
 Areas: runtime-application/featuretask, runtime-domain/workflow/taskruntime, docs, .feature-specs/SKILL-173
 - Phase 6 validate consumes goal-continuation `validation_depth`: `build_only` swaps Task text + addendum to compile/buildability only (no tests, detekt, spotless, lint, scanners, or full `bill-code-check`); `full` / non-goal keeps today's Phase 6 directive byte-stable.

@@ -26,6 +26,7 @@ import skillbill.application.telemetry.TelemetryService
 import skillbill.application.telemetry.toRecord
 import skillbill.application.workflow.WorkflowService
 import skillbill.contracts.JsonSupport
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
 import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.error.InvalidWorkflowStateSchemaError
@@ -510,6 +511,9 @@ class ApplicationPersistencePortTest {
 
   @Test
   fun `workflow service owns implement rows list resume and continuation through ports`() {
+    // Resume gate judges upstream presence from completed private phase records
+    // (FeatureTaskRuntimeRequiredArtifactPresenceResolver / requiredArtifactsByStep[implement]=[plan]),
+    // matching WorkflowCompactContinuationTest — not top-level plan/preplan_digest maps.
     val workflowRepository = InMemoryWorkflowStateRepository()
     val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
     val service = testWorkflowService(database)
@@ -526,7 +530,9 @@ class ApplicationPersistencePortTest {
         stepUpdates = listOf(mapOf("step_id" to "implement", "status" to "blocked", "attempt_count" to 1)),
         artifactsPatch = mapOf(
           "preplan_digest" to mapOf("ok" to true),
-          "plan" to mapOf("task_count" to 1),
+          FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to mapOf(
+            "plan" to completedPhaseRecord("plan", outputArtifact = """{"task_count":1}"""),
+          ),
         ),
       ),
       dbOverride = null,
@@ -1056,41 +1062,6 @@ class ApplicationPersistencePortTest {
   }
 
   @Test
-  fun `workflow service hydrates implement session summary for continuation payloads`() {
-    val workflowRepository =
-      InMemoryWorkflowStateRepository(
-        implementSessionSummary =
-        FeatureImplementSessionSummary(
-          sessionId = "ftr-001",
-          issueKeyProvided = true,
-          issueKeyType = "other",
-          specInputTypes = listOf("markdown_file"),
-          specWordCount = 42,
-          featureSize = "MEDIUM",
-          featureName = "workflow-runtime",
-          rolloutNeeded = false,
-          acceptanceCriteriaCount = 6,
-          openQuestionsCount = 0,
-          specSummary = "Port workflow runtime",
-        ),
-      )
-    val database = FakeDatabaseSessionFactory(workflows = workflowRepository)
-    val service = testWorkflowService(database)
-
-    val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
-      as WorkflowOpenResult.Ok
-    val workflowId = opened.workflowId
-    val continued = service.continueWorkflow(WorkflowFamilyKind.TASK_RUNTIME, workflowId, dbOverride = null)
-      as WorkflowContinueResult.Standard
-    val sessionSummary = continued.view.sessionSummary
-
-    assertEquals("ftr-001", sessionSummary["session_id"])
-    assertEquals(listOf("markdown_file"), sessionSummary["spec_input_types"])
-    assertEquals("workflow-runtime", sessionSummary["feature_name"])
-    assertEquals("Port workflow runtime", sessionSummary["spec_summary"])
-  }
-
-  @Test
   fun `workflow service writes decomposition manifest when implement plan decomposes`() {
     val tempDir = Files.createTempDirectory("skillbill-app-decomposition")
     val parentSpec = tempDir.resolve(".feature-specs/SKILL-51-demo/spec.md")
@@ -1192,7 +1163,9 @@ class ApplicationPersistencePortTest {
       as WorkflowOpenResult.Ok
     val workflowId = opened.workflowId
 
-    workflowRepository.failNextImplementSave = true
+    // Durable save still precedes decomposition-manifest projection; failure must abort on the
+    // TASK_RUNTIME save path (saveFeatureTaskRuntimeWorkflow), not the retired prose implement save.
+    workflowRepository.failNextRuntimeSave = true
     assertFailsWith<IllegalStateException> {
       service.update(
         WorkflowFamilyKind.TASK_RUNTIME,
@@ -1253,6 +1226,9 @@ class ApplicationPersistencePortTest {
     val service = testWorkflowService(database, FakeWorkflowGitOperations())
     val workflowId = createDecompositionWorkflow(service, parentSpec, subtaskSpec)
 
+    // requiredArtifactsByStep[validate]=[implement,audit]; seed completed phase records so canResume
+    // is true. assessment.spec_path remains decomposition metadata only
+    // (DecompositionManifestRuntimeState), never a resume-gate satisfier.
     service.update(
       WorkflowFamilyKind.TASK_RUNTIME,
       WorkflowUpdateRequest(
@@ -1263,10 +1239,7 @@ class ApplicationPersistencePortTest {
         artifactsPatch =
         mapOf(
           "assessment" to mapOf("spec_path" to subtaskSpec.toString()),
-          "validation_request" to validationRequest(),
-          "audit_clearance" to auditClearance(),
-          "audit_report" to mapOf("pass" to true, "per_criterion" to emptyList<Any>(), "gaps" to emptyList<Any>()),
-          "review_result" to mapOf("contract_version" to "0.3", "verdict" to "pass", "findings" to emptyList<Any>()),
+          FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to completedPhaseRecords("implement", "audit"),
           "blocked_reason" to "Validation paused.",
         ),
       ),
@@ -1516,7 +1489,8 @@ class ApplicationPersistencePortTest {
 
     assertEquals(1, continued.subtaskId)
     assertEquals("complete", continued.outcome.status)
-    assertEquals("pr_description", continued.outcome.lastResumableStep)
+    // FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR — lastResumableStep tracks runtime step ids.
+    assertEquals("pr", continued.outcome.lastResumableStep)
     assertEquals("pending", manifest.subtasks.first { it.id == 2 }.status)
   }
 
@@ -1650,6 +1624,7 @@ class ApplicationPersistencePortTest {
     val first = service.continueWorkflow(WorkflowFamilyKind.TASK_RUNTIME, "SKILL-51", dbOverride = null)
       as WorkflowContinueResult.DecompositionStandard
     val subtaskWorkflowId = first.view.resume.snapshot.workflowId
+    // requiredArtifactsByStep[validate]=[implement,audit] via FeatureTaskRuntimeRequiredArtifactPresenceResolver.
     service.update(
       WorkflowFamilyKind.TASK_RUNTIME,
       WorkflowUpdateRequest(
@@ -1658,10 +1633,7 @@ class ApplicationPersistencePortTest {
         currentStepId = "validate",
         stepUpdates = listOf(mapOf("step_id" to "validate", "status" to "running", "attempt_count" to 1)),
         artifactsPatch = mapOf(
-          "validation_request" to validationRequest(),
-          "audit_clearance" to auditClearance(),
-          "audit_report" to mapOf("pass" to true, "per_criterion" to emptyList<Any>(), "gaps" to emptyList<Any>()),
-          "review_result" to mapOf("contract_version" to "0.3", "verdict" to "pass", "findings" to emptyList<Any>()),
+          FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to completedPhaseRecords("implement", "audit"),
           "validation_result" to mapOf("passed" to false),
         ),
       ),
@@ -2608,6 +2580,8 @@ private fun createDecompositionWorkflow(
 }
 
 private fun markDecompositionSubtaskBlocked(service: WorkflowService, workflowId: String, subtaskSpec: Path) {
+  // requiredArtifactsByStep[validate]=[implement,audit]. assessment.spec_path is decomposition
+  // metadata (DecompositionManifestRuntimeState), not a resume-gate satisfier.
   service.update(
     WorkflowFamilyKind.TASK_RUNTIME,
     WorkflowUpdateRequest(
@@ -2618,6 +2592,7 @@ private fun markDecompositionSubtaskBlocked(service: WorkflowService, workflowId
       artifactsPatch =
       mapOf(
         "assessment" to mapOf("spec_path" to subtaskSpec.toString()),
+        FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to completedPhaseRecords("implement", "audit"),
         "validation_result" to mapOf("passed" to false),
         "blocked_reason" to "Validation failed.",
       ),
@@ -2627,32 +2602,61 @@ private fun markDecompositionSubtaskBlocked(service: WorkflowService, workflowId
 }
 
 private fun markDecompositionSubtaskSkipped(service: WorkflowService, workflowId: String, subtaskSpec: Path) {
+  // Terminal skip uses runtime PHASE_PR (never prose pr_description). assessment is decomposition
+  // metadata only; requiredArtifactsByStep[pr]=[implement,commit_push].
   service.update(
     WorkflowFamilyKind.TASK_RUNTIME,
     WorkflowUpdateRequest(
       workflowId = workflowId,
       workflowStatus = "running",
-      currentStepId = "pr_description",
-      stepUpdates = listOf(mapOf("step_id" to "pr_description", "status" to "skipped", "attempt_count" to 1)),
-      artifactsPatch = mapOf("assessment" to mapOf("spec_path" to subtaskSpec.toString())),
+      currentStepId = "pr",
+      stepUpdates = listOf(mapOf("step_id" to "pr", "status" to "skipped", "attempt_count" to 1)),
+      artifactsPatch = mapOf(
+        "assessment" to mapOf("spec_path" to subtaskSpec.toString()),
+        FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to completedPhaseRecords("implement", "commit_push"),
+      ),
     ),
     dbOverride = null,
   )
 }
 
 private fun markDecompositionSubtaskComplete(service: WorkflowService, workflowId: String, subtaskSpec: Path) {
+  // Terminal complete uses runtime PHASE_PR. workflowStatus=completed drives decomposition complete
+  // status; phase records satisfy requiredArtifactsByStep[pr]=[implement,commit_push].
   service.update(
     WorkflowFamilyKind.TASK_RUNTIME,
     WorkflowUpdateRequest(
       workflowId = workflowId,
       workflowStatus = "completed",
-      currentStepId = "pr_description",
-      stepUpdates = listOf(mapOf("step_id" to "pr_description", "status" to "completed", "attempt_count" to 1)),
-      artifactsPatch = mapOf("assessment" to mapOf("spec_path" to subtaskSpec.toString())),
+      currentStepId = "pr",
+      stepUpdates = listOf(mapOf("step_id" to "pr", "status" to "completed", "attempt_count" to 1)),
+      artifactsPatch = mapOf(
+        "assessment" to mapOf("spec_path" to subtaskSpec.toString()),
+        FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to completedPhaseRecords("implement", "commit_push"),
+      ),
     ),
     dbOverride = null,
   )
 }
+
+/** Completed private per-phase record matching WorkflowCompactContinuationTest.completedPlanPhaseRecord. */
+private fun completedPhaseRecord(phaseId: String, outputArtifact: String? = null): Map<String, Any?> = linkedMapOf(
+  "contract_version" to FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION,
+  "record_kind" to "private_phase_record",
+  "phase_id" to phaseId,
+  "status" to "completed",
+  "attempt_count" to 1,
+  "started_at" to "2026-08-09T10:00:00Z",
+  "first_started_at" to "2026-08-09T10:00:00Z",
+  "finished_at" to "2026-08-09T10:01:00Z",
+  "resolved_agent_id" to "agent-$phaseId",
+  "execution_origin" to "agent-executed",
+).apply {
+  outputArtifact?.let { put("output_artifact", it) }
+}
+
+private fun completedPhaseRecords(vararg phaseIds: String): Map<String, Any?> =
+  phaseIds.associateWith { completedPhaseRecord(it) }
 
 private fun decompositionPlanPatch(
   parentSpec: Path,
@@ -2828,13 +2832,9 @@ private class InMemoryWorkflowStateRepository(
   private val implementRows = linkedMapOf<String, WorkflowStateRecord>()
   private val verifyRows = linkedMapOf<String, WorkflowStateRecord>()
   private val taskRuntimeRows = linkedMapOf<String, WorkflowStateRecord>()
-  var failNextImplementSave: Boolean = false
+  var failNextRuntimeSave: Boolean = false
 
   override fun saveFeatureImplementWorkflow(row: WorkflowStateRecord) {
-    if (failNextImplementSave) {
-      failNextImplementSave = false
-      error("save failed")
-    }
     implementRows[row.workflowId] = row
   }
 
@@ -2863,6 +2863,10 @@ private class InMemoryWorkflowStateRepository(
     verifySessionSummary?.takeIf { it.sessionId == sessionId }
 
   override fun saveFeatureTaskRuntimeWorkflow(row: WorkflowStateRecord) {
+    if (failNextRuntimeSave) {
+      failNextRuntimeSave = false
+      error("save failed")
+    }
     taskRuntimeRows[row.workflowId] = row
   }
 
@@ -2936,18 +2940,6 @@ private fun evaluatorReceipt(verdict: String): Map<String, Any?> = mapOf(
   "contract_version" to "0.3",
   "verdict" to verdict,
   "findings" to emptyList<Any>(),
-)
-
-private fun validationRequest(): Map<String, Any?> = mapOf(
-  "validation_strategy" to listOf("Run focused and repository gates."),
-  "changed_paths" to listOf("src/Changed.kt"),
-  "required_checks" to listOf("test"),
-  "repository_checkpoint" to mapOf("fingerprint" to "test-repository-fingerprint"),
-)
-
-private fun auditClearance(): Map<String, Any?> = mapOf(
-  "contract_version" to "0.1",
-  "verdict" to "approved",
 )
 
 private fun learningRecord(id: Int, title: String = "Learning $id"): LearningRecord = LearningRecord(
