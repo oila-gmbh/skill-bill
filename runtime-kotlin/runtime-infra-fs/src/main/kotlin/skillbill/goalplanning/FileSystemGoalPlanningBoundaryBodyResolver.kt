@@ -34,12 +34,12 @@ class FileSystemGoalPlanningBoundaryBodyResolver : GoalPlanningBoundaryBodyResol
         ?.get(headingId)
       if (entry == null) {
         unresolved.add(headingId)
-        continue
+      } else {
+        val body = entry.body.take(GoalPlanningContext.MAX_BODY_BYTES)
+        if (body.length < entry.body.length) truncated = true
+        totalBytes += body.length
+        bodies.add(GoalPlanningBoundaryBody(headingId, sourcePath, entry.heading, body))
       }
-      val body = entry.body.take(GoalPlanningContext.MAX_BODY_BYTES)
-      if (body.length < entry.body.length) truncated = true
-      totalBytes += body.length
-      bodies.add(GoalPlanningBoundaryBody(headingId, sourcePath, entry.heading, body))
     }
     return GoalPlanningResolvedBoundaryBodies(bodies, unresolved, truncated)
   }

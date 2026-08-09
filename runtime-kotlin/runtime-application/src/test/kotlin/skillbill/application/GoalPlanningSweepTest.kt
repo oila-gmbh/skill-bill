@@ -247,7 +247,6 @@ class GoalPlanningSweepTest {
     assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
   }
 
-
   @Test
   fun `preplan prompt carries the heading catalog and no entry body`() {
     val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
@@ -263,8 +262,11 @@ class GoalPlanningSweepTest {
   @Test
   fun `a selected heading id delivers only that body to the plan prompt`() {
     val harness = sweepHarness { phase, _, _ ->
-      if (phase == "preplan") launchFacts(stdout = preplanPayloadSelecting(FIXTURE_HEADING_ID))
-      else validPhaseOutcome(phase)
+      if (phase == "preplan") {
+        launchFacts(stdout = preplanPayloadSelecting(FIXTURE_HEADING_ID))
+      } else {
+        validPhaseOutcome(phase)
+      }
     }
 
     harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())

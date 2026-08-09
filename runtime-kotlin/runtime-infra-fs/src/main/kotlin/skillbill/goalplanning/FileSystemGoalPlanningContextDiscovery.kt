@@ -42,21 +42,23 @@ class FileSystemGoalPlanningContextDiscovery : GoalPlanningContextDiscovery {
         val content = GoalPlanningRepositoryScope.readTextOrNull(
           canonical,
           GoalPlanningContext.MAX_DISCOVERY_TOTAL_BYTES - bytes,
-        ) ?: continue
-        files += 1
-        bytes += content.length.toLong()
-        val entries = BoundaryMemoryHeadingParser.parse(relative, content)
-        if (entries.size > GoalPlanningContext.MAX_HEADINGS_PER_FILE) truncated = true
-        for (entry in entries.take(GoalPlanningContext.MAX_HEADINGS_PER_FILE)) {
-          if (headings.size >= GoalPlanningContext.MAX_CATALOG_HEADINGS) return Catalog(headings, truncated = true)
-          headings.add(
-            GoalPlanningBoundaryHeading(
-              headingId = entry.headingId,
-              sourcePath = relative,
-              kind = kindOf(fileName),
-              heading = entry.heading.take(GoalPlanningContext.MAX_HEADING_TEXT_CHARS),
-            ),
-          )
+        )
+        if (content != null) {
+          files += 1
+          bytes += content.length.toLong()
+          val entries = BoundaryMemoryHeadingParser.parse(relative, content)
+          if (entries.size > GoalPlanningContext.MAX_HEADINGS_PER_FILE) truncated = true
+          for (entry in entries.take(GoalPlanningContext.MAX_HEADINGS_PER_FILE)) {
+            if (headings.size >= GoalPlanningContext.MAX_CATALOG_HEADINGS) return Catalog(headings, truncated = true)
+            headings.add(
+              GoalPlanningBoundaryHeading(
+                headingId = entry.headingId,
+                sourcePath = relative,
+                kind = kindOf(fileName),
+                heading = entry.heading.take(GoalPlanningContext.MAX_HEADING_TEXT_CHARS),
+              ),
+            )
+          }
         }
       }
     }

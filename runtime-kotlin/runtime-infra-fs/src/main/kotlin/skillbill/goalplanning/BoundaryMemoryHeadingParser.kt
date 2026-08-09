@@ -44,8 +44,7 @@ object BoundaryMemoryHeadingParser {
    * plus a digest of the heading text, so the resolver can re-verify a selection still names the
    * same heading instead of trusting the ordinal alone.
    */
-  fun headingId(sourcePath: String, ordinal: Int, heading: String): String =
-    "$sourcePath#$ordinal-${digest(heading)}"
+  fun headingId(sourcePath: String, ordinal: Int, heading: String): String = "$sourcePath#$ordinal-${digest(heading)}"
 
   fun sourcePathOf(headingId: String): String? = headingId.substringBeforeLast('#', "").takeIf(String::isNotEmpty)
 

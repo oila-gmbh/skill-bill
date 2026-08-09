@@ -1,3 +1,5 @@
+@file:Suppress("TooManyFunctions")
+
 package skillbill.application.goalrunner
 
 import skillbill.application.featuretask.sha256HexUtf8
@@ -196,18 +198,18 @@ internal object GoalPlanningSharedContextPacket {
       val entry = raw as? Map<*, *> ?: error("shared context boundary memory catalog entry is invalid")
       require(entry.keys == CATALOG_ENTRY_FIELDS) { "shared context boundary memory catalog entry fields are invalid" }
       require(entry.values.all { it is String }) { "shared context boundary memory catalog entry is invalid" }
-      val sourcePath = entry.getValue("source_path") as String
+      val sourcePath = entry["source_path"] as String
       require(sourcePath.isNotBlank() && !sourcePath.startsWith("/") && ".." !in sourcePath) {
         "shared context boundary memory source path is invalid"
       }
       require(!GoalPlanningDiscoveryExclusions.isExcluded(sourcePath)) {
         "shared context boundary memory source path is excluded"
       }
-      require(entry.getValue("kind") in CATALOG_KINDS) { "shared context boundary memory kind is invalid" }
-      require((entry.getValue("heading") as String).length <= GoalPlanningContext.MAX_HEADING_TEXT_CHARS) {
+      require(entry["kind"] as String in CATALOG_KINDS) { "shared context boundary memory kind is invalid" }
+      require((entry["heading"] as String).length <= GoalPlanningContext.MAX_HEADING_TEXT_CHARS) {
         "shared context boundary memory heading exceeds the length cap"
       }
-      require(headingIds.add(entry.getValue("heading_id") as String)) {
+      require(headingIds.add(entry["heading_id"] as String)) {
         "shared context boundary memory heading ids must be unique"
       }
     }

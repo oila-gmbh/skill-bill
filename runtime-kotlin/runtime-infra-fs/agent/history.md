@@ -1,5 +1,16 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
+## [2026-08-09] SKILL-174 boundary memory becomes a heading catalog + on-demand body resolve (subtask 2)
+Areas: runtime-kotlin/runtime-infra-fs/goalplanning, runtime-kotlin/runtime-ports/goalrunner, runtime-kotlin/runtime-application/goalrunner, runtime-kotlin/runtime-domain/taskruntime, orchestration/contracts, skills/bill-feature-goal
+- Discovery no longer ships byte-prefix excerpts of `agent/history.md` / `decisions.md`; it emits a heading-only catalog with stable ids, per-file and total caps, and a deterministic truncation marker.
+- New `BoundaryMemoryHeadingParser` (reusable) walks headings for both history and decisions forms, skipping malformed regions without inventing or dropping entries.
+- New `GoalPlanningBoundaryBodyResolver` port + FS impl (reusable): preplan picks heading ids, plan gets exactly those bodies; unknown/stale/excluded ids resolve to nothing.
+- Exclusion roots centralized in `GoalPlanningRepositoryScope`; pruning applies at any depth and survives symlink canonicalization; platform pack agent trees contribute zero entries.
+- Packet VERSION bumped to `0.3` with migrate-by-discard for `0.2`/`0.1` prefix payloads; projection digest gains optional `selected_boundary_headings` (older digests still validate).
+- Limitation: heading selection quality depends on the preplan agent; a preplan with no selection field degrades to catalog-only rather than failing the sweep.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
 ## [2026-08-08] Goal planning packet v0.2 drops platform_packs
 Areas: runtime-kotlin/runtime-infra-fs/goalplanning, runtime-kotlin/runtime-ports/goalrunner
 - `GoalPlanningContext` no longer carries `platformPacks`; discovery returns only `boundaryMemory` and `validationGuidance`.

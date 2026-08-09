@@ -134,7 +134,10 @@ data class FeatureTaskRuntimePrePlanningDigest(
     field(FIELD_VALIDATION_STRATEGY, FeatureTaskRuntimeHandoffProjectionValue.TextList(validationStrategy)),
     field(FIELD_UNRESOLVED_QUESTIONS, FeatureTaskRuntimeHandoffProjectionValue.TextList(unresolvedQuestions)),
     field(FIELD_EVIDENCE_REFS, FeatureTaskRuntimeHandoffProjectionValue.TextList(evidenceRefs)),
-    field(FIELD_SELECTED_BOUNDARY_HEADINGS, FeatureTaskRuntimeHandoffProjectionValue.TextList(selectedBoundaryHeadings)),
+    field(
+      FIELD_SELECTED_BOUNDARY_HEADINGS,
+      FeatureTaskRuntimeHandoffProjectionValue.TextList(selectedBoundaryHeadings),
+    ),
   )
 
   companion object {
