@@ -7,7 +7,7 @@ Areas: runtime-core/application (tests), runtime-application/{application,decomp
 Feature flag: N/A
 Acceptance criteria: 5/5 implemented (validate phase owns the gradle gate)
 
-
+## [2026-08-09] SKILL-175 Kotlin persistence/application/IDE prose branch removal (subtask 6)
 Areas: runtime-kotlin/{runtime-domain,runtime-ports,runtime-application,runtime-infra-sqlite,runtime-infra-fs,runtime-cli,runtime-mcp,runtime-core,runtime-contracts}, orchestration/contracts, skills/bill-unit-test-value-check
 - Removed the live Kotlin prose workflow family (FeatureTaskWorkflowMode.PROSE, WorkflowFamilyKind.TASK_PROSE/IMPLEMENT + `feature-task-prose` humanName, WorkItemKind.FEATURE_TASK_PROSE, FeatureImplementWorkflowDefinition step DAG, IdeStatusWorkflowFamily.FEATURE_TASK_PROSE) from domain, ports, application, SQLite, and IDE/work-list projection — no compile-time public API remains to open/update/continue a prose workflow.
 - Implemented subtask-1 in-flight row policy: legacy prose rows quarantine + loud-fail on resume (never a rewriting migration); `feature_task_workflows` no longer accepts `mode=prose` writes above the schema while CHECKs keep it as legacy read-only; goal children are runtime-only (no prose-shaped child rows).
