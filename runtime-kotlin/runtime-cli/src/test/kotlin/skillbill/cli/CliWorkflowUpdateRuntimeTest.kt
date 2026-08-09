@@ -13,44 +13,7 @@ import kotlin.test.assertTrue
 
 class CliWorkflowUpdateRuntimeTest {
   @Test
-  fun `workflow update returns compact acknowledgement and show remains full state`() {
-    val tempDir = Files.createTempDirectory("skillbill-cli-workflow-update")
-    val dbPath = tempDir.resolve("metrics.db")
-    val opened = runJson("--db", dbPath.toString(), "workflow", "open", "--format", "json")
-    val workflowId = opened["workflow_id"] as String
-
-    val update = runJson(
-      "--db",
-      dbPath.toString(),
-      "workflow",
-      "update",
-      workflowId,
-      "--workflow-status",
-      "blocked",
-      "--current-step-id",
-      "implement",
-      "--step-updates",
-      """[{"step_id":"implement","status":"blocked","attempt_count":1}]""",
-      "--artifacts-patch",
-      """{"preplan_digest":{"ok":true}}""",
-      "--format",
-      "json",
-    )
-    assertCompactUpdate(
-      payload = update,
-      stepId = "implement",
-      artifactKeys = listOf("preplan_digest"),
-      readOnlyCommand = "skill-bill --db '$dbPath' workflow show '$workflowId' --format json",
-    )
-
-    val shown = runJson("--db", dbPath.toString(), "workflow", "show", workflowId, "--format", "json")
-    val artifacts = shown["artifacts"] as Map<*, *>
-    assertEquals(mapOf("ok" to true), artifacts["preplan_digest"])
-    assertTrue(shown.containsKey("steps"))
-  }
-
-  @Test
-  fun `verify workflow update returns compact acknowledgement`() {
+  fun `verify workflow update returns compact acknowledgement with verify-workflow show hint`() {
     val tempDir = Files.createTempDirectory("skillbill-cli-verify-workflow-update")
     val dbPath = tempDir.resolve("metrics.db")
     val opened = runJson(
@@ -102,6 +65,7 @@ class CliWorkflowUpdateRuntimeTest {
       ),
       readOnlyCommand = "skill-bill --db '$dbPath' verify-workflow show '$workflowId' --format json",
     )
+    assertFalse(update["read_only_full_state_command"].toString().contains(" workflow show "))
   }
 }
 

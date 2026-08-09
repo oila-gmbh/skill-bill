@@ -242,7 +242,8 @@ Review and telemetry:
 | `skill-bill record-feedback`  | Record feedback for imported findings               |
 | `skill-bill triage`           | Record triage decisions                             |
 | `skill-bill stats`            | Show review acceptance metrics                      |
-| `skill-bill implement-stats`  | Show local `bill-feature-task` metrics         |
+| `skill-bill feature-task-stats` | Show local feature-task runtime metrics           |
+| `skill-bill goal-stats`       | Show local decomposed-goal run metrics              |
 | `skill-bill verify-stats`     | Show local `bill-feature-verify` metrics            |
 | `skill-bill telemetry status` | Show telemetry configuration and pending sync state |
 | `skill-bill telemetry sync`   | Reconcile stale sessions, then flush queued telemetry |
@@ -253,11 +254,10 @@ Workflow state:
 
 | Command                               | Purpose                                    |
 |---------------------------------------|--------------------------------------------|
-| `skill-bill workflow list`            | List persisted implement workflows         |
-| `skill-bill workflow latest`          | Show the latest implement workflow         |
-| `skill-bill workflow show`            | Show one implement workflow, including full durable state |
-| `skill-bill workflow resume`          | Build a resume/recovery explanation        |
-| `skill-bill workflow continue`        | Reopen a resumable implement workflow and emit compact continuation guidance |
+| `skill-bill feature-task status`      | Inspect a durable feature-task runtime run |
+| `skill-bill feature-task lookup`      | Resolve continuation for an issue key      |
+| `skill-bill goal status`              | Inspect a decomposed goal run              |
+| `skill-bill goal watch`               | Follow a decomposed goal until terminal    |
 | `skill-bill verify-workflow list`     | List persisted verify workflows            |
 | `skill-bill verify-workflow latest`   | Show the latest verify workflow            |
 | `skill-bill verify-workflow show`     | Show one verify workflow, including full durable state |
@@ -401,24 +401,29 @@ When audit finds gaps, implementation remediation receives the immutable
 original completed `preplan` and `plan` outputs plus the latest unmet criteria;
 the runtime does not relaunch or overwrite either planning phase.
 
-`workflow continue` and `workflow show` are different surfaces:
+`feature-task` / `goal` activation and `verify-workflow continue` /
+`verify-workflow show` are different surfaces:
 
-- `workflow continue` is **mutating activation** — it re-opens resumable state
-  and returns the **compact** continuation payload a session uses to resume work.
-- `workflow show` is **read-only inspection** — it changes nothing and returns
-  the full snapshot (every step plus the complete durable `artifacts` map).
+- `skill-bill feature-task` and `skill-bill goal` own feature-task and goal
+  activation, continuation lookup, and foreground execution.
+- `verify-workflow continue` is **mutating activation** for verify runs — it
+  re-opens resumable state and returns the **compact** continuation payload a
+  session uses to resume verify work.
+- `verify-workflow show` is **read-only inspection** — it changes nothing and
+  returns the full snapshot (every step plus the complete durable `artifacts`
+  map).
 
 Goal child sessions resume from the **compact continuation output** and treat its
 `current_step_artifacts` as authoritative, instead of rebuilding context from
 chat history. **Fetch full state only when explicitly needed** (for example, to
-read an omitted or large artifact) via the read-only `workflow show` /
-`verify-workflow show` path.
+read an omitted or large artifact) via the read-only `goal status` /
+`feature-task status` / `verify-workflow show` path.
 
 To answer *why* a subtask retried, stopped, or blocked, inspect the append-only
 attempt ledger (`goal_attempt_ledger`) on the child workflow record with
-`workflow show <workflow-id>` — its `action`, `blocked_reason`, `stop_reason`,
-and `final_reconciled_result` fields explain each case without scraping any
-provider session log.
+`goal status` / `feature-task status` — its `action`, `blocked_reason`,
+`stop_reason`, and `final_reconciled_result` fields explain each case without
+scraping any provider session log.
 
 > **Caveat:** provider-reported *total* token counts can be dominated by cached
 > input replay, so they are a diagnostic signal, not a Skill Bill contract. Skill

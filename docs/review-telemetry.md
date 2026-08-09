@@ -84,7 +84,8 @@ skill-bill triage --run-id rvw-20260402-001 --decision "fix=[1] reject=[2]"
 skill-bill triage --run-id rvw-20260402-001 --decision "all fix"
 skill-bill learnings resolve --repo oila-gmbh/skill-bill --skill bill-kotlin-code-review --review-session-id rvs-20260402-001
 skill-bill stats --run-id rvw-20260402-001 --format json
-skill-bill implement-stats --format json
+skill-bill feature-task-stats --format json
+skill-bill goal-stats --format json
 skill-bill verify-stats --format json
 ```
 
@@ -527,7 +528,7 @@ What an operator can read from them:
 
 ## PostHog dashboard spec
 
-The local `skill-bill implement-stats` and `skill-bill verify-stats` commands are the source of truth for workflow-summary semantics. PostHog dashboards should mirror those summaries instead of inventing a separate analytics vocabulary.
+The local `skill-bill feature-task-stats`, `skill-bill goal-stats`, and `skill-bill verify-stats` commands are the source of truth for workflow-summary semantics. PostHog dashboards should mirror those summaries instead of inventing a separate analytics vocabulary.
 
 Recommended global filters:
 

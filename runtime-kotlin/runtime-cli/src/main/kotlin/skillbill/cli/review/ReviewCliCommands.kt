@@ -21,7 +21,6 @@ import skillbill.cli.model.CliFormat
 
 @Inject
 class FeatureStatsCommands(
-  val featureImplementStatsCommand: FeatureImplementStatsCommand,
   val featureVerifyStatsCommand: FeatureVerifyStatsCommand,
   val featureTaskStatsCommand: FeatureTaskStatsCommand,
   val featureTaskRuntimeStatsCommand: FeatureTaskRuntimeStatsCommand,
@@ -29,7 +28,6 @@ class FeatureStatsCommands(
 ) {
   val commands =
     listOf(
-      featureImplementStatsCommand,
       featureVerifyStatsCommand,
       featureTaskStatsCommand,
       featureTaskRuntimeStatsCommand,
@@ -158,18 +156,6 @@ class PruneReviewSnapshotsCommand(
     } else {
       state.completeText(CliOutput.reviewSnapshotPrune(result), payload)
     }
-  }
-}
-
-@Inject
-class FeatureImplementStatsCommand(
-  private val service: ReviewService,
-  private val state: CliRunState,
-) : DocumentedCliCommand("implement-stats", "Show aggregate bill-feature-task metrics.") {
-  private val format by formatOption()
-
-  override fun run() {
-    state.complete(service.featureImplementStats(state.dbOverride).toCliMap(), format)
   }
 }
 

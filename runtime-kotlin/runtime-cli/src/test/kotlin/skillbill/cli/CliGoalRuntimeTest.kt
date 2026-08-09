@@ -1282,16 +1282,9 @@ class CliGoalExecutionOptionsTest {
     assertContains(result.stdout, "without a terminal workflow-store outcome")
     val workflowId = result.payload?.get("workflow_id")?.toString().orEmpty()
     assertTrue(workflowId.isNotBlank())
-    val child = runGoalJson(
-      listOf(
-        "--db",
-        fixture.dbPath.toString(),
-        "workflow",
-        "get",
-        workflowId,
-        "--format",
-        "json",
-      ),
+    val child = ProseWorkflowTestSupport.get(
+      fixture.dbPath,
+      workflowId,
       fixture.context(launcher = launcher),
     )
 
@@ -1363,8 +1356,9 @@ class CliGoalExecutionOptionsTest {
       listOf("--db", fixture.dbPath.toString(), "goal", "status", "SKILL-901", "--agent", "codex"),
       fixture.context(launcher = NoopGoalTestAgentRunLauncher),
     )
-    val staleWorkflow = runGoalJson(
-      listOf("--db", fixture.dbPath.toString(), "workflow", "get", staleChild, "--format", "json"),
+    val staleWorkflow = ProseWorkflowTestSupport.get(
+      fixture.dbPath,
+      staleChild,
       fixture.context(launcher = NoopGoalTestAgentRunLauncher),
     )
 
@@ -1556,20 +1550,13 @@ private fun clearWorkerLease(fixture: GoalCliFixture, workflowId: String) {
   }
 }
 
-private fun startRunningGoalChild(fixture: GoalCliFixture): String = runGoalJson(
-  listOf(
-    "--db",
-    fixture.dbPath.toString(),
-    "workflow",
-    "continue",
-    "SKILL-901",
-    "--subtask-id",
-    "1",
-    "--format",
-    "json",
-  ),
-  fixture.context(launcher = NoopGoalTestAgentRunLauncher),
-)["workflow_id"] as String
+private fun startRunningGoalChild(fixture: GoalCliFixture): String =
+  ProseWorkflowTestSupport.continueByIssueKey(
+    dbPath = fixture.dbPath,
+    issueKey = "SKILL-901",
+    subtaskId = 1,
+    context = fixture.context(launcher = NoopGoalTestAgentRunLauncher),
+  )["workflow_id"] as String
 
 private fun recordRunningGoalChildProgress(
   fixture: GoalCliFixture,
@@ -1577,109 +1564,101 @@ private fun recordRunningGoalChildProgress(
   sequence: Int,
   message: String = "editing runtime files",
 ) {
-  runGoalJson(
-    workflowUpdateCommand(
-      WorkflowUpdateFixture(
-        dbPath = fixture.dbPath,
-        workflowId = childWorkflowId,
-        currentStep = "implement",
-        stepUpdates = """[{"step_id":"implement","status":"running","attempt_count":1}]""",
-        artifactsPatch = jsonString(
-          mapOf(
-            "preplan_digest" to mapOf("ready" to true),
-            "plan" to mapOf("mode" to "implement", "task_count" to 1),
-            "progress_event" to mapOf(
-              "step_id" to "implement",
-              "attempt_count" to 1,
-              "source" to "phase_subagent",
-              "kind" to "durable_progress",
-              "message" to message,
-              "sequence" to sequence,
-              "timestamp" to "2026-06-01T00:00:00Z",
-            ),
+  proseWorkflowUpdate(
+    fixture,
+    WorkflowUpdateFixture(
+      dbPath = fixture.dbPath,
+      workflowId = childWorkflowId,
+      currentStep = "implement",
+      stepUpdates = """[{"step_id":"implement","status":"running","attempt_count":1}]""",
+      artifactsPatch = jsonString(
+        mapOf(
+          "preplan_digest" to mapOf("ready" to true),
+          "plan" to mapOf("mode" to "implement", "task_count" to 1),
+          "progress_event" to mapOf(
+            "step_id" to "implement",
+            "attempt_count" to 1,
+            "source" to "phase_subagent",
+            "kind" to "durable_progress",
+            "message" to message,
+            "sequence" to sequence,
+            "timestamp" to "2026-06-01T00:00:00Z",
           ),
         ),
       ),
     ),
-    fixture.context(launcher = NoopGoalTestAgentRunLauncher),
   )
 }
 
 private fun advanceRunningGoalChildToReview(fixture: GoalCliFixture, childWorkflowId: String) {
-  runGoalJson(
-    workflowUpdateCommand(
-      WorkflowUpdateFixture(
-        dbPath = fixture.dbPath,
-        workflowId = childWorkflowId,
-        currentStep = "review",
-        stepUpdates = """[{"step_id":"review","status":"running","attempt_count":1}]""",
-        artifactsPatch = jsonString(emptyMap<String, Any?>()),
-      ),
+  proseWorkflowUpdate(
+    fixture,
+    WorkflowUpdateFixture(
+      dbPath = fixture.dbPath,
+      workflowId = childWorkflowId,
+      currentStep = "review",
+      stepUpdates = """[{"step_id":"review","status":"running","attempt_count":1}]""",
+      artifactsPatch = jsonString(emptyMap<String, Any?>()),
     ),
-    fixture.context(launcher = NoopGoalTestAgentRunLauncher),
   )
 }
 
 private fun completeRunningGoalChild(fixture: GoalCliFixture, childWorkflowId: String) {
-  runGoalJson(
-    workflowUpdateCommand(
-      WorkflowUpdateFixture(
-        dbPath = fixture.dbPath,
-        workflowId = childWorkflowId,
-        workflowStatus = "completed",
-        currentStep = "commit_push",
-        stepUpdates = """[{"step_id":"commit_push","status":"completed","attempt_count":1}]""",
-        artifactsPatch = jsonString(
-          mapOf(
-            "commit_push_result" to mapOf("commit_sha" to "sha-1"),
-            "goal_continuation_outcome" to mapOf(
-              "issue_key" to "SKILL-901",
-              "subtask_id" to 1,
-              "status" to "complete",
-              "workflow_id" to childWorkflowId,
-              "commit_sha" to "sha-1",
-              "last_resumable_step" to "commit_push",
-            ),
+  proseWorkflowUpdate(
+    fixture,
+    WorkflowUpdateFixture(
+      dbPath = fixture.dbPath,
+      workflowId = childWorkflowId,
+      workflowStatus = "completed",
+      currentStep = "commit_push",
+      stepUpdates = """[{"step_id":"commit_push","status":"completed","attempt_count":1}]""",
+      artifactsPatch = jsonString(
+        mapOf(
+          "commit_push_result" to mapOf("commit_sha" to "sha-1"),
+          "goal_continuation_outcome" to mapOf(
+            "issue_key" to "SKILL-901",
+            "subtask_id" to 1,
+            "status" to "complete",
+            "workflow_id" to childWorkflowId,
+            "commit_sha" to "sha-1",
+            "last_resumable_step" to "commit_push",
           ),
         ),
       ),
     ),
-    fixture.context(launcher = NoopGoalTestAgentRunLauncher),
   )
 }
 
 private fun seedAuthoritativeCompleteChild(fixture: GoalCliFixture) {
-  val authoritativeChild = runGoalJson(
-    listOf("--db", fixture.dbPath.toString(), "workflow", "open", "--format", "json"),
+  val authoritativeChild = ProseWorkflowTestSupport.open(
+    fixture.dbPath,
     fixture.context(launcher = NoopGoalTestAgentRunLauncher),
   )["workflow_id"] as String
-  runGoalJson(
-    workflowUpdateCommand(
-      WorkflowUpdateFixture(
-        dbPath = fixture.dbPath,
-        workflowId = authoritativeChild,
-        currentStep = "commit_push",
-        stepUpdates = """[{"step_id":"commit_push","status":"completed","attempt_count":1}]""",
-        artifactsPatch = jsonString(
-          mapOf(
-            "goal_continuation" to mapOf(
-              "issue_key" to "SKILL-901",
-              "subtask_id" to 1,
-              "suppress_pr" to true,
-            ),
-            "goal_continuation_outcome" to mapOf(
-              "issue_key" to "SKILL-901",
-              "subtask_id" to 1,
-              "status" to "complete",
-              "workflow_id" to authoritativeChild,
-              "commit_sha" to "sha-1",
-              "last_resumable_step" to "commit_push",
-            ),
+  proseWorkflowUpdate(
+    fixture,
+    WorkflowUpdateFixture(
+      dbPath = fixture.dbPath,
+      workflowId = authoritativeChild,
+      currentStep = "commit_push",
+      stepUpdates = """[{"step_id":"commit_push","status":"completed","attempt_count":1}]""",
+      artifactsPatch = jsonString(
+        mapOf(
+          "goal_continuation" to mapOf(
+            "issue_key" to "SKILL-901",
+            "subtask_id" to 1,
+            "suppress_pr" to true,
+          ),
+          "goal_continuation_outcome" to mapOf(
+            "issue_key" to "SKILL-901",
+            "subtask_id" to 1,
+            "status" to "complete",
+            "workflow_id" to authoritativeChild,
+            "commit_sha" to "sha-1",
+            "last_resumable_step" to "commit_push",
           ),
         ),
       ),
     ),
-    fixture.context(launcher = NoopGoalTestAgentRunLauncher),
   )
 }
 
@@ -1800,52 +1779,42 @@ internal class GoalFixtureAgentRunLauncher(
   }
 
   private fun startSubtaskWorkflow(subtaskId: Int, dbPath: String): String {
-    val payload = runGoalJson(
-      listOf(
-        "--db",
-        dbPath,
-        "workflow",
-        "continue",
-        "SKILL-901",
-        "--subtask-id",
-        subtaskId.toString(),
-        "--format",
-        "json",
-      ),
-      fixture.context(launcher = this),
+    val payload = ProseWorkflowTestSupport.continueByIssueKey(
+      dbPath = Path.of(dbPath),
+      issueKey = "SKILL-901",
+      subtaskId = subtaskId,
+      context = fixture.context(launcher = this),
     )
     return payload["workflow_id"] as String
   }
 
   private fun completeSubtaskWorkflow(workflowId: String, subtaskId: Int, dbPath: Path) {
-    runGoalJson(
-      workflowUpdateCommand(
-        WorkflowUpdateFixture(
-          dbPath = dbPath,
-          workflowId = workflowId,
-          workflowStatus = "completed",
-          currentStep = "commit_push",
-          stepUpdates = """[{"step_id":"commit_push","status":"completed","attempt_count":1}]""",
-          artifactsPatch = jsonString(mapOf("commit_push_result" to mapOf("commit_sha" to "sha-$subtaskId"))),
-        ),
+    proseWorkflowUpdate(
+      fixture,
+      WorkflowUpdateFixture(
+        dbPath = dbPath,
+        workflowId = workflowId,
+        workflowStatus = "completed",
+        currentStep = "commit_push",
+        stepUpdates = """[{"step_id":"commit_push","status":"completed","attempt_count":1}]""",
+        artifactsPatch = jsonString(mapOf("commit_push_result" to mapOf("commit_sha" to "sha-$subtaskId"))),
       ),
-      fixture.context(launcher = this),
+      launcher = this,
     )
   }
 
   private fun failSubtaskWorkflow(workflowId: String, dbPath: Path) {
-    runGoalJson(
-      workflowUpdateCommand(
-        WorkflowUpdateFixture(
-          dbPath = dbPath,
-          workflowId = workflowId,
-          workflowStatus = "failed",
-          currentStep = "review",
-          stepUpdates = """[{"step_id":"review","status":"failed","attempt_count":1}]""",
-          artifactsPatch = jsonString(mapOf("blocked_reason" to "forced failure")),
-        ),
+    proseWorkflowUpdate(
+      fixture,
+      WorkflowUpdateFixture(
+        dbPath = dbPath,
+        workflowId = workflowId,
+        workflowStatus = "failed",
+        currentStep = "review",
+        stepUpdates = """[{"step_id":"review","status":"failed","attempt_count":1}]""",
+        artifactsPatch = jsonString(mapOf("blocked_reason" to "forced failure")),
       ),
-      fixture.context(launcher = this),
+      launcher = this,
     )
   }
 }
@@ -1928,22 +1897,20 @@ internal fun goalFixture(subtaskCount: Int): GoalCliFixture {
 }
 
 private fun seedParentWorkflow(fixture: GoalCliFixture) {
-  val opened = runGoalJson(
-    listOf("--db", fixture.dbPath.toString(), "workflow", "open", "--format", "json"),
+  val opened = ProseWorkflowTestSupport.open(
+    fixture.dbPath,
     fixture.context(launcher = NoopGoalTestAgentRunLauncher),
   )
   val workflowId = opened["workflow_id"] as String
-  runGoalJson(
-    workflowUpdateCommand(
-      WorkflowUpdateFixture(
-        dbPath = fixture.dbPath,
-        workflowId = workflowId,
-        currentStep = "plan",
-        stepUpdates = """[{"step_id":"plan","status":"completed","attempt_count":1}]""",
-        artifactsPatch = parentArtifactsPatch(fixture),
-      ),
+  proseWorkflowUpdate(
+    fixture,
+    WorkflowUpdateFixture(
+      dbPath = fixture.dbPath,
+      workflowId = workflowId,
+      currentStep = "plan",
+      stepUpdates = """[{"step_id":"plan","status":"completed","attempt_count":1}]""",
+      artifactsPatch = parentArtifactsPatch(fixture),
     ),
-    fixture.context(launcher = NoopGoalTestAgentRunLauncher),
   )
 }
 
@@ -1975,22 +1942,18 @@ private data class WorkflowUpdateFixture(
   val artifactsPatch: String,
 )
 
-private fun workflowUpdateCommand(fixture: WorkflowUpdateFixture): List<String> = listOf(
-  "--db",
-  fixture.dbPath.toString(),
-  "workflow",
-  "update",
-  fixture.workflowId,
-  "--workflow-status",
-  fixture.workflowStatus,
-  "--current-step-id",
-  fixture.currentStep,
-  "--step-updates",
-  fixture.stepUpdates,
-  "--artifacts-patch",
-  fixture.artifactsPatch,
-  "--format",
-  "json",
+private fun proseWorkflowUpdate(
+  fixture: GoalCliFixture,
+  update: WorkflowUpdateFixture,
+  launcher: AgentRunLauncher = NoopGoalTestAgentRunLauncher,
+): Map<String, Any?> = ProseWorkflowTestSupport.update(
+  dbPath = update.dbPath,
+  workflowId = update.workflowId,
+  workflowStatus = update.workflowStatus,
+  currentStepId = update.currentStep,
+  stepUpdates = ProseWorkflowTestSupport.parseStepUpdates(update.stepUpdates),
+  artifactsPatch = ProseWorkflowTestSupport.parseArtifactsPatch(update.artifactsPatch),
+  context = fixture.context(launcher = launcher),
 )
 
 private fun runGoalJson(arguments: List<String>, context: CliRuntimeContext): Map<String, Any?> {
