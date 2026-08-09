@@ -20,23 +20,23 @@ Acceptance criteria: 5/5 implemented (AC#5 install.sh refresh deferred to the go
 Areas: skills/bill-over-engineering-review, skills (README catalog)
 - Scaffolded and filled `bill-over-engineering-review`: complexity-only review/audit with diff (default) and repo scopes, five tagged finding lines (`delete`/`stdlib`/`native`/`yagni`/`shrink`), net-lines scoring, and `Lean already. Ship.` empty verdict.
 - Boundaries route correctness/security/performance to `bill-code-review`; carve out governed contracts and `shortcut:` markers (subtask 1 convention); never flag minimal smoke tests; report-only (no auto-fix).
-- Attribution points at the single SKILL-162 MIT home in `feature-task-prose`; no benchmark/savings claims. reusable PATTERN: focused horizontal review skill shaped like `bill-unit-test-value-check`.
+- Attribution points at the single SKILL-162 MIT home in `bill-feature-task-prose`; no benchmark/savings claims. reusable PATTERN: focused horizontal review skill shaped like `bill-unit-test-value-check`.
 - Known limitation: `./install.sh` staging refresh deferred to the goal boundary per the goal-continuation installer prohibition.
 Feature flag: N/A
 Acceptance criteria: 6/6 implemented (AC#5 install.sh refresh deferred to the goal boundary)
 
 ## [2026-08-05] SKILL-162 subtask 1 — ponytail minimalism discipline in implementation prompts
-Areas: skills/feature-task-prose, runtime-application/featuretask, runtime-infra-fs/launcher/agentrun, runtime-domain/install/model, runtime-cli, runtime-ports/agentrun
+Areas: skills/bill-feature-task-prose, runtime-application/featuretask, runtime-infra-fs/launcher/agentrun, runtime-domain/install/model, runtime-cli, runtime-ports/agentrun
 - Ported ponytail's seven-rung reuse-before-write ladder, anti-abstraction rules, root-cause bug-fix rule, never-simplify carve-outs (including skill-bill governed contracts), and `shortcut: <ceiling>, <upgrade trigger>` marker into both implementation-phase briefings.
 - Dual-surface lockstep: identical block in `native-agents/agents.yaml` + `content.md` and in runtime `minimalismDisciplineDirective` for mutating phases (runtime uses a separate source). reusable PATTERN: keep prose agent briefings and FeatureTaskRuntimePhasePromptDirectives in lockstep when guidance must hold in both modes.
-- Single MIT attribution home under feature-task-prose; no benchmark or savings claims in the added content.
+- Single MIT attribution home under bill-feature-task-prose; no benchmark or savings claims in the added content.
 - Collateral on the same branch: `AGENT_LAUNCHER_CLIS` + `ExecutableLookup` preflight refuses agents whose headless CLI is missing before spawn, with legacy-name substitution and stderr-preserving failure renderers. reusable
 - Known limitation: `./install.sh` staging refresh deferred to the goal boundary per the goal-continuation installer prohibition.
 Feature flag: N/A
 Acceptance criteria: 6/6 implemented (AC#5 install.sh refresh deferred to the goal boundary)
 
 ## [2026-08-03] SKILL-157 subtask 3 — governed prose and validation parity for unbounded remediation
-Areas: skills/bill-feature-task-runtime, skills/feature-task-prose, skills/bill-feature-goal, skills/feature-task-subtask-runner, runtime-kotlin/runtime-domain
+Areas: skills/bill-feature-task-runtime, skills/bill-feature-task-prose, skills/bill-feature-goal, skills/bill-feature-task-subtask-runner, runtime-kotlin/runtime-domain
 - Removed every governed claim that review is capped at two passes; review and audit remediation now loop until Blocker and Major findings are cleared, with crossing iteration 3 into 4 printing an advisory warning rather than terminating the loop.
 - Review pass one keeps the caller-selected mode; every later pass runs inline, so remediation re-reviews never re-fan-out specialists.
 - Regeneration loops stay bounded (MAX_RECORD_REGENERATION_ATTEMPTS=2, three regeneration edges): "unbounded" applies only to review/audit fix loops. reusable distinction for future loop-governance work.
@@ -75,22 +75,22 @@ Feature flag: N/A
 Acceptance criteria: 1/1 (AC#5) implemented
 
 ## [2026-06-13] prose-goal-subtask-isolation
-Areas: skills/bill-feature-goal, skills/feature-task-prose, skills/feature-task-subtask-runner, scripts
+Areas: skills/bill-feature-goal, skills/bill-feature-task-prose, skills/bill-feature-task-subtask-runner, scripts
 - Goal orchestrator (bill-feature-goal mode:prose) stays thin: holds only decomposition manifest + per-subtask terminal outcomes; no phase artifacts accumulated
-- Subtask execution delegated to Level-1 Agent-tool spawn (feature-task-subtask-runner) with self-contained briefing; continuation via feature_task_prose_workflow_continue with suppress_pr=true
+- Subtask execution delegated to Level-1 Agent-tool spawn (bill-feature-task-subtask-runner) with self-contained briefing; continuation via feature_task_prose_workflow_continue with suppress_pr=true
 - Terminal outcome verified via feature_task_prose_workflow_get after each subtask-agent returns; in-session return value is signal only
 - Stop-loudly contract: on subtask failure, orchestrator surfaces subtask ID, blocked_reason, workflow ID, and last_resumable_step; does not advance
-- New native agent entry feature-task-subtask-runner in skills/feature-task-prose/native-agents/agents.yaml (reusable)
-- New skill skills/feature-task-subtask-runner/content.md — Level-1 subtask agent; required by validateAgentConfigs for bill-* references in prose .md files (reusable)
+- New native agent entry bill-feature-task-subtask-runner in skills/bill-feature-task-prose/native-agents/agents.yaml (reusable)
+- New skill skills/bill-feature-task-subtask-runner/content.md — Level-1 subtask agent; required by validateAgentConfigs for bill-* references in prose .md files (reusable)
 - 3-level Agent nesting verified via scripts/agent_nesting_smoke_test.sh go/no-go gate (pattern reusable for nesting depth validation)
 Feature flag: N/A
 Acceptance criteria: 10/10 implemented
 
 ## [2026-06-08] decomposition-manifest-schema-in-skills
-Areas: skills/bill-feature-spec, skills/feature-task-prose
+Areas: skills/bill-feature-spec, skills/bill-feature-task-prose
 - Added v0.3 manifest YAML template to bill-feature-spec decomposed Output Rules; agents fill it directly from planning subagent RESULT
 - Updated Shared Preparation Path: explicitly states agent writes YAML directly — no CLI/MCP route exists for standalone spec preparation (FeatureSpecPreparationWriter is internal Kotlin only)
-- Extended feature-task-prose planning subagent decomposition RESULT block with all manifest fields: execution_model, base_branch, feature_branch, stack_branches, current_subtask_intent (top-level) and status/branch/commit_sha/workflow_id/blocked_reason/last_resumable_step/linear_issue_id/dependencies (per-subtask)
+- Extended bill-feature-task-prose planning subagent decomposition RESULT block with all manifest fields: execution_model, base_branch, feature_branch, stack_branches, current_subtask_intent (top-level) and status/branch/commit_sha/workflow_id/blocked_reason/last_resumable_step/linear_issue_id/dependencies (per-subtask)
 - Skill source dirs (skills/<skill>/) may only contain content.md and native-agents/ — do NOT create agent/ subdirectories inside them; boundary history belongs at skills/agent/history.md
 Feature flag: N/A
 Acceptance criteria: 4/4 implemented
