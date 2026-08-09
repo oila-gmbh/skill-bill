@@ -388,10 +388,10 @@ fun headlessAgentRunAdapters(
   JunieAgentRunCommandBuilder(),
   CursorAgentRunCommandBuilder(),
 ).associate { builder ->
-    builder.agent to ProcessAgentRunAdapter(
-      agent = builder.agent,
-      commandBuilder = builder,
-      processRunner = processRunner,
-      executableLookup = executableLookup,
-    )
-  }
+  builder.agent to ProcessAgentRunAdapter(
+    agent = builder.agent,
+    commandBuilder = builder,
+    processRunner = processRunner,
+    executableLookup = executableLookup,
+  )
+}

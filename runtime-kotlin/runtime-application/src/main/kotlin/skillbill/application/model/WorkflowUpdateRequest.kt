@@ -14,7 +14,6 @@ data class WorkflowUpdateRequest(
 )
 
 enum class WorkflowFamilyKind {
-  TASK_PROSE,
   VERIFY,
   TASK_RUNTIME,
 }

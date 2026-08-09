@@ -30,21 +30,12 @@ internal fun WorkflowEngine.continueExistingWorkflow(
   val workflowId = initialRecord.workflowId
   val sessionSummary = family.sessionSummary(unitOfWork.workflowStates, record.sessionId.orEmpty())
   var decision = continueDecision(family.definition, record, sessionSummary)
-  var projectionArtifactsJson: String? = null
   if (decision.shouldReopen) {
     val originalContinueStatus = decision.view.continueStatus
     val originalWorkflowStatus = decision.view.workflowStatusBeforeContinue
-    val runtimeInput = family.withDecompositionRuntime(
-      record,
-      decision.toReopenInput(record.sessionId),
-      workflowId,
-      validator,
-      fileStore,
-    )
-    val reopened = updateRecord(family.definition, record, runtimeInput.input)
+    val reopened = updateRecord(family.definition, record, decision.toReopenInput(record.sessionId))
     family.save(unitOfWork.workflowStates, reopened)
     record = family.get(unitOfWork.workflowStates, workflowId) ?: reopened
-    if (runtimeInput.updated) projectionArtifactsJson = record.artifactsJson
     decision = continueDecision(
       family.definition,
       record,
@@ -58,7 +49,7 @@ internal fun WorkflowEngine.continueExistingWorkflow(
       dbPath = unitOfWork.dbPath.toString(),
       view = decision.view,
     ),
-    projectionArtifactsJson,
+    projectionArtifactsJson = null,
   )
 }
 
@@ -75,7 +66,7 @@ internal fun WorkflowEngine.alignSubtaskResumeStep(
     return record
   }
   val updated = updateRecord(
-    WorkflowFamily.IMPLEMENT.definition,
+    WorkflowFamily.TASK_RUNTIME.definition,
     record,
     WorkflowUpdateInput(
       workflowStatus = record.workflowStatus,
@@ -87,12 +78,12 @@ internal fun WorkflowEngine.alignSubtaskResumeStep(
       sessionId = record.sessionId.orEmpty(),
     ),
   )
-  WorkflowFamily.IMPLEMENT.save(unitOfWork.workflowStates, updated)
-  return WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, record.workflowId) ?: updated
+  WorkflowFamily.TASK_RUNTIME.save(unitOfWork.workflowStates, updated)
+  return WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, record.workflowId) ?: updated
 }
 
 private fun WorkflowEngine.resumeAlignment(record: WorkflowStateSnapshot, requestedStepId: String): ResumeAlignment {
-  val steps = snapshotView(WorkflowFamily.IMPLEMENT.definition, record).steps
+  val steps = snapshotView(WorkflowFamily.TASK_RUNTIME.definition, record).steps
   val requestedStep = steps.firstOrNull { step -> step.stepId == requestedStepId }
   val targetStepId = requestedStepId.takeIf { stepId ->
     stepId.isNotBlank() && steps.firstOrNull { step -> step.stepId == stepId }?.status == "running"
@@ -116,7 +107,7 @@ internal fun WorkflowEngine.persistParentDecompositionRuntime(
 ) {
   migrateLegacyGoalRunnerControls(unitOfWork, parentRecord)
   val updatedParent = updateRecord(
-    WorkflowFamily.IMPLEMENT.definition,
+    WorkflowFamily.TASK_RUNTIME.definition,
     parentRecord,
     WorkflowUpdateInput(
       workflowStatus = parentRecord.workflowStatus,
@@ -134,7 +125,7 @@ internal fun WorkflowEngine.persistParentDecompositionRuntime(
       replaceArtifacts = true,
     ),
   )
-  WorkflowFamily.IMPLEMENT.saveRecord(
+  WorkflowFamily.TASK_RUNTIME.saveRecord(
     unitOfWork.workflowStates,
     updatedParent.toRecord().copy(issueKey = manifest.issueKey),
   )

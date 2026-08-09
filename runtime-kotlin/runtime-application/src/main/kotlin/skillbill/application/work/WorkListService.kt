@@ -47,8 +47,12 @@ class WorkListService(
   }
 }
 
+// SKILL-175: the prose engine is deleted, so a legacy FEATURE_TASK_PROSE row has no live
+// WorkflowFamily to validate its snapshot against. Mapping it to null (like FEATURE_GOAL, which
+// carries no workflow snapshot of its own) keeps it listed via toApplicationItem() without
+// dispatching it to a deleted family.
 private fun workflowFamily(item: WorkItem): WorkflowFamily? = when (item.workflowKind) {
-  WorkItemKind.FEATURE_TASK_PROSE -> WorkflowFamily.IMPLEMENT
+  WorkItemKind.FEATURE_TASK_PROSE -> null
   WorkItemKind.FEATURE_TASK_RUNTIME -> WorkflowFamily.TASK_RUNTIME
   WorkItemKind.FEATURE_VERIFY -> WorkflowFamily.VERIFY
   WorkItemKind.FEATURE_GOAL -> null

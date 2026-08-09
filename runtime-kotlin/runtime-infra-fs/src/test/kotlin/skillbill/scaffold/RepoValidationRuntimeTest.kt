@@ -457,6 +457,26 @@ class RepoValidationRuntimeTest {
   }
 
   @Test
+  fun `repo validation skips boundary ledger references to deleted skills`() {
+    val repoRoot = Files.createTempDirectory("skillbill-boundary-ledger-refs")
+    createRepoValidationSkillFixture(repoRoot)
+    val ledger = repoRoot.resolve("skills/agent/history.md")
+    Files.createDirectories(ledger.parent)
+    Files.writeString(ledger, "Areas: skills/bill-feature-task-prose, skills/bill-feature-task-subtask-runner\n")
+
+    val report = RepoValidationRuntime.validateRepo(repoRoot)
+
+    assertFalse(
+      report.issues.any { it.contains("references unknown skill 'bill-feature-task-prose'") },
+      report.issues.joinToString("\n"),
+    )
+    assertFalse(
+      report.issues.any { it.contains("references unknown skill 'bill-feature-task-subtask-runner'") },
+      report.issues.joinToString("\n"),
+    )
+  }
+
+  @Test
   fun `repo validation preserves native agent source files`() {
     val repoRoot = Files.createTempDirectory("skillbill-native-agent-source-preservation")
     createRepoValidationSkillFixture(repoRoot)

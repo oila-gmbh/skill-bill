@@ -7,6 +7,7 @@ import skillbill.application.featuretask.model.FeatureTaskContinuationLookupResu
 import skillbill.application.workflow.goalContinuationFor
 import skillbill.application.workflow.toSnapshot
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
+import skillbill.error.LegacyProseWorkflowError
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.model.FeatureTaskRouteScope
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
@@ -15,7 +16,6 @@ import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
-import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 
 @Inject
@@ -125,10 +125,13 @@ class FeatureTaskContinuationLookupService(
     if (identityConflictsWithWorkflow(identity, candidate)) {
       invalidIdentity(candidate, "immutable identity conflicts with workflow snapshot")
     }
-    val definition = when (identity.mode) {
-      FeatureTaskWorkflowMode.PROSE -> FeatureImplementWorkflowDefinition.definition
-      FeatureTaskWorkflowMode.RUNTIME -> FeatureTaskRuntimePhaseWorkflowDefinition.definition
+    // SKILL-175: the prose engine is retired. A PROSE-mode candidate is quarantined here rather than
+    // classified as resumable — continuation of a legacy prose row must loud-fail, not degrade into a
+    // (deleted) prose definition or reinterpret the row as a runtime candidate.
+    if (identity.mode == FeatureTaskWorkflowMode.PROSE) {
+      throw LegacyProseWorkflowError(candidate.workflow.workflowId, candidate.workflow.issueKey)
     }
+    val definition = FeatureTaskRuntimePhaseWorkflowDefinition.definition
     engine.snapshotView(definition, candidate.workflow.toSnapshot())
     val status = candidate.workflow.workflowStatus
     return FeatureTaskContinuationCandidate(

@@ -1,7 +1,6 @@
 package skillbill.db.core
 
 import skillbill.db.telemetry.bind
-import skillbill.db.telemetry.emitFeatureImplementFinished
 import skillbill.db.telemetry.emitFeatureTaskRuntimeFinished
 import skillbill.db.telemetry.emitFeatureVerifyFinished
 import skillbill.db.telemetry.emitGoalIssueFinished
@@ -32,14 +31,10 @@ internal data class ReconciliationCandidate(
   val secondaryIdentity: String?,
 )
 
+// SKILL-175 subtask 6: "feature_implement" is deliberately absent. The prose engine has no live
+// writer (runtime-kotlin/agent/decisions.md, "In-flight prose row policy" rule 2), so
+// `feature_implement_sessions` must never be treated as a reconciliation candidate again.
 private val lifecycleTargets = listOf(
-  LifecycleReconciliationTarget(
-    family = "feature_implement",
-    tableName = "feature_implement_sessions",
-    terminalColumn = "completion_status",
-    terminalValue = "stale",
-    workflowTableName = "feature_task_workflows",
-  ) { connection, sessionId, level -> emitFeatureImplementFinished(connection, sessionId, level) },
   LifecycleReconciliationTarget(
     family = "feature_task_runtime",
     tableName = "feature_task_runtime_sessions",
@@ -117,15 +112,10 @@ fun reconcileStaleTelemetrySessions(
   )
 }
 
-fun reconcileStaleFeatureImplementSessions(
-  connection: Connection,
-  thresholdSeconds: Long = STALE_SESSION_THRESHOLD_SECONDS,
-): Int = reconcileLifecycleTable(connection, lifecycleTargets[0], thresholdSeconds, "anonymous")
-
 fun reconcileStaleFeatureTaskRuntimeSessions(
   connection: Connection,
   thresholdSeconds: Long = STALE_SESSION_THRESHOLD_SECONDS,
-): Int = reconcileLifecycleTable(connection, lifecycleTargets[1], thresholdSeconds, "anonymous")
+): Int = reconcileLifecycleTable(connection, lifecycleTargets[0], thresholdSeconds, "anonymous")
 
 private fun claimReconciliationCadence(connection: Connection, request: TelemetryReconciliationRequest): Boolean {
   val completedAt = request.now.toString()

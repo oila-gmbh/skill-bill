@@ -1,7 +1,6 @@
 package skillbill.infrastructure.sqlite.review
 
 import skillbill.ports.persistence.model.ReviewRepositoryStatsSnapshot
-import skillbill.review.model.FeatureImplementWorkflowStats
 import skillbill.review.model.FeatureTaskRuntimeWorkflowStats
 import skillbill.review.model.FeatureVerifyWorkflowStats
 import skillbill.review.model.FindingOutcomeRow
@@ -27,9 +26,6 @@ object ReviewStatsRuntime {
 
   fun featureVerifyStats(connection: Connection): FeatureVerifyWorkflowStats =
     buildFeatureVerifyStats(loadRows(connection, "feature_verify_sessions"))
-
-  fun featureImplementStats(connection: Connection): FeatureImplementWorkflowStats =
-    buildFeatureImplementStats(loadRows(connection, "feature_implement_sessions"))
 
   fun featureTaskRuntimeStats(connection: Connection): FeatureTaskRuntimeWorkflowStats =
     buildFeatureTaskRuntimeStats(loadRows(connection, "feature_task_runtime_sessions"))

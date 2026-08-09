@@ -29,6 +29,7 @@ import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.error.LegacyProseWorkflowError
 import skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_ARTIFACT_KEY
 import skillbill.goalrunner.model.GOAL_ATTEMPT_LEDGER_LIMIT
 import skillbill.goalrunner.model.GOAL_PAUSE_REASON_OPERATOR_REQUEST
@@ -501,7 +502,7 @@ class WorkflowGoalRunnerManifestStore(
       unitOfWork.workflowStates.saveFeatureTaskExecutionIdentity(identity)
     }
     val refreshedParent =
-      WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentUpdated.workflowId) ?: parentUpdated
+      WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, parentUpdated.workflowId) ?: parentUpdated
     return SavedGoalChildWorkflow(
       state = GoalRunnerManifestState(
         parentWorkflowId = refreshedParent.workflowId,
@@ -580,7 +581,7 @@ class WorkflowGoalRunnerManifestStore(
     unitOfWork: UnitOfWork,
     state: GoalRunnerManifestState,
   ): WorkflowStateSnapshot {
-    val existingParent = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, state.parentWorkflowId)
+    val existingParent = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, state.parentWorkflowId)
       ?: unitOfWork.workflowStates.findDecomposedParentWorkflow(
         state.manifest.issueKey,
         decompositionManifestValidator,
@@ -588,7 +589,7 @@ class WorkflowGoalRunnerManifestStore(
       ?: error("Unknown decomposed parent workflow '${state.parentWorkflowId}'.")
     migrateLegacyGoalRunnerControls(unitOfWork, existingParent)
     val parentUpdated = engine.updateRecord(
-      WorkflowFamily.IMPLEMENT.definition,
+      WorkflowFamily.TASK_RUNTIME.definition,
       existingParent,
       WorkflowUpdateInput(
         workflowStatus = existingParent.workflowStatus,
@@ -608,7 +609,7 @@ class WorkflowGoalRunnerManifestStore(
         replaceArtifacts = true,
       ),
     )
-    WorkflowFamily.IMPLEMENT.saveRecord(
+    WorkflowFamily.TASK_RUNTIME.saveRecord(
       unitOfWork.workflowStates,
       parentUpdated.toRecord().copy(issueKey = normalizeRequiredIssueKey(state.manifest.issueKey)),
     )
@@ -680,7 +681,7 @@ class WorkflowGoalRunnerManifestStore(
     dbPathOverride: String?,
   ): skillbill.workflow.model.CodeReviewExecutionMode? = database.read(dbPathOverride) { unitOfWork ->
     unitOfWork.goalRunnerControls.reviewPolicy(parentWorkflowId)?.codeReviewMode
-      ?: WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId)
+      ?: WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, parentWorkflowId)
         ?.let { record -> reviewPolicyFromLegacyArtifacts(decodeArtifacts(record.artifactsJson))?.codeReviewMode }
   }
 
@@ -689,7 +690,7 @@ class WorkflowGoalRunnerManifestStore(
     mode: skillbill.workflow.model.CodeReviewExecutionMode,
     dbPathOverride: String?,
   ): skillbill.workflow.model.CodeReviewExecutionMode = database.transaction(dbPathOverride) { unitOfWork ->
-    val record = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId)
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, parentWorkflowId)
       ?: error("Goal parent workflow '$parentWorkflowId' no longer exists.")
     migrateLegacyGoalRunnerControls(unitOfWork, record)
     val existing = unitOfWork.goalRunnerControls.reviewPolicy(parentWorkflowId)?.codeReviewMode
@@ -709,7 +710,7 @@ class WorkflowGoalRunnerManifestStore(
   override fun reviewPolicy(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerReviewPolicy? =
     database.read(dbPathOverride) { unitOfWork ->
       unitOfWork.goalRunnerControls.reviewPolicy(parentWorkflowId)
-        ?: WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId)
+        ?: WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, parentWorkflowId)
           ?.let { record -> reviewPolicyFromLegacyArtifacts(decodeArtifacts(record.artifactsJson)) }
     }
 
@@ -718,7 +719,7 @@ class WorkflowGoalRunnerManifestStore(
     policy: GoalRunnerReviewPolicy,
     dbPathOverride: String?,
   ): GoalRunnerReviewPolicy = database.transaction(dbPathOverride) { unitOfWork ->
-    val record = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId)
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, parentWorkflowId)
       ?: error("Goal parent workflow '$parentWorkflowId' no longer exists.")
     migrateLegacyGoalRunnerControls(unitOfWork, record)
     val existing = unitOfWork.goalRunnerControls.reviewPolicy(parentWorkflowId)
@@ -737,7 +738,7 @@ class WorkflowGoalRunnerManifestStore(
     dbPathOverride: String?,
   ): Map<Int, GoalRunnerOutOfBandAcceptance> = database.read(dbPathOverride) { unitOfWork ->
     unitOfWork.goalRunnerControls.outOfBandAcceptances(parentWorkflowId).ifEmpty {
-      WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId)
+      WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, parentWorkflowId)
         ?.let { record -> outOfBandAcceptancesFromLegacyArtifacts(decodeArtifacts(record.artifactsJson)) }
         .orEmpty()
     }
@@ -748,7 +749,7 @@ class WorkflowGoalRunnerManifestStore(
     acceptance: GoalRunnerOutOfBandAcceptance,
     dbPathOverride: String?,
   ): GoalRunnerOutOfBandAcceptance = database.transaction(dbPathOverride) { unitOfWork ->
-    val record = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId)
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, parentWorkflowId)
       ?: error("Goal parent workflow '$parentWorkflowId' no longer exists.")
     migrateLegacyGoalRunnerControls(unitOfWork, record)
     unitOfWork.goalRunnerControls.persistOutOfBandAcceptance(parentWorkflowId, acceptance)
@@ -766,7 +767,7 @@ class WorkflowGoalRunnerManifestStore(
     clearOutOfBandAcceptances: Boolean = false,
     mergeConcurrentProgress: Boolean = true,
   ): SavedManifestProjection {
-    val existing = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, state.parentWorkflowId)
+    val existing = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, state.parentWorkflowId)
       ?: unitOfWork.workflowStates.findDecomposedParentWorkflow(
         state.manifest.issueKey,
         decompositionManifestValidator,
@@ -787,7 +788,7 @@ class WorkflowGoalRunnerManifestStore(
       state.manifest
     }
     val updated = engine.updateRecord(
-      WorkflowFamily.IMPLEMENT.definition,
+      WorkflowFamily.TASK_RUNTIME.definition,
       existingSnapshot,
       WorkflowUpdateInput(
         workflowStatus = existingSnapshot.workflowStatus,
@@ -798,11 +799,11 @@ class WorkflowGoalRunnerManifestStore(
         replaceArtifacts = true,
       ),
     )
-    WorkflowFamily.IMPLEMENT.saveRecord(
+    WorkflowFamily.TASK_RUNTIME.saveRecord(
       unitOfWork.workflowStates,
       updated.toRecord().copy(issueKey = normalizeRequiredIssueKey(manifest.issueKey)),
     )
-    val refreshed = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, updated.workflowId) ?: updated
+    val refreshed = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, updated.workflowId) ?: updated
     return SavedManifestProjection(
       state = GoalRunnerManifestState(
         parentWorkflowId = refreshed.workflowId,
@@ -852,13 +853,13 @@ class WorkflowGoalRunnerManifestStore(
       )?.toSnapshot()
       existing?.let { migrateLegacyGoalRunnerControls(unitOfWork, it) }
       val base = existing ?: engine.openRecord(
-        WorkflowFamily.IMPLEMENT.definition,
-        generateWorkflowId(WorkflowFamily.IMPLEMENT.definition.workflowIdPrefix),
-        WorkflowFamily.IMPLEMENT.definition.defaultSessionPrefix,
+        WorkflowFamily.TASK_RUNTIME.definition,
+        generateWorkflowId(WorkflowFamily.TASK_RUNTIME.definition.workflowIdPrefix),
+        WorkflowFamily.TASK_RUNTIME.definition.defaultSessionPrefix,
         "plan",
       )
       val imported = engine.updateRecord(
-        WorkflowFamily.IMPLEMENT.definition,
+        WorkflowFamily.TASK_RUNTIME.definition,
         base,
         WorkflowUpdateInput(
           workflowStatus = "paused",
@@ -867,8 +868,6 @@ class WorkflowGoalRunnerManifestStore(
             null
           } else {
             listOf(
-              mapOf("step_id" to "assess", "status" to "completed", "attempt_count" to 1),
-              mapOf("step_id" to "create_branch", "status" to "completed", "attempt_count" to 1),
               mapOf("step_id" to "preplan", "status" to "completed", "attempt_count" to 1),
               mapOf("step_id" to "plan", "status" to "completed", "attempt_count" to 1),
             )
@@ -878,11 +877,11 @@ class WorkflowGoalRunnerManifestStore(
           replaceArtifacts = true,
         ),
       )
-      WorkflowFamily.IMPLEMENT.saveRecord(
+      WorkflowFamily.TASK_RUNTIME.saveRecord(
         unitOfWork.workflowStates,
         imported.toRecord().copy(issueKey = normalizeRequiredIssueKey(manifest.issueKey)),
       )
-      val saved = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, imported.workflowId) ?: imported
+      val saved = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, imported.workflowId) ?: imported
       GoalRunnerManifestState(
         parentWorkflowId = saved.workflowId,
         dbPath = unitOfWork.dbPath.toString(),
@@ -1021,7 +1020,7 @@ private class GoalRunnerControlCoordinator(
     overwriteExistingReason: Boolean,
     dbPathOverride: String?,
   ): GoalRunnerControlState? = database.transaction(dbPathOverride) { unitOfWork ->
-    val parent = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId)
+    val parent = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, parentWorkflowId)
       ?: return@transaction null
     migrateLegacyGoalRunnerControls(unitOfWork, parent)
     val existing = unitOfWork.goalRunnerControls.controlState(parentWorkflowId)
@@ -1043,7 +1042,7 @@ private class GoalRunnerControlCoordinator(
 
   fun requestPause(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerControlState? =
     database.transaction(dbPathOverride) { unitOfWork ->
-      WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId)?.let { parent ->
+      WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, parentWorkflowId)?.let { parent ->
         migrateLegacyGoalRunnerControls(unitOfWork, parent)
         persistPauseRequest(unitOfWork, parentWorkflowId)
       }
@@ -1098,7 +1097,7 @@ private class GoalRunnerControlCoordinator(
 
   fun resume(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerManifestState? =
     database.transaction(dbPathOverride) { unitOfWork ->
-      val parent = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId)
+      val parent = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, parentWorkflowId)
         ?: return@transaction null
       migrateLegacyGoalRunnerControls(unitOfWork, parent)
       val existing = unitOfWork.goalRunnerControls.controlState(parentWorkflowId)
@@ -1171,7 +1170,7 @@ private class GoalRunnerControlCoordinator(
   }
 
   private fun requireParent(unitOfWork: UnitOfWork, parentWorkflowId: String): WorkflowStateSnapshot {
-    val parent = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId)
+    val parent = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, parentWorkflowId)
       ?: error("Unknown decomposed parent workflow '$parentWorkflowId'.")
     migrateLegacyGoalRunnerControls(unitOfWork, parent)
     return parent
@@ -1249,7 +1248,7 @@ private class GoalParentProjectionWriter(
     val manifest = existing.decompositionRuntime(validator)
       ?: error("Goal parent workflow '${existing.workflowId}' has no decomposition manifest.")
     val updated = engine.updateRecord(
-      WorkflowFamily.IMPLEMENT.definition,
+      WorkflowFamily.TASK_RUNTIME.definition,
       existing,
       WorkflowUpdateInput(
         workflowStatus = existing.workflowStatus,
@@ -1260,7 +1259,7 @@ private class GoalParentProjectionWriter(
         replaceArtifacts = true,
       ),
     )
-    WorkflowFamily.IMPLEMENT.saveRecord(
+    WorkflowFamily.TASK_RUNTIME.saveRecord(
       unitOfWork.workflowStates,
       updated.toRecord().copy(issueKey = normalizeRequiredIssueKey(manifest.issueKey)),
     )
@@ -2127,7 +2126,7 @@ class WorkflowGoalRunnerOutcomeStore(
     var maxAccounting: Int? = null
     var maxProgress: Int? = null
     val backwardEdgeCounts = mutableMapOf<String, Int>()
-    listOf(WorkflowFamily.IMPLEMENT, WorkflowFamily.TASK_RUNTIME).forEach { family ->
+    listOf(WorkflowFamily.TASK_RUNTIME).forEach { family ->
       family.list(unitOfWork.workflowStates, Int.MAX_VALUE).forEach { snapshot ->
         val artifacts = decodeArtifacts(snapshot.artifactsJson)
         if (goalContinuation(artifacts)?.issueKey != normalizedIssueKey) {
@@ -2167,7 +2166,7 @@ class WorkflowGoalRunnerOutcomeStore(
     database.read(dbPathOverride) { unitOfWork ->
       val normalizedIssueKey = issueKey.trim()
       val acc = AttemptLedgerAccumulator()
-      listOf(WorkflowFamily.IMPLEMENT, WorkflowFamily.TASK_RUNTIME).forEach { family ->
+      listOf(WorkflowFamily.TASK_RUNTIME).forEach { family ->
         family.list(unitOfWork.workflowStates, Int.MAX_VALUE).forEach { snapshot ->
           val artifacts = decodeArtifacts(snapshot.artifactsJson)
           if (goalContinuation(artifacts)?.issueKey != normalizedIssueKey) return@forEach
@@ -2186,7 +2185,7 @@ class WorkflowGoalRunnerOutcomeStore(
     // HEAD (the manifest-workflowId-independent heal). null keeps the read-only, no-measure path
     // for pure status callers.
     repoRoot: Path? = null,
-  ): List<GoalContinuationCandidate> = listOf(WorkflowFamily.IMPLEMENT, WorkflowFamily.TASK_RUNTIME).flatMap { family ->
+  ): List<GoalContinuationCandidate> = listOf(WorkflowFamily.TASK_RUNTIME).flatMap { family ->
     family.list(workflowStates, Int.MAX_VALUE).mapNotNull { snapshot ->
       engine.snapshotView(family.definition, snapshot)
       val artifacts = decodeArtifacts(snapshot.artifactsJson)
@@ -2235,8 +2234,8 @@ class WorkflowGoalRunnerOutcomeStore(
   private fun markBlocked(write: GoalRunnerBlockWrite): String {
     val steps = decodeWorkflowSteps(write.record.stepsJson)
     // Family-scoped: only the runtime family reconciles the resume boundary off the truthful
-    // steps[] order (SKILL-85 subtask 1). The prose IMPLEMENT/VERIFY reconciliation keeps its
-    // historical current-step fallback unchanged.
+    // steps[] order (SKILL-85 subtask 1). The VERIFY family reconciliation keeps its historical
+    // current-step fallback unchanged; PROSE rows never reach here (workflowFamilyFor loud-fails).
     // Loop-only steps (e.g. `implement_fix`) are excluded so the boundary scan mirrors the forward
     // transition, which skips them: otherwise a reconciled row with a clean review parks at
     // `implement_fix` (the first definition-ordered loop-only step still pending) instead of the
@@ -2270,12 +2269,17 @@ class WorkflowGoalRunnerOutcomeStore(
     return stepId
   }
 
+  // SKILL-175: the prose engine is retired. A `feature_task_workflows` row that decodes as
+  // PROSE (or predates the `mode` column, which only ever held prose rows) is quarantined here —
+  // every live goal-runner write/continue/lookup path funnels through this lookup, so raising here
+  // refuses the row loudly for all of them rather than degrading to a deleted family or silently
+  // treating the row as absent.
   private fun workflowFamilyFor(workflowStates: WorkflowStateRepository, workflowId: String): WorkflowFamily? {
     val featureTaskRow = workflowStates.getFeatureTaskWorkflow(workflowId)
     if (featureTaskRow != null) {
       return when (featureTaskRow.mode) {
         FeatureTaskWorkflowMode.RUNTIME -> WorkflowFamily.TASK_RUNTIME
-        FeatureTaskWorkflowMode.PROSE, null -> WorkflowFamily.IMPLEMENT
+        FeatureTaskWorkflowMode.PROSE, null -> throw LegacyProseWorkflowError(workflowId, featureTaskRow.issueKey)
       }
     }
     return if (workflowStates.getFeatureVerifyWorkflow(workflowId) != null) {

@@ -82,6 +82,10 @@ Agent-specific behavior uses injectable strategies on `AgentRunProcessRequest`, 
 
 Write direct, active prose; drop filler, stale phrases, praise, and repetition, but preserve names, numbers, and qualifications. Commits/PRs/docs: lead with the outcome, state what changed and why, and avoid unsupported terms such as "successfully", "perfect", "comprehensive", and "robust". Prefer clear names and small functions over comments; comment only a non-obvious *why* code cannot express — never explain *what* code does.
 
+## Testing
+
+Tests cost tokens on every future change; write few, high-value ones instead of mirroring code 1:1. Before writing any test, name the realistic bug it would catch — a concrete wrong behavior that fails this test while the rest of the suite passes; if you cannot, do not write it. Concentrate coverage on critical paths: money and quantities, data integrity and persistence atomicity, auth and tenant isolation, external contracts and serialization, concurrency and recovery, irreversible side effects — trivial glue and non-critical paths need no test. Assert observable behavior at boundaries, never implementation structure (mock-interaction verification, call ordering, duplicated implementation steps); one strong test per rule or branch, no literal-variation siblings. `bill-unit-test-value-check` is the review-time gate and its rubric is authoritative.
+
 ## Quality Checks
 
 Prefer `bill-code-check`; document fallback if no platform checker. Bias: stable base commands, platform depth behind routers, explicit overrides, validator-backed rules, acceptance and rejection tests.

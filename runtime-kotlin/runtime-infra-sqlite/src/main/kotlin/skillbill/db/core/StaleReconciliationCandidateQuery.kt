@@ -6,19 +6,11 @@ import java.sql.Connection
 import java.sql.ResultSet
 import java.time.temporal.ChronoUnit
 
+// SKILL-175 subtask 6: no `feature_implement` branch here. The prose engine has no live writer
+// (runtime-kotlin/agent/decisions.md, "In-flight prose row policy" rule 2), so
+// `feature_implement_sessions` must never surface as a reconciliation candidate.
 private val staleCandidateSelectionSql = """
   WITH candidates(family, primary_identity, secondary_identity, stale_at) AS (
-    SELECT 'feature_implement', session_id, NULL, started_at
-    FROM feature_implement_sessions
-    WHERE finished_at IS NULL AND finished_event_emitted_at IS NULL
-      AND datetime(started_at) <= datetime(?)
-      AND NOT EXISTS (
-        SELECT 1 FROM feature_task_workflows workflow
-        WHERE workflow.session_id = feature_implement_sessions.session_id
-          AND workflow.workflow_status NOT IN ('completed', 'failed', 'abandoned')
-          AND datetime(workflow.updated_at) > datetime(?)
-      )
-    UNION ALL
     SELECT 'feature_task_runtime', session_id, NULL, started_at
     FROM feature_task_runtime_sessions
     WHERE finished_at IS NULL AND finished_event_emitted_at IS NULL
@@ -69,8 +61,6 @@ internal fun reconciliationCandidates(
   val goalCutoff = request.now.minus(request.goalIssueAbandonmentDays, ChronoUnit.DAYS).toString()
   return connection.prepareStatement(staleCandidateSelectionSql).use { statement ->
     statement.bind(
-      sessionCutoff,
-      sessionCutoff,
       sessionCutoff,
       sessionCutoff,
       sessionCutoff,

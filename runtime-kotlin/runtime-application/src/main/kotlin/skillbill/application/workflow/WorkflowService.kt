@@ -37,7 +37,6 @@ import skillbill.workflow.NoopGoalObservabilityEventValidator
 import skillbill.workflow.RUNTIME_REPOSITORY_EVIDENCE_ARTIFACT_KEY
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
-import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
 import skillbill.workflow.model.WorkflowDefinition
 import skillbill.workflow.model.WorkflowSnapshotView
 import skillbill.workflow.model.WorkflowStateSnapshot
@@ -183,17 +182,12 @@ class WorkflowService(
       requireNotNull(issueKey),
       requiredRepositoryIdentity,
     )
-    val mode = if (kind == WorkflowFamilyKind.TASK_PROSE) {
-      FeatureTaskWorkflowMode.PROSE
-    } else {
-      FeatureTaskWorkflowMode.RUNTIME
-    }
     return FeatureTaskExecutionIdentity(
       workflowId = workflowId,
       normalizedIssueKey = normalizedIssueKey,
       repositoryIdentity = requiredRepositoryIdentity,
       governedSpecPath = requireNotNull(governedSpecPath),
-      mode = mode,
+      mode = FeatureTaskWorkflowMode.RUNTIME,
       routeScope = routeScope,
     ).also(FeatureTaskExecutionIdentityPolicy::validate)
   }
@@ -210,7 +204,7 @@ class WorkflowService(
     routeScope: FeatureTaskRouteScope = FeatureTaskRouteScope.STANDALONE,
   ): WorkflowOpenResult {
     require(kind in FEATURE_TASK_FAMILY_KINDS) {
-      "Only prose and runtime feature-task workflows use execution identity."
+      "Only runtime feature-task workflows use execution identity."
     }
     return open(
       kind,
@@ -234,21 +228,13 @@ class WorkflowService(
     WorkflowEngine.validateUpdate(family.definition, input)?.let { error ->
       return WorkflowUpdateResult.Error(request.workflowId, error)
     }
-    var projectionArtifactsJson: String? = null
-    val result = database.transaction(dbOverride) { unitOfWork ->
+    return database.transaction(dbOverride) { unitOfWork ->
       val existing = family.get(unitOfWork.workflowStates, request.workflowId)
         ?: return@transaction WorkflowUpdateResult.Error(
           request.workflowId,
           "Unknown workflow_id '${request.workflowId}'.",
         )
-      val runtimeInput = family.withDecompositionRuntime(
-        existing,
-        input,
-        request.workflowId,
-        decompositionManifestValidator,
-        decompositionManifestFileStore,
-      )
-      val effectiveInput = runtimeInput.input.withGoalObservabilityArtifacts(
+      val effectiveInput = input.withGoalObservabilityArtifacts(
         existing = existing,
         workflowId = request.workflowId,
         validator = goalObservabilityEventValidator,
@@ -257,27 +243,8 @@ class WorkflowService(
       val updatedRecord = engine.updateRecord(family.definition, existing, effectiveInput)
       family.save(unitOfWork.workflowStates, updatedRecord)
       val updated = family.get(unitOfWork.workflowStates, request.workflowId) ?: updatedRecord
-      if (runtimeInput.updated) {
-        projectionArtifactsJson = updated.artifactsJson
-        engine.syncDecompositionParentRuntime(
-          family,
-          updated,
-          request.workflowId,
-          unitOfWork,
-          decompositionManifestValidator,
-        )
-      }
       updateOk(family.definition, updated, effectiveInput, unitOfWork.dbPath.toString())
     }
-    projectionArtifactsJson?.let { artifactsJson ->
-      DecompositionManifestWriter.writeProjectionFromWorkflowState(
-        Path.of("").toAbsolutePath(),
-        artifactsJson,
-        decompositionManifestValidator,
-        decompositionManifestFileStore,
-      )
-    }
-    return result
   }
 
   fun abandonFeatureTaskRuntime(workflowId: String, reason: String, dbOverride: String? = null): WorkflowUpdateResult {
@@ -614,7 +581,7 @@ class WorkflowService(
     val result = database.transaction(dbOverride) { unitOfWork ->
       val family = kind.workflowFamily()
       var record = family.get(unitOfWork.workflowStates, workflowId)
-      if (record == null && family == WorkflowFamily.IMPLEMENT) {
+      if (record == null && family == WorkflowFamily.TASK_RUNTIME) {
         val resolved =
           DecompositionWorkflowContinuation(
             engine,
@@ -688,22 +655,6 @@ class WorkflowService(
     ?.let { engine.launchProjection(definition, snapshot, stepId, producerIteration) }
 }
 
-private fun WorkflowEngine.syncDecompositionParentRuntime(
-  family: WorkflowFamily,
-  updated: WorkflowStateSnapshot,
-  workflowId: String,
-  unitOfWork: UnitOfWork,
-  validator: DecompositionManifestValidator,
-) {
-  val manifest = updated.decompositionRuntime(validator)
-  if (family == WorkflowFamily.IMPLEMENT && manifest != null) {
-    unitOfWork.workflowStates.findDecomposedParentWorkflowForRuntime(manifest, validator)
-      ?.toSnapshot()
-      ?.takeUnless { it.workflowId == workflowId }
-      ?.let { parent -> persistParentDecompositionRuntime(parent, manifest, unitOfWork, validator) }
-  }
-}
-
 private data class BlockedPhaseRetryRequest(
   val workflowId: String,
   val phaseId: String,
@@ -746,7 +697,7 @@ private const val MAX_ABANDONMENT_REASON_LENGTH: Int = 1000
 private const val FEATURE_TASK_RUNTIME_OPERATOR_ABANDONMENT_ARTIFACT_KEY: String = "operator_abandonment"
 private const val FEATURE_TASK_RUNTIME_IDENTITY_REPAIR_ARTIFACT_KEY: String = "operator_identity_repair"
 private const val WORKFLOW_ID_SUFFIX_LENGTH: Int = 4
-private val FEATURE_TASK_FAMILY_KINDS = setOf(WorkflowFamilyKind.TASK_PROSE, WorkflowFamilyKind.TASK_RUNTIME)
+private val FEATURE_TASK_FAMILY_KINDS = setOf(WorkflowFamilyKind.TASK_RUNTIME)
 private const val INCOMPLETE_FEATURE_TASK_IDENTITY_ERROR =
   "Feature-task workflows must be opened through openFeatureTask with complete immutable execution identity."
 private const val SUFFIX_CHARS: String = "abcdefghijklmnopqrstuvwxyz0123456789"
@@ -819,47 +770,6 @@ internal fun skillbill.workflow.model.WorkflowContinueDecision.toReopenInput(ses
     sessionId = sessionId,
   )
 
-internal fun WorkflowFamily.withDecompositionRuntime(
-  existing: WorkflowStateSnapshot,
-  input: WorkflowUpdateInput,
-  workflowId: String,
-  validator: DecompositionManifestValidator,
-  fileStore: DecompositionManifestFileStore,
-): DecompositionRuntimeInput = if (this != WorkflowFamily.IMPLEMENT) {
-  DecompositionRuntimeInput(input = input, updated = false)
-} else {
-  DecompositionManifestWriter.manifestFromWorkflowUpdate(
-    repoRoot = Path.of("").toAbsolutePath(),
-    existingArtifactsJson = existing.artifactsJson,
-    artifactsPatch = input.artifactsPatch,
-    validator = validator,
-    runtimeUpdate = DecompositionManifestRuntimeUpdate(
-      workflowId = workflowId,
-      workflowStatus = input.workflowStatus,
-      currentStepId = input.currentStepId,
-      stepUpdates = input.stepUpdates,
-    ),
-    fileStore = fileStore,
-  )?.let { manifest ->
-    DecompositionRuntimeInput(
-      input = input.copy(
-        artifactsPatch = LinkedHashMap(input.artifactsPatch.orEmpty()).apply {
-          put(
-            DECOMPOSITION_RUNTIME_ARTIFACT_KEY,
-            encodeDecompositionManifestMap(manifest, validator, DECOMPOSITION_RUNTIME_ARTIFACT_KEY),
-          )
-        },
-      ),
-      updated = true,
-    )
-  } ?: DecompositionRuntimeInput(input = input, updated = false)
-}
-
-internal data class DecompositionRuntimeInput(
-  val input: WorkflowUpdateInput,
-  val updated: Boolean,
-)
-
 private fun WorkflowUpdateInput.withGoalObservabilityArtifacts(
   existing: WorkflowStateSnapshot,
   workflowId: String,
@@ -907,7 +817,6 @@ internal fun generateWorkflowId(prefix: String): String {
 private fun Int.twoDigits(): String = toString().padStart(2, '0')
 
 internal fun WorkflowFamilyKind.workflowFamily(): WorkflowFamily = when (this) {
-  WorkflowFamilyKind.TASK_PROSE -> WorkflowFamily.IMPLEMENT
   WorkflowFamilyKind.VERIFY -> WorkflowFamily.VERIFY
   WorkflowFamilyKind.TASK_RUNTIME -> WorkflowFamily.TASK_RUNTIME
 }
@@ -921,7 +830,6 @@ internal enum class WorkflowFamily(
   // families with a strict forward pipeline, leaving their boundary resolution unchanged.
   val loopOnlyStepIds: Set<String> = emptySet(),
 ) {
-  IMPLEMENT(FeatureImplementWorkflowDefinition.definition, "feature-task-prose"),
   VERIFY(FeatureVerifyWorkflowDefinition.definition, "feature-verify"),
   TASK_RUNTIME(
     FeatureTaskRuntimePhaseWorkflowDefinition.definition,
@@ -947,14 +855,12 @@ internal enum class WorkflowFamily(
 
   fun saveRecord(repository: WorkflowStateRepository, record: WorkflowStateRecord) {
     when (this) {
-      IMPLEMENT -> repository.saveFeatureTaskWorkflow(record, FeatureTaskWorkflowMode.PROSE)
       VERIFY -> repository.saveFeatureVerifyWorkflow(record)
       TASK_RUNTIME -> repository.saveFeatureTaskWorkflow(record, FeatureTaskWorkflowMode.RUNTIME)
     }
   }
 
   fun get(repository: WorkflowStateRepository, workflowId: String): WorkflowStateSnapshot? = when (this) {
-    IMPLEMENT -> repository.getFeatureTaskWorkflowAsMode(workflowId, FeatureTaskWorkflowMode.PROSE)
     VERIFY -> repository.getFeatureVerifyWorkflow(workflowId)
     TASK_RUNTIME -> repository.getFeatureTaskWorkflowAsMode(workflowId, FeatureTaskWorkflowMode.RUNTIME)
   }?.toSnapshot()
@@ -963,7 +869,6 @@ internal enum class WorkflowFamily(
     buildMap {
       workflowIds.chunked(WORKFLOW_SNAPSHOT_BATCH_SIZE).forEach { batch ->
         val records = when (this@WorkflowFamily) {
-          IMPLEMENT -> repository.getFeatureImplementWorkflows(batch.toSet())
           VERIFY -> repository.getFeatureVerifyWorkflows(batch.toSet())
           TASK_RUNTIME -> repository.getFeatureTaskRuntimeWorkflows(batch.toSet())
         }
@@ -972,13 +877,11 @@ internal enum class WorkflowFamily(
     }
 
   fun list(repository: WorkflowStateRepository, limit: Int): List<WorkflowStateSnapshot> = when (this) {
-    IMPLEMENT -> repository.listFeatureTaskWorkflows(FeatureTaskWorkflowMode.PROSE, limit)
     VERIFY -> repository.listFeatureVerifyWorkflows(limit)
     TASK_RUNTIME -> repository.listFeatureTaskWorkflows(FeatureTaskWorkflowMode.RUNTIME, limit)
   }.map(WorkflowStateRecord::toSnapshot)
 
   fun latest(repository: WorkflowStateRepository): WorkflowStateSnapshot? = when (this) {
-    IMPLEMENT -> repository.latestFeatureTaskWorkflow(FeatureTaskWorkflowMode.PROSE)
     VERIFY -> repository.latestFeatureVerifyWorkflow()
     TASK_RUNTIME -> repository.latestFeatureTaskWorkflow(FeatureTaskWorkflowMode.RUNTIME)
   }?.toSnapshot()
@@ -995,7 +898,6 @@ internal enum class WorkflowFamily(
       return emptyMap()
     }
     return when (this) {
-      IMPLEMENT -> repository.getFeatureImplementSessionSummary(sessionId)?.toPayload().orEmpty()
       VERIFY -> repository.getFeatureVerifySessionSummary(sessionId)?.toPayload().orEmpty()
       // The runtime family has no session-summary record.
       TASK_RUNTIME -> emptyMap()
