@@ -92,12 +92,12 @@ subtasks:
 - id: 6
   name: "Kotlin persistence, application, and IDE prose branch"
   spec_path: ".feature-specs/SKILL-175-remove-prose-opencode-runtime-support/spec_subtask_6_kotlin-persistence-ide.md"
-  status: "pending"
+  status: "in_progress"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260809-134518-7dpf"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "audit"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

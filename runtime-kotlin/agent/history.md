@@ -1,4 +1,12 @@
-## [2026-08-09] SKILL-175 runtime-only callers and OpenCode/zcode product purge (subtask 2)
+## [2026-08-09] SKILL-175 Kotlin persistence/application/IDE prose branch removal (subtask 6)
+Areas: runtime-kotlin/{runtime-domain,runtime-ports,runtime-application,runtime-infra-sqlite,runtime-infra-fs,runtime-cli,runtime-mcp,runtime-core,runtime-contracts}, orchestration/contracts, skills/bill-unit-test-value-check
+- Removed the live Kotlin prose workflow family (FeatureTaskWorkflowMode.PROSE, WorkflowFamilyKind.TASK_PROSE/IMPLEMENT + `feature-task-prose` humanName, WorkItemKind.FEATURE_TASK_PROSE, FeatureImplementWorkflowDefinition step DAG, IdeStatusWorkflowFamily.FEATURE_TASK_PROSE) from domain, ports, application, SQLite, and IDE/work-list projection — no compile-time public API remains to open/update/continue a prose workflow.
+- Implemented subtask-1 in-flight row policy: legacy prose rows quarantine + loud-fail on resume (never a rewriting migration); `feature_task_workflows` no longer accepts `mode=prose` writes above the schema while CHECKs keep it as legacy read-only; goal children are runtime-only (no prose-shaped child rows).
+- Dropped prose branches from workflow-state, execution-identity, and ide-status contracts/schemas; IDE status and work-list no longer expose `feature-task-prose`; goal stats/attribution no longer require a live prose bucket.
+- Retargeted application/SQLite/CLI/MCP tests to runtime-only (removed prose tests deleted, not skipped); `ProseWorkflowTestSupport` replaced by runtime-only support; `./gradlew check` in runtime-kotlin is the gate.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 Areas: runtime-kotlin/{runtime-domain,runtime-ports,runtime-infra-fs,runtime-cli,runtime-application,runtime-contracts}, skills/{bill-feature,bill-feature-task,bill-feature-task-runtime,bill-feature-goal,bill-feature-verify,bill-code-review,bill-code-review-parallel}, docs, install.sh, uninstall.sh, orchestration/contracts, scripts
 - Feature entry skills no longer select `mode:prose|runtime`; runtime is the only engine callers document. Prose skill trees (`bill-feature-task-prose`, subtask-runner) remain until subtask 3 — callers just no longer point at them.
 - Deleted OpenCode/zcode from the live product matrix: `InstallAgent` / native-agent / symlink provider enums, detect/link/MCP/CLI path helpers, `McpOpenCodeConfig`/`McpZcodeConfig`, install-plan and native-agent-link-inventory schema enums, shell `SUPPORTED_AGENTS`, smoke matrices, and delegated-review provider rows. No refuse-tier leftover.
