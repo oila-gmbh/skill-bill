@@ -7,10 +7,20 @@ package skillbill.application.featuretask.model
  * user's own work in progress, a sibling workflow, or a concurrently prepared issue. This decision is
  * pure: it takes the inventories as values and returns stage, skip, or block, so the whole policy is
  * testable without a repository and the run loop keeps no branching of its own.
+ *
+ * Block is reserved for ownership violations. A working tree that simply diverged from what the run
+ * remembers — a foreign staging, a concurrent edit — never blocks: the run is on its own branch, and
+ * a checkpoint that refuses there strands a durable run only a human can restart.
  */
 sealed interface FeatureTaskRuntimeCheckpointDecision {
-  /** Stage exactly [ownedPaths] and commit. */
-  data class Stage(val ownedPaths: List<String>) : FeatureTaskRuntimeCheckpointDecision
+  /**
+   * Stage exactly [ownedPaths] and commit. [adoptedPaths] is the subset whose index or working-tree
+   * content diverged from what this run wrote and was adopted anyway; it is reported, never refused.
+   */
+  data class Stage(
+    val ownedPaths: List<String>,
+    val adoptedPaths: List<String> = emptyList(),
+  ) : FeatureTaskRuntimeCheckpointDecision
 
   /** The owned delta is empty, so there is nothing to checkpoint. Foreign dirt alone never commits. */
   data object Skip : FeatureTaskRuntimeCheckpointDecision

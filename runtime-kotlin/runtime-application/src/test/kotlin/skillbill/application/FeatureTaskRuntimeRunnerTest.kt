@@ -3826,19 +3826,17 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     assertTrue(git.stagePathsCalls.isEmpty())
   }
 
-  // AC-005: an owned path that is also foreign-staged is ambiguous; the only permitted outcome is a block.
+  // AC-005: an owned path staged outside the workflow is adopted on-branch, never a reason to refuse.
   @Test
-  fun `an owned path that is also foreign-staged blocks with the exact path and recovery guidance`() {
+  fun `an owned path that is also foreign-staged is committed rather than blocking the run`() {
     val git = checkpointGit(ownedPaths = listOf("src/Owned.kt"), stagedPaths = listOf("src/Owned.kt"))
     val harness = checkpointRunHarness(git)
 
     val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
 
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
-    assertContains(blocked.blockedReason, "src/Owned.kt")
-    assertContains(blocked.blockedReason, "git restore --staged")
-    assertTrue(git.createCommitMessages.isEmpty(), "an ambiguous overlap must never reach a commit")
-    assertTrue(git.stagePathsCalls.isEmpty(), "an ambiguous overlap must never stage over either side")
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertEquals(setOf("src/Owned.kt"), git.stagePathsCalls.toSet(), "the overlap is staged from the worktree")
+    assertTrue(git.createCommitMessages.isNotEmpty(), "the checkpoint must commit rather than refuse")
   }
 
   // AC-006: a commit failure must leave no partial index mutation behind for a later user commit.

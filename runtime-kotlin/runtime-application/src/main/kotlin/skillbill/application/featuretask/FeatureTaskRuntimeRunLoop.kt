@@ -731,14 +731,21 @@ internal class FeatureTaskRuntimeRunLoop(
         blockAt(precedingPhaseId, scope.reason)
         false
       }
-      is FeatureTaskRuntimeCheckpointDecision.Stage -> commitCheckpoint(
-        precedingPhaseId = precedingPhaseId,
-        branch = branch,
-        loopId = loopId,
-        intent = intent,
-        ownedPaths = scope.ownedPaths,
-        blockedReason = blockedReason,
-      )
+      is FeatureTaskRuntimeCheckpointDecision.Stage -> {
+        if (scope.adoptedPaths.isNotEmpty()) {
+          runCatching {
+            diagnostics.warning(FeatureTaskRuntimeCheckpointScope.adoptionWarning(branch, scope.adoptedPaths))
+          }
+        }
+        commitCheckpoint(
+          precedingPhaseId = precedingPhaseId,
+          branch = branch,
+          loopId = loopId,
+          intent = intent,
+          ownedPaths = scope.ownedPaths,
+          blockedReason = blockedReason,
+        )
+      }
     }
   }
 

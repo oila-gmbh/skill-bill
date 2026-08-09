@@ -102,57 +102,83 @@ class FeatureTaskRuntimeCheckpointScopeTest {
   }
 
   @Test
-  fun `an owned path that is also foreign-staged blocks with the path and recovery guidance`() {
+  fun `an owned path that is also foreign-staged is adopted and committed rather than blocking`() {
     val decision = decide(
       ownedPaths = listOf("src/Contested.kt"),
       phaseIntroducedPaths = listOf("src/Contested.kt"),
       foreignStagedPaths = listOf("src/Contested.kt"),
     )
 
-    val block = assertIs<FeatureTaskRuntimeCheckpointDecision.Block>(decision)
-    assertContains(block.reason, "'src/Contested.kt'")
-    assertContains(block.reason, "git restore --staged")
-    assertTrue(block.reason.startsWith("git: "), "block reason must carry a documented telemetry prefix")
+    val stage = assertIs<FeatureTaskRuntimeCheckpointDecision.Stage>(decision)
+    assertEquals(listOf("src/Contested.kt"), stage.ownedPaths)
+    assertEquals(listOf("src/Contested.kt"), stage.adoptedPaths)
   }
 
   // AC-005: the unstaged half — an owned file whose content changed after the phase wrote it.
   @Test
-  fun `an owned path modified concurrently without staging blocks with the path and recovery guidance`() {
+  fun `an owned path modified concurrently without staging is adopted rather than blocking`() {
     val decision = decide(
       ownedPaths = listOf("src/Contested.kt", "src/Owned.kt"),
       phaseIntroducedPaths = listOf("src/Contested.kt", "src/Owned.kt"),
       concurrentlyModifiedOwnedPaths = listOf("src/Contested.kt"),
     )
 
-    val block = assertIs<FeatureTaskRuntimeCheckpointDecision.Block>(decision)
-    assertContains(block.reason, "'src/Contested.kt'")
-    assertContains(block.reason, "git diff -- <path>")
-    assertFalse(block.reason.contains("'src/Owned.kt'"), "only the contested path is reported")
-    assertTrue(block.reason.startsWith("git: "), "block reason must carry a documented telemetry prefix")
+    val stage = assertIs<FeatureTaskRuntimeCheckpointDecision.Stage>(decision)
+    assertEquals(listOf("src/Contested.kt", "src/Owned.kt"), stage.ownedPaths)
+    assertEquals(listOf("src/Contested.kt"), stage.adoptedPaths, "only the diverged path is reported")
+  }
+
+  // A path that fell out of the delta is still staged when it diverged, so adoption is never a no-op.
+  @Test
+  fun `a diverged owned path outside the working-tree delta is still staged`() {
+    val decision = decide(
+      ownedPaths = listOf("src/Contested.kt"),
+      phaseIntroducedPaths = emptyList(),
+      worktreeDeltaPaths = emptyList(),
+      foreignStagedPaths = listOf("src/Contested.kt"),
+    )
+
+    val stage = assertIs<FeatureTaskRuntimeCheckpointDecision.Stage>(decision)
+    assertEquals(listOf("src/Contested.kt"), stage.ownedPaths)
   }
 
   @Test
-  fun `case-aliased and separator-aliased overlaps are detected rather than treated as distinct paths`() {
+  fun `case-aliased and separator-aliased overlaps adopt the inventory spelling of the path`() {
     val decision = decide(
       ownedPaths = listOf("Src/Contested.kt"),
       phaseIntroducedPaths = listOf("Src/Contested.kt"),
       foreignStagedPaths = listOf("src/contested.kt"),
     )
 
-    val block = assertIs<FeatureTaskRuntimeCheckpointDecision.Block>(decision)
-    assertContains(block.reason, "'Src/Contested.kt'")
+    val stage = assertIs<FeatureTaskRuntimeCheckpointDecision.Stage>(decision)
+    assertEquals(listOf("Src/Contested.kt"), stage.ownedPaths, "one path, not two aliases")
+    assertEquals(listOf("Src/Contested.kt"), stage.adoptedPaths)
   }
 
   @Test
-  fun `a case-aliased concurrent modification is detected rather than treated as a distinct path`() {
+  fun `a case-aliased concurrent modification adopts the inventory spelling of the path`() {
     val decision = decide(
       ownedPaths = listOf("Src/Contested.kt"),
       phaseIntroducedPaths = listOf("Src/Contested.kt"),
       concurrentlyModifiedOwnedPaths = listOf("src/contested.kt"),
     )
 
-    val block = assertIs<FeatureTaskRuntimeCheckpointDecision.Block>(decision)
-    assertContains(block.reason, "'Src/Contested.kt'")
+    val stage = assertIs<FeatureTaskRuntimeCheckpointDecision.Stage>(decision)
+    assertEquals(listOf("Src/Contested.kt"), stage.ownedPaths, "one path, not two aliases")
+    assertEquals(listOf("Src/Contested.kt"), stage.adoptedPaths)
+  }
+
+  @Test
+  fun `a foreign staged path this workflow does not own is never adopted`() {
+    val decision = decide(
+      ownedPaths = listOf("src/Owned.kt"),
+      phaseIntroducedPaths = listOf("src/Owned.kt"),
+      foreignStagedPaths = listOf("unrelated/Foreign.kt"),
+    )
+
+    val stage = assertIs<FeatureTaskRuntimeCheckpointDecision.Stage>(decision)
+    assertEquals(listOf("src/Owned.kt"), stage.ownedPaths)
+    assertTrue(stage.adoptedPaths.isEmpty(), "adoption is bounded by the owned inventory")
   }
 
   @Test

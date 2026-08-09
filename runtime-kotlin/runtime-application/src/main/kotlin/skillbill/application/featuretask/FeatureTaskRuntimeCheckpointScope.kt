@@ -20,19 +20,43 @@ internal object FeatureTaskRuntimeCheckpointScope {
     val deltaAliases = input.worktreeDeltaPaths.filter(String::isNotBlank)
       .map(::normalizeForAliasComparison)
       .toSet()
-    val stageable = owned.filter { normalizeForAliasComparison(it) in deltaAliases }
+    val adopted = adoptedDivergentPaths(input, ownedAliases)
+    val stageable = (owned.filter { normalizeForAliasComparison(it) in deltaAliases } + adopted).distinct().sorted()
     return if (stageable.isEmpty()) {
       FeatureTaskRuntimeCheckpointDecision.Skip
     } else {
-      FeatureTaskRuntimeCheckpointDecision.Stage(stageable)
+      FeatureTaskRuntimeCheckpointDecision.Stage(stageable, adopted)
     }
   }
 
   /**
-   * The guards that block a checkpoint before anything may be staged. Ordering is structural: a
-   * foreign governed spec is the broadest violation, then phase-introduced paths outside the owned
-   * inventory, then staged/concurrent overlaps with owned paths. Returns null when none apply, so
-   * [decide] may fall through to the stageable set.
+   * Owned paths whose index or working-tree content diverged from what this phase left behind:
+   * someone staged them outside the workflow, or edited them while the run was between phases.
+   *
+   * The checkpoint adopts them rather than refusing. A checkpoint that blocks strands a durable run
+   * that nothing but a human can restart, which costs more than the misattribution it prevents — and
+   * the run is already known to be on its own branch by the time this decision is reached, so the
+   * blast radius of adopting is that branch alone. The working tree is the authority: staging it
+   * overwrites a foreign index entry with the content actually on disk, and the previous index
+   * version stays recoverable through git's own reflog and object store.
+   */
+  private fun adoptedDivergentPaths(
+    input: FeatureTaskRuntimeCheckpointScopeInput,
+    ownedAliases: Map<String, String>,
+  ): List<String> = (input.foreignStagedPaths + input.concurrentlyModifiedOwnedPaths)
+    .filter(String::isNotBlank)
+    .mapNotNull { diverged -> ownedAliases[normalizeForAliasComparison(diverged)] }
+    .distinct()
+    .sorted()
+
+  /**
+   * The guards that block a checkpoint before anything may be staged: a foreign governed spec is the
+   * broadest violation, then phase-introduced paths outside the owned inventory. Both are ownership
+   * questions — the checkpoint would commit a path belonging to another issue or to nobody here.
+   *
+   * A worktree that merely diverged from what the run remembers is NOT one of these. That is handled
+   * by [adoptedDivergentPaths], which continues instead of blocking. Returns null when neither guard
+   * applies, so [decide] may fall through to the stageable set.
    */
   private fun blockingDecision(
     input: FeatureTaskRuntimeCheckpointScopeInput,
@@ -45,20 +69,7 @@ internal object FeatureTaskRuntimeCheckpointScope {
       .filterNot { path -> normalizeForAliasComparison(path) in ownedAliases }
       .sorted().takeIf { it.isNotEmpty() }
       ?.let { blockOutsideInventory(input.issueKey, it) }
-    // An owned path that someone else already staged is genuinely ambiguous: staging over it would
-    // commit their index content as this workflow's work, and restoring it would discard their
-    // staging. Neither is recoverable from the outside, so the only permitted outcome is a block.
-    val overlapping = input.foreignStagedPaths.filter(String::isNotBlank).distinct()
-      .mapNotNull { overlappingPath -> ownedAliases[normalizeForAliasComparison(overlappingPath)] }
-      .distinct().sorted().takeIf { it.isNotEmpty() }
-      ?.let { blockStagedOverlap(it) }
-    // The unstaged half of the same ambiguity: nobody staged the file, but its content is no longer
-    // the content this phase left behind, so committing it would attribute a stranger's edit here.
-    val concurrent = input.concurrentlyModifiedOwnedPaths.filter(String::isNotBlank).distinct()
-      .mapNotNull { modified -> ownedAliases[normalizeForAliasComparison(modified)] }
-      .distinct().sorted().takeIf { it.isNotEmpty() }
-      ?.let { blockConcurrentModification(it) }
-    return listOfNotNull(foreign, outside, overlapping, concurrent).firstOrNull()
+    return listOfNotNull(foreign, outside).firstOrNull()
   }
 
   /**
@@ -137,20 +148,11 @@ internal object FeatureTaskRuntimeCheckpointScope {
       "into the run's scope or revert them, then resume.",
   )
 
-  private fun blockStagedOverlap(paths: List<String>) = FeatureTaskRuntimeCheckpointDecision.Block(
-    "git: owned path(s) ${formatPaths(paths)} are already staged outside this workflow, so the " +
-      "checkpoint cannot tell which content to commit. The runtime will not resolve this for you: " +
-      "either commit or unstage those paths yourself (git restore --staged -- <path>) and then " +
-      "resume. Both the index and worktree versions have been left untouched.",
-  )
-
-  private fun blockConcurrentModification(paths: List<String>) = FeatureTaskRuntimeCheckpointDecision.Block(
-    "git: owned path(s) ${formatPaths(paths)} were modified in the working tree after this phase " +
-      "finished writing them, so the checkpoint cannot tell which content is this workflow's work. " +
-      "The runtime will not resolve this for you: review those paths, keep or revert the concurrent " +
-      "edit yourself (git diff -- <path>), and then resume. Both the index and worktree versions " +
-      "have been left untouched.",
-  )
+  /** Announces an adoption so the divergence is visible in the run log instead of silent. */
+  fun adoptionWarning(branch: String, paths: List<String>): String =
+    "Feature-task-runtime checkpoint adopted owned path(s) ${formatPaths(paths)} whose index or " +
+      "working-tree content diverged from what this run wrote. The working-tree content is committed " +
+      "to '$branch' as this workflow's work rather than blocking the run."
 
   private fun formatPaths(paths: List<String>): String {
     val reported = paths.take(MAX_REPORTED_PATHS).joinToString(", ") { "'$it'" }
