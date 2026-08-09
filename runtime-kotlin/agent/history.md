@@ -1,3 +1,14 @@
+## [2026-08-09] SKILL-175 runtime-only stance and prose/OpenCode removal policy (subtask 1)
+Areas: runtime-kotlin/agent, .feature-specs/SKILL-175-remove-prose-opencode-runtime-support, .feature-specs/SKILL-176-goal-child-resume-self-heal
+- Docs/decision-only subtask: no product code, skill, MCP tool, or schema touched. It fixes the stance the destructive subtasks (2+) must execute against, so read `runtime-kotlin/agent/decisions.md` (2026-08-09 entry) before any prose/OpenCode deletion work.
+- Decision: runtime is the sole feature execution engine; the prose surface is deleted rather than renamed forward; OpenCode/zcode leave the product entirely — explicitly **not** kept as a permanent refuse tier or "unsupported agents" list (`RUNTIME_REFUSED_AGENTS`, `RUNTIME_REFUSED_AGENT_MESSAGE`, `isRuntimeRefusedAgent`, `InstallAgent.OPENCODE/ZCODE` are deletions). Supersedes the 2026-06-27 "opencode is prose-only" entry, whose body stays as history.
+- In-flight row policy is binding on later subtasks: quarantine + loud-fail resume, never silent reinterpretation and never a rewriting migration. Both `mode` CHECK constraints keep `'prose'` (`DatabaseSchema.kt` for `feature_task_workflows`, `DatabaseMigrations.kt` for `feature_task_execution_identities`) as legacy read-only values; write paths refuse `'prose'` above the schema. reusable pattern for any future engine retirement that shares a table via a discriminator column.
+- Cutover is dependency-ordered, not a sweep: stance → callers + OpenCode/zcode purge → prose skill deletion → MCP/telemetry → CLI → persistence/IDE → tests/docs. `removal-surface-checklist.md` in the spec dir is the inventory of surfaces found beyond the parent list and gates destructive deletion.
+- Scope guard recorded: English "prose"/"governed prose"/review-prose language is out of deletion scope; only the prose *engine* goes.
+- Known limitation: the stance is documentation-enforced only — nothing in the build fails if a later subtask reintroduces a refuse tier or a second engine.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
 ## [2026-08-09] SKILL-174 planning discovery exclusion contract (subtask 1)
 Areas: orchestration/contracts, runtime-kotlin/{runtime-contracts,runtime-infra-fs,runtime-application}, platform-packs/*/agent, skills/{bill-feature-goal,bill-boundary-history,bill-boundary-decisions}, AGENTS.md
 - `orchestration/contracts/goal-planning-discovery-exclusions.yaml` (contract_version 0.2) is now the single checked-in source of planning/preplanning discovery denies: `excluded_roots` (anchored repo-relative prefixes, currently `platform-packs/`) plus `excluded_directory_names` denied at ANY depth (`build`, `node_modules`, `.git`, `.gradle`, `.skill-bill`, `target`, `out`, `dist`). Depth-independent segment denial is what makes nested `runtime-kotlin/*/build/` prune as reliably as the repo-root one. reusable

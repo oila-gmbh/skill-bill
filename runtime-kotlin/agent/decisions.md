@@ -154,14 +154,27 @@ be confused for each other**:
    whose `issue_key` was never backfilled would otherwise surface in the work
    list with a null `issueKey`. Backfilling an identifier is a read-side repair,
    not a prose write path, so it does not violate the "no new prose writes" rule.
-2. **The real continuation candidacy path**, in
-   `runtime-kotlin/runtime-infra-sqlite/src/main/kotlin/skillbill/db/workflow/WorkflowStateStore.kt`,
-   which keys on `identities.route_scope = 'goal_child'` plus the
-   `artifacts_json` `goal_continuation` object (lines ~302, 321-324, 355) and
-   never inspects `mode`. **This** is where the resume refusal from rule 1 is
-   enforced: a candidate row that decodes to `FeatureTaskWorkflowMode.PROSE`
-   raises the typed runtime re-run error instead of being handed back as
-   resumable. Subtask 6 adds the refusal here, not in the column migration.
+2. **The real continuation candidacy path**, `findGoalChildFeatureTaskCandidates`
+   at `runtime-kotlin/runtime-infra-sqlite/src/main/kotlin/skillbill/db/workflow/WorkflowStateStore.kt:342`,
+   delegating to the private `findFeatureTaskCandidates` query at `:362-403`,
+   which selects on `identities.route_scope` (`'goal_child'`) plus repository
+   identity and issue key. It does inspect `workflows.mode`, but only in the
+   `standalone` branch (`:378`), so a legacy `mode = 'prose'` goal-child row is
+   returned as a resume candidate today. The refusal from rule 1 does **not**
+   belong in this query, and emphatically not in the deletion/count statements
+   nearby (`deleteGoalChildWorkflowsByParent` `:294`,
+   `deleteGoalChildWorkflow` `:311`, `countGoalChildIdentities` `:351`) — those
+   run during ordinary goal cleanup and history counting, which rule 1 requires
+   to keep working for quarantined prose rows.
+
+   The refusal belongs **one layer up**, in
+   `runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/featuretask/FeatureTaskContinuationLookupService.kt`,
+   on the candidate list returned by `lookup` (`:60-77`): a candidate whose
+   workflow decodes to `FeatureTaskWorkflowMode.PROSE` raises the typed runtime
+   re-run error instead of being handed back as resumable. That placement covers
+   both route scopes through one seam, keeps the store a pure read, and leaves
+   delete/count paths untouched. Subtask 6 adds the refusal there, not in the
+   store and not in the column migration.
 
 ### Keep/delete heuristic and grep allowlist
 
