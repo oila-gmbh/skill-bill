@@ -163,7 +163,7 @@ late result is rejected as stale.
 Codex, Claude, and Cursor keep independent command builders, output decoders,
 lifecycle callbacks, cancellation, timeout, and token strategies. The generic
 process runner receives strategy objects and does not branch on provider
-identity. Junie, Copilot, Opencode, and Zcode are explicit unsupported
+identity. Junie and Copilot are explicit unsupported
 outcomes in the current registry; an explicit delegated request for one of
 them terminates as unsupported and never falls back to inline review.
 

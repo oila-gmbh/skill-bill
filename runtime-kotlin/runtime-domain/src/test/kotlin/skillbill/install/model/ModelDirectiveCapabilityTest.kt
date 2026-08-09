@@ -21,7 +21,7 @@ class ModelDirectiveCapabilityTest {
     assertTrue(supportsModelDirective("claude"))
     assertTrue(supportsModelDirective("codex"))
     assertFalse(supportsModelDirective("junie"))
-    assertFalse(supportsModelDirective("opencode"))
+    assertFalse(supportsModelDirective("copilot"))
     assertFalse(supportsModelDirective(null))
     assertFalse(supportsModelDirective(" "))
   }

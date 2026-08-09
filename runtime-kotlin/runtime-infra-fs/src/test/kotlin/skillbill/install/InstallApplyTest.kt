@@ -82,7 +82,6 @@ class InstallApplyTest : InstallApplyTestSupport() {
         assertFalse(target.startsWith(fixture.home.resolve(".skill-bill/native-agents")))
       }
     assertFalse(Files.exists(fixture.home.resolve(".skill-bill/native-agents"), LinkOption.NOFOLLOW_LINKS))
-    assertFalse(result.nativeAgents.any { native -> native.provider == NativeAgentProviderId.OPENCODE })
     assertFalse(result.nativeAgents.any { native -> native.provider == NativeAgentProviderId.JUNIE })
   }
 
@@ -122,13 +121,13 @@ class InstallApplyTest : InstallApplyTestSupport() {
   @Test
   fun `apply maps MCP registration failure to a structured warning outcome`() {
     val fixture = setupApplyFixture()
-    val configPath = fixture.home.resolve(".config/opencode/opencode.json")
+    val configPath = fixture.home.resolve(".cursor/mcp.json")
     Files.createDirectories(configPath.parent)
-    Files.writeString(configPath, "{\n  \"theme\": \"opencode\",\n  \"mcp\": \n")
+    Files.writeString(configPath, "{\n  \"theme\": \"cursor\",\n  \"mcpServers\": \n")
     val sourceBefore = snapshotSource(fixture.repoRoot)
     val plan = InstallOperations.planInstall(
       fixture.request(
-        agents = setOf(InstallAgent.OPENCODE),
+        agents = setOf(InstallAgent.CURSOR),
       ),
     )
 
@@ -141,10 +140,10 @@ class InstallApplyTest : InstallApplyTestSupport() {
     assertTrue(
       result.warnings.any { warning ->
         warning.kind == InstallApplyIssueKind.MCP_REGISTRATION_FAILED &&
-          warning.agent == InstallAgent.OPENCODE
+          warning.agent == InstallAgent.CURSOR
       },
     )
-    assertEquals("{\n  \"theme\": \"opencode\",\n  \"mcp\": \n", Files.readString(configPath))
+    assertEquals("{\n  \"theme\": \"cursor\",\n  \"mcpServers\": \n", Files.readString(configPath))
     assertSourceUnchanged(fixture.repoRoot, sourceBefore)
   }
 

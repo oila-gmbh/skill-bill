@@ -32,7 +32,7 @@ internal fun mutatingPhaseIdempotencyDirective(phaseId: String): String {
 }
 
 // Identical Minimalism discipline block shared by implement and implement_fix (AC-004 separate-source
-// branch). Keep in lockstep with skills/bill-feature-task-prose native-agent and content.md briefings.
+// branch). Keep in lockstep with skills/bill-feature-task native-agent and content.md briefings.
 internal fun minimalismDisciplineDirective(phaseId: String): String {
   if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(phaseId)) {
     return ""

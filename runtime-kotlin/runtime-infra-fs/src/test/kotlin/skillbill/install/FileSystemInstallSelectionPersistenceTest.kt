@@ -112,7 +112,7 @@ class FileSystemInstallSelectionPersistenceTest {
     val alternateHome = Files.createTempDirectory("skillbill-install-selection-alternate")
     val store = FileSystemInstallSelectionPersistence()
     val selection = selection(
-      selectedAgents = setOf(InstallAgent.OPENCODE),
+      selectedAgents = setOf(InstallAgent.CURSOR),
       platformPackSelection = PlatformPackSelection(PlatformPackSelectionMode.ALL),
     )
 
@@ -208,7 +208,7 @@ class FileSystemInstallSelectionPersistenceTest {
         mcpRegistrationChoice = McpRegistrationChoice(register = false, runtimeMcpBin = null),
       ),
       "detected multi-agent registration" to selection(
-        selectedAgents = setOf(InstallAgent.CLAUDE, InstallAgent.OPENCODE),
+        selectedAgents = setOf(InstallAgent.CLAUDE, InstallAgent.CURSOR),
         platformPackSelection = PlatformPackSelection(PlatformPackSelectionMode.ALL),
         telemetryLevel = InstallTelemetryLevel.ANONYMOUS,
         mcpRegistrationChoice = McpRegistrationChoice(

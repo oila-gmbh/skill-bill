@@ -19,7 +19,6 @@ data class AgentRunCommand(
   val stdinText: String? = null,
   val environment: Map<String, String> = emptyMap(),
   val inheritEnvironment: Boolean = true,
-  val usePtyStdio: Boolean = false,
   val idlePolicy: AgentRunIdlePolicy = AgentRunIdlePolicy.DB_PROGRESS_ONLY,
   val conversationIsolation: ConversationIsolation? = null,
   /** Overrides the builder's default decoder when this command selects a different output format. */

@@ -12,7 +12,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BIN="${SKILL_BILL_BIN:-$HOME/.local/bin/skill-bill}"
 RUNTIME_ROOT="${SKILL_BILL_RUNTIME_ROOT:-$HOME/.skill-bill/runtime}"
 MCP_BIN="$RUNTIME_ROOT/runtime-mcp/bin/runtime-mcp"
-if [[ $# -gt 0 ]]; then AGENTS=("$@"); else AGENTS=(copilot claude codex opencode junie cursor zcode); fi
+if [[ $# -gt 0 ]]; then AGENTS=("$@"); else AGENTS=(copilot claude codex junie cursor); fi
 
 [[ -x "$BIN" ]] || { echo "FATAL: skill-bill not executable at $BIN" >&2; exit 2; }
 [[ -d "$RUNTIME_ROOT" ]] || { echo "FATAL: no installed runtime at $RUNTIME_ROOT (run ./install.sh first)" >&2; exit 2; }
@@ -169,10 +169,8 @@ for agent in "${AGENTS[@]}"; do
     copilot)  mkdir -p "$FAKE/.copilot" ;;
     claude)   mkdir -p "$FAKE/.claude" ;;
     codex)    mkdir -p "$FAKE/.codex" ;;
-    opencode) mkdir -p "$FAKE/.config/opencode" ;;
     junie)    mkdir -p "$FAKE/.junie" ;;
     cursor)   mkdir -p "$FAKE/.cursor" ;;
-    zcode)    mkdir -p "$FAKE/.zcode" ;;
   esac
 
   echo "── $agent ──────────────────────────────────────────────"

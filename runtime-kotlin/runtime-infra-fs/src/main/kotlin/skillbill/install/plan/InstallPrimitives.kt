@@ -20,20 +20,16 @@ import java.nio.file.Path
 internal val SUPPORTED_AGENTS: List<String> = InstallAgent.supportedIds
 internal const val CODEX_AGENTS_KIND: String = "codex-agents"
 internal const val CLAUDE_AGENTS_KIND: String = "claude-agents"
-internal const val OPENCODE_AGENTS_KIND: String = "opencode-agents"
 internal const val JUNIE_AGENTS_KIND: String = "junie-agents"
 internal const val CURSOR_AGENTS_KIND: String = "cursor-agents"
-internal const val ZCODE_AGENTS_KIND: String = "zcode-agents"
 
 internal fun agentPaths(home: Path? = null, environment: Map<String, String> = System.getenv()): Map<String, Path> {
   val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
   return mapOf(
     "copilot" to resolvedHome.resolve(".copilot/skills"),
     "claude" to claudeConfigRoot(resolvedHome, environment).resolve("skills"),
-    "opencode" to resolvedHome.resolve(".config/opencode/skills"),
     "junie" to resolvedHome.resolve(".junie/skills"),
     "cursor" to resolvedHome.resolve(".cursor/skills"),
-    "zcode" to resolvedHome.resolve(".zcode/skills"),
     "codex" to codexPath(resolvedHome),
   )
 }
@@ -47,11 +43,6 @@ internal fun codexAgentsPath(home: Path? = null): Path {
   } else {
     resolvedHome.resolve(".agents/agents")
   }
-}
-
-internal fun opencodeAgentsPath(home: Path? = null): Path {
-  val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
-  return resolvedHome.resolve(".config/opencode/agents")
 }
 
 internal fun detectAgents(home: Path? = null, environment: Map<String, String> = System.getenv()): List<AgentTarget> {
@@ -78,12 +69,6 @@ internal fun detectCodexAgentsTarget(home: Path? = null): AgentTarget? {
   val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
   val path = codexAgentsPath(resolvedHome)
   return if (agentIsPresent(resolvedHome, "codex", path)) AgentTarget(CODEX_AGENTS_KIND, path) else null
-}
-
-internal fun detectOpencodeAgentsTarget(home: Path? = null): AgentTarget? {
-  val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
-  val path = opencodeAgentsPath(resolvedHome)
-  return if (agentIsPresent(resolvedHome, "opencode", path)) AgentTarget(OPENCODE_AGENTS_KIND, path) else null
 }
 
 /**
@@ -175,10 +160,8 @@ private fun agentIsPresent(
   val roots = when (agent) {
     "copilot" -> listOf(home.resolve(".copilot"))
     "claude" -> claudeConfigRoots(home, environment)
-    "opencode" -> listOf(home.resolve(".config/opencode"))
     "junie" -> listOf(home.resolve(".junie"))
     "cursor" -> listOf(home.resolve(".cursor"))
-    "zcode" -> listOf(home.resolve(".zcode"))
     "codex" -> listOf(home.resolve(".codex"), home.resolve(".agents"))
     else -> emptyList()
   }

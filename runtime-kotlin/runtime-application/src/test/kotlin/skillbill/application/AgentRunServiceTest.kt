@@ -41,14 +41,14 @@ class AgentRunServiceTest {
 
     val result = service.launch(
       AgentRunStartRequest(
-        invokedAgentId = "opencode",
+        invokedAgentId = "junie",
         configuredAgentOverrideId = null,
         skillRunRequest = skillRunRequest(),
       ),
     )
 
-    assertEquals(InstallAgent.OPENCODE, result.resolution.effectiveAgent)
-    assertEquals("opencode", launcher.requests.single().agentId)
+    assertEquals(InstallAgent.JUNIE, result.resolution.effectiveAgent)
+    assertEquals("junie", launcher.requests.single().agentId)
   }
 
   @Test

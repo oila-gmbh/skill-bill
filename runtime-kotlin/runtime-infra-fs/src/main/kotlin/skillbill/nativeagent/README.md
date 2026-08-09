@@ -49,9 +49,9 @@ When `compose: governed-content` is present, the source may omit a local body an
 
 ## Bodies are provider-agnostic
 
-The body is shared across every provider (Claude, Codex, Opencode, Junie). Provider-specific shaping happens only in the renderer, never in the body. The validator (`validateRepoNativeAgents`) rejects bodies containing any of:
+The body is shared across every provider (Claude, Codex, Junie, Cursor). Provider-specific shaping happens only in the renderer, never in the body. The validator (`validateRepoNativeAgents`) rejects bodies containing any of:
 
-- handlebars-style switches: `{{#claude}}`, `{{#codex}}`, `{{#opencode}}`, `{{#junie}}`
+- handlebars-style switches: `{{#claude}}`, `{{#codex}}`, `{{#junie}}`, `{{#cursor}}`
 - programmatic switches (case-insensitive): `if provider ==`, `if (provider`
 
 If a provider truly needs different output, add the dispatch inside `NativeAgentProvider.render(source)` — each enum constant overrides `render`, so the wiring is one place.

@@ -7,8 +7,6 @@
 | Cursor | Keep experimental. Preserve fresh-process isolation, stream decoding, bounded output, and explicit provider errors; do not share Codex command flags or process strategy. | CursorAgentRunCommandBuilder, CursorNativeReviewLifecycleCallbacks, cursor stream fixtures |
 | Junie | Explicitly unsupported for delegated native workers because its adapter does not expose the required lifecycle and terminal-result contract. | JunieAgentRunCommandBuilder, unsupported launch outcome |
 | Copilot | Explicitly unsupported: no headless delegated worker adapter is registered. | adapter registry |
-| Opencode | Explicitly unsupported by runtime policy; no delegated worker is launched. | RUNTIME_REFUSED_AGENTS |
-| Zcode | Explicitly unsupported by runtime policy; no delegated worker is launched. | RUNTIME_REFUSED_AGENTS |
 
 The remaining parent-spec failure items are dispositioned as follows:
 
@@ -37,8 +35,6 @@ boundary.
 | Cursor | mitigated by the same coordinator plan without importing Codex flags or process strategies | mitigated by launcher-bound process facts; heartbeat does not imply MCP startup | mitigated by injected scope policy and Cursor's existing stream strategy | mitigated by bounded diagnostics, explicit provider errors, and strict repair boundary | mitigated by shared durable wave projection | deferred until stream, deadline, and aggregation canaries establish promotion evidence |
 | Junie | deferred as unsupported because no delegated lifecycle adapter exists | unsupported; no launch is counted | unsupported; terminates as explicit unavailable rather than falling back | mitigated only at the boundary by bounded unsupported diagnostics | unsupported; no worker wave is launched | deferred until an independent lifecycle-capable adapter exists |
 | Copilot | deferred as unsupported because no headless delegated adapter is registered | unsupported; no launch is counted | unsupported; terminates as explicit unavailable | mitigated only by the explicit unsupported terminal outcome | unsupported; no worker wave is launched | deferred until a governed adapter is registered and independently measured |
-| Opencode | deferred by runtime refusal policy | unsupported; launch is refused | unsupported; refusal is terminal | mitigated by the bounded runtime-refused diagnostic | unsupported; no worker wave is launched | deferred by policy until runtime support is authorized |
-| Zcode | deferred by runtime refusal policy | unsupported; launch is refused | unsupported; refusal is terminal | mitigated by the bounded runtime-refused diagnostic | unsupported; no worker wave is launched | deferred by policy until runtime support is authorized |
 
 The provider-keyed rows above explicitly disposition every remaining historical
 failure item relevant to delegated reliability: items 13-18 (capacity,
@@ -47,8 +43,8 @@ review deadline and provider-output measurement), 28 (per-worker deadline),
 33 and 40 (bounded diagnostics and result-envelope repair), 42 (wave
 telemetry), and 47 (provider promotion thresholds). For Codex, Claude, and
 Cursor these items are mitigated by the shared durable lifecycle contract with
-the provider strategy named in the row; for Junie, Copilot, Opencode, and
-Zcode they remain explicit unsupported or policy-deferred outcomes.
+the provider strategy named in the row; for Junie and Copilot they remain
+explicit unsupported or policy-deferred outcomes.
 
 The matrix is provider-keyed so a mitigation for Codex cannot be read as a
 change to Claude, Cursor, or unchanged-provider command builders and process
@@ -75,5 +71,3 @@ threshold.
 | Cursor | mitigated | mitigated | mitigated | mitigated | mitigated | mitigated | mitigated | mitigated | mitigated | mitigated | mitigated | mitigated | deferred |
 | Junie | unsupported/deferred | unsupported/deferred | unsupported/deferred | unsupported/deferred | unsupported/deferred | unsupported/deferred | unsupported/deferred | unsupported/deferred | unsupported/deferred | unsupported/deferred | unsupported/deferred | unsupported/deferred | unsupported/deferred |
 | Copilot | unsupported/deferred | unsupported/deferred | unsupported/deferred | unsupported/deferred | unsupported/deferred | unsupported/deferred | unsupported/deferred | unsupported/deferred | unsupported/deferred | unsupported/deferred | unsupported/deferred | unsupported/deferred | unsupported/deferred |
-| Opencode | unsupported/deferred | unsupported/deferred | unsupported/deferred | unsupported/deferred | unsupported/deferred | unsupported/deferred | unsupported/deferred | unsupported/deferred | unsupported/deferred | unsupported/deferred | unsupported/deferred | unsupported/deferred | unsupported/deferred |
-| Zcode | unsupported/deferred | unsupported/deferred | unsupported/deferred | unsupported/deferred | unsupported/deferred | unsupported/deferred | unsupported/deferred | unsupported/deferred | unsupported/deferred | unsupported/deferred | unsupported/deferred | unsupported/deferred | unsupported/deferred |

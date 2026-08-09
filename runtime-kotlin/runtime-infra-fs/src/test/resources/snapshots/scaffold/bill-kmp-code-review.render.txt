@@ -80,10 +80,6 @@ Specialist spawn instructions in this orchestrator are runtime-neutral. Each phr
 
 **On Codex.** The spawn is a natural-language directive in the orchestrator's turn. Codex resolves the subagent by `name` against the installed TOML files in the Codex user agents directory (with the legacy Agents agents fallback), respecting `agents.max_threads` and `agents.max_depth`. Because Codex runs subagents asynchronously, the orchestrator MUST poll for completion between turns before consuming the subagent's `RESULT:` block — do not proceed to the next phase until the subagent has visibly finished and its `RESULT:` JSON is available in the conversation.
 
-**On OpenCode.** The spawn resolves by filename-derived `name` against markdown agents installed in the OpenCode user agents directory; operators can also invoke the same specialists manually with `@bill-kmp-code-review-platform-correctness`, `@bill-kmp-code-review-persistence`, `@bill-kmp-code-review-reliability`, `@bill-kmp-code-review-ui`, `@bill-kmp-code-review-ux-accessibility`. Like Codex, OpenCode runs the spawn asynchronously, so the orchestrator MUST wait for the subagent to finish (checking between turns) and only then read its `RESULT:` JSON before advancing.
-
-OpenCode does not document a different native concurrency cap; keep the conservative limit of 6 or fewer specialists per wave.
-
 ## Ceremony
 
 Follow the shell ceremony in [shell-ceremony.md](shell-ceremony.md).

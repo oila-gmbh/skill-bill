@@ -636,7 +636,7 @@ class FeatureTaskRuntimeRunnerTest {
     val harness = runnerHarness(
       agentAssignment = FeatureTaskRuntimeAgentAssignment(
         perPhaseAgentIds = mapOf("review" to "claude"),
-        override = "opencode",
+        override = "cursor",
       ),
     )
 
@@ -644,7 +644,7 @@ class FeatureTaskRuntimeRunnerTest {
 
     val records = harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()
     ALL_PHASES.forEach { phaseId ->
-      assertEquals("opencode", records.getValue(phaseId).resolvedAgentId, "override must win for $phaseId")
+      assertEquals("cursor", records.getValue(phaseId).resolvedAgentId, "override must win for $phaseId")
     }
   }
 

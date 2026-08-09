@@ -101,10 +101,6 @@ class InstallerShellDelegationTest {
         "--agent-target",
         "codex=${run.home.resolve("agent-targets/codex")}",
         "--agent",
-        "opencode",
-        "--agent-target",
-        "opencode=${run.home.resolve("agent-targets/opencode")}",
-        "--agent",
         "junie",
         "--agent-target",
         "junie=${run.home.resolve("agent-targets/junie")}",
@@ -112,10 +108,6 @@ class InstallerShellDelegationTest {
         "cursor",
         "--agent-target",
         "cursor=${run.home.resolve("agent-targets/cursor")}",
-        "--agent",
-        "zcode",
-        "--agent-target",
-        "zcode=${run.home.resolve("agent-targets/zcode")}",
       ),
       run.applyArgs,
     )
@@ -836,7 +828,7 @@ internal object InstallerShellFixtures {
       |# Pre-install uninstall (AC6 path) drives the same CLI for cleanup commands;
       |# answer them with empty output + success so the clean slate reset succeeds.
       |case "${'$'}{1:-} ${'$'}{2:-}" in
-      |  "install cleanup-agent-target"|"install unlink-codex-agents"|"install unlink-claude-agents"|"install unlink-opencode-agents"|"install unlink-junie-agents"|"install unlink-cursor-agents"|"install unlink-zcode-agents"|"install unregister-mcp")
+      |  "install cleanup-agent-target"|"install unlink-codex-agents"|"install unlink-claude-agents"|"install unlink-junie-agents"|"install unlink-cursor-agents"|"install unregister-mcp")
       |    exit 0
       |    ;;
       |esac
@@ -926,7 +918,7 @@ internal object InstallerShellFixtures {
       |fi
       |$failingNativeUnlinkBlock
       |case "${'$'}{1:-} ${'$'}{2:-}" in
-      |  "install cleanup-agent-target"|"install unlink-codex-agents"|"install unlink-claude-agents"|"install unlink-opencode-agents"|"install unlink-junie-agents"|"install unlink-cursor-agents"|"install unlink-zcode-agents"|"install unregister-mcp")
+      |  "install cleanup-agent-target"|"install unlink-codex-agents"|"install unlink-claude-agents"|"install unlink-junie-agents"|"install unlink-cursor-agents"|"install unregister-mcp")
       |    exit 0
       |    ;;
       |esac
@@ -982,7 +974,7 @@ internal object InstallerShellFixtures {
       |  exit 0
       |fi
       |case "${'$'}{1:-} ${'$'}{2:-}" in
-      |  "install cleanup-agent-target"|"install unlink-codex-agents"|"install unlink-claude-agents"|"install unlink-opencode-agents"|"install unlink-junie-agents"|"install unlink-cursor-agents"|"install unlink-zcode-agents"|"install unregister-mcp")
+      |  "install cleanup-agent-target"|"install unlink-codex-agents"|"install unlink-claude-agents"|"install unlink-junie-agents"|"install unlink-cursor-agents"|"install unregister-mcp")
       |    exit 0
       |    ;;
       |esac

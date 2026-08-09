@@ -599,34 +599,28 @@ skillbill.workflow.verify
 
 ## Feature-Task Workflow Family
 
-- `bill-feature-task` is the public workflow identity for both implementation
-  modes. Prose runs persist as `mode=prose` and runtime-backed runs persist as
-  `mode=runtime` in the shared `feature_task_workflows` store. Feature-verify
-  remains a distinct workflow family and store.
-- `bill-feature-task-runtime` is the runtime-backed trigger surface. The Kotlin
+- `bill-feature-task` is the public workflow identity for the runtime-backed
+  feature-task engine. Feature-verify remains a distinct workflow family and
+  store.
+- `bill-feature-task-runtime` is the runtime trigger surface. The Kotlin
   runtime owns its phase loop (`plan -> implement -> audit -> review ->
   validate`) and launches one agent per phase, reusing the goal-runner launcher
-  and `WorkflowEngine` rather than a second prose orchestration loop. Its
-  definition is `skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition`
+  and `WorkflowEngine`. Its definition is
+  `skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition`
   (id prefix `wftr`, contract version `FEATURE_TASK_RUNTIME_CONTRACT_VERSION`);
   persisted rows use `workflow_name=bill-feature-task`, `mode=runtime`, and
   `implementation_skill=bill-feature-task-runtime`.
-- `bill-feature-task-prose` is the first-class prose mode. Persisted rows use
-  `workflow_name=bill-feature-task`, `mode=prose`, and
-  `implementation_skill=bill-feature-task-prose`; its stable prose step ids and
-  artifact names remain unchanged.
-- The `feature_implement_*` MCP names are hidden compatibility aliases to
-  `bill-feature-task mode=prose`. They are not a separate authoritative workflow
-  store. SKILL-132 removed the duplicate `feature_task_runtime_*` MCP tools: the
-  foreground runtime driver calls `WorkflowService`,
-  `LifecycleTelemetryService`, and `FeatureTaskContinuationLookupService`
-  directly, and `skill-bill feature-task` / `feature-task-stats` remain the CLI
-  surface. `bill-feature`
-  routes single-spec work to the canonical `bill-feature-task` router without
-  hardcoding a mode. The
-  authoritative recorded promote decision lives in
+- Legacy `bill-feature-task-prose` skill trees and `mode=prose` persistence rows
+  remain on disk until a later SKILL-175 subtask deletes them; callers no longer
+  select prose as an engine. SKILL-132 removed the duplicate
+  `feature_task_runtime_*` MCP tools: the foreground runtime driver calls
+  `WorkflowService`, `LifecycleTelemetryService`, and
+  `FeatureTaskContinuationLookupService` directly, and `skill-bill feature-task`
+  / `feature-task-stats` remain the CLI surface. `bill-feature` routes
+  single-spec work to the canonical `bill-feature-task` runtime entry.
+- The authoritative recorded promote decision lives in
   `.feature-specs/SKILL-65-experimental-feature-task-runtime/spec.md`; SKILL-70
-  owns the router/prose/runtime split.
+  owned the earlier router/prose/runtime split.
 - The comparison procedure that produced the promotion evidence remains
   documented in
   [`docs/architecture/feature-task-runtime-comparison.md`](docs/architecture/feature-task-runtime-comparison.md).

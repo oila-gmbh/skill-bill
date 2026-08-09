@@ -7,7 +7,7 @@ additionalProperties: false
 required: [contract_version, entries]
 properties:
   contract_version:
-    const: "0.1"
+    const: "0.2"
   entries:
     type: array
     items:
@@ -16,7 +16,7 @@ properties:
       required: [logical_name, provider, installed_path, cache_target_path, content_digest, source_root]
       properties:
         logical_name: { type: string, minLength: 1 }
-        provider: { enum: [claude, codex, opencode, junie, cursor, zcode] }
+        provider: { enum: [claude, codex, junie, cursor] }
         installed_path: { type: string, minLength: 1 }
         cache_target_path: { type: string, minLength: 1 }
         content_digest: { type: string, pattern: "^[0-9a-f]{64}$" }

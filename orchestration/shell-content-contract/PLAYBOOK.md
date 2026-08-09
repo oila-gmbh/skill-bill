@@ -109,12 +109,6 @@ references. Those stay in generated `SKILL.md` wrappers or shared support files
 so the runtime contract can be upgraded without rewriting authored business
 guidance.
 
-## Delegated Review Support
-
-Opencode delegated review is intentionally unsupported.
-
-Junie delegated review is intentionally unsupported.
-
 ## Governed Add-On Consumption
 
 Governed add-ons are pack-owned supporting files under

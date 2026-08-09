@@ -2,7 +2,6 @@ package skillbill.launcher
 
 import skillbill.goalrunner.model.GoalRunnerLivenessState
 import skillbill.install.model.InstallAgent
-import skillbill.install.model.RUNTIME_REFUSED_AGENTS
 import skillbill.launcher.agentrun.AgentRunCommand
 import skillbill.launcher.agentrun.AgentRunCommandBuilder
 import skillbill.launcher.agentrun.CodexAgentRunCommandBuilder
@@ -38,6 +37,7 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
@@ -67,8 +67,7 @@ class AgentRunLauncherTest {
     val runner = RecordingAgentRunProcessRunner()
     val request = skillRunRequest(goalContinuation = null).copy(promptOverride = PHASE_PROMPT)
 
-    // SKILL-95: opencode is no longer a runtime adapter; junie is the other argv-delivered agent
-    // (the prompt rides as a trailing argv token, never via stdin).
+    // Junie is the argv-delivered agent (the prompt rides as a trailing argv token, never via stdin).
     requireNotNull(headlessAgentRunAdapters(runner, ALL_EXECUTABLES_AVAILABLE)[InstallAgent.JUNIE]).launch(request)
 
     val captured = runner.requests.single()
@@ -93,39 +92,17 @@ class AgentRunLauncherTest {
   }
 
   @Test
-  fun `opencode returns the unsupported headless launch outcome with the actionable prose message`() {
+  fun `unknown agent id fails before launch`() {
     val launcher = FileSystemAgentRunLauncher(JvmAgentRunProcessRunner(), ALL_EXECUTABLES_AVAILABLE)
 
-    val outcome = launcher.launch(
-      AgentRunLaunchRequest(
-        agentId = "opencode",
-        skillRunRequest = skillRunRequest(),
-      ),
-    )
-
-    assertIs<UnsupportedAgentRunLaunch>(outcome)
-    assertEquals(InstallAgent.OPENCODE, outcome.agent)
-    assertContains(outcome.reason, "Runtime mode is not supported on opencode")
-    assertContains(outcome.reason, "bill-feature-task-prose")
-  }
-
-  @Test
-  fun `zcode returns the unsupported headless launch outcome with the actionable prose message`() {
-    val launcher = FileSystemAgentRunLauncher(JvmAgentRunProcessRunner(), ALL_EXECUTABLES_AVAILABLE)
-
-    val outcome = launcher.launch(
-      AgentRunLaunchRequest(
-        agentId = "zcode",
-        skillRunRequest = skillRunRequest(),
-      ),
-    )
-
-    assertIs<UnsupportedAgentRunLaunch>(outcome)
-    assertEquals(InstallAgent.ZCODE, outcome.agent)
-    assertContains(outcome.reason, "Runtime mode is not supported on opencode or zcode")
-    assertContains(outcome.reason, "zcode's foreground runtime exceeds the Bash execution ceiling")
-    assertContains(outcome.reason, "bill-feature-task-prose")
-    assertContains(outcome.reason, "bill-feature-goal mode:prose")
+    assertFailsWith<IllegalArgumentException> {
+      launcher.launch(
+        AgentRunLaunchRequest(
+          agentId = "not-an-agent",
+          skillRunRequest = skillRunRequest(),
+        ),
+      )
+    }
   }
 
   @Test
@@ -767,8 +744,8 @@ class AgentRunLauncherTest {
     // consulted.
     val runner = RecordingAgentRunProcessRunner()
     val adapters = headlessAgentRunAdapters(runner, ALL_EXECUTABLES_AVAILABLE)
-    // SKILL-95: opencode is prose-only and excluded from the headless runtime adapters.
-    listOf(InstallAgent.CODEX, InstallAgent.CLAUDE, InstallAgent.JUNIE).forEach { agent ->
+    // Every supported headless builder's adapter exposes a provider-neutral child session path.
+    listOf(InstallAgent.CODEX, InstallAgent.CLAUDE, InstallAgent.JUNIE, InstallAgent.CURSOR).forEach { agent ->
       val facts = requireNotNull(adapters[agent]).launch(skillRunRequest())
       assertEquals("/tmp/skillbill-agent-run", facts.childSessionPath, "session path for $agent")
       val sessionId = requireNotNull(facts.childSessionId) { "session id for $agent" }
@@ -981,41 +958,13 @@ class HeadlessAgentRunAdapterTest {
   )
 
   @Test
-  fun `opencode is not registered as a headless runtime adapter`() {
-    // SKILL-95 AC5 / SKILL-103 AC6: opencode and zcode are prose-only. Neither may appear in the
-    // headless adapter registry, so no code path can spawn either for a runtime phase even if a CLI
-    // guard is bypassed.
+  fun `headless runtime adapters cover exactly the runtime-capable install agents`() {
     val adapters = headlessAgentRunAdapters(RecordingAgentRunProcessRunner())
 
-    // Every runtime-refused agent is absent (the AC), while the known runtime agents stay registered.
-    // Asserting a subset rather than exact-set equality keeps this robust to unrelated future agents.
-    RUNTIME_REFUSED_AGENTS.forEach { refused -> assertFalse(adapters.keys.contains(refused)) }
-    assertFalse(adapters.keys.contains(InstallAgent.OPENCODE), "opencode must not be a headless adapter")
-    assertFalse(adapters.keys.contains(InstallAgent.ZCODE), "zcode must not be a headless adapter")
-    val expectedAgents = setOf(InstallAgent.CLAUDE, InstallAgent.CODEX, InstallAgent.JUNIE, InstallAgent.CURSOR)
-    assertTrue(adapters.keys.containsAll(expectedAgents))
-  }
-
-  @Test
-  fun `process adapter threads usePtyStdio from the built command rather than a constant`() {
-    // After opencode (the only PTY-backed builder) was removed, no real builder sets usePtyStdio=true,
-    // so prove threading directly: a builder requesting PTY stdio must surface usePtyStdio=true in the
-    // process request. Guards against the flag being hardcoded to false.
-    val runner = RecordingAgentRunProcessRunner()
-    val ptyBuilder = object : AgentRunCommandBuilder {
-      override val agent: InstallAgent = InstallAgent.CLAUDE
-      override fun build(request: SkillRunRequest): AgentRunCommand = AgentRunCommand(
-        command = listOf("true"),
-        workingDirectory = request.repoRoot,
-        timeout = request.timeout,
-        usePtyStdio = true,
-      )
-    }
-
-    ProcessAgentRunAdapter(InstallAgent.CLAUDE, ptyBuilder, runner, ALL_EXECUTABLES_AVAILABLE).launch(phaseRunRequest())
-
-    assertEquals(1, runner.requests.size)
-    assertTrue(runner.requests.single().usePtyStdio, "adapter must thread usePtyStdio=true from the builder")
+    assertEquals(
+      setOf(InstallAgent.CLAUDE, InstallAgent.CODEX, InstallAgent.JUNIE, InstallAgent.CURSOR),
+      adapters.keys,
+    )
   }
 
   @Test
@@ -1028,37 +977,6 @@ class HeadlessAgentRunAdapterTest {
 
     assertEquals(ConversationIsolation.NONE, runner.requests.single().conversationIsolation)
     assertEquals("none", runner.requests.single().conversationIsolation?.forkTurns)
-  }
-
-  @Test
-  fun `claude codex and junie builders emit usePtyStdio=false`() {
-    val runner = RecordingAgentRunProcessRunner()
-    val request = phaseRunRequest()
-    val adapters = headlessAgentRunAdapters(runner, ALL_EXECUTABLES_AVAILABLE)
-
-    listOf(InstallAgent.CLAUDE, InstallAgent.CODEX, InstallAgent.JUNIE).forEach { agent ->
-      requireNotNull(adapters[agent]).launch(request)
-    }
-
-    val otherRequests = runner.requests
-    assertTrue(otherRequests.size == 3)
-    otherRequests.forEach { req ->
-      assertFalse(req.usePtyStdio, "non-opencode agent must not request PTY-backed stdio")
-    }
-  }
-
-  @Test
-  fun `process adapter threads usePtyStdio=false into the process request for supported agents`() {
-    val runner = RecordingAgentRunProcessRunner()
-    val request = phaseRunRequest()
-    val adapters = headlessAgentRunAdapters(runner, ALL_EXECUTABLES_AVAILABLE)
-
-    requireNotNull(adapters[InstallAgent.CLAUDE]).launch(request)
-    requireNotNull(adapters[InstallAgent.CODEX]).launch(request)
-
-    runner.requests.forEach { req ->
-      assertEquals(false, req.usePtyStdio, "supported adapter must thread usePtyStdio=false")
-    }
   }
 
   @Test
@@ -1076,7 +994,6 @@ class HeadlessAgentRunAdapterTest {
     val captured = runner.requests.single()
     assertEquals("agent", captured.command.first())
     assertTrue(captured.command.contains("--workspace"))
-    assertEquals(false, captured.usePtyStdio)
   }
 
   @Test
@@ -1151,107 +1068,7 @@ class HeadlessAgentRunAdapterTest {
     requireNotNull(adapters[InstallAgent.CURSOR]).launch(request)
 
     val captured = runner.requests.single()
-    assertEquals(false, captured.usePtyStdio, "cursor must use separate stdout/stderr, not PTY")
-  }
-}
-
-class PtyStdioLaunchTest {
-  private fun assumePtyAvailable() {
-    // PTY-backed stdio is a Linux-only production feature (JvmAgentRunProcessRunner
-    // hard-guards `os.name startsWith "linux"`). macOS ships /dev/ptmx too, so gate
-    // on the OS — not just the device — or these tests run into that guard and the
-    // spawn fails with a null exit status on non-Linux CI hosts.
-    org.junit.jupiter.api.Assumptions.assumeTrue(
-      System.getProperty("os.name").lowercase().startsWith("linux"),
-      "PTY-backed stdio is only supported on Linux; skipping on ${System.getProperty("os.name")}",
-    )
-    org.junit.jupiter.api.Assumptions.assumeTrue(
-      java.io.File("/dev/ptmx").exists(),
-      "PTY device /dev/ptmx not available; skipping PTY integration test",
-    )
-  }
-
-  @Test
-  fun `jvm process runner spawns child over pty and captures stdout via outputSink`() {
-    assumePtyAvailable()
-    val events = mutableListOf<Pair<AgentRunOutputStream, String>>()
-    val result = JvmAgentRunProcessRunner().run(
-      AgentRunProcessRequest(
-        command = listOf("sh", "-c", "printf hello-pty"),
-        workingDirectory = Path.of(".").toAbsolutePath().normalize(),
-        timeout = 5.seconds,
-        usePtyStdio = true,
-        outputSink = { stream, text -> synchronized(events) { events += stream to text } },
-      ),
-    )
-
-    assertEquals(0, result.exitStatus)
-    assertContains(result.stdout, "hello-pty")
-    assertTrue(
-      events.any { it.first == AgentRunOutputStream.STDOUT && "hello-pty" in it.second },
-      "outputSink must receive PTY stdout chunk",
-    )
-    assertFalse(result.timedOut)
-    assertFalse(result.spawnFailed)
-  }
-
-  @Test
-  fun `jvm process runner pty path does not false-kill a live child under idle watchdog`() {
-    assumePtyAvailable()
-    val sequence = java.util.concurrent.atomic.AtomicInteger(0)
-    val result = JvmAgentRunProcessRunner().run(
-      AgentRunProcessRequest(
-        command = listOf("sh", "-c", "sleep 0.5"),
-        workingDirectory = Path.of(".").toAbsolutePath().normalize(),
-        timeout = 5.seconds,
-        progressIdleTimeout = 100.milliseconds,
-        operationDeadline = 10.seconds,
-        usePtyStdio = true,
-        declaredProgressProbe = AgentRunDeclaredProgressProbe {
-          val seq = sequence.getAndIncrement()
-          AgentRunDeclaredProgressSnapshot(
-            latestEvent = GoalProgressEvent(
-              eventKind = GoalProgressEventKind.OPERATION_STARTED,
-              workflowId = "wfl-child",
-              workflowPhase = "preplan",
-              processAlive = true,
-              sequenceNumber = seq,
-              timestamp = "2026-06-22T10:0$seq:00Z",
-              operationName = "opencode-preplan",
-              expectedLong = true,
-            ),
-            processAlive = true,
-          )
-        },
-      ),
-    )
-
-    assertFalse(result.timedOut, "PTY-backed live child must not be false-killed by idle watchdog")
-    assertEquals(0, result.exitStatus)
-  }
-
-  @Test
-  fun `jvm process runner pty path captures multiline stdout and forwards to outputSink`() {
-    assumePtyAvailable()
-    val events = mutableListOf<Pair<AgentRunOutputStream, String>>()
-    val result = JvmAgentRunProcessRunner().run(
-      AgentRunProcessRequest(
-        command = listOf("sh", "-c", "printf 'line1\nline2\nline3'"),
-        workingDirectory = Path.of(".").toAbsolutePath().normalize(),
-        timeout = 5.seconds,
-        usePtyStdio = true,
-        outputSink = { stream, text -> synchronized(events) { events += stream to text } },
-      ),
-    )
-
-    assertEquals(0, result.exitStatus)
-    assertContains(result.stdout, "line1")
-    assertContains(result.stdout, "line2")
-    assertContains(result.stdout, "line3")
-    assertTrue(
-      events.any { it.first == AgentRunOutputStream.STDOUT && ("line1" in it.second || "line2" in it.second) },
-      "PTY outputSink must receive STDOUT stream events containing expected output lines",
-    )
+    assertEquals(AgentRunIdlePolicy.HEARTBEAT_EXTENDED, captured.idlePolicy)
   }
 }
 

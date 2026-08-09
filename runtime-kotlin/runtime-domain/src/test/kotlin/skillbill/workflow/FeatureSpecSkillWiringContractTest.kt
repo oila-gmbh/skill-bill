@@ -21,6 +21,7 @@ class FeatureSpecSkillWiringContractTest {
     assertContains(content, "For every authoritative manifest")
     assertContains(content, "Read the file `bill-feature-goal.md` located in this skill's own installed directory")
     assertContains(content, "Do not ask an extra confirmation before dispatching to the goal sidecar")
+    assertFalse(content.contains("mode:<mode>"))
   }
 
   @Test
@@ -45,7 +46,12 @@ class FeatureSpecSkillWiringContractTest {
     assertContains(feature, "workflow-id:<id>")
     assertContains(task, "use continuation mode")
     assertContains(task, "Never open a replacement row or mutate state during lookup")
+    assertContains(task, "delegates to `bill-feature-task-runtime`")
+    assertContains(task, "bill-feature-task-runtime.md")
     assertEquals(1, countOccurrences(task, "Ask exactly one confirmation question"))
+    assertFalse(task.contains("bill-feature-task-prose"))
+    assertFalse(task.contains("mode:prose"))
+    assertFalse(task.contains("mode:runtime"))
     assertContains(runtime, "skill-bill feature-task resume <workflow_id> <issue_key> <spec_path>")
     assertContains(runtime, "deterministically skips\nalready-complete phases")
     assertContains(prose, "feature_task_prose_workflow_continue")
@@ -66,7 +72,7 @@ class FeatureSpecSkillWiringContractTest {
     assertContains(task, "selected agent add-on slugs and manifest descriptions in caller order, or `none`")
     assertEquals(1, countOccurrences(task, "Ask exactly one confirmation question"))
     assertContains(goal, "Show its slugs and descriptions in\ncaller order in the existing single confirmation")
-    assertContains(goal, "forward it unchanged to every runtime or\nprose child and child continuation artifact")
+    assertContains(goal, "forward it unchanged to every runtime\nchild and child continuation artifact")
     assertContains(prose, "Before\nevery initial phase, retry, review-fix, audit re-entry, or continuation")
     assertContains(prose, "An empty selection adds no artifact content and no prompt\nsection")
     assertContains(runtime, "Do not parse, reorder, or rediscover it")
@@ -113,10 +119,14 @@ class FeatureSpecSkillWiringContractTest {
 
     assertContains(content, "invoke `bill-feature-spec` in this session")
     assertContains(content, "`bill-feature-goal` is the trigger surface for manifest-backed goal orchestration")
+    assertContains(content, "hands off to the foreground `skill-bill goal` runtime")
     assertContains(content, "`skill-bill goal <issue_key>` remains consumer-only")
     assertContains(featureSpecContent, "`skill-bill goal <issue_key>` is consumer-only")
     assertContains(content, "Ask one confirmation question")
     assertEquals(1, countOccurrences(content, "Ask one confirmation question"))
+    assertFalse(content.contains("mode:prose"))
+    assertFalse(content.contains("goal_prose_started"))
+    assertFalse(content.contains("bill-feature-task-subtask-runner"))
   }
 
   @Test
@@ -132,7 +142,7 @@ class FeatureSpecSkillWiringContractTest {
   }
 
   @Test
-  fun `review mode source contracts reject invalid selection and preserve the selected mode through prose goals`() {
+  fun `review mode source contracts reject invalid selection and preserve the selected mode through runtime entry`() {
     val feature = Files.readString(repoRootFromTest().resolve("skills/bill-feature/content.md"))
     val task = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task/content.md"))
     val goal = Files.readString(repoRootFromTest().resolve("skills/bill-feature-goal/content.md"))
@@ -181,7 +191,7 @@ class FeatureSpecSkillWiringContractTest {
   }
 
   @Test
-  fun `decomposed prose goals preserve durable review selections and complete child scope`() {
+  fun `runtime goal child review contract preserves durable review scope`() {
     val goal = Files.readString(repoRootFromTest().resolve("skills/bill-feature-goal/content.md"))
     val prose = Files.readString(repoRootFromTest().resolve("skills/bill-feature-task-prose/content.md"))
     val runner = Files.readString(
@@ -191,10 +201,12 @@ class FeatureSpecSkillWiringContractTest {
       repoRootFromTest().resolve("skills/bill-feature-task-prose/native-agents/agents.yaml"),
     )
 
-    assertContains(goal, "An explicit resumed mode or lane must\nmatch that selection exactly")
-    assertContains(goal, "must not overwrite the durable parent or child review policy")
-    assertContains(goal, "`baseline_untracked_paths`,\n`completed_review_pass_count`, `reserved_review_pass_number`,")
+    assertContains(goal, "capture and durably persist that child workflow's `review_base_sha`")
     assertContains(goal, "current untracked paths - baseline untracked inventory")
+    assertContains(
+      goal,
+      "They must never contain a path, line number, diff\nhunk, or raw child-review output",
+    )
     assertContains(prose, "Reject an explicit incompatible mode or lane\nbefore any child work starts")
     assertContains(prose, "An incompatible resume rejection leaves those durable parent and child values\nunchanged")
     assertContains(prose, "current untracked\npaths minus the baseline inventory")

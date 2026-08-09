@@ -524,8 +524,8 @@ class CliRuntimeTest {
     Files.createDirectories(tempDir.resolve(".copilot"))
     Files.createDirectories(tempDir.resolve(".claude"))
     Files.createDirectories(tempDir.resolve(".codex"))
-    Files.createDirectories(tempDir.resolve(".config/opencode"))
     Files.createDirectories(tempDir.resolve(".junie"))
+    Files.createDirectories(tempDir.resolve(".cursor"))
 
     val result = CliRuntime.run(
       listOf("install", "detect-agents"),
@@ -538,8 +538,8 @@ class CliRuntimeTest {
       copilot	${tempDir.resolve(".copilot/skills")}
       claude	${tempDir.resolve(".claude/skills")}
       codex	${tempDir.resolve(".codex/skills")}
-      opencode	${tempDir.resolve(".config/opencode/skills")}
       junie	${tempDir.resolve(".junie/skills")}
+      cursor	${tempDir.resolve(".cursor/skills")}
       """.trimIndent(),
       result.stdout.trim(),
     )

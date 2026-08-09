@@ -2,8 +2,6 @@
 
 package skillbill.launcher.process
 
-import com.sun.jna.Library
-import com.sun.jna.Native
 import me.tatarka.inject.annotations.Inject
 import skillbill.goalrunner.model.GoalRunnerLivenessClassifier
 import skillbill.goalrunner.model.GoalRunnerLivenessDecision
@@ -53,14 +51,6 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
         stdoutStream = processStart.process.inputStream,
         stderrStream = processStart.process.errorStream,
         request = request,
-        ptyMasterCloseable = null,
-      )
-      is ProcessStart.PtyStarted -> runStartedProcess(
-        process = processStart.process,
-        stdoutStream = processStart.ptyMasterStream,
-        stderrStream = InputStream.nullInputStream(),
-        request = request,
-        ptyMasterCloseable = processStart.ptyMasterCloseable,
       )
     }
   }
@@ -90,7 +80,6 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
     stdoutStream: InputStream,
     stderrStream: InputStream,
     request: AgentRunProcessRequest,
-    ptyMasterCloseable: AutoCloseable?,
   ): AgentRunProcessResult {
     liveProcesses.add(process)
     val mcpStartupObservedAtStart = request.mcpStartupProbe.safeStartupObserved()
@@ -109,7 +98,7 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
       outputStream = AgentRunOutputStream.STDERR,
       outputSink = request.outputSink,
       onChunkRead = { outputTracker.markObserved() },
-    ).also { if (stderrStream !== InputStream.nullInputStream()) it.start() }
+    ).also { it.start() }
     writeAndCloseStdin(process, request.stdinText)
     lifecycleEmitter.emitStarted(process.isAlive)
     val wait = try {
@@ -125,7 +114,6 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
       stdout,
       stderr,
       lifecycleEmitter,
-      ptyMasterCloseable,
       mcpStartupObservedAtStart,
     )
   }
@@ -139,7 +127,6 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
     stdout: CappedUtf8Drain,
     stderr: CappedUtf8Drain,
     lifecycleEmitter: ProcessLifecycleEmitter,
-    ptyMasterCloseable: AutoCloseable?,
     mcpStartupObservedAtStart: Boolean,
   ): AgentRunProcessResult {
     var interrupted = waitResult.exceptionOrNull() is InterruptedException
@@ -153,8 +140,6 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
     liveProcesses.remove(process)
     stdout.join()
     stderr.join()
-    runCatching { ptyMasterCloseable?.close() }
-      .onFailure { System.err.println("skill-bill: failed to close PTY master fd: ${it.message}") }
     val terminalOutcome = when {
       interrupted -> GoalProgressOutcome.CANCELLED
       finished -> GoalProgressOutcome.SUCCEEDED
@@ -239,53 +224,20 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
   )
 
   private fun startProcess(request: AgentRunProcessRequest): ProcessStart = try {
-    if (request.usePtyStdio) {
-      startPtyProcess(request)
-    } else {
-      ProcessStart.Started(buildProcess(request).start())
-    }
+    ProcessStart.Started(buildProcess(request).start())
   } catch (error: IOException) {
     ProcessStart.Failed(error)
   } catch (error: SecurityException) {
     ProcessStart.Failed(error)
-  } catch (error: IllegalStateException) {
-    ProcessStart.Failed(IOException("PTY spawn failed: ${error.message}", error))
   }
 
   private fun buildProcess(request: AgentRunProcessRequest): ProcessBuilder = ProcessBuilder(request.command)
     .directory(request.workingDirectory.toFile())
     .also { configureLaunchEnvironment(it, request) }
 
-  private fun startPtyProcess(request: AgentRunProcessRequest): ProcessStart {
-    check(System.getProperty("os.name").lowercase().startsWith("linux")) {
-      "PTY-backed stdio is only supported on Linux; current platform: ${System.getProperty("os.name")}"
-    }
-    val (masterFd, slavePath) = openPtyPair()
-    val process = try {
-      buildProcess(request)
-        .redirectInput(java.io.File(slavePath))
-        .redirectOutput(java.io.File(slavePath))
-        .redirectError(java.io.File(slavePath))
-        .start()
-    } catch (e: IOException) {
-      PosixLib.closeFd(masterFd)
-      throw e
-    } catch (e: SecurityException) {
-      PosixLib.closeFd(masterFd)
-      throw e
-    }
-    val masterStream = PosixLib.masterInputStream(masterFd)
-    val masterCloseable = AutoCloseable { PosixLib.closeFd(masterFd) }
-    return ProcessStart.PtyStarted(process, masterStream, masterCloseable)
-  }
-
   private fun cleanupProcessStart(start: ProcessStart?) {
     when (start) {
       is ProcessStart.Started -> reapLiveProcesses(listOf(start.process))
-      is ProcessStart.PtyStarted -> {
-        reapLiveProcesses(listOf(start.process))
-        runCatching { start.ptyMasterCloseable.close() }
-      }
       is ProcessStart.Failed, null -> Unit
     }
   }
@@ -812,11 +764,6 @@ private fun AgentRunLivenessSnapshot?.detailsSuffix(): String = this?.let { snap
 
 private sealed interface ProcessStart {
   data class Started(val process: Process) : ProcessStart
-  data class PtyStarted(
-    val process: Process,
-    val ptyMasterStream: InputStream,
-    val ptyMasterCloseable: AutoCloseable,
-  ) : ProcessStart
   data class Failed(val error: Exception) : ProcessStart
 }
 
@@ -941,95 +888,6 @@ private const val MIN_TIMEOUT_MILLIS = 1L
 private const val MIN_TIMEOUT_NANOS = 1L
 private const val PROGRESS_POLL_INTERVAL_MILLIS = 250L
 private const val DESTROY_WAIT_TIMEOUT_MILLIS = 1_000L
-
-@Suppress("FunctionNaming", "ktlint:standard:function-naming")
-private interface PosixCLibrary : Library {
-  fun posix_openpt(flags: Int): Int
-  fun grantpt(fd: Int): Int
-  fun unlockpt(fd: Int): Int
-  fun ptsname_r(fd: Int, buf: ByteArray, buflen: Int): Int
-  fun read(fd: Int, buf: ByteArray, count: Int): Int
-  fun close(fd: Int): Int
-}
-
-private object PosixLib {
-  private const val O_RDWR = 2
-  private const val O_NOCTTY = 0x400
-  val lib: PosixCLibrary by lazy {
-    Native.load("c", PosixCLibrary::class.java)
-  }
-
-  fun openMasterFd(): Int {
-    val fd = lib.posix_openpt(O_RDWR or O_NOCTTY)
-    check(fd >= 0) { "posix_openpt failed" }
-    try {
-      check(lib.grantpt(fd) == 0) { "grantpt failed" }
-      check(lib.unlockpt(fd) == 0) { "unlockpt failed" }
-    } catch (e: IllegalStateException) {
-      lib.close(fd)
-      throw e
-    }
-    return fd
-  }
-
-  fun slavePath(masterFd: Int): String {
-    val buf = ByteArray(PTY_PATH_BUF_SIZE)
-    val result = lib.ptsname_r(masterFd, buf, buf.size)
-    check(result == 0) { "ptsname_r failed" }
-    val nullAt = buf.indexOf(NULL_BYTE)
-    return String(buf, 0, if (nullAt >= 0) nullAt else buf.size, StandardCharsets.US_ASCII)
-  }
-
-  fun masterInputStream(masterFd: Int): InputStream = PtyMasterInputStream(masterFd)
-
-  fun closeFd(fd: Int) {
-    lib.close(fd)
-  }
-}
-
-private class PtyMasterInputStream(private val fd: Int) : InputStream() {
-  @Volatile private var closed = false
-
-  override fun read(): Int {
-    if (closed) return -1
-    val buf = ByteArray(1)
-    val n = PosixLib.lib.read(fd, buf, 1)
-    return if (n <= 0) -1 else buf[0].toInt() and BYTE_MASK
-  }
-
-  override fun read(buf: ByteArray, off: Int, len: Int): Int {
-    if (closed || len == 0) return if (len == 0) 0 else -1
-    return if (off == 0) {
-      val n = PosixLib.lib.read(fd, buf, len)
-      if (n <= 0) -1 else n
-    } else {
-      val tmp = ByteArray(len)
-      val n = PosixLib.lib.read(fd, tmp, len)
-      if (n <= 0) return -1
-      System.arraycopy(tmp, 0, buf, off, n)
-      n
-    }
-  }
-
-  override fun close() {
-    closed = true
-  }
-}
-
-private fun openPtyPair(): Pair<Int, String> {
-  val masterFd = PosixLib.openMasterFd()
-  val slavePath = try {
-    PosixLib.slavePath(masterFd)
-  } catch (e: IllegalStateException) {
-    PosixLib.closeFd(masterFd)
-    throw e
-  }
-  return masterFd to slavePath
-}
-
-private const val PTY_PATH_BUF_SIZE = 256
-private const val NULL_BYTE: Byte = 0
-private const val BYTE_MASK = 0xFF
 
 internal fun configureLaunchEnvironment(builder: ProcessBuilder, request: AgentRunProcessRequest) {
   if (!request.inheritEnvironment) {

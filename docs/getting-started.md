@@ -56,7 +56,7 @@ registration, replacement cleanup, and structured failure reporting.
 Installer prompts cover:
 
 - agent selection: manual or detected `copilot`, `claude`, `codex`,
-  `cursor`, `opencode`, and `junie`
+  `cursor`, and `junie`
 - platform packs: all packs, selected packs, or base skills only; selected
   packs are discovered from `platform-packs/` manifests
 - telemetry: `anonymous`, `full`, or `off`
@@ -97,8 +97,6 @@ Supported install targets:
 | OpenAI Codex (native subagent TOMLs)       | `~/.codex/agents/`                        |
 | Cursor (skills)                            | `~/.cursor/skills/`                       |
 | Cursor (native subagent markdown)          | `~/.cursor/agents/`                       |
-| OpenCode (skills)                          | `~/.config/opencode/skills/`              |
-| OpenCode (native subagent markdown)        | `~/.config/opencode/agents/`              |
 | JetBrains Junie (skills)                   | `~/.junie/skills/`                        |
 | JetBrains Junie (native subagent markdown) | `~/.junie/agents/`                        |
 
@@ -118,7 +116,7 @@ Feature-task model and effort preferences also belong in this machine-wide JSON 
 
 The pre-install cleanup still wipes the rest of `~/.skill-bill/`, preserving `skills/`, `platform-packs/`, `orchestration/`, `baseline-manifest.json`, and durable `*.db` state (goal/workflow stores, `review-metrics.db`). Only the config was ever at risk, and it now lives outside that tree. See [External Addon Sources](external-addons.md#persisting-config-across-installs) for details. For a one-off install that must not wipe any state, `SKILL_BILL_SKIP_PREINSTALL_UNINSTALL=1 ./install.sh …` skips the cleanup entirely (intended for dev iteration).
 
-On Claude, Codex, OpenCode, and Junie, orchestrators that delegate review work also install native subagent definitions for supported runtime surfaces. The stack-specific code-review skills (e.g. `bill-go-code-review-security`, `bill-kotlin-code-review`, `bill-php-code-review-security`, `bill-python-code-review-security`) are **internal sidecars** of `/bill-code-review` — they are not listed slash commands; `/bill-code-review` detects the dominant stack and routes to the matching sidecar. The stack-specific quality-check skills (e.g. `bill-go-code-check`, `bill-kotlin-code-check`, `bill-php-code-check`, `bill-python-code-check`) are likewise internal sidecars of `/bill-code-check`; invoke quality checks through `/bill-code-check`. Each declared platform-pack bundle registers its baseline reviewer and specialist reviewers as native subagents. Native subagent sources live as provider-neutral `native-agents/agents.yaml` bundles or standalone `native-agents/<name>.md` files. New and rendered neutral sources include `contract_version: "0.1"`; the parser still accepts older unpinned sources so existing repos can migrate gradually. Install renders those sources into `~/.skill-bill/native-agents/` before linking Claude markdown into `~/.claude/agents/`, Codex TOMLs into `~/.codex/agents/`, OpenCode markdown into `~/.config/opencode/agents/`, and Junie markdown into `~/.junie/agents/`; generated provider files are not checked into the repo. `~/.agents/agents/` is only a Skill Bill compatibility path for Codex homes without a `.codex` root, not the primary documented Codex custom-agent location. Claude and Junie use Markdown/YAML custom-subagent frontmatter, Codex resolves spawn instructions by TOML `name`, and OpenCode resolves by filename-derived agent name and supports manual `@<name>` invocation. Today this covers shipped platform-pack baseline and specialist reviewers selected by manifest and the `bill-feature-task` workflow phases (pre-planning, planning, implementation, implementation-fix, completeness-audit, quality-check, pr-description). `bill-feature-verify` has no verify-specific native subagents; it delegates review through `bill-code-review` and keeps feature-flag, completeness, and verdict audits inline. Parsing tolerance for `RESULT:` blocks across runtimes is documented inline in `skills/bill-feature-task-prose/content.md`.
+On Claude, Codex, and Junie, orchestrators that delegate review work also install native subagent definitions for supported runtime surfaces. The stack-specific code-review skills (e.g. `bill-go-code-review-security`, `bill-kotlin-code-review`, `bill-php-code-review-security`, `bill-python-code-review-security`) are **internal sidecars** of `/bill-code-review` — they are not listed slash commands; `/bill-code-review` detects the dominant stack and routes to the matching sidecar. The stack-specific quality-check skills (e.g. `bill-go-code-check`, `bill-kotlin-code-check`, `bill-php-code-check`, `bill-python-code-check`) are likewise internal sidecars of `/bill-code-check`; invoke quality checks through `/bill-code-check`. Each declared platform-pack bundle registers its baseline reviewer and specialist reviewers as native subagents. Native subagent sources live as provider-neutral `native-agents/agents.yaml` bundles or standalone `native-agents/<name>.md` files. New and rendered neutral sources include `contract_version: "0.1"`; the parser still accepts older unpinned sources so existing repos can migrate gradually. Install renders those sources into `~/.skill-bill/native-agents/` before linking Claude markdown into `~/.claude/agents/`, Codex TOMLs into `~/.codex/agents/`, and Junie markdown into `~/.junie/agents/`; generated provider files are not checked into the repo. `~/.agents/agents/` is only a Skill Bill compatibility path for Codex homes without a `.codex` root, not the primary documented Codex custom-agent location. Claude and Junie use Markdown/YAML custom-subagent frontmatter; Codex resolves spawn instructions by TOML `name`. Today this covers shipped platform-pack baseline and specialist reviewers selected by manifest and the `bill-feature-task` workflow phases (pre-planning, planning, implementation, implementation-fix, completeness-audit, quality-check, pr-description). `bill-feature-verify` has no verify-specific native subagents; it delegates review through `bill-code-review` and keeps feature-flag, completeness, and verdict audits inline. Parsing tolerance for `RESULT:` blocks across runtimes is documented inline in `skills/bill-feature-task-prose/content.md`.
 
 ## Runtime Model
 
@@ -159,7 +157,7 @@ Choose standalone review execution explicitly with:
 /bill-code-review mode:delegated
 ```
 
-Omitting `mode:` is equivalent to `mode:delegated`, the default specialist subagent fan-out; `mode:inline` is the single-prompt review in the current context. Pass `mode:auto` explicitly to resolve first-pass-delegated / follow-up-inline through the named auto rules. Feature workflows expose review selection as `/bill-feature <issue-key> code-review:auto|inline|delegated`; their separate `mode:runtime|prose` argument selects the feature execution engine.
+Omitting `mode:` is equivalent to `mode:delegated`, the default specialist subagent fan-out; `mode:inline` is the single-prompt review in the current context. Pass `mode:auto` explicitly to resolve first-pass-delegated / follow-up-inline through the named auto rules. Feature workflows expose review selection as `/bill-feature <issue-key> code-review:auto|inline|delegated`.
 
 ## Runtime Fallback Boundary
 
@@ -440,13 +438,13 @@ Primary MCP groups:
 - review and learning tools: `import_review`, `triage_findings`, `resolve_learnings`, `review_stats`
 - telemetry tools: `telemetry_proxy_capabilities`, `telemetry_remote_stats`
 - workflow stats tools: `feature_task_prose_stats`, `feature_verify_stats`
-- feature-task workflow tools (the `mode:prose` in-session path): `feature_task_prose_started`, `feature_task_prose_workflow_open`, `feature_task_prose_workflow_update`, `feature_task_prose_workflow_list`, `feature_task_prose_workflow_latest`, `feature_task_prose_workflow_get`, `feature_task_prose_workflow_resume`, `feature_task_prose_workflow_continue`, `feature_task_prose_finished`
+- legacy feature-task prose workflow tools (scheduled for removal): `feature_task_prose_started`, `feature_task_prose_workflow_open`, `feature_task_prose_workflow_update`, `feature_task_prose_workflow_list`, `feature_task_prose_workflow_latest`, `feature_task_prose_workflow_get`, `feature_task_prose_workflow_resume`, `feature_task_prose_workflow_continue`, `feature_task_prose_finished`
 - verify workflow tools: `feature_verify_started`, `feature_verify_workflow_open`, `feature_verify_workflow_update`, `feature_verify_workflow_list`, `feature_verify_workflow_latest`, `feature_verify_workflow_get`, `feature_verify_workflow_resume`, `feature_verify_workflow_continue`, `feature_verify_finished`
 - quality and PR tools: `quality_check_started`, `quality_check_finished`, `pr_description_generated`
 - scaffold tool: `new_skill_scaffold`
 - health tool: `doctor`
 
-The foreground `mode:runtime` feature-task driver owns its own durable state, lifecycle telemetry, and continuation lookup in-process. It has no MCP endpoints; use `skill-bill feature-task` and `skill-bill feature-task-stats` instead.
+The foreground feature-task driver owns its own durable state, lifecycle telemetry, and continuation lookup in-process. It has no MCP endpoints; use `skill-bill feature-task` and `skill-bill feature-task-stats` instead.
 
 ## Validation Gate
 

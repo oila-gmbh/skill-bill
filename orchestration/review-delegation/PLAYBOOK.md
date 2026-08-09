@@ -116,10 +116,6 @@ Governed add-ons may narrow or enrich delegated review instructions only after t
 - Wait for all subagents and merge their results in the parent review.
 - Do not run delegated review passes inline.
 
-## Opencode
-
-Opencode delegated review is intentionally unsupported.
-
 ## Junie
 
 Junie delegated review is intentionally unsupported.

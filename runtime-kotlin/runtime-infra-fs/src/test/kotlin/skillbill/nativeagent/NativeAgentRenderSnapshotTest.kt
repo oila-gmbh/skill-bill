@@ -57,25 +57,6 @@ class NativeAgentRenderSnapshotTest {
   }
 
   @Test
-  fun `opencode render is byte-exact`() {
-    val expected = """
-      ---
-      name: bill-snapshot-demo
-      description: Snapshot demo agent.
-      mode: subagent
-      ---
-
-      # Snapshot Demo
-
-      First line.
-      Second: line with colon.
-
-    """.trimIndent()
-
-    assertEquals(expected, NativeAgentProvider.Opencode.render(source))
-  }
-
-  @Test
   fun `junie render is byte-exact`() {
     val expected = """
       ---
@@ -125,24 +106,6 @@ class NativeAgentRenderSnapshotTest {
     """.trimIndent()
 
     assertEquals(expected, NativeAgentProvider.Codex.render(quotedSource))
-  }
-
-  @Test
-  fun `opencode render is byte-exact when description forces yaml quoting`() {
-    val expected = """
-      ---
-      name: bill-snapshot-quoted
-      description: "Edge: case\nwith back\\slash"
-      mode: subagent
-      ---
-
-      # Snapshot Quoted
-
-      Body line.
-
-    """.trimIndent()
-
-    assertEquals(expected, NativeAgentProvider.Opencode.render(quotedSource))
   }
 
   @Test

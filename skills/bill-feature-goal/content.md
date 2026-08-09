@@ -6,11 +6,11 @@ description: Run a manifest-backed feature goal through one confirmation gate.
 
 # Feature Goal Content
 
-`bill-feature-goal` is the interactive front door for every prepared feature goal. It accepts one or more implementation subtasks, verifies manifest readiness, asks for exactly one confirmation before starting any automated loop, and runs the confirmed goal in the selected mode.
+`bill-feature-goal` is the interactive front door for every prepared feature goal. It accepts one or more implementation subtasks, verifies manifest readiness, asks for exactly one confirmation before starting any automated loop, and hands off to the durable `skill-bill goal` runtime driver.
 
-`bill-feature-goal` is the trigger surface for manifest-backed goal orchestration. In
-`mode:runtime` (the default) it hands off to the durable `skill-bill goal` runtime
-driver; in `mode:prose` it loops the subtasks in the current agent session.
+`bill-feature-goal` is the trigger surface for manifest-backed goal orchestration. It
+hands off to the foreground `skill-bill goal` runtime driver documented in the
+sections below.
 
 `bill-feature-goal` does not own spec-writing logic. When decomposition artifacts are
 missing, it must reuse the shared feature-spec preparation path exposed through
@@ -30,20 +30,6 @@ By default this discards only that subtask's stored plan and preserves sibling p
 
 Hard reset (`skill-bill goal reset --hard`) atomically invalidates parent planning and child continuation state; soft reset preserves compatible immutable planning. Use hard reset for goal-wide invalidation, not for a single amended subtask plan.
 
-## Modes
-
-`bill-feature-goal` accepts a `mode:` argument, mirroring `bill-feature-task`'s
-convention:
-
-- `mode:runtime` (default) drives the foreground `skill-bill goal` runtime
-  documented in the sections below. This is the documented default when no
-  `mode:` argument is supplied.
-- `mode:prose` drives the in-session subtask loop documented in the
-  `## Mode: Prose Goal Orchestration (in-session loop)` section near the end of
-  this file.
-
-Resolve the mode to `runtime` when no `mode:` argument is supplied.
-
 Accept at most one `code-review:auto`, `code-review:inline`, or
 `code-review:delegated` token. Omission resolves to `inline`; `delegated` is the
 experimental full-depth tier and is reached only by an explicit token. Malformed, unknown,
@@ -53,39 +39,19 @@ and an attempted explicit change must fail loudly before launching a subtask.
 
 Accept at most one `parallel-review:<agent>` token independently of the review
 mode. Omission means one review lane; when present, show the selected agent in
-the confirmation gate and carry it unchanged through runtime and prose child
+the confirmation gate and carry it unchanged through runtime child
 launches. The parent persists this lane selection with the review mode, and a
 resume must reuse it rather than silently dropping or changing the second lane.
 
 Receive the already-resolved ordered agent add-on selection from `bill-feature`;
 do not parse raw `agent-addon:` tokens here. Show its slugs and descriptions in
 caller order in the existing single confirmation, persist the structured
-selection with the parent policy, and forward it unchanged to every runtime or
-prose child and child continuation artifact launched from that point. Before
+selection with the parent policy, and forward it unchanged to every runtime
+child and child continuation artifact launched from that point. Before
 parent persistence or child setup, validate the effective run agent, every
 explicit phase assignment, and the resolved parallel-review lane. A changed
 selection or content digest updates future launch guidance and never blocks a
 continuation; already completed phase evidence remains unchanged.
-
-For a prose-goal resume, an omitted `code-review:` or `parallel-review:` token
-inherits the durable parent selection. An explicit resumed mode or lane must
-match that selection exactly; reject an incompatible value before selecting or
-launching a child. Every fresh prose child receives the durable mode and
-optional lane alongside its review baseline and pass state, never values
-re-derived from the current branch or a sibling subtask. A rejected resume
-must not overwrite the durable parent or child review policy.
-
-**opencode and zcode are prose-only.** When the agent currently executing this skill is opencode or zcode, prose is the implicit default and runtime mode is unsupported: opencode's foreground Bash tool is hard-killed at 120s before a phase can finish and per-phase output cannot be harvested back; zcode's foreground runtime exceeds the Bash execution ceiling and a detached zcode child emits no harvestable output before the supervisor kills it as unresponsive. On opencode or zcode: with no mode arg, resolve to `prose` (no need to pass `mode:prose`); with an explicit `mode:runtime`, stop and emit the actionable refusal and do NOT hand off to the `skill-bill goal` runtime:
-
-> Runtime mode is not supported on opencode or zcode in this harness. opencode's foreground Bash tool is hard-killed at 120s before a phase can finish and per-phase output cannot be harvested back; zcode's foreground runtime exceeds the Bash execution ceiling and a detached zcode child emits no harvestable output before the supervisor kills it as unresponsive. Use prose instead — run bill-feature-goal mode:prose for every prepared manifest, including one with exactly one subtask.
-
-The `skill-bill goal` CLI refuses the same way whenever the resolved runtime agent is opencode or zcode (invoked agent or `--agent-override`), so this skill gate and the CLI agree.
-
-Both modes share the same intake, decomposition-readiness checks, and the single
-confirmation gate defined in `## Decomposition Proposal`. They differ only in how
-confirmed subtasks are executed: `mode:runtime` hands off to the foreground
-runtime driver, while `mode:prose` loops the subtasks in the current agent
-session.
 
 ## Intake
 
@@ -121,11 +87,10 @@ Then present a concise proposal that includes:
 - one or more ordered subtasks with dependency notes
 - the expected first runnable subtask
 - the agent that will be used for child runs, including any explicit override
-- the resolved mode: show `runtime (default)` when the mode was not specified, `runtime` when explicitly set, or `prose` when `mode:prose` was passed
 - the parallel review agent when `parallel-review:<agent>` was passed, or `none` otherwise
 - the requested code-review selection, showing `inline (default)` when omitted and marking an explicit `delegated` selection as experimental
 
-Ask one confirmation question: whether to proceed with this decomposition and start the goal loop in the resolved mode.
+Ask one confirmation question: whether to proceed with this decomposition and start the goal loop.
 
 Do not start the goal loop while the decomposition is unconfirmed. If the user declines, stop and either revise the proposal or leave the goal unstarted, depending on their response.
 
@@ -233,7 +198,7 @@ files, then launch. Rehydrate is agent-side MCP only; the `skill-bill goal`
 runtime gains no Linear dependency.
 
 Always pass `--agent` set to the agent currently running this skill (for example
-`claude` from Claude Code, `codex` from Codex, `opencode` from OpenCode), so the
+`claude` from Claude Code or `codex` from Codex), so the
 invoking agent — not a hardcoded default — drives child subtask runs. Only use
 `--agent-override` when the user explicitly selected a different child agent;
 `--agent-override` continues to win over `--agent`.
@@ -447,153 +412,6 @@ repository and issue key. Do not copy the transcript, planning payloads,
 implementation summaries, audit or review reports, diagnostics, or raw child
 output into the new conversation. Durable workflow state and the child context
 remain authoritative.
-
-## Mode: Prose Goal Orchestration (in-session loop)
-
-This section documents `mode:prose`. Everything above this section is the
-`mode:runtime` default. The prose loop reuses the SAME single confirmation gate
-already defined in `## Decomposition Proposal` — it does not introduce a second
-confirmation prompt. The decomposition-readiness checks, the proposal contents,
-and that single gate are shared verbatim across both modes.
-
-After the user confirms at that single gate, `mode:prose` does NOT launch
-`skill-bill goal`. Instead, for each runnable subtask the invoking agent spawns
-exactly one Level-1 subtask-agent via the Agent tool with a self-contained
-briefing. The agent type is `bill-feature-task-subtask-runner`. The briefing
-must carry: `issue_key`, `subtask_id`, `workflow_id` (from the manifest or the
-continuation selector result), `spec_path`, durable `code_review_mode`, optional
-`parallel_review_agent`, `review_base_sha`, `baseline_untracked_paths`,
-`completed_review_pass_count`, `reserved_review_pass_number`,
-`review_cap_disposition`, and the
-goal-continuation contract rules (`suppress_pr=true`, `commit_push` is the
-terminal signal, no install flows). The Level-1 agent runs the full phase loop
-(preplan → plan → implement → audit → review → validate → history → commit_push)
-in its own fresh context and returns a bounded RESULT block.
-
-For every fresh child, copy those durable fields without recomputing them. On a
-resume, omission inherits the persisted mode and optional lane; reject an
-explicit incompatible mode or lane before the child is launched. This preserves
-one canonical selection and one exact scope across fresh runs, repair, and
-resumption, without changing durable state on a rejected resume.
-
-### Prose goal lifecycle telemetry
-
-Before starting the subtask loop, call `goal_prose_started` with the prose
-workflow's `workflow_id` as the stable session key. This is idempotent on resume:
-the server performs an UPDATE if the row already exists, so re-calling on resume
-is a safe no-op.
-
-```
-goal_prose_started:
-  issue_key:     <issue key>
-  feature_name:  <feature name from manifest>
-  workflow_id:   <prose workflow's workflow_id>
-  subtask_total: <total subtask count from manifest>
-  resumed:       <true if any subtasks already have terminal status>
-  started_at:    <current ISO-8601 timestamp>
-```
-
-After each Level-1 agent returns with a terminal status, call
-`goal_prose_subtask_finished`. This uses ON CONFLICT DO NOTHING at the database
-level, so re-calling for an already-recorded subtask is a safe no-op.
-
-```
-goal_prose_subtask_finished:
-  issue_key:     <issue key>
-  workflow_id:   <prose workflow's workflow_id>
-  subtask_id:    <subtask id>
-  subtask_name:  <subtask name>
-  status:        <complete | blocked | skipped>
-  started_at:    <subtask started ISO-8601 timestamp>
-  finished_at:   <subtask finished ISO-8601 timestamp>
-  duration_ms:   <duration in milliseconds>
-  attempt_count: <how many times this subtask was attempted>
-  blocked_reason: <free-text reason if blocked, null otherwise>
-```
-
-At goal completion or termination (clean finish or stop-loudly), call
-`goal_prose_finished`:
-
-```
-goal_prose_finished:
-  issue_key:         <issue key>
-  workflow_id:       <prose workflow's workflow_id>
-  status:            <completed | blocked>
-  started_at:        <goal started ISO-8601 timestamp>
-  finished_at:       <goal finished ISO-8601 timestamp>
-  duration_ms:       <total duration in milliseconds>
-  subtasks_complete: <count of subtasks with status=complete>
-  subtasks_blocked:  <count of subtasks with status=blocked>
-  subtasks_skipped:  <count of subtasks with status=skipped>
-```
-
-These three calls produce a `goal_run_sessions` row with `mode=prose` and the
-corresponding `goal_subtask_events` rows, making prose goal runs directly
-comparable to runtime goal runs in `goal_stats`.
-
-Selection semantics follow the runtime DecompositionWorkflowContinuation
-selector: resume the in-progress subtask; else start the first pending subtask
-whose dependencies are complete; else report blocked or all-complete. Resolve the
-`workflow_id` for the next runnable subtask via `feature_task_prose_workflow_get`
-or `skill-bill workflow continue` before spawning the Level-1 agent, so the
-Level-1 briefing carries the correct `workflow_id`. When a `subtask_id` is
-supplied by the caller, treat it as a constraint on the next runnable subtask,
-never a way to skip dependencies.
-
-Per-subtask runs keep `suppress_pr=true` (`goal_continuation.suppress_pr=true`)
-so each subtask commits but does not open its own PR; the whole goal opens
-exactly one parent PR on clean completion.
-
-**Orchestrator thinness constraint.** The invoking agent (Level-0) holds only:
-(1) the decomposition manifest, (2) per-subtask terminal outcomes —
-`{status, commit_sha, workflow_id}` — one record per completed or stopped
-subtask, and (3) the current subtask index. It does NOT accumulate preplan
-digests, plans, implementation summaries, code-review reports, or audit reports
-from any subtask. The Level-1 return value is the terminal outcome signal;
-everything else stays in Level-1 context.
-
-### Terminal-outcome verification and durable authority
-
-After Level-1 returns, verify the terminal outcome via
-`feature_task_prose_workflow_get` (or `skill-bill goal status <issue_key>`)
-before advancing to the next subtask. The in-session RESULT block is a signal
-only — durable workflow state is authoritative.
-
-The structured outcome fields are `issue_key`, `subtask_id`, `status`,
-`commit_sha`, `workflow_id`, `blocked_reason`, and `last_resumable_step`.
-
-Each completed subtask leaves a durable terminal outcome (`status`,
-`commit_sha`, `workflow_id`) so `skill-bill goal status` reflects it with NO
-hand-repair. The runtime workflow store is the single authority: there is no
-second authoritative store and no hand-written DB rows. The DB-to-disk
-reconciliation (the `decomposition-manifest.yaml` projection) is read-only-safe
-and must never be hand-edited to force progress.
-
-### Blocked or failed subtask: stop loudly
-
-If Level-1 returns a RESULT block with `status` ≠ `completed`, treat it as
-blocked/failed. If any subtask returns blocked or failed — anything other than a
-terminal success — STOP the loop loudly and immediately. Do NOT continue to the next
-subtask manually and do NOT attempt a hand-written continuation. Surface the
-subtask id, the reason (`blocked_reason`), the workflow id, and the resumable
-step (`last_resumable_step`), leaving resumable durable state in place so a later
-resume (by the runtime or a later prose continuation) can pick up exactly where
-it stopped. This mirrors the `mode:runtime` stop-loudly contract: blocked state
-is sticky and is never silently skipped.
-
-### Clean completion: convergence, parent PR, agent-agnosticism
-
-On clean completion the durable store, the on-disk
-`decomposition-manifest.yaml` projection, and git history all agree, and EXACTLY
-ONE parent PR is opened for the whole goal (per-subtask runs keep
-`suppress_pr=true`). The parent PR is produced via the standard
-`bill-pr-description` plus `gh` path; there is no reusable skill-bill parent-PR
-command.
-
-This is governed skill content that installs for all supported agents. Only the
-entry and launch mechanics differ per agent; no agent-specific orchestration is
-hardcoded — the invoking agent drives the loop through the same continuation
-contract regardless of which agent runs it.
 
 ## Audit-first review and findings ledger
 

@@ -4,8 +4,6 @@ contract_version: "1.2"
 matchers:
   - exact: bill-feature
   - exact: bill-feature-task-runtime
-  - exact: bill-feature-task-prose
-  - exact: bill-feature-task-subtask-runner
 
 pointers:
   - peak-hours-warner

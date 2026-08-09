@@ -110,7 +110,7 @@ path never encodes it.
 
 Everything funnels through `bill-feature`. Three decisions happen in order:
 *does an authoritative manifest already exist?* → *prepare bare-spec intake if needed* →
-*runtime or prose mode?*
+*hand off to the runtime driver?*
 
 ```
 user: "implement feature …" / "goal status" / …
@@ -128,13 +128,9 @@ bill-feature-spec                                [listed, Skill tool]
   │
   └── manifest (one or more subtasks) ──► read sibling bill-feature-goal.md [internal]
                         │  one confirmation gate; status requests land here too
-                        ├── mode:runtime ──► launches `skill-bill goal`
-                        │                     (durable goal loop: scheduling, dependency
-                        │                      order, limit-pause + resume)
-                        └── mode:prose ────► spawns bill-feature-task-subtask-runner
-                                              per subtask via the Agent tool — fresh
-                                              context per subtask, curated history.md /
-                                              decisions.md handoff between them
+                        └── launches `skill-bill goal`
+                              (durable goal loop: scheduling, dependency
+                               order, limit-pause + resume)
 ```
 
 The dispatch sentence is the whole contract. Every hop above (except
@@ -142,11 +138,11 @@ The dispatch sentence is the whole contract. Every hop above (except
 
 > Read the file `bill-feature-task.md` located in this skill's own installed
 > directory (a sibling of this `SKILL.md`) and execute its instructions in
-> the current session with args: `<issue-key> mode:<mode> …`. Do not use the
+> the current session with args: `<issue-key> …`. Do not use the
 > Skill tool for this — `bill-feature-task` is an internal skill and is not
 > listed.
 
-Arguments flow through unchanged — issue key, spec path, `mode:`,
+Arguments flow through unchanged — issue key, spec path,
 `parallel-review:`, `--agent-override` — so downstream behavior is identical
 to the Skill-tool era.
 
@@ -154,10 +150,10 @@ to the Skill-tool era.
 
 | Sidecar | Role | Terminal action |
 |---|---|---|
-| `bill-feature-task.md` | Mode router for one implementation unit; confirmation gate; opencode refusal | Reads the runtime or prose sibling |
+| `bill-feature-task.md` | Runtime router for one implementation unit; confirmation gate | Reads the runtime sibling |
 | `bill-feature-task-runtime.md` | Runtime-backed single-spec execution | Launches `skill-bill feature-task` |
-| `bill-feature-task-prose.md` | In-session phase-loop orchestrator | Spawns the phase native agents |
-| `bill-feature-goal.md` | Decomposed-goal gate, both modes, status behavior | Launches `skill-bill goal` or runs the prose subtask loop |
+| `bill-feature-task-prose.md` | Legacy in-session phase-loop orchestrator (scheduled for removal) | Spawns the phase native agents |
+| `bill-feature-goal.md` | Decomposed-goal gate and status behavior | Launches `skill-bill goal` |
 | `bill-feature-task-subtask-runner.md` | Documentation only — its real artifact is the native agent of the same name | — |
 
 The subtask-runner is the one deliberate oddity: its skill directory exists

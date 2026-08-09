@@ -80,10 +80,8 @@ data class AgentSymlinkUnlink(
 enum class AgentSymlinkProvider {
   CLAUDE,
   CODEX,
-  OPENCODE,
   JUNIE,
   CURSOR,
-  ZCODE,
 }
 
 /** A single edit to the root `README.md` catalog. */

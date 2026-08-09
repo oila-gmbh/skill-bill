@@ -486,7 +486,7 @@ class RepoValidationRuntimeTest {
     val repoRoot = Files.createTempDirectory("skillbill-native-agent-checked-in-artifact")
     createRepoValidationSkillFixture(repoRoot)
     writeNativeAgentFixture(repoRoot.resolve("skills/bill-code-review"), "bill-code-review-worker")
-    val generatedArtifact = repoRoot.resolve("skills/bill-code-review/opencode-agents/bill-code-review-worker.md")
+    val generatedArtifact = repoRoot.resolve("skills/bill-code-review/cursor-agents/bill-code-review-worker.md")
     Files.createDirectories(generatedArtifact.parent)
     Files.writeString(generatedArtifact, "checked-in generated file\n")
 
@@ -495,7 +495,7 @@ class RepoValidationRuntimeTest {
     assertFalse(report.passed)
     assertTrue(
       report.issues.any {
-        it.contains("opencode-agents/bill-code-review-worker.md") &&
+        it.contains("cursor-agents/bill-code-review-worker.md") &&
           it.contains("must not be checked in")
       },
       report.issues.joinToString("\n"),

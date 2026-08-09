@@ -48,16 +48,12 @@ internal fun renderSubagentSpawnRuntimeNotes(orchestratorName: String, specialis
     subagentResolutionParagraph(orchestratorName, specialists),
     claudeSpawnParagraph(orchestratorName, specialists),
     codexSpawnParagraph(),
-    openCodeSpawnParagraph(specialists),
   )
   if (specialists.size > DEFAULT_CODEX_MAX_THREADS) {
     paragraphs +=
       "Selected fan-out exceeds Codex's `agents.max_threads = 6` default; run waves of at most 6 specialists, " +
       "with the orchestrator merging wave outputs before final review."
   }
-  paragraphs +=
-    "OpenCode does not document a different native concurrency cap; keep the conservative limit of 6 or fewer " +
-    "specialists per wave."
   return paragraphs.joinToString("\n\n")
 }
 
@@ -95,14 +91,6 @@ private fun codexSpawnParagraph(): String =
     "subagents asynchronously, the orchestrator MUST poll for completion between turns before consuming the " +
     "subagent's `RESULT:` block — do not proceed to the next phase until the subagent has visibly finished " +
     "and its `RESULT:` JSON is available in the conversation."
-
-private fun openCodeSpawnParagraph(specialists: List<String>): String {
-  val backticked = specialists.joinToString(", ") { "`@$it`" }
-  return "**On OpenCode.** The spawn resolves by filename-derived `name` against markdown agents installed in " +
-    "the OpenCode user agents directory; operators can also invoke the same specialists manually with " +
-    "$backticked. Like Codex, OpenCode runs the spawn asynchronously, so the orchestrator MUST wait for the " +
-    "subagent to finish (checking between turns) and only then read its `RESULT:` JSON before advancing."
-}
 
 private fun nativeAgentStubBody(name: String, parentSkill: String): String = buildString {
   appendLine("# ${titleCaseSpecialist(name)} Specialist")

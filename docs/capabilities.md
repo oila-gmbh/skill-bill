@@ -5,7 +5,7 @@ Under one `curl` command is a full system. Each capability below is doing real w
 <details>
 <summary><b>1. One-shot multi-agent install via symlinks</b></summary>
 
-`install.sh` symlinks every skill into each detected agent's directory (Claude Code, Codex, Cursor, Copilot, OpenCode, Junie). A single source-of-truth `skills/` tree powers all of them, so an edit in one place reaches every agent immediately. The same mechanism handles uninstall and the runtime launcher binaries.
+`install.sh` symlinks every skill into each detected agent's directory (Claude Code, Codex, Cursor, Copilot, Junie). A single source-of-truth `skills/` tree powers all of them, so an edit in one place reaches every agent immediately. The same mechanism handles uninstall and the runtime launcher binaries.
 
 </details>
 
@@ -64,7 +64,7 @@ provider-native worker inventory and recorded digests, so neither the reviewed
 repository nor a surviving Skill Bill source checkout needs `skills/` or
 `platform-packs/` directories.
 
-`/bill-code-review` accepts `mode:auto|inline|delegated`: omission selects delegated review — the default specialist subagent fan-out — `mode:auto` resolves depth by review pass number where one exists and otherwise falls back to the named default rule, `mode:inline` runs the single-prompt review — one prompt in the current context covering the routed areas at reduced depth under a bounded budget, with no specialist fan-out and not equivalent coverage to delegated — and `mode:delegated` requires the routed fan-out path, launching one specialist subagent per routed area. Feature workflows expose the same choice as `code-review:auto|inline|delegated`, independently of their `mode:runtime|prose` execution-engine selector.
+`/bill-code-review` accepts `mode:auto|inline|delegated`: omission selects delegated review — the default specialist subagent fan-out — `mode:auto` resolves depth by review pass number where one exists and otherwise falls back to the named default rule, `mode:inline` runs the single-prompt review — one prompt in the current context covering the routed areas at reduced depth under a bounded budget, with no specialist fan-out and not equivalent coverage to delegated — and `mode:delegated` requires the routed fan-out path, launching one specialist subagent per routed area. Feature workflows expose the same choice as `code-review:auto|inline|delegated`.
 
 The shipped `rust` pack follows that same manifest-driven path: Cargo and first-party `.rs` signals route to `bill-rust-code-review` and `bill-rust-code-check`, with governed native agents for the baseline and all ten specialist lanes. Its quality checks understand workspaces, features, targets, rustfmt, Clippy, nextest, cargo-deny, and cargo-audit; Rust-specific routing is not hard-coded into either generic shell.
 
@@ -110,7 +110,7 @@ A skill author usually touches exactly one file. Free-form markdown, frontmatter
 
 Generated from it (and you never hand-edit):
 
-- Per-agent skill files in each agent's native format (Claude, Copilot, Codex, OpenCode, Junie), installed as symlinks back to the one source `content.md` so any edit lands everywhere instantly.
+- Per-agent skill files in each agent's native format (Claude, Copilot, Codex, Cursor, Junie), installed as symlinks back to the one source `content.md` so any edit lands everywhere instantly.
 - Native subagent files in each agent's required format, registered by name and briefed by the orchestrator at runtime.
 - Pointer files inside platform packs — single-line markdown files regenerated from `platform.yaml` by the renderer (you are literally not supposed to commit them).
 - Slash-command registration in each agent.

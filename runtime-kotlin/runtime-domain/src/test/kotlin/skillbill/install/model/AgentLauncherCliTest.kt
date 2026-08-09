@@ -12,7 +12,7 @@ class AgentLauncherCliTest {
 
   @Test
   fun `every runtime-capable agent declares a launcher CLI`() {
-    val runtimeAgents = InstallAgent.entries.filterNot(RUNTIME_REFUSED_AGENTS::contains) - InstallAgent.COPILOT
+    val runtimeAgents = InstallAgent.entries - InstallAgent.COPILOT
 
     assertEquals(runtimeAgents.toSet(), AGENT_LAUNCHER_CLIS.keys)
   }

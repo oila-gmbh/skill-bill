@@ -30,7 +30,6 @@ internal fun discoverAgentAddonGeneratedArtifacts(root: Path): List<Path> {
     "stack-routing.md",
     "claude-agents",
     "codex-agents",
-    "opencode-agents",
     "junie-agents",
     "cursor-agents",
   )

@@ -42,7 +42,6 @@ data class AgentRunProcessRequest(
    */
   val environmentPassthroughKeys: Set<String> = emptySet(),
   val outputSink: AgentRunOutputSink = AgentRunOutputSink.NONE,
-  val usePtyStdio: Boolean = false,
   val idlePolicy: AgentRunIdlePolicy = AgentRunIdlePolicy.DB_PROGRESS_ONLY,
   val conversationIsolation: ConversationIsolation? = null,
   val reviewEvidenceBroker: ReviewEvidenceBroker? = null,

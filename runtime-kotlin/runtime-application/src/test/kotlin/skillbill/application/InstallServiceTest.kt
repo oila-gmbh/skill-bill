@@ -187,8 +187,8 @@ class InstallServiceTest {
       agents = listOf(
         InstallAgentTarget(InstallAgent.CLAUDE, home.resolve(".claude/skills"), InstallAgentTargetSource.DETECTED),
         InstallAgentTarget(
-          InstallAgent.OPENCODE,
-          home.resolve(".config/opencode/skills"),
+          InstallAgent.CURSOR,
+          home.resolve(".cursor/skills"),
           InstallAgentTargetSource.DETECTED,
         ),
       ),
@@ -202,7 +202,7 @@ class InstallServiceTest {
     service.applyInstall(plan)
 
     assertEquals(
-      setOf(InstallAgent.CLAUDE, InstallAgent.OPENCODE),
+      setOf(InstallAgent.CLAUDE, InstallAgent.CURSOR),
       selectionPort.writeRequests.single().selection.selectedAgents,
     )
   }

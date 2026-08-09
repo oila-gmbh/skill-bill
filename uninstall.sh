@@ -537,10 +537,8 @@ info "A retired commands-only agent target is no longer first-class supported. I
 remove_from_agent_dir "$legacy_commands_agent" "$HOME/.$legacy_commands_agent/commands"
 remove_from_agent_dir "codex" "$HOME/.codex/skills"
 remove_from_agent_dir "codex" "$HOME/.agents/skills"
-remove_from_agent_dir "opencode" "$HOME/.config/opencode/skills"
 remove_from_agent_dir "junie" "$HOME/.junie/skills"
 remove_from_agent_dir "cursor" "$HOME/.cursor/skills"
-remove_from_agent_dir "zcode" "$HOME/.zcode/skills"
 
 remove_codex_agents_tomls() {
   # Uninstall Codex native subagent TOML symlinks from both candidate
@@ -593,32 +591,6 @@ remove_claude_agent_mds
 info "Removing Codex subagent TOML installs."
 remove_codex_agents_tomls
 
-remove_opencode_agent_mds() {
-  # Uninstall OpenCode native subagent markdown symlinks from
-  # ~/.config/opencode/agents. Manifest-driven: walks
-  # platform-packs/<slug>/**/opencode-agents/*.md and removes any matching
-  # filename in the OpenCode agents directory. Idempotent.
-  local output
-  if ! output="$(run_runtime_cli install unlink-opencode-agents \
-    --platform-packs "$PLATFORM_PACKS_DIR" \
-    --skills "$SKILLS_DIR")"; then
-    warn "  OpenCode subagent cleanup failed; continuing uninstall so reinstall can recover."
-    return 0
-  fi
-  if [[ -z "$output" ]]; then
-    info "  nothing to remove"
-    return 0
-  fi
-  while IFS= read -r link_path; do
-    [[ -n "$link_path" ]] || continue
-    REMOVED_TARGETS+=("$link_path")
-    ok "  removed $(basename "$link_path")"
-  done <<< "$output"
-}
-
-info "Removing OpenCode subagent markdown installs."
-remove_opencode_agent_mds
-
 remove_junie_agent_mds() {
   # Uninstall Junie native subagent markdown symlinks from ~/.junie/agents.
   # The source discovery walks governed platform-pack and skill junie-agents/*.md
@@ -669,33 +641,8 @@ remove_cursor_agent_mds() {
 info "Removing Cursor subagent markdown installs."
 remove_cursor_agent_mds
 
-remove_zcode_agent_mds() {
-  # Uninstall zcode native subagent markdown symlinks from ~/.zcode/agents.
-  # The source discovery walks governed platform-pack and skill zcode-agents/*.md
-  # definitions and is independent from other agent setup choices.
-  local output
-  if ! output="$(run_runtime_cli install unlink-zcode-agents \
-    --platform-packs "$PLATFORM_PACKS_DIR" \
-    --skills "$SKILLS_DIR")"; then
-    warn "  zcode subagent cleanup failed; continuing uninstall so reinstall can recover."
-    return 0
-  fi
-  if [[ -z "$output" ]]; then
-    info "  nothing to remove"
-    return 0
-  fi
-  while IFS= read -r link_path; do
-    [[ -n "$link_path" ]] || continue
-    REMOVED_TARGETS+=("$link_path")
-    ok "  removed $(basename "$link_path")"
-  done <<< "$output"
-}
-
-info "Removing zcode subagent markdown installs."
-remove_zcode_agent_mds
-
 info "Removing MCP server registrations."
-for agent in claude copilot codex "$legacy_commands_agent" opencode junie zcode; do
+for agent in claude copilot codex "$legacy_commands_agent" junie; do
   if mcp_output="$(run_runtime_cli install unregister-mcp "$agent" 2>/dev/null)"; then
     ok "  removed skill-bill MCP server ($agent)"
     while IFS= read -r profile_path; do

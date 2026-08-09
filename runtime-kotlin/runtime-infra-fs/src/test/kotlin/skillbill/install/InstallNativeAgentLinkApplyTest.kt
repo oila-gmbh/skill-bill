@@ -382,7 +382,7 @@ class InstallNativeAgentLinkApplyTest : InstallApplyTestSupport() {
   @Test
   fun `missing inventory removes canonical dangling links across provider layouts`() {
     val fixture = setupApplyFixture()
-    listOf(".claude", ".codex", ".config/opencode", ".junie", ".zcode")
+    listOf(".claude", ".codex", ".junie", ".cursor")
       .forEach { Files.createDirectories(fixture.home.resolve(it)) }
     val cacheRoot = fixture.home.resolve(
       ".skill-bill/installed-skills/native-agents-moved-checkout-0123456789abcdef",
@@ -481,8 +481,8 @@ class InstallNativeAgentLinkApplyTest : InstallApplyTestSupport() {
     val fixture = setupApplyFixture()
     Files.createDirectories(fixture.home.resolve(".claude"))
     Files.createDirectories(fixture.home.resolve(".codex"))
-    Files.createDirectories(fixture.home.resolve(".config/opencode"))
     Files.createDirectories(fixture.home.resolve(".junie"))
+    Files.createDirectories(fixture.home.resolve(".cursor"))
     val sourceBefore = snapshotSource(fixture.repoRoot)
     val plan = InstallOperations.planInstall(
       fixture.request(
@@ -515,7 +515,7 @@ class InstallNativeAgentLinkApplyTest : InstallApplyTestSupport() {
       setOf(
         NativeAgentProviderId.CLAUDE,
         NativeAgentProviderId.CODEX,
-        NativeAgentProviderId.OPENCODE,
+        NativeAgentProviderId.CURSOR,
         NativeAgentProviderId.JUNIE,
       ),
       result.nativeAgents
@@ -620,10 +620,10 @@ class InstallNativeAgentLinkApplyTest : InstallApplyTestSupport() {
   fun `inventory deletion followed by multi provider apply publishes canonical readable entries`() {
     val fixture = setupApplyFixture()
     Files.createDirectories(fixture.home.resolve(".codex"))
-    Files.createDirectories(fixture.home.resolve(".config/opencode"))
+    Files.createDirectories(fixture.home.resolve(".cursor"))
     val request = fixture.request(
       selectedPlatforms = setOf("kotlin"),
-      agents = setOf(InstallAgent.CODEX, InstallAgent.OPENCODE),
+      agents = setOf(InstallAgent.CODEX, InstallAgent.CURSOR),
     )
     val first = InstallOperations.applyInstall(InstallOperations.planInstall(request))
     assertEquals(InstallApplyStatus.SUCCESS, first.status)
@@ -637,7 +637,7 @@ class InstallNativeAgentLinkApplyTest : InstallApplyTestSupport() {
       fixture.repoRoot.resolve("skills"),
     )
     val entries = NativeAgentLinkInventory.read(fixture.home, listOf(cacheRoot), fixture.repoRoot)
-    assertEquals(setOf("codex", "opencode"), entries.map { it.provider }.toSet())
+    assertEquals(setOf("codex", "cursor"), entries.map { it.provider }.toSet())
     assertTrue(entries.all { it.contentDigest != "0".repeat(64) && Files.isReadable(it.cacheTargetPath) })
   }
 

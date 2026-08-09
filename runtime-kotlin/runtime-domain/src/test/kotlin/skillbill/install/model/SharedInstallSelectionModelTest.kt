@@ -22,7 +22,7 @@ class SharedInstallSelectionModelTest {
       links = listOf(
         link(InstallAgent.CODEX, InstallAgentLinkStatus.CREATED),
         link(InstallAgent.CLAUDE, InstallAgentLinkStatus.SKIPPED),
-        link(InstallAgent.OPENCODE, InstallAgentLinkStatus.WARNING),
+        link(InstallAgent.CURSOR, InstallAgentLinkStatus.WARNING),
         link(InstallAgent.JUNIE, InstallAgentLinkStatus.FAILED),
       ),
     )
@@ -72,7 +72,7 @@ class SharedInstallSelectionModelTest {
     ),
     mcpRegistrationOutcomes = listOf(
       McpRegistrationApplyOutcome(
-        agent = InstallAgent.OPENCODE,
+        agent = InstallAgent.CURSOR,
         status = McpRegistrationApplyStatus.SUCCESS,
       ),
     ),
@@ -89,7 +89,7 @@ class SharedInstallSelectionModelTest {
     mcpRegistrationIntent = McpRegistrationIntent(
       register = true,
       runtimeMcpBin = Path.of("/runtime-mcp"),
-      agents = listOf(InstallAgent.OPENCODE),
+      agents = listOf(InstallAgent.CURSOR),
     ),
   )
 

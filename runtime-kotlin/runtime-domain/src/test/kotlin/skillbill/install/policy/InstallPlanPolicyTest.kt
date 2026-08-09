@@ -84,8 +84,8 @@ class InstallPlanPolicyTest {
           mode = InstallAgentSelectionMode.DETECTED,
           detectedTargets = listOf(
             InstallAgentTarget(
-              agent = InstallAgent.OPENCODE,
-              path = path("/detected/opencode"),
+              agent = InstallAgent.CURSOR,
+              path = path("/detected/cursor"),
               source = InstallAgentTargetSource.MANUAL,
             ),
           ),
@@ -102,9 +102,9 @@ class InstallPlanPolicyTest {
 
     val draft = InstallPlanPolicy.buildPlanDraft(input)
 
-    assertEquals(listOf(InstallAgent.OPENCODE), draft.agents.map(InstallAgentTarget::agent))
+    assertEquals(listOf(InstallAgent.CURSOR), draft.agents.map(InstallAgentTarget::agent))
     assertEquals(listOf(InstallAgentTargetSource.DETECTED), draft.agents.map { target -> target.source })
-    assertEquals(path("/detected/opencode"), draft.agents.single().path)
+    assertEquals(path("/detected/cursor"), draft.agents.single().path)
   }
 
   @Test
@@ -455,7 +455,7 @@ class InstallPlanPolicyTest {
     InstallAgentDefaultTarget(InstallAgent.CODEX, path("/home/.codex/skills")),
     InstallAgentDefaultTarget(InstallAgent.COPILOT, path("/home/.copilot/skills")),
     InstallAgentDefaultTarget(InstallAgent.JUNIE, path("/home/.junie/skills")),
-    InstallAgentDefaultTarget(InstallAgent.OPENCODE, path("/home/.config/opencode/skills")),
+    InstallAgentDefaultTarget(InstallAgent.CURSOR, path("/home/.cursor/skills")),
   )
 
   private fun request(

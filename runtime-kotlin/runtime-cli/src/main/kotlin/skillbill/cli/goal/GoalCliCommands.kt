@@ -37,7 +37,6 @@ import skillbill.application.system.RuntimeProvenanceService
 import skillbill.application.telemetry.TelemetryService
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
-import skillbill.cli.core.refuseRuntimeRefusedAgents
 import skillbill.cli.core.refuseUnavailableAgentLaunchers
 import skillbill.cli.featuretask.parseAgentAddonSelection
 import skillbill.cli.telemetry.drainTelemetryOnCompletion
@@ -166,15 +165,11 @@ class GoalRunCommand(
     if (currentContext.invokedSubcommand != null) {
       return
     }
-    // opencode is prose-only: refuse before any child subprocess is spawned, and before the
-    // issue_key check so the actionable refusal wins over a generic argument error (mirrors
-    // feature-task, where the preflight is the first statement in every run body).
     val candidateAgentIds = listOf(
       resolveInvokedAgentId(agent, state.environment),
       agentOverride,
       parallelReviewAgent?.takeIf(String::isNotBlank),
     )
-    refuseRuntimeRefusedAgents(candidateAgentIds)
     // An agent whose headless CLI is absent would otherwise spawn-fail at goal planning, after the
     // goal record already exists and is blocked at subtask 0.
     refuseUnavailableAgentLaunchers(candidateAgentIds, executableLookup)

@@ -11,8 +11,8 @@
 > `spec_followup_*.md` files referenced below were deleted by SKILL-159.
 
 **Decision:** delegated review is not supportable as a default. Codex, Claude,
-and Cursor remain experimental, explicit opt-in providers. Junie, Copilot,
-Opencode, and Zcode remain unsupported. Inline is the default, and `auto`
+and Cursor remain experimental, explicit opt-in providers. Junie and Copilot
+remain unsupported. Inline is the default, and `auto`
 continues to resolve to inline until a separate governed change approves a
 provider promotion.
 
@@ -24,7 +24,7 @@ the provider capability matrix in
 [`provider-capability-matrix.md`](provider-capability-matrix.md), and the
 provider-keyed dispositions in
 [`provider-failure-dispositions.md`](provider-failure-dispositions.md).
-The bounded provider measurements are records PM-001 through PM-007 in this
+The bounded provider measurements are records PM-001 through PM-005 in this
 decision; each record reports the provider's capability count, launch or
 refusal outcome, and current promotion-gate result using the capability matrix
 and runtime registry as its measurement sources.
@@ -50,8 +50,6 @@ another provider and not a claim that a live canary has run.
 | PM-003 | Cursor | `DelegatedReviewProviderCapabilityRegistry` and Cursor adapter surface | `8/8` capabilities present; delegated launch is available; terminal disposition is `experimental explicit opt-in` | `0/6` promotion gates satisfied; promotion remains rejected pending Cursor-specific authenticated canaries |
 | PM-004 | Junie | Capability registry and unsupported launch boundary | `0/8` capabilities present; delegated launch is unavailable; terminal disposition is `blocked_unsupported` | `0/6` promotion gates satisfied; unsupported rejection is satisfied and no inline substitution is permitted |
 | PM-005 | Copilot | Capability registry lookup and adapter inventory | `0/8` capabilities present; no delegated adapter is registered; terminal disposition is `blocked_unsupported` | `0/6` promotion gates satisfied; unsupported rejection is satisfied and no inline substitution is permitted |
-| PM-006 | Opencode | `RUNTIME_REFUSED_AGENTS` and refusal boundary | `0/8` capabilities present; launch is refused; terminal disposition is `blocked_unsupported` | `0/6` promotion gates satisfied; runtime-refusal rejection is satisfied and no inline substitution is permitted |
-| PM-007 | Zcode | `RUNTIME_REFUSED_AGENTS` and refusal boundary | `0/8` capabilities present; launch is refused; terminal disposition is `blocked_unsupported` | `0/6` promotion gates satisfied; runtime-refusal rejection is satisfied and no inline substitution is permitted |
 
 The records retain only provider, capability count, launch disposition, and
 promotion outcome. They do not retain prompts, diffs, transcripts, source
@@ -72,8 +70,6 @@ cannot promote any provider.
 | Cursor | experimental explicit opt-in | [`PM-003`](decision.md#bounded-provider-measurements) measures `8/8` capabilities and an available delegated launch. | [Items 1–47](failure-matrix.md) are the complete ledger. | [`G-001`–`G-006`](reliability-contract.md#promotion-gate): `0/6` satisfied because no Cursor-specific authenticated canary set has been recorded; cross-provider evidence cannot promote Cursor. |
 | Junie | unsupported | [`PM-004`](decision.md#bounded-provider-measurements) measures `0/8` capabilities, unavailable launch, and `blocked_unsupported`. | [Items 1–47](failure-matrix.md) are the complete ledger. | [`G-001`–`G-006`](reliability-contract.md#promotion-gate): `0/6` promotion gates; explicit unsupported rejection is satisfied and no inline substitution is permitted. |
 | Copilot | unsupported | [`PM-005`](decision.md#bounded-provider-measurements) measures `0/8` capabilities, no registered adapter, and `blocked_unsupported`. | [Items 1–47](failure-matrix.md) are the complete ledger. | [`G-001`–`G-006`](reliability-contract.md#promotion-gate): `0/6` promotion gates; explicit unsupported rejection is satisfied and no inline substitution is permitted. |
-| Opencode | unsupported | [`PM-006`](decision.md#bounded-provider-measurements) measures `0/8` capabilities, refused launch, and `blocked_unsupported`. | [Items 1–47](failure-matrix.md) are the complete ledger. | [`G-001`–`G-006`](reliability-contract.md#promotion-gate): `0/6` promotion gates; runtime-refusal rejection is satisfied and no inline substitution is permitted. |
-| Zcode | unsupported | [`PM-007`](decision.md#bounded-provider-measurements) measures `0/8` capabilities, refused launch, and `blocked_unsupported`. | [Items 1–47](failure-matrix.md) are the complete ledger. | [`G-001`–`G-006`](reliability-contract.md#promotion-gate): `0/6` promotion gates; runtime-refusal rejection is satisfied and no inline substitution is permitted. |
 
 The classifications are independent. Shared coordinator accounting,
 schema validation, or inline policy does not turn an unsupported provider into
@@ -104,7 +100,7 @@ falsifiable only when all checks pass for that provider:
 - provider-isolation tests prove that changing this adapter cannot alter
   Claude, Cursor, Codex, or any unchanged adapter.
 
-The current PM-001–PM-007 measurements satisfy the classification shape and
+The current PM-001–PM-005 measurements satisfy the classification shape and
 unsupported-provider rejection guards, but no provider has a canary sample
 that satisfies the independent measured promotion gate. Therefore no
 provider is classified as supportable.

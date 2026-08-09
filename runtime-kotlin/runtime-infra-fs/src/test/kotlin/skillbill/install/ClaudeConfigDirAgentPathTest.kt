@@ -32,8 +32,8 @@ class ClaudeConfigDirAgentPathTest {
     )
     // Non-claude agents are unaffected by CLAUDE_CONFIG_DIR.
     assertEquals(
-      home.resolve(".config/opencode/skills"),
-      InstallOperations.agentPath("opencode", home, environment = env),
+      home.resolve(".codex/skills"),
+      InstallOperations.agentPath("codex", home, environment = env),
     )
   }
 

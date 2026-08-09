@@ -49,7 +49,7 @@ Do not commit these under `skills/`:
   `telemetry-contract.md`, and stack-routing, review, delegation, add-on, or
   Android support pointer files
 - provider-specific generated native-agent directories such as
-  `claude-agents/`, `codex-agents/`, `opencode-agents/`, `junie-agents/`, or
+  `claude-agents/`, `codex-agents/`, `junie-agents/`, or
   `cursor-agents/`
 - extra organization files such as `patterns.md`, `reference.md`, or
   `audit-rubrics.md`
@@ -234,8 +234,8 @@ The Skill tool on every supported agent resolves only listed skills; there is no
 invocable-but-hidden state. A listed parent therefore invokes an internal skill
 by **reading the sidecar file from its own installed directory** (a sibling file
 read) and executing its instructions in the current session, passing the same
-argument conventions as before (`mode:runtime` / `mode:prose`,
-`parallel-review:<agent>`, issue key, spec path). The Skill tool is never used
+argument conventions as before (`parallel-review:<agent>`, issue key, spec path).
+The Skill tool is never used
 to invoke an internal skill. This file-read pattern is already established for
 other sibling sidecars (`shell-ceremony.md`, `compose-guidelines.md`) and is
 more portable across agents than Skill-tool mechanics.
@@ -484,7 +484,6 @@ cache, then links them into runtime-specific directories:
 
 - Claude: Markdown/YAML custom agents under `~/.claude/agents/`
 - Codex: TOML custom agents under `~/.codex/agents/`
-- OpenCode: Markdown custom agents under `~/.config/opencode/agents/`
 - Junie: Markdown/YAML custom agents under `~/.junie/agents/`
 - Cursor: Markdown/YAML custom agents under `~/.cursor/agents/`
 
@@ -645,7 +644,7 @@ Do not:
 - commit `skills/<skill>/SKILL.md`
 - commit support pointer files under `skills/<skill>/`
 - split ordinary skill guidance into extra files under `skills/<skill>/`
-- commit `claude-agents/`, `codex-agents/`, `opencode-agents/`,
+- commit `claude-agents/`, `codex-agents/`,
   `junie-agents/`, or `cursor-agents/`
 - manually edit generated runtime staging directories as source
 - rely on direct source symlinks for content-managed skills

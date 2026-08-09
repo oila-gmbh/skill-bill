@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
-# 3-level Agent tool nesting smoke test for bill-feature-goal mode:prose (SKILL-83).
+# 3-level Agent tool nesting smoke test (SKILL-83 historical prose-path gate).
 # Verifies: Level-0 (claude -p session) can spawn Level-1 (Agent tool) which can spawn
 # Level-2 (Agent tool), that the Level-2 sentinel propagates back to Level-0, and that
 # Level-1 has access to the skill-bill MCP tools.
 #
-# This is the go/no-go gate for SKILL-83. If the test fails:
-#   BLOCKED — alternatives:
-#   (a) Keep mode:prose with /clear between subtasks (manual, works today).
-#   (b) Use mode:runtime with a conservative Anthropic console spending cap.
+# Legacy note: this script historically gated the prose goal nesting path. SKILL-175
+# made feature entry runtime-only; a later subtask owns deletion of prose skill trees
+# and this smoke. Kept for now as a nesting capability probe, not an engine selector.
 #
 # Usage: scripts/agent_nesting_smoke_test.sh
 # Env overrides: CLAUDE_BIN, NESTING_TEST_TIMEOUT (default 240s)
@@ -129,9 +128,8 @@ if [[ $overall -eq 0 ]]; then
 else
   echo "  FAIL — 3-level Agent nesting could NOT be verified."
   echo
-  echo "  SKILL-83 is BLOCKED. Alternatives:"
-  echo "  (a) Keep mode:prose with /clear between subtasks (manual, works today)."
-  echo "  (b) Use mode:runtime with a conservative Anthropic console spending cap."
+  echo "  Nesting capability probe failed. Investigate Agent-tool depth limits"
+  echo "  or MCP registration before relying on multi-level Agent spawn."
   echo
   if [[ -n "$claude_out" ]]; then
     echo "  Level-0 output (head 20):"

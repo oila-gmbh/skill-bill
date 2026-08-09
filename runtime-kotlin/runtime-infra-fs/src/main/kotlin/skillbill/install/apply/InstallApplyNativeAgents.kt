@@ -179,12 +179,6 @@ private val nativeAgentInstallers: List<NativeAgentInstaller> = listOf(
     unlink = InstallNativeAgentOperations::unlinkCodexAgents,
   ),
   NativeAgentInstaller(
-    agent = InstallAgent.OPENCODE,
-    provider = NativeAgentProviderId.OPENCODE,
-    link = InstallNativeAgentOperations::linkOpencodeAgents,
-    unlink = InstallNativeAgentOperations::unlinkOpencodeAgents,
-  ),
-  NativeAgentInstaller(
     agent = InstallAgent.JUNIE,
     provider = NativeAgentProviderId.JUNIE,
     link = InstallNativeAgentOperations::linkJunieAgents,
@@ -195,11 +189,5 @@ private val nativeAgentInstallers: List<NativeAgentInstaller> = listOf(
     provider = NativeAgentProviderId.CURSOR,
     link = InstallNativeAgentOperations::linkCursorAgents,
     unlink = InstallNativeAgentOperations::unlinkCursorAgents,
-  ),
-  NativeAgentInstaller(
-    agent = InstallAgent.ZCODE,
-    provider = NativeAgentProviderId.ZCODE,
-    link = InstallNativeAgentOperations::linkZcodeAgents,
-    unlink = InstallNativeAgentOperations::unlinkZcodeAgents,
   ),
 )

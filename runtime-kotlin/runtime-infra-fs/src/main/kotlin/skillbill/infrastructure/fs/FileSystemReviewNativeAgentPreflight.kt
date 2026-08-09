@@ -102,10 +102,8 @@ class FileSystemReviewNativeAgentPreflight(
   private fun provider(agentId: String): NativeAgentProvider? = when (agentId) {
     "claude" -> NativeAgentProvider.Claude
     "codex" -> NativeAgentProvider.Codex
-    "opencode" -> NativeAgentProvider.Opencode
     "junie" -> NativeAgentProvider.Junie
     "cursor" -> NativeAgentProvider.Cursor
-    "zcode" -> NativeAgentProvider.Zcode
     else -> null
   }
 
