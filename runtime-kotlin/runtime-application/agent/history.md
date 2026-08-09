@@ -1,3 +1,13 @@
+## [2026-08-09] SKILL-179 subtask 3 — Legacy prose-mode row lifecycle
+Areas: runtime-application/{featuretask,workflow,goalrunner}, runtime-ports/persistence, runtime-infra-sqlite/db/workflow, runtime-cli/featuretask, .feature-specs/SKILL-179
+- Parent discovery lists RUNTIME and PROSE feature-task rows so a legacy goal parent surfaces as `goal_continuation` instead of silent `no_match` over live durable state.
+- Engine writes still refuse prose via `requireRuntimeModeForEngineWrite` / `LegacyProseWorkflowError` — discovery never flips `mode` or asserts the runtime schema over retired step ids.
+- Identity-less runtime candidates return `NeedsIdentityRepair` naming the workflow and directing operators to `feature-task repair-identity` before projection can throw.
+- `feature-task abandon` terminalizes prose parents with a status/artifact-only SQLite write that preserves `mode=prose` (no refused prose writer, no runtime upsert). reusable
+- Regression tests cover prose-parent discovery, identity-less lookup, and prose abandon; CLI maps `NeedsIdentityRepair` to the operator-facing result.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-08-09] SKILL-179 subtask 1 — Application/persistence test contract migration
 Areas: runtime-application/{application,decomposition}, runtime-core/application (tests), .feature-specs/SKILL-179
 - Runtime router continuation seeds completed preplan+plan phase records; compact `currentStepArtifacts` is `[plan]` citing `WorkflowEngine.resumeView` filtering of `repository_evidence` and `compactContinueView` fallback to requiredKeys (parity with WorkflowCompactContinuationTest).
