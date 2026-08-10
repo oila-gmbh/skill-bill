@@ -3,23 +3,23 @@ package skillbill.workflow.taskruntime.model
 /**
  * Pure domain models for the structured review verdict that drives the `review_fix` backward edge. A
  * review emits a [FeatureTaskRuntimeReviewVerdict]: its findings classify the run as
- * [FeatureTaskRuntimeVerdict.CHANGES_REQUESTED] (any unresolved Blocker) or
+ * [FeatureTaskRuntimeVerdict.CHANGES_REQUESTED] (any unresolved Blocker or Major) or
  * [FeatureTaskRuntimeVerdict.APPROVED]. The classification is a pure function of the findings — prose
  * alone cannot advance past a remediable finding — and the findings are carried into the
  * `implement_fix` briefing. No raw maps live in the model: the runner decodes wire output into these
  * types.
  *
- * Two severity gates are deliberately distinct. [FeatureTaskRuntimeReviewSeverity.requiresRemediation]
- * (Blocker only) drives the backward edge and the set of findings a fix pass must clear: only a
- * surviving Blocker reopens `implement_fix`. [FeatureTaskRuntimeReviewSeverity.blocksAdvance]
- * (Blocker only) drives the terminal loud block on cap exhaustion: the run moves on with surviving
- * Major, Minor, or Nit findings but still stops on a surviving Blocker, so a real breakage is never
- * shipped.
+ * Two severity gates share the Blocker-or-Major rule.
+ * [FeatureTaskRuntimeReviewSeverity.requiresRemediation] drives the backward edge and the set of
+ * findings a fix pass must clear: a surviving Blocker or Major reopens `implement_fix`.
+ * [FeatureTaskRuntimeReviewSeverity.blocksAdvance] drives the terminal loud block on cap exhaustion:
+ * the run still stops on a surviving Blocker or Major, so a real breakage is never shipped. Minor
+ * and Nit findings are recorded in the ledger and never reopen the loop or hard-block advance.
  */
 
 /**
- * Severity of a single review finding. Blocker and Major both require remediation in the fix pass;
- * only Blocker blocks advancing once the remediation budget is exhausted.
+ * Severity of a single review finding. Blocker and Major both require remediation in the fix pass
+ * and both block advancing once the remediation budget is exhausted.
  */
 enum class FeatureTaskRuntimeReviewSeverity(val wireValue: String) {
   BLOCKER("blocker"),
@@ -30,17 +30,17 @@ enum class FeatureTaskRuntimeReviewSeverity(val wireValue: String) {
 
   /**
    * Whether a finding of this severity blocks advancing past review once the bounded remediation
-   * budget is exhausted. Only a surviving Blocker is a hard stop; a surviving Major moves on.
+   * budget is exhausted. A surviving Blocker or Major is a hard stop; Minor and Nit move on.
    */
   val blocksAdvance: Boolean
-    get() = this == BLOCKER
+    get() = this == BLOCKER || this == MAJOR
 
   /**
-   * Whether a finding of this severity must be remediated in the same review pass. Only a Blocker
-   * reopens `implement_fix`; Major, Minor, and Nit are recorded in the ledger and never reopen the loop.
+   * Whether a finding of this severity must be remediated in the same review pass. A Blocker or
+   * Major reopens `implement_fix`; Minor and Nit are recorded in the ledger and never reopen the loop.
    */
   val requiresRemediation: Boolean
-    get() = this == BLOCKER
+    get() = this == BLOCKER || this == MAJOR
 
   companion object {
     fun fromWire(value: String): FeatureTaskRuntimeReviewSeverity =
@@ -66,9 +66,9 @@ data class FeatureTaskRuntimeReviewFinding(
  * The structured verdict a `review` phase emits: the full ordered finding list. [verdict] is derived
  * purely from the findings ([FeatureTaskRuntimeVerdict.CHANGES_REQUESTED] when any finding
  * [FeatureTaskRuntimeReviewFinding.severity] requires remediation, else
- * [FeatureTaskRuntimeVerdict.APPROVED]). [remediationFindings] are the Blocker-only findings a fix
- * pass must clear; [unresolvedFindings] are the Blocker-only findings carried into the loud block on
- * cap exhaustion.
+ * [FeatureTaskRuntimeVerdict.APPROVED]). [remediationFindings] and [unresolvedFindings] are the
+ * Blocker and Major findings a fix pass must clear and that hard-block the run once the remediation
+ * budget is exhausted.
  */
 data class FeatureTaskRuntimeReviewVerdict(
   val findings: List<FeatureTaskRuntimeReviewFinding>,
@@ -84,7 +84,7 @@ data class FeatureTaskRuntimeReviewVerdict(
   val remediationFindings: List<FeatureTaskRuntimeReviewFinding>
     get() = findings.filter { it.severity.requiresRemediation }
 
-  /** Blocker-only findings that hard-block the run once the remediation budget is exhausted. */
+  /** Blocker and Major findings that hard-block the run once the remediation budget is exhausted. */
   val unresolvedFindings: List<FeatureTaskRuntimeReviewFinding>
     get() = findings.filter { it.severity.blocksAdvance }
 }

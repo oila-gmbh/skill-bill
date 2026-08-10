@@ -121,6 +121,9 @@ data class GoalSubtaskReviewCompactFinding(
 ) {
   val isBlocker: Boolean get() = severity == GOAL_SUBTASK_REVIEW_BLOCKER_SEVERITY
 
+  /** Whether this finding severity blocks advancing: Blocker or Major. [isBlocker] stays Blocker-only. */
+  val blocksAdvance: Boolean get() = severity == GOAL_SUBTASK_REVIEW_BLOCKER_SEVERITY || severity == "major"
+
   init {
     require(severity in setOf("blocker", "major", "minor", "nit")) { "Invalid review finding severity '$severity'." }
     require(label.isNotBlank()) { "GoalSubtaskReviewCompactFinding.label must be non-blank." }
@@ -187,9 +190,9 @@ data class GoalSubtaskReviewPassResult(
   }
 
   /**
-   * Only Blocker severity blocks advancing. A compact summary may carry a positive unresolved count
-   * with no itemised findings, so an empty finding list stays blocking; an itemised list must name a
-   * Blocker.
+   * Blocker or Major severity blocks advancing. A compact summary may carry a positive unresolved
+   * count with no itemised findings, so an empty finding list stays blocking; an itemised list must
+   * name a Blocker or Major.
    */
   val blocksAdvance: Boolean get() = blocksAdvance(unresolvedFindingCount, findings)
 
@@ -468,7 +471,7 @@ data class GoalSubtaskReviewState(
           completedPassCount >= 1 &&
             passResults.lastOrNull()?.blocksAdvance == true
           ),
-    ) { "review_cap_reached requires unresolved Blocker findings on a completed pass." }
+    ) { "review_cap_reached requires unresolved Blocker or Major findings on a completed pass." }
     require(
       blockerDispositions.map(GoalSubtaskBlockerDisposition::findingId).distinct().size == blockerDispositions.size,
     ) {
@@ -479,7 +482,7 @@ data class GoalSubtaskReviewState(
         blockerDispositions.any { it.verdict == GoalSubtaskBlockerDispositionVerdict.UNRESOLVED } ||
         passResults.lastOrNull()?.blocksAdvance == true,
     ) {
-      "paused requires an unresolved Blocker disposition or a Blocker the remediation pass itself introduced."
+      "paused requires an unresolved Blocker disposition or a Blocker or Major the remediation pass itself introduced."
     }
     require(operatorDecision == null || disposition == GoalSubtaskReviewDisposition.PAUSED) {
       "An operator decision is only recorded against a paused subtask."
@@ -749,7 +752,7 @@ data class GoalSubtaskReviewState(
 }
 
 private fun blocksAdvance(unresolvedFindingCount: Int, findings: List<GoalSubtaskReviewCompactFinding>): Boolean =
-  unresolvedFindingCount > 0 && (findings.isEmpty() || findings.any(GoalSubtaskReviewCompactFinding::isBlocker))
+  unresolvedFindingCount > 0 && (findings.isEmpty() || findings.any(GoalSubtaskReviewCompactFinding::blocksAdvance))
 
 private val GIT_COMMIT_SHA = Regex("^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 
