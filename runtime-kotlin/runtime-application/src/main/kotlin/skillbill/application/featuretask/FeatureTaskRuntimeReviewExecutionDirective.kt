@@ -21,7 +21,7 @@ internal fun reviewExecutionDirective(phaseId: String, inputs: ReviewExecutionDi
   val remediationPass = (inputs.reviewPassNumber ?: 1) >= 2
   return """
     ## Review execution mode
-    Run `bill-code-review mode:${inputs.codeReviewMode.wireValue}` for this review. `inline` is the default and runs exactly one review prompt in one declared `bill-code-review-inline` subagent with no per-area specialists; `auto` resolves to inline on every pass, first included; `delegated` is the experimental full-depth tier that runs the routed specialist fan-out and is reached only by an explicit selection. A remediation pass adds context:feature-remediation, is bounded to that round's remediation delta, and always executes inline. Remediation passes are unbounded: they run for as long as an unresolved Blocker survives.$parallel${resolvedTierInfo(
+    Run `bill-code-review mode:${inputs.codeReviewMode.wireValue}` for this review. `inline` is the default and runs exactly one review prompt in one declared `bill-code-review-inline` subagent with no per-area specialists; `auto` resolves to inline on every pass, first included; `delegated` is the experimental full-depth tier that runs the routed specialist fan-out and is reached only by an explicit selection. A remediation pass adds context:feature-remediation, is bounded to that round's remediation delta, and always executes inline. Remediation passes are unbounded: they run for as long as an unresolved Blocker or Major survives.$parallel${resolvedTierInfo(
     inputs,
   )}${baselineUntrackedPolicy(
     inputs,
@@ -71,7 +71,7 @@ private fun remediationContext(inputs: ReviewExecutionDirectiveInputs, remediati
     }.orEmpty()
     """
     ## Reserved remediation pass (pass ${inputs.reviewPassNumber ?: 2})
-    This is a reserved remediation pass under context:feature-remediation. Scope is strictly the immediately preceding pass's Blocker findings union diff(this round's pre-fix tree -> post-fix tree). Do not re-review the subtask's full base-to-current delta; the immutable `review_base_sha` and baseline untracked inventory are pass one's authority only. A defect introduced by the remediation itself must still be caught.$materialized
+    This is a reserved remediation pass under context:feature-remediation. Scope is strictly all findings addressed in that round union diff(this round's pre-fix tree -> post-fix tree). Do not re-review the subtask's full base-to-current delta; the immutable `review_base_sha` and baseline untracked inventory are pass one's authority only. A defect introduced by the remediation itself must still be caught.$materialized
     """.trimIndent()
   } else {
     ""

@@ -100,9 +100,9 @@ class UnboundedRemediationLoopGovernedContentTest {
     val reviewDirective = governedText(reviewExecutionDirectivePath)
     assertTrue(
       reviewDirective.contains(
-        "Remediation passes are unbounded: they run for as long as an unresolved Blocker survives.",
+        "Remediation passes are unbounded: they run for as long as an unresolved Blocker or Major survives.",
       ),
-      "runtime review-execution directive must state unbounded Blocker remediation.",
+      "runtime review-execution directive must state unbounded Blocker-or-Major remediation.",
     )
   }
 
