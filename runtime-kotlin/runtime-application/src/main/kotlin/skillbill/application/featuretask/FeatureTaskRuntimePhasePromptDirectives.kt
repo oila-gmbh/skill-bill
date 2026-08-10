@@ -248,9 +248,9 @@ internal fun goalContinuationValidateDepthDirective(phaseId: String, validationD
 
 /** Task-line text for validate when [ValidationDepth.BUILD_ONLY]; keeps [phaseDirectives] untouched. */
 internal const val BUILD_ONLY_VALIDATE_PHASE_TASK: String =
-  "Prove compile/buildability of the changed modules only. Fix only compile/build failures. Do not " +
-    "run tests, detekt, spotless, lint, dependency scanners, or the full bill-code-check / " +
-    "repository validation gate. While repairing compile/build failures, do not introduce " +
+  "Prove compile/buildability of the changed modules only. Fix only compile/build failures from the " +
+    "runtime-provided finding set. Do not invoke the gate, any quality-check skill, tests, detekt, " +
+    "spotless, lint, or dependency scanners. While repairing compile/build failures, do not introduce " +
     "suppressions, disable rules, or weaken configuration. Emit a bounded validation_result " +
     "containing validation_status, checks, and repository_checkpoint; do not embed raw command " +
     "output or telemetry."
@@ -258,15 +258,14 @@ internal const val BUILD_ONLY_VALIDATE_PHASE_TASK: String =
 private val BUILD_ONLY_VALIDATE_DIRECTIVE_SECTION: String =
   """
     ## Goal-continuation validate depth
-    validation_depth=build_only. Prove compile/buildability only. Fix only compile/build failures.
-    Do not run tests written during implement, do not execute test suites, and do not run detekt,
-    spotless, lint, dependency scanners, or the full bill-code-check / repository validation gate.
-    While repairing compile/build failures, do not introduce suppressions, disable rules, or
-    weaken configuration. Batch compile/build repairs the same way full validate batches gate
-    repairs: read the complete finding set from one compile/build run, fix every finding at its
-    root cause, then rerun once to verify. Emit a bounded validation_result containing
-    validation_status, checks, and repository_checkpoint; do not embed raw command output or
-    telemetry.
+    validation_depth=build_only. Prove compile/buildability only. Fix only compile/build failures from
+    the runtime-provided finding set. Do not invoke the gate or any quality-check skill. Do not run tests
+    written during implement, do not execute test suites, and do not run detekt, spotless, lint,
+    or dependency scanners. While repairing compile/build failures, do not introduce suppressions,
+    disable rules, or weaken configuration. Batch compile/build repairs: fix every finding at its
+    root cause and return; the runtime reruns the compile/build gate to verify. Emit a bounded
+    validation_result containing validation_status, checks, and repository_checkpoint; do not embed
+    raw command output or telemetry.
   """.trimIndent()
 
 /** Selects the validate Task text from depth; every other phase uses [phaseDirectives] unchanged. */
@@ -348,16 +347,12 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "introduced defect opens, and your evidence. All evidence is read-only repository facts: never run a " +
     "build, a test, or any other command as audit evidence; validation owns test execution and failures.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE to
-    "Run tests written during the implement phase, then run the repository validation gate " +
-    "relevant to the change. A gate run costs minutes because it recompiles every dependent module " +
-    "and reruns their suites, so batch the repair: read the complete finding set from one gate run, " +
-    "fix every finding in it at its root cause, and only then run the gate again to verify. Never " +
-    "rerun the gate after an individual fix, and never rerun it to rediscover findings the previous " +
-    "run already reported. Rerun early only when a fix genuinely cannot be completed without fresh " +
-    "gate output, and say which finding forced it. Findings that share one root cause are one fix, " +
-    "not several. Validation findings are repair work, not a reason to block the phase. Invoke " +
-    "bill-code-check for that gate — it auto-routes to the pack-declared quality-check skill; never " +
-    "name a stack-specific quality-check skill such as bill-kotlin-code-check. Fix findings at their " +
+    "The runtime owns the repository validation gate. You receive a bounded finding-set projection " +
+    "from the runtime (module, rule or test identity, message, location) and must not invoke the " +
+    "gate or any quality-check skill. Fix every finding in the projection at its root cause and " +
+    "return; the runtime reruns the gate to verify. Never rediscover findings the previous gate " +
+    "run already reported. Findings that share one root cause are one fix, not several. Validation " +
+    "findings are repair work, not a reason to block the phase. Fix findings at their " +
     "root cause; never silence them with annotations, baselines, disabled rules, weakened " +
     "configuration, or skipped tests. Emit a " +
     "bounded validation_result containing validation_status, checks, and repository_checkpoint; " +

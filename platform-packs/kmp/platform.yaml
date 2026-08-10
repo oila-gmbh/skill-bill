@@ -1,5 +1,5 @@
 platform: kmp
-contract_version: "1.2"
+contract_version: "1.3"
 display_name: "Android & Kotlin Multiplatform"
 
 routing_signals:
@@ -53,6 +53,32 @@ declared_files:
     ux-accessibility: code-review/bill-kmp-code-review-ux-accessibility/content.md
 
 declared_quality_check_file: quality-check/bill-kmp-code-check/content.md
+
+validation_gate:
+  full_gate_command:
+    - ./gradlew
+    - -p
+    - runtime-kotlin
+    - check
+  cache_bypassing_full_gate_command:
+    - ./gradlew
+    - -p
+    - runtime-kotlin
+    - check
+    - --rerun-tasks
+    - --no-build-cache
+  build_only_command:
+    - ./gradlew
+    - -p
+    - runtime-kotlin
+    - classes
+    - testClasses
+  findings:
+    format: junit_xml
+    artifact_globs:
+      - "runtime-kotlin/**/build/test-results/**/*.xml"
+    executed_work:
+      format: gradle_actionable_summary
 
 area_metadata:
   platform-correctness:

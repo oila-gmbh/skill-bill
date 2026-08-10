@@ -455,7 +455,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
         PHASE_VALIDATE,
         "validation_receipt",
         PhaseProjectionContract.VALIDATION_RECEIPT,
-        listOf("validation_status", "checks", "repository_checkpoint"),
+        listOf("validation_status", "checks", "repository_checkpoint", "gate_run_count", "gate_runs"),
         FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
       ),
     ),
@@ -480,7 +480,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
         PHASE_VALIDATE,
         "validation_receipt",
         PhaseProjectionContract.VALIDATION_RECEIPT,
-        listOf("validation_status", "checks", "repository_checkpoint"),
+        listOf("validation_status", "checks", "repository_checkpoint", "gate_run_count", "gate_runs"),
         FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
       ),
       phaseProjection(

@@ -298,6 +298,13 @@ sealed interface FeatureTaskRuntimeRunEvent {
     val continuationKind: String? = null,
   ) : FeatureTaskRuntimeRunEvent
 
+  /** Runtime-owned validation gate progress while validate is running. */
+  data class ValidationGateProgress(
+    override val workflowId: String,
+    override val phaseId: String,
+    val gateRunCount: Int,
+  ) : FeatureTaskRuntimeRunEvent
+
   data class PhaseCompleted(
     override val workflowId: String,
     override val phaseId: String,

@@ -1,6 +1,7 @@
 package skillbill.application.featuretask
 
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
+import skillbill.application.featuretask.validation.ValidationFindingSetProjection
 import skillbill.application.model.FeatureTaskRuntimeImplementationContinuation
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
@@ -47,6 +48,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     specReference: String? = null,
     implementationContinuation: FeatureTaskRuntimeImplementationContinuation? = null,
     validationDepth: ValidationDepth = ValidationDepth.DEFAULT,
+    validationGateFindings: ValidationFindingSetProjection? = null,
   ): String {
     require(issueKey.isNotBlank()) { "issueKey is required to compose a phase prompt." }
     return listOf(
@@ -56,6 +58,7 @@ object FeatureTaskRuntimePhasePromptComposer {
       minimalismDisciplineDirective(briefing.phaseId),
       goalContinuationDirective(briefing.phaseId, suppressDecomposition),
       goalContinuationValidateDepthDirective(briefing.phaseId, validationDepth),
+      validationGateFindingsDirective(briefing.phaseId, validationGateFindings),
       reviewExecutionDirective(
         briefing.phaseId,
         ReviewExecutionDirectiveInputs(
@@ -630,9 +633,14 @@ object FeatureTaskRuntimePhasePromptComposer {
       "      { \"validation_result\": {\n" +
       "          \"validation_status\": \"passed\",\n" +
       "          \"checks\": [ { \"name\": \"<check name>\", \"status\": \"passed\" } ],\n" +
-      "          \"repository_checkpoint\": { \"fingerprint\": \"<checkpoint fingerprint>\" }\n" +
+      "          \"repository_checkpoint\": { \"fingerprint\": \"<checkpoint fingerprint>\" },\n" +
+      "          \"gate_run_count\": 1,\n" +
+      "          \"gate_runs\": [ { \"duration_ms\": 1, \"outcome\": \"passed\",\n" +
+      "            \"cache_mode\": \"forced_full\", \"executed_work_units\": 1 } ]\n" +
       "        } }\n" +
-      "      ```"
+      "      ```\n" +
+      "      gate_run_count and gate_runs are runtime-measured evidence; never invent or overwrite them\n" +
+      "      from agent claims."
 
   // repair_item_results and reconciled_state are co-residents on the implementation_receipt the audit
   // consumer parses, not a replacement for it. Presenting them under their own "Required
@@ -655,6 +663,27 @@ object FeatureTaskRuntimePhasePromptComposer {
       "        \"deferred_repair_item_ids\": [],\n" +
       "        \"repair_item_results\": ${repairItemResultsJson(repairItemIds)} }\n" +
       "      ```"
+
+  private fun validationGateFindingsDirective(
+    phaseId: String,
+    findings: ValidationFindingSetProjection?,
+  ): String {
+    if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE || findings == null) return ""
+    val lines = buildList {
+      add("## Runtime validation gate findings")
+      add("Fix every finding below at its root cause. Do not invoke the gate or any quality-check skill.")
+      if (findings.droppedCount > 0) {
+        add("dropped_count=${findings.droppedCount} additional findings were omitted from this projection.")
+      }
+      findings.findings.forEachIndexed { index, finding ->
+        add(
+          "${index + 1}. module=${finding.module} id=${finding.ruleOrTestId} " +
+            "location=${finding.location ?: "<unknown>"} message=${finding.message}",
+        )
+      }
+    }
+    return lines.joinToString("\n")
+  }
 
   private fun repairItemResultsJson(repairItemIds: List<String>): String = repairItemIds.joinToString(
     prefix = "[",

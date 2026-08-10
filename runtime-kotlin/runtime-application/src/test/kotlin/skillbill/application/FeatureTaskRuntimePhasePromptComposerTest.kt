@@ -166,23 +166,20 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(prompt, "never a prefixed string")
   }
 
-  // A gate run recompiles every dependent module and reruns its suites, so per-fix reruns dominate the
-  // phase's wall clock. The prompt must ask for one batched repair pass, not fix-then-rerun iteration.
   @Test
-  fun `validate prompt batches repair instead of rerunning the gate per fix`() {
+  fun `validate prompt batches repair from runtime finding set`() {
     val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
       briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE),
     )
 
-    assertContains(prompt, "read the complete finding set from one gate run")
-    assertContains(prompt, "only then run the gate again to verify")
-    assertContains(prompt, "Never rerun the gate after an individual fix")
-    assertContains(prompt, "share one root cause are one fix")
+    assertContains(prompt, "runtime owns the repository validation gate")
+    assertContains(prompt, "must not invoke the gate or any quality-check skill")
+    assertFalse(prompt.contains("Invoke bill-code-check"))
   }
 
   @Test
-  fun `build_only validate prompt carries compile-only language and excludes full-gate instructions`() {
+  fun `build_only validate prompt carries compile-only language and excludes gate invocation`() {
     val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
       briefingFor(
@@ -210,7 +207,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
-  fun `full and non-goal validate prompts retain implement-written tests and repository gate wording`() {
+  fun `full and non-goal validate prompts carry runtime-owned gate contract`() {
     val fullPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
       briefingFor(
@@ -225,21 +222,16 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     )
 
     listOf(fullPrompt, defaultPrompt).forEach { prompt ->
-      assertContains(prompt, "Run tests written during the implement phase")
-      assertContains(prompt, "then run the repository validation gate")
-      assertContains(prompt, "read the complete finding set from one gate run")
-      assertContains(prompt, "Invoke bill-code-check for that gate")
-      assertContains(prompt, "never silence them with annotations, baselines, disabled rules")
+      assertContains(prompt, "runtime owns the repository validation gate")
+      assertContains(prompt, "never silence them with annotations, baselines, disabled rules, weakened configuration, or skipped tests")
+      assertFalse(prompt.contains("Invoke bill-code-check"))
       assertFalse(prompt.contains("Goal-continuation validate depth"))
-      assertFalse(prompt.contains("validation_depth=build_only"))
-      assertContains(prompt, "Focused runtime tests.")
-      assertContains(prompt, "Focused test.")
     }
   }
 
-  // SKILL-180: FULL validate must carry bill-code-check + no-suppression; other phases must not.
+  // SKILL-180: FULL validate must carry no-suppression; other phases must not.
   @Test
-  fun `full validate prompt carries bill-code-check and no-suppression clause absent from non-validate phases`() {
+  fun `full validate prompt carries no-suppression clause absent from non-validate phases`() {
     val validatePrompt = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
       briefingFor(
@@ -248,12 +240,8 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       ),
       validationDepth = ValidationDepth.FULL,
     )
-    assertContains(validatePrompt, "Invoke bill-code-check for that gate")
-    assertContains(validatePrompt, "never name a stack-specific quality-check skill")
-    assertContains(
-      validatePrompt,
-      "never silence them with annotations, baselines, disabled rules, weakened configuration, or skipped tests",
-    )
+    assertContains(validatePrompt, "never silence them with annotations, baselines, disabled rules, weakened configuration, or skipped tests")
+    assertFalse(validatePrompt.contains("Invoke bill-code-check"))
     assertFalse(validatePrompt.contains("Invoke bill-kotlin-code-check"))
 
     val nonValidatePhases = listOf(

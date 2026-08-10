@@ -42,9 +42,11 @@ Run `./install.sh` after changing source skills, renderer behavior, or support p
 
 ## Platform Packs
 
-Packs are the extension surface; routing and install read manifests, not hard-coded platform lists. Canonical shape: `orchestration/contracts/platform-pack-schema.yaml`. Schema changes land there first; `ShellContentLoader.buildPack` rejects malformed manifests via `InvalidManifestSchemaError`. Shell contract version `1.2` is pinned by `PlatformPackSchemaContractVersionTest`. Cross-field rules JSON Schema cannot express live in Kotlin under `x-coherence-checks`: slug parity, declared-area parity, pointer uniqueness, baseline composition, and governed add-on usage.
+Packs are the extension surface; routing and install read manifests, not hard-coded platform lists. Canonical shape: `orchestration/contracts/platform-pack-schema.yaml`. Schema changes land there first; `ShellContentLoader.buildPack` rejects malformed manifests via `InvalidManifestSchemaError`. Shell contract version `1.3` is pinned by `PlatformPackSchemaContractVersionTest`. Cross-field rules JSON Schema cannot express live in Kotlin under `x-coherence-checks`: slug parity, declared-area parity, pointer uniqueness, baseline composition, and governed add-on usage.
 
 Per-repo customization: top-level custom fields allowed; runtime-consumed fields use `x-runtime-anchored: true` (schema-to-Kotlin parity enforced by `PlatformPackSchemaAnchoredBijectionTest`); non-anchored fields flow to `PlatformManifest.customFields`; nested objects stay `additionalProperties: false`.
+
+Validate-phase build, test, and gate execution are runtime-owned: the runtime runs pack-declared gate argv, measures gate runs, and hands the agent a bounded finding projection. Audit and repair evidence remain read-only repository facts; agents must not invoke the gate or quality-check skills during validate.
 
 Product vs extension: horizontal `skills/bill-*/` and `.bill-shared` are protected; `platform-packs/<slug>/` (including shipped `kotlin`/`kmp`) are removable — no paired `skills/<platform>/` trees; shipped removals use CLI `--allow-shipped` only.
 
@@ -77,6 +79,8 @@ Code review: pack root + conforming manifest/`content.md`, manifest-registered p
 ## Runtime Agent Behavior
 
 Agent-specific behavior uses injectable strategies on `AgentRunProcessRequest`, not identity branching in the process runner: `progressProbe`, `declaredProgressProbe`, `activityProbe`, `progressEmitter`, `idlePolicy` (`HEARTBEAT_EXTENDED` | `DB_PROGRESS_ONLY`). `ProcessWaitLoop` calls strategies only; new agents add a strategy constant. Crash reconciliation: `FeatureTaskRuntimeWorkerSupervisor` self-heals expired-lease rows to resumable at startup.
+
+Validate-phase build, test, and gate execution is runtime-owned when the dominant platform pack declares `validation_gate`: the runtime runs the pack-declared argv, measures each run, and hands the agent a bounded finding-set projection. The validate agent repairs findings and must not invoke the gate or any quality-check skill. When a pack declares no gate, validate falls back to agent-run behavior and that degradation is surfaced. Audit and repair evidence remain read-only repository facts — never builds or tests.
 
 ## Writing And Comments
 

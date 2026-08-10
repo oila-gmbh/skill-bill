@@ -90,6 +90,7 @@ import skillbill.infrastructure.fs.FileSystemInstalledWorkspaceBaselineStatus
 import skillbill.infrastructure.fs.FileSystemRepoLocalConfig
 import skillbill.infrastructure.fs.FileSystemRepoSourceDiscoveryGateway
 import skillbill.infrastructure.fs.FileSystemRepoValidationGateway
+import skillbill.infrastructure.fs.validation.FileSystemValidationGateRunner
 import skillbill.infrastructure.fs.FileSystemReviewAttribution
 import skillbill.infrastructure.fs.FileSystemReviewEvidenceBrokerFactory
 import skillbill.infrastructure.fs.FileSystemReviewInputSource
@@ -200,6 +201,7 @@ import skillbill.ports.telemetry.TelemetrySettingsProvider
 import skillbill.ports.telemetry.UnconfiguredHttpRequester
 import skillbill.ports.time.RuntimeTimingPort
 import skillbill.ports.validation.RepoValidationGateway
+import skillbill.ports.validation.ValidationGateRunner
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.SpecScratchStore
@@ -548,6 +550,10 @@ abstract class RuntimeComponent(
   @Provides
   @JvmSynthetic
   internal fun repoValidationGateway(gateway: FileSystemRepoValidationGateway): RepoValidationGateway = gateway
+
+  @Provides
+  @JvmSynthetic
+  internal fun validationGateRunner(runner: FileSystemValidationGateRunner): ValidationGateRunner = runner
 
   @Provides
   @JvmSynthetic

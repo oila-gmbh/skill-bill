@@ -18,6 +18,11 @@ Each record names the seam, the value actually used, the value that was expected
 and why the substitution happened. A fallback that cannot be attributed to a
 specific cause is a loud-fail, not a log line.
 
+Absent platform-pack `validation_gate` declarations degrade validate to agent-run
+behavior at seam `ValidationGateResolver.resolve` / `feature-task.validate.validation_gate.absent`
+with a surfaced record; a malformed declaration loud-fails and never degrades to
+"no gate".
+
 Prefer loud-fail over log-and-continue whenever the substituted value changes a
 contract the caller depends on — scope bounds, review deltas, staged path
 inventories, and durable identity are contracts. Log-and-continue is for

@@ -4,6 +4,24 @@ This file records architectural and implementation decisions that span the
 `runtime-kotlin/` boundary. Each entry is dated and explains the trade-off,
 not the implementation detail.
 
+## 2026-08-10 — Validate-phase build/test/gate execution is runtime-owned (SKILL-180)
+
+Context: Validate previously told the agent to invoke `bill-code-check`, so
+gate-run count, batching, and terminal cache-bypass evidence were claims rather
+than measurements. Intermediate cache-served greens could also satisfy a
+terminal outcome without executing work.
+
+Decision: When the dominant platform pack declares `validation_gate`, the
+runtime owns gate execution (pack-declared argv, including the cache-bypassing
+terminal variant), measures each run, projects bounded findings to the validate
+agent, and persists `gate_run_count` / `gate_runs`. The agent repairs findings
+and must not invoke the gate or any quality-check skill. Absence of a
+declaration falls back to agent-run validate with a surfaced degradation.
+Audit and repair evidence remain read-only repository facts.
+
+Alternatives considered: Agent-reported gate_run_count (rejected). Hardcoded
+Gradle cache flags in the runtime (rejected; packs declare bypass argv).
+
 ## 2026-08-09 — runtime is the only feature engine; prose and OpenCode/zcode are removed from the product (SKILL-175)
 
 Context: Runtime became the default feature engine and now owns the guarantees
@@ -945,3 +963,16 @@ Trade-off: Pack sidecar discovery is source-aware (it consults `InstallPlanSkill
 the plan, not an independent re-scan of `platform-packs/`), so the three staging seams (plan
 builder, apply, link-skill fallback) each thread the selected pack skills. The link-skill flow
 refuses internal skills upstream and never reaches the pack-sidecar path.
+
+## 2026-08-10 — Runtime-owned validate gate (SKILL-180)
+
+**Decision.** Validate-phase build/test/gate execution moves to the runtime via pack-declared
+`validation_gate` argv. The agent receives a bounded finding projection and must not invoke the
+gate or quality-check skills. Terminal satisfaction requires a forced-full pack-declared run with
+non-zero executed work. Missing gate declarations degrade to agent-run validate with a surfaced
+observability record at `ValidationGateResolver.resolve`.
+
+**Boundary.** Validation owns execution; audit and repair evidence remain read-only repository
+facts agents read but do not produce by running builds or tests outside validate's runtime-owned
+gate cycle.
+

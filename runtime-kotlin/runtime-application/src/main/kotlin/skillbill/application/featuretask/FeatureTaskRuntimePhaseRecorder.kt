@@ -44,6 +44,7 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_VALIDATION_GATE_PROGRESS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_QUARANTINED_RECORDS_ARTIFACT_KEY
@@ -51,6 +52,7 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_RESOLVED_BRANCH
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_REVIEW_GENERATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGenerationHistory
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord
@@ -1067,6 +1069,35 @@ class FeatureTaskRuntimePhaseRecorder(
         ?: return@read null
       auditRepairStateFromWire(artifact, FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY)
     }
+
+  @Suppress("UNCHECKED_CAST")
+  fun loadValidationGateProgress(
+    workflowId: String,
+    dbOverride: String? = null,
+  ): FeatureTaskRuntimeValidationGateProgress? = database.read(dbOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
+    val raw = decodeArtifacts(record.artifactsJson)[FEATURE_TASK_RUNTIME_VALIDATION_GATE_PROGRESS_ARTIFACT_KEY]
+    val artifact = JsonSupport.anyToStringAnyMap(raw) ?: return@read null
+    FeatureTaskRuntimeValidationGateProgress.fromArtifactMap(artifact)
+  }
+
+  fun persistValidationGateProgress(
+    workflowId: String,
+    progress: FeatureTaskRuntimeValidationGateProgress,
+    dbOverride: String? = null,
+  ) {
+    database.transaction(dbOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+        ?: throw InvalidWorkflowStateSchemaError(
+          "Cannot persist validation gate progress: workflow '$workflowId' is missing.",
+        )
+      persistPatch(
+        unitOfWork.workflowStates,
+        record,
+        mapOf(FEATURE_TASK_RUNTIME_VALIDATION_GATE_PROGRESS_ARTIFACT_KEY to progress.toArtifactMap()),
+      )
+    }
+  }
 
   /**
    * The append-only audit-generation history, the sole durable authority for gap identity, gap state,

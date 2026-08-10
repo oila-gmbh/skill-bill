@@ -4649,16 +4649,55 @@ private fun runtimePhaseGates(
   diffResolver: skillbill.ports.diff.DiffResolverPort = object : skillbill.ports.diff.DiffResolverPort {
     override fun runProcess(args: List<String>, workDir: java.nio.file.Path): String? = null
   },
-): FeatureTaskRuntimePhaseGates = FeatureTaskRuntimePhaseGates(
-  branchSetupRunner,
-  planningStopper,
-  lifecycleTelemetry,
-  gitOperations,
-  specGate,
-  planningProjectionValidator,
-  sharedEvidenceResolver,
-  diffResolver,
-)
+  recorder: FeatureTaskRuntimePhaseRecorder,
+): FeatureTaskRuntimePhaseGates {
+  val validationGateResolver = skillbill.application.featuretask.validation.ValidationGateResolver(
+    skillbill.application.scaffold.ScaffoldCatalogService(emptyScaffoldCatalogGateway()),
+  )
+  val validationGateRunner = object : skillbill.ports.validation.ValidationGateRunner {
+    override fun run(request: skillbill.ports.validation.model.ValidationGateRunRequest) =
+      skillbill.ports.validation.model.ValidationGateRunResult(
+        exitCode = 0,
+        durationMs = 1,
+        outcome = skillbill.ports.validation.model.ValidationGateRunOutcome.PASSED,
+        cacheMode = request.cacheMode,
+        executedWorkUnits = 1,
+        findings = emptyList(),
+      )
+  }
+  return FeatureTaskRuntimePhaseGates(
+    branchSetupRunner,
+    planningStopper,
+    lifecycleTelemetry,
+    gitOperations,
+    specGate,
+    planningProjectionValidator,
+    validationGateResolver,
+    validationGateRunner,
+    skillbill.application.featuretask.validation.FeatureTaskRuntimeValidationGateCoordinator(
+      validationGateResolver,
+      validationGateRunner,
+      recorder,
+    ),
+    sharedEvidenceResolver,
+    diffResolver,
+  )
+}
+
+private fun emptyScaffoldCatalogGateway(): skillbill.ports.scaffold.ScaffoldCatalogGateway =
+  object : skillbill.ports.scaffold.ScaffoldCatalogGateway {
+    override fun approvedCodeReviewAreas() = emptySet<String>()
+    override fun preShellFamilies() = emptySet<String>()
+    override fun shelledFamilies() = emptySet<String>()
+    override fun platformPackPresets() = emptyMap<String, String>()
+    override fun scaffoldPayloadVersion() = "test"
+    override fun discoverPilotedPlatformPacks(packsRoot: java.nio.file.Path) =
+      emptyList<skillbill.ports.scaffold.model.PilotedPlatformPackProjection>()
+    override fun discoverPlatformManifests(packsRoot: java.nio.file.Path) =
+      emptyList<skillbill.scaffold.model.PlatformManifest>()
+    override fun discoverBaselineReviewCatalog(packsRoot: java.nio.file.Path) =
+      skillbill.scaffold.model.BaselineReviewCatalog(emptyList(), emptyList())
+  }
 
 private fun testSpecGate(
   specScratchStore: SpecScratchStore = RecordingSpecScratchStore(),
@@ -4757,6 +4796,7 @@ internal fun runnerHarness(
       runtimeConfig.planningProjectionValidator,
       runtimeConfig.sharedEvidenceResolver,
       runtimeConfig.diffResolver,
+      recorder,
     ),
     FeatureTaskRuntimeCrashReconciler(database, crashSupervisor),
     diagnostics,
@@ -4840,6 +4880,7 @@ internal fun telemetryRunnerHarness(
       runtimeConfig.branchSetup.gitOperations,
       sharedEvidenceResolver = runtimeConfig.sharedEvidenceResolver,
       diffResolver = runtimeConfig.diffResolver,
+      recorder = recorder,
     ),
     // Telemetry harness validates event emission, not crash reconciliation; the no-op supervisor keeps
     // the startup reconcile pass a harmless no-op so it never perturbs telemetry assertions.
