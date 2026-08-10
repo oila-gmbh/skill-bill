@@ -10,11 +10,6 @@ import skillbill.application.goalrunner.GoalPlanningRejectionRecorder
 import skillbill.application.goalrunner.GoalPlanningSharedContextPacket
 import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.goalrunner.classifyGoalPlanningProvenanceRecoverability
-import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputSchemaPaths
-import skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths
-import skillbill.goalrunner.model.ExecutionLiveness
-import skillbill.ports.persistence.model.GoalPlanningContractProvenance
-import skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint
 import skillbill.application.model.GoalPlanningAttemptRecord
 import skillbill.application.model.GoalPlanningBurstSchedule
 import skillbill.application.model.GoalPlanningRejectionRecord
@@ -23,8 +18,11 @@ import skillbill.application.model.GoalRunnerRunRequest
 import skillbill.application.workflow.GoalPlanningPreparationCheckpoint
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
+import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputSchemaPaths
+import skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
+import skillbill.goalrunner.model.ExecutionLiveness
 import skillbill.goalrunner.model.GoalRunnerControlState
 import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.goalrunner.model.GoalRunnerRunReport
@@ -55,9 +53,11 @@ import skillbill.ports.persistence.TelemetryOutboxRepository
 import skillbill.ports.persistence.TelemetryReconciliationRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
+import skillbill.ports.persistence.model.GoalPlanningContractProvenance
 import skillbill.ports.persistence.model.GoalPlanningIdentity
 import skillbill.ports.persistence.model.GoalPlanningPreparationRecord
 import skillbill.ports.persistence.model.GoalPlanningPreparationStatus
+import skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
 import skillbill.ports.time.NoopRuntimeTimingPort
 import skillbill.ports.time.RuntimeTimingPort
@@ -711,6 +711,54 @@ class GoalPlanningSweepTest {
 
   @Test
   fun `changed heading set refresh preserves complete-with-commit sibling plan`() {
+    val fixture = changedHeadingSetRefreshFixture()
+    val outcome = fixture.harness.sweep.prepare(
+      fixture.harness.stateFor(fixture.resumeManifest),
+      fixture.harness.request(),
+    )
+
+    assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
+    val plan1After = requireNotNull(
+      fixture.harness.fixtures.database.repository.findSubtaskPlan(
+        fixture.harness.identity(),
+        1,
+        ".feature-specs/SKILL-56-goal/spec_subtask_1.md",
+      ),
+    )
+    assertEquals(fixture.plan1Before.planPayload, plan1After.planPayload)
+    val sharedAfter = requireNotNull(
+      fixture.harness.fixtures.database.repository.findSharedPreplan(fixture.harness.identity()),
+    )
+    assertEquals(sharedAfter.provenance, plan1After.provenance)
+    assertEquals("complete", fixture.store.manifest.subtasks[0].status)
+    assertEquals("sha-1", fixture.store.manifest.subtasks[0].commitSha)
+    assertEquals("wfl-1", fixture.store.manifest.subtasks[0].workflowId)
+    assertEquals(1, fixture.harness.fixtures.database.repository.cascadeAfterRefreshCalls)
+    assertEquals(listOf(2), fixture.harness.fixtures.database.repository.lastCascadePlanSubtaskIds)
+    assertEquals(
+      listOf("preplan", "plan"),
+      fixture.harness.launcher.phases.drop(fixture.launchCount),
+      "changed-set refresh must cascade then regenerate the discarded non-terminal plan",
+    )
+    assertNotNull(
+      fixture.harness.fixtures.database.repository.findSubtaskPlan(
+        fixture.harness.identity(),
+        2,
+        ".feature-specs/SKILL-56-goal/spec_subtask_2.md",
+      ),
+      "post-cascade plan regeneration must leave a settled plan row for the non-terminal sibling",
+    )
+  }
+
+  private data class ChangedHeadingSetRefreshFixture(
+    val harness: SweepHarness,
+    val store: InMemoryGoalManifestStore,
+    val resumeManifest: DecompositionManifest,
+    val plan1Before: skillbill.ports.persistence.model.GoalSubtaskPlanCheckpoint,
+    val launchCount: Int,
+  )
+
+  private fun changedHeadingSetRefreshFixture(): ChangedHeadingSetRefreshFixture {
     var preplanLaunches = 0
     val initial = manifest(subtaskCount = 2)
     val resumeManifest = initial.copy(
@@ -753,38 +801,7 @@ class GoalPlanningSweepTest {
     )
     val launchCount = harness.launcher.requests.size
     harness.manifestFileStore.replaceSpec("spec.md", "# Initial feature contract edited for heading drift")
-
-    val outcome = harness.sweep.prepare(harness.stateFor(resumeManifest), harness.request())
-
-    assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
-    val plan1After = requireNotNull(
-      harness.fixtures.database.repository.findSubtaskPlan(
-        harness.identity(),
-        1,
-        ".feature-specs/SKILL-56-goal/spec_subtask_1.md",
-      ),
-    )
-    assertEquals(plan1Before.planPayload, plan1After.planPayload)
-    val sharedAfter = requireNotNull(harness.fixtures.database.repository.findSharedPreplan(harness.identity()))
-    assertEquals(sharedAfter.provenance, plan1After.provenance)
-    assertEquals("complete", store.manifest.subtasks[0].status)
-    assertEquals("sha-1", store.manifest.subtasks[0].commitSha)
-    assertEquals("wfl-1", store.manifest.subtasks[0].workflowId)
-    assertEquals(1, harness.fixtures.database.repository.cascadeAfterRefreshCalls)
-    assertEquals(listOf(2), harness.fixtures.database.repository.lastCascadePlanSubtaskIds)
-    assertEquals(
-      listOf("preplan", "plan"),
-      harness.launcher.phases.drop(launchCount),
-      "changed-set refresh must cascade then regenerate the discarded non-terminal plan",
-    )
-    assertNotNull(
-      harness.fixtures.database.repository.findSubtaskPlan(
-        harness.identity(),
-        2,
-        ".feature-specs/SKILL-56-goal/spec_subtask_2.md",
-      ),
-      "post-cascade plan regeneration must leave a settled plan row for the non-terminal sibling",
-    )
+    return ChangedHeadingSetRefreshFixture(harness, store, resumeManifest, plan1Before, launchCount)
   }
 
   @Test
@@ -1718,6 +1735,10 @@ class GoalPlanningSweepTest {
     val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
     assertEquals(0, stopped.currentSubtaskId)
     assertTrue(stopped.blockedReason.contains("does not contain a valid shared context packet"))
+    assertTrue(
+      stopped.blockedReason.contains("skill-bill goal replan SKILL-56 --subtask 1 --include-shared-preplan"),
+      stopped.blockedReason,
+    )
   }
 
   @Test

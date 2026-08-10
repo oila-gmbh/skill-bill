@@ -987,17 +987,23 @@ private const val GOAL_STATUS_DATABASE_UNAVAILABLE = "database_unavailable"
 
 private fun shellQuote(value: String): String = "'${value.replace("'", "'\\''")}'"
 
+/** Process exit codes for `skill-bill goal <issue-key>` — harness distinction by code alone. */
+internal const val GOAL_EXIT_COMPLETE: Int = 0
+internal const val GOAL_EXIT_FAILED: Int = 1
+internal const val GOAL_EXIT_PAUSED: Int = 2
+internal const val GOAL_EXIT_BLOCKED: Int = 3
+
 /**
  * Process exit classification for goal run. Kept in lockstep with [goalRunText] verb taxonomy:
  * complete=0, failed/timeout=1, paused=2, else blocked=3.
  */
 internal fun goalRunExitCode(status: String?, reason: String?): Int {
-  if (status == "complete") return 0
+  if (status == "complete") return GOAL_EXIT_COMPLETE
   val normalized = reason?.lowercase().orEmpty()
   return when {
-    normalized == "paused" -> 2
-    normalized.contains("failed") || normalized.contains("timeout") -> 1
-    else -> 3
+    normalized == "paused" -> GOAL_EXIT_PAUSED
+    normalized.contains("failed") || normalized.contains("timeout") -> GOAL_EXIT_FAILED
+    else -> GOAL_EXIT_BLOCKED
   }
 }
 

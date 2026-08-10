@@ -14,22 +14,25 @@ import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.workflow.model.DecompositionManifest
 import java.nio.file.Path
 
+/** Inputs for aligning status `planning_reason` with the launch-path refuse taxonomy. */
+data class GoalPlanningStatusAlignRequest(
+  val snapshot: GoalPlanningStatusSnapshot,
+  val parentWorkflowId: String,
+  val issueKey: String,
+  val manifest: DecompositionManifest,
+  val repoRoot: Path,
+  val dbPathOverride: String?,
+)
+
 /**
  * Aligns status `planning_reason` with the launch-path refuse taxonomy without mutating planning rows.
  */
 fun interface GoalPlanningStatusReasonCoherence {
-  fun align(
-    snapshot: GoalPlanningStatusSnapshot,
-    parentWorkflowId: String,
-    issueKey: String,
-    manifest: DecompositionManifest,
-    repoRoot: Path,
-    dbPathOverride: String?,
-  ): GoalPlanningStatusSnapshot
+  fun align(request: GoalPlanningStatusAlignRequest): GoalPlanningStatusSnapshot
 
   companion object {
     val NONE: GoalPlanningStatusReasonCoherence =
-      GoalPlanningStatusReasonCoherence { snapshot, _, _, _, _, _ -> snapshot }
+      GoalPlanningStatusReasonCoherence { request -> request.snapshot }
   }
 }
 
@@ -39,56 +42,44 @@ class LaunchAlignedGoalPlanningStatusReasonCoherence(
   private val contextDiscovery: GoalPlanningContextDiscovery,
   private val manifestFileStore: DecompositionManifestFileStore,
 ) : GoalPlanningStatusReasonCoherence {
-  override fun align(
-    snapshot: GoalPlanningStatusSnapshot,
-    parentWorkflowId: String,
-    issueKey: String,
-    manifest: DecompositionManifest,
-    repoRoot: Path,
-    dbPathOverride: String?,
-  ): GoalPlanningStatusSnapshot {
-    if (!snapshot.sharedPreplanPrepared) return snapshot
-    val recoverability = runCatching {
-      classifyForStatus(parentWorkflowId, issueKey, manifest, repoRoot, dbPathOverride)
-    }.getOrNull() ?: return snapshot
-    val remedySubtaskId = snapshot.currentPlanningSubtaskId
+  override fun align(request: GoalPlanningStatusAlignRequest): GoalPlanningStatusSnapshot {
+    if (!request.snapshot.sharedPreplanPrepared) return request.snapshot
+    val recoverability = statusRecoverabilityOrRefuse {
+      classifyForStatus(request)
+    }
+    val remedySubtaskId = request.snapshot.currentPlanningSubtaskId
       ?.takeIf { it > 0 }
-      ?: manifest.subtasks.firstOrNull { it.status != "skipped" }?.id
+      ?: request.manifest.subtasks.firstOrNull { it.status != "skipped" }?.id
       ?: 1
     return alignPlanningStatusWithLaunchRecoverability(
-      snapshot = snapshot,
+      snapshot = request.snapshot,
       recoverability = recoverability,
-      issueKey = issueKey,
+      issueKey = request.issueKey,
       remedySubtaskId = remedySubtaskId,
     )
   }
 
-  private fun classifyForStatus(
-    parentWorkflowId: String,
-    issueKey: String,
-    manifest: DecompositionManifest,
-    repoRoot: Path,
-    dbPathOverride: String?,
-  ): GoalPlanningProvenanceRecoverability {
-    val canonicalRepository = runCatching { repoRoot.toRealPath() }
-      .getOrElse { repoRoot.toAbsolutePath().normalize() }
+  private fun classifyForStatus(request: GoalPlanningStatusAlignRequest): GoalPlanningProvenanceRecoverability {
+    val canonicalRepository = runCatching { request.repoRoot.toRealPath() }
+      .getOrElse { request.repoRoot.toAbsolutePath().normalize() }
     val identity = GoalPlanningIdentity(
-      parentWorkflowId,
-      issueKey.trim().uppercase(),
+      request.parentWorkflowId,
+      request.issueKey.trim().uppercase(),
       "repo-root-realpath-v1:$canonicalRepository",
     )
-    val existing = checkpoint.findSharedPreplan(identity, dbPathOverride) ?: return GoalPlanningProvenanceRecoverability.Reuse(
-      GoalPlanningContractProvenance(
-        parentSpecHash = "",
-        decompositionManifestHash = "",
-        planningContractId = GoalPlanningPreparationSchemaPaths.EXPECTED_SCHEMA_ID,
-      ),
-    )
-    val parentSpecPath = lexicalPath(canonicalRepository, manifest.parentSpecPath)
+    val existing = checkpoint.findSharedPreplan(identity, request.dbPathOverride)
+      ?: return GoalPlanningProvenanceRecoverability.Reuse(
+        GoalPlanningContractProvenance(
+          parentSpecHash = "",
+          decompositionManifestHash = "",
+          planningContractId = GoalPlanningPreparationSchemaPaths.EXPECTED_SCHEMA_ID,
+        ),
+      )
+    val parentSpecPath = lexicalPath(canonicalRepository, request.manifest.parentSpecPath)
     val currentParentSpec = manifestFileStore.readText(parentSpecPath)
     val current = GoalPlanningContractProvenance(
       parentSpecHash = sha256HexUtf8(currentParentSpec),
-      decompositionManifestHash = GoalPlanningSharedContextPacket.immutableDecompositionHash(manifest),
+      decompositionManifestHash = GoalPlanningSharedContextPacket.immutableDecompositionHash(request.manifest),
       planningContractId = GoalPlanningPreparationSchemaPaths.EXPECTED_SCHEMA_ID,
     )
     val packetParentSpec = planningPacketParentSpec(existing)

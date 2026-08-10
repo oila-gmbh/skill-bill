@@ -6,8 +6,12 @@ import skillbill.application.goalrunner.alignPlanningStatusWithLaunchRecoverabil
 import skillbill.application.goalrunner.classifyGoalPlanningProvenanceRecoverability
 import skillbill.application.goalrunner.goalPlanningIncludeSharedPreplanRemedy
 import skillbill.application.goalrunner.goalPlanningIncompatibleProvenanceStopReason
+import skillbill.application.goalrunner.goalPlanningMissingSharedContextPacketStopReason
+import skillbill.application.goalrunner.goalPlanningPreparationStateReadStopReason
+import skillbill.application.goalrunner.statusRecoverabilityOrRefuse
 import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputSchemaPaths
 import skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths
+import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.goalrunner.model.GoalPlanningStatusReasons
 import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
 import skillbill.goalrunner.model.GoalPlanningStatusState
@@ -104,6 +108,40 @@ class GoalPlanningStatusReasonCoherenceTest {
   }
 
   @Test
+  fun `classify failure maps to Invalid so status cannot keep a resume claim`() {
+    // Bug: align used to swallow classifyForStatus failures (e.g. identity mismatch from toShared)
+    // and return the resume-claiming snapshot while launch would refuse.
+    val recoverability = statusRecoverabilityOrRefuse {
+      throw IncompatibleGoalPlanningPreparationRecoveryError(
+        "wfl",
+        0,
+        "stored goal or repository identity differs from expected identity",
+      )
+    }
+    assertIs<GoalPlanningProvenanceRecoverability.Invalid>(recoverability)
+
+    val snapshot = GoalPlanningStatusSnapshot(
+      state = GoalPlanningStatusState.PARTIALLY_PLANNED,
+      sharedPreplanPrepared = true,
+      plannedSubtaskCount = 1,
+      totalSubtaskCount = 2,
+      currentPlanningSubtaskId = 2,
+      reason = GoalPlanningStatusReasons.partiallyPlannedResume(2),
+    )
+    val aligned = alignPlanningStatusWithLaunchRecoverability(
+      snapshot = snapshot,
+      recoverability = recoverability,
+      issueKey = "SKILL-181",
+      remedySubtaskId = 2,
+    )
+    assertFalse(GoalPlanningStatusReasons.claimsResume(aligned.reason), aligned.reason)
+    assertTrue(
+      aligned.reason!!.contains(goalPlanningIncludeSharedPreplanRemedy("SKILL-181", 2)),
+      aligned.reason,
+    )
+  }
+
+  @Test
   fun `classifier invalid for drifted decomposition aligns with stop remedy text`() {
     val parentSpec = "# Parent"
     val checkpoint = SharedGoalPreplanCheckpoint(
@@ -132,6 +170,28 @@ class GoalPlanningStatusReasonCoherenceTest {
     val stopReason = goalPlanningIncompatibleProvenanceStopReason("SKILL-181", 1)
     assertTrue(stopReason.contains(goalPlanningIncludeSharedPreplanRemedy("SKILL-181", 1)))
     assertFalse(stopReason.contains("cannot be recovered"))
+  }
+
+  @Test
+  fun `preparation state read stop uses recovery reason not cannot-be-recovered message`() {
+    // Bug: embedding IncompatibleGoalPlanningPreparationRecoveryError.message kept
+    // "cannot be recovered" while also naming the --include-shared-preplan remedy.
+    val error = IncompatibleGoalPlanningPreparationRecoveryError(
+      "wfl",
+      0,
+      "stored goal or repository identity differs from expected identity",
+    )
+    val stopReason = goalPlanningPreparationStateReadStopReason(error, "SKILL-181", 1)
+    assertTrue(stopReason.contains(goalPlanningIncludeSharedPreplanRemedy("SKILL-181", 1)), stopReason)
+    assertTrue(stopReason.contains(error.reason), stopReason)
+    assertFalse(stopReason.contains("cannot be recovered"), stopReason)
+  }
+
+  @Test
+  fun `missing shared context packet stop names the include-shared-preplan remedy`() {
+    val stopReason = goalPlanningMissingSharedContextPacketStopReason("SKILL-181", 2)
+    assertTrue(stopReason.contains(goalPlanningIncludeSharedPreplanRemedy("SKILL-181", 2)), stopReason)
+    assertTrue(stopReason.contains("does not contain a valid shared context packet"), stopReason)
   }
 
   private fun phasePayload(phase: String): String = """

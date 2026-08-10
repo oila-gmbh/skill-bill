@@ -418,10 +418,10 @@ class GoalPlanningPreparationStore(
         """UPDATE goal_shared_preplans SET payload_sha256 = ?, preplan_payload_json = ?, repair_evidence_json = NULL
         WHERE parent_goal_workflow_id = ? AND payload_sha256 = ?""",
       ).use { statement ->
-        statement.setString(1, INVALIDATED_SHARED_PREPLAN_PAYLOAD_SHA256)
-        statement.setString(2, INVALIDATED_SHARED_PREPLAN_PAYLOAD)
-        statement.setString(3, identity.parentGoalWorkflowId)
-        statement.setString(4, expectedPayloadSha256)
+        statement.setString(FIRST_COLUMN_INDEX, INVALIDATED_SHARED_PREPLAN_PAYLOAD_SHA256)
+        statement.setString(SECOND_COLUMN_INDEX, INVALIDATED_SHARED_PREPLAN_PAYLOAD)
+        statement.setString(THIRD_COLUMN_INDEX, identity.parentGoalWorkflowId)
+        statement.setString(FOURTH_COLUMN_INDEX, expectedPayloadSha256)
         statement.executeUpdate()
       }
       if (updated == 0) {
@@ -1244,4 +1244,6 @@ private fun String.isSha256(): Boolean = length == SHA256_HEX_LENGTH && all { it
 
 private const val FIRST_COLUMN_INDEX: Int = 1
 private const val SECOND_COLUMN_INDEX: Int = 2
+private const val THIRD_COLUMN_INDEX: Int = 3
+private const val FOURTH_COLUMN_INDEX: Int = 4
 private const val SHA256_HEX_LENGTH: Int = 64

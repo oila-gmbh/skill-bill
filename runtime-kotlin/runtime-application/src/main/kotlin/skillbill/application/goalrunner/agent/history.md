@@ -1,5 +1,16 @@
 # goalrunner boundary history
 
+## [2026-08-11] SKILL-181 subtask 4 — Distinct exit codes and truthful planning stops
+Areas: runtime-application/goalrunner, runtime-cli/goal, runtime-domain/goalrunner model, runtime-infra-sqlite/db/workflow, runtime-core/di, skills/bill-feature-goal
+- Goal run exit codes: complete=0, failed/timeout=1, paused=2, blocked=3 (CLI help + bill-feature-goal)
+- Incompatible-provenance stops name `replan --include-shared-preplan` via shared remedy builders; drop "cannot be recovered" wording
+- Status `planning_reason` overlays launch Invalid recoverability so resume claims disappear when launch would refuse
+- Patterns: `goalRunExitCode`; `GoalPlanningOperatorRemedies`; `LaunchAlignedGoalPlanningStatusReasonCoherence` + `GoalPlanningStatusReasons`
+- Reusable: remedy string helpers and status-reason coherence seam for other planning stops
+- Limits: pause/resume control semantics unchanged; StaleValid still refreshable in-run (no status overlay)
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-08-11] SKILL-181 subtask 3 — Terminal-with-commit plan cascade exclusion
 Areas: runtime-application/goalrunner + workflow, runtime-ports/persistence, runtime-infra-sqlite/db/workflow, runtime-cli/goal, skills/bill-feature-goal, runtime-kotlin/agent/decisions.md
 - Shared eligibility helper: cascade only when manifest subtask is not (`complete` + non-blank `commit_sha`); used by scoped replan `--include-shared-preplan` and heading-set refresh replace

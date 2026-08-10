@@ -4,6 +4,7 @@ import skillbill.SkillBillVersion
 import skillbill.application.model.WorkflowFamilyKind
 import skillbill.application.model.WorkflowOpenResult
 import skillbill.cli.core.CliRuntime
+import skillbill.cli.goal.GOAL_EXIT_BLOCKED
 import skillbill.cli.model.CliExecutionResult
 import skillbill.cli.model.CliRuntimeContext
 import skillbill.contracts.JsonSupport
@@ -773,7 +774,7 @@ class CliGoalRuntimeTest {
     assertContains(watch.stdout, "watch_refresh: index=1 status=ok current_subtask=1 current_step=implement")
     assertContains(watch.stdout, "watch_observability: index=1 phase=implement role=phase_subagent")
     assertContains(watch.stdout, "sequence=12")
-    assertEquals(1, resumed.exitCode, resumed.stdout)
+    assertEquals(GOAL_EXIT_BLOCKED, resumed.exitCode, resumed.stdout)
     assertEquals(2, launcher.requests.size)
     assertTrue(launcher.childLaunches.isEmpty())
     assertContains(resumed.stdout, "Could not capture the goal-subtask review baseline")

@@ -96,64 +96,82 @@ class GoalRunnerStatusService(
         val currentSubtask = manifest.subtasks.firstOrNull { subtask ->
           subtask.id == manifest.currentSubtaskIntent.subtaskId
         }
-        val progress = currentSubtask
-          ?.workflowId
-          ?.takeIf(String::isNotBlank)
-          ?.let { workflowId -> outcomeStore.progress(workflowId, request.dbPathOverride) }
-        val planningBlock = currentSubtask?.takeIf { subtask ->
-          subtask.status == "blocked" && subtask.lastResumableStep in setOf("preplan", "plan")
-        }
-        val ledgerSummary = runCatching {
-          attemptLedgerStore.readAttemptLedgerSummary(loadedState.manifest.issueKey, request.dbPathOverride)
-        }.getOrNull()
         GoalRunnerStatusProjector.project(
           manifest = manifest,
           activeAgent = resolveActiveAgent(currentSubtask, request.dbPathOverride),
-          extras = GoalRunnerStatusProjectionExtras(
-            executionLiveness = resolveExecutionLiveness(
-              parentWorkflowId = loadedState.parentWorkflowId,
-              currentSubtask = currentSubtask,
-              dbPathOverride = request.dbPathOverride,
-            ),
-            planning = manifestStore.planningStatus(
-              loadedState.parentWorkflowId,
-              manifest.subtasks.filter { it.status != "skipped" }.map { it.id },
-              planningBlock?.id,
-              planningBlock?.blockedReason,
-              request.dbPathOverride,
-            )?.let { snapshot ->
-              planningStatusReasonCoherence.align(
-                snapshot = snapshot,
-                parentWorkflowId = loadedState.parentWorkflowId,
-                issueKey = manifest.issueKey,
-                manifest = manifest,
-                repoRoot = request.repoRoot,
-                dbPathOverride = request.dbPathOverride,
-              )
-            },
-            currentStepOverride = progress?.currentStepId,
-            currentWorkflowStatus = progress?.workflowStatus,
-            latestLivenessSignal = progress?.latestLivenessSignal,
-            latestObservabilityEvent = progress?.latestGoalObservabilityEvent?.toStatusMap(),
-            requestedDiffStat = request.requestedDiffStat(),
-            selectedDiffHunks = request.requestedSelectedDiffHunks(),
-            blockedAttemptCount = ledgerSummary?.blockedAttemptCount ?: 0,
-            supervisorKillCount = ledgerSummary?.supervisorKillCount ?: 0,
-            phaseAttemptCounts = ledgerSummary?.phaseAttemptCounts ?: emptyMap(),
-            cumulativeFixIterations = ledgerSummary?.cumulativeFixIterations ?: emptyMap(),
-            reAttemptCauseCounts = ledgerSummary?.reAttemptCauseCounts ?: emptyMap(),
-            findingsInScope = ledgerSummary?.findingsInScope,
-            outOfBandAcceptances = acceptances.toAcceptedSubtasks(),
-            paused = loadedState.controlState.paused,
-            pauseRequested = loadedState.controlState.pauseRequested,
-            pauseReason = loadedState.controlState.pauseReason,
-            pausedAt = loadedState.controlState.pausedAt,
-            stopAfterSubtaskId = loadedState.controlState.stopAfterSubtaskId,
-            activeDurationMs = loadedState.controlState.activeDurationMs,
-            activeDurationAsOf = loadedState.controlState.activeDurationAsOf,
+          extras = statusProjectionExtras(
+            loadedState = loadedState,
+            request = request,
+            manifest = manifest,
+            currentSubtask = currentSubtask,
+            acceptances = acceptances,
           ),
         )
       }
+  }
+
+  private fun statusProjectionExtras(
+    loadedState: GoalRunnerManifestState,
+    request: GoalRunnerStatusRequest,
+    manifest: DecompositionManifest,
+    currentSubtask: DecompositionSubtask?,
+    acceptances: Map<Int, GoalRunnerOutOfBandAcceptance>,
+  ): GoalRunnerStatusProjectionExtras {
+    val progress = currentSubtask
+      ?.workflowId
+      ?.takeIf(String::isNotBlank)
+      ?.let { workflowId -> outcomeStore.progress(workflowId, request.dbPathOverride) }
+    val ledgerSummary = runCatching {
+      attemptLedgerStore.readAttemptLedgerSummary(loadedState.manifest.issueKey, request.dbPathOverride)
+    }.getOrNull()
+    val planningBlock = currentSubtask?.takeIf { subtask ->
+      subtask.status == "blocked" && subtask.lastResumableStep in setOf("preplan", "plan")
+    }
+    return GoalRunnerStatusProjectionExtras(
+      executionLiveness = resolveExecutionLiveness(
+        parentWorkflowId = loadedState.parentWorkflowId,
+        currentSubtask = currentSubtask,
+        dbPathOverride = request.dbPathOverride,
+      ),
+      planning = manifestStore.planningStatus(
+        loadedState.parentWorkflowId,
+        manifest.subtasks.filter { it.status != "skipped" }.map { it.id },
+        planningBlock?.id,
+        planningBlock?.blockedReason,
+        request.dbPathOverride,
+      )?.let { snapshot ->
+        planningStatusReasonCoherence.align(
+          GoalPlanningStatusAlignRequest(
+            snapshot = snapshot,
+            parentWorkflowId = loadedState.parentWorkflowId,
+            issueKey = manifest.issueKey,
+            manifest = manifest,
+            repoRoot = request.repoRoot ?: Path.of("").toAbsolutePath().normalize(),
+            dbPathOverride = request.dbPathOverride,
+          ),
+        )
+      },
+      currentStepOverride = progress?.currentStepId,
+      currentWorkflowStatus = progress?.workflowStatus,
+      latestLivenessSignal = progress?.latestLivenessSignal,
+      latestObservabilityEvent = progress?.latestGoalObservabilityEvent?.toStatusMap(),
+      requestedDiffStat = request.requestedDiffStat(),
+      selectedDiffHunks = request.requestedSelectedDiffHunks(),
+      blockedAttemptCount = ledgerSummary?.blockedAttemptCount ?: 0,
+      supervisorKillCount = ledgerSummary?.supervisorKillCount ?: 0,
+      phaseAttemptCounts = ledgerSummary?.phaseAttemptCounts ?: emptyMap(),
+      cumulativeFixIterations = ledgerSummary?.cumulativeFixIterations ?: emptyMap(),
+      reAttemptCauseCounts = ledgerSummary?.reAttemptCauseCounts ?: emptyMap(),
+      findingsInScope = ledgerSummary?.findingsInScope,
+      outOfBandAcceptances = acceptances.toAcceptedSubtasks(),
+      paused = loadedState.controlState.paused,
+      pauseRequested = loadedState.controlState.pauseRequested,
+      pauseReason = loadedState.controlState.pauseReason,
+      pausedAt = loadedState.controlState.pausedAt,
+      stopAfterSubtaskId = loadedState.controlState.stopAfterSubtaskId,
+      activeDurationMs = loadedState.controlState.activeDurationMs,
+      activeDurationAsOf = loadedState.controlState.activeDurationAsOf,
+    )
   }
 
   private fun reconcileStatusManifest(
