@@ -2017,7 +2017,7 @@ private fun planningProjectionOutputs(phaseId: String): String? = when (phaseId)
 private fun subtaskSpecText(id: Int): String =
   "---\nstatus: Pending\n---\n\n# Subtask $id\n\n## Acceptance Criteria\n\n1. Subtask $id delivers its part.\n"
 
-private object NoopGoalTestAgentRunLauncher : AgentRunLauncher {
+internal object NoopGoalTestAgentRunLauncher : AgentRunLauncher {
   override fun launch(request: AgentRunLaunchRequest): AgentRunLaunchOutcome = error("Unexpected launch")
 }
 

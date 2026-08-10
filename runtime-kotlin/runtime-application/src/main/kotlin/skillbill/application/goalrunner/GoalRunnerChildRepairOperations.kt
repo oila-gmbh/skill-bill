@@ -114,7 +114,6 @@ internal class GoalRunnerChildRepairOperations(
           val failedSha = when (wedgeClass) {
             GoalRunnerWedgeClass.UNREACHABLE_REVIEW_BASE -> review.reviewBaseSha
             GoalRunnerWedgeClass.UNREACHABLE_REMEDIATION_BASE -> review.remediationBaseSha
-            else -> null
           } ?: continue
           if (!isUnreachable(repoRoot, failedSha)) continue
           val recovered = gitOperations.recoverGoalSubtaskReviewBaseline(
@@ -141,7 +140,6 @@ internal class GoalRunnerChildRepairOperations(
             )
             GoalRunnerWedgeClass.UNREACHABLE_REMEDIATION_BASE ->
               review.copy(remediationBaseSha = replacement)
-            else -> review
           }
           workingReview = healed
           patch[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY] = healed.toArtifactMap()

@@ -1,4 +1,5 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 ## [2026-08-10] SKILL-180 subtask 2 — Runtime-owned validation gate
 Areas: runtime-application/featuretask/validation, runtime-domain/workflow/taskruntime, runtime-ports/validation, runtime-infra-fs, platform-packs/*/platform.yaml, orchestration/contracts, docs, AGENTS.md
 - Validate gate execution moved from the agent into the runtime: resolve pack-declared `validation_gate` argv, run in repo root, project bounded findings for repair, rerun to verify, cap iterations, persist measured `gate_run_count` / `gate_runs`.
@@ -19,6 +20,18 @@ Areas: runtime-application/featuretask, runtime-kotlin/agent, runtime-infra-fs/a
 Feature flag: N/A
 Acceptance criteria: 9/9 implemented
 =======
+=======
+## [2026-08-10] SKILL-176 subtask 5 — `skill-bill goal repair`
+Areas: runtime-application/goalrunner, runtime-application/model, runtime-cli/goal, runtime-core/di, .feature-specs/SKILL-176
+- Operator escape hatch inspects goal children for known resume wedges (missing `validation_depth`, unreachable review/remediation base, stale blocked `goal_continuation_outcome`) and clears them only with `--apply`; default is report-only
+- Repair preserves completed subtask commit shas, review passes, and audit repair state; refuses live-lease children; healthy goals are a zero-exit no-op; non-wedged rows report which checks passed instead of a false success
+- Durable `goal_child_repair_evidence` records field, prior/new value, and wedge class (append-only, additionalProperties — no workflow-state schema bump); apply is atomic via the workflow write seam
+- Reusable: shared `GoalRunnerChildRepairOperations` diagnosis/apply used by status service and CLI; same absent-vs-set, reachability, and corroboration rules as subtasks 1/2/4
+- Limitation: explicit operator tool only — does not auto-repair on resume; not a general row editor
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
+>>>>>>> 1270f3946 (SKILL-176: add skill-bill goal repair operator escape hatch (subtask 5).)
 ## [2026-08-10] SKILL-176 subtask 4 — Blocked-reason fidelity
 Areas: runtime-application/goalrunner, runtime-application/featuretask
 - Stored non-complete `goal_continuation_outcome` is no longer authoritative alone; resume corroborates against derived durable state before short-circuiting

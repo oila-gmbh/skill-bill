@@ -488,7 +488,7 @@ class GoalRunnerRepairTest {
 
     assertEquals(GoalRunnerRepairStatus.NOT_WEDGED, result.status)
     assertNotNull(result.refusalReason)
-    assertTrue(result.refusalReason!!.contains(PASSED_VALIDATION_DEPTH))
+    assertTrue(result.refusalReason.contains(PASSED_VALIDATION_DEPTH))
   }
 
   private fun repairStore(
@@ -679,6 +679,8 @@ class GoalRunnerRepairTest {
     override fun terminateGracefully(ownership: FeatureTaskRuntimeWorkerOwnership) = true
 
     override fun terminateForcibly(ownership: FeatureTaskRuntimeWorkerOwnership) = true
+
+    override fun pause(durationMillis: Long) = Unit
 
     override fun startHeartbeat(
       plan: FeatureTaskRuntimeHeartbeatPlan,
