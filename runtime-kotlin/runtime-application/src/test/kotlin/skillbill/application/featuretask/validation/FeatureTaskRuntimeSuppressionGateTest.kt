@@ -1,5 +1,6 @@
 package skillbill.application.featuretask.validation
 
+import skillbill.application.featuretask.validation.model.ValidationFindingSetProjection
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairLauncher
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairResult
 import skillbill.application.featuretask.validation.model.ValidationGateCycleRequest
@@ -64,9 +65,11 @@ class FeatureTaskRuntimeSuppressionGateTest {
   @Test
   fun `clean zero-delta pass omits suppression_justifications`() {
     val cycle = execute(
-      markers = listOf("@Suppress"),
-      headContent = "fun ok() = 1\n",
-      baseContent = "fun ok() = 1\n",
+      SuppressionGateScenario(
+        markers = listOf("@Suppress"),
+        headContent = "fun ok() = 1\n",
+        baseContent = "fun ok() = 1\n",
+      ),
     )
     val completed = assertIs<ValidationGateCycleTerminalOutcome.Completed>(
       assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,
@@ -79,9 +82,11 @@ class FeatureTaskRuntimeSuppressionGateTest {
   @Test
   fun `unjustified non-zero delta blocks naming path and marker`() {
     val cycle = execute(
-      markers = listOf("@Suppress"),
-      headContent = "@Suppress(\"X\")\nfun ok() = 1\n",
-      baseContent = "fun ok() = 1\n",
+      SuppressionGateScenario(
+        markers = listOf("@Suppress"),
+        headContent = "@Suppress(\"X\")\nfun ok() = 1\n",
+        baseContent = "fun ok() = 1\n",
+      ),
     )
     val blocked = assertIs<ValidationGateCycleTerminalOutcome.Blocked>(
       assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,
@@ -91,19 +96,63 @@ class FeatureTaskRuntimeSuppressionGateTest {
   }
 
   @Test
-  fun `under-reported justification blocks`() {
+  fun `first-pass fully accounted justification completes without prior gate failure`() {
+    val launchCount = AtomicInteger(0)
     val cycle = execute(
-      markers = listOf("@Suppress"),
-      headContent = "@Suppress(\"X\")\n@Suppress(\"Y\")\nfun ok() = 1\n",
-      baseContent = "fun ok() = 1\n",
-      repairJustifications = listOf(
-        mapOf(
-          "path" to "src/Foo.kt",
-          "silenced_rule_or_check" to "X",
-          "rationale" to "One silence only; second remains unaccounted.",
+      SuppressionGateScenario(
+        markers = listOf("@Suppress"),
+        headContent = "@Suppress(\"X\")\nfun ok() = 1\n",
+        baseContent = "fun ok() = 1\n",
+        options = SuppressionGateScenario.Options(
+          repairJustifications = listOf(
+            mapOf(
+              "path" to "src/Foo.kt",
+              "silenced_rule_or_check" to "X",
+              "rationale" to "Third-party callback signature forces the silence.",
+            ),
+          ),
+          onRepairLaunch = { findings, _ ->
+            launchCount.incrementAndGet()
+            assertTrue(
+              findings.findings.all {
+                it.ruleOrTestId ==
+                  FeatureTaskRuntimeValidationGateCoordinator.SUPPRESSION_JUSTIFICATION_RULE_ID
+              },
+            )
+          },
         ),
       ),
-      forceRepairHarvest = true,
+    )
+    assertEquals(1, launchCount.get())
+    val completed = assertIs<ValidationGateCycleTerminalOutcome.Completed>(
+      assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,
+    )
+    val validationResult = validationResultMap(completed.output.payload)
+    val justifications = validationResult["suppression_justifications"] as List<*>
+    assertEquals(1, justifications.size)
+    val entry = justifications.single() as Map<*, *>
+    assertEquals("src/Foo.kt", entry["path"])
+    assertEquals("X", entry["silenced_rule_or_check"])
+  }
+
+  @Test
+  fun `under-reported justification blocks`() {
+    val cycle = execute(
+      SuppressionGateScenario(
+        markers = listOf("@Suppress"),
+        headContent = "@Suppress(\"X\")\n@Suppress(\"Y\")\nfun ok() = 1\n",
+        baseContent = "fun ok() = 1\n",
+        options = SuppressionGateScenario.Options(
+          repairJustifications = listOf(
+            mapOf(
+              "path" to "src/Foo.kt",
+              "silenced_rule_or_check" to "X",
+              "rationale" to "One silence only; second remains unaccounted.",
+            ),
+          ),
+          forceRepairHarvest = true,
+        ),
+      ),
     )
     val blocked = assertIs<ValidationGateCycleTerminalOutcome.Blocked>(
       assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,
@@ -114,17 +163,21 @@ class FeatureTaskRuntimeSuppressionGateTest {
   @Test
   fun `fully accounted justification completes and persists on validation_result`() {
     val cycle = execute(
-      markers = listOf("@Suppress"),
-      headContent = "@Suppress(\"X\")\nfun ok() = 1\n",
-      baseContent = "fun ok() = 1\n",
-      repairJustifications = listOf(
-        mapOf(
-          "path" to "src/Foo.kt",
-          "silenced_rule_or_check" to "X",
-          "rationale" to "Third-party callback signature forces the silence.",
+      SuppressionGateScenario(
+        markers = listOf("@Suppress"),
+        headContent = "@Suppress(\"X\")\nfun ok() = 1\n",
+        baseContent = "fun ok() = 1\n",
+        options = SuppressionGateScenario.Options(
+          repairJustifications = listOf(
+            mapOf(
+              "path" to "src/Foo.kt",
+              "silenced_rule_or_check" to "X",
+              "rationale" to "Third-party callback signature forces the silence.",
+            ),
+          ),
+          forceRepairHarvest = true,
         ),
       ),
-      forceRepairHarvest = true,
     )
     val completed = assertIs<ValidationGateCycleTerminalOutcome.Completed>(
       assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,
@@ -140,9 +193,11 @@ class FeatureTaskRuntimeSuppressionGateTest {
   @Test
   fun `no declared markers leaves the pack ungated`() {
     val cycle = execute(
-      markers = emptyList(),
-      headContent = "@Suppress(\"X\")\nfun ok() = 1\n",
-      baseContent = "fun ok() = 1\n",
+      SuppressionGateScenario(
+        markers = emptyList(),
+        headContent = "@Suppress(\"X\")\nfun ok() = 1\n",
+        baseContent = "fun ok() = 1\n",
+      ),
     )
     assertIs<ValidationGateCycleTerminalOutcome.Completed>(
       assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,
@@ -152,10 +207,12 @@ class FeatureTaskRuntimeSuppressionGateTest {
   @Test
   fun `BUILD_ONLY still applies the suppression gate`() {
     val cycle = execute(
-      markers = listOf("@Suppress"),
-      headContent = "@Suppress(\"X\")\nfun ok() = 1\n",
-      baseContent = "fun ok() = 1\n",
-      validationDepth = ValidationDepth.BUILD_ONLY,
+      SuppressionGateScenario(
+        markers = listOf("@Suppress"),
+        headContent = "@Suppress(\"X\")\nfun ok() = 1\n",
+        baseContent = "fun ok() = 1\n",
+        options = SuppressionGateScenario.Options(validationDepth = ValidationDepth.BUILD_ONLY),
+      ),
     )
     val blocked = assertIs<ValidationGateCycleTerminalOutcome.Blocked>(
       assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,
@@ -163,17 +220,24 @@ class FeatureTaskRuntimeSuppressionGateTest {
     assertTrue(blocked.reason.contains("@Suppress"))
   }
 
-  private fun execute(
-    markers: List<String>,
-    headContent: String,
-    baseContent: String?,
-    repairJustifications: List<Map<String, String>> = emptyList(),
-    forceRepairHarvest: Boolean = false,
-    validationDepth: ValidationDepth = ValidationDepth.FULL,
-  ): ValidationGateCycleResult {
-    val declaration = gateDeclaration.copy(suppressionMarkers = markers)
+  private data class SuppressionGateScenario(
+    val markers: List<String>,
+    val headContent: String,
+    val baseContent: String?,
+    val options: Options = Options(),
+  ) {
+    data class Options(
+      val repairJustifications: List<Map<String, String>> = emptyList(),
+      val forceRepairHarvest: Boolean = false,
+      val validationDepth: ValidationDepth = ValidationDepth.FULL,
+      val onRepairLaunch: (ValidationFindingSetProjection, Int) -> Unit = { _, _ -> },
+    )
+  }
+
+  private fun execute(scenario: SuppressionGateScenario): ValidationGateCycleResult {
+    val declaration = gateDeclaration.copy(suppressionMarkers = scenario.markers)
     val progress = mutableListOf<FeatureTaskRuntimeValidationGateProgress>()
-    val runner = if (forceRepairHarvest) {
+    val runner = if (scenario.options.forceRepairHarvest) {
       ScriptedGateRunner(listOf(failed(), passed(), passed(forced = true)))
     } else {
       ScriptedGateRunner(listOf(passed(), passed(forced = true)))
@@ -190,8 +254,8 @@ class FeatureTaskRuntimeSuppressionGateTest {
             WorkflowScopedPathContent(
               headPath = path,
               basePath = path,
-              headContent = headContent,
-              baseContent = baseContent,
+              headContent = scenario.headContent,
+              baseContent = scenario.baseContent,
             )
           },
         )
@@ -207,13 +271,15 @@ class FeatureTaskRuntimeSuppressionGateTest {
       ValidationGateCycleRequest(
         repoRoot = repoRoot,
         request = minimalRequest(),
-        validationDepth = validationDepth,
+        validationDepth = scenario.options.validationDepth,
         changedPaths = listOf("src/Foo.kt"),
         repositoryCheckpoint = "checkpoint",
         baseRef = "base",
-        agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _ ->
-          val payload = if (repairJustifications.isEmpty()) {
-            """{"contract_version":"0.3","phase_id":"validate","status":"completed","summary":"repair","produced_outputs":{}}"""
+        agentRepairLauncher = ValidationGateAgentRepairLauncher { findings, iteration ->
+          scenario.options.onRepairLaunch(findings, iteration)
+          val payload = if (scenario.options.repairJustifications.isEmpty()) {
+            """{"contract_version":"0.3","phase_id":"validate","status":"completed",""" +
+              """"summary":"repair","produced_outputs":{}}"""
           } else {
             JsonSupport.mapToJsonString(
               mapOf(
@@ -223,7 +289,7 @@ class FeatureTaskRuntimeSuppressionGateTest {
                 "summary" to "repair with justification",
                 "produced_outputs" to mapOf(
                   "validation_result" to mapOf(
-                    "suppression_justifications" to repairJustifications,
+                    "suppression_justifications" to scenario.options.repairJustifications,
                   ),
                 ),
               ),
@@ -237,37 +303,35 @@ class FeatureTaskRuntimeSuppressionGateTest {
     )
   }
 
-  private fun declaredResolver(declaration: ValidationGateDeclaration): ValidationGateResolver =
-    ValidationGateResolver(
-      ScaffoldCatalogService(
-        object : ScaffoldCatalogGateway {
-          override fun approvedCodeReviewAreas() = emptySet<String>()
-          override fun preShellFamilies() = emptySet<String>()
-          override fun shelledFamilies() = emptySet<String>()
-          override fun platformPackPresets() = emptyMap<String, String>()
-          override fun scaffoldPayloadVersion() = "test"
-          override fun discoverPilotedPlatformPacks(packsRoot: Path): List<PilotedPlatformPackProjection> = emptyList()
-          override fun discoverPlatformManifests(packsRoot: Path) = listOf(
-            PlatformManifest(
-              slug = "kotlin",
-              packRoot = repoRoot.resolve("platform-packs/kotlin"),
-              contractVersion = "1.4",
-              routingSignals = RoutingSignals(
-                strong = listOf("src"),
-                tieBreakers = emptyList(),
-                path = listOf("src"),
-              ),
-              declaredCodeReviewAreas = emptyList(),
-              declaredFiles = DeclaredFiles(null, emptyMap()),
-              areaMetadata = emptyMap(),
-              validationGate = declaration,
+  private fun declaredResolver(declaration: ValidationGateDeclaration): ValidationGateResolver = ValidationGateResolver(
+    ScaffoldCatalogService(
+      object : ScaffoldCatalogGateway {
+        override fun approvedCodeReviewAreas() = emptySet<String>()
+        override fun preShellFamilies() = emptySet<String>()
+        override fun shelledFamilies() = emptySet<String>()
+        override fun platformPackPresets() = emptyMap<String, String>()
+        override fun scaffoldPayloadVersion() = "test"
+        override fun discoverPilotedPlatformPacks(packsRoot: Path): List<PilotedPlatformPackProjection> = emptyList()
+        override fun discoverPlatformManifests(packsRoot: Path) = listOf(
+          PlatformManifest(
+            slug = "kotlin",
+            packRoot = repoRoot.resolve("platform-packs/kotlin"),
+            contractVersion = "1.4",
+            routingSignals = RoutingSignals(
+              strong = listOf("src"),
+              tieBreakers = emptyList(),
+              path = listOf("src"),
             ),
-          )
-          override fun discoverBaselineReviewCatalog(packsRoot: Path) =
-            BaselineReviewCatalog(emptyList(), emptyList())
-        },
-      ),
-    )
+            declaredCodeReviewAreas = emptyList(),
+            declaredFiles = DeclaredFiles(null, emptyMap()),
+            areaMetadata = emptyMap(),
+            validationGate = declaration,
+          ),
+        )
+        override fun discoverBaselineReviewCatalog(packsRoot: Path) = BaselineReviewCatalog(emptyList(), emptyList())
+      },
+    ),
+  )
 
   private fun minimalRequest(): FeatureTaskRuntimeRunRequest = FeatureTaskRuntimeRunRequest(
     issueKey = "SKILL-180",

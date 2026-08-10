@@ -2,6 +2,9 @@ package skillbill.application.featuretask.validation
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
+import skillbill.application.featuretask.validation.model.SuppressionDelta
+import skillbill.application.featuretask.validation.model.SuppressionGateDecision
+import skillbill.application.featuretask.validation.model.SuppressionJustification
 import skillbill.application.featuretask.validation.model.ValidationFindingSetProjection
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairResult
 import skillbill.application.featuretask.validation.model.ValidationGateCycleRequest
@@ -93,6 +96,7 @@ class FeatureTaskRuntimeValidationGateCoordinator(
                   declaration = declaration,
                   measurements = measurements,
                   justifications = harvestedJustifications,
+                  repairIterationHint = repairsUsed + 1,
                 )
               else -> terminalBlocked(
                 "Validation gate terminal run failed after a clean intermediate result.",
@@ -156,6 +160,7 @@ class FeatureTaskRuntimeValidationGateCoordinator(
     declaration: ValidationGateDeclaration,
     measurements: List<FeatureTaskRuntimeValidationGateRunRecord>,
     justifications: List<SuppressionJustification>,
+    repairIterationHint: Int,
   ): ValidationGateCycleResult {
     val measured = suppressionDeltaService.measure(
       repoRoot = cycle.repoRoot,
@@ -168,7 +173,27 @@ class FeatureTaskRuntimeValidationGateCoordinator(
         measurements = measurements,
       )
     }
-    return when (val decision = SuppressionJustificationGate.evaluate(measured, justifications)) {
+    val initial = SuppressionJustificationGate.evaluate(measured, justifications)
+    val decision = when {
+      // Clean first-pass (and repair that left harvest empty) never launched an agent turn, so
+      // AC-010 cannot complete without one harvest when the delta is non-zero and unjustified.
+      initial is SuppressionGateDecision.Block && justifications.isEmpty() && measured.totalIntroduced > 0 -> {
+        val projection = suppressionJustificationProjection(measured)
+        when (val harvest = cycle.agentRepairLauncher.launch(projection, repairIterationHint)) {
+          is ValidationGateAgentRepairResult.Blocked -> return ValidationGateCycleResult.Terminal(
+            ValidationGateCycleTerminalOutcome.Blocked(
+              reason = harvest.reason,
+              remainingFindings = projection,
+              measurements = measurements,
+            ),
+          )
+          is ValidationGateAgentRepairResult.Completed ->
+            SuppressionJustificationGate.evaluate(measured, extractJustifications(harvest.output))
+        }
+      }
+      else -> initial
+    }
+    return when (decision) {
       is SuppressionGateDecision.Block -> terminalBlocked(decision.reason, measurements = measurements)
       is SuppressionGateDecision.Allow -> terminalCompleted(
         repositoryCheckpoint = cycle.repositoryCheckpoint,
@@ -177,6 +202,20 @@ class FeatureTaskRuntimeValidationGateCoordinator(
         justifications = decision.justifications,
       )
     }
+  }
+
+  private fun suppressionJustificationProjection(delta: SuppressionDelta): ValidationFindingSetProjection {
+    val findings = delta.introductions.map { intro ->
+      ValidationGateFinding(
+        module = SUPPRESSION_JUSTIFICATION_MODULE,
+        ruleOrTestId = SUPPRESSION_JUSTIFICATION_RULE_ID,
+        message = "Runtime measured ${intro.introducedCount} introduced '${intro.marker}' " +
+          "occurrence(s) on ${intro.path}. Emit suppression_justifications accounting for every " +
+          "introduced marker (path, silenced_rule_or_check, short rationale). Do not invoke the gate.",
+        location = intro.path,
+      )
+    }
+    return ValidationFindingSetProjection(findings = findings, droppedCount = 0)
   }
 
   private fun extractJustifications(output: FeatureTaskRuntimePhaseOutput): List<SuppressionJustification> {
@@ -285,6 +324,9 @@ class FeatureTaskRuntimeValidationGateCoordinator(
   )
 
   companion object {
+    const val SUPPRESSION_JUSTIFICATION_MODULE: String = "<suppression-gate>"
+    const val SUPPRESSION_JUSTIFICATION_RULE_ID: String = "suppression_justification_required"
+
     fun unparseableGateFailureFinding(result: ValidationGateRunResult): ValidationGateFinding = ValidationGateFinding(
       module = "<validation-gate>",
       ruleOrTestId = "unparseable_gate_failure",

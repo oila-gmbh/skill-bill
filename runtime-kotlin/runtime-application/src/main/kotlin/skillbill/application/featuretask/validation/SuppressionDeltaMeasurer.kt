@@ -1,36 +1,11 @@
 package skillbill.application.featuretask.validation
 
+import skillbill.application.featuretask.validation.model.IntroducedSuppression
+import skillbill.application.featuretask.validation.model.SuppressionDelta
 import skillbill.ports.workflow.model.WorkflowScopedPathContent
 
-/** One marker introduction on a scoped path (count is HEAD−base, never below zero). */
-data class IntroducedSuppression(
-  val path: String,
-  val marker: String,
-  val introducedCount: Int,
-) {
-  init {
-    require(path.isNotBlank()) { "Introduced suppression path must be non-blank." }
-    require(marker.isNotBlank()) { "Introduced suppression marker must be non-blank." }
-    require(introducedCount > 0) { "Introduced suppression count must be positive." }
-  }
-}
-
-/**
- * Runtime-measured suppression delta. [gated] is false when the pack declares no markers
- * (ungated short-circuit). Measurement never reads agent-emitted fields.
- */
-data class SuppressionDelta(
-  val gated: Boolean,
-  val introductions: List<IntroducedSuppression>,
-) {
-  val totalIntroduced: Int get() = introductions.sumOf { it.introducedCount }
-}
-
 object SuppressionDeltaMeasurer {
-  fun measure(
-    markers: List<String>,
-    pathContents: List<WorkflowScopedPathContent>,
-  ): SuppressionDelta {
+  fun measure(markers: List<String>, pathContents: List<WorkflowScopedPathContent>): SuppressionDelta {
     val declared = markers.map(String::trim).filter(String::isNotEmpty)
     if (declared.isEmpty()) {
       return SuppressionDelta(gated = false, introductions = emptyList())

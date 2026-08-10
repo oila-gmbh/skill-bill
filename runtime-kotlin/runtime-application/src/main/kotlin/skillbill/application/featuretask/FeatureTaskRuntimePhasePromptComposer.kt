@@ -1,6 +1,7 @@
 package skillbill.application.featuretask
 
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
+import skillbill.application.featuretask.validation.FeatureTaskRuntimeValidationGateCoordinator
 import skillbill.application.featuretask.validation.model.ValidationFindingSetProjection
 import skillbill.application.model.FeatureTaskRuntimeImplementationContinuation
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
@@ -26,7 +27,7 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting
  * Without this delivery the agent would receive the default goal-continuation prompt and could
  * never produce schema-valid phase output.
  */
-@Suppress("TooManyFunctions") // one cohesive prompt-composition seam; each function is a named directive
+@Suppress("TooManyFunctions", "LargeClass") // one cohesive prompt-composition seam; each function is a named directive
 object FeatureTaskRuntimePhasePromptComposer {
   @Suppress("LongParameterList") // one cohesive phase-prompt delivery; bundling these would only hide them
   fun compose(
@@ -681,9 +682,24 @@ object FeatureTaskRuntimePhasePromptComposer {
 
   private fun validationGateFindingsDirective(phaseId: String, findings: ValidationFindingSetProjection?): String {
     if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE || findings == null) return ""
+    val justificationOnly = findings.findings.isNotEmpty() &&
+      findings.findings.all {
+        it.ruleOrTestId ==
+          FeatureTaskRuntimeValidationGateCoordinator.SUPPRESSION_JUSTIFICATION_RULE_ID
+      }
     val lines = buildList {
-      add("## Runtime validation gate findings")
-      add("Fix every finding below at its root cause. Do not invoke the gate or any quality-check skill.")
+      if (justificationOnly) {
+        add("## Runtime suppression justification required")
+        add(
+          "The validation gate passed, but the runtime measured introduced suppression markers. " +
+            "Do not invoke the gate or any quality-check skill. Account for every introduction below " +
+            "by emitting suppression_justifications on validation_result " +
+            "(path, silenced_rule_or_check, short rationale).",
+        )
+      } else {
+        add("## Runtime validation gate findings")
+        add("Fix every finding below at its root cause. Do not invoke the gate or any quality-check skill.")
+      }
       if (findings.droppedCount > 0) {
         add("dropped_count=${findings.droppedCount} additional findings were omitted from this projection.")
       }

@@ -112,7 +112,7 @@ class SkillClassLoaderTest {
     assertEquals(1, classes.size)
     val manifest = classes.single()
     assertEquals("widget-shell", manifest.classId)
-    assertEquals("1.3", manifest.contractVersion)
+    assertEquals("1.4", manifest.contractVersion)
     assertEquals(listOf("shell-ceremony", "telemetry-contract"), manifest.pointers)
     assertEquals(1, manifest.sections.size)
     assertEquals("Setup", manifest.sections.single().heading)

@@ -1,6 +1,7 @@
 package skillbill.application.featuretask.validation
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.application.featuretask.validation.model.SuppressionDelta
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.scopedPathContentsAgainstBase
 import skillbill.scaffold.model.ValidationGateDeclaration

@@ -9,7 +9,7 @@ base_branch: "main"
 feature_branch: "feat/SKILL-180-validate-suppression-gate"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 2
+  subtask_id: 3
   action: "resume"
 subtasks:
 - id: 1
@@ -28,12 +28,12 @@ subtasks:
 - id: 2
   name: "Runtime-owned gate execution with capped repair cycle and measured run count"
   spec_path: ".feature-specs/SKILL-180-validate-suppression-gate/spec_subtask_2_runtime-owned-gate.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260810-122850-mp6b"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -47,7 +47,7 @@ subtasks:
   status: "pending"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260810-141219-v1fj"
   blocked_reason: null
   last_resumable_step: null
   linear_issue_id: null

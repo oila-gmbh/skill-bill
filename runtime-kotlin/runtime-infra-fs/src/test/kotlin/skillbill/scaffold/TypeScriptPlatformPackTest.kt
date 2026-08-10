@@ -47,7 +47,7 @@ class TypeScriptPlatformPackTest {
 
     assertEquals("typescript", pack.slug)
     assertEquals("TypeScript", pack.displayName)
-    assertEquals("1.3", pack.contractVersion)
+    assertEquals("1.4", pack.contractVersion)
     assertEquals(packRoot.resolve("code-review/bill-typescript-code-review/content.md"), pack.declaredFiles.baseline)
     assertEquals(packRoot.resolve("quality-check/bill-typescript-code-check/content.md"), pack.declaredQualityCheckFile)
     assertEquals(APPROVED_CODE_REVIEW_AREAS, pack.declaredFiles.areas.keys)

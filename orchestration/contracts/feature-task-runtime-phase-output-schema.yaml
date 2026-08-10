@@ -78,6 +78,23 @@ $defs:
         type: string
         minLength: 1
         maxLength: 256
+        pattern: "^[A-Za-z_][A-Za-z0-9_$-]*(?:\\.[A-Za-z_][A-Za-z0-9_$-]*)?$"
+      file:
+        description: "Optional basename used only when the compact class/member reference is ambiguous."
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: "^[A-Za-z0-9_.-]+$"
+      issue:
+        type: string
+        minLength: 1
+        maxLength: 1024
+        pattern: ".*\\S.*"
+      fix:
+        type: string
+        minLength: 1
+        maxLength: 1024
+        pattern: ".*\\S.*"
   suppressionJustification:
     type: object
     additionalProperties: false
@@ -99,22 +116,6 @@ $defs:
         type: string
         minLength: 1
         maxLength: 512
-        pattern: "^[A-Za-z_][A-Za-z0-9_$-]*(?:\\.[A-Za-z_][A-Za-z0-9_$-]*)?$"
-      file:
-        description: "Optional basename used only when the compact class/member reference is ambiguous."
-        type: string
-        minLength: 1
-        maxLength: 128
-        pattern: "^[A-Za-z0-9_.-]+$"
-      issue:
-        type: string
-        minLength: 1
-        maxLength: 1024
-        pattern: ".*\\S.*"
-      fix:
-        type: string
-        minLength: 1
-        maxLength: 1024
         pattern: ".*\\S.*"
 required:
   - contract_version

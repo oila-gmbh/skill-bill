@@ -394,7 +394,7 @@ private object GitSuppressionEvidenceOperations : SuppressionEvidenceGitOperatio
       .filter(String::isNotEmpty)
       .forEach { line ->
         val parts = line.split('\t')
-        if (parts.size >= 3 && parts[0].startsWith("R")) {
+        if (parts.size >= GIT_RENAME_NAME_STATUS_MIN_FIELDS && parts[0].startsWith("R")) {
           val oldPath = parts[1]
           val newPath = parts[2]
           if (oldPath.isNotBlank() && newPath.isNotBlank()) {
@@ -409,8 +409,11 @@ private object GitSuppressionEvidenceOperations : SuppressionEvidenceGitOperatio
     val resolved = repoRoot.resolve(path).normalize()
     if (!resolved.startsWith(repoRoot.normalize())) return null
     return try {
-      if (!Files.isRegularFile(resolved, LinkOption.NOFOLLOW_LINKS)) null
-      else Files.readString(resolved)
+      if (!Files.isRegularFile(resolved, LinkOption.NOFOLLOW_LINKS)) {
+        null
+      } else {
+        Files.readString(resolved)
+      }
     } catch (_: IOException) {
       null
     }
@@ -770,5 +773,6 @@ private const val GIT_STATUS_CODE_LENGTH = 2
 private const val GIT_STATUS_PATH_OFFSET = 3
 private const val GIT_CHANGED_FILE_SAMPLE_LIMIT = 10
 private const val GIT_NUMSTAT_PART_LIMIT = 3
+private const val GIT_RENAME_NAME_STATUS_MIN_FIELDS = 3
 private const val GIT_ERROR_OUTPUT_LIMIT = 4_000
 private const val GIT_SELECTED_DIFF_MIN_READ_LINE_BYTES = 4_096

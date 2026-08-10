@@ -1,5 +1,9 @@
 package skillbill.application.featuretask.validation
 
+import skillbill.application.featuretask.validation.model.IntroducedSuppression
+import skillbill.application.featuretask.validation.model.SuppressionDelta
+import skillbill.application.featuretask.validation.model.SuppressionGateDecision
+import skillbill.application.featuretask.validation.model.SuppressionJustification
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
