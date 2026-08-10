@@ -7,6 +7,7 @@ import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineResult
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewInputResult
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.model.WorkflowScopedPathContentsResult
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksResult
 import skillbill.ports.workflow.model.WorkflowWorktreeActivityResult
@@ -241,6 +242,34 @@ private object NoopRuntimePhaseFileManifestGitOperations : RuntimePhaseFileManif
     afterCommit: String,
   ): WorkflowGitOperationResult = WorkflowGitOperationResult(status = "ok", value = "")
 }
+
+/**
+ * Read-only validate-boundary evidence: scoped path contents at the current tree vs a base
+ * ref, with rename detection so a moved file keeps its base identity.
+ */
+interface SuppressionEvidenceGitOperations {
+  fun scopedPathContentsAgainstBase(
+    repoRoot: Path,
+    baseRef: String,
+    headPaths: List<String>,
+  ): WorkflowScopedPathContentsResult
+}
+
+interface SuppressionEvidenceGitOperationsProvider {
+  val suppressionEvidenceOperations: SuppressionEvidenceGitOperations
+}
+
+fun WorkflowGitOperations.scopedPathContentsAgainstBase(
+  repoRoot: Path,
+  baseRef: String,
+  headPaths: List<String>,
+): WorkflowScopedPathContentsResult =
+  (this as? SuppressionEvidenceGitOperationsProvider)?.suppressionEvidenceOperations
+    ?.scopedPathContentsAgainstBase(repoRoot, baseRef, headPaths)
+    ?: WorkflowScopedPathContentsResult(
+      status = "error",
+      error = "WorkflowGitOperations must provide a suppression-evidence implementation.",
+    )
 
 interface GoalSubtaskReviewGitOperations {
   fun captureBaseline(repoRoot: Path, expectedBranch: String): GoalSubtaskReviewBaselineResult

@@ -75,4 +75,6 @@ data class ValidationGateCycleRequest(
   val changedPaths: List<String>,
   val repositoryCheckpoint: String,
   val agentRepairLauncher: ValidationGateAgentRepairLauncher,
+  /** Base ref for suppression-delta measurement; blank skips measurement with a loud block when markers exist. */
+  val baseRef: String = "",
 )

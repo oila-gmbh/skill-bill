@@ -199,7 +199,7 @@ class AuthoringRenderOutputTest {
 
   private fun platformFixtureManifest(): String = """
     platform: fixturepack
-    contract_version: "1.3"
+    contract_version: "1.4"
 
     routing_signals:
       strong:

@@ -2305,6 +2305,12 @@ internal class FeatureTaskRuntimeRunLoop(
   ): PhaseOutcome {
     val validationDepth = run.request.goalContinuation?.validationDepth ?: ValidationDepth.DEFAULT
     val changedPaths = validationChangedPaths(state)
+    val baseRef = recorder.loadResolvedBranch(run.request.workflowId, run.request.dbPathOverride)
+      ?.reviewBaseSha
+      .orEmpty()
+      .ifBlank {
+        recorder.loadResolvedBranch(run.request.workflowId, run.request.dbPathOverride)?.baseBranch.orEmpty()
+      }
     val checkpoint = gitOperations.repositoryFingerprint(run.request.repoRoot).value
       .takeIf(String::isNotBlank)
       ?: return PhaseOutcome.blocked(
@@ -2318,6 +2324,7 @@ internal class FeatureTaskRuntimeRunLoop(
         validationDepth = validationDepth,
         changedPaths = changedPaths,
         repositoryCheckpoint = checkpoint,
+        baseRef = baseRef,
         agentRepairLauncher = ValidationGateAgentRepairLauncher { findings, _ ->
           launchValidationGateRepair(
             run = run,

@@ -44,6 +44,7 @@ class FeatureTaskRuntimeValidationGateCoordinator(
   private val resolver: ValidationGateResolver,
   private val runner: ValidationGateRunner,
   private val progressStore: ValidationGateProgressStore,
+  private val suppressionDeltaService: FeatureTaskRuntimeSuppressionDeltaService,
 ) {
   @Suppress("LongMethod", "ReturnCount", "CyclomaticComplexMethod")
   fun execute(cycle: ValidationGateCycleRequest, onGateRunCount: (Int) -> Unit = {}): ValidationGateCycleResult {
@@ -51,7 +52,6 @@ class FeatureTaskRuntimeValidationGateCoordinator(
     val request = cycle.request
     val validationDepth = cycle.validationDepth
     val changedPaths = cycle.changedPaths
-    val repositoryCheckpoint = cycle.repositoryCheckpoint
     val agentRepairLauncher = cycle.agentRepairLauncher
     when (val resolution = resolver.resolve(repoRoot, changedPaths)) {
       is ValidationGateResolution.Absent -> return ValidationGateCycleResult.AbsentFallback
@@ -59,6 +59,7 @@ class FeatureTaskRuntimeValidationGateCoordinator(
         val declaration = resolution.declaration
         val measurements = mutableListOf<FeatureTaskRuntimeValidationGateRunRecord>()
         var repairsUsed = 0
+        val harvestedJustifications = mutableListOf<SuppressionJustification>()
 
         while (true) {
           val intermediate = runGate(
@@ -87,10 +88,11 @@ class FeatureTaskRuntimeValidationGateCoordinator(
                   measurements = measurements,
                 )
               terminal.outcome == ValidationGateRunOutcome.PASSED ->
-                terminalCompleted(
-                  repositoryCheckpoint = repositoryCheckpoint,
+                settleSuppressionGate(
+                  cycle = cycle,
+                  declaration = declaration,
                   measurements = measurements,
-                  checks = emptyList(),
+                  justifications = harvestedJustifications,
                 )
               else -> terminalBlocked(
                 "Validation gate terminal run failed after a clean intermediate result.",
@@ -139,11 +141,55 @@ class FeatureTaskRuntimeValidationGateCoordinator(
                 measurements = measurements,
               ),
             )
-            is ValidationGateAgentRepairResult.Completed -> Unit
+            is ValidationGateAgentRepairResult.Completed -> {
+              harvestedJustifications += extractJustifications(repair.output)
+            }
           }
           repairsUsed++
         }
       }
+    }
+  }
+
+  private fun settleSuppressionGate(
+    cycle: ValidationGateCycleRequest,
+    declaration: ValidationGateDeclaration,
+    measurements: List<FeatureTaskRuntimeValidationGateRunRecord>,
+    justifications: List<SuppressionJustification>,
+  ): ValidationGateCycleResult {
+    val measured = suppressionDeltaService.measure(
+      repoRoot = cycle.repoRoot,
+      baseRef = cycle.baseRef,
+      changedPaths = cycle.changedPaths,
+      declaration = declaration,
+    ).getOrElse { error ->
+      return terminalBlocked(
+        "Validation suppression gate could not measure the suppression delta: ${error.message.orEmpty()}",
+        measurements = measurements,
+      )
+    }
+    return when (val decision = SuppressionJustificationGate.evaluate(measured, justifications)) {
+      is SuppressionGateDecision.Block -> terminalBlocked(decision.reason, measurements = measurements)
+      is SuppressionGateDecision.Allow -> terminalCompleted(
+        repositoryCheckpoint = cycle.repositoryCheckpoint,
+        measurements = measurements,
+        checks = emptyList(),
+        justifications = decision.justifications,
+      )
+    }
+  }
+
+  private fun extractJustifications(output: FeatureTaskRuntimePhaseOutput): List<SuppressionJustification> {
+    val envelope = JsonSupport.parseObjectOrNull(output.payload)?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
+      ?: return emptyList()
+    val produced = JsonSupport.anyToStringAnyMap(envelope["produced_outputs"]).orEmpty()
+    val validationResult = JsonSupport.anyToStringAnyMap(produced["validation_result"]).orEmpty()
+    val raw = validationResult["suppression_justifications"]
+      ?: produced["suppression_justifications"]
+    return when (val parsed = SuppressionJustification.parseAll(raw)) {
+      is SuppressionJustification.ParseResult.Present -> parsed.values
+      else -> emptyList()
     }
   }
 
@@ -214,12 +260,14 @@ class FeatureTaskRuntimeValidationGateCoordinator(
     repositoryCheckpoint: String,
     measurements: List<FeatureTaskRuntimeValidationGateRunRecord>,
     checks: List<String>,
+    justifications: List<SuppressionJustification> = emptyList(),
   ): ValidationGateCycleResult = ValidationGateCycleResult.Terminal(
     ValidationGateCycleTerminalOutcome.Completed(
       output = runtimeOwnedValidationOutput(
         repositoryCheckpoint = repositoryCheckpoint,
         measurements = measurements,
         checks = checks,
+        justifications = justifications,
       ),
     ),
   )
@@ -249,7 +297,18 @@ class FeatureTaskRuntimeValidationGateCoordinator(
       repositoryCheckpoint: String,
       measurements: List<FeatureTaskRuntimeValidationGateRunRecord>,
       checks: List<String>,
+      justifications: List<SuppressionJustification> = emptyList(),
     ): FeatureTaskRuntimePhaseOutput {
+      val validationResult = linkedMapOf<String, Any?>(
+        "validation_status" to "passed",
+        "checks" to checks,
+        "repository_checkpoint" to mapOf("fingerprint" to repositoryCheckpoint),
+        "gate_run_count" to measurements.size,
+        "gate_runs" to measurements.map { it.toArtifactMap() },
+      )
+      if (justifications.isNotEmpty()) {
+        validationResult["suppression_justifications"] = justifications.map { it.toArtifactMap() }
+      }
       val payload = JsonSupport.mapToJsonString(
         mapOf(
           "contract_version" to FEATURE_TASK_RUNTIME_CONTRACT_VERSION,
@@ -258,13 +317,7 @@ class FeatureTaskRuntimeValidationGateCoordinator(
           "summary" to "Validation satisfied by runtime-owned gate execution.",
           "verdict" to FeatureTaskRuntimeVerdict.SATISFIED.wireValue,
           "produced_outputs" to mapOf(
-            "validation_result" to mapOf(
-              "validation_status" to "passed",
-              "checks" to checks,
-              "repository_checkpoint" to mapOf("fingerprint" to repositoryCheckpoint),
-              "gate_run_count" to measurements.size,
-              "gate_runs" to measurements.map { it.toArtifactMap() },
-            ),
+            "validation_result" to validationResult,
           ),
         ),
       )

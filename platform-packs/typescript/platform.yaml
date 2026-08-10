@@ -1,5 +1,5 @@
 platform: typescript
-contract_version: "1.3"
+contract_version: "1.4"
 display_name: TypeScript
 
 routing_signals:

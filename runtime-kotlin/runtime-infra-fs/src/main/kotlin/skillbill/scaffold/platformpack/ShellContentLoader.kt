@@ -1154,7 +1154,27 @@ internal fun parseValidationGate(manifest: Map<*, *>, slug: String): ValidationG
     cacheBypassingFullGateCommand = requireGateArgv(gate, slug, "cache_bypassing_full_gate_command"),
     buildOnlyCommand = requireGateArgv(gate, slug, "build_only_command"),
     findings = parseValidationGateFindings(gate, slug),
+    suppressionMarkers = parseSuppressionMarkers(gate, slug),
   )
+}
+
+/**
+ * Absent or empty `suppression_markers` → empty list (ungated). Present but
+ * malformed → loud-fail; never coerce a bad declaration into an ungated empty set.
+ */
+private fun parseSuppressionMarkers(gate: Map<*, *>, slug: String): List<String> {
+  if (!gate.containsKey("suppression_markers")) return emptyList()
+  val raw = gate["suppression_markers"]
+  val values = raw as? List<*> ?: throw InvalidValidationGateDeclarationError(
+    "Platform pack '$slug': 'validation_gate.suppression_markers' must be an array when present.",
+  )
+  if (values.isEmpty()) return emptyList()
+  return values.mapIndexed { index, value ->
+    (value as? String)?.trim()?.takeIf(String::isNotEmpty)
+      ?: throw InvalidValidationGateDeclarationError(
+        "Platform pack '$slug': 'validation_gate.suppression_markers[$index]' must be a non-blank string.",
+      )
+  }
 }
 
 private fun requireGateArgv(gate: Map<*, *>, slug: String, key: String): List<String> {

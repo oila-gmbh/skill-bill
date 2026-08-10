@@ -91,7 +91,7 @@ class SkillClassLoaderTest {
       classesDir.resolve("widget-shell.yaml"),
       """
       class: widget-shell
-      contract_version: "1.3"
+      contract_version: "1.4"
       matchers:
         - exact: bill-widget
       pointers:
@@ -166,7 +166,7 @@ class SkillClassLoaderTest {
       classesDir.resolve("widget-shell.yaml"),
       """
       class: gadget-shell
-      contract_version: "1.3"
+      contract_version: "1.4"
       matchers:
         - exact: bill-widget
       """.trimIndent() + "\n",
@@ -201,7 +201,7 @@ class SkillClassLoaderTest {
       classesDir.resolve("widget-shell.yaml"),
       """
       class: widget-shell
-      contract_version: "1.3"
+      contract_version: "1.4"
       """.trimIndent() + "\n",
     )
     val error = assertFailsWith<InvalidManifestSchemaError> { discoverSkillClasses(repoRoot) }

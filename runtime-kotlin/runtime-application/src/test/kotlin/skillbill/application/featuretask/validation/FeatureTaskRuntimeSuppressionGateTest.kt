@@ -1,0 +1,325 @@
+package skillbill.application.featuretask.validation
+
+import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairLauncher
+import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairResult
+import skillbill.application.featuretask.validation.model.ValidationGateCycleRequest
+import skillbill.application.featuretask.validation.model.ValidationGateCycleResult
+import skillbill.application.featuretask.validation.model.ValidationGateCycleTerminalOutcome
+import skillbill.application.featuretask.validation.model.ValidationGateProgressStore
+import skillbill.application.model.FeatureTaskRuntimeRunRequest
+import skillbill.application.scaffold.ScaffoldCatalogService
+import skillbill.contracts.JsonSupport
+import skillbill.ports.scaffold.ScaffoldCatalogGateway
+import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
+import skillbill.ports.validation.ValidationGateRunner
+import skillbill.ports.validation.model.ValidationGateCacheMode
+import skillbill.ports.validation.model.ValidationGateFinding
+import skillbill.ports.validation.model.ValidationGateRunOutcome
+import skillbill.ports.validation.model.ValidationGateRunRequest
+import skillbill.ports.validation.model.ValidationGateRunResult
+import skillbill.ports.workflow.NoopWorkflowGitOperations
+import skillbill.ports.workflow.SuppressionEvidenceGitOperations
+import skillbill.ports.workflow.SuppressionEvidenceGitOperationsProvider
+import skillbill.ports.workflow.WorkflowGitOperations
+import skillbill.ports.workflow.model.WorkflowScopedPathContent
+import skillbill.ports.workflow.model.WorkflowScopedPathContentsResult
+import skillbill.scaffold.model.BaselineReviewCatalog
+import skillbill.scaffold.model.DeclaredFiles
+import skillbill.scaffold.model.PlatformManifest
+import skillbill.scaffold.model.RoutingSignals
+import skillbill.scaffold.model.ValidationGateDeclaration
+import skillbill.scaffold.model.ValidationGateFindingsFormat
+import skillbill.scaffold.model.ValidationGateFindingsLocator
+import skillbill.workflow.model.ValidationDepth
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress
+import java.nio.file.Path
+import java.util.concurrent.atomic.AtomicInteger
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.test.assertTrue
+
+/**
+ * AC-013 regression matrix for the validate-boundary suppression gate.
+ * Measurement is stubbed through the git evidence port; assertions stay on
+ * coordinator terminal outcomes and durable validation_result shape.
+ */
+class FeatureTaskRuntimeSuppressionGateTest {
+  private val repoRoot: Path = Path.of(".").toAbsolutePath().normalize()
+
+  private val gateDeclaration = ValidationGateDeclaration(
+    fullGateCommand = listOf("echo", "cache"),
+    cacheBypassingFullGateCommand = listOf("echo", "full"),
+    buildOnlyCommand = listOf("echo", "build-only"),
+    findings = ValidationGateFindingsLocator(
+      format = ValidationGateFindingsFormat.JUNIT_XML,
+      artifactGlobs = listOf("**/*.xml"),
+    ),
+    suppressionMarkers = listOf("@Suppress"),
+  )
+
+  @Test
+  fun `clean zero-delta pass omits suppression_justifications`() {
+    val cycle = execute(
+      markers = listOf("@Suppress"),
+      headContent = "fun ok() = 1\n",
+      baseContent = "fun ok() = 1\n",
+    )
+    val completed = assertIs<ValidationGateCycleTerminalOutcome.Completed>(
+      assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,
+    )
+    val validationResult = validationResultMap(completed.output.payload)
+    assertEquals("passed", validationResult["validation_status"])
+    assertTrue("suppression_justifications" !in validationResult)
+  }
+
+  @Test
+  fun `unjustified non-zero delta blocks naming path and marker`() {
+    val cycle = execute(
+      markers = listOf("@Suppress"),
+      headContent = "@Suppress(\"X\")\nfun ok() = 1\n",
+      baseContent = "fun ok() = 1\n",
+    )
+    val blocked = assertIs<ValidationGateCycleTerminalOutcome.Blocked>(
+      assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,
+    )
+    assertTrue(blocked.reason.contains("src/Foo.kt"))
+    assertTrue(blocked.reason.contains("@Suppress"))
+  }
+
+  @Test
+  fun `under-reported justification blocks`() {
+    val cycle = execute(
+      markers = listOf("@Suppress"),
+      headContent = "@Suppress(\"X\")\n@Suppress(\"Y\")\nfun ok() = 1\n",
+      baseContent = "fun ok() = 1\n",
+      repairJustifications = listOf(
+        mapOf(
+          "path" to "src/Foo.kt",
+          "silenced_rule_or_check" to "X",
+          "rationale" to "One silence only; second remains unaccounted.",
+        ),
+      ),
+      forceRepairHarvest = true,
+    )
+    val blocked = assertIs<ValidationGateCycleTerminalOutcome.Blocked>(
+      assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,
+    )
+    assertTrue(blocked.reason.contains("under-reports"))
+  }
+
+  @Test
+  fun `fully accounted justification completes and persists on validation_result`() {
+    val cycle = execute(
+      markers = listOf("@Suppress"),
+      headContent = "@Suppress(\"X\")\nfun ok() = 1\n",
+      baseContent = "fun ok() = 1\n",
+      repairJustifications = listOf(
+        mapOf(
+          "path" to "src/Foo.kt",
+          "silenced_rule_or_check" to "X",
+          "rationale" to "Third-party callback signature forces the silence.",
+        ),
+      ),
+      forceRepairHarvest = true,
+    )
+    val completed = assertIs<ValidationGateCycleTerminalOutcome.Completed>(
+      assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,
+    )
+    val validationResult = validationResultMap(completed.output.payload)
+    val justifications = validationResult["suppression_justifications"] as List<*>
+    assertEquals(1, justifications.size)
+    val entry = justifications.single() as Map<*, *>
+    assertEquals("src/Foo.kt", entry["path"])
+    assertEquals("X", entry["silenced_rule_or_check"])
+  }
+
+  @Test
+  fun `no declared markers leaves the pack ungated`() {
+    val cycle = execute(
+      markers = emptyList(),
+      headContent = "@Suppress(\"X\")\nfun ok() = 1\n",
+      baseContent = "fun ok() = 1\n",
+    )
+    assertIs<ValidationGateCycleTerminalOutcome.Completed>(
+      assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,
+    )
+  }
+
+  @Test
+  fun `BUILD_ONLY still applies the suppression gate`() {
+    val cycle = execute(
+      markers = listOf("@Suppress"),
+      headContent = "@Suppress(\"X\")\nfun ok() = 1\n",
+      baseContent = "fun ok() = 1\n",
+      validationDepth = ValidationDepth.BUILD_ONLY,
+    )
+    val blocked = assertIs<ValidationGateCycleTerminalOutcome.Blocked>(
+      assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,
+    )
+    assertTrue(blocked.reason.contains("@Suppress"))
+  }
+
+  private fun execute(
+    markers: List<String>,
+    headContent: String,
+    baseContent: String?,
+    repairJustifications: List<Map<String, String>> = emptyList(),
+    forceRepairHarvest: Boolean = false,
+    validationDepth: ValidationDepth = ValidationDepth.FULL,
+  ): ValidationGateCycleResult {
+    val declaration = gateDeclaration.copy(suppressionMarkers = markers)
+    val progress = mutableListOf<FeatureTaskRuntimeValidationGateProgress>()
+    val runner = if (forceRepairHarvest) {
+      ScriptedGateRunner(listOf(failed(), passed(), passed(forced = true)))
+    } else {
+      ScriptedGateRunner(listOf(passed(), passed(forced = true)))
+    }
+    val git = object : WorkflowGitOperations by NoopWorkflowGitOperations, SuppressionEvidenceGitOperationsProvider {
+      override val suppressionEvidenceOperations = object : SuppressionEvidenceGitOperations {
+        override fun scopedPathContentsAgainstBase(
+          repoRoot: Path,
+          baseRef: String,
+          headPaths: List<String>,
+        ): WorkflowScopedPathContentsResult = WorkflowScopedPathContentsResult(
+          status = "ok",
+          pairs = headPaths.map { path ->
+            WorkflowScopedPathContent(
+              headPath = path,
+              basePath = path,
+              headContent = headContent,
+              baseContent = baseContent,
+            )
+          },
+        )
+      }
+    }
+    val coordinator = FeatureTaskRuntimeValidationGateCoordinator(
+      resolver = declaredResolver(declaration),
+      runner = runner,
+      progressStore = ValidationGateProgressStore { _, p, _ -> progress += p },
+      suppressionDeltaService = FeatureTaskRuntimeSuppressionDeltaService(git),
+    )
+    return coordinator.execute(
+      ValidationGateCycleRequest(
+        repoRoot = repoRoot,
+        request = minimalRequest(),
+        validationDepth = validationDepth,
+        changedPaths = listOf("src/Foo.kt"),
+        repositoryCheckpoint = "checkpoint",
+        baseRef = "base",
+        agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _ ->
+          val payload = if (repairJustifications.isEmpty()) {
+            """{"contract_version":"0.3","phase_id":"validate","status":"completed","summary":"repair","produced_outputs":{}}"""
+          } else {
+            JsonSupport.mapToJsonString(
+              mapOf(
+                "contract_version" to "0.3",
+                "phase_id" to "validate",
+                "status" to "completed",
+                "summary" to "repair with justification",
+                "produced_outputs" to mapOf(
+                  "validation_result" to mapOf(
+                    "suppression_justifications" to repairJustifications,
+                  ),
+                ),
+              ),
+            )
+          }
+          ValidationGateAgentRepairResult.Completed(
+            FeatureTaskRuntimePhaseOutput(phaseId = "validate", iteration = 1, payload = payload),
+          )
+        },
+      ),
+    )
+  }
+
+  private fun declaredResolver(declaration: ValidationGateDeclaration): ValidationGateResolver =
+    ValidationGateResolver(
+      ScaffoldCatalogService(
+        object : ScaffoldCatalogGateway {
+          override fun approvedCodeReviewAreas() = emptySet<String>()
+          override fun preShellFamilies() = emptySet<String>()
+          override fun shelledFamilies() = emptySet<String>()
+          override fun platformPackPresets() = emptyMap<String, String>()
+          override fun scaffoldPayloadVersion() = "test"
+          override fun discoverPilotedPlatformPacks(packsRoot: Path): List<PilotedPlatformPackProjection> = emptyList()
+          override fun discoverPlatformManifests(packsRoot: Path) = listOf(
+            PlatformManifest(
+              slug = "kotlin",
+              packRoot = repoRoot.resolve("platform-packs/kotlin"),
+              contractVersion = "1.4",
+              routingSignals = RoutingSignals(
+                strong = listOf("src"),
+                tieBreakers = emptyList(),
+                path = listOf("src"),
+              ),
+              declaredCodeReviewAreas = emptyList(),
+              declaredFiles = DeclaredFiles(null, emptyMap()),
+              areaMetadata = emptyMap(),
+              validationGate = declaration,
+            ),
+          )
+          override fun discoverBaselineReviewCatalog(packsRoot: Path) =
+            BaselineReviewCatalog(emptyList(), emptyList())
+        },
+      ),
+    )
+
+  private fun minimalRequest(): FeatureTaskRuntimeRunRequest = FeatureTaskRuntimeRunRequest(
+    issueKey = "SKILL-180",
+    workflowId = "wf-skill-180-suppression",
+    sessionId = "session",
+    runInvariants = FeatureTaskRuntimeRunInvariants(
+      specReference = "spec.md",
+      featureSize = FeatureTaskRuntimeFeatureSize.MEDIUM,
+      acceptanceCriteria = listOf("AC-001"),
+      mandatesAndOverrides = emptyList(),
+    ),
+    invokedAgentId = "claude",
+    repoRoot = repoRoot,
+  )
+
+  private fun validationResultMap(payload: String): Map<String, Any?> {
+    val envelope = JsonSupport.anyToStringAnyMap(
+      JsonSupport.jsonElementToValue(requireNotNull(JsonSupport.parseObjectOrNull(payload))),
+    ).orEmpty()
+    return JsonSupport.anyToStringAnyMap(
+      JsonSupport.anyToStringAnyMap(envelope["produced_outputs"]).orEmpty()["validation_result"],
+    ).orEmpty()
+  }
+
+  private fun passed(forced: Boolean = false): ValidationGateRunResult = ValidationGateRunResult(
+    exitCode = 0,
+    durationMs = 1,
+    outcome = ValidationGateRunOutcome.PASSED,
+    cacheMode = if (forced) ValidationGateCacheMode.FORCED_FULL else ValidationGateCacheMode.CACHE_ELIGIBLE,
+    executedWorkUnits = 1,
+    findings = emptyList(),
+  )
+
+  private fun failed(): ValidationGateRunResult = ValidationGateRunResult(
+    exitCode = 1,
+    durationMs = 1,
+    outcome = ValidationGateRunOutcome.FAILED,
+    cacheMode = ValidationGateCacheMode.CACHE_ELIGIBLE,
+    executedWorkUnits = 1,
+    findings = listOf(ValidationGateFinding("m", "t", "broken", "loc")),
+  )
+
+  private class ScriptedGateRunner(
+    private val results: List<ValidationGateRunResult>,
+  ) : ValidationGateRunner {
+    private val calls = AtomicInteger(0)
+
+    override fun run(request: ValidationGateRunRequest): ValidationGateRunResult {
+      val index = calls.getAndIncrement()
+      return results.getOrElse(index) {
+        error("ScriptedGateRunner exhausted after ${results.size} results; call=$index")
+      }
+    }
+  }
+}

@@ -643,11 +643,19 @@ object FeatureTaskRuntimePhasePromptComposer {
       "          \"repository_checkpoint\": { \"fingerprint\": \"<checkpoint fingerprint>\" },\n" +
       "          \"gate_run_count\": 1,\n" +
       "          \"gate_runs\": [ { \"duration_ms\": 1, \"outcome\": \"passed\",\n" +
-      "            \"cache_mode\": \"forced_full\", \"executed_work_units\": 1 } ]\n" +
+      "            \"cache_mode\": \"forced_full\", \"executed_work_units\": 1 } ],\n" +
+      "          \"suppression_justifications\": [ {\n" +
+      "            \"path\": \"<repo-relative path>\",\n" +
+      "            \"silenced_rule_or_check\": \"<rule or check id>\",\n" +
+      "            \"rationale\": \"<short why a root-cause fix was not possible>\"\n" +
+      "          } ]\n" +
       "        } }\n" +
       "      ```\n" +
       "      gate_run_count and gate_runs are runtime-measured evidence; never invent or overwrite them\n" +
-      "      from agent claims."
+      "      from agent claims. suppression_justifications is optional and required only when the\n" +
+      "      runtime measures a non-zero suppression delta; omit it on clean runs. Each entry needs\n" +
+      "      path, silenced_rule_or_check, and a short rationale — never raw command output,\n" +
+      "      transcripts, or telemetry."
 
   // repair_item_results and reconciled_state are co-residents on the implementation_receipt the audit
   // consumer parses, not a replacement for it. Presenting them under their own "Required

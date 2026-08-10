@@ -696,7 +696,7 @@ private fun seedCompositionPack(repoRoot: Path, slug: String, composition: Strin
     packRoot.resolve("platform.yaml"),
     """
     |platform: "$slug"
-    |contract_version: "1.3"
+    |contract_version: "1.4"
     |display_name: "$slug"
     |
     |routing_signals:

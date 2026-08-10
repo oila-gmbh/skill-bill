@@ -119,6 +119,11 @@ data class ValidationGateDeclaration(
   val cacheBypassingFullGateCommand: List<String>,
   val buildOnlyCommand: List<String>,
   val findings: ValidationGateFindingsLocator,
+  /**
+   * Pack-declared suppression marker literals. Empty means this pack is not
+   * gated for suppressions; a malformed declaration never coerces to empty.
+   */
+  val suppressionMarkers: List<String> = emptyList(),
 ) {
   init {
     require(fullGateCommand.isNotEmpty() && fullGateCommand.all(String::isNotBlank)) {
@@ -132,6 +137,9 @@ data class ValidationGateDeclaration(
     }
     require(buildOnlyCommand.isNotEmpty() && buildOnlyCommand.all(String::isNotBlank)) {
       "validation_gate.build_only_command must be a non-empty argv of non-blank strings."
+    }
+    require(suppressionMarkers.all(String::isNotBlank)) {
+      "validation_gate.suppression_markers entries must be non-blank when present."
     }
   }
 }

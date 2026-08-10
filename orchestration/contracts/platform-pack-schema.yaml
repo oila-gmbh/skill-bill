@@ -85,10 +85,10 @@ properties:
   contract_version:
     type: string
     minLength: 1
-    const: "1.3"
+    const: "1.4"
     x-runtime-anchored: true
     description: >
-      Pinned to `SHELL_CONTRACT_VERSION` (currently 1.3). The parity test
+      Pinned to `SHELL_CONTRACT_VERSION` (currently 1.4). The parity test
       `PlatformPackSchemaContractVersionTest` keeps the two in lockstep.
       Value mismatches at runtime are surfaced as the dedicated
       `ContractVersionMismatchError` (not generic schema error) so callers
@@ -495,6 +495,18 @@ properties:
                 description: >
                   How the runtime derives executed_work_units from pack-
                   declared report signals (never from agent claims).
+      suppression_markers:
+        type: array
+        uniqueItems: true
+        items:
+          type: string
+          minLength: 1
+        description: >
+          Optional literals or substrings the runtime counts as suppression
+          markers when measuring validate-boundary suppression deltas.
+          Absent or empty means the pack is not gated for suppressions.
+          Present but malformed (non-array, blank entries) loud-fails at
+          pack load and never degrades to an empty ungated set.
 
 # ---------------------------------------------------------------------------
 # Coherence checks (enforced in Kotlin)

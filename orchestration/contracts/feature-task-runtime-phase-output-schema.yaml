@@ -78,6 +78,27 @@ $defs:
         type: string
         minLength: 1
         maxLength: 256
+  suppressionJustification:
+    type: object
+    additionalProperties: false
+    required: [path, silenced_rule_or_check, rationale]
+    description: >
+      Optional per-suppression justification on validation_result. Required only when the
+      runtime measures a non-zero suppression delta; clean runs omit the field. Bounded:
+      short rationale only — never raw command output, transcripts, or telemetry.
+    properties:
+      path:
+        type: string
+        minLength: 1
+        maxLength: 512
+      silenced_rule_or_check:
+        type: string
+        minLength: 1
+        maxLength: 256
+      rationale:
+        type: string
+        minLength: 1
+        maxLength: 512
         pattern: "^[A-Za-z_][A-Za-z0-9_$-]*(?:\\.[A-Za-z_][A-Za-z0-9_$-]*)?$"
       file:
         description: "Optional basename used only when the compact class/member reference is ambiguous."

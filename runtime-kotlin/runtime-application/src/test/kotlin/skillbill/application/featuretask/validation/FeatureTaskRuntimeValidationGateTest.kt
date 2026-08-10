@@ -252,6 +252,9 @@ class FeatureTaskRuntimeValidationGateTest {
     resolver,
     runner,
     ValidationGateProgressStore { _, p, _ -> progress += p },
+    FeatureTaskRuntimeSuppressionDeltaService(
+      object : skillbill.ports.workflow.WorkflowGitOperations by skillbill.ports.workflow.NoopWorkflowGitOperations {},
+    ),
   )
 
   private fun declaredResolver(): ValidationGateResolver = ValidationGateResolver(
@@ -313,7 +316,7 @@ class FeatureTaskRuntimeValidationGateTest {
   private fun kotlinPackWithoutGate(): PlatformManifest = PlatformManifest(
     slug = "kotlin",
     packRoot = repoRoot.resolve("platform-packs/kotlin"),
-    contractVersion = "1.3",
+    contractVersion = "1.4",
     routingSignals = RoutingSignals(
       strong = listOf("runtime-kotlin"),
       tieBreakers = emptyList(),
