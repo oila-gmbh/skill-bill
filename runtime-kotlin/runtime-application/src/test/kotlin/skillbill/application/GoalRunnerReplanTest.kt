@@ -209,14 +209,14 @@ class GoalRunnerReplanTest {
   }
 
   @Test
-  fun `include-shared-preplan cascades every sibling plan and discards shared`() {
+  fun `include-shared-preplan preserves complete-with-commit plans and cascades only non-terminals`() {
     val original = manifest(subtaskCount = 3).copy(
       status = "in_progress",
       currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 3, action = "start"),
       subtasks = manifest(subtaskCount = 3).subtasks.map { subtask ->
         when (subtask.id) {
           1 -> subtask.copy(status = "complete", commitSha = "sha-1", workflowId = "wfl-1")
-          2 -> subtask.copy(status = "complete", commitSha = "sha-2", workflowId = "wfl-2")
+          2 -> subtask.copy(status = "pending")
           else -> subtask.copy(status = "pending")
         }
       },
@@ -241,19 +241,55 @@ class GoalRunnerReplanTest {
 
     assertTrue(result.discardedPlan)
     assertTrue(result.discardedSharedPreplan)
-    assertEquals(listOf(1, 2), result.cascadedPlanSubtaskIds)
+    assertEquals(listOf(2), result.cascadedPlanSubtaskIds)
     assertEquals(listOf(1, 2, 3), result.before.plannedSubtaskIds)
-    assertEquals(emptyList(), result.after.plannedSubtaskIds)
+    assertEquals(listOf(1), result.after.plannedSubtaskIds)
     assertTrue(result.before.sharedPreplanPrepared)
     assertTrue(!result.after.sharedPreplanPrepared)
-    assertEquals(emptySet(), store.plannedSubtaskIds.toSet())
+    assertEquals(setOf(1), store.plannedSubtaskIds.toSet())
     assertTrue(!store.sharedPreplanPrepared)
     assertEquals(true, store.lastIncludeSharedPreplan)
     assertEquals(original.subtasks, store.manifest.subtasks)
+    assertEquals("complete", store.manifest.subtasks[0].status)
+    assertEquals("sha-1", store.manifest.subtasks[0].commitSha)
+    assertEquals("wfl-1", store.manifest.subtasks[0].workflowId)
     assertEquals(
       mapOf(1 to GoalRunnerOutOfBandAcceptance(1, "sha-1", "landed outside", "2026-07-27T11:00:00Z")),
       store.acceptances,
     )
+  }
+
+  @Test
+  fun `include-shared-preplan WE-4719 shape retains every complete-with-commit sibling`() {
+    val original = manifest(subtaskCount = 3).copy(
+      status = "in_progress",
+      currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 3, action = "start"),
+      subtasks = manifest(subtaskCount = 3).subtasks.map { subtask ->
+        when (subtask.id) {
+          1 -> subtask.copy(status = "complete", commitSha = "sha-1", workflowId = "wfl-1")
+          2 -> subtask.copy(status = "complete", commitSha = "sha-2", workflowId = "wfl-2")
+          else -> subtask.copy(status = "pending")
+        }
+      },
+    )
+    val store = InMemoryGoalManifestStore(original).apply {
+      plannedSubtaskIds = mutableSetOf(1, 2, 3)
+      sharedPreplanPrepared = true
+      seedIdleLease()
+    }
+    val service = GoalRunnerStatusService(store, RecordingOutcomeStore(), goalTestPhaseRecorder(), clock = idleClock)
+
+    val result = requireNotNull(
+      service.replan(
+        GoalRunnerReplanRequest(issueKey = "SKILL-56", subtaskId = 3, includeSharedPreplan = true),
+      ),
+    )
+
+    assertEquals(emptyList(), result.cascadedPlanSubtaskIds)
+    assertEquals(listOf(1, 2), result.after.plannedSubtaskIds)
+    assertTrue(result.discardedSharedPreplan)
+    assertEquals(setOf(1, 2), store.plannedSubtaskIds.toSet())
+    assertEquals(original.subtasks, store.manifest.subtasks)
   }
 
   @Test

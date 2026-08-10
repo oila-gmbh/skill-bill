@@ -9,7 +9,12 @@ import skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint
 
 private object EmptyNormalizedGoalPlanningPreparationRepository : NormalizedGoalPlanningPreparationRepository {
   override fun checkpointSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint) = Unit
-  override fun replaceSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint, expectedPayloadSha256: String) = Unit
+  override fun replaceSharedPreplan(
+    checkpoint: SharedGoalPreplanCheckpoint,
+    expectedPayloadSha256: String,
+    cascadePlanSubtaskIds: List<Int>,
+  ) = Unit
+  override fun invalidateSharedPreplan(identity: GoalPlanningIdentity, expectedPayloadSha256: String): Int = 0
   override fun findSharedPreplan(expectedIdentity: GoalPlanningIdentity): SharedGoalPreplanCheckpoint? = null
   override fun checkpointSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint) = Unit
   override fun replaceSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint) = Unit

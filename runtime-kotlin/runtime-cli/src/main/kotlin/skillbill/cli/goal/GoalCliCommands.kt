@@ -643,7 +643,7 @@ class GoalReplanCommand(
 ) : DocumentedCliCommand(
   "replan",
   "Discard one subtask plan while preserving sibling plans, shared preplan, and runtime state; " +
-    "pass --include-shared-preplan to also discard the shared preplan and every sibling plan.",
+    "pass --include-shared-preplan to also discard the shared preplan and cascade non-terminal sibling plans.",
 ) {
   private val issueKey by argument(help = "Parent issue key for the decomposed goal.")
   private val subtaskId by option(
@@ -652,8 +652,8 @@ class GoalReplanCommand(
   ).int().required()
   private val includeSharedPreplan by option(
     "--include-shared-preplan",
-    help = "Also discard the goal-wide shared preplan and every sibling subtask plan " +
-      "(planning rows only; runtime state is untouched).",
+    help = "Also discard the goal-wide shared preplan and cascade sibling plans that are not " +
+      "complete with a commit_sha (planning rows only; runtime state and terminal plan rows stay).",
   ).flag(default = false)
   private val repoRoot by option("--repo-root", help = "Repository root for the goal.")
 

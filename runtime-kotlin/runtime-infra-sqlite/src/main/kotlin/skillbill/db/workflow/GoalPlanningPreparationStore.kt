@@ -98,10 +98,14 @@ class GoalPlanningPreparationStore(
   }
 
   private fun readSharedPreplanPrepared(parentGoalWorkflowId: String): Boolean = connection.prepareStatement(
-    "SELECT preparation_status FROM goal_shared_preplans WHERE parent_goal_workflow_id = ?",
+    "SELECT preparation_status, preplan_payload_json FROM goal_shared_preplans WHERE parent_goal_workflow_id = ?",
   ).use { statement ->
     statement.setString(1, parentGoalWorkflowId)
-    statement.executeQuery().use { result -> result.next() && result.getString(1) == "prepared" }
+    statement.executeQuery().use { result ->
+      result.next() &&
+        result.getString(1) == "prepared" &&
+        result.getString(2) != INVALIDATED_SHARED_PREPLAN_PAYLOAD
+    }
   }
 
   private fun preparedPlanIds(parentGoalWorkflowId: String): List<Int> = connection.prepareStatement(
@@ -191,17 +195,18 @@ class GoalPlanningPreparationStore(
     }
   }
 
-  override fun replaceSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint, expectedPayloadSha256: String) {
+  override fun replaceSharedPreplan(
+    checkpoint: SharedGoalPreplanCheckpoint,
+    expectedPayloadSha256: String,
+    cascadePlanSubtaskIds: List<Int>,
+  ) {
     requireNormalizedSharedPreplan(checkpoint)
     require(expectedPayloadSha256.isNotBlank()) { "expectedPayloadSha256 is required." }
     translateSqlFailure(checkpoint.identity.parentGoalWorkflowId, 0) {
       connection.inImmediateTransaction {
-        // Every stored subtask plan is derived from these preplan bytes and pins their provenance, so the
-        // replacement must discard them in the same transaction. Leaving them would strand rows whose
-        // provenance can never again match the governing preplan, which recoveryProgress reports as an
-        // unrecoverable conflict on every resume with no in-band repair. Discarded plans are regenerated
-        // by the sweep under the new provenance. Overwrite rather than DELETE the shared row itself:
-        // goal_subtask_plans cascades on it, and the cascade would fire before the replacement lands.
+        // Overwrite rather than DELETE the shared row itself: goal_subtask_plans cascades on it, and
+        // the cascade would fire before the replacement lands. Explicitly delete only the caller-
+        // filtered cascade set, then restamp survivors so recoveryProgress provenance equality holds.
         val updated = prepareStatement(
           """UPDATE goal_shared_preplans SET normalized_issue_key = ?, repository_identity = ?,
           preparation_status = ?, contract_version = ?, parent_spec_hash = ?, decomposition_manifest_hash = ?,
@@ -229,7 +234,14 @@ class GoalPlanningPreparationStore(
             "shared preplan changed after it was validated for regeneration",
           )
         }
-        connection.cascadeSiblingPlanRows(checkpoint.identity.parentGoalWorkflowId)
+        connection.cascadeSiblingPlanRows(
+          checkpoint.identity.parentGoalWorkflowId,
+          cascadePlanSubtaskIds,
+        )
+        connection.restampSubtaskPlanProvenance(
+          checkpoint.identity.parentGoalWorkflowId,
+          checkpoint.provenance,
+        )
       }
     }
   }
@@ -270,32 +282,19 @@ class GoalPlanningPreparationStore(
             "shared preplan changed after it was validated for provenance advance",
           )
         }
-        prepareStatement(
-          """UPDATE goal_subtask_plans SET parent_spec_hash = ?, decomposition_manifest_hash = ?,
-          planning_contract_id = ?, planning_contract_version = ?, phase_output_contract_id = ?,
-          phase_output_contract_version = ?
-          WHERE parent_goal_workflow_id = ?""",
-        ).use { s ->
-          listOf(
-            provenance.parentSpecHash,
-            provenance.decompositionManifestHash,
-            provenance.planningContractId,
-            provenance.planningContractVersion,
-            provenance.phaseOutputContractId,
-            provenance.phaseOutputContractVersion,
-            identity.parentGoalWorkflowId,
-          ).forEachIndexed { i, value -> s.setString(i + 1, value) }
-          s.executeUpdate()
-        }
+        connection.restampSubtaskPlanProvenance(identity.parentGoalWorkflowId, provenance)
       }
     }
   }
 
-  override fun cascadeSiblingPlansAfterSharedPreplanRefresh(parentGoalWorkflowId: String): List<Int> {
+  override fun cascadeSiblingPlansAfterSharedPreplanRefresh(
+    parentGoalWorkflowId: String,
+    cascadePlanSubtaskIds: List<Int>,
+  ): List<Int> {
     // No nested BEGIN: may participate in an outer immediate transaction (replaceSharedPreplan).
     requireParentGoalWorkflowId(parentGoalWorkflowId)
     return translateSqlFailure(parentGoalWorkflowId, 0) {
-      connection.cascadeSiblingPlanRows(parentGoalWorkflowId)
+      connection.cascadeSiblingPlanRows(parentGoalWorkflowId, cascadePlanSubtaskIds)
     }
   }
 
@@ -406,15 +405,49 @@ class GoalPlanningPreparationStore(
     }
   }
 
+  override fun invalidateSharedPreplan(identity: GoalPlanningIdentity, expectedPayloadSha256: String): Int {
+    // Soft-invalidate keeps the parent row so retained terminal plan rows survive FK ON DELETE CASCADE.
+    require(expectedPayloadSha256.isNotBlank()) { "expectedPayloadSha256 is required." }
+    normalizedIdentityFailure(identity)?.let { (field, reason) ->
+      throw InvalidGoalPlanningPreparationSchemaError(identity.parentGoalWorkflowId, field, reason)
+    }
+    return translateSqlFailure(identity.parentGoalWorkflowId, 0) {
+      val updated = connection.prepareStatement(
+        """UPDATE goal_shared_preplans SET payload_sha256 = ?, preplan_payload_json = ?, repair_evidence_json = NULL
+        WHERE parent_goal_workflow_id = ? AND payload_sha256 = ?""",
+      ).use { statement ->
+        statement.setString(1, INVALIDATED_SHARED_PREPLAN_PAYLOAD_SHA256)
+        statement.setString(2, INVALIDATED_SHARED_PREPLAN_PAYLOAD)
+        statement.setString(3, identity.parentGoalWorkflowId)
+        statement.setString(4, expectedPayloadSha256)
+        statement.executeUpdate()
+      }
+      if (updated == 0) {
+        throw IncompatibleGoalPlanningPreparationRecoveryError(
+          identity.parentGoalWorkflowId,
+          0,
+          "shared preplan changed after it was observed for discard",
+        )
+      }
+      updated
+    }
+  }
+
   override fun sharedPreplanPayloadSha256(parentGoalWorkflowId: String): String? {
     requireParentGoalWorkflowId(parentGoalWorkflowId)
     return translateSqlFailure(parentGoalWorkflowId, 0) {
       connection.prepareStatement(
-        "SELECT payload_sha256 FROM goal_shared_preplans WHERE parent_goal_workflow_id = ?",
+        "SELECT payload_sha256, preplan_payload_json FROM goal_shared_preplans WHERE parent_goal_workflow_id = ?",
       ).use { statement ->
         statement.setString(1, parentGoalWorkflowId)
         statement.executeQuery().use { result ->
-          if (!result.next()) null else result.getString(1)
+          if (!result.next()) {
+            null
+          } else if (result.getString(2) == INVALIDATED_SHARED_PREPLAN_PAYLOAD) {
+            null
+          } else {
+            result.getString(1)
+          }
         }
       }
     }
@@ -693,22 +726,14 @@ private fun Connection.deletePreparedByGoal(parentGoalWorkflowId: String): Int =
 }
 
 /**
- * Shared cascade seam for automatic shared-preplan refresh (ST3 will narrow survivors).
- * Until then, discards every sibling plan row for the parent.
+ * Shared cascade seam: deletes exactly [cascadePlanSubtaskIds] for the parent.
+ * Callers apply terminal-with-commit exclusion before passing ids (SKILL-181).
  */
-internal fun Connection.cascadeSiblingPlanRows(parentGoalWorkflowId: String): List<Int> {
-  val ids = prepareStatement(
-    "SELECT subtask_id FROM goal_subtask_plans WHERE parent_goal_workflow_id = ? " +
-      "ORDER BY manifest_order, subtask_id",
-  ).use { statement ->
-    statement.setString(1, parentGoalWorkflowId)
-    statement.executeQuery().use { result ->
-      buildList {
-        while (result.next()) add(result.getInt(1))
-      }
-    }
-  }
-  ids.forEach { subtaskId ->
+internal fun Connection.cascadeSiblingPlanRows(
+  parentGoalWorkflowId: String,
+  cascadePlanSubtaskIds: List<Int>,
+): List<Int> {
+  cascadePlanSubtaskIds.forEach { subtaskId ->
     prepareStatement(
       "DELETE FROM goal_subtask_plans WHERE parent_goal_workflow_id = ? AND subtask_id = ?",
     ).use { statement ->
@@ -717,8 +742,39 @@ internal fun Connection.cascadeSiblingPlanRows(parentGoalWorkflowId: String): Li
       statement.executeUpdate()
     }
   }
-  return ids
+  return cascadePlanSubtaskIds
 }
+
+internal fun Connection.restampSubtaskPlanProvenance(
+  parentGoalWorkflowId: String,
+  provenance: GoalPlanningContractProvenance,
+) {
+  prepareStatement(
+    """UPDATE goal_subtask_plans SET parent_spec_hash = ?, decomposition_manifest_hash = ?,
+    planning_contract_id = ?, planning_contract_version = ?, phase_output_contract_id = ?,
+    phase_output_contract_version = ?
+    WHERE parent_goal_workflow_id = ?""",
+  ).use { s ->
+    listOf(
+      provenance.parentSpecHash,
+      provenance.decompositionManifestHash,
+      provenance.planningContractId,
+      provenance.planningContractVersion,
+      provenance.phaseOutputContractId,
+      provenance.phaseOutputContractVersion,
+      parentGoalWorkflowId,
+    ).forEachIndexed { i, value -> s.setString(i + 1, value) }
+    s.executeUpdate()
+  }
+}
+
+/** Opaque non-JSON marker: fails the projection gate and reports as not prepared. */
+internal const val INVALIDATED_SHARED_PREPLAN_PAYLOAD = "shared-preplan-discarded"
+
+internal val INVALIDATED_SHARED_PREPLAN_PAYLOAD_SHA256: String =
+  java.security.MessageDigest.getInstance("SHA-256")
+    .digest(INVALIDATED_SHARED_PREPLAN_PAYLOAD.toByteArray(Charsets.UTF_8))
+    .joinToString("") { byte -> "%02x".format(byte) }
 
 private fun Connection.upsertPreparedRow(record: GoalPlanningPreparationRecord): Boolean = prepareStatement(
   """

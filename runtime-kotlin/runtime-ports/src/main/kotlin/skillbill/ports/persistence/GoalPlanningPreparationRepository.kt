@@ -34,9 +34,14 @@ interface NormalizedGoalPlanningPreparationRepository {
   /**
    * Atomically replaces the exact shared preplan observed by the caller. A concurrent writer changing the
    * stored payload after the caller's gate decision must fail the compare-and-replace instead of being deleted.
+   * Deletes only [cascadePlanSubtaskIds] plan rows, then restamps every remaining plan row's provenance to
+   * the replacement shared provenance in the same transaction (SKILL-181 terminal survivors).
    */
-  fun replaceSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint, expectedPayloadSha256: String): Unit =
-    error("Shared goal preplan replacement is not implemented by this repository.")
+  fun replaceSharedPreplan(
+    checkpoint: SharedGoalPreplanCheckpoint,
+    expectedPayloadSha256: String,
+    cascadePlanSubtaskIds: List<Int> = emptyList(),
+  ): Unit = error("Shared goal preplan replacement is not implemented by this repository.")
 
   /**
    * Provenance-only shared-preplan refresh: UPDATEs shared provenance to [provenance] while keeping
@@ -50,12 +55,14 @@ interface NormalizedGoalPlanningPreparationRepository {
   ): Unit = error("Shared goal preplan provenance advance is not implemented by this repository.")
 
   /**
-   * Single cascade seam for automatic shared-preplan refresh when the heading set changes (and the ST3
-   * ownership hook). Until terminal exclusion lands, discards every sibling plan row for the parent.
-   * Returns the discarded subtask ids in prepared order.
+   * Single cascade seam for automatic shared-preplan refresh when the heading set changes.
+   * Deletes exactly [cascadePlanSubtaskIds] (caller applies terminal-with-commit exclusion).
+   * Returns the discarded subtask ids in the order supplied.
    */
-  fun cascadeSiblingPlansAfterSharedPreplanRefresh(parentGoalWorkflowId: String): List<Int> =
-    error("Shared-preplan refresh plan cascade is not implemented by this repository.")
+  fun cascadeSiblingPlansAfterSharedPreplanRefresh(
+    parentGoalWorkflowId: String,
+    cascadePlanSubtaskIds: List<Int>,
+  ): List<Int> = error("Shared-preplan refresh plan cascade is not implemented by this repository.")
 
   fun findSharedPreplan(expectedIdentity: GoalPlanningIdentity): SharedGoalPreplanCheckpoint?
 
@@ -81,10 +88,19 @@ interface NormalizedGoalPlanningPreparationRepository {
   /**
    * Digest-conditional shared-preplan delete. Removes the shared row only when [expectedPayloadSha256]
    * still matches the stored payload; refuses with zero mutation on mismatch. Subtask plan rows for the
-   * same parent cascade via the FK. Does not replace or reuse [replaceSharedPreplan].
+   * same parent cascade via the FK — callers that must retain terminal plan rows must delete eligible
+   * plans first and call [invalidateSharedPreplan] instead when survivors remain.
    */
   fun deleteSharedPreplan(identity: GoalPlanningIdentity, expectedPayloadSha256: String): Int =
     error("Shared goal preplan deletion is not implemented by this repository.")
+
+  /**
+   * Digest-conditional soft-invalidate of the shared preplan. Keeps the parent row so retained
+   * `goal_subtask_plans` survivors are not wiped by FK ON DELETE CASCADE. The stored payload becomes
+   * a non-prepared marker so [hasPreparedSharedPreplan] is false and relaunch regenerates via replace.
+   */
+  fun invalidateSharedPreplan(identity: GoalPlanningIdentity, expectedPayloadSha256: String): Int =
+    error("Shared goal preplan invalidation is not implemented by this repository.")
 
   fun listPreparedPlanSubtaskIds(parentGoalWorkflowId: String): List<Int> = emptyList()
 

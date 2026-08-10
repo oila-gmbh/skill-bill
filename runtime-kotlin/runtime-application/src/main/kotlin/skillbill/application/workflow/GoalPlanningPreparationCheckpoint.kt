@@ -66,13 +66,17 @@ class GoalPlanningPreparationCheckpoint(
    * Checkpoints a regenerated shared preplan, overwriting a stored record the projection gate rejects so the
    * regeneration actually lands. A stored record that still satisfies the gate keeps its immutable guard.
    */
-  fun recheckpointSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint, dbOverride: String? = null) {
+  fun recheckpointSharedPreplan(
+    checkpoint: SharedGoalPreplanCheckpoint,
+    dbOverride: String? = null,
+    cascadePlanSubtaskIds: List<Int> = emptyList(),
+  ) {
     val canonical = gate.canonicalizeSharedPreplan(checkpoint)
     gate.validateSharedPreplan(canonical)
     val stored = database.read(dbOverride) { it.goalPlanningPreparations.findSharedPreplan(canonical.identity) }
     if (stored != null && gate.sharedPreplanIsRegenerable(stored)) {
       database.selfManagedWrite(dbOverride) {
-        it.goalPlanningPreparations.replaceSharedPreplan(canonical, stored.payloadSha256)
+        it.goalPlanningPreparations.replaceSharedPreplan(canonical, stored.payloadSha256, cascadePlanSubtaskIds)
       }
     } else {
       database.selfManagedWrite(dbOverride) { it.goalPlanningPreparations.checkpointSharedPreplan(canonical) }
@@ -95,18 +99,19 @@ class GoalPlanningPreparationCheckpoint(
   }
 
   /**
-   * Full-payload refresh: UPDATE the shared row to [checkpoint] then cascade sibling plans through the
-   * shared helper in the same transaction (via [NormalizedGoalPlanningPreparationRepository.replaceSharedPreplan]).
+   * Full-payload refresh: UPDATE the shared row to [checkpoint], delete only [cascadePlanSubtaskIds],
+   * and restamp retained plan provenance in the same transaction.
    */
   fun replaceSharedPreplanForRefresh(
     checkpoint: SharedGoalPreplanCheckpoint,
     expectedPayloadSha256: String,
+    cascadePlanSubtaskIds: List<Int>,
     dbOverride: String? = null,
   ): SharedGoalPreplanCheckpoint {
     val canonical = gate.canonicalizeSharedPreplan(checkpoint)
     gate.validateSharedPreplan(canonical)
     database.selfManagedWrite(dbOverride) {
-      it.goalPlanningPreparations.replaceSharedPreplan(canonical, expectedPayloadSha256)
+      it.goalPlanningPreparations.replaceSharedPreplan(canonical, expectedPayloadSha256, cascadePlanSubtaskIds)
     }
     return canonical
   }

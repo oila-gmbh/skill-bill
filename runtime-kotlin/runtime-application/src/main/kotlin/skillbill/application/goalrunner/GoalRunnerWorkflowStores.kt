@@ -395,25 +395,34 @@ class WorkflowGoalRunnerManifestStore(
       val preparations = unitOfWork.goalPlanningPreparations
       val plannedBefore = preparations.listPreparedPlanSubtaskIds(state.parentWorkflowId)
       val sharedBefore = preparations.hasPreparedSharedPreplan(state.parentWorkflowId)
-      val namedExisted = subtaskId in plannedBefore
       val cascadedIds: List<Int>
       val deleted: Int
       if (options.includeSharedPreplan) {
-        // Cascade every stored sibling plan row (terminal and non-terminal). recoveryProgress
-        // re-validates all ordered plans against expectedProvenance with no status filter;
-        // leaving any survivor would provenance-mismatch against a regenerated shared preplan.
-        cascadedIds = plannedBefore.filter { it != subtaskId }
+        // Cascade only non-terminal-with-commit siblings. Terminal survivors stay so WE-4719-shaped
+        // goals keep complete planning provenance; FK ON DELETE CASCADE must not wipe them.
+        cascadedIds = cascadeEligiblePlanSubtaskIds(
+          plannedIds = plannedBefore.filter { it != subtaskId },
+          subtasks = state.manifest.subtasks,
+        )
+        val retainedIds = plannedBefore.filter { it != subtaskId && it !in cascadedIds }
         val expectedDigest = options.expectedSharedPayloadSha256
         if (expectedDigest != null) {
           val identity = requireNotNull(options.planningIdentity) {
             "planningIdentity is required when discarding a shared preplan by digest."
           }
-          preparations.deleteSharedPreplan(identity, expectedDigest)
-          // FK ON DELETE CASCADE removes every goal_subtask_plans row for this parent.
+          // Digest CAS first so a mismatch refuses with zero mutation.
+          if (retainedIds.isEmpty()) {
+            preparations.deleteSharedPreplan(identity, expectedDigest)
+            deleted = if (subtaskId in plannedBefore) 1 else 0
+          } else {
+            preparations.invalidateSharedPreplan(identity, expectedDigest)
+            cascadedIds.forEach { id -> preparations.deleteSubtaskPlan(state.parentWorkflowId, id) }
+            deleted = preparations.deleteSubtaskPlan(state.parentWorkflowId, subtaskId)
+          }
         } else {
-          preparations.cascadeSiblingPlansAfterSharedPreplanRefresh(state.parentWorkflowId)
+          cascadedIds.forEach { id -> preparations.deleteSubtaskPlan(state.parentWorkflowId, id) }
+          deleted = preparations.deleteSubtaskPlan(state.parentWorkflowId, subtaskId)
         }
-        deleted = if (namedExisted) 1 else 0
       } else {
         cascadedIds = emptyList()
         deleted = preparations.deleteSubtaskPlan(state.parentWorkflowId, subtaskId)
