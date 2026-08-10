@@ -2589,7 +2589,9 @@ private fun derivedTerminalOutcomeFor(
 
 // SKILL-176 corroboration sources per non-complete status:
 // - blocked: derived blocked status + blocked_reason (operator reopen clears durable blocked state, so
-//   a reopened child's stale artifact falls through)
+//   a reopened child's stale artifact falls through). blockedReasonFrom must read the same durable
+//   reason sources the runtime writes — top-level (markBlocked) and goal_continuation_outcome
+//   (persistGoalContinuationOutcome) — or a still-blocked child fails corroboration and is displaced.
 // - failed: derived failed status from workflow/step state
 // - paused: durable workflow_status == "paused"
 // - timeout: staleness impossible — no independent durable derivation refutes a stored timeout
@@ -2753,6 +2755,11 @@ private fun blockedReasonFrom(
   steps: List<WorkflowStepState>,
   status: GoalRunnerTerminalStatus,
 ): String? = artifacts["blocked_reason"]?.toString()?.takeIf(String::isNotBlank)
+  // Normal runtime blocks persist the reason only under goal_continuation_outcome (via
+  // FeatureTaskRuntimeRunner.persistGoalContinuationOutcome); top-level blocked_reason is the
+  // reconcile markBlocked path. Reading both keeps still-blocked children corroborating (AC-003).
+  ?: (artifacts["goal_continuation_outcome"] as? Map<*, *>)
+    ?.get("blocked_reason")?.toString()?.takeIf(String::isNotBlank)
   ?: steps.firstOrNull { it.status in setOf("failed", "blocked") }
     ?.let { step -> "Workflow step '${step.stepId}' is ${step.status}." }
   ?: "Workflow reached a terminal state without a goal-continuation commit SHA."

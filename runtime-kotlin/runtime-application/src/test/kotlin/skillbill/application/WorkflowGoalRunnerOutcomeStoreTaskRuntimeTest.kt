@@ -393,6 +393,49 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
   }
 
   @Test
+  fun `standing blocked outcome with only goal_continuation_outcome reason stays authoritative`() {
+    // Bug this catches (F-001): blockedReasonFrom read only top-level artifacts["blocked_reason"],
+    // so the normal persistGoalContinuationOutcome shape (reason nested only) failed corroboration
+    // and displaced a still-blocked child on transactional resume (AC-003).
+    val reason = "Review requested changes that remain unresolved."
+    val workflows = InMemoryWorkflowStates()
+    workflows.saveFeatureTaskRuntimeWorkflow(
+      blockedContinuationRecord(
+        workflowId = "wftr-standing-nested-reason",
+        workflowStatus = "blocked",
+        stepStatus = "blocked",
+        blockedReasonArtifact = null,
+        storedBlockedReason = reason,
+      ),
+    )
+    val store = WorkflowGoalRunnerOutcomeStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    )
+
+    val readOnly = requireNotNull(store.terminalOutcome("wftr-standing-nested-reason", "SKILL-176.4", 4))
+    assertEquals(GoalRunnerTerminalStatus.BLOCKED, readOnly.status)
+    assertEquals(reason, readOnly.blockedReason)
+
+    val recovered = requireNotNull(
+      store.recoverAndPersistTerminalOutcome(
+        workflowId = "wftr-standing-nested-reason",
+        issueKey = "SKILL-176.4",
+        subtaskId = 4,
+        repoRoot = Path.of("."),
+        dbPathOverride = null,
+      ),
+    )
+    assertEquals(GoalRunnerTerminalStatus.BLOCKED, recovered.status)
+    assertEquals(reason, recovered.blockedReason)
+    val artifacts = decodeArtifacts(
+      requireNotNull(workflows.getFeatureTaskRuntimeWorkflow("wftr-standing-nested-reason")).artifactsJson,
+    )
+    assertNull(artifacts["goal_continuation_outcome_displacement"])
+    assertEquals(reason, (artifacts["goal_continuation_outcome"] as Map<*, *>)["blocked_reason"])
+  }
+
+  @Test
   fun `stored blocked outcome whose cause is gone falls through instead of replaying the stale reason`() {
     // Bug this catches: terminalOutcomeFor short-circuited on any stored blocked outcome, so a resume
     // replayed remediation from a deleted code path (SKILL-15 wedge). The seeded reason string is
