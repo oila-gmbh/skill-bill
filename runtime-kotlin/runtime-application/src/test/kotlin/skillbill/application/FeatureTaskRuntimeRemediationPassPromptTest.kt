@@ -212,6 +212,18 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
     assertFalse(prompt.contains("Major, Minor, and Nit findings, specialist narratives"))
   }
 
+  @Test
+  fun `review ceremony orders every severity into produced_outputs findings without Blocker-only filter`() {
+    val prompt = compose(passNumber = 1, resolvedTier = CodeReviewExecutionMode.INLINE)
+
+    assertContains(prompt, "Blocker, Major, Minor, and Nit")
+    assertContains(prompt, "Do not severity-filter the findings array")
+    assertFalse(
+      prompt.contains("only unresolved actionable Blocker findings"),
+      "PHASE_REVIEW must not order a Blocker-only findings array; AC-005 needs the full producer set.",
+    )
+  }
+
   private fun compose(
     passNumber: Int,
     resolvedTier: CodeReviewExecutionMode,

@@ -1,5 +1,14 @@
 # featuretask runtime boundary history
 
+## [2026-08-10] SKILL-178 subtask 2 — Remediation-delta finding union
+Areas: runtime-application/featuretask, runtime-domain/workflow/taskruntime
+- Reserved remediation-pass scope is all findings addressed in that round unioned with `diff(pre-fix -> post-fix)`; pass-one immutable-base and baseline-untracked framing stay suppressed so the two scope statements cannot contradict
+- Review-execution-mode text keeps remediation unbounded, now until an unresolved Blocker or Major survives; `context:feature-remediation` stays inline-only
+- `implement_fix` briefing carries every preceding-pass finding (Blocker through Nit) with no severity re-filter; handoff projection preserves each finding's severity instead of forcing blocker
+- Pattern followed: prompt, composer, and fix-briefing surfaces stay wording-aligned on the widened finding half while the tree-delta half and anti-rediscovery prohibitions stay verbatim
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-08-10] SKILL-178 subtask 1 — Domain severity gates Blocker + Major
 Areas: runtime-domain/workflow/taskruntime/model, runtime-application/featuretask/validation, runtime-domain/config/model, runtime-infra-fs, .skill-bill
 - `requiresRemediation` and `blocksAdvance` both gate on Blocker or Major; Minor and Nit stay ledger-only and never reopen `implement_fix` or hard-block advance
