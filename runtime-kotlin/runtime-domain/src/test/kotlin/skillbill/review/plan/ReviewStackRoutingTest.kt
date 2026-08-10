@@ -233,7 +233,7 @@ class ReviewStackRoutingTest {
   ) = PlatformManifest(
     slug = slug,
     packRoot = Path.of("platform-packs", slug),
-    contractVersion = "1.2",
+    contractVersion = "1.3",
     routingSignals = RoutingSignals(strong = path, tieBreakers = emptyList(), path = path, content = content),
     declaredCodeReviewAreas = emptyList(),
     declaredFiles = DeclaredFiles(

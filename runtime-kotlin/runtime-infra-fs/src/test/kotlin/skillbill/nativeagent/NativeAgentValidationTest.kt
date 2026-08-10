@@ -169,7 +169,7 @@ class NativeAgentValidationTest {
     val manifest = repo.resolve("platform-packs/fixture/platform.yaml")
     Files.writeString(
       manifest,
-      Files.readString(manifest).replace("contract_version: \"1.2\"", "contract_version: \"9.99\""),
+      Files.readString(manifest).replace("contract_version: \"1.3\"", "contract_version: \"9.99\""),
     )
 
     val report = validateRepoNativeAgents(repo)
@@ -177,7 +177,7 @@ class NativeAgentValidationTest {
     assertFalse(report.passed)
     assertTrue(
       report.issues.any { issue ->
-        "declares contract_version '9.99'" in issue && "shell expects '1.2'" in issue
+        "declares contract_version '9.99'" in issue && "shell expects '1.3'" in issue
       },
       "Expected contract version mismatch issue, got:\n${report.issues.joinToString("\n")}",
     )
@@ -552,7 +552,7 @@ class NativeAgentValidationTest {
       packRoot.resolve("platform.yaml"),
       """
       platform: $platformSlug
-      contract_version: "1.2"
+      contract_version: "1.3"
       routing_signals:
         strong:
           - ".fixture"
@@ -644,7 +644,7 @@ class NativeAgentValidationTest {
 
   private fun kmpPointerSidecarManifest(pointersBlock: String): String = listOf(
     "platform: kmp",
-    "contract_version: \"1.2\"",
+    "contract_version: \"1.3\"",
     "routing_signals:",
     "  strong:",
     "    - \"commonMain\"",

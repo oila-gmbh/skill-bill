@@ -1,7 +1,7 @@
 package skillbill.application.featuretask
 
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
-import skillbill.application.featuretask.validation.ValidationFindingSetProjection
+import skillbill.application.featuretask.validation.model.ValidationFindingSetProjection
 import skillbill.application.model.FeatureTaskRuntimeImplementationContinuation
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
@@ -49,15 +49,17 @@ object FeatureTaskRuntimePhasePromptComposer {
     implementationContinuation: FeatureTaskRuntimeImplementationContinuation? = null,
     validationDepth: ValidationDepth = ValidationDepth.DEFAULT,
     validationGateFindings: ValidationFindingSetProjection? = null,
+    agentRunValidateFallback: Boolean = false,
   ): String {
     require(issueKey.isNotBlank()) { "issueKey is required to compose a phase prompt." }
     return listOf(
-      header(issueKey, briefing.phaseId, validationDepth),
+      header(issueKey, briefing.phaseId, validationDepth, agentRunValidateFallback),
       ceremonyDirective(briefing, reviewPassNumber),
       mutatingPhaseIdempotencyDirective(briefing.phaseId),
       minimalismDisciplineDirective(briefing.phaseId),
       goalContinuationDirective(briefing.phaseId, suppressDecomposition),
-      goalContinuationValidateDepthDirective(briefing.phaseId, validationDepth),
+      goalContinuationValidateDepthDirective(briefing.phaseId, validationDepth, agentRunValidateFallback),
+      absentValidationGateDegradationDirective(briefing.phaseId, agentRunValidateFallback),
       validationGateFindingsDirective(briefing.phaseId, validationGateFindings),
       reviewExecutionDirective(
         briefing.phaseId,
@@ -255,9 +257,14 @@ object FeatureTaskRuntimePhasePromptComposer {
       .filterNot { it in FeatureTaskRuntimePhaseWorkflowDefinition.transitions.loopOnlyPhaseIds }
       .joinToString(" -> ")
 
-  private fun header(issueKey: String, phaseId: String, validationDepth: ValidationDepth): String {
+  private fun header(
+    issueKey: String,
+    phaseId: String,
+    validationDepth: ValidationDepth,
+    agentRunValidateFallback: Boolean = false,
+  ): String {
     val label = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepLabels[phaseId] ?: phaseId
-    val directive = phaseTaskDirective(phaseId, validationDepth)
+    val directive = phaseTaskDirective(phaseId, validationDepth, agentRunValidateFallback)
     return """
       You are executing exactly one phase of the EXPERIMENTAL skill-bill feature-task-runtime
       loop ($forwardPhaseOrder)
@@ -664,10 +671,7 @@ object FeatureTaskRuntimePhasePromptComposer {
       "        \"repair_item_results\": ${repairItemResultsJson(repairItemIds)} }\n" +
       "      ```"
 
-  private fun validationGateFindingsDirective(
-    phaseId: String,
-    findings: ValidationFindingSetProjection?,
-  ): String {
+  private fun validationGateFindingsDirective(phaseId: String, findings: ValidationFindingSetProjection?): String {
     if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE || findings == null) return ""
     val lines = buildList {
       add("## Runtime validation gate findings")

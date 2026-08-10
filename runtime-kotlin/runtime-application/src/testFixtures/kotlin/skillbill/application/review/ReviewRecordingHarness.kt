@@ -308,7 +308,7 @@ fun reviewPack(
 ) = PlatformManifest(
   slug = slug,
   packRoot = Path.of("platform-packs", slug),
-  contractVersion = "1.2",
+  contractVersion = "1.3",
   routingSignals = RoutingSignals(
     strong = routingSignals,
     tieBreakers = emptyList(),

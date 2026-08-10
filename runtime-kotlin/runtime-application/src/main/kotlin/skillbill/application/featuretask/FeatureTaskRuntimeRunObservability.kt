@@ -263,7 +263,7 @@ internal class FeatureTaskRuntimeRunObservability(
   // A backward-edge re-entry: appends a durable LOOP_EDGE ledger entry carrying the runtime-minted
   // loop id and per-edge iteration (distinct from attempt_count) so the loop trail is auditable. The
   // re-entered phase's own start/complete events still emit on its relaunch.
-  fun validationGateProgress(gateRunCount: Int) {
+  fun validationGateProgress() {
     // Typed progress events are emitted at the gate seam; this hook exists for ledger symmetry if needed.
   }
 

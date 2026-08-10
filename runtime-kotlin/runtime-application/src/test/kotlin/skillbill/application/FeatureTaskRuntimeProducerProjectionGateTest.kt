@@ -499,7 +499,8 @@ private val VALIDATION_CHECKPOINT_AS_STRING: String = envelope(
   "validate",
   """{"validation_result":{"validation_status":"passed","checks":[{"name":"check","status":"passed"}],""" +
     """"repository_checkpoint":"repository_checkpoint=fixture-checkpoint-1",""" +
-    """"gate_run_count":1,"gate_runs":[{"duration_ms":1,"outcome":"passed","cache_mode":"forced_full","executed_work_units":1}]}}""",
+    """"gate_run_count":1,"gate_runs":[{"duration_ms":1,"outcome":"passed",""" +
+    """"cache_mode":"forced_full","executed_work_units":1}]}}""",
 )
 
 // SKILL-152 AC-009 fixtures: one per closed-object rejection class, each otherwise conforming so the

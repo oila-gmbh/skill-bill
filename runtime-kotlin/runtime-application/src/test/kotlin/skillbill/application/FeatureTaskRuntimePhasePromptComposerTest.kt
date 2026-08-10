@@ -179,6 +179,43 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
+  fun `absent gate agent-run validate prompt restores bill-code-check and surfaces degradation`() {
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE),
+      agentRunValidateFallback = true,
+    )
+
+    assertContains(prompt, "Invoke bill-code-check for that gate")
+    assertContains(prompt, "Validation gate degradation")
+    assertContains(prompt, "declares no validation_gate")
+    assertContains(
+      prompt,
+      "never silence them with annotations, baselines, disabled rules, weakened configuration, or skipped tests",
+    )
+    assertFalse(prompt.contains("runtime owns the repository validation gate"))
+  }
+
+  @Test
+  fun `absent gate build_only agent-run prompt keeps compile-only prohibitions`() {
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+        validationDepth = ValidationDepth.BUILD_ONLY,
+      ),
+      validationDepth = ValidationDepth.BUILD_ONLY,
+      agentRunValidateFallback = true,
+    )
+
+    assertContains(prompt, "Prove compile/buildability")
+    assertContains(prompt, "do not introduce suppressions, disable rules, or weaken configuration")
+    assertContains(prompt, "Validation gate degradation")
+    assertFalse(prompt.contains("runtime-provided finding set"))
+    assertFalse(prompt.contains("must not invoke the gate or any quality-check skill"))
+  }
+
+  @Test
   fun `build_only validate prompt carries compile-only language and excludes gate invocation`() {
     val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
@@ -223,7 +260,10 @@ class FeatureTaskRuntimePhasePromptComposerTest {
 
     listOf(fullPrompt, defaultPrompt).forEach { prompt ->
       assertContains(prompt, "runtime owns the repository validation gate")
-      assertContains(prompt, "never silence them with annotations, baselines, disabled rules, weakened configuration, or skipped tests")
+      assertContains(
+        prompt,
+        "never silence them with annotations, baselines, disabled rules, weakened configuration, or skipped tests",
+      )
       assertFalse(prompt.contains("Invoke bill-code-check"))
       assertFalse(prompt.contains("Goal-continuation validate depth"))
     }
@@ -240,7 +280,10 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       ),
       validationDepth = ValidationDepth.FULL,
     )
-    assertContains(validatePrompt, "never silence them with annotations, baselines, disabled rules, weakened configuration, or skipped tests")
+    assertContains(
+      validatePrompt,
+      "never silence them with annotations, baselines, disabled rules, weakened configuration, or skipped tests",
+    )
     assertFalse(validatePrompt.contains("Invoke bill-code-check"))
     assertFalse(validatePrompt.contains("Invoke bill-kotlin-code-check"))
 

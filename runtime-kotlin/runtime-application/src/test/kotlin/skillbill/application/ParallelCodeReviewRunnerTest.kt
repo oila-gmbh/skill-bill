@@ -1288,7 +1288,7 @@ private fun throwingCatalogGateway(): ScaffoldCatalogGateway = object : Scaffold
 private fun platformManifest(slug: String, strongSignals: List<String>) = PlatformManifest(
   slug = slug,
   packRoot = Path.of("platform-packs/$slug"),
-  contractVersion = "1.2",
+  contractVersion = "1.3",
   routingSignals = RoutingSignals(strong = strongSignals, tieBreakers = emptyList()),
   declaredCodeReviewAreas = listOf("architecture", "testing"),
   declaredFiles = DeclaredFiles(
@@ -1312,7 +1312,7 @@ private fun sparsePlatformManifest(
   return PlatformManifest(
     slug = slug,
     packRoot = Path.of("platform-packs/$slug"),
-    contractVersion = "1.2",
+    contractVersion = "1.3",
     routingSignals = RoutingSignals(strong = strongSignals, tieBreakers = emptyList()),
     declaredCodeReviewAreas = areas,
     declaredFiles = DeclaredFiles(

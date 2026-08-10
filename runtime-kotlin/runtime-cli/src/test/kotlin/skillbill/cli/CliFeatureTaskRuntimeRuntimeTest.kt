@@ -2075,7 +2075,9 @@ private class RecordingPhaseLauncher(
 
     private const val VALIDATION_RESULT_OUTPUTS: String =
       """{validation_result: {validation_status: "passed", checks: ["FooTest"], """ +
-        """repository_checkpoint: {fingerprint: "fixture-checkpoint-1"}}}"""
+        """repository_checkpoint: {fingerprint: "fixture-checkpoint-1"}, """ +
+        """gate_run_count: 1, gate_runs: [{duration_ms: 1, outcome: "passed", """ +
+        """cache_mode: "forced_full", executed_work_units: 1}]}}"""
 
     private const val HISTORY_RESULT_OUTPUTS: String =
       """{history_result: {changed_paths: ["agent/history.md"], decisions_recorded: []}}"""

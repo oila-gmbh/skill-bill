@@ -173,7 +173,7 @@ class ReviewLaunchPlanPolicyTest {
   ) = PlatformManifest(
     slug = slug,
     packRoot = Path.of("platform-packs", slug),
-    contractVersion = "1.2",
+    contractVersion = "1.3",
     routingSignals = RoutingSignals(emptyList(), emptyList()),
     declaredCodeReviewAreas = areas,
     declaredFiles = DeclaredFiles(

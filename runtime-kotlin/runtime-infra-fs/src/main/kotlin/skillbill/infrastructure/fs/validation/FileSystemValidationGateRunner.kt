@@ -1,8 +1,8 @@
 package skillbill.infrastructure.fs.validation
 
 import me.tatarka.inject.annotations.Inject
+import org.w3c.dom.Element
 import skillbill.ports.validation.ValidationGateRunner
-import skillbill.ports.validation.model.ValidationGateCacheMode
 import skillbill.ports.validation.model.ValidationGateFinding
 import skillbill.ports.validation.model.ValidationGateRunOutcome
 import skillbill.ports.validation.model.ValidationGateRunRequest
@@ -14,37 +14,44 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
 import javax.xml.parsers.DocumentBuilderFactory
-import org.w3c.dom.Element
 
 @Inject
 class FileSystemValidationGateRunner : ValidationGateRunner {
   override fun run(request: ValidationGateRunRequest): ValidationGateRunResult {
     val started = System.nanoTime()
-    val process = ProcessBuilder(request.argv)
-      .directory(request.repoRoot.toFile())
-      .redirectErrorStream(true)
-      .start()
-    val finished = process.waitFor(GATE_TIMEOUT_MINUTES, TimeUnit.MINUTES)
-    if (!finished) {
-      process.destroyForcibly()
-      throw ValidationGateProcessException(
-        "Validation gate command timed out after ${GATE_TIMEOUT_MINUTES}m: ${request.argv.joinToString(" ")}",
+    // Redirect to a temp file rather than the OS pipe so verbose gate output cannot fill the
+    // pipe buffer, block the child on write, and hang until GATE_TIMEOUT_MINUTES.
+    val outputFile = Files.createTempFile("skillbill-validation-gate", ".out")
+    return try {
+      val process = ProcessBuilder(request.argv)
+        .directory(request.repoRoot.toFile())
+        .redirectErrorStream(true)
+        .redirectOutput(outputFile.toFile())
+        .start()
+      val finished = process.waitFor(GATE_TIMEOUT_MINUTES, TimeUnit.MINUTES)
+      if (!finished) {
+        process.destroyForcibly()
+        throw ValidationGateProcessException(
+          "Validation gate command timed out after ${GATE_TIMEOUT_MINUTES}m: ${request.argv.joinToString(" ")}",
+        )
+      }
+      val stdout = Files.readString(outputFile)
+      val durationMs = ((System.nanoTime() - started) / NANOS_PER_MILLIS).coerceAtLeast(0L)
+      val executedWorkUnits = deriveExecutedWorkUnits(request, stdout)
+      val findings = parseFindings(request)
+      val exitCode = process.exitValue()
+      val outcome = deriveOutcome(exitCode, findings, executedWorkUnits, request.terminalVerifying)
+      ValidationGateRunResult(
+        exitCode = exitCode,
+        durationMs = durationMs,
+        outcome = outcome,
+        cacheMode = request.cacheMode,
+        executedWorkUnits = executedWorkUnits,
+        findings = findings,
       )
+    } finally {
+      runCatching { Files.deleteIfExists(outputFile) }
     }
-    val stdout = process.inputStream.bufferedReader().readText()
-    val durationMs = ((System.nanoTime() - started) / 1_000_000L).coerceAtLeast(0L)
-    val executedWorkUnits = deriveExecutedWorkUnits(request, stdout)
-    val findings = parseFindings(request)
-    val exitCode = process.exitValue()
-    val outcome = deriveOutcome(exitCode, findings, executedWorkUnits, request.terminalVerifying)
-    return ValidationGateRunResult(
-      exitCode = exitCode,
-      durationMs = durationMs,
-      outcome = outcome,
-      cacheMode = request.cacheMode,
-      executedWorkUnits = executedWorkUnits,
-      findings = findings,
-    )
   }
 
   private fun deriveOutcome(
@@ -103,6 +110,7 @@ class FileSystemValidationGateRunner : ValidationGateRunner {
 
   companion object {
     private const val GATE_TIMEOUT_MINUTES = 120L
+    private const val NANOS_PER_MILLIS = 1_000_000L
     private const val DEFAULT_EXECUTED_WORK_WHEN_UNDECLARED = 1
     private val GRADLE_EXECUTED_PATTERN = Regex("""(\d+)\s+executed""", RegexOption.IGNORE_CASE)
     private val DOCUMENT_BUILDER = DocumentBuilderFactory.newInstance().apply {

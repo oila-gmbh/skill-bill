@@ -318,18 +318,9 @@ private fun readManifest(manifestPath: Path, slug: String): Any? = try {
 }
 
 private fun buildPack(slug: String, packRoot: Path, manifestPath: Path, raw: Any?): PlatformManifest {
-  // SKILL-47: shape validation now flows through the canonical schema at
-  // `orchestration/contracts/platform-pack-schema.yaml`. The Kotlin parser
-  // below remains responsible for producing the typed `PlatformManifest`
-  // and for the named coherence checks documented in the schema's
-  // `x-coherence-checks` block (slug-parity, areas-require-baseline,
-  // areas-equal-declared, area-metadata-keys-subset-declared,
-  // pointers-unique-name-per-dir, addon-usage-*).
   val manifest = requireManifestMap(slug, manifestPath, raw)
   val typedManifest = validateAgainstCanonicalSchema(slug, manifest)
-
   validatePlatformSlug(slug, requireStringField(manifest, slug, "platform"))
-
   val contractVersion = requireStringField(manifest, slug, "contract_version")
   val declaredAreas = parseDeclaredAreas(manifest, slug)
   val routingSignals = parseRoutingSignals(
@@ -359,15 +350,8 @@ private fun buildPack(slug: String, packRoot: Path, manifestPath: Path, raw: Any
       strictReviewRouting = laneConditions.isNotEmpty(),
     ),
   )
-  val featureAddonUsage = parseFeatureAddonUsage(
-    manifest = manifest,
-    slug = slug,
-    packRoot = packRoot,
-    pointers = pointers,
-  )
-
+  val featureAddonUsage = parseFeatureAddonUsage(manifest, slug, packRoot, pointers)
   val customFields = validatedCustomFields(slug, manifestPath, typedManifest)
-
   return PlatformManifest(
     slug = slug,
     packRoot = packRoot,

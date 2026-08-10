@@ -141,8 +141,7 @@ enum class ValidationGateFindingsFormat(val wireValue: String) {
   ;
 
   companion object {
-    fun fromWire(value: String): ValidationGateFindingsFormat? =
-      entries.firstOrNull { it.wireValue == value }
+    fun fromWire(value: String): ValidationGateFindingsFormat? = entries.firstOrNull { it.wireValue == value }
   }
 }
 
@@ -151,8 +150,7 @@ enum class ValidationGateExecutedWorkFormat(val wireValue: String) {
   ;
 
   companion object {
-    fun fromWire(value: String): ValidationGateExecutedWorkFormat? =
-      entries.firstOrNull { it.wireValue == value }
+    fun fromWire(value: String): ValidationGateExecutedWorkFormat? = entries.firstOrNull { it.wireValue == value }
   }
 }
 

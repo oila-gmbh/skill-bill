@@ -4677,7 +4677,7 @@ private fun runtimePhaseGates(
     skillbill.application.featuretask.validation.FeatureTaskRuntimeValidationGateCoordinator(
       validationGateResolver,
       validationGateRunner,
-      recorder,
+      skillbill.application.featuretask.validation.FeatureTaskRuntimeValidationGateProgressStore(recorder),
     ),
     sharedEvidenceResolver,
     diffResolver,
@@ -4851,20 +4851,12 @@ internal fun telemetryRunnerHarness(
     AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
   )
   val goalContinuationRecorder = FeatureTaskRuntimeGoalContinuationRecorder(database, NoopWorkflowSnapshotValidator)
-  val decomposeTerminalRecorder =
-    FeatureTaskRuntimeDecomposeTerminalRecorder(database, NoopWorkflowSnapshotValidator)
+  val decomposeTerminalRecorder = FeatureTaskRuntimeDecomposeTerminalRecorder(database, NoopWorkflowSnapshotValidator)
   val runInvariantsStore = FeatureTaskRuntimeRunInvariantsStore(database, NoopWorkflowSnapshotValidator)
   val branchSetupRunner = FeatureTaskRuntimeBranchSetupRunner(recorder, runtimeConfig.branchSetup.gitOperations)
-  val decompositionPlanner = if (runtimeConfig.useRealDecompositionPlanner) {
-    testDecompositionPlanner()
-  } else {
-    noOpDecompositionPlanner()
-  }
-  val planningStopper = FeatureTaskRuntimePlanningStopper(
-    validator,
-    decompositionPlanner,
-    decomposeTerminalRecorder,
-  )
+  val decompositionPlanner =
+    if (runtimeConfig.useRealDecompositionPlanner) testDecompositionPlanner() else noOpDecompositionPlanner()
+  val planningStopper = FeatureTaskRuntimePlanningStopper(validator, decompositionPlanner, decomposeTerminalRecorder)
   val runner = FeatureTaskRuntimeRunner(
     launcher,
     recorder,
@@ -4882,8 +4874,7 @@ internal fun telemetryRunnerHarness(
       diffResolver = runtimeConfig.diffResolver,
       recorder = recorder,
     ),
-    // Telemetry harness validates event emission, not crash reconciliation; the no-op supervisor keeps
-    // the startup reconcile pass a harmless no-op so it never perturbs telemetry assertions.
+    // Telemetry harness validates event emission, not crash reconciliation; no-op supervisor.
     FeatureTaskRuntimeCrashReconciler(database, NoopFeatureTaskRuntimeWorkerSupervisor),
   )
   val request = FeatureTaskRuntimeRunRequest(

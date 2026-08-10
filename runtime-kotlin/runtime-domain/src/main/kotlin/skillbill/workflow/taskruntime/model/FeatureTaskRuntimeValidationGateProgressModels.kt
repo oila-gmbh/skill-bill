@@ -25,6 +25,8 @@ data class FeatureTaskRuntimeValidationGateRunRecord(
 data class FeatureTaskRuntimeValidationGateProgress(
   val gateRunCount: Int,
   val gateRuns: List<FeatureTaskRuntimeValidationGateRunRecord>,
+  val remainingFindings: List<Map<String, String?>> = emptyList(),
+  val remainingFindingsDroppedCount: Int = 0,
 ) {
   init {
     require(gateRunCount >= 0) {
@@ -33,6 +35,10 @@ data class FeatureTaskRuntimeValidationGateProgress(
     require(gateRuns.size <= gateRunCount) {
       "FeatureTaskRuntimeValidationGateProgress.gateRuns size ${gateRuns.size} exceeds gateRunCount $gateRunCount."
     }
+    require(remainingFindingsDroppedCount >= 0) {
+      "FeatureTaskRuntimeValidationGateProgress.remainingFindingsDroppedCount must be >= 0, " +
+        "was $remainingFindingsDroppedCount."
+    }
   }
 
   @OpenBoundaryMap("Runtime-owned validation gate progress at the durable workflow-artifact seam")
@@ -40,17 +46,26 @@ data class FeatureTaskRuntimeValidationGateProgress(
     "contract_version" to FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION,
     "gate_run_count" to gateRunCount,
     "gate_runs" to gateRuns.map { it.toArtifactMap() },
+    "remaining_findings" to remainingFindings,
+    "remaining_findings_dropped_count" to remainingFindingsDroppedCount,
   )
 
   companion object {
     @OpenBoundaryMap("Runtime-owned validation gate progress decode from durable workflow artifacts")
-    fun fromArtifactMap(raw: Map<String, Any?>): FeatureTaskRuntimeValidationGateProgress {
-      val gateRunCount = raw.asStarMap().gateProgressInt("gate_run_count")
-      val runsRaw = raw["gate_runs"] as? List<*>
+    fun fromArtifactMap(raw: Map<String, Any?>): FeatureTaskRuntimeValidationGateProgress =
+      FeatureTaskRuntimeValidationGateProgress(
+        gateRunCount = raw.asStarMap().gateProgressInt("gate_run_count"),
+        gateRuns = decodeGateRuns(raw["gate_runs"]),
+        remainingFindings = decodeRemainingFindings(raw["remaining_findings"]),
+        remainingFindingsDroppedCount = decodeRemainingDroppedCount(raw["remaining_findings_dropped_count"]),
+      )
+
+    private fun decodeGateRuns(raw: Any?): List<FeatureTaskRuntimeValidationGateRunRecord> {
+      val runsRaw = raw as? List<*>
         ?: throw InvalidWorkflowStateSchemaError(
           "FeatureTaskRuntimeValidationGateProgress is missing gate_runs.",
         )
-      val gateRuns = runsRaw.mapIndexed { index, entry ->
+      return runsRaw.mapIndexed { index, entry ->
         val map = entry as? Map<*, *>
           ?: throw InvalidWorkflowStateSchemaError(
             "FeatureTaskRuntimeValidationGateProgress.gate_runs[$index] must be a mapping.",
@@ -62,7 +77,36 @@ data class FeatureTaskRuntimeValidationGateProgress(
           executedWorkUnits = map.gateProgressInt("executed_work_units"),
         )
       }
-      return FeatureTaskRuntimeValidationGateProgress(gateRunCount = gateRunCount, gateRuns = gateRuns)
+    }
+
+    private fun decodeRemainingDroppedCount(raw: Any?): Int = when (raw) {
+      null -> 0
+      is Int -> raw
+      is Long -> raw.toInt()
+      is Number -> raw.toInt()
+      else -> throw InvalidWorkflowStateSchemaError(
+        "FeatureTaskRuntimeValidationGateProgress.remaining_findings_dropped_count must be an int.",
+      )
+    }
+
+    private fun decodeRemainingFindings(raw: Any?): List<Map<String, String?>> {
+      if (raw == null) return emptyList()
+      val list = raw as? List<*>
+        ?: throw InvalidWorkflowStateSchemaError(
+          "FeatureTaskRuntimeValidationGateProgress.remaining_findings must be a list.",
+        )
+      return list.mapIndexed { index, entry ->
+        val map = entry as? Map<*, *>
+          ?: throw InvalidWorkflowStateSchemaError(
+            "FeatureTaskRuntimeValidationGateProgress.remaining_findings[$index] must be a mapping.",
+          )
+        linkedMapOf(
+          "module" to (map["module"] as? String),
+          "rule_or_test_id" to (map["rule_or_test_id"] as? String),
+          "message" to (map["message"] as? String),
+          "location" to (map["location"] as? String),
+        )
+      }
     }
   }
 }

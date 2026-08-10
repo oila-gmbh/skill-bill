@@ -1,5 +1,16 @@
 package skillbill.application.featuretask.validation
 
+import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairLauncher
+import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairResult
+import skillbill.application.featuretask.validation.model.ValidationGateCycleRequest
+import skillbill.application.featuretask.validation.model.ValidationGateCycleResult
+import skillbill.application.featuretask.validation.model.ValidationGateCycleTerminalOutcome
+import skillbill.application.featuretask.validation.model.ValidationGateProgressStore
+import skillbill.application.featuretask.validation.model.ValidationGateResolution
+import skillbill.application.model.FeatureTaskRuntimeRunRequest
+import skillbill.application.scaffold.ScaffoldCatalogService
+import skillbill.ports.scaffold.ScaffoldCatalogGateway
+import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
 import skillbill.ports.validation.ValidationGateRunner
 import skillbill.ports.validation.model.ValidationGateCacheMode
 import skillbill.ports.validation.model.ValidationGateFinding
@@ -15,14 +26,17 @@ import skillbill.scaffold.model.ValidationGateExecutedWorkFormat
 import skillbill.scaffold.model.ValidationGateExecutedWorkSignal
 import skillbill.scaffold.model.ValidationGateFindingsFormat
 import skillbill.scaffold.model.ValidationGateFindingsLocator
-import skillbill.application.scaffold.ScaffoldCatalogService
-import skillbill.ports.scaffold.ScaffoldCatalogGateway
-import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
 import skillbill.workflow.model.ValidationDepth
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionBudget
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress
 import java.nio.file.Path
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class FeatureTaskRuntimeValidationGateTest {
@@ -84,15 +98,14 @@ class FeatureTaskRuntimeValidationGateTest {
   @Test
   fun `zero work terminal outcome is rejected`() {
     val runner = object : ValidationGateRunner {
-      override fun run(request: ValidationGateRunRequest): ValidationGateRunResult =
-        ValidationGateRunResult(
-          exitCode = 0,
-          durationMs = 3,
-          outcome = ValidationGateRunOutcome.REJECTED_ZERO_WORK,
-          cacheMode = request.cacheMode,
-          executedWorkUnits = 0,
-          findings = emptyList(),
-        )
+      override fun run(request: ValidationGateRunRequest): ValidationGateRunResult = ValidationGateRunResult(
+        exitCode = 0,
+        durationMs = 3,
+        outcome = ValidationGateRunOutcome.REJECTED_ZERO_WORK,
+        cacheMode = request.cacheMode,
+        executedWorkUnits = 0,
+        findings = emptyList(),
+      )
     }
     val result = runner.run(
       ValidationGateRunRequest(
@@ -117,17 +130,185 @@ class FeatureTaskRuntimeValidationGateTest {
           override fun shelledFamilies() = emptySet<String>()
           override fun platformPackPresets() = emptyMap<String, String>()
           override fun scaffoldPayloadVersion() = "test"
-          override fun discoverPilotedPlatformPacks(packsRoot: Path): List<PilotedPlatformPackProjection> =
-            emptyList()
+          override fun discoverPilotedPlatformPacks(packsRoot: Path): List<PilotedPlatformPackProjection> = emptyList()
           override fun discoverPlatformManifests(packsRoot: Path) = listOf(kotlinPackWithoutGate())
-          override fun discoverBaselineReviewCatalog(packsRoot: Path) =
-            BaselineReviewCatalog(emptyList(), emptyList())
+          override fun discoverBaselineReviewCatalog(packsRoot: Path) = BaselineReviewCatalog(emptyList(), emptyList())
         },
       ),
     )
     val resolution = resolver.resolve(repoRoot, listOf("runtime-kotlin/foo.kt"))
     assertTrue(resolution is ValidationGateResolution.Absent)
   }
+
+  @Test
+  fun `FAILED gate with empty findings launches repair with synthetic finding`() {
+    val progress = mutableListOf<FeatureTaskRuntimeValidationGateProgress>()
+    val repairLaunches = AtomicInteger(0)
+    val runner = ScriptedGateRunner(
+      listOf(
+        failedEmptyFindings(),
+        passed(),
+        passed(forced = true),
+      ),
+    )
+    val cycle = coordinator(declaredResolver(), runner, progress).execute(
+      cycle = ValidationGateCycleRequest(
+        repoRoot = repoRoot,
+        request = minimalRequest(),
+        validationDepth = ValidationDepth.DEFAULT,
+        changedPaths = listOf("runtime-kotlin/foo.kt"),
+        repositoryCheckpoint = "checkpoint",
+        agentRepairLauncher = ValidationGateAgentRepairLauncher { findings, _ ->
+          repairLaunches.incrementAndGet()
+          assertEquals(1, findings.findings.size)
+          assertEquals("unparseable_gate_failure", findings.findings.single().ruleOrTestId)
+          ValidationGateAgentRepairResult.Completed(
+            FeatureTaskRuntimePhaseOutput(phaseId = "validate", iteration = 1, payload = "{}"),
+          )
+        },
+      ),
+    )
+    assertEquals(1, repairLaunches.get())
+    assertIs<ValidationGateCycleResult.Terminal>(cycle)
+    assertIs<ValidationGateCycleTerminalOutcome.Completed>(cycle.outcome)
+  }
+
+  @Test
+  fun `gate is re-run after every repair and exhaust persists remaining findings`() {
+    val progress = mutableListOf<FeatureTaskRuntimeValidationGateProgress>()
+    val repairLaunches = AtomicInteger(0)
+    val finding = ValidationGateFinding("m", "t", "still broken", "loc")
+    val runner = ScriptedGateRunner(
+      List(MAX_VALIDATE_GATE_REPAIR_ITERATIONS + 1) { failedWith(finding) },
+    )
+    val cycle = coordinator(declaredResolver(), runner, progress).execute(
+      cycle = ValidationGateCycleRequest(
+        repoRoot = repoRoot,
+        request = minimalRequest(),
+        validationDepth = ValidationDepth.DEFAULT,
+        changedPaths = listOf("runtime-kotlin/foo.kt"),
+        repositoryCheckpoint = "checkpoint",
+        agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _ ->
+          repairLaunches.incrementAndGet()
+          ValidationGateAgentRepairResult.Completed(
+            FeatureTaskRuntimePhaseOutput(phaseId = "validate", iteration = 1, payload = "{}"),
+          )
+        },
+      ),
+    )
+    assertEquals(MAX_VALIDATE_GATE_REPAIR_ITERATIONS, repairLaunches.get())
+    // One gate run before each repair + one verifying gate after the final repair before exhaust.
+    assertEquals(MAX_VALIDATE_GATE_REPAIR_ITERATIONS + 1, runner.calls)
+    val blocked = assertIs<ValidationGateCycleTerminalOutcome.Blocked>(
+      assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,
+    )
+    assertTrue(blocked.reason.contains("exhausted"))
+    assertEquals(listOf(finding), blocked.remainingFindings?.findings)
+    assertTrue(progress.last().remainingFindings.isNotEmpty())
+    assertEquals("t", progress.last().remainingFindings.single()["rule_or_test_id"])
+  }
+
+  @Test
+  fun `successful final repair is verified by a post-repair gate run before completion`() {
+    val progress = mutableListOf<FeatureTaskRuntimeValidationGateProgress>()
+    val repairLaunches = AtomicInteger(0)
+    val finding = ValidationGateFinding("m", "t", "broken", "loc")
+    val runner = ScriptedGateRunner(
+      listOf(
+        failedWith(finding),
+        failedWith(finding),
+        failedWith(finding),
+        passed(),
+        passed(forced = true),
+      ),
+    )
+    val cycle = coordinator(declaredResolver(), runner, progress).execute(
+      cycle = ValidationGateCycleRequest(
+        repoRoot = repoRoot,
+        request = minimalRequest(),
+        validationDepth = ValidationDepth.DEFAULT,
+        changedPaths = listOf("runtime-kotlin/foo.kt"),
+        repositoryCheckpoint = "checkpoint",
+        agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _ ->
+          repairLaunches.incrementAndGet()
+          ValidationGateAgentRepairResult.Completed(
+            FeatureTaskRuntimePhaseOutput(phaseId = "validate", iteration = 1, payload = "{}"),
+          )
+        },
+      ),
+    )
+    assertEquals(MAX_VALIDATE_GATE_REPAIR_ITERATIONS, repairLaunches.get())
+    assertIs<ValidationGateCycleTerminalOutcome.Completed>(
+      assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,
+    )
+    assertTrue(progress.last().remainingFindings.isEmpty())
+  }
+
+  private fun coordinator(
+    resolver: ValidationGateResolver,
+    runner: ValidationGateRunner,
+    progress: MutableList<FeatureTaskRuntimeValidationGateProgress>,
+  ): FeatureTaskRuntimeValidationGateCoordinator = FeatureTaskRuntimeValidationGateCoordinator(
+    resolver,
+    runner,
+    ValidationGateProgressStore { _, p, _ -> progress += p },
+  )
+
+  private fun declaredResolver(): ValidationGateResolver = ValidationGateResolver(
+    ScaffoldCatalogService(
+      object : ScaffoldCatalogGateway {
+        override fun approvedCodeReviewAreas() = emptySet<String>()
+        override fun preShellFamilies() = emptySet<String>()
+        override fun shelledFamilies() = emptySet<String>()
+        override fun platformPackPresets() = emptyMap<String, String>()
+        override fun scaffoldPayloadVersion() = "test"
+        override fun discoverPilotedPlatformPacks(packsRoot: Path): List<PilotedPlatformPackProjection> = emptyList()
+        override fun discoverPlatformManifests(packsRoot: Path) = listOf(kotlinPackWithGate())
+        override fun discoverBaselineReviewCatalog(packsRoot: Path) = BaselineReviewCatalog(emptyList(), emptyList())
+      },
+    ),
+  )
+
+  private fun minimalRequest(): FeatureTaskRuntimeRunRequest = FeatureTaskRuntimeRunRequest(
+    issueKey = "SKILL-180",
+    workflowId = "wf-skill-180",
+    sessionId = "session",
+    runInvariants = FeatureTaskRuntimeRunInvariants(
+      specReference = "spec.md",
+      featureSize = FeatureTaskRuntimeFeatureSize.MEDIUM,
+      acceptanceCriteria = listOf("AC-001"),
+      mandatesAndOverrides = emptyList(),
+    ),
+    invokedAgentId = "claude",
+    repoRoot = repoRoot,
+  )
+
+  private fun passed(forced: Boolean = false): ValidationGateRunResult = ValidationGateRunResult(
+    exitCode = 0,
+    durationMs = 1,
+    outcome = ValidationGateRunOutcome.PASSED,
+    cacheMode = if (forced) ValidationGateCacheMode.FORCED_FULL else ValidationGateCacheMode.CACHE_ELIGIBLE,
+    executedWorkUnits = 1,
+    findings = emptyList(),
+  )
+
+  private fun failedEmptyFindings(): ValidationGateRunResult = ValidationGateRunResult(
+    exitCode = 1,
+    durationMs = 1,
+    outcome = ValidationGateRunOutcome.FAILED,
+    cacheMode = ValidationGateCacheMode.CACHE_ELIGIBLE,
+    executedWorkUnits = 1,
+    findings = emptyList(),
+  )
+
+  private fun failedWith(finding: ValidationGateFinding): ValidationGateRunResult = ValidationGateRunResult(
+    exitCode = 1,
+    durationMs = 1,
+    outcome = ValidationGateRunOutcome.FAILED,
+    cacheMode = ValidationGateCacheMode.CACHE_ELIGIBLE,
+    executedWorkUnits = 1,
+    findings = listOf(finding),
+  )
 
   private fun kotlinPackWithoutGate(): PlatformManifest = PlatformManifest(
     slug = "kotlin",
@@ -143,4 +324,23 @@ class FeatureTaskRuntimeValidationGateTest {
     areaMetadata = emptyMap(),
     validationGate = null,
   )
+
+  private fun kotlinPackWithGate(): PlatformManifest = kotlinPackWithoutGate().copy(
+    validationGate = gateDeclaration,
+  )
+
+  private class ScriptedGateRunner(
+    private val results: List<ValidationGateRunResult>,
+  ) : ValidationGateRunner {
+    var calls: Int = 0
+      private set
+
+    override fun run(request: ValidationGateRunRequest): ValidationGateRunResult {
+      val index = calls
+      calls++
+      return results.getOrElse(index) {
+        error("ScriptedGateRunner exhausted after ${results.size} results; call=$index")
+      }
+    }
+  }
 }

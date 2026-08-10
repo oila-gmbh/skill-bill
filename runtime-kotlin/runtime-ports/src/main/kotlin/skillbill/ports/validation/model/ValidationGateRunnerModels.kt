@@ -47,18 +47,3 @@ data class ValidationGateRunResult(
   val executedWorkUnits: Int,
   val findings: List<ValidationGateFinding>,
 )
-
-data class ValidationGateRunMeasurement(
-  val durationMs: Long,
-  val outcome: ValidationGateRunOutcome,
-  val cacheMode: ValidationGateCacheMode,
-  val executedWorkUnits: Int,
-) {
-  @Suppress("unused")
-  fun toReceiptMap(): Map<String, Any?> = linkedMapOf(
-    "duration_ms" to durationMs,
-    "outcome" to outcome.wireValue,
-    "cache_mode" to cacheMode.wireValue,
-    "executed_work_units" to executedWorkUnits,
-  )
-}

@@ -90,7 +90,6 @@ import skillbill.infrastructure.fs.FileSystemInstalledWorkspaceBaselineStatus
 import skillbill.infrastructure.fs.FileSystemRepoLocalConfig
 import skillbill.infrastructure.fs.FileSystemRepoSourceDiscoveryGateway
 import skillbill.infrastructure.fs.FileSystemRepoValidationGateway
-import skillbill.infrastructure.fs.validation.FileSystemValidationGateRunner
 import skillbill.infrastructure.fs.FileSystemReviewAttribution
 import skillbill.infrastructure.fs.FileSystemReviewEvidenceBrokerFactory
 import skillbill.infrastructure.fs.FileSystemReviewInputSource
@@ -124,6 +123,7 @@ import skillbill.infrastructure.fs.ProducerOutputEvidenceValidatorAdapter
 import skillbill.infrastructure.fs.RejectedOutputDiagnosticMetadataValidatorAdapter
 import skillbill.infrastructure.fs.ReviewContextEnvelopeValidatorAdapter
 import skillbill.infrastructure.fs.WorkflowSnapshotValidatorInfraAdapter
+import skillbill.infrastructure.fs.validation.FileSystemValidationGateRunner
 import skillbill.infrastructure.http.HttpTelemetryClient
 import skillbill.infrastructure.http.JdkHttpRequester
 import skillbill.infrastructure.sqlite.SQLiteDatabaseSessionFactory
@@ -554,6 +554,12 @@ abstract class RuntimeComponent(
   @Provides
   @JvmSynthetic
   internal fun validationGateRunner(runner: FileSystemValidationGateRunner): ValidationGateRunner = runner
+
+  @Provides
+  @JvmSynthetic
+  internal fun validationGateProgressStore(
+    store: skillbill.application.featuretask.validation.FeatureTaskRuntimeValidationGateProgressStore,
+  ): skillbill.application.featuretask.validation.model.ValidationGateProgressStore = store
 
   @Provides
   @JvmSynthetic
