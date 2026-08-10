@@ -127,10 +127,7 @@ internal fun goalContinuationEnvironment(request: SkillRunRequest): Map<String, 
  * operator actually selected. A directive naming an explicit model the endpoint serves (for
  * example `deepseek-v4-flash`) passes through unchanged.
  */
-internal fun resolveClaudeModelDirective(
-  directive: String?,
-  providerEnvironment: Map<String, String>,
-): String? {
+internal fun resolveClaudeModelDirective(directive: String?, providerEnvironment: Map<String, String>): String? {
   if (directive == null) return null
   val endpoint = providerEnvironment["ANTHROPIC_BASE_URL"]
   if (endpoint != null && !isOfficialAnthropicEndpoint(endpoint) && isAnthropicModelReference(directive)) {
