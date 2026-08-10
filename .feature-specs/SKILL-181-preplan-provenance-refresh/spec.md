@@ -99,7 +99,7 @@ rebase moves.
   id `0`, `:206-212`.
 - `currentProvenance` builds `GoalPlanningContractProvenance(parentSpecHash,
   decompositionManifestHash, EXPECTED_SCHEMA_ID)`, `:182-186`.
-- Spec canonicalization is frontmatter-`status:`-only, `GoalPlanningSharedContextPacket.kt:360-389`.
+- Spec canonicalization is frontmatter-`status:`-only, `GoalPlanningSpecCanonicalization`.
 - The shared-preplan record carries `provenance`, `payload_sha256`, and an opaque
   `preplan_payload: {type: string, minLength: 1}` —
   `orchestration/contracts/goal-planning-preparation-schema.yaml:70-78`.
@@ -109,6 +109,9 @@ rebase moves.
 - `producePlan` receives `sharedCheckpoint.preplanPayload` plus `resolvedBodies`
   (`GoalPlanningSweep.kt:176`), so the plan phase consumes the resolved heading bodies, not the raw
   spec-to-heading judgement.
+- `FeatureTaskRuntimePrePlanningDigest` carries model-authored fields
+  (`affected_boundaries`, `risks`, `rollout`, `validation_strategy`, …) alongside
+  `selected_boundary_headings`; the stored `preplan_payload` is that digest JSON.
 
 ## Design
 
@@ -137,8 +140,9 @@ spec, then compares the new `selected_boundary_headings` to the saved set:
 - **Set unchanged** — overwrite the provenance to current, keep the payload, and keep **every**
   sibling plan row including non-terminal ones. Nothing downstream depended on anything that changed.
   This is the expected outcome for an editorial spec amendment and should be the common case.
-- **Set changed** — adopt the new preplan and discard only **non-terminal** sibling plan rows, per
-  step 3.
+- **Set changed** — adopt the new preplan (full new payload) and discard only **non-terminal** sibling
+  plan rows, per step 3. Grow and shrink are treated the same: any set inequality cascades
+  non-terminal plans.
 
 No operator action, no blocked status, no separate CLI invocation. This is what makes the outcome
 "preplan never needs regeneration" from the operator's point of view: it is refreshed for them.
@@ -162,6 +166,16 @@ Two separate defects observed in the same run:
 
 Also reconcile the status projection with the launch path: step 5 above reported `planning can resume
 at subtask 2` while launch refused to resume.
+
+## Resolved Design Decisions
+
+1. **Payload vs heading-set.** `preplan_payload` is the full `preplanning_digest` JSON, including
+   model-authored fields. Validity still keys off heading-id resolution (plus hash/schema/manifest
+   checks). Freshness refresh re-runs preplan; cascade is gated only on
+   `selected_boundary_headings` set equality. When the set is unchanged, keep the saved payload and
+   update provenance only — do not treat prose-field drift alone as a cascade trigger.
+2. **Shrink vs grow.** Any set inequality (grow or shrink) adopts the new payload and cascades
+   non-terminal plan rows. No asymmetric shrink path.
 
 ## Acceptance Criteria
 
@@ -193,6 +207,8 @@ at subtask 2` while launch refused to resume.
 - Refresh must be refused while the goal is live, on the same liveness rules that already guard
   scoped replan.
 - One preplan refresh per launch. Refresh must not become a loop.
+- Create `feat/SKILL-181-preplan-provenance-refresh` from the current branch
+  `feat/SKILL-178-fix-all-findings-remediation-gate` (not from `main`).
 
 ## Non-Goals
 
@@ -204,22 +220,4 @@ at subtask 2` while launch refused to resume.
   content.
 - Removing `--include-shared-preplan`.
 - Any change to subtask-plan provenance rules, which behaved correctly throughout the observed run.
-
-## Subtasks
-
-1. Split the recoverability gate into validity and freshness, with heading-id resolution against the
-   freshly parsed catalog, retaining today's loud stop for invalid provenance.
-2. Add in-run preplan refresh with `selected_boundary_headings` set comparison, and gate cascading on
-   the comparison result.
-3. Exclude terminal subtasks from cascade on every path.
-4. Distinct exit codes for paused/blocked/failed, remedy-naming stop messages, and reconcile
-   `planning_reason` with the launch path.
-
-## Open Questions
-
-- Is `selected_boundary_headings` the complete repo-derived input to the plan phase, or does
-  `preplan_payload` carry additional model-authored content whose staleness matters independently of
-  heading selection? If the latter, step 2's set comparison needs a payload-level equivalent.
-- Should a refresh whose set *shrinks* be treated differently from one that grows? A shrink implies
-  the older selection was over-inclusive, which is harmless; only growth indicates the stale preplan
-  was under-informing plans.
+- Special-casing shrink-only heading-set changes to avoid cascade.

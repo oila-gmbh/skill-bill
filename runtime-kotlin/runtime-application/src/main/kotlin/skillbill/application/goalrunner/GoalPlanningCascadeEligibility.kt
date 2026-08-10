@@ -17,10 +17,7 @@ fun isTerminalWithCommitPlan(status: String, commitSha: String?): Boolean =
  * Returns [plannedIds] that may be discarded, in ascending id order. Ids with no matching manifest
  * subtask are treated as eligible (fail closed: unknown rows must not survive a cascade).
  */
-fun cascadeEligiblePlanSubtaskIds(
-  plannedIds: Collection<Int>,
-  subtasks: Collection<DecompositionSubtask>,
-): List<Int> {
+fun cascadeEligiblePlanSubtaskIds(plannedIds: Collection<Int>, subtasks: Collection<DecompositionSubtask>): List<Int> {
   val byId = subtasks.associateBy { it.id }
   return plannedIds.filter { id ->
     val subtask = byId[id]

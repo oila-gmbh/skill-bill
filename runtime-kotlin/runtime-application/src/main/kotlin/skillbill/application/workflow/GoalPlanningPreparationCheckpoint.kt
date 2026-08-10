@@ -83,38 +83,9 @@ class GoalPlanningPreparationCheckpoint(
     }
   }
 
-  /**
-   * Provenance-only refresh: advance shared + plan-row provenance to [provenance] while keeping the exact
-   * saved payload bytes. Compare-and-swap on [expectedPayloadSha256].
-   */
-  fun advanceSharedPreplanProvenance(
-    identity: GoalPlanningIdentity,
-    expectedPayloadSha256: String,
-    provenance: GoalPlanningContractProvenance,
-    dbOverride: String? = null,
-  ) {
-    database.selfManagedWrite(dbOverride) {
-      it.goalPlanningPreparations.advanceSharedPreplanProvenance(identity, expectedPayloadSha256, provenance)
-    }
-  }
-
-  /**
-   * Full-payload refresh: UPDATE the shared row to [checkpoint], delete only [cascadePlanSubtaskIds],
-   * and restamp retained plan provenance in the same transaction.
-   */
-  fun replaceSharedPreplanForRefresh(
-    checkpoint: SharedGoalPreplanCheckpoint,
-    expectedPayloadSha256: String,
-    cascadePlanSubtaskIds: List<Int>,
-    dbOverride: String? = null,
-  ): SharedGoalPreplanCheckpoint {
-    val canonical = gate.canonicalizeSharedPreplan(checkpoint)
-    gate.validateSharedPreplan(canonical)
-    database.selfManagedWrite(dbOverride) {
-      it.goalPlanningPreparations.replaceSharedPreplan(canonical, expectedPayloadSha256, cascadePlanSubtaskIds)
-    }
-    return canonical
-  }
+  /** Shared-preplan refresh write seam (provenance-only advance and full-payload replace). */
+  internal val sharedPreplanRefresh: GoalPlanningSharedPreplanRefresh =
+    GoalPlanningSharedPreplanRefresh(database, gate)
 
   /**
    * Checkpoints a regenerated subtask plan, overwriting a stored record the projection gate rejects so the
@@ -135,12 +106,6 @@ class GoalPlanningPreparationCheckpoint(
       database.selfManagedWrite(dbOverride) { it.goalPlanningPreparations.checkpointSubtaskPlan(canonical) }
     }
   }
-
-  /** Prepared plan subtask ids currently stored for [parentGoalWorkflowId], including orphans. */
-  fun listPreparedPlanSubtaskIds(parentGoalWorkflowId: String, dbOverride: String? = null): List<Int> =
-    database.read(dbOverride) {
-      it.goalPlanningPreparations.listPreparedPlanSubtaskIds(parentGoalWorkflowId)
-    }
 
   /** The stored subtask plan as persisted, independent of the projection verdict. */
   fun findStoredSubtaskPlan(
@@ -235,6 +200,54 @@ class GoalPlanningPreparationCheckpoint(
       expectedPlanCount = orderedDescriptors.size,
       firstMissingSubtaskId = orderedDescriptors.firstOrNull { it.subtaskId !in preparedIds }?.subtaskId,
     )
+  }
+}
+
+/**
+ * Refresh write seam for shared preplans: provenance-only advance and full-payload replace.
+ * Kept off [GoalPlanningPreparationCheckpoint] so that class stays within the function-count budget.
+ */
+internal class GoalPlanningSharedPreplanRefresh(
+  private val database: DatabaseSessionFactory,
+  private val gate: GoalPlanningPreparationProjectionGate,
+) {
+  /** Prepared plan subtask ids currently stored for [parentGoalWorkflowId], including orphans. */
+  fun listPreparedPlanSubtaskIds(parentGoalWorkflowId: String, dbOverride: String? = null): List<Int> =
+    database.read(dbOverride) {
+      it.goalPlanningPreparations.listPreparedPlanSubtaskIds(parentGoalWorkflowId)
+    }
+
+  /**
+   * Provenance-only refresh: advance shared + plan-row provenance to [provenance] while keeping the exact
+   * saved payload bytes. Compare-and-swap on [expectedPayloadSha256].
+   */
+  fun advanceSharedPreplanProvenance(
+    identity: GoalPlanningIdentity,
+    expectedPayloadSha256: String,
+    provenance: GoalPlanningContractProvenance,
+    dbOverride: String? = null,
+  ) {
+    database.selfManagedWrite(dbOverride) {
+      it.goalPlanningPreparations.advanceSharedPreplanProvenance(identity, expectedPayloadSha256, provenance)
+    }
+  }
+
+  /**
+   * Full-payload refresh: UPDATE the shared row to [checkpoint], delete only [cascadePlanSubtaskIds],
+   * and restamp retained plan provenance in the same transaction.
+   */
+  fun replaceSharedPreplanForRefresh(
+    checkpoint: SharedGoalPreplanCheckpoint,
+    expectedPayloadSha256: String,
+    cascadePlanSubtaskIds: List<Int>,
+    dbOverride: String? = null,
+  ): SharedGoalPreplanCheckpoint {
+    val canonical = gate.canonicalizeSharedPreplan(checkpoint)
+    gate.validateSharedPreplan(canonical)
+    database.selfManagedWrite(dbOverride) {
+      it.goalPlanningPreparations.replaceSharedPreplan(canonical, expectedPayloadSha256, cascadePlanSubtaskIds)
+    }
+    return canonical
   }
 }
 
