@@ -339,19 +339,18 @@ class FeatureTaskRuntimeTransitionFunctionTest {
   }
 
   @Test
-  fun `a Major finding does not request changes and is not advance-blocking`() {
+  fun `a Major finding requests changes and is advance-blocking`() {
     val majorOnly = FeatureTaskRuntimeReviewVerdict(
       listOf(
         FeatureTaskRuntimeReviewFinding(FeatureTaskRuntimeReviewSeverity.MAJOR, "follow-up risk"),
         FeatureTaskRuntimeReviewFinding(FeatureTaskRuntimeReviewSeverity.MINOR, "consider renaming"),
       ),
     )
-    // Only Blocker reopens implement_fix (changes_requested). Major and Minor findings advance to
-    // validate without triggering a fix pass, so the verdict is APPROVED and both remediation and
-    // unresolved findings are empty.
-    assertEquals(FeatureTaskRuntimeVerdict.APPROVED, majorOnly.verdict)
-    assertTrue(majorOnly.remediationFindings.isEmpty())
-    assertTrue(majorOnly.unresolvedFindings.isEmpty())
+    // Blocker and Major both reopen implement_fix (changes_requested). Minor advances without
+    // joining the remediation or unresolved sets.
+    assertEquals(FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, majorOnly.verdict)
+    assertEquals(listOf("follow-up risk"), majorOnly.remediationFindings.map { it.message })
+    assertEquals(listOf("follow-up risk"), majorOnly.unresolvedFindings.map { it.message })
   }
 
   @Test

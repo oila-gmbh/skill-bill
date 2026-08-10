@@ -180,7 +180,7 @@ class GoalSubtaskReviewStateTest {
   }
 
   @Test
-  fun `a later pass with only major findings never reaches the cap disposition`() {
+  fun `a later pass with only major findings can carry the legacy cap disposition`() {
     val firstPass = GoalSubtaskReviewState.initial(
       reviewBaseSha = "e".repeat(40),
       baselineUntrackedPaths = emptyList(),
@@ -192,20 +192,17 @@ class GoalSubtaskReviewStateTest {
     )
 
     val secondPass = firstPass.reserveNextPass().completeReservedPass(
-      verdict = FeatureTaskRuntimeVerdict.APPROVED,
-      unresolvedFindingCount = 2,
-      findings = listOf(
-        GoalSubtaskReviewCompactFinding("major", "Service", "Missing behavior"),
-        GoalSubtaskReviewCompactFinding("nit", "Service", "Naming"),
-      ),
-    )
+      verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+      unresolvedFindingCount = 1,
+      findings = listOf(GoalSubtaskReviewCompactFinding("major", "Service", "Missing behavior")),
+    ).copy(disposition = GoalSubtaskReviewDisposition.REVIEW_CAP_REACHED)
 
-    assertFalse(secondPass.reviewCapReached)
-    assertEquals(FeatureTaskRuntimeVerdict.APPROVED, secondPass.passResults.last().verdict)
+    assertTrue(secondPass.reviewCapReached)
+    assertEquals(FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, secondPass.passResults.last().verdict)
   }
 
   @Test
-  fun `review_cap_reached is rejected when the last completed pass carries no blocker finding`() {
+  fun `review_cap_reached is rejected when the last completed pass carries no Blocker or Major`() {
     val state = GoalSubtaskReviewState.initial(
       reviewBaseSha = "f".repeat(40),
       baselineUntrackedPaths = emptyList(),
@@ -222,7 +219,7 @@ class GoalSubtaskReviewStateTest {
             verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
             reviewResultArtifact = "$GOAL_SUBTASK_REVIEW_RESULT_ARTIFACT_PREFIX.$passNumber",
             unresolvedFindingCount = 1,
-            findings = listOf(GoalSubtaskReviewCompactFinding("major", "Service", "Missing behavior")),
+            findings = listOf(GoalSubtaskReviewCompactFinding("minor", "Service", "Naming polish")),
           )
         },
       )

@@ -142,4 +142,3 @@ internal fun goalOperatorDecisionText(payload: Map<String, Any?>): String = buil
     appendLine("next: skill-bill goal resume ${payload["issue_key"]} (consumes the recorded decision)")
   }
 }
-

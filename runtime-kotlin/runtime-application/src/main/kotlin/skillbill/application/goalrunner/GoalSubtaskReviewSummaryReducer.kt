@@ -223,7 +223,7 @@ internal object GoalSubtaskReviewSummaryReducer {
   }
 
   fun unresolvedCount(output: Map<String, Any?>): Int = fromOutput(output)
-    .count { finding -> finding.severity == "blocker" }
+    .count(GoalSubtaskReviewCompactFinding::blocksAdvance)
 
   fun outcomeFor(
     output: Map<String, Any?>,

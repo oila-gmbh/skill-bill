@@ -37,15 +37,19 @@ fun parseValidationGateRepoConfig(raw: Any?): ValidationGateRepoConfigParse = tr
  * Absolute paths, empty segments, and `..` traversal are rejected.
  */
 fun parseGradleWrapperPath(raw: String?): String? {
-  val trimmed = raw?.trim() ?: return null
+  val trimmed = raw?.trim().orEmpty()
   if (trimmed.isEmpty()) return null
   val withForwardSlashes = trimmed.replace('\\', '/')
-  if (withForwardSlashes.startsWith("/") || withForwardSlashes.matches(Regex("^[A-Za-z]:/.*"))) return null
+  val absolute =
+    withForwardSlashes.startsWith("/") || withForwardSlashes.matches(Regex("^[A-Za-z]:/.*"))
   val normalized = withForwardSlashes.removePrefix("./")
-  if (normalized.isEmpty()) return null
   val segments = normalized.split('/').filter { segment -> segment.isNotEmpty() }
-  if (segments.isEmpty() || segments.any { segment -> segment == "." || segment == ".." }) return null
-  return segments.joinToString("/")
+  val invalid =
+    absolute ||
+      normalized.isEmpty() ||
+      segments.isEmpty() ||
+      segments.any { segment -> segment == "." || segment == ".." }
+  return if (invalid) null else segments.joinToString("/")
 }
 
 /**

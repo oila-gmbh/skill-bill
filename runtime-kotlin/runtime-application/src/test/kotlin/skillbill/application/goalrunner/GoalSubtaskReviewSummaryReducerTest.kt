@@ -204,8 +204,16 @@ class GoalSubtaskReviewSummaryReducerTest {
       "verdict" to FeatureTaskRuntimeVerdict.APPROVED.wireValue,
       "produced_outputs" to mapOf(
         "findings" to listOf(
-          mapOf("severity" to "blocker", "message" to "Data loss"),
-          mapOf("severity" to "major", "message" to "Follow-up risk"),
+          mapOf(
+            "severity" to "blocker",
+            "class_or_symbol" to "DataStore",
+            "message" to "Data loss",
+          ),
+          mapOf(
+            "severity" to "major",
+            "class_or_symbol" to "RiskPolicy",
+            "message" to "Follow-up risk",
+          ),
         ),
       ),
     )

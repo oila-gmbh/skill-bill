@@ -96,8 +96,7 @@ fun advanceBlockingFindingIdentity(finding: GoalSubtaskReviewCompactFinding): St
 
 fun advanceBlockingFindingIdentities(
   findings: List<GoalSubtaskReviewCompactFinding>,
-): FeatureTaskRuntimeReviewRemediationFindingIdentities =
-  FeatureTaskRuntimeReviewRemediationFindingIdentities(
-    identities = findings.filter(GoalSubtaskReviewCompactFinding::blocksAdvance)
-      .mapTo(linkedSetOf(), ::advanceBlockingFindingIdentity),
-  )
+): FeatureTaskRuntimeReviewRemediationFindingIdentities = FeatureTaskRuntimeReviewRemediationFindingIdentities(
+  identities = findings.filter(GoalSubtaskReviewCompactFinding::blocksAdvance)
+    .mapTo(linkedSetOf(), ::advanceBlockingFindingIdentity),
+)

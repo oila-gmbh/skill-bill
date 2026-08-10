@@ -125,7 +125,7 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
   }
 
   @Test
-  fun `review repair projection carries every preceding-pass finding with real severities and exact reviewed checkpoint`() {
+  fun `review repair projection carries preceding-pass findings with severities and exact checkpoint`() {
     val consumer = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX
     val declaration = declaration(
       consumerPhaseId = consumer,

@@ -49,6 +49,7 @@ import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.persistence.ProducerOutputEvidence
 import skillbill.ports.workflow.buildGoalSubtaskReviewInput
 import skillbill.ports.workflow.captureIndexState
+import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.pathContentIdentities
 import skillbill.ports.workflow.repositoryCheckpointFingerprint
@@ -99,12 +100,11 @@ import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 import skillbill.workflow.taskruntime.model.QUARANTINE_REJECTION_CLASS_PLANNING_PROJECTION
 import skillbill.workflow.taskruntime.model.ReviewPassResolution
 import skillbill.workflow.taskruntime.model.acceptanceCriterionRefsFor
-import skillbill.workflow.taskruntime.model.canonicalAuditIdentifier
 import skillbill.workflow.taskruntime.model.advanceBlockingFindingIdentities
+import skillbill.workflow.taskruntime.model.canonicalAuditIdentifier
 import skillbill.workflow.taskruntime.model.detectAuditRepairNonProgress
 import skillbill.workflow.taskruntime.model.detectReviewRemediationNonProgress
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
-import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 
@@ -1746,8 +1746,8 @@ internal class FeatureTaskRuntimeRunLoop(
     edgeIteration: Int,
   ): Boolean {
     if (operatorRetryGrantActive()) return false
-    val reviewState = goalReviewStateOrNull() ?: return false
-    if (reviewState.completedPassCount < 2) return false
+    val reviewState = goalReviewStateOrNull()
+    if (reviewState == null || reviewState.completedPassCount < 2) return false
     val previous = reviewState.passResults[reviewState.completedPassCount - 2]
     val current = reviewState.passResults.last()
     val previousIdentities = advanceBlockingFindingIdentities(previous.findings)

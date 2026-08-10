@@ -24,7 +24,6 @@ import skillbill.application.model.DEFAULT_GOAL_PLANNING_BUDGET
 import skillbill.application.model.GoalRunnerAcceptRequest
 import skillbill.application.model.GoalRunnerAcceptResult
 import skillbill.application.model.GoalRunnerOperatorDecisionRequest
-import skillbill.application.model.GoalRunnerOperatorDecisionResult
 import skillbill.application.model.GoalRunnerPauseResult
 import skillbill.application.model.GoalRunnerRepairRequest
 import skillbill.application.model.GoalRunnerReplanRequest

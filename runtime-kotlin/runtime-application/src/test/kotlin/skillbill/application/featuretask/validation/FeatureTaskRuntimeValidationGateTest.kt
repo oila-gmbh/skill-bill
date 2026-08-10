@@ -321,37 +321,33 @@ class FeatureTaskRuntimeValidationGateTest {
     repoLocalConfig(gradleWrapper),
   )
 
-  private fun repoLocalConfig(
-    gradleWrapper: String? = null,
-  ): skillbill.ports.config.RepoLocalConfigPort =
+  private fun repoLocalConfig(gradleWrapper: String? = null): skillbill.ports.config.RepoLocalConfigPort =
     object : skillbill.ports.config.RepoLocalConfigPort {
-      override fun readRepoLocalConfig(
-        request: skillbill.ports.config.model.ReadRepoLocalConfigRequest,
-      ) = skillbill.ports.config.model.ReadRepoLocalConfigResult(
-        skillbill.config.model.RepoLocalConfig.defaults().copy(
-          validationGate = skillbill.config.model.ValidationGateRepoConfig(gradleWrapper = gradleWrapper),
-        ),
-      )
+      override fun readRepoLocalConfig(request: skillbill.ports.config.model.ReadRepoLocalConfigRequest) =
+        skillbill.ports.config.model.ReadRepoLocalConfigResult(
+          skillbill.config.model.RepoLocalConfig.defaults().copy(
+            validationGate = skillbill.config.model.ValidationGateRepoConfig(gradleWrapper = gradleWrapper),
+          ),
+        )
     }
 
-  private fun declaredResolver(
-    declaration: ValidationGateDeclaration = gateDeclaration,
-  ): ValidationGateResolver = ValidationGateResolver(
-    ScaffoldCatalogService(
-      object : ScaffoldCatalogGateway {
-        override fun approvedCodeReviewAreas() = emptySet<String>()
-        override fun preShellFamilies() = emptySet<String>()
-        override fun shelledFamilies() = emptySet<String>()
-        override fun platformPackPresets() = emptyMap<String, String>()
-        override fun scaffoldPayloadVersion() = "test"
-        override fun discoverPilotedPlatformPacks(packsRoot: Path): List<PilotedPlatformPackProjection> = emptyList()
-        override fun discoverPlatformManifests(packsRoot: Path) = listOf(
-          kotlinPackWithoutGate().copy(validationGate = declaration),
-        )
-        override fun discoverBaselineReviewCatalog(packsRoot: Path) = BaselineReviewCatalog(emptyList(), emptyList())
-      },
-    ),
-  )
+  private fun declaredResolver(declaration: ValidationGateDeclaration = gateDeclaration): ValidationGateResolver =
+    ValidationGateResolver(
+      ScaffoldCatalogService(
+        object : ScaffoldCatalogGateway {
+          override fun approvedCodeReviewAreas() = emptySet<String>()
+          override fun preShellFamilies() = emptySet<String>()
+          override fun shelledFamilies() = emptySet<String>()
+          override fun platformPackPresets() = emptyMap<String, String>()
+          override fun scaffoldPayloadVersion() = "test"
+          override fun discoverPilotedPlatformPacks(packsRoot: Path): List<PilotedPlatformPackProjection> = emptyList()
+          override fun discoverPlatformManifests(packsRoot: Path) = listOf(
+            kotlinPackWithoutGate().copy(validationGate = declaration),
+          )
+          override fun discoverBaselineReviewCatalog(packsRoot: Path) = BaselineReviewCatalog(emptyList(), emptyList())
+        },
+      ),
+    )
 
   private fun minimalRequest(): FeatureTaskRuntimeRunRequest = FeatureTaskRuntimeRunRequest(
     issueKey = "SKILL-180",
@@ -407,10 +403,6 @@ class FeatureTaskRuntimeValidationGateTest {
     declaredFiles = DeclaredFiles(null, emptyMap()),
     areaMetadata = emptyMap(),
     validationGate = null,
-  )
-
-  private fun kotlinPackWithGate(): PlatformManifest = kotlinPackWithoutGate().copy(
-    validationGate = gateDeclaration,
   )
 
   private class ScriptedGateRunner(
