@@ -564,9 +564,10 @@ data class GoalSubtaskReviewState(
   val pausedForOperatorDecision: Boolean get() = disposition == GoalSubtaskReviewDisposition.PAUSED
 
   /**
-   * The remediation loop is unbounded, so no cap exhaustion ever mints the pause. The operator's own
-   * decision is what opens it: any subtask still carrying an unresolved Blocker may be taken over
-   * explicitly, which is the loop's only escape from a non-converging remediation.
+   * The remediation loop is unbounded, so no cap exhaustion ever mints the pause. Non-convergence of
+   * an advance-blocking Blocker or Major set pauses the subtask; the operator's own decision is the
+   * only escape. Any subtask still carrying unresolved advance-blocking evidence may also be taken
+   * over explicitly before a pause is minted.
    */
   val acceptsOperatorDecision: Boolean get() =
     pausedForOperatorDecision ||
@@ -575,6 +576,20 @@ data class GoalSubtaskReviewState(
 
   val unresolvedBlockerDispositions: List<GoalSubtaskBlockerDisposition>
     get() = blockerDispositions.filter { it.verdict == GoalSubtaskBlockerDispositionVerdict.UNRESOLVED }
+
+  /**
+   * Mints the non-terminal operator pause for a non-converging remediation. Requires advance-blocking
+   * evidence so the PAUSED invariant stays honest without a schema bump.
+   */
+  fun pauseForNonConvergence(): GoalSubtaskReviewState {
+    require(
+      blockerDispositions.any { it.verdict == GoalSubtaskBlockerDispositionVerdict.UNRESOLVED } ||
+        passResults.lastOrNull()?.blocksAdvance == true,
+    ) {
+      "pauseForNonConvergence requires an unresolved Blocker disposition or a Blocker or Major on the last pass."
+    }
+    return copy(disposition = GoalSubtaskReviewDisposition.PAUSED, operatorDecision = null)
+  }
 
   /**
    * The single production reader of `operator_decision`: every decision maps to a release, so no
@@ -601,7 +616,7 @@ data class GoalSubtaskReviewState(
     if (!acceptsOperatorDecision) {
       reviewStateError(
         "operator_decision",
-        "is only accepted while the subtask carries an unresolved Blocker.",
+        "is only accepted while the subtask carries an unresolved Blocker or Major.",
       )
     }
     return copy(disposition = GoalSubtaskReviewDisposition.PAUSED, operatorDecision = decision)

@@ -16,12 +16,15 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.agentaddon.model.AgentAddonConsumer
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.application.featuretask.FeatureTaskExecutionIdentityPolicy
+import skillbill.application.goalrunner.GoalOperatorDecisionService
 import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.goalrunner.GoalRunnerStatusService
 import skillbill.application.goalrunner.UnaddressedFindingsLedgerService
 import skillbill.application.model.DEFAULT_GOAL_PLANNING_BUDGET
 import skillbill.application.model.GoalRunnerAcceptRequest
 import skillbill.application.model.GoalRunnerAcceptResult
+import skillbill.application.model.GoalRunnerOperatorDecisionRequest
+import skillbill.application.model.GoalRunnerOperatorDecisionResult
 import skillbill.application.model.GoalRunnerPauseResult
 import skillbill.application.model.GoalRunnerRepairRequest
 import skillbill.application.model.GoalRunnerReplanRequest
@@ -57,6 +60,7 @@ import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_BYTES
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_HUNKS
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_LINES
 import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.workflow.taskruntime.model.GoalSubtaskOperatorDecision
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 
@@ -70,6 +74,7 @@ class GoalControlSubcommands(
   val replan: GoalReplanCommand,
   val accept: GoalAcceptCommand,
   val repair: GoalRepairCommand,
+  val operatorDecision: GoalOperatorDecisionCommand,
 )
 
 @Inject
@@ -161,6 +166,7 @@ class GoalRunCommand(
       goalRunSubcommands.controls.replan,
       goalRunSubcommands.controls.accept,
       goalRunSubcommands.controls.repair,
+      goalRunSubcommands.controls.operatorDecision,
       goalRunSubcommands.findings,
     )
   }
@@ -746,6 +752,48 @@ class GoalRepairCommand(
     )
     val payload = result.toGoalRepairCliMap()
     state.completeText(goalRepairText(payload), payload, exitCode = payload.goalRepairExitCode())
+  }
+}
+
+@Inject
+class GoalOperatorDecisionCommand(
+  private val goalOperatorDecisionService: GoalOperatorDecisionService,
+  private val state: CliRunState,
+) : DocumentedCliCommand(
+  "operator-decision",
+  "Record retry_fix, accept_and_advance, or abandon_subtask for a paused goal subtask " +
+    "without hand-editing durable state or decomposition-manifest.yaml. Resume the goal to consume it.",
+) {
+  private val issueKey by argument(help = "Parent issue key for the decomposed goal.")
+  private val subtaskId by option("--subtask", help = "Paused subtask id to decide.")
+    .int()
+    .required()
+  private val decision by option(
+    "--decision",
+    help = "Operator decision: ${GoalSubtaskOperatorDecision.entries.joinToString { it.wireValue }}.",
+  ).required()
+  private val repoRoot by option("--repo-root", help = "Repository root for the goal.")
+
+  override fun run() {
+    if (subtaskId <= 0) {
+      throw UsageError("--subtask must be a positive integer.")
+    }
+    val parsed = GoalSubtaskOperatorDecision.entries.firstOrNull { it.wireValue == decision }
+      ?: throw UsageError(
+        "Unknown --decision '$decision'. Allowed: " +
+          GoalSubtaskOperatorDecision.entries.joinToString { it.wireValue } + ".",
+      )
+    val result = goalOperatorDecisionService.record(
+      GoalRunnerOperatorDecisionRequest(
+        issueKey = issueKey,
+        subtaskId = subtaskId,
+        decision = parsed,
+        dbPathOverride = state.dbOverride,
+        repoRoot = repoRoot?.let(Path::of) ?: Path.of("").toAbsolutePath().normalize(),
+      ),
+    )
+    val payload = result.toGoalOperatorDecisionCliMap()
+    state.completeText(goalOperatorDecisionText(payload), payload, exitCode = payload.goalOperatorDecisionExitCode())
   }
 }
 
