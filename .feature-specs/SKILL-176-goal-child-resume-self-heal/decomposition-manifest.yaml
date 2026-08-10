@@ -3,24 +3,24 @@ contract_version: "0.5"
 issue_key: "SKILL-176"
 feature_name: "goal-child-resume-self-heal"
 parent_spec_path: ".feature-specs/SKILL-176-goal-child-resume-self-heal/spec.md"
-status: "pending"
+status: "blocked"
 execution_model: "same_branch_commit_per_subtask"
-base_branch: "main"
+base_branch: "feat/SKILL-179-complete-prose-engine-retirement"
 feature_branch: "feat/SKILL-176-goal-child-resume-self-heal"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 1
-  action: "start"
+  subtask_id: 6
+  action: "blocked"
 subtasks:
 - id: 1
   name: "Validation-depth absent-vs-default and conflict-gate audit"
   spec_path: ".feature-specs/SKILL-176-goal-child-resume-self-heal/spec_subtask_1_validation-depth-absent-vs-default.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260810-075005-ec6w"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -28,12 +28,12 @@ subtasks:
 - id: 2
   name: "Review-base reachability detection and recovery"
   spec_path: ".feature-specs/SKILL-176-goal-child-resume-self-heal/spec_subtask_2_remediation-base-reachability-recovery.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260810-080843-2vv8"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -41,12 +41,12 @@ subtasks:
 - id: 3
   name: "Orphaned-checkpoint upstream cause"
   spec_path: ".feature-specs/SKILL-176-goal-child-resume-self-heal/spec_subtask_3_orphaned-checkpoint-root-cause.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260810-084342-l584"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -57,12 +57,12 @@ subtasks:
 - id: 4
   name: "Blocked-reason fidelity: stale outcomes and discarded reasons"
   spec_path: ".feature-specs/SKILL-176-goal-child-resume-self-heal/spec_subtask_4_stale-continuation-outcome.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260810-092645-b2e3"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -70,12 +70,12 @@ subtasks:
 - id: 5
   name: "skill-bill goal repair operator path"
   spec_path: ".feature-specs/SKILL-176-goal-child-resume-self-heal/spec_subtask_5_goal-repair-command.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260810-095606-5zt0"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -92,12 +92,15 @@ subtasks:
 - id: 6
   name: "Producer-evidence identity across attempts and agents"
   spec_path: ".feature-specs/SKILL-176-goal-child-resume-self-heal/spec_subtask_6_producer-evidence-identity.md"
-  status: "pending"
+  status: "blocked"
   branch: null
   commit_sha: null
-  workflow_id: null
-  blocked_reason: null
-  last_resumable_step: null
+  workflow_id: "wftr-20260810-102715-fmdf"
+  blocked_reason: "git checkout feat/SKILL-176-goal-child-resume-self-heal failed\
+    \ with exit code 1: error: Your local changes to the following files would be\
+    \ overwritten by checkout:\n\t.feature-specs/SKILL-176-goal-child-resume-self-heal/decomposition-manifest.yaml\n\
+    Please commit your changes or stash them before you switch branches.\nAborting"
+  last_resumable_step: "create_branch"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
