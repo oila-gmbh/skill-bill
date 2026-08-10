@@ -250,8 +250,10 @@ internal fun goalContinuationValidateDepthDirective(phaseId: String, validationD
 internal const val BUILD_ONLY_VALIDATE_PHASE_TASK: String =
   "Prove compile/buildability of the changed modules only. Fix only compile/build failures. Do not " +
     "run tests, detekt, spotless, lint, dependency scanners, or the full bill-code-check / " +
-    "repository validation gate. Emit a bounded validation_result containing validation_status, " +
-    "checks, and repository_checkpoint; do not embed raw command output or telemetry."
+    "repository validation gate. While repairing compile/build failures, do not introduce " +
+    "suppressions, disable rules, or weaken configuration. Emit a bounded validation_result " +
+    "containing validation_status, checks, and repository_checkpoint; do not embed raw command " +
+    "output or telemetry."
 
 private val BUILD_ONLY_VALIDATE_DIRECTIVE_SECTION: String =
   """
@@ -259,10 +261,12 @@ private val BUILD_ONLY_VALIDATE_DIRECTIVE_SECTION: String =
     validation_depth=build_only. Prove compile/buildability only. Fix only compile/build failures.
     Do not run tests written during implement, do not execute test suites, and do not run detekt,
     spotless, lint, dependency scanners, or the full bill-code-check / repository validation gate.
-    Batch compile/build repairs the same way full validate batches gate repairs: read the complete
-    finding set from one compile/build run, fix every finding at its root cause, then rerun once to
-    verify. Emit a bounded validation_result containing validation_status, checks, and
-    repository_checkpoint; do not embed raw command output or telemetry.
+    While repairing compile/build failures, do not introduce suppressions, disable rules, or
+    weaken configuration. Batch compile/build repairs the same way full validate batches gate
+    repairs: read the complete finding set from one compile/build run, fix every finding at its
+    root cause, then rerun once to verify. Emit a bounded validation_result containing
+    validation_status, checks, and repository_checkpoint; do not embed raw command output or
+    telemetry.
   """.trimIndent()
 
 /** Selects the validate Task text from depth; every other phase uses [phaseDirectives] unchanged. */
@@ -351,7 +355,11 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "rerun the gate after an individual fix, and never rerun it to rediscover findings the previous " +
     "run already reported. Rerun early only when a fix genuinely cannot be completed without fresh " +
     "gate output, and say which finding forced it. Findings that share one root cause are one fix, " +
-    "not several. Validation findings are repair work, not a reason to block the phase. Emit a " +
+    "not several. Validation findings are repair work, not a reason to block the phase. Invoke " +
+    "bill-code-check for that gate — it auto-routes to the pack-declared quality-check skill; never " +
+    "name a stack-specific quality-check skill such as bill-kotlin-code-check. Fix findings at their " +
+    "root cause; never silence them with annotations, baselines, disabled rules, weakened " +
+    "configuration, or skipped tests. Emit a " +
     "bounded validation_result containing validation_status, checks, and repository_checkpoint; " +
     "do not embed raw command output or telemetry.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY to

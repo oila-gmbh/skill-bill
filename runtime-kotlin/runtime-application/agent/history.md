@@ -1,3 +1,13 @@
+## [2026-08-10] SKILL-180 subtask 1 — Validate no-suppression directive and history correction
+Areas: runtime-application/featuretask, runtime-kotlin/agent, runtime-infra-fs/agent, .feature-specs/SKILL-180
+- PHASE_VALIDATE now invokes `bill-code-check` (router only; never a stack-specific checker) and forbids silencing findings via annotations, baselines, disabled rules, weakened config, or skipped tests; existing one-run / fix-all / rerun-once batching stays intact.
+- BUILD_ONLY validate task + directive forbid introducing suppressions, disabling rules, or weakening config while repairing compile/build failures, without adding a `bill-code-check` invocation.
+- Corrected existing `agent/history.md` lines that prescribed `@Suppress` as the preferred fix so they record what landed factually without guiding future work toward suppression.
+- Prompt-composer regressions lock the FULL no-suppression + router clause and the BUILD_ONLY no-suppression clause with its existing prohibitions.
+- Transitional: the `bill-code-check` invoke clause is temporary until subtask 2 owns the gate; the no-suppression clause is permanent.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
 ## [2026-08-09] SKILL-179 subtask 3 — Legacy prose-mode row lifecycle
 Areas: runtime-application/{featuretask,workflow,goalrunner}, runtime-ports/persistence, runtime-infra-sqlite/db/workflow, runtime-cli/featuretask, .feature-specs/SKILL-179
 - Parent discovery lists RUNTIME and PROSE feature-task rows so a legacy goal parent surfaces as `goal_continuation` instead of silent `no_match` over live durable state.

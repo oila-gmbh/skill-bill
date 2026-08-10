@@ -196,9 +196,12 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(prompt, "validation_depth=build_only")
     assertContains(prompt, "Prove compile/buildability")
     assertContains(prompt, "Do not run tests")
+    assertContains(prompt, "do not introduce suppressions, disable rules, or weaken configuration")
     assertFalse(prompt.contains("Run tests written during the implement phase"))
     assertFalse(prompt.contains("then run the repository validation gate"))
     assertFalse(prompt.contains("Never rerun the gate after an individual fix"))
+    assertFalse(prompt.contains("Invoke bill-code-check for that gate"))
+    assertFalse(prompt.contains("never silence them with annotations, baselines, disabled rules"))
     assertContains(
       prompt,
       FeatureTaskRuntimeHandoffProjectionValidator.BUILD_ONLY_COMPILE_BUILDABILITY_CHECK,
@@ -225,10 +228,55 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       assertContains(prompt, "Run tests written during the implement phase")
       assertContains(prompt, "then run the repository validation gate")
       assertContains(prompt, "read the complete finding set from one gate run")
+      assertContains(prompt, "Invoke bill-code-check for that gate")
+      assertContains(prompt, "never silence them with annotations, baselines, disabled rules")
       assertFalse(prompt.contains("Goal-continuation validate depth"))
       assertFalse(prompt.contains("validation_depth=build_only"))
       assertContains(prompt, "Focused runtime tests.")
       assertContains(prompt, "Focused test.")
+    }
+  }
+
+  // SKILL-180: FULL validate must carry bill-code-check + no-suppression; other phases must not.
+  @Test
+  fun `full validate prompt carries bill-code-check and no-suppression clause absent from non-validate phases`() {
+    val validatePrompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+        validationDepth = ValidationDepth.FULL,
+      ),
+      validationDepth = ValidationDepth.FULL,
+    )
+    assertContains(validatePrompt, "Invoke bill-code-check for that gate")
+    assertContains(validatePrompt, "never name a stack-specific quality-check skill")
+    assertContains(
+      validatePrompt,
+      "never silence them with annotations, baselines, disabled rules, weakened configuration, or skipped tests",
+    )
+    assertFalse(validatePrompt.contains("Invoke bill-kotlin-code-check"))
+
+    val nonValidatePhases = listOf(
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR,
+    )
+    nonValidatePhases.forEach { phaseId ->
+      val prompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor(phaseId))
+      assertFalse(
+        prompt.contains("Invoke bill-code-check for that gate"),
+        "phase $phaseId must not carry the validate gate-invocation clause",
+      )
+      assertFalse(
+        prompt.contains("never silence them with annotations, baselines, disabled rules"),
+        "phase $phaseId must not carry the validate no-suppression clause",
+      )
     }
   }
 
