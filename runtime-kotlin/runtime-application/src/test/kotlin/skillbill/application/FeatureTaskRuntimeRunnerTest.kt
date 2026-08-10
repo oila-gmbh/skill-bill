@@ -22,6 +22,9 @@ import skillbill.application.featuretask.FeatureTaskRuntimeRunInvariantsStore
 import skillbill.application.featuretask.FeatureTaskRuntimeRunner
 import skillbill.application.featuretask.FeatureTaskRuntimeSpecGate
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
+import skillbill.application.featuretask.GoalContinuationStateRecordRequest
+import skillbill.application.featuretask.GoalSubtaskReviewInputBlocked
+import skillbill.application.featuretask.GoalSubtaskReviewInputReady
 import skillbill.application.featuretask.SpecSourceResolver
 import skillbill.application.featuretask.reconcileCheckpointPathInventory
 import skillbill.application.model.FeatureTaskRuntimeAgentAssignment
@@ -113,6 +116,7 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_AR
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFormat
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
@@ -122,7 +126,11 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputValidat
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
+import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewDisposition
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
 import java.nio.file.Files
 import java.nio.file.Path
@@ -1325,6 +1333,103 @@ class FeatureTaskRuntimeRemediationGenerationTest {
     )
   }
 
+  // AC-006 / task-5: a healthy remediation round produces one remediation checkpoint whose sha is
+  // exactly the stored remediation_base_sha, and writes no recovery evidence.
+  @Test
+  fun `normal remediation round records base equal to the checkpoint commit with no recovery evidence`() {
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-remediation-parity")
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+      .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
+    var reviewLaunches = 0
+    val harness = goalContinuationHarness(
+      repoRoot,
+      git,
+      RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        if (phaseId == "implement" || phaseId == "implement_fix") {
+          git.worktreeStatusValue = " M src/Foo.kt"
+          git.ownedPathsValue = listOf("src/Foo.kt")
+        }
+        when (phaseId) {
+          "review" -> {
+            reviewLaunches += 1
+            facts(verdictReviewOutput(if (reviewLaunches == 1) "changes_requested" else "advance"))
+          }
+          else -> facts(validJsonOutput(phaseId))
+        }
+      },
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(
+      harness.runner.run(harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE)),
+    )
+
+    val remediationMessages = git.createCommitMessages.filter { it.contains("remediation checkpoint") }
+    assertEquals(1, remediationMessages.size, "exactly one remediation checkpoint on a healthy round")
+    val remediationIndex = git.createCommitMessages.indexOf(remediationMessages.single())
+    val remediationSha = (remediationIndex + 1).toString(16).padStart(40, '0')
+    val reviewState = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
+    assertEquals(remediationSha, reviewState.remediationBaseSha, "recorded base must equal the checkpoint tip")
+    // Soft-reset must not fire on the happy path; recovery evidence must stay absent.
+    assertTrue(git.resetSoftToCommitCalls.isEmpty())
+    assertNull(harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_review_base_recoveries"])
+  }
+
+  // AC-001/AC-005 / task-4: after the orphaning sequence (base recorded, then branch tip replaced by a
+  // sibling), resume coherence leaves the durable row and the git ref in agreement. Documented to
+  // fail against a pre-fix runtime that lacks reconcileRemediationBaseCoherence.
+  @Test
+  fun `orphaning sequence then resume leaves branch tip and remediation_base_sha in agreement`() {
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-orphan-sequence")
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+      .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
+    var reviewLaunches = 0
+    val harness = goalContinuationHarness(
+      repoRoot,
+      git,
+      RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        if (phaseId == "implement" || phaseId == "implement_fix") {
+          git.worktreeStatusValue = " M src/Foo.kt"
+          git.ownedPathsValue = listOf("src/Foo.kt")
+        }
+        when (phaseId) {
+          "review" -> {
+            reviewLaunches += 1
+            facts(verdictReviewOutput(if (reviewLaunches == 1) "changes_requested" else "advance"))
+          }
+          else -> facts(validJsonOutput(phaseId))
+        }
+      },
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(
+      harness.runner.run(harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE)),
+    )
+    val recordedBase = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID)?.remediationBaseSha)
+    // Reproduce the SKILL-15 sibling rewrite outside commitCheckpoint: tip moves to a new sha that
+    // does not contain the recorded base, without updating the durable row.
+    val siblingTip = "b".repeat(40)
+    git.headCommitShaValue = siblingTip
+    git.nonAncestorPairs += recordedBase to siblingTip
+    assertEquals(
+      "false",
+      git.isCommitAncestor(repoRoot, recordedBase, siblingTip).value,
+      "pre-fix: recorded base must be unreachable from the rewritten tip",
+    )
+    assertEquals(recordedBase, harness.goalContinuationRecorder.reviewState(WORKFLOW_ID)?.remediationBaseSha)
+
+    val healed = requireNotNull(
+      harness.goalContinuationRecorder.reconcileRemediationBaseCoherence(WORKFLOW_ID, git, repoRoot),
+    )
+    assertEquals(siblingTip, healed.remediationBaseSha)
+    assertEquals(siblingTip, harness.goalContinuationRecorder.reviewState(WORKFLOW_ID)?.remediationBaseSha)
+    assertEquals("true", git.isCommitAncestor(repoRoot, healed.remediationBaseSha!!, siblingTip).value)
+    @Suppress("UNCHECKED_CAST")
+    val evidence = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_review_base_recoveries"] as List<*>
+    assertTrue(evidence.isNotEmpty(), "silent heal must emit durable evidence")
+  }
+
   // A settled subtask's review is replayed from its durable result on resume rather than relaunched,
   // so a resume neither re-reviews converged work nor allocates another pass.
   @Test
@@ -1685,6 +1790,7 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
 
 // Goal-continuation persistence and SHA measurement paths. Kept outside
 // [FeatureTaskRuntimeRunnerPersistenceTest] so that suite stays under the detekt LargeClass threshold.
+@Suppress("LargeClass")
 class FeatureTaskRuntimeGoalContinuationPersistenceTest {
   @Test
   fun `goal-continuation run suppresses decompose and pr then completes at commit push`() {
@@ -1921,6 +2027,401 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
       listOf("0".repeat(40), recoveredBaseline.reviewBaseSha),
       git.goalReviewBuildInputs.map { it.reviewBaseSha },
     )
+  }
+
+  @Test
+  @Suppress("LongMethod") // end-to-end review prep harness; splitting would obscure AC-009/AC-012 wiring
+  fun `non-scope failure inside review preparation surfaces its own cause not the fixed scope sentence`() {
+    // Bug this catches: the review dispatch substituted a fixed scope sentence after
+    // blockedGoalReviewRun already persisted the specific reservation/evidence-store cause (AC-009/AC-012).
+    val evidenceStoreCause = "[evidence-store] retaining producer-output evidence for review:0:2 failed"
+    val fixedScopeSentence =
+      "Goal-subtask review preparation could not establish the exact durable review scope."
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-review-prep-nonscope")
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+      .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
+    val harness = goalContinuationHarness(repoRoot, git, goalContinuationLauncher(validJsonOutput("commit_push")))
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    check(
+      harness.goalContinuationRecorder.recordGoalContinuationState(
+        GoalContinuationStateRecordRequest(
+          workflowId = WORKFLOW_ID,
+          continuation = FeatureTaskRuntimeGoalContinuationArtifact(
+            issueKey = ISSUE_KEY,
+            subtaskId = 5,
+            suppressPr = true,
+            goalBranch = "feat/existing-runtime-branch",
+            parentWorkflowId = "wfl-parent",
+            codeReviewMode = CodeReviewExecutionMode.INLINE,
+          ),
+          reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+        ),
+      ),
+    )
+    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
+    harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
+    harness.seedPhase("audit", "completed", 1, phaseAgent("audit"), VALID_AUDIT_OUTPUT)
+    harness.repository.failSaveWhen = { row ->
+      val artifacts = skillbill.contracts.JsonSupport.parseObjectOrNull(row.artifactsJson)
+        ?.let(skillbill.contracts.JsonSupport::jsonElementToValue)
+        ?.let(skillbill.contracts.JsonSupport::anyToStringAnyMap)
+        .orEmpty()
+      val reserved = (artifacts["goal_subtask_review_state"] as? Map<*, *>)?.get("reserved_pass_number")
+      if (reserved != null) {
+        throw IllegalStateException(evidenceStoreCause)
+      }
+      false
+    }
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(
+      harness.runner.run(
+        harness.request().copy(
+          transitionsOverride = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration(
+            forwardPhaseIds = listOf("preplan", "plan", "implement", "audit", "review"),
+            backwardEdges = emptyList(),
+          ),
+        ),
+      ),
+    )
+
+    assertEquals("review", blocked.lastIncompletePhase)
+    assertContains(blocked.blockedReason, evidenceStoreCause)
+    assertContains(blocked.blockedReason, "Goal-subtask review reservation failed")
+    assertTrue(
+      fixedScopeSentence !in blocked.blockedReason,
+      "fixed scope sentence must not replace the injected non-scope cause",
+    )
+    val phaseBlocked = harness.events.filterIsInstance<FeatureTaskRuntimeRunEvent.PhaseBlocked>()
+      .single { it.phaseId == "review" }
+    assertContains(phaseBlocked.blockedReason, evidenceStoreCause)
+    assertTrue(fixedScopeSentence !in phaseBlocked.blockedReason)
+    val reviewRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
+    assertContains(requireNotNull(reviewRecord.blockedReason), evidenceStoreCause)
+  }
+
+  @Test
+  fun `scope-shaped review preparation failure still reports the scope-specific message`() {
+    // Bug this catches: removing the fixed scope sentence must not lose genuine scope failures (AC-010).
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-review-prep-scope")
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+      .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
+    val harness = goalContinuationHarness(repoRoot, git, goalContinuationLauncher(validJsonOutput("commit_push")))
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    check(
+      harness.goalContinuationRecorder.recordGoalContinuationState(
+        GoalContinuationStateRecordRequest(
+          workflowId = WORKFLOW_ID,
+          continuation = FeatureTaskRuntimeGoalContinuationArtifact(
+            issueKey = ISSUE_KEY,
+            subtaskId = 5,
+            suppressPr = true,
+            goalBranch = "feat/existing-runtime-branch",
+            parentWorkflowId = "wfl-parent",
+            codeReviewMode = CodeReviewExecutionMode.INLINE,
+          ),
+          reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+        ),
+      ),
+    )
+    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
+    harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
+    harness.seedPhase("audit", "completed", 1, phaseAgent("audit"), VALID_AUDIT_OUTPUT)
+    val artifacts = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID).toMutableMap()
+    artifacts.remove("goal_subtask_review_state")
+    harness.repository.replaceTaskRuntimeArtifacts(WORKFLOW_ID, artifacts)
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(
+      harness.runner.run(
+        harness.request().copy(
+          transitionsOverride = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration(
+            forwardPhaseIds = listOf("preplan", "plan", "implement", "audit", "review"),
+            backwardEdges = emptyList(),
+          ),
+        ),
+      ),
+    )
+
+    println("DEBUG blockedReason=" + blocked.blockedReason)
+    println("DEBUG lastIncompletePhase=" + blocked.lastIncompletePhase)
+    assertEquals("review", blocked.lastIncompletePhase)
+    assertContains(blocked.blockedReason, "review_base_sha must be captured before implementation")
+    assertTrue(
+      "Goal-subtask review preparation could not establish the exact durable review scope." !in
+        blocked.blockedReason,
+    )
+  }
+
+  @Test
+  fun `AC-008 unreachable remediation base with completed passes recovers through review preparation`() {
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-ac008-remediation-recover")
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+      .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
+    val unreachableRemediation = "7".repeat(40)
+    val recoveredRemediation = "8".repeat(40)
+    git.goalReviewBuildResults += GoalSubtaskReviewInputResult(
+      status = "error",
+      error = "Persisted review base '$unreachableRemediation' is not an ancestor of current HEAD.",
+      failureReason = GoalSubtaskReviewInputFailureReason.BASE_NOT_ANCESTOR,
+    )
+    git.goalReviewRecoveredBaseline = GoalSubtaskReviewBaseline(recoveredRemediation, emptyList())
+    val harness = goalContinuationHarness(repoRoot, git, goalContinuationLauncher(validJsonOutput("commit_push")))
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    check(
+      harness.goalContinuationRecorder.recordGoalContinuationState(
+        GoalContinuationStateRecordRequest(
+          workflowId = WORKFLOW_ID,
+          continuation = FeatureTaskRuntimeGoalContinuationArtifact(
+            issueKey = ISSUE_KEY,
+            subtaskId = 5,
+            suppressPr = true,
+            goalBranch = "feat/existing-runtime-branch",
+            parentWorkflowId = "wfl-parent",
+            codeReviewMode = CodeReviewExecutionMode.INLINE,
+          ),
+          reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+        ),
+      ),
+    )
+    // Seed the SKILL-15 wedge: two completed passes, reserved pass 3, orphaned remediation base.
+    var state = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
+    repeat(2) {
+      state = state.reserveNextPass().completeReservedPass(
+        verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+        unresolvedFindingCount = 1,
+        findings = emptyList(),
+      )
+    }
+    state = state.reserveNextPass().copy(remediationBaseSha = unreachableRemediation)
+    checkNotNull(harness.goalContinuationRecorder.updateReviewState(WORKFLOW_ID) { state })
+    harness.seedRawReviewResults(state)
+
+    // Drive review preparation the run loop uses — the pre-fix gate refused this shape.
+    val prepared = harness.goalContinuationRecorder.buildGoalReviewInput(WORKFLOW_ID, git, repoRoot)
+
+    assertIs<GoalSubtaskReviewInputReady>(prepared)
+    assertEquals(recoveredRemediation, harness.goalContinuationRecorder.reviewState(WORKFLOW_ID)?.remediationBaseSha)
+    assertEquals(1, git.goalReviewRecoverCalls)
+    assertEquals(unreachableRemediation, git.goalReviewRecoverRequests.single().unreachableSha)
+    val evidence = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_review_base_recoveries"] as List<*>
+    val entry = evidence.single() as Map<*, *>
+    assertEquals(unreachableRemediation, entry["original_sha"])
+    assertEquals(recoveredRemediation, entry["replacement_sha"])
+    assertEquals("base_not_ancestor", entry["failure_reason"])
+  }
+
+  @Test
+  fun `non-recoverable review input failures do not enter baseline recovery`() {
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-nonrecoverable-review-base")
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+      .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
+    git.goalReviewBuildResults += GoalSubtaskReviewInputResult(
+      status = "error",
+      error = "Goal-subtask review must run on durable child branch 'feat/existing-runtime-branch'.",
+      failureReason = null,
+    )
+    git.goalReviewRecoveredBaseline = GoalSubtaskReviewBaseline("1".repeat(40), emptyList())
+    val harness = goalContinuationHarness(repoRoot, git, goalContinuationLauncher(validJsonOutput("commit_push")))
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    check(
+      harness.goalContinuationRecorder.recordGoalContinuationState(
+        GoalContinuationStateRecordRequest(
+          workflowId = WORKFLOW_ID,
+          continuation = FeatureTaskRuntimeGoalContinuationArtifact(
+            issueKey = ISSUE_KEY,
+            subtaskId = 5,
+            suppressPr = true,
+            goalBranch = "feat/existing-runtime-branch",
+            parentWorkflowId = "wfl-parent",
+            codeReviewMode = CodeReviewExecutionMode.INLINE,
+          ),
+          reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+        ),
+      ),
+    )
+
+    val prepared = harness.goalContinuationRecorder.buildGoalReviewInput(WORKFLOW_ID, git, repoRoot)
+
+    assertIs<GoalSubtaskReviewInputBlocked>(prepared)
+    assertEquals(0, git.goalReviewRecoverCalls)
+  }
+
+  @Test
+  @Suppress("LongMethod") // capped-review staleness harness with unreachable remediation base
+  fun `cappedReviewIsStale ignores an unreachable remediation base and keeps an unchanged immutable digest`() {
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-stale-unreachable-remediation")
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+      .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
+    val immutableDigest = GoalSubtaskReviewInput(
+      reviewBaseSha = "0".repeat(40),
+      currentHeadSha = COMMITTED_HEAD_SHA,
+      trackedDelta = "immutable-delta\n",
+      ownedUntrackedPatches = "",
+    ).deltaDigest
+    // First build call may be remediation (unreachable) or review base — queue both shapes.
+    git.goalReviewBuildResults += GoalSubtaskReviewInputResult(
+      status = "error",
+      error = "Persisted review base '${"9".repeat(40)}' is not an ancestor of current HEAD.",
+      failureReason = GoalSubtaskReviewInputFailureReason.BASE_NOT_ANCESTOR,
+    )
+    // Default success path uses baseline.reviewBaseSha; for the immutable base the fake returns empty
+    // delta unless we pre-queue. Queue a matching digest for the immutable base probe.
+    git.goalReviewBuildResults += GoalSubtaskReviewInputResult(
+      status = "ok",
+      input = GoalSubtaskReviewInput(
+        reviewBaseSha = "0".repeat(40),
+        currentHeadSha = COMMITTED_HEAD_SHA,
+        trackedDelta = "immutable-delta\n",
+        ownedUntrackedPatches = "",
+      ),
+    )
+    val harness = goalContinuationHarness(repoRoot, git, goalContinuationLauncher(validJsonOutput("commit_push")))
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    check(
+      harness.goalContinuationRecorder.recordGoalContinuationState(
+        GoalContinuationStateRecordRequest(
+          workflowId = WORKFLOW_ID,
+          continuation = FeatureTaskRuntimeGoalContinuationArtifact(
+            issueKey = ISSUE_KEY,
+            subtaskId = 5,
+            suppressPr = true,
+            goalBranch = "feat/existing-runtime-branch",
+            parentWorkflowId = "wfl-parent",
+            codeReviewMode = CodeReviewExecutionMode.INLINE,
+          ),
+          reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+        ),
+      ),
+    )
+    harness.seedReviewPhase("completed", 1, validJsonOutput("review"), reviewPassNumber = 1)
+    val paused = GoalSubtaskReviewState.initial(
+      reviewBaseSha = "0".repeat(40),
+      baselineUntrackedPaths = emptyList(),
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
+    ).reserveNextPass().completeReservedPass(
+      verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+      unresolvedFindingCount = 1,
+      findings = listOf(
+        GoalSubtaskReviewCompactFinding(
+          severity = "blocker",
+          label = "StaleCap",
+          text = "unresolved",
+          findingId = "F-001",
+        ),
+      ),
+    ).copy(
+      disposition = GoalSubtaskReviewDisposition.PAUSED,
+      reviewedDeltaDigest = immutableDigest,
+      remediationBaseSha = "9".repeat(40),
+    )
+    checkNotNull(harness.goalContinuationRecorder.updateReviewState(WORKFLOW_ID) { paused })
+    harness.seedRawReviewResults(paused)
+    val generationBefore = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)[
+      "feature_task_runtime_review_generation",
+    ]
+
+    // A short run still executes reopenCappedReviewOnChangedDelta before the loop.
+    harness.runner.run(
+      harness.request().copy(
+        transitionsOverride = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration(
+          forwardPhaseIds = listOf("preplan"),
+          backwardEdges = emptyList(),
+        ),
+      ),
+    )
+
+    val after = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
+    assertEquals(GoalSubtaskReviewDisposition.PAUSED, after.disposition)
+    assertEquals("9".repeat(40), after.remediationBaseSha, "staleness must not heal the remediation base")
+    assertEquals(0, git.goalReviewRecoverCalls, "recovery belongs to review preparation, not staleness")
+    assertEquals(
+      generationBefore,
+      harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["feature_task_runtime_review_generation"],
+    )
+  }
+
+  @Test
+  @Suppress("LongMethod") // capped-review staleness harness with changed immutable digest
+  fun `cappedReviewIsStale still reopens when the immutable base digest changed despite unreachable remediation`() {
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-stale-changed-immutable")
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+      .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
+    val judgedDigest = GoalSubtaskReviewInput(
+      reviewBaseSha = "0".repeat(40),
+      currentHeadSha = COMMITTED_HEAD_SHA,
+      trackedDelta = "old-delta\n",
+      ownedUntrackedPatches = "",
+    ).deltaDigest
+    git.goalReviewBuildResults += GoalSubtaskReviewInputResult(
+      status = "error",
+      error = "Persisted review base '${"9".repeat(40)}' is not an ancestor of current HEAD.",
+      failureReason = GoalSubtaskReviewInputFailureReason.BASE_NOT_ANCESTOR,
+    )
+    git.goalReviewBuildResults += GoalSubtaskReviewInputResult(
+      status = "ok",
+      input = GoalSubtaskReviewInput(
+        reviewBaseSha = "0".repeat(40),
+        currentHeadSha = COMMITTED_HEAD_SHA,
+        trackedDelta = "new-delta\n",
+        ownedUntrackedPatches = "",
+      ),
+    )
+    val harness = goalContinuationHarness(repoRoot, git, goalContinuationLauncher(validJsonOutput("commit_push")))
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    check(
+      harness.goalContinuationRecorder.recordGoalContinuationState(
+        GoalContinuationStateRecordRequest(
+          workflowId = WORKFLOW_ID,
+          continuation = FeatureTaskRuntimeGoalContinuationArtifact(
+            issueKey = ISSUE_KEY,
+            subtaskId = 5,
+            suppressPr = true,
+            goalBranch = "feat/existing-runtime-branch",
+            parentWorkflowId = "wfl-parent",
+            codeReviewMode = CodeReviewExecutionMode.INLINE,
+          ),
+          reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+        ),
+      ),
+    )
+    harness.seedReviewPhase("completed", 1, validJsonOutput("review"), reviewPassNumber = 1)
+    val paused = GoalSubtaskReviewState.initial(
+      reviewBaseSha = "0".repeat(40),
+      baselineUntrackedPaths = emptyList(),
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
+    ).reserveNextPass().completeReservedPass(
+      verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+      unresolvedFindingCount = 1,
+      findings = listOf(
+        GoalSubtaskReviewCompactFinding(
+          severity = "blocker",
+          label = "StaleCap",
+          text = "unresolved",
+          findingId = "F-001",
+        ),
+      ),
+    ).copy(
+      disposition = GoalSubtaskReviewDisposition.PAUSED,
+      reviewedDeltaDigest = judgedDigest,
+      remediationBaseSha = "9".repeat(40),
+    )
+    checkNotNull(harness.goalContinuationRecorder.updateReviewState(WORKFLOW_ID) { paused })
+    harness.seedRawReviewResults(paused)
+
+    harness.runner.run(
+      harness.request().copy(
+        transitionsOverride = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration(
+          forwardPhaseIds = listOf("preplan"),
+          backwardEdges = emptyList(),
+        ),
+      ),
+    )
+
+    val after = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
+    assertEquals(GoalSubtaskReviewDisposition.PENDING, after.disposition)
+    assertNull(after.remediationBaseSha, "invalidation resets review state; recovery is not the staleness path")
+    assertEquals(0, git.goalReviewRecoverCalls)
   }
 
   @Test
@@ -3893,6 +4394,66 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     )
   }
 
+  // AC-002 / task-2: when the durable base record rejects the checkpoint sha, the branch soft-resets
+  // to the pre-commit parent so the ref and the durable row stay paired (both unchanged).
+  @Test
+  fun `a failed remediation base record soft-resets the checkpoint tip back to its parent`() {
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-base-record-rollback")
+    val parentSha = COMMITTED_HEAD_SHA
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+      .also {
+        it.headCommitShaValue = parentSha
+        it.invalidShaOnRemediationCommit = true
+      }
+    var reviewLaunches = 0
+    val harness = goalContinuationHarness(
+      repoRoot,
+      git,
+      RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        if (phaseId == "implement" || phaseId == "implement_fix") {
+          git.worktreeStatusValue = " M src/Foo.kt"
+          git.ownedPathsValue = listOf("src/Foo.kt")
+        }
+        when (phaseId) {
+          "review" -> {
+            reviewLaunches += 1
+            facts(verdictReviewOutput("changes_requested"))
+          }
+          else -> facts(validJsonOutput(phaseId))
+        }
+      },
+    )
+
+    val report = harness.runner.run(
+      harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE),
+    )
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertTrue(
+      blocked.blockedReason.contains("remediation") || blocked.blockedReason.contains("checkpoint"),
+      blocked.blockedReason,
+    )
+    // The dirty tree left by `implement` earns its own audit-boundary checkpoint before the
+    // remediation checkpoint is even attempted, so the failed remediation commit's parent — and the
+    // soft-reset target — is that audit checkpoint's sha, not the pre-run head.
+    val auditCheckpointSha = "0".repeat(39) + "1"
+    assertEquals(
+      listOf(auditCheckpointSha),
+      git.resetSoftToCommitCalls,
+      "failed paired write must soft-reset to the preceding checkpoint",
+    )
+    assertEquals(
+      auditCheckpointSha,
+      git.headCommitShaValue,
+      "branch tip must match the preceding checkpoint after rollback",
+    )
+    assertNull(
+      harness.goalContinuationRecorder.reviewState(WORKFLOW_ID)?.remediationBaseSha,
+      "durable base must remain unset when the paired record failed",
+    )
+  }
+
   // AC-004/AC-010: a concurrently prepared foreign spec is never staged, committed, or reviewed here.
   @Test
   fun `a concurrently prepared foreign feature spec is never staged committed or reviewed`() {
@@ -4352,6 +4913,17 @@ internal class RunnerHarness(
   val repository: InMemoryRuntimeWorkflowRepository get() = io.repository
   val gitOperations: RecordingWorkflowGitOperations get() = io.gitOperations
   val ledgerRows: List<skillbill.goalrunner.model.UnaddressedFinding> get() = io.database.ledgerRows
+
+  // Direct review-state seeding via updateReviewState only patches goal_subtask_review_state; the
+  // decoder also requires a durable raw result for every completed pass, so fixtures that
+  // hand-assemble completed passes must patch this sibling artifact themselves.
+  fun seedRawReviewResults(state: GoalSubtaskReviewState) {
+    val artifacts = repository.taskRuntimeArtifacts(WORKFLOW_ID).toMutableMap()
+    artifacts[GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY] = state.passResults.associate { result ->
+      result.passNumber.toString() to "raw review result for pass ${result.passNumber}"
+    }
+    repository.replaceTaskRuntimeArtifacts(WORKFLOW_ID, artifacts)
+  }
 
   fun reviewedDeltaDigest(): String? =
     requireNotNull(goalContinuationRecorder.reviewState(WORKFLOW_ID)).reviewedDeltaDigest
@@ -5429,6 +6001,15 @@ internal class RecordingWorkflowGitOperations(
   val createCommitMessages = mutableListOf<String>()
   var createCommitResult: WorkflowGitOperationResult? = null
 
+  // When true, a remediation-checkpoint createCommit returns a malformed sha so the paired base
+  // record fails GoalSubtaskReviewState validation and the soft-reset rollback path is exercised.
+  var invalidShaOnRemediationCommit: Boolean = false
+  val resetSoftToCommitCalls = mutableListOf<String>()
+  var resetSoftToCommitResult: WorkflowGitOperationResult? = null
+
+  // Ancestor→descendant pairs that report false; all other pairs report true when both SHAs are set.
+  val nonAncestorPairs = mutableSetOf<Pair<String, String>>()
+
   // Records every path the checkpoint staged, in call order; stagePathsResult overrides the result
   // to model a failed staging.
   val stagePathsCalls = mutableListOf<String>()
@@ -5456,6 +6037,8 @@ internal class RecordingWorkflowGitOperations(
   val goalReviewBuildResults = ArrayDeque<GoalSubtaskReviewInputResult>()
   var goalReviewRecoveredBaseline: GoalSubtaskReviewBaseline? = null
   var goalReviewRecoverCalls: Int = 0
+  val goalReviewRecoverRequests =
+    mutableListOf<skillbill.ports.workflow.model.GoalSubtaskReviewBaselineRecoveryRequest>()
 
   data class CheckoutCall(val branch: String, val baseBranch: String?)
 
@@ -5488,8 +6071,41 @@ internal class RecordingWorkflowGitOperations(
   // so a fake that returned one constant would collapse every checkpoint into a single record.
   override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult {
     createCommitMessages += message
-    return createCommitResult
+    if (invalidShaOnRemediationCommit && message.contains("remediation checkpoint")) {
+      // Simulate git advancing HEAD to a commit object whose sha the durable models reject.
+      val bogus = "not-a-valid-commit-sha"
+      headCommitShaValue = bogus
+      return WorkflowGitOperationResult(status = "ok", value = bogus)
+    }
+    val result = createCommitResult
       ?: WorkflowGitOperationResult(status = "ok", value = createCommitMessages.size.toString(16).padStart(40, '0'))
+    if (result.ok && !result.value.isNullOrBlank()) {
+      headCommitShaValue = result.value.trim()
+    }
+    return result
+  }
+
+  override fun resetSoftToCommit(repoRoot: Path, commitSha: String): WorkflowGitOperationResult {
+    resetSoftToCommitCalls += commitSha.trim()
+    val result = resetSoftToCommitResult ?: WorkflowGitOperationResult(status = "ok", value = commitSha.trim())
+    if (result.ok) {
+      headCommitShaValue = commitSha.trim()
+    }
+    return result
+  }
+
+  override fun isCommitAncestor(
+    repoRoot: Path,
+    ancestorSha: String,
+    descendantSha: String,
+  ): WorkflowGitOperationResult {
+    val ancestor = ancestorSha.trim()
+    val descendant = descendantSha.trim()
+    if (ancestor.isBlank() || descendant.isBlank()) {
+      return WorkflowGitOperationResult(status = "error", error = "Ancestor and descendant required.")
+    }
+    val reachable = ancestor == descendant || (ancestor to descendant) !in nonAncestorPairs
+    return WorkflowGitOperationResult(status = "ok", value = if (reachable) "true" else "false")
   }
 
   var headCommitShaCalls: Int = 0
@@ -5556,7 +6172,7 @@ internal class RecordingWorkflowGitOperations(
         onStagedPathsRead?.invoke()
         return stagedPathsResult ?: WorkflowGitOperationResult(
           status = "ok",
-          value = stagedPathsValue.joinToString(separator = "") { "$it " },
+          value = stagedPathsValue.joinToString(separator = "") { "$it\u0000" },
         )
       }
 
@@ -5658,10 +6274,11 @@ internal class RecordingWorkflowGitOperations(
 
       override fun recoverBaseline(
         repoRoot: Path,
-        baseline: GoalSubtaskReviewBaseline,
+        request: skillbill.ports.workflow.model.GoalSubtaskReviewBaselineRecoveryRequest,
         expectedBranch: String,
       ): GoalSubtaskReviewBaselineResult {
         goalReviewRecoverCalls++
+        goalReviewRecoverRequests += request
         return goalReviewRecoveredBaseline?.let { GoalSubtaskReviewBaselineResult(status = "ok", baseline = it) }
           ?: GoalSubtaskReviewBaselineResult(status = "error", error = "no recovered baseline configured")
       }
@@ -5697,6 +6314,7 @@ internal data class ProducerEvidenceKey(
   val phaseId: String,
   val generation: Int,
   val attempt: Int,
+  val agentId: String,
 )
 
 internal fun samePayload(left: ByteArray?, right: ByteArray?): Boolean =
@@ -5735,8 +6353,9 @@ internal class RuntimeFakeDatabaseSessionFactory(
     phaseId: String,
     attempt: Int,
     generation: Int,
+    agentId: String,
   ): skillbill.ports.persistence.ProducerOutputEvidence? =
-    producerEvidence[ProducerEvidenceKey(workflowId, phaseId, generation, attempt)]
+    producerEvidence[ProducerEvidenceKey(workflowId, phaseId, generation, attempt, agentId)]
 
   override fun resolveDbPath(dbOverride: String?): Path = dbPath
 
@@ -5818,6 +6437,7 @@ internal class RuntimeFakeDatabaseSessionFactory(
           evidence.phaseId,
           evidence.generation,
           evidence.attempt,
+          evidence.agentId,
         )
         producerEvidence.putIfAbsent(key, evidence)
         val retained = producerEvidence.getValue(key)
@@ -5825,7 +6445,7 @@ internal class RuntimeFakeDatabaseSessionFactory(
           !samePayload(retained.payload, evidence.payload)
         ) {
           throw skillbill.ports.persistence.model.RejectedOutputDiagnosticError.Conflict(
-            "${evidence.workflowId}:${evidence.phaseId}:${evidence.generation}:${evidence.attempt}",
+            "${evidence.workflowId}:${evidence.phaseId}:${evidence.generation}:${evidence.attempt}:${evidence.agentId}",
           )
         }
       }
@@ -5834,13 +6454,15 @@ internal class RuntimeFakeDatabaseSessionFactory(
         workflowId: String,
         phaseId: String,
         attempt: Int,
+        agentId: String,
         generation: Int,
       ): skillbill.ports.persistence.ProducerOutputEvidence? =
-        producerEvidence[ProducerEvidenceKey(workflowId, phaseId, generation, attempt)]
+        producerEvidence[ProducerEvidenceKey(workflowId, phaseId, generation, attempt, agentId)]
           ?: producerEvidence.entries
             .filter {
               it.key.workflowId == workflowId && it.key.phaseId == phaseId &&
-                it.key.attempt == attempt && it.key.generation <= generation
+                it.key.attempt == attempt && it.key.agentId == agentId &&
+                it.key.generation <= generation
             }
             .maxByOrNull { it.key.generation }
             ?.value
@@ -6173,6 +6795,103 @@ internal object HarnessDeadProcessSupervisor : FeatureTaskRuntimeWorkerSuperviso
   ) = NoopFeatureTaskRuntimeHeartbeat
 
   override fun pause(durationMillis: Long) = Unit
+}
+
+/**
+ * AC-007: SKILL-15 shape — review generation 0 attempt 2 under one agent, then a different
+ * producer retains different bytes for the same generation/attempt. Pre-fix four-part-key
+ * Conflict would abort phase recording; agent-scoped identity must continue.
+ */
+class FeatureTaskRuntimeProducerEvidenceIdentityTest {
+  @Test
+  fun `cross-agent retain at review generation 0 attempt 2 continues without Conflict`() {
+    val harness = runnerHarness()
+    val claudePayload = "claude-skill15-review-0-2".encodeToByteArray()
+    val cursorPayload = "cursor-skill15-review-0-2".encodeToByteArray()
+    val recordedAt = java.time.Instant.parse("2026-08-08T18:49:48Z")
+
+    harness.io.database.retainProducerEvidence(
+      skillbill.ports.persistence.ProducerOutputEvidence(
+        workflowId = WORKFLOW_ID,
+        phaseId = "review",
+        attempt = 2,
+        agentId = "claude",
+        model = "claude-opus",
+        recordedAt = recordedAt,
+        byteSize = claudePayload.size.toLong(),
+        sha256 = skillbill.application.featuretask.RejectedOutputDiagnosticService.sha256(claudePayload),
+        payload = claudePayload,
+        generation = 0,
+      ),
+    )
+
+    harness.io.database.retainProducerEvidence(
+      skillbill.ports.persistence.ProducerOutputEvidence(
+        workflowId = WORKFLOW_ID,
+        phaseId = "review",
+        attempt = 2,
+        agentId = "cursor",
+        model = "gpt",
+        recordedAt = recordedAt.plusSeconds(60),
+        byteSize = cursorPayload.size.toLong(),
+        sha256 = skillbill.application.featuretask.RejectedOutputDiagnosticService.sha256(cursorPayload),
+        payload = cursorPayload,
+        generation = 0,
+      ),
+    )
+
+    assertContentEquals(
+      claudePayload,
+      harness.io.database.producerEvidenceAt(WORKFLOW_ID, "review", 2, 0, "claude")?.payload,
+    )
+    assertContentEquals(
+      cursorPayload,
+      harness.io.database.producerEvidenceAt(WORKFLOW_ID, "review", 2, 0, "cursor")?.payload,
+    )
+  }
+
+  @Test
+  fun `same-agent divergent retain at a reused key still Conflicts`() {
+    val harness = runnerHarness()
+    val first = "first".encodeToByteArray()
+    val second = "second".encodeToByteArray()
+    val recordedAt = java.time.Instant.parse("2026-08-08T18:49:48Z")
+    harness.io.database.retainProducerEvidence(
+      skillbill.ports.persistence.ProducerOutputEvidence(
+        workflowId = WORKFLOW_ID,
+        phaseId = "review",
+        attempt = 2,
+        agentId = "claude",
+        model = "claude-opus",
+        recordedAt = recordedAt,
+        byteSize = first.size.toLong(),
+        sha256 = skillbill.application.featuretask.RejectedOutputDiagnosticService.sha256(first),
+        payload = first,
+        generation = 0,
+      ),
+    )
+
+    assertFailsWith<skillbill.ports.persistence.model.RejectedOutputDiagnosticError.Conflict> {
+      harness.io.database.retainProducerEvidence(
+        skillbill.ports.persistence.ProducerOutputEvidence(
+          workflowId = WORKFLOW_ID,
+          phaseId = "review",
+          attempt = 2,
+          agentId = "claude",
+          model = "claude-opus",
+          recordedAt = recordedAt.plusSeconds(1),
+          byteSize = second.size.toLong(),
+          sha256 = skillbill.application.featuretask.RejectedOutputDiagnosticService.sha256(second),
+          payload = second,
+          generation = 0,
+        ),
+      )
+    }
+    assertContentEquals(
+      first,
+      harness.io.database.producerEvidenceAt(WORKFLOW_ID, "review", 2, 0, "claude")?.payload,
+    )
+  }
 }
 
 class InfraFailureReasonStderrSurfacingTest {

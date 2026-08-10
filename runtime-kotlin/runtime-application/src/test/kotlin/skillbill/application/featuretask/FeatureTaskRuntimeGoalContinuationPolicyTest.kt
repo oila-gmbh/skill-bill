@@ -10,15 +10,16 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationAr
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import java.nio.file.Path
 import kotlin.test.Test
-import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
 class FeatureTaskRuntimeGoalContinuationPolicyTest {
   private val baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList())
+  private val conflictMessage =
+    "The supplied goal-continuation validation depth conflicts with its durable child policy."
 
   @Test
-  fun `supplied vs durable validation depth mismatch blocks`() {
+  fun `supplied vs durable validation depth mismatch blocks with byte-identical message`() {
     val conflict = goalContinuationConflict(
       request = request(
         goalContinuation = continuation(validationDepth = ValidationDepth.BUILD_ONLY),
@@ -27,15 +28,40 @@ class FeatureTaskRuntimeGoalContinuationPolicyTest {
       baseline = baseline,
     )
 
-    assertContains(requireNotNull(conflict), "validation depth conflicts")
+    assertEquals(conflictMessage, conflict)
   }
 
   @Test
-  fun `omitted and legacy full matches durable full`() {
+  fun `absent durable validation depth adopts supplied depth without conflict`() {
+    assertNull(
+      goalContinuationConflict(
+        request = request(goalContinuation = continuation(validationDepth = ValidationDepth.BUILD_ONLY)),
+        durable = durable(validationDepth = null),
+        baseline = baseline,
+      ),
+    )
+    assertNull(
+      goalContinuationConflict(
+        request = request(goalContinuation = continuation(validationDepth = ValidationDepth.FULL)),
+        durable = durable(validationDepth = null),
+        baseline = baseline,
+      ),
+    )
+  }
+
+  @Test
+  fun `matching durable and supplied validation depth proceeds`() {
     assertNull(
       goalContinuationConflict(
         request = request(goalContinuation = continuation(validationDepth = ValidationDepth.DEFAULT)),
         durable = durable(validationDepth = ValidationDepth.FULL),
+        baseline = baseline,
+      ),
+    )
+    assertNull(
+      goalContinuationConflict(
+        request = request(goalContinuation = continuation(validationDepth = ValidationDepth.BUILD_ONLY)),
+        durable = durable(validationDepth = ValidationDepth.BUILD_ONLY),
         baseline = baseline,
       ),
     )
@@ -86,7 +112,7 @@ class FeatureTaskRuntimeGoalContinuationPolicyTest {
       reviewBaseline = baseline,
     )
 
-  private fun durable(validationDepth: ValidationDepth): FeatureTaskRuntimeGoalContinuationArtifact =
+  private fun durable(validationDepth: ValidationDepth?): FeatureTaskRuntimeGoalContinuationArtifact =
     FeatureTaskRuntimeGoalContinuationArtifact(
       issueKey = "SKILL-173",
       subtaskId = 1,

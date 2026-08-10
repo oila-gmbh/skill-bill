@@ -22,6 +22,14 @@ const val FEATURE_TASK_RUNTIME_GOAL_PLANNING_IMPORT_ARTIFACT_KEY: String = "goal
 const val FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_ARTIFACT_KEY: String = "operator_block_retry"
 const val FEATURE_TASK_RUNTIME_REVIEW_GENERATION_ARTIFACT_KEY: String = "feature_task_runtime_review_generation"
 const val FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_REASON_MAX_LENGTH: Int = 1000
+
+/**
+ * Durable evidence that a resume adopted a launcher-supplied goal-continuation field because the
+ * durable row predated that field's contract. Separate from the goal-continuation artifact map so
+ * [goalContinuationKeys] / rejectUnknownGoalContinuationKeys stay untouched.
+ */
+const val FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_FIELD_ADOPTION_ARTIFACT_KEY: String =
+  "goal_continuation_field_adoption"
 const val FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT: Int = 200
 
 /**
@@ -52,6 +60,46 @@ data class FeatureTaskRuntimeOperatorBlockRetry(
         "1..$FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_REASON_MAX_LENGTH characters."
     }
     require(retriedAt.isNotBlank()) { "FeatureTaskRuntimeOperatorBlockRetry.retriedAt must be non-blank." }
+  }
+}
+
+/**
+ * One silent heal of a goal-continuation field on resume: the launcher value was adopted because the
+ * durable row never recorded the field. Observability policy requires every silent heal to leave
+ * durable evidence of what changed and why.
+ */
+data class FeatureTaskRuntimeGoalContinuationFieldAdoption(
+  val field: String,
+  val adoptedValue: String,
+  val reason: String,
+) {
+  init {
+    require(field.isNotBlank()) {
+      "FeatureTaskRuntimeGoalContinuationFieldAdoption.field must be non-blank."
+    }
+    require(adoptedValue.isNotBlank()) {
+      "FeatureTaskRuntimeGoalContinuationFieldAdoption.adoptedValue must be non-blank."
+    }
+    require(reason.isNotBlank()) {
+      "FeatureTaskRuntimeGoalContinuationFieldAdoption.reason must be non-blank."
+    }
+  }
+
+  @OpenBoundaryMap("Goal-continuation field-adoption evidence at the durable workflow-artifact seam")
+  fun toArtifactMap(): Map<String, Any?> = linkedMapOf(
+    "field" to field,
+    "adopted_value" to adoptedValue,
+    "reason" to reason,
+  )
+
+  companion object {
+    @OpenBoundaryMap("Goal-continuation field-adoption decode from the durable workflow-artifact map")
+    fun fromArtifactMap(raw: Map<String, Any?>): FeatureTaskRuntimeGoalContinuationFieldAdoption =
+      FeatureTaskRuntimeGoalContinuationFieldAdoption(
+        field = raw.requireStringField("field"),
+        adoptedValue = raw.requireStringField("adopted_value"),
+        reason = raw.requireStringField("reason"),
+      )
   }
 }
 

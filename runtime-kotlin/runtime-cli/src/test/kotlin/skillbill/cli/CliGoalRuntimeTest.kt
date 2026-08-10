@@ -67,6 +67,7 @@ class CliGoalRuntimeTest {
     assertContains(result.stdout, "stop")
     assertContains(result.stdout, "resume")
     assertContains(result.stdout, "reset")
+    assertContains(result.stdout, "repair")
     assertContains(result.stdout, "--debug-child-output")
     assertContains(result.stdout, "raw child streams hidden")
   }
@@ -1521,7 +1522,7 @@ private fun startRunningRuntimeGoalChild(fixture: GoalCliFixture): String {
   return runtimeWorkflow.workflowId
 }
 
-private fun seedLiveWorkerLease(fixture: GoalCliFixture, workflowId: String) {
+internal fun seedLiveWorkerLease(fixture: GoalCliFixture, workflowId: String) {
   DatabaseRuntime.ensureDatabase(fixture.dbPath).use { connection ->
     connection.prepareStatement(
       """
@@ -1544,7 +1545,7 @@ private fun seedLiveWorkerLease(fixture: GoalCliFixture, workflowId: String) {
   }
 }
 
-private fun clearWorkerLease(fixture: GoalCliFixture, workflowId: String) {
+internal fun clearWorkerLease(fixture: GoalCliFixture, workflowId: String) {
   DatabaseRuntime.ensureDatabase(fixture.dbPath).use { connection ->
     connection.prepareStatement(
       "DELETE FROM feature_task_runtime_worker_leases WHERE workflow_id = ?",
@@ -2016,7 +2017,7 @@ private fun planningProjectionOutputs(phaseId: String): String? = when (phaseId)
 private fun subtaskSpecText(id: Int): String =
   "---\nstatus: Pending\n---\n\n# Subtask $id\n\n## Acceptance Criteria\n\n1. Subtask $id delivers its part.\n"
 
-private object NoopGoalTestAgentRunLauncher : AgentRunLauncher {
+internal object NoopGoalTestAgentRunLauncher : AgentRunLauncher {
   override fun launch(request: AgentRunLaunchRequest): AgentRunLaunchOutcome = error("Unexpected launch")
 }
 
@@ -2072,7 +2073,7 @@ private object GoalTestWorkflowGitOperations :
 
       override fun recoverBaseline(
         repoRoot: Path,
-        baseline: GoalSubtaskReviewBaseline,
+        request: skillbill.ports.workflow.model.GoalSubtaskReviewBaselineRecoveryRequest,
         expectedBranch: String,
       ): GoalSubtaskReviewBaselineResult = GoalSubtaskReviewBaselineResult(
         status = "error",
@@ -2085,6 +2086,12 @@ private object GoalTestWorkflowGitOperations :
 
   override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = "test-commit")
+
+  override fun isCommitAncestor(
+    repoRoot: Path,
+    ancestorSha: String,
+    descendantSha: String,
+  ): WorkflowGitOperationResult = WorkflowGitOperationResult(status = "ok", value = "true")
 
   override fun validateBranchBase(
     repoRoot: Path,

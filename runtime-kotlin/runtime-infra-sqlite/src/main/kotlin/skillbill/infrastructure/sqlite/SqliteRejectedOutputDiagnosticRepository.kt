@@ -134,11 +134,14 @@ class SqliteRejectedOutputDiagnosticRepository(
         it.executeUpdate()
       }
       val retained = connection.queryProducerEvidence(
-        workflowId = evidence.workflowId,
-        phaseId = evidence.phaseId,
-        attempt = evidence.attempt,
-        generation = evidence.generation,
-        exactGeneration = true,
+        ProducerEvidenceLookup(
+          workflowId = evidence.workflowId,
+          phaseId = evidence.phaseId,
+          attempt = evidence.attempt,
+          agentId = evidence.agentId,
+          generation = evidence.generation,
+          exactGeneration = true,
+        ),
       ) ?: throw RejectedOutputDiagnosticError.Persistence("retain-producer-output-readback")
       if (retained.sha256 != evidence.sha256 || retained.byteSize != evidence.byteSize ||
         !payloadsEqual(retained.payload, evidence.payload)
@@ -152,14 +155,18 @@ class SqliteRejectedOutputDiagnosticRepository(
     workflowId: String,
     phaseId: String,
     attempt: Int,
+    agentId: String,
     generation: Int,
   ): ProducerOutputEvidence? = persistence("read-producer-output") {
     connection.queryProducerEvidence(
-      workflowId = workflowId,
-      phaseId = phaseId,
-      attempt = attempt,
-      generation = generation,
-      exactGeneration = false,
+      ProducerEvidenceLookup(
+        workflowId = workflowId,
+        phaseId = phaseId,
+        attempt = attempt,
+        agentId = agentId,
+        generation = generation,
+        exactGeneration = false,
+      ),
     )
   }
 
@@ -242,28 +249,32 @@ private fun RejectedOutputDiagnosticRecord.sameImmutableEvidence(other: Rejected
 private fun payloadsEqual(left: ByteArray?, right: ByteArray?): Boolean =
   (left == null && right == null) || (left != null && right != null && left.contentEquals(right))
 
-private fun ProducerOutputEvidence.evidenceKey(): String = "$workflowId:$phaseId:$generation:$attempt"
+private fun ProducerOutputEvidence.evidenceKey(): String = "$workflowId:$phaseId:$generation:$attempt:$agentId"
 
-private fun Connection.queryProducerEvidence(
-  workflowId: String,
-  phaseId: String,
-  attempt: Int,
-  generation: Int,
-  exactGeneration: Boolean,
-): ProducerOutputEvidence? {
+private data class ProducerEvidenceLookup(
+  val workflowId: String,
+  val phaseId: String,
+  val attempt: Int,
+  val agentId: String,
+  val generation: Int,
+  val exactGeneration: Boolean,
+)
+
+private fun Connection.queryProducerEvidence(lookup: ProducerEvidenceLookup): ProducerOutputEvidence? {
   val generationClause =
-    if (exactGeneration) "generation = ?" else "generation <= ? ORDER BY generation DESC LIMIT 1"
+    if (lookup.exactGeneration) "generation = ?" else "generation <= ? ORDER BY generation DESC LIMIT 1"
   return prepareStatement(
     """
     SELECT * FROM producer_output_evidence
-    WHERE workflow_id = ? AND phase_id = ? AND attempt = ? AND $generationClause
+    WHERE workflow_id = ? AND phase_id = ? AND attempt = ? AND agent_id = ? AND $generationClause
     """.trimIndent(),
   ).use {
     var index = 1
-    it.setString(index++, workflowId)
-    it.setString(index++, phaseId)
-    it.setInt(index++, attempt)
-    it.setInt(index, generation)
+    it.setString(index++, lookup.workflowId)
+    it.setString(index++, lookup.phaseId)
+    it.setInt(index++, lookup.attempt)
+    it.setString(index++, lookup.agentId)
+    it.setInt(index, lookup.generation)
     it.executeQuery().use { row -> if (row.next()) row.toProducerEvidence() else null }
   }
 }

@@ -572,7 +572,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceModelsTest {
   }
 
   @Test
-  fun `goal-continuation artifact round-trips explicit full and defaults omitted validation_depth`() {
+  fun `goal-continuation artifact round-trips explicit depths and preserves absent validation_depth`() {
     val full = FeatureTaskRuntimeGoalContinuationArtifact(
       issueKey = "SKILL-173",
       subtaskId = 1,
@@ -582,17 +582,27 @@ class FeatureTaskRuntimeGoalContinuationPersistenceModelsTest {
       validationDepth = ValidationDepth.FULL,
     )
     assertEquals(full, FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(full.toArtifactMap()))
+    assertEquals("full", full.toArtifactMap()["validation_depth"])
 
-    val legacy = FeatureTaskRuntimeGoalContinuationArtifact(
-      issueKey = "SKILL-173",
-      subtaskId = 1,
-      suppressPr = true,
-      goalBranch = "feat/SKILL-173",
-      codeReviewMode = CodeReviewExecutionMode.INLINE,
-    ).toArtifactMap().toMutableMap().apply { remove("validation_depth") }
+    val buildOnly = full.copy(validationDepth = ValidationDepth.BUILD_ONLY)
     assertEquals(
-      ValidationDepth.FULL,
-      FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(legacy).validationDepth,
+      buildOnly,
+      FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(buildOnly.toArtifactMap()),
+    )
+    assertEquals("build_only", buildOnly.toArtifactMap()["validation_depth"])
+
+    val absentKey = linkedMapOf<String, Any?>(
+      "issue_key" to "SKILL-173",
+      "subtask_id" to 1,
+      "suppress_pr" to true,
+      "goal_branch" to "feat/SKILL-173",
+      "code_review_mode" to "inline",
+    )
+    val absent = FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(absentKey)
+    assertNull(absent.validationDepth)
+    assertNull(absent.toArtifactMap()["validation_depth"])
+    assertNull(
+      FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(absent.toArtifactMap()).validationDepth,
     )
   }
 

@@ -89,6 +89,7 @@ import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
 import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionManifest
+import skillbill.workflow.model.DecompositionSubtask
 import skillbill.workflow.model.GOAL_PROGRESS_HISTORY_LIMIT
 import skillbill.workflow.model.GOAL_PROGRESS_LATEST_EVENT_ARTIFACT_KEY
 import skillbill.workflow.model.GOAL_PROGRESS_RUN_HISTORY_ARTIFACT_KEY
@@ -133,6 +134,10 @@ private const val STALENESS_EVIDENCE_WINDOW_MINUTES: Long = 30
 private val STALENESS_EVIDENCE_WINDOW: Duration = Duration.ofMinutes(STALENESS_EVIDENCE_WINDOW_MINUTES)
 private const val GOAL_REVIEW_POLICY_ARTIFACT_KEY = "goal_review_policy"
 private const val GOAL_OUT_OF_BAND_ACCEPTANCE_ARTIFACT_KEY = "goal_out_of_band_acceptances"
+
+// Sibling workflow artifact (not inside goal_continuation): no rejectUnknownGoalContinuationKeys registration.
+private const val GOAL_CONTINUATION_OUTCOME_DISPLACEMENT_ARTIFACT_KEY =
+  "goal_continuation_outcome_displacement"
 
 private data class SavedGoalChildWorkflow(
   val state: GoalRunnerManifestState,
@@ -1504,8 +1509,46 @@ class WorkflowGoalRunnerOutcomeStore(
   // Injectable liveness probe for goal-parent crash reconciliation (AC-005). The no-op default never
   // confirms a process dead, so a seam wired without a real supervisor never reconciles.
   private val workerSupervisor: FeatureTaskRuntimeWorkerSupervisor = NoopFeatureTaskRuntimeWorkerSupervisor,
-) : GoalRunnerWorkflowOutcomeStore, GoalRunnerAttemptLedgerStore {
+) : GoalRunnerWorkflowOutcomeStore, GoalRunnerAttemptLedgerStore, GoalRunnerChildRepairStore {
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
+  private val childRepair = GoalRunnerChildRepairOperations(engine, gitOperations)
+
+  override fun diagnoseChildWedges(
+    workflowId: String,
+    issueKey: String,
+    subtaskId: Int,
+    subtasks: List<DecompositionSubtask>,
+    repoRoot: Path,
+    dbPathOverride: String?,
+  ): skillbill.application.model.GoalRunnerChildWedgeDiagnosis = database.read(dbPathOverride) { unitOfWork ->
+    childRepair.diagnose(
+      workflowStates = unitOfWork.workflowStates,
+      workflowId = workflowId,
+      issueKey = issueKey,
+      subtaskId = subtaskId,
+      repoRoot = repoRoot,
+    )
+  }
+
+  override fun applyChildWedgeRepairs(
+    workflowId: String,
+    issueKey: String,
+    subtaskId: Int,
+    wedgeClasses: List<skillbill.application.model.GoalRunnerWedgeClass>,
+    subtasks: List<DecompositionSubtask>,
+    repoRoot: Path,
+    dbPathOverride: String?,
+  ): List<skillbill.application.model.GoalRunnerAppliedRepair> = database.transaction(dbPathOverride) { unitOfWork ->
+    childRepair.apply(
+      workflowStates = unitOfWork.workflowStates,
+      workflowId = workflowId,
+      issueKey = issueKey,
+      subtaskId = subtaskId,
+      wedgeClasses = wedgeClasses,
+      subtasks = subtasks,
+      repoRoot = repoRoot,
+    )
+  }
 
   override fun goalSubtaskReviewState(workflowId: String, dbPathOverride: String?): GoalSubtaskReviewState? =
     database.read(dbPathOverride) { unitOfWork ->
@@ -1557,6 +1600,7 @@ class WorkflowGoalRunnerOutcomeStore(
       true
     }
 
+  @Suppress("LongMethod") // SKILL-176: one authoritative reconcile pass; splitting would obscure ordering invariants
   override fun reconcileAuthoritativeOutcomes(
     issueKey: String,
     activeWorkflowIds: Set<String>,
@@ -1566,6 +1610,18 @@ class WorkflowGoalRunnerOutcomeStore(
   ): Map<Int, GoalRunnerStoredOutcome> = database.transaction(dbPathOverride) { unitOfWork ->
     val normalizedIssueKey = issueKey.trim()
     val activeSet = activeWorkflowIds.map(String::trim).filter(String::isNotBlank).toSet()
+    // SKILL-176: displace stale blocked goal_continuation_outcome rows before authority selection and
+    // the stale-running markBlocked pass, so a just-released child cannot be re-blocked from its own
+    // superseded artifact on this or the next resume.
+    loadContinuationCandidates(unitOfWork.workflowStates, normalizedIssueKey, repoRoot = null)
+      .forEach { candidate ->
+        displaceStaleBlockedContinuationOutcomeIfPresent(
+          unitOfWork.workflowStates,
+          candidate.snapshot.workflowId,
+          candidate.goalContinuation.issueKey,
+          candidate.goalContinuation.subtaskId,
+        )
+      }
     val initialCandidates = loadContinuationCandidates(unitOfWork.workflowStates, normalizedIssueKey, repoRoot)
     // SKILL-68 (AC3/AC4 case 4): with a repo root, this is the manifest-workflowId-independent heal.
     // A candidate that resolved COMPLETE via a measured HEAD SHA (its artifacts carried no SHA) is
@@ -1660,6 +1716,9 @@ class WorkflowGoalRunnerOutcomeStore(
     repoRoot: Path,
     dbPathOverride: String?,
   ): GoalRunnerStoredOutcome? = database.transaction(dbPathOverride) { unitOfWork ->
+    // SKILL-176: evidence + supersede land on the first transactional resume that observes a stale
+    // blocked outcome; read-only paths detect without writing.
+    displaceStaleBlockedContinuationOutcomeIfPresent(unitOfWork.workflowStates, workflowId, issueKey, subtaskId)
     val resolved = resolveTerminalOutcome(unitOfWork.workflowStates, workflowId, issueKey, subtaskId) {
       gitOperations.headCommitSha(repoRoot).measuredCommitSha()
     } ?: return@transaction crashReconcileToResumable(unitOfWork.workflowStates, workflowId, issueKey, subtaskId)
@@ -1741,7 +1800,18 @@ class WorkflowGoalRunnerOutcomeStore(
       ),
     )
     family.save(unitOfWork.workflowStates, updated)
-    resolveTerminalOutcome(unitOfWork.workflowStates, workflowId, issueKey, subtaskId) { null }
+    // The recovered outcome above is synthesized from THIS call's own launch output, not a
+    // possibly-stale prior write, so it is read directly rather than through the SKILL-176
+    // corroboration gate: the workflow's own step/status signals are exactly what the missing
+    // result prefix left absent or malformed, so requiring them to corroborate would defeat the
+    // recovery this function exists to perform.
+    val recoveredArtifacts = existingArtifacts + artifactsPatch
+    val recoveredContinuation = goalContinuation(recoveredArtifacts)
+      ?.takeIf { it.issueKey == issueKey && it.subtaskId == subtaskId }
+    val recovered = recoveredContinuation?.let {
+      goalContinuationOutcome(recoveredArtifacts, issueKey, subtaskId, it.suppressPr)
+    }?.copy(workflowId = workflowId)
+    recovered ?: resolveTerminalOutcome(unitOfWork.workflowStates, workflowId, issueKey, subtaskId) { null }
   }
 
   private fun resolveTerminalOutcome(
@@ -1846,6 +1916,66 @@ class WorkflowGoalRunnerOutcomeStore(
         family.save(workflowStates, updated)
       }
     }
+  }
+
+  // SKILL-176: transactional heal for a stored blocked goal_continuation_outcome whose durable row
+  // no longer corroborates it. Sibling artifact key (not inside goal_continuation) so
+  // rejectUnknownGoalContinuationKeys is untouched. Idempotent: a second resume finds no stored
+  // blocked outcome after supersede and writes nothing.
+  @Suppress("ReturnCount") // guard-clause reconciliation: each early null is a distinct non-reconcilable case
+  private fun displaceStaleBlockedContinuationOutcomeIfPresent(
+    workflowStates: WorkflowStateRepository,
+    workflowId: String,
+    issueKey: String,
+    subtaskId: Int,
+  ) {
+    val family = workflowFamilyFor(workflowStates, workflowId) ?: return
+    val record = family.get(workflowStates, workflowId) ?: return
+    val artifacts = decodeArtifacts(record.artifactsJson)
+    val continuation = goalContinuation(artifacts)
+      ?.takeIf { it.issueKey == issueKey && it.subtaskId == subtaskId }
+      ?: return
+    val stored = goalContinuationOutcome(artifacts, issueKey, subtaskId, continuation.suppressPr)
+      ?.takeIf { it.status == GoalRunnerTerminalStatus.BLOCKED }
+      ?: return
+    val derived = derivedTerminalOutcomeFor(record, artifacts, continuation) { null }
+    if (nonCompleteStoredOutcomeIsCorroborated(stored.copy(workflowId = workflowId), derived, record)) {
+      return
+    }
+    val evidenceAlreadyPresent = artifacts[GOAL_CONTINUATION_OUTCOME_DISPLACEMENT_ARTIFACT_KEY] != null
+    val updated = engine.updateRecord(
+      family.definition,
+      record,
+      WorkflowUpdateInput(
+        workflowStatus = record.workflowStatus,
+        currentStepId = record.currentStepId,
+        stepUpdates = null,
+        artifactsPatch = buildMap {
+          if (!evidenceAlreadyPresent) {
+            put(
+              GOAL_CONTINUATION_OUTCOME_DISPLACEMENT_ARTIFACT_KEY,
+              linkedMapOf(
+                "workflow_id" to workflowId,
+                "issue_key" to issueKey,
+                "subtask_id" to subtaskId,
+                "displaced_status" to "blocked",
+                "original_blocked_reason" to stored.blockedReason,
+                "failed_corroboration" to linkedMapOf(
+                  "derived_status" to derived?.status?.toGoalContinuationWireStatus(),
+                  "derived_blocked_reason" to derived?.blockedReason,
+                  "stored_blocked_reason" to stored.blockedReason,
+                ),
+                "displaced_at" to Instant.now().toString(),
+              ),
+            )
+          }
+          // Supersede so subsequent reads no longer re-detect the same displacement.
+          put("goal_continuation_outcome", null)
+        },
+        sessionId = record.sessionId.orEmpty(),
+      ),
+    )
+    family.save(workflowStates, updated)
   }
 
   override fun markBlocked(
@@ -2303,7 +2433,7 @@ class WorkflowGoalRunnerOutcomeStore(
   }
 }
 
-private data class GoalContinuation(
+internal data class GoalContinuation(
   val issueKey: String,
   val subtaskId: Int,
   val suppressPr: Boolean,
@@ -2364,7 +2494,7 @@ private data class GoalRunnerBlockWrite(
   val supervisionEvent: GoalRunnerSupervisionEvent?,
 )
 
-private fun goalContinuation(artifacts: Map<String, Any?>): GoalContinuation? =
+internal fun goalContinuation(artifacts: Map<String, Any?>): GoalContinuation? =
   (artifacts["goal_continuation"] as? Map<*, *>)?.let { payload ->
     val issueKey = payload["issue_key"]?.toString()?.takeIf(String::isNotBlank)
     val subtaskId = payload["subtask_id"].asGoalRunnerIntOrNull()
@@ -2461,21 +2591,44 @@ private fun terminalOutcomeFor(
   goalContinuation: GoalContinuation,
   // Lazily measures HEAD only on the recovery path, so the cost is paid solely there.
   measuredCommitSha: () -> String? = { null },
-): GoalRunnerStoredOutcome? = goalContinuationOutcome(
-  artifacts = artifacts,
-  issueKey = goalContinuation.issueKey,
-  subtaskId = goalContinuation.subtaskId,
-  suppressPr = goalContinuation.suppressPr,
-)
-  // SKILL-68: a stored complete-without-SHA outcome is NOT authoritative for the SHA decision; it
-  // falls through to the measure branch so the recovery path can heal it. Stored non-complete
-  // statuses and complete-WITH-SHA outcomes remain authoritative and short-circuit as before.
-  ?.takeUnless { it.status == GoalRunnerTerminalStatus.COMPLETE && it.commitSha.isNullOrBlank() }
-  ?.copy(workflowId = snapshot.workflowId) ?: run {
+): GoalRunnerStoredOutcome? {
+  val stored = goalContinuationOutcome(
+    artifacts = artifacts,
+    issueKey = goalContinuation.issueKey,
+    subtaskId = goalContinuation.subtaskId,
+    suppressPr = goalContinuation.suppressPr,
+  )
+    // SKILL-68: a stored complete-without-SHA outcome is NOT authoritative for the SHA decision; it
+    // falls through to the measure branch so the recovery path can heal it. Stored non-complete
+    // statuses and complete-WITH-SHA outcomes remain authoritative and short-circuit as before.
+    ?.takeUnless { it.status == GoalRunnerTerminalStatus.COMPLETE && it.commitSha.isNullOrBlank() }
+    ?.copy(workflowId = snapshot.workflowId)
+  if (stored != null) {
+    // COMPLETE-with-SHA stays authoritative without the new check (AC-006). Non-complete statuses
+    // require durable corroboration (SKILL-176) before short-circuiting.
+    if (stored.status == GoalRunnerTerminalStatus.COMPLETE ||
+      nonCompleteStoredOutcomeIsCorroborated(
+        stored,
+        derivedTerminalOutcomeFor(snapshot, artifacts, goalContinuation, measuredCommitSha),
+        snapshot,
+      )
+    ) {
+      return stored
+    }
+  }
+  return derivedTerminalOutcomeFor(snapshot, artifacts, goalContinuation, measuredCommitSha)
+}
+
+internal fun derivedTerminalOutcomeFor(
+  snapshot: WorkflowStateSnapshot,
+  artifacts: Map<String, Any?>,
+  goalContinuation: GoalContinuation,
+  measuredCommitSha: () -> String?,
+): GoalRunnerStoredOutcome? {
   val steps = decodeWorkflowSteps(snapshot.stepsJson)
   val commitSha = commitShaFrom(artifacts)
     ?: if (commitPushCompletedUnderSuppressPr(steps, goalContinuation.suppressPr)) measuredCommitSha() else null
-  terminalStatus(snapshot, steps, goalContinuation.suppressPr, commitSha)?.let { status ->
+  return terminalStatus(snapshot, steps, goalContinuation.suppressPr, commitSha)?.let { status ->
     GoalRunnerStoredOutcome(
       status = status,
       workflowId = snapshot.workflowId,
@@ -2485,6 +2638,31 @@ private fun terminalOutcomeFor(
       suppressPr = goalContinuation.suppressPr,
     )
   }
+}
+
+// SKILL-176 corroboration sources per non-complete status:
+// - blocked: derived blocked status + blocked_reason (operator reopen clears durable blocked state, so
+//   a reopened child's stale artifact falls through). blockedReasonFrom must read the same durable
+//   reason sources the runtime writes — top-level (markBlocked) and goal_continuation_outcome
+//   (persistGoalContinuationOutcome) — or a still-blocked child fails corroboration and is displaced.
+// - failed: derived failed status from workflow/step state
+// - paused: durable workflow_status == "paused"
+// - timeout: staleness impossible — no independent durable derivation refutes a stored timeout
+internal fun nonCompleteStoredOutcomeIsCorroborated(
+  stored: GoalRunnerStoredOutcome,
+  derived: GoalRunnerStoredOutcome?,
+  snapshot: WorkflowStateSnapshot,
+): Boolean = when (stored.status) {
+  GoalRunnerTerminalStatus.BLOCKED ->
+    derived?.status == GoalRunnerTerminalStatus.BLOCKED &&
+      derived.blockedReason == stored.blockedReason
+  GoalRunnerTerminalStatus.FAILED -> derived?.status == GoalRunnerTerminalStatus.FAILED
+  GoalRunnerTerminalStatus.PAUSED -> snapshot.workflowStatus == "paused"
+  GoalRunnerTerminalStatus.TIMEOUT -> true
+  GoalRunnerTerminalStatus.COMPLETE,
+  GoalRunnerTerminalStatus.NO_TERMINAL_STORE_OUTCOME,
+  GoalRunnerTerminalStatus.RECONCILABLE,
+  -> false
 }
 
 private fun List<GoalContinuationCandidate>.authoritativeOutcomesBySubtask(): Map<Int, GoalRunnerStoredOutcome> =
@@ -2501,6 +2679,8 @@ private fun List<GoalContinuationCandidate>.selectAuthoritativeOutcome(): GoalRu
   if (completeWinner != null) {
     return completeWinner.outcome
   }
+  // SKILL-176: candidate.outcome already reflects corroboration (uncorroborated stored blocked outcomes
+  // fall through), and transactional displacement supersedes the artifact so it cannot re-win.
   val fallbackWinner = asSequence()
     .filter { candidate -> candidate.outcome != null }
     .maxWithOrNull(compareBy<GoalContinuationCandidate> { it.snapshot.updatedAt }.thenBy { it.snapshot.workflowId })
@@ -2526,7 +2706,7 @@ private fun staleRunningReason(
     "subtask $subtaskId because it was no longer active."
   )
 
-private fun goalContinuationOutcome(
+internal fun goalContinuationOutcome(
   artifacts: Map<String, Any?>,
   issueKey: String,
   subtaskId: Int,
@@ -2628,6 +2808,11 @@ private fun blockedReasonFrom(
   steps: List<WorkflowStepState>,
   status: GoalRunnerTerminalStatus,
 ): String? = artifacts["blocked_reason"]?.toString()?.takeIf(String::isNotBlank)
+  // Normal runtime blocks persist the reason only under goal_continuation_outcome (via
+  // FeatureTaskRuntimeRunner.persistGoalContinuationOutcome); top-level blocked_reason is the
+  // reconcile markBlocked path. Reading both keeps still-blocked children corroborating (AC-003).
+  ?: (artifacts["goal_continuation_outcome"] as? Map<*, *>)
+    ?.get("blocked_reason")?.toString()?.takeIf(String::isNotBlank)
   ?: steps.firstOrNull { it.status in setOf("failed", "blocked") }
     ?.let { step -> "Workflow step '${step.stepId}' is ${step.status}." }
   ?: "Workflow reached a terminal state without a goal-continuation commit SHA."

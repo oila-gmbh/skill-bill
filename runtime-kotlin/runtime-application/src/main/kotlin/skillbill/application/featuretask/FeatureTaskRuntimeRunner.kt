@@ -148,6 +148,14 @@ class FeatureTaskRuntimeRunner(
     val phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>> = mutableMapOf()
     val report = runCatching {
       reopenCappedReviewOnChangedDelta(runRequest)
+      if (isGoalContinuationRun(runRequest)) {
+        goalContinuationRecorder.reconcileRemediationBaseCoherence(
+          workflowId = runRequest.workflowId,
+          gitOperations = phaseGates.gitOperations,
+          repoRoot = runRequest.repoRoot,
+          dbOverride = runRequest.dbPathOverride,
+        )
+      }
       val state = FeatureTaskRuntimeRunState(
         recorder.loadPhaseRecords(runRequest.workflowId, runRequest.dbPathOverride).orEmpty(),
         transitions,

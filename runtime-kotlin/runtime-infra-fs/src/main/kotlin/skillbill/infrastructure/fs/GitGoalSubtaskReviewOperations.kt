@@ -2,6 +2,7 @@ package skillbill.infrastructure.fs
 
 import skillbill.ports.workflow.GoalSubtaskReviewGitOperations
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineRecoveryRequest
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineResult
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewInputFailureReason
@@ -50,11 +51,11 @@ internal object GitGoalSubtaskReviewOperations : GoalSubtaskReviewGitOperations 
 
   override fun recoverBaseline(
     repoRoot: Path,
-    baseline: GoalSubtaskReviewBaseline,
+    request: GoalSubtaskReviewBaselineRecoveryRequest,
     expectedBranch: String,
   ): GoalSubtaskReviewBaselineResult {
     val stable = stableSnapshot(repoRoot, expectedBranch) { root, branch ->
-      recoveredBaselineSnapshot(root, baseline, branch)
+      recoveredBaselineSnapshot(root, request, branch)
     }
     val snapshot = stable.snapshot
     return if (snapshot == null) {
@@ -62,7 +63,7 @@ internal object GitGoalSubtaskReviewOperations : GoalSubtaskReviewGitOperations 
     } else {
       GoalSubtaskReviewBaselineResult(
         status = "ok",
-        baseline = GoalSubtaskReviewBaseline(snapshot.recoveredBaseSha, baseline.baselineUntrackedPaths),
+        baseline = request.toRecoveredBaseline(snapshot.recoveredBaseSha),
       )
     }
   }
@@ -180,14 +181,27 @@ private fun reviewInputSnapshot(
 
 private fun recoveredBaselineSnapshot(
   repoRoot: Path,
-  baseline: GoalSubtaskReviewBaseline,
+  request: GoalSubtaskReviewBaselineRecoveryRequest,
   expectedBranch: String,
 ): GoalReviewSnapshotResult<GoalReviewRecoveredBaselineSnapshot> {
+  val unreachableSha = request.unreachableSha
   val branch = currentGoalReviewBranch(repoRoot, expectedBranch)
   val head = branch?.let {
     goalReviewGitValue(repoRoot, "rev-parse", "HEAD")?.trim()?.takeIf(String::isNotBlank)
   }
-  val base = head?.let { currentHead ->
+  // Prefer the nearest reachable ancestor of the failed base so recovery preserves the pass's
+  // intended scope. Fall back to origin/main|main only when the object is missing or that
+  // nearest-ancestor resolution itself fails.
+  val nearestAncestor = head?.takeIf {
+    request.failureReason == GoalSubtaskReviewInputFailureReason.BASE_NOT_ANCESTOR &&
+      runGitCommand(repoRoot, "cat-file", "-e", "$unreachableSha^{commit}").ok
+  }?.let { currentHead ->
+    goalReviewGitValue(repoRoot, "merge-base", unreachableSha, currentHead)
+      ?.trim()
+      ?.takeIf(String::isNotBlank)
+      ?.takeIf { runGitCommand(repoRoot, "merge-base", "--is-ancestor", it, currentHead).ok }
+  }
+  val branchBase = head?.takeIf { nearestAncestor == null }?.let { currentHead ->
     listOf("origin/main", "main")
       .filter { runGitCommand(repoRoot, "rev-parse", "--verify", "--quiet", it).ok }
       .distinct()
@@ -198,15 +212,17 @@ private fun recoveredBaselineSnapshot(
           ?.takeIf { runGitCommand(repoRoot, "merge-base", "--is-ancestor", it, currentHead).ok }
       }
   }
+  val base = nearestAncestor ?: branchBase
   val error = when {
     branch == null ->
       "Goal-subtask review baseline recovery must run on durable child branch '$expectedBranch'."
     head == null -> "Could not resolve current HEAD for goal-subtask review baseline recovery."
     base == null ->
-      "Goal-subtask review baseline recovery could not find a branch base for '$expectedBranch'."
+      "Goal-subtask review baseline recovery could not find a reachable base for unreachable sha " +
+        "'$unreachableSha' on branch '$expectedBranch'."
     base == head ->
       "Recovered goal-subtask review base must differ from current HEAD."
-    base == baseline.reviewBaseSha ->
+    base == unreachableSha ->
       "Recovered goal-subtask review base unexpectedly matches the incompatible persisted base."
     else -> null
   }

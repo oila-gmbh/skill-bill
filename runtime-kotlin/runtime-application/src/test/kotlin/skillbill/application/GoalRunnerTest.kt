@@ -1064,7 +1064,7 @@ class GoalRunnerHandoffTest {
 
       override fun recoverBaseline(
         repoRoot: Path,
-        baseline: GoalSubtaskReviewBaseline,
+        request: skillbill.ports.workflow.model.GoalSubtaskReviewBaselineRecoveryRequest,
         expectedBranch: String,
       ): GoalSubtaskReviewBaselineResult = error("Review baseline recovery is not used by this test.")
     }
@@ -3519,7 +3519,7 @@ private fun readyGoalReviewOperations(baselineError: String? = null): GoalSubtas
 
     override fun recoverBaseline(
       repoRoot: Path,
-      baseline: GoalSubtaskReviewBaseline,
+      request: skillbill.ports.workflow.model.GoalSubtaskReviewBaselineRecoveryRequest,
       expectedBranch: String,
     ): GoalSubtaskReviewBaselineResult = GoalSubtaskReviewBaselineResult(
       status = "error",

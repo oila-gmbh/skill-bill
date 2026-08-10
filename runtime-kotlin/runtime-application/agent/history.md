@@ -1,3 +1,13 @@
+## [2026-08-10] SKILL-176 subtask 6 — Producer-evidence identity includes agent_id
+Areas: runtime-application/featuretask, runtime-ports/persistence, runtime-infra-sqlite/db, runtime-kotlin/agent
+- Producer-output evidence identity widened to `(workflow_id, phase_id, generation, attempt, agent_id)` so a second agent re-entering the same attempt retains its own immutable row instead of Conflict-crashing phase recording
+- Existing rows stay byte-identical; same-agent divergent bytes still Conflict; identical re-retain stays a silent no-op; `producerOutput` / `readProducerOutput` resolve by the calling producer
+- SQLite rebuilds `producer_output_evidence` with `agent_id` in the PRIMARY KEY and copies prior rows unchanged (no backfill — `agent_id` was already durable)
+- Decision recorded in `runtime-kotlin/agent/decisions.md`: widen identity; reject last-writer-wins and attempt-advance-on-agent-switch
+- Regression: seeds `review` gen 0 attempt 2 under one agent, retains different bytes under another, asserts both rows survive and the run continues
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-08-10] SKILL-180 subtask 2 — Runtime-owned validation gate
 Areas: runtime-application/featuretask/validation, runtime-domain/workflow/taskruntime, runtime-ports/validation, runtime-infra-fs, platform-packs/*/platform.yaml, orchestration/contracts, docs, AGENTS.md
 - Validate gate execution moved from the agent into the runtime: resolve pack-declared `validation_gate` argv, run in repo root, project bounded findings for repair, rerun to verify, cap iterations, persist measured `gate_run_count` / `gate_runs`.
@@ -17,6 +27,38 @@ Areas: runtime-application/featuretask, runtime-kotlin/agent, runtime-infra-fs/a
 - Transitional: the `bill-code-check` invoke clause is temporary until subtask 2 owns the gate; the no-suppression clause is permanent.
 Feature flag: N/A
 Acceptance criteria: 9/9 implemented
+
+## [2026-08-10] SKILL-176 subtask 5 — `skill-bill goal repair`
+Areas: runtime-application/goalrunner, runtime-application/model, runtime-cli/goal, runtime-core/di, .feature-specs/SKILL-176
+- Operator escape hatch inspects goal children for known resume wedges (missing `validation_depth`, unreachable review/remediation base, stale blocked `goal_continuation_outcome`) and clears them only with `--apply`; default is report-only
+- Repair preserves completed subtask commit shas, review passes, and audit repair state; refuses live-lease children; healthy goals are a zero-exit no-op; non-wedged rows report which checks passed instead of a false success
+- Durable `goal_child_repair_evidence` records field, prior/new value, and wedge class (append-only, additionalProperties — no workflow-state schema bump); apply is atomic via the workflow write seam
+- Reusable: shared `GoalRunnerChildRepairOperations` diagnosis/apply used by status service and CLI; same absent-vs-set, reachability, and corroboration rules as subtasks 1/2/4
+- Limitation: explicit operator tool only — does not auto-repair on resume; not a general row editor
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
+## [2026-08-10] SKILL-176 subtask 4 — Blocked-reason fidelity
+Areas: runtime-application/goalrunner, runtime-application/featuretask
+- Stored non-complete `goal_continuation_outcome` is no longer authoritative alone; resume corroborates against derived durable state before short-circuiting
+- Stale `blocked` outcomes are displaced transactionally (supersede artifact + sibling `goal_continuation_outcome_displacement` evidence naming the original reason) before authority selection and markBlocked, so crash reconcile can run and reconcileAuthoritativeOutcomes cannot re-block from the superseded row
+- Corroboration: blocked needs matching derived reason; failed needs derived failed; paused needs durable paused; timeout stays authoritative; COMPLETE-without-sha fall-through unchanged
+- `GoalReviewRunPreparation.Blocked` carries the specific reason and disposition; the review-prep caller no longer substitutes a fixed scope-failure sentence
+- Reusable: read-time corroboration plus sibling displacement evidence outside the goal_continuation key set; data-class Blocked so computed reasons reach operators and observability
+- Limitation: no migration of historical rows; detection is at read/resume time only
+Feature flag: N/A
+Acceptance criteria: 12/12 implemented
+
+## [2026-08-10] SKILL-176 subtask 1 — Validation-depth absent vs default
+Areas: runtime-application/featuretask, runtime-domain/workflow/taskruntime/model, .feature-specs/SKILL-176
+- Durable `validationDepth` is nullable: a missing `validation_depth` key decodes as null and is omitted from `toArtifactMap`, so absence is no longer conflated with `ValidationDepth.DEFAULT` (`FULL`)
+- Resume conflict gate blocks only when a recorded depth differs from the launcher; absent durable depth adopts the supplied value and continues
+- Adoption persists separate `goal_continuation_field_adoption` evidence (field, adopted_value, reason) without expanding the continuation artifact key set
+- Audited every `suppliedGoalContinuationConflict` field: identity/codeReviewMode/reviewBaseline cannot be absent at the gate; parallelReviewAgent treats omit and none as the same policy by construction
+- Pattern: absent-adopts-supplied with a dedicated observability artifact — do not heal by decoding defaults. reusable
+- Limitation: review-baseline reachability remains subtask 2; launcher depth selection is unchanged
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
 
 ## [2026-08-09] SKILL-179 subtask 3 — Legacy prose-mode row lifecycle
 Areas: runtime-application/{featuretask,workflow,goalrunner}, runtime-ports/persistence, runtime-infra-sqlite/db/workflow, runtime-cli/featuretask, .feature-specs/SKILL-179

@@ -45,15 +45,23 @@ private fun suppliedGoalContinuationConflict(
   baseline: GoalSubtaskReviewBaseline,
 ): String? = listOfNotNull(
   suppliedIdentityConflict(supplied, durable),
+  // codeReviewMode: durable is required at decode (requireGoalContinuationCodeReviewMode); absence
+  // cannot reach the gate. Supplied may omit; ?.takeIf tolerates that without treating omit as a value.
   supplied.codeReviewMode?.takeIf { it != durable.codeReviewMode }?.let {
     "The supplied goal-continuation code-review mode conflicts with its durable child policy."
   },
-  supplied.validationDepth.takeIf { it != durable.validationDepth }?.let {
+  // validationDepth: durable null means the row never recorded a depth (key absent). Conflict only
+  // when a recorded depth differs from the supplied one; absent durable adopts supplied on resume.
+  durable.validationDepth?.takeIf { it != supplied.validationDepth }?.let {
     "The supplied goal-continuation validation depth conflicts with its durable child policy."
   },
+  // parallelReviewAgent: omitted key and explicit no-agent share null by construction of
+  // toArtifactMap; absent and none are the same policy value, not a conflation to heal.
   supplied.parallelReviewAgent?.takeIf { it != durable.parallelReviewAgent }?.let {
     "The supplied goal-continuation parallel-review agent conflicts with its durable child policy."
   },
+  // reviewBaseline: durable absence already fails in readReviewBaseline before the gate; supplied is
+  // requireNotNull-forced here, so neither side can be absent at comparison time.
   requireNotNull(supplied.reviewBaseline).takeIf { it != baseline }?.let {
     "The supplied goal-continuation review baseline conflicts with its durable child policy."
   },
@@ -71,11 +79,16 @@ private fun suppliedIdentityConflict(
 private fun suppliedIdentityMatchesDurable(
   supplied: FeatureTaskRuntimeGoalContinuationContext,
   durable: FeatureTaskRuntimeGoalContinuationArtifact,
-): Boolean = supplied.parentIssueKey == durable.issueKey &&
-  supplied.subtaskId == durable.subtaskId &&
-  supplied.goalBranch == durable.goalBranch &&
-  supplied.suppressPr == durable.suppressPr &&
-  supplied.parentWorkflowId == durable.parentWorkflowId
+): Boolean = // issueKey/subtaskId/goalBranch/suppressPr: absence loud-fails in fromArtifactMap via require*
+  // decoders before the gate runs, so those fields cannot be absent here.
+  // parentWorkflowId: stamped by every child-open path since the goal-continuation artifact was
+  // introduced; a null durable value is an intentional lineage omission, not a pre-contract key
+  // that decoded as a default, so a supplied non-null parent is a genuine identity conflict.
+  supplied.parentIssueKey == durable.issueKey &&
+    supplied.subtaskId == durable.subtaskId &&
+    supplied.goalBranch == durable.goalBranch &&
+    supplied.suppressPr == durable.suppressPr &&
+    supplied.parentWorkflowId == durable.parentWorkflowId
 
 internal fun newGoalContinuationConflict(
   request: FeatureTaskRuntimeRunRequest,

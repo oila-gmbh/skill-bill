@@ -58,13 +58,13 @@ class SqliteRejectedOutputDiagnosticRepositoryTest {
 
       assertContentEquals(
         byteArrayOf(1, 2, 3),
-        repository.readProducerOutput("workflow-1", "review", 1, 0)?.payload,
+        repository.readProducerOutput("workflow-1", "review", 1, "codex", 0)?.payload,
       )
     }
   }
 
   @Test
-  fun `differing producer evidence at a genuinely reused key conflicts`() {
+  fun `same-agent differing producer evidence at a reused key conflicts`() {
     withRepository("producer-evidence-conflict") { repository ->
       repository.retainProducerOutput(evidence(byteArrayOf(1)))
 
@@ -72,10 +72,34 @@ class SqliteRejectedOutputDiagnosticRepositoryTest {
         repository.retainProducerOutput(evidence(byteArrayOf(2)))
       }
 
-      assertContains(failure.message.orEmpty(), "workflow-1:review:0:1")
+      assertContains(failure.message.orEmpty(), "workflow-1:review:0:1:codex")
       assertContentEquals(
         byteArrayOf(1),
-        repository.readProducerOutput("workflow-1", "review", 1, 0)?.payload,
+        repository.readProducerOutput("workflow-1", "review", 1, "codex", 0)?.payload,
+      )
+    }
+  }
+
+  @Test
+  fun `cross-agent producer evidence at review generation 0 attempt 2 retains both rows`() {
+    withRepository("producer-evidence-cross-agent") { repository ->
+      val claudePayload = "claude-review-0-2".encodeToByteArray()
+      val cursorPayload = "cursor-review-0-2".encodeToByteArray()
+      repository.retainProducerOutput(
+        evidence(claudePayload, attempt = 2, agentId = "claude"),
+      )
+
+      repository.retainProducerOutput(
+        evidence(cursorPayload, attempt = 2, agentId = "cursor"),
+      )
+
+      assertContentEquals(
+        claudePayload,
+        repository.readProducerOutput("workflow-1", "review", 2, "claude", 0)?.payload,
+      )
+      assertContentEquals(
+        cursorPayload,
+        repository.readProducerOutput("workflow-1", "review", 2, "cursor", 0)?.payload,
       )
     }
   }
@@ -89,11 +113,11 @@ class SqliteRejectedOutputDiagnosticRepositoryTest {
 
       assertContentEquals(
         byteArrayOf(1),
-        repository.readProducerOutput("workflow-1", "review", 1, 0)?.payload,
+        repository.readProducerOutput("workflow-1", "review", 1, "codex", 0)?.payload,
       )
       assertContentEquals(
         byteArrayOf(2),
-        repository.readProducerOutput("workflow-1", "review", 1, 1)?.payload,
+        repository.readProducerOutput("workflow-1", "review", 1, "codex", 1)?.payload,
       )
     }
   }
@@ -103,7 +127,7 @@ class SqliteRejectedOutputDiagnosticRepositoryTest {
     withRepository("producer-evidence-fallback") { repository ->
       repository.retainProducerOutput(evidence(byteArrayOf(1)))
 
-      val read = repository.readProducerOutput("workflow-1", "review", 1, 5)
+      val read = repository.readProducerOutput("workflow-1", "review", 1, "codex", 5)
 
       assertEquals(0, read?.generation)
       assertContentEquals(byteArrayOf(1), read?.payload)
@@ -117,18 +141,19 @@ class SqliteRejectedOutputDiagnosticRepositoryTest {
     }
   }
 
-  private fun evidence(payload: ByteArray, attempt: Int = 1, generation: Int = 0) = ProducerOutputEvidence(
-    workflowId = "workflow-1",
-    phaseId = "review",
-    attempt = attempt,
-    agentId = "codex",
-    model = "gpt",
-    recordedAt = Instant.parse("2026-07-28T10:00:00Z"),
-    byteSize = payload.size.toLong(),
-    sha256 = MessageDigest.getInstance("SHA-256").digest(payload).joinToString("") { "%02x".format(it) },
-    payload = payload,
-    generation = generation,
-  )
+  private fun evidence(payload: ByteArray, attempt: Int = 1, generation: Int = 0, agentId: String = "codex") =
+    ProducerOutputEvidence(
+      workflowId = "workflow-1",
+      phaseId = "review",
+      attempt = attempt,
+      agentId = agentId,
+      model = "gpt",
+      recordedAt = Instant.parse("2026-07-28T10:00:00Z"),
+      byteSize = payload.size.toLong(),
+      sha256 = MessageDigest.getInstance("SHA-256").digest(payload).joinToString("") { "%02x".format(it) },
+      payload = payload,
+      generation = generation,
+    )
 
   private fun record(payload: ByteArray): RejectedOutputDiagnosticRecord = RejectedOutputDiagnosticRecord(
     RejectedOutputDiagnostic(

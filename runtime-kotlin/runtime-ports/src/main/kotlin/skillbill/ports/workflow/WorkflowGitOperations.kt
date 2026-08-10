@@ -3,6 +3,7 @@
 package skillbill.ports.workflow
 
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineRecoveryRequest
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineResult
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewInputResult
@@ -34,6 +35,27 @@ interface WorkflowGitOperations {
   fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult
 
   fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult
+
+  /**
+   * Soft-resets HEAD to [commitSha], keeping the index and working tree. Used to roll back a
+   * remediation checkpoint commit when the paired durable base record fails, so the branch ref and
+   * the recorded base stay paired (both remain at the pre-commit state) rather than stranding an
+   * unrecorded tip. Default refuses so adapters without real git cannot pretend the rollback worked.
+   */
+  fun resetSoftToCommit(repoRoot: Path, commitSha: String): WorkflowGitOperationResult = WorkflowGitOperationResult(
+    status = "error",
+    error = "This git operations implementation cannot soft-reset HEAD to '$commitSha'.",
+  )
+
+  /**
+   * True when [ancestorSha] is an ancestor of [descendantSha] (or the same commit). Used to detect a
+   * recorded remediation base that the branch tip no longer contains.
+   */
+  fun isCommitAncestor(repoRoot: Path, ancestorSha: String, descendantSha: String): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(
+      status = "error",
+      error = "This git operations implementation cannot test commit ancestry.",
+    )
 
   // Resolves an operator-supplied revision to a full commit SHA, or errors when it names no commit
   // in this repository. Default is a refusal so a store that cannot measure git never silently
@@ -281,7 +303,7 @@ interface GoalSubtaskReviewGitOperations {
 
   fun recoverBaseline(
     repoRoot: Path,
-    baseline: GoalSubtaskReviewBaseline,
+    request: GoalSubtaskReviewBaselineRecoveryRequest,
     expectedBranch: String,
   ): GoalSubtaskReviewBaselineResult = GoalSubtaskReviewBaselineResult(
     status = "error",
@@ -311,7 +333,7 @@ private object UnavailableGoalSubtaskReviewGitOperations : GoalSubtaskReviewGitO
 
   override fun recoverBaseline(
     repoRoot: Path,
-    baseline: GoalSubtaskReviewBaseline,
+    request: GoalSubtaskReviewBaselineRecoveryRequest,
     expectedBranch: String,
   ): GoalSubtaskReviewBaselineResult = GoalSubtaskReviewBaselineResult(
     status = "error",
@@ -332,9 +354,9 @@ fun WorkflowGitOperations.buildGoalSubtaskReviewInput(
 
 fun WorkflowGitOperations.recoverGoalSubtaskReviewBaseline(
   repoRoot: Path,
-  baseline: GoalSubtaskReviewBaseline,
+  request: GoalSubtaskReviewBaselineRecoveryRequest,
   expectedBranch: String,
-): GoalSubtaskReviewBaselineResult = reviewOperations().recoverBaseline(repoRoot, baseline, expectedBranch)
+): GoalSubtaskReviewBaselineResult = reviewOperations().recoverBaseline(repoRoot, request, expectedBranch)
 
 private fun WorkflowGitOperations.reviewOperations(): GoalSubtaskReviewGitOperations =
   (this as? GoalSubtaskReviewGitOperationsProvider)?.goalSubtaskReviewOperations
@@ -360,6 +382,18 @@ object NoopWorkflowGitOperations :
 
   override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = "")
+
+  override fun resetSoftToCommit(repoRoot: Path, commitSha: String): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = commitSha.trim())
+
+  override fun isCommitAncestor(
+    repoRoot: Path,
+    ancestorSha: String,
+    descendantSha: String,
+  ): WorkflowGitOperationResult = WorkflowGitOperationResult(
+    status = "ok",
+    value = if (ancestorSha.trim() == descendantSha.trim()) "true" else "true",
+  )
 
   override fun validateBranchBase(
     repoRoot: Path,
@@ -434,11 +468,14 @@ private object NoopGoalSubtaskReviewGitOperations : GoalSubtaskReviewGitOperatio
 
   override fun recoverBaseline(
     repoRoot: Path,
-    baseline: GoalSubtaskReviewBaseline,
+    request: GoalSubtaskReviewBaselineRecoveryRequest,
     expectedBranch: String,
   ): GoalSubtaskReviewBaselineResult = if (expectedBranch.isBlank()) {
     GoalSubtaskReviewBaselineResult(status = "error", error = "Goal-subtask durable child branch is required.")
   } else {
-    GoalSubtaskReviewBaselineResult(status = "ok", baseline = baseline)
+    GoalSubtaskReviewBaselineResult(
+      status = "ok",
+      baseline = request.toRecoveredBaseline(request.unreachableSha),
+    )
   }
 }

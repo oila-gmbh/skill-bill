@@ -12,6 +12,27 @@ Areas: runtime-application/featuretask/validation, runtime-domain/workflow/taskr
 Feature flag: N/A
 Acceptance criteria: 13/13 implemented
 
+## [2026-08-10] SKILL-176 subtask 3 — Orphaned remediation-checkpoint root cause
+Areas: runtime-application/featuretask, runtime-ports/workflow, runtime-infra-fs, runtime-kotlin/agent
+- Remediation Stage commit and `remediation_base_sha` write are one unit: commit sha is passed into `updateReviewState`; a failed base record soft-resets HEAD to the pre-commit parent so ref and durable row stay paired
+- Goal-child resume reconciles committed-but-unrecorded and recorded-but-superseded bases to the branch tip (or latest on-branch review_fix checkpoint) before review prep, with `goal_review_base_recoveries` evidence
+- Investigation eliminated in-runtime sibling-orphan producers (failed-checkpoint index restore, crash between commit and record, resume Skip+re-record); stranding needs a post-record history rewrite off the recorded sha
+- Reusable: `WorkflowGitOperations.resetSoftToCommit` compensating soft-reset; resume heal closes the crash and post-record rewrite windows without a second healthy-path reconciliation pass
+- Limitation: only remediation bases are scope-critical at this seam; any future runtime-owned amend/rebase must call the paired base update
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
+## [2026-08-10] SKILL-176 — Remediation-base reachability recovery
+Areas: runtime-application/featuretask, runtime-domain/workflow/taskruntime, runtime-ports/workflow, runtime-infra-fs
+- Unreachable stored review or remediation bases are recovered to the nearest reachable ancestor of the failed sha instead of permanently blocking the goal child
+- Recovery gate is disposition-pending only (no longer mutually exclusive with completed review passes / `reservedPassNumber >= 2`)
+- Repoint persists to the failed field (`review_base_sha` or `remediation_base_sha`) with durable `goal_review_base_recoveries` evidence (original, replacement, reason)
+- Pattern: recover the selected baseline field that materialization actually used; do not always rewrite `reviewBaseSha`
+- Reusable: `GoalSubtaskReviewBaselineRecoveryRequest` + field-aware recovery outcome (`Recovered` / `Failed` / `Ineligible`)
+- Limitation: still blocks when no reachable ancestor exists; does not prevent orphaning the sha upstream (subtask 3)
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
 ## [2026-08-05] Operator resume reopens blocked goal children
 Areas: runtime-application/goalrunner, runtime-ports/goalrunner
 - `skill-bill goal <key>` resume of a blocked subtask now reopens the child's durable blocked phase before launch (same child-side reopen as `feature-task retry-blocked`)
