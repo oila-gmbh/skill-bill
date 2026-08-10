@@ -1,5 +1,3 @@
-<<<<<<< HEAD
-<<<<<<< HEAD
 ## [2026-08-10] SKILL-180 subtask 2 — Runtime-owned validation gate
 Areas: runtime-application/featuretask/validation, runtime-domain/workflow/taskruntime, runtime-ports/validation, runtime-infra-fs, platform-packs/*/platform.yaml, orchestration/contracts, docs, AGENTS.md
 - Validate gate execution moved from the agent into the runtime: resolve pack-declared `validation_gate` argv, run in repo root, project bounded findings for repair, rerun to verify, cap iterations, persist measured `gate_run_count` / `gate_runs`.
@@ -19,8 +17,7 @@ Areas: runtime-application/featuretask, runtime-kotlin/agent, runtime-infra-fs/a
 - Transitional: the `bill-code-check` invoke clause is temporary until subtask 2 owns the gate; the no-suppression clause is permanent.
 Feature flag: N/A
 Acceptance criteria: 9/9 implemented
-=======
-=======
+
 ## [2026-08-10] SKILL-176 subtask 5 — `skill-bill goal repair`
 Areas: runtime-application/goalrunner, runtime-application/model, runtime-cli/goal, runtime-core/di, .feature-specs/SKILL-176
 - Operator escape hatch inspects goal children for known resume wedges (missing `validation_depth`, unreachable review/remediation base, stale blocked `goal_continuation_outcome`) and clears them only with `--apply`; default is report-only
@@ -31,7 +28,6 @@ Areas: runtime-application/goalrunner, runtime-application/model, runtime-cli/go
 Feature flag: N/A
 Acceptance criteria: 10/10 implemented
 
->>>>>>> 1270f3946 (SKILL-176: add skill-bill goal repair operator escape hatch (subtask 5).)
 ## [2026-08-10] SKILL-176 subtask 4 — Blocked-reason fidelity
 Areas: runtime-application/goalrunner, runtime-application/featuretask
 - Stored non-complete `goal_continuation_outcome` is no longer authoritative alone; resume corroborates against derived durable state before short-circuiting
@@ -43,7 +39,6 @@ Areas: runtime-application/goalrunner, runtime-application/featuretask
 Feature flag: N/A
 Acceptance criteria: 12/12 implemented
 
->>>>>>> adffc7b0c (SKILL-176: corroborate and displace stale blocked continuation outcomes (subtask 4).)
 ## [2026-08-10] SKILL-176 subtask 1 — Validation-depth absent vs default
 Areas: runtime-application/featuretask, runtime-domain/workflow/taskruntime/model, .feature-specs/SKILL-176
 - Durable `validationDepth` is nullable: a missing `validation_depth` key decodes as null and is omitted from `toArtifactMap`, so absence is no longer conflated with `ValidationDepth.DEFAULT` (`FULL`)

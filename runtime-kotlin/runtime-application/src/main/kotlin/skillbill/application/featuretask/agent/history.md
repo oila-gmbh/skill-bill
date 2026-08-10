@@ -1,6 +1,5 @@
 # featuretask runtime boundary history
 
-<<<<<<< HEAD
 ## [2026-08-10] SKILL-180 — Validate suppression-diff gate
 Areas: runtime-application/featuretask/validation, runtime-domain/workflow/taskruntime, runtime-domain/scaffold/policy, runtime-infra-fs (git ops, platformpack), runtime-ports/workflow, orchestration/contracts, platform-packs
 - Validate now measures newly introduced suppression markers itself, diffing changed paths against the base ref through the git operations port; the agent's self-report is never an input to the count
@@ -12,7 +11,7 @@ Areas: runtime-application/featuretask/validation, runtime-domain/workflow/taskr
 - Limitation: existing base-ref suppressions are untouched by design; rename/move is neutral, not an audit trail
 Feature flag: N/A
 Acceptance criteria: 13/13 implemented
-=======
+
 ## [2026-08-10] SKILL-176 subtask 3 — Orphaned remediation-checkpoint root cause
 Areas: runtime-application/featuretask, runtime-ports/workflow, runtime-infra-fs, runtime-kotlin/agent
 - Remediation Stage commit and `remediation_base_sha` write are one unit: commit sha is passed into `updateReviewState`; a failed base record soft-resets HEAD to the pre-commit parent so ref and durable row stay paired
@@ -22,7 +21,6 @@ Areas: runtime-application/featuretask, runtime-ports/workflow, runtime-infra-fs
 - Limitation: only remediation bases are scope-critical at this seam; any future runtime-owned amend/rebase must call the paired base update
 Feature flag: N/A
 Acceptance criteria: 7/7 implemented
->>>>>>> 2366eba8a (SKILL-176: pair remediation Stage commit with base write and heal orphaned checkpoints on resume (subtask 3).)
 
 ## [2026-08-10] SKILL-176 — Remediation-base reachability recovery
 Areas: runtime-application/featuretask, runtime-domain/workflow/taskruntime, runtime-ports/workflow, runtime-infra-fs

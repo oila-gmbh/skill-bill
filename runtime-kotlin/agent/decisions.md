@@ -4,7 +4,6 @@ This file records architectural and implementation decisions that span the
 `runtime-kotlin/` boundary. Each entry is dated and explains the trade-off,
 not the implementation detail.
 
-<<<<<<< HEAD
 ## 2026-08-10 — Validate-phase build/test/gate execution is runtime-owned (SKILL-180)
 
 Context: Validate previously told the agent to invoke `bill-code-check`, so
@@ -22,7 +21,7 @@ Audit and repair evidence remain read-only repository facts.
 
 Alternatives considered: Agent-reported gate_run_count (rejected). Hardcoded
 Gradle cache flags in the runtime (rejected; packs declare bypass argv).
-=======
+
 ## 2026-08-10 — producer_output_evidence identity includes agent_id (SKILL-176)
 
 Context: Re-entering a phase attempt under a different agent (SKILL-15
@@ -44,7 +43,6 @@ rejected; hides the identity bug and is out of scope.
 
 Revisit when: evidence must be shared across producers for one attempt without
 agent scoping.
->>>>>>> a8ac3d91c (chore(SKILL-176): audited implementation checkpoint on 'feat/SKILL-176-goal-child-resume-self-heal' [phase=audit generation=0])
 
 ## 2026-08-10 — remediation checkpoint sha and branch tip stay paired (SKILL-176)
 
