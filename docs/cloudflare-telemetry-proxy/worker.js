@@ -3,21 +3,6 @@ const DEFAULT_POSTHOG_APP_HOST = "https://us.posthog.com";
 const MAX_BATCH_SIZE = 100;
 const CONTRACT_VERSION = "1";
 
-// SKILL-86 (AC7): the prose feature-task lane was renamed from
-// `skillbill_feature_implement_*` to `skillbill_feature_task_prose_*`. The
-// stats/series queries match BOTH names at read time so historical rows
-// emitted under the legacy name keep counting alongside new prose rows.
-const PROSE_STARTED_EVENTS = ["skillbill_feature_implement_started", "skillbill_feature_task_prose_started"];
-const PROSE_FINISHED_EVENTS = ["skillbill_feature_implement_finished", "skillbill_feature_task_prose_finished"];
-const PROSE_EVENTS = [...PROSE_STARTED_EVENTS, ...PROSE_FINISHED_EVENTS];
-
-function eventInList(events) {
-  return `event IN (${events.map((name) => `'${name}'`).join(", ")})`;
-}
-
-const PROSE_STARTED_EVENT_MATCH = eventInList(PROSE_STARTED_EVENTS);
-const PROSE_FINISHED_EVENT_MATCH = eventInList(PROSE_FINISHED_EVENTS);
-const PROSE_EVENT_FILTER = eventInList(PROSE_EVENTS);
 const PRODUCTION_INSTALL_FILTER = `
       AND properties.install_id IS NOT NULL
       AND trim(toString(properties.install_id)) != ''
@@ -110,8 +95,8 @@ function validateStatsRequest(payload) {
   if (typeof payload !== "object" || payload === null) {
     return "Request body must be a JSON object.";
   }
-  if (!["bill-feature-verify", "bill-feature-task"].includes(payload.workflow)) {
-    return "workflow must be one of: bill-feature-verify, bill-feature-task.";
+  if (payload.workflow !== "bill-feature-verify") {
+    return "workflow must be one of: bill-feature-verify.";
   }
   if (!isIsoDate(payload.date_from) || !isIsoDate(payload.date_to)) {
     return "date_from and date_to must use YYYY-MM-DD format.";
@@ -133,9 +118,7 @@ function capabilitiesPayload(env) {
     source: "remote_proxy",
     supports_ingest: supportsIngest,
     supports_stats: supportsStats,
-    supported_workflows: supportsStats
-      ? ["bill-feature-verify", "bill-feature-task"]
-      : [],
+    supported_workflows: supportsStats ? ["bill-feature-verify"] : [],
     stats_auth_required: Boolean(env.PROXY_STATS_BEARER_TOKEN),
   };
 }
@@ -301,49 +284,6 @@ ${PRODUCTION_INSTALL_FILTER}
   `;
 }
 
-function buildImplementStatsQuery(dateFrom, dateToExclusive) {
-  const from = escapeSqlLiteral(`${dateFrom} 00:00:00`);
-  const to = escapeSqlLiteral(`${dateToExclusive} 00:00:00`);
-  return `
-    SELECT
-      uniqExactIf(toString(properties.session_id), ${PROSE_STARTED_EVENT_MATCH}) AS started_runs,
-      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH}) AS finished_runs,
-      uniqExactIf(toString(properties.session_id), ${PROSE_STARTED_EVENT_MATCH} AND toString(properties.feature_size) = 'SMALL') AS feature_size_small,
-      uniqExactIf(toString(properties.session_id), ${PROSE_STARTED_EVENT_MATCH} AND toString(properties.feature_size) = 'MEDIUM') AS feature_size_medium,
-      uniqExactIf(toString(properties.session_id), ${PROSE_STARTED_EVENT_MATCH} AND toString(properties.feature_size) = 'LARGE') AS feature_size_large,
-      uniqExactIf(toString(properties.session_id), ${PROSE_STARTED_EVENT_MATCH} AND lower(toString(properties.rollout_needed)) = 'true') AS rollout_needed_runs,
-      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND lower(toString(properties.feature_flag_used)) = 'true') AS feature_flag_used_runs,
-      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND lower(toString(properties.pr_created)) = 'true') AS pr_created_runs,
-      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND lower(toString(properties.boundary_history_written)) = 'true') AS boundary_history_written_runs,
-      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.audit_result) = 'all_pass') AS audit_result_all_pass,
-      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.audit_result) = 'had_gaps') AS audit_result_had_gaps,
-      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.audit_result) = 'skipped') AS audit_result_skipped,
-      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.validation_result) = 'pass') AS validation_result_pass,
-      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.validation_result) = 'fail') AS validation_result_fail,
-      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.validation_result) = 'skipped') AS validation_result_skipped,
-      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.completion_status) = 'completed') AS completion_status_completed,
-      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.completion_status) = 'abandoned_at_planning') AS completion_status_abandoned_at_planning,
-      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.completion_status) = 'abandoned_at_implementation') AS completion_status_abandoned_at_implementation,
-      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.completion_status) = 'abandoned_at_review') AS completion_status_abandoned_at_review,
-      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.completion_status) = 'error') AS completion_status_error,
-      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.boundary_history_value) = 'none') AS boundary_history_value_none,
-      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.boundary_history_value) = 'irrelevant') AS boundary_history_value_irrelevant,
-      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.boundary_history_value) = 'low') AS boundary_history_value_low,
-      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.boundary_history_value) = 'medium') AS boundary_history_value_medium,
-      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.boundary_history_value) = 'high') AS boundary_history_value_high,
-      avgIf(toFloatOrZero(toString(properties.acceptance_criteria_count)), ${PROSE_STARTED_EVENT_MATCH}) AS average_acceptance_criteria_count,
-      avgIf(toFloatOrZero(toString(properties.spec_word_count)), ${PROSE_STARTED_EVENT_MATCH}) AS average_spec_word_count,
-      avgIf(toFloatOrZero(toString(properties.review_iterations)), ${PROSE_FINISHED_EVENT_MATCH}) AS average_review_iterations,
-      avgIf(toFloatOrZero(toString(properties.audit_iterations)), ${PROSE_FINISHED_EVENT_MATCH}) AS average_audit_iterations,
-      avgIf(toFloatOrZero(toString(properties.duration_seconds)), ${PROSE_FINISHED_EVENT_MATCH}) AS average_duration_seconds
-    FROM events
-    WHERE ${PROSE_EVENT_FILTER}
-      AND timestamp >= toDateTime('${from}')
-      AND timestamp < toDateTime('${to}')
-${PRODUCTION_INSTALL_FILTER}
-  `;
-}
-
 function buildVerifySeriesQuery(dateFrom, dateToExclusive) {
   const from = escapeSqlLiteral(`${dateFrom} 00:00:00`);
   const to = escapeSqlLiteral(`${dateToExclusive} 00:00:00`);
@@ -377,47 +317,6 @@ function buildVerifySeriesQuery(dateFrom, dateToExclusive) {
       uniqExactIf(toString(properties.session_id), event = 'skillbill_feature_verify_finished' AND toString(properties.history_helpfulness) = 'high') AS history_helpfulness_high
     FROM events
     WHERE event IN ('skillbill_feature_verify_started', 'skillbill_feature_verify_finished')
-      AND timestamp >= toDateTime('${from}')
-      AND timestamp < toDateTime('${to}')
-${PRODUCTION_INSTALL_FILTER}
-    GROUP BY bucket_date
-    ORDER BY bucket_date
-  `;
-}
-
-function buildImplementSeriesQuery(dateFrom, dateToExclusive) {
-  const from = escapeSqlLiteral(`${dateFrom} 00:00:00`);
-  const to = escapeSqlLiteral(`${dateToExclusive} 00:00:00`);
-  return `
-    SELECT
-      toString(toDate(timestamp)) AS bucket_date,
-      uniqExactIf(toString(properties.session_id), ${PROSE_STARTED_EVENT_MATCH}) AS started_runs,
-      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH}) AS finished_runs,
-      uniqExactIf(toString(properties.session_id), ${PROSE_STARTED_EVENT_MATCH} AND toString(properties.feature_size) = 'SMALL') AS feature_size_small,
-      uniqExactIf(toString(properties.session_id), ${PROSE_STARTED_EVENT_MATCH} AND toString(properties.feature_size) = 'MEDIUM') AS feature_size_medium,
-      uniqExactIf(toString(properties.session_id), ${PROSE_STARTED_EVENT_MATCH} AND toString(properties.feature_size) = 'LARGE') AS feature_size_large,
-      uniqExactIf(toString(properties.session_id), ${PROSE_STARTED_EVENT_MATCH} AND lower(toString(properties.rollout_needed)) = 'true') AS rollout_needed_runs,
-      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND lower(toString(properties.feature_flag_used)) = 'true') AS feature_flag_used_runs,
-      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND lower(toString(properties.pr_created)) = 'true') AS pr_created_runs,
-      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND lower(toString(properties.boundary_history_written)) = 'true') AS boundary_history_written_runs,
-      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.audit_result) = 'all_pass') AS audit_result_all_pass,
-      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.audit_result) = 'had_gaps') AS audit_result_had_gaps,
-      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.audit_result) = 'skipped') AS audit_result_skipped,
-      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.validation_result) = 'pass') AS validation_result_pass,
-      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.validation_result) = 'fail') AS validation_result_fail,
-      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.validation_result) = 'skipped') AS validation_result_skipped,
-      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.completion_status) = 'completed') AS completion_status_completed,
-      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.completion_status) = 'abandoned_at_planning') AS completion_status_abandoned_at_planning,
-      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.completion_status) = 'abandoned_at_implementation') AS completion_status_abandoned_at_implementation,
-      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.completion_status) = 'abandoned_at_review') AS completion_status_abandoned_at_review,
-      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.completion_status) = 'error') AS completion_status_error,
-      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.boundary_history_value) = 'none') AS boundary_history_value_none,
-      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.boundary_history_value) = 'irrelevant') AS boundary_history_value_irrelevant,
-      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.boundary_history_value) = 'low') AS boundary_history_value_low,
-      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.boundary_history_value) = 'medium') AS boundary_history_value_medium,
-      uniqExactIf(toString(properties.session_id), ${PROSE_FINISHED_EVENT_MATCH} AND toString(properties.boundary_history_value) = 'high') AS boundary_history_value_high
-    FROM events
-    WHERE ${PROSE_EVENT_FILTER}
       AND timestamp >= toDateTime('${from}')
       AND timestamp < toDateTime('${to}')
 ${PRODUCTION_INSTALL_FILTER}
@@ -505,70 +404,6 @@ export function normalizeVerifyStats(row, dateFrom, dateTo) {
   };
 }
 
-export function normalizeImplementStats(row, dateFrom, dateTo) {
-  const startedRuns = toInt(row.started_runs);
-  const finishedRuns = toInt(row.finished_runs);
-  const inProgressRuns = Math.max(startedRuns - finishedRuns, 0);
-  const completedRuns = toInt(row.completion_status_completed);
-  const boundaryHistoryUsefulRuns = toInt(row.boundary_history_value_medium) + toInt(row.boundary_history_value_high);
-  return {
-    status: "ok",
-    source: "remote_proxy",
-    workflow: "bill-feature-task",
-    date_from: dateFrom,
-    date_to: dateTo,
-    started_runs: startedRuns,
-    finished_runs: finishedRuns,
-    in_progress_runs: inProgressRuns,
-    in_progress_rate: rate(inProgressRuns, startedRuns),
-    completion_rate: rate(completedRuns, startedRuns),
-    feature_size_counts: {
-      SMALL: toInt(row.feature_size_small),
-      MEDIUM: toInt(row.feature_size_medium),
-      LARGE: toInt(row.feature_size_large),
-    },
-    completion_status_counts: {
-      completed: completedRuns,
-      abandoned_at_planning: toInt(row.completion_status_abandoned_at_planning),
-      abandoned_at_implementation: toInt(row.completion_status_abandoned_at_implementation),
-      abandoned_at_review: toInt(row.completion_status_abandoned_at_review),
-      error: toInt(row.completion_status_error),
-    },
-    audit_result_counts: {
-      all_pass: toInt(row.audit_result_all_pass),
-      had_gaps: toInt(row.audit_result_had_gaps),
-      skipped: toInt(row.audit_result_skipped),
-    },
-    validation_result_counts: {
-      pass: toInt(row.validation_result_pass),
-      fail: toInt(row.validation_result_fail),
-      skipped: toInt(row.validation_result_skipped),
-    },
-    rollout_needed_runs: toInt(row.rollout_needed_runs),
-    rollout_needed_rate: rate(toInt(row.rollout_needed_runs), startedRuns),
-    feature_flag_used_runs: toInt(row.feature_flag_used_runs),
-    feature_flag_used_rate: rate(toInt(row.feature_flag_used_runs), finishedRuns),
-    pr_created_runs: toInt(row.pr_created_runs),
-    pr_created_rate: rate(toInt(row.pr_created_runs), finishedRuns),
-    boundary_history_written_runs: toInt(row.boundary_history_written_runs),
-    boundary_history_written_rate: rate(toInt(row.boundary_history_written_runs), finishedRuns),
-    boundary_history_useful_runs: boundaryHistoryUsefulRuns,
-    boundary_history_useful_rate: rate(boundaryHistoryUsefulRuns, finishedRuns),
-    boundary_history_value_counts: {
-      none: toInt(row.boundary_history_value_none),
-      irrelevant: toInt(row.boundary_history_value_irrelevant),
-      low: toInt(row.boundary_history_value_low),
-      medium: toInt(row.boundary_history_value_medium),
-      high: toInt(row.boundary_history_value_high),
-    },
-    average_acceptance_criteria_count: average(row.average_acceptance_criteria_count),
-    average_spec_word_count: average(row.average_spec_word_count),
-    average_review_iterations: average(row.average_review_iterations),
-    average_audit_iterations: average(row.average_audit_iterations),
-    average_duration_seconds: average(row.average_duration_seconds),
-  };
-}
-
 export function normalizeVerifySeriesEntry(row, bucketStart, bucketEnd) {
   const startedRuns = toInt(row.started_runs);
   const finishedRuns = toInt(row.finished_runs);
@@ -622,62 +457,6 @@ export function normalizeVerifySeriesEntry(row, bucketStart, bucketEnd) {
       low: toInt(row.history_helpfulness_low),
       medium: toInt(row.history_helpfulness_medium),
       high: toInt(row.history_helpfulness_high),
-    },
-  };
-}
-
-export function normalizeImplementSeriesEntry(row, bucketStart, bucketEnd) {
-  const startedRuns = toInt(row.started_runs);
-  const finishedRuns = toInt(row.finished_runs);
-  const inProgressRuns = Math.max(startedRuns - finishedRuns, 0);
-  const completedRuns = toInt(row.completion_status_completed);
-  const boundaryHistoryUsefulRuns = toInt(row.boundary_history_value_medium) + toInt(row.boundary_history_value_high);
-  return {
-    bucket_start: bucketStart,
-    bucket_end: bucketEnd,
-    started_runs: startedRuns,
-    finished_runs: finishedRuns,
-    in_progress_runs: inProgressRuns,
-    in_progress_rate: rate(inProgressRuns, startedRuns),
-    completion_rate: rate(completedRuns, startedRuns),
-    feature_size_counts: {
-      SMALL: toInt(row.feature_size_small),
-      MEDIUM: toInt(row.feature_size_medium),
-      LARGE: toInt(row.feature_size_large),
-    },
-    completion_status_counts: {
-      completed: completedRuns,
-      abandoned_at_planning: toInt(row.completion_status_abandoned_at_planning),
-      abandoned_at_implementation: toInt(row.completion_status_abandoned_at_implementation),
-      abandoned_at_review: toInt(row.completion_status_abandoned_at_review),
-      error: toInt(row.completion_status_error),
-    },
-    audit_result_counts: {
-      all_pass: toInt(row.audit_result_all_pass),
-      had_gaps: toInt(row.audit_result_had_gaps),
-      skipped: toInt(row.audit_result_skipped),
-    },
-    validation_result_counts: {
-      pass: toInt(row.validation_result_pass),
-      fail: toInt(row.validation_result_fail),
-      skipped: toInt(row.validation_result_skipped),
-    },
-    rollout_needed_runs: toInt(row.rollout_needed_runs),
-    rollout_needed_rate: rate(toInt(row.rollout_needed_runs), startedRuns),
-    feature_flag_used_runs: toInt(row.feature_flag_used_runs),
-    feature_flag_used_rate: rate(toInt(row.feature_flag_used_runs), finishedRuns),
-    pr_created_runs: toInt(row.pr_created_runs),
-    pr_created_rate: rate(toInt(row.pr_created_runs), finishedRuns),
-    boundary_history_written_runs: toInt(row.boundary_history_written_runs),
-    boundary_history_written_rate: rate(toInt(row.boundary_history_written_runs), finishedRuns),
-    boundary_history_useful_runs: boundaryHistoryUsefulRuns,
-    boundary_history_useful_rate: rate(boundaryHistoryUsefulRuns, finishedRuns),
-    boundary_history_value_counts: {
-      none: toInt(row.boundary_history_value_none),
-      irrelevant: toInt(row.boundary_history_value_irrelevant),
-      low: toInt(row.boundary_history_value_low),
-      medium: toInt(row.boundary_history_value_medium),
-      high: toInt(row.boundary_history_value_high),
     },
   };
 }
@@ -746,74 +525,6 @@ function summarizeVerifySeriesBucket(bucketStart, bucketEnd, entries) {
   };
 }
 
-function summarizeImplementSeriesBucket(bucketStart, bucketEnd, entries) {
-  const startedRuns = entries.reduce((sum, entry) => sum + toInt(entry.started_runs), 0);
-  const finishedRuns = entries.reduce((sum, entry) => sum + toInt(entry.finished_runs), 0);
-  const completedRuns = entries.reduce((sum, entry) => sum + toInt(entry.completion_status_counts?.completed), 0);
-  const inProgressRuns = Math.max(startedRuns - finishedRuns, 0);
-  const boundaryHistoryUsefulRuns = entries.reduce((sum, entry) => sum + toInt(entry.boundary_history_useful_runs), 0);
-  return {
-    bucket_start: bucketStart,
-    bucket_end: bucketEnd,
-    started_runs: startedRuns,
-    finished_runs: finishedRuns,
-    in_progress_runs: inProgressRuns,
-    in_progress_rate: rate(inProgressRuns, startedRuns),
-    completion_rate: rate(completedRuns, startedRuns),
-    feature_size_counts: {
-      SMALL: entries.reduce((sum, entry) => sum + toInt(entry.feature_size_counts?.SMALL), 0),
-      MEDIUM: entries.reduce((sum, entry) => sum + toInt(entry.feature_size_counts?.MEDIUM), 0),
-      LARGE: entries.reduce((sum, entry) => sum + toInt(entry.feature_size_counts?.LARGE), 0),
-    },
-    completion_status_counts: {
-      completed: completedRuns,
-      abandoned_at_planning: entries.reduce((sum, entry) => sum + toInt(entry.completion_status_counts?.abandoned_at_planning), 0),
-      abandoned_at_implementation: entries.reduce((sum, entry) => sum + toInt(entry.completion_status_counts?.abandoned_at_implementation), 0),
-      abandoned_at_review: entries.reduce((sum, entry) => sum + toInt(entry.completion_status_counts?.abandoned_at_review), 0),
-      error: entries.reduce((sum, entry) => sum + toInt(entry.completion_status_counts?.error), 0),
-    },
-    audit_result_counts: {
-      all_pass: entries.reduce((sum, entry) => sum + toInt(entry.audit_result_counts?.all_pass), 0),
-      had_gaps: entries.reduce((sum, entry) => sum + toInt(entry.audit_result_counts?.had_gaps), 0),
-      skipped: entries.reduce((sum, entry) => sum + toInt(entry.audit_result_counts?.skipped), 0),
-    },
-    validation_result_counts: {
-      pass: entries.reduce((sum, entry) => sum + toInt(entry.validation_result_counts?.pass), 0),
-      fail: entries.reduce((sum, entry) => sum + toInt(entry.validation_result_counts?.fail), 0),
-      skipped: entries.reduce((sum, entry) => sum + toInt(entry.validation_result_counts?.skipped), 0),
-    },
-    rollout_needed_runs: entries.reduce((sum, entry) => sum + toInt(entry.rollout_needed_runs), 0),
-    rollout_needed_rate: rate(
-      entries.reduce((sum, entry) => sum + toInt(entry.rollout_needed_runs), 0),
-      startedRuns,
-    ),
-    feature_flag_used_runs: entries.reduce((sum, entry) => sum + toInt(entry.feature_flag_used_runs), 0),
-    feature_flag_used_rate: rate(
-      entries.reduce((sum, entry) => sum + toInt(entry.feature_flag_used_runs), 0),
-      finishedRuns,
-    ),
-    pr_created_runs: entries.reduce((sum, entry) => sum + toInt(entry.pr_created_runs), 0),
-    pr_created_rate: rate(
-      entries.reduce((sum, entry) => sum + toInt(entry.pr_created_runs), 0),
-      finishedRuns,
-    ),
-    boundary_history_written_runs: entries.reduce((sum, entry) => sum + toInt(entry.boundary_history_written_runs), 0),
-    boundary_history_written_rate: rate(
-      entries.reduce((sum, entry) => sum + toInt(entry.boundary_history_written_runs), 0),
-      finishedRuns,
-    ),
-    boundary_history_useful_runs: boundaryHistoryUsefulRuns,
-    boundary_history_useful_rate: rate(boundaryHistoryUsefulRuns, finishedRuns),
-    boundary_history_value_counts: {
-      none: entries.reduce((sum, entry) => sum + toInt(entry.boundary_history_value_counts?.none), 0),
-      irrelevant: entries.reduce((sum, entry) => sum + toInt(entry.boundary_history_value_counts?.irrelevant), 0),
-      low: entries.reduce((sum, entry) => sum + toInt(entry.boundary_history_value_counts?.low), 0),
-      medium: entries.reduce((sum, entry) => sum + toInt(entry.boundary_history_value_counts?.medium), 0),
-      high: entries.reduce((sum, entry) => sum + toInt(entry.boundary_history_value_counts?.high), 0),
-    },
-  };
-}
-
 export function buildVerifySeries(rows, groupBy, dateFrom, dateTo) {
   const dailySeries = rows.map((row) => normalizeVerifySeriesEntry(row, String(row.bucket_date || ""), String(row.bucket_date || "")));
   if (groupBy !== "week") {
@@ -836,30 +547,6 @@ export function buildVerifySeries(rows, groupBy, dateFrom, dateTo) {
   return Array.from(grouped.entries())
     .sort((left, right) => left[0].localeCompare(right[0]))
     .map(([, bucket]) => summarizeVerifySeriesBucket(bucket.bucket_start, bucket.bucket_end, bucket.entries));
-}
-
-export function buildImplementSeries(rows, groupBy, dateFrom, dateTo) {
-  const dailySeries = rows.map((row) => normalizeImplementSeriesEntry(row, String(row.bucket_date || ""), String(row.bucket_date || "")));
-  if (groupBy !== "week") {
-    return dailySeries;
-  }
-  const grouped = new Map();
-  dailySeries.forEach((entry) => {
-    const naturalWeekStart = weekStartIsoDate(entry.bucket_start);
-    const bucketStart = maxIsoDate(naturalWeekStart, dateFrom);
-    const bucketEnd = minIsoDate(addDaysIsoDate(naturalWeekStart, 6), dateTo);
-    if (!grouped.has(naturalWeekStart)) {
-      grouped.set(naturalWeekStart, {
-        bucket_start: bucketStart,
-        bucket_end: bucketEnd,
-        entries: [],
-      });
-    }
-    grouped.get(naturalWeekStart).entries.push(entry);
-  });
-  return Array.from(grouped.entries())
-    .sort((left, right) => left[0].localeCompare(right[0]))
-    .map(([, bucket]) => summarizeImplementSeriesBucket(bucket.bucket_start, bucket.bucket_end, bucket.entries));
 }
 
 export default {
@@ -898,9 +585,7 @@ export default {
       }
 
       const dateToExclusive = nextIsoDate(payload.date_to);
-      const query = payload.workflow === "bill-feature-verify"
-        ? buildVerifyStatsQuery(payload.date_from, dateToExclusive)
-        : buildImplementStatsQuery(payload.date_from, dateToExclusive);
+      const query = buildVerifyStatsQuery(payload.date_from, dateToExclusive);
       const result = await runPostHogQuery(env, query);
       if (result.error) {
         const responsePayload = { error: result.error };
@@ -912,13 +597,9 @@ export default {
 
       const summaryRows = queryRowsToObjects(result.payload);
       const row = summaryRows[0] || {};
-      const normalized = payload.workflow === "bill-feature-verify"
-        ? normalizeVerifyStats(row, payload.date_from, payload.date_to)
-        : normalizeImplementStats(row, payload.date_from, payload.date_to);
+      const normalized = normalizeVerifyStats(row, payload.date_from, payload.date_to);
       if (payload.group_by) {
-        const seriesQuery = payload.workflow === "bill-feature-verify"
-          ? buildVerifySeriesQuery(payload.date_from, dateToExclusive)
-          : buildImplementSeriesQuery(payload.date_from, dateToExclusive);
+        const seriesQuery = buildVerifySeriesQuery(payload.date_from, dateToExclusive);
         const seriesResult = await runPostHogQuery(env, seriesQuery);
         if (seriesResult.error) {
           const responsePayload = { error: seriesResult.error };
@@ -929,9 +610,7 @@ export default {
         }
         const seriesRows = queryRowsToObjects(seriesResult.payload);
         normalized.group_by = payload.group_by;
-        normalized.series = payload.workflow === "bill-feature-verify"
-          ? buildVerifySeries(seriesRows, payload.group_by, payload.date_from, payload.date_to)
-          : buildImplementSeries(seriesRows, payload.group_by, payload.date_from, payload.date_to);
+        normalized.series = buildVerifySeries(seriesRows, payload.group_by, payload.date_from, payload.date_to);
       }
       return jsonResponse(200, normalized);
     }
@@ -957,6 +636,4 @@ export {
   transformBatch,
   buildVerifyStatsQuery,
   buildVerifySeriesQuery,
-  buildImplementStatsQuery,
-  buildImplementSeriesQuery,
 };

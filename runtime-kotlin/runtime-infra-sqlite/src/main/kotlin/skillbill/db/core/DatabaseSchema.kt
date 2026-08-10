@@ -281,6 +281,8 @@ internal object DatabaseSchema {
         finished_event_emitted_at TEXT
       )
       """.trimIndent(),
+      // SKILL-175: retained read-only. No live writer remains (the prose engine is deleted); the
+      // FeatureImplement*Stats surfaces built on this table were removed. Rows stay for history only.
       """
       CREATE TABLE IF NOT EXISTS feature_implement_sessions (
         session_id TEXT PRIMARY KEY,

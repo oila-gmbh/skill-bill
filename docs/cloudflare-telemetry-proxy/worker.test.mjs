@@ -6,19 +6,12 @@ import {
   transformBatch,
   buildVerifyStatsQuery,
   buildVerifySeriesQuery,
-  buildImplementStatsQuery,
-  buildImplementSeriesQuery,
 } from "./worker.js";
 
 const VALID_DATE_RANGE = { date_from: "2026-05-01", date_to: "2026-06-01" };
 const INGEST_SCHEMA_ERROR_FRAGMENT = "event_name must be the constant value";
 
 describe("validateStatsRequest", () => {
-  it("returns null for bill-feature-task (advertised workflow)", () => {
-    const err = validateStatsRequest({ workflow: "bill-feature-task", ...VALID_DATE_RANGE });
-    assert.equal(err, null);
-  });
-
   it("returns null for bill-feature-verify (advertised workflow)", () => {
     const err = validateStatsRequest({ workflow: "bill-feature-verify", ...VALID_DATE_RANGE });
     assert.equal(err, null);
@@ -38,6 +31,13 @@ describe("validateStatsRequest", () => {
     assert.ok(!err.includes(INGEST_SCHEMA_ERROR_FRAGMENT), "must not return the ingest-schema error");
   });
 
+  it("returns clean rejection for the retired bill-feature-task prose workflow", () => {
+    const err = validateStatsRequest({ workflow: "bill-feature-task", ...VALID_DATE_RANGE });
+    assert.ok(err, "should return an error string");
+    assert.match(err, /workflow must be one of/);
+    assert.ok(!err.includes(INGEST_SCHEMA_ERROR_FRAGMENT), "must not return the ingest-schema error");
+  });
+
   it("returns clean rejection for feature-task-runtime (unsupported workflow)", () => {
     const err = validateStatsRequest({ workflow: "feature-task-runtime", ...VALID_DATE_RANGE });
     assert.ok(err, "should return an error string");
@@ -46,12 +46,12 @@ describe("validateStatsRequest", () => {
   });
 
   it("rejects invalid date_from format", () => {
-    const err = validateStatsRequest({ workflow: "bill-feature-task", date_from: "01-05-2026", date_to: "2026-06-01" });
+    const err = validateStatsRequest({ workflow: "bill-feature-verify", date_from: "01-05-2026", date_to: "2026-06-01" });
     assert.match(err, /YYYY-MM-DD/);
   });
 
   it("rejects date_from after date_to", () => {
-    const err = validateStatsRequest({ workflow: "bill-feature-task", date_from: "2026-06-01", date_to: "2026-05-01" });
+    const err = validateStatsRequest({ workflow: "bill-feature-verify", date_from: "2026-06-01", date_to: "2026-05-01" });
     assert.match(err, /on or before/);
   });
 });
@@ -63,9 +63,9 @@ describe("capabilitiesPayload", () => {
     POSTHOG_PROJECT_ID: "12345",
   };
 
-  it("advertises bill-feature-task and bill-feature-verify when stats is configured", () => {
+  it("advertises only bill-feature-verify when stats is configured", () => {
     const caps = capabilitiesPayload(fullEnv);
-    assert.deepEqual(caps.supported_workflows, ["bill-feature-verify", "bill-feature-task"]);
+    assert.deepEqual(caps.supported_workflows, ["bill-feature-verify"]);
     assert.equal(caps.supports_stats, true);
   });
 
@@ -76,34 +76,12 @@ describe("capabilitiesPayload", () => {
   });
 });
 
-describe("prose stats queries union legacy and renamed event names", () => {
-  const RANGE = ["2026-05-01", "2026-06-01"];
-
-  it("stats query reads both the legacy implement and the renamed prose started events", () => {
-    const query = buildImplementStatsQuery(...RANGE);
-    assert.ok(query.includes("skillbill_feature_implement_started"), "legacy started name must count");
-    assert.ok(query.includes("skillbill_feature_task_prose_started"), "renamed started name must count");
-    assert.ok(query.includes("skillbill_feature_implement_finished"), "legacy finished name must count");
-    assert.ok(query.includes("skillbill_feature_task_prose_finished"), "renamed finished name must count");
-  });
-
-  it("series query reads both the legacy implement and the renamed prose events", () => {
-    const query = buildImplementSeriesQuery(...RANGE);
-    assert.ok(query.includes("skillbill_feature_implement_started"), "legacy started name must count");
-    assert.ok(query.includes("skillbill_feature_task_prose_started"), "renamed started name must count");
-    assert.ok(query.includes("skillbill_feature_implement_finished"), "legacy finished name must count");
-    assert.ok(query.includes("skillbill_feature_task_prose_finished"), "renamed finished name must count");
-  });
-});
-
 describe("stats queries default to production installs", () => {
   const RANGE = ["2026-05-01", "2026-06-01"];
 
   [
     ["verify stats", () => buildVerifyStatsQuery(...RANGE)],
     ["verify series", () => buildVerifySeriesQuery(...RANGE)],
-    ["implement stats", () => buildImplementStatsQuery(...RANGE)],
-    ["implement series", () => buildImplementSeriesQuery(...RANGE)],
   ].forEach(([name, buildQuery]) => {
     it(`${name} excludes null blank and test install ids`, () => {
       const query = buildQuery();
@@ -142,11 +120,24 @@ describe("transformBatch", () => {
 
   it("does not transform non-exception events", () => {
     const batch = [
-      baseEvent("skillbill_feature_implement_started", { session_id: "fis-123" }),
+      baseEvent("skillbill_feature_verify_started", { session_id: "fvs-123" }),
       baseEvent("skillbill_runtime_exception", { error_type: "RuntimeException", error_message: "oops" }),
     ];
     const result = transformBatch(batch);
-    assert.equal(result[0].event, "skillbill_feature_implement_started");
+    assert.equal(result[0].event, "skillbill_feature_verify_started");
     assert.equal(result[1].event, "$exception");
+  });
+
+  it("passes retired prose event names through untouched and unaggregated", () => {
+    const batch = [
+      baseEvent("skillbill_feature_task_prose_started", { session_id: "ftps-1" }),
+      baseEvent("skillbill_feature_implement_finished", { session_id: "fif-1" }),
+    ];
+    const result = transformBatch(batch);
+    assert.equal(result[0].event, "skillbill_feature_task_prose_started");
+    assert.equal(result[1].event, "skillbill_feature_implement_finished");
+    const verifyQuery = buildVerifyStatsQuery("2026-05-01", "2026-06-01");
+    assert.ok(!verifyQuery.includes("prose"), "no surviving query may aggregate retired prose events");
+    assert.ok(!verifyQuery.includes("feature_implement"), "no surviving query may aggregate retired implement events");
   });
 });

@@ -158,17 +158,11 @@ produce one authoritative completion event.
 
 ## Runtime Pilot Surface
 
-The runtime-facing pilot uses dedicated MCP tools per top-level workflow. The
-first adopter was `bill-feature-task`; `bill-feature-verify` is the second
-adopter and follows the same model with its own state machine and storage:
+The runtime-facing pilot uses dedicated MCP tools per top-level workflow.
+`bill-feature-verify` is the remaining MCP-facing adopter; feature-task and
+goal execution drive their workflow state from the Kotlin runtime driver and
+the CLI instead:
 
-- `feature_task_prose_workflow_list`
-- `feature_task_prose_workflow_latest`
-- `feature_task_prose_workflow_open`
-- `feature_task_prose_workflow_update`
-- `feature_task_prose_workflow_get`
-- `feature_task_prose_workflow_resume`
-- `feature_task_prose_workflow_continue`
 - `feature_verify_workflow_list`
 - `feature_verify_workflow_latest`
 - `feature_verify_workflow_open`
@@ -178,81 +172,80 @@ adopter and follows the same model with its own state machine and storage:
 - `feature_verify_workflow_continue`
 
 These tools persist workflow state independently of telemetry settings. The
-existing `feature_task_prose_started` / `_finished` and
-`feature_verify_started` / `_finished` tools remain telemetry-owned; they are
-linked to workflow state via `session_id` rather than replaced by it.
+existing `feature_verify_started` / `_finished` tools remain telemetry-owned;
+they are linked to workflow state via `session_id` rather than replaced by it.
 
 Workflow update tools return compact acknowledgements by default after the
 validated update has been persisted. The acknowledgement includes write status,
 workflow id/status, current step id, updated step ids, updated artifact keys,
 database path, and read-only full-state guidance. It intentionally omits full
 steps and durable artifacts; callers that need complete state should use the
-read-only `*_workflow_get` MCP tools or CLI `workflow show` /
-`verify-workflow show`.
+read-only `*_workflow_get` MCP tools or CLI `verify-workflow show`, and for
+feature-task / goal runs the corresponding `feature-task status` / `goal status`
+surfaces.
 
-`feature_task_prose_workflow_continue` is the first activation tool in the pilot:
-it does not execute the workflow itself, but it re-opens resumable state and
-returns a governed compact continuation payload for `bill-feature-task`,
-including the resumed step id, required and available artifact keys, compact
-current-step artifact summaries, reference sections to read, and a paste-ready
-continuation prompt. The compact payload omits the full workflow snapshot and
-full durable `artifacts` map by default. Use `workflow show` as the read-only
-full-state inspection path when complete durable state is needed.
+`skill-bill feature-task` and `skill-bill goal` are the activation surfaces for
+feature-task and goal runs: they own durable state, continuation lookup, and
+foreground execution in-process. Verify workflows still expose a compact
+continuation payload via `skill-bill verify-workflow continue`, including the
+resumed step id, required and available artifact keys, compact current-step
+artifact summaries, reference sections to read, and a paste-ready continuation
+prompt. The compact payload omits the full workflow snapshot and full durable
+`artifacts` map by default. Use `verify-workflow show` as the read-only
+full-state inspection path when complete durable verify state is needed.
 
-The CLI exposes the same recovery surface through:
+The CLI exposes the recovery and activation surface through:
 
-- `skill-bill workflow show <workflow-id>`
-- `skill-bill workflow resume <workflow-id>`
-- `skill-bill workflow continue <workflow-id>`
-- `skill-bill workflow continue <issue-key> [--subtask-id <id>]`
+- `skill-bill feature-task status|lookup|…`
+- `skill-bill goal status|watch|…`
 - `skill-bill verify-workflow show <workflow-id>`
 - `skill-bill verify-workflow resume <workflow-id>`
 - `skill-bill verify-workflow continue <workflow-id>`
 
-For decomposed feature parents, `feature_task_prose_workflow_continue` also
-accepts a parent `issue_key` and optional `subtask_id`. The issue-key path is a
-goal-continuation entry for one subtask: it starts or resumes only the selected
-runnable subtask, derives the subtask contract from persisted artifacts and the
-subtask spec, suppresses PR creation, and records the machine-readable outcome
-in durable workflow state. The optional `subtask_id` is a constraint, not a
-skip-ahead flag; a later subtask blocks until dependencies are complete.
+For decomposed feature parents, `skill-bill goal` is the goal-continuation
+entry: it starts or resumes only the selected runnable subtask, derives the
+subtask contract from persisted artifacts and the subtask spec, suppresses PR
+creation when continuing a child, and records the machine-readable outcome in
+durable workflow state. A later subtask blocks until dependencies are complete.
 Outcome fields are `issue_key`, `subtask_id`, terminal `status`, `commit_sha`,
 `workflow_id`, `blocked_reason`, and `last_resumable_step`. Runtime state is the
 authoritative channel; stdout and git-tracked manifest projections are
 diagnostic/recovery views.
 
-### `workflow continue` vs `workflow show`: mutating activation vs read-only inspection
+### `verify-workflow continue` vs `verify-workflow show`: mutating activation vs read-only inspection
 
 These two surfaces have different contracts and must not be confused:
 
-- **`workflow continue` is mutating activation.** It re-opens resumable state
-  (transitioning a blocked/idle workflow back to active) and returns the
+- **`verify-workflow continue` is mutating activation.** It re-opens resumable
+  state (transitioning a blocked/idle workflow back to active) and returns the
   governed **compact** continuation payload — resumed step id, required and
   available artifact keys, compact current-step artifact summaries, reference
   sections, and a paste-ready continuation prompt. It is the path a session uses
-  to *resume work*. The compact payload deliberately omits the full workflow
-  snapshot and the full durable `artifacts` map.
-- **`workflow show` is read-only inspection.** It mutates nothing and returns the
-  full snapshot (every step plus the complete durable `artifacts` map). Use it
-  for debugging and full-state recovery, never as the normal resume path.
+  to *resume verify work*. The compact payload deliberately omits the full
+  workflow snapshot and the full durable `artifacts` map.
+- **`verify-workflow show` is read-only inspection.** It mutates nothing and
+  returns the full snapshot (every step plus the complete durable `artifacts`
+  map). Use it for debugging and full-state recovery, never as the normal resume
+  path.
 
 **Goal child sessions should use the compact continuation output.** A
-goal-continuation child resumes from the compact `workflow continue` payload and
+goal-continuation child resumes from the compact continuation payload and
 treats `current_step_artifacts` as authoritative current-step context instead of
 reconstructing prior context from chat history. **Fetch full state only when
 explicitly needed** — e.g. an omitted/large artifact must be inspected — via the
-read-only `workflow show` / `verify-workflow show` path. Compact continuation and
-the compact update acknowledgement carry documented byte budgets (covered by
-size-assertion regressions) so a full snapshot cannot silently leak back into the
-default child-session payload.
+read-only `goal status` / `feature-task status` / `verify-workflow show` path.
+Compact continuation and the compact update acknowledgement carry documented
+byte budgets (covered by size-assertion regressions) so a full snapshot cannot
+silently leak back into the default child-session payload.
 
 ### Inspecting the attempt ledger (why a subtask retried, stopped, or blocked)
 
 The goal runner persists an append-only attempt/event ledger as the durable
-`goal_attempt_ledger` artifact on the relevant workflow record. Read it with the
-read-only `workflow show <workflow-id>` path (it lives in the `artifacts` map) to
-answer *why* a subtask behaved the way it did — **without scraping any provider
-JSONL session log.** Each entry carries an `action` plus explanatory fields:
+`goal_attempt_ledger` artifact on the relevant workflow record. Read it with
+`skill-bill goal status` (or the durable artifacts map on the child workflow
+record) to answer *why* a subtask behaved the way it did — **without scraping
+any provider JSONL session log.** Each entry carries an `action` plus explanatory
+fields:
 
 - `child_activation` — first start of a subtask child run.
 - `resume` — a previously blocked subtask was resumed.

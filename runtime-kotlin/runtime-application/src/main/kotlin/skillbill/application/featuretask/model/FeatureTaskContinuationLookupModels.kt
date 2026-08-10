@@ -16,6 +16,15 @@ sealed interface FeatureTaskContinuationLookupResult {
    * the caller's continuation gate could never fire.
    */
   data class GoalContinuation(val candidate: GoalContinuationCandidate) : FeatureTaskContinuationLookupResult
+
+  /**
+   * A matching feature-task row exists but has no immutable execution identity. Lookup must name the
+   * row and point the operator at `feature-task repair-identity` instead of throwing out of the gate.
+   */
+  data class NeedsIdentityRepair(
+    val workflowId: String,
+    val summary: String,
+  ) : FeatureTaskContinuationLookupResult
 }
 
 data class GoalContinuationCandidate(

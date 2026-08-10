@@ -5,7 +5,7 @@ Under one `curl` command is a full system. Each capability below is doing real w
 <details>
 <summary><b>1. One-shot multi-agent install via symlinks</b></summary>
 
-`install.sh` symlinks every skill into each detected agent's directory (Claude Code, Codex, Cursor, Copilot, OpenCode, Junie). A single source-of-truth `skills/` tree powers all of them, so an edit in one place reaches every agent immediately. The same mechanism handles uninstall and the runtime launcher binaries.
+`install.sh` symlinks every skill into each detected agent's directory (Claude Code, Codex, Cursor, Copilot, Junie). A single source-of-truth `skills/` tree powers all of them, so an edit in one place reaches every agent immediately. The same mechanism handles uninstall and the runtime launcher binaries.
 
 </details>
 
@@ -64,7 +64,7 @@ provider-native worker inventory and recorded digests, so neither the reviewed
 repository nor a surviving Skill Bill source checkout needs `skills/` or
 `platform-packs/` directories.
 
-`/bill-code-review` accepts `mode:auto|inline|delegated`: omission selects delegated review — the default specialist subagent fan-out — `mode:auto` resolves depth by review pass number where one exists and otherwise falls back to the named default rule, `mode:inline` runs the single-prompt review — one prompt in the current context covering the routed areas at reduced depth under a bounded budget, with no specialist fan-out and not equivalent coverage to delegated — and `mode:delegated` requires the routed fan-out path, launching one specialist subagent per routed area. Feature workflows expose the same choice as `code-review:auto|inline|delegated`, independently of their `mode:runtime|prose` execution-engine selector.
+`/bill-code-review` accepts `mode:auto|inline|delegated`: omission selects delegated review — the default specialist subagent fan-out — `mode:auto` resolves depth by review pass number where one exists and otherwise falls back to the named default rule, `mode:inline` runs the single-prompt review — one prompt in the current context covering the routed areas at reduced depth under a bounded budget, with no specialist fan-out and not equivalent coverage to delegated — and `mode:delegated` requires the routed fan-out path, launching one specialist subagent per routed area. Feature workflows expose the same choice as `code-review:auto|inline|delegated`.
 
 The shipped `rust` pack follows that same manifest-driven path: Cargo and first-party `.rs` signals route to `bill-rust-code-review` and `bill-rust-code-check`, with governed native agents for the baseline and all ten specialist lanes. Its quality checks understand workspaces, features, targets, rustfmt, Clippy, nextest, cargo-deny, and cargo-audit; Rust-specific routing is not hard-coded into either generic shell.
 
@@ -93,10 +93,9 @@ When planning detects work is too big (rules of thumb: more than 15 atomic tasks
 
 `bill-feature-task` is not a monolithic prompt; it is an orchestrator over durable state and a fleet of purpose-built subagents.
 
-- **Durable state**: `feature_task_prose_workflow_open` mints a `workflow_id`; every phase boundary writes via `feature_task_prose_workflow_update` and gets back a compact acknowledgement, not a full snapshot. If a session dies mid-run, `feature_task_prose_workflow_continue` is the mutating activation path: it re-opens the exact phase and returns a compact continuation payload (resume step, required/available artifact keys, compact current-step artifacts) as the continuation contract — full durable state is fetched only on demand through the read-only `workflow show`. The run survives crashes, compaction, even a host reboot. Same shape exists for `bill-feature-verify` (`feature_verify_workflow_*`).
-- **Native subagents per phase**: pre-planning, planning, implementation, completeness-audit, quality-check, PR-description, and an implementation-fix loop each ship as their own installed agent.
+- **Durable state**: the Kotlin feature-task runtime owns the single feature engine. `skill-bill feature-task` / `skill-bill goal` mint and advance durable workflow rows; every phase boundary persists through the runtime, and resume continues from that state. If a session dies mid-run, continuation re-opens the exact phase from durable records — full durable state is available on demand through read-only workflow status surfaces. The run survives crashes, compaction, even a host reboot. The same durable shape exists for `bill-feature-verify` (`feature_verify_workflow_*`).
 - **Native subagents per review layer**: every shipped platform-pack bundle registers its baseline reviewer and each specialist reviewer as native subagents.
-- **Why this matters for tokens**: each subagent gets a self-contained briefing scoped to its phase/area instead of inheriting the full orchestrator transcript. The orchestrator stays small; specialists go deep on their narrow slice. Better focus and lower cost — the opposite of the usual "more steps = more context bloat" trap.
+- **Why this matters for tokens**: each review subagent gets a self-contained briefing scoped to its area instead of inheriting the full orchestrator transcript. The orchestrator stays small; specialists go deep on their narrow slice. Better focus and lower cost — the opposite of the usual "more steps = more context bloat" trap.
 - **Transport-resilient telemetry**: a packaged Kotlin `runtime-mcp` stdio fallback ensures a dropped MCP transport does not leave a workflow stuck in `running`.
 
 For every prepared goal, including a one-subtask goal, the foreground `skill-bill goal` runtime owns a flat worker model: it selects one runnable subtask, opens or resumes that child workflow, launches one fresh child process, and advances only from durable workflow state. Nested/native subagents inside the child session are useful for focus and debugging, but the reliability contract is the runtime-owned workflow row plus the decomposition projection. Because continuity lives in runtime-owned state rather than in any agent's context, goal execution and resume are agent-independent — the agent that continues a goal does not have to be the agent that started it. Resume also treats the parent spec's top-level `status` frontmatter as mutable projection metadata: changing or removing only that field reuses saved planning, while any substantive spec or immutable decomposition change still blocks recovery.
@@ -110,7 +109,7 @@ A skill author usually touches exactly one file. Free-form markdown, frontmatter
 
 Generated from it (and you never hand-edit):
 
-- Per-agent skill files in each agent's native format (Claude, Copilot, Codex, OpenCode, Junie), installed as symlinks back to the one source `content.md` so any edit lands everywhere instantly.
+- Per-agent skill files in each agent's native format (Claude, Copilot, Codex, Cursor, Junie), installed as symlinks back to the one source `content.md` so any edit lands everywhere instantly.
 - Native subagent files in each agent's required format, registered by name and briefed by the orchestrator at runtime.
 - Pointer files inside platform packs — single-line markdown files regenerated from `platform.yaml` by the renderer (you are literally not supposed to commit them).
 - Slash-command registration in each agent.
@@ -155,7 +154,7 @@ mutating state or treating `spec.md` as a duplicate planning ledger.
 
 Runtime process ownership is a separate fenced lease, never part of the immutable identity or governed spec. Exact host, boot, PID, and process-birth evidence protects live ownership from PID reuse and cross-host mistakes. A previous boot on the same host is definitively not running, and an expired unverifiable lease may be atomically reclaimed; owner tokens and generations prevent concurrent reclaimers or displaced workers from writing progress.
 
-- **Per-skill start/finish pairs** with stable session ids: `feature_task_prose_started/_finished`, `feature_verify_started/_finished`, `quality_check_started/_finished`, `review_stats`, `pr_description_generated`, `import_review`, `triage_findings`, `resolve_learnings`, plus aggregate views (`feature_task_prose_stats`, `feature_verify_stats`, `telemetry_remote_stats`, `telemetry_proxy_capabilities`).
+- **Per-skill start/finish pairs** with stable session ids: `feature_verify_started/_finished`, `quality_check_started/_finished`, `review_stats`, `pr_description_generated`, `import_review`, `triage_findings`, `resolve_learnings`, plus aggregate views (`feature_verify_stats`, `goal_stats`, `telemetry_remote_stats`, `telemetry_proxy_capabilities`).
 - **Orchestrator/child relationship is modeled**: orchestrated subagents call their own `*_finished` with `orchestrated=true` and return a `telemetry_payload`; the orchestrator assembles a parent/child tree. You can see the whole run as a tree, not a flat stream.
 - **Separated from workflow state, on purpose**: workflow state persists even when telemetry returns `status: skipped`. Telemetry is observability; workflow state is correctness. They never get confused.
 - **Health-checked and transport-resilient**: before terminal writes the orchestrator pings the MCP transport; if closed, it switches to the packaged `runtime-mcp` stdio fallback for the remaining telemetry and workflow calls. Runs do not get left in a half-reported state because a transport died.

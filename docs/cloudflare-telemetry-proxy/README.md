@@ -89,9 +89,9 @@ Then query remote aggregate stats through the proxy contract:
 ```bash
 skill-bill telemetry capabilities
 skill-bill telemetry stats verify --since 30d
-skill-bill telemetry stats implement --date-from 2026-04-01 --date-to 2026-04-22
+skill-bill telemetry stats verify --date-from 2026-04-01 --date-to 2026-04-22
 skill-bill telemetry stats verify --since 30d --group-by day
-skill-bill telemetry stats implement --since 30d --group-by week
+skill-bill telemetry stats verify --since 30d --group-by week
 ```
 
 ## Health dashboard guidance
@@ -101,10 +101,9 @@ The Worker `/stats` route returns compact remote workflow summaries. Rich review
 Use the same filtering rules in PostHog dashboards:
 
 - choose an explicit health window, commonly the last 60 days
-- health denominators: production telemetry with valid `fis-*` session ids for feature-task stats
 - excluded rows: `source = test` and `source = synthetic`
 - data-quality debt: malformed session ids, unknown sources, duplicate terminal events, invalid/long-running durations, malformed child steps, and malformed review payloads
-- review health sources: standalone `skillbill_review_finished` plus embedded code-review entries in `skillbill_feature_task_prose_finished.child_steps`
+- review health sources: standalone `skillbill_review_finished`
 - large-feature guidance: report `LARGE` completion, abandonment, and error separately, and recommend decomposition or earlier blocking when large-feature unhealthy rate is non-zero and at least the overall unhealthy rate
 
 ## Notes
@@ -118,5 +117,5 @@ Use the same filtering rules in PostHog dashboards:
 - If you use another analytics backend, adapt this Worker to translate those payloads before forwarding or querying.
 - The `/stats` route in this example is intentionally PostHog-specific. The Skill Bill CLI and MCP server are not.
 - `in_progress_runs` in the normalized `/stats` response is derived as `max(started_runs - finished_runs, 0)` for the requested date window.
-- for `bill-feature-task`, `boundary_history_useful_runs` is derived as `boundary_history_value in ('medium', 'high')`
+- Retired event names (`skillbill_feature_task_prose_*`, `skillbill_feature_implement_*`, `skillbill_goal_prose_*`) pass through unchanged: the Worker applies no event-name filtering, so a retired name never fails a batch and is relayed upstream to the analytics backend like any other event. The retirement is enforced only by removing those names from the `/stats` queries, so no aggregate counts them. Already-installed clients on older Skill Bill versions must keep receiving normal success responses rather than errors, so the pass-through is deliberate.
 - grouped `/stats` series are trend-oriented event-window buckets, not session-cohort analytics.

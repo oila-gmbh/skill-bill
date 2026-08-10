@@ -137,8 +137,7 @@ class AgentRunGoalContinuationCommandTest {
   @Test
   fun `every agent goal-continuation child spawns skill-bill feature-task and never the skill`() {
     val runner = RecordingAgentRunProcessRunner()
-    // SKILL-95: opencode is prose-only and excluded from the headless runtime adapters, so the
-    // remaining runtime agents (claude, codex, junie, cursor) each spawn skill-bill feature-task directly.
+    // Remaining runtime agents each spawn skill-bill feature-task directly.
     listOf(InstallAgent.CLAUDE, InstallAgent.CODEX, InstallAgent.JUNIE, InstallAgent.CURSOR).forEach { agent ->
       requireNotNull(headlessAgentRunAdapters(runner, ALL_EXECUTABLES_AVAILABLE)[agent]).launch(skillRunRequest())
     }

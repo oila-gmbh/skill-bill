@@ -36,7 +36,7 @@ This is the canonical review-delegation contract. Installed skills consume it th
 Do not reference this repo-relative path directly from installable skills — use the generated sibling support pointer instead.
 
 The delegated worker rules themselves have one authoritative authored source:
-`orchestration/review-orchestrator/specialist-contract.md`. Runtime, prose, and
+`orchestration/review-orchestrator/specialist-contract.md`. Runtime and
 harness-native launches project its launch contract, forbidden-rediscovery list,
 evidence-surface rules, and report structure into the subagent assignment.
 Workers do not reload those rules from disk, and this playbook does not restate
@@ -115,10 +115,6 @@ Governed add-ons may narrow or enrich delegated review instructions only after t
 - Tell each delegated worker to return only its structured findings. Parent-owned telemetry and metadata are not part of the worker projection.
 - Wait for all subagents and merge their results in the parent review.
 - Do not run delegated review passes inline.
-
-## Opencode
-
-Opencode delegated review is intentionally unsupported.
 
 ## Junie
 

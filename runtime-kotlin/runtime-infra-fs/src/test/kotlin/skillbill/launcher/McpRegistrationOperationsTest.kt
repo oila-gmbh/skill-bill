@@ -188,10 +188,8 @@ class McpRegistrationOperationsTest {
 
     val expectedPaths = mapOf(
       "codex" to home.resolve(".codex/config.toml"),
-      "opencode" to home.resolve(".config/opencode/opencode.json"),
       "junie" to home.resolve(".junie/mcp/mcp.json"),
       "cursor" to home.resolve(".cursor/mcp.json"),
-      "zcode" to home.resolve(".zcode/cli/config.json"),
       "copilot" to home.resolve(".copilot/mcp-config.json"),
     )
 

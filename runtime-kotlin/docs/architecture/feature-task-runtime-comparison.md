@@ -4,6 +4,19 @@ Issue: SKILL-65 (Subtask 5)
 Status: Experimental — evaluation procedure only
 Date: 2026-06-03
 
+> **ARCHIVED (2026-08-09) — historical decision record. Do not treat as live.**
+>
+> The promote-vs-prose comparison procedure in this document is **retired** and
+> the prose engine it compared against **no longer exists**. SKILL-175 removed
+> the `bill-feature-task` prose orchestrator and made **runtime the single
+> feature execution engine**; there is no prose path to run, so no comparison
+> can or should be executed, and this document imposes **no dual-maintenance
+> obligation** on the codebase. It is retained only as the archival record of
+> the SKILL-65 promote decision it fed. Any references below to
+> `bill-feature-task`, `feature_implement_workflow_update`, or a prose
+> orchestrator describe a retired surface and must not be read as current
+> product behavior.
+
 ## Purpose
 
 This is the documented, reproducible procedure for evaluating the experimental

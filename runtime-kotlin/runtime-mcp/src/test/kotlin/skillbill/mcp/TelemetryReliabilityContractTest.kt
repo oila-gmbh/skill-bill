@@ -15,8 +15,6 @@ import skillbill.mcp.telemetry.TelemetryEventSchemaValidator
 import skillbill.ports.telemetry.model.toReviewFinishedTelemetryPayload
 import skillbill.review.ReviewParser
 import skillbill.review.normalizeTelemetrySlug
-import skillbill.telemetry.model.FeatureImplementFinishedRecord
-import skillbill.telemetry.model.FeatureImplementStartedRecord
 import skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord
 import skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord
 import skillbill.telemetry.model.FeatureVerifyFinishedRecord
@@ -67,7 +65,7 @@ class TelemetryReliabilityContractTest {
       goalFinishedEnvelope(),
       goalIssueFinishedEnvelope(),
       qualityCheckFinishedEnvelope(),
-      featureTaskProseFinishedEnvelope(),
+      featureVerifyFinishedEnvelope(),
     )
     val runtimeEnvelope = featureTaskRuntimeFinishedEnvelope()
 
@@ -137,7 +135,7 @@ class TelemetryReliabilityContractTest {
   fun `semantic reliability assertions reject mutations of real emitted payloads`() {
     assertFailsWith<AssertionError> { assertPositiveBoundedDuration(goalFinishedEnvelope("duration_seconds" to 0)) }
     assertFailsWith<AssertionError> {
-      assertPositiveBoundedDuration(featureTaskProseFinishedEnvelope("duration_seconds" to 0))
+      assertPositiveBoundedDuration(featureVerifyFinishedEnvelope("duration_seconds" to 0))
     }
     assertFailsWith<AssertionError> {
       assertPositiveBoundedDuration(featureTaskRuntimeFinishedEnvelope("duration_seconds" to null))
@@ -174,7 +172,6 @@ class TelemetryReliabilityContractTest {
   @Test
   fun `stale reconciled terminal payloads validate against the canonical schema`() {
     val schemaEnvelopes = listOf(
-      featureTaskProseFinishedEnvelope("completion_status" to "stale"),
       featureVerifyFinishedEnvelope("completion_status" to "stale"),
       qualityCheckFinishedEnvelope().apply { put("result", "stale") },
     )
@@ -191,9 +188,6 @@ class TelemetryReliabilityContractTest {
     val reviewFinished = reviewFinishedEnvelope()
     assertEquals(0, reviewFinished["unresolved_findings"])
     TelemetryEventSchemaValidator.validate(envelope = reviewFinished, eventName = "skillbill_review_finished")
-
-    val featureTaskHealthPayload = featureTaskHealthPayload()
-    assertEquals(1, featureTaskHealthPayload["duplicate_terminal_finished_events"])
   }
 
   private fun schemaEnum(name: String): Set<String> =
@@ -308,51 +302,6 @@ class TelemetryReliabilityContractTest {
         "full",
       )
     }
-
-  private fun featureTaskProseFinishedEnvelope(vararg overrides: Pair<String, Any?>): LinkedHashMap<String, Any?> =
-    emittedEnvelope("skillbill_feature_task_prose_finished") { store, connection ->
-      store.featureImplementStarted(featureImplementStartedRecord(), "full")
-      ageSession(connection, "feature_implement_sessions", "fis-reliability", 480)
-      store.featureImplementFinished(featureImplementFinishedRecord(), "full")
-    }.apply {
-      overrides.forEach { (key, value) -> put(key, value) }
-    }
-
-  private fun featureImplementStartedRecord(): FeatureImplementStartedRecord = FeatureImplementStartedRecord(
-    sessionId = "fis-reliability",
-    issueKeyProvided = true,
-    issueKeyType = "linear",
-    specInputTypes = listOf("markdown_file"),
-    specWordCount = 100,
-    featureSize = "MEDIUM",
-    featureName = "reliability",
-    rolloutNeeded = false,
-    acceptanceCriteriaCount = 3,
-    openQuestionsCount = 0,
-    specSummary = "Telemetry reliability",
-  )
-
-  private fun featureImplementFinishedRecord(): FeatureImplementFinishedRecord = FeatureImplementFinishedRecord(
-    sessionId = "fis-reliability",
-    completionStatus = "completed",
-    planCorrectionCount = 0,
-    planTaskCount = 3,
-    planPhaseCount = 2,
-    featureFlagUsed = false,
-    featureFlagPattern = "none",
-    filesCreated = 1,
-    filesModified = 2,
-    tasksCompleted = 3,
-    reviewIterations = 1,
-    auditResult = "all_pass",
-    auditIterations = 1,
-    validationResult = "pass",
-    boundaryHistoryWritten = false,
-    boundaryHistoryValue = "none",
-    prCreated = false,
-    planDeviationNotes = "",
-    childSteps = emptyList(),
-  )
 
   private fun featureVerifyFinishedEnvelope(vararg overrides: Pair<String, Any?>): LinkedHashMap<String, Any?> =
     emittedEnvelope("skillbill_feature_verify_finished") { store, connection ->
@@ -526,22 +475,6 @@ class TelemetryReliabilityContractTest {
       statement.setInt(1, seconds)
       statement.setString(2, sessionId)
       statement.executeUpdate()
-    }
-  }
-
-  private fun featureTaskHealthPayload(): LinkedHashMap<String, Any?> {
-    val dbPath = Files.createTempDirectory("telemetry-reliability-health").resolve("metrics.db")
-    return DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
-      val store = LifecycleTelemetryStore(connection)
-      store.featureImplementStarted(featureImplementStartedRecord(), "full")
-      store.featureImplementFinished(featureImplementFinishedRecord(), "full")
-      store.featureImplementFinished(featureImplementFinishedRecord(), "full")
-      val stats = ReviewStatsRuntime.featureImplementStats(connection)
-      linkedMapOf(
-        "workflow" to "bill-feature-task",
-        "total_runs" to stats.totalRuns,
-        "duplicate_terminal_finished_events" to stats.duplicateTerminalFinishedEvents,
-      )
     }
   }
 }

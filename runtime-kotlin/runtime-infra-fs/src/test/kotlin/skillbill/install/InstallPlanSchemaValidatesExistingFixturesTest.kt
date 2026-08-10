@@ -93,10 +93,8 @@ class InstallPlanSchemaValidatesExistingFixturesTest {
     Files.createDirectories(fixture.home.resolve(".copilot"))
     Files.createDirectories(fixture.home.resolve(".claude"))
     Files.createDirectories(fixture.home.resolve(".codex"))
-    Files.createDirectories(fixture.home.resolve(".config/opencode"))
     Files.createDirectories(fixture.home.resolve(".junie"))
     Files.createDirectories(fixture.home.resolve(".cursor"))
-    Files.createDirectories(fixture.home.resolve(".zcode"))
     val plan = InstallOperations.planInstall(
       fixture.request(agentSelection = InstallAgentSelection(mode = InstallAgentSelectionMode.DETECTED)),
     )

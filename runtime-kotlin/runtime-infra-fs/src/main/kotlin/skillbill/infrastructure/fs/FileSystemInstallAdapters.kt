@@ -6,7 +6,6 @@ import skillbill.install.plan.buildInstallStagingIntent
 import skillbill.install.plan.codexAgentsPath
 import skillbill.install.plan.collectInstallPlanningFacts
 import skillbill.install.plan.materializeSelectedPlatformSkills
-import skillbill.install.plan.opencodeAgentsPath
 import skillbill.install.reconcile.ReconcileSourceRoots
 import skillbill.install.reconcile.applyReconciliation
 import skillbill.install.reconcile.computeReconciliationPlan
@@ -193,10 +192,8 @@ class FileSystemInstallAgentTargets : InstallAgentTargetPort {
       when (request.agent) {
         "codex" -> InstallOperations.codexAgentsPath(request.home)
         "claude" -> InstallOperations.claudeAgentsPath(request.home)
-        "opencode" -> InstallOperations.opencodeAgentsPath(request.home)
         "junie" -> InstallOperations.junieAgentsPath(request.home)
         "cursor" -> InstallOperations.cursorAgentsPath(request.home)
-        "zcode" -> InstallOperations.zcodeAgentsPath(request.home)
         else -> InstallOperations.agentPath(request.agent, request.home)
       },
     )
@@ -224,10 +221,8 @@ class FileSystemInstallNativeAgentLinks : InstallNativeAgentLinkPort {
     val outcome = when (request.provider) {
       NativeAgentLinkProvider.CLAUDE -> InstallNativeAgentOperations.linkClaudeAgents(fsRequest)
       NativeAgentLinkProvider.CODEX -> InstallNativeAgentOperations.linkCodexAgents(fsRequest)
-      NativeAgentLinkProvider.OPENCODE -> InstallNativeAgentOperations.linkOpencodeAgents(fsRequest)
       NativeAgentLinkProvider.JUNIE -> InstallNativeAgentOperations.linkJunieAgents(fsRequest)
       NativeAgentLinkProvider.CURSOR -> InstallNativeAgentOperations.linkCursorAgents(fsRequest)
-      NativeAgentLinkProvider.ZCODE -> InstallNativeAgentOperations.linkZcodeAgents(fsRequest)
     }
     return InstallNativeAgentLinkOperationResult(
       outcome = NativeAgentLinkOutcome(
@@ -245,10 +240,8 @@ class FileSystemInstallNativeAgentLinks : InstallNativeAgentLinkPort {
       unlinked = when (request.provider) {
         NativeAgentLinkProvider.CLAUDE -> InstallNativeAgentOperations.unlinkClaudeAgents(fsRequest)
         NativeAgentLinkProvider.CODEX -> InstallNativeAgentOperations.unlinkCodexAgents(fsRequest)
-        NativeAgentLinkProvider.OPENCODE -> InstallNativeAgentOperations.unlinkOpencodeAgents(fsRequest)
         NativeAgentLinkProvider.JUNIE -> InstallNativeAgentOperations.unlinkJunieAgents(fsRequest)
         NativeAgentLinkProvider.CURSOR -> InstallNativeAgentOperations.unlinkCursorAgents(fsRequest)
-        NativeAgentLinkProvider.ZCODE -> InstallNativeAgentOperations.unlinkZcodeAgents(fsRequest)
       },
     )
   }

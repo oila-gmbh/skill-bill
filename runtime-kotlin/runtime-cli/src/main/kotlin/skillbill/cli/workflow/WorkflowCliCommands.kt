@@ -21,21 +21,8 @@ import skillbill.contracts.JsonSupport
 
 @Inject
 class WorkflowTopLevelCommands(
-  implementCommands: ImplementWorkflowCommands,
   verifyCommands: VerifyWorkflowCommands,
 ) {
-  val workflowCommand: DocumentedNoOpCliCommand =
-    object : DocumentedNoOpCliCommand("workflow", "Inspect or resume durable bill-feature-task workflow runs.") {}
-      .subcommands(
-        implementCommands.open,
-        implementCommands.update,
-        implementCommands.show,
-        implementCommands.get,
-        implementCommands.list,
-        implementCommands.latest,
-        implementCommands.resume,
-        implementCommands.continueCommand,
-      )
   val verifyWorkflowCommand: DocumentedNoOpCliCommand =
     object : DocumentedNoOpCliCommand(
       "verify-workflow",
@@ -52,34 +39,8 @@ class WorkflowTopLevelCommands(
         verifyCommands.continueCommand,
       )
 
-  val commands: List<CliktCommand> = listOf(workflowCommand, verifyWorkflowCommand)
+  val commands: List<CliktCommand> = listOf(verifyWorkflowCommand)
 }
-
-@Inject
-class ImplementWorkflowCommands(
-  implementOpen: ImplementWorkflowOpenCommand,
-  implementUpdate: ImplementWorkflowUpdateCommand,
-  implementGet: ImplementWorkflowGetCommand,
-  implementInspection: ImplementWorkflowInspectionCommands,
-  implementResume: ImplementWorkflowResumeCommand,
-  implementContinue: ImplementWorkflowContinueCommand,
-) {
-  val open = implementOpen
-  val update = implementUpdate
-  val show = implementInspection.show
-  val get = implementGet
-  val list = implementInspection.list
-  val latest = implementInspection.latest
-  val resume = implementResume
-  val continueCommand = implementContinue
-}
-
-@Inject
-class ImplementWorkflowInspectionCommands(
-  val show: ImplementWorkflowShowCommand,
-  val list: ImplementWorkflowListCommand,
-  val latest: ImplementWorkflowLatestCommand,
-)
 
 @Inject
 class VerifyWorkflowCommands(
@@ -108,12 +69,6 @@ class VerifyWorkflowInspectionCommands(
 )
 
 @Inject
-class ImplementWorkflowOpenCommand(
-  service: WorkflowService,
-  state: CliRunState,
-) : WorkflowOpenCommand("open", service, state, WorkflowFamilyKind.TASK_PROSE)
-
-@Inject
 class VerifyWorkflowOpenCommand(
   service: WorkflowService,
   state: CliRunState,
@@ -128,27 +83,10 @@ open class WorkflowOpenCommand(
   private val sessionId by option("--session-id", help = "Optional workflow telemetry session id.").default("")
   private val currentStepId by option("--current-step-id", help = "Initial workflow step id.")
   private val issueKey by option("--issue-key", help = "Optional normalized issue key for work inventory.")
-  private val repositoryIdentity by option("--repository-identity", help = "Immutable canonical repository identity.")
-  private val governedSpecPath by option("--governed-spec-path", help = "Repository-relative governed spec path.")
   private val format by formatOption()
 
   override fun run() {
-    val hasFeatureTaskIdentityInput = listOf(issueKey, repositoryIdentity, governedSpecPath).any { it != null }
-    val opened = if (kind == WorkflowFamilyKind.TASK_PROSE && hasFeatureTaskIdentityInput) {
-      service.openFeatureTask(
-        kind = kind,
-        sessionId = sessionId,
-        currentStepId = currentStepId,
-        dbOverride = state.dbOverride,
-        issueKey = requireNotNull(issueKey) { "Feature-task workflow opens require --issue-key." },
-        repositoryIdentity = requireNotNull(repositoryIdentity) {
-          "Feature-task workflow opens require --repository-identity."
-        },
-        governedSpecPath = requireNotNull(governedSpecPath) {
-          "Feature-task workflow opens require --governed-spec-path."
-        },
-      )
-    } else {
+    val opened =
       service.open(
         kind,
         sessionId,
@@ -156,19 +94,12 @@ open class WorkflowOpenCommand(
         state.dbOverride,
         issueKey,
       )
-    }
     val payload =
       opened
         .toCliMap(service.goalObservabilityEventValidator)
     state.complete(payload, format, exitCode = payload.exitCode())
   }
 }
-
-@Inject
-class ImplementWorkflowUpdateCommand(
-  service: WorkflowService,
-  state: CliRunState,
-) : WorkflowUpdateCommand("update", service, state, WorkflowFamilyKind.TASK_PROSE)
 
 @Inject
 class VerifyWorkflowUpdateCommand(
@@ -207,22 +138,10 @@ open class WorkflowUpdateCommand(
 }
 
 @Inject
-class ImplementWorkflowShowCommand(
-  service: WorkflowService,
-  state: CliRunState,
-) : WorkflowGetCommand("show", service, state, WorkflowFamilyKind.TASK_PROSE)
-
-@Inject
 class VerifyWorkflowShowCommand(
   service: WorkflowService,
   state: CliRunState,
 ) : WorkflowGetCommand("show", service, state, WorkflowFamilyKind.VERIFY)
-
-@Inject
-class ImplementWorkflowGetCommand(
-  service: WorkflowService,
-  state: CliRunState,
-) : WorkflowGetCommand("get", service, state, WorkflowFamilyKind.TASK_PROSE)
 
 @Inject
 class VerifyWorkflowGetCommand(
@@ -254,12 +173,6 @@ open class WorkflowGetCommand(
 }
 
 @Inject
-class ImplementWorkflowListCommand(
-  service: WorkflowService,
-  state: CliRunState,
-) : WorkflowListCommand("list", service, state, WorkflowFamilyKind.TASK_PROSE)
-
-@Inject
 class VerifyWorkflowListCommand(
   service: WorkflowService,
   state: CliRunState,
@@ -283,12 +196,6 @@ open class WorkflowListCommand(
 }
 
 @Inject
-class ImplementWorkflowLatestCommand(
-  service: WorkflowService,
-  state: CliRunState,
-) : WorkflowLatestCommand("latest", service, state, WorkflowFamilyKind.TASK_PROSE)
-
-@Inject
 class VerifyWorkflowLatestCommand(
   service: WorkflowService,
   state: CliRunState,
@@ -308,12 +215,6 @@ open class WorkflowLatestCommand(
     state.complete(payload, format, exitCode = payload.exitCode())
   }
 }
-
-@Inject
-class ImplementWorkflowResumeCommand(
-  service: WorkflowService,
-  state: CliRunState,
-) : WorkflowResumeCommand("resume", service, state, WorkflowFamilyKind.TASK_PROSE)
 
 @Inject
 class VerifyWorkflowResumeCommand(
@@ -342,12 +243,6 @@ open class WorkflowResumeCommand(
     state.complete(payload, format, exitCode = payload.exitCode())
   }
 }
-
-@Inject
-class ImplementWorkflowContinueCommand(
-  service: WorkflowService,
-  state: CliRunState,
-) : WorkflowContinueCommand("continue", service, state, WorkflowFamilyKind.TASK_PROSE)
 
 @Inject
 class VerifyWorkflowContinueCommand(

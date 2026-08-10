@@ -17,18 +17,6 @@ internal fun discoverCodexAgentTomls(
   extension = NativeAgentProvider.Codex.extension,
 )
 
-internal fun discoverOpencodeAgentMarkdown(
-  platformPacksRoot: Path,
-  skillsRoot: Path? = null,
-  selectedPlatforms: List<String>? = null,
-): List<Path> = discoverNativeAgentFilesByDir(
-  platformPacksRoot = platformPacksRoot,
-  skillsRoot = skillsRoot,
-  selectedPlatforms = selectedPlatforms,
-  directoryName = NativeAgentProvider.Opencode.directoryName,
-  extension = NativeAgentProvider.Opencode.extension,
-)
-
 internal fun uninstallCodexAgentTomls(
   platformPacksRoot: Path,
   home: Path? = null,
@@ -39,19 +27,6 @@ internal fun uninstallCodexAgentTomls(
   return uninstallNativeAgentFiles(
     discoverCodexAgentTomls(platformPacksRoot, skillsRoot, selectedPlatforms),
     NativeAgentProvider.Codex.homeAgentDirs(resolvedHome),
-  )
-}
-
-internal fun uninstallOpencodeAgentMarkdown(
-  platformPacksRoot: Path,
-  home: Path? = null,
-  skillsRoot: Path? = null,
-  selectedPlatforms: List<String>? = null,
-): List<Path> {
-  val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
-  return uninstallNativeAgentFiles(
-    discoverOpencodeAgentMarkdown(platformPacksRoot, skillsRoot, selectedPlatforms),
-    NativeAgentProvider.Opencode.homeAgentDirs(resolvedHome),
   )
 }
 

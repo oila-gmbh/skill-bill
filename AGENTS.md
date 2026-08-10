@@ -18,7 +18,7 @@ Non-negotiable contracts:
 
 ## Product Intent
 
-`bill-feature-task` accepts `mode:runtime` (default) or `mode:prose`, presents one confirmation gate, then delegates. Prose runs the phase loop in-session; runtime launches the foreground driver with durable state, telemetry, packs, add-ons, and native subagents.
+`bill-feature-task` presents one confirmation gate, then delegates to the foreground runtime driver with durable state, telemetry, packs, add-ons, and native subagents.
 
 Bundled skills and packs are defaults, not the framework boundary. Teams may replace them while retaining governed source shape, generated-output boundaries, manifests, install staging, validators, dynamic discovery, and loud-fail.
 
@@ -34,7 +34,7 @@ Naming: `bill-<capability>`; overrides `bill-<platform>-<base-capability>`; revi
 
 Read `docs/skill-source-generation.md` before changing skills, scaffolding, rendering, install staging, native-agent generation, or support pointers.
 
-Forbidden in source: governed `SKILL.md` wrappers; generated support pointers (`shell-ceremony.md`, `telemetry-contract.md`, `stack-routing.md`, review/delegation/add-on pointers); provider-specific `*-agents/` outputs (`claude-agents/`, `codex-agents/`, `opencode-agents/`, `junie-agents/`, `cursor-agents/`).
+Forbidden in source: governed `SKILL.md` wrappers; generated support pointers (`shell-ceremony.md`, `telemetry-contract.md`, `stack-routing.md`, review/delegation/add-on pointers); provider-specific `*-agents/` outputs (`claude-agents/`, `codex-agents/`, `junie-agents/`, `cursor-agents/`).
 
 Native-agent source is provider-neutral under `native-agents/agents.yaml` or `native-agents/<name>.md` with `contract_version` on new/rendered sources (older sources still parse for fixture migration). Extra authored guidance goes in `content.md` H2 sections — not sibling org files like `patterns.md` under `skills/<skill>/`.
 
@@ -76,11 +76,15 @@ Code review: pack root + conforming manifest/`content.md`, manifest-registered p
 
 ## Runtime Agent Behavior
 
-Agent-specific behavior uses injectable strategies on `AgentRunProcessRequest`, not identity branching in the process runner: `progressProbe`, `declaredProgressProbe`, `activityProbe`, `progressEmitter`, `idlePolicy` (`HEARTBEAT_EXTENDED` | `DB_PROGRESS_ONLY`), `usePtyStdio`. `ProcessWaitLoop` calls strategies only; new agents add a strategy constant. Crash reconciliation: `FeatureTaskRuntimeWorkerSupervisor` self-heals expired-lease rows to resumable at startup.
+Agent-specific behavior uses injectable strategies on `AgentRunProcessRequest`, not identity branching in the process runner: `progressProbe`, `declaredProgressProbe`, `activityProbe`, `progressEmitter`, `idlePolicy` (`HEARTBEAT_EXTENDED` | `DB_PROGRESS_ONLY`). `ProcessWaitLoop` calls strategies only; new agents add a strategy constant. Crash reconciliation: `FeatureTaskRuntimeWorkerSupervisor` self-heals expired-lease rows to resumable at startup.
 
 ## Writing And Comments
 
 Write direct, active prose; drop filler, stale phrases, praise, and repetition, but preserve names, numbers, and qualifications. Commits/PRs/docs: lead with the outcome, state what changed and why, and avoid unsupported terms such as "successfully", "perfect", "comprehensive", and "robust". Prefer clear names and small functions over comments; comment only a non-obvious *why* code cannot express — never explain *what* code does.
+
+## Testing
+
+Tests cost tokens on every future change; write few, high-value ones instead of mirroring code 1:1. Before writing any test, name the realistic bug it would catch — a concrete wrong behavior that fails this test while the rest of the suite passes; if you cannot, do not write it. Concentrate coverage on critical paths: money and quantities, data integrity and persistence atomicity, auth and tenant isolation, external contracts and serialization, concurrency and recovery, irreversible side effects — trivial glue and non-critical paths need no test. Assert observable behavior at boundaries, never implementation structure (mock-interaction verification, call ordering, duplicated implementation steps); one strong test per rule or branch, no literal-variation siblings. `bill-unit-test-value-check` is the review-time gate and its rubric is authoritative.
 
 ## Quality Checks
 

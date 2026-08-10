@@ -37,7 +37,6 @@ import skillbill.workflow.NoopGoalObservabilityEventValidator
 import skillbill.workflow.RUNTIME_REPOSITORY_EVIDENCE_ARTIFACT_KEY
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
-import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
 import skillbill.workflow.model.WorkflowDefinition
 import skillbill.workflow.model.WorkflowSnapshotView
 import skillbill.workflow.model.WorkflowStateSnapshot
@@ -65,7 +64,7 @@ private val resolveEffectiveSessionId =
   }
 
 @Inject
-@Suppress("TooManyFunctions")
+@Suppress("LargeClass", "TooManyFunctions") // cohesive workflow open/continue/abandon boundary
 class WorkflowService(
   private val database: DatabaseSessionFactory,
   private val gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
@@ -183,17 +182,12 @@ class WorkflowService(
       requireNotNull(issueKey),
       requiredRepositoryIdentity,
     )
-    val mode = if (kind == WorkflowFamilyKind.TASK_PROSE) {
-      FeatureTaskWorkflowMode.PROSE
-    } else {
-      FeatureTaskWorkflowMode.RUNTIME
-    }
     return FeatureTaskExecutionIdentity(
       workflowId = workflowId,
       normalizedIssueKey = normalizedIssueKey,
       repositoryIdentity = requiredRepositoryIdentity,
       governedSpecPath = requireNotNull(governedSpecPath),
-      mode = mode,
+      mode = FeatureTaskWorkflowMode.RUNTIME,
       routeScope = routeScope,
     ).also(FeatureTaskExecutionIdentityPolicy::validate)
   }
@@ -210,7 +204,7 @@ class WorkflowService(
     routeScope: FeatureTaskRouteScope = FeatureTaskRouteScope.STANDALONE,
   ): WorkflowOpenResult {
     require(kind in FEATURE_TASK_FAMILY_KINDS) {
-      "Only prose and runtime feature-task workflows use execution identity."
+      "Only runtime feature-task workflows use execution identity."
     }
     return open(
       kind,
@@ -241,6 +235,10 @@ class WorkflowService(
           request.workflowId,
           "Unknown workflow_id '${request.workflowId}'.",
         )
+      // SKILL-175: the runtime family keeps the decomposition synthesis that the retired prose
+      // IMPLEMENT family previously supplied — updating a row with a decompose plan materializes
+      // the decomposition_runtime artifact (and its on-disk projection) so the goal runner can
+      // resolve the parent by issue key.
       val runtimeInput = family.withDecompositionRuntime(
         existing,
         input,
@@ -289,36 +287,100 @@ class WorkflowService(
       )
     }
     return database.transaction(dbOverride) { unitOfWork ->
-      val family = WorkflowFamily.TASK_RUNTIME
-      val existing = family.get(unitOfWork.workflowStates, workflowId)
+      val existingRecord = unitOfWork.workflowStates.getFeatureTaskWorkflow(workflowId)
         ?: return@transaction WorkflowUpdateResult.Error(
           workflowId,
-          "Unknown runtime workflow_id '$workflowId'.",
+          "Unknown feature-task workflow_id '$workflowId'.",
           unitOfWork.dbPath.toString(),
         )
-      if (existing.workflowStatus in family.definition.terminalStatuses) {
-        return@transaction WorkflowUpdateResult.Error(
-          workflowId,
-          "Runtime workflow '$workflowId' is already terminal with status '${existing.workflowStatus}'.",
-          unitOfWork.dbPath.toString(),
+      when (existingRecord.mode) {
+        FeatureTaskWorkflowMode.RUNTIME -> abandonRuntimeFeatureTask(
+          unitOfWork,
+          existingRecord.toSnapshot(),
+          normalizedReason,
+        )
+        FeatureTaskWorkflowMode.PROSE, null -> abandonLegacyProseFeatureTask(
+          unitOfWork,
+          existingRecord,
+          normalizedReason,
         )
       }
-      val input = WorkflowUpdateInput(
-        workflowStatus = "abandoned",
-        currentStepId = existing.currentStepId.orEmpty(),
-        stepUpdates = null,
-        artifactsPatch = mapOf(
-          FEATURE_TASK_RUNTIME_OPERATOR_ABANDONMENT_ARTIFACT_KEY to mapOf(
-            "reason" to normalizedReason,
-            "abandoned_at" to OffsetDateTime.now(ZoneOffset.UTC).toString(),
-          ),
-        ),
-        sessionId = "",
-      )
-      val updated = engine.updateRecord(family.definition, existing, input)
-      family.save(unitOfWork.workflowStates, updated)
-      updateOk(family.definition, updated, input, unitOfWork.dbPath.toString())
     }
+  }
+
+  private fun abandonRuntimeFeatureTask(
+    unitOfWork: UnitOfWork,
+    existing: skillbill.workflow.model.WorkflowStateSnapshot,
+    normalizedReason: String,
+  ): WorkflowUpdateResult {
+    val family = WorkflowFamily.TASK_RUNTIME
+    if (existing.workflowStatus in family.definition.terminalStatuses) {
+      return WorkflowUpdateResult.Error(
+        existing.workflowId,
+        "Runtime workflow '${existing.workflowId}' is already terminal with status '${existing.workflowStatus}'.",
+        unitOfWork.dbPath.toString(),
+      )
+    }
+    val input = WorkflowUpdateInput(
+      workflowStatus = "abandoned",
+      currentStepId = existing.currentStepId.orEmpty(),
+      stepUpdates = null,
+      artifactsPatch = mapOf(
+        FEATURE_TASK_RUNTIME_OPERATOR_ABANDONMENT_ARTIFACT_KEY to mapOf(
+          "reason" to normalizedReason,
+          "abandoned_at" to OffsetDateTime.now(ZoneOffset.UTC).toString(),
+        ),
+      ),
+      sessionId = "",
+    )
+    val updated = engine.updateRecord(family.definition, existing, input)
+    family.save(unitOfWork.workflowStates, updated)
+    return updateOk(family.definition, updated, input, unitOfWork.dbPath.toString())
+  }
+
+  private fun abandonLegacyProseFeatureTask(
+    unitOfWork: UnitOfWork,
+    existing: WorkflowStateRecord,
+    normalizedReason: String,
+  ): WorkflowUpdateResult {
+    if (existing.workflowStatus in FEATURE_TASK_TERMINAL_STATUSES) {
+      return WorkflowUpdateResult.Error(
+        existing.workflowId,
+        "Feature-task workflow '${existing.workflowId}' is already terminal with status '${existing.workflowStatus}'.",
+        unitOfWork.dbPath.toString(),
+      )
+    }
+    val abandonedAt = OffsetDateTime.now(ZoneOffset.UTC).toString()
+    val artifacts = LinkedHashMap(decodeWorkflowArtifacts(existing.artifactsJson))
+    artifacts[FEATURE_TASK_RUNTIME_OPERATOR_ABANDONMENT_ARTIFACT_KEY] = mapOf(
+      "reason" to normalizedReason,
+      "abandoned_at" to abandonedAt,
+    )
+    val updated = existing.copy(
+      workflowStatus = "abandoned",
+      artifactsJson = JsonSupport.mapToJsonString(artifacts),
+      finishedAt = abandonedAt,
+    )
+    // Narrow status/artifact write: preserve mode=prose and never route through the refused prose
+    // writer or a runtime upsert that would flip mode.
+    unitOfWork.workflowStates.terminalizeLegacyProseFeatureTaskWorkflow(updated)
+    return WorkflowUpdateResult.Ok(
+      workflowId = updated.workflowId,
+      dbPath = unitOfWork.dbPath.toString(),
+      acknowledgement = skillbill.workflow.model.WorkflowUpdateAcknowledgementView(
+        status = "ok",
+        workflowId = updated.workflowId,
+        workflowName = updated.workflowName,
+        workflowStatus = "abandoned",
+        currentStepId = updated.currentStepId,
+        updatedStepIds = emptyList(),
+        updatedArtifactKeys = listOf(FEATURE_TASK_RUNTIME_OPERATOR_ABANDONMENT_ARTIFACT_KEY),
+        readOnlyFullStateGuidance =
+        "Update returns a compact acknowledgement. Use explicit read-only workflow get/show for full state, " +
+          "including steps and the complete durable artifacts map.",
+      ),
+      launchProjection = null,
+    )
   }
 
   fun retryBlockedFeatureTaskRuntimePhase(
@@ -614,7 +676,7 @@ class WorkflowService(
     val result = database.transaction(dbOverride) { unitOfWork ->
       val family = kind.workflowFamily()
       var record = family.get(unitOfWork.workflowStates, workflowId)
-      if (record == null && family == WorkflowFamily.IMPLEMENT) {
+      if (record == null && family == WorkflowFamily.TASK_RUNTIME) {
         val resolved =
           DecompositionWorkflowContinuation(
             engine,
@@ -634,7 +696,6 @@ class WorkflowService(
         record,
         unitOfWork,
         decompositionManifestValidator,
-        decompositionManifestFileStore,
       ).also { continuation ->
         projectionArtifactsJson = continuation.projectionArtifactsJson ?: projectionArtifactsJson
       }.result
@@ -688,22 +749,6 @@ class WorkflowService(
     ?.let { engine.launchProjection(definition, snapshot, stepId, producerIteration) }
 }
 
-private fun WorkflowEngine.syncDecompositionParentRuntime(
-  family: WorkflowFamily,
-  updated: WorkflowStateSnapshot,
-  workflowId: String,
-  unitOfWork: UnitOfWork,
-  validator: DecompositionManifestValidator,
-) {
-  val manifest = updated.decompositionRuntime(validator)
-  if (family == WorkflowFamily.IMPLEMENT && manifest != null) {
-    unitOfWork.workflowStates.findDecomposedParentWorkflowForRuntime(manifest, validator)
-      ?.toSnapshot()
-      ?.takeUnless { it.workflowId == workflowId }
-      ?.let { parent -> persistParentDecompositionRuntime(parent, manifest, unitOfWork, validator) }
-  }
-}
-
 private data class BlockedPhaseRetryRequest(
   val workflowId: String,
   val phaseId: String,
@@ -746,7 +791,8 @@ private const val MAX_ABANDONMENT_REASON_LENGTH: Int = 1000
 private const val FEATURE_TASK_RUNTIME_OPERATOR_ABANDONMENT_ARTIFACT_KEY: String = "operator_abandonment"
 private const val FEATURE_TASK_RUNTIME_IDENTITY_REPAIR_ARTIFACT_KEY: String = "operator_identity_repair"
 private const val WORKFLOW_ID_SUFFIX_LENGTH: Int = 4
-private val FEATURE_TASK_FAMILY_KINDS = setOf(WorkflowFamilyKind.TASK_PROSE, WorkflowFamilyKind.TASK_RUNTIME)
+private val FEATURE_TASK_FAMILY_KINDS = setOf(WorkflowFamilyKind.TASK_RUNTIME)
+private val FEATURE_TASK_TERMINAL_STATUSES: Set<String> = setOf("completed", "failed", "abandoned")
 private const val INCOMPLETE_FEATURE_TASK_IDENTITY_ERROR =
   "Feature-task workflows must be opened through openFeatureTask with complete immutable execution identity."
 private const val SUFFIX_CHARS: String = "abcdefghijklmnopqrstuvwxyz0123456789"
@@ -795,37 +841,17 @@ private object FeatureTaskRuntimePhaseLedgerDecoder {
   private fun rethrow(error: InvalidWorkflowStateSchemaError): Nothing = throw error
 }
 
-private fun WorkflowUpdateRequest.toWorkflowUpdateInput(): WorkflowUpdateInput = WorkflowUpdateInput(
-  workflowStatus = workflowStatus,
-  currentStepId = currentStepId,
-  stepUpdates = stepUpdates,
-  artifactsPatch = artifactsPatch,
-  sessionId = sessionId,
-)
-
-internal fun skillbill.workflow.model.WorkflowContinueDecision.toReopenInput(sessionId: String): WorkflowUpdateInput =
-  WorkflowUpdateInput(
-    workflowStatus = "running",
-    currentStepId = resumeStepId,
-    stepUpdates =
-    listOf(
-      mapOf(
-        "step_id" to resumeStepId,
-        "status" to "running",
-        "attempt_count" to nextAttemptCount,
-      ),
-    ),
-    artifactsPatch = null,
-    sessionId = sessionId,
-  )
-
+// SKILL-175: the runtime family keeps the decomposition synthesis that the retired prose
+// IMPLEMENT family previously supplied — updating a row with a decompose plan materializes
+// the decomposition_runtime artifact (and its on-disk projection) so the goal runner can
+// resolve the parent by issue key.
 internal fun WorkflowFamily.withDecompositionRuntime(
   existing: WorkflowStateSnapshot,
   input: WorkflowUpdateInput,
   workflowId: String,
   validator: DecompositionManifestValidator,
   fileStore: DecompositionManifestFileStore,
-): DecompositionRuntimeInput = if (this != WorkflowFamily.IMPLEMENT) {
+): DecompositionRuntimeInput = if (this != WorkflowFamily.TASK_RUNTIME) {
   DecompositionRuntimeInput(input = input, updated = false)
 } else {
   DecompositionManifestWriter.manifestFromWorkflowUpdate(
@@ -859,6 +885,46 @@ internal data class DecompositionRuntimeInput(
   val input: WorkflowUpdateInput,
   val updated: Boolean,
 )
+
+private fun WorkflowEngine.syncDecompositionParentRuntime(
+  family: WorkflowFamily,
+  updated: WorkflowStateSnapshot,
+  workflowId: String,
+  unitOfWork: UnitOfWork,
+  validator: DecompositionManifestValidator,
+) {
+  val manifest = updated.decompositionRuntime(validator)
+  if (family == WorkflowFamily.TASK_RUNTIME && manifest != null) {
+    val parent = unitOfWork.workflowStates.findDecomposedParentWorkflowForRuntime(manifest, validator)
+    parent?.toSnapshot()
+      ?.takeUnless { it.workflowId == workflowId }
+      ?.let { p -> persistParentDecompositionRuntime(p, manifest, unitOfWork, validator) }
+  }
+}
+
+private fun WorkflowUpdateRequest.toWorkflowUpdateInput(): WorkflowUpdateInput = WorkflowUpdateInput(
+  workflowStatus = workflowStatus,
+  currentStepId = currentStepId,
+  stepUpdates = stepUpdates,
+  artifactsPatch = artifactsPatch,
+  sessionId = sessionId,
+)
+
+internal fun skillbill.workflow.model.WorkflowContinueDecision.toReopenInput(sessionId: String): WorkflowUpdateInput =
+  WorkflowUpdateInput(
+    workflowStatus = "running",
+    currentStepId = resumeStepId,
+    stepUpdates =
+    listOf(
+      mapOf(
+        "step_id" to resumeStepId,
+        "status" to "running",
+        "attempt_count" to nextAttemptCount,
+      ),
+    ),
+    artifactsPatch = null,
+    sessionId = sessionId,
+  )
 
 private fun WorkflowUpdateInput.withGoalObservabilityArtifacts(
   existing: WorkflowStateSnapshot,
@@ -907,7 +973,6 @@ internal fun generateWorkflowId(prefix: String): String {
 private fun Int.twoDigits(): String = toString().padStart(2, '0')
 
 internal fun WorkflowFamilyKind.workflowFamily(): WorkflowFamily = when (this) {
-  WorkflowFamilyKind.TASK_PROSE -> WorkflowFamily.IMPLEMENT
   WorkflowFamilyKind.VERIFY -> WorkflowFamily.VERIFY
   WorkflowFamilyKind.TASK_RUNTIME -> WorkflowFamily.TASK_RUNTIME
 }
@@ -921,7 +986,6 @@ internal enum class WorkflowFamily(
   // families with a strict forward pipeline, leaving their boundary resolution unchanged.
   val loopOnlyStepIds: Set<String> = emptySet(),
 ) {
-  IMPLEMENT(FeatureImplementWorkflowDefinition.definition, "feature-task-prose"),
   VERIFY(FeatureVerifyWorkflowDefinition.definition, "feature-verify"),
   TASK_RUNTIME(
     FeatureTaskRuntimePhaseWorkflowDefinition.definition,
@@ -947,14 +1011,12 @@ internal enum class WorkflowFamily(
 
   fun saveRecord(repository: WorkflowStateRepository, record: WorkflowStateRecord) {
     when (this) {
-      IMPLEMENT -> repository.saveFeatureTaskWorkflow(record, FeatureTaskWorkflowMode.PROSE)
       VERIFY -> repository.saveFeatureVerifyWorkflow(record)
       TASK_RUNTIME -> repository.saveFeatureTaskWorkflow(record, FeatureTaskWorkflowMode.RUNTIME)
     }
   }
 
   fun get(repository: WorkflowStateRepository, workflowId: String): WorkflowStateSnapshot? = when (this) {
-    IMPLEMENT -> repository.getFeatureTaskWorkflowAsMode(workflowId, FeatureTaskWorkflowMode.PROSE)
     VERIFY -> repository.getFeatureVerifyWorkflow(workflowId)
     TASK_RUNTIME -> repository.getFeatureTaskWorkflowAsMode(workflowId, FeatureTaskWorkflowMode.RUNTIME)
   }?.toSnapshot()
@@ -963,7 +1025,6 @@ internal enum class WorkflowFamily(
     buildMap {
       workflowIds.chunked(WORKFLOW_SNAPSHOT_BATCH_SIZE).forEach { batch ->
         val records = when (this@WorkflowFamily) {
-          IMPLEMENT -> repository.getFeatureImplementWorkflows(batch.toSet())
           VERIFY -> repository.getFeatureVerifyWorkflows(batch.toSet())
           TASK_RUNTIME -> repository.getFeatureTaskRuntimeWorkflows(batch.toSet())
         }
@@ -972,13 +1033,11 @@ internal enum class WorkflowFamily(
     }
 
   fun list(repository: WorkflowStateRepository, limit: Int): List<WorkflowStateSnapshot> = when (this) {
-    IMPLEMENT -> repository.listFeatureTaskWorkflows(FeatureTaskWorkflowMode.PROSE, limit)
     VERIFY -> repository.listFeatureVerifyWorkflows(limit)
     TASK_RUNTIME -> repository.listFeatureTaskWorkflows(FeatureTaskWorkflowMode.RUNTIME, limit)
   }.map(WorkflowStateRecord::toSnapshot)
 
   fun latest(repository: WorkflowStateRepository): WorkflowStateSnapshot? = when (this) {
-    IMPLEMENT -> repository.latestFeatureTaskWorkflow(FeatureTaskWorkflowMode.PROSE)
     VERIFY -> repository.latestFeatureVerifyWorkflow()
     TASK_RUNTIME -> repository.latestFeatureTaskWorkflow(FeatureTaskWorkflowMode.RUNTIME)
   }?.toSnapshot()
@@ -995,7 +1054,6 @@ internal enum class WorkflowFamily(
       return emptyMap()
     }
     return when (this) {
-      IMPLEMENT -> repository.getFeatureImplementSessionSummary(sessionId)?.toPayload().orEmpty()
       VERIFY -> repository.getFeatureVerifySessionSummary(sessionId)?.toPayload().orEmpty()
       // The runtime family has no session-summary record.
       TASK_RUNTIME -> emptyMap()

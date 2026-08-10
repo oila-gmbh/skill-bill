@@ -51,8 +51,9 @@ class ScaffoldServiceParityTest {
     assertEquals("horizontal", result.kind)
     assertFalse("Subagent Spawn Runtime Notes" in content)
     assertContains(rendered, "### Subagent Spawn Runtime Notes")
-    assertContains(rendered, "`@foo-arch`")
-    assertContains(rendered, "`@foo-perf`")
+    // SKILL-175: OpenCode paragraph (the only `@`-mention of every specialist) was removed, so the
+    // runtime-neutral notes name the lead specialist only; both specialists remain in the bundle.
+    assertContains(rendered, "`foo-arch`")
     assertSourceBundle(skillDir.resolve("native-agents/agents.yaml"), "foo-arch", "foo-perf")
     assertFalse(Files.exists(skillDir.resolve("codex-agents")))
     assertFalse(Files.exists(skillDir.resolve("opencode-agents")))

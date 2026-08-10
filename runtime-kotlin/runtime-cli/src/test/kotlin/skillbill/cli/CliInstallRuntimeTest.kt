@@ -23,20 +23,13 @@ class CliInstallRuntimeTest {
     val fixture = installFixture()
 
     assertEquals(0, runInstall(fixture, "link-codex-agents").exitCode)
-    assertEquals(0, runInstall(fixture, "link-opencode-agents").exitCode)
     assertEquals(0, runInstall(fixture, "link-junie-agents").exitCode)
     assertGeneratedAgentLinked(fixture.home.resolve(".codex/agents/${fixture.codexToml.fileName}"), fixture.codexToml)
-    assertGeneratedAgentLinked(
-      fixture.home.resolve(".config/opencode/agents/${fixture.opencodeMd.fileName}"),
-      fixture.opencodeMd,
-    )
     assertGeneratedAgentLinked(fixture.home.resolve(".junie/agents/${fixture.junieMd.fileName}"), fixture.junieMd)
 
     assertEquals(0, runInstall(fixture, "unlink-codex-agents").exitCode)
-    assertEquals(0, runInstall(fixture, "unlink-opencode-agents").exitCode)
     assertEquals(0, runInstall(fixture, "unlink-junie-agents").exitCode)
     assertFalse(Files.exists(fixture.home.resolve(".codex/agents/${fixture.codexToml.fileName}")))
-    assertFalse(Files.exists(fixture.home.resolve(".config/opencode/agents/${fixture.opencodeMd.fileName}")))
     assertFalse(Files.exists(fixture.home.resolve(".junie/agents/${fixture.junieMd.fileName}")))
   }
 
@@ -130,16 +123,11 @@ class CliInstallRuntimeTest {
     val fixture = installFixture()
 
     assertEquals(0, runInstall(fixture, "link-codex-agents", "--platform", "kmp").exitCode)
-    assertEquals(0, runInstall(fixture, "link-opencode-agents", "--platform", "kmp").exitCode)
     assertEquals(0, runInstall(fixture, "link-junie-agents", "--platform", "kmp").exitCode)
 
     assertGeneratedAgentLinked(
       fixture.home.resolve(".codex/agents/${fixture.baseCodexToml.fileName}"),
       fixture.baseCodexToml,
-    )
-    assertGeneratedAgentLinked(
-      fixture.home.resolve(".config/opencode/agents/${fixture.baseOpencodeMd.fileName}"),
-      fixture.baseOpencodeMd,
     )
     assertGeneratedAgentLinked(
       fixture.home.resolve(".junie/agents/${fixture.baseJunieMd.fileName}"),
@@ -149,13 +137,8 @@ class CliInstallRuntimeTest {
       fixture.home.resolve(".codex/agents/${fixture.kmpCodexToml.fileName}"),
       fixture.kmpCodexToml,
     )
-    assertGeneratedAgentLinked(
-      fixture.home.resolve(".config/opencode/agents/${fixture.kmpOpencodeMd.fileName}"),
-      fixture.kmpOpencodeMd,
-    )
     assertGeneratedAgentLinked(fixture.home.resolve(".junie/agents/${fixture.kmpJunieMd.fileName}"), fixture.kmpJunieMd)
     assertFalse(Files.exists(fixture.home.resolve(".codex/agents/${fixture.codexToml.fileName}")))
-    assertFalse(Files.exists(fixture.home.resolve(".config/opencode/agents/${fixture.opencodeMd.fileName}")))
     assertFalse(Files.exists(fixture.home.resolve(".junie/agents/${fixture.junieMd.fileName}")))
   }
 
@@ -186,24 +169,18 @@ class CliInstallRuntimeTest {
   fun `native subagent commands preserve existing regular target files`() {
     val fixture = installFixture()
     val codexTarget = fixture.home.resolve(".codex/agents/${fixture.codexToml.fileName}")
-    val opencodeTarget = fixture.home.resolve(".config/opencode/agents/${fixture.opencodeMd.fileName}")
     val junieTarget = fixture.home.resolve(".junie/agents/${fixture.junieMd.fileName}")
     Files.createDirectories(codexTarget.parent)
-    Files.createDirectories(opencodeTarget.parent)
     Files.createDirectories(junieTarget.parent)
     Files.writeString(codexTarget, "user codex file\n")
-    Files.writeString(opencodeTarget, "user opencode file\n")
     Files.writeString(junieTarget, "user junie file\n")
 
     assertEquals(0, runInstall(fixture, "link-codex-agents").exitCode)
-    assertEquals(0, runInstall(fixture, "link-opencode-agents").exitCode)
     assertEquals(0, runInstall(fixture, "link-junie-agents").exitCode)
 
     assertFalse(Files.isSymbolicLink(codexTarget))
-    assertFalse(Files.isSymbolicLink(opencodeTarget))
     assertFalse(Files.isSymbolicLink(junieTarget))
     assertEquals("user codex file\n", Files.readString(codexTarget))
-    assertEquals("user opencode file\n", Files.readString(opencodeTarget))
     assertEquals("user junie file\n", Files.readString(junieTarget))
   }
 
@@ -211,35 +188,27 @@ class CliInstallRuntimeTest {
   fun `native subagent commands replace legacy repository artifact symlinks`() {
     val fixture = installFixture()
     val codexTarget = fixture.home.resolve(".codex/agents/${fixture.codexToml.fileName}")
-    val opencodeTarget = fixture.home.resolve(".config/opencode/agents/${fixture.opencodeMd.fileName}")
     val junieTarget = fixture.home.resolve(".junie/agents/${fixture.junieMd.fileName}")
     val legacyRoot = fixture.home.resolve("old-repo")
     val legacyCodex = legacyRoot.resolve("platform-packs/kotlin/code-review/bill-kotlin-code-review/codex-agents")
       .resolve(fixture.codexToml.fileName)
-    val legacyOpencode = legacyRoot.resolve("platform-packs/kotlin/code-review/bill-kotlin-code-review/opencode-agents")
-      .resolve(fixture.opencodeMd.fileName)
     val legacyJunie = legacyRoot.resolve("platform-packs/kotlin/code-review/bill-kotlin-code-review/junie-agents")
       .resolve(fixture.junieMd.fileName)
-    listOf(legacyCodex, legacyOpencode, legacyJunie).forEach { legacy ->
+    listOf(legacyCodex, legacyJunie).forEach { legacy ->
       Files.createDirectories(legacy.parent)
       Files.writeString(legacy, "legacy generated artifact\n")
     }
     Files.createDirectories(codexTarget.parent)
-    Files.createDirectories(opencodeTarget.parent)
     Files.createDirectories(junieTarget.parent)
     Files.createSymbolicLink(codexTarget, legacyCodex)
-    Files.createSymbolicLink(opencodeTarget, legacyOpencode)
     Files.createSymbolicLink(junieTarget, legacyJunie)
 
     assertEquals(0, runInstall(fixture, "link-codex-agents").exitCode)
-    assertEquals(0, runInstall(fixture, "link-opencode-agents").exitCode)
     assertEquals(0, runInstall(fixture, "link-junie-agents").exitCode)
 
     assertGeneratedAgentLinked(codexTarget, fixture.codexToml)
-    assertGeneratedAgentLinked(opencodeTarget, fixture.opencodeMd)
     assertGeneratedAgentLinked(junieTarget, fixture.junieMd)
     assertFalse(Files.readString(codexTarget).contains("legacy generated artifact"))
-    assertFalse(Files.readString(opencodeTarget).contains("legacy generated artifact"))
     assertFalse(Files.readString(junieTarget).contains("legacy generated artifact"))
   }
 
@@ -247,32 +216,25 @@ class CliInstallRuntimeTest {
   fun `native subagent commands replace stale install cache symlinks`() {
     val fixture = installFixture()
     val codexTarget = fixture.home.resolve(".codex/agents/${fixture.codexToml.fileName}")
-    val opencodeTarget = fixture.home.resolve(".config/opencode/agents/${fixture.opencodeMd.fileName}")
     val junieTarget = fixture.home.resolve(".junie/agents/${fixture.junieMd.fileName}")
     val oldCache = fixture.home.resolve(".skill-bill/native-agents/old-cache-key")
     val oldCodex = oldCache.resolve("codex-agents/${fixture.codexToml.fileName}")
-    val oldOpencode = oldCache.resolve("opencode-agents/${fixture.opencodeMd.fileName}")
     val oldJunie = oldCache.resolve("junie-agents/${fixture.junieMd.fileName}")
-    listOf(oldCodex, oldOpencode, oldJunie).forEach { stale ->
+    listOf(oldCodex, oldJunie).forEach { stale ->
       Files.createDirectories(stale.parent)
       Files.writeString(stale, "stale cache artifact\n")
     }
     Files.createDirectories(codexTarget.parent)
-    Files.createDirectories(opencodeTarget.parent)
     Files.createDirectories(junieTarget.parent)
     Files.createSymbolicLink(codexTarget, oldCodex)
-    Files.createSymbolicLink(opencodeTarget, oldOpencode)
     Files.createSymbolicLink(junieTarget, oldJunie)
 
     assertEquals(0, runInstall(fixture, "link-codex-agents").exitCode)
-    assertEquals(0, runInstall(fixture, "link-opencode-agents").exitCode)
     assertEquals(0, runInstall(fixture, "link-junie-agents").exitCode)
 
     assertGeneratedAgentLinked(codexTarget, fixture.codexToml)
-    assertGeneratedAgentLinked(opencodeTarget, fixture.opencodeMd)
     assertGeneratedAgentLinked(junieTarget, fixture.junieMd)
     assertFalse(codexTarget.toRealPath().startsWith(oldCache))
-    assertFalse(opencodeTarget.toRealPath().startsWith(oldCache))
     assertFalse(junieTarget.toRealPath().startsWith(oldCache))
   }
 
@@ -290,11 +252,9 @@ class CliInstallRuntimeTest {
     Files.createSymbolicLink(sourceSymlink, outsideSource)
 
     assertEquals(0, runInstall(fixture, "link-codex-agents").exitCode)
-    assertEquals(0, runInstall(fixture, "link-opencode-agents").exitCode)
     assertEquals(0, runInstall(fixture, "link-junie-agents").exitCode)
 
     assertFalse(Files.exists(fixture.home.resolve(".codex/agents/bill-symlinked.toml")))
-    assertFalse(Files.exists(fixture.home.resolve(".config/opencode/agents/bill-symlinked.md")))
     assertFalse(Files.exists(fixture.home.resolve(".junie/agents/bill-symlinked.md")))
   }
 
@@ -302,15 +262,15 @@ class CliInstallRuntimeTest {
   fun `native subagent install renders from source without rewriting stale repository artifacts`() {
     val fixture = installFixture()
     val stale = "stale generated file\n"
-    Files.createDirectories(fixture.opencodeMd.parent)
-    Files.writeString(fixture.opencodeMd, stale)
+    Files.createDirectories(fixture.junieMd.parent)
+    Files.writeString(fixture.junieMd, stale)
 
-    assertEquals(0, runInstall(fixture, "link-opencode-agents").exitCode)
+    assertEquals(0, runInstall(fixture, "link-junie-agents").exitCode)
 
-    assertEquals(stale, Files.readString(fixture.opencodeMd))
-    val installed = fixture.home.resolve(".config/opencode/agents/${fixture.opencodeMd.fileName}")
+    assertEquals(stale, Files.readString(fixture.junieMd))
+    val installed = fixture.home.resolve(".junie/agents/${fixture.junieMd.fileName}")
     assertGeneratedAgentLinked(installed, expected = null)
-    assertContains(Files.readString(installed), "mode: subagent")
+    assertContains(Files.readString(installed), "# bill-kotlin-code-review-testing")
     assertFalse(Files.readString(installed).contains(stale))
   }
 
@@ -348,7 +308,6 @@ class CliInstallRuntimeTest {
     val before = snapshotInstallRepo(fixture)
 
     assertEquals(0, runInstall(fixture, "link-codex-agents").exitCode)
-    assertEquals(0, runInstall(fixture, "link-opencode-agents").exitCode)
     assertEquals(0, runInstall(fixture, "link-junie-agents").exitCode)
 
     assertEquals(before, snapshotInstallRepo(fixture))
@@ -374,27 +333,6 @@ class CliInstallRuntimeTest {
       assertEquals(0, unregister.exitCode, "${case.agent}: ${unregister.stdout}")
       case.assertUnregistered(Files.readString(configPath))
     }
-  }
-
-  @Test
-  fun `opencode mcp registration fails loudly and preserves invalid jsonc`() {
-    val home = Files.createTempDirectory("skillbill-cli-invalid-opencode")
-    val context = installCliContext(home)
-    val configPath = home.resolve(".config/opencode/opencode.json")
-    Files.createDirectories(configPath.parent)
-    val invalid = "{\n  \"theme\": \"opencode\",\n  \"mcp\": \n"
-    Files.writeString(configPath, invalid)
-
-    val register =
-      CliRuntime.run(listOf("install", "register-mcp", "opencode", "--runtime-mcp-bin", "/tmp/runtime-mcp"), context)
-    assertEquals(1, register.exitCode)
-    assertContains(register.stdout, "Invalid OpenCode JSONC config")
-    assertEquals(invalid, Files.readString(configPath))
-
-    val unregister = CliRuntime.run(listOf("install", "unregister-mcp", "opencode"), context)
-    assertEquals(1, unregister.exitCode)
-    assertContains(unregister.stdout, "Invalid OpenCode JSONC config")
-    assertEquals(invalid, Files.readString(configPath))
   }
 
   @Test
@@ -680,49 +618,39 @@ class CliInstallRuntimeTest {
     val home = Files.createTempDirectory("skillbill-cli-install-native")
     Files.createDirectories(home.resolve(".claude"))
     Files.createDirectories(home.resolve(".codex"))
-    Files.createDirectories(home.resolve(".config/opencode"))
     Files.createDirectories(home.resolve(".junie"))
     Files.createDirectories(home.resolve(".cursor"))
     val platformPacks = home.resolve("platform-packs")
     val skills = home.resolve("skills")
     val baseCodexAgents = skills.resolve("bill-code-review/codex-agents")
-    val baseOpencodeAgents = skills.resolve("bill-code-review/opencode-agents")
     val baseJunieAgents = skills.resolve("bill-code-review/junie-agents")
     val baseNativeAgents = skills.resolve("bill-code-review/native-agents")
     val codexAgents = platformPacks.resolve("kotlin/code-review/bill-kotlin-code-review/codex-agents")
-    val opencodeAgents = platformPacks.resolve("kotlin/code-review/bill-kotlin-code-review/opencode-agents")
     val junieAgents = platformPacks.resolve("kotlin/code-review/bill-kotlin-code-review/junie-agents")
     val nativeAgents = platformPacks.resolve("kotlin/code-review/bill-kotlin-code-review/native-agents")
     val kmpCodexAgents = platformPacks.resolve("kmp/code-review/bill-kmp-code-review/codex-agents")
-    val kmpOpencodeAgents = platformPacks.resolve("kmp/code-review/bill-kmp-code-review/opencode-agents")
     val kmpJunieAgents = platformPacks.resolve("kmp/code-review/bill-kmp-code-review/junie-agents")
     val kmpNativeAgents = platformPacks.resolve("kmp/code-review/bill-kmp-code-review/native-agents")
     Files.createDirectories(baseNativeAgents)
     Files.createDirectories(nativeAgents)
     Files.createDirectories(kmpNativeAgents)
     val baseCodexToml = baseCodexAgents.resolve("bill-code-review-worker.toml")
-    val baseOpencodeMd = baseOpencodeAgents.resolve("bill-code-review-worker.md")
     val baseJunieMd = baseJunieAgents.resolve("bill-code-review-worker.md")
     val codexToml = codexAgents.resolve("bill-kotlin-code-review-testing.toml")
-    val opencodeMd = opencodeAgents.resolve("bill-kotlin-code-review-testing.md")
     val junieMd = junieAgents.resolve("bill-kotlin-code-review-testing.md")
     val cursorMd = platformPacks.resolve("kotlin/code-review/bill-kotlin-code-review/cursor-agents")
       .resolve("bill-kotlin-code-review-testing.md")
     val kmpCodexToml = kmpCodexAgents.resolve("bill-kmp-code-review-ui.toml")
-    val kmpOpencodeMd = kmpOpencodeAgents.resolve("bill-kmp-code-review-ui.md")
     val kmpJunieMd = kmpJunieAgents.resolve("bill-kmp-code-review-ui.md")
     val fixture = InstallFixture(
       home,
       platformPacks,
       skills,
       baseCodexToml,
-      baseOpencodeMd,
       baseJunieMd,
       codexToml,
-      opencodeMd,
       junieMd,
       kmpCodexToml,
-      kmpOpencodeMd,
       kmpJunieMd,
       cursorMd,
     )
@@ -787,13 +715,10 @@ private data class InstallFixture(
   val platformPacks: Path,
   val skills: Path,
   val baseCodexToml: Path,
-  val baseOpencodeMd: Path,
   val baseJunieMd: Path,
   val codexToml: Path,
-  val opencodeMd: Path,
   val junieMd: Path,
   val kmpCodexToml: Path,
-  val kmpOpencodeMd: Path,
   val kmpJunieMd: Path,
   val cursorMd: Path,
 )
@@ -836,31 +761,6 @@ private fun mcpCases(): List<McpCase> = listOf(
       assertContains(raw, "[profile.default]")
       assertContains(raw, "[mcp_servers.other]")
       assertFalse("[mcp_servers.skill-bill]" in raw)
-    },
-  ),
-  McpCase(
-    agent = "opencode",
-    relativeConfigPath = ".config/opencode/opencode.json",
-    seed = """
-      {
-        // keep user setting
-        "theme": "opencode",
-        "mcp": {"other": {"command": ["other"]}},
-      }
-    """.trimIndent() + "\n",
-    assertRegistered = { raw ->
-      val settings = decodeJsonObject(raw)
-      assertEquals("opencode", settings["theme"])
-      val servers = settings["mcp"] as Map<*, *>
-      assertTrue("other" in servers)
-      val skillBill = servers["skill-bill"] as Map<*, *>
-      assertEquals(listOf("/tmp/runtime-mcp"), skillBill["command"])
-    },
-    assertUnregistered = { raw ->
-      val settings = decodeJsonObject(raw)
-      assertEquals("opencode", settings["theme"])
-      assertTrue("other" in (settings["mcp"] as Map<*, *>))
-      assertFalse("skill-bill" in (settings["mcp"] as Map<*, *>))
     },
   ),
 )

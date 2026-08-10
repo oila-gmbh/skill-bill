@@ -1,7 +1,6 @@
 package skillbill.application.review
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.model.FeatureImplementStatsResult
 import skillbill.application.model.FeatureTaskRuntimeStatsResult
 import skillbill.application.model.FeatureVerifyStatsResult
 import skillbill.application.model.GoalStatsResult
@@ -28,7 +27,6 @@ import skillbill.review.ReviewRunLaneResolver
 import skillbill.review.TriageDecisionParser
 import skillbill.review.canonicalPackSkillNames
 import skillbill.review.canonicalPlatformSlugs
-import skillbill.review.model.FeatureImplementWorkflowStats
 import skillbill.review.model.FeatureTaskRuntimeWorkflowStats
 import skillbill.review.model.FeatureVerifyWorkflowStats
 import skillbill.review.model.FeedbackRequest
@@ -202,9 +200,6 @@ class ReviewService(
   fun reviewStats(runId: String?, dbOverride: String?): ReviewStatsResult =
     reviewStatsResult(database, dbOverride) { reviewRepository -> reviewRepository.reviewStats(runId) }
 
-  fun featureImplementStats(dbOverride: String?): FeatureImplementStatsResult =
-    featureImplementStatsResult(database, dbOverride, ReviewRepository::featureImplementStats)
-
   fun featureVerifyStats(dbOverride: String?): FeatureVerifyStatsResult =
     featureVerifyStatsResult(database, dbOverride, ReviewRepository::featureVerifyStats)
 
@@ -262,17 +257,6 @@ private fun reviewStatsResult(
     reviewRunId = snapshot.reviewRunId,
     stats = snapshot.stats,
     health = snapshot.health,
-  )
-}
-
-private fun featureImplementStatsResult(
-  database: DatabaseSessionFactory,
-  dbOverride: String?,
-  statsBuilder: (ReviewRepository) -> FeatureImplementWorkflowStats,
-): FeatureImplementStatsResult = database.read(dbOverride) { unitOfWork ->
-  FeatureImplementStatsResult(
-    dbPath = unitOfWork.dbPath.toString(),
-    stats = statsBuilder(unitOfWork.reviews),
   )
 }
 

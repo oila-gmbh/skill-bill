@@ -27,13 +27,9 @@ class InstallAgentService(
 
   fun claudeAgentsPath(home: Path? = null): Path = agentDirectory("claude", home)
 
-  fun opencodeAgentsPath(home: Path? = null): Path = agentDirectory("opencode", home)
-
   fun junieAgentsPath(home: Path? = null): Path = agentDirectory("junie", home)
 
   fun cursorAgentsPath(home: Path? = null): Path = agentDirectory("cursor", home)
-
-  fun zcodeAgentsPath(home: Path? = null): Path = agentDirectory("zcode", home)
 
   fun cleanupAgentTarget(
     targetDir: Path,

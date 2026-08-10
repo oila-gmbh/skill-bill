@@ -7,6 +7,7 @@ import skillbill.application.featuretask.model.FeatureTaskContinuationLookupResu
 import skillbill.application.workflow.goalContinuationFor
 import skillbill.application.workflow.toSnapshot
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
+import skillbill.error.LegacyProseWorkflowError
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.model.FeatureTaskRouteScope
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
@@ -15,7 +16,6 @@ import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
-import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 
 @Inject
@@ -75,23 +75,31 @@ class FeatureTaskContinuationLookupService(
         repositoryIdentity,
       )
     }
-    val validated = candidates.map {
-      it to project(
-        it,
-        unitOfWork.workflowStates.getFeatureTaskRuntimeWorkerOwnership(it.workflow.workflowId),
-        routeScope,
-      )
-    }
     val selected = workflowId?.let { selector ->
       listOf(
-        validated.singleOrNull { it.first.workflow.workflowId == selector }
+        candidates.singleOrNull { it.workflow.workflowId == selector }
           ?: throw InvalidFeatureTaskExecutionIdentitySchemaError(
             "lookup request",
             "workflow selector '$selector' does not match this issue and repository",
           ),
       )
-    } ?: validated
-    val classified = classify(selected.map { it.second })
+    } ?: candidates
+    val identityLess = selected.firstOrNull { it.identity == null }
+    if (identityLess != null) {
+      return@read FeatureTaskContinuationLookupResult.NeedsIdentityRepair(
+        workflowId = identityLess.workflow.workflowId,
+        summary = "Workflow '${identityLess.workflow.workflowId}' has no immutable execution identity; " +
+          "run `skill-bill feature-task repair-identity` for that workflow id before continuing.",
+      )
+    }
+    val validated = selected.map {
+      project(
+        it,
+        unitOfWork.workflowStates.getFeatureTaskRuntimeWorkerOwnership(it.workflow.workflowId),
+        routeScope,
+      )
+    }
+    val classified = classify(validated)
     // A goal parent can only be surfaced when the caller did not pin a specific feature-task
     // workflow, and only once no feature-task row answers the lookup.
     if (classified != FeatureTaskContinuationLookupResult.NoMatch ||
@@ -125,10 +133,13 @@ class FeatureTaskContinuationLookupService(
     if (identityConflictsWithWorkflow(identity, candidate)) {
       invalidIdentity(candidate, "immutable identity conflicts with workflow snapshot")
     }
-    val definition = when (identity.mode) {
-      FeatureTaskWorkflowMode.PROSE -> FeatureImplementWorkflowDefinition.definition
-      FeatureTaskWorkflowMode.RUNTIME -> FeatureTaskRuntimePhaseWorkflowDefinition.definition
+    // SKILL-175: the prose engine is retired. A PROSE-mode candidate is quarantined here rather than
+    // classified as resumable — continuation of a legacy prose row must loud-fail, not degrade into a
+    // (deleted) prose definition or reinterpret the row as a runtime candidate.
+    if (identity.mode == FeatureTaskWorkflowMode.PROSE) {
+      throw LegacyProseWorkflowError(candidate.workflow.workflowId, candidate.workflow.issueKey)
     }
+    val definition = FeatureTaskRuntimePhaseWorkflowDefinition.definition
     engine.snapshotView(definition, candidate.workflow.toSnapshot())
     val status = candidate.workflow.workflowStatus
     return FeatureTaskContinuationCandidate(

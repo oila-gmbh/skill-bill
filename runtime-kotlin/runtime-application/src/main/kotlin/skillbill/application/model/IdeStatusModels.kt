@@ -8,7 +8,6 @@ import java.nio.file.Path
 import java.time.Instant
 
 enum class IdeStatusWorkflowFamily(val wireValue: String) {
-  FEATURE_TASK_PROSE("feature-task-prose"),
   FEATURE_TASK_RUNTIME("feature-task-runtime"),
   FEATURE_VERIFY("feature-verify"),
   FEATURE_GOAL("feature-goal"),

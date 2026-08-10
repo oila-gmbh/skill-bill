@@ -92,7 +92,6 @@ class CliRuntimeTest {
 
     assertNativeReviewGolden(dbPath, context)
     assertNativeLearningGolden(tempDir, context)
-    assertNativeWorkflowGolden(dbPath, context)
     assertNativeVerifyWorkflowGolden(dbPath, context)
   }
 
@@ -465,9 +464,23 @@ class CliRuntimeTest {
     assertContains(rootHelp.stdout, "create-and-fill")
     assertContains(rootHelp.stdout, "new-addon")
     assertContains(rootHelp.stdout, "install")
+    assertContains(rootHelp.stdout, "verify-workflow")
+    // Clikt help tables pad command names; reject a dedicated `workflow` row while keeping
+    // `verify-workflow` and incidental mentions of the word elsewhere.
+    assertFalse(
+      Regex("""(?m)^\s*workflow\s{2,}""").containsMatchIn(rootHelp.stdout),
+      "root help must not list the removed workflow command",
+    )
     val workflowHelp = CliRuntime.run(listOf("workflow", "--help"))
+    val workflowContinue = CliRuntime.run(listOf("workflow", "continue"))
     val verifyWorkflowHelp = CliRuntime.run(listOf("verify-workflow", "--help"))
-    assertContains(workflowHelp.stdout, "show")
+    // The removed `workflow` command is unknown: `--help` falls through to the root help
+    // (exit 0, no workflow-specific help) while any other invocation errors (exit 1).
+    assertEquals(0, workflowHelp.exitCode)
+    assertContains(workflowHelp.stdout, "Usage: skill-bill")
+    assertEquals(1, workflowContinue.exitCode)
+    assertContains(workflowContinue.stdout, "Error:")
+    assertEquals(0, verifyWorkflowHelp.exitCode)
     assertContains(verifyWorkflowHelp.stdout, "show")
     assertEquals(0, telemetryHelp.exitCode)
     assertContains(telemetryHelp.stdout, "capabilities")
@@ -524,8 +537,8 @@ class CliRuntimeTest {
     Files.createDirectories(tempDir.resolve(".copilot"))
     Files.createDirectories(tempDir.resolve(".claude"))
     Files.createDirectories(tempDir.resolve(".codex"))
-    Files.createDirectories(tempDir.resolve(".config/opencode"))
     Files.createDirectories(tempDir.resolve(".junie"))
+    Files.createDirectories(tempDir.resolve(".cursor"))
 
     val result = CliRuntime.run(
       listOf("install", "detect-agents"),
@@ -538,8 +551,8 @@ class CliRuntimeTest {
       copilot	${tempDir.resolve(".copilot/skills")}
       claude	${tempDir.resolve(".claude/skills")}
       codex	${tempDir.resolve(".codex/skills")}
-      opencode	${tempDir.resolve(".config/opencode/skills")}
       junie	${tempDir.resolve(".junie/skills")}
+      cursor	${tempDir.resolve(".cursor/skills")}
       """.trimIndent(),
       result.stdout.trim(),
     )
@@ -620,60 +633,20 @@ class CliRuntimeTest {
   }
 
   @Test
-  fun `workflow cli commands list latest resume and reopen valid continuation`() {
-    val tempDir = Files.createTempDirectory("skillbill-cli-workflow")
-    val dbPath = tempDir.resolve("metrics.db")
-    val opened =
-      runJson(
-        "--db",
-        dbPath.toString(),
-        "workflow",
-        "open",
-        "--session-id",
-        "fis-20260425-000001-test",
-        "--format",
-        "json",
-      )
-    val workflowId = opened["workflow_id"] as String
-    val listed = runJson("--db", dbPath.toString(), "workflow", "list", "--format", "json")
-    val latest = runJson("--db", dbPath.toString(), "workflow", "latest", "--format", "json")
-    val shown = runJson("--db", dbPath.toString(), "workflow", "show", workflowId, "--format", "json")
-    val resumed = runJson("--db", dbPath.toString(), "workflow", "resume", workflowId, "--format", "json")
+  fun `removed prose workflow and implement-stats commands are unknown`() {
+    val tempDir = Files.createTempDirectory("skillbill-cli-removed-workflow")
+    val context = CliRuntimeContext(userHome = tempDir)
 
-    assertEquals(1, listed["workflow_count"])
-    assertEquals(workflowId, latest["workflow_id"])
-    assertEquals(workflowId, shown["workflow_id"])
-    assertEquals("resume", resumed["resume_mode"])
+    val workflow = CliRuntime.run(listOf("workflow", "list", "--format", "json"), context)
+    val workflowContinue = CliRuntime.run(listOf("workflow", "continue", "wfl-x", "--format", "json"), context)
+    val implementStats = CliRuntime.run(listOf("implement-stats", "--format", "json"), context)
 
-    val update =
-      runJson(
-        "--db",
-        dbPath.toString(),
-        "workflow",
-        "update",
-        workflowId,
-        "--workflow-status",
-        "blocked",
-        "--current-step-id",
-        "implement",
-        "--step-updates",
-        """[{"step_id":"implement","status":"blocked","attempt_count":1}]""",
-        "--artifacts-patch",
-        """{"preplan_digest":{"ok":true},"plan":{"task_count":1}}""",
-        "--format",
-        "json",
-      )
-    assertEquals("blocked", update["workflow_status"])
-
-    val continued =
-      CliRuntime.run(
-        listOf("--db", dbPath.toString(), "workflow", "continue", workflowId, "--format", "json"),
-      )
-    val continuePayload = decodeJsonObject(continued.stdout)
-    assertEquals(0, continued.exitCode)
-    assertEquals("reopened", continuePayload["continue_status"])
-    assertEquals(emptyList<Any>(), continuePayload["missing_artifacts"])
-    assertEquals(workflowId, continuePayload["workflow_id"])
+    assertEquals(1, workflow.exitCode)
+    assertContains(workflow.stdout, "no such")
+    assertEquals(1, workflowContinue.exitCode)
+    assertContains(workflowContinue.stdout, "no such")
+    assertEquals(1, implementStats.exitCode)
+    assertContains(implementStats.stdout, "no such")
   }
 
   @Test
@@ -735,19 +708,6 @@ class CliRuntimeTest {
     assertFalse(continued.containsKey("artifacts"))
     assertFalse(continued.containsKey("steps"))
     assertEquals("verdict", shown["current_step_id"])
-  }
-
-  @Test
-  fun `workflow latest no rows returns resolved db path`() {
-    val tempDir = Files.createTempDirectory("skillbill-cli-empty-workflow")
-    val context = CliRuntimeContext(userHome = tempDir)
-
-    val result = CliRuntime.run(listOf("workflow", "resume", "--latest", "--format", "json"), context)
-    val payload = decodeJsonObject(result.stdout)
-
-    assertEquals(1, result.exitCode)
-    assertEquals("No feature-task-prose workflows found.", payload["error"])
-    assertEquals(tempDir.resolve(".skill-bill/review-metrics.db").toString(), payload["db_path"])
   }
 
   @Test
@@ -1160,16 +1120,15 @@ private fun assertReviewStatsPayload(dbPath: Path, context: CliRuntimeContext) {
 }
 
 private fun assertFeatureStatsAliases(dbPath: Path, context: CliRuntimeContext) {
-  val implementAliasPayload =
-    runJson("--db", dbPath.toString(), "implement-stats", "--format", "json", context = context)
+  val implementStats = CliRuntime.run(
+    listOf("--db", dbPath.toString(), "implement-stats", "--format", "json"),
+    context,
+  )
+  assertEquals(1, implementStats.exitCode)
+  assertContains(implementStats.stdout, "no such")
+
   val verifyAliasPayload =
     runJson("--db", dbPath.toString(), "feature-verify-stats", "--format", "json", context = context)
-
-  assertEquals("bill-feature-task", implementAliasPayload["workflow"])
-  assertEquals(0.0, implementAliasPayload["median_duration_seconds"])
-  assertTrue("child_step_coverage" in implementAliasPayload)
-  assertTrue("feature_size_outcome_stats" in implementAliasPayload)
-  assertTrue("large_feature_health" in implementAliasPayload)
   assertEquals("bill-feature-verify", verifyAliasPayload["workflow"])
 }
 
@@ -1508,44 +1467,6 @@ private fun assertNativeLearningGolden(tempDir: Path, context: CliRuntimeContext
   assertEquals(
     goldenJson("cli-learnings-resolve.json", "<DB_PATH>" to dbPath.toAbsolutePath().normalize().toString()),
     learnings.stdout,
-  )
-}
-
-private fun assertNativeWorkflowGolden(dbPath: Path, context: CliRuntimeContext) {
-  val opened =
-    runJson(
-      listOf(
-        "--db",
-        dbPath.toString(),
-        "workflow",
-        "open",
-        "--session-id",
-        "fis-20260425-000001-test",
-        "--format",
-        "json",
-      ),
-      context,
-    )
-  val workflowId = opened["workflow_id"] as String
-  val shown =
-    CliRuntime.run(
-      listOf("--db", dbPath.toString(), "workflow", "show", workflowId, "--format", "json"),
-      context,
-    )
-  val shownPayload = decodeJsonObject(shown.stdout)
-
-  assertEquals(0, shown.exitCode, shown.stdout)
-  assertWorkflowIdShape(workflowId, "wfl")
-  assertNewWorkflowTimestamps(opened, shownPayload, "implement")
-  assertEquals(
-    goldenJson(
-      "cli-workflow-show.json",
-      "<DB_PATH>" to dbPath.toAbsolutePath().normalize().toString(),
-      "<WORKFLOW_ID>" to workflowId,
-      "<STARTED_AT>" to shownPayload["started_at"].toString(),
-      "<UPDATED_AT>" to shownPayload["updated_at"].toString(),
-    ),
-    shown.stdout,
   )
 }
 

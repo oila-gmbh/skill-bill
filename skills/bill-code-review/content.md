@@ -222,7 +222,6 @@ agent gains stdin support.
 | ---------- | --------------------- | ------------------------------------- |
 | `claude`   | yes                   | `claude -p < <lane2-prompt-path>`     |
 | `codex`    | yes                   | `codex exec - < <lane2-prompt-path>`  |
-| `opencode` | no                    | CLI delegation (always)               |
 | `copilot`  | no                    | CLI delegation (always)               |
 | `junie`    | no                    | CLI delegation (always)               |
 
@@ -233,7 +232,7 @@ form breaks above `ARG_MAX` on most shells, so it is not their route.
 
 Decide the lane 2 path:
 
-1. **Agent is not stdin-capable** (`opencode`, `copilot`, `junie` per the table) → **CLI delegation path, always**.
+1. **Agent is not stdin-capable** (`copilot`, `junie` per the table) → **CLI delegation path, always**.
 2. **Else** (stdin-capable agent) → **stdin-pipe path**.
 
 ### CLI delegation path

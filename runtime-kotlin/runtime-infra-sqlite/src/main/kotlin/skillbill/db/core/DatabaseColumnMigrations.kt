@@ -165,6 +165,11 @@ internal object DatabaseColumnMigrations {
     }
   }
 
+  // The `mode = 'prose'` branch here is RETAINED per SKILL-175 decisions
+  // (runtime-kotlin/agent/decisions.md, "In-flight prose row policy"): this is a read-side
+  // issue_key backfill, not a continuation-candidacy predicate, and removing it would leave
+  // quarantined legacy prose rows permanently missing issue_key in work-list history. It is not
+  // a new prose write path.
   private fun recoverGoalContinuationWorkflowIssueKeys(connection: Connection) {
     connection.createStatement().use { statement ->
       statement.execute(

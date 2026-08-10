@@ -594,7 +594,7 @@ class CliGoalRuntimeTest {
         workflowGitOperations = GoalTestWorkflowGitOperations,
         agentRunLauncher = launcher,
         goalPullRequestPort = fixture.pullRequests,
-        environment = mapOf("CLAUDECODE" to "1", "SKILL_BILL_AGENT" to "opencode"),
+        environment = mapOf("CLAUDECODE" to "1", "SKILL_BILL_AGENT" to "junie"),
         executableLookup = ExecutableLookup { true },
       ),
     )
@@ -758,10 +758,12 @@ class CliGoalRuntimeTest {
     assertEquals(0, status.exitCode, status.stdout)
     assertContains(status.stdout, "current_subtask: 1")
     assertContains(status.stdout, "current_step: implement")
-    // SKILL-103 AC1: the prose-mode CLI child carries no persisted agent attribution, so active_agent
+    // SKILL-103 AC1: the CLI child carries no persisted agent attribution, so active_agent
     // is omitted (rendered as none) rather than leaked from the caller's --agent codex.
     assertContains(status.stdout, "active_agent: none")
-    assertContains(status.stdout, "execution_liveness: unknown")
+    // SKILL-175: the continuation child is a RUNTIME-mode workflow with no live worker ownership,
+    // so liveness is idle (UNKNOWN is reserved for lease-read failure / non-runtime-mode rows).
+    assertContains(status.stdout, "execution_liveness: idle")
     assertContains(status.stdout, "latest_liveness_signal: liveness=durable_progress phase=implement")
     assertContains(status.stdout, "role=phase_subagent sequence=12")
     assertContains(status.stdout, "latest_observability: phase=implement role=phase_subagent")
@@ -1266,7 +1268,7 @@ class CliGoalExecutionOptionsTest {
     assertContains(status.stdout, "blocked: 1")
     assertContains(status.stdout, "current_subtask: 2")
     assertContains(status.stdout, "current_step: review")
-    // SKILL-103 AC1: prose-mode CLI child carries no persisted agent => active_agent omitted.
+    // SKILL-103 AC1: CLI child carries no persisted agent => active_agent omitted.
     assertContains(status.stdout, "active_agent: none")
   }
 
@@ -1282,21 +1284,17 @@ class CliGoalExecutionOptionsTest {
     assertContains(result.stdout, "without a terminal workflow-store outcome")
     val workflowId = result.payload?.get("workflow_id")?.toString().orEmpty()
     assertTrue(workflowId.isNotBlank())
-    val child = runGoalJson(
-      listOf(
-        "--db",
-        fixture.dbPath.toString(),
-        "workflow",
-        "get",
-        workflowId,
-        "--format",
-        "json",
-      ),
+    val child = RuntimeWorkflowTestSupport.get(
+      fixture.dbPath,
+      workflowId,
       fixture.context(launcher = launcher),
     )
 
     assertEquals("blocked", child["workflow_status"])
-    assertEquals("preplan", child["current_step_id"])
+    // GoalChildPlanningHydrator sets currentStepId=implement after completed preplan+plan
+    // (FeatureTaskRuntimePhaseWorkflowDefinition). markBlocked's firstUnfinishedStepId scan parks a
+    // no-terminal hydrated child there — not at preplan.
+    assertEquals("implement", child["current_step_id"])
   }
 
   @Test
@@ -1363,8 +1361,9 @@ class CliGoalExecutionOptionsTest {
       listOf("--db", fixture.dbPath.toString(), "goal", "status", "SKILL-901", "--agent", "codex"),
       fixture.context(launcher = NoopGoalTestAgentRunLauncher),
     )
-    val staleWorkflow = runGoalJson(
-      listOf("--db", fixture.dbPath.toString(), "workflow", "get", staleChild, "--format", "json"),
+    val staleWorkflow = RuntimeWorkflowTestSupport.get(
+      fixture.dbPath,
+      staleChild,
       fixture.context(launcher = NoopGoalTestAgentRunLauncher),
     )
 
@@ -1393,7 +1392,7 @@ class CliGoalUnaddressedFindingsTest {
           "finding_ordinal, severity, issue_category, location, summary) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
       ).use { statement ->
         statement.setString(1, "SKILL-901")
-        statement.setString(2, "wfl-poison-1")
+        statement.setString(2, "wftr-poison-1")
         statement.setInt(3, 1)
         statement.setInt(4, 1)
         statement.setInt(5, 1)
@@ -1497,197 +1496,8 @@ class CliGoalProgressIdleTimeoutTest {
   }
 }
 
-/**
- * SKILL-95 (AC4, AC9): opencode is prose-only. Kept in its own class so it does not push the broad
- * [CliGoalRuntimeTest] over the detekt LargeClass threshold (the file's established convention).
- */
-class CliGoalOpencodeRefusalTest {
-  @Test
-  fun `goal runtime run refuses when the resolved agent is opencode`() {
-    // A goal runtime run that resolves the agent to opencode must refuse before spawning any child
-    // feature-task subprocess, with the actionable message naming prose.
-    val fixture = goalFixture(subtaskCount = 1)
-    val launcher = GoalFixtureAgentRunLauncher(fixture)
-    val command = listOf(
-      "--db",
-      fixture.dbPath.toString(),
-      "goal",
-      "SKILL-901",
-      "--agent",
-      "opencode",
-      "--repo-root",
-      fixture.tempDir.toString(),
-    )
-
-    val result = CliRuntime.run(command, fixture.context(launcher = launcher))
-
-    assertEquals(1, result.exitCode, result.stdout)
-    assertContains(result.stdout, "Runtime mode is not supported on opencode")
-    assertContains(result.stdout, "bill-feature-task-prose")
-    assertContains(result.stdout, "bill-feature-goal mode:prose")
-    // No opencode child subprocess is spawned.
-    assertEquals(emptyList(), launcher.requests, result.stdout)
-  }
-
-  @Test
-  fun `goal runtime run refuses when the agent override is opencode`() {
-    // The --agent-override route must also refuse before spawning a child.
-    val fixture = goalFixture(subtaskCount = 1)
-    val launcher = GoalFixtureAgentRunLauncher(fixture)
-
-    val result = CliRuntime.run(
-      fixture.goalCommand(extra = listOf("--agent-override", "opencode")),
-      fixture.context(launcher = launcher),
-    )
-
-    assertEquals(1, result.exitCode, result.stdout)
-    assertContains(result.stdout, "Runtime mode is not supported on opencode")
-    assertEquals(emptyList(), launcher.requests, result.stdout)
-  }
-
-  @Test
-  fun `goal runtime run refuses when the host invoking agent is detected as opencode`() {
-    // SKILL-95 AC4: implicit host resolution (no --agent, no SKILL_BILL_AGENT) must refuse identically,
-    // since the goal guard resolves through the same invoking-agent detection as the explicit routes.
-    val fixture = goalFixture(subtaskCount = 1)
-    val launcher = GoalFixtureAgentRunLauncher(fixture)
-    val command = buildList {
-      add("--db")
-      add(fixture.dbPath.toString())
-      add("goal")
-      add("SKILL-901")
-      add("--repo-root")
-      add(fixture.tempDir.toString())
-    }
-
-    val result = CliRuntime.run(
-      command,
-      CliRuntimeContext(
-        userHome = fixture.tempDir,
-        workflowGitOperations = GoalTestWorkflowGitOperations,
-        agentRunLauncher = launcher,
-        goalPullRequestPort = fixture.pullRequests,
-        environment = mapOf("OPENCODE" to "1"),
-        executableLookup = ExecutableLookup { true },
-      ),
-    )
-
-    assertEquals(1, result.exitCode, result.stdout)
-    assertContains(result.stdout, "Runtime mode is not supported on opencode")
-    assertEquals(emptyList(), launcher.requests, result.stdout)
-  }
-}
-
-/**
- * SKILL-103 (AC2, AC4, AC5, AC6): zcode mirrors opencode's prose-only runtime refusal shape, and
- * goal status reports the persisted run agent regardless of the caller's resolution chain. Kept in
- * its own class to stay under the detekt LargeClass threshold (the file's established convention).
- */
-class CliGoalZcodeRefusalTest {
-  @Test
-  fun `goal runtime run refuses when the resolved agent is zcode`() {
-    val fixture = goalFixture(subtaskCount = 1)
-    val launcher = GoalFixtureAgentRunLauncher(fixture)
-    val command = listOf(
-      "--db",
-      fixture.dbPath.toString(),
-      "goal",
-      "SKILL-901",
-      "--agent",
-      "zcode",
-      "--repo-root",
-      fixture.tempDir.toString(),
-    )
-
-    val result = CliRuntime.run(command, fixture.context(launcher = launcher))
-
-    assertEquals(1, result.exitCode, result.stdout)
-    assertContains(result.stdout, "Runtime mode is not supported on opencode or zcode")
-    assertContains(result.stdout, "bill-feature-task-prose")
-    assertContains(result.stdout, "bill-feature-goal mode:prose")
-    assertEquals(emptyList(), launcher.requests, result.stdout)
-  }
-
-  @Test
-  fun `goal runtime run refuses when the agent override is zcode`() {
-    val fixture = goalFixture(subtaskCount = 1)
-    val launcher = GoalFixtureAgentRunLauncher(fixture)
-
-    val result = CliRuntime.run(
-      fixture.goalCommand(extra = listOf("--agent-override", "zcode")),
-      fixture.context(launcher = launcher),
-    )
-
-    assertEquals(1, result.exitCode, result.stdout)
-    assertContains(result.stdout, "Runtime mode is not supported on opencode or zcode")
-    assertEquals(emptyList(), launcher.requests, result.stdout)
-  }
-
-  @Test
-  fun `goal runtime run refuses when the host invoking agent is detected as zcode via env`() {
-    // SKILL-103 AC4/AC6: a flag-less invocation from a zcode-marked env resolves the invoking agent
-    // to zcode through the detection chain, and the shared refusal gate refuses before spawning.
-    val fixture = goalFixture(subtaskCount = 1)
-    val launcher = GoalFixtureAgentRunLauncher(fixture)
-    val command = buildList {
-      add("--db")
-      add(fixture.dbPath.toString())
-      add("goal")
-      add("SKILL-901")
-      add("--repo-root")
-      add(fixture.tempDir.toString())
-    }
-
-    val result = CliRuntime.run(
-      command,
-      CliRuntimeContext(
-        userHome = fixture.tempDir,
-        workflowGitOperations = GoalTestWorkflowGitOperations,
-        agentRunLauncher = launcher,
-        goalPullRequestPort = fixture.pullRequests,
-        environment = mapOf("ZCODE_APP_VERSION" to "1.0.0", "ZCODE_BASE_URL" to "https://zcode.example"),
-        executableLookup = ExecutableLookup { true },
-      ),
-    )
-
-    assertEquals(1, result.exitCode, result.stdout)
-    assertContains(result.stdout, "Runtime mode is not supported on opencode or zcode")
-    assertEquals(emptyList(), launcher.requests, result.stdout)
-  }
-
-  @Test
-  fun `goal runtime run refuses when SKILL_BILL_AGENT resolves to zcode`() {
-    val fixture = goalFixture(subtaskCount = 1)
-    val launcher = GoalFixtureAgentRunLauncher(fixture)
-    val command = buildList {
-      add("--db")
-      add(fixture.dbPath.toString())
-      add("goal")
-      add("SKILL-901")
-      add("--repo-root")
-      add(fixture.tempDir.toString())
-    }
-
-    val result = CliRuntime.run(
-      command,
-      CliRuntimeContext(
-        userHome = fixture.tempDir,
-        workflowGitOperations = GoalTestWorkflowGitOperations,
-        agentRunLauncher = launcher,
-        goalPullRequestPort = fixture.pullRequests,
-        environment = mapOf("CLAUDECODE" to "1", "SKILL_BILL_AGENT" to "zcode"),
-        executableLookup = ExecutableLookup { true },
-      ),
-    )
-
-    assertEquals(1, result.exitCode, result.stdout)
-    assertContains(result.stdout, "Runtime mode is not supported on opencode or zcode")
-    assertEquals(emptyList(), launcher.requests, result.stdout)
-  }
-}
-
 private fun startRunningRuntimeGoalChild(fixture: GoalCliFixture): String {
-  val proseWorkflowId = startRunningGoalChild(fixture)
+  val childWorkflowId = startRunningGoalChild(fixture)
   val component = RuntimeComponent::class.create(
     fixture.context(launcher = NoopGoalTestAgentRunLauncher).toRuntimeContext(),
   )
@@ -1700,11 +1510,11 @@ private fun startRunningRuntimeGoalChild(fixture: GoalCliFixture): String {
   DatabaseRuntime.ensureDatabase(fixture.dbPath).use { connection ->
     connection.prepareStatement(
       "UPDATE feature_task_workflows SET artifacts_json = replace(artifacts_json, ?, ?) " +
-        "WHERE mode = 'prose' AND instr(artifacts_json, ?) > 0",
+        "WHERE mode = 'runtime' AND instr(artifacts_json, ?) > 0",
     ).use { statement ->
-      statement.setString(1, proseWorkflowId)
+      statement.setString(1, childWorkflowId)
       statement.setString(2, runtimeWorkflow.workflowId)
-      statement.setString(3, proseWorkflowId)
+      statement.setString(3, childWorkflowId)
       assertTrue(statement.executeUpdate() >= 1)
     }
   }
@@ -1745,19 +1555,11 @@ private fun clearWorkerLease(fixture: GoalCliFixture, workflowId: String) {
   }
 }
 
-private fun startRunningGoalChild(fixture: GoalCliFixture): String = runGoalJson(
-  listOf(
-    "--db",
-    fixture.dbPath.toString(),
-    "workflow",
-    "continue",
-    "SKILL-901",
-    "--subtask-id",
-    "1",
-    "--format",
-    "json",
-  ),
-  fixture.context(launcher = NoopGoalTestAgentRunLauncher),
+private fun startRunningGoalChild(fixture: GoalCliFixture): String = RuntimeWorkflowTestSupport.continueByIssueKey(
+  dbPath = fixture.dbPath,
+  issueKey = "SKILL-901",
+  subtaskId = 1,
+  context = fixture.context(launcher = NoopGoalTestAgentRunLauncher),
 )["workflow_id"] as String
 
 private fun recordRunningGoalChildProgress(
@@ -1766,109 +1568,101 @@ private fun recordRunningGoalChildProgress(
   sequence: Int,
   message: String = "editing runtime files",
 ) {
-  runGoalJson(
-    workflowUpdateCommand(
-      WorkflowUpdateFixture(
-        dbPath = fixture.dbPath,
-        workflowId = childWorkflowId,
-        currentStep = "implement",
-        stepUpdates = """[{"step_id":"implement","status":"running","attempt_count":1}]""",
-        artifactsPatch = jsonString(
-          mapOf(
-            "preplan_digest" to mapOf("ready" to true),
-            "plan" to mapOf("mode" to "implement", "task_count" to 1),
-            "progress_event" to mapOf(
-              "step_id" to "implement",
-              "attempt_count" to 1,
-              "source" to "phase_subagent",
-              "kind" to "durable_progress",
-              "message" to message,
-              "sequence" to sequence,
-              "timestamp" to "2026-06-01T00:00:00Z",
-            ),
+  runtimeWorkflowUpdate(
+    fixture,
+    WorkflowUpdateFixture(
+      dbPath = fixture.dbPath,
+      workflowId = childWorkflowId,
+      currentStep = "implement",
+      stepUpdates = """[{"step_id":"implement","status":"running","attempt_count":1}]""",
+      artifactsPatch = jsonString(
+        mapOf(
+          "preplan_digest" to mapOf("ready" to true),
+          "plan" to mapOf("mode" to "implement", "task_count" to 1),
+          "progress_event" to mapOf(
+            "step_id" to "implement",
+            "attempt_count" to 1,
+            "source" to "phase_subagent",
+            "kind" to "durable_progress",
+            "message" to message,
+            "sequence" to sequence,
+            "timestamp" to "2026-06-01T00:00:00Z",
           ),
         ),
       ),
     ),
-    fixture.context(launcher = NoopGoalTestAgentRunLauncher),
   )
 }
 
 private fun advanceRunningGoalChildToReview(fixture: GoalCliFixture, childWorkflowId: String) {
-  runGoalJson(
-    workflowUpdateCommand(
-      WorkflowUpdateFixture(
-        dbPath = fixture.dbPath,
-        workflowId = childWorkflowId,
-        currentStep = "review",
-        stepUpdates = """[{"step_id":"review","status":"running","attempt_count":1}]""",
-        artifactsPatch = jsonString(emptyMap<String, Any?>()),
-      ),
+  runtimeWorkflowUpdate(
+    fixture,
+    WorkflowUpdateFixture(
+      dbPath = fixture.dbPath,
+      workflowId = childWorkflowId,
+      currentStep = "review",
+      stepUpdates = """[{"step_id":"review","status":"running","attempt_count":1}]""",
+      artifactsPatch = jsonString(emptyMap<String, Any?>()),
     ),
-    fixture.context(launcher = NoopGoalTestAgentRunLauncher),
   )
 }
 
 private fun completeRunningGoalChild(fixture: GoalCliFixture, childWorkflowId: String) {
-  runGoalJson(
-    workflowUpdateCommand(
-      WorkflowUpdateFixture(
-        dbPath = fixture.dbPath,
-        workflowId = childWorkflowId,
-        workflowStatus = "completed",
-        currentStep = "commit_push",
-        stepUpdates = """[{"step_id":"commit_push","status":"completed","attempt_count":1}]""",
-        artifactsPatch = jsonString(
-          mapOf(
-            "commit_push_result" to mapOf("commit_sha" to "sha-1"),
-            "goal_continuation_outcome" to mapOf(
-              "issue_key" to "SKILL-901",
-              "subtask_id" to 1,
-              "status" to "complete",
-              "workflow_id" to childWorkflowId,
-              "commit_sha" to "sha-1",
-              "last_resumable_step" to "commit_push",
-            ),
+  runtimeWorkflowUpdate(
+    fixture,
+    WorkflowUpdateFixture(
+      dbPath = fixture.dbPath,
+      workflowId = childWorkflowId,
+      workflowStatus = "completed",
+      currentStep = "commit_push",
+      stepUpdates = """[{"step_id":"commit_push","status":"completed","attempt_count":1}]""",
+      artifactsPatch = jsonString(
+        mapOf(
+          "commit_push_result" to mapOf("commit_sha" to "sha-1"),
+          "goal_continuation_outcome" to mapOf(
+            "issue_key" to "SKILL-901",
+            "subtask_id" to 1,
+            "status" to "complete",
+            "workflow_id" to childWorkflowId,
+            "commit_sha" to "sha-1",
+            "last_resumable_step" to "commit_push",
           ),
         ),
       ),
     ),
-    fixture.context(launcher = NoopGoalTestAgentRunLauncher),
   )
 }
 
 private fun seedAuthoritativeCompleteChild(fixture: GoalCliFixture) {
-  val authoritativeChild = runGoalJson(
-    listOf("--db", fixture.dbPath.toString(), "workflow", "open", "--format", "json"),
+  val authoritativeChild = RuntimeWorkflowTestSupport.open(
+    fixture.dbPath,
     fixture.context(launcher = NoopGoalTestAgentRunLauncher),
   )["workflow_id"] as String
-  runGoalJson(
-    workflowUpdateCommand(
-      WorkflowUpdateFixture(
-        dbPath = fixture.dbPath,
-        workflowId = authoritativeChild,
-        currentStep = "commit_push",
-        stepUpdates = """[{"step_id":"commit_push","status":"completed","attempt_count":1}]""",
-        artifactsPatch = jsonString(
-          mapOf(
-            "goal_continuation" to mapOf(
-              "issue_key" to "SKILL-901",
-              "subtask_id" to 1,
-              "suppress_pr" to true,
-            ),
-            "goal_continuation_outcome" to mapOf(
-              "issue_key" to "SKILL-901",
-              "subtask_id" to 1,
-              "status" to "complete",
-              "workflow_id" to authoritativeChild,
-              "commit_sha" to "sha-1",
-              "last_resumable_step" to "commit_push",
-            ),
+  runtimeWorkflowUpdate(
+    fixture,
+    WorkflowUpdateFixture(
+      dbPath = fixture.dbPath,
+      workflowId = authoritativeChild,
+      currentStep = "commit_push",
+      stepUpdates = """[{"step_id":"commit_push","status":"completed","attempt_count":1}]""",
+      artifactsPatch = jsonString(
+        mapOf(
+          "goal_continuation" to mapOf(
+            "issue_key" to "SKILL-901",
+            "subtask_id" to 1,
+            "suppress_pr" to true,
+          ),
+          "goal_continuation_outcome" to mapOf(
+            "issue_key" to "SKILL-901",
+            "subtask_id" to 1,
+            "status" to "complete",
+            "workflow_id" to authoritativeChild,
+            "commit_sha" to "sha-1",
+            "last_resumable_step" to "commit_push",
           ),
         ),
       ),
     ),
-    fixture.context(launcher = NoopGoalTestAgentRunLauncher),
   )
 }
 
@@ -1943,21 +1737,26 @@ internal class GoalFixtureAgentRunLauncher(
     skillRequest.outputSink.write(
       AgentRunOutputStream.STDERR,
       "skill-bill: workflow progress: subtask $subtaskId " +
-        "workflow wfl-$subtaskId step implement durable_progress step=implement\n",
+        "workflow wftr-$subtaskId step implement durable_progress step=implement\n",
     )
     repeat(childDiagnosticChatterCount) {
       skillRequest.outputSink.write(
         AgentRunOutputStream.STDERR,
         "skill-bill: status heartbeat (90s): child run still active; workflow: " +
-          "subtask $subtaskId workflow wfl-$subtaskId step implement durable_progress\n",
+          "subtask $subtaskId workflow wftr-$subtaskId step implement durable_progress\n",
       )
     }
     val dbPath = requireNotNull(skillRequest.dbPathOverride)
-    val workflowId = startSubtaskWorkflow(subtaskId, dbPath)
+    // Bind to the GoalRunner-preopened hydrated child (assignedWorkflowId on first open, else
+    // childWorkflowId on resume). continueByIssueKey would Start a second unhydrated preplan row
+    // and overwrite the manifest pointer — the SKILL-179 no-terminal park-at-preplan bug.
+    val workflowId = startSubtaskWorkflow(skillRequest, dbPath)
     if (subtaskId == failSubtask) {
       failSubtaskWorkflow(workflowId, Path.of(dbPath))
     } else if (subtaskId == noTerminalSubtask) {
-      // Leave the child workflow running so goal reconciliation must close it.
+      // Leave the child running so goal reconciliation must close it; stamp implement running so
+      // the blocked row mirrors a live child at the GoalChildPlanningHydrator boundary.
+      stampImplementRunning(workflowId, Path.of(dbPath))
     } else {
       completeSubtaskWorkflow(workflowId, subtaskId, Path.of(dbPath))
     }
@@ -1988,53 +1787,66 @@ internal class GoalFixtureAgentRunLauncher(
     )
   }
 
-  private fun startSubtaskWorkflow(subtaskId: Int, dbPath: String): String {
-    val payload = runGoalJson(
-      listOf(
-        "--db",
-        dbPath,
-        "workflow",
-        "continue",
-        "SKILL-901",
-        "--subtask-id",
-        subtaskId.toString(),
-        "--format",
-        "json",
-      ),
+  private fun startSubtaskWorkflow(
+    skillRequest: skillbill.ports.agentrun.model.SkillRunRequest,
+    dbPath: String,
+  ): String {
+    val continuation = requireNotNull(skillRequest.goalContinuation) {
+      "Goal child launch requires goalContinuation with a pre-opened workflow id."
+    }
+    val workflowId = continuation.assignedWorkflowId?.takeIf(String::isNotBlank)
+      ?: continuation.childWorkflowId?.takeIf(String::isNotBlank)
+      ?: error("Goal child launch requires assignedWorkflowId or childWorkflowId.")
+    // Confirm the GoalRunner-hydrated row exists (get/update of the assigned id, not Start).
+    RuntimeWorkflowTestSupport.get(
+      Path.of(dbPath),
+      workflowId,
       fixture.context(launcher = this),
     )
-    return payload["workflow_id"] as String
+    return workflowId
+  }
+
+  private fun stampImplementRunning(workflowId: String, dbPath: Path) {
+    runtimeWorkflowUpdate(
+      fixture,
+      WorkflowUpdateFixture(
+        dbPath = dbPath,
+        workflowId = workflowId,
+        currentStep = "implement",
+        stepUpdates = """[{"step_id":"implement","status":"running","attempt_count":1}]""",
+        artifactsPatch = jsonString(emptyMap<String, Any?>()),
+      ),
+      launcher = this,
+    )
   }
 
   private fun completeSubtaskWorkflow(workflowId: String, subtaskId: Int, dbPath: Path) {
-    runGoalJson(
-      workflowUpdateCommand(
-        WorkflowUpdateFixture(
-          dbPath = dbPath,
-          workflowId = workflowId,
-          workflowStatus = "completed",
-          currentStep = "commit_push",
-          stepUpdates = """[{"step_id":"commit_push","status":"completed","attempt_count":1}]""",
-          artifactsPatch = jsonString(mapOf("commit_push_result" to mapOf("commit_sha" to "sha-$subtaskId"))),
-        ),
+    runtimeWorkflowUpdate(
+      fixture,
+      WorkflowUpdateFixture(
+        dbPath = dbPath,
+        workflowId = workflowId,
+        workflowStatus = "completed",
+        currentStep = "commit_push",
+        stepUpdates = """[{"step_id":"commit_push","status":"completed","attempt_count":1}]""",
+        artifactsPatch = jsonString(mapOf("commit_push_result" to mapOf("commit_sha" to "sha-$subtaskId"))),
       ),
-      fixture.context(launcher = this),
+      launcher = this,
     )
   }
 
   private fun failSubtaskWorkflow(workflowId: String, dbPath: Path) {
-    runGoalJson(
-      workflowUpdateCommand(
-        WorkflowUpdateFixture(
-          dbPath = dbPath,
-          workflowId = workflowId,
-          workflowStatus = "failed",
-          currentStep = "review",
-          stepUpdates = """[{"step_id":"review","status":"failed","attempt_count":1}]""",
-          artifactsPatch = jsonString(mapOf("blocked_reason" to "forced failure")),
-        ),
+    runtimeWorkflowUpdate(
+      fixture,
+      WorkflowUpdateFixture(
+        dbPath = dbPath,
+        workflowId = workflowId,
+        workflowStatus = "failed",
+        currentStep = "review",
+        stepUpdates = """[{"step_id":"review","status":"failed","attempt_count":1}]""",
+        artifactsPatch = jsonString(mapOf("blocked_reason" to "forced failure")),
       ),
-      fixture.context(launcher = this),
+      launcher = this,
     )
   }
 }
@@ -2117,22 +1929,20 @@ internal fun goalFixture(subtaskCount: Int): GoalCliFixture {
 }
 
 private fun seedParentWorkflow(fixture: GoalCliFixture) {
-  val opened = runGoalJson(
-    listOf("--db", fixture.dbPath.toString(), "workflow", "open", "--format", "json"),
+  val opened = RuntimeWorkflowTestSupport.open(
+    fixture.dbPath,
     fixture.context(launcher = NoopGoalTestAgentRunLauncher),
   )
   val workflowId = opened["workflow_id"] as String
-  runGoalJson(
-    workflowUpdateCommand(
-      WorkflowUpdateFixture(
-        dbPath = fixture.dbPath,
-        workflowId = workflowId,
-        currentStep = "plan",
-        stepUpdates = """[{"step_id":"plan","status":"completed","attempt_count":1}]""",
-        artifactsPatch = parentArtifactsPatch(fixture),
-      ),
+  runtimeWorkflowUpdate(
+    fixture,
+    WorkflowUpdateFixture(
+      dbPath = fixture.dbPath,
+      workflowId = workflowId,
+      currentStep = "plan",
+      stepUpdates = """[{"step_id":"plan","status":"completed","attempt_count":1}]""",
+      artifactsPatch = parentArtifactsPatch(fixture),
     ),
-    fixture.context(launcher = NoopGoalTestAgentRunLauncher),
   )
 }
 
@@ -2164,30 +1974,19 @@ private data class WorkflowUpdateFixture(
   val artifactsPatch: String,
 )
 
-private fun workflowUpdateCommand(fixture: WorkflowUpdateFixture): List<String> = listOf(
-  "--db",
-  fixture.dbPath.toString(),
-  "workflow",
-  "update",
-  fixture.workflowId,
-  "--workflow-status",
-  fixture.workflowStatus,
-  "--current-step-id",
-  fixture.currentStep,
-  "--step-updates",
-  fixture.stepUpdates,
-  "--artifacts-patch",
-  fixture.artifactsPatch,
-  "--format",
-  "json",
+private fun runtimeWorkflowUpdate(
+  fixture: GoalCliFixture,
+  update: WorkflowUpdateFixture,
+  launcher: AgentRunLauncher = NoopGoalTestAgentRunLauncher,
+): Map<String, Any?> = RuntimeWorkflowTestSupport.update(
+  dbPath = update.dbPath,
+  workflowId = update.workflowId,
+  workflowStatus = update.workflowStatus,
+  currentStepId = update.currentStep,
+  stepUpdates = RuntimeWorkflowTestSupport.parseStepUpdates(update.stepUpdates),
+  artifactsPatch = RuntimeWorkflowTestSupport.parseArtifactsPatch(update.artifactsPatch),
+  context = fixture.context(launcher = launcher),
 )
-
-private fun runGoalJson(arguments: List<String>, context: CliRuntimeContext): Map<String, Any?> {
-  val result = CliRuntime.run(arguments, context)
-  assertEquals(0, result.exitCode, result.stdout)
-  val parsed = requireNotNull(JsonSupport.parseObjectOrNull(result.stdout))
-  return requireNotNull(JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(parsed)))
-}
 
 private fun jsonString(value: Any?): String = JsonSupport.json.encodeToString(
   kotlinx.serialization.json.JsonElement.serializer(),

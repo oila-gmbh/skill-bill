@@ -65,8 +65,8 @@ class CliInstallPlanApplyRuntimeTest {
     assertEquals(fixture.home.resolve(".copilot/skills").toString(), agentsByName.getValue("copilot")["path"])
     assertEquals(fixture.home.resolve(".claude/skills").toString(), agentsByName.getValue("claude")["path"])
     assertEquals(fixture.home.resolve(".agents/skills").toString(), agentsByName.getValue("codex")["path"])
-    assertEquals(fixture.home.resolve(".config/opencode/skills").toString(), agentsByName.getValue("opencode")["path"])
     assertEquals(fixture.home.resolve(".junie/skills").toString(), agentsByName.getValue("junie")["path"])
+    assertEquals(fixture.home.resolve(".cursor/skills").toString(), agentsByName.getValue("cursor")["path"])
     assertEquals(listOf("kotlin"), payload["selected_platforms"])
     val packsBySlug = payload.listOfMaps("platform_packs").associateBy { pack -> pack["slug"] as String }
     assertEquals(setOf("kmp", "kotlin"), packsBySlug.keys)
@@ -510,9 +510,9 @@ class CliInstallPlanApplyRuntimeTest {
     "--agent",
     "codex",
     "--agent",
-    "opencode",
-    "--agent",
     "junie",
+    "--agent",
+    "cursor",
     "--platform",
     "kotlin",
     "--telemetry",
@@ -695,7 +695,7 @@ class CliInstallPlanApplyRuntimeTest {
   )
 }
 
-private val supportedAgents = setOf("copilot", "claude", "codex", "opencode", "junie")
+private val supportedAgents = setOf("copilot", "claude", "codex", "junie", "cursor")
 
 private fun installPlanApplyFixture(): InstallPlanApplyFixture {
   val home = Files.createTempDirectory("skillbill-cli-install-plan-apply-home")
@@ -952,8 +952,8 @@ private fun createDetectedAgentHomes(home: Path) {
   Files.createDirectories(home.resolve(".copilot"))
   Files.createDirectories(home.resolve(".claude"))
   Files.createDirectories(home.resolve(".codex"))
-  Files.createDirectories(home.resolve(".config/opencode"))
   Files.createDirectories(home.resolve(".junie"))
+  Files.createDirectories(home.resolve(".cursor"))
 }
 
 private fun writeTelemetryConfig(home: Path, level: String): Path {
@@ -998,7 +998,7 @@ private fun singleCodexPlanGoldenPayload(fixture: InstallPlanApplyFixture): Map<
   val paths = SingleCodexGoldenPaths(fixture)
   return mapOf(
     "status" to "planned",
-    "contract_version" to "0.1",
+    "contract_version" to "0.2",
     "agents" to listOf(codexAgentGoldenPayload(paths)),
     "platform_packs" to emptyList<Map<String, Any?>>(),
     "selected_platforms" to emptyList<String>(),

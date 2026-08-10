@@ -50,15 +50,15 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
   @Test
   fun `reads progress from task runtime workflows without probing prose mode`() {
     val workflows = InMemoryWorkflowStates()
-    workflows.saveFeatureTaskRuntimeWorkflow(taskRuntimeWorkflowRecord("wfl-task-runtime"))
+    workflows.saveFeatureTaskRuntimeWorkflow(taskRuntimeWorkflowRecord("wftr-task-runtime"))
     val store = WorkflowGoalRunnerOutcomeStore(
       database = FakeDatabaseSessionFactory(workflows),
       workflowSnapshotValidator = testWorkflowSnapshotValidator,
     )
 
-    val progress = requireNotNull(store.progress("wfl-task-runtime"))
+    val progress = requireNotNull(store.progress("wftr-task-runtime"))
 
-    assertEquals("wfl-task-runtime", progress.workflowId)
+    assertEquals("wftr-task-runtime", progress.workflowId)
     assertEquals("running", progress.workflowStatus)
     assertEquals("implement", progress.currentStepId)
   }
@@ -66,7 +66,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
   @Test
   fun `appends attempt ledger entries to task runtime workflows without probing prose mode`() {
     val workflows = InMemoryWorkflowStates()
-    workflows.saveFeatureTaskRuntimeWorkflow(taskRuntimeWorkflowRecord("wfl-task-runtime"))
+    workflows.saveFeatureTaskRuntimeWorkflow(taskRuntimeWorkflowRecord("wftr-task-runtime"))
     val store = WorkflowGoalRunnerOutcomeStore(
       database = FakeDatabaseSessionFactory(workflows),
       workflowSnapshotValidator = testWorkflowSnapshotValidator,
@@ -74,7 +74,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
 
     val recorded = store.recordAttemptLedgerEntry(
       GoalRunnerAttemptLedgerRecordRequest(
-        workflowId = "wfl-task-runtime",
+        workflowId = "wftr-task-runtime",
         entry = GoalAttemptLedgerEntry(
           action = GoalAttemptLedgerAction.FINAL_RECONCILED_OUTCOME,
           sequenceNumber = 1,
@@ -85,8 +85,8 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
     )
 
     assertTrue(recorded)
-    assertNull(workflows.getFeatureImplementWorkflow("wfl-task-runtime"))
-    val saved = requireNotNull(workflows.getFeatureTaskRuntimeWorkflow("wfl-task-runtime")).toSnapshot()
+    assertNull(workflows.getFeatureImplementWorkflow("wftr-task-runtime"))
+    val saved = requireNotNull(workflows.getFeatureTaskRuntimeWorkflow("wftr-task-runtime")).toSnapshot()
     val artifacts = decodeArtifacts(saved.artifactsJson)
     val ledger = artifacts["goal_attempt_ledger"] as List<*>
     val entry = ledger.single() as Map<*, *>
@@ -97,14 +97,14 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
   @Test
   fun `appends worker subtask request outcomes to task runtime workflows`() {
     val workflows = InMemoryWorkflowStates()
-    workflows.saveFeatureTaskRuntimeWorkflow(taskRuntimeWorkflowRecord("wfl-task-runtime"))
+    workflows.saveFeatureTaskRuntimeWorkflow(taskRuntimeWorkflowRecord("wftr-task-runtime"))
     val store = WorkflowGoalRunnerOutcomeStore(
       database = FakeDatabaseSessionFactory(workflows),
       workflowSnapshotValidator = testWorkflowSnapshotValidator,
     )
 
     val recorded = store.recordWorkerSubtaskRequestOutcomes(
-      workflowId = "wfl-task-runtime",
+      workflowId = "wftr-task-runtime",
       outcomes = listOf(
         GoalRunnerWorkerSubtaskRequestOutcome.Rejected(
           sourceStream = "stdout",
@@ -116,8 +116,8 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
     )
 
     assertTrue(recorded)
-    assertNull(workflows.getFeatureImplementWorkflow("wfl-task-runtime"))
-    val saved = requireNotNull(workflows.getFeatureTaskRuntimeWorkflow("wfl-task-runtime")).toSnapshot()
+    assertNull(workflows.getFeatureImplementWorkflow("wftr-task-runtime"))
+    val saved = requireNotNull(workflows.getFeatureTaskRuntimeWorkflow("wftr-task-runtime")).toSnapshot()
     val artifacts = decodeArtifacts(saved.artifactsJson)
     val outcomes = artifacts["goal_worker_subtask_request_outcomes"] as List<*>
     val rejected = outcomes.single() as Map<*, *>
@@ -139,7 +139,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
     )
     workflows.saveFeatureTaskRuntimeWorkflow(
       goalReviewWorkflowRecord(
-        workflowId = "wfl-goal-review",
+        workflowId = "wftr-goal-review",
         state = state,
         rawReviewResult = """
           {"verdict":"changes_requested","produced_outputs":{}}
@@ -153,10 +153,10 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
     )
 
     assertFailsWith<InvalidGoalSubtaskReviewStateSchemaError> {
-      store.unemittedGoalReviewPasses("wfl-goal-review")
+      store.unemittedGoalReviewPasses("wftr-goal-review")
     }
     assertFailsWith<InvalidGoalSubtaskReviewStateSchemaError> {
-      store.acknowledgeGoalReviewPass("wfl-goal-review", 1)
+      store.acknowledgeGoalReviewPass("wftr-goal-review", 1)
     }
   }
 
@@ -391,7 +391,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
             "suppress_pr" to true,
           ),
         ),
-        sessionId = "fis-001",
+        sessionId = "ftr-001",
       ),
     ).toRecord().copy(updatedAt = updatedAt)
   }
@@ -422,7 +422,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
           GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to state.toArtifactMap(),
           GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY to mapOf("1" to rawReviewResult),
         ),
-        sessionId = "fis-001",
+        sessionId = "ftr-001",
       ),
     ).toRecord()
   }
@@ -462,7 +462,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
           ),
           "goal_progress_latest_event" to declaredEvent.toArtifactMap(),
         ),
-        sessionId = "fis-001",
+        sessionId = "ftr-001",
       ),
     ).toRecord()
   }
@@ -479,7 +479,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
         currentStepId = "implement",
         stepUpdates = null,
         artifactsPatch = emptyMap(),
-        sessionId = "fis-001",
+        sessionId = "ftr-001",
       ),
     ).toRecord()
   }
@@ -507,7 +507,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
             "suppress_pr" to true,
           ),
         ),
-        sessionId = "fis-001",
+        sessionId = "ftr-001",
       ),
     ).toRecord()
   }

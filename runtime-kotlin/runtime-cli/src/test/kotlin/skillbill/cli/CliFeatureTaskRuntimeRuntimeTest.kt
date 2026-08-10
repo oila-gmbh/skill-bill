@@ -1,12 +1,8 @@
 package skillbill.cli
 
-import skillbill.application.model.WorkflowFamilyKind
-import skillbill.application.model.WorkflowOpenResult
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliRuntimeContext
 import skillbill.contracts.JsonSupport
-import skillbill.di.RuntimeComponent
-import skillbill.di.create
 import skillbill.error.MalformedMachineConfigError
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.AgentRunLauncher
@@ -44,7 +40,6 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
-import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.minutes
@@ -473,99 +468,6 @@ class CliFeatureTaskRuntimeRuntimeTest {
   }
 
   @Test
-  fun `feature-task-runtime run refuses when the resolved agent is opencode via SKILL_BILL_AGENT`() {
-    // SKILL-95 AC3/AC9: opencode is prose-only. A runtime run whose agent resolves to opencode
-    // (here SKILL_BILL_AGENT over the detected invoking context) must fail fast with the actionable
-    // refusal message, opening no workflow and spawning no phase.
-    val fixture = runtimeFixture()
-    val launcher = RecordingPhaseLauncher()
-
-    val result = CliRuntime.run(
-      fixture.runCommand(),
-      fixture.context(launcher, environment = mapOf("CLAUDECODE" to "1", "SKILL_BILL_AGENT" to "opencode")),
-    )
-
-    assertEquals(1, result.exitCode, result.stdout)
-    assertContains(result.stdout, "Runtime mode is not supported on opencode")
-    assertContains(result.stdout, "bill-feature-task-prose")
-    assertContains(result.stdout, "bill-feature-goal mode:prose")
-    // No phase is launched and no workflow is opened before the refusal.
-    assertEquals(emptyList(), launcher.requests, result.stdout)
-    assertFalse(result.stdout.contains("workflow_id:"), result.stdout)
-  }
-
-  @Test
-  fun `feature-task-runtime run refuses when the host invoking agent is detected as opencode`() {
-    // SKILL-95 AC3/AC9: implicit resolution must also refuse — when opencode is detected as the
-    // invoking host (no --agent / SKILL_BILL_AGENT), runtime still fails fast with the message.
-    val fixture = runtimeFixture()
-    val launcher = RecordingPhaseLauncher()
-
-    val result = CliRuntime.run(
-      fixture.runCommand(),
-      fixture.context(launcher, environment = mapOf("OPENCODE" to "1")),
-    )
-
-    assertEquals(1, result.exitCode, result.stdout)
-    assertContains(result.stdout, "Runtime mode is not supported on opencode")
-    assertEquals(emptyList(), launcher.requests, result.stdout)
-    assertFalse(result.stdout.contains("workflow_id:"), result.stdout)
-  }
-
-  @Test
-  fun `feature-task-runtime run refuses opencode from agent-override phase-agent and parallel-review routes`() {
-    // SKILL-95 AC5/AC9: opencode reaching a runtime phase by ANY route must refuse at the preflight,
-    // and the predicate is case- and whitespace-insensitive (`OpenCode`, ` opencode `).
-    listOf(
-      listOf("--agent", "codex", "--agent-override", "opencode"),
-      listOf("--agent", "codex", "--phase-agent", "plan=opencode"),
-      listOf("--agent", "codex", "--parallel-review-agent", "opencode"),
-      listOf("--agent", "OpenCode"),
-      listOf("--agent", " opencode "),
-    ).forEach { extra ->
-      val fixture = runtimeFixture()
-      val launcher = RecordingPhaseLauncher()
-
-      val result = CliRuntime.run(
-        fixture.runCommand(extra = extra),
-        fixture.context(launcher),
-      )
-
-      assertEquals(1, result.exitCode, "expected refusal for $extra: ${result.stdout}")
-      assertContains(result.stdout, "Runtime mode is not supported on opencode")
-      assertEquals(emptyList(), launcher.requests, "no phase should spawn for $extra: ${result.stdout}")
-    }
-  }
-
-  @Test
-  fun `feature-task-runtime resume refuses when the resolved agent is opencode`() {
-    // SKILL-95 AC9: the resume entry point — the cross-mode resume hazard — must refuse opencode too,
-    // before touching the durable workflow. Driven directly with a placeholder workflow id since the
-    // preflight fires before any DB read.
-    val fixture = runtimeFixture()
-    val launcher = RecordingPhaseLauncher()
-
-    val result = CliRuntime.run(
-      listOf(
-        "--db",
-        fixture.dbPath.toString(),
-        "feature-task",
-        "resume",
-        "wftr-nonexistent",
-        "SKILL-650",
-        fixture.specPath.toString(),
-        "--agent",
-        "opencode",
-      ),
-      fixture.context(launcher),
-    )
-
-    assertEquals(1, result.exitCode, result.stdout)
-    assertContains(result.stdout, "Runtime mode is not supported on opencode")
-    assertEquals(emptyList(), launcher.requests, result.stdout)
-  }
-
-  @Test
   fun `feature-task-runtime run falls back to the documented codex default when nothing resolves`() {
     val fixture = runtimeFixture()
     val launcher = RecordingPhaseLauncher()
@@ -890,7 +792,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
           "--goal-review-base-sha",
           "0000000000000000000000000000000000000000",
           "--goal-parent-workflow-id",
-          "wfl-parent",
+          "wftr-parent",
           "--suppress-pr",
         ),
       ),
@@ -1117,6 +1019,38 @@ class CliFeatureTaskRuntimeRuntimeTest {
   }
 
   @Test
+  fun `feature-task lookup names an identity-less workflow and points at repair-identity`() {
+    val fixture = runtimeFixture()
+    val launcher = RecordingPhaseLauncher(invalidFromLaunchIndex = 2)
+    val run = CliRuntime.run(fixture.runCommand(extra = listOf("--agent", "codex")), fixture.context(launcher))
+    val workflowId = run.stdout.lines().single { it.startsWith("workflow_id:") }.substringAfter(":").trim()
+    DriverManager.getConnection("jdbc:sqlite:${fixture.dbPath}").use { connection ->
+      connection.prepareStatement("DELETE FROM feature_task_execution_identities WHERE workflow_id = ?").use {
+        it.setString(1, workflowId)
+        assertEquals(1, it.executeUpdate())
+      }
+    }
+
+    val lookup = CliRuntime.run(
+      listOf(
+        "--db",
+        fixture.dbPath.toString(),
+        "feature-task",
+        "lookup",
+        "SKILL-650",
+        "--repo-root",
+        fixture.tempDir.toString(),
+      ),
+      fixture.context(launcher),
+    )
+
+    assertEquals(0, lookup.exitCode, lookup.stdout)
+    assertContains(lookup.stdout, "needs_identity_repair")
+    assertContains(lookup.stdout, workflowId)
+    assertContains(lookup.stdout, "repair-identity")
+  }
+
+  @Test
   fun `feature-task repair-identity restores an explicitly identified legacy workflow`() {
     val fixture = runtimeFixture()
     val launcher = RecordingPhaseLauncher(invalidFromLaunchIndex = 2)
@@ -1196,102 +1130,6 @@ class CliFeatureTaskRuntimeRuntimeTest {
       "completed_phases: preplan, plan, implement, audit, review, validate, write_history, commit_push, pr",
     )
     assertEquals(ALL_PHASES.size, launcher.requests.size)
-  }
-}
-
-/**
- * SKILL-103 (AC4, AC5, AC6): zcode is prose-only for feature-task runtime, mirroring opencode. The
- * shared RUNTIME_REFUSED_AGENTS gate refuses every resolution route. Kept in its own class to stay
- * under the detekt LargeClass threshold on the main runtime test class.
- */
-class CliFeatureTaskRuntimeZcodeRefusalTest {
-  @Test
-  fun `feature-task-runtime run refuses when the resolved agent is zcode via SKILL_BILL_AGENT`() {
-    val fixture = runtimeFixture()
-    val launcher = RecordingPhaseLauncher()
-
-    val result = CliRuntime.run(
-      fixture.runCommand(),
-      fixture.context(launcher, environment = mapOf("CLAUDECODE" to "1", "SKILL_BILL_AGENT" to "zcode")),
-    )
-
-    assertEquals(1, result.exitCode, result.stdout)
-    assertContains(result.stdout, "Runtime mode is not supported on opencode or zcode")
-    assertContains(result.stdout, "bill-feature-task-prose")
-    assertContains(result.stdout, "bill-feature-goal mode:prose")
-    assertEquals(emptyList(), launcher.requests, result.stdout)
-    assertFalse(result.stdout.contains("workflow_id:"), result.stdout)
-  }
-
-  @Test
-  fun `feature-task-runtime run refuses when the host invoking agent is detected as zcode`() {
-    // SKILL-103 AC4: a flag-less invocation from a zcode-marked env resolves the invoking agent to
-    // zcode through the detection chain; the shared refusal gate then refuses before any spawn.
-    val fixture = runtimeFixture()
-    val launcher = RecordingPhaseLauncher()
-
-    val result = CliRuntime.run(
-      fixture.runCommand(),
-      fixture.context(
-        launcher,
-        environment = mapOf("ZCODE_APP_VERSION" to "1.0.0", "ZCODE_BASE_URL" to "https://zcode.example"),
-      ),
-    )
-
-    assertEquals(1, result.exitCode, result.stdout)
-    assertContains(result.stdout, "Runtime mode is not supported on opencode or zcode")
-    assertEquals(emptyList(), launcher.requests, result.stdout)
-    assertFalse(result.stdout.contains("workflow_id:"), result.stdout)
-  }
-
-  @Test
-  fun `feature-task-runtime run refuses zcode from agent-override phase-agent and parallel-review routes`() {
-    // SKILL-103 AC5/AC6: zcode reaching a runtime phase by ANY route must refuse at the preflight,
-    // and the predicate is case- and whitespace-insensitive (`Zcode`, ` zcode `).
-    listOf(
-      listOf("--agent", "codex", "--agent-override", "zcode"),
-      listOf("--agent", "codex", "--phase-agent", "plan=zcode"),
-      listOf("--agent", "codex", "--parallel-review-agent", "zcode"),
-      listOf("--agent", "Zcode"),
-      listOf("--agent", " zcode "),
-    ).forEach { extra ->
-      val fixture = runtimeFixture()
-      val launcher = RecordingPhaseLauncher()
-
-      val result = CliRuntime.run(
-        fixture.runCommand(extra = extra),
-        fixture.context(launcher),
-      )
-
-      assertEquals(1, result.exitCode, "expected refusal for $extra: ${result.stdout}")
-      assertContains(result.stdout, "Runtime mode is not supported on opencode or zcode")
-      assertEquals(emptyList(), launcher.requests, "no phase should spawn for $extra: ${result.stdout}")
-    }
-  }
-
-  @Test
-  fun `feature-task-runtime resume refuses when the resolved agent is zcode`() {
-    val fixture = runtimeFixture()
-    val launcher = RecordingPhaseLauncher()
-
-    val result = CliRuntime.run(
-      listOf(
-        "--db",
-        fixture.dbPath.toString(),
-        "feature-task",
-        "resume",
-        "wftr-nonexistent",
-        "SKILL-650",
-        fixture.specPath.toString(),
-        "--agent",
-        "zcode",
-      ),
-      fixture.context(launcher),
-    )
-
-    assertEquals(1, result.exitCode, result.stdout)
-    assertContains(result.stdout, "Runtime mode is not supported on opencode or zcode")
-    assertEquals(emptyList(), launcher.requests, result.stdout)
   }
 }
 
@@ -1844,44 +1682,6 @@ class CliFeatureTaskRuntimeSpecLookupTest {
     assertContains(implementPrompt, "### from: plan")
     assertFalse(implementPrompt.contains("### from: preplan"), implementPrompt)
     assertFalse(implementPrompt.contains("preplan_digest"), implementPrompt)
-  }
-
-  @Test
-  fun `feature-task runtime router rejects persisted prose mode before launch`() {
-    val fixture = runtimeFixture()
-    val component = RuntimeComponent::class.create(fixture.context(RecordingPhaseLauncher()).toRuntimeContext())
-    val opened = assertIs<WorkflowOpenResult.Ok>(
-      component.workflowService.openFeatureTask(
-        kind = WorkflowFamilyKind.TASK_PROSE,
-        currentStepId = "implement",
-        dbOverride = fixture.dbPath.toString(),
-        issueKey = "SKILL-650",
-        repositoryIdentity = "repo-root-realpath-v1:${fixture.tempDir.toRealPath()}",
-        governedSpecPath = ".feature-specs/SKILL-650-runtime/spec.md",
-      ),
-    )
-    val resumeLauncher = RecordingPhaseLauncher()
-
-    val resumed = CliRuntime.run(
-      listOf(
-        "--db",
-        fixture.dbPath.toString(),
-        "feature-task",
-        "resume",
-        opened.workflowId,
-        "SKILL-650",
-        fixture.specPath.toString(),
-        "--repo-root",
-        fixture.tempDir.toString(),
-        "--agent",
-        "codex",
-      ),
-      fixture.context(resumeLauncher),
-    )
-
-    assertEquals(1, resumed.exitCode, resumed.stdout)
-    assertContains(resumed.stdout, "was persisted in prose mode")
-    assertEquals(emptyList(), resumeLauncher.requests)
   }
 
   @Test

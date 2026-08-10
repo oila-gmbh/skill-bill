@@ -2,9 +2,9 @@ package skillbill.db.worklist
 
 import skillbill.error.InvalidWorkListRowError
 import skillbill.ports.persistence.WorkListRepository
+import skillbill.ports.persistence.model.LEGACY_FEATURE_TASK_PROSE_WORKFLOW_STATUSES
 import skillbill.ports.persistence.model.WorkItem
 import skillbill.ports.persistence.model.WorkItemKind
-import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.verify.FeatureVerifyWorkflowDefinition
 import java.sql.Connection
@@ -117,7 +117,7 @@ private fun java.sql.ResultSet.toWorkItem(): WorkItem {
 }
 
 private val validWorkStates: Set<String> =
-  FeatureImplementWorkflowDefinition.definition.workflowStatuses +
+  LEGACY_FEATURE_TASK_PROSE_WORKFLOW_STATUSES +
     FeatureTaskRuntimePhaseWorkflowDefinition.definition.workflowStatuses +
     FeatureVerifyWorkflowDefinition.definition.workflowStatuses
 

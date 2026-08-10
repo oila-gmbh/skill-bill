@@ -55,8 +55,6 @@ class IdeStatusProjector(
     return when (candidate.workflowFamily) {
       IdeStatusWorkflowFamily.FEATURE_GOAL -> projectGoal(candidate, context)
       IdeStatusWorkflowFamily.FEATURE_TASK_RUNTIME -> projectRuntime(candidate, context)
-      IdeStatusWorkflowFamily.FEATURE_TASK_PROSE ->
-        projectWorkflowFamily(candidate, context, WorkflowFamily.IMPLEMENT)
       IdeStatusWorkflowFamily.FEATURE_VERIFY ->
         projectWorkflowFamily(candidate, context, WorkflowFamily.VERIFY)
     }
@@ -258,7 +256,6 @@ class IdeStatusProjector(
     val startedAt = parseInstantOrNull(snapshot.startedAt) ?: candidate.startedAt
     val updatedAt = candidate.updatedAt
     val wireFamily = when (family) {
-      WorkflowFamily.IMPLEMENT -> IdeStatusWorkflowFamily.FEATURE_TASK_PROSE
       WorkflowFamily.VERIFY -> IdeStatusWorkflowFamily.FEATURE_VERIFY
       WorkflowFamily.TASK_RUNTIME -> IdeStatusWorkflowFamily.FEATURE_TASK_RUNTIME
     }
@@ -371,8 +368,12 @@ internal fun parseInstantOrNull(value: String?): Instant? {
 
 private val SQLITE_TIMESTAMP_FORMATTER: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
 
-internal fun WorkItemKind.toIdeFamily(): IdeStatusWorkflowFamily = when (this) {
-  WorkItemKind.FEATURE_TASK_PROSE -> IdeStatusWorkflowFamily.FEATURE_TASK_PROSE
+// SKILL-175: FEATURE_TASK_PROSE is retained on WorkItemKind as a legacy read-only wire value so
+// work-list history keeps listing prose rows, but the prose engine and its IDE status family are
+// deleted. Returning null here excludes prose work items from live IDE status projection instead
+// of dispatching them to a deleted family.
+internal fun WorkItemKind.toIdeFamily(): IdeStatusWorkflowFamily? = when (this) {
+  WorkItemKind.FEATURE_TASK_PROSE -> null
   WorkItemKind.FEATURE_TASK_RUNTIME -> IdeStatusWorkflowFamily.FEATURE_TASK_RUNTIME
   WorkItemKind.FEATURE_VERIFY -> IdeStatusWorkflowFamily.FEATURE_VERIFY
   WorkItemKind.FEATURE_GOAL -> IdeStatusWorkflowFamily.FEATURE_GOAL

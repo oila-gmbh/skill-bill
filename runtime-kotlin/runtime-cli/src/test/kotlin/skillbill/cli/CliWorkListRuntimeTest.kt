@@ -45,11 +45,9 @@ class CliWorkListRuntimeTest {
     val component = RuntimeComponent::class.create(
       RuntimeContext(environment = emptyMap(), userHome = Files.createTempDirectory("skillbill-cli-work-list-home")),
     )
-    val prose = component.openWorkflow(WorkflowFamilyKind.TASK_PROSE, dbPath, "SKILL-117")
     val runtime = component.openWorkflow(WorkflowFamilyKind.TASK_RUNTIME, dbPath, "SKILL-117")
     val verify = component.openWorkflow(WorkflowFamilyKind.VERIFY, dbPath, "SKILL-118")
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
-      updateStartedAt(connection, "feature_task_workflows", prose, "2026-05-01T12:00:00.000001Z")
       updateStartedAt(connection, "feature_task_workflows", runtime, "2026-05-01T12:00:00.000004Z")
       updateStartedAt(connection, "feature_verify_workflows", verify, "2026-05-01T12:00:00.000003Z")
       seedWorkListGoals(connection)
@@ -66,7 +64,6 @@ class CliWorkListRuntimeTest {
     val limitedWork = decodeJsonObject(limited.stdout)["work"] as List<*>
 
     assertEquals(0, table.exitCode, table.stdout)
-    assertContains(table.stdout, "feature-task-prose")
     assertContains(table.stdout, "feature-task-runtime")
     assertContains(table.stdout, "feature-verify")
     assertContains(table.stdout, "feature-goal")
@@ -77,7 +74,7 @@ class CliWorkListRuntimeTest {
     assertFalse(table.stdout.contains('\u001b'))
     assertEquals(0, json.exitCode, json.stdout)
     assertEquals(
-      listOf(runtime, verify, "goal-z", prose, "goal-a", "goal-control"),
+      listOf(runtime, verify, "goal-z", "goal-a", "goal-control"),
       work.map { (it as Map<*, *>)["workflow_id"] },
     )
     assertEquals("feature-task-runtime", first["workflow_kind"])

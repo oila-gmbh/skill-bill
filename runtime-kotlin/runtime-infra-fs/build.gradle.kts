@@ -14,7 +14,6 @@ dependencies {
   implementation(libs.json.schema.validator)
   implementation(libs.jackson.databind)
   implementation(libs.jackson.dataformat.yaml)
-  implementation(libs.jna)
   testImplementation(libs.junit.jupiter)
   testImplementation(libs.kotlin.test)
 }

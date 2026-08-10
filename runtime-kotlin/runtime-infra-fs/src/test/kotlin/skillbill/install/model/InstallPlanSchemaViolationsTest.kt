@@ -113,7 +113,7 @@ class InstallPlanSchemaViolationsTest {
   @Test
   fun `wrong contract_version value fails validation with contract_version field path`() {
     val wireMap = validBaseWireMap()
-    wireMap["contract_version"] = "0.2"
+    wireMap["contract_version"] = "0.1"
 
     val error = assertFailsWith<InvalidInstallPlanSchemaError> { InstallPlanSchemaValidator.validate(wireMap) }
     assertContains(error.fieldPath, "contract_version")

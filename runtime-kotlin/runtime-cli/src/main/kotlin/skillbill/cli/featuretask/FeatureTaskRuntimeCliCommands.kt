@@ -46,7 +46,6 @@ import skillbill.application.workflow.WorkflowService
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
 import skillbill.cli.core.formatOption
-import skillbill.cli.core.refuseRuntimeRefusedAgents
 import skillbill.cli.core.refuseUnavailableAgentLaunchers
 import skillbill.cli.core.refuseUnsupportedModelDirectives
 import skillbill.cli.telemetry.drainTelemetryOnCompletion
@@ -199,21 +198,6 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
       if (goalParentIssueKey != null) FeatureTaskRouteScope.GOAL_CHILD else FeatureTaskRouteScope.STANDALONE,
     )
 
-  // Refuses before a workflow is opened, a branch resolved, or a phase spawned: opencode is
-  // prose-only because its foreground Bash tool is hard-killed at 120s and per-phase output
-  // cannot be harvested back. Enumerates every route the runtime agent can resolve from and
-  // defers the predicate + message to the shared gate.
-  protected fun refuseUnsupportedRuntimeAgent(environment: Map<String, String>) {
-    refuseRuntimeRefusedAgents(
-      buildList {
-        add(resolveInvokedRuntimeAgentId(agent, environment))
-        agentOverride?.takeIf(String::isNotBlank)?.let { add(it) }
-        addAll(parsePhaseAgents(phaseAgents).values)
-        parallelReviewAgent?.takeIf(String::isNotBlank)?.let { add(it) }
-      },
-    )
-  }
-
   protected fun validateRuntimeRunConfiguration(deps: FeatureTaskRuntimeRunDependencies) {
     prepareRuntimeRun(deps)
   }
@@ -263,7 +247,6 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
 
   private fun prepareRuntimeRun(deps: FeatureTaskRuntimeRunDependencies): PreparedRuntimeRun {
     val environment = deps.state.environment
-    refuseUnsupportedRuntimeAgent(environment)
     val repoRoot = repoRoot?.let(Path::of) ?: Path.of("").toAbsolutePath().normalize()
     val invokedAgentId = resolveInvokedRuntimeAgentId(agent, environment)
     val phaseAgentMap = parsePhaseAgents(phaseAgents).toMutableMap()
@@ -565,6 +548,11 @@ private fun FeatureTaskContinuationLookupResult.toCliPayload(): Map<String, Any?
     mapOf("result" to "terminal_only", "candidates" to candidates.map { it.toMap() })
   is FeatureTaskContinuationLookupResult.GoalContinuation ->
     mapOf("result" to "goal_continuation", "goal" to candidate.toMap())
+  is FeatureTaskContinuationLookupResult.NeedsIdentityRepair -> mapOf(
+    "result" to "needs_identity_repair",
+    "workflow_id" to workflowId,
+    "summary" to summary,
+  )
 }
 
 private fun GoalContinuationCandidate.toMap(): Map<String, Any?> = mapOf(
@@ -651,9 +639,9 @@ class FeatureTaskRuntimeAbandonCommand(
   private val state: CliRunState,
 ) : DocumentedCliCommand(
   "abandon",
-  "Explicitly terminalize a nonterminal runtime workflow while preserving its durable history.",
+  "Explicitly terminalize a nonterminal feature-task workflow while preserving its durable history.",
 ) {
-  private val workflowId by argument(help = "Exact runtime workflow id to abandon.")
+  private val workflowId by argument(help = "Exact feature-task workflow id to abandon.")
   private val reason by option("--reason", help = "Required operator reason recorded with the workflow.").required()
   private val format by formatOption()
 

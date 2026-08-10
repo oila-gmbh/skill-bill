@@ -2,12 +2,10 @@ package skillbill.db
 
 import skillbill.contracts.JsonSupport
 import skillbill.db.core.DatabaseRuntime
-import skillbill.db.core.reconcileStaleFeatureImplementSessions
 import skillbill.db.core.reconcileStaleFeatureTaskRuntimeSessions
 import skillbill.db.core.reconcileStaleTelemetrySessions
 import skillbill.db.telemetry.LifecycleTelemetryStore
 import skillbill.ports.persistence.model.TelemetryReconciliationRequest
-import skillbill.telemetry.model.FeatureImplementFinishedRecord
 import skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord
 import skillbill.telemetry.model.FeatureVerifyFinishedRecord
 import skillbill.telemetry.model.QualityCheckFinishedRecord
@@ -29,18 +27,15 @@ class StaleSessionReconcilerTest {
       val store = LifecycleTelemetryStore(connection)
 
       repeat(2) {
-        store.featureImplementFinished(featureImplementFinishedRecord("fis-stale"), level = "full")
         store.featureTaskRuntimeFinished(featureTaskRuntimeFinishedRecord("ftr-stale"), level = "full")
         store.featureVerifyFinished(featureVerifyFinishedRecord("fvs-stale"), level = "full")
         store.qualityCheckFinished(qualityCheckFinishedRecord("qcs-stale"), level = "full")
       }
 
-      assertEquals(1, eventCount(connection, "skillbill_feature_task_prose_finished"))
       assertEquals(1, eventCount(connection, "skillbill_feature_task_runtime_finished"))
       assertEquals(1, eventCount(connection, "skillbill_feature_verify_finished"))
       assertEquals(1, eventCount(connection, "skillbill_quality_check_finished"))
       listOf(
-        "feature_implement_sessions" to "fis-stale",
         "feature_task_runtime_sessions" to "ftr-stale",
         "feature_verify_sessions" to "fvs-stale",
         "quality_check_sessions" to "qcs-stale",
@@ -63,18 +58,20 @@ class StaleSessionReconcilerTest {
         now = now,
       )
 
+      // SKILL-175 subtask 6 AC-005: prose sessions are quarantined, so only the three live lifecycle
+      // families (runtime, verify, quality-check) remain candidates and the batch budget drains 2+1.
       assertEquals(2, reconcileStaleTelemetrySessions(connection, request).processedCandidates)
       assertTrue(reconcileStaleTelemetrySessions(connection, request).skippedByCadence)
       assertEquals(
-        2,
+        1,
         reconcileStaleTelemetrySessions(connection, request.copy(now = now.plusSeconds(301))).processedCandidates,
       )
-      assertEquals(4, terminalLifecycleEventCount(connection))
+      assertEquals(3, terminalLifecycleEventCount(connection))
       assertEquals(
-        1,
+        0,
         reconcileStaleTelemetrySessions(connection, request.copy(now = now.plusSeconds(602))).processedCandidates,
       )
-      assertEquals(5, terminalLifecycleEventCount(connection))
+      assertEquals(3, terminalLifecycleEventCount(connection))
       assertEquals(
         0,
         reconcileStaleTelemetrySessions(connection, request.copy(now = now.plusSeconds(903))).processedCandidates,
@@ -94,13 +91,13 @@ class StaleSessionReconcilerTest {
       assertTrue(!first.skippedByCadence)
 
       val second = reconcileStaleTelemetrySessions(connection, request)
-      assertEquals(2, second.processedCandidates)
+      assertEquals(1, second.processedCandidates)
       assertTrue(!second.skippedByCadence)
 
       val third = reconcileStaleTelemetrySessions(connection, request)
       assertEquals(0, third.processedCandidates)
       assertTrue(!third.skippedByCadence)
-      assertEquals(4, terminalLifecycleEventCount(connection))
+      assertEquals(3, terminalLifecycleEventCount(connection))
     }
   }
 
@@ -112,21 +109,21 @@ class StaleSessionReconcilerTest {
 
       val reconciled = reconcileStaleTelemetrySessions(connection, level = "full")
 
-      assertEquals(1, reconciled.featureImplementSessions)
+      // SKILL-175 subtask 6 AC-005: prose sessions are quarantined, never reconciliation candidates,
+      // so the seeded feature_implement row is left untouched and counts stay at zero.
+      assertEquals(0, reconciled.featureImplementSessions)
       assertEquals(1, reconciled.featureTaskRuntimeSessions)
       assertEquals(1, reconciled.featureVerifySessions)
       assertEquals(1, reconciled.qualityCheckSessions)
-      assertEquals(4, reconciled.emittedTerminalEvents)
-      assertEquals("stale", columnValue(connection, "feature_implement_sessions", "fis-stale", "completion_status"))
+      assertEquals(3, reconciled.emittedTerminalEvents)
+      assertEquals(null, columnValue(connection, "feature_implement_sessions", "fis-stale", "finished_at"))
       assertEquals("stale", columnValue(connection, "feature_task_runtime_sessions", "ftr-stale", "completion_status"))
       assertEquals("stale", columnValue(connection, "feature_verify_sessions", "fvs-stale", "completion_status"))
       assertEquals("stale", columnValue(connection, "quality_check_sessions", "qcs-stale", "result"))
       assertNotNull(columnValue(connection, "feature_verify_sessions", "fvs-stale", "finished_at"))
-      assertEquals(1, eventCount(connection, "skillbill_feature_task_prose_finished"))
       assertEquals(1, eventCount(connection, "skillbill_feature_task_runtime_finished"))
       assertEquals(1, eventCount(connection, "skillbill_feature_verify_finished"))
       assertEquals(1, eventCount(connection, "skillbill_quality_check_finished"))
-      assertEquals("stale", payload(connection, "skillbill_feature_task_prose_finished")["completion_status"])
       assertEquals("stale", payload(connection, "skillbill_feature_task_runtime_finished")["completion_status"])
       assertEquals("stale", payload(connection, "skillbill_feature_verify_finished")["completion_status"])
       assertEquals("stale", payload(connection, "skillbill_quality_check_finished")["result"])
@@ -134,7 +131,6 @@ class StaleSessionReconcilerTest {
       val repeated = reconcileStaleTelemetrySessions(connection, level = "full")
 
       assertEquals(0, repeated.emittedTerminalEvents)
-      assertEquals(1, eventCount(connection, "skillbill_feature_task_prose_finished"))
       assertEquals(1, eventCount(connection, "skillbill_feature_task_runtime_finished"))
       assertEquals(1, eventCount(connection, "skillbill_feature_verify_finished"))
       assertEquals(1, eventCount(connection, "skillbill_quality_check_finished"))
@@ -149,16 +145,13 @@ class StaleSessionReconcilerTest {
       reconcileStaleTelemetrySessions(connection, level = "full")
 
       val store = LifecycleTelemetryStore(connection)
-      store.featureImplementFinished(featureImplementFinishedRecord("fis-stale"), level = "full")
       store.featureTaskRuntimeFinished(featureTaskRuntimeFinishedRecord("ftr-stale"), level = "full")
       store.featureVerifyFinished(featureVerifyFinishedRecord("fvs-stale"), level = "full")
       store.qualityCheckFinished(qualityCheckFinishedRecord("qcs-stale"), level = "full")
 
-      assertEquals(1, eventCount(connection, "skillbill_feature_task_prose_finished"))
       assertEquals(1, eventCount(connection, "skillbill_feature_task_runtime_finished"))
       assertEquals(1, eventCount(connection, "skillbill_feature_verify_finished"))
       assertEquals(1, eventCount(connection, "skillbill_quality_check_finished"))
-      assertEquals("stale", columnValue(connection, "feature_implement_sessions", "fis-stale", "completion_status"))
       assertEquals(
         "stale",
         columnValue(connection, "feature_task_runtime_sessions", "ftr-stale", "completion_status"),
@@ -169,7 +162,6 @@ class StaleSessionReconcilerTest {
       assertEquals("stale", payload(connection, "skillbill_feature_verify_finished")["completion_status"])
       assertEquals("stale", payload(connection, "skillbill_quality_check_finished")["result"])
       listOf(
-        "feature_implement_sessions" to "fis-stale",
         "feature_task_runtime_sessions" to "ftr-stale",
         "feature_verify_sessions" to "fvs-stale",
         "quality_check_sessions" to "qcs-stale",
@@ -180,7 +172,6 @@ class StaleSessionReconcilerTest {
           "$tableName.$sessionId must record the duplicate terminal finish",
         )
       }
-      assertEquals("stale", payload(connection, "skillbill_feature_task_prose_finished")["completion_status"])
     }
   }
 
@@ -339,21 +330,13 @@ class StaleSessionReconcilerTest {
       connection.createStatement().use { statement ->
         statement.executeUpdate(
           """
-          INSERT INTO feature_implement_sessions (session_id, started_at, finished_at, completion_status)
-          VALUES ('fis-legacy', datetime('now', '-40000 seconds'), NULL, '')
-          """.trimIndent(),
-        )
-        statement.executeUpdate(
-          """
           INSERT INTO feature_task_runtime_sessions (session_id, started_at, finished_at, completion_status)
           VALUES ('ftr-legacy', datetime('now', '-40000 seconds'), NULL, '')
           """.trimIndent(),
         )
       }
 
-      assertEquals(1, reconcileStaleFeatureImplementSessions(connection, thresholdSeconds = 28_800L))
       assertEquals(1, reconcileStaleFeatureTaskRuntimeSessions(connection, thresholdSeconds = 28_800L))
-      assertEquals(1, eventCount(connection, "skillbill_feature_task_prose_finished"))
       assertEquals(1, eventCount(connection, "skillbill_feature_task_runtime_finished"))
     }
   }
@@ -392,29 +375,6 @@ class StaleSessionReconcilerTest {
       )
     }
   }
-
-  private fun featureImplementFinishedRecord(sessionId: String): FeatureImplementFinishedRecord =
-    FeatureImplementFinishedRecord(
-      sessionId = sessionId,
-      completionStatus = "completed",
-      planCorrectionCount = 0,
-      planTaskCount = 1,
-      planPhaseCount = 1,
-      featureFlagUsed = false,
-      featureFlagPattern = "none",
-      filesCreated = 0,
-      filesModified = 1,
-      tasksCompleted = 1,
-      reviewIterations = 0,
-      auditResult = "passed",
-      auditIterations = 0,
-      validationResult = "passed",
-      boundaryHistoryWritten = false,
-      boundaryHistoryValue = "none",
-      prCreated = false,
-      planDeviationNotes = "",
-      childSteps = emptyList(),
-    )
 
   private fun featureTaskRuntimeFinishedRecord(sessionId: String): FeatureTaskRuntimeFinishedRecord =
     FeatureTaskRuntimeFinishedRecord(
@@ -467,7 +427,6 @@ class StaleSessionReconcilerTest {
     }
 
   private fun terminalLifecycleEventCount(connection: Connection): Int = listOf(
-    "skillbill_feature_task_prose_finished",
     "skillbill_feature_task_runtime_finished",
     "skillbill_feature_verify_finished",
     "skillbill_quality_check_finished",

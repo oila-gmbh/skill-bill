@@ -49,7 +49,7 @@ Do not commit these under `skills/`:
   `telemetry-contract.md`, and stack-routing, review, delegation, add-on, or
   Android support pointer files
 - provider-specific generated native-agent directories such as
-  `claude-agents/`, `codex-agents/`, `opencode-agents/`, `junie-agents/`, or
+  `claude-agents/`, `codex-agents/`, `junie-agents/`, or
   `cursor-agents/`
 - extra organization files such as `patterns.md`, `reference.md`, or
   `audit-rubrics.md`
@@ -234,8 +234,8 @@ The Skill tool on every supported agent resolves only listed skills; there is no
 invocable-but-hidden state. A listed parent therefore invokes an internal skill
 by **reading the sidecar file from its own installed directory** (a sibling file
 read) and executing its instructions in the current session, passing the same
-argument conventions as before (`mode:runtime` / `mode:prose`,
-`parallel-review:<agent>`, issue key, spec path). The Skill tool is never used
+argument conventions as before (`parallel-review:<agent>`, issue key, spec path).
+The Skill tool is never used
 to invoke an internal skill. This file-read pattern is already established for
 other sibling sidecars (`shell-ceremony.md`, `compose-guidelines.md`) and is
 more portable across agents than Skill-tool mechanics.
@@ -253,20 +253,20 @@ standalone `skills_dir` path. Lane-2 parallel reviews keep invoking
 
 ### Worked example: the feature-execution family
 
-The feature-execution family is the canonical worked example. Exactly five
+The feature-execution family is the canonical worked example. Exactly three
 skills are internal, all with parent `bill-feature`: `bill-feature-task`,
-`bill-feature-task-runtime`, `bill-feature-task-prose`,
-`bill-feature-task-subtask-runner`, and `bill-feature-goal`. After install, the
+`bill-feature-task-runtime`, and `bill-feature-goal`. After install, the
 agent skill list shows `bill-feature` (and the standalone listed
-`bill-feature-spec`) but none of the five. `bill-feature` dispatches to task and
+`bill-feature-spec`) but none of the three. `bill-feature` dispatches to task and
 goal execution by reading the rendered sidecar files installed inside its own
 directory (`bill-feature-task.md`, `bill-feature-goal.md`) and executing them.
 `bill-feature-spec` stays listed and standalone because it is a different kind
 of skill (spec preparation without implementation), so it is still invoked via
 the Skill tool. Repo source directories for the internal skills do not move or
 rename (PD3): `skills/bill-feature-task/content.md`,
-`skills/bill-feature-task-prose/content.md`, etc. stay exactly where they are;
-only frontmatter and prose inside them change. Workflow identity strings, the DB
+`skills/bill-feature-task-runtime/content.md`, and
+`skills/bill-feature-goal/content.md` stay exactly where they are;
+only frontmatter and body text inside them change. Workflow identity strings, the DB
 `workflow_name` CHECK constraint, telemetry constants, and MCP tool names are
 byte-for-byte unchanged (PD4) even though the skills are no longer listed.
 
@@ -370,11 +370,10 @@ Worked example: `orchestration/skill-classes/feature-task.yaml` matches
 `^bill-[a-z0-9-]*feature-task$` and injects ceremony lines for
 `peak-hours-warner.md`, `shell-ceremony.md`, and `telemetry-contract.md`.
 `orchestration/skill-classes/feature-launch-warning.yaml` exactly matches
-`bill-feature`, `bill-feature-task-runtime`, `bill-feature-task-prose`, and
-`bill-feature-task-subtask-runner`; it injects the `peak-hours-warner.md`
+`bill-feature` and `bill-feature-task-runtime`; it injects the `peak-hours-warner.md`
 ceremony line. `peak-hours-warner.md` is an operator launch warning/config
 pointer, so warning behavior comes from the operator-facing configuration
-surface rather than hard-coded product-specific prose in each skill.
+surface rather than hard-coded product-specific wording in each skill.
 
 Install staging materializes support pointer files as normalized relative
 pointer text. Targets must be regular files inside the repo and must not point
@@ -484,7 +483,6 @@ cache, then links them into runtime-specific directories:
 
 - Claude: Markdown/YAML custom agents under `~/.claude/agents/`
 - Codex: TOML custom agents under `~/.codex/agents/`
-- OpenCode: Markdown custom agents under `~/.config/opencode/agents/`
 - Junie: Markdown/YAML custom agents under `~/.junie/agents/`
 - Cursor: Markdown/YAML custom agents under `~/.cursor/agents/`
 
@@ -497,7 +495,7 @@ Generated provider artifacts are never committed to the repo.
 Delegated-review worker rules are authored once in
 `orchestration/review-orchestrator/specialist-contract.md`. Its marked launch,
 evidence-surface, and report-structure blocks plus forbidden-rediscovery list
-are projected into runtime, prose, CLI, and provider-native launches. Generated
+are projected into runtime, CLI, and provider-native launches. Generated
 support pointers and provider artifacts may deliver those rules, but governed
 `content.md` and delegation playbooks must not maintain divergent copies.
 `ReviewPacketConsumerContractParityTest` owns byte/list parity with the runtime
@@ -645,7 +643,7 @@ Do not:
 - commit `skills/<skill>/SKILL.md`
 - commit support pointer files under `skills/<skill>/`
 - split ordinary skill guidance into extra files under `skills/<skill>/`
-- commit `claude-agents/`, `codex-agents/`, `opencode-agents/`,
+- commit `claude-agents/`, `codex-agents/`,
   `junie-agents/`, or `cursor-agents/`
 - manually edit generated runtime staging directories as source
 - rely on direct source symlinks for content-managed skills

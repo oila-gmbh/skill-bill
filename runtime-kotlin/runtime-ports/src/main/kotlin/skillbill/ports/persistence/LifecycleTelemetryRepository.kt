@@ -1,7 +1,5 @@
 package skillbill.ports.persistence
 
-import skillbill.telemetry.model.FeatureImplementFinishedRecord
-import skillbill.telemetry.model.FeatureImplementStartedRecord
 import skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord
 import skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord
 import skillbill.telemetry.model.FeatureVerifyFinishedRecord
@@ -27,10 +25,6 @@ interface LifecycleTelemetryRepository {
   fun featureTaskRuntimeSharedEvidence(record: FeatureTaskRuntimeSharedEvidenceMeasurement) = Unit
 
   fun featureTaskRuntimeRejection(record: FeatureTaskRuntimeRejectionMeasurement) = Unit
-
-  fun featureImplementStarted(record: FeatureImplementStartedRecord, level: String)
-
-  fun featureImplementFinished(record: FeatureImplementFinishedRecord, level: String)
 
   fun featureTaskRuntimeStarted(record: FeatureTaskRuntimeStartedRecord, level: String)
 

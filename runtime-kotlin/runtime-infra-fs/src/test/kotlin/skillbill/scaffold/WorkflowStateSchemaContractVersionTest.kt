@@ -6,7 +6,6 @@ import skillbill.contracts.workflow.CanonicalWorkflowStateSchemaValidator
 import skillbill.contracts.workflow.WORKFLOW_STATE_CONTRACT_VERSION
 import skillbill.contracts.workflow.WorkflowStateSchemaPaths
 import skillbill.testing.repoRootFromTest
-import skillbill.workflow.implement.FeatureImplementWorkflowDefinition
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.verify.FeatureVerifyWorkflowDefinition
 import java.nio.file.Files
@@ -67,12 +66,6 @@ class WorkflowStateSchemaContractVersionTest {
   fun `every shipped WorkflowDefinition contractVersion matches WORKFLOW_STATE_CONTRACT_VERSION`() {
     assertEquals(
       WORKFLOW_STATE_CONTRACT_VERSION,
-      FeatureImplementWorkflowDefinition.definition.contractVersion,
-      "FeatureImplementWorkflowDefinition.contractVersion must equal WORKFLOW_STATE_CONTRACT_VERSION " +
-        "($WORKFLOW_STATE_CONTRACT_VERSION).",
-    )
-    assertEquals(
-      WORKFLOW_STATE_CONTRACT_VERSION,
       FeatureVerifyWorkflowDefinition.definition.contractVersion,
       "FeatureVerifyWorkflowDefinition.contractVersion must equal WORKFLOW_STATE_CONTRACT_VERSION " +
         "($WORKFLOW_STATE_CONTRACT_VERSION).",
@@ -88,17 +81,6 @@ class WorkflowStateSchemaContractVersionTest {
    * transition); every OTHER enum must be identical to the Kotlin
    * definition's set.
    */
-  @Test
-  fun `featureImplement branch enums match FeatureImplementWorkflowDefinition`() {
-    val schema = loadSchemaNode()
-    val branch = schema.path("\$defs").path("featureImplementBranch")
-    val definition = FeatureImplementWorkflowDefinition.definition
-
-    assertBranchStatusesMatch(branch, definition.workflowStatuses, "featureImplementBranch")
-    assertBranchCurrentStepIdsMatch(branch, definition.stepIds.toSet(), "featureImplementBranch")
-    assertBranchStepsStepIdMatch(branch, definition.stepIds.toSet(), "featureImplementBranch")
-  }
-
   @Test
   fun `featureVerify branch enums match FeatureVerifyWorkflowDefinition`() {
     val schema = loadSchemaNode()
@@ -149,28 +131,15 @@ class WorkflowStateSchemaContractVersionTest {
 
   /**
    * SKILL-141 Subtask 1 AC-001/AC-007 plus SKILL-142 AC-014: `paused` is the non-terminal resumable
-   * status. SKILL-141 scoped it to the featureImplement parent row; SKILL-142 extends the same value
-   * to the featureTaskRuntime child, which pauses on an unresolved Blocker rather than forking a
-   * second pause mechanism. It stays excluded from `terminalStatuses` on both, stays rejected on
-   * featureVerify, and remains a purely additive enum value — no existing record becomes invalid, so
-   * no contract-version bump.
+   * status. SKILL-142 scoped it to the featureTaskRuntime child, which pauses on an unresolved
+   * Blocker rather than forking a second pause mechanism. It stays excluded from `terminalStatuses`,
+   * stays rejected on featureVerify, and remains a purely additive enum value — no existing record
+   * becomes invalid, so no contract-version bump.
    */
   @Test
-  fun `paused is a non-terminal status on the featureImplement and featureTaskRuntime branches`() {
+  fun `paused is a non-terminal status on the featureTaskRuntime branch`() {
     val schema = loadSchemaNode()
     val defs = schema.path("\$defs")
-    val implementStatuses = defs.path("featureImplementBranch").path("properties")
-      .path("workflow_status").enumStrings()
-
-    assertTrue("paused" in implementStatuses, "featureImplementBranch.workflow_status must allow 'paused'.")
-    assertTrue(
-      "paused" in FeatureImplementWorkflowDefinition.definition.workflowStatuses,
-      "FeatureImplementWorkflowDefinition.workflowStatuses must allow 'paused'.",
-    )
-    assertFalse(
-      "paused" in FeatureImplementWorkflowDefinition.definition.terminalStatuses,
-      "'paused' is resumable by design and must never be consulted as a terminal status.",
-    )
     val runtimeStatuses = defs.path("featureTaskRuntimeBranch").path("properties")
       .path("workflow_status").enumStrings()
     assertTrue("paused" in runtimeStatuses, "featureTaskRuntimeBranch.workflow_status must allow 'paused'.")
@@ -185,11 +154,6 @@ class WorkflowStateSchemaContractVersionTest {
     assertFalse(
       "paused" in defs.path("featureVerifyBranch").path("properties").path("workflow_status").enumStrings(),
       "'paused' has no meaning for feature-verify; featureVerifyBranch must not accept it.",
-    )
-    assertEquals(
-      WORKFLOW_STATE_CONTRACT_VERSION,
-      FeatureImplementWorkflowDefinition.definition.contractVersion,
-      "Adding an enum value is additive; it must not move the workflow-state contract version.",
     )
   }
 

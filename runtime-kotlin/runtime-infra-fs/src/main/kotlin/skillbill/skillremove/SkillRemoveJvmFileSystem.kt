@@ -522,19 +522,15 @@ class SkillRemoveJvmFileSystem(
   private fun nativeProvider(provider: AgentSymlinkProvider): NativeAgentProvider = when (provider) {
     AgentSymlinkProvider.CLAUDE -> NativeAgentProvider.Claude
     AgentSymlinkProvider.CODEX -> NativeAgentProvider.Codex
-    AgentSymlinkProvider.OPENCODE -> NativeAgentProvider.Opencode
     AgentSymlinkProvider.JUNIE -> NativeAgentProvider.Junie
     AgentSymlinkProvider.CURSOR -> NativeAgentProvider.Cursor
-    AgentSymlinkProvider.ZCODE -> NativeAgentProvider.Zcode
   }
 
   private fun providerUnlink(provider: AgentSymlinkProvider): (NativeAgentLinkRequest) -> List<Path> = when (provider) {
     AgentSymlinkProvider.CLAUDE -> InstallNativeAgentOperations::unlinkClaudeAgents
     AgentSymlinkProvider.CODEX -> InstallNativeAgentOperations::unlinkCodexAgents
-    AgentSymlinkProvider.OPENCODE -> InstallNativeAgentOperations::unlinkOpencodeAgents
     AgentSymlinkProvider.JUNIE -> InstallNativeAgentOperations::unlinkJunieAgents
     AgentSymlinkProvider.CURSOR -> InstallNativeAgentOperations::unlinkCursorAgents
-    AgentSymlinkProvider.ZCODE -> InstallNativeAgentOperations::unlinkZcodeAgents
   }
 
   /**

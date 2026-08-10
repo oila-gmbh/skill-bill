@@ -14,6 +14,11 @@ import java.util.Locale
 // `InvalidGoalTelemetryRowError` on any malformed value, so the stats read
 // loud-fails instead of producing best-effort numbers (AC#5).
 
+// SKILL-175 Subtask 6: legacy `mode='prose'` goal_run_sessions rows are
+// retained verbatim in storage (read-only), but the prose runtime surface is
+// retired. `buildByModeStats` therefore emits only runtime-mode buckets so a
+// retained prose row never surfaces as a live `prose` bucket in goal stats.
+
 private val goalFinishedStatuses = listOf("completed", "blocked")
 private val goalSubtaskStatuses = listOf("complete", "blocked", "skipped")
 
@@ -72,8 +77,12 @@ fun buildGoalStats(runRows: List<Map<String, Any?>>, subtaskRows: List<Map<Strin
   )
 }
 
-private fun buildByModeStats(runs: List<GoalRunRow>): Map<String, GoalModeStats> =
-  runs.groupBy { it.mode }.mapValues { (_, modeRuns) ->
+private const val RETIRED_PROSE_MODE = "prose"
+
+private fun buildByModeStats(runs: List<GoalRunRow>): Map<String, GoalModeStats> = runs
+  .filterNot { it.mode == RETIRED_PROSE_MODE }
+  .groupBy { it.mode }
+  .mapValues { (_, modeRuns) ->
     val modeFinished = modeRuns.filter { it.finishedAt.isNotBlank() }
     val modeCompleted = modeFinished.count { it.status == "completed" }
     val modeBlocked = modeFinished.count { it.status == "blocked" }

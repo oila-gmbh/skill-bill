@@ -5,6 +5,12 @@ description: Flag low-value or tautological unit tests. Use when checking test q
 
 # Unit Test Value Check Content
 
+Stance: tests are not free. Every test costs review attention, maintenance, and AI
+reasoning tokens on every future change to the code it touches. A test earns its place
+only by being able to catch a realistic regression in behavior someone depends on. The
+burden of proof is on the test, not the reviewer: a test that cannot pass the value test
+below defaults to deletion.
+
 ## Supported Scope
 
 - A specific unit test file.
@@ -17,9 +23,31 @@ If the caller does not specify a scope, review the current staged and unstaged c
 
 1. Determine the requested scope: file, current changes, or commit.
 2. Read the unit tests in scope and the production code they exercise.
-3. For each test or test block, judge whether it would catch a meaningful regression in business behavior.
-4. Classify findings as `Valuable`, `Weak`, or `Useless`.
-5. Prefer a small number of high-signal findings over broad commentary.
+3. Apply the value test to each test or test block: name a realistic bug — a concrete
+   wrong behavior a developer or agent could plausibly introduce — that would make this
+   test fail while the rest of the suite passes. No nameable bug means `Useless`.
+4. Weigh recurring maintenance cost: a test coupled to implementation structure (mock
+   interaction verification, private details, exact call ordering, duplicated
+   implementation steps) fails under behavior-preserving refactors, which makes it a
+   recurring cost even when it asserts something real.
+5. Detect redundancy: when several tests exercise the same branch or rule, keep the
+   strongest and mark the rest for deletion.
+6. Classify each finding as `Valuable`, `Weak`, or `Useless`, each with a disposition:
+   `Useless` is deleted; `Weak` is deleted unless it guards a critical path and a single
+   cheap rewrite makes it `Valuable`. Never recommend polishing a low-value test.
+
+## Criticality Weighting
+
+Coverage should concentrate where failure is expensive. Critical paths:
+
+- Money, billing, quantities, and rounding.
+- Data integrity, migrations, and persistence atomicity.
+- Authentication, authorization, permissions, and tenant isolation.
+- External contracts: API compatibility, serialization, wire and storage formats.
+- Concurrency, cancellation, retries, and failure recovery.
+- Irreversible side effects: sends, deletes, publishes, external writes.
+
+Trivial glue on a non-critical path needs no test; say so rather than proposing one.
 
 ## What Counts As Real Value
 
@@ -39,6 +67,8 @@ If the caller does not specify a scope, review the current staged and unstaged c
 - Reproducing the implementation step-for-step inside the test and comparing the duplicated result.
 - Tests that only assert `not null`, `true`, `false`, or collection size without tying that assertion to meaningful behavior.
 - Testing trivial mappers, property accessors, generated code, or boilerplate solely to raise coverage numbers.
+- Duplicating a sibling test's coverage of the same branch or rule with different literals.
+- Pinning implementation structure so the test fails on behavior-preserving refactors it was never meant to guard.
 
 ## Cases That May Look Trivial But Can Still Be Valuable
 
@@ -49,9 +79,10 @@ If the caller does not specify a scope, review the current staged and unstaged c
 
 ## Review Rules
 
-- Do not reward quantity, coverage percentage, or test count.
-- Do not suggest more tests unless you can name a concrete missing behavior that matters.
-- Prefer deleting or rewriting useless tests over polishing them.
+- Do not reward quantity, coverage percentage, or test count. A shrinking suite is a good outcome when what remains guards real behavior.
+- Do not suggest more tests unless you can name a concrete missing behavior on a critical path.
+- Prefer deleting low-value tests over rewriting them; rewrite only when the behavior matters and the fix is cheap.
+- Never recommend deleting regression coverage tied to a real past bug.
 - Isolate specific low-value tests instead of dismissing an entire file unless the whole file is weak.
 - Use `file:line` evidence for every finding.
 - When confidence is not high, say why.
@@ -71,9 +102,10 @@ Then include a table:
 
 Rules for output:
 
-- Include at most 10 rows.
+- Include at most 10 rows, prioritized by recurring maintenance cost saved.
 - Only report findings that materially affect confidence in the tests.
 - End with:
   - `Keep:` strongest tests worth keeping
-  - `Rewrite/Delete:` specific low-value tests
-  - `Missing high-value cases:` only concrete business behaviors that are not covered
+  - `Rewrite:` only tests guarding critical paths where one cheap fix creates real value
+  - `Delete:` every deletion candidate with `file:line`, complete even when the table is capped
+  - `Missing high-value cases:` only concrete critical-path behaviors that are not covered

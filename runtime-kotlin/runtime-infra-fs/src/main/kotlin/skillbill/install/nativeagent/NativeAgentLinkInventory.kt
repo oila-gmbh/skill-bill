@@ -391,7 +391,7 @@ internal object NativeAgentLinkInventory {
   private const val MAX_SOURCE_ROOT_LENGTH = 4096
   private val LOGICAL_NAME = Regex("[a-z0-9](?:[a-z0-9-]*[a-z0-9])?")
   internal val CACHE_GENERATION = Regex("(?:[a-z0-9](?:[a-z0-9-]{0,31})-)?[0-9a-f]{16}")
-  private val PROVIDERS = setOf("claude", "codex", "opencode", "junie", "cursor", "zcode")
+  private val PROVIDERS = setOf("claude", "codex", "junie", "cursor")
   private fun provider(id: String) = skillbill.nativeagent.rendering.NativeAgentProvider.entries
     .single { it.name.lowercase() == id }
 }

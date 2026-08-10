@@ -49,7 +49,7 @@ class McpStdioArgumentShapeUnifiedContractTest {
 
   @Test
   fun `schema validator missing required field surfaces as isError=true`() {
-    // `feature_task_prose_started` requires `feature_size` etc.; omit
+    // `feature_verify_started` requires `acceptance_criteria_count` etc.; omit
     // ALL required keys so the schema validator throws inside the
     // dispatcher. The dispatcher's
     // `InvalidTelemetryEventSchemaError` is mapped by
@@ -60,7 +60,7 @@ class McpStdioArgumentShapeUnifiedContractTest {
         McpStdioServer.handleLine(
           stdioToolCallRequest(
             id = 402,
-            name = "feature_task_prose_started",
+            name = "feature_verify_started",
             arguments = emptyMap(),
           ),
         ),
@@ -72,15 +72,15 @@ class McpStdioArgumentShapeUnifiedContractTest {
     assertEquals(true, result["isError"])
     val payload = decodeFirstTextContent(result)
     assertEquals("error", payload["status"])
-    assertEquals("feature_task_prose_started", payload["tool"])
+    assertEquals("feature_verify_started", payload["tool"])
     // The composed message carries the event name and the field path
     // of the first offending required key.
     val lowerError = payload["error"].toString().lowercase()
-    assertContains(lowerError, "feature_task_prose_started")
+    assertContains(lowerError, "feature_verify_started")
     assertTrue(
-      lowerError.contains("feature_size") ||
+      lowerError.contains("acceptance_criteria_count") ||
         lowerError.contains("required") ||
-        lowerError.contains("feature_name"),
+        lowerError.contains("spec_summary"),
       "schema validator error should name a required field or the `required` keyword — got '$lowerError'",
     )
   }

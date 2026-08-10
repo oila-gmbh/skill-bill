@@ -563,16 +563,6 @@ class InstallClaudeAgentsPathCommand(
 }
 
 @Inject
-class InstallOpencodeAgentsPathCommand(
-  private val state: CliRunState,
-  private val installAgentService: InstallAgentService,
-) : DocumentedCliCommand("opencode-agents-path", "Print the OpenCode native subagent markdown directory.") {
-  override fun run() {
-    state.completeText(installAgentService.opencodeAgentsPath(state.userHome).toString(), emptyMap())
-  }
-}
-
-@Inject
 class InstallJunieAgentsPathCommand(
   private val state: CliRunState,
   private val installAgentService: InstallAgentService,
@@ -589,16 +579,6 @@ class InstallCursorAgentsPathCommand(
 ) : DocumentedCliCommand("cursor-agents-path", "Print the Cursor native subagent markdown directory.") {
   override fun run() {
     state.completeText(installAgentService.cursorAgentsPath(state.userHome).toString(), emptyMap())
-  }
-}
-
-@Inject
-class InstallZcodeAgentsPathCommand(
-  private val state: CliRunState,
-  private val installAgentService: InstallAgentService,
-) : DocumentedCliCommand("zcode-agents-path", "Print the zcode native subagent markdown directory.") {
-  override fun run() {
-    state.completeText(installAgentService.zcodeAgentsPath(state.userHome).toString(), emptyMap())
   }
 }
 
@@ -712,64 +692,6 @@ class InstallUnlinkCodexAgentsCommand(
 }
 
 @Inject
-class InstallLinkOpencodeAgentsCommand(
-  private val state: CliRunState,
-  private val nativeAgentInstallService: NativeAgentInstallService,
-) : DocumentedCliCommand(
-  "link-opencode-agents",
-  "Render and link OpenCode native subagent markdown from source agents.",
-) {
-  private val platformPacks by option("--platform-packs", help = "platform-packs root.").required()
-  private val skills by option("--skills", help = "skills root.")
-  private val platforms by option("--platform", help = "Selected platform slug to include.").multiple()
-
-  override fun run() {
-    if (state.refuseInstallMutationDuringGoalContinuation("link-opencode-agents")) {
-      return
-    }
-    completeNativeAgentLinkOutcome(
-      state,
-      nativeAgentInstallService.linkNativeAgents(
-        NativeAgentLinkProvider.OPENCODE,
-        NativeAgentLinkRequest(
-          platformPacksRoot = Path.of(platformPacks),
-          skillsRoot = skills?.let(Path::of),
-          home = state.userHome,
-          selectedPlatforms = platforms.ifEmpty { null },
-        ),
-      ),
-    )
-  }
-}
-
-@Inject
-class InstallUnlinkOpencodeAgentsCommand(
-  private val state: CliRunState,
-  private val nativeAgentInstallService: NativeAgentInstallService,
-) : DocumentedCliCommand("unlink-opencode-agents", "Remove OpenCode native subagent markdown symlinks.") {
-  private val platformPacks by option("--platform-packs", help = "platform-packs root.").required()
-  private val skills by option("--skills", help = "skills root.")
-  private val platforms by option("--platform", help = "Selected platform slug to include.").multiple()
-
-  override fun run() {
-    if (state.refuseInstallMutationDuringGoalContinuation("unlink-opencode-agents")) {
-      return
-    }
-    val removed =
-      nativeAgentInstallService.unlinkNativeAgents(
-        NativeAgentLinkProvider.OPENCODE,
-        NativeAgentLinkRequest(
-          platformPacksRoot = Path.of(platformPacks),
-          skillsRoot = skills?.let(Path::of),
-          home = state.userHome,
-          selectedPlatforms = platforms.ifEmpty { null },
-        ),
-      )
-    state.completeText(removed.joinToString("\n"), mapOf("removed" to removed.map(Path::toString)))
-  }
-}
-
-@Inject
 class InstallLinkJunieAgentsCommand(
   private val state: CliRunState,
   private val nativeAgentInstallService: NativeAgentInstallService,
@@ -868,61 +790,6 @@ class InstallUnlinkCursorAgentsCommand(
     val removed =
       nativeAgentInstallService.unlinkNativeAgents(
         NativeAgentLinkProvider.CURSOR,
-        NativeAgentLinkRequest(
-          platformPacksRoot = Path.of(platformPacks),
-          skillsRoot = skills?.let(Path::of),
-          home = state.userHome,
-          selectedPlatforms = platforms.ifEmpty { null },
-        ),
-      )
-    state.completeText(removed.joinToString("\n"), mapOf("removed" to removed.map(Path::toString)))
-  }
-}
-
-@Inject
-class InstallLinkZcodeAgentsCommand(
-  private val state: CliRunState,
-  private val nativeAgentInstallService: NativeAgentInstallService,
-) : DocumentedCliCommand("link-zcode-agents", "Render and link zcode native subagent markdown from source agents.") {
-  private val platformPacks by option("--platform-packs", help = "platform-packs root.").required()
-  private val skills by option("--skills", help = "skills root.")
-  private val platforms by option("--platform", help = "Selected platform slug to include.").multiple()
-
-  override fun run() {
-    if (state.refuseInstallMutationDuringGoalContinuation("link-zcode-agents")) {
-      return
-    }
-    completeNativeAgentLinkOutcome(
-      state,
-      nativeAgentInstallService.linkNativeAgents(
-        NativeAgentLinkProvider.ZCODE,
-        NativeAgentLinkRequest(
-          platformPacksRoot = Path.of(platformPacks),
-          skillsRoot = skills?.let(Path::of),
-          home = state.userHome,
-          selectedPlatforms = platforms.ifEmpty { null },
-        ),
-      ),
-    )
-  }
-}
-
-@Inject
-class InstallUnlinkZcodeAgentsCommand(
-  private val state: CliRunState,
-  private val nativeAgentInstallService: NativeAgentInstallService,
-) : DocumentedCliCommand("unlink-zcode-agents", "Remove zcode native subagent markdown symlinks.") {
-  private val platformPacks by option("--platform-packs", help = "platform-packs root.").required()
-  private val skills by option("--skills", help = "skills root.")
-  private val platforms by option("--platform", help = "Selected platform slug to include.").multiple()
-
-  override fun run() {
-    if (state.refuseInstallMutationDuringGoalContinuation("unlink-zcode-agents")) {
-      return
-    }
-    val removed =
-      nativeAgentInstallService.unlinkNativeAgents(
-        NativeAgentLinkProvider.ZCODE,
         NativeAgentLinkRequest(
           platformPacksRoot = Path.of(platformPacks),
           skillsRoot = skills?.let(Path::of),

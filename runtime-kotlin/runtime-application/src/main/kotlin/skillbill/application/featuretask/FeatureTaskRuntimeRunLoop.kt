@@ -727,14 +727,25 @@ internal class FeatureTaskRuntimeRunLoop(
     val scope = resolveCheckpointScope(precedingPhaseId, branch, blockedReason) ?: return false
     return when (scope) {
       is FeatureTaskRuntimeCheckpointDecision.Skip -> true
-      is FeatureTaskRuntimeCheckpointDecision.Stage -> commitCheckpoint(
-        precedingPhaseId = precedingPhaseId,
-        branch = branch,
-        loopId = loopId,
-        intent = intent,
-        ownedPaths = scope.stagedPaths,
-        blockedReason = blockedReason,
-      )
+      is FeatureTaskRuntimeCheckpointDecision.Block -> {
+        blockAt(precedingPhaseId, scope.reason)
+        false
+      }
+      is FeatureTaskRuntimeCheckpointDecision.Stage -> {
+        if (scope.adoptedPaths.isNotEmpty()) {
+          runCatching {
+            diagnostics.warning(FeatureTaskRuntimeCheckpointScope.adoptionWarning(branch, scope.adoptedPaths))
+          }
+        }
+        commitCheckpoint(
+          precedingPhaseId = precedingPhaseId,
+          branch = branch,
+          loopId = loopId,
+          intent = intent,
+          ownedPaths = scope.ownedPaths,
+          blockedReason = blockedReason,
+        )
+      }
     }
   }
 
@@ -763,7 +774,14 @@ internal class FeatureTaskRuntimeRunLoop(
     val stagedPaths = staged.value.orEmpty().split(OWNED_PATH_DELIMITER)
       .map(String::trim)
       .filter(String::isNotBlank)
-    val phaseWritten = phaseWrittenPaths(precedingPhaseId, worktreeDelta, resolved?.workflowOwnedPaths.orEmpty())
+    val persistedOwned = resolved?.workflowOwnedPaths.orEmpty()
+    // Foreign governed specs a previous checkpoint already recorded as owned: the guard must not
+    // re-report them as newly introduced, or the run hard-blocks forever on its own leftover state.
+    val evictedForeign = persistedOwned
+      .filter { FeatureTaskRuntimeCheckpointScope.isForeignGovernedSpecPath(it, request.issueKey) }
+      .toSet()
+    val phaseWritten = phaseWrittenPaths(precedingPhaseId, worktreeDelta, persistedOwned)
+      .filterNot { it in evictedForeign }
     val ownedInventory = reconcileCheckpointPathInventory(
       repoRoot = request.repoRoot,
       issueKey = request.issueKey,
@@ -772,18 +790,26 @@ internal class FeatureTaskRuntimeRunLoop(
       // The persisted inventory is the sole ownership authority. It is extended with the paths the
       // writing phases themselves wrote — never with whatever else happens to be dirty, which is how
       // someone else's concurrent edit used to be adopted and committed as this run's work.
+      // A foreign issue's governed spec never becomes owned, and one a previous checkpoint recorded
+      // is evicted here so the persisted inventory stops asserting authority this run does not have.
       paths = (
         resolved?.workflowOwnedPaths.orEmpty() +
           phaseWritten.takeIf { mayExtendOwnedInventory(precedingPhaseId) }.orEmpty() +
           writingPhaseIntroducedPaths(worktreeDelta)
-        ).distinct(),
+        ).distinct()
+        .filterNot { FeatureTaskRuntimeCheckpointScope.isForeignGovernedSpecPath(it, request.issueKey) },
     )
     persistOwnedInventory(ownedInventory, resolved?.workflowOwnedPaths.orEmpty())
     checkpointOwnershipDecided = true
+    // Nothing has been staged by this checkpoint yet, so every entry in the index arrived from
+    // outside it. The scope decision keeps only the ones this run also owns: those are the genuinely
+    // ambiguous overlaps. A purely foreign staged path is left alone, which is what lets a
+    // concurrently prepared issue coexist without producing a false block.
     return FeatureTaskRuntimeCheckpointScope.decide(
       FeatureTaskRuntimeCheckpointScopeInput(
         issueKey = request.issueKey,
         ownedPaths = ownedInventory,
+        phaseIntroducedPaths = phaseWritten,
         worktreeDeltaPaths = worktreeDelta,
         foreignStagedPaths = stagedPaths,
         concurrentlyModifiedOwnedPaths = concurrentlyModifiedOwnedPaths(precedingPhaseId, ownedInventory),

@@ -3,8 +3,6 @@ package skillbill.mcp
 import skillbill.SAMPLE_REVIEW
 import skillbill.SkillBillVersion
 import skillbill.ZERO_FINDING_REVIEW
-import skillbill.application.model.FeatureImplementFinishedRequest
-import skillbill.application.model.FeatureImplementStartedRequest
 import skillbill.application.model.FeatureTaskRuntimeFinishedRequest
 import skillbill.application.model.FeatureTaskRuntimeStartedRequest
 import skillbill.application.model.FeatureVerifyFinishedRequest
@@ -22,15 +20,12 @@ import skillbill.db.core.DatabaseRuntime
 import skillbill.infrastructure.fs.GitWorkflowGitOperations
 import skillbill.mcp.core.McpRuntime
 import skillbill.mcp.core.McpRuntimeContext
-import skillbill.mcp.core.McpToolDispatcher
 import skillbill.mcp.core.McpWorkflowRuntime
 import skillbill.mcp.core.importReview
 import skillbill.mcp.core.newSkillScaffold
 import skillbill.mcp.core.resolveLearnings
 import skillbill.mcp.core.services
 import skillbill.mcp.core.triageFindings
-import skillbill.mcp.lifecycle.featureImplementFinished
-import skillbill.mcp.lifecycle.featureImplementStarted
 import skillbill.mcp.lifecycle.featureVerifyFinished
 import skillbill.mcp.lifecycle.featureVerifyStarted
 import skillbill.mcp.lifecycle.prDescriptionGenerated
@@ -53,9 +48,9 @@ class McpRuntimeTest {
     val tempDir = Files.createTempDirectory("skillbill-mcp-workflow-open-compat")
     val context = McpRuntimeContext(environment = disabledTelemetryEnvironment(tempDir), userHome = tempDir)
 
-    val opened = McpWorkflowRuntime.open(WorkflowFamilyKind.TASK_PROSE, "fis-compat", null, context)
+    val opened = McpWorkflowRuntime.open(WorkflowFamilyKind.TASK_RUNTIME, "ftr-compat", null, context)
 
-    assertTrue((opened["workflow_id"] as String).startsWith("wfl-"))
+    assertTrue((opened["workflow_id"] as String).startsWith("wftr-"))
   }
 
   @Test
@@ -120,9 +115,7 @@ class McpRuntimeTest {
 
     val context = McpRuntimeContext(environment = env, userHome = tempDir)
     val importResult = McpRuntime.importReview(SAMPLE_REVIEW.trimIndent(), context = context)
-    recordFeatureImplementLifecycle(context)
     recordFeatureVerifyLifecycle(context)
-    val implementStats = McpRuntime.featureImplementStats(context)
     val verifyStats = McpRuntime.featureVerifyStats(context)
     val dbPath = tempDir.resolve("metrics.db").toAbsolutePath().normalize().toString()
 
@@ -135,23 +128,6 @@ class McpRuntimeTest {
     assertEquals("rvs-20260402-001", importResult["review_session_id"])
     assertEquals(2, importResult["finding_count"])
     assertEquals("bill-kotlin-code-review", importResult["routed_skill"])
-    assertEquals(featureImplementStatsKeys(), implementStats.keys)
-    assertEquals(dbPath, implementStats["db_path"])
-    assertEquals("bill-feature-task", implementStats["workflow"])
-    assertEquals(1, implementStats["total_runs"])
-    assertEquals(1, implementStats["finished_runs"])
-    assertEquals(mapOf("SMALL" to 0, "MEDIUM" to 1, "LARGE" to 0), implementStats["feature_size_counts"])
-    assertEquals(0.0, implementStats["pr_created_rate"])
-    assertEquals(4.0, implementStats["average_tasks_completed"])
-    assertTrue("child_step_coverage" in implementStats)
-    assertTrue("feature_size_outcome_stats" in implementStats)
-    assertTrue("large_feature_health" in implementStats)
-    val childStepCoverage = implementStats["child_step_coverage"] as Map<*, *>
-    assertEquals(1, childStepCoverage["runs_with_child_steps"])
-    assertEquals(1, childStepCoverage["quality_check_child_step_runs"])
-    val implementCompletionStatusCounts = implementStats["completion_status_counts"] as Map<*, *>
-    assertEquals(1, implementCompletionStatusCounts["completed"])
-    assertEquals(0, implementCompletionStatusCounts["error"])
     assertEquals(featureVerifyStatsKeys(), verifyStats.keys)
     assertEquals(dbPath, verifyStats["db_path"])
     assertEquals("bill-feature-verify", verifyStats["workflow"])
@@ -298,7 +274,6 @@ class McpRuntimeTest {
     val dbPath = tempDir.resolve("metrics.db")
     val context = McpRuntimeContext(environment = env, userHome = tempDir)
 
-    recordFeatureImplementLifecycle(context)
     recordQualityCheckLifecycle(context)
     recordFeatureVerifyLifecycle(context)
     recordPrDescriptionLifecycle(context)
@@ -306,61 +281,6 @@ class McpRuntimeTest {
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       assertLifecyclePersistence(connection)
     }
-  }
-
-  @Test
-  fun `feature implement lifecycle rejects defaulted incomplete telemetry fields`() {
-    val tempDir = Files.createTempDirectory("skillbill-mcp-feature-task-invalid")
-    val env = enabledTelemetryEnvironment(tempDir)
-    val context = McpRuntimeContext(environment = env, userHome = tempDir)
-
-    val started =
-      McpToolDispatcher.call(
-        "feature_implement_started",
-        mapOf(
-          "feature_size" to "SMALL",
-          "acceptance_criteria_count" to 1,
-          "open_questions_count" to 0,
-          "spec_input_types" to listOf("raw_text"),
-          "spec_word_count" to 100,
-          "rollout_needed" to false,
-          "feature_name" to "read-path-config-variant-resolution",
-          "issue_key" to "SKILL-32",
-          "spec_summary" to "summary",
-        ),
-        context,
-      )
-    val finished =
-      McpRuntime.featureImplementFinished(
-        FeatureImplementFinishedRequest(
-          sessionId = "fis-invalid",
-          completionStatus = "completed",
-          planCorrectionCount = 0,
-          planTaskCount = 1,
-          planPhaseCount = 1,
-          featureFlagUsed = false,
-          filesCreated = 0,
-          filesModified = 1,
-          tasksCompleted = 1,
-          reviewIterations = 0,
-          auditResult = "all_pass",
-          auditIterations = 1,
-          validationResult = "pass",
-          boundaryHistoryWritten = true,
-          prCreated = false,
-          featureFlagPattern = "none",
-          boundaryHistoryValue = "medium",
-          planDeviationNotes = "",
-          childSteps = emptyList(),
-        ),
-        context,
-      )
-
-    assertEquals("error", started["status"])
-    assertEquals("issue_key_type must not be 'none' when issue_key is provided.", started["error"])
-    assertEquals("error", finished["status"])
-    assertEquals("review_iterations must be greater than 0.", finished["error"])
-    assertFalse(Files.exists(tempDir.resolve("metrics.db")))
   }
 
   @Test
@@ -563,64 +483,6 @@ class McpRuntimeTest {
   }
 
   @Test
-  fun `mcp workflow methods cover implement verbs and blocked continuation`() {
-    val tempDir = Files.createTempDirectory("skillbill-mcp-workflow")
-    val env = disabledTelemetryEnvironment(tempDir)
-    val context = McpRuntimeContext(environment = env, userHome = tempDir)
-    val opened = McpWorkflowRuntime.open(
-      WorkflowFamilyKind.TASK_PROSE,
-      sessionId = "fis-20260425-mcp",
-      context = context,
-    )
-    val workflowId = opened["workflow_id"] as String
-    assertWorkflowIdShape(workflowId, "wfl")
-    assertSqliteTimestampShape(opened["started_at"].toString(), "implement started_at")
-    assertEquals(opened["started_at"], opened["updated_at"])
-
-    val updated = blockImplementWorkflow(workflowId, context)
-    val listed = McpWorkflowRuntime.list(WorkflowFamilyKind.TASK_PROSE, context = context)
-    val latest = McpWorkflowRuntime.latest(WorkflowFamilyKind.TASK_PROSE, context)
-    val got = McpWorkflowRuntime.get(WorkflowFamilyKind.TASK_PROSE, workflowId, context)
-    val resumed = McpWorkflowRuntime.resume(WorkflowFamilyKind.TASK_PROSE, workflowId, context)
-    val continued = McpWorkflowRuntime.continueWorkflow(WorkflowFamilyKind.TASK_PROSE, workflowId, context)
-    val updatedAt = got["updated_at"].toString()
-    val continuedAt = continued["updated_at"].toString()
-
-    assertSqliteTimestampShape(updatedAt, "implement updated_at")
-    assertSqliteTimestampShape(continuedAt, "implement continued_at")
-    assertEquals(opened["started_at"], got["started_at"])
-    assertTrue(updatedAt >= opened["started_at"].toString())
-
-    assertGoldenPayload(
-      "mcp-feature-task-prose-workflow.json",
-      mapOf(
-        "open" to opened,
-        "update" to updated,
-        "list" to listed,
-        "latest" to latest,
-        "get" to got,
-        "resume" to resumed,
-        "continue" to continued,
-      ),
-      "<DB_PATH>" to tempDir.resolve("metrics.db").toAbsolutePath().normalize().toString(),
-      "<WORKFLOW_ID>" to workflowId,
-      "<STARTED_AT>" to opened["started_at"].toString(),
-      "<UPDATED_AT>" to got["updated_at"].toString(),
-      "<CONTINUED_AT>" to continuedAt,
-      "<CHECKPOINT>" to GitWorkflowGitOperations()
-        .repositoryFingerprint(Path.of("").toAbsolutePath()).value,
-    )
-    assertEquals("blocked", updated["workflow_status"])
-    assertEquals(1, listed["workflow_count"])
-    assertEquals(workflowId, latest["workflow_id"])
-    assertEquals(workflowId, got["workflow_id"])
-    assertEquals(emptyList<String>(), resumed["missing_artifacts"])
-    assertEquals("ok", continued["status"])
-    assertEquals("reopened", continued["continue_status"])
-    assertCompactContinuationPayload(continued, "implement")
-  }
-
-  @Test
   fun `mcp workflow methods cover verify verbs and reopened continuation`() {
     val tempDir = Files.createTempDirectory("skillbill-mcp-verify-workflow")
     val env = disabledTelemetryEnvironment(tempDir)
@@ -754,72 +616,6 @@ class McpFeatureTaskRuntimeWorkflowTest {
 
 // Kept in its own class so it does not push McpRuntimeTest over the detekt LargeClass threshold.
 class McpTokenEstimationTest {
-  @Test
-  @Suppress("LongMethod")
-  fun `prose token data persists through mcp tool and aggregates in stats`() {
-    val tempDir = Files.createTempDirectory("skillbill-mcp-prose-tokens")
-    val context = McpRuntimeContext(environment = enabledTelemetryEnvironment(tempDir), userHome = tempDir)
-
-    val started = McpToolDispatcher.call(
-      "feature_task_prose_started",
-      mapOf(
-        "feature_size" to "MEDIUM",
-        "acceptance_criteria_count" to 3,
-        "open_questions_count" to 0,
-        "spec_input_types" to listOf("markdown_file"),
-        "spec_word_count" to 200,
-        "rollout_needed" to false,
-        "feature_name" to "token-estimation",
-        "issue_key" to "SKILL-91",
-        "spec_summary" to "Token estimation feature",
-      ),
-      context,
-    )
-    McpToolDispatcher.call(
-      "feature_task_prose_finished",
-      mapOf(
-        "session_id" to started["session_id"] as String,
-        "completion_status" to "completed",
-        "plan_correction_count" to 0,
-        "plan_task_count" to 3,
-        "plan_phase_count" to 1,
-        "feature_flag_used" to false,
-        "files_created" to 1,
-        "files_modified" to 2,
-        "tasks_completed" to 3,
-        "review_iterations" to 1,
-        "audit_result" to "all_pass",
-        "audit_iterations" to 1,
-        "validation_result" to "pass",
-        "boundary_history_written" to true,
-        "pr_created" to false,
-        "plan_deviation_notes" to "",
-        "estimated_phase_tokens" to mapOf(
-          "preplan" to mapOf("estimated_input_tokens" to 1000, "estimated_output_tokens" to 500),
-          "implement" to mapOf("estimated_input_tokens" to 2000, "estimated_output_tokens" to 800),
-        ),
-        "estimated_total_tokens" to 4300,
-      ),
-      context,
-    )
-    val stats = McpToolDispatcher.call("feature_task_prose_stats", emptyMap(), context)
-
-    assertEquals(1, stats["estimated_token_runs_with_value"])
-    assertEquals(4300.0, stats["average_estimated_total_tokens"])
-    val dbPath = tempDir.resolve("metrics.db")
-    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
-      assertEquals(
-        1,
-        scalarInt(connection, "SELECT COUNT(*) FROM feature_implement_sessions WHERE estimated_total_tokens = 4300"),
-      )
-      val phaseJson = scalarString(
-        connection,
-        "SELECT estimated_phase_tokens_json FROM feature_implement_sessions LIMIT 1",
-      )
-      assertTrue(phaseJson.isNotEmpty())
-    }
-  }
-
   @Test
   fun `runtime token data persists through mcp tool and aggregates in stats`() {
     val tempDir = Files.createTempDirectory("skillbill-mcp-runtime-tokens")
@@ -1044,22 +840,6 @@ private fun markVerifyWorkflowVerdictBlocked(workflowId: String, context: McpRun
     context = context,
   )
 
-private fun blockImplementWorkflow(workflowId: String, context: McpRuntimeContext): Map<String, *> =
-  McpWorkflowRuntime.update(
-    WorkflowFamilyKind.TASK_PROSE,
-    WorkflowUpdateRequest(
-      workflowId = workflowId,
-      workflowStatus = "blocked",
-      currentStepId = "implement",
-      stepUpdates = listOf(mapOf("step_id" to "implement", "status" to "blocked", "attempt_count" to 1)),
-      artifactsPatch = mapOf(
-        "plan" to mapOf("mode" to "implement", "task_count" to 1),
-        "preplan_digest" to mapOf("ok" to true),
-      ),
-    ),
-    context,
-  )
-
 private fun evaluatorReceipt(): Map<String, Any?> = mapOf(
   "contract_version" to "0.1",
   "verdict" to "approved",
@@ -1168,60 +948,6 @@ private fun assertMcpCliSuccess(result: skillbill.cli.model.CliExecutionResult) 
   assertEquals(0, result.exitCode, result.stdout)
 }
 
-private fun recordFeatureImplementLifecycle(context: McpRuntimeContext) {
-  val started =
-    McpRuntime.featureImplementStarted(
-      FeatureImplementStartedRequest(
-        featureSize = "MEDIUM",
-        acceptanceCriteriaCount = 3,
-        openQuestionsCount = 0,
-        specInputTypes = listOf("markdown_file"),
-        specWordCount = 250,
-        rolloutNeeded = false,
-        featureName = "native-lifecycle",
-        issueKey = "SKILL-27",
-        issueKeyType = "other",
-        specSummary = "Port lifecycle telemetry",
-      ),
-      context,
-    )
-  McpRuntime.featureImplementFinished(
-    FeatureImplementFinishedRequest(
-      sessionId = started["session_id"] as String,
-      completionStatus = "completed",
-      planCorrectionCount = 0,
-      planTaskCount = 4,
-      planPhaseCount = 1,
-      featureFlagUsed = false,
-      filesCreated = 1,
-      filesModified = 2,
-      tasksCompleted = 4,
-      reviewIterations = 1,
-      auditResult = "all_pass",
-      auditIterations = 1,
-      validationResult = "pass",
-      boundaryHistoryWritten = true,
-      prCreated = false,
-      featureFlagPattern = "none",
-      boundaryHistoryValue = "medium",
-      planDeviationNotes = "",
-      childSteps = listOf(
-        mapOf(
-          "skill" to "bill-code-check",
-          "result" to "pass",
-          "iterations" to 1,
-          "initial_failure_count" to 0,
-          "final_failure_count" to 0,
-        ),
-      ),
-    ),
-    context,
-  )
-}
-
-// SKILL-132 subtask 4: the feature_task_runtime_* MCP endpoints were duplicates of the
-// services the foreground runtime driver already calls directly, so the behavioral coverage
-// drives LifecycleTelemetryService at that seam instead of through a removed tool.
 private fun recordFeatureTaskRuntimeLifecycle(context: McpRuntimeContext) {
   val lifecycle = services(context).lifecycleTelemetryService
   val started = lifecycle.featureTaskRuntimeStarted(
@@ -1362,8 +1088,6 @@ private fun recordPrDescriptionLifecycle(context: McpRuntimeContext) {
 private fun assertLifecyclePersistence(connection: Connection) {
   assertEquals(
     mapOf(
-      "skillbill_feature_task_prose_started" to 1,
-      "skillbill_feature_task_prose_finished" to 1,
       "skillbill_quality_check_started" to 1,
       "skillbill_quality_check_finished" to 1,
       "skillbill_feature_verify_started" to 1,
@@ -1372,7 +1096,6 @@ private fun assertLifecyclePersistence(connection: Connection) {
     ),
     outboxEventCounts(connection),
   )
-  assertEquals(1, scalarInt(connection, "SELECT COUNT(*) FROM feature_implement_sessions"))
   assertEquals(1, scalarInt(connection, "SELECT COUNT(*) FROM quality_check_sessions"))
   assertEquals(1, scalarInt(connection, "SELECT COUNT(*) FROM feature_verify_sessions"))
 }
@@ -1416,62 +1139,6 @@ private fun decodeJsonObject(rawJson: String): Map<String, Any?> {
   require(decoded != null) { "Expected decoded JSON object but got: $rawJson" }
   return decoded
 }
-
-private fun featureImplementStatsKeys(): Set<String> = setOf(
-  "workflow",
-  "total_runs",
-  "finished_runs",
-  "in_progress_runs",
-  "raw_run_count",
-  "source_counts",
-  "valid_health_denominator_runs",
-  "data_quality_debt_runs",
-  "malformed_session_id_runs",
-  "unknown_source_runs",
-  "duplicate_terminal_finished_events",
-  "open_runs",
-  "completed_runs",
-  "completed_rate",
-  "abandoned_at_planning_runs",
-  "abandoned_at_implementation_runs",
-  "abandoned_at_review_runs",
-  "error_runs",
-  "error_rate",
-  "normal_duration_runs",
-  "synthetic_zero_duration_runs",
-  "long_running_duration_runs",
-  "invalid_duration_runs",
-  "median_duration_seconds",
-  "p90_duration_seconds",
-  "child_step_coverage",
-  "feature_size_outcome_stats",
-  "large_feature_health",
-  "feature_size_counts",
-  "completion_status_counts",
-  "audit_result_counts",
-  "validation_result_counts",
-  "feature_flag_pattern_counts",
-  "boundary_history_value_counts",
-  "rollout_needed_runs",
-  "rollout_needed_rate",
-  "feature_flag_used_runs",
-  "feature_flag_used_rate",
-  "pr_created_runs",
-  "pr_created_rate",
-  "boundary_history_written_runs",
-  "boundary_history_written_rate",
-  "average_acceptance_criteria_count",
-  "average_spec_word_count",
-  "average_review_iterations",
-  "average_audit_iterations",
-  "average_files_created",
-  "average_files_modified",
-  "average_tasks_completed",
-  "average_duration_seconds",
-  "estimated_token_runs_with_value",
-  "average_estimated_total_tokens",
-  "db_path",
-)
 
 private fun featureVerifyStatsKeys(): Set<String> = setOf(
   "workflow",

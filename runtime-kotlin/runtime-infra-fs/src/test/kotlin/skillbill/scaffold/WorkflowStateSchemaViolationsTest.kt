@@ -30,7 +30,7 @@ class WorkflowStateSchemaViolationsTest {
     // field or the enum constraint that catches it. Asserting one
     // specific path would couple the test to networknt's reporting
     // order across library upgrades.
-    val snapshot = baseSnapshot().toMutableMap().apply {
+    val snapshot = baseTaskRuntimeSnapshot().toMutableMap().apply {
       put(
         "steps",
         listOf(
@@ -54,7 +54,7 @@ class WorkflowStateSchemaViolationsTest {
 
   @Test
   fun `missing required field loud-fails`() {
-    val snapshot = baseSnapshot().toMutableMap().apply {
+    val snapshot = baseTaskRuntimeSnapshot().toMutableMap().apply {
       remove("current_step_id")
     }
     val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
@@ -68,7 +68,7 @@ class WorkflowStateSchemaViolationsTest {
 
   @Test
   fun `additional unknown top-level property loud-fails with the offending key`() {
-    val snapshot = baseSnapshot().toMutableMap().apply {
+    val snapshot = baseTaskRuntimeSnapshot().toMutableMap().apply {
       put("extra_field", "x")
     }
     val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
@@ -80,7 +80,7 @@ class WorkflowStateSchemaViolationsTest {
 
   @Test
   fun `wrong contract_version loud-fails with contract_version path`() {
-    val snapshot = baseSnapshot().toMutableMap().apply {
+    val snapshot = baseTaskRuntimeSnapshot().toMutableMap().apply {
       put("contract_version", "999")
     }
     val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
@@ -97,7 +97,7 @@ class WorkflowStateSchemaViolationsTest {
     // and `JsonNode.path("0")` on an array used to return MissingNode,
     // so offending-value extraction silently returned the empty string.
     // Pin the fixed behaviour: pure-integer segments index the array.
-    val snapshot = baseSnapshot().toMutableMap().apply {
+    val snapshot = baseTaskRuntimeSnapshot().toMutableMap().apply {
       put(
         "steps",
         listOf(
@@ -169,11 +169,10 @@ class WorkflowStateSchemaViolationsTest {
   }
 
   @Test
-  fun `paused validates on the prose and runtime branches and loud-fails on the verify branch`() {
+  fun `paused validates on the runtime branch and loud-fails on the verify branch`() {
     // SKILL-141 Subtask 1 AC-001: `paused` is the non-terminal parent status for a decomposed goal.
     // SKILL-142 AC-014 extends it to the runtime branch, where a child pauses for the bounded
     // operator decision. Feature-verify has no pause and must still reject it.
-    validator.validate(baseSnapshot().toMutableMap().apply { put("workflow_status", "paused") }, "bill-feature-task")
     validator.validate(
       baseTaskRuntimeSnapshot().toMutableMap().apply { put("workflow_status", "paused") },
       "bill-feature-task",
@@ -199,27 +198,6 @@ class WorkflowStateSchemaViolationsTest {
     "steps" to listOf(
       linkedMapOf<String, Any?>(
         "step_id" to "plan",
-        "status" to "running",
-        "attempt_count" to 1,
-      ),
-    ),
-    "artifacts" to emptyMap<String, Any?>(),
-    "started_at" to "",
-    "updated_at" to "",
-    "finished_at" to "",
-  )
-
-  private fun baseSnapshot(): Map<String, Any?> = linkedMapOf(
-    "workflow_id" to "wfl-19700101-000000-aaaa",
-    "session_id" to "",
-    "workflow_name" to "bill-feature-task",
-    "mode" to "prose",
-    "contract_version" to "0.1",
-    "workflow_status" to "running",
-    "current_step_id" to "assess",
-    "steps" to listOf(
-      linkedMapOf<String, Any?>(
-        "step_id" to "assess",
         "status" to "running",
         "attempt_count" to 1,
       ),

@@ -16,8 +16,8 @@ class FeatureTaskRuntimeAuditGapLocationSchemaTest {
     listOf(
       "bill-feature-goal",
       "bill-feature-goal.AuditFirstReviewAndFindingsLedger",
-      "bill-feature-task-prose.CodeReviewSelection",
-      "bill-feature-task-subtask-runner",
+      "bill-feature-task-runtime.CodeReviewSelection",
+      "bill-feature-task",
     ).forEach { location ->
       FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(gapEnvelope(location), "audit")
     }

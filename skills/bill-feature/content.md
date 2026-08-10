@@ -30,7 +30,7 @@ before resolving the review policy.
 ## Agent add-on selection
 
 Accept zero or more ordered `agent-addon:<slug>` arguments alongside the existing
-mode, review, parallel-review, agent, agent-override, and phase-agent arguments.
+review, parallel-review, agent, agent-override, and phase-agent arguments.
 Omission preserves existing behaviour. Before spec preparation, confirmation,
 workflow creation, or child launch, call the read-only `agent-addon
 resolve-selection` boundary once with every receiving agent assignment. Reject
@@ -69,7 +69,7 @@ If the issue key is missing, stop and ask for it. Do not invent one.
 
 Before discovering or preparing governed artifacts, perform the read-only, repository-scoped continuation lookup for the normalized issue key and current canonical Git root by running `skill-bill feature-task lookup <issue-key> --repo-root <repo-root> --format json`. This is a CLI command, not an MCP tool — there is no `feature_task_continuation_lookup` MCP tool; it was removed in favor of the CLI form. Pass the plain filesystem path to the repository as `--repo-root`; the CLI derives the canonical repository identity internally, so never construct or guess a `repository_identity` string yourself. Parse the `result` field of the JSON output (`no_match`, `resumable`, `already_running`, `ambiguous`, `terminal_only`, `goal_continuation`) per the handling rules below. The workflow database and immutable execution identity are authoritative; `spec.md` is the governed feature contract, not a planning checkpoint.
 
-Handle `resumable`, `already_running`, `ambiguous`, `terminal_only`, and `goal_continuation` before new-work preparation. For `resumable`, dispatch directly to the task sidecar with the persisted `workflow-id:<id>`, mode, and spec path; continuation authority predates the unified manifest invariant. Report and stop for running or terminal rows, and report every ambiguous candidate rather than selecting by recency. Only `no_match` may continue below. A malformed request, identity/snapshot/version error, selector mismatch, or explicit mode conflict must loud-fail rather than becoming `no_match`.
+Handle `resumable`, `already_running`, `ambiguous`, `terminal_only`, and `goal_continuation` before new-work preparation. For `resumable`, dispatch directly to the task sidecar with the persisted `workflow-id:<id>` and spec path; continuation authority predates the unified manifest invariant. Report and stop for running or terminal rows, and report every ambiguous candidate rather than selecting by recency. Only `no_match` may continue below. A malformed request, identity/snapshot/version error, selector mismatch, or explicit conflicting args must loud-fail rather than becoming `no_match`.
 
 `goal_continuation` means a prepared goal for this issue already owns durable state in this repository; it is continuation, never new work. Report the goal's parent workflow id, status, current subtask and action, and the complete/pending/blocked counts, then dispatch through `bill-feature-goal.md` as continuation. When its status is `running`, stop instead: a second goal run against the same durable state is never correct. Never re-prepare a spec, reset, or hand-edit the manifest projection in response to this result.
 
@@ -96,11 +96,11 @@ Before running spec preparation, check `.feature-specs/{ISSUE_KEY}-*/` for the i
 
 For every authoritative manifest, regardless of preparation mode or subtask cardinality:
 
-  - Read the file `bill-feature-goal.md` located in this skill's own installed directory (a sibling of this `SKILL.md`) and execute its instructions in the current session with args: `<issue-key> mode:<mode> parallel-review:<agent> code-review:<explicit-mode> agent-addon-selection:<structured-selection>`, including the structured resolver output only when non-empty, omitting `parallel-review:<agent>` when the caller did not provide it and omitting the `code-review:` token when the caller did not provide it. Do not reconstruct raw add-on tokens. Do not use the Skill tool for this — `bill-feature-goal` is an internal skill and is not listed.
+  - Read the file `bill-feature-goal.md` located in this skill's own installed directory (a sibling of this `SKILL.md`) and execute its instructions in the current session with args: `<issue-key> parallel-review:<agent> code-review:<explicit-mode> agent-addon-selection:<structured-selection>`, including the structured resolver output only when non-empty, omitting `parallel-review:<agent>` when the caller did not provide it and omitting the `code-review:` token when the caller did not provide it. Do not reconstruct raw add-on tokens. Do not use the Skill tool for this — `bill-feature-goal` is an internal skill and is not listed.
 - Do not ask an extra confirmation before dispatching to the goal sidecar; the goal sidecar owns the one confirmation gate before starting `skill-bill goal`.
 - Treat `skill-bill goal <issue_key>` as runtime behavior with durable workflow state, not as spec authoring.
 
-If `bill-feature-spec` cannot produce a valid mode or artifacts, stop and surface the failure instead of guessing a route.
+If `bill-feature-spec` cannot produce valid artifacts, stop and surface the failure instead of guessing a route.
 
 ## Fresh-conversation follow-up
 

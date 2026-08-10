@@ -71,7 +71,6 @@ import skillbill.ports.persistence.TelemetryReconciliationRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureImplementSessionSummary
-import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.persistence.model.FeatureVerifySessionSummary
 import skillbill.ports.persistence.model.WorkflowStateRecord
 import skillbill.ports.workflow.GoalSubtaskReviewGitOperations
@@ -1271,14 +1270,7 @@ class GoalRunnerStatusProjectionTest {
   }
 
   @Test
-  fun `execution liveness is unknown for prose mode missing workflow identity and lease read failure`() {
-    val proseHarness = GoalStatusPhaseLedgerHarness()
-    proseHarness.openProseWorkflow("wfl-prose")
-    assertEquals(
-      ExecutionLiveness.UNKNOWN,
-      requireNotNull(statusServiceForLiveness(proseHarness, "wfl-prose").status(goalStatusRequest())).executionLiveness,
-    )
-
+  fun `execution liveness is idle when lease or identity is missing and unknown on lease read failure`() {
     // No parent lease after clean exit is idle — not unknown — so watch/replan can proceed at boundaries.
     val missingLeaseStore = InMemoryGoalManifestStore(manifest(subtaskCount = 1))
     assertEquals(
@@ -3662,11 +3654,11 @@ class GoalRunnerStatusAttributionTest {
   @Test
   fun `status projection reports counts current step and active agent sourced from persisted run state`() {
     // The caller passes invokedAgentId=claude and configuredAgentOverrideId=codex, but the current
-    // subtask's recorded finalizing agent is zcode — status must report zcode and ignore both.
+    // subtask's recorded finalizing agent is cursor — status must report cursor and ignore both.
     val blockedWithAgent = manifest(subtaskCount = 3)
       .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1")
       .withBlockedSubtask(2, workflowId = "wfl-2", reason = "needs review")
-      .withSubtaskAgent(2, finalizingAgentId = "zcode")
+      .withSubtaskAgent(2, finalizingAgentId = "cursor")
     val store = InMemoryGoalManifestStore(manifest = blockedWithAgent)
     val outcomes = RecordingOutcomeStore()
     outcomes.progresses["wfl-2"] = GoalRunnerWorkflowProgress(
@@ -3695,7 +3687,7 @@ class GoalRunnerStatusAttributionTest {
     assertEquals(0, status.blockedCount)
     assertEquals(2, status.currentSubtaskId)
     assertEquals("implement", status.currentStep)
-    assertEquals("zcode", status.activeAgent)
+    assertEquals("cursor", status.activeAgent)
     assertEquals("durable_progress step=implement attempt=1", status.latestLivenessSignal)
   }
 
@@ -3726,13 +3718,13 @@ class GoalRunnerStatusAttributionTest {
 
   @Test
   fun `status projection reports the persisted phase-ledger agent for a runtime child regardless of caller`() {
-    // AC2 regression: a goal run persisted with zcode phase records, queried by a status call whose
-    // own resolution chain would yield codex, reports active_agent: zcode. Source 1 is the current
+    // AC2 regression: a goal run persisted with cursor phase records, queried by a status call whose
+    // own resolution chain would yield codex, reports active_agent: cursor. Source 1 is the current
     // subtask's active workflow agent from the persisted phase ledger.
     val harness = GoalStatusPhaseLedgerHarness()
-    val workflowId = "wfl-zcode-child"
+    val workflowId = "wfl-cursor-child"
     harness.openRuntimeWorkflow(workflowId)
-    harness.recordCompletedPhase(workflowId, phaseId = "implement", resolvedAgentId = "zcode")
+    harness.recordCompletedPhase(workflowId, phaseId = "implement", resolvedAgentId = "cursor")
     val store = InMemoryGoalManifestStore(
       manifest = manifest(subtaskCount = 1).withBlockedSubtask(1, workflowId = workflowId, reason = "needs review"),
     )
@@ -3747,7 +3739,7 @@ class GoalRunnerStatusAttributionTest {
     )
 
     requireNotNull(status)
-    assertEquals("zcode", status.activeAgent)
+    assertEquals("cursor", status.activeAgent)
   }
 }
 
@@ -3787,14 +3779,6 @@ private class GoalStatusPhaseLedgerHarness {
 
   fun openRuntimeWorkflow(workflowId: String) {
     recorder.ensureWorkflowOpen(workflowId, sessionId = "goal-status-test")
-  }
-
-  fun openProseWorkflow(workflowId: String) {
-    openRuntimeWorkflow(workflowId)
-    repository.saveFeatureTaskRuntimeWorkflow(
-      requireNotNull(repository.getFeatureTaskRuntimeWorkflow(workflowId))
-        .copy(mode = FeatureTaskWorkflowMode.PROSE),
-    )
   }
 
   fun seedOwnership(workflowId: String, expiresAt: String) {

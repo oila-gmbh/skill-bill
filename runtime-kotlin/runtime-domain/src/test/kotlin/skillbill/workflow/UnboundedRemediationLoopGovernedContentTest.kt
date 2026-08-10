@@ -13,6 +13,10 @@ import kotlin.test.assertTrue
  * SKILL-157 AC-001 to AC-005: the governed feature-task and goal surfaces describe the semantic
  * remediation loops as unbounded with an advisory warning threshold, and that documented threshold is
  * bound to the runtime declaration rather than duplicated as prose-side literals.
+ *
+ * SKILL-175: briefing source of truth is runtime-owned
+ * ([FeatureTaskRuntimePhasePromptDirectives] / [FeatureTaskRuntimeReviewExecutionDirective]), not
+ * deleted prose skill trees.
  */
 class UnboundedRemediationLoopGovernedContentTest {
   private val threshold = FeatureTaskRuntimePhaseWorkflowDefinition.SEMANTIC_LOOP_WARNING_THRESHOLD
@@ -25,11 +29,16 @@ class UnboundedRemediationLoopGovernedContentTest {
 
   private val surfacePaths = listOf(
     "skills/bill-feature-task-runtime/content.md",
-    "skills/bill-feature-task-prose/content.md",
-    "skills/bill-feature-task-prose/native-agents/agents.yaml",
     "skills/bill-feature-goal/content.md",
-    "skills/bill-feature-task-subtask-runner/content.md",
   )
+
+  private val reviewExecutionDirectivePath =
+    "runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/featuretask/" +
+      "FeatureTaskRuntimeReviewExecutionDirective.kt"
+
+  private val phasePromptDirectivesPath =
+    "runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/featuretask/" +
+      "FeatureTaskRuntimePhasePromptDirectives.kt"
 
   // `review_cap_disposition` survives as a durable legacy field name, so the denylist targets cap
   // *statements* the run would obey, never the identifier that carries decodable legacy state.
@@ -82,16 +91,19 @@ class UnboundedRemediationLoopGovernedContentTest {
   }
 
   @Test
-  fun `the runtime and prose surfaces require remediation to continue until blocking items clear`() {
+  fun `the runtime surfaces require remediation to continue until blocking items clear`() {
     val runtime = governedText("skills/bill-feature-task-runtime/content.md")
     assertTrue(runtime.contains("carries no iteration cap: it continues while any Blocker finding remains"))
     assertTrue(runtime.contains("repair and re-audit continue while any blocking gap remains"))
     assertTrue(runtime.contains("The threshold is a warning signal, not a cap"))
 
-    val prose = governedText("skills/bill-feature-task-prose/content.md")
-    assertTrue(prose.contains("keep repairing and re-reviewing while any Blocker finding remains"))
-    assertTrue(prose.contains("no pass number ends the loop"))
-    assertTrue(prose.contains("advance only after every Blocker finding clears"))
+    val reviewDirective = governedText(reviewExecutionDirectivePath)
+    assertTrue(
+      reviewDirective.contains(
+        "Remediation passes are unbounded: they run for as long as an unresolved Blocker survives.",
+      ),
+      "runtime review-execution directive must state unbounded Blocker remediation.",
+    )
   }
 
   @Test
@@ -100,15 +112,18 @@ class UnboundedRemediationLoopGovernedContentTest {
     assertTrue(runtime.contains("review pass one uses the selected delegated mode and every later remediation"))
     assertTrue(runtime.contains("bill-code-review mode:inline context:feature-remediation"))
 
-    val runner = governedText("skills/bill-feature-task-subtask-runner/content.md")
-    assertTrue(runner.contains("For every later pass, call `bill-code-review mode:inline context:feature-remediation`"))
-
-    val nativeAgents = governedText("skills/bill-feature-task-prose/native-agents/agents.yaml")
-    assertTrue(nativeAgents.contains("for every later review run `bill-code-review mode:inline`"))
+    val reviewDirective = governedText(reviewExecutionDirectivePath)
+    assertTrue(
+      reviewDirective.contains(
+        "A remediation pass adds context:feature-remediation, is bounded to that round's remediation " +
+          "delta, and always executes inline.",
+      ),
+      "runtime review-execution directive must bind remediation passes to inline feature-remediation.",
+    )
   }
 
   @Test
-  fun `the goal and prose review-mode statements bind pass one to the selected mode`() {
+  fun `the goal review-mode statements bind pass one to the selected mode`() {
     val selectedModeThenInline =
       "Review pass one uses the selected mode, and every later pass runs inline against the " +
         "remediation delta via `context:feature-remediation`"
@@ -123,33 +138,34 @@ class UnboundedRemediationLoopGovernedContentTest {
       goal.contains("Remediation continues while any unresolved Blocker remains"),
       "the goal surface must state that remediation continues while a Blocker remains.",
     )
-
-    val prose = governedText("skills/bill-feature-task-prose/content.md")
-    assertTrue(prose.contains(selectedModeThenInline))
-    assertTrue(
-      prose.contains(
-        "every later review-fix pass invokes `bill-code-review mode:inline context:feature-remediation` " +
-          "against only the remediation delta",
-      ),
-      "the prose mode-authority statement must scope every later pass to the remediation delta.",
-    )
-
-    assertTrue(governedText("skills/bill-feature-task-subtask-runner/content.md").contains(selectedModeThenInline))
   }
 
   @Test
   fun `non-blocking severities keep their unchanged behavior on every rewritten surface`() {
     assertTrue(
-      governedText("skills/bill-feature-task-prose/content.md")
-        .contains("Continue past Major, Minor, and Nit findings while preserving them as review evidence"),
-    )
-    assertTrue(
-      governedText("skills/bill-feature-task-prose/native-agents/agents.yaml")
-        .contains("Major, Minor, and Nit findings never block and never stop the workflow"),
-    )
-    assertTrue(
       governedText("skills/bill-feature-goal/content.md")
         .contains("Major, Minor, and Nit findings remain durable evidence and never prevent advancement"),
+    )
+    assertTrue(
+      governedText("skills/bill-feature-task-runtime/content.md")
+        .contains("Major findings remain durable evidence but never prevent advancement"),
+    )
+  }
+
+  @Test
+  fun `mutating-phase briefing text is owned by the runtime directive declaration`() {
+    val directives = governedText(phasePromptDirectivesPath)
+    assertTrue(
+      directives.contains("FeatureTaskRuntimePhasePromptDirectives is the sole runtime-owned source"),
+      "phase prompt directives must declare themselves the sole mutating-phase briefing source of truth.",
+    )
+    assertFalse(
+      directives.contains("skills/bill-feature-task-prose"),
+      "phase prompt directives must not lockstep with deleted prose skill trees.",
+    )
+    assertTrue(
+      directives.contains("## Minimalism discipline (reuse before write)"),
+      "runtime-owned minimalism discipline directive must remain present.",
     )
   }
 

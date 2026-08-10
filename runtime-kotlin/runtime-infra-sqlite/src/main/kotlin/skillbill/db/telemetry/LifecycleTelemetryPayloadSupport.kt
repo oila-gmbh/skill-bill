@@ -5,57 +5,6 @@ import skillbill.review.normalizeRoutedSkill
 import skillbill.review.normalizeStackLabel
 import skillbill.telemetry.model.PrDescriptionGeneratedRecord
 
-fun featureImplementStartedPayload(row: Map<String, Any?>, level: String): Map<String, Any?> =
-  linkedMapOf<String, Any?>(
-    "session_id" to row.stringOrEmpty("session_id"),
-    "source" to row.stringOrEmpty("source").ifBlank { "production" },
-    "issue_key_provided" to row.booleanFromInt("issue_key_provided"),
-    "issue_key_type" to row.stringOrEmpty("issue_key_type"),
-    "spec_input_types" to JsonSupport.parseArrayOrEmpty(row.stringOrEmpty("spec_input_types")),
-    "spec_word_count" to row.intOrZero("spec_word_count"),
-    "feature_size" to row.stringOrEmpty("feature_size"),
-    "rollout_needed" to row.booleanFromInt("rollout_needed"),
-    "acceptance_criteria_count" to row.intOrZero("acceptance_criteria_count"),
-    "open_questions_count" to row.intOrZero("open_questions_count"),
-  ).apply {
-    if (level == "full") {
-      put("feature_name", row.stringOrEmpty("feature_name"))
-      put("spec_summary", row.stringOrEmpty("spec_summary"))
-    }
-  }
-
-fun featureImplementFinishedPayload(row: Map<String, Any?>, level: String): Map<String, Any?> {
-  val completionStatus = row.stringOrEmpty("completion_status")
-  val earlyAbandonment = completionStatus.startsWith("abandoned_at_")
-  val gateDefault = if (earlyAbandonment) "not_reached" else "skipped"
-  return linkedMapOf<String, Any?>(
-    "session_id" to row.stringOrEmpty("session_id"),
-    "source" to row.stringOrEmpty("source").ifBlank { "production" },
-  ).apply {
-    put("completion_status", completionStatus)
-    put("plan_correction_count", row.intOrZero("plan_correction_count"))
-    put("plan_task_count", row.intOrZero("plan_task_count"))
-    put("plan_phase_count", row.intOrZero("plan_phase_count"))
-    put("feature_flag_used", row.booleanFromInt("feature_flag_used"))
-    put("feature_flag_pattern", row.stringOrEmpty("feature_flag_pattern").ifBlank { "none" })
-    put("files_created", row.intOrZero("files_created"))
-    put("files_modified", row.intOrZero("files_modified"))
-    put("tasks_completed", row.intOrZero("tasks_completed"))
-    put("review_iterations", row.intOrZero("review_iterations"))
-    put("audit_result", row.stringOrEmpty("audit_result").ifBlank { gateDefault })
-    put("audit_iterations", row.intOrZero("audit_iterations"))
-    put("validation_result", row.stringOrEmpty("validation_result").ifBlank { gateDefault })
-    put("boundary_history_written", row.booleanFromInt("boundary_history_written"))
-    put("boundary_history_value", row.stringOrEmpty("boundary_history_value").ifBlank { "none" })
-    put("pr_created", row.booleanFromInt("pr_created"))
-    put("child_steps", JsonSupport.parseArrayOrEmpty(row.stringOrEmpty("child_steps_json")))
-    put("duration_seconds", durationSeconds(row))
-    if (level == "full") {
-      put("plan_deviation_notes", row.stringOrEmpty("plan_deviation_notes"))
-    }
-  }
-}
-
 fun featureTaskRuntimeStartedPayload(row: Map<String, Any?>, level: String, salt: String): Map<String, Any?> =
   linkedMapOf<String, Any?>(
     "session_id" to row.stringOrEmpty("session_id"),

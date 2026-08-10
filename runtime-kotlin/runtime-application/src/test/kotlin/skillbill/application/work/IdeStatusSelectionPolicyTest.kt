@@ -155,7 +155,7 @@ class IdeStatusSelectionPolicyTest {
     updatedAt: String,
   ): IdeStatusCandidate = IdeStatusCandidate(
     workflowId = workflowId,
-    workflowFamily = IdeStatusWorkflowFamily.FEATURE_TASK_PROSE,
+    workflowFamily = IdeStatusWorkflowFamily.FEATURE_TASK_RUNTIME,
     issueKey = issueKey,
     currentState = lifecycle.wireValue,
     lifecycleState = lifecycle,

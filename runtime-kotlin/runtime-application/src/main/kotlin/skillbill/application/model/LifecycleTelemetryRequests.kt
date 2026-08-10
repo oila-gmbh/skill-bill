@@ -1,47 +1,5 @@
 package skillbill.application.model
 
-import skillbill.boundary.OpenBoundaryMap
-
-data class FeatureImplementStartedRequest(
-  val featureSize: String,
-  val source: String = "production",
-  val acceptanceCriteriaCount: Int,
-  val openQuestionsCount: Int,
-  val specInputTypes: List<String>,
-  val specWordCount: Int,
-  val rolloutNeeded: Boolean,
-  val featureName: String,
-  val issueKey: String,
-  val issueKeyType: String,
-  val specSummary: String,
-)
-
-data class FeatureImplementFinishedRequest(
-  val sessionId: String,
-  val source: String = "production",
-  val completionStatus: String,
-  val planCorrectionCount: Int,
-  val planTaskCount: Int,
-  val planPhaseCount: Int,
-  val featureFlagUsed: Boolean,
-  val filesCreated: Int,
-  val filesModified: Int,
-  val tasksCompleted: Int,
-  val reviewIterations: Int,
-  val auditResult: String,
-  val auditIterations: Int,
-  val validationResult: String,
-  val boundaryHistoryWritten: Boolean,
-  val prCreated: Boolean,
-  val featureFlagPattern: String,
-  val boundaryHistoryValue: String,
-  val planDeviationNotes: String,
-  @OpenBoundaryMap("Caller-supplied JSON child-step telemetry payload")
-  val childSteps: List<Map<String, Any?>>,
-  val estimatedPhaseTokenBreakdownJson: String? = null,
-  val estimatedTotalTokens: Int? = null,
-)
-
 data class FeatureTaskRuntimeStartedRequest(
   val featureSize: String,
   val issueKey: String,

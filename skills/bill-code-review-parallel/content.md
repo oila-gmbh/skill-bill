@@ -25,7 +25,7 @@ Gather:
 If the user does not supply `--agent2`, prompt:
 
 > Which alternative agent should review the diff?
-> Supported agents: claude, codex, cursor, opencode, copilot, junie
+> Supported agents: claude, codex, cursor, copilot, junie
 
 Do not proceed until `--agent2` is provided.
 

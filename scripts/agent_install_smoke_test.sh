@@ -12,7 +12,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BIN="${SKILL_BILL_BIN:-$HOME/.local/bin/skill-bill}"
 RUNTIME_ROOT="${SKILL_BILL_RUNTIME_ROOT:-$HOME/.skill-bill/runtime}"
 MCP_BIN="$RUNTIME_ROOT/runtime-mcp/bin/runtime-mcp"
-if [[ $# -gt 0 ]]; then AGENTS=("$@"); else AGENTS=(copilot claude codex opencode junie cursor zcode); fi
+if [[ $# -gt 0 ]]; then AGENTS=("$@"); else AGENTS=(copilot claude codex junie cursor); fi
 
 [[ -x "$BIN" ]] || { echo "FATAL: skill-bill not executable at $BIN" >&2; exit 2; }
 [[ -d "$RUNTIME_ROOT" ]] || { echo "FATAL: no installed runtime at $RUNTIME_ROOT (run ./install.sh first)" >&2; exit 2; }
@@ -45,14 +45,14 @@ requests = [
         "jsonrpc": "2.0",
         "id": "invalid",
         "method": "tools/call",
-        "params": {"name": "feature_task_prose_workflow_get", "arguments": {"unexpected": True}},
+        "params": {"name": "feature_verify_workflow_get", "arguments": {"unexpected": True}},
     },
     {
         "jsonrpc": "2.0",
         "id": "open",
         "method": "tools/call",
         "params": {
-            "name": "feature_task_prose_workflow_open",
+            "name": "feature_verify_workflow_open",
             "arguments": {
                 "issue_key": "SMOKE-1",
                 "repository_identity": "repo-root-realpath-v1:/install-smoke",
@@ -88,7 +88,14 @@ try:
     checks.append(("process_exit_0", completed.returncode == 0))
     checks.append(("initialize", responses["initialize"]["result"]["serverInfo"]["name"] == "skill-bill"))
     names = [tool["name"] for tool in responses["list"]["result"]["tools"]]
+    prose_tools = [
+        n for n in names
+        if n.startswith("feature_task" + "_prose_")
+        or n.startswith("goal" + "_prose_")
+        or n.startswith("feature" + "_implement_")
+    ]
     checks.append(("tools_list", "doctor" in names and "feature_task_runtime_stats" not in names))
+    checks.append(("no_prose_mcp_tools", not prose_tools))
     valid_result, valid_payload = payload(responses["valid"])
     checks.append(
         (
@@ -112,7 +119,7 @@ try:
         "id": "get",
         "method": "tools/call",
         "params": {
-            "name": "feature_task_prose_workflow_get",
+            "name": "feature_verify_workflow_get",
             "arguments": {"workflow_id": workflow_id},
         },
     }
@@ -169,15 +176,16 @@ for agent in "${AGENTS[@]}"; do
     copilot)  mkdir -p "$FAKE/.copilot" ;;
     claude)   mkdir -p "$FAKE/.claude" ;;
     codex)    mkdir -p "$FAKE/.codex" ;;
-    opencode) mkdir -p "$FAKE/.config/opencode" ;;
     junie)    mkdir -p "$FAKE/.junie" ;;
     cursor)   mkdir -p "$FAKE/.cursor" ;;
-    zcode)    mkdir -p "$FAKE/.zcode" ;;
   esac
 
   echo "── $agent ──────────────────────────────────────────────"
   rc=0
-  "$BIN" --home "$FAKE" install apply \
+  # Throwaway-home apply never touches the active goal workflow store; clear the
+  # goal-continuation guard so this smoke can run inside a parent goal validate.
+  env -u SKILL_BILL_GOAL_CONTINUATION \
+    "$BIN" --home "$FAKE" install apply \
     --repo-root "$REPO_ROOT" \
     --agent-mode manual --agent "$agent" \
     --platform-mode all \
@@ -209,8 +217,17 @@ if data is not None:
     chk("agent_applied", bool(mine))
     skills_path = mine[0].get("path") if mine else None
     if skills_path:
-        n = len(glob.glob(os.path.join(skills_path, "*")))
+        skill_names = [os.path.basename(p) for p in glob.glob(os.path.join(skills_path, "*"))]
+        n = len(skill_names)
         chk("skills_installed", n > 0, f"{n} skills in {skills_path}")
+        prose_skill = "bill-feature-task-" + "prose"
+        prose_skills = [
+            s for s in skill_names
+            if s in (prose_skill, prose_skill + ".md",
+                     "bill-feature-task-subtask-runner", "bill-feature-task-subtask-runner.md")
+            or ("feature-task-" + "prose") in s
+        ]
+        chk("no_prose_skills", not prose_skills, ",".join(prose_skills))
 
     nas = [x for x in data.get("native_agents", []) if x.get("agent") == agent]
     if nas:

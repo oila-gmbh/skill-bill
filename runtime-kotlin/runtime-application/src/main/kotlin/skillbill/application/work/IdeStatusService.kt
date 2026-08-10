@@ -129,8 +129,10 @@ class IdeStatusService(
     repositoryIdentity: String,
     issueKeysWithGoals: Set<String>,
   ): IdeStatusCandidate? {
+    // SKILL-175: a legacy prose work item has no live IDE status family; it stays listed in the
+    // work list (via WorkListService) but is excluded from IDE status projection here.
     val family = item.workflowKind.toIdeFamily()
-    if (matchesRepository(unitOfWork, item, family, repositoryIdentity) != true) return null
+    if (family == null || matchesRepository(unitOfWork, item, family, repositoryIdentity) != true) return null
 
     val lifecycle = IdeStatusSelectionPolicy.lifecycleFromDurableState(item.currentState)
       ?: return null
@@ -170,9 +172,8 @@ class IdeStatusService(
     family: IdeStatusWorkflowFamily,
     repositoryIdentity: String,
   ): Boolean? = when (family) {
-    IdeStatusWorkflowFamily.FEATURE_TASK_PROSE,
-    IdeStatusWorkflowFamily.FEATURE_TASK_RUNTIME,
-    -> matchesFeatureTaskRepository(unitOfWork, item.workflowId, repositoryIdentity)
+    IdeStatusWorkflowFamily.FEATURE_TASK_RUNTIME ->
+      matchesFeatureTaskRepository(unitOfWork, item.workflowId, repositoryIdentity)
     IdeStatusWorkflowFamily.FEATURE_GOAL ->
       matchesGoalRepository(unitOfWork, item, repositoryIdentity)
     IdeStatusWorkflowFamily.FEATURE_VERIFY ->
@@ -301,8 +302,6 @@ class IdeStatusService(
     repositoryIdentity: String,
   ): Instant? {
     val fromWorkflow = when (family) {
-      IdeStatusWorkflowFamily.FEATURE_TASK_PROSE ->
-        WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, item.workflowId)
       IdeStatusWorkflowFamily.FEATURE_TASK_RUNTIME ->
         WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, item.workflowId)
       IdeStatusWorkflowFamily.FEATURE_VERIFY ->

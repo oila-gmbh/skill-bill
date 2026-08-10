@@ -114,6 +114,50 @@ internal fun Connection.upsertFeatureTaskWorkflowRow(
   }
 }
 
+/**
+ * Status/artifact terminalization for an existing legacy prose row. Updates only status, artifacts,
+ * finished_at, and related timestamps — never touches `mode`, so the row stays prose.
+ */
+internal fun Connection.terminalizeLegacyProseFeatureTaskWorkflowRow(row: WorkflowStateRecord) {
+  val transitionTimestamp = nextStateEnteredAtSql("feature_task_workflows")
+  prepareStatement(
+    """
+    UPDATE feature_task_workflows
+    SET workflow_status = ?,
+        artifacts_json = ?,
+        current_step_id = ?,
+        updated_at = CURRENT_TIMESTAMP,
+        state_entered_at = CASE
+          WHEN feature_task_workflows.workflow_status != ? THEN $transitionTimestamp
+          ELSE feature_task_workflows.state_entered_at
+        END,
+        state_entered_at_estimated = CASE
+          WHEN feature_task_workflows.workflow_status != ? THEN 0
+          ELSE feature_task_workflows.state_entered_at_estimated
+        END,
+        finished_at = COALESCE(NULLIF(?, ''), CURRENT_TIMESTAMP)
+    WHERE workflow_id = ?
+      AND (mode = 'prose' OR mode IS NULL)
+    """.trimIndent(),
+  ).use { statement ->
+    val parameters = SqlParameterBinder(statement)
+    parameters.text(row.workflowStatus)
+    parameters.text(row.artifactsJson)
+    parameters.text(row.currentStepId)
+    parameters.text(row.workflowStatus)
+    parameters.text(row.workflowStatus)
+    parameters.text(row.finishedAt)
+    parameters.text(row.workflowId)
+    val updated = statement.executeUpdate()
+    if (updated != 1) {
+      throw skillbill.error.InvalidWorkflowStateSchemaError(
+        "Legacy prose feature-task workflow '${row.workflowId}' was not terminalized " +
+          "(missing row or mode is not prose).",
+      )
+    }
+  }
+}
+
 private fun PreparedStatement.bindWorkflowRow(
   row: WorkflowStateRecord,
   defaultContractVersion: String,

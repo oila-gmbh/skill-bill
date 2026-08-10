@@ -45,8 +45,6 @@ private val LEGACY_POINTER_GOLDEN: Map<String, Set<String>> = mapOf(
     "telemetry-contract.md",
   ),
   "bill-feature-task-runtime" to setOf("peak-hours-warner.md"),
-  "bill-feature-task-prose" to setOf("peak-hours-warner.md"),
-  "bill-feature-task-subtask-runner" to setOf("peak-hours-warner.md"),
   "bill-feature-verify" to setOf("shell-ceremony.md", "telemetry-contract.md"),
 )
 

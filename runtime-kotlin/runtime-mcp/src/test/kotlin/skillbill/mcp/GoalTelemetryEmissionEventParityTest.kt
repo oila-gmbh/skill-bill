@@ -199,7 +199,7 @@ class GoalTelemetryEmissionEventParityTest {
         "subtasks_complete" to 3,
         "subtasks_blocked" to 1,
         "subtasks_skipped" to 0,
-        "mode" to "prose",
+        "mode" to "runtime",
         "stop_reason" to "BLOCKED",
       ),
       eventName = "goal_finished",

@@ -22,7 +22,6 @@ import skillbill.workflow.WorkflowEngine
  * Each mapper preserves the EXACT key order produced by the prior
  * `WorkflowContracts.*` serializers. Goldens locking the wire shape:
  *
- *  - `runtime-cli/src/test/resources/golden/cli-workflow-show.json`
  *  - `runtime-cli/src/test/resources/golden/cli-verify-workflow-show.json`
  *
  * Any field-order change here will break those goldens; update the
@@ -46,12 +45,11 @@ internal fun WorkflowOpenResult.toCliMap(
 internal fun WorkflowUpdateResult.toCliMap(): Map<String, Any?> = when (this) {
   is WorkflowUpdateResult.Ok -> LinkedHashMap(WorkflowEngine.updateAcknowledgementMap(acknowledgement)).apply {
     launchProjection?.let { put("launch_projection", WorkflowEngine.inputProjectionMap(it)) }
-    val workflowCommand = if (acknowledgement.workflowName == "bill-feature-verify") "verify-workflow" else "workflow"
     val quotedDbPath = "'${dbPath.replace("'", "'\"'\"'")}'"
     val quotedWorkflowId = "'${acknowledgement.workflowId.replace("'", "'\"'\"'")}'"
     put(
       "read_only_full_state_command",
-      "skill-bill --db $quotedDbPath $workflowCommand show $quotedWorkflowId --format json",
+      "skill-bill --db $quotedDbPath verify-workflow show $quotedWorkflowId --format json",
     )
     put("db_path", dbPath)
   }
@@ -207,11 +205,10 @@ private fun standardContinueMap(
   decompositionExtras: Map<String, Any?>,
 ): Map<String, Any?> {
   val map = LinkedHashMap(WorkflowEngine.compactContinueMap(view.compact))
-  val workflowCommand = if (view.skillName == "bill-feature-verify") "verify-workflow" else "workflow"
   val quotedDbPath = "'${dbPath.replace("'", "'\"'\"'")}'"
   val quotedWorkflowId = "'${view.resume.snapshot.workflowId.replace("'", "'\"'\"'")}'"
   map["read_only_full_state_command"] =
-    "skill-bill --db $quotedDbPath $workflowCommand show $quotedWorkflowId --format json"
+    "skill-bill --db $quotedDbPath verify-workflow show $quotedWorkflowId --format json"
   decompositionExtras.forEach { (key, value) -> map[key] = value }
   map["db_path"] = dbPath
   if (view.continueStatus == "blocked") {

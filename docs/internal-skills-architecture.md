@@ -27,13 +27,15 @@ directory, and the parent invokes it by **reading that sibling file and
 executing its instructions in the current session**. This reuses a pattern
 the install pipeline already had (support pointers like `shell-ceremony.md`)
 and works identically on every agent, because reading a file is universal
-where Skill-tool mechanics are not.
+where Skill-tool mechanics are not. SKILL-175 later removed the legacy prose
+orchestrator and subtask-runner sidecars; the retained family is the runtime
+router, runtime executor, and goal sidecar.
 
 ## What install produces
 
 The agent skill list shows `bill-feature` and `bill-feature-spec` but none of
-the five execution skills. The symlink in the agent's skills dir points into
-the content-addressed staging cache, where the five sidecars sit next to the
+the three execution sidecars. The symlink in the agent's skills dir points into
+the content-addressed staging cache, where the sidecars sit next to the
 parent's `SKILL.md`:
 
 ```
@@ -41,11 +43,9 @@ parent's `SKILL.md`:
   → ~/.skill-bill/installed-skills/bill-feature-<content-hash>/
       SKILL.md                            rendered governed wrapper — what the agent lists
       content.md                          authored source, copied verbatim
-      bill-feature-task.md                sidecar: mode router
-      bill-feature-task-runtime.md        sidecar: runtime-mode executor
-      bill-feature-task-prose.md          sidecar: prose-mode orchestrator
+      bill-feature-task.md                sidecar: runtime router
+      bill-feature-task-runtime.md        sidecar: runtime executor
       bill-feature-goal.md                sidecar: decomposed-goal executor
-      bill-feature-task-subtask-runner.md sidecar: docs for the level-1 subtask agent
       platform-packs → …                  symlink for pack pointer resolution
 ```
 
@@ -55,20 +55,9 @@ skill's `SKILL.md` would carry (pinned decision PD6: behavior parity over
 token savings). Executing a sidecar behaves exactly like the skill did when
 it was listed; only the way you reach it changed.
 
-The phase-loop subagents are a separate mechanism entirely — **native
-agents**, installed outside the skills directory (e.g. `~/.claude/agents/`
-for Claude Code):
-
-```
-bill-feature-task-pre-planning        digest producer
-bill-feature-task-planning            ordered plan / decomposition
-bill-feature-task-implementation      executes the plan atomically
-bill-feature-task-implementation-fix  review fix-loop respawn
-bill-feature-task-completeness-audit  criteria audit
-bill-feature-task-quality-check       final validation gate
-bill-feature-task-pr-description      PR creation
-bill-feature-task-subtask-runner      level-1 goal subtask agent
-```
+Feature-task and goal phase work runs inside the Kotlin runtime driver
+(`skill-bill feature-task` / `skill-bill goal`). Platform-pack review packs
+still install their own native subagents outside the skills directory.
 
 ## Where the source lives (nothing moved)
 
@@ -82,17 +71,15 @@ skills/
   bill-feature-spec/content.md                listed — spec preparation, still Skill-tool invoked
   bill-feature-task/content.md                internal-for: bill-feature
   bill-feature-task-runtime/content.md        internal-for: bill-feature
-  bill-feature-task-prose/content.md          internal-for: bill-feature
-  bill-feature-task-prose/native-agents/agents.yaml   the phase-agent bundle
-  bill-feature-task-subtask-runner/content.md internal-for: bill-feature
   bill-feature-goal/content.md                internal-for: bill-feature
 ```
 
 Keeping the paths frozen is load-bearing, not cosmetic. The Kotlin runtime
 binds to these files by repo path: `WorkflowEngine.CONTINUATION_CONTENT_PATHS`
 reads `skills/bill-feature-task/content.md` when it builds a resume payload,
-and `RepoValidationRuntime` asserts workflow-step markers inside
-`bill-feature-task-prose/content.md`. Likewise every identity string is
+and `RepoValidationRuntime` asserts workflow-step markers inside retained
+workflow surfaces such as `bill-feature-verify/content.md`. Likewise every
+identity string is
 byte-for-byte unchanged (PD4): workflow rows are still named
 `bill-feature-task`, and the DB `workflow_name` CHECK constraint, telemetry
 constants, and MCP tool names are untouched. The feature changed *listing and
@@ -110,7 +97,7 @@ path never encodes it.
 
 Everything funnels through `bill-feature`. Three decisions happen in order:
 *does an authoritative manifest already exist?* → *prepare bare-spec intake if needed* →
-*runtime or prose mode?*
+*hand off to the runtime driver?*
 
 ```
 user: "implement feature …" / "goal status" / …
@@ -128,13 +115,9 @@ bill-feature-spec                                [listed, Skill tool]
   │
   └── manifest (one or more subtasks) ──► read sibling bill-feature-goal.md [internal]
                         │  one confirmation gate; status requests land here too
-                        ├── mode:runtime ──► launches `skill-bill goal`
-                        │                     (durable goal loop: scheduling, dependency
-                        │                      order, limit-pause + resume)
-                        └── mode:prose ────► spawns bill-feature-task-subtask-runner
-                                              per subtask via the Agent tool — fresh
-                                              context per subtask, curated history.md /
-                                              decisions.md handoff between them
+                        └── launches `skill-bill goal`
+                              (durable goal loop: scheduling, dependency
+                               order, limit-pause + resume)
 ```
 
 The dispatch sentence is the whole contract. Every hop above (except
@@ -142,31 +125,21 @@ The dispatch sentence is the whole contract. Every hop above (except
 
 > Read the file `bill-feature-task.md` located in this skill's own installed
 > directory (a sibling of this `SKILL.md`) and execute its instructions in
-> the current session with args: `<issue-key> mode:<mode> …`. Do not use the
+> the current session with args: `<issue-key> …`. Do not use the
 > Skill tool for this — `bill-feature-task` is an internal skill and is not
 > listed.
 
-Arguments flow through unchanged — issue key, spec path, `mode:`,
+Arguments flow through unchanged — issue key, spec path,
 `parallel-review:`, `--agent-override` — so downstream behavior is identical
 to the Skill-tool era.
 
-## The five sidecars at a glance
+## The three sidecars at a glance
 
 | Sidecar | Role | Terminal action |
 |---|---|---|
-| `bill-feature-task.md` | Mode router for one implementation unit; confirmation gate; opencode refusal | Reads the runtime or prose sibling |
+| `bill-feature-task.md` | Runtime router for one implementation unit; confirmation gate | Reads the runtime sibling |
 | `bill-feature-task-runtime.md` | Runtime-backed single-spec execution | Launches `skill-bill feature-task` |
-| `bill-feature-task-prose.md` | In-session phase-loop orchestrator | Spawns the phase native agents |
-| `bill-feature-goal.md` | Decomposed-goal gate, both modes, status behavior | Launches `skill-bill goal` or runs the prose subtask loop |
-| `bill-feature-task-subtask-runner.md` | Documentation only — its real artifact is the native agent of the same name | — |
-
-The subtask-runner is the one deliberate oddity: its skill directory exists
-so the agent contract is authored and governed like everything else, but
-nothing ever reads its sidecar to execute it. The executable artifact is
-registered in `skills/bill-feature-task-prose/native-agents/agents.yaml` and
-installed through the native-agent pipeline — which is why the install code
-deliberately keeps internal skills enumerated as native-agent source roots
-even though it excludes them from staging and linking.
+| `bill-feature-goal.md` | Decomposed-goal gate and status behavior | Launches `skill-bill goal` |
 
 ## How the install pipeline produces this
 

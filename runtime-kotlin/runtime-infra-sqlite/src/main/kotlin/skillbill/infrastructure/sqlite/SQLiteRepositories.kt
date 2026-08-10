@@ -37,7 +37,6 @@ import skillbill.ports.persistence.model.LearningResolution
 import skillbill.ports.persistence.model.ReviewAccountingRecord
 import skillbill.ports.persistence.model.ReviewRepositoryStatsSnapshot
 import skillbill.ports.persistence.model.TelemetryReconciliationRequest
-import skillbill.review.model.FeatureImplementWorkflowStats
 import skillbill.review.model.FeatureTaskRuntimeWorkflowStats
 import skillbill.review.model.FeatureVerifyWorkflowStats
 import skillbill.review.model.FeedbackRequest
@@ -108,9 +107,6 @@ class SQLiteTelemetryReconciliationRepository(
 class SQLiteWorkflowStatsRepository(
   private val connection: Connection,
 ) : WorkflowStatsRepository {
-  override fun featureImplementStats(): FeatureImplementWorkflowStats =
-    ReviewStatsRuntime.featureImplementStats(connection)
-
   override fun featureVerifyStats(): FeatureVerifyWorkflowStats = ReviewStatsRuntime.featureVerifyStats(connection)
 
   override fun featureTaskRuntimeStats(): FeatureTaskRuntimeWorkflowStats =

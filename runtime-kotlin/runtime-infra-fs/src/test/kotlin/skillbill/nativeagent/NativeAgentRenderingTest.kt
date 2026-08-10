@@ -54,7 +54,7 @@ class NativeAgentRenderingTest {
   }
 
   @Test
-  fun `renderers emit claude codex opencode and junie shapes from one source`() {
+  fun `renderers emit claude codex junie and cursor shapes from one source`() {
     val source = NativeAgentSource(
       name = "bill-test-worker",
       description = "Test worker.",
@@ -63,8 +63,8 @@ class NativeAgentRenderingTest {
 
     val claude = NativeAgentProvider.Claude.render(source)
     val codex = NativeAgentProvider.Codex.render(source)
-    val opencode = NativeAgentProvider.Opencode.render(source)
     val junie = NativeAgentProvider.Junie.render(source)
+    val cursor = NativeAgentProvider.Cursor.render(source)
 
     assertContains(claude, "name: bill-test-worker")
     assertContains(claude, "description: Test worker.")
@@ -72,15 +72,15 @@ class NativeAgentRenderingTest {
     assertFalse("mode: subagent" in claude)
     assertContains(codex, "developer_instructions = \"\"\"")
     assertContains(codex, "# Worker\n\nDo the work.")
-    assertContains(opencode, "mode: subagent")
-    assertContains(opencode, "# Worker\n\nDo the work.")
     assertContains(junie, "name: bill-test-worker")
     assertContains(junie, "description: Test worker.")
     assertContains(junie, "# Worker\n\nDo the work.")
     assertFalse("mode: subagent" in junie)
+    assertContains(cursor, "name: bill-test-worker")
+    assertContains(cursor, "# Worker\n\nDo the work.")
     assertEquals(claude, junie, "Claude and Junie share the same markdown shape; drift must be intentional")
-    assertNotEquals(claude, opencode)
-    assertNotEquals(opencode, junie)
+    assertEquals(claude, cursor, "Claude and Cursor share the same markdown shape; drift must be intentional")
+    assertNotEquals(claude, codex)
   }
 
   @Test
@@ -93,7 +93,6 @@ class NativeAgentRenderingTest {
 
     val claude = NativeAgentProvider.Claude.render(source)
     val codex = NativeAgentProvider.Codex.render(source)
-    val opencode = NativeAgentProvider.Opencode.render(source)
     val junie = NativeAgentProvider.Junie.render(source)
 
     assertFalse(
@@ -111,7 +110,7 @@ class NativeAgentRenderingTest {
     assertContains(codex, "back\\\\slash")
     assertContains(codex, "Edge: case - quoted \\\"value\\\"")
 
-    listOf(opencode, junie).forEach { rendered ->
+    listOf(junie).forEach { rendered ->
       val renderedDescriptionLine = rendered.lines().first { it.startsWith("description: ") }
       assertTrue(
         renderedDescriptionLine.removePrefix("description: ").startsWith("\""),
@@ -119,8 +118,8 @@ class NativeAgentRenderingTest {
       )
     }
 
-    val parsedFromOpencode = parseFrontmatterValue(opencode, "description")
-    assertEquals(source.description, parsedFromOpencode)
+    val parsedFromClaude = parseFrontmatterValue(claude, "description")
+    assertEquals(source.description, parsedFromClaude)
   }
 
   @Test
@@ -198,52 +197,24 @@ class NativeAgentRenderingTest {
           val char = inner[index]
           if (char == '\\' && index + 1 < inner.length) {
             when (val next = inner[index + 1]) {
-              '\\' -> append('\\')
-              '"' -> append('"')
               'n' -> append('\n')
               'r' -> append('\r')
               't' -> append('\t')
-              else -> append(next)
+              '\\' -> append('\\')
+              '"' -> append('"')
+              else -> {
+                append('\\')
+                append(next)
+              }
             }
             index += 2
           } else {
             append(char)
-            index += 1
+            index++
           }
         }
       }
     }
     return raw
-  }
-
-  @Test
-  fun `cursor renders a byte-equivalent governed body from a provider-neutral source`() {
-    val source = NativeAgentSource(
-      name = "bill-cursor-worker",
-      description = "Cursor worker.",
-      body = "# Worker\n\nDo the work.",
-    )
-
-    val rendered = NativeAgentProvider.Cursor.render(source)
-
-    assertContains(rendered, "name: bill-cursor-worker")
-    assertContains(rendered, "description: Cursor worker.")
-    assertContains(rendered, "# Worker\n\nDo the work.")
-    assertFalse("mode: subagent" in rendered)
-    assertEquals(NativeAgentProvider.Claude.render(source), rendered)
-  }
-
-  @Test
-  fun `cursor activates only when an isolated home has a cursor root`() {
-    val home = Files.createTempDirectory("skillbill-cursor-activation")
-
-    assertTrue(NativeAgentProvider.Cursor.activeHomeAgentDirs(home).isEmpty())
-
-    Files.createDirectories(home.resolve(".cursor"))
-
-    assertEquals(
-      listOf(home.resolve(".cursor/agents").toAbsolutePath().normalize()),
-      NativeAgentProvider.Cursor.activeHomeAgentDirs(home),
-    )
   }
 }

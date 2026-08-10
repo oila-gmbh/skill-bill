@@ -28,7 +28,7 @@ internal fun WorkflowEngine.updateGoalParentForBlockedPhaseRetry(
     )
   val continuation = FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(continuationMap)
   val parentWorkflowId = continuation.parentWorkflowId ?: return null
-  val parent = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, parentWorkflowId)
+  val parent = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, parentWorkflowId)
     ?: invalidGoalRetryProjection(
       "Goal child '$childWorkflowId' references unknown parent workflow '$parentWorkflowId'.",
     )
@@ -62,8 +62,8 @@ internal fun WorkflowEngine.updateGoalParentForBlockedPhaseRetry(
     replaceArtifacts = true,
   )
   migrateLegacyGoalRunnerControls(unitOfWork, parent)
-  val updatedParent = updateRecord(WorkflowFamily.IMPLEMENT.definition, parent, parentInput)
-  WorkflowFamily.IMPLEMENT.saveRecord(
+  val updatedParent = updateRecord(WorkflowFamily.TASK_RUNTIME.definition, parent, parentInput)
+  WorkflowFamily.TASK_RUNTIME.saveRecord(
     unitOfWork.workflowStates,
     updatedParent.toRecord().copy(issueKey = retriedManifest.issueKey),
   )

@@ -3,7 +3,6 @@
 package skillbill.nativeagent.rendering
 
 import skillbill.install.plan.detectCodexAgentsTarget
-import skillbill.install.plan.detectOpencodeAgentsTarget
 import skillbill.install.support.claudeConfigRoots
 import skillbill.nativeagent.composition.NativeAgentSource
 import java.nio.file.Files
@@ -22,10 +21,6 @@ enum class NativeAgentProvider(
     override fun homeAgentDirs(home: Path): List<Path> =
       listOf(home.resolve(".codex/agents"), home.resolve(".agents/agents"))
   },
-  Opencode("opencode-agents", "md") {
-    override fun render(source: NativeAgentSource): String = renderFrontmatterAgent(source, mode = "subagent")
-    override fun homeAgentDirs(home: Path): List<Path> = listOf(home.resolve(".config/opencode/agents"))
-  },
   Junie("junie-agents", "md") {
     override fun render(source: NativeAgentSource): String = renderFrontmatterAgent(source, mode = null)
     override fun homeAgentDirs(home: Path): List<Path> = listOf(home.resolve(".junie/agents"))
@@ -33,10 +28,6 @@ enum class NativeAgentProvider(
   Cursor("cursor-agents", "md") {
     override fun render(source: NativeAgentSource): String = renderFrontmatterAgent(source, mode = null)
     override fun homeAgentDirs(home: Path): List<Path> = listOf(home.resolve(".cursor/agents"))
-  },
-  Zcode("zcode-agents", "md") {
-    override fun render(source: NativeAgentSource): String = renderFrontmatterAgent(source, mode = null)
-    override fun homeAgentDirs(home: Path): List<Path> = listOf(home.resolve(".zcode/agents"))
   },
   ;
 
@@ -49,10 +40,8 @@ enum class NativeAgentProvider(
   fun activeHomeAgentDirs(home: Path): List<Path> = when (this) {
     Claude -> homeAgentDirs(home)
     Codex -> listOfNotNull(detectCodexAgentsTarget(home)?.path)
-    Opencode -> listOfNotNull(detectOpencodeAgentsTarget(home)?.path)
     Junie -> homeAgentDirs(home).takeIf { Files.exists(home.resolve(".junie")) }.orEmpty()
     Cursor -> homeAgentDirs(home).takeIf { Files.exists(home.resolve(".cursor")) }.orEmpty()
-    Zcode -> homeAgentDirs(home).takeIf { Files.exists(home.resolve(".zcode")) }.orEmpty()
   }.map { it.toAbsolutePath().normalize() }
 
   fun cacheArtifactPath(cacheRoot: Path, logicalName: String): Path =

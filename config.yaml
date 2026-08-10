@@ -16,8 +16,6 @@ agents:
     skills_dir: ~/.claude/skills
   codex:
     skills_dir: ~/.agents/skills
-  opencode:
-    skills_dir: ~/.config/opencode/skills
   junie:
     skills_dir: ~/.junie/skills
   cursor:

@@ -3,22 +3,6 @@ package skillbill.db.telemetry
 import skillbill.contracts.JsonSupport
 import java.sql.Connection
 
-fun emitFeatureImplementStarted(connection: Connection, sessionId: String, level: String) {
-  val row = lifecycleRow(connection, "feature_implement_sessions", sessionId) ?: return
-  emitOnce(
-    LifecycleEmitRequest(connection, row, "feature_implement_sessions", "started_event_emitted_at"),
-    "skillbill_feature_task_prose_started",
-  ) { featureImplementStartedPayload(row, level) }
-}
-
-fun emitFeatureImplementFinished(connection: Connection, sessionId: String, level: String) {
-  val row = lifecycleRow(connection, "feature_implement_sessions", sessionId) ?: return
-  emitOnce(
-    LifecycleEmitRequest(connection, row, "feature_implement_sessions", "finished_event_emitted_at"),
-    "skillbill_feature_task_prose_finished",
-  ) { featureImplementFinishedPayload(row, level) }
-}
-
 fun emitFeatureTaskRuntimeStarted(connection: Connection, sessionId: String, level: String) {
   val row = lifecycleRow(connection, "feature_task_runtime_sessions", sessionId) ?: return
   emitOnce(

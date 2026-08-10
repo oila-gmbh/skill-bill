@@ -457,6 +457,26 @@ class RepoValidationRuntimeTest {
   }
 
   @Test
+  fun `repo validation skips boundary ledger references to deleted skills`() {
+    val repoRoot = Files.createTempDirectory("skillbill-boundary-ledger-refs")
+    createRepoValidationSkillFixture(repoRoot)
+    val ledger = repoRoot.resolve("skills/agent/history.md")
+    Files.createDirectories(ledger.parent)
+    Files.writeString(ledger, "Areas: skills/bill-feature-task-prose, skills/bill-feature-task-subtask-runner\n")
+
+    val report = RepoValidationRuntime.validateRepo(repoRoot)
+
+    assertFalse(
+      report.issues.any { it.contains("references unknown skill 'bill-feature-task-prose'") },
+      report.issues.joinToString("\n"),
+    )
+    assertFalse(
+      report.issues.any { it.contains("references unknown skill 'bill-feature-task-subtask-runner'") },
+      report.issues.joinToString("\n"),
+    )
+  }
+
+  @Test
   fun `repo validation preserves native agent source files`() {
     val repoRoot = Files.createTempDirectory("skillbill-native-agent-source-preservation")
     createRepoValidationSkillFixture(repoRoot)
@@ -486,7 +506,7 @@ class RepoValidationRuntimeTest {
     val repoRoot = Files.createTempDirectory("skillbill-native-agent-checked-in-artifact")
     createRepoValidationSkillFixture(repoRoot)
     writeNativeAgentFixture(repoRoot.resolve("skills/bill-code-review"), "bill-code-review-worker")
-    val generatedArtifact = repoRoot.resolve("skills/bill-code-review/opencode-agents/bill-code-review-worker.md")
+    val generatedArtifact = repoRoot.resolve("skills/bill-code-review/cursor-agents/bill-code-review-worker.md")
     Files.createDirectories(generatedArtifact.parent)
     Files.writeString(generatedArtifact, "checked-in generated file\n")
 
@@ -495,7 +515,7 @@ class RepoValidationRuntimeTest {
     assertFalse(report.passed)
     assertTrue(
       report.issues.any {
-        it.contains("opencode-agents/bill-code-review-worker.md") &&
+        it.contains("cursor-agents/bill-code-review-worker.md") &&
           it.contains("must not be checked in")
       },
       report.issues.joinToString("\n"),

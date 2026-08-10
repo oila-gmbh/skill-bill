@@ -10,7 +10,7 @@ class InstallPlanModelTest {
   @Test
   fun `supported install agents are exactly the install contract set`() {
     assertEquals(
-      listOf("copilot", "claude", "codex", "opencode", "junie", "cursor", "zcode"),
+      listOf("copilot", "claude", "codex", "junie", "cursor"),
       InstallAgent.supportedIds,
     )
   }
@@ -19,8 +19,6 @@ class InstallPlanModelTest {
   fun `cursor is a governed install agent and stays runtime eligible`() {
     assertEquals(InstallAgent.CURSOR, InstallAgent.fromId("cursor"))
     assertEquals(InstallAgent.CURSOR, InstallAgent.fromNormalizedId(" CURSOR "))
-    assertFalse(RUNTIME_REFUSED_AGENTS.contains(InstallAgent.CURSOR))
-    assertFalse(isRuntimeRefusedAgent("cursor"))
   }
 
   @Test
@@ -35,7 +33,7 @@ class InstallPlanModelTest {
   @Test
   fun `native agent provider ids mirror the install agent order`() {
     assertEquals(
-      listOf("claude", "codex", "opencode", "junie", "cursor", "zcode"),
+      listOf("claude", "codex", "junie", "cursor"),
       NativeAgentProviderId.entries.map(NativeAgentProviderId::id),
     )
   }

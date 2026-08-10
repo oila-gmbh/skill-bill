@@ -1,3 +1,51 @@
+## [2026-08-09] SKILL-179 subtask 4 — Final sweep, parity locks, and gates
+Areas: docs, orchestration/review-delegation, runtime-infra-fs (review contracts), runtime-infra-sqlite/db/telemetry, scripts, .feature-specs/SKILL-179
+- Dropped live dual-engine wording from skill-source-generation and review-delegation PLAYBOOK so governed docs describe runtime-only projection.
+- Renamed ReviewPacketConsumerContractParityTest cases off "governed prose" so parity locks assert markdown↔runtime without treating prose as a live engine.
+- Replaced System.err.println in GoalTelemetryPayloadSupport with java.util.logging so production telemetry parse failures leave the println-family debug surface.
+- Install/nesting smokes assert no prose MCP tools or prose skills and do not require mode:prose; install smoke clears SKILL_BILL_GOAL_CONTINUATION for throwaway-home apply under a parent goal.
+- Predecessor SKILL-175 carries an abandonment pointer to this feature; guard allowlist stays unwidened.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
+## [2026-08-09] SKILL-179 subtask 1 — Application/persistence test contract migration
+Areas: runtime-core/application (tests), runtime-application/{application,decomposition}, .feature-specs/SKILL-179
+- Retargeted ApplicationPersistencePortTest and FeatureTaskRouterContinuationTest fixtures from prose top-level artifacts to completed `feature_task_runtime_phase_records` so `requiredArtifactsByStep` / `FeatureTaskRuntimeRequiredArtifactPresenceResolver` yield `canResume`.
+- Helpers mark blocked/skipped/complete with runtime step ids (`validate` / `pr`); durable-save failure fails `saveFeatureTaskRuntimeWorkflow`. Compact router continuation asserts `currentStepArtifacts=[plan]` per `WorkflowEngine` repository_evidence filtering + compact fallback to requiredKeys.
+- Deleted `workflow service hydrates implement session summary for continuation payloads`: prose-only `FeatureImplementSessionSummary` hydration — `WorkflowFamilyKind.sessionSummary(TASK_RUNTIME)` returns `emptyMap()` and no runtime session-summary store exists.
+- `DecompositionManifestRuntimeStateSupport` recognizes runtime `pr` as a terminal skip/complete step (keeps legacy `pr_description` for GoalRunner stamps).
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented (validate phase owns the gradle gate)
+
+## [2026-08-09] SKILL-175 Kotlin persistence/application/IDE prose branch removal (subtask 6)
+Areas: runtime-kotlin/{runtime-domain,runtime-ports,runtime-application,runtime-infra-sqlite,runtime-infra-fs,runtime-cli,runtime-mcp,runtime-core,runtime-contracts}, orchestration/contracts, skills/bill-unit-test-value-check
+- Removed the live Kotlin prose workflow family (FeatureTaskWorkflowMode.PROSE, WorkflowFamilyKind.TASK_PROSE/IMPLEMENT + `feature-task-prose` humanName, WorkItemKind.FEATURE_TASK_PROSE, FeatureImplementWorkflowDefinition step DAG, IdeStatusWorkflowFamily.FEATURE_TASK_PROSE) from domain, ports, application, SQLite, and IDE/work-list projection — no compile-time public API remains to open/update/continue a prose workflow.
+- Implemented subtask-1 in-flight row policy: legacy prose rows quarantine + loud-fail on resume (never a rewriting migration); `feature_task_workflows` no longer accepts `mode=prose` writes above the schema while CHECKs keep it as legacy read-only; goal children are runtime-only (no prose-shaped child rows).
+- Dropped prose branches from workflow-state, execution-identity, and ide-status contracts/schemas; IDE status and work-list no longer expose `feature-task-prose`; goal stats/attribution no longer require a live prose bucket.
+- Retargeted application/SQLite/CLI/MCP tests to runtime-only (removed prose tests deleted, not skipped); `ProseWorkflowTestSupport` replaced by runtime-only support; `./gradlew check` in runtime-kotlin is the gate.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
+Areas: runtime-kotlin/{runtime-domain,runtime-ports,runtime-infra-fs,runtime-cli,runtime-application,runtime-contracts}, skills/{bill-feature,bill-feature-task,bill-feature-task-runtime,bill-feature-goal,bill-feature-verify,bill-code-review,bill-code-review-parallel}, docs, install.sh, uninstall.sh, orchestration/contracts, scripts
+- Feature entry skills no longer select `mode:prose|runtime`; runtime is the only engine callers document. Prose skill trees (`bill-feature-task-prose`, subtask-runner) remain until subtask 3 — callers just no longer point at them.
+- Deleted OpenCode/zcode from the live product matrix: `InstallAgent` / native-agent / symlink provider enums, detect/link/MCP/CLI path helpers, `McpOpenCodeConfig`/`McpZcodeConfig`, install-plan and native-agent-link-inventory schema enums, shell `SUPPORTED_AGENTS`, smoke matrices, and delegated-review provider rows. No refuse-tier leftover.
+- Removed `RUNTIME_REFUSED_AGENTS` / prose-redirect refusal machinery; unknown/unsupported agent ids use the general unavailable-launcher refusal path (`UnavailableAgentLauncherRefusal`), not an OpenCode-specific permanent tier. reusable for later agent retirements that must not leave a shim.
+- Breaking change: installs and CLI that named `opencode`/`zcode` lose those agents; a future OpenCode return is a clean new integration, never an un-delete of this surface.
+- Known limitation: prose skills, MCP prose tools, and CLI `workflow` family still exist until later SKILL-175 subtasks; English "prose"/"governed prose" language stays by design.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
+## [2026-08-09] SKILL-175 runtime-only stance and prose/OpenCode removal policy (subtask 1)
+Areas: runtime-kotlin/agent, .feature-specs/SKILL-175-remove-prose-opencode-runtime-support, .feature-specs/SKILL-176-goal-child-resume-self-heal
+- Docs/decision-only subtask: no product code, skill, MCP tool, or schema touched. It fixes the stance the destructive subtasks (2+) must execute against, so read `runtime-kotlin/agent/decisions.md` (2026-08-09 entry) before any prose/OpenCode deletion work.
+- Decision: runtime is the sole feature execution engine; the prose surface is deleted rather than renamed forward; OpenCode/zcode leave the product entirely — explicitly **not** kept as a permanent refuse tier or "unsupported agents" list (`RUNTIME_REFUSED_AGENTS`, `RUNTIME_REFUSED_AGENT_MESSAGE`, `isRuntimeRefusedAgent`, `InstallAgent.OPENCODE/ZCODE` are deletions). Supersedes the 2026-06-27 "opencode is prose-only" entry, whose body stays as history.
+- In-flight row policy is binding on later subtasks: quarantine + loud-fail resume, never silent reinterpretation and never a rewriting migration. Both `mode` CHECK constraints keep `'prose'` (`DatabaseSchema.kt` for `feature_task_workflows`, `DatabaseMigrations.kt` for `feature_task_execution_identities`) as legacy read-only values; write paths refuse `'prose'` above the schema. reusable pattern for any future engine retirement that shares a table via a discriminator column.
+- Cutover is dependency-ordered, not a sweep: stance → callers + OpenCode/zcode purge → prose skill deletion → MCP/telemetry → CLI → persistence/IDE → tests/docs. `removal-surface-checklist.md` in the spec dir is the inventory of surfaces found beyond the parent list and gates destructive deletion.
+- Scope guard recorded: English "prose"/"governed prose"/review-prose language is out of deletion scope; only the prose *engine* goes.
+- Known limitation: the stance is documentation-enforced only — nothing in the build fails if a later subtask reintroduces a refuse tier or a second engine.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
 ## [2026-08-09] SKILL-174 planning discovery exclusion contract (subtask 1)
 Areas: orchestration/contracts, runtime-kotlin/{runtime-contracts,runtime-infra-fs,runtime-application}, platform-packs/*/agent, skills/{bill-feature-goal,bill-boundary-history,bill-boundary-decisions}, AGENTS.md
 - `orchestration/contracts/goal-planning-discovery-exclusions.yaml` (contract_version 0.2) is now the single checked-in source of planning/preplanning discovery denies: `excluded_roots` (anchored repo-relative prefixes, currently `platform-packs/`) plus `excluded_directory_names` denied at ANY depth (`build`, `node_modules`, `.git`, `.gradle`, `.skill-bill`, `target`, `out`, `dist`). Depth-independent segment denial is what makes nested `runtime-kotlin/*/build/` prune as reliably as the repo-root one. reusable

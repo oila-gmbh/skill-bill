@@ -2,13 +2,8 @@
 
 package skillbill.mcp.core
 
-import skillbill.application.model.FeatureImplementFinishedRequest
-import skillbill.application.model.FeatureImplementStartedRequest
 import skillbill.application.model.FeatureVerifyFinishedRequest
 import skillbill.application.model.FeatureVerifyStartedRequest
-import skillbill.application.model.GoalFinishedRequest
-import skillbill.application.model.GoalStartedRequest
-import skillbill.application.model.GoalSubtaskFinishedRequest
 import skillbill.application.model.PrDescriptionGeneratedRequest
 import skillbill.application.model.QualityCheckFinishedRequest
 import skillbill.application.model.QualityCheckStartedRequest
@@ -22,8 +17,6 @@ import skillbill.contracts.mcp.McpTriageSkippedContract
 import skillbill.di.RuntimeComponent
 import skillbill.di.create
 import skillbill.mcp.learning.toMcpPayload
-import skillbill.mcp.lifecycle.featureImplementFinished
-import skillbill.mcp.lifecycle.featureImplementStarted
 import skillbill.mcp.lifecycle.featureVerifyFinished
 import skillbill.mcp.lifecycle.featureVerifyStarted
 import skillbill.mcp.lifecycle.prDescriptionGenerated
@@ -143,24 +136,11 @@ object McpRuntime {
   fun reviewStats(reviewRunId: String? = null, context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
     services(context).reviewService.reviewStats(reviewRunId, dbOverride = null).toMcpMap()
 
-  fun featureImplementStats(context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
-    services(context).reviewService.featureImplementStats(dbOverride = null).toMcpMap()
-
   fun featureVerifyStats(context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
     services(context).reviewService.featureVerifyStats(dbOverride = null).toMcpMap()
 
   fun goalStats(context: McpRuntimeContext = McpRuntimeContext()): Map<String, Any?> =
     services(context).reviewService.goalStats(dbOverride = null).toMcpMap()
-
-  fun featureImplementStarted(
-    request: FeatureImplementStartedRequest,
-    context: McpRuntimeContext = McpRuntimeContext(),
-  ): Map<String, Any?> = withAutoSync(context) { it.lifecycleTelemetryService.featureImplementStarted(request) }
-
-  fun featureImplementFinished(
-    request: FeatureImplementFinishedRequest,
-    context: McpRuntimeContext = McpRuntimeContext(),
-  ): Map<String, Any?> = withAutoSync(context) { it.lifecycleTelemetryService.featureImplementFinished(request) }
 
   fun qualityCheckStarted(
     request: QualityCheckStartedRequest,
@@ -186,30 +166,6 @@ object McpRuntime {
     request: PrDescriptionGeneratedRequest,
     context: McpRuntimeContext = McpRuntimeContext(),
   ): Map<String, Any?> = withAutoSync(context) { it.lifecycleTelemetryService.prDescriptionGenerated(request) }
-
-  fun goalProseStarted(
-    request: GoalStartedRequest,
-    context: McpRuntimeContext = McpRuntimeContext(),
-  ): Map<String, Any?> = withAutoSync(context) {
-    it.lifecycleTelemetryService.goalStarted(request, null)
-    emptyMap()
-  }
-
-  fun goalProseSubtaskFinished(
-    request: GoalSubtaskFinishedRequest,
-    context: McpRuntimeContext = McpRuntimeContext(),
-  ): Map<String, Any?> = withAutoSync(context) {
-    it.lifecycleTelemetryService.goalSubtaskFinished(request, null)
-    emptyMap()
-  }
-
-  fun goalProseFinished(
-    request: GoalFinishedRequest,
-    context: McpRuntimeContext = McpRuntimeContext(),
-  ): Map<String, Any?> = withAutoSync(context) {
-    it.lifecycleTelemetryService.goalFinished(request, null)
-    emptyMap()
-  }
 
   private fun withAutoSync(
     context: McpRuntimeContext,

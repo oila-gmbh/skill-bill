@@ -1,3 +1,14 @@
+## [2026-08-09] SKILL-175 subtask 3 — prose skill tree deleted, briefing SoT relocated
+Areas: skills/bill-feature-task-prose, skills/bill-feature-task-subtask-runner, skills/bill-over-engineering-review, runtime-kotlin/{runtime-application,runtime-domain,runtime-infra-fs}, docs, orchestration/shell-content-contract, scripts
+- Deleted `skills/bill-feature-task-prose/` (content.md + `native-agents/agents.yaml` with all seven phase agents and the subtask-runner bundle entry) and `skills/bill-feature-task-subtask-runner/`. Runtime is now the only feature-task engine with a skill source tree.
+- Relocated the mutating-phase briefing source of truth into `FeatureTaskRuntimePhasePromptDirectives.kt`: the old "keep in lockstep with prose native agents" comment is gone and the Kotlin file is declared sole owner. reusable PATTERN for retiring a duplicated-prompt surface — move the SoT into the surviving owner *before* deleting the copy, then flip parity tests to single-source.
+- Parity/governed-content tests converted from prose+runtime lockstep to runtime-only (`UnboundedRemediationLoopGovernedContentTest`, `FeatureSpecSkillWiringContractTest`); `RepoValidationRuntime` governed-content map lost its prose content.md entry; `FeatureFamilyRenderingIntegrationTest` no longer stages `bill-feature-task-prose.md` under the feature family.
+- Peak-hours warner sidecar scope narrowed to `bill-feature` + the runtime launch surface; install/nesting smoke scripts dropped prose MCP-tool and `goal mode:prose` assertions; docs (getting-started, capabilities, internal-skills-architecture, skill-source-generation, ARCHITECTURE) no longer map prose sidecars.
+- Known limitation: MCP `feature_task_prose_*` / `goal_prose_*` tool registrations and CLI `workflow` family still exist (subtask 4), as does `FeatureImplement*` persistence (subtask 6). English "prose" wording elsewhere is intentional.
+- Breaking change: any external caller invoking `bill-feature-task-prose` or its native agents by name now has no target; there is no shim or redirect.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-08-05] SKILL-160 subtask 3 — scoped-replan operator guidance
 Areas: skills/bill-feature-goal, skills/bill-feature
 - Documented `skill-bill goal replan <key> --subtask <id>` as first-choice for mid-goal subtask-spec amendments; default preserves sibling plans, shared preplan, and runtime rows; `--include-shared-preplan` discards sibling plan rows for provenance safety.

@@ -55,6 +55,10 @@ internal class DecompositionWorkflowContinuation(
         ),
       )
     } else {
+      // Discovery admits legacy prose parents for lookup/status; continue must still refuse them
+      // before any TASK_RUNTIME engine.updateRecord over retired step ids.
+      unitOfWork.workflowStates.getFeatureTaskWorkflow(parentRecord.workflowId)
+        ?.requireRuntimeModeForEngineWrite()
       continueManifest(parentRecord, manifest, unitOfWork, requestedSubtaskId)
     }
     return result
@@ -88,20 +92,22 @@ internal class DecompositionWorkflowContinuation(
     // Single-scan lookup: reuse an existing valid parent or, when none is found, reclaim a parent
     // whose decomposition artifact cannot be decoded (corrupt). Both alternatives are resolved in
     // one table scan to avoid a second full materialisation inside the write lock.
-    val existing = unitOfWork.workflowStates.findDecomposedParentOrCorruptFallback(
+    val existingRecord = unitOfWork.workflowStates.findDecomposedParentOrCorruptFallback(
       manifest.issueKey,
       validator,
       manifest,
-    )?.toSnapshot()
+    )
+    existingRecord?.requireRuntimeModeForEngineWrite()
+    val existing = existingRecord?.toSnapshot()
     val base = existing ?: engine.openRecord(
-      WorkflowFamily.IMPLEMENT.definition,
-      generateWorkflowId(WorkflowFamily.IMPLEMENT.definition.workflowIdPrefix),
-      WorkflowFamily.IMPLEMENT.definition.defaultSessionPrefix,
+      WorkflowFamily.TASK_RUNTIME.definition,
+      generateWorkflowId(WorkflowFamily.TASK_RUNTIME.definition.workflowIdPrefix),
+      WorkflowFamily.TASK_RUNTIME.definition.defaultSessionPrefix,
       "plan",
     )
     existing?.let { migrateLegacyGoalRunnerControls(unitOfWork, it) }
     val imported = engine.updateRecord(
-      WorkflowFamily.IMPLEMENT.definition,
+      WorkflowFamily.TASK_RUNTIME.definition,
       base,
       WorkflowUpdateInput(
         workflowStatus = "paused",
@@ -110,8 +116,6 @@ internal class DecompositionWorkflowContinuation(
           null
         } else {
           listOf(
-            mapOf("step_id" to "assess", "status" to "completed", "attempt_count" to 1),
-            mapOf("step_id" to "create_branch", "status" to "completed", "attempt_count" to 1),
             mapOf("step_id" to "preplan", "status" to "completed", "attempt_count" to 1),
             mapOf("step_id" to "plan", "status" to "completed", "attempt_count" to 1),
           )
@@ -121,11 +125,11 @@ internal class DecompositionWorkflowContinuation(
         replaceArtifacts = true,
       ),
     )
-    WorkflowFamily.IMPLEMENT.saveRecord(
+    WorkflowFamily.TASK_RUNTIME.saveRecord(
       unitOfWork.workflowStates,
       imported.toRecord().copy(issueKey = issueKey),
     )
-    return WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, imported.workflowId) ?: imported
+    return WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, imported.workflowId) ?: imported
   }
 
   private fun continueManifest(
@@ -177,17 +181,16 @@ internal class DecompositionWorkflowContinuation(
   ): ContinuationStepResult {
     val record = selection.workflowId
       .takeIf(String::isNotBlank)
-      ?.let { WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, it) }
+      ?.let { WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, it) }
     return if (record == null) {
       missingSubtaskWorkflowResult(selection, unitOfWork)
     } else {
       val alignedRecord = engine.alignSubtaskResumeStep(record, selection.resumeStepId, unitOfWork)
       engine.continueExistingWorkflow(
-        WorkflowFamily.IMPLEMENT,
+        WorkflowFamily.TASK_RUNTIME,
         alignedRecord,
         unitOfWork,
         validator,
-        fileStore,
       ).withDecompositionFields(
         issueKey = manifest.issueKey,
         subtaskId = selection.subtask.id,
@@ -249,41 +252,38 @@ internal class DecompositionWorkflowContinuation(
     issueKey: String,
     unitOfWork: UnitOfWork,
   ): ContinuationStepResult {
-    val workflowId = generateWorkflowId(WorkflowFamily.IMPLEMENT.definition.workflowIdPrefix)
+    val workflowId = generateWorkflowId(WorkflowFamily.TASK_RUNTIME.definition.workflowIdPrefix)
     val updatedManifest = manifest.withStartedSubtask(selection.subtask.id, workflowId, selection.branchPlan.branch)
     val opened = engine.openRecord(
-      WorkflowFamily.IMPLEMENT.definition,
+      WorkflowFamily.TASK_RUNTIME.definition,
       workflowId,
       parentRecord.sessionId.orEmpty(),
       "preplan",
     )
     val started = engine.updateRecord(
-      WorkflowFamily.IMPLEMENT.definition,
+      WorkflowFamily.TASK_RUNTIME.definition,
       opened,
       WorkflowUpdateInput(
         workflowStatus = "running",
         currentStepId = "preplan",
         stepUpdates = listOf(
-          mapOf("step_id" to "assess", "status" to "completed", "attempt_count" to 1),
-          mapOf("step_id" to "create_branch", "status" to "completed", "attempt_count" to 1),
           mapOf("step_id" to "preplan", "status" to "running", "attempt_count" to 1),
         ),
         artifactsPatch = subtaskStartArtifacts(selection, updatedManifest),
         sessionId = parentRecord.sessionId.orEmpty(),
       ),
     )
-    WorkflowFamily.IMPLEMENT.saveRecord(
+    WorkflowFamily.TASK_RUNTIME.saveRecord(
       unitOfWork.workflowStates,
       started.toRecord().copy(issueKey = issueKey),
     )
     engine.persistParentDecompositionRuntime(parentRecord, updatedManifest, unitOfWork, validator)
-    val saved = WorkflowFamily.IMPLEMENT.get(unitOfWork.workflowStates, workflowId) ?: started
+    val saved = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: started
     return engine.continueExistingWorkflow(
-      WorkflowFamily.IMPLEMENT,
+      WorkflowFamily.TASK_RUNTIME,
       saved,
       unitOfWork,
       validator,
-      fileStore,
     )
       .withProjection(updatedManifest, validator)
       .withDecompositionFields(

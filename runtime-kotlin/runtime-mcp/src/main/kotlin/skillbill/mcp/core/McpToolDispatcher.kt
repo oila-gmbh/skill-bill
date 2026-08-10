@@ -1,13 +1,8 @@
 package skillbill.mcp.core
 
 import skillbill.application.model.WorkflowFamilyKind
-import skillbill.mcp.lifecycle.featureImplementFinished
-import skillbill.mcp.lifecycle.featureImplementStarted
 import skillbill.mcp.lifecycle.featureVerifyFinished
 import skillbill.mcp.lifecycle.featureVerifyStarted
-import skillbill.mcp.lifecycle.goalProseFinished
-import skillbill.mcp.lifecycle.goalProseStarted
-import skillbill.mcp.lifecycle.goalProseSubtaskFinished
 import skillbill.mcp.lifecycle.prDescriptionGenerated
 import skillbill.mcp.lifecycle.qualityCheckFinished
 import skillbill.mcp.lifecycle.qualityCheckStarted
@@ -27,40 +22,6 @@ object McpToolDispatcher {
   private val nativeHandlers: Map<String, McpToolHandler> =
     mapOf(
       "doctor" to { _, context -> McpRuntime.doctor(context) },
-      "feature_task_prose_finished" to ::featureImplementFinished,
-      "feature_task_prose_started" to ::featureImplementStarted,
-      "feature_task_prose_stats" to { _, context -> McpRuntime.featureImplementStats(context) },
-      "feature_task_prose_workflow_continue" to
-        { arguments, context -> workflowContinue(WorkflowFamilyKind.TASK_PROSE, arguments, context) },
-      "feature_task_prose_workflow_get" to
-        { arguments, context -> workflowGet(WorkflowFamilyKind.TASK_PROSE, arguments, context) },
-      "feature_task_prose_workflow_latest" to
-        { _, context -> McpWorkflowRuntime.latest(WorkflowFamilyKind.TASK_PROSE, context) },
-      "feature_task_prose_workflow_list" to
-        { arguments, context -> workflowList(WorkflowFamilyKind.TASK_PROSE, arguments, context) },
-      "feature_task_prose_workflow_open" to
-        { arguments, context -> workflowOpen(WorkflowFamilyKind.TASK_PROSE, arguments, context) },
-      "feature_task_prose_workflow_resume" to
-        { arguments, context -> workflowResume(WorkflowFamilyKind.TASK_PROSE, arguments, context) },
-      "feature_task_prose_workflow_update" to
-        { arguments, context -> workflowUpdate(WorkflowFamilyKind.TASK_PROSE, arguments, context) },
-      "feature_implement_finished" to ::featureImplementFinished,
-      "feature_implement_started" to ::featureImplementStarted,
-      "feature_implement_stats" to { _, context -> McpRuntime.featureImplementStats(context) },
-      "feature_implement_workflow_continue" to
-        { arguments, context -> workflowContinue(WorkflowFamilyKind.TASK_PROSE, arguments, context) },
-      "feature_implement_workflow_get" to
-        { arguments, context -> workflowGet(WorkflowFamilyKind.TASK_PROSE, arguments, context) },
-      "feature_implement_workflow_latest" to
-        { _, context -> McpWorkflowRuntime.latest(WorkflowFamilyKind.TASK_PROSE, context) },
-      "feature_implement_workflow_list" to
-        { arguments, context -> workflowList(WorkflowFamilyKind.TASK_PROSE, arguments, context) },
-      "feature_implement_workflow_open" to
-        { arguments, context -> workflowOpen(WorkflowFamilyKind.TASK_PROSE, arguments, context) },
-      "feature_implement_workflow_resume" to
-        { arguments, context -> workflowResume(WorkflowFamilyKind.TASK_PROSE, arguments, context) },
-      "feature_implement_workflow_update" to
-        { arguments, context -> workflowUpdate(WorkflowFamilyKind.TASK_PROSE, arguments, context) },
       "feature_verify_finished" to ::featureVerifyFinished,
       "feature_verify_started" to ::featureVerifyStarted,
       "feature_verify_stats" to { _, context -> McpRuntime.featureVerifyStats(context) },
@@ -78,9 +39,6 @@ object McpToolDispatcher {
         { arguments, context -> workflowResume(WorkflowFamilyKind.VERIFY, arguments, context) },
       "feature_verify_workflow_update" to
         { arguments, context -> workflowUpdate(WorkflowFamilyKind.VERIFY, arguments, context) },
-      "goal_prose_finished" to ::goalProseFinished,
-      "goal_prose_started" to ::goalProseStarted,
-      "goal_prose_subtask_finished" to ::goalProseSubtaskFinished,
       "goal_stats" to { _, context -> McpRuntime.goalStats(context) },
       "import_review" to ::importReview,
       "new_skill_scaffold" to ::newSkillScaffold,
@@ -96,30 +54,13 @@ object McpToolDispatcher {
       "update_check" to { _, context -> McpRuntime.updateCheck(context) },
     )
 
-  internal val legacyToolAliases: Map<String, String> =
-    mapOf(
-      "feature_implement_finished" to "feature_task_prose_finished",
-      "feature_implement_started" to "feature_task_prose_started",
-      "feature_implement_stats" to "feature_task_prose_stats",
-      "feature_implement_workflow_continue" to "feature_task_prose_workflow_continue",
-      "feature_implement_workflow_get" to "feature_task_prose_workflow_get",
-      "feature_implement_workflow_latest" to "feature_task_prose_workflow_latest",
-      "feature_implement_workflow_list" to "feature_task_prose_workflow_list",
-      "feature_implement_workflow_open" to "feature_task_prose_workflow_open",
-      "feature_implement_workflow_resume" to "feature_task_prose_workflow_resume",
-      "feature_implement_workflow_update" to "feature_task_prose_workflow_update",
-    )
-
-  internal fun canonicalToolName(toolName: String): String = legacyToolAliases[toolName] ?: toolName
-
   fun call(
     toolName: String,
     arguments: Map<String, Any?>,
     context: McpRuntimeContext = McpRuntimeContext(),
   ): Map<String, Any?> {
     val handler = nativeHandlers[toolName] ?: error("Unknown MCP tool '$toolName'.")
-    val canonicalName = canonicalToolName(toolName)
-    val normalizedArguments = normalizeTelemetryEnvelopeArguments(canonicalName, arguments)
+    val normalizedArguments = normalizeTelemetryEnvelopeArguments(toolName, arguments)
     // SKILL-48 Subtask 2d: validate every telemetry envelope at the
     // single parse seam BEFORE the handler builds its typed model.
     // The dispatcher is the one place where the tool name (and
@@ -135,7 +76,7 @@ object McpToolDispatcher {
     // `McpStdioServer.callToolResult` (runtime-kotlin/runtime-mcp/.../McpStdioServer.kt)
     // — which threads the JSON-RPC `tools/call` `arguments` map straight
     // through. Concrete telemetry payloads come from the orchestrators
-    // (`/feature_implement_*`, `/feature_verify_*`, quality-check skills,
+    // (`/feature_verify_*`, quality-check skills,
     // etc.) which already supply every required key per their telemetry
     // contracts. The handlers in `McpLifecycleToolHandlers.kt` and
     // `McpToolDispatcher.kt` only *default* on `arguments.int(name, 0)`,
@@ -148,8 +89,8 @@ object McpToolDispatcher {
     // safe; any in-flight production emitter that omits a required key
     // is already breaking its own telemetry contract.
     TelemetryEventSchemaValidator.validate(
-      envelope = telemetryEnvelope(canonicalName, normalizedArguments),
-      eventName = canonicalName,
+      envelope = telemetryEnvelope(toolName, normalizedArguments),
+      eventName = toolName,
     )
     return handler.invoke(normalizedArguments, context)
   }
@@ -267,12 +208,10 @@ internal fun telemetryRemoteStats(arguments: Map<String, Any?>, context: McpRunt
 
 private fun mapRemoteStatsWorkflow(workflow: String): String = when (workflow) {
   "verify" -> "bill-feature-verify"
-  "implement", "bill-feature-task", "feature-task-prose" -> "feature-task-prose"
   "goal" -> "bill-feature-goal"
   "bill-feature-verify", "feature-task-runtime", "bill-feature-goal" -> workflow
   else -> throw IllegalArgumentException(
-    "workflow must be one of: verify, implement, bill-feature-task, goal, " +
-      "bill-feature-verify, feature-task-prose, feature-task-runtime, bill-feature-goal.",
+    "workflow must be one of: verify, goal, bill-feature-verify, feature-task-runtime, bill-feature-goal.",
   )
 }
 

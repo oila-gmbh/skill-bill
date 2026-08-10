@@ -1,3 +1,21 @@
+## [2026-08-09] SKILL-179 subtask 3 — Legacy prose-mode row lifecycle
+Areas: runtime-application/{featuretask,workflow,goalrunner}, runtime-ports/persistence, runtime-infra-sqlite/db/workflow, runtime-cli/featuretask, .feature-specs/SKILL-179
+- Parent discovery lists RUNTIME and PROSE feature-task rows so a legacy goal parent surfaces as `goal_continuation` instead of silent `no_match` over live durable state.
+- Engine writes still refuse prose via `requireRuntimeModeForEngineWrite` / `LegacyProseWorkflowError` — discovery never flips `mode` or asserts the runtime schema over retired step ids.
+- Identity-less runtime candidates return `NeedsIdentityRepair` naming the workflow and directing operators to `feature-task repair-identity` before projection can throw.
+- `feature-task abandon` terminalizes prose parents with a status/artifact-only SQLite write that preserves `mode=prose` (no refused prose writer, no runtime upsert). reusable
+- Regression tests cover prose-parent discovery, identity-less lookup, and prose abandon; CLI maps `NeedsIdentityRepair` to the operator-facing result.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
+## [2026-08-09] SKILL-179 subtask 1 — Application/persistence test contract migration
+Areas: runtime-application/{application,decomposition}, runtime-core/application (tests), .feature-specs/SKILL-179
+- Runtime router continuation seeds completed preplan+plan phase records; compact `currentStepArtifacts` is `[plan]` citing `WorkflowEngine.resumeView` filtering of `repository_evidence` and `compactContinueView` fallback to requiredKeys (parity with WorkflowCompactContinuationTest).
+- Decomposition terminal step tracking accepts runtime `pr` alongside legacy `pr_description`.
+- Deleted implement session-summary hydration test: prose-only `FeatureImplementSessionSummary` path; TASK_RUNTIME `sessionSummary` is empty by contract.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented (validate phase owns the gradle gate)
+
 ## [2026-08-08] SKILL-173 subtask 2 — Validate honors build_only vs full
 Areas: runtime-application/featuretask, runtime-domain/workflow/taskruntime, docs, .feature-specs/SKILL-173
 - Phase 6 validate consumes goal-continuation `validation_depth`: `build_only` swaps Task text + addendum to compile/buildability only (no tests, detekt, spotless, lint, scanners, or full `bill-code-check`); `full` / non-goal keeps today's Phase 6 directive byte-stable.

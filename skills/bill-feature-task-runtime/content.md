@@ -59,21 +59,6 @@ Inspect or resume the existing workflow state for that repository and issue key.
 Do not copy transcripts or transfer preplan, plan, implementation, audit, review,
 validation, diagnostic, or raw child payloads into the new session.
 
-**opencode and zcode are prose-only; refuse before launch.** Even when a caller
-supplies the already-confirmed input directly, this sidecar must refuse on its
-own when the agent currently executing it is opencode or zcode: stop before the
-foreground launch and emit the actionable refusal
-pointing to `bill-feature-task-prose`:
-
-> Runtime mode is not supported on opencode or zcode in this harness. opencode's foreground Bash tool is hard-killed at 120s before a phase can finish and per-phase output cannot be harvested back; zcode's foreground runtime exceeds the Bash execution ceiling and a detached zcode child emits no harvestable output before the supervisor kills it as unresponsive. Use prose instead — run bill-feature-task-prose for a single feature task, or bill-feature-goal mode:prose for a decomposed goal.
-
-Do not launch `skill-bill feature-task` on opencode or zcode — the runtime CLI refuses the
-same way whenever the resolved runtime agent is opencode or zcode, and runtime mode is
-non-viable for both (opencode's 120s foreground kill and the un-harvestable PTY output;
-zcode's foreground run exceeding the Bash ceiling and detached children killed as
-unresponsive before emitting harvestable output). For a prose run instead, read the
-sibling `bill-feature-task-prose.md` sidecar.
-
 ## Runtime Launch
 
 Execute the foreground driver directly in the current agent session, always
@@ -91,7 +76,7 @@ each recorded source identity and exact-byte digest before workflow, branch, or
 phase side effects and injects only verified selected content into prompts.
 
 Always pass `--agent` set to the agent currently running this skill (for example
-`claude` from Claude Code, `codex` from Codex, `opencode` from OpenCode), so the
+`claude` from Claude Code or `codex` from Codex), so the
 invoking agent — not a hardcoded default — drives the phase runs. Only use
 `--agent-override` when the user explicitly selected a different agent;
 `--agent-override` wins over `--agent`. An optional repeatable

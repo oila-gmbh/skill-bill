@@ -55,10 +55,8 @@ $defs:
       - copilot
       - claude
       - codex
-      - opencode
       - junie
       - cursor
-      - zcode
   # Shared enum: agent-target source. Mirrors `InstallAgentTargetSource`
   # — wire form is `name.lowercase()`.
   agentSource:
@@ -264,9 +262,9 @@ properties:
   contract_version:
     type: string
     minLength: 1
-    const: "0.1"
+    const: "0.2"
     description: >
-      Pinned to `INSTALL_PLAN_CONTRACT_VERSION` (currently "0.1"). The
+      Pinned to `INSTALL_PLAN_CONTRACT_VERSION` (currently "0.2"). The
       parity test `InstallPlanSchemaContractVersionTest` keeps the two
       in lockstep.
   agents:

@@ -27,13 +27,13 @@ class WorkflowServiceRuntimeComponentTest {
           userHome = tempDir,
         ),
       ).workflowService
-    val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_PROSE, sessionId = "fis-001", dbOverride = null)
+    val opened = service.openTestFeatureTask(WorkflowFamilyKind.TASK_RUNTIME, sessionId = "ftr-001", dbOverride = null)
     val workflowId =
       (opened as skillbill.application.model.WorkflowOpenResult.Ok).workflowId
 
     val updated =
       service.update(
-        WorkflowFamilyKind.TASK_PROSE,
+        WorkflowFamilyKind.TASK_RUNTIME,
         WorkflowUpdateRequest(
           workflowId = workflowId,
           workflowStatus = "running",

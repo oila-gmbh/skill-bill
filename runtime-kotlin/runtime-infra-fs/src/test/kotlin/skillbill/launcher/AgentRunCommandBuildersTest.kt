@@ -31,6 +31,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
+@Suppress("LargeClass") // cohesive builder-matrix suite across claude/codex/junie/cursor launches
 class AgentRunCommandBuildersTest {
   @Test
   fun `a compaction directive reaches the claude launch environment`() {
@@ -98,7 +99,9 @@ class AgentRunCommandBuildersTest {
   @Test
   fun `stream decoding ignores non-terminal events and tolerates a truncated stream`() {
     val noResultEvent = """{"type":"assistant","message":{"model":"claude-opus-4-8"}}"""
-    assertEquals(noResultEvent, AgentRunOutputDecoder.CLAUDE_STREAM_JSON.decode(noResultEvent).text)
+    val undecodable = AgentRunOutputDecoder.CLAUDE_STREAM_JSON.decode(noResultEvent)
+    assertEquals("", undecodable.text, "a stream cut before its terminal event carries no answer")
+    assertEquals(noResultEvent, undecodable.rawOutputPreview)
 
     val laterResultWins = listOf(
       """{"type":"result","subtype":"success","result":"stale"}""",
@@ -506,7 +509,7 @@ class AgentRunCommandBuildersTest {
   }
 
   @Test
-  fun `cursor normal launch emits flags, workspace, prompt, timeout, environment, non-PTY, approvals`() {
+  fun `cursor normal launch emits flags, workspace, prompt, timeout, environment, approvals`() {
     val builder = CursorAgentRunCommandBuilder()
     val command = builder.build(request())
 
@@ -520,7 +523,7 @@ class AgentRunCommandBuildersTest {
         "--workspace",
         "/tmp/skillbill-agent-run",
         "--output-format",
-        "stream-json",
+        "json",
       ),
       command.command,
     )
@@ -528,7 +531,6 @@ class AgentRunCommandBuildersTest {
     assertEquals("/tmp/skillbill-agent-run", command.workingDirectory.toString())
     assertEquals(3.seconds, command.timeout)
     assertEquals("Phase: implement", command.stdinText)
-    assertFalse(command.usePtyStdio)
     assertEquals(AgentRunIdlePolicy.DB_PROGRESS_ONLY, command.idlePolicy)
     assertEquals("1", command.environment["SKILL_BILL_GOAL_CONTINUATION"])
     assertTrue(command.inheritEnvironment)

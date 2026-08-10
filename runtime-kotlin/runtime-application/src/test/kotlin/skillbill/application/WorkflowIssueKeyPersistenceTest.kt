@@ -26,15 +26,15 @@ class WorkflowIssueKeyPersistenceTest {
       decompositionManifestValidator = testDecompositionManifestValidator,
     )
 
-    val prose = assertIs<WorkflowOpenResult.Ok>(
+    val firstRuntime = assertIs<WorkflowOpenResult.Ok>(
       service.openFeatureTask(
-        WorkflowFamilyKind.TASK_PROSE,
+        WorkflowFamilyKind.TASK_RUNTIME,
         issueKey = "  SKILL-117  ",
         repositoryIdentity = "repo-root-realpath-v1:/test/repository",
         governedSpecPath = ".feature-specs/SKILL-117/spec.md",
       ),
     )
-    val runtime = assertIs<WorkflowOpenResult.Ok>(
+    val secondRuntime = assertIs<WorkflowOpenResult.Ok>(
       service.openFeatureTask(
         WorkflowFamilyKind.TASK_RUNTIME,
         issueKey = " SKILL-118 ",
@@ -46,8 +46,8 @@ class WorkflowIssueKeyPersistenceTest {
       service.open(WorkflowFamilyKind.VERIFY, issueKey = " SKILL-119 "),
     )
 
-    assertEquals("SKILL-117", assertNotNull(workflows.getFeatureImplementWorkflow(prose.workflowId)).issueKey)
-    assertEquals("SKILL-118", assertNotNull(workflows.getFeatureTaskRuntimeWorkflow(runtime.workflowId)).issueKey)
+    assertEquals("SKILL-117", assertNotNull(workflows.getFeatureTaskRuntimeWorkflow(firstRuntime.workflowId)).issueKey)
+    assertEquals("SKILL-118", assertNotNull(workflows.getFeatureTaskRuntimeWorkflow(secondRuntime.workflowId)).issueKey)
     assertEquals("SKILL-119", assertNotNull(workflows.getFeatureVerifyWorkflow(verify.workflowId)).issueKey)
   }
 
@@ -63,7 +63,7 @@ class WorkflowIssueKeyPersistenceTest {
 
     assertFailsWith<InvalidFeatureTaskExecutionIdentitySchemaError> {
       service.openFeatureTask(
-        WorkflowFamilyKind.TASK_PROSE,
+        WorkflowFamilyKind.TASK_RUNTIME,
         issueKey = "SKILL-117\nspoofed",
         repositoryIdentity = "repo-root-realpath-v1:/test/repository",
         governedSpecPath = ".feature-specs/SKILL-117/spec.md",
@@ -71,7 +71,7 @@ class WorkflowIssueKeyPersistenceTest {
     }
     assertFailsWith<InvalidFeatureTaskExecutionIdentitySchemaError> {
       service.openFeatureTask(
-        WorkflowFamilyKind.TASK_PROSE,
+        WorkflowFamilyKind.TASK_RUNTIME,
         issueKey = "S".repeat(129),
         repositoryIdentity = "repo-root-realpath-v1:/test/repository",
         governedSpecPath = ".feature-specs/SKILL-117/spec.md",

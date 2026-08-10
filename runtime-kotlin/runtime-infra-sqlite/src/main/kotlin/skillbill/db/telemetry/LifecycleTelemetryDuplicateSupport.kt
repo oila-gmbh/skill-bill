@@ -10,19 +10,6 @@ fun lifecycleAlreadyFinished(connection: Connection, tableName: String, sessionI
     }
   }
 
-fun featureImplementAlreadyFinished(connection: Connection, sessionId: String): Boolean = connection.prepareStatement(
-  """
-    SELECT finished_at
-    FROM feature_implement_sessions
-    WHERE session_id = ?
-  """.trimIndent(),
-).use { statement ->
-  statement.setString(1, sessionId)
-  statement.executeQuery().use { resultSet ->
-    resultSet.next() && !resultSet.getString("finished_at").isNullOrBlank()
-  }
-}
-
 fun incrementDuplicateTerminalFinishedEvents(connection: Connection, tableName: String, sessionId: String) {
   connection.prepareStatement(
     """
@@ -35,9 +22,6 @@ fun incrementDuplicateTerminalFinishedEvents(connection: Connection, tableName: 
     statement.executeUpdate()
   }
 }
-
-fun featureImplementStaleFinishedAlreadyEmitted(connection: Connection, sessionId: String): Boolean =
-  staleFinishedAlreadyEmitted(connection, "feature_implement_sessions", "completion_status", sessionId)
 
 fun staleFinishedAlreadyEmitted(
   connection: Connection,

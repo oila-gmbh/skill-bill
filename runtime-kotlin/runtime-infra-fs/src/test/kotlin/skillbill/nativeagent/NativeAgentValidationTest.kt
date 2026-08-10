@@ -42,8 +42,8 @@ class NativeAgentValidationTest {
   }
 
   @Test
-  fun `body with opencode handlebars conditional is rejected`() {
-    assertProviderConditionalRejected("# Worker\n\n{{#opencode}}opencode only{{/opencode}}")
+  fun `body with cursor handlebars conditional is rejected`() {
+    assertProviderConditionalRejected("# Worker\n\n{{#cursor}}cursor only{{/cursor}}")
   }
 
   @Test

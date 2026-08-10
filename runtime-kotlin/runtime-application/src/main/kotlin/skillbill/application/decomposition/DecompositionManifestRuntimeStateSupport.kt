@@ -9,9 +9,11 @@ import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
 import java.nio.file.Path
 
-private val statusTrackedSteps = setOf("implement", "review", "audit", "validate", "pr_description", "finish")
-private val completionSteps = setOf("pr_description", "finish")
-private val terminalSkippedSteps = setOf("pr_description", "finish")
+// Runtime terminal step is `pr` (FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR). Keep
+// `pr_description` only so legacy GoalRunner lastResumableStep stamps still decode as terminal.
+private val statusTrackedSteps = setOf("implement", "review", "audit", "validate", "pr", "pr_description", "finish")
+private val completionSteps = setOf("pr", "pr_description", "finish")
+private val terminalSkippedSteps = setOf("pr", "pr_description", "finish")
 
 internal fun DecompositionSubtask.withRuntimeFields(
   manifest: DecompositionManifest,

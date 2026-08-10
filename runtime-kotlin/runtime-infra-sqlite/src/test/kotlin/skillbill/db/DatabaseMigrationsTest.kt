@@ -1,19 +1,16 @@
 package skillbill.db
 
 import org.junit.jupiter.api.Assumptions
-import skillbill.contracts.JsonSupport
 import skillbill.db.core.DatabaseColumnMigrations
 import skillbill.db.core.DatabaseMigrations
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.core.DatabaseSchema
 import skillbill.db.core.inImmediateTransaction
 import skillbill.db.telemetry.GoalTelemetryMigration
-import skillbill.db.telemetry.LifecycleTelemetryStore
 import skillbill.db.telemetry.TelemetryOutboxStore
 import skillbill.db.worklist.SQLiteWorkListRepository
 import skillbill.error.InvalidWorkListRowError
 import skillbill.ports.persistence.model.TelemetryOutboxRecord
-import skillbill.telemetry.model.FeatureImplementFinishedRecord
 import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.Connection
@@ -1276,14 +1273,6 @@ class DatabaseMigrationsTest {
         ),
         "Feature implement started_at must be recovered from the matching legacy workflow row.",
       )
-
-      LifecycleTelemetryStore(connection).featureImplementFinished(featureImplementFinishedRecord(), level = "full")
-
-      val payload = outboxPayload(connection, "skillbill_feature_task_prose_finished")
-      assertTrue(
-        (payload["duration_seconds"] as Number).toLong() > 0,
-        "Finished feature implement telemetry must compute non-zero duration from the healed started_at.",
-      )
     }
   }
 
@@ -2139,46 +2128,6 @@ class DatabaseMigrationsTest {
             )
           }
         }
-      }
-    }
-
-  private fun featureImplementFinishedRecord(): FeatureImplementFinishedRecord = FeatureImplementFinishedRecord(
-    sessionId = "fis-legacy-duration",
-    completionStatus = "completed",
-    planCorrectionCount = 0,
-    planTaskCount = 1,
-    planPhaseCount = 1,
-    featureFlagUsed = false,
-    featureFlagPattern = "none",
-    filesCreated = 0,
-    filesModified = 1,
-    tasksCompleted = 1,
-    reviewIterations = 0,
-    auditResult = "passed",
-    auditIterations = 0,
-    validationResult = "passed",
-    boundaryHistoryWritten = false,
-    boundaryHistoryValue = "none",
-    prCreated = false,
-    planDeviationNotes = "",
-    childSteps = emptyList(),
-  )
-
-  private fun outboxPayload(connection: java.sql.Connection, eventName: String): Map<String, Any?> =
-    connection.prepareStatement(
-      """
-      SELECT payload_json
-      FROM telemetry_outbox
-      WHERE event_name = ?
-      ORDER BY id DESC
-      LIMIT 1
-      """.trimIndent(),
-    ).use { statement ->
-      statement.setString(1, eventName)
-      statement.executeQuery().use { resultSet ->
-        check(resultSet.next()) { "Expected telemetry outbox event '$eventName'." }
-        val element = requireNotNull(JsonSupport.parseObjectOrNull(resultSet.getString("payload_json")))
-        requireNotNull(JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(element)))
       }
     }
 

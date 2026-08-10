@@ -5,7 +5,6 @@ import skillbill.install.model.AgentTarget
 import skillbill.install.plan.CLAUDE_AGENTS_KIND
 import skillbill.install.plan.CURSOR_AGENTS_KIND
 import skillbill.install.plan.JUNIE_AGENTS_KIND
-import skillbill.install.plan.ZCODE_AGENTS_KIND
 import skillbill.nativeagent.composition.nativeAgentCompositionRepoRoot
 import skillbill.nativeagent.rendering.NativeAgentInstallRenderOverrides
 import skillbill.nativeagent.rendering.NativeAgentInstallRenderRequest
@@ -80,26 +79,6 @@ object InstallNativeAgentOperations {
     ) + unlinkedFromCache
   }
 
-  fun linkOpencodeAgents(request: NativeAgentLinkRequest): NativeAgentLinkOutcome = linkProviderAgents(
-    provider = NativeAgentProvider.Opencode,
-    request = request,
-    detectTargets = { home ->
-      NativeAgentProvider.Opencode.activeHomeAgentDirs(home).map { AgentTarget("opencode-agents", it) }
-    },
-  )
-
-  fun unlinkOpencodeAgents(request: NativeAgentLinkRequest): List<Path> {
-    val resolvedHome = request.home ?: Path.of(System.getProperty("user.home"))
-    val unlinkedFromCache = unlinkProviderAgents(provider = NativeAgentProvider.Opencode, request = request)
-    return uninstallOpencodeAgentMarkdown(
-      request.platformPacksRoot,
-      resolvedHome,
-      request.skillsRoot,
-      request.selectedPlatforms,
-    ) +
-      unlinkedFromCache
-  }
-
   fun linkJunieAgents(request: NativeAgentLinkRequest): NativeAgentLinkOutcome = linkProviderAgents(
     provider = NativeAgentProvider.Junie,
     request = request,
@@ -149,24 +128,6 @@ object InstallNativeAgentOperations {
     ) +
       unlinkedFromCache
   }
-
-  fun linkZcodeAgents(request: NativeAgentLinkRequest): NativeAgentLinkOutcome = linkProviderAgents(
-    provider = NativeAgentProvider.Zcode,
-    request = request,
-    detectTargets = { resolvedHome ->
-      val targetPath = NativeAgentProvider.Zcode.homeAgentDirs(resolvedHome).first()
-      if (Files.exists(targetPath) || Files.exists(resolvedHome.resolve(".zcode"))) {
-        listOf(AgentTarget(ZCODE_AGENTS_KIND, targetPath))
-      } else {
-        emptyList()
-      }
-    },
-  )
-
-  fun unlinkZcodeAgents(request: NativeAgentLinkRequest): List<Path> = unlinkProviderAgents(
-    provider = NativeAgentProvider.Zcode,
-    request = request,
-  )
 
   private fun linkProviderAgents(
     provider: NativeAgentProvider,

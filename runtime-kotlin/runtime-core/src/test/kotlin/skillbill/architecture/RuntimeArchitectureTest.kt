@@ -1,5 +1,6 @@
 package skillbill.architecture
 
+import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -19,6 +20,17 @@ class RuntimeArchitectureTest {
         workingDir
       }
     }
+
+  // SKILL-175 F-001: the banned-token guard must scan the WHOLE live tree and relativize
+  // against the REPO ROOT, because SKILL_175_ALLOWLIST entries are repo-root-prefixed
+  // (e.g. "runtime-kotlin/runtime-ports/...", "docs/...", "orchestration/..."). Under
+  // Gradle's default Test working directory (the module dir), runtimeRoot resolves to
+  // runtime-kotlin, whose relativized paths ("runtime-ports/...") would never match a
+  // repo-root-prefixed allowlist entry — so no entry ever matched and the guard flagged
+  // every non-skipped runtime-kotlin file carrying a banned token. repoRootFromTest()
+  // walks up to the canonical repo root; runtimeRoot is left unchanged for the
+  // sourceRoots-based tests that depend on it being runtime-kotlin.
+  private val repoRoot: Path = repoRootFromTest()
   private val sourceRoots: List<Path> =
     listOf(
       runtimeRoot.resolve("runtime-application/src/main/kotlin"),
@@ -965,6 +977,50 @@ class RuntimeArchitectureTest {
     )
   }
 
+  /**
+   * SKILL-175 task 6 (AC-004): durable, executable grep policy for the prose
+   * engine and OpenCode/zcode product tokens. Unlike the earlier one-time manual
+   * sweep, this guard is part of the architecture suite: it walks the whole live
+   * tree (outside archives, feature specs, and decision/history records) and
+   * fails on ANY banned-token hit whose path is not an explicit SKILL-175
+   * allowlisted exception. A future change that re-adds a live install target,
+   * refuse tier, MCP registration, native-agent provider, or docs support tier
+   * for prose or OpenCode/zcode — in a NEW path or a touched one — trips this
+   * guard instead of silently shipping.
+   */
+  @Test
+  fun `SKILL-175 no live prose-engine or opencode-zcode product surface remains`() {
+    assertEquals(
+      emptyList(),
+      skill175BannedTokenViolations(),
+      "SKILL-175: a live prose-engine or OpenCode/zcode product surface must not re-enter the tree. " +
+        "Every banned-token hit outside the explicit SKILL_175_ALLOWLIST (feature-spec tree, " +
+        "done archives, quarantine persistence, quarantine/negative-assertion tests, and " +
+        "retirement/historical docs) is a reintroduction.\n",
+    )
+  }
+
+  @Test
+  fun `SKILL-175 banned-token scanner fires on a synthetic reintroduction`() {
+    // Positive control driven through the REAL scanner (F-002 style): a synthetic
+    // file re-adding a prose engine selector and a zcode provider must be reported,
+    // so a regression in the token list or the walk logic loud-fails.
+    val reintroduced =
+      listOf(
+        "test-fixture/Skill175Reintroduction.kt" to
+          "package skillbill.architecture\n\n" +
+          "object Skill175Reintroduction {\n" +
+          "  val selector = \"mode:prose\"\n" +
+          "  fun providerId() = \"zcode\"\n" +
+          "}\n",
+      )
+    val violations = skill175BannedTokenViolationsIn(reintroduced)
+    assertTrue(
+      violations.any { it.contains("mode:prose") } && violations.any { it.contains("zcode") },
+      "SKILL-175 scanner must report a reintroduced prose selector and a zcode provider.\n$violations",
+    )
+  }
+
   private fun installPortFunctionSignatures(sourceFile: SourceFile): List<InstallPortFunctionSignature> {
     val lines = sourceFile.source.lines()
     return lines.mapIndexedNotNull { index, line ->
@@ -1878,6 +1934,47 @@ class RuntimeArchitectureTest {
     fun render(): String = "$sourcePath::$functionName($parameters): ${returnType.ifBlank { "<missing>" }}"
   }
 
+  private fun skill175BannedTokenViolations(): List<String> {
+    // F-001 (compile): `Stream.mapNotNull` is a kotlin.streams extension that is not imported
+    // here (and never was), so the whole stream chain failed to compile under the AC-006 gate
+    // before the guard could even run. Materialize to a `List` (via the Java 16+ member
+    // `Stream.toList`) and use the core-stdlib `List.mapNotNull`, which is unambiguous.
+    val files =
+      Files.walk(repoRoot).use { stream ->
+        stream
+          .filter(Files::isRegularFile)
+          .filter { path -> !isSkill175SkippedPath(path) }
+          .toList()
+      }.mapNotNull { path ->
+        val relative = repoRoot.relativize(path).toString().replace('\\', '/')
+        if (relative in SKILL_175_ALLOWLIST) {
+          null
+        } else {
+          try {
+            relative to Files.readString(path)
+          } catch (_: java.nio.charset.MalformedInputException) {
+            null // binary artifact; not a text surface a reintroduction would land in
+          }
+        }
+      }
+    return skill175BannedTokenViolationsIn(files)
+  }
+
+  private fun skill175BannedTokenViolationsIn(files: List<Pair<String, String>>): List<String> = files
+    .flatMap { (relative, text) ->
+      SKILL_175_BANNED_TOKENS
+        .filter { token -> text.contains(token, ignoreCase = true) }
+        .map { token -> "$relative contains banned token '$token'" }
+    }
+    .sorted()
+
+  private fun isSkill175SkippedPath(path: Path): Boolean {
+    val relative = path.toString().replace('\\', '/')
+    if (relative.endsWith("/agent/history.md") || relative.endsWith("/agent/decisions.md")) return true
+    if (relative.contains("/build/")) return true
+    return SKILL_175_SKIPPED_DIRS.any { segment -> relative.contains("/$segment/") || relative.startsWith("$segment/") }
+  }
+
   private companion object {
     val INVENTORY_HEADING_PATTERN: Regex =
       Regex("""^###\s+(must_type_now|open_extension|private_serializer|postponed_with_reason)\b""")
@@ -2088,8 +2185,6 @@ class RuntimeArchitectureTest {
       "skillbill.application.telemetry.lifecycleErrorPayload",
       "skillbill.application.telemetry.orchestratedStartedSkippedPayload",
       "skillbill.application.telemetry.orchestratedPayload",
-      "skillbill.application.telemetry.LifecycleTelemetryService.featureImplementStarted",
-      "skillbill.application.telemetry.LifecycleTelemetryService.featureImplementFinished",
       "skillbill.application.telemetry.LifecycleTelemetryService.featureTaskRuntimeStarted",
       "skillbill.application.telemetry.LifecycleTelemetryService.featureTaskRuntimeFinished",
       "skillbill.application.telemetry.LifecycleTelemetryService.qualityCheckStarted",
@@ -2111,7 +2206,6 @@ class RuntimeArchitectureTest {
       // @OpenBoundaryMap-annotated typed-DTO open boundaries.
       "skillbill.application.model.WorkflowUpdateRequest.stepUpdates",
       "skillbill.application.model.WorkflowUpdateRequest.artifactsPatch",
-      "skillbill.application.model.FeatureImplementFinishedRequest.childSteps",
       "skillbill.application.model.DecompositionManifestWriteRequest.planningResult",
       "skillbill.application.model.DecompositionManifestRuntimeUpdate.stepUpdates",
       "skillbill.application.model.DecompositionManifestRuntimeUpdate.artifactsPatch",
@@ -2121,7 +2215,6 @@ class RuntimeArchitectureTest {
       "skillbill.telemetry.model.TelemetryConfigDocument.payload",
       "skillbill.telemetry.model.TelemetryProxyCapabilities.additionalFields",
       "skillbill.telemetry.model.TelemetryRemoteStatsResult.metrics",
-      "skillbill.telemetry.model.FeatureImplementFinishedRecord.childSteps",
       "skillbill.workflow.model.WorkflowSnapshotView.artifacts",
       "skillbill.workflow.model.WorkflowContinueView.stepArtifacts",
       "skillbill.workflow.model.WorkflowContinueView.extraFields",
@@ -2257,6 +2350,135 @@ class RuntimeArchitectureTest {
         """^\s*(?:public\s+|internal\s+|private\s+|abstract\s+|open\s+|sealed\s+""" +
           """|data\s+|inner\s+|enum\s+|annotation\s+|value\s+|fun\s+)*""" +
           """(?:class|object|interface)\s+([A-Za-z0-9_]+)""",
+      )
+
+    // SKILL-175 task 6: the durable banned-token grep policy. These are the
+    // prose-engine tokens (mode selectors, prose skills, prose MCP/telemetry
+    // tools, prose CLI family, FeatureImplement quarantine wire names) and the
+    // OpenCode/zcode product tokens. The guard scans the whole live tree and
+    // fails on any hit outside SKILL_175_ALLOWLIST.
+    val SKILL_175_BANNED_TOKENS: List<String> =
+      listOf(
+        "mode:prose",
+        "mode:runtime",
+        "bill-feature-task-prose",
+        "feature_task_prose_",
+        "goal_prose_",
+        "FEATURE_TASK_PROSE",
+        "TASK_PROSE",
+        "feature-task-prose",
+        "FeatureImplement",
+        "feature_implement",
+        "WorkflowFamily.IMPLEMENT",
+        "opencode",
+        "zcode",
+        "OPENCODE",
+        "ZCODE",
+        "McpOpenCode",
+        "McpZcode",
+      )
+
+    // Directories the guard never walks: VCS/build/generated and the governed
+    // feature-spec archives (both the SKILL-175 tree and .feature-specs/done/**),
+    // which are the explicit allowlist archives the parent spec names.
+    val SKILL_175_SKIPPED_DIRS: List<String> =
+      listOf(
+        ".git",
+        ".gradle",
+        ".feature-specs",
+        ".idea",
+        ".skill-bill",
+        "node_modules",
+        "sandbox",
+      )
+
+    // Explicit SKILL-175 allowlist (repo-relative paths). The parent spec requires
+    // exact paths/patterns, never a broad 'ignore tests' exemption. Each entry is a
+    // surface that legitimately retains the legacy prose token for a bounded reason:
+    //
+    //  * quarantine/migration persistence (parent AC-5, subtask 6): the retained
+    //    read-only `feature_implement_sessions` / FEATURE_TASK_PROSE wire values that
+    //    let in-flight prose rows be read, quarantined, or loudly rejected — never a
+    //    live prose engine;
+    //  * quarantine / negative-assertion tests (subtask 6/7): suites that must name a
+    //    legacy prose row value or assert its absence;
+    //  * retirement / historical docs (subtask 4/5): records of the retired prose
+    //    events and the archived promote-vs-prose comparison.
+    val SKILL_175_ALLOWLIST: Set<String> =
+      setOf(
+        // ---- quarantine/migration persistence (main source) ----
+        "runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/featuretask/" +
+          "FeatureSpecPreparationRuntime.kt",
+        "runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/featuretask/" +
+          "FeatureSpecPreparationWriter.kt",
+        "runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/model/WorkListModels.kt",
+        "runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/telemetry/TelemetrySupport.kt",
+        "runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/workflow/WorkflowRecordMapping.kt",
+        "runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/work/IdeStatusProjector.kt",
+        "runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/work/IdeStatusService.kt",
+        "runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/work/WorkListService.kt",
+        "runtime-kotlin/runtime-contracts/src/main/kotlin/skillbill/contracts/workflow/WorkflowStateSchemaPaths.kt",
+        "runtime-kotlin/runtime-domain/src/main/kotlin/skillbill/featurespec/model/FeatureSpecPreparationModels.kt",
+        "runtime-kotlin/runtime-domain/src/main/kotlin/skillbill/telemetry/TelemetryConstants.kt",
+        "runtime-kotlin/runtime-domain/src/main/kotlin/skillbill/workflow/taskruntime/" +
+          "FeatureTaskRuntimePhaseWorkflowDefinition.kt",
+        "runtime-kotlin/runtime-infra-fs/src/main/kotlin/skillbill/scaffold/payload/ScaffoldPayloadMapPolicy.kt",
+        "runtime-kotlin/runtime-infra-sqlite/src/main/kotlin/skillbill/db/core/DatabaseColumnMigrations.kt",
+        "runtime-kotlin/runtime-infra-sqlite/src/main/kotlin/skillbill/db/core/DatabaseSchema.kt",
+        "runtime-kotlin/runtime-infra-sqlite/src/main/kotlin/skillbill/db/core/DbConstants.kt",
+        "runtime-kotlin/runtime-infra-sqlite/src/main/kotlin/skillbill/db/core/StaleReconciliationCandidateQuery.kt",
+        "runtime-kotlin/runtime-infra-sqlite/src/main/kotlin/skillbill/db/core/StaleSessionReconciler.kt",
+        "runtime-kotlin/runtime-infra-sqlite/src/main/kotlin/skillbill/db/telemetry/GoalTelemetrySaveSupport.kt",
+        "runtime-kotlin/runtime-infra-sqlite/src/main/kotlin/skillbill/db/workflow/WorkflowStateStore.kt",
+        "runtime-kotlin/runtime-infra-sqlite/src/main/kotlin/skillbill/db/workflow/WorkflowStateWrites.kt",
+        "runtime-kotlin/runtime-infra-sqlite/src/main/kotlin/skillbill/db/worklist/SQLiteWorkListRepository.kt",
+        "runtime-kotlin/runtime-infra-sqlite/src/main/kotlin/skillbill/infrastructure/sqlite/review/" +
+          "ReviewHealthPayloadLoadingSupport.kt",
+        "runtime-kotlin/runtime-ports/src/main/kotlin/skillbill/ports/persistence/model/" +
+          "TelemetryReconciliationResult.kt",
+        "runtime-kotlin/runtime-ports/src/main/kotlin/skillbill/ports/persistence/model/WorkflowStateRecord.kt",
+        "runtime-kotlin/runtime-ports/src/main/kotlin/skillbill/ports/persistence/model/WorkItem.kt",
+        "runtime-kotlin/runtime-ports/src/main/kotlin/skillbill/ports/persistence/WorkflowStateRepository.kt",
+        // ---- quarantine / negative-assertion tests (src/test) ----
+        "runtime-kotlin/runtime-application/src/test/kotlin/skillbill/application/FeatureSpecPreparationRuntimeTest.kt",
+        "runtime-kotlin/runtime-application/src/test/kotlin/skillbill/application/FeatureSpecPreparationWriterTest.kt",
+        "runtime-kotlin/runtime-application/src/test/kotlin/skillbill/application/FeatureTaskRuntimeRunnerTest.kt",
+        "runtime-kotlin/runtime-application/src/test/kotlin/skillbill/application/" +
+          "FeatureTaskRuntimeStatusServiceTest.kt",
+        "runtime-kotlin/runtime-application/src/test/kotlin/skillbill/application/GoalRunnerTest.kt",
+        "runtime-kotlin/runtime-application/src/test/kotlin/skillbill/application/RuntimeExceptionTelemetryTest.kt",
+        "runtime-kotlin/runtime-application/src/test/kotlin/skillbill/application/" +
+          "WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest.kt",
+        "runtime-kotlin/runtime-application/src/test/kotlin/skillbill/application/WorkflowServiceTest.kt",
+        "runtime-kotlin/runtime-application/src/test/kotlin/skillbill/application/work/IdeStatusServiceTest.kt",
+        "runtime-kotlin/runtime-core/src/test/kotlin/skillbill/application/ApplicationPersistencePortTest.kt",
+        "runtime-kotlin/runtime-core/src/test/kotlin/skillbill/application/TelemetryLevelMutationServiceTest.kt",
+        "runtime-kotlin/runtime-core/src/test/kotlin/skillbill/architecture/InstallerShellDelegationTest.kt",
+        "runtime-kotlin/runtime-core/src/test/kotlin/skillbill/telemetry/TelemetryRuntimeTest.kt",
+        "runtime-kotlin/runtime-core/src/test/kotlin/skillbill/architecture/RuntimeArchitectureTest.kt",
+        "runtime-kotlin/runtime-domain/src/test/kotlin/skillbill/workflow/FeatureSpecSkillWiringContractTest.kt",
+        "runtime-kotlin/runtime-domain/src/test/kotlin/skillbill/workflow/" +
+          "UnboundedRemediationLoopGovernedContentTest.kt",
+        "runtime-kotlin/runtime-infra-fs/src/test/kotlin/skillbill/install/FeatureFamilyRenderingIntegrationTest.kt",
+        "runtime-kotlin/runtime-infra-fs/src/test/kotlin/skillbill/scaffold/RepoValidationRuntimeTest.kt",
+        "runtime-kotlin/runtime-infra-fs/src/test/kotlin/skillbill/scaffold/ScaffoldServiceParityTest.kt",
+        "runtime-kotlin/runtime-infra-sqlite/src/test/kotlin/skillbill/db/DatabaseMigrationsTest.kt",
+        "runtime-kotlin/runtime-infra-sqlite/src/test/kotlin/skillbill/db/DatabaseSchemaTest.kt",
+        "runtime-kotlin/runtime-infra-sqlite/src/test/kotlin/skillbill/db/GoalTelemetryStoreTest.kt",
+        "runtime-kotlin/runtime-infra-sqlite/src/test/kotlin/skillbill/db/StaleSessionReconcilerTest.kt",
+        "runtime-kotlin/runtime-infra-sqlite/src/test/kotlin/skillbill/db/TelemetryOutboxStoreTest.kt",
+        "runtime-kotlin/runtime-infra-sqlite/src/test/kotlin/skillbill/db/WorkflowStateStoreTest.kt",
+        "runtime-kotlin/runtime-infra-sqlite/src/test/kotlin/skillbill/review/ReviewStatsRuntimeTest.kt",
+        "runtime-kotlin/runtime-mcp/src/test/kotlin/skillbill/mcp/McpStdioServerTest.kt",
+        "runtime-kotlin/runtime-mcp/src/test/kotlin/skillbill/mcp/TelemetryEventSchemaViolationsTest.kt",
+        // ---- retirement / historical docs + schema comments (subtask 4/5) ----
+        "docs/cloudflare-telemetry-proxy/README.md",
+        "docs/cloudflare-telemetry-proxy/worker.test.mjs",
+        "docs/review-telemetry.md",
+        "docs/telemetry-privacy.md",
+        "orchestration/contracts/ide-status-schema.yaml",
+        "orchestration/contracts/workflow-state-schema.yaml",
+        "runtime-kotlin/docs/architecture/feature-task-runtime-comparison.md",
       )
   }
 }

@@ -1,13 +1,12 @@
 #!/usr/bin/env bash
-# 3-level Agent tool nesting smoke test for bill-feature-goal mode:prose (SKILL-83).
+# 3-level Agent tool nesting smoke test for the runtime goal path (SKILL-83 nesting gate).
 # Verifies: Level-0 (claude -p session) can spawn Level-1 (Agent tool) which can spawn
 # Level-2 (Agent tool), that the Level-2 sentinel propagates back to Level-0, and that
-# Level-1 has access to the skill-bill MCP tools.
+# Level-1 has access to the skill-bill MCP tools used by the runtime feature/goal family.
 #
-# This is the go/no-go gate for SKILL-83. If the test fails:
-#   BLOCKED — alternatives:
-#   (a) Keep mode:prose with /clear between subtasks (manual, works today).
-#   (b) Use mode:runtime with a conservative Anthropic console spending cap.
+# Subject: runtime goal / feature-task path (not a deleted prose orchestrator). This remains
+# a nesting capability probe for Agent-tool depth plus MCP reachability. It must not require
+# the retired prose mode selector, the retired prose feature skill, or any retired prose MCP tool.
 #
 # Usage: scripts/agent_nesting_smoke_test.sh
 # Env overrides: CLAUDE_BIN, NESTING_TEST_TIMEOUT (default 240s)
@@ -30,7 +29,7 @@ SENTINEL="SKILL83_L2_$(date +%s)"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-echo "── agent nesting smoke test ──────────────────────────────────────"
+echo "── agent nesting smoke test (runtime goal path) ──────────────────"
 printf "  claude:   %s\n" "$("$CLAUDE_BIN" --version 2>/dev/null)"
 printf "  sentinel: %s\n" "$SENTINEL"
 printf "  timeout:  %ss\n" "$TIMEOUT_SECS"
@@ -44,7 +43,7 @@ ${L2_SENTINEL}
 EOF
 
 cat >"$TMP/l1_prompt.txt" <<EOF
-You are a Level-1 nesting smoke test agent. Complete these two steps and then output the result line.
+You are a Level-1 nesting smoke test agent for the runtime goal path. Complete these two steps and then output the result line.
 
 STEP 1 — spawn Level-2 agent:
 Use the Agent tool. Pass this exact text as the prompt (copy it verbatim, no changes):
@@ -53,7 +52,7 @@ $(cat "$TMP/l2_prompt.txt")
 Record the full text returned by Level-2.
 
 STEP 2 — verify MCP access:
-Call the feature_implement_workflow_list MCP tool. If the tool does not exist or is not available, try calling feature_implement_workflow_get with issue_key "SMOKE-TEST-PROBE" (it may return an error response — that is fine as long as the tool call itself was accepted). Record whether the MCP call was accepted (even returning an error result is "ok") or whether the tool itself was not available.
+Call the feature_verify_workflow_list MCP tool. If the tool does not exist or is not available, try calling goal_stats (it may return an error response — that is fine as long as the tool call itself was accepted). Record whether the MCP call was accepted (even returning an error result is "ok") or whether the tool itself was not available.
 
 After both steps, output EXACTLY this single line as your FINAL output and nothing else before or after it:
 L1_RESULT|<level2_text>|<mcp_ok_or_mcp_err>
@@ -64,7 +63,7 @@ Where:
 EOF
 
 cat >"$TMP/l0_prompt.txt" <<EOF
-You are a Level-0 nesting smoke test agent. Complete this one step.
+You are a Level-0 nesting smoke test agent for the runtime goal path. Complete this one step.
 
 STEP 1 — spawn Level-1 agent:
 Use the Agent tool with the following prompt (copy it verbatim, preserving all lines):
@@ -124,14 +123,13 @@ done
 echo
 echo "════ nesting smoke test summary ════"
 if [[ $overall -eq 0 ]]; then
-  echo "  PASS — 3-level Agent nesting verified."
-  echo "  Level-1 MCP tools accessible. SKILL-83 implementation may proceed."
+  echo "  PASS — 3-level Agent nesting verified on the runtime goal path."
+  echo "  Level-1 MCP tools accessible. Nesting capability probe passed."
 else
   echo "  FAIL — 3-level Agent nesting could NOT be verified."
   echo
-  echo "  SKILL-83 is BLOCKED. Alternatives:"
-  echo "  (a) Keep mode:prose with /clear between subtasks (manual, works today)."
-  echo "  (b) Use mode:runtime with a conservative Anthropic console spending cap."
+  echo "  Nesting capability probe failed. Investigate Agent-tool depth limits"
+  echo "  or MCP registration before relying on multi-level Agent spawn."
   echo
   if [[ -n "$claude_out" ]]; then
     echo "  Level-0 output (head 20):"

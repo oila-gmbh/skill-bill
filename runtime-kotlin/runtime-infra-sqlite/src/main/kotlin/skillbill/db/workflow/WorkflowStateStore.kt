@@ -7,6 +7,7 @@ import skillbill.db.core.inImmediateTransaction
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
 import skillbill.error.InvalidFeatureTaskRuntimeWorkerOwnershipSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.error.ProseFeatureTaskWorkflowWriteRefusedError
 import skillbill.ports.persistence.FeatureImplementWorkflowStateRepository
 import skillbill.ports.persistence.FeatureTaskRuntimeWorkerRepository
 import skillbill.ports.persistence.FeatureTaskRuntimeWorkflowStateRepository
@@ -403,6 +404,14 @@ private class FeatureTaskWorkflowStateStore(
     }
   }
   override fun saveFeatureTaskWorkflow(row: WorkflowStateRecord, mode: FeatureTaskWorkflowMode) {
+    // SKILL-175 subtask 6: refuse mode=prose above the schema (the CHECK constraint still spells
+    // 'prose' so legacy rows stay insert-compatible with their own history; see
+    // runtime-kotlin/agent/decisions.md, "In-flight prose row policy"). This is the live write path
+    // `WorkflowService` calls for both families, so the guard lives here rather than only in the
+    // `FeatureImplementWorkflowStateRepository` compatibility alias below.
+    if (mode == FeatureTaskWorkflowMode.PROSE) {
+      throw ProseFeatureTaskWorkflowWriteRefusedError(row.workflowId)
+    }
     connection.upsertFeatureTaskWorkflowRow(
       row = row,
       mode = mode,
@@ -429,6 +438,10 @@ private class FeatureTaskWorkflowStateStore(
 
   override fun latestFeatureTaskWorkflow(mode: FeatureTaskWorkflowMode): WorkflowStateRecord? =
     listFeatureTaskWorkflows(mode, 1).firstOrNull()
+
+  override fun terminalizeLegacyProseFeatureTaskWorkflow(row: WorkflowStateRecord) {
+    connection.terminalizeLegacyProseFeatureTaskWorkflowRow(row)
+  }
 }
 
 private fun Connection.insertWorkerOwnership(ownership: FeatureTaskRuntimeWorkerOwnership) {
@@ -568,15 +581,11 @@ private fun decodeIdentityRouteScope(workflowId: String, value: String): Feature
 private class FeatureImplementWorkflowStateStore(
   private val connection: Connection,
 ) : FeatureImplementWorkflowStateRepository {
+  // SKILL-175 subtask 6: compatibility-alias writer for mode=prose, neutered per the "no live
+  // writer" policy (runtime-kotlin/agent/decisions.md, "In-flight prose row policy" rule 1). Reads
+  // below stay live so quarantined rows remain visible for history.
   override fun saveFeatureImplementWorkflow(row: WorkflowStateRecord) {
-    connection.upsertFeatureTaskWorkflowRow(
-      row = row,
-      mode = FeatureTaskWorkflowMode.PROSE,
-      implementationSkill = row.implementationSkill.orEmpty().ifBlank {
-        FeatureTaskWorkflowMode.PROSE.defaultImplementationSkill
-      },
-      defaultContractVersion = FeatureTaskWorkflowMode.PROSE.defaultContractVersion,
-    )
+    throw ProseFeatureTaskWorkflowWriteRefusedError(row.workflowId)
   }
 
   override fun getFeatureImplementWorkflow(workflowId: String): WorkflowStateRecord? =

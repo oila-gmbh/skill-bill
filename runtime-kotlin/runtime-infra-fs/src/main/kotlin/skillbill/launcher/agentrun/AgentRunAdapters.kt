@@ -3,7 +3,6 @@ package skillbill.launcher.agentrun
 import com.fasterxml.jackson.databind.ObjectMapper
 import skillbill.install.model.AgentLauncherCli
 import skillbill.install.model.InstallAgent
-import skillbill.install.model.RUNTIME_REFUSED_AGENTS
 import skillbill.install.model.agentLauncherUnavailableMessage
 import skillbill.launcher.process.AgentRunProcessRequest
 import skillbill.launcher.process.AgentRunProcessRunner
@@ -43,7 +42,7 @@ class ProcessAgentRunAdapter(
       // operator was told the agent wrote bad output when it had written none we could read.
       DecodedAgentRunOutput(text = "", rawOutputPreview = result.stdout.take(RAW_OUTPUT_PREVIEW_MAX_CHARS))
     }
-    val normalizedStdout = normalizeStdout(agent, decoded.text)
+    val normalizedStdout = decoded.text
     val decodedBodyBytes = if (normalizedStdout == result.stdout) {
       result.stdoutBytes
     } else {
@@ -140,7 +139,6 @@ class ProcessAgentRunAdapter(
     inheritEnvironment = command.inheritEnvironment,
     environmentPassthroughKeys = command.environmentPassthroughKeys,
     outputSink = request.outputSink,
-    usePtyStdio = command.usePtyStdio,
     idlePolicy = command.idlePolicy,
     conversationIsolation = command.conversationIsolation,
     reviewEvidenceBroker = request.reviewEvidenceBroker,
@@ -237,7 +235,14 @@ private fun decodeClaudeStreamJson(stdout: String): DecodedAgentRunOutput {
     .filter(String::isNotBlank)
     .mapNotNull { line -> runCatching { structuredOutputMapper.readTree(line) }.getOrNull() }
     .lastOrNull { event -> event.path("type").takeIf { it.isTextual }?.asText() == "result" }
-    ?: return DecodedAgentRunOutput(stdout)
+    // No terminal event means the stream was cut before Claude finished, not that the raw NDJSON is
+    // the answer. Handing the transport back makes the phase schema gate read a run of per-turn
+    // envelopes as conflicting candidates and blame the agent for output it never wrote, so this
+    // degrades to an empty harvest with a bounded excerpt, as the Cursor decoder already does.
+    ?: return DecodedAgentRunOutput(
+      text = "",
+      rawOutputPreview = stdout.take(RAW_OUTPUT_PREVIEW_MAX_CHARS),
+    )
   val usage = terminal.path("usage")
   return DecodedAgentRunOutput(
     text = terminal.path("result").takeIf { it.isTextual }?.asText().orEmpty(),
@@ -381,17 +386,6 @@ private const val RAW_OUTPUT_PREVIEW_MAX_CHARS = 2_000
 private fun com.fasterxml.jackson.databind.JsonNode.longOrNull(field: String): Long? =
   path(field).takeIf { it.isIntegralNumber && it.canConvertToLong() }?.longValue()
 
-private val zcodeStdoutMapper: ObjectMapper by lazy { ObjectMapper() }
-
-private fun normalizeStdout(agent: InstallAgent, stdout: String): String {
-  if (agent != InstallAgent.ZCODE) return stdout
-  val trimmed = stdout.trim()
-  if (!trimmed.startsWith("{")) return stdout
-  return runCatching {
-    zcodeStdoutMapper.readTree(trimmed).get("response")?.takeIf { node -> node.isTextual }?.asText()
-  }.getOrNull() ?: stdout
-}
-
 fun headlessAgentRunAdapters(
   processRunner: AgentRunProcessRunner,
   executableLookup: ExecutableLookup = PathExecutableLookup(),
@@ -400,12 +394,11 @@ fun headlessAgentRunAdapters(
   CodexAgentRunCommandBuilder(),
   JunieAgentRunCommandBuilder(),
   CursorAgentRunCommandBuilder(),
-).filterNot { builder -> RUNTIME_REFUSED_AGENTS.contains(builder.agent) }
-  .associate { builder ->
-    builder.agent to ProcessAgentRunAdapter(
-      agent = builder.agent,
-      commandBuilder = builder,
-      processRunner = processRunner,
-      executableLookup = executableLookup,
-    )
-  }
+).associate { builder ->
+  builder.agent to ProcessAgentRunAdapter(
+    agent = builder.agent,
+    commandBuilder = builder,
+    processRunner = processRunner,
+    executableLookup = executableLookup,
+  )
+}

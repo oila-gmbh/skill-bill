@@ -113,6 +113,20 @@ class InvalidWorkflowStateSchemaError(
   cause: Throwable? = null,
 ) : ShellContentContractException(message, cause)
 
+// SKILL-175 subtask 6: the prose feature-task engine is deleted; `mode='prose'` rows already
+// persisted in `feature_task_workflows` remain readable for history (quarantine + loud-fail
+// resume, per runtime-kotlin/agent/decisions.md), but every write path refuses new prose writes
+// above the schema rather than silently reinterpreting or persisting them.
+class ProseFeatureTaskWorkflowWriteRefusedError(
+  val workflowId: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Feature-task workflow '$workflowId' write refused: mode=prose is retired. The prose engine " +
+    "is deleted; re-run this feature on the runtime engine (mode=runtime) instead. Legacy " +
+    "prose rows remain readable for history but no new prose writes are accepted.",
+  cause,
+)
+
 class InvalidWorkListRowError(
   message: String,
   cause: Throwable? = null,
@@ -124,6 +138,23 @@ class WorkflowIssueKeyConflictError(
   val requestedIssueKey: String,
 ) : ShellContentContractException(
   "Workflow '$workflowId' is already associated with issue key '$persistedIssueKey', not '$requestedIssueKey'.",
+)
+
+/**
+ * SKILL-175: surfaced by every resume/continue/update path that encounters a
+ * `feature_task_workflows` row whose `mode` decoded to
+ * [skillbill.ports.persistence.model.FeatureTaskWorkflowMode.PROSE]. The prose engine is retired;
+ * the in-flight prose row policy keeps such rows readable for history only, so a live path must
+ * refuse loudly here instead of degrading or reinterpreting the row as a runtime row. The message
+ * always names the one supported re-run path.
+ */
+class LegacyProseWorkflowError(
+  val workflowId: String,
+  val issueKey: String?,
+) : ShellContentContractException(
+  "Workflow '$workflowId' is a legacy prose-mode row; the prose engine is retired and this row " +
+    "cannot be resumed, continued, or updated. Re-run this work through the runtime engine instead: " +
+    "`skill-bill goal ${issueKey?.trim()?.ifEmpty { null } ?: "<ISSUE_KEY>"}`.",
 )
 
 class InvalidRejectedOutputDiagnosticSchemaError(message: String) :

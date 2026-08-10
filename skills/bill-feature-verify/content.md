@@ -7,7 +7,7 @@ description: Verify a PR against a task spec (acceptance, review, completeness).
 
 This file is the author-owned execution body for `bill-feature-verify`. It carries the workflow-state contract, continuation contract, stable step ids, stable artifact names, telemetry ownership rules, and the per-step orchestration prose.
 
-**Agent-agnostic; opencode-safe.** `bill-feature-verify` has no runtime-vs-prose mode: it runs entirely in-session as an orchestrator (Skill-tool-driven code review, unit-test checks, completeness audit) with no foreground `skill-bill` runtime driver and no per-phase agent subprocess. It therefore runs identically across supported interactive agents — the opencode runtime refusal that applies to `bill-feature-task` / `bill-feature-goal` does not apply here because there is no runtime launch to refuse.
+`bill-feature-verify` runs entirely in-session as an orchestrator (Skill-tool-driven code review, unit-test checks, completeness audit) with no foreground `skill-bill` runtime driver and no per-phase agent subprocess.
 
 ## Workflow State
 

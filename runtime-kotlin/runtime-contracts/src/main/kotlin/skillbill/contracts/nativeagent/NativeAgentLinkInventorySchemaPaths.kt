@@ -1,6 +1,6 @@
 package skillbill.contracts.nativeagent
 
-const val NATIVE_AGENT_LINK_INVENTORY_CONTRACT_VERSION: String = "0.1"
+const val NATIVE_AGENT_LINK_INVENTORY_CONTRACT_VERSION: String = "0.2"
 
 object NativeAgentLinkInventorySchemaPaths {
   const val REPO_RELATIVE_PATH = "orchestration/contracts/native-agent-link-inventory-schema.yaml"

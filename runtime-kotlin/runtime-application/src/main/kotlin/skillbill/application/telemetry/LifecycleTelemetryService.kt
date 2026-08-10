@@ -3,8 +3,6 @@ package skillbill.application.telemetry
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.goalrunner.GoalLifecycleTelemetryEmitter
 import skillbill.application.goalrunner.toRecord
-import skillbill.application.model.FeatureImplementFinishedRequest
-import skillbill.application.model.FeatureImplementStartedRequest
 import skillbill.application.model.FeatureTaskRuntimeFinishedRequest
 import skillbill.application.model.FeatureTaskRuntimeStartedRequest
 import skillbill.application.model.FeatureVerifyFinishedRequest
@@ -29,28 +27,6 @@ class LifecycleTelemetryService(
   private val database: DatabaseSessionFactory,
   private val settingsProvider: TelemetrySettingsProvider,
 ) : GoalLifecycleTelemetryEmitter {
-  @OpenBoundaryMap("Lifecycle telemetry event bag emitted to the MCP/CLI telemetry boundary")
-  fun featureImplementStarted(request: FeatureImplementStartedRequest): Map<String, Any?> {
-    val sessionId = generateLifecycleSessionId("fis")
-    return validateFeatureImplementStarted(request)
-      ?.let { lifecycleErrorPayload(sessionId, it) }
-      ?: enabledStandaloneResult(sessionId) { settings ->
-        database.transaction(null) { unitOfWork ->
-          unitOfWork.lifecycleTelemetry.featureImplementStarted(request.toRecord(sessionId), settings.level)
-        }
-      }
-  }
-
-  @OpenBoundaryMap("Lifecycle telemetry event bag emitted to the MCP/CLI telemetry boundary")
-  fun featureImplementFinished(request: FeatureImplementFinishedRequest): Map<String, Any?> =
-    validateFeatureImplementFinished(request)
-      ?.let { lifecycleErrorPayload(request.sessionId, it) }
-      ?: enabledStandaloneResult(request.sessionId) { settings ->
-        database.transaction(null) { unitOfWork ->
-          unitOfWork.lifecycleTelemetry.featureImplementFinished(request.toRecord(), settings.level)
-        }
-      }
-
   @OpenBoundaryMap("Lifecycle telemetry event bag emitted to the MCP/CLI telemetry boundary")
   fun featureTaskRuntimeStarted(
     request: FeatureTaskRuntimeStartedRequest,
