@@ -13,9 +13,6 @@ class GitSuppressionEvidenceOperationsTest {
   @Test
   fun `reads base and head content for a scoped path`() {
     withTempRepo { repo ->
-      git(repo, "init")
-      git(repo, "config", "user.email", "test@example.com")
-      git(repo, "config", "user.name", "test")
       val path = "src/A.kt"
       Files.createDirectories(repo.resolve("src"))
       repo.resolve(path).writeText("fun base() = 1\n")
@@ -36,9 +33,6 @@ class GitSuppressionEvidenceOperationsTest {
   @Test
   fun `rename maps head path to base path without inventing a new base identity`() {
     withTempRepo { repo ->
-      git(repo, "init")
-      git(repo, "config", "user.email", "test@example.com")
-      git(repo, "config", "user.name", "test")
       val oldPath = "src/Old.kt"
       val newPath = "src/New.kt"
       Files.createDirectories(repo.resolve("src"))
@@ -61,9 +55,6 @@ class GitSuppressionEvidenceOperationsTest {
   @Test
   fun `paths outside the inventory are not returned`() {
     withTempRepo { repo ->
-      git(repo, "init")
-      git(repo, "config", "user.email", "test@example.com")
-      git(repo, "config", "user.name", "test")
       repo.resolve("kept.kt").writeText("kept\n")
       repo.resolve("other.kt").writeText("other\n")
       git(repo, "add", ".")
@@ -77,6 +68,10 @@ class GitSuppressionEvidenceOperationsTest {
   private fun withTempRepo(block: (Path) -> Unit) {
     val dir = Files.createTempDirectory("skill-bill-suppression-git")
     try {
+      git(dir, "init")
+      git(dir, "config", "user.email", "test@example.com")
+      git(dir, "config", "user.name", "test")
+      git(dir, "config", "commit.gpgsign", "false")
       block(dir)
     } finally {
       dir.toFile().deleteRecursively()
