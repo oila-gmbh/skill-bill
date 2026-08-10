@@ -17,6 +17,16 @@ Areas: runtime-application/featuretask, runtime-kotlin/agent, runtime-infra-fs/a
 - Transitional: the `bill-code-check` invoke clause is temporary until subtask 2 owns the gate; the no-suppression clause is permanent.
 Feature flag: N/A
 Acceptance criteria: 9/9 implemented
+## [2026-08-10] SKILL-176 subtask 1 — Validation-depth absent vs default
+Areas: runtime-application/featuretask, runtime-domain/workflow/taskruntime/model, .feature-specs/SKILL-176
+- Durable `validationDepth` is nullable: a missing `validation_depth` key decodes as null and is omitted from `toArtifactMap`, so absence is no longer conflated with `ValidationDepth.DEFAULT` (`FULL`)
+- Resume conflict gate blocks only when a recorded depth differs from the launcher; absent durable depth adopts the supplied value and continues
+- Adoption persists separate `goal_continuation_field_adoption` evidence (field, adopted_value, reason) without expanding the continuation artifact key set
+- Audited every `suppliedGoalContinuationConflict` field: identity/codeReviewMode/reviewBaseline cannot be absent at the gate; parallelReviewAgent treats omit and none as the same policy by construction
+- Pattern: absent-adopts-supplied with a dedicated observability artifact — do not heal by decoding defaults. reusable
+- Limitation: review-baseline reachability remains subtask 2; launcher depth selection is unchanged
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
 
 ## [2026-08-09] SKILL-179 subtask 3 — Legacy prose-mode row lifecycle
 Areas: runtime-application/{featuretask,workflow,goalrunner}, runtime-ports/persistence, runtime-infra-sqlite/db/workflow, runtime-cli/featuretask, .feature-specs/SKILL-179
