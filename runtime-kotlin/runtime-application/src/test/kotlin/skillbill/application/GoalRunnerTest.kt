@@ -747,11 +747,11 @@ class GoalRunnerLinearScratchFinalizeTest {
     val report = runner.run(linearRunRequest(repoRoot))
 
     assertIs<GoalRunnerRunReport.Completed>(report)
-    // Each subtask spec is deleted after its own commit; the parent + manifest only via the final
-    // directory deletion — and every subtask spec deletion precedes that directory deletion.
+    // Each subtask spec is deleted after its own commit; the parent + manifest only via directory
+    // deletion — once before commit-all and again after PR open (idempotent).
     assertEquals(listOf(sub1, sub2), scratch.deletedFiles)
-    assertEquals(listOf(specDir), scratch.deletedDirectories)
-    assertEquals(listOf(sub1, sub2, specDir), scratch.deletions)
+    assertEquals(listOf(specDir, specDir), scratch.deletedDirectories)
+    assertEquals(listOf(sub1, sub2, specDir, specDir), scratch.deletions)
     assertFalse(Files.exists(specDir), "linear goal scratch dir must be gone on success")
   }
 
@@ -815,8 +815,13 @@ class GoalRunnerLinearScratchFinalizeTest {
   }
 
   @Test
-  fun `linear finalize does not flag the untracked manifest as a blocking projection delta`() {
+  fun `linear finalize deletes scratch before commit-all and completes when remaining dirt is swept`() {
     val repoRoot = Files.createTempDirectory("goal-linear-finalize")
+    val scratch = RecordingSpecScratchStore()
+    val git = CommitAllRecordingGitOperations(
+      dirtyPorcelain = " M .feature-specs/SKILL-56-goal/decomposition-manifest.yaml",
+      currentBranch = "feat/SKILL-56-goal",
+    )
     val store = InMemoryGoalManifestStore(
       manifest = manifest(subtaskCount = 1)
         .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1")
@@ -827,18 +832,28 @@ class GoalRunnerLinearScratchFinalizeTest {
       RecordingSubtaskLauncher { launchFacts() },
       RecordingOutcomeStore(),
       RecordingPullRequestPort(),
-      specScratchStore = RecordingSpecScratchStore(),
-      gitOperations = DirtyManifestGitOperations(".feature-specs/SKILL-56-goal/decomposition-manifest.yaml"),
+      specScratchStore = scratch,
+      gitOperations = git,
     )
 
-    // The manifest is reported dirty, but in linear mode it is never staged, so finalize must not
-    // block on it — the goal completes and opens its PR.
     assertIs<GoalRunnerRunReport.Completed>(runner.run(linearRunRequest(repoRoot)))
+    // Once before commit-all, once after PR open (idempotent delete).
+    assertEquals(2, scratch.deletedDirectories.size, "linear scratch must be deleted before commit-all")
+    assertEquals(1, git.stageAllCalls)
+    assertEquals(
+      listOf("chore(SKILL-56): goal finalization commit-all on 'feat/SKILL-56-goal'"),
+      git.commitMessages,
+    )
+    assertEquals(listOf("feat/SKILL-56-goal"), git.pushedBranches)
   }
 
   @Test
-  fun `local finalize still blocks on an uncommitted manifest projection delta`() {
+  fun `local finalize commit-all stages commits and pushes remaining dirty paths including the manifest`() {
     val repoRoot = Files.createTempDirectory("goal-local-finalize")
+    val git = CommitAllRecordingGitOperations(
+      dirtyPorcelain = " M .feature-specs/SKILL-56-goal/decomposition-manifest.yaml\n M src/Extra.kt",
+      currentBranch = "feat/SKILL-56-goal",
+    )
     val store = InMemoryGoalManifestStore(
       manifest = manifest(subtaskCount = 1)
         .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1"),
@@ -849,12 +864,143 @@ class GoalRunnerLinearScratchFinalizeTest {
       RecordingOutcomeStore(),
       RecordingPullRequestPort(),
       specScratchStore = RecordingSpecScratchStore(),
-      gitOperations = DirtyManifestGitOperations(".feature-specs/SKILL-56-goal/decomposition-manifest.yaml"),
+      gitOperations = git,
+    )
+
+    assertIs<GoalRunnerRunReport.Completed>(runner.run(linearRunRequest(repoRoot)))
+    assertEquals(1, git.stageAllCalls)
+    assertEquals(
+      listOf("chore(SKILL-56): goal finalization commit-all on 'feat/SKILL-56-goal'"),
+      git.commitMessages,
+    )
+    assertEquals(listOf("feat/SKILL-56-goal"), git.pushedBranches)
+  }
+
+  @Test
+  fun `finalize with a clean worktree skips commit-all and still opens the PR`() {
+    val repoRoot = Files.createTempDirectory("goal-clean-finalize")
+    val git = CommitAllRecordingGitOperations(dirtyPorcelain = "", currentBranch = "feat/SKILL-56-goal")
+    val store = InMemoryGoalManifestStore(
+      manifest = manifest(subtaskCount = 1)
+        .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1"),
+    )
+    val runner = GoalRunner(
+      store,
+      RecordingSubtaskLauncher { launchFacts() },
+      RecordingOutcomeStore(),
+      RecordingPullRequestPort(),
+      gitOperations = git,
+    )
+
+    assertIs<GoalRunnerRunReport.Completed>(runner.run(linearRunRequest(repoRoot)))
+    assertEquals(0, git.stageAllCalls)
+    assertTrue(git.commitMessages.isEmpty())
+    assertTrue(git.pushedBranches.isEmpty())
+  }
+
+  @Test
+  fun `finalize re-pushes when worktree is clean but local tip is ahead of origin`() {
+    val repoRoot = Files.createTempDirectory("goal-unpushed-finalize")
+    val git = CommitAllRecordingGitOperations(
+      dirtyPorcelain = "",
+      currentBranch = "feat/SKILL-56-goal",
+      unpushedCommits = true,
+    )
+    val pullRequests = RecordingPullRequestPort()
+    val store = InMemoryGoalManifestStore(
+      manifest = manifest(subtaskCount = 1)
+        .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1"),
+    )
+    val runner = GoalRunner(
+      store,
+      RecordingSubtaskLauncher { launchFacts() },
+      RecordingOutcomeStore(),
+      pullRequests,
+      gitOperations = git,
+    )
+
+    assertIs<GoalRunnerRunReport.Completed>(runner.run(linearRunRequest(repoRoot)))
+    assertEquals(0, git.stageAllCalls, "clean worktree must not stage or commit again")
+    assertTrue(git.commitMessages.isEmpty())
+    assertEquals(listOf("feat/SKILL-56-goal"), git.pushedBranches)
+    assertEquals(1, pullRequests.openCount)
+  }
+
+  @Test
+  fun `finalize blocks when clean but unpushed tip cannot be pushed`() {
+    val repoRoot = Files.createTempDirectory("goal-unpushed-push-fail")
+    val git = CommitAllRecordingGitOperations(
+      dirtyPorcelain = "",
+      currentBranch = "feat/SKILL-56-goal",
+      unpushedCommits = true,
+      pushError = "remote rejected",
+    )
+    val pullRequests = RecordingPullRequestPort()
+    val store = InMemoryGoalManifestStore(
+      manifest = manifest(subtaskCount = 1)
+        .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1"),
+    )
+    val runner = GoalRunner(
+      store,
+      RecordingSubtaskLauncher { launchFacts() },
+      RecordingOutcomeStore(),
+      pullRequests,
+      gitOperations = git,
     )
 
     val stopped = assertIs<GoalRunnerRunReport.Stopped>(runner.run(linearRunRequest(repoRoot)))
     assertEquals(GoalRunnerStopReason.PULL_REQUEST_FAILED, stopped.stop.reason)
-    assertContains(stopped.stop.blockedReason, "uncommitted decomposition projection delta")
+    assertContains(stopped.stop.blockedReason, "unpushed commits")
+    assertEquals(listOf("feat/SKILL-56-goal"), git.pushedBranches)
+    assertEquals(0, pullRequests.openCount, "must not open a PR from a stale remote tip")
+  }
+
+  @Test
+  fun `finalize commit-all blocks when the worktree is not on the feature branch`() {
+    val repoRoot = Files.createTempDirectory("goal-wrong-branch-finalize")
+    val git = CommitAllRecordingGitOperations(
+      dirtyPorcelain = " M leftover.kt",
+      currentBranch = "feat/other-branch",
+    )
+    val store = InMemoryGoalManifestStore(
+      manifest = manifest(subtaskCount = 1)
+        .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1"),
+    )
+    val runner = GoalRunner(
+      store,
+      RecordingSubtaskLauncher { launchFacts() },
+      RecordingOutcomeStore(),
+      RecordingPullRequestPort(),
+      gitOperations = git,
+    )
+
+    val stopped = assertIs<GoalRunnerRunReport.Stopped>(runner.run(linearRunRequest(repoRoot)))
+    assertEquals(GoalRunnerStopReason.PULL_REQUEST_FAILED, stopped.stop.reason)
+    assertContains(stopped.stop.blockedReason, "requires checkout of feature branch")
+    assertEquals(0, git.stageAllCalls)
+  }
+
+  @Test
+  fun `finalize commit-all blocks when the feature branch is protected`() {
+    val repoRoot = Files.createTempDirectory("goal-protected-finalize")
+    val git = CommitAllRecordingGitOperations(dirtyPorcelain = " M leftover.kt", currentBranch = "main")
+    val store = InMemoryGoalManifestStore(
+      manifest = manifest(subtaskCount = 1)
+        .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1")
+        .copy(featureBranch = "main"),
+    )
+    val runner = GoalRunner(
+      store,
+      RecordingSubtaskLauncher { launchFacts() },
+      RecordingOutcomeStore(),
+      RecordingPullRequestPort(),
+      gitOperations = git,
+    )
+
+    val stopped = assertIs<GoalRunnerRunReport.Stopped>(runner.run(linearRunRequest(repoRoot)))
+    assertEquals(GoalRunnerStopReason.PULL_REQUEST_FAILED, stopped.stop.reason)
+    assertContains(stopped.stop.blockedReason, "refuses protected branch")
+    assertEquals(0, git.stageAllCalls)
   }
 
   private fun linearRunRequest(repoRoot: Path): GoalRunnerRunRequest = GoalRunnerRunRequest(
@@ -1202,11 +1348,18 @@ class GoalRunnerNoTerminalOutcomeDiagnosisTest {
   )
 }
 
-// Reports the decomposition manifest as a dirty worktree path so finalizationError's manifest-delta
-// guard can be exercised; everything else returns ok.
-private class DirtyManifestGitOperations(
-  private val dirtyManifestPath: String,
+// Starts dirty, then clears after createCommit so post-sweep cleanliness verification can pass.
+private class CommitAllRecordingGitOperations(
+  private val dirtyPorcelain: String,
+  private val currentBranch: String,
+  private val unpushedCommits: Boolean = false,
+  private val pushError: String? = null,
 ) : WorkflowGitOperations, GoalSubtaskReviewGitOperationsProvider {
+  var stageAllCalls: Int = 0
+  val commitMessages: MutableList<String> = mutableListOf()
+  val pushedBranches: MutableList<String> = mutableListOf()
+  private var porcelain: String = dirtyPorcelain
+
   override fun checkoutBranch(repoRoot: Path, branch: String, baseBranch: String?): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = branch)
 
@@ -1214,13 +1367,30 @@ private class DirtyManifestGitOperations(
     WorkflowGitOperationResult(status = "ok", value = "true")
 
   override fun currentBranch(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "feat/SKILL-56-goal")
+    WorkflowGitOperationResult(status = "ok", value = currentBranch)
 
-  override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "sha-test")
+  override fun stageAll(repoRoot: Path): WorkflowGitOperationResult {
+    stageAllCalls += 1
+    return WorkflowGitOperationResult(status = "ok", value = "")
+  }
+
+  override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult {
+    commitMessages += message
+    porcelain = ""
+    return WorkflowGitOperationResult(status = "ok", value = "sha-finalize")
+  }
+
+  override fun pushBranch(repoRoot: Path, branch: String): WorkflowGitOperationResult {
+    pushedBranches += branch
+    return pushError?.let { WorkflowGitOperationResult(status = "error", error = it) }
+      ?: WorkflowGitOperationResult(status = "ok", value = branch)
+  }
+
+  override fun localBranchHasUnpushedCommits(repoRoot: Path, branch: String): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = if (unpushedCommits) "true" else "false")
 
   override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "sha-test")
+    WorkflowGitOperationResult(status = "ok", value = "sha-finalize")
 
   override fun validateBranchBase(
     repoRoot: Path,
@@ -1229,7 +1399,7 @@ private class DirtyManifestGitOperations(
   ): WorkflowGitOperationResult = WorkflowGitOperationResult(status = "ok", value = expectedBaseBranch)
 
   override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = " M $dirtyManifestPath")
+    WorkflowGitOperationResult(status = "ok", value = porcelain)
 
   override fun worktreeActivity(repoRoot: Path): WorkflowWorktreeActivityResult =
     WorkflowWorktreeActivityResult(status = "ok")
@@ -3347,6 +3517,7 @@ internal class RecordingSubtaskLauncher(
 
 internal class RecordingPullRequestPort : GoalPullRequestPort {
   val requests: MutableList<GoalPullRequestRequest> = mutableListOf()
+  val openCount: Int get() = requests.size
 
   override fun open(request: GoalPullRequestRequest): GoalPullRequestResult {
     requests += request

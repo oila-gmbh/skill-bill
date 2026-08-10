@@ -28,11 +28,32 @@ interface WorkflowGitOperations {
 
   fun currentBranch(repoRoot: Path): WorkflowGitOperationResult
 
-  // Retained for non-checkpoint consumers only. Production checkpoint code stages an explicit
-  // owned-path inventory through [stagePaths]; a repository-wide add cannot express ownership.
+  // Goal finalization uses this for true commit-all (`git add -A`). Mid-run checkpoints stage an
+  // explicit owned-path inventory through [stagePaths] instead; a repository-wide add cannot express
+  // ownership during those checkpoints.
   fun stageAll(repoRoot: Path): WorkflowGitOperationResult = WorkflowGitOperationResult(status = "ok", value = "")
 
   fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult
+
+  /**
+   * Pushes [branch] to `origin` (`git push -u origin <branch>`). Used by goal finalization after a
+   * commit-all sweep so the opened PR tip includes remaining dirty work. Default refuses so adapters
+   * without real remote push cannot pretend the tip was published.
+   */
+  fun pushBranch(repoRoot: Path, branch: String): WorkflowGitOperationResult = WorkflowGitOperationResult(
+    status = "error",
+    error = "This git operations implementation cannot push branch '$branch'.",
+  )
+
+  /**
+   * Whether [branch]'s local tip has commits not on `origin/[branch]`.
+   * Value is `"true"` or `"false"`. Missing `origin/[branch]` counts as unpushed so a prior
+   * commit-all whose push failed is re-pushed on the next finalize instead of being treated as done
+   * merely because the worktree is clean. Default reports `"false"` so adapters without remotes do
+   * not invent a push obligation.
+   */
+  fun localBranchHasUnpushedCommits(repoRoot: Path, branch: String): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = "false")
 
   fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult
 
@@ -379,6 +400,12 @@ object NoopWorkflowGitOperations :
     status = "ok",
     value = "recorded:${message.hashCode().toUInt().toString(HASH_RADIX_HEX)}",
   )
+
+  override fun pushBranch(repoRoot: Path, branch: String): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = branch.trim())
+
+  override fun localBranchHasUnpushedCommits(repoRoot: Path, branch: String): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = "false")
 
   override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = "")
