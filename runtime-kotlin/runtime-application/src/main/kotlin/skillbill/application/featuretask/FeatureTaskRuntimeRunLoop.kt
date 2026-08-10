@@ -1733,6 +1733,12 @@ internal class FeatureTaskRuntimeRunLoop(
    * Same advance-blocking finding set across consecutive remediation passes with an unchanged
    * reviewed-delta digest pauses for an operator decision instead of re-entering `implement_fix`.
    * An active retry grant suppresses this for exactly one transition, matching the disposition pause.
+   *
+   * `reviewedDeltaDigest` is the digest of the tree the previous remediation edge judged under the
+   * immutable baseline — not a frozen pass-1 snapshot. When this edge continues (findings moved or
+   * the tree changed), advance it to the current immutable digest so the next edge compares
+   * consecutive reviews. Leaving it at pass 1 after a tree-changing fix would keep digests unequal
+   * forever and fail open into an unbounded remediation loop.
    */
   private fun pauseOnReviewRemediationNonConvergence(
     phaseId: String,
@@ -1754,7 +1760,10 @@ internal class FeatureTaskRuntimeRunLoop(
       previousRepositoryFingerprintOrDigest = previousDigest,
       currentRepositoryFingerprintOrDigest = currentDigest,
     )
-    if (!decision.blocked) return false
+    if (!decision.blocked) {
+      advanceReviewedDeltaDigestAfterRemediationProgress(reviewState, currentDigest)
+      return false
+    }
     val paused = goalContinuationRecorder.updateReviewState(request.workflowId, request.dbPathOverride) { state ->
       state.pauseForNonConvergence()
     } ?: reviewState.pauseForNonConvergence()
@@ -1766,6 +1775,21 @@ internal class FeatureTaskRuntimeRunLoop(
       nonConvergence = true,
     )
     return true
+  }
+
+  /**
+   * Records the immutable-baseline digest of the tree this remediation edge just accepted as
+   * progress, so the next non-convergence check compares consecutive review trees.
+   */
+  private fun advanceReviewedDeltaDigestAfterRemediationProgress(
+    reviewState: GoalSubtaskReviewState,
+    currentDigest: String,
+  ) {
+    if (currentDigest == UNPROVEN_REPOSITORY_FINGERPRINT) return
+    if (currentDigest == reviewState.reviewedDeltaDigest) return
+    goalContinuationRecorder.updateReviewState(request.workflowId, request.dbPathOverride) { state ->
+      state.copy(reviewedDeltaDigest = currentDigest)
+    }
   }
 
   private fun currentImmutableReviewDeltaDigest(reviewState: GoalSubtaskReviewState): String? {

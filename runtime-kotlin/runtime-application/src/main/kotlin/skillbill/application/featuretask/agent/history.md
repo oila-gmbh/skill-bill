@@ -1,5 +1,15 @@
 # featuretask runtime boundary history
 
+## [2026-08-10] SKILL-178 subtask 3 — Human-resumable non-convergence pause
+Areas: runtime-application/featuretask, runtime-application/goalrunner, runtime-domain/workflow/taskruntime/model, runtime-cli/goal
+- Same unresolved advance-blocking set (Blocker or Major) across consecutive remediation passes with an unchanged reviewed-delta digest mints `PAUSED` via `pauseForNonConvergence` instead of re-entering `implement_fix`; an active retry grant suppresses that pause for one transition
+- Goal-facing pause reasons carry severity, count, and sanitized labels only — paths, line numbers, and hunks stay behind `skill-bill goal findings`
+- `skill-bill goal operator-decision` records `retry_fix` / `accept_and_advance` / `abandon_subtask` onto durable review state without editing `decomposition-manifest.yaml`; resume consumes the decision and reuses `review_base_sha`, baseline untracked inventory, and pass accounting
+- `RETRY_FIX` still re-opens the consumed review pass so a hand-applied fix is genuinely re-reviewed; `operatorRetryRounds` stays unbounded — no count converts the pause into auto-advance or terminal failure
+- Reusable: `detectReviewRemediationNonProgress` (severity+label+text identities) mirrors audit-repair non-progress detection for the review remediation loop
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-08-10] SKILL-178 subtask 2 — Remediation-delta finding union
 Areas: runtime-application/featuretask, runtime-domain/workflow/taskruntime
 - Reserved remediation-pass scope is all findings addressed in that round unioned with `diff(pre-fix -> post-fix)`; pass-one immutable-base and baseline-untracked framing stay suppressed so the two scope statements cannot contradict

@@ -1401,7 +1401,7 @@ class FeatureTaskRuntimeRemediationGenerationTest {
     val harness = goalContinuationHarness(
       repoRoot,
       git,
-      remediationReviewLauncher {
+      remediationReviewLauncher(git) {
         reviewLaunches += 1
         reviewLaunches
       },
@@ -1422,6 +1422,62 @@ class FeatureTaskRuntimeRemediationGenerationTest {
       harness.reviewedDeltaDigest(),
       harness.currentReviewDeltaDigest(git, repoRoot),
       "the settled pass records the digest of the delta it judged",
+    )
+  }
+
+  // AC-001: after a tree-changing first remediation, a later re-review with the same advance-blocking
+  // set and no further repository change must pause — not keep remediating because reviewedDeltaDigest
+  // was left frozen at the pass-1 immutable digest.
+  @Test
+  fun `same Blocker set after a tree-changing fix then a no-op fix pauses for operator decision`() {
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-remediation-nonconvergence")
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+      .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
+    var reviewLaunches = 0
+    val harness = goalContinuationHarness(
+      repoRoot,
+      git,
+      RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        if (phaseId == "implement_fix" && git.goalReviewTrackedDelta.isEmpty()) {
+          git.goalReviewTrackedDelta = "remediation-progress\n"
+        }
+        when (phaseId) {
+          "review" -> {
+            reviewLaunches += 1
+            facts(
+              reviewFindingsOutput(
+                changesRequested = true,
+                dispositionedBlockerIds = if (reviewLaunches > 1) {
+                  listOf("pass${reviewLaunches - 1}-blocker-1")
+                } else {
+                  emptyList()
+                },
+              ),
+            )
+          }
+          else -> facts(validJsonOutput(phaseId))
+        }
+      },
+    )
+
+    val report = harness.runner.run(
+      harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE),
+    )
+
+    val paused = assertIs<FeatureTaskRuntimeRunReport.Paused>(report)
+    assertTrue(
+      paused.pauseReason.contains("Major") || paused.pauseReason.contains("Blocker") ||
+        paused.pauseReason.contains("operator"),
+      paused.pauseReason,
+    )
+    assertEquals(3, reviewLaunches, "pass-1 fix, pass-2 no-op re-review, then pause before another fix")
+    val reviewState = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
+    assertTrue(reviewState.pausedForOperatorDecision)
+    assertEquals(3, reviewState.completedPassCount)
+    assertFalse(
+      paused.pauseReason.contains("Foo.kt") || paused.pauseReason.contains('/'),
+      "goal-facing pause reason must stay path-free",
     )
   }
 
@@ -1533,7 +1589,7 @@ class FeatureTaskRuntimeRemediationGenerationTest {
     val harness = goalContinuationHarness(
       repoRoot,
       git,
-      remediationReviewLauncher {
+      remediationReviewLauncher(git) {
         reviewLaunches += 1
         reviewLaunches
       },
@@ -5247,9 +5303,18 @@ private const val BRANCH_SETUP_AGENT_ID = "branch-setup"
 // Pass one raises a Blocker, pass two still finds it unresolved and raises its own, pass three clears
 // it. Every remediation pass dispositions the Blocker ids of its IMMEDIATELY PRECEDING pass — the ids
 // the parse seam mints from that pass's durable result — not pass one's forever.
-private fun remediationReviewLauncher(nextLaunch: () -> Int): RuntimeRecordingLauncher =
+//
+// The first implement_fix mutates the reviewed delta so non-convergence does not pause after that
+// tree-changing fix; later fix passes leave the digest stable.
+private fun remediationReviewLauncher(
+  git: RecordingWorkflowGitOperations,
+  nextLaunch: () -> Int,
+): RuntimeRecordingLauncher =
   RuntimeRecordingLauncher { request ->
     val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+    if (phaseId == "implement_fix" && git.goalReviewTrackedDelta.isEmpty()) {
+      git.goalReviewTrackedDelta = "remediation-progress\n"
+    }
     if (phaseId == "review") {
       val launch = nextLaunch()
       facts(
@@ -6162,6 +6227,7 @@ internal class RecordingWorkflowGitOperations(
   var stagedPathsResult: WorkflowGitOperationResult? = null
   val goalReviewBuildInputs = mutableListOf<GoalSubtaskReviewBaseline>()
   val goalReviewBuildResults = ArrayDeque<GoalSubtaskReviewInputResult>()
+  var goalReviewTrackedDelta: String = ""
   var goalReviewRecoveredBaseline: GoalSubtaskReviewBaseline? = null
   var goalReviewRecoverCalls: Int = 0
   val goalReviewRecoverRequests =
@@ -6393,7 +6459,7 @@ internal class RecordingWorkflowGitOperations(
           input = GoalSubtaskReviewInput(
             reviewBaseSha = baseline.reviewBaseSha,
             currentHeadSha = baseline.reviewBaseSha,
-            trackedDelta = "",
+            trackedDelta = goalReviewTrackedDelta,
             ownedUntrackedPatches = "",
           ),
         )
