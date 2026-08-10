@@ -48,7 +48,7 @@ class FeatureFamilyRenderingIntegrationTest {
     assertContains(task, "selected agent add-on slugs and manifest descriptions in caller order, or `none`")
     assertContains(goal, "forward it unchanged to every runtime\nchild and child continuation artifact")
     assertContains(goal, "Blocker and Major findings both reopen\n`implement_fix` and block advancement")
-    assertContains(goal, "no finite count pauses or advances the run")
+    assertContains(goal, "no finite count pauses or advances the\nrun")
     assertContains(runtime, "--code-review-mode <auto|inline|delegated>")
     assertContains(runtime, "--agent-addon-selection-json <structured-json>")
     assertContains(runtime, "Do not parse, reorder, or rediscover it")

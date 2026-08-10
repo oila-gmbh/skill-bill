@@ -1,3 +1,13 @@
+## [2026-08-10] SKILL-178 subtask 4 — Governed content and parity-lock sweep
+Areas: skills/bill-feature-goal, skills/bill-feature-task-runtime, skills/bill-code-review, orchestration/review-orchestrator, runtime-kotlin/agent, runtime-kotlin content-lock tests
+- Aligned governed remediation prose so a remediation round is handed all findings and both Blocker and Major reopen `implement_fix` / block advance; Minor and Nit stay ledger-only via `skill-bill goal findings`
+- Remediation-delta scope is all findings addressed in that round unioned with the pre-fix-to-post-fix diff; evidenced dispositions required for every addressed finding (PLAYBOOK + bill-code-review)
+- Non-convergence wording is the unresolved Blocker-or-Major set with a human-resumable uncapped pause; no live Blocker-only reopen statements remain in skills or playbooks
+- Content-lock/parity tests retargeted to the new rule (none deleted); boundary decision recorded under `runtime-kotlin/agent/decisions.md`; durable wire key `blocker_dispositions` left named as-is
+- reusable PATTERN: when runtime severity gates widen, update governed markdown and content-lock tests in the same pass so locks cannot keep encoding the old rule
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-08-09] SKILL-175 subtask 3 — prose skill tree deleted, briefing SoT relocated
 Areas: skills/bill-feature-task-prose, skills/bill-feature-task-subtask-runner, skills/bill-over-engineering-review, runtime-kotlin/{runtime-application,runtime-domain,runtime-infra-fs}, docs, orchestration/shell-content-contract, scripts
 - Deleted `skills/bill-feature-task-prose/` (content.md + `native-agents/agents.yaml` with all seven phase agents and the subtask-runner bundle entry) and `skills/bill-feature-task-subtask-runner/`. Runtime is now the only feature-task engine with a skill source tree.

@@ -62,7 +62,7 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
     val prompt = compose(
       passNumber = 2,
       resolvedTier = CodeReviewExecutionMode.INLINE,
-      withReviewInput = true,
+      reviewInput = REVIEW_INPUT,
       baselineUntrackedPaths = listOf("preexisting.tmp"),
     )
 
@@ -79,7 +79,11 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
 
   @Test
   fun `pass one keeps the immutable-base materialized scope block`() {
-    val prompt = compose(passNumber = 1, resolvedTier = CodeReviewExecutionMode.INLINE, withReviewInput = true)
+    val prompt = compose(
+      passNumber = 1,
+      resolvedTier = CodeReviewExecutionMode.INLINE,
+      reviewInput = REVIEW_INPUT,
+    )
 
     assertContains(prompt, "## Immutable-base review scope")
   }
@@ -109,9 +113,9 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
 
   @Test
   fun `pass two orders one evidenced disposition per prior Blocker finding id`() {
-    // Durable wire key remains blocker_dispositions (SKILL-178 keeps the key name). Subtask-2/3 still
-    // order dispositions for prior Blocker ids only; PLAYBOOK/code-review prose now require every
-    // addressed finding — that directive widening is a reported dependency gap, not changed here.
+    // Durable wire key remains blocker_dispositions (SKILL-178 keeps the key name). Governed
+    // PLAYBOOK/code-review prose and this prompt seam both require dispositions for prior Blocker
+    // ids only; widening to every addressed finding waits on a review-execution directive change.
     val prompt = compose(
       passNumber = 2,
       resolvedTier = CodeReviewExecutionMode.INLINE,
@@ -231,7 +235,6 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
     passNumber: Int,
     resolvedTier: CodeReviewExecutionMode,
     priorBlockerFindingIds: List<String> = emptyList(),
-    withReviewInput: Boolean = false,
     reviewInput: GoalSubtaskReviewInput? = null,
     baselineUntrackedPaths: List<String> = emptyList(),
   ): String = FeatureTaskRuntimePhasePromptComposer.compose(
@@ -239,7 +242,7 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
     briefing = reviewBriefing(),
     codeReviewMode = resolvedTier,
     reviewPassNumber = passNumber,
-    goalSubtaskReviewInput = reviewInput ?: if (withReviewInput) REVIEW_INPUT else null,
+    goalSubtaskReviewInput = reviewInput,
     resolvedReviewTier = resolvedTier,
     reviewDecidingRule = "auto_mode_by_pass_number:pass_n_inline",
     priorBlockerFindingIds = priorBlockerFindingIds,

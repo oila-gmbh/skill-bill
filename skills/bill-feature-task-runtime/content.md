@@ -226,9 +226,10 @@ verdict — prose alone cannot advance past a Blocker or Major finding.
   iteration counts across all runs for the same subtask. The initial review may
   use the selected mode, while every re-review is reserved before launch and
   always invokes `bill-code-review mode:inline context:feature-remediation` against
-  only the staged, unstaged, and untracked remediation delta since the checkpoint
-  created before `implement_fix`, never the full feature-branch diff. The first
-  `approved` verdict advances the run to `validate`.
+  the remediation delta — all findings addressed in that round unioned with the
+  pre-fix-to-post-fix diff since the checkpoint created before `implement_fix`
+  — never the full feature-branch diff. The first `approved` verdict advances the
+  run to `validate`.
 - Crossing from iteration 3 to iteration 4 prints a user-visible warning that the
   advisory threshold of 3 was exceeded and remediation continues. The threshold is
   a warning signal, not a cap: it never stops, pauses, or advances the run.
