@@ -9,7 +9,9 @@ import skillbill.infrastructure.fs.GitWorkflowGitOperations
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.WorkflowUpdateInput
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY
@@ -22,6 +24,7 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskPauseRelease
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewDisposition
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
+import skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesToArtifact
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -112,10 +115,28 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     state: GoalSubtaskReviewState,
     repository: InMemoryRuntimeWorkflowRepository = InMemoryRuntimeWorkflowRepository(),
     goalBranch: String = "feat/SKILL-142",
+    checkpointIdentities: List<FeatureTaskRuntimeCheckpointIdentity> = emptyList(),
   ): FeatureTaskRuntimeGoalContinuationRecorder {
     val engine = WorkflowEngine(testWorkflowSnapshotValidator)
     val definition = WorkflowFamily.TASK_RUNTIME.definition
     val opened = engine.openRecord(definition, workflowId, "fis-001", "preplan")
+    val artifactsPatch = linkedMapOf<String, Any?>(
+      FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY to FeatureTaskRuntimeGoalContinuationArtifact(
+        issueKey = "SKILL-142",
+        subtaskId = 5,
+        suppressPr = true,
+        goalBranch = goalBranch,
+        codeReviewMode = CodeReviewExecutionMode.INLINE,
+      ).toArtifactMap(),
+      GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to state.toArtifactMap(),
+      GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY to state.passResults.associate { result ->
+        result.passNumber.toString() to """{"phase_id":"review","status":"completed"}"""
+      },
+    )
+    if (checkpointIdentities.isNotEmpty()) {
+      artifactsPatch[FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY] =
+        featureTaskRuntimeCheckpointIdentitiesToArtifact(checkpointIdentities)
+    }
     val seeded = engine.updateRecord(
       definition,
       opened,
@@ -123,19 +144,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
         workflowStatus = "running",
         currentStepId = "review",
         stepUpdates = null,
-        artifactsPatch = mapOf(
-          FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY to FeatureTaskRuntimeGoalContinuationArtifact(
-            issueKey = "SKILL-142",
-            subtaskId = 5,
-            suppressPr = true,
-            goalBranch = goalBranch,
-            codeReviewMode = CodeReviewExecutionMode.INLINE,
-          ).toArtifactMap(),
-          GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to state.toArtifactMap(),
-          GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY to state.passResults.associate { result ->
-            result.passNumber.toString() to """{"phase_id":"review","status":"completed"}"""
-          },
-        ),
+        artifactsPatch = artifactsPatch,
         sessionId = "fis-001",
       ),
     ).toRecord()
@@ -150,6 +159,12 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     val repoRoot: Path,
     val parent: String,
     val orphanedBase: String,
+  )
+
+  private data class CommittedUnrecordedFixture(
+    val repoRoot: Path,
+    val parent: String,
+    val checkpointSha: String,
   )
 
   private data class UnreachableGitFixture(
@@ -181,6 +196,22 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     Files.writeString(repoRoot.resolve("tracked.txt"), "sibling-b\n")
     git(repoRoot, "commit", "-am", "sibling-b")
     return Skill15GitFixture(repoRoot, parent, orphanedBase)
+  }
+
+  private fun committedUnrecordedFixture(): CommittedUnrecordedFixture {
+    val repoRoot = Files.createTempDirectory("skillbill-durable-unrecorded")
+    git(repoRoot, "init", "-b", "feat/skill-15")
+    git(repoRoot, "config", "user.email", "skill-bill@example.test")
+    git(repoRoot, "config", "user.name", "Skill Bill")
+    git(repoRoot, "config", "commit.gpgsign", "false")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "parent\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "parent")
+    val parent = git(repoRoot, "rev-parse", "HEAD")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "checkpoint\n")
+    git(repoRoot, "commit", "-am", "chore(SKILL-176): remediation checkpoint")
+    val checkpointSha = git(repoRoot, "rev-parse", "HEAD")
+    return CommittedUnrecordedFixture(repoRoot, parent, checkpointSha)
   }
 
   private fun unreachableOnlyGitFixture(): UnreachableGitFixture {
@@ -374,6 +405,98 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
       "reachable resume must write no recovery evidence",
     )
     assertEquals(fixture.parent, recorder.reviewState(workflowId)?.remediationBaseSha)
+  }
+
+  @Test
+  fun `resume coherence heals a recorded-but-superseded remediation base to HEAD with evidence`() {
+    // SKILL-15 topology: stored base is the orphaned sibling; branch tip is the later sibling.
+    // Pre-fix, these disagree. Post-fix resume heal makes the durable row agree with the ref.
+    val fixture = skill15GitFixture()
+    val head = git(fixture.repoRoot, "rev-parse", "HEAD")
+    assertTrue(head != fixture.orphanedBase, "fixture must leave the orphan unreachable from HEAD")
+    val state = deepRemediationState(completedPasses = 2)
+      .reserveNextPass()
+      .copy(remediationBaseSha = fixture.orphanedBase)
+    val repository = InMemoryRuntimeWorkflowRepository()
+    val recorder = recorderWith(state, repository, goalBranch = "feat/skill-15")
+    val gitOps = GitWorkflowGitOperations()
+
+    val healed = assertNotNull(
+      recorder.reconcileRemediationBaseCoherence(workflowId, gitOps, fixture.repoRoot),
+    )
+
+    assertEquals(head, healed.remediationBaseSha, "durable remediation_base_sha must match the branch tip")
+    assertEquals(head, recorder.reviewState(workflowId)?.remediationBaseSha)
+    assertEquals(
+      "true",
+      gitOps.isCommitAncestor(fixture.repoRoot, healed.remediationBaseSha!!, head).value,
+      "healed base must be reachable from HEAD",
+    )
+    @Suppress("UNCHECKED_CAST")
+    val evidence = repository.taskRuntimeArtifacts(workflowId)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY]
+      as List<Map<String, Any?>>
+    val entry = evidence.single()
+    assertEquals(fixture.orphanedBase, entry["original_sha"])
+    assertEquals(head, entry["replacement_sha"])
+    assertEquals("recorded_but_superseded", entry["failure_reason"])
+    assertEquals("remediation_base_sha", entry["repointed_field"])
+  }
+
+  @Test
+  fun `resume coherence heals committed-but-unrecorded remediation checkpoint to the identity sha`() {
+    // Crash window: remediation checkpoint committed and identity recorded, base still the parent.
+    val fixture = committedUnrecordedFixture()
+    val state = deepRemediationState(completedPasses = 1)
+      .reserveNextPass()
+      .copy(remediationBaseSha = fixture.parent)
+    val repository = InMemoryRuntimeWorkflowRepository()
+    val identity = FeatureTaskRuntimeCheckpointIdentity(
+      sequenceNumber = 0,
+      issueKey = "SKILL-176",
+      branch = "feat/skill-15",
+      phaseId = "review",
+      generation = 1,
+      ownedPathDigest = "a".repeat(64),
+      ownedPathCount = 1,
+      commitSha = fixture.checkpointSha,
+      recordedAt = "2026-08-10T00:00:00Z",
+      loopId = "review_fix",
+      parentSha = fixture.parent,
+    )
+    val recorder = recorderWith(
+      state,
+      repository,
+      goalBranch = "feat/skill-15",
+      checkpointIdentities = listOf(identity),
+    )
+    val gitOps = GitWorkflowGitOperations()
+
+    val healed = assertNotNull(
+      recorder.reconcileRemediationBaseCoherence(workflowId, gitOps, fixture.repoRoot),
+    )
+
+    assertEquals(fixture.checkpointSha, healed.remediationBaseSha)
+    assertEquals(fixture.checkpointSha, git(fixture.repoRoot, "rev-parse", "HEAD"))
+    @Suppress("UNCHECKED_CAST")
+    val evidence = repository.taskRuntimeArtifacts(workflowId)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY]
+      as List<Map<String, Any?>>
+    assertEquals("committed_but_unrecorded", evidence.single()["failure_reason"])
+  }
+
+  @Test
+  fun `resume coherence is a no-op when the recorded base already agrees with HEAD`() {
+    val fixture = skill15GitFixture()
+    val head = git(fixture.repoRoot, "rev-parse", "HEAD")
+    val state = deepRemediationState(completedPasses = 2)
+      .reserveNextPass()
+      .copy(remediationBaseSha = head)
+    val repository = InMemoryRuntimeWorkflowRepository()
+    val recorder = recorderWith(state, repository, goalBranch = "feat/skill-15")
+
+    recorder.reconcileRemediationBaseCoherence(workflowId, GitWorkflowGitOperations(), fixture.repoRoot)
+
+    assertEquals(head, recorder.reviewState(workflowId)?.remediationBaseSha)
+    assertNull(repository.taskRuntimeArtifacts(workflowId)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY])
   }
 
   @Test

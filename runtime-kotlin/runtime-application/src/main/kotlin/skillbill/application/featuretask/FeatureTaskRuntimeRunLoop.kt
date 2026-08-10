@@ -697,19 +697,147 @@ internal class FeatureTaskRuntimeRunLoop(
    * skip the checkpoint commit. HEAD is the pre-fix tree on all of them, and without the sha the
    * reserved pass silently falls back to labelling the full base-to-current delta as the pre-fix
    * tree — the exact scope bound AC-012 exists to enforce.
+   *
+   * A Stage commit and its base record are one unit: if `updateReviewState` fails after the commit,
+   * HEAD soft-resets to the pre-commit parent so the branch ref and the durable base stay paired.
    */
   private fun establishRemediationCheckpoint(precedingPhaseId: String, loopId: String): Boolean {
-    val established = checkpointEstablished(
-      precedingPhaseId = precedingPhaseId,
-      loopId = loopId,
+    val branch = resolvedBranch
+    if (branch == null || FeatureTaskRuntimeBranchSetup.protectedBranchName(branch) != null) {
+      return recordRemediationBaseIfNeeded(precedingPhaseId, loopId, commitSha = null, parentSha = null)
+    }
+    val head = phaseGates.gitOperations.currentBranch(request.repoRoot)
+    if (!head.ok || head.value.trim() != branch.trim()) {
+      return recordRemediationBaseIfNeeded(precedingPhaseId, loopId, commitSha = null, parentSha = null)
+    }
+    val scope = resolveCheckpointScope(precedingPhaseId, branch, ::remediationCheckpointBlockedReason) ?: return false
+    return when (scope) {
+      is FeatureTaskRuntimeCheckpointDecision.Skip ->
+        recordRemediationBaseIfNeeded(precedingPhaseId, loopId, commitSha = null, parentSha = null)
+      is FeatureTaskRuntimeCheckpointDecision.Block -> {
+        blockAt(precedingPhaseId, scope.reason)
+        false
+      }
+      is FeatureTaskRuntimeCheckpointDecision.Stage -> {
+        if (scope.adoptedPaths.isNotEmpty()) {
+          runCatching {
+            diagnostics.warning(FeatureTaskRuntimeCheckpointScope.adoptionWarning(branch, scope.adoptedPaths))
+          }
+        }
+        val committed = commitRemediationCheckpoint(
+          precedingPhaseId = precedingPhaseId,
+          branch = branch,
+          loopId = loopId,
+          ownedPaths = scope.ownedPaths,
+        ) ?: return false
+        recordRemediationBaseIfNeeded(
+          precedingPhaseId = precedingPhaseId,
+          loopId = loopId,
+          commitSha = committed.commitSha,
+          parentSha = committed.parentSha,
+        )
+      }
+    }
+  }
+
+  private data class RemediationCheckpointCommit(val commitSha: String, val parentSha: String?)
+
+  private fun commitRemediationCheckpoint(
+    precedingPhaseId: String,
+    branch: String,
+    loopId: String,
+    ownedPaths: List<String>,
+  ): RemediationCheckpointCommit? {
+    val snapshot = phaseGates.gitOperations.captureIndexState(request.repoRoot, ownedPaths)
+    if (!snapshot.ok) {
+      blockCheckpoint(precedingPhaseId, branch, snapshot.error, ::remediationCheckpointBlockedReason)
+      return null
+    }
+    val parentSha = phaseGates.gitOperations.headCommitSha(request.repoRoot)
+      .takeIf { it.ok }?.value?.trim()?.takeIf(String::isNotBlank)
+    val staged = phaseGates.gitOperations.stagePaths(request.repoRoot, ownedPaths)
+    if (!staged.ok) {
+      blockCheckpoint(
+        precedingPhaseId,
+        branch,
+        withIndexRestoreOutcome(staged.error, ownedPaths, snapshot.value.orEmpty()),
+        ::remediationCheckpointBlockedReason,
+      )
+      return null
+    }
+    val message = FeatureTaskRuntimeCheckpointMessage.build(
+      issueKey = request.issueKey,
+      branch = branch,
+      identity = FeatureTaskRuntimeCheckpointIdentity(
+        phaseId = precedingPhaseId,
+        loopId = loopId,
+        generation = checkpointGeneration(loopId),
+      ),
       intent = FeatureTaskRuntimeCheckpointMessage.INTENT_REMEDIATION,
+    )
+    val commit = phaseGates.gitOperations.createCommit(request.repoRoot, message)
+    if (!commit.ok) {
+      blockCheckpoint(
+        precedingPhaseId,
+        branch,
+        withIndexRestoreOutcome(commit.error, ownedPaths, snapshot.value.orEmpty()),
+        ::remediationCheckpointBlockedReason,
+      )
+      return null
+    }
+    val commitSha = commit.value.orEmpty().trim()
+    if (commitSha.isBlank()) {
+      blockCheckpoint(
+        precedingPhaseId,
+        branch,
+        "remediation checkpoint commit returned an empty sha",
+        ::remediationCheckpointBlockedReason,
+      )
+      return null
+    }
+    val recorded = recordCheckpointIdentity(
+      precedingPhaseId = precedingPhaseId,
+      branch = branch,
+      loopId = loopId,
+      ownedPaths = ownedPaths,
+      parentSha = parentSha,
+      commitSha = commitSha,
       blockedReason = ::remediationCheckpointBlockedReason,
     )
-    if (!established) return false
+    if (!recorded) {
+      // Identity failed after the commit: soft-reset so the tip does not outrun durable authority.
+      rollbackRemediationCheckpointCommit(parentSha, commitSha)
+      return null
+    }
+    return RemediationCheckpointCommit(commitSha = commitSha, parentSha = parentSha)
+  }
+
+  private fun recordRemediationBaseIfNeeded(
+    precedingPhaseId: String,
+    loopId: String,
+    commitSha: String?,
+    parentSha: String?,
+  ): Boolean {
     // Only the review_fix edge reserves a remediation review pass, so only it has a pre-fix base to
     // record. The audit_gap edge re-enters implement without one and must not be gated on it.
     if (loopId != FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID) return true
-    return recordRemediationBaseSha(precedingPhaseId)
+    val recorded = recordRemediationBaseSha(precedingPhaseId, commitSha)
+    if (recorded) return true
+    if (commitSha != null) {
+      rollbackRemediationCheckpointCommit(parentSha, commitSha)
+    }
+    return false
+  }
+
+  /**
+   * Soft-resets HEAD to [parentSha] when it still sits on [commitSha], so a failed base record (or
+   * identity write) does not leave the branch tip naming an unrecorded remediation checkpoint.
+   */
+  private fun rollbackRemediationCheckpointCommit(parentSha: String?, commitSha: String) {
+    val parent = parentSha?.trim()?.takeIf(String::isNotBlank) ?: return
+    val head = phaseGates.gitOperations.headCommitSha(request.repoRoot)
+    if (!head.ok || head.value.trim() != commitSha.trim()) return
+    phaseGates.gitOperations.resetSoftToCommit(request.repoRoot, parent)
   }
 
   /**
@@ -941,22 +1069,26 @@ internal class FeatureTaskRuntimeRunLoop(
     baselineOwnedPaths.ifEmpty { baselineUntrackedPaths }
 
   /**
-   * The checkpoint commit has just captured the pre-fix tree, so HEAD here IS the pre-fix tree. The
-   * reserved remediation pass reviews diff(this sha -> post-fix HEAD), which is what materializes a
-   * defect the remediation itself introduces instead of leaving it to be caught incidentally.
+   * The checkpoint commit has just captured the pre-fix tree, so [commitSha] (or HEAD when the
+   * checkpoint was skipped) IS the pre-fix tree. The reserved remediation pass reviews
+   * diff(this sha -> post-fix HEAD), which is what materializes a defect the remediation itself
+   * introduces instead of leaving it to be caught incidentally.
    */
-  private fun recordRemediationBaseSha(precedingPhaseId: String): Boolean {
+  private fun recordRemediationBaseSha(precedingPhaseId: String, commitSha: String? = null): Boolean {
     if (!isGoalContinuationRun(request)) return true
     // Without durable review state there is no reserved remediation pass to bound, so there is no
     // base to record and nothing this gate can protect.
     if (goalReviewStateOrNull() == null) return true
-    val head = phaseGates.gitOperations.headCommitSha(request.repoRoot)
-    if (!head.ok || head.value.isBlank()) {
-      return blockRemediationBaseSha(precedingPhaseId, head.error.ifBlank { "HEAD resolved to an empty sha." })
+    val baseSha = commitSha?.trim()?.takeIf(String::isNotBlank) ?: run {
+      val head = phaseGates.gitOperations.headCommitSha(request.repoRoot)
+      if (!head.ok || head.value.isBlank()) {
+        return blockRemediationBaseSha(precedingPhaseId, head.error.ifBlank { "HEAD resolved to an empty sha." })
+      }
+      head.value.trim()
     }
     return runCatching {
       goalContinuationRecorder.updateReviewState(request.workflowId, request.dbPathOverride) { state ->
-        state.copy(remediationBaseSha = head.value.trim())
+        state.copy(remediationBaseSha = baseSha)
       }
     }.fold(
       onSuccess = { recorded ->

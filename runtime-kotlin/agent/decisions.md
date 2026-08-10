@@ -22,6 +22,38 @@ Audit and repair evidence remain read-only repository facts.
 Alternatives considered: Agent-reported gate_run_count (rejected). Hardcoded
 Gradle cache flags in the runtime (rejected; packs declare bypass argv).
 
+## 2026-08-10 — remediation checkpoint sha and branch tip stay paired (SKILL-176)
+
+Context: On SKILL-15, remediation checkpoint `73993c8` was recorded as
+`remediation_base_sha`, then the branch tip moved to sibling `9d814e8` (same
+parent `173fb03`) without a second checkpoint-identity record. The durable base
+became unreachable. Candidate runtime producers of that sibling topology were
+eliminated: index restore on a failed checkpoint never moves HEAD; a crash
+between commit and `updateReviewState` leaves committed-but-unrecorded rather
+than a recorded orphan sibling; resume Skip+re-record converges on HEAD; no
+runtime reset/rollback API existed. The stranding requires a post-record history
+rewrite that moves the tip off the recorded sha without a coupled base write.
+
+Decision: (1) A remediation Stage commit and its `remediation_base_sha` write are
+one unit — the commit sha is passed into `updateReviewState`, and a failed base
+record soft-resets HEAD to the pre-commit parent so the ref and the durable row
+both remain at the pre-commit state. (2) On goal-child resume, reconcile
+committed-but-unrecorded and recorded-but-superseded bases to the branch tip (or
+latest review_fix checkpoint still on the branch) before review preparation
+consumes the base, emitting durable `goal_review_base_recoveries` evidence.
+Subtask 2 recovery remains the degradation path for pre-existing orphans.
+
+Reason: Git and SQLite cannot share one ACID transaction; compensating soft-reset
+plus resume heal close both the crash window and the post-record rewrite window
+without a second reconciliation pass on the healthy path.
+
+Alternatives considered: Always reset on identity-write failure for every
+checkpoint intent — rejected, only remediation bases are scope-critical at this
+seam; migrate/backfill historical rows — rejected, heal at read/resume only.
+
+Revisit when: a runtime-owned history rewrite (amend/rebase) is introduced, at
+which point that path must call the same paired base update.
+
 ## 2026-08-09 — runtime is the only feature engine; prose and OpenCode/zcode are removed from the product (SKILL-175)
 
 Context: Runtime became the default feature engine and now owns the guarantees

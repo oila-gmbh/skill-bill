@@ -129,6 +129,47 @@ private object GitStandardWorkflowGitOperations : WorkflowGitOperations {
 
   override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult = runGitCommand(repoRoot, "rev-parse", "HEAD")
 
+  override fun resetSoftToCommit(repoRoot: Path, commitSha: String): WorkflowGitOperationResult {
+    val normalized = commitSha.trim()
+    if (normalized.isBlank()) {
+      return WorkflowGitOperationResult(status = "error", error = "A commit SHA is required to soft-reset HEAD.")
+    }
+    return runGitCommand(repoRoot, "reset", "--soft", normalized)
+  }
+
+  override fun isCommitAncestor(
+    repoRoot: Path,
+    ancestorSha: String,
+    descendantSha: String,
+  ): WorkflowGitOperationResult {
+    val ancestor = ancestorSha.trim()
+    val descendant = descendantSha.trim()
+    if (ancestor.isBlank() || descendant.isBlank()) {
+      return WorkflowGitOperationResult(status = "error", error = "Ancestor and descendant commit SHAs are required.")
+    }
+    if (ancestor == descendant) {
+      return WorkflowGitOperationResult(status = "ok", value = "true")
+    }
+    val args = listOf("merge-base", "--is-ancestor", ancestor, descendant)
+    val result = runGitProcess(repoRoot, args)
+    return when {
+      result.timedOut -> WorkflowGitOperationResult(
+        status = "error",
+        error = "git ${args.joinToString(" ")} timed out after ${GIT_TIMEOUT_SECONDS}s.",
+      )
+      result.readFailure != null -> WorkflowGitOperationResult(
+        status = "error",
+        error = result.readFailure.message.orEmpty(),
+      )
+      result.exitCode == 0 -> WorkflowGitOperationResult(status = "ok", value = "true")
+      result.exitCode == 1 -> WorkflowGitOperationResult(status = "ok", value = "false")
+      else -> WorkflowGitOperationResult(
+        status = "error",
+        error = "git ${args.joinToString(" ")} failed with exit code ${result.exitCode}: ${result.output}",
+      )
+    }
+  }
+
   override fun resolveCommit(repoRoot: Path, revision: String): WorkflowGitOperationResult {
     val normalized = revision.trim()
     if (normalized.isBlank()) {

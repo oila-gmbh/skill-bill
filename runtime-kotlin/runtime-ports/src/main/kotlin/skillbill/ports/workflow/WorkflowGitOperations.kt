@@ -36,6 +36,30 @@ interface WorkflowGitOperations {
 
   fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult
 
+  /**
+   * Soft-resets HEAD to [commitSha], keeping the index and working tree. Used to roll back a
+   * remediation checkpoint commit when the paired durable base record fails, so the branch ref and
+   * the recorded base stay paired (both remain at the pre-commit state) rather than stranding an
+   * unrecorded tip. Default refuses so adapters without real git cannot pretend the rollback worked.
+   */
+  fun resetSoftToCommit(repoRoot: Path, commitSha: String): WorkflowGitOperationResult = WorkflowGitOperationResult(
+    status = "error",
+    error = "This git operations implementation cannot soft-reset HEAD to '$commitSha'.",
+  )
+
+  /**
+   * True when [ancestorSha] is an ancestor of [descendantSha] (or the same commit). Used to detect a
+   * recorded remediation base that the branch tip no longer contains.
+   */
+  fun isCommitAncestor(
+    repoRoot: Path,
+    ancestorSha: String,
+    descendantSha: String,
+  ): WorkflowGitOperationResult = WorkflowGitOperationResult(
+    status = "error",
+    error = "This git operations implementation cannot test commit ancestry.",
+  )
+
   // Resolves an operator-supplied revision to a full commit SHA, or errors when it names no commit
   // in this repository. Default is a refusal so a store that cannot measure git never silently
   // accepts unverifiable evidence.
@@ -361,6 +385,18 @@ object NoopWorkflowGitOperations :
 
   override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = "")
+
+  override fun resetSoftToCommit(repoRoot: Path, commitSha: String): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = commitSha.trim())
+
+  override fun isCommitAncestor(
+    repoRoot: Path,
+    ancestorSha: String,
+    descendantSha: String,
+  ): WorkflowGitOperationResult = WorkflowGitOperationResult(
+    status = "ok",
+    value = if (ancestorSha.trim() == descendantSha.trim()) "true" else "true",
+  )
 
   override fun validateBranchBase(
     repoRoot: Path,

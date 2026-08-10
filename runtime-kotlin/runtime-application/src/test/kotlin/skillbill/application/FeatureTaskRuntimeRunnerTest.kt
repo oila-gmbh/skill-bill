@@ -1332,6 +1332,103 @@ class FeatureTaskRuntimeRemediationGenerationTest {
     )
   }
 
+  // AC-006 / task-5: a healthy remediation round produces one remediation checkpoint whose sha is
+  // exactly the stored remediation_base_sha, and writes no recovery evidence.
+  @Test
+  fun `normal remediation round records base equal to the checkpoint commit with no recovery evidence`() {
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-remediation-parity")
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+      .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
+    var reviewLaunches = 0
+    val harness = goalContinuationHarness(
+      repoRoot,
+      git,
+      RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        if (phaseId == "implement" || phaseId == "implement_fix") {
+          git.worktreeStatusValue = " M src/Foo.kt"
+          git.ownedPathsValue = listOf("src/Foo.kt")
+        }
+        when (phaseId) {
+          "review" -> {
+            reviewLaunches += 1
+            facts(verdictReviewOutput(if (reviewLaunches == 1) "needs_fix" else "advance"))
+          }
+          else -> facts(validJsonOutput(phaseId))
+        }
+      },
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(
+      harness.runner.run(harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE)),
+    )
+
+    val remediationMessages = git.createCommitMessages.filter { it.contains("remediation checkpoint") }
+    assertEquals(1, remediationMessages.size, "exactly one remediation checkpoint on a healthy round")
+    val remediationIndex = git.createCommitMessages.indexOf(remediationMessages.single())
+    val remediationSha = (remediationIndex + 1).toString(16).padStart(40, '0')
+    val reviewState = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
+    assertEquals(remediationSha, reviewState.remediationBaseSha, "recorded base must equal the checkpoint tip")
+    // Soft-reset must not fire on the happy path; recovery evidence must stay absent.
+    assertTrue(git.resetSoftToCommitCalls.isEmpty())
+    assertNull(harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_review_base_recoveries"])
+  }
+
+  // AC-001/AC-005 / task-4: after the orphaning sequence (base recorded, then branch tip replaced by a
+  // sibling), resume coherence leaves the durable row and the git ref in agreement. Documented to
+  // fail against a pre-fix runtime that lacks reconcileRemediationBaseCoherence.
+  @Test
+  fun `orphaning sequence then resume leaves branch tip and remediation_base_sha in agreement`() {
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-orphan-sequence")
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+      .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
+    var reviewLaunches = 0
+    val harness = goalContinuationHarness(
+      repoRoot,
+      git,
+      RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        if (phaseId == "implement" || phaseId == "implement_fix") {
+          git.worktreeStatusValue = " M src/Foo.kt"
+          git.ownedPathsValue = listOf("src/Foo.kt")
+        }
+        when (phaseId) {
+          "review" -> {
+            reviewLaunches += 1
+            facts(verdictReviewOutput(if (reviewLaunches == 1) "needs_fix" else "advance"))
+          }
+          else -> facts(validJsonOutput(phaseId))
+        }
+      },
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(
+      harness.runner.run(harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE)),
+    )
+    val recordedBase = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID)?.remediationBaseSha)
+    // Reproduce the SKILL-15 sibling rewrite outside commitCheckpoint: tip moves to a new sha that
+    // does not contain the recorded base, without updating the durable row.
+    val siblingTip = "b".repeat(40)
+    git.headCommitShaValue = siblingTip
+    git.nonAncestorPairs += recordedBase to siblingTip
+    assertEquals(
+      "false",
+      git.isCommitAncestor(repoRoot, recordedBase, siblingTip).value,
+      "pre-fix: recorded base must be unreachable from the rewritten tip",
+    )
+    assertEquals(recordedBase, harness.goalContinuationRecorder.reviewState(WORKFLOW_ID)?.remediationBaseSha)
+
+    val healed = requireNotNull(
+      harness.goalContinuationRecorder.reconcileRemediationBaseCoherence(WORKFLOW_ID, git, repoRoot),
+    )
+    assertEquals(siblingTip, healed.remediationBaseSha)
+    assertEquals(siblingTip, harness.goalContinuationRecorder.reviewState(WORKFLOW_ID)?.remediationBaseSha)
+    assertEquals("true", git.isCommitAncestor(repoRoot, healed.remediationBaseSha!!, siblingTip).value)
+    @Suppress("UNCHECKED_CAST")
+    val evidence = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_review_base_recoveries"] as List<*>
+    assertTrue(evidence.isNotEmpty(), "silent heal must emit durable evidence")
+  }
+
   // A settled subtask's review is replayed from its durable result on resume rather than relaunched,
   // so a resume neither re-reviews converged work nor allocates another pass.
   @Test
@@ -4164,6 +4261,54 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     )
   }
 
+  // AC-002 / task-2: when the durable base record rejects the checkpoint sha, the branch soft-resets
+  // to the pre-commit parent so the ref and the durable row stay paired (both unchanged).
+  @Test
+  fun `a failed remediation base record soft-resets the checkpoint tip back to its parent`() {
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-base-record-rollback")
+    val parentSha = COMMITTED_HEAD_SHA
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+      .also {
+        it.headCommitShaValue = parentSha
+        it.invalidShaOnRemediationCommit = true
+      }
+    var reviewLaunches = 0
+    val harness = goalContinuationHarness(
+      repoRoot,
+      git,
+      RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        if (phaseId == "implement" || phaseId == "implement_fix") {
+          git.worktreeStatusValue = " M src/Foo.kt"
+          git.ownedPathsValue = listOf("src/Foo.kt")
+        }
+        when (phaseId) {
+          "review" -> {
+            reviewLaunches += 1
+            facts(verdictReviewOutput("needs_fix"))
+          }
+          else -> facts(validJsonOutput(phaseId))
+        }
+      },
+    )
+
+    val report = harness.runner.run(
+      harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE),
+    )
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertTrue(
+      blocked.blockedReason.contains("remediation") || blocked.blockedReason.contains("checkpoint"),
+      blocked.blockedReason,
+    )
+    assertEquals(listOf(parentSha), git.resetSoftToCommitCalls, "failed paired write must soft-reset to parent")
+    assertEquals(parentSha, git.headCommitShaValue, "branch tip must match the pre-commit parent after rollback")
+    assertNull(
+      harness.goalContinuationRecorder.reviewState(WORKFLOW_ID)?.remediationBaseSha,
+      "durable base must remain unset when the paired record failed",
+    )
+  }
+
   // AC-004/AC-010: a concurrently prepared foreign spec is never staged, committed, or reviewed here.
   @Test
   fun `a concurrently prepared foreign feature spec is never staged committed or reviewed`() {
@@ -5699,6 +5844,13 @@ internal class RecordingWorkflowGitOperations(
   // model a failed checkpoint commit.
   val createCommitMessages = mutableListOf<String>()
   var createCommitResult: WorkflowGitOperationResult? = null
+  // When true, a remediation-checkpoint createCommit returns a malformed sha so the paired base
+  // record fails GoalSubtaskReviewState validation and the soft-reset rollback path is exercised.
+  var invalidShaOnRemediationCommit: Boolean = false
+  val resetSoftToCommitCalls = mutableListOf<String>()
+  var resetSoftToCommitResult: WorkflowGitOperationResult? = null
+  // Ancestor→descendant pairs that report false; all other pairs report true when both SHAs are set.
+  val nonAncestorPairs = mutableSetOf<Pair<String, String>>()
 
   // Records every path the checkpoint staged, in call order; stagePathsResult overrides the result
   // to model a failed staging.
@@ -5761,8 +5913,41 @@ internal class RecordingWorkflowGitOperations(
   // so a fake that returned one constant would collapse every checkpoint into a single record.
   override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult {
     createCommitMessages += message
-    return createCommitResult
+    if (invalidShaOnRemediationCommit && message.contains("remediation checkpoint")) {
+      // Simulate git advancing HEAD to a commit object whose sha the durable models reject.
+      val bogus = "not-a-valid-commit-sha"
+      headCommitShaValue = bogus
+      return WorkflowGitOperationResult(status = "ok", value = bogus)
+    }
+    val result = createCommitResult
       ?: WorkflowGitOperationResult(status = "ok", value = createCommitMessages.size.toString(16).padStart(40, '0'))
+    if (result.ok && !result.value.isNullOrBlank()) {
+      headCommitShaValue = result.value.trim()
+    }
+    return result
+  }
+
+  override fun resetSoftToCommit(repoRoot: Path, commitSha: String): WorkflowGitOperationResult {
+    resetSoftToCommitCalls += commitSha.trim()
+    val result = resetSoftToCommitResult ?: WorkflowGitOperationResult(status = "ok", value = commitSha.trim())
+    if (result.ok) {
+      headCommitShaValue = commitSha.trim()
+    }
+    return result
+  }
+
+  override fun isCommitAncestor(
+    repoRoot: Path,
+    ancestorSha: String,
+    descendantSha: String,
+  ): WorkflowGitOperationResult {
+    val ancestor = ancestorSha.trim()
+    val descendant = descendantSha.trim()
+    if (ancestor.isBlank() || descendant.isBlank()) {
+      return WorkflowGitOperationResult(status = "error", error = "Ancestor and descendant required.")
+    }
+    val reachable = ancestor == descendant || (ancestor to descendant) !in nonAncestorPairs
+    return WorkflowGitOperationResult(status = "ok", value = if (reachable) "true" else "false")
   }
 
   var headCommitShaCalls: Int = 0

@@ -16,12 +16,14 @@ import skillbill.ports.workflow.recoverGoalSubtaskReviewBaseline
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
 import skillbill.workflow.model.WorkflowUpdateInput
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_FIELD_ADOPTION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_OUTCOME_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationFieldAdoption
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY
@@ -33,6 +35,7 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewDisposition
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
+import skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesFromArtifact
 
 @Inject
 class FeatureTaskRuntimeGoalContinuationRecorder(
@@ -425,6 +428,92 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
       val passNumber = state.passResults.lastOrNull()?.passNumber ?: return@read null
       rawReviewResultsFromArtifacts(artifacts, state)[passNumber.toString()]
     }
+
+  /**
+   * Resume-side coherence for the remediation checkpoint commit → base-record window (SKILL-176).
+   *
+   * Detects committed-but-unrecorded (latest review_fix checkpoint on the branch is not the stored
+   * base) and recorded-but-superseded (stored base is not an ancestor of HEAD), then updates
+   * `remediation_base_sha` to the coherent tip before review preparation consumes it. Every heal
+   * appends durable evidence under [GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY] with an explicit reason.
+   * Returns the post-heal state when a write occurred, the current state when already coherent, or
+   * null when there is no review state to reconcile.
+   */
+  internal fun reconcileRemediationBaseCoherence(
+    workflowId: String,
+    gitOperations: WorkflowGitOperations,
+    repoRoot: java.nio.file.Path,
+    dbOverride: String? = null,
+  ): GoalSubtaskReviewState? {
+    val snapshot = database.read(dbOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
+      val artifacts = decodeArtifacts(record.artifactsJson)
+      val state = reviewStateFromArtifacts(artifacts) ?: return@read null
+      val continuation = continuationFromArtifacts(artifacts) ?: return@read null
+      val checkpoints = featureTaskRuntimeCheckpointIdentitiesFromArtifact(
+        artifacts[FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY],
+      )
+      Triple(state, continuation, checkpoints)
+    } ?: return null
+    val (state, continuation, checkpoints) = snapshot
+    val head = gitOperations.headCommitSha(repoRoot)
+    if (!head.ok || head.value.isBlank()) return state
+    val headSha = head.value.trim()
+    val latestRemediationOnBranch = checkpoints
+      .asReversed()
+      .firstOrNull { identity ->
+        identity.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID &&
+          gitOperations.isCommitAncestor(repoRoot, identity.commitSha, headSha).let { it.ok && it.value == "true" }
+      }
+      ?.commitSha
+    val stored = state.remediationBaseSha
+    val target = when {
+      latestRemediationOnBranch != null && latestRemediationOnBranch != stored -> latestRemediationOnBranch
+      stored != null -> {
+        val ancestry = gitOperations.isCommitAncestor(repoRoot, stored, headSha)
+        when {
+          !ancestry.ok -> return state
+          ancestry.value == "true" -> null
+          else -> headSha
+        }
+      }
+      else -> null
+    } ?: return state
+    if (target == stored) return state
+    val reason = when {
+      stored == null -> "committed_but_unrecorded"
+      latestRemediationOnBranch != null && latestRemediationOnBranch == target -> "committed_but_unrecorded"
+      else -> "recorded_but_superseded"
+    }
+    return database.transaction(dbOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+        ?: return@transaction null
+      val artifacts = decodeArtifacts(record.artifactsJson)
+      val latest = reviewStateFromArtifacts(artifacts) ?: return@transaction null
+      if (latest.remediationBaseSha == target) return@transaction latest
+      val healed = latest.copy(remediationBaseSha = target)
+      val evidenceEntry = linkedMapOf<String, Any?>(
+        "original_sha" to stored,
+        "replacement_sha" to target,
+        "repointed_field" to GoalReviewBaseField.REMEDIATION_BASE.wireValue,
+        "failure_reason" to reason,
+        "failure_message" to
+          "Resume reconciled remediation_base_sha ($reason) so the recorded base stays reachable " +
+          "from branch '${continuation.goalBranch}' at HEAD '$headSha'.",
+        "goal_branch" to continuation.goalBranch,
+      )
+      val priorEvidence = (artifacts[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY] as? List<*>).orEmpty()
+      savePatch(
+        record,
+        unitOfWork.workflowStates,
+        mapOf(
+          GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to healed.toArtifactMap(),
+          GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY to priorEvidence + evidenceEntry,
+        ),
+      )
+      healed
+    } ?: state
+  }
 
   private val savePatch =
     fun(
