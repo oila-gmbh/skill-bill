@@ -1,3 +1,5 @@
+@file:Suppress("TooManyFunctions") // one file for all agent command builders and shared helpers
+
 package skillbill.launcher.agentrun
 
 import com.fasterxml.jackson.databind.ObjectMapper

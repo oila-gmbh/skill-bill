@@ -31,6 +31,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
+@Suppress("LargeClass") // cohesive builder-matrix suite across claude/codex/junie/cursor launches
 class AgentRunCommandBuildersTest {
   @Test
   fun `a compaction directive reaches the claude launch environment`() {
