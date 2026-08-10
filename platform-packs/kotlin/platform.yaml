@@ -86,20 +86,14 @@ declared_quality_check_file: quality-check/bill-kotlin-code-check/content.md
 validation_gate:
   full_gate_command:
     - ./gradlew
-    - -p
-    - runtime-kotlin
     - check
   cache_bypassing_full_gate_command:
     - ./gradlew
-    - -p
-    - runtime-kotlin
     - check
     - --rerun-tasks
     - --no-build-cache
   build_only_command:
     - ./gradlew
-    - -p
-    - runtime-kotlin
     - classes
     - testClasses
   findings:

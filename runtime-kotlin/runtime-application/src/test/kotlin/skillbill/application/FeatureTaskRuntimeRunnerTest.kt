@@ -5251,6 +5251,11 @@ private fun runtimePhaseGates(
       validationGateRunner,
       skillbill.application.featuretask.validation.FeatureTaskRuntimeValidationGateProgressStore(recorder),
       skillbill.application.featuretask.validation.FeatureTaskRuntimeSuppressionDeltaService(gitOperations),
+      object : skillbill.ports.config.RepoLocalConfigPort {
+        override fun readRepoLocalConfig(
+          request: skillbill.ports.config.model.ReadRepoLocalConfigRequest,
+        ) = skillbill.ports.config.model.ReadRepoLocalConfigResult(skillbill.config.model.RepoLocalConfig.defaults())
+      },
     ),
     sharedEvidenceResolver,
     diffResolver,

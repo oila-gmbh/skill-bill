@@ -20,6 +20,9 @@ enum class SpecType(
  * Recognized repo-local config keys and their built-in defaults. Adding a future key
  * touches only this enum and a matching accessor on [RepoLocalConfig]; unknown keys are
  * ignored by the adapter, so unrelated callers never change.
+ *
+ * Nested objects such as `review_context_budget` and `validation_gate` are parsed beside
+ * these scalar keys and are intentionally absent from this registry.
  */
 enum class RepoLocalConfigKey(
   val key: String,
@@ -43,6 +46,7 @@ data class RepoLocalConfig(
   val specType: SpecType,
   val codeReviewParallelAgent: String,
   val reviewContextBudget: ReviewContextBudgetPolicy = ReviewContextBudgetPolicy.DEFAULT,
+  val validationGate: ValidationGateRepoConfig = ValidationGateRepoConfig.defaults(),
 ) {
   companion object {
     const val NO_PARALLEL_AGENT: String = "none"
@@ -51,6 +55,7 @@ data class RepoLocalConfig(
       specType = SpecType.LOCAL,
       codeReviewParallelAgent = NO_PARALLEL_AGENT,
       reviewContextBudget = ReviewContextBudgetPolicy.DEFAULT,
+      validationGate = ValidationGateRepoConfig.defaults(),
     )
   }
 }

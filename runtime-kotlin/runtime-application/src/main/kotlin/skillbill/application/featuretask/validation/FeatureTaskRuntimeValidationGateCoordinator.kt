@@ -14,8 +14,11 @@ import skillbill.application.featuretask.validation.model.ValidationGateProgress
 import skillbill.application.featuretask.validation.model.ValidationGateResolution
 import skillbill.application.model.FeatureTaskRuntimeRunEvent
 import skillbill.application.model.FeatureTaskRuntimeRunRequest
+import skillbill.config.model.applyValidationGateGradleWrapper
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
+import skillbill.ports.config.RepoLocalConfigPort
+import skillbill.ports.config.model.ReadRepoLocalConfigRequest
 import skillbill.ports.validation.ValidationGateRunner
 import skillbill.ports.validation.model.ValidationGateCacheMode
 import skillbill.ports.validation.model.ValidationGateFinding
@@ -48,6 +51,7 @@ class FeatureTaskRuntimeValidationGateCoordinator(
   private val runner: ValidationGateRunner,
   private val progressStore: ValidationGateProgressStore,
   private val suppressionDeltaService: FeatureTaskRuntimeSuppressionDeltaService,
+  private val repoLocalConfig: RepoLocalConfigPort,
 ) {
   @Suppress("LongMethod", "ReturnCount", "CyclomaticComplexMethod")
   fun execute(cycle: ValidationGateCycleRequest, onGateRunCount: (Int) -> Unit = {}): ValidationGateCycleResult {
@@ -238,15 +242,23 @@ class FeatureTaskRuntimeValidationGateCoordinator(
     validationDepth: ValidationDepth,
     cacheMode: ValidationGateCacheMode,
     terminalVerifying: Boolean,
-  ): ValidationGateRunResult = runner.run(
-    ValidationGateRunRequest(
-      repoRoot = repoRoot,
-      argv = validationGateArgv(declaration, validationDepth, cacheMode),
-      cacheMode = cacheMode,
-      declaration = declaration,
-      terminalVerifying = terminalVerifying,
-    ),
-  )
+  ): ValidationGateRunResult {
+    val packArgv = validationGateArgv(declaration, validationDepth, cacheMode)
+    val gradleWrapper = repoLocalConfig
+      .readRepoLocalConfig(ReadRepoLocalConfigRequest(repoRoot))
+      .config
+      .validationGate
+      .gradleWrapper
+    return runner.run(
+      ValidationGateRunRequest(
+        repoRoot = repoRoot,
+        argv = applyValidationGateGradleWrapper(packArgv, gradleWrapper),
+        cacheMode = cacheMode,
+        declaration = declaration,
+        terminalVerifying = terminalVerifying,
+      ),
+    )
+  }
 
   private fun recordGateProgress(
     request: FeatureTaskRuntimeRunRequest,

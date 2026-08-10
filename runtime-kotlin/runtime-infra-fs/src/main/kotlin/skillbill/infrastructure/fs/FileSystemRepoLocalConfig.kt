@@ -7,8 +7,11 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import me.tatarka.inject.annotations.Inject
 import skillbill.config.model.RepoLocalConfig
 import skillbill.config.model.RepoLocalConfigKey
+import skillbill.config.model.ValidationGateRepoConfig
+import skillbill.config.model.ValidationGateRepoConfigParse
 import skillbill.config.model.parseCodeReviewParallelAgent
 import skillbill.config.model.parseSpecType
+import skillbill.config.model.parseValidationGateRepoConfig
 import skillbill.error.MalformedRepoLocalConfigError
 import skillbill.error.UnreadableRepoLocalConfigError
 import skillbill.ports.config.RepoLocalConfigPort
@@ -45,7 +48,23 @@ class FileSystemRepoLocalConfig : RepoLocalConfigPort {
     } else {
       ReviewContextBudgetPolicy.DEFAULT
     },
+    validationGate = if (raw.containsKey("validation_gate")) {
+      parseValidationGate(path, raw["validation_gate"])
+    } else {
+      ValidationGateRepoConfig.defaults()
+    },
   )
+
+  private fun parseValidationGate(path: Path, value: Any?): ValidationGateRepoConfig =
+    when (val parsed = parseValidationGateRepoConfig(value)) {
+      is ValidationGateRepoConfigParse.Valid -> parsed.config
+      is ValidationGateRepoConfigParse.Invalid -> throw MalformedRepoLocalConfigError(
+        path = path.toString(),
+        key = parsed.keyPath,
+        value = parsed.value,
+        reason = parsed.reason,
+      )
+    }
 
   private fun parseReviewContextBudget(path: Path, value: Any?): ReviewContextBudgetPolicy {
     val raw = budgetMapping(path, "review_context_budget", value)
