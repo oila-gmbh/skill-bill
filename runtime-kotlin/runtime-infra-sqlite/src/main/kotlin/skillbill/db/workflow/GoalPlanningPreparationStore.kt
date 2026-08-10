@@ -229,11 +229,73 @@ class GoalPlanningPreparationStore(
             "shared preplan changed after it was validated for regeneration",
           )
         }
-        prepareStatement("DELETE FROM goal_subtask_plans WHERE parent_goal_workflow_id = ?").use { s ->
-          s.setString(1, checkpoint.identity.parentGoalWorkflowId)
+        connection.cascadeSiblingPlanRows(checkpoint.identity.parentGoalWorkflowId)
+      }
+    }
+  }
+
+  override fun advanceSharedPreplanProvenance(
+    identity: GoalPlanningIdentity,
+    expectedPayloadSha256: String,
+    provenance: GoalPlanningContractProvenance,
+  ) {
+    require(expectedPayloadSha256.isNotBlank()) { "expectedPayloadSha256 is required." }
+    normalizedIdentityFailure(identity)?.let { (field, reason) ->
+      throw InvalidGoalPlanningPreparationSchemaError(identity.parentGoalWorkflowId, field, reason)
+    }
+    translateSqlFailure(identity.parentGoalWorkflowId, 0) {
+      connection.inImmediateTransaction {
+        val updated = prepareStatement(
+          """UPDATE goal_shared_preplans SET parent_spec_hash = ?, decomposition_manifest_hash = ?,
+          planning_contract_id = ?, planning_contract_version = ?, phase_output_contract_id = ?,
+          phase_output_contract_version = ?
+          WHERE parent_goal_workflow_id = ? AND payload_sha256 = ?""",
+        ).use { s ->
+          listOf(
+            provenance.parentSpecHash,
+            provenance.decompositionManifestHash,
+            provenance.planningContractId,
+            provenance.planningContractVersion,
+            provenance.phaseOutputContractId,
+            provenance.phaseOutputContractVersion,
+            identity.parentGoalWorkflowId,
+            expectedPayloadSha256,
+          ).forEachIndexed { i, value -> s.setString(i + 1, value) }
+          s.executeUpdate() > 0
+        }
+        if (!updated) {
+          throw IncompatibleGoalPlanningPreparationRecoveryError(
+            identity.parentGoalWorkflowId,
+            0,
+            "shared preplan changed after it was validated for provenance advance",
+          )
+        }
+        prepareStatement(
+          """UPDATE goal_subtask_plans SET parent_spec_hash = ?, decomposition_manifest_hash = ?,
+          planning_contract_id = ?, planning_contract_version = ?, phase_output_contract_id = ?,
+          phase_output_contract_version = ?
+          WHERE parent_goal_workflow_id = ?""",
+        ).use { s ->
+          listOf(
+            provenance.parentSpecHash,
+            provenance.decompositionManifestHash,
+            provenance.planningContractId,
+            provenance.planningContractVersion,
+            provenance.phaseOutputContractId,
+            provenance.phaseOutputContractVersion,
+            identity.parentGoalWorkflowId,
+          ).forEachIndexed { i, value -> s.setString(i + 1, value) }
           s.executeUpdate()
         }
       }
+    }
+  }
+
+  override fun cascadeSiblingPlansAfterSharedPreplanRefresh(parentGoalWorkflowId: String): List<Int> {
+    // No nested BEGIN: may participate in an outer immediate transaction (replaceSharedPreplan).
+    requireParentGoalWorkflowId(parentGoalWorkflowId)
+    return translateSqlFailure(parentGoalWorkflowId, 0) {
+      connection.cascadeSiblingPlanRows(parentGoalWorkflowId)
     }
   }
 
@@ -628,6 +690,34 @@ private fun Connection.deletePreparedByGoal(parentGoalWorkflowId: String): Int =
 ).use { statement ->
   statement.setString(1, parentGoalWorkflowId)
   statement.executeUpdate()
+}
+
+/**
+ * Shared cascade seam for automatic shared-preplan refresh (ST3 will narrow survivors).
+ * Until then, discards every sibling plan row for the parent.
+ */
+internal fun Connection.cascadeSiblingPlanRows(parentGoalWorkflowId: String): List<Int> {
+  val ids = prepareStatement(
+    "SELECT subtask_id FROM goal_subtask_plans WHERE parent_goal_workflow_id = ? " +
+      "ORDER BY manifest_order, subtask_id",
+  ).use { statement ->
+    statement.setString(1, parentGoalWorkflowId)
+    statement.executeQuery().use { result ->
+      buildList {
+        while (result.next()) add(result.getInt(1))
+      }
+    }
+  }
+  ids.forEach { subtaskId ->
+    prepareStatement(
+      "DELETE FROM goal_subtask_plans WHERE parent_goal_workflow_id = ? AND subtask_id = ?",
+    ).use { statement ->
+      statement.setString(1, parentGoalWorkflowId)
+      statement.setInt(2, subtaskId)
+      statement.executeUpdate()
+    }
+  }
+  return ids
 }
 
 private fun Connection.upsertPreparedRow(record: GoalPlanningPreparationRecord): Boolean = prepareStatement(

@@ -80,6 +80,38 @@ class GoalPlanningPreparationCheckpoint(
   }
 
   /**
+   * Provenance-only refresh: advance shared + plan-row provenance to [provenance] while keeping the exact
+   * saved payload bytes. Compare-and-swap on [expectedPayloadSha256].
+   */
+  fun advanceSharedPreplanProvenance(
+    identity: GoalPlanningIdentity,
+    expectedPayloadSha256: String,
+    provenance: GoalPlanningContractProvenance,
+    dbOverride: String? = null,
+  ) {
+    database.selfManagedWrite(dbOverride) {
+      it.goalPlanningPreparations.advanceSharedPreplanProvenance(identity, expectedPayloadSha256, provenance)
+    }
+  }
+
+  /**
+   * Full-payload refresh: UPDATE the shared row to [checkpoint] then cascade sibling plans through the
+   * shared helper in the same transaction (via [NormalizedGoalPlanningPreparationRepository.replaceSharedPreplan]).
+   */
+  fun replaceSharedPreplanForRefresh(
+    checkpoint: SharedGoalPreplanCheckpoint,
+    expectedPayloadSha256: String,
+    dbOverride: String? = null,
+  ): SharedGoalPreplanCheckpoint {
+    val canonical = gate.canonicalizeSharedPreplan(checkpoint)
+    gate.validateSharedPreplan(canonical)
+    database.selfManagedWrite(dbOverride) {
+      it.goalPlanningPreparations.replaceSharedPreplan(canonical, expectedPayloadSha256)
+    }
+    return canonical
+  }
+
+  /**
    * Checkpoints a regenerated subtask plan, overwriting a stored record the projection gate rejects so the
    * regeneration actually lands. A stored record that still satisfies the gate keeps its immutable guard.
    */

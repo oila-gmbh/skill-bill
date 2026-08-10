@@ -5,12 +5,14 @@ import skillbill.application.featuretask.sha256HexUtf8
 import skillbill.application.goalrunner.DefaultGoalPlanningSweep
 import skillbill.application.goalrunner.GoalPlanningAttemptRecorder
 import skillbill.application.goalrunner.GoalPlanningProvenanceRecoverability
+import skillbill.application.goalrunner.GoalPlanningRefreshLiveness
 import skillbill.application.goalrunner.GoalPlanningRejectionRecorder
 import skillbill.application.goalrunner.GoalPlanningSharedContextPacket
 import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.goalrunner.classifyGoalPlanningProvenanceRecoverability
 import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputSchemaPaths
 import skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths
+import skillbill.goalrunner.model.ExecutionLiveness
 import skillbill.ports.persistence.model.GoalPlanningContractProvenance
 import skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint
 import skillbill.application.model.GoalPlanningAttemptRecord
@@ -606,21 +608,145 @@ class GoalPlanningSweepTest {
   }
 
   @Test
-  fun `resume continues with saved planning when the parent spec body changes`() {
+  fun `resume refreshes stale shared preplan in-run when parent spec body changes with identical headings`() {
     val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
     val state = harness.stateFor(manifest(subtaskCount = 1))
     harness.sweep.prepare(state, harness.request())
     val launchCount = harness.launcher.requests.size
     val sharedBefore = requireNotNull(harness.fixtures.database.repository.findSharedPreplan(harness.identity()))
+    val planBefore = requireNotNull(
+      harness.fixtures.database.repository.findSubtaskPlan(
+        harness.identity(),
+        1,
+        ".feature-specs/SKILL-56-goal/spec_subtask_1.md",
+      ),
+    )
     harness.manifestFileStore.replaceSpec("spec.md", "# Initial feature contract edited after planning")
 
     val outcome = harness.sweep.prepare(state, harness.request())
 
     assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
+    assertEquals(launchCount + 1, harness.launcher.requests.size, "exactly one refresh preplan launch")
+    assertEquals(listOf("preplan"), harness.launcher.phases.takeLast(1))
+    val sharedAfter = requireNotNull(harness.fixtures.database.repository.findSharedPreplan(harness.identity()))
+    assertEquals(sharedBefore.preplanPayload, sharedAfter.preplanPayload)
+    assertEquals(sharedBefore.payloadSha256, sharedAfter.payloadSha256)
+    assertEquals(outcome.provenance, sharedAfter.provenance)
+    assertEquals(
+      sha256HexUtf8("# Initial feature contract edited after planning"),
+      sharedAfter.provenance.parentSpecHash,
+    )
+    val planAfter = requireNotNull(
+      harness.fixtures.database.repository.findSubtaskPlan(
+        harness.identity(),
+        1,
+        ".feature-specs/SKILL-56-goal/spec_subtask_1.md",
+      ),
+    )
+    assertEquals(planBefore.planPayload, planAfter.planPayload)
+    assertEquals(sharedAfter.provenance, planAfter.provenance)
+    assertEquals(0, harness.fixtures.database.repository.cascadeAfterRefreshCalls)
+  }
+
+  @Test
+  fun `resume refreshes and cascades via shared helper when heading set changes`() {
+    var preplanLaunches = 0
+    val harness = sweepHarness { phase, _, _ ->
+      if (phase == "preplan") {
+        preplanLaunches += 1
+        val headings = if (preplanLaunches == 1) {
+          arrayOf(FIXTURE_HEADING_ID)
+        } else {
+          emptyArray()
+        }
+        launchFacts(stdout = preplanPayloadSelecting(*headings))
+      } else {
+        validPhaseOutcome(phase)
+      }
+    }
+    val state = harness.stateFor(manifest(subtaskCount = 1))
+    harness.sweep.prepare(state, harness.request())
+    val sharedBefore = requireNotNull(harness.fixtures.database.repository.findSharedPreplan(harness.identity()))
+    assertNotNull(
+      harness.fixtures.database.repository.findSubtaskPlan(
+        harness.identity(),
+        1,
+        ".feature-specs/SKILL-56-goal/spec_subtask_1.md",
+      ),
+    )
+    harness.manifestFileStore.replaceSpec("spec.md", "# Initial feature contract edited for heading drift")
+
+    val outcome = harness.sweep.prepare(state, harness.request())
+
+    assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
+    val sharedAfter = requireNotNull(harness.fixtures.database.repository.findSharedPreplan(harness.identity()))
+    assertTrue(sharedAfter.preplanPayload != sharedBefore.preplanPayload)
+    assertTrue(sharedAfter.payloadSha256 != sharedBefore.payloadSha256)
+    assertEquals(1, harness.fixtures.database.repository.cascadeAfterRefreshCalls)
+    assertNull(
+      harness.fixtures.database.repository.findSubtaskPlan(
+        harness.identity(),
+        1,
+        ".feature-specs/SKILL-56-goal/spec_subtask_1.md",
+      ),
+      "changed-set refresh must discard plans through the shared cascade helper",
+    )
+  }
+
+  @Test
+  fun `refresh refuses while execution liveness is live`() {
+    val harness = sweepHarness(
+      refreshLiveness = GoalPlanningRefreshLiveness { _, _ -> ExecutionLiveness.LIVE },
+    ) { phase, _, _ -> validPhaseOutcome(phase) }
+    val state = harness.stateFor(manifest(subtaskCount = 1))
+    harness.sweep.prepare(state, harness.request())
+    val launchCount = harness.launcher.requests.size
+    val sharedBefore = requireNotNull(harness.fixtures.database.repository.findSharedPreplan(harness.identity()))
+    harness.manifestFileStore.replaceSpec("spec.md", "# Initial feature contract edited while live")
+
+    val outcome = harness.sweep.prepare(state, harness.request())
+
+    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
+    assertEquals(0, stopped.currentSubtaskId)
+    assertEquals("preplan", stopped.lastResumableStep)
+    assertTrue(stopped.blockedReason.contains("live"))
+    assertTrue(stopped.blockedReason.contains("refuse shared-preplan refresh"))
     assertEquals(launchCount, harness.launcher.requests.size)
     val sharedAfter = requireNotNull(harness.fixtures.database.repository.findSharedPreplan(harness.identity()))
     assertEquals(sharedBefore.payloadSha256, sharedAfter.payloadSha256)
-    assertEquals(sharedBefore.preplanPayload, sharedAfter.preplanPayload)
+    assertEquals(sharedBefore.provenance, sharedAfter.provenance)
+  }
+
+  @Test
+  fun `refresh refuses while execution liveness is unknown`() {
+    val harness = sweepHarness(
+      refreshLiveness = GoalPlanningRefreshLiveness { _, _ -> ExecutionLiveness.UNKNOWN },
+    ) { phase, _, _ -> validPhaseOutcome(phase) }
+    val state = harness.stateFor(manifest(subtaskCount = 1))
+    harness.sweep.prepare(state, harness.request())
+    val launchCount = harness.launcher.requests.size
+    harness.manifestFileStore.replaceSpec("spec.md", "# Initial feature contract edited with unknown liveness")
+
+    val outcome = harness.sweep.prepare(state, harness.request())
+
+    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
+    assertTrue(stopped.blockedReason.contains("unknown execution liveness"))
+    assertEquals(launchCount, harness.launcher.requests.size)
+  }
+
+  @Test
+  fun `one prepare launches at most one refresh preplan agent even if still stale`() {
+    val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
+    val state = harness.stateFor(manifest(subtaskCount = 1))
+    harness.sweep.prepare(state, harness.request())
+    harness.fixtures.database.repository.skipProvenanceAdvance = true
+    harness.manifestFileStore.replaceSpec("spec.md", "# Initial feature contract edited for latch")
+    val launchCount = harness.launcher.requests.size
+
+    val outcome = harness.sweep.prepare(state, harness.request())
+
+    assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
+    assertEquals(launchCount + 1, harness.launcher.requests.size, "latch must prevent a second refresh preplan")
   }
 
   @Test
@@ -663,7 +789,7 @@ class GoalPlanningSweepTest {
     val resumed = harness.sweep.prepare(state, harness.request())
 
     assertIs<GoalPlanningSweepOutcome.PreparedAll>(resumed)
-    assertEquals(launchCount, harness.launcher.requests.size)
+    assertEquals(launchCount + 1, harness.launcher.requests.size)
     val sharedAfter = requireNotNull(harness.fixtures.database.repository.findSharedPreplan(harness.identity()))
     assertEquals(sharedBefore.preplanPayload, sharedAfter.preplanPayload)
   }
@@ -2095,7 +2221,50 @@ private class InMemoryPreparationRepository(
     checkpoint: skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint,
     expectedPayloadSha256: String,
   ) {
+    val shared = sharedPreplan
+    if (shared == null || shared.payloadSha256 != expectedPayloadSha256) {
+      throw skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError(
+        checkpoint.identity.parentGoalWorkflowId,
+        0,
+        "shared preplan changed after it was validated for regeneration",
+      )
+    }
     sharedPreplan = checkpoint
+    cascadeSiblingPlansAfterSharedPreplanRefresh(checkpoint.identity.parentGoalWorkflowId)
+  }
+
+  override fun advanceSharedPreplanProvenance(
+    identity: skillbill.ports.persistence.model.GoalPlanningIdentity,
+    expectedPayloadSha256: String,
+    provenance: skillbill.ports.persistence.model.GoalPlanningContractProvenance,
+  ) {
+    if (skipProvenanceAdvance) return
+    val shared = sharedPreplan
+    if (shared == null ||
+      shared.identity.parentGoalWorkflowId != identity.parentGoalWorkflowId ||
+      shared.payloadSha256 != expectedPayloadSha256
+    ) {
+      throw skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError(
+        identity.parentGoalWorkflowId,
+        0,
+        "shared preplan changed after it was validated for provenance advance",
+      )
+    }
+    sharedPreplan = shared.copy(provenance = provenance)
+    plans.keys.toList().forEach { id ->
+      plans[id] = plans.getValue(id).copy(provenance = provenance)
+    }
+  }
+
+  var cascadeAfterRefreshCalls: Int = 0
+  var skipProvenanceAdvance: Boolean = false
+
+  override fun cascadeSiblingPlansAfterSharedPreplanRefresh(parentGoalWorkflowId: String): List<Int> {
+    cascadeAfterRefreshCalls += 1
+    val ids = plans.keys.sorted()
+    plans.clear()
+    records.clear()
+    return ids
   }
 
   override fun replaceSubtaskPlan(checkpoint: skillbill.ports.persistence.model.GoalSubtaskPlanCheckpoint) {
@@ -2354,6 +2523,7 @@ private fun sweepHarness(
   timingPort: RuntimeTimingPort = NoopRuntimeTimingPort,
   burstSchedule: GoalPlanningBurstSchedule = GoalPlanningBurstSchedule(),
   boundaryBodyResolver: GoalPlanningBoundaryBodyResolver = fakeBoundaryBodyResolver,
+  refreshLiveness: GoalPlanningRefreshLiveness = GoalPlanningRefreshLiveness.IDLE,
   behavior: (phase: String, subtaskId: Int, request: GoalRunnerSubtaskLaunchRequest) -> AgentRunLaunchOutcome,
 ): SweepHarness {
   val fixtures = sharedSweepFixtures(
@@ -2376,6 +2546,7 @@ private fun sweepHarness(
     timingPort = timingPort,
     burstSchedule = burstSchedule,
     boundaryBodyResolver = boundaryBodyResolver,
+    refreshLiveness = refreshLiveness,
   )
   return SweepHarness(fixtures, launcher, sweep)
 }

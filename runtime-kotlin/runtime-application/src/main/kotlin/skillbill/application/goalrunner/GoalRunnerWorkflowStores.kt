@@ -411,7 +411,7 @@ class WorkflowGoalRunnerManifestStore(
           preparations.deleteSharedPreplan(identity, expectedDigest)
           // FK ON DELETE CASCADE removes every goal_subtask_plans row for this parent.
         } else {
-          plannedBefore.forEach { id -> preparations.deleteSubtaskPlan(state.parentWorkflowId, id) }
+          preparations.cascadeSiblingPlansAfterSharedPreplanRefresh(state.parentWorkflowId)
         }
         deleted = if (namedExisted) 1 else 0
       } else {

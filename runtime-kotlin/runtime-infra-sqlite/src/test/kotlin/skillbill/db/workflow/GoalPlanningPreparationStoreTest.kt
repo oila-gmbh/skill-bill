@@ -611,6 +611,60 @@ class GoalPlanningPreparationStoreTest {
   }
 
   @Test
+  fun `advancing shared preplan provenance keeps payload bytes and restamps plan provenance`() {
+    DatabaseRuntime.ensureDatabase(tempDb()).use { connection ->
+      val store = GoalPlanningPreparationStore(connection)
+      store.checkpointSharedPreplan(sharedCheckpoint())
+      store.checkpointSubtaskPlan(planCheckpoint(1, 0))
+      store.checkpointSubtaskPlan(planCheckpoint(2, 1))
+      val advanced = provenance().copy(parentSpecHash = "d".repeat(64))
+
+      store.advanceSharedPreplanProvenance(identity(), sharedCheckpoint().payloadSha256, advanced)
+
+      val shared = requireNotNull(store.findSharedPreplan(identity()))
+      assertEquals("preplan-payload", shared.preplanPayload)
+      assertEquals(sharedCheckpoint().payloadSha256, shared.payloadSha256)
+      assertEquals(advanced, shared.provenance)
+      assertEquals(advanced, store.findSubtaskPlan(identity(), 1, descriptor(1, 0).governedSubSpecPath)?.provenance)
+      assertEquals(advanced, store.findSubtaskPlan(identity(), 2, descriptor(2, 1).governedSubSpecPath)?.provenance)
+      assertEquals("plan-1", store.findSubtaskPlan(identity(), 1, descriptor(1, 0).governedSubSpecPath)?.planPayload)
+    }
+  }
+
+  @Test
+  fun `cascadeSiblingPlansAfterSharedPreplanRefresh discards every plan and leaves the shared row`() {
+    DatabaseRuntime.ensureDatabase(tempDb()).use { connection ->
+      val store = GoalPlanningPreparationStore(connection)
+      store.checkpointSharedPreplan(sharedCheckpoint())
+      store.checkpointSubtaskPlan(planCheckpoint(1, 0))
+      store.checkpointSubtaskPlan(planCheckpoint(2, 1))
+
+      assertEquals(listOf(1, 2), store.cascadeSiblingPlansAfterSharedPreplanRefresh("goal-1"))
+
+      assertEquals("preplan-payload", store.findSharedPreplan(identity())?.preplanPayload)
+      assertNull(store.findSubtaskPlan(identity(), 1, descriptor(1, 0).governedSubSpecPath))
+      assertNull(store.findSubtaskPlan(identity(), 2, descriptor(2, 1).governedSubSpecPath))
+    }
+  }
+
+  @Test
+  fun `replacing a shared preplan routes discard through the shared cascade helper`() {
+    DatabaseRuntime.ensureDatabase(tempDb()).use { connection ->
+      val store = GoalPlanningPreparationStore(connection)
+      store.checkpointSharedPreplan(sharedCheckpoint())
+      store.checkpointSubtaskPlan(planCheckpoint(1, 0))
+
+      store.replaceSharedPreplan(
+        sharedCheckpoint().copy(payloadSha256 = "9".repeat(64), preplanPayload = "regenerated-preplan"),
+        sharedCheckpoint().payloadSha256,
+      )
+
+      assertEquals("regenerated-preplan", store.findSharedPreplan(identity())?.preplanPayload)
+      assertNull(store.findSubtaskPlan(identity(), 1, descriptor(1, 0).governedSubSpecPath))
+    }
+  }
+
+  @Test
   fun `replacing a subtask plan overwrites the payload and leaves its siblings alone`() {
     DatabaseRuntime.ensureDatabase(tempDb()).use { connection ->
       val store = GoalPlanningPreparationStore(connection)

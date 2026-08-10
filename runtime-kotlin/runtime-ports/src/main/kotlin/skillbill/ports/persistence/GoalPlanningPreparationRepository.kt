@@ -37,6 +37,25 @@ interface NormalizedGoalPlanningPreparationRepository {
   fun replaceSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint, expectedPayloadSha256: String): Unit =
     error("Shared goal preplan replacement is not implemented by this repository.")
 
+  /**
+   * Provenance-only shared-preplan refresh: UPDATEs shared provenance to [provenance] while keeping
+   * `payload_sha256` / `preplan_payload` bytes unchanged, and re-stamps every retained sibling plan row's
+   * provenance in the same transaction. Never DELETEs the shared row.
+   */
+  fun advanceSharedPreplanProvenance(
+    identity: GoalPlanningIdentity,
+    expectedPayloadSha256: String,
+    provenance: GoalPlanningContractProvenance,
+  ): Unit = error("Shared goal preplan provenance advance is not implemented by this repository.")
+
+  /**
+   * Single cascade seam for automatic shared-preplan refresh when the heading set changes (and the ST3
+   * ownership hook). Until terminal exclusion lands, discards every sibling plan row for the parent.
+   * Returns the discarded subtask ids in prepared order.
+   */
+  fun cascadeSiblingPlansAfterSharedPreplanRefresh(parentGoalWorkflowId: String): List<Int> =
+    error("Shared-preplan refresh plan cascade is not implemented by this repository.")
+
   fun findSharedPreplan(expectedIdentity: GoalPlanningIdentity): SharedGoalPreplanCheckpoint?
 
   fun checkpointSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint): Unit =
