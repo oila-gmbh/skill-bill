@@ -30,6 +30,40 @@ import kotlin.test.assertTrue
 @Suppress("LargeClass") // cohesive SQLite workflow-store test suite
 class WorkflowStateStoreTest {
   @Test
+  fun `identity-less goal parent is excluded from standalone candidates so lookup can reach goal continuation`() {
+    val dbPath = Files.createTempDirectory("standalone-candidate-goal-parent").resolve("metrics.db")
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val store = WorkflowStateStore(connection)
+      // Goal parents carry no execution identity by design. Since the prose engine was retired every
+      // row is mode=runtime, so mode must never be what readmits a parent into standalone discovery:
+      // doing so reports needs_identity_repair for a goal and repair-identity would stamp
+      // route_scope=standalone on it.
+      store.saveFeatureTaskRuntimeWorkflow(
+        workflowRow(
+          "wftr-goal-parent",
+          "ftr-goal",
+          "bill-feature-task-runtime",
+          "plan",
+          FeatureTaskWorkflowMode.RUNTIME,
+        )
+          .copy(
+            issueKey = "SKILL-128",
+            workflowStatus = "paused",
+            artifactsJson = """{"plan":{"mode":"decompose"},"decomposition_runtime":{"issue_key":"SKILL-128"}}""",
+          ),
+      )
+      store.saveFeatureTaskRuntimeWorkflow(
+        workflowRow("wftr-legacy", "ftr-legacy", "bill-feature-task-runtime", "plan", FeatureTaskWorkflowMode.RUNTIME)
+          .copy(issueKey = "SKILL-128", workflowStatus = "paused"),
+      )
+
+      val candidates = store.findStandaloneFeatureTaskCandidates("SKILL-128", "repo")
+
+      assertEquals(listOf("wftr-legacy"), candidates.map { it.workflow.workflowId })
+    }
+  }
+
+  @Test
   fun `feature task execution identity can be read exactly at adoption boundary`() {
     val dbPath = Files.createTempDirectory("goal-child-identity-read").resolve("metrics.db")
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->

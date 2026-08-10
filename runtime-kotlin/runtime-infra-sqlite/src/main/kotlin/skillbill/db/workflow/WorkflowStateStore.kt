@@ -375,10 +375,7 @@ private class FeatureTaskWorkflowStateStore(
         (
           ? = 'standalone'
           AND identities.workflow_id IS NULL
-          AND (
-            workflows.mode = 'runtime'
-            OR workflows.artifacts_json NOT LIKE '%"decomposition_runtime"%'
-          )
+          AND workflows.artifacts_json NOT LIKE '%"decomposition_runtime"%'
         )
         OR (identities.repository_identity = ? AND identities.route_scope = ?)
       )
