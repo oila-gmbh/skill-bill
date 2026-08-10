@@ -12,6 +12,17 @@ Areas: runtime-application/featuretask/validation, runtime-domain/workflow/taskr
 Feature flag: N/A
 Acceptance criteria: 13/13 implemented
 
+## [2026-08-10] SKILL-176 — Remediation-base reachability recovery
+Areas: runtime-application/featuretask, runtime-domain/workflow/taskruntime, runtime-ports/workflow, runtime-infra-fs
+- Unreachable stored review or remediation bases are recovered to the nearest reachable ancestor of the failed sha instead of permanently blocking the goal child
+- Recovery gate is disposition-pending only (no longer mutually exclusive with completed review passes / `reservedPassNumber >= 2`)
+- Repoint persists to the failed field (`review_base_sha` or `remediation_base_sha`) with durable `goal_review_base_recoveries` evidence (original, replacement, reason)
+- Pattern: recover the selected baseline field that materialization actually used; do not always rewrite `reviewBaseSha`
+- Reusable: `GoalSubtaskReviewBaselineRecoveryRequest` + field-aware recovery outcome (`Recovered` / `Failed` / `Ineligible`)
+- Limitation: still blocks when no reachable ancestor exists; does not prevent orphaning the sha upstream (subtask 3)
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
 ## [2026-08-05] Operator resume reopens blocked goal children
 Areas: runtime-application/goalrunner, runtime-ports/goalrunner
 - `skill-bill goal <key>` resume of a blocked subtask now reopens the child's durable blocked phase before launch (same child-side reopen as `feature-task retry-blocked`)

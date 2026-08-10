@@ -722,7 +722,7 @@ class GitWorkflowGitOperationsTest {
     git(repoRoot, "checkout", "-b", "feat/missing-base")
     Files.writeString(repoRoot.resolve("tracked.txt"), "feature\n")
     git(repoRoot, "commit", "-am", "feature")
-    val missingSha = "deadbeef" + "0" * 32
+    val missingSha = "deadbeef" + "0".repeat(32)
 
     val recovered = GitWorkflowGitOperations().recoverGoalSubtaskReviewBaseline(
       repoRoot,

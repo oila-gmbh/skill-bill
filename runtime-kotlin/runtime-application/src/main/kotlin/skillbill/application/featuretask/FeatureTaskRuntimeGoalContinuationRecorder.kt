@@ -324,7 +324,10 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
 
   private fun recoverGoalReviewInput(request: GoalReviewInputRecoveryRequest): GoalReviewInputRecovery {
     val failureReason = request.failureReason
-    if (failureReason !in recoverableReviewBaseFailures || !request.state.canRecoverReviewBase()) {
+    if (failureReason == null ||
+      failureReason !in recoverableReviewBaseFailures ||
+      !request.state.canRecoverReviewBase()
+    ) {
       return GoalReviewInputRecovery.Ineligible
     }
     val exclusions = request.scope.scopedUntrackedExclusions ?: request.state.baselineUntrackedPaths

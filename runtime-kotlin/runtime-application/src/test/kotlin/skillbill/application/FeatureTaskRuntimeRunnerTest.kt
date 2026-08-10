@@ -1983,7 +1983,10 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
     val evidence = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_review_base_recoveries"] as List<*>
     val entry = evidence.single() as Map<*, *>
     assertEquals(unreachableRemediation, entry["original_sha"])
-    assertEquals(recoveredRemediation, entry["replacement_sha
+    assertEquals(recoveredRemediation, entry["replacement_sha"])
+    assertEquals("base_not_ancestor", entry["failure_reason"])
+  }
+
   @Test
   fun `non-recoverable review input failures do not enter baseline recovery`() {
     val repoRoot = Files.createTempDirectory("skillbill-runtime-nonrecoverable-review-base")
@@ -2017,10 +2020,6 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
 
     assertIs<GoalSubtaskReviewInputBlocked>(prepared)
     assertEquals(0, git.goalReviewRecoverCalls)
-  }
-
-"])
-    assertEquals("base_not_ancestor", entry["failure_reason"])
   }
 
   @Test
