@@ -1,0 +1,66 @@
+package skillbill.application.goalrunner
+
+import skillbill.application.model.GoalRunnerAppliedRepair
+import skillbill.application.model.GoalRunnerChildWedgeDiagnosis
+import skillbill.application.model.GoalRunnerWedgeClass
+import skillbill.workflow.model.DecompositionSubtask
+import java.nio.file.Path
+
+/**
+ * SKILL-176 operator repair seam: diagnose and clear known goal-child wedge classes without
+ * discarding completed work. Implemented by [WorkflowGoalRunnerOutcomeStore].
+ */
+interface GoalRunnerChildRepairStore {
+  fun diagnoseChildWedges(
+    workflowId: String,
+    issueKey: String,
+    subtaskId: Int,
+    subtasks: List<DecompositionSubtask>,
+    repoRoot: Path,
+    dbPathOverride: String? = null,
+  ): GoalRunnerChildWedgeDiagnosis
+
+  /**
+   * Applies [wedgeClasses] for one child inside a single durable transaction. Writes the field
+   * patch and repair-evidence artifact together; a failure mid-way leaves the row unchanged.
+   */
+  fun applyChildWedgeRepairs(
+    workflowId: String,
+    issueKey: String,
+    subtaskId: Int,
+    wedgeClasses: List<GoalRunnerWedgeClass>,
+    subtasks: List<DecompositionSubtask>,
+    repoRoot: Path,
+    dbPathOverride: String? = null,
+  ): List<GoalRunnerAppliedRepair>
+}
+
+object NoopGoalRunnerChildRepairStore : GoalRunnerChildRepairStore {
+  override fun diagnoseChildWedges(
+    workflowId: String,
+    issueKey: String,
+    subtaskId: Int,
+    subtasks: List<DecompositionSubtask>,
+    repoRoot: Path,
+    dbPathOverride: String?,
+  ): GoalRunnerChildWedgeDiagnosis = GoalRunnerChildWedgeDiagnosis(
+    subtaskId = subtaskId,
+    workflowId = workflowId,
+    passedChecks = listOf(
+      "validation_depth_present",
+      "review_base_reachable",
+      "remediation_base_reachable_or_absent",
+      "continuation_outcome_corroborated_or_absent",
+    ),
+  )
+
+  override fun applyChildWedgeRepairs(
+    workflowId: String,
+    issueKey: String,
+    subtaskId: Int,
+    wedgeClasses: List<GoalRunnerWedgeClass>,
+    subtasks: List<DecompositionSubtask>,
+    repoRoot: Path,
+    dbPathOverride: String?,
+  ): List<GoalRunnerAppliedRepair> = emptyList()
+}

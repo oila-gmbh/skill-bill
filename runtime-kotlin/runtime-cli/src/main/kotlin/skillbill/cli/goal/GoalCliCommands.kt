@@ -23,6 +23,9 @@ import skillbill.application.model.DEFAULT_GOAL_PLANNING_BUDGET
 import skillbill.application.model.GoalRunnerAcceptRequest
 import skillbill.application.model.GoalRunnerAcceptResult
 import skillbill.application.model.GoalRunnerPauseResult
+import skillbill.application.model.GoalRunnerRepairRequest
+import skillbill.application.model.GoalRunnerRepairResult
+import skillbill.application.model.GoalRunnerRepairStatus
 import skillbill.application.model.GoalRunnerReplanRequest
 import skillbill.application.model.GoalRunnerReplanResult
 import skillbill.application.model.GoalRunnerResetRequest
@@ -67,6 +70,7 @@ class GoalControlSubcommands(
   val reset: GoalResetCommand,
   val replan: GoalReplanCommand,
   val accept: GoalAcceptCommand,
+  val repair: GoalRepairCommand,
 )
 
 @Inject
@@ -157,6 +161,7 @@ class GoalRunCommand(
       goalRunSubcommands.controls.reset,
       goalRunSubcommands.controls.replan,
       goalRunSubcommands.controls.accept,
+      goalRunSubcommands.controls.repair,
       goalRunSubcommands.findings,
     )
   }
@@ -700,6 +705,48 @@ class GoalAcceptCommand(
     )
     val payload = result.toGoalAcceptCliMap()
     state.completeText(goalAcceptText(payload), payload, exitCode = payload.goalResetExitCode())
+  }
+}
+
+@Inject
+class GoalRepairCommand(
+  private val goalRunnerStatusService: GoalRunnerStatusService,
+  private val state: CliRunState,
+) : DocumentedCliCommand(
+  "repair",
+  "Inspect or clear known goal-child resume wedges without discarding completed work. " +
+    "Default is inspect-only; pass --apply to act. " +
+    "Clears: missing validation_depth on the continuation artifact; unreachable stored " +
+    "review_base_sha; unreachable stored remediation_base_sha; stale blocked " +
+    "goal_continuation_outcome. Does not touch: completed commit shas, review pass history, " +
+    "audit repair state, planning checkpoints, or anything goal reset/replan/accept own.",
+) {
+  private val issueKey by argument(help = "Parent issue key for the decomposed goal.")
+  private val subtaskId by option(
+    "--subtask",
+    help = "Optional subtask ID to scope diagnosis and repair to one child.",
+  ).int()
+  private val apply by option(
+    "--apply",
+    help = "Apply repairs for diagnosed wedges. Without this flag the command only reports.",
+  ).flag(default = false)
+  private val repoRoot by option("--repo-root", help = "Repository root for reachability checks.")
+
+  override fun run() {
+    if (subtaskId != null && requireNotNull(subtaskId) <= 0) {
+      throw UsageError("--subtask must be a positive integer.")
+    }
+    val result = goalRunnerStatusService.repair(
+      GoalRunnerRepairRequest(
+        issueKey = issueKey,
+        apply = apply,
+        subtaskId = subtaskId,
+        dbPathOverride = state.dbOverride,
+        repoRoot = repoRoot?.let(Path::of) ?: Path.of("").toAbsolutePath().normalize(),
+      ),
+    )
+    val payload = result.toGoalRepairCliMap()
+    state.completeText(goalRepairText(payload), payload, exitCode = payload.goalRepairExitCode())
   }
 }
 

@@ -89,6 +89,7 @@ import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
 import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionManifest
+import skillbill.workflow.model.DecompositionSubtask
 import skillbill.workflow.model.GOAL_PROGRESS_HISTORY_LIMIT
 import skillbill.workflow.model.GOAL_PROGRESS_LATEST_EVENT_ARTIFACT_KEY
 import skillbill.workflow.model.GOAL_PROGRESS_RUN_HISTORY_ARTIFACT_KEY
@@ -1507,8 +1508,46 @@ class WorkflowGoalRunnerOutcomeStore(
   // Injectable liveness probe for goal-parent crash reconciliation (AC-005). The no-op default never
   // confirms a process dead, so a seam wired without a real supervisor never reconciles.
   private val workerSupervisor: FeatureTaskRuntimeWorkerSupervisor = NoopFeatureTaskRuntimeWorkerSupervisor,
-) : GoalRunnerWorkflowOutcomeStore, GoalRunnerAttemptLedgerStore {
+) : GoalRunnerWorkflowOutcomeStore, GoalRunnerAttemptLedgerStore, GoalRunnerChildRepairStore {
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
+  private val childRepair = GoalRunnerChildRepairOperations(engine, gitOperations)
+
+  override fun diagnoseChildWedges(
+    workflowId: String,
+    issueKey: String,
+    subtaskId: Int,
+    subtasks: List<DecompositionSubtask>,
+    repoRoot: Path,
+    dbPathOverride: String?,
+  ): skillbill.application.model.GoalRunnerChildWedgeDiagnosis = database.read(dbPathOverride) { unitOfWork ->
+    childRepair.diagnose(
+      workflowStates = unitOfWork.workflowStates,
+      workflowId = workflowId,
+      issueKey = issueKey,
+      subtaskId = subtaskId,
+      repoRoot = repoRoot,
+    )
+  }
+
+  override fun applyChildWedgeRepairs(
+    workflowId: String,
+    issueKey: String,
+    subtaskId: Int,
+    wedgeClasses: List<skillbill.application.model.GoalRunnerWedgeClass>,
+    subtasks: List<DecompositionSubtask>,
+    repoRoot: Path,
+    dbPathOverride: String?,
+  ): List<skillbill.application.model.GoalRunnerAppliedRepair> = database.transaction(dbPathOverride) { unitOfWork ->
+    childRepair.apply(
+      workflowStates = unitOfWork.workflowStates,
+      workflowId = workflowId,
+      issueKey = issueKey,
+      subtaskId = subtaskId,
+      wedgeClasses = wedgeClasses,
+      subtasks = subtasks,
+      repoRoot = repoRoot,
+    )
+  }
 
   override fun goalSubtaskReviewState(workflowId: String, dbPathOverride: String?): GoalSubtaskReviewState? =
     database.read(dbPathOverride) { unitOfWork ->
@@ -2380,7 +2419,7 @@ class WorkflowGoalRunnerOutcomeStore(
   }
 }
 
-private data class GoalContinuation(
+internal data class GoalContinuation(
   val issueKey: String,
   val subtaskId: Int,
   val suppressPr: Boolean,
@@ -2441,7 +2480,7 @@ private data class GoalRunnerBlockWrite(
   val supervisionEvent: GoalRunnerSupervisionEvent?,
 )
 
-private fun goalContinuation(artifacts: Map<String, Any?>): GoalContinuation? =
+internal fun goalContinuation(artifacts: Map<String, Any?>): GoalContinuation? =
   (artifacts["goal_continuation"] as? Map<*, *>)?.let { payload ->
     val issueKey = payload["issue_key"]?.toString()?.takeIf(String::isNotBlank)
     val subtaskId = payload["subtask_id"].asGoalRunnerIntOrNull()
@@ -2566,7 +2605,7 @@ private fun terminalOutcomeFor(
   return derivedTerminalOutcomeFor(snapshot, artifacts, goalContinuation, measuredCommitSha)
 }
 
-private fun derivedTerminalOutcomeFor(
+internal fun derivedTerminalOutcomeFor(
   snapshot: WorkflowStateSnapshot,
   artifacts: Map<String, Any?>,
   goalContinuation: GoalContinuation,
@@ -2595,7 +2634,7 @@ private fun derivedTerminalOutcomeFor(
 // - failed: derived failed status from workflow/step state
 // - paused: durable workflow_status == "paused"
 // - timeout: staleness impossible — no independent durable derivation refutes a stored timeout
-private fun nonCompleteStoredOutcomeIsCorroborated(
+internal fun nonCompleteStoredOutcomeIsCorroborated(
   stored: GoalRunnerStoredOutcome,
   derived: GoalRunnerStoredOutcome?,
   snapshot: WorkflowStateSnapshot,
@@ -2653,7 +2692,7 @@ private fun staleRunningReason(
     "subtask $subtaskId because it was no longer active."
   )
 
-private fun goalContinuationOutcome(
+internal fun goalContinuationOutcome(
   artifacts: Map<String, Any?>,
   issueKey: String,
   subtaskId: Int,

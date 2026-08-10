@@ -3719,6 +3719,9 @@ internal class InMemoryWorkflowStates : WorkflowStateRepository {
   private val taskRuntime = mutableMapOf<String, WorkflowStateRecord>()
   private val identities = mutableMapOf<String, FeatureTaskExecutionIdentity>()
 
+  // Fault injection for atomicity coverage (SKILL-176 repair / feature-task-runtime saves).
+  var failSaveWhen: ((WorkflowStateRecord) -> Boolean)? = null
+
   override fun saveFeatureTaskExecutionIdentity(identity: FeatureTaskExecutionIdentity) {
     val existing = identities.putIfAbsent(identity.workflowId, identity)
     require(existing == null || existing == identity) { "Conflicting immutable identity for '${identity.workflowId}'." }
@@ -3839,6 +3842,9 @@ internal class InMemoryWorkflowStates : WorkflowStateRepository {
     return row
   }
   override fun saveFeatureTaskRuntimeWorkflow(row: WorkflowStateRecord) {
+    if (failSaveWhen?.invoke(row) == true) {
+      error("simulated process kill during the feature-task-runtime save")
+    }
     taskRuntime[row.workflowId] = row.copy(issueKey = row.issueKey ?: taskRuntime[row.workflowId]?.issueKey)
   }
   override fun getFeatureTaskRuntimeWorkflow(workflowId: String): WorkflowStateRecord? =
