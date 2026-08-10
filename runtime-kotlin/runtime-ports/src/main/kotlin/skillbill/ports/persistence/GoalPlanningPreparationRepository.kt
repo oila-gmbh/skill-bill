@@ -1,6 +1,7 @@
 package skillbill.ports.persistence
 
 import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
+import skillbill.ports.persistence.model.GoalPlanningContractProvenance
 import skillbill.ports.persistence.model.GoalPlanningIdentity
 import skillbill.ports.persistence.model.GoalPlanningPreparationRecord
 import skillbill.ports.persistence.model.GoalPlanningPreparationStatus
