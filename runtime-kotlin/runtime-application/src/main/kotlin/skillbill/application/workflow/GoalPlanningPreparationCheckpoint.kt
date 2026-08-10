@@ -136,6 +136,12 @@ class GoalPlanningPreparationCheckpoint(
     }
   }
 
+  /** Prepared plan subtask ids currently stored for [parentGoalWorkflowId], including orphans. */
+  fun listPreparedPlanSubtaskIds(parentGoalWorkflowId: String, dbOverride: String? = null): List<Int> =
+    database.read(dbOverride) {
+      it.goalPlanningPreparations.listPreparedPlanSubtaskIds(parentGoalWorkflowId)
+    }
+
   /** The stored subtask plan as persisted, independent of the projection verdict. */
   fun findStoredSubtaskPlan(
     identity: GoalPlanningIdentity,

@@ -712,7 +712,18 @@ class GoalPlanningSweepTest {
   @Test
   fun `changed heading set refresh preserves complete-with-commit sibling plan`() {
     var preplanLaunches = 0
-    val harness = sweepHarness { phase, _, _ ->
+    val initial = manifest(subtaskCount = 2)
+    val resumeManifest = initial.copy(
+      subtasks = initial.subtasks.map { subtask ->
+        if (subtask.id == 1) {
+          subtask.copy(status = "complete", commitSha = "sha-1", workflowId = "wfl-1")
+        } else {
+          subtask
+        }
+      },
+    )
+    val store = InMemoryGoalManifestStore(resumeManifest)
+    val harness = sweepHarness(manifestStore = store) { phase, _, _ ->
       if (phase == "preplan") {
         preplanLaunches += 1
         val headings = if (preplanLaunches == 1) {
@@ -725,7 +736,6 @@ class GoalPlanningSweepTest {
         validPhaseOutcome(phase)
       }
     }
-    val initial = manifest(subtaskCount = 2)
     harness.sweep.prepare(harness.stateFor(initial), harness.request())
     val plan1Before = requireNotNull(
       harness.fixtures.database.repository.findSubtaskPlan(
@@ -734,20 +744,17 @@ class GoalPlanningSweepTest {
         ".feature-specs/SKILL-56-goal/spec_subtask_1.md",
       ),
     )
-    val resumeState = harness.stateFor(
-      initial.copy(
-        subtasks = initial.subtasks.map { subtask ->
-          if (subtask.id == 1) {
-            subtask.copy(status = "complete", commitSha = "sha-1", workflowId = "wfl-1")
-          } else {
-            subtask
-          }
-        },
+    assertNotNull(
+      harness.fixtures.database.repository.findSubtaskPlan(
+        harness.identity(),
+        2,
+        ".feature-specs/SKILL-56-goal/spec_subtask_2.md",
       ),
     )
+    val launchCount = harness.launcher.requests.size
     harness.manifestFileStore.replaceSpec("spec.md", "# Initial feature contract edited for heading drift")
 
-    val outcome = harness.sweep.prepare(resumeState, harness.request())
+    val outcome = harness.sweep.prepare(harness.stateFor(resumeManifest), harness.request())
 
     assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
     val plan1After = requireNotNull(
@@ -760,15 +767,23 @@ class GoalPlanningSweepTest {
     assertEquals(plan1Before.planPayload, plan1After.planPayload)
     val sharedAfter = requireNotNull(harness.fixtures.database.repository.findSharedPreplan(harness.identity()))
     assertEquals(sharedAfter.provenance, plan1After.provenance)
-    assertEquals("complete", resumeState.manifest.subtasks[0].status)
-    assertEquals("sha-1", resumeState.manifest.subtasks[0].commitSha)
-    assertEquals("wfl-1", resumeState.manifest.subtasks[0].workflowId)
+    assertEquals("complete", store.manifest.subtasks[0].status)
+    assertEquals("sha-1", store.manifest.subtasks[0].commitSha)
+    assertEquals("wfl-1", store.manifest.subtasks[0].workflowId)
+    assertEquals(1, harness.fixtures.database.repository.cascadeAfterRefreshCalls)
+    assertEquals(listOf(2), harness.fixtures.database.repository.lastCascadePlanSubtaskIds)
+    assertEquals(
+      listOf("preplan", "plan"),
+      harness.launcher.phases.drop(launchCount),
+      "changed-set refresh must cascade then regenerate the discarded non-terminal plan",
+    )
     assertNotNull(
       harness.fixtures.database.repository.findSubtaskPlan(
         harness.identity(),
         2,
         ".feature-specs/SKILL-56-goal/spec_subtask_2.md",
       ),
+      "post-cascade plan regeneration must leave a settled plan row for the non-terminal sibling",
     )
   }
 
@@ -2343,6 +2358,7 @@ private class InMemoryPreparationRepository(
   }
 
   var cascadeAfterRefreshCalls: Int = 0
+  var lastCascadePlanSubtaskIds: List<Int> = emptyList()
   var skipProvenanceAdvance: Boolean = false
 
   override fun cascadeSiblingPlansAfterSharedPreplanRefresh(
@@ -2350,12 +2366,15 @@ private class InMemoryPreparationRepository(
     cascadePlanSubtaskIds: List<Int>,
   ): List<Int> {
     cascadeAfterRefreshCalls += 1
+    lastCascadePlanSubtaskIds = cascadePlanSubtaskIds
     cascadePlanSubtaskIds.forEach { id ->
       plans.remove(id)
       records.remove(id)
     }
     return cascadePlanSubtaskIds
   }
+
+  override fun listPreparedPlanSubtaskIds(parentGoalWorkflowId: String): List<Int> = plans.keys.toList()
 
   override fun replaceSubtaskPlan(checkpoint: skillbill.ports.persistence.model.GoalSubtaskPlanCheckpoint) {
     plans[checkpoint.subtaskId] = checkpoint
@@ -2404,7 +2423,7 @@ private class InMemoryPreparationRepository(
       )
     }
     sharedPreplan = shared.copy(
-      payloadSha256 = "0".repeat(64),
+      payloadSha256 = sha256HexUtf8("shared-preplan-discarded"),
       preplanPayload = "shared-preplan-discarded",
     )
     return 1

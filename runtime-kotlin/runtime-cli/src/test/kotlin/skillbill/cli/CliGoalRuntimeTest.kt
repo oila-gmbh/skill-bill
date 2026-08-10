@@ -841,7 +841,7 @@ class CliGoalSharedPreplanReplanTest {
     assertTrue(2 in plannedAfterIds, "complete+commit plan row 2 must survive include-shared-preplan")
     // The replan deletes children hydrated from a discarded plan, but never a completed subtask's:
     // that would drop the commit_sha and workflow_id mapping this cascade is required to preserve.
-    val clearedChildren = (replan.payload.get("cleared_child_subtask_ids") as? List<*>)
+    val clearedChildren = (replan.payload?.get("cleared_child_subtask_ids") as? List<*>)
       ?.mapNotNull { (it as? Number)?.toInt() ?: (it as? String)?.toIntOrNull() }
       .orEmpty()
     assertFalse(1 in clearedChildren, "a completed subtask's child must survive the cascade")

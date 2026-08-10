@@ -319,7 +319,7 @@ class DefaultGoalPlanningSweep(
       RefreshedSharedPreplan(currentProvenance, advanced)
     } else {
       val cascadeIds = cascadeEligiblePlanSubtaskIds(
-        plannedIds = state.manifest.subtasks.map { it.id },
+        plannedIds = checkpoint.listPreparedPlanSubtaskIds(state.parentWorkflowId, shared.dbPathOverride),
         subtasks = state.manifest.subtasks,
       )
       val replaced = checkpoint.replaceSharedPreplanForRefresh(
