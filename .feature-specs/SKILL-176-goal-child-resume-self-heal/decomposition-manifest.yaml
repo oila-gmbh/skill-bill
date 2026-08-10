@@ -9,18 +9,18 @@ base_branch: "feat/SKILL-179-complete-prose-engine-retirement"
 feature_branch: "feat/SKILL-176-goal-child-resume-self-heal"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 1
+  subtask_id: 3
   action: "resume"
 subtasks:
 - id: 1
   name: "Validation-depth absent-vs-default and conflict-gate audit"
   spec_path: ".feature-specs/SKILL-176-goal-child-resume-self-heal/spec_subtask_1_validation-depth-absent-vs-default.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260810-075005-ec6w"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -28,12 +28,12 @@ subtasks:
 - id: 2
   name: "Review-base reachability detection and recovery"
   spec_path: ".feature-specs/SKILL-176-goal-child-resume-self-heal/spec_subtask_2_remediation-base-reachability-recovery.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260810-080843-2vv8"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -44,7 +44,7 @@ subtasks:
   status: "pending"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260810-084342-l584"
   blocked_reason: null
   last_resumable_step: null
   linear_issue_id: null
