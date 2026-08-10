@@ -16,8 +16,10 @@ import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
 import skillbill.workflow.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_FIELD_ADOPTION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_OUTCOME_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationFieldAdoption
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY
@@ -54,6 +56,9 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     val outcomePatch = request.outcome?.let {
       mapOf(FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_OUTCOME_ARTIFACT_KEY to it.toArtifactMap())
     }.orEmpty()
+    val adoptionPatch = request.fieldAdoption?.let {
+      mapOf(FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_FIELD_ADOPTION_ARTIFACT_KEY to it.toArtifactMap())
+    }.orEmpty()
     val updated = engine.updateRecord(
       WorkflowFamily.TASK_RUNTIME.definition,
       record,
@@ -61,7 +66,7 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
         workflowStatus = request.workflowStatus ?: record.workflowStatus,
         currentStepId = request.outcome?.lastResumableStep ?: record.currentStepId,
         stepUpdates = null,
-        artifactsPatch = continuationPatch + reviewStatePatch + outcomePatch,
+        artifactsPatch = continuationPatch + reviewStatePatch + outcomePatch + adoptionPatch,
         sessionId = record.sessionId.orEmpty(),
       ),
     )
@@ -385,6 +390,7 @@ internal data class GoalContinuationStateRecordRequest(
   val continuation: FeatureTaskRuntimeGoalContinuationArtifact? = null,
   val reviewBaseline: GoalSubtaskReviewBaseline? = null,
   val outcome: FeatureTaskRuntimeGoalContinuationOutcome? = null,
+  val fieldAdoption: FeatureTaskRuntimeGoalContinuationFieldAdoption? = null,
   val workflowStatus: String? = null,
 )
 
@@ -434,9 +440,16 @@ private fun continuationPatch(
 
 private fun FeatureTaskRuntimeGoalContinuationArtifact?.compatibleWith(
   supplied: FeatureTaskRuntimeGoalContinuationArtifact?,
-): Boolean = this == null || supplied == null ||
-  copy(agentAddonSelection = skillbill.agentaddon.model.AgentAddonSelection()) ==
-  supplied.copy(agentAddonSelection = skillbill.agentaddon.model.AgentAddonSelection())
+): Boolean {
+  if (this == null || supplied == null) return true
+  // Agent add-ons are launch guidance and may change on resume. An absent validation depth may be
+  // healed to the launcher-supplied value in the same write; a recorded depth remains immutable.
+  val healed = copy(
+    agentAddonSelection = skillbill.agentaddon.model.AgentAddonSelection(),
+    validationDepth = validationDepth ?: supplied.validationDepth,
+  )
+  return healed == supplied.copy(agentAddonSelection = skillbill.agentaddon.model.AgentAddonSelection())
+}
 
 private fun reviewStatePatch(
   request: GoalContinuationStateRecordRequest,

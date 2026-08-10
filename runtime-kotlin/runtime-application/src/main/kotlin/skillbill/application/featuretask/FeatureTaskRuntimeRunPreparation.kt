@@ -6,7 +6,9 @@ import skillbill.application.model.FeatureTaskRuntimePreparation
 import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationFieldAdoption
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 
 internal class FeatureTaskRuntimeRunPreparation(
@@ -45,11 +47,11 @@ internal class FeatureTaskRuntimeRunPreparation(
         "Goal-continuation child state could not be persisted before freezing run invariants.",
       )
     }
-    if (initial != null && !updateContinuationAgentAddons(request, initial)) {
+    if (initial != null && !updateContinuationOnResume(request, initial)) {
       return blocked(
         request,
         reportInvariants,
-        "Goal-continuation agent add-on guidance could not be updated before resume.",
+        "Goal-continuation resume write-back could not be persisted before freezing run invariants.",
       )
     }
     return when (
@@ -75,23 +77,38 @@ internal class FeatureTaskRuntimeRunPreparation(
     else -> requestedResumeModeConflict(request, persistedInvariants)
   } ?: goalContinuationInvariantConflict(request, persistedInvariants, initial, selectedMode)
 
-  private fun updateContinuationAgentAddons(
+  private fun updateContinuationOnResume(
     request: FeatureTaskRuntimeRunRequest,
     initial: ContinuationRead.Available,
-  ): Boolean = continuationRecorder.recordGoalContinuationState(
-    request = GoalContinuationStateRecordRequest(
-      workflowId = request.workflowId,
-      // A resume that supplies no add-ons is silent about them, not a request to erase them: the
-      // add-on directory can simply be unavailable on the resuming host.
-      continuation = initial.continuation.copy(
-        agentAddonSelection = request.agentAddonSelection.persisted
-          .takeUnless { it.entries.isEmpty() }
-          ?: initial.continuation.agentAddonSelection,
+  ): Boolean {
+    val suppliedDepth = request.goalContinuation?.validationDepth
+    val adoptedDepth = suppliedDepth.takeIf { initial.continuation.validationDepth == null }
+    val fieldAdoption = adoptedDepth?.let { depth ->
+      FeatureTaskRuntimeGoalContinuationFieldAdoption(
+        field = "validation_depth",
+        adoptedValue = depth.wireValue,
+        reason =
+          "durable goal-continuation row predated the validation_depth contract; " +
+            "adopted launcher-supplied depth",
+      )
+    }
+    return continuationRecorder.recordGoalContinuationState(
+      request = GoalContinuationStateRecordRequest(
+        workflowId = request.workflowId,
+        // A resume that supplies no add-ons is silent about them, not a request to erase them: the
+        // add-on directory can simply be unavailable on the resuming host.
+        continuation = initial.continuation.copy(
+          validationDepth = adoptedDepth ?: initial.continuation.validationDepth,
+          agentAddonSelection = request.agentAddonSelection.persisted
+            .takeUnless { it.entries.isEmpty() }
+            ?: initial.continuation.agentAddonSelection,
+        ),
+        reviewBaseline = initial.baseline,
+        fieldAdoption = fieldAdoption,
       ),
-      reviewBaseline = initial.baseline,
-    ),
-    dbOverride = request.dbPathOverride,
-  )
+      dbOverride = request.dbPathOverride,
+    )
+  }
 
   private fun persistedContinuationConflict(
     request: FeatureTaskRuntimeRunRequest,
@@ -233,7 +250,11 @@ private fun goalContinuationContext(
   parentWorkflowId = continuation.parentWorkflowId,
   lastResumableStep = request.goalContinuation?.lastResumableStep,
   codeReviewMode = continuation.codeReviewMode,
-  validationDepth = continuation.validationDepth,
+  // Prefer the durable recorded depth; otherwise the launcher-supplied (adopted) depth. DEFAULT is
+  // only a last resort when neither side carried one after the resume write-back.
+  validationDepth = continuation.validationDepth
+    ?: request.goalContinuation?.validationDepth
+    ?: ValidationDepth.DEFAULT,
   parallelReviewAgent = continuation.parallelReviewAgent,
   reviewBaseline = baseline,
   agentAddonSelection = continuation.agentAddonSelection,
