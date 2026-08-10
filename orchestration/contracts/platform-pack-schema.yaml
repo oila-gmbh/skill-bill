@@ -85,10 +85,10 @@ properties:
   contract_version:
     type: string
     minLength: 1
-    const: "1.2"
+    const: "1.4"
     x-runtime-anchored: true
     description: >
-      Pinned to `SHELL_CONTRACT_VERSION` (currently 1.2). The parity test
+      Pinned to `SHELL_CONTRACT_VERSION` (currently 1.4). The parity test
       `PlatformPackSchemaContractVersionTest` keeps the two in lockstep.
       Value mismatches at runtime are surfaced as the dedicated
       `ContractVersionMismatchError` (not generic schema error) so callers
@@ -411,6 +411,102 @@ properties:
       Each entry references generated pointer filenames declared under `pointers` for the same
       consumer key; Kotlin coherence checks require those pointers to target
       `platform-packs/<slug>/addons/*.md`.
+  validation_gate:
+    type: object
+    additionalProperties: false
+    x-runtime-anchored: true
+    description: >
+      Optional runtime-owned validation gate declaration. When absent the
+      runtime falls back to agent-run validate behavior and surfaces that
+      degradation. When present, every required argv array must be a
+      non-empty list of non-blank strings; empty or malformed shapes
+      loud-fail and never resolve to "no gate". Commands are pack-owned —
+      the runtime never hardcodes stack-specific argv (including cache-bypass
+      flags). Absence is null, never an empty-command sentinel.
+    required:
+      - full_gate_command
+      - cache_bypassing_full_gate_command
+      - build_only_command
+      - findings
+    properties:
+      full_gate_command:
+        type: array
+        minItems: 1
+        items:
+          type: string
+          minLength: 1
+        description: >
+          Argv for the cache-eligible full validation gate (intermediate
+          repair-cycle runs).
+      cache_bypassing_full_gate_command:
+        type: array
+        minItems: 1
+        items:
+          type: string
+          minLength: 1
+        description: >
+          Argv for the terminal verifying full gate run. Must bypass the
+          build cache and up-to-date short-circuiting using pack-declared
+          flags, never a runtime-hardcoded stack flag.
+      build_only_command:
+        type: array
+        minItems: 1
+        items:
+          type: string
+          minLength: 1
+        description: >
+          Argv for ValidationDepth.BUILD_ONLY — compile/build only, no
+          tests or static-analysis gate.
+      findings:
+        type: object
+        additionalProperties: false
+        required:
+          - format
+          - artifact_globs
+        properties:
+          format:
+            type: string
+            enum:
+              - junit_xml
+            description: >
+              Artifact format the runtime uses to extract module,
+              rule_or_test_id, message, and location without embedding raw
+              stdout in the agent handoff.
+          artifact_globs:
+            type: array
+            minItems: 1
+            uniqueItems: true
+            items:
+              type: string
+              minLength: 1
+            description: >
+              Repo-relative globs locating findings artifacts after a gate
+              run (for example JUnit XML under build/test-results).
+          executed_work:
+            type: object
+            additionalProperties: false
+            required:
+              - format
+            properties:
+              format:
+                type: string
+                enum:
+                  - gradle_actionable_summary
+                description: >
+                  How the runtime derives executed_work_units from pack-
+                  declared report signals (never from agent claims).
+      suppression_markers:
+        type: array
+        uniqueItems: true
+        items:
+          type: string
+          minLength: 1
+        description: >
+          Optional literals or substrings the runtime counts as suppression
+          markers when measuring validate-boundary suppression deltas.
+          Absent or empty means the pack is not gated for suppressions.
+          Present but malformed (non-array, blank entries) loud-fails at
+          pack load and never degrades to an empty ungated set.
 
 # ---------------------------------------------------------------------------
 # Coherence checks (enforced in Kotlin)

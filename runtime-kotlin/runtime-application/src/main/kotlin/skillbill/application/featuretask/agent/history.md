@@ -1,5 +1,17 @@
 # featuretask runtime boundary history
 
+## [2026-08-10] SKILL-180 — Validate suppression-diff gate
+Areas: runtime-application/featuretask/validation, runtime-domain/workflow/taskruntime, runtime-domain/scaffold/policy, runtime-infra-fs (git ops, platformpack), runtime-ports/workflow, orchestration/contracts, platform-packs
+- Validate now measures newly introduced suppression markers itself, diffing changed paths against the base ref through the git operations port; the agent's self-report is never an input to the count
+- Markers come from platform-pack declarations (`platform.yaml`), not hardcoded Kotlin syntax; a pack declaring none is ungated, and a malformed declaration loud-fails instead of degrading to an empty set
+- `validation_result` gained a conditionally required per-suppression justification (path, silenced rule, rationale) — required only when the measured delta is non-zero, so clean runs validate unchanged
+- Absent or under-reporting justification blocks validate with the offending paths and unaccounted markers named; a fully accounted delta completes and persists the justification durably
+- Gate also applies under `ValidationDepth.BUILD_ONLY`, where suppressions can still be added while fixing compile failures
+- Reusable: runtime-measured evidence + conditionally-required agent justification — the pattern for any gate where the agent must account for, but cannot define, the measurement
+- Limitation: existing base-ref suppressions are untouched by design; rename/move is neutral, not an audit trail
+Feature flag: N/A
+Acceptance criteria: 13/13 implemented
+
 ## [2026-08-05] Operator resume reopens blocked goal children
 Areas: runtime-application/goalrunner, runtime-ports/goalrunner
 - `skill-bill goal <key>` resume of a blocked subtask now reopens the child's durable blocked phase before launch (same child-side reopen as `feature-task retry-blocked`)

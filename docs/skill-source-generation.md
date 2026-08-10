@@ -599,7 +599,7 @@ Key guards:
 - committed generated `SKILL.md` wrappers are rejected
 - committed generated support pointer files are rejected
 - committed provider-specific native-agent artifacts are rejected
-- platform manifests must match shell contract version `1.2`
+- platform manifests must match shell contract version `1.3`
 - manifest-declared files must exist and be valid `content.md`
 - pointer target parity is validated against platform manifests
 - native-agent composition must render self-contained provider output

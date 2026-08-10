@@ -8,6 +8,12 @@ import skillbill.application.evidence.FeatureTaskRuntimeSharedReviewEvidenceReso
 import skillbill.application.evidence.FeatureTaskRuntimeSharedReviewEvidenceResolver
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointDecision
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointScopeInput
+import skillbill.application.featuretask.validation.model.ValidationFindingSetProjection
+import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairLauncher
+import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairResult
+import skillbill.application.featuretask.validation.model.ValidationGateCycleRequest
+import skillbill.application.featuretask.validation.model.ValidationGateCycleResult
+import skillbill.application.featuretask.validation.model.ValidationGateCycleTerminalOutcome
 import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
 import skillbill.application.model.FeatureTaskRuntimeFixLoopDecision
 import skillbill.application.model.FeatureTaskRuntimeImplementationContinuation
@@ -187,6 +193,7 @@ internal class FeatureTaskRuntimeRunLoop(
   private val planningStopper get() = phaseGates.planningStopper
   private val gitOperations get() = phaseGates.gitOperations
   private val planningProjectionValidator get() = phaseGates.planningProjectionValidator
+  private val validationGateCoordinator get() = phaseGates.validationGateCoordinator
 
   // Content identity of every dirty path the moment a phase stopped writing, keyed by phase. The
   // checkpoint compares against it to tell this run's own work from an edit that landed beside it.
@@ -1787,7 +1794,17 @@ internal class FeatureTaskRuntimeRunLoop(
     settledFullyClosedAudit(run, state, observability)?.let { return it }
     preLaunchBlock(run, state, observability)?.let { return it }
     return when (val prepared = prepareGoalReviewRun(run, observability)) {
-      is GoalReviewRunReady -> runPhaseAttempts(prepared.run, state, observability, phaseTokenAccumulator)
+      is GoalReviewRunReady -> {
+        if (run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE) {
+          return runDeclaredValidationGateCycle(
+            prepared.run,
+            state,
+            observability,
+            phaseTokenAccumulator,
+          )
+        }
+        runPhaseAttempts(prepared.run, state, observability, phaseTokenAccumulator)
+      }
       GoalReviewRunPreparation.CarryForward -> settleCarriedForwardGoalReview(
         run = run,
         state = state,
@@ -2278,6 +2295,183 @@ internal class FeatureTaskRuntimeRunLoop(
       disposition != null -> disposition.retryOnResume
       else -> FeatureTaskRuntimeFixLoopPolicy.participatesInFixLoop(phaseId)
     }
+  }
+
+  private fun runDeclaredValidationGateCycle(
+    run: PhaseRun,
+    state: FeatureTaskRuntimeRunState,
+    observability: FeatureTaskRuntimeRunObservability,
+    phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>>?,
+  ): PhaseOutcome {
+    val validationDepth = run.request.goalContinuation?.validationDepth ?: ValidationDepth.DEFAULT
+    val changedPaths = validationChangedPaths(state)
+    val baseRef = recorder.loadResolvedBranch(run.request.workflowId, run.request.dbPathOverride)
+      ?.reviewBaseSha
+      .orEmpty()
+      .ifBlank {
+        recorder.loadResolvedBranch(run.request.workflowId, run.request.dbPathOverride)?.baseBranch.orEmpty()
+      }
+    val checkpoint = gitOperations.repositoryFingerprint(run.request.repoRoot).value
+      .takeIf(String::isNotBlank)
+      ?: return PhaseOutcome.blocked(
+        "Validation gate cycle could not resolve a repository checkpoint fingerprint.",
+      )
+    val iteration = state.nextIteration(run.phaseId)
+    val cycle = validationGateCoordinator.execute(
+      cycle = ValidationGateCycleRequest(
+        repoRoot = run.request.repoRoot,
+        request = run.request,
+        validationDepth = validationDepth,
+        changedPaths = changedPaths,
+        repositoryCheckpoint = checkpoint,
+        baseRef = baseRef,
+        agentRepairLauncher = ValidationGateAgentRepairLauncher { findings, _ ->
+          launchValidationGateRepair(
+            run = run,
+            state = state,
+            iteration = iteration,
+            observability = observability,
+            phaseTokenAccumulator = phaseTokenAccumulator,
+            findings = findings,
+          )
+        },
+      ),
+      onGateRunCount = { observability.validationGateProgress() },
+    )
+    return when (cycle) {
+      ValidationGateCycleResult.AbsentFallback ->
+        // Pack declares no gate: agent-run validate owns started/completed observability.
+        runPhaseAttempts(
+          run.copy(agentRunValidateFallback = true),
+          state,
+          observability,
+          phaseTokenAccumulator,
+        )
+      is ValidationGateCycleResult.Terminal -> {
+        observability.started(
+          run.phaseId,
+          run.resolvedAgent.resolvedAgentId,
+          iteration,
+          run.modelDirective,
+          FeatureTaskRuntimePhaseStartReentry.FIRST_VISIT,
+        )
+        when (val terminal = cycle.outcome) {
+          is ValidationGateCycleTerminalOutcome.Completed ->
+            settleRuntimeOwnedValidation(run, iteration, terminal.output.payload, observability)
+          is ValidationGateCycleTerminalOutcome.Blocked ->
+            blockAndPersistInPhase(run, iteration, terminal.reason, observability)
+        }
+      }
+    }
+  }
+
+  private fun launchValidationGateRepair(
+    run: PhaseRun,
+    state: FeatureTaskRuntimeRunState,
+    iteration: Int,
+    observability: FeatureTaskRuntimeRunObservability,
+    phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>>?,
+    findings: ValidationFindingSetProjection,
+  ): ValidationGateAgentRepairResult {
+    val repairRun = run.copy(validationGateFindings = findings)
+    val attempt = attemptOnce(
+      repairRun,
+      state,
+      iteration,
+      observability,
+      priorCorrection = null,
+      phaseTokenAccumulator,
+    )
+    val settled = attempt.settledOutcome
+    val completed = settled?.completedOutput
+    return when {
+      // A schema-valid completed repair receipt means the agent finished its segment; the
+      // coordinator re-runs the runtime-owned gate. Treating completed as Blocked aborted the
+      // cycle after attemptOnce had already accepted the receipt, and left agent-authored
+      // gate_run_count/gate_runs as durable validate evidence (AC-001/AC-008/AC-011).
+      completed != null -> ValidationGateAgentRepairResult.Completed(completed)
+      settled != null -> ValidationGateAgentRepairResult.Blocked(
+        settled.blockedReason
+          ?: settled.pausedReason
+          ?: "Validation repair attempt blocked.",
+      )
+      attempt.malformedOutput || attempt.schemaInvalidRetryReason != null ->
+        ValidationGateAgentRepairResult.Blocked(
+          attempt.schemaInvalidRetryReason ?: "Validation repair attempt produced malformed output.",
+        )
+      else -> ValidationGateAgentRepairResult.Completed(
+        FeatureTaskRuntimePhaseOutput(
+          phaseId = run.phaseId,
+          iteration = iteration,
+          payload =
+          """{"contract_version":"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION","phase_id":"validate",""" +
+            """"status":"completed","summary":"Gate repair segment.","produced_outputs":{}}""",
+        ),
+      )
+    }
+  }
+
+  private fun settleRuntimeOwnedValidation(
+    run: PhaseRun,
+    iteration: Int,
+    outputText: String,
+    observability: FeatureTaskRuntimeRunObservability,
+  ): PhaseOutcome {
+    val acceptedOutput = runCatching {
+      outputValidator.validatePhaseOutput(outputText, sourceLabel = run.phaseId).requireAcceptedOutput(run.phaseId)
+    }.getOrElse { error ->
+      return blockAndPersistInPhase(
+        run,
+        iteration,
+        "Runtime-owned validation settlement did not validate: ${error.message.orEmpty()}",
+        observability,
+      )
+    }
+    val normalizedOutput = acceptedOutput.normalizedOutput
+    val persisted = recorder.recordCompletedPhase(
+      phaseStateRequest(
+        run,
+        iteration,
+        STATUS_COMPLETED,
+        finished = true,
+        outputArtifact = outputText,
+        normalizedOutput = normalizedOutput,
+        repairEvidence = acceptedOutput.repairEvidence,
+      ),
+      run.request.dbPathOverride,
+    )
+    if (!persisted) {
+      return blockAndPersistInPhase(
+        run,
+        iteration,
+        "Runtime-owned validation settlement could not be persisted.",
+        observability,
+        failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+      )
+    }
+    observability.completed(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
+    return PhaseOutcome.completed(
+      FeatureTaskRuntimePhaseOutput(
+        run.phaseId,
+        iteration,
+        normalizedOutput.canonicalJson,
+        normalizedOutput,
+        acceptedOutput.repairEvidence,
+      ),
+    )
+  }
+
+  private fun validationChangedPaths(state: FeatureTaskRuntimeRunState): List<String> {
+    val implement = state.outputs().lastOrNull {
+      it.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT
+    } ?: return emptyList()
+    val envelope = JsonSupport.parseObjectOrNull(implement.payload)?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
+      ?: return emptyList()
+    val produced = JsonSupport.anyToStringAnyMap(envelope["produced_outputs"]).orEmpty()
+    val receipt = JsonSupport.anyToStringAnyMap(produced["implementation_receipt"])
+      ?: produced
+    return (receipt["changed_paths"] as? List<*>)?.filterIsInstance<String>().orEmpty()
   }
 
   private fun runPhaseAttempts(
@@ -3979,7 +4173,21 @@ internal class FeatureTaskRuntimeRunLoop(
     repositoryFingerprint: String?,
   ): AttemptResult {
     val outputText = normalizedOutput.canonicalJson
-    val outputMap = normalizedOutput.envelope
+    // Gate-repair segments stay RUNNING until the coordinator settles with runtime-measured
+    // gate_runs; persisting the agent's validate receipt here would publish agent-authored counts.
+    if (run.validationGateFindings != null) {
+      return AttemptResult.settled(
+        PhaseOutcome.completed(
+          FeatureTaskRuntimePhaseOutput(
+            run.phaseId,
+            iteration,
+            outputText,
+            normalizedOutput,
+            repairEvidence,
+          ),
+        ),
+      )
+    }
     if (isGoalReviewRun(run)) {
       persistGoalReviewCompletion(
         run,
@@ -4260,6 +4468,8 @@ internal class FeatureTaskRuntimeRunLoop(
       specReference = run.request.runInvariants.specReference,
       implementationContinuation = implementationContinuationFor(run),
       validationDepth = run.request.goalContinuation?.validationDepth ?: ValidationDepth.DEFAULT,
+      validationGateFindings = run.validationGateFindings,
+      agentRunValidateFallback = run.agentRunValidateFallback,
     )
     return PreparedLaunch(briefing, prompt)
   }
@@ -4647,6 +4857,9 @@ internal class FeatureTaskRuntimeRunLoop(
     val specSource: SpecSource,
     val reentry: PendingReentry? = null,
     val goalReviewInput: GoalSubtaskReviewInput? = null,
+    val validationGateFindings: ValidationFindingSetProjection? = null,
+    /** True only when validate falls back because the pack declares no validation_gate. */
+    val agentRunValidateFallback: Boolean = false,
   )
 
   private data class PreLaunchBlock(

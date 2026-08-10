@@ -47,7 +47,7 @@ class RustPlatformPackTest {
 
     assertEquals("rust", pack.slug)
     assertEquals("Rust", pack.displayName)
-    assertEquals("1.2", pack.contractVersion)
+    assertEquals("1.4", pack.contractVersion)
     assertEquals(packRoot.resolve("code-review/bill-rust-code-review/content.md"), pack.declaredFiles.baseline)
     assertEquals(packRoot.resolve("quality-check/bill-rust-code-check/content.md"), pack.declaredQualityCheckFile)
     assertEquals(APPROVED_CODE_REVIEW_AREAS, pack.declaredFiles.areas.keys)

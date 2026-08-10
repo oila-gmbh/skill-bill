@@ -1,5 +1,5 @@
 platform: quality_check_only
-contract_version: '1.2'
+contract_version: '1.4'
 display_name: Quality Check Only Fixture
 routing_signals:
   strong:

@@ -260,7 +260,7 @@ class FileSystemReviewRubricResolverTest {
   ) = PlatformManifest(
     slug = "kotlin",
     packRoot = root,
-    contractVersion = "1.2",
+    contractVersion = "1.3",
     routingSignals = RoutingSignals(listOf(".kt"), emptyList()),
     declaredCodeReviewAreas = areas.keys.toList(),
     declaredFiles = DeclaredFiles(baseline, areas),

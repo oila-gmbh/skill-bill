@@ -23,7 +23,7 @@ class IosPlatformPackTest {
 
     assertEquals("ios", pack.slug)
     assertEquals("iOS", pack.displayName)
-    assertEquals("1.2", pack.contractVersion)
+    assertEquals("1.4", pack.contractVersion)
     assertEquals(
       packRoot.resolve("code-review/bill-ios-code-review/content.md"),
       pack.declaredFiles.baseline,

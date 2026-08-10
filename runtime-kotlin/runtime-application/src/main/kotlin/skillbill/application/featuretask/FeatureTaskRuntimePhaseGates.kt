@@ -1,8 +1,11 @@
 package skillbill.application.featuretask
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.application.featuretask.validation.FeatureTaskRuntimeValidationGateCoordinator
+import skillbill.application.featuretask.validation.ValidationGateResolver
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
+import skillbill.ports.validation.ValidationGateRunner
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
 
@@ -15,6 +18,9 @@ class FeatureTaskRuntimePhaseGates(
   val gitOperations: WorkflowGitOperations,
   val specGate: FeatureTaskRuntimeSpecGate,
   val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
+  val validationGateResolver: ValidationGateResolver,
+  val validationGateRunner: ValidationGateRunner,
+  val validationGateCoordinator: FeatureTaskRuntimeValidationGateCoordinator,
   // The checkpoint-keyed shared review evidence seam. Defaulted so a suite constructing the gates
   // directly gets the pre-store behaviour (derive in line, persist nothing) rather than a new argument.
   val sharedEvidenceResolver: FeatureTaskRuntimeSharedEvidenceResolverPort =

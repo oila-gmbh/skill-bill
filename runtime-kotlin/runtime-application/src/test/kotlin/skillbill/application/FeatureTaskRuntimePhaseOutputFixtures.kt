@@ -48,7 +48,9 @@ internal fun validProducedOutputs(phaseId: String): String = when (phaseId) {
     """{"validation_result":{
       "validation_status":"passed",
       "checks":["FooTest"],
-      "repository_checkpoint":{"fingerprint":"fixture-checkpoint-1"}
+      "repository_checkpoint":{"fingerprint":"fixture-checkpoint-1"},
+      "gate_run_count":1,
+      "gate_runs":[{"duration_ms":1,"outcome":"passed","cache_mode":"forced_full","executed_work_units":1}]
     }}
     """.trimIndent()
   "write_history" ->

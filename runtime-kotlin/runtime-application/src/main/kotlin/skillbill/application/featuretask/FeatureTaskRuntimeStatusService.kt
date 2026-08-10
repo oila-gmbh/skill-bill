@@ -95,6 +95,7 @@ class FeatureTaskRuntimeStatusService(
         auditRepairProgress,
         cachedCounterDisagreement(auditRepairProgress, cachedAuditRepairProgress),
       ),
+      gateRunCount = recorder.loadValidationGateProgress(request.workflowId, request.dbPathOverride)?.gateRunCount,
     )
   }
 

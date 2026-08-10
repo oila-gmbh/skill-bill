@@ -1137,7 +1137,7 @@ Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-infra-sqlite, runti
 - Added `GoalStatsResult` application result and `ReviewService.goalStats()` method; `ReviewStatsContractMappers.toGoalStatsPayload()` serializes the full chain (GoalWorkflowStats → GoalRunSummary → GoalBlockedSubtaskSummary). reusable
 - Wired the full goal-stats surface: `McpRuntime.goalStats()`, `McpToolDispatcher` `"goal_stats"` entry, `GoalStatsCommand` CLI command added to `FeatureStatsCommands`; MCP and CLI mapper extensions follow the existing `implement_stats`/`verify_stats` conventions. reusable
 - CLI `goal-stats` follows the same `--format` option and human-readable/JSON discipline as `implement-stats`/`verify-stats`; graceful empty-store output matches existing commands' behavior (no fabricated zero-rates without a "no runs recorded" signal).
-- `@file:Suppress("TooManyFunctions")` added on `McpInputSchemas.kt` and `ReviewStatsContractMappers.kt` per existing project precedent — 11-function detekt limit breached at a pre-existing boundary condition.
+- `@file:Suppress("TooManyFunctions")` was added on `McpInputSchemas.kt` and `ReviewStatsContractMappers.kt` when the 11-function detekt limit was breached at a pre-existing boundary condition; that records what landed, not a preferred pattern over root-cause fixes.
 - Tests: 3 new `GoalTelemetryStoreTest` (topBlockedSubtasks assertions), 4 new `ApplicationPersistencePortTest` (service + all-blocked/all-skipped/single-run edge cases), 2 new `McpStdioServerTest` (`goal_stats` populated + empty), 3 new `CliRuntimeTest` (`goal-stats` human-readable + JSON + empty).
 Feature flag: N/A
 Acceptance criteria: 6/6 implemented
@@ -1195,7 +1195,7 @@ Areas: runtime-kotlin/runtime-domain, runtime-kotlin/runtime-ports, runtime-kotl
 - Migration v3 `add-goal-telemetry-tables` creates `goal_run_sessions` (PK `workflow_id`) + `goal_subtask_events` (composite PK `(issue_key,subtask_id,workflow_id)`); that PK IS the AC#4 resume dedupe identity. Base schema + migrations 1–2 byte-unchanged. reusable
 - Resume-safety pattern: idempotent save via `ON CONFLICT DO NOTHING` + emit-once outbox gated on `*_event_emitted_at` (no double-count, no re-emit on resume), mirroring the existing lifecycle store seams. reusable
 - Gotcha: stats read must strict-parse — `InvalidGoalTelemetryRowError` accessors are kept ISOLATED from the permissive map helpers so malformed rows loud-fail (AC#5); reusing the permissive path would silently truncate. reusable
-- Detekt `TooManyFunctions` on the legitimately-grown interface/store suppressed per existing project precedent; goal payload maps follow lifecycle convention (data-only, identifying/free-text gated behind level==full). Subtask 3 calls the writes from GoalRunner; subtask 4 reads `goalStats()` for the `goal_stats` MCP tool + CLI.
+- Detekt `TooManyFunctions` on the legitimately-grown interface/store was suppressed for the threshold breach; that records what landed, not a preferred pattern over root-cause fixes. Goal payload maps follow lifecycle convention (data-only, identifying/free-text gated behind level==full). Subtask 3 calls the writes from GoalRunner; subtask 4 reads `goalStats()` for the `goal_stats` MCP tool + CLI.
 Feature flag: N/A
 Acceptance criteria: 6/6 implemented
 

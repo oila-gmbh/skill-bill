@@ -1,5 +1,5 @@
 class: pr-description
-contract_version: "1.2"
+contract_version: "1.4"
 
 matchers:
   - exact: bill-pr-description

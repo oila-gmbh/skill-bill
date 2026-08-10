@@ -12,7 +12,7 @@ class PlatformPackLegacyRoutingCompatibilityTest {
   fun `omitted routed lane metadata preserves legacy manifest behavior`() {
     val manifest = """
       platform: scenarioslug
-      contract_version: "1.2"
+      contract_version: "1.4"
       routing_signals:
         strong: [".kt"]
       declared_code_review_areas: [architecture]

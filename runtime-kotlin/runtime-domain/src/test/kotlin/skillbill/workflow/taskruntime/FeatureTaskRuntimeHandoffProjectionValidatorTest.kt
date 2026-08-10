@@ -296,7 +296,14 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
 
   @Test
   fun `validation_receipt declared fields stay validation_status checks repository_checkpoint`() {
-    val expected = listOf("validation_status", "checks", "repository_checkpoint")
+    val expected = listOf(
+      "validation_status",
+      "checks",
+      "repository_checkpoint",
+      "gate_run_count",
+      "gate_runs",
+      "suppression_justifications",
+    )
     listOf(
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH,

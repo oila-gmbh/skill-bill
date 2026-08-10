@@ -1,5 +1,5 @@
 platform: generic
-contract_version: "1.2"
+contract_version: "1.4"
 display_name: Generic
 
 routing_signals:

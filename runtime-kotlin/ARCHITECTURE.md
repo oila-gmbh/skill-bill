@@ -491,6 +491,9 @@ runtime-ports
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal.fromArtifactMap`
     - `skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing.toArtifactMap`
     - `skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRunRecord.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress.fromArtifactMap`
     - `skillbill.application.telemetry.lifecycleOkPayload`
     - `skillbill.application.telemetry.lifecycleSkippedPayload`
     - `skillbill.application.telemetry.lifecycleErrorPayload`
@@ -1267,6 +1270,9 @@ Categories:
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal.fromArtifactMap`
 - `skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing.toArtifactMap`
 - `skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRunRecord.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress.fromArtifactMap`
 - `skillbill.application.model.WorkflowUpdateRequest.stepUpdates`
 - `skillbill.application.model.WorkflowUpdateRequest.artifactsPatch`
 - `skillbill.application.model.DecompositionManifestWriteRequest.planningResult`

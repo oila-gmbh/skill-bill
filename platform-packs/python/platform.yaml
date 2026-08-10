@@ -1,5 +1,5 @@
 platform: python
-contract_version: "1.2"
+contract_version: "1.4"
 display_name: Python
 
 routing_signals:

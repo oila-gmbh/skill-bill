@@ -305,7 +305,7 @@ class InstallPlanBuilderTest {
     val badVersionManifest = badVersion.repoRoot.resolve("platform-packs/kotlin/platform.yaml")
     Files.writeString(
       badVersionManifest,
-      Files.readString(badVersionManifest).replace("contract_version: \"1.2\"", "contract_version: \"9.9\""),
+      Files.readString(badVersionManifest).replace("contract_version: \"1.4\"", "contract_version: \"9.9\""),
     )
 
     val versionError = assertFailsWith<ContractVersionMismatchError> {
@@ -696,7 +696,7 @@ class InstallPlanBuilderTest {
       classRoot.resolve("install-plan-test.yaml"),
       """
       |class: install-plan-test
-      |contract_version: "1.2"
+      |contract_version: "1.4"
       |matchers:
       |  - exact: $skillName
       |pointers:

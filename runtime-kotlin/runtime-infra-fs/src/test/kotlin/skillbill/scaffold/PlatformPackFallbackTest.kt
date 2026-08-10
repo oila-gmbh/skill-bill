@@ -27,7 +27,7 @@ class PlatformPackFallbackTest {
     packRoot.resolve("platform.yaml").writeText(
       """
       platform: custom-neutral
-      contract_version: "1.2"
+      contract_version: "1.4"
       routing_signals:
         strong: [fallback-only]
       fallback_capabilities: [code-review]
@@ -79,7 +79,7 @@ class PlatformPackFallbackTest {
     packRoot.resolve("platform.yaml").writeText(
       """
       platform: malformed
-      contract_version: "1.2"
+      contract_version: "1.4"
       routing_signals:
         strong: [fallback-only]
       fallback_capabilities: [quality-check]
@@ -95,7 +95,7 @@ class PlatformPackFallbackTest {
   private fun pack(slug: String, review: Boolean) = PlatformManifest(
     slug = slug,
     packRoot = tempDir.resolve(slug),
-    contractVersion = "1.2",
+    contractVersion = "1.3",
     routingSignals = RoutingSignals(listOf("fallback-only"), emptyList()),
     declaredCodeReviewAreas = emptyList(),
     declaredFiles = DeclaredFiles(

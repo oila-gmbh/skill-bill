@@ -110,6 +110,74 @@ data class GovernedAddonActivation(
   }
 }
 
+/**
+ * Pack-declared validation gate. Absence on [PlatformManifest] is null (not empty argv).
+ * Commands are pack-owned argv arrays; the runtime never hardcodes stack-specific flags.
+ */
+data class ValidationGateDeclaration(
+  val fullGateCommand: List<String>,
+  val cacheBypassingFullGateCommand: List<String>,
+  val buildOnlyCommand: List<String>,
+  val findings: ValidationGateFindingsLocator,
+  /**
+   * Pack-declared suppression marker literals. Empty means this pack is not
+   * gated for suppressions; a malformed declaration never coerces to empty.
+   */
+  val suppressionMarkers: List<String> = emptyList(),
+) {
+  init {
+    require(fullGateCommand.isNotEmpty() && fullGateCommand.all(String::isNotBlank)) {
+      "validation_gate.full_gate_command must be a non-empty argv of non-blank strings."
+    }
+    require(
+      cacheBypassingFullGateCommand.isNotEmpty() &&
+        cacheBypassingFullGateCommand.all(String::isNotBlank),
+    ) {
+      "validation_gate.cache_bypassing_full_gate_command must be a non-empty argv of non-blank strings."
+    }
+    require(buildOnlyCommand.isNotEmpty() && buildOnlyCommand.all(String::isNotBlank)) {
+      "validation_gate.build_only_command must be a non-empty argv of non-blank strings."
+    }
+    require(suppressionMarkers.all(String::isNotBlank)) {
+      "validation_gate.suppression_markers entries must be non-blank when present."
+    }
+  }
+}
+
+enum class ValidationGateFindingsFormat(val wireValue: String) {
+  JUNIT_XML("junit_xml"),
+  ;
+
+  companion object {
+    fun fromWire(value: String): ValidationGateFindingsFormat? = entries.firstOrNull { it.wireValue == value }
+  }
+}
+
+enum class ValidationGateExecutedWorkFormat(val wireValue: String) {
+  GRADLE_ACTIONABLE_SUMMARY("gradle_actionable_summary"),
+  ;
+
+  companion object {
+    fun fromWire(value: String): ValidationGateExecutedWorkFormat? = entries.firstOrNull { it.wireValue == value }
+  }
+}
+
+data class ValidationGateExecutedWorkSignal(
+  val format: ValidationGateExecutedWorkFormat,
+)
+
+data class ValidationGateFindingsLocator(
+  val format: ValidationGateFindingsFormat,
+  val artifactGlobs: List<String>,
+  val executedWork: ValidationGateExecutedWorkSignal? = null,
+) {
+  init {
+    require(artifactGlobs.isNotEmpty() && artifactGlobs.all(String::isNotBlank)) {
+      "validation_gate.findings.artifact_globs must be a non-empty list of non-blank globs."
+    }
+  }
+}
+
 data class PlatformManifest(
   val slug: String,
   val packRoot: Path,
@@ -122,6 +190,7 @@ data class PlatformManifest(
   val displayName: String? = null,
   val notes: String? = null,
   val declaredQualityCheckFile: Path? = null,
+  val validationGate: ValidationGateDeclaration? = null,
   val codeReviewComposition: CodeReviewComposition? = null,
   val fallbackCapabilities: Set<String> = emptySet(),
   val pointers: List<PointerSpec> = emptyList(),

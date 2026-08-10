@@ -2163,6 +2163,10 @@ class RuntimeArchitectureTest {
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal.fromArtifactMap",
       "skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing.toArtifactMap",
       "skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing.fromArtifactMap",
+      // SKILL-180: runtime-owned validation-gate progress at the durable workflow-artifact seam.
+      "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRunRecord.toArtifactMap",
+      "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress.toArtifactMap",
+      "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress.fromArtifactMap",
       // SKILL-52.2 subtask 2: the 11 scaffold input raw-map allow-list entries — the two public
       // application + port `scaffold(payload, dryRun)` overloads on
       // `skillbill.application.ScaffoldService` / `skillbill.ports.scaffold.ScaffoldGateway`

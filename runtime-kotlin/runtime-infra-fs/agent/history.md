@@ -178,7 +178,7 @@ Areas: runtime-infra-fs/scaffold/authoring, runtime-infra-fs/install/plan, runti
 - Inertness: with no opted-in pack skill the new arg is empty and behavior is byte-identical (test + real-repo `skill-bill validate` 0 issues).
 - PD8: new `MissingBaselinePlatformSelectionError` (carries selecting/required slugs + manifest path) + plan-time guard in `InstallPlanPolicy.buildPlanDraft`. ALL selection is trivially safe; packs without baseline layers unaffected.
 - Validate-seam parity: `validateInternalSidecarReferences` and `internalSkillNames` (README exclusion) now scan the union of base+pack skill files; `validateInternalSidecarCollisions` already unioned both.
-- detekt: `InstallPlanPolicy` and `stageInstalledSkill` crossed thresholds (TooManyFunctions / LongParameterList+LongMethod) — resolved with `@Suppress` + one-line rationale (established repo pattern).
+- detekt: `InstallPlanPolicy` and `stageInstalledSkill` crossed thresholds (TooManyFunctions / LongParameterList+LongMethod) — a `@Suppress` with one-line rationale was applied for the threshold breach; that records what landed, not a preferred pattern over root-cause fixes.
 - Pre-existing unrelated red: `CliFeatureTaskRuntimeRuntimeTest "feature-task-runtime run requires issue key and spec path"` fails on the clean tree too (zcode prose-only env refusal precedes the issue_key check) — not caused by this change.
 Feature flag: N/A
 Acceptance criteria: subtask-1 10/10 implemented
@@ -201,7 +201,7 @@ Areas: runtime-infra-fs/install, runtime-infra-fs/nativeagent, runtime-domain/in
 - Install-path layer: `SUPPORTED_AGENTS += "zcode"`; `agentPaths` "zcode"→`.zcode/skills`; `agentIsPresent` "zcode"→`listOf(.zcode)`; `agentDirectory` "zcode"→`InstallOperations.zcodeAgentsPath(home)`, backed by new `zcodeAgentsPath(home)=home.resolve(".zcode/agents")`.
 - Deliberate non-changes: `RUNTIME_REFUSED_AGENTS` untouched (only OPENCODE refused); `INVOKING_AGENT_CONTEXT_SIGNALS` left CLAUDE/CODEX/OPENCODE only — zcode has no distinct invoking-context signal yet (Decision C, AC14).
 - Exhaustive-`when` sites that WON'T compile until a ZCODE branch is added: McpRegistrationOperations (register/unregister/configPathFor), SkillRemoveJvmFileSystem.nativeProvider, JvmRuntimeSkillRemoveGateway, ConfirmDeletionDialog.displayLabelFor, FileSystemInstallAdapters NativeAgentLinkProvider link/unlink (+ new Junie-modeled `InstallNativeAgentOperations.link/unlinkZcodeAgents`).
-- detekt `TooManyFunctions` trips on `InstallOperations` and `InstallNativeAgentOperations` once the zcode path resolver + link/unlink pair land — resolve with `@Suppress("TooManyFunctions")` + one-line rationale (established 67-file pattern), not a refactor.
+- detekt `TooManyFunctions` trips on `InstallOperations` and `InstallNativeAgentOperations` once the zcode path resolver + link/unlink pair land — a `@Suppress("TooManyFunctions")` with one-line rationale was applied for the threshold breach; that records what landed and does not rule out refactoring or prescribe suppression as the preferred fix.
 - Tests extended in lockstep: FirstRunSetupModelsTest (supportedIds contains "zcode"), InstallPlanContractCoverageTest + InstallPlanSchemaValidatesExistingFixturesTest (add `.zcode` fixture-dir literal), and hardcoded provider-COUNT asserts bumped 5→6 (SkillRemoveTest, InstallPlanModelTest).
 - Pre-existing unrelated red: `InstallerShellDelegationTest "install plan summary is printed before any mutation"` fails on the base commit too — not caused by this change.
 Feature flag: N/A

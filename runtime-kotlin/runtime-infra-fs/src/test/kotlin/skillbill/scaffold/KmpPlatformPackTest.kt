@@ -178,7 +178,7 @@ class KmpPlatformPackTest {
 
     assertEquals("kmp", pack.slug)
     assertEquals("Android & Kotlin Multiplatform", pack.displayName)
-    assertEquals("1.2", pack.contractVersion)
+    assertEquals("1.4", pack.contractVersion)
     assertEquals(KMP_CODE_REVIEW_AREAS, pack.declaredCodeReviewAreas.toSet())
     assertEquals(KMP_CODE_REVIEW_AREAS, pack.declaredFiles.areas.keys)
     assertEquals(KMP_CODE_REVIEW_AREAS, pack.areaMetadata.keys)

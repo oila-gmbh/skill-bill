@@ -11,8 +11,12 @@ import skillbill.ports.workflow.RuntimePhaseFileManifestGitOperations
 import skillbill.ports.workflow.RuntimePhaseFileManifestGitOperationsProvider
 import skillbill.ports.workflow.ScopedStagingGitOperations
 import skillbill.ports.workflow.ScopedStagingGitOperationsProvider
+import skillbill.ports.workflow.SuppressionEvidenceGitOperations
+import skillbill.ports.workflow.SuppressionEvidenceGitOperationsProvider
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
+import skillbill.ports.workflow.model.WorkflowScopedPathContent
+import skillbill.ports.workflow.model.WorkflowScopedPathContentsResult
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksResult
 import skillbill.ports.workflow.model.WorkflowWorktreeActivityResult
@@ -36,13 +40,15 @@ class GitWorkflowGitOperations :
   RepositoryFingerprintGitOperationsProvider,
   RepositoryOwnedPathsGitOperationsProvider,
   RuntimePhaseFileManifestGitOperationsProvider,
-  ScopedStagingGitOperationsProvider {
+  ScopedStagingGitOperationsProvider,
+  SuppressionEvidenceGitOperationsProvider {
   override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations = GitGoalSubtaskReviewOperations
   override val scopedStagingOperations: ScopedStagingGitOperations = GitScopedStagingOperations
   override val runtimePhaseFileManifestOperations: RuntimePhaseFileManifestGitOperations =
     GitRuntimePhaseFileManifestOperations
   override val repositoryFingerprintOperations: RepositoryFingerprintGitOperations = GitRepositoryFingerprintOperations
   override val repositoryOwnedPathsOperations: RepositoryOwnedPathsGitOperations = GitRepositoryOwnedPathsOperations
+  override val suppressionEvidenceOperations: SuppressionEvidenceGitOperations = GitSuppressionEvidenceOperations
 }
 
 /**
@@ -329,6 +335,93 @@ private object GitRuntimePhaseFileManifestOperations : RuntimePhaseFileManifestG
     WorkflowGitOperationResult(status = "ok", value = "")
   } else {
     runGitCommand(repoRoot, "diff", "--name-only", beforeCommit, afterCommit)
+  }
+}
+
+/**
+ * Rename-aware base/HEAD content pairs for the validate suppression delta.
+ * Inventory stays the caller's scoped path list — never porcelain-wide dirty siblings.
+ */
+private object GitSuppressionEvidenceOperations : SuppressionEvidenceGitOperations {
+  override fun scopedPathContentsAgainstBase(
+    repoRoot: Path,
+    baseRef: String,
+    headPaths: List<String>,
+  ): WorkflowScopedPathContentsResult {
+    if (baseRef.isBlank()) {
+      return WorkflowScopedPathContentsResult(
+        status = "error",
+        error = "Suppression evidence requires a non-blank base ref.",
+      )
+    }
+    val scoped = headPaths.map(String::trim).filter(String::isNotEmpty).distinct()
+    if (scoped.isEmpty()) {
+      return WorkflowScopedPathContentsResult(status = "ok", pairs = emptyList())
+    }
+    val renameToBase = renameBasePaths(repoRoot, baseRef)
+    if (renameToBase.status != "ok") {
+      return WorkflowScopedPathContentsResult(status = "error", error = renameToBase.error)
+    }
+    val pairs = scoped.map { headPath ->
+      val basePath = renameToBase.value[headPath] ?: headPath
+      val headContent = readWorktreeContent(repoRoot, headPath)
+      val baseContent = readContentAtRef(repoRoot, baseRef, basePath)
+      WorkflowScopedPathContent(
+        headPath = headPath,
+        basePath = basePath.takeIf { baseContent != null },
+        headContent = headContent,
+        baseContent = baseContent,
+      )
+    }
+    return WorkflowScopedPathContentsResult(status = "ok", pairs = pairs)
+  }
+
+  private data class RenameMapResult(
+    val status: String,
+    val value: Map<String, String> = emptyMap(),
+    val error: String = "",
+  )
+
+  /** Maps HEAD path → base path for renames detected against [baseRef]. */
+  private fun renameBasePaths(repoRoot: Path, baseRef: String): RenameMapResult {
+    val diff = runGitCommand(repoRoot, "diff", "-M", "--name-status", "--find-renames", baseRef)
+    if (!diff.ok) {
+      return RenameMapResult(status = "error", error = diff.error.ifBlank { "git diff -M --name-status failed." })
+    }
+    val renames = linkedMapOf<String, String>()
+    diff.value.lineSequence()
+      .map(String::trim)
+      .filter(String::isNotEmpty)
+      .forEach { line ->
+        val parts = line.split('\t')
+        if (parts.size >= GIT_RENAME_NAME_STATUS_MIN_FIELDS && parts[0].startsWith("R")) {
+          val oldPath = parts[1]
+          val newPath = parts[2]
+          if (oldPath.isNotBlank() && newPath.isNotBlank()) {
+            renames[newPath] = oldPath
+          }
+        }
+      }
+    return RenameMapResult(status = "ok", value = renames)
+  }
+
+  private fun readWorktreeContent(repoRoot: Path, path: String): String? {
+    val resolved = repoRoot.resolve(path).normalize()
+    if (!resolved.startsWith(repoRoot.normalize())) return null
+    return try {
+      if (!Files.isRegularFile(resolved, LinkOption.NOFOLLOW_LINKS)) {
+        null
+      } else {
+        Files.readString(resolved)
+      }
+    } catch (_: IOException) {
+      null
+    }
+  }
+
+  private fun readContentAtRef(repoRoot: Path, baseRef: String, path: String): String? {
+    val result = runGitCommand(repoRoot, "show", "$baseRef:$path")
+    return if (result.ok) result.value else null
   }
 }
 
@@ -680,5 +773,6 @@ private const val GIT_STATUS_CODE_LENGTH = 2
 private const val GIT_STATUS_PATH_OFFSET = 3
 private const val GIT_CHANGED_FILE_SAMPLE_LIMIT = 10
 private const val GIT_NUMSTAT_PART_LIMIT = 3
+private const val GIT_RENAME_NAME_STATUS_MIN_FIELDS = 3
 private const val GIT_ERROR_OUTPUT_LIMIT = 4_000
 private const val GIT_SELECTED_DIFF_MIN_READ_LINE_BYTES = 4_096
