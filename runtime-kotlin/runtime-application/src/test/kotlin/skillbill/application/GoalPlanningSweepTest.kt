@@ -666,6 +666,7 @@ class GoalPlanningSweepTest {
     }
     val state = harness.stateFor(manifest(subtaskCount = 1))
     harness.sweep.prepare(state, harness.request())
+    val launchCount = harness.launcher.requests.size
     val sharedBefore = requireNotNull(harness.fixtures.database.repository.findSharedPreplan(harness.identity()))
     assertNotNull(
       harness.fixtures.database.repository.findSubtaskPlan(
@@ -674,7 +675,8 @@ class GoalPlanningSweepTest {
         ".feature-specs/SKILL-56-goal/spec_subtask_1.md",
       ),
     )
-    harness.manifestFileStore.replaceSpec("spec.md", "# Initial feature contract edited for heading drift")
+    val refreshedParentSpec = "# Initial feature contract edited for heading drift"
+    harness.manifestFileStore.replaceSpec("spec.md", refreshedParentSpec)
 
     val outcome = harness.sweep.prepare(state, harness.request())
 
@@ -683,13 +685,27 @@ class GoalPlanningSweepTest {
     assertTrue(sharedAfter.preplanPayload != sharedBefore.preplanPayload)
     assertTrue(sharedAfter.payloadSha256 != sharedBefore.payloadSha256)
     assertEquals(1, harness.fixtures.database.repository.cascadeAfterRefreshCalls)
-    assertNull(
+    assertEquals(
+      listOf("preplan", "plan"),
+      harness.launcher.phases.drop(launchCount),
+      "changed-set refresh must cascade then regenerate the discarded plan",
+    )
+    assertNotNull(
       harness.fixtures.database.repository.findSubtaskPlan(
         harness.identity(),
         1,
         ".feature-specs/SKILL-56-goal/spec_subtask_1.md",
       ),
-      "changed-set refresh must discard plans through the shared cascade helper",
+      "post-cascade plan regeneration must leave a settled plan row",
+    )
+    val regenPlanPrompt = harness.launcher.requests
+      .drop(launchCount)
+      .single { harness.launcher.phaseOf(it) == "plan" }
+      .skillRunRequest.promptOverride.orEmpty()
+    assertContains(
+      regenPlanPrompt,
+      refreshedParentSpec,
+      message = "regenerated plan must use the refreshed planning packet, not the pre-refresh recovered packet",
     )
   }
 

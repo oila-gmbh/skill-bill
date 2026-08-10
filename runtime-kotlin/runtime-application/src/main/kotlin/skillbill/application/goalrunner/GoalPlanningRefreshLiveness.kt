@@ -62,7 +62,7 @@ internal fun resolveChildExecutionLiveness(
 
 internal fun refuseRefreshReason(issueKey: String, liveness: ExecutionLiveness): String? = when (liveness) {
   ExecutionLiveness.LIVE ->
-    "Goal '$issueKey' is live; refuse shared-preplan refresh while a child or parent run is active."
+    "Goal '$issueKey' is live; refuse shared-preplan refresh while the current child run is active."
   ExecutionLiveness.UNKNOWN ->
     "Goal '$issueKey' has unknown execution liveness; refuse shared-preplan refresh."
   ExecutionLiveness.IDLE -> null

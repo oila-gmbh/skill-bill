@@ -129,7 +129,7 @@ class DefaultGoalPlanningSweep(
     if (existingShared != null && recoveredPacket == null) {
       return preSweepStopped(request, "Goal planning shared preplan does not contain a valid shared context packet.")
     }
-    val shared = runCatching { gatherSharedContext(state, request, recoveredPacket) }.getOrElse { error ->
+    var shared = runCatching { gatherSharedContext(state, request, recoveredPacket) }.getOrElse { error ->
       return preSweepStopped(request, sharedContextReason(error))
     }
     val activeSubtasks = state.manifest.subtasks.filter {
@@ -167,23 +167,25 @@ class DefaultGoalPlanningSweep(
         }.getOrElse { error -> return preSweepStopped(request, preparationStateReadReason(error)) }
           ?: first.checkpoint
         val afterPacket = planningPacketFrom(afterRefresh) ?: shared.planningPacket
-        val afterShared = shared.copy(planningPacket = afterPacket)
-        when (val second = classifyRecoverability(afterRefresh, currentProvenance, afterShared)) {
-          is GoalPlanningProvenanceRecoverability.Invalid -> return incompatibleProvenance(afterShared)
+        // Continue prepare with the post-refresh packet so cascaded plan regen uses the same
+        // parent_spec/catalog the new preplan selected against, not the pre-refresh recovered packet.
+        shared = shared.copy(planningPacket = afterPacket)
+        when (val second = classifyRecoverability(afterRefresh, currentProvenance, shared)) {
+          is GoalPlanningProvenanceRecoverability.Invalid -> return incompatibleProvenance(shared)
           is GoalPlanningProvenanceRecoverability.Reuse -> second.provenance to afterRefresh
           is GoalPlanningProvenanceRecoverability.StaleValid -> {
             // Latch: a second stale classification in this prepare must not re-enter refresh.
             refreshStaleSharedPreplan(
               existing = afterRefresh,
-              shared = afterShared,
+              shared = shared,
               state = state,
               request = request,
               currentProvenance = currentProvenance,
               refreshedThisPrepare = refreshedThisPrepare,
             ).getOrElse { error ->
               return when (error) {
-                is RefreshRefused -> stopped(afterShared, 0, error.reason, PHASE_PREPLAN)
-                else -> stopped(afterShared, 0, error.message.orEmpty(), PHASE_PREPLAN)
+                is RefreshRefused -> stopped(shared, 0, error.reason, PHASE_PREPLAN)
+                else -> stopped(shared, 0, error.message.orEmpty(), PHASE_PREPLAN)
               }
             }.let { it.provenance to it.checkpoint }
           }
@@ -376,9 +378,10 @@ class DefaultGoalPlanningSweep(
     shared: GoalPlanningSharedContext,
     request: GoalRunnerRunRequest,
     provenance: GoalPlanningContractProvenance,
-  ): Result<SharedGoalPreplanCheckpoint> = produceSharedPreplanCheckpoint(shared, request, provenance).map { produced ->
-    produced.also { checkpoint.recheckpointSharedPreplan(it, shared.dbPathOverride) }
-  }
+  ): Result<SharedGoalPreplanCheckpoint> =
+    produceSharedPreplanCheckpoint(shared, request, provenance).mapCatching { produced ->
+      produced.also { checkpoint.recheckpointSharedPreplan(it, shared.dbPathOverride) }
+    }
 
   private fun produceSharedPreplanCheckpoint(
     shared: GoalPlanningSharedContext,
