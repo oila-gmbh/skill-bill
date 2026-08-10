@@ -92,12 +92,12 @@ subtasks:
 - id: 6
   name: "Producer-evidence identity across attempts and agents"
   spec_path: ".feature-specs/SKILL-176-goal-child-resume-self-heal/spec_subtask_6_producer-evidence-identity.md"
-  status: "pending"
+  status: "in_progress"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260810-102715-fmdf"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "validate"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

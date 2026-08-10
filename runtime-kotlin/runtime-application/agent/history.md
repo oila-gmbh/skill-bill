@@ -1,3 +1,13 @@
+## [2026-08-10] SKILL-176 subtask 6 — Producer-evidence identity includes agent_id
+Areas: runtime-application/featuretask, runtime-ports/persistence, runtime-infra-sqlite/db, runtime-kotlin/agent
+- Producer-output evidence identity widened to `(workflow_id, phase_id, generation, attempt, agent_id)` so a second agent re-entering the same attempt retains its own immutable row instead of Conflict-crashing phase recording
+- Existing rows stay byte-identical; same-agent divergent bytes still Conflict; identical re-retain stays a silent no-op; `producerOutput` / `readProducerOutput` resolve by the calling producer
+- SQLite rebuilds `producer_output_evidence` with `agent_id` in the PRIMARY KEY and copies prior rows unchanged (no backfill — `agent_id` was already durable)
+- Decision recorded in `runtime-kotlin/agent/decisions.md`: widen identity; reject last-writer-wins and attempt-advance-on-agent-switch
+- Regression: seeds `review` gen 0 attempt 2 under one agent, retains different bytes under another, asserts both rows survive and the run continues
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-08-10] SKILL-180 subtask 2 — Runtime-owned validation gate
 Areas: runtime-application/featuretask/validation, runtime-domain/workflow/taskruntime, runtime-ports/validation, runtime-infra-fs, platform-packs/*/platform.yaml, orchestration/contracts, docs, AGENTS.md
 - Validate gate execution moved from the agent into the runtime: resolve pack-declared `validation_gate` argv, run in repo root, project bounded findings for repair, rerun to verify, cap iterations, persist measured `gate_run_count` / `gate_runs`.
