@@ -432,12 +432,13 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
   /**
    * Resume-side coherence for the remediation checkpoint commit → base-record window (SKILL-176).
    *
-   * Detects committed-but-unrecorded (latest review_fix checkpoint on the branch is not the stored
-   * base) and recorded-but-superseded (stored base is not an ancestor of HEAD), then updates
-   * `remediation_base_sha` to the coherent tip before review preparation consumes it. Every heal
-   * appends durable evidence under [GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY] with an explicit reason.
-   * Returns the post-heal state when a write occurred, the current state when already coherent, or
-   * null when there is no review state to reconcile.
+   * Advances `remediation_base_sha` to the latest on-branch review_fix identity only for
+   * committed-but-unrecorded cases (stored null or a strict ancestor of that identity). Keeps a
+   * Skip-recorded descendant tip that is still an ancestor of HEAD. Replaces with HEAD only when
+   * the stored base is recorded-but-superseded (not an ancestor of HEAD). Every heal appends durable
+   * evidence under [GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY] with an explicit reason. Returns the
+   * post-heal state when a write occurred, the current state when already coherent, or null when
+   * there is no review state to reconcile.
    */
   internal fun reconcileRemediationBaseCoherence(
     workflowId: String,
@@ -467,8 +468,17 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
       }
       ?.commitSha
     val stored = state.remediationBaseSha
+    fun isStrictAncestor(ancestor: String, descendant: String): Boolean {
+      if (ancestor == descendant) return false
+      val ancestry = gitOperations.isCommitAncestor(repoRoot, ancestor, descendant)
+      return ancestry.ok && ancestry.value == "true"
+    }
     val target = when {
-      latestRemediationOnBranch != null && latestRemediationOnBranch != stored -> latestRemediationOnBranch
+      // Committed-but-unrecorded: advance only when stored is missing or behind the identity.
+      // A Skip-recorded descendant tip (stored ahead of the identity, still on the branch) stays.
+      latestRemediationOnBranch != null &&
+        (stored == null || isStrictAncestor(stored, latestRemediationOnBranch)) ->
+        latestRemediationOnBranch
       stored != null -> {
         val ancestry = gitOperations.isCommitAncestor(repoRoot, stored, headSha)
         when {

@@ -167,6 +167,13 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     val checkpointSha: String,
   )
 
+  private data class SkipRecordedDescendantFixture(
+    val repoRoot: Path,
+    val parent: String,
+    val checkpointSha: String,
+    val skipRecordedTip: String,
+  )
+
   private data class UnreachableGitFixture(
     val repoRoot: Path,
     val unreachable: String,
@@ -212,6 +219,25 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     git(repoRoot, "commit", "-am", "chore(SKILL-176): remediation checkpoint")
     val checkpointSha = git(repoRoot, "rev-parse", "HEAD")
     return CommittedUnrecordedFixture(repoRoot, parent, checkpointSha)
+  }
+
+  private fun skipRecordedDescendantFixture(): SkipRecordedDescendantFixture {
+    val repoRoot = Files.createTempDirectory("skillbill-durable-skip-descendant")
+    git(repoRoot, "init", "-b", "feat/skill-15")
+    git(repoRoot, "config", "user.email", "skill-bill@example.test")
+    git(repoRoot, "config", "user.name", "Skill Bill")
+    git(repoRoot, "config", "commit.gpgsign", "false")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "parent\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "parent")
+    val parent = git(repoRoot, "rev-parse", "HEAD")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "checkpoint\n")
+    git(repoRoot, "commit", "-am", "chore(SKILL-176): remediation checkpoint")
+    val checkpointSha = git(repoRoot, "rev-parse", "HEAD")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "skip-tip\n")
+    git(repoRoot, "commit", "-am", "skip-recorded tip ahead of identity")
+    val skipRecordedTip = git(repoRoot, "rev-parse", "HEAD")
+    return SkipRecordedDescendantFixture(repoRoot, parent, checkpointSha, skipRecordedTip)
   }
 
   private fun unreachableOnlyGitFixture(): UnreachableGitFixture {
@@ -497,6 +523,48 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
 
     assertEquals(head, recorder.reviewState(workflowId)?.remediationBaseSha)
     assertNull(repository.taskRuntimeArtifacts(workflowId)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY])
+  }
+
+  @Test
+  fun `resume coherence keeps a Skip-recorded descendant tip ahead of the review_fix identity`() {
+    // AC-006: identity R is still on the branch; stored H is a later Skip-recorded tip (descendant of
+    // R). Pre-fix resume replaced H with R because identity != stored; post-fix must keep H.
+    val fixture = skipRecordedDescendantFixture()
+    val state = deepRemediationState(completedPasses = 1)
+      .reserveNextPass()
+      .copy(remediationBaseSha = fixture.skipRecordedTip)
+    val repository = InMemoryRuntimeWorkflowRepository()
+    val identity = FeatureTaskRuntimeCheckpointIdentity(
+      sequenceNumber = 0,
+      issueKey = "SKILL-176",
+      branch = "feat/skill-15",
+      phaseId = "review",
+      generation = 1,
+      ownedPathDigest = "a".repeat(64),
+      ownedPathCount = 1,
+      commitSha = fixture.checkpointSha,
+      recordedAt = "2026-08-10T00:00:00Z",
+      loopId = "review_fix",
+      parentSha = fixture.parent,
+    )
+    val recorder = recorderWith(
+      state,
+      repository,
+      goalBranch = "feat/skill-15",
+      checkpointIdentities = listOf(identity),
+    )
+
+    val after = assertNotNull(
+      recorder.reconcileRemediationBaseCoherence(workflowId, GitWorkflowGitOperations(), fixture.repoRoot),
+    )
+
+    assertEquals(fixture.skipRecordedTip, after.remediationBaseSha)
+    assertEquals(fixture.skipRecordedTip, recorder.reviewState(workflowId)?.remediationBaseSha)
+    assertEquals(fixture.skipRecordedTip, git(fixture.repoRoot, "rev-parse", "HEAD"))
+    assertNull(
+      repository.taskRuntimeArtifacts(workflowId)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY],
+      "coherent Skip-recorded descendant must not emit recovery evidence",
+    )
   }
 
   @Test
