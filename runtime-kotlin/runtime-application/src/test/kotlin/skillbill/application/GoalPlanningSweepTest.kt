@@ -4,9 +4,15 @@ import skillbill.application.featuretask.FeatureTaskRuntimeFixLoopPolicy
 import skillbill.application.featuretask.sha256HexUtf8
 import skillbill.application.goalrunner.DefaultGoalPlanningSweep
 import skillbill.application.goalrunner.GoalPlanningAttemptRecorder
+import skillbill.application.goalrunner.GoalPlanningProvenanceRecoverability
 import skillbill.application.goalrunner.GoalPlanningRejectionRecorder
 import skillbill.application.goalrunner.GoalPlanningSharedContextPacket
 import skillbill.application.goalrunner.GoalRunner
+import skillbill.application.goalrunner.classifyGoalPlanningProvenanceRecoverability
+import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputSchemaPaths
+import skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths
+import skillbill.ports.persistence.model.GoalPlanningContractProvenance
+import skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint
 import skillbill.application.model.GoalPlanningAttemptRecord
 import skillbill.application.model.GoalPlanningBurstSchedule
 import skillbill.application.model.GoalPlanningRejectionRecord
@@ -600,19 +606,21 @@ class GoalPlanningSweepTest {
   }
 
   @Test
-  fun `resume rejects saved planning when the parent spec changes`() {
+  fun `resume continues with saved planning when the parent spec body changes`() {
     val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
     val state = harness.stateFor(manifest(subtaskCount = 1))
     harness.sweep.prepare(state, harness.request())
     val launchCount = harness.launcher.requests.size
+    val sharedBefore = requireNotNull(harness.fixtures.database.repository.findSharedPreplan(harness.identity()))
     harness.manifestFileStore.replaceSpec("spec.md", "# Initial feature contract edited after planning")
 
     val outcome = harness.sweep.prepare(state, harness.request())
 
-    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
-    assertEquals(0, stopped.currentSubtaskId)
-    assertTrue(stopped.blockedReason.contains("provenance"))
+    assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
     assertEquals(launchCount, harness.launcher.requests.size)
+    val sharedAfter = requireNotNull(harness.fixtures.database.repository.findSharedPreplan(harness.identity()))
+    assertEquals(sharedBefore.payloadSha256, sharedAfter.payloadSha256)
+    assertEquals(sharedBefore.preplanPayload, sharedAfter.preplanPayload)
   }
 
   @Test
@@ -637,7 +645,7 @@ class GoalPlanningSweepTest {
   }
 
   @Test
-  fun `resume rejects a non-status parent spec frontmatter change`() {
+  fun `resume continues with saved planning when a non-status parent spec frontmatter changes`() {
     val harness = sweepHarness { phase, _, _ -> validPhaseOutcome(phase) }
     val state = harness.stateFor(manifest(subtaskCount = 1))
     harness.manifestFileStore.replaceSpec(
@@ -646,6 +654,7 @@ class GoalPlanningSweepTest {
     )
     harness.sweep.prepare(state, harness.request())
     val launchCount = harness.launcher.requests.size
+    val sharedBefore = requireNotNull(harness.fixtures.database.repository.findSharedPreplan(harness.identity()))
     harness.manifestFileStore.replaceSpec(
       "spec.md",
       "---\nowner: team-b\n---\n# Initial feature contract",
@@ -653,9 +662,127 @@ class GoalPlanningSweepTest {
 
     val resumed = harness.sweep.prepare(state, harness.request())
 
-    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(resumed)
+    assertIs<GoalPlanningSweepOutcome.PreparedAll>(resumed)
+    assertEquals(launchCount, harness.launcher.requests.size)
+    val sharedAfter = requireNotNull(harness.fixtures.database.repository.findSharedPreplan(harness.identity()))
+    assertEquals(sharedBefore.preplanPayload, sharedAfter.preplanPayload)
+  }
+
+  @Test
+  fun `resume stops when selected boundary heading is absent from the fresh catalog`() {
+    val discovery = MutableContextDiscovery()
+    val harness = sweepHarness(contextDiscovery = discovery) { phase, _, _ ->
+      if (phase == "preplan") {
+        launchFacts(stdout = preplanPayloadSelecting(FIXTURE_HEADING_ID))
+      } else {
+        validPhaseOutcome(phase)
+      }
+    }
+    val state = harness.stateFor(manifest(subtaskCount = 1))
+    harness.sweep.prepare(state, harness.request())
+    val launchCount = harness.launcher.requests.size
+    discovery.clearCatalog()
+
+    val outcome = harness.sweep.prepare(state, harness.request())
+
+    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
+    assertEquals(0, stopped.currentSubtaskId)
+    assertEquals("preplan", stopped.lastResumableStep)
     assertTrue(stopped.blockedReason.contains("provenance"))
     assertEquals(launchCount, harness.launcher.requests.size)
+    assertEquals(2, discovery.calls, "heading validity must re-parse the catalog without launching planning")
+  }
+
+  @Test
+  fun `recoverability classifier returns Reuse when valid and canonically fresh`() {
+    val parentSpec = "# Stable parent contract"
+    val checkpoint = recoverabilityCheckpoint(parentSpec = parentSpec)
+    val current = checkpoint.provenance.copy(parentSpecHash = sha256HexUtf8(parentSpec))
+
+    val result = classifyGoalPlanningProvenanceRecoverability(
+      existing = checkpoint,
+      current = current,
+      savedParentSpec = parentSpec,
+      currentParentSpec = parentSpec,
+      freshCatalogHeadingIds = emptySet(),
+    )
+
+    assertIs<GoalPlanningProvenanceRecoverability.Reuse>(result)
+  }
+
+  @Test
+  fun `recoverability classifier returns StaleValid when only canonical parent freshness fails`() {
+    val savedParent = "# Parent contract v1"
+    val currentParent = "# Parent contract v2"
+    val checkpoint = recoverabilityCheckpoint(parentSpec = savedParent)
+    val current = checkpoint.provenance.copy(parentSpecHash = sha256HexUtf8(currentParent))
+
+    val result = classifyGoalPlanningProvenanceRecoverability(
+      existing = checkpoint,
+      current = current,
+      savedParentSpec = savedParent,
+      currentParentSpec = currentParent,
+      freshCatalogHeadingIds = emptySet(),
+    )
+
+    assertIs<GoalPlanningProvenanceRecoverability.StaleValid>(result)
+  }
+
+  @Test
+  fun `recoverability classifier returns Invalid when decomposition manifest hash drifts`() {
+    val parentSpec = "# Parent contract"
+    val checkpoint = recoverabilityCheckpoint(parentSpec = parentSpec)
+    val current = checkpoint.provenance.copy(
+      parentSpecHash = sha256HexUtf8(parentSpec),
+      decompositionManifestHash = "drifted-manifest-hash",
+    )
+
+    val result = classifyGoalPlanningProvenanceRecoverability(
+      existing = checkpoint,
+      current = current,
+      savedParentSpec = parentSpec,
+      currentParentSpec = parentSpec,
+      freshCatalogHeadingIds = emptySet(),
+    )
+
+    assertIs<GoalPlanningProvenanceRecoverability.Invalid>(result)
+  }
+
+  @Test
+  fun `recoverability classifier returns Invalid for an unresolved selected heading id`() {
+    val parentSpec = "# Parent contract"
+    val checkpoint = recoverabilityCheckpoint(
+      parentSpec = parentSpec,
+      preplanPayload = preplanPayloadSelecting(FIXTURE_HEADING_ID),
+    )
+    val current = checkpoint.provenance.copy(parentSpecHash = sha256HexUtf8(parentSpec))
+
+    val result = classifyGoalPlanningProvenanceRecoverability(
+      existing = checkpoint,
+      current = current,
+      savedParentSpec = parentSpec,
+      currentParentSpec = parentSpec,
+      freshCatalogHeadingIds = emptySet(),
+    )
+
+    assertIs<GoalPlanningProvenanceRecoverability.Invalid>(result)
+  }
+
+  @Test
+  fun `recoverability classifier returns Invalid when payload sha does not match bytes`() {
+    val parentSpec = "# Parent contract"
+    val checkpoint = recoverabilityCheckpoint(parentSpec = parentSpec).copy(payloadSha256 = "0".repeat(64))
+    val current = checkpoint.provenance.copy(parentSpecHash = sha256HexUtf8(parentSpec))
+
+    val result = classifyGoalPlanningProvenanceRecoverability(
+      existing = checkpoint,
+      current = current,
+      savedParentSpec = parentSpec,
+      currentParentSpec = parentSpec,
+      freshCatalogHeadingIds = emptySet(),
+    )
+
+    assertIs<GoalPlanningProvenanceRecoverability.Invalid>(result)
   }
 
   @Test
@@ -2418,4 +2545,48 @@ private class CountingContextDiscovery : GoalPlanningContextDiscovery {
     calls += 1
     return fakeContextDiscovery.discover(repoRoot)
   }
+}
+
+private class MutableContextDiscovery : GoalPlanningContextDiscovery {
+  var calls: Int = 0
+    private set
+  private var catalog: List<GoalPlanningBoundaryHeading> = listOf(
+    GoalPlanningBoundaryHeading(
+      headingId = FIXTURE_HEADING_ID,
+      sourcePath = "runtime-kotlin/agent/history.md",
+      kind = GoalPlanningContext.KIND_HISTORY,
+      heading = FIXTURE_HEADING,
+    ),
+  )
+
+  fun clearCatalog() {
+    catalog = emptyList()
+  }
+
+  override fun discover(repoRoot: Path): GoalPlanningContext {
+    calls += 1
+    return GoalPlanningContext(
+      boundaryCatalog = catalog,
+      boundaryCatalogTruncated = false,
+      validationGuidance = "Run focused Gradle checks.",
+    )
+  }
+}
+
+private fun recoverabilityCheckpoint(
+  parentSpec: String,
+  preplanPayload: String = phasePayload("preplan"),
+): SharedGoalPreplanCheckpoint {
+  val provenance = GoalPlanningContractProvenance(
+    parentSpecHash = sha256HexUtf8(parentSpec),
+    decompositionManifestHash = "manifest-hash",
+    planningContractId = GoalPlanningPreparationSchemaPaths.EXPECTED_SCHEMA_ID,
+    phaseOutputContractId = FeatureTaskRuntimePhaseOutputSchemaPaths.EXPECTED_SCHEMA_ID,
+  )
+  return SharedGoalPreplanCheckpoint(
+    identity = GoalPlanningIdentity("wfl-parent", "SKILL-56", "repo-root-realpath-v1:/tmp/fixture"),
+    provenance = provenance,
+    payloadSha256 = sha256HexUtf8(preplanPayload),
+    preplanPayload = preplanPayload,
+  )
 }

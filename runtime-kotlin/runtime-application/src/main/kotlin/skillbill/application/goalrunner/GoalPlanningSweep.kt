@@ -135,8 +135,11 @@ class DefaultGoalPlanningSweep(
       it.id in GoalPlanningSharedContextPacket.includedSubtaskIds(shared.planningPacket)
     }
     val currentProvenance = currentProvenance(shared)
-    val provenance = recoverableProvenance(existingShared, currentProvenance, shared)
-      ?: return incompatibleProvenance(shared)
+    val provenance = when (val recoverability = classifyRecoverability(existingShared, currentProvenance, shared)) {
+      is GoalPlanningProvenanceRecoverability.Invalid -> return incompatibleProvenance(shared)
+      is GoalPlanningProvenanceRecoverability.Reuse -> recoverability.provenance
+      is GoalPlanningProvenanceRecoverability.StaleValid -> recoverability.provenance
+    }
     val sharedCheckpoint = existingShared ?: produceSharedPreplan(shared, request, provenance)
       .getOrElse { error -> return stopped(shared, 0, error.message.orEmpty(), PHASE_PREPLAN) }
     if (activeSubtasks.isEmpty()) return GoalPlanningSweepOutcome.PreparedAll(identity, provenance)
@@ -185,22 +188,32 @@ class DefaultGoalPlanningSweep(
     GoalPlanningPreparationSchemaPaths.EXPECTED_SCHEMA_ID,
   )
 
-  private fun recoverableProvenance(
+  /**
+   * Classifies saved shared-preplan recoverability. Payload integrity and selected-heading resolution
+   * always run when a checkpoint exists — never short-circuit on provenance equality alone.
+   * Fresh catalog ids come from [contextDiscovery], not the recovered packet catalog.
+   */
+  private fun classifyRecoverability(
     existing: SharedGoalPreplanCheckpoint?,
     current: GoalPlanningContractProvenance,
     shared: GoalPlanningSharedContext,
-  ): GoalPlanningContractProvenance? {
-    val existingProvenance = existing?.provenance ?: return current
-    if (existingProvenance == current) return current
-    val savedParentSpec = shared.planningPacket["parent_spec"] as? String
-    return existingProvenance.takeIf {
-      it.decompositionManifestHash == current.decompositionManifestHash &&
-        it.phaseOutputContractId == current.phaseOutputContractId &&
-        savedParentSpec != null &&
-        sha256HexUtf8(savedParentSpec) == it.parentSpecHash &&
-        GoalPlanningSpecCanonicalization.canonical(savedParentSpec) ==
-        GoalPlanningSpecCanonicalization.canonical(shared.parentSpec)
+  ): GoalPlanningProvenanceRecoverability {
+    if (existing == null) {
+      return GoalPlanningProvenanceRecoverability.Reuse(current)
     }
+    val selected = selectedBoundaryHeadingIds(existing.preplanPayload)
+    val freshCatalogHeadingIds = if (selected.isEmpty()) {
+      emptySet()
+    } else {
+      contextDiscovery.discover(shared.repoRoot).boundaryCatalog.mapTo(linkedSetOf()) { it.headingId }
+    }
+    return classifyGoalPlanningProvenanceRecoverability(
+      existing = existing,
+      current = current,
+      savedParentSpec = shared.planningPacket["parent_spec"] as? String,
+      currentParentSpec = shared.parentSpec,
+      freshCatalogHeadingIds = freshCatalogHeadingIds,
+    )
   }
 
   private fun incompatibleProvenance(shared: GoalPlanningSharedContext): GoalPlanningSweepOutcome.Stopped = stopped(
@@ -751,15 +764,7 @@ class DefaultGoalPlanningSweep(
     shared: GoalPlanningSharedContext,
     preplanPayload: String,
   ): GoalPlanningResolvedBoundaryBodies {
-    val selected = runCatching {
-      JsonSupport.parseObjectOrNull(preplanPayload)
-        ?.let(JsonSupport::jsonElementToValue)
-        ?.let(JsonSupport::anyToStringAnyMap)
-        ?.get("produced_outputs")
-        ?.let(JsonSupport::anyToStringAnyMap)
-        ?.get(SELECTED_BOUNDARY_HEADINGS_FIELD)
-        ?.let { value -> (value as? List<*>)?.mapNotNull { id -> (id as? String)?.takeIf(String::isNotBlank) } }
-    }.getOrNull().orEmpty()
+    val selected = selectedBoundaryHeadingIds(preplanPayload)
     if (selected.isEmpty()) return GoalPlanningResolvedBoundaryBodies()
     return boundaryBodyResolver.resolve(
       shared.repoRoot,
@@ -1002,11 +1007,63 @@ class DefaultGoalPlanningSweep(
     const val PHASE_PREPLAN: String = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN
     const val PHASE_PLAN: String = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN
     const val SHARED_CONTEXT_FIELD = "_goal_planning_shared_context"
-    const val SELECTED_BOUNDARY_HEADINGS_FIELD = "selected_boundary_headings"
     const val EMPTY_PLANNING_HARVEST_RULE = "empty-planning-harvest"
     const val NANOS_PER_MILLI = 1_000_000L
   }
 }
+
+/**
+ * Recoverability of a saved shared preplan relative to the current governed inputs.
+ * [StaleValid] keeps the checkpoint and continues prepare; in-run refresh is a later subtask.
+ */
+internal sealed interface GoalPlanningProvenanceRecoverability {
+  data class Reuse(val provenance: GoalPlanningContractProvenance) : GoalPlanningProvenanceRecoverability
+  data class StaleValid(val provenance: GoalPlanningContractProvenance) : GoalPlanningProvenanceRecoverability
+  data object Invalid : GoalPlanningProvenanceRecoverability
+}
+
+/**
+ * Validity: manifest hash, phase-output schema id, parent-spec self-hash, payload sha, and every
+ * selected heading id resolving in [freshCatalogHeadingIds]. Freshness: canonical parent-spec equality.
+ * Empty or absent selected headings are vacuously valid.
+ */
+internal fun classifyGoalPlanningProvenanceRecoverability(
+  existing: SharedGoalPreplanCheckpoint?,
+  current: GoalPlanningContractProvenance,
+  savedParentSpec: String?,
+  currentParentSpec: String,
+  freshCatalogHeadingIds: Set<String>,
+): GoalPlanningProvenanceRecoverability {
+  if (existing == null) return GoalPlanningProvenanceRecoverability.Reuse(current)
+  val saved = existing.provenance
+  val selected = selectedBoundaryHeadingIds(existing.preplanPayload)
+  val valid = saved.decompositionManifestHash == current.decompositionManifestHash &&
+    saved.phaseOutputContractId == current.phaseOutputContractId &&
+    savedParentSpec != null &&
+    sha256HexUtf8(savedParentSpec) == saved.parentSpecHash &&
+    sha256HexUtf8(existing.preplanPayload) == existing.payloadSha256 &&
+    selected.all { headingId -> headingId in freshCatalogHeadingIds }
+  if (!valid) return GoalPlanningProvenanceRecoverability.Invalid
+  val fresh = GoalPlanningSpecCanonicalization.canonical(savedParentSpec) ==
+    GoalPlanningSpecCanonicalization.canonical(currentParentSpec)
+  return if (fresh) {
+    GoalPlanningProvenanceRecoverability.Reuse(saved)
+  } else {
+    GoalPlanningProvenanceRecoverability.StaleValid(saved)
+  }
+}
+
+internal fun selectedBoundaryHeadingIds(preplanPayload: String): List<String> = runCatching {
+  JsonSupport.parseObjectOrNull(preplanPayload)
+    ?.let(JsonSupport::jsonElementToValue)
+    ?.let(JsonSupport::anyToStringAnyMap)
+    ?.get("produced_outputs")
+    ?.let(JsonSupport::anyToStringAnyMap)
+    ?.get(SELECTED_BOUNDARY_HEADINGS_FIELD)
+    ?.let { value -> (value as? List<*>)?.mapNotNull { id -> (id as? String)?.takeIf(String::isNotBlank) } }
+}.getOrNull().orEmpty()
+
+private const val SELECTED_BOUNDARY_HEADINGS_FIELD: String = "selected_boundary_headings"
 
 /**
  * Durable evidence seam for a planning attempt the run rejected without any output to gate. Kept
