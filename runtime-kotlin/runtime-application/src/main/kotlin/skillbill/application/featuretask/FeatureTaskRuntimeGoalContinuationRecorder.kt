@@ -9,6 +9,7 @@ import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.buildGoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineRecoveryRequest
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewInputFailureReason
 import skillbill.ports.workflow.recoverGoalSubtaskReviewBaseline
@@ -22,6 +23,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationAr
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationFieldAdoption
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
+import skillbill.workflow.taskruntime.model.GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
@@ -280,38 +282,70 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
       // untracked file in the worktree into the pass-two input as an owned change. Only the base sha
       // is rescoped.
       ?.let { preFixSha -> GoalSubtaskReviewBaseline(preFixSha, exclusions, scope.ownedPathspec) }
+    val selectedBaseline = remediationBaseline
+      ?: GoalSubtaskReviewBaseline(state.reviewBaseSha, exclusions, scope.ownedPathspec)
+    val failedField = if (remediationBaseline != null) {
+      GoalReviewBaseField.REMEDIATION_BASE
+    } else {
+      GoalReviewBaseField.REVIEW_BASE
+    }
     val result = gitOperations.buildGoalSubtaskReviewInput(
       repoRoot,
-      remediationBaseline ?: GoalSubtaskReviewBaseline(state.reviewBaseSha, exclusions, scope.ownedPathspec),
+      selectedBaseline,
       continuation.goalBranch,
     )
     val input = if (result.ok) {
       requireNotNull(result.input)
     } else {
-      recoverGoalReviewInput(
-        GoalReviewInputRecoveryRequest(
-          workflowId = workflowId,
-          state = state,
-          continuation = continuation,
-          failureReason = result.failureReason,
-          failureMessage = result.error,
-          execution = GoalReviewInputRecoveryExecution(gitOperations, repoRoot, scope.dbOverride),
-        ),
-      ) ?: return GoalSubtaskReviewInputBlocked(result.error)
+      when (
+        val recovery = recoverGoalReviewInput(
+          GoalReviewInputRecoveryRequest(
+            workflowId = workflowId,
+            state = state,
+            continuation = continuation,
+            failureReason = result.failureReason,
+            failureMessage = result.error,
+            failedBaseSha = selectedBaseline.reviewBaseSha,
+            failedField = failedField,
+            scope = scope,
+            execution = GoalReviewInputRecoveryExecution(gitOperations, repoRoot, scope.dbOverride),
+          ),
+        )
+      ) {
+        is GoalReviewInputRecovery.Recovered -> recovery.input
+        is GoalReviewInputRecovery.Failed -> return GoalSubtaskReviewInputBlocked(recovery.reason)
+        GoalReviewInputRecovery.Ineligible -> return GoalSubtaskReviewInputBlocked(result.error)
+      }
     }
     val persisted = persistGoalReviewInput(workflowId, input, scope.dbOverride)
       ?: return GoalSubtaskReviewInputPreparation.MissingState
     return GoalSubtaskReviewInputReady(persisted, input)
   }
 
-  private fun recoverGoalReviewInput(request: GoalReviewInputRecoveryRequest): GoalSubtaskReviewInput? {
-    if (request.failureReason !in recoverableReviewBaseFailures || !request.state.canRecoverReviewBase()) return null
+  private fun recoverGoalReviewInput(request: GoalReviewInputRecoveryRequest): GoalReviewInputRecovery {
+    val failureReason = request.failureReason
+    if (failureReason !in recoverableReviewBaseFailures || !request.state.canRecoverReviewBase()) {
+      return GoalReviewInputRecovery.Ineligible
+    }
+    val exclusions = request.scope.scopedUntrackedExclusions ?: request.state.baselineUntrackedPaths
     val recovered = request.execution.gitOperations.recoverGoalSubtaskReviewBaseline(
       request.execution.repoRoot,
-      GoalSubtaskReviewBaseline(request.state.reviewBaseSha, request.state.baselineUntrackedPaths),
+      GoalSubtaskReviewBaselineRecoveryRequest(
+        unreachableSha = request.failedBaseSha,
+        failureReason = failureReason,
+        baselineUntrackedPaths = exclusions,
+        ownedPathspec = request.scope.ownedPathspec,
+      ),
       request.continuation.goalBranch,
     )
-    if (!recovered.ok) return null
+    if (!recovered.ok) {
+      return GoalReviewInputRecovery.Failed(
+        recovered.error.ifBlank {
+          "Goal-subtask review baseline recovery could not find a reachable base for unreachable sha " +
+            "'${request.failedBaseSha}' on branch '${request.continuation.goalBranch}'."
+        },
+      )
+    }
     val recoveredBaseline = requireNotNull(recovered.baseline)
     val rebuilt = request.execution.gitOperations.buildGoalSubtaskReviewInput(
       request.execution.repoRoot,
@@ -320,38 +354,63 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     )
     check(rebuilt.ok) {
       "Recovered goal-subtask review base '${recoveredBaseline.reviewBaseSha}' could not materialize review input " +
-        "after replacing incompatible base '${request.state.reviewBaseSha}': " +
+        "after replacing incompatible base '${request.failedBaseSha}': " +
         rebuilt.error.ifBlank { request.failureMessage }
     }
     val input = requireNotNull(rebuilt.input)
-    // Persisting the recovered baseline and its input is the last step of recovery, not a separate
-    // seam: they must land in one transaction that re-reads the record and re-checks recoverability.
+    // Persisting the recovered baseline, its input, and recovery evidence is the last step of
+    // recovery, not a separate seam: they must land in one transaction that re-reads the record and
+    // re-checks recoverability.
     val persisted = database.transaction(request.execution.dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, request.workflowId)
         ?: return@transaction null
-      val latest = reviewStateFromArtifacts(decodeArtifacts(record.artifactsJson)) ?: return@transaction null
+      val artifacts = decodeArtifacts(record.artifactsJson)
+      val latest = reviewStateFromArtifacts(artifacts) ?: return@transaction null
       check(latest == request.state && latest.canRecoverReviewBase()) {
-        "Goal-subtask review base can be recovered only before any review input or completed review pass exists."
+        "Goal-subtask review base can be recovered only while disposition is still pending."
       }
-      val replaced = latest.copy(
-        reviewBaseSha = recoveredBaseline.reviewBaseSha,
-        baselineUntrackedPaths = recoveredBaseline.baselineUntrackedPaths.distinct().sorted(),
-        reviewInputArtifact = GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY,
-      )
-      check(input.reviewBaseSha == replaced.reviewBaseSha) {
+      val replaced = when (request.failedField) {
+        GoalReviewBaseField.REMEDIATION_BASE -> latest.copy(
+          remediationBaseSha = recoveredBaseline.reviewBaseSha,
+          reviewInputArtifact = GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY,
+        )
+        GoalReviewBaseField.REVIEW_BASE -> latest.copy(
+          reviewBaseSha = recoveredBaseline.reviewBaseSha,
+          baselineUntrackedPaths = recoveredBaseline.baselineUntrackedPaths.distinct().sorted(),
+          reviewInputArtifact = GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY,
+        )
+      }
+      check(
+        input.reviewBaseSha == replaced.reviewBaseSha ||
+          input.reviewBaseSha == replaced.remediationBaseSha,
+      ) {
         "Recovered goal-subtask review input does not match the replacement baseline."
       }
+      val evidenceEntry = linkedMapOf<String, Any?>(
+        "original_sha" to request.failedBaseSha,
+        "replacement_sha" to recoveredBaseline.reviewBaseSha,
+        "repointed_field" to request.failedField.wireValue,
+        "failure_reason" to failureReason.name.lowercase(),
+        "failure_message" to request.failureMessage,
+        "goal_branch" to request.continuation.goalBranch,
+      )
+      val priorEvidence = (artifacts[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY] as? List<*>).orEmpty()
       savePatch(
         record,
         unitOfWork.workflowStates,
         mapOf(
           GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to replaced.toArtifactMap(),
           GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY to input.toArtifactMap(),
+          GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY to priorEvidence + evidenceEntry,
         ),
       )
       replaced
     }
-    return persisted?.let { input }
+    return if (persisted != null) {
+      GoalReviewInputRecovery.Recovered(input)
+    } else {
+      GoalReviewInputRecovery.Ineligible
+    }
   }
 
   fun lastGoalReviewResult(workflowId: String, dbOverride: String? = null): String? =
@@ -412,8 +471,22 @@ private data class GoalReviewInputRecoveryRequest(
   val continuation: FeatureTaskRuntimeGoalContinuationArtifact,
   val failureReason: GoalSubtaskReviewInputFailureReason?,
   val failureMessage: String,
+  val failedBaseSha: String,
+  val failedField: GoalReviewBaseField,
+  val scope: FeatureTaskRuntimeGoalContinuationRecorder.GoalReviewInputScope,
   val execution: GoalReviewInputRecoveryExecution,
 )
+
+private enum class GoalReviewBaseField(val wireValue: String) {
+  REVIEW_BASE("review_base_sha"),
+  REMEDIATION_BASE("remediation_base_sha"),
+}
+
+private sealed interface GoalReviewInputRecovery {
+  data class Recovered(val input: GoalSubtaskReviewInput) : GoalReviewInputRecovery
+  data class Failed(val reason: String) : GoalReviewInputRecovery
+  data object Ineligible : GoalReviewInputRecovery
+}
 
 private data class GoalReviewInputRecoveryExecution(
   val gitOperations: WorkflowGitOperations,
@@ -519,10 +592,7 @@ private fun continuationFromArtifacts(artifacts: Map<String, Any?>): FeatureTask
 private fun reviewStateFromArtifacts(artifacts: Map<String, Any?>): GoalSubtaskReviewState? =
   GoalSubtaskReviewArtifactDecoder.decode(artifacts)?.state
 
-private fun GoalSubtaskReviewState.canRecoverReviewBase(): Boolean = completedPassCount == 0 &&
-  passResults.isEmpty() &&
-  emittedPassCount == 0 &&
-  reviewInputArtifact == null &&
+private fun GoalSubtaskReviewState.canRecoverReviewBase(): Boolean =
   disposition == GoalSubtaskReviewDisposition.PENDING
 
 private fun GoalSubtaskReviewState.matches(

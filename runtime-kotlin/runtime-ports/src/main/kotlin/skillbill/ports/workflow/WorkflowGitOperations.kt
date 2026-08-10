@@ -3,6 +3,7 @@
 package skillbill.ports.workflow
 
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineRecoveryRequest
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineResult
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewInputResult
@@ -281,7 +282,7 @@ interface GoalSubtaskReviewGitOperations {
 
   fun recoverBaseline(
     repoRoot: Path,
-    baseline: GoalSubtaskReviewBaseline,
+    request: GoalSubtaskReviewBaselineRecoveryRequest,
     expectedBranch: String,
   ): GoalSubtaskReviewBaselineResult = GoalSubtaskReviewBaselineResult(
     status = "error",
@@ -311,7 +312,7 @@ private object UnavailableGoalSubtaskReviewGitOperations : GoalSubtaskReviewGitO
 
   override fun recoverBaseline(
     repoRoot: Path,
-    baseline: GoalSubtaskReviewBaseline,
+    request: GoalSubtaskReviewBaselineRecoveryRequest,
     expectedBranch: String,
   ): GoalSubtaskReviewBaselineResult = GoalSubtaskReviewBaselineResult(
     status = "error",
@@ -332,9 +333,9 @@ fun WorkflowGitOperations.buildGoalSubtaskReviewInput(
 
 fun WorkflowGitOperations.recoverGoalSubtaskReviewBaseline(
   repoRoot: Path,
-  baseline: GoalSubtaskReviewBaseline,
+  request: GoalSubtaskReviewBaselineRecoveryRequest,
   expectedBranch: String,
-): GoalSubtaskReviewBaselineResult = reviewOperations().recoverBaseline(repoRoot, baseline, expectedBranch)
+): GoalSubtaskReviewBaselineResult = reviewOperations().recoverBaseline(repoRoot, request, expectedBranch)
 
 private fun WorkflowGitOperations.reviewOperations(): GoalSubtaskReviewGitOperations =
   (this as? GoalSubtaskReviewGitOperationsProvider)?.goalSubtaskReviewOperations
@@ -434,11 +435,14 @@ private object NoopGoalSubtaskReviewGitOperations : GoalSubtaskReviewGitOperatio
 
   override fun recoverBaseline(
     repoRoot: Path,
-    baseline: GoalSubtaskReviewBaseline,
+    request: GoalSubtaskReviewBaselineRecoveryRequest,
     expectedBranch: String,
   ): GoalSubtaskReviewBaselineResult = if (expectedBranch.isBlank()) {
     GoalSubtaskReviewBaselineResult(status = "error", error = "Goal-subtask durable child branch is required.")
   } else {
-    GoalSubtaskReviewBaselineResult(status = "ok", baseline = baseline)
+    GoalSubtaskReviewBaselineResult(
+      status = "ok",
+      baseline = request.toRecoveredBaseline(request.unreachableSha),
+    )
   }
 }

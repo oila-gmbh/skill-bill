@@ -2072,7 +2072,7 @@ private object GoalTestWorkflowGitOperations :
 
       override fun recoverBaseline(
         repoRoot: Path,
-        baseline: GoalSubtaskReviewBaseline,
+        request: skillbill.ports.workflow.model.GoalSubtaskReviewBaselineRecoveryRequest,
         expectedBranch: String,
       ): GoalSubtaskReviewBaselineResult = GoalSubtaskReviewBaselineResult(
         status = "error",

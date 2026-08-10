@@ -3,6 +3,7 @@ package skillbill.infrastructure.fs
 import skillbill.ports.workflow.buildGoalSubtaskReviewInput
 import skillbill.ports.workflow.captureGoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
+import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineRecoveryRequest
 import skillbill.ports.workflow.model.GoalSubtaskReviewInputFailureReason
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.recoverGoalSubtaskReviewBaseline
@@ -570,7 +571,11 @@ class GitWorkflowGitOperationsTest {
     )
     val recovered = GitWorkflowGitOperations().recoverGoalSubtaskReviewBaseline(
       repoRoot,
-      GoalSubtaskReviewBaseline(oldBaseline, emptyList()),
+      GoalSubtaskReviewBaselineRecoveryRequest(
+        unreachableSha = oldBaseline,
+        failureReason = GoalSubtaskReviewInputFailureReason.BASE_NOT_ANCESTOR,
+        baselineUntrackedPaths = emptyList(),
+      ),
       "feat/demo",
     )
     val input = GitWorkflowGitOperations().buildGoalSubtaskReviewInput(
@@ -606,6 +611,131 @@ class GitWorkflowGitOperationsTest {
 
     assertFalse(result.ok)
     assertContains(result.error, "durable child branch 'feat/child-one'")
+  }
+
+
+  @Test
+  fun `SKILL-15 topology recovers nearest reachable ancestor not branch base`() {
+    val repoRoot = Files.createTempDirectory("skillbill-skill15-nearest-ancestor")
+    val remoteRoot = Files.createTempDirectory("skillbill-skill15-nearest-remote")
+    git(remoteRoot, "init", "--bare")
+    git(repoRoot, "init", "-b", "main")
+    git(repoRoot, "config", "user.email", "skill-bill@example.test")
+    git(repoRoot, "config", "user.name", "Skill Bill")
+    git(repoRoot, "remote", "add", "origin", remoteRoot.toString())
+    Files.writeString(repoRoot.resolve("tracked.txt"), "root\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "root")
+    git(repoRoot, "push", "-u", "origin", "main")
+    val branchBase = git(repoRoot, "rev-parse", "HEAD")
+    git(repoRoot, "checkout", "-b", "feat/skill-15")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "parent\n")
+    git(repoRoot, "commit", "-am", "parent")
+    val parent = git(repoRoot, "rev-parse", "HEAD")
+    // First sibling remediation checkpoint — becomes the orphaned stored base.
+    Files.writeString(repoRoot.resolve("tracked.txt"), "sibling-a\n")
+    git(repoRoot, "commit", "-am", "sibling-a")
+    val orphanedBase = git(repoRoot, "rev-parse", "HEAD")
+    // Reset to parent and create the second sibling; branch tip lands here.
+    git(repoRoot, "reset", "--hard", parent)
+    Files.writeString(repoRoot.resolve("tracked.txt"), "sibling-b\n")
+    git(repoRoot, "commit", "-am", "sibling-b")
+    val head = git(repoRoot, "rev-parse", "HEAD")
+
+    val unsafe = GitWorkflowGitOperations().buildGoalSubtaskReviewInput(
+      repoRoot,
+      GoalSubtaskReviewBaseline(orphanedBase, emptyList()),
+      "feat/skill-15",
+    )
+    val recovered = GitWorkflowGitOperations().recoverGoalSubtaskReviewBaseline(
+      repoRoot,
+      GoalSubtaskReviewBaselineRecoveryRequest(
+        unreachableSha = orphanedBase,
+        failureReason = GoalSubtaskReviewInputFailureReason.BASE_NOT_ANCESTOR,
+        baselineUntrackedPaths = emptyList(),
+      ),
+      "feat/skill-15",
+    )
+
+    assertFalse(unsafe.ok)
+    assertEquals(GoalSubtaskReviewInputFailureReason.BASE_NOT_ANCESTOR, unsafe.failureReason)
+    assertTrue(recovered.ok, recovered.error)
+    assertEquals(parent, requireNotNull(recovered.baseline).reviewBaseSha)
+    assertTrue(
+      recovered.baseline!!.reviewBaseSha != branchBase,
+      "nearest ancestor must be the shared parent, not origin/main branch base",
+    )
+    assertTrue(head != orphanedBase)
+  }
+
+  @Test
+  fun `recovery with no reachable ancestor names unreachable sha and goal branch`() {
+    val repoRoot = Files.createTempDirectory("skillbill-no-reachable-ancestor")
+    git(repoRoot, "init", "-b", "feat/orphan-goal")
+    git(repoRoot, "config", "user.email", "skill-bill@example.test")
+    git(repoRoot, "config", "user.name", "Skill Bill")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "goal\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "goal tip")
+    // Unrelated root history: orphan branch with its own root, then abandon the ref.
+    git(repoRoot, "checkout", "--orphan", "unrelated-root")
+    val prior = git(repoRoot, "ls-files").lines().filter { it.isNotBlank() }
+    if (prior.isNotEmpty()) {
+      git(repoRoot, *(listOf("rm", "-f", "--") + prior).toTypedArray())
+    }
+    Files.writeString(repoRoot.resolve("other.txt"), "unrelated\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "unrelated root")
+    val unreachable = git(repoRoot, "rev-parse", "HEAD")
+    git(repoRoot, "checkout", "feat/orphan-goal")
+    git(repoRoot, "branch", "-D", "unrelated-root")
+
+    val recovered = GitWorkflowGitOperations().recoverGoalSubtaskReviewBaseline(
+      repoRoot,
+      GoalSubtaskReviewBaselineRecoveryRequest(
+        unreachableSha = unreachable,
+        failureReason = GoalSubtaskReviewInputFailureReason.BASE_NOT_ANCESTOR,
+        baselineUntrackedPaths = emptyList(),
+      ),
+      "feat/orphan-goal",
+    )
+
+    assertFalse(recovered.ok)
+    assertContains(recovered.error, unreachable)
+    assertContains(recovered.error, "feat/orphan-goal")
+  }
+
+  @Test
+  fun `BASE_MISSING recovery falls back to branch base`() {
+    val repoRoot = Files.createTempDirectory("skillbill-base-missing-fallback")
+    val remoteRoot = Files.createTempDirectory("skillbill-base-missing-remote")
+    git(remoteRoot, "init", "--bare")
+    git(repoRoot, "init", "-b", "main")
+    git(repoRoot, "config", "user.email", "skill-bill@example.test")
+    git(repoRoot, "config", "user.name", "Skill Bill")
+    git(repoRoot, "remote", "add", "origin", remoteRoot.toString())
+    Files.writeString(repoRoot.resolve("tracked.txt"), "base\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "initial")
+    git(repoRoot, "push", "-u", "origin", "main")
+    val branchBase = git(repoRoot, "rev-parse", "HEAD")
+    git(repoRoot, "checkout", "-b", "feat/missing-base")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "feature\n")
+    git(repoRoot, "commit", "-am", "feature")
+    val missingSha = "deadbeef" + "0" * 32
+
+    val recovered = GitWorkflowGitOperations().recoverGoalSubtaskReviewBaseline(
+      repoRoot,
+      GoalSubtaskReviewBaselineRecoveryRequest(
+        unreachableSha = missingSha,
+        failureReason = GoalSubtaskReviewInputFailureReason.BASE_MISSING,
+        baselineUntrackedPaths = emptyList(),
+      ),
+      "feat/missing-base",
+    )
+
+    assertTrue(recovered.ok, recovered.error)
+    assertEquals(branchBase, requireNotNull(recovered.baseline).reviewBaseSha)
   }
 
   private fun git(repoRoot: Path, vararg args: String): String {

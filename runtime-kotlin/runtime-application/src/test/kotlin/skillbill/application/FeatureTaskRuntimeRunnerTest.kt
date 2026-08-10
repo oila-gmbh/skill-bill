@@ -90,6 +90,13 @@ import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineResult
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewInputFailureReason
 import skillbill.ports.workflow.model.GoalSubtaskReviewInputResult
+import skillbill.application.featuretask.GoalSubtaskReviewInputBlocked
+import skillbill.application.featuretask.GoalSubtaskReviewInputReady
+import skillbill.application.featuretask.GoalContinuationStateRecordRequest
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewDisposition
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksResult
@@ -1922,6 +1929,271 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
       git.goalReviewBuildInputs.map { it.reviewBaseSha },
     )
   }
+
+
+  @Test
+  fun `AC-008 unreachable remediation base with completed passes recovers through review preparation`() {
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-ac008-remediation-recover")
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+      .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
+    val unreachableRemediation = "7".repeat(40)
+    val recoveredRemediation = "8".repeat(40)
+    git.goalReviewBuildResults += GoalSubtaskReviewInputResult(
+      status = "error",
+      error = "Persisted review base '$unreachableRemediation' is not an ancestor of current HEAD.",
+      failureReason = GoalSubtaskReviewInputFailureReason.BASE_NOT_ANCESTOR,
+    )
+    git.goalReviewRecoveredBaseline = GoalSubtaskReviewBaseline(recoveredRemediation, emptyList())
+    val harness = goalContinuationHarness(repoRoot, git, goalContinuationLauncher(validJsonOutput("commit_push")))
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    check(
+      harness.goalContinuationRecorder.recordGoalContinuationState(
+        GoalContinuationStateRecordRequest(
+          workflowId = WORKFLOW_ID,
+          continuation = FeatureTaskRuntimeGoalContinuationArtifact(
+            issueKey = ISSUE_KEY,
+            subtaskId = 5,
+            suppressPr = true,
+            goalBranch = "feat/existing-runtime-branch",
+            codeReviewMode = CodeReviewExecutionMode.INLINE,
+          ),
+          reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+        ),
+      ),
+    )
+    // Seed the SKILL-15 wedge: two completed passes, reserved pass 3, orphaned remediation base.
+    var state = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
+    repeat(2) {
+      state = state.reserveNextPass().completeReservedPass(
+        verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+        unresolvedFindingCount = 1,
+        findings = emptyList(),
+      )
+    }
+    state = state.reserveNextPass().copy(remediationBaseSha = unreachableRemediation)
+    checkNotNull(harness.goalContinuationRecorder.updateReviewState(WORKFLOW_ID) { state })
+
+    // Drive review preparation the run loop uses — the pre-fix gate refused this shape.
+    val prepared = harness.goalContinuationRecorder.buildGoalReviewInput(WORKFLOW_ID, git, repoRoot)
+
+    assertIs<GoalSubtaskReviewInputReady>(prepared)
+    assertEquals(recoveredRemediation, harness.goalContinuationRecorder.reviewState(WORKFLOW_ID)?.remediationBaseSha)
+    assertEquals(1, git.goalReviewRecoverCalls)
+    assertEquals(unreachableRemediation, git.goalReviewRecoverRequests.single().unreachableSha)
+    val evidence = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_review_base_recoveries"] as List<*>
+    val entry = evidence.single() as Map<*, *>
+    assertEquals(unreachableRemediation, entry["original_sha"])
+    assertEquals(recoveredRemediation, entry["replacement_sha
+  @Test
+  fun `non-recoverable review input failures do not enter baseline recovery`() {
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-nonrecoverable-review-base")
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+      .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
+    git.goalReviewBuildResults += GoalSubtaskReviewInputResult(
+      status = "error",
+      error = "Goal-subtask review must run on durable child branch 'feat/existing-runtime-branch'.",
+      failureReason = null,
+    )
+    git.goalReviewRecoveredBaseline = GoalSubtaskReviewBaseline("1".repeat(40), emptyList())
+    val harness = goalContinuationHarness(repoRoot, git, goalContinuationLauncher(validJsonOutput("commit_push")))
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    check(
+      harness.goalContinuationRecorder.recordGoalContinuationState(
+        GoalContinuationStateRecordRequest(
+          workflowId = WORKFLOW_ID,
+          continuation = FeatureTaskRuntimeGoalContinuationArtifact(
+            issueKey = ISSUE_KEY,
+            subtaskId = 5,
+            suppressPr = true,
+            goalBranch = "feat/existing-runtime-branch",
+            codeReviewMode = CodeReviewExecutionMode.INLINE,
+          ),
+          reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+        ),
+      ),
+    )
+
+    val prepared = harness.goalContinuationRecorder.buildGoalReviewInput(WORKFLOW_ID, git, repoRoot)
+
+    assertIs<GoalSubtaskReviewInputBlocked>(prepared)
+    assertEquals(0, git.goalReviewRecoverCalls)
+  }
+
+"])
+    assertEquals("base_not_ancestor", entry["failure_reason"])
+  }
+
+  @Test
+  fun `cappedReviewIsStale ignores an unreachable remediation base and keeps an unchanged immutable digest`() {
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-stale-unreachable-remediation")
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+      .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
+    val immutableDigest = GoalSubtaskReviewInput(
+      reviewBaseSha = "0".repeat(40),
+      currentHeadSha = COMMITTED_HEAD_SHA,
+      trackedDelta = "immutable-delta\n",
+      ownedUntrackedPatches = "",
+    ).deltaDigest
+    // First build call may be remediation (unreachable) or review base — queue both shapes.
+    git.goalReviewBuildResults += GoalSubtaskReviewInputResult(
+      status = "error",
+      error = "Persisted review base '${"9".repeat(40)}' is not an ancestor of current HEAD.",
+      failureReason = GoalSubtaskReviewInputFailureReason.BASE_NOT_ANCESTOR,
+    )
+    // Default success path uses baseline.reviewBaseSha; for the immutable base the fake returns empty
+    // delta unless we pre-queue. Queue a matching digest for the immutable base probe.
+    git.goalReviewBuildResults += GoalSubtaskReviewInputResult(
+      status = "ok",
+      input = GoalSubtaskReviewInput(
+        reviewBaseSha = "0".repeat(40),
+        currentHeadSha = COMMITTED_HEAD_SHA,
+        trackedDelta = "immutable-delta\n",
+        ownedUntrackedPatches = "",
+      ),
+    )
+    val harness = goalContinuationHarness(repoRoot, git, goalContinuationLauncher(validJsonOutput("commit_push")))
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    check(
+      harness.goalContinuationRecorder.recordGoalContinuationState(
+        GoalContinuationStateRecordRequest(
+          workflowId = WORKFLOW_ID,
+          continuation = FeatureTaskRuntimeGoalContinuationArtifact(
+            issueKey = ISSUE_KEY,
+            subtaskId = 5,
+            suppressPr = true,
+            goalBranch = "feat/existing-runtime-branch",
+            codeReviewMode = CodeReviewExecutionMode.INLINE,
+          ),
+          reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+        ),
+      ),
+    )
+    harness.seedReviewPhase("completed", 1, validJsonOutput("review"), reviewPassNumber = 1)
+    val paused = GoalSubtaskReviewState.initial(
+      reviewBaseSha = "0".repeat(40),
+      baselineUntrackedPaths = emptyList(),
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
+    ).reserveNextPass().completeReservedPass(
+      verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+      unresolvedFindingCount = 1,
+      findings = listOf(
+        GoalSubtaskReviewCompactFinding(
+          severity = "blocker",
+          label = "StaleCap",
+          text = "unresolved",
+          findingId = "F-001",
+        ),
+      ),
+    ).copy(
+      disposition = GoalSubtaskReviewDisposition.PAUSED,
+      reviewedDeltaDigest = immutableDigest,
+      remediationBaseSha = "9".repeat(40),
+    )
+    checkNotNull(harness.goalContinuationRecorder.updateReviewState(WORKFLOW_ID) { paused })
+    val generationBefore = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)[
+      "feature_task_runtime_review_generation"
+    ]
+
+    // A short run still executes reopenCappedReviewOnChangedDelta before the loop.
+    harness.runner.run(
+      harness.request().copy(
+        transitionsOverride = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration(
+          forwardPhaseIds = listOf("preplan"),
+          backwardEdges = emptyList(),
+        ),
+      ),
+    )
+
+    val after = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
+    assertEquals(GoalSubtaskReviewDisposition.PAUSED, after.disposition)
+    assertEquals("9".repeat(40), after.remediationBaseSha, "staleness must not heal the remediation base")
+    assertEquals(0, git.goalReviewRecoverCalls, "recovery belongs to review preparation, not staleness")
+    assertEquals(
+      generationBefore,
+      harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["feature_task_runtime_review_generation"],
+    )
+  }
+
+  @Test
+  fun `cappedReviewIsStale still reopens when the immutable base digest changed despite unreachable remediation`() {
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-stale-changed-immutable")
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+      .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
+    val judgedDigest = GoalSubtaskReviewInput(
+      reviewBaseSha = "0".repeat(40),
+      currentHeadSha = COMMITTED_HEAD_SHA,
+      trackedDelta = "old-delta\n",
+      ownedUntrackedPatches = "",
+    ).deltaDigest
+    git.goalReviewBuildResults += GoalSubtaskReviewInputResult(
+      status = "error",
+      error = "Persisted review base '${"9".repeat(40)}' is not an ancestor of current HEAD.",
+      failureReason = GoalSubtaskReviewInputFailureReason.BASE_NOT_ANCESTOR,
+    )
+    git.goalReviewBuildResults += GoalSubtaskReviewInputResult(
+      status = "ok",
+      input = GoalSubtaskReviewInput(
+        reviewBaseSha = "0".repeat(40),
+        currentHeadSha = COMMITTED_HEAD_SHA,
+        trackedDelta = "new-delta\n",
+        ownedUntrackedPatches = "",
+      ),
+    )
+    val harness = goalContinuationHarness(repoRoot, git, goalContinuationLauncher(validJsonOutput("commit_push")))
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    check(
+      harness.goalContinuationRecorder.recordGoalContinuationState(
+        GoalContinuationStateRecordRequest(
+          workflowId = WORKFLOW_ID,
+          continuation = FeatureTaskRuntimeGoalContinuationArtifact(
+            issueKey = ISSUE_KEY,
+            subtaskId = 5,
+            suppressPr = true,
+            goalBranch = "feat/existing-runtime-branch",
+            codeReviewMode = CodeReviewExecutionMode.INLINE,
+          ),
+          reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+        ),
+      ),
+    )
+    harness.seedReviewPhase("completed", 1, validJsonOutput("review"), reviewPassNumber = 1)
+    val paused = GoalSubtaskReviewState.initial(
+      reviewBaseSha = "0".repeat(40),
+      baselineUntrackedPaths = emptyList(),
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
+    ).reserveNextPass().completeReservedPass(
+      verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+      unresolvedFindingCount = 1,
+      findings = listOf(
+        GoalSubtaskReviewCompactFinding(
+          severity = "blocker",
+          label = "StaleCap",
+          text = "unresolved",
+          findingId = "F-001",
+        ),
+      ),
+    ).copy(
+      disposition = GoalSubtaskReviewDisposition.PAUSED,
+      reviewedDeltaDigest = judgedDigest,
+      remediationBaseSha = "9".repeat(40),
+    )
+    checkNotNull(harness.goalContinuationRecorder.updateReviewState(WORKFLOW_ID) { paused })
+
+    harness.runner.run(
+      harness.request().copy(
+        transitionsOverride = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration(
+          forwardPhaseIds = listOf("preplan"),
+          backwardEdges = emptyList(),
+        ),
+      ),
+    )
+
+    val after = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
+    assertEquals(GoalSubtaskReviewDisposition.PENDING, after.disposition)
+    assertNull(after.remediationBaseSha, "invalidation resets review state; recovery is not the staleness path")
+    assertEquals(0, git.goalReviewRecoverCalls)
+  }
+
 
   @Test
   fun `crash reconciliation preserves a changes requested disposition without structured findings`() {
@@ -5456,6 +5728,8 @@ internal class RecordingWorkflowGitOperations(
   val goalReviewBuildResults = ArrayDeque<GoalSubtaskReviewInputResult>()
   var goalReviewRecoveredBaseline: GoalSubtaskReviewBaseline? = null
   var goalReviewRecoverCalls: Int = 0
+  val goalReviewRecoverRequests =
+    mutableListOf<skillbill.ports.workflow.model.GoalSubtaskReviewBaselineRecoveryRequest>()
 
   data class CheckoutCall(val branch: String, val baseBranch: String?)
 
@@ -5556,7 +5830,7 @@ internal class RecordingWorkflowGitOperations(
         onStagedPathsRead?.invoke()
         return stagedPathsResult ?: WorkflowGitOperationResult(
           status = "ok",
-          value = stagedPathsValue.joinToString(separator = "") { "$it " },
+          value = stagedPathsValue.joinToString(separator = "") { "$it\u0000" },
         )
       }
 
@@ -5658,10 +5932,11 @@ internal class RecordingWorkflowGitOperations(
 
       override fun recoverBaseline(
         repoRoot: Path,
-        baseline: GoalSubtaskReviewBaseline,
+        request: skillbill.ports.workflow.model.GoalSubtaskReviewBaselineRecoveryRequest,
         expectedBranch: String,
       ): GoalSubtaskReviewBaselineResult {
         goalReviewRecoverCalls++
+        goalReviewRecoverRequests += request
         return goalReviewRecoveredBaseline?.let { GoalSubtaskReviewBaselineResult(status = "ok", baseline = it) }
           ?: GoalSubtaskReviewBaselineResult(status = "error", error = "no recovered baseline configured")
       }

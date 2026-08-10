@@ -11,6 +11,8 @@ const val GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY: String = "goal_subtask_review_
 const val GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY: String = "goal_subtask_review_results"
 const val GOAL_SUBTASK_REVIEW_RESULT_ARTIFACT_PREFIX: String = "goal_subtask_review_results"
 const val GOAL_SUBTASK_REVIEW_BLOCKER_SEVERITY: String = "blocker"
+/** Additive evidence log of review/remediation base recoveries; unknown to older runtimes. */
+const val GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY: String = "goal_review_base_recoveries"
 
 enum class GoalSubtaskOperatorDecision(val wireValue: String) {
   RETRY_FIX("retry_fix"),

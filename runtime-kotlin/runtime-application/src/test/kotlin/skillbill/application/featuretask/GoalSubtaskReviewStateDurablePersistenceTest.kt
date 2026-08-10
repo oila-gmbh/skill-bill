@@ -5,12 +5,14 @@ import skillbill.application.RuntimeFakeDatabaseSessionFactory
 import skillbill.application.testWorkflowSnapshotValidator
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.toRecord
+import skillbill.infrastructure.fs.GitWorkflowGitOperations
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
+import skillbill.workflow.taskruntime.model.GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition
@@ -20,7 +22,10 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskPauseRelease
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewDisposition
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
+import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
@@ -103,8 +108,11 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     assertNull(reloaded.reservedPassNumber, "A consumed pass must never be re-reserved by a plain resume.")
   }
 
-  private fun recorderWith(state: GoalSubtaskReviewState): FeatureTaskRuntimeGoalContinuationRecorder {
-    val repository = InMemoryRuntimeWorkflowRepository()
+  private fun recorderWith(
+    state: GoalSubtaskReviewState,
+    repository: InMemoryRuntimeWorkflowRepository = InMemoryRuntimeWorkflowRepository(),
+    goalBranch: String = "feat/SKILL-142",
+  ): FeatureTaskRuntimeGoalContinuationRecorder {
     val engine = WorkflowEngine(testWorkflowSnapshotValidator)
     val definition = WorkflowFamily.TASK_RUNTIME.definition
     val opened = engine.openRecord(definition, workflowId, "fis-001", "preplan")
@@ -120,7 +128,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
             issueKey = "SKILL-142",
             subtaskId = 5,
             suppressPr = true,
-            goalBranch = "feat/SKILL-142",
+            goalBranch = goalBranch,
             codeReviewMode = CodeReviewExecutionMode.INLINE,
           ).toArtifactMap(),
           GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to state.toArtifactMap(),
@@ -136,6 +144,76 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
       RuntimeFakeDatabaseSessionFactory(repository),
       testWorkflowSnapshotValidator,
     )
+  }
+
+  private data class Skill15GitFixture(
+    val repoRoot: Path,
+    val parent: String,
+    val orphanedBase: String,
+  )
+
+  private data class UnreachableGitFixture(
+    val repoRoot: Path,
+    val unreachable: String,
+  )
+
+  private fun skill15GitFixture(): Skill15GitFixture {
+    val repoRoot = Files.createTempDirectory("skillbill-durable-skill15")
+    val remoteRoot = Files.createTempDirectory("skillbill-durable-skill15-remote")
+    git(remoteRoot, "init", "--bare")
+    git(repoRoot, "init", "-b", "main")
+    git(repoRoot, "config", "user.email", "skill-bill@example.test")
+    git(repoRoot, "config", "user.name", "Skill Bill")
+    git(repoRoot, "config", "commit.gpgsign", "false")
+    git(repoRoot, "remote", "add", "origin", remoteRoot.toString())
+    Files.writeString(repoRoot.resolve("tracked.txt"), "root\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "root")
+    git(repoRoot, "push", "-u", "origin", "main")
+    git(repoRoot, "checkout", "-b", "feat/skill-15")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "parent\n")
+    git(repoRoot, "commit", "-am", "parent")
+    val parent = git(repoRoot, "rev-parse", "HEAD")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "sibling-a\n")
+    git(repoRoot, "commit", "-am", "sibling-a")
+    val orphanedBase = git(repoRoot, "rev-parse", "HEAD")
+    git(repoRoot, "reset", "--hard", parent)
+    Files.writeString(repoRoot.resolve("tracked.txt"), "sibling-b\n")
+    git(repoRoot, "commit", "-am", "sibling-b")
+    return Skill15GitFixture(repoRoot, parent, orphanedBase)
+  }
+
+  private fun unreachableOnlyGitFixture(): UnreachableGitFixture {
+    val repoRoot = Files.createTempDirectory("skillbill-durable-unreachable")
+    git(repoRoot, "init", "-b", "feat/orphan-goal")
+    git(repoRoot, "config", "user.email", "skill-bill@example.test")
+    git(repoRoot, "config", "user.name", "Skill Bill")
+    git(repoRoot, "config", "commit.gpgsign", "false")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "goal\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "goal tip")
+    git(repoRoot, "checkout", "--orphan", "unrelated-root")
+    val prior = git(repoRoot, "ls-files").lines().filter { it.isNotBlank() }
+    if (prior.isNotEmpty()) {
+      git(repoRoot, *(listOf("rm", "-f", "--") + prior).toTypedArray())
+    }
+    Files.writeString(repoRoot.resolve("other.txt"), "unrelated\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "unrelated root")
+    val unreachable = git(repoRoot, "rev-parse", "HEAD")
+    git(repoRoot, "checkout", "feat/orphan-goal")
+    git(repoRoot, "branch", "-D", "unrelated-root")
+    return UnreachableGitFixture(repoRoot, unreachable)
+  }
+
+  private fun git(repoRoot: Path, vararg args: String): String {
+    val process = ProcessBuilder(listOf("git", "-C", repoRoot.toString()) + args.toList())
+      .redirectErrorStream(true)
+      .start()
+    val output = process.inputStream.bufferedReader().readText().trim()
+    val exitCode = process.waitFor()
+    check(exitCode == 0) { "git ${args.joinToString(" ")} failed with $exitCode: $output" }
+    return output
   }
 
   private fun pausedState(): GoalSubtaskReviewState {
@@ -188,6 +266,130 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     val reReserved = recorder.reserveGoalReviewPass(workflowId)
     val inFlight = assertIs<GoalSubtaskReviewPassInFlight>(reReserved)
     assertEquals(9, inFlight.state.reservedPassNumber, "A resumed reservation is reused, never re-allocated.")
+  }
+
+  @Test
+  fun `unreachable remediation base recovers and persists the ancestor with evidence`() {
+    val fixture = skill15GitFixture()
+    val orphaned = fixture.orphanedBase
+    val parent = fixture.parent
+    val state = deepRemediationState(completedPasses = 2)
+      .reserveNextPass()
+      .copy(remediationBaseSha = orphaned)
+    val repository = InMemoryRuntimeWorkflowRepository()
+    val recorder = recorderWith(state, repository, goalBranch = "feat/skill-15")
+
+    val prepared = recorder.buildGoalReviewInput(
+      workflowId,
+      GitWorkflowGitOperations(),
+      fixture.repoRoot,
+    )
+
+    assertIs<GoalSubtaskReviewInputReady>(prepared, prepared.toString())
+    val reloaded = assertNotNull(recorder.reviewState(workflowId))
+    assertEquals(parent, reloaded.remediationBaseSha, "durable remediation_base_sha must repoint to the ancestor")
+    assertEquals("a".repeat(40), reloaded.reviewBaseSha, "immutable review base must stay untouched")
+    val artifacts = repository.taskRuntimeArtifacts(workflowId)
+    @Suppress("UNCHECKED_CAST")
+    val evidence = artifacts[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY] as List<Map<String, Any?>>
+    val entry = evidence.single()
+    assertEquals(orphaned, entry["original_sha"])
+    assertEquals(parent, entry["replacement_sha"])
+    assertEquals("remediation_base_sha", entry["repointed_field"])
+    assertEquals("base_not_ancestor", entry["failure_reason"])
+    assertContains(entry["failure_message"].toString(), orphaned)
+    assertEquals("feat/skill-15", entry["goal_branch"])
+  }
+
+  @Test
+  fun `recovery gate allows completed passes and reserved remediation while refusing terminal dispositions`() {
+    val fixture = skill15GitFixture()
+    val remediationState = deepRemediationState(completedPasses = 2)
+      .reserveNextPass()
+      .copy(remediationBaseSha = fixture.orphanedBase)
+    assertIs<GoalSubtaskReviewInputReady>(
+      recorderWith(remediationState, goalBranch = "feat/skill-15").buildGoalReviewInput(
+        workflowId,
+        GitWorkflowGitOperations(),
+        fixture.repoRoot,
+      ),
+    )
+
+    val zeroPassState = GoalSubtaskReviewState.initial(
+      reviewBaseSha = fixture.orphanedBase,
+      baselineUntrackedPaths = emptyList(),
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
+    ).reserveNextPass()
+    assertIs<GoalSubtaskReviewInputReady>(
+      recorderWith(zeroPassState, goalBranch = "feat/skill-15").buildGoalReviewInput(
+        workflowId,
+        GitWorkflowGitOperations(),
+        fixture.repoRoot,
+      ),
+    )
+
+    val paused = remediationState.copy(disposition = GoalSubtaskReviewDisposition.PAUSED)
+    assertIs<GoalSubtaskReviewInputBlocked>(
+      recorderWith(paused, goalBranch = "feat/skill-15").buildGoalReviewInput(
+        workflowId,
+        GitWorkflowGitOperations(),
+        fixture.repoRoot,
+      ),
+    )
+
+    val capped = deepRemediationState(completedPasses = 1).copy(
+      disposition = GoalSubtaskReviewDisposition.REVIEW_CAP_REACHED,
+      remediationBaseSha = fixture.orphanedBase,
+    )
+    assertIs<GoalSubtaskReviewInputBlocked>(
+      recorderWith(capped, goalBranch = "feat/skill-15").buildGoalReviewInput(
+        workflowId,
+        GitWorkflowGitOperations(),
+        fixture.repoRoot,
+      ),
+    )
+  }
+
+  @Test
+  fun `reachable bases take no recovery path and keep byte-identical review input`() {
+    val fixture = skill15GitFixture()
+    val state = deepRemediationState(completedPasses = 2)
+      .reserveNextPass()
+      .copy(remediationBaseSha = fixture.parent)
+    val repository = InMemoryRuntimeWorkflowRepository()
+    val recorder = recorderWith(state, repository, goalBranch = "feat/skill-15")
+    val git = GitWorkflowGitOperations()
+
+    val first = assertIs<GoalSubtaskReviewInputReady>(
+      recorder.buildGoalReviewInput(workflowId, git, fixture.repoRoot),
+    )
+    val second = assertIs<GoalSubtaskReviewInputReady>(
+      recorder.buildGoalReviewInput(workflowId, git, fixture.repoRoot),
+    )
+
+    assertEquals(first.input.reviewText, second.input.reviewText)
+    assertEquals(first.input.deltaDigest, second.input.deltaDigest)
+    assertNull(
+      repository.taskRuntimeArtifacts(workflowId)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY],
+      "reachable resume must write no recovery evidence",
+    )
+    assertEquals(fixture.parent, recorder.reviewState(workflowId)?.remediationBaseSha)
+  }
+
+  @Test
+  fun `recovery that cannot find a reachable base blocks naming the sha and branch`() {
+    val fixture = unreachableOnlyGitFixture()
+    val state = deepRemediationState(completedPasses = 2)
+      .reserveNextPass()
+      .copy(remediationBaseSha = fixture.unreachable)
+    val prepared = recorderWith(state, goalBranch = "feat/orphan-goal").buildGoalReviewInput(
+      workflowId,
+      GitWorkflowGitOperations(),
+      fixture.repoRoot,
+    )
+    val blocked = assertIs<GoalSubtaskReviewInputBlocked>(prepared)
+    assertContains(blocked.reason, fixture.unreachable)
+    assertContains(blocked.reason, "feat/orphan-goal")
   }
 
   private fun deepRemediationState(completedPasses: Int): GoalSubtaskReviewState {
