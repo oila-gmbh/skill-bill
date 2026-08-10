@@ -20,9 +20,9 @@ import skillbill.application.goalrunner.GoalPlanningAttemptRecorder
 import skillbill.application.goalrunner.GoalPlanningRejectionRecorder
 import skillbill.application.goalrunner.GoalPlanningSweep
 import skillbill.application.goalrunner.GoalRunner
+import skillbill.application.goalrunner.GoalRunnerChildRepairStore
 import skillbill.application.goalrunner.GoalRunnerExecutionCoordinator
 import skillbill.application.goalrunner.GoalRunnerStatusService
-import skillbill.application.goalrunner.GoalRunnerChildRepairStore
 import skillbill.application.goalrunner.UnaddressedFindingsLedgerService
 import skillbill.application.goalrunner.WorkflowGoalRunnerManifestStore
 import skillbill.application.goalrunner.WorkflowGoalRunnerOutcomeStore
@@ -478,8 +478,7 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
-  internal fun goalRunnerChildRepairStore(adapter: WorkflowGoalRunnerOutcomeStore): GoalRunnerChildRepairStore =
-    adapter
+  internal fun goalRunnerChildRepairStore(adapter: WorkflowGoalRunnerOutcomeStore): GoalRunnerChildRepairStore = adapter
 
   @Provides
   @JvmSynthetic

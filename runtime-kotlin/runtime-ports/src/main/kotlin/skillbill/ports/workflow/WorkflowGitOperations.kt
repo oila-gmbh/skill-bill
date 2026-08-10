@@ -51,14 +51,11 @@ interface WorkflowGitOperations {
    * True when [ancestorSha] is an ancestor of [descendantSha] (or the same commit). Used to detect a
    * recorded remediation base that the branch tip no longer contains.
    */
-  fun isCommitAncestor(
-    repoRoot: Path,
-    ancestorSha: String,
-    descendantSha: String,
-  ): WorkflowGitOperationResult = WorkflowGitOperationResult(
-    status = "error",
-    error = "This git operations implementation cannot test commit ancestry.",
-  )
+  fun isCommitAncestor(repoRoot: Path, ancestorSha: String, descendantSha: String): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(
+      status = "error",
+      error = "This git operations implementation cannot test commit ancestry.",
+    )
 
   // Resolves an operator-supplied revision to a full commit SHA, or errors when it names no commit
   // in this repository. Default is a refusal so a store that cannot measure git never silently

@@ -22,6 +22,9 @@ import skillbill.application.featuretask.FeatureTaskRuntimeRunInvariantsStore
 import skillbill.application.featuretask.FeatureTaskRuntimeRunner
 import skillbill.application.featuretask.FeatureTaskRuntimeSpecGate
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
+import skillbill.application.featuretask.GoalContinuationStateRecordRequest
+import skillbill.application.featuretask.GoalSubtaskReviewInputBlocked
+import skillbill.application.featuretask.GoalSubtaskReviewInputReady
 import skillbill.application.featuretask.SpecSourceResolver
 import skillbill.application.featuretask.reconcileCheckpointPathInventory
 import skillbill.application.model.FeatureTaskRuntimeAgentAssignment
@@ -90,13 +93,6 @@ import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineResult
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewInputFailureReason
 import skillbill.ports.workflow.model.GoalSubtaskReviewInputResult
-import skillbill.application.featuretask.GoalSubtaskReviewInputBlocked
-import skillbill.application.featuretask.GoalSubtaskReviewInputReady
-import skillbill.application.featuretask.GoalContinuationStateRecordRequest
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewDisposition
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksResult
@@ -120,6 +116,7 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_AR
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFormat
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
@@ -129,7 +126,11 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputValidat
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
+import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewDisposition
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
 import java.nio.file.Files
 import java.nio.file.Path
@@ -1352,7 +1353,7 @@ class FeatureTaskRuntimeRemediationGenerationTest {
         when (phaseId) {
           "review" -> {
             reviewLaunches += 1
-            facts(verdictReviewOutput(if (reviewLaunches == 1) "needs_fix" else "advance"))
+            facts(verdictReviewOutput(if (reviewLaunches == 1) "changes_requested" else "advance"))
           }
           else -> facts(validJsonOutput(phaseId))
         }
@@ -1395,7 +1396,7 @@ class FeatureTaskRuntimeRemediationGenerationTest {
         when (phaseId) {
           "review" -> {
             reviewLaunches += 1
-            facts(verdictReviewOutput(if (reviewLaunches == 1) "needs_fix" else "advance"))
+            facts(verdictReviewOutput(if (reviewLaunches == 1) "changes_requested" else "advance"))
           }
           else -> facts(validJsonOutput(phaseId))
         }
@@ -1789,6 +1790,7 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
 
 // Goal-continuation persistence and SHA measurement paths. Kept outside
 // [FeatureTaskRuntimeRunnerPersistenceTest] so that suite stays under the detekt LargeClass threshold.
+@Suppress("LargeClass")
 class FeatureTaskRuntimeGoalContinuationPersistenceTest {
   @Test
   fun `goal-continuation run suppresses decompose and pr then completes at commit push`() {
@@ -2027,8 +2029,8 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
     )
   }
 
-
   @Test
+  @Suppress("LongMethod") // end-to-end review prep harness; splitting would obscure AC-009/AC-012 wiring
   fun `non-scope failure inside review preparation surfaces its own cause not the fixed scope sentence`() {
     // Bug this catches: the review dispatch substituted a fixed scope sentence after
     // blockedGoalReviewRun already persisted the specific reservation/evidence-store cause (AC-009/AC-012).
@@ -2049,6 +2051,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
             subtaskId = 5,
             suppressPr = true,
             goalBranch = "feat/existing-runtime-branch",
+            parentWorkflowId = "wfl-parent",
             codeReviewMode = CodeReviewExecutionMode.INLINE,
           ),
           reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
@@ -2114,6 +2117,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
             subtaskId = 5,
             suppressPr = true,
             goalBranch = "feat/existing-runtime-branch",
+            parentWorkflowId = "wfl-parent",
             codeReviewMode = CodeReviewExecutionMode.INLINE,
           ),
           reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
@@ -2139,6 +2143,8 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
       ),
     )
 
+    println("DEBUG blockedReason=" + blocked.blockedReason)
+    println("DEBUG lastIncompletePhase=" + blocked.lastIncompletePhase)
     assertEquals("review", blocked.lastIncompletePhase)
     assertContains(blocked.blockedReason, "review_base_sha must be captured before implementation")
     assertTrue(
@@ -2171,6 +2177,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
             subtaskId = 5,
             suppressPr = true,
             goalBranch = "feat/existing-runtime-branch",
+            parentWorkflowId = "wfl-parent",
             codeReviewMode = CodeReviewExecutionMode.INLINE,
           ),
           reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
@@ -2188,6 +2195,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
     }
     state = state.reserveNextPass().copy(remediationBaseSha = unreachableRemediation)
     checkNotNull(harness.goalContinuationRecorder.updateReviewState(WORKFLOW_ID) { state })
+    harness.seedRawReviewResults(state)
 
     // Drive review preparation the run loop uses — the pre-fix gate refused this shape.
     val prepared = harness.goalContinuationRecorder.buildGoalReviewInput(WORKFLOW_ID, git, repoRoot)
@@ -2225,6 +2233,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
             subtaskId = 5,
             suppressPr = true,
             goalBranch = "feat/existing-runtime-branch",
+            parentWorkflowId = "wfl-parent",
             codeReviewMode = CodeReviewExecutionMode.INLINE,
           ),
           reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
@@ -2239,6 +2248,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
   }
 
   @Test
+  @Suppress("LongMethod") // capped-review staleness harness with unreachable remediation base
   fun `cappedReviewIsStale ignores an unreachable remediation base and keeps an unchanged immutable digest`() {
     val repoRoot = Files.createTempDirectory("skillbill-runtime-stale-unreachable-remediation")
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
@@ -2277,6 +2287,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
             subtaskId = 5,
             suppressPr = true,
             goalBranch = "feat/existing-runtime-branch",
+            parentWorkflowId = "wfl-parent",
             codeReviewMode = CodeReviewExecutionMode.INLINE,
           ),
           reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
@@ -2305,8 +2316,9 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
       remediationBaseSha = "9".repeat(40),
     )
     checkNotNull(harness.goalContinuationRecorder.updateReviewState(WORKFLOW_ID) { paused })
+    harness.seedRawReviewResults(paused)
     val generationBefore = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)[
-      "feature_task_runtime_review_generation"
+      "feature_task_runtime_review_generation",
     ]
 
     // A short run still executes reopenCappedReviewOnChangedDelta before the loop.
@@ -2330,6 +2342,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
   }
 
   @Test
+  @Suppress("LongMethod") // capped-review staleness harness with changed immutable digest
   fun `cappedReviewIsStale still reopens when the immutable base digest changed despite unreachable remediation`() {
     val repoRoot = Files.createTempDirectory("skillbill-runtime-stale-changed-immutable")
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
@@ -2365,6 +2378,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
             subtaskId = 5,
             suppressPr = true,
             goalBranch = "feat/existing-runtime-branch",
+            parentWorkflowId = "wfl-parent",
             codeReviewMode = CodeReviewExecutionMode.INLINE,
           ),
           reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
@@ -2393,6 +2407,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
       remediationBaseSha = "9".repeat(40),
     )
     checkNotNull(harness.goalContinuationRecorder.updateReviewState(WORKFLOW_ID) { paused })
+    harness.seedRawReviewResults(paused)
 
     harness.runner.run(
       harness.request().copy(
@@ -2408,7 +2423,6 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
     assertNull(after.remediationBaseSha, "invalidation resets review state; recovery is not the staleness path")
     assertEquals(0, git.goalReviewRecoverCalls)
   }
-
 
   @Test
   fun `crash reconciliation preserves a changes requested disposition without structured findings`() {
@@ -4404,7 +4418,7 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
         when (phaseId) {
           "review" -> {
             reviewLaunches += 1
-            facts(verdictReviewOutput("needs_fix"))
+            facts(verdictReviewOutput("changes_requested"))
           }
           else -> facts(validJsonOutput(phaseId))
         }
@@ -4420,8 +4434,20 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
       blocked.blockedReason.contains("remediation") || blocked.blockedReason.contains("checkpoint"),
       blocked.blockedReason,
     )
-    assertEquals(listOf(parentSha), git.resetSoftToCommitCalls, "failed paired write must soft-reset to parent")
-    assertEquals(parentSha, git.headCommitShaValue, "branch tip must match the pre-commit parent after rollback")
+    // The dirty tree left by `implement` earns its own audit-boundary checkpoint before the
+    // remediation checkpoint is even attempted, so the failed remediation commit's parent — and the
+    // soft-reset target — is that audit checkpoint's sha, not the pre-run head.
+    val auditCheckpointSha = "0".repeat(39) + "1"
+    assertEquals(
+      listOf(auditCheckpointSha),
+      git.resetSoftToCommitCalls,
+      "failed paired write must soft-reset to the preceding checkpoint",
+    )
+    assertEquals(
+      auditCheckpointSha,
+      git.headCommitShaValue,
+      "branch tip must match the preceding checkpoint after rollback",
+    )
     assertNull(
       harness.goalContinuationRecorder.reviewState(WORKFLOW_ID)?.remediationBaseSha,
       "durable base must remain unset when the paired record failed",
@@ -4887,6 +4913,17 @@ internal class RunnerHarness(
   val repository: InMemoryRuntimeWorkflowRepository get() = io.repository
   val gitOperations: RecordingWorkflowGitOperations get() = io.gitOperations
   val ledgerRows: List<skillbill.goalrunner.model.UnaddressedFinding> get() = io.database.ledgerRows
+
+  // Direct review-state seeding via updateReviewState only patches goal_subtask_review_state; the
+  // decoder also requires a durable raw result for every completed pass, so fixtures that
+  // hand-assemble completed passes must patch this sibling artifact themselves.
+  fun seedRawReviewResults(state: GoalSubtaskReviewState) {
+    val artifacts = repository.taskRuntimeArtifacts(WORKFLOW_ID).toMutableMap()
+    artifacts[GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY] = state.passResults.associate { result ->
+      result.passNumber.toString() to "raw review result for pass ${result.passNumber}"
+    }
+    repository.replaceTaskRuntimeArtifacts(WORKFLOW_ID, artifacts)
+  }
 
   fun reviewedDeltaDigest(): String? =
     requireNotNull(goalContinuationRecorder.reviewState(WORKFLOW_ID)).reviewedDeltaDigest
@@ -5963,11 +6000,13 @@ internal class RecordingWorkflowGitOperations(
   // model a failed checkpoint commit.
   val createCommitMessages = mutableListOf<String>()
   var createCommitResult: WorkflowGitOperationResult? = null
+
   // When true, a remediation-checkpoint createCommit returns a malformed sha so the paired base
   // record fails GoalSubtaskReviewState validation and the soft-reset rollback path is exercised.
   var invalidShaOnRemediationCommit: Boolean = false
   val resetSoftToCommitCalls = mutableListOf<String>()
   var resetSoftToCommitResult: WorkflowGitOperationResult? = null
+
   // Ancestor→descendant pairs that report false; all other pairs report true when both SHAs are set.
   val nonAncestorPairs = mutableSetOf<Pair<String, String>>()
 
@@ -6275,6 +6314,7 @@ internal data class ProducerEvidenceKey(
   val phaseId: String,
   val generation: Int,
   val attempt: Int,
+  val agentId: String,
 )
 
 internal fun samePayload(left: ByteArray?, right: ByteArray?): Boolean =
@@ -6313,8 +6353,9 @@ internal class RuntimeFakeDatabaseSessionFactory(
     phaseId: String,
     attempt: Int,
     generation: Int,
+    agentId: String,
   ): skillbill.ports.persistence.ProducerOutputEvidence? =
-    producerEvidence[ProducerEvidenceKey(workflowId, phaseId, generation, attempt)]
+    producerEvidence[ProducerEvidenceKey(workflowId, phaseId, generation, attempt, agentId)]
 
   override fun resolveDbPath(dbOverride: String?): Path = dbPath
 
@@ -6396,6 +6437,7 @@ internal class RuntimeFakeDatabaseSessionFactory(
           evidence.phaseId,
           evidence.generation,
           evidence.attempt,
+          evidence.agentId,
         )
         producerEvidence.putIfAbsent(key, evidence)
         val retained = producerEvidence.getValue(key)
@@ -6403,7 +6445,7 @@ internal class RuntimeFakeDatabaseSessionFactory(
           !samePayload(retained.payload, evidence.payload)
         ) {
           throw skillbill.ports.persistence.model.RejectedOutputDiagnosticError.Conflict(
-            "${evidence.workflowId}:${evidence.phaseId}:${evidence.generation}:${evidence.attempt}",
+            "${evidence.workflowId}:${evidence.phaseId}:${evidence.generation}:${evidence.attempt}:${evidence.agentId}",
           )
         }
       }
@@ -6412,13 +6454,15 @@ internal class RuntimeFakeDatabaseSessionFactory(
         workflowId: String,
         phaseId: String,
         attempt: Int,
+        agentId: String,
         generation: Int,
       ): skillbill.ports.persistence.ProducerOutputEvidence? =
-        producerEvidence[ProducerEvidenceKey(workflowId, phaseId, generation, attempt)]
+        producerEvidence[ProducerEvidenceKey(workflowId, phaseId, generation, attempt, agentId)]
           ?: producerEvidence.entries
             .filter {
               it.key.workflowId == workflowId && it.key.phaseId == phaseId &&
-                it.key.attempt == attempt && it.key.generation <= generation
+                it.key.attempt == attempt && it.key.agentId == agentId &&
+                it.key.generation <= generation
             }
             .maxByOrNull { it.key.generation }
             ?.value
@@ -6751,6 +6795,103 @@ internal object HarnessDeadProcessSupervisor : FeatureTaskRuntimeWorkerSuperviso
   ) = NoopFeatureTaskRuntimeHeartbeat
 
   override fun pause(durationMillis: Long) = Unit
+}
+
+/**
+ * AC-007: SKILL-15 shape — review generation 0 attempt 2 under one agent, then a different
+ * producer retains different bytes for the same generation/attempt. Pre-fix four-part-key
+ * Conflict would abort phase recording; agent-scoped identity must continue.
+ */
+class FeatureTaskRuntimeProducerEvidenceIdentityTest {
+  @Test
+  fun `cross-agent retain at review generation 0 attempt 2 continues without Conflict`() {
+    val harness = runnerHarness()
+    val claudePayload = "claude-skill15-review-0-2".encodeToByteArray()
+    val cursorPayload = "cursor-skill15-review-0-2".encodeToByteArray()
+    val recordedAt = java.time.Instant.parse("2026-08-08T18:49:48Z")
+
+    harness.io.database.retainProducerEvidence(
+      skillbill.ports.persistence.ProducerOutputEvidence(
+        workflowId = WORKFLOW_ID,
+        phaseId = "review",
+        attempt = 2,
+        agentId = "claude",
+        model = "claude-opus",
+        recordedAt = recordedAt,
+        byteSize = claudePayload.size.toLong(),
+        sha256 = skillbill.application.featuretask.RejectedOutputDiagnosticService.sha256(claudePayload),
+        payload = claudePayload,
+        generation = 0,
+      ),
+    )
+
+    harness.io.database.retainProducerEvidence(
+      skillbill.ports.persistence.ProducerOutputEvidence(
+        workflowId = WORKFLOW_ID,
+        phaseId = "review",
+        attempt = 2,
+        agentId = "cursor",
+        model = "gpt",
+        recordedAt = recordedAt.plusSeconds(60),
+        byteSize = cursorPayload.size.toLong(),
+        sha256 = skillbill.application.featuretask.RejectedOutputDiagnosticService.sha256(cursorPayload),
+        payload = cursorPayload,
+        generation = 0,
+      ),
+    )
+
+    assertContentEquals(
+      claudePayload,
+      harness.io.database.producerEvidenceAt(WORKFLOW_ID, "review", 2, 0, "claude")?.payload,
+    )
+    assertContentEquals(
+      cursorPayload,
+      harness.io.database.producerEvidenceAt(WORKFLOW_ID, "review", 2, 0, "cursor")?.payload,
+    )
+  }
+
+  @Test
+  fun `same-agent divergent retain at a reused key still Conflicts`() {
+    val harness = runnerHarness()
+    val first = "first".encodeToByteArray()
+    val second = "second".encodeToByteArray()
+    val recordedAt = java.time.Instant.parse("2026-08-08T18:49:48Z")
+    harness.io.database.retainProducerEvidence(
+      skillbill.ports.persistence.ProducerOutputEvidence(
+        workflowId = WORKFLOW_ID,
+        phaseId = "review",
+        attempt = 2,
+        agentId = "claude",
+        model = "claude-opus",
+        recordedAt = recordedAt,
+        byteSize = first.size.toLong(),
+        sha256 = skillbill.application.featuretask.RejectedOutputDiagnosticService.sha256(first),
+        payload = first,
+        generation = 0,
+      ),
+    )
+
+    assertFailsWith<skillbill.ports.persistence.model.RejectedOutputDiagnosticError.Conflict> {
+      harness.io.database.retainProducerEvidence(
+        skillbill.ports.persistence.ProducerOutputEvidence(
+          workflowId = WORKFLOW_ID,
+          phaseId = "review",
+          attempt = 2,
+          agentId = "claude",
+          model = "claude-opus",
+          recordedAt = recordedAt.plusSeconds(1),
+          byteSize = second.size.toLong(),
+          sha256 = skillbill.application.featuretask.RejectedOutputDiagnosticService.sha256(second),
+          payload = second,
+          generation = 0,
+        ),
+      )
+    }
+    assertContentEquals(
+      first,
+      harness.io.database.producerEvidenceAt(WORKFLOW_ID, "review", 2, 0, "claude")?.payload,
+    )
+  }
 }
 
 class InfraFailureReasonStderrSurfacingTest {

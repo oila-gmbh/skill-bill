@@ -22,6 +22,7 @@ const val FEATURE_TASK_RUNTIME_GOAL_PLANNING_IMPORT_ARTIFACT_KEY: String = "goal
 const val FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_ARTIFACT_KEY: String = "operator_block_retry"
 const val FEATURE_TASK_RUNTIME_REVIEW_GENERATION_ARTIFACT_KEY: String = "feature_task_runtime_review_generation"
 const val FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_REASON_MAX_LENGTH: Int = 1000
+
 /**
  * Durable evidence that a resume adopted a launcher-supplied goal-continuation field because the
  * durable row predated that field's contract. Separate from the goal-continuation artifact map so

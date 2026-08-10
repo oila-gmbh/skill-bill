@@ -451,6 +451,11 @@ internal object DatabaseMigrations {
         name = "add-review-finding-outcome-key",
         operation = ::addReviewFindingOutcomeKey,
       ),
+      DatabaseMigration(
+        version = 28,
+        name = "rekey-producer-output-evidence-by-agent",
+        operation = ::rekeyProducerOutputEvidenceByAgent,
+      ),
     ).also(::requireDeterministicMigrations)
 
   fun apply(connection: Connection) {
@@ -572,6 +577,56 @@ private fun addReviewFindingOutcomeKey(connection: Connection) {
     connection.createStatement().use { statement -> statement.execute(sql) }
   }
   DatabaseReviewColumnMigrations.ensureReviewFindingOutcomeColumns(connection)
+}
+
+private fun rekeyProducerOutputEvidenceByAgent(connection: Connection) {
+  if (producerOutputEvidencePrimaryKeyIncludesAgentId(connection)) return
+  connection.createStatement().use {
+    // SQLite cannot widen a PRIMARY KEY in place, so the table is rebuilt. agent_id was already
+    // NOT NULL on every row written by the current runtime, so no backfill is required.
+    it.execute(
+      "ALTER TABLE producer_output_evidence RENAME TO producer_output_evidence_pre_agent",
+    )
+    it.execute(
+      """
+      CREATE TABLE IF NOT EXISTS producer_output_evidence (
+        workflow_id TEXT NOT NULL, phase_id TEXT NOT NULL,
+        generation INTEGER NOT NULL DEFAULT 0 CHECK (generation >= 0),
+        attempt INTEGER NOT NULL CHECK (attempt > 0),
+        agent_id TEXT NOT NULL, model TEXT NOT NULL, recorded_at TEXT NOT NULL,
+        byte_size INTEGER NOT NULL CHECK (byte_size >= 0), sha256 TEXT NOT NULL, payload BLOB,
+        PRIMARY KEY (workflow_id, phase_id, generation, attempt, agent_id)
+      )
+      """.trimIndent(),
+    )
+    it.execute(
+      """
+      INSERT INTO producer_output_evidence (
+        workflow_id, phase_id, generation, attempt, agent_id, model, recorded_at,
+        byte_size, sha256, payload
+      )
+      SELECT workflow_id, phase_id, generation, attempt, agent_id, model, recorded_at,
+             byte_size, sha256, payload
+      FROM producer_output_evidence_pre_agent
+      """.trimIndent(),
+    )
+    it.execute("DROP TABLE producer_output_evidence_pre_agent")
+  }
+}
+
+private fun producerOutputEvidencePrimaryKeyIncludesAgentId(connection: Connection): Boolean {
+  val ddl = connection.createStatement().use { statement ->
+    statement.executeQuery(
+      "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'producer_output_evidence'",
+    ).use { rows ->
+      if (!rows.next()) return false
+      rows.getString("sql").orEmpty()
+    }
+  }
+  return Regex(
+    """PRIMARY\s+KEY\s*\([^)]*\bagent_id\b[^)]*\)""",
+    RegexOption.IGNORE_CASE,
+  ).containsMatchIn(ddl)
 }
 
 private fun dropDelegatedReviewLifecycleTables(connection: Connection) {

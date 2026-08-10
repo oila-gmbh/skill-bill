@@ -9,7 +9,7 @@ base_branch: "feat/SKILL-179-complete-prose-engine-retirement"
 feature_branch: "feat/SKILL-176-goal-child-resume-self-heal"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 4
+  subtask_id: 6
   action: "resume"
 subtasks:
 - id: 1
@@ -57,12 +57,12 @@ subtasks:
 - id: 4
   name: "Blocked-reason fidelity: stale outcomes and discarded reasons"
   spec_path: ".feature-specs/SKILL-176-goal-child-resume-self-heal/spec_subtask_4_stale-continuation-outcome.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260810-092645-b2e3"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -70,12 +70,12 @@ subtasks:
 - id: 5
   name: "skill-bill goal repair operator path"
   spec_path: ".feature-specs/SKILL-176-goal-child-resume-self-heal/spec_subtask_5_goal-repair-command.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260810-095606-5zt0"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -95,7 +95,7 @@ subtasks:
   status: "pending"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260810-102715-fmdf"
   blocked_reason: null
   last_resumable_step: null
   linear_issue_id: null

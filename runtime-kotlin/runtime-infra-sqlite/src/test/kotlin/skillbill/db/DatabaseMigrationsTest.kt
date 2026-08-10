@@ -84,6 +84,7 @@ class DatabaseMigrationsTest {
         25 to "add-review-run-lane-attribution",
         26 to "relax-telemetry-outbox-last-error",
         27 to "add-review-finding-outcome-key",
+        28 to "rekey-producer-output-evidence-by-agent",
       ),
       migrationDefinitions,
     )
@@ -386,6 +387,9 @@ class DatabaseMigrationsTest {
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       connection.createStatement().use { statement ->
         statement.executeUpdate("DELETE FROM schema_migrations WHERE version = 16")
+        statement.executeUpdate(
+          "DELETE FROM schema_migrations WHERE name = 'rekey-producer-output-evidence-by-agent'",
+        )
         statement.executeUpdate("DROP TABLE producer_output_evidence")
         statement.executeUpdate(PRE_GENERATION_PRODUCER_OUTPUT_EVIDENCE_SQL)
       }
@@ -429,6 +433,99 @@ class DatabaseMigrationsTest {
     }
 
     val baseSchemaPath = Files.createTempDirectory("runtime-kotlin-db-v16-base-schema").resolve("base.db")
+    DriverManager.getConnection("jdbc:sqlite:$baseSchemaPath").use { connection ->
+      DatabaseSchema.createBaseSchema(connection)
+      assertEquals(
+        producerEvidenceDdl(connection),
+        migratedDdl,
+        "the migration DDL and the base-schema DDL must not drift",
+      )
+    }
+  }
+
+  @Test
+  fun `migration v28 rekeys producer output evidence by agent without losing a row`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-v28-producer-evidence").resolve("metrics.db")
+    val payload = "skill-15-review-0-2".encodeToByteArray()
+    val sha = "8a5dfb56fd3d".padEnd(64, '0')
+
+    seedPreAgentProducerEvidenceForMigration28(dbPath, payload, sha)
+
+    val migratedDdl = DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertMigration28Applied(connection)
+      assertProducerEvidenceRowSurvivedMigration28(connection, payload, sha)
+      producerEvidenceDdl(connection)
+    }
+
+    assertProducerEvidenceMigrationDdlParity(migratedDdl, "runtime-kotlin-db-v28-base-schema")
+  }
+
+  private fun seedPreAgentProducerEvidenceForMigration28(dbPath: Path, payload: ByteArray, sha: String) {
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      connection.createStatement().use { statement ->
+        statement.executeUpdate(
+          "DELETE FROM schema_migrations WHERE name = 'rekey-producer-output-evidence-by-agent'",
+        )
+        statement.executeUpdate("DROP TABLE producer_output_evidence")
+        statement.executeUpdate(PRE_AGENT_PRODUCER_OUTPUT_EVIDENCE_SQL)
+      }
+      connection.prepareStatement(
+        """
+        INSERT INTO producer_output_evidence
+        (workflow_id, phase_id, generation, attempt, agent_id, model, recorded_at, byte_size, sha256, payload)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """.trimIndent(),
+      ).use { statement ->
+        statement.setString(1, "wftr-20260808-175505-c5po")
+        statement.setString(2, "review")
+        statement.setInt(3, 0)
+        statement.setInt(4, 2)
+        statement.setString(5, "claude")
+        statement.setString(6, "claude-opus")
+        statement.setString(7, "2026-08-08T18:49:48Z")
+        statement.setLong(8, payload.size.toLong())
+        statement.setString(9, sha)
+        statement.setBytes(10, payload)
+        statement.executeUpdate()
+      }
+    }
+  }
+
+  private fun assertMigration28Applied(connection: Connection) {
+    assertNotNull(
+      migrationRows(connection).singleOrNull { row ->
+        row.version == 28 && row.name == "rekey-producer-output-evidence-by-agent"
+      },
+    )
+  }
+
+  private fun assertProducerEvidenceRowSurvivedMigration28(connection: Connection, payload: ByteArray, sha: String) {
+    connection.prepareStatement(
+      """
+      SELECT generation, attempt, agent_id, recorded_at, sha256, payload
+      FROM producer_output_evidence
+      WHERE workflow_id = ? AND phase_id = ? AND generation = ? AND attempt = ?
+      """.trimIndent(),
+    ).use { statement ->
+      statement.setString(1, "wftr-20260808-175505-c5po")
+      statement.setString(2, "review")
+      statement.setInt(3, 0)
+      statement.setInt(4, 2)
+      statement.executeQuery().use { rows ->
+        check(rows.next()) { "SKILL-15-shaped producer evidence row must survive migration 28." }
+        assertEquals(0, rows.getInt("generation"))
+        assertEquals(2, rows.getInt("attempt"))
+        assertEquals("claude", rows.getString("agent_id"))
+        assertEquals("2026-08-08T18:49:48Z", rows.getString("recorded_at"))
+        assertEquals(sha, rows.getString("sha256"))
+        assertContentEquals(payload, rows.getBytes("payload"))
+        assertFalse(rows.next())
+      }
+    }
+  }
+
+  private fun assertProducerEvidenceMigrationDdlParity(migratedDdl: String, baseSchemaDirPrefix: String) {
+    val baseSchemaPath = Files.createTempDirectory(baseSchemaDirPrefix).resolve("base.db")
     DriverManager.getConnection("jdbc:sqlite:$baseSchemaPath").use { connection ->
       DatabaseSchema.createBaseSchema(connection)
       assertEquals(
@@ -2297,6 +2394,18 @@ class DatabaseMigrationsTest {
         agent_id TEXT NOT NULL, model TEXT NOT NULL, recorded_at TEXT NOT NULL,
         byte_size INTEGER NOT NULL CHECK (byte_size >= 0), sha256 TEXT NOT NULL, payload BLOB,
         PRIMARY KEY (workflow_id, phase_id, attempt)
+      )
+      """
+
+    const val PRE_AGENT_PRODUCER_OUTPUT_EVIDENCE_SQL: String =
+      """
+      CREATE TABLE producer_output_evidence (
+        workflow_id TEXT NOT NULL, phase_id TEXT NOT NULL,
+        generation INTEGER NOT NULL DEFAULT 0 CHECK (generation >= 0),
+        attempt INTEGER NOT NULL CHECK (attempt > 0),
+        agent_id TEXT NOT NULL, model TEXT NOT NULL, recorded_at TEXT NOT NULL,
+        byte_size INTEGER NOT NULL CHECK (byte_size >= 0), sha256 TEXT NOT NULL, payload BLOB,
+        PRIMARY KEY (workflow_id, phase_id, generation, attempt)
       )
       """
 

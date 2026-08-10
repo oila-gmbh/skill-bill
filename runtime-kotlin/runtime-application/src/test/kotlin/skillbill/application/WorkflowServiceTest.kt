@@ -1931,6 +1931,9 @@ class WorkflowGoalRunnerOutcomeStoreTest {
             "last_resumable_step" to "preplan",
           ),
         ),
+        // SKILL-176: a stored blocked continuation outcome must corroborate against the durable
+        // workflow status, or it is treated as stale and displaced rather than read as authoritative.
+        workflowStatus = "blocked",
       ),
     )
     val store = WorkflowGoalRunnerOutcomeStore(

@@ -48,6 +48,7 @@ class FeatureTaskRuntimeGoalContinuationAdoptionPersistenceTest {
 
     assertEquals(ValidationDepth.BUILD_ONLY, prepared.request.goalContinuation?.validationDepth)
     val artifacts = harness.repository.taskRuntimeArtifacts(workflowId)
+
     @Suppress("UNCHECKED_CAST")
     val continuation = artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY] as Map<String, Any?>
     assertEquals("build_only", continuation["validation_depth"])
@@ -109,31 +110,30 @@ class FeatureTaskRuntimeGoalContinuationAdoptionPersistenceTest {
       includeValidationDepth?.let { put("validation_depth", it) }
     }
 
-  private fun resumeRequest(depth: ValidationDepth): FeatureTaskRuntimeRunRequest =
-    FeatureTaskRuntimeRunRequest(
-      issueKey = "SKILL-176",
-      workflowId = workflowId,
-      sessionId = "fis-176",
-      runInvariants = FeatureTaskRuntimeRunInvariants(
-        specReference = ".feature-specs/SKILL-176/spec.md",
-        featureSize = FeatureTaskRuntimeFeatureSize.MEDIUM,
-        acceptanceCriteria = listOf("AC-001"),
-        mandatesAndOverrides = emptyList(),
-        codeReviewMode = CodeReviewExecutionMode.INLINE,
-      ),
-      invokedAgentId = "claude",
-      repoRoot = Path.of("/tmp/skillbill-skill-176"),
-      goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
-        parentIssueKey = "SKILL-176",
-        subtaskId = 1,
-        goalBranch = "feat/SKILL-176",
-        suppressPr = true,
-        parentWorkflowId = "wfl-parent",
-        codeReviewMode = CodeReviewExecutionMode.INLINE,
-        validationDepth = depth,
-        reviewBaseline = GoalSubtaskReviewBaseline(baselineSha, emptyList()),
-      ),
-    )
+  private fun resumeRequest(depth: ValidationDepth): FeatureTaskRuntimeRunRequest = FeatureTaskRuntimeRunRequest(
+    issueKey = "SKILL-176",
+    workflowId = workflowId,
+    sessionId = "fis-176",
+    runInvariants = FeatureTaskRuntimeRunInvariants(
+      specReference = ".feature-specs/SKILL-176/spec.md",
+      featureSize = FeatureTaskRuntimeFeatureSize.MEDIUM,
+      acceptanceCriteria = listOf("AC-001"),
+      mandatesAndOverrides = emptyList(),
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
+    ),
+    invokedAgentId = "claude",
+    repoRoot = Path.of("/tmp/skillbill-skill-176"),
+    goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
+      parentIssueKey = "SKILL-176",
+      subtaskId = 1,
+      goalBranch = "feat/SKILL-176",
+      suppressPr = true,
+      parentWorkflowId = "wfl-parent",
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
+      validationDepth = depth,
+      reviewBaseline = GoalSubtaskReviewBaseline(baselineSha, emptyList()),
+    ),
+  )
 
   private fun seedHarness(continuationMap: Map<String, Any?>): AdoptionHarness {
     val repository = InMemoryRuntimeWorkflowRepository()

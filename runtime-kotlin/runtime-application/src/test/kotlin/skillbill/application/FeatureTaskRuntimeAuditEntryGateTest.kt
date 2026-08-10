@@ -471,17 +471,35 @@ class FeatureTaskRuntimeAuditEntryGateTest {
     )
     assertTrue(
       LEGACY_FIRST_REVIEW_PAYLOAD.contentEquals(
-        harness.io.database.producerEvidenceAt(WORKFLOW_ID, "review", 1, 0)?.payload,
+        harness.io.database.producerEvidenceAt(
+          WORKFLOW_ID,
+          "review",
+          1,
+          0,
+          phaseAgent("review"),
+        )?.payload,
       ),
       "the prior generation's attempt-1 evidence must survive byte-for-byte",
     )
     assertTrue(
       LEGACY_SECOND_REVIEW_PAYLOAD.contentEquals(
-        harness.io.database.producerEvidenceAt(WORKFLOW_ID, "review", 2, 0)?.payload,
+        harness.io.database.producerEvidenceAt(
+          WORKFLOW_ID,
+          "review",
+          2,
+          0,
+          phaseAgent("review"),
+        )?.payload,
       ),
       "the prior generation's attempt-2 evidence must survive byte-for-byte",
     )
-    val fresh = harness.io.database.producerEvidenceAt(WORKFLOW_ID, "review", 1, 1)
+    val fresh = harness.io.database.producerEvidenceAt(
+      WORKFLOW_ID,
+      "review",
+      1,
+      1,
+      phaseAgent("review"),
+    )
     assertTrue(
       fresh != null && !LEGACY_FIRST_REVIEW_PAYLOAD.contentEquals(fresh.payload),
       "the fresh review's evidence must land on its own generation rather than the rewound key",

@@ -701,6 +701,7 @@ internal class FeatureTaskRuntimeRunLoop(
    * A Stage commit and its base record are one unit: if `updateReviewState` fails after the commit,
    * HEAD soft-resets to the pre-commit parent so the branch ref and the durable base stay paired.
    */
+  @Suppress("ReturnCount")
   private fun establishRemediationCheckpoint(precedingPhaseId: String, loopId: String): Boolean {
     val branch = resolvedBranch
     if (branch == null || FeatureTaskRuntimeBranchSetup.protectedBranchName(branch) != null) {
@@ -742,6 +743,7 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private data class RemediationCheckpointCommit(val commitSha: String, val parentSha: String?)
 
+  @Suppress("ReturnCount")
   private fun commitRemediationCheckpoint(
     precedingPhaseId: String,
     branch: String,
@@ -3057,10 +3059,21 @@ internal class FeatureTaskRuntimeRunLoop(
     val rejectedRecord = state.outputFor(producer)
     val producingIteration =
       (rejectedRecord?.iteration ?: state.recordFor(producer)?.attemptCount ?: 1).coerceAtLeast(1)
+    val producerAgentId = state.recordFor(producer)?.resolvedAgentId
+      ?: return blockAndPersistInPhase(
+        run,
+        iteration,
+        "Feature-task-runtime phase '$consumer' rejected the durable record produced by '$producer', but the " +
+          "producing phase's resolved agent is unavailable, so exact raw evidence cannot be scoped to a " +
+          "producer. The run blocks instead of fabricating a rejected-output diagnostic.",
+        observability,
+        failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
+      )
     val producerEvidence = recorder.producerOutput(
       request.workflowId,
       producer,
       producingIteration,
+      producerAgentId,
       request.dbPathOverride,
       state.evidenceGeneration(producer),
     ) ?: return blockAndPersistInPhase(
@@ -3135,10 +3148,12 @@ internal class FeatureTaskRuntimeRunLoop(
       .mapNotNull { phaseId -> state.outputFor(phaseId) }
       .firstOrNull()
     val evidence = rejectedOutput?.let { output ->
+      val agentId = state.recordFor(output.phaseId)?.resolvedAgentId ?: return@let null
       recorder.producerOutput(
         request.workflowId,
         output.phaseId,
         output.iteration.coerceAtLeast(1),
+        agentId,
         request.dbPathOverride,
         state.evidenceGeneration(output.phaseId),
       )
@@ -5239,7 +5254,7 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private sealed interface GoalReviewRunPreparation {
     data object CarryForward : GoalReviewRunPreparation
-    data class Blocked(
+    class Blocked(
       val reason: String,
       val failureDisposition: FeatureTaskRuntimeFailureDisposition,
     ) : GoalReviewRunPreparation

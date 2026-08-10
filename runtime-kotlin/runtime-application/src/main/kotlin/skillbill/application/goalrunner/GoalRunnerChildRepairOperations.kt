@@ -65,6 +65,12 @@ internal class GoalRunnerChildRepairOperations(
     )
   }
 
+  @Suppress(
+    "LongParameterList",
+    "LongMethod",
+    "CyclomaticComplexMethod",
+    "LoopWithTooManyJumpStatements",
+  ) // SKILL-176: one transactional repair pass; each wedge class is a distinct continue/apply branch
   fun apply(
     workflowStates: WorkflowStateRepository,
     workflowId: String,
@@ -283,6 +289,7 @@ internal class GoalRunnerChildRepairOperations(
     }
   }
 
+  @Suppress("LongParameterList") // diagnosis accumulators plus identity context; bundling would hide the seam
   private fun diagnoseStaleBlockedOutcome(
     record: skillbill.workflow.model.WorkflowStateSnapshot,
     artifacts: Map<String, Any?>,
@@ -330,9 +337,7 @@ internal class GoalRunnerChildRepairOperations(
     return ancestry.ok && ancestry.value != "true"
   }
 
-  private fun continuationArtifact(
-    artifacts: Map<String, Any?>,
-  ): FeatureTaskRuntimeGoalContinuationArtifact? {
+  private fun continuationArtifact(artifacts: Map<String, Any?>): FeatureTaskRuntimeGoalContinuationArtifact? {
     val raw = artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY] as? Map<*, *> ?: return null
     @Suppress("UNCHECKED_CAST")
     return FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(raw as Map<String, Any?>)

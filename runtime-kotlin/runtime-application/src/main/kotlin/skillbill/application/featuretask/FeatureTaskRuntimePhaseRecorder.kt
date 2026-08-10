@@ -189,10 +189,11 @@ class FeatureTaskRuntimePhaseRecorder(
     workflowId: String,
     phaseId: String,
     attempt: Int,
+    agentId: String,
     dbOverride: String? = null,
     generation: Int = 0,
   ) = database.read(dbOverride) {
-    it.rejectedOutputDiagnostics?.readProducerOutput(workflowId, phaseId, attempt, generation)
+    it.rejectedOutputDiagnostics?.readProducerOutput(workflowId, phaseId, attempt, agentId, generation)
   }
 
   private fun diagnosticService(unitOfWork: UnitOfWork): RejectedOutputDiagnosticService {

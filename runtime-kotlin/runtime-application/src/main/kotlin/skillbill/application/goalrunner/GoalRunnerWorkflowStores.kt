@@ -134,6 +134,7 @@ private const val STALENESS_EVIDENCE_WINDOW_MINUTES: Long = 30
 private val STALENESS_EVIDENCE_WINDOW: Duration = Duration.ofMinutes(STALENESS_EVIDENCE_WINDOW_MINUTES)
 private const val GOAL_REVIEW_POLICY_ARTIFACT_KEY = "goal_review_policy"
 private const val GOAL_OUT_OF_BAND_ACCEPTANCE_ARTIFACT_KEY = "goal_out_of_band_acceptances"
+
 // Sibling workflow artifact (not inside goal_continuation): no rejectUnknownGoalContinuationKeys registration.
 private const val GOAL_CONTINUATION_OUTCOME_DISPLACEMENT_ARTIFACT_KEY =
   "goal_continuation_outcome_displacement"
@@ -1599,6 +1600,7 @@ class WorkflowGoalRunnerOutcomeStore(
       true
     }
 
+  @Suppress("LongMethod") // SKILL-176: one authoritative reconcile pass; splitting would obscure ordering invariants
   override fun reconcileAuthoritativeOutcomes(
     issueKey: String,
     activeWorkflowIds: Set<String>,
@@ -1798,7 +1800,18 @@ class WorkflowGoalRunnerOutcomeStore(
       ),
     )
     family.save(unitOfWork.workflowStates, updated)
-    resolveTerminalOutcome(unitOfWork.workflowStates, workflowId, issueKey, subtaskId) { null }
+    // The recovered outcome above is synthesized from THIS call's own launch output, not a
+    // possibly-stale prior write, so it is read directly rather than through the SKILL-176
+    // corroboration gate: the workflow's own step/status signals are exactly what the missing
+    // result prefix left absent or malformed, so requiring them to corroborate would defeat the
+    // recovery this function exists to perform.
+    val recoveredArtifacts = existingArtifacts + artifactsPatch
+    val recoveredContinuation = goalContinuation(recoveredArtifacts)
+      ?.takeIf { it.issueKey == issueKey && it.subtaskId == subtaskId }
+    val recovered = recoveredContinuation?.let {
+      goalContinuationOutcome(recoveredArtifacts, issueKey, subtaskId, it.suppressPr)
+    }?.copy(workflowId = workflowId)
+    recovered ?: resolveTerminalOutcome(unitOfWork.workflowStates, workflowId, issueKey, subtaskId) { null }
   }
 
   private fun resolveTerminalOutcome(
@@ -1909,6 +1922,7 @@ class WorkflowGoalRunnerOutcomeStore(
   // no longer corroborates it. Sibling artifact key (not inside goal_continuation) so
   // rejectUnknownGoalContinuationKeys is untouched. Idempotent: a second resume finds no stored
   // blocked outcome after supersede and writes nothing.
+  @Suppress("ReturnCount") // guard-clause reconciliation: each early null is a distinct non-reconcilable case
   private fun displaceStaleBlockedContinuationOutcomeIfPresent(
     workflowStates: WorkflowStateRepository,
     workflowId: String,

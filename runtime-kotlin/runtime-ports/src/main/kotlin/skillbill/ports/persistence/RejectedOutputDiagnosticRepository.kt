@@ -22,6 +22,7 @@ interface RejectedOutputDiagnosticRepository {
     workflowId: String,
     phaseId: String,
     attempt: Int,
+    agentId: String,
     generation: Int = 0,
   ): ProducerOutputEvidence? = null
   fun deleteProducerOutputsBefore(before: Instant): Int = 0

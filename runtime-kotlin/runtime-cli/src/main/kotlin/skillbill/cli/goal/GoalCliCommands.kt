@@ -24,8 +24,6 @@ import skillbill.application.model.GoalRunnerAcceptRequest
 import skillbill.application.model.GoalRunnerAcceptResult
 import skillbill.application.model.GoalRunnerPauseResult
 import skillbill.application.model.GoalRunnerRepairRequest
-import skillbill.application.model.GoalRunnerRepairResult
-import skillbill.application.model.GoalRunnerRepairStatus
 import skillbill.application.model.GoalRunnerReplanRequest
 import skillbill.application.model.GoalRunnerReplanResult
 import skillbill.application.model.GoalRunnerResetRequest
@@ -63,6 +61,7 @@ import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 
 @Inject
+@Suppress("LongParameterList") // DI command bag; one subcommand per goal control verb
 class GoalControlSubcommands(
   val pause: GoalPauseCommand,
   val stop: GoalStopCommand,

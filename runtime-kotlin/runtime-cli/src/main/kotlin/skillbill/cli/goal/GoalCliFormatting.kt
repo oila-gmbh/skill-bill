@@ -73,33 +73,40 @@ internal fun goalRepairText(payload: Map<String, Any?>): String = buildString {
   payload["refusal_reason"]?.let { appendLine("refusal_reason: $it") }
   payload["live_lease_workflow_id"]?.let { appendLine("live_lease_workflow_id: $it") }
   appendLine("diagnoses:")
-  (payload["diagnoses"] as? List<*>).orEmpty().forEach { raw ->
+  appendGoalRepairDiagnoses(this, payload["diagnoses"] as? List<*>)
+  appendGoalRepairAppliedRepairs(this, payload["applied_repairs"] as? List<*>)
+}
+
+private fun appendGoalRepairDiagnoses(builder: StringBuilder, diagnoses: List<*>?) {
+  diagnoses.orEmpty().forEach { raw ->
     val diagnosis = raw as? Map<*, *> ?: return@forEach
-    appendLine(
+    builder.appendLine(
       "  - subtask=${diagnosis["subtask_id"]}; workflow_id=${diagnosis["workflow_id"] ?: "none"}; " +
         "healthy=${diagnosis["healthy"]}",
     )
     (diagnosis["passed_checks"] as? List<*>).orEmpty().takeIf { it.isNotEmpty() }?.let { checks ->
-      appendLine("    passed_checks: ${checks.joinToString(",")}")
+      builder.appendLine("    passed_checks: ${checks.joinToString(",")}")
     }
     (diagnosis["wedges"] as? List<*>).orEmpty().forEach { wedgeRaw ->
       val wedge = wedgeRaw as? Map<*, *> ?: return@forEach
-      appendLine(
+      builder.appendLine(
         "    wedge: class=${wedge["wedge_class"]}; field=${wedge["field"]}; " +
           "current_value=${wedge["current_value"] ?: "absent"}",
       )
     }
   }
-  val repairs = (payload["applied_repairs"] as? List<*>).orEmpty()
-  if (repairs.isNotEmpty()) {
-    appendLine("applied_repairs:")
-    repairs.forEach { raw ->
-      val repair = raw as? Map<*, *> ?: return@forEach
-      appendLine(
-        "  - subtask=${repair["subtask_id"]}; field=${repair["field"]}; " +
-          "wedge_class=${repair["wedge_class"]}; prior=${repair["prior_value"] ?: "absent"}; " +
-          "new=${repair["new_value"] ?: "absent"}",
-      )
-    }
+}
+
+private fun appendGoalRepairAppliedRepairs(builder: StringBuilder, repairs: List<*>?) {
+  val appliedRepairs = repairs.orEmpty()
+  if (appliedRepairs.isEmpty()) return
+  builder.appendLine("applied_repairs:")
+  appliedRepairs.forEach { raw ->
+    val repair = raw as? Map<*, *> ?: return@forEach
+    builder.appendLine(
+      "  - subtask=${repair["subtask_id"]}; field=${repair["field"]}; " +
+        "wedge_class=${repair["wedge_class"]}; prior=${repair["prior_value"] ?: "absent"}; " +
+        "new=${repair["new_value"] ?: "absent"}",
+    )
   }
 }

@@ -48,6 +48,7 @@ import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
+import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import java.nio.file.Path
@@ -336,6 +337,7 @@ class GoalRunnerRepairTest {
     val after = decodeArtifacts(
       requireNotNull(workflows.getFeatureTaskRuntimeWorkflow(workflowId)).artifactsJson,
     )
+
     @Suppress("UNCHECKED_CAST")
     val state = GoalSubtaskReviewState.fromArtifactMap(
       after[GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY] as Map<String, Any?>,
@@ -491,15 +493,14 @@ class GoalRunnerRepairTest {
     assertTrue(result.refusalReason.contains(PASSED_VALIDATION_DEPTH))
   }
 
-  private fun repairStore(
-    workflows: InMemoryWorkflowStates,
-    git: WorkflowGitOperations = NoopWorkflowGitOperations,
-  ) = WorkflowGoalRunnerOutcomeStore(
-    database = FakeDatabaseSessionFactory(workflows),
-    workflowSnapshotValidator = testWorkflowSnapshotValidator,
-    gitOperations = git,
-  )
+  private fun repairStore(workflows: InMemoryWorkflowStates, git: WorkflowGitOperations = NoopWorkflowGitOperations) =
+    WorkflowGoalRunnerOutcomeStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      gitOperations = git,
+    )
 
+  @Suppress("LongParameterList") // mirrors blocked child repair fixture fields varied per case
   private fun repairChildRecord(
     workflowId: String,
     continuation: Map<String, Any?>,
@@ -515,6 +516,11 @@ class GoalRunnerRepairTest {
       "goal_continuation" to continuation,
       GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to reviewState.toArtifactMap(),
     )
+    if (reviewState.completedPassCount > 0) {
+      artifacts[GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY] = reviewState.passResults.associate { result ->
+        result.passNumber.toString() to "raw review result for pass ${result.passNumber}"
+      }
+    }
     goalContinuationOutcome?.let { artifacts["goal_continuation_outcome"] = it }
     commitSha?.let { artifacts["commit_sha"] = it }
     return engine.updateRecord(
@@ -562,40 +568,34 @@ class GoalRunnerRepairTest {
   private class RepairManifestStore(
     private val childWorkflowId: String,
   ) : GoalRunnerManifestStore {
-    override fun loadByIssueKey(
-      issueKey: String,
-      dbPathOverride: String?,
-      repoRoot: Path?,
-    ): GoalRunnerManifestState = GoalRunnerManifestState(
-      parentWorkflowId = "wfl-parent",
-      dbPath = "/tmp/repair.db",
-      manifest = DecompositionManifest(
-        contractVersion = "0.5",
-        issueKey = issueKey,
-        featureName = "repair",
-        parentSpecPath = ".feature-specs/$issueKey/spec.md",
-        status = "in_progress",
-        baseBranch = "main",
-        featureBranch = "feat/$issueKey-repair",
-        currentSubtaskIntent = CurrentSubtaskIntent(1, "resume"),
-        subtasks = listOf(
-          DecompositionSubtask(
-            id = 1,
-            name = "child",
-            specPath = ".feature-specs/$issueKey/spec_subtask_1.md",
-            status = "in_progress",
-            workflowId = childWorkflowId,
+    override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState =
+      GoalRunnerManifestState(
+        parentWorkflowId = "wfl-parent",
+        dbPath = "/tmp/repair.db",
+        manifest = DecompositionManifest(
+          contractVersion = "0.5",
+          issueKey = issueKey,
+          featureName = "repair",
+          parentSpecPath = ".feature-specs/$issueKey/spec.md",
+          status = "in_progress",
+          baseBranch = "main",
+          featureBranch = "feat/$issueKey-repair",
+          currentSubtaskIntent = CurrentSubtaskIntent(1, "resume"),
+          subtasks = listOf(
+            DecompositionSubtask(
+              id = 1,
+              name = "child",
+              specPath = ".feature-specs/$issueKey/spec_subtask_1.md",
+              status = "in_progress",
+              workflowId = childWorkflowId,
+            ),
           ),
         ),
-      ),
-      controlState = GoalRunnerControlState(),
-      repoRoot = repoRoot,
-    )
+        controlState = GoalRunnerControlState(),
+        repoRoot = repoRoot,
+      )
 
-    override fun save(
-      state: GoalRunnerManifestState,
-      dbPathOverride: String?,
-    ): GoalRunnerManifestState = state
+    override fun save(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState = state
 
     override fun acquireExecutionLease(
       parentWorkflowId: String,
@@ -636,13 +636,11 @@ class GoalRunnerRepairTest {
 
     override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations =
       object : GoalSubtaskReviewGitOperations {
-        override fun captureBaseline(
-          repoRoot: Path,
-          expectedBranch: String,
-        ): GoalSubtaskReviewBaselineResult = GoalSubtaskReviewBaselineResult(
-          status = "ok",
-          baseline = GoalSubtaskReviewBaseline(REACHABLE_SHA, emptyList()),
-        )
+        override fun captureBaseline(repoRoot: Path, expectedBranch: String): GoalSubtaskReviewBaselineResult =
+          GoalSubtaskReviewBaselineResult(
+            status = "ok",
+            baseline = GoalSubtaskReviewBaseline(REACHABLE_SHA, emptyList()),
+          )
 
         override fun buildInput(
           repoRoot: Path,
@@ -673,8 +671,7 @@ class GoalRunnerRepairTest {
     override fun currentProcess(): FeatureTaskRuntimeProcessIdentity =
       FeatureTaskRuntimeProcessIdentity("host", "boot", 1, "birth")
 
-    override fun inspect(ownership: FeatureTaskRuntimeWorkerOwnership) =
-      FeatureTaskRuntimeProcessInspection.ExactLive
+    override fun inspect(ownership: FeatureTaskRuntimeWorkerOwnership) = FeatureTaskRuntimeProcessInspection.ExactLive
 
     override fun terminateGracefully(ownership: FeatureTaskRuntimeWorkerOwnership) = true
 

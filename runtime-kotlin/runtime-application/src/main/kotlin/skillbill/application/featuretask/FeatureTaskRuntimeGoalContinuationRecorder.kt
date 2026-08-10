@@ -16,6 +16,7 @@ import skillbill.ports.workflow.recoverGoalSubtaskReviewBaseline
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
 import skillbill.workflow.model.WorkflowUpdateInput
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_FIELD_ADOPTION_ARTIFACT_KEY
@@ -23,7 +24,6 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATI
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationFieldAdoption
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome
-import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY
@@ -38,6 +38,7 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesFromArtifact
 
 @Inject
+@Suppress("TooManyFunctions") // one cohesive goal-continuation recorder; each method is a distinct durable seam
 class FeatureTaskRuntimeGoalContinuationRecorder(
   private val database: DatabaseSessionFactory,
   workflowSnapshotValidator: WorkflowSnapshotValidator,
@@ -258,6 +259,8 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     val ownedPathspec: List<String> = emptyList(),
   )
 
+  @Suppress("LongMethod", "CyclomaticComplexMethod", "ReturnCount")
+  // SKILL-176: recovery branches are distinct guard exits
   internal fun buildGoalReviewInput(
     workflowId: String,
     gitOperations: WorkflowGitOperations,
@@ -325,6 +328,7 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     return GoalSubtaskReviewInputReady(persisted, input)
   }
 
+  @Suppress("LongMethod") // SKILL-176: recovery persists baseline, input, and evidence in one transaction
   private fun recoverGoalReviewInput(request: GoalReviewInputRecoveryRequest): GoalReviewInputRecovery {
     val failureReason = request.failureReason
     if (failureReason == null ||
@@ -440,6 +444,8 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
    * post-heal state when a write occurred, the current state when already coherent, or null when
    * there is no review state to reconcile.
    */
+  @Suppress("LongMethod", "CyclomaticComplexMethod", "ReturnCount")
+  // SKILL-176: each branch is a distinct coherence case
   internal fun reconcileRemediationBaseCoherence(
     workflowId: String,
     gitOperations: WorkflowGitOperations,
@@ -449,14 +455,30 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     val snapshot = database.read(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
       val artifacts = decodeArtifacts(record.artifactsJson)
-      val state = reviewStateFromArtifacts(artifacts) ?: return@read null
-      val continuation = continuationFromArtifacts(artifacts) ?: return@read null
-      val checkpoints = featureTaskRuntimeCheckpointIdentitiesFromArtifact(
-        artifacts[FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY],
-      )
-      Triple(state, continuation, checkpoints)
+      // A schema violation here (e.g. a review state genuinely absent or malformed) is not this
+      // best-effort coherence pass's failure to surface: the actual review-phase preparation path
+      // decodes the same artifacts and produces the properly scoped diagnostic. Loud-failing this
+      // early, unconditional call would misattribute a review-phase problem to run startup.
+      runCatching {
+        val state = reviewStateFromArtifacts(artifacts) ?: return@read null
+        val continuation = continuationFromArtifacts(artifacts) ?: return@read null
+        val checkpoints = featureTaskRuntimeCheckpointIdentitiesFromArtifact(
+          artifacts[FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY],
+        )
+        Triple(state, continuation, checkpoints)
+      }.getOrElse { error ->
+        if (error is InvalidGoalSubtaskReviewStateSchemaError) return@read null else throw error
+      }
     } ?: return null
     val (state, continuation, checkpoints) = snapshot
+    // Nothing to reconcile without either a stored remediation base or a remediation checkpoint on
+    // record, so HEAD is never measured on the common no-remediation-yet path (a payload-sourced
+    // commit sha must never trigger a git HEAD read it does not need).
+    if (state.remediationBaseSha == null &&
+      checkpoints.none { it.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID }
+    ) {
+      return state
+    }
     val head = gitOperations.headCommitSha(repoRoot)
     if (!head.ok || head.value.isBlank()) return state
     val headSha = head.value.trim()
@@ -585,8 +607,8 @@ private enum class GoalReviewBaseField(val wireValue: String) {
 }
 
 private sealed interface GoalReviewInputRecovery {
-  data class Recovered(val input: GoalSubtaskReviewInput) : GoalReviewInputRecovery
-  data class Failed(val reason: String) : GoalReviewInputRecovery
+  class Recovered(val input: GoalSubtaskReviewInput) : GoalReviewInputRecovery
+  class Failed(val reason: String) : GoalReviewInputRecovery
   data object Ineligible : GoalReviewInputRecovery
 }
 
@@ -689,13 +711,12 @@ private val recoverableReviewBaseFailures: Set<GoalSubtaskReviewInputFailureReas
 )
 
 private fun continuationFromArtifacts(artifacts: Map<String, Any?>): FeatureTaskRuntimeGoalContinuationArtifact? =
-  GoalSubtaskReviewArtifactDecoder.decode(artifacts)?.continuation
+  GoalSubtaskReviewArtifactDecoder.decodeContinuationOnly(artifacts)
 
 private fun reviewStateFromArtifacts(artifacts: Map<String, Any?>): GoalSubtaskReviewState? =
-  GoalSubtaskReviewArtifactDecoder.decode(artifacts)?.state
+  GoalSubtaskReviewArtifactDecoder.decodeReviewStateOnly(artifacts)
 
-private fun GoalSubtaskReviewState.canRecoverReviewBase(): Boolean =
-  disposition == GoalSubtaskReviewDisposition.PENDING
+private fun GoalSubtaskReviewState.canRecoverReviewBase(): Boolean = disposition == GoalSubtaskReviewDisposition.PENDING
 
 private fun GoalSubtaskReviewState.matches(
   baseline: GoalSubtaskReviewBaseline,

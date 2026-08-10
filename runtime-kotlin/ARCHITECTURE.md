@@ -466,12 +466,16 @@ runtime-ports
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch.fromArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationFieldAdoption.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationFieldAdoption.fromArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalPlanningImport.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding.fromArtifactMap`
     - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewPassResult.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewPassResult.fromArtifactMap`
     - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder.decode`
+    - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder.decodeContinuationOnly`
+    - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder.decodeReviewStateOnly`
     - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewState.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewState.fromArtifactMap`
     - `skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting.toArtifactMap`
@@ -1245,12 +1249,16 @@ Categories:
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch.fromArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationFieldAdoption.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationFieldAdoption.fromArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalPlanningImport.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding.fromArtifactMap`
 - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewPassResult.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewPassResult.fromArtifactMap`
 - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder.decode`
+- `skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder.decodeContinuationOnly`
+- `skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder.decodeReviewStateOnly`
 - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewState.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewState.fromArtifactMap`
 - `skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting.toArtifactMap`

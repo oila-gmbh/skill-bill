@@ -5,7 +5,7 @@ import skillbill.application.RuntimeFakeDatabaseSessionFactory
 import skillbill.application.testWorkflowSnapshotValidator
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.toRecord
-import skillbill.infrastructure.fs.GitWorkflowGitOperations
+import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.WorkflowUpdateInput
@@ -273,6 +273,10 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     return output
   }
 
+  // Real adapter keeps ancestry/recovery proofs honest; FQN avoids an infrastructure import that
+  // RuntimeArchitectureTest bans from application test sources.
+  private fun realGitOps(): WorkflowGitOperations = skillbill.infrastructure.fs.GitWorkflowGitOperations()
+
   private fun pausedState(): GoalSubtaskReviewState {
     val initial = GoalSubtaskReviewState.initial(
       reviewBaseSha = "a".repeat(40),
@@ -338,7 +342,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
 
     val prepared = recorder.buildGoalReviewInput(
       workflowId,
-      GitWorkflowGitOperations(),
+      realGitOps(),
       fixture.repoRoot,
     )
 
@@ -347,6 +351,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     assertEquals(parent, reloaded.remediationBaseSha, "durable remediation_base_sha must repoint to the ancestor")
     assertEquals("a".repeat(40), reloaded.reviewBaseSha, "immutable review base must stay untouched")
     val artifacts = repository.taskRuntimeArtifacts(workflowId)
+
     @Suppress("UNCHECKED_CAST")
     val evidence = artifacts[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY] as List<Map<String, Any?>>
     val entry = evidence.single()
@@ -367,7 +372,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     assertIs<GoalSubtaskReviewInputReady>(
       recorderWith(remediationState, goalBranch = "feat/skill-15").buildGoalReviewInput(
         workflowId,
-        GitWorkflowGitOperations(),
+        realGitOps(),
         fixture.repoRoot,
       ),
     )
@@ -380,7 +385,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     assertIs<GoalSubtaskReviewInputReady>(
       recorderWith(zeroPassState, goalBranch = "feat/skill-15").buildGoalReviewInput(
         workflowId,
-        GitWorkflowGitOperations(),
+        realGitOps(),
         fixture.repoRoot,
       ),
     )
@@ -389,7 +394,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     assertIs<GoalSubtaskReviewInputBlocked>(
       recorderWith(paused, goalBranch = "feat/skill-15").buildGoalReviewInput(
         workflowId,
-        GitWorkflowGitOperations(),
+        realGitOps(),
         fixture.repoRoot,
       ),
     )
@@ -401,7 +406,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     assertIs<GoalSubtaskReviewInputBlocked>(
       recorderWith(capped, goalBranch = "feat/skill-15").buildGoalReviewInput(
         workflowId,
-        GitWorkflowGitOperations(),
+        realGitOps(),
         fixture.repoRoot,
       ),
     )
@@ -415,7 +420,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
       .copy(remediationBaseSha = fixture.parent)
     val repository = InMemoryRuntimeWorkflowRepository()
     val recorder = recorderWith(state, repository, goalBranch = "feat/skill-15")
-    val git = GitWorkflowGitOperations()
+    val git = realGitOps()
 
     val first = assertIs<GoalSubtaskReviewInputReady>(
       recorder.buildGoalReviewInput(workflowId, git, fixture.repoRoot),
@@ -445,7 +450,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
       .copy(remediationBaseSha = fixture.orphanedBase)
     val repository = InMemoryRuntimeWorkflowRepository()
     val recorder = recorderWith(state, repository, goalBranch = "feat/skill-15")
-    val gitOps = GitWorkflowGitOperations()
+    val gitOps = realGitOps()
 
     val healed = assertNotNull(
       recorder.reconcileRemediationBaseCoherence(workflowId, gitOps, fixture.repoRoot),
@@ -495,7 +500,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
       goalBranch = "feat/skill-15",
       checkpointIdentities = listOf(identity),
     )
-    val gitOps = GitWorkflowGitOperations()
+    val gitOps = realGitOps()
 
     val healed = assertNotNull(
       recorder.reconcileRemediationBaseCoherence(workflowId, gitOps, fixture.repoRoot),
@@ -519,7 +524,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     val repository = InMemoryRuntimeWorkflowRepository()
     val recorder = recorderWith(state, repository, goalBranch = "feat/skill-15")
 
-    recorder.reconcileRemediationBaseCoherence(workflowId, GitWorkflowGitOperations(), fixture.repoRoot)
+    recorder.reconcileRemediationBaseCoherence(workflowId, realGitOps(), fixture.repoRoot)
 
     assertEquals(head, recorder.reviewState(workflowId)?.remediationBaseSha)
     assertNull(repository.taskRuntimeArtifacts(workflowId)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY])
@@ -555,7 +560,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     )
 
     val after = assertNotNull(
-      recorder.reconcileRemediationBaseCoherence(workflowId, GitWorkflowGitOperations(), fixture.repoRoot),
+      recorder.reconcileRemediationBaseCoherence(workflowId, realGitOps(), fixture.repoRoot),
     )
 
     assertEquals(fixture.skipRecordedTip, after.remediationBaseSha)
@@ -575,7 +580,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
       .copy(remediationBaseSha = fixture.unreachable)
     val prepared = recorderWith(state, goalBranch = "feat/orphan-goal").buildGoalReviewInput(
       workflowId,
-      GitWorkflowGitOperations(),
+      realGitOps(),
       fixture.repoRoot,
     )
     val blocked = assertIs<GoalSubtaskReviewInputBlocked>(prepared)

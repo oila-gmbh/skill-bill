@@ -79,8 +79,7 @@ private fun suppliedIdentityConflict(
 private fun suppliedIdentityMatchesDurable(
   supplied: FeatureTaskRuntimeGoalContinuationContext,
   durable: FeatureTaskRuntimeGoalContinuationArtifact,
-): Boolean =
-  // issueKey/subtaskId/goalBranch/suppressPr: absence loud-fails in fromArtifactMap via require*
+): Boolean = // issueKey/subtaskId/goalBranch/suppressPr: absence loud-fails in fromArtifactMap via require*
   // decoders before the gate runs, so those fields cannot be absent here.
   // parentWorkflowId: stamped by every child-open path since the goal-continuation artifact was
   // introduced; a null durable value is an intentional lineage omission, not a pre-contract key

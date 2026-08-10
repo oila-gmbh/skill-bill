@@ -49,6 +49,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+@Suppress("LargeClass") // outcome-store task-runtime scenarios; each test is an independent fixture
 class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
   @Test
   fun `reads progress from task runtime workflows without probing prose mode`() {
@@ -515,9 +516,15 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
     val artifactsAfterFirst = decodeArtifacts(
       requireNotNull(workflows.getFeatureTaskRuntimeWorkflow("wftr-stale-idempotent")).artifactsJson,
     )
-    assertEquals(staleReason, (artifactsAfterFirst["goal_continuation_outcome_displacement"] as Map<*, *>)["original_blocked_reason"])
+    assertEquals(
+      staleReason,
+      (artifactsAfterFirst["goal_continuation_outcome_displacement"] as Map<*, *>)["original_blocked_reason"],
+    )
     assertNull(artifactsAfterFirst["goal_continuation_outcome"])
-    assertEquals("running", requireNotNull(workflows.getFeatureTaskRuntimeWorkflow("wftr-stale-idempotent")).workflowStatus)
+    assertEquals(
+      "running",
+      requireNotNull(workflows.getFeatureTaskRuntimeWorkflow("wftr-stale-idempotent")).workflowStatus,
+    )
 
     val second = store.reconcileAuthoritativeOutcomes(
       issueKey = "SKILL-176.4",
@@ -532,7 +539,10 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
       artifactsAfterFirst["goal_continuation_outcome_displacement"],
       artifactsAfterSecond["goal_continuation_outcome_displacement"],
     )
-    assertEquals("running", requireNotNull(workflows.getFeatureTaskRuntimeWorkflow("wftr-stale-idempotent")).workflowStatus)
+    assertEquals(
+      "running",
+      requireNotNull(workflows.getFeatureTaskRuntimeWorkflow("wftr-stale-idempotent")).workflowStatus,
+    )
   }
 
   @Test
@@ -569,6 +579,7 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
     .withZone(ZoneOffset.UTC)
     .format(instant.truncatedTo(ChronoUnit.SECONDS))
 
+  @Suppress("LongParameterList") // mirrors blocked continuation fixture fields varied per case
   private fun blockedContinuationRecord(
     workflowId: String,
     workflowStatus: String,

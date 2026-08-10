@@ -204,15 +204,21 @@ private class MemoryRepository : RejectedOutputDiagnosticRepository {
   override fun delete(selector: RejectedOutputDiagnosticSelector): Int = 0
 
   // Mirrors the SQLite write-once semantics: insert-if-absent by (workflow, phase, generation,
-  // attempt), then a read-back equality guard that raises Conflict on a divergent write.
+  // attempt, agent), then a read-back equality guard that raises Conflict on a divergent write.
   override fun retainProducerOutput(evidence: skillbill.ports.persistence.ProducerOutputEvidence) {
     producerOutputs += 1
-    val key = listOf(evidence.workflowId, evidence.phaseId, evidence.generation, evidence.attempt)
+    val key = listOf(
+      evidence.workflowId,
+      evidence.phaseId,
+      evidence.generation,
+      evidence.attempt,
+      evidence.agentId,
+    )
     producerEvidence.putIfAbsent(key, evidence)
     val retained = producerEvidence.getValue(key)
     if (retained.sha256 != evidence.sha256 || retained.byteSize != evidence.byteSize) {
       throw RejectedOutputDiagnosticError.Conflict(
-        "${evidence.workflowId}:${evidence.phaseId}:${evidence.generation}:${evidence.attempt}",
+        "${evidence.workflowId}:${evidence.phaseId}:${evidence.generation}:${evidence.attempt}:${evidence.agentId}",
       )
     }
   }
@@ -221,13 +227,14 @@ private class MemoryRepository : RejectedOutputDiagnosticRepository {
     workflowId: String,
     phaseId: String,
     attempt: Int,
+    agentId: String,
     generation: Int,
   ): skillbill.ports.persistence.ProducerOutputEvidence? =
-    producerEvidence[listOf(workflowId, phaseId, generation, attempt)]
+    producerEvidence[listOf(workflowId, phaseId, generation, attempt, agentId)]
       ?: producerEvidence.values
         .filter {
           it.workflowId == workflowId && it.phaseId == phaseId &&
-            it.attempt == attempt && it.generation <= generation
+            it.attempt == attempt && it.agentId == agentId && it.generation <= generation
         }
         .maxByOrNull { it.generation }
 }

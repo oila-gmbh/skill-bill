@@ -75,7 +75,7 @@ private const val GRACEFUL_TERMINATION_POLLS: Int =
 
 @Inject
 // single cohesive boundary: status projection, reset, accept, and reconciliation, each with its own collaborator
-@Suppress("TooManyFunctions", "LongParameterList")
+@Suppress("LargeClass", "TooManyFunctions", "LongParameterList")
 class GoalRunnerStatusService(
   private val manifestStore: GoalRunnerManifestStore,
   private val outcomeStore: GoalRunnerWorkflowOutcomeStore,
@@ -604,6 +604,8 @@ class GoalRunnerStatusService(
    * commit shas, review pass results, and audit repair state; mutates only the wedging field plus
    * durable repair evidence. Declines children whose worker lease is live.
    */
+  // SKILL-176: inspect/apply paths are distinct guard exits
+  @Suppress("LongMethod", "CyclomaticComplexMethod", "ReturnCount")
   fun repair(request: GoalRunnerRepairRequest): GoalRunnerRepairResult {
     val repoRoot = request.repoRoot ?: Path.of("").toAbsolutePath().normalize()
     val loaded = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, repoRoot)

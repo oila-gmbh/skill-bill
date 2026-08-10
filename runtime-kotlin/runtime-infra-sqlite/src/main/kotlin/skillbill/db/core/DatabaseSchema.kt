@@ -80,7 +80,7 @@ internal object DatabaseSchema {
         attempt INTEGER NOT NULL CHECK (attempt > 0),
         agent_id TEXT NOT NULL, model TEXT NOT NULL, recorded_at TEXT NOT NULL,
         byte_size INTEGER NOT NULL CHECK (byte_size >= 0), sha256 TEXT NOT NULL, payload BLOB,
-        PRIMARY KEY (workflow_id, phase_id, generation, attempt)
+        PRIMARY KEY (workflow_id, phase_id, generation, attempt, agent_id)
       )
       """.trimIndent(),
       """

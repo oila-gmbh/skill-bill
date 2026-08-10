@@ -11,6 +11,7 @@ import java.nio.file.Path
  * discarding completed work. Implemented by [WorkflowGoalRunnerOutcomeStore].
  */
 interface GoalRunnerChildRepairStore {
+  @Suppress("LongParameterList") // one child repair context; each field is required for diagnosis
   fun diagnoseChildWedges(
     workflowId: String,
     issueKey: String,
@@ -24,6 +25,7 @@ interface GoalRunnerChildRepairStore {
    * Applies [wedgeClasses] for one child inside a single durable transaction. Writes the field
    * patch and repair-evidence artifact together; a failure mid-way leaves the row unchanged.
    */
+  @Suppress("LongParameterList") // one child repair context; each field is required for the durable write
   fun applyChildWedgeRepairs(
     workflowId: String,
     issueKey: String,

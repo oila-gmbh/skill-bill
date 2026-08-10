@@ -17,5 +17,12 @@ internal sealed interface ContinuationRead {
     val baseline: GoalSubtaskReviewBaseline,
   ) : ContinuationRead
 
+  // A resumed child whose review state has not been captured yet (or disappeared): its identity is
+  // durable, but there is no immutable baseline to freeze into run invariants. The review phase is
+  // the one that decides whether that absence blocks progress, not preparation.
+  data class AvailableWithoutReviewState(
+    val continuation: FeatureTaskRuntimeGoalContinuationArtifact,
+  ) : ContinuationRead
+
   data class Failure(val reason: String) : ContinuationRead
 }

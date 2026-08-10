@@ -4,6 +4,7 @@ This file records architectural and implementation decisions that span the
 `runtime-kotlin/` boundary. Each entry is dated and explains the trade-off,
 not the implementation detail.
 
+<<<<<<< HEAD
 ## 2026-08-10 — Validate-phase build/test/gate execution is runtime-owned (SKILL-180)
 
 Context: Validate previously told the agent to invoke `bill-code-check`, so
@@ -21,6 +22,29 @@ Audit and repair evidence remain read-only repository facts.
 
 Alternatives considered: Agent-reported gate_run_count (rejected). Hardcoded
 Gradle cache flags in the runtime (rejected; packs declare bypass argv).
+=======
+## 2026-08-10 — producer_output_evidence identity includes agent_id (SKILL-176)
+
+Context: Re-entering a phase attempt under a different agent (SKILL-15
+`review:0:2`) crashed retention: the four-part key already held another
+producer's immutable bytes, so read-back Conflict aborted phase recording.
+
+Decision: Widen identity to `(workflow_id, phase_id, generation, attempt,
+agent_id)`. Same-agent divergent bytes still Conflict; cross-agent rows
+coexist. Do not supersede or overwrite — AC-002 forbids in-place mutation,
+and AC-003 requires both producers remain reconstructable.
+
+Reason: `agent_id` is already durable on every row, so including it needs no
+backfill; widening the key is the minimum change that keeps immutability and
+lets a second producer land without terminating the run.
+
+Alternatives considered: Last-writer-wins or supersede — rejected; violates
+AC-002 and loses reconstructability. Advance attempt on agent switch —
+rejected; hides the identity bug and is out of scope.
+
+Revisit when: evidence must be shared across producers for one attempt without
+agent scoping.
+>>>>>>> a8ac3d91c (chore(SKILL-176): audited implementation checkpoint on 'feat/SKILL-176-goal-child-resume-self-heal' [phase=audit generation=0])
 
 ## 2026-08-10 — remediation checkpoint sha and branch tip stay paired (SKILL-176)
 

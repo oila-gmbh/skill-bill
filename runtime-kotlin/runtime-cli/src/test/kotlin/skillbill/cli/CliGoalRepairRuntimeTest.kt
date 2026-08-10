@@ -27,10 +27,12 @@ class CliGoalRepairRuntimeTest {
     assertContains(result.stdout, "review_base_sha")
     assertContains(result.stdout, "remediation_base_sha")
     assertContains(result.stdout, "goal_continuation_outcome")
-    assertContains(result.stdout, "Does not touch")
-    assertContains(result.stdout, "completed commit shas")
-    assertContains(result.stdout, "review pass history")
-    assertContains(result.stdout, "audit repair state")
+    // Clikt wraps help across lines; normalize whitespace so mid-phrase wraps do not flake.
+    val help = result.stdout.replace(Regex("\\s+"), " ")
+    assertContains(help, "Does not touch")
+    assertContains(help, "completed commit shas")
+    assertContains(help, "review pass history")
+    assertContains(help, "audit repair state")
     assertContains(result.stdout, "--apply")
   }
 
@@ -43,9 +45,13 @@ class CliGoalRepairRuntimeTest {
 
     val result = CliRuntime.run(
       listOf(
-        "--db", fixture.dbPath.toString(),
-        "goal", "repair", "SKILL-901",
-        "--repo-root", fixture.tempDir.toString(),
+        "--db",
+        fixture.dbPath.toString(),
+        "goal",
+        "repair",
+        "SKILL-901",
+        "--repo-root",
+        fixture.tempDir.toString(),
       ),
       fixture.context(launcher = NoopGoalTestAgentRunLauncher),
     )
@@ -60,9 +66,13 @@ class CliGoalRepairRuntimeTest {
     val fixture = goalFixture(subtaskCount = 1)
     val result = CliRuntime.run(
       listOf(
-        "--db", fixture.dbPath.toString(),
-        "goal", "repair", "SKILL-404",
-        "--repo-root", fixture.tempDir.toString(),
+        "--db",
+        fixture.dbPath.toString(),
+        "goal",
+        "repair",
+        "SKILL-404",
+        "--repo-root",
+        fixture.tempDir.toString(),
       ),
       fixture.context(launcher = NoopGoalTestAgentRunLauncher),
     )
@@ -82,9 +92,13 @@ class CliGoalRepairRuntimeTest {
 
     val result = CliRuntime.run(
       listOf(
-        "--db", fixture.dbPath.toString(),
-        "goal", "repair", "SKILL-901",
-        "--repo-root", fixture.tempDir.toString(),
+        "--db",
+        fixture.dbPath.toString(),
+        "goal",
+        "repair",
+        "SKILL-901",
+        "--repo-root",
+        fixture.tempDir.toString(),
       ),
       fixture.context(launcher = NoopGoalTestAgentRunLauncher),
     )
@@ -107,9 +121,13 @@ class CliGoalRepairRuntimeTest {
 
     val result = CliRuntime.run(
       listOf(
-        "--db", fixture.dbPath.toString(),
-        "goal", "repair", "SKILL-901",
-        "--repo-root", fixture.tempDir.toString(),
+        "--db",
+        fixture.dbPath.toString(),
+        "goal",
+        "repair",
+        "SKILL-901",
+        "--repo-root",
+        fixture.tempDir.toString(),
         "--apply",
       ),
       fixture.context(launcher = NoopGoalTestAgentRunLauncher),

@@ -25,7 +25,37 @@ internal class FeatureTaskRuntimeRunPreparation(
       is ContinuationRead.Failure -> blocked(request, reportInvariants, initial.reason)
       ContinuationRead.None -> prepareWithContinuation(request, persistedInvariants, reportInvariants, null)
       is ContinuationRead.Available -> prepareWithContinuation(request, persistedInvariants, reportInvariants, initial)
+      is ContinuationRead.AvailableWithoutReviewState ->
+        prepareResumeWithoutReviewState(request, persistedInvariants, reportInvariants, initial)
     }
+  }
+
+  // A resumed child whose durable review state is missing (never captured, or lost) cannot have its
+  // review baseline recreated here: recreating it would silently substitute a value review
+  // preparation never captured. Preparation is not the seam that owns that judgment call, so it
+  // freezes run invariants from the launcher-supplied baseline (never persisted from this path) and
+  // lets the review phase's own reservation refuse to substitute one when it actually needs it.
+  private fun prepareResumeWithoutReviewState(
+    request: FeatureTaskRuntimeRunRequest,
+    persistedInvariants: FeatureTaskRuntimeRunInvariants?,
+    reportInvariants: FeatureTaskRuntimeRunInvariants,
+    initial: ContinuationRead.AvailableWithoutReviewState,
+  ): FeatureTaskRuntimePreparation {
+    val suppliedBaseline = request.goalContinuation?.reviewBaseline
+      ?: return blocked(
+        request,
+        reportInvariants,
+        "Goal-continuation review state is missing; review_base_sha must be captured before " +
+          "implementation and cannot be substituted.",
+      )
+    val selectedMode = selectedReviewMode(request, initial.continuation)
+    recorder.ensureWorkflowOpen(request.workflowId, request.sessionId, request.dbPathOverride, request.issueKey)
+    return freezeRunInvariants(
+      request,
+      persistedInvariants,
+      selectedMode,
+      ContinuationRead.Available(initial.continuation, suppliedBaseline),
+    )
   }
 
   private fun prepareWithContinuation(
@@ -63,6 +93,11 @@ internal class FeatureTaskRuntimeRunPreparation(
       is ContinuationRead.Failure -> blocked(request, reportInvariants, resolved.reason)
       ContinuationRead.None -> freezeRunInvariants(request, persistedInvariants, selectedMode, null)
       is ContinuationRead.Available -> freezeRunInvariants(request, persistedInvariants, selectedMode, resolved)
+      is ContinuationRead.AvailableWithoutReviewState -> blocked(
+        request,
+        reportInvariants,
+        "Goal-continuation review state disappeared immediately after its write-back was persisted.",
+      )
     }
   }
 
@@ -88,8 +123,8 @@ internal class FeatureTaskRuntimeRunPreparation(
         field = "validation_depth",
         adoptedValue = depth.wireValue,
         reason =
-          "durable goal-continuation row predated the validation_depth contract; " +
-            "adopted launcher-supplied depth",
+        "durable goal-continuation row predated the validation_depth contract; " +
+          "adopted launcher-supplied depth",
       )
     }
     return continuationRecorder.recordGoalContinuationState(
@@ -227,9 +262,7 @@ private fun FeatureTaskRuntimeGoalContinuationRecorder.readReviewBaseline(
         continuation,
         GoalSubtaskReviewBaseline(it.reviewBaseSha, it.baselineUntrackedPaths),
       )
-    } ?: ContinuationRead.Failure(
-      "Goal-continuation review state is missing; refusing to recreate its immutable review baseline.",
-    )
+    } ?: ContinuationRead.AvailableWithoutReviewState(continuation)
   },
   onFailure = { error ->
     ContinuationRead.Failure(

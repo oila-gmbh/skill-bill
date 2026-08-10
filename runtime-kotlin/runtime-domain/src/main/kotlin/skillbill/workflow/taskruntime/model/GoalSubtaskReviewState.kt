@@ -11,6 +11,7 @@ const val GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY: String = "goal_subtask_review_
 const val GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY: String = "goal_subtask_review_results"
 const val GOAL_SUBTASK_REVIEW_RESULT_ARTIFACT_PREFIX: String = "goal_subtask_review_results"
 const val GOAL_SUBTASK_REVIEW_BLOCKER_SEVERITY: String = "blocker"
+
 /** Additive evidence log of review/remediation base recoveries; unknown to older runtimes. */
 const val GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY: String = "goal_review_base_recoveries"
 
@@ -307,6 +308,60 @@ object GoalSubtaskReviewArtifactDecoder {
       state = state,
       rawResults = rawResults(artifacts, state),
     )
+  }
+
+  /**
+   * Continuation alone, tolerant of a not-yet-captured review state. A goal child whose review
+   * state has not been captured yet (or disappeared) is still resumable by its continuation
+   * identity; whether that absence blocks progress is for the phase that actually needs review
+   * state to decide (see goal-review reservation), not every reader of the continuation.
+   */
+  @OpenBoundaryMap("Continuation-only decode tolerant of a not-yet-captured review state")
+  fun decodeContinuationOnly(artifacts: Map<String, Any?>): FeatureTaskRuntimeGoalContinuationArtifact? {
+    if (FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY !in artifacts) {
+      // A review state (or its raw results) without a continuation is not a legitimate "not
+      // captured yet" shape the way a missing state is: continuation is written first on every
+      // child-open path, so its absence alongside either one is genuine corruption.
+      if (GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY in artifacts) {
+        reviewStateError(
+          FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY,
+          "must be present whenever a goal-subtask review state exists.",
+        )
+      }
+      if (GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY in artifacts) {
+        reviewStateError(
+          GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY,
+          "must be absent when no goal-subtask review child state exists.",
+        )
+      }
+      return null
+    }
+    return try {
+      decode(artifacts)?.continuation
+    } catch (error: InvalidGoalSubtaskReviewStateSchemaError) {
+      if (GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY !in artifacts) decodeContinuationDirect(artifacts) else throw error
+    }
+  }
+
+  /**
+   * Review state alone, tolerant of it not existing yet: returns null instead of failing when the
+   * durable row simply has not captured review state (or it disappeared), deferring to the caller
+   * to decide whether that absence blocks it.
+   */
+  @OpenBoundaryMap("Review-state-only decode tolerant of it not existing yet")
+  fun decodeReviewStateOnly(artifacts: Map<String, Any?>): GoalSubtaskReviewState? =
+    if (GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY !in artifacts) null else decode(artifacts)?.state
+
+  private fun decodeContinuationDirect(artifacts: Map<String, Any?>): FeatureTaskRuntimeGoalContinuationArtifact = try {
+    FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(
+      artifacts.getValue(FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY).asGoalReviewArtifactMap(
+        FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY,
+      ),
+    )
+  } catch (error: InvalidWorkflowStateSchemaError) {
+    reviewStateError(FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY, error.message.orEmpty(), error)
+  } catch (error: IllegalArgumentException) {
+    reviewStateError(FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY, error.message.orEmpty(), error)
   }
 
   private fun rawResults(artifacts: Map<String, Any?>, state: GoalSubtaskReviewState): Map<String, String> {

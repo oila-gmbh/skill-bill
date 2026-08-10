@@ -17,6 +17,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
+@Suppress("LargeClass") // cohesive git-ops suite spanning review baselines, diffs, and commit ranges
 class GitWorkflowGitOperationsTest {
   @Test
   fun `runtime phase commit range reports committed paths`() {
@@ -612,7 +613,6 @@ class GitWorkflowGitOperationsTest {
     assertFalse(result.ok)
     assertContains(result.error, "durable child branch 'feat/child-one'")
   }
-
 
   @Test
   fun `SKILL-15 topology recovers nearest reachable ancestor not branch base`() {
