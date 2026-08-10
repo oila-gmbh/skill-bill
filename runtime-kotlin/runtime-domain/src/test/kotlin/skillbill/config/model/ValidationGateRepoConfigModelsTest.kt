@@ -19,10 +19,14 @@ class ValidationGateRepoConfigModelsTest {
   }
 
   @Test
-  fun `applyValidationGateGradleWrapper rewrites only leading gradlew tokens`() {
+  fun `applyValidationGateGradleWrapper rewrites leading gradlew and injects nested -p`() {
     assertEquals(
-      listOf("runtime-kotlin/gradlew", "check"),
+      listOf("runtime-kotlin/gradlew", "-p", "runtime-kotlin", "check"),
       applyValidationGateGradleWrapper(listOf("./gradlew", "check"), "runtime-kotlin/gradlew"),
+    )
+    assertEquals(
+      listOf("gradlew", "check"),
+      applyValidationGateGradleWrapper(listOf("./gradlew", "check"), "gradlew"),
     )
     assertEquals(
       listOf("./gradlew", "check"),

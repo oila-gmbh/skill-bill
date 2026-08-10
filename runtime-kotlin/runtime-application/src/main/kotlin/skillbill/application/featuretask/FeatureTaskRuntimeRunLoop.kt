@@ -3681,6 +3681,10 @@ internal class FeatureTaskRuntimeRunLoop(
     repositoryFingerprint: String?,
   ): String? {
     if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE) return null
+    // Gate-repair segments are not the validate→write_history handoff. They must not invent
+    // gate_run_count/gate_runs; the coordinator re-runs the gate and settleRuntimeOwnedValidation
+    // publishes the measured receipt. Matching persistAcceptedOutput's skip for the same flag.
+    if (run.validationGateFindings != null) return null
     val producerIndex = transitions.forwardPhaseIds.indexOf(run.phaseId)
     if (producerIndex < 0 || producerIndex == transitions.forwardPhaseIds.lastIndex) return null
     val consumerPhaseId = transitions.forwardPhaseIds[producerIndex + 1]

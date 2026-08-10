@@ -62,6 +62,19 @@ class FeatureTaskRuntimeValidationGateTest {
   }
 
   @Test
+  fun `BUILD_ONLY terminal verifying keeps build-only argv and appends cache-bypass extras`() {
+    val gradleGate = gateDeclaration.copy(
+      fullGateCommand = listOf("./gradlew", "check"),
+      cacheBypassingFullGateCommand = listOf("./gradlew", "check", "--rerun-tasks", "--no-build-cache"),
+      buildOnlyCommand = listOf("./gradlew", "classes", "testClasses"),
+    )
+    assertEquals(
+      listOf("./gradlew", "classes", "testClasses", "--rerun-tasks", "--no-build-cache"),
+      validationGateArgv(gradleGate, ValidationDepth.BUILD_ONLY, ValidationGateCacheMode.FORCED_FULL),
+    )
+  }
+
+  @Test
   fun `terminal verifying selects cache bypass argv`() {
     assertEquals(
       listOf("echo", "full"),
@@ -119,8 +132,8 @@ class FeatureTaskRuntimeValidationGateTest {
     assertIs<ValidationGateCycleTerminalOutcome.Completed>(cycle.outcome)
     assertEquals(
       listOf(
-        listOf("runtime-kotlin/gradlew", "check"),
-        listOf("runtime-kotlin/gradlew", "check", "--rerun-tasks"),
+        listOf("runtime-kotlin/gradlew", "-p", "runtime-kotlin", "check"),
+        listOf("runtime-kotlin/gradlew", "-p", "runtime-kotlin", "check", "--rerun-tasks"),
       ),
       captured,
     )

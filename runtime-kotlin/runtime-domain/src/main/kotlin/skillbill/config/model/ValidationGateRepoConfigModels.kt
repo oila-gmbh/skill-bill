@@ -50,13 +50,21 @@ fun parseGradleWrapperPath(raw: String?): String? {
 
 /**
  * Rewrites pack-declared gate argv when the repo configures a custom gradle wrapper.
- * Only replaces a leading `./gradlew` or `gradlew` token; other commands stay untouched.
+ * Replaces a leading `./gradlew` or `gradlew` token and, for nested wrappers, injects
+ * `-p <wrapper-parent>` so Gradle resolves the build from the Git root working directory.
+ * Other commands stay untouched.
  */
 fun applyValidationGateGradleWrapper(argv: List<String>, gradleWrapper: String?): List<String> {
   val wrapper = gradleWrapper?.takeIf { path -> path.isNotBlank() } ?: return argv
   val head = argv.firstOrNull() ?: return argv
   if (head != "./gradlew" && head != "gradlew") return argv
-  return listOf(wrapper) + argv.drop(1)
+  val projectDir = wrapper.substringBeforeLast('/', missingDelimiterValue = "")
+  val rewrittenHead = if (projectDir.isNotEmpty()) {
+    listOf(wrapper, "-p", projectDir)
+  } else {
+    listOf(wrapper)
+  }
+  return rewrittenHead + argv.drop(1)
 }
 
 private fun parseValidationGateMapping(raw: Any?): ValidationGateRepoConfig {

@@ -828,6 +828,98 @@ class FeatureTaskRuntimeRunnerTest {
     assertEquals(2, validateRecord.attemptCount)
   }
 
+  @Test
+  fun `gate repair completed without gate_run_count does not fail consumer-projection`() {
+    // Repair agents must not invent gate_run_count; consumer-projection used to reject that
+    // completed segment before the coordinator could re-run the gate and settle measured counts.
+    val gateCalls = java.util.concurrent.atomic.AtomicInteger(0)
+    val gateRunner = object : skillbill.ports.validation.ValidationGateRunner {
+      override fun run(
+        request: skillbill.ports.validation.model.ValidationGateRunRequest,
+      ): skillbill.ports.validation.model.ValidationGateRunResult {
+        val call = gateCalls.getAndIncrement()
+        return if (call == 0) {
+          skillbill.ports.validation.model.ValidationGateRunResult(
+            exitCode = 1,
+            durationMs = 1,
+            outcome = skillbill.ports.validation.model.ValidationGateRunOutcome.FAILED,
+            cacheMode = skillbill.ports.validation.model.ValidationGateCacheMode.CACHE_ELIGIBLE,
+            executedWorkUnits = 1,
+            findings = emptyList(),
+          )
+        } else {
+          skillbill.ports.validation.model.ValidationGateRunResult(
+            exitCode = 0,
+            durationMs = 1,
+            outcome = skillbill.ports.validation.model.ValidationGateRunOutcome.PASSED,
+            cacheMode = request.cacheMode,
+            executedWorkUnits = 1,
+            findings = emptyList(),
+          )
+        }
+      }
+    }
+    val pack = skillbill.scaffold.model.PlatformManifest(
+      slug = "kotlin",
+      packRoot = Path.of("/tmp/repo/platform-packs/kotlin"),
+      contractVersion = "1.4",
+      routingSignals = skillbill.scaffold.model.RoutingSignals(
+        strong = listOf("src"),
+        tieBreakers = emptyList(),
+        path = listOf("src"),
+      ),
+      declaredCodeReviewAreas = emptyList(),
+      declaredFiles = skillbill.scaffold.model.DeclaredFiles(null, emptyMap()),
+      areaMetadata = emptyMap(),
+      validationGate = skillbill.scaffold.model.ValidationGateDeclaration(
+        fullGateCommand = listOf("echo", "cache"),
+        cacheBypassingFullGateCommand = listOf("echo", "full"),
+        buildOnlyCommand = listOf("echo", "build"),
+        findings = skillbill.scaffold.model.ValidationGateFindingsLocator(
+          format = skillbill.scaffold.model.ValidationGateFindingsFormat.JUNIT_XML,
+          artifactGlobs = listOf("**/*.xml"),
+          executedWork = skillbill.scaffold.model.ValidationGateExecutedWorkSignal(
+            skillbill.scaffold.model.ValidationGateExecutedWorkFormat.GRADLE_ACTIONABLE_SUMMARY,
+          ),
+        ),
+      ),
+    )
+    val harness = runnerHarness(
+      agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = RuntimeHarnessConfig(
+        validationGateRunner = gateRunner,
+        validationGatePlatformManifests = listOf(pack),
+      ),
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        facts(
+          if (phaseId == "validate") {
+            VALIDATE_REPAIR_WITHOUT_GATE_COUNTS
+          } else {
+            validJsonOutput(phaseId)
+          },
+        )
+      },
+    )
+    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
+    harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
+    harness.seedPhase("audit", "completed", 1, phaseAgent("audit"), VALID_AUDIT_OUTPUT)
+    harness.seedPhase("review", "completed", 1, phaseAgent("review"), VALID_OUTPUT)
+
+    val report = harness.runner.run(harness.request())
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertEquals(1, harness.launchedPhaseOrder().count { it == "validate" })
+    assertTrue(harness.launchedPhaseOrder().contains("write_history"))
+    assertTrue(gateCalls.get() >= 3, "fail once, then intermediate+terminal verify after repair")
+    val validateOutput = requireNotNull(
+      harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["validate"]?.outputArtifact,
+    )
+    assertContains(validateOutput, "gate_run_count")
+    assertContains(validateOutput, "Validation satisfied by runtime-owned gate execution.")
+  }
+
   // --- Subtask 2: bounded cyclic phase executor (AC10) ---
 
   @Test
@@ -4831,6 +4923,24 @@ private const val EXPECTED_FEATURE_BRANCH = "feat/SKILL-65-runtime-feature-task-
 internal const val INVOKED_AGENT = "claude-code"
 internal const val VALID_OUTPUT = """{"contract_version":"0.2"}"""
 
+// Gate-repair segment: schema-valid completed validate without measured gate_run_count/gate_runs.
+// The consumer-projection gate must not reject this; only runtimeOwnedValidationOutput may publish counts.
+private val VALIDATE_REPAIR_WITHOUT_GATE_COUNTS = """
+  {
+    "contract_version": "0.2",
+    "phase_id": "validate",
+    "status": "completed",
+    "summary": "Gate repair segment without measured counts.",
+    "produced_outputs": {
+      "validation_result": {
+        "validation_status": "passed",
+        "checks": [{"name": "check", "status": "passed"}],
+        "repository_checkpoint": {"fingerprint": "fixture-checkpoint-1"}
+      }
+    }
+  }
+""".trimIndent()
+
 // A clean review output carrying an empty findings array (the affirmative "no blocking findings"
 // signal the review gate requires, SKILL-85 Subtask 4 F-003); used by the default phase-aware launcher.
 private const val VALID_REVIEW_OUTPUT = """{"contract_version":"0.2","produced_outputs":{"findings":[]}}"""
@@ -5202,6 +5312,8 @@ internal data class RuntimeHarnessConfig(
   val diffResolver: skillbill.ports.diff.DiffResolverPort = object : skillbill.ports.diff.DiffResolverPort {
     override fun runProcess(args: List<String>, workDir: java.nio.file.Path): String? = null
   },
+  val validationGateRunner: skillbill.ports.validation.ValidationGateRunner? = null,
+  val validationGatePlatformManifests: List<skillbill.scaffold.model.PlatformManifest> = emptyList(),
 )
 
 private fun runtimeSpecSourceResolver(): SpecSourceResolver =
@@ -5222,21 +5334,26 @@ private fun runtimePhaseGates(
     override fun runProcess(args: List<String>, workDir: java.nio.file.Path): String? = null
   },
   recorder: FeatureTaskRuntimePhaseRecorder,
+  validationGateRunnerOverride: skillbill.ports.validation.ValidationGateRunner? = null,
+  validationGatePlatformManifests: List<skillbill.scaffold.model.PlatformManifest> = emptyList(),
 ): FeatureTaskRuntimePhaseGates {
   val validationGateResolver = skillbill.application.featuretask.validation.ValidationGateResolver(
-    skillbill.application.scaffold.ScaffoldCatalogService(emptyScaffoldCatalogGateway()),
+    skillbill.application.scaffold.ScaffoldCatalogService(
+      scaffoldCatalogGateway(validationGatePlatformManifests),
+    ),
   )
-  val validationGateRunner = object : skillbill.ports.validation.ValidationGateRunner {
-    override fun run(request: skillbill.ports.validation.model.ValidationGateRunRequest) =
-      skillbill.ports.validation.model.ValidationGateRunResult(
-        exitCode = 0,
-        durationMs = 1,
-        outcome = skillbill.ports.validation.model.ValidationGateRunOutcome.PASSED,
-        cacheMode = request.cacheMode,
-        executedWorkUnits = 1,
-        findings = emptyList(),
-      )
-  }
+  val validationGateRunner = validationGateRunnerOverride
+    ?: object : skillbill.ports.validation.ValidationGateRunner {
+      override fun run(request: skillbill.ports.validation.model.ValidationGateRunRequest) =
+        skillbill.ports.validation.model.ValidationGateRunResult(
+          exitCode = 0,
+          durationMs = 1,
+          outcome = skillbill.ports.validation.model.ValidationGateRunOutcome.PASSED,
+          cacheMode = request.cacheMode,
+          executedWorkUnits = 1,
+          findings = emptyList(),
+        )
+    }
   return FeatureTaskRuntimePhaseGates(
     branchSetupRunner,
     planningStopper,
@@ -5262,7 +5379,9 @@ private fun runtimePhaseGates(
   )
 }
 
-private fun emptyScaffoldCatalogGateway(): skillbill.ports.scaffold.ScaffoldCatalogGateway =
+private fun scaffoldCatalogGateway(
+  platformManifests: List<skillbill.scaffold.model.PlatformManifest> = emptyList(),
+): skillbill.ports.scaffold.ScaffoldCatalogGateway =
   object : skillbill.ports.scaffold.ScaffoldCatalogGateway {
     override fun approvedCodeReviewAreas() = emptySet<String>()
     override fun preShellFamilies() = emptySet<String>()
@@ -5271,8 +5390,7 @@ private fun emptyScaffoldCatalogGateway(): skillbill.ports.scaffold.ScaffoldCata
     override fun scaffoldPayloadVersion() = "test"
     override fun discoverPilotedPlatformPacks(packsRoot: java.nio.file.Path) =
       emptyList<skillbill.ports.scaffold.model.PilotedPlatformPackProjection>()
-    override fun discoverPlatformManifests(packsRoot: java.nio.file.Path) =
-      emptyList<skillbill.scaffold.model.PlatformManifest>()
+    override fun discoverPlatformManifests(packsRoot: java.nio.file.Path) = platformManifests
     override fun discoverBaselineReviewCatalog(packsRoot: java.nio.file.Path) =
       skillbill.scaffold.model.BaselineReviewCatalog(emptyList(), emptyList())
   }
@@ -5375,6 +5493,8 @@ internal fun runnerHarness(
       runtimeConfig.sharedEvidenceResolver,
       runtimeConfig.diffResolver,
       recorder,
+      runtimeConfig.validationGateRunner,
+      runtimeConfig.validationGatePlatformManifests,
     ),
     FeatureTaskRuntimeCrashReconciler(database, crashSupervisor),
     diagnostics,
@@ -5451,6 +5571,8 @@ internal fun telemetryRunnerHarness(
       sharedEvidenceResolver = runtimeConfig.sharedEvidenceResolver,
       diffResolver = runtimeConfig.diffResolver,
       recorder = recorder,
+      validationGateRunnerOverride = runtimeConfig.validationGateRunner,
+      validationGatePlatformManifests = runtimeConfig.validationGatePlatformManifests,
     ),
     // Telemetry harness validates event emission, not crash reconciliation; no-op supervisor.
     FeatureTaskRuntimeCrashReconciler(database, NoopFeatureTaskRuntimeWorkerSupervisor),
