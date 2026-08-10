@@ -102,7 +102,7 @@ class CliGoalRuntimeTest {
       fixture.context(launcher = launcher),
     )
 
-    assertEquals(1, result.exitCode, result.stdout)
+    assertEquals(2, result.exitCode, result.stdout)
     assertContains(result.stdout, "goal SKILL-901: paused")
     assertEquals(listOf(1), launcher.childLaunches.map { it.skillRunRequest.subtaskId })
     val status = CliRuntime.run(
@@ -799,7 +799,7 @@ class CliGoalSharedPreplanReplanTest {
       fixture.goalCommand(extra = listOf("--stop-after-subtask", "2")),
       fixture.context(launcher = launcher),
     )
-    assertEquals(1, advanced.exitCode, advanced.stdout)
+    assertEquals(2, advanced.exitCode, advanced.stdout)
     assertEquals(listOf(1, 2), launcher.childLaunches.map { it.skillRunRequest.subtaskId })
     val statusBefore = goalStatus(fixture, launcher)
     assertContains(statusBefore.stdout, "shared_preplan=true")
@@ -1289,7 +1289,7 @@ class CliGoalExecutionOptionsTest {
 
     val result = CliRuntime.run(fixture.goalCommand(), fixture.context(launcher = launcher))
 
-    assertEquals(1, result.exitCode, result.stdout)
+    assertEquals(3, result.exitCode, result.stdout)
     assertContains(result.stdout, "goal SKILL-901: blocked at subtask 1")
     assertContains(result.stdout, "without a terminal workflow-store outcome")
     val workflowId = result.payload?.get("workflow_id")?.toString().orEmpty()

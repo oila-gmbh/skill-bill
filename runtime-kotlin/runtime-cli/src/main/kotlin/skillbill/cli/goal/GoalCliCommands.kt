@@ -94,7 +94,10 @@ class GoalRunCommand(
   goalRunSubcommands: GoalRunSubcommands,
   private val telemetryService: TelemetryService,
   private val state: CliRunState,
-) : DocumentedCliCommand("goal", "Run a decomposed goal in the foreground.") {
+) : DocumentedCliCommand(
+  "goal",
+  "Run a decomposed goal in the foreground. Exit codes: complete=0, failed=1, paused=2, blocked=3.",
+) {
   private val issueKey by argument(help = "Parent issue key for the decomposed goal.").optional()
   private val agent by option(
     "--agent",
@@ -984,7 +987,22 @@ private const val GOAL_STATUS_DATABASE_UNAVAILABLE = "database_unavailable"
 
 private fun shellQuote(value: String): String = "'${value.replace("'", "'\\''")}'"
 
-private fun Map<String, Any?>.goalExitCode(): Int = if (this["status"] == "complete") 0 else 1
+/**
+ * Process exit classification for goal run. Kept in lockstep with [goalRunText] verb taxonomy:
+ * complete=0, failed/timeout=1, paused=2, else blocked=3.
+ */
+internal fun goalRunExitCode(status: String?, reason: String?): Int {
+  if (status == "complete") return 0
+  val normalized = reason?.lowercase().orEmpty()
+  return when {
+    normalized == "paused" -> 2
+    normalized.contains("failed") || normalized.contains("timeout") -> 1
+    else -> 3
+  }
+}
+
+private fun Map<String, Any?>.goalExitCode(): Int =
+  goalRunExitCode(this["status"]?.toString(), this["reason"]?.toString())
 
 private fun GoalRunnerStatusProjection?.toGoalStatusCliMap(issueKey: String): Map<String, Any?> = this?.let {
   linkedMapOf<String, Any?>(

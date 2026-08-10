@@ -2839,11 +2839,12 @@ internal class InMemoryGoalManifestStore(
       else -> skillbill.goalrunner.model.GoalPlanningStatusState.PARTIALLY_PLANNED
     }
     val reason = when (state) {
-      skillbill.goalrunner.model.GoalPlanningStatusState.NOT_STARTED -> "Goal planning has not started."
+      skillbill.goalrunner.model.GoalPlanningStatusState.NOT_STARTED ->
+        skillbill.goalrunner.model.GoalPlanningStatusReasons.notStarted()
       skillbill.goalrunner.model.GoalPlanningStatusState.PREPLANNED ->
-        "Shared preplan is saved; planning can resume at subtask $firstMissing."
+        skillbill.goalrunner.model.GoalPlanningStatusReasons.preplannedResume(requireNotNull(firstMissing))
       skillbill.goalrunner.model.GoalPlanningStatusState.PARTIALLY_PLANNED ->
-        "Saved plans will be reused; planning can resume at subtask $firstMissing."
+        skillbill.goalrunner.model.GoalPlanningStatusReasons.partiallyPlannedResume(requireNotNull(firstMissing))
       skillbill.goalrunner.model.GoalPlanningStatusState.BLOCKED -> blockedReason
       skillbill.goalrunner.model.GoalPlanningStatusState.PREPARED -> null
     }

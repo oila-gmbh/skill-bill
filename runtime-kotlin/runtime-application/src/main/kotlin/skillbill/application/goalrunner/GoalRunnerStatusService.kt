@@ -85,6 +85,8 @@ class GoalRunnerStatusService(
   private val clock: Clock = Clock.systemUTC(),
   private val workerSupervisor: FeatureTaskRuntimeWorkerSupervisor = NoopFeatureTaskRuntimeWorkerSupervisor,
   private val childRepairStore: GoalRunnerChildRepairStore = NoopGoalRunnerChildRepairStore,
+  private val planningStatusReasonCoherence: GoalPlanningStatusReasonCoherence =
+    GoalPlanningStatusReasonCoherence.NONE,
 ) {
   fun status(request: GoalRunnerStatusRequest): GoalRunnerStatusProjection? {
     return manifestStore.readByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
@@ -119,7 +121,16 @@ class GoalRunnerStatusService(
               planningBlock?.id,
               planningBlock?.blockedReason,
               request.dbPathOverride,
-            ),
+            )?.let { snapshot ->
+              planningStatusReasonCoherence.align(
+                snapshot = snapshot,
+                parentWorkflowId = loadedState.parentWorkflowId,
+                issueKey = manifest.issueKey,
+                manifest = manifest,
+                repoRoot = request.repoRoot,
+                dbPathOverride = request.dbPathOverride,
+              )
+            },
             currentStepOverride = progress?.currentStepId,
             currentWorkflowStatus = progress?.workflowStatus,
             latestLivenessSignal = progress?.latestLivenessSignal,

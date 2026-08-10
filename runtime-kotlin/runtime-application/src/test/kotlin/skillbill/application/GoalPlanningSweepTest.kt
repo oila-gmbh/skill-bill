@@ -908,7 +908,11 @@ class GoalPlanningSweepTest {
     val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
     assertEquals(0, stopped.currentSubtaskId)
     assertEquals("preplan", stopped.lastResumableStep)
-    assertTrue(stopped.blockedReason.contains("provenance"))
+    assertTrue(stopped.blockedReason.contains("provenance"), stopped.blockedReason)
+    assertTrue(
+      stopped.blockedReason.contains("skill-bill goal replan SKILL-56 --subtask 1 --include-shared-preplan"),
+      stopped.blockedReason,
+    )
     assertEquals(launchCount, harness.launcher.requests.size)
     assertEquals(2, discovery.calls, "heading validity must re-parse the catalog without launching planning")
   }
@@ -1018,7 +1022,10 @@ class GoalPlanningSweepTest {
     val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
     assertEquals(1, stopped.currentSubtaskId)
     assertEquals("plan", stopped.lastResumableStep)
-    assertTrue(stopped.blockedReason.contains("cannot be recovered"))
+    assertTrue(
+      stopped.blockedReason.contains("skill-bill goal replan SKILL-56 --subtask 1 --include-shared-preplan"),
+      stopped.blockedReason,
+    )
     assertEquals(launchCount, harness.launcher.requests.size)
   }
 
@@ -1627,7 +1634,10 @@ class GoalPlanningSweepTest {
     val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
     assertEquals(1, stopped.currentSubtaskId)
     assertEquals("plan", stopped.lastResumableStep)
-    assertTrue(stopped.blockedReason.contains("cannot be recovered"))
+    assertTrue(
+      stopped.blockedReason.contains("skill-bill goal replan SKILL-56 --subtask 1 --include-shared-preplan"),
+      stopped.blockedReason,
+    )
     assertEquals(
       launchCountBeforeResume,
       harness.launcher.requests.size,

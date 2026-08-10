@@ -272,7 +272,11 @@ goal SKILL-146: finished
 summary: Example feature — 3/3 subtasks complete; PR https://github.com/…/pull/241
 goal SKILL-146: blocked at subtask 2 — <blocked_reason>
 goal SKILL-146: failed — <blocked_reason>
+goal SKILL-146: paused at subtask 1 — <blocked_reason>
 ```
+
+Process exit codes for `skill-bill goal <issue-key>` (harness distinction by
+code alone): `complete=0`, `failed=1`, `paused=2`, `blocked=3`.
 
 Keep the clean summary to one line and omit unavailable optional fields such as
 the PR URL. Do not read back, summarize, or paraphrase run stdout to compose the

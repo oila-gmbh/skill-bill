@@ -124,7 +124,12 @@ class DefaultGoalPlanningSweep(
       "repo-root-realpath-v1:$canonicalRepository",
     )
     val existingShared = runCatching { checkpoint.findSharedPreplan(identity, request.dbPathOverride) }
-      .getOrElse { error -> return preSweepStopped(request, preparationStateReadReason(error)) }
+      .getOrElse { error ->
+        return preSweepStopped(
+          request,
+          preparationStateReadReason(error, request.issueKey, 0),
+        )
+      }
     val recoveredPacket = existingShared?.let(::planningPacketFrom)
     if (existingShared != null && recoveredPacket == null) {
       return preSweepStopped(request, "Goal planning shared preplan does not contain a valid shared context packet.")
@@ -164,7 +169,12 @@ class DefaultGoalPlanningSweep(
         refreshedThisPrepare = true
         val afterRefresh = runCatching {
           checkpoint.findSharedPreplan(identity, request.dbPathOverride)
-        }.getOrElse { error -> return preSweepStopped(request, preparationStateReadReason(error)) }
+        }.getOrElse { error ->
+          return preSweepStopped(
+            request,
+            preparationStateReadReason(error, request.issueKey, 0),
+          )
+        }
           ?: first.checkpoint
         val afterPacket = planningPacketFrom(afterRefresh) ?: shared.planningPacket
         // Continue prepare with the post-refresh packet so cascaded plan regen uses the same
@@ -216,7 +226,12 @@ class DefaultGoalPlanningSweep(
       recovery.exceptionOrNull()?.let { error ->
         val subtaskId = recoverySubtaskId(error)
         val phaseId = PHASE_PLAN.takeIf { subtaskId != 0 } ?: PHASE_PREPLAN
-        return stopped(shared, subtaskId, preparationStateReadReason(error), phaseId)
+        return stopped(
+          shared,
+          subtaskId,
+          preparationStateReadReason(error, shared.issueKey, subtaskId),
+          phaseId,
+        )
       }
       val missingId = recovery.getOrThrow()
       if (missingId == null) return GoalPlanningSweepOutcome.PreparedAll(identity, provenance, descriptors)
@@ -359,13 +374,15 @@ class DefaultGoalPlanningSweep(
     return packet + ("integrity_sha256" to GoalPlanningSharedContextPacket.digest(packet))
   }
 
-  private fun incompatibleProvenance(shared: GoalPlanningSharedContext): GoalPlanningSweepOutcome.Stopped = stopped(
-    shared,
-    0,
-    "Goal planning preparation cannot be recovered because the current governed parent spec or immutable " +
-      "decomposition provenance differs from the saved shared preplan.",
-    PHASE_PREPLAN,
-  )
+  private fun incompatibleProvenance(shared: GoalPlanningSharedContext): GoalPlanningSweepOutcome.Stopped {
+    val remedySubtaskId = shared.manifest.subtasks.firstOrNull { it.status != "skipped" }?.id ?: 1
+    return stopped(
+      shared,
+      0,
+      goalPlanningIncompatibleProvenanceStopReason(shared.issueKey, remedySubtaskId),
+      PHASE_PREPLAN,
+    )
+  }
 
   private fun recoverySubtaskId(error: Throwable): Int {
     val recoveryError = error as? IncompatibleGoalPlanningPreparationRecoveryError
@@ -1012,8 +1029,16 @@ class DefaultGoalPlanningSweep(
     "Goal planning phase '$phaseId' rejected a declared bounded projection at the launch seam: " +
       "${error.message.orEmpty()}. Migrate or delete the affected goal-planning preparation record."
 
-  private fun preparationStateReadReason(error: Throwable): String =
-    "Goal planning preparation state could not be read: ${error.message.orEmpty()}"
+  private fun preparationStateReadReason(error: Throwable, issueKey: String, subtaskId: Int): String {
+    val base = "Goal planning preparation state could not be read: ${error.message.orEmpty()}"
+    val recovery = error as? IncompatibleGoalPlanningPreparationRecoveryError ?: return base
+    val remedySubtaskId = when {
+      subtaskId > 0 -> subtaskId
+      recovery.subtaskId > 0 -> recovery.subtaskId
+      else -> 1
+    }
+    return "$base Recover with: ${goalPlanningIncludeSharedPreplanRemedy(issueKey, remedySubtaskId)}"
+  }
 
   /**
    * A planning launch that exits zero, reports no failure mode and still harvests nothing is a

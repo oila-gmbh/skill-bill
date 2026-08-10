@@ -10,6 +10,7 @@ import skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths
 import skillbill.db.core.inImmediateTransaction
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
+import skillbill.goalrunner.model.GoalPlanningStatusReasons
 import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
 import skillbill.goalrunner.model.GoalPlanningStatusState
 import skillbill.ports.persistence.GoalPlanningPreparationRepository
@@ -159,10 +160,11 @@ class GoalPlanningPreparationStore(
       else -> GoalPlanningStatusState.PARTIALLY_PLANNED
     }
     val reason = when (state) {
-      GoalPlanningStatusState.NOT_STARTED -> "Goal planning has not started."
-      GoalPlanningStatusState.PREPLANNED -> "Shared preplan is saved; planning can resume at subtask $firstMissing."
+      GoalPlanningStatusState.NOT_STARTED -> GoalPlanningStatusReasons.notStarted()
+      GoalPlanningStatusState.PREPLANNED ->
+        GoalPlanningStatusReasons.preplannedResume(requireNotNull(firstMissing))
       GoalPlanningStatusState.PARTIALLY_PLANNED ->
-        "Saved plans will be reused; planning can resume at subtask $firstMissing."
+        GoalPlanningStatusReasons.partiallyPlannedResume(requireNotNull(firstMissing))
       GoalPlanningStatusState.BLOCKED -> blockedReason
       GoalPlanningStatusState.PREPARED -> null
     }
