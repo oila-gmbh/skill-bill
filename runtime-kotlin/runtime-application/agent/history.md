@@ -1,3 +1,13 @@
+## [2026-08-10] SKILL-180 subtask 2 — Runtime-owned validation gate
+Areas: runtime-application/featuretask/validation, runtime-domain/workflow/taskruntime, runtime-ports/validation, runtime-infra-fs, platform-packs/*/platform.yaml, orchestration/contracts, docs, AGENTS.md
+- Validate gate execution moved from the agent into the runtime: resolve pack-declared `validation_gate` argv, run in repo root, project bounded findings for repair, rerun to verify, cap iterations, persist measured `gate_run_count` / `gate_runs`.
+- No hardcoded gate command; missing declaration falls back to agent-run validate with a surfaced degradation; malformed declaration loud-fails.
+- Terminal verifying run uses pack-declared cache-bypass argv; zero-executed-work results never satisfy a terminal outcome; intermediate repair runs stay cache-eligible. reusable
+- Validate directive replaces transitional `bill-code-check` invoke with finding-set repair; no-suppression clause from subtask 1 survives unmodified.
+- Ownership restated in AGENTS.md and `agent/decisions.md`: runtime owns build/test/gate execution; audit and repair evidence stay read-only repository facts.
+Feature flag: N/A
+Acceptance criteria: 20/20 implemented
+
 ## [2026-08-10] SKILL-180 subtask 1 — Validate no-suppression directive and history correction
 Areas: runtime-application/featuretask, runtime-kotlin/agent, runtime-infra-fs/agent, .feature-specs/SKILL-180
 - PHASE_VALIDATE now invokes `bill-code-check` (router only; never a stack-specific checker) and forbids silencing findings via annotations, baselines, disabled rules, weakened config, or skipped tests; existing one-run / fix-all / rerun-once batching stays intact.
