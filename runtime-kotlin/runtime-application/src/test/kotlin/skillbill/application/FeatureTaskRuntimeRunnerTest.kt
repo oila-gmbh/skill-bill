@@ -3391,24 +3391,37 @@ class FeatureTaskRuntimeReviewFixLoopTest {
   }
 
   @Test
-  fun `m1 Major review finding advances without launching implement_fix`() {
-    val majorFindingOutput = reviewFindingsOutput(changesRequested = true)
-      .replace("\"severity\": \"blocker\"", "\"severity\": \"major\"")
+  fun `m1 Major review finding reopens implement_fix then re-reviews`() {
+    val git = RecordingWorkflowGitOperations().apply {
+      repositoryFingerprintValue = "before-fix"
+    }
+    var reviewLaunches = 0
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        facts(if (phaseId == "review") majorFindingOutput else validJsonOutput(phaseId))
+        if (phaseId == "implement_fix") git.repositoryFingerprintValue = "after-fix"
+        if (phaseId == "review") {
+          reviewLaunches += 1
+          val majorOutput = reviewFindingsOutput(changesRequested = reviewLaunches < 2)
+            .replace("\"severity\": \"blocker\"", "\"severity\": \"major\"")
+          facts(majorOutput)
+        } else {
+          facts(validJsonOutput(phaseId))
+        }
       },
+      runtimeConfig = RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(gitOperations = git)),
     )
 
-    val report = harness.runner.run(harness.request())
+    val report = harness.runner.run(
+      harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE),
+    )
 
-    // Only Blocker reopens implement_fix. Major findings advance to validate without triggering a fix
-    // pass, so implement_fix is never launched and the run completes directly after review.
+    // Blocker and Major both reopen implement_fix. A surviving Major must not advance past review.
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     val launched = harness.launchedPromptPhaseOrder()
-    assertFalse(launched.any { it == "implement_fix" }, "Major findings must not launch implement_fix")
-    assertTrue(launched.any { it == "audit" })
+    assertEquals(1, launched.count { it == "implement_fix" }, "Major findings must launch implement_fix")
+    assertTrue(launched.indexOf("review") < launched.indexOf("implement_fix"))
+    assertTrue(launched.indexOf("implement_fix") < launched.lastIndexOf("review"))
   }
 
   // (b)+(e) AC2/AC6/AC10: changes_requested spawns implement_fix carrying the findings, then re-reviews.

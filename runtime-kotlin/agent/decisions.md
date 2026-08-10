@@ -4,6 +4,27 @@ This file records architectural and implementation decisions that span the
 `runtime-kotlin/` boundary. Each entry is dated and explains the trade-off,
 not the implementation detail.
 
+## 2026-08-10 — Review remediation gate is Blocker or Major (SKILL-178)
+
+Context: Governed skill content and content-lock tests still stated the old
+Blocker-only reopen rule after subtasks 1–3 widened runtime severity gates so
+Blocker and Major both reopen `implement_fix` and hard-block advance.
+
+Decision: Governed content, playbook/code-review remediation-delta prose, and
+parity locks describe the Blocker-or-Major rule; Minor and Nit stay ledger-only
+with retrieval only via `skill-bill goal findings --issue-key <KEY>`. Durable
+wire key `blocker_dispositions` stays named as-is.
+
+Reason: Content must agree with the runtime predicates already shipped; renaming
+durable disposition keys is a separate migration.
+
+Alternatives considered: Leaving Blocker-only prose until a later docs pass —
+rejected; locks would keep encoding the wrong rule. Renaming `blocker_dispositions`
+in this sweep — rejected; out of scope and breaks durable decode.
+
+Revisit when: disposition obligations widen from prior-Blocker ids to every
+addressed finding in the review-execution directive itself.
+
 ## 2026-08-10 — Validate-phase build/test/gate execution is runtime-owned (SKILL-180)
 
 Context: Validate previously told the agent to invoke `bill-code-check`, so

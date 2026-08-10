@@ -67,12 +67,13 @@ F-XXX risk register format, and telemetry are inherited unchanged and are never
 restated per tier.
 
 With `context:feature-remediation`, the pass is bounded to the supplied
-remediation delta rather than the full base-to-current delta, and verification is
-its primary output. For every Blocker the prior pass emitted, state `resolved`,
-`unresolved`, or `superseded`, and cite the specific changed lines that settle it.
-A disposition without that evidence is not admissible. Review the remediation
-delta itself for defects the fix introduced; do not re-search the code the prior
-pass already covered.
+remediation delta — all findings addressed in that round unioned with the
+pre-fix-to-post-fix diff — rather than the full base-to-current delta, and
+verification is its primary output. For every finding addressed in that round,
+state `resolved`, `unresolved`, or `superseded`, and cite the specific changed
+lines that settle it. A disposition without that evidence is not admissible.
+Review the remediation delta itself for defects the fix introduced; do not
+re-search the code the prior pass already covered.
 
 When the caller passes `parallel:<agent>` or `parallel:<agent>:<model>` in args — for example `parallel:codex`, `parallel:codex:o3`, or `parallel:claude:claude-opus-4-8` — run two review lanes on the same diff and merge their findings with provenance labels. Both lanes share the resolved depth; reject a pairing that would run one lane light and the other full before either lane starts.
 

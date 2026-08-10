@@ -109,6 +109,9 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
 
   @Test
   fun `pass two orders one evidenced disposition per prior Blocker finding id`() {
+    // Durable wire key remains blocker_dispositions (SKILL-178 keeps the key name). Subtask-2/3 still
+    // order dispositions for prior Blocker ids only; PLAYBOOK/code-review prose now require every
+    // addressed finding — that directive widening is a reported dependency gap, not changed here.
     val prompt = compose(
       passNumber = 2,
       resolvedTier = CodeReviewExecutionMode.INLINE,
@@ -120,7 +123,7 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
     assertContains(prompt, "resolved, unresolved, superseded")
     assertTrue(
       prompt.contains("no more and no fewer"),
-      "The pass must require a disposition for every prior Blocker, not a short list.",
+      "The pass must require a disposition for every prior Blocker id under the durable key.",
     )
   }
 
