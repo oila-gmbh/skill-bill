@@ -2029,6 +2029,125 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
 
 
   @Test
+  fun `non-scope failure inside review preparation surfaces its own cause not the fixed scope sentence`() {
+    // Bug this catches: the review dispatch substituted a fixed scope sentence after
+    // blockedGoalReviewRun already persisted the specific reservation/evidence-store cause (AC-009/AC-012).
+    val evidenceStoreCause = "[evidence-store] retaining producer-output evidence for review:0:2 failed"
+    val fixedScopeSentence =
+      "Goal-subtask review preparation could not establish the exact durable review scope."
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-review-prep-nonscope")
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+      .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
+    val harness = goalContinuationHarness(repoRoot, git, goalContinuationLauncher(validJsonOutput("commit_push")))
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    check(
+      harness.goalContinuationRecorder.recordGoalContinuationState(
+        GoalContinuationStateRecordRequest(
+          workflowId = WORKFLOW_ID,
+          continuation = FeatureTaskRuntimeGoalContinuationArtifact(
+            issueKey = ISSUE_KEY,
+            subtaskId = 5,
+            suppressPr = true,
+            goalBranch = "feat/existing-runtime-branch",
+            codeReviewMode = CodeReviewExecutionMode.INLINE,
+          ),
+          reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+        ),
+      ),
+    )
+    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
+    harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
+    harness.seedPhase("audit", "completed", 1, phaseAgent("audit"), VALID_AUDIT_OUTPUT)
+    harness.repository.failSaveWhen = { row ->
+      val artifacts = skillbill.contracts.JsonSupport.parseObjectOrNull(row.artifactsJson)
+        ?.let(skillbill.contracts.JsonSupport::jsonElementToValue)
+        ?.let(skillbill.contracts.JsonSupport::anyToStringAnyMap)
+        .orEmpty()
+      val reserved = (artifacts["goal_subtask_review_state"] as? Map<*, *>)?.get("reserved_pass_number")
+      if (reserved != null) {
+        throw IllegalStateException(evidenceStoreCause)
+      }
+      false
+    }
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(
+      harness.runner.run(
+        harness.request().copy(
+          transitionsOverride = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration(
+            forwardPhaseIds = listOf("preplan", "plan", "implement", "audit", "review"),
+            backwardEdges = emptyList(),
+          ),
+        ),
+      ),
+    )
+
+    assertEquals("review", blocked.lastIncompletePhase)
+    assertContains(blocked.blockedReason, evidenceStoreCause)
+    assertContains(blocked.blockedReason, "Goal-subtask review reservation failed")
+    assertTrue(
+      fixedScopeSentence !in blocked.blockedReason,
+      "fixed scope sentence must not replace the injected non-scope cause",
+    )
+    val phaseBlocked = harness.events.filterIsInstance<FeatureTaskRuntimeRunEvent.PhaseBlocked>()
+      .single { it.phaseId == "review" }
+    assertContains(phaseBlocked.blockedReason, evidenceStoreCause)
+    assertTrue(fixedScopeSentence !in phaseBlocked.blockedReason)
+    val reviewRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
+    assertContains(requireNotNull(reviewRecord.blockedReason), evidenceStoreCause)
+  }
+
+  @Test
+  fun `scope-shaped review preparation failure still reports the scope-specific message`() {
+    // Bug this catches: removing the fixed scope sentence must not lose genuine scope failures (AC-010).
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-review-prep-scope")
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+      .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
+    val harness = goalContinuationHarness(repoRoot, git, goalContinuationLauncher(validJsonOutput("commit_push")))
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    check(
+      harness.goalContinuationRecorder.recordGoalContinuationState(
+        GoalContinuationStateRecordRequest(
+          workflowId = WORKFLOW_ID,
+          continuation = FeatureTaskRuntimeGoalContinuationArtifact(
+            issueKey = ISSUE_KEY,
+            subtaskId = 5,
+            suppressPr = true,
+            goalBranch = "feat/existing-runtime-branch",
+            codeReviewMode = CodeReviewExecutionMode.INLINE,
+          ),
+          reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
+        ),
+      ),
+    )
+    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
+    harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
+    harness.seedPhase("audit", "completed", 1, phaseAgent("audit"), VALID_AUDIT_OUTPUT)
+    val artifacts = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID).toMutableMap()
+    artifacts.remove("goal_subtask_review_state")
+    harness.repository.replaceTaskRuntimeArtifacts(WORKFLOW_ID, artifacts)
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(
+      harness.runner.run(
+        harness.request().copy(
+          transitionsOverride = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration(
+            forwardPhaseIds = listOf("preplan", "plan", "implement", "audit", "review"),
+            backwardEdges = emptyList(),
+          ),
+        ),
+      ),
+    )
+
+    assertEquals("review", blocked.lastIncompletePhase)
+    assertContains(blocked.blockedReason, "review_base_sha must be captured before implementation")
+    assertTrue(
+      "Goal-subtask review preparation could not establish the exact durable review scope." !in
+        blocked.blockedReason,
+    )
+  }
+
+  @Test
   fun `AC-008 unreachable remediation base with completed passes recovers through review preparation`() {
     val repoRoot = Files.createTempDirectory("skillbill-runtime-ac008-remediation-recover")
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")

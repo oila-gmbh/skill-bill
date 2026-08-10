@@ -1942,9 +1942,7 @@ internal class FeatureTaskRuntimeRunLoop(
         state = state,
         observability = observability,
       )
-      GoalReviewRunPreparation.Blocked -> PhaseOutcome.blocked(
-        "Goal-subtask review preparation could not establish the exact durable review scope.",
-      )
+      is GoalReviewRunPreparation.Blocked -> PhaseOutcome.blocked(prepared.reason)
     }
   }
 
@@ -2187,7 +2185,7 @@ internal class FeatureTaskRuntimeRunLoop(
     failureDisposition: FeatureTaskRuntimeFailureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
   ): GoalReviewRunPreparation {
     blockAndPersist(run, 1, reason, observability, failureDisposition = failureDisposition)
-    return GoalReviewRunPreparation.Blocked
+    return GoalReviewRunPreparation.Blocked(reason, failureDisposition)
   }
 
   private class MissingCarriedForwardGoalReviewResultException : IllegalStateException()
@@ -5241,7 +5239,10 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private sealed interface GoalReviewRunPreparation {
     data object CarryForward : GoalReviewRunPreparation
-    data object Blocked : GoalReviewRunPreparation
+    data class Blocked(
+      val reason: String,
+      val failureDisposition: FeatureTaskRuntimeFailureDisposition,
+    ) : GoalReviewRunPreparation
   }
 
   private data class GoalReviewRunReady(val run: PhaseRun) : GoalReviewRunPreparation

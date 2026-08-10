@@ -23,6 +23,9 @@ import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatPlan
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatTick
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessIdentity
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
+import skillbill.ports.workflow.NoopWorkflowGitOperations
+import skillbill.ports.workflow.WorkflowGitOperations
+import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.GoalProgressEvent
@@ -363,10 +366,254 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
     )
   }
 
+  @Test
+  fun `stored blocked outcome with standing durable cause is returned with reason text byte-identical`() {
+    // Bug this catches: a fix that always releases stored blocked outcomes would regress standing
+    // causes (AC-003). Corroboration must keep a still-valid blocked artifact authoritative.
+    val reason = "Review requested changes that remain unresolved."
+    val workflows = InMemoryWorkflowStates()
+    workflows.saveFeatureTaskRuntimeWorkflow(
+      blockedContinuationRecord(
+        workflowId = "wftr-standing-block",
+        workflowStatus = "blocked",
+        stepStatus = "blocked",
+        blockedReasonArtifact = reason,
+        storedBlockedReason = reason,
+      ),
+    )
+    val store = WorkflowGoalRunnerOutcomeStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    )
+
+    val outcome = requireNotNull(store.terminalOutcome("wftr-standing-block", "SKILL-176.4", 4))
+
+    assertEquals(GoalRunnerTerminalStatus.BLOCKED, outcome.status)
+    assertEquals(reason, outcome.blockedReason)
+  }
+
+  @Test
+  fun `stored blocked outcome whose cause is gone falls through instead of replaying the stale reason`() {
+    // Bug this catches: terminalOutcomeFor short-circuited on any stored blocked outcome, so a resume
+    // replayed remediation from a deleted code path (SKILL-15 wedge). The seeded reason string is
+    // grep-absent from current runtime sources.
+    val staleReason =
+      "Owned paths already staged outside this workflow; run git restore --staged and retry."
+    val workflows = InMemoryWorkflowStates()
+    workflows.saveFeatureTaskRuntimeWorkflow(
+      blockedContinuationRecord(
+        workflowId = "wftr-20260808-175505-c5po",
+        workflowStatus = "running",
+        stepStatus = "running",
+        blockedReasonArtifact = null,
+        storedBlockedReason = staleReason,
+      ),
+    )
+    workflows.seedWorkerOwnership(expiredLeaseOwnership("wftr-20260808-175505-c5po"))
+    val store = WorkflowGoalRunnerOutcomeStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      workerSupervisor = DeadProcessSupervisor,
+    )
+
+    val readOnly = store.terminalOutcome("wftr-20260808-175505-c5po", "SKILL-176.4", 4)
+    assertTrue(
+      readOnly == null || readOnly.blockedReason != staleReason,
+      "read path must not replay the stale blocked reason; got $readOnly",
+    )
+
+    val recovered = requireNotNull(
+      store.recoverAndPersistTerminalOutcome(
+        workflowId = "wftr-20260808-175505-c5po",
+        issueKey = "SKILL-176.4",
+        subtaskId = 4,
+        repoRoot = Path.of("."),
+        dbPathOverride = null,
+      ),
+    )
+    assertEquals(GoalRunnerTerminalStatus.RECONCILABLE, recovered.status)
+    assertTrue(recovered.blockedReason != staleReason)
+
+    val artifacts = decodeArtifacts(
+      requireNotNull(workflows.getFeatureTaskRuntimeWorkflow("wftr-20260808-175505-c5po")).artifactsJson,
+    )
+    val displacement = artifacts["goal_continuation_outcome_displacement"] as Map<*, *>
+    assertEquals(staleReason, displacement["original_blocked_reason"])
+    assertNull(artifacts["goal_continuation_outcome"])
+  }
+
+  @Test
+  fun `displacing a stale blocked outcome is idempotent across a second resume`() {
+    // Bug this catches: repeated resumes duplicating displacement evidence, or reconcile alternating
+    // between released and re-blocked (AC-005/AC-007).
+    val staleReason =
+      "Owned paths already staged outside this workflow; run git restore --staged and retry."
+    val workflows = InMemoryWorkflowStates()
+    workflows.saveFeatureTaskRuntimeWorkflow(
+      blockedContinuationRecord(
+        workflowId = "wftr-stale-idempotent",
+        workflowStatus = "running",
+        stepStatus = "running",
+        blockedReasonArtifact = null,
+        storedBlockedReason = staleReason,
+        declaredProgressTimestamp = Instant.now(),
+      ),
+    )
+    val store = WorkflowGoalRunnerOutcomeStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    )
+
+    val first = store.reconcileAuthoritativeOutcomes(
+      issueKey = "SKILL-176.4",
+      activeWorkflowIds = setOf("wftr-stale-idempotent"),
+      gate = GoalRunnerReconcileGate(requireStalenessEvidence = true),
+    )
+    val artifactsAfterFirst = decodeArtifacts(
+      requireNotNull(workflows.getFeatureTaskRuntimeWorkflow("wftr-stale-idempotent")).artifactsJson,
+    )
+    assertEquals(staleReason, (artifactsAfterFirst["goal_continuation_outcome_displacement"] as Map<*, *>)["original_blocked_reason"])
+    assertNull(artifactsAfterFirst["goal_continuation_outcome"])
+    assertEquals("running", requireNotNull(workflows.getFeatureTaskRuntimeWorkflow("wftr-stale-idempotent")).workflowStatus)
+
+    val second = store.reconcileAuthoritativeOutcomes(
+      issueKey = "SKILL-176.4",
+      activeWorkflowIds = setOf("wftr-stale-idempotent"),
+      gate = GoalRunnerReconcileGate(requireStalenessEvidence = true),
+    )
+    assertEquals(first, second)
+    val artifactsAfterSecond = decodeArtifacts(
+      requireNotNull(workflows.getFeatureTaskRuntimeWorkflow("wftr-stale-idempotent")).artifactsJson,
+    )
+    assertEquals(
+      artifactsAfterFirst["goal_continuation_outcome_displacement"],
+      artifactsAfterSecond["goal_continuation_outcome_displacement"],
+    )
+    assertEquals("running", requireNotNull(workflows.getFeatureTaskRuntimeWorkflow("wftr-stale-idempotent")).workflowStatus)
+  }
+
+  @Test
+  fun `COMPLETE without sha still falls through to the measure branch alongside corroboration`() {
+    // Bug this catches: the new non-complete corroboration replacing the SKILL-68 COMPLETE-without-sha
+    // takeUnless (AC-006). A SHA-less complete must still reach measured recovery.
+    val workflows = InMemoryWorkflowStates()
+    workflows.saveFeatureTaskRuntimeWorkflow(completeWithoutShaContinuationRecord("wftr-complete-no-sha"))
+    val store = WorkflowGoalRunnerOutcomeStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+      gitOperations = MeasuringHeadShaGitOperations,
+    )
+
+    val readOnly = requireNotNull(store.terminalOutcome("wftr-complete-no-sha", "SKILL-176.4", 4))
+    assertEquals(GoalRunnerTerminalStatus.NO_TERMINAL_STORE_OUTCOME, readOnly.status)
+    assertNull(readOnly.commitSha)
+
+    val recovered = requireNotNull(
+      store.recoverAndPersistTerminalOutcome(
+        workflowId = "wftr-complete-no-sha",
+        issueKey = "SKILL-176.4",
+        subtaskId = 4,
+        repoRoot = Path.of("."),
+        dbPathOverride = null,
+      ),
+    )
+    assertEquals(GoalRunnerTerminalStatus.COMPLETE, recovered.status)
+    assertEquals("measured-head-sha", recovered.commitSha)
+  }
+
   // Mirrors the production SQLite CURRENT_TIMESTAMP shape ("yyyy-MM-dd HH:mm:ss", UTC, no 'T'/zone).
   private fun sqliteTimestamp(instant: Instant): String = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
     .withZone(ZoneOffset.UTC)
     .format(instant.truncatedTo(ChronoUnit.SECONDS))
+
+  private fun blockedContinuationRecord(
+    workflowId: String,
+    workflowStatus: String,
+    stepStatus: String,
+    blockedReasonArtifact: String?,
+    storedBlockedReason: String,
+    declaredProgressTimestamp: Instant? = null,
+  ): WorkflowStateRecord {
+    val definition = WorkflowFamily.TASK_RUNTIME.definition
+    val engine = WorkflowEngine(testWorkflowSnapshotValidator)
+    val opened = engine.openRecord(definition, workflowId, "fis-176", "preplan")
+    val artifacts = linkedMapOf<String, Any?>(
+      "goal_continuation" to mapOf(
+        "issue_key" to "SKILL-176.4",
+        "subtask_id" to 4,
+        "suppress_pr" to true,
+      ),
+      "goal_continuation_outcome" to mapOf(
+        "issue_key" to "SKILL-176.4",
+        "subtask_id" to 4,
+        "status" to "blocked",
+        "workflow_id" to workflowId,
+        "blocked_reason" to storedBlockedReason,
+        "last_resumable_step" to "review",
+      ),
+    )
+    if (blockedReasonArtifact != null) {
+      artifacts["blocked_reason"] = blockedReasonArtifact
+    }
+    if (declaredProgressTimestamp != null) {
+      artifacts["goal_progress_latest_event"] = GoalProgressEvent(
+        eventKind = GoalProgressEventKind.OPERATION_HEARTBEAT,
+        workflowId = workflowId,
+        workflowPhase = "goal_runner_supervision",
+        processAlive = true,
+        sequenceNumber = 1,
+        timestamp = declaredProgressTimestamp.toString(),
+        operationName = "child_agent_run",
+        operationKind = "long_child_run",
+        expectedLong = true,
+      ).toArtifactMap()
+    }
+    return engine.updateRecord(
+      definition,
+      opened,
+      WorkflowUpdateInput(
+        workflowStatus = workflowStatus,
+        currentStepId = "review",
+        stepUpdates = listOf(
+          mapOf("step_id" to "review", "status" to stepStatus, "attempt_count" to 1),
+        ),
+        artifactsPatch = artifacts,
+        sessionId = "ftr-176",
+      ),
+    ).toRecord()
+  }
+
+  private fun completeWithoutShaContinuationRecord(workflowId: String): WorkflowStateRecord {
+    val definition = WorkflowFamily.TASK_RUNTIME.definition
+    val engine = WorkflowEngine(testWorkflowSnapshotValidator)
+    val opened = engine.openRecord(definition, workflowId, "fis-176", "preplan")
+    return engine.updateRecord(
+      definition,
+      opened,
+      WorkflowUpdateInput(
+        workflowStatus = "running",
+        currentStepId = "commit_push",
+        stepUpdates = listOf(
+          mapOf("step_id" to "commit_push", "status" to "completed", "attempt_count" to 1),
+        ),
+        artifactsPatch = mapOf(
+          "goal_continuation" to mapOf(
+            "issue_key" to "SKILL-176.4",
+            "subtask_id" to 4,
+            "suppress_pr" to true,
+          ),
+          "goal_continuation_outcome" to mapOf(
+            "issue_key" to "SKILL-176.4",
+            "subtask_id" to 4,
+            "status" to "complete",
+            "workflow_id" to workflowId,
+            "last_resumable_step" to "commit_push",
+          ),
+        ),
+        sessionId = "ftr-176",
+      ),
+    ).toRecord()
+  }
 
   private fun runtimeCandidateRecordNoDeclaredEvent(
     workflowId: String,
@@ -551,4 +798,9 @@ private object LiveProcessSupervisor : FeatureTaskRuntimeWorkerSupervisor {
     heartbeat: () -> FeatureTaskRuntimeHeartbeatTick,
   ) = NoopFeatureTaskRuntimeHeartbeat
   override fun pause(durationMillis: Long) = Unit
+}
+
+private object MeasuringHeadShaGitOperations : WorkflowGitOperations by NoopWorkflowGitOperations {
+  override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = "measured-head-sha")
 }
