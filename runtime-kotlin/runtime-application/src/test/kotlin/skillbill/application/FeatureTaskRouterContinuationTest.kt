@@ -45,28 +45,7 @@ class FeatureTaskRouterContinuationTest {
         sessionId = SESSION_ID,
       ),
     )
-    service.update(
-      WorkflowFamilyKind.TASK_RUNTIME,
-      WorkflowUpdateRequest(
-        workflowId = opened.workflowId,
-        workflowStatus = "blocked",
-        currentStepId = "implement",
-        stepUpdates = listOf(
-          mapOf("step_id" to "preplan", "status" to "completed", "attempt_count" to 1),
-          mapOf("step_id" to "plan", "status" to "completed", "attempt_count" to 1),
-          mapOf("step_id" to "implement", "status" to "blocked", "attempt_count" to 1),
-        ),
-        artifactsPatch = mapOf(
-          FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to mapOf(
-            "preplan" to completedPhaseRecord("preplan"),
-            "plan" to completedPhaseRecord(
-              "plan",
-              outputArtifact = """{"tasks":["add continuation integration coverage"]}""",
-            ),
-          ),
-        ),
-      ),
-    )
+    service.update(WorkflowFamilyKind.TASK_RUNTIME, blockedAtImplementAfterPlan(opened.workflowId))
 
     val candidate = assertIs<FeatureTaskContinuationLookupResult.Resumable>(
       lookup.lookup("skill-120", REPOSITORY_IDENTITY),
@@ -87,6 +66,26 @@ class FeatureTaskRouterContinuationTest {
     )
     assertEquals(opened.workflowId, repeatedLookup.candidate.workflowId)
   }
+
+  private fun blockedAtImplementAfterPlan(workflowId: String): WorkflowUpdateRequest = WorkflowUpdateRequest(
+    workflowId = workflowId,
+    workflowStatus = "blocked",
+    currentStepId = "implement",
+    stepUpdates = listOf(
+      mapOf("step_id" to "preplan", "status" to "completed", "attempt_count" to 1),
+      mapOf("step_id" to "plan", "status" to "completed", "attempt_count" to 1),
+      mapOf("step_id" to "implement", "status" to "blocked", "attempt_count" to 1),
+    ),
+    artifactsPatch = mapOf(
+      FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to mapOf(
+        "preplan" to completedPhaseRecord("preplan"),
+        "plan" to completedPhaseRecord(
+          "plan",
+          outputArtifact = """{"tasks":["add continuation integration coverage"]}""",
+        ),
+      ),
+    ),
+  )
 
   private fun completedPhaseRecord(phaseId: String, outputArtifact: String? = null): Map<String, Any?> = linkedMapOf(
     "contract_version" to FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION,

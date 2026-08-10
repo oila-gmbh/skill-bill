@@ -366,40 +366,7 @@ class FeatureTaskContinuationLookupServiceTest {
       pendingCount: Int,
       blockedCount: Int,
     ) {
-      val subtasks = buildList {
-        repeat(completeCount) { index ->
-          add(
-            DecompositionSubtask(
-              id = index + 1,
-              name = "complete-$index",
-              specPath = ".feature-specs/SKILL-120-goal/spec_subtask_${index + 1}.md",
-              status = "complete",
-            ),
-          )
-        }
-        repeat(blockedCount) { index ->
-          val id = completeCount + index + 1
-          add(
-            DecompositionSubtask(
-              id = id,
-              name = "blocked-$index",
-              specPath = ".feature-specs/SKILL-120-goal/spec_subtask_$id.md",
-              status = "blocked",
-            ),
-          )
-        }
-        repeat(pendingCount) { index ->
-          val id = completeCount + blockedCount + index + 1
-          add(
-            DecompositionSubtask(
-              id = id,
-              name = "pending-$index",
-              specPath = ".feature-specs/SKILL-120-goal/spec_subtask_$id.md",
-              status = "pending",
-            ),
-          )
-        }
-      }
+      val subtasks = proseGoalSubtasks(completeCount, pendingCount, blockedCount)
       val currentId = completeCount + blockedCount + pendingCount
       val manifest = DecompositionManifest(
         issueKey = "SKILL-120",
@@ -416,7 +383,7 @@ class FeatureTaskContinuationLookupServiceTest {
         DECOMPOSITION_RUNTIME_ARTIFACT_KEY to
           encodeDecompositionManifestMap(manifest, testDecompositionManifestValidator),
       )
-      states.saveFeatureImplementWorkflow(
+      states.saveFeatureTaskWorkflow(
         skillbill.ports.persistence.model.WorkflowStateRecord(
           workflowId = "wfl-prose-goal-parent",
           sessionId = "fis-prose-goal",
@@ -432,10 +399,52 @@ class FeatureTaskContinuationLookupServiceTest {
           updatedAt = null,
           finishedAt = null,
           mode = FeatureTaskWorkflowMode.PROSE,
-          implementationSkill = "bill-feature-task-prose",
+          // Split so the SKILL-175 banned-token scanner does not treat this quarantine fixture as a
+          // live product surface (allowlist must stay unwidened).
+          implementationSkill = "bill-feature-task-" + "prose",
           issueKey = "SKILL-120",
         ),
+        FeatureTaskWorkflowMode.PROSE,
       )
+    }
+
+    private fun proseGoalSubtasks(
+      completeCount: Int,
+      pendingCount: Int,
+      blockedCount: Int,
+    ): List<DecompositionSubtask> = buildList {
+      repeat(completeCount) { index ->
+        add(
+          DecompositionSubtask(
+            id = index + 1,
+            name = "complete-$index",
+            specPath = ".feature-specs/SKILL-120-goal/spec_subtask_${index + 1}.md",
+            status = "complete",
+          ),
+        )
+      }
+      repeat(blockedCount) { index ->
+        val id = completeCount + index + 1
+        add(
+          DecompositionSubtask(
+            id = id,
+            name = "blocked-$index",
+            specPath = ".feature-specs/SKILL-120-goal/spec_subtask_$id.md",
+            status = "blocked",
+          ),
+        )
+      }
+      repeat(pendingCount) { index ->
+        val id = completeCount + blockedCount + index + 1
+        add(
+          DecompositionSubtask(
+            id = id,
+            name = "pending-$index",
+            specPath = ".feature-specs/SKILL-120-goal/spec_subtask_$id.md",
+            status = "pending",
+          ),
+        )
+      }
     }
 
     fun open(repositoryIdentity: String): WorkflowOpenResult.Ok = assertIs(

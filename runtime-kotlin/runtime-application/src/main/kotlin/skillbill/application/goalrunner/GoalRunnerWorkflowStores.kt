@@ -684,7 +684,7 @@ class WorkflowGoalRunnerManifestStore(
     dbPathOverride: String?,
   ): skillbill.workflow.model.CodeReviewExecutionMode? = database.read(dbPathOverride) { unitOfWork ->
     unitOfWork.goalRunnerControls.reviewPolicy(parentWorkflowId)?.codeReviewMode
-      ?: WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, parentWorkflowId)
+      ?: featureTaskRecordForLegacyControls(unitOfWork.workflowStates, parentWorkflowId)
         ?.let { record -> reviewPolicyFromLegacyArtifacts(decodeArtifacts(record.artifactsJson))?.codeReviewMode }
   }
 
@@ -713,7 +713,7 @@ class WorkflowGoalRunnerManifestStore(
   override fun reviewPolicy(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerReviewPolicy? =
     database.read(dbPathOverride) { unitOfWork ->
       unitOfWork.goalRunnerControls.reviewPolicy(parentWorkflowId)
-        ?: WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, parentWorkflowId)
+        ?: featureTaskRecordForLegacyControls(unitOfWork.workflowStates, parentWorkflowId)
           ?.let { record -> reviewPolicyFromLegacyArtifacts(decodeArtifacts(record.artifactsJson)) }
     }
 
@@ -741,7 +741,7 @@ class WorkflowGoalRunnerManifestStore(
     dbPathOverride: String?,
   ): Map<Int, GoalRunnerOutOfBandAcceptance> = database.read(dbPathOverride) { unitOfWork ->
     unitOfWork.goalRunnerControls.outOfBandAcceptances(parentWorkflowId).ifEmpty {
-      WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, parentWorkflowId)
+      featureTaskRecordForLegacyControls(unitOfWork.workflowStates, parentWorkflowId)
         ?.let { record -> outOfBandAcceptancesFromLegacyArtifacts(decodeArtifacts(record.artifactsJson)) }
         .orEmpty()
     }
@@ -2447,6 +2447,13 @@ private fun taskRuntimeRecordOrNull(
     throw error
   }
 }
+
+// Status/discovery may load legacy prose parents; read-only control fallbacks must not assert
+// runtime mode (WorkflowFamily.TASK_RUNTIME.get) or goal status loud-fails on those rows.
+private fun featureTaskRecordForLegacyControls(
+  workflowStates: WorkflowStateRepository,
+  workflowId: String,
+): WorkflowStateSnapshot? = workflowStates.getFeatureTaskWorkflow(workflowId)?.toSnapshot()
 
 private fun terminalOutcomeFor(
   snapshot: WorkflowStateSnapshot,

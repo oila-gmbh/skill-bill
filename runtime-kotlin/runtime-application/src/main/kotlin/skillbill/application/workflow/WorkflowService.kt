@@ -64,7 +64,7 @@ private val resolveEffectiveSessionId =
   }
 
 @Inject
-@Suppress("TooManyFunctions")
+@Suppress("LargeClass", "TooManyFunctions") // cohesive workflow open/continue/abandon boundary
 class WorkflowService(
   private val database: DatabaseSessionFactory,
   private val gitOperations: WorkflowGitOperations = NoopWorkflowGitOperations,
@@ -695,6 +695,7 @@ class WorkflowService(
         family,
         record,
         unitOfWork,
+        decompositionManifestValidator,
       ).also { continuation ->
         projectionArtifactsJson = continuation.projectionArtifactsJson ?: projectionArtifactsJson
       }.result

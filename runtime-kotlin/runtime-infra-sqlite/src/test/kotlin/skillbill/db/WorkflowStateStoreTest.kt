@@ -818,7 +818,8 @@ class WorkflowStateStoreTest {
         requireNotNull(store.getFeatureTaskWorkflow("wfl-legacy-prose-term-001")).copy(
           workflowStatus = "abandoned",
           artifactsJson =
-          """{"history_note":"retain-me","operator_abandonment":{"reason":"retire","abandoned_at":"2026-08-09T00:00:00Z"}}""",
+          """{"history_note":"retain-me",""" +
+            """"operator_abandonment":{"reason":"retire","abandoned_at":"2026-08-09T00:00:00Z"}}""",
           finishedAt = "2026-08-09T00:00:00Z",
         ),
       )

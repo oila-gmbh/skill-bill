@@ -140,13 +140,14 @@ internal fun Connection.terminalizeLegacyProseFeatureTaskWorkflowRow(row: Workfl
       AND (mode = 'prose' OR mode IS NULL)
     """.trimIndent(),
   ).use { statement ->
-    statement.setString(1, row.workflowStatus)
-    statement.setString(2, row.artifactsJson)
-    statement.setString(3, row.currentStepId)
-    statement.setString(4, row.workflowStatus)
-    statement.setString(5, row.workflowStatus)
-    statement.setString(6, row.finishedAt)
-    statement.setString(7, row.workflowId)
+    val parameters = SqlParameterBinder(statement)
+    parameters.text(row.workflowStatus)
+    parameters.text(row.artifactsJson)
+    parameters.text(row.currentStepId)
+    parameters.text(row.workflowStatus)
+    parameters.text(row.workflowStatus)
+    parameters.text(row.finishedAt)
+    parameters.text(row.workflowId)
     val updated = statement.executeUpdate()
     if (updated != 1) {
       throw skillbill.error.InvalidWorkflowStateSchemaError(

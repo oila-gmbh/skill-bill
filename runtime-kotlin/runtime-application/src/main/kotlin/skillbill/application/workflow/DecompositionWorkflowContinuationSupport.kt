@@ -7,6 +7,7 @@ import skillbill.application.decomposition.executionModel
 import skillbill.application.goalrunner.migrateLegacyGoalRunnerControls
 import skillbill.application.model.WorkflowContinueResult
 import skillbill.ports.persistence.UnitOfWork
+import skillbill.ports.workflow.UnavailableDecompositionManifestFileStore
 import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.model.CurrentSubtaskIntent
@@ -21,17 +22,41 @@ internal fun WorkflowEngine.continueExistingWorkflow(
   family: WorkflowFamily,
   initialRecord: WorkflowStateSnapshot,
   unitOfWork: UnitOfWork,
+  decompositionManifestValidator: DecompositionManifestValidator? = null,
 ): ContinuationStepResult {
   var record = initialRecord
   val workflowId = initialRecord.workflowId
   val sessionSummary = family.sessionSummary(unitOfWork.workflowStates, record.sessionId.orEmpty())
   var decision = continueDecision(family.definition, record, sessionSummary)
+  var projectionArtifactsJson: String? = null
   if (decision.shouldReopen) {
     val originalContinueStatus = decision.view.continueStatus
     val originalWorkflowStatus = decision.view.workflowStatusBeforeContinue
-    val reopened = updateRecord(family.definition, record, decision.toReopenInput(record.sessionId))
+    val reopenInput = decision.toReopenInput(record.sessionId)
+    // Reopen must refresh decomposition_runtime the same way update() does — otherwise a blocked
+    // parent subtask stays blocked on disk after continueStatus=reopened.
+    val effectiveInput =
+      if (family == WorkflowFamily.TASK_RUNTIME && decompositionManifestValidator != null) {
+        family.withDecompositionRuntime(
+          existing = record,
+          input = reopenInput,
+          workflowId = workflowId,
+          validator = decompositionManifestValidator,
+          fileStore = UnavailableDecompositionManifestFileStore,
+        ).input
+      } else {
+        reopenInput
+      }
+    val reopened = updateRecord(family.definition, record, effectiveInput)
     family.save(unitOfWork.workflowStates, reopened)
     record = family.get(unitOfWork.workflowStates, workflowId) ?: reopened
+    if (
+      family == WorkflowFamily.TASK_RUNTIME &&
+      decompositionManifestValidator != null &&
+      record.decompositionRuntime(decompositionManifestValidator) != null
+    ) {
+      projectionArtifactsJson = record.artifactsJson
+    }
     decision = continueDecision(
       family.definition,
       record,
@@ -45,7 +70,7 @@ internal fun WorkflowEngine.continueExistingWorkflow(
       dbPath = unitOfWork.dbPath.toString(),
       view = decision.view,
     ),
-    projectionArtifactsJson = null,
+    projectionArtifactsJson = projectionArtifactsJson,
   )
 }
 
