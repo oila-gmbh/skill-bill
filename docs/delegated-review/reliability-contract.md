@@ -1,5 +1,10 @@
 # SKILL-145 delegated review reliability contract
 
+> **Historical record (SKILL-159).** This file is the historical record of the
+> external delegated-review subsystem that SKILL-159 removed. It is not current
+> guidance. The live contract is
+> [`orchestration/review-delegation/PLAYBOOK.md`](../../orchestration/review-delegation/PLAYBOOK.md).
+
 **Contract:** `delegated_review_reliability` 0.1  
 **Status:** enforceable baseline; promotion remains deferred  
 **Authority:** the immutable review packet and assignment projection remain

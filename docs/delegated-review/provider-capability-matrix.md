@@ -1,5 +1,11 @@
 # Delegated provider capability matrix
 
+> **Historical record (SKILL-159).** This file is the historical record of the
+> external delegated-review subsystem that SKILL-159 removed. It is not a current
+> statement of which providers support delegated review, and it is not current
+> guidance. The live contract is
+> [`orchestration/review-delegation/PLAYBOOK.md`](../../orchestration/review-delegation/PLAYBOOK.md).
+
 The runtime records this matrix as an evaluation boundary, not as a promotion
 claim. The eight dimensions are fresh-context isolation, worker tracking,
 output capture, declared specialist progress, cancellation, timeout,
@@ -14,11 +20,11 @@ must terminate as unsupported; it must not silently fall back to inline review.
 | Junie | unsupported | no | no | no | no | no | no | no | no |
 | Copilot | unsupported | no | no | no | no | no | no | no | no |
 
-The runtime registry is the executable source for this table:
-DelegatedReviewProviderCapabilityRegistry. The matrix is deliberately
-independent from routing and inline-review defaults. Completion-only token
-observations are retained for measurement and never extend an idle deadline or
-prove specialist progress.
+The runtime registry named as the (historical) executable source for this table
+was DelegatedReviewProviderCapabilityRegistry; that type was deleted by
+SKILL-159. The matrix is deliberately independent from routing and
+inline-review defaults. Completion-only token observations are retained for
+measurement and never extend an idle deadline or prove specialist progress.
 
 Reliability boundary by provider: Codex uses `fork_turns: none` and its own
 native lifecycle callbacks; Claude retains fresh-process and stream-decoder

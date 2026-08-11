@@ -1,5 +1,10 @@
 # Provider failure dispositions
 
+> **Historical record (SKILL-159).** This file is the historical record of the
+> external delegated-review subsystem that SKILL-159 removed. It is not current
+> guidance. The live contract is
+> [`orchestration/review-delegation/PLAYBOOK.md`](../../orchestration/review-delegation/PLAYBOOK.md).
+
 | Provider | Disposition | Evidence boundary |
 | --- | --- | --- |
 | Codex | Keep experimental. Enforce fresh fork_turns none, process timeout, bounded JSONL output, durable worker transitions, and explicit terminal classification. Do not treat completion-only usage as in-flight progress. | CodexAgentRunCommandBuilder, CodexNativeReviewLifecycleCallbacks, lifecycle ledger, command-builder/process fixtures |

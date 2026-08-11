@@ -46,8 +46,6 @@ Packs are the extension surface; routing and install read manifests, not hard-co
 
 Per-repo customization: top-level custom fields allowed; runtime-consumed fields use `x-runtime-anchored: true` (schema-to-Kotlin parity enforced by `PlatformPackSchemaAnchoredBijectionTest`); non-anchored fields flow to `PlatformManifest.customFields`; nested objects stay `additionalProperties: false`.
 
-Validate-phase build, test, and gate execution are runtime-owned: the runtime runs pack-declared gate argv, measures gate runs, and hands the agent a bounded finding projection. Audit and repair evidence remain read-only repository facts; agents must not invoke the gate or quality-check skills during validate.
-
 Product vs extension: horizontal `skills/bill-*/` and `.bill-shared` are protected; `platform-packs/<slug>/` (including shipped `kotlin`/`kmp`) are removable — no paired `skills/<platform>/` trees; shipped removals use CLI `--allow-shipped` only.
 
 `kmp` covers Android and Kotlin Multiplatform, declaring platform-correctness, persistence, reliability, UI, and UX/accessibility on top of its Kotlin baseline, and routes quality checks to `bill-kmp-code-check` (no Kotlin fallback). `bill-feature-verify` remains pre-shell.

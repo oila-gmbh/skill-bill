@@ -3,11 +3,12 @@
 ## Review mode telemetry
 
 There are three review modes and telemetry reports which one produced a result.
-`delegated` is the default: the reviewing agent fans the routed areas out to
-specialist subagents inside its own harness. `inline` is the single-prompt review
-in the current context, with no fan-out. `auto` resolves by pass number — pass
-one, and any scope with no pass number, resolve to `delegated`; every follow-up
-or remediation pass resolves to `inline`.
+`inline` is the default light depth tier: one review subagent covering the routed
+areas at reduced depth under a bounded budget, with no specialist fan-out.
+`delegated` is the experimental full-depth tier, reached only by explicit
+selection: the reviewing agent fans the routed areas out to specialist subagents
+inside its own harness. `auto` and omission both resolve to `inline` for every
+pass and for a scope with no pass number.
 
 Mode telemetry is bounded accounting, not a transcript. It may record elapsed
 time, token dimensions, selected and completed routed areas, launched and failed
@@ -36,7 +37,11 @@ Delegated specialists never rediscover what the parent already resolved. Reposit
 
 Harness-native specialists are verified before any lane starts. A missing, stale, or dangling managed native-agent link fails the review with the logical specialist name, harness, expected path, reason, and the repair command `skill-bill install apply`. There is no generic-specialist fallback — repair the install and rerun.
 
-Durable output and telemetry retain only numeric accounting, lane identifiers, packet and assignment digests, enforcement classification, and terminal outcomes. Prompts, diffs, source, project guidance, rubric bodies, and tool output remain transient.
+Durable output and telemetry retain only numeric accounting, lane identifiers
+(harness-returned launch id when the harness provides one, otherwise plan-identity
+such as routed area and assignment digest), packet and assignment digests,
+enforcement classification, and terminal outcomes. Prompts, diffs, source, project
+guidance, rubric bodies, and tool output remain transient.
 
 Skill Bill can record a measurement loop for code-review usefulness. Telemetry uses a three-level model selected during install: `off`, `anonymous` (default), or `full`.
 
