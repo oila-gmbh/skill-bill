@@ -1493,6 +1493,9 @@ class FeatureTaskRuntimePhaseRecorder(
   ): FeatureTaskRuntimePhaseRecord {
     val firstStartedAt = previous?.firstStartedAt ?: now
     val startedAt = if (request.status == STATUS_RUNNING || previous == null) now else previous.startedAt
+    // Only the running write carries authoritative launch information; every later write for the same
+    // phase (block, pause, completion) would otherwise erase the model the child actually ran with.
+    val carryLaunched = request.status != STATUS_RUNNING
     return FeatureTaskRuntimePhaseRecord(
       phaseId = request.phaseId,
       status = request.status,
@@ -1513,8 +1516,8 @@ class FeatureTaskRuntimePhaseRecorder(
       edgeIteration = request.edgeIteration,
       reviewPassNumber = request.reviewPassNumber,
       repairEvidence = request.repairEvidence,
-      launchedModel = request.launchedModel,
-      launchedEffort = request.launchedEffort,
+      launchedModel = request.launchedModel ?: previous?.launchedModel?.takeIf { carryLaunched },
+      launchedEffort = request.launchedEffort ?: previous?.launchedEffort?.takeIf { carryLaunched },
     )
   }
 

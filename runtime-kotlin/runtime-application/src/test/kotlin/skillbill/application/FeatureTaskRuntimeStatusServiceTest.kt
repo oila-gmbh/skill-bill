@@ -114,6 +114,42 @@ class FeatureTaskRuntimeStatusServiceTest {
   }
 
   @Test
+  fun `a later block write keeps the launched model the phase actually ran with`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = WORKFLOW_ID,
+        phaseId = "implement",
+        status = "running",
+        attemptCount = 1,
+        resolvedAgentId = "cursor",
+        finished = false,
+        launchedModel = "claude-opus-4-8[effort=high]",
+      ),
+    )
+    harness.recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = WORKFLOW_ID,
+        phaseId = "implement",
+        status = "blocked",
+        attemptCount = 1,
+        resolvedAgentId = "cursor",
+        finished = true,
+        blockedReason = "operator review",
+      ),
+    )
+
+    val records = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID))
+    assertEquals("claude-opus-4-8[effort=high]", records.getValue("implement").launchedModel)
+    assertEquals(
+      "claude-opus-4-8[effort=high]",
+      requireNotNull(harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)))
+        .phases.single { it.phaseId == "implement" }.launchedModel,
+    )
+  }
+
+  @Test
   fun `phase whose latest ledger entry is blocked is reported blocked and current`() {
     val harness = statusHarness()
     harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
