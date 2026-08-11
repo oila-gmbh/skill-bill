@@ -1,3 +1,15 @@
+## [2026-08-11] SKILL-183 current-phase model in status popup (subtask 2)
+
+Areas: intellij-plugin/{domain,infrastructure/cli,presentation,ui}
+- The IDE status wire now carries an optional `current_model` object (`model` + optional `effort`), parsed into a `CurrentPhaseModel` and threaded domain → presentation → popup as one `Model:` row that is wholly absent when null. Producer side is the runtime (subtask 1).
+- `IdeStatusJsonMapper.parseCurrentModel` follows the file's established optional-context degradation rule from `parsePlanning`: non-object, missing/blank/mistyped field degrades to null and the surrounding outcome still maps — never `Unavailable`/`Incompatible`. Copy this rule for any future optional wire block. reusable
+- New private helper `getAsStringPrimitive` is strict: a JSON number or boolean is a type error, not coerced text — unlike the older lenient `getAsString`. Prefer it for new string wire fields. reusable
+- Model carried only on outcomes that already carry a current step (`Active`, `Paused`, `Stale`, `Blocked`, `Failed`); `Idle`/`Done` have no current phase and must not carry it. Added with null defaults so no existing construction site or fixture broke.
+- Sanitization is trim + bounded `take` (120 model / 40 effort) only; a model id can never carry a path, so `AbsolutePathGuard` was deliberately not widened.
+- Limitation: status-bar text, icon, and tooltip are intentionally byte-identical — the model is popup-only. No per-phase model table, no new caching or refresh behaviour.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-08-08] SKILL-168 plugin goal Stop/Pause controls (subtask 5)
 
 Areas: intellij-plugin/{application,composition,domain,infrastructure/cli,presentation,ui}, intellij-plugin/src/main/resources/META-INF
