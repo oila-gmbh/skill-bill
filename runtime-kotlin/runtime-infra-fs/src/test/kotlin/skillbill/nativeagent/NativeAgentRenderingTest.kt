@@ -59,6 +59,7 @@ class NativeAgentRenderingTest {
       name = "bill-test-worker",
       description = "Test worker.",
       body = "# Worker\n\nDo the work.",
+      tools = listOf("Read", "Grep", "Glob", "Bash"),
     )
 
     val claude = NativeAgentProvider.Claude.render(source)
@@ -68,18 +69,24 @@ class NativeAgentRenderingTest {
 
     assertContains(claude, "name: bill-test-worker")
     assertContains(claude, "description: Test worker.")
+    assertContains(claude, "tools: Read, Grep, Glob, Bash")
     assertContains(claude, "# Worker\n\nDo the work.")
     assertFalse("mode: subagent" in claude)
     assertContains(codex, "developer_instructions = \"\"\"")
     assertContains(codex, "# Worker\n\nDo the work.")
     assertContains(junie, "name: bill-test-worker")
     assertContains(junie, "description: Test worker.")
+    assertContains(junie, "tools: Read, Grep, Glob, Bash")
     assertContains(junie, "# Worker\n\nDo the work.")
     assertFalse("mode: subagent" in junie)
-    assertContains(cursor, "name: bill-test-worker")
     assertContains(cursor, "# Worker\n\nDo the work.")
+    val cursorFrontmatter = cursor.substringAfter("---\n").substringBefore("\n---")
+    assertEquals(
+      listOf("name: bill-test-worker", "description: Test worker.", "readonly: true"),
+      cursorFrontmatter.lines(),
+      "Cursor frontmatter is name, description, then the readonly projection of the declared toolset",
+    )
     assertEquals(claude, junie, "Claude and Junie share the same markdown shape; drift must be intentional")
-    assertEquals(claude, cursor, "Claude and Cursor share the same markdown shape; drift must be intentional")
     assertNotEquals(claude, codex)
   }
 

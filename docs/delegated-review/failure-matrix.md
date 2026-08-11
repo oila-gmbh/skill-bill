@@ -1,5 +1,10 @@
 # SKILL-145 historical evidence ledger
 
+> **Historical record (SKILL-159).** This file is the historical record of the
+> external delegated-review subsystem that SKILL-159 removed. It is not current
+> guidance. The live contract is
+> [`orchestration/review-delegation/PLAYBOOK.md`](../../orchestration/review-delegation/PLAYBOOK.md).
+
 This is the authoritative ledger for the 47 historical SKILL-145 items. Each
 key appears exactly once. `resolved` means the current code or deterministic
 fixture provides an enforceable guard; `remaining` means the issue is explicitly

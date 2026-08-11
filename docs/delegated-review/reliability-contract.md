@@ -1,5 +1,10 @@
 # SKILL-145 delegated review reliability contract
 
+> **Historical record (SKILL-159).** This file is the historical record of the
+> external delegated-review subsystem that SKILL-159 removed. It is not current
+> guidance. The live contract is
+> [`orchestration/review-delegation/PLAYBOOK.md`](../../orchestration/review-delegation/PLAYBOOK.md).
+
 **Contract:** `delegated_review_reliability` 0.1  
 **Status:** enforceable baseline; promotion remains deferred  
 **Authority:** the immutable review packet and assignment projection remain
@@ -256,6 +261,5 @@ authenticated evidence for the provider and all of these falsifiable checks:
 6. provider-isolation fixtures show no change to other providers' strategies.
 
 Until a separate governed change records those measurements and approves the
-gate, delegated remains the default and `auto` resolves by pass number: pass one
-and pass-number-free scopes to delegated, follow-up and remediation passes to
-inline.
+gate, delegated is reached only by explicit selection: an omitted mode and `auto`
+both resolve to `inline` for every pass and for a scope with no pass number.

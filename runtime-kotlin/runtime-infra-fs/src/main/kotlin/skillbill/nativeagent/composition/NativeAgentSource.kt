@@ -21,6 +21,17 @@ data class NativeAgentSource(
   val tools: List<String> = emptyList(),
 )
 
+/** Tools that grant mutation or recursive delegation. */
+val MUTATING_TOOL_NAMES: Set<String> = setOf("Edit", "Write", "NotebookEdit", "Agent")
+
+/**
+ * A declared toolset holding no mutation or delegation tool. Providers whose only capability control
+ * is a boolean project this onto that boolean; an undeclared toolset is not read-only, because it
+ * inherits every tool the parent can reach.
+ */
+val NativeAgentSource.declaresReadOnlyToolset: Boolean
+  get() = tools.isNotEmpty() && tools.none { tool -> tool in MUTATING_TOOL_NAMES }
+
 data class NativeAgentCompositionDirective(
   val kind: NativeAgentCompositionKind,
 )

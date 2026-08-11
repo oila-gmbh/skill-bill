@@ -12,8 +12,9 @@ selected and completed, launched and failed lanes, and terminal state as separat
 persists prompts, complete diffs, raw transcripts, or tool logs.
 
 `delegated` is the experimental full-depth review — specialist subagent fan-out inside the invoking agent's harness, reached only by explicit selection.
-`inline` is the single-prompt review in the current context. `auto` resolves to `delegated` on pass
-one and for any scope with no pass number, and to `inline` on every follow-up or remediation pass.
+`inline` is the single-prompt review in one `bill-code-review-inline` subagent. `auto` resolves to
+`inline` everywhere — a first pass, any scope with no pass number, and every follow-up or remediation
+pass — as does an omitted mode.
 Telemetry reports which mode produced the result, including the applicable named `auto` rule, and
 records that specialist depth was not applied for an inline result; it never rewrites the resolved
 mode or substitutes one mode for another.

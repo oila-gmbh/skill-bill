@@ -1,14 +1,18 @@
 # SKILL-145 delegated review decision
 
-> **Superseded by SKILL-159.** SKILL-159 removed the external delegated-review
-> subsystem entirely and renamed the review modes: `delegated` is now the default
-> specialist subagent fan-out inside the invoking agent's harness, `inline` is the
-> single-prompt review, and `auto` resolves to delegated on the first pass and
-> inline on follow-up and remediation passes. Everything below is retained as the
-> historical record of the removed subsystem — its provider classifications,
-> capability matrix, canary sampling, and promotion gates describe behavior that
-> no longer exists and must not be read as current. The nine SKILL-145
-> `spec_followup_*.md` files referenced below were deleted by SKILL-159.
+> **Historical record (SKILL-159).** This file is the historical record of the
+> external delegated-review subsystem that SKILL-159 removed. It is not current
+> guidance. The live contract is
+> [`orchestration/review-delegation/PLAYBOOK.md`](../../orchestration/review-delegation/PLAYBOOK.md).
+> Live mode resolution: `auto` resolves to `inline` for every pass and for a
+> scope with no pass number; `delegated` is reached only by explicit selection.
+> Cursor's current delegated support is experimental, explicit opt-in, launched
+> in-harness, and not end-to-end verified against a live Cursor CLI. Everything
+> below is retained as the historical record of the removed subsystem — its
+> provider classifications, capability matrix, canary sampling, and promotion
+> gates describe behavior that no longer exists and must not be read as current.
+> The nine SKILL-145 `spec_followup_*.md` files referenced below were deleted by
+> SKILL-159.
 
 **Decision:** delegated review is not supportable as a default. Codex, Claude,
 and Cursor remain experimental, explicit opt-in providers. Junie and Copilot

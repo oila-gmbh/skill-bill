@@ -127,6 +127,8 @@ class NativeAgentRenderSnapshotTest {
 
   @Test
   fun `cursor render is byte-exact`() {
+    // This source declares no toolset, so there is no capability to project and Cursor emits
+    // name+description only.
     val expected = """
       ---
       name: bill-snapshot-demo
@@ -146,6 +148,7 @@ class NativeAgentRenderSnapshotTest {
 
   @Test
   fun `cursor render is byte-exact when description forces yaml quoting`() {
+    // Cursor shares yamlScalar with Claude; description line must match and round-trip.
     val expected = """
       ---
       name: bill-snapshot-quoted

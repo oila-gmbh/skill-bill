@@ -1,5 +1,10 @@
 # SKILL-145 lifecycle evidence package
 
+> **Historical record (SKILL-159).** This file is the historical record of the
+> external delegated-review subsystem that SKILL-159 removed. It is not current
+> guidance. The live contract is
+> [`orchestration/review-delegation/PLAYBOOK.md`](../../orchestration/review-delegation/PLAYBOOK.md).
+
 ## Lifecycle contract
 
 The durable lifecycle has four ownership components:
