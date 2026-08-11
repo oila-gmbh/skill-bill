@@ -21,11 +21,12 @@ only after every selected lane has returned.
 
 ## Lane accounting
 
-The parent tracks each launched lane by the id its harness returns and records,
-per lane, the routed area, the assignment digest it was launched with, and its
-terminal outcome. A lane that cannot be launched, or that returns no findings
-report, is a failed lane: report it explicitly rather than treating the merged
-output as complete.
+The parent tracks each launched lane by the identity the harness makes available —
+the returned launch id where the harness provides one, otherwise the routed area
+and assignment digest from the launch plan — and records, per lane, the routed
+area, the assignment digest it was launched with, and its terminal outcome. A lane
+that cannot be launched, or that returns no findings report, is a failed lane:
+report it explicitly rather than treating the merged output as complete.
 
 If the current harness cannot launch subagents at all, stop and report that
 delegated review is required for this scope but unavailable here. Do not
@@ -79,7 +80,7 @@ harness's launch behavior.
 - When the harness supports delegated-specialist model inheritance, delegated specialists should use the same model as the parent thread by default. Do not override the delegated-specialist model unless the current harness-specific section explicitly requires it.
 - Every delegated worker receives only the broker projection from its validated assignment. Scope, raw diff, guidance bodies, learnings, add-ons, runtime ceremony, and telemetry ownership stay in the authoritative parent packet and are not projected.
 - Wait for all delegated workers to finish, then merge and deduplicate findings by root cause, severity, and confidence.
-- Track delegated workers by the ids returned when they are launched. Do not discover or poll delegated workers through broad global listing in the normal review path.
+- Track delegated workers by the identity the harness makes available — the returned launch id where the harness provides one, otherwise the routed area and assignment digest from the launch plan. Do not discover or poll delegated workers through broad global listing in the normal review path.
 - If delegated review is required for the current scope and a supported runtime refuses or cannot start delegated workers, stop and report that delegated review is required for this scope but unavailable on the current runtime.
 - If the current runtime is not documented below, stop and say delegated review is unsupported for delegated-required scopes.
 
@@ -115,6 +116,19 @@ Governed add-ons may narrow or enrich delegated review instructions only after t
 - Tell each delegated worker to return only its structured findings. Parent-owned telemetry and metadata are not part of the worker projection.
 - Wait for all subagents and merge their results in the parent review.
 - Do not run delegated review passes inline.
+
+## Cursor
+
+- Launch each lane by naming its installed Cursor subagent (user-scope or project-scope agents install; project scope wins on a name conflict), via `/name` or an explicit "use the `<name>` subagent" instruction. Do not compose a rubric inline.
+- Launch one subagent per routed stack-specific review skill or selected specialist review pass.
+- Request all selected lanes in a single instruction that names every selected lane so they launch in parallel, not one-at-a-time.
+- Do not override the delegated-specialist model; Cursor subagent frontmatter defaults to `model: inherit`.
+- The installed native agent's embedded governed rubric is authoritative. Do not tell the worker to read a sibling rubric sidecar.
+- Tell each delegated worker to return only its structured findings. Parent-owned telemetry (`import_review` and `triage_findings`) and metadata are not part of the worker projection.
+- Cursor lane identity is the routed area plus the assignment digest from the launch plan. No Cursor rule depends on a harness-returned launch id.
+- A lane that cannot be launched, or that returns without a structured findings report attributable to that lane's identity, is a failed lane: report it explicitly. Never absorb it into the merged output as covered.
+- If the parent answers a lane's rubric in its own context, that is an inline review and must be reported as such — not as delegated coverage.
+- If the Cursor harness cannot launch subagents at all (subagents unavailable, or no installed agent matching a selected lane), stop and report that delegated review is required for this scope but unavailable here. Do not silently downgrade to inline.
 
 ## Junie
 
