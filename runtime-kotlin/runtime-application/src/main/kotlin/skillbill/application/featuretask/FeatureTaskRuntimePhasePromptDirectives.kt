@@ -67,6 +67,43 @@ internal fun minimalismDisciplineDirective(phaseId: String): String {
   """.trimIndent()
 }
 
+// Write-time test-value bar for plan, implement, and implement_fix. Plan is included because
+// test_obligations are decided there; isMutatingPhase alone would miss it. Empty for every other
+// phase so evaluator briefings stay unchanged.
+internal fun testValueDisciplineDirective(phaseId: String): String {
+  if (phaseId !in TEST_VALUE_DISCIPLINE_PHASES) {
+    return ""
+  }
+  return """
+    ## Test-value discipline (every test must earn its cost)
+    Tests are a recurring cost: every future change to the code they touch pays for them in
+    maintenance and reasoning tokens. Write few, high-value tests; never mirror code 1:1 with tests.
+    - Before writing a test, name the realistic bug it would catch — a concrete wrong behavior that
+      fails this test while the rest of the suite passes. If you cannot, do not write the test.
+    - Concentrate coverage on critical paths: money and quantities, data integrity and persistence
+      atomicity, auth and tenant isolation, external contracts and serialization, concurrency and
+      recovery, irreversible side effects. Trivial glue on non-critical paths needs no test; say so
+      instead of writing one.
+    - Assert observable behavior at boundaries, never implementation structure: no mock-interaction
+      verification without an outcome assertion, no call-ordering assertions, no implementation
+      logic duplicated inside the test.
+    - One strong test per rule or branch; no sibling tests re-covering the same branch with
+      different literals.
+    - When planning, emit test_obligations only for behaviors that pass this bar, each tied to an
+      acceptance criterion or a named realistic bug; an empty test_obligations list is a valid
+      outcome for a task.
+    - Never remove or weaken regression coverage tied to a real past bug, and never treat governed
+      parity tests or validator-backed rules as omission candidates — the minimalism carve-outs
+      apply to tests too.
+  """.trimIndent()
+}
+
+private val TEST_VALUE_DISCIPLINE_PHASES: Set<String> = setOf(
+  FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
+  FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
+  FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
+)
+
 /**
  * Emitted when a prior segment of THIS implementation left obligations open.
  *

@@ -175,6 +175,10 @@ class UnboundedRemediationLoopGovernedContentTest {
       directives.contains("## Minimalism discipline (reuse before write)"),
       "runtime-owned minimalism discipline directive must remain present.",
     )
+    assertTrue(
+      directives.contains("## Test-value discipline (every test must earn its cost)"),
+      "runtime-owned test-value discipline directive must remain present.",
+    )
   }
 
   @Test
