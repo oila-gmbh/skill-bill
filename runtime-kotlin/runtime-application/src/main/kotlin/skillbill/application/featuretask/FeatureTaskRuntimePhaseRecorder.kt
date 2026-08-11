@@ -574,6 +574,10 @@ class FeatureTaskRuntimePhaseRecorder(
       val existingRecords = phaseRecordsFrom(artifacts)
       val previousReview = existingRecords[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW]
         ?: return@transaction storedGeneration
+      // The omitted launch pair is deliberate, not an oversight: this tombstone is not a launch, and
+      // REVIEW_INVALIDATION_AGENT_ID never ran a child. Carrying the invalidated generation's model
+      // forward would attribute it to an agent that could not have launched it; the relaunch's own
+      // running write is what restores it.
       val tombstone = FeatureTaskRuntimePhaseRecord(
         phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
         status = STATUS_RUNNING,
@@ -1493,6 +1497,23 @@ class FeatureTaskRuntimePhaseRecorder(
   ): FeatureTaskRuntimePhaseRecord {
     val firstStartedAt = previous?.firstStartedAt ?: now
     val startedAt = if (request.status == STATUS_RUNNING || previous == null) now else previous.startedAt
+    // The launch pair moves as a unit: a write that knows the launch outcome replaces both fields,
+    // any other write carries both forward. Resolving them independently would let a Cursor-merged
+    // model (effort folded into the model string, so effort null) land over a prior record's effort
+    // and produce the self-contradictory pair LaunchedModelDirective exists to prevent.
+    //
+    // Carry-forward is bounded to one attempt by one agent. A write that advances attempt_count or
+    // swaps resolved_agent_id settles work the prior pair never described — a pre-launch cap block,
+    // an audit settled from durable criterion closure, a branch-setup block under a non-agent id —
+    // so inheriting it would assert a model that attempt provably never launched.
+    val carryForward = previous != null &&
+      previous.attemptCount == request.attemptCount &&
+      previous.resolvedAgentId == request.resolvedAgentId
+    val launched = when {
+      request.launchOutcomeKnown -> request.launchedModel to request.launchedEffort
+      carryForward -> previous.launchedModel to previous.launchedEffort
+      else -> null to null
+    }
     return FeatureTaskRuntimePhaseRecord(
       phaseId = request.phaseId,
       status = request.status,
@@ -1513,6 +1534,8 @@ class FeatureTaskRuntimePhaseRecorder(
       edgeIteration = request.edgeIteration,
       reviewPassNumber = request.reviewPassNumber,
       repairEvidence = request.repairEvidence,
+      launchedModel = launched.first,
+      launchedEffort = launched.second,
     )
   }
 

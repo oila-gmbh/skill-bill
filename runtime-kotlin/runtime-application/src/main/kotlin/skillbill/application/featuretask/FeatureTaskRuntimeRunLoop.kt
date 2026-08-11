@@ -3081,6 +3081,7 @@ internal class FeatureTaskRuntimeRunLoop(
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput? = null,
     repairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence? = null,
     rejectedOutput: String? = null,
+    childNeverLaunched: Boolean = false,
   ): PhaseOutcome {
     val phaseState = FeatureTaskRuntimePhaseStateRequest(
       workflowId = run.request.workflowId,
@@ -3101,6 +3102,9 @@ internal class FeatureTaskRuntimeRunLoop(
       loopId = loopId,
       edgeIteration = edgeIteration,
       reviewPassNumber = reviewPassNumber(run, state),
+      // A launch that never produced a child clears the running write's stamp; every other block
+      // reason happened around a child that did run, so its recorded model carries forward.
+      launchOutcomeKnown = childNeverLaunched,
     )
     state.reserveReviewPass(phaseState.reviewPassNumber)
     recorder.recordPhaseState(
@@ -3149,6 +3153,10 @@ internal class FeatureTaskRuntimeRunLoop(
         fileManifestIntroduced = fileManifest?.introduced.orEmpty(),
         loopId = run.reentry?.loopId,
         edgeIteration = run.reentry?.edgeIteration,
+        // A provider-limit refusal is reported by a child that did spawn and run under the launched
+        // model, so the running write's stamp is kept: "which model hit the usage limit" is the
+        // operative diagnostic question on a limit pause.
+        launchOutcomeKnown = false,
       ),
       run.request.dbPathOverride,
     )
@@ -3168,6 +3176,7 @@ internal class FeatureTaskRuntimeRunLoop(
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput? = null,
     repairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence? = null,
     rejectedOutput: String? = null,
+    childNeverLaunched: Boolean = false,
   ): PhaseOutcome = blockAndPersist(
     run,
     attemptCount,
@@ -3181,6 +3190,7 @@ internal class FeatureTaskRuntimeRunLoop(
     normalizedOutput = normalizedOutput,
     repairEvidence = repairEvidence,
     rejectedOutput = rejectedOutput,
+    childNeverLaunched = childNeverLaunched,
   )
 
   /**
@@ -3189,6 +3199,10 @@ internal class FeatureTaskRuntimeRunLoop(
    * existing transition machinery re-enters the producing phase under its bounded regeneration cap. A
    * record with no attributable producer, or whose producer the resolved pipeline dropped, blocks
    * durably with an actionable reason instead of attempting an impossible re-entry.
+   *
+   * A record rejection is raised at the launch seam, before any child is spawned, so every block
+   * seam reachable from here — including [blockUnattributableRecordRejection] — settles a phase
+   * whose child provably never ran and clears the running write's model stamp.
    */
   private fun settleRecordRejection(
     run: PhaseRun,
@@ -3206,7 +3220,14 @@ internal class FeatureTaskRuntimeRunLoop(
       }
     }
     if (producer == null || edge == null || producer !in transitions.forwardPhaseIds) {
-      return blockUnattributableRecordRejection(run, state, iteration, observability, rejection, producer)
+      return blockUnattributableRecordRejection(
+        run,
+        state,
+        iteration,
+        observability,
+        rejection,
+        producer,
+      )
     }
     val rejectedRecord = state.outputFor(producer)
     val producingIteration =
@@ -3220,6 +3241,7 @@ internal class FeatureTaskRuntimeRunLoop(
           "producer. The run blocks instead of fabricating a rejected-output diagnostic.",
         observability,
         failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
+        childNeverLaunched = true,
       )
     val producerEvidence = recorder.producerOutput(
       request.workflowId,
@@ -3236,6 +3258,7 @@ internal class FeatureTaskRuntimeRunLoop(
         "a rejected-output diagnostic from normalized workflow state.",
       observability,
       failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
+      childNeverLaunched = true,
     )
     val rejectedPayload = producerEvidence.payload ?: byteArrayOf()
     val diagnosticIdentity = recordRejectedOutput(
@@ -3343,6 +3366,7 @@ internal class FeatureTaskRuntimeRunLoop(
       reason,
       observability,
       failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
+      childNeverLaunched = true,
     )
   }
 
@@ -3387,7 +3411,17 @@ internal class FeatureTaskRuntimeRunLoop(
     priorCorrection: PriorAttemptCorrection?,
     phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>>? = null,
   ): AttemptResult {
-    persistPhase(run, iteration, STATUS_RUNNING, finished = false, outputArtifact = null)
+    // The running write is what the IDE reads as current_model while the child is in flight, so it
+    // stamps the directive the launch below is rendered from. The settling exits then clear it only
+    // where the launch proved no child ever ran, via LaunchResult.childNeverLaunched.
+    persistPhase(
+      run,
+      iteration,
+      STATUS_RUNNING,
+      finished = false,
+      outputArtifact = null,
+      launched = launchedModelDirective(run),
+    )
     val launch = launchAndCapture(run, state, priorCorrection, phaseTokenAccumulator)
     launch.providerLimitReason?.let { reason ->
       return AttemptResult.settled(pauseAndPersistInPhase(run, iteration, reason, observability, launch.fileManifest))
@@ -3401,11 +3435,14 @@ internal class FeatureTaskRuntimeRunLoop(
           observability,
           failureDisposition = launch.failureDisposition,
           fileManifest = launch.fileManifest,
+          childNeverLaunched = launch.childNeverLaunched,
         ),
       )
     }
     launch.recordRejection?.let { rejection ->
-      return AttemptResult.settled(settleRecordRejection(run, state, iteration, observability, rejection))
+      return AttemptResult.settled(
+        settleRecordRejection(run, state, iteration, observability, rejection),
+      )
     }
     val fileManifest = requireNotNull(launch.fileManifest)
     return gateOutput(
@@ -4628,8 +4665,10 @@ internal class FeatureTaskRuntimeRunLoop(
     finished: Boolean,
     outputArtifact: String?,
     fileManifest: FeatureTaskRuntimePhaseFileManifest? = null,
+    launched: LaunchedModelDirective? = null,
   ) {
-    val phaseState = phaseStateRequest(run, iteration, status, finished, outputArtifact, fileManifest)
+    val phaseState =
+      phaseStateRequest(run, iteration, status, finished, outputArtifact, fileManifest, launched = launched)
     state.reserveReviewPass(phaseState.reviewPassNumber)
     recorder.recordPhaseState(
       phaseState,
@@ -4647,29 +4686,57 @@ internal class FeatureTaskRuntimeRunLoop(
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput? = null,
     repairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence? = null,
     repositoryFingerprint: String? = null,
-  ): FeatureTaskRuntimePhaseStateRequest = FeatureTaskRuntimePhaseStateRequest(
-    workflowId = run.request.workflowId,
-    phaseId = run.phaseId,
-    status = status,
-    attemptCount = iteration,
-    resolvedAgentId = run.resolvedAgent.resolvedAgentId,
-    finished = finished,
-    outputArtifact = outputArtifact,
-    normalizedOutput = normalizedOutput,
-    repairEvidence = repairEvidence,
-    repositoryFingerprint = repositoryFingerprint,
-    fileManifestBefore = fileManifest?.before.orEmpty(),
-    fileManifestAfter = fileManifest?.after.orEmpty(),
-    fileManifestIntroduced = fileManifest?.introduced.orEmpty(),
-    loopId = run.reentry?.loopId,
-    edgeIteration = run.reentry?.edgeIteration,
-    reviewPassNumber = reviewPassNumber(run, state),
-    auditScopeCriterionRefs = if (run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) {
-      openAuditCriterionRefs()
-    } else {
-      emptyList()
-    },
+    launched: LaunchedModelDirective? = null,
+  ): FeatureTaskRuntimePhaseStateRequest {
+    return FeatureTaskRuntimePhaseStateRequest(
+      workflowId = run.request.workflowId,
+      phaseId = run.phaseId,
+      status = status,
+      attemptCount = iteration,
+      resolvedAgentId = run.resolvedAgent.resolvedAgentId,
+      finished = finished,
+      outputArtifact = outputArtifact,
+      normalizedOutput = normalizedOutput,
+      repairEvidence = repairEvidence,
+      repositoryFingerprint = repositoryFingerprint,
+      fileManifestBefore = fileManifest?.before.orEmpty(),
+      fileManifestAfter = fileManifest?.after.orEmpty(),
+      fileManifestIntroduced = fileManifest?.introduced.orEmpty(),
+      loopId = run.reentry?.loopId,
+      edgeIteration = run.reentry?.edgeIteration,
+      reviewPassNumber = reviewPassNumber(run, state),
+      auditScopeCriterionRefs = if (run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) {
+        openAuditCriterionRefs()
+      } else {
+        emptyList()
+      },
+      launchedModel = launched?.modelOverride,
+      launchedEffort = launched?.persistedEffort,
+      launchOutcomeKnown = launched != null,
+    )
+  }
+
+  /**
+   * The model/effort the child is actually launched with. Cursor takes model and effort merged into
+   * one bracketed `--model` argument, so its [persistedEffort] is null: the merged model already
+   * carries the effort, and recording it twice would let the two drift apart.
+   */
+  private data class LaunchedModelDirective(
+    val modelOverride: String?,
+    val effortOverride: String?,
+    val persistedEffort: String?,
   )
+
+  // Pure in [run]: both the durable running write and the launch request call it, and a shared value
+  // threaded between them would only hide that they cannot disagree.
+  private fun launchedModelDirective(run: PhaseRun): LaunchedModelDirective {
+    val model = run.modelDirective?.model
+    val effort = run.modelDirective?.effort
+    if (run.resolvedAgent.resolvedAgentId == InstallAgent.CURSOR.id && model != null && effort != null) {
+      return LaunchedModelDirective("$model[effort=$effort]", effort, persistedEffort = null)
+    }
+    return LaunchedModelDirective(model, effort, effort)
+  }
 
   /**
    * The active repair batch read from the durable generation authority at the launch seam, so first entry,
@@ -4786,12 +4853,14 @@ internal class FeatureTaskRuntimeRunLoop(
     if (!before.ok) {
       return LaunchResult.infraFailure(
         "Feature-task-runtime phase '${run.phaseId}' could not capture its before-file manifest: ${before.error}",
+        childNeverLaunched = true,
       )
     }
     val beforeCommit = gitOperations.runtimePhaseHeadCommit(run.request.repoRoot)
     if (!beforeCommit.ok) {
       return LaunchResult.infraFailure(
         "Feature-task-runtime phase '${run.phaseId}' could not capture its before commit: ${beforeCommit.error}",
+        childNeverLaunched = true,
       )
     }
     val prepared = when (val preparation = prepareLaunchForCapture(run, state, priorCorrection)) {
@@ -4802,18 +4871,7 @@ internal class FeatureTaskRuntimeRunLoop(
     val briefing = prepared.briefing
     val isReviewPhase = run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW
 
-    // Cursor requires model and effort to be merged into bracket syntax at the request level
-    val (modelOverride, effortOverride) = if (run.resolvedAgent.resolvedAgentId == InstallAgent.CURSOR.id) {
-      val model = run.modelDirective?.model
-      val effort = run.modelDirective?.effort
-      if (model != null && effort != null) {
-        "$model[effort=$effort]" to effort
-      } else {
-        model to effort
-      }
-    } else {
-      run.modelDirective?.model to run.modelDirective?.effort
-    }
+    val launched = launchedModelDirective(run)
 
     val outcome = subtaskLauncher.launch(
       GoalRunnerSubtaskLaunchRequest(
@@ -4824,8 +4882,8 @@ internal class FeatureTaskRuntimeRunLoop(
           repoRoot = run.request.repoRoot,
           dbPathOverride = run.request.dbPathOverride,
           timeout = run.request.timeout,
-          modelOverride = modelOverride,
-          effortOverride = effortOverride,
+          modelOverride = launched.modelOverride,
+          effortOverride = launched.effortOverride,
           compaction = run.compaction,
           promptOverride = prepared.prompt,
           readOnlyPhase = isReviewPhase,
@@ -4842,12 +4900,14 @@ internal class FeatureTaskRuntimeRunLoop(
     if (!after.ok) {
       return LaunchResult.infraFailure(
         "Feature-task-runtime phase '${run.phaseId}' could not capture its after-file manifest: ${after.error}",
+        childNeverLaunched = false,
       )
     }
     val afterCommit = gitOperations.runtimePhaseHeadCommit(run.request.repoRoot)
     if (!afterCommit.ok) {
       return LaunchResult.infraFailure(
         "Feature-task-runtime phase '${run.phaseId}' could not capture its after commit: ${afterCommit.error}",
+        childNeverLaunched = false,
       )
     }
     val committedPaths = gitOperations.runtimePhaseChangedPathsBetweenCommits(
@@ -4858,6 +4918,7 @@ internal class FeatureTaskRuntimeRunLoop(
     if (!committedPaths.ok) {
       return LaunchResult.infraFailure(
         "Feature-task-runtime phase '${run.phaseId}' could not capture committed file changes: ${committedPaths.error}",
+        childNeverLaunched = false,
       )
     }
     val fileManifest = FeatureTaskRuntimePhaseFileManifest(
@@ -5133,11 +5194,22 @@ internal class FeatureTaskRuntimeRunLoop(
     is UnsupportedAgentRunLaunch -> LaunchResult.infraFailure(
       "Feature-task-runtime phase '$phaseId' could not launch an agent: ${outcome.reason}",
       fileManifest,
+      childNeverLaunched = true,
     )
     is AgentRunLaunchFacts -> providerLimitSignal(outcome)
       ?.let { LaunchResult.providerLimited(providerLimitPauseReason(phaseId, it), fileManifest) }
       ?: infraFailureReason(phaseId, outcome)
-        ?.let { LaunchResult.infraFailure(it, fileManifest) }
+        // Only a failure before the process-start boundary proves no child ran; a timeout, an
+        // interruption and a non-zero exit all happened after it, under the launched model. Both
+        // flags are consulted because they are one fact reported two ways: the launcher adapter
+        // rejects a disagreeing pair, and reading only one of them would trust the weaker signal.
+        ?.let {
+          LaunchResult.infraFailure(
+            it,
+            fileManifest,
+            childNeverLaunched = outcome.spawnFailed || !outcome.processStarted,
+          )
+        }
       ?: LaunchResult.captured(
         outcome.stdout,
         outcome.stdoutBytes,
@@ -5191,6 +5263,7 @@ internal class FeatureTaskRuntimeRunLoop(
       val reason: String,
       override val fileManifest: FeatureTaskRuntimePhaseFileManifest?,
       val disposition: FeatureTaskRuntimeFailureDisposition,
+      val neverLaunched: Boolean,
     ) : LaunchResult
     private data class RecordRejected(
       val rejection: RecordRejection,
@@ -5212,6 +5285,19 @@ internal class FeatureTaskRuntimeRunLoop(
     val infraFailureReason: String? get() = (this as? InfraFailure)?.reason
     val providerLimitReason: String? get() = (this as? ProviderLimited)?.reason
     val recordRejection: RecordRejection? get() = (this as? RecordRejected)?.rejection
+
+    /**
+     * True only where the launch provably never produced a running child: a spawn failure, or a
+     * pre-launch capture or declaration rejection. A timeout, an interruption, a non-zero exit and
+     * a post-run capture failure all happened around a child that did run under the launched model,
+     * so their records must keep it.
+     *
+     * [RecordRejected] never reaches here: its seam fires before any spawn, so
+     * [settleRecordRejection] states never-launched at its own block seams rather than routing the
+     * same fact through this getter.
+     */
+    val childNeverLaunched: Boolean
+      get() = (this as? InfraFailure)?.neverLaunched == true
     val failureDisposition: FeatureTaskRuntimeFailureDisposition
       get() = (this as? InfraFailure)?.disposition ?: FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE
     val fileManifest: FeatureTaskRuntimePhaseFileManifest?
@@ -5232,8 +5318,12 @@ internal class FeatureTaskRuntimeRunLoop(
         stdoutSha256,
         fileManifest,
       )
-      fun infraFailure(reason: String, fileManifest: FeatureTaskRuntimePhaseFileManifest? = null): LaunchResult =
-        InfraFailure(reason, fileManifest, FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE)
+      fun infraFailure(
+        reason: String,
+        fileManifest: FeatureTaskRuntimePhaseFileManifest? = null,
+        childNeverLaunched: Boolean,
+      ): LaunchResult =
+        InfraFailure(reason, fileManifest, FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE, childNeverLaunched)
 
       /** The provider refused at a usage limit: resumable on its own clock, so the phase pauses. */
       fun providerLimited(reason: String, fileManifest: FeatureTaskRuntimePhaseFileManifest? = null): LaunchResult =
@@ -5241,7 +5331,7 @@ internal class FeatureTaskRuntimeRunLoop(
 
       /** Static declaration or configuration drift: retrying without operator action reproduces it. */
       fun projectionRejected(reason: String): LaunchResult =
-        InfraFailure(reason, null, FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION)
+        InfraFailure(reason, null, FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION, neverLaunched = true)
 
       /**
        * A durable upstream producer record was rejected at projection validation: the run quarantines

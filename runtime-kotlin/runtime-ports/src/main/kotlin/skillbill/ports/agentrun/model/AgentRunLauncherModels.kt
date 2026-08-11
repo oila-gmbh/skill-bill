@@ -233,8 +233,13 @@ data class AgentRunLaunchFacts(
   val spawnFailed: Boolean,
   val stdoutBytes: ByteArray = stdout.encodeToByteArray(),
   val liveness: AgentRunLivenessSnapshot? = null,
-  /** True only when the launcher crossed the process-start boundary. */
-  val processStarted: Boolean = false,
+  /**
+   * True only when the launcher crossed the process-start boundary. Defaulted from [spawnFailed]
+   * because the two are one fact: the run loop decides whether a settled phase keeps its
+   * launched-model stamp from [spawnFailed], so a bare `false` default let a facts producer that
+   * omitted this report "never started" for a child that ran.
+   */
+  val processStarted: Boolean = !spawnFailed,
   /** True only when an MCP startup observation was explicitly emitted by the launcher. */
   val mcpStartupObserved: Boolean = false,
   val childSessionPath: String? = null,

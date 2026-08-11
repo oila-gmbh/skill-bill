@@ -14,6 +14,7 @@ import skillbill.application.model.IdeStatusProblemCode
 import skillbill.application.model.IdeStatusRequest
 import skillbill.application.model.IdeStatusResult
 import skillbill.application.model.IdeStatusWorkflowFamily
+import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
 import skillbill.goalrunner.model.GoalPlanningStatusState
@@ -60,6 +61,9 @@ import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_RUN_INVARIANTS_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.verify.FeatureVerifyWorkflowDefinition
 import java.nio.file.Files
 import java.nio.file.Path
@@ -69,6 +73,7 @@ import java.time.ZoneOffset
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 /**
@@ -247,6 +252,151 @@ class IdeStatusServiceTest {
     assertEquals("goal-1", result.snapshot.workflowId)
     assertEquals(IdeStatusWorkflowFamily.FEATURE_GOAL, result.snapshot.workflowFamily)
     assertEquals(IdeStatusLifecycleState.ACTIVE, result.snapshot.lifecycleState)
+  }
+
+  @Test
+  fun `runtime current_model reports the model of the phase reported as current_step`() {
+    val fixture = gitRepoFixture("ide-status-current-model")
+    val identity = goalRepositoryIdentity(fixture)
+    val workflows = IdeStatusWorkflowStates()
+    workflows.saveFeatureImplementWorkflow(
+      runtimeRecord("w-model", "2026-08-06T10:00:00Z").copy(
+        // The neighbouring plan phase carries a DIFFERENT model: reporting it would be the bug.
+        artifactsJson = phaseRecordsArtifactsJson(
+          "preplan" to phaseRecordWire("preplan", "completed", null),
+          "plan" to phaseRecordWire("plan", "completed", "plan-model"),
+          "implement" to phaseRecordWire("implement", "running", "claude-opus-4-8", effort = "high"),
+        ),
+      ),
+    )
+    workflows.saveFeatureTaskExecutionIdentity(identityFor("w-model", identity))
+    val database = TrackingDatabase(
+      work = listOf(workItem("w-model", WorkItemKind.FEATURE_TASK_RUNTIME, "running", "2026-08-06T10:00:00Z")),
+      workflows = workflows,
+    )
+
+    val result = service(database).status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = observedAt))
+
+    assertEquals("implement", result.snapshot.currentStep.id)
+    assertEquals("claude-opus-4-8", result.snapshot.currentModel?.model)
+    assertEquals("high", result.snapshot.currentModel?.effort)
+  }
+
+  @Test
+  fun `runtime current_model is omitted when the current phase has no recorded model`() {
+    val fixture = gitRepoFixture("ide-status-current-model-absent")
+    val identity = goalRepositoryIdentity(fixture)
+    val workflows = IdeStatusWorkflowStates()
+    workflows.saveFeatureImplementWorkflow(runtimeRecord("w-nomodel", "2026-08-06T10:00:00Z"))
+    workflows.saveFeatureTaskExecutionIdentity(identityFor("w-nomodel", identity))
+    val database = TrackingDatabase(
+      work = listOf(workItem("w-nomodel", WorkItemKind.FEATURE_TASK_RUNTIME, "running", "2026-08-06T10:00:00Z")),
+      workflows = workflows,
+    )
+
+    val result = service(database).status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = observedAt))
+
+    assertNull(result.snapshot.currentModel)
+  }
+
+  @Test
+  fun `goal current_model comes from the launched child's current phase and is omitted without one`() {
+    val fixture = gitRepoFixture("ide-status-goal-current-model")
+    val identity = goalRepositoryIdentity(fixture)
+    val childStarted = Instant.parse("2026-08-06T09:15:00Z")
+    val database = goalWithLaunchedChildDatabase(
+      identity,
+      childStarted,
+      childArtifactsJson = phaseRecordsArtifactsJson(
+        "preplan" to phaseRecordWire("preplan", "completed", null),
+        "plan" to phaseRecordWire("plan", "completed", null),
+        "implement" to phaseRecordWire("implement", "running", "claude-opus-4-8[effort=high]"),
+      ),
+    )
+    val withChild = service(
+      database,
+      manifestStore = StubGoalManifestStore(goalManifestState(fixture, identity, childWorkflowId = "w-child")),
+    ).status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = observedAt))
+
+    // The goal's own currentStep can be a planning label, never a phase-record key; with no child
+    // workflow id there is nothing to resolve and the field must be absent rather than mismatched.
+    val withoutChild = service(database)
+      .status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = observedAt))
+
+    assertEquals("claude-opus-4-8[effort=high]", withChild.snapshot.currentModel?.model)
+    assertNull(withChild.snapshot.currentModel?.effort)
+    // The goal's current_step is a goal-level label, so the phase id is the only thing in the
+    // payload that says which phase the model belongs to.
+    assertEquals("implement", withChild.snapshot.currentModel?.phaseId)
+    // Anchored so the null is attributable to the absent child id rather than to a snapshot that
+    // carries no goal projection at all — the guard could be deleted and this would still hold.
+    assertEquals("goal-1", withoutChild.snapshot.workflowId)
+    assertEquals(IdeStatusWorkflowFamily.FEATURE_GOAL, withoutChild.snapshot.workflowFamily)
+    assertNull(withoutChild.snapshot.currentModel)
+  }
+
+  @Test
+  fun `a finished run reports no current_model for the completed phase its step falls back to`() {
+    val fixture = gitRepoFixture("ide-status-current-model-settled")
+    val identity = goalRepositoryIdentity(fixture)
+    val workflows = IdeStatusWorkflowStates()
+    // Every phase terminal, so the projection resolves no current phase and current_step falls back
+    // to the workflow row's `pr`. That phase completed carrying a model — history, not the model in
+    // force — so a finished run must not report it as current.
+    val allCompleted = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds.map { phaseId ->
+      phaseId to phaseRecordWire(phaseId, "completed", "claude-opus-4-8".takeIf { phaseId == "pr" })
+    }
+    workflows.saveFeatureImplementWorkflow(
+      runtimeRecord("w-settled", "2026-08-06T10:00:00Z", currentStep = "pr")
+        .copy(artifactsJson = phaseRecordsArtifactsJson(*allCompleted.toTypedArray())),
+    )
+    workflows.saveFeatureTaskExecutionIdentity(identityFor("w-settled", identity))
+    val database = TrackingDatabase(
+      work = listOf(workItem("w-settled", WorkItemKind.FEATURE_TASK_RUNTIME, "completed", "2026-08-06T10:00:00Z")),
+      workflows = workflows,
+    )
+
+    val result = service(database).status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = observedAt))
+
+    assertEquals("w-settled", result.snapshot.workflowId)
+    assertEquals("pr", result.snapshot.currentStep.id)
+    assertNull(result.snapshot.currentModel)
+  }
+
+  @Test
+  fun `a goal whose child status read fails schema validation keeps its status and omits only current_model`() {
+    val fixture = gitRepoFixture("ide-status-goal-child-schema-invalid")
+    val identity = goalRepositoryIdentity(fixture)
+    // Run invariants that do not decode to a map. The goal's own agent attribution reads the child's
+    // phase records and ledger, which stay valid here; only the nested child status projection reads
+    // this artifact, so the failure lands exactly where resolving the model does and nowhere else.
+    val database = goalWithLaunchedChildDatabase(
+      identity,
+      Instant.parse("2026-08-06T09:15:00Z"),
+      childArtifactsJson = JsonSupport.mapToJsonString(
+        mapOf(
+          FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to mapOf(
+            "implement" to phaseRecordWire("implement", "running", "claude-opus-4-8"),
+          ),
+          FEATURE_TASK_RUNTIME_RUN_INVARIANTS_ARTIFACT_KEY to "not-a-map",
+        ),
+      ),
+    )
+
+    val result = service(
+      database,
+      manifestStore = StubGoalManifestStore(goalManifestState(fixture, identity, childWorkflowId = "w-child")),
+    ).status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = observedAt))
+
+    // Resolving the model is a nested read of a *different* workflow's rows. Letting its failure
+    // escape would downgrade the whole goal snapshot to one schema_incompatible record, trading
+    // lifecycle, progress and pause state for an optional field.
+    // A degraded snapshot carries no workflow id and no progress, only the problem — so these three
+    // together prove the goal reading survived rather than collapsing into an incompatible record.
+    assertEquals("goal-1", result.snapshot.workflowId)
+    assertNull(result.snapshot.problem)
+    assertNotNull(result.snapshot.progress)
+    assertNull(result.snapshot.currentModel)
   }
 
   @Test
@@ -527,10 +677,15 @@ class IdeStatusServiceTest {
     )
   }
 
-  private fun goalWithLaunchedChildDatabase(identity: String, childStarted: Instant): TrackingDatabase {
+  private fun goalWithLaunchedChildDatabase(
+    identity: String,
+    childStarted: Instant,
+    childArtifactsJson: String = "{}",
+  ): TrackingDatabase {
     val workflows = IdeStatusWorkflowStates()
     workflows.saveFeatureImplementWorkflow(
-      runtimeRecord("w-child", "2026-08-06T11:00:00Z").copy(startedAt = childStarted.toString()),
+      runtimeRecord("w-child", "2026-08-06T11:00:00Z")
+        .copy(startedAt = childStarted.toString(), artifactsJson = childArtifactsJson),
     )
     workflows.saveFeatureTaskExecutionIdentity(
       identityFor("w-child", identity).copy(routeScope = FeatureTaskRouteScope.GOAL_CHILD),
@@ -962,6 +1117,27 @@ private fun identityFor(workflowId: String, repositoryIdentity: String): Feature
     repositoryIdentity = repositoryIdentity,
     governedSpecPath = "spec.md",
     mode = FeatureTaskWorkflowMode.RUNTIME,
+  )
+
+private fun phaseRecordWire(
+  phaseId: String,
+  status: String,
+  launchedModel: String?,
+  effort: String? = null,
+): Map<String, Any?> = FeatureTaskRuntimePhaseRecord(
+  phaseId = phaseId,
+  status = status,
+  attemptCount = 1,
+  startedAt = "2026-08-06T09:00:00Z",
+  finishedAt = if (status == "completed") "2026-08-06T09:30:00Z" else null,
+  resolvedAgentId = "claude",
+  launchedModel = launchedModel,
+  launchedEffort = effort,
+).toArtifactMap()
+
+private fun phaseRecordsArtifactsJson(vararg records: Pair<String, Map<String, Any?>>): String =
+  JsonSupport.mapToJsonString(
+    mapOf(FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to records.toMap()),
   )
 
 private fun runtimeRecord(

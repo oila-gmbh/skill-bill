@@ -268,6 +268,74 @@ class IdeStatusJsonMapperTest {
     }
 
     @Test
+    fun `goal payload carrying a current model maps model effort and phase onto the outcome`() {
+        val outcome = IdeStatusJsonMapper.map(
+            goalPayload(
+                planning = null,
+                currentModel = """"current_model": {"model": "opus-5", "effort": "high", "phase_id": "implement"}""",
+            ),
+            now,
+            0,
+        )
+        assertTrue(outcome is SkillBillStatusOutcome.Active)
+        val currentModel = (outcome as SkillBillStatusOutcome.Active).currentModel
+        assertEquals("opus-5", currentModel?.model)
+        assertEquals("high", currentModel?.effort)
+        // A goal's step is a goal-level label, so this is the only thing that says which phase the
+        // model belongs to; dropping it leaves the popup naming a model attributed to nothing.
+        assertEquals("implement", currentModel?.phaseId)
+        assertEquals("implement", outcome.currentStepId)
+    }
+
+    @Test
+    fun `unusable current model degrades to null while the outcome maps normally`() {
+        // One case per parse rule the mapper applies: the key's absence, the object check, the
+        // non-blank-string check on `model`, its isString check, and the length bound. Extra
+        // literals for a rule already covered cost tokens on every future change and detect
+        // nothing more.
+        val unusable = mapOf(
+            "absent" to null,
+            "non-object" to """"current_model": "opus-5"""",
+            "missing or blank model" to """"current_model": {"model": "   "}""",
+            "non-string model" to """"current_model": {"model": ["opus-5"]}""",
+            // Degrades rather than truncating: a clipped id would render a model that never
+            // existed, and the operator could not tell it had been cut.
+            "over-length model" to """"current_model": {"model": "${"m".repeat(121)}"}""",
+        )
+        for ((case, block) in unusable) {
+            val outcome = IdeStatusJsonMapper.map(goalPayload(planning = null, currentModel = block), now, 0)
+            assertTrue("$case must still map to Active", outcome is SkillBillStatusOutcome.Active)
+            outcome as SkillBillStatusOutcome.Active
+            assertNull("$case must degrade the model to null", outcome.currentModel)
+            assertEquals("$case must keep the surrounding outcome", "implement", outcome.currentStepId)
+        }
+    }
+
+    @Test
+    fun `unusable effort degrades to a null effort while the model survives`() {
+        val unusable = mapOf(
+            "blank effort" to """"current_model": {"model": "opus-5", "effort": "  "}""",
+            "non-string effort" to """"current_model": {"model": "opus-5", "effort": {"level": "high"}}""",
+        )
+        for ((case, block) in unusable) {
+            val outcome = IdeStatusJsonMapper.map(goalPayload(planning = null, currentModel = block), now, 0)
+            assertTrue("$case must still map to Active", outcome is SkillBillStatusOutcome.Active)
+            val currentModel = (outcome as SkillBillStatusOutcome.Active).currentModel
+            assertEquals("$case must keep the model", "opus-5", currentModel?.model)
+            assertNull("$case must degrade the effort to null", currentModel?.effort)
+        }
+    }
+
+    @Test
+    fun `stale payload carrying a current model maps it onto the stale outcome`() {
+        val json = goalPayload(planning = null, currentModel = """"current_model": {"model": "opus-5"}""")
+            .replace("\"freshness\":\"fresh\"", "\"freshness\":\"stale\"")
+        val outcome = IdeStatusJsonMapper.map(json, now, 0)
+        assertTrue(outcome is SkillBillStatusOutcome.Stale)
+        assertEquals("opus-5", (outcome as SkillBillStatusOutcome.Stale).currentModel?.model)
+    }
+
+    @Test
     fun `malformed planning degrades to null without failing the mapping`() {
         val malformed = mapOf(
             "non-object" to "\"planning\": \"nope\"",
@@ -388,7 +456,7 @@ class IdeStatusJsonMapperTest {
         return replace(original, "\"$field\": \"$to\"")
     }
 
-    private fun goalPayload(planning: String?): String =
+    private fun goalPayload(planning: String?, currentModel: String? = null): String =
         buildString {
             append("{\"contract_version\":\"$IDE_STATUS_CONTRACT_VERSION\",")
             append("\"repository_identity\":\"repo-root-realpath-v1:/repo\",")
@@ -401,6 +469,7 @@ class IdeStatusJsonMapperTest {
             append("\"updated_at\":\"2026-08-06T09:59:00Z\",")
             append("\"summary\":\"Goal SKILL-165 in progress.\"")
             planning?.let { append(',').append(it) }
+            currentModel?.let { append(',').append(it) }
             append('}')
         }
 

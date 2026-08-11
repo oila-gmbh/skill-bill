@@ -49,6 +49,34 @@ class ExecutionMatrixModelsTest {
   }
 
   @Test
+  fun `per-phase agent overrides win over the tier directive for that phase only`() {
+    val parsed = assertIs<ExecutionMatrixParse.Valid>(
+      parseExecutionMatrix(
+        mapOf(
+          "phase_tiers" to mapOf("preplan" to "reasoning"),
+          "agents" to mapOf(
+            "cursor" to mapOf(
+              "reasoning" to mapOf("model" to "gpt-5.6-luna-xhigh"),
+              "implementation" to mapOf("model" to "cursor-grok-4.5-medium"),
+              "preplan" to mapOf("model" to "gpt-5.6-luna-high"),
+              "review" to mapOf("model" to "claude-opus-5-thinking-max", "effort" to "max"),
+            ),
+          ),
+        ),
+      ),
+    )
+    val matrix = parsed.matrix
+
+    // An override beats an explicit phase_tiers entry, carries an effort, and leaves every
+    // non-overridden phase on its tier. The remaining override keys would only re-exercise the
+    // same branch with different literals.
+    assertEquals(PhaseModelDirective("gpt-5.6-luna-high"), matrix.directiveFor("cursor", "preplan"))
+    assertEquals(PhaseModelDirective("claude-opus-5-thinking-max", "max"), matrix.directiveFor("cursor", "review"))
+    assertEquals(PhaseModelDirective("gpt-5.6-luna-xhigh"), matrix.directiveFor("cursor", "audit"))
+    assertEquals(PhaseModelDirective("cursor-grok-4.5-medium"), matrix.directiveFor("cursor", "pr"))
+  }
+
+  @Test
   fun `rejects every malformed matrix layer with its dotted key path`() {
     val cases = listOf(
       "root" to Pair(listOf("not", "a", "map"), "execution_matrix"),
@@ -122,6 +150,14 @@ class ExecutionMatrixModelsTest {
       Pair(
         mapOf("agents" to mapOf("claude" to mapOf("reasoning" to mapOf("model" to "m", "effort" to 1)))),
         "execution_matrix.agents.claude.reasoning.effort",
+      ),
+      Pair(
+        mapOf("agents" to mapOf("claude" to mapOf("review" to mapOf("effort" to "high")))),
+        "execution_matrix.agents.claude.review.model",
+      ),
+      Pair(
+        mapOf("agents" to mapOf("claude" to mapOf("planning" to mapOf("model" to "m")))),
+        "execution_matrix.agents.claude.planning",
       ),
     )
 

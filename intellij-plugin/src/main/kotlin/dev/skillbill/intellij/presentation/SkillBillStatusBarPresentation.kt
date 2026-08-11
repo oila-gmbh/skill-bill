@@ -1,5 +1,7 @@
 package dev.skillbill.intellij.presentation
 
+import dev.skillbill.intellij.domain.FEATURE_GOAL_WORKFLOW_FAMILY
+import dev.skillbill.intellij.domain.MODEL_TEXT_MAX_LENGTH
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
@@ -28,6 +30,24 @@ object SkillBillStatusBarPresentation {
             "${renderedPosition(anchored, completed, total)}/$total"
         }
         val planning = anchored.planning
+        // Popup-only: the bar, tooltip, and accessibility text stay byte-identical.
+        // The phase is appended for the goal family only, where the Step row shows a goal-level
+        // label (often "Planning") and would otherwise leave the model attributed to nothing. For
+        // the runtime family the Step row already names that phase.
+        val modelText = anchored.currentModel?.let { current ->
+            val qualifier = listOfNotNull(
+                current.phaseId?.takeIf { anchored.workflowFamily == FEATURE_GOAL_WORKFLOW_FAMILY },
+                current.effort?.let { "effort: $it" },
+            )
+            val composed = if (qualifier.isEmpty()) {
+                current.model
+            } else {
+                "${current.model} (${qualifier.joinToString(", ")})"
+            }
+            // Unlike barText this lands in a non-wrapping JLabel inside a popup with no width cap,
+            // so an unbounded value widens the whole popup and can clip the action row off-screen.
+            normalizeLabel(composed)?.let { truncateForBar(it, MODEL_TEXT_MAX_LENGTH) }
+        }
         val planningSegment = planning?.let { "Planning ${it.plannedSubtaskCount}/${it.totalSubtaskCount}" }
 
         val fullBar = when (anchored) {
@@ -88,6 +108,7 @@ object SkillBillStatusBarPresentation {
                 workflowId = anchored.workflowId,
                 lifecycleState = lifecycle,
                 stepLabel = step ?: anchored.stepLabel,
+                modelText = modelText,
                 progressText = progressText,
                 goalElapsedText = goalText,
                 subtaskElapsedText = subtaskText,
@@ -280,6 +301,8 @@ object SkillBillStatusBarPresentation {
         val workflowId: String?,
         val lifecycleState: String,
         val stepLabel: String?,
+        /** Pre-resolved model row for the details popup; null renders no row at all. */
+        val modelText: String? = null,
         val progressText: String?,
         val goalElapsedText: String,
         val subtaskElapsedText: String,

@@ -25,6 +25,26 @@ const val UNCORROBORATED_IDLE_TOLERANCE: Int = 1
  */
 const val PAUSE_REQUESTED_WIRE_KEY: String = "pause_requested"
 
+/**
+ * Wire key carrying the model (and optional effort and phase id) the current phase launched with.
+ * Optional context: absence degrades to no model, never to a lost status reading.
+ */
+const val CURRENT_MODEL_WIRE_KEY: String = "current_model"
+
+/**
+ * Mirrors the `current_model` length bounds in `orchestration/contracts/ide-status-schema.yaml`.
+ * A value past these is rejected rather than clipped, so the popup never shows a model identifier
+ * that never existed.
+ */
+const val MODEL_MAX_LENGTH: Int = 120
+
+const val EFFORT_MAX_LENGTH: Int = 40
+
+const val PHASE_ID_MAX_LENGTH: Int = 64
+
+/** Display bound for the composed model row; the popup has no width cap of its own. */
+const val MODEL_TEXT_MAX_LENGTH: Int = 60
+
 /** Wire key carrying the instant a recorded pause took effect. Optional. */
 const val PAUSED_AT_WIRE_KEY: String = "paused_at"
 

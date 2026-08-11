@@ -44,6 +44,26 @@ class FeatureTaskRuntimePersistenceReviewPassParityTest {
     }
   }
 
+  /**
+   * `private_phase_record` is additionalProperties:false and the root schema is a closed oneOf, so a
+   * launch pair the model writes but the schema does not declare makes the record match neither branch.
+   * Same drift class as the review-pass ceiling above, pinned before it can go latent again.
+   */
+  @Test
+  fun `schema accepts the launch pair the model records`() {
+    val merged = reviewRecord(1).copy(launchedModel = "claude-opus-4-8[effort=high]")
+    val split = reviewRecord(1).copy(launchedModel = "claude-opus-4-8", launchedEffort = "high")
+
+    listOf(merged, split).forEach { record ->
+      FeatureTaskRuntimePersistenceSchemaValidator.validate(record.toArtifactMap(), "review.record")
+      assertEquals(
+        record.launchedModel to record.launchedEffort,
+        FeatureTaskRuntimePhaseRecord.fromArtifactMap(record.toArtifactMap())
+          .let { it.launchedModel to it.launchedEffort },
+      )
+    }
+  }
+
   private fun reviewRecord(pass: Int): FeatureTaskRuntimePhaseRecord = FeatureTaskRuntimePhaseRecord(
     phaseId = "review",
     status = "running",

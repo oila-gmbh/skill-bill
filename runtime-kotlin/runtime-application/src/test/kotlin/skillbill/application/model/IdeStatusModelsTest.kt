@@ -104,6 +104,31 @@ class IdeStatusModelsTest {
     assertTrue(keys.indexOf("paused_at") < keys.indexOf("updated_at"))
   }
 
+  @Test
+  fun `toStatusWireMap emits current_model as a nested object and omits effort when unset`() {
+    val withEffort = snapshot(planning = null)
+      .copy(currentModel = IdeStatusCurrentModel(model = "claude-opus-4-8", effort = "high"))
+      .toStatusWireMap()
+    val withoutEffort = snapshot(planning = null)
+      .copy(currentModel = IdeStatusCurrentModel(model = "claude-opus-4-8[effort=high]"))
+      .toStatusWireMap()
+
+    assertEquals(
+      linkedMapOf("model" to "claude-opus-4-8", "effort" to "high"),
+      withEffort["current_model"],
+    )
+    // Never a null effort value: the schema pins effort as a non-empty string when present.
+    assertEquals(linkedMapOf("model" to "claude-opus-4-8[effort=high]"), withoutEffort["current_model"])
+  }
+
+  @Test
+  fun `toStatusWireMap omits the current_model key entirely when no model is recorded`() {
+    val wire = snapshot(planning = null).toStatusWireMap()
+
+    // A present-but-empty object would fail the schema's required model; assert true absence.
+    assertFalse(wire.containsKey("current_model"))
+  }
+
   private fun snapshot(planning: IdeStatusPlanning?): IdeStatusSnapshot = IdeStatusSnapshot(
     repositoryIdentity = "repo-root-realpath-v1:/repo",
     issueKey = "SKILL-165",

@@ -28,7 +28,12 @@ import javax.swing.SwingConstants
  * pre-resolved on [SkillBillStatusBarPresentation.MappedPresentation.controls].
  */
 object StatusDetailsPopupContent {
-    /** Label/value pairs, identical in content and order to the previous popup lines. */
+    /**
+     * Label/value pairs in display order: lifecycle state, the optional identity and step rows, the
+     * optional model row when the snapshot reported one, then progress, clocks, and notes. The
+     * byte-identity guarantee belongs to the bar, tooltip, and accessibility text — not to this list,
+     * which grows as the popup gains rows.
+     */
     fun statusLines(presentation: SkillBillStatusBarPresentation.MappedPresentation): List<Pair<String, String>> {
         val details = presentation.details
         return buildList {
@@ -36,6 +41,7 @@ object StatusDetailsPopupContent {
             details.issueKey?.let { add("Issue" to it) }
             details.workflowId?.let { add("Workflow" to it) }
             details.stepLabel?.let { add("Step" to it) }
+            details.modelText?.let { add("Model" to it) }
             details.progressText?.let { add("Progress" to it) }
             add("Goal ${details.elapsedNoun}" to details.goalElapsedText)
             add("Subtask ${details.elapsedNoun}" to details.subtaskElapsedText)
@@ -63,7 +69,8 @@ object StatusDetailsPopupContent {
             border = JBUI.Borders.empty(8, 0, 4, 0)
             foreground = JBColor.border()
         }
-        val messageLabel = JLabel("").apply {
+        // Carries showMessage's bounded failure summary, which is runtime output like every value row.
+        val messageLabel = plainLabel("").apply {
             isVisible = false
             foreground = UIUtil.getErrorForeground()
             border = JBUI.Borders.emptyTop(4)
@@ -103,7 +110,7 @@ object StatusDetailsPopupContent {
 
     private fun statusBlock(presentation: SkillBillStatusBarPresentation.MappedPresentation): JPanel {
         val block = JPanel(GridBagLayout()).apply { isOpaque = false }
-        val title = JLabel("Skill Bill details").apply {
+        val title = plainLabel("Skill Bill details").apply {
             font = font.deriveFont(java.awt.Font.BOLD)
             border = JBUI.Borders.emptyBottom(4)
         }
@@ -120,7 +127,7 @@ object StatusDetailsPopupContent {
             val row = index + 1
             if (label.isEmpty()) {
                 block.add(
-                    JLabel(value).apply { foreground = UIUtil.getContextHelpForeground() },
+                    plainLabel(value).apply { foreground = UIUtil.getContextHelpForeground() },
                     GridBagConstraints().apply {
                         gridx = 0
                         gridy = row
@@ -132,7 +139,7 @@ object StatusDetailsPopupContent {
                 return@forEachIndexed
             }
             block.add(
-                JLabel("$label:").apply { foreground = UIUtil.getContextHelpForeground() },
+                plainLabel("$label:").apply { foreground = UIUtil.getContextHelpForeground() },
                 GridBagConstraints().apply {
                     gridx = 0
                     gridy = row
@@ -141,7 +148,7 @@ object StatusDetailsPopupContent {
                 },
             )
             block.add(
-                JLabel(value),
+                plainLabel(value),
                 GridBagConstraints().apply {
                     gridx = 1
                     gridy = row
@@ -153,6 +160,18 @@ object StatusDetailsPopupContent {
             )
         }
         return block
+    }
+
+    /**
+     * Most text here is runtime-supplied — a model id, a workflow id, a failure summary — and Swing
+     * parses a label whose text starts with `<html>` as markup, so an `<img src=…>` would make the
+     * IDE fetch it and a `<b>` would silently restyle the value the row exists to report. Applied
+     * uniformly, including to the static labels, so a row added later cannot miss it.
+     */
+    private fun plainLabel(text: String): JLabel = JLabel(text).apply {
+        // Swing's own key for opting a component out of HTML rendering. Spelled out because
+        // BasicHTML.htmlDisable is not public API on every JDK this plugin builds against.
+        putClientProperty("html.disable", true)
     }
 
     /** The built panel plus the pieces tests and the click handler need to address. */

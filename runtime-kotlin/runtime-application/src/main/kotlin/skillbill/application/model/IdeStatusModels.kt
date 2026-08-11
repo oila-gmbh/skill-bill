@@ -70,6 +70,26 @@ data class IdeStatusCurrentSubtask(
   val startedAt: Instant? = null,
 )
 
+/**
+ * The model the current phase's child was launched with. [effort] is null when the model string
+ * already carries it (Cursor's merged `model[effort=…]`) or when no effort was resolved.
+ */
+data class IdeStatusCurrentModel(
+  val model: String,
+  val effort: String? = null,
+  /**
+   * The phase the model belongs to. A goal's `current_step` is a goal-level label — often
+   * `planning` — so without this the payload names a model whose phase appears nowhere in it.
+   */
+  val phaseId: String? = null,
+) {
+  init {
+    require(model.isNotBlank()) { "currentModel.model must not be blank." }
+    effort?.let { require(it.isNotBlank()) { "currentModel.effort must not be blank when present." } }
+    phaseId?.let { require(it.isNotBlank()) { "currentModel.phaseId must not be blank when present." } }
+  }
+}
+
 /** Goal planning progress mirrored from [skillbill.goalrunner.model.GoalPlanningStatusSnapshot]. */
 data class IdeStatusPlanning(
   val state: GoalPlanningStatusState,
@@ -136,6 +156,9 @@ data class IdeStatusSnapshot(
   val progress: IdeStatusProgress? = null,
   val startedAt: Instant? = null,
   val currentSubtask: IdeStatusCurrentSubtask? = null,
+  // Null default: optional context, so a snapshot whose current phase has no recorded model
+  // stays wire-identical.
+  val currentModel: IdeStatusCurrentModel? = null,
   // Null default: only projectGoal populates planning, so every other family stays wire-identical.
   val planning: IdeStatusPlanning? = null,
   // Null defaults: only projectGoal populates the pause signals, so every other family stays
@@ -190,6 +213,7 @@ data class IdeStatusSnapshot(
         },
       )
     }
+    putCurrentModel()
     planning?.let { put("planning", planningWireMap(it)) }
     pauseRequested?.takeIf { it }?.let { put("pause_requested", true) }
     pausedAt?.let { put("paused_at", it.toString()) }
@@ -207,6 +231,22 @@ data class IdeStatusSnapshot(
         },
       )
     }
+  }
+
+  /**
+   * Omitted entirely when the current phase recorded no model, so a snapshot without it stays
+   * wire-identical. `effort` needs no blank guard here: [IdeStatusCurrentModel] rejects a blank one.
+   */
+  private fun MutableMap<String, Any?>.putCurrentModel() {
+    val model = currentModel ?: return
+    put(
+      "current_model",
+      buildMap {
+        put("model", model.model)
+        model.effort?.let { put("effort", it) }
+        model.phaseId?.let { put("phase_id", it) }
+      },
+    )
   }
 
   /** Both keys are optional and goal-family-only, so a snapshot without them stays wire-identical. */

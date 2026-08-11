@@ -123,7 +123,10 @@ data class AgentRunProcessResult(
   val interrupted: Boolean,
   val spawnFailed: Boolean,
   val liveness: AgentRunLivenessSnapshot? = null,
-  val processStarted: Boolean = false,
+  // Defaulted from spawnFailed rather than to a bare false: the two are one fact, and a runner that
+  // omitted this used to report "never started" for a child that ran — which downstream turns into a
+  // cleared launched-model stamp. Deriving the default makes the coherent value the automatic one.
+  val processStarted: Boolean = !spawnFailed,
   val mcpStartupObserved: Boolean = false,
   /** True when raw output exceeded the retention cap, so [stdout] is missing trailing content. */
   val stdoutTruncated: Boolean = false,

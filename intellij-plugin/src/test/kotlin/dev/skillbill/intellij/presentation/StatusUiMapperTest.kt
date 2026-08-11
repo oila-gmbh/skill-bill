@@ -1,5 +1,6 @@
 package dev.skillbill.intellij.presentation
 
+import dev.skillbill.intellij.domain.CurrentPhaseModel
 import dev.skillbill.intellij.domain.GoalPlanningInfo
 import dev.skillbill.intellij.domain.NO_MATCHING_WORK_REASON_CODE
 import dev.skillbill.intellij.domain.SkillBillStatusOutcome
@@ -468,6 +469,68 @@ class StatusUiMapperTest {
             assertNull(ui.pauseRequested)
         }
     }
+
+    @Test
+    fun `the current phase model survives the mapping on every outcome that carries it`() {
+        val model = CurrentPhaseModel(model = "opus-5", effort = "high", phaseId = "implement")
+        // All five branches that wire currentModel, not a hand-picked pair: a missing wire on any one
+        // of them loses the popup's Model row for that lifecycle while the UI tests — which build
+        // SkillBillStatusUiState directly — stay green. Stale matters most: it is exactly when the
+        // user wants to know what was running.
+        val carriers = listOf<Pair<String, SkillBillStatusOutcome>>(
+            "Active" to active().copy(currentModel = model),
+            "Paused" to paused(now).copy(currentModel = model),
+            "Stale" to staleOutcome().copy(currentModel = model),
+            "Blocked" to blockedOutcome().copy(currentModel = model),
+            "Failed" to failedOutcome().copy(currentModel = model),
+        )
+
+        carriers.forEach { (case, outcome) ->
+            assertEquals("$case must carry the model", model, StatusUiMapper.map(outcome, now).currentModel)
+        }
+        assertNull(StatusUiMapper.map(active(), now).currentModel)
+    }
+
+    private fun staleOutcome() = SkillBillStatusOutcome.Stale(
+        observedAt = now,
+        summary = "stale",
+        repositoryIdentity = "repo",
+        issueKey = "SKILL-148",
+        currentStepId = "implement",
+        currentStepLabel = "Implement",
+        progressCompleted = 1,
+        progressTotal = 4,
+        startedAt = started,
+        currentSubtaskId = "2",
+        subtaskStartedAt = subtaskStarted,
+        updatedAt = now,
+    )
+
+    private fun blockedOutcome() = SkillBillStatusOutcome.Blocked(
+        observedAt = now,
+        summary = "blocked",
+        repositoryIdentity = "repo",
+        issueKey = "SKILL-148",
+        currentStepId = "implement",
+        currentStepLabel = "Implement",
+        startedAt = started,
+        currentSubtaskId = "2",
+        subtaskStartedAt = subtaskStarted,
+        updatedAt = now,
+    )
+
+    private fun failedOutcome() = SkillBillStatusOutcome.Failed(
+        observedAt = now,
+        summary = "failed",
+        repositoryIdentity = "repo",
+        issueKey = "SKILL-148",
+        currentStepId = "implement",
+        currentStepLabel = "Implement",
+        startedAt = started,
+        currentSubtaskId = "2",
+        subtaskStartedAt = subtaskStarted,
+        updatedAt = now,
+    )
 
     private fun paused(updatedAt: Instant) = SkillBillStatusOutcome.Paused(
         observedAt = now,

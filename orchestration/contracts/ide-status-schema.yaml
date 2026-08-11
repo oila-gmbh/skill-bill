@@ -101,6 +101,38 @@ properties:
         description: >
           Durable current-subtask start instant. Omitted when the subtask scope
           does not exist or legacy state cannot provide it.
+  current_model:
+    type: object
+    additionalProperties: false
+    description: >
+      The model the current phase's child was launched with, as rendered to the
+      agent CLI. Omitted entirely when the current phase has no recorded model,
+      and never emitted for a completed phase or a terminal goal — a finished
+      unit's model is history, not the model in force.
+      `effort` is omitted when the model string already carries it (Cursor's
+      merged `model[effort=...]` form) or when no effort was resolved.
+      The length bounds are the contract, not a client concern: a consumer that
+      truncated instead would display a model identifier that never existed.
+    required:
+      - model
+    properties:
+      model:
+        type: string
+        minLength: 1
+        maxLength: 120
+      effort:
+        type: string
+        minLength: 1
+        maxLength: 40
+      phase_id:
+        type: string
+        minLength: 1
+        maxLength: 64
+        description: >
+          The runtime phase the model belongs to. A goal's `current_step` is a
+          goal-level label — often `planning` — so without this the payload
+          names a model whose phase appears nowhere in it. Omitted only by a
+          producer that cannot resolve the phase.
   planning:
     type: object
     additionalProperties: false

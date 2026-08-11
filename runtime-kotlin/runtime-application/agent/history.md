@@ -1,3 +1,12 @@
+## [2026-08-11] SKILL-183 subtask 1 — Launched phase model is durable and IDE-visible
+Areas: runtime-application/featuretask, runtime-application/model, runtime-application/work, runtime-domain/workflow/taskruntime/model, orchestration/contracts
+- `FeatureTaskRuntimePhaseRecord` gained optional `launched_model` / `launched_effort`; the run loop records the model+effort the child was actually launched with, and records neither when no directive resolved
+- Both fields are additive-optional on the wire: `toArtifactMap()` round-trips them and pre-change artifact maps lacking both keys still parse, so no migration or backfill is needed. reusable
+- `IdeStatusSnapshot.toStatusWireMap()` emits a `current_model` object (required `model`, optional `effort`) or omits the key entirely; `ide-status-schema.yaml` extended to allow both shapes with `IDE_STATUS_CONTRACT_VERSION` intentionally unchanged since the addition is backward-compatible
+- Pattern to follow for future status surfacing: extend the persistence record optionally, project through `IdeStatusProjector`, then widen the schema — golden fixtures and the contract-version test pin the compatibility claim
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
 ## [2026-08-10] SKILL-176 subtask 6 — Producer-evidence identity includes agent_id
 Areas: runtime-application/featuretask, runtime-ports/persistence, runtime-infra-sqlite/db, runtime-kotlin/agent
 - Producer-output evidence identity widened to `(workflow_id, phase_id, generation, attempt, agent_id)` so a second agent re-entering the same attempt retains its own immutable row instead of Conflict-crashing phase recording

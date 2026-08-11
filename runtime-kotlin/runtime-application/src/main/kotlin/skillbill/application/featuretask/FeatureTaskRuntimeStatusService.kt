@@ -240,6 +240,8 @@ class FeatureTaskRuntimeStatusService(
       finished = finishedAt != null,
       executionOrigin = executionOrigin.wireValue,
       continuationKind = continuationKind,
+      launchedModel = launchedModel,
+      launchedEffort = launchedEffort,
     )
   }
 

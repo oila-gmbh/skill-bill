@@ -6,6 +6,11 @@ import com.google.gson.JsonParser
 import com.google.gson.JsonSyntaxException
 import dev.skillbill.intellij.domain.ACTIVE_DURATION_AS_OF_WIRE_KEY
 import dev.skillbill.intellij.domain.ACTIVE_DURATION_MS_WIRE_KEY
+import dev.skillbill.intellij.domain.CURRENT_MODEL_WIRE_KEY
+import dev.skillbill.intellij.domain.CurrentPhaseModel
+import dev.skillbill.intellij.domain.EFFORT_MAX_LENGTH
+import dev.skillbill.intellij.domain.MODEL_MAX_LENGTH
+import dev.skillbill.intellij.domain.PHASE_ID_MAX_LENGTH
 import dev.skillbill.intellij.domain.GoalPlanningInfo
 import dev.skillbill.intellij.domain.IDE_STATUS_CONTRACT_VERSION
 import dev.skillbill.intellij.domain.NO_MATCHING_WORK_REASON_CODE
@@ -99,6 +104,7 @@ object IdeStatusJsonMapper {
         val subtaskStartedAt = subtask?.getAsInstant("started_at")
         val updatedAt = root.getAsInstant("updated_at")
         val planning = root.parsePlanning()
+        val currentModel = root.parseCurrentModel()
         // Both optional and goal-family-only: a missing key stays null, never false.
         val pauseRequested = root.getAsBoolean(PAUSE_REQUESTED_WIRE_KEY)
         val pausedAt = root.getAsInstant(PAUSED_AT_WIRE_KEY)
@@ -156,6 +162,7 @@ object IdeStatusJsonMapper {
                 planning = planning,
                 activeDurationMs = activeDurationMs,
                 activeDurationAsOf = activeDurationAsOf,
+                currentModel = currentModel,
             )
         }
 
@@ -184,6 +191,7 @@ object IdeStatusJsonMapper {
                         pausedAt = pausedAt,
                         activeDurationMs = activeDurationMs,
                         activeDurationAsOf = activeDurationAsOf,
+                        currentModel = currentModel,
                     )
                 } else {
                     SkillBillStatusOutcome.Active(
@@ -206,6 +214,7 @@ object IdeStatusJsonMapper {
                         pausedAt = pausedAt,
                         activeDurationMs = activeDurationMs,
                         activeDurationAsOf = activeDurationAsOf,
+                        currentModel = currentModel,
                     )
                 }
             }
@@ -224,6 +233,7 @@ object IdeStatusJsonMapper {
                 stale = isStale,
                 activeDurationMs = activeDurationMs,
                 activeDurationAsOf = activeDurationAsOf,
+                currentModel = currentModel,
             )
 
             "failed" -> SkillBillStatusOutcome.Failed(
@@ -240,6 +250,7 @@ object IdeStatusJsonMapper {
                 stale = isStale,
                 activeDurationMs = activeDurationMs,
                 activeDurationAsOf = activeDurationAsOf,
+                currentModel = currentModel,
             )
 
             "idle" -> SkillBillStatusOutcome.Idle(
@@ -319,8 +330,39 @@ object IdeStatusJsonMapper {
         )
     }
 
+    /**
+     * Same degradation rule as [parsePlanning]: the launched model is optional context, so a
+     * missing block, a non-object, or a blank/mistyped field degrades to null and the surrounding
+     * outcome still maps normally.
+     *
+     * Over-length values degrade rather than truncate. Truncating would render a model identifier
+     * that never existed — worse than showing nothing, because the operator cannot tell it was
+     * clipped. The bounds mirror the schema's own `maxLength`, so the producer already rejects an
+     * over-length value at its emit gate and this is the client-side floor, not the enforcement.
+     *
+     * A present-but-unparseable block leaves no client-side record: this mapper is deliberately
+     * platform-free so it stays unit-testable, and the plugin has no logging seam that does not
+     * pull in the IntelliJ platform. The producer's schema gate is where such a payload is caught.
+     */
+    private fun JsonObject.parseCurrentModel(): CurrentPhaseModel? {
+        val currentModel = getAsJsonObjectOrNull(CURRENT_MODEL_WIRE_KEY) ?: return null
+        val model = currentModel.boundedString("model", MODEL_MAX_LENGTH) ?: return null
+        return CurrentPhaseModel(
+            model = model,
+            effort = currentModel.boundedString("effort", EFFORT_MAX_LENGTH),
+            phaseId = currentModel.boundedString("phase_id", PHASE_ID_MAX_LENGTH),
+        )
+    }
+
+    private fun JsonObject.boundedString(key: String, maxLength: Int): String? =
+        getAsStringPrimitive(key)?.trim()?.takeIf { it.isNotBlank() && it.length <= maxLength }
+
     private fun JsonObject.getAsString(key: String): String? =
         get(key)?.takeUnless { it.isJsonNull }?.asStringOrNull()
+
+    /** Strict: a JSON number or boolean is a type error, not text. */
+    private fun JsonObject.getAsStringPrimitive(key: String): String? =
+        get(key)?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString
 
     private fun JsonObject.getAsInt(key: String): Int? =
         get(key)?.takeUnless { it.isJsonNull }?.let {

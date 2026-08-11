@@ -64,6 +64,7 @@ object StatusUiMapper {
                     ),
                     workflowFamily = outcome.workflowFamily,
                     pauseRequested = outcome.pauseRequested,
+                    currentModel = outcome.currentModel,
                     activeDurationMs = outcome.activeDurationMs,
                     activeDurationAsOf = outcome.activeDurationAsOf,
                 )
@@ -94,6 +95,7 @@ object StatusUiMapper {
                     ),
                     workflowFamily = outcome.workflowFamily,
                     pauseRequested = outcome.pauseRequested,
+                    currentModel = outcome.currentModel,
                 )
 
             is SkillBillStatusOutcome.Stale ->
@@ -121,6 +123,11 @@ object StatusUiMapper {
                         outcome.currentSubtaskId,
                         outcome.progressCompleted,
                     ),
+                    // A Stale built from the persisted display cache carries no model — the cache
+                    // deliberately stores none, so a phase's model is never resurrected from disk
+                    // after a restart. The Model row is therefore absent until a live poll lands;
+                    // that missing row is the cache being honest, not a parse failure.
+                    currentModel = outcome.currentModel,
                 )
 
             is SkillBillStatusOutcome.Blocked ->
@@ -142,6 +149,7 @@ object StatusUiMapper {
                     lastUpdated = outcome.updatedAt ?: outcome.observedAt,
                     problemSummary = outcome.summary,
                     stale = outcome.stale,
+                    currentModel = outcome.currentModel,
                 )
 
             is SkillBillStatusOutcome.Failed ->
@@ -163,6 +171,7 @@ object StatusUiMapper {
                     lastUpdated = outcome.updatedAt ?: outcome.observedAt,
                     problemSummary = outcome.summary,
                     stale = outcome.stale,
+                    currentModel = outcome.currentModel,
                 )
 
             is SkillBillStatusOutcome.Unavailable ->
