@@ -11,6 +11,7 @@ import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.featuretask.FeatureTaskRuntimeRunner
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.featuretask.FeatureTaskRuntimeWorkerCoordinator
+import skillbill.application.goalrunner.ChildAwareGoalPlanningRefreshLiveness
 import skillbill.application.goalrunner.DefaultGoalPlanningSweep
 import skillbill.application.goalrunner.DefaultGoalRunnerExecutionCoordinator
 import skillbill.application.goalrunner.DurableGoalPlanningAttemptRecorder
@@ -18,12 +19,15 @@ import skillbill.application.goalrunner.DurableGoalPlanningRejectionRecorder
 import skillbill.application.goalrunner.GoalLifecycleTelemetryEmitter
 import skillbill.application.goalrunner.GoalOperatorDecisionService
 import skillbill.application.goalrunner.GoalPlanningAttemptRecorder
+import skillbill.application.goalrunner.GoalPlanningRefreshLiveness
 import skillbill.application.goalrunner.GoalPlanningRejectionRecorder
+import skillbill.application.goalrunner.GoalPlanningStatusReasonCoherence
 import skillbill.application.goalrunner.GoalPlanningSweep
 import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.goalrunner.GoalRunnerChildRepairStore
 import skillbill.application.goalrunner.GoalRunnerExecutionCoordinator
 import skillbill.application.goalrunner.GoalRunnerStatusService
+import skillbill.application.goalrunner.LaunchAlignedGoalPlanningStatusReasonCoherence
 import skillbill.application.goalrunner.UnaddressedFindingsLedgerService
 import skillbill.application.goalrunner.WorkflowGoalRunnerManifestStore
 import skillbill.application.goalrunner.WorkflowGoalRunnerOutcomeStore
@@ -385,6 +389,18 @@ abstract class RuntimeComponent(
   @Provides
   @JvmSynthetic
   internal fun goalPlanningSweep(sweep: DefaultGoalPlanningSweep): GoalPlanningSweep = sweep
+
+  @Provides
+  @JvmSynthetic
+  internal fun goalPlanningRefreshLiveness(
+    adapter: ChildAwareGoalPlanningRefreshLiveness,
+  ): GoalPlanningRefreshLiveness = adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun goalPlanningStatusReasonCoherence(
+    adapter: LaunchAlignedGoalPlanningStatusReasonCoherence,
+  ): GoalPlanningStatusReasonCoherence = adapter
 
   @Provides
   @JvmSynthetic

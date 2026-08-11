@@ -345,6 +345,21 @@ enum class GoalPlanningStatusState(val wireValue: String) {
   PREPARED("prepared"),
 }
 
+/** Shared planning-status reason phrases so store projection and launch-aligned overlays stay in lockstep. */
+object GoalPlanningStatusReasons {
+  const val RESUME_MARKER: String = "planning can resume"
+
+  const val NOT_STARTED: String = "Goal planning has not started."
+
+  fun preplannedResume(firstMissingSubtaskId: Int): String =
+    "Shared preplan is saved; planning can resume at subtask $firstMissingSubtaskId."
+
+  fun partiallyPlannedResume(firstMissingSubtaskId: Int): String =
+    "Saved plans will be reused; planning can resume at subtask $firstMissingSubtaskId."
+
+  fun claimsResume(reason: String?): Boolean = reason?.contains(RESUME_MARKER) == true
+}
+
 enum class ExecutionLiveness(val wireValue: String) {
   LIVE("live"),
   IDLE("idle"),

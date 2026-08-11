@@ -392,54 +392,7 @@ class WorkflowGoalRunnerManifestStore(
     options: skillbill.ports.goalrunner.model.GoalRunnerScopedReplanOptions,
   ): GoalRunnerScopedReplanWriteResult {
     val saved = database.transaction(dbPathOverride) { unitOfWork ->
-      val preparations = unitOfWork.goalPlanningPreparations
-      val plannedBefore = preparations.listPreparedPlanSubtaskIds(state.parentWorkflowId)
-      val sharedBefore = preparations.hasPreparedSharedPreplan(state.parentWorkflowId)
-      val namedExisted = subtaskId in plannedBefore
-      val cascadedIds: List<Int>
-      val deleted: Int
-      if (options.includeSharedPreplan) {
-        // Cascade every stored sibling plan row (terminal and non-terminal). recoveryProgress
-        // re-validates all ordered plans against expectedProvenance with no status filter;
-        // leaving any survivor would provenance-mismatch against a regenerated shared preplan.
-        cascadedIds = plannedBefore.filter { it != subtaskId }
-        val expectedDigest = options.expectedSharedPayloadSha256
-        if (expectedDigest != null) {
-          val identity = requireNotNull(options.planningIdentity) {
-            "planningIdentity is required when discarding a shared preplan by digest."
-          }
-          preparations.deleteSharedPreplan(identity, expectedDigest)
-          // FK ON DELETE CASCADE removes every goal_subtask_plans row for this parent.
-        } else {
-          plannedBefore.forEach { id -> preparations.deleteSubtaskPlan(state.parentWorkflowId, id) }
-        }
-        deleted = if (namedExisted) 1 else 0
-      } else {
-        cascadedIds = emptyList()
-        deleted = preparations.deleteSubtaskPlan(state.parentWorkflowId, subtaskId)
-      }
-      val plannedAfter = preparations.listPreparedPlanSubtaskIds(state.parentWorkflowId)
-      val sharedAfter = preparations.hasPreparedSharedPreplan(state.parentWorkflowId)
-      // A child hydrated from the discarded plan still holds those planning bytes as its own import.
-      // Leaving it behind makes the next launch fail the hydration provenance check, which used to
-      // strand a scoped replan on advice to hard reset.
-      val clearedChildIds = deleteStaleReplanChildren(unitOfWork, state, listOf(subtaskId) + cascadedIds)
-      val projection = saveWorkflowProjectionInTransaction(
-        unitOfWork,
-        state.copy(manifest = state.manifest.afterReplanChildDeletion(clearedChildIds)),
-        mergeConcurrentProgress = false,
-      )
-      GoalRunnerScopedReplanWriteResult(
-        state = projection.state,
-        deletedPlanCount = deleted,
-        plannedSubtaskIdsBefore = plannedBefore,
-        plannedSubtaskIdsAfter = plannedAfter,
-        sharedPreplanPrepared = sharedAfter,
-        sharedPreplanPreparedBefore = sharedBefore,
-        discardedSharedPreplan = sharedBefore && !sharedAfter,
-        cascadedPlanSubtaskIds = cascadedIds,
-        clearedChildSubtaskIds = clearedChildIds,
-      ) to projection.projectionArtifactsJson
+      executeScopedReplan(unitOfWork, state, subtaskId, options)
     }
     DecompositionManifestWriter.writeProjectionFromWorkflowState(
       state.repoRoot ?: Path.of("").toAbsolutePath(),
@@ -448,6 +401,90 @@ class WorkflowGoalRunnerManifestStore(
       decompositionManifestFileStore,
     )
     return saved.first
+  }
+
+  private fun executeScopedReplan(
+    unitOfWork: UnitOfWork,
+    state: GoalRunnerManifestState,
+    subtaskId: Int,
+    options: skillbill.ports.goalrunner.model.GoalRunnerScopedReplanOptions,
+  ): Pair<GoalRunnerScopedReplanWriteResult, String> {
+    val preparations = unitOfWork.goalPlanningPreparations
+    val plannedBefore = preparations.listPreparedPlanSubtaskIds(state.parentWorkflowId)
+    val sharedBefore = preparations.hasPreparedSharedPreplan(state.parentWorkflowId)
+    val discard = discardScopedReplanPlans(preparations, state, subtaskId, options, plannedBefore)
+    val plannedAfter = preparations.listPreparedPlanSubtaskIds(state.parentWorkflowId)
+    val sharedAfter = preparations.hasPreparedSharedPreplan(state.parentWorkflowId)
+    // A child hydrated from the discarded plan still holds those planning bytes as its own import.
+    // Leaving it behind makes the next launch fail the hydration provenance check, which used to
+    // strand a scoped replan on advice to hard reset.
+    val clearedChildIds = deleteStaleReplanChildren(
+      unitOfWork,
+      state,
+      listOf(subtaskId) + discard.cascadedIds,
+    )
+    val projection = saveWorkflowProjectionInTransaction(
+      unitOfWork,
+      state.copy(manifest = state.manifest.afterReplanChildDeletion(clearedChildIds)),
+      mergeConcurrentProgress = false,
+    )
+    return GoalRunnerScopedReplanWriteResult(
+      state = projection.state,
+      deletedPlanCount = discard.deleted,
+      plannedSubtaskIdsBefore = plannedBefore,
+      plannedSubtaskIdsAfter = plannedAfter,
+      sharedPreplanPrepared = sharedAfter,
+      sharedPreplanPreparedBefore = sharedBefore,
+      discardedSharedPreplan = sharedBefore && !sharedAfter,
+      cascadedPlanSubtaskIds = discard.cascadedIds,
+      clearedChildSubtaskIds = clearedChildIds,
+    ) to projection.projectionArtifactsJson
+  }
+
+  private data class ScopedReplanDiscard(
+    val cascadedIds: List<Int>,
+    val deleted: Int,
+  )
+
+  private fun discardScopedReplanPlans(
+    preparations: skillbill.ports.persistence.GoalPlanningPreparationRepository,
+    state: GoalRunnerManifestState,
+    subtaskId: Int,
+    options: skillbill.ports.goalrunner.model.GoalRunnerScopedReplanOptions,
+    plannedBefore: List<Int>,
+  ): ScopedReplanDiscard {
+    if (!options.includeSharedPreplan) {
+      return ScopedReplanDiscard(
+        cascadedIds = emptyList(),
+        deleted = preparations.deleteSubtaskPlan(state.parentWorkflowId, subtaskId),
+      )
+    }
+    // Cascade only non-terminal-with-commit siblings. Terminal survivors stay so WE-4719-shaped
+    // goals keep complete planning provenance; FK ON DELETE CASCADE must not wipe them.
+    val cascadedIds = cascadeEligiblePlanSubtaskIds(
+      plannedIds = plannedBefore.filter { it != subtaskId },
+      subtasks = state.manifest.subtasks,
+    )
+    val retainedIds = plannedBefore.filter { it != subtaskId && it !in cascadedIds }
+    val expectedDigest = options.expectedSharedPayloadSha256
+    val deleted = if (expectedDigest != null) {
+      val identity = requireNotNull(options.planningIdentity) {
+        "planningIdentity is required when discarding a shared preplan by digest."
+      }
+      // Digest CAS first so a mismatch refuses with zero mutation.
+      if (retainedIds.isEmpty()) {
+        preparations.deleteSharedPreplan(identity, expectedDigest)
+        if (subtaskId in plannedBefore) 1 else 0
+      } else {
+        preparations.invalidateSharedPreplan(identity, expectedDigest)
+        cascadedIds.forEach { id -> preparations.deleteSubtaskPlan(state.parentWorkflowId, id) }
+        preparations.deleteSubtaskPlan(state.parentWorkflowId, subtaskId)
+      }
+    } else {
+      cascadedIds.forEach { id -> preparations.deleteSubtaskPlan(state.parentWorkflowId, id) }
+      preparations.deleteSubtaskPlan(state.parentWorkflowId, subtaskId)
+    }
+    return ScopedReplanDiscard(cascadedIds = cascadedIds, deleted = deleted)
   }
 
   override fun sharedPreplanPayloadSha256(parentWorkflowId: String, dbPathOverride: String?): String? =

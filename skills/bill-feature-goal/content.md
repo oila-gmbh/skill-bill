@@ -26,7 +26,7 @@ When a subtask spec changes after that subtask's plan is already checkpointed, r
 skill-bill goal replan <issue-key> --subtask <id>
 ```
 
-By default this discards only that subtask's stored plan and preserves sibling plans, the shared preplan, and every subtask's runtime state (`status`, `commit_sha`, `workflow_id`, and out-of-band acceptances). Pass `--include-shared-preplan` when the shared preplan itself must be regenerated (for example a goal-wide discovery or boundary change): that also discards every sibling subtask plan row (terminal and non-terminal), because survivors would provenance-mismatch a regenerated shared preplan; runtime fields and acceptances stay untouched. The goal must be idle; a live goal is refused with `Goal '<issue-key>' is live; refuse scoped replan while a child or parent run is active.`, and unknown liveness with `Goal '<issue-key>' has unknown execution liveness; refuse scoped replan.` A complete or skipped subtask is refused with `Subtask '<id>' is terminal (<status>); use reset to reopen it before replanning.` — reopen via `reset`, then replan if needed. Do not use hard reset plus compensating `accept --restore-after-hard-reset` to replan one subtask: that discards every completed subtask's `commit_sha` and `workflow_id` and forces reconstructing the commit-to-subtask mapping by hand. `accept --restore-after-hard-reset` remains only for restoring acceptances after a deliberate goal-wide hard reset.
+By default this discards only that subtask's stored plan and preserves sibling plans, the shared preplan, and every subtask's runtime state (`status`, `commit_sha`, `workflow_id`, and out-of-band acceptances). Pass `--include-shared-preplan` when the shared preplan itself must be regenerated (for example a goal-wide discovery or boundary change): that discards the shared preplan and cascades only sibling plan rows that are not `complete` with a `commit_sha`; terminal-with-commit plan rows are retained and restamped when the shared preplan is regenerated, so resume does not provenance-wedge. Runtime fields and acceptances stay untouched. The goal must be idle; a live goal is refused with `Goal '<issue-key>' is live; refuse scoped replan while a child or parent run is active.`, and unknown liveness with `Goal '<issue-key>' has unknown execution liveness; refuse scoped replan.` A complete or skipped subtask is refused with `Subtask '<id>' is terminal (<status>); use reset to reopen it before replanning.` — reopen via `reset`, then replan if needed. Do not use hard reset plus compensating `accept --restore-after-hard-reset` to replan one subtask: that discards every completed subtask's `commit_sha` and `workflow_id` and forces reconstructing the commit-to-subtask mapping by hand. `accept --restore-after-hard-reset` remains only for restoring acceptances after a deliberate goal-wide hard reset.
 
 Hard reset (`skill-bill goal reset --hard`) atomically invalidates parent planning and child continuation state; soft reset preserves compatible immutable planning. Use hard reset for goal-wide invalidation, not for a single amended subtask plan.
 
@@ -272,7 +272,11 @@ goal SKILL-146: finished
 summary: Example feature — 3/3 subtasks complete; PR https://github.com/…/pull/241
 goal SKILL-146: blocked at subtask 2 — <blocked_reason>
 goal SKILL-146: failed — <blocked_reason>
+goal SKILL-146: paused at subtask 1 — <blocked_reason>
 ```
+
+Process exit codes for `skill-bill goal <issue-key>` (harness distinction by
+code alone): `complete=0`, `failed=1`, `paused=2`, `blocked=3`.
 
 Keep the clean summary to one line and omit unavailable optional fields such as
 the PR URL. Do not read back, summarize, or paraphrase run stdout to compose the

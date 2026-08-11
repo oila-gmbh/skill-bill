@@ -14,6 +14,7 @@ import skillbill.application.goalrunner.GoalRunnerLedgerRecorder
 import skillbill.application.goalrunner.GoalRunnerProgressEventEmitter
 import skillbill.application.goalrunner.GoalRunnerStatusService
 import skillbill.application.goalrunner.UnaddressedFindingsLedgerService
+import skillbill.application.goalrunner.cascadeEligiblePlanSubtaskIds
 import skillbill.application.model.GoalRunnerAcceptRequest
 import skillbill.application.model.GoalRunnerAcceptResult
 import skillbill.application.model.GoalRunnerEventSink
@@ -2838,11 +2839,12 @@ internal class InMemoryGoalManifestStore(
       else -> skillbill.goalrunner.model.GoalPlanningStatusState.PARTIALLY_PLANNED
     }
     val reason = when (state) {
-      skillbill.goalrunner.model.GoalPlanningStatusState.NOT_STARTED -> "Goal planning has not started."
+      skillbill.goalrunner.model.GoalPlanningStatusState.NOT_STARTED ->
+        skillbill.goalrunner.model.GoalPlanningStatusReasons.NOT_STARTED
       skillbill.goalrunner.model.GoalPlanningStatusState.PREPLANNED ->
-        "Shared preplan is saved; planning can resume at subtask $firstMissing."
+        skillbill.goalrunner.model.GoalPlanningStatusReasons.preplannedResume(requireNotNull(firstMissing))
       skillbill.goalrunner.model.GoalPlanningStatusState.PARTIALLY_PLANNED ->
-        "Saved plans will be reused; planning can resume at subtask $firstMissing."
+        skillbill.goalrunner.model.GoalPlanningStatusReasons.partiallyPlannedResume(requireNotNull(firstMissing))
       skillbill.goalrunner.model.GoalPlanningStatusState.BLOCKED -> blockedReason
       skillbill.goalrunner.model.GoalPlanningStatusState.PREPARED -> null
     }
@@ -2872,7 +2874,11 @@ internal class InMemoryGoalManifestStore(
     val cascadedIds: List<Int>
     val deleted: Int
     if (options.includeSharedPreplan) {
-      cascadedIds = before.filter { it != subtaskId }
+      cascadedIds = cascadeEligiblePlanSubtaskIds(
+        plannedIds = before.filter { it != subtaskId },
+        subtasks = state.manifest.subtasks,
+      )
+      val retained = before.filter { it != subtaskId && it !in cascadedIds }
       if (options.expectedSharedPayloadSha256 != null) {
         if (forceSharedDigestMismatchOnReplan ||
           options.expectedSharedPayloadSha256 != sharedPreplanPayloadSha256ForTest
@@ -2883,13 +2889,19 @@ internal class InMemoryGoalManifestStore(
             "shared preplan changed after it was observed for discard",
           )
         }
-        plannedSubtaskIds.clear()
         sharedPreplanPrepared = false
-        sharedPreplanPayloadSha256ForTest = null
+        if (retained.isEmpty()) {
+          plannedSubtaskIds.clear()
+          sharedPreplanPayloadSha256ForTest = null
+          deleted = if (subtaskId in before) 1 else 0
+        } else {
+          cascadedIds.forEach { plannedSubtaskIds.remove(it) }
+          deleted = if (plannedSubtaskIds.remove(subtaskId)) 1 else 0
+        }
       } else {
-        plannedSubtaskIds.clear()
+        cascadedIds.forEach { plannedSubtaskIds.remove(it) }
+        deleted = if (plannedSubtaskIds.remove(subtaskId)) 1 else 0
       }
-      deleted = if (subtaskId in before) 1 else 0
     } else {
       cascadedIds = emptyList()
       deleted = if (plannedSubtaskIds.remove(subtaskId)) 1 else 0

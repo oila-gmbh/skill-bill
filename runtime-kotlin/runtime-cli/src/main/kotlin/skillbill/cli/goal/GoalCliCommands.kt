@@ -94,7 +94,10 @@ class GoalRunCommand(
   goalRunSubcommands: GoalRunSubcommands,
   private val telemetryService: TelemetryService,
   private val state: CliRunState,
-) : DocumentedCliCommand("goal", "Run a decomposed goal in the foreground.") {
+) : DocumentedCliCommand(
+  "goal",
+  "Run a decomposed goal in the foreground. Exit codes: complete=0, failed=1, paused=2, blocked=3.",
+) {
   private val issueKey by argument(help = "Parent issue key for the decomposed goal.").optional()
   private val agent by option(
     "--agent",
@@ -643,7 +646,7 @@ class GoalReplanCommand(
 ) : DocumentedCliCommand(
   "replan",
   "Discard one subtask plan while preserving sibling plans, shared preplan, and runtime state; " +
-    "pass --include-shared-preplan to also discard the shared preplan and every sibling plan.",
+    "pass --include-shared-preplan to also discard the shared preplan and cascade non-terminal sibling plans.",
 ) {
   private val issueKey by argument(help = "Parent issue key for the decomposed goal.")
   private val subtaskId by option(
@@ -652,8 +655,8 @@ class GoalReplanCommand(
   ).int().required()
   private val includeSharedPreplan by option(
     "--include-shared-preplan",
-    help = "Also discard the goal-wide shared preplan and every sibling subtask plan " +
-      "(planning rows only; runtime state is untouched).",
+    help = "Also discard the goal-wide shared preplan and cascade sibling plans that are not " +
+      "complete with a commit_sha (planning rows only; runtime state and terminal plan rows stay).",
   ).flag(default = false)
   private val repoRoot by option("--repo-root", help = "Repository root for the goal.")
 
@@ -984,7 +987,28 @@ private const val GOAL_STATUS_DATABASE_UNAVAILABLE = "database_unavailable"
 
 private fun shellQuote(value: String): String = "'${value.replace("'", "'\\''")}'"
 
-private fun Map<String, Any?>.goalExitCode(): Int = if (this["status"] == "complete") 0 else 1
+/** Process exit codes for `skill-bill goal <issue-key>` — harness distinction by code alone. */
+internal const val GOAL_EXIT_COMPLETE: Int = 0
+internal const val GOAL_EXIT_FAILED: Int = 1
+internal const val GOAL_EXIT_PAUSED: Int = 2
+internal const val GOAL_EXIT_BLOCKED: Int = 3
+
+/**
+ * Process exit classification for goal run. Kept in lockstep with [goalRunText] verb taxonomy:
+ * complete=0, failed/timeout=1, paused=2, else blocked=3.
+ */
+internal fun goalRunExitCode(status: String?, reason: String?): Int {
+  if (status == "complete") return GOAL_EXIT_COMPLETE
+  val normalized = reason?.lowercase().orEmpty()
+  return when {
+    normalized == "paused" -> GOAL_EXIT_PAUSED
+    normalized.contains("failed") || normalized.contains("timeout") -> GOAL_EXIT_FAILED
+    else -> GOAL_EXIT_BLOCKED
+  }
+}
+
+private fun Map<String, Any?>.goalExitCode(): Int =
+  goalRunExitCode(this["status"]?.toString(), this["reason"]?.toString())
 
 private fun GoalRunnerStatusProjection?.toGoalStatusCliMap(issueKey: String): Map<String, Any?> = this?.let {
   linkedMapOf<String, Any?>(

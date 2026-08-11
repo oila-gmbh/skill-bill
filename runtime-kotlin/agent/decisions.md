@@ -359,6 +359,41 @@ shared evidence — rejected for the four reasons above.
 
 Revisit when: none; settled for this feature.
 
+## 2026-08-11 — Non-terminal-only plan cascade with provenance restamp (SKILL-181)
+
+Context: SKILL-160 cascaded every sibling plan under `--include-shared-preplan`
+because `recoveryProgress` re-validates all ordered plans against the governing
+shared provenance with no status filter. Leaving a complete sibling mismatched
+wedged resume. WE-4719 showed that wiping a complete+commit plan row destroys
+useful planning provenance for no benefit.
+
+Decision: Reverse the SKILL-160 cascade breadth. Cascade only plan rows whose
+manifest subtask is **not** (`status == complete` AND non-blank `commit_sha`),
+on both `--include-shared-preplan` and in-run heading-set refresh. When survivors
+remain, soft-invalidate the shared preplan (keep the parent row so FK ON DELETE
+CASCADE cannot wipe them) instead of deleting it. In the same transaction that
+writes a replacement shared preplan (refresh replace, or relaunch regeneration
+after invalidate), restamp retained plan rows' provenance to the new shared
+provenance without changing plan payloads or runtime manifest fields.
+
+Evidence that decided it:
+- Complete-with-commit plans are still read via `findStoredSubtaskPlan` for hash
+  recovery, but they are never re-hydrated into a fresh child; discarding them
+  only loses history.
+- Soft-invalidate avoids mid-transaction `PRAGMA foreign_keys` toggles (illegal
+  inside an open SQLite transaction) while preserving survivors across discard.
+- Restamp-at-write keeps `recoveryProgress` provenance equality strict for every
+  remaining prepared plan; non-terminal leftovers with mismatched provenance
+  still loud-fail.
+
+Alternatives considered: (1) Permanently ignore terminal plan provenance in
+recovery — rejected; weakens hydration checks for non-terminals if the filter
+drifts. (2) Orphan plan rows by deleting the shared parent with FK off — rejected;
+cannot toggle `foreign_keys` inside the replan transaction. (3) Keep
+cascade-everything — rejected by WE-4719 cost.
+
+Revisit when: none; settles the SKILL-160 revisit clause.
+
 ## 2026-08-05 — `--include-shared-preplan` cascades every sibling plan row (SKILL-160)
 
 Context: Discarding the goal-wide shared preplan while leaving sibling
@@ -395,6 +430,9 @@ evidence above.
 Revisit when: recovery or hydration gains a status filter that permanently
 ignores terminal plan provenance, with tests proving complete plans are never
 read after completion.
+
+**Superseded by 2026-08-11 SKILL-181 decision** (non-terminal-only cascade +
+restamp). Kept for history.
 
 ## 2026-07-04 — internal skills are file-read sidecars; repo paths did not move (SKILL-102)
 

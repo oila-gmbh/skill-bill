@@ -4,6 +4,7 @@ import skillbill.SkillBillVersion
 import skillbill.application.model.WorkflowFamilyKind
 import skillbill.application.model.WorkflowOpenResult
 import skillbill.cli.core.CliRuntime
+import skillbill.cli.goal.GOAL_EXIT_BLOCKED
 import skillbill.cli.model.CliExecutionResult
 import skillbill.cli.model.CliRuntimeContext
 import skillbill.contracts.JsonSupport
@@ -102,7 +103,7 @@ class CliGoalRuntimeTest {
       fixture.context(launcher = launcher),
     )
 
-    assertEquals(1, result.exitCode, result.stdout)
+    assertEquals(2, result.exitCode, result.stdout)
     assertContains(result.stdout, "goal SKILL-901: paused")
     assertEquals(listOf(1), launcher.childLaunches.map { it.skillRunRequest.subtaskId })
     val status = CliRuntime.run(
@@ -773,7 +774,7 @@ class CliGoalRuntimeTest {
     assertContains(watch.stdout, "watch_refresh: index=1 status=ok current_subtask=1 current_step=implement")
     assertContains(watch.stdout, "watch_observability: index=1 phase=implement role=phase_subagent")
     assertContains(watch.stdout, "sequence=12")
-    assertEquals(1, resumed.exitCode, resumed.stdout)
+    assertEquals(GOAL_EXIT_BLOCKED, resumed.exitCode, resumed.stdout)
     assertEquals(2, launcher.requests.size)
     assertTrue(launcher.childLaunches.isEmpty())
     assertContains(resumed.stdout, "Could not capture the goal-subtask review baseline")
@@ -799,7 +800,7 @@ class CliGoalSharedPreplanReplanTest {
       fixture.goalCommand(extra = listOf("--stop-after-subtask", "2")),
       fixture.context(launcher = launcher),
     )
-    assertEquals(1, advanced.exitCode, advanced.stdout)
+    assertEquals(2, advanced.exitCode, advanced.stdout)
     assertEquals(listOf(1, 2), launcher.childLaunches.map { it.skillRunRequest.subtaskId })
     val statusBefore = goalStatus(fixture, launcher)
     assertContains(statusBefore.stdout, "shared_preplan=true")
@@ -821,18 +822,27 @@ class CliGoalSharedPreplanReplanTest {
     assertEquals(0, replan.exitCode, replan.stdout)
     assertContains(replan.stdout, "discarded_shared_preplan: true")
     assertContains(replan.stdout, "cascaded_plans=")
+    // Subtasks 1–2 are complete+commit: cascade must exclude them (WE-4719 / SKILL-181).
     assertTrue(
-      replan.stdout.contains("cascaded_plans=1,2") || replan.stdout.contains("cascaded_plans=1"),
+      replan.stdout.contains("cascaded_plans=none"),
       replan.stdout,
     )
     assertEquals(true, replan.payload?.get("discarded_shared_preplan"))
     @Suppress("UNCHECKED_CAST")
     val cascaded = replan.payload?.get("cascaded_plan_subtask_ids") as? List<*>
-    assertTrue(!cascaded.isNullOrEmpty(), "cascade must name at least one sibling plan")
-    assertFalse(3 in cascaded.mapNotNull { (it as? Number)?.toInt() ?: (it as? String)?.toIntOrNull() })
+    val cascadedIds = cascaded.orEmpty().mapNotNull { (it as? Number)?.toInt() ?: (it as? String)?.toIntOrNull() }
+    assertTrue(1 !in cascadedIds, "complete+commit sibling 1 must not cascade")
+    assertTrue(2 !in cascadedIds, "complete+commit sibling 2 must not cascade")
+    assertFalse(3 in cascadedIds)
+    val plannedAfter = (replan.payload?.get("after") as? Map<*, *>)?.get("planned_subtask_ids") as? List<*>
+    val plannedAfterIds = plannedAfter.orEmpty().mapNotNull {
+      (it as? Number)?.toInt() ?: (it as? String)?.toIntOrNull()
+    }
+    assertTrue(1 in plannedAfterIds, "complete+commit plan row 1 must survive include-shared-preplan")
+    assertTrue(2 in plannedAfterIds, "complete+commit plan row 2 must survive include-shared-preplan")
     // The replan deletes children hydrated from a discarded plan, but never a completed subtask's:
     // that would drop the commit_sha and workflow_id mapping this cascade is required to preserve.
-    val clearedChildren = (replan.payload.get("cleared_child_subtask_ids") as? List<*>)
+    val clearedChildren = (replan.payload?.get("cleared_child_subtask_ids") as? List<*>)
       ?.mapNotNull { (it as? Number)?.toInt() ?: (it as? String)?.toIntOrNull() }
       .orEmpty()
     assertFalse(1 in clearedChildren, "a completed subtask's child must survive the cascade")
@@ -1280,7 +1290,7 @@ class CliGoalExecutionOptionsTest {
 
     val result = CliRuntime.run(fixture.goalCommand(), fixture.context(launcher = launcher))
 
-    assertEquals(1, result.exitCode, result.stdout)
+    assertEquals(3, result.exitCode, result.stdout)
     assertContains(result.stdout, "goal SKILL-901: blocked at subtask 1")
     assertContains(result.stdout, "without a terminal workflow-store outcome")
     val workflowId = result.payload?.get("workflow_id")?.toString().orEmpty()
