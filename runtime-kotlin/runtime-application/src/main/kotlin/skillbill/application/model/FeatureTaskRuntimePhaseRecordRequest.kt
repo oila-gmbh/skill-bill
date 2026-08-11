@@ -38,17 +38,24 @@ data class FeatureTaskRuntimePhaseStateRequest(
    */
   val auditScopeCriterionRefs: List<String> = emptyList(),
   /**
-   * The model/effort the phase's child was actually launched with, taken from the same resolved
-   * value the launch argument was rendered from so the record cannot drift from the child.
+   * The model/effort this attempt was launched *from*: the same resolved value the `--model` argument
+   * is rendered from, stamped by the running write before the child is spawned. It is not a
+   * post-spawn observation — a kill in the window before the spawn leaves it on a `running` record
+   * whose child never started, and it holds only as long as every agent adapter forwards
+   * `modelOverride` verbatim. Read it as "what this attempt asked for", which is what answers "which
+   * model is this phase on"; the settling writes are what turn it into a statement about a child
+   * that ran.
    */
   val launchedModel: String? = null,
   val launchedEffort: String? = null,
   /**
    * True when this write knows the phase's launch outcome, making [launchedModel] and
-   * [launchedEffort] authoritative *as a pair* — including their joint absence, for a child that
-   * provably never launched (a provider-limit refusal or a pre-launch infra/seam failure). False
-   * leaves the prior record's pair untouched, so a later block/pause/completion write cannot erase
-   * or half-overwrite it.
+   * [launchedEffort] authoritative *as a pair* — including their joint absence. Two writes set it:
+   * the running write, which stamps the directive the launch argument is rendered from, and the
+   * settling writes for exactly the launch exits where `LaunchResult.childNeverLaunched` holds —
+   * that getter's KDoc owns the set, so consult it rather than restating it here. False leaves the
+   * prior record's pair untouched, so a later block/pause/completion write around a child that did
+   * run cannot erase or half-overwrite it.
    */
   val launchOutcomeKnown: Boolean = false,
 )

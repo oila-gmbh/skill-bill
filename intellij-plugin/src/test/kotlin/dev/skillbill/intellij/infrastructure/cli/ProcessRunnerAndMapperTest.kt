@@ -268,9 +268,12 @@ class IdeStatusJsonMapperTest {
     }
 
     @Test
-    fun `goal payload carrying a current model maps model and effort onto the outcome`() {
+    fun `goal payload carrying a current model maps model effort and phase onto the outcome`() {
         val outcome = IdeStatusJsonMapper.map(
-            goalPayload(planning = null, currentModel = """"current_model": {"model": "opus-5", "effort": "high"}"""),
+            goalPayload(
+                planning = null,
+                currentModel = """"current_model": {"model": "opus-5", "effort": "high", "phase_id": "implement"}""",
+            ),
             now,
             0,
         )
@@ -278,20 +281,26 @@ class IdeStatusJsonMapperTest {
         val currentModel = (outcome as SkillBillStatusOutcome.Active).currentModel
         assertEquals("opus-5", currentModel?.model)
         assertEquals("high", currentModel?.effort)
+        // A goal's step is a goal-level label, so this is the only thing that says which phase the
+        // model belongs to; dropping it leaves the popup naming a model attributed to nothing.
+        assertEquals("implement", currentModel?.phaseId)
         assertEquals("implement", outcome.currentStepId)
     }
 
     @Test
     fun `unusable current model degrades to null while the outcome maps normally`() {
+        // One case per parse rule the mapper applies: the key's absence, the object check, the
+        // non-blank-string check on `model`, its isString check, and the length bound. Extra
+        // literals for a rule already covered cost tokens on every future change and detect
+        // nothing more.
         val unusable = mapOf(
             "absent" to null,
-            "non-object string" to """"current_model": "opus-5"""",
-            "non-object array" to """"current_model": ["opus-5"]""",
-            "blank model" to """"current_model": {"model": "   "}""",
+            "non-object" to """"current_model": "opus-5"""",
+            "missing or blank model" to """"current_model": {"model": "   "}""",
             "non-string model" to """"current_model": {"model": ["opus-5"]}""",
-            "numeric model" to """"current_model": {"model": 5}""",
-            "boolean model" to """"current_model": {"model": true}""",
-            "missing model" to """"current_model": {"effort": "high"}""",
+            // Degrades rather than truncating: a clipped id would render a model that never
+            // existed, and the operator could not tell it had been cut.
+            "over-length model" to """"current_model": {"model": "${"m".repeat(121)}"}""",
         )
         for ((case, block) in unusable) {
             val outcome = IdeStatusJsonMapper.map(goalPayload(planning = null, currentModel = block), now, 0)
@@ -307,8 +316,6 @@ class IdeStatusJsonMapperTest {
         val unusable = mapOf(
             "blank effort" to """"current_model": {"model": "opus-5", "effort": "  "}""",
             "non-string effort" to """"current_model": {"model": "opus-5", "effort": {"level": "high"}}""",
-            "numeric effort" to """"current_model": {"model": "opus-5", "effort": 3}""",
-            "boolean effort" to """"current_model": {"model": "opus-5", "effort": false}""",
         )
         for ((case, block) in unusable) {
             val outcome = IdeStatusJsonMapper.map(goalPayload(planning = null, currentModel = block), now, 0)

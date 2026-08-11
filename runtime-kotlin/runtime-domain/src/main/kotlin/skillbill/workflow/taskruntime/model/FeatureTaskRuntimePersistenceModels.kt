@@ -435,6 +435,9 @@ const val FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED: String = "blocked"
 /** Non-terminal and resumable: the subtask waits on a bounded operator decision, it is not blocked. */
 const val FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED: String = "paused"
 
+/** Terminal success. A completed phase's launch context is history, never current state. */
+const val FEATURE_TASK_RUNTIME_PHASE_STATUS_COMPLETED: String = "completed"
+
 /**
  * Durable per-phase record: one entry per phase id holding its latest persisted state.
  * `finishedAt`/`durationMillis`/`outputArtifact` are nullable because a phase may be
@@ -507,6 +510,11 @@ data class FeatureTaskRuntimePhaseRecord(
     }
     launchedEffort?.let { effort ->
       require(effort.isNotBlank()) { "FeatureTaskRuntimePhaseRecord.launchedEffort must be non-blank when present." }
+      // An effort without a model is unrepresentable rather than merely odd: every reader keys the
+      // pair off the model, so a lone effort would decode cleanly and then be silently discarded.
+      require(launchedModel != null) {
+        "FeatureTaskRuntimePhaseRecord.launchedEffort requires launchedModel; the launch pair moves as a unit."
+      }
     }
   }
 
@@ -602,20 +610,39 @@ data class FeatureTaskRuntimePhaseRecord(
         "loop_id", "edge_iteration", "review_pass_number", "rejected_output",
         "repair_evidence", "launched_model", "launched_effort",
       )
-      val hasCompatibleFields = raw.keys.containsAll(required) && allowed.containsAll(raw.keys)
-      val hasCompatibleIdentity =
-        raw["contract_version"] == FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION &&
-          raw["record_kind"] == "private_phase_record"
-      if (!hasCompatibleFields || !hasCompatibleIdentity) {
-        incompatiblePhaseRecord()
+      val missing = required - raw.keys
+      val unknown = raw.keys - allowed
+      val identityDetail = when {
+        raw["record_kind"] != "private_phase_record" -> "record_kind was '${raw["record_kind"]}'"
+        raw["contract_version"] != FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION ->
+          "contract_version was '${raw["contract_version"]}'"
+
+        else -> null
+      }
+      if (missing.isNotEmpty() || unknown.isNotEmpty() || identityDetail != null) {
+        // The cause must be named. The contract version is shared across record kinds, so an
+        // additive key on this record alone cannot bump it — meaning a newer row read by an older
+        // build fails on `unknown` while its version string matches. Reporting only the version
+        // would send the operator hunting a migration that does not exist.
+        incompatiblePhaseRecord(
+          listOfNotNull(
+            identityDetail,
+            missing.takeIf { it.isNotEmpty() }?.let { "missing required keys ${it.sorted()}" },
+            unknown.takeIf { it.isNotEmpty() }?.let {
+              "unknown keys ${it.sorted()} (a row written by a newer runtime than this build)"
+            },
+          ),
+        )
       }
     }
 
-    private fun incompatiblePhaseRecord(): Nothing = throw InvalidWorkflowStateSchemaError(
-      "Private feature-task-runtime phase record is incompatible with persistence contract " +
-        "$FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION; " +
-        "$FEATURE_TASK_RUNTIME_INCOMPATIBLE_RECORD_GUIDANCE.",
-    )
+    private fun incompatiblePhaseRecord(details: List<String> = emptyList()): Nothing =
+      throw InvalidWorkflowStateSchemaError(
+        "Private feature-task-runtime phase record is incompatible with persistence contract " +
+          "$FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION" +
+          details.takeIf { it.isNotEmpty() }?.joinToString(prefix = " (", postfix = ")").orEmpty() +
+          "; $FEATURE_TASK_RUNTIME_INCOMPATIBLE_RECORD_GUIDANCE.",
+      )
   }
 }
 

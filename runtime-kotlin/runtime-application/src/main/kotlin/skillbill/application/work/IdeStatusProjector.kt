@@ -16,14 +16,19 @@ import skillbill.application.model.IdeStatusSnapshot
 import skillbill.application.model.IdeStatusStep
 import skillbill.application.model.IdeStatusWorkflowFamily
 import skillbill.application.workflow.WorkflowFamily
+import skillbill.error.ShellContentContractException
 import skillbill.goalrunner.model.ExecutionLiveness
 import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
 import skillbill.goalrunner.model.GoalPlanningStatusState
 import skillbill.goalrunner.model.GoalRunnerStatusProjection
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
+import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.model.WorkItemKind
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_COMPLETED
+import java.io.IOException
 import java.nio.file.Path
 import java.time.Instant
 import java.time.LocalDateTime
@@ -50,6 +55,7 @@ class IdeStatusProjector(
   workflowSnapshotValidator: WorkflowSnapshotValidator,
   private val goalRunnerStatusService: GoalRunnerStatusService,
   private val featureTaskRuntimeStatusService: FeatureTaskRuntimeStatusService,
+  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
 ) {
   private val workflowEngine = WorkflowEngine(workflowSnapshotValidator)
 
@@ -110,7 +116,7 @@ class IdeStatusProjector(
       progress = progress,
       startedAt = candidate.startedAt,
       currentSubtask = currentSubtask,
-      currentModel = childCurrentModel(projection?.currentChildWorkflowId, context),
+      currentModel = childCurrentModel(projection?.currentChildWorkflowId, lifecycle, context),
       planning = planning,
       pauseRequested = projection?.pauseRequested == true && projection.paused != true,
       // Durable record only: a lease-expiry-inferred pause has no recorded instant, and
@@ -198,25 +204,52 @@ class IdeStatusProjector(
 
   /**
    * The launched model of the goal's currently running child phase. The goal's own currentStep can
-   * be a planning label rather than a phase id, so the child's own projection resolves the phase.
+   * be a planning label rather than a phase id, so the child's own projection resolves the phase —
+   * which is why the emitted object carries that phase id: without it a consumer seeing
+   * `current_step: planning` has no way to learn which phase the model belongs to.
    *
    * Optional context must never cost a status reading: this is a nested read of a *different*
    * workflow's rows, so letting its failure escape would downgrade the whole goal snapshot to a
    * single `schema_incompatible` record through [IdeStatusService] — losing lifecycle, progress and
-   * pause state over an optional field. Any resolution failure omits the field instead.
+   * pause state over an optional field. The catch is bounded to the two failure modes that mean
+   * "this child's rows cannot be read" — a typed durable-record contract failure and an IO failure.
+   * A programming defect, an [Error] and a cancellation all still propagate rather than being
+   * reported as a healthy snapshot, and each degradation emits a diagnostic naming the child, so a
+   * systematically unreadable child is visible instead of silently model-less forever.
+   *
+   * A terminal goal returns before the read, for the same reason [goalStep] replaces a leftover step
+   * string with "Complete": a finished goal can still hold a non-completed child phase record, and
+   * reporting its model would show a live-looking model for work that is not running. A blocked or
+   * failed goal keeps it — "which model was running when it stopped" is the diagnostic there. That
+   * early return also skips the child's full status projection where it would buy nothing.
+   *
+   * The read deliberately sits outside [IdeStatusProjectionContext.unitOfWork]: the goal projection
+   * this builds on already reads outside it, so threading only this one read through would not make
+   * the snapshot atomic.
    */
   private fun childCurrentModel(
     childWorkflowId: String?,
+    lifecycle: IdeStatusLifecycleState,
     context: IdeStatusProjectionContext,
   ): IdeStatusCurrentModel? {
+    if (lifecycle == IdeStatusLifecycleState.TERMINAL) return null
     val workflowId = childWorkflowId?.takeIf(String::isNotBlank) ?: return null
-    val status = runCatching {
+    val degraded = "IDE status omitted current_model for child workflow '$workflowId': " +
+      "the child's durable status could not be read."
+    val status = try {
       featureTaskRuntimeStatusService.status(
         FeatureTaskRuntimeStatusRequest(workflowId = workflowId, dbPathOverride = context.dbOverride),
       )
-    }.getOrNull() ?: return null
-    val currentPhaseId = status.currentPhaseId ?: return null
-    return status.phases.firstOrNull { it.phaseId == currentPhaseId }?.toIdeStatusCurrentModel()
+    } catch (error: ShellContentContractException) {
+      diagnostics.warning(degraded, error)
+      null
+    } catch (error: IOException) {
+      diagnostics.warning(degraded, error)
+      null
+    }
+    return status?.currentPhaseId?.let { phaseId ->
+      status.phases.firstOrNull { it.phaseId == phaseId }?.toIdeStatusCurrentModel()
+    }
   }
 
   private fun projectRuntime(candidate: IdeStatusCandidate, context: IdeStatusProjectionContext): IdeStatusSnapshot {
@@ -330,10 +363,21 @@ private fun goalStep(
   }
 }
 
-private fun FeatureTaskRuntimePhaseStatus.toIdeStatusCurrentModel(): IdeStatusCurrentModel? =
-  launchedModel?.takeIf(String::isNotBlank)?.let { model ->
-    IdeStatusCurrentModel(model = model, effort = launchedEffort?.takeIf(String::isNotBlank))
+/**
+ * A completed phase's model is history, not the model in force, so it is never projected as current.
+ * A paused or blocked phase keeps it: "which model hit the usage limit" and "which model was running
+ * when it blocked" are the questions an operator asks at exactly those states.
+ */
+private fun FeatureTaskRuntimePhaseStatus.toIdeStatusCurrentModel(): IdeStatusCurrentModel? {
+  if (status == FEATURE_TASK_RUNTIME_PHASE_STATUS_COMPLETED) return null
+  return launchedModel?.takeIf(String::isNotBlank)?.let { model ->
+    IdeStatusCurrentModel(
+      model = model,
+      effort = launchedEffort?.takeIf(String::isNotBlank),
+      phaseId = phaseId.takeIf(String::isNotBlank),
+    )
   }
+}
 
 private fun GoalPlanningStatusSnapshot.toIdeStatusPlanning(): IdeStatusPlanning = IdeStatusPlanning(
   state = state,

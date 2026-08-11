@@ -255,6 +255,32 @@ class SkillBillStatusBarWidgetFixtureTest : BasePlatformTestCase() {
         )
     }
 
+    fun testPopupValueLabelsDoNotRenderRuntimeTextAsHtml() {
+        val widget = newWidget()
+        val built = widget.buildPopupContent(
+            SkillBillStatusBarPresentation.map(
+                activeUiState(currentModel = CurrentPhaseModel(model = "<html><b>opus-5")),
+            ),
+        )
+
+        // Swing parses a label whose text starts with <html> as markup, so an <img src=...> would
+        // make the IDE fetch it and a <b> would restyle away the value the row exists to report.
+        // Every value here is runtime-supplied, so HTML must be off on all of them.
+        val labels = valueLabels(built.panel)
+        assertTrue("popup renders value labels", labels.isNotEmpty())
+        assertTrue(
+            "every value label opts out of HTML rendering",
+            labels.all { it.getClientProperty("html.disable") == true },
+        )
+        widget.dispose()
+    }
+
+    private fun valueLabels(component: java.awt.Component): List<javax.swing.JLabel> = when (component) {
+        is javax.swing.JLabel -> listOf(component)
+        is java.awt.Container -> component.components.flatMap { valueLabels(it) }
+        else -> emptyList()
+    }
+
     fun testDisabledPauseKeepsItsAccessibleNameAndRegisteredRequestText() {
         val widget = newWidget()
         val built = widget.buildPopupContent(

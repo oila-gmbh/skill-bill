@@ -42,6 +42,15 @@ class ProcessAgentRunAdapter(
       // operator was told the agent wrote bad output when it had written none we could read.
       DecodedAgentRunOutput(text = "", rawOutputPreview = result.stdout.take(RAW_OUTPUT_PREVIEW_MAX_CHARS))
     }
+    // The two flags are one fact read two ways, and downstream code depends on that: the run loop
+    // decides whether a settled phase keeps its launched-model stamp from `spawnFailed`, while
+    // `processStarted` is the field documented as the process-start boundary. A runner that reports
+    // a pre-start failure as anything but a spawn failure would silently attribute a model to a
+    // child that never ran, so the disagreement fails here rather than becoming a durable lie.
+    require(result.spawnFailed != result.processStarted) {
+      "AgentRunProcessRunner result must report exactly one of spawnFailed/processStarted; got " +
+        "spawnFailed=${result.spawnFailed}, processStarted=${result.processStarted}."
+    }
     val normalizedStdout = decoded.text
     val decodedBodyBytes = if (normalizedStdout == result.stdout) {
       result.stdoutBytes

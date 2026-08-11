@@ -6,8 +6,8 @@ import dev.skillbill.intellij.application.GoalStopOutcome
 import dev.skillbill.intellij.application.GoalStopRepository
 import dev.skillbill.intellij.application.PreferenceCachePort
 import dev.skillbill.intellij.application.StatusRepository
-import dev.skillbill.intellij.domain.DEFAULT_REFRESH_INTERVAL_SECONDS
 import dev.skillbill.intellij.domain.CurrentPhaseModel
+import dev.skillbill.intellij.domain.DEFAULT_REFRESH_INTERVAL_SECONDS
 import dev.skillbill.intellij.domain.FEATURE_GOAL_WORKFLOW_FAMILY
 import dev.skillbill.intellij.domain.LastKnownDisplayCache
 import dev.skillbill.intellij.domain.SkillBillStatusOutcome

@@ -3199,6 +3199,10 @@ internal class FeatureTaskRuntimeRunLoop(
    * existing transition machinery re-enters the producing phase under its bounded regeneration cap. A
    * record with no attributable producer, or whose producer the resolved pipeline dropped, blocks
    * durably with an actionable reason instead of attempting an impossible re-entry.
+   *
+   * A record rejection is raised at the launch seam, before any child is spawned, so every block
+   * seam reachable from here — including [blockUnattributableRecordRejection] — settles a phase
+   * whose child provably never ran and clears the running write's model stamp.
    */
   private fun settleRecordRejection(
     run: PhaseRun,
@@ -3206,7 +3210,6 @@ internal class FeatureTaskRuntimeRunLoop(
     iteration: Int,
     observability: FeatureTaskRuntimeRunObservability,
     rejection: RecordRejection,
-    childNeverLaunched: Boolean,
   ): PhaseOutcome {
     val consumer = run.phaseId
     val producer = FeatureTaskRuntimePhaseWorkflowDefinition.REGENERATION_PRODUCER_BY_CONSUMER[consumer]
@@ -3224,7 +3227,6 @@ internal class FeatureTaskRuntimeRunLoop(
         observability,
         rejection,
         producer,
-        childNeverLaunched,
       )
     }
     val rejectedRecord = state.outputFor(producer)
@@ -3239,7 +3241,7 @@ internal class FeatureTaskRuntimeRunLoop(
           "producer. The run blocks instead of fabricating a rejected-output diagnostic.",
         observability,
         failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
-        childNeverLaunched = childNeverLaunched,
+        childNeverLaunched = true,
       )
     val producerEvidence = recorder.producerOutput(
       request.workflowId,
@@ -3256,7 +3258,7 @@ internal class FeatureTaskRuntimeRunLoop(
         "a rejected-output diagnostic from normalized workflow state.",
       observability,
       failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
-      childNeverLaunched = childNeverLaunched,
+      childNeverLaunched = true,
     )
     val rejectedPayload = producerEvidence.payload ?: byteArrayOf()
     val diagnosticIdentity = recordRejectedOutput(
@@ -3309,7 +3311,6 @@ internal class FeatureTaskRuntimeRunLoop(
     observability: FeatureTaskRuntimeRunObservability,
     rejection: RecordRejection,
     producer: String?,
-    childNeverLaunched: Boolean,
   ): PhaseOutcome {
     val detail = payloadFreeRejectionReason(
       "reconciliation-${rejection.rejectionClass}",
@@ -3365,7 +3366,7 @@ internal class FeatureTaskRuntimeRunLoop(
       reason,
       observability,
       failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
-      childNeverLaunched = childNeverLaunched,
+      childNeverLaunched = true,
     )
   }
 
@@ -3440,7 +3441,7 @@ internal class FeatureTaskRuntimeRunLoop(
     }
     launch.recordRejection?.let { rejection ->
       return AttemptResult.settled(
-        settleRecordRejection(run, state, iteration, observability, rejection, launch.childNeverLaunched),
+        settleRecordRejection(run, state, iteration, observability, rejection),
       )
     }
     val fileManifest = requireNotNull(launch.fileManifest)
@@ -4726,6 +4727,8 @@ internal class FeatureTaskRuntimeRunLoop(
     val persistedEffort: String?,
   )
 
+  // Pure in [run]: both the durable running write and the launch request call it, and a shared value
+  // threaded between them would only hide that they cannot disagree.
   private fun launchedModelDirective(run: PhaseRun): LaunchedModelDirective {
     val model = run.modelDirective?.model
     val effort = run.modelDirective?.effort
@@ -5196,9 +5199,17 @@ internal class FeatureTaskRuntimeRunLoop(
     is AgentRunLaunchFacts -> providerLimitSignal(outcome)
       ?.let { LaunchResult.providerLimited(providerLimitPauseReason(phaseId, it), fileManifest) }
       ?: infraFailureReason(phaseId, outcome)
-        // Only a spawn failure proves no child ran; a timeout, an interruption and a non-zero exit
-        // all happened after the process started under the launched model.
-        ?.let { LaunchResult.infraFailure(it, fileManifest, childNeverLaunched = outcome.spawnFailed) }
+        // Only a failure before the process-start boundary proves no child ran; a timeout, an
+        // interruption and a non-zero exit all happened after it, under the launched model. Both
+        // flags are consulted because they are one fact reported two ways: the launcher adapter
+        // rejects a disagreeing pair, and reading only one of them would trust the weaker signal.
+        ?.let {
+          LaunchResult.infraFailure(
+            it,
+            fileManifest,
+            childNeverLaunched = outcome.spawnFailed || !outcome.processStarted,
+          )
+        }
       ?: LaunchResult.captured(
         outcome.stdout,
         outcome.stdoutBytes,
@@ -5276,13 +5287,17 @@ internal class FeatureTaskRuntimeRunLoop(
     val recordRejection: RecordRejection? get() = (this as? RecordRejected)?.rejection
 
     /**
-     * True only where the launch provably never produced a running child: a pre-launch capture or
-     * seam rejection, or a spawn failure. A timeout, an interruption, a non-zero exit and a
-     * post-run capture failure all happened around a child that did run under the launched model,
+     * True only where the launch provably never produced a running child: a spawn failure, or a
+     * pre-launch capture or declaration rejection. A timeout, an interruption, a non-zero exit and
+     * a post-run capture failure all happened around a child that did run under the launched model,
      * so their records must keep it.
+     *
+     * [RecordRejected] never reaches here: its seam fires before any spawn, so
+     * [settleRecordRejection] states never-launched at its own block seams rather than routing the
+     * same fact through this getter.
      */
     val childNeverLaunched: Boolean
-      get() = (this as? InfraFailure)?.neverLaunched ?: (this is RecordRejected)
+      get() = (this as? InfraFailure)?.neverLaunched == true
     val failureDisposition: FeatureTaskRuntimeFailureDisposition
       get() = (this as? InfraFailure)?.disposition ?: FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE
     val fileManifest: FeatureTaskRuntimePhaseFileManifest?

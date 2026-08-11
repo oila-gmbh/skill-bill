@@ -54,7 +54,11 @@ class IdeStatusGoldenFixturesTest {
     )
   }
 
-  /** Cursor's merged form carries the effort inside the model string, so no `effort` key is emitted. */
+  /**
+   * Cursor's merged form carries the effort inside the model string, so no `effort` key is emitted.
+   * The goal-level `current_step` is why `phase_id` exists: without it this payload names a model
+   * whose phase appears nowhere in it.
+   */
   @Test
   fun `feature-goal current-model without effort golden validates`() {
     IdeStatusSchemaValidator.validate(
@@ -65,14 +69,17 @@ class IdeStatusGoldenFixturesTest {
         "workflow_id" to "goal-6",
         "workflow_family" to "feature-goal",
         "lifecycle_state" to "active",
-        "current_step" to linkedMapOf("id" to "implement", "label" to "Implement"),
+        "current_step" to linkedMapOf("id" to "planning", "label" to "Planning"),
         "progress" to linkedMapOf("completed" to 1, "total" to 3),
         "started_at" to "2026-08-06T08:00:00Z",
         "current_subtask" to linkedMapOf("id" to "2"),
-        "current_model" to linkedMapOf("model" to "claude-opus-4-8[effort=high]"),
+        "current_model" to linkedMapOf(
+          "model" to "claude-opus-4-8[effort=high]",
+          "phase_id" to "implement",
+        ),
         "updated_at" to "2026-08-06T10:00:00Z",
         "freshness" to "fresh",
-        "summary" to "Goal SKILL-183 is active on Implement.",
+        "summary" to "Goal SKILL-183 is active on Planning.",
       ),
       "golden-goal-current-model",
     )

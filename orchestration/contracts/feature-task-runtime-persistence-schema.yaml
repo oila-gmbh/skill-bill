@@ -112,8 +112,13 @@ $defs:
       review_pass_number: { type: integer, minimum: 1 }
       # Absent on every pre-SKILL-183 record and on phases launched with no model directive;
       # present-but-blank is rejected by FeatureTaskRuntimePhaseRecord's own invariants.
+      # The pair moves as a unit, so an effort without a model is not representable — every reader
+      # keys the pair off the model and would silently discard a lone effort. Mirrored by
+      # FeatureTaskRuntimePhaseRecord's init.
       launched_model: { type: string, minLength: 1 }
       launched_effort: { type: string, minLength: 1 }
+    dependentRequired:
+      launched_effort: [launched_model]
   delivered_projection:
     type: object
     additionalProperties: false

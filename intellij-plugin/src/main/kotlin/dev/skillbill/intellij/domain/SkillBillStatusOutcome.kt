@@ -244,6 +244,12 @@ data class GoalPlanningInfo(
 data class CurrentPhaseModel(
     val model: String,
     val effort: String? = null,
+    /**
+     * The runtime phase the model belongs to. A goal's step is a goal-level label — often
+     * `Planning` — so for the goal family this is the only thing that says which phase is meant.
+     * Absent when the producer could not resolve it.
+     */
+    val phaseId: String? = null,
 )
 
 enum class UnavailableReason {

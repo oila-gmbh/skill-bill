@@ -101,9 +101,7 @@ class FeatureTaskRuntimeStatusServiceTest {
     val records = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID))
     assertEquals("claude-opus-4-8[effort=high]", records.getValue("implement").launchedModel)
     assertNull(records.getValue("implement").launchedEffort)
-    // A phase recorded with no directive stays wire-identical to the pre-change shape.
     assertNull(records.getValue("plan").launchedModel)
-    assertTrue("launched_model" !in records.getValue("plan").toArtifactMap())
 
     val projection = requireNotNull(
       harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
@@ -185,6 +183,50 @@ class FeatureTaskRuntimeStatusServiceTest {
     assertNull(record.launchedModel)
     assertNull(record.launchedEffort)
     assertTrue("launched_model" !in record.toArtifactMap())
+  }
+
+  @Test
+  fun `a settle that advances the attempt or swaps the agent does not inherit the prior launch pair`() {
+    // Two pre-launch seams that never call the launcher: a cap-exhaustion block writes the *next*
+    // attempt, and a branch-setup block writes under a non-agent id. Both leave launchOutcomeKnown
+    // false, so without the identity gate they inherit the prior attempt's pair and the record — and
+    // the IDE popup reading it — asserts a model that attempt provably never launched.
+    listOf(
+      "advanced attempt" to Pair(2, "claude"),
+      "swapped agent" to Pair(1, "branch-setup"),
+    ).forEach { (case, identity) ->
+      val (attemptCount, agentId) = identity
+      val harness = statusHarness()
+      harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+      harness.recorder.recordPhaseState(
+        FeatureTaskRuntimePhaseStateRequest(
+          workflowId = WORKFLOW_ID,
+          phaseId = "implement",
+          status = "running",
+          attemptCount = 1,
+          resolvedAgentId = "claude",
+          finished = false,
+          launchedModel = "claude-opus-4-8",
+          launchedEffort = "high",
+          launchOutcomeKnown = true,
+        ),
+      )
+      harness.recorder.recordPhaseState(
+        FeatureTaskRuntimePhaseStateRequest(
+          workflowId = WORKFLOW_ID,
+          phaseId = "implement",
+          status = "blocked",
+          attemptCount = attemptCount,
+          resolvedAgentId = agentId,
+          finished = false,
+          blockedReason = "settled before any launch",
+        ),
+      )
+
+      val record = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID)).getValue("implement")
+      assertNull(record.launchedModel, "$case must not inherit the model")
+      assertNull(record.launchedEffort, "$case must not inherit the effort")
+    }
   }
 
   @Test

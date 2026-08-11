@@ -1,6 +1,8 @@
 package dev.skillbill.intellij.presentation
 
 import dev.skillbill.intellij.domain.CurrentPhaseModel
+import dev.skillbill.intellij.domain.FEATURE_GOAL_WORKFLOW_FAMILY
+import dev.skillbill.intellij.domain.MODEL_TEXT_MAX_LENGTH
 import dev.skillbill.intellij.domain.GoalPlanningInfo
 import dev.skillbill.intellij.domain.SkillBillStatusOutcome
 import java.time.Duration
@@ -518,6 +520,32 @@ class SkillBillStatusBarPresentationTest {
         // Only the popup-facing row differs.
         assertEquals("opus-5 (effort: high)", withModel.details.modelText)
         assertTrue("no model text without a model", withoutModel.details.modelText == null)
+    }
+
+    @Test
+    fun `the model row names its phase only for a goal and stays bounded for the popup`() {
+        val model = CurrentPhaseModel(model = "opus-5", effort = "high", phaseId = "implement")
+
+        // The runtime family's Step row already names the phase; repeating it there is noise.
+        val runtime = SkillBillStatusBarPresentation.map(active().copy(currentModel = model))
+        // A goal's Step row is a goal-level label, so without the phase the model is attributed to
+        // nothing the payload shows.
+        val goal = SkillBillStatusBarPresentation.map(
+            active().copy(workflowFamily = FEATURE_GOAL_WORKFLOW_FAMILY, currentModel = model),
+        )
+
+        assertEquals("opus-5 (effort: high)", runtime.details.modelText)
+        assertEquals("opus-5 (implement, effort: high)", goal.details.modelText)
+
+        // Unbounded, this lands in a non-wrapping JLabel inside a popup with no width cap and can
+        // push the action row off-screen.
+        val long = SkillBillStatusBarPresentation.map(
+            active().copy(currentModel = CurrentPhaseModel(model = "m".repeat(119))),
+        )
+        assertTrue(
+            "model row must stay bounded, was ${long.details.modelText?.length}",
+            (long.details.modelText?.length ?: 0) <= MODEL_TEXT_MAX_LENGTH,
+        )
     }
 
     private fun activeOutcome(

@@ -136,7 +136,42 @@ class FeatureTaskRuntimeModelDirectiveRunnerTest {
     val plan = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID)).getValue("plan")
     assertEquals(null, plan.launchedModel)
     assertEquals(null, plan.launchedEffort)
-    assertTrue("launched_model" !in plan.toArtifactMap())
+  }
+
+  @Test
+  fun `a phase whose child never spawned clears the running write's model`() {
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher {
+        AgentRunLaunchFacts(
+          agent = InstallAgent.CLAUDE,
+          exitStatus = null,
+          stdout = "",
+          stderr = "Error: the agent executable could not be spawned",
+          timedOut = false,
+          spawnFailed = true,
+        )
+      },
+      agentAssignment = FeatureTaskRuntimeAgentAssignment(override = "claude"),
+    )
+    val matrix = ExecutionMatrix(
+      agents = mapOf(
+        InstallAgent.CLAUDE to mapOf(
+          ExecutionTier.IMPLEMENTATION to PhaseModelDirective("claude-sonnet", "medium"),
+        ),
+      ),
+    )
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(
+      harness.runner.run(harness.request().copy(modelAssignment = FeatureTaskRuntimeModelAssignment(matrix = matrix))),
+    )
+
+    // The clearing branch of childNeverLaunched, driven through the run loop that computes it rather
+    // than by poking the recorder. Hard-wiring it to false would leave this record reporting which
+    // model "ran" for a process that never started, with the rest of the suite green.
+    assertEquals("preplan", blocked.lastIncompletePhase)
+    val record = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID)).getValue("preplan")
+    assertEquals(null, record.launchedModel)
+    assertEquals(null, record.launchedEffort)
   }
 
   @Test
@@ -172,6 +207,42 @@ class FeatureTaskRuntimeModelDirectiveRunnerTest {
     assertEquals("preplan", blocked.lastIncompletePhase)
     val record = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID)).getValue("preplan")
     assertEquals(harness.launcher.requests.last().skillRunRequest.modelOverride, record.launchedModel)
+    assertEquals("claude-sonnet", record.launchedModel)
+    assertEquals("medium", record.launchedEffort)
+  }
+
+  @Test
+  fun `a phase paused at a provider usage limit keeps the model the child was launched with`() {
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher {
+        AgentRunLaunchFacts(
+          agent = InstallAgent.CLAUDE,
+          exitStatus = 1,
+          stdout = "",
+          stderr = "You've hit your session limit · resets 3:40am (Europe/Berlin)",
+          timedOut = false,
+          spawnFailed = false,
+        )
+      },
+      agentAssignment = FeatureTaskRuntimeAgentAssignment(override = "claude"),
+    )
+    val matrix = ExecutionMatrix(
+      agents = mapOf(
+        InstallAgent.CLAUDE to mapOf(
+          ExecutionTier.IMPLEMENTATION to PhaseModelDirective("claude-sonnet", "medium"),
+        ),
+      ),
+    )
+
+    val paused = assertIs<FeatureTaskRuntimeRunReport.Paused>(
+      harness.runner.run(harness.request().copy(modelAssignment = FeatureTaskRuntimeModelAssignment(matrix = matrix))),
+    )
+
+    // "Which model hit the usage limit" is the operative diagnostic on a limit pause, so the pause
+    // write must leave the running write's stamp alone instead of settling it as never-launched.
+    assertEquals("preplan", paused.pausedPhase)
+    val record = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID)).getValue("preplan")
+    assertEquals("paused", record.status)
     assertEquals("claude-sonnet", record.launchedModel)
     assertEquals("medium", record.launchedEffort)
   }

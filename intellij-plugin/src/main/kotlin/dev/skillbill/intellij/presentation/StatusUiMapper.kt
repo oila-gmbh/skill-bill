@@ -123,6 +123,10 @@ object StatusUiMapper {
                         outcome.currentSubtaskId,
                         outcome.progressCompleted,
                     ),
+                    // A Stale built from the persisted display cache carries no model — the cache
+                    // deliberately stores none, so a phase's model is never resurrected from disk
+                    // after a restart. The Model row is therefore absent until a live poll lands;
+                    // that missing row is the cache being honest, not a parse failure.
                     currentModel = outcome.currentModel,
                 )
 

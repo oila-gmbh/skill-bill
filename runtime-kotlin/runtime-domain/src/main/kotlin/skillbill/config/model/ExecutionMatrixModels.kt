@@ -139,7 +139,20 @@ private fun parseAgents(raw: Any?): Map<InstallAgent, AgentDirectives> {
   }
 }
 
+/**
+ * Tier ids and runtime phase ids share one key namespace under an agent, and the tier is resolved
+ * first. That is only safe while the two sets are disjoint: a phase id equal to `reasoning` or
+ * `implementation` would leave every existing config parsing while silently turning a single-phase
+ * override into a whole-tier directive. The guard fails the parse instead of re-routing a tier.
+ */
+private val COLLIDING_PHASE_IDS: List<String> =
+  FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds.filter { ExecutionTier.fromId(it) != null }
+
 private fun parseAgentDirectives(agentId: String, raw: Any?): AgentDirectives {
+  require(COLLIDING_PHASE_IDS.isEmpty()) {
+    "Runtime phase ids $COLLIDING_PHASE_IDS collide with execution-tier ids, so an agent's " +
+      "per-phase override key would silently resolve as a tier directive."
+  }
   val entries = raw as? Map<*, *> ?: invalidExecutionMatrix(
     "$EXECUTION_MATRIX_KEY.$AGENTS_KEY.$agentId",
     raw,

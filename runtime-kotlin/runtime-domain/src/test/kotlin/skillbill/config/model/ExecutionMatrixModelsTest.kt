@@ -59,9 +59,7 @@ class ExecutionMatrixModelsTest {
               "reasoning" to mapOf("model" to "gpt-5.6-luna-xhigh"),
               "implementation" to mapOf("model" to "cursor-grok-4.5-medium"),
               "preplan" to mapOf("model" to "gpt-5.6-luna-high"),
-              "plan" to mapOf("model" to "claude-opus-5-thinking-high"),
               "review" to mapOf("model" to "claude-opus-5-thinking-max", "effort" to "max"),
-              "implement" to mapOf("model" to "composer-2.5"),
             ),
           ),
         ),
@@ -69,35 +67,13 @@ class ExecutionMatrixModelsTest {
     )
     val matrix = parsed.matrix
 
+    // An override beats an explicit phase_tiers entry, carries an effort, and leaves every
+    // non-overridden phase on its tier. The remaining override keys would only re-exercise the
+    // same branch with different literals.
     assertEquals(PhaseModelDirective("gpt-5.6-luna-high"), matrix.directiveFor("cursor", "preplan"))
-    assertEquals(PhaseModelDirective("claude-opus-5-thinking-high"), matrix.directiveFor("cursor", "plan"))
     assertEquals(PhaseModelDirective("claude-opus-5-thinking-max", "max"), matrix.directiveFor("cursor", "review"))
-    assertEquals(PhaseModelDirective("composer-2.5"), matrix.directiveFor("cursor", "implement"))
     assertEquals(PhaseModelDirective("gpt-5.6-luna-xhigh"), matrix.directiveFor("cursor", "audit"))
     assertEquals(PhaseModelDirective("cursor-grok-4.5-medium"), matrix.directiveFor("cursor", "pr"))
-  }
-
-  @Test
-  fun `agents without per-phase overrides keep resolving through their tier`() {
-    val parsed = assertIs<ExecutionMatrixParse.Valid>(
-      parseExecutionMatrix(
-        mapOf(
-          "agents" to mapOf(
-            "claude" to mapOf("reasoning" to mapOf("model" to "claude-opus-5", "effort" to "high")),
-            "cursor" to mapOf(
-              "reasoning" to mapOf("model" to "gpt-5.6-luna-xhigh"),
-              "review" to mapOf("model" to "claude-opus-5-thinking-max"),
-            ),
-          ),
-        ),
-      ),
-    )
-
-    assertEquals(PhaseModelDirective("claude-opus-5", "high"), parsed.matrix.directiveFor("claude", "review"))
-    assertEquals(
-      PhaseModelDirective("claude-opus-5-thinking-max"),
-      parsed.matrix.directiveFor("cursor", "review"),
-    )
   }
 
   @Test

@@ -77,10 +77,16 @@ data class IdeStatusCurrentSubtask(
 data class IdeStatusCurrentModel(
   val model: String,
   val effort: String? = null,
+  /**
+   * The phase the model belongs to. A goal's `current_step` is a goal-level label — often
+   * `planning` — so without this the payload names a model whose phase appears nowhere in it.
+   */
+  val phaseId: String? = null,
 ) {
   init {
     require(model.isNotBlank()) { "currentModel.model must not be blank." }
     effort?.let { require(it.isNotBlank()) { "currentModel.effort must not be blank when present." } }
+    phaseId?.let { require(it.isNotBlank()) { "currentModel.phaseId must not be blank when present." } }
   }
 }
 
@@ -238,6 +244,7 @@ data class IdeStatusSnapshot(
       buildMap {
         put("model", model.model)
         model.effort?.let { put("effort", it) }
+        model.phaseId?.let { put("phase_id", it) }
       },
     )
   }
