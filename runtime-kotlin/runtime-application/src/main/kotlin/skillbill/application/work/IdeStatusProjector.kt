@@ -3,9 +3,11 @@ package skillbill.application.work
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.goalrunner.GoalRunnerStatusService
+import skillbill.application.model.FeatureTaskRuntimePhaseStatus
 import skillbill.application.model.FeatureTaskRuntimeStatusRequest
 import skillbill.application.model.GoalRunnerStatusRequest
 import skillbill.application.model.IdeStatusCandidate
+import skillbill.application.model.IdeStatusCurrentModel
 import skillbill.application.model.IdeStatusCurrentSubtask
 import skillbill.application.model.IdeStatusLifecycleState
 import skillbill.application.model.IdeStatusPlanning
@@ -108,6 +110,7 @@ class IdeStatusProjector(
       progress = progress,
       startedAt = candidate.startedAt,
       currentSubtask = currentSubtask,
+      currentModel = childCurrentModel(projection?.currentChildWorkflowId, context),
       planning = planning,
       pauseRequested = projection?.pauseRequested == true && projection.paused != true,
       // Durable record only: a lease-expiry-inferred pause has no recorded instant, and
@@ -193,6 +196,25 @@ class IdeStatusProjector(
     return parseInstantOrNull(snapshot?.startedAt)
   }
 
+  /**
+   * The launched model of the goal's currently running child phase. The goal's own currentStep can
+   * be a planning label rather than a phase id, so the child's own projection resolves the phase.
+   * Optional context must never cost a status reading: any resolution failure omits the field.
+   */
+  private fun childCurrentModel(
+    childWorkflowId: String?,
+    context: IdeStatusProjectionContext,
+  ): IdeStatusCurrentModel? {
+    val workflowId = childWorkflowId?.takeIf(String::isNotBlank) ?: return null
+    val status = runCatching {
+      featureTaskRuntimeStatusService.status(
+        FeatureTaskRuntimeStatusRequest(workflowId = workflowId, dbPathOverride = context.dbOverride),
+      )
+    }.getOrNull() ?: return null
+    val currentPhaseId = status.currentPhaseId ?: return null
+    return status.phases.firstOrNull { it.phaseId == currentPhaseId }?.toIdeStatusCurrentModel()
+  }
+
   private fun projectRuntime(candidate: IdeStatusCandidate, context: IdeStatusProjectionContext): IdeStatusSnapshot {
     val snapshot = WorkflowFamily.TASK_RUNTIME.get(context.unitOfWork.workflowStates, candidate.workflowId)
       ?: return incompatible(candidate, context, "Runtime workflow snapshot is missing.")
@@ -224,6 +246,9 @@ class IdeStatusProjector(
       currentStep = IdeStatusStep(id = stepId, label = stepLabel),
       progress = progress,
       startedAt = startedAt,
+      // Reuses the already-loaded projection: the model reported must belong to the phase reported
+      // as current_step, never to a neighbouring one.
+      currentModel = status?.phases?.firstOrNull { it.phaseId == stepId }?.toIdeStatusCurrentModel(),
       updatedAt = updatedAt,
       freshness = IdeStatusFreshnessClassifier.classify(updatedAt, context.observedAt),
       summary = familySummary(
@@ -300,6 +325,11 @@ private fun goalStep(
     IdeStatusStep(id = "goal", label = "Goal")
   }
 }
+
+private fun FeatureTaskRuntimePhaseStatus.toIdeStatusCurrentModel(): IdeStatusCurrentModel? =
+  launchedModel?.takeIf(String::isNotBlank)?.let { model ->
+    IdeStatusCurrentModel(model = model, effort = launchedEffort?.takeIf(String::isNotBlank))
+  }
 
 private fun GoalPlanningStatusSnapshot.toIdeStatusPlanning(): IdeStatusPlanning = IdeStatusPlanning(
   state = state,

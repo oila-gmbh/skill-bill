@@ -472,6 +472,13 @@ data class FeatureTaskRuntimePhaseRecord(
   val edgeIteration: Int? = null,
   val reviewPassNumber: Int? = null,
   val repairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence? = null,
+  /**
+   * The model the phase's child was actually launched with, exactly as handed to the agent CLI —
+   * including Cursor's merged `model[effort=…]` form. Null when the phase ran with no model
+   * directive, which is also the shape every record written before this field holds.
+   */
+  val launchedModel: String? = null,
+  val launchedEffort: String? = null,
 ) {
   init {
     require(phaseId.isNotBlank()) { "FeatureTaskRuntimePhaseRecord.phaseId must be non-blank." }
@@ -494,6 +501,12 @@ data class FeatureTaskRuntimePhaseRecord(
       require(phaseId == "review" && pass >= 1) {
         "FeatureTaskRuntimePhaseRecord.reviewPassNumber must be >= 1 and present only for review."
       }
+    }
+    launchedModel?.let { model ->
+      require(model.isNotBlank()) { "FeatureTaskRuntimePhaseRecord.launchedModel must be non-blank when present." }
+    }
+    launchedEffort?.let { effort ->
+      require(effort.isNotBlank()) { "FeatureTaskRuntimePhaseRecord.launchedEffort must be non-blank when present." }
     }
   }
 
@@ -521,6 +534,8 @@ data class FeatureTaskRuntimePhaseRecord(
     edgeIteration?.let { put("edge_iteration", it) }
     reviewPassNumber?.let { put("review_pass_number", it) }
     repairEvidence?.let { put("repair_evidence", it.toArtifactMap()) }
+    launchedModel?.let { put("launched_model", it) }
+    launchedEffort?.let { put("launched_effort", it) }
   }
 
   companion object {
@@ -535,7 +550,7 @@ data class FeatureTaskRuntimePhaseRecord(
         "finished_at", "duration_millis", "output_artifact", "blocked_reason",
         "failure_disposition", "file_manifest_before", "file_manifest_after", "file_manifest_introduced",
         "loop_id", "edge_iteration", "review_pass_number", "rejected_output",
-        "repair_evidence",
+        "repair_evidence", "launched_model", "launched_effort",
       )
       val hasCompatibleFields = raw.keys.containsAll(required) && allowed.containsAll(raw.keys)
       val hasCompatibleIdentity =
@@ -577,6 +592,8 @@ data class FeatureTaskRuntimePhaseRecord(
               evidence.entries.associate { (key, item) -> key.toString() to item },
             )
           },
+          launchedModel = raw.optionalStringField("launched_model"),
+          launchedEffort = raw.optionalStringField("launched_effort"),
         )
       } catch (_: InvalidWorkflowStateSchemaError) {
         incompatiblePhaseRecord()

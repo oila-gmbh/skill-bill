@@ -37,6 +37,7 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * F-001 / F-008: unit coverage for [FeatureTaskRuntimeStatusService]'s projection
@@ -77,6 +78,39 @@ class FeatureTaskRuntimeStatusServiceTest {
     assertEquals(0, projection.blockedCount)
     assertEquals("preplan", projection.currentPhaseId)
     assertEquals(List(10) { "pending" }, projection.phases.map { it.status })
+  }
+
+  @Test
+  fun `the launched model rides the advancing phase write and reaches the phase status`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = WORKFLOW_ID,
+        phaseId = "implement",
+        status = "running",
+        attemptCount = 1,
+        resolvedAgentId = "cursor",
+        finished = false,
+        launchedModel = "claude-opus-4-8[effort=high]",
+      ),
+    )
+    harness.recordRunning("plan", attemptCount = 1)
+
+    val records = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID))
+    assertEquals("claude-opus-4-8[effort=high]", records.getValue("implement").launchedModel)
+    assertNull(records.getValue("implement").launchedEffort)
+    // A phase recorded with no directive stays wire-identical to the pre-change shape.
+    assertNull(records.getValue("plan").launchedModel)
+    assertTrue("launched_model" !in records.getValue("plan").toArtifactMap())
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+    assertEquals(
+      "claude-opus-4-8[effort=high]",
+      projection.phases.single { it.phaseId == "implement" }.launchedModel,
+    )
   }
 
   @Test

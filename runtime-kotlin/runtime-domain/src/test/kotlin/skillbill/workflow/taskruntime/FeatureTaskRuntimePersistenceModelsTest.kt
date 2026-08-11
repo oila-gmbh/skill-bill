@@ -32,6 +32,56 @@ import kotlin.test.assertTrue
 
 class FeatureTaskRuntimePersistenceModelsTest {
   @Test
+  fun `launched model and effort round-trip through the phase record artifact map`() {
+    val wire = FeatureTaskRuntimePhaseRecord(
+      phaseId = "implement",
+      status = "running",
+      attemptCount = 1,
+      startedAt = "2026-08-11T12:00:00Z",
+      resolvedAgentId = "cursor",
+      launchedModel = "claude-opus-4-8[effort=high]",
+      launchedEffort = "high",
+    ).toArtifactMap()
+
+    val decoded = FeatureTaskRuntimePhaseRecord.fromArtifactMap(wire)
+
+    assertEquals("claude-opus-4-8[effort=high]", decoded.launchedModel)
+    assertEquals("high", decoded.launchedEffort)
+  }
+
+  @Test
+  fun `phase record written before the launched model fields still decodes`() {
+    // The shape every live workflow row holds: neither key present, and neither may be required.
+    val preChangeWire = FeatureTaskRuntimePhaseRecord(
+      phaseId = "implement",
+      status = "running",
+      attemptCount = 1,
+      startedAt = "2026-08-11T12:00:00Z",
+      resolvedAgentId = "claude",
+    ).toArtifactMap()
+
+    assertTrue("launched_model" !in preChangeWire)
+    assertTrue("launched_effort" !in preChangeWire)
+    val decoded = FeatureTaskRuntimePhaseRecord.fromArtifactMap(preChangeWire)
+    assertNull(decoded.launchedModel)
+    assertNull(decoded.launchedEffort)
+  }
+
+  @Test
+  fun `a present-but-blank launched model or effort fails record construction`() {
+    val base = FeatureTaskRuntimePhaseRecord(
+      phaseId = "implement",
+      status = "running",
+      attemptCount = 1,
+      startedAt = "2026-08-11T12:00:00Z",
+      resolvedAgentId = "claude",
+    )
+
+    assertFailsWith<IllegalArgumentException> { base.copy(launchedModel = " ") }
+    assertFailsWith<IllegalArgumentException> { base.copy(launchedEffort = " ") }
+  }
+
+  @Test
   fun `legacy rejected output is consumed and discarded during phase record migration`() {
     val current = FeatureTaskRuntimePhaseRecord(
       phaseId = "implement",

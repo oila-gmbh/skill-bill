@@ -28,6 +28,56 @@ class IdeStatusGoldenFixturesTest {
     )
   }
 
+  /**
+   * SKILL-183: the model-present shape. The model-absent shape stays pinned by every other
+   * fixture here, which carries no `current_model` key at all.
+   */
+  @Test
+  fun `feature-task-runtime current-model golden validates`() {
+    IdeStatusSchemaValidator.validate(
+      linkedMapOf(
+        "contract_version" to IDE_STATUS_CONTRACT_VERSION,
+        "repository_identity" to "repo-root-realpath-v1:/repo",
+        "issue_key" to "SKILL-183",
+        "workflow_id" to "wfl-runtime-2",
+        "workflow_family" to "feature-task-runtime",
+        "lifecycle_state" to "active",
+        "current_step" to linkedMapOf("id" to "implement", "label" to "Implement"),
+        "progress" to linkedMapOf("completed" to 3, "total" to 9),
+        "started_at" to "2026-08-06T08:00:00Z",
+        "current_model" to linkedMapOf("model" to "claude-opus-4-8", "effort" to "high"),
+        "updated_at" to "2026-08-06T10:00:00Z",
+        "freshness" to "fresh",
+        "summary" to "feature-task-runtime SKILL-183 is active on Implement.",
+      ),
+      "golden-runtime-current-model",
+    )
+  }
+
+  /** Cursor's merged form carries the effort inside the model string, so no `effort` key is emitted. */
+  @Test
+  fun `feature-goal current-model without effort golden validates`() {
+    IdeStatusSchemaValidator.validate(
+      linkedMapOf(
+        "contract_version" to IDE_STATUS_CONTRACT_VERSION,
+        "repository_identity" to "repo-root-realpath-v1:/repo",
+        "issue_key" to "SKILL-183",
+        "workflow_id" to "goal-6",
+        "workflow_family" to "feature-goal",
+        "lifecycle_state" to "active",
+        "current_step" to linkedMapOf("id" to "implement", "label" to "Implement"),
+        "progress" to linkedMapOf("completed" to 1, "total" to 3),
+        "started_at" to "2026-08-06T08:00:00Z",
+        "current_subtask" to linkedMapOf("id" to "2"),
+        "current_model" to linkedMapOf("model" to "claude-opus-4-8[effort=high]"),
+        "updated_at" to "2026-08-06T10:00:00Z",
+        "freshness" to "fresh",
+        "summary" to "Goal SKILL-183 is active on Implement.",
+      ),
+      "golden-goal-current-model",
+    )
+  }
+
   @Test
   fun `feature-verify golden validates`() {
     IdeStatusSchemaValidator.validate(

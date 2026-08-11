@@ -4647,29 +4647,54 @@ internal class FeatureTaskRuntimeRunLoop(
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput? = null,
     repairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence? = null,
     repositoryFingerprint: String? = null,
-  ): FeatureTaskRuntimePhaseStateRequest = FeatureTaskRuntimePhaseStateRequest(
-    workflowId = run.request.workflowId,
-    phaseId = run.phaseId,
-    status = status,
-    attemptCount = iteration,
-    resolvedAgentId = run.resolvedAgent.resolvedAgentId,
-    finished = finished,
-    outputArtifact = outputArtifact,
-    normalizedOutput = normalizedOutput,
-    repairEvidence = repairEvidence,
-    repositoryFingerprint = repositoryFingerprint,
-    fileManifestBefore = fileManifest?.before.orEmpty(),
-    fileManifestAfter = fileManifest?.after.orEmpty(),
-    fileManifestIntroduced = fileManifest?.introduced.orEmpty(),
-    loopId = run.reentry?.loopId,
-    edgeIteration = run.reentry?.edgeIteration,
-    reviewPassNumber = reviewPassNumber(run, state),
-    auditScopeCriterionRefs = if (run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) {
-      openAuditCriterionRefs()
-    } else {
-      emptyList()
-    },
+  ): FeatureTaskRuntimePhaseStateRequest {
+    val launched = launchedModelDirective(run)
+    return FeatureTaskRuntimePhaseStateRequest(
+      workflowId = run.request.workflowId,
+      phaseId = run.phaseId,
+      status = status,
+      attemptCount = iteration,
+      resolvedAgentId = run.resolvedAgent.resolvedAgentId,
+      finished = finished,
+      outputArtifact = outputArtifact,
+      normalizedOutput = normalizedOutput,
+      repairEvidence = repairEvidence,
+      repositoryFingerprint = repositoryFingerprint,
+      fileManifestBefore = fileManifest?.before.orEmpty(),
+      fileManifestAfter = fileManifest?.after.orEmpty(),
+      fileManifestIntroduced = fileManifest?.introduced.orEmpty(),
+      loopId = run.reentry?.loopId,
+      edgeIteration = run.reentry?.edgeIteration,
+      reviewPassNumber = reviewPassNumber(run, state),
+      auditScopeCriterionRefs = if (run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) {
+        openAuditCriterionRefs()
+      } else {
+        emptyList()
+      },
+      launchedModel = launched.modelOverride,
+      launchedEffort = launched.persistedEffort,
+    )
+  }
+
+  /**
+   * The model/effort the child is actually launched with. Cursor takes model and effort merged into
+   * one bracketed `--model` argument, so its [persistedEffort] is null: the merged model already
+   * carries the effort, and recording it twice would let the two drift apart.
+   */
+  private data class LaunchedModelDirective(
+    val modelOverride: String?,
+    val effortOverride: String?,
+    val persistedEffort: String?,
   )
+
+  private fun launchedModelDirective(run: PhaseRun): LaunchedModelDirective {
+    val model = run.modelDirective?.model
+    val effort = run.modelDirective?.effort
+    if (run.resolvedAgent.resolvedAgentId == InstallAgent.CURSOR.id && model != null && effort != null) {
+      return LaunchedModelDirective("$model[effort=$effort]", effort, persistedEffort = null)
+    }
+    return LaunchedModelDirective(model, effort, effort)
+  }
 
   /**
    * The active repair batch read from the durable generation authority at the launch seam, so first entry,
@@ -4802,18 +4827,7 @@ internal class FeatureTaskRuntimeRunLoop(
     val briefing = prepared.briefing
     val isReviewPhase = run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW
 
-    // Cursor requires model and effort to be merged into bracket syntax at the request level
-    val (modelOverride, effortOverride) = if (run.resolvedAgent.resolvedAgentId == InstallAgent.CURSOR.id) {
-      val model = run.modelDirective?.model
-      val effort = run.modelDirective?.effort
-      if (model != null && effort != null) {
-        "$model[effort=$effort]" to effort
-      } else {
-        model to effort
-      }
-    } else {
-      run.modelDirective?.model to run.modelDirective?.effort
-    }
+    val launched = launchedModelDirective(run)
 
     val outcome = subtaskLauncher.launch(
       GoalRunnerSubtaskLaunchRequest(
@@ -4824,8 +4838,8 @@ internal class FeatureTaskRuntimeRunLoop(
           repoRoot = run.request.repoRoot,
           dbPathOverride = run.request.dbPathOverride,
           timeout = run.request.timeout,
-          modelOverride = modelOverride,
-          effortOverride = effortOverride,
+          modelOverride = launched.modelOverride,
+          effortOverride = launched.effortOverride,
           compaction = run.compaction,
           promptOverride = prepared.prompt,
           readOnlyPhase = isReviewPhase,

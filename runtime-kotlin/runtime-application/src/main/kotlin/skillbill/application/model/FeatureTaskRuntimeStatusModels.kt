@@ -27,6 +27,9 @@ data class FeatureTaskRuntimePhaseStatus(
    * malformed output or carrying partial implementation work forward.
    */
   val continuationKind: String? = null,
+  /** The model/effort the phase's child was launched with; null when the phase ran with no directive. */
+  val launchedModel: String? = null,
+  val launchedEffort: String? = null,
 )
 
 /**

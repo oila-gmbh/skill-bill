@@ -1513,6 +1513,8 @@ class FeatureTaskRuntimePhaseRecorder(
       edgeIteration = request.edgeIteration,
       reviewPassNumber = request.reviewPassNumber,
       repairEvidence = request.repairEvidence,
+      launchedModel = request.launchedModel,
+      launchedEffort = request.launchedEffort,
     )
   }
 

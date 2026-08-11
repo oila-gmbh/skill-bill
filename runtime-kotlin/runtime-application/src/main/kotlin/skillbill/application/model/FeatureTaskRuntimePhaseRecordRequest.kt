@@ -37,6 +37,12 @@ data class FeatureTaskRuntimePhaseStateRequest(
    * non-audit phase.
    */
   val auditScopeCriterionRefs: List<String> = emptyList(),
+  /**
+   * The model/effort the phase's child was actually launched with, taken from the same resolved
+   * value the launch argument was rendered from so the record cannot drift from the child.
+   */
+  val launchedModel: String? = null,
+  val launchedEffort: String? = null,
 )
 
 /**

@@ -104,6 +104,41 @@ class FeatureTaskRuntimeModelDirectiveRunnerTest {
   }
 
   @Test
+  fun `the persisted launched model is the merged string cursor was actually launched with`() {
+    val harness = runnerHarness(agentAssignment = FeatureTaskRuntimeAgentAssignment(override = "cursor"))
+    val matrix = ExecutionMatrix(
+      agents = mapOf(
+        InstallAgent.CURSOR to mapOf(
+          ExecutionTier.REASONING to PhaseModelDirective("claude-opus-4-8", "high"),
+        ),
+      ),
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(
+      harness.runner.run(harness.request().copy(modelAssignment = FeatureTaskRuntimeModelAssignment(matrix = matrix))),
+    )
+
+    val plan = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID)).getValue("plan")
+    // Not the pre-merge directive model: a recomputed merge would record a value the child never saw.
+    assertEquals(harness.requestForPhase("plan").skillRunRequest.modelOverride, plan.launchedModel)
+    assertEquals("claude-opus-4-8[effort=high]", plan.launchedModel)
+    // The merged model already carries the effort; persisting it twice would let the two drift.
+    assertEquals(null, plan.launchedEffort)
+  }
+
+  @Test
+  fun `a phase with no resolved directive persists neither launched field`() {
+    val harness = runnerHarness()
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+
+    val plan = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID)).getValue("plan")
+    assertEquals(null, plan.launchedModel)
+    assertEquals(null, plan.launchedEffort)
+    assertTrue("launched_model" !in plan.toArtifactMap())
+  }
+
+  @Test
   fun `cursor invoked-agent route selects cursor adapter`() {
     val harness = runnerHarness(agentAssignment = FeatureTaskRuntimeAgentAssignment(override = "cursor"))
 

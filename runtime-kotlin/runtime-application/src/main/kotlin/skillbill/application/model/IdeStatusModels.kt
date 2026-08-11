@@ -70,6 +70,19 @@ data class IdeStatusCurrentSubtask(
   val startedAt: Instant? = null,
 )
 
+/**
+ * The model the current phase's child was launched with. [effort] is null when the model string
+ * already carries it (Cursor's merged `model[effort=…]`) or when no effort was resolved.
+ */
+data class IdeStatusCurrentModel(
+  val model: String,
+  val effort: String? = null,
+) {
+  init {
+    require(model.isNotBlank()) { "currentModel.model must not be blank." }
+  }
+}
+
 /** Goal planning progress mirrored from [skillbill.goalrunner.model.GoalPlanningStatusSnapshot]. */
 data class IdeStatusPlanning(
   val state: GoalPlanningStatusState,
@@ -136,6 +149,9 @@ data class IdeStatusSnapshot(
   val progress: IdeStatusProgress? = null,
   val startedAt: Instant? = null,
   val currentSubtask: IdeStatusCurrentSubtask? = null,
+  // Null default: optional context, so a snapshot whose current phase has no recorded model
+  // stays wire-identical.
+  val currentModel: IdeStatusCurrentModel? = null,
   // Null default: only projectGoal populates planning, so every other family stays wire-identical.
   val planning: IdeStatusPlanning? = null,
   // Null defaults: only projectGoal populates the pause signals, so every other family stays
@@ -187,6 +203,15 @@ data class IdeStatusSnapshot(
         buildMap {
           put("id", subtask.id)
           subtask.startedAt?.let { put("started_at", it.toString()) }
+        },
+      )
+    }
+    currentModel?.let { model ->
+      put(
+        "current_model",
+        buildMap {
+          put("model", model.model)
+          model.effort?.takeIf(String::isNotBlank)?.let { put("effort", it) }
         },
       )
     }
