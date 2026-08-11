@@ -1215,10 +1215,42 @@ build_selection_replay_runtime_cli() {
   )
 }
 
+# The already-installed runtime CLI (RUNTIME_CLI_BIN) is a leftover from whatever
+# release is currently on disk, but replay validates the platform-pack manifests
+# from the release being installed NOW ($PLATFORM_PACKS_DIR, already bootstrapped
+# to the new bundle by this point). When a release bumps the platform-pack shell
+# contract version, the old installed CLI rejects the new manifests before it ever
+# gets replaced. Fetch the matching prebuilt CLI for THIS release into the scratch
+# work dir (never the durable install dir, so a failed/offline fetch never disturbs
+# the existing install) and prefer it over the stale installed binary.
+REPLAY_RUNTIME_CLI_BIN=""
+REPLAY_RUNTIME_CLI_FETCH_ATTEMPTED=0
+fetch_prebuilt_runtime_cli_for_replay() {
+  if [[ "$REPLAY_RUNTIME_CLI_FETCH_ATTEMPTED" -eq 1 ]]; then
+    [[ -n "$REPLAY_RUNTIME_CLI_BIN" && -x "$REPLAY_RUNTIME_CLI_BIN" ]]
+    return $?
+  fi
+  REPLAY_RUNTIME_CLI_FETCH_ATTEMPTED=1
+
+  [[ "$INSTALL_SOURCE" == "source" ]] && return 1
+  check_prebuilt_dependencies >/dev/null 2>&1 || return 1
+  resolve_release_assets || return 1
+
+  local archive src bin_path
+  archive="$(fetch_release_asset "$RESOLVED_RUNTIME_CLI_ASSET")" || return 1
+  verify_sha256 "$archive" || return 1
+  src="$(unpack_runtime_image "$archive" "runtime-cli" "$(prebuilt_work_dir)/extract-cli-replay")" || return 1
+  bin_path="$src/bin/runtime-cli"
+  [[ -x "$bin_path" ]] || return 1
+  REPLAY_RUNTIME_CLI_BIN="$bin_path"
+}
+
 run_selection_runtime_cli() {
   local runtime_bin=""
   if runtime_cli_supports_selection_replay "$RUNTIME_CLI_BUILD_BIN"; then
     runtime_bin="$RUNTIME_CLI_BUILD_BIN"
+  elif fetch_prebuilt_runtime_cli_for_replay 1>&2 && runtime_cli_supports_selection_replay "$REPLAY_RUNTIME_CLI_BIN"; then
+    runtime_bin="$REPLAY_RUNTIME_CLI_BIN"
   elif runtime_cli_supports_selection_replay "$RUNTIME_CLI_BIN"; then
     runtime_bin="$RUNTIME_CLI_BIN"
   elif build_selection_replay_runtime_cli && runtime_cli_supports_selection_replay "$RUNTIME_CLI_BUILD_BIN"; then
