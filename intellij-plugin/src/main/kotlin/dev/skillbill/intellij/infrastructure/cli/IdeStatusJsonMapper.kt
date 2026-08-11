@@ -335,15 +335,19 @@ object IdeStatusJsonMapper {
      */
     private fun JsonObject.parseCurrentModel(): CurrentPhaseModel? {
         val currentModel = getAsJsonObjectOrNull(CURRENT_MODEL_WIRE_KEY) ?: return null
-        val model = currentModel.getAsString("model")?.trim()?.takeUnless { it.isBlank() } ?: return null
+        val model = currentModel.getAsStringPrimitive("model")?.trim()?.takeUnless { it.isBlank() } ?: return null
         return CurrentPhaseModel(
             model = model.take(120),
-            effort = currentModel.getAsString("effort")?.trim()?.takeUnless { it.isBlank() }?.take(40),
+            effort = currentModel.getAsStringPrimitive("effort")?.trim()?.takeUnless { it.isBlank() }?.take(40),
         )
     }
 
     private fun JsonObject.getAsString(key: String): String? =
         get(key)?.takeUnless { it.isJsonNull }?.asStringOrNull()
+
+    /** Strict: a JSON number or boolean is a type error, not text. */
+    private fun JsonObject.getAsStringPrimitive(key: String): String? =
+        get(key)?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isString }?.asString
 
     private fun JsonObject.getAsInt(key: String): Int? =
         get(key)?.takeUnless { it.isJsonNull }?.let {

@@ -289,6 +289,8 @@ class IdeStatusJsonMapperTest {
             "non-object array" to """"current_model": ["opus-5"]""",
             "blank model" to """"current_model": {"model": "   "}""",
             "non-string model" to """"current_model": {"model": ["opus-5"]}""",
+            "numeric model" to """"current_model": {"model": 5}""",
+            "boolean model" to """"current_model": {"model": true}""",
             "missing model" to """"current_model": {"effort": "high"}""",
         )
         for ((case, block) in unusable) {
@@ -305,6 +307,8 @@ class IdeStatusJsonMapperTest {
         val unusable = mapOf(
             "blank effort" to """"current_model": {"model": "opus-5", "effort": "  "}""",
             "non-string effort" to """"current_model": {"model": "opus-5", "effort": {"level": "high"}}""",
+            "numeric effort" to """"current_model": {"model": "opus-5", "effort": 3}""",
+            "boolean effort" to """"current_model": {"model": "opus-5", "effort": false}""",
         )
         for ((case, block) in unusable) {
             val outcome = IdeStatusJsonMapper.map(goalPayload(planning = null, currentModel = block), now, 0)
