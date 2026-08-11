@@ -3081,6 +3081,7 @@ internal class FeatureTaskRuntimeRunLoop(
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput? = null,
     repairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence? = null,
     rejectedOutput: String? = null,
+    childNeverLaunched: Boolean = false,
   ): PhaseOutcome {
     val phaseState = FeatureTaskRuntimePhaseStateRequest(
       workflowId = run.request.workflowId,
@@ -3101,6 +3102,9 @@ internal class FeatureTaskRuntimeRunLoop(
       loopId = loopId,
       edgeIteration = edgeIteration,
       reviewPassNumber = reviewPassNumber(run, state),
+      // A launch that never produced a child clears the running write's stamp; every other block
+      // reason happened around a child that did run, so its recorded model carries forward.
+      launchOutcomeKnown = childNeverLaunched,
     )
     state.reserveReviewPass(phaseState.reviewPassNumber)
     recorder.recordPhaseState(
@@ -3149,6 +3153,9 @@ internal class FeatureTaskRuntimeRunLoop(
         fileManifestIntroduced = fileManifest?.introduced.orEmpty(),
         loopId = run.reentry?.loopId,
         edgeIteration = run.reentry?.edgeIteration,
+        // The only pause seam is a provider-limit refusal, so no child ran: clear the running write's
+        // stamp rather than let it report a model the phase never executed.
+        launchOutcomeKnown = true,
       ),
       run.request.dbPathOverride,
     )
@@ -3168,6 +3175,7 @@ internal class FeatureTaskRuntimeRunLoop(
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput? = null,
     repairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence? = null,
     rejectedOutput: String? = null,
+    childNeverLaunched: Boolean = false,
   ): PhaseOutcome = blockAndPersist(
     run,
     attemptCount,
@@ -3181,6 +3189,7 @@ internal class FeatureTaskRuntimeRunLoop(
     normalizedOutput = normalizedOutput,
     repairEvidence = repairEvidence,
     rejectedOutput = rejectedOutput,
+    childNeverLaunched = childNeverLaunched,
   )
 
   /**
@@ -3387,7 +3396,17 @@ internal class FeatureTaskRuntimeRunLoop(
     priorCorrection: PriorAttemptCorrection?,
     phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>>? = null,
   ): AttemptResult {
-    persistPhase(run, iteration, STATUS_RUNNING, finished = false, outputArtifact = null)
+    // The running write is what the IDE reads as current_model while the child is in flight, so it
+    // stamps the directive the launch below is rendered from. The two never-launched exits then clear
+    // it: a phase whose child the provider refused, or whose launch failed, ran no model at all.
+    persistPhase(
+      run,
+      iteration,
+      STATUS_RUNNING,
+      finished = false,
+      outputArtifact = null,
+      launched = launchedModelDirective(run),
+    )
     val launch = launchAndCapture(run, state, priorCorrection, phaseTokenAccumulator)
     launch.providerLimitReason?.let { reason ->
       return AttemptResult.settled(pauseAndPersistInPhase(run, iteration, reason, observability, launch.fileManifest))
@@ -3401,6 +3420,7 @@ internal class FeatureTaskRuntimeRunLoop(
           observability,
           failureDisposition = launch.failureDisposition,
           fileManifest = launch.fileManifest,
+          childNeverLaunched = true,
         ),
       )
     }
@@ -4628,8 +4648,10 @@ internal class FeatureTaskRuntimeRunLoop(
     finished: Boolean,
     outputArtifact: String?,
     fileManifest: FeatureTaskRuntimePhaseFileManifest? = null,
+    launched: LaunchedModelDirective? = null,
   ) {
-    val phaseState = phaseStateRequest(run, iteration, status, finished, outputArtifact, fileManifest)
+    val phaseState =
+      phaseStateRequest(run, iteration, status, finished, outputArtifact, fileManifest, launched = launched)
     state.reserveReviewPass(phaseState.reviewPassNumber)
     recorder.recordPhaseState(
       phaseState,
@@ -4647,8 +4669,8 @@ internal class FeatureTaskRuntimeRunLoop(
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput? = null,
     repairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence? = null,
     repositoryFingerprint: String? = null,
+    launched: LaunchedModelDirective? = null,
   ): FeatureTaskRuntimePhaseStateRequest {
-    val launched = launchedModelDirective(run)
     return FeatureTaskRuntimePhaseStateRequest(
       workflowId = run.request.workflowId,
       phaseId = run.phaseId,
@@ -4671,8 +4693,9 @@ internal class FeatureTaskRuntimeRunLoop(
       } else {
         emptyList()
       },
-      launchedModel = launched.modelOverride,
-      launchedEffort = launched.persistedEffort,
+      launchedModel = launched?.modelOverride,
+      launchedEffort = launched?.persistedEffort,
+      launchOutcomeKnown = launched != null,
     )
   }
 

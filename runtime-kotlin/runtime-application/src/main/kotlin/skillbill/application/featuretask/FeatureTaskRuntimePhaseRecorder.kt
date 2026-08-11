@@ -1493,9 +1493,15 @@ class FeatureTaskRuntimePhaseRecorder(
   ): FeatureTaskRuntimePhaseRecord {
     val firstStartedAt = previous?.firstStartedAt ?: now
     val startedAt = if (request.status == STATUS_RUNNING || previous == null) now else previous.startedAt
-    // Only the running write carries authoritative launch information; every later write for the same
-    // phase (block, pause, completion) would otherwise erase the model the child actually ran with.
-    val carryLaunched = request.status != STATUS_RUNNING
+    // The launch pair moves as a unit: a write that knows the launch outcome replaces both fields,
+    // any other write carries both forward. Resolving them independently would let a Cursor-merged
+    // model (effort folded into the model string, so effort null) land over a prior record's effort
+    // and produce the self-contradictory pair LaunchedModelDirective exists to prevent.
+    val launched = if (request.launchOutcomeKnown) {
+      request.launchedModel to request.launchedEffort
+    } else {
+      previous?.launchedModel to previous?.launchedEffort
+    }
     return FeatureTaskRuntimePhaseRecord(
       phaseId = request.phaseId,
       status = request.status,
@@ -1516,8 +1522,8 @@ class FeatureTaskRuntimePhaseRecorder(
       edgeIteration = request.edgeIteration,
       reviewPassNumber = request.reviewPassNumber,
       repairEvidence = request.repairEvidence,
-      launchedModel = request.launchedModel ?: previous?.launchedModel?.takeIf { carryLaunched },
-      launchedEffort = request.launchedEffort ?: previous?.launchedEffort?.takeIf { carryLaunched },
+      launchedModel = launched.first,
+      launchedEffort = launched.second,
     )
   }
 

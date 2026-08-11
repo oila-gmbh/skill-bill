@@ -534,6 +534,10 @@ data class FeatureTaskRuntimePhaseRecord(
     edgeIteration?.let { put("edge_iteration", it) }
     reviewPassNumber?.let { put("review_pass_number", it) }
     repairEvidence?.let { put("repair_evidence", it.toArtifactMap()) }
+    putLaunchPair()
+  }
+
+  private fun MutableMap<String, Any?>.putLaunchPair() {
     launchedModel?.let { put("launched_model", it) }
     launchedEffort?.let { put("launched_effort", it) }
   }
@@ -542,23 +546,7 @@ data class FeatureTaskRuntimePhaseRecord(
     /** Strict decode; loud-fails on any missing or malformed required field. */
     @OpenBoundaryMap("Feature-task-runtime per-phase record decode from the durable workflow-artifact map")
     fun fromArtifactMap(raw: Map<String, Any?>): FeatureTaskRuntimePhaseRecord {
-      val required = setOf(
-        "contract_version", "record_kind", "phase_id", "status", "attempt_count", "started_at",
-        "first_started_at", "resolved_agent_id", "execution_origin",
-      )
-      val allowed = required + setOf(
-        "finished_at", "duration_millis", "output_artifact", "blocked_reason",
-        "failure_disposition", "file_manifest_before", "file_manifest_after", "file_manifest_introduced",
-        "loop_id", "edge_iteration", "review_pass_number", "rejected_output",
-        "repair_evidence", "launched_model", "launched_effort",
-      )
-      val hasCompatibleFields = raw.keys.containsAll(required) && allowed.containsAll(raw.keys)
-      val hasCompatibleIdentity =
-        raw["contract_version"] == FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION &&
-          raw["record_kind"] == "private_phase_record"
-      if (!hasCompatibleFields || !hasCompatibleIdentity) {
-        incompatiblePhaseRecord()
-      }
+      requireCompatibleShape(raw)
       return try {
         FeatureTaskRuntimePhaseRecord(
           phaseId = raw.requireStringField("phase_id"),
@@ -598,6 +586,27 @@ data class FeatureTaskRuntimePhaseRecord(
       } catch (_: InvalidWorkflowStateSchemaError) {
         incompatiblePhaseRecord()
       } catch (_: IllegalArgumentException) {
+        incompatiblePhaseRecord()
+      }
+    }
+
+    /** Key-shape and identity guard: an unknown key is drift, not a field to ignore. */
+    private fun requireCompatibleShape(raw: Map<String, Any?>) {
+      val required = setOf(
+        "contract_version", "record_kind", "phase_id", "status", "attempt_count", "started_at",
+        "first_started_at", "resolved_agent_id", "execution_origin",
+      )
+      val allowed = required + setOf(
+        "finished_at", "duration_millis", "output_artifact", "blocked_reason",
+        "failure_disposition", "file_manifest_before", "file_manifest_after", "file_manifest_introduced",
+        "loop_id", "edge_iteration", "review_pass_number", "rejected_output",
+        "repair_evidence", "launched_model", "launched_effort",
+      )
+      val hasCompatibleFields = raw.keys.containsAll(required) && allowed.containsAll(raw.keys)
+      val hasCompatibleIdentity =
+        raw["contract_version"] == FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION &&
+          raw["record_kind"] == "private_phase_record"
+      if (!hasCompatibleFields || !hasCompatibleIdentity) {
         incompatiblePhaseRecord()
       }
     }

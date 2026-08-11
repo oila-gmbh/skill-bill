@@ -93,6 +93,7 @@ class FeatureTaskRuntimeStatusServiceTest {
         resolvedAgentId = "cursor",
         finished = false,
         launchedModel = "claude-opus-4-8[effort=high]",
+        launchOutcomeKnown = true,
       ),
     )
     harness.recordRunning("plan", attemptCount = 1)
@@ -126,6 +127,7 @@ class FeatureTaskRuntimeStatusServiceTest {
         resolvedAgentId = "cursor",
         finished = false,
         launchedModel = "claude-opus-4-8[effort=high]",
+        launchOutcomeKnown = true,
       ),
     )
     harness.recorder.recordPhaseState(
@@ -147,6 +149,77 @@ class FeatureTaskRuntimeStatusServiceTest {
       requireNotNull(harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)))
         .phases.single { it.phaseId == "implement" }.launchedModel,
     )
+  }
+
+  @Test
+  fun `a settle write that knows no child launched clears the running write's model`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = WORKFLOW_ID,
+        phaseId = "implement",
+        status = "running",
+        attemptCount = 1,
+        resolvedAgentId = "claude",
+        finished = false,
+        launchedModel = "claude-opus-4-8",
+        launchedEffort = "high",
+        launchOutcomeKnown = true,
+      ),
+    )
+    harness.recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = WORKFLOW_ID,
+        phaseId = "implement",
+        status = "paused",
+        attemptCount = 1,
+        resolvedAgentId = "claude",
+        finished = false,
+        blockedReason = "provider usage limit refused the launch",
+        launchOutcomeKnown = true,
+      ),
+    )
+
+    val record = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID)).getValue("implement")
+    assertNull(record.launchedModel)
+    assertNull(record.launchedEffort)
+    assertTrue("launched_model" !in record.toArtifactMap())
+  }
+
+  @Test
+  fun `a Cursor-merged write replaces the launch pair instead of retaining the prior effort`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = WORKFLOW_ID,
+        phaseId = "implement",
+        status = "running",
+        attemptCount = 1,
+        resolvedAgentId = "claude",
+        finished = false,
+        launchedModel = "claude-opus-4-8",
+        launchedEffort = "medium",
+        launchOutcomeKnown = true,
+      ),
+    )
+    harness.recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = WORKFLOW_ID,
+        phaseId = "implement",
+        status = "running",
+        attemptCount = 2,
+        resolvedAgentId = "cursor",
+        finished = false,
+        launchedModel = "claude-opus-4-8[effort=high]",
+        launchOutcomeKnown = true,
+      ),
+    )
+
+    val record = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID)).getValue("implement")
+    assertEquals("claude-opus-4-8[effort=high]", record.launchedModel)
+    assertNull(record.launchedEffort)
   }
 
   @Test

@@ -80,6 +80,7 @@ data class IdeStatusCurrentModel(
 ) {
   init {
     require(model.isNotBlank()) { "currentModel.model must not be blank." }
+    effort?.let { require(it.isNotBlank()) { "currentModel.effort must not be blank when present." } }
   }
 }
 
@@ -206,15 +207,7 @@ data class IdeStatusSnapshot(
         },
       )
     }
-    currentModel?.let { model ->
-      put(
-        "current_model",
-        buildMap {
-          put("model", model.model)
-          model.effort?.takeIf(String::isNotBlank)?.let { put("effort", it) }
-        },
-      )
-    }
+    putCurrentModel()
     planning?.let { put("planning", planningWireMap(it)) }
     pauseRequested?.takeIf { it }?.let { put("pause_requested", true) }
     pausedAt?.let { put("paused_at", it.toString()) }
@@ -232,6 +225,21 @@ data class IdeStatusSnapshot(
         },
       )
     }
+  }
+
+  /**
+   * Omitted entirely when the current phase recorded no model, so a snapshot without it stays
+   * wire-identical. `effort` needs no blank guard here: [IdeStatusCurrentModel] rejects a blank one.
+   */
+  private fun MutableMap<String, Any?>.putCurrentModel() {
+    val model = currentModel ?: return
+    put(
+      "current_model",
+      buildMap {
+        put("model", model.model)
+        model.effort?.let { put("effort", it) }
+      },
+    )
   }
 
   /** Both keys are optional and goal-family-only, so a snapshot without them stays wire-identical. */

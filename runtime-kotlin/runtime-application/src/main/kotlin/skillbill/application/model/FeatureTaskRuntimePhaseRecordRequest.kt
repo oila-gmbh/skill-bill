@@ -43,6 +43,14 @@ data class FeatureTaskRuntimePhaseStateRequest(
    */
   val launchedModel: String? = null,
   val launchedEffort: String? = null,
+  /**
+   * True when this write knows the phase's launch outcome, making [launchedModel] and
+   * [launchedEffort] authoritative *as a pair* — including their joint absence, for a child that
+   * provably never launched (a provider-limit refusal, an infra launch failure, or a settlement
+   * derived from durable state without launching at all). False leaves the prior record's pair
+   * untouched, so a later block/pause/completion write cannot erase or half-overwrite it.
+   */
+  val launchOutcomeKnown: Boolean = false,
 )
 
 /**
