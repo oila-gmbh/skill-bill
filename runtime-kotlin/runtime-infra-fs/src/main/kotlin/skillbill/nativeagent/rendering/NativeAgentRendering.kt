@@ -26,7 +26,7 @@ enum class NativeAgentProvider(
     override fun homeAgentDirs(home: Path): List<Path> = listOf(home.resolve(".junie/agents"))
   },
   Cursor("cursor-agents", "md") {
-    override fun render(source: NativeAgentSource): String = renderFrontmatterAgent(source, mode = null)
+    override fun render(source: NativeAgentSource): String = renderCursorAgent(source)
     override fun homeAgentDirs(home: Path): List<Path> = listOf(home.resolve(".cursor/agents"))
   },
   ;
@@ -67,6 +67,16 @@ private fun renderFrontmatterAgent(agent: NativeAgentSource, mode: String?): Str
   if (agent.tools.isNotEmpty()) {
     append("tools: ${agent.tools.joinToString(", ")}").append('\n')
   }
+  append("---").append('\n')
+  append('\n')
+  append(agent.body.trimEnd()).append('\n')
+}
+
+/** Cursor frontmatter is name+description only; tools/model/readonly/is_background are omitted. */
+private fun renderCursorAgent(agent: NativeAgentSource): String = buildString {
+  append("---").append('\n')
+  append("name: ${yamlScalar(agent.name)}").append('\n')
+  append("description: ${yamlScalar(agent.description)}").append('\n')
   append("---").append('\n')
   append('\n')
   append(agent.body.trimEnd()).append('\n')
