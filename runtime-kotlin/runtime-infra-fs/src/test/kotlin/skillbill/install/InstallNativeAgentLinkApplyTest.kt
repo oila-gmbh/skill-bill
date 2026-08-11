@@ -767,6 +767,36 @@ class InstallNativeAgentLinkApplyTest : InstallApplyTestSupport() {
   }
 
   @Test
+  fun `failed replacement apply restores the previously published review catalog`() {
+    val fixture = setupApplyFixture()
+    Files.createDirectories(fixture.home.resolve(".codex"))
+    val firstPlan = InstallOperations.planInstall(
+      fixture.request(selectedPlatforms = setOf("kotlin"), agents = setOf(InstallAgent.CODEX)),
+    )
+    assertEquals(InstallApplyStatus.SUCCESS, InstallOperations.applyInstall(firstPlan).status)
+    val catalog = currentNativeAgentApplyCacheRoot(
+      fixture.home,
+      fixture.repoRoot.resolve("platform-packs"),
+      fixture.repoRoot.resolve("skills"),
+    ).resolve("review-catalog/platform-packs")
+    val publishedManifest = Files.readString(catalog.resolve("kotlin/platform.yaml"))
+
+    // The catalog swap moves the outgoing tree aside and deletes it, so a failure after the swap
+    // can only be undone from the journal's captured snapshots.
+    val inventory = fixture.home.resolve(".skill-bill/native-agent-link-inventory.json")
+    Files.writeString(inventory, "not-json")
+    val replacementPlan = InstallOperations.planInstall(
+      fixture.request(selectedPlatforms = setOf("kmp"), agents = setOf(InstallAgent.CODEX)),
+    )
+
+    val result = InstallOperations.applyInstall(replacementPlan)
+
+    assertEquals(InstallApplyStatus.FAILURE, result.status)
+    assertEquals(publishedManifest, Files.readString(catalog.resolve("kotlin/platform.yaml")))
+    assertFalse(Files.exists(catalog.resolve("kmp"), LinkOption.NOFOLLOW_LINKS))
+  }
+
+  @Test
   fun `installed review catalog contains only manifest and declared review content`() {
     val fixture = setupApplyFixture()
     Files.createDirectories(fixture.home.resolve(".codex"))

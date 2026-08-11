@@ -233,67 +233,94 @@ object InstallNativeAgentOperations {
     }
   }
 
+  /**
+   * Staged into a sibling directory and swapped in with two renames, rather than pruned and
+   * recopied in place. The in-memory [ProviderMutationJournal] cannot roll back an abrupt process
+   * death, and an in-place rewrite leaves a pack whose `platform.yaml` is deleted but not yet
+   * recopied — which every reader loads as a corrupt pack. With the swap the only externally
+   * visible states are the previous catalog, the new catalog, and briefly no catalog at all;
+   * readers degrade on absence and never observe a partially written pack.
+   */
   private fun publishInstalledReviewCatalog(
     platformPacksRoot: Path,
     selectedPlatforms: List<String>?,
     cacheRoot: Path,
     journal: ProviderMutationJournal,
   ) {
-    val catalogRoot = cacheRoot.resolve("review-catalog/platform-packs")
+    val catalogParent = cacheRoot.resolve("review-catalog")
+    val catalogRoot = catalogParent.resolve("platform-packs")
+    val staging = catalogParent.resolve(".platform-packs.staging")
+    val superseded = catalogParent.resolve(".platform-packs.superseded")
     val selected = selectedPlatforms?.toSet()
     val desiredPacks = Files.list(platformPacksRoot).use { packs ->
       packs.filter(Files::isDirectory)
         .filter { selected == null || it.fileName.toString() in selected }
         .toList()
     }
-    val desiredSlugs = desiredPacks.mapTo(mutableSetOf()) { it.fileName.toString() }
-    journal.beforeMutation(catalogRoot)
-    Files.createDirectories(catalogRoot)
-    Files.list(catalogRoot).use { installed ->
-      installed.filter(Files::isDirectory)
-        .filter { it.fileName.toString() !in desiredSlugs }
-        .forEach { stalePack ->
-          Files.walk(stalePack).use { paths ->
-            paths.sorted(Comparator.reverseOrder()).forEach { path ->
-              journal.beforeMutation(path)
-              Files.delete(path)
-            }
-          }
-        }
-    }
+
+    journal.beforeMutation(catalogParent)
+    Files.createDirectories(catalogParent)
+    // A prior crash can leave either scratch directory behind; neither is readable as a catalog.
+    deleteRecursively(staging)
+    deleteRecursively(superseded)
+    journal.afterTemporaryCreation(staging)
+    Files.createDirectories(staging)
+
+    // Staging holds exactly the desired packs, so deselected packs are pruned by the swap itself.
     desiredPacks.forEach { source ->
-      val targetPack = catalogRoot.resolve(source.fileName.toString())
-      if (Files.exists(targetPack, LinkOption.NOFOLLOW_LINKS)) {
-        Files.walk(targetPack).use { paths ->
-          paths.sorted(Comparator.reverseOrder()).forEach { path ->
-            journal.beforeMutation(path)
-            Files.delete(path)
-          }
-        }
-      }
+      val stagedPack = staging.resolve(source.fileName.toString())
       val manifest = loadPlatformManifest(source)
       val runtimeFiles = buildList {
         add(source.resolve("platform.yaml"))
         manifest.declaredFiles.baseline?.let(::add)
         addAll(manifest.declaredFiles.areas.values)
+        // The published manifest is reloaded by every consumer, and loading validates that declared
+        // add-on pointers resolve. Publishing the manifest without them made the pack unloadable.
+        manifest.featureAddonUsage.forEach { usage ->
+          usage.addons.forEach { addon ->
+            add(source.resolve("addons").resolve(addon.entrypoint))
+            addon.companionPointers.forEach { pointer -> add(source.resolve("addons").resolve(pointer)) }
+          }
+        }
       }.distinct()
       runtimeFiles.forEach { path ->
         val relative = source.relativize(path.toAbsolutePath().normalize())
         require(!relative.startsWith("..")) {
           "Installed review catalog path escapes platform pack '${manifest.slug}'."
         }
-        val target = targetPack.resolve(relative).normalize()
-        require(target.startsWith(catalogRoot)) { "Installed review catalog path escapes its cache root." }
+        val target = stagedPack.resolve(relative).normalize()
+        require(target.startsWith(staging)) { "Installed review catalog path escapes its cache root." }
         require(Files.isRegularFile(path) && !Files.isSymbolicLink(path)) {
           "Installed review catalog source must be a regular manifest-declared file: '$path'."
         }
-        journal.beforeMutation(target)
-        target.parent?.let {
-          journal.beforeMutation(it)
-          Files.createDirectories(it)
-        }
+        target.parent?.let(Files::createDirectories)
         Files.copy(path, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
       }
+    }
+
+    // Journal the outgoing and incoming trees path by path, parents first, so an in-process failure
+    // after the swap still unwinds: pre-existing paths keep their captured snapshot and are
+    // rewritten, paths only the new catalog introduces record as absent and are deleted.
+    if (Files.exists(catalogRoot, LinkOption.NOFOLLOW_LINKS)) {
+      Files.walk(catalogRoot).use { paths -> paths.sorted().forEach(journal::beforeMutation) }
+    }
+    Files.walk(staging).use { paths ->
+      paths.sorted().forEach { staged ->
+        journal.beforeMutation(catalogRoot.resolve(staging.relativize(staged)))
+      }
+    }
+
+    if (Files.exists(catalogRoot, LinkOption.NOFOLLOW_LINKS)) {
+      Files.move(catalogRoot, superseded, java.nio.file.StandardCopyOption.ATOMIC_MOVE)
+    }
+    Files.move(staging, catalogRoot, java.nio.file.StandardCopyOption.ATOMIC_MOVE)
+    deleteRecursively(superseded)
+  }
+
+  private fun deleteRecursively(root: Path) {
+    if (!Files.exists(root, LinkOption.NOFOLLOW_LINKS)) return
+    Files.walk(root).use { paths ->
+      paths.sorted(Comparator.reverseOrder()).forEach(Files::delete)
     }
   }
 

@@ -5,7 +5,6 @@ import skillbill.application.model.ParallelReviewScope
 import skillbill.application.model.StackDetectionException
 import skillbill.application.model.UsageValidationException
 import skillbill.application.review.ParallelCodeReviewRunner
-import skillbill.application.scaffold.ScaffoldCatalogService
 import skillbill.application.workflow.repoRoot
 import skillbill.config.model.RepoLocalConfig
 import skillbill.install.model.InstallAgent
@@ -20,7 +19,6 @@ import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.ReviewRepository
 import skillbill.ports.persistence.UnitOfWork
-import skillbill.ports.review.InstalledReviewCatalogPort
 import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewRubricResolver
 import skillbill.ports.review.ReviewSpecialistContractProvider
@@ -28,6 +26,7 @@ import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.ports.review.model.ParallelReviewLaneRunRequest
 import skillbill.ports.review.model.ParallelReviewLaneRunResult
 import skillbill.ports.review.model.ResolvedReviewRubric
+import skillbill.ports.scaffold.InstalledPlatformPackCatalogPort
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
 import skillbill.review.ParallelReviewFindingParser
@@ -781,7 +780,7 @@ class ParallelCodeReviewRunnerFailureTest {
     val error = assertFailsWith<StackDetectionException> {
       runner.run(baseRequest(agent1Id = "claude", agent2Id = "codex", scope = ParallelReviewScope.STAGED))
     }
-    assertContains(error.message.orEmpty(), "Platform pack discovery failed")
+    assertContains(error.message.orEmpty(), "Installed platform pack discovery failed")
     assertTrue(launcher.requests.isEmpty(), "lanes must not launch when stack detection fails")
   }
 
@@ -833,9 +832,7 @@ class ParallelCodeReviewRunnerFailureTest {
           resolvedSlug = manifest?.slug
           ResolvedReviewRubric("parallel-code-review", "horizontal base rubric")
         },
-        installedReviewCatalog = InstalledReviewCatalogPort {
-          listOf(platformManifest("typescript", listOf("*.ts", ".ts")))
-        },
+        catalogGateway = stubCatalogGateway(listOf(platformManifest("typescript", listOf("*.ts", ".ts")))),
       ),
     )
 
@@ -1040,10 +1037,12 @@ private data class RunnerFixtureConfig(
   val rubricResolver: ReviewRubricResolver = ReviewRubricResolver {
     ResolvedReviewRubric("parallel-code-review", "governed generic rubric")
   },
-  val installedReviewCatalog: InstalledReviewCatalogPort = InstalledReviewCatalogPort.NONE,
   val database: RecordingReviewDatabase = RecordingReviewDatabase(),
   val budget: ReviewContextBudgetPolicy = ReviewContextBudgetPolicy.DEFAULT,
-)
+) {
+  val installedPackCatalog: InstalledPlatformPackCatalogPort =
+    InstalledPlatformPackCatalogPort { catalogGateway.discoverPlatformManifests(Path.of(".")) }
+}
 
 private fun runner(
   launcher: GoalRunnerSubtaskLauncher,
@@ -1073,7 +1072,6 @@ private fun runnerWithParallelLane(
 private fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFixtureConfig): ParallelCodeReviewRunner =
   ParallelCodeReviewRunner(
     parentReviewLauncher = launcher,
-    scaffoldCatalogService = ScaffoldCatalogService(config.catalogGateway),
     diffResolver = config.diffResolver,
     parallelLaneRunner = config.parallelLaneRunner,
     repoLocalConfig = object : RepoLocalConfigPort {
@@ -1086,7 +1084,7 @@ private fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFixt
     reviewRubricResolver = config.rubricResolver,
     reviewSpecialistContractProvider = ReviewSpecialistContractProvider { TEST_SPECIALIST_CONTRACT },
     database = config.database,
-    installedReviewCatalog = config.installedReviewCatalog,
+    installedPackCatalog = config.installedPackCatalog,
   )
 
 private class RecordingReviewDatabase : DatabaseSessionFactory {

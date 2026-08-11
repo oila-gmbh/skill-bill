@@ -91,7 +91,7 @@ import skillbill.infrastructure.fs.FileSystemInstallReconcileApply
 import skillbill.infrastructure.fs.FileSystemInstallSelectionPersistence
 import skillbill.infrastructure.fs.FileSystemInstallSkillLink
 import skillbill.infrastructure.fs.FileSystemInstallStagingIntent
-import skillbill.infrastructure.fs.FileSystemInstalledReviewCatalog
+import skillbill.infrastructure.fs.FileSystemInstalledPlatformPackCatalog
 import skillbill.infrastructure.fs.FileSystemInstalledWorkspaceBaselineStatus
 import skillbill.infrastructure.fs.FileSystemRepoLocalConfig
 import skillbill.infrastructure.fs.FileSystemRepoSourceDiscoveryGateway
@@ -175,7 +175,6 @@ import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.ProducerOutputEvidenceValidator
 import skillbill.ports.persistence.RejectedOutputDiagnosticMetadataValidator
 import skillbill.ports.review.DeclaredReviewSpecialistsPort
-import skillbill.ports.review.InstalledReviewCatalogPort
 import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewAttributionPort
 import skillbill.ports.review.ReviewEvidenceBrokerFactory
@@ -185,6 +184,7 @@ import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.review.ReviewRubricResolver
 import skillbill.ports.review.ReviewSnapshotGateway
 import skillbill.ports.review.ReviewSpecialistContractProvider
+import skillbill.ports.scaffold.InstalledPlatformPackCatalogPort
 import skillbill.ports.scaffold.RepoSourceDiscoveryGateway
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.ScaffoldGateway
@@ -475,8 +475,9 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
-  internal fun installedReviewCatalogPort(adapter: FileSystemInstalledReviewCatalog): InstalledReviewCatalogPort =
-    adapter
+  internal fun installedPlatformPackCatalogPort(
+    adapter: FileSystemInstalledPlatformPackCatalog,
+  ): InstalledPlatformPackCatalogPort = adapter
 
   @Provides
   @JvmSynthetic

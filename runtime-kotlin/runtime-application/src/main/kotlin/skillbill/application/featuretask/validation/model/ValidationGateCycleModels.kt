@@ -17,6 +17,9 @@ sealed interface ValidationGateResolution {
 
   /** Missing pack gate declaration — agent-run validate fallback with surfaced degradation. */
   data class Absent(val routedPackSlug: String?) : ValidationGateResolution
+
+  /** Installed packs exist but could not be read against this runtime's contract. */
+  data class Incompatible(val reason: String) : ValidationGateResolution
 }
 
 data class ValidationFindingSetProjection(

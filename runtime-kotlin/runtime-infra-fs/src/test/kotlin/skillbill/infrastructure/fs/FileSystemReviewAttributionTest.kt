@@ -1,6 +1,7 @@
 package skillbill.infrastructure.fs
 
-import skillbill.model.EnvironmentContext
+import skillbill.ports.scaffold.InstalledPlatformPackCatalogPort
+import skillbill.scaffold.platformpack.discoverPlatformPackManifests
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -32,9 +33,7 @@ class FileSystemReviewAttributionTest {
   fun `composed launch plan carries baseline sourced lanes with their owning pack and depth`() {
     val repoRoot = composedPackFixture()
 
-    val plan = FileSystemReviewAttribution(
-      EnvironmentContext(environment = mapOf("SKILL_BILL_REPO_ROOT" to repoRoot.toString())),
-    ).composedLaunchPlan("kmp")
+    val plan = FileSystemReviewAttribution(installedCatalog(repoRoot)).composedLaunchPlan("kmp")
 
     assertEquals(
       listOf("kmp" to "architecture", "kotlin" to "testing"),
@@ -52,12 +51,14 @@ class FileSystemReviewAttributionTest {
   fun `an unknown routed pack slug yields an empty plan rather than failing`() {
     val repoRoot = composedPackFixture()
 
-    val plan = FileSystemReviewAttribution(
-      EnvironmentContext(environment = mapOf("SKILL_BILL_REPO_ROOT" to repoRoot.toString())),
-    ).composedLaunchPlan("nowhere")
+    val plan = FileSystemReviewAttribution(installedCatalog(repoRoot)).composedLaunchPlan("nowhere")
 
     assertEquals("nowhere", plan.routedPackSlug)
     assertEquals(emptyList(), plan.lanes)
+  }
+
+  private fun installedCatalog(repoRoot: Path) = InstalledPlatformPackCatalogPort {
+    discoverPlatformPackManifests(repoRoot.resolve("platform-packs"))
   }
 
   private fun composedPackFixture(): Path {

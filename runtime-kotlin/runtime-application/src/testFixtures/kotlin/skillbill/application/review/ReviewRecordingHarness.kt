@@ -3,7 +3,6 @@ package skillbill.application.review
 import skillbill.application.model.ParallelCodeReviewRequest
 import skillbill.application.model.ParallelReviewScope
 import skillbill.application.model.ReviewPrelaunchExpansion
-import skillbill.application.scaffold.ScaffoldCatalogService
 import skillbill.config.model.RepoLocalConfig
 import skillbill.infrastructure.fs.ClasspathReviewSpecialistContractProvider
 import skillbill.infrastructure.fs.JdkParallelReviewLaneRunner
@@ -29,6 +28,7 @@ import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.ports.review.model.ParallelReviewLaneRunRequest
 import skillbill.ports.review.model.ParallelReviewLaneRunResult
 import skillbill.ports.review.model.ResolvedReviewRubric
+import skillbill.ports.scaffold.InstalledPlatformPackCatalogPort
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
 import skillbill.review.context.ReviewContextEnvelopeValidator
@@ -137,7 +137,7 @@ fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): Parall
         providerUsageEnforceable = response.usageEnforceable,
       ) as AgentRunLaunchOutcome
     },
-    scaffoldCatalogService = ScaffoldCatalogService(recordingCatalogGateway(config.manifests)),
+    installedPackCatalog = InstalledPlatformPackCatalogPort { config.manifests },
     diffResolver = object : DiffResolverPort {
       override fun runProcess(args: List<String>, workDir: Path): String? {
         recorder.diffCommands += args

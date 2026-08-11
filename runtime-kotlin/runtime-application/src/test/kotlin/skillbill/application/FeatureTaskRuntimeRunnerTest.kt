@@ -5418,11 +5418,8 @@ private fun runtimePhaseGates(
   validationGateRunnerOverride: skillbill.ports.validation.ValidationGateRunner? = null,
   validationGatePlatformManifests: List<skillbill.scaffold.model.PlatformManifest> = emptyList(),
 ): FeatureTaskRuntimePhaseGates {
-  val validationGateResolver = skillbill.application.featuretask.validation.ValidationGateResolver(
-    skillbill.application.scaffold.ScaffoldCatalogService(
-      scaffoldCatalogGateway(validationGatePlatformManifests),
-    ),
-  )
+  val validationGateResolver =
+    skillbill.application.featuretask.validation.ValidationGateResolver { validationGatePlatformManifests }
   val validationGateRunner = validationGateRunnerOverride
     ?: object : skillbill.ports.validation.ValidationGateRunner {
       override fun run(request: skillbill.ports.validation.model.ValidationGateRunRequest) =
@@ -5449,30 +5446,18 @@ private fun runtimePhaseGates(
       validationGateRunner,
       skillbill.application.featuretask.validation.FeatureTaskRuntimeValidationGateProgressStore(recorder),
       skillbill.application.featuretask.validation.FeatureTaskRuntimeSuppressionDeltaService(gitOperations),
-      object : skillbill.ports.config.RepoLocalConfigPort {
-        override fun readRepoLocalConfig(request: skillbill.ports.config.model.ReadRepoLocalConfigRequest) =
-          skillbill.ports.config.model.ReadRepoLocalConfigResult(skillbill.config.model.RepoLocalConfig.defaults())
-      },
+      defaultRepoLocalConfigPort(),
     ),
     sharedEvidenceResolver,
     diffResolver,
   )
 }
 
-private fun scaffoldCatalogGateway(
-  platformManifests: List<skillbill.scaffold.model.PlatformManifest> = emptyList(),
-): skillbill.ports.scaffold.ScaffoldCatalogGateway = object : skillbill.ports.scaffold.ScaffoldCatalogGateway {
-  override fun approvedCodeReviewAreas() = emptySet<String>()
-  override fun preShellFamilies() = emptySet<String>()
-  override fun shelledFamilies() = emptySet<String>()
-  override fun platformPackPresets() = emptyMap<String, String>()
-  override fun scaffoldPayloadVersion() = "test"
-  override fun discoverPilotedPlatformPacks(packsRoot: java.nio.file.Path) =
-    emptyList<skillbill.ports.scaffold.model.PilotedPlatformPackProjection>()
-  override fun discoverPlatformManifests(packsRoot: java.nio.file.Path) = platformManifests
-  override fun discoverBaselineReviewCatalog(packsRoot: java.nio.file.Path) =
-    skillbill.scaffold.model.BaselineReviewCatalog(emptyList(), emptyList())
-}
+private fun defaultRepoLocalConfigPort(): skillbill.ports.config.RepoLocalConfigPort =
+  object : skillbill.ports.config.RepoLocalConfigPort {
+    override fun readRepoLocalConfig(request: skillbill.ports.config.model.ReadRepoLocalConfigRequest) =
+      skillbill.ports.config.model.ReadRepoLocalConfigResult(skillbill.config.model.RepoLocalConfig.defaults())
+  }
 
 private fun testSpecGate(
   specScratchStore: SpecScratchStore = RecordingSpecScratchStore(),
