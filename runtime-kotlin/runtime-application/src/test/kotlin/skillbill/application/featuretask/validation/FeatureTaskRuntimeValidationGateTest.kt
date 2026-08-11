@@ -8,16 +8,13 @@ import skillbill.application.featuretask.validation.model.ValidationGateCycleTer
 import skillbill.application.featuretask.validation.model.ValidationGateProgressStore
 import skillbill.application.featuretask.validation.model.ValidationGateResolution
 import skillbill.application.model.FeatureTaskRuntimeRunRequest
-import skillbill.application.scaffold.ScaffoldCatalogService
-import skillbill.ports.scaffold.ScaffoldCatalogGateway
-import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
+import skillbill.error.ContractVersionMismatchError
 import skillbill.ports.validation.ValidationGateRunner
 import skillbill.ports.validation.model.ValidationGateCacheMode
 import skillbill.ports.validation.model.ValidationGateFinding
 import skillbill.ports.validation.model.ValidationGateRunOutcome
 import skillbill.ports.validation.model.ValidationGateRunRequest
 import skillbill.ports.validation.model.ValidationGateRunResult
-import skillbill.scaffold.model.BaselineReviewCatalog
 import skillbill.scaffold.model.DeclaredFiles
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.RoutingSignals
@@ -184,22 +181,31 @@ class FeatureTaskRuntimeValidationGateTest {
 
   @Test
   fun `absent gate resolution returns absent for pack without declaration`() {
-    val resolver = ValidationGateResolver(
-      ScaffoldCatalogService(
-        object : ScaffoldCatalogGateway {
-          override fun approvedCodeReviewAreas() = emptySet<String>()
-          override fun preShellFamilies() = emptySet<String>()
-          override fun shelledFamilies() = emptySet<String>()
-          override fun platformPackPresets() = emptyMap<String, String>()
-          override fun scaffoldPayloadVersion() = "test"
-          override fun discoverPilotedPlatformPacks(packsRoot: Path): List<PilotedPlatformPackProjection> = emptyList()
-          override fun discoverPlatformManifests(packsRoot: Path) = listOf(kotlinPackWithoutGate())
-          override fun discoverBaselineReviewCatalog(packsRoot: Path) = BaselineReviewCatalog(emptyList(), emptyList())
-        },
-      ),
-    )
-    val resolution = resolver.resolve(repoRoot, listOf("runtime-kotlin/foo.kt"))
+    val resolver = ValidationGateResolver { listOf(kotlinPackWithoutGate()) }
+    val resolution = resolver.resolve(listOf("runtime-kotlin/foo.kt"))
     assertTrue(resolution is ValidationGateResolution.Absent)
+  }
+
+  @Test
+  fun `out of contract packs block terminally instead of degrading or crashing`() {
+    val cycle = coordinator(outOfContractResolver(), neverRunsGate(), mutableListOf())
+      .execute(cycle = outOfContractCycle())
+    assertIs<ValidationGateCycleResult.Terminal>(cycle)
+    val blocked = assertIs<ValidationGateCycleTerminalOutcome.Blocked>(cycle.outcome)
+    assertTrue(blocked.reason.contains("contract_version '0.1'"))
+    assertTrue(blocked.reason.contains("Repair the installed platform packs"))
+  }
+
+  @Test
+  fun `gate declarations come from the installed pack selection`() {
+    // Only the packs the user installed are offered; a pack that ships but was not selected is
+    // simply absent from the catalog, so routing can never reach its gate.
+    val selected = ValidationGateResolver { listOf(kotlinPackWithoutGate().copy(validationGate = gateDeclaration)) }
+    val declared = assertIs<ValidationGateResolution.Declared>(selected.resolve(listOf("runtime-kotlin/foo.kt")))
+    assertEquals("kotlin", declared.packSlug)
+
+    val notSelected = ValidationGateResolver { emptyList() }
+    assertIs<ValidationGateResolution.Absent>(notSelected.resolve(listOf("runtime-kotlin/foo.kt")))
   }
 
   @Test
@@ -306,6 +312,28 @@ class FeatureTaskRuntimeValidationGateTest {
     assertTrue(progress.last().remainingFindings.isEmpty())
   }
 
+  private fun outOfContractResolver(): ValidationGateResolver = ValidationGateResolver {
+    throw ContractVersionMismatchError(
+      "Platform pack 'fallback': declares contract_version '0.1' but the shell expects '1.4'.",
+    )
+  }
+
+  private fun neverRunsGate(): ValidationGateRunner = object : ValidationGateRunner {
+    override fun run(request: ValidationGateRunRequest): ValidationGateRunResult =
+      error("validation gate must not launch when platform packs are out of contract")
+  }
+
+  private fun outOfContractCycle(): ValidationGateCycleRequest = ValidationGateCycleRequest(
+    repoRoot = repoRoot,
+    request = minimalRequest(),
+    validationDepth = ValidationDepth.DEFAULT,
+    changedPaths = listOf("runtime-kotlin/foo.kt"),
+    repositoryCheckpoint = "checkpoint",
+    agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _ ->
+      error("repair must not launch when platform packs are out of contract")
+    },
+  )
+
   private fun coordinator(
     resolver: ValidationGateResolver,
     runner: ValidationGateRunner,
@@ -332,22 +360,7 @@ class FeatureTaskRuntimeValidationGateTest {
     }
 
   private fun declaredResolver(declaration: ValidationGateDeclaration = gateDeclaration): ValidationGateResolver =
-    ValidationGateResolver(
-      ScaffoldCatalogService(
-        object : ScaffoldCatalogGateway {
-          override fun approvedCodeReviewAreas() = emptySet<String>()
-          override fun preShellFamilies() = emptySet<String>()
-          override fun shelledFamilies() = emptySet<String>()
-          override fun platformPackPresets() = emptyMap<String, String>()
-          override fun scaffoldPayloadVersion() = "test"
-          override fun discoverPilotedPlatformPacks(packsRoot: Path): List<PilotedPlatformPackProjection> = emptyList()
-          override fun discoverPlatformManifests(packsRoot: Path) = listOf(
-            kotlinPackWithoutGate().copy(validationGate = declaration),
-          )
-          override fun discoverBaselineReviewCatalog(packsRoot: Path) = BaselineReviewCatalog(emptyList(), emptyList())
-        },
-      ),
-    )
+    ValidationGateResolver { listOf(kotlinPackWithoutGate().copy(validationGate = declaration)) }
 
   private fun minimalRequest(): FeatureTaskRuntimeRunRequest = FeatureTaskRuntimeRunRequest(
     issueKey = "SKILL-180",

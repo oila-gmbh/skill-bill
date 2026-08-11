@@ -60,8 +60,9 @@ class FeatureTaskRuntimeValidationGateCoordinator(
     val validationDepth = cycle.validationDepth
     val changedPaths = cycle.changedPaths
     val agentRepairLauncher = cycle.agentRepairLauncher
-    when (val resolution = resolver.resolve(repoRoot, changedPaths)) {
+    when (val resolution = resolver.resolve(changedPaths)) {
       is ValidationGateResolution.Absent -> return ValidationGateCycleResult.AbsentFallback
+      is ValidationGateResolution.Incompatible -> return terminalBlocked(resolution.reason)
       is ValidationGateResolution.Declared -> {
         val declaration = resolution.declaration
         val measurements = mutableListOf<FeatureTaskRuntimeValidationGateRunRecord>()

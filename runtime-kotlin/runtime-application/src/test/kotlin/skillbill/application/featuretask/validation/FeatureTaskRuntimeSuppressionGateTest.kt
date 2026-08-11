@@ -8,10 +8,7 @@ import skillbill.application.featuretask.validation.model.ValidationGateCycleRes
 import skillbill.application.featuretask.validation.model.ValidationGateCycleTerminalOutcome
 import skillbill.application.featuretask.validation.model.ValidationGateProgressStore
 import skillbill.application.model.FeatureTaskRuntimeRunRequest
-import skillbill.application.scaffold.ScaffoldCatalogService
 import skillbill.contracts.JsonSupport
-import skillbill.ports.scaffold.ScaffoldCatalogGateway
-import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
 import skillbill.ports.validation.ValidationGateRunner
 import skillbill.ports.validation.model.ValidationGateCacheMode
 import skillbill.ports.validation.model.ValidationGateFinding
@@ -24,7 +21,6 @@ import skillbill.ports.workflow.SuppressionEvidenceGitOperationsProvider
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.WorkflowScopedPathContent
 import skillbill.ports.workflow.model.WorkflowScopedPathContentsResult
-import skillbill.scaffold.model.BaselineReviewCatalog
 import skillbill.scaffold.model.DeclaredFiles
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.RoutingSignals
@@ -266,10 +262,7 @@ class FeatureTaskRuntimeSuppressionGateTest {
       runner = runner,
       progressStore = ValidationGateProgressStore { _, p, _ -> progress += p },
       suppressionDeltaService = FeatureTaskRuntimeSuppressionDeltaService(git),
-      repoLocalConfig = object : skillbill.ports.config.RepoLocalConfigPort {
-        override fun readRepoLocalConfig(request: skillbill.ports.config.model.ReadRepoLocalConfigRequest) =
-          skillbill.ports.config.model.ReadRepoLocalConfigResult(skillbill.config.model.RepoLocalConfig.defaults())
-      },
+      repoLocalConfig = defaultRepoLocalConfigPort(),
     )
     return coordinator.execute(
       ValidationGateCycleRequest(
@@ -307,35 +300,27 @@ class FeatureTaskRuntimeSuppressionGateTest {
     )
   }
 
-  private fun declaredResolver(declaration: ValidationGateDeclaration): ValidationGateResolver = ValidationGateResolver(
-    ScaffoldCatalogService(
-      object : ScaffoldCatalogGateway {
-        override fun approvedCodeReviewAreas() = emptySet<String>()
-        override fun preShellFamilies() = emptySet<String>()
-        override fun shelledFamilies() = emptySet<String>()
-        override fun platformPackPresets() = emptyMap<String, String>()
-        override fun scaffoldPayloadVersion() = "test"
-        override fun discoverPilotedPlatformPacks(packsRoot: Path): List<PilotedPlatformPackProjection> = emptyList()
-        override fun discoverPlatformManifests(packsRoot: Path) = listOf(
-          PlatformManifest(
-            slug = "kotlin",
-            packRoot = repoRoot.resolve("platform-packs/kotlin"),
-            contractVersion = "1.4",
-            routingSignals = RoutingSignals(
-              strong = listOf("src"),
-              tieBreakers = emptyList(),
-              path = listOf("src"),
-            ),
-            declaredCodeReviewAreas = emptyList(),
-            declaredFiles = DeclaredFiles(null, emptyMap()),
-            areaMetadata = emptyMap(),
-            validationGate = declaration,
-          ),
-        )
-        override fun discoverBaselineReviewCatalog(packsRoot: Path) = BaselineReviewCatalog(emptyList(), emptyList())
-      },
-    ),
-  )
+  private fun declaredResolver(declaration: ValidationGateDeclaration): ValidationGateResolver =
+    ValidationGateResolver {
+      listOf(
+        PlatformManifest(
+          slug = "kotlin",
+          packRoot = repoRoot.resolve("platform-packs/kotlin"),
+          contractVersion = "1.4",
+          routingSignals = RoutingSignals(strong = listOf("src"), tieBreakers = emptyList(), path = listOf("src")),
+          declaredCodeReviewAreas = emptyList(),
+          declaredFiles = DeclaredFiles(null, emptyMap()),
+          areaMetadata = emptyMap(),
+          validationGate = declaration,
+        ),
+      )
+    }
+
+  private fun defaultRepoLocalConfigPort(): skillbill.ports.config.RepoLocalConfigPort =
+    object : skillbill.ports.config.RepoLocalConfigPort {
+      override fun readRepoLocalConfig(request: skillbill.ports.config.model.ReadRepoLocalConfigRequest) =
+        skillbill.ports.config.model.ReadRepoLocalConfigResult(skillbill.config.model.RepoLocalConfig.defaults())
+    }
 
   private fun minimalRequest(): FeatureTaskRuntimeRunRequest = FeatureTaskRuntimeRunRequest(
     issueKey = "SKILL-180",

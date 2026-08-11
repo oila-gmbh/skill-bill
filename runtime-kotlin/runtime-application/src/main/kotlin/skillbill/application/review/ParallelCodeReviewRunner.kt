@@ -16,7 +16,6 @@ import skillbill.application.model.StackDetectionException
 import skillbill.application.model.UsageValidationException
 import skillbill.application.review.model.ReviewRubricProjection
 import skillbill.application.review.model.ReviewSpecialistLaunchRequest
-import skillbill.application.scaffold.ScaffoldCatalogService
 import skillbill.application.workflow.repoRoot
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
@@ -31,7 +30,6 @@ import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.model.ReviewAccountingRecord
 import skillbill.ports.persistence.model.ReviewIntegrationPassRecord
-import skillbill.ports.review.InstalledReviewCatalogPort
 import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewRubricResolver
 import skillbill.ports.review.ReviewSpecialistContractProvider
@@ -41,6 +39,7 @@ import skillbill.ports.review.model.ParallelReviewLaneRunResult
 import skillbill.ports.review.model.ReviewIntegrationPassOutcome
 import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.ports.review.model.ReviewOwnedFileEvidence
+import skillbill.ports.scaffold.InstalledPlatformPackCatalogPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
 import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.ParallelReviewMerger
@@ -92,7 +91,6 @@ import kotlin.time.Duration.Companion.seconds
 @Suppress("LongParameterList", "TooManyFunctions", "LargeClass")
 class ParallelCodeReviewRunner(
   private val parentReviewLauncher: GoalRunnerSubtaskLauncher,
-  private val scaffoldCatalogService: ScaffoldCatalogService,
   private val diffResolver: DiffResolverPort,
   private val parallelLaneRunner: ParallelReviewLaneRunner,
   private val repoLocalConfig: RepoLocalConfigPort,
@@ -100,7 +98,7 @@ class ParallelCodeReviewRunner(
   private val reviewRubricResolver: ReviewRubricResolver,
   private val reviewSpecialistContractProvider: ReviewSpecialistContractProvider,
   private val database: DatabaseSessionFactory,
-  private val installedReviewCatalog: InstalledReviewCatalogPort = InstalledReviewCatalogPort.NONE,
+  private val installedPackCatalog: InstalledPlatformPackCatalogPort = InstalledPlatformPackCatalogPort.NONE,
   /**
    * Absent in a fixture that wires no store: the review then derives its evidence in line exactly as
    * it did before the hoist, which is also the degradation path a cache miss takes.
@@ -179,7 +177,7 @@ class ParallelCodeReviewRunner(
     ) { resolveDiff(originalRequest, revisions) }
     val diffText = sharedEvidence.aggregateDiff
     val evidence = ReviewDiffEvidence.parse(diffText)
-    val detection = detectStack(evidence, originalRequest.repoRoot)
+    val detection = detectStack(evidence)
     val budget = repoLocalConfig.readRepoLocalConfig(ReadRepoLocalConfigRequest(originalRequest.repoRoot))
       .config.reviewContextBudget
     val lane1ResolvedMode = resolvedMode(originalRequest)
@@ -633,7 +631,7 @@ class ParallelCodeReviewRunner(
     manifests: List<PlatformManifest>,
     ownedPathsBySlug: Map<String, Set<String>>,
   ): List<PlannedReviewRubric> = if (routedManifests.isEmpty()) {
-    val installed = installedReviewCatalog.manifests()
+    val installed = installedPackCatalog.manifests()
     if (installed.isNotEmpty()) {
       val routing = ReviewStackRouting.route(
         installed,
@@ -763,21 +761,19 @@ class ParallelCodeReviewRunner(
       "Command failed: ${args.joinToString(" ")}",
     )
 
-  private fun detectStack(evidence: ReviewDiffEvidence, repoRoot: Path): StackDetection {
-    val packsRoot = repoRoot.resolve("platform-packs")
-    // A missing platform-packs directory yields an empty list (no exception) and degrades to a
-    // generic rubric. A directory that exists but is out of contract (corrupt platform.yaml,
-    // invalid composition) throws; surface that loudly instead of silently dropping the
-    // stack-specific specialists, per the shell's "never silently fall back" contract.
+  private fun detectStack(evidence: ReviewDiffEvidence): StackDetection {
+    // Packs come from the Skill Bill installation, never from the repository under review: that
+    // directory belongs to the reviewed project and may hold packs for a different contract.
+    // No installation yields an empty list (no exception) and degrades to a generic rubric.
+    // Installed packs that exist but are out of contract throw; surface that loudly instead of
+    // silently dropping the stack-specific specialists, per the shell's "never silently fall back"
+    // contract.
     val manifests = try {
-      installedReviewCatalog.manifests().ifEmpty {
-        scaffoldCatalogService.discoverPlatformManifests(packsRoot)
-      }
+      installedPackCatalog.manifests()
     } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
-      val displayPath = runCatching { repoRoot.relativize(packsRoot) }.getOrDefault(packsRoot)
       throw StackDetectionException(
-        "Platform pack discovery failed for $displayPath: ${e.message ?: e.javaClass.simpleName}. " +
-          "Repair the platform pack before running parallel review.",
+        "Installed platform pack discovery failed: ${e.message ?: e.javaClass.simpleName}. " +
+          "Repair the installed platform packs before running parallel review.",
         e,
       )
     }
