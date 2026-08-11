@@ -563,6 +563,13 @@ class FeatureTaskRuntimeStatusServiceTest {
     assertNull(projection.currentPhaseId, "a completed forward run reports no current phase, not implement_fix")
   }
 
+  private companion object {
+    const val WORKFLOW_ID = "wftr-20260603-status-0001"
+    const val SESSION_ID = "ftr-status-001"
+  }
+}
+
+class FeatureTaskRuntimeStatusAttributionTest {
   @Test
   fun `attribution rolls up a single-agent run to participating equals finalizer`() {
     val harness = statusHarness()
@@ -966,186 +973,190 @@ class FeatureTaskRuntimeStatusServiceTest {
     assertNull(projection.currentPhaseExecution)
   }
 
-  private fun statusHarness(): StatusHarness {
-    val repository = StatusInMemoryWorkflowRepository()
-    val database = StatusFakeDatabaseSessionFactory(repository)
-    val recorder = FeatureTaskRuntimePhaseRecorder(
-      database,
-      StatusNoopSnapshotValidator,
-      AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
-      AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
-    )
-    val decomposeTerminalRecorder = FeatureTaskRuntimeDecomposeTerminalRecorder(database, StatusNoopSnapshotValidator)
-    val runInvariantsStore = FeatureTaskRuntimeRunInvariantsStore(database, StatusNoopSnapshotValidator)
-    return StatusHarness(
-      recorder,
-      decomposeTerminalRecorder,
-      runInvariantsStore,
-      FeatureTaskRuntimeStatusService(recorder, runInvariantsStore, decomposeTerminalRecorder),
-      repository,
-    )
+  private companion object {
+    const val WORKFLOW_ID = "wftr-20260603-status-0001"
+    const val SESSION_ID = "ftr-status-001"
   }
+}
 
-  private class StatusHarness(
-    val recorder: FeatureTaskRuntimePhaseRecorder,
-    val decomposeTerminalRecorder: FeatureTaskRuntimeDecomposeTerminalRecorder,
-    val runInvariantsStore: FeatureTaskRuntimeRunInvariantsStore,
-    val service: FeatureTaskRuntimeStatusService,
-    private val repository: StatusInMemoryWorkflowRepository,
-  ) {
-    fun recordRunning(phaseId: String, attemptCount: Int, resolvedAgentId: String = "claude") =
-      recorder.recordPhaseState(
-        FeatureTaskRuntimePhaseStateRequest(
-          workflowId = WORKFLOW_ID,
-          phaseId = phaseId,
-          status = "running",
-          attemptCount = attemptCount,
-          resolvedAgentId = resolvedAgentId,
-          finished = false,
-          outputArtifact = null,
-        ),
-      )
+private fun statusHarness(): StatusHarness {
+  val repository = StatusInMemoryWorkflowRepository()
+  val database = StatusFakeDatabaseSessionFactory(repository)
+  val recorder = FeatureTaskRuntimePhaseRecorder(
+    database,
+    StatusNoopSnapshotValidator,
+    AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator,
+    AcceptingFeatureTaskRuntimeHandoffFoundationValidator,
+  )
+  val decomposeTerminalRecorder = FeatureTaskRuntimeDecomposeTerminalRecorder(database, StatusNoopSnapshotValidator)
+  val runInvariantsStore = FeatureTaskRuntimeRunInvariantsStore(database, StatusNoopSnapshotValidator)
+  return StatusHarness(
+    recorder,
+    decomposeTerminalRecorder,
+    runInvariantsStore,
+    FeatureTaskRuntimeStatusService(recorder, runInvariantsStore, decomposeTerminalRecorder),
+    repository,
+  )
+}
 
-    fun recordCompleted(phaseId: String, attemptCount: Int, resolvedAgentId: String = "claude") =
-      recorder.recordPhaseState(
-        FeatureTaskRuntimePhaseStateRequest(
-          workflowId = WORKFLOW_ID,
-          phaseId = phaseId,
-          status = "completed",
-          attemptCount = attemptCount,
-          resolvedAgentId = resolvedAgentId,
-          finished = true,
-          outputArtifact = """{"contract_version":"0.1"}""",
-        ),
-      )
+private class StatusHarness(
+  val recorder: FeatureTaskRuntimePhaseRecorder,
+  val decomposeTerminalRecorder: FeatureTaskRuntimeDecomposeTerminalRecorder,
+  val runInvariantsStore: FeatureTaskRuntimeRunInvariantsStore,
+  val service: FeatureTaskRuntimeStatusService,
+  private val repository: StatusInMemoryWorkflowRepository,
+) {
+  fun recordRunning(phaseId: String, attemptCount: Int, resolvedAgentId: String = "claude") = recorder.recordPhaseState(
+    FeatureTaskRuntimePhaseStateRequest(
+      workflowId = WORKFLOW_ID,
+      phaseId = phaseId,
+      status = "running",
+      attemptCount = attemptCount,
+      resolvedAgentId = resolvedAgentId,
+      finished = false,
+      outputArtifact = null,
+    ),
+  )
 
-    fun recordBlocked(phaseId: String, attemptCount: Int, blockedReason: String, resolvedAgentId: String = "claude") =
-      recorder.recordPhaseState(
-        FeatureTaskRuntimePhaseStateRequest(
-          workflowId = WORKFLOW_ID,
-          phaseId = phaseId,
-          status = "blocked",
-          attemptCount = attemptCount,
-          resolvedAgentId = resolvedAgentId,
-          finished = false,
-          outputArtifact = null,
-          blockedReason = blockedReason,
-        ),
-      )
-
-    fun recordLedger(
-      action: FeatureTaskRuntimePhaseLedgerAction,
-      phaseId: String,
-      attemptCount: Int,
-      resolvedAgentId: String = "claude",
-    ) = recorder.appendLedgerEntry(
-      FeatureTaskRuntimePhaseLedgerRequest(
+  fun recordCompleted(phaseId: String, attemptCount: Int, resolvedAgentId: String = "claude") =
+    recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
         workflowId = WORKFLOW_ID,
-        action = action,
         phaseId = phaseId,
+        status = "completed",
         attemptCount = attemptCount,
         resolvedAgentId = resolvedAgentId,
-        blockedReason = if (action == FeatureTaskRuntimePhaseLedgerAction.BLOCKED) "fix loop exhausted" else null,
+        finished = true,
+        outputArtifact = """{"contract_version":"0.1"}""",
       ),
     )
 
-    fun recordContinuationLedger(
-      phaseId: String,
-      attemptCount: Int,
-      action: FeatureTaskRuntimePhaseLedgerAction,
-      kind: FeatureTaskRuntimeContinuationKind,
-      trailingDetail: String = "",
-    ) = recorder.appendLedgerEntry(
-      FeatureTaskRuntimePhaseLedgerRequest(
+  fun recordBlocked(phaseId: String, attemptCount: Int, blockedReason: String, resolvedAgentId: String = "claude") =
+    recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
         workflowId = WORKFLOW_ID,
-        action = action,
         phaseId = phaseId,
-        attemptCount = attemptCount,
-        resolvedAgentId = DEFAULT_LEDGER_AGENT,
-        blockedReason = FeatureTaskRuntimeContinuationKind.LEDGER_DETAIL_PREFIX + kind.wireValue + trailingDetail,
-      ),
-    )
-
-    fun recordLoopEdge(
-      phaseId: String,
-      attemptCount: Int,
-      loopId: String,
-      edgeIteration: Int,
-      resolvedAgentId: String = "claude",
-    ) = recorder.appendLedgerEntry(
-      FeatureTaskRuntimePhaseLedgerRequest(
-        workflowId = WORKFLOW_ID,
-        action = LOOP_EDGE,
-        phaseId = phaseId,
+        status = "blocked",
         attemptCount = attemptCount,
         resolvedAgentId = resolvedAgentId,
-        loopId = loopId,
-        edgeIteration = edgeIteration,
+        finished = false,
+        outputArtifact = null,
+        blockedReason = blockedReason,
       ),
     )
 
-    fun seedCachedAuditRepairProgress(progress: FeatureTaskRuntimeAuditRepairProgress) {
-      val row = requireNotNull(repository.getFeatureTaskRuntimeWorkflow(WORKFLOW_ID))
-      val artifacts = decodeArtifacts(row.artifactsJson).toMutableMap()
-      artifacts[FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY] = auditRepairStateToWire(
-        FeatureTaskRuntimeAuditRepairState(
-          acceptedPlans = listOf(
-            FeatureTaskRuntimeAuditRepairPlan(
-              contractVersion = AUDIT_REPAIR_CONTRACT_VERSION,
-              gaps = listOf(
-                FeatureTaskRuntimeAuditGap(
-                  gapId = "ac-001-gap-1",
-                  acceptanceCriterionRef = "AC-001",
-                  acceptanceCriterionText = "Criterion",
-                  failureEvidence = FeatureTaskRuntimeEvidence(
-                    observation = FeatureTaskRuntimeEvidence.Observation.REQUIRED_BEHAVIOR_ABSENT,
-                    artifactRef = "src/Example.kt",
-                    checkRef = "AC-001",
-                  ),
-                  diagnosis = "Diagnosis",
-                  affectedBoundary = "runtime",
-                  repairItems = listOf(
-                    FeatureTaskRuntimeRepairItem(
-                      repairItemId = "ac-001-gap-1-item-1",
-                      intendedOutcome = "Outcome",
-                      implementationActions = listOf("Implement"),
-                      affectedPathsOrSymbols = listOf("src/Example.kt"),
-                      requiredVerification = listOf("Test"),
-                      dependsOn = emptyList(),
-                    ),
+  fun recordLedger(
+    action: FeatureTaskRuntimePhaseLedgerAction,
+    phaseId: String,
+    attemptCount: Int,
+    resolvedAgentId: String = "claude",
+  ) = recorder.appendLedgerEntry(
+    FeatureTaskRuntimePhaseLedgerRequest(
+      workflowId = WORKFLOW_ID,
+      action = action,
+      phaseId = phaseId,
+      attemptCount = attemptCount,
+      resolvedAgentId = resolvedAgentId,
+      blockedReason = if (action == FeatureTaskRuntimePhaseLedgerAction.BLOCKED) "fix loop exhausted" else null,
+    ),
+  )
+
+  fun recordContinuationLedger(
+    phaseId: String,
+    attemptCount: Int,
+    action: FeatureTaskRuntimePhaseLedgerAction,
+    kind: FeatureTaskRuntimeContinuationKind,
+    trailingDetail: String = "",
+  ) = recorder.appendLedgerEntry(
+    FeatureTaskRuntimePhaseLedgerRequest(
+      workflowId = WORKFLOW_ID,
+      action = action,
+      phaseId = phaseId,
+      attemptCount = attemptCount,
+      resolvedAgentId = DEFAULT_LEDGER_AGENT,
+      blockedReason = FeatureTaskRuntimeContinuationKind.LEDGER_DETAIL_PREFIX + kind.wireValue + trailingDetail,
+    ),
+  )
+
+  fun recordLoopEdge(
+    phaseId: String,
+    attemptCount: Int,
+    loopId: String,
+    edgeIteration: Int,
+    resolvedAgentId: String = "claude",
+  ) = recorder.appendLedgerEntry(
+    FeatureTaskRuntimePhaseLedgerRequest(
+      workflowId = WORKFLOW_ID,
+      action = LOOP_EDGE,
+      phaseId = phaseId,
+      attemptCount = attemptCount,
+      resolvedAgentId = resolvedAgentId,
+      loopId = loopId,
+      edgeIteration = edgeIteration,
+    ),
+  )
+
+  fun seedCachedAuditRepairProgress(progress: FeatureTaskRuntimeAuditRepairProgress) {
+    val row = requireNotNull(repository.getFeatureTaskRuntimeWorkflow(WORKFLOW_ID))
+    val artifacts = decodeArtifacts(row.artifactsJson).toMutableMap()
+    artifacts[FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY] = auditRepairStateToWire(
+      FeatureTaskRuntimeAuditRepairState(
+        acceptedPlans = listOf(
+          FeatureTaskRuntimeAuditRepairPlan(
+            contractVersion = AUDIT_REPAIR_CONTRACT_VERSION,
+            gaps = listOf(
+              FeatureTaskRuntimeAuditGap(
+                gapId = "ac-001-gap-1",
+                acceptanceCriterionRef = "AC-001",
+                acceptanceCriterionText = "Criterion",
+                failureEvidence = FeatureTaskRuntimeEvidence(
+                  observation = FeatureTaskRuntimeEvidence.Observation.REQUIRED_BEHAVIOR_ABSENT,
+                  artifactRef = "src/Example.kt",
+                  checkRef = "AC-001",
+                ),
+                diagnosis = "Diagnosis",
+                affectedBoundary = "runtime",
+                repairItems = listOf(
+                  FeatureTaskRuntimeRepairItem(
+                    repairItemId = "ac-001-gap-1-item-1",
+                    intendedOutcome = "Outcome",
+                    implementationActions = listOf("Implement"),
+                    affectedPathsOrSymbols = listOf("src/Example.kt"),
+                    requiredVerification = listOf("Test"),
+                    dependsOn = emptyList(),
                   ),
                 ),
               ),
             ),
           ),
-          repairItemResults = emptyList(),
-          priorGapDispositions = emptyList(),
-          unresolvedGapLedger = FeatureTaskRuntimeUnresolvedGapLedger(
-            listOf(FeatureTaskRuntimeUnresolvedGap("ac-001-gap-1", "AC-001", 1)),
-          ),
-          repositoryFingerprint = "fingerprint",
-          progress = progress,
         ),
-      )
-      repository.saveFeatureTaskRuntimeWorkflow(
-        row.copy(artifactsJson = JsonSupport.mapToJsonString(artifacts)),
-      )
-    }
-
-    fun attribution() = agentAttributionFromPhaseState(recorder, WORKFLOW_ID)
-
-    fun recordRunInvariants(featureSize: FeatureTaskRuntimeFeatureSize) {
-      runInvariantsStore.resolve(
-        workflowId = WORKFLOW_ID,
-        proposed =
-        FeatureTaskRuntimeRunInvariants(
-          specReference = ".feature-specs/SKILL-65/spec.md",
-          featureSize = featureSize,
-          acceptanceCriteria = listOf("AC-1"),
-          mandatesAndOverrides = emptyList(),
+        repairItemResults = emptyList(),
+        priorGapDispositions = emptyList(),
+        unresolvedGapLedger = FeatureTaskRuntimeUnresolvedGapLedger(
+          listOf(FeatureTaskRuntimeUnresolvedGap("ac-001-gap-1", "AC-001", 1)),
         ),
-      )
-    }
+        repositoryFingerprint = "fingerprint",
+        progress = progress,
+      ),
+    )
+    repository.saveFeatureTaskRuntimeWorkflow(
+      row.copy(artifactsJson = JsonSupport.mapToJsonString(artifacts)),
+    )
+  }
+
+  fun attribution() = agentAttributionFromPhaseState(recorder, WORKFLOW_ID)
+
+  fun recordRunInvariants(featureSize: FeatureTaskRuntimeFeatureSize) {
+    runInvariantsStore.resolve(
+      workflowId = WORKFLOW_ID,
+      proposed =
+      FeatureTaskRuntimeRunInvariants(
+        specReference = ".feature-specs/SKILL-65/spec.md",
+        featureSize = featureSize,
+        acceptanceCriteria = listOf("AC-1"),
+        mandatesAndOverrides = emptyList(),
+      ),
+    )
   }
 
   private companion object {

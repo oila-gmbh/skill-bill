@@ -482,6 +482,26 @@ class SkillBillStatusBarPresentationTest {
     }
 
     @Test
+    fun `control characters in phase id do not reach tooltip accessibility or popup text`() {
+        // Catches rendering that inserts raw phase_id and lets ISO controls corrupt UI text.
+        val mapped = SkillBillStatusBarPresentation.map(
+            active().copy(
+                currentPhaseExecution = CurrentPhaseExecution(
+                    phaseId = "audit\u0000fix",
+                    kind = "semantic_loop",
+                    count = 2,
+                ),
+            ),
+            now,
+        )
+        assertFalse(mapped.barText.contains('\u0000'))
+        assertFalse(mapped.tooltipText.contains('\u0000'))
+        assertFalse(mapped.accessibleDescription.contains('\u0000'))
+        assertFalse(mapped.details.selectedSlotText!!.contains('\u0000'))
+        assertEquals("Audit fix loop 2", mapped.details.selectedSlotText)
+    }
+
+    @Test
     fun `long execution labels stay within the bar budget while tooltip keeps the full wording`() {
         val mapped = SkillBillStatusBarPresentation.map(
             active(stepLabel = "Implement ".repeat(8)).copy(
@@ -495,8 +515,8 @@ class SkillBillStatusBarPresentationTest {
             now,
         )
         assertTrue(mapped.barText.length <= SkillBillStatusBarPresentation.BAR_TEXT_MAX_LENGTH)
-        assertTrue(mapped.tooltipText.contains("Write history 2/3"))
-        assertTrue(mapped.accessibleDescription.contains("Write history 2/3"))
+        assertTrue(mapped.tooltipText.contains("Write History 2/3"))
+        assertTrue(mapped.accessibleDescription.contains("Write History 2/3"))
     }
 
     @Test

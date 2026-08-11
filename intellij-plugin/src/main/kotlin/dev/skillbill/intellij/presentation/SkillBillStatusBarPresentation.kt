@@ -167,8 +167,28 @@ object SkillBillStatusBarPresentation {
         planning: GoalPlanningInfo?,
         execution: CurrentPhaseExecution?,
     ): DisplaySlot? {
-        if (planning != null) return DisplaySlot.Planning(planning)
-        if (execution != null) return DisplaySlot.Execution(execution)
+        if (planning != null) {
+            val planned = planning.plannedSubtaskCount
+            val total = planning.totalSubtaskCount
+            val stateLabel = planningStateLabel(planning.state)
+            return DisplaySlot.Planning(
+                planned = planned,
+                total = total,
+                barSegment = "Planning $planned/$total",
+                fullLine = "Planning: $stateLabel, $planned/$total plans saved",
+                popupLabel = "Planning",
+                popupValue = "$stateLabel, $planned/$total plans saved",
+            )
+        }
+        if (execution != null) {
+            val wording = executionWording(execution)
+            return DisplaySlot.Execution(
+                barSegment = wording,
+                fullLine = wording,
+                popupLabel = "Current phase",
+                popupValue = wording,
+            )
+        }
         return null
     }
 
@@ -343,6 +363,7 @@ object SkillBillStatusBarPresentation {
     /**
      * Shared formatter seam for the single planning-or-execution display slot. Compact and full
      * surfaces read from the same instance so they cannot disagree about which value is shown.
+     * Strings are computed by [selectDisplaySlot] so nested classes never call enclosing members.
      */
     internal sealed class DisplaySlot {
         abstract val barSegment: String
@@ -350,24 +371,21 @@ object SkillBillStatusBarPresentation {
         abstract val popupLabel: String
         abstract val popupValue: String
 
-        data class Planning(val info: GoalPlanningInfo) : DisplaySlot() {
-            val planned: Int get() = info.plannedSubtaskCount
-            val total: Int get() = info.totalSubtaskCount
-            override val barSegment: String = "Planning $planned/$total"
-            override val fullLine: String =
-                "Planning: ${planningStateLabel(info.state)}, $planned/$total plans saved"
-            override val popupLabel: String = "Planning"
-            override val popupValue: String =
-                "${planningStateLabel(info.state)}, $planned/$total plans saved"
-        }
+        data class Planning(
+            val planned: Int,
+            val total: Int,
+            override val barSegment: String,
+            override val fullLine: String,
+            override val popupLabel: String,
+            override val popupValue: String,
+        ) : DisplaySlot()
 
-        data class Execution(val info: CurrentPhaseExecution) : DisplaySlot() {
-            private val wording: String = executionWording(info)
-            override val barSegment: String = wording
-            override val fullLine: String = wording
-            override val popupLabel: String = "Current phase"
-            override val popupValue: String = wording
-        }
+        data class Execution(
+            override val barSegment: String,
+            override val fullLine: String,
+            override val popupLabel: String,
+            override val popupValue: String,
+        ) : DisplaySlot()
     }
 
     private fun planningStateLabel(state: String): String =
@@ -400,11 +418,14 @@ object SkillBillStatusBarPresentation {
         }
     }
 
-    private fun phaseDisplayName(phaseId: String): String =
-        phaseId.split('_')
+    /** Title-cases a phase id after control-character normalization so UI text stays printable. */
+    private fun phaseDisplayName(phaseId: String): String {
+        val cleaned = normalizeLabel(phaseId) ?: return "Phase"
+        return cleaned.split('_')
             .filter { it.isNotEmpty() }
             .joinToString(" ") { part ->
                 part.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
             }
-            .ifBlank { phaseId }
+            .ifBlank { cleaned }
+    }
 }

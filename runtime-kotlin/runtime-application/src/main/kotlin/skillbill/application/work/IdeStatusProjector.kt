@@ -106,25 +106,11 @@ class IdeStatusProjector(
     val progress = total?.let {
       IdeStatusProgress(completed = projection.completeCount, total = it)
     }
-    val currentSubtask = projection?.currentSubtaskId?.takeIf { it > 0 }?.let { subtaskId ->
-      IdeStatusCurrentSubtask(
-        id = subtaskId.toString(),
-        // Durable child WorkItem/workflow started_at only; never synthesize from updated_at.
-        startedAt = resolveLaunchedChildStartedAt(
-          context.unitOfWork,
-          projection.currentChildWorkflowId,
-        ),
-      )
-    }
+    val currentSubtask = goalCurrentSubtask(projection, context)
     val freshness = IdeStatusFreshnessClassifier.classify(candidate.updatedAt, context.observedAt)
     // One child-status load feeds both optional fields so model and execution cannot drift.
     // Mid-planning keeps planning as the sole progress surface — never duplicate into execution.
-    val childContext =
-      if (lifecycle == IdeStatusLifecycleState.TERMINAL) {
-        ChildOptionalContext.EMPTY
-      } else {
-        childOptionalContext(projection?.currentChildWorkflowId, lifecycle, context)
-      }
+    val childContext = childOptionalContext(projection?.currentChildWorkflowId, lifecycle, context)
     return IdeStatusSnapshot(
       repositoryIdentity = context.repositoryIdentity,
       issueKey = issueKey,
@@ -206,20 +192,6 @@ class IdeStatusProjector(
       projection?.executionLiveness == ExecutionLiveness.IDLE -> IdeStatusLifecycleState.PAUSED
       else -> IdeStatusLifecycleState.ACTIVE
     }
-  }
-
-  /**
-   * Resolve current-subtask started_at from the launched child's durable WorkItem or workflow
-   * snapshot. Omit when no child scope exists or legacy state lacks started_at.
-   */
-  private fun resolveLaunchedChildStartedAt(unitOfWork: UnitOfWork, childWorkflowId: String?): Instant? {
-    val workflowId = childWorkflowId?.takeIf(String::isNotBlank) ?: return null
-    val workStarted = unitOfWork.workList.list(limit = null)
-      .firstOrNull { it.workflowId == workflowId }
-      ?.startedAt
-    if (workStarted != null) return workStarted
-    val snapshot = unitOfWork.workflowStates.getFeatureTaskWorkflow(workflowId)
-    return parseInstantOrNull(snapshot?.startedAt)
   }
 
   /**
@@ -368,6 +340,24 @@ class IdeStatusProjector(
     observedAt = context.observedAt,
     message = message,
     workflowId = candidate.workflowId,
+  )
+}
+
+private fun goalCurrentSubtask(
+  projection: GoalRunnerStatusProjection?,
+  context: IdeStatusProjectionContext,
+): IdeStatusCurrentSubtask? = projection?.currentSubtaskId?.takeIf { it > 0 }?.let { subtaskId ->
+  IdeStatusCurrentSubtask(
+    id = subtaskId.toString(),
+    // Durable child WorkItem/workflow started_at only; never synthesize from updated_at.
+    startedAt = projection.currentChildWorkflowId?.takeIf(String::isNotBlank)?.let { workflowId ->
+      context.unitOfWork.workList.list(limit = null)
+        .firstOrNull { it.workflowId == workflowId }
+        ?.startedAt
+        ?: parseInstantOrNull(
+          context.unitOfWork.workflowStates.getFeatureTaskWorkflow(workflowId)?.startedAt,
+        )
+    },
   )
 }
 

@@ -266,7 +266,12 @@ class IdeStatusServiceTest {
         artifactsJson = phaseRecordsArtifactsJson(
           "preplan" to phaseRecordWire("preplan", "completed", null),
           "plan" to phaseRecordWire("plan", "completed", "plan-model"),
-          "implement" to phaseRecordWire("implement", "running", "claude-opus-4-8", effort = "high"),
+          "implement" to phaseRecordWire(
+            "implement",
+            "running",
+            "claude-opus-4-8",
+            options = PhaseRecordOptions(effort = "high"),
+          ),
         ),
       ),
     )
@@ -414,8 +419,18 @@ class IdeStatusServiceTest {
           "implement" to phaseRecordWire("implement", "completed", null),
           "audit" to phaseRecordWire("audit", "completed", null),
           // Completed review still carries pass 3 — leaking it would be the bug under test.
-          "review" to phaseRecordWire("review", "completed", null, reviewPassNumber = 3),
-          "validate" to phaseRecordWire("validate", "running", null, attemptCount = 2),
+          "review" to phaseRecordWire(
+            "review",
+            "completed",
+            null,
+            options = PhaseRecordOptions(reviewPassNumber = 3),
+          ),
+          "validate" to phaseRecordWire(
+            "validate",
+            "running",
+            null,
+            options = PhaseRecordOptions(attemptCount = 2),
+          ),
         ),
       ),
     )
@@ -452,8 +467,10 @@ class IdeStatusServiceTest {
             "review",
             "running",
             null,
-            attemptCount = 4,
-            reviewPassNumber = 2,
+            options = PhaseRecordOptions(
+              attemptCount = 4,
+              reviewPassNumber = 2,
+            ),
           ),
         ),
       ),
@@ -502,7 +519,12 @@ class IdeStatusServiceTest {
         "plan" to phaseRecordWire("plan", "completed", null),
         "implement" to phaseRecordWire("implement", "completed", null),
         "audit" to phaseRecordWire("audit", "completed", null),
-        "review" to phaseRecordWire("review", "running", null, reviewPassNumber = 2),
+        "review" to phaseRecordWire(
+          "review",
+          "running",
+          null,
+          options = PhaseRecordOptions(reviewPassNumber = 2),
+        ),
       ),
     )
     val result = service(
@@ -1236,27 +1258,31 @@ private fun identityFor(workflowId: String, repositoryIdentity: String): Feature
     mode = FeatureTaskWorkflowMode.RUNTIME,
   )
 
+private data class PhaseRecordOptions(
+  val effort: String? = null,
+  val attemptCount: Int = 1,
+  val reviewPassNumber: Int? = null,
+  val loopId: String? = null,
+  val edgeIteration: Int? = null,
+)
+
 private fun phaseRecordWire(
   phaseId: String,
   status: String,
   launchedModel: String?,
-  effort: String? = null,
-  attemptCount: Int = 1,
-  reviewPassNumber: Int? = null,
-  loopId: String? = null,
-  edgeIteration: Int? = null,
+  options: PhaseRecordOptions = PhaseRecordOptions(),
 ): Map<String, Any?> = FeatureTaskRuntimePhaseRecord(
   phaseId = phaseId,
   status = status,
-  attemptCount = attemptCount,
+  attemptCount = options.attemptCount,
   startedAt = "2026-08-06T09:00:00Z",
   finishedAt = if (status == "completed") "2026-08-06T09:30:00Z" else null,
   resolvedAgentId = "claude",
   launchedModel = launchedModel,
-  launchedEffort = effort,
-  reviewPassNumber = reviewPassNumber,
-  loopId = loopId,
-  edgeIteration = edgeIteration,
+  launchedEffort = options.effort,
+  reviewPassNumber = options.reviewPassNumber,
+  loopId = options.loopId,
+  edgeIteration = options.edgeIteration,
 ).toArtifactMap()
 
 private fun phaseRecordsArtifactsJson(vararg records: Pair<String, Map<String, Any?>>): String =

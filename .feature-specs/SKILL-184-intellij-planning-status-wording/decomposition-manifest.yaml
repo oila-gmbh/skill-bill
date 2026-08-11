@@ -1,0 +1,50 @@
+---
+contract_version: "0.5"
+issue_key: "SKILL-184"
+feature_name: "intellij-planning-status-wording"
+parent_spec_path: ".feature-specs/SKILL-184-intellij-planning-status-wording/spec.md"
+status: "blocked"
+execution_model: "same_branch_commit_per_subtask"
+base_branch: "main"
+feature_branch: "feat/SKILL-184-intellij-planning-status-wording"
+stack_branches: []
+current_subtask_intent:
+  subtask_id: 2
+  action: "blocked"
+subtasks:
+- id: 1
+  name: "Project current-phase execution information through IDE status"
+  spec_path: ".feature-specs/SKILL-184-intellij-planning-status-wording/spec_subtask_1_current-phase-execution-wire.md"
+  status: "complete"
+  branch: null
+  commit_sha: null
+  workflow_id: "wftr-20260811-201602-oz7b"
+  blocked_reason: null
+  last_resumable_step: "commit_push"
+  linear_issue_id: null
+  finalizing_agent_id: null
+  participating_agent_ids: []
+  dependencies: []
+- id: 2
+  name: "Render planning and current-phase execution in IntelliJ"
+  spec_path: ".feature-specs/SKILL-184-intellij-planning-status-wording/spec_subtask_2_intellij-current-phase-execution.md"
+  status: "blocked"
+  branch: null
+  commit_sha: null
+  workflow_id: "wftr-20260811-210148-1tac"
+  blocked_reason: "Goal-subtask planning import conflicts with the stored shared preplan\
+    \ or subtask plan. This occurs when a shared preplan was regenerated after the\
+    \ child was hydrated, making the previously-imported planning bytes stale. Recover\
+    \ this subtask's child without discarding sibling planning or completed commits:\
+    \ 'skill-bill goal reset SKILL-184 --subtask 2 --delete-child-workflow'. Planning\
+    \ failure: Goal planning preparation 'wftr-20260811-201137-gwrw' subtask 2 cannot\
+    \ be recovered: existing child planning import conflicts with request: stored\
+    \ import provenance differs from the hydration request"
+  last_resumable_step: "create_branch"
+  linear_issue_id: null
+  finalizing_agent_id: null
+  participating_agent_ids: []
+  dependencies:
+  - subtask_id: 1
+    optional: false
+    skipped: false
