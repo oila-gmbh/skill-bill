@@ -1,5 +1,15 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
+## [2026-08-11] SKILL-182 subtask 2 Cursor native-agent frontmatter vocabulary
+Areas: runtime-kotlin/runtime-infra-fs/nativeagent/rendering, runtime-kotlin/runtime-infra-fs/nativeagent tests
+- `NativeAgentProvider.Cursor.render` now uses a dedicated `renderCursorAgent` path that emits only `name` and `description` (shared `yamlScalar` quoting), dropping Claude's `tools` key and omitting `model` / `readonly` / `is_background`.
+- Claude and Junie still share `renderFrontmatterAgent` and stay byte-identical; Cursor drift is intentional so installed `~/.cursor/agents/` files match Cursor's frontmatter set.
+- Pattern: per-provider frontmatter projection over a shared source model — `NativeAgentSource.tools` remains authoritative for consumers that use it; only the Cursor projection changes. reusable
+- Tests pin Cursor shape (no `tools:`, no extra keys) and keep Claude/Junie snapshots; Claude/Cursor equality assertion replaced with per-provider assertions.
+- Limitation: mapping Skill Bill tools onto Cursor `readonly` / `is_background` is deferred; default model inherit is left implicit (no explicit `model` emit).
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-08-09] SKILL-174 boundary memory becomes a heading catalog + on-demand body resolve (subtask 2)
 Areas: runtime-kotlin/runtime-infra-fs/goalplanning, runtime-kotlin/runtime-ports/goalrunner, runtime-kotlin/runtime-application/goalrunner, runtime-kotlin/runtime-domain/taskruntime, orchestration/contracts, skills/bill-feature-goal
 - Discovery no longer ships byte-prefix excerpts of `agent/history.md` / `decisions.md`; it emits a heading-only catalog with stable ids, per-file and total caps, and a deterministic truncation marker.
