@@ -7,6 +7,7 @@ import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import dev.skillbill.intellij.application.GoalStopOutcome
 import dev.skillbill.intellij.application.StatusRefreshCoordinator
 import dev.skillbill.intellij.composition.SkillBillProjectStatusService
+import dev.skillbill.intellij.domain.CurrentPhaseModel
 import dev.skillbill.intellij.domain.SkillBillStatusOutcome
 import dev.skillbill.intellij.fakes.ControllableClock
 import dev.skillbill.intellij.fakes.FakeGoalPauseRepository
@@ -232,6 +233,26 @@ class SkillBillStatusBarWidgetFixtureTest : BasePlatformTestCase() {
         assertTrue("no controls for an ineligible state", emptyBuilt.buttons.isEmpty())
         assertNull(emptyBuilt.actionRow)
         widget.dispose()
+    }
+
+    fun testPopupRendersExactlyOneModelRowOnlyWhenAModelIsPresent() {
+        val withModel = SkillBillStatusBarPresentation.map(
+            activeUiState(currentModel = CurrentPhaseModel(model = "opus-5", effort = "high")),
+        )
+        val modelRows = StatusDetailsPopupContent.statusLines(withModel).filter { it.first == "Model" }
+        assertEquals("exactly one model row", 1, modelRows.size)
+        val value = modelRows.single().second
+        assertTrue("row carries the model", value.contains("opus-5"))
+        assertTrue("row carries the effort inline", value.contains("high"))
+
+        val withoutModel = SkillBillStatusBarPresentation.map(activeUiState())
+        val lines = StatusDetailsPopupContent.statusLines(withoutModel)
+        assertTrue("no model row when absent", lines.none { it.first == "Model" })
+        // No row at all when absent: the present-model lines are today's lines plus one.
+        assertEquals(
+            lines,
+            StatusDetailsPopupContent.statusLines(withModel).filterNot { it.first == "Model" },
+        )
     }
 
     fun testDisabledPauseKeepsItsAccessibleNameAndRegisteredRequestText() {

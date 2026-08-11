@@ -6,6 +6,8 @@ import com.google.gson.JsonParser
 import com.google.gson.JsonSyntaxException
 import dev.skillbill.intellij.domain.ACTIVE_DURATION_AS_OF_WIRE_KEY
 import dev.skillbill.intellij.domain.ACTIVE_DURATION_MS_WIRE_KEY
+import dev.skillbill.intellij.domain.CURRENT_MODEL_WIRE_KEY
+import dev.skillbill.intellij.domain.CurrentPhaseModel
 import dev.skillbill.intellij.domain.GoalPlanningInfo
 import dev.skillbill.intellij.domain.IDE_STATUS_CONTRACT_VERSION
 import dev.skillbill.intellij.domain.NO_MATCHING_WORK_REASON_CODE
@@ -99,6 +101,7 @@ object IdeStatusJsonMapper {
         val subtaskStartedAt = subtask?.getAsInstant("started_at")
         val updatedAt = root.getAsInstant("updated_at")
         val planning = root.parsePlanning()
+        val currentModel = root.parseCurrentModel()
         // Both optional and goal-family-only: a missing key stays null, never false.
         val pauseRequested = root.getAsBoolean(PAUSE_REQUESTED_WIRE_KEY)
         val pausedAt = root.getAsInstant(PAUSED_AT_WIRE_KEY)
@@ -156,6 +159,7 @@ object IdeStatusJsonMapper {
                 planning = planning,
                 activeDurationMs = activeDurationMs,
                 activeDurationAsOf = activeDurationAsOf,
+                currentModel = currentModel,
             )
         }
 
@@ -184,6 +188,7 @@ object IdeStatusJsonMapper {
                         pausedAt = pausedAt,
                         activeDurationMs = activeDurationMs,
                         activeDurationAsOf = activeDurationAsOf,
+                        currentModel = currentModel,
                     )
                 } else {
                     SkillBillStatusOutcome.Active(
@@ -206,6 +211,7 @@ object IdeStatusJsonMapper {
                         pausedAt = pausedAt,
                         activeDurationMs = activeDurationMs,
                         activeDurationAsOf = activeDurationAsOf,
+                        currentModel = currentModel,
                     )
                 }
             }
@@ -224,6 +230,7 @@ object IdeStatusJsonMapper {
                 stale = isStale,
                 activeDurationMs = activeDurationMs,
                 activeDurationAsOf = activeDurationAsOf,
+                currentModel = currentModel,
             )
 
             "failed" -> SkillBillStatusOutcome.Failed(
@@ -240,6 +247,7 @@ object IdeStatusJsonMapper {
                 stale = isStale,
                 activeDurationMs = activeDurationMs,
                 activeDurationAsOf = activeDurationAsOf,
+                currentModel = currentModel,
             )
 
             "idle" -> SkillBillStatusOutcome.Idle(
@@ -316,6 +324,21 @@ object IdeStatusJsonMapper {
             currentPlanningSubtaskId = planning.getAsString("current_planning_subtask_id")
                 ?.takeUnless { it.isBlank() },
             reason = planning.getAsString("reason")?.let { safeSummary(it, "") }?.takeUnless { it.isEmpty() },
+        )
+    }
+
+    /**
+     * Same degradation rule as [parsePlanning]: the launched model is optional context, so a
+     * missing block, a non-object, or a blank/mistyped field degrades to null and the
+     * surrounding outcome still maps normally. A model id carries no path, so a trim plus a
+     * bounded take is the whole sanitization.
+     */
+    private fun JsonObject.parseCurrentModel(): CurrentPhaseModel? {
+        val currentModel = getAsJsonObjectOrNull(CURRENT_MODEL_WIRE_KEY) ?: return null
+        val model = currentModel.getAsString("model")?.trim()?.takeUnless { it.isBlank() } ?: return null
+        return CurrentPhaseModel(
+            model = model.take(120),
+            effort = currentModel.getAsString("effort")?.trim()?.takeUnless { it.isBlank() }?.take(40),
         )
     }
 

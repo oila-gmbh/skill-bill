@@ -25,6 +25,12 @@ const val UNCORROBORATED_IDLE_TOLERANCE: Int = 1
  */
 const val PAUSE_REQUESTED_WIRE_KEY: String = "pause_requested"
 
+/**
+ * Wire key carrying the model (and optional effort) the current phase launched with.
+ * Optional context: absence degrades to no model, never to a lost status reading.
+ */
+const val CURRENT_MODEL_WIRE_KEY: String = "current_model"
+
 /** Wire key carrying the instant a recorded pause took effect. Optional. */
 const val PAUSED_AT_WIRE_KEY: String = "paused_at"
 

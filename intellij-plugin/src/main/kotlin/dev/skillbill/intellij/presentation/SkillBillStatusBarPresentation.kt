@@ -28,6 +28,10 @@ object SkillBillStatusBarPresentation {
             "${renderedPosition(anchored, completed, total)}/$total"
         }
         val planning = anchored.planning
+        // Popup-only: the bar, tooltip, and accessibility text stay byte-identical.
+        val modelText = anchored.currentModel?.let { current ->
+            current.effort?.let { "${current.model} (effort: $it)" } ?: current.model
+        }
         val planningSegment = planning?.let { "Planning ${it.plannedSubtaskCount}/${it.totalSubtaskCount}" }
 
         val fullBar = when (anchored) {
@@ -88,6 +92,7 @@ object SkillBillStatusBarPresentation {
                 workflowId = anchored.workflowId,
                 lifecycleState = lifecycle,
                 stepLabel = step ?: anchored.stepLabel,
+                modelText = modelText,
                 progressText = progressText,
                 goalElapsedText = goalText,
                 subtaskElapsedText = subtaskText,
@@ -280,6 +285,8 @@ object SkillBillStatusBarPresentation {
         val workflowId: String?,
         val lifecycleState: String,
         val stepLabel: String?,
+        /** Pre-resolved model row for the details popup; null renders no row at all. */
+        val modelText: String? = null,
         val progressText: String?,
         val goalElapsedText: String,
         val subtaskElapsedText: String,

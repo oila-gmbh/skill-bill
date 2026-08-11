@@ -64,6 +64,7 @@ object StatusUiMapper {
                     ),
                     workflowFamily = outcome.workflowFamily,
                     pauseRequested = outcome.pauseRequested,
+                    currentModel = outcome.currentModel,
                     activeDurationMs = outcome.activeDurationMs,
                     activeDurationAsOf = outcome.activeDurationAsOf,
                 )
@@ -94,6 +95,7 @@ object StatusUiMapper {
                     ),
                     workflowFamily = outcome.workflowFamily,
                     pauseRequested = outcome.pauseRequested,
+                    currentModel = outcome.currentModel,
                 )
 
             is SkillBillStatusOutcome.Stale ->
@@ -121,6 +123,7 @@ object StatusUiMapper {
                         outcome.currentSubtaskId,
                         outcome.progressCompleted,
                     ),
+                    currentModel = outcome.currentModel,
                 )
 
             is SkillBillStatusOutcome.Blocked ->
@@ -142,6 +145,7 @@ object StatusUiMapper {
                     lastUpdated = outcome.updatedAt ?: outcome.observedAt,
                     problemSummary = outcome.summary,
                     stale = outcome.stale,
+                    currentModel = outcome.currentModel,
                 )
 
             is SkillBillStatusOutcome.Failed ->
@@ -163,6 +167,7 @@ object StatusUiMapper {
                     lastUpdated = outcome.updatedAt ?: outcome.observedAt,
                     problemSummary = outcome.summary,
                     stale = outcome.stale,
+                    currentModel = outcome.currentModel,
                 )
 
             is SkillBillStatusOutcome.Unavailable ->

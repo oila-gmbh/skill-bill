@@ -1,5 +1,6 @@
 package dev.skillbill.intellij.presentation
 
+import dev.skillbill.intellij.domain.CurrentPhaseModel
 import dev.skillbill.intellij.domain.GoalPlanningInfo
 import dev.skillbill.intellij.domain.SkillBillStatusOutcome
 import java.time.Duration
@@ -501,6 +502,22 @@ class SkillBillStatusBarPresentationTest {
         assertEquals(withoutControls.details, withControls.details)
         assertTrue(withoutControls.controls.isEmpty())
         assertFalse(withControls.controls.isEmpty())
+    }
+
+    @Test
+    fun `a carried current model leaves bar text tooltip and accessibility untouched`() {
+        val withoutModel = SkillBillStatusBarPresentation.map(active())
+        val withModel = SkillBillStatusBarPresentation.map(
+            active().copy(currentModel = CurrentPhaseModel(model = "opus-5", effort = "high")),
+        )
+
+        assertEquals(withoutModel.barText, withModel.barText)
+        assertEquals(withoutModel.tooltipText, withModel.tooltipText)
+        assertEquals(withoutModel.accessibleName, withModel.accessibleName)
+        assertEquals(withoutModel.accessibleDescription, withModel.accessibleDescription)
+        // Only the popup-facing row differs.
+        assertEquals("opus-5 (effort: high)", withModel.details.modelText)
+        assertTrue("no model text without a model", withoutModel.details.modelText == null)
     }
 
     private fun activeOutcome(

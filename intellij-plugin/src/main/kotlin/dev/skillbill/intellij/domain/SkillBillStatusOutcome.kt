@@ -76,6 +76,8 @@ sealed class SkillBillStatusOutcome {
         val activeDurationMs: Long? = null,
         /** Instant [activeDurationMs] is current as of; present only while a lease is live. */
         val activeDurationAsOf: Instant? = null,
+        /** Model the current phase launched with; null when the snapshot carried none. */
+        val currentModel: CurrentPhaseModel? = null,
     ) : SkillBillStatusOutcome()
 
     /**
@@ -107,6 +109,8 @@ sealed class SkillBillStatusOutcome {
         val activeDurationMs: Long? = null,
         /** See [Active.activeDurationAsOf]; absent once the runner released its lease. */
         val activeDurationAsOf: Instant? = null,
+        /** See [Active.currentModel]. */
+        val currentModel: CurrentPhaseModel? = null,
     ) : SkillBillStatusOutcome()
 
     data class Stale(
@@ -129,6 +133,8 @@ sealed class SkillBillStatusOutcome {
         val activeDurationMs: Long? = null,
         /** See [Active.activeDurationAsOf]; absent once the runner released its lease. */
         val activeDurationAsOf: Instant? = null,
+        /** See [Active.currentModel]. */
+        val currentModel: CurrentPhaseModel? = null,
     ) : SkillBillStatusOutcome()
 
     data class Blocked(
@@ -149,6 +155,8 @@ sealed class SkillBillStatusOutcome {
         val activeDurationMs: Long? = null,
         /** See [Active.activeDurationAsOf]; absent once the runner released its lease. */
         val activeDurationAsOf: Instant? = null,
+        /** See [Active.currentModel]. */
+        val currentModel: CurrentPhaseModel? = null,
     ) : SkillBillStatusOutcome()
 
     data class Failed(
@@ -169,6 +177,8 @@ sealed class SkillBillStatusOutcome {
         val activeDurationMs: Long? = null,
         /** See [Active.activeDurationAsOf]; absent once the runner released its lease. */
         val activeDurationAsOf: Instant? = null,
+        /** See [Active.currentModel]. */
+        val currentModel: CurrentPhaseModel? = null,
     ) : SkillBillStatusOutcome()
 
     data class Unavailable(
@@ -225,6 +235,15 @@ data class GoalPlanningInfo(
     val totalSubtaskCount: Int,
     val currentPlanningSubtaskId: String? = null,
     val reason: String? = null,
+)
+
+/**
+ * The model the current phase launched with, plus its reasoning effort when the runtime
+ * recorded one. Optional context on a live snapshot; a missing block is simply no model.
+ */
+data class CurrentPhaseModel(
+    val model: String,
+    val effort: String? = null,
 )
 
 enum class UnavailableReason {

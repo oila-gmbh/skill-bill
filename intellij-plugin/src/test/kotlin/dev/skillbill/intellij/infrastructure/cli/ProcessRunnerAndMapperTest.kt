@@ -268,6 +268,63 @@ class IdeStatusJsonMapperTest {
     }
 
     @Test
+    fun `goal payload carrying a current model maps model and effort onto the outcome`() {
+        val outcome = IdeStatusJsonMapper.map(
+            goalPayload(planning = null, currentModel = """"current_model": {"model": "opus-5", "effort": "high"}"""),
+            now,
+            0,
+        )
+        assertTrue(outcome is SkillBillStatusOutcome.Active)
+        val currentModel = (outcome as SkillBillStatusOutcome.Active).currentModel
+        assertEquals("opus-5", currentModel?.model)
+        assertEquals("high", currentModel?.effort)
+        assertEquals("implement", outcome.currentStepId)
+    }
+
+    @Test
+    fun `unusable current model degrades to null while the outcome maps normally`() {
+        val unusable = mapOf(
+            "absent" to null,
+            "non-object string" to """"current_model": "opus-5"""",
+            "non-object array" to """"current_model": ["opus-5"]""",
+            "blank model" to """"current_model": {"model": "   "}""",
+            "non-string model" to """"current_model": {"model": ["opus-5"]}""",
+            "missing model" to """"current_model": {"effort": "high"}""",
+        )
+        for ((case, block) in unusable) {
+            val outcome = IdeStatusJsonMapper.map(goalPayload(planning = null, currentModel = block), now, 0)
+            assertTrue("$case must still map to Active", outcome is SkillBillStatusOutcome.Active)
+            outcome as SkillBillStatusOutcome.Active
+            assertNull("$case must degrade the model to null", outcome.currentModel)
+            assertEquals("$case must keep the surrounding outcome", "implement", outcome.currentStepId)
+        }
+    }
+
+    @Test
+    fun `unusable effort degrades to a null effort while the model survives`() {
+        val unusable = mapOf(
+            "blank effort" to """"current_model": {"model": "opus-5", "effort": "  "}""",
+            "non-string effort" to """"current_model": {"model": "opus-5", "effort": {"level": "high"}}""",
+        )
+        for ((case, block) in unusable) {
+            val outcome = IdeStatusJsonMapper.map(goalPayload(planning = null, currentModel = block), now, 0)
+            assertTrue("$case must still map to Active", outcome is SkillBillStatusOutcome.Active)
+            val currentModel = (outcome as SkillBillStatusOutcome.Active).currentModel
+            assertEquals("$case must keep the model", "opus-5", currentModel?.model)
+            assertNull("$case must degrade the effort to null", currentModel?.effort)
+        }
+    }
+
+    @Test
+    fun `stale payload carrying a current model maps it onto the stale outcome`() {
+        val json = goalPayload(planning = null, currentModel = """"current_model": {"model": "opus-5"}""")
+            .replace("\"freshness\":\"fresh\"", "\"freshness\":\"stale\"")
+        val outcome = IdeStatusJsonMapper.map(json, now, 0)
+        assertTrue(outcome is SkillBillStatusOutcome.Stale)
+        assertEquals("opus-5", (outcome as SkillBillStatusOutcome.Stale).currentModel?.model)
+    }
+
+    @Test
     fun `malformed planning degrades to null without failing the mapping`() {
         val malformed = mapOf(
             "non-object" to "\"planning\": \"nope\"",
@@ -388,7 +445,7 @@ class IdeStatusJsonMapperTest {
         return replace(original, "\"$field\": \"$to\"")
     }
 
-    private fun goalPayload(planning: String?): String =
+    private fun goalPayload(planning: String?, currentModel: String? = null): String =
         buildString {
             append("{\"contract_version\":\"$IDE_STATUS_CONTRACT_VERSION\",")
             append("\"repository_identity\":\"repo-root-realpath-v1:/repo\",")
@@ -401,6 +458,7 @@ class IdeStatusJsonMapperTest {
             append("\"updated_at\":\"2026-08-06T09:59:00Z\",")
             append("\"summary\":\"Goal SKILL-165 in progress.\"")
             planning?.let { append(',').append(it) }
+            currentModel?.let { append(',').append(it) }
             append('}')
         }
 

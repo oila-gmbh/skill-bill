@@ -36,6 +36,7 @@ object StatusDetailsPopupContent {
             details.issueKey?.let { add("Issue" to it) }
             details.workflowId?.let { add("Workflow" to it) }
             details.stepLabel?.let { add("Step" to it) }
+            details.modelText?.let { add("Model" to it) }
             details.progressText?.let { add("Progress" to it) }
             add("Goal ${details.elapsedNoun}" to details.goalElapsedText)
             add("Subtask ${details.elapsedNoun}" to details.subtaskElapsedText)
