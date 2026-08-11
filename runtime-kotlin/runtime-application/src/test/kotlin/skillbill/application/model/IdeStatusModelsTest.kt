@@ -4,6 +4,7 @@ import skillbill.goalrunner.model.GoalPlanningStatusState
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -121,6 +122,49 @@ class IdeStatusModelsTest {
       withoutTotal["current_phase_execution"],
     )
     assertFalse((withoutTotal["current_phase_execution"] as Map<*, *>).containsKey("total"))
+  }
+
+  @Test
+  fun `currentPhaseExecution rejects total unless kind is bounded_edge`() {
+    assertFailsWith<IllegalArgumentException> {
+      IdeStatusCurrentPhaseExecution(
+        phaseId = "audit",
+        kind = IdeStatusCurrentPhaseExecutionKind.SEMANTIC_LOOP,
+        count = 1,
+        total = 2,
+      )
+    }
+    assertFailsWith<IllegalArgumentException> {
+      IdeStatusCurrentPhaseExecution(
+        phaseId = "review",
+        kind = IdeStatusCurrentPhaseExecutionKind.PASS,
+        count = 1,
+        total = 3,
+      )
+    }
+    assertFailsWith<IllegalArgumentException> {
+      IdeStatusCurrentPhaseExecution(
+        phaseId = "validate",
+        kind = IdeStatusCurrentPhaseExecutionKind.GATE_RUN,
+        count = 1,
+        total = 1,
+      )
+    }
+    assertFailsWith<IllegalArgumentException> {
+      IdeStatusCurrentPhaseExecution(
+        phaseId = "implement",
+        kind = IdeStatusCurrentPhaseExecutionKind.ATTEMPT,
+        count = 1,
+        total = 1,
+      )
+    }
+    // bounded_edge may carry a meaningful cap.
+    IdeStatusCurrentPhaseExecution(
+      phaseId = "plan",
+      kind = IdeStatusCurrentPhaseExecutionKind.BOUNDED_EDGE,
+      count = 1,
+      total = 2,
+    )
   }
 
   @Test

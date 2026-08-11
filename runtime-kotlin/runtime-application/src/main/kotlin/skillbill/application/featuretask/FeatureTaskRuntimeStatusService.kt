@@ -126,8 +126,13 @@ class FeatureTaskRuntimeStatusService(
     ledger: List<FeatureTaskRuntimePhaseLedgerEntry>,
     cached: FeatureTaskRuntimeAuditRepairProgress?,
   ): FeatureTaskRuntimeAuditRepairProgress? {
-    if (history.generations.isEmpty()) return cached
-    return history.deriveProgress(auditGapIterationCount = ledgerAuditGapIterationCount(ledger))
+    val ledgerCount = ledgerAuditGapIterationCount(ledger)
+    if (history.generations.isEmpty()) {
+      // The replaceable cache may hold a nonzero count written before its LOOP_EDGE lands.
+      // Without durable audit-gap edge evidence, never expose that cache as a semantic loop.
+      return cached?.copy(auditGapIterationCount = ledgerCount)
+    }
+    return history.deriveProgress(auditGapIterationCount = ledgerCount)
   }
 
   private fun cachedCounterDisagreement(
@@ -180,7 +185,7 @@ class FeatureTaskRuntimeStatusService(
           null
         }
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW ->
-        record?.reviewPassNumber?.let { pass ->
+        activeReviewPassNumber(record, ledger)?.let { pass ->
           IdeStatusCurrentPhaseExecution(
             phaseId = phaseId,
             kind = IdeStatusCurrentPhaseExecutionKind.PASS,
@@ -227,18 +232,47 @@ class FeatureTaskRuntimeStatusService(
   }
 
   /**
-   * Durable edge context for the current phase: prefer the phase-record watermark, else the latest
-   * LOOP_EDGE ledger entry targeting this phase (covers ledger-only re-entry after a completed
-   * record).
+   * Active review pass for the current review phase. A completed prior review record is omitted
+   * when a newer review_fix LOOP_EDGE has reopened review, so a stale pass cannot appear current
+   * after the workflow advances or re-enters.
+   */
+  private fun activeReviewPassNumber(
+    record: FeatureTaskRuntimePhaseRecord?,
+    ledger: List<FeatureTaskRuntimePhaseLedgerEntry>,
+  ): Int? {
+    val pass = record?.reviewPassNumber ?: return null
+    if (record.status != STATUS_COMPLETED) return pass
+    val latestReviewFixEdge = ledger
+      .filter {
+        it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE &&
+          it.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID &&
+          it.edgeIteration != null
+      }
+      .maxByOrNull { it.sequenceNumber }
+      ?: return null
+    val recordEdge = record.edgeIteration
+    val ledgerEdge = latestReviewFixEdge.edgeIteration!!
+    // The completed watermark is still the active pass only when it matches the latest re-entry.
+    if (record.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID &&
+      recordEdge != null &&
+      recordEdge >= ledgerEdge
+    ) {
+      return pass
+    }
+    return null
+  }
+
+  /**
+   * Durable edge context for the current phase: prefer the latest LOOP_EDGE targeting this phase
+   * (the active re-entry), falling back to the phase-record watermark only when no targeting edge
+   * exists. Preferring a stale record watermark over a newer ledger edge would under-report
+   * repeated audit, review, or regeneration iterations.
    */
   private fun activeEdgeContext(
     phaseId: String,
     record: FeatureTaskRuntimePhaseRecord?,
     ledger: List<FeatureTaskRuntimePhaseLedgerEntry>,
   ): Pair<String, Int>? {
-    record?.loopId?.let { loopId ->
-      record.edgeIteration?.let { return loopId to it }
-    }
     val edgeEntry = ledger
       .filter {
         it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE &&
@@ -247,8 +281,13 @@ class FeatureTaskRuntimeStatusService(
           it.edgeIteration != null
       }
       .maxByOrNull { it.sequenceNumber }
-      ?: return null
-    return edgeEntry.loopId!! to edgeEntry.edgeIteration!!
+    if (edgeEntry != null) {
+      return edgeEntry.loopId!! to edgeEntry.edgeIteration!!
+    }
+    record?.loopId?.let { loopId ->
+      record.edgeIteration?.let { return loopId to it }
+    }
+    return null
   }
 
   private fun attemptExecution(phaseId: String, attemptCount: Int): IdeStatusCurrentPhaseExecution? =

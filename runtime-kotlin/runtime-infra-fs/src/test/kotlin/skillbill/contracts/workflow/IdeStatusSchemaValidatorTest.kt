@@ -267,6 +267,34 @@ class IdeStatusSchemaValidatorTest {
     assertFailsWith<InvalidIdeStatusSchemaError> {
       IdeStatusSchemaValidator.validate(unknownProperty, "test-current-phase-execution-unknown-property")
     }
+    val totalOnPass = validGoalSnapshot()
+    totalOnPass["current_phase_execution"] = linkedMapOf(
+      "phase_id" to "review",
+      "kind" to "pass",
+      "count" to 2,
+      "total" to 3,
+    )
+    assertFailsWith<InvalidIdeStatusSchemaError> {
+      IdeStatusSchemaValidator.validate(totalOnPass, "test-current-phase-execution-total-on-pass")
+    }
+    val totalOnSemanticLoop = validGoalSnapshot()
+    totalOnSemanticLoop["current_phase_execution"] = linkedMapOf(
+      "phase_id" to "audit",
+      "kind" to "semantic_loop",
+      "count" to 1,
+      "total" to 2,
+    )
+    assertFailsWith<InvalidIdeStatusSchemaError> {
+      IdeStatusSchemaValidator.validate(totalOnSemanticLoop, "test-current-phase-execution-total-on-loop")
+    }
+    val boundedWithTotal = validGoalSnapshot()
+    boundedWithTotal["current_phase_execution"] = linkedMapOf(
+      "phase_id" to "plan",
+      "kind" to "bounded_edge",
+      "count" to 1,
+      "total" to 2,
+    )
+    IdeStatusSchemaValidator.validate(boundedWithTotal, "test-current-phase-execution-bounded-total")
   }
 
   @Test

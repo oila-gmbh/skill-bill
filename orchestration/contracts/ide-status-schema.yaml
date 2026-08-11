@@ -177,7 +177,7 @@ properties:
       carries a completed neighbouring phase's historical loop or pass.
       `kind` distinguishes semantic loops/passes from generic attempts and from
       bounded edge iterations; `total` is present only for a meaningful bounded
-      edge cap.
+      edge cap and must be absent for every other kind.
     required:
       - phase_id
       - kind
@@ -201,6 +201,21 @@ properties:
       total:
         type: integer
         minimum: 1
+    allOf:
+      - if:
+          properties:
+            kind:
+              enum:
+                - pass
+                - semantic_loop
+                - gate_run
+                - attempt
+          required:
+            - kind
+        then:
+          not:
+            required:
+              - total
   pause_requested:
     type: boolean
     description: >

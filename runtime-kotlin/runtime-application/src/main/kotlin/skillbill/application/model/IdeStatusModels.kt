@@ -132,6 +132,9 @@ data class IdeStatusCurrentPhaseExecution(
     require(phaseId.isNotBlank()) { "currentPhaseExecution.phaseId must not be blank." }
     require(count >= 1) { "currentPhaseExecution.count must be >= 1, was $count." }
     total?.let {
+      require(kind == IdeStatusCurrentPhaseExecutionKind.BOUNDED_EDGE) {
+        "currentPhaseExecution.total is allowed only for kind=bounded_edge, was kind=${kind.wireValue}."
+      }
       require(it >= 1) { "currentPhaseExecution.total must be >= 1 when present, was $it." }
     }
   }
