@@ -3153,9 +3153,10 @@ internal class FeatureTaskRuntimeRunLoop(
         fileManifestIntroduced = fileManifest?.introduced.orEmpty(),
         loopId = run.reentry?.loopId,
         edgeIteration = run.reentry?.edgeIteration,
-        // The only pause seam is a provider-limit refusal, so no child ran: clear the running write's
-        // stamp rather than let it report a model the phase never executed.
-        launchOutcomeKnown = true,
+        // A provider-limit refusal is reported by a child that did spawn and run under the launched
+        // model, so the running write's stamp is kept: "which model hit the usage limit" is the
+        // operative diagnostic question on a limit pause.
+        launchOutcomeKnown = false,
       ),
       run.request.dbPathOverride,
     )
@@ -3205,6 +3206,7 @@ internal class FeatureTaskRuntimeRunLoop(
     iteration: Int,
     observability: FeatureTaskRuntimeRunObservability,
     rejection: RecordRejection,
+    childNeverLaunched: Boolean,
   ): PhaseOutcome {
     val consumer = run.phaseId
     val producer = FeatureTaskRuntimePhaseWorkflowDefinition.REGENERATION_PRODUCER_BY_CONSUMER[consumer]
@@ -3215,7 +3217,15 @@ internal class FeatureTaskRuntimeRunLoop(
       }
     }
     if (producer == null || edge == null || producer !in transitions.forwardPhaseIds) {
-      return blockUnattributableRecordRejection(run, state, iteration, observability, rejection, producer)
+      return blockUnattributableRecordRejection(
+        run,
+        state,
+        iteration,
+        observability,
+        rejection,
+        producer,
+        childNeverLaunched,
+      )
     }
     val rejectedRecord = state.outputFor(producer)
     val producingIteration =
@@ -3229,6 +3239,7 @@ internal class FeatureTaskRuntimeRunLoop(
           "producer. The run blocks instead of fabricating a rejected-output diagnostic.",
         observability,
         failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
+        childNeverLaunched = childNeverLaunched,
       )
     val producerEvidence = recorder.producerOutput(
       request.workflowId,
@@ -3245,6 +3256,7 @@ internal class FeatureTaskRuntimeRunLoop(
         "a rejected-output diagnostic from normalized workflow state.",
       observability,
       failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
+      childNeverLaunched = childNeverLaunched,
     )
     val rejectedPayload = producerEvidence.payload ?: byteArrayOf()
     val diagnosticIdentity = recordRejectedOutput(
@@ -3297,6 +3309,7 @@ internal class FeatureTaskRuntimeRunLoop(
     observability: FeatureTaskRuntimeRunObservability,
     rejection: RecordRejection,
     producer: String?,
+    childNeverLaunched: Boolean,
   ): PhaseOutcome {
     val detail = payloadFreeRejectionReason(
       "reconciliation-${rejection.rejectionClass}",
@@ -3352,6 +3365,7 @@ internal class FeatureTaskRuntimeRunLoop(
       reason,
       observability,
       failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
+      childNeverLaunched = childNeverLaunched,
     )
   }
 
@@ -3397,8 +3411,8 @@ internal class FeatureTaskRuntimeRunLoop(
     phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>>? = null,
   ): AttemptResult {
     // The running write is what the IDE reads as current_model while the child is in flight, so it
-    // stamps the directive the launch below is rendered from. The two never-launched exits then clear
-    // it: a phase whose child the provider refused, or whose launch failed, ran no model at all.
+    // stamps the directive the launch below is rendered from. The settling exits then clear it only
+    // where the launch proved no child ever ran, via LaunchResult.childNeverLaunched.
     persistPhase(
       run,
       iteration,
@@ -3420,12 +3434,14 @@ internal class FeatureTaskRuntimeRunLoop(
           observability,
           failureDisposition = launch.failureDisposition,
           fileManifest = launch.fileManifest,
-          childNeverLaunched = true,
+          childNeverLaunched = launch.childNeverLaunched,
         ),
       )
     }
     launch.recordRejection?.let { rejection ->
-      return AttemptResult.settled(settleRecordRejection(run, state, iteration, observability, rejection))
+      return AttemptResult.settled(
+        settleRecordRejection(run, state, iteration, observability, rejection, launch.childNeverLaunched),
+      )
     }
     val fileManifest = requireNotNull(launch.fileManifest)
     return gateOutput(
@@ -4834,12 +4850,14 @@ internal class FeatureTaskRuntimeRunLoop(
     if (!before.ok) {
       return LaunchResult.infraFailure(
         "Feature-task-runtime phase '${run.phaseId}' could not capture its before-file manifest: ${before.error}",
+        childNeverLaunched = true,
       )
     }
     val beforeCommit = gitOperations.runtimePhaseHeadCommit(run.request.repoRoot)
     if (!beforeCommit.ok) {
       return LaunchResult.infraFailure(
         "Feature-task-runtime phase '${run.phaseId}' could not capture its before commit: ${beforeCommit.error}",
+        childNeverLaunched = true,
       )
     }
     val prepared = when (val preparation = prepareLaunchForCapture(run, state, priorCorrection)) {
@@ -4879,12 +4897,14 @@ internal class FeatureTaskRuntimeRunLoop(
     if (!after.ok) {
       return LaunchResult.infraFailure(
         "Feature-task-runtime phase '${run.phaseId}' could not capture its after-file manifest: ${after.error}",
+        childNeverLaunched = false,
       )
     }
     val afterCommit = gitOperations.runtimePhaseHeadCommit(run.request.repoRoot)
     if (!afterCommit.ok) {
       return LaunchResult.infraFailure(
         "Feature-task-runtime phase '${run.phaseId}' could not capture its after commit: ${afterCommit.error}",
+        childNeverLaunched = false,
       )
     }
     val committedPaths = gitOperations.runtimePhaseChangedPathsBetweenCommits(
@@ -4895,6 +4915,7 @@ internal class FeatureTaskRuntimeRunLoop(
     if (!committedPaths.ok) {
       return LaunchResult.infraFailure(
         "Feature-task-runtime phase '${run.phaseId}' could not capture committed file changes: ${committedPaths.error}",
+        childNeverLaunched = false,
       )
     }
     val fileManifest = FeatureTaskRuntimePhaseFileManifest(
@@ -5170,11 +5191,14 @@ internal class FeatureTaskRuntimeRunLoop(
     is UnsupportedAgentRunLaunch -> LaunchResult.infraFailure(
       "Feature-task-runtime phase '$phaseId' could not launch an agent: ${outcome.reason}",
       fileManifest,
+      childNeverLaunched = true,
     )
     is AgentRunLaunchFacts -> providerLimitSignal(outcome)
       ?.let { LaunchResult.providerLimited(providerLimitPauseReason(phaseId, it), fileManifest) }
       ?: infraFailureReason(phaseId, outcome)
-        ?.let { LaunchResult.infraFailure(it, fileManifest) }
+        // Only a spawn failure proves no child ran; a timeout, an interruption and a non-zero exit
+        // all happened after the process started under the launched model.
+        ?.let { LaunchResult.infraFailure(it, fileManifest, childNeverLaunched = outcome.spawnFailed) }
       ?: LaunchResult.captured(
         outcome.stdout,
         outcome.stdoutBytes,
@@ -5228,6 +5252,7 @@ internal class FeatureTaskRuntimeRunLoop(
       val reason: String,
       override val fileManifest: FeatureTaskRuntimePhaseFileManifest?,
       val disposition: FeatureTaskRuntimeFailureDisposition,
+      val neverLaunched: Boolean,
     ) : LaunchResult
     private data class RecordRejected(
       val rejection: RecordRejection,
@@ -5249,6 +5274,15 @@ internal class FeatureTaskRuntimeRunLoop(
     val infraFailureReason: String? get() = (this as? InfraFailure)?.reason
     val providerLimitReason: String? get() = (this as? ProviderLimited)?.reason
     val recordRejection: RecordRejection? get() = (this as? RecordRejected)?.rejection
+
+    /**
+     * True only where the launch provably never produced a running child: a pre-launch capture or
+     * seam rejection, or a spawn failure. A timeout, an interruption, a non-zero exit and a
+     * post-run capture failure all happened around a child that did run under the launched model,
+     * so their records must keep it.
+     */
+    val childNeverLaunched: Boolean
+      get() = (this as? InfraFailure)?.neverLaunched ?: (this is RecordRejected)
     val failureDisposition: FeatureTaskRuntimeFailureDisposition
       get() = (this as? InfraFailure)?.disposition ?: FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE
     val fileManifest: FeatureTaskRuntimePhaseFileManifest?
@@ -5269,8 +5303,12 @@ internal class FeatureTaskRuntimeRunLoop(
         stdoutSha256,
         fileManifest,
       )
-      fun infraFailure(reason: String, fileManifest: FeatureTaskRuntimePhaseFileManifest? = null): LaunchResult =
-        InfraFailure(reason, fileManifest, FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE)
+      fun infraFailure(
+        reason: String,
+        fileManifest: FeatureTaskRuntimePhaseFileManifest? = null,
+        childNeverLaunched: Boolean,
+      ): LaunchResult =
+        InfraFailure(reason, fileManifest, FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE, childNeverLaunched)
 
       /** The provider refused at a usage limit: resumable on its own clock, so the phase pauses. */
       fun providerLimited(reason: String, fileManifest: FeatureTaskRuntimePhaseFileManifest? = null): LaunchResult =
@@ -5278,7 +5316,7 @@ internal class FeatureTaskRuntimeRunLoop(
 
       /** Static declaration or configuration drift: retrying without operator action reproduces it. */
       fun projectionRejected(reason: String): LaunchResult =
-        InfraFailure(reason, null, FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION)
+        InfraFailure(reason, null, FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION, neverLaunched = true)
 
       /**
        * A durable upstream producer record was rejected at projection validation: the run quarantines

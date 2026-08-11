@@ -200,19 +200,21 @@ class IdeStatusProjector(
    * The launched model of the goal's currently running child phase. The goal's own currentStep can
    * be a planning label rather than a phase id, so the child's own projection resolves the phase.
    *
-   * The child status read is deliberately unwrapped, like the sibling goal-status read and the
-   * runtime-family read in [projectRuntime]: a quarantine-worthy child phase record surfaces as one
-   * `schema_incompatible` record through [IdeStatusService], not as a silently absent model
-   * indistinguishable from "no model was recorded".
+   * Optional context must never cost a status reading: this is a nested read of a *different*
+   * workflow's rows, so letting its failure escape would downgrade the whole goal snapshot to a
+   * single `schema_incompatible` record through [IdeStatusService] — losing lifecycle, progress and
+   * pause state over an optional field. Any resolution failure omits the field instead.
    */
   private fun childCurrentModel(
     childWorkflowId: String?,
     context: IdeStatusProjectionContext,
   ): IdeStatusCurrentModel? {
     val workflowId = childWorkflowId?.takeIf(String::isNotBlank) ?: return null
-    val status = featureTaskRuntimeStatusService.status(
-      FeatureTaskRuntimeStatusRequest(workflowId = workflowId, dbPathOverride = context.dbOverride),
-    ) ?: return null
+    val status = runCatching {
+      featureTaskRuntimeStatusService.status(
+        FeatureTaskRuntimeStatusRequest(workflowId = workflowId, dbPathOverride = context.dbOverride),
+      )
+    }.getOrNull() ?: return null
     val currentPhaseId = status.currentPhaseId ?: return null
     return status.phases.firstOrNull { it.phaseId == currentPhaseId }?.toIdeStatusCurrentModel()
   }

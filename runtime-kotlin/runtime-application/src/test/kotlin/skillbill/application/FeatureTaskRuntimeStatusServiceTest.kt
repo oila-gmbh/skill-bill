@@ -172,11 +172,11 @@ class FeatureTaskRuntimeStatusServiceTest {
       FeatureTaskRuntimePhaseStateRequest(
         workflowId = WORKFLOW_ID,
         phaseId = "implement",
-        status = "paused",
+        status = "blocked",
         attemptCount = 1,
         resolvedAgentId = "claude",
         finished = false,
-        blockedReason = "provider usage limit refused the launch",
+        blockedReason = "the agent process could not be spawned",
         launchOutcomeKnown = true,
       ),
     )

@@ -43,12 +43,18 @@ data class PhaseModelDirective(
 data class ExecutionMatrix(
   val phaseTiers: Map<String, ExecutionTier> = emptyMap(),
   val agents: Map<InstallAgent, Map<ExecutionTier, PhaseModelDirective>> = emptyMap(),
+  val agentPhaseOverrides: Map<InstallAgent, Map<String, PhaseModelDirective>> = emptyMap(),
 ) {
   fun tierOf(phaseId: String): ExecutionTier = phaseTiers[phaseId] ?: DEFAULT_PHASE_TIERS.getValue(phaseId)
 
+  /**
+   * A per-phase directive under the agent block wins over that agent's tier directive, so
+   * `reasoning` stays the one-line way to route every reasoning phase while a single phase can
+   * opt out without restructuring the tier map.
+   */
   fun directiveFor(agentId: String, phaseId: String): PhaseModelDirective? {
     val agent = InstallAgent.entries.firstOrNull { it.id == agentId.trim().lowercase() } ?: return null
-    return agents[agent]?.get(tierOf(phaseId))
+    return agentPhaseOverrides[agent]?.get(phaseId) ?: agents[agent]?.get(tierOf(phaseId))
   }
 }
 
@@ -75,7 +81,12 @@ private fun parseExecutionMatrixMapping(raw: Any?): ExecutionMatrix {
     invalidExecutionMatrix("$EXECUTION_MATRIX_KEY.$key", value, "is not a supported execution_matrix field.")
   }
   val phaseTiers = if (PHASE_TIERS_KEY in fields) parsePhaseTiers(fields[PHASE_TIERS_KEY]) else emptyMap()
-  return ExecutionMatrix(phaseTiers = phaseTiers, agents = parseAgents(fields[AGENTS_KEY]))
+  val agents = parseAgents(fields[AGENTS_KEY])
+  return ExecutionMatrix(
+    phaseTiers = phaseTiers,
+    agents = agents.mapValues { (_, directives) -> directives.tiers },
+    agentPhaseOverrides = agents.mapValues { (_, directives) -> directives.phases }.filterValues { it.isNotEmpty() },
+  )
 }
 
 private fun parsePhaseTiers(raw: Any?): Map<String, ExecutionTier> {
@@ -102,7 +113,12 @@ private fun parsePhaseTiers(raw: Any?): Map<String, ExecutionTier> {
   }
 }
 
-private fun parseAgents(raw: Any?): Map<InstallAgent, Map<ExecutionTier, PhaseModelDirective>> {
+private class AgentDirectives(
+  val tiers: Map<ExecutionTier, PhaseModelDirective>,
+  val phases: Map<String, PhaseModelDirective>,
+)
+
+private fun parseAgents(raw: Any?): Map<InstallAgent, AgentDirectives> {
   val agents = raw as? Map<*, *> ?: invalidExecutionMatrix(
     "$EXECUTION_MATRIX_KEY.$AGENTS_KEY",
     raw,
@@ -119,29 +135,38 @@ private fun parseAgents(raw: Any?): Map<InstallAgent, Map<ExecutionTier, PhaseMo
       rawTiers,
       "is not a supported install agent.",
     )
-    agent to parseAgentTiers(agentId, rawTiers)
+    agent to parseAgentDirectives(agentId, rawTiers)
   }
 }
 
-private fun parseAgentTiers(agentId: String, raw: Any?): Map<ExecutionTier, PhaseModelDirective> {
-  val tiers = raw as? Map<*, *> ?: invalidExecutionMatrix(
+private fun parseAgentDirectives(agentId: String, raw: Any?): AgentDirectives {
+  val entries = raw as? Map<*, *> ?: invalidExecutionMatrix(
     "$EXECUTION_MATRIX_KEY.$AGENTS_KEY.$agentId",
     raw,
     "must be a mapping.",
   )
-  return tiers.entries.associate { (rawTierId, rawDirective) ->
-    val tierId = rawTierId as? String
-    val tier = tierId?.let(ExecutionTier::fromId) ?: invalidExecutionMatrix(
-      "$EXECUTION_MATRIX_KEY.$AGENTS_KEY.$agentId.$rawTierId",
-      rawDirective,
-      "must be reasoning or implementation.",
-    )
-    tier to parseDirective(agentId, tier, rawDirective)
+  val tiers = mutableMapOf<ExecutionTier, PhaseModelDirective>()
+  val phases = mutableMapOf<String, PhaseModelDirective>()
+  entries.forEach { (rawKey, rawDirective) ->
+    val key = rawKey as? String
+    val path = "$EXECUTION_MATRIX_KEY.$AGENTS_KEY.$agentId.$rawKey"
+    val tier = key?.let(ExecutionTier::fromId)
+    when {
+      tier != null -> tiers[tier] = parseDirective(path, rawDirective)
+      key != null && key in FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds ->
+        phases[key] = parseDirective(path, rawDirective)
+
+      else -> invalidExecutionMatrix(
+        path,
+        rawDirective,
+        "must be reasoning, implementation, or a runtime phase.",
+      )
+    }
   }
+  return AgentDirectives(tiers = tiers, phases = phases)
 }
 
-private fun parseDirective(agentId: String, tier: ExecutionTier, raw: Any?): PhaseModelDirective {
-  val path = "$EXECUTION_MATRIX_KEY.$AGENTS_KEY.$agentId.${tier.id}"
+private fun parseDirective(path: String, raw: Any?): PhaseModelDirective {
   val directive = raw as? Map<*, *> ?: invalidExecutionMatrix(path, raw, "must be a mapping.")
   val fields = directive.entries.associate { (key, value) -> key.toString() to value }
   if (MODEL_KEY !in fields) invalidExecutionMatrix("$path.$MODEL_KEY", "<missing>", "is required.")
@@ -154,7 +179,7 @@ private fun parseDirective(agentId: String, tier: ExecutionTier, raw: Any?): Pha
     invalidExecutionMatrix("$path.$EFFORT_KEY", effort, "must be a non-blank string when provided.")
   }
   fields.entries.firstOrNull { (key, _) -> key !in DIRECTIVE_FIELDS }?.let { (key, value) ->
-    invalidExecutionMatrix("$path.$key", value, "is not a supported tier field.")
+    invalidExecutionMatrix("$path.$key", value, "is not a supported model directive field.")
   }
   return PhaseModelDirective(model = model, effort = effort as? String)
 }

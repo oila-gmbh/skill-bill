@@ -110,6 +110,10 @@ $defs:
       # FeatureTaskRuntimePhaseRecord requires the same `pass >= 1`, pinned by
       # FeatureTaskRuntimePersistenceReviewPassParityTest.
       review_pass_number: { type: integer, minimum: 1 }
+      # Absent on every pre-SKILL-183 record and on phases launched with no model directive;
+      # present-but-blank is rejected by FeatureTaskRuntimePhaseRecord's own invariants.
+      launched_model: { type: string, minLength: 1 }
+      launched_effort: { type: string, minLength: 1 }
   delivered_projection:
     type: object
     additionalProperties: false

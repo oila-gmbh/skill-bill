@@ -8,6 +8,7 @@ import skillbill.config.model.ExecutionMatrix
 import skillbill.config.model.ExecutionTier
 import skillbill.config.model.PhaseModelDirective
 import skillbill.install.model.InstallAgent
+import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -136,6 +137,43 @@ class FeatureTaskRuntimeModelDirectiveRunnerTest {
     assertEquals(null, plan.launchedModel)
     assertEquals(null, plan.launchedEffort)
     assertTrue("launched_model" !in plan.toArtifactMap())
+  }
+
+  @Test
+  fun `a phase blocked after its child ran keeps the model the child was launched with`() {
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher {
+        AgentRunLaunchFacts(
+          agent = InstallAgent.CLAUDE,
+          exitStatus = 1,
+          stdout = "",
+          stderr = "boom",
+          timedOut = false,
+          spawnFailed = false,
+        )
+      },
+      agentAssignment = FeatureTaskRuntimeAgentAssignment(override = "claude"),
+    )
+    val matrix = ExecutionMatrix(
+      agents = mapOf(
+        InstallAgent.CLAUDE to mapOf(
+          ExecutionTier.REASONING to PhaseModelDirective("claude-opus", "high"),
+          ExecutionTier.IMPLEMENTATION to PhaseModelDirective("claude-sonnet", "medium"),
+        ),
+      ),
+    )
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(
+      harness.runner.run(harness.request().copy(modelAssignment = FeatureTaskRuntimeModelAssignment(matrix = matrix))),
+    )
+
+    // A non-zero exit is a child that provably launched and ran, so the blocked record must still
+    // answer "which model ran?" rather than clearing the running write's stamp.
+    assertEquals("preplan", blocked.lastIncompletePhase)
+    val record = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID)).getValue("preplan")
+    assertEquals(harness.launcher.requests.last().skillRunRequest.modelOverride, record.launchedModel)
+    assertEquals("claude-sonnet", record.launchedModel)
+    assertEquals("medium", record.launchedEffort)
   }
 
   @Test
