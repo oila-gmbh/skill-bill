@@ -1,7 +1,5 @@
 # SKILL-177 — Test-value discipline directive for planning and mutating phases
 
-Status: Pending
-
 ## Intended Outcome
 
 Feature-task runs write few, high-value tests by construction instead of mirroring production code 1:1.
@@ -13,7 +11,7 @@ A review-time counterpart already exists — `bill-unit-test-value-check` (tight
 ## Background — where the directive lands
 
 - `runtime-application/src/main/kotlin/skillbill/application/featuretask/FeatureTaskRuntimePhasePromptDirectives.kt` is the sole runtime-owned source for mutating-phase briefing text. `minimalismDisciplineDirective(phaseId)` gates on `FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(phaseId)` and is the structural precedent for this change.
-- `FeatureTaskRuntimePhasePromptComposer.compose` assembles the prompt; the minimalism block is composed at `FeatureTaskRuntimePhasePromptComposer.kt:56`. The new directive composes adjacent to it.
+- `FeatureTaskRuntimePhasePromptComposer.compose` assembles the prompt; the minimalism block is composed adjacent to other mutating-phase directives. The new directive composes adjacent to it.
 - The plan-phase task schema in `phaseDirectives[PHASE_PLAN]` carries `test_obligations` per task, and the implementation receipt reports `tests_added` / `tests_updated`. Test count is therefore largely decided at planning time, so the directive must render for the plan phase as well — `isMutatingPhase` alone does not cover it, and the new directive needs its own phase predicate covering plan, implement, and implement_fix.
 - The audit phase already refuses test-adequacy findings ("Never report test adequacy, coverage, fixtures, assertions, or other test-only concerns as audit gaps") and the validate phase owns test execution. Neither changes.
 
@@ -75,4 +73,4 @@ maintenance and reasoning tokens. Write few, high-value tests; never mirror code
 
 ## Next Path
 
-Prepare and dispatch via `bill-feature` once SKILL-175 has merged to `main`.
+Dispatch via `bill-feature-goal` / `skill-bill goal SKILL-177`.

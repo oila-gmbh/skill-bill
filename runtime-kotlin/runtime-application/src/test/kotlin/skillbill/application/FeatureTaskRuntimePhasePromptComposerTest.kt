@@ -469,6 +469,97 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
+  fun `test-value discipline renders for plan implement and implement_fix with six element anchors`() {
+    val presentPhases = listOf(
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
+    )
+    presentPhases.forEach { phaseId ->
+      val prompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor(phaseId))
+      assertContains(prompt, TEST_VALUE_DISCIPLINE_TITLE, false, "title for $phaseId")
+      assertContains(prompt, "name the realistic bug", false, "nameable-bug element for $phaseId")
+      assertContains(prompt, "critical paths", false, "critical-path element for $phaseId")
+      assertContains(
+        prompt,
+        "observable behavior at boundaries",
+        false,
+        "boundaries / no structure-coupling element for $phaseId",
+      )
+      assertContains(prompt, "One strong test per rule", false, "one-test-per-rule element for $phaseId")
+      assertContains(
+        prompt,
+        "empty test_obligations list is a valid",
+        false,
+        "empty test_obligations guidance for $phaseId",
+      )
+      assertContains(
+        prompt,
+        "parity tests or validator-backed rules",
+        false,
+        "regression / governed carve-out for $phaseId",
+      )
+    }
+  }
+
+  @Test
+  fun `test-value discipline is absent from evaluator and non-producer phases`() {
+    val absentPhases = listOf(
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY,
+    )
+    absentPhases.forEach { phaseId ->
+      val prompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor(phaseId))
+      assertFalse(
+        prompt.contains(TEST_VALUE_DISCIPLINE_TITLE),
+        "phase $phaseId must not carry the test-value discipline section",
+      )
+    }
+  }
+
+  @Test
+  fun `test-value discipline sits immediately after minimalism on mutating phases`() {
+    listOf(
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
+    ).forEach { phaseId ->
+      val prompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor(phaseId))
+      val minimalismIdx = prompt.indexOf("## Minimalism discipline")
+      val testValueIdx = prompt.indexOf(TEST_VALUE_DISCIPLINE_TITLE)
+      assertTrue(minimalismIdx >= 0, "minimalism present for $phaseId")
+      assertTrue(testValueIdx > minimalismIdx, "test-value follows minimalism for $phaseId")
+      val between = prompt.substring(minimalismIdx, testValueIdx)
+      assertFalse(
+        between.indexOf("\n## ", startIndex = 1) >= 0,
+        "no other titled section between minimalism and test-value for $phaseId",
+      )
+    }
+
+    val planPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN),
+    )
+    assertContains(planPrompt, TEST_VALUE_DISCIPLINE_TITLE)
+    assertFalse(
+      planPrompt.contains("## Minimalism discipline"),
+      "plan must not render minimalism; test-value uses its own phase predicate",
+    )
+
+    // Neighboring titles around the insertion point keep prior relative order on non-target phases.
+    val preplanPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN),
+    )
+    val ceremonyIdx = preplanPrompt.indexOf("## Runtime ceremony scaling")
+    val briefingIdx = preplanPrompt.indexOf("# Feature-task-runtime phase briefing")
+    assertTrue(ceremonyIdx >= 0 && briefingIdx > ceremonyIdx)
+    assertFalse(preplanPrompt.contains(TEST_VALUE_DISCIPLINE_TITLE))
+  }
+
+  @Test
   fun `small prompts encode lighter ceremony and current unit review scope without skipping gates`() {
     val preplanPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
@@ -1208,6 +1299,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
 }
 
 private const val ISSUE_KEY = "SKILL-66"
+private const val TEST_VALUE_DISCIPLINE_TITLE = "## Test-value discipline"
 private const val SPEC_REFERENCE = ".feature-specs/SKILL-66/spec.md"
 
 // preplan, plan, and implement feed bounded planning projections, so their seeded outputs are full
