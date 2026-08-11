@@ -56,6 +56,12 @@ data class FeatureTaskRuntimeStatusProjection(
   val auditRepair: FeatureTaskRuntimeAuditRepairStatus? = null,
   /** Runtime-measured validation gate runs while validate is active; null when not yet started. */
   val gateRunCount: Int? = null,
+  /**
+   * Authoritative current-phase execution measure for [currentPhaseId] only. Null when there is no
+   * current phase or no reliable durable counter for it. Never carries a completed neighbouring
+   * phase's historical loop or pass.
+   */
+  val currentPhaseExecution: IdeStatusCurrentPhaseExecution? = null,
 )
 
 data class FeatureTaskRuntimeAuditRepairStatus(

@@ -13,6 +13,7 @@ import skillbill.application.featuretask.agentAttributionFromPhaseState
 import skillbill.application.model.FeatureTaskRuntimePhaseLedgerRequest
 import skillbill.application.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.model.FeatureTaskRuntimeStatusRequest
+import skillbill.application.model.IdeStatusCurrentPhaseExecutionKind
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.LearningRepository
 import skillbill.ports.persistence.LifecycleTelemetryRepository
@@ -33,6 +34,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.RESUME
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.START
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRunRecord
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -621,6 +624,222 @@ class FeatureTaskRuntimeStatusServiceTest {
     )
 
     assertEquals("claude", projection.finalizingAgentId)
+  }
+
+  @Test
+  fun `first audit pass is a pass not semantic loop 1 when no audit-gap edge has fired`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    listOf("preplan", "plan", "implement").forEach { harness.recordCompleted(it, attemptCount = 1) }
+    harness.recordRunning("audit", attemptCount = 1)
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+    val execution = requireNotNull(projection.currentPhaseExecution)
+
+    assertEquals("audit", projection.currentPhaseId)
+    assertEquals("audit", execution.phaseId)
+    assertEquals(IdeStatusCurrentPhaseExecutionKind.PASS, execution.kind)
+    assertEquals(1, execution.count)
+    assertNull(execution.total)
+  }
+
+  @Test
+  fun `audit-gap reentry reports durable loop iteration and does not reset to zero`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    listOf("preplan", "plan", "implement").forEach { harness.recordCompleted(it, attemptCount = 1) }
+    harness.recordRunning("audit", attemptCount = 2)
+    harness.recordLoopEdge(
+      phaseId = "implement",
+      attemptCount = 1,
+      loopId = "audit_gap",
+      edgeIteration = 2,
+    )
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+    // Ledger-only reopen makes implement current; execution must carry the edge iteration.
+    assertEquals("implement", projection.currentPhaseId)
+    val execution = requireNotNull(projection.currentPhaseExecution)
+    assertEquals("implement", execution.phaseId)
+    assertEquals(IdeStatusCurrentPhaseExecutionKind.SEMANTIC_LOOP, execution.kind)
+    assertEquals(2, execution.count)
+    assertNull(execution.total)
+  }
+
+  @Test
+  fun `audit after gap reports semantic loop from durable audit-gap iteration`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    listOf("preplan", "plan", "implement").forEach { harness.recordCompleted(it, attemptCount = 1) }
+    harness.recordLoopEdge(
+      phaseId = "implement",
+      attemptCount = 1,
+      loopId = "audit_gap",
+      edgeIteration = 1,
+    )
+    // After implement settles the reopen, audit is current again on loop 1.
+    harness.recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = WORKFLOW_ID,
+        phaseId = "implement",
+        status = "completed",
+        attemptCount = 2,
+        resolvedAgentId = "claude",
+        finished = true,
+        outputArtifact = """{"contract_version":"0.1"}""",
+        loopId = "audit_gap",
+        edgeIteration = 1,
+      ),
+    )
+    harness.recordRunning("audit", attemptCount = 2)
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+    assertEquals("audit", projection.currentPhaseId)
+    val execution = requireNotNull(projection.currentPhaseExecution)
+    assertEquals(IdeStatusCurrentPhaseExecutionKind.SEMANTIC_LOOP, execution.kind)
+    assertEquals(1, execution.count)
+  }
+
+  @Test
+  fun `review pass comes from durable review_pass_number not attempt_count`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    listOf("preplan", "plan", "implement", "audit").forEach { harness.recordCompleted(it, attemptCount = 1) }
+    harness.recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = WORKFLOW_ID,
+        phaseId = "review",
+        status = "running",
+        attemptCount = 5,
+        resolvedAgentId = "claude",
+        finished = false,
+        reviewPassNumber = 3,
+      ),
+    )
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+    val execution = requireNotNull(projection.currentPhaseExecution)
+    assertEquals("review", projection.currentPhaseId)
+    assertEquals(IdeStatusCurrentPhaseExecutionKind.PASS, execution.kind)
+    assertEquals(3, execution.count)
+    assertNull(execution.total)
+  }
+
+  @Test
+  fun `completed review pass is omitted when a later phase is current`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    listOf("preplan", "plan", "implement", "audit").forEach { harness.recordCompleted(it, attemptCount = 1) }
+    harness.recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = WORKFLOW_ID,
+        phaseId = "review",
+        status = "completed",
+        attemptCount = 1,
+        resolvedAgentId = "claude",
+        finished = true,
+        outputArtifact = """{"contract_version":"0.1"}""",
+        reviewPassNumber = 3,
+      ),
+    )
+    harness.recordRunning("validate", attemptCount = 1)
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+    assertEquals("validate", projection.currentPhaseId)
+    val execution = requireNotNull(projection.currentPhaseExecution)
+    assertEquals("validate", execution.phaseId)
+    assertEquals(IdeStatusCurrentPhaseExecutionKind.ATTEMPT, execution.kind)
+    assertEquals(1, execution.count)
+  }
+
+  @Test
+  fun `validation gate run count is gate_run after the gate begins and never invents a total`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    listOf("preplan", "plan", "implement", "audit", "review").forEach {
+      harness.recordCompleted(it, attemptCount = 1)
+    }
+    harness.recordRunning("validate", attemptCount = 2)
+    harness.recorder.persistValidationGateProgress(
+      WORKFLOW_ID,
+      FeatureTaskRuntimeValidationGateProgress(
+        gateRunCount = 2,
+        gateRuns = listOf(
+          FeatureTaskRuntimeValidationGateRunRecord(
+            durationMs = 10,
+            outcome = "failed",
+            cacheMode = "warm",
+            executedWorkUnits = 1,
+          ),
+          FeatureTaskRuntimeValidationGateRunRecord(
+            durationMs = 12,
+            outcome = "failed",
+            cacheMode = "warm",
+            executedWorkUnits = 1,
+          ),
+        ),
+      ),
+    )
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+    val execution = requireNotNull(projection.currentPhaseExecution)
+    assertEquals("validate", execution.phaseId)
+    assertEquals(IdeStatusCurrentPhaseExecutionKind.GATE_RUN, execution.kind)
+    assertEquals(2, execution.count)
+    assertNull(execution.total)
+  }
+
+  @Test
+  fun `bounded regeneration edge exposes iteration and cap without labeling it a semantic loop`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.recordCompleted("preplan", attemptCount = 1)
+    harness.recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = WORKFLOW_ID,
+        phaseId = "plan",
+        status = "running",
+        attemptCount = 2,
+        resolvedAgentId = "claude",
+        finished = false,
+        loopId = "regenerate_plan",
+        edgeIteration = 1,
+      ),
+    )
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+    val execution = requireNotNull(projection.currentPhaseExecution)
+    assertEquals("plan", execution.phaseId)
+    assertEquals(IdeStatusCurrentPhaseExecutionKind.BOUNDED_EDGE, execution.kind)
+    assertEquals(1, execution.count)
+    assertEquals(2, execution.total)
+  }
+
+  @Test
+  fun `pending phase with no attempts omits current phase execution`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+
+    assertEquals("preplan", projection.currentPhaseId)
+    assertNull(projection.currentPhaseExecution)
   }
 
   private fun statusHarness(): StatusHarness {

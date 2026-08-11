@@ -106,6 +106,37 @@ data class IdeStatusPlanning(
   }
 }
 
+/**
+ * Controlled vocabulary for [IdeStatusCurrentPhaseExecution.kind]. Distinguishes semantic
+ * loops/passes from gate runs, capped backward edges, and generic phase attempts.
+ */
+enum class IdeStatusCurrentPhaseExecutionKind(val wireValue: String) {
+  PASS("pass"),
+  SEMANTIC_LOOP("semantic_loop"),
+  GATE_RUN("gate_run"),
+  BOUNDED_EDGE("bounded_edge"),
+  ATTEMPT("attempt"),
+}
+
+/**
+ * Authoritative current-phase execution measure. [total] is set only for a meaningful bounded
+ * edge cap; semantic loops, passes, gate runs, and attempts omit it.
+ */
+data class IdeStatusCurrentPhaseExecution(
+  val phaseId: String,
+  val kind: IdeStatusCurrentPhaseExecutionKind,
+  val count: Int,
+  val total: Int? = null,
+) {
+  init {
+    require(phaseId.isNotBlank()) { "currentPhaseExecution.phaseId must not be blank." }
+    require(count >= 1) { "currentPhaseExecution.count must be >= 1, was $count." }
+    total?.let {
+      require(it >= 1) { "currentPhaseExecution.total must be >= 1 when present, was $it." }
+    }
+  }
+}
+
 data class IdeStatusProblem(
   val code: IdeStatusProblemCode,
   val message: String,
@@ -161,6 +192,9 @@ data class IdeStatusSnapshot(
   val currentModel: IdeStatusCurrentModel? = null,
   // Null default: only projectGoal populates planning, so every other family stays wire-identical.
   val planning: IdeStatusPlanning? = null,
+  // Null default: optional current-phase execution; omitted when absent so older snapshots stay
+  // wire-identical and planning-only goals never duplicate planning counts here.
+  val currentPhaseExecution: IdeStatusCurrentPhaseExecution? = null,
   // Null defaults: only projectGoal populates the pause signals, so every other family stays
   // wire-identical. pause_requested is never emitted as false for the same reason.
   val pauseRequested: Boolean? = null,
@@ -215,6 +249,7 @@ data class IdeStatusSnapshot(
     }
     putCurrentModel()
     planning?.let { put("planning", planningWireMap(it)) }
+    putCurrentPhaseExecution()
     pauseRequested?.takeIf { it }?.let { put("pause_requested", true) }
     pausedAt?.let { put("paused_at", it.toString()) }
     putActiveDuration()
@@ -245,6 +280,23 @@ data class IdeStatusSnapshot(
         put("model", model.model)
         model.effort?.let { put("effort", it) }
         model.phaseId?.let { put("phase_id", it) }
+      },
+    )
+  }
+
+  /**
+   * Omitted entirely when no reliable current-phase execution value exists, so older producers and
+   * planning-only snapshots stay wire-identical.
+   */
+  private fun MutableMap<String, Any?>.putCurrentPhaseExecution() {
+    val execution = currentPhaseExecution ?: return
+    put(
+      "current_phase_execution",
+      buildMap {
+        put("phase_id", execution.phaseId)
+        put("kind", execution.kind.wireValue)
+        put("count", execution.count)
+        execution.total?.let { put("total", it) }
       },
     )
   }

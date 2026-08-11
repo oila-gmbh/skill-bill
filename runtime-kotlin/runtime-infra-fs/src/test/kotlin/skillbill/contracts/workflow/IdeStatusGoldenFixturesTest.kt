@@ -55,6 +55,36 @@ class IdeStatusGoldenFixturesTest {
   }
 
   /**
+   * SKILL-184: current-phase execution present. The absent shape stays pinned by the base
+   * feature-task-runtime golden and by the feature-verify golden (non-goal family unchanged).
+   */
+  @Test
+  fun `feature-task-runtime current-phase-execution golden validates`() {
+    IdeStatusSchemaValidator.validate(
+      linkedMapOf(
+        "contract_version" to IDE_STATUS_CONTRACT_VERSION,
+        "repository_identity" to "repo-root-realpath-v1:/repo",
+        "issue_key" to "SKILL-184",
+        "workflow_id" to "wfl-runtime-3",
+        "workflow_family" to "feature-task-runtime",
+        "lifecycle_state" to "active",
+        "current_step" to linkedMapOf("id" to "audit", "label" to "Completeness Audit"),
+        "progress" to linkedMapOf("completed" to 3, "total" to 10),
+        "started_at" to "2026-08-06T08:00:00Z",
+        "current_phase_execution" to linkedMapOf(
+          "phase_id" to "audit",
+          "kind" to "semantic_loop",
+          "count" to 2,
+        ),
+        "updated_at" to "2026-08-06T10:00:00Z",
+        "freshness" to "fresh",
+        "summary" to "feature-task-runtime SKILL-184 is active on Completeness Audit.",
+      ),
+      "golden-runtime-current-phase-execution",
+    )
+  }
+
+  /**
    * Cursor's merged form carries the effort inside the model string, so no `effort` key is emitted.
    * The goal-level `current_step` is why `phase_id` exists: without it this payload names a model
    * whose phase appears nowhere in it.

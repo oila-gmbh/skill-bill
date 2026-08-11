@@ -8,6 +8,8 @@ import skillbill.application.model.FeatureTaskRuntimeDecomposeTerminalStatus
 import skillbill.application.model.FeatureTaskRuntimePhaseStatus
 import skillbill.application.model.FeatureTaskRuntimeStatusProjection
 import skillbill.application.model.FeatureTaskRuntimeStatusRequest
+import skillbill.application.model.IdeStatusCurrentPhaseExecution
+import skillbill.application.model.IdeStatusCurrentPhaseExecutionKind
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGenerationHistory
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress
@@ -56,14 +58,7 @@ class FeatureTaskRuntimeStatusService(
       )
     }
     val terminalDecomposeRecorded = decomposeTerminal != null
-    return FeatureTaskRuntimeStatusProjection(
-      workflowId = request.workflowId,
-      featureSize = runInvariantsStore.resolve(request.workflowId, request.dbPathOverride)?.featureSize?.name,
-      phases = phases,
-      completeCount = phases.count { it.status == STATUS_COMPLETED },
-      pendingCount = if (terminalDecomposeRecorded) 0 else phases.count { it.status !in TERMINAL_PHASE_STATUSES },
-      blockedCount = if (terminalDecomposeRecorded) 0 else phases.count { it.status == STATUS_BLOCKED },
-      currentPhaseId =
+    val currentPhaseId =
       if (terminalDecomposeRecorded) {
         null
       } else {
@@ -76,7 +71,20 @@ class FeatureTaskRuntimeStatusService(
           it.status != STATUS_COMPLETED &&
             !(it.phaseId in LOOP_ONLY_PHASE_IDS && it.status == STATUS_PENDING)
         }?.phaseId
-      },
+      }
+    val auditRepair = auditRepairStatus(
+      auditRepairProgress,
+      cachedCounterDisagreement(auditRepairProgress, cachedAuditRepairProgress),
+    )
+    val gateRunCount = recorder.loadValidationGateProgress(request.workflowId, request.dbPathOverride)?.gateRunCount
+    return FeatureTaskRuntimeStatusProjection(
+      workflowId = request.workflowId,
+      featureSize = runInvariantsStore.resolve(request.workflowId, request.dbPathOverride)?.featureSize?.name,
+      phases = phases,
+      completeCount = phases.count { it.status == STATUS_COMPLETED },
+      pendingCount = if (terminalDecomposeRecorded) 0 else phases.count { it.status !in TERMINAL_PHASE_STATUSES },
+      blockedCount = if (terminalDecomposeRecorded) 0 else phases.count { it.status == STATUS_BLOCKED },
+      currentPhaseId = currentPhaseId,
       resolvedBranch = recorder.loadResolvedBranch(request.workflowId, request.dbPathOverride)?.branch,
       finalizingAgentId = agentAttributionFromPhaseState(
         recorder,
@@ -91,11 +99,17 @@ class FeatureTaskRuntimeStatusService(
           subtaskSpecPaths = it.subtaskSpecPaths,
         )
       },
-      auditRepair = auditRepairStatus(
-        auditRepairProgress,
-        cachedCounterDisagreement(auditRepairProgress, cachedAuditRepairProgress),
+      auditRepair = auditRepair,
+      gateRunCount = gateRunCount,
+      currentPhaseExecution = deriveCurrentPhaseExecution(
+        currentPhaseId = currentPhaseId,
+        records = records,
+        phases = phases,
+        ledger = ledger,
+        auditGapIterationCount = auditRepair?.auditGapIterationCount
+          ?: ledgerAuditGapIterationCount(ledger),
+        gateRunCount = gateRunCount,
       ),
-      gateRunCount = recorder.loadValidationGateProgress(request.workflowId, request.dbPathOverride)?.gateRunCount,
     )
   }
 
@@ -131,6 +145,120 @@ class FeatureTaskRuntimeStatusService(
       .mapNotNull { it.edgeIteration }
       .maxOrNull()
       ?: 0
+
+  /**
+   * Derives one current-phase execution value from the same durable inputs that selected
+   * [currentPhaseId]. Never reads a completed neighbour's historical counter as current.
+   */
+  private fun deriveCurrentPhaseExecution(
+    currentPhaseId: String?,
+    records: Map<String, FeatureTaskRuntimePhaseRecord>,
+    phases: List<FeatureTaskRuntimePhaseStatus>,
+    ledger: List<FeatureTaskRuntimePhaseLedgerEntry>,
+    auditGapIterationCount: Int,
+    gateRunCount: Int?,
+  ): IdeStatusCurrentPhaseExecution? {
+    val phaseId = currentPhaseId?.takeIf(String::isNotBlank) ?: return null
+    val phaseStatus = phases.firstOrNull { it.phaseId == phaseId } ?: return null
+    val record = records[phaseId]
+    return when (phaseId) {
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT ->
+        if (auditGapIterationCount >= 1) {
+          IdeStatusCurrentPhaseExecution(
+            phaseId = phaseId,
+            kind = IdeStatusCurrentPhaseExecutionKind.SEMANTIC_LOOP,
+            count = auditGapIterationCount,
+          )
+        } else if (phaseStatus.attemptCount >= 1 || record != null) {
+          // First audit pass: no audit-gap edge has fired, so this is a pass, not loop 1.
+          IdeStatusCurrentPhaseExecution(
+            phaseId = phaseId,
+            kind = IdeStatusCurrentPhaseExecutionKind.PASS,
+            count = 1,
+          )
+        } else {
+          null
+        }
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW ->
+        record?.reviewPassNumber?.let { pass ->
+          IdeStatusCurrentPhaseExecution(
+            phaseId = phaseId,
+            kind = IdeStatusCurrentPhaseExecutionKind.PASS,
+            count = pass,
+          )
+        } ?: attemptExecution(phaseId, phaseStatus.attemptCount)
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE ->
+        if (gateRunCount != null && gateRunCount >= 1) {
+          IdeStatusCurrentPhaseExecution(
+            phaseId = phaseId,
+            kind = IdeStatusCurrentPhaseExecutionKind.GATE_RUN,
+            count = gateRunCount,
+          )
+        } else {
+          attemptExecution(phaseId, phaseStatus.attemptCount)
+        }
+      else ->
+        edgeExecution(phaseId, record, ledger) ?: attemptExecution(phaseId, phaseStatus.attemptCount)
+    }
+  }
+
+  private fun edgeExecution(
+    phaseId: String,
+    record: FeatureTaskRuntimePhaseRecord?,
+    ledger: List<FeatureTaskRuntimePhaseLedgerEntry>,
+  ): IdeStatusCurrentPhaseExecution? {
+    val (loopId, edgeIteration) = activeEdgeContext(phaseId, record, ledger) ?: return null
+    val edge = FeatureTaskRuntimePhaseWorkflowDefinition.backwardEdgeForLoop(loopId) ?: return null
+    val cap = edge.perEdgeCap
+    return if (cap != null) {
+      IdeStatusCurrentPhaseExecution(
+        phaseId = phaseId,
+        kind = IdeStatusCurrentPhaseExecutionKind.BOUNDED_EDGE,
+        count = edgeIteration,
+        total = cap,
+      )
+    } else {
+      IdeStatusCurrentPhaseExecution(
+        phaseId = phaseId,
+        kind = IdeStatusCurrentPhaseExecutionKind.SEMANTIC_LOOP,
+        count = edgeIteration,
+      )
+    }
+  }
+
+  /**
+   * Durable edge context for the current phase: prefer the phase-record watermark, else the latest
+   * LOOP_EDGE ledger entry targeting this phase (covers ledger-only re-entry after a completed
+   * record).
+   */
+  private fun activeEdgeContext(
+    phaseId: String,
+    record: FeatureTaskRuntimePhaseRecord?,
+    ledger: List<FeatureTaskRuntimePhaseLedgerEntry>,
+  ): Pair<String, Int>? {
+    record?.loopId?.let { loopId ->
+      record.edgeIteration?.let { return loopId to it }
+    }
+    val edgeEntry = ledger
+      .filter {
+        it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE &&
+          it.phaseId == phaseId &&
+          it.loopId != null &&
+          it.edgeIteration != null
+      }
+      .maxByOrNull { it.sequenceNumber }
+      ?: return null
+    return edgeEntry.loopId!! to edgeEntry.edgeIteration!!
+  }
+
+  private fun attemptExecution(phaseId: String, attemptCount: Int): IdeStatusCurrentPhaseExecution? =
+    attemptCount.takeIf { it >= 1 }?.let { count ->
+      IdeStatusCurrentPhaseExecution(
+        phaseId = phaseId,
+        kind = IdeStatusCurrentPhaseExecutionKind.ATTEMPT,
+        count = count,
+      )
+    }
 
   // Derived from the generation history alone: a completed audit always appends its generation, so an absent
   // progress projection means no audit has settled, not that one converged on its first pass.

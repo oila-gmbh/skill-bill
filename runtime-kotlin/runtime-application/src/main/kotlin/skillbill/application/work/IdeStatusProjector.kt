@@ -8,6 +8,7 @@ import skillbill.application.model.FeatureTaskRuntimeStatusRequest
 import skillbill.application.model.GoalRunnerStatusRequest
 import skillbill.application.model.IdeStatusCandidate
 import skillbill.application.model.IdeStatusCurrentModel
+import skillbill.application.model.IdeStatusCurrentPhaseExecution
 import skillbill.application.model.IdeStatusCurrentSubtask
 import skillbill.application.model.IdeStatusLifecycleState
 import skillbill.application.model.IdeStatusPlanning
@@ -45,6 +46,16 @@ internal data class IdeStatusProjectionContext(
   val dbOverride: String?,
   val repoRoot: Path,
 )
+
+/** Optional child-workflow fields loaded from one runtime status projection. */
+private data class ChildOptionalContext(
+  val currentModel: IdeStatusCurrentModel?,
+  val currentPhaseExecution: IdeStatusCurrentPhaseExecution?,
+) {
+  companion object {
+    val EMPTY = ChildOptionalContext(currentModel = null, currentPhaseExecution = null)
+  }
+}
 
 /**
  * Projects selected work through existing family authorities into the shared IDE model.
@@ -106,6 +117,14 @@ class IdeStatusProjector(
       )
     }
     val freshness = IdeStatusFreshnessClassifier.classify(candidate.updatedAt, context.observedAt)
+    // One child-status load feeds both optional fields so model and execution cannot drift.
+    // Mid-planning keeps planning as the sole progress surface — never duplicate into execution.
+    val childContext =
+      if (lifecycle == IdeStatusLifecycleState.TERMINAL) {
+        ChildOptionalContext.EMPTY
+      } else {
+        childOptionalContext(projection?.currentChildWorkflowId, lifecycle, context)
+      }
     return IdeStatusSnapshot(
       repositoryIdentity = context.repositoryIdentity,
       issueKey = issueKey,
@@ -116,8 +135,9 @@ class IdeStatusProjector(
       progress = progress,
       startedAt = candidate.startedAt,
       currentSubtask = currentSubtask,
-      currentModel = childCurrentModel(projection?.currentChildWorkflowId, lifecycle, context),
+      currentModel = childContext.currentModel,
       planning = planning,
+      currentPhaseExecution = planningStep?.let { null } ?: childContext.currentPhaseExecution,
       pauseRequested = projection?.pauseRequested == true && projection.paused != true,
       // Durable record only: a lease-expiry-inferred pause has no recorded instant, and
       // back-filling from heartbeat_at/updated_at would sell an inference as a record.
@@ -203,10 +223,9 @@ class IdeStatusProjector(
   }
 
   /**
-   * The launched model of the goal's currently running child phase. The goal's own currentStep can
-   * be a planning label rather than a phase id, so the child's own projection resolves the phase —
-   * which is why the emitted object carries that phase id: without it a consumer seeing
-   * `current_step: planning` has no way to learn which phase the model belongs to.
+   * Optional child-workflow context for a goal: the launched model and current-phase execution of
+   * the currently running child phase. One status read feeds both so they cannot combine values
+   * from different snapshots.
    *
    * Optional context must never cost a status reading: this is a nested read of a *different*
    * workflow's rows, so letting its failure escape would downgrade the whole goal snapshot to a
@@ -215,26 +234,26 @@ class IdeStatusProjector(
    * "this child's rows cannot be read" — a typed durable-record contract failure and an IO failure.
    * A programming defect, an [Error] and a cancellation all still propagate rather than being
    * reported as a healthy snapshot, and each degradation emits a diagnostic naming the child, so a
-   * systematically unreadable child is visible instead of silently model-less forever.
+   * systematically unreadable child is visible instead of silently context-less forever.
    *
    * A terminal goal returns before the read, for the same reason [goalStep] replaces a leftover step
    * string with "Complete": a finished goal can still hold a non-completed child phase record, and
-   * reporting its model would show a live-looking model for work that is not running. A blocked or
-   * failed goal keeps it — "which model was running when it stopped" is the diagnostic there. That
-   * early return also skips the child's full status projection where it would buy nothing.
+   * reporting its model or execution would show live-looking context for work that is not running.
+   * A blocked or failed goal keeps it — "which model was running when it stopped" is the diagnostic
+   * there. That early return also skips the child's full status projection where it would buy nothing.
    *
    * The read deliberately sits outside [IdeStatusProjectionContext.unitOfWork]: the goal projection
    * this builds on already reads outside it, so threading only this one read through would not make
    * the snapshot atomic.
    */
-  private fun childCurrentModel(
+  private fun childOptionalContext(
     childWorkflowId: String?,
     lifecycle: IdeStatusLifecycleState,
     context: IdeStatusProjectionContext,
-  ): IdeStatusCurrentModel? {
-    if (lifecycle == IdeStatusLifecycleState.TERMINAL) return null
-    val workflowId = childWorkflowId?.takeIf(String::isNotBlank) ?: return null
-    val degraded = "IDE status omitted current_model for child workflow '$workflowId': " +
+  ): ChildOptionalContext {
+    if (lifecycle == IdeStatusLifecycleState.TERMINAL) return ChildOptionalContext.EMPTY
+    val workflowId = childWorkflowId?.takeIf(String::isNotBlank) ?: return ChildOptionalContext.EMPTY
+    val degraded = "IDE status omitted optional child context for workflow '$workflowId': " +
       "the child's durable status could not be read."
     val status = try {
       featureTaskRuntimeStatusService.status(
@@ -246,10 +265,13 @@ class IdeStatusProjector(
     } catch (error: IOException) {
       diagnostics.warning(degraded, error)
       null
-    }
-    return status?.currentPhaseId?.let { phaseId ->
-      status.phases.firstOrNull { it.phaseId == phaseId }?.toIdeStatusCurrentModel()
-    }
+    } ?: return ChildOptionalContext.EMPTY
+    return ChildOptionalContext(
+      currentModel = status.currentPhaseId?.let { phaseId ->
+        status.phases.firstOrNull { it.phaseId == phaseId }?.toIdeStatusCurrentModel()
+      },
+      currentPhaseExecution = status.currentPhaseExecution,
+    )
   }
 
   private fun projectRuntime(candidate: IdeStatusCandidate, context: IdeStatusProjectionContext): IdeStatusSnapshot {
@@ -283,9 +305,10 @@ class IdeStatusProjector(
       currentStep = IdeStatusStep(id = stepId, label = stepLabel),
       progress = progress,
       startedAt = startedAt,
-      // Reuses the already-loaded projection: the model reported must belong to the phase reported
-      // as current_step, never to a neighbouring one.
+      // Reuses the already-loaded projection: the model and execution reported must belong to the
+      // phase reported as current_step, never to a neighbouring one.
       currentModel = status?.phases?.firstOrNull { it.phaseId == stepId }?.toIdeStatusCurrentModel(),
+      currentPhaseExecution = status?.currentPhaseExecution?.takeIf { it.phaseId == stepId },
       updatedAt = updatedAt,
       freshness = IdeStatusFreshnessClassifier.classify(updatedAt, context.observedAt),
       summary = familySummary(

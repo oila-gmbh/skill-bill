@@ -75,6 +75,55 @@ class IdeStatusModelsTest {
   }
 
   @Test
+  fun `toStatusWireMap omits current_phase_execution when unset so older snapshots stay identical`() {
+    val wire = snapshot(planning = null).toStatusWireMap()
+
+    assertFalse(wire.containsKey("current_phase_execution"))
+  }
+
+  @Test
+  fun `toStatusWireMap emits current_phase_execution with snake_case keys and omits total when unset`() {
+    val withTotal = snapshot(planning = null)
+      .copy(
+        currentPhaseExecution = IdeStatusCurrentPhaseExecution(
+          phaseId = "plan",
+          kind = IdeStatusCurrentPhaseExecutionKind.BOUNDED_EDGE,
+          count = 1,
+          total = 2,
+        ),
+      )
+      .toStatusWireMap()
+    val withoutTotal = snapshot(planning = null)
+      .copy(
+        currentPhaseExecution = IdeStatusCurrentPhaseExecution(
+          phaseId = "audit",
+          kind = IdeStatusCurrentPhaseExecutionKind.SEMANTIC_LOOP,
+          count = 2,
+        ),
+      )
+      .toStatusWireMap()
+
+    assertEquals(
+      mapOf(
+        "phase_id" to "plan",
+        "kind" to "bounded_edge",
+        "count" to 1,
+        "total" to 2,
+      ),
+      withTotal["current_phase_execution"],
+    )
+    assertEquals(
+      mapOf(
+        "phase_id" to "audit",
+        "kind" to "semantic_loop",
+        "count" to 2,
+      ),
+      withoutTotal["current_phase_execution"],
+    )
+    assertFalse((withoutTotal["current_phase_execution"] as Map<*, *>).containsKey("total"))
+  }
+
+  @Test
   fun `toStatusWireMap omits both pause signals when they are unset`() {
     val wire = snapshot(planning = null).toStatusWireMap()
 

@@ -47,6 +47,21 @@ class IdeStatusSchemaContractVersionTest {
   }
 
   @Test
+  fun `additive current_phase_execution property did not bump the contract version`() {
+    val schema = classpathSchema()
+    assertEquals("0.1", schema.path("properties").path("contract_version").path("const").asText())
+    assertEquals("0.1", IDE_STATUS_CONTRACT_VERSION)
+    assertTrue(
+      !schema.path("properties").path("current_phase_execution").isMissingNode,
+      "current_phase_execution must be present in the schema this parity test pins.",
+    )
+    assertTrue(
+      !schema.path("properties").path("planning").isMissingNode,
+      "planning must remain present and meaning-compatible alongside the additive field.",
+    )
+  }
+
+  @Test
   fun `schema id matches IdeStatusSchemaPaths EXPECTED_SCHEMA_ID`() {
     val schema = classpathSchema()
     assertEquals(IdeStatusSchemaPaths.EXPECTED_SCHEMA_ID, schema.path("\$id").asText())

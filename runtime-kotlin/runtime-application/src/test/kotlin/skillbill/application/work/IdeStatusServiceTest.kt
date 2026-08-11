@@ -8,6 +8,7 @@ import skillbill.application.featuretask.FeatureTaskRuntimeRunInvariantsStore
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.goalrunner.GoalRunnerStatusService
 import skillbill.application.goalrunner.goalRepositoryIdentity
+import skillbill.application.model.IdeStatusCurrentPhaseExecutionKind
 import skillbill.application.model.IdeStatusFreshness
 import skillbill.application.model.IdeStatusLifecycleState
 import skillbill.application.model.IdeStatusProblemCode
@@ -397,6 +398,122 @@ class IdeStatusServiceTest {
     assertNull(result.snapshot.problem)
     assertNotNull(result.snapshot.progress)
     assertNull(result.snapshot.currentModel)
+    assertNull(result.snapshot.currentPhaseExecution)
+  }
+
+  @Test
+  fun `runtime current_phase_execution reports the current phase only and never a completed neighbour`() {
+    val fixture = gitRepoFixture("ide-status-current-phase-execution")
+    val identity = goalRepositoryIdentity(fixture)
+    val workflows = IdeStatusWorkflowStates()
+    workflows.saveFeatureImplementWorkflow(
+      runtimeRecord("w-exec", "2026-08-06T10:00:00Z", currentStep = "validate").copy(
+        artifactsJson = phaseRecordsArtifactsJson(
+          "preplan" to phaseRecordWire("preplan", "completed", null),
+          "plan" to phaseRecordWire("plan", "completed", null),
+          "implement" to phaseRecordWire("implement", "completed", null),
+          "audit" to phaseRecordWire("audit", "completed", null),
+          // Completed review still carries pass 3 — leaking it would be the bug under test.
+          "review" to phaseRecordWire("review", "completed", null, reviewPassNumber = 3),
+          "validate" to phaseRecordWire("validate", "running", null, attemptCount = 2),
+        ),
+      ),
+    )
+    workflows.saveFeatureTaskExecutionIdentity(identityFor("w-exec", identity))
+    val database = TrackingDatabase(
+      work = listOf(workItem("w-exec", WorkItemKind.FEATURE_TASK_RUNTIME, "running", "2026-08-06T10:00:00Z")),
+      workflows = workflows,
+    )
+
+    val result = service(database).status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = observedAt))
+    val execution = requireNotNull(result.snapshot.currentPhaseExecution)
+
+    assertEquals("validate", result.snapshot.currentStep.id)
+    assertEquals("validate", execution.phaseId)
+    assertEquals(IdeStatusCurrentPhaseExecutionKind.ATTEMPT, execution.kind)
+    assertEquals(2, execution.count)
+    assertNull(execution.total)
+    assertFalse(result.snapshot.toStatusWireMap().containsKey("planning"))
+  }
+
+  @Test
+  fun `runtime review current_phase_execution uses durable review pass number`() {
+    val fixture = gitRepoFixture("ide-status-review-pass")
+    val identity = goalRepositoryIdentity(fixture)
+    val workflows = IdeStatusWorkflowStates()
+    workflows.saveFeatureImplementWorkflow(
+      runtimeRecord("w-review", "2026-08-06T10:00:00Z", currentStep = "review").copy(
+        artifactsJson = phaseRecordsArtifactsJson(
+          "preplan" to phaseRecordWire("preplan", "completed", null),
+          "plan" to phaseRecordWire("plan", "completed", null),
+          "implement" to phaseRecordWire("implement", "completed", null),
+          "audit" to phaseRecordWire("audit", "completed", null),
+          "review" to phaseRecordWire(
+            "review",
+            "running",
+            null,
+            attemptCount = 4,
+            reviewPassNumber = 2,
+          ),
+        ),
+      ),
+    )
+    workflows.saveFeatureTaskExecutionIdentity(identityFor("w-review", identity))
+    val database = TrackingDatabase(
+      work = listOf(workItem("w-review", WorkItemKind.FEATURE_TASK_RUNTIME, "running", "2026-08-06T10:00:00Z")),
+      workflows = workflows,
+    )
+
+    val result = service(database).status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = observedAt))
+    val execution = requireNotNull(result.snapshot.currentPhaseExecution)
+
+    assertEquals("review", execution.phaseId)
+    assertEquals(IdeStatusCurrentPhaseExecutionKind.PASS, execution.kind)
+    assertEquals(2, execution.count)
+  }
+
+  @Test
+  fun `goal mid-planning keeps planning and omits current_phase_execution`() {
+    val fixture = gitRepoFixture("ide-status-planning-no-execution")
+    val identity = goalRepositoryIdentity(fixture)
+    val result = service(
+      goalOnlyDatabase(),
+      manifestStore = StubGoalManifestStore(
+        goalManifestState(fixture, identity, childWorkflowId = "w-child"),
+        planning = planningSnapshot(GoalPlanningStatusState.PARTIALLY_PLANNED),
+      ),
+    ).status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = observedAt))
+
+    assertEquals("planning", result.snapshot.currentStep.id)
+    assertEquals(GoalPlanningStatusState.PARTIALLY_PLANNED, result.snapshot.planning?.state)
+    assertNull(result.snapshot.currentPhaseExecution)
+    assertFalse(result.snapshot.toStatusWireMap().containsKey("current_phase_execution"))
+  }
+
+  @Test
+  fun `goal with launched child projects child current_phase_execution`() {
+    val fixture = gitRepoFixture("ide-status-goal-child-execution")
+    val identity = goalRepositoryIdentity(fixture)
+    val database = goalWithLaunchedChildDatabase(
+      identity,
+      Instant.parse("2026-08-06T09:15:00Z"),
+      childArtifactsJson = phaseRecordsArtifactsJson(
+        "preplan" to phaseRecordWire("preplan", "completed", null),
+        "plan" to phaseRecordWire("plan", "completed", null),
+        "implement" to phaseRecordWire("implement", "completed", null),
+        "audit" to phaseRecordWire("audit", "completed", null),
+        "review" to phaseRecordWire("review", "running", null, reviewPassNumber = 2),
+      ),
+    )
+    val result = service(
+      database,
+      manifestStore = StubGoalManifestStore(goalManifestState(fixture, identity, childWorkflowId = "w-child")),
+    ).status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = observedAt))
+
+    val execution = requireNotNull(result.snapshot.currentPhaseExecution)
+    assertEquals("review", execution.phaseId)
+    assertEquals(IdeStatusCurrentPhaseExecutionKind.PASS, execution.kind)
+    assertEquals(2, execution.count)
   }
 
   @Test
@@ -1124,15 +1241,22 @@ private fun phaseRecordWire(
   status: String,
   launchedModel: String?,
   effort: String? = null,
+  attemptCount: Int = 1,
+  reviewPassNumber: Int? = null,
+  loopId: String? = null,
+  edgeIteration: Int? = null,
 ): Map<String, Any?> = FeatureTaskRuntimePhaseRecord(
   phaseId = phaseId,
   status = status,
-  attemptCount = 1,
+  attemptCount = attemptCount,
   startedAt = "2026-08-06T09:00:00Z",
   finishedAt = if (status == "completed") "2026-08-06T09:30:00Z" else null,
   resolvedAgentId = "claude",
   launchedModel = launchedModel,
   launchedEffort = effort,
+  reviewPassNumber = reviewPassNumber,
+  loopId = loopId,
+  edgeIteration = edgeIteration,
 ).toArtifactMap()
 
 private fun phaseRecordsArtifactsJson(vararg records: Pair<String, Map<String, Any?>>): String =

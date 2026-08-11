@@ -647,6 +647,10 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       loopOnlyPhaseIds = setOf(PHASE_IMPLEMENT_FIX),
     )
 
+  /** The declared backward edge for [loopId], or null when the id is not part of the topology. */
+  fun backwardEdgeForLoop(loopId: String): FeatureTaskRuntimeBackwardEdge? =
+    transitions.backwardEdges.firstOrNull { it.loopId == loopId }
+
   fun ceremonyScaling(featureSize: FeatureTaskRuntimeFeatureSize): FeatureTaskRuntimeCeremonyScaling =
     when (featureSize) {
       FeatureTaskRuntimeFeatureSize.SMALL -> FeatureTaskRuntimeCeremonyScaling(
