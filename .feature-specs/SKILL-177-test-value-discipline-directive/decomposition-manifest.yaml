@@ -1,0 +1,27 @@
+---
+contract_version: "0.5"
+issue_key: "SKILL-177"
+feature_name: "test-value-discipline-directive"
+parent_spec_path: ".feature-specs/SKILL-177-test-value-discipline-directive/spec.md"
+status: "in_progress"
+execution_model: "same_branch_commit_per_subtask"
+base_branch: "main"
+feature_branch: "feat/SKILL-177-test-value-discipline-directive"
+stack_branches: []
+current_subtask_intent:
+  subtask_id: 1
+  action: "resume"
+subtasks:
+- id: 1
+  name: "Test-value discipline directive for plan and mutating phases"
+  spec_path: ".feature-specs/SKILL-177-test-value-discipline-directive/spec_subtask_1_test-value-discipline-directive.md"
+  status: "pending"
+  branch: null
+  commit_sha: null
+  workflow_id: "wftr-20260811-055046-6ll7"
+  blocked_reason: null
+  last_resumable_step: null
+  linear_issue_id: null
+  finalizing_agent_id: null
+  participating_agent_ids: []
+  dependencies: []

@@ -1,5 +1,14 @@
 # featuretask runtime boundary history
 
+## [2026-08-11] SKILL-177 — Test-value discipline directive
+Areas: runtime-application/featuretask (prompt directives + composer)
+- Added `testValueDisciplineDirective(phaseId)` beside `minimalismDisciplineDirective`: titled write-time test-value bar for plan, implement, and implement_fix only (dedicated phase set — plan is not mutating)
+- Six contracted elements: nameable realistic bug first; critical-path concentration; behavior-at-boundaries / no structure-coupled tests; one strong test per rule; planning `test_obligations` only when the bar passes (empty list valid); never omit real-bug regressions or governed parity / validator-backed rules
+- Composer inserts the new section immediately after minimalism; other directive content and order unchanged; prompt-only (no schema / receipt / validate-gate changes)
+- Pattern followed: review-time `bill-unit-test-value-check` bar lifted into write-time phase prompts so plan and mutating agents inherit the same discipline
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-08-10] SKILL-178 subtask 3 — Human-resumable non-convergence pause
 Areas: runtime-application/featuretask, runtime-application/goalrunner, runtime-domain/workflow/taskruntime/model, runtime-cli/goal
 - Same unresolved advance-blocking set (Blocker or Major) across consecutive remediation passes with an unchanged reviewed-delta digest mints `PAUSED` via `pauseForNonConvergence` instead of re-entering `implement_fix`; an active retry grant suppresses that pause for one transition
