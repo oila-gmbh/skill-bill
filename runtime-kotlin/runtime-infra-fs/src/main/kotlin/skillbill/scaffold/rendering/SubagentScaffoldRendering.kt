@@ -49,11 +49,16 @@ internal fun renderSubagentSpawnRuntimeNotes(orchestratorName: String, specialis
     claudeSpawnParagraph(orchestratorName, specialists),
     codexSpawnParagraph(),
   )
+  // The wave limit belongs to the Codex paragraph it qualifies. Emitted after another runtime's
+  // paragraph it reads as that runtime's limit and contradicts its parallel-launch rule.
   if (specialists.size > DEFAULT_CODEX_MAX_THREADS) {
     paragraphs +=
-      "Selected fan-out exceeds Codex's `agents.max_threads = 6` default; run waves of at most 6 specialists, " +
-      "with the orchestrator merging wave outputs before final review."
+      "**On Codex (wave limit).** Selected fan-out exceeds Codex's `agents.max_threads = 6` default; run " +
+      "waves of at most 6 specialists, with the orchestrator merging wave outputs before final review. This " +
+      "limit is Codex-specific and constrains no other runtime's launch rules."
   }
+  paragraphs += cursorSpawnParagraph(orchestratorName, specialists)
+  paragraphs += junieSpawnParagraph()
   return paragraphs.joinToString("\n\n")
 }
 
@@ -91,6 +96,38 @@ private fun codexSpawnParagraph(): String =
     "subagents asynchronously, the orchestrator MUST poll for completion between turns before consuming the " +
     "subagent's `RESULT:` block — do not proceed to the next phase until the subagent has visibly finished " +
     "and its `RESULT:` JSON is available in the conversation."
+
+private fun cursorSpawnParagraph(orchestratorName: String, specialists: List<String>): String {
+  val exampleSpecialist = specialists.first()
+  return "**On Cursor.** The orchestrator MUST launch each selected specialist by naming its installed Cursor " +
+    "subagent — the matching file under `~/.cursor/agents/` or project `.cursor/agents/` (project scope wins " +
+    "on a name conflict) — via `/name` or an explicit \"use the `<name>` subagent\" instruction (for " +
+    "example, \"use the `$exampleSpecialist` subagent\" for that role in `$orchestratorName`), and pass the " +
+    "per-phase briefing as that subagent's prompt. Request every selected lane in one instruction that names " +
+    "every selected lane so they launch in parallel, not one-at-a-time. Do NOT compose a rubric inline, do " +
+    "NOT substitute `generalPurpose` or any other built-in when a matching installed specialist exists, and " +
+    "do NOT answer a lane's rubric in the parent context — answering it there is an inline review and must " +
+    "be reported as such. The installed native agent's embedded governed rubric is authoritative. Collect " +
+    "each lane's structured findings (including any `RESULT:` JSON) from the returned subagent message; " +
+    "Cursor lane identity is the routed area plus the assignment digest from the launch plan. A lane that " +
+    "launches but returns no structured findings report attributable to that lane's identity is a failed " +
+    "lane: report it explicitly and never absorb it into the merged output as covered. Two conditions stop " +
+    "the whole delegated run instead of failing one lane: when no installed agent matching a selected lane " +
+    "exists, and when the specialist files are installed but this session cannot launch them by name. The " +
+    "second is typical of the Cursor `agent` CLI, whose `Task` tool exposes only built-in types such as " +
+    "`generalPurpose`; the Cursor IDE agent chat can launch installed specialists by name. In both cases " +
+    "stop and report that delegated review is required for this scope but unavailable here, naming the " +
+    "re-run path (the Cursor IDE agent chat) or `mode:inline`. Do not silently downgrade to inline, " +
+    "substitute a built-in worker, or claim delegated coverage from the parent context."
+}
+
+// Junie has no spawn mechanism, so the runtime-neutral resolution rule above would otherwise leave a
+// Junie orchestrator to invent one.
+private fun junieSpawnParagraph(): String =
+  "**On Junie.** Junie delegated review is intentionally unsupported: there is no Junie mechanism for " +
+    "launching the named specialists these lanes require. Do not emulate a lane by answering its rubric in " +
+    "the parent context, and do not claim delegated coverage. Use `mode:inline` here, or re-run the " +
+    "delegated review on a runtime with a spawn paragraph above."
 
 private fun nativeAgentStubBody(name: String, parentSkill: String): String = buildString {
   appendLine("# ${titleCaseSpecialist(name)} Specialist")

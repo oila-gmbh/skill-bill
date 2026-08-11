@@ -54,6 +54,13 @@ class ScaffoldServiceParityTest {
     // SKILL-175: OpenCode paragraph (the only `@`-mention of every specialist) was removed, so the
     // runtime-neutral notes name the lead specialist only; both specialists remain in the bundle.
     assertContains(rendered, "`foo-arch`")
+    // Every installed runtime needs a spawn paragraph; a runtime left out of the list falls through to
+    // the runtime-neutral phrasing and invents a mechanism. The paragraph prose itself is pinned by the
+    // `.render.txt` goldens, so only this skill's own specialist interpolation is asserted here.
+    listOf("**On Claude", "**On Codex.**", "**On Cursor.**", "**On Junie.**").forEach { marker ->
+      assertContains(rendered, marker)
+    }
+    assertContains(rendered, "\"use the `foo-arch` subagent\" for that role in `bill-foo-orchestrator`")
     assertSourceBundle(skillDir.resolve("native-agents/agents.yaml"), "foo-arch", "foo-perf")
     assertFalse(Files.exists(skillDir.resolve("codex-agents")))
     assertFalse(Files.exists(skillDir.resolve("opencode-agents")))

@@ -5,6 +5,7 @@ package skillbill.nativeagent.rendering
 import skillbill.install.plan.detectCodexAgentsTarget
 import skillbill.install.support.claudeConfigRoots
 import skillbill.nativeagent.composition.NativeAgentSource
+import skillbill.nativeagent.composition.declaresReadOnlyToolset
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -13,7 +14,7 @@ enum class NativeAgentProvider(
   val extension: String,
 ) {
   Claude("claude-agents", "md") {
-    override fun render(source: NativeAgentSource): String = renderFrontmatterAgent(source, mode = null)
+    override fun render(source: NativeAgentSource): String = renderFrontmatterAgent(source, toolsetFields(source))
     override fun homeAgentDirs(home: Path): List<Path> = claudeConfigRoots(home).map { it.resolve("agents") }
   },
   Codex("codex-agents", "toml") {
@@ -22,11 +23,12 @@ enum class NativeAgentProvider(
       listOf(home.resolve(".codex/agents"), home.resolve(".agents/agents"))
   },
   Junie("junie-agents", "md") {
-    override fun render(source: NativeAgentSource): String = renderFrontmatterAgent(source, mode = null)
+    override fun render(source: NativeAgentSource): String = renderFrontmatterAgent(source, toolsetFields(source))
     override fun homeAgentDirs(home: Path): List<Path> = listOf(home.resolve(".junie/agents"))
   },
   Cursor("cursor-agents", "md") {
-    override fun render(source: NativeAgentSource): String = renderCursorAgent(source)
+    override fun render(source: NativeAgentSource): String =
+      renderFrontmatterAgent(source, cursorCapabilityFields(source))
     override fun homeAgentDirs(home: Path): List<Path> = listOf(home.resolve(".cursor/agents"))
   },
   ;
@@ -57,29 +59,38 @@ private fun renderCodexAgentToml(agent: NativeAgentSource): String = buildString
   append("\"\"\"").append('\n')
 }
 
-private fun renderFrontmatterAgent(agent: NativeAgentSource, mode: String?): String = buildString {
+/**
+ * The one frontmatter envelope every markdown provider shares. Providers differ only in the
+ * capability fields they can express, which they supply already rendered and in emission order, so a
+ * change to the envelope itself cannot reach one provider and silently skip another.
+ */
+private fun renderFrontmatterAgent(agent: NativeAgentSource, capabilityFields: List<String>): String = buildString {
   append("---").append('\n')
   append("name: ${yamlScalar(agent.name)}").append('\n')
   append("description: ${yamlScalar(agent.description)}").append('\n')
-  if (mode != null) {
-    append("mode: $mode").append('\n')
-  }
-  if (agent.tools.isNotEmpty()) {
-    append("tools: ${agent.tools.joinToString(", ")}").append('\n')
-  }
+  capabilityFields.forEach { field -> append(field).append('\n') }
   append("---").append('\n')
   append('\n')
   append(agent.body.trimEnd()).append('\n')
 }
 
-/** Cursor frontmatter is name+description only; tools/model/readonly/is_background are omitted. */
-private fun renderCursorAgent(agent: NativeAgentSource): String = buildString {
-  append("---").append('\n')
-  append("name: ${yamlScalar(agent.name)}").append('\n')
-  append("description: ${yamlScalar(agent.description)}").append('\n')
-  append("---").append('\n')
-  append('\n')
-  append(agent.body.trimEnd()).append('\n')
+/** Claude and Junie name the permitted tools directly. */
+private fun toolsetFields(agent: NativeAgentSource): List<String> = if (agent.tools.isEmpty()) {
+  emptyList()
+} else {
+  listOf("tools: ${agent.tools.joinToString(", ")}")
+}
+
+/**
+ * Cursor has no `tools` key — its only capability control is a `readonly` boolean — so a declared
+ * read-only toolset projects onto that. Rendering neither field would leave the worker on the host
+ * default of every tool the parent can reach, restoring the mutation and recursive delegation the
+ * declaration exists to remove.
+ */
+private fun cursorCapabilityFields(agent: NativeAgentSource): List<String> = if (agent.declaresReadOnlyToolset) {
+  listOf("readonly: true")
+} else {
+  emptyList()
 }
 
 private val YAML_RESERVED_LEADING_CHARS: Set<Char> =
@@ -100,15 +111,26 @@ private fun yamlScalar(value: String): String = if (yamlNeedsQuoting(value)) {
   value
 }
 
+/**
+ * Tokens a YAML parser resolves to a non-string type when they appear as an unquoted plain scalar.
+ * The native-agent name pattern permits several of them, so a name of `no` or `off` would install as
+ * a boolean and stop matching the file it keys.
+ */
+private val YAML_PLAIN_RESOLVED_SCALARS: Set<String> =
+  setOf("y", "n", "yes", "no", "true", "false", "on", "off", "null", "~")
+
 private fun yamlNeedsQuoting(value: String): Boolean {
   if (value.isEmpty()) {
     return true
   }
   val edgeWhitespace = value.first().isWhitespace() || value.last().isWhitespace()
   val leadingReserved = value.first() in YAML_RESERVED_LEADING_CHARS
-  val inlineSeparators = value.contains(": ") || value.contains(" #")
+  // A colon ending the value is still a value indicator once the line breaks, so an unquoted
+  // `description: release notes:` scans as a nested mapping key instead of a string.
+  val valueIndicator = value.contains(": ") || value.endsWith(":") || value.contains(" #")
   val inlineReserved = value.any { char -> char in YAML_RESERVED_INLINE_CHARS }
-  return edgeWhitespace || leadingReserved || inlineSeparators || inlineReserved
+  val plainResolved = value.lowercase() in YAML_PLAIN_RESOLVED_SCALARS || value.toDoubleOrNull() != null
+  return edgeWhitespace || leadingReserved || valueIndicator || inlineReserved || plainResolved
 }
 
 private fun tomlBasicString(value: String): String = buildString {

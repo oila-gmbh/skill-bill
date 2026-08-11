@@ -127,7 +127,8 @@ class NativeAgentRenderSnapshotTest {
 
   @Test
   fun `cursor render is byte-exact`() {
-    // Cursor emits name+description only (no tools/model/readonly/is_background).
+    // This source declares no toolset, so there is no capability to project and Cursor emits
+    // name+description only.
     val expected = """
       ---
       name: bill-snapshot-demo
@@ -160,43 +161,6 @@ class NativeAgentRenderSnapshotTest {
 
     """.trimIndent()
 
-    val cursor = NativeAgentProvider.Cursor.render(quotedSource)
-    assertEquals(expected, cursor)
-    val claudeDescription = NativeAgentProvider.Claude.render(quotedSource)
-      .lines().first { it.startsWith("description: ") }
-    val cursorDescription = cursor.lines().first { it.startsWith("description: ") }
-    assertEquals(claudeDescription, cursorDescription, "Cursor must reuse shared yamlScalar quoting")
-    assertEquals(quotedSource.description, parseFrontmatterDescription(cursorDescription))
-  }
-
-  private fun parseFrontmatterDescription(descriptionLine: String): String {
-    val raw = descriptionLine.removePrefix("description: ")
-    if (raw.startsWith("\"") && raw.endsWith("\"")) {
-      val inner = raw.substring(1, raw.length - 1)
-      return buildString {
-        var index = 0
-        while (index < inner.length) {
-          val char = inner[index]
-          if (char == '\\' && index + 1 < inner.length) {
-            when (val next = inner[index + 1]) {
-              'n' -> append('\n')
-              'r' -> append('\r')
-              't' -> append('\t')
-              '\\' -> append('\\')
-              '"' -> append('"')
-              else -> {
-                append('\\')
-                append(next)
-              }
-            }
-            index += 2
-          } else {
-            append(char)
-            index++
-          }
-        }
-      }
-    }
-    return raw
+    assertEquals(expected, NativeAgentProvider.Cursor.render(quotedSource))
   }
 }

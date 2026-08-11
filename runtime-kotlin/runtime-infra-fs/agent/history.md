@@ -1,5 +1,20 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
+## [2026-08-11] Cursor capability projection and spawn-note ordering (review repairs)
+Areas: runtime-kotlin/runtime-infra-fs/nativeagent/{composition,rendering}, runtime-kotlin/runtime-infra-fs/scaffold/rendering, runtime-kotlin/runtime-infra-fs tests
+- A declared read-only toolset now reaches Cursor as `readonly: true`. Cursor has no `tools` key, so rendering name+description only had silently left every review worker on the host default of every tool the parent can reach — write and recursive-delegation capability the read-only review contract forbids. `declaresReadOnlyToolset` is the projection rule; a toolset holding `Edit`/`Write`/`NotebookEdit`/`Agent` earns no `readonly` claim. reusable: a provider whose capability vocabulary is narrower than the source needs an explicit projection, never a dropped field.
+- Claude, Junie, and Cursor share one `renderFrontmatterAgent` envelope and differ only in the capability fields they pass in, so an envelope change cannot reach one provider and skip another. The dead `mode` parameter is gone.
+- `yamlNeedsQuoting` now quotes a value ending in `:` and plain-resolvable tokens (`no`, `off`, `~`, numerics); the name pattern permits them, so an unquoted `no` installed as a boolean and stopped matching its file.
+- The Codex wave limit renders inside the Codex block instead of after another runtime's paragraph, and Junie gets an explicit "delegated unsupported, use `mode:inline`" paragraph so no installed runtime falls through the runtime-neutral rule and invents a spawn mechanism.
+- The rendered Cursor paragraph now splits lane-level from run-level failure: a lane that launches and returns nothing attributable fails that lane; no matching installed agent, or a session that cannot launch by name, stops the run. Its governed phrasing is pinned to `review-delegation/PLAYBOOK.md` by `SubagentSpawnRuntimeNotesTest`, which the renderer cannot read at runtime.
+Feature flag: N/A
+
+## [2026-08-11] Cursor agent CLI delegated refusal copy in scaffold spawn notes
+Areas: runtime-kotlin/runtime-infra-fs/scaffold/rendering
+- `cursorSpawnParagraph` now distinguishes Cursor `agent` CLI (Task built-ins only) from the Cursor IDE agent UI when named specialists are installed but unlaunchable, and tells the operator to re-run `mode:delegated` in the IDE or use `mode:inline` on the CLI.
+- Parity/snapshot coverage pins the `agent` CLI harness and IDE agent UI phrases so the warning cannot regress to a generic unavailable line.
+Feature flag: N/A
+
 ## [2026-08-11] SKILL-182 subtask 2 Cursor native-agent frontmatter vocabulary
 Areas: runtime-kotlin/runtime-infra-fs/nativeagent/rendering, runtime-kotlin/runtime-infra-fs/nativeagent tests
 - `NativeAgentProvider.Cursor.render` now uses a dedicated `renderCursorAgent` path that emits only `name` and `description` (shared `yamlScalar` quoting), dropping Claude's `tools` key and omitting `model` / `readonly` / `is_background`.

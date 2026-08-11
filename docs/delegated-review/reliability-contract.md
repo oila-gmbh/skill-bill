@@ -261,6 +261,5 @@ authenticated evidence for the provider and all of these falsifiable checks:
 6. provider-isolation fixtures show no change to other providers' strategies.
 
 Until a separate governed change records those measurements and approves the
-gate, delegated remains the default and `auto` resolves by pass number: pass one
-and pass-number-free scopes to delegated, follow-up and remediation passes to
-inline.
+gate, delegated is reached only by explicit selection: an omitted mode and `auto`
+both resolve to `inline` for every pass and for a scope with no pass number.

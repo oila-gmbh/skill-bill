@@ -10,9 +10,10 @@ description: Single source of truth for shared stack-specific code-review orches
 `delegated` is the experimental full-depth review, reached only by explicit selection: the reviewing agent fans the routed areas out
 to specialist subagents inside its own harness, and this specialist contract is
 what each of those subagents is held to. `inline` is the single-prompt review —
-one prompt in the current context over the child-owned delta, no fan-out — and it
-is held to the same finding bar, severity vocabulary, and report structure stated
-below. `auto` resolves to `inline` under both of its named rules — pass one, any scope
+exactly one worker, the declared `bill-code-review-inline` native agent, taking
+the child-owned delta in one prompt with no per-area fan-out — and it is held to
+the same finding bar, severity vocabulary, and report structure stated below.
+`auto` resolves to `inline` under each of its named rules: a first pass, any scope
 with no pass number, and every follow-up or remediation pass. `inline` is also the
 default when no mode is selected at all, so only an explicit `delegated` selection
 reaches the fan-out.
@@ -63,11 +64,11 @@ Do not reference this repo-relative path directly from installable skills — us
 
 ## Shared Execution Mode Contract
 
-- `bill-code-review` accepts exactly one canonical caller argument: `mode:auto`, `mode:inline`, or `mode:delegated`. Omission is `mode:delegated`.
+- `bill-code-review` accepts exactly one canonical caller argument: `mode:auto`, `mode:inline`, or `mode:delegated`. Omission is `mode:inline`.
 - It also accepts at most one governed caller context, `context:feature-remediation`. This context is valid only with `mode:inline` for a bounded feature-task re-review of the supplied remediation delta. Reject it with any other mode or scope.
 - Reject malformed, unknown, repeated, or conflicting `mode:` arguments before scope resolution or review launch. The requested mode is review-run metadata and is forwarded unchanged to parallel lanes and review re-runs.
-- `auto` resolves by pass number: pass one resolves to `delegated`, every follow-up or remediation pass resolves to `inline`, and a scope with no pass number resolves to `delegated`. Preserve its named deciding rule in metadata; size, risk, and layering never change the resolution.
-- `inline` is authoritative as the light depth tier: one agent in the current context, no specialist workers, walking every manifest-declared area and required baseline area as an explicit checklist once each at reduced depth under a bounded budget. Diff signals focus an area's inspection but never drop that area. It is not equivalent depth to delegated, and the inline result says so. Do not spawn specialists, invent lane totals, refuse the request, or silently change it to another mode.
+- `auto` resolves to `inline` everywhere: a first review pass, every follow-up or remediation pass, and a scope with no pass number. Preserve its named deciding rule in metadata; size, risk, and layering never change the resolution, and `auto` never reaches the delegated fan-out.
+- `inline` is authoritative as the light depth tier: exactly one review prompt in exactly one subagent, launched as the declared `bill-code-review-inline` native agent, no per-area specialist workers, walking every manifest-declared area and required baseline area as an explicit checklist once each at reduced depth under a bounded budget. Diff signals focus an area's inspection but never drop that area. It is not equivalent depth to delegated, and the inline result says so. Do not spawn specialists, invent lane totals, refuse the request, or silently change it to another mode.
 - `context:feature-remediation` bounds pass two to the supplied remediation delta — all findings addressed in that round union the pre-fix-to-post-fix diff — rather than the full base-to-current delta. The immutable `review_base_sha` and baseline untracked inventory remain the authority for pass one only. The pass emits an evidenced `resolved`, `unresolved`, or `superseded` disposition for every prior Blocker under the durable `blocker_dispositions` key. This context lowers depth and scope only; it does not weaken finding severity, evidence, admission, or approval rules.
 - Only an explicit `delegated` selection performs normal specialist selection and launch. Launch the required delegated workers using `review-delegation.md`; if a worker cannot start, stop loudly. Never fall back to inline.
 - A delegated launch preflights the complete flattened worker set against the current installed native-agent inventory before either lane starts. Missing, dangling, stale-digest, unreadable, or undeclared workers stop with the governed reinstall command; never substitute a generic or baseline worker.

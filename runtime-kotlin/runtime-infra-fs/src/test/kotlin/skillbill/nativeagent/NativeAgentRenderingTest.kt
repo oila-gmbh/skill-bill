@@ -79,25 +79,14 @@ class NativeAgentRenderingTest {
     assertContains(junie, "tools: Read, Grep, Glob, Bash")
     assertContains(junie, "# Worker\n\nDo the work.")
     assertFalse("mode: subagent" in junie)
-    assertContains(cursor, "name: bill-test-worker")
-    assertContains(cursor, "description: Test worker.")
     assertContains(cursor, "# Worker\n\nDo the work.")
     val cursorFrontmatter = cursor.substringAfter("---\n").substringBefore("\n---")
     assertEquals(
-      listOf("name: bill-test-worker", "description: Test worker."),
+      listOf("name: bill-test-worker", "description: Test worker.", "readonly: true"),
       cursorFrontmatter.lines(),
-      "Cursor frontmatter keys must be exactly name then description",
+      "Cursor frontmatter is name, description, then the readonly projection of the declared toolset",
     )
-    assertFalse("tools:" in cursor, "Cursor must not emit Claude's tools key")
-    assertFalse("model:" in cursor)
-    assertFalse("readonly:" in cursor)
-    assertFalse("is_background:" in cursor)
     assertEquals(claude, junie, "Claude and Junie share the same markdown shape; drift must be intentional")
-    assertNotEquals(
-      claude,
-      cursor,
-      "Claude and Cursor frontmatter vocabularies intentionally differ; Cursor must not regain Claude tools",
-    )
     assertNotEquals(claude, codex)
   }
 

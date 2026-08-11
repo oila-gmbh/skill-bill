@@ -9,10 +9,11 @@ description: Single source of truth for agent-specific delegated code-review exe
 
 `delegated` is the experimental full-depth review mode, reached only by explicit selection: the invoking agent fans the review out to
 specialist subagents inside its own harness and merges their findings. `inline`
-is the single-prompt review, where the invoking agent reviews the whole delta in
-one prompt with no fan-out. `auto` resolves to `inline` for every pass and for a
-scope with no pass number, so only an explicit `delegated` selection reaches the
-fan-out.
+is the single-prompt review: the parent launches exactly one worker, the declared
+`bill-code-review-inline` native agent, which reviews the whole delta in one
+prompt with no per-area fan-out. `auto` and an omitted mode both resolve to
+`inline` for every pass and for a scope with no pass number, so only an explicit
+`delegated` selection reaches the fan-out.
 
 Delegation never leaves the invoking agent's harness: every specialist lane is a
 subagent of the reviewing agent, and there is no separate lane lifecycle store.
@@ -126,9 +127,10 @@ Governed add-ons may narrow or enrich delegated review instructions only after t
 - The installed native agent's embedded governed rubric is authoritative. Do not tell the worker to read a sibling rubric sidecar.
 - Tell each delegated worker to return only its structured findings. Parent-owned telemetry (`import_review` and `triage_findings`) and metadata are not part of the worker projection.
 - Cursor lane identity is the routed area plus the assignment digest from the launch plan. No Cursor rule depends on a harness-returned launch id.
-- A lane that cannot be launched, or that returns without a structured findings report attributable to that lane's identity, is a failed lane: report it explicitly. Never absorb it into the merged output as covered.
+- A lane that launches but returns without a structured findings report attributable to that lane's identity is a failed lane: report it explicitly. Never absorb it into the merged output as covered. A lane that cannot be launched at all is not a lane-level failure — it stops the run under the two conditions below.
 - If the parent answers a lane's rubric in its own context, that is an inline review and must be reported as such — not as delegated coverage.
-- If the Cursor harness cannot launch subagents at all (subagents unavailable, or no installed agent matching a selected lane), stop and report that delegated review is required for this scope but unavailable here. Do not silently downgrade to inline.
+- Distinguish Cursor entry points when launch fails. The Cursor IDE agent UI can spawn installed `~/.cursor/agents/` (or project `.cursor/agents/`) specialists by name. The Cursor `agent` CLI — and any Cursor session whose `Task` tool only exposes built-in types such as `generalPurpose` — cannot. When those specialist files are installed but this session cannot launch them by name, stop and report that delegated specialist lanes cannot run on the Cursor `agent` CLI harness: re-run `mode:delegated` from the Cursor IDE agent chat, or use `mode:inline` here. Do not silently downgrade to inline, substitute a built-in worker, or claim delegated coverage from the parent context.
+- If the Cursor harness cannot launch subagents for another reason (subagents unavailable in the IDE surface, or no installed agent matching a selected lane), stop and report that delegated review is required for this scope but unavailable here. Do not silently downgrade to inline.
 
 ## Junie
 

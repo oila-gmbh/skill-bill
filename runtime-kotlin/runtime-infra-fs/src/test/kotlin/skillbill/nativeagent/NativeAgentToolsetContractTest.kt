@@ -38,6 +38,24 @@ class NativeAgentToolsetContractTest {
 
     val rendered = NativeAgentProvider.Claude.render(agent)
     assertTrue(rendered.contains("tools: Read, Grep, Glob, Bash"), "Claude render must emit the toolset: $rendered")
+
+    // Cursor has no `tools` key, so the declaration has to reach its one capability control instead.
+    // Emitting neither leaves the worker on the host default of every tool the parent can reach.
+    val cursor = NativeAgentProvider.Cursor.render(agent)
+    assertTrue(cursor.contains("readonly: true"), "Cursor render must project the read-only toolset: $cursor")
+  }
+
+  // `readonly: true` is a claim about the worker, so a toolset that grants mutation must not earn it.
+  @Test
+  fun `a toolset granting mutation is not projected as read-only`() {
+    val agent = NativeAgentSource(
+      name = "fixture-writer",
+      description = "Fixture writer.",
+      body = "# Worker\n\nWrite it.",
+      tools = listOf("Read", "Write"),
+    )
+
+    assertFalse(NativeAgentProvider.Cursor.render(agent).contains("readonly:"))
   }
 
   @Test
@@ -47,6 +65,7 @@ class NativeAgentToolsetContractTest {
     assertTrue(agent.tools.isEmpty())
     assertFalse(NativeAgentProvider.Claude.render(agent).contains("tools:"))
     assertFalse(renderNativeAgentBundle(listOf(agent)).contains("tools:"))
+    assertFalse(NativeAgentProvider.Cursor.render(agent).contains("readonly:"))
   }
 
   @Test
@@ -79,6 +98,11 @@ class NativeAgentToolsetContractTest {
         emptyList(),
         forbidden,
         "${agent.name} must hold no mutation or delegation tool, but declares $forbidden",
+      )
+      assertTrue(
+        NativeAgentProvider.Cursor.render(agent).contains("readonly: true"),
+        "${agent.name} must render read-only on Cursor; Cursor has no tools key, so a declaration that " +
+          "reaches no capability field hands the worker every tool the parent can reach.",
       )
     }
   }
