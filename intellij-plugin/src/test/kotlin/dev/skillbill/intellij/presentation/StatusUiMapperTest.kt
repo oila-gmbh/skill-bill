@@ -1,5 +1,6 @@
 package dev.skillbill.intellij.presentation
 
+import dev.skillbill.intellij.domain.CurrentPhaseExecution
 import dev.skillbill.intellij.domain.CurrentPhaseModel
 import dev.skillbill.intellij.domain.GoalPlanningInfo
 import dev.skillbill.intellij.domain.NO_MATCHING_WORK_REASON_CODE
@@ -433,6 +434,63 @@ class StatusUiMapperTest {
             now,
         ) as SkillBillStatusUiState.Stale
         assertEquals(planning, ui.planning)
+        assertNull(ui.currentPhaseExecution)
+    }
+
+    @Test
+    fun `active execution clears planning and retains the typed current-phase value`() {
+        val planning = GoalPlanningInfo(
+            state = "partially_planned",
+            sharedPreplanPrepared = true,
+            plannedSubtaskCount = 10,
+            totalSubtaskCount = 15,
+        )
+        val execution = CurrentPhaseExecution(
+            phaseId = "audit",
+            kind = "semantic_loop",
+            count = 2,
+        )
+        val ui = StatusUiMapper.map(
+            active(
+                planning = planning,
+                currentSubtaskId = "2",
+                progressCompleted = 0,
+            ).copy(currentPhaseExecution = execution),
+            now,
+        ) as SkillBillStatusUiState.Active
+        assertNull(ui.planning)
+        assertEquals(execution, ui.currentPhaseExecution)
+    }
+
+    @Test
+    fun `stale mid-planning does not synthesize an execution value`() {
+        val planning = GoalPlanningInfo(
+            state = "partially_planned",
+            sharedPreplanPrepared = false,
+            plannedSubtaskCount = 1,
+            totalSubtaskCount = 15,
+        )
+        val ui = StatusUiMapper.map(
+            SkillBillStatusOutcome.Stale(
+                observedAt = now,
+                summary = "stale",
+                repositoryIdentity = "repo",
+                issueKey = "SKILL-184",
+                currentStepId = "plan",
+                currentStepLabel = "Plan",
+                progressCompleted = 0,
+                progressTotal = 15,
+                startedAt = started,
+                currentSubtaskId = null,
+                subtaskStartedAt = null,
+                updatedAt = now,
+                planning = planning,
+                currentPhaseExecution = null,
+            ),
+            now,
+        ) as SkillBillStatusUiState.Stale
+        assertEquals(planning, ui.planning)
+        assertNull(ui.currentPhaseExecution)
     }
 
     @Test

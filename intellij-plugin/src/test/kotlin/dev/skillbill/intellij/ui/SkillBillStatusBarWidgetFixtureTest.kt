@@ -7,7 +7,9 @@ import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import dev.skillbill.intellij.application.GoalStopOutcome
 import dev.skillbill.intellij.application.StatusRefreshCoordinator
 import dev.skillbill.intellij.composition.SkillBillProjectStatusService
+import dev.skillbill.intellij.domain.CurrentPhaseExecution
 import dev.skillbill.intellij.domain.CurrentPhaseModel
+import dev.skillbill.intellij.domain.GoalPlanningInfo
 import dev.skillbill.intellij.domain.SkillBillStatusOutcome
 import dev.skillbill.intellij.fakes.ControllableClock
 import dev.skillbill.intellij.fakes.FakeGoalPauseRepository
@@ -29,6 +31,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import org.junit.Assert.assertNull
 
 /**
  * IntelliJ Platform fixture coverage for registration, disposal, ticker stop,
@@ -253,6 +256,66 @@ class SkillBillStatusBarWidgetFixtureTest : BasePlatformTestCase() {
             lines,
             StatusDetailsPopupContent.statusLines(withModel).filterNot { it.first == "Model" },
         )
+    }
+
+    fun testPopupRendersExactlyOnePlanningOrCurrentPhaseRow() {
+        val planningState = activeUiState().copy(
+            progressCompleted = 0,
+            progressTotal = 15,
+            planning = GoalPlanningInfo(
+                state = "partially_planned",
+                sharedPreplanPrepared = true,
+                plannedSubtaskCount = 10,
+                totalSubtaskCount = 15,
+            ),
+        )
+        val planningMapped = SkillBillStatusBarPresentation.map(planningState)
+        val planningRows = StatusDetailsPopupContent.statusLines(planningMapped)
+            .filter { it.first == "Planning" || it.first == "Current phase" }
+        assertEquals(listOf("Planning" to "partially planned, 10/15 plans saved"), planningRows)
+        assertEquals(
+            "Planning: partially planned, 10/15 plans saved",
+            "Planning: ${planningMapped.details.selectedSlotText}",
+        )
+        assertTrue(planningMapped.tooltipText.contains("Planning: partially planned, 10/15 plans saved"))
+
+        val executionMapped = SkillBillStatusBarPresentation.map(
+            activeUiState().copy(
+                currentPhaseExecution = CurrentPhaseExecution(
+                    phaseId = "audit",
+                    kind = "semantic_loop",
+                    count = 2,
+                ),
+            ),
+        )
+        val executionRows = StatusDetailsPopupContent.statusLines(executionMapped)
+            .filter { it.first == "Planning" || it.first == "Current phase" }
+        assertEquals(listOf("Current phase" to "Audit loop 2"), executionRows)
+        assertEquals("Audit loop 2", executionMapped.details.selectedSlotText)
+        assertTrue(executionMapped.tooltipText.contains("Audit loop 2"))
+
+        val reviewMapped = SkillBillStatusBarPresentation.map(
+            activeUiState().copy(
+                currentPhaseExecution = CurrentPhaseExecution(
+                    phaseId = "review",
+                    kind = "pass",
+                    count = 3,
+                ),
+            ),
+        )
+        assertEquals(
+            listOf("Current phase" to "Review pass 3"),
+            StatusDetailsPopupContent.statusLines(reviewMapped)
+                .filter { it.first == "Planning" || it.first == "Current phase" },
+        )
+
+        val absentMapped = SkillBillStatusBarPresentation.map(activeUiState())
+        assertTrue(
+            StatusDetailsPopupContent.statusLines(absentMapped)
+                .none { it.first == "Planning" || it.first == "Current phase" },
+        )
+        assertNull(absentMapped.details.selectedSlotLabel)
+        assertNull(absentMapped.details.selectedSlotText)
     }
 
     fun testPopupValueLabelsDoNotRenderRuntimeTextAsHtml() {

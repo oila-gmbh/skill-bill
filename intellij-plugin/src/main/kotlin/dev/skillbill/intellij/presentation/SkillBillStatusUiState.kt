@@ -1,5 +1,6 @@
 package dev.skillbill.intellij.presentation
 
+import dev.skillbill.intellij.domain.CurrentPhaseExecution
 import dev.skillbill.intellij.domain.CurrentPhaseModel
 import dev.skillbill.intellij.domain.GoalPlanningInfo
 import java.time.Duration
@@ -51,6 +52,12 @@ sealed class SkillBillStatusUiState {
     /** Model the current phase launched with; null on states that carry no current step. */
     open val currentModel: CurrentPhaseModel? get() = null
 
+    /**
+     * Authoritative current-phase execution measure. Non-null only on lifecycles that carry a
+     * current phase; relevance of planning versus this value is decided in [StatusUiMapper].
+     */
+    open val currentPhaseExecution: CurrentPhaseExecution? get() = null
+
     /** True when this state is not live. Always true for [Stale]; a modifier elsewhere. */
     open val stale: Boolean get() = this is Stale
 
@@ -99,6 +106,7 @@ sealed class SkillBillStatusUiState {
         override val workflowFamily: String? = null,
         override val pauseRequested: Boolean? = null,
         override val currentModel: CurrentPhaseModel? = null,
+        override val currentPhaseExecution: CurrentPhaseExecution? = null,
         /** Retained so the 1s ticker re-anchors the active clock without a new poll. */
         val activeDurationMs: Long? = null,
         val activeDurationAsOf: Instant? = null,
@@ -128,6 +136,7 @@ sealed class SkillBillStatusUiState {
         override val workflowFamily: String? = null,
         override val pauseRequested: Boolean? = null,
         override val currentModel: CurrentPhaseModel? = null,
+        override val currentPhaseExecution: CurrentPhaseExecution? = null,
     ) : SkillBillStatusUiState() {
         override val accessibilityText: String = "$headline (paused)"
     }
@@ -148,6 +157,7 @@ sealed class SkillBillStatusUiState {
         override val problemSummary: String? = "Cached status is stale",
         override val planning: GoalPlanningInfo? = null,
         override val currentModel: CurrentPhaseModel? = null,
+        override val currentPhaseExecution: CurrentPhaseExecution? = null,
     ) : SkillBillStatusUiState() {
         override val accessibilityText: String = "$headline (stale)"
     }
@@ -168,6 +178,7 @@ sealed class SkillBillStatusUiState {
         override val problemSummary: String? = null,
         override val stale: Boolean = false,
         override val currentModel: CurrentPhaseModel? = null,
+        override val currentPhaseExecution: CurrentPhaseExecution? = null,
     ) : SkillBillStatusUiState() {
         override val accessibilityText: String = "$headline (blocked)"
     }
@@ -188,6 +199,7 @@ sealed class SkillBillStatusUiState {
         override val problemSummary: String? = null,
         override val stale: Boolean = false,
         override val currentModel: CurrentPhaseModel? = null,
+        override val currentPhaseExecution: CurrentPhaseExecution? = null,
     ) : SkillBillStatusUiState() {
         override val accessibilityText: String = "$headline (failed)"
     }

@@ -65,6 +65,7 @@ object StatusUiMapper {
                     workflowFamily = outcome.workflowFamily,
                     pauseRequested = outcome.pauseRequested,
                     currentModel = outcome.currentModel,
+                    currentPhaseExecution = outcome.currentPhaseExecution,
                     activeDurationMs = outcome.activeDurationMs,
                     activeDurationAsOf = outcome.activeDurationAsOf,
                 )
@@ -96,6 +97,7 @@ object StatusUiMapper {
                     workflowFamily = outcome.workflowFamily,
                     pauseRequested = outcome.pauseRequested,
                     currentModel = outcome.currentModel,
+                    currentPhaseExecution = outcome.currentPhaseExecution,
                 )
 
             is SkillBillStatusOutcome.Stale ->
@@ -128,6 +130,7 @@ object StatusUiMapper {
                     // after a restart. The Model row is therefore absent until a live poll lands;
                     // that missing row is the cache being honest, not a parse failure.
                     currentModel = outcome.currentModel,
+                    currentPhaseExecution = outcome.currentPhaseExecution,
                 )
 
             is SkillBillStatusOutcome.Blocked ->
@@ -150,6 +153,7 @@ object StatusUiMapper {
                     problemSummary = outcome.summary,
                     stale = outcome.stale,
                     currentModel = outcome.currentModel,
+                    currentPhaseExecution = outcome.currentPhaseExecution,
                 )
 
             is SkillBillStatusOutcome.Failed ->
@@ -172,6 +176,7 @@ object StatusUiMapper {
                     problemSummary = outcome.summary,
                     stale = outcome.stale,
                     currentModel = outcome.currentModel,
+                    currentPhaseExecution = outcome.currentPhaseExecution,
                 )
 
             is SkillBillStatusOutcome.Unavailable ->

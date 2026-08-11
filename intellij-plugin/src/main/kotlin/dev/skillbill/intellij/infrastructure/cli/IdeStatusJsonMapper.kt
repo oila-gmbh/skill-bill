@@ -7,6 +7,9 @@ import com.google.gson.JsonSyntaxException
 import dev.skillbill.intellij.domain.ACTIVE_DURATION_AS_OF_WIRE_KEY
 import dev.skillbill.intellij.domain.ACTIVE_DURATION_MS_WIRE_KEY
 import dev.skillbill.intellij.domain.CURRENT_MODEL_WIRE_KEY
+import dev.skillbill.intellij.domain.CURRENT_PHASE_EXECUTION_KINDS
+import dev.skillbill.intellij.domain.CURRENT_PHASE_EXECUTION_WIRE_KEY
+import dev.skillbill.intellij.domain.CurrentPhaseExecution
 import dev.skillbill.intellij.domain.CurrentPhaseModel
 import dev.skillbill.intellij.domain.EFFORT_MAX_LENGTH
 import dev.skillbill.intellij.domain.MODEL_MAX_LENGTH
@@ -105,6 +108,7 @@ object IdeStatusJsonMapper {
         val updatedAt = root.getAsInstant("updated_at")
         val planning = root.parsePlanning()
         val currentModel = root.parseCurrentModel()
+        val currentPhaseExecution = root.parseCurrentPhaseExecution()
         // Both optional and goal-family-only: a missing key stays null, never false.
         val pauseRequested = root.getAsBoolean(PAUSE_REQUESTED_WIRE_KEY)
         val pausedAt = root.getAsInstant(PAUSED_AT_WIRE_KEY)
@@ -163,6 +167,7 @@ object IdeStatusJsonMapper {
                 activeDurationMs = activeDurationMs,
                 activeDurationAsOf = activeDurationAsOf,
                 currentModel = currentModel,
+                currentPhaseExecution = currentPhaseExecution,
             )
         }
 
@@ -192,6 +197,7 @@ object IdeStatusJsonMapper {
                         activeDurationMs = activeDurationMs,
                         activeDurationAsOf = activeDurationAsOf,
                         currentModel = currentModel,
+                        currentPhaseExecution = currentPhaseExecution,
                     )
                 } else {
                     SkillBillStatusOutcome.Active(
@@ -215,6 +221,7 @@ object IdeStatusJsonMapper {
                         activeDurationMs = activeDurationMs,
                         activeDurationAsOf = activeDurationAsOf,
                         currentModel = currentModel,
+                        currentPhaseExecution = currentPhaseExecution,
                     )
                 }
             }
@@ -234,6 +241,7 @@ object IdeStatusJsonMapper {
                 activeDurationMs = activeDurationMs,
                 activeDurationAsOf = activeDurationAsOf,
                 currentModel = currentModel,
+                currentPhaseExecution = currentPhaseExecution,
             )
 
             "failed" -> SkillBillStatusOutcome.Failed(
@@ -251,6 +259,7 @@ object IdeStatusJsonMapper {
                 activeDurationMs = activeDurationMs,
                 activeDurationAsOf = activeDurationAsOf,
                 currentModel = currentModel,
+                currentPhaseExecution = currentPhaseExecution,
             )
 
             "idle" -> SkillBillStatusOutcome.Idle(
@@ -351,6 +360,34 @@ object IdeStatusJsonMapper {
             model = model,
             effort = currentModel.boundedString("effort", EFFORT_MAX_LENGTH),
             phaseId = currentModel.boundedString("phase_id", PHASE_ID_MAX_LENGTH),
+        )
+    }
+
+    /**
+     * Same degradation rule as [parsePlanning]: optional context, so a missing block, a
+     * non-object, an unknown kind, a non-positive count, an over-length phase id, or a total
+     * on a kind that must not carry one degrades to null and the surrounding outcome still maps.
+     *
+     * Kind and count stay exactly as the producer sent them — this parser never invents a
+     * total or re-labels an attempt as a semantic loop.
+     */
+    private fun JsonObject.parseCurrentPhaseExecution(): CurrentPhaseExecution? {
+        val execution = getAsJsonObjectOrNull(CURRENT_PHASE_EXECUTION_WIRE_KEY) ?: return null
+        val phaseId = execution.boundedString("phase_id", PHASE_ID_MAX_LENGTH) ?: return null
+        val kind = execution.getAsStringPrimitive("kind")?.trim()?.takeIf { it in CURRENT_PHASE_EXECUTION_KINDS }
+            ?: return null
+        val count = execution.getAsInt("count")?.takeIf { it >= 1 } ?: return null
+        val totalElement = execution.get("total")
+        val total = when {
+            totalElement == null || totalElement.isJsonNull -> null
+            kind != "bounded_edge" -> return null
+            else -> execution.getAsInt("total")?.takeIf { it >= 1 } ?: return null
+        }
+        return CurrentPhaseExecution(
+            phaseId = phaseId,
+            kind = kind,
+            count = count,
+            total = total,
         )
     }
 

@@ -69,6 +69,13 @@ Configuration cache is enabled via `gradle.properties`
   both clocks; disposal stops the ticker and cancels polling.
 - Click performs a coalesced refresh and opens a details popup (issue/workflow,
   state, step, progress, both elapsed clocks, last update, typed problem summary).
+- While a goal is still planning, the bar shows a compact `Planning n/m` segment
+  and the tooltip, accessibility description, and popup Planning row use the full
+  line `Planning: <state>, n/m plans saved` (for example
+  `Planning: partially planned, 10/15 plans saved`). Progress during planning comes
+  from those planning counts, not from treating the first execution subtask as
+  active. Once execution starts, that planning text is replaced by the producer
+  current-phase execution value (for example `Audit loop 2` or `Review pass 3`).
 
 ### Goal controls
 

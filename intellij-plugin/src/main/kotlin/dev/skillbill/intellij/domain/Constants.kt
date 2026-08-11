@@ -32,6 +32,25 @@ const val PAUSE_REQUESTED_WIRE_KEY: String = "pause_requested"
 const val CURRENT_MODEL_WIRE_KEY: String = "current_model"
 
 /**
+ * Wire key carrying the authoritative current-phase execution measure (phase, kind, count,
+ * optional bounded total). Optional context: absence or a malformed block degrades to no
+ * execution value, never to a lost status reading.
+ */
+const val CURRENT_PHASE_EXECUTION_WIRE_KEY: String = "current_phase_execution"
+
+/**
+ * Controlled vocabulary for [CurrentPhaseExecution.kind], matching the IDE status schema enum.
+ * Distinguishes semantic loops/passes from gate runs, capped backward edges, and generic attempts.
+ */
+val CURRENT_PHASE_EXECUTION_KINDS: Set<String> = setOf(
+    "pass",
+    "semantic_loop",
+    "gate_run",
+    "bounded_edge",
+    "attempt",
+)
+
+/**
  * Mirrors the `current_model` length bounds in `orchestration/contracts/ide-status-schema.yaml`.
  * A value past these is rejected rather than clipped, so the popup never shows a model identifier
  * that never existed.
