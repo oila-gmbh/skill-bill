@@ -6,6 +6,7 @@ import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_BYTES
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_HUNKS
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_LINES
 import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.workflow.taskruntime.model.GoalSubtaskOperatorDecision
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import java.nio.file.Path
 import kotlin.time.Duration
@@ -265,6 +266,35 @@ sealed interface GoalRunnerAcceptResult {
   ) : GoalRunnerAcceptResult
 
   data class Rejected(val issueKey: String, val reason: String) : GoalRunnerAcceptResult
+}
+
+/**
+ * Record an out-of-band operator decision on a paused goal child without hand-editing durable state
+ * or `decomposition-manifest.yaml`. Resume later consumes the decision.
+ */
+data class GoalRunnerOperatorDecisionRequest(
+  val issueKey: String,
+  val subtaskId: Int,
+  val decision: GoalSubtaskOperatorDecision,
+  val dbPathOverride: String? = null,
+  val repoRoot: Path? = null,
+) {
+  init {
+    require(issueKey.isNotBlank()) { "issueKey is required." }
+    require(subtaskId > 0) { "subtaskId must be positive." }
+  }
+}
+
+sealed interface GoalRunnerOperatorDecisionResult {
+  data class Recorded(
+    val issueKey: String,
+    val parentWorkflowId: String,
+    val subtaskId: Int,
+    val workflowId: String,
+    val decision: String,
+  ) : GoalRunnerOperatorDecisionResult
+
+  data class Rejected(val issueKey: String, val reason: String) : GoalRunnerOperatorDecisionResult
 }
 
 internal sealed interface GoalRunnerAcceptanceEvidence {

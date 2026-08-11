@@ -223,20 +223,23 @@ internal object GoalSubtaskReviewSummaryReducer {
   }
 
   fun unresolvedCount(output: Map<String, Any?>): Int = fromOutput(output)
-    .count { finding -> finding.severity == "blocker" }
+    .count(GoalSubtaskReviewCompactFinding::blocksAdvance)
 
   fun outcomeFor(
     output: Map<String, Any?>,
     findings: List<GoalSubtaskReviewCompactFinding> = fromOutput(output),
   ): GoalSubtaskReviewOutputOutcome {
-    // Structured findings of every severity are durable advisory records. They remain available in
-    // the findings ledger, but no individual review finding can reopen implementation or halt the
-    // workflow.
-    val hasStructuredFindings = findings.isNotEmpty()
+    // Blocker and Major reopen remediation and block advance; Minor and Nit stay ledger-only and never
+    // alone force changes_requested. The durable pass count must agree with that gate so
+    // acceptsOperatorDecision and non-convergence pause see the same advance-blocking evidence the
+    // phase transition already used.
+    val advanceBlockingCount = findings.count(GoalSubtaskReviewCompactFinding::blocksAdvance)
+    val hasOnlyNonBlockingFindings = findings.isNotEmpty() && advanceBlockingCount == 0
     val declaredVerdict = (output["verdict"] as? String)?.trim()
     val changesRequested = declaredVerdict in setOf("needs_fix", FeatureTaskRuntimeVerdict.CHANGES_REQUESTED.wireValue)
     val verdict = when {
-      hasStructuredFindings -> FeatureTaskRuntimeVerdict.APPROVED
+      advanceBlockingCount > 0 -> FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
+      hasOnlyNonBlockingFindings -> FeatureTaskRuntimeVerdict.APPROVED
       changesRequested -> FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
       // The pass vocabulary is closed, so an off-vocabulary verdict cannot be persisted as emitted.
       // It resolves the way the transition function already resolves it — only changes_requested
@@ -250,7 +253,8 @@ internal object GoalSubtaskReviewSummaryReducer {
     return GoalSubtaskReviewOutputOutcome(
       verdict = verdict,
       unresolvedFindingCount = when {
-        hasStructuredFindings ||
+        advanceBlockingCount > 0 -> advanceBlockingCount
+        hasOnlyNonBlockingFindings ||
           verdict == FeatureTaskRuntimeVerdict.APPROVED ||
           verdict == FeatureTaskRuntimeVerdict.REVIEW_SKIPPED_BY_USER -> 0
         else -> 1

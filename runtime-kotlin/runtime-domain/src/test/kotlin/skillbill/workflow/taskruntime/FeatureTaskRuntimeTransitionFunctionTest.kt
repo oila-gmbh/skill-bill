@@ -305,19 +305,52 @@ class FeatureTaskRuntimeTransitionFunctionTest {
   }
 
   @Test
-  fun `a Major finding does not request changes and is not advance-blocking`() {
+  fun `requiresRemediation and blocksAdvance are true for Blocker and Major only`() {
+    FeatureTaskRuntimeReviewSeverity.entries.forEach { severity ->
+      val expected = severity == FeatureTaskRuntimeReviewSeverity.BLOCKER ||
+        severity == FeatureTaskRuntimeReviewSeverity.MAJOR
+      assertEquals(expected, severity.requiresRemediation, "$severity.requiresRemediation")
+      assertEquals(expected, severity.blocksAdvance, "$severity.blocksAdvance")
+    }
+  }
+
+  @Test
+  fun `mixed Blocker Major and Minor findings request changes and keep remediable order`() {
+    val verdict = FeatureTaskRuntimeReviewVerdict(
+      listOf(
+        FeatureTaskRuntimeReviewFinding(FeatureTaskRuntimeReviewSeverity.MINOR, "minor-a"),
+        FeatureTaskRuntimeReviewFinding(FeatureTaskRuntimeReviewSeverity.BLOCKER, "blocker-1"),
+        FeatureTaskRuntimeReviewFinding(FeatureTaskRuntimeReviewSeverity.MINOR, "minor-b"),
+        FeatureTaskRuntimeReviewFinding(FeatureTaskRuntimeReviewSeverity.MAJOR, "major-1"),
+        FeatureTaskRuntimeReviewFinding(FeatureTaskRuntimeReviewSeverity.MINOR, "minor-c"),
+        FeatureTaskRuntimeReviewFinding(FeatureTaskRuntimeReviewSeverity.MAJOR, "major-2"),
+        FeatureTaskRuntimeReviewFinding(FeatureTaskRuntimeReviewSeverity.MINOR, "minor-d"),
+      ),
+    )
+    assertEquals(FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, verdict.verdict)
+    assertEquals(
+      listOf("blocker-1", "major-1", "major-2"),
+      verdict.remediationFindings.map { it.message },
+    )
+    assertEquals(
+      listOf("blocker-1", "major-1", "major-2"),
+      verdict.unresolvedFindings.map { it.message },
+    )
+  }
+
+  @Test
+  fun `a Major finding requests changes and is advance-blocking`() {
     val majorOnly = FeatureTaskRuntimeReviewVerdict(
       listOf(
         FeatureTaskRuntimeReviewFinding(FeatureTaskRuntimeReviewSeverity.MAJOR, "follow-up risk"),
         FeatureTaskRuntimeReviewFinding(FeatureTaskRuntimeReviewSeverity.MINOR, "consider renaming"),
       ),
     )
-    // Only Blocker reopens implement_fix (changes_requested). Major and Minor findings advance to
-    // validate without triggering a fix pass, so the verdict is APPROVED and both remediation and
-    // unresolved findings are empty.
-    assertEquals(FeatureTaskRuntimeVerdict.APPROVED, majorOnly.verdict)
-    assertTrue(majorOnly.remediationFindings.isEmpty())
-    assertTrue(majorOnly.unresolvedFindings.isEmpty())
+    // Blocker and Major both reopen implement_fix (changes_requested). Minor advances without
+    // joining the remediation or unresolved sets.
+    assertEquals(FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, majorOnly.verdict)
+    assertEquals(listOf("follow-up risk"), majorOnly.remediationFindings.map { it.message })
+    assertEquals(listOf("follow-up risk"), majorOnly.unresolvedFindings.map { it.message })
   }
 
   @Test

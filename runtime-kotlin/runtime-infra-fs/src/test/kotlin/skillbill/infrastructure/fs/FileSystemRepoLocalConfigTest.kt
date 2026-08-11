@@ -109,6 +109,45 @@ class FileSystemRepoLocalConfigTest {
   }
 
   @Test
+  fun `validation gate gradle_wrapper is read as a repo-relative path`() {
+    val repoRoot = writeConfig(
+      """
+      validation_gate:
+        gradle_wrapper: runtime-kotlin/gradlew
+      """.trimIndent(),
+    )
+
+    val config = adapter.readRepoLocalConfig(ReadRepoLocalConfigRequest(repoRoot)).config
+
+    assertEquals("runtime-kotlin/gradlew", config.validationGate.gradleWrapper)
+  }
+
+  @Test
+  fun `validation gate gradle_wrapper rejects absolute and traversal paths`() {
+    val absolute = writeConfig(
+      """
+      validation_gate:
+        gradle_wrapper: /abs/gradlew
+      """.trimIndent(),
+    )
+    val absoluteError = assertFailsWith<MalformedRepoLocalConfigError> {
+      adapter.readRepoLocalConfig(ReadRepoLocalConfigRequest(absolute))
+    }
+    assertEquals("validation_gate.gradle_wrapper", absoluteError.key)
+
+    val traversal = writeConfig(
+      """
+      validation_gate:
+        gradle_wrapper: ../gradlew
+      """.trimIndent(),
+    )
+    val traversalError = assertFailsWith<MalformedRepoLocalConfigError> {
+      adapter.readRepoLocalConfig(ReadRepoLocalConfigRequest(traversal))
+    }
+    assertEquals("validation_gate.gradle_wrapper", traversalError.key)
+  }
+
+  @Test
   fun `unknown future keys are tolerated without error and do not affect known values`() {
     val repoRoot = writeConfig(
       """

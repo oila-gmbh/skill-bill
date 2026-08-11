@@ -1,5 +1,34 @@
 # featuretask runtime boundary history
 
+## [2026-08-10] SKILL-178 subtask 3 — Human-resumable non-convergence pause
+Areas: runtime-application/featuretask, runtime-application/goalrunner, runtime-domain/workflow/taskruntime/model, runtime-cli/goal
+- Same unresolved advance-blocking set (Blocker or Major) across consecutive remediation passes with an unchanged reviewed-delta digest mints `PAUSED` via `pauseForNonConvergence` instead of re-entering `implement_fix`; an active retry grant suppresses that pause for one transition
+- Goal-facing pause reasons carry severity, count, and sanitized labels only — paths, line numbers, and hunks stay behind `skill-bill goal findings`
+- `skill-bill goal operator-decision` records `retry_fix` / `accept_and_advance` / `abandon_subtask` onto durable review state without editing `decomposition-manifest.yaml`; resume consumes the decision and reuses `review_base_sha`, baseline untracked inventory, and pass accounting
+- `RETRY_FIX` still re-opens the consumed review pass so a hand-applied fix is genuinely re-reviewed; `operatorRetryRounds` stays unbounded — no count converts the pause into auto-advance or terminal failure
+- Reusable: `detectReviewRemediationNonProgress` (severity+label+text identities) mirrors audit-repair non-progress detection for the review remediation loop
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
+## [2026-08-10] SKILL-178 subtask 2 — Remediation-delta finding union
+Areas: runtime-application/featuretask, runtime-domain/workflow/taskruntime
+- Reserved remediation-pass scope is all findings addressed in that round unioned with `diff(pre-fix -> post-fix)`; pass-one immutable-base and baseline-untracked framing stay suppressed so the two scope statements cannot contradict
+- Review-execution-mode text keeps remediation unbounded, now until an unresolved Blocker or Major survives; `context:feature-remediation` stays inline-only
+- `implement_fix` briefing carries every preceding-pass finding (Blocker through Nit) with no severity re-filter; handoff projection preserves each finding's severity instead of forcing blocker
+- Pattern followed: prompt, composer, and fix-briefing surfaces stay wording-aligned on the widened finding half while the tree-delta half and anti-rediscovery prohibitions stay verbatim
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
+## [2026-08-10] SKILL-178 subtask 1 — Domain severity gates Blocker + Major
+Areas: runtime-domain/workflow/taskruntime/model, runtime-application/featuretask/validation, runtime-domain/config/model, runtime-infra-fs, .skill-bill
+- `requiresRemediation` and `blocksAdvance` both gate on Blocker or Major; Minor and Nit stay ledger-only and never reopen `implement_fix` or hard-block advance
+- `GoalSubtaskReviewCompactFinding.blocksAdvance` mirrors that rule; a positive unresolved count with an empty itemised list stays blocking; durable artifact keys unchanged
+- `REVIEW_CAP_REACHED` / `PAUSED` invariant messages state the Blocker-or-Major rule
+- Repo-local `validation_gate.gradle_wrapper` rewrites pack `./gradlew` argv for monorepo layouts without editing pack manifests (reusable)
+- BUILD_ONLY terminal `FORCED_FULL` keeps build-only argv and appends pack cache-bypass extras so attestation cannot be a zero-work cache hit
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-08-10] SKILL-180 — Validate suppression-diff gate
 Areas: runtime-application/featuretask/validation, runtime-domain/workflow/taskruntime, runtime-domain/scaffold/policy, runtime-infra-fs (git ops, platformpack), runtime-ports/workflow, orchestration/contracts, platform-packs
 - Validate now measures newly introduced suppression markers itself, diffing changed paths against the base ref through the git operations port; the agent's self-report is never an input to the count

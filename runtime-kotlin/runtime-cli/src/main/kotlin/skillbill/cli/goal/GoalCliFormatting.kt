@@ -1,5 +1,6 @@
 package skillbill.cli.goal
 
+import skillbill.application.model.GoalRunnerOperatorDecisionResult
 import skillbill.application.model.GoalRunnerRepairResult
 import skillbill.application.model.GoalRunnerRepairStatus
 
@@ -108,5 +109,36 @@ private fun appendGoalRepairAppliedRepairs(builder: StringBuilder, repairs: List
         "wedge_class=${repair["wedge_class"]}; prior=${repair["prior_value"] ?: "absent"}; " +
         "new=${repair["new_value"] ?: "absent"}",
     )
+  }
+}
+
+internal fun GoalRunnerOperatorDecisionResult.toGoalOperatorDecisionCliMap(): Map<String, Any?> = when (this) {
+  is GoalRunnerOperatorDecisionResult.Recorded -> linkedMapOf(
+    "status" to "ok",
+    "issue_key" to issueKey,
+    "parent_workflow_id" to parentWorkflowId,
+    "subtask_id" to subtaskId,
+    "workflow_id" to workflowId,
+    "decision" to decision,
+  )
+  is GoalRunnerOperatorDecisionResult.Rejected -> linkedMapOf(
+    "status" to "rejected",
+    "issue_key" to issueKey,
+    "reason" to reason,
+  )
+}
+
+internal fun Map<String, Any?>.goalOperatorDecisionExitCode(): Int = if (this["status"] == "ok") 0 else 1
+
+internal fun goalOperatorDecisionText(payload: Map<String, Any?>): String = buildString {
+  appendLine("goal: ${payload["issue_key"]}")
+  appendLine("status: ${payload["status"]}")
+  payload["parent_workflow_id"]?.let { appendLine("parent_workflow_id: $it") }
+  payload["subtask_id"]?.let { appendLine("subtask_id: $it") }
+  payload["workflow_id"]?.let { appendLine("workflow_id: $it") }
+  payload["decision"]?.let { appendLine("decision: $it") }
+  payload["reason"]?.let { appendLine("reason: $it") }
+  if (payload["status"] == "ok") {
+    appendLine("next: skill-bill goal resume ${payload["issue_key"]} (consumes the recorded decision)")
   }
 }

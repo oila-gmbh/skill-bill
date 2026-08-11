@@ -166,7 +166,7 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
   ).multiple()
   protected val operatorDecisions by option(
     "--operator-decision",
-    help = "Release a subtask paused on an unresolved Blocker: " +
+    help = "Release a subtask paused on an unresolved Blocker or Major: " +
       "${GoalSubtaskOperatorDecision.entries.joinToString { it.wireValue }}. Supply at most once.",
   ).multiple()
   protected val suppressPr by option(

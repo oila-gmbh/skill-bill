@@ -163,14 +163,14 @@ class FeatureSpecSkillWiringContractTest {
   }
 
   @Test
-  fun `goal review pass sequence keeps Blocker advancement and ledger-only location evidence`() {
+  fun `goal review pass sequence keeps Blocker-or-Major advancement and ledger-only location evidence`() {
     val goal = Files.readString(repoRootFromTest().resolve("skills/bill-feature-goal/content.md"))
 
     assertContains(
       goal,
       "They must never contain a path, line number, diff\nhunk, or raw child-review output",
     )
-    assertContains(goal, "Remediation continues while any unresolved Blocker remains")
+    assertContains(goal, "Remediation continues while any unresolved Blocker or Major remains")
   }
 
   @Test
@@ -198,37 +198,33 @@ class FeatureSpecSkillWiringContractTest {
   }
 
   @Test
-  fun `goal reopen prose agrees with runtime Blocker-only advancement semantics`() {
+  fun `goal reopen prose agrees with runtime Blocker-or-Major advancement semantics`() {
     val goalContent = Files.readString(repoRootFromTest().resolve("skills/bill-feature-goal/content.md"))
 
-    // The governed prose must state that only an unresolved Blocker reopens implement_fix
     assertContains(
       goalContent,
-      "Only an unresolved Blocker finding reopens `implement_fix`",
+      "An unresolved Blocker or Major finding reopens `implement_fix`",
       ignoreCase = false,
-      message = "goal content must state Blocker-only reopen semantics",
+      message = "goal content must state Blocker-or-Major reopen semantics",
     )
-
-    // The prose must not claim that Major reopens the loop
     assertFalse(
-      goalContent.contains("Major finding reopens") ||
-        goalContent.contains("Major findings reopen") ||
-        goalContent.contains("Blocker or Major finding reopens"),
-      "goal content must not claim Major reopens implement_fix",
+      goalContent.contains("Only an unresolved Blocker finding reopens"),
+      "goal content must not retain Blocker-only reopen semantics",
+    )
+    assertFalse(
+      goalContent.contains("a surviving Major moves on"),
+      "goal content must not claim a surviving Major advances without remediation",
     )
 
-    // The runtime side: derive the set of severities that require remediation
     val runtimeRemediationSeverities = FeatureTaskRuntimeReviewSeverity.entries
       .filter { it.requiresRemediation }
       .map { it.name }
       .toSet()
 
-    // The prose must claim exactly the same set (only BLOCKER)
-    // Since we already asserted "Only an unresolved Blocker finding reopens", this confirms parity
     assertEquals(
-      setOf("BLOCKER"),
+      setOf("BLOCKER", "MAJOR"),
       runtimeRemediationSeverities,
-      "runtime requiresRemediation must be Blocker-only",
+      "runtime requiresRemediation must be Blocker and Major",
     )
   }
 

@@ -125,7 +125,7 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
   }
 
   @Test
-  fun `review repair projection keeps only unresolved Blocker findings and exact reviewed checkpoint`() {
+  fun `review repair projection carries preceding-pass findings with severities and exact checkpoint`() {
     val consumer = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX
     val declaration = declaration(
       consumerPhaseId = consumer,
@@ -149,7 +149,9 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
               1,
               """{"produced_outputs":{"findings":[""" +
                 """{"finding_id":"F-001","severity":"Blocker","location":"A.kt:1","message":"fix"},""" +
-                """{"finding_id":"F-002","severity":"Major","location":"B.kt:1","message":"later"}]}}""",
+                """{"finding_id":"F-002","severity":"Major","location":"B.kt:1","message":"later"},""" +
+                """{"finding_id":"F-003","severity":"Minor","location":"C.kt:1","message":"polish"},""" +
+                """{"finding_id":"F-004","severity":"Nit","location":"D.kt:1","message":"typo"}]}}""",
             ),
           ),
         ),
@@ -160,10 +162,12 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
 
     val fields = envelope.projections.single().fields
     assertEquals(listOf("unresolved_blocker_findings", "repository_checkpoint"), fields.map { it.name })
-    val blockers = assertIs<FeatureTaskRuntimeHandoffProjectionValue.TextList>(fields.first().value)
-    assertEquals(1, blockers.items.size)
-    assertContains(blockers.items.single(), "F-001")
-    assertFalse(blockers.items.single().contains("F-002"))
+    val projected = assertIs<FeatureTaskRuntimeHandoffProjectionValue.TextList>(fields.first().value)
+    assertEquals(4, projected.items.size)
+    assertTrue(projected.items.any { it.contains("F-001") && it.contains("Blocker") })
+    assertTrue(projected.items.any { it.contains("F-002") && it.contains("Major") })
+    assertTrue(projected.items.any { it.contains("F-003") && it.contains("Minor") })
+    assertTrue(projected.items.any { it.contains("F-004") && it.contains("Nit") })
   }
 
   @Test

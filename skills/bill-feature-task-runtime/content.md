@@ -210,30 +210,34 @@ pass is inline. Review never reopens audit.
 
 The runtime closes an unbounded remediation loop around `review`. The `review`
 phase emits a structured verdict derived from its findings: `approved` when no
-unresolved Blocker findings remain, or `changes_requested` when any are present.
-Major findings remain durable evidence but never prevent advancement. The runtime
-evaluates that verdict — prose alone cannot advance past a Blocker finding.
+unresolved Blocker or Major findings remain, or `changes_requested` when any are
+present. A remediation round is handed all findings. Blocker and Major findings
+both reopen `implement_fix` and block advancement. The runtime evaluates that
+verdict — prose alone cannot advance past a Blocker or Major finding.
 
 - On `approved`, the run advances to `validate` (a clean run never launches a fix).
 - On `changes_requested`, the runtime takes a backward edge to a dedicated
   `implement_fix` phase, which addresses the carried review findings on the
   current working tree as incremental reconciliation (not a plan re-application),
   then re-runs `review`. This `review` → `implement_fix` → `review` cycle carries
-  no iteration cap: it continues while any Blocker finding remains. A durable
-  per-edge counter with PER_SUBTASK scope accumulates across parent resumes for
-  accounting and warning purposes only. Goal status reports cumulative iteration
-  counts across all runs for the same subtask. The initial review may use the
-  selected mode, while every re-review is reserved before launch and always
-  invokes `bill-code-review mode:inline context:feature-remediation` against only
-  the staged, unstaged, and untracked remediation delta since the checkpoint
-  created before `implement_fix`, never the full feature-branch diff. The first
-  `approved` verdict advances the run to `validate`.
+  no iteration cap: it continues while any Blocker or Major finding remains. A
+  durable per-edge counter with PER_SUBTASK scope accumulates across parent
+  resumes for accounting and warning purposes only. Goal status reports cumulative
+  iteration counts across all runs for the same subtask. The initial review may
+  use the selected mode, while every re-review is reserved before launch and
+  always invokes `bill-code-review mode:inline context:feature-remediation` against
+  the remediation delta — all findings addressed in that round unioned with the
+  pre-fix-to-post-fix diff since the checkpoint created before `implement_fix`
+  — never the full feature-branch diff. The first `approved` verdict advances the
+  run to `validate`.
 - Crossing from iteration 3 to iteration 4 prints a user-visible warning that the
   advisory threshold of 3 was exceeded and remediation continues. The threshold is
   a warning signal, not a cap: it never stops, pauses, or advances the run.
 - The loop ends only on an `approved` verdict or an existing non-count-based
-  failure or non-convergence path. Findings that are not Blockers are written to
-  the goal-wide ledger and never hold the loop open.
+  failure or non-convergence path. Non-convergence is the same unresolved
+  Blocker-or-Major set with no repository change, and it pauses as a
+  human-resumable, uncapped block. Minor and Nit findings are written to the
+  goal-wide ledger and never hold the loop open.
 
 The loop is crash-safe: a death during `implement_fix` or a re-`review` resumes
 at the correct phase and iteration with no double-applied mutations, and the
@@ -380,4 +384,4 @@ only; the runtime gains no Linear dependency.
 
 ## Audit-first review and findings ledger
 
-The phase order is `implement -> audit -> review -> validate`, and review is gated on a satisfied audit. Review pass one uses the selected mode, and every later pass runs inline against the remediation delta via `context:feature-remediation`. Blockers prevent advancement; non-blockers advance and are persisted in the goal-wide unaddressed-findings ledger. Location-bearing detail is available only through `skill-bill goal findings --issue-key <KEY>`, during or after the goal.
+The phase order is `implement -> audit -> review -> validate`, and review is gated on a satisfied audit. Review pass one uses the selected mode, and every later pass runs inline against the remediation delta via `context:feature-remediation`. Blocker and Major findings prevent advancement; Minor and Nit findings advance and are persisted in the goal-wide unaddressed-findings ledger. Location-bearing detail is available only through `skill-bill goal findings --issue-key <KEY>`, during or after the goal.

@@ -16,6 +16,7 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -75,6 +76,42 @@ class GoalSubtaskPausedStatusWiringTest {
     val decided = unresolved.applyOperatorDecision(GoalSubtaskOperatorDecision.RETRY_FIX)
     assertTrue(decided.pausedForOperatorDecision, "The decision is what opens the pause.")
     assertEquals(GoalSubtaskPauseRelease.RETRY_FIX, decided.pauseRelease)
+  }
+
+  @Test
+  fun `acceptsOperatorDecision opens for a last completed Major-only advance-blocking pass`() {
+    val majorOnly = initialState().reserveNextPass().completeReservedPass(
+      verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+      unresolvedFindingCount = 1,
+      findings = listOf(
+        GoalSubtaskReviewCompactFinding(
+          severity = "major",
+          label = "Service",
+          text = "Missing behavior",
+          findingId = "F-001",
+        ),
+      ),
+    )
+    assertTrue(majorOnly.passResults.last().blocksAdvance)
+    assertTrue(majorOnly.acceptsOperatorDecision)
+    val paused = majorOnly.pauseForNonConvergence()
+    assertTrue(paused.pausedForOperatorDecision)
+    assertEquals(GoalSubtaskReviewDisposition.PAUSED, paused.disposition)
+  }
+
+  @Test
+  fun `many operatorRetryRounds never force ADVANCE or terminal failure`() {
+    var state = pausedState().applyOperatorDecision(GoalSubtaskOperatorDecision.RETRY_FIX).consumeOperatorDecision()
+    repeat(50) {
+      state = state
+        .copy(disposition = GoalSubtaskReviewDisposition.PAUSED)
+        .applyOperatorDecision(GoalSubtaskOperatorDecision.RETRY_FIX)
+        .consumeOperatorDecision()
+    }
+    assertEquals(51, state.operatorRetryRounds)
+    assertTrue(state.retryReviewPending)
+    assertFalse(state.reviewCapReached)
+    assertTrue(state.pausedForOperatorDecision || state.retryReviewPending)
   }
 
   @Test

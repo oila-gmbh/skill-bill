@@ -93,16 +93,16 @@ class UnboundedRemediationLoopGovernedContentTest {
   @Test
   fun `the runtime surfaces require remediation to continue until blocking items clear`() {
     val runtime = governedText("skills/bill-feature-task-runtime/content.md")
-    assertTrue(runtime.contains("carries no iteration cap: it continues while any Blocker finding remains"))
+    assertTrue(runtime.contains("carries no iteration cap: it continues while any Blocker or Major finding remains"))
     assertTrue(runtime.contains("repair and re-audit continue while any blocking gap remains"))
     assertTrue(runtime.contains("The threshold is a warning signal, not a cap"))
 
     val reviewDirective = governedText(reviewExecutionDirectivePath)
     assertTrue(
       reviewDirective.contains(
-        "Remediation passes are unbounded: they run for as long as an unresolved Blocker survives.",
+        "Remediation passes are unbounded: they run for as long as an unresolved Blocker or Major survives.",
       ),
-      "runtime review-execution directive must state unbounded Blocker remediation.",
+      "runtime review-execution directive must state unbounded Blocker-or-Major remediation.",
     )
   }
 
@@ -135,8 +135,8 @@ class UnboundedRemediationLoopGovernedContentTest {
       "the goal review-scope and child-order statements must both carry the selected-mode-then-inline formulation.",
     )
     assertTrue(
-      goal.contains("Remediation continues while any unresolved Blocker remains"),
-      "the goal surface must state that remediation continues while a Blocker remains.",
+      goal.contains("Remediation continues while any unresolved Blocker or Major remains"),
+      "the goal surface must state that remediation continues while a Blocker or Major remains.",
     )
   }
 
@@ -144,9 +144,17 @@ class UnboundedRemediationLoopGovernedContentTest {
   fun `non-blocking severities keep their unchanged behavior on every rewritten surface`() {
     assertTrue(
       governedText("skills/bill-feature-goal/content.md")
-        .contains("Major, Minor, and Nit findings remain durable evidence and never prevent advancement"),
+        .contains("Minor and Nit findings advance, are recorded in the goal-wide unaddressed-findings ledger"),
     )
     assertTrue(
+      governedText("skills/bill-feature-task-runtime/content.md")
+        .contains("Minor and Nit findings are written to the goal-wide ledger and never hold the loop open"),
+    )
+    assertFalse(
+      governedText("skills/bill-feature-goal/content.md")
+        .contains("Major, Minor, and Nit findings remain durable evidence and never prevent advancement"),
+    )
+    assertFalse(
       governedText("skills/bill-feature-task-runtime/content.md")
         .contains("Major findings remain durable evidence but never prevent advancement"),
     )

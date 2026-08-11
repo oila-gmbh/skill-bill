@@ -10,8 +10,8 @@ import java.nio.file.Path
 /**
  * Scaffolds the repo-local config under `plan.request.repoRoot`. Both side effects are
  * idempotent and non-destructive: `.skill-bill/config.yaml` is created only when absent (a
- * user-edited config is never clobbered), and `.gitignore` gains an anchored `/.skill-bill/`
- * entry only when that exact line is not already present.
+ * user-edited config is never clobbered), and `.gitignore` gains an ignore for runtime state
+ * under `.skill-bill/` while leaving `config.yaml` trackable.
  *
  * Scaffolding is additive, so failures are collected as warnings rather than hard install
  * failures (mirroring orchestration-link outcome handling).
@@ -58,20 +58,38 @@ private fun defaultConfigContent(): String = RepoLocalConfigKey.entries
 private fun appendGitignoreEntryIfAbsent(repoRoot: Path): Path {
   val gitignorePath = repoRoot.resolve(".gitignore")
   val existing = if (Files.exists(gitignorePath)) Files.readString(gitignorePath) else ""
-  val alreadyPresent = existing.lineSequence().any { line -> line.trim() == GITIGNORE_ENTRY }
-  if (alreadyPresent) {
+  val trimmedLines = existing.lineSequence().map { line -> line.trim() }.toSet()
+  val hasModernIgnore = GITIGNORE_RUNTIME_STATE in trimmedLines
+  val hasLegacyIgnore = GITIGNORE_LEGACY_ENTRY in trimmedLines
+  val hasConfigException = GITIGNORE_CONFIG_EXCEPTION in trimmedLines
+  if (hasLegacyIgnore) {
     return gitignorePath
   }
-  val updated = buildString {
-    append(existing)
-    if (existing.isNotEmpty() && !existing.endsWith("\n")) {
-      append("\n")
-    }
-    append(GITIGNORE_ENTRY)
-    append("\n")
+  if (hasModernIgnore && hasConfigException) {
+    return gitignorePath
   }
-  Files.writeString(gitignorePath, updated)
+  val linesToAppend = buildList {
+    if (!hasModernIgnore) add(GITIGNORE_RUNTIME_STATE)
+    if (!hasConfigException) add(GITIGNORE_CONFIG_EXCEPTION)
+  }
+  if (linesToAppend.isEmpty()) {
+    return gitignorePath
+  }
+  Files.writeString(gitignorePath, appendLines(existing, linesToAppend))
   return gitignorePath
 }
 
-private const val GITIGNORE_ENTRY = "/.skill-bill/"
+private fun appendLines(existing: String, lines: List<String>): String = buildString {
+  append(existing)
+  if (existing.isNotEmpty() && !existing.endsWith("\n")) {
+    append("\n")
+  }
+  lines.forEach { line ->
+    append(line)
+    append("\n")
+  }
+}
+
+private const val GITIGNORE_RUNTIME_STATE = ".skill-bill/**"
+private const val GITIGNORE_CONFIG_EXCEPTION = "!.skill-bill/config.yaml"
+private const val GITIGNORE_LEGACY_ENTRY = "/.skill-bill/"

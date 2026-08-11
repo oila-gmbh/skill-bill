@@ -1373,7 +1373,7 @@ class GoalRunner(
   ): GoalRunnerRunReport {
     reconcileBeforeFinalization(state, request, ledger)
     val finalState = manifestStore.save(state, request.dbPathOverride)
-    finalizationError(finalState.manifest, request.repoRoot)?.let { reason ->
+    commitAllRemainingWorktree(finalState.manifest, request)?.let { reason ->
       return stopped(
         issueKey = finalState.manifest.issueKey,
         attempted = attempted,
@@ -1452,23 +1452,117 @@ class GoalRunner(
       }
   }
 
-  private fun finalizationError(manifest: DecompositionManifest, repoRoot: java.nio.file.Path): String? {
-    val worktreeStatus = gitOperations.worktreeStatus(repoRoot)
-    if (!worktreeStatus.ok) {
-      return "Goal finalization could not verify worktree cleanliness: ${worktreeStatus.error}"
+  /**
+   * True commit-all at goal finalization: stage every dirty path, commit, and push so the PR tip
+   * includes leftover work that mid-run owned-delta checkpoints left behind. A clean worktree that
+   * is still ahead of `origin/<feature-branch>` (for example after a prior commit whose push failed)
+   * is re-pushed rather than treated as done. Returns a blocked reason, or null when the tip is
+   * published and the worktree is clean.
+   */
+  private fun commitAllRemainingWorktree(manifest: DecompositionManifest, request: GoalRunnerRunRequest): String? {
+    // Linear scratch is ephemeral and must not be committed; delete it before staging.
+    if (manifest.specSource == SpecSource.LINEAR) {
+      deleteGoalSpecScratchOnSuccess(manifest, request)
     }
-    // In linear mode the manifest is never staged (it is excluded from the commit and deleted on
-    // success), so an untracked/uncommitted manifest is expected, not a blocking projection delta.
-    // Only local mode commits the manifest, so only local mode flags a dirty manifest here.
-    val manifestPath = manifest.parentSpecPath.substringBeforeLast("/") + "/decomposition-manifest.yaml"
-    val manifestProjectionDirty = manifest.specSource == SpecSource.LOCAL &&
-      parseGitPorcelainPaths(worktreeStatus.value.orEmpty()).any { path -> path == manifestPath }
-    return if (manifestProjectionDirty) {
-      "Goal finalization detected an uncommitted decomposition projection delta at '$manifestPath'. " +
-        "Commit/push the projection or resolve the write before opening the final PR."
-    } else {
+    val before = gitOperations.worktreeStatus(request.repoRoot)
+    if (!before.ok) {
+      return "Goal finalization could not verify worktree cleanliness: ${before.error}"
+    }
+    val dirtyPaths = parseGitPorcelainPaths(before.value.orEmpty())
+    val featureBranch = manifest.featureBranch.orEmpty().trim()
+    if (dirtyPaths.isEmpty()) {
+      return pushUnpushedFeatureBranchIfNeeded(featureBranch, request.repoRoot)
+    }
+    return commitAndPushDirtyWorktree(manifest, request, featureBranch)
+  }
+
+  private fun commitAndPushDirtyWorktree(
+    manifest: DecompositionManifest,
+    request: GoalRunnerRunRequest,
+    featureBranch: String,
+  ): String? {
+    if (featureBranch.isBlank()) {
+      return "Goal finalization commit-all requires a feature branch."
+    }
+    requireFeatureBranchForFinalize(featureBranch, request.repoRoot)?.let { return it }
+    stageCommitAndPushAll(manifest, request, featureBranch)?.let { return it }
+    return verifyWorktreeCleanAfterCommitAll(request)
+  }
+
+  private fun stageCommitAndPushAll(
+    manifest: DecompositionManifest,
+    request: GoalRunnerRunRequest,
+    featureBranch: String,
+  ): String? {
+    val staged = gitOperations.stageAll(request.repoRoot)
+    if (!staged.ok) {
+      return "Goal finalization commit-all could not stage remaining worktree changes: ${staged.error}"
+    }
+    val message = "chore(${manifest.issueKey}): goal finalization commit-all on '$featureBranch'"
+    val commit = gitOperations.createCommit(request.repoRoot, message)
+    if (!commit.ok) {
+      return "Goal finalization commit-all could not commit remaining worktree changes: ${commit.error}"
+    }
+    val pushed = gitOperations.pushBranch(request.repoRoot, featureBranch)
+    return if (pushed.ok) {
       null
+    } else {
+      "Goal finalization commit-all committed remaining changes but could not push " +
+        "branch '$featureBranch': ${pushed.error}"
     }
+  }
+
+  private fun verifyWorktreeCleanAfterCommitAll(request: GoalRunnerRunRequest): String? {
+    val after = gitOperations.worktreeStatus(request.repoRoot)
+    if (!after.ok) {
+      return "Goal finalization could not re-verify worktree cleanliness after commit-all: ${after.error}"
+    }
+    val remaining = parseGitPorcelainPaths(after.value.orEmpty())
+    return if (remaining.isEmpty()) {
+      null
+    } else {
+      "Goal finalization commit-all left dirty paths after commit/push: " +
+        remaining.take(MAX_REPORTED_FINALIZE_DIRTY_PATHS).joinToString(", ") +
+        if (remaining.size > MAX_REPORTED_FINALIZE_DIRTY_PATHS) {
+          " (+${remaining.size - MAX_REPORTED_FINALIZE_DIRTY_PATHS} more)"
+        } else {
+          ""
+        }
+    }
+  }
+
+  /**
+   * When the worktree is already clean, still push if local [featureBranch] is ahead of origin
+   * (F-002: resume after commit-all whose push failed must not open a PR from a stale remote tip).
+   */
+  private fun pushUnpushedFeatureBranchIfNeeded(featureBranch: String, repoRoot: Path): String? {
+    if (featureBranch.isBlank()) return null
+    val unpushed = gitOperations.localBranchHasUnpushedCommits(repoRoot, featureBranch)
+    if (!unpushed.ok) {
+      return "Goal finalization could not determine whether '$featureBranch' has unpushed commits: " +
+        unpushed.error
+    }
+    if (unpushed.value.trim() != "true") return null
+    return requireFeatureBranchForFinalize(featureBranch, repoRoot)
+      ?: gitOperations.pushBranch(repoRoot, featureBranch)
+        .takeIf { !it.ok }
+        ?.let { "Goal finalization found unpushed commits on '$featureBranch' but could not push: ${it.error}" }
+  }
+
+  private fun requireFeatureBranchForFinalize(featureBranch: String, repoRoot: Path): String? {
+    protectedBranchName(featureBranch)?.let { protected ->
+      return "Goal finalization commit-all refuses protected branch '$protected'."
+    }
+    val current = gitOperations.currentBranch(repoRoot)
+    if (!current.ok) {
+      return "Goal finalization could not read the current branch: ${current.error}"
+    }
+    val currentBranch = current.value.trim()
+    if (currentBranch != featureBranch) {
+      return "Goal finalization commit-all requires checkout of feature branch '$featureBranch' " +
+        "(current branch is '${currentBranch.ifBlank { "<detached/empty>" }}')."
+    }
+    return null
   }
 
   // Deletes one completed subtask's local spec file in linear mode. No-op in local mode and for a
@@ -1492,10 +1586,9 @@ class GoalRunner(
       }
   }
 
-  // Deletes the parent spec + manifest (the whole decomposition scratch dir) after the goal reaches
-  // terminal success — every subtask complete and the final PR opened/existing. The on-disk manifest
-  // is no longer needed (the PR request was already built from the in-memory manifest) and the
-  // individual subtask specs were already removed incrementally. Linear mode only; failure-isolated.
+  // Deletes the parent spec + manifest (the whole decomposition scratch dir). Linear mode only;
+  // failure-isolated. Invoked before commit-all so ephemeral Linear scratch is not swept into the
+  // final commit, and is a no-op when already deleted.
   private fun deleteGoalSpecScratchOnSuccess(manifest: DecompositionManifest, request: GoalRunnerRunRequest) {
     if (manifest.specSource != SpecSource.LINEAR) return
     val parentSpec = resolvedParentSpecPath(request.repoRoot, java.nio.file.Path.of(manifest.parentSpecPath))
@@ -1853,6 +1946,7 @@ internal class GoalRunnerLaunchReconciler(
 private const val GIT_PORCELAIN_MIN_LENGTH = 4
 private const val GIT_PORCELAIN_STATUS_PREFIX_LENGTH = 3
 private const val MAX_VALIDATION_QUALITY_RETRIES = 3
+private const val MAX_REPORTED_FINALIZE_DIRTY_PATHS = 10
 private val PROTECTED_GOAL_BRANCHES: Set<String> = setOf("main", "master", "trunk")
 private val CHILD_WORKFLOW_BLOCK_REASONS: Set<GoalRunnerStopReason> = setOf(
   GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME,

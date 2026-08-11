@@ -401,16 +401,18 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "items than you were carried is a resumable partial repair, not a completion. Repair evidence is " +
     "read-only repository facts: do not run builds or tests here.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX to
-    "Address only the carried unresolved actionable Blocker findings on the CURRENT working tree as " +
-    "incremental reconciliation. Approved, Major, Minor, and Nit findings, specialist narratives, " +
-    "raw review output, and prior repair history are not in this briefing and are not in scope. Do not " +
-    "re-apply the plan from scratch or expand scope beyond the carried Blockers. Treat any fix already " +
-    "present as a no-op. See the mutating-phase idempotency contract below.",
+    "Address the carried findings from the preceding review pass on the CURRENT working tree as " +
+    "incremental reconciliation. Every finding in the briefing — Blocker, Major, Minor, and Nit — is in " +
+    "scope; specialist narratives, raw review output, and prior repair history are not. Do not re-apply " +
+    "the plan from scratch or expand scope beyond the carried findings. Treat any fix already present " +
+    "as a no-op. See the mutating-phase idempotency contract below.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW to
     "Review the implemented changes at the encoded review scope against the acceptance criteria " +
-    "and report defects with concrete file references. Emit produced_outputs.findings with only unresolved " +
-    "actionable Blocker findings and the exact repository_checkpoint reviewed; keep approved and " +
-    "non-blocking findings, specialist narration, and telemetry outside that repair projection.",
+    "and report defects with concrete file references. Emit produced_outputs.findings with every " +
+    "unresolved actionable finding from this pass — Blocker, Major, Minor, and Nit — and the exact " +
+    "repository_checkpoint reviewed; keep specialist narration and telemetry outside that repair " +
+    "projection. Do not severity-filter the findings array: the implement_fix handoff carries this " +
+    "list without re-filtering.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT to
     "Run the encoded completeness audit ceremony and report production-behavior or production-implementation " +
     "acceptance-criterion gaps only. Never report test adequacy, coverage, fixtures, assertions, or other " +

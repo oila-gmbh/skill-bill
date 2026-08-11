@@ -572,10 +572,10 @@ class FeatureTaskRuntimeAuditEntryGateTest {
   }
 }
 
-// SKILL-142 AC-012: the reserved pass is bounded to the remediation delta, not the subtask's
-// complete delta, so the marker tracks the bounding clause the directive now carries.
+// SKILL-142 AC-012 / SKILL-178: the reserved pass is bounded to all findings addressed in that
+// round union the pre-fix-to-post-fix diff, not the subtask's complete immutable-base delta.
 private const val PASS_TWO_REMEDIATION_SCOPE =
-  "context:feature-remediation, bounded to the remediation delta"
+  "bounded to the remediation delta: all findings addressed in that round union"
 
 // Retained review bytes from the generation whose attempt watermark is about to rewind. The markers
 // are distinctive so any surface echoing them is caught.

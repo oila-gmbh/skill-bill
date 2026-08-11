@@ -62,6 +62,19 @@ class FeatureTaskRuntimeValidationGateTest {
   }
 
   @Test
+  fun `BUILD_ONLY terminal verifying keeps build-only argv and appends cache-bypass extras`() {
+    val gradleGate = gateDeclaration.copy(
+      fullGateCommand = listOf("./gradlew", "check"),
+      cacheBypassingFullGateCommand = listOf("./gradlew", "check", "--rerun-tasks", "--no-build-cache"),
+      buildOnlyCommand = listOf("./gradlew", "classes", "testClasses"),
+    )
+    assertEquals(
+      listOf("./gradlew", "classes", "testClasses", "--rerun-tasks", "--no-build-cache"),
+      validationGateArgv(gradleGate, ValidationDepth.BUILD_ONLY, ValidationGateCacheMode.FORCED_FULL),
+    )
+  }
+
+  @Test
   fun `terminal verifying selects cache bypass argv`() {
     assertEquals(
       listOf("echo", "full"),
@@ -74,6 +87,55 @@ class FeatureTaskRuntimeValidationGateTest {
     assertEquals(
       listOf("echo", "cache"),
       validationGateArgv(gateDeclaration, ValidationDepth.FULL, ValidationGateCacheMode.CACHE_ELIGIBLE),
+    )
+  }
+
+  @Test
+  fun `repo-local gradle_wrapper rewrites pack gradlew argv before the gate runs`() {
+    val captured = mutableListOf<List<String>>()
+    val gradleGate = gateDeclaration.copy(
+      fullGateCommand = listOf("./gradlew", "check"),
+      cacheBypassingFullGateCommand = listOf("./gradlew", "check", "--rerun-tasks"),
+      buildOnlyCommand = listOf("./gradlew", "classes"),
+    )
+    val runner = object : ValidationGateRunner {
+      override fun run(request: ValidationGateRunRequest): ValidationGateRunResult {
+        captured += request.argv
+        return ValidationGateRunResult(
+          exitCode = 0,
+          durationMs = 1,
+          outcome = ValidationGateRunOutcome.PASSED,
+          cacheMode = request.cacheMode,
+          executedWorkUnits = 1,
+          findings = emptyList(),
+        )
+      }
+    }
+    val cycle = coordinator(
+      declaredResolver(gradleGate),
+      runner,
+      mutableListOf(),
+      gradleWrapper = "runtime-kotlin/gradlew",
+    ).execute(
+      ValidationGateCycleRequest(
+        repoRoot = repoRoot,
+        request = minimalRequest(),
+        validationDepth = ValidationDepth.DEFAULT,
+        changedPaths = listOf("runtime-kotlin/foo.kt"),
+        repositoryCheckpoint = "checkpoint",
+        agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _ ->
+          error("repair should not run for a clean gate")
+        },
+      ),
+    )
+    assertIs<ValidationGateCycleResult.Terminal>(cycle)
+    assertIs<ValidationGateCycleTerminalOutcome.Completed>(cycle.outcome)
+    assertEquals(
+      listOf(
+        listOf("runtime-kotlin/gradlew", "-p", "runtime-kotlin", "check"),
+        listOf("runtime-kotlin/gradlew", "-p", "runtime-kotlin", "check", "--rerun-tasks"),
+      ),
+      captured,
     )
   }
 
@@ -248,6 +310,7 @@ class FeatureTaskRuntimeValidationGateTest {
     resolver: ValidationGateResolver,
     runner: ValidationGateRunner,
     progress: MutableList<FeatureTaskRuntimeValidationGateProgress>,
+    gradleWrapper: String? = null,
   ): FeatureTaskRuntimeValidationGateCoordinator = FeatureTaskRuntimeValidationGateCoordinator(
     resolver,
     runner,
@@ -255,22 +318,36 @@ class FeatureTaskRuntimeValidationGateTest {
     FeatureTaskRuntimeSuppressionDeltaService(
       object : skillbill.ports.workflow.WorkflowGitOperations by skillbill.ports.workflow.NoopWorkflowGitOperations {},
     ),
+    repoLocalConfig(gradleWrapper),
   )
 
-  private fun declaredResolver(): ValidationGateResolver = ValidationGateResolver(
-    ScaffoldCatalogService(
-      object : ScaffoldCatalogGateway {
-        override fun approvedCodeReviewAreas() = emptySet<String>()
-        override fun preShellFamilies() = emptySet<String>()
-        override fun shelledFamilies() = emptySet<String>()
-        override fun platformPackPresets() = emptyMap<String, String>()
-        override fun scaffoldPayloadVersion() = "test"
-        override fun discoverPilotedPlatformPacks(packsRoot: Path): List<PilotedPlatformPackProjection> = emptyList()
-        override fun discoverPlatformManifests(packsRoot: Path) = listOf(kotlinPackWithGate())
-        override fun discoverBaselineReviewCatalog(packsRoot: Path) = BaselineReviewCatalog(emptyList(), emptyList())
-      },
-    ),
-  )
+  private fun repoLocalConfig(gradleWrapper: String? = null): skillbill.ports.config.RepoLocalConfigPort =
+    object : skillbill.ports.config.RepoLocalConfigPort {
+      override fun readRepoLocalConfig(request: skillbill.ports.config.model.ReadRepoLocalConfigRequest) =
+        skillbill.ports.config.model.ReadRepoLocalConfigResult(
+          skillbill.config.model.RepoLocalConfig.defaults().copy(
+            validationGate = skillbill.config.model.ValidationGateRepoConfig(gradleWrapper = gradleWrapper),
+          ),
+        )
+    }
+
+  private fun declaredResolver(declaration: ValidationGateDeclaration = gateDeclaration): ValidationGateResolver =
+    ValidationGateResolver(
+      ScaffoldCatalogService(
+        object : ScaffoldCatalogGateway {
+          override fun approvedCodeReviewAreas() = emptySet<String>()
+          override fun preShellFamilies() = emptySet<String>()
+          override fun shelledFamilies() = emptySet<String>()
+          override fun platformPackPresets() = emptyMap<String, String>()
+          override fun scaffoldPayloadVersion() = "test"
+          override fun discoverPilotedPlatformPacks(packsRoot: Path): List<PilotedPlatformPackProjection> = emptyList()
+          override fun discoverPlatformManifests(packsRoot: Path) = listOf(
+            kotlinPackWithoutGate().copy(validationGate = declaration),
+          )
+          override fun discoverBaselineReviewCatalog(packsRoot: Path) = BaselineReviewCatalog(emptyList(), emptyList())
+        },
+      ),
+    )
 
   private fun minimalRequest(): FeatureTaskRuntimeRunRequest = FeatureTaskRuntimeRunRequest(
     issueKey = "SKILL-180",
@@ -326,10 +403,6 @@ class FeatureTaskRuntimeValidationGateTest {
     declaredFiles = DeclaredFiles(null, emptyMap()),
     areaMetadata = emptyMap(),
     validationGate = null,
-  )
-
-  private fun kotlinPackWithGate(): PlatformManifest = kotlinPackWithoutGate().copy(
-    validationGate = gateDeclaration,
   )
 
   private class ScriptedGateRunner(

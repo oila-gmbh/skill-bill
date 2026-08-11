@@ -25,7 +25,8 @@ class InstallApplyRepoLocalConfigTest : InstallApplyTestSupport() {
     assertContains(configContent, "spec_type: local")
     assertContains(configContent, "code_review_parallel_agent: none")
     val gitignoreContent = Files.readString(fixture.repoRoot.resolve(".gitignore"))
-    assertEquals(1, gitignoreContent.lines().count { line -> line.trim() == "/.skill-bill/" })
+    assertEquals(1, gitignoreContent.lines().count { line -> line.trim() == ".skill-bill/**" })
+    assertEquals(1, gitignoreContent.lines().count { line -> line.trim() == "!.skill-bill/config.yaml" })
   }
 
   @Test
@@ -45,8 +46,13 @@ class InstallApplyRepoLocalConfigTest : InstallApplyTestSupport() {
     val gitignoreContent = Files.readString(fixture.repoRoot.resolve(".gitignore"))
     assertEquals(
       1,
-      gitignoreContent.lines().count { line -> line.trim() == "/.skill-bill/" },
+      gitignoreContent.lines().count { line -> line.trim() == ".skill-bill/**" },
       "re-install must not duplicate the .gitignore entry",
+    )
+    assertEquals(
+      1,
+      gitignoreContent.lines().count { line -> line.trim() == "!.skill-bill/config.yaml" },
+      "re-install must not duplicate the config exception",
     )
   }
 
@@ -64,6 +70,7 @@ class InstallApplyRepoLocalConfigTest : InstallApplyTestSupport() {
     val gitignoreContent = Files.readString(gitignorePath)
     assertContains(gitignoreContent, "build/")
     assertContains(gitignoreContent, "*.log")
-    assertEquals(1, gitignoreContent.lines().count { line -> line.trim() == "/.skill-bill/" })
+    assertEquals(1, gitignoreContent.lines().count { line -> line.trim() == ".skill-bill/**" })
+    assertEquals(1, gitignoreContent.lines().count { line -> line.trim() == "!.skill-bill/config.yaml" })
   }
 }

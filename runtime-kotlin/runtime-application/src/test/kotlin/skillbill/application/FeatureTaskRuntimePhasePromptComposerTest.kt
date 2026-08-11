@@ -359,9 +359,11 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(prompt, "bill-code-review mode:inline")
     assertContains(prompt, "context:feature-remediation")
     assertContains(prompt, "review_scope: branch_diff")
-    // SKILL-142 AC-012: pass two is bounded to the materialized remediation delta. The immutable-base
-    // framing is pass one's authority and must not be restated here, or the two would contradict.
+    // SKILL-142 AC-012 / SKILL-178: pass two is bounded to all findings addressed union the
+    // pre-fix-to-post-fix diff. The immutable-base framing is pass one's authority and must not
+    // be restated here, or the two would contradict.
     assertContains(prompt, "Reserved remediation pass (pass 2)")
+    assertContains(prompt, "all findings addressed in that round")
     assertFalse(prompt.contains("Immutable-base review scope"))
     assertContains(prompt, "${"0".repeat(40)}")
     assertContains(prompt, "tracked delta")

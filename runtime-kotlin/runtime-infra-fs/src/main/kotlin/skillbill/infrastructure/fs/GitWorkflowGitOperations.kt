@@ -127,6 +127,40 @@ private object GitStandardWorkflowGitOperations : WorkflowGitOperations {
     return if (commit.ok) runGitCommand(repoRoot, "rev-parse", "HEAD") else commit
   }
 
+  override fun pushBranch(repoRoot: Path, branch: String): WorkflowGitOperationResult {
+    val normalized = branch.trim()
+    if (normalized.isBlank()) {
+      return WorkflowGitOperationResult(status = "error", error = "Branch name is required to push.")
+    }
+    return runGitCommand(repoRoot, "push", "-u", "origin", normalized).withValue(normalized)
+  }
+
+  override fun localBranchHasUnpushedCommits(repoRoot: Path, branch: String): WorkflowGitOperationResult {
+    val normalized = branch.trim()
+    if (normalized.isBlank()) {
+      return WorkflowGitOperationResult(status = "error", error = "Branch name is required to compare with origin.")
+    }
+    val remoteRef = "origin/$normalized"
+    val remote = runGitCommand(repoRoot, "rev-parse", "--verify", remoteRef)
+    if (!remote.ok) {
+      // No published tip yet — local commits (including a finalize commit whose push failed) need push.
+      return WorkflowGitOperationResult(status = "ok", value = "true")
+    }
+    val ahead = runGitCommand(repoRoot, "rev-list", "--count", "$remoteRef..$normalized")
+    val count = ahead.value.trim().toIntOrNull()
+    return when {
+      !ahead.ok -> WorkflowGitOperationResult(
+        status = "error",
+        error = "Could not compare local '$normalized' to '$remoteRef': ${ahead.error}",
+      )
+      count == null -> WorkflowGitOperationResult(
+        status = "error",
+        error = "Could not parse unpushed commit count for '$normalized': '${ahead.value.trim()}'.",
+      )
+      else -> WorkflowGitOperationResult(status = "ok", value = if (count > 0) "true" else "false")
+    }
+  }
+
   override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult = runGitCommand(repoRoot, "rev-parse", "HEAD")
 
   override fun resetSoftToCommit(repoRoot: Path, commitSha: String): WorkflowGitOperationResult {

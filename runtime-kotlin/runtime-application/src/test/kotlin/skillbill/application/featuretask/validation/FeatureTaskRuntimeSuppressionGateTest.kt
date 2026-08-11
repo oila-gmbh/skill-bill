@@ -266,6 +266,10 @@ class FeatureTaskRuntimeSuppressionGateTest {
       runner = runner,
       progressStore = ValidationGateProgressStore { _, p, _ -> progress += p },
       suppressionDeltaService = FeatureTaskRuntimeSuppressionDeltaService(git),
+      repoLocalConfig = object : skillbill.ports.config.RepoLocalConfigPort {
+        override fun readRepoLocalConfig(request: skillbill.ports.config.model.ReadRepoLocalConfigRequest) =
+          skillbill.ports.config.model.ReadRepoLocalConfigResult(skillbill.config.model.RepoLocalConfig.defaults())
+      },
     )
     return coordinator.execute(
       ValidationGateCycleRequest(

@@ -180,7 +180,7 @@ class GoalSubtaskReviewStateTest {
   }
 
   @Test
-  fun `a later pass with only major findings never reaches the cap disposition`() {
+  fun `a later pass with only major findings can carry the legacy cap disposition`() {
     val firstPass = GoalSubtaskReviewState.initial(
       reviewBaseSha = "e".repeat(40),
       baselineUntrackedPaths = emptyList(),
@@ -192,20 +192,17 @@ class GoalSubtaskReviewStateTest {
     )
 
     val secondPass = firstPass.reserveNextPass().completeReservedPass(
-      verdict = FeatureTaskRuntimeVerdict.APPROVED,
-      unresolvedFindingCount = 2,
-      findings = listOf(
-        GoalSubtaskReviewCompactFinding("major", "Service", "Missing behavior"),
-        GoalSubtaskReviewCompactFinding("nit", "Service", "Naming"),
-      ),
-    )
+      verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+      unresolvedFindingCount = 1,
+      findings = listOf(GoalSubtaskReviewCompactFinding("major", "Service", "Missing behavior")),
+    ).copy(disposition = GoalSubtaskReviewDisposition.REVIEW_CAP_REACHED)
 
-    assertFalse(secondPass.reviewCapReached)
-    assertEquals(FeatureTaskRuntimeVerdict.APPROVED, secondPass.passResults.last().verdict)
+    assertTrue(secondPass.reviewCapReached)
+    assertEquals(FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, secondPass.passResults.last().verdict)
   }
 
   @Test
-  fun `review_cap_reached is rejected when the last completed pass carries no blocker finding`() {
+  fun `review_cap_reached is rejected when the last completed pass carries no Blocker or Major`() {
     val state = GoalSubtaskReviewState.initial(
       reviewBaseSha = "f".repeat(40),
       baselineUntrackedPaths = emptyList(),
@@ -222,7 +219,7 @@ class GoalSubtaskReviewStateTest {
             verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
             reviewResultArtifact = "$GOAL_SUBTASK_REVIEW_RESULT_ARTIFACT_PREFIX.$passNumber",
             unresolvedFindingCount = 1,
-            findings = listOf(GoalSubtaskReviewCompactFinding("major", "Service", "Missing behavior")),
+            findings = listOf(GoalSubtaskReviewCompactFinding("minor", "Service", "Naming polish")),
           )
         },
       )
@@ -343,5 +340,74 @@ class GoalSubtaskReviewStateTest {
     val decoded = assertNotNull(GoalSubtaskReviewArtifactDecoder.decode(artifacts))
     assertEquals(0, decoded.state.completedPassCount)
     assertEquals(emptyMap(), decoded.rawResults)
+  }
+
+  @Test
+  fun `Major-only itemised findings with a positive unresolved count block advance`() {
+    val pass = GoalSubtaskReviewPassResult(
+      passNumber = 1,
+      verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+      reviewResultArtifact = "$GOAL_SUBTASK_REVIEW_RESULT_ARTIFACT_PREFIX.1",
+      unresolvedFindingCount = 1,
+      findings = listOf(GoalSubtaskReviewCompactFinding("major", "Service", "Missing behavior")),
+    )
+    assertTrue(pass.blocksAdvance)
+    assertFalse(pass.findings.single().isBlocker)
+    assertTrue(pass.findings.single().blocksAdvance)
+  }
+
+  @Test
+  fun `Minor-only itemised findings do not block advance`() {
+    val pass = GoalSubtaskReviewPassResult(
+      passNumber = 1,
+      verdict = FeatureTaskRuntimeVerdict.APPROVED,
+      reviewResultArtifact = "$GOAL_SUBTASK_REVIEW_RESULT_ARTIFACT_PREFIX.1",
+      unresolvedFindingCount = 1,
+      findings = listOf(GoalSubtaskReviewCompactFinding("minor", "Naming", "Prefer clearer name")),
+    )
+    assertFalse(pass.blocksAdvance)
+    assertFalse(pass.findings.single().blocksAdvance)
+  }
+
+  @Test
+  fun `positive unresolvedFindingCount with empty findings remains blocking`() {
+    val pass = GoalSubtaskReviewPassResult(
+      passNumber = 1,
+      verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+      reviewResultArtifact = "$GOAL_SUBTASK_REVIEW_RESULT_ARTIFACT_PREFIX.1",
+      unresolvedFindingCount = 2,
+      findings = emptyList(),
+    )
+    assertTrue(pass.blocksAdvance)
+  }
+
+  @Test
+  fun `toArtifactMap and fromArtifactMap preserve durable key set including blocker_dispositions`() {
+    val state = GoalSubtaskReviewState.initial(
+      reviewBaseSha = "e".repeat(40),
+      baselineUntrackedPaths = emptyList(),
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
+    ).reserveNextPass().completeReservedPass(
+      verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+      unresolvedFindingCount = 1,
+      findings = listOf(GoalSubtaskReviewCompactFinding("blocker", "Repository", "Unsafe mutation")),
+      blockerDispositions = listOf(
+        GoalSubtaskBlockerDisposition(
+          findingId = "F-001",
+          verdict = GoalSubtaskBlockerDispositionVerdict.UNRESOLVED,
+          evidence = listOf("still open"),
+        ),
+      ),
+    )
+    val encoded = state.toArtifactMap()
+    assertTrue("blocker_dispositions" in encoded)
+    assertTrue(
+      (encoded["pass_results"] as List<*>).all { pass ->
+        "unresolved_finding_count" in (pass as Map<*, *>)
+      },
+    )
+    val roundTripped = GoalSubtaskReviewState.fromArtifactMap(encoded).toArtifactMap()
+    assertEquals(encoded.keys, roundTripped.keys)
+    assertEquals(encoded, roundTripped)
   }
 }

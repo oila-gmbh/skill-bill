@@ -167,6 +167,38 @@ class GoalSubtaskBlockerDispositionTest {
       "Location-bearing evidence stays in the durable artifact for goal findings retrieval.",
     )
   }
+
+  @Test
+  fun `Major non-convergence pause reason carries severity count and labels without paths`() {
+    val major = GoalSubtaskReviewCompactFinding("major", "Service", "Missing behavior")
+    val passOne = GoalSubtaskReviewState.initial(
+      reviewBaseSha = "b".repeat(40),
+      baselineUntrackedPaths = emptyList(),
+      codeReviewMode = CodeReviewExecutionMode.AUTO,
+    ).reserveNextPass().completeReservedPass(
+      verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+      unresolvedFindingCount = 1,
+      findings = listOf(major),
+    )
+    val paused = passOne.reserveNextPass().completeReservedPass(
+      verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+      unresolvedFindingCount = 1,
+      findings = listOf(major.copy(findingId = "F-001")),
+    ).pauseForNonConvergence()
+    assertTrue(paused.pausedForOperatorDecision)
+    assertTrue(paused.acceptsOperatorDecision)
+    val identities = advanceBlockingFindingIdentities(paused.passResults.last().findings)
+    val decision = detectReviewRemediationNonProgress(
+      previous = advanceBlockingFindingIdentities(passOne.passResults.last().findings),
+      current = identities,
+      previousRepositoryFingerprintOrDigest = "same",
+      currentRepositoryFingerprintOrDigest = "same",
+    )
+    assertTrue(decision.blocked)
+    val reason = requireNotNull(decision.reason)
+    assertFalse(reason.contains("/"), "Non-convergence reason must stay path-free.")
+    assertFalse(Regex(":\\d+").containsMatchIn(reason))
+  }
 }
 
 private object GoalSubtaskReviewDispositionFixtures {

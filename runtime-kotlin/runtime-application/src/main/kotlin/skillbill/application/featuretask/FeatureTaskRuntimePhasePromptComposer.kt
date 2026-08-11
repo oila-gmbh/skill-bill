@@ -289,7 +289,7 @@ object FeatureTaskRuntimePhasePromptComposer {
           "affected boundaries, risks, and unknowns at the requested depth."
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW -> if (remediationReview) {
         "Apply bill-code-review mode:${CodeReviewExecutionMode.INLINE.wireValue} context:feature-remediation, " +
-          "bounded to the remediation delta: the prior pass's Blocker findings union " +
+          "bounded to the remediation delta: all findings addressed in that round union " +
           "diff(pre-fix tree -> post-fix tree). Do not re-review the subtask's full base-to-current delta."
       } else {
         "Apply ${scaling.reviewScope.promptLabel}. Keep the review gate real: inspect the implemented " +

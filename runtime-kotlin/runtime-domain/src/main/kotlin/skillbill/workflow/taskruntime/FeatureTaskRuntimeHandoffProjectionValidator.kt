@@ -567,16 +567,16 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
   private fun reviewBlockerProjection(produced: Map<String, Any?>): List<Map<String, Any?>> =
     (produced["findings"] as? List<*>).orEmpty()
       .mapNotNull(JsonSupport::anyToStringAnyMap)
-      .filter { finding -> (finding["severity"] as? String)?.equals("blocker", ignoreCase = true) == true }
       .map { finding ->
+        val severity = (finding["severity"] as? String)?.takeIf(String::isNotBlank) ?: "blocker"
         mapOf(
           "finding_id" to (finding["finding_id"] ?: finding["f_number"] ?: finding["id"]),
-          "severity" to "blocker",
+          "severity" to severity,
           "location" to (
             finding["location"] ?: finding["repository_path"] ?: finding["path"] ?: "repository"
             ),
           "expected_outcome" to (
-            finding["expected_outcome"] ?: finding["message"] ?: finding["description"] ?: "Resolve the Blocker."
+            finding["expected_outcome"] ?: finding["message"] ?: finding["description"] ?: "Resolve the finding."
             ),
           "criterion_refs" to (finding["criterion_refs"] ?: emptyList<String>()),
           "task_refs" to (finding["task_refs"] ?: emptyList<String>()),
