@@ -2,6 +2,7 @@ package skillbill.application.goalrunner
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.sha256HexUtf8
+import skillbill.application.model.GoalPlanningStatusAlignRequest
 import skillbill.application.workflow.GoalPlanningPreparationCheckpoint
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths
@@ -11,18 +12,7 @@ import skillbill.ports.persistence.model.GoalPlanningContractProvenance
 import skillbill.ports.persistence.model.GoalPlanningIdentity
 import skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint
 import skillbill.ports.workflow.DecompositionManifestFileStore
-import skillbill.workflow.model.DecompositionManifest
 import java.nio.file.Path
-
-/** Inputs for aligning status `planning_reason` with the launch-path refuse taxonomy. */
-data class GoalPlanningStatusAlignRequest(
-  val snapshot: GoalPlanningStatusSnapshot,
-  val parentWorkflowId: String,
-  val issueKey: String,
-  val manifest: DecompositionManifest,
-  val repoRoot: Path,
-  val dbPathOverride: String?,
-)
 
 /**
  * Aligns status `planning_reason` with the launch-path refuse taxonomy without mutating planning rows.

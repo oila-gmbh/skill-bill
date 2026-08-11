@@ -2840,7 +2840,7 @@ internal class InMemoryGoalManifestStore(
     }
     val reason = when (state) {
       skillbill.goalrunner.model.GoalPlanningStatusState.NOT_STARTED ->
-        skillbill.goalrunner.model.GoalPlanningStatusReasons.notStarted()
+        skillbill.goalrunner.model.GoalPlanningStatusReasons.NOT_STARTED
       skillbill.goalrunner.model.GoalPlanningStatusState.PREPLANNED ->
         skillbill.goalrunner.model.GoalPlanningStatusReasons.preplannedResume(requireNotNull(firstMissing))
       skillbill.goalrunner.model.GoalPlanningStatusState.PARTIALLY_PLANNED ->

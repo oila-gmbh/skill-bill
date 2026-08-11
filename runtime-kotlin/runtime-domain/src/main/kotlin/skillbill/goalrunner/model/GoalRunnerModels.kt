@@ -349,7 +349,7 @@ enum class GoalPlanningStatusState(val wireValue: String) {
 object GoalPlanningStatusReasons {
   const val RESUME_MARKER: String = "planning can resume"
 
-  fun notStarted(): String = "Goal planning has not started."
+  const val NOT_STARTED: String = "Goal planning has not started."
 
   fun preplannedResume(firstMissingSubtaskId: Int): String =
     "Shared preplan is saved; planning can resume at subtask $firstMissingSubtaskId."

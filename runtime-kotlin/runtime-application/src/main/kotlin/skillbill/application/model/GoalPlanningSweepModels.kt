@@ -1,11 +1,14 @@
 package skillbill.application.model
 
+import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
 import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.ports.persistence.model.GoalPlanningContractProvenance
 import skillbill.ports.persistence.model.GoalPlanningIdentity
 import skillbill.ports.persistence.model.GovernedGoalSubtaskDescriptor
+import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
+import java.nio.file.Path
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
@@ -150,3 +153,13 @@ data class GoalPlanningBurstSchedule(
     val DEFAULT_WAIT_SLICE: Duration = 1.seconds
   }
 }
+
+/** Inputs for aligning status `planning_reason` with the launch-path refuse taxonomy. */
+data class GoalPlanningStatusAlignRequest(
+  val snapshot: GoalPlanningStatusSnapshot,
+  val parentWorkflowId: String,
+  val issueKey: String,
+  val manifest: DecompositionManifest,
+  val repoRoot: Path,
+  val dbPathOverride: String?,
+)

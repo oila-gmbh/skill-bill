@@ -229,13 +229,13 @@ class DefaultGoalPlanningSweep(
   }
 
   private sealed class SharedPreplanSettlement {
-    data class Ready(
+    class Ready(
       val provenance: GoalPlanningContractProvenance,
       val checkpoint: SharedGoalPreplanCheckpoint,
       val shared: GoalPlanningSharedContext,
     ) : SharedPreplanSettlement()
 
-    data class Halt(val outcome: GoalPlanningSweepOutcome) : SharedPreplanSettlement()
+    class Halt(val outcome: GoalPlanningSweepOutcome) : SharedPreplanSettlement()
   }
 
   /**
@@ -1292,8 +1292,8 @@ class DefaultGoalPlanningSweep(
  * [StaleValid] triggers in-run refresh in [DefaultGoalPlanningSweep.prepare].
  */
 internal sealed interface GoalPlanningProvenanceRecoverability {
-  data class Reuse(val provenance: GoalPlanningContractProvenance) : GoalPlanningProvenanceRecoverability
-  data class StaleValid(val provenance: GoalPlanningContractProvenance) : GoalPlanningProvenanceRecoverability
+  class Reuse(val provenance: GoalPlanningContractProvenance) : GoalPlanningProvenanceRecoverability
+  class StaleValid(val provenance: GoalPlanningContractProvenance) : GoalPlanningProvenanceRecoverability
   data object Invalid : GoalPlanningProvenanceRecoverability
 }
 

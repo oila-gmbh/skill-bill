@@ -160,7 +160,7 @@ class GoalPlanningPreparationStore(
       else -> GoalPlanningStatusState.PARTIALLY_PLANNED
     }
     val reason = when (state) {
-      GoalPlanningStatusState.NOT_STARTED -> GoalPlanningStatusReasons.notStarted()
+      GoalPlanningStatusState.NOT_STARTED -> GoalPlanningStatusReasons.NOT_STARTED
       GoalPlanningStatusState.PREPLANNED ->
         GoalPlanningStatusReasons.preplannedResume(requireNotNull(firstMissing))
       GoalPlanningStatusState.PARTIALLY_PLANNED ->

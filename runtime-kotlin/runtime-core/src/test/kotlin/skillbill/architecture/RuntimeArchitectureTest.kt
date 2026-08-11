@@ -2453,6 +2453,8 @@ class RuntimeArchitectureTest {
         "runtime-kotlin/runtime-application/src/test/kotlin/skillbill/application/FeatureTaskRuntimeRunnerTest.kt",
         "runtime-kotlin/runtime-application/src/test/kotlin/skillbill/application/" +
           "FeatureTaskRuntimeStatusServiceTest.kt",
+        "runtime-kotlin/runtime-application/src/test/kotlin/skillbill/application/" +
+          "GoalPlanningRefreshLivenessTest.kt",
         "runtime-kotlin/runtime-application/src/test/kotlin/skillbill/application/GoalRunnerTest.kt",
         "runtime-kotlin/runtime-application/src/test/kotlin/skillbill/application/RuntimeExceptionTelemetryTest.kt",
         "runtime-kotlin/runtime-application/src/test/kotlin/skillbill/application/" +
