@@ -105,6 +105,8 @@ const val FEATURE_TASK_RUNTIME_PROJECTION_MEASUREMENT_CONTRACT_VERSION: String =
 
 const val FEATURE_TASK_RUNTIME_REJECTION_MEASUREMENT_CONTRACT_VERSION: String = "0.1"
 
+const val FEATURE_TASK_RUNTIME_DIAGNOSTIC_DEGRADATION_MEASUREMENT_CONTRACT_VERSION: String = "0.1"
+
 object FeatureTaskRuntimeProjectionMeasurementSchemaPaths {
   const val REPO_RELATIVE_PATH: String =
     "orchestration/contracts/feature-task-runtime-projection-measurement-schema.yaml"

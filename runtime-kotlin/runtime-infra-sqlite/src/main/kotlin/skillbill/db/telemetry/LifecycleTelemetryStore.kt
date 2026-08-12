@@ -12,6 +12,7 @@ import skillbill.telemetry.model.GoalSubtaskFinishedRecord
 import skillbill.telemetry.model.PrDescriptionGeneratedRecord
 import skillbill.telemetry.model.QualityCheckFinishedRecord
 import skillbill.telemetry.model.QualityCheckStartedRecord
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticDegradationMeasurement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionMeasurement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRejectionMeasurement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceMeasurement
@@ -34,6 +35,14 @@ class LifecycleTelemetryStore(
 
   override fun featureTaskRuntimeRejection(record: FeatureTaskRuntimeRejectionMeasurement) {
     enqueueTelemetry(connection, "skillbill_feature_task_runtime_rejection", record.toTelemetryMap())
+  }
+
+  override fun featureTaskRuntimeDiagnosticDegradation(record: FeatureTaskRuntimeDiagnosticDegradationMeasurement) {
+    enqueueTelemetry(
+      connection,
+      "skillbill_feature_task_runtime_diagnostic_degradation",
+      record.toTelemetryMap(),
+    )
   }
 
   override fun featureTaskRuntimeStarted(record: FeatureTaskRuntimeStartedRecord, level: String) {

@@ -59,6 +59,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticDegradationMeasurement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticFailureClass
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticSignal
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeEvidence
@@ -126,6 +127,14 @@ private fun RejectedOutputDiagnosticError.degradableFailureClass(): FeatureTaskR
     is RejectedOutputDiagnosticError.InvalidConfiguration,
     -> null
   }
+
+internal sealed class FeatureTaskRuntimeProducerOutputRead {
+  data class Found(val evidence: ProducerOutputEvidence) : FeatureTaskRuntimeProducerOutputRead()
+  data object Absent : FeatureTaskRuntimeProducerOutputRead()
+  data class Unreadable(
+    val failureClass: FeatureTaskRuntimeDiagnosticFailureClass,
+  ) : FeatureTaskRuntimeProducerOutputRead()
+}
 
 internal data class FeatureTaskRuntimeProjectionRejection(
   val workflowId: String,
@@ -247,20 +256,41 @@ class FeatureTaskRuntimePhaseRecorder(
     agentId: String,
     dbOverride: String? = null,
     generation: Int = 0,
-  ): ProducerOutputEvidence? = degradeDiagnosticFailure(
-    workflowId = workflowId,
-    operation = "read-producer-output",
+  ): FeatureTaskRuntimeProducerOutputRead {
     // A newest-turn read is not scoped to one turn, so the turn slot stays a wildcard rather than
     // claiming turn 0; the rest of the key still correlates with the write-path signals by prefix.
-    conflictingKey = "$workflowId:$phaseId:$generation:$attempt:*:$agentId",
-    phaseId = phaseId,
-    attempt = attempt,
-    repairTurn = null,
-    generation = generation,
-    dbOverride = dbOverride,
-  ) {
-    database.read(dbOverride) {
-      it.rejectedOutputDiagnostics?.readProducerOutput(workflowId, phaseId, attempt, agentId, generation)
+    val conflictingKey = "$workflowId:$phaseId:$generation:$attempt:*:$agentId"
+    fun unreadable(failureClass: FeatureTaskRuntimeDiagnosticFailureClass): FeatureTaskRuntimeProducerOutputRead {
+      persistDegradedDiagnostic(
+        workflowId = workflowId,
+        operation = "read-producer-output",
+        conflictingKey = conflictingKey,
+        phaseId = phaseId,
+        attempt = attempt,
+        repairTurn = null,
+        generation = generation,
+        dbOverride = dbOverride,
+        failureClass = failureClass,
+      )
+      return FeatureTaskRuntimeProducerOutputRead.Unreadable(failureClass)
+    }
+    return try {
+      val evidence = database.read(dbOverride) { unitOfWork ->
+        val repository = unitOfWork.rejectedOutputDiagnostics
+          ?: throw RejectedOutputDiagnosticError.Persistence("repository-unavailable")
+        repository.readProducerOutput(workflowId, phaseId, attempt, agentId, generation)
+      }
+      if (evidence == null) {
+        FeatureTaskRuntimeProducerOutputRead.Absent
+      } else {
+        FeatureTaskRuntimeProducerOutputRead.Found(evidence)
+      }
+    } catch (error: RejectedOutputDiagnosticError) {
+      unreadable(error.degradableFailureClass() ?: throw error)
+    } catch (_: InvalidProducerOutputEvidenceSchemaError) {
+      unreadable(FeatureTaskRuntimeDiagnosticFailureClass.SCHEMA)
+    } catch (_: InvalidRejectedOutputDiagnosticSchemaError) {
+      unreadable(FeatureTaskRuntimeDiagnosticFailureClass.SCHEMA)
     }
   }
 
@@ -287,19 +317,16 @@ class FeatureTaskRuntimePhaseRecorder(
     block: () -> T,
   ): T? {
     fun degrade(failureClass: FeatureTaskRuntimeDiagnosticFailureClass): T? {
-      persistDiagnosticSignal(
-        workflowId,
-        FeatureTaskRuntimeDiagnosticSignal(
-          operation = operation,
-          failureClass = failureClass,
-          conflictingKey = conflictingKey,
-          phaseId = phaseId,
-          attempt = attempt.coerceAtLeast(0),
-          repairTurn = repairTurn?.coerceAtLeast(0),
-          generation = generation.coerceAtLeast(0),
-          recordedAt = Instant.now().toString(),
-        ),
-        dbOverride,
+      persistDegradedDiagnostic(
+        workflowId = workflowId,
+        operation = operation,
+        conflictingKey = conflictingKey,
+        phaseId = phaseId,
+        attempt = attempt,
+        repairTurn = repairTurn,
+        generation = generation,
+        dbOverride = dbOverride,
+        failureClass = failureClass,
       )
       return null
     }
@@ -311,6 +338,68 @@ class FeatureTaskRuntimePhaseRecorder(
       degrade(FeatureTaskRuntimeDiagnosticFailureClass.SCHEMA)
     } catch (_: InvalidRejectedOutputDiagnosticSchemaError) {
       degrade(FeatureTaskRuntimeDiagnosticFailureClass.SCHEMA)
+    }
+  }
+
+  /**
+   * Appends the durable signal, then emits the countable measurement in a separate transaction so a
+   * throwing telemetry sink cannot roll back the signal and a failed signal append cannot swallow
+   * the event.
+   */
+  @Suppress("LongParameterList")
+  private fun persistDegradedDiagnostic(
+    workflowId: String,
+    operation: String,
+    conflictingKey: String,
+    phaseId: String,
+    attempt: Int,
+    repairTurn: Int?,
+    generation: Int,
+    dbOverride: String?,
+    failureClass: FeatureTaskRuntimeDiagnosticFailureClass,
+  ) {
+    val signal = FeatureTaskRuntimeDiagnosticSignal(
+      operation = operation,
+      failureClass = failureClass,
+      conflictingKey = conflictingKey,
+      phaseId = phaseId,
+      attempt = attempt.coerceAtLeast(0),
+      repairTurn = repairTurn?.coerceAtLeast(0),
+      generation = generation.coerceAtLeast(0),
+      recordedAt = Instant.now().toString(),
+    )
+    persistDiagnosticSignal(workflowId, signal, dbOverride)
+    recordDegradationMeasurement(workflowId, signal, dbOverride)
+  }
+
+  /**
+   * Counts the degraded diagnostic-persistence failure. Telemetry must never change the degradation
+   * outcome, so a throwing sink is swallowed here — the same rule [recordRejectionMeasurement]
+   * already applies. The enqueue lives in its own transaction, never inside the evidence write that
+   * already rolled back and never inside [persistDiagnosticSignal]'s best-effort catch.
+   */
+  private fun recordDegradationMeasurement(
+    workflowId: String,
+    signal: FeatureTaskRuntimeDiagnosticSignal,
+    dbOverride: String?,
+  ) {
+    try {
+      database.transaction(dbOverride) { unitOfWork ->
+        unitOfWork.lifecycleTelemetry.featureTaskRuntimeDiagnosticDegradation(
+          FeatureTaskRuntimeDiagnosticDegradationMeasurement(
+            workflowId = workflowId,
+            phaseId = signal.phaseId,
+            attempt = signal.attempt,
+            repairTurn = signal.repairTurn,
+            generation = signal.generation,
+            operation = signal.operation,
+            failureClass = signal.failureClass,
+            conflictingKey = signal.conflictingKey,
+          ),
+        )
+      }
+    } catch (@Suppress("TooGenericExceptionCaught") _: Exception) {
+      // Telemetry must never fail the run or change the degradation outcome.
     }
   }
 

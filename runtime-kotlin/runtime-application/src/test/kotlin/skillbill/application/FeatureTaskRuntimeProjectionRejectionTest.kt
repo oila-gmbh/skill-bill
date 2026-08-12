@@ -315,6 +315,65 @@ class FeatureTaskRuntimeProjectionRejectionTest {
     )
   }
 
+  @Test
+  fun `a launch-seam record rejection with no retained producer-output row blocks as absent evidence`() {
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        facts(validJsonOutput(phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))))
+      },
+      agentAssignment = phasePerAgentAssignment(),
+    )
+    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), preplanEnvelope())
+    val legacyPlan =
+      """{"contract_version":"0.2","phase_id":"plan","status":"completed","summary":"Legacy plan.",""" +
+        """"produced_outputs":{"steps":["do the thing"],"narration":"free-form legacy body"}}"""
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), legacyPlan)
+
+    val report = harness.runner.run(harness.request())
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertEquals("implement", blocked.lastIncompletePhase)
+    assertContains(blocked.blockedReason, "no retained evidence exists for attempt")
+    assertTrue("unavailable" !in blocked.blockedReason)
+    val record = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
+    assertEquals("needs_user_action", record.failureDisposition?.wireValue)
+    assertTrue(
+      harness.launchedPromptPhaseOrder().none { it == "implement" },
+      "the consumer phase never launched",
+    )
+  }
+
+  @Test
+  fun `a launch-seam record rejection whose retained evidence read throws conflict blocks as store-refused`() {
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        facts(validJsonOutput(phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))))
+      },
+      agentAssignment = phasePerAgentAssignment(),
+    )
+    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), preplanEnvelope())
+    val legacyPlan =
+      """{"contract_version":"0.2","phase_id":"plan","status":"completed","summary":"Legacy plan.",""" +
+        """"produced_outputs":{"steps":["do the thing"],"narration":"free-form legacy body"}}"""
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), legacyPlan)
+    harness.retainExactProducerEvidence("plan", legacyPlan)
+    harness.io.database.producerOutputReadError =
+      skillbill.ports.persistence.model.RejectedOutputDiagnosticError.Conflict("plan-evidence")
+
+    val report = harness.runner.run(harness.request())
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertEquals("implement", blocked.lastIncompletePhase)
+    assertContains(blocked.blockedReason, "diagnostic store refused it (conflict)")
+    assertTrue("free-form legacy body" !in blocked.blockedReason)
+    val record = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
+    assertEquals("needs_user_action", record.failureDisposition?.wireValue)
+    assertTrue(
+      harness.launchedPromptPhaseOrder().none { it == "implement" },
+      "the consumer phase never launched",
+    )
+  }
+
   // A receipt sized like a real MEDIUM/LARGE feature: many changed paths plus populated test and
   // deviation lists, every list within its own cap.
   private fun wideImplementationReceipt(): String {

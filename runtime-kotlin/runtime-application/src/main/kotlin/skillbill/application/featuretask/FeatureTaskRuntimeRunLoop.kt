@@ -3310,23 +3310,39 @@ internal class FeatureTaskRuntimeRunLoop(
         failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
         childNeverLaunched = true,
       )
-    val producerEvidence = recorder.producerOutput(
-      request.workflowId,
-      producer,
-      producingIteration,
-      producerAgentId,
-      request.dbPathOverride,
-      state.evidenceGeneration(producer),
-    ) ?: return blockAndPersistInPhase(
-      run,
-      iteration,
-      "Feature-task-runtime phase '$consumer' rejected the durable record produced by '$producer', but exact " +
-        "raw evidence for attempt $producingIteration is unavailable. The run blocks instead of fabricating " +
-        "a rejected-output diagnostic from normalized workflow state.",
-      observability,
-      failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
-      childNeverLaunched = true,
-    )
+    val producerEvidence = when (
+      val producerRead = recorder.producerOutput(
+        request.workflowId,
+        producer,
+        producingIteration,
+        producerAgentId,
+        request.dbPathOverride,
+        state.evidenceGeneration(producer),
+      )
+    ) {
+      is FeatureTaskRuntimeProducerOutputRead.Absent -> return blockAndPersistInPhase(
+        run,
+        iteration,
+        "Feature-task-runtime phase '$consumer' rejected the durable record produced by '$producer', but no " +
+          "retained evidence exists for attempt $producingIteration. The run blocks instead of fabricating " +
+          "a rejected-output diagnostic from normalized workflow state.",
+        observability,
+        failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
+        childNeverLaunched = true,
+      )
+      is FeatureTaskRuntimeProducerOutputRead.Unreadable -> return blockAndPersistInPhase(
+        run,
+        iteration,
+        "Feature-task-runtime phase '$consumer' rejected the durable record produced by '$producer', but " +
+          "retained evidence for attempt $producingIteration exists and the diagnostic store refused it " +
+          "(${producerRead.failureClass.wireValue}). The run blocks instead of fabricating a " +
+          "rejected-output diagnostic from normalized workflow state.",
+        observability,
+        failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
+        childNeverLaunched = true,
+      )
+      is FeatureTaskRuntimeProducerOutputRead.Found -> producerRead.evidence
+    }
     val rejectedPayload = producerEvidence.payload ?: byteArrayOf()
     val diagnosticIdentity = recordRejectedOutput(
       run = run,
@@ -3393,14 +3409,21 @@ internal class FeatureTaskRuntimeRunLoop(
       .firstOrNull()
     val evidence = rejectedOutput?.let { output ->
       val agentId = state.recordFor(output.phaseId)?.resolvedAgentId ?: return@let null
-      recorder.producerOutput(
-        request.workflowId,
-        output.phaseId,
-        output.iteration.coerceAtLeast(1),
-        agentId,
-        request.dbPathOverride,
-        state.evidenceGeneration(output.phaseId),
-      )
+      when (
+        val read = recorder.producerOutput(
+          request.workflowId,
+          output.phaseId,
+          output.iteration.coerceAtLeast(1),
+          agentId,
+          request.dbPathOverride,
+          state.evidenceGeneration(output.phaseId),
+        )
+      ) {
+        is FeatureTaskRuntimeProducerOutputRead.Found -> read.evidence
+        is FeatureTaskRuntimeProducerOutputRead.Absent,
+        is FeatureTaskRuntimeProducerOutputRead.Unreadable,
+        -> null
+      }
     }
     evidence?.let {
       recordRejectedOutput(

@@ -1206,6 +1206,14 @@ private fun FeatureTaskRuntimeStatusProjection?.toRuntimeStatusCliMap(workflowId
           "cached_counter_disagreement" to progress.cachedCounterDisagreement,
         )
       },
+      "degraded_diagnostic" to it.degradedDiagnostic?.let { degraded ->
+        linkedMapOf(
+          "count" to degraded.count,
+          "failure_class" to degraded.failureClass,
+          "phase_id" to degraded.phaseId,
+          "attempt" to degraded.attempt,
+        )
+      },
       "decompose_terminal" to it.decomposeTerminal?.let { terminal ->
         linkedMapOf(
           "reason" to terminal.reason,
@@ -1229,6 +1237,7 @@ private fun FeatureTaskRuntimeStatusProjection?.toRuntimeStatusCliMap(workflowId
     "resolved_branch" to null,
     "finalizing_agent_id" to null,
     "audit_repair" to null,
+    "degraded_diagnostic" to null,
     "decompose_terminal" to null,
     "phases" to emptyList<Map<String, Any?>>(),
   )
@@ -1262,6 +1271,12 @@ private fun runtimeStatusText(payload: Map<String, Any?>): String = buildString 
     appendLine("audit_attempted_repair_item_count: ${progress["attempted_repair_item_count"]}")
     appendLine("audit_resolved_repair_item_count: ${progress["resolved_repair_item_count"]}")
     appendLine("audit_gap_iteration_count: ${progress["audit_gap_iteration_count"]}")
+  }
+  (payload["degraded_diagnostic"] as? Map<*, *>)?.let { degraded ->
+    appendLine("degraded_diagnostic_count: ${degraded["count"]}")
+    appendLine("degraded_diagnostic_failure_class: ${degraded["failure_class"]}")
+    appendLine("degraded_diagnostic_phase: ${degraded["phase_id"]}")
+    appendLine("degraded_diagnostic_attempt: ${degraded["attempt"]}")
   }
   (payload["decompose_terminal"] as? Map<*, *>)?.let { terminal ->
     appendLine("decomposition_reason: ${terminal["reason"]}")

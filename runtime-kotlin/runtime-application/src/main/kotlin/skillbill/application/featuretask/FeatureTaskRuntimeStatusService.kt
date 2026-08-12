@@ -5,6 +5,7 @@ import skillbill.application.decomposition.decompositionManifestPath
 import skillbill.application.decomposition.parentSpecPath
 import skillbill.application.model.FeatureTaskRuntimeAuditRepairStatus
 import skillbill.application.model.FeatureTaskRuntimeDecomposeTerminalStatus
+import skillbill.application.model.FeatureTaskRuntimeDegradedDiagnosticStatus
 import skillbill.application.model.FeatureTaskRuntimePhaseStatus
 import skillbill.application.model.FeatureTaskRuntimeStatusProjection
 import skillbill.application.model.FeatureTaskRuntimeStatusRequest
@@ -72,6 +73,15 @@ class FeatureTaskRuntimeStatusService(
       cachedCounterDisagreement(auditRepairProgress, cachedAuditRepairProgress),
     )
     val gateRunCount = recorder.loadValidationGateProgress(request.workflowId, request.dbPathOverride)?.gateRunCount
+    val diagnosticSignals = recorder.loadDiagnosticSignals(request.workflowId, request.dbPathOverride)
+    val degradedDiagnostic = diagnosticSignals.lastOrNull()?.let { latest ->
+      FeatureTaskRuntimeDegradedDiagnosticStatus(
+        count = diagnosticSignals.size,
+        failureClass = latest.failureClass.wireValue,
+        phaseId = latest.phaseId,
+        attempt = latest.attempt,
+      )
+    }
     return FeatureTaskRuntimeStatusProjection(
       workflowId = request.workflowId,
       featureSize = runInvariantsStore.resolve(request.workflowId, request.dbPathOverride)?.featureSize?.name,
@@ -107,6 +117,7 @@ class FeatureTaskRuntimeStatusService(
           gateRunCount = gateRunCount,
         ),
       ),
+      degradedDiagnostic = degradedDiagnostic,
     )
   }
 

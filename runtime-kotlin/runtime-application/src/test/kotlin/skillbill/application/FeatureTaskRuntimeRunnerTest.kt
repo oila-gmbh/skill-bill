@@ -6647,11 +6647,13 @@ internal class RuntimeFakeDatabaseSessionFactory(
   private val repository: InMemoryRuntimeWorkflowRepository,
   private val lifecycle: LifecycleTelemetryRepository = RecordingLifecycleTelemetryRepository(),
   private val knownIssue: Boolean = true,
+  private val rejectedOutputDiagnosticsAvailable: Boolean = true,
 ) : DatabaseSessionFactory {
   private val dbPath = Path.of("/fake/metrics.db")
   val transactionDbOverrides = mutableListOf<String?>()
   val ledgerRows = mutableListOf<skillbill.goalrunner.model.UnaddressedFinding>()
   val outcomeRows = mutableListOf<skillbill.goalrunner.model.ReviewFindingOutcomeRecord>()
+  var producerOutputReadError: skillbill.ports.persistence.model.RejectedOutputDiagnosticError? = null
   private val diagnosticRecords =
     linkedMapOf<String, skillbill.ports.persistence.RejectedOutputDiagnosticRecord>()
   private val producerEvidence =
@@ -6783,15 +6785,18 @@ internal class RuntimeFakeDatabaseSessionFactory(
         attempt: Int,
         agentId: String,
         generation: Int,
-      ): skillbill.ports.persistence.ProducerOutputEvidence? = producerEvidence.entries
-        .filter {
-          it.key.workflowId == workflowId && it.key.phaseId == phaseId &&
-            it.key.attempt == attempt && it.key.agentId == agentId &&
-            it.key.generation <= generation
-        }
-        .maxWithOrNull(compareBy({ it.key.generation }, { it.key.repairTurn }))
-        ?.value
-    }
+      ): skillbill.ports.persistence.ProducerOutputEvidence? {
+        producerOutputReadError?.let { throw it }
+        return producerEvidence.entries
+          .filter {
+            it.key.workflowId == workflowId && it.key.phaseId == phaseId &&
+              it.key.attempt == attempt && it.key.agentId == agentId &&
+              it.key.generation <= generation
+          }
+          .maxWithOrNull(compareBy({ it.key.generation }, { it.key.repairTurn }))
+          ?.value
+      }
+    }.takeIf { rejectedOutputDiagnosticsAvailable }
     override val unaddressedFindings = object : skillbill.ports.persistence.UnaddressedFindingsRepository {
       override fun replaceLedgerForPass(
         workflowId: String,
@@ -6846,16 +6851,27 @@ private object EnabledRuntimeTelemetrySettingsProvider : TelemetrySettingsProvid
 }
 
 @Suppress("TooManyFunctions") // mirrors the full LifecycleTelemetryRepository contract
-internal class RecordingLifecycleTelemetryRepository : LifecycleTelemetryRepository {
+internal class RecordingLifecycleTelemetryRepository(
+  private val throwOnDiagnosticDegradation: Boolean = false,
+) : LifecycleTelemetryRepository {
   val startedRecords = mutableListOf<FeatureTaskRuntimeStartedRecord>()
   val finishedRecords = mutableListOf<FeatureTaskRuntimeFinishedRecord>()
   val sharedEvidenceMeasurements =
     mutableListOf<skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceMeasurement>()
+  val diagnosticDegradationMeasurements =
+    mutableListOf<skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticDegradationMeasurement>()
 
   override fun featureTaskRuntimeSharedEvidence(
     record: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceMeasurement,
   ) {
     sharedEvidenceMeasurements += record
+  }
+
+  override fun featureTaskRuntimeDiagnosticDegradation(
+    record: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticDegradationMeasurement,
+  ) {
+    if (throwOnDiagnosticDegradation) error("telemetry sink failed")
+    diagnosticDegradationMeasurements += record
   }
 
   override fun featureTaskRuntimeStarted(record: FeatureTaskRuntimeStartedRecord, level: String) {
