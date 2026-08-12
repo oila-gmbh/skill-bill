@@ -191,6 +191,12 @@ sealed interface FeatureTaskRuntimePhaseOutputValidationResult {
     val diagnosticReason: String = reason,
     val payloadFreeReason: String? = reason,
     val sourceLocation: FeatureTaskRuntimePhaseOutputSourceLocation? = null,
+    /**
+     * Payload-free digest/location evidence from a prior successful delimiter-only structural repair
+     * on this capture. Present when syntax repair accepted the document and the phase schema later
+     * rejected it; absent when no structural repair ran. Never carries response body text.
+     */
+    val structuralRepairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence? = null,
   ) : FeatureTaskRuntimePhaseOutputValidationResult {
     override val normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput? = null
   }
@@ -239,5 +245,6 @@ fun FeatureTaskRuntimePhaseOutputValidationResult.requireAccepted(
       else -> FeatureTaskRuntimePhaseOutputFailureKind.SCHEMA_INVALID
     },
     failureCode = code.wireValue,
+    acceptedAfterStructuralRepair = structuralRepairEvidence != null,
   )
 }

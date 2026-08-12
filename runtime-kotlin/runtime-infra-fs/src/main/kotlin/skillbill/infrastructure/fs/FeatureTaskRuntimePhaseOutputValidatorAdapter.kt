@@ -41,11 +41,14 @@ class FeatureTaskRuntimePhaseOutputValidatorAdapter : FeatureTaskRuntimePhaseOut
           FeatureTaskRuntimePhaseOutputValidationResult.AcceptedAfterRepair(normalized, decision.evidence)
         }
       } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
+        // Syntax repair may have accepted the capture; keep digest/location evidence on Rejected so
+        // the corrective retry can mark acceptedAfterStructuralRepair without claiming schema accept.
         FeatureTaskRuntimePhaseOutputValidationResult.Rejected(
           code = FeatureTaskRuntimePhaseOutputFailureCode.fromWire(error.failureCode),
           reason = error.payloadFreeReason ?: "Phase output failed the phase-specific schema contract.",
           diagnosticReason = error.reason,
           payloadFreeReason = error.payloadFreeReason,
+          structuralRepairEvidence = decision.evidence,
         )
       }
     }

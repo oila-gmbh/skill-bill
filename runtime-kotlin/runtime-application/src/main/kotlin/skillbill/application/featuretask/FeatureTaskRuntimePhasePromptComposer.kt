@@ -192,6 +192,12 @@ object FeatureTaskRuntimePhasePromptComposer {
       Preserve valid content from the prior attempt, correct the named violation, and place
       phase-required fields at their contract-defined locations. Do not copy a raw response unchanged.
     """.trimIndent()
+    val structuralRepairNote = if (correctiveRepairContext?.acceptedAfterStructuralRepair == true) {
+      "\nDeterministic syntax repair previously succeeded on this capture (delimiter-only). " +
+        "That does not mean the phase schema accepted it; correct the named schema or semantic violation."
+    } else {
+      ""
+    }
     val repairProjection = correctiveRepairContext?.let { context ->
       "\n\n" + context.promptProjection().renderAuthorizedRepairSection()
     }.orEmpty()
@@ -202,7 +208,7 @@ object FeatureTaskRuntimePhasePromptComposer {
         briefing.auditRepairItemIds.joinToString() + ".\n" +
         auditRemediationOutputExample(briefing.auditRepairItemIds)
     }
-    return base + repairProjection + remediationCorrection +
+    return base + structuralRepairNote + repairProjection + remediationCorrection +
       unparseableRootCorrection(briefing, priorSchemaFailure) +
       FeatureTaskRuntimeSchemaFailureCorrections.lengthViolation(priorSchemaFailure) +
       FeatureTaskRuntimeSchemaFailureCorrections.unreconciledReceipt(priorSchemaFailure)

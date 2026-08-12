@@ -158,6 +158,16 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
 
     val rejected = assertIs<FeatureTaskRuntimePhaseOutputValidationResult.Rejected>(result)
     assertEquals(FeatureTaskRuntimePhaseOutputFailureCode.SCHEMA_INVALID, rejected.code)
+    val evidence = requireNotNull(rejected.structuralRepairEvidence) {
+      "schema rejection after delimiter repair must retain payload-free structural evidence"
+    }
+    assertEquals(FeatureTaskRuntimePhaseOutputFormat.JSON, evidence.format)
+    assertEquals(
+      FeatureTaskRuntimePhaseOutputRepairOperation.ADD_MISSING_CLOSING_DELIMITER,
+      evidence.operation,
+    )
+    assertEquals(sha256(malformed), evidence.originalDigest)
+    assertFalse(evidence.toString().contains(malformed.dropLast(5)))
   }
 
   @Test

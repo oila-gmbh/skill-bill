@@ -62,6 +62,9 @@ internal data class FeatureTaskRuntimePhaseStartReentry(
  * Per-phase observability and attempt-ledger sink for one run: at each phase boundary it emits a
  * typed [FeatureTaskRuntimeRunEvent] to the run's event sink and appends a ledger entry. The
  * recorder mints the timestamp and monotonic sequence, so this class never sources time or order.
+ *
+ * Event-sink failures are isolated: a throwing telemetry or status observer must not change retry,
+ * block, or completion outcomes, and must not become a vehicle for rejected-response leakage.
  */
 @Suppress("TooManyFunctions") // one emitter per phase-boundary outcome; splitting them scatters the ledger seam
 internal class FeatureTaskRuntimeRunObservability(
@@ -71,7 +74,7 @@ internal class FeatureTaskRuntimeRunObservability(
   // Branch setup is a distinct pre-implement step, not a phase attempt, so it emits only the
   // typed observability event and does not append to the per-phase attempt ledger.
   fun branchResolved(phaseId: String, branch: String, created: Boolean, reused: Boolean) {
-    request.eventSink.emit(
+    emitSafely(
       FeatureTaskRuntimeRunEvent.BranchResolved(
         workflowId = request.workflowId,
         phaseId = phaseId,
@@ -87,7 +90,7 @@ internal class FeatureTaskRuntimeRunObservability(
   // persisted by the runner, mirroring blockAndPersist for phase blocks) so a git-failure block is
   // visible to status queries, the ledger audit trail, and the event/monitor stream.
   fun branchSetupBlocked(phaseId: String, resolvedAgentId: String, blockedReason: String) {
-    request.eventSink.emit(
+    emitSafely(
       FeatureTaskRuntimeRunEvent.BranchSetupBlocked(
         workflowId = request.workflowId,
         phaseId = phaseId,
@@ -115,7 +118,7 @@ internal class FeatureTaskRuntimeRunObservability(
   ) {
     val resumed = reentry.resumed
     val startKind = reentry.startKind
-    request.eventSink.emit(
+    emitSafely(
       FeatureTaskRuntimeRunEvent.PhaseStarted(
         workflowId = request.workflowId,
         phaseId = phaseId,
@@ -169,7 +172,7 @@ internal class FeatureTaskRuntimeRunObservability(
     iteration: Int,
     kind: FeatureTaskRuntimeContinuationKind,
   ) {
-    request.eventSink.emit(
+    emitSafely(
       FeatureTaskRuntimeRunEvent.PhaseFixLoopIteration(
         workflowId = request.workflowId,
         phaseId = phaseId,
@@ -206,7 +209,7 @@ internal class FeatureTaskRuntimeRunObservability(
   }
 
   fun completedEvent(phaseId: String, resolvedAgentId: String, attemptCount: Int) {
-    request.eventSink.emit(
+    emitSafely(
       FeatureTaskRuntimeRunEvent.PhaseCompleted(
         workflowId = request.workflowId,
         phaseId = phaseId,
@@ -217,7 +220,7 @@ internal class FeatureTaskRuntimeRunObservability(
   }
 
   fun paused(phaseId: String, resolvedAgentId: String, attemptCount: Int, pauseReason: String) {
-    request.eventSink.emit(
+    emitSafely(
       FeatureTaskRuntimeRunEvent.PhasePaused(
         workflowId = request.workflowId,
         phaseId = phaseId,
@@ -239,7 +242,7 @@ internal class FeatureTaskRuntimeRunObservability(
   }
 
   fun blocked(phaseId: String, resolvedAgentId: String, attemptCount: Int, blockedReason: String) {
-    request.eventSink.emit(
+    emitSafely(
       FeatureTaskRuntimeRunEvent.PhaseBlocked(
         workflowId = request.workflowId,
         phaseId = phaseId,
@@ -268,7 +271,7 @@ internal class FeatureTaskRuntimeRunObservability(
   }
 
   fun loopEdge(phaseId: String, loopId: String, edgeIteration: Int, drivingVerdict: FeatureTaskRuntimeVerdict) {
-    request.eventSink.emit(
+    emitSafely(
       FeatureTaskRuntimeRunEvent.PhaseLoopEdge(
         workflowId = request.workflowId,
         phaseId = phaseId,
@@ -293,6 +296,14 @@ internal class FeatureTaskRuntimeRunObservability(
           "driving_verdict=${drivingVerdict.wireValue}",
       ),
     )
+  }
+
+  private fun emitSafely(event: FeatureTaskRuntimeRunEvent) {
+    try {
+      request.eventSink.emit(event)
+    } catch (@Suppress("TooGenericExceptionCaught") _: Exception) {
+      // Side-channel observers must not change workflow outcomes or surface rejected response bodies.
+    }
   }
 
   private fun appendLedger(ledgerRequest: FeatureTaskRuntimePhaseLedgerRequest) {

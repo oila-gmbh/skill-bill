@@ -224,6 +224,11 @@ class InvalidFeatureTaskRuntimePhaseOutputSchemaError(
     FeatureTaskRuntimePhaseOutputFailureKind.SCHEMA_INVALID,
   /** Stable wire code used by the typed adapter result; old callers may omit it. */
   val failureCode: String = "schema_invalid",
+  /**
+   * True when deterministic delimiter repair previously accepted this capture and the phase schema
+   * later rejected it. Syntax success must not be read as phase-schema acceptance.
+   */
+  val acceptedAfterStructuralRepair: Boolean = false,
 ) : ShellContentContractException(
   "Feature-task-runtime phase output '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation: $reason",
   cause,

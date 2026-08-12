@@ -112,9 +112,13 @@ class FeatureTaskRuntimeRunner(
       specReference = runRequest.runInvariants.specReference,
       isGoalContinuation = isGoalContinuationRun(runRequest),
     )
-    runRequest.eventSink.emit(
-      FeatureTaskRuntimeRunEvent.RunStarted(runRequest.workflowId, runRequest.runInvariants.featureSize.name),
-    )
+    try {
+      runRequest.eventSink.emit(
+        FeatureTaskRuntimeRunEvent.RunStarted(runRequest.workflowId, runRequest.runInvariants.featureSize.name),
+      )
+    } catch (@Suppress("TooGenericExceptionCaught") _: Exception) {
+      // Event-sink observers are side channels; a throw must not abort the run before phase work starts.
+    }
     // Runtime-owned lifecycle telemetry: the runtime mints and emits the started/finished events from
     // its own per-phase records (AC4), never the agent. Per-phase records and ledger remain the
     // authoritative observability source and are unchanged; this telemetry is additive (AC6). Every

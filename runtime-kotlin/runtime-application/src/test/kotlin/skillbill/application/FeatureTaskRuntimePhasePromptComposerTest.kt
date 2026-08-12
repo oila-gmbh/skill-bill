@@ -1431,6 +1431,34 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertFalse(prompt.contains("Untrusted prior phase output"))
   }
 
+  @Test
+  fun `acceptedAfterStructuralRepair surfaces a syntax-repair note without claiming schema acceptance`() {
+    val context = FeatureTaskRuntimeCorrectiveRepairContext(
+      phaseId = "audit",
+      attempt = 1,
+      rejectionRule = "phase-output-schema",
+      rejectionPath = "\$.verdict",
+      payloadFreeConstraint = "verdict: must be a top-level string",
+      diagnosticLocator = CorrectiveRepairDiagnosticLocator("opaque-diagnostic-structural"),
+      captured = CorrectiveRepairCapturedResponse.classify(
+        """{"produced_outputs":{"verdict":"satisfied"},"sentinel":"SKILL187-STRUCTURAL"}""",
+        alreadyTruncated = false,
+      ),
+      acceptedAfterStructuralRepair = true,
+    )
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("audit"),
+      priorSchemaFailure = "verdict: must be a top-level string",
+      correctiveRepairContext = context,
+    )
+
+    assertContains(prompt, "Deterministic syntax repair previously succeeded")
+    assertContains(prompt, "That does not mean the phase schema accepted it")
+    assertContains(prompt, "SKILL187-STRUCTURAL")
+    assertContains(prompt, "REJECTED by the schema gate")
+  }
+
   private fun correctiveContext(body: String): FeatureTaskRuntimeCorrectiveRepairContext =
     FeatureTaskRuntimeCorrectiveRepairContext(
       phaseId = "audit",

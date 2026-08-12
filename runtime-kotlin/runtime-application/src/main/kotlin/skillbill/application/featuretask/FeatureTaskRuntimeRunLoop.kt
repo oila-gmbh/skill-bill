@@ -3592,6 +3592,7 @@ internal class FeatureTaskRuntimeRunLoop(
         rejectionRule = "phase-output-schema",
         rejectionPath = path,
         payloadFreeConstraint = error.payloadFreeReason.orEmpty(),
+        acceptedAfterStructuralRepair = error.acceptedAfterStructuralRepair,
       ),
     )
   } catch (error: InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError) {
@@ -3636,6 +3637,7 @@ internal class FeatureTaskRuntimeRunLoop(
     rejectionRule: String,
     rejectionPath: String,
     payloadFreeConstraint: String,
+    acceptedAfterStructuralRepair: Boolean = false,
   ): FeatureTaskRuntimeCorrectiveRepairContext {
     val utf8ByteCount = outputByteSize.coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
     val captured = if (outputTruncated) {
@@ -3646,11 +3648,13 @@ internal class FeatureTaskRuntimeRunLoop(
         digestSha256 = outputSha256,
       )
     } else {
-      // Classify from the captured text itself so Exact digest/byte metadata always match the body
-      // framed into the repair projection (stdout normalization must not trip known-* mismatches).
+      // Prefer the capture-boundary digest/byte metadata so Exact metadata matches the private
+      // diagnostic row; classify still verifies they hash the framed body (loud-fail on drift).
       CorrectiveRepairCapturedResponse.classify(
         body = outputText,
         alreadyTruncated = false,
+        knownUtf8ByteCount = utf8ByteCount,
+        knownDigestSha256 = outputSha256,
       )
     }
     return FeatureTaskRuntimeCorrectiveRepairContext(
@@ -3662,6 +3666,7 @@ internal class FeatureTaskRuntimeRunLoop(
       payloadFreeConstraint = payloadFreeConstraint,
       diagnosticLocator = CorrectiveRepairDiagnosticLocator(diagnosticIdentity),
       captured = captured,
+      acceptedAfterStructuralRepair = acceptedAfterStructuralRepair,
     )
   }
 
@@ -3761,6 +3766,9 @@ internal class FeatureTaskRuntimeRunLoop(
           rejectionRule = diagnosticRule,
           rejectionPath = path,
           payloadFreeConstraint = retryFacingConstraint ?: reason,
+          // Semantic rejection after AcceptedAfterRepair: syntax repair succeeded earlier; the phase
+          // schema or semantic gate still rejected the post-capture response.
+          acceptedAfterStructuralRepair = repairEvidence != null,
         ),
       )
     }
