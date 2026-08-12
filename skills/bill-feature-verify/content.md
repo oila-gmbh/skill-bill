@@ -70,7 +70,10 @@ When `decomposition-manifest.yaml` exists, read its `spec_source` field and
 default an omitted field to `local`.
 A bare `spec.md` is intake rather than prepared source authority.
 
-For `spec_source: local`, the spec is committed in the PR's tree — read it directly; no rehydrate, no Linear MCP call.
+For `spec_source: local`, feature-spec files are not required in the PR tree. A human
+operator may have committed them; do not fail solely because they are absent, and do
+not treat their presence as a defect. Read the task spec from the user-supplied input
+or an available local checkout; do not make a Linear MCP call.
 
 For a terminal Linear target, the committed tree carries no spec or manifest
 because scratch cleanup deleted both. Treat the simultaneous absence of both

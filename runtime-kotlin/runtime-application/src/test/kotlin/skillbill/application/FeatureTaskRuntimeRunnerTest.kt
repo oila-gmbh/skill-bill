@@ -2727,10 +2727,41 @@ class FeatureTaskRuntimeCheckpointScopeTest {
       repoRoot = Path.of("/repo"),
       issueKey = "SKILL-146",
       specReference = ".feature-specs/SKILL-146-least-context/spec.md",
-      specSource = SpecSource.LINEAR,
       paths = listOf(
         ".feature-specs/SKILL-146-least-context/spec.md",
         ".feature-specs/SKILL-146-remediation/notes.md",
+        "runtime-domain/Changed.kt",
+      ),
+    )
+
+    assertEquals(listOf("runtime-domain/Changed.kt"), paths)
+  }
+
+  @Test
+  fun `local checkpoint inventory excludes feature spec scratch while preserving code paths`() {
+    val paths = reconcileCheckpointPathInventory(
+      repoRoot = Path.of("/repo"),
+      issueKey = "SKILL-146",
+      specReference = ".feature-specs/SKILL-146-least-context/spec.md",
+      paths = listOf(
+        ".feature-specs/SKILL-146-least-context/spec.md",
+        ".feature-specs/SKILL-146-remediation/notes.md",
+        "runtime-domain/Changed.kt",
+      ),
+    )
+
+    assertEquals(listOf("runtime-domain/Changed.kt"), paths)
+  }
+
+  @Test
+  fun `checkpoint inventory excludes the collapsed feature-specs directory`() {
+    val paths = reconcileCheckpointPathInventory(
+      repoRoot = Path.of("/repo"),
+      issueKey = "SKILL-146",
+      specReference = ".feature-specs/SKILL-146-least-context/spec.md",
+      paths = listOf(
+        ".feature-specs",
+        ".feature-specs/",
         "runtime-domain/Changed.kt",
       ),
     )
@@ -2750,7 +2781,10 @@ class FeatureTaskRuntimeCheckpointScopeTest {
     assertContains(auditBriefing.briefingText, "- runtime-domain/Committed.kt")
     assertContains(auditBriefing.briefingText, "- runtime-domain/Remediation.kt")
     assertContains(auditBriefing.briefingText, "- runtime-domain/Renamed.kt")
-    assertContains(auditBriefing.briefingText, "- $SPEC_REFERENCE")
+    assertFalse(
+      auditBriefing.briefingText.contains("- $SPEC_REFERENCE"),
+      "the local feature spec is workflow input, not an audit or commit path",
+    )
     assertFalse(
       auditBriefing.briefingText.contains("spec_subtask_9_sibling"),
       "a sibling subtask's baseline path must not enter the goal-child audit projection",
@@ -2761,14 +2795,13 @@ class FeatureTaskRuntimeCheckpointScopeTest {
     )
     assertEquals(
       listOf(
-        SPEC_REFERENCE,
         "runtime-domain/Child.kt",
         "runtime-domain/Committed.kt",
         "runtime-domain/Remediation.kt",
         "runtime-domain/Renamed.kt",
       ),
       requireNotNull(harness.recorder.loadResolvedBranch(WORKFLOW_ID)).workflowOwnedPaths,
-      "the checkpoint must union durable, committed, remediation, and local-spec paths",
+      "the checkpoint must union durable, committed, and remediation implementation paths",
     )
   }
 
@@ -2989,7 +3022,7 @@ class FeatureTaskRuntimeRunnerSpecLifecycleTest {
 
   @Test
   fun `local-mode run never deletes the spec scratch`() {
-    // AC6: local mode (default, no spec_source line) keeps the committed spec and deletes nothing.
+    // Local mode (default, no spec_source line) keeps the spec scratch on disk and deletes nothing.
     val repoRoot = Files.createTempDirectory("skillbill-runtime-local-no-delete")
     val specPath = repoRoot.resolve(SPEC_REFERENCE)
     Files.createDirectories(specPath.parent)
@@ -3002,7 +3035,7 @@ class FeatureTaskRuntimeRunnerSpecLifecycleTest {
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
     assertTrue(harness.specScratchStore.deletions.isEmpty(), "local mode must not delete the scratch")
-    assertTrue(Files.exists(specPath), "local mode keeps the committed spec on disk")
+    assertTrue(Files.exists(specPath), "local mode keeps the spec scratch on disk")
   }
 
   @Test
@@ -4476,9 +4509,9 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
 
   // AC-001/AC-002: the checkpoint commits its owned inventory and nothing else, whatever else is dirty.
   @Test
-  fun `checkpoint stages only owned paths while foreign staged unstaged and untracked files are left alone`() {
+  fun `checkpoint stages only implementation paths while specs and foreign dirt stay alone`() {
     val git = checkpointGit(
-      ownedPaths = listOf("src/Owned.kt"),
+      ownedPaths = listOf("src/Owned.kt", SPEC_REFERENCE),
       stagedPaths = listOf("unrelated/ForeignStaged.kt"),
     )
     val harness = checkpointRunHarness(git)

@@ -62,6 +62,7 @@ import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.captureGoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineResult
+import skillbill.ports.workflow.stagePaths
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionExecutionModel
@@ -1453,11 +1454,11 @@ class GoalRunner(
   }
 
   /**
-   * True commit-all at goal finalization: stage every dirty path, commit, and push so the PR tip
-   * includes leftover work that mid-run owned-delta checkpoints left behind. A clean worktree that
-   * is still ahead of `origin/<feature-branch>` (for example after a prior commit whose push failed)
-   * is re-pushed rather than treated as done. Returns a blocked reason, or null when the tip is
-   * published and the worktree is clean.
+   * Finalize implementation changes left behind by mid-run checkpoints. Feature specs are workflow
+   * inputs: this sweep never stages them, leftover spec dirt is not a cleanliness failure, and spec
+   * files a human operator already committed stay in HEAD. A worktree whose only remaining dirt is
+   * under `.feature-specs/` and that is still ahead of `origin/<feature-branch>` is re-pushed rather
+   * than treated as done.
    */
   private fun commitAllRemainingWorktree(manifest: DecompositionManifest, request: GoalRunnerRunRequest): String? {
     // Linear scratch is ephemeral and must not be committed; delete it before staging.
@@ -1469,23 +1470,25 @@ class GoalRunner(
       return "Goal finalization could not verify worktree cleanliness: ${before.error}"
     }
     val dirtyPaths = parseGitPorcelainPaths(before.value.orEmpty())
+    val implementationPaths = dirtyPaths.filterNot(::isFeatureSpecPath)
     val featureBranch = manifest.featureBranch.orEmpty().trim()
-    if (dirtyPaths.isEmpty()) {
+    if (implementationPaths.isEmpty()) {
       return pushUnpushedFeatureBranchIfNeeded(featureBranch, request.repoRoot)
     }
-    return commitAndPushDirtyWorktree(manifest, request, featureBranch)
+    return commitAndPushDirtyWorktree(manifest, request, featureBranch, implementationPaths)
   }
 
   private fun commitAndPushDirtyWorktree(
     manifest: DecompositionManifest,
     request: GoalRunnerRunRequest,
     featureBranch: String,
+    implementationPaths: List<String>,
   ): String? {
     if (featureBranch.isBlank()) {
       return "Goal finalization commit-all requires a feature branch."
     }
     requireFeatureBranchForFinalize(featureBranch, request.repoRoot)?.let { return it }
-    stageCommitAndPushAll(manifest, request, featureBranch)?.let { return it }
+    stageCommitAndPushAll(manifest, request, featureBranch, implementationPaths)?.let { return it }
     return verifyWorktreeCleanAfterCommitAll(request)
   }
 
@@ -1493,8 +1496,9 @@ class GoalRunner(
     manifest: DecompositionManifest,
     request: GoalRunnerRunRequest,
     featureBranch: String,
+    implementationPaths: List<String>,
   ): String? {
-    val staged = gitOperations.stageAll(request.repoRoot)
+    val staged = gitOperations.stagePaths(request.repoRoot, implementationPaths)
     if (!staged.ok) {
       return "Goal finalization commit-all could not stage remaining worktree changes: ${staged.error}"
     }
@@ -1517,7 +1521,7 @@ class GoalRunner(
     if (!after.ok) {
       return "Goal finalization could not re-verify worktree cleanliness after commit-all: ${after.error}"
     }
-    val remaining = parseGitPorcelainPaths(after.value.orEmpty())
+    val remaining = parseGitPorcelainPaths(after.value.orEmpty()).filterNot(::isFeatureSpecPath)
     return if (remaining.isEmpty()) {
       null
     } else {
@@ -1943,10 +1947,17 @@ internal class GoalRunnerLaunchReconciler(
   }
 }
 
+private const val FEATURE_SPEC_ROOT = ".feature-specs"
 private const val GIT_PORCELAIN_MIN_LENGTH = 4
 private const val GIT_PORCELAIN_STATUS_PREFIX_LENGTH = 3
 private const val MAX_VALIDATION_QUALITY_RETRIES = 3
 private const val MAX_REPORTED_FINALIZE_DIRTY_PATHS = 10
+
+private fun isFeatureSpecPath(path: String): Boolean {
+  val normalized = path.trim().trimEnd('/')
+  return normalized == FEATURE_SPEC_ROOT || normalized.startsWith("$FEATURE_SPEC_ROOT/")
+}
+
 private val PROTECTED_GOAL_BRANCHES: Set<String> = setOf("main", "master", "trunk")
 private val CHILD_WORKFLOW_BLOCK_REASONS: Set<GoalRunnerStopReason> = setOf(
   GoalRunnerStopReason.NO_TERMINAL_STORE_OUTCOME,

@@ -4,7 +4,6 @@ import skillbill.application.model.FeatureTaskRuntimeImplementationContinuation
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.workflow.model.CodeReviewExecutionMode
-import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
 
@@ -230,40 +229,21 @@ internal data class ReviewExecutionDirectiveInputs(
   val baselineUntrackedPaths: List<String> = emptyList(),
 )
 
-// Emits only for the commit phase of a linear-mode run: the local spec scratch is never committed
-// (it is rehydrated from Linear on demand and deleted on success), so the commit step must stage by
-// explicit enumeration and exclude the whole `.feature-specs/{KEY}/` tree. For local mode (default)
-// the section is empty, leaving the commit prompt byte-for-byte unchanged (AC6).
-internal fun commitExclusionDirective(phaseId: String, issueKey: String, specSource: SpecSource): String {
-  if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH || specSource != SpecSource.LINEAR) {
+// Emits for every commit phase: the runtime and agent never stage feature specs. A human operator
+// may already have committed them; leave those HEAD files alone and leave remaining spec dirt local.
+internal fun commitExclusionDirective(phaseId: String, issueKey: String): String {
+  if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH) {
     return ""
   }
   return """
-    ## Linear-mode commit exclusion
-    This feature's spec_source is `linear`: the local spec scratch is NOT committed. Stage every
-    changed path by explicit enumeration and never run `git add -A` / `git add .`. Exclude the
-    entire `.feature-specs/$issueKey/` directory from staging — the parent spec, every subtask
-    spec, and `decomposition-manifest.yaml`. The committed tree must contain no spec, subtask spec,
-    or manifest file. The local spec scratch is deleted on terminal success and rehydrated from
-    Linear when a later resume or verify needs it.
-  """.trimIndent()
-}
-
-// Emits only for the commit phase of a local-mode run when a spec reference is known: the runtime
-// updates the spec file with the run's completion status just before launching commit_push, so the
-// agent must include it in the staged files. Empty for linear mode (spec is excluded from the commit
-// there) and for all other phases, leaving those prompts byte-for-byte unchanged.
-internal fun specCommitInclusionDirective(phaseId: String, specReference: String?, specSource: SpecSource): String {
-  if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH ||
-    specSource != SpecSource.LOCAL ||
-    specReference.isNullOrBlank()
-  ) {
-    return ""
-  }
-  return """
-    ## Spec file — stage with this commit
-    The runtime updated `$specReference` with the run's completion status just before this
-    phase was launched. Stage it together with the other changed files.
+    ## Feature-spec commit exclusion
+    Feature specs are workflow inputs, not implementation output. Do not stage or commit any
+    `.feature-specs/` path — especially this feature's `.feature-specs/$issueKey-*` (or
+    `.feature-specs/$issueKey/`) tree, including the parent spec, every subtask spec, and
+    `decomposition-manifest.yaml`. Stage every implementation path by explicit enumeration and never
+    run `git add -A` / `git add .`. Leave `.feature-specs/` dirty locally if it changed. If a human
+    operator already committed spec files, leave those committed files alone: do not add, amend,
+    unstage, or uncommit them.
   """.trimIndent()
 }
 

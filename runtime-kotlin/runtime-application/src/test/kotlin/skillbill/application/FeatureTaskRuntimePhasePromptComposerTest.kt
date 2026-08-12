@@ -13,7 +13,6 @@ import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.workflow.model.CodeReviewExecutionMode
-import skillbill.workflow.model.SpecSource
 import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffProjectionValidator
@@ -42,7 +41,6 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
-import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -623,102 +621,25 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
-  fun `linear commit_push prompt carries the spec-exclusion directive`() {
-    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
-      ISSUE_KEY,
-      briefingFor("commit_push"),
-      specSource = SpecSource.LINEAR,
-    )
+  fun `commit_push prompt carries the feature-spec exclusion directive`() {
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("commit_push"))
 
-    assertContains(prompt, "Linear-mode commit exclusion")
-    assertContains(prompt, ".feature-specs/$ISSUE_KEY/")
+    assertContains(prompt, "Feature-spec commit exclusion")
+    assertContains(prompt, ".feature-specs/$ISSUE_KEY-")
     assertContains(prompt, "never run `git add -A`")
     assertContains(prompt, "decomposition-manifest.yaml")
+    assertContains(prompt, "leave those committed files alone")
+    assertTrue(!prompt.contains("The committed tree must contain no feature spec"))
   }
 
   @Test
-  fun `local commit_push prompt omits the spec-exclusion directive and matches the default`() {
-    val linear = FeatureTaskRuntimePhasePromptComposer.compose(
-      ISSUE_KEY,
-      briefingFor("commit_push"),
-      specSource = SpecSource.LINEAR,
-    )
-    val local = FeatureTaskRuntimePhasePromptComposer.compose(
-      ISSUE_KEY,
-      briefingFor("commit_push"),
-      specSource = SpecSource.LOCAL,
-    )
-    val default = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("commit_push"))
-
-    assertEquals(default, local, "the spec_source default must be LOCAL (byte-for-byte unchanged)")
-    assertTrue(!local.contains("Linear-mode commit exclusion"), "local mode must not carry the exclusion")
-    assertTrue(local != linear, "linear mode must add the exclusion section")
-  }
-
-  @Test
-  fun `local commit_push prompt with specReference includes spec inclusion directive`() {
-    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
-      ISSUE_KEY,
-      briefingFor("commit_push"),
-      specSource = SpecSource.LOCAL,
-      specReference = SPEC_REFERENCE,
-    )
-
-    assertContains(prompt, "Spec file — stage with this commit")
-    assertContains(prompt, SPEC_REFERENCE)
-  }
-
-  @Test
-  fun `spec inclusion directive is absent when specReference is null or blank`() {
-    val noRef = FeatureTaskRuntimePhasePromptComposer.compose(
-      ISSUE_KEY,
-      briefingFor("commit_push"),
-      specSource = SpecSource.LOCAL,
-    )
-    val blankRef = FeatureTaskRuntimePhasePromptComposer.compose(
-      ISSUE_KEY,
-      briefingFor("commit_push"),
-      specSource = SpecSource.LOCAL,
-      specReference = "  ",
-    )
-
-    assertTrue(!noRef.contains("Spec file — stage with this commit"), "null specReference must not emit directive")
-    assertTrue(!blankRef.contains("Spec file — stage with this commit"), "blank specReference must not emit directive")
-  }
-
-  @Test
-  fun `spec inclusion directive is absent in linear mode even with specReference`() {
-    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
-      ISSUE_KEY,
-      briefingFor("commit_push"),
-      specSource = SpecSource.LINEAR,
-      specReference = SPEC_REFERENCE,
-    )
-
-    assertTrue(!prompt.contains("Spec file — stage with this commit"), "linear mode must not emit spec inclusion")
-  }
-
-  @Test
-  fun `spec inclusion directive is absent on non-commit phases`() {
+  fun `feature-spec exclusion directive is absent on non-commit phases`() {
     val implementPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
       briefingFor("implement"),
-      specSource = SpecSource.LOCAL,
-      specReference = SPEC_REFERENCE,
     )
 
-    assertTrue(!implementPrompt.contains("Spec file — stage with this commit"))
-  }
-
-  @Test
-  fun `linear spec-exclusion is absent on non-commit phases`() {
-    val implementPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
-      ISSUE_KEY,
-      briefingFor("implement"),
-      specSource = SpecSource.LINEAR,
-    )
-
-    assertTrue(!implementPrompt.contains("Linear-mode commit exclusion"))
+    assertTrue(!implementPrompt.contains("Feature-spec commit exclusion"))
   }
 
   @Test

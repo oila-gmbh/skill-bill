@@ -154,23 +154,30 @@ internal fun resolveLaunchRejectionAttribution(
   )
 }
 
+private const val FEATURE_SPEC_ROOT = ".feature-specs"
+
+internal fun isFeatureSpecPathForIssue(path: String, issueKey: String): Boolean {
+  val normalized = path.trim().trimEnd('/')
+  if (normalized == FEATURE_SPEC_ROOT) return true
+  if (!normalized.startsWith("$FEATURE_SPEC_ROOT/")) return false
+  val issueDirectory = normalized.removePrefix("$FEATURE_SPEC_ROOT/").substringBefore('/')
+  val key = issueKey.trim()
+  return issueDirectory == key || issueDirectory.startsWith("$key-")
+}
+
 internal fun reconcileCheckpointPathInventory(
   repoRoot: Path,
   issueKey: String,
   specReference: String,
-  specSource: SpecSource,
   paths: List<String>,
 ): List<String> {
   val specPath = Path.of(specReference)
     .let { path -> if (path.isAbsolute) repoRoot.relativize(path) else path }
     .normalize()
     .toString()
-  return when (specSource) {
-    SpecSource.LOCAL -> (paths + specPath).distinct()
-    SpecSource.LINEAR -> paths.filterNot { path ->
-      path == specPath || path.startsWith(".feature-specs/$issueKey-")
-    }
-  }
+  return paths.filterNot { path ->
+    path == specPath || isFeatureSpecPathForIssue(path, issueKey)
+  }.distinct()
 }
 
 // A reservation at or below the completed-review-output count is a stale latch from the pass that
@@ -924,28 +931,28 @@ internal class FeatureTaskRuntimeRunLoop(
       .map(String::trim)
       .filter(String::isNotBlank)
     val persistedOwned = resolved?.workflowOwnedPaths.orEmpty()
-    // Foreign governed specs a previous checkpoint already recorded as owned: the guard must not
+    // Governed feature specs a previous checkpoint already recorded as owned: the guard must not
     // re-report them as newly introduced, or the run hard-blocks forever on its own leftover state.
-    val evictedForeign = persistedOwned
-      .filter { FeatureTaskRuntimeCheckpointScope.isForeignGovernedSpecPath(it, request.issueKey) }
+    val evictedFeatureSpecs = persistedOwned
+      .filter { path -> isFeatureSpecPathForIssue(path, request.issueKey) }
       .toSet()
     val phaseWritten = phaseWrittenPaths(precedingPhaseId, worktreeDelta, persistedOwned)
-      .filterNot { it in evictedForeign }
+      .filterNot { it in evictedFeatureSpecs }
     val ownedInventory = reconcileCheckpointPathInventory(
       repoRoot = request.repoRoot,
       issueKey = request.issueKey,
       specReference = request.runInvariants.specReference,
-      specSource = specSource,
       // The persisted inventory is the sole ownership authority. It is extended with the paths the
       // writing phases themselves wrote — never with whatever else happens to be dirty, which is how
       // someone else's concurrent edit used to be adopted and committed as this run's work.
-      // A foreign issue's governed spec never becomes owned, and one a previous checkpoint recorded
-      // is evicted here so the persisted inventory stops asserting authority this run does not have.
+      // Governed feature specs never become owned, so the persisted inventory contains implementation
+      // paths only. The runtime never stages them; a human operator may already have committed them.
       paths = (
         resolved?.workflowOwnedPaths.orEmpty() +
           phaseWritten.takeIf { mayExtendOwnedInventory(precedingPhaseId) }.orEmpty() +
           writingPhaseIntroducedPaths(worktreeDelta)
         ).distinct()
+        .filterNot { path -> isFeatureSpecPathForIssue(path, request.issueKey) }
         .filterNot { FeatureTaskRuntimeCheckpointScope.isForeignGovernedSpecPath(it, request.issueKey) },
     )
     persistOwnedInventory(ownedInventory, resolved?.workflowOwnedPaths.orEmpty())
@@ -4310,7 +4317,6 @@ internal class FeatureTaskRuntimeRunLoop(
       repoRoot = run.request.repoRoot,
       issueKey = run.request.issueKey,
       specReference = run.request.runInvariants.specReference,
-      specSource = run.specSource,
       paths = (discovered + committedPaths).distinct(),
     ).sorted()
     return inventory.takeIf {
@@ -4374,6 +4380,7 @@ internal class FeatureTaskRuntimeRunLoop(
       .map(String::trim)
       .filter(String::isNotBlank)
       .filterNot { it in baseline }
+      .filterNot { path -> isFeatureSpecPathForIssue(path, run.request.issueKey) }
       .distinct()
       .sorted()
     if (paths.size > MAX_CHECKPOINT_OWNED_PATHS) {
@@ -5178,13 +5185,11 @@ internal class FeatureTaskRuntimeRunLoop(
       resolvedReviewTier = depthResolution?.resolvedTier,
       reviewDecidingRule = depthResolution?.decidingRule,
       priorBlockerFindingIds = priorBlockerFindingIds(),
-      specSource = run.specSource,
       priorSchemaFailure = priorCorrection?.schemaGateReason,
       priorTerminalFailure = priorCorrection?.retryableTerminalReason,
       correctiveRepairContext = priorCorrection?.correctiveRepairContext,
       operatorBlockRetry = operatorBlockRetry
         ?.takeIf { it.phaseId == run.phaseId && !operatorBlockRetryCompleted },
-      specReference = run.request.runInvariants.specReference,
       implementationContinuation = implementationContinuationFor(run),
       validationDepth = run.request.goalContinuation?.validationDepth ?: ValidationDepth.DEFAULT,
       validationGateFindings = run.validationGateFindings,

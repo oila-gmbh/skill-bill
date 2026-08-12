@@ -12,7 +12,6 @@ import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.review.model.ReviewIssueCategory
 import skillbill.workflow.model.CodeReviewExecutionMode
-import skillbill.workflow.model.SpecSource
 import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
@@ -43,12 +42,10 @@ object FeatureTaskRuntimePhasePromptComposer {
     resolvedReviewTier: CodeReviewExecutionMode? = null,
     reviewDecidingRule: String? = null,
     priorBlockerFindingIds: List<String> = emptyList(),
-    specSource: SpecSource = SpecSource.LOCAL,
     priorSchemaFailure: String? = null,
     priorTerminalFailure: String? = null,
     correctiveRepairContext: FeatureTaskRuntimeCorrectiveRepairContext? = null,
     operatorBlockRetry: FeatureTaskRuntimeOperatorBlockRetry? = null,
-    specReference: String? = null,
     implementationContinuation: FeatureTaskRuntimeImplementationContinuation? = null,
     validationDepth: ValidationDepth = ValidationDepth.DEFAULT,
     validationGateFindings: ValidationFindingSetProjection? = null,
@@ -89,8 +86,7 @@ object FeatureTaskRuntimePhasePromptComposer {
           baselineUntrackedPaths = baselineUntrackedPaths,
         ),
       ),
-      commitExclusionDirective(briefing.phaseId, issueKey, specSource),
-      specCommitInclusionDirective(briefing.phaseId, specReference, specSource),
+      commitExclusionDirective(briefing.phaseId, issueKey),
       briefing.briefingText,
       operatorBlockRetryDirective(briefing.phaseId, operatorBlockRetry),
       // At most one correction path is rendered: schema-correction suppresses continuation above;

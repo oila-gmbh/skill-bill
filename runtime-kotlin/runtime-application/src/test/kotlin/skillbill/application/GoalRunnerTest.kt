@@ -76,6 +76,8 @@ import skillbill.ports.persistence.model.FeatureVerifySessionSummary
 import skillbill.ports.persistence.model.WorkflowStateRecord
 import skillbill.ports.workflow.GoalSubtaskReviewGitOperations
 import skillbill.ports.workflow.GoalSubtaskReviewGitOperationsProvider
+import skillbill.ports.workflow.ScopedStagingGitOperations
+import skillbill.ports.workflow.ScopedStagingGitOperationsProvider
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineResult
@@ -812,7 +814,7 @@ class GoalRunnerLinearScratchFinalizeTest {
     assertIs<GoalRunnerRunReport.Completed>(runner.run(linearRunRequest(repoRoot)))
 
     assertTrue(scratch.deletions.isEmpty(), "local mode must not delete any spec scratch")
-    assertTrue(Files.exists(specDir.resolve("spec.md")), "local mode keeps the committed parent spec")
+    assertTrue(Files.exists(specDir.resolve("spec.md")), "local mode keeps the parent spec on disk")
   }
 
   @Test
@@ -820,7 +822,7 @@ class GoalRunnerLinearScratchFinalizeTest {
     val repoRoot = Files.createTempDirectory("goal-linear-finalize")
     val scratch = RecordingSpecScratchStore()
     val git = CommitAllRecordingGitOperations(
-      dirtyPorcelain = " M .feature-specs/SKILL-56-goal/decomposition-manifest.yaml",
+      dirtyPorcelain = " M src/Extra.kt",
       currentBranch = "feat/SKILL-56-goal",
     )
     val store = InMemoryGoalManifestStore(
@@ -840,16 +842,45 @@ class GoalRunnerLinearScratchFinalizeTest {
     assertIs<GoalRunnerRunReport.Completed>(runner.run(linearRunRequest(repoRoot)))
     // Once before commit-all, once after PR open (idempotent delete).
     assertEquals(2, scratch.deletedDirectories.size, "linear scratch must be deleted before commit-all")
-    assertEquals(1, git.stageAllCalls)
+    assertEquals(listOf(listOf("src/Extra.kt")), git.stagePathsCalls)
     assertEquals(
       listOf("chore(SKILL-56): goal finalization commit-all on 'feat/SKILL-56-goal'"),
       git.commitMessages,
     )
+    assertEquals(0, git.stageAllCalls)
     assertEquals(listOf("feat/SKILL-56-goal"), git.pushedBranches)
   }
 
   @Test
-  fun `local finalize commit-all stages commits and pushes remaining dirty paths including the manifest`() {
+  fun `local finalize skips commit when only the collapsed feature-specs directory is dirty`() {
+    val repoRoot = Files.createTempDirectory("goal-local-finalize-specs-only")
+    val git = CommitAllRecordingGitOperations(
+      dirtyPorcelain = "?? .feature-specs/",
+      currentBranch = "feat/SKILL-56-goal",
+      unpushedCommits = true,
+    )
+    val store = InMemoryGoalManifestStore(
+      manifest = manifest(subtaskCount = 1)
+        .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1"),
+    )
+    val runner = GoalRunner(
+      store,
+      RecordingSubtaskLauncher { launchFacts() },
+      RecordingOutcomeStore(),
+      RecordingPullRequestPort(),
+      specScratchStore = RecordingSpecScratchStore(),
+      gitOperations = git,
+    )
+
+    assertIs<GoalRunnerRunReport.Completed>(runner.run(linearRunRequest(repoRoot)))
+    assertEquals(0, git.stageAllCalls)
+    assertTrue(git.stagePathsCalls.isEmpty())
+    assertTrue(git.commitMessages.isEmpty())
+    assertEquals(listOf("feat/SKILL-56-goal"), git.pushedBranches)
+  }
+
+  @Test
+  fun `local finalize commit-all stages implementation paths but excludes the manifest`() {
     val repoRoot = Files.createTempDirectory("goal-local-finalize")
     val git = CommitAllRecordingGitOperations(
       dirtyPorcelain = " M .feature-specs/SKILL-56-goal/decomposition-manifest.yaml\n M src/Extra.kt",
@@ -869,7 +900,38 @@ class GoalRunnerLinearScratchFinalizeTest {
     )
 
     assertIs<GoalRunnerRunReport.Completed>(runner.run(linearRunRequest(repoRoot)))
-    assertEquals(1, git.stageAllCalls)
+    assertEquals(0, git.stageAllCalls)
+    assertEquals(listOf(listOf("src/Extra.kt")), git.stagePathsCalls)
+    assertEquals(
+      listOf("chore(SKILL-56): goal finalization commit-all on 'feat/SKILL-56-goal'"),
+      git.commitMessages,
+    )
+    assertEquals(listOf("feat/SKILL-56-goal"), git.pushedBranches)
+  }
+
+  @Test
+  fun `local finalize commit-all ignores leftover collapsed feature-specs dirt`() {
+    val repoRoot = Files.createTempDirectory("goal-local-finalize-collapsed-specs")
+    val git = CommitAllRecordingGitOperations(
+      dirtyPorcelain = "?? .feature-specs/\n M src/Extra.kt",
+      currentBranch = "feat/SKILL-56-goal",
+    )
+    val store = InMemoryGoalManifestStore(
+      manifest = manifest(subtaskCount = 1)
+        .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1"),
+    )
+    val runner = GoalRunner(
+      store,
+      RecordingSubtaskLauncher { launchFacts() },
+      RecordingOutcomeStore(),
+      RecordingPullRequestPort(),
+      specScratchStore = RecordingSpecScratchStore(),
+      gitOperations = git,
+    )
+
+    assertIs<GoalRunnerRunReport.Completed>(runner.run(linearRunRequest(repoRoot)))
+    assertEquals(0, git.stageAllCalls)
+    assertEquals(listOf(listOf("src/Extra.kt")), git.stagePathsCalls)
     assertEquals(
       listOf("chore(SKILL-56): goal finalization commit-all on 'feat/SKILL-56-goal'"),
       git.commitMessages,
@@ -1355,8 +1417,9 @@ private class CommitAllRecordingGitOperations(
   private val currentBranch: String,
   private val unpushedCommits: Boolean = false,
   private val pushError: String? = null,
-) : WorkflowGitOperations, GoalSubtaskReviewGitOperationsProvider {
+) : WorkflowGitOperations, GoalSubtaskReviewGitOperationsProvider, ScopedStagingGitOperationsProvider {
   var stageAllCalls: Int = 0
+  val stagePathsCalls: MutableList<List<String>> = mutableListOf()
   val commitMessages: MutableList<String> = mutableListOf()
   val pushedBranches: MutableList<String> = mutableListOf()
   private var porcelain: String = dirtyPorcelain
@@ -1375,9 +1438,35 @@ private class CommitAllRecordingGitOperations(
     return WorkflowGitOperationResult(status = "ok", value = "")
   }
 
+  override val scopedStagingOperations: ScopedStagingGitOperations = object : ScopedStagingGitOperations {
+    override fun stagePaths(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult {
+      stagePathsCalls += paths
+      return WorkflowGitOperationResult(status = "ok", value = "")
+    }
+
+    override fun captureIndexState(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
+      WorkflowGitOperationResult(status = "ok", value = "")
+
+    override fun restoreIndexState(repoRoot: Path, paths: List<String>, snapshot: String): WorkflowGitOperationResult =
+      WorkflowGitOperationResult(status = "ok", value = "")
+
+    override fun stagedPaths(repoRoot: Path): WorkflowGitOperationResult =
+      WorkflowGitOperationResult(status = "ok", value = "")
+
+    override fun pathContentIdentities(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
+      WorkflowGitOperationResult(status = "ok", value = "")
+  }
+
   override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult {
     commitMessages += message
-    porcelain = ""
+    porcelain = porcelain.lineSequence()
+      .filter { line ->
+        line.length >= 4 &&
+          line.substring(3).substringAfterLast(" -> ").trim().trimEnd('/').let { path ->
+            path == ".feature-specs" || path.startsWith(".feature-specs/")
+          }
+      }
+      .joinToString("\n")
     return WorkflowGitOperationResult(status = "ok", value = "sha-finalize")
   }
 

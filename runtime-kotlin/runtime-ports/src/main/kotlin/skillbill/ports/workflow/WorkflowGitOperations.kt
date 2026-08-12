@@ -28,9 +28,8 @@ interface WorkflowGitOperations {
 
   fun currentBranch(repoRoot: Path): WorkflowGitOperationResult
 
-  // Goal finalization uses this for true commit-all (`git add -A`). Mid-run checkpoints stage an
-  // explicit owned-path inventory through [stagePaths] instead; a repository-wide add cannot express
-  // ownership during those checkpoints.
+  // Legacy repository-wide staging seam. Goal finalization and mid-run checkpoints stage explicit
+  // path inventories through [stagePaths]; a repository-wide add cannot express workflow ownership.
   fun stageAll(repoRoot: Path): WorkflowGitOperationResult = WorkflowGitOperationResult(status = "ok", value = "")
 
   fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult
