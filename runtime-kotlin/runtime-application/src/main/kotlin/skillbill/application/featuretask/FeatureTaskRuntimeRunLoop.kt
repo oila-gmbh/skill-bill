@@ -67,11 +67,14 @@ import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeTransitionFunction
+import skillbill.workflow.taskruntime.model.CorrectiveRepairCapturedResponse
+import skillbill.workflow.taskruntime.model.CorrectiveRepairDiagnosticLocator
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairGapIdentities
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeNextPhase
@@ -2928,7 +2931,10 @@ internal class FeatureTaskRuntimeRunLoop(
     )
     if (formatBlock == null) {
       loop.iteration += 1
-      loop.priorCorrection = PriorAttemptCorrection.schemaGate(requireNotNull(attempt.schemaInvalidRetryReason))
+      loop.priorCorrection = PriorAttemptCorrection.schemaGate(
+        requireNotNull(attempt.schemaInvalidRetryReason),
+        correctiveRepairContext = attempt.correctiveRepairContext,
+      )
       observability.fixLoopIteration(run.phaseId, agentId, loop.iteration, loop.malformedAttemptCount)
       return null
     }
@@ -2990,7 +2996,12 @@ internal class FeatureTaskRuntimeRunLoop(
       is FeatureTaskRuntimeFixLoopDecision.Retry -> {
         loop.iteration += 1
         loop.semanticIteration += 1
-        loop.priorCorrection = attempt.semanticRetryReason?.let(PriorAttemptCorrection::schemaGate)
+        loop.priorCorrection = attempt.semanticRetryReason?.let { retryReason ->
+          PriorAttemptCorrection.schemaGate(
+            retryReason,
+            correctiveRepairContext = attempt.correctiveRepairContext,
+          )
+        }
         observability.fixLoopIteration(run.phaseId, agentId, loop.iteration, decision.fixLoopIteration)
         null
       }
@@ -3484,12 +3495,12 @@ internal class FeatureTaskRuntimeRunLoop(
       .requireAcceptedOutput(run.phaseId)
     settleValidatedOutput(
       run, iteration, acceptedOutput.normalizedOutput, acceptedOutput.repairEvidence, observability, fileManifest,
-      outputBytes, outputTruncated, outputByteSize, outputSha256,
+      outputText, outputBytes, outputTruncated, outputByteSize, outputSha256,
     )
   } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
     val path = rejectionPath(error.reason)
     val reason = payloadFreeRejectionReason("phase-output-schema", path)
-    recordRejectedOutput(
+    val diagnosticIdentity = recordRejectedOutput(
       run, iteration, "phase-output-schema", error.reason, outputBytes, path = path,
       outputTruncated = outputTruncated, outputByteSize = outputByteSize, outputSha256 = outputSha256,
     )
@@ -3498,15 +3509,88 @@ internal class FeatureTaskRuntimeRunLoop(
       fileManifest,
       malformedOutput = error.failureKind == FeatureTaskRuntimePhaseOutputFailureKind.MALFORMED,
       retryReason = retryRejectionReason(reason, error.payloadFreeReason),
+      correctiveRepairContext = correctiveRepairContextForRejection(
+        run = run,
+        iteration = iteration,
+        outputText = outputText,
+        outputTruncated = outputTruncated,
+        outputByteSize = outputByteSize,
+        outputSha256 = outputSha256,
+        diagnosticIdentity = diagnosticIdentity,
+        rejectionRule = "phase-output-schema",
+        rejectionPath = path,
+        payloadFreeConstraint = error.payloadFreeReason.orEmpty(),
+      ),
     )
   } catch (error: InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError) {
     val path = rejectionPath(error.reason)
     val reason = payloadFreeRejectionReason("audit-repair-plan-schema", path)
-    recordRejectedOutput(
+    val diagnosticIdentity = recordRejectedOutput(
       run, iteration, "audit-repair-plan-schema", error.reason, outputBytes, path = path,
       outputTruncated = outputTruncated, outputByteSize = outputByteSize, outputSha256 = outputSha256,
     )
-    schemaInvalidAttempt(reason, fileManifest, retryReason = retryRejectionReason(reason, error.payloadFreeReason))
+    schemaInvalidAttempt(
+      reason,
+      fileManifest,
+      retryReason = retryRejectionReason(reason, error.payloadFreeReason),
+      correctiveRepairContext = correctiveRepairContextForRejection(
+        run = run,
+        iteration = iteration,
+        outputText = outputText,
+        outputTruncated = outputTruncated,
+        outputByteSize = outputByteSize,
+        outputSha256 = outputSha256,
+        diagnosticIdentity = diagnosticIdentity,
+        rejectionRule = "audit-repair-plan-schema",
+        rejectionPath = path,
+        payloadFreeConstraint = error.payloadFreeReason.orEmpty(),
+      ),
+    )
+  }
+
+  /**
+   * Builds the in-flight corrective-repair context from the same capture metadata and diagnostic
+   * identity just recorded for this rejection. Truncated captures stay payload-free (digest/bytes
+   * only); an unchanged body within budget can carry Exact for the authorized repair projection.
+   */
+  private fun correctiveRepairContextForRejection(
+    run: PhaseRun,
+    iteration: Int,
+    outputText: String,
+    outputTruncated: Boolean,
+    outputByteSize: Long,
+    outputSha256: String,
+    diagnosticIdentity: String,
+    rejectionRule: String,
+    rejectionPath: String,
+    payloadFreeConstraint: String,
+  ): FeatureTaskRuntimeCorrectiveRepairContext {
+    val utf8ByteCount = outputByteSize.coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
+    val captured = if (outputTruncated) {
+      // Truncated stdout is not the complete capture; digest/byte metadata still refer to the
+      // observed stream, so never classify the retained excerpt as Exact.
+      CorrectiveRepairCapturedResponse.AlreadyTruncated(
+        utf8ByteCount = utf8ByteCount,
+        digestSha256 = outputSha256,
+      )
+    } else {
+      // Classify from the captured text itself so Exact digest/byte metadata always match the body
+      // framed into the repair projection (stdout normalization must not trip known-* mismatches).
+      CorrectiveRepairCapturedResponse.classify(
+        body = outputText,
+        alreadyTruncated = false,
+      )
+    }
+    return FeatureTaskRuntimeCorrectiveRepairContext(
+      phaseId = run.phaseId,
+      attempt = iteration.coerceAtLeast(1),
+      repairTurn = run.validationGateRepairTurn.takeIf { it > 0 },
+      rejectionRule = rejectionRule,
+      rejectionPath = rejectionPath,
+      payloadFreeConstraint = payloadFreeConstraint,
+      diagnosticLocator = CorrectiveRepairDiagnosticLocator(diagnosticIdentity),
+      captured = captured,
+    )
   }
 
   private fun recordRejectedOutput(
@@ -3562,6 +3646,7 @@ internal class FeatureTaskRuntimeRunLoop(
     repairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence?,
     observability: FeatureTaskRuntimeRunObservability,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
+    outputText: String,
     outputBytes: ByteArray,
     outputTruncated: Boolean,
     outputByteSize: Long,
@@ -3571,7 +3656,7 @@ internal class FeatureTaskRuntimeRunLoop(
     // validation_receipt consumer projection requires them. Attest measured-absent counts here so
     // the first completed attempt satisfies write_history without burning a fix-loop retry.
     val attested = attestAbsentGateValidationReceipt(run, normalizedOutput)
-    val outputText = attested.canonicalJson
+    val outputTextCanonical = attested.canonicalJson
     val outputMap = attested.envelope
     fun reject(rule: String, detail: String): AttemptResult {
       val structuredIdentity = structuredRepairDiagnosticIdentity(detail)
@@ -3579,13 +3664,32 @@ internal class FeatureTaskRuntimeRunLoop(
       val path = structuredIdentity?.second ?: rejectionPath(detail)
       val reason = payloadFreeRejectionReason(rule, if (structuredIdentity == null) path else "/")
       val retryReason = retryRejectionReason(reason, detail)
-      recordRejectedOutput(
+      val diagnosticIdentity = recordRejectedOutput(
         run, iteration, diagnosticRule, retryReason, outputBytes, path = path,
         outputTruncated = outputTruncated, outputByteSize = outputByteSize, outputSha256 = outputSha256,
       )
-      return schemaInvalidAttempt(reason, fileManifest, retryReason = retryReason)
+      // Semantic/schema rejection after a successful parse: rebuild the repair context from the same
+      // capture that was just recorded, using the payload-free operator reason as the constraint so
+      // value-bearing detail stays out of the typed context.
+      return schemaInvalidAttempt(
+        reason,
+        fileManifest,
+        retryReason = retryReason,
+        correctiveRepairContext = correctiveRepairContextForRejection(
+          run = run,
+          iteration = iteration,
+          outputText = outputText,
+          outputTruncated = outputTruncated,
+          outputByteSize = outputByteSize,
+          outputSha256 = outputSha256,
+          diagnosticIdentity = diagnosticIdentity,
+          rejectionRule = diagnosticRule,
+          rejectionPath = path,
+          payloadFreeConstraint = reason,
+        ),
+      )
     }
-    firstValidatedOutputRejection(run.phaseId, outputText, outputMap)?.let { (rule, reason) ->
+    firstValidatedOutputRejection(run.phaseId, outputTextCanonical, outputMap)?.let { (rule, reason) ->
       return reject(rule, reason)
     }
     val repositoryFingerprint = completedPhaseRepositoryFingerprint(run)?.let { result ->
@@ -4701,12 +4805,14 @@ internal class FeatureTaskRuntimeRunLoop(
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
     malformedOutput: Boolean = false,
     retryReason: String = operatorReason,
+    correctiveRepairContext: FeatureTaskRuntimeCorrectiveRepairContext? = null,
   ): AttemptResult = AttemptResult.schemaInvalid(
     operatorReason = operatorReason,
     fileManifest = fileManifest,
     rejectedOutput = null,
     malformedOutput = malformedOutput,
     retryReason = retryReason,
+    correctiveRepairContext = correctiveRepairContext,
   )
 
   private fun persistPhase(
@@ -5420,6 +5526,7 @@ internal class FeatureTaskRuntimeRunLoop(
       override val fileManifest: FeatureTaskRuntimePhaseFileManifest,
       override val rejectedOutput: String?,
       override val malformedOutput: Boolean,
+      val correctiveRepairContext: FeatureTaskRuntimeCorrectiveRepairContext?,
     ) : AttemptResult
 
     /**
@@ -5461,6 +5568,8 @@ internal class FeatureTaskRuntimeRunLoop(
       }
     val rejectedOutput: String? get() = (this as? SchemaInvalid)?.rejectedOutput
     val malformedOutput: Boolean get() = (this as? SchemaInvalid)?.malformedOutput == true
+    val correctiveRepairContext: FeatureTaskRuntimeCorrectiveRepairContext?
+      get() = (this as? SchemaInvalid)?.correctiveRepairContext
 
     /** The operator-facing sentence for whichever non-settled variant this is. */
     val retryableOperatorReason: String?
@@ -5516,12 +5625,14 @@ internal class FeatureTaskRuntimeRunLoop(
         rejectedOutput: String?,
         malformedOutput: Boolean = false,
         retryReason: String = operatorReason,
+        correctiveRepairContext: FeatureTaskRuntimeCorrectiveRepairContext? = null,
       ): AttemptResult = SchemaInvalid(
         operatorReason = operatorReason,
         retryReason = retryReason,
         fileManifest = fileManifest,
         rejectedOutput = rejectedOutput,
         malformedOutput = malformedOutput,
+        correctiveRepairContext = correctiveRepairContext,
       )
     }
   }

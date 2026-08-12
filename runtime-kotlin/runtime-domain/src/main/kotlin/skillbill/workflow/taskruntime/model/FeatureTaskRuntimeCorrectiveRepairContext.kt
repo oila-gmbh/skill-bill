@@ -37,6 +37,21 @@ data class FeatureTaskRuntimeCorrectiveRepairBudget(
     }
   }
 
+  /**
+   * Rejects a projection that would carry more discrete items than [maxCollectionItems]. Called at the
+   * typed context/projection boundary before any prompt rendering so an oversized collection never
+   * reaches the agent as a silently truncated list.
+   */
+  fun requireCollectionWithinLimit(itemCount: Int, label: String = "corrective-repair projection") {
+    require(itemCount >= 0) {
+      "FeatureTaskRuntimeCorrectiveRepairBudget collection count for $label must be non-negative, was $itemCount."
+    }
+    require(itemCount <= maxCollectionItems) {
+      "FeatureTaskRuntimeCorrectiveRepairBudget: $label carries $itemCount items against the " +
+        "$maxCollectionItems-item collection budget; the runtime rejects rather than truncating."
+    }
+  }
+
   companion object {
     /**
      * Response body aligns with [FeatureTaskRuntimeHandoffProjectionBudget.PHASE_RECEIPT] so an ordinary
@@ -102,12 +117,26 @@ data class CorrectiveRepairDiagnosticLocator(
     require(identity.isNotBlank()) {
       "CorrectiveRepairDiagnosticLocator.identity must be non-blank."
     }
+    require(OPAQUE_IDENTITY_PATTERN.matches(identity)) {
+      "CorrectiveRepairDiagnosticLocator.identity must be an opaque identifier " +
+        "(letters, digits, '.', '_', ':', '-'; length 1..128); paths, whitespace, and " +
+        "value-bearing text are rejected."
+    }
   }
+
+  /** Validated opaque identity only — never a path, multiline secret, or value-bearing excerpt. */
+  val sanitizedIdentity: String
+    get() = identity
 
   /** Payload-free guidance naming the authorized lookup mechanism without embedding raw content. */
   fun authorizedLookupGuidance(): String =
-    "Use the private diagnostic locator '$identity' only through the existing authorized " +
+    "Use the private diagnostic locator '$sanitizedIdentity' only through the existing authorized " +
       "private-diagnostic mechanism. Do not invent an excerpt of the rejected response."
+
+  companion object {
+    /** Production `rod_<sha256>` and synthetic opaque test ids; rejects paths and free text. */
+    private val OPAQUE_IDENTITY_PATTERN: Regex = Regex("^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
+  }
 }
 
 /**
@@ -347,6 +376,9 @@ data class CorrectiveRepairPromptProjection(
 
   companion object {
     fun from(context: FeatureTaskRuntimeCorrectiveRepairContext): CorrectiveRepairPromptProjection {
+      // One captured response is one collection item. Enforce before any body framing so an
+      // undersized collection budget cannot silently omit or truncate projection entries.
+      context.budget.requireCollectionWithinLimit(itemCount = 1)
       val captured = context.captured
       if (captured is CorrectiveRepairCapturedResponse.Exact) {
         val framed = renderExactUntrustedSection(
