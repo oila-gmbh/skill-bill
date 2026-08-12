@@ -7,6 +7,9 @@ import com.google.gson.JsonSyntaxException
 import dev.skillbill.intellij.domain.ACTIVE_DURATION_AS_OF_WIRE_KEY
 import dev.skillbill.intellij.domain.ACTIVE_DURATION_MS_WIRE_KEY
 import dev.skillbill.intellij.domain.CURRENT_MODEL_WIRE_KEY
+import dev.skillbill.intellij.domain.CURRENT_PHASE_EXECUTION_KINDS
+import dev.skillbill.intellij.domain.CURRENT_PHASE_EXECUTION_WIRE_KEY
+import dev.skillbill.intellij.domain.CurrentPhaseExecution
 import dev.skillbill.intellij.domain.CurrentPhaseModel
 import dev.skillbill.intellij.domain.EFFORT_MAX_LENGTH
 import dev.skillbill.intellij.domain.MODEL_MAX_LENGTH
@@ -105,6 +108,7 @@ object IdeStatusJsonMapper {
         val updatedAt = root.getAsInstant("updated_at")
         val planning = root.parsePlanning()
         val currentModel = root.parseCurrentModel()
+        val currentPhaseExecution = root.parseCurrentPhaseExecution()
         // Both optional and goal-family-only: a missing key stays null, never false.
         val pauseRequested = root.getAsBoolean(PAUSE_REQUESTED_WIRE_KEY)
         val pausedAt = root.getAsInstant(PAUSED_AT_WIRE_KEY)
@@ -163,6 +167,7 @@ object IdeStatusJsonMapper {
                 activeDurationMs = activeDurationMs,
                 activeDurationAsOf = activeDurationAsOf,
                 currentModel = currentModel,
+                currentPhaseExecution = currentPhaseExecution,
             )
         }
 
@@ -192,6 +197,7 @@ object IdeStatusJsonMapper {
                         activeDurationMs = activeDurationMs,
                         activeDurationAsOf = activeDurationAsOf,
                         currentModel = currentModel,
+                        currentPhaseExecution = currentPhaseExecution,
                     )
                 } else {
                     SkillBillStatusOutcome.Active(
@@ -215,6 +221,7 @@ object IdeStatusJsonMapper {
                         activeDurationMs = activeDurationMs,
                         activeDurationAsOf = activeDurationAsOf,
                         currentModel = currentModel,
+                        currentPhaseExecution = currentPhaseExecution,
                     )
                 }
             }
@@ -234,6 +241,7 @@ object IdeStatusJsonMapper {
                 activeDurationMs = activeDurationMs,
                 activeDurationAsOf = activeDurationAsOf,
                 currentModel = currentModel,
+                currentPhaseExecution = currentPhaseExecution,
             )
 
             "failed" -> SkillBillStatusOutcome.Failed(
@@ -251,6 +259,7 @@ object IdeStatusJsonMapper {
                 activeDurationMs = activeDurationMs,
                 activeDurationAsOf = activeDurationAsOf,
                 currentModel = currentModel,
+                currentPhaseExecution = currentPhaseExecution,
             )
 
             "idle" -> SkillBillStatusOutcome.Idle(
@@ -317,8 +326,8 @@ object IdeStatusJsonMapper {
         val planning = getAsJsonObjectOrNull("planning") ?: return null
         val state = planning.getAsString("state")?.takeUnless { it.isBlank() } ?: return null
         val sharedPreplanPrepared = planning.getAsBoolean("shared_preplan_prepared") ?: return null
-        val planned = planning.getAsInt("planned_subtask_count")?.takeIf { it >= 0 } ?: return null
-        val total = planning.getAsInt("total_subtask_count")?.takeIf { it >= 0 } ?: return null
+        val planned = planning.getAsStrictInt("planned_subtask_count")?.takeIf { it >= 0 } ?: return null
+        val total = planning.getAsStrictInt("total_subtask_count")?.takeIf { it >= 0 } ?: return null
         return GoalPlanningInfo(
             state = state,
             sharedPreplanPrepared = sharedPreplanPrepared,
@@ -354,6 +363,42 @@ object IdeStatusJsonMapper {
         )
     }
 
+    /**
+     * Same degradation rule as [parsePlanning]: optional context, so a missing block, a
+     * non-object, an unknown kind, a non-positive count, an over-length phase id, a total
+     * on a kind that must not carry one, or a non-strict integer count/total degrades to null
+     * and the surrounding outcome still maps.
+     *
+     * Count and total must be JSON number primitives with no fractional part. Gson's permissive
+     * [JsonElement.asInt] is not used here: fractional numbers, numeric strings, and an explicit
+     * null total reject the whole optional block rather than rendering a coerced value.
+     *
+     * Kind must match the controlled vocabulary exactly — surrounding whitespace is not trimmed
+     * into a valid kind. Kind and count stay exactly as the producer sent them; this parser
+     * never invents a total or re-labels an attempt as a semantic loop.
+     */
+    private fun JsonObject.parseCurrentPhaseExecution(): CurrentPhaseExecution? {
+        val execution = getAsJsonObjectOrNull(CURRENT_PHASE_EXECUTION_WIRE_KEY) ?: return null
+        val phaseId = execution.boundedString("phase_id", PHASE_ID_MAX_LENGTH) ?: return null
+        val kind = execution.getAsStringPrimitive("kind")?.takeIf { it in CURRENT_PHASE_EXECUTION_KINDS }
+            ?: return null
+        val count = execution.getAsStrictInt("count")?.takeIf { it >= 1 } ?: return null
+        val totalElement = execution.get("total")
+        val total = when {
+            totalElement == null -> null
+            // Explicit null is a type error for optional total, not "absent".
+            totalElement.isJsonNull -> return null
+            kind != "bounded_edge" -> return null
+            else -> execution.getAsStrictInt("total")?.takeIf { it >= 1 } ?: return null
+        }
+        return CurrentPhaseExecution(
+            phaseId = phaseId,
+            kind = kind,
+            count = count,
+            total = total,
+        )
+    }
+
     private fun JsonObject.boundedString(key: String, maxLength: Int): String? =
         getAsStringPrimitive(key)?.trim()?.takeIf { it.isNotBlank() && it.length <= maxLength }
 
@@ -368,6 +413,16 @@ object IdeStatusJsonMapper {
         get(key)?.takeUnless { it.isJsonNull }?.let {
             runCatching { it.asInt }.getOrNull()
         }
+
+    /**
+     * Strict JSON integer: a number primitive with no fractional part and in [Int] range.
+     * Strings, booleans, null, and fractional numbers are type errors (null), never coerced.
+     */
+    private fun JsonObject.getAsStrictInt(key: String): Int? {
+        val element = get(key) ?: return null
+        if (!element.isJsonPrimitive || !element.asJsonPrimitive.isNumber) return null
+        return runCatching { element.asBigDecimal.intValueExact() }.getOrNull()
+    }
 
     /** Strict: a JSON string "true" is a type error, not a boolean. */
     private fun JsonObject.getAsBoolean(key: String): Boolean? =

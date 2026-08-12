@@ -342,6 +342,8 @@ class IdeStatusJsonMapperTest {
             "missing required key" to """"planning": {"state": "preplanned", "planned_subtask_count": 1, "total_subtask_count": 4}""",
             "wrong type" to """"planning": {"state": "preplanned", "shared_preplan_prepared": "yes", "planned_subtask_count": 1, "total_subtask_count": 4}""",
             "negative count" to """"planning": {"state": "preplanned", "shared_preplan_prepared": false, "planned_subtask_count": -1, "total_subtask_count": 4}""",
+            "string count" to """"planning": {"state": "preplanned", "shared_preplan_prepared": false, "planned_subtask_count": "1", "total_subtask_count": 4}""",
+            "fractional total" to """"planning": {"state": "preplanned", "shared_preplan_prepared": false, "planned_subtask_count": 1, "total_subtask_count": 4.5}""",
         )
         for ((case, block) in malformed) {
             val outcome = IdeStatusJsonMapper.map(goalPayload(planning = block), now, 0)
@@ -450,13 +452,95 @@ class IdeStatusJsonMapperTest {
         assertNull("An unparseable anchor must not license a live tail", parsed.activeDurationAsOf)
     }
 
+    @Test
+    fun `goal payload carrying current phase execution maps the producer vocabulary`() {
+        val outcome = IdeStatusJsonMapper.map(
+            goalPayload(
+                planning = null,
+                currentPhaseExecution = """"current_phase_execution": {"phase_id": "audit", "kind": "semantic_loop", "count": 2}""",
+            ),
+            now,
+            0,
+        )
+        assertTrue(outcome is SkillBillStatusOutcome.Active)
+        val execution = (outcome as SkillBillStatusOutcome.Active).currentPhaseExecution
+        assertEquals("audit", execution?.phaseId)
+        assertEquals("semantic_loop", execution?.kind)
+        assertEquals(2, execution?.count)
+        assertNull(execution?.total)
+    }
+
+    @Test
+    fun `attempt kind keeps optional total absent so the plugin does not invent a loop`() {
+        val outcome = IdeStatusJsonMapper.map(
+            goalPayload(
+                planning = null,
+                currentPhaseExecution = """"current_phase_execution": {"phase_id": "implement", "kind": "attempt", "count": 3}""",
+            ),
+            now,
+            0,
+        ) as SkillBillStatusOutcome.Active
+        assertEquals("attempt", outcome.currentPhaseExecution?.kind)
+        assertEquals(3, outcome.currentPhaseExecution?.count)
+        assertNull(outcome.currentPhaseExecution?.total)
+    }
+
+    @Test
+    fun `malformed current phase execution degrades to null without failing the mapping`() {
+        val malformed = mapOf(
+            "absent" to null,
+            "non-object" to """"current_phase_execution": "audit"""",
+            "unknown kind" to """"current_phase_execution": {"phase_id": "audit", "kind": "loop", "count": 2}""",
+            "padded kind" to """"current_phase_execution": {"phase_id": "audit", "kind": " semantic_loop ", "count": 2}""",
+            "zero count" to """"current_phase_execution": {"phase_id": "audit", "kind": "pass", "count": 0}""",
+            "negative count" to """"current_phase_execution": {"phase_id": "audit", "kind": "pass", "count": -1}""",
+            "fractional count" to """"current_phase_execution": {"phase_id": "audit", "kind": "pass", "count": 2.5}""",
+            "string count" to """"current_phase_execution": {"phase_id": "audit", "kind": "pass", "count": "2"}""",
+            "explicit null total" to """"current_phase_execution": {"phase_id": "audit", "kind": "semantic_loop", "count": 2, "total": null}""",
+            "fractional total" to """"current_phase_execution": {"phase_id": "plan", "kind": "bounded_edge", "count": 2, "total": 3.5}""",
+            "string total" to """"current_phase_execution": {"phase_id": "plan", "kind": "bounded_edge", "count": 2, "total": "3"}""",
+            "total on pass" to """"current_phase_execution": {"phase_id": "review", "kind": "pass", "count": 2, "total": 3}""",
+            "over-range phase id" to """"current_phase_execution": {"phase_id": "${"p".repeat(65)}", "kind": "attempt", "count": 1}""",
+        )
+        for ((case, block) in malformed) {
+            val outcome = IdeStatusJsonMapper.map(
+                goalPayload(planning = null, currentPhaseExecution = block),
+                now,
+                0,
+            )
+            assertTrue("$case must still map to Active", outcome is SkillBillStatusOutcome.Active)
+            outcome as SkillBillStatusOutcome.Active
+            assertNull("$case must degrade execution to null", outcome.currentPhaseExecution)
+            assertEquals("$case must keep the surrounding outcome", "implement", outcome.currentStepId)
+        }
+    }
+
+    @Test
+    fun `bounded edge may carry a producer-supplied total`() {
+        val outcome = IdeStatusJsonMapper.map(
+            goalPayload(
+                planning = null,
+                currentPhaseExecution = """"current_phase_execution": {"phase_id": "plan", "kind": "bounded_edge", "count": 2, "total": 3}""",
+            ),
+            now,
+            0,
+        ) as SkillBillStatusOutcome.Active
+        assertEquals("bounded_edge", outcome.currentPhaseExecution?.kind)
+        assertEquals(2, outcome.currentPhaseExecution?.count)
+        assertEquals(3, outcome.currentPhaseExecution?.total)
+    }
+
     private fun String.replaceField(field: String, from: String, to: String): String {
         val original = "\"$field\": \"$from\""
         check(contains(original)) { "Fixture no longer contains $original" }
         return replace(original, "\"$field\": \"$to\"")
     }
 
-    private fun goalPayload(planning: String?, currentModel: String? = null): String =
+    private fun goalPayload(
+        planning: String?,
+        currentModel: String? = null,
+        currentPhaseExecution: String? = null,
+    ): String =
         buildString {
             append("{\"contract_version\":\"$IDE_STATUS_CONTRACT_VERSION\",")
             append("\"repository_identity\":\"repo-root-realpath-v1:/repo\",")
@@ -470,6 +554,7 @@ class IdeStatusJsonMapperTest {
             append("\"summary\":\"Goal SKILL-165 in progress.\"")
             planning?.let { append(',').append(it) }
             currentModel?.let { append(',').append(it) }
+            currentPhaseExecution?.let { append(',').append(it) }
             append('}')
         }
 

@@ -30,7 +30,8 @@ import javax.swing.SwingConstants
 object StatusDetailsPopupContent {
     /**
      * Label/value pairs in display order: lifecycle state, the optional identity and step rows, the
-     * optional model row when the snapshot reported one, then progress, clocks, and notes. The
+     * optional model row when the snapshot reported one, exactly one planning or current-phase
+     * execution row when presentation selected one, then progress, clocks, and notes. The
      * byte-identity guarantee belongs to the bar, tooltip, and accessibility text — not to this list,
      * which grows as the popup gains rows.
      */
@@ -42,6 +43,11 @@ object StatusDetailsPopupContent {
             details.workflowId?.let { add("Workflow" to it) }
             details.stepLabel?.let { add("Step" to it) }
             details.modelText?.let { add("Model" to it) }
+            val slotLabel = details.selectedSlotLabel
+            val slotText = details.selectedSlotText
+            if (slotLabel != null && slotText != null) {
+                add(slotLabel to slotText)
+            }
             details.progressText?.let { add("Progress" to it) }
             add("Goal ${details.elapsedNoun}" to details.goalElapsedText)
             add("Subtask ${details.elapsedNoun}" to details.subtaskElapsedText)

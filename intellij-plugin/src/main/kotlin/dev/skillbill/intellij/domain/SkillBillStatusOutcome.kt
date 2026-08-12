@@ -78,6 +78,8 @@ sealed class SkillBillStatusOutcome {
         val activeDurationAsOf: Instant? = null,
         /** Model the current phase launched with; null when the snapshot carried none. */
         val currentModel: CurrentPhaseModel? = null,
+        /** See [CurrentPhaseExecution]; null when the snapshot carried none or it was unusable. */
+        val currentPhaseExecution: CurrentPhaseExecution? = null,
     ) : SkillBillStatusOutcome()
 
     /**
@@ -111,6 +113,8 @@ sealed class SkillBillStatusOutcome {
         val activeDurationAsOf: Instant? = null,
         /** See [Active.currentModel]. */
         val currentModel: CurrentPhaseModel? = null,
+        /** See [Active.currentPhaseExecution]. */
+        val currentPhaseExecution: CurrentPhaseExecution? = null,
     ) : SkillBillStatusOutcome()
 
     data class Stale(
@@ -135,6 +139,8 @@ sealed class SkillBillStatusOutcome {
         val activeDurationAsOf: Instant? = null,
         /** See [Active.currentModel]. */
         val currentModel: CurrentPhaseModel? = null,
+        /** See [Active.currentPhaseExecution]. */
+        val currentPhaseExecution: CurrentPhaseExecution? = null,
     ) : SkillBillStatusOutcome()
 
     data class Blocked(
@@ -157,6 +163,8 @@ sealed class SkillBillStatusOutcome {
         val activeDurationAsOf: Instant? = null,
         /** See [Active.currentModel]. */
         val currentModel: CurrentPhaseModel? = null,
+        /** See [Active.currentPhaseExecution]. */
+        val currentPhaseExecution: CurrentPhaseExecution? = null,
     ) : SkillBillStatusOutcome()
 
     data class Failed(
@@ -179,6 +187,8 @@ sealed class SkillBillStatusOutcome {
         val activeDurationAsOf: Instant? = null,
         /** See [Active.currentModel]. */
         val currentModel: CurrentPhaseModel? = null,
+        /** See [Active.currentPhaseExecution]. */
+        val currentPhaseExecution: CurrentPhaseExecution? = null,
     ) : SkillBillStatusOutcome()
 
     data class Unavailable(
@@ -250,6 +260,18 @@ data class CurrentPhaseModel(
      * Absent when the producer could not resolve it.
      */
     val phaseId: String? = null,
+)
+
+/**
+ * Authoritative current-phase execution measure from the IDE status wire. [kind] and [count]
+ * are producer-defined; [total] is present only for a meaningful bounded-edge cap. The plugin
+ * never invents a loop total or re-labels an attempt as a semantic loop.
+ */
+data class CurrentPhaseExecution(
+    val phaseId: String,
+    val kind: String,
+    val count: Int,
+    val total: Int? = null,
 )
 
 enum class UnavailableReason {

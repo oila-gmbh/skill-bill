@@ -225,6 +225,86 @@ class IdeStatusSchemaValidatorTest {
     assertFalse(required.contains("paused_at"), "paused_at must stay optional; required=$required")
   }
 
+  @Test
+  fun `valid current_phase_execution object passes and remains optional`() {
+    val snapshot = validGoalSnapshot()
+    snapshot["current_phase_execution"] = linkedMapOf(
+      "phase_id" to "review",
+      "kind" to "pass",
+      "count" to 3,
+    )
+    IdeStatusSchemaValidator.validate(snapshot, "test-current-phase-execution-valid")
+    IdeStatusSchemaValidator.validate(validGoalSnapshot(), "test-current-phase-execution-absent")
+  }
+
+  @Test
+  fun `malformed current_phase_execution fails loudly with typed error`() {
+    val badKind = validGoalSnapshot()
+    badKind["current_phase_execution"] = linkedMapOf(
+      "phase_id" to "audit",
+      "kind" to "loop",
+      "count" to 1,
+    )
+    assertFailsWith<InvalidIdeStatusSchemaError> {
+      IdeStatusSchemaValidator.validate(badKind, "test-current-phase-execution-bad-kind")
+    }
+    val zeroCount = validGoalSnapshot()
+    zeroCount["current_phase_execution"] = linkedMapOf(
+      "phase_id" to "audit",
+      "kind" to "pass",
+      "count" to 0,
+    )
+    assertFailsWith<InvalidIdeStatusSchemaError> {
+      IdeStatusSchemaValidator.validate(zeroCount, "test-current-phase-execution-zero-count")
+    }
+    val unknownProperty = validGoalSnapshot()
+    unknownProperty["current_phase_execution"] = linkedMapOf(
+      "phase_id" to "audit",
+      "kind" to "pass",
+      "count" to 1,
+      "loop_id" to "audit_gap",
+    )
+    assertFailsWith<InvalidIdeStatusSchemaError> {
+      IdeStatusSchemaValidator.validate(unknownProperty, "test-current-phase-execution-unknown-property")
+    }
+    val totalOnPass = validGoalSnapshot()
+    totalOnPass["current_phase_execution"] = linkedMapOf(
+      "phase_id" to "review",
+      "kind" to "pass",
+      "count" to 2,
+      "total" to 3,
+    )
+    assertFailsWith<InvalidIdeStatusSchemaError> {
+      IdeStatusSchemaValidator.validate(totalOnPass, "test-current-phase-execution-total-on-pass")
+    }
+    val totalOnSemanticLoop = validGoalSnapshot()
+    totalOnSemanticLoop["current_phase_execution"] = linkedMapOf(
+      "phase_id" to "audit",
+      "kind" to "semantic_loop",
+      "count" to 1,
+      "total" to 2,
+    )
+    assertFailsWith<InvalidIdeStatusSchemaError> {
+      IdeStatusSchemaValidator.validate(totalOnSemanticLoop, "test-current-phase-execution-total-on-loop")
+    }
+    val boundedWithTotal = validGoalSnapshot()
+    boundedWithTotal["current_phase_execution"] = linkedMapOf(
+      "phase_id" to "plan",
+      "kind" to "bounded_edge",
+      "count" to 1,
+      "total" to 2,
+    )
+    IdeStatusSchemaValidator.validate(boundedWithTotal, "test-current-phase-execution-bounded-total")
+  }
+
+  @Test
+  fun `current_phase_execution is not in the schema required list`() {
+    assertFalse(
+      schemaRequiredNames().contains("current_phase_execution"),
+      "current_phase_execution must stay optional so older producers remain valid.",
+    )
+  }
+
   private fun schemaRequiredNames(): List<String> {
     val resourceStream = IdeStatusSchemaValidator::class.java.classLoader
       .getResourceAsStream(IdeStatusSchemaPaths.CLASSPATH_RESOURCE)

@@ -167,6 +167,55 @@ properties:
       reason:
         type: string
         minLength: 1
+  current_phase_execution:
+    type: object
+    additionalProperties: false
+    description: >
+      Authoritative current-phase execution measure for the phase that is current
+      in the same snapshot. Omitted when no reliable value exists, during goal
+      planning (use `planning` instead), and for idle/problem snapshots. Never
+      carries a completed neighbouring phase's historical loop or pass.
+      `kind` distinguishes semantic loops/passes from generic attempts and from
+      bounded edge iterations; `total` is present only for a meaningful bounded
+      edge cap and must be absent for every other kind.
+    required:
+      - phase_id
+      - kind
+      - count
+    properties:
+      phase_id:
+        type: string
+        minLength: 1
+        maxLength: 64
+      kind:
+        type: string
+        enum:
+          - pass
+          - semantic_loop
+          - gate_run
+          - bounded_edge
+          - attempt
+      count:
+        type: integer
+        minimum: 1
+      total:
+        type: integer
+        minimum: 1
+    allOf:
+      - if:
+          properties:
+            kind:
+              enum:
+                - pass
+                - semantic_loop
+                - gate_run
+                - attempt
+          required:
+            - kind
+        then:
+          not:
+            required:
+              - total
   pause_requested:
     type: boolean
     description: >

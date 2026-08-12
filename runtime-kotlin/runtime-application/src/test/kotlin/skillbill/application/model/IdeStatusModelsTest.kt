@@ -4,6 +4,7 @@ import skillbill.goalrunner.model.GoalPlanningStatusState
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -72,6 +73,98 @@ class IdeStatusModelsTest {
     // A present-but-null entry would fail schema validation differently; assert true absence.
     assertFalse(wire.containsKey("planning"))
     assertTrue(wire.containsKey("current_step"))
+  }
+
+  @Test
+  fun `toStatusWireMap omits current_phase_execution when unset so older snapshots stay identical`() {
+    val wire = snapshot(planning = null).toStatusWireMap()
+
+    assertFalse(wire.containsKey("current_phase_execution"))
+  }
+
+  @Test
+  fun `toStatusWireMap emits current_phase_execution with snake_case keys and omits total when unset`() {
+    val withTotal = snapshot(planning = null)
+      .copy(
+        currentPhaseExecution = IdeStatusCurrentPhaseExecution(
+          phaseId = "plan",
+          kind = IdeStatusCurrentPhaseExecutionKind.BOUNDED_EDGE,
+          count = 1,
+          total = 2,
+        ),
+      )
+      .toStatusWireMap()
+    val withoutTotal = snapshot(planning = null)
+      .copy(
+        currentPhaseExecution = IdeStatusCurrentPhaseExecution(
+          phaseId = "audit",
+          kind = IdeStatusCurrentPhaseExecutionKind.SEMANTIC_LOOP,
+          count = 2,
+        ),
+      )
+      .toStatusWireMap()
+
+    assertEquals(
+      mapOf(
+        "phase_id" to "plan",
+        "kind" to "bounded_edge",
+        "count" to 1,
+        "total" to 2,
+      ),
+      withTotal["current_phase_execution"],
+    )
+    assertEquals(
+      mapOf(
+        "phase_id" to "audit",
+        "kind" to "semantic_loop",
+        "count" to 2,
+      ),
+      withoutTotal["current_phase_execution"],
+    )
+    assertFalse((withoutTotal["current_phase_execution"] as Map<*, *>).containsKey("total"))
+  }
+
+  @Test
+  fun `currentPhaseExecution rejects total unless kind is bounded_edge`() {
+    assertFailsWith<IllegalArgumentException> {
+      IdeStatusCurrentPhaseExecution(
+        phaseId = "audit",
+        kind = IdeStatusCurrentPhaseExecutionKind.SEMANTIC_LOOP,
+        count = 1,
+        total = 2,
+      )
+    }
+    assertFailsWith<IllegalArgumentException> {
+      IdeStatusCurrentPhaseExecution(
+        phaseId = "review",
+        kind = IdeStatusCurrentPhaseExecutionKind.PASS,
+        count = 1,
+        total = 3,
+      )
+    }
+    assertFailsWith<IllegalArgumentException> {
+      IdeStatusCurrentPhaseExecution(
+        phaseId = "validate",
+        kind = IdeStatusCurrentPhaseExecutionKind.GATE_RUN,
+        count = 1,
+        total = 1,
+      )
+    }
+    assertFailsWith<IllegalArgumentException> {
+      IdeStatusCurrentPhaseExecution(
+        phaseId = "implement",
+        kind = IdeStatusCurrentPhaseExecutionKind.ATTEMPT,
+        count = 1,
+        total = 1,
+      )
+    }
+    // bounded_edge may carry a meaningful cap.
+    IdeStatusCurrentPhaseExecution(
+      phaseId = "plan",
+      kind = IdeStatusCurrentPhaseExecutionKind.BOUNDED_EDGE,
+      count = 1,
+      total = 2,
+    )
   }
 
   @Test

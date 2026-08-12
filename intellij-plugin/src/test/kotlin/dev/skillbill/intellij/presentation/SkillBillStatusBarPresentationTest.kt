@@ -1,5 +1,6 @@
 package dev.skillbill.intellij.presentation
 
+import dev.skillbill.intellij.domain.CurrentPhaseExecution
 import dev.skillbill.intellij.domain.CurrentPhaseModel
 import dev.skillbill.intellij.domain.FEATURE_GOAL_WORKFLOW_FAMILY
 import dev.skillbill.intellij.domain.MODEL_TEXT_MAX_LENGTH
@@ -9,6 +10,7 @@ import java.time.Duration
 import java.time.Instant
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -290,33 +292,48 @@ class SkillBillStatusBarPresentationTest {
     }
 
     @Test
-    fun `planning renders a bar segment and both tooltip lines for either pre-planning state`() {
-        for (preplanPrepared in listOf(true, false)) {
-            val mapped = SkillBillStatusBarPresentation.map(
-                active(
-                    progressCompleted = 0,
-                    progressTotal = 4,
-                    planning = planning(sharedPreplanPrepared = preplanPrepared),
+    fun `planning renders the full line and planning progress without the execution offset`() {
+        val partiallyPlanned = SkillBillStatusBarPresentation.map(
+            active(
+                progressCompleted = 0,
+                progressTotal = 15,
+                planning = GoalPlanningInfo(
+                    state = "partially_planned",
+                    sharedPreplanPrepared = true,
+                    plannedSubtaskCount = 10,
+                    totalSubtaskCount = 15,
                 ),
-                now,
-            )
-            // The bar budget drops the redundant progress pair and the subtask clock so
-            // the planning segment and the goal clock both survive within 48 chars.
-            assertEquals("Skill Bill · Implement · Planning 1/4 · 2h 00m", mapped.barText)
-            assertTrue(
-                mapped.barText.length <= SkillBillStatusBarPresentation.BAR_TEXT_MAX_LENGTH,
-            )
-            assertTrue(
-                mapped.tooltipText,
-                mapped.tooltipText.contains(
-                    if (preplanPrepared) "Pre-planning: Done" else "Pre-planning: In progress",
+            ),
+            now,
+        )
+        val fullLine = "Planning: partially planned, 10/15 plans saved"
+        assertTrue(partiallyPlanned.barText.contains("Planning 10/15"))
+        assertTrue(
+            partiallyPlanned.barText.length <= SkillBillStatusBarPresentation.BAR_TEXT_MAX_LENGTH,
+        )
+        assertTrue(partiallyPlanned.tooltipText.contains(fullLine))
+        assertTrue(partiallyPlanned.accessibleDescription.contains(fullLine))
+        assertEquals("Planning", partiallyPlanned.details.selectedSlotLabel)
+        assertEquals("partially planned, 10/15 plans saved", partiallyPlanned.details.selectedSlotText)
+        assertEquals("10/15", partiallyPlanned.details.progressText)
+
+        // One saved plan out of fifteen must come from planning counts, not completed+1.
+        val oneSaved = SkillBillStatusBarPresentation.map(
+            active(
+                progressCompleted = 0,
+                progressTotal = 15,
+                planning = GoalPlanningInfo(
+                    state = "partially_planned",
+                    sharedPreplanPrepared = true,
+                    plannedSubtaskCount = 1,
+                    totalSubtaskCount = 15,
                 ),
-            )
-            assertTrue(mapped.tooltipText, mapped.tooltipText.contains("Planning: 1/4 subtasks"))
-            assertTrue(mapped.accessibleDescription.contains("Planning: 1/4 subtasks"))
-            // Planning counts planned subtasks; execution progress marks the running one.
-            assertEquals("1/4", mapped.details.progressText)
-        }
+            ),
+            now,
+        )
+        assertTrue(oneSaved.barText.contains("Planning 1/15"))
+        assertEquals("1/15", oneSaved.details.progressText)
+        assertTrue(oneSaved.tooltipText.contains("Planning: partially planned, 1/15 plans saved"))
     }
 
     @Test
@@ -332,19 +349,22 @@ class SkillBillStatusBarPresentationTest {
                 "\nLast update: 2026-08-07 12:00:00Z\nworking",
             withoutPlanning.tooltipText,
         )
+        assertNull(withoutPlanning.details.selectedSlotLabel)
+        assertNull(withoutPlanning.details.selectedSlotText)
     }
 
     @Test
-    fun `a non-goal family snapshot renders no planning segment or pre-planning line`() {
+    fun `a non-goal family snapshot renders no planning segment or planning line`() {
         // Non-goal families never carry planning on the wire, so the ui value is null.
         val mapped = SkillBillStatusBarPresentation.map(active(planning = null), now)
         assertFalse(mapped.barText.contains("Planning"))
-        assertFalse(mapped.tooltipText.contains("Pre-planning"))
-        assertFalse(mapped.accessibleDescription.contains("Pre-planning"))
+        assertFalse(mapped.tooltipText.contains("Planning:"))
+        assertFalse(mapped.accessibleDescription.contains("Planning:"))
+        assertNull(mapped.details.selectedSlotLabel)
     }
 
     @Test
-    fun `planning disappears once implementation starts`() {
+    fun `planning disappears once implementation starts and execution fills the slot`() {
         // Relevance is decided in StatusUiMapper; by the time presentation sees a
         // prepared or executing snapshot the ui planning value is already null.
         val prepared = StatusUiMapper.map(
@@ -352,23 +372,37 @@ class SkillBillStatusBarPresentationTest {
             now,
         )
         val executing = StatusUiMapper.map(
-            activeOutcome(planning = domainPlanning("partially_planned"), currentSubtaskId = "2", completed = 0),
+            activeOutcome(
+                planning = domainPlanning("partially_planned"),
+                currentSubtaskId = "2",
+                completed = 0,
+                currentPhaseExecution = CurrentPhaseExecution(
+                    phaseId = "implement",
+                    kind = "attempt",
+                    count = 1,
+                ),
+            ),
             now,
         )
         val progressed = StatusUiMapper.map(
             activeOutcome(planning = domainPlanning("partially_planned"), currentSubtaskId = null, completed = 1),
             now,
         )
-        for (state in listOf(prepared, executing, progressed)) {
+        for (state in listOf(prepared, progressed)) {
             val mapped = SkillBillStatusBarPresentation.map(state, now)
             assertFalse(mapped.barText, mapped.barText.contains("Planning"))
-            assertFalse(mapped.tooltipText, mapped.tooltipText.contains("Pre-planning"))
             assertFalse(mapped.tooltipText, mapped.tooltipText.contains("Planning:"))
+            assertNull(mapped.details.selectedSlotLabel)
         }
+        val executingMapped = SkillBillStatusBarPresentation.map(executing, now)
+        assertFalse(executingMapped.tooltipText.contains("Planning:"))
+        assertEquals("Current phase", executingMapped.details.selectedSlotLabel)
+        assertEquals("Implement attempt 1", executingMapped.details.selectedSlotText)
+        assertTrue(executingMapped.barText.contains("Implement attempt 1"))
     }
 
     @Test
-    fun `stale mid-planning keeps the stale treatment and the planning segment`() {
+    fun `stale mid-planning keeps the stale treatment and the full planning line`() {
         val mapped = SkillBillStatusBarPresentation.map(
             SkillBillStatusUiState.Stale(
                 headline = "Skill Bill: Plan (stale)",
@@ -385,7 +419,104 @@ class SkillBillStatusBarPresentationTest {
         assertTrue(mapped.isStaleMarked)
         assertTrue(mapped.tooltipText.contains(SkillBillStatusBarPresentation.STALE_NOTE))
         assertEquals("Skill Bill · stale · Plan · Planning 1/4", mapped.barText)
-        assertTrue(mapped.tooltipText.contains("Planning: 1/4 subtasks"))
+        assertTrue(mapped.tooltipText.contains("Planning: partially planned, 1/4 plans saved"))
+        assertEquals("Planning", mapped.details.selectedSlotLabel)
+    }
+
+    @Test
+    fun `authoritative audit and review counts render honest labels without inventing totals`() {
+        val audit = SkillBillStatusBarPresentation.map(
+            active().copy(
+                currentPhaseExecution = CurrentPhaseExecution(
+                    phaseId = "audit",
+                    kind = "semantic_loop",
+                    count = 2,
+                ),
+            ),
+            now,
+        )
+        assertTrue(audit.barText.contains("Audit loop 2"))
+        assertTrue(audit.tooltipText.contains("Audit loop 2"))
+        assertTrue(audit.accessibleDescription.contains("Audit loop 2"))
+        assertEquals("Current phase", audit.details.selectedSlotLabel)
+        assertEquals("Audit loop 2", audit.details.selectedSlotText)
+
+        val review = SkillBillStatusBarPresentation.map(
+            active().copy(
+                currentPhaseExecution = CurrentPhaseExecution(
+                    phaseId = "review",
+                    kind = "pass",
+                    count = 3,
+                ),
+            ),
+            now,
+        )
+        assertTrue(review.barText.contains("Review pass 3"))
+        assertEquals("Review pass 3", review.details.selectedSlotText)
+
+        val attempt = SkillBillStatusBarPresentation.map(
+            active().copy(
+                currentPhaseExecution = CurrentPhaseExecution(
+                    phaseId = "implement",
+                    kind = "attempt",
+                    count = 2,
+                ),
+            ),
+            now,
+        )
+        assertEquals("Implement attempt 2", attempt.details.selectedSlotText)
+        assertFalse(attempt.details.selectedSlotText!!.contains("/"))
+
+        val gate = SkillBillStatusBarPresentation.map(
+            active().copy(
+                currentPhaseExecution = CurrentPhaseExecution(
+                    phaseId = "validate",
+                    kind = "gate_run",
+                    count = 1,
+                ),
+            ),
+            now,
+        )
+        assertEquals("Validate gate 1", gate.details.selectedSlotText)
+        assertFalse(gate.details.selectedSlotText!!.contains("/"))
+    }
+
+    @Test
+    fun `control characters in phase id do not reach tooltip accessibility or popup text`() {
+        // Catches rendering that inserts raw phase_id and lets ISO controls corrupt UI text.
+        val mapped = SkillBillStatusBarPresentation.map(
+            active().copy(
+                currentPhaseExecution = CurrentPhaseExecution(
+                    phaseId = "audit\u0000fix",
+                    kind = "semantic_loop",
+                    count = 2,
+                ),
+            ),
+            now,
+        )
+        assertFalse(mapped.barText.contains('\u0000'))
+        assertFalse(mapped.tooltipText.contains('\u0000'))
+        assertFalse(mapped.accessibleDescription.contains('\u0000'))
+        assertFalse(mapped.details.selectedSlotText!!.contains('\u0000'))
+        assertEquals("Audit fix loop 2", mapped.details.selectedSlotText)
+    }
+
+    @Test
+    fun `long execution labels stay within the bar budget while tooltip keeps the full wording`() {
+        val mapped = SkillBillStatusBarPresentation.map(
+            active(stepLabel = "Implement ".repeat(8)).copy(
+                currentPhaseExecution = CurrentPhaseExecution(
+                    phaseId = "write_history",
+                    kind = "bounded_edge",
+                    count = 2,
+                    total = 3,
+                ),
+            ),
+            now,
+        )
+        assertTrue(mapped.barText.length <= SkillBillStatusBarPresentation.BAR_TEXT_MAX_LENGTH)
+        assertTrue(mapped.tooltipText.contains("Write History 2/3"))
+        assertTrue(mapped.accessibleDescription.contains("Write History 2/3"))
     }
 
     @Test
@@ -552,6 +683,7 @@ class SkillBillStatusBarPresentationTest {
         planning: GoalPlanningInfo?,
         currentSubtaskId: String?,
         completed: Int,
+        currentPhaseExecution: CurrentPhaseExecution? = null,
     ) = SkillBillStatusOutcome.Active(
         observedAt = now,
         summary = "working",
@@ -568,6 +700,7 @@ class SkillBillStatusBarPresentationTest {
         subtaskStartedAt = subtaskStarted,
         updatedAt = now,
         planning = planning,
+        currentPhaseExecution = currentPhaseExecution,
     )
 
     private fun active(

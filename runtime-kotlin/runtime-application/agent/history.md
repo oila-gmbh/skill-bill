@@ -1,3 +1,12 @@
+## [2026-08-11] SKILL-184 subtask 1 — Current-phase execution on the IDE status wire
+Areas: runtime-application/featuretask, runtime-application/model, runtime-application/work, runtime-domain/workflow/taskruntime, orchestration/contracts, runtime-infra-fs (schema fixtures)
+- Additive optional `current_phase_execution` (`phase_id`, `kind`, `count`, optional `total`) on the IDE status wire and typed models; absent value keeps older producers valid; `IDE_STATUS_CONTRACT_VERSION` unchanged
+- Projector emits only for the snapshot's current phase (suppresses during goal planning; never leaks a completed neighbour's loop/pass); kinds distinguish `pass` / `semantic_loop` / `gate_run` / `bounded_edge` / `attempt`
+- Derivation from durable authorities: audit first pass vs audit-gap loop, review pass number (stale completed pass suppressed after advance), validation `gate_run_count`, capped backward edges with `total`, else generic attempt — no invented unbounded totals
+- Pattern followed: schema + model + status projector + golden/parity tests (same surfacing path as `current_model`); planning stays on the existing `planning` object
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
 ## [2026-08-11] SKILL-183 subtask 1 — Launched phase model is durable and IDE-visible
 Areas: runtime-application/featuretask, runtime-application/model, runtime-application/work, runtime-domain/workflow/taskruntime/model, orchestration/contracts
 - `FeatureTaskRuntimePhaseRecord` gained optional `launched_model` / `launched_effort`; the run loop records the model+effort the child was actually launched with, and records neither when no directive resolved

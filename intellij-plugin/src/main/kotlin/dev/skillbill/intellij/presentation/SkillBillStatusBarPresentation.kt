@@ -1,6 +1,8 @@
 package dev.skillbill.intellij.presentation
 
+import dev.skillbill.intellij.domain.CurrentPhaseExecution
 import dev.skillbill.intellij.domain.FEATURE_GOAL_WORKFLOW_FAMILY
+import dev.skillbill.intellij.domain.GoalPlanningInfo
 import dev.skillbill.intellij.domain.MODEL_TEXT_MAX_LENGTH
 import java.time.Duration
 import java.time.Instant
@@ -25,11 +27,19 @@ object SkillBillStatusBarPresentation {
         val step = normalizeLabel(anchored.stepLabel)
         val goalText = elapsedLabel(anchored.goalElapsed)
         val subtaskText = elapsedLabel(anchored.subtaskElapsed)
-        val progress = validProgress(anchored.progressCompleted, anchored.progressTotal)
-        val progressText = progress?.let { (completed, total) ->
-            "${renderedPosition(anchored, completed, total)}/$total"
+        val selectedSlot = selectDisplaySlot(anchored.planning, anchored.currentPhaseExecution)
+        val progress = when {
+            selectedSlot is DisplaySlot.Planning ->
+                selectedSlot.planned to selectedSlot.total
+            else ->
+                validProgress(anchored.progressCompleted, anchored.progressTotal)
         }
-        val planning = anchored.planning
+        val progressText = progress?.let { (completed, total) ->
+            when (selectedSlot) {
+                is DisplaySlot.Planning -> "$completed/$total"
+                else -> "${renderedPosition(anchored, completed, total)}/$total"
+            }
+        }
         // Popup-only: the bar, tooltip, and accessibility text stay byte-identical.
         // The phase is appended for the goal family only, where the Step row shows a goal-level
         // label (often "Planning") and would otherwise leave the model attributed to nothing. For
@@ -48,17 +58,17 @@ object SkillBillStatusBarPresentation {
             // so an unbounded value widens the whole popup and can clip the action row off-screen.
             normalizeLabel(composed)?.let { truncateForBar(it, MODEL_TEXT_MAX_LENGTH) }
         }
-        val planningSegment = planning?.let { "Planning ${it.plannedSubtaskCount}/${it.totalSubtaskCount}" }
+        val slotSegment = selectedSlot?.barSegment
 
         val fullBar = when (anchored) {
             is SkillBillStatusUiState.Active ->
-                buildRunBar("Skill Bill", step ?: anchored.stepLabel, planningSegment, goalText, subtaskText, progressText)
+                buildRunBar("Skill Bill", step ?: anchored.stepLabel, slotSegment, goalText, subtaskText, progressText)
 
             is SkillBillStatusUiState.Paused ->
-                buildRunBar("Skill Bill · paused", step, planningSegment, goalText, subtaskText, progressText)
+                buildRunBar("Skill Bill · paused", step, slotSegment, goalText, subtaskText, progressText)
 
             is SkillBillStatusUiState.Stale ->
-                buildRunBar("Skill Bill · stale", step, planningSegment, goalText, subtaskText, progressText)
+                buildRunBar("Skill Bill · stale", step, slotSegment, goalText, subtaskText, progressText)
 
             is SkillBillStatusUiState.Done ->
                 buildRunBar("Skill Bill · done", step, null, goalText, subtaskText, progressText)
@@ -71,8 +81,7 @@ object SkillBillStatusBarPresentation {
         }
 
         val barText = truncateForBar(normalizeLabel(fullBar) ?: fullBar)
-        val preplanLine = planning?.let { "Pre-planning: " + if (it.sharedPreplanPrepared) "Done" else "In progress" }
-        val planningLine = planning?.let { "Planning: ${it.plannedSubtaskCount}/${it.totalSubtaskCount} subtasks" }
+        val slotFullLine = selectedSlot?.fullLine
         val tooltip = buildTooltip(
             anchored,
             lifecycle,
@@ -80,8 +89,7 @@ object SkillBillStatusBarPresentation {
             goalText,
             subtaskText,
             progressText,
-            preplanLine,
-            planningLine,
+            slotFullLine,
         )
         val accessibleName = "Skill Bill status: $lifecycle"
         val accessibleDescription = buildAccessibilityDescription(
@@ -92,8 +100,7 @@ object SkillBillStatusBarPresentation {
             progressText = progressText,
             detail = anchored.detail,
             elapsedNoun = elapsedNoun(anchored),
-            preplanLine = preplanLine,
-            planningLine = planningLine,
+            slotFullLine = slotFullLine,
         )
 
         return MappedPresentation(
@@ -109,6 +116,8 @@ object SkillBillStatusBarPresentation {
                 lifecycleState = lifecycle,
                 stepLabel = step ?: anchored.stepLabel,
                 modelText = modelText,
+                selectedSlotLabel = selectedSlot?.popupLabel,
+                selectedSlotText = selectedSlot?.popupValue,
                 progressText = progressText,
                 goalElapsedText = goalText,
                 subtaskElapsedText = subtaskText,
@@ -150,9 +159,44 @@ object SkillBillStatusBarPresentation {
         if (duration == null) UNAVAILABLE_ELAPSED else formatDuration(duration)
 
     /**
+     * One selected planning-or-current-execution slot so bar, tooltip, accessibility, and popup
+     * cannot disagree. Planning wins while still relevant; once it is gone the producer-supplied
+     * execution value fills the same slot. Neither value synthesizes the other.
+     */
+    internal fun selectDisplaySlot(
+        planning: GoalPlanningInfo?,
+        execution: CurrentPhaseExecution?,
+    ): DisplaySlot? {
+        if (planning != null) {
+            val planned = planning.plannedSubtaskCount
+            val total = planning.totalSubtaskCount
+            val stateLabel = planningStateLabel(planning.state)
+            return DisplaySlot.Planning(
+                planned = planned,
+                total = total,
+                barSegment = "Planning $planned/$total",
+                fullLine = "Planning: $stateLabel, $planned/$total plans saved",
+                popupLabel = "Planning",
+                popupValue = "$stateLabel, $planned/$total plans saved",
+            )
+        }
+        if (execution != null) {
+            val wording = executionWording(execution)
+            return DisplaySlot.Execution(
+                barSegment = wording,
+                fullLine = wording,
+                popupLabel = "Current phase",
+                popupValue = wording,
+            )
+        }
+        return null
+    }
+
+    /**
      * The rendered numerator is the *current* position, not the completed count: with a
      * subtask in flight "1/4" reads as "1 of 4 done" and contradicts the running subtask
      * clock beside it. Only in-flight lifecycles shift; the wire fields are untouched.
+     * Planning progress never uses this offset — it comes from planned/total counts directly.
      */
     private fun renderedPosition(state: SkillBillStatusUiState, completed: Int, total: Int): Int {
         val inFlight = state is SkillBillStatusUiState.Active ||
@@ -162,28 +206,28 @@ object SkillBillStatusBarPresentation {
     }
 
     /**
-     * The bar has a hard 48-char budget, and prefix + step + planning + two clocks +
+     * The bar has a hard 48-char budget, and prefix + step + planning/execution + two clocks +
      * progress overflows it, so a plain concatenation loses whichever segment lands last.
      * Segments are therefore dropped by ascending value until the line fits: the progress
-     * pair is redundant while planning is shown (planning only renders before execution
-     * starts), and the subtask clock is the least informative of the two clocks.
+     * pair is redundant while the selected slot is shown, and the subtask clock is the least
+     * informative of the two clocks.
      */
     private fun buildRunBar(
         prefix: String,
         stepLabel: String?,
-        planningSegment: String?,
+        slotSegment: String?,
         goalText: String,
         subtaskText: String,
         progressText: String?,
     ): String {
-        val progressRank = if (planningSegment == null) 2 else 0
+        val progressRank = if (slotSegment == null) 2 else 0
         val optional = listOf(subtaskText to 1, progressText to progressRank)
         var dropRank = -1
         while (true) {
             val bar = buildString {
                 append(prefix)
                 stepLabel?.let { append(" · ").append(it) }
-                planningSegment?.let { append(" · ").append(it) }
+                slotSegment?.let { append(" · ").append(it) }
                 if (dropRank < 3) append(" · ").append(goalText)
                 for ((text, rank) in optional) {
                     if (text != null && rank > dropRank) append(" · ").append(text)
@@ -201,16 +245,14 @@ object SkillBillStatusBarPresentation {
         goalText: String,
         subtaskText: String,
         progressText: String?,
-        preplanLine: String?,
-        planningLine: String?,
+        slotFullLine: String?,
     ): String =
         buildString {
             append("Skill Bill — ").append(lifecycle)
             state.issueKey?.let { append("\nIssue: ").append(it) }
             state.workflowId?.let { append("\nWorkflow: ").append(it) }
             step?.let { append("\nStep: ").append(it) }
-            preplanLine?.let { append('\n').append(it) }
-            planningLine?.let { append('\n').append(it) }
+            slotFullLine?.let { append('\n').append(it) }
             val elapsedNoun = elapsedNoun(state)
             append("\nGoal ").append(elapsedNoun).append(": ").append(goalText)
             append("\nSubtask ").append(elapsedNoun).append(": ").append(subtaskText)
@@ -239,14 +281,12 @@ object SkillBillStatusBarPresentation {
         progressText: String?,
         detail: String?,
         elapsedNoun: String,
-        preplanLine: String?,
-        planningLine: String?,
+        slotFullLine: String?,
     ): String =
         buildString {
             append("Skill Bill. State: ").append(lifecycle).append('.')
             step?.let { append(" Step: ").append(it).append('.') }
-            preplanLine?.let { append(' ').append(it).append('.') }
-            planningLine?.let { append(' ').append(it).append('.') }
+            slotFullLine?.let { append(' ').append(it).append('.') }
             append(" Goal ").append(elapsedNoun).append(": ").append(goalText).append('.')
             append(" Subtask ").append(elapsedNoun).append(": ").append(subtaskText).append('.')
             progressText?.let { append(" Progress: ").append(it).append('.') }
@@ -303,6 +343,12 @@ object SkillBillStatusBarPresentation {
         val stepLabel: String?,
         /** Pre-resolved model row for the details popup; null renders no row at all. */
         val modelText: String? = null,
+        /**
+         * Exactly one planning or current-phase execution row when relevant. Label and value
+         * arrive pre-resolved so the popup stays passive; both null renders no such row.
+         */
+        val selectedSlotLabel: String? = null,
+        val selectedSlotText: String? = null,
         val progressText: String?,
         val goalElapsedText: String,
         val subtaskElapsedText: String,
@@ -313,4 +359,73 @@ object SkillBillStatusBarPresentation {
         /** Caveat for surfaces that render these numbers; null when the reading is live. */
         val staleNote: String?,
     )
+
+    /**
+     * Shared formatter seam for the single planning-or-execution display slot. Compact and full
+     * surfaces read from the same instance so they cannot disagree about which value is shown.
+     * Strings are computed by [selectDisplaySlot] so nested classes never call enclosing members.
+     */
+    internal sealed class DisplaySlot {
+        abstract val barSegment: String
+        abstract val fullLine: String
+        abstract val popupLabel: String
+        abstract val popupValue: String
+
+        data class Planning(
+            val planned: Int,
+            val total: Int,
+            override val barSegment: String,
+            override val fullLine: String,
+            override val popupLabel: String,
+            override val popupValue: String,
+        ) : DisplaySlot()
+
+        data class Execution(
+            override val barSegment: String,
+            override val fullLine: String,
+            override val popupLabel: String,
+            override val popupValue: String,
+        ) : DisplaySlot()
+    }
+
+    private fun planningStateLabel(state: String): String =
+        when (state) {
+            "not_started" -> "not started"
+            "preplanned" -> "preplanned"
+            "partially_planned" -> "partially planned"
+            "blocked" -> "blocked"
+            "prepared" -> "prepared"
+            else -> state.replace('_', ' ')
+        }
+
+    /**
+     * Honest phase-specific wording from producer-supplied kind and count. A total appears only
+     * when the producer supplied one (bounded_edge); attempt and gate counts never invent a loop
+     * total.
+     */
+    private fun executionWording(execution: CurrentPhaseExecution): String {
+        val phase = phaseDisplayName(execution.phaseId)
+        return when (execution.kind) {
+            "semantic_loop" -> "$phase loop ${execution.count}"
+            "pass" -> "$phase pass ${execution.count}"
+            "gate_run" -> "$phase gate ${execution.count}"
+            "attempt" -> "$phase attempt ${execution.count}"
+            "bounded_edge" -> {
+                val total = execution.total
+                if (total != null) "$phase ${execution.count}/$total" else "$phase ${execution.count}"
+            }
+            else -> "$phase ${execution.count}"
+        }
+    }
+
+    /** Title-cases a phase id after control-character normalization so UI text stays printable. */
+    private fun phaseDisplayName(phaseId: String): String {
+        val cleaned = normalizeLabel(phaseId) ?: return "Phase"
+        return cleaned.split('_')
+            .filter { it.isNotEmpty() }
+            .joinToString(" ") { part ->
+                part.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+            }
+            .ifBlank { cleaned }
+    }
 }
