@@ -1,5 +1,16 @@
 # featuretask runtime boundary history
 
+## [2026-08-12] SKILL-187 subtask 1 — Corrective-repair context and safe prompt projection
+Areas: runtime-domain/workflow/taskruntime/model, runtime-application/featuretask (prompt composer, directives, run loop)
+- Added versioned in-flight `FeatureTaskRuntimeCorrectiveRepairContext` (contract 0.1) with phase/attempt/repair-turn, payload-free constraint, diagnostic locator, response digest/byte count, and closed availability + inclusion-reason enums — no Jackson, SQLDelight, or diagnostic-store types cross the seam
+- Response states stay exact vs already-truncated vs over-budget vs unavailable; UTF-8 and collection budgets are named constants validated before render so a non-exact body is never labeled exact
+- Composer projects the exact response only inside an authorized untrusted repair section (delimiter-safe against fences/braces/YAML/Unicode); required output contract and payload-free guidance stay outside; unavailable/truncated/oversized paths fall back to the opaque diagnostic locator without a misleading excerpt
+- Run loop builds the context for schema-invalid corrective retries only; privacy coverage keeps value-bearing validator text, secrets, and raw output out of non-authorized surfaces
+- Reusable: typed repair-context + untrusted-section prompt projection for any schema-gate retry that must show prior output without treating it as instructions
+- Limitation: context is non-durable and does not add a public raw-output reader or change structural-repair / retry-cap semantics (those remain later subtasks)
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-08-11] SKILL-177 — Test-value discipline directive
 Areas: runtime-application/featuretask (prompt directives + composer)
 - Added `testValueDisciplineDirective(phaseId)` beside `minimalismDisciplineDirective`: titled write-time test-value bar for plan, implement, and implement_fix only (dedicated phase set — plan is not mutating)

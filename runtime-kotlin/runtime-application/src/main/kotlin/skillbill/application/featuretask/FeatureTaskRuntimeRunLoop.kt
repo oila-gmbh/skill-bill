@@ -3481,11 +3481,15 @@ internal class FeatureTaskRuntimeRunLoop(
    * Strips known response-value dumps from semantic-gate detail before it can enter a retry prompt
    * outside the authorized repair section. Schema-structure fragments (property names, found/expected
    * types, maxLength caps) remain so length and shape corrections still fire.
+   *
+   * Caps at [SCHEMA_GATE_DETAIL_MAX_CHARS] before pattern work so an oversized wire verdict cannot
+   * amplify retry CPU; when the cap cuts inside a quoted verdict, [scrubOffVocabularyVerdictQuote]
+   * strips the open marker through end rather than leaving a partial response-derived quote.
    */
   private fun scrubResponseDerivedGateDetail(detail: String): String? {
     if (detail.isBlank()) return null
-    var text = detail
-    text = OFF_VOCABULARY_VERDICT_PATTERN.replace(text, "off-vocabulary verdict")
+    var text = detail.take(SCHEMA_GATE_DETAIL_MAX_CHARS)
+    text = scrubOffVocabularyVerdictQuote(text)
     text = OFFENDING_VALUE_APPENDIX_PATTERN.replace(text, "")
     text = EXPECTED_ACTUAL_LIST_PATTERN.replace(text, "")
     return text.trim().takeUnless { it.isBlank() }
@@ -5777,15 +5781,28 @@ private const val MAX_CHECKPOINT_OWNED_PATHS = 500
 /**
  * Quotes a response wire verdict that must not reach retry prompts outside the repair section.
  *
- * The gate reason always continues with ` and no` after the closing quote. Match non-greedily to
- * that boundary so an apostrophe inside the wire verdict (e.g. `can't_pass`) cannot terminate the
- * scrub early and leave a response-derived suffix in Violated constraint.
+ * The gate reason always continues with ` and no` after the closing quote. Locate that
+ * gate-authored boundary from the end so an interior apostrophe — including one followed by
+ * ` and no` inside the wire verdict (e.g. `x' and no y`) — cannot terminate the scrub early and
+ * leave a response-derived suffix in Violated constraint. Index scan, not a lazy regex: repeated
+ * unmatched prefixes must not amplify CPU across retries.
  */
-private val OFF_VOCABULARY_VERDICT_PATTERN =
-  Regex(
-    """off-vocabulary verdict\s+'.*?'(?=\s+and\s+no\b)""",
-    setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL),
-  )
+private const val OFF_VOCABULARY_VERDICT_OPEN = "off-vocabulary verdict '"
+private const val OFF_VOCABULARY_VERDICT_CLOSE_BOUNDARY = "' and no"
+
+private fun scrubOffVocabularyVerdictQuote(text: String): String {
+  val start = text.indexOf(OFF_VOCABULARY_VERDICT_OPEN, ignoreCase = true)
+  if (start < 0) return text
+  val afterOpenQuote = start + OFF_VOCABULARY_VERDICT_OPEN.length
+  val closeAt = text.lastIndexOf(OFF_VOCABULARY_VERDICT_CLOSE_BOUNDARY)
+  return if (closeAt >= afterOpenQuote) {
+    text.substring(0, start) + "off-vocabulary verdict" + text.substring(closeAt + 1)
+  } else {
+    // Cap or malformation left no gate boundary — strip the open marker and remainder so a partial
+    // response-derived quote cannot remain outside the repair section.
+    text.substring(0, start) + "off-vocabulary verdict"
+  }
+}
 
 /** Dual-reason validators sometimes append the instance dump after an em-dash or colon. */
 private val OFFENDING_VALUE_APPENDIX_PATTERN =
