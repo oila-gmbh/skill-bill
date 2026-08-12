@@ -23,11 +23,16 @@ required unless the discovery algorithm itself changes.
 
 Every router, reviewer, and validator agrees on the following procedure:
 
-1. Enumerate every immediate subdirectory of `platform-packs/`.
+1. Enumerate every immediate subdirectory of `platform-packs/`, resolved from
+   the skill-adjacent `platform-packs` link installed next to this skill (or
+   from `~/.skill-bill/platform-packs/` / the install-published review catalog).
+   Do **not** treat the reviewed repository root's `platform-packs/` as the
+   discovery root unless that repository is itself the Skill Bill source tree.
 2. For each candidate slug, load
    `platform-packs/<slug>/platform.yaml` via the shell+content contract
    loader. Loud-fail rules apply — see
-   [shell-content-contract.md](../shell-content-contract/PLAYBOOK.md).
+   [shell-content-contract.md](../shell-content-contract/PLAYBOOK.md). The
+   loud-fail must name the slot key and the fully resolved absolute path.
 3. Each loaded manifest contributes:
    - `platform` — the stack slug.
    - `routing_signals.strong` — list of strong detection signals (path

@@ -271,9 +271,13 @@ and missing manifest-declared quality-check content always fails loudly.
 The shell loader, validator, and stack-routing playbook all share a common
 discovery algorithm:
 
-1. Walk `platform-packs/` for immediate subdirectories.
+1. Walk `platform-packs/` for immediate subdirectories, resolving that root
+   from the skill-adjacent installed `platform-packs` link (or
+   `~/.skill-bill/platform-packs/` / the install-published review catalog) —
+   not from the reviewed repository unless it is the Skill Bill source tree.
 2. For each candidate slug, load `platform-packs/<slug>/platform.yaml` via the
-   loader.
+   loader. Loud-fail rules apply; missing content must name the slot key and
+   the fully resolved absolute path.
 3. Validate each pack against this contract.
 4. The routed skill name for a platform pack with slug `<slug>` is
    `bill-<slug>-code-review`. Installers and runtime skills must preserve this
