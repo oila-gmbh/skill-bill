@@ -7,6 +7,7 @@ import skillbill.application.featuretask.validation.model.ValidationGateCycleRes
 import skillbill.application.featuretask.validation.model.ValidationGateCycleTerminalOutcome
 import skillbill.application.featuretask.validation.model.ValidationGateProgressStore
 import skillbill.application.featuretask.validation.model.ValidationGateResolution
+import skillbill.application.model.FeatureTaskRuntimeRunEventSink
 import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.error.ContractVersionMismatchError
 import skillbill.ports.validation.ValidationGateRunner
@@ -194,6 +195,34 @@ class FeatureTaskRuntimeValidationGateTest {
     val blocked = assertIs<ValidationGateCycleTerminalOutcome.Blocked>(cycle.outcome)
     assertTrue(blocked.reason.contains("contract_version '0.1'"))
     assertTrue(blocked.reason.contains("Repair the installed platform packs"))
+  }
+
+  @Test
+  fun `throwing progress event sink does not change the gate cycle outcome`() {
+    // Realistic bug: progressStore isolation exists, but ValidationGateProgress emit escapes and
+    // aborts an otherwise passing gate cycle when a status/telemetry observer throws.
+    val progress = mutableListOf<FeatureTaskRuntimeValidationGateProgress>()
+    val throwingSink = FeatureTaskRuntimeRunEventSink {
+      error("status/telemetry observer refused ValidationGateProgress")
+    }
+    val runner = ScriptedGateRunner(listOf(passed(), passed(forced = true)))
+    val cycle = coordinator(declaredResolver(), runner, progress).execute(
+      cycle = ValidationGateCycleRequest(
+        repoRoot = repoRoot,
+        request = minimalRequest().copy(eventSink = throwingSink),
+        validationDepth = ValidationDepth.DEFAULT,
+        changedPaths = listOf("runtime-kotlin/foo.kt"),
+        repositoryCheckpoint = "checkpoint",
+        agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _ ->
+          error("repair must not launch on a clean gate")
+        },
+      ),
+    )
+    assertIs<ValidationGateCycleTerminalOutcome.Completed>(
+      assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,
+    )
+    assertTrue(progress.isNotEmpty())
+    assertEquals(2, runner.calls)
   }
 
   @Test

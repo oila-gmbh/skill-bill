@@ -1355,27 +1355,32 @@ class FeatureTaskRuntimePhasePromptComposerTest {
         correctiveRepairContext = context,
       )
     }
-    assertFailsWith<IllegalArgumentException> {
-      FeatureTaskRuntimePhasePromptComposer.compose(
-        ISSUE_KEY,
-        briefingFor("implement"),
-        implementationContinuation = FeatureTaskRuntimeImplementationContinuation(
-          phaseId = "implement",
-          segmentNumber = 2,
-          completedTaskIds = listOf("task-1"),
-          openObligationIds = listOf("task-2"),
-          obligationNoun = "plan task",
-          changedPaths = emptyList(),
-          deviations = emptyList(),
-          unresolvedItems = emptyList(),
-          reconciliationEvidence = null,
-          repositoryCheckpoint = null,
-          failureDisposition = null,
-        ),
-        priorSchemaFailure = "produced_outputs must be an object.",
-        correctiveRepairContext = context,
-      )
-    }
+    // Schema-correction after incomplete mutating work may still carry a durable continuation; the
+    // composer suppresses it so the corrective launch renders only schema rejection + repair context.
+    val schemaOverContinuation = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("implement"),
+      implementationContinuation = FeatureTaskRuntimeImplementationContinuation(
+        phaseId = "implement",
+        segmentNumber = 2,
+        completedTaskIds = listOf("task-1"),
+        openObligationIds = listOf("task-2"),
+        obligationNoun = "plan task",
+        changedPaths = emptyList(),
+        deviations = emptyList(),
+        unresolvedItems = emptyList(),
+        reconciliationEvidence = null,
+        repositoryCheckpoint = null,
+        failureDisposition = null,
+      ),
+      priorSchemaFailure = "produced_outputs must be an object.",
+      correctiveRepairContext = context,
+    )
+    assertContains(schemaOverContinuation, "Previous attempt was REJECTED by the schema gate")
+    assertContains(schemaOverContinuation, "Untrusted prior phase output")
+    assertTrue(schemaOverContinuation.contains("SKILL187-SHOULD-NOT-APPEAR"))
+    assertFalse(schemaOverContinuation.contains("Continue this implementation"))
+    assertFalse(schemaOverContinuation.contains("segment 2"))
 
     val terminalOnly = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,

@@ -63,9 +63,10 @@ object FeatureTaskRuntimePhasePromptComposer {
       "correctiveRepairContext cannot accompany a retryable-terminal failure; the correction kinds " +
         "must stay separate."
     }
-    require(correctiveRepairContext == null || implementationContinuation == null) {
-      "correctiveRepairContext cannot accompany an incomplete-work continuation."
-    }
+    // Schema-correction retries suppress any durable continuation projection instead of rejecting the
+    // combination: after incomplete mutating work, the next launch may still carry both, and the
+    // corrective path must render only the schema rejection plus authorized repair context.
+    val effectiveContinuation = implementationContinuation.takeUnless { correctiveRepairContext != null }
     return listOf(
       header(issueKey, briefing.phaseId, validationDepth, agentRunValidateFallback),
       ceremonyDirective(briefing, reviewPassNumber),
@@ -92,11 +93,9 @@ object FeatureTaskRuntimePhasePromptComposer {
       specCommitInclusionDirective(briefing.phaseId, specReference, specSource),
       briefing.briefingText,
       operatorBlockRetryDirective(briefing.phaseId, operatorBlockRetry),
-      // The three are mutually exclusive by construction: a semantically incomplete receipt never sets
-      // priorSchemaFailure (it is not schema-invalid), a real schema failure produces no continuation
-      // projection, and a retryable terminal envelope is schema-valid so it sets neither. A prompt
-      // therefore carries at most one of them.
-      implementationContinuationDirective(briefing.phaseId, implementationContinuation),
+      // At most one correction path is rendered: schema-correction suppresses continuation above;
+      // retryable-terminal stays exclusive via the require; incomplete-work alone keeps continuation.
+      implementationContinuationDirective(briefing.phaseId, effectiveContinuation),
       retryCorrectionDirective(briefing, priorSchemaFailure, correctiveRepairContext),
       terminalRetryDirective(priorTerminalFailure),
       outputContract(briefing, reviewPassNumber, priorBlockerFindingIds),

@@ -298,13 +298,17 @@ class FeatureTaskRuntimeValidationGateCoordinator(
       remainingFindingsDroppedCount = remainingFindings?.droppedCount ?: 0,
     )
     progressStore.persist(request.workflowId, progress, request.dbPathOverride)
-    request.eventSink.emit(
-      FeatureTaskRuntimeRunEvent.ValidationGateProgress(
-        workflowId = request.workflowId,
-        phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
-        gateRunCount = progress.gateRunCount,
-      ),
-    )
+    try {
+      request.eventSink.emit(
+        FeatureTaskRuntimeRunEvent.ValidationGateProgress(
+          workflowId = request.workflowId,
+          phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+          gateRunCount = progress.gateRunCount,
+        ),
+      )
+    } catch (@Suppress("TooGenericExceptionCaught") _: Exception) {
+      // Progress observers are a side channel; a throw must not abort or alter the gate cycle.
+    }
     onGateRunCount(progress.gateRunCount)
   }
 
