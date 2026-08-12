@@ -15,6 +15,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 class FeatureTaskRuntimePhaseOutputValidationModelsTest {
   private val normalized = NormalizedFeatureTaskRuntimePhaseOutput(
@@ -94,5 +95,38 @@ class FeatureTaskRuntimePhaseOutputValidationModelsTest {
     }
 
     assertEquals("ambiguous_repair", error.failureCode)
+    assertFalse(error.acceptedAfterStructuralRepair)
+  }
+
+  @Test
+  fun `rejected after structural repair maps acceptedAfterStructuralRepair onto the throwing seam`() {
+    // Realistic bug: adapter keeps digest evidence on Rejected, but requireAccepted drops it and the
+    // corrective retry never learns syntax repair already ran.
+    val evidence = FeatureTaskRuntimePhaseOutputRepairEvidence(
+      format = FeatureTaskRuntimePhaseOutputFormat.JSON,
+      originalDigest = "a".repeat(64),
+      repairedDigest = "b".repeat(64),
+      operation = FeatureTaskRuntimePhaseOutputRepairOperation.ADD_MISSING_CLOSING_DELIMITER,
+      sourceLocation = FeatureTaskRuntimePhaseOutputSourceLocation("audit", 0, 1, 1),
+    )
+    val rejected = FeatureTaskRuntimePhaseOutputValidationResult.Rejected(
+      code = FeatureTaskRuntimePhaseOutputFailureCode.SCHEMA_INVALID,
+      reason = "verdict must be a top-level string",
+      structuralRepairEvidence = evidence,
+    )
+
+    val error = assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
+      rejected.requireAccepted("audit")
+    }
+
+    assertTrue(error.acceptedAfterStructuralRepair)
+    assertEquals(evidence.originalDigest, error.structuralRepairOriginalDigest)
+    assertEquals(evidence.repairedDigest, error.structuralRepairRepairedDigest)
+    assertEquals(evidence.format.wireValue, error.structuralRepairFormat)
+    assertEquals(evidence.operation.wireValue, error.structuralRepairOperation)
+    assertEquals(evidence.sourceLocation.sourceLabel, error.structuralRepairSourceLabel)
+    assertEquals(evidence.sourceLocation.offset, error.structuralRepairSourceOffset)
+    assertEquals(evidence.sourceLocation.line, error.structuralRepairSourceLine)
+    assertEquals(evidence.sourceLocation.column, error.structuralRepairSourceColumn)
   }
 }

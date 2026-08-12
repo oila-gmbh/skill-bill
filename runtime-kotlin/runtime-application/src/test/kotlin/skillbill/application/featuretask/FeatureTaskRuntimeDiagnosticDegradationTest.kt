@@ -110,6 +110,35 @@ class FeatureTaskRuntimeDiagnosticDegradationTest {
     assertContains(summary, "repair turn 1")
   }
 
+  @Test
+  fun `rejected audit sentinel stays private when diagnostic persistence degrades`() {
+    // SKILL-187 AC-008/AC-011: degradation must not change privacy — operator summary stays payload-free
+    // while the first rejected row still retains the synthetic bytes.
+    val database = database()
+    val recorder = recorder(database)
+    recorder.ensureWorkflowOpen(WORKFLOW_ID, "session-1")
+    val sentinel = "SKILL187-DEGRADE-SENTINEL".encodeToByteArray()
+    recorder.recordRejectedOutput(
+      rejection(sentinel, repairTurn = 1).copy(
+        phaseId = "audit",
+        reason = "observation: does not have a value in the enumeration — offending value: blast_radius_inspected",
+      ),
+    )
+    // Force a conflict on the same repair-turn evidence key so degradation emits a payload-free signal.
+    recorder.retainProducerOutput(evidence(sentinel, repairTurn = 1).copy(phaseId = "audit"))
+    recorder.retainProducerOutput(
+      evidence("divergent-bytes".encodeToByteArray(), repairTurn = 1).copy(phaseId = "audit"),
+    )
+
+    val diagnostic = database.rejectedDiagnostics().single { it.metadata.phaseId == "audit" }
+    assertContentEquals(sentinel, diagnostic.payload)
+    assertContains(diagnostic.metadata.reason, "blast_radius_inspected")
+    val summary = recorder.loadDiagnosticSignals(WORKFLOW_ID).single().operatorSummary()
+    assertTrue("SKILL187-DEGRADE-SENTINEL" !in summary)
+    assertTrue("blast_radius_inspected" !in summary)
+    assertContains(summary, "audit")
+  }
+
   private fun database() = RuntimeFakeDatabaseSessionFactory(
     InMemoryRuntimeWorkflowRepository(),
     RecordingLifecycleTelemetryRepository(),

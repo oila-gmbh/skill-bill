@@ -2,7 +2,8 @@ package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PHASE_OUTPUT_VALIDATION_CONTRACT_VERSION
-import skillbill.error.FeatureTaskRuntimePhaseOutputFailureKind
+import skillbill.error.FeatureTaskRuntimePhaseOutputStructuralRepair
+import skillbill.error.FeatureTaskRuntimePhaseOutputStructuralRepairSource
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 
 /** Stable contract version for the typed phase-output validation result. */
@@ -191,6 +192,12 @@ sealed interface FeatureTaskRuntimePhaseOutputValidationResult {
     val diagnosticReason: String = reason,
     val payloadFreeReason: String? = reason,
     val sourceLocation: FeatureTaskRuntimePhaseOutputSourceLocation? = null,
+    /**
+     * Payload-free digest/location evidence from a prior successful delimiter-only structural repair
+     * on this capture. Present when syntax repair accepted the document and the phase schema later
+     * rejected it; absent when no structural repair ran. Never carries response body text.
+     */
+    val structuralRepairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence? = null,
   ) : FeatureTaskRuntimePhaseOutputValidationResult {
     override val normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput? = null
   }
@@ -223,21 +230,27 @@ fun FeatureTaskRuntimePhaseOutputValidationResult.requireAccepted(
 ): NormalizedFeatureTaskRuntimePhaseOutput = when (this) {
   is FeatureTaskRuntimePhaseOutputValidationResult.AcceptedUnchanged -> normalizedOutput
   is FeatureTaskRuntimePhaseOutputValidationResult.AcceptedAfterRepair -> normalizedOutput
-  is FeatureTaskRuntimePhaseOutputValidationResult.Rejected -> throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
-    sourceLabel = sourceLabel,
-    reason = diagnosticReason,
-    payloadFreeReason = payloadFreeReason,
-    failureKind = when (code) {
-      FeatureTaskRuntimePhaseOutputFailureCode.MALFORMED,
-      FeatureTaskRuntimePhaseOutputFailureCode.ROOT_NOT_OBJECT,
-      FeatureTaskRuntimePhaseOutputFailureCode.NO_REPAIR_CANDIDATE,
-      FeatureTaskRuntimePhaseOutputFailureCode.AMBIGUOUS_REPAIR,
-      FeatureTaskRuntimePhaseOutputFailureCode.REPAIR_LIMIT_EXCEEDED,
-      FeatureTaskRuntimePhaseOutputFailureCode.UNSUPPORTED_REPAIR,
-      FeatureTaskRuntimePhaseOutputFailureCode.DUPLICATE_KEY,
-      -> FeatureTaskRuntimePhaseOutputFailureKind.MALFORMED
-      else -> FeatureTaskRuntimePhaseOutputFailureKind.SCHEMA_INVALID
-    },
-    failureCode = code.wireValue,
-  )
+  is FeatureTaskRuntimePhaseOutputValidationResult.Rejected -> {
+    val evidence = structuralRepairEvidence
+    throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
+      sourceLabel = sourceLabel,
+      reason = diagnosticReason,
+      payloadFreeReason = payloadFreeReason,
+      failureCode = code.wireValue,
+      structuralRepair = evidence?.let {
+        FeatureTaskRuntimePhaseOutputStructuralRepair(
+          originalDigest = it.originalDigest,
+          repairedDigest = it.repairedDigest,
+          format = it.format.wireValue,
+          operation = it.operation.wireValue,
+          source = FeatureTaskRuntimePhaseOutputStructuralRepairSource(
+            label = it.sourceLocation.sourceLabel,
+            offset = it.sourceLocation.offset,
+            line = it.sourceLocation.line,
+            column = it.sourceLocation.column,
+          ),
+        )
+      },
+    )
+  }
 }

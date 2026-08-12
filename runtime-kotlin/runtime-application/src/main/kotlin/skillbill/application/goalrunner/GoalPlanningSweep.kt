@@ -1015,8 +1015,6 @@ class DefaultGoalPlanningSweep(
       issueKey = request.issueKey,
       briefing = briefing,
       suppressDecomposition = true,
-      specSource = shared.specSource,
-      specReference = runInvariants.specReference,
       priorSchemaFailure = priorSchemaFailure,
     )
     return GoalPlanningContextPromptFormatter.append(

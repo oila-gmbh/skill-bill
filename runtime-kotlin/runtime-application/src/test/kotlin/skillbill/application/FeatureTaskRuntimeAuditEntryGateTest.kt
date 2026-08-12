@@ -289,10 +289,34 @@ class FeatureTaskRuntimeAuditEntryGateTest {
     // Blocking AT audit, not at review: a completed-but-undecidable audit could never satisfy the
     // gate and is never itself invalidated, so the run would be unrecoverable in band.
     assertEquals("audit", blocked.lastIncompletePhase)
-    assertPrivateDiagnosticRejection(blocked.blockedReason, "output-verification", "off-vocabulary verdict 'pass'")
+    assertPrivateDiagnosticRejection(
+      blocked.blockedReason,
+      "output-verification",
+      "off-vocabulary verdict 'x' and no y'",
+      "x' and no y",
+    )
     assertTrue(
       harness.launchedPhaseOrder().count { it == "audit" } > 1,
       "an undecidable audit must be a bounded in-band retry, not a single terminal settle",
+    )
+    val auditRetry = harness.launcher.requests
+      .map { requireNotNull(it.skillRunRequest.promptOverride) }
+      .filter { phaseIdFromPrompt(it) == "audit" }
+      .getOrNull(1)
+    requireNotNull(auditRetry)
+    // Realistic bug: a non-greedy scrub stopped at the first `' and no` inside the wire verdict
+    // (`x' and no y`), leaving the response-derived suffix ` and no y'` in Violated constraint
+    // outside the authorized repair section (AC-007 / F-001).
+    assertRetryPromptWithholdsResponseDerivedDetail(
+      auditRetry,
+      "output-verification",
+      "off-vocabulary verdict 'x' and no y'",
+      "x' and no y",
+      " and no y'",
+    )
+    assertTrue(
+      !auditRetry.substringBefore("## Untrusted prior phase output").contains("off-vocabulary verdict 'x' and no y'"),
+      "scrubbed retry reason must not quote the response wire verdict outside the repair section",
     )
     assertTrue(
       harness.launchedPhaseOrder().none { it == "review" },
@@ -603,8 +627,11 @@ private const val BLOCKER_REVIEW_OUTPUT =
     """[{"severity":"blocker","message":"Foo.kt leaks a connection in the error path"}]}}"""
 
 // Carries a verdict but one outside the closed audit vocabulary, with no criteria array to derive a
-// decidable verdict from, so the audit verification-signal gate rejects it.
-private const val UNDECIDABLE_AUDIT_OUTPUT = """{"contract_version":"0.1","verdict":"pass"}"""
+// decidable verdict from, so the audit verification-signal gate rejects it. The interior
+// `' and no` in the wire value is the realistic scrub bug: a non-greedy `'.*?'(?= and no)` match
+// stops early and leaves a response-derived suffix in Violated constraint outside the authorized
+// repair section.
+private const val UNDECIDABLE_AUDIT_OUTPUT = """{"contract_version":"0.1","verdict":"x' and no y"}"""
 
 // Affirms every criterion through the criteria array while wording the verdict off-vocabulary: the
 // derived verdict is decidable, so this settles satisfied and review proceeds.

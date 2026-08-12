@@ -2,6 +2,7 @@ package skillbill.application.featuretask.validation
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
+import skillbill.application.featuretask.emitFeatureTaskRuntimeEventSafely
 import skillbill.application.featuretask.validation.model.SuppressionDelta
 import skillbill.application.featuretask.validation.model.SuppressionGateDecision
 import skillbill.application.featuretask.validation.model.SuppressionJustification
@@ -19,6 +20,8 @@ import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.config.model.ReadRepoLocalConfigRequest
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
+import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.validation.ValidationGateRunner
 import skillbill.ports.validation.model.ValidationGateCacheMode
 import skillbill.ports.validation.model.ValidationGateFinding
@@ -52,6 +55,7 @@ class FeatureTaskRuntimeValidationGateCoordinator(
   private val progressStore: ValidationGateProgressStore,
   private val suppressionDeltaService: FeatureTaskRuntimeSuppressionDeltaService,
   private val repoLocalConfig: RepoLocalConfigPort,
+  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
 ) {
   @Suppress("LongMethod", "ReturnCount", "CyclomaticComplexMethod")
   fun execute(cycle: ValidationGateCycleRequest, onGateRunCount: (Int) -> Unit = {}): ValidationGateCycleResult {
@@ -122,21 +126,6 @@ class FeatureTaskRuntimeValidationGateCoordinator(
               "Validation gate findings exceed the handoff budget (${
                 projection.droppedCount
               } unreported); repair cannot succeed while findings remain unreported.",
-              remainingFindings = projection,
-              measurements = measurements,
-            )
-          }
-
-          if (repairsUsed >= MAX_VALIDATE_GATE_REPAIR_ITERATIONS) {
-            persistRemainingFindings(request, measurements, projection, onGateRunCount)
-            return terminalBlocked(
-              "Validation gate repair cycle exhausted after $MAX_VALIDATE_GATE_REPAIR_ITERATIONS iterations " +
-                "with ${findingsForRepair.size} remaining finding(s)" +
-                if (projection.droppedCount > 0) {
-                  " (${projection.droppedCount} additional findings were omitted from the handoff budget)"
-                } else {
-                  "."
-                },
               remainingFindings = projection,
               measurements = measurements,
             )
@@ -298,13 +287,18 @@ class FeatureTaskRuntimeValidationGateCoordinator(
       remainingFindingsDroppedCount = remainingFindings?.droppedCount ?: 0,
     )
     progressStore.persist(request.workflowId, progress, request.dbPathOverride)
-    request.eventSink.emit(
-      FeatureTaskRuntimeRunEvent.ValidationGateProgress(
-        workflowId = request.workflowId,
-        phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
-        gateRunCount = progress.gateRunCount,
-      ),
-    )
+    emitFeatureTaskRuntimeEventSafely(
+      diagnostics = diagnostics,
+      seam = "ValidationGateProgress event-sink emission",
+    ) {
+      request.eventSink.emit(
+        FeatureTaskRuntimeRunEvent.ValidationGateProgress(
+          workflowId = request.workflowId,
+          phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+          gateRunCount = progress.gateRunCount,
+        ),
+      )
+    }
     onGateRunCount(progress.gateRunCount)
   }
 

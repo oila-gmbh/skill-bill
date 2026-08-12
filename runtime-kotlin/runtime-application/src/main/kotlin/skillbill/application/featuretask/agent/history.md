@@ -1,5 +1,36 @@
 # featuretask runtime boundary history
 
+## [2026-08-12] SKILL-187 subtask 3 — Regression and conformance coverage
+Areas: runtime-application/featuretask (integration + privacy tests, RealPhaseOutputValidator fixture), runtime-infra-fs (structural-repair + schema-validator tests), runtime-domain/workflow/taskruntime/model, runtime-contracts
+- Synthetic SKILL-16 audit sentinels (nested root verdict, unauthorized observation enum, compound/oversized artifact_ref, missing-delimiter-then-schema) assert exact capture in the authorized repair section and payload-free cues; corrected envelopes advance
+- Privacy helpers split surfaces: raw body allowed only inside the untrusted repair section; blocked reasons, durable phase rows, status, telemetry, and normal logs stay payload-free while private diagnostics keep sentinel bytes and value-bearing reasons
+- First/schema-valid/incomplete/phase-mismatched launches omit the repair section; truncated/oversized/YAML-unsupported/degraded-observer paths keep Exact vs fallback classification without silent truncation or outcome flips
+- Reusable: shared privacy assertions + RealPhaseOutputValidator so gate and consumer tests share one validator without copying real rejected payloads
+- Limitation: suite uses synthetic sentinels only; does not widen durable storage or public raw-output readers
+Feature flag: N/A
+Acceptance criteria: 13/13 implemented
+
+## [2026-08-12] SKILL-187 subtask 2 — Thread rejected response into corrective re-spawn
+Areas: runtime-application/featuretask (run loop, observability, prompt composer, validation gate), runtime-infra-fs (phase-output validator adapter), runtime-domain/workflow/taskruntime/model, runtime-contracts
+- gateOutput / settleValidatedOutput reject paths build FeatureTaskRuntimeCorrectiveRepairContext from the same capture metadata and diagnostic identity recorded privately; Exact digests prefer capture-boundary sha/bytes
+- settleMalformedOutput and semantic retries carry that context through PriorAttemptCorrection into FeatureTaskRuntimePhasePromptComposer; retryable-terminal and incomplete-work paths stay separate and never render the raw repair section
+- Schema rejection after successful delimiter repair retains payload-free structuralRepairEvidence on Rejected and sets acceptedAfterStructuralRepair; the retry prompt names syntax-only repair without claiming phase-schema acceptance
+- Shared emitFeatureTaskRuntimeEventSafely isolates event-sink / ValidationGateProgress / RunStarted observer faults (CancellationException still propagates) so throws cannot abort retry, block, or completion or leak rejected bodies
+- Integration coverage: capture↔diagnostic correlation, first-launch/stale-context routing, truncated capture fallback, enum/artifact_ref cases, delimiter-then-schema, exhaustion INVALID_OUTPUT privacy, throwing observers
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
+## [2026-08-12] SKILL-187 subtask 1 — Corrective-repair context and safe prompt projection
+Areas: runtime-domain/workflow/taskruntime/model, runtime-application/featuretask (prompt composer, directives, run loop)
+- Added versioned in-flight `FeatureTaskRuntimeCorrectiveRepairContext` (contract 0.1) with phase/attempt/repair-turn, payload-free constraint, diagnostic locator, response digest/byte count, and closed availability + inclusion-reason enums — no Jackson, SQLDelight, or diagnostic-store types cross the seam
+- Response states stay exact vs already-truncated vs over-budget vs unavailable; UTF-8 and collection budgets are named constants validated before render so a non-exact body is never labeled exact
+- Composer projects the exact response only inside an authorized untrusted repair section (delimiter-safe against fences/braces/YAML/Unicode); required output contract and payload-free guidance stay outside; unavailable/truncated/oversized paths fall back to the opaque diagnostic locator without a misleading excerpt
+- Run loop builds the context for schema-invalid corrective retries only; privacy coverage keeps value-bearing validator text, secrets, and raw output out of non-authorized surfaces
+- Reusable: typed repair-context + untrusted-section prompt projection for any schema-gate retry that must show prior output without treating it as instructions
+- Limitation: context is non-durable and does not add a public raw-output reader or change structural-repair / retry-cap semantics (those remain later subtasks)
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-08-11] SKILL-177 — Test-value discipline directive
 Areas: runtime-application/featuretask (prompt directives + composer)
 - Added `testValueDisciplineDirective(phaseId)` beside `minimalismDisciplineDirective`: titled write-time test-value bar for plan, implement, and implement_fix only (dedicated phase set — plan is not mutating)

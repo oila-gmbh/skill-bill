@@ -1,5 +1,6 @@
 package skillbill.application.featuretask.validation
 
+import skillbill.application.RecordingDiagnostics
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairLauncher
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairResult
 import skillbill.application.featuretask.validation.model.ValidationGateCycleRequest
@@ -7,8 +8,10 @@ import skillbill.application.featuretask.validation.model.ValidationGateCycleRes
 import skillbill.application.featuretask.validation.model.ValidationGateCycleTerminalOutcome
 import skillbill.application.featuretask.validation.model.ValidationGateProgressStore
 import skillbill.application.featuretask.validation.model.ValidationGateResolution
+import skillbill.application.model.FeatureTaskRuntimeRunEventSink
 import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.error.ContractVersionMismatchError
+import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.validation.ValidationGateRunner
 import skillbill.ports.validation.model.ValidationGateCacheMode
 import skillbill.ports.validation.model.ValidationGateFinding
@@ -150,11 +153,6 @@ class FeatureTaskRuntimeValidationGateTest {
   }
 
   @Test
-  fun `repair cycle cap is distinct and explicit`() {
-    assertEquals(3, MAX_VALIDATE_GATE_REPAIR_ITERATIONS)
-  }
-
-  @Test
   fun `zero work terminal outcome is rejected`() {
     val runner = object : ValidationGateRunner {
       override fun run(request: ValidationGateRunRequest): ValidationGateRunResult = ValidationGateRunResult(
@@ -194,6 +192,40 @@ class FeatureTaskRuntimeValidationGateTest {
     val blocked = assertIs<ValidationGateCycleTerminalOutcome.Blocked>(cycle.outcome)
     assertTrue(blocked.reason.contains("contract_version '0.1'"))
     assertTrue(blocked.reason.contains("Repair the installed platform packs"))
+  }
+
+  @Test
+  fun `throwing progress event sink does not change the gate cycle outcome`() {
+    // Realistic bug: progressStore isolation exists, but ValidationGateProgress emit escapes and
+    // aborts an otherwise passing gate cycle when a status/telemetry observer throws; or the
+    // isolation swallows the fault with no payload-free diagnostic record (observability-policy).
+    val progress = mutableListOf<FeatureTaskRuntimeValidationGateProgress>()
+    val diagnostics = RecordingDiagnostics()
+    val throwingSink = FeatureTaskRuntimeRunEventSink {
+      error("status/telemetry observer refused ValidationGateProgress")
+    }
+    val runner = ScriptedGateRunner(listOf(passed(), passed(forced = true)))
+    val cycle = coordinator(declaredResolver(), runner, progress, diagnostics = diagnostics).execute(
+      cycle = ValidationGateCycleRequest(
+        repoRoot = repoRoot,
+        request = minimalRequest().copy(eventSink = throwingSink),
+        validationDepth = ValidationDepth.DEFAULT,
+        changedPaths = listOf("runtime-kotlin/foo.kt"),
+        repositoryCheckpoint = "checkpoint",
+        agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _ ->
+          error("repair must not launch on a clean gate")
+        },
+      ),
+    )
+    assertIs<ValidationGateCycleTerminalOutcome.Completed>(
+      assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,
+    )
+    assertTrue(progress.isNotEmpty())
+    assertEquals(2, runner.calls)
+    assertTrue(
+      diagnostics.warnings.any { it.contains("ValidationGateProgress event-sink emission failed") },
+      "observer failure must leave an independent payload-free diagnostic record",
+    )
   }
 
   @Test
@@ -242,12 +274,12 @@ class FeatureTaskRuntimeValidationGateTest {
   }
 
   @Test
-  fun `gate is re-run after every repair and exhaust persists remaining findings`() {
+  fun `gate keeps repairing beyond the previous cap and completes when findings clear`() {
     val progress = mutableListOf<FeatureTaskRuntimeValidationGateProgress>()
     val repairLaunches = AtomicInteger(0)
     val finding = ValidationGateFinding("m", "t", "still broken", "loc")
     val runner = ScriptedGateRunner(
-      List(MAX_VALIDATE_GATE_REPAIR_ITERATIONS + 1) { failedWith(finding) },
+      List(4) { failedWith(finding) } + listOf(passed(), passed(forced = true)),
     )
     val cycle = coordinator(declaredResolver(), runner, progress).execute(
       cycle = ValidationGateCycleRequest(
@@ -264,16 +296,13 @@ class FeatureTaskRuntimeValidationGateTest {
         },
       ),
     )
-    assertEquals(MAX_VALIDATE_GATE_REPAIR_ITERATIONS, repairLaunches.get())
-    // One gate run before each repair + one verifying gate after the final repair before exhaust.
-    assertEquals(MAX_VALIDATE_GATE_REPAIR_ITERATIONS + 1, runner.calls)
-    val blocked = assertIs<ValidationGateCycleTerminalOutcome.Blocked>(
+    assertEquals(4, repairLaunches.get())
+    // Four repair runs prove the old three-turn cap no longer blocks validation.
+    assertEquals(6, runner.calls)
+    assertIs<ValidationGateCycleTerminalOutcome.Completed>(
       assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,
     )
-    assertTrue(blocked.reason.contains("exhausted"))
-    assertEquals(listOf(finding), blocked.remainingFindings?.findings)
-    assertTrue(progress.last().remainingFindings.isNotEmpty())
-    assertEquals("t", progress.last().remainingFindings.single()["rule_or_test_id"])
+    assertTrue(progress.last().remainingFindings.isEmpty())
   }
 
   @Test
@@ -283,6 +312,7 @@ class FeatureTaskRuntimeValidationGateTest {
     val finding = ValidationGateFinding("m", "t", "broken", "loc")
     val runner = ScriptedGateRunner(
       listOf(
+        failedWith(finding),
         failedWith(finding),
         failedWith(finding),
         failedWith(finding),
@@ -305,7 +335,7 @@ class FeatureTaskRuntimeValidationGateTest {
         },
       ),
     )
-    assertEquals(MAX_VALIDATE_GATE_REPAIR_ITERATIONS, repairLaunches.get())
+    assertEquals(4, repairLaunches.get())
     assertIs<ValidationGateCycleTerminalOutcome.Completed>(
       assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,
     )
@@ -316,7 +346,9 @@ class FeatureTaskRuntimeValidationGateTest {
   fun `each repair turn is launched under its own ordinal so turns never share an evidence key`() {
     val finding = ValidationGateFinding("m", "t", "still broken", "loc")
     val ordinals = mutableListOf<Int>()
-    val runner = ScriptedGateRunner(List(MAX_VALIDATE_GATE_REPAIR_ITERATIONS + 1) { failedWith(finding) })
+    val runner = ScriptedGateRunner(
+      List(4) { failedWith(finding) } + listOf(passed(), passed(forced = true)),
+    )
 
     coordinator(declaredResolver(), runner, mutableListOf()).execute(
       cycle = ValidationGateCycleRequest(
@@ -334,7 +366,7 @@ class FeatureTaskRuntimeValidationGateTest {
       ),
     )
 
-    assertEquals((1..MAX_VALIDATE_GATE_REPAIR_ITERATIONS).toList(), ordinals)
+    assertEquals((1..4).toList(), ordinals)
   }
 
   private fun outOfContractResolver(): ValidationGateResolver = ValidationGateResolver {
@@ -364,6 +396,7 @@ class FeatureTaskRuntimeValidationGateTest {
     runner: ValidationGateRunner,
     progress: MutableList<FeatureTaskRuntimeValidationGateProgress>,
     gradleWrapper: String? = null,
+    diagnostics: RuntimeDiagnostics = skillbill.ports.diagnostics.NoopRuntimeDiagnostics,
   ): FeatureTaskRuntimeValidationGateCoordinator = FeatureTaskRuntimeValidationGateCoordinator(
     resolver,
     runner,
@@ -372,6 +405,7 @@ class FeatureTaskRuntimeValidationGateTest {
       object : skillbill.ports.workflow.WorkflowGitOperations by skillbill.ports.workflow.NoopWorkflowGitOperations {},
     ),
     repoLocalConfig(gradleWrapper),
+    diagnostics,
   )
 
   private fun repoLocalConfig(gradleWrapper: String? = null): skillbill.ports.config.RepoLocalConfigPort =

@@ -12,6 +12,7 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -326,7 +327,9 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
       """.trimIndent()
     FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(fenced, "plan")
   }
+}
 
+class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
   @Test
   fun `markdown prefixed compact audit gaps normalize once and select the audit gap edge`() {
     val wrapped =
@@ -554,9 +557,9 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
       Corrected final answer:
       ```json
       {"contract_version":"0.3","phase_id":"audit","status":"completed",
-       "verdict":"gaps_found","produced_outputs":{"gaps":[{
-         "criterion":"AC-128","severity":"major","location":"ReviewRunner.merge",
-         "issue":"Integration behavior is missing.","fix":"Implement the missing behavior."}]}}
+      "verdict":"gaps_found","produced_outputs":{"gaps":[{
+        "criterion":"AC-128","severity":"major","location":"ReviewRunner.merge",
+        "issue":"Integration behavior is missing.","fix":"Implement the missing behavior."}]}}
       ```
       """.trimIndent()
 
@@ -640,5 +643,68 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
     assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
       FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(proseOnly, "plan")
     }
+  }
+
+  @Test
+  fun `audit nested verdict under produced_outputs fails with a payload-free root verdict constraint`() {
+    // SKILL-187 AC-002: syntax is fine; the required top-level verdict is missing when nested only.
+    val nested =
+      """{"contract_version":"0.3","phase_id":"audit","status":"completed","summary":"SKILL187-NESTED",""" +
+        """"produced_outputs":{"gaps":[],"verdict":"satisfied"}}"""
+
+    val error = assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
+      FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(nested, "audit")
+    }
+
+    val payloadFree = requireNotNull(error.payloadFreeReason)
+    assertTrue(payloadFree.contains("verdict"), "payload-free reason must name the root verdict field")
+    assertFalse(payloadFree.contains("satisfied"), "payload-free reason must omit the nested value")
+  }
+
+  @Test
+  fun `audit unauthorized observation enum fails with a payload-free enum constraint`() {
+    // SKILL-187 AC-003: blast_radius_inspected is not in the carried-disposition observation vocabulary.
+    val unauthorized =
+      """{"contract_version":"0.3","phase_id":"audit","status":"completed","summary":"SKILL187-OBS",""" +
+        """"verdict":"satisfied","produced_outputs":{"gaps":[],"carried_gap_dispositions":[{""" +
+        """"gap_id":"ac-001-gap-1","status":"resolved","evidence":{""" +
+        """"observation":"blast_radius_inspected","artifact_ref":"runtime-kotlin","check_ref":"AC-001"}}]}}"""
+
+    val error = assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
+      FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(unauthorized, "audit")
+    }
+
+    val payloadFree = requireNotNull(error.payloadFreeReason)
+    assertTrue(payloadFree.contains("observation"), "payload-free reason must name observation")
+    assertTrue(
+      payloadFree.contains("enumeration") || payloadFree.contains("enum"),
+      "payload-free reason must name the enum constraint",
+    )
+    assertFalse(payloadFree.contains("blast_radius_inspected"))
+    assertContains(error.reason, "blast_radius_inspected")
+  }
+
+  @Test
+  fun `audit oversized expanded artifact_ref fails the repair-plan bound without embedding the ref`() {
+    // SKILL-187 AC-004: compact gap expands to an artifact_ref beyond the 256-char repair-plan bound.
+    val file = "f".repeat(128)
+    val location = "L" + "o".repeat(255)
+    val oversized =
+      """{"contract_version":"0.3","phase_id":"audit","status":"completed","summary":"SKILL187-ART",""" +
+        """"verdict":"gaps_found","produced_outputs":{"gaps":[{""" +
+        """"criterion":"AC-001","severity":"blocker","location":"$location","issue":"Missing behavior.",""" +
+        """"fix":"Restore the behavior.","file":"$file"}]}}"""
+
+    val error = assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
+      FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(oversized, "audit")
+    }
+
+    val payloadFree = requireNotNull(error.payloadFreeReason)
+    assertTrue(payloadFree.contains("artifact_ref"), "payload-free reason must name artifact_ref")
+    assertTrue(
+      payloadFree.contains("256") || payloadFree.contains("at most"),
+      "payload-free reason must name the bound",
+    )
+    assertFalse(payloadFree.contains(file.take(32)), "payload-free reason must omit the oversized ref body")
   }
 }

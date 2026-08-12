@@ -3,7 +3,6 @@
 package skillbill.application
 
 import skillbill.application.model.FeatureTaskRuntimeRunReport
-import skillbill.error.FeatureTaskRuntimePhaseOutputFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
@@ -18,6 +17,10 @@ import kotlin.test.assertTrue
  * belongs. These tests pin the split at the run-loop seam — the retry prompt receives the payload-free
  * constraint, the private diagnostic row receives the value-bearing reason, and no operator-facing surface
  * receives either.
+ *
+ * SKILL-187: when an authorized corrective-repair projection is present, raw response spans may appear
+ * only inside that section; [assertNoRawResponseSpan] remains the contract for every other surface.
+ * GateOutput-to-launch propagation of the exact capture is covered by the sentinel integration test below.
  *
  * The validator is a stand-in rather than the real schema because the split is a run-loop routing property:
  * the real validator's own dual-variant rendering is proven in
@@ -107,7 +110,7 @@ class FeatureTaskRuntimeRejectionConstraintPrivacyTest {
       InvalidFeatureTaskRuntimePhaseOutputSchemaError(
         sourceLabel = sourceLabel,
         reason = valueBearingReason,
-        failureKind = FeatureTaskRuntimePhaseOutputFailureKind.MALFORMED,
+        failureCode = "malformed",
       )
     }
 
@@ -118,6 +121,43 @@ class FeatureTaskRuntimeRejectionConstraintPrivacyTest {
     // Null payloadFreeReason is the contract's fallback case: the prompt withholds the constraint entirely
     // rather than reaching for the value-bearing reason.
     assertNoRawResponseSpan(retryPrompt, rawSpan, "Violated constraint: ")
+  }
+
+  @Test
+  fun `gateOutput rejection threads the captured response into the next launch repair section`() {
+    // Realistic bug: helpers/composer tests pass, but gateOutput drops correctiveRepairContext before
+    // PriorAttemptCorrection reaches the next launch, so the agent never sees the exact rejected body.
+    val rejectedBody =
+      "{\"contract_version\":\"0.2\",\"phase_id\":\"review\",\"status\":\"completed\"," +
+        "\"summary\":\"SKILL187-GATEOUTPUT-SENTINEL\",\"produced_outputs\":{\"findings\":[]}}"
+    var reviewAttempts = 0
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        if (phaseId != "review") return@RuntimeRecordingLauncher facts(defaultPhaseOutput(request))
+        reviewAttempts += 1
+        facts(if (reviewAttempts == 1) rejectedBody else defaultPhaseOutput(request))
+      },
+      validator = object : FeatureTaskRuntimePhaseOutputValidator {
+        override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
+          if (sourceLabel != "review") return
+          if (phaseOutputText.contains("SKILL187-GATEOUTPUT-SENTINEL")) {
+            throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
+              sourceLabel = sourceLabel,
+              reason = valueBearingReason,
+              payloadFreeReason = payloadFreeConstraint,
+            )
+          }
+        }
+      },
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+
+    val retryPrompt = reviewPrompts(harness)[1]
+    assertRetryPromptNamesConstraint(retryPrompt, "phase-output-schema", payloadFreeConstraint)
+    assertMatchingSchemaInvalidRepairPrompt(retryPrompt, rejectedBody, payloadFreeConstraint)
+    assertNoRawResponseSpanOutsideAuthorizedRepairSection(retryPrompt, rawSpan, "offending value")
   }
 
   private fun reviewPrompts(harness: RunnerHarness): List<String> {

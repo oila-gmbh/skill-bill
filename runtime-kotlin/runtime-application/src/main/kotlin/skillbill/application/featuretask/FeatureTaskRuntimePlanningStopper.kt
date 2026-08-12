@@ -9,6 +9,8 @@ import skillbill.application.model.FeatureTaskRuntimeRunReport
 import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.workflow.repoRoot
 import skillbill.error.SkillBillRuntimeException
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
+import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
@@ -31,6 +33,7 @@ class FeatureTaskRuntimePlanningStopper(
   private val outputValidator: FeatureTaskRuntimePhaseOutputValidator,
   private val decompositionPlanner: FeatureTaskRuntimeDecompositionPlanner,
   private val decomposeTerminalRecorder: FeatureTaskRuntimeDecomposeTerminalRecorder,
+  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
 ) {
   /**
    * Resolves the plan-phase stop decision from the persisted PLAN output. Goal-continuation runs
@@ -130,16 +133,23 @@ class FeatureTaskRuntimePlanningStopper(
     request: FeatureTaskRuntimeRunRequest,
     terminal: FeatureTaskRuntimeDecomposeTerminal,
   ) {
-    request.eventSink.emit(
-      FeatureTaskRuntimeRunEvent.DecomposedAtPlanning(
-        workflowId = request.workflowId,
-        phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
-        reason = terminal.reason,
-        subtaskCount = terminal.subtaskCount,
-        parentSpecPath = terminal.parentSpecPath,
-        decompositionManifestPath = terminal.decompositionManifestPath,
-      ),
-    )
+    // Terminal persistence already succeeded; a throwing status/telemetry observer must not
+    // escape and alter the Decomposed completion outcome (AC-010).
+    emitFeatureTaskRuntimeEventSafely(
+      diagnostics = diagnostics,
+      seam = "DecomposedAtPlanning event-sink emission",
+    ) {
+      request.eventSink.emit(
+        FeatureTaskRuntimeRunEvent.DecomposedAtPlanning(
+          workflowId = request.workflowId,
+          phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
+          reason = terminal.reason,
+          subtaskCount = terminal.subtaskCount,
+          parentSpecPath = terminal.parentSpecPath,
+          decompositionManifestPath = terminal.decompositionManifestPath,
+        ),
+      )
+    }
   }
 
   private fun FeatureTaskRuntimeDecomposeTerminal.toRunReport(

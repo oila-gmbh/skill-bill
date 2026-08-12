@@ -14,7 +14,6 @@ import com.networknt.schema.JsonSchemaFactory
 import com.networknt.schema.SpecVersion
 import com.networknt.schema.ValidationMessage
 import skillbill.contracts.LOCALE_STABLE_SCHEMA_CONFIG
-import skillbill.error.FeatureTaskRuntimePhaseOutputFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_AUDIT_REPAIR_RULE_FAMILY
@@ -54,7 +53,7 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
     val instance: JsonNode = mapper.valueToTree(phaseOutput)
     val errors: Set<ValidationMessage> = schema.validate(instance)
     if (errors.isNotEmpty()) {
-      featureTaskRuntimePhaseOutputLog.log(Level.WARNING, buildSchemaDriftLog(sourceLabel, errors, instance))
+      featureTaskRuntimePhaseOutputLog.log(Level.WARNING, buildSchemaDriftLog(sourceLabel, errors))
       val reasons = formatViolationReasons(errors.sortedWith(violationOrdering), instance)
       throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
         sourceLabel = sourceLabel,
@@ -346,7 +345,6 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
           // Jackson's originalMessage quotes the offending token, so only the prefix survives here. The
           // prompt composer keys its unparseable-root correction on that prefix.
           payloadFreeReason = "Phase output is malformed: it is not parseable as a single JSON object.",
-          failureKind = FeatureTaskRuntimePhaseOutputFailureKind.MALFORMED,
           failureCode = "malformed",
         )
       }
@@ -355,7 +353,6 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
         sourceLabel = sourceLabel,
         reason = "<root> must be an object.",
         payloadFreeReason = "<root> must be an object.",
-        failureKind = FeatureTaskRuntimePhaseOutputFailureKind.MALFORMED,
         failureCode = "root_not_object",
       )
     }
@@ -394,12 +391,16 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
     }
   }
 
-  private fun buildSchemaDriftLog(sourceLabel: String, errors: Set<ValidationMessage>, instance: JsonNode): String {
+  /**
+   * Operator/warning log only: field paths and constraint metadata. Never includes extracted instance
+   * values — those belong solely in the private value-bearing rejection reason.
+   */
+  private fun buildSchemaDriftLog(sourceLabel: String, errors: Set<ValidationMessage>): String {
     val parts = errors.sortedWith(violationOrdering).take(2).map { error ->
       val location = error.instanceLocation?.toString().orEmpty()
       val fieldPath = featureTaskRuntimePhaseOutputDottedFieldPath(location).ifBlank { "<root>" }
-      val offendingValue = extractFeatureTaskRuntimePhaseOutputOffendingValue(instance, location)
-      if (offendingValue.isNotBlank()) "$fieldPath=$offendingValue" else fieldPath
+      val constraint = error.message.orEmpty().trim()
+      if (constraint.isNotEmpty()) "$fieldPath: $constraint" else fieldPath
     }
     return "Feature-task-runtime phase output failed schema validation: source='$sourceLabel' " +
       "violations=${parts.joinToString(", ")} totalViolations=${errors.size}"

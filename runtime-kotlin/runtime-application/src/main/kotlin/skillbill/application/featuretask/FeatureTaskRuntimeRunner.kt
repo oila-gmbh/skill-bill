@@ -112,9 +112,14 @@ class FeatureTaskRuntimeRunner(
       specReference = runRequest.runInvariants.specReference,
       isGoalContinuation = isGoalContinuationRun(runRequest),
     )
-    runRequest.eventSink.emit(
-      FeatureTaskRuntimeRunEvent.RunStarted(runRequest.workflowId, runRequest.runInvariants.featureSize.name),
-    )
+    emitFeatureTaskRuntimeEventSafely(
+      diagnostics = diagnostics,
+      seam = "RunStarted event-sink emission",
+    ) {
+      runRequest.eventSink.emit(
+        FeatureTaskRuntimeRunEvent.RunStarted(runRequest.workflowId, runRequest.runInvariants.featureSize.name),
+      )
+    }
     // Runtime-owned lifecycle telemetry: the runtime mints and emits the started/finished events from
     // its own per-phase records (AC4), never the agent. Per-phase records and ledger remain the
     // authoritative observability source and are unchanged; this telemetry is additive (AC6). Every
@@ -123,7 +128,7 @@ class FeatureTaskRuntimeRunner(
     // The telemetry seam owns failure isolation: started/finished/finishedError each log on failure and
     // never throw, so a telemetry fault can neither abort the run nor falsely-fail a successful run.
     val telemetrySessionId = lifecycleTelemetry.started(runRequest)
-    val observability = FeatureTaskRuntimeRunObservability(recorder, runRequest)
+    val observability = FeatureTaskRuntimeRunObservability(recorder, runRequest, diagnostics)
     // Best-effort per-phase outcomes for the finished events; resolved lazily inside the telemetry
     // seam's failure isolation so even loading them cannot abort or falsely-fail the run.
     val phaseOutcomes = {

@@ -38,7 +38,6 @@ import skillbill.application.model.FeatureTaskRuntimeStatusRequest
 import skillbill.application.telemetry.LifecycleTelemetryService
 import skillbill.application.workflow.repoRoot
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
-import skillbill.error.FeatureTaskRuntimePhaseOutputFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.error.WorkflowIssueKeyConflictError
@@ -538,7 +537,7 @@ class FeatureTaskRuntimeRunnerTest {
             throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
               sourceLabel = "review",
               reason = "Phase output is malformed: expected closing bracket",
-              failureKind = FeatureTaskRuntimePhaseOutputFailureKind.MALFORMED,
+              failureCode = "malformed",
             )
           }
           throw InvalidFeatureTaskRuntimePhaseOutputSchemaError("review", "semantic schema failure")
@@ -1848,6 +1847,41 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
   }
 
   @Test
+  fun `throwing DecomposedAtPlanning event sink does not alter decompose completion`() {
+    // Realistic bug: terminal persistence succeeds, then a status/telemetry observer throws on
+    // DecomposedAtPlanning and aborts an otherwise completed decompose stop (AC-010 / F-001).
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-decompose-throwing-sink")
+    val diagnostics = RecordingDiagnostics()
+    val throwingSink = FeatureTaskRuntimeRunEventSink { event ->
+      if (event is FeatureTaskRuntimeRunEvent.DecomposedAtPlanning) {
+        error("status/telemetry observer refused DecomposedAtPlanning")
+      }
+    }
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        facts(if (phaseId == "plan") DECOMPOSE_PLAN_OUTPUT else validJsonOutput(phaseId))
+      },
+      agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = RuntimeHarnessConfig(
+        repoRoot = repoRoot,
+        useRealDecompositionPlanner = true,
+        eventSink = throwingSink,
+      ),
+      diagnostics = diagnostics,
+    )
+
+    val report = harness.runner.run(harness.request())
+
+    assertIs<FeatureTaskRuntimeRunReport.Decomposed>(report)
+    assertTrue(harness.launchedPhaseOrder().none { it == "implement" })
+    assertTrue(
+      diagnostics.warnings.any { it.contains("DecomposedAtPlanning event-sink emission failed") },
+      "observer failure must leave an independent payload-free diagnostic record",
+    )
+  }
+
+  @Test
   fun `decompose plan writes shared feature specs records terminal completed status and skips implement`() {
     val repoRoot = Files.createTempDirectory("skillbill-runtime-decompose")
     val harness = runnerHarness(
@@ -2693,10 +2727,41 @@ class FeatureTaskRuntimeCheckpointScopeTest {
       repoRoot = Path.of("/repo"),
       issueKey = "SKILL-146",
       specReference = ".feature-specs/SKILL-146-least-context/spec.md",
-      specSource = SpecSource.LINEAR,
       paths = listOf(
         ".feature-specs/SKILL-146-least-context/spec.md",
         ".feature-specs/SKILL-146-remediation/notes.md",
+        "runtime-domain/Changed.kt",
+      ),
+    )
+
+    assertEquals(listOf("runtime-domain/Changed.kt"), paths)
+  }
+
+  @Test
+  fun `local checkpoint inventory excludes feature spec scratch while preserving code paths`() {
+    val paths = reconcileCheckpointPathInventory(
+      repoRoot = Path.of("/repo"),
+      issueKey = "SKILL-146",
+      specReference = ".feature-specs/SKILL-146-least-context/spec.md",
+      paths = listOf(
+        ".feature-specs/SKILL-146-least-context/spec.md",
+        ".feature-specs/SKILL-146-remediation/notes.md",
+        "runtime-domain/Changed.kt",
+      ),
+    )
+
+    assertEquals(listOf("runtime-domain/Changed.kt"), paths)
+  }
+
+  @Test
+  fun `checkpoint inventory excludes the collapsed feature-specs directory`() {
+    val paths = reconcileCheckpointPathInventory(
+      repoRoot = Path.of("/repo"),
+      issueKey = "SKILL-146",
+      specReference = ".feature-specs/SKILL-146-least-context/spec.md",
+      paths = listOf(
+        ".feature-specs",
+        ".feature-specs/",
         "runtime-domain/Changed.kt",
       ),
     )
@@ -2716,7 +2781,10 @@ class FeatureTaskRuntimeCheckpointScopeTest {
     assertContains(auditBriefing.briefingText, "- runtime-domain/Committed.kt")
     assertContains(auditBriefing.briefingText, "- runtime-domain/Remediation.kt")
     assertContains(auditBriefing.briefingText, "- runtime-domain/Renamed.kt")
-    assertContains(auditBriefing.briefingText, "- $SPEC_REFERENCE")
+    assertFalse(
+      auditBriefing.briefingText.contains("- $SPEC_REFERENCE"),
+      "the local feature spec is workflow input, not an audit or commit path",
+    )
     assertFalse(
       auditBriefing.briefingText.contains("spec_subtask_9_sibling"),
       "a sibling subtask's baseline path must not enter the goal-child audit projection",
@@ -2727,14 +2795,13 @@ class FeatureTaskRuntimeCheckpointScopeTest {
     )
     assertEquals(
       listOf(
-        SPEC_REFERENCE,
         "runtime-domain/Child.kt",
         "runtime-domain/Committed.kt",
         "runtime-domain/Remediation.kt",
         "runtime-domain/Renamed.kt",
       ),
       requireNotNull(harness.recorder.loadResolvedBranch(WORKFLOW_ID)).workflowOwnedPaths,
-      "the checkpoint must union durable, committed, remediation, and local-spec paths",
+      "the checkpoint must union durable, committed, and remediation implementation paths",
     )
   }
 
@@ -2955,7 +3022,7 @@ class FeatureTaskRuntimeRunnerSpecLifecycleTest {
 
   @Test
   fun `local-mode run never deletes the spec scratch`() {
-    // AC6: local mode (default, no spec_source line) keeps the committed spec and deletes nothing.
+    // Local mode (default, no spec_source line) keeps the spec scratch on disk and deletes nothing.
     val repoRoot = Files.createTempDirectory("skillbill-runtime-local-no-delete")
     val specPath = repoRoot.resolve(SPEC_REFERENCE)
     Files.createDirectories(specPath.parent)
@@ -2968,7 +3035,7 @@ class FeatureTaskRuntimeRunnerSpecLifecycleTest {
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
     assertTrue(harness.specScratchStore.deletions.isEmpty(), "local mode must not delete the scratch")
-    assertTrue(Files.exists(specPath), "local mode keeps the committed spec on disk")
+    assertTrue(Files.exists(specPath), "local mode keeps the spec scratch on disk")
   }
 
   @Test
@@ -4442,9 +4509,9 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
 
   // AC-001/AC-002: the checkpoint commits its owned inventory and nothing else, whatever else is dirty.
   @Test
-  fun `checkpoint stages only owned paths while foreign staged unstaged and untracked files are left alone`() {
+  fun `checkpoint stages only implementation paths while specs and foreign dirt stay alone`() {
     val git = checkpointGit(
-      ownedPaths = listOf("src/Owned.kt"),
+      ownedPaths = listOf("src/Owned.kt", SPEC_REFERENCE),
       stagedPaths = listOf("unrelated/ForeignStaged.kt"),
     )
     val harness = checkpointRunHarness(git)
@@ -5618,7 +5685,12 @@ private fun harnessRunner(
   val branchSetupRunner = FeatureTaskRuntimeBranchSetupRunner(recorder, runtimeConfig.branchSetup.gitOperations)
   val decompositionPlanner =
     if (runtimeConfig.useRealDecompositionPlanner) testDecompositionPlanner() else noOpDecompositionPlanner()
-  val planningStopper = FeatureTaskRuntimePlanningStopper(validator, decompositionPlanner, decomposeTerminalRecorder)
+  val planningStopper = FeatureTaskRuntimePlanningStopper(
+    validator,
+    decompositionPlanner,
+    decomposeTerminalRecorder,
+    diagnostics,
+  )
   return FeatureTaskRuntimeRunner(
     launcher,
     recorder,
