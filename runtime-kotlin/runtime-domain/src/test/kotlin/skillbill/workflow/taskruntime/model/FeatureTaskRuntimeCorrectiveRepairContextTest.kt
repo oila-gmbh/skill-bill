@@ -187,6 +187,33 @@ class FeatureTaskRuntimeCorrectiveRepairContextTest {
   }
 
   @Test
+  fun `non-exact fallback that exceeds the prompt budget is rejected rather than emitted`() {
+    // Realistic bug: Exact→fallback checked maxPromptUtf8Bytes, but AlreadyTruncated / ExceedsBudget /
+    // Unavailable returned a payload-free section without measuring it, so a tiny prompt budget still
+    // shipped an over-budget non-exact projection.
+    val capture = CorrectiveRepairCapturedResponse.AlreadyTruncated(
+      utf8ByteCount = 2_048,
+      digestSha256 = sha256Hex("truncated-capture".toByteArray(Charsets.UTF_8)),
+    )
+    val context = FeatureTaskRuntimeCorrectiveRepairContext(
+      phaseId = "audit",
+      attempt = 1,
+      rejectionRule = "phase-output-schema",
+      rejectionPath = "<root>",
+      payloadFreeConstraint = "constraint",
+      diagnosticLocator = CorrectiveRepairDiagnosticLocator("opaque-nonexact"),
+      captured = capture,
+      budget = FeatureTaskRuntimeCorrectiveRepairBudget(
+        maxResponseUtf8Bytes = 64,
+        maxPromptUtf8Bytes = 64,
+        maxCollectionItems = 2,
+      ),
+    )
+    val error = assertFailsWith<IllegalArgumentException> { context.promptProjection() }
+    assertTrue(error.message.orEmpty().contains("fallback"))
+  }
+
+  @Test
   fun `named collection budget constant is positive and shared by the default budget`() {
     assertEquals(
       FeatureTaskRuntimeCorrectiveRepairBudget.MAX_COLLECTION_ITEMS,

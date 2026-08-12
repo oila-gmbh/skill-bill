@@ -3460,19 +3460,36 @@ internal class FeatureTaskRuntimeRunLoop(
     }
 
   /**
-   * Semantic-gate detail that is safe to place outside the authorized repair section. Projection and
-   * verification gates compose schema-authored constraints; audit ledger/repair gates may embed
-   * receipt identifiers (`expected=`/`actual=`/quoted item ids) and must not reach the retry prompt.
+   * Semantic-gate detail that is safe to place outside the authorized repair section.
+   *
+   * Mutating-reconciliation is a fixed template. Producer/consumer projection and output-verification
+   * may carry schema-structure text the producer needs, but only after response-derived dumps
+   * (quoted wire verdicts, offending-value appendices, expected=/actual= receipt lists) are scrubbed.
+   * Audit ledger/repair gates stay null here so their identifiers never reach the retry reason.
    */
   private fun payloadFreeSemanticGateConstraint(rule: String, detail: String): String? =
     when (rule) {
+      "mutating-reconciliation" -> detail.takeUnless { it.isBlank() }
       "producer-projection",
       "consumer-projection",
       "output-verification",
-      "mutating-reconciliation",
-      -> detail.takeUnless { it.isBlank() }
+      -> scrubResponseDerivedGateDetail(detail)
       else -> null
     }
+
+  /**
+   * Strips known response-value dumps from semantic-gate detail before it can enter a retry prompt
+   * outside the authorized repair section. Schema-structure fragments (property names, found/expected
+   * types, maxLength caps) remain so length and shape corrections still fire.
+   */
+  private fun scrubResponseDerivedGateDetail(detail: String): String? {
+    if (detail.isBlank()) return null
+    var text = detail
+    text = OFF_VOCABULARY_VERDICT_PATTERN.replace(text, "off-vocabulary verdict")
+    text = OFFENDING_VALUE_APPENDIX_PATTERN.replace(text, "")
+    text = EXPECTED_ACTUAL_LIST_PATTERN.replace(text, "")
+    return text.trim().takeUnless { it.isBlank() }
+  }
 
   @Suppress("LongParameterList")
   private fun attemptOnce(
@@ -3714,9 +3731,8 @@ internal class FeatureTaskRuntimeRunLoop(
       val diagnosticRule = structuredIdentity?.first ?: rule
       val path = structuredIdentity?.second ?: rejectionPath(detail)
       val reason = payloadFreeRejectionReason(rule, if (structuredIdentity == null) path else "/")
-      // Projection/verification gates author schema-shaped constraints without embedding receipt values.
-      // Audit durable-ledger and similar gates may list expected=/actual= identifiers from the output —
-      // those stay in the private diagnostic and the authorized repair body, never in the retry reason.
+      // Only scrubbed semantic templates reach the retry reason. Response-derived dumps stay in the
+      // private diagnostic and the authorized repair body.
       val retryFacingConstraint = payloadFreeSemanticGateConstraint(rule, detail)
       val retryReason = retryRejectionReason(reason, retryFacingConstraint)
       val diagnosticIdentity = recordRejectedOutput(
@@ -5757,6 +5773,18 @@ private const val OWNED_PATH_DELIMITER = '\u0000'
 // Bounds the rendered checkpoint scope well under the briefing framing ceiling, so an oversized
 // inventory is rejected as a typed projection failure instead of tripping that ceiling's untyped throw.
 private const val MAX_CHECKPOINT_OWNED_PATHS = 500
+
+/** Quotes a response wire verdict that must not reach retry prompts outside the repair section. */
+private val OFF_VOCABULARY_VERDICT_PATTERN =
+  Regex("""off-vocabulary verdict '[^']*'""", RegexOption.IGNORE_CASE)
+
+/** Dual-reason validators sometimes append the instance dump after an em-dash or colon. */
+private val OFFENDING_VALUE_APPENDIX_PATTERN =
+  Regex("""(?:\s*[—-]\s*)?offending value:.*$""", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+
+/** Audit repair gates list expected=/actual= receipt identifiers derived from the rejected output. */
+private val EXPECTED_ACTUAL_LIST_PATTERN =
+  Regex("""\bexpected=\[[^\]]*]\s*actual=\[[^\]]*]\.?""", RegexOption.IGNORE_CASE)
 
 // The phases permitted to bring new paths into the workflow's durable ownership. Every other phase
 // is a reader: a file appearing under one is outside its authority and blocks instead of being

@@ -26,6 +26,22 @@ internal fun assertRetryPromptNamesConstraint(prompt: String, rule: String, vara
 }
 
 /**
+ * The complement of [assertRetryPromptNamesConstraint] for semantic gates that may embed response
+ * values in their full detail: the retry prompt names the rule via the payload-free sentence and must
+ * not carry the value-bearing dump outside the authorized repair section.
+ */
+internal fun assertRetryPromptWithholdsResponseDerivedDetail(
+  prompt: String,
+  rule: String,
+  vararg responseDerivedSpans: String,
+) {
+  assertContains(prompt, "Rejected output violated '$rule'")
+  responseDerivedSpans.forEach { span ->
+    assertNoRawResponseSpanOutsideAuthorizedRepairSection(prompt, span)
+  }
+}
+
+/**
  * The complement of [assertRetryPromptNamesConstraint]: naming a violated rule and field never licenses
  * echoing what the agent actually wrote. Asserts no span of the raw response appears in [rendered],
  * whichever surface it is — retry prompt, blocked reason, telemetry event, or status output.

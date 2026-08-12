@@ -294,6 +294,18 @@ class FeatureTaskRuntimeAuditEntryGateTest {
       harness.launchedPhaseOrder().count { it == "audit" } > 1,
       "an undecidable audit must be a bounded in-band retry, not a single terminal settle",
     )
+    val auditRetry = harness.launcher.requests
+      .map { requireNotNull(it.skillRunRequest.promptOverride) }
+      .filter { phaseIdFromPrompt(it) == "audit" }
+      .getOrNull(1)
+    requireNotNull(auditRetry)
+    // Realistic bug: trusting output-verification detail as payload-free let the wire verdict 'pass'
+    // enter Violated constraint outside the authorized repair section.
+    assertRetryPromptWithholdsResponseDerivedDetail(auditRetry, "output-verification", "off-vocabulary verdict 'pass'")
+    assertTrue(
+      !auditRetry.substringBefore("## Untrusted prior phase output").contains("off-vocabulary verdict 'pass'"),
+      "scrubbed retry reason must not quote the response wire verdict outside the repair section",
+    )
     assertTrue(
       harness.launchedPhaseOrder().none { it == "review" },
       "review must stay unreachable while audit has not settled satisfied",
