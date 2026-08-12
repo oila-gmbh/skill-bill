@@ -1070,6 +1070,7 @@ internal class FeatureTaskRuntimeRunLoop(
       .map(String::trim)
       .filter(String::isNotBlank)
       .filterNot { it in baseline }
+      .filterNot(FeatureTaskRuntimeCheckpointScope::isRuntimePrivatePath)
       .distinct()
       .sorted()
   }
@@ -3566,8 +3567,12 @@ internal class FeatureTaskRuntimeRunLoop(
     outputByteSize: Long,
     outputSha256: String,
   ): AttemptResult {
-    val outputText = normalizedOutput.canonicalJson
-    val outputMap = normalizedOutput.envelope
+    // Absent-gate validate: agents are told not to invent gate_run_count/gate_runs, but the
+    // validation_receipt consumer projection requires them. Attest measured-absent counts here so
+    // the first completed attempt satisfies write_history without burning a fix-loop retry.
+    val attested = attestAbsentGateValidationReceipt(run, normalizedOutput)
+    val outputText = attested.canonicalJson
+    val outputMap = attested.envelope
     fun reject(rule: String, detail: String): AttemptResult {
       val structuredIdentity = structuredRepairDiagnosticIdentity(detail)
       val diagnosticRule = structuredIdentity?.first ?: rule
@@ -3607,7 +3612,7 @@ internal class FeatureTaskRuntimeRunLoop(
           observability,
           failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
           fileManifest = fileManifest,
-          normalizedOutput = normalizedOutput,
+          normalizedOutput = attested,
           repairEvidence = repairEvidence,
         ),
       )
@@ -3618,7 +3623,7 @@ internal class FeatureTaskRuntimeRunLoop(
         iteration,
         reason,
         outputMap,
-        normalizedOutput,
+        attested,
         repairEvidence,
         observability,
         fileManifest,
@@ -3630,7 +3635,7 @@ internal class FeatureTaskRuntimeRunLoop(
       run,
       iteration,
       outputMap,
-      normalizedOutput,
+      attested,
       repairEvidence,
       repositoryFingerprint,
     )?.let { (rule, reason) -> return reject(rule, reason) }
@@ -3648,7 +3653,7 @@ internal class FeatureTaskRuntimeRunLoop(
         operatorReason = reason,
         continuationReason = reason,
         fileManifest = fileManifest,
-        normalizedOutput = normalizedOutput,
+        normalizedOutput = attested,
       )
     }
     recorder.retainProducerOutput(
@@ -3670,12 +3675,42 @@ internal class FeatureTaskRuntimeRunLoop(
     return persistAcceptedOutput(
       run,
       iteration,
-      normalizedOutput,
+      attested,
       repairEvidence,
       observability,
       fileManifest,
       repositoryFingerprint,
     )
+  }
+
+  /**
+   * Packs without `validation_gate` fall back to agent-run validate. That path must never publish
+   * agent-authored gate measurements: overwrite (or supply) `gate_run_count`/`gate_runs` with the
+   * degradation attestation before consumer projection and persist.
+   */
+  private fun attestAbsentGateValidationReceipt(
+    run: PhaseRun,
+    normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
+  ): NormalizedFeatureTaskRuntimePhaseOutput {
+    val eligible = run.agentRunValidateFallback &&
+      run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE &&
+      normalizedOutput.envelope["status"] == STATUS_COMPLETED
+    if (!eligible) return normalizedOutput
+    val produced = JsonSupport.anyToStringAnyMap(normalizedOutput.envelope["produced_outputs"])
+      ?.toMutableMap()
+      ?: return normalizedOutput
+    val validationResult = JsonSupport.anyToStringAnyMap(produced["validation_result"])
+      ?.toMutableMap()
+      ?: return normalizedOutput
+    validationResult["gate_run_count"] = 0
+    validationResult["gate_runs"] = emptyList<Any?>()
+    produced["validation_result"] = validationResult
+    val envelope = normalizedOutput.envelope.toMutableMap()
+    envelope["produced_outputs"] = produced
+    return outputValidator.validatePhaseOutput(
+      JsonSupport.mapToJsonString(envelope),
+      sourceLabel = run.phaseId,
+    ).requireAcceptedOutput(run.phaseId).normalizedOutput
   }
 
   /**

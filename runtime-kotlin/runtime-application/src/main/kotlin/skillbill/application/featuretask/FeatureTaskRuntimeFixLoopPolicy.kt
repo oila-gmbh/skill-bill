@@ -123,8 +123,16 @@ object FeatureTaskRuntimeFixLoopPolicy {
   }
 
   private fun blockedReason(phaseId: String, currentIteration: Int): String = if (participatesInFixLoop(phaseId)) {
+    val remediationNote =
+      if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) {
+        " This cap bounds schema/output correction for the review phase itself; the review_fix " +
+          "remediation edge remains uncapped."
+      } else {
+        ""
+      }
     "Phase '$phaseId' exhausted the bounded fix loop after $currentIteration attempts " +
-      "(cap=$MAX_FIX_LOOP_ITERATIONS); the run blocks rather than advancing on invalid output."
+      "(cap=$MAX_FIX_LOOP_ITERATIONS); the run blocks rather than advancing on invalid output." +
+      remediationNote
   } else {
     "Phase '$phaseId' produced schema-invalid output and does not participate in a fix loop; " +
       "the run blocks rather than advancing on invalid output."

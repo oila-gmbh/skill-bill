@@ -24,6 +24,7 @@ internal object FeatureTaskRuntimePhaseSafetyPolicy {
     .filter { it.length >= PORCELAIN_PATH_OFFSET }
     .map { line -> line.substring(PORCELAIN_PATH_OFFSET).substringAfterLast(" -> ").trim('"') }
     .filter(String::isNotBlank)
+    .filterNot(FeatureTaskRuntimeCheckpointScope::isRuntimePrivatePath)
     .distinct()
     .sorted()
     .toList()

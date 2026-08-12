@@ -122,6 +122,10 @@ class FeatureTaskRuntimeFixLoopPolicyTest {
         blocked.blockedReason.contains("exhausted the bounded fix loop"),
         "block reason for '$phaseId' must name fix-loop exhaustion",
       )
+      if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) {
+        assertContains(blocked.blockedReason, "review_fix")
+        assertContains(blocked.blockedReason, "remains uncapped")
+      }
     }
   }
 

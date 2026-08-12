@@ -20,4 +20,18 @@ class FeatureTaskRuntimePhaseSafetyPolicyTest {
       paths,
     )
   }
+
+  @Test
+  fun `runtime-private skill-bill paths are omitted from phase manifests`() {
+    val paths = FeatureTaskRuntimePhaseSafetyPolicy.changedPaths(
+      """
+       M src/Main.kt
+      ?? .skill-bill/run-evidence/wf/fp/evidence.json
+      ?? .skill-bill/run-evidence/wf/fp/diff.patch
+      ?? .skill-bill/config.yaml
+      """.trimIndent(),
+    )
+
+    assertEquals(listOf(".skill-bill/config.yaml", "src/Main.kt"), paths)
+  }
 }

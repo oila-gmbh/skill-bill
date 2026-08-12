@@ -5,6 +5,8 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointScope
 import java.util.Locale
 
 private const val GOVERNED_SPEC_ROOT = ".feature-specs/"
+private const val RUNTIME_PRIVATE_ROOT = ".skill-bill/"
+private const val RUNTIME_TRACKABLE_CONFIG = ".skill-bill/config.yaml"
 
 /** Bounds a block message so one pathological inventory cannot flood a durable blocked reason. */
 private const val MAX_REPORTED_PATHS = 10
@@ -18,11 +20,13 @@ internal object FeatureTaskRuntimeCheckpointScope {
     // ownership is not a licence to commit another workflow's authority. Evicting it here also keeps
     // an inventory that already carries one from blocking every later checkpoint of this run.
     val owned = declared.filterNot { isForeignGovernedSpecPath(it, input.issueKey) }
+      .filterNot(::isRuntimePrivatePath)
     val ownedAliases = owned.associateBy(::normalizeForAliasComparison)
 
     blockingDecision(input, ownedAliases, declaredAliases)?.let { return it }
 
     val deltaAliases = input.worktreeDeltaPaths.filter(String::isNotBlank)
+      .filterNot(::isRuntimePrivatePath)
       .map(::normalizeForAliasComparison)
       .toSet()
     val adopted = adoptedDivergentPaths(input, ownedAliases)
@@ -76,6 +80,9 @@ internal object FeatureTaskRuntimeCheckpointScope {
       ?.let { blockForeignGovernedSpec(input.issueKey, it) }
     val outside = input.phaseIntroducedPaths.filter(String::isNotBlank).distinct()
       .filterNot { isForeignGovernedSpecPath(it, input.issueKey) }
+      // Runtime-private evidence under `.skill-bill/` is written by the runtime itself; treating it as
+      // phase-introduced feature work is a self-conflict (shared review evidence is the usual case).
+      .filterNot(::isRuntimePrivatePath)
       .filterNot { path -> normalizeForAliasComparison(path) in ownedAliases }
       .sorted().takeIf { it.isNotEmpty() }
       ?.let { blockOutsideInventory(input.issueKey, it) }
@@ -91,12 +98,30 @@ internal object FeatureTaskRuntimeCheckpointScope {
    * everything dirty in the tree.
    */
   fun phaseWrittenPaths(worktreeDeltaPaths: List<String>, phaseManifestPaths: List<String>): List<String> {
-    val manifest = phaseManifestPaths.filter(String::isNotBlank).map(::normalizeForAliasComparison)
+    val manifest = phaseManifestPaths.filter(String::isNotBlank)
+      .filterNot(::isRuntimePrivatePath)
+      .map(::normalizeForAliasComparison)
     if (manifest.isEmpty()) return emptyList()
-    return worktreeDeltaPaths.filter(String::isNotBlank).filter { path ->
-      val normalized = normalizeForAliasComparison(path)
-      manifest.any { entry -> normalized == entry || normalized.startsWith("$entry/") }
-    }.distinct().sorted()
+    return worktreeDeltaPaths.filter(String::isNotBlank)
+      .filterNot(::isRuntimePrivatePath)
+      .filter { path ->
+        val normalized = normalizeForAliasComparison(path)
+        manifest.any { entry -> normalized == entry || normalized.startsWith("$entry/") }
+      }.distinct().sorted()
+  }
+
+  /**
+   * Runtime-private paths the install-time ignore rule is supposed to hide. Ownership and review
+   * still exclude them explicitly: consumer repos may lack that ignore, and the runtime writes
+   * shared evidence mid-phase regardless.
+   *
+   * `.skill-bill/config.yaml` stays trackable and is not private.
+   */
+  fun isRuntimePrivatePath(path: String): Boolean {
+    val normalized = normalizeForAliasComparison(path)
+    if (normalized == RUNTIME_TRACKABLE_CONFIG) return false
+    return normalized == RUNTIME_PRIVATE_ROOT.trimEnd('/') ||
+      normalized.startsWith(RUNTIME_PRIVATE_ROOT)
   }
 
   /**

@@ -47,7 +47,7 @@ sections:
 
   - heading: Routing Rules
     body: |
-      Stack detection and routing are manifest-driven. The shell discovers every `platform-packs/<slug>/platform.yaml`, reads each pack's declared routing signals, and chooses the dominant stack using manifest-declared tie-breakers. The shell does not enumerate platform names inline.
+      Stack detection and routing are manifest-driven. The shell discovers every `platform-packs/<slug>/platform.yaml` from the skill-adjacent installed `platform-packs` link (or `~/.skill-bill/platform-packs/` / the install-published review catalog), not from the reviewed repository root unless that repository is itself the Skill Bill source tree. It reads each pack's declared routing signals and chooses the dominant stack using manifest-declared tie-breakers. The shell does not enumerate platform names inline.
 
       - Generate a `routed_skill` value of `bill-<slug>-code-review` for the dominant pack. This contract is preserved exactly so existing user-facing commands keep working.
       - If the review scope is mixed and multiple packs have strong signals, route to each matching pack and merge the results using delegated execution.
@@ -62,7 +62,7 @@ sections:
       - `MissingManifestError` — the pack has no `platform.yaml`.
       - `InvalidManifestSchemaError` — the manifest fails schema validation.
       - `ContractVersionMismatchError` — `contract_version` does not match the shell's target version; print both versions and the offending pack slug.
-      - `MissingContentFileError` — a declared content file does not exist.
+      - `MissingContentFileError` — a declared content file does not exist; the message must name the slot key and the fully resolved absolute path.
       - `MissingRequiredSectionError` — a declared content file is missing a required H2 section.
 
       The shell never silently substitutes a default reviewer. A broken pack must be repaired before `/bill-code-review` can complete.

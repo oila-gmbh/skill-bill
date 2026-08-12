@@ -869,6 +869,43 @@ class FeatureTaskRuntimeRunnerTest {
     assertContains(validateOutput, "Validation satisfied by runtime-owned gate execution.")
   }
 
+  @Test
+  fun `absent-gate validate without gate_run_count completes on first attempt`() {
+    // Packs without validation_gate use agent-run validate. Agents are told not to invent
+    // gate_run_count; the runtime must attest measured-absent counts before consumer projection.
+    val harness = runnerHarness(
+      agentAssignment = phasePerAgentAssignment(),
+      // Empty manifests → ValidationGateResolution.Absent → agent-run fallback.
+      runtimeConfig = RuntimeHarnessConfig(validationGatePlatformManifests = emptyList()),
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        facts(
+          if (phaseId == "validate") {
+            VALIDATE_REPAIR_WITHOUT_GATE_COUNTS
+          } else {
+            validJsonOutput(phaseId)
+          },
+        )
+      },
+    )
+    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
+    harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
+    harness.seedPhase("audit", "completed", 1, phaseAgent("audit"), VALID_AUDIT_OUTPUT)
+    harness.seedPhase("review", "completed", 1, phaseAgent("review"), VALID_OUTPUT)
+
+    val report = harness.runner.run(harness.request())
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertEquals(1, harness.launchedPhaseOrder().count { it == "validate" })
+    assertTrue(harness.launchedPhaseOrder().contains("write_history"))
+    val validateRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["validate"])
+    assertEquals(1, validateRecord.attemptCount)
+    val validateOutput = requireNotNull(validateRecord.outputArtifact)
+    assertContains(validateOutput, """"gate_run_count":0""")
+    assertContains(validateOutput, """"gate_runs":[]""")
+  }
+
   // --- Subtask 2: bounded cyclic phase executor (AC10) ---
 
   @Test

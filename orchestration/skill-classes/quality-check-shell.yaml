@@ -36,7 +36,7 @@ sections:
 
   - heading: Routing Rules
     body: |
-      Stack detection and routing are manifest-driven. The shell discovers every `platform-packs/<slug>/platform.yaml`, reads each pack's declared routing signals, and chooses the dominant stack using manifest-declared tie-breakers. The shell does not enumerate platform names inline.
+      Stack detection and routing are manifest-driven. The shell discovers every `platform-packs/<slug>/platform.yaml` from the skill-adjacent installed `platform-packs` link (or `~/.skill-bill/platform-packs/` / the install-published review catalog), not from the reviewed repository root unless that repository is itself the Skill Bill source tree. It reads each pack's declared routing signals and chooses the dominant stack using manifest-declared tie-breakers. The shell does not enumerate platform names inline.
 
       - For the dominant pack, read the optional top-level `declared_quality_check_file` key from the manifest. The runtime authority is `skillbill.scaffold.platformpack.routeQualityCheck` in `runtime-infra-fs`; it discovers manifests dynamically and loud-fails ambiguous or invalid routes.
       - The routed skill name is the `name:` frontmatter field of the declared quality-check `content.md`. The declared content must also carry `internal-for: bill-code-check`, so the routed checker installs as a sibling `<routed-skill-name>.md` sidecar inside `bill-code-check` rather than as a separately listed skill.

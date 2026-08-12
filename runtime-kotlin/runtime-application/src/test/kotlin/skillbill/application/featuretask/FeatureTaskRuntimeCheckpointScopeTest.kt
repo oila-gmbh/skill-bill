@@ -304,6 +304,39 @@ class FeatureTaskRuntimeCheckpointScopeTest {
     assertContains(reviewRemediation, "generation=2")
   }
 
+  @Test
+  fun `runtime-private run-evidence does not block outside-inventory ownership`() {
+    val evidence = ".skill-bill/run-evidence/wftr-1/fp/evidence.json"
+    val patch = ".skill-bill/run-evidence/wftr-1/fp/diff.patch"
+    val decision = decide(
+      ownedPaths = listOf("src/Owned.kt"),
+      phaseIntroducedPaths = listOf("src/Owned.kt", evidence, patch, ".skill-bill/"),
+    )
+
+    val stage = assertIs<FeatureTaskRuntimeCheckpointDecision.Stage>(decision)
+    assertEquals(listOf("src/Owned.kt"), stage.ownedPaths)
+  }
+
+  @Test
+  fun `runtime-private paths are stripped from phaseWrittenPaths even when the manifest collapses the tree`() {
+    val written = FeatureTaskRuntimeCheckpointScope.phaseWrittenPaths(
+      worktreeDeltaPaths = listOf(
+        "src/Owned.kt",
+        ".skill-bill/run-evidence/wf/fp/diff.patch",
+        ".skill-bill/run-evidence/wf/fp/evidence.json",
+      ),
+      phaseManifestPaths = listOf("src/Owned.kt", ".skill-bill/"),
+    )
+
+    assertEquals(listOf("src/Owned.kt"), written)
+  }
+
+  @Test
+  fun `trackable skill-bill config is not treated as runtime-private`() {
+    assertFalse(FeatureTaskRuntimeCheckpointScope.isRuntimePrivatePath(".skill-bill/config.yaml"))
+    assertTrue(FeatureTaskRuntimeCheckpointScope.isRuntimePrivatePath(".skill-bill/run-evidence/a/b"))
+  }
+
   // The delta defaults to everything owned or introduced, so each case names only what it is about.
   private fun decide(
     ownedPaths: List<String>,
