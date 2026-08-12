@@ -2664,44 +2664,80 @@ internal class FeatureTaskRuntimeRunLoop(
     findings: ValidationFindingSetProjection,
     repairTurn: Int,
   ): ValidationGateAgentRepairResult {
-    // The phase attempt deliberately does NOT advance across repair turns: it feeds the durable
-    // watermark and the semantic fix-loop budget, and charging honest gate repairs to that budget
-    // would block runs early. The turn ordinal is what separates each turn's evidence instead.
+    // The phase attempt deliberately does NOT advance across repair turns for the durable watermark:
+    // charging honest gate-finding repairs to the phase semantic budget would block runs early. Schema-
+    // invalid *repair receipts* still earn a bounded corrective re-launch inside this turn, carrying
+    // the rejected body via PriorAttemptCorrection — the same contract as every other fix-loop phase.
     val repairRun = run.copy(validationGateFindings = findings, validationGateRepairTurn = repairTurn)
-    val attempt = attemptOnce(
-      repairRun,
-      state,
-      iteration,
-      observability,
-      priorCorrection = null,
-      phaseTokenAccumulator,
-    )
-    val settled = attempt.settledOutcome
-    val completed = settled?.completedOutput
-    return when {
-      // A schema-valid completed repair receipt means the agent finished its segment; the
-      // coordinator re-runs the runtime-owned gate. Treating completed as Blocked aborted the
-      // cycle after attemptOnce had already accepted the receipt, and left agent-authored
-      // gate_run_count/gate_runs as durable validate evidence (AC-001/AC-008/AC-011).
-      completed != null -> ValidationGateAgentRepairResult.Completed(completed)
-      settled != null -> ValidationGateAgentRepairResult.Blocked(
-        settled.blockedReason
-          ?: settled.pausedReason
-          ?: "Validation repair attempt blocked.",
+    var priorCorrection: PriorAttemptCorrection? = null
+    var attemptIteration = iteration
+    var malformedAttemptCount = 0
+    var schemaAttempt = 1
+    while (true) {
+      val attempt = attemptOnce(
+        repairRun,
+        state,
+        attemptIteration,
+        observability,
+        priorCorrection,
+        phaseTokenAccumulator,
       )
-      attempt.malformedOutput || attempt.schemaInvalidRetryReason != null ->
-        ValidationGateAgentRepairResult.Blocked(
-          attempt.schemaInvalidRetryReason ?: "Validation repair attempt produced malformed output.",
+      val settled = attempt.settledOutcome
+      val completed = settled?.completedOutput
+      when {
+        // A schema-valid completed repair receipt means the agent finished its segment; the
+        // coordinator re-runs the runtime-owned gate. Treating completed as Blocked aborted the
+        // cycle after attemptOnce had already accepted the receipt, and left agent-authored
+        // gate_run_count/gate_runs as durable validate evidence (AC-001/AC-008/AC-011).
+        completed != null -> return ValidationGateAgentRepairResult.Completed(completed)
+        settled != null -> return ValidationGateAgentRepairResult.Blocked(
+          settled.blockedReason
+            ?: settled.pausedReason
+            ?: "Validation repair attempt blocked.",
         )
-      else -> ValidationGateAgentRepairResult.Completed(
-        FeatureTaskRuntimePhaseOutput(
-          phaseId = run.phaseId,
-          iteration = iteration,
-          payload =
-          """{"contract_version":"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION","phase_id":"validate",""" +
-            """"status":"completed","summary":"Gate repair segment.","produced_outputs":{}}""",
-        ),
-      )
+        attempt.malformedOutput || attempt.schemaInvalidRetryReason != null -> {
+          if (attempt.malformedOutput) {
+            malformedAttemptCount += 1
+            FeatureTaskRuntimeFixLoopPolicy.malformedOutputBlockReason(
+              run.phaseId,
+              malformedAttemptCount,
+            )?.let { formatBlock ->
+              return ValidationGateAgentRepairResult.Blocked(
+                withSchemaGateDetail(formatBlock, requireNotNull(attempt.schemaInvalidOperatorReason)),
+              )
+            }
+          } else {
+            when (
+              val decision = FeatureTaskRuntimeFixLoopPolicy.decideAfterFailure(run.phaseId, schemaAttempt)
+            ) {
+              is FeatureTaskRuntimeFixLoopDecision.Block ->
+                return ValidationGateAgentRepairResult.Blocked(
+                  withSchemaGateDetail(
+                    decision.blockedReason,
+                    requireNotNull(attempt.schemaInvalidOperatorReason),
+                  ),
+                )
+              is FeatureTaskRuntimeFixLoopDecision.Retry -> {
+                schemaAttempt = decision.nextIteration
+              }
+            }
+          }
+          priorCorrection = PriorAttemptCorrection.schemaGate(
+            requireNotNull(attempt.schemaInvalidRetryReason),
+            correctiveRepairContext = attempt.correctiveRepairContext,
+          )
+          attemptIteration += 1
+        }
+        else -> return ValidationGateAgentRepairResult.Completed(
+          FeatureTaskRuntimePhaseOutput(
+            phaseId = run.phaseId,
+            iteration = iteration,
+            payload =
+            """{"contract_version":"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION","phase_id":"validate",""" +
+              """"status":"completed","summary":"Gate repair segment.","produced_outputs":{}}""",
+          ),
+        )
+      }
     }
   }
 
@@ -3423,6 +3459,21 @@ internal class FeatureTaskRuntimeRunLoop(
       "$payloadFreeReason Violated constraint: ${boundedSchemaGateDetail(validationReason)}"
     }
 
+  /**
+   * Semantic-gate detail that is safe to place outside the authorized repair section. Projection and
+   * verification gates compose schema-authored constraints; audit ledger/repair gates may embed
+   * receipt identifiers (`expected=`/`actual=`/quoted item ids) and must not reach the retry prompt.
+   */
+  private fun payloadFreeSemanticGateConstraint(rule: String, detail: String): String? =
+    when (rule) {
+      "producer-projection",
+      "consumer-projection",
+      "output-verification",
+      "mutating-reconciliation",
+      -> detail.takeUnless { it.isBlank() }
+      else -> null
+    }
+
   @Suppress("LongParameterList")
   private fun attemptOnce(
     run: PhaseRun,
@@ -3663,14 +3714,18 @@ internal class FeatureTaskRuntimeRunLoop(
       val diagnosticRule = structuredIdentity?.first ?: rule
       val path = structuredIdentity?.second ?: rejectionPath(detail)
       val reason = payloadFreeRejectionReason(rule, if (structuredIdentity == null) path else "/")
-      val retryReason = retryRejectionReason(reason, detail)
+      // Projection/verification gates author schema-shaped constraints without embedding receipt values.
+      // Audit durable-ledger and similar gates may list expected=/actual= identifiers from the output —
+      // those stay in the private diagnostic and the authorized repair body, never in the retry reason.
+      val retryFacingConstraint = payloadFreeSemanticGateConstraint(rule, detail)
+      val retryReason = retryRejectionReason(reason, retryFacingConstraint)
       val diagnosticIdentity = recordRejectedOutput(
-        run, iteration, diagnosticRule, retryReason, outputBytes, path = path,
+        run, iteration, diagnosticRule, detail, outputBytes, path = path,
         outputTruncated = outputTruncated, outputByteSize = outputByteSize, outputSha256 = outputSha256,
       )
       // Semantic/schema rejection after a successful parse: rebuild the repair context from the same
-      // capture that was just recorded, using the payload-free operator reason as the constraint so
-      // value-bearing detail stays out of the typed context.
+      // capture that was just recorded, using only payload-free constraint text so value-bearing detail
+      // stays out of the typed context and out of the next prompt outside the repair section.
       return schemaInvalidAttempt(
         reason,
         fileManifest,
@@ -3685,7 +3740,7 @@ internal class FeatureTaskRuntimeRunLoop(
           diagnosticIdentity = diagnosticIdentity,
           rejectionRule = diagnosticRule,
           rejectionPath = path,
-          payloadFreeConstraint = reason,
+          payloadFreeConstraint = retryFacingConstraint ?: reason,
         ),
       )
     }
@@ -5526,7 +5581,7 @@ internal class FeatureTaskRuntimeRunLoop(
       override val fileManifest: FeatureTaskRuntimePhaseFileManifest,
       override val rejectedOutput: String?,
       override val malformedOutput: Boolean,
-      val correctiveRepairContext: FeatureTaskRuntimeCorrectiveRepairContext?,
+      override val correctiveRepairContext: FeatureTaskRuntimeCorrectiveRepairContext?,
     ) : AttemptResult
 
     /**

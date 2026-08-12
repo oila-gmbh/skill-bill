@@ -116,6 +116,47 @@ class FeatureTaskRuntimeCorrectiveRepairContextTest {
 
   @Test
   fun `framed exact body that overflows the prompt budget falls back without an excerpt`() {
+    // Realistic bug: measuring only the framed exact body, then emitting a payload-free fallback that
+    // itself exceeds maxPromptUtf8Bytes. Body fits the response budget; framing does not fit the prompt
+    // budget; fallback still must fit.
+    val body = "x".repeat(200)
+    val capture = CorrectiveRepairCapturedResponse.classify(
+      body = body,
+      alreadyTruncated = false,
+      budget = FeatureTaskRuntimeCorrectiveRepairBudget(
+        maxResponseUtf8Bytes = 256,
+        maxPromptUtf8Bytes = 500,
+        maxCollectionItems = 2,
+      ),
+    )
+    assertTrue(capture is CorrectiveRepairCapturedResponse.Exact)
+    val context = FeatureTaskRuntimeCorrectiveRepairContext(
+      phaseId = "audit",
+      attempt = 1,
+      rejectionRule = "phase-output-schema",
+      rejectionPath = "<root>",
+      payloadFreeConstraint = "constraint",
+      diagnosticLocator = CorrectiveRepairDiagnosticLocator("opaque-framing"),
+      captured = capture,
+      budget = FeatureTaskRuntimeCorrectiveRepairBudget(
+        maxResponseUtf8Bytes = 256,
+        maxPromptUtf8Bytes = 500,
+        maxCollectionItems = 2,
+      ),
+    )
+    val projection = context.promptProjection()
+    assertEquals(CorrectiveRepairResponseAvailability.RESPONSE_EXCEEDS_REPAIR_BUDGET, projection.availability)
+    assertEquals(CorrectiveRepairInclusionReason.PROMPT_FRAMING_EXCEEDS_BUDGET, projection.inclusionReason)
+    assertNull(projection.exactResponseBody)
+    val fallback = projection.renderAuthorizedRepairSection()
+    assertFalse(fallback.contains(body))
+    assertTrue(fallback.toByteArray(Charsets.UTF_8).size <= 500)
+  }
+
+  @Test
+  fun `fallback that still exceeds the prompt budget is rejected rather than emitted`() {
+    // Realistic bug: exact framing overflows a tiny prompt budget and the fallback is returned unchecked,
+    // so an "over budget" path still ships an over-budget section.
     val body = "sentinel-body"
     val capture = CorrectiveRepairCapturedResponse.classify(
       body = body,
@@ -141,11 +182,8 @@ class FeatureTaskRuntimeCorrectiveRepairContextTest {
         maxCollectionItems = 2,
       ),
     )
-    val projection = context.promptProjection()
-    assertEquals(CorrectiveRepairResponseAvailability.RESPONSE_EXCEEDS_REPAIR_BUDGET, projection.availability)
-    assertEquals(CorrectiveRepairInclusionReason.PROMPT_FRAMING_EXCEEDS_BUDGET, projection.inclusionReason)
-    assertNull(projection.exactResponseBody)
-    assertFalse(projection.renderAuthorizedRepairSection().contains(body))
+    val error = assertFailsWith<IllegalArgumentException> { context.promptProjection() }
+    assertTrue(error.message.orEmpty().contains("fallback"))
   }
 
   @Test
@@ -163,7 +201,7 @@ class FeatureTaskRuntimeCorrectiveRepairContextTest {
     // compares an actual item count before prompt rendering, so an oversized collection reaches the agent.
     val tight = FeatureTaskRuntimeCorrectiveRepairBudget(
       maxResponseUtf8Bytes = 64,
-      maxPromptUtf8Bytes = 128,
+      maxPromptUtf8Bytes = 1_024,
       maxCollectionItems = 1,
     )
     assertFailsWith<IllegalArgumentException> {

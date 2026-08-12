@@ -388,7 +388,7 @@ data class CorrectiveRepairPromptProjection(
         )
         val framedBytes = framed.toByteArray(Charsets.UTF_8).size
         if (framedBytes > context.budget.maxPromptUtf8Bytes) {
-          return CorrectiveRepairPromptProjection(
+          val fallback = CorrectiveRepairPromptProjection(
             availability = CorrectiveRepairResponseAvailability.RESPONSE_EXCEEDS_REPAIR_BUDGET,
             inclusionReason = CorrectiveRepairInclusionReason.PROMPT_FRAMING_EXCEEDS_BUDGET,
             utf8ByteCount = captured.utf8ByteCount,
@@ -396,6 +396,13 @@ data class CorrectiveRepairPromptProjection(
             diagnosticLocator = context.diagnosticLocator,
             exactResponseBody = null,
           )
+          val fallbackBytes = fallback.renderAuthorizedRepairSection().toByteArray(Charsets.UTF_8).size
+          require(fallbackBytes <= context.budget.maxPromptUtf8Bytes) {
+            "CorrectiveRepairPromptProjection fallback is $fallbackBytes UTF-8 bytes against the " +
+              "${context.budget.maxPromptUtf8Bytes}-byte prompt budget; the runtime rejects rather than " +
+              "emitting an over-budget payload-free section."
+          }
+          return fallback
         }
         return CorrectiveRepairPromptProjection(
           availability = captured.availability,

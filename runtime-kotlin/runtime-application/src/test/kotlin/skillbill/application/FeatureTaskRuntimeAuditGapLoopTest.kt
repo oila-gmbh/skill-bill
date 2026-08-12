@@ -457,10 +457,17 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     val auditPrompts = harness.launcher.requests
       .map { requireNotNull(it.skillRunRequest.promptOverride) }
       .filter { phaseIdFromPrompt(it) == "audit" }
-    assertRetryPromptNamesConstraint(
-      auditPrompts.last(),
-      "audit-followup-evidence",
-      "must appear as a reported gap",
+    // Semantic audit-gate detail can embed gap identifiers; the retry prompt stays on the payload-free
+    // sentence (no Violated constraint: append) while the authorized repair section may carry the body.
+    val retryPrompt = auditPrompts.last()
+    assertContains(retryPrompt, "Rejected output violated 'audit-followup-evidence'")
+    assertTrue(
+      !retryPrompt.contains("Violated constraint:"),
+      "output-derived gate detail must stay out of the retry reason",
+    )
+    assertTrue(
+      !retryPrompt.contains("must appear as a reported gap"),
+      "value-bearing disposition detail must not be appended outside the repair section",
     )
     val repairState = requireNotNull(harness.recorder.loadAuditRepairState(WORKFLOW_ID))
     assertEquals(
@@ -527,7 +534,16 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     val auditPrompts = harness.launcher.requests
       .map { requireNotNull(it.skillRunRequest.promptOverride) }
       .filter { phaseIdFromPrompt(it) == "audit" }
-    assertRetryPromptNamesConstraint(auditPrompts[1], "audit-followup-evidence", "carries no unresolved gap")
+    val retryPrompt = auditPrompts[1]
+    assertContains(retryPrompt, "Rejected output violated 'audit-followup-evidence'")
+    assertTrue(
+      !retryPrompt.contains("Violated constraint:"),
+      "output-derived gate detail must stay out of the retry reason",
+    )
+    assertTrue(
+      !retryPrompt.contains("carries no unresolved gap"),
+      "value-bearing disposition detail must not be appended outside the repair section",
+    )
     assertEquals(
       null,
       harness.recorder.loadAuditRepairState(WORKFLOW_ID),
