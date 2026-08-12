@@ -5774,9 +5774,18 @@ private const val OWNED_PATH_DELIMITER = '\u0000'
 // inventory is rejected as a typed projection failure instead of tripping that ceiling's untyped throw.
 private const val MAX_CHECKPOINT_OWNED_PATHS = 500
 
-/** Quotes a response wire verdict that must not reach retry prompts outside the repair section. */
+/**
+ * Quotes a response wire verdict that must not reach retry prompts outside the repair section.
+ *
+ * The gate reason always continues with ` and no` after the closing quote. Match non-greedily to
+ * that boundary so an apostrophe inside the wire verdict (e.g. `can't_pass`) cannot terminate the
+ * scrub early and leave a response-derived suffix in Violated constraint.
+ */
 private val OFF_VOCABULARY_VERDICT_PATTERN =
-  Regex("""off-vocabulary verdict '[^']*'""", RegexOption.IGNORE_CASE)
+  Regex(
+    """off-vocabulary verdict\s+'.*?'(?=\s+and\s+no\b)""",
+    setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL),
+  )
 
 /** Dual-reason validators sometimes append the instance dump after an em-dash or colon. */
 private val OFFENDING_VALUE_APPENDIX_PATTERN =
