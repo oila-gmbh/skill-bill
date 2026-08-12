@@ -326,8 +326,8 @@ object IdeStatusJsonMapper {
         val planning = getAsJsonObjectOrNull("planning") ?: return null
         val state = planning.getAsString("state")?.takeUnless { it.isBlank() } ?: return null
         val sharedPreplanPrepared = planning.getAsBoolean("shared_preplan_prepared") ?: return null
-        val planned = planning.getAsInt("planned_subtask_count")?.takeIf { it >= 0 } ?: return null
-        val total = planning.getAsInt("total_subtask_count")?.takeIf { it >= 0 } ?: return null
+        val planned = planning.getAsStrictInt("planned_subtask_count")?.takeIf { it >= 0 } ?: return null
+        val total = planning.getAsStrictInt("total_subtask_count")?.takeIf { it >= 0 } ?: return null
         return GoalPlanningInfo(
             state = state,
             sharedPreplanPrepared = sharedPreplanPrepared,

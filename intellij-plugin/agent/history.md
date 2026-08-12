@@ -1,3 +1,16 @@
+## [2026-08-12] SKILL-184 current-phase execution status wording (subtask 2)
+
+Areas: intellij-plugin/{domain,infrastructure/cli,presentation,ui}
+- The IDE status wire now carries an optional `current_phase_execution` block (`phase_id`, `kind`, `count`, optional `total`), parsed into `CurrentPhaseExecution` and threaded domain → presentation → popup on the five outcomes that carry a current step.
+- `SkillBillStatusBarPresentation.selectDisplaySlot` introduces a single mutually exclusive display slot: planning wins while relevant, execution fills the same slot afterwards, and bar/tooltip/accessibility/popup all read from that one selection so they cannot disagree. Reuse this slot pattern for any future competing status line rather than adding a parallel row. reusable
+- Wording is producer-faithful per kind (`loop`/`pass`/`gate`/`attempt`, `n/total` only for `bounded_edge`); the plugin never invents a loop total nor re-labels an attempt as a semantic loop.
+- New `getAsStrictInt` helper (number primitive, no fractional part, `intValueExact`) replaces permissive `getAsInt` for both the new counts and the existing `planning` counts — a numeric string or `4.5` is now a type error. Prefer it for new integer wire fields. reusable
+- Malformed-block degradation follows the established `parsePlanning` rule: unknown kind, count < 1, over-length phase id, explicit-null total, or a total on a non-`bounded_edge` kind degrades the whole block to null while the outcome still maps.
+- Planning progress now renders planned/total directly and bypasses the in-flight `renderedPosition` offset; the bar's drop-by-rank budget treats the merged slot the way it previously treated the planning segment.
+- Limitation: one slot only — no simultaneous planning + execution row, no per-phase history of counts.
+Feature flag: N/A
+Acceptance criteria: 11/11 implemented
+
 ## [2026-08-11] SKILL-183 current-phase model in status popup (subtask 2)
 
 Areas: intellij-plugin/{domain,infrastructure/cli,presentation,ui}

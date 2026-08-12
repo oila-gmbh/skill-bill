@@ -342,6 +342,8 @@ class IdeStatusJsonMapperTest {
             "missing required key" to """"planning": {"state": "preplanned", "planned_subtask_count": 1, "total_subtask_count": 4}""",
             "wrong type" to """"planning": {"state": "preplanned", "shared_preplan_prepared": "yes", "planned_subtask_count": 1, "total_subtask_count": 4}""",
             "negative count" to """"planning": {"state": "preplanned", "shared_preplan_prepared": false, "planned_subtask_count": -1, "total_subtask_count": 4}""",
+            "string count" to """"planning": {"state": "preplanned", "shared_preplan_prepared": false, "planned_subtask_count": "1", "total_subtask_count": 4}""",
+            "fractional total" to """"planning": {"state": "preplanned", "shared_preplan_prepared": false, "planned_subtask_count": 1, "total_subtask_count": 4.5}""",
         )
         for ((case, block) in malformed) {
             val outcome = IdeStatusJsonMapper.map(goalPayload(planning = block), now, 0)
