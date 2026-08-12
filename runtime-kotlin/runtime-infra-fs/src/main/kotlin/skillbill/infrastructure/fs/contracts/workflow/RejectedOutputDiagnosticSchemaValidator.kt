@@ -23,6 +23,7 @@ object RejectedOutputDiagnosticSchemaValidator {
       put("workflow_id", metadata.workflowId)
       put("phase_id", metadata.phaseId)
       put("attempt", metadata.attempt)
+      put("repair_turn", metadata.repairTurn)
       put("rule", metadata.rule)
       put("path", metadata.path)
       put("reason", metadata.reason)

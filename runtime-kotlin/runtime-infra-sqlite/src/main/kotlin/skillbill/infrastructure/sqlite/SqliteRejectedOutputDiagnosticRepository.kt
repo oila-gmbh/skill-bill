@@ -8,7 +8,9 @@ import skillbill.ports.persistence.RejectedOutputDiagnosticRepository
 import skillbill.ports.persistence.RejectedOutputDiagnosticSelector
 import skillbill.ports.persistence.RejectedOutputLifecycle
 import skillbill.ports.persistence.model.RejectedOutputDiagnosticError
+import skillbill.ports.persistence.model.evidenceKey
 import java.sql.Connection
+import java.sql.PreparedStatement
 import java.sql.ResultSet
 import java.sql.SQLException
 import java.time.Instant
@@ -29,9 +31,9 @@ class SqliteRejectedOutputDiagnosticRepository(
       connection.prepareStatement(
         """
         INSERT INTO rejected_output_diagnostics (
-          identity, workflow_id, phase_id, attempt, rule, rejection_path, reason, agent_id, model,
+          identity, workflow_id, phase_id, attempt, repair_turn, rule, rejection_path, reason, agent_id, model,
           recorded_at, byte_size, sha256, lifecycle, payload
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """.trimIndent(),
       ).use { statement ->
         val metadata = record.metadata
@@ -40,6 +42,7 @@ class SqliteRejectedOutputDiagnosticRepository(
         statement.setString(index++, metadata.workflowId)
         statement.setString(index++, metadata.phaseId)
         statement.setInt(index++, metadata.attempt)
+        statement.setInt(index++, metadata.repairTurn)
         statement.setString(index++, metadata.rule)
         statement.setString(index++, metadata.path)
         statement.setString(index++, metadata.reason)
@@ -62,16 +65,10 @@ class SqliteRejectedOutputDiagnosticRepository(
 
   override fun select(selector: RejectedOutputDiagnosticSelector): List<RejectedOutputDiagnostic> {
     return persistence("select") {
-      val clauses = mutableListOf("workflow_id = ?")
-      if (selector.phaseId != null) clauses += "phase_id = ?"
-      if (selector.attempt != null) clauses += "attempt = ?"
       connection.prepareStatement(
-        "${selectColumns()} WHERE ${clauses.joinToString(" AND ")} ORDER BY phase_id, attempt",
+        "${selectColumns()} WHERE ${selector.whereClause()} ORDER BY phase_id, attempt, repair_turn",
       ).use { statement ->
-        var index = 1
-        statement.setString(index++, selector.workflowId)
-        selector.phaseId?.let { statement.setString(index++, it) }
-        selector.attempt?.let { statement.setInt(index, it) }
+        selector.bind(statement)
         statement.executeQuery().use { rows ->
           buildList { while (rows.next()) add(rows.toRecord().metadata) }
         }
@@ -97,16 +94,10 @@ class SqliteRejectedOutputDiagnosticRepository(
   }
 
   override fun delete(selector: RejectedOutputDiagnosticSelector): Int = persistence("delete") {
-    val clauses = mutableListOf("workflow_id = ?")
-    if (selector.phaseId != null) clauses += "phase_id = ?"
-    if (selector.attempt != null) clauses += "attempt = ?"
     connection.prepareStatement(
-      "DELETE FROM rejected_output_diagnostics WHERE ${clauses.joinToString(" AND ")}",
+      "DELETE FROM rejected_output_diagnostics WHERE ${selector.whereClause()}",
     ).use { statement ->
-      var index = 1
-      statement.setString(index++, selector.workflowId)
-      selector.phaseId?.let { statement.setString(index++, it) }
-      selector.attempt?.let { statement.setInt(index, it) }
+      selector.bind(statement)
       statement.executeUpdate()
     }
   }
@@ -116,8 +107,9 @@ class SqliteRejectedOutputDiagnosticRepository(
       connection.prepareStatement(
         """
         INSERT OR IGNORE INTO producer_output_evidence
-        (workflow_id, phase_id, generation, attempt, agent_id, model, recorded_at, byte_size, sha256, payload)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (workflow_id, phase_id, generation, attempt, repair_turn, agent_id, model, recorded_at,
+         byte_size, sha256, payload)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """.trimIndent(),
       ).use {
         var index = 1
@@ -125,6 +117,7 @@ class SqliteRejectedOutputDiagnosticRepository(
         it.setString(index++, evidence.phaseId)
         it.setInt(index++, evidence.generation)
         it.setInt(index++, evidence.attempt)
+        it.setInt(index++, evidence.repairTurn)
         it.setString(index++, evidence.agentId)
         it.setString(index++, evidence.model)
         it.setString(index++, evidence.recordedAt.toString())
@@ -141,6 +134,7 @@ class SqliteRejectedOutputDiagnosticRepository(
           agentId = evidence.agentId,
           generation = evidence.generation,
           exactGeneration = true,
+          repairTurn = evidence.repairTurn,
         ),
       ) ?: throw RejectedOutputDiagnosticError.Persistence("retain-producer-output-readback")
       if (retained.sha256 != evidence.sha256 || retained.byteSize != evidence.byteSize ||
@@ -166,6 +160,9 @@ class SqliteRejectedOutputDiagnosticRepository(
         agentId = agentId,
         generation = generation,
         exactGeneration = false,
+        // Null means "whichever repair turn is newest": a consumer resolving a producer's evidence
+        // knows the attempt it wants, never how many repair turns that attempt ran.
+        repairTurn = null,
       ),
     )
   }
@@ -185,10 +182,25 @@ class SqliteRejectedOutputDiagnosticRepository(
   }
 
   private fun selectColumns(): String = """
-    SELECT identity, workflow_id, phase_id, attempt, rule, rejection_path, reason, agent_id, model,
+    SELECT identity, workflow_id, phase_id, attempt, repair_turn, rule, rejection_path, reason, agent_id, model,
            recorded_at, byte_size, sha256, lifecycle, payload
     FROM rejected_output_diagnostics
   """.trimIndent()
+}
+
+private fun RejectedOutputDiagnosticSelector.whereClause(): String = buildList {
+  add("workflow_id = ?")
+  if (phaseId != null) add("phase_id = ?")
+  if (attempt != null) add("attempt = ?")
+  if (repairTurn != null) add("repair_turn = ?")
+}.joinToString(" AND ")
+
+private fun RejectedOutputDiagnosticSelector.bind(statement: PreparedStatement) {
+  var index = 1
+  statement.setString(index++, workflowId)
+  phaseId?.let { statement.setString(index++, it) }
+  attempt?.let { statement.setInt(index++, it) }
+  repairTurn?.let { statement.setInt(index, it) }
 }
 
 private inline fun <T> persistence(operation: String, block: () -> T): T = try {
@@ -221,6 +233,7 @@ private fun ResultSet.toRecord(): RejectedOutputDiagnosticRecord {
         byteSize = getLong("byte_size"),
         sha256 = getString("sha256"),
         lifecycle = RejectedOutputLifecycle.valueOf(getString("lifecycle").uppercase()),
+        repairTurn = getInt("repair_turn"),
       ),
       payload = getBytes("payload"),
     )
@@ -249,8 +262,6 @@ private fun RejectedOutputDiagnosticRecord.sameImmutableEvidence(other: Rejected
 private fun payloadsEqual(left: ByteArray?, right: ByteArray?): Boolean =
   (left == null && right == null) || (left != null && right != null && left.contentEquals(right))
 
-private fun ProducerOutputEvidence.evidenceKey(): String = "$workflowId:$phaseId:$generation:$attempt:$agentId"
-
 private data class ProducerEvidenceLookup(
   val workflowId: String,
   val phaseId: String,
@@ -258,15 +269,19 @@ private data class ProducerEvidenceLookup(
   val agentId: String,
   val generation: Int,
   val exactGeneration: Boolean,
+  /** Exact turn when set; null resolves the newest turn retained for the attempt. */
+  val repairTurn: Int?,
 )
 
 private fun Connection.queryProducerEvidence(lookup: ProducerEvidenceLookup): ProducerOutputEvidence? {
-  val generationClause =
-    if (lookup.exactGeneration) "generation = ?" else "generation <= ? ORDER BY generation DESC LIMIT 1"
+  val generationPredicate = if (lookup.exactGeneration) "generation = ?" else "generation <= ?"
+  val repairTurnPredicate = if (lookup.repairTurn == null) "" else " AND repair_turn = ?"
   return prepareStatement(
     """
     SELECT * FROM producer_output_evidence
-    WHERE workflow_id = ? AND phase_id = ? AND attempt = ? AND agent_id = ? AND $generationClause
+    WHERE workflow_id = ? AND phase_id = ? AND attempt = ? AND agent_id = ?
+      AND $generationPredicate$repairTurnPredicate
+    ORDER BY generation DESC, repair_turn DESC LIMIT 1
     """.trimIndent(),
   ).use {
     var index = 1
@@ -274,7 +289,8 @@ private fun Connection.queryProducerEvidence(lookup: ProducerEvidenceLookup): Pr
     it.setString(index++, lookup.phaseId)
     it.setInt(index++, lookup.attempt)
     it.setString(index++, lookup.agentId)
-    it.setInt(index, lookup.generation)
+    it.setInt(index++, lookup.generation)
+    lookup.repairTurn?.let { turn -> it.setInt(index, turn) }
     it.executeQuery().use { row -> if (row.next()) row.toProducerEvidence() else null }
   }
 }
@@ -300,5 +316,6 @@ private fun ResultSet.toProducerEvidence(): ProducerOutputEvidence {
     sha256 = getString("sha256"),
     payload = getBytes("payload"),
     generation = generation,
+    repairTurn = getInt("repair_turn"),
   )
 }

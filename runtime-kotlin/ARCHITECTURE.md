@@ -440,6 +440,9 @@ runtime-ports
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry.fromArtifactMap`
     - `skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineRecordToWire`
     - `skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineEntriesFromWire`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticSignal.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticSignal.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.featureTaskRuntimeDiagnosticSignalsFromWire`
     - `skillbill.workflow.FeatureTaskRuntimeImplementationAttemptValidator.validateImplementationAttemptRecord`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttempt.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttempt.fromArtifactMap`
@@ -1223,6 +1226,9 @@ Categories:
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry.fromArtifactMap`
 - `skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineRecordToWire`
 - `skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineEntriesFromWire`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticSignal.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticSignal.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.featureTaskRuntimeDiagnosticSignalsFromWire`
 - `skillbill.workflow.FeatureTaskRuntimeImplementationAttemptValidator.validateImplementationAttemptRecord`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttempt.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttempt.fromArtifactMap`

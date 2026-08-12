@@ -2609,7 +2609,7 @@ internal class FeatureTaskRuntimeRunLoop(
         changedPaths = changedPaths,
         repositoryCheckpoint = checkpoint,
         baseRef = baseRef,
-        agentRepairLauncher = ValidationGateAgentRepairLauncher { findings, _ ->
+        agentRepairLauncher = ValidationGateAgentRepairLauncher { findings, repairIteration ->
           launchValidationGateRepair(
             run = run,
             state = state,
@@ -2617,6 +2617,7 @@ internal class FeatureTaskRuntimeRunLoop(
             observability = observability,
             phaseTokenAccumulator = phaseTokenAccumulator,
             findings = findings,
+            repairTurn = repairIteration,
           )
         },
       ),
@@ -2649,6 +2650,7 @@ internal class FeatureTaskRuntimeRunLoop(
     }
   }
 
+  @Suppress("LongParameterList")
   private fun launchValidationGateRepair(
     run: PhaseRun,
     state: FeatureTaskRuntimeRunState,
@@ -2656,8 +2658,12 @@ internal class FeatureTaskRuntimeRunLoop(
     observability: FeatureTaskRuntimeRunObservability,
     phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>>?,
     findings: ValidationFindingSetProjection,
+    repairTurn: Int,
   ): ValidationGateAgentRepairResult {
-    val repairRun = run.copy(validationGateFindings = findings)
+    // The phase attempt deliberately does NOT advance across repair turns: it feeds the durable
+    // watermark and the semantic fix-loop budget, and charging honest gate repairs to that budget
+    // would block runs early. The turn ordinal is what separates each turn's evidence instead.
+    val repairRun = run.copy(validationGateFindings = findings, validationGateRepairTurn = repairTurn)
     val attempt = attemptOnce(
       repairRun,
       state,
@@ -3280,6 +3286,8 @@ internal class FeatureTaskRuntimeRunLoop(
       outputByteSize = producerEvidence.byteSize,
       outputSha256 = producerEvidence.sha256,
       outputTruncated = producerEvidence.payload == null,
+      // The diagnostic names the exact capture that was rejected, which is the turn the read resolved.
+      repairTurn = producerEvidence.repairTurn,
     )
     val regenerationAttempt = (state.edgeIterationCount(edge.loopId) + 1).coerceAtLeast(1)
     recorder.appendQuarantineEntry(
@@ -3347,6 +3355,7 @@ internal class FeatureTaskRuntimeRunLoop(
         outputByteSize = it.byteSize,
         outputSha256 = it.sha256,
         outputTruncated = it.payload == null,
+        repairTurn = it.repairTurn,
       )
     }
     val reason = if (producer == null) {
@@ -3512,6 +3521,10 @@ internal class FeatureTaskRuntimeRunLoop(
     outputTruncated: Boolean = false,
     outputByteSize: Long = outputBytes.size.toLong(),
     outputSha256: String = RejectedOutputDiagnosticService.sha256(outputBytes),
+    // A repair turn belongs to the phase this run is executing. A rejection attributed to some other
+    // producer phase is that producer's own capture, so it stays at turn 0 unless the caller knows
+    // otherwise from the producer's retained evidence.
+    repairTurn: Int = if (phaseId == run.phaseId) run.validationGateRepairTurn else 0,
   ): String {
     recorder.recordRejectedOutput(
       RejectedOutputDiagnosticRequest(
@@ -3527,6 +3540,7 @@ internal class FeatureTaskRuntimeRunLoop(
         observedByteSize = outputByteSize,
         observedSha256 = outputSha256,
         truncated = outputTruncated,
+        repairTurn = repairTurn,
       ),
       run.request.dbPathOverride,
       state.evidenceGeneration(phaseId),
@@ -3535,6 +3549,7 @@ internal class FeatureTaskRuntimeRunLoop(
       run.request.workflowId,
       phaseId,
       iteration.coerceAtLeast(1),
+      repairTurn,
     )
   }
 
@@ -3648,6 +3663,7 @@ internal class FeatureTaskRuntimeRunLoop(
         sha256 = outputSha256,
         payload = outputBytes.takeUnless { outputTruncated },
         generation = state.evidenceGeneration(run.phaseId),
+        repairTurn = run.validationGateRepairTurn,
       ),
       run.request.dbPathOverride,
     )
@@ -5233,6 +5249,12 @@ internal class FeatureTaskRuntimeRunLoop(
     val validationGateFindings: ValidationFindingSetProjection? = null,
     /** True only when validate falls back because the pack declares no validation_gate. */
     val agentRunValidateFallback: Boolean = false,
+    /**
+     * 1-based ordinal of the validation-gate repair turn this launch is, zero outside a repair cycle.
+     * A repair cycle deliberately re-runs an agent under one unchanged phase attempt, so this is the
+     * only thing separating one turn's retained evidence and diagnostics from the next turn's.
+     */
+    val validationGateRepairTurn: Int = 0,
   )
 
   private data class PreLaunchBlock(

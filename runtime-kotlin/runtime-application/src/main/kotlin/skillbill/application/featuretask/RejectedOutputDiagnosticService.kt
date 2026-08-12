@@ -30,7 +30,7 @@ class RejectedOutputDiagnosticService(
 ) {
   fun record(request: RejectedOutputDiagnosticRequest): RejectedOutputDiagnostic {
     validate(request)
-    val identity = stableIdentity(request.workflowId, request.phaseId, request.attempt)
+    val identity = stableIdentity(request.workflowId, request.phaseId, request.attempt, request.repairTurn)
     existing(identity)?.let { record ->
       if (!record.matches(request)) throw RejectedOutputDiagnosticError.Conflict(identity)
       metadataValidator.validate(record.metadata)
@@ -52,6 +52,7 @@ class RejectedOutputDiagnosticService(
       byteSize = request.observedByteSize,
       sha256 = request.observedSha256,
       lifecycle = if (oversized) RejectedOutputLifecycle.OVERSIZED else RejectedOutputLifecycle.STORED,
+      repairTurn = request.repairTurn,
     )
     metadataValidator.validate(metadata)
     applyRestrictivePermissions()
@@ -126,8 +127,17 @@ class RejectedOutputDiagnosticService(
     // SKILL-152: this identity stays generation-blind. It is stored durably on quarantine entries as
     // `diagnosticIdentity`, so adding the review generation would rewrite already-persisted identities.
     // A review-generation restart can therefore still collide here; that widening is tracked separately.
-    fun stableIdentity(workflowId: String, phaseId: String, attempt: Int): String =
-      "rod_${sha256("$workflowId\u0000$phaseId\u0000$attempt".encodeToByteArray())}"
+    //
+    // SKILL-185: the repair-turn ordinal is folded into the preimage only when it is non-zero. A gate
+    // repair cycle re-runs an agent under one unchanged attempt, so two consecutively rejected turns
+    // need distinct identities; every ordinary attempt stays at turn 0 and therefore keeps hashing the
+    // exact preimage it always did, which is what keeps an identity already persisted on a quarantine
+    // entry resolvable.
+    fun stableIdentity(workflowId: String, phaseId: String, attempt: Int, repairTurn: Int = 0): String {
+      val base = "$workflowId\u0000$phaseId\u0000$attempt"
+      val preimage = if (repairTurn == 0) base else "$base\u0000$repairTurn"
+      return "rod_${sha256(preimage.encodeToByteArray())}"
+    }
 
     fun sha256(bytes: ByteArray): String =
       MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
@@ -158,6 +168,7 @@ private fun requestValidationIssue(request: RejectedOutputDiagnosticRequest): St
   return when {
     blankField != null -> "$blankField must be non-blank"
     request.attempt <= 0 -> "attempt must be positive"
+    request.repairTurn < 0 -> "repairTurn must be non-negative"
     request.observedByteSize < request.rawResponse.size || request.observedByteSize < 0 ->
       "observedByteSize must include all retained bytes"
     !Regex("[0-9a-f]{64}").matches(request.observedSha256) ->
@@ -187,6 +198,7 @@ private fun RejectedOutputDiagnosticRecord.matches(request: RejectedOutputDiagno
   metadata.workflowId == request.workflowId &&
     metadata.phaseId == request.phaseId &&
     metadata.attempt == request.attempt &&
+    metadata.repairTurn == request.repairTurn &&
     metadata.rule == request.rule &&
     metadata.path == request.path &&
     metadata.reason == request.reason &&

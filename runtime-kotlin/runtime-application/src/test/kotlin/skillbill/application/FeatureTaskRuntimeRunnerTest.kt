@@ -6528,6 +6528,7 @@ internal data class ProducerEvidenceKey(
   val generation: Int,
   val attempt: Int,
   val agentId: String,
+  val repairTurn: Int = 0,
 )
 
 internal fun samePayload(left: ByteArray?, right: ByteArray?): Boolean =
@@ -6561,14 +6562,16 @@ internal class RuntimeFakeDatabaseSessionFactory(
     unitOfWork().rejectedOutputDiagnostics!!.retainProducerOutput(evidence)
   }
 
+  @Suppress("LongParameterList")
   fun producerEvidenceAt(
     workflowId: String,
     phaseId: String,
     attempt: Int,
     generation: Int,
     agentId: String,
+    repairTurn: Int = 0,
   ): skillbill.ports.persistence.ProducerOutputEvidence? =
-    producerEvidence[ProducerEvidenceKey(workflowId, phaseId, generation, attempt, agentId)]
+    producerEvidence[ProducerEvidenceKey(workflowId, phaseId, generation, attempt, agentId, repairTurn)]
 
   override fun resolveDbPath(dbOverride: String?): Path = dbPath
 
@@ -6651,6 +6654,7 @@ internal class RuntimeFakeDatabaseSessionFactory(
           evidence.generation,
           evidence.attempt,
           evidence.agentId,
+          evidence.repairTurn,
         )
         producerEvidence.putIfAbsent(key, evidence)
         val retained = producerEvidence.getValue(key)
@@ -6658,7 +6662,8 @@ internal class RuntimeFakeDatabaseSessionFactory(
           !samePayload(retained.payload, evidence.payload)
         ) {
           throw skillbill.ports.persistence.model.RejectedOutputDiagnosticError.Conflict(
-            "${evidence.workflowId}:${evidence.phaseId}:${evidence.generation}:${evidence.attempt}:${evidence.agentId}",
+            "${evidence.workflowId}:${evidence.phaseId}:${evidence.generation}:${evidence.attempt}:" +
+              "${evidence.repairTurn}:${evidence.agentId}",
           )
         }
       }
@@ -6669,16 +6674,14 @@ internal class RuntimeFakeDatabaseSessionFactory(
         attempt: Int,
         agentId: String,
         generation: Int,
-      ): skillbill.ports.persistence.ProducerOutputEvidence? =
-        producerEvidence[ProducerEvidenceKey(workflowId, phaseId, generation, attempt, agentId)]
-          ?: producerEvidence.entries
-            .filter {
-              it.key.workflowId == workflowId && it.key.phaseId == phaseId &&
-                it.key.attempt == attempt && it.key.agentId == agentId &&
-                it.key.generation <= generation
-            }
-            .maxByOrNull { it.key.generation }
-            ?.value
+      ): skillbill.ports.persistence.ProducerOutputEvidence? = producerEvidence.entries
+        .filter {
+          it.key.workflowId == workflowId && it.key.phaseId == phaseId &&
+            it.key.attempt == attempt && it.key.agentId == agentId &&
+            it.key.generation <= generation
+        }
+        .maxWithOrNull(compareBy({ it.key.generation }, { it.key.repairTurn }))
+        ?.value
     }
     override val unaddressedFindings = object : skillbill.ports.persistence.UnaddressedFindingsRepository {
       override fun replaceLedgerForPass(

@@ -2107,6 +2107,11 @@ class RuntimeArchitectureTest {
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry.fromArtifactMap",
       "skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineRecordToWire",
       "skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineEntriesFromWire",
+      // SKILL-185: durable bounded record of degraded diagnostic-persistence failures. Payload-free by
+      // construction (key, phase, ordinals, typed class), and private like the quarantine store above.
+      "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticSignal.toArtifactMap",
+      "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticSignal.fromArtifactMap",
+      "skillbill.workflow.taskruntime.model.featureTaskRuntimeDiagnosticSignalsFromWire",
       // SKILL-150: durable append-only implementation-attempt history (the continuation projection's
       // only source of prior receipts) and its domain-owned schema validator port, mirroring the
       // quarantine store above.

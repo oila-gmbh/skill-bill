@@ -75,6 +75,7 @@ object DatabaseRuntime {
         DatabaseSchema.createBaseSchema(connection)
         DatabaseMigrations.apply(connection)
         DatabaseColumnMigrations.apply(connection)
+        DatabaseColumnMigrations.healDiagnosticEvidenceKeys(connection)
         DatabaseColumnMigrations.healWorkListMetadata(connection)
       }
       connection

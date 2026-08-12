@@ -23,6 +23,7 @@ object ProducerOutputEvidenceSchemaValidator {
       put("phase_id", evidence.phaseId)
       put("generation", evidence.generation)
       put("attempt", evidence.attempt)
+      put("repair_turn", evidence.repairTurn)
       put("agent_id", evidence.agentId)
       put("model", evidence.model)
       put("recorded_at", evidence.recordedAt.toString())
@@ -33,7 +34,7 @@ object ProducerOutputEvidenceSchemaValidator {
     if (violations.isNotEmpty()) {
       throw InvalidProducerOutputEvidenceSchemaError(
         "Producer output evidence '${evidence.workflowId}:${evidence.phaseId}:" +
-          "${evidence.generation}:${evidence.attempt}' fails canonical contract " +
+          "${evidence.generation}:${evidence.attempt}:${evidence.repairTurn}' fails canonical contract " +
           "$PRODUCER_OUTPUT_EVIDENCE_CONTRACT_VERSION.",
       )
     }

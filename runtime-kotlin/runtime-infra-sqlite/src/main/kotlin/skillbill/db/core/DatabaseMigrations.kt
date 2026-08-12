@@ -456,6 +456,11 @@ internal object DatabaseMigrations {
         name = "rekey-producer-output-evidence-by-agent",
         operation = ::rekeyProducerOutputEvidenceByAgent,
       ),
+      DatabaseMigration(
+        version = 29,
+        name = "rekey-diagnostic-evidence-by-repair-turn",
+        operation = ::rekeyDiagnosticEvidenceByRepairTurn,
+      ),
     ).also(::requireDeterministicMigrations)
 
   fun apply(connection: Connection) {

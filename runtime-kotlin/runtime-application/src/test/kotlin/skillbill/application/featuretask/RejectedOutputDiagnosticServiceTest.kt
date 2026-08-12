@@ -46,6 +46,31 @@ class RejectedOutputDiagnosticServiceTest {
   }
 
   @Test
+  fun `two consecutively rejected repair turns of one attempt each record a diagnostic`() {
+    val repository = MemoryRepository()
+    val service = service(repository)
+
+    val first = service.record(request(byteArrayOf(1)).copy(repairTurn = 1))
+    val second = service.record(request(byteArrayOf(2)).copy(repairTurn = 2))
+
+    assertNotEquals(first.identity, second.identity)
+    assertEquals(2, repository.records.size)
+    assertEquals(listOf(1, 2), repository.records.values.map { it.metadata.repairTurn })
+  }
+
+  @Test
+  fun `an ordinary attempt keeps the identity it was persisted under before repair turns existed`() {
+    assertEquals(
+      "rod_20d2d05b2eb34fe4ceff7ebda0df27707b6efdd817b212e94399b33c4babfc6a",
+      RejectedOutputDiagnosticService.stableIdentity("workflow-1", "validate", 1),
+    )
+    assertEquals(
+      RejectedOutputDiagnosticService.stableIdentity("workflow-1", "validate", 1),
+      RejectedOutputDiagnosticService.stableIdentity("workflow-1", "validate", 1, repairTurn = 0),
+    )
+  }
+
+  @Test
   fun `ceiling stores tombstone and read reports oversized`() {
     val service = service(MemoryRepository(), maximumPayloadBytes = 1)
     val metadata = service.record(request(byteArrayOf(1, 2)))
@@ -212,13 +237,15 @@ private class MemoryRepository : RejectedOutputDiagnosticRepository {
       evidence.phaseId,
       evidence.generation,
       evidence.attempt,
+      evidence.repairTurn,
       evidence.agentId,
     )
     producerEvidence.putIfAbsent(key, evidence)
     val retained = producerEvidence.getValue(key)
     if (retained.sha256 != evidence.sha256 || retained.byteSize != evidence.byteSize) {
       throw RejectedOutputDiagnosticError.Conflict(
-        "${evidence.workflowId}:${evidence.phaseId}:${evidence.generation}:${evidence.attempt}:${evidence.agentId}",
+        "${evidence.workflowId}:${evidence.phaseId}:${evidence.generation}:${evidence.attempt}:" +
+          "${evidence.repairTurn}:${evidence.agentId}",
       )
     }
   }
@@ -229,12 +256,10 @@ private class MemoryRepository : RejectedOutputDiagnosticRepository {
     attempt: Int,
     agentId: String,
     generation: Int,
-  ): skillbill.ports.persistence.ProducerOutputEvidence? =
-    producerEvidence[listOf(workflowId, phaseId, generation, attempt, agentId)]
-      ?: producerEvidence.values
-        .filter {
-          it.workflowId == workflowId && it.phaseId == phaseId &&
-            it.attempt == attempt && it.agentId == agentId && it.generation <= generation
-        }
-        .maxByOrNull { it.generation }
+  ): skillbill.ports.persistence.ProducerOutputEvidence? = producerEvidence.values
+    .filter {
+      it.workflowId == workflowId && it.phaseId == phaseId &&
+        it.attempt == attempt && it.agentId == agentId && it.generation <= generation
+    }
+    .maxWithOrNull(compareBy({ it.generation }, { it.repairTurn }))
 }
