@@ -27,6 +27,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeEvidence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
 import skillbill.workflow.taskruntime.model.CorrectiveRepairCapturedResponse
 import skillbill.workflow.taskruntime.model.CorrectiveRepairDiagnosticLocator
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairBudget
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
@@ -1462,6 +1463,62 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(prompt, "That does not mean the phase schema accepted it")
     assertContains(prompt, "SKILL187-STRUCTURAL")
     assertContains(prompt, "REJECTED by the schema gate")
+  }
+
+  @Test
+  fun `capture exceeding the response budget emits a payload-free fallback never labeled exact`() {
+    // SKILL-187 AC-007: UTF-8 oversize must not silently truncate into an exact repair section.
+    val oversizeBody = "€".repeat(40) // 120 UTF-8 bytes
+    val budget = FeatureTaskRuntimeCorrectiveRepairBudget(
+      maxResponseUtf8Bytes = 64,
+      maxPromptUtf8Bytes = 10_000,
+      maxCollectionItems = 4,
+    )
+    val captured = CorrectiveRepairCapturedResponse.classify(
+      body = oversizeBody,
+      alreadyTruncated = false,
+      budget = budget,
+    )
+    assertTrue(captured is CorrectiveRepairCapturedResponse.ExceedsBudget)
+    val context = FeatureTaskRuntimeCorrectiveRepairContext(
+      phaseId = "audit",
+      attempt = 1,
+      rejectionRule = "phase-output-schema",
+      rejectionPath = "\$.verdict",
+      payloadFreeConstraint = "verdict: must be a top-level string",
+      diagnosticLocator = CorrectiveRepairDiagnosticLocator("opaque-diagnostic-oversize"),
+      captured = captured,
+      budget = budget,
+    )
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("audit"),
+      priorSchemaFailure = "verdict: must be a top-level string",
+      correctiveRepairContext = context,
+    )
+
+    assertContains(prompt, "Rejected response body not included in this prompt")
+    assertContains(prompt, "response_exceeds_repair_budget")
+    assertContains(prompt, "utf8_bytes: ${captured.utf8ByteCount}")
+    assertFalse(prompt.contains(oversizeBody))
+    assertFalse(prompt.contains("Untrusted prior phase output"))
+    assertOmitsAuthorizedRepairSection(prompt, oversizeBody)
+  }
+
+  @Test
+  fun `first launch omits the repair section while a matching schema-invalid launch includes it`() {
+    // SKILL-187 AC-006: only the matching schema-invalid corrective launch renders the raw section.
+    val body = """{"sentinel":"SKILL187-FIRST-VS-CORRECTIVE"}"""
+    val first = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("audit"))
+    assertOmitsAuthorizedRepairSection(first, "SKILL187-FIRST-VS-CORRECTIVE")
+
+    val corrective = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("audit"),
+      priorSchemaFailure = "verdict: must be a top-level string",
+      correctiveRepairContext = correctiveContext(body),
+    )
+    assertMatchingSchemaInvalidRepairPrompt(corrective, body, "verdict: must be a top-level string")
   }
 
   private fun correctiveContext(body: String): FeatureTaskRuntimeCorrectiveRepairContext =

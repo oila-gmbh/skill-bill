@@ -21,12 +21,14 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /**
- * SKILL-187 subtask 2: gateOutput → private diagnostic → corrective context → next launch, plus
- * path separation, structural-repair identity, truncation/budget metadata, and observer isolation.
+ * SKILL-187 subtasks 2–3: gateOutput → private diagnostic → corrective context → next launch, plus
+ * path separation, structural-repair identity, truncation/budget metadata, observer isolation, and
+ * audit-shaped JSON/YAML conformance at the runner boundary.
  *
  * Realistic bugs these catch while the composer/unit suite still passes: dropped capture metadata,
  * stale prior-attempt bodies on a later phase, missing acceptedAfterStructuralRepair after delimiter
- * repair, and a throwing event/status/diagnostic observer aborting or altering the fix-loop outcome.
+ * repair, a throwing event/status/diagnostic observer aborting or altering the fix-loop outcome, and
+ * information loss on nested-verdict / unauthorized-observation / oversized-artifact audit retries.
  */
 class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
   private val rawSpan = "SKILL187-CORRECTIVE-SENTINEL"
@@ -320,9 +322,9 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
     assertTrue(prompts.size >= 2, "retryable terminal must re-enter review")
     val retry = prompts[1]
     assertContains(retry, "reported a retryable block")
-    assertFalse(retry.contains("Untrusted prior phase output"))
+    assertOmitsAuthorizedRepairSection(retry)
     assertFalse(retry.contains("REJECTED by the schema gate"))
-    assertFalse(retry.contains("SKILL187-TERMINAL-BLOCK"))
+    assertFalse(retry.contains("Untrusted prior phase output"))
   }
 
   @Test
@@ -414,9 +416,168 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
     val retry = reviewPrompts(harness)[1]
     assertContains(retry, "Rejected response body not included in this prompt")
     assertContains(retry, "response_already_truncated")
-    assertContains(retry, "digest=$fullStreamDigest")
-    assertContains(retry, "utf8_bytes=$fullStreamBytes")
+    assertContains(retry, "digest: $fullStreamDigest")
+    assertContains(retry, "utf8_bytes: $fullStreamBytes")
     assertFalse(retry.contains("SKILL187-TRUNCATED-EXCERPT"), "truncated excerpt must not be framed as exact")
+  }
+
+  @Test
+  fun `audit nested verdict JSON and flow-YAML share the corrective context contract`() {
+    // SKILL-187 AC-002/AC-005: both formats keep the exact capture and a payload-free root-verdict cue.
+    val cases = listOf(
+      Skill187SyntheticAuditResponses.nestedVerdictComplete() to
+        Skill187SyntheticAuditResponses.NESTED_VERDICT_SENTINEL,
+      Skill187SyntheticAuditResponses.nestedVerdictConservativeYaml() to
+        Skill187SyntheticAuditResponses.YAML_NESTED_SENTINEL,
+    )
+    cases.forEach { (rejectedBody, sentinel) ->
+      var auditAttempts = 0
+      val harness = runnerHarness(
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          if (phaseId != "audit") return@RuntimeRecordingLauncher facts(defaultPhaseOutput(request))
+          auditAttempts += 1
+          facts(
+            if (auditAttempts == 1) rejectedBody else Skill187SyntheticAuditResponses.correctedSatisfied(),
+          )
+        },
+        validator = realAuditValidator(),
+      )
+
+      assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+
+      val prompts = harness.launcher.requests
+        .map { requireNotNull(it.skillRunRequest.promptOverride) }
+        .filter { phaseIdFromPrompt(it) == "audit" }
+      assertTrue(prompts.size >= 2, "audit must reject then accept")
+      assertOmitsAuthorizedRepairSection(prompts[0], sentinel)
+      assertMatchingSchemaInvalidRepairPrompt(prompts[1], rejectedBody, "verdict")
+      assertTrue(
+        prompts[1].contains("top-level") || prompts[1].contains("\"verdict\""),
+        "corrective prompt must cue the required root-level verdict shape",
+      )
+    }
+  }
+
+  @Test
+  fun `audit unauthorized observation and oversized artifact_ref thread exact captures into corrective launches`() {
+    // SKILL-187 AC-003/AC-004: real adapter rejects; next launch sees the body plus payload-free cues.
+    listOf(
+      Skill187SyntheticAuditResponses.unauthorizedObservation() to
+        Skill187SyntheticAuditResponses.OBSERVATION_SENTINEL,
+      Skill187SyntheticAuditResponses.oversizedExpandedArtifactRef() to
+        Skill187SyntheticAuditResponses.ARTIFACT_SENTINEL,
+    ).forEach { (rejectedBody, sentinel) ->
+      var auditAttempts = 0
+      val harness = runnerHarness(
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          if (phaseId != "audit") return@RuntimeRecordingLauncher facts(defaultPhaseOutput(request))
+          auditAttempts += 1
+          facts(
+            if (auditAttempts == 1) rejectedBody else Skill187SyntheticAuditResponses.correctedSatisfied(),
+          )
+        },
+        validator = realAuditValidator(),
+      )
+
+      assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+
+      val retry = harness.launcher.requests
+        .map { requireNotNull(it.skillRunRequest.promptOverride) }
+        .filter { phaseIdFromPrompt(it) == "audit" }[1]
+      assertMatchingSchemaInvalidRepairPrompt(retry, rejectedBody)
+      if (sentinel == Skill187SyntheticAuditResponses.OBSERVATION_SENTINEL) {
+        assertTrue(retry.contains("observation") || retry.contains("enumeration") || retry.contains("enum"))
+        assertNoRawResponseSpanOutsideAuthorizedRepairSection(retry, "blast_radius_inspected")
+      } else {
+        assertContains(retry, "artifact_ref")
+        assertTrue(
+          retry.contains("bounded pointer") || retry.contains("at most"),
+          "oversized artifact_ref must receive bounded-reference guidance",
+        )
+      }
+      val diagnostic = harness.io.database.rejectedDiagnostics().single { it.metadata.phaseId == "audit" }
+      assertEquals(rejectedBody.encodeToByteArray().toList(), diagnostic.payload?.toList())
+    }
+  }
+
+  @Test
+  fun `delimiter then schema rejection keeps digests correlated across the private diagnostic and repair prompt`() {
+    // SKILL-187 AC-001/AC-009: original digest on the repair evidence and Exact capture digest stay aligned.
+    val malformed = Skill187SyntheticAuditResponses.nestedVerdictMissingDelimiter()
+    var auditAttempts = 0
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        if (phaseId != "audit") return@RuntimeRecordingLauncher facts(defaultPhaseOutput(request))
+        auditAttempts += 1
+        facts(
+          if (auditAttempts == 1) malformed else Skill187SyntheticAuditResponses.correctedSatisfied(),
+        )
+      },
+      validator = realAuditValidator(),
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+
+    val rejected = FeatureTaskRuntimePhaseOutputValidatorAdapter().validatePhaseOutput(malformed, "audit")
+    val evidence = requireNotNull(
+      assertIs<FeatureTaskRuntimePhaseOutputValidationResult.Rejected>(rejected).structuralRepairEvidence,
+    )
+    val diagnostic = harness.io.database.rejectedDiagnostics().single { it.metadata.phaseId == "audit" }
+    val retry = harness.launcher.requests
+      .map { requireNotNull(it.skillRunRequest.promptOverride) }
+      .filter { phaseIdFromPrompt(it) == "audit" }[1]
+    assertEquals(evidence.originalDigest, diagnostic.metadata.sha256)
+    assertContains(retry, "digest=${diagnostic.metadata.sha256}")
+    assertContains(retry, "Deterministic syntax repair previously succeeded")
+    assertMatchingSchemaInvalidRepairPrompt(retry, malformed)
+    assertTrue(retry.contains(Skill187SyntheticAuditResponses.NESTED_VERDICT_SENTINEL))
+    assertEquals(1, diagnostic.metadata.attempt)
+    assertEquals("audit", diagnostic.metadata.phaseId)
+  }
+
+  @Test
+  fun `exhausted audit correction keeps INVALID_OUTPUT payload-free on every operator surface`() {
+    // SKILL-187 AC-010: cap exhaustion never promotes the sentinel into blocked/status/report text.
+    val rejectedBody = Skill187SyntheticAuditResponses.nestedVerdictComplete()
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        if (phaseId != "audit") return@RuntimeRecordingLauncher facts(defaultPhaseOutput(request))
+        facts(rejectedBody)
+      },
+      validator = realAuditValidator(),
+    )
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    assertEquals("audit", blocked.lastIncompletePhase)
+    assertPrivateDiagnosticRejection(
+      blocked.blockedReason,
+      "phase-output-schema",
+      Skill187SyntheticAuditResponses.NESTED_VERDICT_SENTINEL,
+      rejectedBody,
+    )
+    assertNoRawResponseSpan(blocked.blockedReason, rejectedBody)
+    val auditRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["audit"])
+    assertNoRawResponseSpan(
+      requireNotNull(auditRecord.blockedReason),
+      Skill187SyntheticAuditResponses.NESTED_VERDICT_SENTINEL,
+      rejectedBody,
+    )
+    harness.launcher.requests
+      .map { requireNotNull(it.skillRunRequest.promptOverride) }
+      .filter { phaseIdFromPrompt(it) == "audit" }
+      .drop(1)
+      .forEach { prompt ->
+        assertTrue(prompt.contains(rejectedBody) || prompt.contains("Rejected response body not included"))
+      }
+    val diagnostics = harness.io.database.rejectedDiagnostics().filter { it.metadata.phaseId == "audit" }
+    assertTrue(diagnostics.isNotEmpty())
+    diagnostics.forEach { row ->
+      assertEquals(rejectedBody.encodeToByteArray().toList(), row.payload?.toList())
+    }
   }
 
   private fun reviewPrompts(harness: RunnerHarness): List<String> {
@@ -426,6 +587,25 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
     assertTrue(prompts.size >= 2, "the review phase must have retried at least once")
     return prompts
   }
+
+  private fun realAuditValidator(): FeatureTaskRuntimePhaseOutputValidator =
+    object : FeatureTaskRuntimePhaseOutputValidator {
+      private val auditValidator = FeatureTaskRuntimePhaseOutputValidatorAdapter()
+
+      override fun validatePhaseOutput(
+        phaseOutputText: String,
+        sourceLabel: String,
+      ): FeatureTaskRuntimePhaseOutputValidationResult =
+        if (sourceLabel == "audit") {
+          auditValidator.validatePhaseOutput(phaseOutputText, sourceLabel)
+        } else {
+          AlwaysValidValidator.validatePhaseOutput(phaseOutputText, sourceLabel)
+        }
+
+      override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
+        validatePhaseOutput(phaseOutputText, sourceLabel).requireAccepted(sourceLabel)
+      }
+    }
 
   private fun rejectingOnceValidator(rejectedBody: String): FeatureTaskRuntimePhaseOutputValidator =
     object : FeatureTaskRuntimePhaseOutputValidator {

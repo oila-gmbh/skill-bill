@@ -260,6 +260,52 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
     assertEquals(FeatureTaskRuntimePhaseOutputFailureCode.AMBIGUOUS_REPAIR, rejected.code)
   }
 
+  @Test
+  fun `audit nested-verdict missing delimiter repairs then remains schema-invalid`() {
+    // SKILL-187 AC-001: delimiter repair is syntax-only; nested verdict still fails the phase schema.
+    val malformed =
+      """{"contract_version":"0.3","phase_id":"audit","status":"completed","summary":"SKILL187-AUDIT-DELIM",""" +
+        """"produced_outputs":{"gaps":[],"verdict":"satisfied"}"""
+
+    val result = adapter.validatePhaseOutput(malformed, "audit")
+
+    val rejected = assertIs<FeatureTaskRuntimePhaseOutputValidationResult.Rejected>(result)
+    assertEquals(FeatureTaskRuntimePhaseOutputFailureCode.SCHEMA_INVALID, rejected.code)
+    val evidence = requireNotNull(rejected.structuralRepairEvidence) {
+      "schema rejection after delimiter repair must retain payload-free structural evidence"
+    }
+    assertEquals(
+      FeatureTaskRuntimePhaseOutputRepairOperation.ADD_MISSING_CLOSING_DELIMITER,
+      evidence.operation,
+    )
+    assertEquals(sha256(malformed), evidence.originalDigest)
+    assertFalse(rejected.reason.contains("SKILL187-AUDIT-DELIM"))
+  }
+
+  @Test
+  fun `unsupported block YAML is rejected without guessed structural edits`() {
+    // SKILL-187 AC-005: block indentation is outside conservative flow repair; never invent closers.
+    val blockYaml =
+      """
+        contract_version: "0.3"
+        phase_id: "audit"
+        status: "completed"
+        summary: "SKILL187-UNSUPPORTED-YAML"
+        verdict: "satisfied"
+        produced_outputs:
+          gaps: []
+      """.trimIndent()
+
+    val decision = StructuralRepairCandidateEngine.repairExactText(blockYaml, "audit")
+
+    val rejected = assertIs<FeatureTaskRuntimePhaseOutputStructuralRepairDecision.Rejected>(
+      requireNotNull(decision) { "non-conservative YAML must produce an explicit repair rejection" },
+    )
+    assertEquals(FeatureTaskRuntimePhaseOutputFailureCode.UNSUPPORTED_REPAIR, rejected.code)
+    assertTrue(rejected.reason.contains("conservative flow"))
+    assertFalse(rejected.reason.contains("SKILL187-UNSUPPORTED-YAML"))
+  }
+
   private fun sha256(value: String): String = MessageDigest.getInstance("SHA-256")
     .digest(value.toByteArray(Charsets.UTF_8))
     .joinToString("") { byte -> "%02x".format(byte) }

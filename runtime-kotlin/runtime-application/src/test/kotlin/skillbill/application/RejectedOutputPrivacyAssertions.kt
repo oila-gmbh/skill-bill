@@ -92,3 +92,37 @@ internal fun assertNoRawResponseSpanOutsideAuthorizedRepairSection(prompt: Strin
     }
   }
 }
+
+/** AC-006: first / terminal / incomplete / mismatched launches must omit the authorized raw section. */
+internal fun assertOmitsAuthorizedRepairSection(prompt: String, vararg forbiddenSpans: String) {
+  assertFalse(
+    prompt.contains(AUTHORIZED_REPAIR_SECTION_TITLE),
+    "non-corrective launch must omit the authorized repair section",
+  )
+  assertNoRawResponseSpan(prompt, *forbiddenSpans)
+}
+
+/**
+ * AC-006/AC-007: matching schema-invalid corrective launch includes the exact body only inside the
+ * authorized section and keeps [constraintFragments] outside that untrusted framing.
+ */
+internal fun assertMatchingSchemaInvalidRepairPrompt(
+  prompt: String,
+  exactBody: String,
+  vararg constraintFragments: String,
+) {
+  assertContains(prompt, AUTHORIZED_REPAIR_SECTION_TITLE)
+  assertTrue(prompt.contains(exactBody), "exact synthetic body must appear in the repair section")
+  assertNoRawResponseSpanOutsideAuthorizedRepairSection(prompt, exactBody)
+  constraintFragments.forEach { fragment ->
+    assertContains(prompt, fragment, message = "payload-free constraint '$fragment' missing")
+  }
+  val repairStart = prompt.indexOf(AUTHORIZED_REPAIR_SECTION_TITLE)
+  constraintFragments.forEach { fragment ->
+    val idx = prompt.indexOf(fragment)
+    assertTrue(
+      idx >= 0 && (idx < repairStart || prompt.substring(0, repairStart).contains(fragment)),
+      "payload-free constraint must remain outside the untrusted body framing: '$fragment'",
+    )
+  }
+}

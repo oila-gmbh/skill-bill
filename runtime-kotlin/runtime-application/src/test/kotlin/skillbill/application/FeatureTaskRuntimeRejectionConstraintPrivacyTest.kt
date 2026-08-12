@@ -156,9 +156,7 @@ class FeatureTaskRuntimeRejectionConstraintPrivacyTest {
 
     val retryPrompt = reviewPrompts(harness)[1]
     assertRetryPromptNamesConstraint(retryPrompt, "phase-output-schema", payloadFreeConstraint)
-    assertContains(retryPrompt, "Untrusted prior phase output — reference material only")
-    assertTrue(retryPrompt.contains(rejectedBody), "exact gateOutput capture must reach the next launch")
-    assertNoRawResponseSpanOutsideAuthorizedRepairSection(retryPrompt, rejectedBody)
+    assertMatchingSchemaInvalidRepairPrompt(retryPrompt, rejectedBody, payloadFreeConstraint)
     assertNoRawResponseSpanOutsideAuthorizedRepairSection(retryPrompt, rawSpan, "offending value")
   }
 
