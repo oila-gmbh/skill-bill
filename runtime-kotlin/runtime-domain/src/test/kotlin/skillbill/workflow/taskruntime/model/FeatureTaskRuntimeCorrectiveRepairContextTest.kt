@@ -99,7 +99,7 @@ class FeatureTaskRuntimeCorrectiveRepairContextTest {
       assertFalse(rendered.contains(exactBody), "fallback must not emit the synthetic body")
       assertFalse(rendered.contains(oversizedBody.take(32)), "fallback must not emit an oversized excerpt")
       assertTrue(rendered.contains("private diagnostic locator"))
-      assertTrue(rendered.contains(context.diagnosticLocator.identity))
+      assertTrue(rendered.contains(requireNotNull(context.diagnosticLocator).identity))
       assertFalse(rendered.contains("offending value"), "fallback must stay payload-free")
     }
   }

@@ -7,6 +7,7 @@ import kotlin.test.assertFailsWith
 class FeatureTaskRuntimeQuarantineSchemaValidatorTest {
   @Test
   fun `a well-formed quarantine record validates`() {
+    // A 0.3 envelope must still accept a 0.2-shaped identity-bearing entry (flag absent).
     FeatureTaskRuntimeQuarantineSchemaValidator.validate(validRecord(), "quarantine")
   }
 
@@ -50,13 +51,44 @@ class FeatureTaskRuntimeQuarantineSchemaValidatorTest {
     }
   }
 
+  @Test
+  fun `a degraded entry without diagnostic_identity validates`() {
+    FeatureTaskRuntimeQuarantineSchemaValidator.validate(
+      recordWithEntry(validEntry().toMutableMap().apply {
+        remove("diagnostic_identity")
+        put("diagnostic_degraded", true)
+      }),
+      "quarantine",
+    )
+  }
+
+  @Test
+  fun `identity plus diagnostic_degraded true is rejected`() {
+    assertFailsWith<InvalidFeatureTaskRuntimeQuarantineSchemaError> {
+      FeatureTaskRuntimeQuarantineSchemaValidator.validate(
+        recordWithEntry(validEntry().toMutableMap().apply { put("diagnostic_degraded", true) }),
+        "quarantine",
+      )
+    }
+  }
+
+  @Test
+  fun `neither identity nor diagnostic_degraded is rejected`() {
+    assertFailsWith<InvalidFeatureTaskRuntimeQuarantineSchemaError> {
+      FeatureTaskRuntimeQuarantineSchemaValidator.validate(
+        recordWithEntry(validEntry().toMutableMap().apply { remove("diagnostic_identity") }),
+        "quarantine",
+      )
+    }
+  }
+
   private fun validRecord(): Map<String, Any?> = mapOf(
-    "contract_version" to "0.2",
+    "contract_version" to "0.3",
     "entries" to listOf(validEntry()),
   )
 
   private fun recordWithEntry(entry: Map<String, Any?>): Map<String, Any?> = mapOf(
-    "contract_version" to "0.2",
+    "contract_version" to "0.3",
     "entries" to listOf(entry),
   )
 

@@ -3344,7 +3344,7 @@ internal class FeatureTaskRuntimeRunLoop(
       is FeatureTaskRuntimeProducerOutputRead.Found -> producerRead.evidence
     }
     val rejectedPayload = producerEvidence.payload ?: byteArrayOf()
-    val diagnosticIdentity = recordRejectedOutput(
+    val diagnosticWrite = recordRejectedOutput(
       run = run,
       iteration = producingIteration,
       rule = "reconciliation-${rejection.rejectionClass}",
@@ -3380,9 +3380,10 @@ internal class FeatureTaskRuntimeRunLoop(
         ),
         regenerationAttempt = regenerationAttempt,
         quarantinedAtIteration = iteration.coerceAtLeast(1),
-        diagnosticIdentity = diagnosticIdentity,
+        diagnosticIdentity = (diagnosticWrite as? FeatureTaskRuntimeRejectedOutputWrite.Written)?.identity,
         rejectedRecordByteSize = producerEvidence.byteSize,
         rejectedRecordSha256 = producerEvidence.sha256,
+        diagnosticDegraded = diagnosticWrite is FeatureTaskRuntimeRejectedOutputWrite.Degraded,
       ),
       request.dbPathOverride,
     )
@@ -3658,7 +3659,7 @@ internal class FeatureTaskRuntimeRunLoop(
   } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
     val path = rejectionPath(error.reason)
     val reason = payloadFreeRejectionReason("phase-output-schema", path)
-    val diagnosticIdentity = recordRejectedOutput(
+    val diagnosticWrite = recordRejectedOutput(
       run, iteration, "phase-output-schema", error.reason, outputBytes, path = path,
       outputTruncated = outputTruncated, outputByteSize = outputByteSize, outputSha256 = outputSha256,
     )
@@ -3675,7 +3676,7 @@ internal class FeatureTaskRuntimeRunLoop(
         outputTruncated = outputTruncated,
         outputByteSize = outputByteSize,
         outputSha256 = outputSha256,
-        diagnosticIdentity = diagnosticIdentity,
+        diagnosticWrite = diagnosticWrite,
         rejectionRule = "phase-output-schema",
         rejectionPath = path,
         payloadFreeConstraint = error.payloadFreeReason.orEmpty(),
@@ -3686,7 +3687,7 @@ internal class FeatureTaskRuntimeRunLoop(
   } catch (error: InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError) {
     val path = rejectionPath(error.reason)
     val reason = payloadFreeRejectionReason("audit-repair-plan-schema", path)
-    val diagnosticIdentity = recordRejectedOutput(
+    val diagnosticWrite = recordRejectedOutput(
       run, iteration, "audit-repair-plan-schema", error.reason, outputBytes, path = path,
       outputTruncated = outputTruncated, outputByteSize = outputByteSize, outputSha256 = outputSha256,
     )
@@ -3701,7 +3702,7 @@ internal class FeatureTaskRuntimeRunLoop(
         outputTruncated = outputTruncated,
         outputByteSize = outputByteSize,
         outputSha256 = outputSha256,
-        diagnosticIdentity = diagnosticIdentity,
+        diagnosticWrite = diagnosticWrite,
         rejectionRule = "audit-repair-plan-schema",
         rejectionPath = path,
         payloadFreeConstraint = error.payloadFreeReason.orEmpty(),
@@ -3721,7 +3722,7 @@ internal class FeatureTaskRuntimeRunLoop(
     outputTruncated: Boolean,
     outputByteSize: Long,
     outputSha256: String,
-    diagnosticIdentity: String,
+    diagnosticWrite: FeatureTaskRuntimeRejectedOutputWrite,
     rejectionRule: String,
     rejectionPath: String,
     payloadFreeConstraint: String,
@@ -3748,6 +3749,10 @@ internal class FeatureTaskRuntimeRunLoop(
       )
     }
     val repairEvidence = structuralRepairEvidence
+    val locator = (diagnosticWrite as? FeatureTaskRuntimeRejectedOutputWrite.Written)?.let {
+      CorrectiveRepairDiagnosticLocator(it.identity)
+    }
+    val degradationClass = (diagnosticWrite as? FeatureTaskRuntimeRejectedOutputWrite.Degraded)?.failureClass
     return FeatureTaskRuntimeCorrectiveRepairContext(
       phaseId = run.phaseId,
       attempt = iteration.coerceAtLeast(1),
@@ -3755,10 +3760,11 @@ internal class FeatureTaskRuntimeRunLoop(
       rejectionRule = rejectionRule,
       rejectionPath = rejectionPath,
       payloadFreeConstraint = payloadFreeConstraint,
-      diagnosticLocator = CorrectiveRepairDiagnosticLocator(diagnosticIdentity),
+      diagnosticLocator = locator,
       captured = captured,
       acceptedAfterStructuralRepair = acceptedAfterStructuralRepair || repairEvidence != null,
       structuralRepairEvidence = repairEvidence,
+      diagnosticDegradationClass = degradationClass,
     )
   }
 
@@ -3779,33 +3785,25 @@ internal class FeatureTaskRuntimeRunLoop(
     // producer phase is that producer's own capture, so it stays at turn 0 unless the caller knows
     // otherwise from the producer's retained evidence.
     repairTurn: Int = if (phaseId == run.phaseId) run.validationGateRepairTurn else 0,
-  ): String {
-    recorder.recordRejectedOutput(
-      RejectedOutputDiagnosticRequest(
-        workflowId = run.request.workflowId,
-        phaseId = phaseId,
-        attempt = iteration.coerceAtLeast(1),
-        rule = rule,
-        path = path,
-        reason = reason,
-        agentId = agentId,
-        model = model,
-        rawResponse = outputBytes,
-        observedByteSize = outputByteSize,
-        observedSha256 = outputSha256,
-        truncated = outputTruncated,
-        repairTurn = repairTurn,
-      ),
-      run.request.dbPathOverride,
-      state.evidenceGeneration(phaseId),
-    )
-    return RejectedOutputDiagnosticService.stableIdentity(
-      run.request.workflowId,
-      phaseId,
-      iteration.coerceAtLeast(1),
-      repairTurn,
-    )
-  }
+  ): FeatureTaskRuntimeRejectedOutputWrite = recorder.recordRejectedOutput(
+    RejectedOutputDiagnosticRequest(
+      workflowId = run.request.workflowId,
+      phaseId = phaseId,
+      attempt = iteration.coerceAtLeast(1),
+      rule = rule,
+      path = path,
+      reason = reason,
+      agentId = agentId,
+      model = model,
+      rawResponse = outputBytes,
+      observedByteSize = outputByteSize,
+      observedSha256 = outputSha256,
+      truncated = outputTruncated,
+      repairTurn = repairTurn,
+    ),
+    run.request.dbPathOverride,
+    state.evidenceGeneration(phaseId),
+  )
 
   @Suppress("ReturnCount")
   private fun settleValidatedOutput(
@@ -3836,7 +3834,7 @@ internal class FeatureTaskRuntimeRunLoop(
       // private diagnostic and the authorized repair body.
       val retryFacingConstraint = payloadFreeSemanticGateConstraint(rule, detail, outputMap)
       val retryReason = retryRejectionReason(reason, retryFacingConstraint)
-      val diagnosticIdentity = recordRejectedOutput(
+      val diagnosticWrite = recordRejectedOutput(
         run, iteration, diagnosticRule, detail, outputBytes, path = path,
         outputTruncated = outputTruncated, outputByteSize = outputByteSize, outputSha256 = outputSha256,
       )
@@ -3854,7 +3852,7 @@ internal class FeatureTaskRuntimeRunLoop(
           outputTruncated = outputTruncated,
           outputByteSize = outputByteSize,
           outputSha256 = outputSha256,
-          diagnosticIdentity = diagnosticIdentity,
+          diagnosticWrite = diagnosticWrite,
           rejectionRule = diagnosticRule,
           rejectionPath = path,
           payloadFreeConstraint = retryFacingConstraint ?: reason,

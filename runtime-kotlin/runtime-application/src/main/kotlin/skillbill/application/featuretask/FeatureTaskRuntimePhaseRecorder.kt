@@ -147,6 +147,24 @@ internal data class FeatureTaskRuntimeProjectionRejection(
 )
 
 /**
+ * Outcome of a rejected-output diagnostic write. [Written] is returned only after the evidence
+ * transaction commits; [Degraded] means that transaction rolled back and no `rod_` row exists.
+ */
+sealed class FeatureTaskRuntimeRejectedOutputWrite {
+  data class Written(val identity: String) : FeatureTaskRuntimeRejectedOutputWrite()
+  data class Degraded(
+    val failureClass: FeatureTaskRuntimeDiagnosticFailureClass,
+  ) : FeatureTaskRuntimeRejectedOutputWrite()
+}
+
+private sealed class DiagnosticWriteOutcome<out T> {
+  data class Written<T>(val value: T) : DiagnosticWriteOutcome<T>()
+  data class Degraded(
+    val failureClass: FeatureTaskRuntimeDiagnosticFailureClass,
+  ) : DiagnosticWriteOutcome<Nothing>()
+}
+
+/**
  * Application-layer write/read seam for feature-task-runtime per-phase records and the
  * append-only phase ledger. Timestamps and durations are always minted here from the runtime
  * clock, never taken from agent-reported values.
@@ -171,7 +189,7 @@ class FeatureTaskRuntimePhaseRecorder(
     request: RejectedOutputDiagnosticRequest,
     dbOverride: String? = null,
     producerGeneration: Int = 0,
-  ) {
+  ): FeatureTaskRuntimeRejectedOutputWrite {
     val evidence = ProducerOutputEvidence(
       workflowId = request.workflowId,
       phaseId = request.phaseId,
@@ -185,22 +203,34 @@ class FeatureTaskRuntimePhaseRecorder(
       generation = producerGeneration,
       repairTurn = request.repairTurn,
     )
-    degradeDiagnosticFailure(
-      workflowId = request.workflowId,
-      operation = "record-rejected-output",
-      conflictingKey = evidence.evidenceKey(),
-      phaseId = request.phaseId,
-      attempt = request.attempt,
-      repairTurn = request.repairTurn,
-      generation = producerGeneration,
-      dbOverride = dbOverride,
-    ) {
-      database.transaction(dbOverride) { unitOfWork ->
-        val service = diagnosticService(unitOfWork)
-        service.retainProducerOutput(evidence)
-        service.record(request)
-        recordRejectionMeasurement(unitOfWork, request)
+    return when (
+      val outcome = degradeDiagnosticFailure(
+        workflowId = request.workflowId,
+        operation = "record-rejected-output",
+        conflictingKey = evidence.evidenceKey(),
+        phaseId = request.phaseId,
+        attempt = request.attempt,
+        repairTurn = request.repairTurn,
+        generation = producerGeneration,
+        dbOverride = dbOverride,
+      ) {
+        database.transaction(dbOverride) { unitOfWork ->
+          val service = diagnosticService(unitOfWork)
+          service.retainProducerOutput(evidence)
+          service.record(request)
+          recordRejectionMeasurement(unitOfWork, request)
+        }
       }
+    ) {
+      is DiagnosticWriteOutcome.Written<*> -> FeatureTaskRuntimeRejectedOutputWrite.Written(
+        RejectedOutputDiagnosticService.stableIdentity(
+          request.workflowId,
+          request.phaseId,
+          request.attempt,
+          request.repairTurn,
+        ),
+      )
+      is DiagnosticWriteOutcome.Degraded -> FeatureTaskRuntimeRejectedOutputWrite.Degraded(outcome.failureClass)
     }
   }
 
@@ -295,9 +325,8 @@ class FeatureTaskRuntimePhaseRecorder(
   }
 
   /**
-   * Runs a diagnostic-evidence write or read and degrades every typed diagnostic failure — conflict,
-   * permission, corruption, schema, plain persistence — into a durable payload-free operator signal,
-   * returning null instead of propagating.
+   * Runs a diagnostic-evidence write and degrades every typed diagnostic failure — conflict,
+   * permission, corruption, schema, plain persistence — into a durable payload-free operator signal.
    *
    * This is the same rule [recordRejectionMeasurement] already applies to telemetry, applied to the
    * evidence store itself. A diagnostic is private evidence *about* a run; a failure to write one is
@@ -315,8 +344,8 @@ class FeatureTaskRuntimePhaseRecorder(
     generation: Int,
     dbOverride: String?,
     block: () -> T,
-  ): T? {
-    fun degrade(failureClass: FeatureTaskRuntimeDiagnosticFailureClass): T? {
+  ): DiagnosticWriteOutcome<T> {
+    fun degrade(failureClass: FeatureTaskRuntimeDiagnosticFailureClass): DiagnosticWriteOutcome<T> {
       persistDegradedDiagnostic(
         workflowId = workflowId,
         operation = operation,
@@ -328,10 +357,10 @@ class FeatureTaskRuntimePhaseRecorder(
         dbOverride = dbOverride,
         failureClass = failureClass,
       )
-      return null
+      return DiagnosticWriteOutcome.Degraded(failureClass)
     }
     return try {
-      block()
+      DiagnosticWriteOutcome.Written(block())
     } catch (error: RejectedOutputDiagnosticError) {
       degrade(error.degradableFailureClass() ?: throw error)
     } catch (_: InvalidProducerOutputEvidenceSchemaError) {

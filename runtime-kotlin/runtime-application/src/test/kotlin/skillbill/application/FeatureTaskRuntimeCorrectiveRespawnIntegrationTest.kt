@@ -3,6 +3,7 @@
 package skillbill.application
 
 import skillbill.application.featuretask.FeatureTaskRuntimeFixLoopPolicy
+import skillbill.application.featuretask.RejectedOutputDiagnosticRequest
 import skillbill.application.model.FeatureTaskRuntimeRunEvent
 import skillbill.application.model.FeatureTaskRuntimeRunEventSink
 import skillbill.application.model.FeatureTaskRuntimeRunReport
@@ -444,6 +445,75 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
     assertContains(retry, "digest: $fullStreamDigest")
     assertContains(retry, "utf8_bytes: $fullStreamBytes")
     assertFalse(retry.contains("SKILL187-TRUNCATED-EXCERPT"), "truncated excerpt must not be framed as exact")
+  }
+
+  @Test
+  fun `a degraded diagnostic leaves no rod token on the authorized repair fallback`() {
+    val excerpt = completedPhaseBody(
+      "0.2",
+      "review",
+      "SKILL187-DEGRADED-EXCERPT",
+      """{"findings":[]}""",
+    )
+    val fullStreamDigest = "b".repeat(64)
+    val fullStreamBytes = 9_001L
+    var reviewAttempts = 0
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        if (phaseId != "review") return@RuntimeRecordingLauncher facts(defaultPhaseOutput(request))
+        reviewAttempts += 1
+        if (reviewAttempts == 1) {
+          skillbill.ports.agentrun.model.AgentRunLaunchFacts(
+            agent = skillbill.install.model.InstallAgent.CLAUDE,
+            exitStatus = 0,
+            stdout = excerpt,
+            stderr = "",
+            timedOut = false,
+            spawnFailed = false,
+            stdoutTruncated = true,
+            stdoutByteSize = fullStreamBytes,
+            stdoutSha256 = fullStreamDigest,
+          )
+        } else {
+          facts(defaultPhaseOutput(request))
+        }
+      },
+      validator = object : FeatureTaskRuntimePhaseOutputValidator {
+        override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
+          if (sourceLabel != "review") return
+          if (phaseOutputText.contains("SKILL187-DEGRADED-EXCERPT")) {
+            throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
+              sourceLabel = sourceLabel,
+              reason = "degraded rejection",
+              payloadFreeReason = payloadFreeConstraint,
+            )
+          }
+        }
+      },
+      agentAssignment = phasePerAgentAssignment(),
+    )
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.recorder.recordRejectedOutput(
+      RejectedOutputDiagnosticRequest(
+        workflowId = WORKFLOW_ID,
+        phaseId = "review",
+        attempt = 1,
+        rule = "divergent-pre-record",
+        path = "/",
+        reason = "divergent-pre-record",
+        agentId = phaseAgent("review"),
+        model = "unspecified",
+        rawResponse = "divergent-pre-record".encodeToByteArray(),
+      ),
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+
+    val retry = reviewPrompts(harness)[1]
+    assertContains(retry, "Rejected response body not included in this prompt")
+    assertContains(retry, "Private diagnostic write degraded (conflict)")
+    assertFalse(retry.contains("rod_"), "degraded write must not fabricate a resolvable locator")
   }
 
   @Test

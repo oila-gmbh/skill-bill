@@ -278,7 +278,7 @@ data class FeatureTaskRuntimeCorrectiveRepairContext(
   val rejectionRule: String,
   val rejectionPath: String,
   val payloadFreeConstraint: String,
-  val diagnosticLocator: CorrectiveRepairDiagnosticLocator,
+  val diagnosticLocator: CorrectiveRepairDiagnosticLocator?,
   val captured: CorrectiveRepairCapturedResponse,
   val repairTurn: Int? = null,
   val budget: FeatureTaskRuntimeCorrectiveRepairBudget = FeatureTaskRuntimeCorrectiveRepairBudget.DEFAULT,
@@ -289,6 +289,7 @@ data class FeatureTaskRuntimeCorrectiveRepairContext(
    * phase, attempt, and repair turn carried by this context. Never carries response body text.
    */
   val structuralRepairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence? = null,
+  val diagnosticDegradationClass: FeatureTaskRuntimeDiagnosticFailureClass? = null,
   val contractVersion: String = FEATURE_TASK_RUNTIME_CORRECTIVE_REPAIR_CONTEXT_CONTRACT_VERSION,
 ) {
   init {
@@ -306,6 +307,10 @@ data class FeatureTaskRuntimeCorrectiveRepairContext(
     }
     require(rejectionPath.isNotBlank()) {
       "FeatureTaskRuntimeCorrectiveRepairContext.rejectionPath must be non-blank."
+    }
+    require((diagnosticLocator != null) xor (diagnosticDegradationClass != null)) {
+      "FeatureTaskRuntimeCorrectiveRepairContext must carry a diagnostic locator xor a typed " +
+        "diagnostic degradation class."
     }
     require(structuralRepairEvidence == null || acceptedAfterStructuralRepair) {
       "FeatureTaskRuntimeCorrectiveRepairContext.structuralRepairEvidence requires " +
@@ -333,8 +338,9 @@ data class CorrectiveRepairPromptProjection(
   val inclusionReason: CorrectiveRepairInclusionReason,
   val utf8ByteCount: Int,
   val digestSha256: String,
-  val diagnosticLocator: CorrectiveRepairDiagnosticLocator,
+  val diagnosticLocator: CorrectiveRepairDiagnosticLocator?,
   val exactResponseBody: String?,
+  val diagnosticDegradationClass: FeatureTaskRuntimeDiagnosticFailureClass? = null,
 ) {
   init {
     when (availability) {
@@ -371,14 +377,21 @@ data class CorrectiveRepairPromptProjection(
     renderPayloadFreeFallbackSection()
   }
 
-  private fun renderPayloadFreeFallbackSection(): String = """
+  private fun renderPayloadFreeFallbackSection(): String {
+    val locatorLine = diagnosticLocator?.authorizedLookupGuidance()
+      ?: (
+        "Private diagnostic write degraded (${requireNotNull(diagnosticDegradationClass).wireValue}); " +
+          "no resolvable locator."
+        )
+    return """
     ## Rejected response body not included in this prompt
     availability: ${availability.wireValue}
     inclusion_reason: ${inclusionReason.wireValue}
     utf8_bytes: $utf8ByteCount
     digest: $digestSha256
-    ${diagnosticLocator.authorizedLookupGuidance()}
-  """.trimIndent()
+    $locatorLine
+    """.trimIndent()
+  }
 
   companion object {
     fun from(context: FeatureTaskRuntimeCorrectiveRepairContext): CorrectiveRepairPromptProjection {
@@ -402,6 +415,7 @@ data class CorrectiveRepairPromptProjection(
               digestSha256 = captured.digestSha256,
               diagnosticLocator = context.diagnosticLocator,
               exactResponseBody = null,
+              diagnosticDegradationClass = context.diagnosticDegradationClass,
             ),
             context.budget,
           )
@@ -413,6 +427,7 @@ data class CorrectiveRepairPromptProjection(
           digestSha256 = captured.digestSha256,
           diagnosticLocator = context.diagnosticLocator,
           exactResponseBody = captured.body,
+          diagnosticDegradationClass = context.diagnosticDegradationClass,
         )
       }
       // Already-truncated / exceeds-budget / unavailable paths also render a payload-free section;
@@ -426,6 +441,7 @@ data class CorrectiveRepairPromptProjection(
           digestSha256 = captured.digestSha256,
           diagnosticLocator = context.diagnosticLocator,
           exactResponseBody = null,
+          diagnosticDegradationClass = context.diagnosticDegradationClass,
         ),
         context.budget,
       )

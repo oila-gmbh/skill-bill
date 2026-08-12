@@ -145,7 +145,9 @@ class FeatureTaskRuntimeProjectionRejectionTest {
     val quarantined = requireNotNull(harness.recorder.loadQuarantinedRecords(WORKFLOW_ID))
     val entry = requireNotNull(quarantined.firstOrNull { it.producingPhaseId == "plan" })
     assertEquals("implement", entry.consumingPhaseId)
-    assertTrue(entry.diagnosticIdentity.startsWith("rod_"))
+    assertTrue(entry.diagnosticIdentity?.startsWith("rod_") == true)
+    assertEquals(false, entry.diagnosticDegraded)
+    assertTrue("diagnostic_degraded" !in entry.toArtifactMap())
     assertTrue(Regex("[0-9a-f]{64}").matches(entry.rejectedRecordSha256))
     // Evidence is never delivered to any agent prompt.
     assertTrue(
@@ -207,7 +209,9 @@ class FeatureTaskRuntimeProjectionRejectionTest {
     val quarantined = requireNotNull(harness.recorder.loadQuarantinedRecords(WORKFLOW_ID))
     val entry = requireNotNull(quarantined.firstOrNull { it.producingPhaseId == "implement" })
     assertEquals("audit", entry.consumingPhaseId)
-    assertTrue(entry.diagnosticIdentity.startsWith("rod_"))
+    assertTrue(entry.diagnosticIdentity?.startsWith("rod_") == true)
+    assertEquals(false, entry.diagnosticDegraded)
+    assertTrue("diagnostic_degraded" !in entry.toArtifactMap())
     assertTrue(Regex("[0-9a-f]{64}").matches(entry.rejectedRecordSha256))
     assertTrue(
       harness.launcher.requests.none {

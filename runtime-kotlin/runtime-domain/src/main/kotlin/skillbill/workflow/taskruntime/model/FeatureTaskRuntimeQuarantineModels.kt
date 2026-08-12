@@ -16,7 +16,7 @@ const val FEATURE_TASK_RUNTIME_QUARANTINED_RECORDS_ARTIFACT_KEY: String =
   "feature_task_runtime_quarantined_records"
 
 /** Wire value of the quarantine contract version, mirrored by the canonical quarantine schema. */
-const val FEATURE_TASK_RUNTIME_QUARANTINE_ARTIFACT_CONTRACT_VERSION: String = "0.2"
+const val FEATURE_TASK_RUNTIME_QUARANTINE_ARTIFACT_CONTRACT_VERSION: String = "0.3"
 
 /** Typed classes of launch-seam rejection that trigger quarantine; mirror the schema enum. */
 const val QUARANTINE_REJECTION_CLASS_PLANNING_PROJECTION: String = "planning_projection_schema"
@@ -26,7 +26,8 @@ const val QUARANTINE_REJECTION_CLASS_HANDOFF_ENVELOPE: String = "handoff_envelop
  * One quarantined durable record. Names the producing phase (which will be regenerated), the
  * consuming phase whose launch seam rejected it, the rejected producing iteration, the typed
  * rejection class and bounded detail, the per-producer regeneration attempt at quarantine, the
- * consuming-phase iteration at quarantine, and a reference to the private rejected-output diagnostic.
+ * consuming-phase iteration at quarantine, and either a private diagnostic identity or a mark that
+ * the diagnostic write degraded. Identity and the degraded flag are mutually exclusive.
  */
 data class FeatureTaskRuntimeQuarantineEntry(
   val producingPhaseId: String,
@@ -36,9 +37,10 @@ data class FeatureTaskRuntimeQuarantineEntry(
   val rejectionDetail: String,
   val regenerationAttempt: Int,
   val quarantinedAtIteration: Int,
-  val diagnosticIdentity: String,
+  val diagnosticIdentity: String?,
   val rejectedRecordByteSize: Long,
   val rejectedRecordSha256: String,
+  val diagnosticDegraded: Boolean = false,
 ) {
   init {
     require(producingPhaseId.isNotBlank()) { "FeatureTaskRuntimeQuarantineEntry.producingPhaseId must be non-blank." }
@@ -48,9 +50,12 @@ data class FeatureTaskRuntimeQuarantineEntry(
     require(rejectionDetail.isNotBlank()) { "FeatureTaskRuntimeQuarantineEntry.rejectionDetail must be non-blank." }
     require(regenerationAttempt >= 1) { "FeatureTaskRuntimeQuarantineEntry.regenerationAttempt must be >= 1." }
     require(quarantinedAtIteration >= 1) { "FeatureTaskRuntimeQuarantineEntry.quarantinedAtIteration must be >= 1." }
-    require(
-      diagnosticIdentity.isNotBlank(),
-    ) { "FeatureTaskRuntimeQuarantineEntry.diagnosticIdentity must be non-blank." }
+    require(diagnosticDegraded xor (diagnosticIdentity != null)) {
+      "FeatureTaskRuntimeQuarantineEntry must carry diagnosticIdentity xor diagnosticDegraded=true."
+    }
+    require(diagnosticIdentity == null || diagnosticIdentity.isNotBlank()) {
+      "FeatureTaskRuntimeQuarantineEntry.diagnosticIdentity must be non-blank when present."
+    }
     require(rejectedRecordByteSize >= 0) { "FeatureTaskRuntimeQuarantineEntry.rejectedRecordByteSize must be >= 0." }
     require(Regex("[0-9a-f]{64}").matches(rejectedRecordSha256)) {
       "FeatureTaskRuntimeQuarantineEntry.rejectedRecordSha256 must be a lowercase SHA-256 digest."
@@ -58,18 +63,25 @@ data class FeatureTaskRuntimeQuarantineEntry(
   }
 
   @OpenBoundaryMap("Feature-task-runtime quarantine entry artifact map at the durable workflow-artifact seam")
-  fun toArtifactMap(): Map<String, Any?> = linkedMapOf(
-    "producing_phase_id" to producingPhaseId,
-    "consuming_phase_id" to consumingPhaseId,
-    "producing_iteration" to producingIteration,
-    "rejection_class" to rejectionClass,
-    "rejection_detail" to rejectionDetail,
-    "regeneration_attempt" to regenerationAttempt,
-    "quarantined_at_iteration" to quarantinedAtIteration,
-    "diagnostic_identity" to diagnosticIdentity,
-    "rejected_record_byte_size" to rejectedRecordByteSize,
-    "rejected_record_sha256" to rejectedRecordSha256,
-  )
+  fun toArtifactMap(): Map<String, Any?> {
+    val map = linkedMapOf<String, Any?>(
+      "producing_phase_id" to producingPhaseId,
+      "consuming_phase_id" to consumingPhaseId,
+      "producing_iteration" to producingIteration,
+      "rejection_class" to rejectionClass,
+      "rejection_detail" to rejectionDetail,
+      "regeneration_attempt" to regenerationAttempt,
+      "quarantined_at_iteration" to quarantinedAtIteration,
+    )
+    if (diagnosticDegraded) {
+      map["diagnostic_degraded"] = true
+    } else {
+      map["diagnostic_identity"] = requireNotNull(diagnosticIdentity)
+    }
+    map["rejected_record_byte_size"] = rejectedRecordByteSize
+    map["rejected_record_sha256"] = rejectedRecordSha256
+    return map
+  }
 
   /** A stable identifier for this quarantined record, used in cap-exhaustion block reasons. */
   fun recordIdentifier(): String = "$producingPhaseId#$producingIteration"
@@ -85,9 +97,10 @@ data class FeatureTaskRuntimeQuarantineEntry(
       rejectionDetail = raw.requireStringField("rejection_detail"),
       regenerationAttempt = raw.requireIntField("regeneration_attempt"),
       quarantinedAtIteration = raw.requireIntField("quarantined_at_iteration"),
-      diagnosticIdentity = raw.requireStringField("diagnostic_identity"),
+      diagnosticIdentity = raw.optionalStringField("diagnostic_identity"),
       rejectedRecordByteSize = raw.requireIntField("rejected_record_byte_size").toLong(),
       rejectedRecordSha256 = raw.requireStringField("rejected_record_sha256"),
+      diagnosticDegraded = raw.optionalBooleanField("diagnostic_degraded") == true,
     )
   }
 }

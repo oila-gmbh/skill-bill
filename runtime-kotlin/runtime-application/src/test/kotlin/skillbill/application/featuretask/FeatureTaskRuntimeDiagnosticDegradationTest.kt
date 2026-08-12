@@ -133,6 +133,23 @@ class FeatureTaskRuntimeDiagnosticDegradationTest {
   }
 
   @Test
+  fun `a same-identity divergent recordRejectedOutput returns Degraded and no rod token`() {
+    val database = database()
+    val recorder = recorder(database)
+    recorder.ensureWorkflowOpen(WORKFLOW_ID, "session-1")
+    val first = recorder.recordRejectedOutput(rejection("first-bytes".encodeToByteArray(), repairTurn = 1))
+    val written = assertIs<FeatureTaskRuntimeRejectedOutputWrite.Written>(first)
+    assertTrue(written.identity.startsWith("rod_"))
+    val committedIdentity = database.rejectedDiagnostics().single().metadata.identity
+
+    val second = recorder.recordRejectedOutput(rejection("divergent-bytes".encodeToByteArray(), repairTurn = 1))
+    val degraded = assertIs<FeatureTaskRuntimeRejectedOutputWrite.Degraded>(second)
+    assertEquals(FeatureTaskRuntimeDiagnosticFailureClass.CONFLICT, degraded.failureClass)
+    assertEquals(1, database.rejectedDiagnostics().size)
+    assertEquals(committedIdentity, database.rejectedDiagnostics().single().metadata.identity)
+  }
+
+  @Test
   fun `a caller-construction defect still fails loudly instead of degrading`() {
     val database = database()
     val recorder = recorder(database)
