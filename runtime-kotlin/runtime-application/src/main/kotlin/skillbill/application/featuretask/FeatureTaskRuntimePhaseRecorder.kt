@@ -249,7 +249,7 @@ class FeatureTaskRuntimePhaseRecorder(
     }
   }
 
-  fun producerOutput(
+  internal fun producerOutput(
     workflowId: String,
     phaseId: String,
     attempt: Int,
