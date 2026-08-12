@@ -191,7 +191,13 @@ object FeatureTaskRuntimePhasePromptComposer {
       Preserve valid content from the prior attempt, correct the named violation, and place
       phase-required fields at their contract-defined locations. Do not copy a raw response unchanged.
     """.trimIndent()
-    val structuralRepairNote = if (correctiveRepairContext?.acceptedAfterStructuralRepair == true) {
+    val structuralRepairNote = correctiveRepairContext?.structuralRepairEvidence?.let { evidence ->
+      "\nDeterministic syntax repair previously succeeded on this capture (delimiter-only; " +
+        "original_digest=${evidence.originalDigest} repaired_digest=${evidence.repairedDigest} " +
+        "source=${evidence.sourceLocation.sourceLabel}:" +
+        "${evidence.sourceLocation.line}:${evidence.sourceLocation.column}). " +
+        "That does not mean the phase schema accepted it; correct the named schema or semantic violation."
+    } ?: if (correctiveRepairContext?.acceptedAfterStructuralRepair == true) {
       "\nDeterministic syntax repair previously succeeded on this capture (delimiter-only). " +
         "That does not mean the phase schema accepted it; correct the named schema or semantic violation."
     } else {

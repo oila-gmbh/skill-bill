@@ -229,22 +229,32 @@ fun FeatureTaskRuntimePhaseOutputValidationResult.requireAccepted(
 ): NormalizedFeatureTaskRuntimePhaseOutput = when (this) {
   is FeatureTaskRuntimePhaseOutputValidationResult.AcceptedUnchanged -> normalizedOutput
   is FeatureTaskRuntimePhaseOutputValidationResult.AcceptedAfterRepair -> normalizedOutput
-  is FeatureTaskRuntimePhaseOutputValidationResult.Rejected -> throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
-    sourceLabel = sourceLabel,
-    reason = diagnosticReason,
-    payloadFreeReason = payloadFreeReason,
-    failureKind = when (code) {
-      FeatureTaskRuntimePhaseOutputFailureCode.MALFORMED,
-      FeatureTaskRuntimePhaseOutputFailureCode.ROOT_NOT_OBJECT,
-      FeatureTaskRuntimePhaseOutputFailureCode.NO_REPAIR_CANDIDATE,
-      FeatureTaskRuntimePhaseOutputFailureCode.AMBIGUOUS_REPAIR,
-      FeatureTaskRuntimePhaseOutputFailureCode.REPAIR_LIMIT_EXCEEDED,
-      FeatureTaskRuntimePhaseOutputFailureCode.UNSUPPORTED_REPAIR,
-      FeatureTaskRuntimePhaseOutputFailureCode.DUPLICATE_KEY,
-      -> FeatureTaskRuntimePhaseOutputFailureKind.MALFORMED
-      else -> FeatureTaskRuntimePhaseOutputFailureKind.SCHEMA_INVALID
-    },
-    failureCode = code.wireValue,
-    acceptedAfterStructuralRepair = structuralRepairEvidence != null,
-  )
+  is FeatureTaskRuntimePhaseOutputValidationResult.Rejected -> {
+    val evidence = structuralRepairEvidence
+    throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
+      sourceLabel = sourceLabel,
+      reason = diagnosticReason,
+      payloadFreeReason = payloadFreeReason,
+      failureKind = when (code) {
+        FeatureTaskRuntimePhaseOutputFailureCode.MALFORMED,
+        FeatureTaskRuntimePhaseOutputFailureCode.ROOT_NOT_OBJECT,
+        FeatureTaskRuntimePhaseOutputFailureCode.NO_REPAIR_CANDIDATE,
+        FeatureTaskRuntimePhaseOutputFailureCode.AMBIGUOUS_REPAIR,
+        FeatureTaskRuntimePhaseOutputFailureCode.REPAIR_LIMIT_EXCEEDED,
+        FeatureTaskRuntimePhaseOutputFailureCode.UNSUPPORTED_REPAIR,
+        FeatureTaskRuntimePhaseOutputFailureCode.DUPLICATE_KEY,
+        -> FeatureTaskRuntimePhaseOutputFailureKind.MALFORMED
+        else -> FeatureTaskRuntimePhaseOutputFailureKind.SCHEMA_INVALID
+      },
+      failureCode = code.wireValue,
+      structuralRepairOriginalDigest = evidence?.originalDigest,
+      structuralRepairRepairedDigest = evidence?.repairedDigest,
+      structuralRepairFormat = evidence?.format?.wireValue,
+      structuralRepairOperation = evidence?.operation?.wireValue,
+      structuralRepairSourceLabel = evidence?.sourceLocation?.sourceLabel,
+      structuralRepairSourceOffset = evidence?.sourceLocation?.offset,
+      structuralRepairSourceLine = evidence?.sourceLocation?.line,
+      structuralRepairSourceColumn = evidence?.sourceLocation?.column,
+    )
+  }
 }

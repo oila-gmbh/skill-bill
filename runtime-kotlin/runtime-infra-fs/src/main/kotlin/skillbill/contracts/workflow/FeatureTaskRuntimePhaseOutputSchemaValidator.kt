@@ -54,7 +54,7 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
     val instance: JsonNode = mapper.valueToTree(phaseOutput)
     val errors: Set<ValidationMessage> = schema.validate(instance)
     if (errors.isNotEmpty()) {
-      featureTaskRuntimePhaseOutputLog.log(Level.WARNING, buildSchemaDriftLog(sourceLabel, errors, instance))
+      featureTaskRuntimePhaseOutputLog.log(Level.WARNING, buildSchemaDriftLog(sourceLabel, errors))
       val reasons = formatViolationReasons(errors.sortedWith(violationOrdering), instance)
       throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
         sourceLabel = sourceLabel,
@@ -394,12 +394,16 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
     }
   }
 
-  private fun buildSchemaDriftLog(sourceLabel: String, errors: Set<ValidationMessage>, instance: JsonNode): String {
+  /**
+   * Operator/warning log only: field paths and constraint metadata. Never includes extracted instance
+   * values — those belong solely in the private value-bearing rejection reason.
+   */
+  private fun buildSchemaDriftLog(sourceLabel: String, errors: Set<ValidationMessage>): String {
     val parts = errors.sortedWith(violationOrdering).take(2).map { error ->
       val location = error.instanceLocation?.toString().orEmpty()
       val fieldPath = featureTaskRuntimePhaseOutputDottedFieldPath(location).ifBlank { "<root>" }
-      val offendingValue = extractFeatureTaskRuntimePhaseOutputOffendingValue(instance, location)
-      if (offendingValue.isNotBlank()) "$fieldPath=$offendingValue" else fieldPath
+      val constraint = error.message.orEmpty().trim()
+      if (constraint.isNotEmpty()) "$fieldPath: $constraint" else fieldPath
     }
     return "Feature-task-runtime phase output failed schema validation: source='$sourceLabel' " +
       "violations=${parts.joinToString(", ")} totalViolations=${errors.size}"

@@ -120,5 +120,13 @@ class FeatureTaskRuntimePhaseOutputValidationModelsTest {
     }
 
     assertTrue(error.acceptedAfterStructuralRepair)
+    assertEquals(evidence.originalDigest, error.structuralRepairOriginalDigest)
+    assertEquals(evidence.repairedDigest, error.structuralRepairRepairedDigest)
+    assertEquals(evidence.format.wireValue, error.structuralRepairFormat)
+    assertEquals(evidence.operation.wireValue, error.structuralRepairOperation)
+    assertEquals(evidence.sourceLocation.sourceLabel, error.structuralRepairSourceLabel)
+    assertEquals(evidence.sourceLocation.offset, error.structuralRepairSourceOffset)
+    assertEquals(evidence.sourceLocation.line, error.structuralRepairSourceLine)
+    assertEquals(evidence.sourceLocation.column, error.structuralRepairSourceColumn)
   }
 }

@@ -225,10 +225,24 @@ class InvalidFeatureTaskRuntimePhaseOutputSchemaError(
   /** Stable wire code used by the typed adapter result; old callers may omit it. */
   val failureCode: String = "schema_invalid",
   /**
-   * True when deterministic delimiter repair previously accepted this capture and the phase schema
-   * later rejected it. Syntax success must not be read as phase-schema acceptance.
+   * Payload-free structural-repair correlation retained when delimiter repair accepted this capture
+   * and the phase schema later rejected it. Digests, format/operation wire values, and source
+   * location only — never response body text. Absence means no prior syntax repair on this capture.
    */
-  val acceptedAfterStructuralRepair: Boolean = false,
+  val structuralRepairOriginalDigest: String? = null,
+  val structuralRepairRepairedDigest: String? = null,
+  val structuralRepairFormat: String? = null,
+  val structuralRepairOperation: String? = null,
+  val structuralRepairSourceLabel: String? = null,
+  val structuralRepairSourceOffset: Int? = null,
+  val structuralRepairSourceLine: Int? = null,
+  val structuralRepairSourceColumn: Int? = null,
+  /**
+   * True when deterministic delimiter repair previously accepted this capture and the phase schema
+   * later rejected it. Syntax success must not be read as phase-schema acceptance. Defaults from
+   * [structuralRepairOriginalDigest] so digest-bearing throws stay correlated without a second flag.
+   */
+  val acceptedAfterStructuralRepair: Boolean = structuralRepairOriginalDigest != null,
 ) : ShellContentContractException(
   "Feature-task-runtime phase output '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation: $reason",
   cause,

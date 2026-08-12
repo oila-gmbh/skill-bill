@@ -3465,7 +3465,9 @@ internal class FeatureTaskRuntimeRunLoop(
    * Mutating-reconciliation is a fixed template. Producer/consumer projection and output-verification
    * may carry schema-structure text the producer needs, but only after response-derived dumps
    * (quoted wire verdicts, offending-value appendices, expected=/actual= receipt lists) are scrubbed.
-   * Audit ledger/repair gates stay null here so their identifiers never reach the retry reason.
+   * Audit ledger/repair gates stay null except for scrubbed bounded artifact_ref/check_ref
+   * constraints — those must reach the retry reason so compound or oversized refs get actionable
+   * guidance instead of a generic audit sentence alone.
    */
   private fun payloadFreeSemanticGateConstraint(rule: String, detail: String): String? =
     when (rule) {
@@ -3474,8 +3476,31 @@ internal class FeatureTaskRuntimeRunLoop(
       "consumer-projection",
       "output-verification",
       -> scrubResponseDerivedGateDetail(detail)
-      else -> null
+      else -> scrubBoundedReferenceGateConstraint(detail)
     }
+
+  /**
+   * Extracts a payload-free bounded-reference constraint from semantic-gate detail. Returns null when
+   * the detail does not name artifact_ref or check_ref, so audit identifiers and expected=/actual=
+   * receipt lists never reach the retry reason by themselves.
+   */
+  private fun scrubBoundedReferenceGateConstraint(detail: String): String? {
+    if (detail.isBlank()) return null
+    val namesArtifactRef = detail.contains("artifact_ref")
+    val namesCheckRef = detail.contains("check_ref")
+    if (!namesArtifactRef && !namesCheckRef) return null
+    val cap = BOUNDED_REF_LENGTH_CAP_PATTERN.find(detail)?.groupValues?.get(1)?.replace(",", "")
+    return when {
+      namesArtifactRef && cap != null -> "artifact_ref allows at most $cap characters."
+      namesCheckRef && cap != null -> "check_ref allows at most $cap characters."
+      namesArtifactRef ->
+        "artifact_ref must be a bounded path or symbol reference such as " +
+          "src/main/Example.kt or src/main/Example.kt:Example."
+      else ->
+        "check_ref must match AC-###, F-###, or a name ending in Test or Check, optionally followed " +
+          "by :symbol; examples: AC-005, FeatureTaskRuntimeAuditEntryGateTest, or codeCheck:detekt."
+    }
+  }
 
   /**
    * Strips known response-value dumps from semantic-gate detail before it can enter a retry prompt
@@ -3576,6 +3601,7 @@ internal class FeatureTaskRuntimeRunLoop(
       run, iteration, "phase-output-schema", error.reason, outputBytes, path = path,
       outputTruncated = outputTruncated, outputByteSize = outputByteSize, outputSha256 = outputSha256,
     )
+    val repairEvidence = structuralRepairEvidenceFromSchemaError(error)
     schemaInvalidAttempt(
       reason,
       fileManifest,
@@ -3593,6 +3619,7 @@ internal class FeatureTaskRuntimeRunLoop(
         rejectionPath = path,
         payloadFreeConstraint = error.payloadFreeReason.orEmpty(),
         acceptedAfterStructuralRepair = error.acceptedAfterStructuralRepair,
+        structuralRepairEvidence = repairEvidence,
       ),
     )
   } catch (error: InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError) {
@@ -3638,6 +3665,8 @@ internal class FeatureTaskRuntimeRunLoop(
     rejectionPath: String,
     payloadFreeConstraint: String,
     acceptedAfterStructuralRepair: Boolean = false,
+    structuralRepairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence? =
+      null,
   ): FeatureTaskRuntimeCorrectiveRepairContext {
     val utf8ByteCount = outputByteSize.coerceIn(0L, Int.MAX_VALUE.toLong()).toInt()
     val captured = if (outputTruncated) {
@@ -3657,6 +3686,7 @@ internal class FeatureTaskRuntimeRunLoop(
         knownDigestSha256 = outputSha256,
       )
     }
+    val repairEvidence = structuralRepairEvidence
     return FeatureTaskRuntimeCorrectiveRepairContext(
       phaseId = run.phaseId,
       attempt = iteration.coerceAtLeast(1),
@@ -3666,7 +3696,8 @@ internal class FeatureTaskRuntimeRunLoop(
       payloadFreeConstraint = payloadFreeConstraint,
       diagnosticLocator = CorrectiveRepairDiagnosticLocator(diagnosticIdentity),
       captured = captured,
-      acceptedAfterStructuralRepair = acceptedAfterStructuralRepair,
+      acceptedAfterStructuralRepair = acceptedAfterStructuralRepair || repairEvidence != null,
+      structuralRepairEvidence = repairEvidence,
     )
   }
 
@@ -3769,6 +3800,7 @@ internal class FeatureTaskRuntimeRunLoop(
           // Semantic rejection after AcceptedAfterRepair: syntax repair succeeded earlier; the phase
           // schema or semantic gate still rejected the post-capture response.
           acceptedAfterStructuralRepair = repairEvidence != null,
+          structuralRepairEvidence = repairEvidence,
         ),
       )
     }
@@ -4681,6 +4713,37 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private fun Throwable.diagnosticMessage(): String =
     message?.takeIf(String::isNotBlank) ?: this::class.simpleName.orEmpty().ifBlank { "unknown decode failure" }
+
+  /**
+   * Rebuilds payload-free structural-repair evidence from digest/location fields carried on the
+   * schema exception. Returns null when the throw had no correlated prior syntax repair.
+   */
+  private fun structuralRepairEvidenceFromSchemaError(
+    error: InvalidFeatureTaskRuntimePhaseOutputSchemaError,
+  ): skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence? {
+    val originalDigest = error.structuralRepairOriginalDigest ?: return null
+    val repairedDigest = error.structuralRepairRepairedDigest ?: return null
+    val format = error.structuralRepairFormat ?: return null
+    val operation = error.structuralRepairOperation ?: return null
+    val sourceLabel = error.structuralRepairSourceLabel ?: return null
+    val sourceOffset = error.structuralRepairSourceOffset ?: return null
+    val sourceLine = error.structuralRepairSourceLine ?: return null
+    val sourceColumn = error.structuralRepairSourceColumn ?: return null
+    return skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence(
+      format = skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFormat.fromWire(format),
+      originalDigest = originalDigest,
+      repairedDigest = repairedDigest,
+      operation = skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairOperation.fromWire(
+        operation,
+      ),
+      sourceLocation = skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputSourceLocation(
+        sourceLabel = sourceLabel,
+        offset = sourceOffset,
+        line = sourceLine,
+        column = sourceColumn,
+      ),
+    )
+  }
 
   @Suppress("ReturnCount")
   private fun terminalAuditRepairBlockGateReason(phaseId: String, outputMap: Map<String, Any?>): String? {
@@ -5819,6 +5882,10 @@ private val OFFENDING_VALUE_APPENDIX_PATTERN =
 /** Audit repair gates list expected=/actual= receipt identifiers derived from the rejected output. */
 private val EXPECTED_ACTUAL_LIST_PATTERN =
   Regex("""\bexpected=\[[^\]]*]\s*actual=\[[^\]]*]\.?""", RegexOption.IGNORE_CASE)
+
+/** Length caps stated by typed audit-repair reference rules (`allows at most N characters`). */
+private val BOUNDED_REF_LENGTH_CAP_PATTERN =
+  Regex("""(?:allows|must be) at most ([0-9][0-9,]*) characters""", RegexOption.IGNORE_CASE)
 
 // The phases permitted to bring new paths into the workflow's durable ownership. Every other phase
 // is a reader: a file appearing under one is outside its authority and blocks instead of being

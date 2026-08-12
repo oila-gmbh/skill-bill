@@ -285,6 +285,12 @@ data class FeatureTaskRuntimeCorrectiveRepairContext(
   val repairTurn: Int? = null,
   val budget: FeatureTaskRuntimeCorrectiveRepairBudget = FeatureTaskRuntimeCorrectiveRepairBudget.DEFAULT,
   val acceptedAfterStructuralRepair: Boolean = false,
+  /**
+   * Payload-free digest/location evidence from a prior successful delimiter-only structural repair on
+   * this capture. When present, correlates original/repaired digests and source location with the
+   * phase, attempt, and repair turn carried by this context. Never carries response body text.
+   */
+  val structuralRepairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence? = null,
   val contractVersion: String = FEATURE_TASK_RUNTIME_CORRECTIVE_REPAIR_CONTEXT_CONTRACT_VERSION,
 ) {
   init {
@@ -302,6 +308,10 @@ data class FeatureTaskRuntimeCorrectiveRepairContext(
     }
     require(rejectionPath.isNotBlank()) {
       "FeatureTaskRuntimeCorrectiveRepairContext.rejectionPath must be non-blank."
+    }
+    require(structuralRepairEvidence == null || acceptedAfterStructuralRepair) {
+      "FeatureTaskRuntimeCorrectiveRepairContext.structuralRepairEvidence requires " +
+        "acceptedAfterStructuralRepair=true so syntax-repair correlation cannot disagree with the flag."
     }
     // Constraint may be blank when the validator had no mechanical payload-free restatement; the
     // consumer then falls back to its own payload-free sentence rather than a value-bearing reason.
