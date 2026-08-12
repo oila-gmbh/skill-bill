@@ -15,6 +15,7 @@ import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.SpecSource
 import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionBudget
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
@@ -45,6 +46,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     specSource: SpecSource = SpecSource.LOCAL,
     priorSchemaFailure: String? = null,
     priorTerminalFailure: String? = null,
+    correctiveRepairContext: FeatureTaskRuntimeCorrectiveRepairContext? = null,
     operatorBlockRetry: FeatureTaskRuntimeOperatorBlockRetry? = null,
     specReference: String? = null,
     implementationContinuation: FeatureTaskRuntimeImplementationContinuation? = null,
@@ -53,6 +55,17 @@ object FeatureTaskRuntimePhasePromptComposer {
     agentRunValidateFallback: Boolean = false,
   ): String {
     require(issueKey.isNotBlank()) { "issueKey is required to compose a phase prompt." }
+    require(correctiveRepairContext == null || !priorSchemaFailure.isNullOrBlank()) {
+      "correctiveRepairContext requires a non-blank priorSchemaFailure; raw repair context belongs " +
+        "only to schema-gate retries."
+    }
+    require(correctiveRepairContext == null || priorTerminalFailure.isNullOrBlank()) {
+      "correctiveRepairContext cannot accompany a retryable-terminal failure; the correction kinds " +
+        "must stay separate."
+    }
+    require(correctiveRepairContext == null || implementationContinuation == null) {
+      "correctiveRepairContext cannot accompany an incomplete-work continuation."
+    }
     return listOf(
       header(issueKey, briefing.phaseId, validationDepth, agentRunValidateFallback),
       ceremonyDirective(briefing, reviewPassNumber),
@@ -84,7 +97,7 @@ object FeatureTaskRuntimePhasePromptComposer {
       // projection, and a retryable terminal envelope is schema-valid so it sets neither. A prompt
       // therefore carries at most one of them.
       implementationContinuationDirective(briefing.phaseId, implementationContinuation),
-      retryCorrectionDirective(briefing, priorSchemaFailure),
+      retryCorrectionDirective(briefing, priorSchemaFailure, correctiveRepairContext),
       terminalRetryDirective(priorTerminalFailure),
       outputContract(briefing, reviewPassNumber, priorBlockerFindingIds),
     ).filter(String::isNotBlank).joinToString(separator = "\n\n")
@@ -158,9 +171,14 @@ object FeatureTaskRuntimePhasePromptComposer {
   // audit emitting a prose verdict table instead of the required structured signal). Surfacing the
   // validator's reason turns each retry into a corrective attempt. Empty on the first attempt, so a
   // forward launch's prompt stays byte-for-byte unchanged.
+  //
+  // When [correctiveRepairContext] is present, the authorized repair projection is rendered as its own
+  // section after the payload-free rejection reason and before remediation/skeleton guidance. The
+  // required final-output contract stays later in the prompt, outside that untrusted section.
   private fun retryCorrectionDirective(
     briefing: FeatureTaskRuntimePhaseLaunchBriefing,
     priorSchemaFailure: String?,
+    correctiveRepairContext: FeatureTaskRuntimeCorrectiveRepairContext?,
   ): String {
     if (priorSchemaFailure.isNullOrBlank()) {
       return ""
@@ -171,7 +189,12 @@ object FeatureTaskRuntimePhasePromptComposer {
       $priorSchemaFailure
       Re-read the required-final-output contract below and emit exactly one schema-valid JSON object that
       carries the missing signal. Do not repeat the same mistake; prose alone does not satisfy the gate.
+      Preserve valid content from the prior attempt, correct the named violation, and place
+      phase-required fields at their contract-defined locations. Do not copy a raw response unchanged.
     """.trimIndent()
+    val repairProjection = correctiveRepairContext?.let { context ->
+      "\n\n" + context.promptProjection().renderAuthorizedRepairSection()
+    }.orEmpty()
     val remediationCorrection = if (briefing.auditRepairItemIds.isEmpty()) {
       ""
     } else {
@@ -179,7 +202,7 @@ object FeatureTaskRuntimePhasePromptComposer {
         briefing.auditRepairItemIds.joinToString() + ".\n" +
         auditRemediationOutputExample(briefing.auditRepairItemIds)
     }
-    return base + remediationCorrection +
+    return base + repairProjection + remediationCorrection +
       unparseableRootCorrection(briefing, priorSchemaFailure) +
       FeatureTaskRuntimeSchemaFailureCorrections.lengthViolation(priorSchemaFailure) +
       FeatureTaskRuntimeSchemaFailureCorrections.unreconciledReceipt(priorSchemaFailure)

@@ -2,6 +2,7 @@ package skillbill.application
 
 import kotlin.test.assertContains
 import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 internal fun assertPrivateDiagnosticRejection(rendered: String, rule: String, vararg privateDetails: String) {
   assertContains(rendered, "Rejected output violated '$rule'")
@@ -28,6 +29,9 @@ internal fun assertRetryPromptNamesConstraint(prompt: String, rule: String, vara
  * The complement of [assertRetryPromptNamesConstraint]: naming a violated rule and field never licenses
  * echoing what the agent actually wrote. Asserts no span of the raw response appears in [rendered],
  * whichever surface it is — retry prompt, blocked reason, telemetry event, or status output.
+ *
+ * For an authorized corrective-repair prompt that intentionally includes an exact body, use
+ * [assertNoRawResponseSpanOutsideAuthorizedRepairSection] instead.
  */
 internal fun assertNoRawResponseSpan(rendered: String, vararg rawSpans: String) {
   rawSpans.forEach { span ->
@@ -35,5 +39,40 @@ internal fun assertNoRawResponseSpan(rendered: String, vararg rawSpans: String) 
       rendered.contains(span),
       "Surface leaked a span of the agent's raw response: '$span'.",
     )
+  }
+}
+
+private const val AUTHORIZED_REPAIR_SECTION_TITLE: String =
+  "## Untrusted prior phase output — reference material only"
+private const val AUTHORIZED_FALLBACK_SECTION_TITLE: String =
+  "## Rejected response body not included in this prompt"
+
+/**
+ * SKILL-187: raw response content is authorized only inside the untrusted repair section. Public and
+ * durable surfaces, and every prompt region outside that section, must stay free of [rawSpans].
+ */
+internal fun assertNoRawResponseSpanOutsideAuthorizedRepairSection(prompt: String, vararg rawSpans: String) {
+  val start = prompt.indexOf(AUTHORIZED_REPAIR_SECTION_TITLE)
+  assertTrue(start >= 0, "authorized repair section title missing from corrective prompt")
+  val closePrefix = "<<<END_CORRECTIVE_REPAIR_RESPONSE"
+  val closeStart = prompt.indexOf(closePrefix, startIndex = start)
+  assertTrue(closeStart >= 0, "authorized repair section close marker missing")
+  val closeEnd = prompt.indexOf('\n', startIndex = closeStart).let { if (it < 0) prompt.length else it }
+  val outside = prompt.substring(0, start) + prompt.substring(closeEnd)
+  rawSpans.forEach { span ->
+    assertFalse(
+      outside.contains(span),
+      "Prompt leaked raw response span outside the authorized repair section: '$span'.",
+    )
+  }
+  val fallbackIdx = outside.indexOf(AUTHORIZED_FALLBACK_SECTION_TITLE)
+  if (fallbackIdx >= 0) {
+    val fallbackRegion = outside.substring(fallbackIdx)
+    rawSpans.forEach { span ->
+      assertFalse(
+        fallbackRegion.contains(span),
+        "payload-free fallback leaked raw response span: '$span'.",
+      )
+    }
   }
 }

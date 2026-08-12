@@ -6,6 +6,7 @@ import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
 
 // Phase-scoped prompt directives and the per-phase task directive table, split out of
 // FeatureTaskRuntimePhasePromptComposer so the composer object stays within its size budget.
@@ -163,18 +164,35 @@ internal fun implementationContinuationDirective(
  * semantic budget, but they are different events and must not be prompted, reported or dispositioned
  * alike: only the first is a rejection. Threading one nullable string made them indistinguishable at
  * the composer seam, which is how a schema-valid terminal envelope came to be told it was rejected.
+ *
+ * [correctiveRepairContext] is schema-gate only: the authorized bounded repair projection of the
+ * rejected response. Retryable-terminal and incomplete-work paths must not carry it, so they never
+ * receive a raw-output repair section.
  */
 internal class PriorAttemptCorrection private constructor(
   private val reason: String,
   private val terminal: Boolean,
+  val correctiveRepairContext: FeatureTaskRuntimeCorrectiveRepairContext? = null,
 ) {
   val schemaGateReason: String? get() = reason.takeUnless { terminal }
   val retryableTerminalReason: String? get() = reason.takeIf { terminal }
 
-  companion object {
-    fun schemaGate(reason: String): PriorAttemptCorrection = PriorAttemptCorrection(reason, terminal = false)
+  init {
+    require(correctiveRepairContext == null || !terminal) {
+      "PriorAttemptCorrection: corrective repair context belongs only to schema-gate retries, " +
+        "not retryable-terminal envelopes."
+    }
+  }
 
-    fun retryableTerminal(reason: String): PriorAttemptCorrection = PriorAttemptCorrection(reason, terminal = true)
+  companion object {
+    fun schemaGate(
+      reason: String,
+      correctiveRepairContext: FeatureTaskRuntimeCorrectiveRepairContext? = null,
+    ): PriorAttemptCorrection =
+      PriorAttemptCorrection(reason, terminal = false, correctiveRepairContext = correctiveRepairContext)
+
+    fun retryableTerminal(reason: String): PriorAttemptCorrection =
+      PriorAttemptCorrection(reason, terminal = true, correctiveRepairContext = null)
   }
 }
 

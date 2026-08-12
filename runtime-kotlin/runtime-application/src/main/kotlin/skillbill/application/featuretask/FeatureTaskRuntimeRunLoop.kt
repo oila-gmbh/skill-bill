@@ -4882,6 +4882,7 @@ internal class FeatureTaskRuntimeRunLoop(
       specSource = run.specSource,
       priorSchemaFailure = priorCorrection?.schemaGateReason,
       priorTerminalFailure = priorCorrection?.retryableTerminalReason,
+      correctiveRepairContext = priorCorrection?.correctiveRepairContext,
       operatorBlockRetry = operatorBlockRetry
         ?.takeIf { it.phaseId == run.phaseId && !operatorBlockRetryCompleted },
       specReference = run.request.runInvariants.specReference,

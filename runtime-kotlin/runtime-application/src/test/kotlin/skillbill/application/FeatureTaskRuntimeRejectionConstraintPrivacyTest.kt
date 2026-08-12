@@ -19,6 +19,10 @@ import kotlin.test.assertTrue
  * constraint, the private diagnostic row receives the value-bearing reason, and no operator-facing surface
  * receives either.
  *
+ * SKILL-187: when an authorized corrective-repair projection is present, raw response spans may appear
+ * only inside that section; [assertNoRawResponseSpan] remains the contract for every other surface and
+ * for retries that do not yet carry a repair context (subtask 1 does not thread capture into the runner).
+ *
  * The validator is a stand-in rather than the real schema because the split is a run-loop routing property:
  * the real validator's own dual-variant rendering is proven in
  * `FeatureTaskRuntimePhaseOutputSchemaValidatorTest`.
