@@ -85,6 +85,7 @@ class DatabaseMigrationsTest {
         26 to "relax-telemetry-outbox-last-error",
         27 to "add-review-finding-outcome-key",
         28 to "rekey-producer-output-evidence-by-agent",
+        29 to "rekey-diagnostic-evidence-by-repair-turn",
       ),
       migrationDefinitions,
     )
@@ -459,6 +460,152 @@ class DatabaseMigrationsTest {
 
     assertProducerEvidenceMigrationDdlParity(migratedDdl, "runtime-kotlin-db-v28-base-schema")
   }
+
+  @Test
+  fun `migration v29 rekeys both diagnostic stores by repair turn without losing a row`() {
+    val dbPath = Files.createTempDirectory("runtime-kotlin-db-v29-repair-turn").resolve("metrics.db")
+    val payload = "skill-185-validate-turn-1".encodeToByteArray()
+    val sha = "8f6ac8b0d9da".padEnd(64, '0')
+    val identity = "rod_${"e".repeat(64)}"
+
+    seedPreRepairTurnDiagnosticsForMigration29(dbPath, payload, sha, identity)
+
+    val migratedDdl = DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      assertNotNull(
+        migrationRows(connection).singleOrNull { row ->
+          row.version == 29 && row.name == "rekey-diagnostic-evidence-by-repair-turn"
+        },
+      )
+      // Every carried-across row lands at turn 0, which is the key an ordinary attempt still writes.
+      assertEquals(listOf(0), producerEvidenceRepairTurns(connection))
+      assertEquals(payload.size.toLong(), producerEvidenceByteSizes(connection).single())
+      assertEquals(listOf(identity to 0), rejectedDiagnosticIdentitiesAndTurns(connection))
+      // The rebuild drops the table, and DROP TABLE takes every index with it. The version-14
+      // retention index is not in the base schema and version 14 is already in the ledger, so
+      // nothing else would put it back — markExpired would silently regress to a full scan.
+      assertEquals(
+        listOf(
+          "idx_rejected_output_diagnostic_retention",
+          "idx_rejected_output_diagnostic_selection",
+          "idx_rejected_output_diagnostics_selector",
+        ),
+        rejectedDiagnosticIndexNames(connection),
+      )
+      producerEvidenceDdl(connection)
+    }
+
+    assertProducerEvidenceMigrationDdlParity(migratedDdl, "runtime-kotlin-db-v29-base-schema")
+  }
+
+  private fun rejectedDiagnosticIndexNames(connection: Connection): List<String> =
+    connection.createStatement().use { statement ->
+      statement.executeQuery(
+        """
+        SELECT name FROM sqlite_master
+        WHERE type = 'index' AND tbl_name = 'rejected_output_diagnostics' AND name NOT LIKE 'sqlite_%'
+        ORDER BY name
+        """.trimIndent(),
+      ).use { rows -> buildList { while (rows.next()) add(rows.getString("name")) } }
+    }
+
+  private fun seedPreRepairTurnDiagnosticsForMigration29(
+    dbPath: Path,
+    payload: ByteArray,
+    sha: String,
+    identity: String,
+  ) {
+    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      connection.createStatement().use { statement ->
+        statement.executeUpdate(
+          "DELETE FROM schema_migrations WHERE name = 'rekey-diagnostic-evidence-by-repair-turn'",
+        )
+        statement.executeUpdate("DROP TABLE producer_output_evidence")
+        statement.executeUpdate(PRE_REPAIR_TURN_PRODUCER_OUTPUT_EVIDENCE_SQL)
+        statement.executeUpdate("DROP TABLE rejected_output_diagnostics")
+        statement.executeUpdate(PRE_REPAIR_TURN_REJECTED_OUTPUT_DIAGNOSTICS_SQL)
+        // A real pre-v29 store carries the narrow selector index, so the base schema's widened
+        // CREATE INDEX IF NOT EXISTS is a name no-op on it rather than an error.
+        statement.executeUpdate(
+          """
+          CREATE INDEX idx_rejected_output_diagnostics_selector
+            ON rejected_output_diagnostics(workflow_id, phase_id, attempt)
+          """.trimIndent(),
+        )
+      }
+      connection.prepareStatement(
+        """
+        INSERT INTO producer_output_evidence
+        (workflow_id, phase_id, generation, attempt, agent_id, model, recorded_at, byte_size, sha256, payload)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """.trimIndent(),
+      ).use { statement ->
+        statement.setString(1, "wftr-20260811-201509-n7hz")
+        statement.setString(2, "validate")
+        statement.setInt(3, 0)
+        statement.setInt(4, 1)
+        statement.setString(5, "cursor")
+        statement.setString(6, "gpt")
+        statement.setString(7, "2026-08-11T21:07:48Z")
+        statement.setLong(8, payload.size.toLong())
+        statement.setString(9, sha)
+        statement.setBytes(10, payload)
+        statement.executeUpdate()
+      }
+      seedPreRepairTurnDiagnosticRow(connection, payload, sha, identity)
+    }
+  }
+
+  private fun seedPreRepairTurnDiagnosticRow(
+    connection: Connection,
+    payload: ByteArray,
+    sha: String,
+    identity: String,
+  ) {
+    connection.prepareStatement(
+      """
+      INSERT INTO rejected_output_diagnostics
+      (identity, workflow_id, phase_id, attempt, rule, rejection_path, reason, agent_id, model,
+       recorded_at, byte_size, sha256, lifecycle, payload)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'stored', ?)
+      """.trimIndent(),
+    ).use { statement ->
+      statement.setString(1, identity)
+      statement.setString(2, "wftr-20260811-201509-n7hz")
+      statement.setString(3, "audit")
+      statement.setInt(4, 2)
+      statement.setString(5, "phase-output-schema")
+      statement.setString(6, "/status")
+      statement.setString(7, "rejected")
+      statement.setString(8, "cursor")
+      statement.setString(9, "gpt")
+      statement.setString(10, "2026-08-11T20:55:00Z")
+      statement.setLong(11, payload.size.toLong())
+      statement.setString(12, sha)
+      statement.setBytes(13, payload)
+      statement.executeUpdate()
+    }
+  }
+
+  private fun producerEvidenceRepairTurns(connection: Connection): List<Int> =
+    connection.createStatement().use { statement ->
+      statement.executeQuery("SELECT repair_turn FROM producer_output_evidence ORDER BY repair_turn").use { rows ->
+        buildList { while (rows.next()) add(rows.getInt("repair_turn")) }
+      }
+    }
+
+  private fun producerEvidenceByteSizes(connection: Connection): List<Long> =
+    connection.createStatement().use { statement ->
+      statement.executeQuery("SELECT byte_size FROM producer_output_evidence").use { rows ->
+        buildList { while (rows.next()) add(rows.getLong("byte_size")) }
+      }
+    }
+
+  private fun rejectedDiagnosticIdentitiesAndTurns(connection: Connection): List<Pair<String, Int>> =
+    connection.createStatement().use { statement ->
+      statement.executeQuery("SELECT identity, repair_turn FROM rejected_output_diagnostics").use { rows ->
+        buildList { while (rows.next()) add(rows.getString("identity") to rows.getInt("repair_turn")) }
+      }
+    }
 
   private fun seedPreAgentProducerEvidenceForMigration28(dbPath: Path, payload: ByteArray, sha: String) {
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
@@ -2406,6 +2553,43 @@ class DatabaseMigrationsTest {
         agent_id TEXT NOT NULL, model TEXT NOT NULL, recorded_at TEXT NOT NULL,
         byte_size INTEGER NOT NULL CHECK (byte_size >= 0), sha256 TEXT NOT NULL, payload BLOB,
         PRIMARY KEY (workflow_id, phase_id, generation, attempt)
+      )
+      """
+
+    const val PRE_REPAIR_TURN_PRODUCER_OUTPUT_EVIDENCE_SQL: String =
+      """
+      CREATE TABLE producer_output_evidence (
+        workflow_id TEXT NOT NULL, phase_id TEXT NOT NULL,
+        generation INTEGER NOT NULL DEFAULT 0 CHECK (generation >= 0),
+        attempt INTEGER NOT NULL CHECK (attempt > 0),
+        agent_id TEXT NOT NULL, model TEXT NOT NULL, recorded_at TEXT NOT NULL,
+        byte_size INTEGER NOT NULL CHECK (byte_size >= 0), sha256 TEXT NOT NULL, payload BLOB,
+        PRIMARY KEY (workflow_id, phase_id, generation, attempt, agent_id)
+      )
+      """
+
+    const val PRE_REPAIR_TURN_REJECTED_OUTPUT_DIAGNOSTICS_SQL: String =
+      """
+      CREATE TABLE rejected_output_diagnostics (
+        identity TEXT PRIMARY KEY,
+        workflow_id TEXT NOT NULL,
+        phase_id TEXT NOT NULL,
+        attempt INTEGER NOT NULL CHECK (attempt > 0),
+        rule TEXT NOT NULL,
+        rejection_path TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        model TEXT NOT NULL,
+        recorded_at TEXT NOT NULL,
+        byte_size INTEGER NOT NULL CHECK (byte_size >= 0),
+        sha256 TEXT NOT NULL,
+        lifecycle TEXT NOT NULL CHECK (lifecycle IN ('stored', 'oversized', 'expired')),
+        payload BLOB,
+        UNIQUE (workflow_id, phase_id, attempt),
+        CHECK (
+          (lifecycle = 'stored' AND payload IS NOT NULL) OR
+          (lifecycle IN ('oversized', 'expired') AND payload IS NULL)
+        )
       )
       """
 

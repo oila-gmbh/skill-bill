@@ -25,12 +25,14 @@ data class RejectedOutputInspectRequest(
   val phaseId: String? = null,
   val attempt: Int? = null,
   val rawOutput: Boolean = false,
+  val repairTurn: Int? = null,
 )
 
 data class RejectedOutputCleanupRequest(
   val workflowId: String,
   val phaseId: String? = null,
   val attempt: Int? = null,
+  val repairTurn: Int? = null,
 )
 
 class RejectedOutputInspectCommand(
@@ -42,7 +44,9 @@ class RejectedOutputInspectCommand(
     if (request.rawOutput) {
       if (matches.size != 1) {
         throw RejectedOutputDiagnosticError.Retrieval(
-          "raw output requires a selector resolving to exactly one diagnostic",
+          "raw output requires a selector resolving to exactly one diagnostic; " +
+            "an attempt that ran a validation-gate repair cycle holds one per repair turn, " +
+            "so add --repair-turn (the metadata listing prints each turn)",
         )
       }
       output.write(service.readRaw(matches.single().identity))
@@ -72,6 +76,10 @@ class RejectedOutputInspectCliCommand(
   private val workflowId by option("--workflow", help = "Workflow identifier.").required()
   private val phaseId by option("--phase", help = "Optional phase selector.")
   private val attempt by option("--attempt", help = "Optional attempt selector.").int()
+  private val repairTurn by option(
+    "--repair-turn",
+    help = "Optional validation-gate repair-turn selector within one attempt; 0 is an ordinary attempt.",
+  ).int()
   private val rawOutput by option(
     "--raw-output",
     help = "Write the exact stored response bytes; the selector must resolve to one record.",
@@ -80,7 +88,7 @@ class RejectedOutputInspectCliCommand(
   override fun run() {
     database.selfManagedWrite(state.dbOverride) { unitOfWork ->
       RejectedOutputInspectCommand(unitOfWork.diagnosticService(metadataValidator)).execute(
-        RejectedOutputInspectRequest(workflowId, phaseId, attempt, rawOutput),
+        RejectedOutputInspectRequest(workflowId, phaseId, attempt, rawOutput, repairTurn),
         System.out,
       )
     }
@@ -99,11 +107,15 @@ class RejectedOutputCleanupCliCommand(
   private val workflowId by option("--workflow", help = "Workflow identifier.").required()
   private val phaseId by option("--phase", help = "Optional phase selector.")
   private val attempt by option("--attempt", help = "Optional attempt selector.").int()
+  private val repairTurn by option(
+    "--repair-turn",
+    help = "Optional validation-gate repair-turn selector within one attempt; 0 is an ordinary attempt.",
+  ).int()
 
   override fun run() {
     val deleted = database.transaction(state.dbOverride) { unitOfWork ->
       RejectedOutputCleanupCommand(unitOfWork.diagnosticService(metadataValidator)).execute(
-        RejectedOutputCleanupRequest(workflowId, phaseId, attempt),
+        RejectedOutputCleanupRequest(workflowId, phaseId, attempt, repairTurn),
       )
     }
     echo("deleted=$deleted")
@@ -118,15 +130,18 @@ private fun skillbill.ports.persistence.UnitOfWork.diagnosticService(
   metadataValidator,
 )
 
-private fun RejectedOutputInspectRequest.selector() = RejectedOutputDiagnosticSelector(workflowId, phaseId, attempt)
+private fun RejectedOutputInspectRequest.selector() =
+  RejectedOutputDiagnosticSelector(workflowId, phaseId, attempt, repairTurn)
 
-private fun RejectedOutputCleanupRequest.selector() = RejectedOutputDiagnosticSelector(workflowId, phaseId, attempt)
+private fun RejectedOutputCleanupRequest.selector() =
+  RejectedOutputDiagnosticSelector(workflowId, phaseId, attempt, repairTurn)
 
 private fun RejectedOutputDiagnostic.safeLine(): String = listOf(
   "identity=${identity.safeField()}",
   "workflow=${workflowId.safeField()}",
   "phase=${phaseId.safeField()}",
   "attempt=$attempt",
+  "repair_turn=$repairTurn",
   "rule=${rule.safeField()}",
   "path=${path.safeField()}",
   "reason=${reason.safeField()}",

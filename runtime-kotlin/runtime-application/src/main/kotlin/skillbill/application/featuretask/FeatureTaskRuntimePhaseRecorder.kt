@@ -11,6 +11,8 @@ import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.toRecord
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
+import skillbill.error.InvalidProducerOutputEvidenceSchemaError
+import skillbill.error.InvalidRejectedOutputDiagnosticSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.error.ShellContentContractException
 import skillbill.error.WorkflowIssueKeyConflictError
@@ -23,6 +25,7 @@ import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.persistence.model.RejectedOutputDiagnosticError
+import skillbill.ports.persistence.model.evidenceKey
 import skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.workflow.FeatureTaskRuntimeImplementationAttemptValidator
@@ -39,6 +42,7 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_AUDIT_REPAIR_ST
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DECOMPOSE_TERMINAL_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DELIVERED_PROJECTIONS_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DIAGNOSTIC_SIGNALS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_IMPLEMENTATION_ATTEMPTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
@@ -55,6 +59,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticFailureClass
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticSignal
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeEvidence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttempt
@@ -84,9 +90,11 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeAppendCheckpointIdentity
+import skillbill.workflow.taskruntime.model.featureTaskRuntimeAppendDiagnosticSignal
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeAppendImplementationAttempt
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesFromArtifact
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesToArtifact
+import skillbill.workflow.taskruntime.model.featureTaskRuntimeDiagnosticSignalsFromWire
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeImplementationAttemptRecordToWire
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeImplementationAttemptsFromWire
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeOwnedPathDigest
@@ -96,6 +104,28 @@ import skillbill.workflow.taskruntime.model.featureTaskRuntimeRejectionCapOf
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeRejectionViolationClassOf
 import java.time.Duration
 import java.time.Instant
+
+/**
+ * The degradable classes are the environmental ones: the store rejected, could not be reached, or
+ * handed back an unusable row. `InvalidRequest` and `InvalidConfiguration` are deliberately absent —
+ * those name a caller-construction defect or a wiring fault, which must keep failing loudly rather
+ * than becoming a signal the run walks past.
+ */
+private fun RejectedOutputDiagnosticError.degradableFailureClass(): FeatureTaskRuntimeDiagnosticFailureClass? =
+  when (this) {
+    is RejectedOutputDiagnosticError.Conflict -> FeatureTaskRuntimeDiagnosticFailureClass.CONFLICT
+    is RejectedOutputDiagnosticError.Permission -> FeatureTaskRuntimeDiagnosticFailureClass.PERMISSION
+    is RejectedOutputDiagnosticError.Corrupt -> FeatureTaskRuntimeDiagnosticFailureClass.CORRUPT
+    is RejectedOutputDiagnosticError.Persistence,
+    is RejectedOutputDiagnosticError.Retrieval,
+    is RejectedOutputDiagnosticError.Expired,
+    is RejectedOutputDiagnosticError.Oversized,
+    is RejectedOutputDiagnosticError.Absent,
+    -> FeatureTaskRuntimeDiagnosticFailureClass.PERSISTENCE
+    is RejectedOutputDiagnosticError.InvalidRequest,
+    is RejectedOutputDiagnosticError.InvalidConfiguration,
+    -> null
+  }
 
 internal data class FeatureTaskRuntimeProjectionRejection(
   val workflowId: String,
@@ -132,24 +162,37 @@ class FeatureTaskRuntimePhaseRecorder(
     request: RejectedOutputDiagnosticRequest,
     dbOverride: String? = null,
     producerGeneration: Int = 0,
-  ) = database.transaction(dbOverride) { unitOfWork ->
-    val service = diagnosticService(unitOfWork)
-    service.retainProducerOutput(
-      ProducerOutputEvidence(
-        workflowId = request.workflowId,
-        phaseId = request.phaseId,
-        attempt = request.attempt,
-        agentId = request.agentId,
-        model = request.model,
-        recordedAt = java.time.Instant.now(),
-        byteSize = request.observedByteSize,
-        sha256 = request.observedSha256,
-        payload = request.rawResponse.takeUnless { request.truncated },
-        generation = producerGeneration,
-      ),
+  ) {
+    val evidence = ProducerOutputEvidence(
+      workflowId = request.workflowId,
+      phaseId = request.phaseId,
+      attempt = request.attempt,
+      agentId = request.agentId,
+      model = request.model,
+      recordedAt = Instant.now(),
+      byteSize = request.observedByteSize,
+      sha256 = request.observedSha256,
+      payload = request.rawResponse.takeUnless { request.truncated },
+      generation = producerGeneration,
+      repairTurn = request.repairTurn,
     )
-    service.record(request)
-    recordRejectionMeasurement(unitOfWork, request)
+    degradeDiagnosticFailure(
+      workflowId = request.workflowId,
+      operation = "record-rejected-output",
+      conflictingKey = evidence.evidenceKey(),
+      phaseId = request.phaseId,
+      attempt = request.attempt,
+      repairTurn = request.repairTurn,
+      generation = producerGeneration,
+      dbOverride = dbOverride,
+    ) {
+      database.transaction(dbOverride) { unitOfWork ->
+        val service = diagnosticService(unitOfWork)
+        service.retainProducerOutput(evidence)
+        service.record(request)
+        recordRejectionMeasurement(unitOfWork, request)
+      }
+    }
   }
 
   /**
@@ -180,10 +223,22 @@ class FeatureTaskRuntimePhaseRecorder(
     }
   }
 
-  fun retainProducerOutput(evidence: ProducerOutputEvidence, dbOverride: String? = null) =
-    database.transaction(dbOverride) { unitOfWork ->
-      diagnosticService(unitOfWork).retainProducerOutput(evidence)
+  fun retainProducerOutput(evidence: ProducerOutputEvidence, dbOverride: String? = null) {
+    degradeDiagnosticFailure(
+      workflowId = evidence.workflowId,
+      operation = "retain-producer-output",
+      conflictingKey = evidence.evidenceKey(),
+      phaseId = evidence.phaseId,
+      attempt = evidence.attempt,
+      repairTurn = evidence.repairTurn,
+      generation = evidence.generation,
+      dbOverride = dbOverride,
+    ) {
+      database.transaction(dbOverride) { unitOfWork ->
+        diagnosticService(unitOfWork).retainProducerOutput(evidence)
+      }
     }
+  }
 
   fun producerOutput(
     workflowId: String,
@@ -192,9 +247,113 @@ class FeatureTaskRuntimePhaseRecorder(
     agentId: String,
     dbOverride: String? = null,
     generation: Int = 0,
-  ) = database.read(dbOverride) {
-    it.rejectedOutputDiagnostics?.readProducerOutput(workflowId, phaseId, attempt, agentId, generation)
+  ): ProducerOutputEvidence? = degradeDiagnosticFailure(
+    workflowId = workflowId,
+    operation = "read-producer-output",
+    // A newest-turn read is not scoped to one turn, so the turn slot stays a wildcard rather than
+    // claiming turn 0; the rest of the key still correlates with the write-path signals by prefix.
+    conflictingKey = "$workflowId:$phaseId:$generation:$attempt:*:$agentId",
+    phaseId = phaseId,
+    attempt = attempt,
+    repairTurn = null,
+    generation = generation,
+    dbOverride = dbOverride,
+  ) {
+    database.read(dbOverride) {
+      it.rejectedOutputDiagnostics?.readProducerOutput(workflowId, phaseId, attempt, agentId, generation)
+    }
   }
+
+  /**
+   * Runs a diagnostic-evidence write or read and degrades every typed diagnostic failure — conflict,
+   * permission, corruption, schema, plain persistence — into a durable payload-free operator signal,
+   * returning null instead of propagating.
+   *
+   * This is the same rule [recordRejectionMeasurement] already applies to telemetry, applied to the
+   * evidence store itself. A diagnostic is private evidence *about* a run; a failure to write one is
+   * never a reason to kill a run that has otherwise progressed. The degraded signal lands in its own
+   * transaction, because the failing write's transaction has already rolled back by the time it runs.
+   */
+  @Suppress("LongParameterList")
+  private fun <T> degradeDiagnosticFailure(
+    workflowId: String,
+    operation: String,
+    conflictingKey: String,
+    phaseId: String,
+    attempt: Int,
+    repairTurn: Int?,
+    generation: Int,
+    dbOverride: String?,
+    block: () -> T,
+  ): T? {
+    fun degrade(failureClass: FeatureTaskRuntimeDiagnosticFailureClass): T? {
+      persistDiagnosticSignal(
+        workflowId,
+        FeatureTaskRuntimeDiagnosticSignal(
+          operation = operation,
+          failureClass = failureClass,
+          conflictingKey = conflictingKey,
+          phaseId = phaseId,
+          attempt = attempt.coerceAtLeast(0),
+          repairTurn = repairTurn?.coerceAtLeast(0),
+          generation = generation.coerceAtLeast(0),
+          recordedAt = Instant.now().toString(),
+        ),
+        dbOverride,
+      )
+      return null
+    }
+    return try {
+      block()
+    } catch (error: RejectedOutputDiagnosticError) {
+      degrade(error.degradableFailureClass() ?: throw error)
+    } catch (_: InvalidProducerOutputEvidenceSchemaError) {
+      degrade(FeatureTaskRuntimeDiagnosticFailureClass.SCHEMA)
+    } catch (_: InvalidRejectedOutputDiagnosticSchemaError) {
+      degrade(FeatureTaskRuntimeDiagnosticFailureClass.SCHEMA)
+    }
+  }
+
+  /**
+   * Appends the degraded-failure signal to the workflow row. Best-effort by design: if the store that
+   * just rejected the evidence also rejects this append, the run still proceeds — the alternative is
+   * exactly the crash this seam exists to prevent.
+   */
+  private fun persistDiagnosticSignal(
+    workflowId: String,
+    signal: FeatureTaskRuntimeDiagnosticSignal,
+    dbOverride: String?,
+  ) {
+    try {
+      database.transaction(dbOverride) { unitOfWork ->
+        val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+          ?: return@transaction
+        val existing = featureTaskRuntimeDiagnosticSignalsFromWire(
+          decodeArtifacts(record.artifactsJson)[FEATURE_TASK_RUNTIME_DIAGNOSTIC_SIGNALS_ARTIFACT_KEY],
+        )
+        persistPatch(
+          unitOfWork.workflowStates,
+          record,
+          mapOf(
+            FEATURE_TASK_RUNTIME_DIAGNOSTIC_SIGNALS_ARTIFACT_KEY to
+              featureTaskRuntimeAppendDiagnosticSignal(existing, signal).map { it.toArtifactMap() },
+          ),
+        )
+      }
+    } catch (@Suppress("TooGenericExceptionCaught") _: Exception) {
+      // The signal is a diagnosability aid, not a run invariant.
+    }
+  }
+
+  /** Strict read of the durable degraded-diagnostic signals; an absent key yields none. */
+  fun loadDiagnosticSignals(workflowId: String, dbOverride: String? = null): List<FeatureTaskRuntimeDiagnosticSignal> =
+    database.read(dbOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+        ?: return@read emptyList()
+      featureTaskRuntimeDiagnosticSignalsFromWire(
+        decodeArtifacts(record.artifactsJson)[FEATURE_TASK_RUNTIME_DIAGNOSTIC_SIGNALS_ARTIFACT_KEY],
+      )
+    }
 
   private fun diagnosticService(unitOfWork: UnitOfWork): RejectedOutputDiagnosticService {
     val repository = unitOfWork.rejectedOutputDiagnostics

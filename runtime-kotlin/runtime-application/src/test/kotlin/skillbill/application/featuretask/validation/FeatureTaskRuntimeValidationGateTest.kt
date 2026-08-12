@@ -312,6 +312,31 @@ class FeatureTaskRuntimeValidationGateTest {
     assertTrue(progress.last().remainingFindings.isEmpty())
   }
 
+  @Test
+  fun `each repair turn is launched under its own ordinal so turns never share an evidence key`() {
+    val finding = ValidationGateFinding("m", "t", "still broken", "loc")
+    val ordinals = mutableListOf<Int>()
+    val runner = ScriptedGateRunner(List(MAX_VALIDATE_GATE_REPAIR_ITERATIONS + 1) { failedWith(finding) })
+
+    coordinator(declaredResolver(), runner, mutableListOf()).execute(
+      cycle = ValidationGateCycleRequest(
+        repoRoot = repoRoot,
+        request = minimalRequest(),
+        validationDepth = ValidationDepth.DEFAULT,
+        changedPaths = listOf("runtime-kotlin/foo.kt"),
+        repositoryCheckpoint = "checkpoint",
+        agentRepairLauncher = ValidationGateAgentRepairLauncher { _, repairIteration ->
+          ordinals += repairIteration
+          ValidationGateAgentRepairResult.Completed(
+            FeatureTaskRuntimePhaseOutput(phaseId = "validate", iteration = 1, payload = "{}"),
+          )
+        },
+      ),
+    )
+
+    assertEquals((1..MAX_VALIDATE_GATE_REPAIR_ITERATIONS).toList(), ordinals)
+  }
+
   private fun outOfContractResolver(): ValidationGateResolver = ValidationGateResolver {
     throw ContractVersionMismatchError(
       "Platform pack 'fallback': declares contract_version '0.1' but the shell expects '1.4'.",

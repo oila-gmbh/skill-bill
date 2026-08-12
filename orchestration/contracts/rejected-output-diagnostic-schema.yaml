@@ -10,6 +10,7 @@ required:
   - workflow_id
   - phase_id
   - attempt
+  - repair_turn
   - rule
   - path
   - reason
@@ -34,6 +35,11 @@ properties:
   attempt:
     type: integer
     minimum: 1
+  # An ordinary attempt records turn 0 and keeps the identity it was already persisted under, so every
+  # instance carries the ordinal and a missing one is a producer defect, not a legacy record.
+  repair_turn:
+    type: integer
+    minimum: 0
   rule:
     type: string
     minLength: 1

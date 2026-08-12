@@ -52,6 +52,19 @@ internal object DatabaseColumnMigrations {
     ensureReconciliationIndexes(connection)
   }
 
+  /**
+   * Unconditional on every open, like the column ensures in [apply], because the two diagnostic-store
+   * rebuilds that came before it (versions 16 and 28) restate the pre-repair-turn DDL from an explicit
+   * column list. A store whose ledger already records the gated version-29 row but whose table was
+   * later rebuilt by one of those would otherwise keep the narrow key forever.
+   *
+   * Kept out of [apply] because that function is also wired as gated migration version 1 and therefore
+   * runs inside an open transaction, where a nested `BEGIN IMMEDIATE` fails.
+   */
+  fun healDiagnosticEvidenceKeys(connection: Connection) {
+    connection.inImmediateTransaction { rekeyDiagnosticEvidenceByRepairTurn(this) }
+  }
+
   fun applyWorkListMetadata(connection: Connection) {
     applyWorkListMetadata(connection, recoverIssueKeys = true)
   }

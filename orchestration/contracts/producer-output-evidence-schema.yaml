@@ -1,7 +1,7 @@
 $schema: https://json-schema.org/draft/2020-12/schema
 $id: https://skill-bill.dev/contracts/producer-output-evidence-schema.yaml
 title: Producer output evidence
-description: Safe metadata for one retained producer phase output, keyed by review generation and attempt. Raw bytes are stored separately and never validated here.
+description: Safe metadata for one retained producer phase output, keyed by review generation, attempt, and repair turn. Raw bytes are stored separately and never validated here.
 type: object
 additionalProperties: false
 required:
@@ -10,6 +10,7 @@ required:
   - phase_id
   - generation
   - attempt
+  - repair_turn
   - agent_id
   - model
   - recorded_at
@@ -30,6 +31,11 @@ properties:
   attempt:
     type: integer
     minimum: 1
+  # An ordinary attempt records turn 0 — the same logical capture it always was — so every instance
+  # carries the ordinal and a missing one is a producer defect, not a legacy record.
+  repair_turn:
+    type: integer
+    minimum: 0
   agent_id:
     type: string
     minLength: 1
