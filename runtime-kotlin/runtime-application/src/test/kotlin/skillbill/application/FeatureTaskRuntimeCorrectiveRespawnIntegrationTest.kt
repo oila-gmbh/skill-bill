@@ -225,7 +225,11 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
     }
     val throwingDiagnostics = object : RuntimeDiagnostics {
       override fun warning(message: String, error: Throwable?) {
-        error("diagnostic observer refused warning: $message")
+        kotlin.error("diagnostic observer refused warning: $message")
+      }
+
+      override fun error(message: String, error: Throwable?) {
+        kotlin.error("diagnostic observer refused error: $message")
       }
     }
 

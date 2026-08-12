@@ -4,8 +4,11 @@ import skillbill.application.model.FeatureTaskRuntimePhaseLedgerRequest
 import skillbill.application.model.FeatureTaskRuntimeRunEvent
 import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.config.model.PhaseModelDirective
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
+import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Why a phase is running again. Five kinds that a bare fix-loop iteration counter could not tell
@@ -59,6 +62,36 @@ internal data class FeatureTaskRuntimePhaseStartReentry(
 }
 
 /**
+ * Emits a feature-task-runtime side-channel event without letting observer faults alter the run.
+ *
+ * Propagates [CancellationException] so cancelled work cannot continue into later phase work.
+ * Ordinary observer failures stay isolated and leave a payload-free [RuntimeDiagnostics] record;
+ * a throwing diagnostics sink is also isolated so AC-010 stays intact.
+ */
+internal fun emitFeatureTaskRuntimeEventSafely(
+  diagnostics: RuntimeDiagnostics,
+  seam: String,
+  emit: () -> Unit,
+) {
+  try {
+    emit()
+  } catch (cancellation: CancellationException) {
+    throw cancellation
+  } catch (@Suppress("TooGenericExceptionCaught") error: Exception) {
+    try {
+      diagnostics.warning(
+        "Feature-task-runtime $seam failed; the run is unaffected.",
+        error,
+      )
+    } catch (cancellation: CancellationException) {
+      throw cancellation
+    } catch (@Suppress("TooGenericExceptionCaught") _: Exception) {
+      // Diagnostic observer failure must not abort the run either.
+    }
+  }
+}
+
+/**
  * Per-phase observability and attempt-ledger sink for one run: at each phase boundary it emits a
  * typed [FeatureTaskRuntimeRunEvent] to the run's event sink and appends a ledger entry. The
  * recorder mints the timestamp and monotonic sequence, so this class never sources time or order.
@@ -70,6 +103,7 @@ internal data class FeatureTaskRuntimePhaseStartReentry(
 internal class FeatureTaskRuntimeRunObservability(
   private val recorder: FeatureTaskRuntimePhaseRecorder,
   private val request: FeatureTaskRuntimeRunRequest,
+  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
 ) {
   // Branch setup is a distinct pre-implement step, not a phase attempt, so it emits only the
   // typed observability event and does not append to the per-phase attempt ledger.
@@ -299,10 +333,11 @@ internal class FeatureTaskRuntimeRunObservability(
   }
 
   private fun emitSafely(event: FeatureTaskRuntimeRunEvent) {
-    try {
+    emitFeatureTaskRuntimeEventSafely(
+      diagnostics = diagnostics,
+      seam = "event-sink emission (${event::class.simpleName})",
+    ) {
       request.eventSink.emit(event)
-    } catch (@Suppress("TooGenericExceptionCaught") _: Exception) {
-      // Side-channel observers must not change workflow outcomes or surface rejected response bodies.
     }
   }
 

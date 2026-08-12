@@ -1,5 +1,6 @@
 package skillbill.application.featuretask.validation
 
+import skillbill.application.RecordingDiagnostics
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairLauncher
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairResult
 import skillbill.application.featuretask.validation.model.ValidationGateCycleRequest
@@ -10,6 +11,7 @@ import skillbill.application.featuretask.validation.model.ValidationGateResoluti
 import skillbill.application.model.FeatureTaskRuntimeRunEventSink
 import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.error.ContractVersionMismatchError
+import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.validation.ValidationGateRunner
 import skillbill.ports.validation.model.ValidationGateCacheMode
 import skillbill.ports.validation.model.ValidationGateFinding
@@ -200,13 +202,15 @@ class FeatureTaskRuntimeValidationGateTest {
   @Test
   fun `throwing progress event sink does not change the gate cycle outcome`() {
     // Realistic bug: progressStore isolation exists, but ValidationGateProgress emit escapes and
-    // aborts an otherwise passing gate cycle when a status/telemetry observer throws.
+    // aborts an otherwise passing gate cycle when a status/telemetry observer throws; or the
+    // isolation swallows the fault with no payload-free diagnostic record (observability-policy).
     val progress = mutableListOf<FeatureTaskRuntimeValidationGateProgress>()
+    val diagnostics = RecordingDiagnostics()
     val throwingSink = FeatureTaskRuntimeRunEventSink {
       error("status/telemetry observer refused ValidationGateProgress")
     }
     val runner = ScriptedGateRunner(listOf(passed(), passed(forced = true)))
-    val cycle = coordinator(declaredResolver(), runner, progress).execute(
+    val cycle = coordinator(declaredResolver(), runner, progress, diagnostics = diagnostics).execute(
       cycle = ValidationGateCycleRequest(
         repoRoot = repoRoot,
         request = minimalRequest().copy(eventSink = throwingSink),
@@ -223,6 +227,10 @@ class FeatureTaskRuntimeValidationGateTest {
     )
     assertTrue(progress.isNotEmpty())
     assertEquals(2, runner.calls)
+    assertTrue(
+      diagnostics.warnings.any { it.contains("ValidationGateProgress event-sink emission failed") },
+      "observer failure must leave an independent payload-free diagnostic record",
+    )
   }
 
   @Test
@@ -393,6 +401,7 @@ class FeatureTaskRuntimeValidationGateTest {
     runner: ValidationGateRunner,
     progress: MutableList<FeatureTaskRuntimeValidationGateProgress>,
     gradleWrapper: String? = null,
+    diagnostics: RuntimeDiagnostics = skillbill.ports.diagnostics.NoopRuntimeDiagnostics,
   ): FeatureTaskRuntimeValidationGateCoordinator = FeatureTaskRuntimeValidationGateCoordinator(
     resolver,
     runner,
@@ -401,6 +410,7 @@ class FeatureTaskRuntimeValidationGateTest {
       object : skillbill.ports.workflow.WorkflowGitOperations by skillbill.ports.workflow.NoopWorkflowGitOperations {},
     ),
     repoLocalConfig(gradleWrapper),
+    diagnostics,
   )
 
   private fun repoLocalConfig(gradleWrapper: String? = null): skillbill.ports.config.RepoLocalConfigPort =

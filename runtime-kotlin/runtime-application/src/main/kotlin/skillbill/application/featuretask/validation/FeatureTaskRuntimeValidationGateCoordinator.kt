@@ -2,6 +2,7 @@ package skillbill.application.featuretask.validation
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
+import skillbill.application.featuretask.emitFeatureTaskRuntimeEventSafely
 import skillbill.application.featuretask.validation.model.SuppressionDelta
 import skillbill.application.featuretask.validation.model.SuppressionGateDecision
 import skillbill.application.featuretask.validation.model.SuppressionJustification
@@ -19,6 +20,8 @@ import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.config.model.ReadRepoLocalConfigRequest
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
+import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.validation.ValidationGateRunner
 import skillbill.ports.validation.model.ValidationGateCacheMode
 import skillbill.ports.validation.model.ValidationGateFinding
@@ -52,6 +55,7 @@ class FeatureTaskRuntimeValidationGateCoordinator(
   private val progressStore: ValidationGateProgressStore,
   private val suppressionDeltaService: FeatureTaskRuntimeSuppressionDeltaService,
   private val repoLocalConfig: RepoLocalConfigPort,
+  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
 ) {
   @Suppress("LongMethod", "ReturnCount", "CyclomaticComplexMethod")
   fun execute(cycle: ValidationGateCycleRequest, onGateRunCount: (Int) -> Unit = {}): ValidationGateCycleResult {
@@ -298,7 +302,10 @@ class FeatureTaskRuntimeValidationGateCoordinator(
       remainingFindingsDroppedCount = remainingFindings?.droppedCount ?: 0,
     )
     progressStore.persist(request.workflowId, progress, request.dbPathOverride)
-    try {
+    emitFeatureTaskRuntimeEventSafely(
+      diagnostics = diagnostics,
+      seam = "ValidationGateProgress event-sink emission",
+    ) {
       request.eventSink.emit(
         FeatureTaskRuntimeRunEvent.ValidationGateProgress(
           workflowId = request.workflowId,
@@ -306,8 +313,6 @@ class FeatureTaskRuntimeValidationGateCoordinator(
           gateRunCount = progress.gateRunCount,
         ),
       )
-    } catch (@Suppress("TooGenericExceptionCaught") _: Exception) {
-      // Progress observers are a side channel; a throw must not abort or alter the gate cycle.
     }
     onGateRunCount(progress.gateRunCount)
   }
