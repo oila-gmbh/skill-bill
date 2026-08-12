@@ -131,21 +131,6 @@ class FeatureTaskRuntimeValidationGateCoordinator(
             )
           }
 
-          if (repairsUsed >= MAX_VALIDATE_GATE_REPAIR_ITERATIONS) {
-            persistRemainingFindings(request, measurements, projection, onGateRunCount)
-            return terminalBlocked(
-              "Validation gate repair cycle exhausted after $MAX_VALIDATE_GATE_REPAIR_ITERATIONS iterations " +
-                "with ${findingsForRepair.size} remaining finding(s)" +
-                if (projection.droppedCount > 0) {
-                  " (${projection.droppedCount} additional findings were omitted from the handoff budget)"
-                } else {
-                  "."
-                },
-              remainingFindings = projection,
-              measurements = measurements,
-            )
-          }
-
           when (val repair = agentRepairLauncher.launch(projection, repairsUsed + 1)) {
             is ValidationGateAgentRepairResult.Blocked -> return ValidationGateCycleResult.Terminal(
               ValidationGateCycleTerminalOutcome.Blocked(

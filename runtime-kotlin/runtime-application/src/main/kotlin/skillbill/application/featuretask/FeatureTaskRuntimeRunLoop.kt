@@ -2673,7 +2673,8 @@ internal class FeatureTaskRuntimeRunLoop(
     var attemptIteration = iteration
     var malformedAttemptCount = 0
     var schemaAttempt = 1
-    while (true) {
+    var result: ValidationGateAgentRepairResult? = null
+    while (result == null) {
       val attempt = attemptOnce(
         repairRun,
         state,
@@ -2689,21 +2690,23 @@ internal class FeatureTaskRuntimeRunLoop(
         // coordinator re-runs the runtime-owned gate. Treating completed as Blocked aborted the
         // cycle after attemptOnce had already accepted the receipt, and left agent-authored
         // gate_run_count/gate_runs as durable validate evidence (AC-001/AC-008/AC-011).
-        completed != null -> return ValidationGateAgentRepairResult.Completed(completed)
-        settled != null -> return ValidationGateAgentRepairResult.Blocked(
+        completed != null -> result = ValidationGateAgentRepairResult.Completed(completed)
+        settled != null -> result = ValidationGateAgentRepairResult.Blocked(
           settled.blockedReason
             ?: settled.pausedReason
             ?: "Validation repair attempt blocked.",
         )
         attempt.malformedOutput || attempt.schemaInvalidRetryReason != null -> {
+          var blockedReason: String? = null
           if (attempt.malformedOutput) {
             malformedAttemptCount += 1
             FeatureTaskRuntimeFixLoopPolicy.malformedOutputBlockReason(
               run.phaseId,
               malformedAttemptCount,
             )?.let { formatBlock ->
-              return ValidationGateAgentRepairResult.Blocked(
-                withSchemaGateDetail(formatBlock, requireNotNull(attempt.schemaInvalidOperatorReason)),
+              blockedReason = withSchemaGateDetail(
+                formatBlock,
+                requireNotNull(attempt.schemaInvalidOperatorReason),
               )
             }
           } else {
@@ -2711,24 +2714,26 @@ internal class FeatureTaskRuntimeRunLoop(
               val decision = FeatureTaskRuntimeFixLoopPolicy.decideAfterFailure(run.phaseId, schemaAttempt)
             ) {
               is FeatureTaskRuntimeFixLoopDecision.Block ->
-                return ValidationGateAgentRepairResult.Blocked(
-                  withSchemaGateDetail(
-                    decision.blockedReason,
-                    requireNotNull(attempt.schemaInvalidOperatorReason),
-                  ),
+                blockedReason = withSchemaGateDetail(
+                  decision.blockedReason,
+                  requireNotNull(attempt.schemaInvalidOperatorReason),
                 )
               is FeatureTaskRuntimeFixLoopDecision.Retry -> {
                 schemaAttempt = decision.nextIteration
               }
             }
           }
-          priorCorrection = PriorAttemptCorrection.schemaGate(
-            requireNotNull(attempt.schemaInvalidRetryReason),
-            correctiveRepairContext = attempt.correctiveRepairContext,
-          )
-          attemptIteration += 1
+          if (blockedReason != null) {
+            result = ValidationGateAgentRepairResult.Blocked(blockedReason)
+          } else {
+            priorCorrection = PriorAttemptCorrection.schemaGate(
+              requireNotNull(attempt.schemaInvalidRetryReason),
+              correctiveRepairContext = attempt.correctiveRepairContext,
+            )
+            attemptIteration += 1
+          }
         }
-        else -> return ValidationGateAgentRepairResult.Completed(
+        else -> result = ValidationGateAgentRepairResult.Completed(
           FeatureTaskRuntimePhaseOutput(
             phaseId = run.phaseId,
             iteration = iteration,
@@ -2739,6 +2744,7 @@ internal class FeatureTaskRuntimeRunLoop(
         )
       }
     }
+    return requireNotNull(result)
   }
 
   private fun settleRuntimeOwnedValidation(
@@ -3469,15 +3475,18 @@ internal class FeatureTaskRuntimeRunLoop(
    * constraints — those must reach the retry reason so compound or oversized refs get actionable
    * guidance instead of a generic audit sentence alone.
    */
-  private fun payloadFreeSemanticGateConstraint(rule: String, detail: String): String? =
-    when (rule) {
-      "mutating-reconciliation" -> detail.takeUnless { it.isBlank() }
-      "producer-projection",
-      "consumer-projection",
-      "output-verification",
-      -> scrubResponseDerivedGateDetail(detail)
-      else -> scrubBoundedReferenceGateConstraint(detail)
-    }
+  private fun payloadFreeSemanticGateConstraint(
+    rule: String,
+    detail: String,
+    rejectedOutput: Map<String, Any?>,
+  ): String? = when (rule) {
+    "mutating-reconciliation" -> detail.takeUnless { it.isBlank() }
+    "producer-projection",
+    "consumer-projection",
+    "output-verification",
+    -> scrubResponseDerivedGateDetail(detail, rejectedOutput)
+    else -> scrubBoundedReferenceGateConstraint(detail)
+  }
 
   /**
    * Extracts a payload-free bounded-reference constraint from semantic-gate detail. Returns null when
@@ -3511,13 +3520,35 @@ internal class FeatureTaskRuntimeRunLoop(
    * amplify retry CPU; when the cap cuts inside a quoted verdict, [scrubOffVocabularyVerdictQuote]
    * strips the open marker through end rather than leaving a partial response-derived quote.
    */
-  private fun scrubResponseDerivedGateDetail(detail: String): String? {
+  private fun scrubResponseDerivedGateDetail(detail: String, rejectedOutput: Map<String, Any?>): String? {
     if (detail.isBlank()) return null
     var text = detail.take(SCHEMA_GATE_DETAIL_MAX_CHARS)
     text = scrubOffVocabularyVerdictQuote(text)
     text = OFFENDING_VALUE_APPENDIX_PATTERN.replace(text, "")
     text = EXPECTED_ACTUAL_LIST_PATTERN.replace(text, "")
+    responseStringValues(rejectedOutput)
+      .filter { value ->
+        value.length >= MIN_RESPONSE_STRING_VALUE_LENGTH &&
+          SCHEMA_DETAIL_TYPE_WORDS.none { typeWord -> typeWord.equals(value, ignoreCase = true) } &&
+          text.contains(value)
+      }
+      .sortedByDescending(String::length)
+      .forEach { value -> text = text.replace(value, "[response value omitted]") }
     return text.trim().takeUnless { it.isBlank() }
+  }
+
+  private fun responseStringValues(value: Any?): List<String> {
+    val values = mutableListOf<String>()
+    collectResponseStringValues(value, values)
+    return values.distinct()
+  }
+
+  private fun collectResponseStringValues(value: Any?, values: MutableList<String>) {
+    when (value) {
+      is String -> values += value
+      is Map<*, *> -> value.values.forEach { nested -> collectResponseStringValues(nested, values) }
+      is Iterable<*> -> value.forEach { nested -> collectResponseStringValues(nested, values) }
+    }
   }
 
   @Suppress("LongParameterList")
@@ -3773,7 +3804,7 @@ internal class FeatureTaskRuntimeRunLoop(
       val reason = payloadFreeRejectionReason(rule, if (structuredIdentity == null) path else "/")
       // Only scrubbed semantic templates reach the retry reason. Response-derived dumps stay in the
       // private diagnostic and the authorized repair body.
-      val retryFacingConstraint = payloadFreeSemanticGateConstraint(rule, detail)
+      val retryFacingConstraint = payloadFreeSemanticGateConstraint(rule, detail, outputMap)
       val retryReason = retryRejectionReason(reason, retryFacingConstraint)
       val diagnosticIdentity = recordRejectedOutput(
         run, iteration, diagnosticRule, detail, outputBytes, path = path,
@@ -4721,26 +4752,42 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun structuralRepairEvidenceFromSchemaError(
     error: InvalidFeatureTaskRuntimePhaseOutputSchemaError,
   ): skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence? {
-    val originalDigest = error.structuralRepairOriginalDigest ?: return null
-    val repairedDigest = error.structuralRepairRepairedDigest ?: return null
-    val format = error.structuralRepairFormat ?: return null
-    val operation = error.structuralRepairOperation ?: return null
-    val sourceLabel = error.structuralRepairSourceLabel ?: return null
-    val sourceOffset = error.structuralRepairSourceOffset ?: return null
-    val sourceLine = error.structuralRepairSourceLine ?: return null
-    val sourceColumn = error.structuralRepairSourceColumn ?: return null
-    return skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence(
-      format = skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFormat.fromWire(format),
-      originalDigest = originalDigest,
-      repairedDigest = repairedDigest,
-      operation = skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairOperation.fromWire(
+    val originalDigest = error.structuralRepairOriginalDigest
+    val repairedDigest = error.structuralRepairRepairedDigest
+    val format = error.structuralRepairFormat
+    val operation = error.structuralRepairOperation
+    val sourceLabel = error.structuralRepairSourceLabel
+    val sourceOffset = error.structuralRepairSourceOffset
+    val sourceLine = error.structuralRepairSourceLine
+    val sourceColumn = error.structuralRepairSourceColumn
+    if (
+      listOf(
+        originalDigest,
+        repairedDigest,
+        format,
         operation,
+        sourceLabel,
+        sourceOffset,
+        sourceLine,
+        sourceColumn,
+      ).any { it == null }
+    ) {
+      return null
+    }
+    return skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence(
+      format = skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFormat.fromWire(
+        requireNotNull(format),
+      ),
+      originalDigest = requireNotNull(originalDigest),
+      repairedDigest = requireNotNull(repairedDigest),
+      operation = skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairOperation.fromWire(
+        requireNotNull(operation),
       ),
       sourceLocation = skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputSourceLocation(
-        sourceLabel = sourceLabel,
-        offset = sourceOffset,
-        line = sourceLine,
-        column = sourceColumn,
+        sourceLabel = requireNotNull(sourceLabel),
+        offset = requireNotNull(sourceOffset),
+        line = requireNotNull(sourceLine),
+        column = requireNotNull(sourceColumn),
       ),
     )
   }
@@ -5886,6 +5933,18 @@ private val EXPECTED_ACTUAL_LIST_PATTERN =
 /** Length caps stated by typed audit-repair reference rules (`allows at most N characters`). */
 private val BOUNDED_REF_LENGTH_CAP_PATTERN =
   Regex("""(?:allows|must be) at most ([0-9][0-9,]*) characters""", RegexOption.IGNORE_CASE)
+
+private val SCHEMA_DETAIL_TYPE_WORDS = setOf(
+  "array",
+  "boolean",
+  "integer",
+  "null",
+  "number",
+  "object",
+  "string",
+)
+
+private const val MIN_RESPONSE_STRING_VALUE_LENGTH = 4
 
 // The phases permitted to bring new paths into the workflow's durable ownership. Every other phase
 // is a reader: a file appearing under one is outside its authority and blocks instead of being

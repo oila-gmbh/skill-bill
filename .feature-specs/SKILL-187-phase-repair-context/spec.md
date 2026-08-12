@@ -13,6 +13,7 @@ The v1 runtime already has two distinct output-correction mechanisms:
    schema/semantic boundary. It records the rejected response in the private
    rejected-output diagnostic store and asks the agent for a corrected response.
 
+
 The second mechanism does not currently receive the rejected response. The
 `PriorAttemptCorrection` carried into
 `FeatureTaskRuntimePhasePromptComposer` contains the payload-free retry reason

@@ -7,7 +7,6 @@ import skillbill.application.model.FeatureTaskRuntimeRunEvent
 import skillbill.application.model.FeatureTaskRuntimeRunEventSink
 import skillbill.application.model.FeatureTaskRuntimeRunReport
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
-import skillbill.infrastructure.fs.FeatureTaskRuntimePhaseOutputValidatorAdapter
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
@@ -19,6 +18,18 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+
+private fun completedPhaseBody(
+  contractVersion: String,
+  phaseId: String,
+  summary: String,
+  producedOutputs: String,
+  verdict: String? = null,
+): String {
+  val verdictField = verdict?.let { "\"verdict\":\"$it\"," }.orEmpty()
+  return "{\"contract_version\":\"$contractVersion\",\"phase_id\":\"$phaseId\",\"status\":\"completed\"," +
+    "\"summary\":\"$summary\",$verdictField\"produced_outputs\":$producedOutputs}"
+}
 
 /**
  * SKILL-187 subtasks 2–3: gateOutput → private diagnostic → corrective context → next launch, plus
@@ -38,8 +49,7 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
   fun `schema-invalid result body and digest match the private diagnostic capture`() {
     // Realistic bug: gateOutput records one capture diagnostically, then rebuilds Exact from a
     // different string/hash so the authorized repair section disagrees with the diagnostic row.
-    val rejectedBody =
-      """{"contract_version":"0.2","phase_id":"review","status":"completed","summary":"$rawSpan","produced_outputs":{"findings":[]}}"""
+    val rejectedBody = completedPhaseBody("0.2", "review", rawSpan, """{"findings":[]}""")
     var reviewAttempts = 0
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
@@ -64,10 +74,8 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
 
   @Test
   fun `first launch has no repair context and matching retry carries only that attempts body`() {
-    val firstBody =
-      """{"contract_version":"0.2","phase_id":"review","status":"completed","summary":"SKILL187-ATTEMPT-1","produced_outputs":{"findings":[]}}"""
-    val secondBody =
-      """{"contract_version":"0.2","phase_id":"review","status":"completed","summary":"SKILL187-ATTEMPT-2","produced_outputs":{"findings":[]}}"""
+    val firstBody = completedPhaseBody("0.2", "review", "SKILL187-ATTEMPT-1", """{"findings":[]}""")
+    val secondBody = completedPhaseBody("0.2", "review", "SKILL187-ATTEMPT-2", """{"findings":[]}""")
     var reviewAttempts = 0
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
@@ -110,10 +118,8 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
 
   @Test
   fun `a later phase retry cannot receive a stale repair body from an earlier phase`() {
-    val reviewBody =
-      """{"contract_version":"0.2","phase_id":"review","status":"completed","summary":"SKILL187-REVIEW-STALE","produced_outputs":{"findings":[]}}"""
-    val auditBody =
-      """{"contract_version":"0.3","phase_id":"audit","status":"completed","summary":"SKILL187-AUDIT-CURRENT","verdict":"satisfied","produced_outputs":{"gaps":[]}}"""
+    val reviewBody = completedPhaseBody("0.2", "review", "SKILL187-REVIEW-STALE", """{"findings":[]}""")
+    val auditBody = completedPhaseBody("0.3", "audit", "SKILL187-AUDIT-CURRENT", """{"gaps":[]}""", "satisfied")
     var reviewAttempts = 0
     var auditAttempts = 0
     val harness = runnerHarness(
@@ -168,10 +174,19 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
     // Missing closing delimiter + nested verdict: structural repair can close the brace; phase schema
     // still rejects. The next launch must see the capture and the syntax-repair note, not a claim that
     // the phase schema accepted the document.
-    val malformed =
-      """{"contract_version":"0.3","phase_id":"audit","status":"completed","summary":"SKILL187-DELIMITER","produced_outputs":{"gaps":[],"verdict":"satisfied"}"""
-    val corrected =
-      """{"contract_version":"0.3","phase_id":"audit","status":"completed","summary":"criteria met","verdict":"satisfied","produced_outputs":{"gaps":[],"non_blocking_findings":[]}}"""
+    val malformed = completedPhaseBody(
+      "0.3",
+      "audit",
+      "SKILL187-DELIMITER",
+      """{"gaps":[],"verdict":"satisfied"}""",
+    ).dropLast(1)
+    val corrected = completedPhaseBody(
+      "0.3",
+      "audit",
+      "criteria met",
+      """{"gaps":[],"non_blocking_findings":[]}""",
+      "satisfied",
+    )
     var auditAttempts = 0
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
@@ -181,17 +196,16 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
         facts(if (auditAttempts == 1) malformed else corrected)
       },
       validator = object : FeatureTaskRuntimePhaseOutputValidator {
-        private val auditValidator = FeatureTaskRuntimePhaseOutputValidatorAdapter()
+        private val auditValidator = realFeatureTaskRuntimePhaseOutputValidator
 
         override fun validatePhaseOutput(
           phaseOutputText: String,
           sourceLabel: String,
-        ): FeatureTaskRuntimePhaseOutputValidationResult =
-          if (sourceLabel == "audit") {
-            auditValidator.validatePhaseOutput(phaseOutputText, sourceLabel)
-          } else {
-            AlwaysValidValidator.validatePhaseOutput(phaseOutputText, sourceLabel)
-          }
+        ): FeatureTaskRuntimePhaseOutputValidationResult = if (sourceLabel == "audit") {
+          auditValidator.validatePhaseOutput(phaseOutputText, sourceLabel)
+        } else {
+          AlwaysValidValidator.validatePhaseOutput(phaseOutputText, sourceLabel)
+        }
 
         override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
           validatePhaseOutput(phaseOutputText, sourceLabel).requireAccepted(sourceLabel)
@@ -201,7 +215,7 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
-    val rejected = FeatureTaskRuntimePhaseOutputValidatorAdapter().validatePhaseOutput(malformed, "audit")
+    val rejected = realFeatureTaskRuntimePhaseOutputValidator.validatePhaseOutput(malformed, "audit")
     assertIs<FeatureTaskRuntimePhaseOutputValidationResult.Rejected>(rejected)
     assertTrue(rejected.structuralRepairEvidence != null, "adapter must retain payload-free repair evidence")
 
@@ -220,8 +234,7 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
 
   @Test
   fun `throwing telemetry status and diagnostic observers cannot change outcomes or leak the response`() {
-    val rejectedBody =
-      """{"contract_version":"0.2","phase_id":"review","status":"completed","summary":"$rawSpan","produced_outputs":{"findings":[]}}"""
+    val rejectedBody = completedPhaseBody("0.2", "review", rawSpan, """{"findings":[]}""")
     val throwingSink = FeatureTaskRuntimeRunEventSink {
       error("status/telemetry observer refused event ${it::class.simpleName}")
     }
@@ -332,10 +345,18 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
     // SKILL-16-style schema failures: unauthorized enum and semicolon-joined artifact_ref. The next
     // launch must see the exact rejected body plus the payload-free constraint, then a corrected
     // envelope must complete the phase.
-    val invalidEnum =
-      """{"contract_version":"0.2","phase_id":"review","status":"completed","summary":"SKILL187-ENUM","produced_outputs":{"findings":[{"severity":"catastrophic"}]}}"""
-    val compoundRef =
-      """{"contract_version":"0.2","phase_id":"review","status":"completed","summary":"SKILL187-ARTIFACT","produced_outputs":{"findings":[{"artifact_ref":"a.kt;b.kt;c.kt"}]}}"""
+    val invalidEnum = completedPhaseBody(
+      "0.2",
+      "review",
+      "SKILL187-ENUM",
+      """{"findings":[{"severity":"catastrophic"}]}""",
+    )
+    val compoundRef = completedPhaseBody(
+      "0.2",
+      "review",
+      "SKILL187-ARTIFACT",
+      """{"findings":[{"artifact_ref":"a.kt;b.kt;c.kt"}]}""",
+    )
     listOf(invalidEnum to "SKILL187-ENUM", compoundRef to "SKILL187-ARTIFACT").forEach { (rejectedBody, sentinel) ->
       var reviewAttempts = 0
       val harness = runnerHarness(
@@ -371,8 +392,12 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
   fun `truncated capture keeps digest metadata and omits the exact body from the repair section`() {
     // Realistic bug: truncated stdout is classified Exact from the retained excerpt, so the prompt
     // claims completeness while digest/bytes still describe the full observed stream.
-    val excerpt =
-      """{"contract_version":"0.2","phase_id":"review","status":"completed","summary":"SKILL187-TRUNCATED-EXCERPT","produced_outputs":{"findings":[]}}"""
+    val excerpt = completedPhaseBody(
+      "0.2",
+      "review",
+      "SKILL187-TRUNCATED-EXCERPT",
+      """{"findings":[]}""",
+    )
     val fullStreamDigest = "a".repeat(64)
     val fullStreamBytes = 12_345L
     var reviewAttempts = 0
@@ -521,7 +546,7 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
-    val rejected = FeatureTaskRuntimePhaseOutputValidatorAdapter().validatePhaseOutput(malformed, "audit")
+    val rejected = realFeatureTaskRuntimePhaseOutputValidator.validatePhaseOutput(malformed, "audit")
     val evidence = requireNotNull(
       assertIs<FeatureTaskRuntimePhaseOutputValidationResult.Rejected>(rejected).structuralRepairEvidence,
     )
@@ -590,17 +615,16 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
 
   private fun realAuditValidator(): FeatureTaskRuntimePhaseOutputValidator =
     object : FeatureTaskRuntimePhaseOutputValidator {
-      private val auditValidator = FeatureTaskRuntimePhaseOutputValidatorAdapter()
+      private val auditValidator = realFeatureTaskRuntimePhaseOutputValidator
 
       override fun validatePhaseOutput(
         phaseOutputText: String,
         sourceLabel: String,
-      ): FeatureTaskRuntimePhaseOutputValidationResult =
-        if (sourceLabel == "audit") {
-          auditValidator.validatePhaseOutput(phaseOutputText, sourceLabel)
-        } else {
-          AlwaysValidValidator.validatePhaseOutput(phaseOutputText, sourceLabel)
-        }
+      ): FeatureTaskRuntimePhaseOutputValidationResult = if (sourceLabel == "audit") {
+        auditValidator.validatePhaseOutput(phaseOutputText, sourceLabel)
+      } else {
+        AlwaysValidValidator.validatePhaseOutput(phaseOutputText, sourceLabel)
+      }
 
       override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
         validatePhaseOutput(phaseOutputText, sourceLabel).requireAccepted(sourceLabel)

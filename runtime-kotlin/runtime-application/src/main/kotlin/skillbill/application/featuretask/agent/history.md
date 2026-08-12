@@ -1,5 +1,15 @@
 # featuretask runtime boundary history
 
+## [2026-08-12] SKILL-187 subtask 3 — Regression and conformance coverage
+Areas: runtime-application/featuretask (integration + privacy tests, RealPhaseOutputValidator fixture), runtime-infra-fs (structural-repair + schema-validator tests), runtime-domain/workflow/taskruntime/model, runtime-contracts
+- Synthetic SKILL-16 audit sentinels (nested root verdict, unauthorized observation enum, compound/oversized artifact_ref, missing-delimiter-then-schema) assert exact capture in the authorized repair section and payload-free cues; corrected envelopes advance
+- Privacy helpers split surfaces: raw body allowed only inside the untrusted repair section; blocked reasons, durable phase rows, status, telemetry, and normal logs stay payload-free while private diagnostics keep sentinel bytes and value-bearing reasons
+- First/schema-valid/incomplete/phase-mismatched launches omit the repair section; truncated/oversized/YAML-unsupported/degraded-observer paths keep Exact vs fallback classification without silent truncation or outcome flips
+- Reusable: shared privacy assertions + RealPhaseOutputValidator so gate and consumer tests share one validator without copying real rejected payloads
+- Limitation: suite uses synthetic sentinels only; does not widen durable storage or public raw-output readers
+Feature flag: N/A
+Acceptance criteria: 13/13 implemented
+
 ## [2026-08-12] SKILL-187 subtask 2 — Thread rejected response into corrective re-spawn
 Areas: runtime-application/featuretask (run loop, observability, prompt composer, validation gate), runtime-infra-fs (phase-output validator adapter), runtime-domain/workflow/taskruntime/model, runtime-contracts
 - gateOutput / settleValidatedOutput reject paths build FeatureTaskRuntimeCorrectiveRepairContext from the same capture metadata and diagnostic identity recorded privately; Exact digests prefer capture-boundary sha/bytes

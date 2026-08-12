@@ -76,7 +76,7 @@ class RealValidatorProducerGateIntegrationTest {
       "producer-projection",
       "string found, array expected",
     )
-    assertNoRawResponseSpan(planPrompts[1], "MUST NOT SURVIVE")
+    assertNoRawResponseSpanOutsideAuthorizedRepairSection(planPrompts[1], "MUST NOT SURVIVE")
   }
 
   @Test

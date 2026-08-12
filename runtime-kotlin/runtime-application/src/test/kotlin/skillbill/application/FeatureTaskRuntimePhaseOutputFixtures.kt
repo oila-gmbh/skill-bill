@@ -208,8 +208,7 @@ internal object Skill187SyntheticAuditResponses {
       """"verdict":"satisfied","produced_outputs":{"gaps":[],"non_blocking_findings":[]}}"""
 
   /** Block-style YAML that must not receive guessed structural repair. */
-  fun unsupportedBlockYaml(): String =
-    """
+  fun unsupportedBlockYaml(): String = """
       contract_version: "0.3"
       phase_id: "audit"
       status: "completed"
@@ -217,5 +216,5 @@ internal object Skill187SyntheticAuditResponses {
       verdict: "satisfied"
       produced_outputs:
         gaps: []
-    """.trimIndent()
+  """.trimIndent()
 }

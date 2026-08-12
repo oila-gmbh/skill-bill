@@ -19,15 +19,15 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffProjectionValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.AUDIT_REPAIR_CONTRACT_VERSION
+import skillbill.workflow.taskruntime.model.CorrectiveRepairCapturedResponse
+import skillbill.workflow.taskruntime.model.CorrectiveRepairDiagnosticLocator
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGap
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeEvidence
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
-import skillbill.workflow.taskruntime.model.CorrectiveRepairCapturedResponse
-import skillbill.workflow.taskruntime.model.CorrectiveRepairDiagnosticLocator
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairBudget
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeEvidence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
@@ -1356,33 +1356,27 @@ class FeatureTaskRuntimePhasePromptComposerTest {
         correctiveRepairContext = context,
       )
     }
-    // Schema-correction after incomplete mutating work may still carry a durable continuation; the
-    // composer suppresses it so the corrective launch renders only schema rejection + repair context.
-    val schemaOverContinuation = FeatureTaskRuntimePhasePromptComposer.compose(
+    assertSchemaCorrectionSuppressesContinuation(context)
+    assertTerminalAndContinuationRetriesOmitRepairContext()
+  }
+
+  private fun assertSchemaCorrectionSuppressesContinuation(context: FeatureTaskRuntimeCorrectiveRepairContext) {
+    // Schema correction after incomplete mutating work suppresses the durable continuation.
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
       briefingFor("implement"),
-      implementationContinuation = FeatureTaskRuntimeImplementationContinuation(
-        phaseId = "implement",
-        segmentNumber = 2,
-        completedTaskIds = listOf("task-1"),
-        openObligationIds = listOf("task-2"),
-        obligationNoun = "plan task",
-        changedPaths = emptyList(),
-        deviations = emptyList(),
-        unresolvedItems = emptyList(),
-        reconciliationEvidence = null,
-        repositoryCheckpoint = null,
-        failureDisposition = null,
-      ),
+      implementationContinuation = implementationContinuation(),
       priorSchemaFailure = "produced_outputs must be an object.",
       correctiveRepairContext = context,
     )
-    assertContains(schemaOverContinuation, "Previous attempt was REJECTED by the schema gate")
-    assertContains(schemaOverContinuation, "Untrusted prior phase output")
-    assertTrue(schemaOverContinuation.contains("SKILL187-SHOULD-NOT-APPEAR"))
-    assertFalse(schemaOverContinuation.contains("Continue this implementation"))
-    assertFalse(schemaOverContinuation.contains("segment 2"))
+    assertContains(prompt, "Previous attempt was REJECTED by the schema gate")
+    assertContains(prompt, "Untrusted prior phase output")
+    assertTrue(prompt.contains("SKILL187-SHOULD-NOT-APPEAR"))
+    assertFalse(prompt.contains("Continue this implementation"))
+    assertFalse(prompt.contains("segment 2"))
+  }
 
+  private fun assertTerminalAndContinuationRetriesOmitRepairContext() {
     val terminalOnly = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
       briefingFor("implement"),
@@ -1394,23 +1388,25 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     val continuationOnly = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
       briefingFor("implement"),
-      implementationContinuation = FeatureTaskRuntimeImplementationContinuation(
-        phaseId = "implement",
-        segmentNumber = 2,
-        completedTaskIds = listOf("task-1"),
-        openObligationIds = listOf("task-2"),
-        obligationNoun = "plan task",
-        changedPaths = emptyList(),
-        deviations = emptyList(),
-        unresolvedItems = emptyList(),
-        reconciliationEvidence = null,
-        repositoryCheckpoint = null,
-        failureDisposition = null,
-      ),
+      implementationContinuation = implementationContinuation(),
     )
     assertFalse(continuationOnly.contains("Untrusted prior phase output"))
     assertFalse(continuationOnly.contains("SKILL187-SHOULD-NOT-APPEAR"))
   }
+
+  private fun implementationContinuation() = FeatureTaskRuntimeImplementationContinuation(
+    phaseId = "implement",
+    segmentNumber = 2,
+    completedTaskIds = listOf("task-1"),
+    openObligationIds = listOf("task-2"),
+    obligationNoun = "plan task",
+    changedPaths = emptyList(),
+    deviations = emptyList(),
+    unresolvedItems = emptyList(),
+    reconciliationEvidence = null,
+    repositoryCheckpoint = null,
+    failureDisposition = null,
+  )
 
   @Test
   fun `unavailable repair context emits a payload-free fallback without a misleading excerpt`() {

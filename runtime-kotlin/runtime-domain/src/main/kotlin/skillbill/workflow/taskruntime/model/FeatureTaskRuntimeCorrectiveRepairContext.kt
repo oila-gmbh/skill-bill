@@ -80,11 +80,10 @@ enum class CorrectiveRepairResponseAvailability(val wireValue: String) {
   ;
 
   companion object {
-    fun fromWire(raw: String): CorrectiveRepairResponseAvailability =
-      entries.firstOrNull { it.wireValue == raw }
-        ?: throw IllegalArgumentException(
-          "CorrectiveRepairResponseAvailability '$raw' is not a declared availability state.",
-        )
+    fun fromWire(raw: String): CorrectiveRepairResponseAvailability = entries.firstOrNull { it.wireValue == raw }
+      ?: throw IllegalArgumentException(
+        "CorrectiveRepairResponseAvailability '$raw' is not a declared availability state.",
+      )
   }
 }
 
@@ -98,11 +97,10 @@ enum class CorrectiveRepairInclusionReason(val wireValue: String) {
   ;
 
   companion object {
-    fun fromWire(raw: String): CorrectiveRepairInclusionReason =
-      entries.firstOrNull { it.wireValue == raw }
-        ?: throw IllegalArgumentException(
-          "CorrectiveRepairInclusionReason '$raw' is not a declared inclusion reason.",
-        )
+    fun fromWire(raw: String): CorrectiveRepairInclusionReason = entries.firstOrNull { it.wireValue == raw }
+      ?: throw IllegalArgumentException(
+        "CorrectiveRepairInclusionReason '$raw' is not a declared inclusion reason.",
+      )
   }
 }
 
@@ -323,8 +321,7 @@ data class FeatureTaskRuntimeCorrectiveRepairContext(
   }
 
   /** Builds the authorized prompt projection, validating budgets before any body is framed. */
-  fun promptProjection(): CorrectiveRepairPromptProjection =
-    CorrectiveRepairPromptProjection.from(this)
+  fun promptProjection(): CorrectiveRepairPromptProjection = CorrectiveRepairPromptProjection.from(this)
 }
 
 /**
@@ -364,16 +361,15 @@ data class CorrectiveRepairPromptProjection(
    * Renders the authorized repair section only. Payload-free failure guidance and the required
    * output contract stay outside this section at the composer seam.
    */
-  fun renderAuthorizedRepairSection(): String =
-    if (includesExactBody) {
-      renderExactUntrustedSection(
-        body = requireNotNull(exactResponseBody),
-        utf8ByteCount = utf8ByteCount,
-        digestSha256 = digestSha256,
-      )
-    } else {
-      renderPayloadFreeFallbackSection()
-    }
+  fun renderAuthorizedRepairSection(): String = if (includesExactBody) {
+    renderExactUntrustedSection(
+      body = requireNotNull(exactResponseBody),
+      utf8ByteCount = utf8ByteCount,
+      digestSha256 = digestSha256,
+    )
+  } else {
+    renderPayloadFreeFallbackSection()
+  }
 
   private fun renderPayloadFreeFallbackSection(): String = """
     ## Rejected response body not included in this prompt

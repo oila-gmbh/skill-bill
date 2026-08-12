@@ -3,7 +3,6 @@
 package skillbill.application
 
 import skillbill.application.model.FeatureTaskRuntimeRunReport
-import skillbill.error.FeatureTaskRuntimePhaseOutputFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
@@ -111,7 +110,7 @@ class FeatureTaskRuntimeRejectionConstraintPrivacyTest {
       InvalidFeatureTaskRuntimePhaseOutputSchemaError(
         sourceLabel = sourceLabel,
         reason = valueBearingReason,
-        failureKind = FeatureTaskRuntimePhaseOutputFailureKind.MALFORMED,
+        failureCode = "malformed",
       )
     }
 
@@ -129,7 +128,8 @@ class FeatureTaskRuntimeRejectionConstraintPrivacyTest {
     // Realistic bug: helpers/composer tests pass, but gateOutput drops correctiveRepairContext before
     // PriorAttemptCorrection reaches the next launch, so the agent never sees the exact rejected body.
     val rejectedBody =
-      """{"contract_version":"0.2","phase_id":"review","status":"completed","summary":"SKILL187-GATEOUTPUT-SENTINEL","produced_outputs":{"findings":[]}}"""
+      "{\"contract_version\":\"0.2\",\"phase_id\":\"review\",\"status\":\"completed\"," +
+        "\"summary\":\"SKILL187-GATEOUTPUT-SENTINEL\",\"produced_outputs\":{\"findings\":[]}}"
     var reviewAttempts = 0
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->

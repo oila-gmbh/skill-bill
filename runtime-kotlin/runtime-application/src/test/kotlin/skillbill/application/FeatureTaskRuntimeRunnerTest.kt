@@ -38,7 +38,6 @@ import skillbill.application.model.FeatureTaskRuntimeStatusRequest
 import skillbill.application.telemetry.LifecycleTelemetryService
 import skillbill.application.workflow.repoRoot
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
-import skillbill.error.FeatureTaskRuntimePhaseOutputFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.error.WorkflowIssueKeyConflictError
@@ -538,7 +537,7 @@ class FeatureTaskRuntimeRunnerTest {
             throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
               sourceLabel = "review",
               reason = "Phase output is malformed: expected closing bracket",
-              failureKind = FeatureTaskRuntimePhaseOutputFailureKind.MALFORMED,
+              failureCode = "malformed",
             )
           }
           throw InvalidFeatureTaskRuntimePhaseOutputSchemaError("review", "semantic schema failure")

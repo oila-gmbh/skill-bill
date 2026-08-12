@@ -68,11 +68,7 @@ internal data class FeatureTaskRuntimePhaseStartReentry(
  * Ordinary observer failures stay isolated and leave a payload-free [RuntimeDiagnostics] record;
  * a throwing diagnostics sink is also isolated so AC-010 stays intact.
  */
-internal fun emitFeatureTaskRuntimeEventSafely(
-  diagnostics: RuntimeDiagnostics,
-  seam: String,
-  emit: () -> Unit,
-) {
+internal fun emitFeatureTaskRuntimeEventSafely(diagnostics: RuntimeDiagnostics, seam: String, emit: () -> Unit) {
   try {
     emit()
   } catch (cancellation: CancellationException) {

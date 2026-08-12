@@ -327,7 +327,9 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
       """.trimIndent()
     FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(fenced, "plan")
   }
+}
 
+class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
   @Test
   fun `markdown prefixed compact audit gaps normalize once and select the audit gap edge`() {
     val wrapped =
@@ -555,9 +557,9 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
       Corrected final answer:
       ```json
       {"contract_version":"0.3","phase_id":"audit","status":"completed",
-       "verdict":"gaps_found","produced_outputs":{"gaps":[{
-         "criterion":"AC-128","severity":"major","location":"ReviewRunner.merge",
-         "issue":"Integration behavior is missing.","fix":"Implement the missing behavior."}]}}
+      "verdict":"gaps_found","produced_outputs":{"gaps":[{
+        "criterion":"AC-128","severity":"major","location":"ReviewRunner.merge",
+        "issue":"Integration behavior is missing.","fix":"Implement the missing behavior."}]}}
       ```
       """.trimIndent()
 

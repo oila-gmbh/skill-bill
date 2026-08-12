@@ -27,7 +27,11 @@ class FeatureTaskRuntimeCorrectiveRepairContextTest {
       FeatureTaskRuntimeCorrectiveRepairBudget(maxResponseUtf8Bytes = 8, maxPromptUtf8Bytes = 8, maxCollectionItems = 0)
     }
     assertFailsWith<IllegalArgumentException> {
-      FeatureTaskRuntimeCorrectiveRepairBudget(maxResponseUtf8Bytes = 16, maxPromptUtf8Bytes = 8, maxCollectionItems = 1)
+      FeatureTaskRuntimeCorrectiveRepairBudget(
+        maxResponseUtf8Bytes = 16,
+        maxPromptUtf8Bytes = 8,
+        maxCollectionItems = 1,
+      )
     }
   }
 
@@ -44,13 +48,18 @@ class FeatureTaskRuntimeCorrectiveRepairContextTest {
       maxPromptUtf8Bytes = 10_000,
       maxCollectionItems = 4,
     )
-    val captured = CorrectiveRepairCapturedResponse.classify(body = threeByte, alreadyTruncated = false, budget = budget)
+    val captured = CorrectiveRepairCapturedResponse.classify(
+      body = threeByte,
+      alreadyTruncated = false,
+      budget = budget,
+    )
     assertTrue(captured is CorrectiveRepairCapturedResponse.ExceedsBudget)
     assertEquals(12, captured.utf8ByteCount)
     assertEquals(CorrectiveRepairResponseAvailability.RESPONSE_EXCEEDS_REPAIR_BUDGET, captured.availability)
 
+    // 9 bytes
     val within = CorrectiveRepairCapturedResponse.classify(
-      body = "\u20AC\u20AC\u20AC", // 9 bytes
+      body = "\u20AC\u20AC\u20AC",
       alreadyTruncated = false,
       budget = budget,
     )
@@ -307,9 +316,7 @@ class FeatureTaskRuntimeCorrectiveRepairContextTest {
     )
   }
 
-  private fun sampleContext(
-    captured: CorrectiveRepairCapturedResponse,
-  ): FeatureTaskRuntimeCorrectiveRepairContext =
+  private fun sampleContext(captured: CorrectiveRepairCapturedResponse): FeatureTaskRuntimeCorrectiveRepairContext =
     FeatureTaskRuntimeCorrectiveRepairContext(
       phaseId = "audit",
       attempt = 1,

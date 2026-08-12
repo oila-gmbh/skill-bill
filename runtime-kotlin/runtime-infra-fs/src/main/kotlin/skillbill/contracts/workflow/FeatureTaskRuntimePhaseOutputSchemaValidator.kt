@@ -14,7 +14,6 @@ import com.networknt.schema.JsonSchemaFactory
 import com.networknt.schema.SpecVersion
 import com.networknt.schema.ValidationMessage
 import skillbill.contracts.LOCALE_STABLE_SCHEMA_CONFIG
-import skillbill.error.FeatureTaskRuntimePhaseOutputFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_AUDIT_REPAIR_RULE_FAMILY
@@ -346,7 +345,6 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
           // Jackson's originalMessage quotes the offending token, so only the prefix survives here. The
           // prompt composer keys its unparseable-root correction on that prefix.
           payloadFreeReason = "Phase output is malformed: it is not parseable as a single JSON object.",
-          failureKind = FeatureTaskRuntimePhaseOutputFailureKind.MALFORMED,
           failureCode = "malformed",
         )
       }
@@ -355,7 +353,6 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
         sourceLabel = sourceLabel,
         reason = "<root> must be an object.",
         payloadFreeReason = "<root> must be an object.",
-        failureKind = FeatureTaskRuntimePhaseOutputFailureKind.MALFORMED,
         failureCode = "root_not_object",
       )
     }

@@ -207,6 +207,21 @@ class InvalidDecompositionManifestSchemaError(
  */
 enum class FeatureTaskRuntimePhaseOutputFailureKind { MALFORMED, SCHEMA_INVALID }
 
+data class FeatureTaskRuntimePhaseOutputStructuralRepairSource(
+  val label: String,
+  val offset: Int,
+  val line: Int,
+  val column: Int,
+)
+
+data class FeatureTaskRuntimePhaseOutputStructuralRepair(
+  val originalDigest: String,
+  val repairedDigest: String,
+  val format: String,
+  val operation: String,
+  val source: FeatureTaskRuntimePhaseOutputStructuralRepairSource,
+)
+
 class InvalidFeatureTaskRuntimePhaseOutputSchemaError(
   val sourceLabel: String,
   val reason: String,
@@ -220,8 +235,6 @@ class InvalidFeatureTaskRuntimePhaseOutputSchemaError(
    * rejection sentence and must never substitute [reason].
    */
   val payloadFreeReason: String? = null,
-  val failureKind: FeatureTaskRuntimePhaseOutputFailureKind =
-    FeatureTaskRuntimePhaseOutputFailureKind.SCHEMA_INVALID,
   /** Stable wire code used by the typed adapter result; old callers may omit it. */
   val failureCode: String = "schema_invalid",
   /**
@@ -229,24 +242,55 @@ class InvalidFeatureTaskRuntimePhaseOutputSchemaError(
    * and the phase schema later rejected it. Digests, format/operation wire values, and source
    * location only — never response body text. Absence means no prior syntax repair on this capture.
    */
-  val structuralRepairOriginalDigest: String? = null,
-  val structuralRepairRepairedDigest: String? = null,
-  val structuralRepairFormat: String? = null,
-  val structuralRepairOperation: String? = null,
-  val structuralRepairSourceLabel: String? = null,
-  val structuralRepairSourceOffset: Int? = null,
-  val structuralRepairSourceLine: Int? = null,
-  val structuralRepairSourceColumn: Int? = null,
-  /**
-   * True when deterministic delimiter repair previously accepted this capture and the phase schema
-   * later rejected it. Syntax success must not be read as phase-schema acceptance. Defaults from
-   * [structuralRepairOriginalDigest] so digest-bearing throws stay correlated without a second flag.
-   */
-  val acceptedAfterStructuralRepair: Boolean = structuralRepairOriginalDigest != null,
+  val structuralRepair: FeatureTaskRuntimePhaseOutputStructuralRepair? = null,
 ) : ShellContentContractException(
   "Feature-task-runtime phase output '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation: $reason",
   cause,
-)
+) {
+  val failureKind: FeatureTaskRuntimePhaseOutputFailureKind
+    get() = when (failureCode) {
+      "malformed",
+      "root_not_object",
+      "no_repair_candidate",
+      "ambiguous_repair",
+      "repair_limit_exceeded",
+      "unsupported_repair",
+      "duplicate_key",
+      -> FeatureTaskRuntimePhaseOutputFailureKind.MALFORMED
+      else -> FeatureTaskRuntimePhaseOutputFailureKind.SCHEMA_INVALID
+    }
+
+  val structuralRepairOriginalDigest: String?
+    get() = structuralRepair?.originalDigest
+
+  val structuralRepairRepairedDigest: String?
+    get() = structuralRepair?.repairedDigest
+
+  val structuralRepairFormat: String?
+    get() = structuralRepair?.format
+
+  val structuralRepairOperation: String?
+    get() = structuralRepair?.operation
+
+  val structuralRepairSourceLabel: String?
+    get() = structuralRepair?.source?.label
+
+  val structuralRepairSourceOffset: Int?
+    get() = structuralRepair?.source?.offset
+
+  val structuralRepairSourceLine: Int?
+    get() = structuralRepair?.source?.line
+
+  val structuralRepairSourceColumn: Int?
+    get() = structuralRepair?.source?.column
+
+  /**
+   * True when deterministic delimiter repair previously accepted this capture and the phase schema
+   * later rejected it. Syntax success must not be read as phase-schema acceptance.
+   */
+  val acceptedAfterStructuralRepair: Boolean
+    get() = structuralRepair != null
+}
 
 /** Why a handoff projection was rejected before an agent was launched. */
 enum class FeatureTaskRuntimeHandoffProjectionFailureKind {

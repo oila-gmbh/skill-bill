@@ -2,7 +2,8 @@ package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PHASE_OUTPUT_VALIDATION_CONTRACT_VERSION
-import skillbill.error.FeatureTaskRuntimePhaseOutputFailureKind
+import skillbill.error.FeatureTaskRuntimePhaseOutputStructuralRepair
+import skillbill.error.FeatureTaskRuntimePhaseOutputStructuralRepairSource
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 
 /** Stable contract version for the typed phase-output validation result. */
@@ -235,26 +236,21 @@ fun FeatureTaskRuntimePhaseOutputValidationResult.requireAccepted(
       sourceLabel = sourceLabel,
       reason = diagnosticReason,
       payloadFreeReason = payloadFreeReason,
-      failureKind = when (code) {
-        FeatureTaskRuntimePhaseOutputFailureCode.MALFORMED,
-        FeatureTaskRuntimePhaseOutputFailureCode.ROOT_NOT_OBJECT,
-        FeatureTaskRuntimePhaseOutputFailureCode.NO_REPAIR_CANDIDATE,
-        FeatureTaskRuntimePhaseOutputFailureCode.AMBIGUOUS_REPAIR,
-        FeatureTaskRuntimePhaseOutputFailureCode.REPAIR_LIMIT_EXCEEDED,
-        FeatureTaskRuntimePhaseOutputFailureCode.UNSUPPORTED_REPAIR,
-        FeatureTaskRuntimePhaseOutputFailureCode.DUPLICATE_KEY,
-        -> FeatureTaskRuntimePhaseOutputFailureKind.MALFORMED
-        else -> FeatureTaskRuntimePhaseOutputFailureKind.SCHEMA_INVALID
-      },
       failureCode = code.wireValue,
-      structuralRepairOriginalDigest = evidence?.originalDigest,
-      structuralRepairRepairedDigest = evidence?.repairedDigest,
-      structuralRepairFormat = evidence?.format?.wireValue,
-      structuralRepairOperation = evidence?.operation?.wireValue,
-      structuralRepairSourceLabel = evidence?.sourceLocation?.sourceLabel,
-      structuralRepairSourceOffset = evidence?.sourceLocation?.offset,
-      structuralRepairSourceLine = evidence?.sourceLocation?.line,
-      structuralRepairSourceColumn = evidence?.sourceLocation?.column,
+      structuralRepair = evidence?.let {
+        FeatureTaskRuntimePhaseOutputStructuralRepair(
+          originalDigest = it.originalDigest,
+          repairedDigest = it.repairedDigest,
+          format = it.format.wireValue,
+          operation = it.operation.wireValue,
+          source = FeatureTaskRuntimePhaseOutputStructuralRepairSource(
+            label = it.sourceLocation.sourceLabel,
+            offset = it.sourceLocation.offset,
+            line = it.sourceLocation.line,
+            column = it.sourceLocation.column,
+          ),
+        )
+      },
     )
   }
 }
