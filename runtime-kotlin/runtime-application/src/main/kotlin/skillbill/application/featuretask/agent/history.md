@@ -1,11 +1,11 @@
 # featuretask runtime boundary history
 
 ## [2026-08-12] SKILL-187 subtask 2 — Thread rejected response into corrective re-spawn
-Areas: runtime-application/featuretask (run loop, observability, prompt composer), runtime-infra-fs (phase-output validator adapter), runtime-domain/workflow/taskruntime/model, runtime-contracts
+Areas: runtime-application/featuretask (run loop, observability, prompt composer, validation gate), runtime-infra-fs (phase-output validator adapter), runtime-domain/workflow/taskruntime/model, runtime-contracts
 - gateOutput / settleValidatedOutput reject paths build FeatureTaskRuntimeCorrectiveRepairContext from the same capture metadata and diagnostic identity recorded privately; Exact digests prefer capture-boundary sha/bytes
 - settleMalformedOutput and semantic retries carry that context through PriorAttemptCorrection into FeatureTaskRuntimePhasePromptComposer; retryable-terminal and incomplete-work paths stay separate and never render the raw repair section
 - Schema rejection after successful delimiter repair retains payload-free structuralRepairEvidence on Rejected and sets acceptedAfterStructuralRepair; the retry prompt names syntax-only repair without claiming phase-schema acceptance
-- Event-sink and RunStarted observer failures are isolated so throwing telemetry/status observers cannot abort retry, block, or completion or leak rejected bodies
+- Shared emitFeatureTaskRuntimeEventSafely isolates event-sink / ValidationGateProgress / RunStarted observer faults (CancellationException still propagates) so throws cannot abort retry, block, or completion or leak rejected bodies
 - Integration coverage: capture↔diagnostic correlation, first-launch/stale-context routing, truncated capture fallback, enum/artifact_ref cases, delimiter-then-schema, exhaustion INVALID_OUTPUT privacy, throwing observers
 Feature flag: N/A
 Acceptance criteria: 10/10 implemented

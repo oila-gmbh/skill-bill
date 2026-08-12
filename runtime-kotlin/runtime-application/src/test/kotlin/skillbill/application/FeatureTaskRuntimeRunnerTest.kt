@@ -1848,6 +1848,41 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
   }
 
   @Test
+  fun `throwing DecomposedAtPlanning event sink does not alter decompose completion`() {
+    // Realistic bug: terminal persistence succeeds, then a status/telemetry observer throws on
+    // DecomposedAtPlanning and aborts an otherwise completed decompose stop (AC-010 / F-001).
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-decompose-throwing-sink")
+    val diagnostics = RecordingDiagnostics()
+    val throwingSink = FeatureTaskRuntimeRunEventSink { event ->
+      if (event is FeatureTaskRuntimeRunEvent.DecomposedAtPlanning) {
+        error("status/telemetry observer refused DecomposedAtPlanning")
+      }
+    }
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        facts(if (phaseId == "plan") DECOMPOSE_PLAN_OUTPUT else validJsonOutput(phaseId))
+      },
+      agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = RuntimeHarnessConfig(
+        repoRoot = repoRoot,
+        useRealDecompositionPlanner = true,
+        eventSink = throwingSink,
+      ),
+      diagnostics = diagnostics,
+    )
+
+    val report = harness.runner.run(harness.request())
+
+    assertIs<FeatureTaskRuntimeRunReport.Decomposed>(report)
+    assertTrue(harness.launchedPhaseOrder().none { it == "implement" })
+    assertTrue(
+      diagnostics.warnings.any { it.contains("DecomposedAtPlanning event-sink emission failed") },
+      "observer failure must leave an independent payload-free diagnostic record",
+    )
+  }
+
+  @Test
   fun `decompose plan writes shared feature specs records terminal completed status and skips implement`() {
     val repoRoot = Files.createTempDirectory("skillbill-runtime-decompose")
     val harness = runnerHarness(
@@ -5618,7 +5653,12 @@ private fun harnessRunner(
   val branchSetupRunner = FeatureTaskRuntimeBranchSetupRunner(recorder, runtimeConfig.branchSetup.gitOperations)
   val decompositionPlanner =
     if (runtimeConfig.useRealDecompositionPlanner) testDecompositionPlanner() else noOpDecompositionPlanner()
-  val planningStopper = FeatureTaskRuntimePlanningStopper(validator, decompositionPlanner, decomposeTerminalRecorder)
+  val planningStopper = FeatureTaskRuntimePlanningStopper(
+    validator,
+    decompositionPlanner,
+    decomposeTerminalRecorder,
+    diagnostics,
+  )
   return FeatureTaskRuntimeRunner(
     launcher,
     recorder,
