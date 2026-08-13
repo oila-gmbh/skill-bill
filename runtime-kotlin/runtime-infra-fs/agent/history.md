@@ -1,5 +1,15 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
+## [2026-08-14] SKILL-188 subtask 2 — harness coverage and truthful slug projection
+Areas: runtime-kotlin/runtime-infra-fs/nativeagent/{composition,rendering,validation}, runtime-kotlin/runtime-infra-fs/install/apply, runtime-kotlin/runtime-infra-fs/infrastructure/fs, runtime-kotlin/runtime-domain/review/plan, platform-packs/kmp
+- Composed add-on content now rides the same governed body into every NativeAgentProvider render and install target. Harness files still differ only in provider format; add-on blocks are identical per area.
+- `ReviewAddonSelectionPolicy` is the single slug set for launch-plan `addOns`, in-render composition, inline rubric append, and validation. A reported slug is a composed slug; a declared-but-uncomposed target still loud-fails with slug, slot, and absolute path.
+- Pattern: `enforceAddonProjectionParity` is a runtime check, not a docs convention — compose, launch-plan projection, and `validateRepoNativeAgents` share it. reusable
+- Inline review appends the same policy-selected add-on files, so delegated and inline tiers get equivalent rubrics for the same area without telling any orchestrator to read a sibling sidecar.
+- Limitation: already-installed agents refresh only on the next render/install. Regression and docs pinning remain subtask 3. Pack names stay out of shell/runtime code.
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
 ## [2026-08-14] SKILL-188 subtask 1 — compose addon_usage into rendered native agents
 Areas: runtime-kotlin/runtime-infra-fs/nativeagent/{composition,rendering}, runtime-kotlin/runtime-contracts/error, orchestration/contracts, platform-packs/ios
 - Native-agent rendering now composes add-on `entrypoint` and `companion_pointers` from pack `addon_usage` for the skill-relative directory being rendered. A markdown link in the owning `content.md` is neither required nor the trigger.

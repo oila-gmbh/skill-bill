@@ -14,6 +14,7 @@ import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.PointerSpec
 import java.nio.file.Files
 import java.nio.file.Path
+import kotlin.io.path.name
 
 private const val ENTRYPOINT_SLOT = "entrypoint"
 
