@@ -12,31 +12,29 @@ import java.nio.file.Path
 
 private val LOCAL_MARKDOWN_LINK_PATTERN = Regex("""\[([^]\n]+)]\(([^)\s]+\.md(?:#[^)]*)?)\)""")
 
-internal fun inlineDeclaredMarkdownSidecars(
-  repoRoot: Path,
-  target: NativeAgentCompositionTarget,
-  body: String,
-): String {
-  val resolver = sidecarResolver(repoRoot, target)
-  val inlined = linkedMapOf<Path, String>()
-  val rewrittenBody = rewriteMarkdownLinks(
-    text = body,
-    ownerPath = target.contentPath,
-    resolver = resolver,
-    inlined = inlined,
-  )
-  if (inlined.isEmpty()) {
-    return rewrittenBody.trimEnd()
+internal class SidecarInliningSession(repoRoot: Path, target: NativeAgentCompositionTarget) {
+  private val resolver = sidecarResolver(repoRoot, target)
+  private val inlined = linkedMapOf<Path, String>()
+  private val claimed = linkedSetOf<Path>()
+
+  fun claim(path: Path) {
+    claimed.add(path)
   }
-  return buildString {
-    append(rewrittenBody.trimEnd())
+
+  fun rewrite(text: String, ownerPath: Path): String =
+    rewriteMarkdownLinks(text, ownerPath, resolver, inlined, claimed, lenient = false)
+
+  fun rewriteComposedAddon(text: String, ownerPath: Path): String =
+    rewriteMarkdownLinks(text, ownerPath, resolver, inlined, claimed, lenient = true)
+
+  fun inlinedReferenceBlocks(): String = buildString {
     inlined.forEach { (path, text) ->
       append("\n\n")
       append("## Inlined Reference: ${path.fileName}")
       append("\n\n")
       append(text.trimEnd())
     }
-  }.trimEnd()
+  }
 }
 
 private fun rewriteMarkdownLinks(
@@ -44,14 +42,20 @@ private fun rewriteMarkdownLinks(
   ownerPath: Path,
   resolver: MarkdownSidecarResolver,
   inlined: LinkedHashMap<Path, String>,
+  claimed: LinkedHashSet<Path>,
+  lenient: Boolean,
 ): String = LOCAL_MARKDOWN_LINK_PATTERN.replace(text) { match ->
   val label = match.groupValues[1]
   val rawTarget = match.groupValues[2]
-  val sidecarPath = resolver.resolve(rawTarget, ownerPath)
-  if (sidecarPath !in inlined) {
+  val sidecarPath = if (lenient) {
+    resolver.resolveOrNull(rawTarget, ownerPath) ?: return@replace match.value
+  } else {
+    resolver.resolve(rawTarget, ownerPath)
+  }
+  if (claimed.add(sidecarPath)) {
     val sidecarText = normalizeMarkdownLineEndings(Files.readString(sidecarPath)).trimEnd()
     inlined[sidecarPath] = ""
-    inlined[sidecarPath] = rewriteMarkdownLinks(sidecarText, sidecarPath, resolver, inlined)
+    inlined[sidecarPath] = rewriteMarkdownLinks(sidecarText, sidecarPath, resolver, inlined, claimed, lenient)
   }
   label
 }
@@ -123,4 +127,7 @@ private class MarkdownSidecarResolver(
         "${displayPath(repoRoot, ownerPath)}: local markdown link '$rawTarget' is unresolved"
       }
     }
+
+  fun resolveOrNull(rawTarget: String, ownerPath: Path): Path? =
+    runCatching { resolve(rawTarget, ownerPath) }.getOrNull()
 }

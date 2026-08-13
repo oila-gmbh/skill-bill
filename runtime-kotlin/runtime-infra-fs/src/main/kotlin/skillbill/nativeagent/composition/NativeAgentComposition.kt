@@ -2,7 +2,7 @@
 
 package skillbill.nativeagent.composition
 
-import skillbill.nativeagent.rendering.inlineDeclaredMarkdownSidecars
+import skillbill.nativeagent.rendering.composeGovernedAgentBody
 import skillbill.scaffold.authoring.renderAuthoredContentBody
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.platformpack.loadPlatformPack
@@ -80,7 +80,7 @@ internal fun composeNativeAgentSource(repoRoot: Path, source: NativeAgentSource)
     }
     append(governedBody)
   }.trimEnd()
-  return source.copy(body = inlineDeclaredMarkdownSidecars(repoRoot, target, composedBody), composition = null)
+  return source.copy(body = composeGovernedAgentBody(repoRoot, target, composedBody), composition = null)
 }
 
 fun renderComposedNativeAgentSource(repoRoot: Path, source: NativeAgentSource): String =
