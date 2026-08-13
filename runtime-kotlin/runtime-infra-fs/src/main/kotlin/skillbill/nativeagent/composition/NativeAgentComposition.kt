@@ -2,7 +2,10 @@
 
 package skillbill.nativeagent.composition
 
+import skillbill.infrastructure.fs.FileSystemRepoLocalConfig
 import skillbill.nativeagent.rendering.composeGovernedAgentBody
+import skillbill.nativeagent.rendering.enforceComposedAgentBudget
+import skillbill.ports.config.model.ReadRepoLocalConfigRequest
 import skillbill.scaffold.authoring.renderAuthoredContentBody
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.platformpack.loadPlatformPack
@@ -16,6 +19,7 @@ private const val FRONTMATTER_OPEN_LENGTH = 4
 data class NativeAgentCompositionTarget(
   val contentPath: Path,
   val source: NativeAgentCompositionTargetSource,
+  val manifest: PlatformManifest? = null,
 )
 
 enum class NativeAgentCompositionTargetSource {
@@ -80,8 +84,21 @@ internal fun composeNativeAgentSource(repoRoot: Path, source: NativeAgentSource)
     }
     append(governedBody)
   }.trimEnd()
-  return source.copy(body = composeGovernedAgentBody(repoRoot, target, composedBody), composition = null)
+  val composed = source.copy(body = composeGovernedAgentBody(repoRoot, target, composedBody), composition = null)
+  enforceComposedAgentBudget(
+    repoRoot.toAbsolutePath().normalize(),
+    target,
+    renderNativeAgentSource(composed),
+    composedAgentBudgetBytes(repoRoot),
+  )
+  return composed
 }
+
+private fun composedAgentBudgetBytes(repoRoot: Path): Long = FileSystemRepoLocalConfig()
+  .readRepoLocalConfig(ReadRepoLocalConfigRequest(repoRoot.toAbsolutePath().normalize()))
+  .config
+  .reviewContextBudget
+  .maxLaneLaunchBytes
 
 fun renderComposedNativeAgentSource(repoRoot: Path, source: NativeAgentSource): String =
   renderNativeAgentSource(composeNativeAgentSource(repoRoot, source))
@@ -105,6 +122,7 @@ private fun resolvePlatformManifestContentTarget(
       NativeAgentCompositionTarget(
         contentPath = contentPath,
         source = NativeAgentCompositionTargetSource.PlatformManifest,
+        manifest = pack,
       )
     }
 }

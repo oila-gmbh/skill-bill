@@ -1,28 +1,26 @@
 package skillbill.nativeagent.rendering
 
+import skillbill.error.ComposedNativeAgentBudgetExceededError
 import skillbill.error.MissingContentFileError
 import skillbill.nativeagent.composition.NativeAgentCompositionTarget
 import skillbill.nativeagent.composition.NativeAgentCompositionTargetSource
 import skillbill.nativeagent.composition.displayPath
 import skillbill.nativeagent.composition.platformPackRoot
 import skillbill.scaffold.authoring.normalizeMarkdownLineEndings
+import skillbill.scaffold.model.GovernedAddonActivation
 import skillbill.scaffold.model.PointerSpec
 import skillbill.scaffold.platformpack.addonUsageFor
-import skillbill.scaffold.platformpack.loadPlatformPack
 import java.nio.file.Files
 import java.nio.file.Path
 
 private const val ENTRYPOINT_SLOT = "entrypoint"
 
-private const val MAX_COMPOSED_AGENT_BYTES = 512 * 1024L
-
-private const val MAX_COMPOSED_ADDON_FILE_BYTES = 128 * 1024L
-
-private const val ACTIVATION_DEFERRAL = "Every add-on below is composed unconditionally. The declared activation " +
-  "conditions are diff-time signals over changed files and are not evaluable while rendering, so the runtime " +
-  "activation logic remains the decider for which composed add-ons apply to a given change."
-
-private data class ComposedAddonTarget(val slug: String, val slot: String, val path: Path)
+private data class ComposedAddonTarget(
+  val slug: String,
+  val slot: String,
+  val path: Path,
+  val activation: GovernedAddonActivation?,
+)
 
 internal fun composeGovernedAgentBody(
   repoRoot: Path,
@@ -35,48 +33,75 @@ internal fun composeGovernedAgentBody(
   addonTargets.forEach { addon -> session.claim(addon.path) }
   val rewrittenBody = session.rewrite(body, target.contentPath)
   val addonBlocks = addonTargets.map { addon ->
-    addon to session.rewriteComposedAddon(readAddonFile(root, addon), addon.path)
+    addon to session.rewrite(readAddonFile(root, addon), addon.path)
   }
-  val composed = buildString {
+  return buildString {
     append(rewrittenBody.trimEnd())
     append(session.inlinedReferenceBlocks())
     if (addonBlocks.isNotEmpty()) {
       append("\n\n## Composed Add-Ons\n\n")
-      append(ACTIVATION_DEFERRAL)
-      addonBlocks.forEach { (addon, text) ->
-        append("\n\n### Add-On: ${addon.slug} (${addon.path.fileName})\n\n")
+      addonBlocks.forEachIndexed { index, (addon, text) ->
+        if (index > 0) {
+          append("\n\n")
+        }
+        append("### Add-On: ${addon.slug} (${addon.path.fileName})\n\n")
+        activationScope(addon.activation)?.let { scope ->
+          append(scope)
+          append("\n\n")
+        }
         append(text.trimEnd())
       }
     }
   }.trimEnd()
-  enforceComposedAgentBudget(root, target, composed)
-  return composed
 }
+
+private fun activationScope(activation: GovernedAddonActivation?): String? {
+  if (activation == null) {
+    return null
+  }
+  val signals = buildList {
+    signal("changed paths matching any of", activation.anyPath)?.let(::add)
+    signal("changed content matching any of", activation.anyContent)?.let(::add)
+    signal("changed content matching all of", activation.allContent)?.let(::add)
+    activation.anyOfAllContent
+      .mapNotNull { group -> signal("changed content matching all of", group) }
+      .takeIf { it.isNotEmpty() }
+      ?.let { groups -> add("any one of these content groups: ${groups.joinToString("; ")}") }
+    signal("never when changed paths match", activation.excludePath)?.let(::add)
+    signal("never when changed content matches", activation.excludeContent)?.let(::add)
+  }
+  if (signals.isEmpty()) {
+    return null
+  }
+  return "Declared scope: apply this rubric only to changes with ${signals.joinToString(", and ")}. " +
+    "When the change under review does not match, skip it and report nothing from it."
+}
+
+private fun signal(prefix: String, values: List<String>): String? = values
+  .takeIf { it.isNotEmpty() }
+  ?.joinToString(", ") { value -> "`$value`" }
+  ?.let { rendered -> "$prefix $rendered" }
 
 private fun readAddonFile(root: Path, addon: ComposedAddonTarget): String {
   val bytes = runCatching { Files.readAllBytes(addon.path) }.getOrElse { failure ->
     throw MissingContentFileError(addonFailureMessage(root, addon, "is unreadable"), failure)
   }
-  if (bytes.size > MAX_COMPOSED_ADDON_FILE_BYTES) {
-    throw MissingContentFileError(
-      addonFailureMessage(
-        root,
-        addon,
-        "is ${bytes.size} bytes, larger than the $MAX_COMPOSED_ADDON_FILE_BYTES byte cap",
-      ),
-    )
-  }
   return normalizeMarkdownLineEndings(String(bytes, Charsets.UTF_8))
 }
 
-private fun enforceComposedAgentBudget(root: Path, target: NativeAgentCompositionTarget, composed: String) {
-  val bytes = composed.toByteArray(Charsets.UTF_8).size
-  if (bytes > MAX_COMPOSED_AGENT_BYTES) {
+internal fun enforceComposedAgentBudget(
+  root: Path,
+  target: NativeAgentCompositionTarget,
+  rendered: String,
+  maxBytes: Long,
+) {
+  val bytes = rendered.toByteArray(Charsets.UTF_8).size
+  if (bytes > maxBytes) {
     val packRoot = platformPackRoot(root, target.contentPath.toAbsolutePath().normalize())
-    throw MissingContentFileError(
+    throw ComposedNativeAgentBudgetExceededError(
       "pack '${packRoot?.fileName ?: displayPath(root, target.contentPath)}' skill directory " +
-        "'${skillRelativeDir(packRoot, target.contentPath)}': composed native agent is $bytes bytes, " +
-        "over the $MAX_COMPOSED_AGENT_BYTES byte budget",
+        "'${skillRelativeDir(packRoot, target.contentPath)}': rendered native agent is $bytes bytes, " +
+        "over the $maxBytes byte review context launch budget",
     )
   }
 }
@@ -90,7 +115,9 @@ private fun resolveDeclaredAddonTargets(
   }
   val contentPath = target.contentPath.toAbsolutePath().normalize()
   val packRoot = platformPackRoot(root, contentPath) ?: return emptyList()
-  val pack = loadPlatformPack(packRoot)
+  val pack = requireNotNull(target.manifest) {
+    "${displayPath(root, contentPath)}: platform-pack native agent composition requires a parsed platform.yaml manifest"
+  }
   val selections = pack.addonUsageFor(contentPath)
   if (selections.isEmpty()) {
     return emptyList()
@@ -104,13 +131,22 @@ private fun resolveDeclaredAddonTargets(
     val slots = listOf(ENTRYPOINT_SLOT to selection.entrypoint) +
       selection.companionPointers.map { pointer -> pointer to pointer }
     slots.forEach { (slot, pointerName) ->
-      val addon = resolveAddonTarget(root, declared, skillRelativeDir, selection.slug, slot, pointerName)
+      val addon = resolveAddonTarget(
+        root,
+        declared,
+        skillRelativeDir,
+        selection.slug,
+        slot,
+        pointerName,
+        selection.activation,
+      )
       resolved.putIfAbsent(addon.path, addon)
     }
   }
   return resolved.values.toList()
 }
 
+@Suppress("LongParameterList")
 private fun resolveAddonTarget(
   root: Path,
   declared: Map<String, PointerSpec>,
@@ -118,6 +154,7 @@ private fun resolveAddonTarget(
   slug: String,
   slot: String,
   pointerName: String,
+  activation: GovernedAddonActivation?,
 ): ComposedAddonTarget {
   val pointer = declared[pointerName]
     ?: throw MissingContentFileError(
@@ -125,7 +162,7 @@ private fun resolveAddonTarget(
         "'$skillRelativeDir'",
     )
   val path = root.resolve(pointer.target).toAbsolutePath().normalize()
-  val addon = ComposedAddonTarget(slug = slug, slot = slot, path = path)
+  val addon = ComposedAddonTarget(slug = slug, slot = slot, path = path, activation = activation)
   if (!Files.isRegularFile(path)) {
     throw MissingContentFileError(addonFailureMessage(root, addon, "is missing"))
   }

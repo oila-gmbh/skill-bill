@@ -73,7 +73,13 @@ $defs:
     required: [kind, id]
     properties:
       kind:
-        enum: [upstream_phase_output, run_invariant_field, derived_ceremony_scaling, addon_content, shared_review_evidence]
+        enum:
+          - upstream_phase_output
+          - run_invariant_field
+          - derived_ceremony_scaling
+          - addon_content
+          - shared_review_evidence
+          - repair_ledger
       id:
         type: string
         minLength: 1

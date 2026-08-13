@@ -191,6 +191,8 @@ pointers:
       target: platform-packs/ios/addons/offline-sync-consistency.md
     - name: offline-conflict-resolution.md
       target: platform-packs/ios/addons/offline-conflict-resolution.md
+    - name: offline-background-reliability.md
+      target: platform-packs/ios/addons/offline-background-reliability.md
   code-review/bill-ios-code-review-platform-correctness:
     - name: specialist-contract.md
       target: orchestration/review-orchestrator/specialist-contract.md
@@ -198,6 +200,10 @@ pointers:
       target: platform-packs/ios/addons/offline-first-review.md
     - name: offline-conflict-resolution.md
       target: platform-packs/ios/addons/offline-conflict-resolution.md
+    - name: offline-sync-consistency.md
+      target: platform-packs/ios/addons/offline-sync-consistency.md
+    - name: offline-background-reliability.md
+      target: platform-packs/ios/addons/offline-background-reliability.md
   code-review/bill-ios-code-review-reliability:
     - name: specialist-contract.md
       target: orchestration/review-orchestrator/specialist-contract.md
@@ -207,6 +213,8 @@ pointers:
       target: platform-packs/ios/addons/offline-background-reliability.md
     - name: offline-sync-consistency.md
       target: platform-packs/ios/addons/offline-sync-consistency.md
+    - name: offline-conflict-resolution.md
+      target: platform-packs/ios/addons/offline-conflict-resolution.md
   code-review/bill-ios-code-review-security:
     - name: specialist-contract.md
       target: orchestration/review-orchestrator/specialist-contract.md
