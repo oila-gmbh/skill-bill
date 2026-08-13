@@ -148,3 +148,7 @@ internal fun boundedSchemaGateDetail(validationReason: String): String =
 
 internal fun withSchemaGateDetail(policyReason: String, validationReason: String): String =
   "$policyReason Last schema-gate failure: ${boundedSchemaGateDetail(validationReason)}"
+
+internal fun nonRetryingPhaseSchemaBlockReason(phaseId: String): String =
+  "Phase '$phaseId' produced schema-invalid output and does not participate in a fix loop; " +
+    "the run blocks rather than advancing on invalid output."

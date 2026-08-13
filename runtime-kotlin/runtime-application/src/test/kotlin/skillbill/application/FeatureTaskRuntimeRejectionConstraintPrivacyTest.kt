@@ -8,6 +8,7 @@ import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import kotlin.test.Test
 import kotlin.test.assertContains
+import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -66,23 +67,29 @@ class FeatureTaskRuntimeRejectionConstraintPrivacyTest {
   }
 
   @Test
-  fun `a cap-exhausting rejection keeps every operator surface free of the constraint and the raw span`() {
-    val harness = rejectingHarness(failEveryAttempt = true) { sourceLabel ->
-      InvalidFeatureTaskRuntimePhaseOutputSchemaError(
-        sourceLabel = sourceLabel,
-        reason = valueBearingReason,
-        payloadFreeReason = payloadFreeConstraint,
-      )
-    }
+  fun `a terminal schema-gate block keeps every operator surface free of the constraint and the raw span`() {
+    var writeHistoryAttempts = 0
+    val harness = runnerHarness(
+      validator = object : FeatureTaskRuntimePhaseOutputValidator {
+        override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
+          if (sourceLabel != "write_history") return
+          writeHistoryAttempts += 1
+          throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
+            sourceLabel = sourceLabel,
+            reason = valueBearingReason,
+            payloadFreeReason = payloadFreeConstraint,
+          )
+        }
+      },
+    )
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
 
-    // The blocked reason is the operator surface the fix loop composes at cap exhaustion.
+    assertEquals("write_history", blocked.lastIncompletePhase)
     assertPrivateDiagnosticRejection(blocked.blockedReason, "phase-output-schema", rawSpan, payloadFreeConstraint)
     assertNoRawResponseSpan(blocked.blockedReason, rawSpan)
-    // The durable phase row and the status surface read from it must agree with the report.
-    val reviewRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
-    assertNoRawResponseSpan(requireNotNull(reviewRecord.blockedReason), rawSpan, payloadFreeConstraint)
+    val writeHistoryRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["write_history"])
+    assertNoRawResponseSpan(requireNotNull(writeHistoryRecord.blockedReason), rawSpan, payloadFreeConstraint)
   }
 
   @Test
@@ -168,14 +175,14 @@ class FeatureTaskRuntimeRejectionConstraintPrivacyTest {
     return prompts
   }
 
-  private fun rejectingHarness(failEveryAttempt: Boolean = false, error: (String) -> Throwable): RunnerHarness {
+  private fun rejectingHarness(error: (String) -> Throwable): RunnerHarness {
     var reviewAttempts = 0
     return runnerHarness(
       validator = object : FeatureTaskRuntimePhaseOutputValidator {
         override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
           if (sourceLabel != "review") return
           reviewAttempts += 1
-          if (failEveryAttempt || reviewAttempts < 2) throw error(sourceLabel)
+          if (reviewAttempts < 2) throw error(sourceLabel)
         }
       },
     )

@@ -16,23 +16,22 @@ class FeatureTaskRuntimeAuditRepairRegressionTest {
   fun `SKILL-128 broad gaps persist one complete plan and reject production-only repair`() {
     var auditLaunches = 0
     var implementLaunches = 0
-    var allowExhaustiveRepair = false
     val harness = skill128Harness(
       nextAuditLaunch = { ++auditLaunches },
       nextImplementLaunch = { ++implementLaunches },
-      allowExhaustiveRepair = { allowExhaustiveRepair },
+      allowExhaustiveRepair = { implementLaunches >= 5 },
     )
 
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
-    assertContains(blocked.blockedReason, "audit-repair-result")
-    assertContains(blocked.blockedReason, "Inspect the private diagnostic")
-    assertTrue(!blocked.blockedReason.contains("ac-002-gap-1-item-1"))
-    assertTrue(!blocked.blockedReason.contains("ac-003-gap-1-item-1"))
-    assertTrue(harness.launchedPromptPhaseOrder().none { it == "validate" })
+    val report = harness.runner.run(harness.request())
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
 
-    allowExhaustiveRepair = true
-    val resumed = harness.runner.run(harness.request())
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(resumed, resumed.toString())
+    val implementPrompts = harness.launcher.requests
+      .map { requireNotNull(it.skillRunRequest.promptOverride) }
+      .filter { phaseIdFromPrompt(it) == "implement" }
+    assertTrue(
+      implementPrompts.any { it.contains("audit-repair-result") },
+      "production-only repair must be named on the implement retry prompt",
+    )
 
     val repairState = requireNotNull(harness.recorder.loadAuditRepairState(WORKFLOW_ID))
     assertEquals(1, repairState.acceptedPlans.size)
@@ -42,7 +41,7 @@ class FeatureTaskRuntimeAuditRepairRegressionTest {
       listOf("ac-001-gap-1-item-1", "ac-002-gap-1-item-1", "ac-003-gap-1-item-1"),
       plan.gaps.flatMap { gap -> gap.repairItems.map { it.repairItemId } },
     )
-    assertEquals(5, implementLaunches, "three bounded partial attempts precede one exhaustive resume")
+    assertEquals(5, implementLaunches, "three partial attempts precede one exhaustive repair")
     assertEquals(2, auditLaunches, "completion requires a following audit after exhaustive remediation")
     assertTrue(
       harness.launchedPromptPhaseOrder().indexOf("validate") >
@@ -89,22 +88,23 @@ class FeatureTaskRuntimeAuditRepairRegressionTest {
 
   @Test
   fun `a completed remediation carrying structured deferred work is rejected`() {
+    var auditLaunches = 0
     var implementLaunches = 0
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
         when (phaseId) {
-          "audit" -> facts(auditGapsOutput())
+          "audit" -> facts(if (++auditLaunches < 2) auditGapsOutput() else auditSatisfiedOutput())
           "implement" -> {
             implementLaunches += 1
             facts(
-              if (implementLaunches == 1) {
-                validJsonOutput(phaseId)
-              } else {
+              if (implementLaunches == 2) {
                 validJsonOutput(phaseId).replace(
                   "\"deferred_repair_item_ids\":[]",
                   "\"deferred_repair_item_ids\":[\"ac-002-gap-1-item-1\"]",
                 )
+              } else {
+                validJsonOutput(phaseId)
               },
             )
           }
@@ -113,34 +113,32 @@ class FeatureTaskRuntimeAuditRepairRegressionTest {
       },
     )
 
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
-
-    assertEquals("implement", blocked.lastIncompletePhase)
-    assertPrivateDiagnosticRejection(
-      blocked.blockedReason,
-      "audit-repair-result",
-      "audit_repair.completed.deferred_work",
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+    val implementPrompts = harness.launcher.requests
+      .map { requireNotNull(it.skillRunRequest.promptOverride) }
+      .filter { phaseIdFromPrompt(it) == "implement" }
+    assertTrue(
+      implementPrompts.any { it.contains("audit-repair-result") },
+      "structured deferred work on a completed remediation must be named on the retry prompt",
     )
-    val repairState = requireNotNull(harness.recorder.loadAuditRepairState(WORKFLOW_ID))
-    assertEquals(listOf("ac-002-gap-1"), repairState.unresolvedGapLedger.unresolvedGaps.map { it.gapId })
-    assertTrue(harness.launchedPromptPhaseOrder().none { it == "validate" })
+    val diagnostic = harness.io.database.rejectedDiagnostics().last().metadata
+    assertEquals("audit_repair.completed.deferred_work", diagnostic.rule)
   }
 
   @Test
   fun `a completed remediation cannot also name an unresolvable repair`() {
+    var auditLaunches = 0
     var implementLaunches = 0
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
         when (phaseId) {
-          "audit" -> facts(auditGapsOutput())
+          "audit" -> facts(if (++auditLaunches < 2) auditGapsOutput() else auditSatisfiedOutput())
           "implement" -> {
             implementLaunches += 1
             val output = validJsonOutput(phaseId)
             facts(
-              if (implementLaunches == 1) {
-                output
-              } else {
+              if (implementLaunches == 2) {
                 output.replace(
                   "\"deferred_repair_item_ids\":[]",
                   """
@@ -156,6 +154,8 @@ class FeatureTaskRuntimeAuditRepairRegressionTest {
                     "deferred_repair_item_ids":[]
                   """.trimIndent(),
                 )
+              } else {
+                output
               },
             )
           }
@@ -164,13 +164,7 @@ class FeatureTaskRuntimeAuditRepairRegressionTest {
       },
     )
 
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
-
-    assertPrivateDiagnosticRejection(
-      blocked.blockedReason,
-      "audit-repair-result",
-      "audit_repair.completed.unresolvable_repair",
-    )
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
     val diagnostic = harness.io.database.rejectedDiagnostics().last().metadata
     assertEquals("audit_repair.completed.unresolvable_repair", diagnostic.rule)
     assertEquals("/produced_outputs/unresolvable_repair", diagnostic.path)
@@ -179,20 +173,27 @@ class FeatureTaskRuntimeAuditRepairRegressionTest {
   @Test
   fun `blocked repair consistency failures retain stable rules and exact paths`() {
     invalidBlockedRepairCases().forEach { invalid ->
+      var auditLaunches = 0
       var implementLaunches = 0
       val harness = runnerHarness(
         launcher = RuntimeRecordingLauncher { request ->
           when (val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))) {
-            "audit" -> facts(auditRepairPlanOutput(criterionRef = "AC-002", itemCount = 1))
-            "implement" -> facts(
-              if (++implementLaunches == 1) {
-                validJsonOutput(phaseId)
+            "audit" -> facts(
+              if (++auditLaunches < 2) {
+                auditRepairPlanOutput(criterionRef = "AC-002", itemCount = 1)
               } else {
+                auditSatisfiedOutput()
+              },
+            )
+            "implement" -> facts(
+              if (++implementLaunches == 2) {
                 blockedRemediationOutput(
                   gapId = "ac-002-gap-1",
                   repairItemId = "ac-002-gap-1-item-1",
                   unresolvableRepair = invalid.value,
                 )
+              } else {
+                validJsonOutput(phaseId)
               },
             )
             else -> facts(validJsonOutput(phaseId))
@@ -200,11 +201,10 @@ class FeatureTaskRuntimeAuditRepairRegressionTest {
         },
       )
 
-      val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(
+      assertIs<FeatureTaskRuntimeRunReport.Completed>(
         harness.runner.run(harness.request()),
         invalid.name,
       )
-      assertPrivateDiagnosticRejection(blocked.blockedReason, "terminal-audit-repair")
       val diagnostic = harness.io.database.rejectedDiagnostics().last().metadata
       assertEquals(invalid.rule, diagnostic.rule, invalid.name)
       assertEquals(invalid.path, diagnostic.path, invalid.name)
@@ -217,16 +217,21 @@ class FeatureTaskRuntimeAuditRepairRegressionTest {
   fun `rejected phase output is persisted bounded on the durable blocked record`() {
     val marker = "REGRESSION-MARKER-REJECTED-PAYLOAD"
     val padding = "p".repeat(30_000)
+    var auditLaunches = 0
     var implementLaunches = 0
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         when (val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))) {
-          "audit" -> facts(auditRepairPlanOutput(criterionRef = "AC-002", itemCount = 1))
+          "audit" -> facts(
+            if (++auditLaunches < 2) {
+              auditRepairPlanOutput(criterionRef = "AC-002", itemCount = 1)
+            } else {
+              auditSatisfiedOutput()
+            },
+          )
           "implement" -> {
             implementLaunches += 1
-            if (implementLaunches == 1) {
-              facts(validJsonOutput(phaseId))
-            } else {
+            if (implementLaunches == 2) {
               facts(
                 remediationResultsOutput(
                   repairItemIds = listOf("ac-002-gap-1-item-9"),
@@ -234,6 +239,8 @@ class FeatureTaskRuntimeAuditRepairRegressionTest {
                   extraProducedOutputs = ""","notes":"$padding"""",
                 ),
               )
+            } else {
+              facts(validJsonOutput(phaseId))
             }
           }
           else -> facts(validJsonOutput(phaseId))
@@ -241,12 +248,12 @@ class FeatureTaskRuntimeAuditRepairRegressionTest {
       },
     )
 
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
-    assertEquals("implement", blocked.lastIncompletePhase)
     val implementRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
     assertEquals(null, implementRecord.rejectedOutput)
     assertEquals(false, implementRecord.toArtifactMap().toString().contains(marker))
+    assertTrue(harness.io.database.rejectedDiagnostics().isNotEmpty())
   }
 
   // The audit-repair-plan schema permits an uppercase AC- prefix and plan ingest lowercases it, so a

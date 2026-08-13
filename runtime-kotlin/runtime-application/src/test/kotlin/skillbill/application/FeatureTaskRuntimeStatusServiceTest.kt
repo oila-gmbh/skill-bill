@@ -17,6 +17,7 @@ import skillbill.application.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.model.FeatureTaskRuntimeStatusRequest
 import skillbill.application.model.IdeStatusCurrentPhaseExecutionKind
 import skillbill.contracts.JsonSupport
+import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.LearningRepository
 import skillbill.ports.persistence.LifecycleTelemetryRepository
@@ -31,10 +32,13 @@ import skillbill.ports.persistence.model.WorkflowStateRecord
 import skillbill.workflow.WorkflowSnapshotValidator
 import skillbill.workflow.taskruntime.model.AUDIT_REPAIR_CONTRACT_VERSION
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DIAGNOSTIC_SIGNALS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGap
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticFailureClass
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticSignal
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeEvidence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
@@ -52,6 +56,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRunR
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -563,6 +568,57 @@ class FeatureTaskRuntimeStatusServiceTest {
     assertNull(projection.currentPhaseId, "a completed forward run reports no current phase, not implement_fix")
   }
 
+  @Test
+  fun `a workflow with two durable signals reports count and the latest class phase and attempt`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.seedDiagnosticSignals(
+      diagnosticSignal(
+        failureClass = FeatureTaskRuntimeDiagnosticFailureClass.CONFLICT,
+        phaseId = "validate",
+        attempt = 1,
+      ),
+      diagnosticSignal(
+        failureClass = FeatureTaskRuntimeDiagnosticFailureClass.PERMISSION,
+        phaseId = "implement",
+        attempt = 2,
+      ),
+    )
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+
+    val degraded = requireNotNull(projection.degradedDiagnostic)
+    assertEquals(2, degraded.count)
+    assertEquals("permission", degraded.failureClass)
+    assertEquals("implement", degraded.phaseId)
+    assertEquals(2, degraded.attempt)
+  }
+
+  @Test
+  fun `a workflow with no diagnostic-signals artifact reports degradedDiagnostic as null`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+
+    val projection = requireNotNull(
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
+    )
+
+    assertNull(projection.degradedDiagnostic)
+  }
+
+  @Test
+  fun `a diagnostic-signals artifact that is not an array loud-fails status`() {
+    val harness = statusHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    harness.seedDiagnosticSignalsArtifact("not-an-array")
+
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID))
+    }
+  }
+
   private companion object {
     const val WORKFLOW_ID = "wftr-20260603-status-0001"
     const val SESSION_ID = "ftr-status-001"
@@ -979,6 +1035,21 @@ class FeatureTaskRuntimeStatusAttributionTest {
   }
 }
 
+private fun diagnosticSignal(
+  failureClass: FeatureTaskRuntimeDiagnosticFailureClass,
+  phaseId: String,
+  attempt: Int,
+): FeatureTaskRuntimeDiagnosticSignal = FeatureTaskRuntimeDiagnosticSignal(
+  operation = "retain-producer-output",
+  failureClass = failureClass,
+  conflictingKey = "wftr-20260603-status-0001:$phaseId:0:$attempt:1:cursor",
+  phaseId = phaseId,
+  attempt = attempt,
+  repairTurn = 1,
+  generation = 0,
+  recordedAt = "2026-08-12T20:19:51Z",
+)
+
 private fun statusHarness(): StatusHarness {
   val repository = StatusInMemoryWorkflowRepository()
   val database = StatusFakeDatabaseSessionFactory(repository)
@@ -1139,6 +1210,19 @@ private class StatusHarness(
         progress = progress,
       ),
     )
+    repository.saveFeatureTaskRuntimeWorkflow(
+      row.copy(artifactsJson = JsonSupport.mapToJsonString(artifacts)),
+    )
+  }
+
+  fun seedDiagnosticSignals(vararg signals: FeatureTaskRuntimeDiagnosticSignal) {
+    seedDiagnosticSignalsArtifact(signals.map { it.toArtifactMap() })
+  }
+
+  fun seedDiagnosticSignalsArtifact(raw: Any?) {
+    val row = requireNotNull(repository.getFeatureTaskRuntimeWorkflow(WORKFLOW_ID))
+    val artifacts = decodeArtifacts(row.artifactsJson).toMutableMap()
+    artifacts[FEATURE_TASK_RUNTIME_DIAGNOSTIC_SIGNALS_ARTIFACT_KEY] = raw
     repository.saveFeatureTaskRuntimeWorkflow(
       row.copy(artifactsJson = JsonSupport.mapToJsonString(artifacts)),
     )

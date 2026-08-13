@@ -9,7 +9,7 @@ The default telemetry level is `anonymous`. Collection is on unless you disable 
 
 | Level | Behavior |
 |-------|----------|
-| `off` | Nothing is transmitted: `sync` and `autoSync` short-circuit on the disabled level. Three events are still written to the local outbox — `skillbill_runtime_exception`, `skillbill_feature_task_runtime_projection_measurement`, and `skillbill_feature_task_runtime_shared_evidence` — see [What is still queued at `off`](#what-is-still-queued-at-off). |
+| `off` | Nothing is transmitted: `sync` and `autoSync` short-circuit on the disabled level. Four events are still written to the local outbox — `skillbill_runtime_exception`, `skillbill_feature_task_runtime_projection_measurement`, `skillbill_feature_task_runtime_shared_evidence`, and `skillbill_feature_task_runtime_diagnostic_degradation` — see [What is still queued at `off`](#what-is-still-queued-at-off). |
 | `anonymous` | Counts, enums, durations, and identifiers derived by one-way hash. No file paths, descriptions, notes, learning text, error messages, or non-Skill-Bill stack frames. |
 | `full` | Everything in `anonymous`, plus the free-text and path fields marked below. |
 
@@ -21,7 +21,7 @@ outbox but never transmitted while the level is `off`.
 
 ### What is still queued at `off`
 
-Three producers enqueue without consulting the telemetry level:
+Four producers enqueue without consulting the telemetry level:
 
 - `TelemetryService.captureException` enqueues `skillbill_runtime_exception` guarded only by
   `database.databaseExists`; the level is used solely to choose redaction, so at `off` the row is
@@ -33,6 +33,10 @@ Three producers enqueue without consulting the telemetry level:
   `skillbill_feature_task_runtime_shared_evidence` with no telemetry gate; the row carries the
   checkpoint fingerprint, consuming phase id, outcome (`derivation` / `reuse` /
   `checkpoint_change_rederivation`), and bounded index counters only.
+- `FeatureTaskRuntimePhaseRecorder.degradeDiagnosticFailure` enqueues
+  `skillbill_feature_task_runtime_diagnostic_degradation` with no telemetry gate; the row carries
+  the workflow, phase, attempt, generation, operation, typed failure class, and conflicting key
+  (`repair_turn` only when the failure was scoped to one turn).
 
 Nothing is transmitted while the level is `off`: `TelemetryService.sync` and
 `TelemetryService.autoSync` return before upload when the resolved settings are disabled.
@@ -100,6 +104,21 @@ enqueues `toTelemetryMap` verbatim, so an issue key embedded in the workflow id 
 
 This event is enqueued regardless of level. It carries no file paths, diff content, or prompt
 bodies — only the identifiers and counters needed to compute reuse rate.
+
+### `skillbill_feature_task_runtime_diagnostic_degradation`
+
+| Field | off | anonymous | full | Source |
+|-------|-----|-----------|------|--------|
+| `contract_version`, `phase_id`, `attempt`, `generation`, `operation`, `failure_class`, `conflicting_key` | queued only | ✓ | ✓ | `FeatureTaskRuntimeDiagnosticDegradationMeasurement.toTelemetryMap` |
+| `workflow_id` | queued only | ✓ raw, not hashed | ✓ | `FeatureTaskRuntimeDiagnosticDegradationMeasurement.toTelemetryMap` |
+| `repair_turn` | queued only, omitted when the failure was not scoped to one turn | ✓ when present | ✓ when present | `FeatureTaskRuntimeDiagnosticDegradationMeasurement.toTelemetryMap` |
+
+This event is enqueued regardless of level. At `off` the row is written locally and not sent.
+
+Unlike the goal events above, this event's `workflow_id` is **not** redacted at `anonymous`:
+`LifecycleTelemetryStore.featureTaskRuntimeDiagnosticDegradation` takes no level parameter and
+enqueues `toTelemetryMap` verbatim. No agent output, prompt text, database path, or process output
+is present on the map.
 
 ### `skillbill_quality_check_started` / `skillbill_quality_check_finished`
 

@@ -1,6 +1,5 @@
 package skillbill.application
 
-import skillbill.application.featuretask.FeatureTaskRuntimeFixLoopPolicy
 import skillbill.application.featuretask.sha256HexUtf8
 import skillbill.application.goalrunner.DefaultGoalPlanningSweep
 import skillbill.application.goalrunner.GoalPlanningAttemptRecorder
@@ -1343,22 +1342,7 @@ class GoalPlanningSweepTest {
   }
 
   @Test
-  fun `malformed phase output stops at the bounded schema retry cap without checkpointing`() {
-    val harness = sweepHarness { _, _, _ -> launchFacts(stdout = "not a json object") }
-
-    val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
-
-    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
-    assertEquals(0, stopped.currentSubtaskId)
-    assertEquals("preplan", stopped.lastResumableStep)
-    assertEquals(0, harness.preparedCount())
-    assertEquals(FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS, harness.launcher.phases.size)
-    assertTrue(stopped.blockedReason.contains("no acceptable output"), stopped.blockedReason)
-    assertTrue(stopped.blockedReason.contains("Last failure:"), stopped.blockedReason)
-  }
-
-  @Test
-  fun `empty provider turn on a clean exit is retried under the fix-loop cap instead of blocking at once`() {
+  fun `empty provider turn on a clean exit is retried instead of blocking at once`() {
     var launches = 0
     val harness = sweepHarness { phase, _, _ ->
       launches += 1
@@ -1390,34 +1374,42 @@ class GoalPlanningSweepTest {
   }
 
   @Test
-  fun `exhausted empty provider turns block with launch facts rather than a schema verdict`() {
-    val harness = sweepHarness { _, _, _ -> emptyProviderTurnOutcome() }
+  fun `an empty provider turn records launch facts rather than a schema verdict`() {
+    var launches = 0
+    val recorded = mutableListOf<GoalPlanningRejectionRecord>()
+    val harness = sweepHarness(planningRejectionRecorder = { recorded += it }) { phase, _, _ ->
+      launches += 1
+      if (launches == 1) emptyProviderTurnOutcome() else validPhaseOutcome(phase)
+    }
 
-    val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
-
-    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
-    assertEquals(FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS, harness.launcher.phases.size)
-    assertEquals(0, harness.preparedCount())
-    assertContains(stopped.blockedReason, "EmptyProviderTurn")
-    assertContains(stopped.blockedReason, "assistantEvents=0")
-    assertContains(stopped.blockedReason, "outputTokens=0")
+    assertIs<GoalPlanningSweepOutcome.PreparedAll>(
+      harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request()),
+    )
+    val first = recorded.single()
+    assertContains(first.reason, "EmptyProviderTurn")
+    assertContains(first.reason, "assistantEvents=0")
+    assertContains(first.reason, "outputTokens=0")
     assertFalse(
-      stopped.blockedReason.contains("schema-invalid"),
+      first.reason.contains("schema-invalid"),
       "an operator must not be told the schema rejected output that was never produced",
     )
   }
 
   @Test
   fun `empty provider turns are retained as durable rejection evidence`() {
+    var launches = 0
     val recorded = mutableListOf<GoalPlanningRejectionRecord>()
-    val harness = sweepHarness(planningRejectionRecorder = { recorded += it }) { _, _, _ ->
-      emptyProviderTurnOutcome()
+    val harness = sweepHarness(planningRejectionRecorder = { recorded += it }) { phase, _, _ ->
+      launches += 1
+      if (launches <= 2) emptyProviderTurnOutcome() else validPhaseOutcome(phase)
     }
 
-    harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
+    assertIs<GoalPlanningSweepOutcome.PreparedAll>(
+      harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request()),
+    )
 
-    assertEquals(FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS, recorded.size)
-    assertEquals(listOf(1, 2, 3), recorded.map { it.attempt })
+    assertEquals(2, recorded.size)
+    assertEquals(listOf(1, 2), recorded.map { it.attempt })
     val first = recorded.first()
     assertEquals("empty-planning-harvest", first.rule)
     assertEquals("preplan", first.phaseId)
@@ -1470,9 +1462,7 @@ class GoalPlanningSweepTest {
       fixtures.outputValidator,
       SweepPlanningLauncher { phase, _, _ ->
         if (phase == "plan") {
-          launchFacts(
-            stdout = "",
-          )
+          launchFacts(stdout = phasePayload(phase).replace("\"completed\"", "\"blocked\""))
         } else {
           validPhaseOutcome(phase)
         }
@@ -1535,7 +1525,11 @@ class GoalPlanningSweepTest {
   fun `all plans gate blocks every child activation while a plan is missing`() {
     val fixtures = sharedSweepFixtures()
     val sharedLauncher = SweepPlanningLauncher { phase, subtaskId, _ ->
-      if (subtaskId == 2) launchFacts(stdout = "") else validPhaseOutcome(phase)
+      if (subtaskId == 2) {
+        launchFacts(stdout = phasePayload(phase).replace("\"completed\"", "\"blocked\""))
+      } else {
+        validPhaseOutcome(phase)
+      }
     }
     val sweep = DefaultGoalPlanningSweep(
       fixtures.checkpoint,
@@ -1822,46 +1816,19 @@ class GoalPlanningSweepTest {
   }
 
   @Test
-  fun `a plan child that never emits a valid projection stops at the fix-loop cap with nothing checkpointed`() {
-    var planAttempts = 0
-    val harness = sweepHarness(planningProjectionValidator = realPlanningProjectionValidator) { phase, _, _ ->
-      if (phase != "plan") {
-        validPhaseOutcome(phase)
-      } else {
-        planAttempts += 1
-        launchFacts(stdout = emptyTestObligationsPlanPayload())
-      }
-    }
-
-    val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
-
-    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
-    assertEquals(FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS, planAttempts)
-    assertEquals(1, stopped.currentSubtaskId)
-    assertEquals("plan", stopped.lastResumableStep)
-    assertTrue(stopped.blockedReason.contains("test_obligations"), stopped.blockedReason)
-    assertEquals(0, harness.preparedCount(), "no subtask plan may be checkpointed in the failing state")
-    assertNull(harness.recordFor(1))
-  }
-
-  @Test
   fun `the preplan gate observes the enriched payload that is actually checkpointed`() {
     // Enrichment, not raw child stdout, produces the checkpointed bytes. A rejecting validator must
     // therefore be reached through the enriched payload, before checkpointSharedPreplan runs.
-    val harness = sweepHarness(planningProjectionValidator = RejectingSweepPlanningProjectionValidator) { phase, _, _ ->
+    val validator = RejectOnceSweepPlanningProjectionValidator()
+    val harness = sweepHarness(planningProjectionValidator = validator) { phase, _, _ ->
       validPhaseOutcome(phase)
     }
 
     val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
 
-    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
-    assertEquals("preplan", stopped.lastResumableStep)
-    assertEquals(0, harness.preparedCount())
-    assertEquals(
-      FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS,
-      harness.launcher.phases.count { it == "preplan" },
-      "the preplan fix loop reuses the one runtime cap",
-    )
+    assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
+    assertEquals(2, harness.launcher.phases.count { it == "preplan" })
+    assertTrue(validator.calls >= 1, "the gate must observe the enriched payload before checkpointing")
   }
 
   @Test
@@ -1922,16 +1889,16 @@ class GoalPlanningSweepTest {
       emptyTurnBackoffFactor = 2,
       waitSlice = 60.seconds,
     )
-    val harness = sweepHarness(timingPort = timing, burstSchedule = schedule) { _, _, _ ->
-      emptyProviderTurnOutcome()
+    var launches = 0
+    val harness = sweepHarness(timingPort = timing, burstSchedule = schedule) { phase, _, _ ->
+      launches += 1
+      if (launches <= 2) emptyProviderTurnOutcome() else validPhaseOutcome(phase)
     }
 
     val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
 
-    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
-    assertEquals(FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS, harness.launcher.phases.size)
+    assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
     assertEquals(listOf(30.seconds, 60.seconds), timing.waits)
-    assertContains(stopped.blockedReason, "EmptyProviderTurn")
   }
 
   @Test
@@ -2756,6 +2723,20 @@ private class MutablePauseGoalPlanningManifestStore : GoalRunnerManifestStore {
     generation: Long,
     dbPathOverride: String?,
   ): Boolean = true
+}
+
+private class RejectOnceSweepPlanningProjectionValidator : FeatureTaskRuntimePlanningProjectionValidator {
+  var calls: Int = 0
+
+  override fun validatePlanningProjection(producedOutputs: Map<String, Any?>, sourceLabel: String) {
+    calls += 1
+    if (calls == 1) {
+      throw InvalidFeatureTaskRuntimePlanningProjectionSchemaError(
+        sourceLabel = sourceLabel,
+        reason = "additionalProperties: legacy shared preplan carries an undeclared field",
+      )
+    }
+  }
 }
 
 private object RejectingSweepPlanningProjectionValidator : FeatureTaskRuntimePlanningProjectionValidator {

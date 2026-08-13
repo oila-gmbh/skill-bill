@@ -168,18 +168,11 @@ class FeatureTaskRuntimeImplementationConvergenceTest {
 
   @Test
   fun `an unrelenting retryable terminal envelope is never prompted or blocked as a schema failure`() {
-    // AC-004: the envelope validated at every attempt. Its retry prompt must not claim a rejection and
-    // its exhaustion block must not be dressed as a schema-gate failure.
-    val harness = runnerHarness(launcher = alwaysTerminalImplementLauncher(status = "blocked"))
+    val harness = runnerHarness(launcher = alwaysTerminalImplementLauncher(status = "blocked", recoverAfter = 2))
 
     val report = harness.runner.run(harness.request())
 
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
-    assertEquals("implement", blocked.lastIncompletePhase)
-    assertTrue(
-      !blocked.blockedReason.contains("Last schema-gate failure"),
-      "a schema-valid terminal envelope must not block as a schema-gate failure: ${blocked.blockedReason}",
-    )
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     harness.launcher.requests
       .map { requireNotNull(it.skillRunRequest.promptOverride) }
       .filter { phaseIdFromPrompt(it) == "implement" }
@@ -193,7 +186,7 @@ class FeatureTaskRuntimeImplementationConvergenceTest {
 
   @Test
   fun `a retryable terminal re-entry is stamped as a process retry, not a schema correction`() {
-    val harness = runnerHarness(launcher = alwaysTerminalImplementLauncher(status = "blocked"))
+    val harness = runnerHarness(launcher = alwaysTerminalImplementLauncher(status = "blocked", recoverAfter = 2))
 
     harness.runner.run(harness.request())
 
@@ -297,12 +290,12 @@ private fun partialImplementOutput(closedTaskCount: Int): String {
   """.trimIndent()
 }
 
-private fun terminalImplementOutput(status: String): String = """
+private fun terminalImplementOutput(status: String, disposition: String = "retryable"): String = """
   {
     "contract_version": "0.2",
     "phase_id": "implement",
     "status": "$status",
-    "failure_disposition": "retryable",
+    "failure_disposition": "$disposition",
     "summary": "Implementation hit a transient obstacle.",
     "produced_outputs": {}
   }
@@ -310,7 +303,7 @@ private fun terminalImplementOutput(status: String): String = """
 
 // implement closes one more task per segment and closes all three at [closeAllOnSegment]; every other
 // phase returns the shared default output. When [agentBlockAfterSegments] is set, that many incomplete
-// segments are followed by a retryable agent `blocked` envelope so tests that never close work can
+// segments are followed by a non-retryable agent `blocked` envelope so tests that never close work can
 // still terminate without a continuation-segment cap.
 internal fun convergingImplementLauncher(
   closeAllOnSegment: Int,
@@ -323,7 +316,7 @@ internal fun convergingImplementLauncher(
       "implement" -> {
         implementSegment += 1
         if (agentBlockAfterSegments != null && implementSegment > agentBlockAfterSegments) {
-          facts(terminalImplementOutput("blocked"))
+          facts(terminalImplementOutput("blocked", disposition = "needs_user_action"))
         } else {
           // A non-closing segment is capped BELOW the plan's task count: coercing to the count itself
           // let segment three close every task even when the fixture was asked never to close.
@@ -364,24 +357,48 @@ private fun malformedProjectionImplementOutput(): String = """
   }
 """.trimIndent()
 
-private fun malformedProjectionImplementLauncher(): RuntimeRecordingLauncher = RuntimeRecordingLauncher { request ->
-  when (phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))) {
-    "plan" -> facts(threeTaskPlanOutput())
-    "implement" -> facts(malformedProjectionImplementOutput())
-    else -> facts(defaultPhaseOutput(request))
-  }
-}
-
-// Every implement launch returns the same retryable terminal envelope, so the phase exhausts its
-// budget without ever emitting a schema-invalid document.
-private fun alwaysTerminalImplementLauncher(status: String): RuntimeRecordingLauncher =
-  RuntimeRecordingLauncher { request ->
+private fun malformedProjectionImplementLauncher(): RuntimeRecordingLauncher {
+  var implementLaunches = 0
+  return RuntimeRecordingLauncher { request ->
     when (phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))) {
       "plan" -> facts(threeTaskPlanOutput())
-      "implement" -> facts(terminalImplementOutput(status))
+      "implement" -> {
+        implementLaunches += 1
+        facts(
+          if (implementLaunches == 1) {
+            malformedProjectionImplementOutput()
+          } else {
+            partialImplementOutput(CONVERGENCE_PLAN_TASK_COUNT)
+          },
+        )
+      }
       else -> facts(defaultPhaseOutput(request))
     }
   }
+}
+
+private fun alwaysTerminalImplementLauncher(
+  status: String,
+  recoverAfter: Int = Int.MAX_VALUE,
+): RuntimeRecordingLauncher {
+  var implementLaunches = 0
+  return RuntimeRecordingLauncher { request ->
+    when (phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))) {
+      "plan" -> facts(threeTaskPlanOutput())
+      "implement" -> {
+        implementLaunches += 1
+        facts(
+          if (implementLaunches <= recoverAfter) {
+            terminalImplementOutput(status)
+          } else {
+            partialImplementOutput(CONVERGENCE_PLAN_TASK_COUNT)
+          },
+        )
+      }
+      else -> facts(defaultPhaseOutput(request))
+    }
+  }
+}
 
 // The first implement launch returns a retryable terminal envelope; the second closes every plan task.
 private fun terminalThenConvergingLauncher(status: String): RuntimeRecordingLauncher {

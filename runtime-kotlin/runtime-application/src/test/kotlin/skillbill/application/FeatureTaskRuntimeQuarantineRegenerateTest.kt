@@ -1,10 +1,12 @@
 package skillbill.application
 
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
+import skillbill.application.featuretask.RejectedOutputDiagnosticRequest
 import skillbill.application.featuretask.RejectedOutputDiagnosticService
 import skillbill.application.model.FeatureTaskRuntimeRunReport
 import skillbill.ports.persistence.ProducerOutputEvidence
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_QUARANTINED_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
@@ -214,6 +216,76 @@ class FeatureTaskRuntimeQuarantineRegenerateTest {
     val reloaded = requireNotNull(harness.recorder.loadQuarantinedRecords(WORKFLOW_ID))
     assertEquals(2, reloaded.size, "an already-recorded entry is never duplicated")
     assertEquals(loaded.map { it.diagnosticIdentity }, reloaded.map { it.diagnosticIdentity })
+  }
+
+  @Test
+  fun `a diagnostic persistence conflict marks the quarantine append and still regenerates`() {
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        facts(validJsonOutput(phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))))
+      },
+      agentAssignment = phasePerAgentAssignment(),
+    )
+    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), validJsonOutput("preplan"))
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), legacyPlan)
+    harness.recorder.retainPlanEvidence(legacyPlan)
+    harness.recorder.recordRejectedOutput(
+      RejectedOutputDiagnosticRequest(
+        workflowId = WORKFLOW_ID,
+        phaseId = "plan",
+        attempt = 1,
+        rule = "divergent-pre-record",
+        path = "/",
+        reason = "divergent-pre-record",
+        agentId = phaseAgent("plan"),
+        model = "test-model",
+        rawResponse = legacyPlan.encodeToByteArray(),
+      ),
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+
+    val quarantined = requireNotNull(harness.recorder.loadQuarantinedRecords(WORKFLOW_ID))
+    val entry = requireNotNull(quarantined.firstOrNull { it.producingPhaseId == "plan" })
+    assertEquals(true, entry.diagnosticDegraded)
+    assertEquals(null, entry.diagnosticIdentity)
+    assertTrue(harness.launchedPromptPhaseOrder().any { it == "plan" }, "regeneration still fires")
+
+    harness.runner.run(harness.request())
+    val reloaded = requireNotNull(harness.recorder.loadQuarantinedRecords(WORKFLOW_ID))
+    val reloadedEntry = requireNotNull(reloaded.firstOrNull { it.producingPhaseId == "plan" })
+    assertEquals(true, reloadedEntry.diagnosticDegraded)
+    assertEquals(null, reloadedEntry.diagnosticIdentity)
+  }
+
+  @Test
+  fun `a pre-change identity-bearing entry decodes with the identity unchanged`() {
+    val harness = runnerHarness()
+    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    val identity = "rod_prechange_identity"
+    val artifacts = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID).toMutableMap()
+    artifacts[FEATURE_TASK_RUNTIME_QUARANTINED_RECORDS_ARTIFACT_KEY] = mapOf(
+      "contract_version" to "0.3",
+      "entries" to listOf(
+        mapOf(
+          "producing_phase_id" to "plan",
+          "consuming_phase_id" to "implement",
+          "producing_iteration" to 1,
+          "rejection_class" to "planning_projection_schema",
+          "rejection_detail" to "plan#produced_outputs: projection_kind is missing",
+          "regeneration_attempt" to 1,
+          "quarantined_at_iteration" to 1,
+          "diagnostic_identity" to identity,
+          "rejected_record_byte_size" to 11,
+          "rejected_record_sha256" to "a".repeat(64),
+        ),
+      ),
+    )
+    harness.repository.replaceTaskRuntimeArtifacts(WORKFLOW_ID, artifacts)
+
+    val loaded = requireNotNull(harness.recorder.loadQuarantinedRecords(WORKFLOW_ID))
+    assertEquals(identity, loaded.single().diagnosticIdentity)
+    assertEquals(false, loaded.single().diagnosticDegraded)
   }
 }
 

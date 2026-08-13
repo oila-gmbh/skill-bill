@@ -145,7 +145,9 @@ class FeatureTaskRuntimeProjectionRejectionTest {
     val quarantined = requireNotNull(harness.recorder.loadQuarantinedRecords(WORKFLOW_ID))
     val entry = requireNotNull(quarantined.firstOrNull { it.producingPhaseId == "plan" })
     assertEquals("implement", entry.consumingPhaseId)
-    assertTrue(entry.diagnosticIdentity.startsWith("rod_"))
+    assertTrue(entry.diagnosticIdentity?.startsWith("rod_") == true)
+    assertEquals(false, entry.diagnosticDegraded)
+    assertTrue("diagnostic_degraded" !in entry.toArtifactMap())
     assertTrue(Regex("[0-9a-f]{64}").matches(entry.rejectedRecordSha256))
     // Evidence is never delivered to any agent prompt.
     assertTrue(
@@ -207,7 +209,9 @@ class FeatureTaskRuntimeProjectionRejectionTest {
     val quarantined = requireNotNull(harness.recorder.loadQuarantinedRecords(WORKFLOW_ID))
     val entry = requireNotNull(quarantined.firstOrNull { it.producingPhaseId == "implement" })
     assertEquals("audit", entry.consumingPhaseId)
-    assertTrue(entry.diagnosticIdentity.startsWith("rod_"))
+    assertTrue(entry.diagnosticIdentity?.startsWith("rod_") == true)
+    assertEquals(false, entry.diagnosticDegraded)
+    assertTrue("diagnostic_degraded" !in entry.toArtifactMap())
     assertTrue(Regex("[0-9a-f]{64}").matches(entry.rejectedRecordSha256))
     assertTrue(
       harness.launcher.requests.none {
@@ -312,6 +316,65 @@ class FeatureTaskRuntimeProjectionRejectionTest {
     assertTrue(
       quarantined.any { it.producingPhaseId == "implement" && it.consumingPhaseId == "audit" },
       "the rejected implement record is quarantined once the phase reaches the live seam",
+    )
+  }
+
+  @Test
+  fun `a launch-seam record rejection with no retained producer-output row blocks as absent evidence`() {
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        facts(validJsonOutput(phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))))
+      },
+      agentAssignment = phasePerAgentAssignment(),
+    )
+    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), preplanEnvelope())
+    val legacyPlan =
+      """{"contract_version":"0.2","phase_id":"plan","status":"completed","summary":"Legacy plan.",""" +
+        """"produced_outputs":{"steps":["do the thing"],"narration":"free-form legacy body"}}"""
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), legacyPlan)
+
+    val report = harness.runner.run(harness.request())
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertEquals("implement", blocked.lastIncompletePhase)
+    assertContains(blocked.blockedReason, "no retained evidence exists for attempt")
+    assertTrue("unavailable" !in blocked.blockedReason)
+    val record = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
+    assertEquals("needs_user_action", record.failureDisposition?.wireValue)
+    assertTrue(
+      harness.launchedPromptPhaseOrder().none { it == "implement" },
+      "the consumer phase never launched",
+    )
+  }
+
+  @Test
+  fun `a launch-seam record rejection whose retained evidence read throws conflict blocks as store-refused`() {
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        facts(validJsonOutput(phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))))
+      },
+      agentAssignment = phasePerAgentAssignment(),
+    )
+    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), preplanEnvelope())
+    val legacyPlan =
+      """{"contract_version":"0.2","phase_id":"plan","status":"completed","summary":"Legacy plan.",""" +
+        """"produced_outputs":{"steps":["do the thing"],"narration":"free-form legacy body"}}"""
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), legacyPlan)
+    harness.retainExactProducerEvidence("plan", legacyPlan)
+    harness.io.database.producerOutputReadError =
+      skillbill.ports.persistence.model.RejectedOutputDiagnosticError.Conflict("plan-evidence")
+
+    val report = harness.runner.run(harness.request())
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertEquals("implement", blocked.lastIncompletePhase)
+    assertContains(blocked.blockedReason, "diagnostic store refused it (conflict)")
+    assertTrue("free-form legacy body" !in blocked.blockedReason)
+    val record = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
+    assertEquals("needs_user_action", record.failureDisposition?.wireValue)
+    assertTrue(
+      harness.launchedPromptPhaseOrder().none { it == "implement" },
+      "the consumer phase never launched",
     )
   }
 

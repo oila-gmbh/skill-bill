@@ -2,6 +2,7 @@ package skillbill.application.featuretask.model
 
 import skillbill.application.featuretask.RejectedOutputDiagnosticService
 import skillbill.ports.persistence.model.RejectedOutputDiagnosticError
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticFailureClass
 import java.time.Duration
 
 private const val DEFAULT_MAXIMUM_PAYLOAD_BYTES: Long = 1_048_576
@@ -40,3 +41,14 @@ data class RejectedOutputDiagnosticRequest(
    */
   val repairTurn: Int = 0,
 )
+
+/**
+ * Outcome of a rejected-output diagnostic write. [Written] is returned only after the evidence
+ * transaction commits; [Degraded] means that transaction rolled back and no `rod_` row exists.
+ */
+sealed class FeatureTaskRuntimeRejectedOutputWrite {
+  data class Written(val identity: String) : FeatureTaskRuntimeRejectedOutputWrite()
+  data class Degraded(
+    val failureClass: FeatureTaskRuntimeDiagnosticFailureClass,
+  ) : FeatureTaskRuntimeRejectedOutputWrite()
+}

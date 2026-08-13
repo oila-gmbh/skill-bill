@@ -2,7 +2,6 @@
 
 package skillbill.application
 
-import skillbill.application.featuretask.FeatureTaskRuntimeFixLoopPolicy
 import skillbill.application.model.FeatureTaskRuntimeRunReport
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -20,8 +19,6 @@ import kotlin.test.assertTrue
  * real validator wired into the run loop), never a seam-local rewrite in the test.
  */
 class RealValidatorCanonicalizationIntegrationTest {
-  private val cap = FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS
-
   @Test
   fun `a canonicalizable plan advances with zero fix-loop attempts and the seam sees the canonical id`() {
     val harness = runnerHarness(
@@ -51,11 +48,17 @@ class RealValidatorCanonicalizationIntegrationTest {
   }
 
   @Test
-  fun `a structural violation in an otherwise canonicalizable plan still rejects to the cap`() {
+  fun `a structural violation in an otherwise canonicalizable plan still rejects until repaired`() {
+    var planAttempts = 0
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        facts(if (phaseId == "plan") CANONICALIZABLE_PLAN_MISSING_OBLIGATION else validJsonOutput(phaseId))
+        if (phaseId != "plan") {
+          facts(validJsonOutput(phaseId))
+        } else {
+          planAttempts += 1
+          facts(if (planAttempts == 1) CANONICALIZABLE_PLAN_MISSING_OBLIGATION else validJsonOutput("plan"))
+        }
       },
       agentAssignment = phasePerAgentAssignment(),
       runtimeConfig = RuntimeHarnessConfig(planningProjectionValidator = realPlanningProjectionValidator),
@@ -63,16 +66,11 @@ class RealValidatorCanonicalizationIntegrationTest {
 
     val report = harness.runner.run(harness.request())
 
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
-    assertEquals("plan", blocked.lastIncompletePhase)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     assertEquals(
-      cap,
+      2,
       harness.launchedPromptPhaseOrder().count { it == "plan" },
-      "canonicalization must not fabricate the missing obligation; the structural violation retries to the cap",
-    )
-    assertTrue(
-      harness.launchedPromptPhaseOrder().none { it == "implement" },
-      "a structurally invalid plan must never advance to its consumer",
+      "canonicalization must not fabricate the missing obligation; the structural violation must retry",
     )
   }
 }

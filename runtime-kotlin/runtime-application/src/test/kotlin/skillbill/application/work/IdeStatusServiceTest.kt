@@ -720,6 +720,28 @@ class IdeStatusServiceTest {
     assertEquals("Goal SKILL-148 is complete.", result.snapshot.summary)
   }
 
+  @Test
+  fun `blocked or failed goal row with every subtask settled projects terminal complete`() {
+    // Finalization can die after the last subtask and leave the parent work-list row
+    // blocked/failed. goal status already reports complete; IDE status must not keep
+    // prompting as blocked.
+    listOf("blocked", "failed").forEach { stuckState ->
+      val fixture = gitRepoFixture("ide-status-goal-settled-$stuckState")
+      val identity = goalRepositoryIdentity(fixture)
+      val service = service(
+        goalOnlyDatabase(goalState = stuckState),
+        manifestStore = StubGoalManifestStore(
+          completedGoalManifestState(fixture, identity),
+        ),
+      )
+
+      val result = service.status(IdeStatusRequest(repoRoot = fixture.toString(), observedAt = observedAt))
+
+      assertEquals(IdeStatusLifecycleState.TERMINAL, result.snapshot.lifecycleState, stuckState)
+      assertEquals("Goal SKILL-148 is complete.", result.snapshot.summary, stuckState)
+    }
+  }
+
   private fun completedGoalManifestState(fixture: Path, identity: String): GoalRunnerManifestState {
     val base = goalManifestState(fixture, identity, childWorkflowId = "w-child")
     return base.copy(

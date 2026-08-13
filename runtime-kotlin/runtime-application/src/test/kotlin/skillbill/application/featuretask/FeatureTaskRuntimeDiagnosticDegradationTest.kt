@@ -3,6 +3,7 @@ package skillbill.application.featuretask
 import skillbill.application.InMemoryRuntimeWorkflowRepository
 import skillbill.application.RecordingLifecycleTelemetryRepository
 import skillbill.application.RuntimeFakeDatabaseSessionFactory
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRejectedOutputWrite
 import skillbill.ports.persistence.ProducerOutputEvidence
 import skillbill.ports.persistence.model.RejectedOutputDiagnosticError
 import skillbill.workflow.WorkflowSnapshotValidator
@@ -13,6 +14,7 @@ import kotlin.test.assertContains
 import kotlin.test.assertContentEquals
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /**
@@ -37,10 +39,11 @@ class FeatureTaskRuntimeDiagnosticDegradationTest {
       database.retainedProducerEvidence().filter { it.phaseId == "validate" }.map { it.repairTurn },
     )
     // The consumer-facing read resolves the newest turn without knowing how many turns ran.
-    assertContentEquals(
-      "turn-3".encodeToByteArray(),
-      recorder.producerOutput(WORKFLOW_ID, "validate", 1, "cursor")?.payload,
-    )
+    val found = recorder.producerOutput(WORKFLOW_ID, "validate", 1, "cursor")
+    assertIs<FeatureTaskRuntimeProducerOutputRead.Found>(found)
+    assertContentEquals("turn-3".encodeToByteArray(), found.evidence.payload)
+    val absent = recorder.producerOutput(WORKFLOW_ID, "validate", 99, "cursor")
+    assertIs<FeatureTaskRuntimeProducerOutputRead.Absent>(absent)
     assertTrue(recorder.loadDiagnosticSignals(WORKFLOW_ID).isEmpty())
   }
 
@@ -60,7 +63,8 @@ class FeatureTaskRuntimeDiagnosticDegradationTest {
 
   @Test
   fun `a forced evidence conflict degrades to a durable payload-free signal instead of failing the run`() {
-    val database = database()
+    val lifecycle = RecordingLifecycleTelemetryRepository()
+    val database = database(lifecycle)
     val recorder = recorder(database)
     recorder.ensureWorkflowOpen(WORKFLOW_ID, "session-1")
     val retained = "first-bytes".encodeToByteArray()
@@ -76,8 +80,74 @@ class FeatureTaskRuntimeDiagnosticDegradationTest {
     assertEquals(1, signal.attempt)
     assertEquals(1, signal.repairTurn)
     assertContains(signal.conflictingKey, "$WORKFLOW_ID:validate:0:1:1:cursor")
+    val measurement = lifecycle.diagnosticDegradationMeasurements.single()
+    assertEquals(signal.phaseId, measurement.phaseId)
+    assertEquals(signal.attempt, measurement.attempt)
+    assertEquals(signal.repairTurn, measurement.repairTurn)
+    assertEquals(signal.generation, measurement.generation)
+    assertEquals("retain-producer-output", measurement.operation)
+    assertEquals(signal.failureClass, measurement.failureClass)
+    assertEquals(signal.conflictingKey, measurement.conflictingKey)
+    assertTrue(
+      measurement.toTelemetryMap().values.none { it is String && it.contains("divergent-bytes") },
+      "the measurement must not carry the divergent agent bytes",
+    )
     // The committed evidence is never overwritten by the divergent write.
-    assertContentEquals(retained, recorder.producerOutput(WORKFLOW_ID, "validate", 1, "cursor")?.payload)
+    val found = recorder.producerOutput(WORKFLOW_ID, "validate", 1, "cursor")
+    assertIs<FeatureTaskRuntimeProducerOutputRead.Found>(found)
+    assertContentEquals(retained, found.evidence.payload)
+  }
+
+  @Test
+  fun `a throwing telemetry sink leaves the durable signal and the null return intact`() {
+    val lifecycle = RecordingLifecycleTelemetryRepository(throwOnDiagnosticDegradation = true)
+    val database = database(lifecycle)
+    val recorder = recorder(database)
+    recorder.ensureWorkflowOpen(WORKFLOW_ID, "session-1")
+    recorder.retainProducerOutput(evidence("first-bytes".encodeToByteArray(), repairTurn = 1))
+
+    recorder.retainProducerOutput(evidence("divergent-bytes".encodeToByteArray(), repairTurn = 1))
+
+    val signal = recorder.loadDiagnosticSignals(WORKFLOW_ID).single()
+    assertEquals(FeatureTaskRuntimeDiagnosticFailureClass.CONFLICT, signal.failureClass)
+    assertTrue(lifecycle.diagnosticDegradationMeasurements.isEmpty())
+  }
+
+  @Test
+  fun `a missing rejected-output port is Unreadable persistence rather than Absent`() {
+    val lifecycle = RecordingLifecycleTelemetryRepository()
+    val database = RuntimeFakeDatabaseSessionFactory(
+      InMemoryRuntimeWorkflowRepository(),
+      lifecycle,
+      rejectedOutputDiagnosticsAvailable = false,
+    )
+    val recorder = recorder(database)
+    recorder.ensureWorkflowOpen(WORKFLOW_ID, "session-1")
+
+    val read = recorder.producerOutput(WORKFLOW_ID, "validate", 1, "cursor")
+
+    val unreadable = assertIs<FeatureTaskRuntimeProducerOutputRead.Unreadable>(read)
+    assertEquals(FeatureTaskRuntimeDiagnosticFailureClass.PERSISTENCE, unreadable.failureClass)
+    val signal = recorder.loadDiagnosticSignals(WORKFLOW_ID).single()
+    assertEquals(FeatureTaskRuntimeDiagnosticFailureClass.PERSISTENCE, signal.failureClass)
+    assertEquals(1, lifecycle.diagnosticDegradationMeasurements.size)
+  }
+
+  @Test
+  fun `a same-identity divergent recordRejectedOutput returns Degraded and no rod token`() {
+    val database = database()
+    val recorder = recorder(database)
+    recorder.ensureWorkflowOpen(WORKFLOW_ID, "session-1")
+    val first = recorder.recordRejectedOutput(rejection("first-bytes".encodeToByteArray(), repairTurn = 1))
+    val written = assertIs<FeatureTaskRuntimeRejectedOutputWrite.Written>(first)
+    assertTrue(written.identity.startsWith("rod_"))
+    val committedIdentity = database.rejectedDiagnostics().single().metadata.identity
+
+    val second = recorder.recordRejectedOutput(rejection("divergent-bytes".encodeToByteArray(), repairTurn = 1))
+    val degraded = assertIs<FeatureTaskRuntimeRejectedOutputWrite.Degraded>(second)
+    assertEquals(FeatureTaskRuntimeDiagnosticFailureClass.CONFLICT, degraded.failureClass)
+    assertEquals(1, database.rejectedDiagnostics().size)
+    assertEquals(committedIdentity, database.rejectedDiagnostics().single().metadata.identity)
   }
 
   @Test
@@ -114,7 +184,8 @@ class FeatureTaskRuntimeDiagnosticDegradationTest {
   fun `rejected audit sentinel stays private when diagnostic persistence degrades`() {
     // SKILL-187 AC-008/AC-011: degradation must not change privacy — operator summary stays payload-free
     // while the first rejected row still retains the synthetic bytes.
-    val database = database()
+    val lifecycle = RecordingLifecycleTelemetryRepository()
+    val database = database(lifecycle)
     val recorder = recorder(database)
     recorder.ensureWorkflowOpen(WORKFLOW_ID, "session-1")
     val sentinel = "SKILL187-DEGRADE-SENTINEL".encodeToByteArray()
@@ -137,12 +208,16 @@ class FeatureTaskRuntimeDiagnosticDegradationTest {
     assertTrue("SKILL187-DEGRADE-SENTINEL" !in summary)
     assertTrue("blast_radius_inspected" !in summary)
     assertContains(summary, "audit")
+    val measurement = lifecycle.diagnosticDegradationMeasurements.single().toTelemetryMap()
+    assertTrue(measurement.values.none { it is String && "SKILL187-DEGRADE-SENTINEL" in it })
+    assertTrue(measurement.values.none { it is String && "blast_radius_inspected" in it })
   }
 
-  private fun database() = RuntimeFakeDatabaseSessionFactory(
-    InMemoryRuntimeWorkflowRepository(),
-    RecordingLifecycleTelemetryRepository(),
-  )
+  private fun database(lifecycle: RecordingLifecycleTelemetryRepository = RecordingLifecycleTelemetryRepository()) =
+    RuntimeFakeDatabaseSessionFactory(
+      InMemoryRuntimeWorkflowRepository(),
+      lifecycle,
+    )
 
   private fun recorder(database: RuntimeFakeDatabaseSessionFactory) = FeatureTaskRuntimePhaseRecorder(
     database,

@@ -1,6 +1,6 @@
 package skillbill.application
 
-import skillbill.application.featuretask.FeatureTaskRuntimeFixLoopPolicy
+import skillbill.application.featuretask.FeatureTaskRuntimeAttemptBudgets
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.model.FeatureTaskRuntimeRunReport
 import skillbill.application.model.FeatureTaskRuntimeStatusRequest
@@ -265,12 +265,9 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
   }
 
   @Test
-  fun `the bounded schema-retry fix loop stays capped independently of the semantic loops`() {
-    assertEquals(
-      3,
-      FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS,
-      "unbounded remediation applies to the semantic loops only; the schema-retry budget stays bounded.",
-    )
+  fun `process-failure and malformed-output budgets stay pinned independently of the semantic loops`() {
+    assertEquals(3, FeatureTaskRuntimeAttemptBudgets.MAX_PROCESS_FAILURE_ATTEMPTS)
+    assertEquals(3, FeatureTaskRuntimeAttemptBudgets.MAX_FORMAT_RETRY_ATTEMPTS)
   }
 
   private data class RunOutcome(

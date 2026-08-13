@@ -2,7 +2,6 @@ package skillbill.application.goalrunner
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.DECOMPOSITION_MANIFEST_FILENAME
-import skillbill.application.featuretask.FeatureTaskRuntimeFixLoopPolicy
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
 import skillbill.application.featuretask.FeatureTaskRuntimePhasePromptComposer
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
@@ -612,25 +611,9 @@ class DefaultGoalPlanningSweep(
   /**
    * Produces one planning phase and gates the exact payload bytes that will be checkpointed through the
    * shared producer projection gate. A projection-invalid output relaunches the same phase with the
-   * bounded validation detail in the remediation prompt, under the one runtime fix-loop cap; nothing is
-   * checkpointed in the failing state, and exhaustion stops the sweep with that detail as the reason.
-   *
-   * Fix-loop budget limitation: the consumed budget is tracked in-memory only and resets on each
-   * resume. A phase that exhausts MAX_FIX_LOOP_ITERATIONS and stops durably will restart at
-   * attempt 1 on the next resume rather than remaining stopped. Operators should monitor for
-   * repeated fix-loop exhaustion and intervene manually.
-   *
-   * Aggregate launch ceiling: there is no global cap on total planning-agent launches across all
-   * phases. Each call to producePhase (preplan + one per included subtask) independently attempts
-   * up to MAX_FIX_LOOP_ITERATIONS launches. A goal with N subtasks can issue up to (N+1) *
-   * MAX_FIX_LOOP_ITERATIONS planning launches. The --planning-budget-minutes and
-   * --max-wall-clock-minutes flags bound per-launch timeout and subtask launches respectively,
-   * not the sweep's total planning budget. Operators should monitor for excessive planning
-   * launch counts and consider adjusting MAX_FIX_LOOP_ITERATIONS or the spec size.
-
-   * Every attempt records a durable completion event on the parent workflow, including its phase,
-   * subtask, ordinal, and success/failure outcome. Resume therefore preserves the consumed attempt
-   * evidence even though the bounded retry counter remains scoped to one sweep run.
+   * bounded validation detail in the remediation prompt; nothing is checkpointed in the failing state.
+   * Schema and empty-turn retries are uncapped; `--planning-budget-minutes` and pause remain the stop
+   * paths. Every attempt records a durable completion event on the parent workflow.
    */
   private fun producePhase(
     shared: GoalPlanningSharedContext,
@@ -643,9 +626,9 @@ class DefaultGoalPlanningSweep(
     finalizePayload: (String) -> String = { it },
   ): GoalPlanningPhaseProduction {
     var priorSchemaFailure: String? = null
-    var lastRejection: String? = null
-    repeat(FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS) { attemptIndex ->
-      val attempt = attemptIndex + 1
+    var attempt = 0
+    while (true) {
+      attempt += 1
       val production = produceAttemptOrStop(
         shared,
         request,
@@ -665,40 +648,28 @@ class DefaultGoalPlanningSweep(
         is GoalPlanningPhaseProduction.SchemaRejected -> {
           recordPlanningAttempt(shared, phaseId, subtask, attempt, GoalProgressOutcome.FAILED)
           priorSchemaFailure = production.reason
-          lastRejection = production.reason
-          return@repeat
         }
 
         is GoalPlanningPhaseProduction.EmptyProviderTurn -> {
           recordPlanningAttempt(shared, phaseId, subtask, attempt, GoalProgressOutcome.FAILED)
           recordEmptyProviderTurn(shared, phaseId, subtask, attempt, production)
-          // Deliberately leaves priorSchemaFailure untouched: there is no rejected output to
-          // remediate, and injecting one would describe output the agent never produced.
-          lastRejection = production.reason
-          if (attempt < FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS) {
-            val backoff = burstSchedule.emptyTurnBackoffAfterAttempt(attempt)
-            interruptibleWait(backoff, shared, subtask?.id ?: 0, phaseId)?.let { stoppedOutcome ->
-              return GoalPlanningPhaseProduction.Stopped(stoppedOutcome)
-            }
+          val backoff = burstSchedule.emptyTurnBackoffAfterAttempt(attempt)
+          interruptibleWait(backoff, shared, subtask?.id ?: 0, phaseId)?.let { stoppedOutcome ->
+            return GoalPlanningPhaseProduction.Stopped(stoppedOutcome)
           }
-          return@repeat
         }
 
-        is GoalPlanningPhaseProduction.Captured -> Unit
+        is GoalPlanningPhaseProduction.Captured -> {
+          val gated = gateCapturedPayload(production, phaseId, finalizePayload)
+          if (gated is GoalPlanningPhaseProduction.Captured) {
+            recordPlanningAttempt(shared, phaseId, subtask, attempt, GoalProgressOutcome.SUCCEEDED)
+            return gated
+          }
+          recordPlanningAttempt(shared, phaseId, subtask, attempt, GoalProgressOutcome.FAILED)
+          priorSchemaFailure = (gated as GoalPlanningPhaseProduction.SchemaRejected).reason
+        }
       }
-      val gated = gateCapturedPayload(production, phaseId, finalizePayload)
-      if (gated is GoalPlanningPhaseProduction.Captured) {
-        recordPlanningAttempt(shared, phaseId, subtask, attempt, GoalProgressOutcome.SUCCEEDED)
-        return gated
-      }
-      val gateReason = (gated as GoalPlanningPhaseProduction.SchemaRejected).reason
-      recordPlanningAttempt(shared, phaseId, subtask, attempt, GoalProgressOutcome.FAILED)
-      priorSchemaFailure = gateReason
-      lastRejection = gateReason
     }
-    return GoalPlanningPhaseProduction.Stopped(
-      stopped(shared, subtask?.id ?: 0, fixLoopExhaustedReason(phaseId, lastRejection.orEmpty()), phaseId),
-    )
   }
 
   /**
@@ -814,11 +785,6 @@ class DefaultGoalPlanningSweep(
     return producerProjectionGateReason(phaseId, envelope, planningProjectionValidator)
       ?.let(::boundedSchemaGateDetail)
   }
-
-  private fun fixLoopExhaustedReason(phaseId: String, lastFailure: String): String =
-    "Goal planning '$phaseId' produced no acceptable output on every attempt " +
-      "(cap=${FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS}); nothing was checkpointed. " +
-      "Last failure: $lastFailure"
 
   private fun emptyTurnReason(phaseId: String, evidence: GoalPlanningEmptyTurnEvidence): String =
     "Goal planning '$phaseId' agent turn exited cleanly and returned no output. ${evidence.summary()}"

@@ -13,6 +13,7 @@ import skillbill.ports.install.addon.model.AppliedExternalAddonSource
 import skillbill.ports.install.addon.model.ExternalAddonOverlayRequest
 import skillbill.ports.install.addon.model.ExternalAddonOverlayResult
 import skillbill.ports.install.addon.model.SkippedExternalAddonSource
+import skillbill.scaffold.model.GovernedAddonActivation
 import skillbill.scaffold.model.GovernedAddonSelection
 import skillbill.scaffold.model.GovernedAddonUsage
 import skillbill.scaffold.model.PointerSpec
@@ -430,14 +431,36 @@ class FileSystemExternalAddonOverlay : ExternalAddonOverlayPort {
       val list = addonUsageRoot
         .getOrPut(dir) { mutableListOf<Any?>() }
         .asMutableList(plan.platform, "addon_usage[$dir]")
-      entries.forEach { selection ->
-        val entry = linkedMapOf<String, Any?>("slug" to selection.slug, "entrypoint" to selection.entrypoint)
-        if (selection.companionPointers.isNotEmpty()) {
-          entry["companion_pointers"] = selection.companionPointers.toMutableList()
-        }
-        list.add(entry)
-      }
+      entries.forEach { selection -> list.add(addonUsageEntry(selection)) }
     }
+  }
+
+  private fun addonUsageEntry(selection: GovernedAddonSelection): MutableMap<String, Any?> {
+    val entry = linkedMapOf<String, Any?>("slug" to selection.slug, "entrypoint" to selection.entrypoint)
+    if (selection.companionPointers.isNotEmpty()) {
+      entry["companion_pointers"] = selection.companionPointers.toMutableList()
+    }
+    selection.activation?.let { activation -> entry["activation"] = activationEntry(activation) }
+    if (selection.specialistAreas.isNotEmpty()) {
+      entry["specialist_areas"] = selection.specialistAreas.toMutableList()
+    }
+    return entry
+  }
+
+  private fun activationEntry(activation: GovernedAddonActivation): MutableMap<String, Any?> {
+    val entry = linkedMapOf<String, Any?>()
+    fun put(field: String, values: List<String>) {
+      if (values.isNotEmpty()) entry[field] = values.toMutableList()
+    }
+    put("any_path", activation.anyPath)
+    put("any_content", activation.anyContent)
+    put("all_content", activation.allContent)
+    if (activation.anyOfAllContent.isNotEmpty()) {
+      entry["any_of_all_content"] = activation.anyOfAllContent.map { group -> group.toMutableList() }.toMutableList()
+    }
+    put("exclude_path", activation.excludePath)
+    put("exclude_content", activation.excludeContent)
+    return entry
   }
 
   private fun atomicMove(source: Path, target: Path) {

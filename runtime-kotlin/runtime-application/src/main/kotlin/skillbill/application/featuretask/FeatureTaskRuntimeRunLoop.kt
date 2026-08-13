@@ -8,6 +8,7 @@ import skillbill.application.evidence.FeatureTaskRuntimeSharedReviewEvidenceReso
 import skillbill.application.evidence.FeatureTaskRuntimeSharedReviewEvidenceResolver
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointDecision
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointScopeInput
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRejectedOutputWrite
 import skillbill.application.featuretask.validation.model.ValidationFindingSetProjection
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairLauncher
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairResult
@@ -15,7 +16,6 @@ import skillbill.application.featuretask.validation.model.ValidationGateCycleReq
 import skillbill.application.featuretask.validation.model.ValidationGateCycleResult
 import skillbill.application.featuretask.validation.model.ValidationGateCycleTerminalOutcome
 import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
-import skillbill.application.model.FeatureTaskRuntimeFixLoopDecision
 import skillbill.application.model.FeatureTaskRuntimeImplementationContinuation
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.application.model.FeatureTaskRuntimePhaseStateRequest
@@ -2505,8 +2505,8 @@ internal class FeatureTaskRuntimeRunLoop(
 
   // The gate that wrote this reason blocked a goal review on schema-invalid output instead of retrying it,
   // and persisted a terminal needs_user_action disposition. That gate is gone, so such a record is stale
-  // rather than terminal: the reserved pass still has no completed output, which the bounded fix loop is
-  // now what decides. The remaining attempt budget is deliberately not restarted.
+  // rather than terminal: the reserved pass still has no completed output, which the review schema
+  // correction loop decides. The remaining attempt budget is deliberately not restarted.
   private fun isRemovedGoalReviewSchemaGateBlock(phaseId: String, reason: String): Boolean =
     phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
       reason.startsWith("Goal-subtask review output failed schema validation after its reserved pass")
@@ -2588,7 +2588,7 @@ internal class FeatureTaskRuntimeRunLoop(
       isRemovedGoalReviewSchemaGateBlock(phaseId, persistedReason) -> true
       isRemovedImplementationContinuationBudgetBlock(phaseId, persistedReason) -> true
       disposition != null -> disposition.retryOnResume
-      else -> FeatureTaskRuntimeFixLoopPolicy.participatesInFixLoop(phaseId)
+      else -> FeatureTaskRuntimePhaseWorkflowDefinition.retriesOnInvalidOutput(phaseId)
     }
   }
 
@@ -2707,7 +2707,7 @@ internal class FeatureTaskRuntimeRunLoop(
           var blockedReason: String? = null
           if (attempt.malformedOutput) {
             malformedAttemptCount += 1
-            FeatureTaskRuntimeFixLoopPolicy.malformedOutputBlockReason(
+            FeatureTaskRuntimeAttemptBudgets.malformedOutputBlockReason(
               run.phaseId,
               malformedAttemptCount,
             )?.let { formatBlock ->
@@ -2717,18 +2717,7 @@ internal class FeatureTaskRuntimeRunLoop(
               )
             }
           } else {
-            when (
-              val decision = FeatureTaskRuntimeFixLoopPolicy.decideAfterFailure(run.phaseId, schemaAttempt)
-            ) {
-              is FeatureTaskRuntimeFixLoopDecision.Block ->
-                blockedReason = withSchemaGateDetail(
-                  decision.blockedReason,
-                  requireNotNull(attempt.schemaInvalidOperatorReason),
-                )
-              is FeatureTaskRuntimeFixLoopDecision.Retry -> {
-                schemaAttempt = decision.nextIteration
-              }
-            }
+            schemaAttempt += 1
           }
           if (blockedReason != null) {
             result = ValidationGateAgentRepairResult.Blocked(blockedReason)
@@ -2850,7 +2839,7 @@ internal class FeatureTaskRuntimeRunLoop(
       state.fixLoopIterationFor(run.phaseId, iteration) - continuationSegmentCount - nonOutputAttempts.size
       ).coerceAtLeast(1)
     if (!operatorReopened) {
-      FeatureTaskRuntimeFixLoopPolicy
+      FeatureTaskRuntimeAttemptBudgets
         .processFailureBlockReason(run.phaseId, processFailures.size, processFailures.lastOrNull()?.reason)
         ?.let { reason ->
           return blockAndPersistInPhase(
@@ -2861,9 +2850,6 @@ internal class FeatureTaskRuntimeRunLoop(
             failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
           )
         }
-      FeatureTaskRuntimeFixLoopPolicy
-        .blockReasonIfBudgetExhausted(run.phaseId, semanticIteration)
-        ?.let { reason -> return blockAndPersistInPhase(run, iteration, reason, observability) }
     }
     val crashResumed = state.resumedFromPriorProcess(run.phaseId)
     state.recordPhaseLaunched(run.phaseId)
@@ -2938,43 +2924,26 @@ internal class FeatureTaskRuntimeRunLoop(
         fileManifest = attempt.fileManifest,
       )
     }
-    return when (
-      val decision = FeatureTaskRuntimeFixLoopPolicy.incompleteWorkContinuationDecision(
-        run.phaseId,
-        loop.continuationSegmentCount,
-      )
-    ) {
-      is FeatureTaskRuntimeFixLoopDecision.Retry -> {
-        loop.iteration += 1
-        // This attempt was schema-VALID and merely incomplete, so any correction carried from an
-        // earlier malformed attempt is now stale. Leaving it set would hand the next segment both the
-        // continuation directive and a schema-rejection directive naming a reason from two attempts
-        // ago, telling the agent its valid output was rejected by the schema gate.
-        loop.priorCorrection = null
-        observability.continuation(
-          run.phaseId,
-          agentId,
-          loop.iteration,
-          loop.continuationSegmentCount,
-          FeatureTaskRuntimeContinuationKind.IMPLEMENTATION_CONTINUATION,
-        )
-        null
-      }
-      is FeatureTaskRuntimeFixLoopDecision.Block -> blockAndPersistInPhase(
-        run,
-        loop.iteration,
-        "${decision.blockedReason} ${requireNotNull(attempt.incompleteWorkContinuationReason)}",
-        observability,
-        failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
-        fileManifest = attempt.fileManifest,
-      )
-    }
+    loop.iteration += 1
+    // This attempt was schema-VALID and merely incomplete, so any correction carried from an
+    // earlier malformed attempt is now stale. Leaving it set would hand the next segment both the
+    // continuation directive and a schema-rejection directive naming a reason from two attempts
+    // ago, telling the agent its valid output was rejected by the schema gate.
+    loop.priorCorrection = null
+    observability.continuation(
+      run.phaseId,
+      agentId,
+      loop.iteration,
+      loop.continuationSegmentCount,
+      FeatureTaskRuntimeContinuationKind.IMPLEMENTATION_CONTINUATION,
+    )
+    return null
   }
 
   private fun settleMalformedOutput(context: FixLoopBranchContext): PhaseOutcome? {
     val (run, attempt, loop, observability, agentId) = context
     loop.malformedAttemptCount += 1
-    val formatBlock = FeatureTaskRuntimeFixLoopPolicy.malformedOutputBlockReason(
+    val formatBlock = FeatureTaskRuntimeAttemptBudgets.malformedOutputBlockReason(
       run.phaseId,
       loop.malformedAttemptCount,
     )
@@ -3009,61 +2978,58 @@ internal class FeatureTaskRuntimeRunLoop(
    */
   private fun settleRetryableTerminal(context: FixLoopBranchContext): PhaseOutcome? {
     val (run, attempt, loop, observability, agentId) = context
-    return when (
-      val decision = FeatureTaskRuntimeFixLoopPolicy.decideAfterFailure(run.phaseId, loop.semanticIteration)
-    ) {
-      is FeatureTaskRuntimeFixLoopDecision.Retry -> {
-        loop.iteration += 1
-        loop.semanticIteration += 1
-        loop.priorCorrection =
-          PriorAttemptCorrection.retryableTerminal(requireNotNull(attempt.retryableTerminalRetryReason))
-        observability.continuation(
-          run.phaseId,
-          agentId,
-          loop.iteration,
-          decision.fixLoopIteration,
-          FeatureTaskRuntimeContinuationKind.PROCESS_RETRY,
-        )
-        null
-      }
-      is FeatureTaskRuntimeFixLoopDecision.Block -> blockAndPersistInPhase(
+    if (!FeatureTaskRuntimePhaseWorkflowDefinition.retriesOnInvalidOutput(run.phaseId)) {
+      return blockAndPersistInPhase(
         run,
         loop.iteration,
-        "${decision.blockedReason} ${requireNotNull(attempt.retryableOperatorReason)}",
+        "${nonRetryingPhaseSchemaBlockReason(run.phaseId)} ${requireNotNull(attempt.retryableOperatorReason)}",
         observability,
         failureDisposition = requireNotNull(attempt.retryableTerminalDisposition),
         fileManifest = attempt.fileManifest,
       )
     }
+    val failedIteration = loop.semanticIteration
+    loop.iteration += 1
+    loop.semanticIteration += 1
+    loop.priorCorrection =
+      PriorAttemptCorrection.retryableTerminal(requireNotNull(attempt.retryableTerminalRetryReason))
+    observability.continuation(
+      run.phaseId,
+      agentId,
+      loop.iteration,
+      failedIteration,
+      FeatureTaskRuntimeContinuationKind.PROCESS_RETRY,
+    )
+    return null
   }
 
   private fun settleSemanticFailure(context: FixLoopBranchContext): PhaseOutcome? {
     val (run, attempt, loop, observability, agentId) = context
-    return when (
-      val decision = FeatureTaskRuntimeFixLoopPolicy.decideAfterFailure(run.phaseId, loop.semanticIteration)
-    ) {
-      is FeatureTaskRuntimeFixLoopDecision.Retry -> {
-        loop.iteration += 1
-        loop.semanticIteration += 1
-        loop.priorCorrection = attempt.semanticRetryReason?.let { retryReason ->
-          PriorAttemptCorrection.schemaGate(
-            retryReason,
-            correctiveRepairContext = attempt.correctiveRepairContext,
-          )
-        }
-        observability.fixLoopIteration(run.phaseId, agentId, loop.iteration, decision.fixLoopIteration)
-        null
-      }
-      is FeatureTaskRuntimeFixLoopDecision.Block -> blockAndPersistInPhase(
+    if (!FeatureTaskRuntimePhaseWorkflowDefinition.retriesOnInvalidOutput(run.phaseId)) {
+      return blockAndPersistInPhase(
         run,
         loop.iteration,
-        withSchemaGateDetail(decision.blockedReason, requireNotNull(attempt.retryableOperatorReason)),
+        withSchemaGateDetail(
+          nonRetryingPhaseSchemaBlockReason(run.phaseId),
+          requireNotNull(attempt.retryableOperatorReason),
+        ),
         observability,
         failureDisposition = FeatureTaskRuntimeFailureDisposition.INVALID_OUTPUT,
         fileManifest = attempt.fileManifest,
         rejectedOutput = attempt.rejectedOutput,
       )
     }
+    val failedIteration = loop.semanticIteration
+    loop.iteration += 1
+    loop.semanticIteration += 1
+    loop.priorCorrection = attempt.semanticRetryReason?.let { retryReason ->
+      PriorAttemptCorrection.schemaGate(
+        retryReason,
+        correctiveRepairContext = attempt.correctiveRepairContext,
+      )
+    }
+    observability.fixLoopIteration(run.phaseId, agentId, loop.iteration, failedIteration)
+    return null
   }
 
   /**
@@ -3310,25 +3276,41 @@ internal class FeatureTaskRuntimeRunLoop(
         failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
         childNeverLaunched = true,
       )
-    val producerEvidence = recorder.producerOutput(
-      request.workflowId,
-      producer,
-      producingIteration,
-      producerAgentId,
-      request.dbPathOverride,
-      state.evidenceGeneration(producer),
-    ) ?: return blockAndPersistInPhase(
-      run,
-      iteration,
-      "Feature-task-runtime phase '$consumer' rejected the durable record produced by '$producer', but exact " +
-        "raw evidence for attempt $producingIteration is unavailable. The run blocks instead of fabricating " +
-        "a rejected-output diagnostic from normalized workflow state.",
-      observability,
-      failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
-      childNeverLaunched = true,
-    )
+    val producerEvidence = when (
+      val producerRead = recorder.producerOutput(
+        request.workflowId,
+        producer,
+        producingIteration,
+        producerAgentId,
+        request.dbPathOverride,
+        state.evidenceGeneration(producer),
+      )
+    ) {
+      is FeatureTaskRuntimeProducerOutputRead.Found -> producerRead.evidence
+      is FeatureTaskRuntimeProducerOutputRead.Absent,
+      is FeatureTaskRuntimeProducerOutputRead.Unreadable,
+      -> {
+        val evidenceClause = if (producerRead is FeatureTaskRuntimeProducerOutputRead.Unreadable) {
+          "retained evidence for attempt $producingIteration exists and the diagnostic store refused it " +
+            "(${producerRead.failureClass.wireValue}). The run blocks instead of fabricating a " +
+            "rejected-output diagnostic from normalized workflow state."
+        } else {
+          "no retained evidence exists for attempt $producingIteration. The run blocks instead of fabricating " +
+            "a rejected-output diagnostic from normalized workflow state."
+        }
+        return blockAndPersistInPhase(
+          run,
+          iteration,
+          "Feature-task-runtime phase '$consumer' rejected the durable record produced by '$producer', but " +
+            evidenceClause,
+          observability,
+          failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
+          childNeverLaunched = true,
+        )
+      }
+    }
     val rejectedPayload = producerEvidence.payload ?: byteArrayOf()
-    val diagnosticIdentity = recordRejectedOutput(
+    val diagnosticWrite = recordRejectedOutput(
       run = run,
       iteration = producingIteration,
       rule = "reconciliation-${rejection.rejectionClass}",
@@ -3364,9 +3346,10 @@ internal class FeatureTaskRuntimeRunLoop(
         ),
         regenerationAttempt = regenerationAttempt,
         quarantinedAtIteration = iteration.coerceAtLeast(1),
-        diagnosticIdentity = diagnosticIdentity,
+        diagnosticIdentity = (diagnosticWrite as? FeatureTaskRuntimeRejectedOutputWrite.Written)?.identity,
         rejectedRecordByteSize = producerEvidence.byteSize,
         rejectedRecordSha256 = producerEvidence.sha256,
+        diagnosticDegraded = diagnosticWrite is FeatureTaskRuntimeRejectedOutputWrite.Degraded,
       ),
       request.dbPathOverride,
     )
@@ -3393,14 +3376,21 @@ internal class FeatureTaskRuntimeRunLoop(
       .firstOrNull()
     val evidence = rejectedOutput?.let { output ->
       val agentId = state.recordFor(output.phaseId)?.resolvedAgentId ?: return@let null
-      recorder.producerOutput(
-        request.workflowId,
-        output.phaseId,
-        output.iteration.coerceAtLeast(1),
-        agentId,
-        request.dbPathOverride,
-        state.evidenceGeneration(output.phaseId),
-      )
+      when (
+        val read = recorder.producerOutput(
+          request.workflowId,
+          output.phaseId,
+          output.iteration.coerceAtLeast(1),
+          agentId,
+          request.dbPathOverride,
+          state.evidenceGeneration(output.phaseId),
+        )
+      ) {
+        is FeatureTaskRuntimeProducerOutputRead.Found -> read.evidence
+        is FeatureTaskRuntimeProducerOutputRead.Absent,
+        is FeatureTaskRuntimeProducerOutputRead.Unreadable,
+        -> null
+      }
     }
     evidence?.let {
       recordRejectedOutput(
@@ -3635,7 +3625,7 @@ internal class FeatureTaskRuntimeRunLoop(
   } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
     val path = rejectionPath(error.reason)
     val reason = payloadFreeRejectionReason("phase-output-schema", path)
-    val diagnosticIdentity = recordRejectedOutput(
+    val diagnosticWrite = recordRejectedOutput(
       run, iteration, "phase-output-schema", error.reason, outputBytes, path = path,
       outputTruncated = outputTruncated, outputByteSize = outputByteSize, outputSha256 = outputSha256,
     )
@@ -3652,7 +3642,7 @@ internal class FeatureTaskRuntimeRunLoop(
         outputTruncated = outputTruncated,
         outputByteSize = outputByteSize,
         outputSha256 = outputSha256,
-        diagnosticIdentity = diagnosticIdentity,
+        diagnosticWrite = diagnosticWrite,
         rejectionRule = "phase-output-schema",
         rejectionPath = path,
         payloadFreeConstraint = error.payloadFreeReason.orEmpty(),
@@ -3663,7 +3653,7 @@ internal class FeatureTaskRuntimeRunLoop(
   } catch (error: InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError) {
     val path = rejectionPath(error.reason)
     val reason = payloadFreeRejectionReason("audit-repair-plan-schema", path)
-    val diagnosticIdentity = recordRejectedOutput(
+    val diagnosticWrite = recordRejectedOutput(
       run, iteration, "audit-repair-plan-schema", error.reason, outputBytes, path = path,
       outputTruncated = outputTruncated, outputByteSize = outputByteSize, outputSha256 = outputSha256,
     )
@@ -3678,7 +3668,7 @@ internal class FeatureTaskRuntimeRunLoop(
         outputTruncated = outputTruncated,
         outputByteSize = outputByteSize,
         outputSha256 = outputSha256,
-        diagnosticIdentity = diagnosticIdentity,
+        diagnosticWrite = diagnosticWrite,
         rejectionRule = "audit-repair-plan-schema",
         rejectionPath = path,
         payloadFreeConstraint = error.payloadFreeReason.orEmpty(),
@@ -3698,7 +3688,7 @@ internal class FeatureTaskRuntimeRunLoop(
     outputTruncated: Boolean,
     outputByteSize: Long,
     outputSha256: String,
-    diagnosticIdentity: String,
+    diagnosticWrite: FeatureTaskRuntimeRejectedOutputWrite,
     rejectionRule: String,
     rejectionPath: String,
     payloadFreeConstraint: String,
@@ -3725,6 +3715,10 @@ internal class FeatureTaskRuntimeRunLoop(
       )
     }
     val repairEvidence = structuralRepairEvidence
+    val locator = (diagnosticWrite as? FeatureTaskRuntimeRejectedOutputWrite.Written)?.let {
+      CorrectiveRepairDiagnosticLocator(it.identity)
+    }
+    val degradationClass = (diagnosticWrite as? FeatureTaskRuntimeRejectedOutputWrite.Degraded)?.failureClass
     return FeatureTaskRuntimeCorrectiveRepairContext(
       phaseId = run.phaseId,
       attempt = iteration.coerceAtLeast(1),
@@ -3732,10 +3726,11 @@ internal class FeatureTaskRuntimeRunLoop(
       rejectionRule = rejectionRule,
       rejectionPath = rejectionPath,
       payloadFreeConstraint = payloadFreeConstraint,
-      diagnosticLocator = CorrectiveRepairDiagnosticLocator(diagnosticIdentity),
+      diagnosticLocator = locator,
       captured = captured,
       acceptedAfterStructuralRepair = acceptedAfterStructuralRepair || repairEvidence != null,
       structuralRepairEvidence = repairEvidence,
+      diagnosticDegradationClass = degradationClass,
     )
   }
 
@@ -3756,33 +3751,25 @@ internal class FeatureTaskRuntimeRunLoop(
     // producer phase is that producer's own capture, so it stays at turn 0 unless the caller knows
     // otherwise from the producer's retained evidence.
     repairTurn: Int = if (phaseId == run.phaseId) run.validationGateRepairTurn else 0,
-  ): String {
-    recorder.recordRejectedOutput(
-      RejectedOutputDiagnosticRequest(
-        workflowId = run.request.workflowId,
-        phaseId = phaseId,
-        attempt = iteration.coerceAtLeast(1),
-        rule = rule,
-        path = path,
-        reason = reason,
-        agentId = agentId,
-        model = model,
-        rawResponse = outputBytes,
-        observedByteSize = outputByteSize,
-        observedSha256 = outputSha256,
-        truncated = outputTruncated,
-        repairTurn = repairTurn,
-      ),
-      run.request.dbPathOverride,
-      state.evidenceGeneration(phaseId),
-    )
-    return RejectedOutputDiagnosticService.stableIdentity(
-      run.request.workflowId,
-      phaseId,
-      iteration.coerceAtLeast(1),
-      repairTurn,
-    )
-  }
+  ): FeatureTaskRuntimeRejectedOutputWrite = recorder.recordRejectedOutput(
+    RejectedOutputDiagnosticRequest(
+      workflowId = run.request.workflowId,
+      phaseId = phaseId,
+      attempt = iteration.coerceAtLeast(1),
+      rule = rule,
+      path = path,
+      reason = reason,
+      agentId = agentId,
+      model = model,
+      rawResponse = outputBytes,
+      observedByteSize = outputByteSize,
+      observedSha256 = outputSha256,
+      truncated = outputTruncated,
+      repairTurn = repairTurn,
+    ),
+    run.request.dbPathOverride,
+    state.evidenceGeneration(phaseId),
+  )
 
   @Suppress("ReturnCount")
   private fun settleValidatedOutput(
@@ -3813,7 +3800,7 @@ internal class FeatureTaskRuntimeRunLoop(
       // private diagnostic and the authorized repair body.
       val retryFacingConstraint = payloadFreeSemanticGateConstraint(rule, detail, outputMap)
       val retryReason = retryRejectionReason(reason, retryFacingConstraint)
-      val diagnosticIdentity = recordRejectedOutput(
+      val diagnosticWrite = recordRejectedOutput(
         run, iteration, diagnosticRule, detail, outputBytes, path = path,
         outputTruncated = outputTruncated, outputByteSize = outputByteSize, outputSha256 = outputSha256,
       )
@@ -3831,7 +3818,7 @@ internal class FeatureTaskRuntimeRunLoop(
           outputTruncated = outputTruncated,
           outputByteSize = outputByteSize,
           outputSha256 = outputSha256,
-          diagnosticIdentity = diagnosticIdentity,
+          diagnosticWrite = diagnosticWrite,
           rejectionRule = diagnosticRule,
           rejectionPath = path,
           payloadFreeConstraint = retryFacingConstraint ?: reason,
@@ -4467,7 +4454,7 @@ internal class FeatureTaskRuntimeRunLoop(
     val disposition = FeatureTaskRuntimePhaseSafetyPolicy.dispositionForTerminalOutput(run.phaseId, outputMap)
     return if (
       disposition.retryOnResume &&
-      FeatureTaskRuntimeFixLoopPolicy.participatesInFixLoop(run.phaseId)
+      FeatureTaskRuntimePhaseWorkflowDefinition.retriesOnInvalidOutput(run.phaseId)
     ) {
       // A retryable blocked/failed envelope re-enters the semantic fix loop as itself. It is NOT
       // relabelled schema-invalid: it validated, and converting it would both misreport the run and

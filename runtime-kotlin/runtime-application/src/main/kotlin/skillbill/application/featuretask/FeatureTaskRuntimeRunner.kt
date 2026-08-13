@@ -42,7 +42,7 @@ private const val PHASE_OUTPUT_STATUS_FAILED = "failed"
 /**
  * Runs the feature-task-runtime phase loop deterministically: for each ordered phase it
  * resolves the agent, assembles and persists the handoff, launches one agent synchronously,
- * gates the output through schema validation with a bounded fix loop, and persists per-phase
+ * gates the output through schema validation with an uncapped schema-correction retry, and persists per-phase
  * state, resuming from persisted records and blocking loudly on missing upstreams or failures.
  */
 @Inject
@@ -526,8 +526,8 @@ internal fun providerLimitPauseReason(phaseId: String, signal: FeatureTaskRuntim
 
 /**
  * Recognizes a durable block this runtime wrote for a launch that never reached the schema gate.
- * Such an attempt failed the process, not the output, so [FeatureTaskRuntimeFixLoopPolicy] must not
- * charge it to the semantic repair budget. Kept beside [infraFailureReason] so the text it matches
+ * Such an attempt failed the process, not the output, so [FeatureTaskRuntimeAttemptBudgets] must not
+ * charge it to a schema-repair retry. Kept beside [infraFailureReason] so the text it matches
  * and the text that produces it cannot drift apart unnoticed.
  *
  * A provider-limit refusal is deliberately absent: it settles as a pause, never as a block, so it

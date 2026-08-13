@@ -62,7 +62,29 @@ data class FeatureTaskRuntimeStatusProjection(
    * phase's historical loop or pass.
    */
   val currentPhaseExecution: IdeStatusCurrentPhaseExecution? = null,
+  /**
+   * Degraded diagnostic-persistence signals for this workflow. Null when none exist; never a
+   * count-zero object. [count] is the durable list size and the remaining fields are the most
+   * recently appended signal.
+   */
+  val degradedDiagnostic: FeatureTaskRuntimeDegradedDiagnosticStatus? = null,
 )
+
+data class FeatureTaskRuntimeDegradedDiagnosticStatus(
+  val count: Int,
+  val failureClass: String,
+  val phaseId: String,
+  val attempt: Int,
+) {
+  init {
+    require(count >= 1) { "FeatureTaskRuntimeDegradedDiagnosticStatus.count must be >= 1 when present." }
+    require(failureClass.isNotBlank()) {
+      "FeatureTaskRuntimeDegradedDiagnosticStatus.failureClass must be non-blank."
+    }
+    require(phaseId.isNotBlank()) { "FeatureTaskRuntimeDegradedDiagnosticStatus.phaseId must be non-blank." }
+    require(attempt >= 0) { "FeatureTaskRuntimeDegradedDiagnosticStatus.attempt must be >= 0." }
+  }
+}
 
 data class FeatureTaskRuntimeAuditRepairStatus(
   val firstPassConvergence: Boolean,

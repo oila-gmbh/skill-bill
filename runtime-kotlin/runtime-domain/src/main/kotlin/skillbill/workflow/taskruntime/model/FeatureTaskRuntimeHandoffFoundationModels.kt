@@ -1,6 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_DIAGNOSTIC_DEGRADATION_MEASUREMENT_CONTRACT_VERSION
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PROJECTION_MEASUREMENT_CONTRACT_VERSION
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_REJECTION_MEASUREMENT_CONTRACT_VERSION
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_SHARED_EVIDENCE_PROJECTION_CONTRACT_VERSION
@@ -177,6 +178,61 @@ data class FeatureTaskRuntimeRejectionMeasurement(
   ).apply {
     declaredCap?.let { put("declared_cap", it) }
     observedLength?.let { put("observed_length", it) }
+  }
+}
+
+/**
+ * Privacy-safe accounting for a diagnostic-persistence failure the runtime degraded instead of
+ * throwing. The durable [FeatureTaskRuntimeDiagnosticSignal] is the operator record; this event is
+ * the countable aggregate of the same payload-free fields.
+ *
+ * [repairTurn] is omitted from the map when the failure was not scoped to one turn, matching the
+ * newest-turn read path. [attempt] is the phase attempt, not a projection iteration.
+ */
+data class FeatureTaskRuntimeDiagnosticDegradationMeasurement(
+  val workflowId: String,
+  val phaseId: String,
+  val attempt: Int,
+  val repairTurn: Int? = null,
+  val generation: Int,
+  val operation: String,
+  val failureClass: FeatureTaskRuntimeDiagnosticFailureClass,
+  val conflictingKey: String,
+) {
+  init {
+    require(workflowId.isNotBlank()) {
+      "FeatureTaskRuntimeDiagnosticDegradationMeasurement.workflowId must be non-blank."
+    }
+    require(phaseId.isNotBlank()) {
+      "FeatureTaskRuntimeDiagnosticDegradationMeasurement.phaseId must be non-blank."
+    }
+    require(attempt >= 0) { "FeatureTaskRuntimeDiagnosticDegradationMeasurement.attempt must be >= 0." }
+    require(repairTurn == null || repairTurn >= 0) {
+      "FeatureTaskRuntimeDiagnosticDegradationMeasurement.repairTurn must be >= 0 when present."
+    }
+    require(generation >= 0) {
+      "FeatureTaskRuntimeDiagnosticDegradationMeasurement.generation must be >= 0."
+    }
+    require(operation.isNotBlank()) {
+      "FeatureTaskRuntimeDiagnosticDegradationMeasurement.operation must be non-blank."
+    }
+    require(conflictingKey.isNotBlank()) {
+      "FeatureTaskRuntimeDiagnosticDegradationMeasurement.conflictingKey must be non-blank."
+    }
+  }
+
+  @OpenBoundaryMap("Content-free feature-task-runtime diagnostic-degradation measurement telemetry seam")
+  fun toTelemetryMap(): Map<String, Any?> = linkedMapOf(
+    "contract_version" to FEATURE_TASK_RUNTIME_DIAGNOSTIC_DEGRADATION_MEASUREMENT_CONTRACT_VERSION,
+    "workflow_id" to workflowId,
+    "phase_id" to phaseId,
+    "attempt" to attempt,
+    "generation" to generation,
+    "operation" to operation,
+    "failure_class" to failureClass.wireValue,
+    "conflicting_key" to conflictingKey,
+  ).apply {
+    repairTurn?.let { put("repair_turn", it) }
   }
 }
 

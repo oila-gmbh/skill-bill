@@ -1,5 +1,26 @@
 # featuretask runtime boundary history
 
+## [2026-08-13] SKILL-186 subtask 2 — Quarantine identity integrity
+Areas: runtime-application/featuretask (recorder, run loop), runtime-application/model, runtime-domain/workflow/taskruntime/model, orchestration/contracts, runtime-contracts, runtime-infra-fs (schema validator)
+- `recordRejectedOutput` returns `Written(identity)` only after the evidence transaction commits, or `Degraded(failureClass)` when it rolled back — never a `rod_` token for a row that does not exist
+- Quarantine append records that outcome as exclusive wire fields: identity when the write landed, `diagnostic_degraded: true` (identity omitted) when it degraded; regeneration still fires; the store stays append-only
+- Contract 0.3 stays: additive `diagnostic_degraded` const-true mutually exclusive with identity so pre-change identity-only entries still decode; `false` and undeclared envelope/entry fields loud-fail instead of being dropped
+- Reusable: typed write-outcome at the persistence seam so a caller cannot persist an identity the store never wrote; exclusive optional fields over a version bump when old records must remain readable
+- Limitation: already-persisted dangling identities are not repaired (spec non-goal)
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
+## [2026-08-12] SKILL-186 subtask 1 — Degraded diagnostic-persistence operator seam
+Areas: runtime-application/featuretask (recorder, run loop, status), runtime-application/model, runtime-domain/workflow/taskruntime/model, runtime-ports/persistence, runtime-infra-sqlite/db/telemetry, runtime-cli/featuretask, docs
+- `degradeDiagnosticFailure` now emits a content-free `FeatureTaskRuntimeDiagnosticDegradationMeasurement` through `LifecycleTelemetryRepository` beside the durable `FeatureTaskRuntimeDiagnosticSignal`; a throwing sink still appends the signal, returns null, and lets the run proceed
+- Measurement pins contract 0.1, `toTelemetryMap()` keys are parity-tested, and the map is on the `@OpenBoundaryMap` allow-list; `repair_turn` is omitted when the failure was not scoped to one turn
+- `producerOutput` returns `Found` / `Absent` / `Unreadable(failureClass)` instead of collapsing store refusal into null; the producer-evidence block names "no retained evidence" vs "store refused it" with the typed class, keeping `NEEDS_USER_ACTION` and `childNeverLaunched`
+- Status projection reports degraded-signal count plus latest failure class/phase/attempt, or null when none exist; a malformed durable list still loud-fails; CLI `status` surfaces the same object
+- Reusable: typed read-result over a nullable that hid two causes; separate-transaction telemetry so a throwing sink cannot roll back the operator signal
+- Limitation: `persistDiagnosticSignal`'s best-effort catch stays silent; quarantine `diagnosticIdentity` dangling-pointer is subtask 2
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
 ## [2026-08-12] SKILL-187 subtask 3 — Regression and conformance coverage
 Areas: runtime-application/featuretask (integration + privacy tests, RealPhaseOutputValidator fixture), runtime-infra-fs (structural-repair + schema-validator tests), runtime-domain/workflow/taskruntime/model, runtime-contracts
 - Synthetic SKILL-16 audit sentinels (nested root verdict, unauthorized observation enum, compound/oversized artifact_ref, missing-delimiter-then-schema) assert exact capture in the authorized repair section and payload-free cues; corrected envelopes advance

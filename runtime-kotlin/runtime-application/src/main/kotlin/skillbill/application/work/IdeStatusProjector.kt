@@ -142,23 +142,6 @@ class IdeStatusProjector(
   }
 
   /**
-   * Only an active candidate is reinterpreted. Every subtask settled with no live worker
-   * lease means a parent row stuck `running` (finalization died after the last subtask,
-   * goal finished out-of-band) — the settled truth wins. Pause controls likewise only
-   * override an active candidate; a durable blocked/failed/terminal state is the stronger
-   * signal and must survive a stale pause flag. Only a *consumed* pause downgrades to
-   * PAUSED: a requested-but-unconsumed pause is still genuinely running its current subtask,
-   * and is reported as the `pause_requested` modifier on an active goal instead.
-   *
-   * A `running` row whose parent lease is no longer live means no goal runner holds the
-   * goal: the process was stopped or died without writing a terminal state. Reporting that
-   * as active is the surface's worst lie — it counts an elapsed clock upward for work that
-   * is not happening. Operator stop and crash are indistinguishable here (a killed process
-   * records no intent), and both leave durable state resumable, so both report `paused`.
-   * Only [ExecutionLiveness.IDLE] qualifies; UNKNOWN is a lease-read failure and must not
-   * be read as absence.
-   */
-  /**
    * Zero accumulated time with no live anchor is not an observation that the goal did no work — it
    * is a goal the runtime never watched execute, including every goal that predates the accumulator.
    * Emitting the zero would have a consumer render "0s" as fact; omitting it lets the consumer fall
@@ -176,18 +159,36 @@ class IdeStatusProjector(
   private fun GoalRunnerStatusProjection.liveActiveDurationAnchor(): Instant? =
     parseInstantOrNull(activeDurationAsOf).takeIf { executionLiveness == ExecutionLiveness.LIVE }
 
+  /**
+   * Every subtask settled with no live worker lease means a parent row stuck after
+   * finalization died — `running`, `blocked`, or `failed` are all stale against that
+   * settled truth. A genuinely blocked goal still has `blockedCount > 0` and is not
+   * reinterpreted. Pause controls only override an active candidate; a durable
+   * blocked/failed/terminal state with unfinished subtasks must survive a stale pause
+   * flag. Only a *consumed* pause downgrades to PAUSED: a requested-but-unconsumed pause
+   * is still genuinely running its current subtask, and is reported as the
+   * `pause_requested` modifier on an active goal instead.
+   *
+   * A `running` row whose parent lease is no longer live means no goal runner holds the
+   * goal: the process was stopped or died without writing a terminal state. Reporting that
+   * as active is the surface's worst lie — it counts an elapsed clock upward for work that
+   * is not happening. Operator stop and crash are indistinguishable here (a killed process
+   * records no intent), and both leave durable state resumable, so both report `paused`.
+   * Only [ExecutionLiveness.IDLE] qualifies; UNKNOWN is a lease-read failure and must not
+   * be read as absence.
+   */
   private fun goalLifecycle(
     candidate: IdeStatusCandidate,
     projection: GoalRunnerStatusProjection?,
   ): IdeStatusLifecycleState {
-    if (candidate.lifecycleState != IdeStatusLifecycleState.ACTIVE) return candidate.lifecycleState
     val settledComplete = projection != null &&
       projection.pendingCount == 0 &&
       projection.blockedCount == 0 &&
       projection.completeCount > 0 &&
       projection.executionLiveness != ExecutionLiveness.LIVE
+    if (settledComplete) return IdeStatusLifecycleState.TERMINAL
+    if (candidate.lifecycleState != IdeStatusLifecycleState.ACTIVE) return candidate.lifecycleState
     return when {
-      settledComplete -> IdeStatusLifecycleState.TERMINAL
       projection?.paused == true -> IdeStatusLifecycleState.PAUSED
       projection?.executionLiveness == ExecutionLiveness.IDLE -> IdeStatusLifecycleState.PAUSED
       else -> IdeStatusLifecycleState.ACTIVE

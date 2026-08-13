@@ -891,17 +891,14 @@ class CliFeatureTaskRuntimeRuntimeTest {
   @Test
   fun `feature-task-runtime status reports a blocked phase derived from the ledger`() {
     val fixture = runtimeFixture()
-    // Preplan and plan complete; implement never validates and blocks after the bounded fix loop.
+    // Preplan and plan complete; implement emits unparseable output and blocks on the format budget.
     val launcher = RecordingPhaseLauncher(invalidFromLaunchIndex = 2)
     val run = CliRuntime.run(fixture.runCommand(extra = listOf("--agent", "codex")), fixture.context(launcher))
     assertEquals(1, run.exitCode, run.stdout)
     assertContains(run.stdout, "status: blocked")
-    // F-006: the rendered run output names the specific blocked phase and reason. `implement` is a
-    // fix-loop phase under the mutating-phase idempotency contract, so it exhausts the bounded fix
-    // loop on repeated invalid output before blocking, with the matching wording.
     assertContains(run.stdout, "last_incomplete_phase: implement")
     assertContains(run.stdout, "blocked_reason:")
-    assertContains(run.stdout, "exhausted the bounded fix loop")
+    assertContains(run.stdout, "output-format correction budget")
     val workflowId = run.stdout.lines().single { it.startsWith("workflow_id:") }.substringAfter(":").trim()
 
     val status = CliRuntime.run(
@@ -2015,11 +2012,7 @@ private class RecordingPhaseLauncher(
   companion object {
     // Missing the required status/summary/produced_outputs fields, so the per-phase
     // output validator rejects it and the runner never marks the phase complete.
-    val INVALID_PHASE_OUTPUT =
-      """
-      contract_version: "0.3"
-      phase_id: "implement"
-      """.trimIndent()
+    const val INVALID_PHASE_OUTPUT = "not a json object"
 
     fun validPhaseOutput(phaseId: String): String {
       // A clean review/audit must emit a verification signal (an empty findings/gaps array

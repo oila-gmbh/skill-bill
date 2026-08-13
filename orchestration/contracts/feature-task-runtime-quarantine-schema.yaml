@@ -38,8 +38,9 @@ title: Feature-task-runtime quarantined records
 description: >-
   The durable append-only list of quarantined durable records for one run. Each entry names the
   producing and consuming phases, the producing iteration, the rejection class and detail, the
-  regeneration attempt at which it was quarantined, and the rejected record payload. This list is
-  private evidence: it is never delivered to any agent prompt and never deleted by the runtime.
+  regeneration attempt at which it was quarantined, and either a diagnostic identity or a
+  diagnostic-degraded mark. This list is private evidence: it is never delivered to any agent prompt
+  and never deleted by the runtime.
 type: object
 additionalProperties: false
 required:
@@ -48,7 +49,7 @@ required:
 properties:
   contract_version:
     type: string
-    const: "0.2"
+    const: "0.3"
     description: Pinned quarantine contract version; a mismatch is an unsupported-version rejection.
   entries:
     type: array
@@ -68,7 +69,6 @@ $defs:
       - rejection_detail
       - regeneration_attempt
       - quarantined_at_iteration
-      - diagnostic_identity
       - rejected_record_byte_size
       - rejected_record_sha256
     properties:
@@ -105,7 +105,15 @@ $defs:
       diagnostic_identity:
         type: string
         minLength: 1
-        description: Stable identity of the private rejected-output diagnostic.
+        description: >
+          Stable identity of the private rejected-output diagnostic. Present only when that write
+          landed; mutually exclusive with diagnostic_degraded.
+      diagnostic_degraded:
+        type: boolean
+        const: true
+        description: >
+          Present and true only when the rejected-output diagnostic write degraded; mutually
+          exclusive with diagnostic_identity.
       rejected_record_byte_size:
         type: integer
         minimum: 0
@@ -114,6 +122,13 @@ $defs:
         type: string
         pattern: "^[0-9a-f]{64}$"
         description: SHA-256 digest of the rejected response.
+    if:
+      required: [diagnostic_degraded]
+    then:
+      not:
+        required: [diagnostic_identity]
+    else:
+      required: [diagnostic_identity]
 
 x-coherence-checks:
   - id: append-only-evidence

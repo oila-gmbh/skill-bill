@@ -5,6 +5,7 @@ import skillbill.application.decomposition.decompositionManifestPath
 import skillbill.application.decomposition.parentSpecPath
 import skillbill.application.model.FeatureTaskRuntimeAuditRepairStatus
 import skillbill.application.model.FeatureTaskRuntimeDecomposeTerminalStatus
+import skillbill.application.model.FeatureTaskRuntimeDegradedDiagnosticStatus
 import skillbill.application.model.FeatureTaskRuntimePhaseStatus
 import skillbill.application.model.FeatureTaskRuntimeStatusProjection
 import skillbill.application.model.FeatureTaskRuntimeStatusRequest
@@ -13,6 +14,7 @@ import skillbill.application.model.IdeStatusCurrentPhaseExecutionKind
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGenerationHistory
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
@@ -52,10 +54,6 @@ class FeatureTaskRuntimeStatusService(
     val decomposeTerminal = decomposeTerminalRecorder.loadDecomposeTerminal(request.workflowId, request.dbPathOverride)
     val cachedAuditRepairProgress =
       recorder.loadAuditRepairState(request.workflowId, request.dbPathOverride)?.progress
-    // Blocked-ness is derived primarily from the DURABLE per-phase records (a blocked phase
-    // persists a terminal `blocked` record that survives ledger pruning); the append-only ledger
-    // is supplementary detail only. A later non-blocked ledger entry from a resumed run can still
-    // supersede a stale block, but a durable blocked record on a phase always reports blocked.
     val ledger = recorder.loadPhaseLedger(request.workflowId, request.dbPathOverride).orEmpty()
     val auditRepairProgress = auditRepairProgressFrom(
       recorder.loadAuditGenerationHistory(request.workflowId, request.dbPathOverride),
@@ -86,14 +84,7 @@ class FeatureTaskRuntimeStatusService(
         request.workflowId,
         request.dbPathOverride,
       ).finalizingAgentId,
-      decomposeTerminal = decomposeTerminal?.let {
-        FeatureTaskRuntimeDecomposeTerminalStatus(
-          reason = it.reason,
-          parentSpecPath = it.parentSpecPath,
-          decompositionManifestPath = it.decompositionManifestPath,
-          subtaskSpecPaths = it.subtaskSpecPaths,
-        )
-      },
+      decomposeTerminal = decomposeTerminalStatus(decomposeTerminal),
       auditRepair = auditRepair,
       gateRunCount = gateRunCount,
       currentPhaseExecution = currentPhaseExecutionDeriver.derive(
@@ -107,6 +98,32 @@ class FeatureTaskRuntimeStatusService(
           gateRunCount = gateRunCount,
         ),
       ),
+      degradedDiagnostic = degradedDiagnosticStatus(request.workflowId, request.dbPathOverride),
+    )
+  }
+
+  private fun degradedDiagnosticStatus(
+    workflowId: String,
+    dbPathOverride: String?,
+  ): FeatureTaskRuntimeDegradedDiagnosticStatus? {
+    val diagnosticSignals = recorder.loadDiagnosticSignals(workflowId, dbPathOverride)
+    val latest = diagnosticSignals.lastOrNull() ?: return null
+    return FeatureTaskRuntimeDegradedDiagnosticStatus(
+      count = diagnosticSignals.size,
+      failureClass = latest.failureClass.wireValue,
+      phaseId = latest.phaseId,
+      attempt = latest.attempt,
+    )
+  }
+
+  private fun decomposeTerminalStatus(
+    terminal: FeatureTaskRuntimeDecomposeTerminal?,
+  ): FeatureTaskRuntimeDecomposeTerminalStatus? = terminal?.let {
+    FeatureTaskRuntimeDecomposeTerminalStatus(
+      reason = it.reason,
+      parentSpecPath = it.parentSpecPath,
+      decompositionManifestPath = it.decompositionManifestPath,
+      subtaskSpecPaths = it.subtaskSpecPaths,
     )
   }
 
