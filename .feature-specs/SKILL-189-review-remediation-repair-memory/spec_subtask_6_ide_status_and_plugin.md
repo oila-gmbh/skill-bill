@@ -25,6 +25,9 @@ runtime code, so the two halves must be independently correct.
 
 ## Acceptance Criteria
 
+The repository prohibits new tests, so the assertions ACs 7, 10, and 11 name are
+not written; the behaviour they describe is implemented and marked accordingly.
+
 1. The IDE status projection carries an optional, bounded, sanitized pause
    reason for paused lifecycles, distinguishing at minimum a pause awaiting an
    operator decision from other pause causes.
@@ -46,22 +49,23 @@ runtime code, so the two halves must be independently correct.
    degrades it to null on an over-length, non-string, or malformed value,
    matching the existing optional-block degradation rules. A bad reason never
    invalidates the surrounding outcome.
-7. A plugin build that predates this field ignores it: an unknown wire key
+7. PARTIALLY IMPLEMENTED (no test). A plugin build that predates this field ignores it: an unknown wire key
    produces the same outcome it does today, with no `Incompatible` state and no
    parse failure. Asserted by a mapper test carrying an unrecognized key.
 8. The `Paused` outcome carries the reason, and the details popup and tooltip
    render it. The status bar's 48-char budget is respected: the reason occupies
-   popup and tooltip surfaces, and the existing ascending-value drop rule
-   governs any bar segment.
+   popup and tooltip surfaces only — the bar text and its headline are left
+   unchanged — and the existing ascending-value drop rule governs any bar
+   segment.
 9. When the reason indicates an awaited operator decision, the popup names the
    CLI command that resolves it as display text only. The plugin gains no new
    mutating verb; it continues to shell out to `goal stop` and `goal pause`
    alone.
-10. `plan_fix` renders correctly through the existing generic path:
+10. PARTIALLY IMPLEMENTED (no test). `plan_fix` renders correctly through the existing generic path:
     `phaseDisplayName` splits on `_` and title-cases, and `executionWording`
     renders a `semantic_loop` kind as `"Plan Fix loop N"`. Covered by a
     presentation test. No phase-id table is introduced in the plugin.
-11. The plugin never displays an inflated remediation loop number: because
+11. PARTIALLY IMPLEMENTED (no test). The plugin never displays an inflated remediation loop number: because
     `plan_fix` and `implement_fix` launch within one remediation round, the
     `current_phase_execution` count for the `review_fix` loop still counts
     rounds. Asserted against a two-phase round fixture.
@@ -85,6 +89,18 @@ runtime code, so the two halves must be independently correct.
 Depends on subtask 3 for the `plan_fix` phase id that reaches the wire, and on
 subtask 4 for the pause it reports. Independent of subtask 5; either may land
 first.
+
+## Implementation Notes
+
+The awaiting-decision signal is read from the child's durable phase row, not the
+decomposition manifest: a paused child reconciles to manifest status
+`in_progress`, and reconciliation retains `blockedReason` only for `blocked`, so
+the manifest discards the pause reason. The runtime status projection exposes it
+as `operatorDecisionPause`.
+
+When a goal-level pause code and an awaited subtask decision are both present,
+the awaited decision is reported, since it is what must happen before the goal
+can move.
 
 ## Validation Strategy
 

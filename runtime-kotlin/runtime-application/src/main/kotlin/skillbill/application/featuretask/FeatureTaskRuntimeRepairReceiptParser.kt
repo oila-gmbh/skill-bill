@@ -89,8 +89,15 @@ internal fun featureTaskRuntimeRepairReceiptSettleRejection(
       reviewState.passResults.lastOrNull()?.findings.orEmpty(),
     )
     ?: featureTaskRuntimeRepairReceiptRoundRejection(receipt, roundNumber)
-    ?: featureTaskRuntimeRepairReceiptDisturbanceRejection(receipt, reviewState.repairLedger)
+    ?: derivedRepairLedgerOrNull(reviewState)?.let { ledger ->
+      featureTaskRuntimeRepairReceiptDisturbanceRejection(receipt, ledger)
+    }
 }
+
+// A ledger that cannot be derived rejects nothing: the disturbance gate is a memory check, and a
+// round must not be refused because the memory of earlier rounds is unreadable.
+private fun derivedRepairLedgerOrNull(reviewState: GoalSubtaskReviewState): FeatureTaskRuntimeRepairLedger? =
+  runCatching { reviewState.repairLedger }.getOrNull()
 
 internal fun featureTaskRuntimeRepairReceiptDisturbanceRejection(
   receipt: FeatureTaskRuntimeRepairReceipt,

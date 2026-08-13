@@ -153,7 +153,9 @@ private fun churnRoundOrNull(
   val blocking = pass.findings.filter(GoalSubtaskReviewCompactFinding::blocksAdvance)
   if (blocking.isEmpty()) return null
   val recurring = ledger.entries.filter { entry ->
-    entry.originRound < pass.passNumber && blocking.any(entry::disturbedBy)
+    entry.constructs.isNotEmpty() &&
+      entry.originRound < pass.passNumber &&
+      blocking.any(entry::disturbedBy)
   }
   return recurring.takeIf(List<FeatureTaskRuntimeRepairLedgerEntry>::isNotEmpty)
     ?.let { entries -> ReviewRemediationChurnRound(blocking, entries) }

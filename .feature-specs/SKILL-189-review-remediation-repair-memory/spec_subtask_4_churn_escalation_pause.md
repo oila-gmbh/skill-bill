@@ -22,8 +22,12 @@ requires an already-paused subtask.
 
 1. Non-convergence detection additionally recognizes churn: advance-blocking
    findings recurring against constructs already recorded in the remediation
-   repair ledger, across a bounded number of consecutive rounds, with a
-   remediation delta that is not shrinking.
+   repair ledger, across a bounded number of consecutive rounds, with the work
+   not shrinking. "Not shrinking" is measured by the durable advance-blocking
+   finding count across the churn window, because no per-pass measure of the
+   delta's size is durable and AC 10 requires the decision to be reproducible
+   from durable state alone. A count that fell anywhere in the window counts as
+   progress and suppresses the pause.
 2. The existing condition — identical advance-blocking finding set plus
    unchanged fingerprint or digest — keeps working exactly as it does today and
    is not weakened by the new branch.
@@ -34,7 +38,8 @@ requires an already-paused subtask.
    transition, matching the behavior of the existing non-convergence pause.
 5. A `plan_fix` escalation verdict reaches the same pause with the same
    evidence shape, so an operator sees one consistent surface whether
-   escalation was declared by `plan_fix` or detected by churn.
+   escalation was declared by `plan_fix` or detected by churn. Escalation
+   itself pauses only on ledger-recorded non-progress; see subtask 3 AC 8.
 6. The pause reason names the recurring constructs, the round count, and the
    severity mix, and is sanitized: no diff hunks, no line numbers, no raw
    review output, no source bodies. Location-bearing detail remains reachable
@@ -57,6 +62,12 @@ requires an already-paused subtask.
 - No automatic replanning, abandonment, or acceptance on churn.
 - No change to review scope, remediation base sha, or severity semantics.
 - No new operator decision value.
+
+## Implementation Notes
+
+Every detection seam is best-effort: a repair ledger that cannot be derived
+degrades to no churn evidence and the loop continues. Detection may withhold a
+pause; it may never stop a run by failing.
 
 ## Dependency Notes
 

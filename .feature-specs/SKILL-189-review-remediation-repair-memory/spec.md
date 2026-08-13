@@ -118,9 +118,12 @@ Review scope stays the remediation delta. This feature changes what a round
    ledger under the existing goal-subtask review state, surviving process death,
    parent resume, and cross-run continuation without duplication or loss.
 3. Each ledger entry carries explicit status — at minimum resolved,
-   superseded, or reopened — with the round that produced it. A carried entry
-   is presented to consumers as settled and load-bearing, never as an open
-   finding awaiting work.
+   superseded, reopened, or disregarded — with the round that produced it. A
+   carried entry is presented to consumers as settled and load-bearing, never
+   as an open finding awaiting work. A disregarded entry carries the reason a
+   round gave for editing nothing, except where that reasoning was later
+   contradicted, in which case the entry is marked contested and the reasoning
+   is withheld in favour of an instruction to re-verify from delta evidence.
 4. The ledger is projected into every `implement_fix` launch from round two
    onward. A round that removes or materially rewrites a construct recorded as
    another finding's remedy must state which finding it is disturbing and why,
@@ -147,8 +150,11 @@ Review scope stays the remediation delta. This feature changes what a round
    subtask.
 10. A `plan_fix` escalation verdict pauses the subtask for an operator decision
     with the ledger and root-cause analysis as evidence, reusing the existing
-    resumable pause and operator-decision surface. It never auto-routes back to
-    `plan` and never advances to `implement_fix`.
+    resumable pause and operator-decision surface, but only on evidence of
+    non-progress: the ledger must already record a reopened entry for an
+    escalated finding. A first classification does not pause a run that is
+    still progressing. Escalation never auto-routes back to `plan` and never
+    advances to `implement_fix`.
 11. Non-convergence detection additionally pauses on churn: advance-blocking
     findings recurring against constructs already recorded in the ledger across
     a bounded number of consecutive rounds, with a monotonically growing
@@ -170,11 +176,13 @@ Review scope stays the remediation delta. This feature changes what a round
 15. Crash safety is preserved: death during `plan_fix`, `implement_fix`, or a
     re-`review` resumes at the correct phase and round with no double-applied
     mutation, no lost receipt, and no re-reserved review pass.
-16. Regression coverage reproduces the SKILL-16 shape: a round that would
-    delete a prior round's recorded remedy is detected; a fourth consecutive
-    finding against ledger-recorded constructs escalates or pauses rather than
-    looping; and a genuine new defect in remediation-authored code still blocks
-    advancement.
+16. NOT IMPLEMENTED — the repository prohibits new tests and the owner
+    confirmed that rule holds here. Regression coverage would reproduce the
+    SKILL-16 shape: a round that would delete a prior round's recorded remedy
+    is detected; a fourth consecutive finding against ledger-recorded
+    constructs escalates or pauses rather than looping; and a genuine new
+    defect in remediation-authored code still blocks advancement. Retained as
+    the record of what would prove this feature.
 17. The stale topology comment claiming *"Major, Minor, and Nit findings never
     produce `changes_requested`"* is corrected to match the implemented
     contract, where `blocksAdvance` is Blocker **or** Major.
@@ -215,7 +223,8 @@ Review scope stays the remediation delta. This feature changes what a round
   build and imports no runtime code.
 - `skills/bill-feature-task-runtime/content.md` and the runtime contract
   documentation for the changed loop shape.
-- Focused domain, application, contract, privacy, and integration tests.
+- Focused domain, application, contract, privacy, and integration tests — NOT
+  DELIVERED; see AC 16.
 
 ## Constraints
 

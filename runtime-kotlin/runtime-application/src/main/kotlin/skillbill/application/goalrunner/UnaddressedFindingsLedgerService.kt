@@ -44,7 +44,9 @@ class UnaddressedFindingsLedgerService(private val database: DatabaseSessionFact
       val state = runCatching {
         GoalSubtaskReviewArtifactDecoder.decodeReviewStateOnly(decodeArtifacts(record.artifactsJson))
       }.getOrNull() ?: return@mapNotNull null
-      state.repairLedger.takeUnless(FeatureTaskRuntimeRepairLedger::isEmpty)?.let { workflowId to it }
+      runCatching { state.repairLedger }.getOrNull()
+        ?.takeUnless(FeatureTaskRuntimeRepairLedger::isEmpty)
+        ?.let { workflowId to it }
     }.toMap()
   }
 

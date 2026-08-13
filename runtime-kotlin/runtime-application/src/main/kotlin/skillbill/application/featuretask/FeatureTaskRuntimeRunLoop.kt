@@ -83,6 +83,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorReviewContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProducerIteration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionFailureClassification
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry
@@ -1863,13 +1864,34 @@ internal class FeatureTaskRuntimeRunLoop(
   }
 
   /**
-   * An unreadable review record loud-fails rather than reading as "no state": swallowing it here
-   * would report no unresolved Blocker and walk the child straight past the pause gate. The sibling
-   * read seams already fail loudly, so this one must agree with them.
+   * An unreadable review record still loud-fails: swallowing it would report no unresolved Blocker and
+   * walk the child straight past the pause gate. Deriving carried context from a record that did read
+   * is advisory, so a malformed entry degrades to no context and the phase launches anyway. Losing the
+   * memory costs the round its history; refusing to launch costs the subtask its review.
    */
   private fun remediationRepairLedger(phaseId: String): FeatureTaskRuntimeRepairLedger? {
     if (phaseId !in REMEDIATION_LEDGER_CONSUMER_PHASE_IDS) return null
-    return goalReviewStateOrNull()?.repairLedger?.takeUnless(FeatureTaskRuntimeRepairLedger::isEmpty)
+    val reviewState = goalReviewStateOrNull() ?: return null
+    return advisoryContext("repair ledger") { reviewState.repairLedger }
+      ?.takeUnless(FeatureTaskRuntimeRepairLedger::isEmpty)
+  }
+
+  private fun remediationPriorReviewContext(phaseId: String, passNumber: Int?): FeatureTaskRuntimePriorReviewContext? {
+    if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) return null
+    if ((passNumber ?: 1) < 2) return null
+    val reviewState = goalReviewStateOrNull() ?: return null
+    return advisoryContext("prior review pass context") { reviewState.priorReviewContext }
+  }
+
+  private fun <T> advisoryContext(label: String, derive: () -> T?): T? = runCatching(derive).getOrElse { error ->
+    if (error is Error) throw error
+    runCatching {
+      diagnostics.warning(
+        "Feature-task-runtime could not derive the $label for issue ${request.issueKey}, workflow " +
+          "${request.workflowId}: ${error.message ?: error::class.simpleName}. The phase runs without it.",
+      )
+    }
+    null
   }
 
   private fun goalReviewStateOrNull(): GoalSubtaskReviewState? = if (!isGoalContinuationRun(request)) {
@@ -1936,11 +1958,13 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun remediationChurnEvidence(
     reviewState: GoalSubtaskReviewState,
     minimumConsecutiveRounds: Int,
-  ): FeatureTaskRuntimeReviewRemediationChurnEvidence? = featureTaskRuntimeReviewRemediationChurn(
-    ledger = reviewState.repairLedger,
-    passResults = reviewState.passResults,
-    minimumConsecutiveRounds = minimumConsecutiveRounds,
-  )
+  ): FeatureTaskRuntimeReviewRemediationChurnEvidence? = advisoryContext("remediation churn evidence") {
+    featureTaskRuntimeReviewRemediationChurn(
+      ledger = reviewState.repairLedger,
+      passResults = reviewState.passResults,
+      minimumConsecutiveRounds = minimumConsecutiveRounds,
+    )
+  }
 
   private fun pauseOnRemediationNonProgress(
     phaseId: String,
@@ -2018,7 +2042,9 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun designSymptomAlreadyAttempted(planFixPhaseId: String): Boolean {
     val escalatedRefs = state.repairPlan(planFixPhaseId)?.designSymptomRefs.orEmpty()
     if (escalatedRefs.isEmpty()) return false
-    return goalReviewStateOrNull()?.repairLedger?.hasReopenedEntryFor(escalatedRefs) == true
+    val reviewState = goalReviewStateOrNull() ?: return false
+    return advisoryContext("repair ledger") { reviewState.repairLedger }
+      ?.hasReopenedEntryFor(escalatedRefs) == true
   }
 
   private fun pauseOnRepairEscalation(phaseId: String) {
@@ -5397,6 +5423,7 @@ internal class FeatureTaskRuntimeRunLoop(
       reviewDecidingRule = depthResolution?.decidingRule,
       priorBlockerFindingIds = priorBlockerFindingIds(),
       repairLedger = handoff.repairLedger,
+      priorReviewContext = remediationPriorReviewContext(run.phaseId, passNumber),
       priorSchemaFailure = priorCorrection?.schemaGateReason,
       priorTerminalFailure = priorCorrection?.retryableTerminalReason,
       correctiveRepairContext = priorCorrection?.correctiveRepairContext,

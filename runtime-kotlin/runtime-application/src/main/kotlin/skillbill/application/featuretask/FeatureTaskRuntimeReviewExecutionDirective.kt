@@ -1,6 +1,7 @@
 package skillbill.application.featuretask
 
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorReviewContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
 
 /**
@@ -74,9 +75,13 @@ private fun remediationContext(inputs: ReviewExecutionDirectiveInputs, remediati
       ?.takeUnless(FeatureTaskRuntimeRepairLedger::isEmpty)
       ?.let { "\n\n" + it.boundedProjection().renderReferenceSection() }
       .orEmpty()
+    val priorPass = inputs.priorReviewContext
+      ?.takeUnless(FeatureTaskRuntimePriorReviewContext::isEmpty)
+      ?.let { "\n\n" + it.renderReferenceSection() }
+      .orEmpty()
     """
     ## Reserved remediation pass (pass ${inputs.reviewPassNumber ?: 2})
-    This is a reserved remediation pass under context:feature-remediation. Scope is strictly all findings addressed in that round union diff(this round's pre-fix tree -> post-fix tree). Do not re-review the subtask's full base-to-current delta; the immutable `review_base_sha` and baseline untracked inventory are pass one's authority only. A defect introduced by the remediation itself must still be caught.$materialized$ledger
+    This is a reserved remediation pass under context:feature-remediation. Scope is strictly all findings addressed in that round union diff(this round's pre-fix tree -> post-fix tree). Do not re-review the subtask's full base-to-current delta; the immutable `review_base_sha` and baseline untracked inventory are pass one's authority only. A defect introduced by the remediation itself must still be caught.$materialized$priorPass$ledger
     """.trimIndent()
   } else {
     ""

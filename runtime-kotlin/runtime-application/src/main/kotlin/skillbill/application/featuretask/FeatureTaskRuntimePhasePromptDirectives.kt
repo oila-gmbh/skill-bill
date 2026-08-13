@@ -8,6 +8,7 @@ import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorReviewContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
 
 // Phase-scoped prompt directives and the per-phase task directive table, split out of
@@ -231,6 +232,7 @@ internal data class ReviewExecutionDirectiveInputs(
   val reviewDecidingRule: String?,
   val baselineUntrackedPaths: List<String> = emptyList(),
   val repairLedger: FeatureTaskRuntimeRepairLedger? = null,
+  val priorReviewContext: FeatureTaskRuntimePriorReviewContext? = null,
 )
 
 // Emits for every commit phase: the runtime and agent never stage feature specs. A human operator

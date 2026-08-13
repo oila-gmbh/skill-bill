@@ -21,6 +21,7 @@ enum class FeatureTaskRuntimeRepairLedgerStatus(val wireValue: String) {
   RESOLVED("resolved"),
   SUPERSEDED("superseded"),
   REOPENED("reopened"),
+  DISREGARDED("disregarded"),
 }
 
 data class FeatureTaskRuntimeRepairLedgerEntry(
@@ -33,6 +34,8 @@ data class FeatureTaskRuntimeRepairLedgerEntry(
   val status: FeatureTaskRuntimeRepairLedgerStatus,
   val originRound: Int,
   val statusRound: Int,
+  val noEditReason: String? = null,
+  val rationaleContested: Boolean = false,
 ) {
   init {
     require(findingIdentity.isNotBlank()) { "FeatureTaskRuntimeRepairLedgerEntry.findingIdentity must be non-blank." }
@@ -40,9 +43,12 @@ data class FeatureTaskRuntimeRepairLedgerEntry(
     require(statusRound >= originRound) {
       "FeatureTaskRuntimeRepairLedgerEntry.statusRound cannot precede the round that produced the entry."
     }
-    require(constructs.isNotEmpty()) {
-      "FeatureTaskRuntimeRepairLedgerEntry must name at least one construct; a finding closed by no " +
-        "construct holds nothing and is not carried."
+    require(constructs.isNotEmpty() || noEditReason != null) {
+      "FeatureTaskRuntimeRepairLedgerEntry must either name the constructs holding a finding closed " +
+        "or record why the round deliberately edited nothing."
+    }
+    require(noEditReason == null || noEditReason.isNotBlank()) {
+      "FeatureTaskRuntimeRepairLedgerEntry.noEditReason must be absent or non-blank."
     }
   }
 
@@ -82,7 +88,13 @@ data class FeatureTaskRuntimeRepairLedgerEntry(
       construct.file?.let { file -> "${construct.symbol} ($file)" } ?: construct.symbol
     },
     "intent" to intent,
-  )
+  ).also { payload ->
+    if (rationaleContested) {
+      payload["rationale_contested"] = true
+    } else {
+      noEditReason?.let { reason -> payload["no_edit_reason"] = reason }
+    }
+  }
 }
 
 data class FeatureTaskRuntimeRepairLedger(
@@ -223,6 +235,17 @@ data class FeatureTaskRuntimeRepairLedgerProjection(
         val file = construct.file?.let { " ($it)" }.orEmpty()
         appendLine("      holds closed by: ${construct.symbol}$file")
       }
+      if (entry.rationaleContested) {
+        appendLine(
+          "      a round chose to edit nothing here and that reasoning was later contradicted — by this " +
+            "finding recurring, or by a later round editing it after all. The original reasoning is " +
+            "withheld on purpose: re-verify this from the evidence in the delta above and judge it fresh.",
+        )
+      } else {
+        entry.noEditReason?.let { reason ->
+          appendLine("      round edited nothing because: $reason")
+        }
+      }
     }
   }
 }
@@ -239,6 +262,9 @@ fun featureTaskRuntimeFoldRepairLedger(
     val addressed = receipt.entries.filter { it.outcome == FeatureTaskRuntimeRepairOutcome.ADDRESSED }
     supersedeConstructsReplacedByAnotherFinding(accumulated, addressed, round)
     addressed.forEach { entry -> accumulated.recordResolved(entry, round) }
+    receipt.entries
+      .filter { it.outcome == FeatureTaskRuntimeRepairOutcome.NO_EDIT_REQUIRED }
+      .forEach { entry -> accumulated.recordDisregarded(entry, round) }
     reopenAgainstPassFindings(accumulated, findingsByPass[round + 1].orEmpty(), round + 1)
   }
   return FeatureTaskRuntimeRepairLedger(
@@ -283,6 +309,7 @@ private fun MutableMap<String, FeatureTaskRuntimeRepairLedgerEntry>.recordResolv
 ) {
   val identity = entry.findingIdentity()
   val existing = this[identity]
+  val refutedDisregard = existing?.status == FeatureTaskRuntimeRepairLedgerStatus.DISREGARDED
   this[identity] = FeatureTaskRuntimeRepairLedgerEntry(
     findingIdentity = identity,
     severity = entry.severity,
@@ -293,6 +320,28 @@ private fun MutableMap<String, FeatureTaskRuntimeRepairLedgerEntry>.recordResolv
     status = FeatureTaskRuntimeRepairLedgerStatus.RESOLVED,
     originRound = existing?.originRound ?: round,
     statusRound = round,
+    noEditReason = existing?.noEditReason,
+    rationaleContested = refutedDisregard || existing?.rationaleContested == true,
+  )
+}
+
+private fun MutableMap<String, FeatureTaskRuntimeRepairLedgerEntry>.recordDisregarded(
+  entry: FeatureTaskRuntimeRepairReceiptEntry,
+  round: Int,
+) {
+  val identity = entry.findingIdentity()
+  if (containsKey(identity)) return
+  this[identity] = FeatureTaskRuntimeRepairLedgerEntry(
+    findingIdentity = identity,
+    severity = entry.severity,
+    label = entry.label,
+    findingId = entry.findingId,
+    intent = entry.intent,
+    constructs = emptyList(),
+    status = FeatureTaskRuntimeRepairLedgerStatus.DISREGARDED,
+    originRound = round,
+    statusRound = round,
+    noEditReason = entry.noEditReason,
   )
 }
 
@@ -310,6 +359,8 @@ private fun reopenAgainstPassFindings(
       accumulated[identity] = existing.copy(
         status = FeatureTaskRuntimeRepairLedgerStatus.REOPENED,
         statusRound = passNumber,
+        rationaleContested = existing.rationaleContested ||
+          existing.status == FeatureTaskRuntimeRepairLedgerStatus.DISREGARDED,
       )
     }
   }

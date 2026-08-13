@@ -497,6 +497,15 @@ data class GoalSubtaskReviewState(
   val repairLedger: FeatureTaskRuntimeRepairLedger
     get() = featureTaskRuntimeFoldRepairLedger(repairReceipts, passResults)
 
+  val priorReviewContext: FeatureTaskRuntimePriorReviewContext?
+    get() = passResults.lastOrNull()?.let { previous ->
+      FeatureTaskRuntimePriorReviewContext(
+        passNumber = previous.passNumber,
+        findings = previous.findings,
+        dispositions = blockerDispositions,
+      ).takeUnless(FeatureTaskRuntimePriorReviewContext::isEmpty)
+    }
+
   val reviewCapReached: Boolean get() = disposition == GoalSubtaskReviewDisposition.REVIEW_CAP_REACHED
 
   val reviewSkippedByUser: Boolean get() =
