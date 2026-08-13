@@ -264,6 +264,8 @@ pointers:
   code-review/bill-kmp-code-review-platform-correctness:
     - name: specialist-contract.md
       target: orchestration/review-orchestrator/specialist-contract.md
+    - name: android-r8-review.md
+      target: platform-packs/kmp/addons/android-r8-review.md
   code-review/bill-kmp-code-review-persistence:
     - name: specialist-contract.md
       target: orchestration/review-orchestrator/specialist-contract.md

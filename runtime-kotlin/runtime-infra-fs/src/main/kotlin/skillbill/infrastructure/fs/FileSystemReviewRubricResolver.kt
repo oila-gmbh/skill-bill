@@ -1,13 +1,17 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.error.MissingContentFileError
 import skillbill.ports.review.ReviewRubricResolver
 import skillbill.ports.review.model.ResolvedReviewRubric
 import skillbill.ports.review.model.ReviewOwnedFileEvidence
+import skillbill.review.plan.ReviewAddonSelectionPolicy
 import skillbill.review.plan.ReviewContentMatcher
 import skillbill.review.plan.ReviewPathMatcher
+import skillbill.scaffold.model.GovernedAddonSelection
 import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Files
+import java.nio.file.Path
 
 @Inject
 class FileSystemReviewRubricResolver : ReviewRubricResolver {
@@ -58,14 +62,7 @@ class FileSystemReviewRubricResolver : ReviewRubricResolver {
     if (manifest == null) return resolved
     val specialist = resolved.specialists.singleOrNull { it.rubricId == specialistSkillName } ?: resolved
     val consumer = "code-review/$specialistSkillName"
-    val baselineConsumer = manifest.routedSkillName?.let { "code-review/$it" }
-    val selections = manifest.addonUsage.flatMap { usage ->
-      when (usage.skillRelativeDir) {
-        consumer -> usage.addons
-        baselineConsumer -> usage.addons.filter { specialist.area in it.specialistAreas }
-        else -> emptyList()
-      }
-    }.distinctBy { it.slug }
+    val selections = ReviewAddonSelectionPolicy.select(manifest, specialistSkillName)
     val selected = selections.filter { selection ->
       val condition = requireNotNull(selection.activation) {
         "Governed review add-on '${selection.slug}' has no structured activation."
@@ -85,8 +82,10 @@ class FileSystemReviewRubricResolver : ReviewRubricResolver {
     }
     if (selected.isEmpty()) return specialist
     val guidance = selected.joinToString("\n\n") { selection ->
-      (listOf(selection.entrypoint) + selection.companionPointers).joinToString("\n\n") { pointer ->
-        readBounded(resolveAddonFile(manifest, pointer))
+      val slots = listOf(ENTRYPOINT_SLOT to selection.entrypoint) +
+        selection.companionPointers.map { pointer -> pointer to pointer }
+      slots.joinToString("\n\n") { (slot, pointer) ->
+        readBounded(resolveAddonFile(manifest, consumer, selection, slot, pointer))
       }
     }
     require(guidance.toByteArray().size <= MAX_ADDON_BYTES) {
@@ -98,26 +97,42 @@ class FileSystemReviewRubricResolver : ReviewRubricResolver {
     )
   }
 
-  private fun resolveAddonFile(manifest: PlatformManifest, pointer: String): java.nio.file.Path {
-    val candidate = manifest.packRoot.resolve("addons").resolve(pointer).normalize()
+  private fun resolveAddonFile(
+    manifest: PlatformManifest,
+    skillRelativeDir: String,
+    selection: GovernedAddonSelection,
+    slot: String,
+    pointerName: String,
+  ): Path {
+    val pointer = manifest.pointers.firstOrNull { spec ->
+      spec.skillRelativeDir == skillRelativeDir && spec.name == pointerName
+    } ?: throw MissingContentFileError(
+      "pack '${manifest.slug}' add-on '${selection.slug}' slot '$slot': '$pointerName' is not declared in " +
+        "platform.yaml pointers for '$skillRelativeDir'",
+    )
+    val packRoot = manifest.packRoot.toAbsolutePath().normalize()
+    val repoRoot = packRoot.parent?.takeIf { parent -> parent.fileName.toString() == "platform-packs" }?.parent
+      ?: packRoot
+    val candidate = repoRoot.resolve(pointer.target).normalize()
     require(!Files.isSymbolicLink(candidate)) {
-      "Platform pack '${manifest.slug}' declares a symbolic add-on '$pointer'."
+      "Platform pack '${manifest.slug}' declares a symbolic add-on '$pointerName'."
     }
     return candidate.toRealPath().also { path ->
-      val addonsRoot = manifest.packRoot.resolve("addons").toRealPath()
+      val addonsRoot = packRoot.resolve("addons").toRealPath()
       require(path.startsWith(addonsRoot) && Files.isRegularFile(path)) {
-        "Platform pack '${manifest.slug}' declares an unreadable or escaping add-on '$pointer'."
+        "Platform pack '${manifest.slug}' declares an unreadable or escaping add-on '$pointerName'."
       }
     }
   }
 
-  private fun readBounded(path: java.nio.file.Path): String = Files.readString(path).also { body ->
+  private fun readBounded(path: Path): String = Files.readString(path).also { body ->
     require(body.toByteArray().size <= MAX_ADDON_FILE_BYTES) {
       "Selected add-on '${path.fileName}' is larger than $MAX_ADDON_FILE_BYTES bytes."
     }
   }
 
   private companion object {
+    const val ENTRYPOINT_SLOT = "entrypoint"
     const val MAX_RUBRIC_BYTES = 256 * 1024L
     const val MAX_ADDON_FILE_BYTES = 128 * 1024L
     const val MAX_ADDON_BYTES = 256 * 1024L

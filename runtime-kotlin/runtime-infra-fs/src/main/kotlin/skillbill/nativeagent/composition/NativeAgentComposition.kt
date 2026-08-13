@@ -4,6 +4,7 @@ package skillbill.nativeagent.composition
 
 import skillbill.infrastructure.fs.FileSystemRepoLocalConfig
 import skillbill.nativeagent.rendering.composeGovernedAgentBody
+import skillbill.nativeagent.rendering.enforceAddonProjectionParity
 import skillbill.nativeagent.rendering.enforceComposedAgentBudget
 import skillbill.ports.config.model.ReadRepoLocalConfigRequest
 import skillbill.scaffold.authoring.renderAuthoredContentBody
@@ -84,7 +85,15 @@ internal fun composeNativeAgentSource(repoRoot: Path, source: NativeAgentSource)
     }
     append(governedBody)
   }.trimEnd()
-  val composed = source.copy(body = composeGovernedAgentBody(repoRoot, target, composedBody), composition = null)
+  val governed = composeGovernedAgentBody(repoRoot, target, composedBody)
+  val composed = source.copy(
+    body = governed.body,
+    composition = null,
+    composedAddonSlugs = governed.composedAddonSlugs,
+  )
+  target.manifest?.let { pack ->
+    enforceAddonProjectionParity(pack, source.name, composed.composedAddonSlugs)
+  }
   enforceComposedAgentBudget(
     repoRoot.toAbsolutePath().normalize(),
     target,

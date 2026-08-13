@@ -6,27 +6,35 @@ import skillbill.nativeagent.composition.NativeAgentCompositionTarget
 import skillbill.nativeagent.composition.NativeAgentCompositionTargetSource
 import skillbill.nativeagent.composition.displayPath
 import skillbill.nativeagent.composition.platformPackRoot
+import skillbill.review.plan.ReviewAddonSelectionPolicy
 import skillbill.scaffold.authoring.normalizeMarkdownLineEndings
 import skillbill.scaffold.model.GovernedAddonActivation
+import skillbill.scaffold.model.GovernedAddonSelection
+import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.PointerSpec
-import skillbill.scaffold.platformpack.addonUsageFor
 import java.nio.file.Files
 import java.nio.file.Path
 
 private const val ENTRYPOINT_SLOT = "entrypoint"
 
 private data class ComposedAddonTarget(
+  val packSlug: String,
   val slug: String,
   val slot: String,
   val path: Path,
   val activation: GovernedAddonActivation?,
 )
 
+internal data class GovernedAgentComposition(
+  val body: String,
+  val composedAddonSlugs: List<String>,
+)
+
 internal fun composeGovernedAgentBody(
   repoRoot: Path,
   target: NativeAgentCompositionTarget,
   body: String,
-): String {
+): GovernedAgentComposition {
   val root = repoRoot.toAbsolutePath().normalize()
   val addonTargets = resolveDeclaredAddonTargets(root, target)
   val session = SidecarInliningSession(root, target)
@@ -36,7 +44,7 @@ internal fun composeGovernedAgentBody(
   val addonBlocks = addonTargets.map { addon ->
     addon to session.rewrite(readAddonFile(root, addon), addon.path)
   }
-  return buildString {
+  val composedBody = buildString {
     append(rewrittenBody.trimEnd())
     append(session.inlinedReferenceBlocks())
     if (addonBlocks.isNotEmpty()) {
@@ -54,6 +62,10 @@ internal fun composeGovernedAgentBody(
       }
     }
   }.trimEnd()
+  return GovernedAgentComposition(
+    body = composedBody,
+    composedAddonSlugs = addonTargets.map { it.slug }.distinct(),
+  )
 }
 
 private fun activationScope(activation: GovernedAddonActivation?): String? {
@@ -143,7 +155,8 @@ private fun resolveDeclaredAddonTargets(
   val pack = requireNotNull(target.manifest) {
     "${displayPath(root, contentPath)}: platform-pack native agent composition requires a parsed platform.yaml manifest"
   }
-  val selections = pack.addonUsageFor(contentPath)
+  val skillName = contentPath.parent.name
+  val selections = ReviewAddonSelectionPolicy.select(pack, skillName)
   if (selections.isEmpty()) {
     return emptyList()
   }
@@ -157,6 +170,7 @@ private fun resolveDeclaredAddonTargets(
       selection.companionPointers.map { pointer -> pointer to pointer }
     slots.forEach { (slot, pointerName) ->
       val addon = resolveAddonTarget(
+        pack.slug,
         root,
         declared,
         skillRelativeDir,
@@ -168,11 +182,13 @@ private fun resolveDeclaredAddonTargets(
       resolved.putIfAbsent(addon.path, addon)
     }
   }
+  enforceAddonProjectionParity(root, pack, skillRelativeDir, declared, selections, resolved.values.toList())
   return resolved.values.toList()
 }
 
 @Suppress("LongParameterList")
 private fun resolveAddonTarget(
+  packSlug: String,
   root: Path,
   declared: Map<String, PointerSpec>,
   skillRelativeDir: String,
@@ -183,19 +199,83 @@ private fun resolveAddonTarget(
 ): ComposedAddonTarget {
   val pointer = declared[pointerName]
     ?: throw MissingContentFileError(
-      "add-on '$slug' slot '$slot': '$pointerName' is not declared in platform.yaml pointers for " +
+      "pack '$packSlug' add-on '$slug' slot '$slot': '$pointerName' is not declared in platform.yaml pointers for " +
         "'$skillRelativeDir'",
     )
   val path = root.resolve(pointer.target).toAbsolutePath().normalize()
-  val addon = ComposedAddonTarget(slug = slug, slot = slot, path = path, activation = activation)
+  val addon = ComposedAddonTarget(
+    packSlug = packSlug,
+    slug = slug,
+    slot = slot,
+    path = path,
+    activation = activation,
+  )
   if (!Files.isRegularFile(path)) {
     throw MissingContentFileError(addonFailureMessage(root, addon, "is missing"))
   }
   return addon
 }
 
+internal fun enforceAddonProjectionParity(
+  pack: PlatformManifest,
+  specialistSkillName: String,
+  composedAddonSlugs: List<String>,
+) {
+  val selections = ReviewAddonSelectionPolicy.select(pack, specialistSkillName)
+  val projected = selections.map { it.slug }
+  if (projected == composedAddonSlugs) {
+    return
+  }
+  val missing = selections.firstOrNull { selection -> selection.slug !in composedAddonSlugs }
+  val extra = composedAddonSlugs.firstOrNull { slug -> slug !in projected }
+  val slug = missing?.slug ?: extra.orEmpty()
+  val pointerName = missing?.entrypoint ?: extra.orEmpty()
+  val consumer = "code-review/$specialistSkillName"
+  val pointer = pack.pointers.firstOrNull { spec ->
+    spec.skillRelativeDir == consumer && spec.name == pointerName
+  }
+  val repoRoot = pack.packRoot.parent?.takeIf { parent -> parent.fileName.toString() == "platform-packs" }?.parent
+  val path = pointer?.let { spec -> repoRoot?.resolve(spec.target)?.toAbsolutePath()?.normalize() }
+  throw MissingContentFileError(
+    "pack '${pack.slug}' add-on '$slug' slot '$ENTRYPOINT_SLOT': declared target did not compose at " +
+      "'${path ?: pointerName}'",
+  )
+}
+
+@Suppress("LongParameterList")
+private fun enforceAddonProjectionParity(
+  root: Path,
+  pack: PlatformManifest,
+  skillRelativeDir: String,
+  declared: Map<String, PointerSpec>,
+  selections: List<GovernedAddonSelection>,
+  composed: List<ComposedAddonTarget>,
+) {
+  val composedSlugs = composed.map { it.slug }.distinct()
+  val projectedSlugs = selections.map { it.slug }
+  if (composedSlugs == projectedSlugs) {
+    return
+  }
+  val missing = selections.firstOrNull { selection -> selection.slug !in composedSlugs }
+  if (missing != null) {
+    val addon = resolveAddonTarget(
+      pack.slug,
+      root,
+      declared,
+      skillRelativeDir,
+      missing.slug,
+      ENTRYPOINT_SLOT,
+      missing.entrypoint,
+      missing.activation,
+    )
+    throw MissingContentFileError(addonFailureMessage(root, addon, "did not compose"))
+  }
+  val extra = composed.first { addon -> addon.slug !in projectedSlugs }
+  throw MissingContentFileError(addonFailureMessage(root, extra, "is unprojected"))
+}
+
 private fun addonFailureMessage(root: Path, addon: ComposedAddonTarget, problem: String): String =
-  "add-on '${addon.slug}' slot '${addon.slot}': declared target $problem at '${addon.path}' " +
+  "pack '${addon.packSlug}' add-on '${addon.slug}' slot '${addon.slot}': declared target $problem at '${addon.path}' " +
     "(repository path '${displayPath(root, addon.path)}')"
 
 private fun skillRelativeDir(packRoot: Path?, contentPath: Path): String = packRoot
