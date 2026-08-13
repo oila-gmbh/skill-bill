@@ -259,13 +259,13 @@ class FeatureTaskRuntimeQuarantineRegenerateTest {
   }
 
   @Test
-  fun `a 0_2 identity-bearing envelope decodes with the identity unchanged`() {
+  fun `a pre-change identity-bearing entry decodes with the identity unchanged`() {
     val harness = runnerHarness()
     harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
     val identity = "rod_prechange_identity"
     val artifacts = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID).toMutableMap()
     artifacts[FEATURE_TASK_RUNTIME_QUARANTINED_RECORDS_ARTIFACT_KEY] = mapOf(
-      "contract_version" to "0.2",
+      "contract_version" to "0.3",
       "entries" to listOf(
         mapOf(
           "producing_phase_id" to "plan",

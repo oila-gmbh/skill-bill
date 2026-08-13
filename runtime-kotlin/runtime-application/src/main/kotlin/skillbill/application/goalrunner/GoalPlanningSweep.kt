@@ -648,7 +648,6 @@ class DefaultGoalPlanningSweep(
         is GoalPlanningPhaseProduction.SchemaRejected -> {
           recordPlanningAttempt(shared, phaseId, subtask, attempt, GoalProgressOutcome.FAILED)
           priorSchemaFailure = production.reason
-          continue
         }
 
         is GoalPlanningPhaseProduction.EmptyProviderTurn -> {
@@ -658,19 +657,18 @@ class DefaultGoalPlanningSweep(
           interruptibleWait(backoff, shared, subtask?.id ?: 0, phaseId)?.let { stoppedOutcome ->
             return GoalPlanningPhaseProduction.Stopped(stoppedOutcome)
           }
-          continue
         }
 
-        is GoalPlanningPhaseProduction.Captured -> Unit
+        is GoalPlanningPhaseProduction.Captured -> {
+          val gated = gateCapturedPayload(production, phaseId, finalizePayload)
+          if (gated is GoalPlanningPhaseProduction.Captured) {
+            recordPlanningAttempt(shared, phaseId, subtask, attempt, GoalProgressOutcome.SUCCEEDED)
+            return gated
+          }
+          recordPlanningAttempt(shared, phaseId, subtask, attempt, GoalProgressOutcome.FAILED)
+          priorSchemaFailure = (gated as GoalPlanningPhaseProduction.SchemaRejected).reason
+        }
       }
-      val gated = gateCapturedPayload(production, phaseId, finalizePayload)
-      if (gated is GoalPlanningPhaseProduction.Captured) {
-        recordPlanningAttempt(shared, phaseId, subtask, attempt, GoalProgressOutcome.SUCCEEDED)
-        return gated
-      }
-      val gateReason = (gated as GoalPlanningPhaseProduction.SchemaRejected).reason
-      recordPlanningAttempt(shared, phaseId, subtask, attempt, GoalProgressOutcome.FAILED)
-      priorSchemaFailure = gateReason
     }
   }
 

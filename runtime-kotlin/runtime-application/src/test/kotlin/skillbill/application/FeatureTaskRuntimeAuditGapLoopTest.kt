@@ -442,7 +442,13 @@ class FeatureTaskRuntimeAuditGapLoopTest {
         when (val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))) {
           "audit" -> {
             auditLaunches += 1
-            facts(if (auditLaunches == 2) auditDroppedRecurringGapOutput() else if (auditLaunches == 1) auditGapsOutput() else auditSatisfiedOutput())
+            facts(
+              when (auditLaunches) {
+                2 -> auditDroppedRecurringGapOutput()
+                1 -> auditGapsOutput()
+                else -> auditSatisfiedOutput()
+              },
+            )
           }
           else -> facts(validJsonOutput(phaseId))
         }

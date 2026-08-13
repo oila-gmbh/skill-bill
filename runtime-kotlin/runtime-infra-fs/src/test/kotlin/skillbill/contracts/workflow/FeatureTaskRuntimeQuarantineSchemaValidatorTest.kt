@@ -54,10 +54,12 @@ class FeatureTaskRuntimeQuarantineSchemaValidatorTest {
   @Test
   fun `a degraded entry without diagnostic_identity validates`() {
     FeatureTaskRuntimeQuarantineSchemaValidator.validate(
-      recordWithEntry(validEntry().toMutableMap().apply {
-        remove("diagnostic_identity")
-        put("diagnostic_degraded", true)
-      }),
+      recordWithEntry(
+        validEntry().toMutableMap().apply {
+          remove("diagnostic_identity")
+          put("diagnostic_degraded", true)
+        },
+      ),
       "quarantine",
     )
   }

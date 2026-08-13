@@ -178,7 +178,13 @@ class FeatureTaskRuntimeAuditRepairRegressionTest {
       val harness = runnerHarness(
         launcher = RuntimeRecordingLauncher { request ->
           when (val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))) {
-            "audit" -> facts(if (++auditLaunches < 2) auditRepairPlanOutput(criterionRef = "AC-002", itemCount = 1) else auditSatisfiedOutput())
+            "audit" -> facts(
+              if (++auditLaunches < 2) {
+                auditRepairPlanOutput(criterionRef = "AC-002", itemCount = 1)
+              } else {
+                auditSatisfiedOutput()
+              },
+            )
             "implement" -> facts(
               if (++implementLaunches == 2) {
                 blockedRemediationOutput(
@@ -216,7 +222,13 @@ class FeatureTaskRuntimeAuditRepairRegressionTest {
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         when (val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))) {
-          "audit" -> facts(if (++auditLaunches < 2) auditRepairPlanOutput(criterionRef = "AC-002", itemCount = 1) else auditSatisfiedOutput())
+          "audit" -> facts(
+            if (++auditLaunches < 2) {
+              auditRepairPlanOutput(criterionRef = "AC-002", itemCount = 1)
+            } else {
+              auditSatisfiedOutput()
+            },
+          )
           "implement" -> {
             implementLaunches += 1
             if (implementLaunches == 2) {

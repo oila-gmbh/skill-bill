@@ -122,7 +122,11 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request(IMPLEMENT_REENTRY_CYCLE)))
-    assertEquals(3, implementLaunches, "the re-entered implement must reject the malformed receipt once then accept a valid one")
+    assertEquals(
+      3,
+      implementLaunches,
+      "the re-entered implement must reject the malformed receipt once then accept a valid one",
+    )
     val implementPrompts = harness.launcher.requests
       .map { requireNotNull(it.skillRunRequest.promptOverride) }
       .filter { phaseIdFromPrompt(it) == "implement" }
@@ -159,7 +163,11 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
       "implementation_receipt",
       "is not a valid",
     )
-    assertEquals(1, outcome.launchCount("audit"), "a decompose-shaped implement must not bypass the gate and wedge audit")
+    assertEquals(
+      1,
+      outcome.launchCount("audit"),
+      "a decompose-shaped implement must not bypass the gate and wedge audit",
+    )
   }
 
   @Test

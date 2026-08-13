@@ -2,6 +2,7 @@ package skillbill.application.featuretask
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.decodeArtifacts
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRejectedOutputWrite
 import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.application.model.FeatureTaskRuntimePhaseLedgerRequest
@@ -129,9 +130,9 @@ private fun RejectedOutputDiagnosticError.degradableFailureClass(): FeatureTaskR
   }
 
 internal sealed class FeatureTaskRuntimeProducerOutputRead {
-  data class Found(val evidence: ProducerOutputEvidence) : FeatureTaskRuntimeProducerOutputRead()
-  data object Absent : FeatureTaskRuntimeProducerOutputRead()
-  data class Unreadable(
+  internal data class Found(val evidence: ProducerOutputEvidence) : FeatureTaskRuntimeProducerOutputRead()
+  internal data object Absent : FeatureTaskRuntimeProducerOutputRead()
+  internal data class Unreadable(
     val failureClass: FeatureTaskRuntimeDiagnosticFailureClass,
   ) : FeatureTaskRuntimeProducerOutputRead()
 }
@@ -145,24 +146,6 @@ internal data class FeatureTaskRuntimeProjectionRejection(
   val failureClassification: FeatureTaskRuntimeProjectionFailureClassification,
   val sourceLabel: String,
 )
-
-/**
- * Outcome of a rejected-output diagnostic write. [Written] is returned only after the evidence
- * transaction commits; [Degraded] means that transaction rolled back and no `rod_` row exists.
- */
-sealed class FeatureTaskRuntimeRejectedOutputWrite {
-  data class Written(val identity: String) : FeatureTaskRuntimeRejectedOutputWrite()
-  data class Degraded(
-    val failureClass: FeatureTaskRuntimeDiagnosticFailureClass,
-  ) : FeatureTaskRuntimeRejectedOutputWrite()
-}
-
-private sealed class DiagnosticWriteOutcome<out T> {
-  data class Written<T>(val value: T) : DiagnosticWriteOutcome<T>()
-  data class Degraded(
-    val failureClass: FeatureTaskRuntimeDiagnosticFailureClass,
-  ) : DiagnosticWriteOutcome<Nothing>()
-}
 
 /**
  * Application-layer write/read seam for feature-task-runtime per-phase records and the
@@ -183,6 +166,13 @@ class FeatureTaskRuntimePhaseRecorder(
   private val rejectedOutputDiagnosticMetadataValidator: RejectedOutputDiagnosticMetadataValidator = { },
   private val producerOutputEvidenceValidator: ProducerOutputEvidenceValidator = { },
 ) {
+  private sealed class DiagnosticWriteOutcome<out T> {
+    class Written<T>(val value: T) : DiagnosticWriteOutcome<T>()
+    class Degraded(
+      val failureClass: FeatureTaskRuntimeDiagnosticFailureClass,
+    ) : DiagnosticWriteOutcome<Nothing>()
+  }
+
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
 
   fun recordRejectedOutput(
@@ -1488,7 +1478,8 @@ class FeatureTaskRuntimePhaseRecorder(
 
   /**
    * Strict read of the private quarantine evidence store in insertion order. An absent key yields an
-   * empty list; a malformed record loud-fails. Returns null only when the workflow row is absent.
+   * empty list; a malformed or schema-invalid record loud-fails rather than loading and later being
+   * rewritten without unknown evidence. Returns null only when the workflow row is absent.
    */
   fun loadQuarantinedRecords(
     workflowId: String,
@@ -1501,6 +1492,12 @@ class FeatureTaskRuntimePhaseRecorder(
 
   private fun quarantineEntriesFrom(artifacts: Map<String, Any?>): List<FeatureTaskRuntimeQuarantineEntry> {
     val raw = artifacts[FEATURE_TASK_RUNTIME_QUARANTINED_RECORDS_ARTIFACT_KEY] ?: return emptyList()
+    val map = JsonSupport.anyToStringAnyMap(raw)
+      ?: throw InvalidWorkflowStateSchemaError("Feature-task-runtime quarantine record must be an object.")
+    // Validate the persisted bytes before decode so an undeclared field cannot load and later be
+    // rewritten away by an append. The domain decoder also rejects unknown keys; this is the
+    // canonical schema gate the recorder's read seam is documented to call.
+    quarantineValidator.validateQuarantineRecord(map, FEATURE_TASK_RUNTIME_QUARANTINED_RECORDS_ARTIFACT_KEY)
     return featureTaskRuntimeQuarantineEntriesFromWire(raw)
   }
 

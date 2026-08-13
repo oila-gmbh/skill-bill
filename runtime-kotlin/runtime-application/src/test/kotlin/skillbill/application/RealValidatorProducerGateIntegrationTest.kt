@@ -106,4 +106,3 @@ private const val PLAN_WITH_UNDECLARED_KEY_AND_WRONG_TYPED_TASKS: String =
     """"projection_kind":"executable_plan","contract_version":"0.1","mode":"direct",""" +
     """"tasks":"MUST NOT SURVIVE","validation_strategy":["Focused runtime tests."],""" +
     """"leaked_planning_narration":"MUST NOT SURVIVE EITHER"}}"""
-

@@ -8,6 +8,7 @@ import skillbill.application.evidence.FeatureTaskRuntimeSharedReviewEvidenceReso
 import skillbill.application.evidence.FeatureTaskRuntimeSharedReviewEvidenceResolver
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointDecision
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointScopeInput
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRejectedOutputWrite
 import skillbill.application.featuretask.validation.model.ValidationFindingSetProjection
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairLauncher
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairResult
@@ -2838,7 +2839,7 @@ internal class FeatureTaskRuntimeRunLoop(
       state.fixLoopIterationFor(run.phaseId, iteration) - continuationSegmentCount - nonOutputAttempts.size
       ).coerceAtLeast(1)
     if (!operatorReopened) {
-        FeatureTaskRuntimeAttemptBudgets
+      FeatureTaskRuntimeAttemptBudgets
         .processFailureBlockReason(run.phaseId, processFailures.size, processFailures.lastOrNull()?.reason)
         ?.let { reason ->
           return blockAndPersistInPhase(
@@ -3285,28 +3286,28 @@ internal class FeatureTaskRuntimeRunLoop(
         state.evidenceGeneration(producer),
       )
     ) {
-      is FeatureTaskRuntimeProducerOutputRead.Absent -> return blockAndPersistInPhase(
-        run,
-        iteration,
-        "Feature-task-runtime phase '$consumer' rejected the durable record produced by '$producer', but no " +
-          "retained evidence exists for attempt $producingIteration. The run blocks instead of fabricating " +
-          "a rejected-output diagnostic from normalized workflow state.",
-        observability,
-        failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
-        childNeverLaunched = true,
-      )
-      is FeatureTaskRuntimeProducerOutputRead.Unreadable -> return blockAndPersistInPhase(
-        run,
-        iteration,
-        "Feature-task-runtime phase '$consumer' rejected the durable record produced by '$producer', but " +
-          "retained evidence for attempt $producingIteration exists and the diagnostic store refused it " +
-          "(${producerRead.failureClass.wireValue}). The run blocks instead of fabricating a " +
-          "rejected-output diagnostic from normalized workflow state.",
-        observability,
-        failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
-        childNeverLaunched = true,
-      )
       is FeatureTaskRuntimeProducerOutputRead.Found -> producerRead.evidence
+      is FeatureTaskRuntimeProducerOutputRead.Absent,
+      is FeatureTaskRuntimeProducerOutputRead.Unreadable,
+      -> {
+        val evidenceClause = if (producerRead is FeatureTaskRuntimeProducerOutputRead.Unreadable) {
+          "retained evidence for attempt $producingIteration exists and the diagnostic store refused it " +
+            "(${producerRead.failureClass.wireValue}). The run blocks instead of fabricating a " +
+            "rejected-output diagnostic from normalized workflow state."
+        } else {
+          "no retained evidence exists for attempt $producingIteration. The run blocks instead of fabricating " +
+            "a rejected-output diagnostic from normalized workflow state."
+        }
+        return blockAndPersistInPhase(
+          run,
+          iteration,
+          "Feature-task-runtime phase '$consumer' rejected the durable record produced by '$producer', but " +
+            evidenceClause,
+          observability,
+          failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
+          childNeverLaunched = true,
+        )
+      }
     }
     val rejectedPayload = producerEvidence.payload ?: byteArrayOf()
     val diagnosticWrite = recordRejectedOutput(

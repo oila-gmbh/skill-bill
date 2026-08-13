@@ -2012,7 +2012,7 @@ private class RecordingPhaseLauncher(
   companion object {
     // Missing the required status/summary/produced_outputs fields, so the per-phase
     // output validator rejects it and the runner never marks the phase complete.
-    val INVALID_PHASE_OUTPUT = "not a json object"
+    const val INVALID_PHASE_OUTPUT = "not a json object"
 
     fun validPhaseOutput(phaseId: String): String {
       // A clean review/audit must emit a verification signal (an empty findings/gaps array

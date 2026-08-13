@@ -286,7 +286,8 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
     )
     assertEquals("write_history", blocked.lastIncompletePhase)
     assertNoRawResponseSpan(blocked.blockedReason, rawSpan, rejectedBody)
-    val writeHistoryRecord = requireNotNull(exhausting.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["write_history"])
+    val writeHistoryRecord =
+      requireNotNull(exhausting.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["write_history"])
     assertEquals(FeatureTaskRuntimeFailureDisposition.INVALID_OUTPUT, writeHistoryRecord.failureDisposition)
     assertNoRawResponseSpan(requireNotNull(writeHistoryRecord.blockedReason), rawSpan, rejectedBody)
     assertEquals(

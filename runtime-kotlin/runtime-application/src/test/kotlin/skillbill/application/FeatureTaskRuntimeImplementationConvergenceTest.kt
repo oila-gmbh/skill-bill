@@ -377,7 +377,10 @@ private fun malformedProjectionImplementLauncher(): RuntimeRecordingLauncher {
   }
 }
 
-private fun alwaysTerminalImplementLauncher(status: String, recoverAfter: Int = Int.MAX_VALUE): RuntimeRecordingLauncher {
+private fun alwaysTerminalImplementLauncher(
+  status: String,
+  recoverAfter: Int = Int.MAX_VALUE,
+): RuntimeRecordingLauncher {
   var implementLaunches = 0
   return RuntimeRecordingLauncher { request ->
     when (phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))) {

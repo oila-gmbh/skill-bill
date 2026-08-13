@@ -3,6 +3,7 @@ package skillbill.application.featuretask
 import skillbill.application.InMemoryRuntimeWorkflowRepository
 import skillbill.application.RecordingLifecycleTelemetryRepository
 import skillbill.application.RuntimeFakeDatabaseSessionFactory
+import skillbill.application.featuretask.model.FeatureTaskRuntimeRejectedOutputWrite
 import skillbill.ports.persistence.ProducerOutputEvidence
 import skillbill.ports.persistence.model.RejectedOutputDiagnosticError
 import skillbill.workflow.WorkflowSnapshotValidator
@@ -212,12 +213,11 @@ class FeatureTaskRuntimeDiagnosticDegradationTest {
     assertTrue(measurement.values.none { it is String && "blast_radius_inspected" in it })
   }
 
-  private fun database(
-    lifecycle: RecordingLifecycleTelemetryRepository = RecordingLifecycleTelemetryRepository(),
-  ) = RuntimeFakeDatabaseSessionFactory(
-    InMemoryRuntimeWorkflowRepository(),
-    lifecycle,
-  )
+  private fun database(lifecycle: RecordingLifecycleTelemetryRepository = RecordingLifecycleTelemetryRepository()) =
+    RuntimeFakeDatabaseSessionFactory(
+      InMemoryRuntimeWorkflowRepository(),
+      lifecycle,
+    )
 
   private fun recorder(database: RuntimeFakeDatabaseSessionFactory) = FeatureTaskRuntimePhaseRecorder(
     database,
