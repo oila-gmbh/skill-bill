@@ -3,6 +3,7 @@ package skillbill.application.work
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.goalrunner.GoalRunnerStatusService
+import skillbill.application.model.FeatureTaskRuntimeOperatorDecisionPause
 import skillbill.application.model.FeatureTaskRuntimePhaseStatus
 import skillbill.application.model.FeatureTaskRuntimeStatusRequest
 import skillbill.application.model.GoalRunnerStatusRequest
@@ -11,6 +12,8 @@ import skillbill.application.model.IdeStatusCurrentModel
 import skillbill.application.model.IdeStatusCurrentPhaseExecution
 import skillbill.application.model.IdeStatusCurrentSubtask
 import skillbill.application.model.IdeStatusLifecycleState
+import skillbill.application.model.IdeStatusPauseReason
+import skillbill.application.model.IdeStatusPauseReasonCode
 import skillbill.application.model.IdeStatusPlanning
 import skillbill.application.model.IdeStatusProgress
 import skillbill.application.model.IdeStatusSnapshot
@@ -51,6 +54,7 @@ internal data class IdeStatusProjectionContext(
 private data class ChildOptionalContext(
   val currentModel: IdeStatusCurrentModel?,
   val currentPhaseExecution: IdeStatusCurrentPhaseExecution?,
+  val operatorDecisionPause: FeatureTaskRuntimeOperatorDecisionPause? = null,
 ) {
   companion object {
     val EMPTY = ChildOptionalContext(currentModel = null, currentPhaseExecution = null)
@@ -128,6 +132,7 @@ class IdeStatusProjector(
       // Durable record only: a lease-expiry-inferred pause has no recorded instant, and
       // back-filling from heartbeat_at/updated_at would sell an inference as a record.
       pausedAt = parseInstantOrNull(projection?.pausedAt),
+      pauseReason = goalPauseReason(lifecycle, projection, childContext),
       activeDurationMs = projection?.recordedActiveDurationMs(),
       activeDurationAsOf = projection?.liveActiveDurationAnchor(),
       updatedAt = candidate.updatedAt,
@@ -219,6 +224,19 @@ class IdeStatusProjector(
    * this builds on already reads outside it, so threading only this one read through would not make
    * the snapshot atomic.
    */
+  private fun goalPauseReason(
+    lifecycle: IdeStatusLifecycleState,
+    projection: GoalRunnerStatusProjection?,
+    childContext: ChildOptionalContext,
+  ): IdeStatusPauseReason? {
+    if (lifecycle != IdeStatusLifecycleState.PAUSED) return null
+    childContext.operatorDecisionPause?.let { pause ->
+      return IdeStatusPauseReason.of(IdeStatusPauseReasonCode.AWAITING_OPERATOR_DECISION, pause.reason)
+    }
+    return IdeStatusPauseReasonCode.fromWire(projection?.pauseReason)
+      ?.let { code -> IdeStatusPauseReason.of(code, null) }
+  }
+
   private fun childOptionalContext(
     childWorkflowId: String?,
     lifecycle: IdeStatusLifecycleState,
@@ -244,6 +262,7 @@ class IdeStatusProjector(
         status.phases.firstOrNull { it.phaseId == phaseId }?.toIdeStatusCurrentModel()
       },
       currentPhaseExecution = status.currentPhaseExecution,
+      operatorDecisionPause = status.operatorDecisionPause,
     )
   }
 
@@ -282,6 +301,11 @@ class IdeStatusProjector(
       // phase reported as current_step, never to a neighbouring one.
       currentModel = status?.phases?.firstOrNull { it.phaseId == stepId }?.toIdeStatusCurrentModel(),
       currentPhaseExecution = status?.currentPhaseExecution?.takeIf { it.phaseId == stepId },
+      pauseReason = status?.operatorDecisionPause
+        ?.takeIf { candidate.lifecycleState == IdeStatusLifecycleState.PAUSED }
+        ?.let { pause ->
+          IdeStatusPauseReason.of(IdeStatusPauseReasonCode.AWAITING_OPERATOR_DECISION, pause.reason)
+        },
       updatedAt = updatedAt,
       freshness = IdeStatusFreshnessClassifier.classify(updatedAt, context.observedAt),
       summary = familySummary(

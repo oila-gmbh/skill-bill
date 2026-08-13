@@ -18,6 +18,10 @@ import dev.skillbill.intellij.domain.GoalPlanningInfo
 import dev.skillbill.intellij.domain.IDE_STATUS_CONTRACT_VERSION
 import dev.skillbill.intellij.domain.NO_MATCHING_WORK_REASON_CODE
 import dev.skillbill.intellij.domain.PAUSED_AT_WIRE_KEY
+import dev.skillbill.intellij.domain.PAUSE_REASON_CODES
+import dev.skillbill.intellij.domain.PAUSE_REASON_LABEL_MAX_LENGTH
+import dev.skillbill.intellij.domain.PAUSE_REASON_WIRE_KEY
+import dev.skillbill.intellij.domain.PauseReason
 import dev.skillbill.intellij.domain.PAUSE_REQUESTED_WIRE_KEY
 import dev.skillbill.intellij.domain.SkillBillStatusOutcome
 import dev.skillbill.intellij.domain.StatusDiagnostic
@@ -112,6 +116,7 @@ object IdeStatusJsonMapper {
         // Both optional and goal-family-only: a missing key stays null, never false.
         val pauseRequested = root.getAsBoolean(PAUSE_REQUESTED_WIRE_KEY)
         val pausedAt = root.getAsInstant(PAUSED_AT_WIRE_KEY)
+        val pauseReason = root.parsePauseReason()
         val activeDurationMs = root.getAsNonNegativeLong(ACTIVE_DURATION_MS_WIRE_KEY)
         val activeDurationAsOf = root.getAsInstant(ACTIVE_DURATION_AS_OF_WIRE_KEY)
 
@@ -198,6 +203,7 @@ object IdeStatusJsonMapper {
                         activeDurationAsOf = activeDurationAsOf,
                         currentModel = currentModel,
                         currentPhaseExecution = currentPhaseExecution,
+                        pauseReason = pauseReason,
                     )
                 } else {
                     SkillBillStatusOutcome.Active(
@@ -396,6 +402,15 @@ object IdeStatusJsonMapper {
             kind = kind,
             count = count,
             total = total,
+        )
+    }
+
+    private fun JsonObject.parsePauseReason(): PauseReason? {
+        val reason = getAsJsonObjectOrNull(PAUSE_REASON_WIRE_KEY) ?: return null
+        val code = reason.getAsStringPrimitive("code")?.takeIf { it in PAUSE_REASON_CODES } ?: return null
+        return PauseReason(
+            code = code,
+            label = reason.boundedString("label", PAUSE_REASON_LABEL_MAX_LENGTH),
         )
     }
 

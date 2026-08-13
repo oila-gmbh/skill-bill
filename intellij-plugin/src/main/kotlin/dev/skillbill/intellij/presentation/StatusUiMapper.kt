@@ -98,6 +98,7 @@ object StatusUiMapper {
                     pauseRequested = outcome.pauseRequested,
                     currentModel = outcome.currentModel,
                     currentPhaseExecution = outcome.currentPhaseExecution,
+                    pauseReason = outcome.pauseReason,
                 )
 
             is SkillBillStatusOutcome.Stale ->

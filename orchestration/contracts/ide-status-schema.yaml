@@ -227,6 +227,33 @@ properties:
     description: >
       Instant the pause took effect, from the durable control record. Omitted when
       the paused projection is inferred from lease expiry rather than recorded.
+  pause_reason:
+    type: object
+    additionalProperties: false
+    required:
+      - code
+    description: >
+      Why a paused lifecycle is paused. Present only for a paused snapshot, so a
+      consumer can tell "waiting for you" from "waiting for capacity".
+      `awaiting_operator_decision` means the current subtask stopped pending a
+      bounded operator decision and will not resume on its own; the remaining codes
+      mirror the durable goal control record. Payload-free by construction: `label`
+      is the same sanitized goal-facing reason the CLI reports, carrying severity
+      counts and bounded finding labels but never a diff hunk, path, line number,
+      construct body, or raw review output.
+    properties:
+      code:
+        type: string
+        enum:
+          - awaiting_operator_decision
+          - operator_request
+          - stop_after_subtask
+          - operator_stop
+          - runner_interrupted
+      label:
+        type: string
+        minLength: 1
+        maxLength: 512
   active_duration_ms:
     type: integer
     minimum: 0

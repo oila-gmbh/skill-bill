@@ -28,6 +28,54 @@ enum class IdeStatusFreshness(val wireValue: String) {
   UNKNOWN("unknown"),
 }
 
+const val IDE_STATUS_PAUSE_REASON_LABEL_MAX_LENGTH: Int = 512
+
+enum class IdeStatusPauseReasonCode(val wireValue: String) {
+  AWAITING_OPERATOR_DECISION("awaiting_operator_decision"),
+  OPERATOR_REQUEST("operator_request"),
+  STOP_AFTER_SUBTASK("stop_after_subtask"),
+  OPERATOR_STOP("operator_stop"),
+  RUNNER_INTERRUPTED("runner_interrupted"),
+  ;
+
+  companion object {
+    fun fromWire(value: String?): IdeStatusPauseReasonCode? = entries.firstOrNull { it.wireValue == value }
+  }
+}
+
+data class IdeStatusPauseReason(
+  val code: IdeStatusPauseReasonCode,
+  val label: String? = null,
+) {
+  init {
+    require(label == null || label.isNotBlank()) {
+      "IdeStatusPauseReason.label must be absent or non-blank."
+    }
+    require(label == null || label.length <= IDE_STATUS_PAUSE_REASON_LABEL_MAX_LENGTH) {
+      "IdeStatusPauseReason.label must be bounded to $IDE_STATUS_PAUSE_REASON_LABEL_MAX_LENGTH characters."
+    }
+  }
+
+  val awaitsOperatorDecision: Boolean
+    get() = code == IdeStatusPauseReasonCode.AWAITING_OPERATOR_DECISION
+
+  companion object {
+    fun of(code: IdeStatusPauseReasonCode, label: String?): IdeStatusPauseReason {
+      val trimmed = label?.trim()?.takeIf(String::isNotBlank)
+      return IdeStatusPauseReason(code = code, label = trimmed?.let(::boundedPauseReasonLabel))
+    }
+
+    private fun boundedPauseReasonLabel(label: String): String =
+      if (label.length <= IDE_STATUS_PAUSE_REASON_LABEL_MAX_LENGTH) {
+        label
+      } else {
+        label.take(IDE_STATUS_PAUSE_REASON_LABEL_MAX_LENGTH - TRUNCATION_MARKER.length) + TRUNCATION_MARKER
+      }
+
+    private const val TRUNCATION_MARKER: String = "… [truncated]"
+  }
+}
+
 enum class IdeStatusProblemCode(val wireValue: String) {
   MISSING_REPOSITORY_IDENTITY("missing_repository_identity"),
   ABSENT_DATABASE("absent_database"),
@@ -202,6 +250,7 @@ data class IdeStatusSnapshot(
   // wire-identical. pause_requested is never emitted as false for the same reason.
   val pauseRequested: Boolean? = null,
   val pausedAt: Instant? = null,
+  val pauseReason: IdeStatusPauseReason? = null,
   // Execution time rather than wall clock since startedAt; see the contract's active_duration_ms.
   val activeDurationMs: Long? = null,
   val activeDurationAsOf: Instant? = null,
@@ -255,6 +304,7 @@ data class IdeStatusSnapshot(
     putCurrentPhaseExecution()
     pauseRequested?.takeIf { it }?.let { put("pause_requested", true) }
     pausedAt?.let { put("paused_at", it.toString()) }
+    putPauseReason()
     putActiveDuration()
     put("updated_at", updatedAt.toString())
     put("freshness", freshness.wireValue)
@@ -305,6 +355,17 @@ data class IdeStatusSnapshot(
   }
 
   /** Both keys are optional and goal-family-only, so a snapshot without them stays wire-identical. */
+  private fun MutableMap<String, Any?>.putPauseReason() {
+    val reason = pauseReason ?: return
+    put(
+      "pause_reason",
+      buildMap {
+        put("code", reason.code.wireValue)
+        reason.label?.let { put("label", it) }
+      },
+    )
+  }
+
   private fun MutableMap<String, Any?>.putActiveDuration() {
     activeDurationMs?.let { put("active_duration_ms", it) }
     activeDurationAsOf?.let { put("active_duration_as_of", it.toString()) }

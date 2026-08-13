@@ -115,6 +115,7 @@ sealed class SkillBillStatusOutcome {
         val currentModel: CurrentPhaseModel? = null,
         /** See [Active.currentPhaseExecution]. */
         val currentPhaseExecution: CurrentPhaseExecution? = null,
+        val pauseReason: PauseReason? = null,
     ) : SkillBillStatusOutcome()
 
     data class Stale(
@@ -273,6 +274,14 @@ data class CurrentPhaseExecution(
     val count: Int,
     val total: Int? = null,
 )
+
+data class PauseReason(
+    val code: String,
+    val label: String? = null,
+) {
+    val awaitsOperatorDecision: Boolean
+        get() = code == PAUSE_REASON_AWAITING_OPERATOR_DECISION
+}
 
 enum class UnavailableReason {
     MISSING_EXECUTABLE,
