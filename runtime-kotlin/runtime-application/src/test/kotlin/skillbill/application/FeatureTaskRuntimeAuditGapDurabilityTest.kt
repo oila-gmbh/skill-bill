@@ -21,93 +21,23 @@ class FeatureTaskRuntimeAuditGapDurabilityTest {
   @Test
   fun `m2 re-implement without a reconciliation report blocks on the idempotency gate`() {
     var implementLaunches = 0
+    var auditLaunches = 0
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
         when (phaseId) {
-          "audit" -> facts(auditGapsOutput())
-          "implement" -> {
-            implementLaunches += 1
-            // The first implement reconciles; the audit-gap re-implement omits reconciled_state.
-            if (implementLaunches == 1) {
-              facts(validJsonOutput(phaseId))
-            } else {
-              facts(
-                """{"contract_version":"0.2","phase_id":"implement","status":"completed",""" +
-                  """"summary":"re-impl","produced_outputs":{"changed_files":["src/Foo.kt"]}}""",
-              )
-            }
+          "audit" -> {
+            auditLaunches += 1
+            facts(if (auditLaunches == 1) auditGapsOutput() else auditSatisfiedOutput())
           }
-          else -> facts(validJsonOutput(phaseId))
-        }
-      },
-    )
-
-    val report = harness.runner.run(harness.request())
-
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
-    assertEquals("implement", blocked.lastIncompletePhase)
-    assertContains(blocked.blockedReason, "reconcil")
-  }
-
-  @Test
-  fun `audit remediation reports the exact item and missing evidence field`() {
-    var implementLaunches = 0
-    val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        when (phaseId) {
-          "audit" -> facts(auditGapsOutput())
           "implement" -> {
             implementLaunches += 1
-            if (implementLaunches == 1) {
-              facts(validJsonOutput(phaseId))
-            } else {
-              facts(
-                validJsonOutput(phaseId).replace(
-                  "\"executed_verification\":[\"Focused test passed.\"]",
-                  "\"executed_verification\":[]",
-                ),
-              )
-            }
-          }
-          else -> facts(validJsonOutput(phaseId))
-        }
-      },
-    )
-
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
-
-    assertPrivateDiagnosticRejection(
-      blocked.blockedReason,
-      "audit-repair-result",
-      "ac-002-gap-1-item-1",
-      "executed_verification",
-    )
-    val diagnostic = harness.io.database.rejectedDiagnostics().last().metadata
-    assertEquals("audit_repair.results.executed_verification", diagnostic.rule)
-    assertEquals("/produced_outputs/repair_item_results/0/executed_verification", diagnostic.path)
-  }
-
-  @Test
-  fun `audit remediation preserves the decoder reason for malformed result evidence`() {
-    var implementLaunches = 0
-    val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        when (phaseId) {
-          "audit" -> facts(auditGapsOutput())
-          "implement" -> {
-            implementLaunches += 1
-            val output = validJsonOutput(phaseId)
             facts(
-              if (implementLaunches == 1) {
-                output
+              if (implementLaunches == 2) {
+                """{"contract_version":"0.2","phase_id":"implement","status":"completed",""" +
+                  """"summary":"re-impl","produced_outputs":{"changed_files":["src/Foo.kt"]}}"""
               } else {
-                output.replace(
-                  "\"observation\":\"fix_verified\"",
-                  "\"observation\":\"fixed\"",
-                )
+                validJsonOutput(phaseId)
               },
             )
           }
@@ -116,15 +46,89 @@ class FeatureTaskRuntimeAuditGapDurabilityTest {
       },
     )
 
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    val report = harness.runner.run(harness.request())
 
-    assertPrivateDiagnosticRejection(
-      blocked.blockedReason,
-      "audit-repair-result",
-      "ac-002-gap-1-item-1",
-      "result_evidence.observation",
-      "unauthorized evidence observation 'fixed'",
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertEquals(3, implementLaunches)
+    val retryPrompt = harness.launcher.requests
+      .map { requireNotNull(it.skillRunRequest.promptOverride) }
+      .filter { phaseIdFromPrompt(it) == "implement" }[2]
+    assertTrue(retryPrompt.contains("reconcil"), retryPrompt)
+  }
+
+  @Test
+  fun `audit remediation reports the exact item and missing evidence field`() {
+    var implementLaunches = 0
+    var auditLaunches = 0
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        when (phaseId) {
+          "audit" -> {
+            auditLaunches += 1
+            facts(if (auditLaunches == 1) auditGapsOutput() else auditSatisfiedOutput())
+          }
+          "implement" -> {
+            implementLaunches += 1
+            if (implementLaunches == 1) {
+              facts(validJsonOutput(phaseId))
+            } else if (implementLaunches == 2) {
+              facts(
+                validJsonOutput(phaseId).replace(
+                  "\"executed_verification\":[\"Focused test passed.\"]",
+                  "\"executed_verification\":[]",
+                ),
+              )
+            } else {
+              facts(validJsonOutput(phaseId))
+            }
+          }
+          else -> facts(validJsonOutput(phaseId))
+        }
+      },
     )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+    val diagnostic = harness.io.database.rejectedDiagnostics().last().metadata
+    assertEquals("audit_repair.results.executed_verification", diagnostic.rule)
+    assertEquals("/produced_outputs/repair_item_results/0/executed_verification", diagnostic.path)
+  }
+
+  @Test
+  fun `audit remediation preserves the decoder reason for malformed result evidence`() {
+    var implementLaunches = 0
+    var auditLaunches = 0
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        when (phaseId) {
+          "audit" -> {
+            auditLaunches += 1
+            facts(if (auditLaunches == 1) auditGapsOutput() else auditSatisfiedOutput())
+          }
+          "implement" -> {
+            implementLaunches += 1
+            val output = validJsonOutput(phaseId)
+            facts(
+              if (implementLaunches == 2) {
+                output.replace(
+                  "\"observation\":\"fix_verified\"",
+                  "\"observation\":\"fixed\"",
+                )
+              } else {
+                output
+              },
+            )
+          }
+          else -> facts(validJsonOutput(phaseId))
+        }
+      },
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+    val diagnostic = harness.io.database.rejectedDiagnostics().last()
+    assertEquals("audit_repair.results.result_evidence", diagnostic.metadata.rule)
+    assertTrue(diagnostic.metadata.reason.contains("observation"), diagnostic.metadata.reason)
   }
 
   // (h) AC4: a crash mid-loopback (the audit-gap re-implement spawn-fails) resumes the unfinished
@@ -445,13 +449,19 @@ class FeatureTaskRuntimeAuditGapDurabilityTest {
   // unmet_criteria array) blocks via the audit verification-signal gate rather than silently advancing.
   @Test
   fun `m2 audit without a verification signal blocks on the gate`() {
+    var auditLaunches = 0
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
         if (phaseId == "audit") {
+          auditLaunches += 1
           facts(
-            """{"contract_version":"0.2","phase_id":"audit","status":"completed",""" +
-              """"summary":"Looks complete to me.","produced_outputs":{"notes":"all good"}}""",
+            if (auditLaunches == 1) {
+              """{"contract_version":"0.2","phase_id":"audit","status":"completed",""" +
+                """"summary":"Looks complete to me.","produced_outputs":{"notes":"all good"}}"""
+            } else {
+              validJsonOutput(phaseId)
+            },
           )
         } else {
           facts(validJsonOutput(phaseId))
@@ -461,10 +471,12 @@ class FeatureTaskRuntimeAuditGapDurabilityTest {
 
     val report = harness.runner.run(harness.request())
 
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
-    assertEquals("audit", blocked.lastIncompletePhase)
-    assertPrivateDiagnosticRejection(blocked.blockedReason, "output-verification", "verification signal")
-    assertTrue(harness.launchedPromptPhaseOrder().none { it == "validate" })
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertEquals(2, auditLaunches)
+    val retryPrompt = harness.launcher.requests
+      .map { requireNotNull(it.skillRunRequest.promptOverride) }
+      .filter { phaseIdFromPrompt(it) == "audit" }[1]
+    assertRetryPromptNamesConstraint(retryPrompt, "output-verification", "verification signal")
   }
 
   @Test
@@ -475,18 +487,21 @@ class FeatureTaskRuntimeAuditGapDurabilityTest {
       invalidGapsFoundOutput("{\"unmet_criteria\":[{\"message\":\"AC4\"},{}]}"),
     )
     invalidAuditOutputs.forEach { auditOutput ->
+      var auditLaunches = 0
       val harness = runnerHarness(
         launcher = RuntimeRecordingLauncher { request ->
           val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-          facts(if (phaseId == "audit") auditOutput else validJsonOutput(phaseId))
+          if (phaseId == "audit") {
+            auditLaunches += 1
+            facts(if (auditLaunches == 1) auditOutput else validJsonOutput(phaseId))
+          } else {
+            facts(validJsonOutput(phaseId))
+          }
         },
       )
 
-      val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(
-        harness.runner.run(harness.request()),
-      )
-
-      assertEquals("audit", blocked.lastIncompletePhase)
+      assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+      assertEquals(2, auditLaunches)
       assertTrue(harness.launchedPromptPhaseOrder().count { it == "implement" } == 1)
       assertTrue(
         harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
@@ -500,16 +515,21 @@ class FeatureTaskRuntimeAuditGapDurabilityTest {
     val malformedInferredOutput =
       """{"contract_version":"0.2","phase_id":"audit","status":"completed","summary":"gap",""" +
         """"produced_outputs":{"unmet_criteria":[{"message":"AC4"},{}]}}"""
+    var auditLaunches = 0
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        facts(if (phaseId == "audit") malformedInferredOutput else validJsonOutput(phaseId))
+        if (phaseId == "audit") {
+          auditLaunches += 1
+          facts(if (auditLaunches == 1) malformedInferredOutput else validJsonOutput(phaseId))
+        } else {
+          facts(validJsonOutput(phaseId))
+        }
       },
     )
 
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
-
-    assertEquals("audit", blocked.lastIncompletePhase)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+    assertEquals(2, auditLaunches)
     assertTrue(
       harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
         .none { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && it.loopId == "audit_gap" },

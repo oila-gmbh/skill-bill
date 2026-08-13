@@ -11,7 +11,7 @@ import skillbill.application.featuretask.FeatureTaskRuntimeBranchSetupRunner
 import skillbill.application.featuretask.FeatureTaskRuntimeCrashReconciler
 import skillbill.application.featuretask.FeatureTaskRuntimeDecomposeTerminalRecorder
 import skillbill.application.featuretask.FeatureTaskRuntimeDecompositionPlanner
-import skillbill.application.featuretask.FeatureTaskRuntimeFixLoopPolicy
+import skillbill.application.featuretask.FeatureTaskRuntimeAttemptBudgets
 import skillbill.application.featuretask.FeatureTaskRuntimeGoalContinuationRecorder
 import skillbill.application.featuretask.FeatureTaskRuntimeLifecycleTelemetry
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
@@ -451,8 +451,8 @@ class FeatureTaskRuntimeRunnerTest {
 
   @Test
   fun `schema gate rejection on a non-fix-loop phase blocks without advancing`() {
-    // write_history is non-fix-loop (and post-implement); a schema-invalid output blocks immediately.
-    // (implement is no longer a fence: it is now a bounded fix loop under the idempotency contract.)
+    // write_history is downstream of implement and does not retry invalid output; a schema-invalid
+    // output blocks immediately.
     val harness = runnerHarness(
       validator = ThrowingValidator(failPhases = setOf("write_history")),
       agentAssignment = phasePerAgentAssignment(),
@@ -476,28 +476,31 @@ class FeatureTaskRuntimeRunnerTest {
   }
 
   @Test
-  fun `review fix loop re-runs up to the cap then blocks loudly`() {
+  fun `review schema correction continues past the former three-attempt cap`() {
+    var reviewAttempts = 0
+    val formerCap = 3
     val harness = runnerHarness(
-      validator = ThrowingValidator(failPhases = setOf("review")),
+      validator = object : FeatureTaskRuntimePhaseOutputValidator {
+        override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
+          if (sourceLabel == "review") {
+            reviewAttempts += 1
+            if (reviewAttempts <= formerCap) {
+              throw InvalidFeatureTaskRuntimePhaseOutputSchemaError("review", "still failing")
+            }
+          }
+        }
+      },
       agentAssignment = phasePerAgentAssignment(),
     )
 
     val report = harness.runner.run(harness.request())
 
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
-    assertEquals("review", blocked.lastIncompletePhase)
-    assertContains(blocked.blockedReason, "exhausted the bounded fix loop")
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertEquals(formerCap + 1, reviewAttempts)
     val launchedPhases = harness.launchedPhaseOrder()
     assertEquals(1, launchedPhases.count { it == "plan" })
     assertEquals(1, launchedPhases.count { it == "implement" })
-    assertEquals(
-      FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS,
-      launchedPhases.count { it == "review" },
-    )
-    assertEquals(
-      FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS,
-      harness.launchOrder().count { it == "review" },
-    )
+    assertEquals(formerCap + 1, launchedPhases.count { it == "review" })
   }
 
   @Test
@@ -540,19 +543,15 @@ class FeatureTaskRuntimeRunnerTest {
               failureCode = "malformed",
             )
           }
-          throw InvalidFeatureTaskRuntimePhaseOutputSchemaError("review", "semantic schema failure")
+          if (reviewAttempts == 3) {
+            throw InvalidFeatureTaskRuntimePhaseOutputSchemaError("review", "semantic schema failure")
+          }
         }
       },
     )
 
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
-
-    assertContains(blocked.blockedReason, "exhausted the bounded fix loop")
-    assertEquals(
-      FeatureTaskRuntimeFixLoopPolicy.MAX_FORMAT_RETRY_ATTEMPTS +
-        FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS - 1,
-      reviewAttempts,
-    )
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+    assertEquals(4, reviewAttempts)
   }
 
   @Test
@@ -748,25 +747,17 @@ class FeatureTaskRuntimeRunnerTest {
   }
 
   @Test
-  fun `resume of a fix-loop phase that already burned the budget blocks without relaunching`() {
-    // F-001: review persisted as running at attemptCount=3 (the cap) with no valid artifact must
-    // re-block immediately on resume; the bounded budget is not reset by resume/crash.
+  fun `resume of a fix-loop phase that already has several attempts relaunches rather than re-blocking`() {
     val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
-    harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
-    harness.seedPhase("review", "running", 3, phaseAgent("review"), outputArtifact = null)
+    harness.seedPhase("implement", "running", 3, phaseAgent("implement"), outputArtifact = null)
 
     val report = harness.runner.run(harness.request())
 
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
-    assertEquals("review", blocked.lastIncompletePhase)
-    assertContains(blocked.blockedReason, "exhausted the bounded fix loop")
-    // The agent must never be relaunched for the already-exhausted review phase.
-    assertTrue(harness.launchedPhaseOrder().none { it == "review" })
-    // A durable terminal blocked record is persisted (survives ledger pruning).
-    val reviewRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
-    assertEquals("blocked", reviewRecord.status)
-    assertTrue(requireNotNull(reviewRecord.blockedReason).isNotBlank())
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertTrue(harness.launchedPhaseOrder().contains("implement"))
+    val implementRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
+    assertEquals("completed", implementRecord.status)
   }
 
   @Test
@@ -1066,11 +1057,11 @@ class FeatureTaskRuntimeRunnerTest {
   fun `blocked run persists a durable terminal blocked record alongside the ledger entry`() {
     // F-002: blocking persists a terminal blocked per-phase record so blocked-ness survives even
     // if the append-only ledger BLOCKED entry is later pruned by the retention cap.
-    val harness = runnerHarness(validator = ThrowingValidator(failPhases = setOf("implement")))
+    val harness = runnerHarness(validator = ThrowingValidator(failPhases = setOf("write_history")))
 
     harness.runner.run(harness.request())
 
-    val implementRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
+    val implementRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["write_history"])
     assertEquals("blocked", implementRecord.status)
     assertTrue(requireNotNull(implementRecord.blockedReason).isNotBlank())
     assertNull(implementRecord.finishedAt)
@@ -1111,13 +1102,13 @@ class FeatureTaskRuntimeRunnerTest {
   @Test
   fun `a blocked run advances the coarse workflow row to blocked at the blocked phase`() {
     // F-008: a blocked run marks the row blocked at the blocked phase.
-    val harness = runnerHarness(validator = ThrowingValidator(failPhases = setOf("implement")))
+    val harness = runnerHarness(validator = ThrowingValidator(failPhases = setOf("write_history")))
 
     harness.runner.run(harness.request())
 
     val row = requireNotNull(harness.repository.getFeatureTaskRuntimeWorkflow(WORKFLOW_ID))
     assertEquals("blocked", row.workflowStatus)
-    assertEquals("implement", row.currentStepId)
+    assertEquals("write_history", row.currentStepId)
   }
 
   @Test
@@ -1205,7 +1196,7 @@ class FeatureTaskRuntimeRunnerTest {
 
   @Test
   fun `blocked run appends a blocked ledger entry`() {
-    val harness = runnerHarness(validator = ThrowingValidator(failPhases = setOf("implement")))
+    val harness = runnerHarness(validator = ThrowingValidator(failPhases = setOf("write_history")))
 
     harness.runner.run(harness.request())
 
@@ -1214,7 +1205,7 @@ class FeatureTaskRuntimeRunnerTest {
     @Suppress("UNCHECKED_CAST")
     val ledger = artifacts[FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY] as List<Map<String, Any?>>
     val blockedEntry = ledger.single { it["action"] == "blocked" }
-    assertEquals("implement", blockedEntry["phase_id"])
+    assertEquals("write_history", blockedEntry["phase_id"])
     assertTrue((blockedEntry["blocked_reason"] as String).isNotBlank())
   }
 
@@ -1777,7 +1768,7 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
   @Test
   fun `a terminal schema-gate block persists the validator's reason in the blocked reason`() {
     val harness = runnerHarness(
-      validator = ThrowingValidator(failPhases = setOf("implement")),
+      validator = ThrowingValidator(failPhases = setOf("write_history")),
       agentAssignment = phasePerAgentAssignment(),
     )
 
@@ -1785,26 +1776,12 @@ class FeatureTaskRuntimeRunnerPersistenceTest {
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
     assertPrivateDiagnosticRejection(blocked.blockedReason, "phase-output-schema", "rejected by fake validator")
-    val implementRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
+    val writeHistoryRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["write_history"])
     assertPrivateDiagnosticRejection(
-      requireNotNull(implementRecord.blockedReason),
+      requireNotNull(writeHistoryRecord.blockedReason),
       "phase-output-schema",
       "rejected by fake validator",
     )
-  }
-
-  @Test
-  fun `an exhausted fix loop persists the last validator reason in the blocked reason`() {
-    val harness = runnerHarness(
-      validator = ThrowingValidator(failPhases = setOf("review")),
-      agentAssignment = phasePerAgentAssignment(),
-    )
-
-    val report = harness.runner.run(harness.request())
-
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
-    assertContains(blocked.blockedReason, "exhausted the bounded fix loop")
-    assertPrivateDiagnosticRejection(blocked.blockedReason, "phase-output-schema", "rejected by fake validator")
   }
 
   @Test
@@ -3258,17 +3235,17 @@ class FeatureTaskRuntimeReviewFixLoopTest {
   @Test
   fun `schema-rejected evidence is persisted apart from the phase output artifact`() {
     val harness = runnerHarness(
-      validator = ThrowingValidator(failPhases = setOf("review")),
+      validator = ThrowingValidator(failPhases = setOf("write_history")),
       agentAssignment = phasePerAgentAssignment(),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
 
-    val reviewRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
-    assertEquals("blocked", reviewRecord.status)
-    assertNull(reviewRecord.rejectedOutput)
+    val writeHistoryRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["write_history"])
+    assertEquals("blocked", writeHistoryRecord.status)
+    assertNull(writeHistoryRecord.rejectedOutput)
     assertNull(
-      reviewRecord.outputArtifact,
+      writeHistoryRecord.outputArtifact,
       "rejected evidence must never land in output_artifact, which resume hydration re-validates",
     )
   }
@@ -3377,9 +3354,20 @@ class FeatureTaskRuntimeReviewFixLoopTest {
   }
 
   @Test
-  fun `goal review blocks with pass accounting intact once the schema fix loop is exhausted`() {
+  fun `goal review schema retries stay on the reserved pass past the former cap`() {
+    var reviewAttempts = 0
+    val formerCap = 3
     val harness = runnerHarness(
-      validator = ThrowingValidator(failPhases = setOf("review")),
+      validator = object : FeatureTaskRuntimePhaseOutputValidator {
+        override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
+          if (sourceLabel == "review") {
+            reviewAttempts += 1
+            if (reviewAttempts <= formerCap) {
+              throw InvalidFeatureTaskRuntimePhaseOutputSchemaError("review", "<root> must be an object")
+            }
+          }
+        }
+      },
       agentAssignment = phasePerAgentAssignment(),
       runtimeConfig = RuntimeHarnessConfig(
         goalContinuation = FeatureTaskRuntimeGoalContinuationContext(
@@ -3391,19 +3379,22 @@ class FeatureTaskRuntimeReviewFixLoopTest {
           reviewBaseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList()),
         ),
       ),
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        if (phaseId == "review") {
+          facts(reviewFindingsOutput(changesRequested = false))
+        } else {
+          facts(validJsonOutput(phaseId))
+        }
+      },
     )
 
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
-    assertEquals("review", blocked.lastIncompletePhase)
-    assertContains(blocked.blockedReason, "exhausted the bounded fix loop")
-    assertEquals(
-      FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS,
-      harness.launchedPhaseOrder().count { it == "review" },
-    )
+    assertEquals(formerCap + 1, reviewAttempts)
     val state = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
-    assertEquals(1, state.reservedPassNumber)
-    assertEquals(0, state.completedPassCount)
+    assertEquals(1, state.completedPassCount)
+    assertEquals(null, state.reservedPassNumber)
   }
 
   // --- SKILL-85 Subtask 4: M1 review-driven implement_fix loop over the real phase topology ------
@@ -3704,19 +3695,26 @@ class FeatureTaskRuntimeReviewFixLoopTest {
   @Test
   fun `m1 implement_fix without a reconciliation report blocks on the idempotency gate`() {
     var reviewLaunches = 0
+    var implementFixLaunches = 0
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
         when (phaseId) {
           "review" -> {
             reviewLaunches += 1
-            facts(reviewFindingsOutput(changesRequested = true))
+            facts(reviewFindingsOutput(changesRequested = reviewLaunches == 1))
           }
-          // A fix output WITHOUT reconciled_state: the mutating-phase gate must reject it.
-          "implement_fix" -> facts(
-            """{"contract_version":"0.2","phase_id":"implement_fix","status":"completed",""" +
-              """"summary":"fix","produced_outputs":{"changed_files":["src/Foo.kt"]}}""",
-          )
+          "implement_fix" -> {
+            implementFixLaunches += 1
+            facts(
+              if (implementFixLaunches == 1) {
+                """{"contract_version":"0.2","phase_id":"implement_fix","status":"completed",""" +
+                  """"summary":"fix","produced_outputs":{"changed_files":["src/Foo.kt"]}}"""
+              } else {
+                validJsonOutput(phaseId)
+              },
+            )
+          }
           else -> facts(validJsonOutput(phaseId))
         }
       },
@@ -3724,9 +3722,12 @@ class FeatureTaskRuntimeReviewFixLoopTest {
 
     val report = harness.runner.run(harness.request())
 
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
-    assertEquals("implement_fix", blocked.lastIncompletePhase)
-    assertContains(blocked.blockedReason, "reconcil")
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertEquals(2, implementFixLaunches)
+    val retryPrompt = harness.launcher.requests
+      .map { requireNotNull(it.skillRunRequest.promptOverride) }
+      .filter { phaseIdFromPrompt(it) == "implement_fix" }[1]
+    assertTrue(retryPrompt.contains("reconcil"), retryPrompt)
   }
 
   // (g) AC5/AC10: a crash mid-loop (implement_fix re-entered then spawn-fails) resumes at the correct
@@ -3899,21 +3900,30 @@ class FeatureTaskRuntimeReviewFixLoopTest {
   // is missing every verification signal; it must fail loudly through the schema gate rather than
   // silently advancing to validation (prose alone cannot advance past a possible Blocker/Major).
   @Test
-  fun `m1 review with neither verdict nor findings blocks rather than silently advancing`() {
+  fun `m1 review with neither verdict nor findings retries rather than silently advancing`() {
+    var reviewLaunches = 0
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        facts(if (phaseId == "review") REVIEW_NO_SIGNAL_OUTPUT else validJsonOutput(phaseId))
+        if (phaseId == "review") {
+          reviewLaunches += 1
+          facts(if (reviewLaunches == 1) REVIEW_NO_SIGNAL_OUTPUT else validJsonOutput(phaseId))
+        } else {
+          facts(validJsonOutput(phaseId))
+        }
       },
     )
 
     val report = harness.runner.run(harness.request())
 
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
-    assertEquals("review", blocked.lastIncompletePhase)
-    assertPrivateDiagnosticRejection(blocked.blockedReason, "output-verification", "verification signal")
-    // It never advanced past review on the missing signal. Audit already ran — it precedes review.
-    assertTrue(harness.launchedPromptPhaseOrder().none { it == "validate" })
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertEquals(2, reviewLaunches)
+    val retryPrompt = harness.launcher.requests
+      .map { requireNotNull(it.skillRunRequest.promptOverride) }
+      .filter { phaseIdFromPrompt(it) == "review" }[1]
+    assertRetryPromptNamesConstraint(retryPrompt, "output-verification", "verification signal")
+    val launched = harness.launchedPromptPhaseOrder()
+    assertTrue(launched.indexOf("validate") > launched.indexOf("review"))
   }
 }
 
@@ -4942,29 +4952,32 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
   }
 
   // (d) The reconciliation gate rejects an implement output that did not report reconciliation: the
-  // silent skip is routed through the loud schema-gate failure path, so the bounded implement fix loop
-  // retries to its cap and then blocks. A reconciled output advances (proved in test (a)).
+  // silent skip is routed through the loud schema-gate failure path, so implement retries until a
+  // reconciled receipt lands. A reconciled output advances (proved in test (a)).
   @Test
   fun `reconciliation gate rejects an implement output without a reconciliation report`() {
+    var implementLaunches = 0
     val harness = runnerHarness(
       agentAssignment = phasePerAgentAssignment(),
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        if (phaseId == "implement") facts(IMPLEMENT_NO_RECONCILE_OUTPUT) else facts(validJsonOutput(phaseId))
+        if (phaseId == "implement") {
+          implementLaunches += 1
+          facts(if (implementLaunches == 1) IMPLEMENT_NO_RECONCILE_OUTPUT else validJsonOutput(phaseId))
+        } else {
+          facts(validJsonOutput(phaseId))
+        }
       },
     )
 
     val report = harness.runner.run(harness.request())
 
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
-    assertEquals("implement", blocked.lastIncompletePhase)
-    assertContains(blocked.blockedReason, "exhausted the bounded fix loop")
-    assertPrivateDiagnosticRejection(blocked.blockedReason, "mutating-reconciliation", "reconciliation report")
-    // The bounded fix loop retried to the cap before blocking (verified, not assumed).
-    assertEquals(
-      FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS,
-      harness.launchedPhaseOrder().count { it == "implement" },
-    )
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertEquals(2, implementLaunches)
+    val retryPrompt = harness.launcher.requests
+      .map { requireNotNull(it.skillRunRequest.promptOverride) }
+      .filter { phaseIdFromPrompt(it) == "implement" }[1]
+    assertRetryPromptNamesConstraint(retryPrompt, "mutating-reconciliation", "reconciliation report")
   }
 
   // (b) A simulated mid-implement crash then a clean resume reconciles to target without double-apply,
@@ -7370,7 +7383,7 @@ class ProviderLimitAndProcessFailureBudgetTest {
       },
     )
 
-    repeat(FeatureTaskRuntimeFixLoopPolicy.MAX_PROCESS_FAILURE_ATTEMPTS) {
+    repeat(FeatureTaskRuntimeAttemptBudgets.MAX_PROCESS_FAILURE_ATTEMPTS) {
       val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
       assertContains(blocked.blockedReason, "exited with non-zero status 1")
     }
@@ -7383,7 +7396,7 @@ class ProviderLimitAndProcessFailureBudgetTest {
       "a process that never reached the output gate produced no invalid output: '${exhausted.blockedReason}'",
     )
     assertEquals(
-      FeatureTaskRuntimeFixLoopPolicy.MAX_PROCESS_FAILURE_ATTEMPTS,
+      FeatureTaskRuntimeAttemptBudgets.MAX_PROCESS_FAILURE_ATTEMPTS,
       harness.launcher.requests.size,
       "the process budget bounds relaunches; the exhausted run must not launch again",
     )
@@ -7413,7 +7426,7 @@ class ProviderLimitAndProcessFailureBudgetTest {
       },
     )
 
-    repeat(FeatureTaskRuntimeFixLoopPolicy.MAX_PROCESS_FAILURE_ATTEMPTS) { harness.runner.run(harness.request()) }
+    repeat(FeatureTaskRuntimeAttemptBudgets.MAX_PROCESS_FAILURE_ATTEMPTS) { harness.runner.run(harness.request()) }
     val exhausted = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
     val stuckPhase = requireNotNull(exhausted.lastIncompletePhase)
     val launchesBeforeReopen = harness.launcher.requests.size
@@ -7470,11 +7483,8 @@ class ProviderLimitAndProcessFailureBudgetTest {
   fun `a phase that does reach its output gate is still bounded by the output budgets`() {
     val harness = runnerHarness(launcher = RuntimeRecordingLauncher { facts("not json") })
 
-    repeat(FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS + 1) { harness.runner.run(harness.request()) }
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
 
-    // Which output budget catches it is not this test's concern; that the discount never widened one
-    // into an unbounded loop is.
     assertTrue(
       !blocked.blockedReason.contains("failed to execute"),
       "output that reached the gate is not a process failure: '${blocked.blockedReason}'",

@@ -2,7 +2,6 @@
 
 package skillbill.application
 
-import skillbill.application.featuretask.FeatureTaskRuntimeFixLoopPolicy
 import skillbill.application.featuretask.RejectedOutputDiagnosticRequest
 import skillbill.application.model.FeatureTaskRuntimeRunEvent
 import skillbill.application.model.FeatureTaskRuntimeRunEventSink
@@ -249,20 +248,20 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
       }
     }
 
-    fun harnessFor(failEveryAttempt: Boolean): RunnerHarness {
-      var reviewAttempts = 0
+    fun harnessFor(failingPhase: String, failEveryAttempt: Boolean): RunnerHarness {
+      var attempts = 0
       return runnerHarness(
         launcher = RuntimeRecordingLauncher { request ->
           val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-          if (phaseId != "review") return@RuntimeRecordingLauncher facts(defaultPhaseOutput(request))
-          reviewAttempts += 1
+          if (phaseId != failingPhase) return@RuntimeRecordingLauncher facts(defaultPhaseOutput(request))
+          attempts += 1
           facts(
-            if (failEveryAttempt || reviewAttempts == 1) rejectedBody else defaultPhaseOutput(request),
+            if (failEveryAttempt || attempts == 1) rejectedBody else defaultPhaseOutput(request),
           )
         },
         validator = object : FeatureTaskRuntimePhaseOutputValidator {
           override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
-            if (sourceLabel != "review") return
+            if (sourceLabel != failingPhase) return
             if (phaseOutputText.contains(rawSpan)) {
               throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
                 sourceLabel = sourceLabel,
@@ -277,31 +276,29 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
       )
     }
 
-    val completing = harnessFor(failEveryAttempt = false)
+    val completing = harnessFor(failingPhase = "review", failEveryAttempt = false)
     val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(completing.runner.run(completing.request()))
     assertTrue(completed.completedPhaseIds.contains("review"))
 
-    val exhausting = harnessFor(failEveryAttempt = true)
+    val exhausting = harnessFor(failingPhase = "write_history", failEveryAttempt = true)
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(
       exhausting.runner.run(exhausting.request()),
     )
-    assertEquals("review", blocked.lastIncompletePhase)
-    assertContains(blocked.blockedReason, "exhausted the bounded fix loop")
+    assertEquals("write_history", blocked.lastIncompletePhase)
     assertNoRawResponseSpan(blocked.blockedReason, rawSpan, rejectedBody)
-    val reviewRecord = requireNotNull(exhausting.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
-    assertEquals(FeatureTaskRuntimeFailureDisposition.INVALID_OUTPUT, reviewRecord.failureDisposition)
-    assertNoRawResponseSpan(requireNotNull(reviewRecord.blockedReason), rawSpan, rejectedBody)
+    val writeHistoryRecord = requireNotNull(exhausting.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["write_history"])
+    assertEquals(FeatureTaskRuntimeFailureDisposition.INVALID_OUTPUT, writeHistoryRecord.failureDisposition)
+    assertNoRawResponseSpan(requireNotNull(writeHistoryRecord.blockedReason), rawSpan, rejectedBody)
     assertEquals(
-      FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS,
+      1,
       exhausting.launcher.requests.count {
-        phaseIdFromPrompt(requireNotNull(it.skillRunRequest.promptOverride)) == "review"
+        phaseIdFromPrompt(requireNotNull(it.skillRunRequest.promptOverride)) == "write_history"
       },
     )
-    // Captured harness events still record phase boundaries without embedding the rejected body.
     exhausting.events.filterIsInstance<FeatureTaskRuntimeRunEvent.PhaseBlocked>().forEach { event ->
       assertNoRawResponseSpan(event.blockedReason, rawSpan, rejectedBody)
     }
-    val diagnostic = exhausting.io.database.rejectedDiagnostics().first { it.metadata.phaseId == "review" }
+    val diagnostic = exhausting.io.database.rejectedDiagnostics().first { it.metadata.phaseId == "write_history" }
     assertEquals(rejectedBody.encodeToByteArray().toList(), diagnostic.payload?.toList())
   }
 
@@ -634,40 +631,34 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
   }
 
   @Test
-  fun `exhausted audit correction keeps INVALID_OUTPUT payload-free on every operator surface`() {
-    // SKILL-187 AC-010: cap exhaustion never promotes the sentinel into blocked/status/report text.
+  fun `audit schema correction keeps INVALID_OUTPUT payload-free on every operator surface`() {
     val rejectedBody = Skill187SyntheticAuditResponses.nestedVerdictComplete()
+    var auditAttempts = 0
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
         if (phaseId != "audit") return@RuntimeRecordingLauncher facts(defaultPhaseOutput(request))
-        facts(rejectedBody)
+        auditAttempts += 1
+        facts(
+          if (auditAttempts == 1) rejectedBody else Skill187SyntheticAuditResponses.correctedSatisfied(),
+        )
       },
       validator = realAuditValidator(),
     )
 
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
-    assertEquals("audit", blocked.lastIncompletePhase)
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+    val retryPrompt = harness.launcher.requests
+      .map { requireNotNull(it.skillRunRequest.promptOverride) }
+      .filter { phaseIdFromPrompt(it) == "audit" }[1]
     assertPrivateDiagnosticRejection(
-      blocked.blockedReason,
+      retryPrompt.substringBefore("Violated constraint:"),
       "phase-output-schema",
       Skill187SyntheticAuditResponses.NESTED_VERDICT_SENTINEL,
-      rejectedBody,
     )
-    assertNoRawResponseSpan(blocked.blockedReason, rejectedBody)
-    val auditRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["audit"])
-    assertNoRawResponseSpan(
-      requireNotNull(auditRecord.blockedReason),
+    assertNoRawResponseSpanOutsideAuthorizedRepairSection(
+      retryPrompt,
       Skill187SyntheticAuditResponses.NESTED_VERDICT_SENTINEL,
-      rejectedBody,
     )
-    harness.launcher.requests
-      .map { requireNotNull(it.skillRunRequest.promptOverride) }
-      .filter { phaseIdFromPrompt(it) == "audit" }
-      .drop(1)
-      .forEach { prompt ->
-        assertTrue(prompt.contains(rejectedBody) || prompt.contains("Rejected response body not included"))
-      }
     val diagnostics = harness.io.database.rejectedDiagnostics().filter { it.metadata.phaseId == "audit" }
     assertTrue(diagnostics.isNotEmpty())
     diagnostics.forEach { row ->

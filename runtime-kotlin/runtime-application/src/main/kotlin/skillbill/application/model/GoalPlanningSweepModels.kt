@@ -120,7 +120,6 @@ data class GoalPlanningRejectionRecord(
  * - A 15-subtask goal adds `14 * 20s = 280s` (4m40s) of pace wait on the happy path, which is inside
  *   [DEFAULT_GOAL_PLANNING_BUDGET] (30m) and does not require or breach the default uncapped
  *   `--max-wall-clock-minutes`.
- * - The fix-loop attempt cap (`MAX_FIX_LOOP_ITERATIONS`) stays unchanged.
  *
  * [waitSlice] bounds how long each `RuntimeTimingPort.wait` call may block before the sweep
  * re-checks the durable pause boundary; it is an interruptibility knob, not a rate-control input.

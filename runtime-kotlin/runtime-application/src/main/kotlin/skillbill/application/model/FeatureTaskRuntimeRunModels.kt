@@ -352,13 +352,6 @@ fun interface FeatureTaskRuntimeRunEventSink {
   }
 }
 
-/** Outcome of the bounded fix-loop policy for a failed phase attempt. */
-sealed interface FeatureTaskRuntimeFixLoopDecision {
-  data class Retry(val nextIteration: Int, val fixLoopIteration: Int) : FeatureTaskRuntimeFixLoopDecision
-
-  data class Block(val blockedReason: String) : FeatureTaskRuntimeFixLoopDecision
-}
-
 /**
  * The bounded prior receipt plus the still-open obligations a continuation segment needs.
  *

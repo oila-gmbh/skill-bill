@@ -44,6 +44,42 @@ class ExternalAddonOverlayTest {
   }
 
   @Test
+  fun `merge preserves activation from the external fragment`() {
+    seedIosPack(packOwnedAddon = "offline")
+    val sourceDir = Files.createDirectories(work.resolve("ext/ios-acme"))
+    Files.writeString(sourceDir.resolve("acme-review.md"), "# acme body\n")
+    Files.writeString(
+      sourceDir.resolve("addon-manifest.yaml"),
+      """
+      addon_usage:
+        code-review/bill-ios-code-review:
+          - slug: acme
+            entrypoint: acme-review.md
+            activation:
+              any_path:
+                - Acme.xcodeproj
+              any_of_all_content:
+                - ["grdb", "sync"]
+              exclude_content: ["pure in-memory"]
+      pointers:
+        code-review/bill-ios-code-review:
+          - name: acme-review.md
+            target: acme-review.md
+      """.trimIndent() + "\n",
+    )
+
+    overlay.applyOverlay(request(listOf(ExternalAddonSource(sourceDir, "ios"))))
+
+    val manifest = Files.readString(platformPacksRoot.resolve("ios/platform.yaml"))
+    assertContains(manifest, "activation")
+    assertContains(manifest, "any_path")
+    assertContains(manifest, "Acme.xcodeproj")
+    assertContains(manifest, "any_of_all_content")
+    assertContains(manifest, "exclude_content")
+    assertContains(manifest, "pure in-memory")
+  }
+
+  @Test
   fun `pointer target rewriting converts source-relative target to canonical form`() {
     seedIosPack(packOwnedAddon = null)
     val source = seedExternalSource(

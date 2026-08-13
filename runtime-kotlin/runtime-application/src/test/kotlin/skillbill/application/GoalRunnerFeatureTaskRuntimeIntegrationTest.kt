@@ -285,17 +285,22 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
   fun `goal child rejects a partial remediation with the same identifier-equality reason`() {
     fun launcher(): RuntimeRecordingLauncher {
       var implementLaunches = 0
+      var audits = 0
       return RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
         when (phaseId) {
-          "audit" -> facts(auditTwoItemGoalGapOutput())
+          "audit" -> facts(if (++audits == 1) auditTwoItemGoalGapOutput() else auditSatisfiedOutput())
           "implement" -> {
             implementLaunches += 1
-            if (implementLaunches == 1) {
-              facts(validJsonOutput(phaseId))
-            } else {
-              facts(goalRemediationOutput(reportedItemIds = listOf("ac-002-gap-1-item-1")))
-            }
+            facts(
+              when (implementLaunches) {
+                1 -> validJsonOutput(phaseId)
+                2 -> goalRemediationOutput(reportedItemIds = listOf("ac-002-gap-1-item-1"))
+                else -> goalRemediationOutput(
+                  reportedItemIds = listOf("ac-002-gap-1-item-1", "ac-002-gap-1-item-2"),
+                )
+              },
+            )
           }
           else -> facts(validJsonOutput(phaseId))
         }
@@ -303,16 +308,10 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
     }
     val parity = standaloneAndGoalChildParity(launcher = ::launcher)
 
-    assertIs<GoalRunnerRunReport.Stopped>(parity.report)
-    val blocked = assertNotNull(parity.blockedChildReason())
-    assertPrivateDiagnosticRejection(
-      blocked,
-      "audit-repair-result",
-      "exact repair_item_result identifier equality",
-      "ac-002-gap-1-item-2",
-    )
-    val repairState = requireNotNull(parity.runtime.recorder.loadAuditRepairState(WORKFLOW_ID))
-    assertEquals(listOf("ac-002-gap-1"), repairState.unresolvedGapLedger.unresolvedGaps.map { it.gapId })
+    assertIs<GoalRunnerRunReport.Completed>(parity.report)
+    val diagnostic = parity.runtime.io.database.rejectedDiagnostics().last().metadata
+    assertEquals("audit_repair.results.identifiers", diagnostic.rule)
+    assertContains(diagnostic.reason, "ac-002-gap-1-item-2")
   }
 
   @Test
@@ -434,16 +433,17 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
   fun `standalone and goal child reject a new gap against a durably closed criterion`() {
     fun launcher(): RuntimeRecordingLauncher {
       var audits = 0
-      var implements = 0
       return RuntimeRecordingLauncher { request ->
         when (val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))) {
           "audit" -> {
             audits += 1
-            facts(if (audits == 1) auditGapsOutput() else auditTwoGapsOutput())
-          }
-          "implement" -> {
-            implements += 1
-            if (implements == 3) spawnFailedFacts() else facts(validJsonOutput(phaseId))
+            facts(
+              when (audits) {
+                1 -> auditGapsOutput()
+                2 -> auditTwoGapsOutput()
+                else -> auditSatisfiedOutput()
+              },
+            )
           }
           else -> facts(validJsonOutput(phaseId))
         }
@@ -455,17 +455,14 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
       acceptanceCriteria = (1..3).map { "AC-$it" },
     )
 
-    assertIs<GoalRunnerRunReport.Stopped>(parity.report)
-    assertPrivateDiagnosticRejection(
-      requireNotNull(parity.blockedChildReason()),
-      "audit-closed-criterion",
-      "durably closed acceptance criteria [AC-003]",
+    assertIs<GoalRunnerRunReport.Completed>(parity.report)
+    val auditPrompts = parity.runtime.launcher.requests
+      .map { requireNotNull(it.skillRunRequest.promptOverride) }
+      .filter { phaseIdFromPrompt(it) == "audit" }
+    assertTrue(
+      auditPrompts.any { it.contains("audit-closed-criterion") },
+      "a new gap against a durably closed criterion must be named on the audit retry prompt",
     )
-    val state = requireNotNull(parity.runtime.recorder.loadAuditRepairState(WORKFLOW_ID))
-    assertEquals(0, state.progress.recurringGapCount)
-    assertEquals(1, state.progress.newGapCount)
-    assertEquals(listOf("ac-002-gap-1"), state.unresolvedGapLedger.unresolvedGaps.map { it.gapId })
-    assertEquals(listOf("AC-001", "AC-003"), state.satisfiedCriterionRefs)
   }
 
   @Test

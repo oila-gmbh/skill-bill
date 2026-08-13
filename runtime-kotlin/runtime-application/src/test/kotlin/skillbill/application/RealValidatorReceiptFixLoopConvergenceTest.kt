@@ -2,7 +2,6 @@
 
 package skillbill.application
 
-import skillbill.application.featuretask.FeatureTaskRuntimeFixLoopPolicy
 import skillbill.application.model.FeatureTaskRuntimeRunReport
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -22,8 +21,6 @@ import kotlin.test.assertTrue
  * cost exactly one attempt and are fixed from the constraint text.
  */
 class RealValidatorReceiptFixLoopConvergenceTest {
-  private val cap = FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS
-
   @Test
   fun `an unknown key inside reconciliation_evidence is absorbed and consumes no fix-loop attempt`() {
     val harness = runnerHarness(
@@ -108,10 +105,6 @@ class RealValidatorReceiptFixLoopConvergenceTest {
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     val implementLaunches = harness.launchedPromptPhaseOrder().count { it == "implement" }
     assertEquals(2, implementLaunches, "the receipt must be repaired on the first retry")
-    assertTrue(
-      implementLaunches < cap,
-      "convergence means finishing under the cap, not exhausting it (cap=$cap, launches=$implementLaunches)",
-    )
 
     val retryPrompt = harness.launcher.requests
       .map { requireNotNull(it.skillRunRequest.promptOverride) }

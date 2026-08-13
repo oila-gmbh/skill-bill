@@ -156,8 +156,8 @@ internal class FeatureTaskRuntimeRunState(
   // already accrued across review_fix visits) instead of resuming to convergence (AC5). For every
   // fired loop (a durable per-edge watermark exists and the live machine has not yet claimed it),
   // seed each non-completed phase in the reopened span (destination through source) from its durable
-  // attempt watermark, mirroring reopenForReentry's base = nextIteration - 1. The within-visit
-  // schema-retry budget still bounds at MAX_FIX_LOOP_ITERATIONS; attempt_count stays monotonic.
+  // attempt watermark, mirroring reopenForReentry's base = nextIteration - 1. Schema-gate retries
+  // are uncapped; attempt_count stays monotonic.
   private val fixLoopBudgetBaseByPhase: MutableMap<String, Int> = reconstructFixLoopBudgetBases()
 
   // The generation reset is re-applied on every load that sees a durable tombstone, not just on the
@@ -598,9 +598,9 @@ internal class FeatureTaskRuntimeRunState(
     persistedAttemptCounts.remove(phaseId)
   }
 
-  // Resume the bounded fix loop from durable state: the next attempt is one past the greater
+  // Resume schema-correction from durable state: the next attempt is one past the greater
   // of the persisted record's attempt count and the latest validated output iteration. A phase
-  // that already burned N attempts resumes at attempt N+1; the budget is never reset by resume.
+  // that already burned N attempts resumes at attempt N+1.
   fun nextIteration(phaseId: String): Int {
     val latestOutputIteration = outputs.filter { it.phaseId == phaseId }.maxOfOrNull { it.iteration } ?: 0
     val persistedAttempts = persistedAttemptCounts[phaseId] ?: 0

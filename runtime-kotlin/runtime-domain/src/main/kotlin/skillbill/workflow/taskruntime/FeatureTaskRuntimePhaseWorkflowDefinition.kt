@@ -117,6 +117,20 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
 
   fun isMutatingPhase(phaseId: String): Boolean = phaseId in MUTATING_PHASES
 
+  // Producer phases re-run on schema-invalid or retryable-terminal output until the output is valid.
+  // Downstream phases (`write_history`, `commit_push`, `pr`) block on the first invalid output.
+  private val OUTPUT_RETRY_PHASES: Set<String> = setOf(
+    PHASE_PREPLAN,
+    PHASE_PLAN,
+    PHASE_IMPLEMENT,
+    PHASE_IMPLEMENT_FIX,
+    PHASE_REVIEW,
+    PHASE_AUDIT,
+    PHASE_VALIDATE,
+  )
+
+  fun retriesOnInvalidOutput(phaseId: String): Boolean = phaseId in OUTPUT_RETRY_PHASES
+
   val definition: WorkflowDefinition = WorkflowDefinition(
     skillName = "bill-feature-task",
     workflowName = "bill-feature-task",

@@ -1,6 +1,5 @@
 package skillbill.application
 
-import skillbill.application.featuretask.FeatureTaskRuntimeFixLoopPolicy
 import skillbill.application.featuretask.FeatureTaskRuntimeRunState
 import skillbill.application.featuretask.REVIEW_INVALIDATION_AGENT_ID
 import skillbill.application.featuretask.RejectedOutputDiagnosticService
@@ -275,38 +274,29 @@ class FeatureTaskRuntimeAuditEntryGateTest {
 
   @Test
   fun `an undecidable audit fails its own schema gate rather than wedging the run behind the gate`() {
+    var auditLaunches = 0
     val harness = runnerHarness(
       agentAssignment = phasePerAgentAssignment(),
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        facts(if (phaseId == "audit") UNDECIDABLE_AUDIT_OUTPUT else defaultPhaseOutput(request))
+        if (phaseId == "audit") {
+          auditLaunches += 1
+          facts(if (auditLaunches == 1) UNDECIDABLE_AUDIT_OUTPUT else defaultPhaseOutput(request))
+        } else {
+          facts(defaultPhaseOutput(request))
+        }
       },
     )
 
     val report = harness.runner.run(harness.request())
 
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
-    // Blocking AT audit, not at review: a completed-but-undecidable audit could never satisfy the
-    // gate and is never itself invalidated, so the run would be unrecoverable in band.
-    assertEquals("audit", blocked.lastIncompletePhase)
-    assertPrivateDiagnosticRejection(
-      blocked.blockedReason,
-      "output-verification",
-      "off-vocabulary verdict 'x' and no y'",
-      "x' and no y",
-    )
-    assertTrue(
-      harness.launchedPhaseOrder().count { it == "audit" } > 1,
-      "an undecidable audit must be a bounded in-band retry, not a single terminal settle",
-    )
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertEquals(2, auditLaunches, "an undecidable audit must retry in band rather than settle once")
     val auditRetry = harness.launcher.requests
       .map { requireNotNull(it.skillRunRequest.promptOverride) }
       .filter { phaseIdFromPrompt(it) == "audit" }
       .getOrNull(1)
     requireNotNull(auditRetry)
-    // Realistic bug: a non-greedy scrub stopped at the first `' and no` inside the wire verdict
-    // (`x' and no y`), leaving the response-derived suffix ` and no y'` in Violated constraint
-    // outside the authorized repair section (AC-007 / F-001).
     assertRetryPromptWithholdsResponseDerivedDetail(
       auditRetry,
       "output-verification",
@@ -318,9 +308,11 @@ class FeatureTaskRuntimeAuditEntryGateTest {
       !auditRetry.substringBefore("## Untrusted prior phase output").contains("off-vocabulary verdict 'x' and no y'"),
       "scrubbed retry reason must not quote the response wire verdict outside the repair section",
     )
+    val launched = harness.launchedPhaseOrder()
     assertTrue(
-      harness.launchedPhaseOrder().none { it == "review" },
-      "review must stay unreachable while audit has not settled satisfied",
+      launched.indexOf("review") > launched.indexOfLast { it == "audit" } - 1 &&
+        launched.indexOf("review") > launched.indexOf("audit"),
+      "review must stay unreachable until audit has settled: launched=$launched",
     )
   }
 
@@ -353,7 +345,7 @@ class FeatureTaskRuntimeAuditEntryGateTest {
     harness.seedPhase(
       "review",
       "running",
-      FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS,
+      3,
       REVIEW_INVALIDATION_AGENT_ID,
       null,
     )
@@ -481,7 +473,7 @@ class FeatureTaskRuntimeAuditEntryGateTest {
     harness.seedPhase(
       "review",
       "running",
-      FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS,
+      3,
       REVIEW_INVALIDATION_AGENT_ID,
       null,
     )
@@ -543,7 +535,7 @@ class FeatureTaskRuntimeAuditEntryGateTest {
     harness.seedPhase(
       "review",
       "running",
-      FeatureTaskRuntimeFixLoopPolicy.MAX_FIX_LOOP_ITERATIONS,
+      3,
       REVIEW_INVALIDATION_AGENT_ID,
       null,
     )
