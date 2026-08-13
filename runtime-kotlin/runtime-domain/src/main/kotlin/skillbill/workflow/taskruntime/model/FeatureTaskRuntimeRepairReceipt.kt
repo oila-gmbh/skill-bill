@@ -251,12 +251,53 @@ fun GoalSubtaskReviewState.upsertRepairReceipt(
   return copy(repairReceipts = updated)
 }
 
+/**
+ * Coverage for a round's carried findings. Prefer finding_id when the compact finding has one:
+ * implement_fix is briefed with unresolved_blocker_findings (finding_id, severity, location,
+ * expected_outcome), not the reducer-built label and sanitized text. Findings written before
+ * finding_id was captured still match on the compact severity|label|text identity.
+ */
 fun FeatureTaskRuntimeRepairReceipt.coversCarriedFindings(
   carriedFindings: List<GoalSubtaskReviewCompactFinding>,
 ): Boolean {
   if (carriedFindings.isEmpty()) return true
-  val reported = entries.mapTo(linkedSetOf(), FeatureTaskRuntimeRepairReceiptEntry::findingIdentity)
-  return carriedFindings.all { compactReviewFindingIdentity(it) in reported }
+  val reportedIds = entries.mapNotNull { entry -> entry.findingId?.let(::normalizeIdentityPart) }.toSet()
+  val reportedCompact = entries.mapTo(linkedSetOf(), FeatureTaskRuntimeRepairReceiptEntry::findingIdentity)
+  return carriedFindings.all { carried ->
+    val id = carried.findingId?.let(::normalizeIdentityPart)
+    if (id != null) {
+      id in reportedIds
+    } else {
+      compactReviewFindingIdentity(carried) in reportedCompact
+    }
+  }
+}
+
+/**
+ * Replace each entry's severity/label/text with the last-pass compact finding that shares its
+ * finding_id. implement_fix is briefed with finding_id, severity, location, and expected_outcome —
+ * not the reducer-built label and sanitized text — so persist must stamp review-state identity
+ * rather than store the agent echo.
+ */
+fun FeatureTaskRuntimeRepairReceipt.stampIdentityFromCompactFindings(
+  lastPassFindings: List<GoalSubtaskReviewCompactFinding>,
+): FeatureTaskRuntimeRepairReceipt {
+  if (lastPassFindings.isEmpty()) return this
+  val byId = lastPassFindings.mapNotNull { finding ->
+    finding.findingId?.let { normalizeIdentityPart(it) to finding }
+  }.toMap()
+  if (byId.isEmpty()) return this
+  return copy(
+    entries = entries.map { entry ->
+      val match = entry.findingId?.let { byId[normalizeIdentityPart(it)] } ?: return@map entry
+      entry.copy(
+        severity = match.severity,
+        label = match.label,
+        text = match.text,
+        findingId = match.findingId,
+      )
+    },
+  )
 }
 
 internal fun compactReviewFindingIdentity(finding: GoalSubtaskReviewCompactFinding): String =

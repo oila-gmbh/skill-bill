@@ -93,6 +93,48 @@ class FeatureTaskRuntimeRepairReceiptTest {
     }
   }
 
+  @Test
+  fun `coverage keys on finding_id so a briefing-faithful receipt is not rejected for reducer label text`() {
+    val carried = listOf(
+      GoalSubtaskReviewCompactFinding(
+        severity = "blocker",
+        label = "ReducerLabel",
+        text = "sanitized compact finding text",
+        findingId = "F-001",
+      ),
+      GoalSubtaskReviewCompactFinding(
+        severity = "major",
+        label = "OtherReducerLabel",
+        text = "other sanitized compact finding text",
+        findingId = "F-002",
+      ),
+    )
+    val briefingFaithful = FeatureTaskRuntimeRepairReceipt(
+      roundNumber = 1,
+      preFixCheckpointSha = sha,
+      entries = listOf(
+        addressedEntry(
+          label = "TypeKt",
+          text = "resolve the finding at the reported location",
+          findingId = "F-001",
+        ),
+        FeatureTaskRuntimeRepairReceiptEntry(
+          severity = "major",
+          label = "OtherKt",
+          text = "already present on the tree",
+          outcome = FeatureTaskRuntimeRepairOutcome.NO_EDIT_REQUIRED,
+          constructs = emptyList(),
+          intent = "no tree change required",
+          findingId = "F-002",
+          noEditReason = "construct already matched the finding",
+        ),
+      ),
+    )
+    assertTrue(briefingFaithful.coversCarriedFindings(carried))
+    val omittedSecond = briefingFaithful.copy(entries = briefingFaithful.entries.take(1))
+    assertTrue(!omittedSecond.coversCarriedFindings(carried))
+  }
+
   private fun validReceipt() = FeatureTaskRuntimeRepairReceipt(
     roundNumber = 1,
     preFixCheckpointSha = sha,
@@ -102,12 +144,15 @@ class FeatureTaskRuntimeRepairReceiptTest {
   private fun addressedEntry(
     label: String = "Type",
     intent: String = "close the finding at Type.member",
+    text: String = "unsafe mutation at the seam",
+    findingId: String? = null,
   ) = FeatureTaskRuntimeRepairReceiptEntry(
     severity = "blocker",
     label = label,
-    text = "unsafe mutation at the seam",
+    text = text,
     outcome = FeatureTaskRuntimeRepairOutcome.ADDRESSED,
     constructs = listOf(FeatureTaskRuntimeRepairConstruct(symbol = "Type.member")),
     intent = intent,
+    findingId = findingId,
   )
 }

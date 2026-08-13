@@ -6,6 +6,7 @@ import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.coversCarriedFindings
+import skillbill.workflow.taskruntime.model.stampIdentityFromCompactFindings
 
 /**
  * Untrusted-input seam for `produced_outputs.repair_receipt`. Schema validation has already
@@ -58,3 +59,11 @@ internal fun featureTaskRuntimeRepairReceiptCoverageRejection(
   "repair_receipt.entries must include one entry for every finding carried into this round; " +
     "omitted findings require an explicit no_edit_required outcome."
 }
+
+internal fun featureTaskRuntimePreparedRepairReceipt(
+  parsed: FeatureTaskRuntimeRepairReceipt,
+  roundNumber: Int,
+  lastPassFindings: List<GoalSubtaskReviewCompactFinding>,
+): FeatureTaskRuntimeRepairReceipt =
+  parsed.copy(roundNumber = roundNumber).stampIdentityFromCompactFindings(lastPassFindings)
+

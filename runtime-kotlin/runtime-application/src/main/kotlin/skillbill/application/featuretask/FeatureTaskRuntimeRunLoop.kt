@@ -1155,6 +1155,11 @@ internal class FeatureTaskRuntimeRunLoop(
     return null
   }
 
+  /**
+   * Persist the implement_fix receipt after settle. Identity is stamped from the last-pass compact
+   * findings by finding_id so durable state stores review-state identity, not the agent echo.
+   * Standalone runs skip persistence, matching [recordRemediationBaseSha].
+   */
   private fun persistImplementFixRepairReceipt(run: PhaseRun, outputMap: Map<String, Any?>): String? {
     if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX) return null
     if (outputMap["status"] != STATUS_COMPLETED) return null
@@ -1168,7 +1173,8 @@ internal class FeatureTaskRuntimeRunLoop(
     }
     val reviewState = goalReviewStateOrNull() ?: return null
     val roundNumber = featureTaskRuntimeRemediationRoundNumber(reviewState.completedPassCount)
-    val receipt = parsed.copy(roundNumber = roundNumber)
+    val lastPassFindings = reviewState.passResults.lastOrNull()?.findings.orEmpty()
+    val receipt = featureTaskRuntimePreparedRepairReceipt(parsed, roundNumber, lastPassFindings)
     return runCatching {
       goalContinuationRecorder.updateReviewState(request.workflowId, request.dbPathOverride) { state ->
         state.upsertRepairReceipt(receipt)

@@ -83,6 +83,36 @@ class FeatureTaskRuntimeRepairReceiptParserTest {
   }
 
   @Test
+  fun `persist preparation stamps compact finding identity by finding_id`() {
+    val agentEcho = FeatureTaskRuntimeRepairReceiptEntry(
+      severity = "blocker",
+      label = "TypeKt",
+      text = "resolve the finding at the reported location",
+      outcome = FeatureTaskRuntimeRepairOutcome.ADDRESSED,
+      constructs = listOf(FeatureTaskRuntimeRepairConstruct(symbol = "Type.member")),
+      intent = "close the finding at Type.member",
+      findingId = "F-001",
+    )
+    val compact = GoalSubtaskReviewCompactFinding(
+      severity = "blocker",
+      label = "ReducerLabel",
+      text = "sanitized compact finding text",
+      findingId = "F-001",
+    )
+    val prepared = featureTaskRuntimePreparedRepairReceipt(
+      parsed = receiptFor(agentEcho),
+      roundNumber = 2,
+      lastPassFindings = listOf(compact),
+    )
+    assertEquals(2, prepared.roundNumber)
+    val entry = prepared.entries.single()
+    assertEquals("ReducerLabel", entry.label)
+    assertEquals("sanitized compact finding text", entry.text)
+    assertEquals("F-001", entry.findingId)
+    assertEquals(agentEcho.intent, entry.intent)
+  }
+
+  @Test
   fun `parse of an absent receipt key is a no-op`() {
     assertNull(featureTaskRuntimeParseRepairReceiptOrNull(emptyMap()))
   }
