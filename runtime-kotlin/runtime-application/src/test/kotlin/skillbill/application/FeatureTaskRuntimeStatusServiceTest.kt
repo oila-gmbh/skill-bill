@@ -94,11 +94,10 @@ class FeatureTaskRuntimeStatusServiceTest {
 
     assertEquals("LARGE", projection.featureSize)
     assertEquals(0, projection.completeCount)
-    // Ten stepIds including the loop-only implement_fix (SKILL-85 M1).
-    assertEquals(10, projection.pendingCount)
+    assertEquals(11, projection.pendingCount)
     assertEquals(0, projection.blockedCount)
     assertEquals("preplan", projection.currentPhaseId)
-    assertEquals(List(10) { "pending" }, projection.phases.map { it.status })
+    assertEquals(List(11) { "pending" }, projection.phases.map { it.status })
   }
 
   @Test
@@ -451,7 +450,7 @@ class FeatureTaskRuntimeStatusServiceTest {
       harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
     )
 
-    assertEquals("implement_fix", projection.currentPhaseId)
+    assertEquals("plan_fix", projection.currentPhaseId)
   }
 
   @Test
@@ -855,10 +854,23 @@ class FeatureTaskRuntimeStatusAttributionTest {
       ),
     )
     harness.recordLoopEdge(
-      phaseId = "implement_fix",
+      phaseId = "plan_fix",
       attemptCount = 1,
       loopId = "review_fix",
       edgeIteration = 1,
+    )
+    harness.recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = WORKFLOW_ID,
+        phaseId = "plan_fix",
+        status = "completed",
+        attemptCount = 1,
+        resolvedAgentId = "claude",
+        finished = true,
+        outputArtifact = """{"contract_version":"0.1"}""",
+        loopId = "review_fix",
+        edgeIteration = 1,
+      ),
     )
     harness.recorder.recordPhaseState(
       FeatureTaskRuntimePhaseStateRequest(

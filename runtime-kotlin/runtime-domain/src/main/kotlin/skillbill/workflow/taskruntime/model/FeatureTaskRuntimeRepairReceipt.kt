@@ -11,6 +11,8 @@ const val REPAIR_RECEIPT_MAX_CONSTRUCT_FILE_UTF8_BYTES: Int = 128
 const val REPAIR_RECEIPT_MAX_NO_EDIT_REASON_UTF8_BYTES: Int = 256
 const val REPAIR_RECEIPT_MAX_LABEL_UTF8_BYTES: Int = 256
 const val REPAIR_RECEIPT_MAX_TEXT_UTF8_BYTES: Int = 256
+const val REPAIR_RECEIPT_MAX_DISTURBED_REMEDIES: Int = 50
+const val REPAIR_RECEIPT_MAX_DISTURBANCE_REASON_UTF8_BYTES: Int = 256
 
 private val GIT_COMMIT_SHA = Regex("^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 
@@ -68,6 +70,37 @@ data class FeatureTaskRuntimeRepairConstruct(
       return FeatureTaskRuntimeRepairConstruct(
         symbol = raw.requireReviewStateString("symbol", path),
         file = raw.optionalReviewStateString("file", path),
+      )
+    }
+  }
+}
+
+data class FeatureTaskRuntimeRepairDisturbedRemedy(
+  val findingRef: String,
+  val reason: String,
+) {
+  init {
+    requireReceiptIdentityText(findingRef, "disturbed_remedies.finding_ref", REPAIR_RECEIPT_MAX_LABEL_UTF8_BYTES)
+    requireReceiptSanitizedText(
+      reason,
+      "disturbed_remedies.reason",
+      REPAIR_RECEIPT_MAX_DISTURBANCE_REASON_UTF8_BYTES,
+    )
+  }
+
+  @OpenBoundaryMap("Disturbed-remedy declaration at the durable workflow-artifact seam")
+  fun toArtifactMap(): Map<String, Any?> = linkedMapOf(
+    "finding_ref" to findingRef,
+    "reason" to reason,
+  )
+
+  companion object {
+    @OpenBoundaryMap("Disturbed-remedy decode from the durable workflow-artifact map")
+    fun fromArtifactMap(raw: Map<String, Any?>, path: String): FeatureTaskRuntimeRepairDisturbedRemedy {
+      raw.requireOnlyReviewStateKeys(setOf("finding_ref", "reason"), path)
+      return FeatureTaskRuntimeRepairDisturbedRemedy(
+        findingRef = raw.requireReviewStateString("finding_ref", path),
+        reason = raw.requireReviewStateString("reason", path),
       )
     }
   }
@@ -163,6 +196,7 @@ data class FeatureTaskRuntimeRepairReceipt(
   val roundNumber: Int,
   val preFixCheckpointSha: String,
   val entries: List<FeatureTaskRuntimeRepairReceiptEntry>,
+  val disturbedRemedies: List<FeatureTaskRuntimeRepairDisturbedRemedy> = emptyList(),
 ) {
   init {
     if (contractVersion != FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION) {
@@ -183,21 +217,34 @@ data class FeatureTaskRuntimeRepairReceipt(
     if (entries.size > REPAIR_RECEIPT_MAX_ENTRIES) {
       receiptError("entries", "allows at most $REPAIR_RECEIPT_MAX_ENTRIES entries.")
     }
+    if (disturbedRemedies.size > REPAIR_RECEIPT_MAX_DISTURBED_REMEDIES) {
+      receiptError(
+        "disturbed_remedies",
+        "allows at most $REPAIR_RECEIPT_MAX_DISTURBED_REMEDIES declarations.",
+      )
+    }
+    if (disturbedRemedies.map { normalizeIdentityPart(it.findingRef) }.distinct().size != disturbedRemedies.size) {
+      receiptError("disturbed_remedies", "may declare each disturbed finding at most once.")
+    }
   }
 
   @OpenBoundaryMap("Repair receipt at the durable workflow-artifact seam")
-  fun toArtifactMap(): Map<String, Any?> = linkedMapOf(
+  fun toArtifactMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
     "contract_version" to contractVersion,
     "round_number" to roundNumber,
     "pre_fix_checkpoint_sha" to preFixCheckpointSha,
     "entries" to entries.map(FeatureTaskRuntimeRepairReceiptEntry::toArtifactMap),
-  )
+  ).apply {
+    if (disturbedRemedies.isNotEmpty()) {
+      put("disturbed_remedies", disturbedRemedies.map(FeatureTaskRuntimeRepairDisturbedRemedy::toArtifactMap))
+    }
+  }
 
   companion object {
     @OpenBoundaryMap("Repair receipt decode from the durable workflow-artifact map")
     fun fromArtifactMap(raw: Map<String, Any?>, path: String): FeatureTaskRuntimeRepairReceipt {
       raw.requireOnlyReviewStateKeys(
-        setOf("contract_version", "round_number", "pre_fix_checkpoint_sha", "entries"),
+        setOf("contract_version", "round_number", "pre_fix_checkpoint_sha", "entries", "disturbed_remedies"),
         path,
       )
       val entries = raw.requireReviewStateList("entries", path).mapIndexed { index, value ->
@@ -211,6 +258,13 @@ data class FeatureTaskRuntimeRepairReceipt(
         roundNumber = raw.requireReviewStateInt("round_number", path),
         preFixCheckpointSha = raw.requireReviewStateString("pre_fix_checkpoint_sha", path),
         entries = entries,
+        disturbedRemedies = raw.optionalReviewStateList("disturbed_remedies", path)
+          ?.mapIndexed { index, value ->
+            FeatureTaskRuntimeRepairDisturbedRemedy.fromArtifactMap(
+              value.asReviewStateMap("$path.disturbed_remedies[$index]"),
+              "$path.disturbed_remedies[$index]",
+            )
+          }.orEmpty(),
       )
     }
   }

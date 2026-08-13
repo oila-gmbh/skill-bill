@@ -40,6 +40,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
   const val PHASE_PREPLAN: String = "preplan"
   const val PHASE_PLAN: String = "plan"
   const val PHASE_IMPLEMENT: String = "implement"
+  const val PHASE_PLAN_FIX: String = "plan_fix"
   const val PHASE_IMPLEMENT_FIX: String = "implement_fix"
   const val PHASE_REVIEW: String = "review"
   const val PHASE_AUDIT: String = "audit"
@@ -69,6 +70,10 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
   // iterations warns the operator once and remediation continues. Declared here once so no seam can
   // drift to its own literal.
   const val SEMANTIC_LOOP_WARNING_THRESHOLD: Int = 3
+
+  const val REMEDIATION_CHURN_CONSECUTIVE_ROUND_THRESHOLD: Int = 3
+
+  const val REMEDIATION_ESCALATION_EVIDENCE_MIN_CONSECUTIVE_ROUNDS: Int = 1
 
   // SKILL-140: per-producer regeneration loop ids. A launch seam that quarantines an upstream
   // producer's rejected durable record re-enters that producer under its own bounded loop, so each
@@ -101,7 +106,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
   // Phases whose attempt watermark a review-generation restart rewinds. Only these carry a non-zero
   // evidence generation, so every other phase keeps a generation-blind key and a byte-identical
   // re-write after a restart stays an idempotent no-op.
-  val GENERATION_SCOPED_PHASE_IDS: Set<String> = setOf(PHASE_REVIEW, PHASE_IMPLEMENT_FIX)
+  val GENERATION_SCOPED_PHASE_IDS: Set<String> = setOf(PHASE_REVIEW, PHASE_PLAN_FIX, PHASE_IMPLEMENT_FIX)
 
   val REGENERATION_LOOP_IDS: Set<String> = REGENERATION_LOOP_ID_BY_PRODUCER.values.toSet()
 
@@ -123,6 +128,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     PHASE_PREPLAN,
     PHASE_PLAN,
     PHASE_IMPLEMENT,
+    PHASE_PLAN_FIX,
     PHASE_IMPLEMENT_FIX,
     PHASE_REVIEW,
     PHASE_AUDIT,
@@ -147,6 +153,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       PHASE_PLAN,
       PHASE_IMPLEMENT,
       PHASE_AUDIT,
+      PHASE_PLAN_FIX,
       PHASE_IMPLEMENT_FIX,
       PHASE_REVIEW,
       PHASE_VALIDATE,
@@ -160,6 +167,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       PHASE_PLAN to "Phase 2: Plan",
       PHASE_IMPLEMENT to "Phase 3: Implement",
       PHASE_AUDIT to "Phase 4: Completeness Audit",
+      PHASE_PLAN_FIX to "Phase 4a: Plan Fix",
       PHASE_IMPLEMENT_FIX to "Phase 4b: Implement Fix",
       PHASE_REVIEW to "Phase 5: Code Review",
       PHASE_VALIDATE to "Phase 6: Quality Validation",
@@ -173,7 +181,8 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       PHASE_PLAN to listOf(PHASE_PREPLAN),
       PHASE_IMPLEMENT to listOf(PHASE_PLAN),
       PHASE_AUDIT to listOf(PHASE_PLAN, PHASE_IMPLEMENT),
-      PHASE_IMPLEMENT_FIX to listOf(PHASE_REVIEW),
+      PHASE_PLAN_FIX to listOf(PHASE_REVIEW, PHASE_PREPLAN, PHASE_PLAN),
+      PHASE_IMPLEMENT_FIX to listOf(PHASE_REVIEW, PHASE_PLAN_FIX),
       PHASE_REVIEW to listOf(PHASE_AUDIT),
       PHASE_VALIDATE to listOf(PHASE_IMPLEMENT, PHASE_AUDIT),
       PHASE_WRITE_HISTORY to listOf(PHASE_IMPLEMENT, PHASE_VALIDATE),
@@ -187,9 +196,12 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       PHASE_IMPLEMENT to
         "Resume implementation reconciliation from the immutable initial preplan and plan outputs when an " +
         "audit-gap loop is active, then persist the validated output.",
+      PHASE_PLAN_FIX to
+        "Resume the plan-fix phase from the latest review findings, the remediation repair ledger, and the " +
+        "immutable initial preplan and plan outputs, then persist the validated repair plan.",
       PHASE_IMPLEMENT_FIX to
-        "Resume the implement-fix phase from the latest review findings, reconciling the current tree, " +
-        "then persist the validated output.",
+        "Resume the implement-fix phase from the latest repair plan and review findings, reconciling the " +
+        "current tree, then persist the validated output.",
       PHASE_AUDIT to "Resume the completeness audit from the latest plan and implement outputs.",
       PHASE_REVIEW to
         "Resume code review from the latest implement and audit outputs and the derived diff context.",
@@ -229,6 +241,8 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     const val AUDIT_REPAIR_REQUEST: String = "feature_task_runtime.audit_repair_request"
     const val REVIEW_CLEARANCE: String = "feature_task_runtime.review_clearance"
     const val REVIEW_REPAIR_REQUEST: String = "feature_task_runtime.review_repair_request"
+    const val REPAIR_LEDGER: String = "feature_task_runtime.repair_ledger"
+    const val REPAIR_PLAN: String = "feature_task_runtime.repair_plan"
     const val CHANGE_RECEIPT: String = "feature_task_runtime.change_receipt"
     const val VALIDATION_REQUEST: String = "feature_task_runtime.validation_request"
     const val VALIDATION_RECEIPT: String = "feature_task_runtime.validation_receipt"
@@ -248,6 +262,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     fields: List<String>,
     checkpointPolicy: FeatureTaskRuntimeRepositoryCheckpointPolicy =
       FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED,
+    required: Boolean = true,
   ): PhaseHandoffProjectionDeclaration = PhaseHandoffProjectionDeclaration(
     consumerPhaseId = consumerPhaseId,
     sourceRef = FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(producingPhaseId),
@@ -258,7 +273,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     budget = FeatureTaskRuntimeHandoffProjectionBudget.PLANNING_PROJECTION,
     declaredFieldNames = fields,
     checkpointPolicy = checkpointPolicy,
-    required = true,
+    required = required,
   )
 
   fun auditRemediationProjections(): List<PhaseHandoffProjectionDeclaration> = listOf(
@@ -392,6 +407,22 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       required = false,
     )
 
+  fun repairLedgerDeclaration(consumerPhaseId: String): PhaseHandoffProjectionDeclaration =
+    PhaseHandoffProjectionDeclaration(
+      consumerPhaseId = consumerPhaseId,
+      sourceRef = FeatureTaskRuntimeHandoffSourceRef.RepairLedger,
+      projectionName = REPAIR_LEDGER_PROJECTION_NAME,
+      projectionContractId = PhaseProjectionContract.REPAIR_LEDGER,
+      projectionContractVersion = PhaseProjectionContract.VERSION,
+      promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
+      budget = FeatureTaskRuntimeHandoffProjectionBudget.PLANNING_PROJECTION,
+      declaredFieldNames = listOf(REPAIR_LEDGER_PROJECTION_NAME),
+      checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED,
+      required = false,
+    )
+
+  const val REPAIR_LEDGER_PROJECTION_NAME: String = "repair_ledger"
+
   /** The projection name the rewritten derived-context instructions point the agent at. */
   const val SHARED_REVIEW_EVIDENCE_PROJECTION_NAME: String = "shared_review_evidence"
 
@@ -411,6 +442,19 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       implementationReceiptDeclaration(PHASE_AUDIT),
       sharedReviewEvidenceDeclaration(PHASE_AUDIT),
     ),
+    PHASE_PLAN_FIX to listOf(
+      phaseProjection(
+        PHASE_PLAN_FIX,
+        PHASE_REVIEW,
+        "review_repair_request",
+        PhaseProjectionContract.REVIEW_REPAIR_REQUEST,
+        listOf("unresolved_blocker_findings", "repository_checkpoint"),
+        FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
+      ),
+      repairLedgerDeclaration(PHASE_PLAN_FIX),
+      preplanningDigestDeclaration(PHASE_PLAN_FIX),
+      executablePlanDeclaration(PHASE_PLAN_FIX),
+    ),
     PHASE_IMPLEMENT_FIX to listOf(
       phaseProjection(
         PHASE_IMPLEMENT_FIX,
@@ -420,6 +464,15 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
         listOf("unresolved_blocker_findings", "repository_checkpoint"),
         FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
       ),
+      phaseProjection(
+        PHASE_IMPLEMENT_FIX,
+        PHASE_PLAN_FIX,
+        "repair_plan",
+        PhaseProjectionContract.REPAIR_PLAN,
+        listOf("repair_plan"),
+        required = false,
+      ),
+      repairLedgerDeclaration(PHASE_IMPLEMENT_FIX),
     ),
     PHASE_REVIEW to listOf(
       phaseProjection(
@@ -590,12 +643,18 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
    * span structurally excludes `review`, which now sits after `audit`. Audit-gap reconciliation is
    * unbounded because each new audit verdict is the authority on whether implementation is complete.
    *
-   * A `review` `changes_requested` verdict reopens the `[implement_fix, review]` span. The edge
-   * declares no finite cap: an unresolved Blocker is the sole re-entry signal, so remediation runs as
-   * many rounds as the Blockers survive and the first Blocker-free review advances to `validate`
-   * regardless of how many rounds preceded it. Major, Minor, and Nit findings never produce
-   * `changes_requested`; they stay advisory ledger entries and cannot reopen the span. That span
-   * structurally excludes `audit`, so no review outcome can reopen an audit repair plan.
+   * A `review` `changes_requested` verdict reopens the `[plan_fix, review]` span. The edge declares no
+   * finite cap: an unresolved advance-blocking finding is the sole re-entry signal, so remediation runs
+   * as many rounds as those findings survive and the first clean review advances to `validate`
+   * regardless of how many rounds preceded it. Blocker and Major both block advancing and both reopen
+   * the span; Minor and Nit stay advisory. That span structurally excludes `audit`, so no review outcome
+   * can reopen an audit repair plan.
+   *
+   * Inside the span the round runs `plan_fix` then `implement_fix`: `plan_fix` decides root cause before
+   * any edit and may instead settle `escalated`, which has no successor and no edge, so it can neither
+   * advance to `implement_fix` nor route back to `plan`. The `plan_fix` to `implement_fix` step is a
+   * declared loop-only successor rather than a second backward edge, so one round mints exactly one
+   * `review_fix` iteration.
    *
    * [FeatureTaskRuntimeTransitionDeclaration.entryGates] makes the ordering enforceable rather than
    * merely implied: `review` is unreachable until `audit` has settled `satisfied`, and any path that
@@ -615,7 +674,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
         FeatureTaskRuntimeBackwardEdge(
           fromPhaseId = PHASE_REVIEW,
           triggeringVerdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
-          destinationPhaseId = PHASE_IMPLEMENT_FIX,
+          destinationPhaseId = PHASE_PLAN_FIX,
           loopId = REVIEW_FIX_LOOP_ID,
           perEdgeCap = null,
           capScope = FeatureTaskRuntimeBackwardEdgeCapScope.PER_SUBTASK,
@@ -658,7 +717,8 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
           capScope = FeatureTaskRuntimeBackwardEdgeCapScope.PER_SUBTASK,
         ),
       ),
-      loopOnlyPhaseIds = setOf(PHASE_IMPLEMENT_FIX),
+      loopOnlyPhaseIds = setOf(PHASE_PLAN_FIX, PHASE_IMPLEMENT_FIX),
+      loopOnlySuccessors = mapOf(PHASE_PLAN_FIX to PHASE_IMPLEMENT_FIX),
     )
 
   /** The declared backward edge for [loopId], or null when the id is not part of the topology. */

@@ -92,6 +92,8 @@ class SQLiteUnaddressedFindingsRepository(connection: Connection) : UnaddressedF
   override fun fetchWorkflowLedger(workflowId: String): List<UnaddressedFinding> =
     runtime.fetchWorkflowLedger(workflowId)
 
+  override fun workflowIdsForIssue(issueKey: String): List<String> = runtime.workflowIdsForIssue(issueKey)
+
   override fun issueExists(issueKey: String): Boolean = runtime.issueExists(issueKey)
 }
 

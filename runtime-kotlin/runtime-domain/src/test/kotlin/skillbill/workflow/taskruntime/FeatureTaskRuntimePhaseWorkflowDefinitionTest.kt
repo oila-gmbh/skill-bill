@@ -15,6 +15,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -42,6 +43,7 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN_FIX,
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
@@ -57,6 +59,7 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN to "Phase 2: Plan",
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT to "Phase 3: Implement",
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT to "Phase 4: Completeness Audit",
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN_FIX to "Phase 4a: Plan Fix",
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX to "Phase 4b: Implement Fix",
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW to "Phase 5: Code Review",
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE to "Phase 6: Quality Validation",
@@ -147,26 +150,40 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
     val def = FeatureTaskRuntimePhaseWorkflowDefinition
     assertTrue(def.isMutatingPhase(def.PHASE_IMPLEMENT_FIX))
     assertTrue(def.isMutatingPhase(def.PHASE_IMPLEMENT))
+    assertFalse(def.isMutatingPhase(def.PHASE_PLAN_FIX))
     val transitions = def.transitions
-    assertEquals(setOf(def.PHASE_IMPLEMENT_FIX), transitions.loopOnlyPhaseIds)
+    assertEquals(setOf(def.PHASE_PLAN_FIX, def.PHASE_IMPLEMENT_FIX), transitions.loopOnlyPhaseIds)
+    assertEquals(mapOf(def.PHASE_PLAN_FIX to def.PHASE_IMPLEMENT_FIX), transitions.loopOnlySuccessors)
     val edge = transitions.backwardEdges.single { it.loopId == def.REVIEW_FIX_LOOP_ID }
     assertEquals(def.PHASE_REVIEW, edge.fromPhaseId)
-    assertEquals(def.PHASE_IMPLEMENT_FIX, edge.destinationPhaseId)
+    assertEquals(def.PHASE_PLAN_FIX, edge.destinationPhaseId)
     assertEquals("review_fix", edge.loopId)
     assertNull(edge.perEdgeCap, "The Blocker disposition, not a finite cap, terminates the remediation loop.")
     assertEquals(FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, edge.triggeringVerdict)
     // The backward destination precedes its source so the reopened span includes review (re-review leg).
     val ids = transitions.forwardPhaseIds
     assertTrue(ids.indexOf(edge.destinationPhaseId) < ids.indexOf(edge.fromPhaseId))
-    // The fix phase consumes only the bounded review repair request; settled plan and implementation
-    // evidence stay private to their producing phases.
     assertEquals(
-      listOf(def.PHASE_REVIEW),
+      listOf(def.PHASE_REVIEW, def.PHASE_PLAN_FIX),
       dependenciesOf(def.PHASE_IMPLEMENT_FIX),
     )
     assertEquals(
+      listOf(def.PHASE_REVIEW, def.PHASE_PREPLAN, def.PHASE_PLAN),
+      dependenciesOf(def.PHASE_PLAN_FIX),
+    )
+    val fixProjections = def.phaseDeclarations.getValue(def.PHASE_IMPLEMENT_FIX).projectionDeclarations
+    assertEquals(
       FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
-      def.phaseDeclarations.getValue(def.PHASE_IMPLEMENT_FIX).projectionDeclarations.single().checkpointPolicy,
+      fixProjections.single { it.projectionName == "review_repair_request" }.checkpointPolicy,
+    )
+    val ledgerProjection = fixProjections.single { it.projectionName == def.REPAIR_LEDGER_PROJECTION_NAME }
+    assertFalse(
+      ledgerProjection.required,
+      "Round one has no ledger, so a required declaration would fail the first fix launch.",
+    )
+    assertEquals(
+      FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED,
+      ledgerProjection.checkpointPolicy,
     )
   }
 
@@ -275,8 +292,14 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
         def.PHASE_PLAN to "feature_task_runtime.plan_commitment",
         def.PHASE_IMPLEMENT to "feature_task_runtime.implementation_receipt",
       ),
+      def.PHASE_PLAN_FIX to setOf(
+        def.PHASE_REVIEW to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REVIEW_REPAIR_REQUEST,
+        def.PHASE_PREPLAN to "feature_task_runtime.preplanning_digest",
+        def.PHASE_PLAN to "feature_task_runtime.executable_plan",
+      ),
       def.PHASE_IMPLEMENT_FIX to setOf(
         def.PHASE_REVIEW to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REVIEW_REPAIR_REQUEST,
+        def.PHASE_PLAN_FIX to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REPAIR_PLAN,
       ),
       def.PHASE_REVIEW to setOf(
         def.PHASE_AUDIT to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_CLEARANCE,
@@ -317,7 +340,12 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
         "$consumer must not receive a complete upstream phase receipt",
       )
       upstream.forEach { declaration ->
-        assertTrue(declaration.required, "${declaration.projectionName} must reject missing required fields")
+        val bestEffort = declaration.projectionName == "repair_plan"
+        assertEquals(
+          !bestEffort,
+          declaration.required,
+          "${declaration.projectionName} must reject missing required fields unless it is best-effort",
+        )
         assertTrue("phase_output_receipt" !in declaration.declaredFieldNames)
         assertTrue(
           declaration.declaredFieldNames.none {
@@ -386,7 +414,7 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
 
     assertTrue(checkpointedDeclarations.isNotEmpty())
     assertEquals(
-      listOf(def.PHASE_IMPLEMENT_FIX to "review_repair_request"),
+      listOf(def.PHASE_PLAN_FIX to "review_repair_request", def.PHASE_IMPLEMENT_FIX to "review_repair_request"),
       mustMatch.map { it.consumerPhaseId to it.projectionName },
     )
     assertTrue(
@@ -485,7 +513,7 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
     val auditGap = transitions.backwardEdges.single { it.loopId == def.AUDIT_GAP_LOOP_ID }
     val reviewFixSpan = transitions.spanBetween(reviewFix.destinationPhaseId, reviewFix.fromPhaseId)
     val auditGapSpan = transitions.spanBetween(auditGap.destinationPhaseId, auditGap.fromPhaseId)
-    assertEquals(listOf(def.PHASE_IMPLEMENT_FIX, def.PHASE_REVIEW), reviewFixSpan)
+    assertEquals(listOf(def.PHASE_PLAN_FIX, def.PHASE_IMPLEMENT_FIX, def.PHASE_REVIEW), reviewFixSpan)
     assertEquals(listOf(def.PHASE_IMPLEMENT, def.PHASE_AUDIT), auditGapSpan)
     // No review outcome can reopen the audit repair plan, and no audit gap loop re-runs review.
     assertTrue(def.PHASE_AUDIT !in reviewFixSpan)
@@ -585,7 +613,7 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
     val semantic = transitions.backwardEdges.filterNot { def.isRegenerationLoopId(it.loopId) }
     assertEquals(
       listOf(
-        Triple(def.PHASE_REVIEW, FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, def.PHASE_IMPLEMENT_FIX),
+        Triple(def.PHASE_REVIEW, FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, def.PHASE_PLAN_FIX),
         Triple(def.PHASE_AUDIT, FeatureTaskRuntimeVerdict.GAPS_FOUND, def.PHASE_IMPLEMENT),
       ),
       semantic.map { Triple(it.fromPhaseId, it.triggeringVerdict, it.destinationPhaseId) },

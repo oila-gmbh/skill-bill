@@ -5,6 +5,7 @@ import skillbill.goalrunner.model.ReviewFindingOutcomeRecord
 import skillbill.goalrunner.model.UnaddressedFinding
 import java.sql.Connection
 
+@Suppress("TooManyFunctions")
 internal class UnaddressedFindingsRuntime(private val connection: Connection) {
   fun replaceLedgerForPass(workflowId: String, reviewPassNumber: Int, findings: List<UnaddressedFinding>) {
     deletePassesUpTo(workflowId, reviewPassNumber)
@@ -189,6 +190,19 @@ internal class UnaddressedFindingsRuntime(private val connection: Connection) {
               findingId = rows.getString("finding_id"),
             ),
           )
+        }
+      }
+    }
+  }
+
+  fun workflowIdsForIssue(issueKey: String): List<String> = connection.prepareStatement(
+    "SELECT workflow_id FROM feature_task_workflows WHERE issue_key = ? ORDER BY workflow_id",
+  ).use { statement ->
+    statement.setString(1, issueKey)
+    statement.executeQuery().use { rows ->
+      buildList {
+        while (rows.next()) {
+          rows.getString("workflow_id")?.takeIf(String::isNotBlank)?.let(::add)
         }
       }
     }

@@ -370,6 +370,16 @@ class InvalidFeatureTaskRuntimeRepairReceiptError(
   cause,
 )
 
+class InvalidFeatureTaskRuntimeRepairPlanError(
+  val fieldPath: String,
+  val reason: String,
+  val payloadFreeReason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Feature-task-runtime repair plan fails at '${fieldPath.ifBlank { "<root>" }}': $reason",
+  cause,
+)
+
 class InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError(
   val sourceLabel: String,
   val reason: String,

@@ -13,6 +13,10 @@ const val FEATURE_TASK_RUNTIME_CONTRACT_VERSION: String = "0.3"
  */
 const val FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION: String = "0.1"
 
+const val FEATURE_TASK_RUNTIME_REPAIR_LEDGER_CONTRACT_VERSION: String = "0.1"
+
+const val FEATURE_TASK_RUNTIME_REPAIR_PLAN_CONTRACT_VERSION: String = "0.1"
+
 /**
  * Version of the typed phase-output validation result and repair-evidence contract.
  * This is independent from the wire envelope schema version above: the result is

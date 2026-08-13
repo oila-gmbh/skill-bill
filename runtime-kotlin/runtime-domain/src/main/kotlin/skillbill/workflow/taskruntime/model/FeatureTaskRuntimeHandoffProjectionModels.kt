@@ -56,6 +56,10 @@ sealed interface FeatureTaskRuntimeHandoffSourceRef {
     override val wireValue: String get() = SHARED_REVIEW_EVIDENCE_WIRE
   }
 
+  object RepairLedger : FeatureTaskRuntimeHandoffSourceRef {
+    override val wireValue: String get() = REPAIR_LEDGER_WIRE
+  }
+
   /** Hydrated content of one selected add-on, budgeted separately from phase receipts. */
   data class AddonContentRef(val slug: String) : FeatureTaskRuntimeHandoffSourceRef {
     init {
@@ -71,10 +75,12 @@ sealed interface FeatureTaskRuntimeHandoffSourceRef {
     const val ADDON_CONTENT_PREFIX: String = "addon_content:"
     const val DERIVED_CEREMONY_SCALING_WIRE: String = "derived_ceremony_scaling"
     const val SHARED_REVIEW_EVIDENCE_WIRE: String = "shared_review_evidence"
+    const val REPAIR_LEDGER_WIRE: String = "repair_ledger"
 
     fun fromWire(value: String): FeatureTaskRuntimeHandoffSourceRef = when {
       value == DERIVED_CEREMONY_SCALING_WIRE -> DerivedCeremonyScaling
       value == SHARED_REVIEW_EVIDENCE_WIRE -> SharedReviewEvidence
+      value == REPAIR_LEDGER_WIRE -> RepairLedger
       value.startsWith(UPSTREAM_PHASE_OUTPUT_PREFIX) ->
         UpstreamPhaseOutput(value.removePrefix(UPSTREAM_PHASE_OUTPUT_PREFIX))
       value.startsWith(RUN_INVARIANT_FIELD_PREFIX) ->
@@ -92,6 +98,7 @@ sealed interface FeatureTaskRuntimeHandoffSourceRef {
     is RunInvariantField -> mapOf("kind" to "run_invariant_field", "id" to invariantField.wireValue)
     DerivedCeremonyScaling -> mapOf("kind" to "derived_ceremony_scaling", "id" to "ceremony_scaling")
     SharedReviewEvidence -> mapOf("kind" to SHARED_REVIEW_EVIDENCE_WIRE, "id" to SHARED_REVIEW_EVIDENCE_WIRE)
+    RepairLedger -> mapOf("kind" to REPAIR_LEDGER_WIRE, "id" to REPAIR_LEDGER_WIRE)
     is AddonContentRef -> mapOf("kind" to "addon_content", "id" to slug)
   }
 }
@@ -487,6 +494,8 @@ data class PhaseHandoffProjectionDeclaration(
       "addon_content" -> FeatureTaskRuntimeHandoffSourceRef.AddonContentRef(source.string("id"))
       FeatureTaskRuntimeHandoffSourceRef.SHARED_REVIEW_EVIDENCE_WIRE ->
         FeatureTaskRuntimeHandoffSourceRef.SharedReviewEvidence
+      FeatureTaskRuntimeHandoffSourceRef.REPAIR_LEDGER_WIRE ->
+        FeatureTaskRuntimeHandoffSourceRef.RepairLedger
       else -> invalid()
     }
 
@@ -708,6 +717,7 @@ data class FeatureTaskRuntimeHandoffProjectionInputs(
   /** Durable runtime-owned repair state used to construct audit-remediation projections. */
   val auditRepairPlan: FeatureTaskRuntimeAuditRepairPlan? = null,
   val auditRepairState: FeatureTaskRuntimeAuditRepairState? = null,
+  val repairLedger: FeatureTaskRuntimeRepairLedger? = null,
   /** Runtime-owned branch identity used only by bounded finalization request projectors. */
   val branchIdentity: String? = null,
   val baseBranch: String = "main",

@@ -3,11 +3,14 @@ package skillbill.application.featuretask
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskRuntimeRepairReceiptError
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairConstruct
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.coversCarriedFindings
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeRemediationRoundNumber
+import skillbill.workflow.taskruntime.model.featureTaskRuntimeUndeclaredDisturbances
 import skillbill.workflow.taskruntime.model.stampIdentityFromCompactFindings
 
 private const val MISSING_REMEDIATION_BASE_REASON =
@@ -86,6 +89,21 @@ internal fun featureTaskRuntimeRepairReceiptSettleRejection(
       reviewState.passResults.lastOrNull()?.findings.orEmpty(),
     )
     ?: featureTaskRuntimeRepairReceiptRoundRejection(receipt, roundNumber)
+    ?: featureTaskRuntimeRepairReceiptDisturbanceRejection(receipt, reviewState.repairLedger)
+}
+
+internal fun featureTaskRuntimeRepairReceiptDisturbanceRejection(
+  receipt: FeatureTaskRuntimeRepairReceipt,
+  ledger: FeatureTaskRuntimeRepairLedger,
+): String? {
+  val undeclared = featureTaskRuntimeUndeclaredDisturbances(receipt, ledger)
+  if (undeclared.isEmpty()) return null
+  val disturbed = undeclared.joinToString("; ") { entry ->
+    val symbols = entry.constructs.joinToString(", ", transform = FeatureTaskRuntimeRepairConstruct::symbol)
+    "${entry.disturbanceRef} (holds closed by $symbols)"
+  }
+  return "repair_receipt.disturbed_remedies must name every settled finding whose closing constructs " +
+    "this round rewrote, with a reason. Undeclared: $disturbed."
 }
 
 internal fun featureTaskRuntimeRepairReceiptAnchorRejection(

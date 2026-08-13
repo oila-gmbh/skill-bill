@@ -40,29 +40,30 @@ internal fun requireReceiptFileBasename(value: String, field: String) {
 }
 
 internal fun requireReceiptIdentityText(value: String, field: String, maxUtf8Bytes: Int) {
-  if (value.isBlank()) receiptError(field, "must be a non-blank string.")
-  requireUtf8Budget(value, field, maxUtf8Bytes)
+  utf8BudgetViolation(value, maxUtf8Bytes)?.let { reason -> receiptError(field, reason) }
 }
 
 internal fun requireReceiptSanitizedText(value: String, field: String, maxUtf8Bytes: Int) {
-  if (value.isBlank()) receiptError(field, "must be a non-blank string.")
-  requireUtf8Budget(value, field, maxUtf8Bytes)
-  if (value.any(Char::isISOControl) || value.contains('\n') || value.contains('\r')) {
-    receiptError(field, "must be a single line with no line break or control character.")
-  }
-  if (value.contains(CODE_FENCE)) {
-    receiptError(field, "must not contain a code fence.")
-  }
-  if (LINE_NUMBER.containsMatchIn(value)) {
-    receiptError(field, "must not contain a line number.")
-  }
-  if (
-    DIFF_HUNK.containsMatchIn(value) ||
+  sanitizedTextViolation(value, maxUtf8Bytes)?.let { reason -> receiptError(field, reason) }
+}
+
+internal fun sanitizedTextViolation(value: String, maxUtf8Bytes: Int): String? = when {
+  value.isBlank() -> "must be a non-blank string."
+  value.toByteArray(StandardCharsets.UTF_8).size > maxUtf8Bytes -> "allows at most $maxUtf8Bytes UTF-8 bytes."
+  value.any(Char::isISOControl) || value.contains('\n') || value.contains('\r') ->
+    "must be a single line with no line break or control character."
+  value.contains(CODE_FENCE) -> "must not contain a code fence."
+  LINE_NUMBER.containsMatchIn(value) -> "must not contain a line number."
+  DIFF_HUNK.containsMatchIn(value) ||
     SERIALIZED_PAYLOAD.containsMatchIn(value) ||
-    SOURCE_BODY.containsMatchIn(value)
-  ) {
-    receiptError(field, "must not contain a diff hunk, serialized payload, or source body.")
-  }
+    SOURCE_BODY.containsMatchIn(value) -> "must not contain a diff hunk, serialized payload, or source body."
+  else -> null
+}
+
+internal fun utf8BudgetViolation(value: String, maxUtf8Bytes: Int): String? = when {
+  value.isBlank() -> "must be a non-blank string."
+  value.toByteArray(StandardCharsets.UTF_8).size > maxUtf8Bytes -> "allows at most $maxUtf8Bytes UTF-8 bytes."
+  else -> null
 }
 
 private fun requireUtf8Budget(value: String, field: String, maxUtf8Bytes: Int) {

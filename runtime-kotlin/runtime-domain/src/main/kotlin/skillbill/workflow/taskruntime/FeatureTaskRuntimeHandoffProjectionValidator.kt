@@ -20,6 +20,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePlanningProjectionContract
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProducerIteration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionKind
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariantPromptField
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
@@ -268,6 +269,7 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
     )
     FeatureTaskRuntimeHandoffSourceRef.SharedReviewEvidence ->
       inputs.sharedReviewEvidence?.toProjectionFields()
+    FeatureTaskRuntimeHandoffSourceRef.RepairLedger -> repairLedgerFields(inputs)
     is FeatureTaskRuntimeHandoffSourceRef.AddonContentRef ->
       inputs.addonContentBySlug[sourceRef.slug]?.let { content ->
         listOf(
@@ -278,6 +280,21 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
         )
       }
   }
+
+  private fun repairLedgerFields(
+    inputs: FeatureTaskRuntimeHandoffProjectionInputs,
+  ): List<FeatureTaskRuntimeHandoffProjectionField>? = inputs.repairLedger
+    ?.takeUnless(FeatureTaskRuntimeRepairLedger::isEmpty)
+    ?.let { ledger ->
+      listOf(
+        FeatureTaskRuntimeHandoffProjectionField(
+          name = FeatureTaskRuntimePhaseWorkflowDefinition.REPAIR_LEDGER_PROJECTION_NAME,
+          value = FeatureTaskRuntimeHandoffProjectionValue.Text(
+            JsonSupport.mapToJsonString(ledger.boundedProjection().toProjectionMap()),
+          ),
+        ),
+      )
+    }
 
   private fun durableAuditRepairProjectionFields(
     inputs: FeatureTaskRuntimeHandoffProjectionInputs,
@@ -466,6 +483,7 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_REPAIR_REQUEST,
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REVIEW_CLEARANCE,
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REVIEW_REPAIR_REQUEST,
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REPAIR_PLAN,
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.CHANGE_RECEIPT,
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_REQUEST,
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_RECEIPT,

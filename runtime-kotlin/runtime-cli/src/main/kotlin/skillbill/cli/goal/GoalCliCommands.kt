@@ -59,6 +59,7 @@ import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_BYTES
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_HUNKS
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_LINES
 import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedgerEntry
 import skillbill.workflow.taskruntime.model.GoalSubtaskOperatorDecision
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
@@ -266,6 +267,7 @@ class GoalFindingsCommand(
 
   override fun run() {
     val ledger = ledgerService.ledger(issueKey, state.dbOverride)
+    val repairLedgers = ledgerService.repairLedgersByWorkflow(issueKey, state.dbOverride)
     val payload = linkedMapOf<String, Any?>(
       "issue_key" to ledger.issueKey,
       "unaddressed_findings" to ledger.findings.size,
@@ -282,6 +284,12 @@ class GoalFindingsCommand(
           "summary" to finding.summary,
         )
       },
+      "repair_ledger" to repairLedgers.map { (workflowId, repairLedger) ->
+        linkedMapOf<String, Any?>(
+          "workflow_id" to workflowId,
+          "entries" to repairLedger.entries.map(FeatureTaskRuntimeRepairLedgerEntry::toProjectionMap),
+        )
+      },
     )
     val text = buildString {
       appendLine("issue_key=${ledger.issueKey} unaddressed_findings=${ledger.findings.size}")
@@ -291,6 +299,15 @@ class GoalFindingsCommand(
             "severity=${finding.severity} category=${finding.issueCategory} " +
             "location=${finding.location} ${finding.summary}",
         )
+      }
+      repairLedgers.forEach { (workflowId, repairLedger) ->
+        repairLedger.entries.forEach { entry ->
+          appendLine(
+            "repair workflow=$workflowId finding=${entry.disturbanceRef} status=${entry.status.wireValue} " +
+              "severity=${entry.severity} round=${entry.originRound} status_round=${entry.statusRound} " +
+              "constructs=${entry.constructs.joinToString(",") { it.symbol }} ${entry.intent}",
+          )
+        }
       }
     }
     state.completeText(text, payload)

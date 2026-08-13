@@ -580,7 +580,7 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
   fun `review_fix MUST_MATCH routes through the existing checkpoint policy with no new invalidation rule`() {
     val implementFix = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations
       .getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX)
-    val repair = implementFix.projectionDeclarations.single()
+    val repair = implementFix.projectionDeclarations.single { it.projectionName == "review_repair_request" }
     assertEquals(
       skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
       repair.checkpointPolicy,
@@ -596,7 +596,12 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
       it.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID
     }
     assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW, edge.fromPhaseId)
-    assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX, edge.destinationPhaseId)
+    assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN_FIX, edge.destinationPhaseId)
+    assertEquals(
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
+      FeatureTaskRuntimePhaseWorkflowDefinition.transitions
+        .loopOnlySuccessors[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN_FIX],
+    )
   }
 
   @Test

@@ -138,6 +138,9 @@ private class InMemoryUnaddressedFindings(
   override fun fetchWorkflowLedger(workflowId: String): List<UnaddressedFinding> =
     rows.filter { it.workflowId == workflowId }
 
+  override fun workflowIdsForIssue(issueKey: String): List<String> =
+    rows.filter { it.issueKey == issueKey }.map { it.workflowId }.distinct().sorted()
+
   override fun issueExists(issueKey: String): Boolean = issueKey in durableIssueKeys
 }
 

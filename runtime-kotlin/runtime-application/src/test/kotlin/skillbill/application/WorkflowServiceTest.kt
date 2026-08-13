@@ -2378,7 +2378,7 @@ class WorkflowGoalRunnerReconciliationTest {
       FeatureTaskRuntimePhaseWorkflowDefinition.transitions.loopOnlyPhaseIds,
       WorkflowFamily.TASK_RUNTIME.loopOnlyStepIds,
     )
-    assertEquals(setOf("implement_fix"), WorkflowFamily.TASK_RUNTIME.loopOnlyStepIds)
+    assertEquals(setOf("plan_fix", "implement_fix"), WorkflowFamily.TASK_RUNTIME.loopOnlyStepIds)
   }
 
   private fun completedRuntimePhaseRecord(phaseId: String, startedAt: String, finishedAt: String): Map<String, Any?> =

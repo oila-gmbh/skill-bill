@@ -488,6 +488,14 @@ runtime-ports
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceiptEntry.fromArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairConstruct.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairConstruct.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairDisturbedRemedy.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairDisturbedRemedy.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedgerEntry.toProjectionMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedgerProjection.toProjectionMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairPlanEntry.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairPlanEntry.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairPlan.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairPlan.fromArtifactMap`
     - `skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting.fromArtifactMap`
     - `skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition.toArtifactMap`
@@ -1281,6 +1289,14 @@ Categories:
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceiptEntry.fromArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairConstruct.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairConstruct.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairDisturbedRemedy.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairDisturbedRemedy.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedgerEntry.toProjectionMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedgerProjection.toProjectionMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairPlanEntry.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairPlanEntry.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairPlan.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairPlan.fromArtifactMap`
 - `skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting.fromArtifactMap`
 - `skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition.toArtifactMap`

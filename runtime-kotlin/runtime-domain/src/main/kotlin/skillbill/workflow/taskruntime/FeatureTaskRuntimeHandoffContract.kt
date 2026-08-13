@@ -7,6 +7,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseHandoff
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedUpstreamOutputs
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
@@ -79,6 +80,7 @@ object FeatureTaskRuntimeHandoffContract {
     auditRepairState: FeatureTaskRuntimeAuditRepairState? = null,
     activeRepairBatch: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairBatch? = null,
     durablyClosedCriterionRefs: List<String> = emptyList(),
+    repairLedger: FeatureTaskRuntimeRepairLedger? = null,
     repositoryCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
     expectedRepositoryCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
     branchIdentity: String? = null,
@@ -101,5 +103,6 @@ object FeatureTaskRuntimeHandoffContract {
     auditRepairState = auditRepairState,
     activeRepairBatch = activeRepairBatch,
     durablyClosedCriterionRefs = durablyClosedCriterionRefs,
+    repairLedger = repairLedger,
   )
 }

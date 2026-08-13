@@ -511,7 +511,7 @@ class FeatureTaskRuntimeTransitionFunctionTest {
           edgeIterationCount = priorIterations,
         ),
       )
-      assertEquals(def.PHASE_IMPLEMENT_FIX, fix.phaseId, "iteration $priorIterations re-enters implement_fix")
+      assertEquals(def.PHASE_PLAN_FIX, fix.phaseId, "iteration $priorIterations re-enters plan_fix")
       assertEquals(def.REVIEW_FIX_LOOP_ID, fix.loopId)
       assertEquals(priorIterations + 1, fix.edgeIteration)
     }
@@ -521,7 +521,11 @@ class FeatureTaskRuntimeTransitionFunctionTest {
     )
     assertEquals(def.PHASE_VALIDATE, approved.phaseId)
     assertEquals(null, approved.loopId)
-    // The implement_fix leg returns to review, still never to audit.
+    val plannedRepair = assertIs<FeatureTaskRuntimeNextPhase.Next>(
+      shippedTransition(def.PHASE_PLAN_FIX, FeatureTaskRuntimeVerdict.REPAIR_PLANNED),
+    )
+    assertEquals(def.PHASE_IMPLEMENT_FIX, plannedRepair.phaseId)
+    assertEquals(null, plannedRepair.loopId, "The intra-loop step mints no second review_fix iteration.")
     assertEquals(
       def.PHASE_REVIEW,
       assertIs<FeatureTaskRuntimeNextPhase.Next>(

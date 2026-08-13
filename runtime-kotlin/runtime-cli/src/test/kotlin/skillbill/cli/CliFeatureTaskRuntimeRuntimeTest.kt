@@ -860,10 +860,11 @@ class CliFeatureTaskRuntimeRuntimeTest {
     // A clean run launches the nine forward phases; the loop-only implement_fix is never launched, so
     // it stays pending in the durable projection even on a fully forward-completed run (SKILL-85 M1).
     assertContains(status.stdout, "complete: ${ALL_PHASES.size}")
-    assertContains(status.stdout, "pending: 1")
+    assertContains(status.stdout, "pending: 2")
     assertContains(status.stdout, "blocked: 0")
     assertContains(status.stdout, "phase: id=plan status=completed")
     assertContains(status.stdout, "origin=agent-executed")
+    assertContains(status.stdout, "phase: id=plan_fix status=pending")
     assertContains(status.stdout, "phase: id=implement_fix status=pending")
     // SKILL-85 Subtask 4 (F-005): a fully forward-completed run reports no current phase — the
     // loop-only implement_fix (still pending) must NOT be projected as the current phase to operators.

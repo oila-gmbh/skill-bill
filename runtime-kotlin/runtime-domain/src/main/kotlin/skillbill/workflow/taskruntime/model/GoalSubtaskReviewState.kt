@@ -494,6 +494,9 @@ data class GoalSubtaskReviewState(
     }
   }
 
+  val repairLedger: FeatureTaskRuntimeRepairLedger
+    get() = featureTaskRuntimeFoldRepairLedger(repairReceipts, passResults)
+
   val reviewCapReached: Boolean get() = disposition == GoalSubtaskReviewDisposition.REVIEW_CAP_REACHED
 
   val reviewSkippedByUser: Boolean get() =
