@@ -62,7 +62,7 @@ class FeatureTaskRuntimeRepairReceiptTest {
   }
 
   @Test
-  fun `intent label or text carrying a line number or diff hunk marker is rejected`() {
+  fun `intent label or text carrying a line number, source body, or diff hunk marker is rejected`() {
     assertFailsWith<InvalidFeatureTaskRuntimeRepairReceiptError> {
       addressedEntry(intent = "fixed Type.kt:12")
     }.also { error ->
@@ -84,6 +84,18 @@ class FeatureTaskRuntimeRepairReceiptTest {
       addressedEntry(intent = "@@ -1,4 +1,6 @@ fun leaked()")
     }.also { error ->
       assertTrue(error.payloadFreeReason.contains("diff hunk"))
+    }
+    assertFailsWith<InvalidFeatureTaskRuntimeRepairReceiptError> {
+      addressedEntry(intent = "fixed at line: 12")
+    }.also { error ->
+      assertTrue(error.payloadFreeReason.contains("line number"))
+      assertTrue(!error.payloadFreeReason.contains("12"))
+    }
+    assertFailsWith<InvalidFeatureTaskRuntimeRepairReceiptError> {
+      addressedEntry(text = "return foo()")
+    }.also { error ->
+      assertTrue(error.payloadFreeReason.contains("source body"))
+      assertTrue(!error.payloadFreeReason.contains("foo()"))
     }
   }
 

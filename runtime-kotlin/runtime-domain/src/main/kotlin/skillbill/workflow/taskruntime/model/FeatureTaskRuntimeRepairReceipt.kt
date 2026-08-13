@@ -18,7 +18,15 @@ private val GIT_COMMIT_SHA = Regex("^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 private val COMPACT_SYMBOL = Regex("^[A-Za-z_][A-Za-z0-9_$-]*(?:\\.[A-Za-z_][A-Za-z0-9_$-]*)?$")
 private val FILE_BASENAME = Regex("^[A-Za-z0-9_.-]+$")
 private val IDENTITY_WHITESPACE = Regex("\\s+")
-private val LINE_NUMBER = Regex("(?i)(?::\\d+|\\bL\\d+\\b|\\blines?\\s+\\d+)")
+private val LINE_NUMBER = Regex(
+  "(?:\\b(?:lines?|ln)\\s*:?\\s*\\d+(?:\\s*[-–]\\s*\\d+)?)|" +
+    "(?:\\b(?:L|#)\\s*\\d+(?:\\s*[-–]\\s*(?:L|#)?\\s*\\d+)?)|" +
+    "(?:\\b(?:columns?|cols?)\\s*:?\\s*\\d+(?:\\s*[-–]\\s*\\d+)?)|" +
+    "(?::\\s*\\d+(?::\\s*\\d+)?(?:\\s*[-–]\\s*\\d+)?)|" +
+    "(?:[\\(\\[\\{]\\s*\\d+(?:\\s*,\\s*\\d+)?\\s*[\\)\\]\\}])",
+  RegexOption.IGNORE_CASE,
+)
+private val SOURCE_BODY = Regex("\\b[A-Za-z_][A-Za-z0-9_$]*\\(|[{};]|->")
 private val DIFF_HUNK = Regex("@@[^@]*@@|^(?:diff --git|\\+\\+\\+ |--- )")
 private val SERIALIZED_PAYLOAD = Regex("\\{\\s*\"|\"\\s*:\\s*[\\[{\"]")
 private const val CODE_FENCE: String = "```"
@@ -341,7 +349,11 @@ private fun requireReceiptSanitizedText(value: String, field: String, maxUtf8Byt
   if (LINE_NUMBER.containsMatchIn(value)) {
     receiptError(field, "must not contain a line number.")
   }
-  if (DIFF_HUNK.containsMatchIn(value) || SERIALIZED_PAYLOAD.containsMatchIn(value)) {
+  if (
+    DIFF_HUNK.containsMatchIn(value) ||
+    SERIALIZED_PAYLOAD.containsMatchIn(value) ||
+    SOURCE_BODY.containsMatchIn(value)
+  ) {
     receiptError(field, "must not contain a diff hunk, serialized payload, or source body.")
   }
 }
