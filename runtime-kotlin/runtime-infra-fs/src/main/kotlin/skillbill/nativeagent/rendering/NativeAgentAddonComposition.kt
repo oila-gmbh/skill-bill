@@ -36,12 +36,12 @@ internal fun composeGovernedAgentBody(
   body: String,
 ): GovernedAgentComposition {
   val root = repoRoot.toAbsolutePath().normalize()
-  val addonTargets = resolveDeclaredAddonTargets(root, target)
+  val resolvedAddons = resolveDeclaredAddonTargets(root, target)
   val session = SidecarInliningSession(root, target)
-  addonTargets.forEach { addon -> session.claim(addon.path) }
+  resolvedAddons.targets.forEach { addon -> session.claim(addon.path) }
   val rewrittenBody = session.rewrite(body, target.contentPath)
   claimExcludedAddonPointerTargets(root, target, session)
-  val addonBlocks = addonTargets.map { addon ->
+  val addonBlocks = resolvedAddons.targets.map { addon ->
     addon to session.rewrite(readAddonFile(root, addon), addon.path)
   }
   val composedBody = buildString {
@@ -64,7 +64,7 @@ internal fun composeGovernedAgentBody(
   }.trimEnd()
   return GovernedAgentComposition(
     body = composedBody,
-    composedAddonSlugs = addonTargets.map { it.slug }.distinct(),
+    composedAddonSlugs = resolvedAddons.composedAddonSlugs,
   )
 }
 
@@ -143,22 +143,27 @@ private fun claimExcludedAddonPointerTargets(
     }
 }
 
+private data class ResolvedAddonComposition(
+  val targets: List<ComposedAddonTarget>,
+  val composedAddonSlugs: List<String>,
+)
+
 private fun resolveDeclaredAddonTargets(
   root: Path,
   target: NativeAgentCompositionTarget,
-): List<ComposedAddonTarget> {
+): ResolvedAddonComposition {
   if (target.source != NativeAgentCompositionTargetSource.PlatformManifest) {
-    return emptyList()
+    return ResolvedAddonComposition(emptyList(), emptyList())
   }
   val contentPath = target.contentPath.toAbsolutePath().normalize()
-  val packRoot = platformPackRoot(root, contentPath) ?: return emptyList()
+  val packRoot = platformPackRoot(root, contentPath) ?: return ResolvedAddonComposition(emptyList(), emptyList())
   val pack = requireNotNull(target.manifest) {
     "${displayPath(root, contentPath)}: platform-pack native agent composition requires a parsed platform.yaml manifest"
   }
   val skillName = contentPath.parent.name
   val selections = ReviewAddonSelectionPolicy.select(pack, skillName)
   if (selections.isEmpty()) {
-    return emptyList()
+    return ResolvedAddonComposition(emptyList(), emptyList())
   }
   val skillRelativeDir = skillRelativeDir(packRoot, contentPath)
   val declared = pack.pointers
@@ -166,9 +171,7 @@ private fun resolveDeclaredAddonTargets(
     .associateBy(PointerSpec::name)
   val resolved = linkedMapOf<Path, ComposedAddonTarget>()
   selections.forEach { selection ->
-    val slots = listOf(ENTRYPOINT_SLOT to selection.entrypoint) +
-      selection.companionPointers.map { pointer -> pointer to pointer }
-    slots.forEach { (slot, pointerName) ->
+    selectionSlots(selection).forEach { (slot, pointerName) ->
       val addon = resolveAddonTarget(
         pack.slug,
         root,
@@ -182,9 +185,20 @@ private fun resolveDeclaredAddonTargets(
       resolved.putIfAbsent(addon.path, addon)
     }
   }
-  enforceAddonProjectionParity(root, pack, skillRelativeDir, declared, selections, resolved.values.toList())
-  return resolved.values.toList()
+  val composedSlugs = enforceAddonProjectionParity(
+    root,
+    pack,
+    skillRelativeDir,
+    declared,
+    selections,
+    resolved,
+  )
+  return ResolvedAddonComposition(resolved.values.toList(), composedSlugs)
 }
+
+private fun selectionSlots(selection: GovernedAddonSelection): List<Pair<String, String>> =
+  listOf(ENTRYPOINT_SLOT to selection.entrypoint) +
+    selection.companionPointers.map { pointer -> pointer to pointer }
 
 @Suppress("LongParameterList")
 private fun resolveAddonTarget(
@@ -249,29 +263,33 @@ private fun enforceAddonProjectionParity(
   skillRelativeDir: String,
   declared: Map<String, PointerSpec>,
   selections: List<GovernedAddonSelection>,
-  composed: List<ComposedAddonTarget>,
-) {
-  val composedSlugs = composed.map { it.slug }.distinct()
-  val projectedSlugs = selections.map { it.slug }
-  if (composedSlugs == projectedSlugs) {
-    return
+  composedByPath: Map<Path, ComposedAddonTarget>,
+): List<String> {
+  val composedPaths = composedByPath.keys
+  val composedSlugs = selections.map { selection ->
+    val missing = selectionSlots(selection).firstNotNullOfOrNull { (slot, pointerName) ->
+      val addon = resolveAddonTarget(
+        pack.slug,
+        root,
+        declared,
+        skillRelativeDir,
+        selection.slug,
+        slot,
+        pointerName,
+        selection.activation,
+      )
+      addon.takeUnless { it.path in composedPaths }
+    }
+    if (missing != null) {
+      throw MissingContentFileError(addonFailureMessage(root, missing, "did not compose"))
+    }
+    selection.slug
   }
-  val missing = selections.firstOrNull { selection -> selection.slug !in composedSlugs }
-  if (missing != null) {
-    val addon = resolveAddonTarget(
-      pack.slug,
-      root,
-      declared,
-      skillRelativeDir,
-      missing.slug,
-      ENTRYPOINT_SLOT,
-      missing.entrypoint,
-      missing.activation,
-    )
-    throw MissingContentFileError(addonFailureMessage(root, addon, "did not compose"))
+  val extra = composedByPath.values.firstOrNull { addon -> addon.slug !in composedSlugs }
+  if (extra != null) {
+    throw MissingContentFileError(addonFailureMessage(root, extra, "is unprojected"))
   }
-  val extra = composed.first { addon -> addon.slug !in projectedSlugs }
-  throw MissingContentFileError(addonFailureMessage(root, extra, "is unprojected"))
+  return composedSlugs
 }
 
 private fun addonFailureMessage(root: Path, addon: ComposedAddonTarget, problem: String): String =

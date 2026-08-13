@@ -81,13 +81,15 @@ class FileSystemReviewRubricResolver : ReviewRubricResolver {
           )
     }
     if (selected.isEmpty()) return specialist
-    val guidance = selected.joinToString("\n\n") { selection ->
+    val appended = linkedSetOf<Path>()
+    val guidance = selected.flatMap { selection ->
       val slots = listOf(ENTRYPOINT_SLOT to selection.entrypoint) +
         selection.companionPointers.map { pointer -> pointer to pointer }
-      slots.joinToString("\n\n") { (slot, pointer) ->
-        readBounded(resolveAddonFile(manifest, consumer, selection, slot, pointer))
+      slots.mapNotNull { (slot, pointer) ->
+        val path = resolveAddonFile(manifest, consumer, selection, slot, pointer)
+        path.takeIf { appended.add(it) }?.let(::readBounded)
       }
-    }
+    }.joinToString("\n\n")
     require(guidance.toByteArray().size <= MAX_ADDON_BYTES) {
       "Selected add-on guidance for '$specialistSkillName' is larger than $MAX_ADDON_BYTES bytes."
     }
