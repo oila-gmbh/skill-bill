@@ -151,6 +151,7 @@ class GoalSubtaskReviewSummaryReducerTest {
           "findings" to listOf(
             mapOf("severity" to "major", "message" to "lines 42-44 bypass the invariant"),
             mapOf("severity" to "major", "message" to "L42-L44 bypass the invariant"),
+            mapOf("severity" to "major", "message" to "at #12 bypasses the invariant"),
             mapOf("severity" to "major", "message" to "src/OrderService.kt:42-44 has columns 3-8 exposed"),
             mapOf("severity" to "major", "message" to "C:\\repo\\Checkout.kt:17 @@ -4,6 +4,9 @@ leaks state"),
           ),
@@ -160,7 +161,7 @@ class GoalSubtaskReviewSummaryReducerTest {
 
     val rendered = summary.joinToString(" ") { "${it.label} ${it.text}" }
     assertTrue(summary.any { it.label == "Review" })
-    assertFalse(Regex("(?i)\\b(?:lines?|columns?)\\s+\\d+|\\bL\\d+|:\\d+|@@").containsMatchIn(rendered))
+    assertFalse(Regex("(?i)\\b(?:lines?|columns?)\\s+\\d+|\\bL\\d+|#\\d+|:\\d+|@@").containsMatchIn(rendered))
     assertFalse("src/" in rendered)
     assertFalse("C:\\repo" in rendered)
     assertFalse("OrderService.kt" in rendered)

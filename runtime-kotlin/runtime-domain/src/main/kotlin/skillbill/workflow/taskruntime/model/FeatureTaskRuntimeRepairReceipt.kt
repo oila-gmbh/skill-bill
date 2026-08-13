@@ -20,13 +20,17 @@ private val FILE_BASENAME = Regex("^[A-Za-z0-9_.-]+$")
 private val IDENTITY_WHITESPACE = Regex("\\s+")
 private val LINE_NUMBER = Regex(
   "(?:\\b(?:lines?|ln)\\s*:?\\s*\\d+(?:\\s*[-–]\\s*\\d+)?)|" +
-    "(?:\\b(?:L|#)\\s*\\d+(?:\\s*[-–]\\s*(?:L|#)?\\s*\\d+)?)|" +
+    "(?:(?:\\bL|#)\\s*\\d+(?:\\s*[-–]\\s*(?:L|#)?\\s*\\d+)?)|" +
     "(?:\\b(?:columns?|cols?)\\s*:?\\s*\\d+(?:\\s*[-–]\\s*\\d+)?)|" +
     "(?::\\s*\\d+(?::\\s*\\d+)?(?:\\s*[-–]\\s*\\d+)?)|" +
     "(?:[\\(\\[\\{]\\s*\\d+(?:\\s*,\\s*\\d+)?\\s*[\\)\\]\\}])",
   RegexOption.IGNORE_CASE,
 )
-private val SOURCE_BODY = Regex("\\b[A-Za-z_][A-Za-z0-9_$]*\\(|[{};]|->")
+private val SOURCE_BODY = Regex(
+  "(?:^|[.]\\s+)(?:val|var)\\s+[A-Za-z_][A-Za-z0-9_$]*\\s*=|" +
+    "(?:^|[.]\\s+)return\\s+[A-Za-z_][A-Za-z0-9_$]*(?:\\s*[(\\[{;]|$)|" +
+    "[{}]|->",
+)
 private val DIFF_HUNK = Regex("@@[^@]*@@|^(?:diff --git|\\+\\+\\+ |--- )")
 private val SERIALIZED_PAYLOAD = Regex("\\{\\s*\"|\"\\s*:\\s*[\\[{\"]")
 private const val CODE_FENCE: String = "```"

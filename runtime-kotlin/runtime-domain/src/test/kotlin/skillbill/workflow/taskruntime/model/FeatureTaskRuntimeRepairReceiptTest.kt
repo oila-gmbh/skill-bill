@@ -97,6 +97,27 @@ class FeatureTaskRuntimeRepairReceiptTest {
       assertTrue(error.payloadFreeReason.contains("source body"))
       assertTrue(!error.payloadFreeReason.contains("foo()"))
     }
+    assertFailsWith<InvalidFeatureTaskRuntimeRepairReceiptError> {
+      addressedEntry(intent = "return value")
+    }.also { error ->
+      assertTrue(error.payloadFreeReason.contains("source body"))
+      assertTrue(!error.payloadFreeReason.contains("return value"))
+    }
+    assertFailsWith<InvalidFeatureTaskRuntimeRepairReceiptError> {
+      addressedEntry(intent = "val result = value")
+    }.also { error ->
+      assertTrue(error.payloadFreeReason.contains("source body"))
+      assertTrue(!error.payloadFreeReason.contains("val result"))
+    }
+    assertFailsWith<InvalidFeatureTaskRuntimeRepairReceiptError> {
+      addressedEntry(intent = "fixed at #12")
+    }.also { error ->
+      assertTrue(error.payloadFreeReason.contains("line number"))
+      assertTrue(!error.payloadFreeReason.contains("#12"))
+    }
+    addressedEntry(intent = "close Type.member() at the sanitizer")
+    addressedEntry(intent = "already present; no tree change required")
+    addressedEntry(text = "SOURCE_BODY misses statements such as return value and val result = value")
   }
 
   @Test
