@@ -11,7 +11,7 @@ import skillbill.workflow.taskruntime.model.stampIdentityFromCompactFindings
 /**
  * Untrusted-input seam for `produced_outputs.repair_receipt`. Schema validation has already
  * accepted the envelope; this parse builds the domain model and names payload-free semantic
- * failures (anchor mismatch, omitted carried finding) the settle gate rejects on.
+ * failures (anchor mismatch, omitted carried finding, round mismatch) the settle gate rejects on.
  *
  * A missing key returns null so a test stand-in that skipped the phase-output schema does not
  * invent a receipt. Production completed `implement_fix` output cannot omit the key: the schema
@@ -60,10 +60,27 @@ internal fun featureTaskRuntimeRepairReceiptCoverageRejection(
     "omitted findings require an explicit no_edit_required outcome."
 }
 
+internal fun featureTaskRuntimeRepairReceiptRoundRejection(
+  receipt: FeatureTaskRuntimeRepairReceipt,
+  durableRoundNumber: Int,
+): String? = if (receipt.roundNumber == durableRoundNumber) {
+  null
+} else {
+  "round_number must match the durable remediation round at implement_fix entry."
+}
+
 internal fun featureTaskRuntimePreparedRepairReceipt(
   parsed: FeatureTaskRuntimeRepairReceipt,
   roundNumber: Int,
   lastPassFindings: List<GoalSubtaskReviewCompactFinding>,
-): FeatureTaskRuntimeRepairReceipt =
-  parsed.copy(roundNumber = roundNumber).stampIdentityFromCompactFindings(lastPassFindings)
+): FeatureTaskRuntimeRepairReceipt {
+  featureTaskRuntimeRepairReceiptRoundRejection(parsed, roundNumber)?.let { reason ->
+    throw InvalidFeatureTaskRuntimeRepairReceiptError(
+      fieldPath = "round_number",
+      reason = reason,
+      payloadFreeReason = reason,
+    )
+  }
+  return parsed.stampIdentityFromCompactFindings(lastPassFindings)
+}
 

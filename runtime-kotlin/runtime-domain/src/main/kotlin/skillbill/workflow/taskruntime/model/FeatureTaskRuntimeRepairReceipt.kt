@@ -42,6 +42,7 @@ enum class FeatureTaskRuntimeRepairOutcome(val wireValue: String) {
  * Normalized construct key (trim, lowercase, whitespace collapse) so the same
  * construct written two ways compares equal. Subtasks 2 through 4 key off this.
  */
+@ConsistentCopyVisibility
 data class FeatureTaskRuntimeRepairConstructIdentity internal constructor(val key: String) {
   companion object {
     fun of(file: String?, symbol: String): FeatureTaskRuntimeRepairConstructIdentity {
@@ -96,8 +97,8 @@ data class FeatureTaskRuntimeRepairReceiptEntry(
     if (severity !in setOf("blocker", "major", "minor", "nit")) {
       receiptError("severity", "must be one of blocker, major, minor, nit.")
     }
-    requireReceiptIdentityText(label, "label", REPAIR_RECEIPT_MAX_LABEL_UTF8_BYTES)
-    requireReceiptIdentityText(text, "text", REPAIR_RECEIPT_MAX_TEXT_UTF8_BYTES)
+    requireReceiptSanitizedText(label, "label", REPAIR_RECEIPT_MAX_LABEL_UTF8_BYTES)
+    requireReceiptSanitizedText(text, "text", REPAIR_RECEIPT_MAX_TEXT_UTF8_BYTES)
     findingId?.let { requireReceiptIdentityText(it, "finding_id", REPAIR_RECEIPT_MAX_LABEL_UTF8_BYTES) }
     requireReceiptSanitizedText(intent, "intent", REPAIR_RECEIPT_MAX_INTENT_UTF8_BYTES)
     if (constructs.size > REPAIR_RECEIPT_MAX_CONSTRUCTS_PER_ENTRY) {

@@ -6,6 +6,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceiptEntry
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
+import skillbill.workflow.taskruntime.model.REPAIR_RECEIPT_MAX_TEXT_UTF8_BYTES
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -101,15 +102,68 @@ class FeatureTaskRuntimeRepairReceiptParserTest {
     )
     val prepared = featureTaskRuntimePreparedRepairReceipt(
       parsed = receiptFor(agentEcho),
-      roundNumber = 2,
+      roundNumber = 1,
       lastPassFindings = listOf(compact),
     )
-    assertEquals(2, prepared.roundNumber)
+    assertEquals(1, prepared.roundNumber)
     val entry = prepared.entries.single()
     assertEquals("ReducerLabel", entry.label)
     assertEquals("sanitized compact finding text", entry.text)
     assertEquals("F-001", entry.findingId)
     assertEquals(agentEcho.intent, entry.intent)
+  }
+
+  @Test
+  fun `a receipt whose round_number does not match the durable remediation round is rejected payload-free`() {
+    val receipt = receiptFor(
+      FeatureTaskRuntimeRepairReceiptEntry(
+        severity = "blocker",
+        label = "Type",
+        text = "unsafe mutation at the seam",
+        outcome = FeatureTaskRuntimeRepairOutcome.ADDRESSED,
+        constructs = listOf(FeatureTaskRuntimeRepairConstruct(symbol = "Type.member")),
+        intent = "close the finding at Type.member",
+      ),
+    )
+    assertNull(featureTaskRuntimeRepairReceiptRoundRejection(receipt, 1))
+    val reason = assertNotNull(featureTaskRuntimeRepairReceiptRoundRejection(receipt, 2))
+    assertTrue(reason.contains("round_number"))
+    assertTrue(!reason.contains("Type.member"))
+    val error = assertFailsWith<InvalidFeatureTaskRuntimeRepairReceiptError> {
+      featureTaskRuntimePreparedRepairReceipt(receipt, roundNumber = 2, lastPassFindings = emptyList())
+    }
+    assertEquals("round_number", error.fieldPath)
+    assertTrue(!error.payloadFreeReason.contains("Type.member"))
+  }
+
+  @Test
+  fun `identity stamp of compact text over the UTF-8 budget is a typed payload-free error`() {
+    val oversized = "x".repeat(REPAIR_RECEIPT_MAX_TEXT_UTF8_BYTES + 1)
+    val agentEcho = FeatureTaskRuntimeRepairReceiptEntry(
+      severity = "blocker",
+      label = "TypeKt",
+      text = "resolve the finding at the reported location",
+      outcome = FeatureTaskRuntimeRepairOutcome.ADDRESSED,
+      constructs = listOf(FeatureTaskRuntimeRepairConstruct(symbol = "Type.member")),
+      intent = "close the finding at Type.member",
+      findingId = "F-001",
+    )
+    val compact = GoalSubtaskReviewCompactFinding(
+      severity = "blocker",
+      label = "ReducerLabel",
+      text = oversized,
+      findingId = "F-001",
+    )
+    val error = assertFailsWith<InvalidFeatureTaskRuntimeRepairReceiptError> {
+      featureTaskRuntimePreparedRepairReceipt(
+        parsed = receiptFor(agentEcho),
+        roundNumber = 1,
+        lastPassFindings = listOf(compact),
+      )
+    }
+    assertEquals("text", error.fieldPath)
+    assertTrue(error.payloadFreeReason.contains("$REPAIR_RECEIPT_MAX_TEXT_UTF8_BYTES"))
+    assertTrue(!error.payloadFreeReason.contains(oversized))
   }
 
   @Test

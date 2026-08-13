@@ -56,10 +56,14 @@ internal object GoalSubtaskReviewSummaryReducer {
         text = sanitize(finding.message),
         findingId = finding.findingId,
       )
-    }.groupBy { finding -> finding.label.lowercase() }
+    }.groupBy { finding ->
+      // Repair-receipt coverage reads these persisted findings. Distinct register ids must survive
+      // even when compact labels collide; label collapse is only the legacy no-id path.
+      finding.findingId?.lowercase() ?: finding.label.lowercase()
+    }
       .values
-      .map { sameLabelFindings ->
-        sameLabelFindings.minByOrNull(::severityRank)
+      .map { sameKeyFindings ->
+        sameKeyFindings.minByOrNull(::severityRank)
           ?: error("A grouped compact review summary must contain at least one finding.")
       }
   }

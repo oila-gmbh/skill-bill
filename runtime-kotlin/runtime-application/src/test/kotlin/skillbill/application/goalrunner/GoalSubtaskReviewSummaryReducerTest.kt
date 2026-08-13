@@ -53,6 +53,32 @@ class GoalSubtaskReviewSummaryReducerTest {
   }
 
   @Test
+  fun `compact summaries keep distinct finding ids that share a label`() {
+    val summary = GoalSubtaskReviewSummaryReducer.fromOutput(
+      mapOf(
+        "produced_outputs" to mapOf(
+          "findings" to listOf(
+            mapOf(
+              "severity" to "major",
+              "class_or_symbol" to "OrderService",
+              "id" to "F-001",
+              "message" to "OrderService misses validation on submit",
+            ),
+            mapOf(
+              "severity" to "minor",
+              "class_or_symbol" to "OrderService",
+              "id" to "F-002",
+              "message" to "OrderService comment is stale",
+            ),
+          ),
+        ),
+      ),
+    )
+
+    assertEquals(setOf("F-001", "F-002"), summary.map { it.findingId }.toSet())
+  }
+
+  @Test
   fun `compact summaries remove paths lines hunks and duplicate findings`() {
     val summary = GoalSubtaskReviewSummaryReducer.fromOutput(
       mapOf(

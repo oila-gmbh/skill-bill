@@ -23,9 +23,9 @@ class FeatureTaskRuntimeRepairReceiptTest {
   }
 
   @Test
-  fun `construct identity normalizes case and internal whitespace to one stable key`() {
+  fun `construct identity normalizes case to one stable key`() {
     val first = FeatureTaskRuntimeRepairConstruct(symbol = "Type.member", file = "Type.kt")
-    val second = FeatureTaskRuntimeRepairConstruct(symbol = "Type.  Member", file = "TYPE.kt")
+    val second = FeatureTaskRuntimeRepairConstruct(symbol = "TYPE.MEMBER", file = "TYPE.kt")
     assertEquals(first.identity, second.identity)
     assertNotEquals(
       first.identity,
@@ -62,12 +62,23 @@ class FeatureTaskRuntimeRepairReceiptTest {
   }
 
   @Test
-  fun `intent or construct text carrying a line number or diff hunk marker is rejected`() {
+  fun `intent label or text carrying a line number or diff hunk marker is rejected`() {
     assertFailsWith<InvalidFeatureTaskRuntimeRepairReceiptError> {
       addressedEntry(intent = "fixed Type.kt:12")
     }.also { error ->
       assertTrue(error.payloadFreeReason.contains("line number"))
       assertTrue(!error.payloadFreeReason.contains("Type.kt:12"))
+    }
+    assertFailsWith<InvalidFeatureTaskRuntimeRepairReceiptError> {
+      addressedEntry(label = "Type.kt:12")
+    }.also { error ->
+      assertTrue(error.payloadFreeReason.contains("line number"))
+      assertTrue(!error.payloadFreeReason.contains("Type.kt:12"))
+    }
+    assertFailsWith<InvalidFeatureTaskRuntimeRepairReceiptError> {
+      addressedEntry(text = "@@ -1,4 +1,6 @@ fun leaked()")
+    }.also { error ->
+      assertTrue(error.payloadFreeReason.contains("diff hunk"))
     }
     assertFailsWith<InvalidFeatureTaskRuntimeRepairReceiptError> {
       addressedEntry(intent = "@@ -1,4 +1,6 @@ fun leaked()")

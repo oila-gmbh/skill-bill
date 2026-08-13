@@ -1152,6 +1152,12 @@ internal class FeatureTaskRuntimeRunLoop(
     featureTaskRuntimeRepairReceiptAnchorRejection(receipt, baseSha)?.let { return "repair-receipt" to it }
     val carried = reviewState.passResults.lastOrNull()?.findings.orEmpty()
     featureTaskRuntimeRepairReceiptCoverageRejection(receipt, carried)?.let { return "repair-receipt" to it }
+    val roundNumber = try {
+      featureTaskRuntimeRemediationRoundNumber(reviewState.completedPassCount)
+    } catch (error: InvalidFeatureTaskRuntimeRepairReceiptError) {
+      return "repair-receipt" to error.payloadFreeReason
+    }
+    featureTaskRuntimeRepairReceiptRoundRejection(receipt, roundNumber)?.let { return "repair-receipt" to it }
     return null
   }
 
@@ -1172,10 +1178,10 @@ internal class FeatureTaskRuntimeRunLoop(
       return error.payloadFreeReason
     }
     val reviewState = goalReviewStateOrNull() ?: return null
-    val roundNumber = featureTaskRuntimeRemediationRoundNumber(reviewState.completedPassCount)
-    val lastPassFindings = reviewState.passResults.lastOrNull()?.findings.orEmpty()
-    val receipt = featureTaskRuntimePreparedRepairReceipt(parsed, roundNumber, lastPassFindings)
     return runCatching {
+      val roundNumber = featureTaskRuntimeRemediationRoundNumber(reviewState.completedPassCount)
+      val lastPassFindings = reviewState.passResults.lastOrNull()?.findings.orEmpty()
+      val receipt = featureTaskRuntimePreparedRepairReceipt(parsed, roundNumber, lastPassFindings)
       goalContinuationRecorder.updateReviewState(request.workflowId, request.dbPathOverride) { state ->
         state.upsertRepairReceipt(receipt)
       }
@@ -1183,7 +1189,10 @@ internal class FeatureTaskRuntimeRunLoop(
       onSuccess = { recorded ->
         if (recorded != null) null else "the review state could not be updated with the repair receipt."
       },
-      onFailure = { _ -> "the review state could not be updated with the repair receipt." },
+      onFailure = { error ->
+        (error as? InvalidFeatureTaskRuntimeRepairReceiptError)?.payloadFreeReason
+          ?: "the review state could not be updated with the repair receipt."
+      },
     )
   }
 
