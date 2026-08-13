@@ -327,6 +327,7 @@ $defs:
         maxItems: 100
         items: { type: string, minLength: 1, pattern: ".*\\S.*" }
       unresolvable_repair: { type: object }
+      repair_receipt: { type: object }
 
   test_execution:
     type: object

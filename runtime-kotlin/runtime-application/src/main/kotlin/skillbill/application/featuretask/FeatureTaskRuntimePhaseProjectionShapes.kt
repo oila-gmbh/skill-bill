@@ -1,6 +1,7 @@
 package skillbill.application.featuretask
 
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 
 /**
@@ -18,6 +19,7 @@ internal object FeatureTaskRuntimePhaseProjectionShapes {
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN -> PREPLAN
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN -> PLAN
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT -> IMPLEMENT
+    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX -> IMPLEMENT_FIX
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE -> VALIDATION
     else -> ""
   }
@@ -85,6 +87,22 @@ internal object FeatureTaskRuntimePhaseProjectionShapes {
       "        work the phase contract assigns elsewhere (a build or test run, which belongs to\n" +
       "        validate) is not open work at all. Populate it only under a 'blocked' or 'failed'\n" +
       "        envelope, as a plain line or the same { \"ref\", \"note\" } pair deviations uses."
+
+  private val IMPLEMENT_FIX: String =
+    "\n    - Required produced_outputs.repair_receipt shape. Emit one entry per carried finding;\n" +
+      "      constructs are Type or Type.member with an optional file basename, never a bare path;\n" +
+      "      intent is one line with no diff hunk, source body, or line number. A finding that needed\n" +
+      "      no edit still needs its no_edit_required entry:\n" +
+      "      ```json\n" +
+      "      { \"repair_receipt\": {\n" +
+      "          \"contract_version\": \"$FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION\",\n" +
+      "          \"round_number\": 1,\n" +
+      "          \"pre_fix_checkpoint_sha\": \"<40-or-64-hex sha>\",\n" +
+      "          \"entries\": [ { \"severity\": \"blocker\", \"label\": \"<TypeOrSymbol>\",\n" +
+      "            \"text\": \"<sanitized finding text>\", \"outcome\": \"addressed\",\n" +
+      "            \"constructs\": [ { \"symbol\": \"Type.member\", \"file\": \"Type.kt\" } ],\n" +
+      "            \"intent\": \"<one-line repair intent>\" } ] } }\n" +
+      "      ```"
 
   private const val VALIDATION: String =
     "\n    - Required produced_outputs shape: emit a validation_result OBJECT. Its repository_checkpoint\n" +

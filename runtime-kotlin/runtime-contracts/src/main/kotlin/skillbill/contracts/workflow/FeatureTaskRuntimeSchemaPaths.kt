@@ -7,6 +7,13 @@ package skillbill.contracts.workflow
 const val FEATURE_TASK_RUNTIME_CONTRACT_VERSION: String = "0.3"
 
 /**
+ * Version of the `implement_fix` repair-receipt payload nested under
+ * `produced_outputs.repair_receipt`. Independent from the envelope
+ * [FEATURE_TASK_RUNTIME_CONTRACT_VERSION]: adding the receipt does not bump 0.3.
+ */
+const val FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION: String = "0.1"
+
+/**
  * Version of the typed phase-output validation result and repair-evidence contract.
  * This is independent from the wire envelope schema version above: the result is
  * an adapter/domain contract and does not change the phase-output payload shape.

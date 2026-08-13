@@ -353,6 +353,23 @@ class InvalidFeatureTaskRuntimePhaseBriefingFramingError(
     "unrelated working-tree changes before relaunching.",
 )
 
+/**
+ * Surfaced when an `implement_fix` repair receipt fails its domain contract
+ * (symbol granularity, named UTF-8 byte or collection budgets, or sanitization).
+ * [payloadFreeReason] restates the violated rule with no instance value, diff
+ * hunk, construct body, or source span — the only variant a retry prompt, blocked
+ * reason, or ordinary log may carry.
+ */
+class InvalidFeatureTaskRuntimeRepairReceiptError(
+  val fieldPath: String,
+  val reason: String,
+  val payloadFreeReason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Feature-task-runtime repair receipt fails at '${fieldPath.ifBlank { "<root>" }}': $reason",
+  cause,
+)
+
 class InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError(
   val sourceLabel: String,
   val reason: String,

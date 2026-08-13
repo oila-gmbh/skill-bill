@@ -2,6 +2,7 @@ package skillbill.application.featuretask
 
 import skillbill.application.model.FeatureTaskRuntimeImplementationContinuation
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
@@ -311,7 +312,13 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "incremental reconciliation. Every finding in the briefing — Blocker, Major, Minor, and Nit — is in " +
     "scope; specialist narratives, raw review output, and prior repair history are not. Do not re-apply " +
     "the plan from scratch or expand scope beyond the carried findings. Treat any fix already present " +
-    "as a no-op. See the mutating-phase idempotency contract below.",
+    "as a no-op. See the mutating-phase idempotency contract below. Emit produced_outputs.repair_receipt " +
+    "with contract_version \"$FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION\", the round's " +
+    "pre-fix checkpoint sha, and exactly one entry per carried finding: the finding's severity, label, " +
+    "and sanitized text, an explicit outcome (addressed, or no_edit_required with no_edit_reason), " +
+    "symbol-granularity closing constructs (Type or Type.member, optional file basename — never a bare " +
+    "path), and a bounded one-line repair intent. A legitimately unedited finding still needs its " +
+    "no_edit_required entry; omission is rejected.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW to
     "Review the implemented changes at the encoded review scope against the acceptance criteria " +
     "and report defects with concrete file references. Emit produced_outputs.findings with every " +

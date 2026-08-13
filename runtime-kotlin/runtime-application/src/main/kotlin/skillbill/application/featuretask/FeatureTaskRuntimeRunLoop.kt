@@ -36,6 +36,7 @@ import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseBriefingFramingError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
+import skillbill.error.InvalidFeatureTaskRuntimeRepairReceiptError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
@@ -107,7 +108,9 @@ import skillbill.workflow.taskruntime.model.advanceBlockingFindingIdentities
 import skillbill.workflow.taskruntime.model.canonicalAuditIdentifier
 import skillbill.workflow.taskruntime.model.detectAuditRepairNonProgress
 import skillbill.workflow.taskruntime.model.detectReviewRemediationNonProgress
+import skillbill.workflow.taskruntime.model.featureTaskRuntimeRemediationRoundNumber
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
+import skillbill.workflow.taskruntime.model.upsertRepairReceipt
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 
@@ -1121,6 +1124,60 @@ internal class FeatureTaskRuntimeRunLoop(
         }
       },
       onFailure = { error -> blockRemediationBaseSha(precedingPhaseId, error.message.orEmpty()) },
+    )
+  }
+
+  /**
+   * Parse, anchor, and cover the implement_fix repair receipt after schema validation and before
+   * the phase record is persisted. A missing key is a no-op so a schema-skipping test stand-in
+   * cannot be stranded; production completed output cannot omit it. Standalone runs (no review
+   * state) validate the receipt and skip persistence, matching [recordRemediationBaseSha].
+   */
+  private fun settleImplementFixRepairReceipt(
+    run: PhaseRun,
+    outputMap: Map<String, Any?>,
+  ): Pair<String, String>? {
+    if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX) return null
+    if (outputMap["status"] != STATUS_COMPLETED) return null
+    val produced = JsonSupport.anyToStringAnyMap(outputMap["produced_outputs"]).orEmpty()
+    val receipt = try {
+      featureTaskRuntimeParseRepairReceiptOrNull(produced) ?: return null
+    } catch (error: InvalidFeatureTaskRuntimeRepairReceiptError) {
+      return "repair-receipt" to error.payloadFreeReason
+    }
+    val reviewState = goalReviewStateOrNull() ?: return null
+    val baseSha = reviewState.remediationBaseSha
+      ?: return "repair-receipt" to
+        "pre_fix_checkpoint_sha must match the durable remediation base recorded at this round's pre-fix checkpoint."
+    featureTaskRuntimeRepairReceiptAnchorRejection(receipt, baseSha)?.let { return "repair-receipt" to it }
+    val carried = reviewState.passResults.lastOrNull()?.findings.orEmpty()
+    featureTaskRuntimeRepairReceiptCoverageRejection(receipt, carried)?.let { return "repair-receipt" to it }
+    return null
+  }
+
+  private fun persistImplementFixRepairReceipt(run: PhaseRun, outputMap: Map<String, Any?>): String? {
+    if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX) return null
+    if (outputMap["status"] != STATUS_COMPLETED) return null
+    if (!isGoalContinuationRun(request)) return null
+    if (goalReviewStateOrNull() == null) return null
+    val produced = JsonSupport.anyToStringAnyMap(outputMap["produced_outputs"]).orEmpty()
+    val parsed = try {
+      featureTaskRuntimeParseRepairReceiptOrNull(produced) ?: return null
+    } catch (error: InvalidFeatureTaskRuntimeRepairReceiptError) {
+      return error.payloadFreeReason
+    }
+    val reviewState = goalReviewStateOrNull() ?: return null
+    val roundNumber = featureTaskRuntimeRemediationRoundNumber(reviewState.completedPassCount)
+    val receipt = parsed.copy(roundNumber = roundNumber)
+    return runCatching {
+      goalContinuationRecorder.updateReviewState(request.workflowId, request.dbPathOverride) { state ->
+        state.upsertRepairReceipt(receipt)
+      }
+    }.fold(
+      onSuccess = { recorded ->
+        if (recorded != null) null else "the review state could not be updated with the repair receipt."
+      },
+      onFailure = { _ -> "the review state could not be updated with the repair receipt." },
     )
   }
 
@@ -3478,6 +3535,7 @@ internal class FeatureTaskRuntimeRunLoop(
     rejectedOutput: Map<String, Any?>,
   ): String? = when (rule) {
     "mutating-reconciliation" -> detail.takeUnless { it.isBlank() }
+    "repair-receipt" -> detail.takeUnless { it.isBlank() }
     "producer-projection",
     "consumer-projection",
     "output-verification",
@@ -3898,6 +3956,19 @@ internal class FeatureTaskRuntimeRunLoop(
         continuationReason = reason,
         fileManifest = fileManifest,
         normalizedOutput = attested,
+      )
+    }
+    settleImplementFixRepairReceipt(run, outputMap)?.let { (rule, reason) -> return reject(rule, reason) }
+    persistImplementFixRepairReceipt(run, outputMap)?.let { persistFailure ->
+      return AttemptResult.settled(
+        blockAndPersistInPhase(
+          run,
+          iteration,
+          persistFailure,
+          observability,
+          failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+          fileManifest = fileManifest,
+        ),
       )
     }
     recorder.retainProducerOutput(

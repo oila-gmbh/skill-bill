@@ -81,17 +81,12 @@ fun detectReviewRemediationNonProgress(
   )
 }
 
-private val reviewFindingIdentityWhitespace = Regex("\\s+")
-
 /** Stable cross-pass identity for one advance-blocking compact finding. */
 fun advanceBlockingFindingIdentity(finding: GoalSubtaskReviewCompactFinding): String {
   require(finding.blocksAdvance) {
     "advanceBlockingFindingIdentity requires a Blocker or Major finding, was '${finding.severity}'."
   }
-  return listOf(finding.severity, finding.label, finding.text)
-    .joinToString("|") { part ->
-      part.trim().lowercase().replace(reviewFindingIdentityWhitespace, " ")
-    }
+  return compactReviewFindingIdentity(finding)
 }
 
 fun advanceBlockingFindingIdentities(

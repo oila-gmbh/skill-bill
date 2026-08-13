@@ -410,4 +410,73 @@ class GoalSubtaskReviewStateTest {
     assertEquals(encoded.keys, roundTripped.keys)
     assertEquals(encoded, roundTripped)
   }
+
+  @Test
+  fun `a review state carrying receipts round-trips and a record without the key still decodes`() {
+    val receipt = FeatureTaskRuntimeRepairReceipt(
+      roundNumber = 1,
+      preFixCheckpointSha = "e".repeat(40),
+      entries = listOf(
+        FeatureTaskRuntimeRepairReceiptEntry(
+          severity = "blocker",
+          label = "Repository",
+          text = "Unsafe mutation",
+          outcome = FeatureTaskRuntimeRepairOutcome.ADDRESSED,
+          constructs = listOf(FeatureTaskRuntimeRepairConstruct(symbol = "Repository.commit")),
+          intent = "close the mutation at Repository.commit",
+        ),
+      ),
+    )
+    val withReceipts = GoalSubtaskReviewState.initial(
+      reviewBaseSha = "e".repeat(40),
+      baselineUntrackedPaths = emptyList(),
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
+    ).upsertRepairReceipt(receipt)
+    val encoded = withReceipts.toArtifactMap()
+    assertEquals(encoded, GoalSubtaskReviewState.fromArtifactMap(encoded).toArtifactMap())
+
+    val withoutKey = encoded.toMutableMap().apply { remove("repair_receipts") }
+    val decoded = GoalSubtaskReviewState.fromArtifactMap(withoutKey)
+    assertEquals(emptyList(), decoded.repairReceipts)
+  }
+
+  @Test
+  fun `upserting a receipt for a round already present replaces that round and leaves list length unchanged`() {
+    val first = FeatureTaskRuntimeRepairReceipt(
+      roundNumber = 1,
+      preFixCheckpointSha = "e".repeat(40),
+      entries = listOf(
+        FeatureTaskRuntimeRepairReceiptEntry(
+          severity = "blocker",
+          label = "Repository",
+          text = "Unsafe mutation",
+          outcome = FeatureTaskRuntimeRepairOutcome.NO_EDIT_REQUIRED,
+          constructs = emptyList(),
+          intent = "already closed on the tree",
+          noEditReason = "construct already matched the finding",
+        ),
+      ),
+    )
+    val replacement = first.copy(
+      entries = listOf(
+        FeatureTaskRuntimeRepairReceiptEntry(
+          severity = "blocker",
+          label = "Repository",
+          text = "Unsafe mutation",
+          outcome = FeatureTaskRuntimeRepairOutcome.ADDRESSED,
+          constructs = listOf(FeatureTaskRuntimeRepairConstruct(symbol = "Repository.commit")),
+          intent = "close the mutation at Repository.commit",
+        ),
+      ),
+    )
+    val initial = GoalSubtaskReviewState.initial(
+      reviewBaseSha = "e".repeat(40),
+      baselineUntrackedPaths = emptyList(),
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
+    )
+    val once = initial.upsertRepairReceipt(first)
+    val twice = once.upsertRepairReceipt(replacement)
+    assertEquals(1, twice.repairReceipts.size)
+    assertEquals(FeatureTaskRuntimeRepairOutcome.ADDRESSED, twice.repairReceipts.single().entries.single().outcome)
+  }
 }
