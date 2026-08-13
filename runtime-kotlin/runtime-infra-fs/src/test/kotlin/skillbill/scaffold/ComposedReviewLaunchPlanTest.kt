@@ -1,11 +1,18 @@
 package skillbill.scaffold
 
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
+import skillbill.nativeagent.composition.composeNativeAgentSource
+import skillbill.nativeagent.discovery.discoverNativeAgentSourceEntries
 import skillbill.review.context.model.ReviewPacketConsumerContract
 import skillbill.review.plan.ReviewLaunchPlanPolicy
 import skillbill.scaffold.platformpack.loadPlatformPack
 import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS
+import skillbill.testing.HARBOR_ADDON_SLUG
+import skillbill.testing.HARBOR_ARCHITECTURE_WORKER
+import skillbill.testing.HARBOR_ENTRYPOINT_MARKER
+import skillbill.testing.HARBOR_PACK_SLUG
 import skillbill.testing.repoRootFromTest
+import skillbill.testing.seedHarborAddonPack
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -42,6 +49,27 @@ class ComposedReviewLaunchPlanTest {
       plan.lanes.associate { it.area to it.skillName },
     )
     assertTrue(plan.lanes.none { it.skillName.startsWith("bill-kmp-") || it.packSlug == "kmp" })
+  }
+
+  @Test
+  fun `reported add-on slugs match the content present in the rendered worker`() {
+    val pack = seedHarborAddonPack()
+    val manifest = loadPlatformPack(pack.packRoot)
+    val plan = ReviewLaunchPlanPolicy.flatten(HARBOR_PACK_SLUG, listOf(manifest), setOf("architecture"))
+    val reported = plan.lanes.single { lane -> lane.skillName == HARBOR_ARCHITECTURE_WORKER }.addOns.toSet()
+    val source = discoverNativeAgentSourceEntries(
+      pack.repoRoot.resolve("platform-packs"),
+      null,
+      listOf(HARBOR_PACK_SLUG),
+    ).single { entry -> entry.name == HARBOR_ARCHITECTURE_WORKER }
+    val body = composeNativeAgentSource(pack.repoRoot, source).body
+    val headings = Regex("""### Add-On: ([^ (\n]+)""").findAll(body).map { match -> match.groupValues[1] }.toSet()
+    assertEquals(setOf(HARBOR_ADDON_SLUG), reported)
+    assertEquals(reported, headings)
+    reported.forEach { slug ->
+      assertTrue("### Add-On: $slug" in body)
+    }
+    assertTrue(HARBOR_ENTRYPOINT_MARKER in body)
   }
 
   @Test

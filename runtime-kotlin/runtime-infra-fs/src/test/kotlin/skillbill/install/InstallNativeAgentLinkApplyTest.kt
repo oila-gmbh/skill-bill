@@ -22,6 +22,10 @@ import skillbill.model.EnvironmentContext
 import skillbill.nativeagent.rendering.NativeAgentOperations
 import skillbill.nativeagent.rendering.NativeAgentProvider
 import skillbill.ports.review.model.ReviewNativeAgentPreflightRequest
+import skillbill.testing.HARBOR_ARCHITECTURE_WORKER
+import skillbill.testing.HARBOR_ENTRYPOINT_MARKER
+import skillbill.testing.HARBOR_PACK_SLUG
+import skillbill.testing.seedHarborAddonPack
 import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
@@ -639,6 +643,35 @@ class InstallNativeAgentLinkApplyTest : InstallApplyTestSupport() {
     val entries = NativeAgentLinkInventory.read(fixture.home, listOf(cacheRoot), fixture.repoRoot)
     assertEquals(setOf("codex", "cursor"), entries.map { it.provider }.toSet())
     assertTrue(entries.all { it.contentDigest != "0".repeat(64) && Files.isReadable(it.cacheTargetPath) })
+  }
+
+  @Test
+  fun `apply composes declared add-on content into every provider cache artifact`() {
+    val fixture = setupApplyFixture()
+    seedHarborAddonPack(fixture.repoRoot)
+    Files.createDirectories(fixture.home.resolve(".claude"))
+    Files.createDirectories(fixture.home.resolve(".codex"))
+    Files.createDirectories(fixture.home.resolve(".junie"))
+    Files.createDirectories(fixture.home.resolve(".cursor"))
+    val result = InstallOperations.applyInstall(
+      InstallOperations.planInstall(
+        fixture.request(
+          selectedPlatforms = setOf(HARBOR_PACK_SLUG),
+          agents = allInstallAgents,
+        ),
+      ),
+    )
+    assertEquals(InstallApplyStatus.SUCCESS, result.status, "apply failures: ${result.failures}")
+    val cacheRoot = currentNativeAgentApplyCacheRoot(
+      fixture.home,
+      fixture.repoRoot.resolve("platform-packs"),
+      fixture.repoRoot.resolve("skills"),
+    )
+    NativeAgentProvider.entries.forEach { provider ->
+      val artifact = provider.cacheArtifactPath(cacheRoot, HARBOR_ARCHITECTURE_WORKER)
+      assertTrue(Files.isRegularFile(artifact), "${provider.directoryName} missing $HARBOR_ARCHITECTURE_WORKER")
+      assertContains(Files.readString(artifact), HARBOR_ENTRYPOINT_MARKER)
+    }
   }
 
   @Test
