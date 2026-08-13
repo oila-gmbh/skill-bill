@@ -32,6 +32,7 @@ internal fun composeGovernedAgentBody(
   val session = SidecarInliningSession(root, target)
   addonTargets.forEach { addon -> session.claim(addon.path) }
   val rewrittenBody = session.rewrite(body, target.contentPath)
+  claimExcludedAddonPointerTargets(root, target, session)
   val addonBlocks = addonTargets.map { addon ->
     addon to session.rewrite(readAddonFile(root, addon), addon.path)
   }
@@ -104,6 +105,30 @@ internal fun enforceComposedAgentBudget(
         "over the $maxBytes byte review context launch budget",
     )
   }
+}
+
+private fun claimExcludedAddonPointerTargets(
+  root: Path,
+  target: NativeAgentCompositionTarget,
+  session: SidecarInliningSession,
+) {
+  if (target.source != NativeAgentCompositionTargetSource.PlatformManifest) {
+    return
+  }
+  val pack = target.manifest ?: return
+  val contentPath = target.contentPath.toAbsolutePath().normalize()
+  val packRoot = platformPackRoot(root, contentPath) ?: return
+  val skillRelativeDir = skillRelativeDir(packRoot, contentPath)
+  val addonPointerNames = pack.addonUsage
+    .flatMap { usage ->
+      usage.addons.flatMap { addon -> listOf(addon.entrypoint) + addon.companionPointers }
+    }
+    .toSet()
+  pack.pointers
+    .filter { pointer -> pointer.skillRelativeDir == skillRelativeDir && pointer.name in addonPointerNames }
+    .forEach { pointer ->
+      session.claim(root.resolve(pointer.target).toAbsolutePath().normalize())
+    }
 }
 
 private fun resolveDeclaredAddonTargets(

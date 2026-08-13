@@ -1,5 +1,15 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
+## [2026-08-14] SKILL-188 subtask 1 — compose addon_usage into rendered native agents
+Areas: runtime-kotlin/runtime-infra-fs/nativeagent/{composition,rendering}, runtime-kotlin/runtime-contracts/error, orchestration/contracts, platform-packs/ios
+- Native-agent rendering now composes add-on `entrypoint` and `companion_pointers` from pack `addon_usage` for the skill-relative directory being rendered. A markdown link in the owning `content.md` is neither required nor the trigger.
+- Every target resolves through that directory's `pointers` table; missing, unreadable, or undeclared targets fail with `MissingContentFileError` naming slug, slot, and absolute path. Over-budget output fails with `ComposedNativeAgentBudgetExceededError` and never truncates.
+- Pattern: `SidecarInliningSession` claims add-on paths before link rewrite so a file that is both a declared add-on and a link-inlined sidecar appears once, independent of resolution order. reusable
+- Stable order is baseline/area body, then add-ons in declared `addon_usage` order (`entrypoint` before companions). Render-evaluable activation is written as a Declared-scope stanza; inherently diff-time conditions still compose and defer to runtime activation.
+- Limitation: this seam covers the existing governed-content render path only; per-harness coverage and launch-plan slug reconciliation are subtask 2. Pack slugs stay out of shell/runtime code. No pack `content.md` was edited to activate an add-on.
+Feature flag: N/A
+Acceptance criteria: 12/12 implemented
+
 ## [2026-08-11] Cursor capability projection and spawn-note ordering (review repairs)
 Areas: runtime-kotlin/runtime-infra-fs/nativeagent/{composition,rendering}, runtime-kotlin/runtime-infra-fs/scaffold/rendering, runtime-kotlin/runtime-infra-fs tests
 - A declared read-only toolset now reaches Cursor as `readonly: true`. Cursor has no `tools` key, so rendering name+description only had silently left every review worker on the host default of every tool the parent can reach — write and recursive-delegation capability the read-only review contract forbids. `declaresReadOnlyToolset` is the projection rule; a toolset holding `Edit`/`Write`/`NotebookEdit`/`Agent` earns no `readonly` claim. reusable: a provider whose capability vocabulary is narrower than the source needs an explicit projection, never a dropped field.
