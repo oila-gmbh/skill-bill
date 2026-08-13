@@ -87,6 +87,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProducerIteration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionFailureClassification
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairBatch
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
@@ -1133,32 +1134,17 @@ internal class FeatureTaskRuntimeRunLoop(
    * cannot be stranded; production completed output cannot omit it. Standalone runs (no review
    * state) validate the receipt and skip persistence, matching [recordRemediationBaseSha].
    */
-  private fun settleImplementFixRepairReceipt(
-    run: PhaseRun,
-    outputMap: Map<String, Any?>,
-  ): Pair<String, String>? {
-    if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX) return null
-    if (outputMap["status"] != STATUS_COMPLETED) return null
-    val produced = JsonSupport.anyToStringAnyMap(outputMap["produced_outputs"]).orEmpty()
-    val receipt = try {
-      featureTaskRuntimeParseRepairReceiptOrNull(produced) ?: return null
-    } catch (error: InvalidFeatureTaskRuntimeRepairReceiptError) {
-      return "repair-receipt" to error.payloadFreeReason
+  private fun settleImplementFixRepairReceipt(run: PhaseRun, outputMap: Map<String, Any?>): Pair<String, String>? {
+    val produced = completedImplementFixProducedOutputs(run, outputMap) ?: return null
+    return when (val parsed = featureTaskRuntimeParseRepairReceipt(produced)) {
+      FeatureTaskRuntimeRepairReceiptMissing -> null
+      is FeatureTaskRuntimeRepairReceiptRejected -> "repair-receipt" to parsed.payloadFreeReason
+      is FeatureTaskRuntimeRepairReceiptValid -> goalReviewStateOrNull()?.let { reviewState ->
+        featureTaskRuntimeRepairReceiptSettleRejection(parsed.receipt, reviewState)?.let { reason ->
+          "repair-receipt" to reason
+        }
+      }
     }
-    val reviewState = goalReviewStateOrNull() ?: return null
-    val baseSha = reviewState.remediationBaseSha
-      ?: return "repair-receipt" to
-        "pre_fix_checkpoint_sha must match the durable remediation base recorded at this round's pre-fix checkpoint."
-    featureTaskRuntimeRepairReceiptAnchorRejection(receipt, baseSha)?.let { return "repair-receipt" to it }
-    val carried = reviewState.passResults.lastOrNull()?.findings.orEmpty()
-    featureTaskRuntimeRepairReceiptCoverageRejection(receipt, carried)?.let { return "repair-receipt" to it }
-    val roundNumber = try {
-      featureTaskRuntimeRemediationRoundNumber(reviewState.completedPassCount)
-    } catch (error: InvalidFeatureTaskRuntimeRepairReceiptError) {
-      return "repair-receipt" to error.payloadFreeReason
-    }
-    featureTaskRuntimeRepairReceiptRoundRejection(receipt, roundNumber)?.let { return "repair-receipt" to it }
-    return null
   }
 
   /**
@@ -1167,17 +1153,28 @@ internal class FeatureTaskRuntimeRunLoop(
    * Standalone runs skip persistence, matching [recordRemediationBaseSha].
    */
   private fun persistImplementFixRepairReceipt(run: PhaseRun, outputMap: Map<String, Any?>): String? {
-    if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX) return null
-    if (outputMap["status"] != STATUS_COMPLETED) return null
+    val produced = completedImplementFixProducedOutputs(run, outputMap) ?: return null
     if (!isGoalContinuationRun(request)) return null
-    if (goalReviewStateOrNull() == null) return null
-    val produced = JsonSupport.anyToStringAnyMap(outputMap["produced_outputs"]).orEmpty()
-    val parsed = try {
-      featureTaskRuntimeParseRepairReceiptOrNull(produced) ?: return null
-    } catch (error: InvalidFeatureTaskRuntimeRepairReceiptError) {
-      return error.payloadFreeReason
-    }
     val reviewState = goalReviewStateOrNull() ?: return null
+    return when (val parsed = featureTaskRuntimeParseRepairReceipt(produced)) {
+      FeatureTaskRuntimeRepairReceiptMissing -> null
+      is FeatureTaskRuntimeRepairReceiptRejected -> parsed.payloadFreeReason
+      is FeatureTaskRuntimeRepairReceiptValid -> persistImplementFixRepairReceipt(parsed.receipt, reviewState)
+    }
+  }
+
+  private fun completedImplementFixProducedOutputs(run: PhaseRun, outputMap: Map<String, Any?>): Map<String, Any?>? =
+    outputMap
+      .takeIf {
+        run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX &&
+          it["status"] == STATUS_COMPLETED
+      }
+      ?.let { JsonSupport.anyToStringAnyMap(it["produced_outputs"]).orEmpty() }
+
+  private fun persistImplementFixRepairReceipt(
+    parsed: FeatureTaskRuntimeRepairReceipt,
+    reviewState: GoalSubtaskReviewState,
+  ): String? {
     return runCatching {
       val roundNumber = featureTaskRuntimeRemediationRoundNumber(reviewState.completedPassCount)
       val lastPassFindings = reviewState.passResults.lastOrNull()?.findings.orEmpty()
@@ -1193,6 +1190,55 @@ internal class FeatureTaskRuntimeRunLoop(
         (error as? InvalidFeatureTaskRuntimeRepairReceiptError)?.payloadFreeReason
           ?: "the review state could not be updated with the repair receipt."
       },
+    )
+  }
+
+  private fun settleAndPersistImplementFixRepairReceipt(
+    run: PhaseRun,
+    outputMap: Map<String, Any?>,
+    reject: (String, String) -> AttemptResult,
+    iteration: Int,
+    observability: FeatureTaskRuntimeRunObservability,
+    fileManifest: FeatureTaskRuntimePhaseFileManifest,
+  ): AttemptResult? {
+    settleImplementFixRepairReceipt(run, outputMap)?.let { (rule, reason) -> return reject(rule, reason) }
+    val persistFailure = persistImplementFixRepairReceipt(run, outputMap) ?: return null
+    return AttemptResult.settled(
+      blockAndPersistInPhase(
+        run,
+        iteration,
+        persistFailure,
+        observability,
+        failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+        fileManifest = fileManifest,
+      ),
+    )
+  }
+
+  private fun settleCompletedImplementationOutput(
+    run: PhaseRun,
+    outputMap: Map<String, Any?>,
+    normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
+    reject: (String, String) -> AttemptResult,
+    iteration: Int,
+    observability: FeatureTaskRuntimeRunObservability,
+    fileManifest: FeatureTaskRuntimePhaseFileManifest,
+  ): AttemptResult? {
+    incompleteImplementationReason(run, outputMap)?.let { reason ->
+      return AttemptResult.incompleteWork(
+        operatorReason = reason,
+        continuationReason = reason,
+        fileManifest = fileManifest,
+        normalizedOutput = normalizedOutput,
+      )
+    }
+    return settleAndPersistImplementFixRepairReceipt(
+      run,
+      outputMap,
+      reject,
+      iteration,
+      observability,
+      fileManifest,
     )
   }
 
@@ -3965,27 +4011,15 @@ internal class FeatureTaskRuntimeRunLoop(
     // Returned directly rather than through reject(): semantic incompleteness is not a rejected
     // output and must never be recorded or budgeted as one. Blocked/failed envelopes and
     // decomposition packages still bypass it, via the terminal path and the producer gate above.
-    incompleteImplementationReason(run, outputMap)?.let { reason ->
-      return AttemptResult.incompleteWork(
-        operatorReason = reason,
-        continuationReason = reason,
-        fileManifest = fileManifest,
-        normalizedOutput = attested,
-      )
-    }
-    settleImplementFixRepairReceipt(run, outputMap)?.let { (rule, reason) -> return reject(rule, reason) }
-    persistImplementFixRepairReceipt(run, outputMap)?.let { persistFailure ->
-      return AttemptResult.settled(
-        blockAndPersistInPhase(
-          run,
-          iteration,
-          persistFailure,
-          observability,
-          failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
-          fileManifest = fileManifest,
-        ),
-      )
-    }
+    settleCompletedImplementationOutput(
+      run,
+      outputMap,
+      attested,
+      ::reject,
+      iteration,
+      observability,
+      fileManifest,
+    )?.let { return it }
     recorder.retainProducerOutput(
       ProducerOutputEvidence(
         workflowId = request.workflowId,

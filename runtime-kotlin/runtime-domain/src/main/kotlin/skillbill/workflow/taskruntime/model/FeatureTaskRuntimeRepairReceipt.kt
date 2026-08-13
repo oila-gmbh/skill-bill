@@ -2,8 +2,6 @@ package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION
-import skillbill.error.InvalidFeatureTaskRuntimeRepairReceiptError
-import java.nio.charset.StandardCharsets
 
 const val REPAIR_RECEIPT_MAX_ENTRIES: Int = 50
 const val REPAIR_RECEIPT_MAX_CONSTRUCTS_PER_ENTRY: Int = 16
@@ -15,25 +13,6 @@ const val REPAIR_RECEIPT_MAX_LABEL_UTF8_BYTES: Int = 256
 const val REPAIR_RECEIPT_MAX_TEXT_UTF8_BYTES: Int = 256
 
 private val GIT_COMMIT_SHA = Regex("^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
-private val COMPACT_SYMBOL = Regex("^[A-Za-z_][A-Za-z0-9_$-]*(?:\\.[A-Za-z_][A-Za-z0-9_$-]*)?$")
-private val FILE_BASENAME = Regex("^[A-Za-z0-9_.-]+$")
-private val IDENTITY_WHITESPACE = Regex("\\s+")
-private val LINE_NUMBER = Regex(
-  "(?:\\b(?:lines?|ln)\\s*:?\\s*\\d+(?:\\s*[-–]\\s*\\d+)?)|" +
-    "(?:(?:\\bL|#)\\s*\\d+(?:\\s*[-–]\\s*(?:L|#)?\\s*\\d+)?)|" +
-    "(?:\\b(?:columns?|cols?)\\s*:?\\s*\\d+(?:\\s*[-–]\\s*\\d+)?)|" +
-    "(?::\\s*\\d+(?::\\s*\\d+)?(?:\\s*[-–]\\s*\\d+)?)|" +
-    "(?:[\\(\\[\\{]\\s*\\d+(?:\\s*,\\s*\\d+)?\\s*[\\)\\]\\}])",
-  RegexOption.IGNORE_CASE,
-)
-private val SOURCE_BODY = Regex(
-  "(?:^|[.]\\s+)(?:val|var)\\s+[A-Za-z_][A-Za-z0-9_$]*\\s*=|" +
-    "(?:^|[.]\\s+)return\\s+[A-Za-z_][A-Za-z0-9_$]*(?:\\s*[(\\[{;]|$)|" +
-    "[{}]|->",
-)
-private val DIFF_HUNK = Regex("@@[^@]*@@|^(?:diff --git|\\+\\+\\+ |--- )")
-private val SERIALIZED_PAYLOAD = Regex("\\{\\s*\"|\"\\s*:\\s*[\\[{\"]")
-private const val CODE_FENCE: String = "```"
 
 enum class FeatureTaskRuntimeRepairOutcome(val wireValue: String) {
   ADDRESSED("addressed"),
@@ -41,12 +20,11 @@ enum class FeatureTaskRuntimeRepairOutcome(val wireValue: String) {
   ;
 
   companion object {
-    fun fromWire(value: String): FeatureTaskRuntimeRepairOutcome =
-      entries.firstOrNull { it.wireValue == value }
-        ?: receiptError(
-          "outcome",
-          "must be one of ${entries.joinToString { it.wireValue }}.",
-        )
+    fun fromWire(value: String): FeatureTaskRuntimeRepairOutcome = entries.firstOrNull { it.wireValue == value }
+      ?: receiptError(
+        "outcome",
+        "must be one of ${entries.joinToString { it.wireValue }}.",
+      )
   }
 }
 
@@ -252,9 +230,7 @@ fun featureTaskRuntimeRemediationRoundNumber(completedPassCountAtImplementFixEnt
   return completedPassCountAtImplementFixEntry
 }
 
-fun GoalSubtaskReviewState.upsertRepairReceipt(
-  receipt: FeatureTaskRuntimeRepairReceipt,
-): GoalSubtaskReviewState {
+fun GoalSubtaskReviewState.upsertRepairReceipt(receipt: FeatureTaskRuntimeRepairReceipt): GoalSubtaskReviewState {
   val existing = repairReceipts.indexOfFirst { it.roundNumber == receipt.roundNumber }
   val updated = if (existing < 0) {
     (repairReceipts + receipt).sortedBy(FeatureTaskRuntimeRepairReceipt::roundNumber)
@@ -315,63 +291,3 @@ fun FeatureTaskRuntimeRepairReceipt.stampIdentityFromCompactFindings(
 
 internal fun compactReviewFindingIdentity(finding: GoalSubtaskReviewCompactFinding): String =
   listOf(finding.severity, finding.label, finding.text).joinToString("|", transform = ::normalizeIdentityPart)
-
-private fun normalizeIdentityPart(part: String): String =
-  part.trim().lowercase().replace(IDENTITY_WHITESPACE, " ")
-
-private fun requireReceiptSymbol(value: String, field: String) {
-  requireReceiptSanitizedText(value, field, REPAIR_RECEIPT_MAX_CONSTRUCT_SYMBOL_UTF8_BYTES)
-  if (value.contains('/') || value.contains('\\')) {
-    receiptError(field, "must be a compact symbol (Type or Type.member), never a repository path.")
-  }
-  if (!COMPACT_SYMBOL.matches(value)) {
-    receiptError(field, "must be a compact symbol (Type or Type.member), never a repository path.")
-  }
-}
-
-private fun requireReceiptFileBasename(value: String, field: String) {
-  requireUtf8Budget(value, field, REPAIR_RECEIPT_MAX_CONSTRUCT_FILE_UTF8_BYTES)
-  if (value.contains('/') || value.contains('\\') || !FILE_BASENAME.matches(value)) {
-    receiptError(field, "must be a file basename, never a repository path.")
-  }
-}
-
-private fun requireReceiptIdentityText(value: String, field: String, maxUtf8Bytes: Int) {
-  if (value.isBlank()) receiptError(field, "must be a non-blank string.")
-  requireUtf8Budget(value, field, maxUtf8Bytes)
-}
-
-private fun requireReceiptSanitizedText(value: String, field: String, maxUtf8Bytes: Int) {
-  if (value.isBlank()) receiptError(field, "must be a non-blank string.")
-  requireUtf8Budget(value, field, maxUtf8Bytes)
-  if (value.any(Char::isISOControl) || value.contains('\n') || value.contains('\r')) {
-    receiptError(field, "must be a single line with no line break or control character.")
-  }
-  if (value.contains(CODE_FENCE)) {
-    receiptError(field, "must not contain a code fence.")
-  }
-  if (LINE_NUMBER.containsMatchIn(value)) {
-    receiptError(field, "must not contain a line number.")
-  }
-  if (
-    DIFF_HUNK.containsMatchIn(value) ||
-    SERIALIZED_PAYLOAD.containsMatchIn(value) ||
-    SOURCE_BODY.containsMatchIn(value)
-  ) {
-    receiptError(field, "must not contain a diff hunk, serialized payload, or source body.")
-  }
-}
-
-private fun requireUtf8Budget(value: String, field: String, maxUtf8Bytes: Int) {
-  val bytes = value.toByteArray(StandardCharsets.UTF_8).size
-  if (bytes > maxUtf8Bytes) {
-    receiptError(field, "allows at most $maxUtf8Bytes UTF-8 bytes.")
-  }
-}
-
-private fun receiptError(fieldPath: String, payloadFreeReason: String): Nothing =
-  throw InvalidFeatureTaskRuntimeRepairReceiptError(
-    fieldPath = fieldPath,
-    reason = payloadFreeReason,
-    payloadFreeReason = payloadFreeReason,
-  )

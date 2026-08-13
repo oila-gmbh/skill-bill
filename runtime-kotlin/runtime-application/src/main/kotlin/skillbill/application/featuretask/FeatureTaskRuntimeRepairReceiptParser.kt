@@ -5,8 +5,13 @@ import skillbill.error.InvalidFeatureTaskRuntimeRepairReceiptError
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.coversCarriedFindings
+import skillbill.workflow.taskruntime.model.featureTaskRuntimeRemediationRoundNumber
 import skillbill.workflow.taskruntime.model.stampIdentityFromCompactFindings
+
+private const val MISSING_REMEDIATION_BASE_REASON =
+  "pre_fix_checkpoint_sha must match the durable remediation base recorded at this round's pre-fix checkpoint."
 
 /**
  * Untrusted-input seam for `produced_outputs.repair_receipt`. Schema validation has already
@@ -21,12 +26,7 @@ internal fun featureTaskRuntimeParseRepairReceiptOrNull(
   producedOutputs: Map<String, Any?>,
 ): FeatureTaskRuntimeRepairReceipt? {
   val raw = producedOutputs["repair_receipt"] ?: return null
-  val map = JsonSupport.anyToStringAnyMap(raw)
-    ?: throw InvalidFeatureTaskRuntimeRepairReceiptError(
-      fieldPath = "repair_receipt",
-      reason = "must be an object.",
-      payloadFreeReason = "repair_receipt must be an object.",
-    )
+  val map = requireRepairReceiptMap(raw)
   return try {
     FeatureTaskRuntimeRepairReceipt.fromArtifactMap(map, "repair_receipt")
   } catch (error: InvalidFeatureTaskRuntimeRepairReceiptError) {
@@ -39,6 +39,53 @@ internal fun featureTaskRuntimeParseRepairReceiptOrNull(
       cause = error,
     )
   }
+}
+
+private fun requireRepairReceiptMap(raw: Any): Map<String, Any?> = JsonSupport.anyToStringAnyMap(raw)
+  ?: throw InvalidFeatureTaskRuntimeRepairReceiptError(
+    fieldPath = "repair_receipt",
+    reason = "must be an object.",
+    payloadFreeReason = "repair_receipt must be an object.",
+  )
+
+internal sealed interface FeatureTaskRuntimeRepairReceiptParse
+
+internal data object FeatureTaskRuntimeRepairReceiptMissing : FeatureTaskRuntimeRepairReceiptParse
+
+internal data class FeatureTaskRuntimeRepairReceiptValid(
+  val receipt: FeatureTaskRuntimeRepairReceipt,
+) : FeatureTaskRuntimeRepairReceiptParse
+
+internal data class FeatureTaskRuntimeRepairReceiptRejected(
+  val payloadFreeReason: String,
+) : FeatureTaskRuntimeRepairReceiptParse
+
+internal fun featureTaskRuntimeParseRepairReceipt(
+  producedOutputs: Map<String, Any?>,
+): FeatureTaskRuntimeRepairReceiptParse = try {
+  featureTaskRuntimeParseRepairReceiptOrNull(producedOutputs)
+    ?.let(::FeatureTaskRuntimeRepairReceiptValid)
+    ?: FeatureTaskRuntimeRepairReceiptMissing
+} catch (error: InvalidFeatureTaskRuntimeRepairReceiptError) {
+  FeatureTaskRuntimeRepairReceiptRejected(error.payloadFreeReason)
+}
+
+internal fun featureTaskRuntimeRepairReceiptSettleRejection(
+  receipt: FeatureTaskRuntimeRepairReceipt,
+  reviewState: GoalSubtaskReviewState,
+): String? {
+  val baseSha = reviewState.remediationBaseSha ?: return MISSING_REMEDIATION_BASE_REASON
+  val roundNumber = try {
+    featureTaskRuntimeRemediationRoundNumber(reviewState.completedPassCount)
+  } catch (error: InvalidFeatureTaskRuntimeRepairReceiptError) {
+    return error.payloadFreeReason
+  }
+  return featureTaskRuntimeRepairReceiptAnchorRejection(receipt, baseSha)
+    ?: featureTaskRuntimeRepairReceiptCoverageRejection(
+      receipt,
+      reviewState.passResults.lastOrNull()?.findings.orEmpty(),
+    )
+    ?: featureTaskRuntimeRepairReceiptRoundRejection(receipt, roundNumber)
 }
 
 internal fun featureTaskRuntimeRepairReceiptAnchorRejection(
@@ -83,4 +130,3 @@ internal fun featureTaskRuntimePreparedRepairReceipt(
   }
   return parsed.stampIdentityFromCompactFindings(lastPassFindings)
 }
-

@@ -63,58 +63,27 @@ class FeatureTaskRuntimeRepairReceiptTest {
 
   @Test
   fun `intent label or text carrying a line number, source body, or diff hunk marker is rejected`() {
-    assertFailsWith<InvalidFeatureTaskRuntimeRepairReceiptError> {
-      addressedEntry(intent = "fixed Type.kt:12")
-    }.also { error ->
-      assertTrue(error.payloadFreeReason.contains("line number"))
-      assertTrue(!error.payloadFreeReason.contains("Type.kt:12"))
+    listOf("fixed Type.kt:12", "fixed at line: 12", "fixed at #12").forEach { value ->
+      assertSanitizedTextRejected(value, "line number") { addressedEntry(intent = it) }
     }
-    assertFailsWith<InvalidFeatureTaskRuntimeRepairReceiptError> {
-      addressedEntry(label = "Type.kt:12")
-    }.also { error ->
-      assertTrue(error.payloadFreeReason.contains("line number"))
-      assertTrue(!error.payloadFreeReason.contains("Type.kt:12"))
+    assertSanitizedTextRejected("Type.kt:12", "line number") { addressedEntry(label = it) }
+    val diffHunk = "@@ -1,4 +1,6 @@ fun leaked()"
+    assertSanitizedTextRejected(diffHunk, "diff hunk") { addressedEntry(text = it) }
+    assertSanitizedTextRejected(diffHunk, "diff hunk") { addressedEntry(intent = it) }
+    listOf(
+      "return foo()",
+      "return value",
+      "return value + 1",
+      "return this.value",
+      " return value",
+      "return 42",
+      "return (value)",
+      "return@scope value",
+      "val result = value",
+    ).forEach { value ->
+      assertSanitizedTextRejected(value, "source body") { addressedEntry(intent = it) }
     }
-    assertFailsWith<InvalidFeatureTaskRuntimeRepairReceiptError> {
-      addressedEntry(text = "@@ -1,4 +1,6 @@ fun leaked()")
-    }.also { error ->
-      assertTrue(error.payloadFreeReason.contains("diff hunk"))
-    }
-    assertFailsWith<InvalidFeatureTaskRuntimeRepairReceiptError> {
-      addressedEntry(intent = "@@ -1,4 +1,6 @@ fun leaked()")
-    }.also { error ->
-      assertTrue(error.payloadFreeReason.contains("diff hunk"))
-    }
-    assertFailsWith<InvalidFeatureTaskRuntimeRepairReceiptError> {
-      addressedEntry(intent = "fixed at line: 12")
-    }.also { error ->
-      assertTrue(error.payloadFreeReason.contains("line number"))
-      assertTrue(!error.payloadFreeReason.contains("12"))
-    }
-    assertFailsWith<InvalidFeatureTaskRuntimeRepairReceiptError> {
-      addressedEntry(text = "return foo()")
-    }.also { error ->
-      assertTrue(error.payloadFreeReason.contains("source body"))
-      assertTrue(!error.payloadFreeReason.contains("foo()"))
-    }
-    assertFailsWith<InvalidFeatureTaskRuntimeRepairReceiptError> {
-      addressedEntry(intent = "return value")
-    }.also { error ->
-      assertTrue(error.payloadFreeReason.contains("source body"))
-      assertTrue(!error.payloadFreeReason.contains("return value"))
-    }
-    assertFailsWith<InvalidFeatureTaskRuntimeRepairReceiptError> {
-      addressedEntry(intent = "val result = value")
-    }.also { error ->
-      assertTrue(error.payloadFreeReason.contains("source body"))
-      assertTrue(!error.payloadFreeReason.contains("val result"))
-    }
-    assertFailsWith<InvalidFeatureTaskRuntimeRepairReceiptError> {
-      addressedEntry(intent = "fixed at #12")
-    }.also { error ->
-      assertTrue(error.payloadFreeReason.contains("line number"))
-      assertTrue(!error.payloadFreeReason.contains("#12"))
-    }
+    assertSanitizedTextRejected("return foo()", "source body") { addressedEntry(text = it) }
     addressedEntry(intent = "close Type.member() at the sanitizer")
     addressedEntry(intent = "already present; no tree change required")
     addressedEntry(text = "SOURCE_BODY misses statements such as return value and val result = value")
@@ -184,6 +153,16 @@ class FeatureTaskRuntimeRepairReceiptTest {
     preFixCheckpointSha = sha,
     entries = listOf(addressedEntry()),
   )
+
+  private fun assertSanitizedTextRejected(
+    value: String,
+    expectedReason: String,
+    buildEntry: (String) -> FeatureTaskRuntimeRepairReceiptEntry,
+  ) {
+    val error = assertFailsWith<InvalidFeatureTaskRuntimeRepairReceiptError> { buildEntry(value) }
+    assertTrue(error.payloadFreeReason.contains(expectedReason))
+    assertTrue(!error.payloadFreeReason.contains(value))
+  }
 
   private fun addressedEntry(
     label: String = "Type",
