@@ -165,6 +165,7 @@ data class FeatureTaskRuntimeTransitionDeclaration(
   val backwardEdges: List<FeatureTaskRuntimeBackwardEdge> = emptyList(),
   val loopOnlyPhaseIds: Set<String> = emptySet(),
   val entryGates: List<FeatureTaskRuntimePhaseEntryGate> = emptyList(),
+  val loopOnlySuccessors: Map<String, String> = emptyMap(),
 ) {
   /**
    * The gate blocking entry into [phaseId] given the settled verdict per completed phase, or `null`
@@ -208,6 +209,19 @@ data class FeatureTaskRuntimeTransitionDeclaration(
     }
     require(loopOnlyPhaseIds.all { it in forwardPhaseIds }) {
       "FeatureTaskRuntimeTransitionDeclaration.loopOnlyPhaseIds must be a subset of forwardPhaseIds."
+    }
+    loopOnlySuccessors.forEach { (source, successor) ->
+      require(source in loopOnlyPhaseIds) {
+        "FeatureTaskRuntimeTransitionDeclaration.loopOnlySuccessors source '$source' must be loop-only."
+      }
+      require(successor in loopOnlyPhaseIds) {
+        "FeatureTaskRuntimeTransitionDeclaration.loopOnlySuccessors successor '$successor' must be loop-only; " +
+          "a successor the forward edge already reaches needs no declaration."
+      }
+      require(forwardPhaseIds.indexOf(source) < forwardPhaseIds.indexOf(successor)) {
+        "FeatureTaskRuntimeTransitionDeclaration.loopOnlySuccessors must run forward: '$source' precedes " +
+          "'$successor' in the pipeline."
+      }
     }
     backwardEdges.forEach { edge ->
       require(edge.fromPhaseId in forwardPhaseIds) {

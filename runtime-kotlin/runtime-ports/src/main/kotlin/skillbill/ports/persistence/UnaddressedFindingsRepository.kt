@@ -24,6 +24,8 @@ interface UnaddressedFindingsRepository {
 
   fun fetchWorkflowLedger(workflowId: String): List<UnaddressedFinding>
 
+  fun workflowIdsForIssue(issueKey: String): List<String>
+
   fun issueExists(issueKey: String): Boolean
 }
 
@@ -47,6 +49,9 @@ object UnavailableUnaddressedFindingsRepository : UnaddressedFindingsRepository 
     error("Unaddressed-findings persistence is unavailable.")
 
   override fun fetchWorkflowLedger(workflowId: String): List<UnaddressedFinding> =
+    error("Unaddressed-findings persistence is unavailable.")
+
+  override fun workflowIdsForIssue(issueKey: String): List<String> =
     error("Unaddressed-findings persistence is unavailable.")
 
   override fun issueExists(issueKey: String): Boolean = false

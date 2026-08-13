@@ -2,10 +2,14 @@ package skillbill.application.featuretask
 
 import skillbill.application.model.FeatureTaskRuntimeImplementationContinuation
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_REPAIR_PLAN_CONTRACT_VERSION
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorReviewContext
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
 
 // Phase-scoped prompt directives and the per-phase task directive table, split out of
 // FeatureTaskRuntimePhasePromptComposer so the composer object stays within its size budget.
@@ -227,6 +231,8 @@ internal data class ReviewExecutionDirectiveInputs(
   val resolvedReviewTier: CodeReviewExecutionMode?,
   val reviewDecidingRule: String?,
   val baselineUntrackedPaths: List<String> = emptyList(),
+  val repairLedger: FeatureTaskRuntimeRepairLedger? = null,
+  val priorReviewContext: FeatureTaskRuntimePriorReviewContext? = null,
 )
 
 // Emits for every commit phase: the runtime and agent never stage feature specs. A human operator
@@ -306,12 +312,39 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "superseded_repair_items with its governing decision, authority_ref, and rationale. Reporting fewer " +
     "items than you were carried is a resumable partial repair, not a completion. Repair evidence is " +
     "read-only repository facts: do not run builds or tests here.",
+  FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN_FIX to
+    "Decide the root cause of each carried review finding before any edit is made. Do not modify " +
+    "repository files during this phase; the following implement_fix phase applies your plan. Read the " +
+    "carried findings, the repair_ledger of what earlier rounds of this same remediation already fixed, " +
+    "and the immutable initial preplan and plan outputs as read-only context — you never regenerate, " +
+    "mutate, or overwrite them. Emit produced_outputs.repair_plan with contract_version " +
+    "\"$FEATURE_TASK_RUNTIME_REPAIR_PLAN_CONTRACT_VERSION\", the round number, and exactly one entry per " +
+    "carried finding: finding_ref, the root_cause, the minimal_change that addresses it, and a " +
+    "classification of local_patch_site or design_symptom. Classify design_symptom when the finding is a " +
+    "consequence of an earlier round's remedy rather than a local defect, and name that earlier finding " +
+    "in prior_round_remedy_ref. A design_symptom classification escalates the round for an operator " +
+    "decision instead of advancing to implement_fix, so use it when another local patch would be the " +
+    "wrong repair — not merely when the fix is awkward.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX to
     "Address the carried findings from the preceding review pass on the CURRENT working tree as " +
     "incremental reconciliation. Every finding in the briefing — Blocker, Major, Minor, and Nit — is in " +
-    "scope; specialist narratives, raw review output, and prior repair history are not. Do not re-apply " +
+    "scope; specialist narratives and raw review output are not. Do not re-apply " +
     "the plan from scratch or expand scope beyond the carried findings. Treat any fix already present " +
-    "as a no-op. See the mutating-phase idempotency contract below.",
+    "as a no-op. See the mutating-phase idempotency contract below. From round two onward the briefing " +
+    "also carries repair_ledger: what earlier rounds of this same remediation already fixed and which " +
+    "named constructs hold each finding closed. Those entries are settled load-bearing work, not open " +
+    "findings awaiting action — do not re-address a resolved entry and do not treat it as scope. If " +
+    "closing a carried finding requires you to remove or materially rewrite a construct a resolved " +
+    "entry names, say so: list that entry's finding_ref in produced_outputs.repair_receipt." +
+    "disturbed_remedies with a one-line reason. Silent removal is rejected, because the finding that " +
+    "construct closed can otherwise be reintroduced without anyone seeing it. Emit " +
+    "produced_outputs.repair_receipt " +
+    "with contract_version \"$FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION\", the round's " +
+    "pre-fix checkpoint sha, and exactly one entry per carried finding: the finding's severity, label, " +
+    "and sanitized text, an explicit outcome (addressed, or no_edit_required with no_edit_reason), " +
+    "symbol-granularity closing constructs (Type or Type.member, optional file basename — never a bare " +
+    "path), and a bounded one-line repair intent. A legitimately unedited finding still needs its " +
+    "no_edit_required entry; omission is rejected.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW to
     "Review the implemented changes at the encoded review scope against the acceptance criteria " +
     "and report defects with concrete file references. Emit produced_outputs.findings with every " +

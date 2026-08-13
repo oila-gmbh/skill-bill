@@ -53,7 +53,7 @@ class ReviewFixCapReconciliationTest {
         transition,
         "Iteration ${consumed + 1} must re-enter the fix loop, not settle.",
       )
-      assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX, next.phaseId)
+      assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN_FIX, next.phaseId)
       assertEquals(consumed + 1, next.edgeIteration)
       assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID, next.loopId)
     }

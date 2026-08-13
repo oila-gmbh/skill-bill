@@ -58,6 +58,12 @@ data class FeatureTaskRuntimeVerdict(
      */
     val RECORD_REJECTED: FeatureTaskRuntimeVerdict = FeatureTaskRuntimeVerdict("record_rejected")
 
+    val REPAIR_PLANNED: FeatureTaskRuntimeVerdict = FeatureTaskRuntimeVerdict("repair_planned")
+
+    val ESCALATED: FeatureTaskRuntimeVerdict = FeatureTaskRuntimeVerdict("escalated")
+
+    val PLAN_FIX_VERDICTS: Set<FeatureTaskRuntimeVerdict> = setOf(REPAIR_PLANNED, ESCALATED)
+
     /**
      * The closed audit vocabulary. [fromWire] deliberately accepts any non-blank value so durable
      * records round-trip, so a consumer that acts on an audit verdict — the `review` entry gate —

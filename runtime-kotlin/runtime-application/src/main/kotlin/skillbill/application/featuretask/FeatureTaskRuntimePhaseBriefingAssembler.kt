@@ -125,6 +125,7 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
         expectedCheckpoint = handoff.expectedRepositoryCheckpoint,
         auditRepairPlan = handoff.auditRepairPlan,
         auditRepairState = handoff.auditRepairState,
+        repairLedger = handoff.repairLedger,
         branchIdentity = handoff.branchIdentity,
         baseBranch = handoff.baseBranch,
         workflowId = workflowId,

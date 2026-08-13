@@ -3807,6 +3807,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
     // Review is reachable only behind a satisfied audit, so a durable record that already consumed a
     // review_fix iteration necessarily carries one.
     harness.seedPhase("audit", "completed", 1, INVOKED_AGENT, auditSatisfiedOutput())
+    harness.seedReentryPhase("plan_fix", "completed", 1, INVOKED_AGENT, validJsonOutput("plan_fix"), "review_fix", 1)
     harness.seedReentryPhase("implement_fix", "completed", 1, INVOKED_AGENT, IMPLEMENT_OUTPUT, "review_fix", 1)
 
     val report = harness.runner.run(harness.request())
@@ -3831,7 +3832,7 @@ class FeatureTaskRuntimeReviewFixLoopTest {
   }
 
   @Test
-  fun `ledger-only review fix resumes at implement fix without consuming the edge`() {
+  fun `ledger-only review fix resumes at plan fix without consuming the edge`() {
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
@@ -3845,13 +3846,13 @@ class FeatureTaskRuntimeReviewFixLoopTest {
     // review necessarily carries one.
     harness.seedPhase("audit", "completed", 1, INVOKED_AGENT, auditSatisfiedOutput())
     harness.seedReviewPhase("completed", 1, reviewFindingsOutput(changesRequested = true), 1)
-    harness.seedLoopEdge("implement_fix", "review_fix", 1)
+    harness.seedLoopEdge("plan_fix", "review_fix", 1)
 
     val report = harness.runner.run(harness.request())
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     val launched = harness.launchedPromptPhaseOrder()
-    assertEquals("implement_fix", launched.first())
+    assertEquals("plan_fix", launched.first())
     assertTrue(launched.none { it == "preplan" || it == "plan" })
     assertEquals(
       listOf(1),
@@ -6829,6 +6830,9 @@ internal class RuntimeFakeDatabaseSessionFactory(
 
       override fun fetchWorkflowLedger(workflowId: String): List<skillbill.goalrunner.model.UnaddressedFinding> =
         ledgerRows.filter { it.workflowId == workflowId }
+
+      override fun workflowIdsForIssue(issueKey: String): List<String> =
+        ledgerRows.filter { it.issueKey == issueKey }.map { it.workflowId }.distinct().sorted()
 
       override fun recordOutcomes(outcomes: List<skillbill.goalrunner.model.ReviewFindingOutcomeRecord>) {
         outcomeRows.removeAll { existing ->

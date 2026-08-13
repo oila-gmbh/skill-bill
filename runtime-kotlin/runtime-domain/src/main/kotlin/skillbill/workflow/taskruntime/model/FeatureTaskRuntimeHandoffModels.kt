@@ -191,6 +191,7 @@ data class FeatureTaskRuntimePhaseHandoff(
    * other phase receives an empty list and its briefing is unchanged.
    */
   val durablyClosedCriterionRefs: List<String> = emptyList(),
+  val repairLedger: FeatureTaskRuntimeRepairLedger? = null,
 )
 
 /**

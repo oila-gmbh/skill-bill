@@ -39,16 +39,24 @@ durable plan.
    invariant that subtask planning outputs are immutable within a subtask is
    preserved and asserted.
 6. `implement_fix` consumes the repair plan as a named upstream projection and
-   implements it. Its required upstream artifact set is widened accordingly,
-   and its existing prohibitions on plan re-application and scope expansion
-   remain in force.
+   implements it. `plan_fix` joins its required upstream artifact set, and its
+   existing prohibitions on plan re-application and scope expansion remain in
+   force. The projection itself is declared optional: a `plan_fix` that fails
+   to produce a usable plan records a degradation and `implement_fix` proceeds
+   from the carried findings alone. Best-effort throughout — a missing repair
+   plan must never stop the round.
 7. `plan_fix` emits an escalation verdict when the carried findings are
    classified as design symptoms. The escalation verdict does not advance to
    `implement_fix` and does not route back to `plan`.
-8. An escalation verdict routes to the existing resumable operator pause,
-   carrying the ledger and root-cause analysis as durable evidence, and is
-   released through the existing `retry_fix` / `accept_and_advance` /
-   `abandon_subtask` decisions.
+8. An escalation verdict pauses only on evidence of non-progress: the pause
+   fires when the repair ledger already records a reopened entry for an
+   escalated finding, meaning an earlier round attempted that finding and it
+   came back. A first-time `design_symptom` classification does not pause; the
+   round proceeds. When it does fire, the pause is the existing resumable
+   operator pause, carrying the ledger and root-cause analysis as durable
+   evidence, released through the existing `retry_fix` / `accept_and_advance` /
+   `abandon_subtask` decisions. A classification alone must never stop a run
+   that is still making progress.
 9. `review_fix` iteration accounting counts remediation rounds, not phase
    launches. Adding `plan_fix` leaves the durable per-edge counter, the
    advisory warning threshold, and finished telemetry semantically unchanged.

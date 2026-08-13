@@ -707,4 +707,55 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
     )
     assertFalse(payloadFree.contains(file.take(32)), "payload-free reason must omit the oversized ref body")
   }
+
+  @Test
+  fun `completed implement_fix with a valid repair receipt validates`() {
+    FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(
+      implementFixEnvelope(validRepairReceiptJson()),
+      "implement_fix",
+    )
+  }
+
+  @Test
+  fun `completed implement_fix with a path-only construct is rejected`() {
+    val pathOnly = validRepairReceiptJson().replace(
+      """"symbol":"Type.member","file":"Type.kt"""",
+      """"symbol":"runtime-kotlin/src/Type.kt"""",
+    )
+    assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
+      FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(
+        implementFixEnvelope(pathOnly),
+        "implement_fix",
+      )
+    }
+  }
+
+  @Test
+  fun `completed implement_fix omitting the repair receipt is rejected`() {
+    val envelope =
+      """{"contract_version":"0.3","phase_id":"implement_fix","status":"completed","summary":"fix",""" +
+        """"produced_outputs":{"reconciled_state":{"reconciled":true,"evidence":"tree at target"}}}"""
+    assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
+      FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(envelope, "implement_fix")
+    }
+  }
+
+  @Test
+  fun `blocked implement_fix without a repair receipt still validates`() {
+    val envelope =
+      """{"contract_version":"0.3","phase_id":"implement_fix","status":"blocked","summary":"blocked",""" +
+        """"failure_disposition":"needs_user_action","produced_outputs":{"reason":"operator pause"}}"""
+    FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(envelope, "implement_fix")
+  }
+
+  private fun implementFixEnvelope(receiptJson: String): String =
+    """{"contract_version":"0.3","phase_id":"implement_fix","status":"completed","summary":"fix",""" +
+      """"produced_outputs":{"reconciled_state":{"reconciled":true,"evidence":"tree at target"},""" +
+      """"repair_receipt":$receiptJson}}"""
+
+  private fun validRepairReceiptJson(): String =
+    """{"contract_version":"0.1","round_number":1,"pre_fix_checkpoint_sha":"${"a".repeat(40)}",""" +
+      """"entries":[{"severity":"blocker","label":"Type","text":"unsafe mutation at the seam",""" +
+      """"outcome":"addressed","constructs":[{"symbol":"Type.member","file":"Type.kt"}],""" +
+      """"intent":"close the finding at Type.member"}]}"""
 }

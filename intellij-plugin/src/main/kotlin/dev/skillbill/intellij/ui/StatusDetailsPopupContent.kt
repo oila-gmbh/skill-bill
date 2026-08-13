@@ -52,6 +52,8 @@ object StatusDetailsPopupContent {
             add("Goal ${details.elapsedNoun}" to details.goalElapsedText)
             add("Subtask ${details.elapsedNoun}" to details.subtaskElapsedText)
             details.lastUpdateText?.let { add("Last update" to it) }
+            details.pauseReasonText?.let { add("Pause reason" to it) }
+            details.pauseActionText?.let { add("" to it) }
             details.problemSummary?.let { add("" to it) }
             details.staleNote?.let { add("" to it) }
         }

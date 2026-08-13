@@ -1,5 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
+private const val CHURN_REASON_MAX_NAMED_CONSTRUCTS: Int = 8
+
 data class FeatureTaskRuntimeAuditRepairProgressDecision(
   val blocked: Boolean,
   val reason: String?,
@@ -81,17 +83,95 @@ fun detectReviewRemediationNonProgress(
   )
 }
 
-private val reviewFindingIdentityWhitespace = Regex("\\s+")
+data class FeatureTaskRuntimeReviewRemediationChurnEvidence(
+  val roundCount: Int,
+  val blockerCount: Int,
+  val majorCount: Int,
+  val constructSymbols: List<String>,
+) {
+  init {
+    require(roundCount >= 1) {
+      "FeatureTaskRuntimeReviewRemediationChurnEvidence.roundCount must be a positive integer."
+    }
+    require(constructSymbols.isNotEmpty()) {
+      "Churn evidence must name the recurring constructs it was detected against."
+    }
+  }
+
+  fun pauseReasonClause(): String =
+    "Remediation is churning rather than converging: across $roundCount consecutive round(s) the " +
+      "advance-blocking findings ($blockerCount Blocker, $majorCount Major) recur against construct(s) " +
+      "an earlier round already recorded as repaired (${constructSymbols.joinToString(", ")}), and the " +
+      "advance-blocking finding set is not shrinking."
+}
+
+private data class ReviewRemediationChurnRound(
+  val blockingFindings: List<GoalSubtaskReviewCompactFinding>,
+  val recurringEntries: List<FeatureTaskRuntimeRepairLedgerEntry>,
+)
+
+fun featureTaskRuntimeReviewRemediationChurn(
+  ledger: FeatureTaskRuntimeRepairLedger,
+  passResults: List<GoalSubtaskReviewPassResult>,
+  minimumConsecutiveRounds: Int,
+): FeatureTaskRuntimeReviewRemediationChurnEvidence? {
+  require(minimumConsecutiveRounds >= 1) {
+    "featureTaskRuntimeReviewRemediationChurn requires a positive round threshold, was $minimumConsecutiveRounds."
+  }
+  if (ledger.isEmpty) return null
+  val window = trailingChurnWindow(ledger, passResults.sortedBy(GoalSubtaskReviewPassResult::passNumber))
+  if (window.size < minimumConsecutiveRounds || advanceBlockingCountFell(window)) return null
+  val latest = window.last().blockingFindings
+  return FeatureTaskRuntimeReviewRemediationChurnEvidence(
+    roundCount = window.size,
+    blockerCount = latest.count { it.severity == GOAL_SUBTASK_REVIEW_BLOCKER_SEVERITY },
+    majorCount = latest.count { it.severity == "major" },
+    constructSymbols = window
+      .flatMap(ReviewRemediationChurnRound::recurringEntries)
+      .flatMap { entry -> entry.constructs.map(FeatureTaskRuntimeRepairConstruct::symbol) }
+      .distinct()
+      .sorted()
+      .take(CHURN_REASON_MAX_NAMED_CONSTRUCTS),
+  )
+}
+
+private fun trailingChurnWindow(
+  ledger: FeatureTaskRuntimeRepairLedger,
+  ordered: List<GoalSubtaskReviewPassResult>,
+): List<ReviewRemediationChurnRound> = ordered.asReversed()
+  .asSequence()
+  .map { pass -> churnRoundOrNull(ledger, pass) }
+  .takeWhile { round -> round != null }
+  .filterNotNull()
+  .toList()
+  .asReversed()
+
+private fun churnRoundOrNull(
+  ledger: FeatureTaskRuntimeRepairLedger,
+  pass: GoalSubtaskReviewPassResult,
+): ReviewRemediationChurnRound? {
+  val blocking = pass.findings.filter(GoalSubtaskReviewCompactFinding::blocksAdvance)
+  if (blocking.isEmpty()) return null
+  val recurring = ledger.entries.filter { entry ->
+    entry.constructs.isNotEmpty() &&
+      entry.originRound < pass.passNumber &&
+      blocking.any(entry::disturbedBy)
+  }
+  return recurring.takeIf(List<FeatureTaskRuntimeRepairLedgerEntry>::isNotEmpty)
+    ?.let { entries -> ReviewRemediationChurnRound(blocking, entries) }
+}
+
+private fun advanceBlockingCountFell(window: List<ReviewRemediationChurnRound>): Boolean = window
+  .map { round -> round.blockingFindings.size }
+  .zipWithNext()
+  .any { (earlier, later) -> later < earlier }
 
 /** Stable cross-pass identity for one advance-blocking compact finding. */
 fun advanceBlockingFindingIdentity(finding: GoalSubtaskReviewCompactFinding): String {
   require(finding.blocksAdvance) {
     "advanceBlockingFindingIdentity requires a Blocker or Major finding, was '${finding.severity}'."
   }
-  return listOf(finding.severity, finding.label, finding.text)
-    .joinToString("|") { part ->
-      part.trim().lowercase().replace(reviewFindingIdentityWhitespace, " ")
-    }
+  return compactReviewFindingIdentity(finding)
 }
 
 fun advanceBlockingFindingIdentities(

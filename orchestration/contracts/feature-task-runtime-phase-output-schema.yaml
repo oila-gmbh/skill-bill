@@ -95,6 +95,175 @@ $defs:
         minLength: 1
         maxLength: 1024
         pattern: ".*\\S.*"
+  repairConstruct:
+    type: object
+    additionalProperties: false
+    required: [symbol]
+    properties:
+      symbol:
+        description: >-
+          Compact symbol reference: Type or Type.member. Never a repository path.
+        type: string
+        minLength: 1
+        maxLength: 256
+        pattern: "^[A-Za-z_][A-Za-z0-9_$-]*(?:\\.[A-Za-z_][A-Za-z0-9_$-]*)?$"
+      file:
+        description: "Optional file basename used only when the compact symbol is ambiguous."
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: "^[A-Za-z0-9_.-]+$"
+  repairReceiptEntry:
+    type: object
+    additionalProperties: false
+    required: [severity, label, text, outcome, constructs, intent]
+    properties:
+      severity:
+        type: string
+        enum: [blocker, major, minor, nit]
+      label:
+        type: string
+        minLength: 1
+        maxLength: 256
+      text:
+        type: string
+        minLength: 1
+        maxLength: 256
+      finding_id:
+        type: string
+        minLength: 1
+        maxLength: 256
+      outcome:
+        type: string
+        enum: [addressed, no_edit_required]
+      constructs:
+        type: array
+        maxItems: 16
+        items: { $ref: "#/$defs/repairConstruct" }
+      intent:
+        type: string
+        minLength: 1
+        maxLength: 256
+        pattern: "^[^\\n\\r`]*\\S[^\\n\\r`]*$"
+      no_edit_reason:
+        type: string
+        minLength: 1
+        maxLength: 256
+        pattern: "^[^\\n\\r`]*\\S[^\\n\\r`]*$"
+    allOf:
+      - if:
+          properties:
+            outcome: { const: addressed }
+          required: [outcome]
+        then:
+          properties:
+            constructs: { minItems: 1 }
+          not: { required: [no_edit_reason] }
+      - if:
+          properties:
+            outcome: { const: no_edit_required }
+          required: [outcome]
+        then:
+          required: [no_edit_reason]
+  repairDisturbedRemedy:
+    type: object
+    additionalProperties: false
+    description: >-
+      Declares that this round rewrote a construct the repair ledger records as another finding's
+      live remedy. finding_ref names that finding as the carried ledger states it. Silent removal
+      is a contract violation the runtime rejects, so the declaration is not optional for a round
+      that did disturb settled work.
+    required: [finding_ref, reason]
+    properties:
+      finding_ref:
+        type: string
+        minLength: 1
+        maxLength: 256
+      reason:
+        description: "One line on why the settled construct had to change. Never a diff hunk or source body."
+        type: string
+        minLength: 1
+        maxLength: 256
+        pattern: "^[^\\n\\r`]*\\S[^\\n\\r`]*$"
+  repairReceipt:
+    type: object
+    additionalProperties: false
+    required: [contract_version, round_number, pre_fix_checkpoint_sha, entries]
+    properties:
+      contract_version:
+        type: string
+        const: "0.1"
+      round_number:
+        type: integer
+        minimum: 1
+      pre_fix_checkpoint_sha:
+        type: string
+        pattern: "^[0-9a-f]{40}([0-9a-f]{24})?$"
+      entries:
+        type: array
+        maxItems: 50
+        items: { $ref: "#/$defs/repairReceiptEntry" }
+      disturbed_remedies:
+        description: >-
+          Optional and additive: omitted by a round that disturbed nothing settled. Adding it does
+          not bump contract_version, so a producer written before it existed still validates.
+        type: array
+        maxItems: 50
+        items: { $ref: "#/$defs/repairDisturbedRemedy" }
+  repairPlanEntry:
+    type: object
+    additionalProperties: false
+    description: >-
+      One carried finding's root cause, the minimal change that addresses it, and whether the
+      finding is a local patch site or a symptom of a design defect an earlier remediation round
+      introduced. prior_round_remedy_ref names that earlier finding and is admissible only on a
+      design_symptom entry.
+    required: [finding_ref, root_cause, minimal_change, classification]
+    properties:
+      finding_ref:
+        type: string
+        minLength: 1
+        maxLength: 256
+      root_cause:
+        type: string
+        minLength: 1
+        maxLength: 512
+        pattern: "^[^\\n\\r`]*\\S[^\\n\\r`]*$"
+      minimal_change:
+        type: string
+        minLength: 1
+        maxLength: 512
+        pattern: "^[^\\n\\r`]*\\S[^\\n\\r`]*$"
+      classification:
+        type: string
+        enum: [local_patch_site, design_symptom]
+      prior_round_remedy_ref:
+        type: string
+        minLength: 1
+        maxLength: 256
+    allOf:
+      - if:
+          properties:
+            classification: { const: local_patch_site }
+          required: [classification]
+        then:
+          not: { required: [prior_round_remedy_ref] }
+  repairPlan:
+    type: object
+    additionalProperties: false
+    required: [contract_version, round_number, entries]
+    properties:
+      contract_version:
+        type: string
+        const: "0.1"
+      round_number:
+        type: integer
+        minimum: 1
+      entries:
+        type: array
+        minItems: 1
+        maxItems: 50
+        items: { $ref: "#/$defs/repairPlanEntry" }
   suppressionJustification:
     type: object
     additionalProperties: false
@@ -177,8 +346,9 @@ properties:
       Optional structured verdict emitted by a verifying phase (e.g. `review`)
       that the runtime reads to decide whether to advance or take a remediation
       backward edge. For `review` the values are `approved` (no unresolved
-      Blocker findings) or `changes_requested` (unresolved Blocker findings
-      present); Major, Minor, and Nit findings never block advancing. The
+      advance-blocking findings) or `changes_requested` (one or more unresolved
+      Blocker or Major findings present); Blocker and Major both block advancing
+      and both reopen the remediation span, while Minor and Nit stay advisory. The
       runtime classifies the verdict from the carried review
       findings, which travel inside `produced_outputs` (e.g. a `findings` array
       of severity/message entries) and are forwarded into the `implement_fix`
@@ -285,3 +455,27 @@ allOf:
             gaps:
               type: array
               minItems: 1
+  - if:
+      properties:
+        phase_id: { const: implement_fix }
+        status: { const: completed }
+      required: [phase_id, status]
+    then:
+      properties:
+        produced_outputs:
+          type: object
+          required: [repair_receipt]
+          properties:
+            repair_receipt: { $ref: "#/$defs/repairReceipt" }
+  - if:
+      properties:
+        phase_id: { const: plan_fix }
+        status: { const: completed }
+      required: [phase_id, status]
+    then:
+      properties:
+        produced_outputs:
+          type: object
+          required: [repair_plan]
+          properties:
+            repair_plan: { $ref: "#/$defs/repairPlan" }

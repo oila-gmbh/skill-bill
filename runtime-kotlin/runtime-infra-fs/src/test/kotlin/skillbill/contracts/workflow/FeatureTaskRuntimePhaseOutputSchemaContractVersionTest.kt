@@ -38,6 +38,20 @@ class FeatureTaskRuntimePhaseOutputSchemaContractVersionTest {
     )
   }
 
+  @Test
+  fun `repair receipt nested contract_version const matches FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION`() {
+    val schema = classpathSchema()
+    val receiptVersion = schema.path("\$defs").path("repairReceipt").path("properties")
+      .path("contract_version").path("const")
+    assertTrue(receiptVersion.isTextual, "repairReceipt must pin contract_version const.")
+    assertEquals(FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION, receiptVersion.asText())
+    assertEquals(
+      "0.3",
+      schema.path("properties").path("contract_version").path("const").asText(),
+      "Envelope contract_version must stay 0.3.",
+    )
+  }
+
   private fun classpathSchema(): JsonNode {
     val resourceStream = FeatureTaskRuntimePhaseOutputSchemaValidator::class.java.classLoader
       .getResourceAsStream(FeatureTaskRuntimePhaseOutputSchemaPaths.CLASSPATH_RESOURCE)

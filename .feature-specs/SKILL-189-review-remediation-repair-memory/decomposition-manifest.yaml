@@ -3,13 +3,14 @@ contract_version: "0.5"
 issue_key: "SKILL-189"
 feature_name: "review-remediation-repair-memory"
 parent_spec_path: ".feature-specs/SKILL-189-review-remediation-repair-memory/spec.md"
+status: "pending"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-189-review-remediation-repair-memory"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 0
-  action: "none"
+  subtask_id: 1
+  action: "start"
 subtasks:
 - id: 1
   name: "Durable implement_fix repair receipt at construct granularity"
@@ -21,6 +22,8 @@ subtasks:
   blocked_reason: null
   last_resumable_step: null
   linear_issue_id: null
+  finalizing_agent_id: null
+  participating_agent_ids: []
   dependencies: []
 - id: 2
   name: "Remediation repair ledger and its bounded projection"
@@ -32,6 +35,8 @@ subtasks:
   blocked_reason: null
   last_resumable_step: null
   linear_issue_id: null
+  finalizing_agent_id: null
+  participating_agent_ids: []
   dependencies:
   - subtask_id: 1
     optional: false
@@ -46,6 +51,8 @@ subtasks:
   blocked_reason: null
   last_resumable_step: null
   linear_issue_id: null
+  finalizing_agent_id: null
+  participating_agent_ids: []
   dependencies:
   - subtask_id: 2
     optional: false
@@ -60,6 +67,8 @@ subtasks:
   blocked_reason: null
   last_resumable_step: null
   linear_issue_id: null
+  finalizing_agent_id: null
+  participating_agent_ids: []
   dependencies:
   - subtask_id: 2
     optional: false
@@ -77,6 +86,8 @@ subtasks:
   blocked_reason: null
   last_resumable_step: null
   linear_issue_id: null
+  finalizing_agent_id: null
+  participating_agent_ids: []
   dependencies:
   - subtask_id: 1
     optional: false
@@ -100,6 +111,8 @@ subtasks:
   blocked_reason: null
   last_resumable_step: null
   linear_issue_id: null
+  finalizing_agent_id: null
+  participating_agent_ids: []
   dependencies:
   - subtask_id: 3
     optional: false

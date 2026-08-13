@@ -56,6 +56,9 @@ internal fun transitionsFor(request: FeatureTaskRuntimeRunRequest): FeatureTaskR
       // the runner's failure handling, so a truncation point turns into a crash rather than a gate.
       entryGates = FeatureTaskRuntimePhaseWorkflowDefinition.transitions.entryGates
         .filter { it.phaseId in phases && it.requiredPhaseId in phases },
+      loopOnlySuccessors = FeatureTaskRuntimePhaseWorkflowDefinition.transitions.loopOnlySuccessors
+        .filterKeys { it in phases }
+        .filterValues { it in phases },
     )
   }
 

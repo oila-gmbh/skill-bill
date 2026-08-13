@@ -480,6 +480,7 @@ internal val FEATURE_TASK_RUNTIME_CLOSED_PROJECTION_OBJECT_KEYS: Map<String, Set
     "repair_item_results",
     "deferred_repair_item_ids",
     "unresolvable_repair",
+    "repair_receipt",
   ),
   "reconciliation_evidence" to setOf("reconciled", "evidence"),
   "preplanning_digest.rollout" to setOf("flag_required", "flag_pattern", "notes"),

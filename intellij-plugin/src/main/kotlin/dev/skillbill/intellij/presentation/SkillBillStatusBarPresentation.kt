@@ -2,6 +2,7 @@ package dev.skillbill.intellij.presentation
 
 import dev.skillbill.intellij.domain.CurrentPhaseExecution
 import dev.skillbill.intellij.domain.FEATURE_GOAL_WORKFLOW_FAMILY
+import dev.skillbill.intellij.domain.GOAL_FINDINGS_DISPLAY_COMMAND
 import dev.skillbill.intellij.domain.GoalPlanningInfo
 import dev.skillbill.intellij.domain.MODEL_TEXT_MAX_LENGTH
 import java.time.Duration
@@ -17,6 +18,9 @@ object SkillBillStatusBarPresentation {
     const val BAR_TEXT_MAX_LENGTH: Int = 48
     const val UNAVAILABLE_ELAPSED: String = "—"
     const val STALE_NOTE: String = "(Stale — not live)"
+
+    const val PAUSE_DECISION_ACTION_NOTE: String =
+        "Waiting on your decision — resolve with: $GOAL_FINDINGS_DISPLAY_COMMAND <KEY>"
 
     private val lastUpdateFormatter: DateTimeFormatter =
         DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss'Z'").withZone(ZoneOffset.UTC)
@@ -125,6 +129,8 @@ object SkillBillStatusBarPresentation {
                 lastUpdateText = anchored.lastUpdated?.let { lastUpdateFormatter.format(it) },
                 problemSummary = anchored.problemSummary ?: anchored.detail,
                 staleNote = STALE_NOTE.takeIf { anchored.stale },
+                pauseReasonText = pauseReasonText(anchored),
+                pauseActionText = pauseActionText(anchored),
             ),
             controls = GoalControlsPresentation.controlsFor(anchored),
         )
@@ -238,6 +244,14 @@ object SkillBillStatusBarPresentation {
         }
     }
 
+    private fun pauseReasonText(state: SkillBillStatusUiState): String? = state.pauseReason?.let { reason ->
+        reason.label ?: reason.code.replace('_', ' ')
+    }
+
+    private fun pauseActionText(state: SkillBillStatusUiState): String? = state.pauseReason
+        ?.takeIf { it.awaitsOperatorDecision }
+        ?.let { PAUSE_DECISION_ACTION_NOTE }
+
     private fun buildTooltip(
         state: SkillBillStatusUiState,
         lifecycle: String,
@@ -265,6 +279,8 @@ object SkillBillStatusBarPresentation {
             if (state.stale) {
                 append('\n').append(STALE_NOTE)
             }
+            pauseReasonText(state)?.let { append("\nPause reason: ").append(it) }
+            pauseActionText(state)?.let { append('\n').append(it) }
             if (state is SkillBillStatusUiState.Unavailable) {
                 append("\nReason: ").append(state.reasonCode)
             }
@@ -358,6 +374,8 @@ object SkillBillStatusBarPresentation {
         val problemSummary: String?,
         /** Caveat for surfaces that render these numbers; null when the reading is live. */
         val staleNote: String?,
+        val pauseReasonText: String? = null,
+        val pauseActionText: String? = null,
     )
 
     /**

@@ -100,6 +100,97 @@ properties:
       disposition is authoritative only while this digest still matches the working tree.
     type: string
     pattern: "^[0-9a-f]{64}$"
+  repair_receipts:
+    description: >
+      Ordered implement_fix repair receipts keyed by remediation round number. Additive and
+      omitted when empty so records written before this key still decode. Re-entering the
+      same round replaces that round's entry in place rather than appending.
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required: [contract_version, round_number, pre_fix_checkpoint_sha, entries]
+      properties:
+        contract_version:
+          type: string
+          const: "0.1"
+        round_number:
+          type: integer
+          minimum: 1
+        pre_fix_checkpoint_sha:
+          type: string
+          pattern: "^[0-9a-f]{40}([0-9a-f]{24})?$"
+        entries:
+          type: array
+          maxItems: 50
+          items:
+            type: object
+            additionalProperties: false
+            required: [severity, label, text, outcome, constructs, intent]
+            properties:
+              severity:
+                type: string
+                enum: [blocker, major, minor, nit]
+              label:
+                type: string
+                minLength: 1
+                maxLength: 256
+              text:
+                type: string
+                minLength: 1
+                maxLength: 256
+              finding_id:
+                type: string
+                minLength: 1
+                maxLength: 256
+              outcome:
+                type: string
+                enum: [addressed, no_edit_required]
+              constructs:
+                type: array
+                maxItems: 16
+                items:
+                  type: object
+                  additionalProperties: false
+                  required: [symbol]
+                  properties:
+                    symbol:
+                      type: string
+                      minLength: 1
+                      maxLength: 256
+                      pattern: "^[A-Za-z_][A-Za-z0-9_$-]*(?:\\.[A-Za-z_][A-Za-z0-9_$-]*)?$"
+                    file:
+                      type: string
+                      minLength: 1
+                      maxLength: 128
+                      pattern: "^[A-Za-z0-9_.-]+$"
+              intent:
+                type: string
+                minLength: 1
+                maxLength: 256
+              no_edit_reason:
+                type: string
+                minLength: 1
+                maxLength: 256
+        disturbed_remedies:
+          description: >
+            Settled findings whose closing constructs this round rewrote, each with a reason.
+            Additive and omitted when the round disturbed nothing settled.
+          type: array
+          maxItems: 50
+          items:
+            type: object
+            additionalProperties: false
+            required: [finding_ref, reason]
+            properties:
+              finding_ref:
+                type: string
+                minLength: 1
+                maxLength: 256
+              reason:
+                type: string
+                minLength: 1
+                maxLength: 256
   pass_results:
     type: array
     items:
@@ -241,3 +332,6 @@ x-coherence-checks:
   - focused_commit_count and skipped_commit_count sum to commit_count, and a lane named in incomplete_lanes is non-clean coverage that the integration pass never compensates for.
   - integration_terminal_outcome records the integration pass's own boundary, distinct from every lane disposition, so a resume can tell "lanes done, integration pending" from "everything done".
   - reviewed_delta_digest records what the latest pass judged; a review_cap_reached disposition whose digest no longer matches the current delta is stale and the child reopens a fresh review generation rather than replaying it.
+  - repair_receipts is additive and omitted when empty so records written without the key still decode; upsert is keyed by round_number so a crash-resume cannot append a duplicate.
+  - The remediation repair ledger is not a stored field: it is folded from repair_receipts and pass_results, so it cannot disagree with the receipts it is built from and needs no separate durability guarantee.
+  - disturbed_remedies is additive and omitted when a round disturbed nothing settled; an omitted declaration for a construct the round did rewrite is a validation failure at the implement_fix output seam rather than an absence.

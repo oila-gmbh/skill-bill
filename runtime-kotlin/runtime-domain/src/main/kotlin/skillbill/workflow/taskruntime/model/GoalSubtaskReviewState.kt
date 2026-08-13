@@ -2,6 +2,7 @@ package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.workflow.GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION
+import skillbill.error.InvalidFeatureTaskRuntimeRepairReceiptError
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.model.CodeReviewExecutionMode
@@ -422,6 +423,7 @@ data class GoalSubtaskReviewState(
   val resolvedTier: CodeReviewExecutionMode? = null,
   val decidingRule: String? = null,
   val remediationBaseSha: String? = null,
+  val repairReceipts: List<FeatureTaskRuntimeRepairReceipt> = emptyList(),
   val contractVersion: String = GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION,
 ) {
   init {
@@ -487,7 +489,22 @@ data class GoalSubtaskReviewState(
     require(operatorDecision == null || disposition == GoalSubtaskReviewDisposition.PAUSED) {
       "An operator decision is only recorded against a paused subtask."
     }
+    require(repairReceipts.map(FeatureTaskRuntimeRepairReceipt::roundNumber).distinct().size == repairReceipts.size) {
+      "Each remediation round may carry exactly one repair receipt."
+    }
   }
+
+  val repairLedger: FeatureTaskRuntimeRepairLedger
+    get() = featureTaskRuntimeFoldRepairLedger(repairReceipts, passResults)
+
+  val priorReviewContext: FeatureTaskRuntimePriorReviewContext?
+    get() = passResults.lastOrNull()?.let { previous ->
+      FeatureTaskRuntimePriorReviewContext(
+        passNumber = previous.passNumber,
+        findings = previous.findings,
+        dispositions = blockerDispositions,
+      ).takeUnless(FeatureTaskRuntimePriorReviewContext::isEmpty)
+    }
 
   val reviewCapReached: Boolean get() = disposition == GoalSubtaskReviewDisposition.REVIEW_CAP_REACHED
 
@@ -680,6 +697,9 @@ data class GoalSubtaskReviewState(
     resolvedTier?.let { put("resolved_tier", it.wireValue) }
     decidingRule?.let { put("deciding_rule", it) }
     remediationBaseSha?.let { put("remediation_base_sha", it) }
+    if (repairReceipts.isNotEmpty()) {
+      put("repair_receipts", repairReceipts.map(FeatureTaskRuntimeRepairReceipt::toArtifactMap))
+    }
   }
 
   companion object {
@@ -705,6 +725,7 @@ data class GoalSubtaskReviewState(
           "emitted_pass_count", "blocker_dispositions", "operator_decision", "operator_retry_rounds",
           "resolved_tier", "deciding_rule",
           "remediation_base_sha",
+          "repair_receipts",
         ),
         sourceLabel,
       )
@@ -737,6 +758,7 @@ data class GoalSubtaskReviewState(
             ?.let(CodeReviewExecutionMode::fromWire),
           decidingRule = raw.optionalReviewStateString("deciding_rule", sourceLabel),
           remediationBaseSha = raw.optionalReviewStateString("remediation_base_sha", sourceLabel),
+          repairReceipts = decodeRepairReceipts(raw, sourceLabel),
         )
       } catch (error: InvalidGoalSubtaskReviewStateSchemaError) {
         throw error
@@ -762,6 +784,21 @@ data class GoalSubtaskReviewState(
           value.asReviewStateMap("$sourceLabel.blocker_dispositions[$index]"),
           "$sourceLabel.blocker_dispositions[$index]",
         )
+      }.orEmpty()
+
+    private fun decodeRepairReceipts(
+      raw: Map<String, Any?>,
+      sourceLabel: String,
+    ): List<FeatureTaskRuntimeRepairReceipt> = raw.optionalReviewStateList("repair_receipts", sourceLabel)
+      ?.mapIndexed { index, value ->
+        try {
+          FeatureTaskRuntimeRepairReceipt.fromArtifactMap(
+            value.asReviewStateMap("$sourceLabel.repair_receipts[$index]"),
+            "$sourceLabel.repair_receipts[$index]",
+          )
+        } catch (error: InvalidFeatureTaskRuntimeRepairReceiptError) {
+          reviewStateError("$sourceLabel.repair_receipts[$index]", error.payloadFreeReason, error)
+        }
       }.orEmpty()
   }
 }

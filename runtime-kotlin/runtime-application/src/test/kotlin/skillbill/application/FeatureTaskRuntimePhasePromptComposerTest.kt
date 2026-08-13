@@ -157,6 +157,27 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
+  fun `implement_fix prompt carries the repair receipt shape and the unchanged scope prohibition`() {
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX),
+    )
+
+    assertContains(prompt, "\"repair_receipt\": {")
+    assertContains(prompt, "\"contract_version\": \"0.1\"")
+    assertContains(prompt, "\"pre_fix_checkpoint_sha\"")
+    assertContains(prompt, "\"symbol\": \"Type.member\"")
+    assertContains(prompt, "specialist narratives and raw review output are not")
+    assertContains(prompt, "Do not re-apply the plan from scratch")
+    assertContains(prompt, "settled load-bearing work, not open")
+    assertContains(prompt, "disturbed_remedies")
+    assertFalse(
+      prompt.contains("prior repair history are not"),
+      "Prior repair history is carried now, so the withholding clause must be gone.",
+    )
+  }
+
+  @Test
   fun `validate prompt shows repository checkpoint as a fingerprint object`() {
     val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,

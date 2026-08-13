@@ -5,6 +5,7 @@ import skillbill.application.RuntimeFakeDatabaseSessionFactory
 import skillbill.application.testWorkflowSnapshotValidator
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.toRecord
+import skillbill.error.InvalidFeatureTaskRuntimeRepairReceiptError
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.model.CodeReviewExecutionMode
@@ -13,6 +14,10 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_IDEN
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairConstruct
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairOutcome
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceiptEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
@@ -24,12 +29,15 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskPauseRelease
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewDisposition
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
+import skillbill.workflow.taskruntime.model.REPAIR_RECEIPT_MAX_INTENT_UTF8_BYTES
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesToArtifact
+import skillbill.workflow.taskruntime.model.upsertRepairReceipt
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -570,6 +578,77 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
       repository.taskRuntimeArtifacts(workflowId)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY],
       "coherent Skip-recorded descendant must not emit recovery evidence",
     )
+  }
+
+  @Test
+  fun `upserting a repair receipt for the same round replaces in place across a reload`() {
+    val first = FeatureTaskRuntimeRepairReceipt(
+      roundNumber = 1,
+      preFixCheckpointSha = "b".repeat(40),
+      entries = listOf(
+        FeatureTaskRuntimeRepairReceiptEntry(
+          severity = "blocker",
+          label = "SentinelType",
+          text = "SKILL189-SENTINEL finding text",
+          outcome = FeatureTaskRuntimeRepairOutcome.NO_EDIT_REQUIRED,
+          constructs = emptyList(),
+          intent = "placeholder intent with no hunk",
+          noEditReason = "already present on the tree",
+        ),
+      ),
+    )
+    val replacement = first.copy(
+      entries = listOf(
+        FeatureTaskRuntimeRepairReceiptEntry(
+          severity = "blocker",
+          label = "SentinelType",
+          text = "SKILL189-SENTINEL finding text",
+          outcome = FeatureTaskRuntimeRepairOutcome.ADDRESSED,
+          constructs = listOf(FeatureTaskRuntimeRepairConstruct(symbol = "SentinelType.close")),
+          intent = "close SentinelType.close",
+        ),
+      ),
+    )
+    val recorder = recorderWith(pausedState())
+    recorder.updateReviewState(workflowId) { it.upsertRepairReceipt(first) }
+    recorder.updateReviewState(workflowId) { it.upsertRepairReceipt(replacement) }
+    val reloaded = assertNotNull(recorder.reviewState(workflowId))
+    assertEquals(1, reloaded.repairReceipts.size)
+    assertEquals(
+      FeatureTaskRuntimeRepairOutcome.ADDRESSED,
+      reloaded.repairReceipts.single().entries.single().outcome,
+    )
+  }
+
+  @Test
+  fun `an oversized receipt rejection stays payload-free on the parser surface`() {
+    val oversized = "x".repeat(REPAIR_RECEIPT_MAX_INTENT_UTF8_BYTES + 1)
+    val error = assertFailsWith<InvalidFeatureTaskRuntimeRepairReceiptError> {
+      featureTaskRuntimeParseRepairReceiptOrNull(
+        mapOf(
+          "repair_receipt" to mapOf(
+            "contract_version" to "0.1",
+            "round_number" to 1,
+            "pre_fix_checkpoint_sha" to "b".repeat(40),
+            "entries" to listOf(
+              mapOf(
+                "severity" to "blocker",
+                "label" to "SentinelType",
+                "text" to "SKILL189-SENTINEL finding text",
+                "outcome" to "addressed",
+                "constructs" to listOf(mapOf("symbol" to "SentinelType.close")),
+                "intent" to oversized,
+              ),
+            ),
+          ),
+        ),
+      )
+    }
+    assertTrue(!error.payloadFreeReason.contains(oversized))
+    assertTrue(!error.payloadFreeReason.contains("@@"))
+    assertTrue(!error.payloadFreeReason.contains("diff --git"))
+    assertTrue(!error.reason.contains(oversized.take(32)))
+    assertTrue(error.payloadFreeReason.contains("UTF-8 bytes"))
   }
 
   @Test

@@ -68,7 +68,20 @@ data class FeatureTaskRuntimeStatusProjection(
    * recently appended signal.
    */
   val degradedDiagnostic: FeatureTaskRuntimeDegradedDiagnosticStatus? = null,
+  val operatorDecisionPause: FeatureTaskRuntimeOperatorDecisionPause? = null,
 )
+
+data class FeatureTaskRuntimeOperatorDecisionPause(
+  val phaseId: String,
+  val reason: String? = null,
+) {
+  init {
+    require(phaseId.isNotBlank()) { "FeatureTaskRuntimeOperatorDecisionPause.phaseId is required." }
+    require(reason == null || reason.isNotBlank()) {
+      "FeatureTaskRuntimeOperatorDecisionPause.reason must be absent or non-blank."
+    }
+  }
+}
 
 data class FeatureTaskRuntimeDegradedDiagnosticStatus(
   val count: Int,

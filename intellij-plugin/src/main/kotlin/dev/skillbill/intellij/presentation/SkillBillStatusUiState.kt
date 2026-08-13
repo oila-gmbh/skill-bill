@@ -3,6 +3,7 @@ package dev.skillbill.intellij.presentation
 import dev.skillbill.intellij.domain.CurrentPhaseExecution
 import dev.skillbill.intellij.domain.CurrentPhaseModel
 import dev.skillbill.intellij.domain.GoalPlanningInfo
+import dev.skillbill.intellij.domain.PauseReason
 import java.time.Duration
 import java.time.Instant
 
@@ -51,6 +52,8 @@ sealed class SkillBillStatusUiState {
 
     /** Model the current phase launched with; null on states that carry no current step. */
     open val currentModel: CurrentPhaseModel? get() = null
+
+    open val pauseReason: PauseReason? get() = null
 
     /**
      * Authoritative current-phase execution measure. Non-null only on lifecycles that carry a
@@ -137,6 +140,7 @@ sealed class SkillBillStatusUiState {
         override val pauseRequested: Boolean? = null,
         override val currentModel: CurrentPhaseModel? = null,
         override val currentPhaseExecution: CurrentPhaseExecution? = null,
+        override val pauseReason: PauseReason? = null,
     ) : SkillBillStatusUiState() {
         override val accessibilityText: String = "$headline (paused)"
     }

@@ -18,6 +18,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairCo
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionBudget
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorReviewContext
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
 import skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting
 
 /**
@@ -50,6 +52,8 @@ object FeatureTaskRuntimePhasePromptComposer {
     validationDepth: ValidationDepth = ValidationDepth.DEFAULT,
     validationGateFindings: ValidationFindingSetProjection? = null,
     agentRunValidateFallback: Boolean = false,
+    repairLedger: FeatureTaskRuntimeRepairLedger? = null,
+    priorReviewContext: FeatureTaskRuntimePriorReviewContext? = null,
   ): String {
     require(issueKey.isNotBlank()) { "issueKey is required to compose a phase prompt." }
     require(correctiveRepairContext == null || !priorSchemaFailure.isNullOrBlank()) {
@@ -84,6 +88,8 @@ object FeatureTaskRuntimePhasePromptComposer {
           resolvedReviewTier = resolvedReviewTier,
           reviewDecidingRule = reviewDecidingRule,
           baselineUntrackedPaths = baselineUntrackedPaths,
+          repairLedger = repairLedger,
+          priorReviewContext = priorReviewContext,
         ),
       ),
       commitExclusionDirective(briefing.phaseId, issueKey),

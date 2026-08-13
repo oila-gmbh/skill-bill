@@ -5,6 +5,7 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditCriterionGap
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditSeverity
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditVerdict
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairPlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewSeverity
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewVerdict
@@ -17,6 +18,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
  * nothing for those shapes and report [FeatureTaskRuntimeVerdict.ADVANCE] for an audit that in fact
  * reported gaps. The caller owns parsing through the same validator that admitted the output.
  */
+@Suppress("TooManyFunctions")
 internal object FeatureTaskRuntimeOutputVerification {
   fun verdictFor(phaseId: String, outputObject: Map<String, Any?>?): FeatureTaskRuntimeVerdict {
     val wireVerdict = (outputObject?.get("verdict") as? String)
@@ -25,6 +27,7 @@ internal object FeatureTaskRuntimeOutputVerification {
     return when (phaseId) {
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW -> reviewVerdict(outputObject, wireVerdict)
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT -> auditVerdict(outputObject, wireVerdict)
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN_FIX -> planFixVerdict(outputObject, wireVerdict)
       else -> wireVerdict ?: FeatureTaskRuntimeVerdict.ADVANCE
     }
   }
@@ -53,6 +56,27 @@ internal object FeatureTaskRuntimeOutputVerification {
           "to carry a non-blank message and severity blocker or major; move minor and nit findings " +
           "to produced_outputs.${FeatureTaskRuntimeVerificationSignalKeys.AUDIT_NON_BLOCKING_FINDINGS}."
       else -> null
+    }
+  }
+
+  fun repairPlanFrom(outputObject: Map<String, Any?>?): FeatureTaskRuntimeRepairPlan? = outputObject
+    ?.get("produced_outputs")
+    ?.let(JsonSupport::anyToStringAnyMap)
+    ?.get("repair_plan")
+    ?.let(JsonSupport::anyToStringAnyMap)
+    ?.let { raw ->
+      runCatching { FeatureTaskRuntimeRepairPlan.fromArtifactMap(raw, "produced_outputs.repair_plan") }.getOrNull()
+    }
+
+  private fun planFixVerdict(
+    outputObject: Map<String, Any?>?,
+    wireVerdict: FeatureTaskRuntimeVerdict?,
+  ): FeatureTaskRuntimeVerdict {
+    val plan = repairPlanFrom(outputObject) ?: return wireVerdict ?: FeatureTaskRuntimeVerdict.ADVANCE
+    return if (plan.escalates) {
+      FeatureTaskRuntimeVerdict.ESCALATED
+    } else {
+      FeatureTaskRuntimeVerdict.REPAIR_PLANNED
     }
   }
 

@@ -6,15 +6,18 @@ import skillbill.application.decomposition.parentSpecPath
 import skillbill.application.model.FeatureTaskRuntimeAuditRepairStatus
 import skillbill.application.model.FeatureTaskRuntimeDecomposeTerminalStatus
 import skillbill.application.model.FeatureTaskRuntimeDegradedDiagnosticStatus
+import skillbill.application.model.FeatureTaskRuntimeOperatorDecisionPause
 import skillbill.application.model.FeatureTaskRuntimePhaseStatus
 import skillbill.application.model.FeatureTaskRuntimeStatusProjection
 import skillbill.application.model.FeatureTaskRuntimeStatusRequest
 import skillbill.application.model.IdeStatusCurrentPhaseExecution
 import skillbill.application.model.IdeStatusCurrentPhaseExecutionKind
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGenerationHistory
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
@@ -99,6 +102,7 @@ class FeatureTaskRuntimeStatusService(
         ),
       ),
       degradedDiagnostic = degradedDiagnosticStatus(request.workflowId, request.dbPathOverride),
+      operatorDecisionPause = operatorDecisionPause(records),
     )
   }
 
@@ -411,6 +415,20 @@ private fun currentReentryPhaseId(
     .mapTo(completedAfterEdge) { it.phaseId }
   return reopenedSpan.firstOrNull { it !in completedAfterEdge }
 }
+
+private fun operatorDecisionPause(
+  records: Map<String, FeatureTaskRuntimePhaseRecord>,
+): FeatureTaskRuntimeOperatorDecisionPause? = records.values
+  .firstOrNull { record ->
+    record.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED &&
+      record.failureDisposition == FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION
+  }
+  ?.let { record ->
+    FeatureTaskRuntimeOperatorDecisionPause(
+      phaseId = record.phaseId,
+      reason = record.blockedReason?.takeIf(String::isNotBlank),
+    )
+  }
 
 private fun latestContinuationKind(ledger: List<FeatureTaskRuntimePhaseLedgerEntry>, phaseId: String): String? = ledger
   .filter { it.phaseId == phaseId && it.action in CONTINUATION_KIND_ACTIONS }

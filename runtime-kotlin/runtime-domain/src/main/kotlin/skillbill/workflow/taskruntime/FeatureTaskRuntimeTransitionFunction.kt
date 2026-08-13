@@ -135,6 +135,9 @@ object FeatureTaskRuntimeTransitionFunction {
     require(index >= 0) {
       "Feature-task-runtime transition: phase '$currentPhaseId' is not in the forward pipeline."
     }
+    declaration.loopOnlySuccessors[currentPhaseId]?.let { successor ->
+      return FeatureTaskRuntimeNextPhase.Next(phaseId = successor)
+    }
     val nextIndex = (index + 1 until declaration.forwardPhaseIds.size)
       .firstOrNull { declaration.forwardPhaseIds[it] !in declaration.loopOnlyPhaseIds }
     return if (nextIndex != null) {

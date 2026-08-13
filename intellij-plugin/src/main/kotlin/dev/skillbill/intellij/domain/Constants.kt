@@ -67,6 +67,22 @@ const val MODEL_TEXT_MAX_LENGTH: Int = 60
 /** Wire key carrying the instant a recorded pause took effect. Optional. */
 const val PAUSED_AT_WIRE_KEY: String = "paused_at"
 
+const val PAUSE_REASON_WIRE_KEY: String = "pause_reason"
+
+val PAUSE_REASON_CODES: Set<String> = setOf(
+    "awaiting_operator_decision",
+    "operator_request",
+    "stop_after_subtask",
+    "operator_stop",
+    "runner_interrupted",
+)
+
+const val PAUSE_REASON_AWAITING_OPERATOR_DECISION: String = "awaiting_operator_decision"
+
+const val PAUSE_REASON_LABEL_MAX_LENGTH: Int = 512
+
+const val GOAL_FINDINGS_DISPLAY_COMMAND: String = "skill-bill goal findings --issue-key"
+
 const val ACTIVE_DURATION_MS_WIRE_KEY: String = "active_duration_ms"
 
 const val ACTIVE_DURATION_AS_OF_WIRE_KEY: String = "active_duration_as_of"
