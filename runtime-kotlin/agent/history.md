@@ -1,3 +1,13 @@
+## [2026-08-14] SKILL-191 subtask 8 — Runtime-driven standalone review entry
+Areas: runtime-kotlin/{runtime-application/review, runtime-cli/codereview, runtime-ports/review, runtime-core/di}, skills/bill-code-review, orchestration/skill-classes
+- `skill-bill code-review` is a standalone entry over `ParallelCodeReviewRunner`; omitted `--agent2` is a single parent lane that still returns the register with stage verdicts.
+- `code-review-parallel` still requires `--agent2`; `parallel:` and `code_review_parallel_agent` keep `arg > config > none` and add the second lane on the same driver.
+- Native-worker preflight is driver-owned via `ReviewNativeAgentPreflightPort`: missing, dangling, stale, unreadable, or undeclared workers fail with the governed repair command and never substitute a general-purpose worker. reusable
+- `bill-code-review` content and `code-review-shell.yaml` are an entry contract (recognize args, invoke the driver, present the register); scope, routing, merge, budget, and `mktemp`/`claude -p` lane-2 prose live only in the runtime.
+- Limitation: `bill-code-review-parallel` remains; feature-task review-phase delegation is subtask 9.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-08-14] SKILL-191 subtask 7 — Stage telemetry and measurement
 Areas: runtime-kotlin/{runtime-application/review, runtime-domain/review, runtime-infra-sqlite/{review,telemetry}, runtime-ports/{persistence,telemetry}, runtime-cli/review, runtime-mcp/telemetry}, orchestration/contracts, docs
 - `skillbill_review_finished` carries per-stage verdict distribution, refutation rates, rejected-verdict counts, severity-adjustment counts by direction, and `resolved_tier`.

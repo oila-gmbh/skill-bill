@@ -1456,7 +1456,7 @@ private fun parallelResult(
     mergeResult = ParallelReviewMerger.merge(lane1Result, lane2Result, integrationResult),
     lane1 = outcomes.lane1.toStatus(agent1Id),
     lane2 = outcomes.lane2.toStatus(agent2Id.orEmpty()),
-    accountingSummary = parallelAccountingSummary(outcomes)
+    accountingSummary = parallelAccountingSummary(outcomes, includeLane2 = agent2Id != null)
       ?.withCommitFocusedAccounting(packet, budget, integration, coverage),
     integration = integration,
     coverage = coverage,
@@ -1476,8 +1476,10 @@ private fun ParallelReviewLaneOutcome.toStatus(agentId: String) = ParallelReview
 
 private fun parallelAccountingSummary(
   outcomes: skillbill.ports.review.model.ParallelReviewLaneRunResult,
+  includeLane2: Boolean,
 ): ReviewAccountingSummary? {
-  val specialists = listOf(outcomes.lane1, outcomes.lane2).flatMap { it.specialistAccounting }
+  val accountedLanes = listOfNotNull(outcomes.lane1, outcomes.lane2.takeIf { includeLane2 })
+  val specialists = accountedLanes.flatMap { it.specialistAccounting }
   if (specialists.isEmpty()) return null
   fun ReviewLaneAccounting.toInput() = ReviewAccountingInput(
     lane = lane,
@@ -1496,7 +1498,7 @@ private fun parallelAccountingSummary(
     segmentAccounting = segmentAccounting,
     unreviewedSegmentIds = unreviewedSegmentIds,
   )
-  val roots = listOf(outcomes.lane1, outcomes.lane2).mapIndexed { index, outcome ->
+  val roots = accountedLanes.mapIndexed { index, outcome ->
     ReviewAccountingInput(
       lane = "parallel-agent-${index + 1}",
       assignmentDigest = sha256HexUtf8("parallel-agent-${index + 1}"),

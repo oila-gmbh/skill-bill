@@ -43,6 +43,9 @@ class ParallelCodeReviewStandaloneEntryTest {
     assertTrue(result.mergeResult.findings.isNotEmpty())
     assertTrue(result.mergeResult.formattedOutput.contains("claim_verdict"))
     assertTrue(result.mergeResult.findings.any { it.claimVerdict == ReviewClaimVerdict.CONFIRMED })
+    result.accountingSummary?.lanes?.let { lanes ->
+      assertTrue(lanes.none { it.lane == "parallel-agent-2" })
+    }
   }
 
   private companion object {
