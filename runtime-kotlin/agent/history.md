@@ -1,3 +1,13 @@
+## [2026-08-14] SKILL-191 subtask 1 — Stage contract and schema versioning
+Areas: orchestration/contracts, runtime-kotlin/runtime-contracts/{review,error}, runtime-kotlin/runtime-infra-fs/contracts/review, runtime-kotlin/runtime-core tests
+- Extended `review-context-schema.yaml` with `spec_intent_projection`, `verification_launch`, `adjudication_launch`, and `finding_verdict`; bumped `contract_version` to `1.0` with Kotlin `REVIEW_CONTEXT_CONTRACT_VERSION` parity.
+- `verification_launch` declares no spec field (`additionalProperties: false`), so spec contamination fails schema validation rather than a runtime convention.
+- `finding_verdict` requires citations when `claim_verdict` is `refuted`, when severity is lowered, or when `scope_disposition` is `out_of_scope_preexisting`; `scope_disposition` is illegal on `stage: verification`.
+- Pattern: new stage envelopes join `oneOf` and get dedicated validator seams that raise `InvalidReviewContextSchemaError` naming the failing `$defs` key. reusable
+- Limitation: no stage runs, storage, or spec resolution; later SKILL-191 subtasks consume this surface.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-08-09] SKILL-179 subtask 4 — Final sweep, parity locks, and gates
 Areas: docs, orchestration/review-delegation, runtime-infra-fs (review contracts), runtime-infra-sqlite/db/telemetry, scripts, .feature-specs/SKILL-179
 - Dropped live dual-engine wording from skill-source-generation and review-delegation PLAYBOOK so governed docs describe runtime-only projection.
