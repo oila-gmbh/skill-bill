@@ -27,6 +27,7 @@ import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.persistence.model.RejectedOutputDiagnosticError
 import skillbill.ports.persistence.model.evidenceKey
+import skillbill.review.model.ReviewFindingVerdict
 import skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.workflow.FeatureTaskRuntimeImplementationAttemptValidator
@@ -960,6 +961,16 @@ class FeatureTaskRuntimePhaseRecorder(
     true
   }
 
+  internal fun recordedFindingVerdicts(
+    output: Map<String, Any?>,
+    dbOverride: String? = null,
+  ): List<ReviewFindingVerdict> {
+    val reviewRunId = GoalSubtaskReviewSummaryReducer.reviewRunIdOf(output) ?: return emptyList()
+    return database.transaction(dbOverride) { unitOfWork ->
+      unitOfWork.reviews.fetchFindingVerdicts(reviewRunId)
+    }
+  }
+
   internal fun completeGoalReviewPhase(
     completion: GoalReviewPhaseCompletionRequest,
     dbOverride: String? = null,
@@ -974,21 +985,28 @@ class FeatureTaskRuntimePhaseRecorder(
       val continuation = reviewArtifacts.continuation
       val reservedPass = reviewArtifacts.state.reservedPassNumber ?: 1
       val priorFindings = unitOfWork.unaddressedFindings.fetchWorkflowLedger(request.workflowId)
+      val envelope = requireNotNull(request.normalizedOutput) {
+        "Goal review completion requires normalized output to persist the unaddressed-findings ledger."
+      }.envelope
+      val recordedVerdicts = GoalSubtaskReviewSummaryReducer.recordedVerdicts(unitOfWork, envelope)
       val currentFindings = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
-        output = requireNotNull(request.normalizedOutput) {
-          "Goal review completion requires normalized output to persist the unaddressed-findings ledger."
-        }.envelope,
+        output = envelope,
         issueKey = continuation.issueKey,
         subtaskId = continuation.subtaskId,
         workflowId = request.workflowId,
         reviewPassNumber = reservedPass,
+        recordedVerdicts = recordedVerdicts,
       )
       val dispositions = if (reservedPass <= 1) {
         completion.blockerDispositions
       } else {
         unionRefutedBlockerDispositions(
           completion.blockerDispositions,
-          GoalSubtaskReviewSummaryReducer.refutedBlockerSupersedes(priorFindings, currentFindings),
+          GoalSubtaskReviewSummaryReducer.refutedBlockerSupersedes(
+            priorFindings,
+            currentFindings,
+            recordedVerdicts,
+          ),
         )
       }
       val completedState = reviewArtifacts.state.completeReservedPass(
@@ -1050,12 +1068,14 @@ class FeatureTaskRuntimePhaseRecorder(
     val output = requireNotNull(request.normalizedOutput) {
       "Goal review completion requires normalized output to persist the unaddressed-findings ledger."
     }.envelope
+    val recordedVerdicts = GoalSubtaskReviewSummaryReducer.recordedVerdicts(unitOfWork, output)
     val findings = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
       output = output,
       issueKey = continuation.issueKey,
       subtaskId = continuation.subtaskId,
       workflowId = request.workflowId,
       reviewPassNumber = passNumber,
+      recordedVerdicts = recordedVerdicts,
     )
     val superseded = unitOfWork.unaddressedFindings.fetchWorkflowLedger(request.workflowId)
     unitOfWork.unaddressedFindings.replaceLedgerForPass(request.workflowId, passNumber, findings)

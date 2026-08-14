@@ -8,9 +8,11 @@ import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.goalrunner.model.normalizedUnaddressedFindingCategory
 import skillbill.goalrunner.model.normalizedUnaddressedFindingSeverity
 import skillbill.goalrunner.model.toOutcomeRecord
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.review.ReviewFindingActionability
 import skillbill.review.model.ReviewClaimVerdict
 import skillbill.review.model.ReviewFindingCitation
+import skillbill.review.model.ReviewFindingVerdict
 import skillbill.review.model.ReviewScopeDisposition
 import skillbill.review.model.ReviewSeverityAdjustment
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
@@ -57,8 +59,11 @@ internal object GoalSubtaskReviewSummaryReducer {
   private val bareFilenameToken = Regex("\\b[A-Za-z0-9][A-Za-z0-9_.-]*\\.[A-Za-z0-9]+\\b")
   private val diffFragment = Regex("(?i)(?:\\bdiff\\s+--git\\b|\\bindex\\s+[0-9a-f]{7,}\\b|---|\\+\\+\\+)")
 
-  fun fromOutput(output: Map<String, Any?>): List<GoalSubtaskReviewCompactFinding> {
-    return structuredFindings(output)
+  fun fromOutput(
+    output: Map<String, Any?>,
+    recordedVerdicts: List<ReviewFindingVerdict> = emptyList(),
+  ): List<GoalSubtaskReviewCompactFinding> {
+    return structuredFindings(output, recordedVerdicts)
       .filter { finding ->
         ReviewFindingActionability.isActionable(finding.claimVerdict, finding.scopeDisposition)
       }
@@ -94,7 +99,10 @@ internal object GoalSubtaskReviewSummaryReducer {
       ?.let(JsonSupport::anyToStringAnyMap)
       ?.let { GoalSubtaskCommitFocusedAccounting.fromArtifactMap(it, "produced_outputs.commit_focused_accounting") }
 
-  fun structuredFindings(output: Map<String, Any?>): List<StructuredGoalReviewFinding> {
+  fun structuredFindings(
+    output: Map<String, Any?>,
+    recordedVerdicts: List<ReviewFindingVerdict> = emptyList(),
+  ): List<StructuredGoalReviewFinding> {
     val findings = output["produced_outputs"]
       ?.let(JsonSupport::anyToStringAnyMap)
       ?.get("findings") as? List<*>
@@ -105,6 +113,7 @@ internal object GoalSubtaskReviewSummaryReducer {
         ?: return@mapNotNull null
       val message = (finding["message"] as? String)?.trim()?.takeIf(String::isNotBlank)
         ?: return@mapNotNull null
+      val overlay = ReviewFindingActionability.overlayOf(finding, recordedVerdicts)
       StructuredGoalReviewFinding(
         severity = severity,
         message = message,
@@ -113,11 +122,11 @@ internal object GoalSubtaskReviewSummaryReducer {
         location = sequenceOf(finding["location"], finding["artifact_ref"])
           .filterIsInstance<String>().firstOrNull()?.trim()?.takeIf(String::isNotBlank) ?: "<unknown>",
         compactLabel = labelFor(finding, message),
-        findingId = (finding["id"] as? String)?.trim()?.takeIf(String::isNotBlank),
-        claimVerdict = ReviewFindingActionability.claimVerdictOf(finding["claim_verdict"]),
-        scopeDisposition = ReviewFindingActionability.scopeDispositionOf(finding["scope_disposition"]),
-        citations = ReviewFindingActionability.citationsOf(finding["citations"]),
-        severityAdjustment = ReviewFindingActionability.severityAdjustmentOf(finding["severity_adjustment"]),
+        findingId = ReviewFindingActionability.findingRefOf(finding),
+        claimVerdict = overlay.claimVerdict,
+        scopeDisposition = overlay.scopeDisposition,
+        citations = overlay.citations,
+        severityAdjustment = overlay.severityAdjustment,
       )
     }
   }
@@ -129,12 +138,16 @@ internal object GoalSubtaskReviewSummaryReducer {
    * reported it; the finding id is the other half. A pass that genuinely reported no run id leaves it
    * null so the pair reads as unresolved rather than being bucketed to a guessed run.
    */
-  private val Map<String, Any?>.reviewRunId: String?
-    get() = (
-      this["produced_outputs"]
-        ?.let(JsonSupport::anyToStringAnyMap)
-        ?.get(FeatureTaskRuntimeVerificationSignalKeys.REVIEW_RUN_ID) as? String
-      )?.trim()?.takeIf(String::isNotBlank)
+  fun reviewRunIdOf(output: Map<String, Any?>): String? = (
+    output["produced_outputs"]
+      ?.let(JsonSupport::anyToStringAnyMap)
+      ?.get(FeatureTaskRuntimeVerificationSignalKeys.REVIEW_RUN_ID) as? String
+    )?.trim()?.takeIf(String::isNotBlank)
+
+  fun recordedVerdicts(unitOfWork: UnitOfWork, output: Map<String, Any?>): List<ReviewFindingVerdict> {
+    val reviewRunId = reviewRunIdOf(output) ?: return emptyList()
+    return unitOfWork.reviews.fetchFindingVerdicts(reviewRunId)
+  }
 
   fun unaddressedFindings(
     output: Map<String, Any?>,
@@ -142,9 +155,10 @@ internal object GoalSubtaskReviewSummaryReducer {
     subtaskId: Int,
     workflowId: String,
     reviewPassNumber: Int,
+    recordedVerdicts: List<ReviewFindingVerdict> = emptyList(),
   ): List<UnaddressedFinding> {
-    val reviewRunId = output.reviewRunId
-    return structuredFindings(output).mapIndexed { index, finding ->
+    val reviewRunId = reviewRunIdOf(output)
+    return structuredFindings(output, recordedVerdicts).mapIndexed { index, finding ->
       UnaddressedFinding(
         issueKey = issueKey,
         subtaskId = subtaskId,
@@ -250,16 +264,21 @@ internal object GoalSubtaskReviewSummaryReducer {
   fun refutedBlockerSupersedes(
     priorFindings: List<UnaddressedFinding>,
     currentFindings: List<UnaddressedFinding>,
+    recordedVerdicts: List<ReviewFindingVerdict> = emptyList(),
   ): List<GoalSubtaskBlockerDisposition> {
     if (priorFindings.isEmpty()) return emptyList()
     val currentByKey = currentFindings.associateBy(UnaddressedFinding::findingKey)
+    val byRef = recordedVerdicts.groupBy(ReviewFindingVerdict::findingRef)
     return priorFindings.mapNotNull { prior ->
       if (prior.severity != "blocker") return@mapNotNull null
       val current = currentByKey[prior.findingKey] ?: return@mapNotNull null
-      if (current.claimVerdict != ReviewClaimVerdict.REFUTED) return@mapNotNull null
-      val evidence = current.citations.map { citation -> "${citation.path}:${citation.line}" }
-      if (evidence.isEmpty()) return@mapNotNull null
       val findingId = prior.findingId ?: return@mapNotNull null
+      val currentId = current.findingId ?: return@mapNotNull null
+      val verification = ReviewFindingActionability.verificationVerdict(byRef[currentId].orEmpty())
+        ?: ReviewFindingActionability.verificationVerdict(byRef[findingId].orEmpty())
+      if (verification?.claimVerdict != ReviewClaimVerdict.REFUTED) return@mapNotNull null
+      val evidence = verification.citations.map { citation -> "${citation.path}:${citation.line}" }
+      if (evidence.isEmpty()) return@mapNotNull null
       GoalSubtaskBlockerDisposition(
         findingId = findingId,
         verdict = GoalSubtaskBlockerDispositionVerdict.SUPERSEDED,
@@ -268,7 +287,10 @@ internal object GoalSubtaskReviewSummaryReducer {
     }
   }
 
-  fun unresolvedCount(output: Map<String, Any?>): Int = fromOutput(output)
+  fun unresolvedCount(
+    output: Map<String, Any?>,
+    recordedVerdicts: List<ReviewFindingVerdict> = emptyList(),
+  ): Int = fromOutput(output, recordedVerdicts)
     .count(GoalSubtaskReviewCompactFinding::blocksAdvance)
 
   fun outcomeFor(

@@ -209,12 +209,14 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     val continuation = continuationFromArtifacts(artifacts)
       ?: error("Goal-subtask review continuation is missing during reserved-pass recovery.")
     val reservedPass = state.reservedPassNumber ?: 1
+    val recordedVerdicts = GoalSubtaskReviewSummaryReducer.recordedVerdicts(unitOfWork, request.normalizedOutput)
     val ledgerFindings = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
       output = request.normalizedOutput,
       issueKey = continuation.issueKey,
       subtaskId = continuation.subtaskId,
       workflowId = request.workflowId,
       reviewPassNumber = reservedPass,
+      recordedVerdicts = recordedVerdicts,
     )
     val supersededFindings = unitOfWork.unaddressedFindings.fetchWorkflowLedger(request.workflowId)
     val dispositions = if (reservedPass <= 1) {
@@ -222,7 +224,11 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     } else {
       unionRefutedBlockerDispositions(
         request.blockerDispositions,
-        GoalSubtaskReviewSummaryReducer.refutedBlockerSupersedes(supersededFindings, ledgerFindings),
+        GoalSubtaskReviewSummaryReducer.refutedBlockerSupersedes(
+          supersededFindings,
+          ledgerFindings,
+          recordedVerdicts,
+        ),
       )
     }
     val completed = state.completeReservedPass(

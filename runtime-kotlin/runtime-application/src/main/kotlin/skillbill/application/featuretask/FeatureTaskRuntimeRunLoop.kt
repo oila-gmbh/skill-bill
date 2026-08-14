@@ -457,7 +457,8 @@ internal class FeatureTaskRuntimeRunLoop(
     ?: "Completed goal-subtask review has no durable output to reconcile its reserved pass."
 
   private fun completeReservedGoalReviewPass(output: String, outputMap: Map<String, Any?>): String? {
-    val findings = GoalSubtaskReviewSummaryReducer.fromOutput(outputMap)
+    val recordedVerdicts = recorder.recordedFindingVerdicts(outputMap, request.dbPathOverride)
+    val findings = GoalSubtaskReviewSummaryReducer.fromOutput(outputMap, recordedVerdicts)
     val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(outputMap, findings)
     return if (
       goalContinuationRecorder.completeGoalReviewPass(
@@ -5197,7 +5198,8 @@ internal class FeatureTaskRuntimeRunLoop(
   ): PhaseOutcome? {
     val outputText = normalizedOutput.canonicalJson
     val outputMap = normalizedOutput.envelope
-    val findings = GoalSubtaskReviewSummaryReducer.fromOutput(outputMap)
+    val recordedVerdicts = recorder.recordedFindingVerdicts(outputMap, request.dbPathOverride)
+    val findings = GoalSubtaskReviewSummaryReducer.fromOutput(outputMap, recordedVerdicts)
     val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(outputMap, findings)
     val completed = runCatching {
       recorder.completeGoalReviewPhase(

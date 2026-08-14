@@ -557,12 +557,13 @@ class ParallelReviewMergerTest {
       ParallelReviewLaneResult("codex", emptyList()),
     )
     val line = result.formattedOutput.lineSequence().first { it.contains("[F-001]") }
-    assertTrue(line.contains("Major"), line)
-    assertTrue(line.contains("lower"), line)
-    assertTrue(line.contains("too noisy"), line)
+    assertTrue(line.contains("Major |"), line)
+    assertTrue(line.contains("severity_adjustment=lower: too noisy"), line)
     assertFalse(line.contains("Nit |"), line)
+    assertFalse(line.contains("Major (lower"), line)
     assertEquals(
-      "- [F-001] [claude] Major (lower: too noisy) | High | path=\"Auth.kt\" | line=10 | Token logged",
+      "- [F-001] [claude] Major | High | path=\"Auth.kt\" | line=10 | Token logged | " +
+        "claim_verdict=confirmed | scope_disposition=in_scope | severity_adjustment=lower: too noisy",
       line,
     )
   }

@@ -12,7 +12,6 @@ import skillbill.review.model.ReviewFindingVerdict
 import skillbill.review.model.ReviewLaneFindingVerdict
 import skillbill.review.model.ReviewScopeDisposition
 import skillbill.review.model.ReviewSeverityAdjustment
-import skillbill.review.model.ReviewStage
 
 object ParallelReviewMerger {
   /**
@@ -69,15 +68,13 @@ object ParallelReviewMerger {
     if (verdicts.isEmpty()) return result
     val byRef = verdicts.groupBy(ReviewFindingVerdict::findingRef)
     val findings = result.findings.map { finding ->
-      val recorded = byRef[finding.fNumber].orEmpty()
-      if (recorded.isEmpty()) return@map finding
-      val verification = recorded.firstOrNull { it.stage == ReviewStage.VERIFICATION }
-      val adjudication = recorded.firstOrNull { it.stage == ReviewStage.ADJUDICATION }
+      val overlay = ReviewFindingActionability.recordedFields(byRef[finding.fNumber].orEmpty())
+        ?: return@map finding
       finding.copy(
-        claimVerdict = verification?.claimVerdict ?: adjudication?.claimVerdict,
-        scopeDisposition = adjudication?.scopeDisposition,
-        citations = adjudication?.citations?.takeIf { it.isNotEmpty() } ?: verification?.citations.orEmpty(),
-        severityAdjustment = adjudication?.severityAdjustment ?: verification?.severityAdjustment,
+        claimVerdict = overlay.claimVerdict,
+        scopeDisposition = overlay.scopeDisposition,
+        citations = overlay.citations,
+        severityAdjustment = overlay.severityAdjustment,
       )
     }
     return ParallelReviewMergeResult(findings, formattedOutput(findings))
@@ -159,11 +156,19 @@ object ParallelReviewMerger {
     } else {
       ""
     }
-    val severityToken = finding.severity.displayName + finding.severityAdjustment?.let { adjustment ->
-      " (${adjustment.direction.wireValue}: ${adjustment.justification})"
-    }.orEmpty()
-    return "- [${finding.fNumber}] [$agentLabel] $severityToken | ${finding.confidence} | " +
+    val claimLine = "- [${finding.fNumber}] [$agentLabel] ${finding.severity.displayName} | ${finding.confidence} | " +
       "$commitAttribution$structuredLocation | ${finding.description}$provenance"
+    val structuredFields = buildList {
+      finding.claimVerdict?.let { add("claim_verdict=${it.wireValue}") }
+      finding.scopeDisposition?.let { add("scope_disposition=${it.wireValue}") }
+      if (finding.citations.isNotEmpty()) {
+        add("citations=${finding.citations.joinToString(",") { "${it.path}:${it.line}" }}")
+      }
+      finding.severityAdjustment?.let { adjustment ->
+        add("severity_adjustment=${adjustment.direction.wireValue}: ${adjustment.justification}")
+      }
+    }
+    return if (structuredFields.isEmpty()) claimLine else "$claimLine | ${structuredFields.joinToString(" | ")}"
   }
 
   private fun toCandidate(head: ClusterHead): MergedCandidate {

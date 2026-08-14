@@ -52,25 +52,25 @@ class VerdictAwareRegisterAndConsumersTest {
       ),
       ParallelReviewLaneResult("codex", emptyList()),
     )
-    val assembled = ParallelReviewMerger.withRecordedVerdicts(
-      merged,
-      listOf(
-        ReviewFindingVerdict(
-          stage = ReviewStage.VERIFICATION,
-          findingRef = "F-001",
-          claimVerdict = ReviewClaimVerdict.REFUTED,
-          citations = listOf(citation),
-          recordedAt = "2026-08-14T00:00:00Z",
-        ),
+    val recordedVerdicts = listOf(
+      ReviewFindingVerdict(
+        stage = ReviewStage.VERIFICATION,
+        findingRef = "F-001",
+        claimVerdict = ReviewClaimVerdict.REFUTED,
+        citations = listOf(citation),
+        recordedAt = "2026-08-14T00:00:00Z",
       ),
     )
+    val assembled = ParallelReviewMerger.withRecordedVerdicts(merged, recordedVerdicts)
     assertTrue(assembled.formattedOutput.contains("[F-001]"))
     assertTrue(assembled.formattedOutput.contains("Token logged"))
     assertTrue(assembled.formattedOutput.contains("Refuted"))
+    assertTrue(assembled.formattedOutput.contains("claim_verdict=refuted"))
 
     val output = mapOf(
       "verdict" to FeatureTaskRuntimeVerdict.CHANGES_REQUESTED.wireValue,
       "produced_outputs" to mapOf(
+        "review_run_id" to "rvw-191",
         "findings" to listOf(
           mapOf(
             "id" to "F-001",
@@ -78,19 +78,24 @@ class VerdictAwareRegisterAndConsumersTest {
             "severity" to "blocker",
             "location" to location,
             "message" to summary,
-            "claim_verdict" to "refuted",
-            "citations" to listOf(mapOf("path" to citation.path, "line" to citation.line)),
           ),
         ),
       ),
     )
-    val compact = GoalSubtaskReviewSummaryReducer.fromOutput(output)
+    val compact = GoalSubtaskReviewSummaryReducer.fromOutput(output, recordedVerdicts)
     val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(output, compact)
     assertTrue(compact.isEmpty())
     assertEquals(FeatureTaskRuntimeVerdict.APPROVED, outcome.verdict)
     assertEquals(0, outcome.unresolvedFindingCount)
 
-    val ledger = GoalSubtaskReviewSummaryReducer.unaddressedFindings(output, "SKILL-191", 6, "workflow", 1)
+    val ledger = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
+      output,
+      "SKILL-191",
+      6,
+      "workflow",
+      1,
+      recordedVerdicts,
+    )
     assertEquals(1, ledger.size)
     assertEquals(ReviewClaimVerdict.REFUTED, ledger.single().claimVerdict)
     assertEquals(listOf(citation), ledger.single().citations)
@@ -149,6 +154,16 @@ class VerdictAwareRegisterAndConsumersTest {
   fun `a refuted Blocker on a remediation pass becomes superseded with verification evidence`() {
     val location = "Auth.kt:10"
     val summary = "Token logged"
+    val citation = ReviewFindingCitation("Auth.kt", 10)
+    val recordedVerdicts = listOf(
+      ReviewFindingVerdict(
+        stage = ReviewStage.VERIFICATION,
+        findingRef = "F-007",
+        claimVerdict = ReviewClaimVerdict.REFUTED,
+        citations = listOf(citation),
+        recordedAt = "2026-08-14T00:00:00Z",
+      ),
+    )
     val prior = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
       mapOf(
         "produced_outputs" to mapOf(
@@ -176,8 +191,6 @@ class VerdictAwareRegisterAndConsumersTest {
               "severity" to "blocker",
               "location" to location,
               "message" to summary,
-              "claim_verdict" to "refuted",
-              "citations" to listOf(mapOf("path" to "Auth.kt", "line" to 10)),
             ),
           ),
         ),
@@ -186,8 +199,9 @@ class VerdictAwareRegisterAndConsumersTest {
       6,
       "workflow",
       2,
+      recordedVerdicts,
     )
-    val superseded = GoalSubtaskReviewSummaryReducer.refutedBlockerSupersedes(prior, current)
+    val superseded = GoalSubtaskReviewSummaryReducer.refutedBlockerSupersedes(prior, current, recordedVerdicts)
     assertEquals("F-001", superseded.single().findingId)
     assertEquals(GoalSubtaskBlockerDispositionVerdict.SUPERSEDED, superseded.single().verdict)
     assertEquals(listOf("Auth.kt:10"), superseded.single().evidence)
