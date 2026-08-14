@@ -80,6 +80,13 @@ class ParallelCodeReviewClaimVerificationTest {
       listOf("F-001", "F-002"),
       recorder.durablePassClaims?.findings?.map { it.fNumber },
     )
+    assertEquals(
+      mapOf(
+        "F-001" to "bill-kotlin-code-review-architecture",
+        "F-002" to "bill-kotlin-code-review-testing",
+      ),
+      recorder.durableFindingLanes.toMap(),
+    )
     assertEquals(2, recorder.verificationLaunches.size)
     val laterPrompt = recorder.verificationLaunches.last().skillRunRequest.promptOverride.orEmpty()
     assertTrue("F-002" in laterPrompt)

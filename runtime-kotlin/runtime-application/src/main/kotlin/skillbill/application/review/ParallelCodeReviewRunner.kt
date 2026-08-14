@@ -158,7 +158,7 @@ class ParallelCodeReviewRunner(
     )
     persistReviewPassClaims(initial.request.reviewRunId, result.mergeResult.findings, persistEmpty = false)
     recordReviewStageBoundary(initial.request.reviewRunId, integration, result.mergeResult.findings)
-    recordMergedFindingLanes(initial.request.reviewRunId, result)
+    recordMergedFindingLanes(initial.request.reviewRunId)
     runClaimVerification(initial, result)
     result.accountingSummary?.let { summary ->
       database.transaction { unitOfWork ->
@@ -704,14 +704,12 @@ class ParallelCodeReviewRunner(
     database.transaction { unitOfWork -> unitOfWork.reviews.replaceReviewRunLanes(reviewRunId, updated) }
   }
 
-  /**
-   * Records which lane produced each merged finding straight from the merge result, where the
-   * producing specialist is already known. Ingestion reads this rather than re-deriving the lane
-   * from the formatted review text, which no agent is obliged to reproduce faithfully.
-   */
-  private fun recordMergedFindingLanes(reviewRunId: String?, result: ParallelCodeReviewResult) {
+  private fun recordMergedFindingLanes(reviewRunId: String?) {
     if (reviewRunId == null) return
-    val attribution = result.mergeResult.findings.mapNotNull { finding ->
+    val claims = database.transaction { unitOfWork ->
+      unitOfWork.reviews.fetchReviewPassClaims(reviewRunId)
+    }?.findings.orEmpty()
+    val attribution = claims.mapNotNull { finding ->
       finding.specialistSkillNames.firstOrNull()?.let { finding.fNumber to it }
     }.toMap()
     if (attribution.isEmpty()) return

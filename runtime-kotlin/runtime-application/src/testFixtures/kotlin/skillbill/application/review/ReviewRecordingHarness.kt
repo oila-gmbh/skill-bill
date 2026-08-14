@@ -87,6 +87,9 @@ class ReviewRecorder {
 
   @Volatile var durablePassClaims: ReviewPassClaimSnapshot? = null
 
+  val durableFindingLanes: MutableMap<String, String> =
+    Collections.synchronizedMap(mutableMapOf())
+
   @Volatile var durableSpecProjection: ReviewSpecProjectionReference? = null
 
   /** The prompts the inline parent lanes were actually launched with. */
@@ -252,9 +255,10 @@ private fun recordingDatabase(recorder: ReviewRecorder): DatabaseSessionFactory 
     when (method.name) {
       "saveAccounting" -> recorder.savedAccounting.add(args[0] as ReviewAccountingRecord).let { }
       "loadAccounting" -> null
-      // Finding attribution carries no measured content, so this harness only has to tolerate it;
-      // what the runner actually writes is asserted in ParallelCodeReviewRunnerTest.
-      "recordFindingLaneAttribution" -> Unit
+      "recordFindingLaneAttribution" -> {
+        @Suppress("UNCHECKED_CAST")
+        recorder.durableFindingLanes.putAll(args[1] as Map<String, String>)
+      }
       "replaceReviewRunLanes" -> {
         @Suppress("UNCHECKED_CAST")
         val lanes = args[1] as List<ReviewRunLane>

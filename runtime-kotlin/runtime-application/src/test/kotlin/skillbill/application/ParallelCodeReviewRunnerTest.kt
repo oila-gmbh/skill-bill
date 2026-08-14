@@ -35,6 +35,8 @@ import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.context.model.REVIEW_ROUTING_ANALYSIS_PAIRS_BUDGET
 import skillbill.review.context.model.ReviewContextBudgetExceededException
 import skillbill.review.context.model.ReviewContextBudgetPolicy
+import skillbill.review.model.ParallelReviewMergedFinding
+import skillbill.review.model.ReviewPassClaimSnapshot
 import skillbill.review.model.ReviewRunLane
 import skillbill.scaffold.model.BaselineReviewCatalog
 import skillbill.scaffold.model.DeclaredFiles
@@ -1101,6 +1103,7 @@ private fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFixt
 private class RecordingReviewDatabase : DatabaseSessionFactory {
   val laneWrites = mutableListOf<Pair<String, List<ReviewRunLane>>>()
   val findingLaneWrites = mutableListOf<Pair<String, Map<String, String>>>()
+  private var passClaims: ReviewPassClaimSnapshot? = null
 
   private val reviews = Proxy.newProxyInstance(
     ReviewRepository::class.java.classLoader,
@@ -1120,11 +1123,13 @@ private class RecordingReviewDatabase : DatabaseSessionFactory {
         @Suppress("UNCHECKED_CAST")
         findingLaneWrites += args[0] as String to (args[1] as Map<String, String>)
       }
-      "recordFindingVerdicts", "recordStageBoundary", "recordSpecProjectionReference",
-      "recordReviewPassClaims",
-      -> Unit
+      "recordFindingVerdicts", "recordStageBoundary", "recordSpecProjectionReference" -> Unit
+      "recordReviewPassClaims" -> {
+        @Suppress("UNCHECKED_CAST")
+        passClaims = ReviewPassClaimSnapshot(args[1] as List<ParallelReviewMergedFinding>)
+      }
       "fetchFindingVerdicts" -> emptyList<skillbill.review.model.ReviewFindingVerdict>()
-      "fetchReviewPassClaims" -> null
+      "fetchReviewPassClaims" -> passClaims
       "fetchStageBoundaries" -> emptyList<skillbill.review.model.ReviewStageBoundary>()
       "fetchSpecProjectionReference" -> null
       else -> error("Unexpected review repository call: ${method.name}")

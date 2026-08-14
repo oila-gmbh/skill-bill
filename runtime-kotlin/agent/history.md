@@ -1,3 +1,13 @@
+## [2026-08-14] SKILL-191 subtask 4 — Stage 1 claim verification runner
+Areas: runtime-kotlin/{runtime-application/review, runtime-domain/review/{context/model,model}, runtime-infra-sqlite, runtime-ports/persistence}
+- After a terminal review pass (inline and delegated), `ReviewClaimVerificationRunner` launches one worker per finding with the finding, cited region, and delta only — no spec projection, reviewer narrative, parent transcript, or sibling findings.
+- `ReviewClaimVerdictAdmission` records `confirmed`/`refuted`/`unresolved`; uncited refutation, altered claim text/severity/location, and launch/parse failure become `unresolved` with a reason. Findings stay immutable; a worker failure does not fail the review.
+- Inline verifiers stay on the cited region and direct callers; delegated verifiers may expand through the existing broker and expansion ledger. Verdicts persist on subtask 2 storage; the verification stage boundary is independent of review-pass and integration.
+- Pattern: same compile-validate-launch-admit shape as `ReviewIntegrationPassRunner`; one finding per worker is a correctness property, not a budget. reusable
+- Limitation: no spec weighing, register emission, or telemetry (subtasks 5–7); a missing packet or empty finding set skips verification with a recorded reason.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
 ## [2026-08-14] SKILL-191 subtask 3 — Spec intent projection resolver
 Areas: runtime-kotlin/{runtime-application/review, runtime-domain/review/{context,spec}, runtime-infra-fs, runtime-contracts}, docs
 - Resolver compiles a governed spec into a bounded `spec_intent_projection` (outcome, criteria, constraints, non-goals, deferred, provenance path+digest) and records the run's spec projection reference.
