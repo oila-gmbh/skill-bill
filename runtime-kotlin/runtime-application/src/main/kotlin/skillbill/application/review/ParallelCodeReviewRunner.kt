@@ -78,6 +78,7 @@ import skillbill.review.model.ParallelReviewLaneResult
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ParallelReviewRawFinding
 import skillbill.review.model.ReviewCoverageReport
+import skillbill.review.model.ReviewFindingVerdict
 import skillbill.review.model.ReviewLaneAggregationInput
 import skillbill.review.model.ReviewRunLane
 import skillbill.review.model.ReviewRunLaneSegmentAccountingJson
@@ -161,8 +162,13 @@ class ParallelCodeReviewRunner(
     persistReviewPassClaims(initial.request.reviewRunId, result.mergeResult.findings, persistEmpty = false)
     recordReviewStageBoundary(initial.request.reviewRunId, integration, result.mergeResult.findings)
     recordMergedFindingLanes(initial.request.reviewRunId)
-    runClaimVerification(initial, result)
-    runSpecAdjudication(initial, result)
+    val verificationVerdicts = runClaimVerification(initial, result)
+    val adjudicationVerdicts = runSpecAdjudication(initial, result)
+    val recordedVerdicts = recordedFindingVerdicts(
+      initial.request.reviewRunId,
+      verificationVerdicts + adjudicationVerdicts,
+    )
+    val assembled = ParallelReviewMerger.withRecordedVerdicts(result.mergeResult, recordedVerdicts)
     result.accountingSummary?.let { summary ->
       database.transaction { unitOfWork ->
         unitOfWork.reviews.saveAccounting(
@@ -170,7 +176,10 @@ class ParallelCodeReviewRunner(
         )
       }
     }
-    return result.copy(stageResume = stageResumeReport(initial.request.reviewRunId))
+    return result.copy(
+      mergeResult = assembled,
+      stageResume = stageResumeReport(initial.request.reviewRunId),
+    )
   }
 
   private fun prepareInitialRun(originalRequest: ParallelCodeReviewRequest): InitialRun {
@@ -501,7 +510,15 @@ class ParallelCodeReviewRunner(
     }
   }
 
-  private fun runClaimVerification(initial: InitialRun, result: ParallelCodeReviewResult) {
+  private fun recordedFindingVerdicts(
+    reviewRunId: String?,
+    inMemory: List<ReviewFindingVerdict>,
+  ): List<ReviewFindingVerdict> {
+    if (reviewRunId == null) return inMemory
+    return database.transaction { unitOfWork -> unitOfWork.reviews.fetchFindingVerdicts(reviewRunId) }
+  }
+
+  private fun runClaimVerification(initial: InitialRun, result: ParallelCodeReviewResult): List<ReviewFindingVerdict> {
     val reviewRunId = initial.request.reviewRunId
     val claims = if (reviewRunId == null) {
       result.mergeResult.findings
@@ -512,7 +529,7 @@ class ParallelCodeReviewRunner(
       val reviewReached = boundaries.any {
         it.stage == ReviewStage.REVIEW && it.reached == ReviewStageReached.REACHED
       }
-      if (!reviewReached) return
+      if (!reviewReached) return emptyList()
       database.transaction { unitOfWork -> unitOfWork.reviews.fetchReviewPassClaims(reviewRunId) }
         ?.findings
         .orEmpty()
@@ -528,7 +545,7 @@ class ParallelCodeReviewRunner(
       .toSet()
     if (claims.all { it.fNumber in verifiedRefs }) {
       if (reviewRunId != null) recordVerificationBoundary(reviewRunId)
-      return
+      return existing
     }
     val outcome = ReviewClaimVerificationRunner(parentReviewLauncher, reviewContextEnvelopeValidator).run(
       packet = initial.compiledLaunchRequests.firstOrNull()?.packet,
@@ -540,7 +557,7 @@ class ParallelCodeReviewRunner(
       repoRoot = initial.request.repoRoot,
       timeout = initial.request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes,
     )
-    if (reviewRunId == null) return
+    if (reviewRunId == null) return existing + outcome.verdicts
     if (outcome.verdicts.isNotEmpty()) {
       database.transaction { unitOfWork ->
         unitOfWork.reviews.recordFindingVerdicts(reviewRunId, outcome.verdicts)
@@ -553,6 +570,7 @@ class ParallelCodeReviewRunner(
     if (claims.all { it.fNumber in recordedRefs }) {
       recordVerificationBoundary(reviewRunId)
     }
+    return existing + outcome.verdicts
   }
 
   private fun recordVerificationBoundary(reviewRunId: String) {
@@ -569,7 +587,7 @@ class ParallelCodeReviewRunner(
     }
   }
 
-  private fun runSpecAdjudication(initial: InitialRun, result: ParallelCodeReviewResult) {
+  private fun runSpecAdjudication(initial: InitialRun, result: ParallelCodeReviewResult): List<ReviewFindingVerdict> {
     val reviewRunId = initial.request.reviewRunId
     if (reviewRunId != null) {
       val boundaries = database.transaction { unitOfWork ->
@@ -578,11 +596,13 @@ class ParallelCodeReviewRunner(
       val verificationReached = boundaries.any {
         it.stage == ReviewStage.VERIFICATION && it.reached == ReviewStageReached.REACHED
       }
-      if (!verificationReached) return
+      if (!verificationReached) return emptyList()
       val adjudicationReached = boundaries.any {
         it.stage == ReviewStage.ADJUDICATION && it.reached == ReviewStageReached.REACHED
       }
-      if (adjudicationReached) return
+      if (adjudicationReached) {
+        return database.transaction { unitOfWork -> unitOfWork.reviews.fetchFindingVerdicts(reviewRunId) }
+      }
     }
     val projection = (initial.specIntentResolution as? SpecIntentResolution.Resolved)?.projection
     val claims = if (reviewRunId == null) {
@@ -607,14 +627,15 @@ class ParallelCodeReviewRunner(
       repoRoot = initial.request.repoRoot,
       timeout = initial.request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes,
     )
-    if (reviewRunId == null) return
-    if (outcome.skipReason == ReviewSpecAdjudicationRunner.SPEC_CONTEXT_NONE) return
+    if (reviewRunId == null) return outcome.verdicts
+    if (outcome.skipReason == ReviewSpecAdjudicationRunner.SPEC_CONTEXT_NONE) return emptyList()
     if (outcome.verdicts.isNotEmpty()) {
       database.transaction { unitOfWork ->
         unitOfWork.reviews.recordFindingVerdicts(reviewRunId, outcome.verdicts)
       }
     }
     recordAdjudicationBoundary(reviewRunId)
+    return outcome.verdicts
   }
 
   private fun recordAdjudicationBoundary(reviewRunId: String) {

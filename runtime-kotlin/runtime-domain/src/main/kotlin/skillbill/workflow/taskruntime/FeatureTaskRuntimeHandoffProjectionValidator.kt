@@ -4,6 +4,7 @@ import skillbill.contracts.JsonSupport
 import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
+import skillbill.review.ReviewFindingActionability
 import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FORBIDDEN_PROJECTION_FIELD_NAMES
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
@@ -585,6 +586,7 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
   private fun reviewBlockerProjection(produced: Map<String, Any?>): List<Map<String, Any?>> =
     (produced["findings"] as? List<*>).orEmpty()
       .mapNotNull(JsonSupport::anyToStringAnyMap)
+      .filter(ReviewFindingActionability::isActionable)
       .map { finding ->
         val severity = (finding["severity"] as? String)?.takeIf(String::isNotBlank) ?: "blocker"
         mapOf(

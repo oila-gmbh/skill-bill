@@ -83,6 +83,15 @@ fun NumberedFinding.toNumberedFindingContract(): NumberedFindingContract = Numbe
   confidence = confidence,
   location = location,
   description = description,
+  claimVerdict = claimVerdict?.wireValue,
+  scopeDisposition = scopeDisposition?.wireValue,
+  citations = citations.map { citation -> linkedMapOf("path" to citation.path, "line" to citation.line) },
+  severityAdjustment = severityAdjustment?.let { adjustment ->
+    linkedMapOf(
+      "direction" to adjustment.direction.wireValue,
+      "justification" to adjustment.justification,
+    )
+  },
 )
 
 fun TriageDecision.toTriageDecisionContract(): TriageDecisionContract = TriageDecisionContract(

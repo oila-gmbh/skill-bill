@@ -1,5 +1,13 @@
 package skillbill.review.model
 
+data class ReviewLaneFindingVerdict(
+  val laneId: String,
+  val claimVerdict: ReviewClaimVerdict? = null,
+  val scopeDisposition: ReviewScopeDisposition? = null,
+  val citations: List<ReviewFindingCitation> = emptyList(),
+  val severityAdjustment: ReviewSeverityAdjustment? = null,
+)
+
 enum class ParallelReviewSeverity(val displayName: String) {
   BLOCKER("Blocker"),
   MAJOR("Major"),
@@ -17,6 +25,10 @@ data class ParallelReviewRawFinding(
   val repositoryPath: String? = null,
   val line: Int? = null,
   val commitShas: List<String> = emptyList(),
+  val claimVerdict: ReviewClaimVerdict? = null,
+  val scopeDisposition: ReviewScopeDisposition? = null,
+  val citations: List<ReviewFindingCitation> = emptyList(),
+  val severityAdjustment: ReviewSeverityAdjustment? = null,
 )
 
 data class ParallelReviewLaneResult(
@@ -36,7 +48,18 @@ data class ParallelReviewMergedFinding(
   val repositoryPath: String? = null,
   val line: Int? = null,
   val commitShas: List<String> = emptyList(),
-)
+  val claimVerdict: ReviewClaimVerdict? = null,
+  val scopeDisposition: ReviewScopeDisposition? = null,
+  val citations: List<ReviewFindingCitation> = emptyList(),
+  val severityAdjustment: ReviewSeverityAdjustment? = null,
+  val sourceVerdicts: List<ReviewLaneFindingVerdict> = emptyList(),
+) {
+  val hasRecordedVerdict: Boolean
+    get() = claimVerdict != null ||
+      scopeDisposition != null ||
+      severityAdjustment != null ||
+      sourceVerdicts.isNotEmpty()
+}
 
 data class ParallelReviewMergeResult(
   val findings: List<ParallelReviewMergedFinding>,

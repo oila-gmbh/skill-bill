@@ -5,9 +5,15 @@ package skillbill.review
 import skillbill.review.model.ParallelReviewLaneResult
 import skillbill.review.model.ParallelReviewRawFinding
 import skillbill.review.model.ParallelReviewSeverity
+import skillbill.review.model.ReviewClaimVerdict
+import skillbill.review.model.ReviewFindingCitation
+import skillbill.review.model.ReviewScopeDisposition
+import skillbill.review.model.ReviewSeverityAdjustment
+import skillbill.review.model.ReviewSeverityAdjustmentDirection
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class ParallelReviewMergerTest {
@@ -528,5 +534,66 @@ class ParallelReviewMergerTest {
 
     assertEquals(listOf("claude", "review-integration"), merged.agentIds)
     assertEquals("High", merged.confidence)
+  }
+
+  @Test
+  fun `severity adjustment appears beside the original severity on the preserved claim line`() {
+    val finding = ParallelReviewRawFinding(
+      ParallelReviewSeverity.MAJOR,
+      "High",
+      "Auth.kt:10",
+      "Token logged",
+      repositoryPath = "Auth.kt",
+      line = 10,
+      claimVerdict = ReviewClaimVerdict.CONFIRMED,
+      scopeDisposition = ReviewScopeDisposition.IN_SCOPE,
+      severityAdjustment = ReviewSeverityAdjustment(
+        ReviewSeverityAdjustmentDirection.LOWER,
+        "too noisy",
+      ),
+    )
+    val result = ParallelReviewMerger.merge(
+      ParallelReviewLaneResult("claude", listOf(finding)),
+      ParallelReviewLaneResult("codex", emptyList()),
+    )
+    val line = result.formattedOutput.lineSequence().first { it.contains("[F-001]") }
+    assertTrue(line.contains("Major"), line)
+    assertTrue(line.contains("lower"), line)
+    assertTrue(line.contains("too noisy"), line)
+    assertFalse(line.contains("Nit |"), line)
+    assertEquals(
+      "- [F-001] [claude] Major (lower: too noisy) | High | path=\"Auth.kt\" | line=10 | Token logged",
+      line,
+    )
+  }
+
+  @Test
+  fun `coalesced disagreeing verdicts keep the conservative outcome and both lane sources`() {
+    val description = "Token logged in the authentication path"
+    val confirmed = ParallelReviewRawFinding(
+      ParallelReviewSeverity.MAJOR,
+      "High",
+      "Auth.kt:10",
+      description,
+      repositoryPath = "Auth.kt",
+      line = 10,
+      claimVerdict = ReviewClaimVerdict.REFUTED,
+      citations = listOf(ReviewFindingCitation("Auth.kt", 10)),
+    )
+    val unresolved = confirmed.copy(
+      claimVerdict = ReviewClaimVerdict.UNRESOLVED,
+      citations = emptyList(),
+    )
+    val result = ParallelReviewMerger.merge(
+      ParallelReviewLaneResult("claude", listOf(confirmed)),
+      ParallelReviewLaneResult("codex", listOf(unresolved)),
+    )
+    val merged = result.findings.single()
+    assertEquals(ReviewClaimVerdict.UNRESOLVED, merged.claimVerdict)
+    assertEquals(listOf("claude", "codex"), merged.sourceVerdicts.map { it.laneId })
+    assertEquals(
+      listOf(ReviewClaimVerdict.REFUTED, ReviewClaimVerdict.UNRESOLVED),
+      merged.sourceVerdicts.map { it.claimVerdict },
+    )
   }
 }

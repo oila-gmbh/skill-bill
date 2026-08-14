@@ -52,6 +52,10 @@ data class NumberedFindingContract(
   val confidence: String,
   val location: String,
   val description: String,
+  val claimVerdict: String? = null,
+  val scopeDisposition: String? = null,
+  val citations: List<Map<String, Any?>> = emptyList(),
+  val severityAdjustment: Map<String, String>? = null,
 ) : JsonPayloadContract {
   override fun toPayload(): Map<String, Any?> = linkedMapOf(
     "number" to number,
@@ -60,7 +64,12 @@ data class NumberedFindingContract(
     "confidence" to confidence,
     "location" to location,
     "description" to description,
-  )
+  ).apply {
+    claimVerdict?.let { put("claim_verdict", it) }
+    scopeDisposition?.let { put("scope_disposition", it) }
+    if (citations.isNotEmpty()) put("citations", citations)
+    severityAdjustment?.let { put("severity_adjustment", it) }
+  }
 }
 
 data class TriageDecisionContract(

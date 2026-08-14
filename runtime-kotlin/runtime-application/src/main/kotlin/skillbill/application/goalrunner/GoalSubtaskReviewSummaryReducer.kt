@@ -8,6 +8,11 @@ import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.goalrunner.model.normalizedUnaddressedFindingCategory
 import skillbill.goalrunner.model.normalizedUnaddressedFindingSeverity
 import skillbill.goalrunner.model.toOutcomeRecord
+import skillbill.review.ReviewFindingActionability
+import skillbill.review.model.ReviewClaimVerdict
+import skillbill.review.model.ReviewFindingCitation
+import skillbill.review.model.ReviewScopeDisposition
+import skillbill.review.model.ReviewSeverityAdjustment
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_PASS_VERDICTS
 import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition
@@ -23,6 +28,10 @@ internal data class StructuredGoalReviewFinding(
   val location: String,
   val compactLabel: String,
   val findingId: String? = null,
+  val claimVerdict: ReviewClaimVerdict? = null,
+  val scopeDisposition: ReviewScopeDisposition? = null,
+  val citations: List<ReviewFindingCitation> = emptyList(),
+  val severityAdjustment: ReviewSeverityAdjustment? = null,
 )
 
 internal data class GoalSubtaskReviewOutputOutcome(
@@ -49,7 +58,11 @@ internal object GoalSubtaskReviewSummaryReducer {
   private val diffFragment = Regex("(?i)(?:\\bdiff\\s+--git\\b|\\bindex\\s+[0-9a-f]{7,}\\b|---|\\+\\+\\+)")
 
   fun fromOutput(output: Map<String, Any?>): List<GoalSubtaskReviewCompactFinding> {
-    return structuredFindings(output).map { finding ->
+    return structuredFindings(output)
+      .filter { finding ->
+        ReviewFindingActionability.isActionable(finding.claimVerdict, finding.scopeDisposition)
+      }
+      .map { finding ->
       GoalSubtaskReviewCompactFinding(
         severity = finding.severity,
         label = finding.compactLabel,
@@ -101,6 +114,10 @@ internal object GoalSubtaskReviewSummaryReducer {
           .filterIsInstance<String>().firstOrNull()?.trim()?.takeIf(String::isNotBlank) ?: "<unknown>",
         compactLabel = labelFor(finding, message),
         findingId = (finding["id"] as? String)?.trim()?.takeIf(String::isNotBlank),
+        claimVerdict = ReviewFindingActionability.claimVerdictOf(finding["claim_verdict"]),
+        scopeDisposition = ReviewFindingActionability.scopeDispositionOf(finding["scope_disposition"]),
+        citations = ReviewFindingActionability.citationsOf(finding["citations"]),
+        severityAdjustment = ReviewFindingActionability.severityAdjustmentOf(finding["severity_adjustment"]),
       )
     }
   }
@@ -140,6 +157,10 @@ internal object GoalSubtaskReviewSummaryReducer {
         summary = finding.message,
         reviewRunId = reviewRunId,
         findingId = finding.findingId,
+        claimVerdict = finding.claimVerdict,
+        scopeDisposition = finding.scopeDisposition,
+        citations = finding.citations,
+        severityAdjustment = finding.severityAdjustment,
       )
     }
   }
@@ -224,6 +245,27 @@ internal object GoalSubtaskReviewSummaryReducer {
       )
     }
     return dispositions
+  }
+
+  fun refutedBlockerSupersedes(
+    priorFindings: List<UnaddressedFinding>,
+    currentFindings: List<UnaddressedFinding>,
+  ): List<GoalSubtaskBlockerDisposition> {
+    if (priorFindings.isEmpty()) return emptyList()
+    val currentByKey = currentFindings.associateBy(UnaddressedFinding::findingKey)
+    return priorFindings.mapNotNull { prior ->
+      if (prior.severity != "blocker") return@mapNotNull null
+      val current = currentByKey[prior.findingKey] ?: return@mapNotNull null
+      if (current.claimVerdict != ReviewClaimVerdict.REFUTED) return@mapNotNull null
+      val evidence = current.citations.map { citation -> "${citation.path}:${citation.line}" }
+      if (evidence.isEmpty()) return@mapNotNull null
+      val findingId = prior.findingId ?: return@mapNotNull null
+      GoalSubtaskBlockerDisposition(
+        findingId = findingId,
+        verdict = GoalSubtaskBlockerDispositionVerdict.SUPERSEDED,
+        evidence = evidence,
+      )
+    }
   }
 
   fun unresolvedCount(output: Map<String, Any?>): Int = fromOutput(output)

@@ -300,11 +300,7 @@ private fun intValue(raw: Any?): Int? = when (raw) {
 }
 
 private fun encodeCitations(citations: List<ReviewFindingCitation>): String =
-  citations.joinToString("\n") { citation -> "${citation.path}\t${citation.line}" }
+  ReviewFindingCitation.encodeList(citations)
 
 private fun decodeCitations(raw: String?): List<ReviewFindingCitation> =
-  raw.orEmpty().lineSequence().filter { it.isNotBlank() }.map { line ->
-    val path = line.substringBefore('\t')
-    val lineNumber = line.substringAfter('\t').toInt()
-    ReviewFindingCitation(path, lineNumber)
-  }.toList()
+  ReviewFindingCitation.decodeList(raw)

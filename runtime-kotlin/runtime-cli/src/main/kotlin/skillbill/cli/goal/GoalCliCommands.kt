@@ -376,6 +376,17 @@ class GoalFindingsCommand(
           "issue_category" to finding.issueCategory,
           "location" to finding.location,
           "summary" to finding.summary,
+          "claim_verdict" to finding.claimVerdict?.wireValue,
+          "scope_disposition" to finding.scopeDisposition?.wireValue,
+          "citations" to finding.citations.map { citation ->
+            linkedMapOf("path" to citation.path, "line" to citation.line)
+          },
+          "severity_adjustment" to finding.severityAdjustment?.let { adjustment ->
+            linkedMapOf(
+              "direction" to adjustment.direction.wireValue,
+              "justification" to adjustment.justification,
+            )
+          },
         )
       },
       "repair_ledger" to repairLedgers.map { (workflowId, repairLedger) ->
@@ -391,7 +402,9 @@ class GoalFindingsCommand(
         appendLine(
           "subtask=${finding.subtaskId} pass=${finding.reviewPassNumber} " +
             "severity=${finding.severity} category=${finding.issueCategory} " +
-            "location=${finding.location} ${finding.summary}",
+            "location=${finding.location} ${finding.summary}" +
+            finding.claimVerdict?.let { " claim_verdict=${it.wireValue}" }.orEmpty() +
+            finding.scopeDisposition?.let { " scope_disposition=${it.wireValue}" }.orEmpty(),
         )
       }
       repairLedgers.forEach { (workflowId, repairLedger) ->

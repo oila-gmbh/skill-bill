@@ -123,7 +123,12 @@ class UnaddressedFindingsRuntimeTest {
     val dbPath = Files.createTempDirectory("unaddressed-findings-key").resolve("runtime.db")
     DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
       val repository = SQLiteUnaddressedFindingsRepository(connection)
-      val keyed = finding(1, "blocker", "src/First.kt:7").copy(reviewRunId = "rvw-1", findingId = "F-001")
+      val keyed = finding(1, "blocker", "src/First.kt:7").copy(
+        reviewRunId = "rvw-1",
+        findingId = "F-001",
+        claimVerdict = skillbill.review.model.ReviewClaimVerdict.REFUTED,
+        citations = listOf(skillbill.review.model.ReviewFindingCitation("src/First.kt", 7)),
+      )
       val unkeyed = finding(2, "minor", "src/Second.kt:9")
 
       repository.replaceLedgerForPass("workflow-1", 1, listOf(keyed, unkeyed))

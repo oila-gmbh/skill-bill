@@ -1,6 +1,10 @@
 package skillbill.goalrunner.model
 
+import skillbill.review.model.ReviewClaimVerdict
+import skillbill.review.model.ReviewFindingCitation
 import skillbill.review.model.ReviewIssueCategory
+import skillbill.review.model.ReviewScopeDisposition
+import skillbill.review.model.ReviewSeverityAdjustment
 
 val UNADDRESSED_FINDING_SEVERITIES: Set<String> = setOf("blocker", "major", "minor", "nit")
 val UNADDRESSED_FINDING_CATEGORIES: Set<String> = ReviewIssueCategory.entries.mapTo(linkedSetOf()) { it.wireValue }
@@ -71,6 +75,10 @@ data class UnaddressedFinding(
    */
   val reviewRunId: String? = null,
   val findingId: String? = null,
+  val claimVerdict: ReviewClaimVerdict? = null,
+  val scopeDisposition: ReviewScopeDisposition? = null,
+  val citations: List<ReviewFindingCitation> = emptyList(),
+  val severityAdjustment: ReviewSeverityAdjustment? = null,
 ) {
   val findingKey: String get() = reviewFindingIdentityKey(location, summary)
 }

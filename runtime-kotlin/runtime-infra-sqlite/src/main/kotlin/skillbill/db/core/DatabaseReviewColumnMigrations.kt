@@ -39,12 +39,22 @@ internal object DatabaseReviewColumnMigrations {
     ensureColumn(connection, "unaddressed_findings", "summary", "TEXT NOT NULL DEFAULT ''")
     ensureColumn(connection, "unaddressed_findings", "recorded_at", "TEXT NOT NULL DEFAULT ''")
     ensureReviewFindingOutcomeKeyColumns(connection)
+    ensureUnaddressedFindingVerdictColumns(connection)
     connection.createStatement().use { statement ->
       statement.execute(
         "CREATE INDEX IF NOT EXISTS idx_unaddressed_findings_issue " +
           "ON unaddressed_findings(issue_key, subtask_id, review_pass_number)",
       )
     }
+  }
+
+  fun ensureUnaddressedFindingVerdictColumns(connection: Connection) {
+    if (!DatabaseColumnMigrations.tableExists(connection, "unaddressed_findings")) return
+    ensureColumn(connection, "unaddressed_findings", "claim_verdict", "TEXT")
+    ensureColumn(connection, "unaddressed_findings", "scope_disposition", "TEXT")
+    ensureColumn(connection, "unaddressed_findings", "citations", "TEXT NOT NULL DEFAULT ''")
+    ensureColumn(connection, "unaddressed_findings", "severity_adjustment_direction", "TEXT")
+    ensureColumn(connection, "unaddressed_findings", "severity_adjustment_justification", "TEXT")
   }
 
   /**

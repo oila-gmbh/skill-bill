@@ -43,6 +43,9 @@ internal data class CliNumberedFindingLine(
   val confidence: String,
   val location: String,
   val description: String,
+  val claimVerdict: String? = null,
+  val scopeDisposition: String? = null,
+  val severityAdjustment: String? = null,
 )
 
 internal data class CliTriagePresentation(
@@ -81,6 +84,11 @@ internal fun TriageResult.toCliNumberedFindingsPresentation(reviewRunId: String)
         confidence = finding.confidence,
         location = finding.location,
         description = finding.description,
+        claimVerdict = finding.claimVerdict?.wireValue,
+        scopeDisposition = finding.scopeDisposition?.wireValue,
+        severityAdjustment = finding.severityAdjustment?.let { adjustment ->
+          "${adjustment.direction.wireValue}: ${adjustment.justification}"
+        },
       )
     },
   )

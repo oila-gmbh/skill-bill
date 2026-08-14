@@ -30,6 +30,7 @@ import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_K
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition
+import skillbill.workflow.taskruntime.model.unionRefutedBlockerDispositions
 import skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
@@ -205,30 +206,39 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
       ?: return@transaction null
     require(request.rawReviewResult.isNotBlank()) { "Goal-subtask review pass result must be non-blank." }
     val previousResults = rawReviewResultsFromArtifacts(artifacts, state)
-    val completed = state.completeReservedPass(
-      request.verdict,
-      request.unresolvedFindingCount,
-      request.findings,
-      request.blockerDispositions,
-      request.commitFocusedAccounting,
-    )
-    val passNumber = completed.completedPassCount.toString()
     val continuation = continuationFromArtifacts(artifacts)
       ?: error("Goal-subtask review continuation is missing during reserved-pass recovery.")
+    val reservedPass = state.reservedPassNumber ?: 1
     val ledgerFindings = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
       output = request.normalizedOutput,
       issueKey = continuation.issueKey,
       subtaskId = continuation.subtaskId,
       workflowId = request.workflowId,
-      reviewPassNumber = passNumber.toInt(),
+      reviewPassNumber = reservedPass,
     )
     val supersededFindings = unitOfWork.unaddressedFindings.fetchWorkflowLedger(request.workflowId)
+    val dispositions = if (reservedPass <= 1) {
+      request.blockerDispositions
+    } else {
+      unionRefutedBlockerDispositions(
+        request.blockerDispositions,
+        GoalSubtaskReviewSummaryReducer.refutedBlockerSupersedes(supersededFindings, ledgerFindings),
+      )
+    }
+    val completed = state.completeReservedPass(
+      request.verdict,
+      request.unresolvedFindingCount,
+      request.findings,
+      dispositions,
+      request.commitFocusedAccounting,
+    )
+    val passNumber = completed.completedPassCount.toString()
     unitOfWork.unaddressedFindings.replaceLedgerForPass(request.workflowId, passNumber.toInt(), ledgerFindings)
     unitOfWork.unaddressedFindings.recordOutcomes(
       GoalSubtaskReviewSummaryReducer.reviewFindingOutcomes(
         supersededFindings = supersededFindings,
         currentFindings = ledgerFindings,
-        blockerDispositions = request.blockerDispositions,
+        blockerDispositions = dispositions,
       ),
     )
     savePatch(

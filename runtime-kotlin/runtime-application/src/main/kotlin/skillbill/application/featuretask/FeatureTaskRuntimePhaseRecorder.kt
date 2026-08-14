@@ -86,6 +86,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition
+import skillbill.workflow.taskruntime.model.unionRefutedBlockerDispositions
 import skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
@@ -970,11 +971,31 @@ class FeatureTaskRuntimePhaseRecorder(
       val artifacts = decodeArtifacts(record.artifactsJson)
       val reviewArtifacts = GoalSubtaskReviewArtifactDecoder.decode(artifacts)
         ?: return@transaction false
+      val continuation = reviewArtifacts.continuation
+      val reservedPass = reviewArtifacts.state.reservedPassNumber ?: 1
+      val priorFindings = unitOfWork.unaddressedFindings.fetchWorkflowLedger(request.workflowId)
+      val currentFindings = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
+        output = requireNotNull(request.normalizedOutput) {
+          "Goal review completion requires normalized output to persist the unaddressed-findings ledger."
+        }.envelope,
+        issueKey = continuation.issueKey,
+        subtaskId = continuation.subtaskId,
+        workflowId = request.workflowId,
+        reviewPassNumber = reservedPass,
+      )
+      val dispositions = if (reservedPass <= 1) {
+        completion.blockerDispositions
+      } else {
+        unionRefutedBlockerDispositions(
+          completion.blockerDispositions,
+          GoalSubtaskReviewSummaryReducer.refutedBlockerSupersedes(priorFindings, currentFindings),
+        )
+      }
       val completedState = reviewArtifacts.state.completeReservedPass(
         verdict = completion.verdict,
         unresolvedFindingCount = completion.unresolvedFindingCount,
         findings = completion.findings,
-        blockerDispositions = completion.blockerDispositions,
+        blockerDispositions = dispositions,
         commitFocusedAccounting = completion.commitFocusedAccounting,
       )
       val passNumber = completedState.completedPassCount.toString()
@@ -997,8 +1018,7 @@ class FeatureTaskRuntimePhaseRecorder(
         completionEntry.toArtifactMap(),
         FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT,
       )
-      val continuation = reviewArtifacts.continuation
-      persistUnaddressedFindings(unitOfWork, request, continuation, passNumber.toInt(), completion.blockerDispositions)
+      persistUnaddressedFindings(unitOfWork, request, continuation, passNumber.toInt(), dispositions)
       persistPatch(
         unitOfWork.workflowStates,
         record,

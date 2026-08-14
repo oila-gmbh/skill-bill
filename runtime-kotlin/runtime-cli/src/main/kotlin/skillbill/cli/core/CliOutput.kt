@@ -30,7 +30,10 @@ internal object CliOutput {
       appendLine(
         "${finding.number}. [${finding.findingId}] " +
           "${finding.severity} | ${finding.confidence} | " +
-          "${finding.location} | ${finding.description}",
+          "${finding.location} | ${finding.description}" +
+          finding.claimVerdict?.let { " | claim_verdict=$it" }.orEmpty() +
+          finding.scopeDisposition?.let { " | scope_disposition=$it" }.orEmpty() +
+          finding.severityAdjustment?.let { " | severity_adjustment=$it" }.orEmpty(),
       )
     }
   }

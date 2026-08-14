@@ -2,6 +2,11 @@ package skillbill.infrastructure.sqlite.review
 
 import skillbill.review.model.ImportedFinding
 import skillbill.review.model.NumberedFinding
+import skillbill.review.model.ReviewClaimVerdict
+import skillbill.review.model.ReviewFindingCitation
+import skillbill.review.model.ReviewScopeDisposition
+import skillbill.review.model.ReviewSeverityAdjustment
+import skillbill.review.model.ReviewSeverityAdjustmentDirection
 import skillbill.review.model.ReviewSummary
 
 fun java.sql.ResultSet.toImportedFinding(): ImportedFinding = ImportedFinding(
@@ -39,4 +44,22 @@ fun java.sql.ResultSet.toNumberedFinding(number: Int): NumberedFinding = Numbere
   confidence = getString("confidence"),
   location = getString("location"),
   description = getString("description"),
+  claimVerdict = getString("claim_verdict")?.trim()?.takeIf(String::isNotBlank)?.let(ReviewClaimVerdict::fromWire),
+  scopeDisposition = getString("scope_disposition")?.trim()?.takeIf(String::isNotBlank)
+    ?.let(ReviewScopeDisposition::fromWire),
+  citations = ReviewFindingCitation.decodeList(getString("citations")),
+  severityAdjustment = numberedFindingAdjustment(
+    getString("severity_adjustment_direction"),
+    getString("severity_adjustment_justification"),
+  ),
 )
+
+private fun numberedFindingAdjustment(
+  direction: String?,
+  justification: String?,
+): ReviewSeverityAdjustment? {
+  val parsedDirection = direction?.trim()?.takeIf(String::isNotBlank)?.let(ReviewSeverityAdjustmentDirection::fromWire)
+    ?: return null
+  val parsedJustification = justification?.trim()?.takeIf(String::isNotBlank) ?: return null
+  return ReviewSeverityAdjustment(parsedDirection, parsedJustification)
+}

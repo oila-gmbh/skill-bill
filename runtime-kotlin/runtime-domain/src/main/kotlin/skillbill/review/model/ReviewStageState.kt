@@ -70,6 +70,18 @@ data class ReviewFindingCitation(
     require(path.isNotBlank()) { "Finding citation path must not be blank." }
     require(line >= 1) { "Finding citation line must be a positive integer." }
   }
+
+  fun encoded(): String = "$path\t$line"
+
+  companion object {
+    fun decodeList(raw: String?): List<ReviewFindingCitation> =
+      raw.orEmpty().lineSequence().filter { it.isNotBlank() }.map { line ->
+        ReviewFindingCitation(line.substringBefore('\t'), line.substringAfter('\t').toInt())
+      }.toList()
+
+    fun encodeList(citations: List<ReviewFindingCitation>): String =
+      citations.joinToString("\n", transform = ReviewFindingCitation::encoded)
+  }
 }
 
 data class ReviewSeverityAdjustment(

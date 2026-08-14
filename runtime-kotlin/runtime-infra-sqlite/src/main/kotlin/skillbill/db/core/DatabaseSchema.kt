@@ -180,6 +180,11 @@ internal object DatabaseSchema {
         recorded_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         review_run_id TEXT,
         finding_id TEXT,
+        claim_verdict TEXT,
+        scope_disposition TEXT,
+        citations TEXT NOT NULL DEFAULT '',
+        severity_adjustment_direction TEXT,
+        severity_adjustment_justification TEXT,
         PRIMARY KEY (workflow_id, review_pass_number, finding_ordinal)
       )
       """.trimIndent(),
