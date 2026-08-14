@@ -10,7 +10,7 @@ import java.sql.Connection
 
 fun loadStandaloneReviewPayloads(connection: Connection): List<ReviewHealthPayload> = connection.prepareStatement(
   """
-    SELECT id, payload_json, synced_at
+    SELECT payload_json
     FROM telemetry_outbox
     WHERE event_name = 'skillbill_review_finished'
     ORDER BY id
@@ -19,15 +19,13 @@ fun loadStandaloneReviewPayloads(connection: Connection): List<ReviewHealthPaylo
   statement.executeQuery().use { resultSet ->
     buildList {
       while (resultSet.next()) {
-        val rowId = resultSet.getLong("id")
         val raw = resultSet.getString("payload_json")
-        val synced = resultSet.getString("synced_at")
         val parsed = parseJsonObject(raw)
         if (parsed.isEmpty() && raw.trim() != "{}") {
           add(ReviewHealthPayload("malformed", emptyMap()))
           continue
         }
-        val materialized = materializeReviewFinishedPayload(connection, parsed, rowId, synced)
+        val materialized = materializeReviewFinishedPayload(connection, parsed)
         add(ReviewHealthPayload("standalone", materialized))
       }
     }
@@ -57,37 +55,39 @@ fun Map<String, Any?>.healthInt(key: String): Int = this[key].asInt()
 
 fun Map<String, Any?>.stringHealthValue(key: String): String = this[key]?.toString().orEmpty()
 
+fun persistLegacyTelemetryRewrites(connection: Connection) {
+  restampUnsyncedLegacyTelemetry(connection)
+  val unsyncedReviewFinished = connection.prepareStatement(
+    """
+    SELECT id, payload_json
+    FROM telemetry_outbox
+    WHERE event_name = 'skillbill_review_finished'
+      AND synced_at IS NULL
+    ORDER BY id
+    """.trimIndent(),
+  ).use { statement ->
+    statement.executeQuery().use { resultSet ->
+      buildList {
+        while (resultSet.next()) {
+          add(resultSet.getLong("id") to resultSet.getString("payload_json"))
+        }
+      }
+    }
+  }
+  unsyncedReviewFinished.forEach { (outboxId, raw) ->
+    persistLegacyReviewFinishedRow(connection, outboxId, raw)
+  }
+}
+
 fun materializeReviewFinishedPayload(
   connection: Connection,
   payload: Map<String, Any?>,
-  outboxId: Long? = null,
-  syncedAt: String? = null,
 ): Map<String, Any?> {
   if (payload.isEmpty()) return payload
-  restampUnsyncedContractVersion(connection, outboxId, syncedAt, payload)
   if (!isLegacyReviewFinished(payload)) return payload
   val reviewRunId = payload.stringHealthValue("review_run_id")
   if (reviewRunId.isBlank()) return payload
-  val regenerated = ReviewStatsRuntime.buildReviewFinishedPayload(connection, reviewRunId)
-    .toReviewFinishedTelemetryPayload()
-    .toPayload()
-  val rewritten = LinkedHashMap(payload).apply {
-    putAll(regenerated)
-    put("contract_version", REVIEW_STAGE_DEGRADATION_CONTRACT_VERSION)
-  }
-  if (outboxId != null && syncedAt.isNullOrBlank()) {
-    rewriteOutboxPayload(connection, outboxId, rewritten)
-    enqueueTelemetry(
-      connection,
-      REVIEW_FINISHED_LEGACY_REGENERATED_EVENT_NAME,
-      linkedMapOf(
-        "review_run_id" to reviewRunId,
-        "from_version" to (payload["contract_version"]?.toString() ?: REVIEW_FINISHED_LEGACY_CONTRACT_VERSION),
-        "to_version" to REVIEW_STAGE_DEGRADATION_CONTRACT_VERSION,
-      ),
-    )
-  }
-  return rewritten
+  return regenerateReviewFinishedPayload(connection, payload, reviewRunId)
 }
 
 private fun isLegacyReviewFinished(payload: Map<String, Any?>): Boolean {
@@ -101,18 +101,35 @@ private fun isLegacyReviewFinished(payload: Map<String, Any?>): Boolean {
     !payload.containsKey("resolved_tier")
 }
 
-private fun restampUnsyncedContractVersion(
+private fun persistLegacyReviewFinishedRow(connection: Connection, outboxId: Long, raw: String) {
+  val payload = parseJsonObject(raw)
+  if (payload.isEmpty() || !isLegacyReviewFinished(payload)) return
+  val reviewRunId = payload.stringHealthValue("review_run_id")
+  if (reviewRunId.isBlank()) return
+  val rewritten = regenerateReviewFinishedPayload(connection, payload, reviewRunId)
+  rewriteOutboxPayload(connection, outboxId, rewritten)
+  enqueueTelemetry(
+    connection,
+    REVIEW_FINISHED_LEGACY_REGENERATED_EVENT_NAME,
+    linkedMapOf(
+      "review_run_id" to reviewRunId,
+      "from_version" to (payload["contract_version"]?.toString() ?: REVIEW_FINISHED_LEGACY_CONTRACT_VERSION),
+      "to_version" to REVIEW_STAGE_DEGRADATION_CONTRACT_VERSION,
+    ),
+  )
+}
+
+private fun regenerateReviewFinishedPayload(
   connection: Connection,
-  outboxId: Long?,
-  syncedAt: String?,
   payload: Map<String, Any?>,
-) {
-  if (outboxId == null || !syncedAt.isNullOrBlank()) return
-  if (payload["contract_version"]?.toString() != REVIEW_FINISHED_LEGACY_CONTRACT_VERSION) return
-  if (payload.containsKey("verification")) {
-    val restamped = LinkedHashMap(payload)
-    restamped["contract_version"] = REVIEW_STAGE_DEGRADATION_CONTRACT_VERSION
-    rewriteOutboxPayload(connection, outboxId, restamped)
+  reviewRunId: String,
+): Map<String, Any?> {
+  val regenerated = ReviewStatsRuntime.buildReviewFinishedPayload(connection, reviewRunId)
+    .toReviewFinishedTelemetryPayload()
+    .toPayload()
+  return LinkedHashMap(payload).apply {
+    putAll(regenerated)
+    put("contract_version", REVIEW_STAGE_DEGRADATION_CONTRACT_VERSION)
   }
 }
 

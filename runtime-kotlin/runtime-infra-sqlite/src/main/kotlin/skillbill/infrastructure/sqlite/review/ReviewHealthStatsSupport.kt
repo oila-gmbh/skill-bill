@@ -13,7 +13,6 @@ data class ReviewHealthPayload(
 )
 
 fun buildReviewHealthStats(connection: Connection, reviewRunId: String?): ReviewHealthStats {
-  restampUnsyncedLegacyTelemetry(connection)
   val parsedPayloads = loadStandaloneReviewPayloads(connection) + loadEmbeddedReviewPayloads(connection)
   val scopedPayloads =
     if (reviewRunId == null) {

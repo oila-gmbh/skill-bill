@@ -8,6 +8,7 @@ import skillbill.infrastructure.sqlite.SQLiteReviewRunCompletenessRepository
 import skillbill.infrastructure.sqlite.review.ReviewRuntime
 import skillbill.infrastructure.sqlite.review.ReviewStatsRuntime
 import skillbill.infrastructure.sqlite.review.TriageRuntime
+import skillbill.infrastructure.sqlite.review.persistLegacyTelemetryRewrites
 import skillbill.ports.telemetry.model.toReviewFinishedTelemetryPayload
 import skillbill.review.context.model.ReviewClaimVerdictAdmission
 import skillbill.review.context.model.ReviewSpecAdjudicationAdmission
@@ -180,8 +181,18 @@ class ReviewStageTelemetryTest {
           ),
         ),
       )
-      val health = ReviewStatsRuntime.statsSnapshot(it, review.reviewRunId).health
-      assertTrue(health.malformedReviewPayloadRecords == 0)
+      val snapshot = ReviewStatsRuntime.statsSnapshot(it, review.reviewRunId)
+      assertTrue(snapshot.health.malformedReviewPayloadRecords == 0)
+      assertEquals(1, snapshot.stageMetrics?.verification?.confirmed)
+      assertEquals("delegated", snapshot.stageMetrics?.resolvedTier)
+      val storedAfterRead = TelemetryOutboxStore(it).listPending(null).single {
+        it.eventName == "skillbill_review_finished"
+      }
+      val storedAfterReadPayload = JsonSupport.parseObjectOrNull(storedAfterRead.payloadJson)
+        ?.let { node -> JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(node)) }
+        ?: emptyMap()
+      assertEquals(REVIEW_FINISHED_LEGACY_CONTRACT_VERSION, storedAfterReadPayload["contract_version"])
+      persistLegacyTelemetryRewrites(it)
       val rewritten = TelemetryOutboxStore(it).listPending(null).single {
         it.eventName == "skillbill_review_finished"
       }
