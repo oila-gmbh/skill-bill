@@ -2,7 +2,6 @@ package skillbill.application.review
 
 import skillbill.contracts.JsonSupport
 import skillbill.domain.review.context.model.SpecIntentProjection
-import skillbill.error.InvalidReviewContextSchemaError
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
@@ -138,10 +137,15 @@ class ReviewSpecAdjudicationRunner(
     val envelope = launch.toAdjudicationLaunchEnvelope().asWireMap()
     val launchBytes = JsonSupport.mapToJsonString(envelope).toByteArray(Charsets.UTF_8).size.toLong()
     if (launchBytes > budget.maxLaneLaunchBytes) {
-      throw InvalidReviewContextSchemaError(
-        sourceLabel = "review adjudication launch for ${finding.fNumber}",
-        reason = "adjudication launch exceeded max_lane_launch_bytes",
-        definitionName = "adjudication_launch",
+      return PreparedAdjudication.Rejected(
+        ReviewFindingVerdict(
+          stage = ReviewStage.ADJUDICATION,
+          findingRef = finding.fNumber,
+          claimVerdict = stage1.claimVerdict,
+          scopeDisposition = ReviewScopeDisposition.IN_SCOPE,
+          recordedAt = recordedAt,
+          rejectionReason = "adjudication launch exceeded max_lane_launch_bytes",
+        ),
       )
     }
     envelopeValidator.validate(envelope, "review adjudication launch for ${finding.fNumber}")
@@ -199,6 +203,14 @@ class ReviewSpecAdjudicationRunner(
       )
     }
     val worker = parseAdjudicationWorkerResult(facts.stdout)
+      ?: return ReviewFindingVerdict(
+        stage = ReviewStage.ADJUDICATION,
+        findingRef = job.finding.fNumber,
+        claimVerdict = job.stage1.claimVerdict,
+        scopeDisposition = ReviewScopeDisposition.IN_SCOPE,
+        recordedAt = recordedAt,
+        rejectionReason = "unparseable adjudication output",
+      )
     return ReviewSpecAdjudicationAdmission.admit(
       job.finding,
       job.stage1,

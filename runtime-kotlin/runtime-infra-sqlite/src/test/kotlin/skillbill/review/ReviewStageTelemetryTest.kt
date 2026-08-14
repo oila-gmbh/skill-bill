@@ -18,6 +18,7 @@ import skillbill.review.model.ImportedReview
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ParallelReviewSeverity
 import skillbill.review.model.REVIEW_FINISHED_LEGACY_CONTRACT_VERSION
+import skillbill.review.model.REVIEW_FINISHED_LEGACY_REGENERATED_EVENT_NAME
 import skillbill.review.model.REVIEW_STAGE_DEGRADATION_CONTRACT_VERSION
 import skillbill.review.model.REVIEW_STAGE_DEGRADATION_EVENT_NAME
 import skillbill.review.model.ReviewClaimVerdict
@@ -146,6 +147,51 @@ class ReviewStageTelemetryTest {
   }
 
   @Test
+  fun `unparseable verification output is a worker failure and unsettled admission is not`() {
+    val (_, connection) = tempDbConnection("stage-degrade-unparseable")
+    connection.use {
+      val repository = SQLiteReviewRunCompletenessRepository(it)
+      repository.recordFindingVerdicts(
+        "rvw-unparseable",
+        listOf(
+          ReviewFindingVerdict(
+            stage = ReviewStage.VERIFICATION,
+            findingRef = "F-001",
+            claimVerdict = ReviewClaimVerdict.UNRESOLVED,
+            recordedAt = "2026-08-14T08:00:00Z",
+            rejectionReason = "unparseable verification output",
+          ),
+        ),
+      )
+      emitDegradations(it, "rvw-unparseable")
+      assertTrue(ReviewStageDegradationReason.WORKER_LAUNCH_OR_RETURN_FAILED.wireValue in degradationReasons(it))
+      repository.recordFindingVerdicts(
+        "rvw-unsettled",
+        listOf(
+          ReviewFindingVerdict(
+            stage = ReviewStage.VERIFICATION,
+            findingRef = "F-001",
+            claimVerdict = ReviewClaimVerdict.UNRESOLVED,
+            recordedAt = "2026-08-14T08:00:00Z",
+            rejectionReason = ReviewClaimVerdictAdmission.UNSETTLED,
+          ),
+        ),
+      )
+      emitDegradations(it, "rvw-unsettled")
+      val unsettledReasons = TelemetryOutboxStore(it).listPending(null)
+        .filter { record -> record.eventName == REVIEW_STAGE_DEGRADATION_EVENT_NAME }
+        .mapNotNull { record ->
+          val payload = JsonSupport.parseObjectOrNull(record.payloadJson)
+            ?.let { node -> JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(node)) }
+            ?: return@mapNotNull null
+          if (payload["review_run_id"] != "rvw-unsettled") return@mapNotNull null
+          payload["reason"] as? String
+        }
+      assertTrue(ReviewStageDegradationReason.WORKER_LAUNCH_OR_RETURN_FAILED.wireValue !in unsettledReasons)
+    }
+  }
+
+  @Test
   fun `a stage without a reached boundary writes a degradation outbox row`() {
     val (_, connection) = tempDbConnection("stage-degrade-boundary")
     connection.use {
@@ -202,6 +248,50 @@ class ReviewStageTelemetryTest {
       assertEquals(REVIEW_STAGE_DEGRADATION_CONTRACT_VERSION, payload["contract_version"])
       assertEquals(1, payload.nestedInt("verification", "claim_verdict", "confirmed"))
       assertEquals("delegated", payload["resolved_tier"])
+      val companion = TelemetryOutboxStore(it).listPending(null).single { record ->
+        record.eventName == REVIEW_FINISHED_LEGACY_REGENERATED_EVENT_NAME
+      }
+      val companionPayload = JsonSupport.parseObjectOrNull(companion.payloadJson)
+        ?.let { node -> JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(node)) }
+        ?: emptyMap()
+      assertEquals(REVIEW_FINISHED_LEGACY_REGENERATED_EVENT_NAME, companionPayload["event_name"])
+      assertEquals(REVIEW_STAGE_DEGRADATION_CONTRACT_VERSION, companionPayload["contract_version"])
+      assertEquals(review.reviewRunId, companionPayload["review_run_id"])
+      assertEquals(REVIEW_FINISHED_LEGACY_CONTRACT_VERSION, companionPayload["from_version"])
+      assertEquals(REVIEW_STAGE_DEGRADATION_CONTRACT_VERSION, companionPayload["to_version"])
+    }
+  }
+
+  @Test
+  fun `legacy finished payload with an unknown review_run_id is quarantined instead of crashing stats`() {
+    val (_, connection) = tempDbConnection("stage-legacy-unknown-run")
+    connection.use {
+      TelemetryOutboxStore(it).enqueue(
+        "skillbill_review_finished",
+        JsonSupport.mapToJsonString(
+          mapOf(
+            "event_name" to "skillbill_review_finished",
+            "contract_version" to REVIEW_FINISHED_LEGACY_CONTRACT_VERSION,
+            "review_run_id" to "rvw-missing",
+            "total_findings" to 1,
+          ),
+        ),
+      )
+      val snapshot = ReviewStatsRuntime.statsSnapshot(it, reviewRunId = null)
+      assertEquals(1, snapshot.health.malformedReviewPayloadRecords)
+      persistLegacyTelemetryRewrites(it)
+      val leftover = TelemetryOutboxStore(it).listPending(null).single { record ->
+        record.eventName == "skillbill_review_finished"
+      }
+      val leftoverPayload = JsonSupport.parseObjectOrNull(leftover.payloadJson)
+        ?.let { node -> JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(node)) }
+        ?: emptyMap()
+      assertEquals(REVIEW_FINISHED_LEGACY_CONTRACT_VERSION, leftoverPayload["contract_version"])
+      assertTrue(
+        TelemetryOutboxStore(it).listPending(null).none { record ->
+          record.eventName == REVIEW_FINISHED_LEGACY_REGENERATED_EVENT_NAME
+        },
+      )
     }
   }
 

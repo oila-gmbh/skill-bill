@@ -87,6 +87,7 @@ fun materializeReviewFinishedPayload(
   if (!isLegacyReviewFinished(payload)) return payload
   val reviewRunId = payload.stringHealthValue("review_run_id")
   if (reviewRunId.isBlank()) return payload
+  if (!reviewRunRowExists(connection, reviewRunId)) return emptyMap()
   return regenerateReviewFinishedPayload(connection, payload, reviewRunId)
 }
 
@@ -105,13 +106,15 @@ private fun persistLegacyReviewFinishedRow(connection: Connection, outboxId: Lon
   val payload = parseJsonObject(raw)
   if (payload.isEmpty() || !isLegacyReviewFinished(payload)) return
   val reviewRunId = payload.stringHealthValue("review_run_id")
-  if (reviewRunId.isBlank()) return
+  if (reviewRunId.isBlank() || !reviewRunRowExists(connection, reviewRunId)) return
   val rewritten = regenerateReviewFinishedPayload(connection, payload, reviewRunId)
   rewriteOutboxPayload(connection, outboxId, rewritten)
   enqueueTelemetry(
     connection,
     REVIEW_FINISHED_LEGACY_REGENERATED_EVENT_NAME,
     linkedMapOf(
+      "event_name" to REVIEW_FINISHED_LEGACY_REGENERATED_EVENT_NAME,
+      "contract_version" to REVIEW_STAGE_DEGRADATION_CONTRACT_VERSION,
       "review_run_id" to reviewRunId,
       "from_version" to (payload["contract_version"]?.toString() ?: REVIEW_FINISHED_LEGACY_CONTRACT_VERSION),
       "to_version" to REVIEW_STAGE_DEGRADATION_CONTRACT_VERSION,
@@ -132,6 +135,12 @@ private fun regenerateReviewFinishedPayload(
     put("contract_version", REVIEW_STAGE_DEGRADATION_CONTRACT_VERSION)
   }
 }
+
+private fun reviewRunRowExists(connection: Connection, reviewRunId: String): Boolean =
+  connection.prepareStatement("SELECT 1 FROM review_runs WHERE review_run_id = ?").use { statement ->
+    statement.setString(PARAM_ONE, reviewRunId)
+    statement.executeQuery().use { resultSet -> resultSet.next() }
+  }
 
 private fun rewriteOutboxPayload(connection: Connection, outboxId: Long, payload: Map<String, Any?>) {
   connection.prepareStatement(

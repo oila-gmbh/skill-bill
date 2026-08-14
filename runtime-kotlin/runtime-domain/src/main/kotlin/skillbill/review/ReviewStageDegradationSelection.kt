@@ -1,7 +1,5 @@
 package skillbill.review
 
-import skillbill.review.context.model.ReviewClaimVerdictAdmission
-import skillbill.review.context.model.ReviewSpecAdjudicationAdmission
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.review.model.ReviewPassClaimSnapshot
 import skillbill.review.model.ReviewSpecProjectionReference
@@ -20,8 +18,8 @@ object ReviewStageDegradationSelection {
     "agent output exceeded the retention cap before completion",
     "verification launch exceeded max_lane_launch_bytes",
     "adjudication launch exceeded max_lane_launch_bytes",
-    ReviewClaimVerdictAdmission.UNSETTLED,
-    ReviewSpecAdjudicationAdmission.UNSETTLED,
+    "unparseable verification output",
+    "unparseable adjudication output",
   )
 
   fun select(
@@ -39,7 +37,7 @@ object ReviewStageDegradationSelection {
         reviewRunId = reviewRunId,
         seam = "review.spec_intent",
         expected = "resolved",
-        actual = spec?.absenceReason ?: "none",
+        actual = spec.absenceReason,
         reason = ReviewStageDegradationReason.SPEC_CONTEXT_NONE,
       )
     }

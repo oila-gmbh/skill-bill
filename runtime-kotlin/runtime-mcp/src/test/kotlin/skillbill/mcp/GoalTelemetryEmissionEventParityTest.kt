@@ -55,6 +55,7 @@ class GoalTelemetryEmissionEventParityTest {
     assertGoalTerminalBranches()
     assertReviewFinishedBranch()
     assertReviewStageDegradationBranch()
+    assertReviewFinishedLegacyRegeneratedBranch()
   }
 
   private fun assertGoalSegmentBranches() {
@@ -191,6 +192,20 @@ class GoalTelemetryEmissionEventParityTest {
     )
   }
 
+  private fun assertReviewFinishedLegacyRegeneratedBranch() {
+    assertBranch(
+      branchName = "skillbillReviewFinishedLegacyRegeneratedEvent",
+      eventName = "skillbill_review_finished_legacy_regenerated",
+      expectedRequired = setOf(
+        "event_name",
+        "contract_version",
+        "review_run_id",
+        "from_version",
+        "to_version",
+      ),
+    )
+  }
+
   @Test
   fun `goal_started and goal_finished representative envelopes validate clean`() {
     TelemetryEventSchemaValidator.validate(
@@ -306,6 +321,20 @@ class GoalTelemetryEmissionEventParityTest {
   }
 
   @Test
+  fun `review_finished_legacy_regenerated representative envelope validates clean`() {
+    TelemetryEventSchemaValidator.validate(
+      envelope = linkedMapOf(
+        "event_name" to "skillbill_review_finished_legacy_regenerated",
+        "contract_version" to TELEMETRY_EVENT_CONTRACT_VERSION,
+        "review_run_id" to "rvw-191",
+        "from_version" to "1.8.0",
+        "to_version" to TELEMETRY_EVENT_CONTRACT_VERSION,
+      ),
+      eventName = "skillbill_review_finished_legacy_regenerated",
+    )
+  }
+
+  @Test
   fun `review_finished representative envelope validates clean with normalized stack fields`() {
     TelemetryEventSchemaValidator.validate(
       envelope = validReviewFinishedEnvelope(),
@@ -376,6 +405,7 @@ class GoalTelemetryEmissionEventParityTest {
       "goal_issue_finished",
       "skillbill_review_finished",
       "skillbill_review_stage_degradation",
+      "skillbill_review_finished_legacy_regenerated",
     ).forEach { name ->
       assertFalse(
         name in toolNames,

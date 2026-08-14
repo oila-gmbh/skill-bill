@@ -2,7 +2,6 @@ package skillbill.application.review
 
 import skillbill.domain.review.context.model.SpecIntentProjection
 import skillbill.domain.review.context.model.SpecIntentProvenance
-import skillbill.error.InvalidReviewContextSchemaError
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
@@ -31,7 +30,6 @@ import skillbill.review.model.ReviewStage
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -205,25 +203,43 @@ class ReviewSpecAdjudicationRunnerTest {
   }
 
   @Test
-  fun `an over-budget adjudication launch is a typed rejection and does not launch`() {
+  fun `an over-budget adjudication launch records the listed reason and does not launch`() {
     val launches = mutableListOf<GoalRunnerSubtaskLaunchRequest>()
-    val error = assertFailsWith<InvalidReviewContextSchemaError> {
-      runner(launcher = { request ->
-        launches += request
-        facts(request, IN_SCOPE)
-      }).run(
-        packet = packet(),
-        findings = listOf(finding("F-001")),
-        existingVerdicts = listOf(stage1("F-001", ReviewClaimVerdict.CONFIRMED)),
-        projection = projection(),
-        budget = ReviewContextBudgetPolicy.DEFAULT.copy(maxLaneLaunchBytes = 64),
-        brokerId = "codex",
-        repoRoot = Files.createTempDirectory("adj-budget"),
-        timeout = 1.seconds,
-      )
-    }
+    val outcome = runner(launcher = { request ->
+      launches += request
+      facts(request, IN_SCOPE)
+    }).run(
+      packet = packet(),
+      findings = listOf(finding("F-001")),
+      existingVerdicts = listOf(stage1("F-001", ReviewClaimVerdict.CONFIRMED)),
+      projection = projection(),
+      budget = ReviewContextBudgetPolicy.DEFAULT.copy(maxLaneLaunchBytes = 64),
+      brokerId = "codex",
+      repoRoot = Files.createTempDirectory("adj-budget"),
+      timeout = 1.seconds,
+    )
     assertTrue(launches.isEmpty())
-    assertTrue("for definition 'adjudication_launch'" in error.message.orEmpty())
+    val verdict = outcome.verdicts.single()
+    assertEquals("adjudication launch exceeded max_lane_launch_bytes", verdict.rejectionReason)
+    assertEquals(ReviewScopeDisposition.IN_SCOPE, verdict.scopeDisposition)
+    assertEquals(ReviewClaimVerdict.CONFIRMED, verdict.claimVerdict)
+  }
+
+  @Test
+  fun `unparseable adjudication stdout records the unparseable reason instead of admitting a null worker`() {
+    val verdict = runner(launcher = { request -> facts(request, "not-json") }).run(
+      packet = packet(),
+      findings = listOf(finding("F-001")),
+      existingVerdicts = listOf(stage1("F-001", ReviewClaimVerdict.CONFIRMED)),
+      projection = projection(),
+      budget = ReviewContextBudgetPolicy.DEFAULT,
+      brokerId = "codex",
+      repoRoot = Files.createTempDirectory("adj-unparseable"),
+      timeout = 1.seconds,
+    ).verdicts.single()
+    assertEquals("unparseable adjudication output", verdict.rejectionReason)
+    assertEquals(ReviewScopeDisposition.IN_SCOPE, verdict.scopeDisposition)
+    assertEquals(ReviewClaimVerdict.CONFIRMED, verdict.claimVerdict)
   }
 
   @Test

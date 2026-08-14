@@ -117,6 +117,7 @@ oneOf:
   - $ref: "#/$defs/qualityCheckStartedEvent"
   - $ref: "#/$defs/skillbillReviewFinishedEvent"
   - $ref: "#/$defs/skillbillReviewStageDegradationEvent"
+  - $ref: "#/$defs/skillbillReviewFinishedLegacyRegeneratedEvent"
   - $ref: "#/$defs/resolveLearningsEvent"
   - $ref: "#/$defs/reviewStatsEvent"
   - $ref: "#/$defs/telemetryProxyCapabilitiesEvent"
@@ -1517,6 +1518,30 @@ $defs:
           - worker_launch_or_return_failed
           - stage_boundary_unreached
 
+  skillbillReviewFinishedLegacyRegeneratedEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - review_run_id
+      - from_version
+      - to_version
+    properties:
+      event_name:
+        const: skillbill_review_finished_legacy_regenerated
+      contract_version:
+        const: "1.9.0"
+      review_run_id:
+        type: string
+        minLength: 1
+      from_version:
+        type: string
+        minLength: 1
+      to_version:
+        type: string
+        minLength: 1
+
   resolveLearningsEvent:
     type: object
     additionalProperties: false
@@ -1588,8 +1613,9 @@ x-coherence-checks:
   goal-telemetry-emission-events:
     description: >
       `goal_started`, `goal_subtask_finished`, `goal_finished`,
-      `goal_issue_finished`, `skillbill_review_finished`, and
-      `skillbill_review_stage_degradation` are
+      `goal_issue_finished`, `skillbill_review_finished`,
+      `skillbill_review_stage_degradation`, and
+      `skillbill_review_finished_legacy_regenerated` are
       RUNTIME-INTERNAL emission payload contracts emitted by runtime
       lifecycles. They are intentionally ABSENT from
       `McpToolRegistry.toolNames` — they are not MCP tools and have no
