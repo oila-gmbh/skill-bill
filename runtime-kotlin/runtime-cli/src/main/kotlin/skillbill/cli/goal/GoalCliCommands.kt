@@ -17,10 +17,13 @@ import skillbill.agentaddon.model.AgentAddonConsumer
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.application.featuretask.FeatureTaskExecutionIdentityPolicy
 import skillbill.application.goalrunner.GoalOperatorDecisionService
+import skillbill.application.goalrunner.GoalPlanningLogService
 import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.goalrunner.GoalRunnerStatusService
 import skillbill.application.goalrunner.UnaddressedFindingsLedgerService
 import skillbill.application.model.DEFAULT_GOAL_PLANNING_BUDGET
+import skillbill.application.model.GoalPlanningLog
+import skillbill.application.model.GoalPlanningLogRequest
 import skillbill.application.model.GoalRunnerAcceptRequest
 import skillbill.application.model.GoalRunnerAcceptResult
 import skillbill.application.model.GoalRunnerOperatorDecisionRequest
@@ -83,6 +86,7 @@ class GoalRunSubcommands(
   val watch: GoalWatchCommand,
   val controls: GoalControlSubcommands,
   val findings: GoalFindingsCommand,
+  val planningLog: GoalPlanningLogCommand,
 )
 
 @Inject
@@ -171,6 +175,7 @@ class GoalRunCommand(
       goalRunSubcommands.controls.repair,
       goalRunSubcommands.controls.operatorDecision,
       goalRunSubcommands.findings,
+      goalRunSubcommands.planningLog,
     )
   }
 
@@ -257,6 +262,95 @@ class GoalRunCommand(
 }
 
 private fun parseCodeReviewMode(raw: String?): CodeReviewExecutionMode? = raw?.let(RequestedReviewMode::parse)
+
+@Inject
+class GoalPlanningLogCommand(
+  private val planningLogService: GoalPlanningLogService,
+  private val state: CliRunState,
+) : DocumentedCliCommand(
+  "planning-log",
+  "Show the durable goal-planning attempt log: start/end times, durations, outcomes, and failure reasons.",
+) {
+  private val issueKey by argument(help = "Parent issue key for the decomposed goal.")
+  private val repoRoot by option("--repo-root", help = "Repository root for checked-in manifest recovery.")
+  private val subtask by option(
+    "--subtask",
+    help = "Show only attempts for this subtask id. Use 0 for the shared preplan.",
+  ).int()
+  private val failuresOnly by option(
+    "--failures-only",
+    help = "Show only failed attempts.",
+  ).flag(default = false)
+
+  override fun run() {
+    val log = planningLogService.log(
+      GoalPlanningLogRequest(
+        issueKey = issueKey,
+        repoRoot = repoRoot?.let(Path::of),
+        dbPathOverride = state.dbOverride,
+        subtaskId = subtask,
+        failuresOnly = failuresOnly,
+      ),
+    )
+    val payload = linkedMapOf<String, Any?>(
+      "issue_key" to log.issueKey,
+      "parent_workflow_id" to log.parentWorkflowId,
+      "total_attempts" to log.totalAttempts,
+      "succeeded_attempts" to log.succeededAttempts,
+      "failed_attempts" to log.failedAttempts,
+      "first_attempt_failures" to log.firstAttemptFailures,
+      "phases_observed" to log.phasesObserved,
+      "total_planning_ms" to log.totalPlanningMs,
+      "attempts" to log.attempts.map { attempt ->
+        linkedMapOf<String, Any?>(
+          "phase_id" to attempt.phaseId,
+          "subtask_id" to attempt.subtaskId,
+          "attempt" to attempt.attempt,
+          "started_at" to attempt.startedAt?.toString(),
+          "finished_at" to attempt.finishedAt?.toString(),
+          "duration_ms" to attempt.durationMs,
+          "outcome" to attempt.outcome,
+          "rule" to attempt.rule,
+          "reason" to attempt.reason,
+          "agent_id" to attempt.agentId,
+          "rejected_output_identity" to attempt.rejectedOutputIdentity,
+          "rejected_output_bytes" to attempt.rejectedOutputBytes,
+        )
+      },
+    )
+    state.completeText(renderPlanningLog(log), payload)
+  }
+}
+
+private fun renderPlanningLog(log: GoalPlanningLog): String = buildString {
+  appendLine("issue_key=${log.issueKey} parent_workflow_id=${log.parentWorkflowId ?: "none"}")
+  if (log.parentWorkflowId == null) {
+    appendLine("no prepared goal found for this issue key in this repository")
+    return@buildString
+  }
+  appendLine(
+    "attempts=${log.totalAttempts} succeeded=${log.succeededAttempts} failed=${log.failedAttempts} " +
+      "first_attempt_failures=${log.firstAttemptFailures} phases=${log.phasesObserved} " +
+      "total_planning_ms=${log.totalPlanningMs}",
+  )
+  log.attempts.forEach { attempt ->
+    appendLine(
+      "phase=${attempt.phaseId} attempt=${attempt.attempt} " +
+        "started=${attempt.startedAt ?: "unknown"} finished=${attempt.finishedAt ?: "in_flight"} " +
+        "duration_ms=${attempt.durationMs ?: "none"} outcome=${attempt.outcome}",
+    )
+    attempt.reason?.let { reason ->
+      appendLine("  rule=${attempt.rule} agent=${attempt.agentId ?: "unknown"} $reason")
+    }
+    attempt.rejectedOutputIdentity?.let { identity ->
+      appendLine(
+        "  rejected_output=$identity bytes=${attempt.rejectedOutputBytes ?: 0} " +
+          "(read it with: skill-bill rejected-output inspect --workflow-id ${log.parentWorkflowId} " +
+          "--phase-id ${attempt.phaseId} --attempt ${attempt.attempt} --raw-output)",
+      )
+    }
+  }
+}
 
 @Inject
 class GoalFindingsCommand(

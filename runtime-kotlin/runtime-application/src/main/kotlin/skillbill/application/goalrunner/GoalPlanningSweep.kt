@@ -4,6 +4,7 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.DECOMPOSITION_MANIFEST_FILENAME
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
 import skillbill.application.featuretask.FeatureTaskRuntimePhasePromptComposer
+import skillbill.application.featuretask.FeatureTaskRuntimePhaseSafetyPolicy
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.featuretask.RejectedOutputDiagnosticRequest
 import skillbill.application.featuretask.boundedSchemaGateDetail
@@ -629,6 +630,7 @@ class DefaultGoalPlanningSweep(
     var attempt = 0
     while (true) {
       attempt += 1
+      recordPlanningAttemptStarted(shared, phaseId, subtask, attempt)
       val production = produceAttemptOrStop(
         shared,
         request,
@@ -646,8 +648,23 @@ class DefaultGoalPlanningSweep(
         }
 
         is GoalPlanningPhaseProduction.SchemaRejected -> {
-          recordPlanningAttempt(shared, phaseId, subtask, attempt, GoalProgressOutcome.FAILED)
+          recordFailedAttempt(shared, phaseId, subtask, attempt, SCHEMA_REJECTED_PLANNING_RULE, production)
           priorSchemaFailure = production.reason
+        }
+
+        is GoalPlanningPhaseProduction.UnsuccessfulStatus -> {
+          recordFailedAttempt(shared, phaseId, subtask, attempt, UNSUCCESSFUL_PLANNING_STATUS_RULE, production)
+          return GoalPlanningPhaseProduction.Stopped(production.outcome)
+        }
+
+        is GoalPlanningPhaseProduction.RetryableDecline -> {
+          recordFailedAttempt(shared, phaseId, subtask, attempt, RETRYABLE_PLANNING_DECLINE_RULE, production)
+          // No priorSchemaFailure: the output was well-formed, and telling the agent the schema gate
+          // rejected it would describe a failure that never happened.
+          val backoff = burstSchedule.emptyTurnBackoffAfterAttempt(attempt)
+          interruptibleWait(backoff, shared, subtask?.id ?: 0, phaseId)?.let { stoppedOutcome ->
+            return GoalPlanningPhaseProduction.Stopped(stoppedOutcome)
+          }
         }
 
         is GoalPlanningPhaseProduction.EmptyProviderTurn -> {
@@ -665,8 +682,9 @@ class DefaultGoalPlanningSweep(
             recordPlanningAttempt(shared, phaseId, subtask, attempt, GoalProgressOutcome.SUCCEEDED)
             return gated
           }
-          recordPlanningAttempt(shared, phaseId, subtask, attempt, GoalProgressOutcome.FAILED)
-          priorSchemaFailure = (gated as GoalPlanningPhaseProduction.SchemaRejected).reason
+          val rejected = gated as GoalPlanningPhaseProduction.SchemaRejected
+          recordFailedAttempt(shared, phaseId, subtask, attempt, SCHEMA_REJECTED_PLANNING_RULE, rejected)
+          priorSchemaFailure = rejected.reason
         }
       }
     }
@@ -698,8 +716,9 @@ class DefaultGoalPlanningSweep(
         // Enrichment revalidates the final payload, but it must not discard evidence captured
         // while structurally repairing the child output before enrichment.
         accepted.repairEvidence ?: captured.repairEvidence,
+        captured.agentId,
       )
-    return GoalPlanningPhaseProduction.SchemaRejected(gateReason)
+    return GoalPlanningPhaseProduction.SchemaRejected(gateReason, canonicalPayload, captured.agentId)
   }
 
   @Suppress("TooGenericExceptionCaught")
@@ -740,21 +759,74 @@ class DefaultGoalPlanningSweep(
     subtask: DecompositionSubtask?,
     attempt: Int,
     production: GoalPlanningPhaseProduction.EmptyProviderTurn,
+  ) = recordPlanningRejection(
+    shared,
+    phaseId,
+    subtask,
+    attempt,
+    EMPTY_PLANNING_HARVEST_RULE,
+    production.reason,
+    production.evidence.agentId,
+    production.evidence.rawOutputPreview.orEmpty(),
+  )
+
+  /**
+   * Persists one planning rejection with the offending output. The diagnostic phase id carries the
+   * subtask because every subtask restarts `attempt` at 1 under one parent workflow, and the
+   * diagnostics store is keyed by (workflow, phase, attempt, repair turn): an unscoped `plan` would
+   * let subtask 2's first rejection collide with subtask 1's and silently keep only one of them.
+   */
+  private fun recordPlanningRejection(
+    shared: GoalPlanningSharedContext,
+    phaseId: String,
+    subtask: DecompositionSubtask?,
+    attempt: Int,
+    rule: String,
+    reason: String,
+    agentId: String,
+    rawEvidence: String,
   ) {
     planningRejectionRecorder.record(
       GoalPlanningRejectionRecord(
         parentWorkflowId = shared.parentWorkflowId,
         issueKey = shared.issueKey,
         dbPathOverride = shared.dbPathOverride,
-        phaseId = phaseId,
+        phaseId = diagnosticPhaseId(phaseId, subtask),
         subtaskId = subtask?.id ?: 0,
         attempt = attempt,
-        rule = EMPTY_PLANNING_HARVEST_RULE,
-        reason = production.reason,
-        agentId = production.evidence.agentId,
-        rawEvidence = production.evidence.rawOutputPreview.orEmpty(),
+        rule = rule,
+        reason = reason,
+        agentId = agentId,
+        rawEvidence = rawEvidence,
       ),
     )
+  }
+
+  private fun diagnosticPhaseId(phaseId: String, subtask: DecompositionSubtask?): String =
+    subtask?.let { "$phaseId:${it.id}" } ?: phaseId
+
+  private fun recordFailedAttempt(
+    shared: GoalPlanningSharedContext,
+    phaseId: String,
+    subtask: DecompositionSubtask?,
+    attempt: Int,
+    rule: String,
+    production: GoalPlanningPhaseProduction,
+  ) {
+    recordPlanningAttempt(shared, phaseId, subtask, attempt, GoalProgressOutcome.FAILED)
+    val (reason, output, agentId) = when (production) {
+      is GoalPlanningPhaseProduction.SchemaRejected ->
+        Triple(production.reason, production.rejectedOutput, production.agentId)
+
+      is GoalPlanningPhaseProduction.UnsuccessfulStatus ->
+        Triple(production.reason, production.rejectedOutput, production.agentId)
+
+      is GoalPlanningPhaseProduction.RetryableDecline ->
+        Triple(production.reason, production.rejectedOutput, production.agentId)
+
+      else -> return
+    }
+    recordPlanningRejection(shared, phaseId, subtask, attempt, rule, reason, agentId, output)
   }
 
   private fun recordPlanningAttempt(
@@ -763,6 +835,7 @@ class DefaultGoalPlanningSweep(
     subtask: DecompositionSubtask?,
     attempt: Int,
     outcome: GoalProgressOutcome,
+    eventKind: GoalProgressEventKind = GoalProgressEventKind.OPERATION_COMPLETED,
   ) {
     planningAttemptRecorder.record(
       GoalPlanningAttemptRecord(
@@ -773,9 +846,29 @@ class DefaultGoalPlanningSweep(
         subtask?.id ?: 0,
         attempt,
         outcome,
+        eventKind,
       ),
     )
   }
+
+  /**
+   * Opens the attempt in the durable ledger before the agent is launched. Without it a planning
+   * attempt is invisible for the minutes it runs and only appears once it has already failed, so an
+   * operator watching a live goal cannot tell a working attempt from a wedged one.
+   */
+  private fun recordPlanningAttemptStarted(
+    shared: GoalPlanningSharedContext,
+    phaseId: String,
+    subtask: DecompositionSubtask?,
+    attempt: Int,
+  ) = recordPlanningAttempt(
+    shared,
+    phaseId,
+    subtask,
+    attempt,
+    GoalProgressOutcome.NONE,
+    GoalProgressEventKind.OPERATION_STARTED,
+  )
 
   private fun projectionGateReason(payload: String, phaseId: String): String? {
     val envelope = JsonSupport.parseObjectOrNull(payload)
@@ -839,7 +932,7 @@ class DefaultGoalPlanningSweep(
     val durationMs = (System.nanoTime() - startedAtNanos) / NANOS_PER_MILLI
     val stdout = stdoutFor(outcome)
       ?: return emptyOrStopped(outcome, shared, request, currentSubtaskId, phaseId, durationMs)
-    return validatePlanningAttemptOutput(stdout, shared, currentSubtaskId, phaseId)
+    return validatePlanningAttemptOutput(stdout, shared, currentSubtaskId, phaseId, launchedAgentId(outcome))
   }
 
   private fun planningPauseOutcome(
@@ -897,20 +990,33 @@ class DefaultGoalPlanningSweep(
     shared: GoalPlanningSharedContext,
     subtaskId: Int,
     phaseId: String,
+    agentId: String,
   ): GoalPlanningPhaseProduction = runCatching {
     outputValidator.validatePhaseOutput(stdout, phaseId).requireAcceptedOutput(phaseId)
   }.fold(
     onSuccess = { accepted ->
       val payload = accepted.normalizedOutput.envelope
       if (payload["status"] != "completed") {
-        GoalPlanningPhaseProduction.Stopped(
-          stopped(shared, subtaskId, unsuccessfulStatusReason(phaseId, payload["status"]), phaseId),
-        )
+        val reason = unsuccessfulStatusReason(phaseId, payload)
+        val canonical = accepted.normalizedOutput.canonicalJson
+        // The phase-output contract already decides which dispositions survive a relaunch; planning
+        // reuses that classifier rather than keeping a second opinion about the same enum.
+        if (FeatureTaskRuntimePhaseSafetyPolicy.dispositionForTerminalOutput(phaseId, payload).retryOnResume) {
+          GoalPlanningPhaseProduction.RetryableDecline(reason, canonical, agentId)
+        } else {
+          GoalPlanningPhaseProduction.UnsuccessfulStatus(
+            reason,
+            canonical,
+            agentId,
+            stopped(shared, subtaskId, reason, phaseId),
+          )
+        }
       } else {
         GoalPlanningPhaseProduction.Captured(
           accepted.normalizedOutput.canonicalJson,
           accepted.normalizedOutput,
           accepted.repairEvidence,
+          agentId,
         )
       }
     },
@@ -918,6 +1024,8 @@ class DefaultGoalPlanningSweep(
       if (error is InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
         GoalPlanningPhaseProduction.SchemaRejected(
           error.payloadFreeReason ?: "Goal planning phase output was rejected by its schema contract.",
+          stdout,
+          agentId,
         )
       } else {
         GoalPlanningPhaseProduction.Stopped(
@@ -1138,6 +1246,11 @@ class DefaultGoalPlanningSweep(
     )
   }
 
+  private fun launchedAgentId(outcome: AgentRunLaunchOutcome): String = when (outcome) {
+    is AgentRunLaunchFacts -> outcome.agent.id
+    is UnsupportedAgentRunLaunch -> "unknown"
+  }
+
   private fun stdoutFor(outcome: AgentRunLaunchOutcome): String? = when (outcome) {
     is AgentRunLaunchFacts -> outcome.stdout.takeIf { stdout ->
       !outcome.spawnFailed &&
@@ -1176,8 +1289,24 @@ class DefaultGoalPlanningSweep(
     "Goal planning '$phaseId' failed before its output could be checkpointed: " +
       "${error::class.simpleName ?: "Exception"}: ${error.message.orEmpty()}"
 
-  private fun unsuccessfulStatusReason(phaseId: String, status: Any?): String =
-    "Goal planning '$phaseId' stopped with status '${status ?: "missing"}'; its output was not checkpointed."
+  /**
+   * A deliberate agent decline is the one planning stop path whose only account of itself is the
+   * envelope it returned. Reporting the status alone discarded the `summary` and
+   * `failure_disposition` sitting beside it, leaving an operator with a blocked goal and no cause.
+   */
+  private fun unsuccessfulStatusReason(phaseId: String, payload: Map<String, Any?>): String {
+    val status = payload["status"] ?: "missing"
+    val disposition = (payload["failure_disposition"] as? String)
+      ?.let { " disposition '$it'" }
+      .orEmpty()
+    val summary = (payload["summary"] as? String)
+      ?.trim()
+      ?.takeIf { it.isNotEmpty() }
+      ?.let { " Agent reported: ${it.take(PLANNING_STOP_DETAIL_MAX_CHARS)}" }
+      .orEmpty()
+    return "Goal planning '$phaseId' stopped with status '$status'$disposition; " +
+      "its output was not checkpointed.$summary"
+  }
 
   private fun enrichPreplan(payload: String, packet: Map<String, Any?>): String {
     val root = JsonSupport.parseObjectOrNull(payload)
@@ -1247,7 +1376,11 @@ class DefaultGoalPlanningSweep(
     const val PHASE_PLAN: String = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN
     const val SHARED_CONTEXT_FIELD = "_goal_planning_shared_context"
     const val EMPTY_PLANNING_HARVEST_RULE = "empty-planning-harvest"
+    const val SCHEMA_REJECTED_PLANNING_RULE = "planning-schema-rejected"
+    const val UNSUCCESSFUL_PLANNING_STATUS_RULE = "planning-unsuccessful-status"
+    const val RETRYABLE_PLANNING_DECLINE_RULE = "planning-retryable-decline"
     const val NANOS_PER_MILLI = 1_000_000L
+    const val PLANNING_STOP_DETAIL_MAX_CHARS = 400
   }
 }
 
@@ -1362,7 +1495,7 @@ class DurableGoalPlanningAttemptRecorder(
       GoalRunnerProgressEventRecordRequest(
         workflowId = attempt.parentWorkflowId,
         event = GoalProgressEvent(
-          eventKind = GoalProgressEventKind.OPERATION_COMPLETED,
+          eventKind = attempt.eventKind,
           workflowId = attempt.parentWorkflowId,
           workflowPhase = "goal_planning",
           processAlive = true,

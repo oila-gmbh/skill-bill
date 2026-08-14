@@ -1,5 +1,6 @@
 package skillbill.application.model
 
+import skillbill.workflow.model.GoalProgressEventKind
 import skillbill.workflow.model.GoalProgressOutcome
 
 data class GoalPlanningAttemptRecord(
@@ -10,4 +11,5 @@ data class GoalPlanningAttemptRecord(
   val subtaskId: Int,
   val attempt: Int,
   val outcome: GoalProgressOutcome,
+  val eventKind: GoalProgressEventKind = GoalProgressEventKind.OPERATION_COMPLETED,
 )

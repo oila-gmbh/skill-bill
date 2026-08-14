@@ -366,6 +366,7 @@ runtime-ports
 
     <!-- open-boundary-allowlist:start -->
 
+    - `skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore.progressEvents`
     - `skillbill.workflow.WorkflowEngine.snapshotMap`
     - `skillbill.workflow.WorkflowEngine.summaryMap`
     - `skillbill.workflow.WorkflowEngine.resumeMap`
@@ -1176,6 +1177,7 @@ Categories:
 
 ### open_extension (@OpenBoundaryMap)
 
+- `skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore.progressEvents`
 - `skillbill.workflow.GoalPlanningPreparationEnvelopeValidator.validate`
 - `skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope`
 - `skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator.validatePlanningProjection`

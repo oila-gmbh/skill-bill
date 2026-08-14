@@ -19,6 +19,7 @@ import skillbill.application.goalrunner.DurableGoalPlanningRejectionRecorder
 import skillbill.application.goalrunner.GoalLifecycleTelemetryEmitter
 import skillbill.application.goalrunner.GoalOperatorDecisionService
 import skillbill.application.goalrunner.GoalPlanningAttemptRecorder
+import skillbill.application.goalrunner.GoalPlanningLogService
 import skillbill.application.goalrunner.GoalPlanningRefreshLiveness
 import skillbill.application.goalrunner.GoalPlanningRejectionRecorder
 import skillbill.application.goalrunner.GoalPlanningStatusReasonCoherence
@@ -805,6 +806,7 @@ abstract class RuntimeComponent(
   abstract val featureSpecPathResolverPort: FeatureSpecPathResolverPort
   abstract val goalRunner: GoalRunner
   abstract val goalRunnerStatusService: GoalRunnerStatusService
+  abstract val goalPlanningLogService: GoalPlanningLogService
   abstract val goalOperatorDecisionService: GoalOperatorDecisionService
   abstract val installAgentService: InstallAgentService
   abstract val installSelectionPersistencePort: InstallSelectionPersistencePort

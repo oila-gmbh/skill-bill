@@ -1994,6 +1994,7 @@ class RuntimeArchitectureTest {
      */
     val RAW_MAP_OPEN_BOUNDARY_ALLOWLIST: List<String> = listOf(
       // SKILL-52.1 documented workflow-scope open boundaries.
+      "skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore.progressEvents",
       "skillbill.workflow.WorkflowEngine.snapshotMap",
       "skillbill.workflow.WorkflowEngine.summaryMap",
       "skillbill.workflow.WorkflowEngine.resumeMap",

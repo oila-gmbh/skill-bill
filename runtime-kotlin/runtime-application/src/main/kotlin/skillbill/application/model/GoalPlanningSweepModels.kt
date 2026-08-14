@@ -43,10 +43,13 @@ internal sealed interface GoalPlanningPhaseProduction {
     val payload: String,
     val normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
     val repairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence? = null,
+    val agentId: String = "",
   ) : GoalPlanningPhaseProduction
 
   data class SchemaRejected(
     val reason: String,
+    val rejectedOutput: String = "",
+    val agentId: String = "",
   ) : GoalPlanningPhaseProduction
 
   /**
@@ -58,6 +61,32 @@ internal sealed interface GoalPlanningPhaseProduction {
   data class EmptyProviderTurn(
     val reason: String,
     val evidence: GoalPlanningEmptyTurnEvidence,
+  ) : GoalPlanningPhaseProduction
+
+  /**
+   * Schema-valid output whose envelope reported `blocked` or `failed` under a disposition the
+   * contract treats as durable. Distinct from [SchemaRejected] because the agent deliberately
+   * declined rather than emitting malformed output: the envelope is the only account of why, so it
+   * is carried out of the attempt for durable recording before the sweep stops on it.
+   */
+  data class UnsuccessfulStatus(
+    val reason: String,
+    val rejectedOutput: String,
+    val agentId: String,
+    val outcome: GoalPlanningSweepOutcome.Stopped,
+  ) : GoalPlanningPhaseProduction
+
+  /**
+   * A declined envelope whose disposition the contract marks retryable. Distinct from
+   * [UnsuccessfulStatus] because the agent reported a transient condition, not one an operator must
+   * clear: blocking the whole goal on it wastes every plan already settled. Distinct from
+   * [SchemaRejected] because the output was well-formed, so the retry must not tell the agent its
+   * prior output failed the schema gate.
+   */
+  data class RetryableDecline(
+    val reason: String,
+    val rejectedOutput: String,
+    val agentId: String,
   ) : GoalPlanningPhaseProduction
 
   data class Stopped(val outcome: GoalPlanningSweepOutcome.Stopped) : GoalPlanningPhaseProduction

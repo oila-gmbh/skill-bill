@@ -312,6 +312,13 @@ interface GoalRunnerWorkflowOutcomeStore : GoalRunnerTerminalOutcomeStore, GoalR
   // SKILL-64 Subtask 3 (AC21, AC25): durable declared-progress write seam.
   fun recordProgressEvent(request: GoalRunnerProgressEventRecordRequest, dbPathOverride: String? = null): Boolean
 
+  /**
+   * Read side of [recordProgressEvent], sequence-ordered oldest first. Returns the retained window
+   * only; the store prunes by the same bounded-retention rule the write seam applies.
+   */
+  @OpenBoundaryMap("Durable goal progress-event artifact maps read back at the goal-runner workflow seam")
+  fun progressEvents(workflowId: String, dbPathOverride: String? = null): List<Map<String, Any?>> = emptyList()
+
   // SKILL-64 Subtask 3 (AC6, AC7): best-effort child-session accounting write.
   fun recordSessionAccounting(
     request: GoalRunnerSessionAccountingRecordRequest,

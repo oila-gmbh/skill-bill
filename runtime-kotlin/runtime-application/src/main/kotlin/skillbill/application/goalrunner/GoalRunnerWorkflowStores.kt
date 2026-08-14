@@ -2227,6 +2227,18 @@ class WorkflowGoalRunnerOutcomeStore(
   // declared-progress, session-accounting, and attempt-ledger artifacts. Each
   // appends one entry, prunes to retentionLimit, and optionally mirrors the
   // newest entry into a latest-event key.
+  override fun progressEvents(workflowId: String, dbPathOverride: String?): List<Map<String, Any?>> =
+    database.transaction(dbPathOverride) { unitOfWork ->
+      val family = workflowFamilyFor(unitOfWork.workflowStates, workflowId)
+        ?: return@transaction emptyList()
+      val record = family.get(unitOfWork.workflowStates, workflowId)
+        ?: return@transaction emptyList()
+      (decodeArtifacts(record.artifactsJson)[GOAL_PROGRESS_RUN_HISTORY_ARTIFACT_KEY] as? List<*>)
+        .orEmpty()
+        .mapNotNull { item -> item as? Map<*, *> }
+        .mapNotNull { item -> JsonSupport.anyToStringAnyMap(item) }
+    }
+
   private fun appendHistoryArtifact(append: HistoryArtifactAppend, dbPathOverride: String?): Boolean =
     database.transaction(dbPathOverride) { unitOfWork ->
       val family = workflowFamilyFor(unitOfWork.workflowStates, append.workflowId)

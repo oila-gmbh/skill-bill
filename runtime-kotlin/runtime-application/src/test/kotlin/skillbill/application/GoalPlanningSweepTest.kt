@@ -68,6 +68,7 @@ import skillbill.workflow.NoopFeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.NoopGoalPlanningPreparationEnvelopeValidator
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
+import skillbill.workflow.model.GoalProgressEventKind
 import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFormat
@@ -1194,9 +1195,14 @@ class GoalPlanningSweepTest {
     assertEquals(1, harness.preparedCount())
     assertEquals(
       listOf("preplan:SUCCEEDED", "plan:SUCCEEDED", "plan:FAILED"),
-      attempts.map {
+      attempts.filter { it.eventKind == GoalProgressEventKind.OPERATION_COMPLETED }.map {
         "${it.phaseId}:${it.outcome}"
       },
+    )
+    assertEquals(
+      3,
+      attempts.count { it.eventKind == GoalProgressEventKind.OPERATION_STARTED },
+      "every attempt opens in the ledger before it launches, including the one that failed",
     )
   }
 
@@ -1416,6 +1422,100 @@ class GoalPlanningSweepTest {
     assertEquals("claude", first.agentId)
     assertContains(first.reason, "EmptyProviderTurn")
     assertEquals("{\"type\":\"result\",\"result\":\"\"}", first.rawEvidence)
+  }
+
+  @Test
+  fun `a deliberate agent block reports the envelope's own account and retains it durably`() {
+    val recorded = mutableListOf<GoalPlanningRejectionRecord>()
+    val harness = sweepHarness(planningRejectionRecorder = { recorded += it }) { phase, _, _ ->
+      if (phase == "preplan") {
+        validPhaseOutcome(phase)
+      } else {
+        launchFacts(stdout = blockedPhasePayload(phase, "spec names no persistence boundary to plan against"))
+      }
+    }
+
+    val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
+
+    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
+    assertContains(stopped.blockedReason, "spec names no persistence boundary to plan against")
+    assertContains(stopped.blockedReason, "needs_user_action")
+    val rejection = recorded.single { it.rule == "planning-unsuccessful-status" }
+    assertContains(rejection.rawEvidence, "\"status\":\"blocked\"")
+  }
+
+  @Test
+  fun `a retryable decline relaunches instead of discarding every settled plan`() {
+    val recorded = mutableListOf<GoalPlanningRejectionRecord>()
+    var planLaunches = 0
+    val harness = sweepHarness(planningRejectionRecorder = { recorded += it }) { phase, _, _ ->
+      if (phase == "preplan") {
+        validPhaseOutcome(phase)
+      } else {
+        planLaunches += 1
+        if (planLaunches == 1) {
+          launchFacts(stdout = blockedPhasePayload(phase, "transient provider capacity", "retryable"))
+        } else {
+          validPhaseOutcome(phase)
+        }
+      }
+    }
+
+    assertIs<GoalPlanningSweepOutcome.PreparedAll>(
+      harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request()),
+    )
+    val decline = recorded.single { it.rule == "planning-retryable-decline" }
+    assertContains(decline.reason, "transient provider capacity")
+  }
+
+  @Test
+  fun `a retryable decline retry is not told its prior output failed the schema gate`() {
+    var planLaunches = 0
+    val harness = sweepHarness { phase, _, _ ->
+      if (phase == "preplan") {
+        validPhaseOutcome(phase)
+      } else {
+        planLaunches += 1
+        if (planLaunches == 1) {
+          launchFacts(stdout = blockedPhasePayload(phase, "transient provider capacity", "retryable"))
+        } else {
+          validPhaseOutcome(phase)
+        }
+      }
+    }
+
+    assertIs<GoalPlanningSweepOutcome.PreparedAll>(
+      harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request()),
+    )
+    val retryPrompt = harness.launcher.requests.last().skillRunRequest.promptOverride.orEmpty()
+    assertFalse(
+      retryPrompt.contains("Previous attempt was REJECTED by the schema gate"),
+      "a well-formed declined envelope was never rejected by the schema gate",
+    )
+  }
+
+  @Test
+  fun `each subtask's planning rejections stay independently addressable`() {
+    val recorded = mutableListOf<GoalPlanningRejectionRecord>()
+    var planLaunches = 0
+    val harness = sweepHarness(planningRejectionRecorder = { recorded += it }) { phase, _, _ ->
+      if (phase == "preplan") {
+        validPhaseOutcome(phase)
+      } else {
+        planLaunches += 1
+        if (planLaunches % 2 == 1) emptyProviderTurnOutcome() else validPhaseOutcome(phase)
+      }
+    }
+
+    assertIs<GoalPlanningSweepOutcome.PreparedAll>(
+      harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 2)), harness.request()),
+    )
+
+    // Every subtask restarts `attempt` at 1, so an unscoped phase id would key both first-attempt
+    // rejections identically and the diagnostics store would keep only one of them.
+    val planRejections = recorded.filter { it.phaseId.startsWith("plan") }
+    assertEquals(listOf("plan:1", "plan:2"), planRejections.map { it.phaseId })
+    assertEquals(listOf(1, 1), planRejections.map { it.attempt })
   }
 
   @Test
@@ -1791,7 +1891,9 @@ class GoalPlanningSweepTest {
     val harness = sweepHarness(
       planningProjectionValidator = realPlanningProjectionValidator,
       planningAttemptRecorder = GoalPlanningAttemptRecorder { record ->
-        attempts += "${record.phaseId}:${record.subtaskId}:${record.attempt}:${record.outcome.wireValue}"
+        if (record.eventKind == GoalProgressEventKind.OPERATION_COMPLETED) {
+          attempts += "${record.phaseId}:${record.subtaskId}:${record.attempt}:${record.outcome.wireValue}"
+        }
       },
     ) { phase, _, _ ->
       launchCount += 1
@@ -2107,6 +2209,15 @@ private fun phasePayload(phaseId: String): String =
   """{"contract_version":"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION","phase_id":"$phaseId",""" +
     """"status":"completed","summary":"s","produced_outputs":""" +
     (PlanningProjectionFixtures.producedOutputsOrNull(phaseId) ?: """{"result":"$phaseId"}""") + "}"
+
+private fun blockedPhasePayload(
+  phaseId: String,
+  summary: String,
+  disposition: String = "needs_user_action",
+): String =
+  """{"contract_version":"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION","phase_id":"$phaseId",""" +
+    """"status":"blocked","failure_disposition":"$disposition","summary":"$summary",""" +
+    """"produced_outputs":{"result":"$phaseId"}}"""
 
 private fun preplanPayloadSelecting(vararg headingIds: String): String {
   val ids = headingIds.joinToString(",") { id -> "\"" + id + "\"" }
