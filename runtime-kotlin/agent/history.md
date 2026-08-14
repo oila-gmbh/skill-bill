@@ -1,3 +1,14 @@
+## [2026-08-14] SKILL-191 subtask 2 — Durable review stage state and resume boundaries
+Areas: runtime-kotlin/{runtime-domain/review/model, runtime-ports/persistence, runtime-infra-sqlite, runtime-application/review}
+- Persist per-finding verdicts, independent per-stage boundaries (`review`/`verification`/`adjudication`), and the run's spec projection reference under existing `review_run_id`; FK `ON DELETE CASCADE` so pruning a run removes them.
+- Schema lands as new tables plus unconditional startup ensures — never by editing an already-applied migration body (appending a column there is a silent no-op on an existing store).
+- `ReviewStageResumeSelection` reports which of those stages hold a durable `reached` result and re-enters at the first that does not; verification completing does not mark adjudication, and adjudication does not backfill a missing verification boundary.
+- The `review` stage boundary is recorded only after every lane is complete and integration is durable; lane resume still skips completed lanes independently of later stages.
+- Pattern: extend `ReviewRunCompletenessRepository` (lane dispositions + integration boundary), not a parallel store. reusable
+- Limitation: this subtask does not run verification/adjudication or consume verdicts; drifted `contract_version` rows are ignored with a recorded degradation rather than reinterpreted.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-08-14] SKILL-191 subtask 1 — Stage contract and schema versioning
 Areas: orchestration/contracts, runtime-kotlin/runtime-contracts/{review,error}, runtime-kotlin/runtime-infra-fs/contracts/review, runtime-kotlin/runtime-core tests
 - Extended `review-context-schema.yaml` with `spec_intent_projection`, `verification_launch`, `adjudication_launch`, and `finding_verdict`; bumped `contract_version` to `1.0` with Kotlin `REVIEW_CONTEXT_CONTRACT_VERSION` parity.
