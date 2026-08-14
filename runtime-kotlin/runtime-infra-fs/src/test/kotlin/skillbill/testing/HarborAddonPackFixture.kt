@@ -36,13 +36,13 @@ internal fun seedHarborAddonPack(
   Files.writeString(companionPath, "$HARBOR_COMPANION_MARKER\n")
   val baselineContent = packRoot.resolve("code-review/bill-harbor-code-review/content.md")
   val architectureContent = packRoot.resolve("$HARBOR_ARCHITECTURE_DIR/content.md")
-  writeMarkedSkillContent(baselineContent, "bill-harbor-code-review", HARBOR_BASELINE_MARKER)
-  val areaBody = if (linkEntrypointFromArea) {
+  appendHarborMarker(baselineContent, HARBOR_BASELINE_MARKER)
+  val areaMarker = if (linkEntrypointFromArea) {
     "$HARBOR_AREA_MARKER\n\nRead [$HARBOR_ENTRYPOINT_NAME]($HARBOR_ENTRYPOINT_NAME) as well."
   } else {
     HARBOR_AREA_MARKER
   }
-  writeMarkedSkillContent(architectureContent, HARBOR_ARCHITECTURE_WORKER, areaBody)
+  appendHarborMarker(architectureContent, areaMarker)
   val manifest = packRoot.resolve("platform.yaml")
   val rewritten = Files.readString(manifest).replace(
     "  $HARBOR_ARCHITECTURE_DIR: []",
@@ -64,16 +64,6 @@ internal fun seedHarborAddonPack(
     |        - $HARBOR_COMPANION_NAME
     """.trimMargin() + "\n"
   Files.writeString(manifest, rewritten)
-  val agentsYaml = packRoot.resolve("code-review/bill-harbor-code-review/native-agents/agents.yaml")
-  Files.writeString(
-    agentsYaml,
-    Files.readString(agentsYaml) +
-      """
-      |  - name: bill-harbor-code-review
-      |    description: Harbor baseline worker.
-      |    compose: governed-content
-      """.trimMargin() + "\n",
-  )
   return HarborAddonPack(
     repoRoot = repoRoot,
     packRoot = packRoot,
@@ -84,19 +74,6 @@ internal fun seedHarborAddonPack(
   )
 }
 
-private fun writeMarkedSkillContent(path: Path, name: String, body: String) {
-  Files.writeString(
-    path,
-    """
-    |---
-    |name: $name
-    |description: Harbor fixture content.
-    |internal-for: bill-code-review
-    |---
-    |
-    |# $name
-    |
-    |$body
-    """.trimMargin() + "\n",
-  )
+private fun appendHarborMarker(path: Path, marker: String) {
+  Files.writeString(path, Files.readString(path).trimEnd() + "\n\n$marker\n")
 }

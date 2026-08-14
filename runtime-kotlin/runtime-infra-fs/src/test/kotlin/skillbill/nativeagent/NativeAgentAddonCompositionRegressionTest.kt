@@ -1,11 +1,16 @@
 package skillbill.nativeagent
 
+import skillbill.nativeagent.composition.NativeAgentCompositionTarget
+import skillbill.nativeagent.composition.NativeAgentCompositionTargetSource
 import skillbill.nativeagent.composition.composeNativeAgentSource
 import skillbill.nativeagent.discovery.discoverNativeAgentSourceEntries
 import skillbill.nativeagent.rendering.NativeAgentInstallRenderOverrides
 import skillbill.nativeagent.rendering.NativeAgentInstallRenderRequest
 import skillbill.nativeagent.rendering.NativeAgentOperations
 import skillbill.nativeagent.rendering.NativeAgentProvider
+import skillbill.nativeagent.rendering.composeGovernedAgentBody
+import skillbill.scaffold.authoring.renderAuthoredContentBody
+import skillbill.scaffold.platformpack.loadPlatformPack
 import skillbill.testing.HARBOR_ADDON_SLUG
 import skillbill.testing.HARBOR_ARCHITECTURE_WORKER
 import skillbill.testing.HARBOR_AREA_MARKER
@@ -60,19 +65,25 @@ class NativeAgentAddonCompositionRegressionTest {
   @Test
   fun `rendered body order is baseline then area then entrypoint before companion`() {
     val pack = seedHarborAddonPack()
-    val baseline = composeNativeAgentSource(
-      pack.repoRoot,
-      harborSources(pack.repoRoot).single { source -> source.name == "bill-harbor-code-review" },
-    ).body
-    val area = composeNativeAgentSource(pack.repoRoot, architectureSource(pack.repoRoot)).body
-    val body = baseline + area
+    val architecture = renderArchitecture(pack.repoRoot, NativeAgentProvider.Claude)
     assertTrue(
-      body.indexOf(HARBOR_BASELINE_MARKER) >= 0 &&
-        body.indexOf(HARBOR_BASELINE_MARKER) < body.indexOf(HARBOR_AREA_MARKER) &&
-        body.indexOf(HARBOR_AREA_MARKER) < body.indexOf(HARBOR_ENTRYPOINT_MARKER) &&
-        body.indexOf(HARBOR_ENTRYPOINT_MARKER) < body.indexOf(HARBOR_COMPANION_MARKER),
-      "baseline content, then area content, then entrypoint before companion",
+      architecture.indexOf(HARBOR_AREA_MARKER) >= 0 &&
+        architecture.indexOf(HARBOR_AREA_MARKER) < architecture.indexOf(HARBOR_ENTRYPOINT_MARKER) &&
+        architecture.indexOf(HARBOR_ENTRYPOINT_MARKER) < architecture.indexOf(HARBOR_COMPANION_MARKER),
+      "area content, then entrypoint before companion",
     )
+    val baseline = composeGovernedAgentBody(
+      pack.repoRoot,
+      NativeAgentCompositionTarget(
+        contentPath = pack.baselineContent,
+        source = NativeAgentCompositionTargetSource.PlatformManifest,
+        manifest = loadPlatformPack(pack.packRoot),
+      ),
+      renderAuthoredContentBody(pack.baselineContent, "bill-harbor-code-review"),
+    ).body
+    assertContains(baseline, HARBOR_BASELINE_MARKER)
+    assertFalse(HARBOR_ENTRYPOINT_MARKER in baseline)
+    assertFalse(HARBOR_COMPANION_MARKER in baseline)
   }
 
   @Test
@@ -91,31 +102,32 @@ class NativeAgentAddonCompositionRegressionTest {
       assertContains(
         rendered,
         HARBOR_ENTRYPOINT_MARKER,
-        "${provider.directoryName} is missing composed add-on content",
+        message = "${provider.directoryName} is missing composed add-on content",
       )
     }
   }
 
-  private fun renderArchitecture(repoRoot: Path, provider: NativeAgentProvider): String {
+  private fun renderArchitecture(repoRoot: Path, provider: NativeAgentProvider): String =
+    renderWorker(repoRoot, provider, HARBOR_ARCHITECTURE_WORKER)
+
+  private fun renderWorker(repoRoot: Path, provider: NativeAgentProvider, logicalName: String): String {
     val result = renderInstall(repoRoot, provider, Files.createTempDirectory("skillbill-harbor-render"))
-    return Files.readString(architectureArtifact(result.generatedFiles, provider))
+    return Files.readString(
+      result.generatedFiles.single { path -> path.fileName.toString() == provider.fileName(logicalName) },
+    )
   }
 
-  private fun renderInstall(
-    repoRoot: Path,
-    provider: NativeAgentProvider,
-    home: Path,
-    cacheRoot: Path? = null,
-  ) = NativeAgentOperations.renderInstallArtifacts(
-    NativeAgentInstallRenderRequest(
-      platformPacksRoot = repoRoot.resolve("platform-packs"),
-      skillsRoot = null,
-      selectedPlatforms = listOf(HARBOR_PACK_SLUG),
-      provider = provider,
-      home = home,
-      overrides = NativeAgentInstallRenderOverrides(cacheRoot = cacheRoot),
-    ),
-  )
+  private fun renderInstall(repoRoot: Path, provider: NativeAgentProvider, home: Path, cacheRoot: Path? = null) =
+    NativeAgentOperations.renderInstallArtifacts(
+      NativeAgentInstallRenderRequest(
+        platformPacksRoot = repoRoot.resolve("platform-packs"),
+        skillsRoot = null,
+        selectedPlatforms = listOf(HARBOR_PACK_SLUG),
+        provider = provider,
+        home = home,
+        overrides = NativeAgentInstallRenderOverrides(cacheRoot = cacheRoot),
+      ),
+    )
 
   private fun architectureArtifact(generated: List<Path>, provider: NativeAgentProvider): Path =
     generated.single { path -> path.fileName.toString() == provider.fileName(HARBOR_ARCHITECTURE_WORKER) }

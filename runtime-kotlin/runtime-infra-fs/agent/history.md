@@ -1,5 +1,15 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
+## [2026-08-14] SKILL-188 subtask 3 — regression, conformance, and documentation correction
+Areas: runtime-kotlin/runtime-infra-fs/nativeagent, runtime-kotlin/runtime-infra-fs/install, runtime-kotlin/runtime-infra-fs/scaffold, docs
+- Regression fixtures pin the reported defect: a Harbor-shaped pack with `addon_usage` and no `content.md` link still composes distinctive add-on bytes into every rendered harness, including the external-overlay path, without mutating upstream `content.md`.
+- Coverage also pins idempotent re-render, baseline/area then add-on order (entrypoint before companions), declared-plus-linked dedup, loud-fail vocabulary (slug, slot, absolute path), budget fail-without-truncate, and slug/content equivalence across harnesses.
+- Pattern: treat Harbor-shaped packs as the composition oracle — assert rendered agents and overlay results, never a `content.md` link as the activation signal. reusable
+- `docs/external-addons.md` and the native-agent README now state that `addon_usage` alone composes and drop any implication that editing an upstream pack `content.md` activates an add-on.
+- Limitation: already-installed agents still refresh only on the next render/install. This subtask proved and documented composition; it did not change the seam.
+Feature flag: N/A
+Acceptance criteria: 13/13 implemented
+
 ## [2026-08-14] SKILL-188 subtask 2 — harness coverage and truthful slug projection
 Areas: runtime-kotlin/runtime-infra-fs/nativeagent/{composition,rendering,validation}, runtime-kotlin/runtime-infra-fs/install/apply, runtime-kotlin/runtime-infra-fs/infrastructure/fs, runtime-kotlin/runtime-domain/review/plan, platform-packs/kmp
 - Composed add-on content now rides the same governed body into every NativeAgentProvider render and install target. Harness files still differ only in provider format; add-on blocks are identical per area.

@@ -20,8 +20,7 @@ internal class SidecarInliningSession(repoRoot: Path, target: NativeAgentComposi
     claimed.add(path)
   }
 
-  fun rewrite(text: String, ownerPath: Path): String =
-    rewriteMarkdownLinks(text, ownerPath, resolver, inlined, claimed)
+  fun rewrite(text: String, ownerPath: Path): String = rewriteMarkdownLinks(text, ownerPath, resolver, inlined, claimed)
 
   fun inlinedReferenceBlocks(): String = buildString {
     inlined.forEach { (path, text) ->
