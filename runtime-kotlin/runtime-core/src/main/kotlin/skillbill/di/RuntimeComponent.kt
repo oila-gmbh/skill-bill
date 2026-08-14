@@ -465,8 +465,9 @@ abstract class RuntimeComponent(
   @Provides
   @JvmSynthetic
   internal fun reviewNativeAgentPreflightPort(
+    callbacks: OptionalCallbacks,
     adapter: FileSystemReviewNativeAgentPreflight,
-  ): ReviewNativeAgentPreflightPort = adapter
+  ): ReviewNativeAgentPreflightPort = callbacks.reviewNativeAgentPreflight ?: adapter
 
   @Provides
   @JvmSynthetic

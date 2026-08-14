@@ -5,6 +5,7 @@ package skillbill.cli.core
 import com.github.ajalt.clikt.core.CliktCommand
 import me.tatarka.inject.annotations.Inject
 import skillbill.cli.agentaddon.AgentAddonCommand
+import skillbill.cli.codereview.CodeReviewCommand
 import skillbill.cli.codereview.CodeReviewMergeCommand
 import skillbill.cli.codereview.CodeReviewParallelCommand
 import skillbill.cli.config.ConfigCommand
@@ -58,6 +59,7 @@ class UtilityCliCommandGroup(
   uninstallCommand: UninstallCommand,
   doctorCommand: DoctorCliCommand,
   removeCommand: RemoveCliCommand,
+  codeReviewCommand: CodeReviewCommand,
   codeReviewParallelCommand: CodeReviewParallelCommand,
   codeReviewMergeCommand: CodeReviewMergeCommand,
   configCommand: ConfigCommand,
@@ -75,6 +77,7 @@ class UtilityCliCommandGroup(
       uninstallCommand,
       doctorCommand,
       removeCommand,
+      codeReviewCommand,
       codeReviewParallelCommand,
       codeReviewMergeCommand,
       configCommand,

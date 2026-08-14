@@ -8,7 +8,7 @@ import skillbill.application.review.ParallelCodeReviewRunner
 import skillbill.application.review.SpecIntentProjectionExtractor
 import skillbill.application.review.SpecIntentProjectionResolver
 import skillbill.application.workflow.repoRoot
-import skillbill.config.model.RepoLocalConfig
+import skillbill.error.MissingInstalledNativeAgentError
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
@@ -22,6 +22,7 @@ import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.ReviewRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.review.ParallelReviewLaneRunner
+import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.review.ReviewRubricResolver
 import skillbill.ports.review.ReviewSpecialistContractProvider
 import skillbill.ports.review.model.ParallelReviewLaneOutcome
@@ -60,6 +61,34 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 class ParallelCodeReviewRunnerTest {
+  @Test
+  fun `native worker preflight failure launches no parent agent`() {
+    val tempDir = createGitRepo()
+    createStagedFile(tempDir)
+    val launcher = ParallelSubtaskLauncher()
+    val runner = createRunner(
+      launcher,
+      RunnerFixtureConfig(
+        nativeAgentPreflight = ReviewNativeAgentPreflightPort {
+          throw MissingInstalledNativeAgentError(
+            "bill-code-review-inline",
+            "claude",
+            "/missing",
+            "managed inventory entry is missing",
+            "skill-bill install apply",
+          )
+        },
+      ),
+    )
+
+    val error = assertFailsWith<MissingInstalledNativeAgentError> {
+      runner.run(baseRequest(repoRoot = tempDir))
+    }
+
+    assertTrue(launcher.requests.isEmpty())
+    assertContains(error.message.orEmpty(), "skill-bill install apply")
+  }
+
   @Test
   fun `blank agent2 throws UsageValidationException before any launch`() {
     val launcher = ParallelSubtaskLauncher()
@@ -1043,6 +1072,7 @@ private data class RunnerFixtureConfig(
   },
   val database: RecordingReviewDatabase = RecordingReviewDatabase(),
   val budget: ReviewContextBudgetPolicy = ReviewContextBudgetPolicy.DEFAULT,
+  val nativeAgentPreflight: ReviewNativeAgentPreflightPort = ReviewNativeAgentPreflightPort.NONE,
 ) {
   val installedPackCatalog: InstalledPlatformPackCatalogPort =
     InstalledPlatformPackCatalogPort { catalogGateway.discoverPlatformManifests(Path.of(".")) }
@@ -1098,6 +1128,7 @@ private fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFixt
         },
       ),
     ),
+    nativeAgentPreflight = config.nativeAgentPreflight,
   )
 
 private class RecordingReviewDatabase : DatabaseSessionFactory {
@@ -1165,7 +1196,7 @@ private val runnerRequestSequence = AtomicInteger()
 
 private fun baseRequest(
   agent1Id: String = "claude",
-  agent2Id: String = "codex",
+  agent2Id: String? = "codex",
   scope: ParallelReviewScope = ParallelReviewScope.STAGED,
   repoRoot: Path = Files.createTempDirectory("pr-runner-test"),
   timeout: Duration? = null,

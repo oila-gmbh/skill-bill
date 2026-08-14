@@ -340,6 +340,82 @@ class CliCodeReviewParallelRuntimeTest {
     // agent1 defaults to codex; agent2 is codex → duplicate error
     assertEquals(1, result.exitCode, result.stdout)
   }
+
+  @Test
+  fun `code-review with no agent2 and none config launches one parent and returns the register`() {
+    val tempDir = createGitRepo()
+    createStagedFile(tempDir)
+    writeParallelAgentConfig(tempDir, "none")
+    val launcher = StandaloneReviewLauncher()
+    val result = CliRuntime.run(
+      listOf(
+        "code-review",
+        "--agent1",
+        "claude",
+        "--scope",
+        "staged",
+        "--repo-root",
+        tempDir.toString(),
+      ),
+      parallelReviewContext(agentRunLauncher = launcher),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertEquals(1, launcher.parentLaunchCount)
+    assertContains(result.stdout, "claim_verdict")
+  }
+
+  @Test
+  fun `code-review omitted agent2 with invalid parallel config fails naming the key`() {
+    val tempDir = createGitRepo()
+    createStagedFile(tempDir)
+    writeParallelAgentConfig(tempDir, "not-an-agent")
+    val launcher = StandaloneReviewLauncher()
+    val result = CliRuntime.run(
+      listOf(
+        "code-review",
+        "--agent1",
+        "claude",
+        "--scope",
+        "staged",
+        "--repo-root",
+        tempDir.toString(),
+      ),
+      parallelReviewContext(agentRunLauncher = launcher),
+    )
+
+    assertEquals(1, result.exitCode, result.stdout)
+    assertContains(result.stdout, "code_review_parallel_agent")
+    assertEquals(0, launcher.parentLaunchCount)
+  }
+
+  @Test
+  fun `code-review scope staged reviews the cached diff not a branch range`() {
+    val tempDir = createGitRepo()
+    Files.writeString(tempDir.resolve("CommittedOnly.kt"), "fun committed() {}\n")
+    runGit("-C", tempDir.toString(), "add", "CommittedOnly.kt")
+    runGit("-C", tempDir.toString(), "commit", "-m", "committed")
+    Files.writeString(tempDir.resolve("StagedOnly.kt"), "fun staged() {}\n")
+    runGit("-C", tempDir.toString(), "add", "StagedOnly.kt")
+    val launcher = StandaloneReviewLauncher()
+    val result = CliRuntime.run(
+      listOf(
+        "code-review",
+        "--agent1",
+        "claude",
+        "--scope",
+        "staged",
+        "--repo-root",
+        tempDir.toString(),
+      ),
+      parallelReviewContext(agentRunLauncher = launcher),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertEquals(1, launcher.parentLaunchCount)
+    assertContains(launcher.parentPrompt, "StagedOnly.kt")
+    assertFalse(launcher.parentPrompt.contains("CommittedOnly.kt"))
+  }
 }
 
 private fun parallelReviewContext(
@@ -350,6 +426,7 @@ private fun parallelReviewContext(
   userHome = Files.createTempDirectory("cli-parallel-review-home"),
   agentRunLauncher = agentRunLauncher,
   executableLookup = ExecutableLookup { true },
+  reviewNativeAgentPreflight = skillbill.ports.review.ReviewNativeAgentPreflightPort.NONE,
 )
 
 private fun createGitRepo(): Path {
@@ -454,7 +531,6 @@ private class RecordingParallelLauncher : ParallelTestAgentRunLauncher() {
   val promptsByAgent: MutableMap<String, String> = mutableMapOf()
 
   override fun launch(request: AgentRunLaunchRequest): AgentRunLaunchOutcome {
-    // Lanes launch on concurrent threads; guard the recording collections.
     synchronized(lock) {
       agentIds += request.agentId
       modelsByAgent[request.agentId] = request.skillRunRequest.modelOverride
@@ -469,4 +545,40 @@ private class RecordingParallelLauncher : ParallelTestAgentRunLauncher() {
       spawnFailed = false,
     )
   }
+}
+
+private class StandaloneReviewLauncher : ParallelTestAgentRunLauncher() {
+  private val lock = Any()
+  var parentLaunchCount: Int = 0
+    private set
+  var parentPrompt: String = ""
+    private set
+
+  override fun launch(request: AgentRunLaunchRequest): AgentRunLaunchOutcome {
+    val issueKey = request.skillRunRequest.issueKey
+    val stdout = when (issueKey) {
+      "code-review-parallel" -> {
+        synchronized(lock) {
+          parentLaunchCount += 1
+          parentPrompt = request.skillRunRequest.promptOverride.orEmpty()
+        }
+        "- [F-001] Major | High | Test.kt:1 | Issue"
+      }
+      "code-review-verification" -> """{"claim_verdict":"confirmed"}"""
+      else -> ""
+    }
+    return AgentRunLaunchFacts(
+      agent = InstallAgent.fromNormalizedId(request.agentId, label = "agentId"),
+      exitStatus = 0,
+      stdout = stdout,
+      stderr = "",
+      timedOut = false,
+      spawnFailed = false,
+    )
+  }
+}
+
+private fun writeParallelAgentConfig(repoRoot: Path, value: String) {
+  val dir = Files.createDirectories(repoRoot.resolve(".skill-bill"))
+  Files.writeString(dir.resolve("config.yaml"), "code_review_parallel_agent: $value\n")
 }

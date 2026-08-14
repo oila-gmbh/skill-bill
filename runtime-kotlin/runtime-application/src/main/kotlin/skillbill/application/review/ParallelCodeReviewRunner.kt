@@ -16,6 +16,7 @@ import skillbill.application.model.StackDetectionException
 import skillbill.application.model.UsageValidationException
 import skillbill.application.review.model.ReviewRubricProjection
 import skillbill.application.review.model.ReviewSpecialistLaunchRequest
+import skillbill.application.review.model.ReviewWorkerKind
 import skillbill.application.workflow.repoRoot
 import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
 import skillbill.domain.review.context.model.SpecIntentProjectionResolveRequest
@@ -34,8 +35,10 @@ import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.model.ReviewAccountingRecord
 import skillbill.ports.persistence.model.ReviewIntegrationPassRecord
 import skillbill.ports.review.ParallelReviewLaneRunner
+import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.review.ReviewRubricResolver
 import skillbill.ports.review.ReviewSpecialistContractProvider
+import skillbill.ports.review.model.ReviewNativeAgentPreflightRequest
 import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.ports.review.model.ParallelReviewLaneRunRequest
 import skillbill.ports.review.model.ParallelReviewLaneRunResult
@@ -118,13 +121,14 @@ class ParallelCodeReviewRunner(
   private val sharedEvidenceResolver: FeatureTaskRuntimeSharedEvidenceResolverPort =
     FeatureTaskRuntimeSharedEvidenceResolverPort.NONE,
   private val specIntentProjectionResolver: SpecIntentProjectionResolver,
+  private val nativeAgentPreflight: ReviewNativeAgentPreflightPort = ReviewNativeAgentPreflightPort.NONE,
 ) {
   private data class InitialRun(
     val request: ParallelCodeReviewRequest,
     val detection: StackDetection,
     val resolvedMode: ResolvedReviewExecutionMode,
     val agent1Id: String,
-    val agent2Id: String,
+    val agent2Id: String?,
     val preparedLaunchRequests: List<ReviewSpecialistLaunchRequest>,
     /**
      * Every lane the packet compiled, including lanes this resume did not re-launch because they
@@ -146,6 +150,7 @@ class ParallelCodeReviewRunner(
 
   fun run(originalRequest: ParallelCodeReviewRequest): ParallelCodeReviewResult {
     val initial = prepareInitialRun(originalRequest)
+    verifyNativeWorkers(initial)
     val outcomes = runLanes(initial)
     recordLaneDispositions(initial, outcomes)
     val integration = runIntegrationPass(initial, outcomes)
@@ -186,8 +191,8 @@ class ParallelCodeReviewRunner(
 
   private fun prepareInitialRun(originalRequest: ParallelCodeReviewRequest): InitialRun {
     val agent1 = resolveAgent(originalRequest.agent1Id, "--agent1")
-    val agent2 = resolveAgent(originalRequest.agent2Id, "--agent2")
-    if (agent1.id == agent2.id) {
+    val agent2 = originalRequest.agent2Id?.let { resolveAgent(it, "--agent2") }
+    if (agent2 != null && agent1.id == agent2.id) {
       throw UsageValidationException(
         "agent1 and agent2 must be different agents; both resolved to '${agent1.id}'.",
       )
@@ -221,7 +226,7 @@ class ParallelCodeReviewRunner(
       detection.routed,
       detection.manifests,
       detection.ownedPathsBySlug,
-      listOf(agent1.id, agent2.id),
+      listOfNotNull(agent1.id, agent2?.id),
       budget,
     )
     return InitialRun(
@@ -229,7 +234,7 @@ class ParallelCodeReviewRunner(
       detection = detection,
       resolvedMode = resolvedMode,
       agent1Id = agent1.id,
-      agent2Id = agent2.id,
+      agent2Id = agent2?.id,
       preparedLaunchRequests = compiled.toRun,
       compiledLaunchRequests = compiled.all,
       budget = budget,
@@ -246,24 +251,29 @@ class ParallelCodeReviewRunner(
   private fun runLanes(initial: InitialRun): ParallelReviewLaneRunResult {
     val request = initial.request
     val byAgent = initial.preparedLaunchRequests.groupBy { it.agentId }
+    val lane1 = {
+      launchParentLane(
+        initial.agent1Id,
+        byAgent[initial.agent1Id].orEmpty(),
+        initial.detection.routed,
+        initial.budget,
+        request,
+        null,
+        initial.resolvedMode,
+      )
+    }
+    val agent2Id = initial.agent2Id ?: return ParallelReviewLaneRunResult(
+      lane1 = lane1(),
+      lane2 = ParallelReviewLaneOutcome(success = true, rawOutput = ""),
+    )
     val timeoutSec = request.timeout?.inWholeSeconds ?: DEFAULT_TIMEOUT_MINUTES * SECONDS_PER_MINUTE
     return parallelLaneRunner.runTwoLanes(
       ParallelReviewLaneRunRequest(
-        lane1 = {
-          launchParentLane(
-            initial.agent1Id,
-            byAgent[initial.agent1Id].orEmpty(),
-            initial.detection.routed,
-            initial.budget,
-            request,
-            null,
-            initial.resolvedMode,
-          )
-        },
+        lane1 = lane1,
         lane2 = {
           launchParentLane(
-            initial.agent2Id,
-            byAgent[initial.agent2Id].orEmpty(),
+            agent2Id,
+            byAgent[agent2Id].orEmpty(),
             initial.detection.routed,
             initial.budget,
             request,
@@ -272,6 +282,26 @@ class ParallelCodeReviewRunner(
           )
         },
         timeout = (timeoutSec + TIMEOUT_BUFFER_SECONDS).seconds,
+      ),
+    )
+  }
+
+  private fun verifyNativeWorkers(initial: InitialRun) {
+    val nativeNames = initial.compiledLaunchRequests
+      .filter { it.workerKind == ReviewWorkerKind.PROVIDER_NATIVE }
+      .mapNotNull { it.logicalWorkerName }
+    val logicalNames = buildList {
+      addAll(nativeNames)
+      if (initial.resolvedMode == ResolvedReviewExecutionMode.INLINE) {
+        add(INLINE_NATIVE_WORKER)
+      }
+    }.distinct()
+    if (logicalNames.isEmpty()) return
+    nativeAgentPreflight.verify(
+      ReviewNativeAgentPreflightRequest(
+        repoRoot = initial.request.repoRoot,
+        agentIds = listOfNotNull(initial.agent1Id, initial.agent2Id),
+        logicalNames = logicalNames,
       ),
     )
   }
@@ -741,7 +771,8 @@ class ParallelCodeReviewRunner(
     // durable results. Expected stays the packet's full selection either way: that is what makes a
     // lane silently vanishing between attempts a loud aggregation failure rather than clean coverage.
     val results = ranThisPass + durablyCompleteLanes(initial, packet, ranThisPass)
-    val bothAgentsSucceeded = outcomes.lane1.success && outcomes.lane2.success
+    val bothAgentsSucceeded = outcomes.lane1.success &&
+      (initial.agent2Id == null || outcomes.lane2.success)
     return ReviewLaneAggregation.requireCompleteLaneResults(
       expectedLanes = packet.selectedLanes,
       results = results,
@@ -1380,9 +1411,7 @@ class ParallelCodeReviewRunner(
     // A standalone review carries no run id; its evidence is still addressed by checkpoint
     // fingerprint, so one shared slot per repo is correct rather than a collision.
     const val SHARED_EVIDENCE_WORKFLOW_ID = "code-review"
-
-    // Stands in for a sequence identity on a resume that compiled no packet, so the skipped
-    // integration outcome still names something rather than carrying a blank digest.
+    const val INLINE_NATIVE_WORKER = "bill-code-review-inline"
     const val NO_SEQUENCE_DIGEST = "no-commit-sequence"
   }
 
@@ -1396,7 +1425,7 @@ class ParallelCodeReviewRunner(
 @Suppress("LongParameterList") // assembles the full result record; every part is required
 private fun parallelResult(
   agent1Id: String,
-  agent2Id: String,
+  agent2Id: String?,
   outcomes: skillbill.ports.review.model.ParallelReviewLaneRunResult,
   integration: ReviewIntegrationPassOutcome,
   coverage: ReviewCoverageReport?,
@@ -1404,9 +1433,6 @@ private fun parallelResult(
   budget: ReviewContextBudgetPolicy,
   stageResume: ReviewStageResumeReport?,
 ): ParallelCodeReviewResult {
-  // A lane's own `findings` already carries the right value, so the `success` check guards only the
-  // raw-output fallback: re-parsing a failed run's output would surface truncated or error text as
-  // findings.
   val lane1Result = ParallelReviewLaneResult(
     agentId = agent1Id,
     findings = outcomes.lane1.findings.ifEmpty {
@@ -1414,9 +1440,13 @@ private fun parallelResult(
     },
   )
   val lane2Result = ParallelReviewLaneResult(
-    agentId = agent2Id,
-    findings = outcomes.lane2.findings.ifEmpty {
-      if (outcomes.lane2.success) ParallelReviewFindingParser.parse(outcomes.lane2.rawOutput) else emptyList()
+    agentId = agent2Id.orEmpty(),
+    findings = if (agent2Id == null) {
+      emptyList()
+    } else {
+      outcomes.lane2.findings.ifEmpty {
+        if (outcomes.lane2.success) ParallelReviewFindingParser.parse(outcomes.lane2.rawOutput) else emptyList()
+      }
     },
   )
   val integrationResult = integration.findings
@@ -1425,7 +1455,7 @@ private fun parallelResult(
   return ParallelCodeReviewResult(
     mergeResult = ParallelReviewMerger.merge(lane1Result, lane2Result, integrationResult),
     lane1 = outcomes.lane1.toStatus(agent1Id),
-    lane2 = outcomes.lane2.toStatus(agent2Id),
+    lane2 = outcomes.lane2.toStatus(agent2Id.orEmpty()),
     accountingSummary = parallelAccountingSummary(outcomes)
       ?.withCommitFocusedAccounting(packet, budget, integration, coverage),
     integration = integration,

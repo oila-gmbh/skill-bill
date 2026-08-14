@@ -6,100 +6,78 @@ matchers:
 
 pointers:
   - shell-ceremony
-  - review-scope
-  - stack-routing
-  - review-delegation
   - shell-content-contract
   - telemetry-contract
 
 sections:
   - heading: Shell Role
     body: |
-      This skill is a governed shell. It owns ceremony, orchestration, output structure, telemetry, and contract enforcement. It is deliberately platform-independent: every piece of platform-specific review reasoning lives in a user-owned platform pack under `platform-packs/<platform>/`.
+      This skill is a governed entry over the runtime driver. It recognizes review
+      arguments and invokes `skill-bill code-review`. It does not orchestrate scope,
+      stack routing, specialist fan-out, or lane merge in the parent session.
+
+      The driver owns those rules: `ParallelCodeReviewRunner` resolves the caller
+      scope, routes packs, enforces native-worker preflight, runs one or two parent
+      lanes through `AgentRunLauncher`, and returns the register with stage verdicts.
 
       Keep this shell thin:
 
-      - detect the dominant stack in the review scope via manifest-driven discovery
-      - load the matching platform pack through the shell+content contract
-      - enforce output structure, severity/confidence scales, and telemetry ceremony
-      - refuse to run when a platform pack is missing or out of contract — never silently fall back
+      - recognize `mode:`, `parallel:`, and `context:feature-remediation`
+      - invoke `skill-bill code-review` with the resolved arguments
+      - present the returned register without rewriting it
 
       The shell targets shell contract version `1.4`. Platform packs must declare the same `contract_version` in their `platform.yaml`. Version mismatch is a hard failure — see the loud-fail rules below.
 
   - heading: Setup
     body: |
-      Inspect both the changed files and repo markers before routing.
+      Recognize at most one `mode:auto|inline|delegated` argument. Omission resolves to `inline`; malformed, repeated, unknown, or conflicting values fail before the driver is invoked. Explicit `auto` resolves to `inline` under both named rules — `auto_mode_by_pass_number` wherever a review pass number exists, first pass included, and `auto_mode_default` for a standalone review with no pass number; diff size, risk, and stack layering never change that resolution, and the applicable named auto rule is retained for auditable metadata. `delegated` is the experimental full-depth tier and is reached only by an explicit `delegated` selection. Pass the resolved mode to `skill-bill code-review --execution-mode`. Do not launch a review worker from this session.
 
-      Resolve the scope before routing. If the caller asks for staged changes, route and review only the staged diff; do not let unstaged edits expand the findings beyond repo-marker stack detection.
-      Recognize at most one `mode:auto|inline|delegated` argument. Omission resolves to `inline`; malformed, repeated, unknown, or conflicting values fail before review work begins. Explicit `auto` resolves to `inline` under both named rules — `auto_mode_by_pass_number` wherever a review pass number exists, first pass included, and `auto_mode_default` for a standalone review with no pass number; diff size, risk, and stack layering never change that resolution, and the applicable named auto rule is retained for auditable metadata. `delegated` is the experimental full-depth tier and is reached only by an explicit `delegated` selection. An explicit or auto-resolved `inline` request runs the light depth tier in exactly one review subagent the parent launches — one worker walking every manifest-declared review area and required baseline area as an explicit checklist at reduced depth under a bounded budget, without spawning per-area specialists or fabricating lane totals, and never presented as equivalent coverage to delegated. The parent classifies diff signals and loads only the selected areas' rubrics through the manifest before launching; it does not run the review in its own context. Diff signals focus each area's inspection but never remove a declared area; record areas with no applicable signal as checked with no applicable signal. An explicit `delegated` request follows delegated routing, and it must never fall back inline if workers are unavailable.
+      Recognize `parallel:<agent>` or `parallel:<agent>:<model>` and the
+      `code_review_parallel_agent` config fallback with precedence
+      `parallel: arg > config > none`. An unsupported agent or malformed config
+      fails before launch. Omitted second lane is a single-lane driver run.
+
+      Pass the caller's scope through `--scope` or an exact `--diff-file` with paired
+      revisions. The driver records the diff; do not rediscover a branch range.
 
   - heading: Local Review Learnings
     body: |
-      The shell owns learnings resolution for the current review context.
+      The driver owns learnings resolution for the current review context.
 
-      - When the `skill-bill` MCP server is registered, call its `resolve_learnings` tool to resolve active learnings for the current repo and routed review skill before final routed review execution. Do not improvise alternate launch paths or a globally installed `skill-bill` binary; the MCP tool is the only supported path.
-      - If the `resolve_learnings` MCP tool is not registered in the current runtime, report `Applied learnings: none` instead of improvising another resolver path.
-      - Routed and delegated reviewers should reuse applied learnings passed by the caller instead of re-resolving them independently.
+      - When the `skill-bill` MCP server is registered, the driver calls `resolve_learnings` for the current repo and routed review skill. Do not improvise alternate launch paths or a globally installed `skill-bill` binary.
+      - If the `resolve_learnings` MCP tool is not registered in the current runtime, the driver reports `Applied learnings: none` instead of improvising another resolver path.
       - Apply only active learnings.
       - Prefer more specific scopes in this order: `skill`, `repo`, `global`.
       - Treat learnings as explicit context, not as hidden suppression rules.
-      - Pass the applied learning references forward to routed review layers and report them in the review summary.
 
   - heading: Routing Rules
     body: |
-      Stack detection and routing are manifest-driven. The shell discovers every `platform-packs/<slug>/platform.yaml` from the skill-adjacent installed `platform-packs` link (or `~/.skill-bill/platform-packs/` / the install-published review catalog), not from the reviewed repository root unless that repository is itself the Skill Bill source tree. It reads each pack's declared routing signals and chooses the dominant stack using manifest-declared tie-breakers. The shell does not enumerate platform names inline.
+      Stack detection and routing are driver-owned and manifest-driven. The driver discovers every `platform-packs/<slug>/platform.yaml` from the skill-adjacent installed `platform-packs` link (or `~/.skill-bill/platform-packs/` / the install-published review catalog), not from the reviewed repository root unless that repository is itself the Skill Bill source tree.
 
       - Generate a `routed_skill` value of `bill-<slug>-code-review` for the dominant pack. This contract is preserved exactly so existing user-facing commands keep working.
-      - If the review scope is mixed and multiple packs have strong signals, route to each matching pack and merge the results using delegated execution.
-      - If a pack declares tie-breakers that subsume other packs (for example, a pack that layers another platform baseline internally), prefer the subsuming pack to avoid running overlapping reviewers side by side.
-      - If no pack has evidence, stop and say the stack is unsupported instead of pretending coverage exists.
+      - If no pack has evidence, the driver stops and says the stack is unsupported instead of pretending coverage exists.
       - The routed platform pack is the source of truth for classification details, specialist selection, review heuristics, and single-stack execution mode.
 
       ### Loud-fail contract enforcement
 
-      Before executing a routed review, the shell validates the chosen pack against the shell+content contract. Any failure stops the run immediately and prints a specific error naming the failing artifact:
+      Before executing a routed review, the driver validates the chosen pack against the shell+content contract. Any failure stops the run immediately and prints a specific error naming the failing artifact:
 
       - `MissingManifestError` — the pack has no `platform.yaml`.
       - `InvalidManifestSchemaError` — the manifest fails schema validation.
       - `ContractVersionMismatchError` — `contract_version` does not match the shell's target version; print both versions and the offending pack slug.
       - `MissingContentFileError` — a declared content file does not exist; the message must name the slot key and the fully resolved absolute path.
       - `MissingRequiredSectionError` — a declared content file is missing a required H2 section.
+      - `MissingInstalledNativeAgentError` — a planned native worker is missing, dangling, stale, unreadable, or undeclared; the message names the governed repair command. The driver never substitutes a general-purpose worker.
 
-      The shell never silently substitutes a default reviewer. A broken pack must be repaired before `/bill-code-review` can complete.
+      The driver never silently substitutes a default reviewer. A broken pack must be repaired before `/bill-code-review` can complete.
 
   - heading: Execution Contract
     body: |
-      Multi-stack delegated routing reads only its current runtime's section of the delegation contract. Single-stack reviews skip delegation — the routed pack handles its own.
+      Invoke `skill-bill code-review` as the standalone entry over `ParallelCodeReviewRunner`. Lane 1 and every specialist stage run through the existing `AgentRunLauncher` route. Do not introduce a `claude -p`, `codex exec`, stdin-pipe, or `mktemp` lane-2 path, and do not call `skill-bill code-review-merge` on this entry.
 
-      Before any delegated routed layer or specialist launches, prepare the compact shared review-context packet required by `review-delegation.md`. Apply the routed pack's Diff-Signal Routing Table, retain required baseline layers, add only relevant specialists, and drop empty lanes. Pass each selected worker the packet, its assignment, and only its applicable rubric.
+      An omitted second lane is a single parent run on the calling thread. `--agent2` or a non-`none` `code_review_parallel_agent` adds the second lane to the same driver.
 
-      For a single routed platform pack:
-
-      - Apply the already-resolved `inline` or `delegated` mode to the routed pack.
-      - If the mode is `inline`, launch exactly one review subagent for the whole review — the declared `bill-code-review-inline` native agent, whose narrow toolset keeps unused tool schemas out of every one of its model turns — rather than reviewing in the parent context, spawning one worker per area, or substituting a general-purpose worker. Build an ordered checklist from every `declared_code_review_areas` entry declared by the pack plus every required baseline layer's declared areas, inspect each area once, and report its checked status even when no area-specific diff signal exists. Resolve the signal-bearing areas to rubric paths through the pack manifest's `declared_files.areas` map, name those plus `declared_files.baseline` in the launch brief, and have that single subagent read them itself as the authoritative set; the parent never reads the rubric text into its own context.
-      - If the routed pack selects `delegated`, pass along the routed skill name, rendered runtime instructions, and required review context.
-
-      For multiple routed platform packs:
-
-      - In `inline` mode, walk every declared area of every routed pack in one review subagent — one worker for the whole review across all routed packs, not one per pack — and merge the findings without launching per-area specialists.
-      - In `delegated` mode, use delegated workers for each routed pack and merge the results in the parent review.
-      - Use parallel delegated workers only when multiple supported stacks are clearly in scope and the resolved mode is `delegated`.
-      - If delegated review is required for the current scope and the runtime lacks a documented delegation path or cannot start the required worker(s), stop and report that delegated review is required for this scope but unavailable on the current runtime.
-
-      When routing to another skill, pass along:
-
-      - the exact resolved review scope label
-      - the exact review scope
-      - the current `review_session_id` when one already exists
-      - the current `review_run_id` when one already exists
-      - the applicable active learnings for the current repo and routed review skill when they are available
-      - the changed files or diff source
-      - the detected stack and key signals
-      - relevant `AGENTS.md` guidance and matching `.agents/skill-overrides.md` sections
-      - the parent thread's model when the harness supports delegated-specialist model inheritance
-      - the delegated skill name and rendered runtime instructions
-      - the rule that the delegated skill must follow its own rendered runtime instructions as the primary rubric
-      - the delegated skill's `review-orchestrator.md` contract when the routed pack is a stack review orchestrator
+      `inline` is the light depth tier the driver runs as the declared `bill-code-review-inline` native agent. `delegated` is the experimental full-depth specialist fan-out. Native-worker preflight is mandatory before any parent or specialist AgentRun.
 
   - heading: Output Format
     body: |
@@ -159,6 +137,8 @@ sections:
       Result: No matching platform pack is available yet.
       ```
 
+      Present the register `skill-bill code-review` returned. Do not rebuild this envelope by hand.
+
   - heading: Telemetry
     body: |
       This shell is thin by design and never emits telemetry on its own — routing metadata is carried in the concrete routed pack's telemetry call.
@@ -167,8 +147,5 @@ sections:
 
 ceremony_lines:
   - "Follow the shell ceremony in [shell-ceremony.md](shell-ceremony.md)."
-  - "Determine the review scope using [review-scope.md](review-scope.md)."
-  - "When stack routing applies, follow [stack-routing.md](stack-routing.md)."
-  - "When delegated review execution applies, follow [review-delegation.md](review-delegation.md)."
   - "When the shell+content contract enforcement applies, follow [shell-content-contract.md](shell-content-contract.md)."
   - "When telemetry applies, follow [telemetry-contract.md](telemetry-contract.md)."
