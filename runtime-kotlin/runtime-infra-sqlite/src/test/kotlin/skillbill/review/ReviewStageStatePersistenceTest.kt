@@ -1,9 +1,12 @@
 package skillbill.review
 
 import skillbill.infrastructure.sqlite.SQLiteReviewRunCompletenessRepository
+import skillbill.review.model.ParallelReviewMergedFinding
+import skillbill.review.model.ParallelReviewSeverity
 import skillbill.review.model.ReviewClaimVerdict
 import skillbill.review.model.ReviewFindingCitation
 import skillbill.review.model.ReviewFindingVerdict
+import skillbill.review.model.ReviewPassClaimSnapshot
 import skillbill.review.model.ReviewScopeDisposition
 import skillbill.review.model.ReviewSeverityAdjustment
 import skillbill.review.model.ReviewSeverityAdjustmentDirection
@@ -45,12 +48,26 @@ class ReviewStageStatePersistenceTest {
       recordedAt = "2026-08-14T08:01:00Z",
     )
     val spec = ReviewSpecProjectionReference(absenceReason = "spec_context none")
+    val claims = listOf(
+      ParallelReviewMergedFinding(
+        fNumber = "F-001",
+        agentIds = listOf("codex"),
+        severity = ParallelReviewSeverity.MAJOR,
+        confidence = "High",
+        location = "src/Main.kt:12",
+        description = "null is unchecked",
+        repositoryPath = "src/Main.kt",
+        line = 12,
+      ),
+    )
     first.use { connection ->
       val repository = SQLiteReviewRunCompletenessRepository(connection)
       repository.recordFindingVerdicts(RUN_ID, listOf(verification, adjudication))
       repository.recordFindingVerdicts(RUN_ID, listOf(verification, adjudication))
       repository.recordStageBoundary(RUN_ID, boundary)
       repository.recordSpecProjectionReference(RUN_ID, spec)
+      repository.recordReviewPassClaims(RUN_ID, claims)
+      repository.recordReviewPassClaims(RUN_ID, emptyList())
       assertEquals(2, repository.fetchFindingVerdicts(RUN_ID).size)
     }
 
@@ -62,6 +79,7 @@ class ReviewStageStatePersistenceTest {
       )
       assertEquals(listOf(boundary), repository.fetchStageBoundaries(RUN_ID))
       assertEquals(spec, repository.fetchSpecProjectionReference(RUN_ID))
+      assertEquals(ReviewPassClaimSnapshot(claims), repository.fetchReviewPassClaims(RUN_ID))
     }
   }
 
@@ -92,19 +110,36 @@ class ReviewStageStatePruneTest {
         ReviewStageBoundary(ReviewStage.REVIEW, ReviewStageReached.REACHED, "2026-08-14T08:00:00Z"),
       )
       repository.recordSpecProjectionReference(RUN_ID, ReviewSpecProjectionReference(absenceReason = "spec_context none"))
+      repository.recordReviewPassClaims(
+        RUN_ID,
+        listOf(
+          ParallelReviewMergedFinding(
+            fNumber = "F-001",
+            agentIds = listOf("codex"),
+            severity = ParallelReviewSeverity.NIT,
+            confidence = "Low",
+            location = "src/Main.kt:1",
+            description = "nit",
+            repositoryPath = "src/Main.kt",
+            line = 1,
+          ),
+        ),
+      )
       it.createStatement().use { statement ->
         statement.executeUpdate("DELETE FROM review_runs WHERE review_run_id = '$RUN_ID'")
       }
       assertTrue(repository.fetchFindingVerdicts(RUN_ID).isEmpty())
       assertTrue(repository.fetchStageBoundaries(RUN_ID).isEmpty())
       assertEquals(null, repository.fetchSpecProjectionReference(RUN_ID))
+      assertEquals(null, repository.fetchReviewPassClaims(RUN_ID))
       it.createStatement().use { statement ->
         val remaining = statement.executeQuery(
           """
           SELECT
             (SELECT COUNT(*) FROM review_run_finding_verdicts) +
             (SELECT COUNT(*) FROM review_run_stage_boundaries) +
-            (SELECT COUNT(*) FROM review_run_spec_projections)
+            (SELECT COUNT(*) FROM review_run_spec_projections) +
+            (SELECT COUNT(*) FROM review_run_pass_claims)
           """.trimIndent(),
         )
         remaining.next()

@@ -75,6 +75,7 @@ import skillbill.review.context.model.asFailedLaneRun
 import skillbill.review.context.model.structuredString
 import skillbill.review.context.model.toCodeReviewExecutionMode
 import skillbill.review.model.ParallelReviewLaneResult
+import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ParallelReviewRawFinding
 import skillbill.review.model.ReviewCoverageReport
 import skillbill.review.model.ReviewLaneAggregationInput
@@ -144,7 +145,6 @@ class ParallelCodeReviewRunner(
     val outcomes = runLanes(initial)
     recordLaneDispositions(initial, outcomes)
     val integration = runIntegrationPass(initial, outcomes)
-    recordReviewStageBoundary(initial.request.reviewRunId, integration)
     val coverage = coverageReport(initial, outcomes, integration)
     val result = parallelResult(
       initial.agent1Id,
@@ -156,6 +156,8 @@ class ParallelCodeReviewRunner(
       initial.budget,
       stageResumeReport(initial.request.reviewRunId),
     )
+    persistReviewPassClaims(initial.request.reviewRunId, result.mergeResult.findings, persistEmpty = false)
+    recordReviewStageBoundary(initial.request.reviewRunId, integration, result.mergeResult.findings)
     recordMergedFindingLanes(initial.request.reviewRunId, result)
     runClaimVerification(initial, result)
     result.accountingSummary?.let { summary ->
@@ -497,15 +499,28 @@ class ParallelCodeReviewRunner(
 
   private fun runClaimVerification(initial: InitialRun, result: ParallelCodeReviewResult) {
     val reviewRunId = initial.request.reviewRunId
-    if (verificationBoundaryReached(reviewRunId)) return
+    val snapshot = if (reviewRunId == null) {
+      null
+    } else {
+      database.transaction { unitOfWork -> unitOfWork.reviews.fetchReviewPassClaims(reviewRunId) }
+    }
+    val claims = snapshot?.findings ?: result.mergeResult.findings
     val existing = if (reviewRunId == null) {
       emptyList()
     } else {
       database.transaction { unitOfWork -> unitOfWork.reviews.fetchFindingVerdicts(reviewRunId) }
     }
+    val verifiedRefs = existing
+      .filter { it.stage == ReviewStage.VERIFICATION }
+      .map { it.findingRef }
+      .toSet()
+    if (claims.all { it.fNumber in verifiedRefs }) {
+      if (reviewRunId != null) recordVerificationBoundary(reviewRunId)
+      return
+    }
     val outcome = ReviewClaimVerificationRunner(parentReviewLauncher, reviewContextEnvelopeValidator).run(
       packet = initial.compiledLaunchRequests.firstOrNull()?.packet,
-      findings = result.mergeResult.findings,
+      findings = claims,
       existingVerdicts = existing,
       mode = initial.resolvedMode,
       budget = initial.budget,
@@ -519,6 +534,16 @@ class ParallelCodeReviewRunner(
         unitOfWork.reviews.recordFindingVerdicts(reviewRunId, outcome.verdicts)
       }
     }
+    val recordedRefs = (existing + outcome.verdicts)
+      .filter { it.stage == ReviewStage.VERIFICATION }
+      .map { it.findingRef }
+      .toSet()
+    if (claims.all { it.fNumber in recordedRefs }) {
+      recordVerificationBoundary(reviewRunId)
+    }
+  }
+
+  private fun recordVerificationBoundary(reviewRunId: String) {
     database.transaction { unitOfWork ->
       unitOfWork.reviews.recordStageBoundary(
         reviewRunId,
@@ -532,18 +557,30 @@ class ParallelCodeReviewRunner(
     }
   }
 
-  private fun verificationBoundaryReached(reviewRunId: String?): Boolean {
-    if (reviewRunId == null) return false
-    return database.transaction { unitOfWork -> unitOfWork.reviews.fetchStageBoundaries(reviewRunId) }
-      .any { it.stage == ReviewStage.VERIFICATION && it.reached == ReviewStageReached.REACHED }
+  private fun persistReviewPassClaims(
+    reviewRunId: String?,
+    findings: List<ParallelReviewMergedFinding>,
+    persistEmpty: Boolean,
+  ) {
+    if (reviewRunId == null) return
+    if (findings.isEmpty() && !persistEmpty) return
+    database.transaction { unitOfWork ->
+      if (unitOfWork.reviews.fetchReviewPassClaims(reviewRunId) != null) return@transaction
+      unitOfWork.reviews.recordReviewPassClaims(reviewRunId, findings)
+    }
   }
 
-  private fun recordReviewStageBoundary(reviewRunId: String?, integration: ReviewIntegrationPassOutcome) {
+  private fun recordReviewStageBoundary(
+    reviewRunId: String?,
+    integration: ReviewIntegrationPassOutcome,
+    findings: List<ParallelReviewMergedFinding>,
+  ) {
     if (reviewRunId == null || !integration.durable) return
     val lanes = database.transaction { unitOfWork -> unitOfWork.reviews.fetchReviewRunLanes(reviewRunId) }
     if (lanes.isEmpty() || lanes.any { it.reviewDisposition != ReviewRunLaneResolver.COMPLETE_DISPOSITION }) {
       return
     }
+    persistReviewPassClaims(reviewRunId, findings, persistEmpty = true)
     database.transaction { unitOfWork ->
       unitOfWork.reviews.recordStageBoundary(
         reviewRunId,

@@ -120,6 +120,10 @@ data class ReviewStageBoundary(
   }
 }
 
+data class ReviewPassClaimSnapshot(
+  val findings: List<ParallelReviewMergedFinding>,
+)
+
 data class ReviewSpecProjectionReference(
   val specPath: String? = null,
   val contentDigest: String? = null,

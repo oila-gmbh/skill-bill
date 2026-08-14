@@ -1120,8 +1120,11 @@ private class RecordingReviewDatabase : DatabaseSessionFactory {
         @Suppress("UNCHECKED_CAST")
         findingLaneWrites += args[0] as String to (args[1] as Map<String, String>)
       }
-      "recordFindingVerdicts", "recordStageBoundary", "recordSpecProjectionReference" -> Unit
+      "recordFindingVerdicts", "recordStageBoundary", "recordSpecProjectionReference",
+      "recordReviewPassClaims",
+      -> Unit
       "fetchFindingVerdicts" -> emptyList<skillbill.review.model.ReviewFindingVerdict>()
+      "fetchReviewPassClaims" -> null
       "fetchStageBoundaries" -> emptyList<skillbill.review.model.ReviewStageBoundary>()
       "fetchSpecProjectionReference" -> null
       else -> error("Unexpected review repository call: ${method.name}")

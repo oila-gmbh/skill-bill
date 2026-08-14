@@ -48,9 +48,11 @@ class ReviewStageStateMigrationTest {
       assertTrue("review_run_finding_verdicts" in DatabaseSchema.tableNames)
       assertTrue("review_run_stage_boundaries" in DatabaseSchema.tableNames)
       assertTrue("review_run_spec_projections" in DatabaseSchema.tableNames)
+      assertTrue("review_run_pass_claims" in DatabaseSchema.tableNames)
       assertTrue("review_run_finding_verdicts" in tables)
       assertTrue("review_run_stage_boundaries" in tables)
       assertTrue("review_run_spec_projections" in tables)
+      assertTrue("review_run_pass_claims" in tables)
       assertTrue("idx_review_run_finding_verdicts_run" in DatabaseSchema.indexNames)
       assertTrue("idx_review_run_stage_boundaries_run" in DatabaseSchema.indexNames)
       assertTrue("idx_review_run_finding_verdicts_run" in indexes)
@@ -62,6 +64,7 @@ class ReviewStageStateMigrationTest {
       assertEquals(1, tables.count { it == "review_run_finding_verdicts" })
       assertEquals(1, tables.count { it == "review_run_stage_boundaries" })
       assertEquals(1, tables.count { it == "review_run_spec_projections" })
+      assertEquals(1, tables.count { it == "review_run_pass_claims" })
     }
   }
 

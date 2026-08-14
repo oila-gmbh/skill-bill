@@ -466,6 +466,11 @@ internal object DatabaseMigrations {
         name = "add-review-run-stage-state",
         operation = DatabaseReviewColumnMigrations::ensureReviewStageStateTables,
       ),
+      DatabaseMigration(
+        version = 31,
+        name = "add-review-run-pass-claims",
+        operation = DatabaseReviewColumnMigrations::ensureReviewStageStateTables,
+      ),
     ).also(::requireDeterministicMigrations)
 
   fun apply(connection: Connection) {

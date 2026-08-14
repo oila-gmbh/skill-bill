@@ -1,8 +1,10 @@
 package skillbill.ports.persistence
 
 import skillbill.ports.persistence.model.ReviewIntegrationPassRecord
+import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.review.model.ReviewLaneEffectivenessRow
+import skillbill.review.model.ReviewPassClaimSnapshot
 import skillbill.review.model.ReviewRunLane
 import skillbill.review.model.ReviewSpecProjectionReference
 import skillbill.review.model.ReviewStageBoundary
@@ -47,6 +49,10 @@ interface ReviewRunCompletenessRepository {
   fun recordFindingVerdicts(runId: String, verdicts: List<ReviewFindingVerdict>)
 
   fun fetchFindingVerdicts(runId: String): List<ReviewFindingVerdict>
+
+  fun recordReviewPassClaims(runId: String, findings: List<ParallelReviewMergedFinding>)
+
+  fun fetchReviewPassClaims(runId: String): ReviewPassClaimSnapshot?
 
   fun recordStageBoundary(runId: String, boundary: ReviewStageBoundary)
 
@@ -93,6 +99,13 @@ object UnavailableReviewRunCompletenessRepository : ReviewRunCompletenessReposit
   }
 
   override fun fetchFindingVerdicts(runId: String): List<ReviewFindingVerdict> =
+    error("Review run completeness persistence is unavailable.")
+
+  override fun recordReviewPassClaims(runId: String, findings: List<ParallelReviewMergedFinding>) {
+    error("Review run completeness persistence is unavailable.")
+  }
+
+  override fun fetchReviewPassClaims(runId: String): ReviewPassClaimSnapshot? =
     error("Review run completeness persistence is unavailable.")
 
   override fun recordStageBoundary(runId: String, boundary: ReviewStageBoundary) {

@@ -36,7 +36,9 @@ import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewContextBudgetPolicy
+import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ReviewFindingVerdict
+import skillbill.review.model.ReviewPassClaimSnapshot
 import skillbill.review.model.ReviewRunLane
 import skillbill.review.model.ReviewSpecProjectionReference
 import skillbill.review.model.ReviewStageBoundary
@@ -82,6 +84,8 @@ class ReviewRecorder {
     Collections.synchronizedList(mutableListOf())
   val durableStageBoundaries: MutableList<ReviewStageBoundary> =
     Collections.synchronizedList(mutableListOf())
+
+  @Volatile var durablePassClaims: ReviewPassClaimSnapshot? = null
 
   @Volatile var durableSpecProjection: ReviewSpecProjectionReference? = null
 
@@ -273,6 +277,13 @@ private fun recordingDatabase(recorder: ReviewRecorder): DatabaseSessionFactory 
         }
       }
       "fetchFindingVerdicts" -> recorder.durableFindingVerdicts.toList()
+      "recordReviewPassClaims" -> {
+        if (recorder.durablePassClaims == null) {
+          @Suppress("UNCHECKED_CAST")
+          recorder.durablePassClaims = ReviewPassClaimSnapshot(args[1] as List<ParallelReviewMergedFinding>)
+        }
+      }
+      "fetchReviewPassClaims" -> recorder.durablePassClaims
       "recordStageBoundary" -> {
         val boundary = args[1] as ReviewStageBoundary
         recorder.durableStageBoundaries.removeAll { it.stage == boundary.stage }

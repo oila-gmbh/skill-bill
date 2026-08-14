@@ -129,6 +129,14 @@ internal object DatabaseReviewLedgerSchema {
         ON review_run_stage_boundaries(review_run_id)
       """.trimIndent(),
       """
+      CREATE TABLE IF NOT EXISTS review_run_pass_claims (
+        review_run_id TEXT PRIMARY KEY,
+        claims_json TEXT NOT NULL,
+        recorded_at TEXT NOT NULL,
+        FOREIGN KEY (review_run_id) REFERENCES review_runs(review_run_id) ON DELETE CASCADE
+      )
+      """.trimIndent(),
+      """
       CREATE TABLE IF NOT EXISTS review_run_spec_projections (
         review_run_id TEXT PRIMARY KEY,
         spec_path TEXT,

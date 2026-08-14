@@ -35,6 +35,7 @@ internal object DatabaseSchema {
       "review_finding_outcomes",
       "review_run_finding_verdicts",
       "review_run_stage_boundaries",
+      "review_run_pass_claims",
       "review_run_spec_projections",
       "rejected_output_diagnostics",
       "producer_output_evidence",
