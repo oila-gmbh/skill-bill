@@ -104,6 +104,7 @@ internal object DatabaseReviewLedgerSchema {
         severity_adjustment_justification TEXT,
         recorded_at TEXT NOT NULL,
         contract_version TEXT NOT NULL,
+        rejection_reason TEXT,
         PRIMARY KEY (review_run_id, finding_id, stage),
         FOREIGN KEY (review_run_id) REFERENCES review_runs(review_run_id) ON DELETE CASCADE
       )

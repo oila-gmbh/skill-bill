@@ -21,7 +21,9 @@ import skillbill.review.context.model.ReviewLaneBundle
 import skillbill.review.context.model.ReviewLaneBundleEntry
 import skillbill.review.context.model.ReviewLaneDecision
 import skillbill.review.context.model.ReviewLearningsReference
+import skillbill.review.context.model.ReviewPacketConsumerContract
 import skillbill.review.context.model.ReviewRuleReference
+import skillbill.review.context.model.ResolvedReviewExecutionMode
 
 private data class ResolvedReviewFacts(
   val scope: ReviewScopeFacts,
@@ -359,6 +361,13 @@ class ReviewPreparationService(
     val expectedTargets = packet.evidenceTargets.filter { it.path in expectedPaths }.toSet()
     if (assignment.evidenceTargets.toSet() != expectedTargets) {
       reject(label, "Assignment evidence targets differ from the packet targets for '${assignment.lane}'.")
+    }
+  }
+
+  companion object {
+    fun verificationEvidenceSurfaceRules(mode: ResolvedReviewExecutionMode): String = when (mode) {
+      ResolvedReviewExecutionMode.INLINE -> ReviewPacketConsumerContract.INLINE_VERIFICATION_EVIDENCE_SURFACE
+      ResolvedReviewExecutionMode.DELEGATED -> ReviewPacketConsumerContract.DELEGATED_VERIFICATION_EVIDENCE_SURFACE
     }
   }
 }

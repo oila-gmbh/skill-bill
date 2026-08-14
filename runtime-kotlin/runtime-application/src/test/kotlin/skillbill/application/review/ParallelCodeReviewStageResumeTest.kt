@@ -21,13 +21,18 @@ class ParallelCodeReviewStageResumeTest {
   )
 
   @Test
-  fun `a completed review pass resumes into verification without relaunching lanes`() {
+  fun `a completed review pass records verification and resumes into adjudication without relaunching lanes`() {
     val recorder = ReviewRecorder()
     val config = delegatedConfig()
     reviewHarness(config, recorder).run(delegatedRequest())
     assertTrue(
       recorder.durableStageBoundaries.any {
         it.stage == ReviewStage.REVIEW && it.reached == ReviewStageReached.REACHED
+      },
+    )
+    assertTrue(
+      recorder.durableStageBoundaries.any {
+        it.stage == ReviewStage.VERIFICATION && it.reached == ReviewStageReached.REACHED
       },
     )
     val afterFirst = recorder.specialistLaunches.size
@@ -41,7 +46,8 @@ class ParallelCodeReviewStageResumeTest {
     )
     val resume = assertNotNull(resumed.stageResume)
     assertTrue(resume.holdsDurableResult(ReviewStage.REVIEW))
-    assertEquals(ReviewStage.VERIFICATION, resume.reentryStage)
+    assertTrue(resume.holdsDurableResult(ReviewStage.VERIFICATION))
+    assertEquals(ReviewStage.ADJUDICATION, resume.reentryStage)
   }
 
   @Test

@@ -6,6 +6,7 @@ import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
 import skillbill.domain.review.context.model.SpecIntentProjection
 import skillbill.review.context.model.GovernedReviewIntegrationLaunch
 import skillbill.review.context.model.GovernedReviewLaunch
+import skillbill.review.context.model.GovernedReviewVerificationLaunch
 import skillbill.review.context.model.REVIEW_SPEC_INTENT_PROJECTION_BUDGET
 import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewChangedHunk
@@ -17,6 +18,7 @@ import skillbill.review.context.model.ReviewContextPacket
 import skillbill.review.context.model.ReviewLaneDecision
 import skillbill.review.context.model.ReviewPacketConsumerContract
 import skillbill.review.context.model.ReviewSpecialistSummary
+import skillbill.review.model.ParallelReviewMergedFinding
 
 fun ReviewContextPacket.toParentPacketEnvelope(): ReviewContextEnvelope = ReviewContextEnvelope(
   linkedMapOf(
@@ -117,13 +119,40 @@ fun GovernedReviewLaunch.toLaunchEnvelope(
   ),
 )
 
-/**
- * The bounded integration-pass input. Every entry here is either commit identity metadata, a
- * final-state evidence target, or a bounded per-lane summary. There is deliberately no `bundle`,
- * no `brokered_evidence`, no `assigned_hunks`, and no transcript key: the schema's
- * `additionalProperties: false` turns any attempt to add one into a validation failure rather than
- * a quiet delivery of raw lane evidence to the integration worker.
- */
+fun GovernedReviewVerificationLaunch.toVerificationLaunchEnvelope(): ReviewContextEnvelope = ReviewContextEnvelope(
+  linkedMapOf(
+    "contract_version" to REVIEW_CONTEXT_CONTRACT_VERSION,
+    "kind" to "verification_launch",
+    "review_id" to packet.reviewId,
+    "packet_digest" to packet.digest,
+    "review_revision" to packet.reviewRevision.toEnvelope(),
+    "finding" to finding.toEnvelope(),
+    "cited_region" to linkedMapOf(
+      "path" to citedRegion.path,
+      "start_line" to citedRegion.startLine,
+      "end_line" to citedRegion.endLine,
+    ),
+    "delta_reference" to linkedMapOf(
+      "base_revision" to packet.baseRevision,
+      "head_revision" to packet.headRevision,
+    ),
+    "evidence_surface_rules" to evidenceSurfaceRules,
+    "dependency_allowlist" to dependencyAllowlist.normalized.sorted(),
+    "forbidden_rediscovery" to ReviewPacketConsumerContract.FORBIDDEN_REDISCOVERY,
+    "broker_id" to brokerId,
+    "isolation" to isolation.name.lowercase(),
+    "budget" to budget.toEnvelope(),
+  ),
+)
+
+private fun ParallelReviewMergedFinding.toEnvelope(): Map<String, Any?> = linkedMapOf(
+  "finding_ref" to fNumber,
+  "severity" to severity.displayName,
+  "location" to location,
+  "description" to description,
+  "confidence" to confidence,
+)
+
 fun GovernedReviewIntegrationLaunch.toIntegrationLaunchEnvelope(): ReviewContextEnvelope = ReviewContextEnvelope(
   linkedMapOf(
     "contract_version" to REVIEW_CONTEXT_CONTRACT_VERSION,

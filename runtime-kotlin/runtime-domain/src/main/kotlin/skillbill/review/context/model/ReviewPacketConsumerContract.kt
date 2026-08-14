@@ -60,6 +60,12 @@ object ReviewPacketConsumerContract {
       "A complete-file expansion requires a launch-authorized record with a nonblank reachability reason. " +
       "Each normalized evidence target may be read once."
 
+  const val INLINE_VERIFICATION_EVIDENCE_SURFACE: String =
+    "Cited region and direct callers only. Do not expand through the evidence broker or the expansion ledger."
+
+  const val DELEGATED_VERIFICATION_EVIDENCE_SURFACE: String =
+    "$EVIDENCE_SURFACE_RULES Expansion through the existing bounded evidence broker and expansion ledger is permitted."
+
   const val REPORT_STRUCTURE: String =
     "- [F-001] <Severity> | <Confidence> | <file:line> | <description>\n" +
       "Findings naming commits use: - [F-001] <Severity> | <Confidence> | commits=<sha>[,<sha>] | " +

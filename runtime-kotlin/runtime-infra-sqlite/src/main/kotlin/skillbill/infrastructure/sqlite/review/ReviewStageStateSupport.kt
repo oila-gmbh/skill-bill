@@ -27,8 +27,9 @@ fun recordFindingVerdicts(connection: Connection, reviewRunId: String, verdicts:
       severity_adjustment_direction,
       severity_adjustment_justification,
       recorded_at,
-      contract_version
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      contract_version,
+      rejection_reason
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(review_run_id, finding_id, stage) DO UPDATE SET
       claim_verdict = excluded.claim_verdict,
       scope_disposition = excluded.scope_disposition,
@@ -36,7 +37,8 @@ fun recordFindingVerdicts(connection: Connection, reviewRunId: String, verdicts:
       severity_adjustment_direction = excluded.severity_adjustment_direction,
       severity_adjustment_justification = excluded.severity_adjustment_justification,
       recorded_at = excluded.recorded_at,
-      contract_version = excluded.contract_version
+      contract_version = excluded.contract_version,
+      rejection_reason = excluded.rejection_reason
     """.trimIndent(),
   ).use { statement ->
     verdicts.forEach { verdict ->
@@ -50,6 +52,7 @@ fun recordFindingVerdicts(connection: Connection, reviewRunId: String, verdicts:
       statement.setString(PARAM_EIGHT, verdict.severityAdjustment?.justification)
       statement.setString(PARAM_NINE, verdict.recordedAt)
       statement.setString(PARAM_TEN, verdict.contractVersion)
+      statement.setString(PARAM_ELEVEN, verdict.rejectionReason)
       statement.executeUpdate()
     }
   }
@@ -60,7 +63,7 @@ fun fetchFindingVerdicts(connection: Connection, reviewRunId: String): List<Revi
     """
     SELECT finding_id, stage, claim_verdict, scope_disposition, citations,
            severity_adjustment_direction, severity_adjustment_justification,
-           recorded_at, contract_version
+           recorded_at, contract_version, rejection_reason
     FROM review_run_finding_verdicts
     WHERE review_run_id = ?
     ORDER BY stage, finding_id
@@ -90,6 +93,7 @@ fun fetchFindingVerdicts(connection: Connection, reviewRunId: String): List<Revi
               },
               recordedAt = resultSet.getString("recorded_at"),
               contractVersion = resultSet.getString("contract_version"),
+              rejectionReason = resultSet.getString("rejection_reason"),
             ),
           )
         }

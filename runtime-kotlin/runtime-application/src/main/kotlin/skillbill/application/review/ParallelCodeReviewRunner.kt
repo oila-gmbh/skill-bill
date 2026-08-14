@@ -157,6 +157,7 @@ class ParallelCodeReviewRunner(
       stageResumeReport(initial.request.reviewRunId),
     )
     recordMergedFindingLanes(initial.request.reviewRunId, result)
+    runClaimVerification(initial, result)
     result.accountingSummary?.let { summary ->
       database.transaction { unitOfWork ->
         unitOfWork.reviews.saveAccounting(
@@ -164,7 +165,7 @@ class ParallelCodeReviewRunner(
         )
       }
     }
-    return result
+    return result.copy(stageResume = stageResumeReport(initial.request.reviewRunId))
   }
 
   private fun prepareInitialRun(originalRequest: ParallelCodeReviewRequest): InitialRun {
@@ -492,6 +493,49 @@ class ParallelCodeReviewRunner(
         )
       }
     }
+  }
+
+  private fun runClaimVerification(initial: InitialRun, result: ParallelCodeReviewResult) {
+    val reviewRunId = initial.request.reviewRunId
+    if (verificationBoundaryReached(reviewRunId)) return
+    val existing = if (reviewRunId == null) {
+      emptyList()
+    } else {
+      database.transaction { unitOfWork -> unitOfWork.reviews.fetchFindingVerdicts(reviewRunId) }
+    }
+    val outcome = ReviewClaimVerificationRunner(parentReviewLauncher, reviewContextEnvelopeValidator).run(
+      packet = initial.compiledLaunchRequests.firstOrNull()?.packet,
+      findings = result.mergeResult.findings,
+      existingVerdicts = existing,
+      mode = initial.resolvedMode,
+      budget = initial.budget,
+      brokerId = initial.agent1Id,
+      repoRoot = initial.request.repoRoot,
+      timeout = initial.request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes,
+    )
+    if (reviewRunId == null) return
+    if (outcome.verdicts.isNotEmpty()) {
+      database.transaction { unitOfWork ->
+        unitOfWork.reviews.recordFindingVerdicts(reviewRunId, outcome.verdicts)
+      }
+    }
+    database.transaction { unitOfWork ->
+      unitOfWork.reviews.recordStageBoundary(
+        reviewRunId,
+        ReviewStageBoundary(
+          stage = ReviewStage.VERIFICATION,
+          reached = ReviewStageReached.REACHED,
+          recordedAt = Instant.now().toString(),
+          contractVersion = REVIEW_CONTEXT_CONTRACT_VERSION,
+        ),
+      )
+    }
+  }
+
+  private fun verificationBoundaryReached(reviewRunId: String?): Boolean {
+    if (reviewRunId == null) return false
+    return database.transaction { unitOfWork -> unitOfWork.reviews.fetchStageBoundaries(reviewRunId) }
+      .any { it.stage == ReviewStage.VERIFICATION && it.reached == ReviewStageReached.REACHED }
   }
 
   private fun recordReviewStageBoundary(reviewRunId: String?, integration: ReviewIntegrationPassOutcome) {

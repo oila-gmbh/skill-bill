@@ -90,6 +90,7 @@ data class ReviewFindingVerdict(
   val severityAdjustment: ReviewSeverityAdjustment? = null,
   val recordedAt: String,
   val contractVersion: String = REVIEW_CONTEXT_CONTRACT_VERSION,
+  val rejectionReason: String? = null,
 ) {
   init {
     require(stage == ReviewStage.VERIFICATION || stage == ReviewStage.ADJUDICATION) {
@@ -100,6 +101,9 @@ data class ReviewFindingVerdict(
     require(contractVersion.isNotBlank()) { "Finding verdict contract_version must not be blank." }
     require(scopeDisposition == null || stage == ReviewStage.ADJUDICATION) {
       "scope_disposition is absent unless stage is adjudication."
+    }
+    require(rejectionReason == null || rejectionReason.isNotBlank()) {
+      "Finding verdict rejection_reason must not be blank when present."
     }
   }
 }

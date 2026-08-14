@@ -14,7 +14,13 @@ internal object DatabaseReviewColumnMigrations {
     ensureUnaddressedFindingColumns(connection)
     ensureReviewFindingOutcomeColumns(connection)
     ensureReviewStageStateTables(connection)
+    ensureFindingVerdictReasonColumn(connection)
     backfillReviewSessionIds(connection)
+  }
+
+  fun ensureFindingVerdictReasonColumn(connection: Connection) {
+    if (!DatabaseColumnMigrations.tableExists(connection, "review_run_finding_verdicts")) return
+    ensureColumn(connection, "review_run_finding_verdicts", "rejection_reason", "TEXT")
   }
 
   fun ensureReviewStageStateTables(connection: Connection) {
