@@ -69,6 +69,18 @@ class ParallelCodeReviewStageResumeTest {
     assertEquals(listOf(verdict), recorder.durableFindingVerdicts.toList())
   }
 
+  @Test
+  fun `no resolvable spec records a closed none reason and skips stage 2`() {
+    val recorder = ReviewRecorder()
+    reviewHarness(delegatedConfig(), recorder).run(delegatedRequest())
+    assertEquals("not_applicable_scope", recorder.durableSpecProjection?.absenceReason)
+    assertTrue(
+      recorder.durableStageBoundaries.any {
+        it.stage == ReviewStage.ADJUDICATION && it.reached == ReviewStageReached.NOT_REACHED
+      },
+    )
+  }
+
   private fun delegatedRequest() = harnessRequest(
     reviewRunId = RUN_ID,
     codeReviewMode = CodeReviewExecutionMode.DELEGATED,

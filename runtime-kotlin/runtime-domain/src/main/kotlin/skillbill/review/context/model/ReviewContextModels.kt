@@ -17,6 +17,8 @@ const val REVIEW_ROUTING_ANALYSIS_PAIRS_BUDGET: String = "routing_analysis_pairs
 
 const val REVIEW_ROUTING_ANALYSIS_BYTES_BUDGET: String = "routing_analysis_bytes"
 
+const val REVIEW_SPEC_INTENT_PROJECTION_BUDGET: String = "spec_intent_projection"
+
 enum class ResolvedReviewExecutionMode { INLINE, DELEGATED }
 
 /** A resolved depth is always a concrete tier, so it maps back onto the requested-mode vocabulary. */
@@ -344,6 +346,7 @@ data class ReviewContextBudgetPolicy(
   val maxSpecialistModelTurns: Int = 24,
   val maxRoutingAnalysisPairs: Int = 4_096,
   val maxRoutingAnalysisBytes: Long = 33_554_432,
+  val maxSpecIntentProjectionBytes: Long = 32_768,
   val providerTokenThresholds: ProviderTokenThresholds = ProviderTokenThresholds(),
 ) {
   init {
@@ -353,6 +356,7 @@ data class ReviewContextBudgetPolicy(
       maxLaneEvidenceBytes,
       maxEvidenceResultBytes,
       maxLaneResultBytes,
+      maxSpecIntentProjectionBytes,
     )
     require(byteLimits.all { it > 0 }) { "Review-context byte limits must be positive." }
     require(maxAssignmentExpansions >= 0) { "Assignment expansions cannot be negative." }

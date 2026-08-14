@@ -39,6 +39,7 @@ class ReviewPreparationService(
   private val budget: ReviewContextBudgetPolicy = ReviewContextBudgetPolicy.DEFAULT,
 ) {
   fun prepare(request: ReviewPreparationRequest): ReviewPreparationResult {
+    request.specIntentProjection?.let { enforceSpecIntentProjectionBudget(it, budget) }
     val scope = ports.scope.resolveScope(request.reviewId)
     val routing = ports.stackRouting.resolveStackRouting(scope)
     val matchedRules = ports.guidance.resolveMatchedRules(scope, routing)

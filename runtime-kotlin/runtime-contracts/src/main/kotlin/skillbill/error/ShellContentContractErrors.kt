@@ -97,6 +97,13 @@ class InvalidReviewContextSchemaError(
   cause,
 )
 
+class UnreadableSpecIntentProjectionError(
+  val specPath: String,
+  val reason: String,
+) : ShellContentContractException(
+  "Projection 'spec_intent_projection' could not be read from '${specPath.ifBlank { "<unknown>" }}': $reason",
+)
+
 /**
  * Surfaced when delegated-review aggregation is handed a lane set it cannot merge honestly: a
  * selected lane with no result, two results for one lane, or a result minted against a different

@@ -12,6 +12,7 @@ data class ReviewPreparationRequest(
   val criteriaReferences: Map<String, List<String>> = emptyMap(),
   val dependencyAllowlist: ReviewDependencyAllowlist = ReviewDependencyAllowlist.EMPTY,
   val baselineUntrackedPolicy: ReviewBaselineUntrackedPolicy = ReviewBaselineUntrackedPolicy.EMPTY,
+  val specIntentProjection: skillbill.domain.review.context.model.SpecIntentProjection? = null,
 )
 
 data class ReviewPreparationResult(

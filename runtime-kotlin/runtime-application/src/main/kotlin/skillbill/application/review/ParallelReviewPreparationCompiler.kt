@@ -134,8 +134,9 @@ internal object ParallelReviewPreparationCompiler {
     ReviewPreparationRequest(
       reviewId = input.reviewRunId ?: "code-review-parallel-$revisionId",
       reviewRevision = ReviewRevision(revisionId, 1),
-      criteriaReferences = routes.associate { it.lane to listOf("independent branch-diff specialist review") },
+      criteriaReferences = criteriaReferences(routes, input.specIntentResolution),
       baselineUntrackedPolicy = input.baselineUntrackedPolicy,
+      specIntentProjection = (input.specIntentResolution as? skillbill.domain.review.context.model.SpecIntentResolution.Resolved)?.projection,
     ),
   )
 
@@ -251,6 +252,18 @@ internal object ParallelReviewPreparationCompiler {
   private const val PARALLEL_REVIEW_SELECTOR = "parallel-code-review"
 }
 
+private fun criteriaReferences(
+  routes: List<SpecialistRoute>,
+  resolution: skillbill.domain.review.context.model.SpecIntentResolution,
+): Map<String, List<String>> {
+  val criteria = when (resolution) {
+    is skillbill.domain.review.context.model.SpecIntentResolution.Resolved ->
+      resolution.projection.acceptanceCriteria
+    is skillbill.domain.review.context.model.SpecIntentResolution.None -> emptyList()
+  }
+  return routes.associate { it.lane to criteria }
+}
+
 private data class SelectedRubric(val planned: PlannedReviewRubric, val ownedPaths: List<String>)
 
 private data class SpecialistRoute(
@@ -286,4 +299,8 @@ internal data class ParallelReviewPreparationInput(
   val headRevision: String,
   val prelaunchExpansions: List<skillbill.application.model.ReviewPrelaunchExpansion> = emptyList(),
   val baselineUntrackedPolicy: ReviewBaselineUntrackedPolicy = ReviewBaselineUntrackedPolicy.EMPTY,
+  val specIntentResolution: skillbill.domain.review.context.model.SpecIntentResolution =
+    skillbill.domain.review.context.model.SpecIntentResolution.None(
+      skillbill.domain.review.context.model.SpecIntentAbsenceReason.NOT_APPLICABLE_SCOPE,
+    ),
 )

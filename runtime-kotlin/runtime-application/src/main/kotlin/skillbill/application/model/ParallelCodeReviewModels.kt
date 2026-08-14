@@ -33,9 +33,11 @@ data class ParallelCodeReviewRequest(
   val headRevision: String? = null,
   val prelaunchExpansions: List<ReviewPrelaunchExpansion> = emptyList(),
   val baselineUntrackedPolicy: ReviewBaselineUntrackedPolicy = ReviewBaselineUntrackedPolicy.EMPTY,
+  val specPath: Path? = null,
 ) {
   init {
-    reviewRunId?.let { require(it.isNotBlank()) { "reviewRunId must be non-blank when provided." } }
+    reviewId?.let { require(it.isNotBlank()) { "reviewRunId must be non-blank when provided." } }
+    specPath?.let { require(it.toString().isNotBlank()) { "specPath must be non-blank when provided." } }
     baseRevision?.let { require(it.isNotBlank()) { "baseRevision must be non-blank when provided." } }
     headRevision?.let { require(it.isNotBlank()) { "headRevision must be non-blank when provided." } }
     suppliedDiff?.let { require(it.isNotBlank()) { "suppliedDiff must be non-blank when provided." } }

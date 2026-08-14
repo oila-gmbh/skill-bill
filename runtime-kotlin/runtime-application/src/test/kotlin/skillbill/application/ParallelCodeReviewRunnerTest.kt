@@ -5,6 +5,8 @@ import skillbill.application.model.ParallelReviewScope
 import skillbill.application.model.StackDetectionException
 import skillbill.application.model.UsageValidationException
 import skillbill.application.review.ParallelCodeReviewRunner
+import skillbill.application.review.SpecIntentProjectionExtractor
+import skillbill.application.review.SpecIntentProjectionResolver
 import skillbill.application.workflow.repoRoot
 import skillbill.config.model.RepoLocalConfig
 import skillbill.install.model.InstallAgent
@@ -1085,6 +1087,15 @@ private fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFixt
     reviewSpecialistContractProvider = ReviewSpecialistContractProvider { TEST_SPECIALIST_CONTRACT },
     database = config.database,
     installedPackCatalog = config.installedPackCatalog,
+    specIntentProjectionResolver = SpecIntentProjectionResolver(
+      TestDecompositionManifestFileStore,
+      testDecompositionManifestValidator,
+      SpecIntentProjectionExtractor(
+        object : skillbill.review.context.ReviewContextEnvelopeValidator {
+          override fun validate(envelope: Map<String, Any?>, sourceLabel: String) = Unit
+        },
+      ),
+    ),
   )
 
 private class RecordingReviewDatabase : DatabaseSessionFactory {

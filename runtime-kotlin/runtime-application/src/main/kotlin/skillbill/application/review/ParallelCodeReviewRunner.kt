@@ -18,6 +18,8 @@ import skillbill.application.review.model.ReviewRubricProjection
 import skillbill.application.review.model.ReviewSpecialistLaunchRequest
 import skillbill.application.workflow.repoRoot
 import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
+import skillbill.domain.review.context.model.SpecIntentProjectionResolveRequest
+import skillbill.domain.review.context.model.SpecIntentResolution
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunTokenOwnership
@@ -78,10 +80,12 @@ import skillbill.review.model.ReviewCoverageReport
 import skillbill.review.model.ReviewLaneAggregationInput
 import skillbill.review.model.ReviewRunLane
 import skillbill.review.model.ReviewRunLaneSegmentAccountingJson
+import skillbill.review.model.ReviewSpecProjectionReference
 import skillbill.review.model.ReviewStage
 import skillbill.review.model.ReviewStageBoundary
 import skillbill.review.model.ReviewStageReached
 import skillbill.review.model.ReviewStageResumeReport
+import skillbill.review.model.ReviewSpecProjectionReference
 import skillbill.review.plan.ReviewLaneInclusionPolicy
 import skillbill.review.plan.ReviewLaunchPlanPolicy
 import skillbill.review.plan.ReviewStackRouting
@@ -111,6 +115,7 @@ class ParallelCodeReviewRunner(
    */
   private val sharedEvidenceResolver: FeatureTaskRuntimeSharedEvidenceResolverPort =
     FeatureTaskRuntimeSharedEvidenceResolverPort.NONE,
+  private val specIntentProjectionResolver: SpecIntentProjectionResolver,
 ) {
   private data class InitialRun(
     val request: ParallelCodeReviewRequest,
@@ -271,6 +276,7 @@ class ParallelCodeReviewRunner(
     // Every specialist lane the compiler routes reads this one projection of the shared evidence, so
     // N lanes over one checkpoint never provoke a second derivation.
     val commitSequence = SharedReviewEvidenceProjection.project(sharedSequence, evidence)
+    val specIntentResolution = resolveSpecIntent(request, evidence, budget)
     val compiled = ParallelReviewPreparationCompiler.compile(
       input = ParallelReviewPreparationInput(
         diff = diffText,
@@ -286,6 +292,7 @@ class ParallelCodeReviewRunner(
         headRevision = headRevision,
         prelaunchExpansions = request.prelaunchExpansions,
         baselineUntrackedPolicy = request.baselineUntrackedPolicy,
+        specIntentResolution = specIntentResolution,
       ),
       budget = budget,
       envelopeValidator = reviewContextEnvelopeValidator,
@@ -293,6 +300,7 @@ class ParallelCodeReviewRunner(
     )
     val selected = selectLaunchesForResume(request.reviewRunId, compiled)
     recordPlannedLanes(request.reviewRunId, plannedRubrics, selected)
+    recordSpecIntent(request.reviewRunId, specIntentResolution)
     return CompiledLaunches(all = compiled, toRun = selected)
   }
 
@@ -438,6 +446,52 @@ class ParallelCodeReviewRunner(
         reviewRunId,
         ReviewIntegrationPassRecord(outcome.commitSequenceDigest, outcome.terminalOutcome.wireValue),
       )
+    }
+  }
+
+  private fun resolveSpecIntent(
+    request: ParallelCodeReviewRequest,
+    evidence: ReviewDiffEvidence,
+    budget: ReviewContextBudgetPolicy,
+  ): SpecIntentResolution {
+    val resolver = specIntentProjectionResolver
+    val branchName = diffResolver.runProcess(
+      listOf("git", "rev-parse", "--abbrev-ref", "HEAD"),
+      request.repoRoot,
+    )?.trim().orEmpty()
+    return resolver.resolve(
+      SpecIntentProjectionResolveRequest(
+        repoRoot = request.repoRoot,
+        explicitSpecPath = request.specPath,
+        branchName = branchName,
+        changedPaths = evidence.files.map { it.path },
+        budget = budget,
+      ),
+    )
+  }
+
+  private fun recordSpecIntent(reviewRunId: String?, resolution: SpecIntentResolution) {
+    if (reviewRunId == null) return
+    val reference = when (resolution) {
+      is SpecIntentResolution.Resolved -> ReviewSpecProjectionReference(
+        specPath = resolution.projection.provenance.specPath,
+        contentDigest = resolution.projection.provenance.contentDigest,
+      )
+      is SpecIntentResolution.None -> ReviewSpecProjectionReference(absenceReason = resolution.reason.wireValue)
+    }
+    database.transaction { unitOfWork ->
+      unitOfWork.reviews.recordSpecProjectionReference(reviewRunId, reference)
+      if (resolution is SpecIntentResolution.None) {
+        unitOfWork.reviews.recordStageBoundary(
+          reviewRunId,
+          ReviewStageBoundary(
+            stage = ReviewStage.ADJUDICATION,
+            reached = ReviewStageReached.NOT_REACHED,
+            recordedAt = Instant.now().toString(),
+            contractVersion = REVIEW_CONTEXT_CONTRACT_VERSION,
+          ),
+        )
+      }
     }
   }
 

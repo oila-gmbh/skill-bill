@@ -408,6 +408,22 @@ class ReviewContextSchemaValidatorTest {
     assertEquals("1.0", REVIEW_CONTEXT_CONTRACT_VERSION)
   }
 
+  @Test fun `a spec intent projection missing provenance is rejected and a provenanced counterpart is accepted`() {
+    ReviewContextSchemaValidator.validateSpecIntentProjection(specIntentProjection(), "projection")
+    val missing = specIntentProjection() - "provenance"
+    val failure = assertFailsWith<InvalidReviewContextSchemaError> {
+      ReviewContextSchemaValidator.validateSpecIntentProjection(missing, "projection")
+    }
+    assertTrue("for definition 'spec_intent_projection'" in failure.message.orEmpty())
+    val noDigest = specIntentProjection() + (
+      "provenance" to mapOf("spec_path" to "spec.md")
+      )
+    val digestFailure = assertFailsWith<InvalidReviewContextSchemaError> {
+      ReviewContextSchemaValidator.validateSpecIntentProjection(noDigest, "projection")
+    }
+    assertTrue("for definition 'spec_intent_projection'" in digestFailure.message.orEmpty())
+  }
+
   @Test fun `a verification launch carrying a spec projection field is rejected and a clean launch is accepted`() {
     ReviewContextSchemaValidator.validateVerificationLaunch(verificationLaunch(), "verification")
     val contaminated = verificationLaunch() + ("spec_intent_projection" to specIntentProjection())
