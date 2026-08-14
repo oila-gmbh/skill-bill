@@ -31,13 +31,14 @@ object ReviewStageDegradationSelection {
   ): List<ReviewStageDegradationMeasurement> {
     val byStage = boundaries.associateBy { it.stage }
     val measurements = mutableListOf<ReviewStageDegradationMeasurement>()
-    val specNone = spec?.absenceReason != null
-    if (specNone) {
+    val absenceReason = spec?.absenceReason
+    val specNone = absenceReason != null
+    if (absenceReason != null) {
       measurements += ReviewStageDegradationMeasurement(
         reviewRunId = reviewRunId,
         seam = "review.spec_intent",
         expected = "resolved",
-        actual = spec.absenceReason,
+        actual = absenceReason,
         reason = ReviewStageDegradationReason.SPEC_CONTEXT_NONE,
       )
     }

@@ -1,3 +1,14 @@
+## [2026-08-14] SKILL-191 subtask 7 — Stage telemetry and measurement
+Areas: runtime-kotlin/{runtime-application/review, runtime-domain/review, runtime-infra-sqlite/{review,telemetry}, runtime-ports/{persistence,telemetry}, runtime-cli/review, runtime-mcp/telemetry}, orchestration/contracts, docs
+- `skillbill_review_finished` carries per-stage verdict distribution, refutation rates, rejected-verdict counts, severity-adjustment counts by direction, and `resolved_tier`.
+- Counts come from durable verdict rows via `aggregateReviewStageMetrics`, never from a worker self-report.
+- Rates stay split by resolved tier (`inline` vs `delegated`); unscoped `review-stats` uses `stage_metrics_by_tier` and does not pool.
+- `ReviewStageDegradationSelection` emits a degradation for `spec_context: none`, skipped adjudication, worker launch/return failure, and a stage that never reached its boundary.
+- Telemetry event schema bumped to `1.9.0` with Kotlin constant/parity; legacy `skillbill_review_finished` payloads rewrite in band from durable rows, or quarantine when the run id is unknown.
+- Limitation: rates are visible only — no automatic tier switching, alerting, or verifier tuning.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-08-14] SKILL-191 subtask 6 — Verdict-aware register assembly and consumers
 Areas: runtime-kotlin/{runtime-application/{review,goalrunner,featuretask}, runtime-domain/{review,goalrunner,taskruntime}, runtime-infra-sqlite/{review,goal}, runtime-cli, runtime-contracts/review}
 - Register lines stay `[F-XXX] Severity | Confidence | location | description`; `claim_verdict`, optional `scope_disposition`, citations, and severity adjustment sit beside the line. Findings group as Actionable / Refuted / Unresolved / Out of scope — nothing is dropped.
