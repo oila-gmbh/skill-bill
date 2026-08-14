@@ -1,3 +1,14 @@
+## [2026-08-14] SKILL-191 subtask 5 — Stage 2 spec adjudication runner
+Areas: runtime-kotlin/{runtime-application/review, runtime-domain/review/context/model, runtime-infra-sqlite}
+- After stage 1, `ReviewSpecAdjudicationRunner` launches one worker per `confirmed`/`unresolved` finding with that finding, its stage-1 verdict, the spec intent projection, and cited region; `refuted` findings are never re-litigated.
+- Missing projection or packet skips the stage with `spec_context: none` and the review completes; resume skips findings that already hold a durable adjudication verdict.
+- `ReviewSpecAdjudicationAdmission` records exactly one of `in_scope` / `out_of_scope_preexisting` / `spec_deviation` / `spec_accepted_tradeoff`. Uncited downgrade, uncited raise, uncited `out_of_scope_preexisting`, non-constraint `spec_deviation`, altered claim, or ambiguous worker output become `in_scope` with a rejection reason so the finding survives at original severity.
+- Severity adjustments are deltas with direction and justification beside the preserved original claim; findings are never overwritten. Bidirectional: raise and lower share the same citation discipline.
+- Pattern: same compile-validate-launch-admit shape as `ReviewClaimVerificationRunner`; one finding per worker; adjudication boundary persisted independently of verification via subtask 2 storage. reusable
+- Limitation: no register assembly or telemetry (subtasks 6–7); stage 1 truth is not re-tested; unsatisfied criteria stay with the feature-task audit phase.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
 ## [2026-08-14] SKILL-191 subtask 4 — Stage 1 claim verification runner
 Areas: runtime-kotlin/{runtime-application/review, runtime-domain/review/{context/model,model}, runtime-infra-sqlite, runtime-ports/persistence}
 - After a terminal review pass (inline and delegated), `ReviewClaimVerificationRunner` launches one worker per finding with the finding, cited region, and delta only — no spec projection, reviewer narrative, parent transcript, or sibling findings.

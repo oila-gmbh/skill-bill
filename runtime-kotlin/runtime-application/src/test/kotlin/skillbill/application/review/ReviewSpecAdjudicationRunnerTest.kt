@@ -223,7 +223,7 @@ class ReviewSpecAdjudicationRunnerTest {
       )
     }
     assertTrue(launches.isEmpty())
-    assertTrue("for definition 'adjudication_launch'" in error.message)
+    assertTrue("for definition 'adjudication_launch'" in error.message.orEmpty())
   }
 
   @Test
