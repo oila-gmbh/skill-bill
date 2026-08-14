@@ -4,6 +4,7 @@ package skillbill.contracts.review
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.node.ObjectNode
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import com.networknt.schema.JsonSchema
 import com.networknt.schema.JsonSchemaFactory
@@ -26,16 +27,8 @@ object ReviewContextSchemaValidator {
   private val mapper: ObjectMapper by lazy { ObjectMapper() }
 
   fun validate(envelope: Map<String, Any?>, sourceLabel: String) {
-    val instance: JsonNode = mapper.valueToTree(envelope)
-    val errors: Set<ValidationMessage> = schemas.forKind(envelope["kind"] as? String).validate(instance)
-    if (errors.isNotEmpty()) {
-      val sorted = errors.sortedWith(violationOrdering)
-      reviewContextLog.log(Level.WARNING, buildSchemaDriftLog(sourceLabel, sorted, instance))
-      throw InvalidReviewContextSchemaError(
-        sourceLabel = sourceLabel,
-        reason = formatValidationReason(sorted, instance),
-      )
-    }
+    val kind = envelope["kind"] as? String
+    validateAgainst(envelope, sourceLabel, kind, schemas.forKind(kind))
   }
 
   fun validateParentPacket(envelope: Map<String, Any?>, sourceLabel: String) =
@@ -48,6 +41,18 @@ object ReviewContextSchemaValidator {
 
   fun validateIntegrationLaunch(envelope: Map<String, Any?>, sourceLabel: String) =
     validateKind(envelope, sourceLabel, "integration_launch")
+
+  fun validateVerificationLaunch(envelope: Map<String, Any?>, sourceLabel: String) =
+    validateKind(envelope, sourceLabel, "verification_launch")
+
+  fun validateAdjudicationLaunch(envelope: Map<String, Any?>, sourceLabel: String) =
+    validateKind(envelope, sourceLabel, "adjudication_launch")
+
+  fun validateFindingVerdict(envelope: Map<String, Any?>, sourceLabel: String) =
+    validateKind(envelope, sourceLabel, "finding_verdict")
+
+  fun validateSpecIntentProjection(payload: Map<String, Any?>, sourceLabel: String) =
+    validateAgainst(payload, sourceLabel, "spec_intent_projection", schemas.forDefinition("spec_intent_projection"))
 
   fun assertIdentity(yamlNode: JsonNode) {
     val drift = identityDriftOrNull(yamlNode) ?: return
@@ -85,9 +90,29 @@ object ReviewContextSchemaValidator {
       throw InvalidReviewContextSchemaError(
         sourceLabel = sourceLabel,
         reason = "Expected a '$expectedKind' envelope but the payload declares kind='${kind ?: "<missing>"}'.",
+        definitionName = expectedKind,
       )
     }
-    validate(envelope, sourceLabel)
+    validateAgainst(envelope, sourceLabel, expectedKind, schemas.forKind(expectedKind))
+  }
+
+  private fun validateAgainst(
+    payload: Map<String, Any?>,
+    sourceLabel: String,
+    definitionName: String?,
+    schema: JsonSchema,
+  ) {
+    val instance: JsonNode = mapper.valueToTree(payload)
+    val errors: Set<ValidationMessage> = schema.validate(instance)
+    if (errors.isNotEmpty()) {
+      val sorted = errors.sortedWith(violationOrdering)
+      reviewContextLog.log(Level.WARNING, buildSchemaDriftLog(sourceLabel, sorted, instance))
+      throw InvalidReviewContextSchemaError(
+        sourceLabel = sourceLabel,
+        reason = formatValidationReason(sorted, instance),
+        definitionName = definitionName,
+      )
+    }
   }
 }
 
@@ -163,8 +188,17 @@ internal const val REVIEW_CONTEXT_SCHEMA_CLASSPATH_RESOURCE: String =
 internal const val REVIEW_CONTEXT_SCHEMA_REPO_RELATIVE_PATH: String =
   ReviewContextSchemaPaths.REPO_RELATIVE_PATH
 
+private val NESTED_REVIEW_CONTEXT_DEFINITIONS: List<String> = listOf("spec_intent_projection")
+
 internal class ReviewContextSchemas(private val envelope: JsonSchema, private val branches: Map<String, JsonSchema>) {
   fun forKind(kind: String?): JsonSchema = branches[kind] ?: envelope
+
+  fun forDefinition(name: String): JsonSchema = branches[name]
+    ?: throw InvalidReviewContextSchemaError(
+      sourceLabel = ReviewContextSchemaPaths.CLASSPATH_RESOURCE,
+      reason = "Canonical review context schema has no compiled definition '$name'.",
+      definitionName = name,
+    )
 }
 
 private fun loadReviewContextSchema(): ReviewContextSchemas {
@@ -176,16 +210,26 @@ private fun loadReviewContextSchema(): ReviewContextSchemas {
     val factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012)
     val envelopeSchema = factory.getSchema(mapper.writeValueAsString(yamlNode), LOCALE_STABLE_SCHEMA_CONFIG)
     val defs = yamlNode.path("\$defs")
-    val branches = yamlNode.path("oneOf").asSequence()
+    val oneOfNames = yamlNode.path("oneOf").asSequence()
       .map { branch -> branch.path("\$ref").asText("").substringAfterLast('/') }
       .filter { name -> name.isNotBlank() && !defs.path(name).isMissingNode }
-      .associateWith { name ->
-        val wrapper = mapper.createObjectNode()
-        wrapper.put("\$schema", yamlNode.path("\$schema").asText())
-        wrapper.put("\$ref", "#/\$defs/" + name)
-        wrapper.set<com.fasterxml.jackson.databind.node.ObjectNode>("\$defs", defs.deepCopy())
-        factory.getSchema(mapper.writeValueAsString(wrapper), LOCALE_STABLE_SCHEMA_CONFIG)
+      .toList()
+    val definitionNames = (oneOfNames + NESTED_REVIEW_CONTEXT_DEFINITIONS)
+      .distinct()
+    val branches = definitionNames.associateWith { name ->
+      if (defs.path(name).isMissingNode) {
+        throw InvalidReviewContextSchemaError(
+          sourceLabel = REVIEW_CONTEXT_SCHEMA_CLASSPATH_RESOURCE,
+          reason = "Canonical review context schema is missing definition '$name'.",
+          definitionName = name,
+        )
       }
+      val wrapper = mapper.createObjectNode()
+      wrapper.put("\$schema", yamlNode.path("\$schema").asText())
+      wrapper.put("\$ref", "#/\$defs/" + name)
+      wrapper.set<ObjectNode>("\$defs", defs.deepCopy())
+      factory.getSchema(mapper.writeValueAsString(wrapper), LOCALE_STABLE_SCHEMA_CONFIG)
+    }
     return ReviewContextSchemas(envelopeSchema, branches)
   } catch (error: Throwable) {
     reviewContextLog.log(
