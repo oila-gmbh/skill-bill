@@ -339,8 +339,8 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "disturbed_remedies with a one-line reason. Silent removal is rejected, because the finding that " +
     "construct closed can otherwise be reintroduced without anyone seeing it. Emit " +
     "produced_outputs.repair_receipt " +
-    "with contract_version \"$FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION\", the round's " +
-    "pre-fix checkpoint sha, and exactly one entry per carried finding: the finding's severity, label, " +
+    "with contract_version \"$FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION\" and exactly one " +
+    "entry per carried finding: the finding's severity, label, " +
     "and sanitized text, an explicit outcome (addressed, or no_edit_required with no_edit_reason), " +
     "symbol-granularity closing constructs (Type or Type.member, optional file basename — never a bare " +
     "path), and a bounded one-line repair intent. A legitimately unedited finding still needs its " +

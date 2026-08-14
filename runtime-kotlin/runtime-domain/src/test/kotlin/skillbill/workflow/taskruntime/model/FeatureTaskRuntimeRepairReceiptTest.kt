@@ -84,9 +84,13 @@ class FeatureTaskRuntimeRepairReceiptTest {
       assertSanitizedTextRejected(value, "source body") { addressedEntry(intent = it) }
     }
     assertSanitizedTextRejected("return foo()", "source body") { addressedEntry(text = it) }
+    assertSanitizedTextRejected("{\"finding\": \"leaked\"}", "serialized payload") { addressedEntry(intent = it) }
     addressedEntry(intent = "close Type.member() at the sanitizer")
     addressedEntry(intent = "already present; no tree change required")
     addressedEntry(text = "SOURCE_BODY misses statements such as return value and val result = value")
+    addressedEntry(intent = "delete the { emptyList() } source-literal scrape")
+    addressedEntry(text = "assert Ready against a malformed packs root")
+    addressedEntry(intent = "route Type.member -> Other.member instead of scraping the source")
   }
 
   @Test

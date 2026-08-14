@@ -110,12 +110,11 @@ internal object FeatureTaskRuntimePhaseProjectionShapes {
       "      intent is one line with no diff hunk, source body, or line number. A finding that needed\n" +
       "      no edit still needs its no_edit_required entry. Add disturbed_remedies only when this round\n" +
       "      removed or materially rewrote a construct a resolved repair_ledger entry names; omit it\n" +
-      "      otherwise:\n" +
+      "      otherwise. The round number and the pre-fix checkpoint sha are runtime-owned: omit them,\n" +
+      "      never guess them from a briefing hash:\n" +
       "      ```json\n" +
       "      { \"repair_receipt\": {\n" +
       "          \"contract_version\": \"$FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION\",\n" +
-      "          \"round_number\": 1,\n" +
-      "          \"pre_fix_checkpoint_sha\": \"<40-or-64-hex sha>\",\n" +
       "          \"entries\": [ { \"severity\": \"blocker\", \"label\": \"<TypeOrSymbol>\",\n" +
       "            \"text\": \"<sanitized finding text>\", \"outcome\": \"addressed\",\n" +
       "            \"constructs\": [ { \"symbol\": \"Type.member\", \"file\": \"Type.kt\" } ],\n" +

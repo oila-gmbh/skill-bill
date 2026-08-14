@@ -2166,6 +2166,7 @@ class RuntimeArchitectureTest {
       // phase-output schema validates the wire map before the domain model decodes it.
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt.toArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt.fromArtifactMap",
+      "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt.validateEntries",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceiptEntry.toArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceiptEntry.fromArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairConstruct.toArtifactMap",

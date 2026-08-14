@@ -628,8 +628,6 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
         mapOf(
           "repair_receipt" to mapOf(
             "contract_version" to "0.1",
-            "round_number" to 1,
-            "pre_fix_checkpoint_sha" to "b".repeat(40),
             "entries" to listOf(
               mapOf(
                 "severity" to "blocker",
@@ -642,6 +640,8 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
             ),
           ),
         ),
+        remediationBaseSha = "b".repeat(40),
+        roundNumber = 1,
       )
     }
     assertTrue(!error.payloadFreeReason.contains(oversized))

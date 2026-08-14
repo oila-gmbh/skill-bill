@@ -11,25 +11,16 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.coversCarriedFindings
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeRemediationRoundNumber
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeUndeclaredDisturbances
-import skillbill.workflow.taskruntime.model.stampIdentityFromCompactFindings
 
-private const val MISSING_REMEDIATION_BASE_REASON =
-  "pre_fix_checkpoint_sha must match the durable remediation base recorded at this round's pre-fix checkpoint."
-
-/**
- * Untrusted-input seam for `produced_outputs.repair_receipt`. Schema validation has already
- * accepted the envelope; this parse builds the domain model and names payload-free semantic
- * failures (anchor mismatch, omitted carried finding, round mismatch) the settle gate rejects on.
- *
- * A missing key returns null so a test stand-in that skipped the phase-output schema does not
- * invent a receipt. Production completed `implement_fix` output cannot omit the key: the schema
- * allOf block requires it.
- */
 internal fun featureTaskRuntimeParseRepairReceiptOrNull(
   producedOutputs: Map<String, Any?>,
+  remediationBaseSha: String,
+  roundNumber: Int,
 ): FeatureTaskRuntimeRepairReceipt? {
   val raw = producedOutputs["repair_receipt"] ?: return null
-  val map = requireRepairReceiptMap(raw)
+  val map = requireRepairReceiptMap(raw) +
+    ("pre_fix_checkpoint_sha" to remediationBaseSha) +
+    ("round_number" to roundNumber)
   return try {
     FeatureTaskRuntimeRepairReceipt.fromArtifactMap(map, "repair_receipt")
   } catch (error: InvalidFeatureTaskRuntimeRepairReceiptError) {
@@ -60,39 +51,69 @@ internal data class FeatureTaskRuntimeRepairReceiptValid(
 ) : FeatureTaskRuntimeRepairReceiptParse
 
 internal data class FeatureTaskRuntimeRepairReceiptRejected(
+  val fieldPath: String,
   val payloadFreeReason: String,
-) : FeatureTaskRuntimeRepairReceiptParse
+) : FeatureTaskRuntimeRepairReceiptParse {
+  val rejectionDetail: String get() = featureTaskRuntimeRepairReceiptRejectionDetail(fieldPath, payloadFreeReason)
+}
+
+private val REPAIR_RECEIPT_POINTER_INDEX = Regex("""\[(\d+)]""")
+
+internal fun featureTaskRuntimeRepairReceiptRejectionDetail(fieldPath: String, payloadFreeReason: String): String {
+  val relative = fieldPath.removePrefix("repair_receipt").trim('.')
+  val pointer = (if (relative.isEmpty()) "repair_receipt" else "repair_receipt.$relative")
+    .replace(REPAIR_RECEIPT_POINTER_INDEX) { match -> ".${match.groupValues[1]}" }
+    .split('.')
+    .filter(String::isNotBlank)
+    .joinToString("/", prefix = "/")
+  return "[repair-receipt] $pointer: $payloadFreeReason"
+}
 
 internal fun featureTaskRuntimeParseRepairReceipt(
   producedOutputs: Map<String, Any?>,
+  remediationBaseSha: String,
+  roundNumber: Int,
 ): FeatureTaskRuntimeRepairReceiptParse = try {
-  featureTaskRuntimeParseRepairReceiptOrNull(producedOutputs)
+  featureTaskRuntimeParseRepairReceiptOrNull(producedOutputs, remediationBaseSha, roundNumber)
     ?.let(::FeatureTaskRuntimeRepairReceiptValid)
     ?: FeatureTaskRuntimeRepairReceiptMissing
 } catch (error: InvalidFeatureTaskRuntimeRepairReceiptError) {
-  FeatureTaskRuntimeRepairReceiptRejected(error.payloadFreeReason)
+  FeatureTaskRuntimeRepairReceiptRejected(error.fieldPath, error.payloadFreeReason)
+}
+
+internal fun featureTaskRuntimeRemediationRoundNumberOrNull(reviewState: GoalSubtaskReviewState): Int? =
+  runCatching { featureTaskRuntimeRemediationRoundNumber(reviewState.completedPassCount) }
+    .getOrElse { error ->
+      if (error is InvalidFeatureTaskRuntimeRepairReceiptError) null else throw error
+    }
+
+/**
+ * The entry-shape gate for a round that has no runtime-owned anchor to stamp. Rejecting on the
+ * absent anchor is what produced the unrepairable loop this seam exists to end, but the entries
+ * still carry the sanitizer contract, and a receipt is durable either way.
+ */
+internal fun featureTaskRuntimeRepairReceiptShapeRejection(producedOutputs: Map<String, Any?>): String? {
+  val raw = producedOutputs["repair_receipt"] ?: return null
+  return try {
+    FeatureTaskRuntimeRepairReceipt.validateEntries(requireRepairReceiptMap(raw), "repair_receipt")
+    null
+  } catch (error: InvalidFeatureTaskRuntimeRepairReceiptError) {
+    featureTaskRuntimeRepairReceiptRejectionDetail(error.fieldPath, error.payloadFreeReason)
+  } catch (error: InvalidGoalSubtaskReviewStateSchemaError) {
+    featureTaskRuntimeRepairReceiptRejectionDetail(error.fieldPath, error.reason)
+  }
 }
 
 internal fun featureTaskRuntimeRepairReceiptSettleRejection(
   receipt: FeatureTaskRuntimeRepairReceipt,
   reviewState: GoalSubtaskReviewState,
-): String? {
-  val baseSha = reviewState.remediationBaseSha ?: return MISSING_REMEDIATION_BASE_REASON
-  val roundNumber = try {
-    featureTaskRuntimeRemediationRoundNumber(reviewState.completedPassCount)
-  } catch (error: InvalidFeatureTaskRuntimeRepairReceiptError) {
-    return error.payloadFreeReason
+): String? = featureTaskRuntimeRepairReceiptCoverageRejection(
+  receipt,
+  reviewState.passResults.lastOrNull()?.findings.orEmpty(),
+)
+  ?: derivedRepairLedgerOrNull(reviewState)?.let { ledger ->
+    featureTaskRuntimeRepairReceiptDisturbanceRejection(receipt, ledger)
   }
-  return featureTaskRuntimeRepairReceiptAnchorRejection(receipt, baseSha)
-    ?: featureTaskRuntimeRepairReceiptCoverageRejection(
-      receipt,
-      reviewState.passResults.lastOrNull()?.findings.orEmpty(),
-    )
-    ?: featureTaskRuntimeRepairReceiptRoundRejection(receipt, roundNumber)
-    ?: derivedRepairLedgerOrNull(reviewState)?.let { ledger ->
-      featureTaskRuntimeRepairReceiptDisturbanceRejection(receipt, ledger)
-    }
-}
 
 // A ledger that cannot be derived rejects nothing: the disturbance gate is a memory check, and a
 // round must not be refused because the memory of earlier rounds is unreadable.
@@ -109,17 +130,11 @@ internal fun featureTaskRuntimeRepairReceiptDisturbanceRejection(
     val symbols = entry.constructs.joinToString(", ", transform = FeatureTaskRuntimeRepairConstruct::symbol)
     "${entry.disturbanceRef} (holds closed by $symbols)"
   }
-  return "repair_receipt.disturbed_remedies must name every settled finding whose closing constructs " +
-    "this round rewrote, with a reason. Undeclared: $disturbed."
-}
-
-internal fun featureTaskRuntimeRepairReceiptAnchorRejection(
-  receipt: FeatureTaskRuntimeRepairReceipt,
-  remediationBaseSha: String,
-): String? = if (receipt.preFixCheckpointSha == remediationBaseSha) {
-  null
-} else {
-  "pre_fix_checkpoint_sha must match the durable remediation base recorded at this round's pre-fix checkpoint."
+  return featureTaskRuntimeRepairReceiptRejectionDetail(
+    "disturbed_remedies",
+    "must name every settled finding whose closing constructs this round rewrote, with a reason. " +
+      "Undeclared: $disturbed.",
+  )
 }
 
 internal fun featureTaskRuntimeRepairReceiptCoverageRejection(
@@ -128,30 +143,9 @@ internal fun featureTaskRuntimeRepairReceiptCoverageRejection(
 ): String? = if (receipt.coversCarriedFindings(carriedFindings)) {
   null
 } else {
-  "repair_receipt.entries must include one entry for every finding carried into this round; " +
-    "omitted findings require an explicit no_edit_required outcome."
-}
-
-internal fun featureTaskRuntimeRepairReceiptRoundRejection(
-  receipt: FeatureTaskRuntimeRepairReceipt,
-  durableRoundNumber: Int,
-): String? = if (receipt.roundNumber == durableRoundNumber) {
-  null
-} else {
-  "round_number must match the durable remediation round at implement_fix entry."
-}
-
-internal fun featureTaskRuntimePreparedRepairReceipt(
-  parsed: FeatureTaskRuntimeRepairReceipt,
-  roundNumber: Int,
-  lastPassFindings: List<GoalSubtaskReviewCompactFinding>,
-): FeatureTaskRuntimeRepairReceipt {
-  featureTaskRuntimeRepairReceiptRoundRejection(parsed, roundNumber)?.let { reason ->
-    throw InvalidFeatureTaskRuntimeRepairReceiptError(
-      fieldPath = "round_number",
-      reason = reason,
-      payloadFreeReason = reason,
-    )
-  }
-  return parsed.stampIdentityFromCompactFindings(lastPassFindings)
+  featureTaskRuntimeRepairReceiptRejectionDetail(
+    "entries",
+    "must include one entry for every finding carried into this round; omitted findings require an " +
+      "explicit no_edit_required outcome.",
+  )
 }

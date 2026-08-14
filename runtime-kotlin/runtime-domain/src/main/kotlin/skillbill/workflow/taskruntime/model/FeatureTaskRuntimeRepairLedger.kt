@@ -259,12 +259,13 @@ fun featureTaskRuntimeFoldRepairLedger(
   val findingsByPass = passResults.associate { result -> result.passNumber to result.findings }
   repairReceipts.sortedBy(FeatureTaskRuntimeRepairReceipt::roundNumber).forEach { receipt ->
     val round = receipt.roundNumber
+    val carried = ReviewStateFindingIdentities(findingsByPass[round].orEmpty())
     val addressed = receipt.entries.filter { it.outcome == FeatureTaskRuntimeRepairOutcome.ADDRESSED }
-    supersedeConstructsReplacedByAnotherFinding(accumulated, addressed, round)
-    addressed.forEach { entry -> accumulated.recordResolved(entry, round) }
+    supersedeConstructsReplacedByAnotherFinding(accumulated, addressed, carried, round)
+    addressed.forEach { entry -> accumulated.recordResolved(entry, carried, round) }
     receipt.entries
       .filter { it.outcome == FeatureTaskRuntimeRepairOutcome.NO_EDIT_REQUIRED }
-      .forEach { entry -> accumulated.recordDisregarded(entry, round) }
+      .forEach { entry -> accumulated.recordDisregarded(entry, carried, round) }
     reopenAgainstPassFindings(accumulated, findingsByPass[round + 1].orEmpty(), round + 1)
   }
   return FeatureTaskRuntimeRepairLedger(
@@ -277,14 +278,27 @@ fun featureTaskRuntimeFoldRepairLedger(
   )
 }
 
+private class ReviewStateFindingIdentities(carriedFindings: List<GoalSubtaskReviewCompactFinding>) {
+  private val byFindingId: Map<String, GoalSubtaskReviewCompactFinding> = carriedFindings
+    .mapNotNull { finding -> finding.findingId?.let { id -> normalizeIdentityPart(id) to finding } }
+    .toMap()
+
+  fun resolve(entry: FeatureTaskRuntimeRepairReceiptEntry): GoalSubtaskReviewCompactFinding? =
+    entry.findingId?.let { id -> byFindingId[normalizeIdentityPart(id)] }
+
+  fun identityOf(entry: FeatureTaskRuntimeRepairReceiptEntry): String =
+    resolve(entry)?.let(::compactReviewFindingIdentity) ?: entry.findingIdentity()
+}
+
 private fun supersedeConstructsReplacedByAnotherFinding(
   accumulated: MutableMap<String, FeatureTaskRuntimeRepairLedgerEntry>,
   addressed: List<FeatureTaskRuntimeRepairReceiptEntry>,
+  carried: ReviewStateFindingIdentities,
   round: Int,
 ) {
   if (addressed.isEmpty()) return
   val claimedByFinding = addressed.associate { entry ->
-    entry.findingIdentity() to entry.constructs.mapTo(
+    carried.identityOf(entry) to entry.constructs.mapTo(
       linkedSetOf(),
       FeatureTaskRuntimeRepairConstruct::identity,
     )
@@ -305,15 +319,17 @@ private fun supersedeConstructsReplacedByAnotherFinding(
 
 private fun MutableMap<String, FeatureTaskRuntimeRepairLedgerEntry>.recordResolved(
   entry: FeatureTaskRuntimeRepairReceiptEntry,
+  carried: ReviewStateFindingIdentities,
   round: Int,
 ) {
-  val identity = entry.findingIdentity()
+  val identity = carried.identityOf(entry)
+  val finding = carried.resolve(entry)
   val existing = this[identity]
   val refutedDisregard = existing?.status == FeatureTaskRuntimeRepairLedgerStatus.DISREGARDED
   this[identity] = FeatureTaskRuntimeRepairLedgerEntry(
     findingIdentity = identity,
-    severity = entry.severity,
-    label = entry.label,
+    severity = finding?.severity ?: entry.severity,
+    label = finding?.label ?: entry.label,
     findingId = entry.findingId,
     intent = entry.intent,
     constructs = entry.constructs,
@@ -327,14 +343,16 @@ private fun MutableMap<String, FeatureTaskRuntimeRepairLedgerEntry>.recordResolv
 
 private fun MutableMap<String, FeatureTaskRuntimeRepairLedgerEntry>.recordDisregarded(
   entry: FeatureTaskRuntimeRepairReceiptEntry,
+  carried: ReviewStateFindingIdentities,
   round: Int,
 ) {
-  val identity = entry.findingIdentity()
+  val identity = carried.identityOf(entry)
   if (containsKey(identity)) return
+  val finding = carried.resolve(entry)
   this[identity] = FeatureTaskRuntimeRepairLedgerEntry(
     findingIdentity = identity,
-    severity = entry.severity,
-    label = entry.label,
+    severity = finding?.severity ?: entry.severity,
+    label = finding?.label ?: entry.label,
     findingId = entry.findingId,
     intent = entry.intent,
     constructs = emptyList(),

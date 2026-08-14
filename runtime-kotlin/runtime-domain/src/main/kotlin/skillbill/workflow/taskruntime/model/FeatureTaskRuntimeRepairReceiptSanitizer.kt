@@ -16,8 +16,7 @@ private val LINE_NUMBER = Regex(
 )
 private val SOURCE_BODY = Regex(
   "(?:^|\\.\\s+)\\s*(?:val|var)\\s+[A-Za-z_][A-Za-z0-9_$]*\\s*=|" +
-    "(?:^|\\.\\s+)\\s*return\\b|" +
-    "[{}]|->",
+    "(?:^|\\.\\s+)\\s*return\\b",
 )
 private val DIFF_HUNK = Regex("@@[^@]*@@|^(?:diff --git|\\+\\+\\+ |--- )")
 private val SERIALIZED_PAYLOAD = Regex("\\{\\s*\"|\"\\s*:\\s*[\\[{\"]")

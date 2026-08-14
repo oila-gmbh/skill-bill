@@ -19,22 +19,59 @@ class FeatureTaskRuntimeRepairReceiptParserTest {
   private val otherSha = "c".repeat(40)
 
   @Test
-  fun `a receipt whose checkpoint sha does not match the durable remediation base is rejected payload-free`() {
-    val receipt = receiptFor(
-      FeatureTaskRuntimeRepairReceiptEntry(
-        severity = "blocker",
-        label = "Type",
-        text = "unsafe mutation at the seam",
-        outcome = FeatureTaskRuntimeRepairOutcome.ADDRESSED,
-        constructs = listOf(FeatureTaskRuntimeRepairConstruct(symbol = "Type.member")),
-        intent = "close the finding at Type.member",
+  fun `the runtime stamps the remediation base and round over whatever the producer sent`() {
+    val parsed = assertNotNull(
+      featureTaskRuntimeParseRepairReceiptOrNull(
+        mapOf(
+          "repair_receipt" to mapOf(
+            "contract_version" to "0.1",
+            "round_number" to 1,
+            "pre_fix_checkpoint_sha" to otherSha,
+            "entries" to listOf(
+              mapOf(
+                "severity" to "blocker",
+                "label" to "Type",
+                "text" to "unsafe mutation at the seam",
+                "outcome" to "addressed",
+                "constructs" to listOf(mapOf("symbol" to "Type.member")),
+                "intent" to "close the finding at Type.member",
+              ),
+            ),
+          ),
+        ),
+        remediationBaseSha = sha,
+        roundNumber = 3,
       ),
     )
-    val reason = assertNotNull(featureTaskRuntimeRepairReceiptAnchorRejection(receipt, otherSha))
-    assertTrue(reason.contains("pre_fix_checkpoint_sha"))
-    assertTrue(!reason.contains(sha) && !reason.contains(otherSha), "anchor rejection must not echo shas")
-    assertTrue(!reason.contains("Type.member"))
-    assertTrue(!reason.contains("@@") && !reason.contains("diff --git"))
+    assertEquals(sha, parsed.preFixCheckpointSha)
+    assertEquals(3, parsed.roundNumber)
+  }
+
+  @Test
+  fun `a receipt that omits the runtime-owned anchor fields is accepted`() {
+    val parsed = assertNotNull(
+      featureTaskRuntimeParseRepairReceiptOrNull(
+        mapOf(
+          "repair_receipt" to mapOf(
+            "contract_version" to "0.1",
+            "entries" to listOf(
+              mapOf(
+                "severity" to "blocker",
+                "label" to "Type",
+                "text" to "unsafe mutation at the seam",
+                "outcome" to "addressed",
+                "constructs" to listOf(mapOf("symbol" to "Type.member")),
+                "intent" to "close the finding at Type.member",
+              ),
+            ),
+          ),
+        ),
+        remediationBaseSha = sha,
+        roundNumber = 2,
+      ),
+    )
+    assertEquals(sha, parsed.preFixCheckpointSha)
+    assertEquals(2, parsed.roundNumber)
   }
 
   @Test
@@ -84,99 +121,48 @@ class FeatureTaskRuntimeRepairReceiptParserTest {
   }
 
   @Test
-  fun `persist preparation stamps compact finding identity by finding_id`() {
-    val agentEcho = FeatureTaskRuntimeRepairReceiptEntry(
-      severity = "blocker",
-      label = "TypeKt",
-      text = "resolve the finding at the reported location",
-      outcome = FeatureTaskRuntimeRepairOutcome.ADDRESSED,
-      constructs = listOf(FeatureTaskRuntimeRepairConstruct(symbol = "Type.member")),
-      intent = "close the finding at Type.member",
-      findingId = "F-001",
-    )
-    val compact = GoalSubtaskReviewCompactFinding(
+  fun `a review finding that no receipt sanitizer would accept never fails the round`() {
+    val locationBearing = GoalSubtaskReviewCompactFinding(
       severity = "blocker",
       label = "ReducerLabel",
-      text = "sanitized compact finding text",
+      text = "the { emptyList() } scrape at Type.member -> Other.member is unenforceable, " +
+        "and the compact text is over " + "x".repeat(REPAIR_RECEIPT_MAX_TEXT_UTF8_BYTES),
       findingId = "F-001",
     )
-    val prepared = featureTaskRuntimePreparedRepairReceipt(
-      parsed = receiptFor(agentEcho),
-      roundNumber = 1,
-      lastPassFindings = listOf(compact),
-    )
-    assertEquals(1, prepared.roundNumber)
-    val entry = prepared.entries.single()
-    assertEquals("ReducerLabel", entry.label)
-    assertEquals("sanitized compact finding text", entry.text)
-    assertEquals("F-001", entry.findingId)
-    assertEquals(agentEcho.intent, entry.intent)
-  }
-
-  @Test
-  fun `a receipt whose round_number does not match the durable remediation round is rejected payload-free`() {
     val receipt = receiptFor(
       FeatureTaskRuntimeRepairReceiptEntry(
         severity = "blocker",
-        label = "Type",
-        text = "unsafe mutation at the seam",
+        label = "TypeKt",
+        text = "resolve the finding at the reported location",
         outcome = FeatureTaskRuntimeRepairOutcome.ADDRESSED,
         constructs = listOf(FeatureTaskRuntimeRepairConstruct(symbol = "Type.member")),
         intent = "close the finding at Type.member",
+        findingId = "F-001",
       ),
     )
-    assertNull(featureTaskRuntimeRepairReceiptRoundRejection(receipt, 1))
-    val reason = assertNotNull(featureTaskRuntimeRepairReceiptRoundRejection(receipt, 2))
-    assertTrue(reason.contains("round_number"))
-    assertTrue(!reason.contains("Type.member"))
-    val error = assertFailsWith<InvalidFeatureTaskRuntimeRepairReceiptError> {
-      featureTaskRuntimePreparedRepairReceipt(receipt, roundNumber = 2, lastPassFindings = emptyList())
-    }
-    assertEquals("round_number", error.fieldPath)
-    assertTrue(!error.payloadFreeReason.contains("Type.member"))
-  }
-
-  @Test
-  fun `identity stamp of compact text over the UTF-8 budget is a typed payload-free error`() {
-    val oversized = "x".repeat(REPAIR_RECEIPT_MAX_TEXT_UTF8_BYTES + 1)
-    val agentEcho = FeatureTaskRuntimeRepairReceiptEntry(
-      severity = "blocker",
-      label = "TypeKt",
-      text = "resolve the finding at the reported location",
-      outcome = FeatureTaskRuntimeRepairOutcome.ADDRESSED,
-      constructs = listOf(FeatureTaskRuntimeRepairConstruct(symbol = "Type.member")),
-      intent = "close the finding at Type.member",
-      findingId = "F-001",
-    )
-    val compact = GoalSubtaskReviewCompactFinding(
-      severity = "blocker",
-      label = "ReducerLabel",
-      text = oversized,
-      findingId = "F-001",
-    )
-    val error = assertFailsWith<InvalidFeatureTaskRuntimeRepairReceiptError> {
-      featureTaskRuntimePreparedRepairReceipt(
-        parsed = receiptFor(agentEcho),
-        roundNumber = 1,
-        lastPassFindings = listOf(compact),
-      )
-    }
-    assertEquals("text", error.fieldPath)
-    assertTrue(error.payloadFreeReason.contains("$REPAIR_RECEIPT_MAX_TEXT_UTF8_BYTES"))
-    assertTrue(!error.payloadFreeReason.contains(oversized))
+    assertNull(featureTaskRuntimeRepairReceiptCoverageRejection(receipt, listOf(locationBearing)))
+    val entry = receipt.entries.single()
+    assertEquals("TypeKt", entry.label)
+    assertEquals("resolve the finding at the reported location", entry.text)
   }
 
   @Test
   fun `parse of an absent receipt key is a no-op`() {
-    assertNull(featureTaskRuntimeParseRepairReceiptOrNull(emptyMap()))
+    assertNull(featureTaskRuntimeParseRepairReceiptOrNull(emptyMap(), sha, 1))
   }
 
   @Test
   fun `parse of a malformed receipt object throws a payload-free typed error`() {
     val error = assertFailsWith<InvalidFeatureTaskRuntimeRepairReceiptError> {
-      featureTaskRuntimeParseRepairReceiptOrNull(mapOf("repair_receipt" to "not-an-object"))
+      featureTaskRuntimeParseRepairReceiptOrNull(mapOf("repair_receipt" to "not-an-object"), sha, 1)
     }
     assertEquals("repair_receipt must be an object.", error.payloadFreeReason)
+  }
+
+  @Test
+  fun `a rejection detail names the offending receipt field as a json pointer`() {
+    val detail = featureTaskRuntimeRepairReceiptRejectionDetail("repair_receipt.entries[0].text", "must be one line.")
+    assertEquals("[repair-receipt] /repair_receipt/entries/0/text: must be one line.", detail)
   }
 
   private fun receiptFor(vararg entries: FeatureTaskRuntimeRepairReceiptEntry) = FeatureTaskRuntimeRepairReceipt(

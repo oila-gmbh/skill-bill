@@ -188,17 +188,26 @@ $defs:
   repairReceipt:
     type: object
     additionalProperties: false
-    required: [contract_version, round_number, pre_fix_checkpoint_sha, entries]
+    required: [contract_version, entries]
     properties:
       contract_version:
         type: string
         const: "0.1"
       round_number:
+        description: >-
+          Runtime-authored. Accepted when a producer still emits it and then overwritten with the
+          durable remediation round, which no briefing carries. Carries no value constraint: the
+          echo is discarded before the domain model is built, so validating it would fail a round
+          over a value nothing reads.
         type: integer
-        minimum: 1
       pre_fix_checkpoint_sha:
+        description: >-
+          Runtime-authored. Accepted when a producer still emits it and then overwritten with the
+          durable remediation base sha. The most visible hash in the briefing is the
+          repository-checkpoint fingerprint, a content hash that satisfies a git-sha shape without
+          being a git commit, so a producer echo is never load-bearing and carries no value
+          constraint here.
         type: string
-        pattern: "^[0-9a-f]{40}([0-9a-f]{24})?$"
       entries:
         type: array
         maxItems: 50

@@ -484,6 +484,7 @@ runtime-ports
     - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewState.fromArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt.validateEntries`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceiptEntry.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceiptEntry.fromArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairConstruct.toArtifactMap`
@@ -1285,6 +1286,7 @@ Categories:
 - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewState.fromArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt.validateEntries`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceiptEntry.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceiptEntry.fromArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairConstruct.toArtifactMap`

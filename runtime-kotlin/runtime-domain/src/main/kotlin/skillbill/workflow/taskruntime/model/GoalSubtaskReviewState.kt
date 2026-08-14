@@ -517,12 +517,18 @@ data class GoalSubtaskReviewState(
    * already-consumed pass rather than reserving a new one, dropping only the stale result and its
    * pause so the granted fix is genuinely re-reviewed instead of having the overridden verdict
    * replayed at it.
+   *
+   * The re-opened round's repair receipt is dropped with the pass result that produced it. Receipt
+   * entries carry `finding_id`, and finding ids are per-pass row numbers, so a receipt left behind
+   * would resolve its entries against the re-run pass's unrelated findings of the same id and record
+   * a still-open finding as settled.
    */
   fun reserveNextPass(): GoalSubtaskReviewState = when {
     retryReviewPending && reservedPassNumber == null && passResults.isNotEmpty() -> copy(
       reservedPassNumber = completedPassCount,
       completedPassCount = completedPassCount - 1,
       passResults = passResults.dropLast(1),
+      repairReceipts = repairReceipts.filterNot { it.roundNumber == completedPassCount },
       emittedPassCount = emittedPassCount.coerceAtMost(completedPassCount - 1),
       disposition = GoalSubtaskReviewDisposition.PENDING,
       blockerDispositions = emptyList(),
@@ -626,8 +632,9 @@ data class GoalSubtaskReviewState(
 
   /**
    * `retry_fix` grants one fresh `implement_fix` iteration per operator choice and is unbudgeted; it
-   * is recorded as a disposition round inside the already-consumed reserved pass and never
-   * re-reserves one, so `completedPassCount` and `reservedPassNumber` are left untouched.
+   * is recorded as a disposition round inside the already-consumed reserved pass. The grant itself
+   * leaves `completedPassCount` and `reservedPassNumber` untouched; [reserveNextPass] is what later
+   * re-opens the consumed pass so the granted fix is re-reviewed.
    */
   fun applyOperatorDecision(decision: GoalSubtaskOperatorDecision): GoalSubtaskReviewState {
     if (!acceptsOperatorDecision) {

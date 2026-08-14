@@ -2,6 +2,7 @@ package skillbill.workflow.taskruntime.model
 
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION
+import skillbill.error.InvalidFeatureTaskRuntimeRepairReceiptError
 
 const val REPAIR_RECEIPT_MAX_ENTRIES: Int = 50
 const val REPAIR_RECEIPT_MAX_CONSTRUCTS_PER_ENTRY: Int = 16
@@ -15,6 +16,26 @@ const val REPAIR_RECEIPT_MAX_DISTURBED_REMEDIES: Int = 50
 const val REPAIR_RECEIPT_MAX_DISTURBANCE_REASON_UTF8_BYTES: Int = 256
 
 private val GIT_COMMIT_SHA = Regex("^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
+
+/**
+ * Invariant checks in a receipt `init` name their field without knowing where the value sits in the
+ * payload, so a bad entry would otherwise report `text` — a key that does not exist under the
+ * receipt's `additionalProperties: false`. Re-anchoring the bare name onto the decode path is what
+ * makes the reported JSON pointer address the offending entry the producer has to repair.
+ */
+private fun <T> anchoredToDecodePath(path: String, decode: () -> T): T = try {
+  decode()
+} catch (error: InvalidFeatureTaskRuntimeRepairReceiptError) {
+  if (error.fieldPath.startsWith(path)) {
+    throw error
+  }
+  throw InvalidFeatureTaskRuntimeRepairReceiptError(
+    fieldPath = "$path.${error.fieldPath.substringAfterLast('.')}",
+    reason = error.reason,
+    payloadFreeReason = error.payloadFreeReason,
+    cause = error,
+  )
+}
 
 enum class FeatureTaskRuntimeRepairOutcome(val wireValue: String) {
   ADDRESSED("addressed"),
@@ -67,10 +88,12 @@ data class FeatureTaskRuntimeRepairConstruct(
     @OpenBoundaryMap("Repair construct decode from the durable workflow-artifact map")
     fun fromArtifactMap(raw: Map<String, Any?>, path: String): FeatureTaskRuntimeRepairConstruct {
       raw.requireOnlyReviewStateKeys(setOf("symbol", "file"), path)
-      return FeatureTaskRuntimeRepairConstruct(
-        symbol = raw.requireReviewStateString("symbol", path),
-        file = raw.optionalReviewStateString("file", path),
-      )
+      return anchoredToDecodePath(path) {
+        FeatureTaskRuntimeRepairConstruct(
+          symbol = raw.requireReviewStateString("symbol", path),
+          file = raw.optionalReviewStateString("file", path),
+        )
+      }
     }
   }
 }
@@ -98,10 +121,12 @@ data class FeatureTaskRuntimeRepairDisturbedRemedy(
     @OpenBoundaryMap("Disturbed-remedy decode from the durable workflow-artifact map")
     fun fromArtifactMap(raw: Map<String, Any?>, path: String): FeatureTaskRuntimeRepairDisturbedRemedy {
       raw.requireOnlyReviewStateKeys(setOf("finding_ref", "reason"), path)
-      return FeatureTaskRuntimeRepairDisturbedRemedy(
-        findingRef = raw.requireReviewStateString("finding_ref", path),
-        reason = raw.requireReviewStateString("reason", path),
-      )
+      return anchoredToDecodePath(path) {
+        FeatureTaskRuntimeRepairDisturbedRemedy(
+          findingRef = raw.requireReviewStateString("finding_ref", path),
+          reason = raw.requireReviewStateString("reason", path),
+        )
+      }
     }
   }
 }
@@ -177,16 +202,18 @@ data class FeatureTaskRuntimeRepairReceiptEntry(
           "$path.constructs[$index]",
         )
       }
-      return FeatureTaskRuntimeRepairReceiptEntry(
-        severity = raw.requireReviewStateString("severity", path),
-        label = raw.requireReviewStateString("label", path),
-        text = raw.requireReviewStateString("text", path),
-        outcome = FeatureTaskRuntimeRepairOutcome.fromWire(raw.requireReviewStateString("outcome", path)),
-        constructs = constructs,
-        intent = raw.requireReviewStateString("intent", path),
-        findingId = raw.optionalReviewStateString("finding_id", path),
-        noEditReason = raw.optionalReviewStateString("no_edit_reason", path),
-      )
+      return anchoredToDecodePath(path) {
+        FeatureTaskRuntimeRepairReceiptEntry(
+          severity = raw.requireReviewStateString("severity", path),
+          label = raw.requireReviewStateString("label", path),
+          text = raw.requireReviewStateString("text", path),
+          outcome = FeatureTaskRuntimeRepairOutcome.fromWire(raw.requireReviewStateString("outcome", path)),
+          constructs = constructs,
+          intent = raw.requireReviewStateString("intent", path),
+          findingId = raw.optionalReviewStateString("finding_id", path),
+          noEditReason = raw.optionalReviewStateString("no_edit_reason", path),
+        )
+      }
     }
   }
 }
@@ -253,19 +280,37 @@ data class FeatureTaskRuntimeRepairReceipt(
           "$path.entries[$index]",
         )
       }
-      return FeatureTaskRuntimeRepairReceipt(
-        contractVersion = raw.requireReviewStateString("contract_version", path),
-        roundNumber = raw.requireReviewStateInt("round_number", path),
-        preFixCheckpointSha = raw.requireReviewStateString("pre_fix_checkpoint_sha", path),
-        entries = entries,
-        disturbedRemedies = raw.optionalReviewStateList("disturbed_remedies", path)
-          ?.mapIndexed { index, value ->
-            FeatureTaskRuntimeRepairDisturbedRemedy.fromArtifactMap(
-              value.asReviewStateMap("$path.disturbed_remedies[$index]"),
-              "$path.disturbed_remedies[$index]",
-            )
-          }.orEmpty(),
-      )
+      return anchoredToDecodePath(path) {
+        FeatureTaskRuntimeRepairReceipt(
+          contractVersion = raw.requireReviewStateString("contract_version", path),
+          roundNumber = raw.requireReviewStateInt("round_number", path),
+          preFixCheckpointSha = raw.requireReviewStateString("pre_fix_checkpoint_sha", path),
+          entries = entries,
+          disturbedRemedies = raw.optionalReviewStateList("disturbed_remedies", path)
+            ?.mapIndexed { index, value ->
+              FeatureTaskRuntimeRepairDisturbedRemedy.fromArtifactMap(
+                value.asReviewStateMap("$path.disturbed_remedies[$index]"),
+                "$path.disturbed_remedies[$index]",
+              )
+            }.orEmpty(),
+        )
+      }
+    }
+
+    /**
+     * Entry-shape validation without the runtime-owned anchor. A run with no durable review state
+     * has no remediation base or round to stamp, so the full receipt cannot be built — but the
+     * sanitizer that keeps diff hunks and serialized payloads out of durable state lives on the
+     * entries and still has to run.
+     */
+    @OpenBoundaryMap("Repair receipt entry-shape check from the durable workflow-artifact map")
+    fun validateEntries(raw: Map<String, Any?>, path: String) {
+      raw.requireReviewStateList("entries", path).forEachIndexed { index, value ->
+        FeatureTaskRuntimeRepairReceiptEntry.fromArtifactMap(
+          value.asReviewStateMap("$path.entries[$index]"),
+          "$path.entries[$index]",
+        )
+      }
     }
   }
 }
@@ -314,33 +359,6 @@ fun FeatureTaskRuntimeRepairReceipt.coversCarriedFindings(
       compactReviewFindingIdentity(carried) in reportedCompact
     }
   }
-}
-
-/**
- * Replace each entry's severity/label/text with the last-pass compact finding that shares its
- * finding_id. implement_fix is briefed with finding_id, severity, location, and expected_outcome —
- * not the reducer-built label and sanitized text — so persist must stamp review-state identity
- * rather than store the agent echo.
- */
-fun FeatureTaskRuntimeRepairReceipt.stampIdentityFromCompactFindings(
-  lastPassFindings: List<GoalSubtaskReviewCompactFinding>,
-): FeatureTaskRuntimeRepairReceipt {
-  if (lastPassFindings.isEmpty()) return this
-  val byId = lastPassFindings.mapNotNull { finding ->
-    finding.findingId?.let { normalizeIdentityPart(it) to finding }
-  }.toMap()
-  if (byId.isEmpty()) return this
-  return copy(
-    entries = entries.map { entry ->
-      val match = entry.findingId?.let { byId[normalizeIdentityPart(it)] } ?: return@map entry
-      entry.copy(
-        severity = match.severity,
-        label = match.label,
-        text = match.text,
-        findingId = match.findingId,
-      )
-    },
-  )
 }
 
 internal fun compactReviewFindingIdentity(finding: GoalSubtaskReviewCompactFinding): String =
