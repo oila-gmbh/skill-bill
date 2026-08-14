@@ -220,9 +220,19 @@ class ReviewSpecAdjudicationRunner(
     )
     appendLine("Stage 1 verdict: ${launch.stage1Verdict.claimVerdict.wireValue}")
     appendLine("Cited region: ${launch.citedRegion.path}:${launch.citedRegion.startLine}-${launch.citedRegion.endLine}")
-    appendLine("Return a JSON object with exactly one scope_disposition " +
-      "(in_scope|out_of_scope_preexisting|spec_deviation|spec_accepted_tradeoff).")
-    appendLine("Cite the justifying spec element for out_of_scope_preexisting, spec_deviation, or any severity adjustment.")
+    appendLine("Spec intent projection:")
+    appendLine(JsonSupport.mapToJsonString(launch.specIntentProjection.toWireMap()))
+    appendLine(
+      "Return a JSON object with exactly one scope_disposition " +
+        "(in_scope|out_of_scope_preexisting|spec_deviation|spec_accepted_tradeoff), " +
+        "cited_spec_element naming a constraint, non-goal, or deferred item present in the projection, " +
+        "and citations as [{path, line}].",
+    )
+    appendLine(
+      "Optional severity_adjustment is {direction: raise|lower, justification} using the same " +
+        "structure for raise and lower; cite the justifying spec element for out_of_scope_preexisting, " +
+        "spec_deviation, or any severity adjustment.",
+    )
     appendLine("Do not change the finding text, severity, or location.")
   }
 
