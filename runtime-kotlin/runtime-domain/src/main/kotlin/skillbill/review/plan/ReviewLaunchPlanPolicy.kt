@@ -102,7 +102,6 @@ object ReviewLaunchPlanPolicy {
       routedPackSlug = routedSlug,
       lanes = winners.mapIndexed { index, winner ->
         val skillName = "bill-${winner.pack.slug}-code-review-${winner.area}"
-        val consumer = "code-review/$skillName"
         val condition = winner.pack.laneConditions[winner.area]
         ReviewLaunchLane(
           skillName = skillName,
@@ -117,8 +116,7 @@ object ReviewLaunchPlanPolicy {
           // force every one of its areas to launch regardless of signals. Composition-required is
           // only a fallback default for areas the owning pack leaves unconditioned.
           required = condition?.required ?: winner.requiredByComposition,
-          addOns = winner.pack.addonUsage.firstOrNull { it.skillRelativeDir == consumer }
-            ?.addons.orEmpty().map { it.slug },
+          addOns = ReviewAddonSelectionPolicy.select(winner.pack, skillName).map { it.slug },
           orderIndex = index,
           inclusionReason = if (winner.depth == 0) "routed-pack override" else "required baseline layer",
           pathSignals = condition?.path.orEmpty(),

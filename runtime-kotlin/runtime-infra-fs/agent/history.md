@@ -1,5 +1,35 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
+## [2026-08-14] SKILL-188 subtask 3 — regression, conformance, and documentation correction
+Areas: runtime-kotlin/runtime-infra-fs/nativeagent, runtime-kotlin/runtime-infra-fs/install, runtime-kotlin/runtime-infra-fs/scaffold, docs
+- Regression fixtures pin the reported defect: a Harbor-shaped pack with `addon_usage` and no `content.md` link still composes distinctive add-on bytes into every rendered harness, including the external-overlay path, without mutating upstream `content.md`.
+- Coverage also pins idempotent re-render, baseline/area then add-on order (entrypoint before companions), declared-plus-linked dedup, loud-fail vocabulary (slug, slot, absolute path), budget fail-without-truncate, and slug/content equivalence across harnesses.
+- Pattern: treat Harbor-shaped packs as the composition oracle — assert rendered agents and overlay results, never a `content.md` link as the activation signal. reusable
+- `docs/external-addons.md` and the native-agent README now state that `addon_usage` alone composes and drop any implication that editing an upstream pack `content.md` activates an add-on.
+- Limitation: already-installed agents still refresh only on the next render/install. This subtask proved and documented composition; it did not change the seam.
+Feature flag: N/A
+Acceptance criteria: 13/13 implemented
+
+## [2026-08-14] SKILL-188 subtask 2 — harness coverage and truthful slug projection
+Areas: runtime-kotlin/runtime-infra-fs/nativeagent/{composition,rendering,validation}, runtime-kotlin/runtime-infra-fs/install/apply, runtime-kotlin/runtime-infra-fs/infrastructure/fs, runtime-kotlin/runtime-domain/review/plan, platform-packs/kmp
+- Composed add-on content now rides the same governed body into every NativeAgentProvider render and install target. Harness files still differ only in provider format; add-on blocks are identical per area.
+- `ReviewAddonSelectionPolicy` is the single slug set for launch-plan `addOns`, in-render composition, inline rubric append, and validation. A reported slug is a composed slug; a declared-but-uncomposed target still loud-fails with slug, slot, and absolute path.
+- Pattern: `enforceAddonProjectionParity` is a runtime check, not a docs convention — compose, launch-plan projection, and `validateRepoNativeAgents` share it. reusable
+- Inline review appends the same policy-selected add-on files, so delegated and inline tiers get equivalent rubrics for the same area without telling any orchestrator to read a sibling sidecar.
+- Limitation: already-installed agents refresh only on the next render/install. Regression and docs pinning remain subtask 3. Pack names stay out of shell/runtime code.
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
+## [2026-08-14] SKILL-188 subtask 1 — compose addon_usage into rendered native agents
+Areas: runtime-kotlin/runtime-infra-fs/nativeagent/{composition,rendering}, runtime-kotlin/runtime-contracts/error, orchestration/contracts, platform-packs/ios
+- Native-agent rendering now composes add-on `entrypoint` and `companion_pointers` from pack `addon_usage` for the skill-relative directory being rendered. A markdown link in the owning `content.md` is neither required nor the trigger.
+- Every target resolves through that directory's `pointers` table; missing, unreadable, or undeclared targets fail with `MissingContentFileError` naming slug, slot, and absolute path. Over-budget output fails with `ComposedNativeAgentBudgetExceededError` and never truncates.
+- Pattern: `SidecarInliningSession` claims add-on paths before link rewrite so a file that is both a declared add-on and a link-inlined sidecar appears once, independent of resolution order. reusable
+- Stable order is baseline/area body, then add-ons in declared `addon_usage` order (`entrypoint` before companions). Render-evaluable activation is written as a Declared-scope stanza; inherently diff-time conditions still compose and defer to runtime activation.
+- Limitation: this seam covers the existing governed-content render path only; per-harness coverage and launch-plan slug reconciliation are subtask 2. Pack slugs stay out of shell/runtime code. No pack `content.md` was edited to activate an add-on.
+Feature flag: N/A
+Acceptance criteria: 12/12 implemented
+
 ## [2026-08-11] Cursor capability projection and spawn-note ordering (review repairs)
 Areas: runtime-kotlin/runtime-infra-fs/nativeagent/{composition,rendering}, runtime-kotlin/runtime-infra-fs/scaffold/rendering, runtime-kotlin/runtime-infra-fs tests
 - A declared read-only toolset now reaches Cursor as `readonly: true`. Cursor has no `tools` key, so rendering name+description only had silently left every review worker on the host default of every tool the parent can reach — write and recursive-delegation capability the read-only review contract forbids. `declaresReadOnlyToolset` is the projection rule; a toolset holding `Edit`/`Write`/`NotebookEdit`/`Agent` earns no `readonly` claim. reusable: a provider whose capability vocabulary is narrower than the source needs an explicit projection, never a dropped field.

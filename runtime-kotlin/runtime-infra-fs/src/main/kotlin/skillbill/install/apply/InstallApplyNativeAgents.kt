@@ -14,6 +14,7 @@ import skillbill.install.nativeagent.NativeAgentLinkRequest
 import skillbill.install.staging.installedSkillsCacheRoot
 import skillbill.install.support.InstallSymlinkException
 import skillbill.nativeagent.rendering.NativeAgentOperations
+import skillbill.nativeagent.rendering.NativeAgentProvider
 import java.nio.file.Path
 
 internal fun applyNativeAgents(
@@ -165,29 +166,31 @@ internal fun nativeAgentSourceRoots(
   .filter { skill -> skill.platformSlug == null || skill.platformSlug in selectedPlatformSlugs }
   .map { skill -> skill.sourceDir }
 
-private val nativeAgentInstallers: List<NativeAgentInstaller> = listOf(
-  NativeAgentInstaller(
-    agent = InstallAgent.CLAUDE,
-    provider = NativeAgentProviderId.CLAUDE,
-    link = InstallNativeAgentOperations::linkClaudeAgents,
-    unlink = InstallNativeAgentOperations::unlinkClaudeAgents,
-  ),
-  NativeAgentInstaller(
-    agent = InstallAgent.CODEX,
-    provider = NativeAgentProviderId.CODEX,
-    link = InstallNativeAgentOperations::linkCodexAgents,
-    unlink = InstallNativeAgentOperations::unlinkCodexAgents,
-  ),
-  NativeAgentInstaller(
-    agent = InstallAgent.JUNIE,
-    provider = NativeAgentProviderId.JUNIE,
-    link = InstallNativeAgentOperations::linkJunieAgents,
-    unlink = InstallNativeAgentOperations::unlinkJunieAgents,
-  ),
-  NativeAgentInstaller(
-    agent = InstallAgent.CURSOR,
-    provider = NativeAgentProviderId.CURSOR,
-    link = InstallNativeAgentOperations::linkCursorAgents,
-    unlink = InstallNativeAgentOperations::unlinkCursorAgents,
-  ),
-)
+private val nativeAgentInstallers: List<NativeAgentInstaller> = NativeAgentProvider.entries.map { provider ->
+  when (provider) {
+    NativeAgentProvider.Claude -> NativeAgentInstaller(
+      agent = InstallAgent.CLAUDE,
+      provider = NativeAgentProviderId.CLAUDE,
+      link = InstallNativeAgentOperations::linkClaudeAgents,
+      unlink = InstallNativeAgentOperations::unlinkClaudeAgents,
+    )
+    NativeAgentProvider.Codex -> NativeAgentInstaller(
+      agent = InstallAgent.CODEX,
+      provider = NativeAgentProviderId.CODEX,
+      link = InstallNativeAgentOperations::linkCodexAgents,
+      unlink = InstallNativeAgentOperations::unlinkCodexAgents,
+    )
+    NativeAgentProvider.Junie -> NativeAgentInstaller(
+      agent = InstallAgent.JUNIE,
+      provider = NativeAgentProviderId.JUNIE,
+      link = InstallNativeAgentOperations::linkJunieAgents,
+      unlink = InstallNativeAgentOperations::unlinkJunieAgents,
+    )
+    NativeAgentProvider.Cursor -> NativeAgentInstaller(
+      agent = InstallAgent.CURSOR,
+      provider = NativeAgentProviderId.CURSOR,
+      link = InstallNativeAgentOperations::linkCursorAgents,
+      unlink = InstallNativeAgentOperations::unlinkCursorAgents,
+    )
+  }
+}

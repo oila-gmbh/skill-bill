@@ -6,6 +6,7 @@ import skillbill.scaffold.model.GovernedAddonActivation
 import skillbill.scaffold.model.GovernedAddonSelection
 import skillbill.scaffold.model.GovernedAddonUsage
 import skillbill.scaffold.model.PlatformManifest
+import skillbill.scaffold.model.PointerSpec
 import skillbill.scaffold.model.RoutingSignals
 import java.nio.file.Files
 import kotlin.test.Test
@@ -81,6 +82,13 @@ class FileSystemReviewRubricResolverTest {
           ),
         ),
       ),
+      pointers = listOf(
+        PointerSpec(
+          "code-review/bill-kotlin-code-review-ui",
+          "android-compose-review.md",
+          "addons/android-compose-review.md",
+        ),
+      ),
     )
 
     val resolved = FileSystemReviewRubricResolver().resolve(
@@ -121,6 +129,13 @@ class FileSystemReviewRubricResolverTest {
           ),
         ),
       ),
+      pointers = listOf(
+        PointerSpec(
+          "code-review/bill-kotlin-code-review-ui",
+          "android-compose-review.md",
+          "addons/android-compose-review.md",
+        ),
+      ),
     )
 
     val resolved = FileSystemReviewRubricResolver().resolve(
@@ -157,6 +172,13 @@ class FileSystemReviewRubricResolverTest {
               ),
             ),
           ),
+        ),
+      ),
+      pointers = listOf(
+        PointerSpec(
+          "code-review/bill-kotlin-code-review-ui",
+          "android-compose-review.md",
+          "addons/android-compose-review.md",
         ),
       ),
     )
@@ -196,6 +218,13 @@ class FileSystemReviewRubricResolverTest {
           ),
         ),
       ),
+      pointers = listOf(
+        PointerSpec(
+          "code-review/bill-kotlin-code-review-platform-correctness",
+          "android-r8-review.md",
+          "addons/android-r8-review.md",
+        ),
+      ),
     )
 
     val resolved = FileSystemReviewRubricResolver().resolve(
@@ -230,6 +259,13 @@ class FileSystemReviewRubricResolverTest {
               activation = GovernedAddonActivation(anyOfAllContent = listOf(listOf("sqlite", "sync"))),
             ),
           ),
+        ),
+      ),
+      pointers = listOf(
+        PointerSpec(
+          "code-review/bill-kotlin-code-review-persistence",
+          "offline-first-review.md",
+          "addons/offline-first-review.md",
         ),
       ),
     )

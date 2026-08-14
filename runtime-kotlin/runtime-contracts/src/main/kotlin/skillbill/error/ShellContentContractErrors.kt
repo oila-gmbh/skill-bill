@@ -871,6 +871,11 @@ class MissingContentFileError(
   cause: Throwable? = null,
 ) : ShellContentContractException(message, cause)
 
+class ComposedNativeAgentBudgetExceededError(
+  message: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(message, cause)
+
 class MissingRequiredSectionError(
   message: String,
   cause: Throwable? = null,

@@ -19,6 +19,7 @@ data class NativeAgentSource(
   val bundleEntryName: String? = null,
   /** Empty means "declare nothing", which leaves the rendered agent on the host default of every tool. */
   val tools: List<String> = emptyList(),
+  val composedAddonSlugs: List<String> = emptyList(),
 )
 
 /** Tools that grant mutation or recursive delegation. */

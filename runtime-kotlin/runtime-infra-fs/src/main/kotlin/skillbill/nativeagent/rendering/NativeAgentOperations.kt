@@ -72,9 +72,9 @@ object NativeAgentOperations {
     }
     val cacheRoot = installCacheRoot(home, root.resolve("platform-packs"), root.resolve("skills"))
     val written = mutableListOf<Path>()
+    val composedSources = sources.map { source -> composeNativeAgentSource(root, source) }
     val byProvider = NativeAgentProvider.entries.associateWith { provider ->
-      sources.map { source ->
-        val composed = composeNativeAgentSource(root, source)
+      composedSources.map { composed ->
         RegenerationEntry(
           target = cacheRoot.resolve(provider.directoryName).resolve("${composed.name}.${provider.extension}"),
           contents = provider.render(composed).toByteArray(Charsets.UTF_8),
@@ -126,8 +126,8 @@ object NativeAgentOperations {
     val sources = request.overrides.sourceRoots
       ?.let(::discoverNativeAgentSourceEntriesInRoots)
       ?: discoverNativeAgentSourceEntries(platformPacksRoot, skillsRoot, selectedPlatforms)
-    val rendered = sources.map { source ->
-      val composed = composeNativeAgentSource(repoRoot, source)
+    val composedSources = sources.map { source -> composeNativeAgentSource(repoRoot, source) }
+    val rendered = composedSources.map { composed ->
       RenderedAgent(
         targetName = "${composed.name}.${provider.extension}",
         contents = provider.render(composed).toByteArray(Charsets.UTF_8),

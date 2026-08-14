@@ -8,10 +8,12 @@ import skillbill.nativeagent.composition.composeNativeAgentSource
 import skillbill.nativeagent.composition.displayPath
 import skillbill.nativeagent.composition.nativeAgentCompositionRepoRoot
 import skillbill.nativeagent.composition.parseNativeAgentSourceFile
+import skillbill.nativeagent.composition.resolveNativeAgentCompositionTarget
 import skillbill.nativeagent.discovery.discoverNativeAgentSourceFiles
 import skillbill.nativeagent.discovery.discoverNativeAgentSourceFilesInRoots
 import skillbill.nativeagent.rendering.NativeAgentProvider
 import skillbill.nativeagent.rendering.discoverRepoNativeAgentSourceFiles
+import skillbill.nativeagent.rendering.enforceAddonProjectionParity
 import skillbill.review.plan.ReviewLaunchPlanPolicy
 import skillbill.scaffold.platformpack.discoverPlatformPackManifests
 import java.nio.file.Files
@@ -96,6 +98,14 @@ private fun validateNativeAgentSources(root: Path, sources: List<NativeAgentSour
     if (composed !== source && containsProviderConditional(composed.body)) {
       issues += "${nativeAgentSourceDisplay(root, source)}: " +
         "composed native agent bodies must be provider-agnostic; conditionals belong in the renderer"
+    }
+    runCatching {
+      val pack = resolveNativeAgentCompositionTarget(root, source)?.manifest
+      if (pack != null) {
+        enforceAddonProjectionParity(pack, composed.name, composed.composedAddonSlugs)
+      }
+    }.onFailure { error ->
+      issues += "${nativeAgentSourceDisplay(root, source)}: ${error.message.orEmpty()}"
     }
     NativeAgentProvider.entries.forEach { provider ->
       runCatching { provider.render(composed) }.getOrElse { error ->

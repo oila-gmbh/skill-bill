@@ -1,11 +1,19 @@
 package skillbill.scaffold.platformpack
 
+import skillbill.review.plan.ReviewAddonSelectionPolicy
 import skillbill.scaffold.model.DeclaredFiles
+import skillbill.scaffold.model.GovernedAddonSelection
 import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Path
 
-internal fun PlatformManifest.addonUsageFor(contentFile: Path) =
-  addonUsage.firstOrNull { usage -> usage.skillRelativeDir == packRelativeSkillDir(contentFile) }?.addons.orEmpty()
+internal fun PlatformManifest.addonUsageFor(contentFile: Path): List<GovernedAddonSelection> {
+  val dir = packRelativeSkillDir(contentFile)
+  return if (dir.startsWith("code-review/")) {
+    ReviewAddonSelectionPolicy.select(this, contentFile.parent.fileName.toString())
+  } else {
+    addonUsage.firstOrNull { usage -> usage.skillRelativeDir == dir }?.addons.orEmpty()
+  }
+}
 
 internal fun PlatformManifest.declaredSkillRelativeDirs(): Set<String> =
   declaredSkillRelativeDirs(packRoot, declaredFiles, declaredQualityCheckFile)

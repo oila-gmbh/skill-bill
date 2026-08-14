@@ -47,6 +47,14 @@ agents:
 
 When `compose: governed-content` is present, the source may omit a local body and compose from the corresponding governed `content.md`. Platform-pack sources resolve that target through the pack manifest's declared files; skill-local sources resolve only a sibling `content.md` whose frontmatter name matches. Bundle entries use `agents.yaml` as their source path for this resolution, so they follow the same manifest and sibling-content rules as markdown sources. Installed provider-native files are rendered one artifact per logical native agent from the composed body and inline declared local markdown sidecars, so they do not depend on repo-local `content.md` or sidecar files at runtime.
 
+## Pack add-on composition
+
+`addon_usage` for the skill-relative directory being rendered is the trigger that composes add-on files into the native agent. A markdown link in the owning `content.md` is neither required nor the activation trigger. Each add-on's `entrypoint` and every `companion_pointers` name resolve through that directory's `pointers` table.
+
+Order is stable: the governed baseline or area `content.md` body, then composed add-ons in declared `addon_usage` order, with each add-on's `entrypoint` before its companion pointers. A file reachable both as a declared add-on target and as a link-inlined sidecar is included once; `SidecarInliningSession` claims add-on paths before rewriting markdown links, so the outcome does not depend on which path resolved the file first.
+
+Missing, unreadable, or undeclared targets fail with `MissingContentFileError`. The composition message names the add-on slug, the slot (`entrypoint` or the companion pointer name), and the fully resolved absolute path. Pack load also rejects an `addon_usage` companion that is not in that directory's `pointers` table (`InvalidManifestSchemaError`) before render. Over-budget output fails with `ComposedNativeAgentBudgetExceededError` naming the pack, the skill directory, and the byte total. Rendering never truncates a rubric to fit.
+
 ## Bodies are provider-agnostic
 
 The body is shared across every provider (Claude, Codex, Junie, Cursor). Provider-specific shaping happens only in the renderer, never in the body. The validator (`validateRepoNativeAgents`) rejects bodies containing any of:

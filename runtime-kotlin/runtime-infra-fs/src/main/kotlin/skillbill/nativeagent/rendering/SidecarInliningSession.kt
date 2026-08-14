@@ -6,37 +6,30 @@ import skillbill.nativeagent.composition.displayPath
 import skillbill.nativeagent.composition.platformPackRoot
 import skillbill.scaffold.authoring.normalizeMarkdownLineEndings
 import skillbill.scaffold.model.PointerSpec
-import skillbill.scaffold.platformpack.loadPlatformPack
 import java.nio.file.Files
 import java.nio.file.Path
 
 private val LOCAL_MARKDOWN_LINK_PATTERN = Regex("""\[([^]\n]+)]\(([^)\s]+\.md(?:#[^)]*)?)\)""")
 
-internal fun inlineDeclaredMarkdownSidecars(
-  repoRoot: Path,
-  target: NativeAgentCompositionTarget,
-  body: String,
-): String {
-  val resolver = sidecarResolver(repoRoot, target)
-  val inlined = linkedMapOf<Path, String>()
-  val rewrittenBody = rewriteMarkdownLinks(
-    text = body,
-    ownerPath = target.contentPath,
-    resolver = resolver,
-    inlined = inlined,
-  )
-  if (inlined.isEmpty()) {
-    return rewrittenBody.trimEnd()
+internal class SidecarInliningSession(repoRoot: Path, target: NativeAgentCompositionTarget) {
+  private val resolver = sidecarResolver(repoRoot, target)
+  private val inlined = linkedMapOf<Path, String>()
+  private val claimed = linkedSetOf<Path>()
+
+  fun claim(path: Path) {
+    claimed.add(path)
   }
-  return buildString {
-    append(rewrittenBody.trimEnd())
+
+  fun rewrite(text: String, ownerPath: Path): String = rewriteMarkdownLinks(text, ownerPath, resolver, inlined, claimed)
+
+  fun inlinedReferenceBlocks(): String = buildString {
     inlined.forEach { (path, text) ->
       append("\n\n")
       append("## Inlined Reference: ${path.fileName}")
       append("\n\n")
       append(text.trimEnd())
     }
-  }.trimEnd()
+  }
 }
 
 private fun rewriteMarkdownLinks(
@@ -44,30 +37,37 @@ private fun rewriteMarkdownLinks(
   ownerPath: Path,
   resolver: MarkdownSidecarResolver,
   inlined: LinkedHashMap<Path, String>,
+  claimed: LinkedHashSet<Path>,
 ): String = LOCAL_MARKDOWN_LINK_PATTERN.replace(text) { match ->
   val label = match.groupValues[1]
   val rawTarget = match.groupValues[2]
   val sidecarPath = resolver.resolve(rawTarget, ownerPath)
-  if (sidecarPath !in inlined) {
+  if (claimed.add(sidecarPath)) {
     val sidecarText = normalizeMarkdownLineEndings(Files.readString(sidecarPath)).trimEnd()
     inlined[sidecarPath] = ""
-    inlined[sidecarPath] = rewriteMarkdownLinks(sidecarText, sidecarPath, resolver, inlined)
+    inlined[sidecarPath] = rewriteMarkdownLinks(sidecarText, sidecarPath, resolver, inlined, claimed)
   }
   label
 }
 
 private fun sidecarResolver(repoRoot: Path, target: NativeAgentCompositionTarget): MarkdownSidecarResolver =
   when (target.source) {
-    NativeAgentCompositionTargetSource.PlatformManifest -> platformPointerSidecarResolver(repoRoot, target.contentPath)
+    NativeAgentCompositionTargetSource.PlatformManifest -> platformPointerSidecarResolver(repoRoot, target)
     NativeAgentCompositionTargetSource.SiblingContent -> siblingMarkdownSidecarResolver(repoRoot, target.contentPath)
   }
 
-private fun platformPointerSidecarResolver(repoRoot: Path, contentPath: Path): MarkdownSidecarResolver {
+private fun platformPointerSidecarResolver(
+  repoRoot: Path,
+  target: NativeAgentCompositionTarget,
+): MarkdownSidecarResolver {
   val root = repoRoot.toAbsolutePath().normalize()
+  val contentPath = target.contentPath
   val packRoot = requireNotNull(platformPackRoot(root, contentPath.toAbsolutePath().normalize())) {
     "${displayPath(root, contentPath)}: platform-pack native agent composition requires a platform.yaml manifest"
   }
-  val pack = loadPlatformPack(packRoot)
+  val pack = requireNotNull(target.manifest) {
+    "${displayPath(root, contentPath)}: platform-pack native agent composition requires a parsed platform.yaml manifest"
+  }
   val skillRelativeDir = packRoot.relativize(contentPath.parent).toString().replace('\\', '/')
   val declared = pack.pointers
     .filter { pointer -> pointer.skillRelativeDir == skillRelativeDir }

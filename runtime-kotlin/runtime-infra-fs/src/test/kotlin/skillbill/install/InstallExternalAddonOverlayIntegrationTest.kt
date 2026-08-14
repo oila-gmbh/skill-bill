@@ -7,6 +7,9 @@ import skillbill.install.model.ExternalAddonSource
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InstallApplyStatus
 import skillbill.install.runtime.InstallOperations
+import skillbill.nativeagent.rendering.NativeAgentInstallRenderRequest
+import skillbill.nativeagent.rendering.NativeAgentOperations
+import skillbill.nativeagent.rendering.NativeAgentProvider
 import skillbill.ports.install.addon.ExternalAddonOverlayPort
 import skillbill.ports.install.addon.model.ExternalAddonOverlayRequest
 import java.nio.file.Files
@@ -92,6 +95,48 @@ class InstallExternalAddonOverlayIntegrationTest : InstallApplyTestSupport() {
     assertEquals(baselineContent, overlayContent, "empty external config must be a byte-identical no-op")
   }
 
+  @Test
+  fun `overlaid external add-on reaches rendered agents without mutating upstream content md`() {
+    val fixture = setupIosFixture()
+    val packRoot = fixture.repoRoot.resolve("platform-packs/ios")
+    val contentFiles = Files.walk(packRoot).use { stream ->
+      stream.filter { path -> path.fileName.toString() == "content.md" }.toList()
+    }
+    val beforeBytes = contentFiles.associateWith { path -> Files.readAllBytes(path) }
+    val marker = "external-overlay-native-agent-marker"
+    val external = seedExternalSource(
+      fixture,
+      "acme",
+      listOf("acme-review.md"),
+      skillRelativeDir = "code-review/bill-ios-code-review-architecture",
+      body = marker,
+    )
+    runOverlay(fixture, listOf(external))
+    NativeAgentProvider.entries.forEach { provider ->
+      val result = NativeAgentOperations.renderInstallArtifacts(
+        NativeAgentInstallRenderRequest(
+          platformPacksRoot = fixture.repoRoot.resolve("platform-packs"),
+          skillsRoot = fixture.repoRoot.resolve("skills"),
+          selectedPlatforms = listOf("ios"),
+          provider = provider,
+          home = fixture.home,
+        ),
+      )
+      val rendered = Files.readString(
+        result.generatedFiles.single { path ->
+          path.fileName.toString() == provider.fileName("bill-ios-code-review-architecture")
+        },
+      )
+      assertTrue(marker in rendered, "${provider.directoryName} missing overlaid add-on content")
+    }
+    contentFiles.forEach { path ->
+      assertTrue(
+        beforeBytes.getValue(path).contentEquals(Files.readAllBytes(path)),
+        "overlay plus render mutated $path",
+      )
+    }
+  }
+
   private fun stagedSkillBody(result: skillbill.install.model.InstallApplyResult, name: String): String {
     val stagingDir = result.skills.first { it.skillName == "bill-code-review" }.staging.stagingDir
       ?: error("bill-code-review was not staged")
@@ -124,21 +169,27 @@ class InstallExternalAddonOverlayIntegrationTest : InstallApplyTestSupport() {
     return fixture
   }
 
-  private fun seedExternalSource(fixture: ApplyFixture, slug: String, mdFiles: List<String>): ExternalAddonSource {
+  private fun seedExternalSource(
+    fixture: ApplyFixture,
+    slug: String,
+    mdFiles: List<String>,
+    skillRelativeDir: String = "code-review/bill-ios-code-review",
+    body: String? = null,
+  ): ExternalAddonSource {
     val sourceDir = Files.createDirectories(fixture.home.resolve("private/ios-$slug"))
     mdFiles.forEach { name ->
-      Files.writeString(sourceDir.resolve(name), "# $slug review body\n")
+      Files.writeString(sourceDir.resolve(name), body ?: "# $slug review body\n")
     }
     val entrypoint = mdFiles.first()
     Files.writeString(
       sourceDir.resolve("addon-manifest.yaml"),
       """
       addon_usage:
-        code-review/bill-ios-code-review:
+        $skillRelativeDir:
           - slug: $slug
             entrypoint: $entrypoint
       pointers:
-        code-review/bill-ios-code-review:
+        $skillRelativeDir:
           - name: $entrypoint
             target: $entrypoint
       """.trimIndent() + "\n",

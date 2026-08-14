@@ -38,6 +38,10 @@ Because the overlay always re-applies against the freshly reconciled pack, it is
 re-running install never duplicates entries, and a wiped `addons/` directory is reconstituted on
 the next install.
 
+`addon_usage` plus the matching `pointers` entries are enough to compose add-on files into
+rendered native agents. A markdown link in the owning `content.md` is not required and is not the
+activation trigger. Do not edit an upstream pack's `content.md` to turn an add-on on.
+
 ## Configuring Sources
 
 Sources are declared in the machine-global config file:
@@ -215,8 +219,8 @@ Overlay a private `acme` review add-on onto the installed `ios` pack.
    ```
 
    `acme-review.md` is copied into the installed `ios` pack's `addons/`, and its `addon_usage` and
-   `pointers` entries are appended to the installed `platform.yaml`. The `ios` review flow now picks
-   up the `acme` add-on exactly like a pack-owned one.
+   `pointers` entries are appended to the installed `platform.yaml`. Native-agent rendering composes
+   that add-on from the declaration alone; the upstream pack's `content.md` is left unchanged.
 
 ## Commands
 
@@ -242,3 +246,6 @@ Overlay a private `acme` review add-on onto the installed `ios` pack.
 - **The installed `platform.yaml` is the merge target**, re-adopted from upstream on each reconcile.
   Comments and key ordering in that installed copy are not preserved across an overlay; your source
   files and this config are the source of truth.
+- **`addon_usage` alone activates composition.** Overlaying `addon_usage` and `pointers` is enough
+  for rendered native agents to carry the add-on. Do not edit an upstream pack `content.md` to add
+  a markdown link.
