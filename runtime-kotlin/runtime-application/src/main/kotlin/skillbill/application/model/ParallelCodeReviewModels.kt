@@ -34,13 +34,13 @@ data class ParallelCodeReviewRequest(
   val prelaunchExpansions: List<ReviewPrelaunchExpansion> = emptyList(),
   val baselineUntrackedPolicy: ReviewBaselineUntrackedPolicy = ReviewBaselineUntrackedPolicy.EMPTY,
   val specPath: Path? = null,
+  val selectedAgentAddonsSection: String = "",
 ) {
   init {
     reviewRunId?.let { require(it.isNotBlank()) { "reviewRunId must be non-blank when provided." } }
     specPath?.let { require(it.toString().isNotBlank()) { "specPath must be non-blank when provided." } }
     baseRevision?.let { require(it.isNotBlank()) { "baseRevision must be non-blank when provided." } }
     headRevision?.let { require(it.isNotBlank()) { "headRevision must be non-blank when provided." } }
-    suppliedDiff?.let { require(it.isNotBlank()) { "suppliedDiff must be non-blank when provided." } }
     require(suppliedDiff == null || suppliedDiffPath == null) {
       "suppliedDiff and suppliedDiffPath cannot both be provided."
     }
@@ -73,6 +73,11 @@ data class ParallelCodeReviewRequest(
    * starts because the pinned request is built before the lanes are launched.
    */
   fun withResolvedTier(tier: CodeReviewExecutionMode): ParallelCodeReviewRequest = copy(resolvedTier = tier)
+
+  fun withSelectedAgentAddons(prompt: String): String {
+    if (selectedAgentAddonsSection.isEmpty()) return prompt
+    return prompt.trimEnd() + "\n\n" + selectedAgentAddonsSection
+  }
 
   companion object {
     fun baselineUntrackedPolicy(includedPaths: List<String>, excludedPaths: List<String>) =

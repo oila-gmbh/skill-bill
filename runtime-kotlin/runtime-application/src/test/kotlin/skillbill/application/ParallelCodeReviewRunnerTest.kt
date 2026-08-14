@@ -339,6 +339,39 @@ class ParallelCodeReviewRunnerTest {
   }
 
   @Test
+  fun `empty supplied diff completes without git range resolution`() {
+    val resolver = RecordingDiffResolver(default = "unexpected branch diff")
+    val launcher = ParallelSubtaskLauncher()
+    val runner = runner(launcher, diffResolver = resolver)
+
+    val result = runner.run(baseRequest(scope = ParallelReviewScope.BRANCH).copy(suppliedDiff = ""))
+
+    assertTrue(resolver.calls.isEmpty())
+    assertTrue(launcher.requests.isEmpty())
+    assertTrue(result.mergeResult.findings.isEmpty())
+  }
+
+  @Test
+  fun `selected agent add-ons section is copied onto every stage launch`() {
+    val section = "## Selected agent add-ons\nverbatim-addon-section-191"
+    val launcher = ParallelSubtaskLauncher()
+    val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = "unexpected"))
+    val exactDiff = "diff --git a/Child.kt b/Child.kt\n+++ b/Child.kt\n+owned change\n"
+
+    runner.run(
+      baseRequest(scope = ParallelReviewScope.UNSTAGED).copy(
+        suppliedDiff = exactDiff,
+        selectedAgentAddonsSection = section,
+      ),
+    )
+
+    assertTrue(launcher.requests.isNotEmpty())
+    launcher.requests.forEach { request ->
+      assertContains(request.skillRunRequest.promptOverride.orEmpty(), section)
+    }
+  }
+
+  @Test
   fun `review prompt asks for the commit attribution segment the parser reads`() {
     val launcher = ParallelSubtaskLauncher()
     val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))

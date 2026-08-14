@@ -40,6 +40,7 @@ class ReviewIntegrationPassRunner(
     repoRoot: Path,
     timeout: Duration,
     modelOverride: String? = null,
+    promptSuffix: String = "",
   ): ReviewIntegrationPassOutcome {
     skipReasonFor(packet, lanes)?.let { reason ->
       return ReviewIntegrationPassOutcome.skipped(packet.commitSequenceDigest, reason)
@@ -57,7 +58,7 @@ class ReviewIntegrationPassRunner(
       integration.toIntegrationLaunchEnvelope().asWireMap(),
       "review integration launch for ${packet.reviewId}",
     )
-    val prompt = integrationPrompt(integration)
+    val prompt = appendPromptSuffix(integrationPrompt(integration), promptSuffix)
     val outcome = launcher.launch(
       GoalRunnerSubtaskLaunchRequest(
         invokedAgentId = brokerId,

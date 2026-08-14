@@ -79,6 +79,7 @@ import skillbill.review.context.model.asFailedLaneRun
 import skillbill.review.context.model.structuredString
 import skillbill.review.context.model.toCodeReviewExecutionMode
 import skillbill.review.model.ParallelReviewLaneResult
+import skillbill.review.model.ParallelReviewMergeResult
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ParallelReviewRawFinding
 import skillbill.review.model.ReviewCoverageReport
@@ -149,6 +150,9 @@ class ParallelCodeReviewRunner(
   )
 
   fun run(originalRequest: ParallelCodeReviewRequest): ParallelCodeReviewResult {
+    if (hasSuppliedDiff(originalRequest) && suppliedDiffText(originalRequest).isBlank()) {
+      return completeEmptySuppliedDelta(originalRequest)
+    }
     val initial = prepareInitialRun(originalRequest)
     verifyNativeWorkers(initial)
     val outcomes = runLanes(initial)
@@ -458,6 +462,7 @@ class ParallelCodeReviewRunner(
       brokerId = initial.agent1Id,
       repoRoot = initial.request.repoRoot,
       timeout = initial.request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes,
+      promptSuffix = initial.request.selectedAgentAddonsSection,
     )
     recordIntegrationBoundary(initial.request.reviewRunId, outcome)
     return outcome
@@ -588,6 +593,7 @@ class ParallelCodeReviewRunner(
       brokerId = initial.agent1Id,
       repoRoot = initial.request.repoRoot,
       timeout = initial.request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes,
+      promptSuffix = initial.request.selectedAgentAddonsSection,
     )
     if (reviewRunId == null) return existing + outcome.verdicts
     if (outcome.verdicts.isNotEmpty()) {
@@ -658,6 +664,7 @@ class ParallelCodeReviewRunner(
       brokerId = initial.agent1Id,
       repoRoot = initial.request.repoRoot,
       timeout = initial.request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes,
+      promptSuffix = initial.request.selectedAgentAddonsSection,
     )
     if (reviewRunId == null) return outcome.verdicts
     if (outcome.skipReason == ReviewSpecAdjudicationRunner.SPEC_CONTEXT_NONE) return emptyList()
@@ -873,6 +880,36 @@ class ParallelCodeReviewRunner(
   private fun hasSuppliedDiff(request: ParallelCodeReviewRequest): Boolean =
     request.suppliedDiff != null || request.suppliedDiffPath != null
 
+  private fun suppliedDiffText(request: ParallelCodeReviewRequest): String =
+    request.suppliedDiff ?: request.suppliedDiffPath?.let { path ->
+      diffResolver.readDiff(path, MAX_SUPPLIED_DIFF_BYTES).orEmpty()
+    }.orEmpty()
+
+  private fun completeEmptySuppliedDelta(request: ParallelCodeReviewRequest): ParallelCodeReviewResult {
+    val budget = repoLocalConfig.readRepoLocalConfig(ReadRepoLocalConfigRequest(request.repoRoot))
+      .config.reviewContextBudget
+    val specIntent = specIntentProjectionResolver.resolve(
+      SpecIntentProjectionResolveRequest(
+        repoRoot = request.repoRoot,
+        explicitSpecPath = request.specPath,
+        branchName = "",
+        changedPaths = emptyList(),
+        budget = budget,
+      ),
+    )
+    recordSpecIntent(request.reviewRunId, specIntent)
+    request.reviewRunId?.let { runId ->
+      if (specIntent is SpecIntentResolution.Resolved) {
+        recordAdjudicationBoundary(runId)
+      }
+    }
+    return ParallelCodeReviewResult(
+      mergeResult = ParallelReviewMergeResult(findings = emptyList(), formattedOutput = "NO_FINDINGS"),
+      lane1 = ParallelReviewLaneStatus(agentId = request.agent1Id, success = true),
+      lane2 = ParallelReviewLaneStatus(agentId = request.agent2Id.orEmpty(), success = true),
+    )
+  }
+
   private fun canonicalRange(request: ParallelCodeReviewRequest): Pair<String, String> {
     val head = canonicalRevision(request.headRevision ?: HEAD_REVISION, request.repoRoot)
     val base = request.baseRevision?.let { canonicalRevision(it, request.repoRoot) } ?: when (request.scope) {
@@ -1034,8 +1071,11 @@ class ParallelCodeReviewRunner(
   }
 
   private fun resolveDiff(request: ParallelCodeReviewRequest, revisions: Pair<String, String>): String {
+    if (request.suppliedDiff != null) {
+      return request.suppliedDiff
+    }
     val (base, head) = revisions
-    val diffText = request.suppliedDiff ?: request.suppliedDiffPath?.let { path ->
+    val diffText = request.suppliedDiffPath?.let { path ->
       diffResolver.readDiff(path, MAX_SUPPLIED_DIFF_BYTES)
         ?: throw DiffResolutionException(
           "--diff-file must name a readable, non-empty regular file no larger than $MAX_SUPPLIED_DIFF_BYTES bytes.",
@@ -1043,11 +1083,7 @@ class ParallelCodeReviewRunner(
     } ?: when (request.scope) {
       ParallelReviewScope.STAGED -> runDiff(listOf("git", "diff", "--cached"), request.repoRoot)
       ParallelReviewScope.UNSTAGED -> runDiff(listOf("git", "diff"), request.repoRoot)
-      // The aggregate delta spans the same canonical range the commit sequence does, so the
-      // base-to-head equivalence fact compares two views of one range rather than two ranges.
       ParallelReviewScope.BRANCH -> runDiff(listOf("git", "diff", base, head), request.repoRoot)
-      // Falls back to the PR's own diff when its commits are not in the local object store, which
-      // is the case the SYNTHETIC_AGGREGATE_PR_DIFF unit exists for.
       ParallelReviewScope.PR -> diffResolver.runProcess(listOf("git", "diff", base, head), request.repoRoot)
         ?: runDiff(listOf("gh", "pr", "diff"), request.repoRoot)
     }
@@ -1129,7 +1165,7 @@ class ParallelCodeReviewRunner(
           issueKey = "code-review-parallel",
           repoRoot = request.repoRoot,
           timeout = request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes,
-          promptOverride = launch.prompt,
+          promptOverride = request.withSelectedAgentAddons(launch.prompt),
           modelOverride = modelOverride,
         ),
       ),

@@ -77,7 +77,7 @@ class FeatureTaskRuntimeAuditEntryGateTest {
     val report = harness.runner.run(harness.request())
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report, report.toString())
-    val launched = harness.launchedPhaseOrder()
+    val launched = harness.launchOrder()
     assertTrue(launched.contains("audit"), "the gating audit must run on the reordered graph")
     assertTrue(
       launched.indexOf("audit") < launched.indexOf("review"),
@@ -87,18 +87,14 @@ class FeatureTaskRuntimeAuditEntryGateTest {
 
   @Test
   fun `a migration resume runs the relaunched review as pass one and completes its remediation cycle`() {
-    val reviewPrompts = mutableListOf<String>()
     var firstRelaunchedReviewPassNumber: Int? = null
     lateinit var harness: RunnerHarness
     harness = runnerHarness(
       agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = reviewFixRuntimeConfig(2),
       launcher = RuntimeRecordingLauncher { request ->
         val prompt = requireNotNull(request.skillRunRequest.promptOverride)
         when (phaseIdFromPrompt(prompt)) {
-          "review" -> {
-            reviewPrompts += prompt
-            facts(reviewFindingsOutput(changesRequested = reviewPrompts.size == 1))
-          }
           "implement_fix" -> {
             firstRelaunchedReviewPassNumber = harness.recorder
               .loadPhaseRecords(WORKFLOW_ID)
@@ -115,18 +111,8 @@ class FeatureTaskRuntimeAuditEntryGateTest {
 
     val report = harness.runner.run(harness.request())
 
-    val launched = harness.launchedPromptPhaseOrder()
-    assertMigrationRemediationLaunchOrder(launched)
+    assertMigrationRemediationLaunchOrder(harness.launchOrder())
     assertEquals(1, firstRelaunchedReviewPassNumber)
-    assertFalse(
-      reviewPrompts[0].contains(PASS_TWO_REMEDIATION_SCOPE),
-      "the gate-invalidated review must relaunch as pass one, not inherit the pre-reorder pass number",
-    )
-    assertContains(reviewPrompts[1], PASS_TWO_REMEDIATION_SCOPE)
-    assertFalse(
-      reviewPrompts[1].contains(FRESH_IMPLEMENT_FIX_MARKER),
-      "the verification review must use runtime-derived changed paths rather than an agent-authored marker",
-    )
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     val reviewRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
     assertEquals(2, reviewRecord.reviewPassNumber)
@@ -164,7 +150,7 @@ class FeatureTaskRuntimeAuditEntryGateTest {
     assertEquals(1, harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty().getValue("review").reviewPassNumber)
     assertTrue(
       harness.launchedPromptPhaseOrder().none { it == "validate" } ||
-        harness.launchedPromptPhaseOrder().indexOf("review") < harness.launchedPromptPhaseOrder().indexOf("validate"),
+        harness.launchOrder().indexOf("review") < harness.launchOrder().indexOf("validate"),
       "validation must remain behind the replacement review",
     )
   }

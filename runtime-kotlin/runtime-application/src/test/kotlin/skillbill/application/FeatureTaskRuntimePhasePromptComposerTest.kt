@@ -56,9 +56,9 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       codeReviewMode = CodeReviewExecutionMode.INLINE,
     )
 
-    assertContains(prompt, "bill-code-review mode:inline")
-    assertContains(prompt, "parallel:claude")
-    assertContains(prompt, "must not launch parallel review recursively")
+    assertContains(prompt, "The runtime owns this review")
+    assertFalse(prompt.contains("Run `bill-code-review"))
+    assertFalse(prompt.contains("parallel:claude"))
   }
 
   @Test
@@ -347,7 +347,8 @@ class FeatureTaskRuntimePhasePromptComposerTest {
         codeReviewMode = mode,
       )
 
-      assertContains(prompt, "bill-code-review mode:${mode.wireValue}")
+      assertFalse(prompt.contains("Run `bill-code-review"))
+      assertFalse(prompt.contains("bill-code-review mode:${mode.wireValue}"))
     }
   }
 
@@ -383,7 +384,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       ),
     )
 
-    assertContains(prompt, "bill-code-review mode:inline")
+    assertFalse(prompt.contains("bill-code-review mode:inline"))
     assertContains(prompt, "context:feature-remediation")
     assertContains(prompt, "review_scope: branch_diff")
     // SKILL-142 AC-012 / SKILL-178: pass two is bounded to all findings addressed union the

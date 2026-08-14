@@ -196,12 +196,7 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
     val reviewPrompts = phaseLauncher.requests
       .mapNotNull { it.skillRunRequest.promptOverride }
       .filter { it.contains("Phase: review") }
-    assertEquals(1, reviewPrompts.size)
-    assertContains(reviewPrompts.single(), "bill-code-review mode:inline")
-    assertContains(reviewPrompts.single(), "Combine it with `parallel:claude`")
-    assertContains(reviewPrompts.single(), "durable base `${"0".repeat(40)}`")
-    assertContains(reviewPrompts.single(), "committed, staged, unstaged, and owned untracked changes")
-    assertContains(reviewPrompts.single(), "Do not use `origin/main...HEAD`")
+    assertEquals(emptyList(), reviewPrompts, "runtime-owned review must not launch a review-phase agent")
     assertEquals(CodeReviewExecutionMode.INLINE, runtime.runInvariantsStore.resolve(workflowId)?.codeReviewMode)
     assertTrue(outcomes.acknowledgedReviewPasses.all { (_, passNumber) -> passNumber <= 2 })
   }
@@ -219,10 +214,7 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
       parity.childReports.last(),
       parity.authoritativeOutcome(),
     ).reviewComposition
-    assertEquals(1, reviews.size)
-    assertContains(reviews.single(), "bill-code-review mode:inline|parallel:claude")
-    assertContains(reviews.single(), "durable base `${"0".repeat(40)}`")
-    assertContains(reviews.single(), "committed, staged, unstaged")
+    assertEquals(emptyList(), reviews, "runtime-owned review does not compose a review-phase agent prompt")
   }
 
   @Test

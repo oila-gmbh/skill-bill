@@ -45,6 +45,7 @@ class ReviewClaimVerificationRunner(
     repoRoot: Path,
     timeout: Duration,
     modelOverride: String? = null,
+    promptSuffix: String = "",
   ): ReviewClaimVerificationOutcome {
     if (packet == null) {
       return ReviewClaimVerificationOutcome(
@@ -83,6 +84,7 @@ class ReviewClaimVerificationRunner(
         modelOverride = modelOverride,
         recordedAt = recordedAt,
         envelopes = envelopes,
+        promptSuffix = promptSuffix,
       )
     }
     return ReviewClaimVerificationOutcome(
@@ -104,6 +106,7 @@ class ReviewClaimVerificationRunner(
     modelOverride: String?,
     recordedAt: String,
     envelopes: MutableList<Map<String, Any?>>,
+    promptSuffix: String,
   ): ReviewFindingVerdict {
     val region = citedRegionOf(finding)
       ?: return unresolved(finding, recordedAt, "finding has no cited file:line region")
@@ -129,7 +132,7 @@ class ReviewClaimVerificationRunner(
     }
     envelopeValidator.validate(envelope, "review verification launch for ${finding.fNumber}")
     envelopes += envelope
-    val prompt = verificationPrompt(launch)
+    val prompt = appendPromptSuffix(verificationPrompt(launch), promptSuffix)
     val outcome = launcher.launch(
       GoalRunnerSubtaskLaunchRequest(
         invokedAgentId = brokerId,
@@ -183,6 +186,11 @@ class ReviewClaimVerificationRunner(
   companion object {
     const val ISSUE_KEY: String = "code-review-verification"
   }
+}
+
+internal fun appendPromptSuffix(prompt: String, suffix: String): String {
+  if (suffix.isEmpty()) return prompt
+  return prompt.trimEnd() + "\n\n" + suffix
 }
 
 internal fun citedRegionOf(finding: ParallelReviewMergedFinding): ReviewCitedRegion? {

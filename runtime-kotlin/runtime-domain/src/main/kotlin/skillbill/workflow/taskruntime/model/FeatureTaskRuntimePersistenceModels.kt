@@ -482,6 +482,7 @@ data class FeatureTaskRuntimePhaseRecord(
    */
   val launchedModel: String? = null,
   val launchedEffort: String? = null,
+  val reviewRunId: String? = null,
 ) {
   init {
     require(phaseId.isNotBlank()) { "FeatureTaskRuntimePhaseRecord.phaseId must be non-blank." }
@@ -510,10 +511,13 @@ data class FeatureTaskRuntimePhaseRecord(
     }
     launchedEffort?.let { effort ->
       require(effort.isNotBlank()) { "FeatureTaskRuntimePhaseRecord.launchedEffort must be non-blank when present." }
-      // An effort without a model is unrepresentable rather than merely odd: every reader keys the
-      // pair off the model, so a lone effort would decode cleanly and then be silently discarded.
       require(launchedModel != null) {
         "FeatureTaskRuntimePhaseRecord.launchedEffort requires launchedModel; the launch pair moves as a unit."
+      }
+    }
+    reviewRunId?.let { runId ->
+      require(phaseId == "review" && runId.isNotBlank()) {
+        "FeatureTaskRuntimePhaseRecord.reviewRunId must be non-blank and present only for review."
       }
     }
   }
@@ -548,6 +552,7 @@ data class FeatureTaskRuntimePhaseRecord(
   private fun MutableMap<String, Any?>.putLaunchPair() {
     launchedModel?.let { put("launched_model", it) }
     launchedEffort?.let { put("launched_effort", it) }
+    reviewRunId?.let { put("review_run_id", it) }
   }
 
   companion object {
@@ -590,6 +595,7 @@ data class FeatureTaskRuntimePhaseRecord(
           },
           launchedModel = raw.optionalStringField("launched_model"),
           launchedEffort = raw.optionalStringField("launched_effort"),
+          reviewRunId = raw.optionalStringField("review_run_id"),
         )
       } catch (_: InvalidWorkflowStateSchemaError) {
         incompatiblePhaseRecord()
@@ -608,7 +614,7 @@ data class FeatureTaskRuntimePhaseRecord(
         "finished_at", "duration_millis", "output_artifact", "blocked_reason",
         "failure_disposition", "file_manifest_before", "file_manifest_after", "file_manifest_introduced",
         "loop_id", "edge_iteration", "review_pass_number", "rejected_output",
-        "repair_evidence", "launched_model", "launched_effort",
+        "repair_evidence", "launched_model", "launched_effort", "review_run_id",
       )
       val missing = required - raw.keys
       val unknown = raw.keys - allowed

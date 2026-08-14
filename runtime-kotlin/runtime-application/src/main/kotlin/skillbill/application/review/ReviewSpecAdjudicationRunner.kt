@@ -44,6 +44,7 @@ class ReviewSpecAdjudicationRunner(
     repoRoot: Path,
     timeout: Duration,
     modelOverride: String? = null,
+    promptSuffix: String = "",
   ): ReviewSpecAdjudicationOutcome {
     if (projection == null) {
       return ReviewSpecAdjudicationOutcome(verdicts = emptyList(), skipReason = SPEC_CONTEXT_NONE)
@@ -92,7 +93,7 @@ class ReviewSpecAdjudicationRunner(
         is PreparedAdjudication.Rejected -> job.verdict
         is PreparedAdjudication.Ready -> {
           envelopes += job.envelope
-          launchOne(job, repoRoot, timeout, modelOverride, recordedAt)
+          launchOne(job, repoRoot, timeout, modelOverride, recordedAt, promptSuffix)
         }
       }
     }
@@ -158,8 +159,9 @@ class ReviewSpecAdjudicationRunner(
     timeout: Duration,
     modelOverride: String?,
     recordedAt: String,
+    promptSuffix: String,
   ): ReviewFindingVerdict {
-    val prompt = adjudicationPrompt(job.launch)
+    val prompt = appendPromptSuffix(adjudicationPrompt(job.launch), promptSuffix)
     val outcome = launcher.launch(
       GoalRunnerSubtaskLaunchRequest(
         invokedAgentId = job.launch.brokerId,

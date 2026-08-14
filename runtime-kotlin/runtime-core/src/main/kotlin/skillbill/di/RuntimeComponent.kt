@@ -35,6 +35,7 @@ import skillbill.application.goalrunner.WorkflowGoalRunnerOutcomeStore
 import skillbill.application.install.ExternalAddonOverlayService
 import skillbill.application.install.InstallService
 import skillbill.application.learning.LearningService
+import skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver
 import skillbill.application.review.ParallelCodeReviewRunner
 import skillbill.application.review.ReviewService
 import skillbill.application.review.ReviewSnapshotPruneService
@@ -785,6 +786,11 @@ abstract class RuntimeComponent(
   @Provides
   @JvmSynthetic
   internal fun checkedOutBranchSource(source: FileSystemCheckedOutBranchSource): CheckedOutBranchSource = source
+
+  @Provides
+  @JvmSynthetic
+  internal fun featureTaskRuntimeReviewDriver(runner: ParallelCodeReviewRunner): FeatureTaskRuntimeReviewDriver =
+    FeatureTaskRuntimeReviewDriver(runner::run)
 
   abstract val parallelCodeReviewRunner: ParallelCodeReviewRunner
 

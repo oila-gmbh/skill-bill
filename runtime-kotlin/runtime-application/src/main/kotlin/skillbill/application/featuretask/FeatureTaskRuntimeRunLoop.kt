@@ -17,6 +17,7 @@ import skillbill.application.featuretask.validation.model.ValidationGateCycleRes
 import skillbill.application.featuretask.validation.model.ValidationGateCycleTerminalOutcome
 import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
 import skillbill.application.model.FeatureTaskRuntimeImplementationContinuation
+import skillbill.application.model.ParallelCodeReviewResult
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.application.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.model.FeatureTaskRuntimePlanningStopDecision
@@ -2358,6 +2359,13 @@ internal class FeatureTaskRuntimeRunLoop(
     preLaunchBlock(run, state, observability)?.let { return it }
     return when (val prepared = prepareGoalReviewRun(run, observability)) {
       is GoalReviewRunReady -> {
+        if (run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) {
+          return runDeclaredReviewDriverCycle(
+            prepared.run,
+            state,
+            observability,
+          )
+        }
         if (run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE) {
           return runDeclaredValidationGateCycle(
             prepared.run,
@@ -2856,6 +2864,199 @@ internal class FeatureTaskRuntimeRunLoop(
       disposition != null -> disposition.retryOnResume
       else -> FeatureTaskRuntimePhaseWorkflowDefinition.retriesOnInvalidOutput(phaseId)
     }
+  }
+
+  private fun runDeclaredReviewDriverCycle(
+    run: PhaseRun,
+    state: FeatureTaskRuntimeRunState,
+    observability: FeatureTaskRuntimeRunObservability,
+  ): PhaseOutcome {
+    val input = run.goalReviewInput
+      ?: return PhaseOutcome.blocked("Runtime-owned review is missing the child-owned review input.")
+    val iteration = state.nextIteration(run.phaseId)
+    val passNumber = reviewPassNumber(run, state) ?: 1
+    val pinnedMode = run.request.runInvariants.codeReviewMode
+    val resolution = FeatureTaskRuntimeReviewPassSequence.resolveForPass(pinnedMode, passNumber)
+    val reviewRunId = state.recordFor(run.phaseId)?.reviewRunId
+      ?.takeIf(String::isNotBlank)
+      ?: FeatureTaskRuntimeReviewEnvelope.mintReviewRunId()
+    persistPhase(
+      run,
+      iteration,
+      STATUS_RUNNING,
+      finished = false,
+      outputArtifact = null,
+      reviewRunId = reviewRunId,
+    )
+    val checkpoint = gitOperations.repositoryFingerprint(run.request.repoRoot).value
+      .takeIf(String::isNotBlank)
+      ?: return PhaseOutcome.blocked(
+        "Runtime-owned review could not resolve a repository checkpoint fingerprint.",
+      )
+    val driverRequest = FeatureTaskRuntimeReviewDriverMapper.request(
+      input = input,
+      runInvariants = run.request.runInvariants,
+      agent1Id = run.resolvedAgent.resolvedAgentId,
+      parallelReviewAgent = run.request.parallelReviewAgent,
+      passNumber = passNumber,
+      pinnedMode = pinnedMode,
+      repoRoot = run.request.repoRoot,
+      timeout = run.request.timeout,
+      reviewRunId = reviewRunId,
+      agentAddonSelection = run.request.agentAddonSelection,
+    )
+    observability.started(
+      run.phaseId,
+      run.resolvedAgent.resolvedAgentId,
+      iteration,
+      run.modelDirective,
+      FeatureTaskRuntimePhaseStartReentry.FIRST_VISIT,
+    )
+    val result = try {
+      phaseGates.reviewDriver.run(driverRequest)
+    } catch (error: skillbill.application.model.DiffResolutionException) {
+      return blockAndPersistInPhase(
+        run,
+        iteration,
+        "Runtime-owned review could not resolve the child-owned diff: ${error.message.orEmpty()}",
+        observability,
+      )
+    } catch (error: Exception) {
+      return blockAndPersistInPhase(
+        run,
+        iteration,
+        "Runtime-owned review failed: ${error.message.orEmpty()}",
+        observability,
+        failureDisposition = FeatureTaskRuntimeFailureDisposition.RETRYABLE,
+      )
+    }
+    failedReviewLaneReason(result)?.let { reason ->
+      return blockAndPersistInPhase(
+        run,
+        iteration,
+        reason,
+        observability,
+        failureDisposition = FeatureTaskRuntimeFailureDisposition.RETRYABLE,
+      )
+    }
+    val cycle = FeatureTaskRuntimeReviewDriverCycle.assemble(
+      result = result,
+      request = driverRequest,
+      passNumber = passNumber,
+      resolvedTier = resolution.resolvedTier,
+      repositoryFingerprint = checkpoint,
+      blockerDispositions = reviewBlockerDispositions(
+        run,
+        passNumber,
+        result,
+        reviewRunId,
+        resolution.resolvedTier,
+      ),
+    )
+    return settleRuntimeOwnedReview(run, iteration, cycle.outputText, observability)
+  }
+
+  private fun failedReviewLaneReason(result: ParallelCodeReviewResult): String? {
+    val failed = listOf(result.lane1, result.lane2).filter { lane ->
+      lane.agentId.isNotBlank() && !lane.success
+    }
+    if (failed.isEmpty()) return null
+    val detail = failed.first().failureReason?.takeIf(String::isNotBlank) ?: "lane failed"
+    return "Feature-task-runtime phase 'review' $detail"
+  }
+
+  private fun reviewBlockerDispositions(
+    run: PhaseRun,
+    passNumber: Int,
+    result: ParallelCodeReviewResult,
+    reviewRunId: String,
+    resolvedTier: skillbill.workflow.model.CodeReviewExecutionMode,
+  ): List<skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition> {
+    if (passNumber < 2) return emptyList()
+    val prior = recorder.fetchUnaddressedLedger(run.request.workflowId, run.request.dbPathOverride)
+    if (prior.isEmpty()) return emptyList()
+    val continuation = run.request.goalContinuation
+    val envelope = FeatureTaskRuntimeReviewEnvelope.envelopeMap(
+      FeatureTaskRuntimeReviewEnvelope.assemble(
+        result = result,
+        reviewRunId = reviewRunId,
+        passNumber = passNumber,
+        resolvedTier = resolvedTier,
+        repositoryFingerprint = "disposition-preview",
+      ),
+    )
+    val verdicts = recorder.recordedFindingVerdicts(envelope, run.request.dbPathOverride)
+    val current = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
+      output = envelope,
+      issueKey = continuation?.parentIssueKey ?: run.request.issueKey,
+      subtaskId = continuation?.subtaskId ?: 0,
+      workflowId = run.request.workflowId,
+      reviewPassNumber = passNumber,
+      recordedVerdicts = verdicts,
+    )
+    return GoalSubtaskReviewSummaryReducer.refutedBlockerSupersedes(prior, current, verdicts)
+  }
+
+  private fun settleRuntimeOwnedReview(
+    run: PhaseRun,
+    iteration: Int,
+    outputText: String,
+    observability: FeatureTaskRuntimeRunObservability,
+  ): PhaseOutcome {
+    val acceptedOutput = runCatching {
+      outputValidator.validatePhaseOutput(outputText, sourceLabel = run.phaseId).requireAcceptedOutput(run.phaseId)
+    }.getOrElse { error ->
+      return blockAndPersistInPhase(
+        run,
+        iteration,
+        "Runtime-owned review settlement did not validate: ${error.message.orEmpty()}",
+        observability,
+      )
+    }
+    val normalizedOutput = acceptedOutput.normalizedOutput
+    if (isGoalReviewRun(run)) {
+      persistGoalReviewCompletion(
+        run,
+        iteration,
+        normalizedOutput,
+        acceptedOutput.repairEvidence,
+        observability,
+        FeatureTaskRuntimePhaseFileManifest(emptyList(), emptyList()),
+      )?.let { return it }
+    } else {
+      val persisted = recorder.recordCompletedPhase(
+        phaseStateRequest(
+          run,
+          iteration,
+          STATUS_COMPLETED,
+          finished = true,
+          outputArtifact = outputText,
+          normalizedOutput = normalizedOutput,
+          repairEvidence = acceptedOutput.repairEvidence,
+          reviewRunId = state.recordFor(run.phaseId)?.reviewRunId,
+        ),
+        run.request.dbPathOverride,
+      )
+      if (!persisted) {
+        return blockAndPersistInPhase(
+          run,
+          iteration,
+          "Runtime-owned review settlement could not be persisted.",
+          observability,
+          failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+        )
+      }
+    }
+    observability.completed(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
+    return PhaseOutcome.completed(
+      FeatureTaskRuntimePhaseOutput(
+        run.phaseId,
+        iteration,
+        normalizedOutput.canonicalJson,
+        normalizedOutput,
+        acceptedOutput.repairEvidence,
+      ),
+    )
   }
 
   private fun runDeclaredValidationGateCycle(
@@ -5298,9 +5499,19 @@ internal class FeatureTaskRuntimeRunLoop(
     outputArtifact: String?,
     fileManifest: FeatureTaskRuntimePhaseFileManifest? = null,
     launched: LaunchedModelDirective? = null,
+    reviewRunId: String? = null,
   ) {
     val phaseState =
-      phaseStateRequest(run, iteration, status, finished, outputArtifact, fileManifest, launched = launched)
+      phaseStateRequest(
+        run,
+        iteration,
+        status,
+        finished,
+        outputArtifact,
+        fileManifest,
+        launched = launched,
+        reviewRunId = reviewRunId,
+      )
     state.reserveReviewPass(phaseState.reviewPassNumber)
     recorder.recordPhaseState(
       phaseState,
@@ -5319,6 +5530,7 @@ internal class FeatureTaskRuntimeRunLoop(
     repairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence? = null,
     repositoryFingerprint: String? = null,
     launched: LaunchedModelDirective? = null,
+    reviewRunId: String? = null,
   ): FeatureTaskRuntimePhaseStateRequest {
     return FeatureTaskRuntimePhaseStateRequest(
       workflowId = run.request.workflowId,
@@ -5345,6 +5557,7 @@ internal class FeatureTaskRuntimeRunLoop(
       launchedModel = launched?.modelOverride,
       launchedEffort = launched?.persistedEffort,
       launchOutcomeKnown = launched != null,
+      reviewRunId = reviewRunId,
     )
   }
 

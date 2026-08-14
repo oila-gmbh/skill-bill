@@ -325,12 +325,12 @@ object FeatureTaskRuntimePhasePromptComposer {
         "Apply ${scaling.preplanCeremony.promptLabel}. Keep the gate real: identify concrete scope, " +
           "affected boundaries, risks, and unknowns at the requested depth."
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW -> if (remediationReview) {
-        "Apply bill-code-review mode:${CodeReviewExecutionMode.INLINE.wireValue} context:feature-remediation, " +
+        "Runtime-owned review uses mode:${CodeReviewExecutionMode.INLINE.wireValue} context:feature-remediation, " +
           "bounded to the remediation delta: all findings addressed in that round union " +
           "diff(pre-fix tree -> post-fix tree). Do not re-review the subtask's full base-to-current delta."
       } else {
-        "Apply ${scaling.reviewScope.promptLabel}. Keep the review gate real: inspect the implemented " +
-          "change for defects and report concrete file references."
+        "The runtime owns ${scaling.reviewScope.promptLabel}. Keep the review gate real: inspect the implemented " +
+          "change for defects and record concrete file references."
       }
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT ->
         "Apply ${scaling.auditCeremony.promptLabel}. Keep the audit gate real: verify acceptance " +
@@ -390,35 +390,13 @@ object FeatureTaskRuntimePhasePromptComposer {
    * against real ids instead of inventing them, and a disposition is required for every one of them.
    * Empty for pass one and for every non-review phase, so those prompts stay byte-for-byte unchanged.
    */
+  @Suppress("UNUSED_PARAMETER")
   private fun dispositionAddendum(
     briefing: FeatureTaskRuntimePhaseLaunchBriefing,
     reviewPassNumber: Int?,
     priorBlockerFindingIds: List<String>,
   ): String {
-    if (briefing.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW ||
-      (reviewPassNumber ?: 1) < 2
-    ) {
-      return ""
-    }
-    if (priorBlockerFindingIds.isEmpty()) {
-      return "\n    - The prior review pass emitted no Blocker, so no disposition is required: emit\n" +
-        "      produced_outputs.blocker_dispositions as an explicit []."
-    }
-    val example = priorBlockerFindingIds.joinToString(prefix = "[", postfix = "]", separator = ", ") { findingId ->
-      "{ \"finding_id\": \"$findingId\", \"verdict\": \"resolved\", " +
-        "\"evidence\": [\"<the specific changed lines that settle it>\"] }"
-    }
-    return "\n    - This is the RESERVED REMEDIATION PASS. produced_outputs MUST carry a\n" +
-      "      \"blocker_dispositions\" array with EXACTLY ONE entry for EVERY Blocker the prior pass\n" +
-      "      emitted — these ids, all of them, no more and no fewer:\n" +
-      "      ${priorBlockerFindingIds.joinToString()}.\n" +
-      "      Each entry contains finding_id, verdict (exactly one of resolved, unresolved, superseded),\n" +
-      "      and a non-empty evidence array citing the specific changed lines that resolve or fail to\n" +
-      "      resolve it. An unevidenced disposition is rejected at the parse seam. A short list that\n" +
-      "      omits any prior Blocker id is rejected. Major findings are out of disposition scope.\n" +
-      "      ```json\n" +
-      "      { \"blocker_dispositions\": $example }\n" +
-      "      ```"
+    return ""
   }
 
   // Phase-specific addendum to the produced_outputs bullet. Mutating phases (implement, implement_fix)

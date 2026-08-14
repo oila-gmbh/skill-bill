@@ -971,6 +971,14 @@ class FeatureTaskRuntimePhaseRecorder(
     }
   }
 
+  internal fun fetchUnaddressedLedger(
+    workflowId: String,
+    dbOverride: String? = null,
+  ): List<skillbill.goalrunner.model.UnaddressedFinding> =
+    database.transaction(dbOverride) { unitOfWork ->
+      unitOfWork.unaddressedFindings.fetchWorkflowLedger(workflowId)
+    }
+
   internal fun completeGoalReviewPhase(
     completion: GoalReviewPhaseCompletionRequest,
     dbOverride: String? = null,
@@ -1850,6 +1858,7 @@ class FeatureTaskRuntimePhaseRecorder(
       repairEvidence = request.repairEvidence,
       launchedModel = launched.first,
       launchedEffort = launched.second,
+      reviewRunId = request.reviewRunId ?: previous?.reviewRunId,
     )
   }
 
