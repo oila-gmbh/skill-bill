@@ -33,25 +33,7 @@ import kotlin.test.assertTrue
 class VerdictAwareRegisterAndConsumersTest {
   @Test
   fun `a refuted finding stays in the register, leaves the implement_fix projection, and stores claim_verdict`() {
-    val location = "Auth.kt:10"
-    val summary = "Token logged"
     val citation = ReviewFindingCitation("Auth.kt", 10)
-    val merged = ParallelReviewMerger.merge(
-      ParallelReviewLaneResult(
-        "claude",
-        listOf(
-          ParallelReviewRawFinding(
-            ParallelReviewSeverity.BLOCKER,
-            "High",
-            location,
-            summary,
-            repositoryPath = "Auth.kt",
-            line = 10,
-          ),
-        ),
-      ),
-      ParallelReviewLaneResult("codex", emptyList()),
-    )
     val recordedVerdicts = listOf(
       ReviewFindingVerdict(
         stage = ReviewStage.VERIFICATION,
@@ -61,27 +43,13 @@ class VerdictAwareRegisterAndConsumersTest {
         recordedAt = "2026-08-14T00:00:00Z",
       ),
     )
-    val assembled = ParallelReviewMerger.withRecordedVerdicts(merged, recordedVerdicts)
+    val assembled = ParallelReviewMerger.withRecordedVerdicts(tokenLoggedLaneMerge(), recordedVerdicts)
     assertTrue(assembled.formattedOutput.contains("[F-001]"))
     assertTrue(assembled.formattedOutput.contains("Token logged"))
     assertTrue(assembled.formattedOutput.contains("Refuted"))
     assertTrue(assembled.formattedOutput.contains("claim_verdict=refuted"))
 
-    val output = mapOf(
-      "verdict" to FeatureTaskRuntimeVerdict.CHANGES_REQUESTED.wireValue,
-      "produced_outputs" to mapOf(
-        "review_run_id" to "rvw-191",
-        "findings" to listOf(
-          mapOf(
-            "id" to "F-001",
-            "finding_id" to "F-001",
-            "severity" to "blocker",
-            "location" to location,
-            "message" to summary,
-          ),
-        ),
-      ),
-    )
+    val output = refutedFindingProducerOutput()
     val compact = GoalSubtaskReviewSummaryReducer.fromOutput(output, recordedVerdicts)
     val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(output, compact)
     assertTrue(compact.isEmpty())
@@ -100,51 +68,8 @@ class VerdictAwareRegisterAndConsumersTest {
     assertEquals(ReviewClaimVerdict.REFUTED, ledger.single().claimVerdict)
     assertEquals(listOf(citation), ledger.single().citations)
 
-    val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint("reviewed-tree")
-    val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
-      FeatureTaskRuntimeHandoffProjectionInputs(
-        consumerPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
-        declarations = listOf(
-          PhaseHandoffProjectionDeclaration(
-            consumerPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
-            sourceRef = FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(
-              FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
-            ),
-            projectionName = "review_repair_request",
-            projectionContractId =
-              FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REVIEW_REPAIR_REQUEST,
-            projectionContractVersion = "0.1",
-            promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
-            budget = FeatureTaskRuntimeHandoffProjectionBudget.PHASE_RECEIPT,
-            declaredFieldNames = listOf("unresolved_blocker_findings", "repository_checkpoint"),
-            checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
-            required = true,
-          ),
-        ),
-        resolvedUpstream = FeatureTaskRuntimeResolvedUpstreamOutputs(
-          mapOf(
-            FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW to FeatureTaskRuntimePhaseOutput(
-              FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
-              1,
-              """{"produced_outputs":{"findings":[{"finding_id":"F-001","severity":"Blocker",""" +
-                """"location":"Auth.kt:10","message":"Token logged","claim_verdict":"refuted",""" +
-                """"citations":[{"path":"Auth.kt","line":10}]}]}}""",
-            ),
-          ),
-        ),
-        runInvariants = FeatureTaskRuntimeRunInvariants(
-          specReference = ".feature-specs/SKILL-191/spec.md",
-          acceptanceCriteria = listOf("AC-005"),
-          mandatesAndOverrides = emptyList(),
-        ),
-        resolvedCheckpoint = checkpoint,
-        expectedCheckpoint = checkpoint,
-        workflowId = "wftr-1",
-        validationDepth = ValidationDepth.DEFAULT,
-      ),
-    )
     val projected = assertIs<FeatureTaskRuntimeHandoffProjectionValue.TextList>(
-      envelope.projections.single().fields.first().value,
+      implementFixReviewRepairEnvelope(recordedVerdicts).projections.single().fields.first().value,
     )
     assertTrue(projected.items.none { it.contains("F-001") })
     assertFalse(projected.items.any { it.contains("Token logged") })
@@ -206,4 +131,83 @@ class VerdictAwareRegisterAndConsumersTest {
     assertEquals(GoalSubtaskBlockerDispositionVerdict.SUPERSEDED, superseded.single().verdict)
     assertEquals(listOf("Auth.kt:10"), superseded.single().evidence)
   }
+
+  private fun tokenLoggedLaneMerge() = ParallelReviewMerger.merge(
+    ParallelReviewLaneResult(
+      "claude",
+      listOf(
+        ParallelReviewRawFinding(
+          ParallelReviewSeverity.BLOCKER,
+          "High",
+          "Auth.kt:10",
+          "Token logged",
+          repositoryPath = "Auth.kt",
+          line = 10,
+        ),
+      ),
+    ),
+    ParallelReviewLaneResult("codex", emptyList()),
+  )
+
+  private fun refutedFindingProducerOutput(): Map<String, Any?> = mapOf(
+    "verdict" to FeatureTaskRuntimeVerdict.CHANGES_REQUESTED.wireValue,
+    "produced_outputs" to mapOf(
+      "review_run_id" to "rvw-191",
+      "findings" to listOf(
+        mapOf(
+          "id" to "F-001",
+          "finding_id" to "F-001",
+          "severity" to "blocker",
+          "location" to "Auth.kt:10",
+          "message" to "Token logged",
+        ),
+      ),
+    ),
+  )
+
+  private fun implementFixReviewRepairEnvelope(
+    recordedVerdicts: List<ReviewFindingVerdict>,
+  ) = FeatureTaskRuntimeHandoffProjectionValidator.validate(
+    FeatureTaskRuntimeHandoffProjectionInputs(
+      consumerPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
+      declarations = listOf(
+        PhaseHandoffProjectionDeclaration(
+          consumerPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
+          sourceRef = FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(
+            FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+          ),
+          projectionName = "review_repair_request",
+          projectionContractId =
+            FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REVIEW_REPAIR_REQUEST,
+          projectionContractVersion = "0.1",
+          promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
+          budget = FeatureTaskRuntimeHandoffProjectionBudget.PHASE_RECEIPT,
+          declaredFieldNames = listOf("unresolved_blocker_findings", "repository_checkpoint"),
+          checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
+          required = true,
+        ),
+      ),
+      resolvedUpstream = FeatureTaskRuntimeResolvedUpstreamOutputs(
+        mapOf(
+          FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW to FeatureTaskRuntimePhaseOutput(
+            FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+            1,
+            """{"produced_outputs":{"findings":[{"finding_id":"F-001","severity":"Blocker",""" +
+              """"location":"Auth.kt:10","message":"Token logged",""" +
+              """"citations":[{"path":"Auth.kt","line":10}]}]}}""",
+          ),
+        ),
+      ),
+      runInvariants = FeatureTaskRuntimeRunInvariants(
+        specReference = ".feature-specs/SKILL-191/spec.md",
+        acceptanceCriteria = listOf("AC-005"),
+        mandatesAndOverrides = emptyList(),
+      ),
+      resolvedCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint("reviewed-tree"),
+      expectedCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint("reviewed-tree"),
+      workflowId = "wftr-1",
+      validationDepth = ValidationDepth.DEFAULT,
+      recordedFindingVerdicts = recordedVerdicts,
+    ),
+  )
 }

@@ -5,6 +5,7 @@ import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import skillbill.review.ReviewFindingActionability
+import skillbill.review.model.ReviewFindingVerdict
 import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FORBIDDEN_PROJECTION_FIELD_NAMES
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
@@ -561,7 +562,7 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
       )
     }
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REVIEW_REPAIR_REQUEST -> mapOf(
-      "unresolved_blocker_findings" to reviewBlockerProjection(produced),
+      "unresolved_blocker_findings" to reviewBlockerProjection(produced, inputs.recordedFindingVerdicts),
       "repository_checkpoint" to inputs.resolvedCheckpoint?.let { mapOf("fingerprint" to it.fingerprint) },
     )
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.CHANGE_RECEIPT -> mapOf(
@@ -583,10 +584,13 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
     }
   }
 
-  private fun reviewBlockerProjection(produced: Map<String, Any?>): List<Map<String, Any?>> =
+  private fun reviewBlockerProjection(
+    produced: Map<String, Any?>,
+    recordedFindingVerdicts: List<ReviewFindingVerdict>,
+  ): List<Map<String, Any?>> =
     (produced["findings"] as? List<*>).orEmpty()
       .mapNotNull(JsonSupport::anyToStringAnyMap)
-      .filter { finding -> ReviewFindingActionability.isActionable(finding) }
+      .filter { finding -> ReviewFindingActionability.isActionable(finding, recordedFindingVerdicts) }
       .map { finding ->
         val severity = (finding["severity"] as? String)?.takeIf(String::isNotBlank) ?: "blocker"
         mapOf(

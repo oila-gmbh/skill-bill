@@ -597,4 +597,34 @@ class ParallelReviewMergerTest {
       merged.sourceVerdicts.map { it.claimVerdict },
     )
   }
+
+  @Test
+  fun `parser through merge peels structured verdicts and keeps conservative lane provenance`() {
+    val description = "Token logged in the authentication path"
+    val result = ParallelReviewMerger.merge(
+      laneResult(
+        "claude",
+        finding(
+          location = "Auth.kt:10",
+          description = "$description | claim_verdict=refuted | citations=Auth.kt:10",
+        ),
+      ),
+      laneResult(
+        "codex",
+        finding(
+          location = "Auth.kt:10",
+          description = "$description | claim_verdict=unresolved",
+        ),
+      ),
+    )
+    val merged = result.findings.single()
+    assertEquals(description, merged.description)
+    assertEquals(ReviewClaimVerdict.UNRESOLVED, merged.claimVerdict)
+    assertEquals(listOf("claude", "codex"), merged.sourceVerdicts.map { it.laneId })
+    assertEquals(
+      listOf(ReviewClaimVerdict.REFUTED, ReviewClaimVerdict.UNRESOLVED),
+      merged.sourceVerdicts.map { it.claimVerdict },
+    )
+    assertEquals(listOf(ReviewFindingCitation("Auth.kt", 10)), merged.citations)
+  }
 }

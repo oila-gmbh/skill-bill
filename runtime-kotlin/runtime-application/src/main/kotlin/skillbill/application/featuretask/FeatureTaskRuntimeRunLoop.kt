@@ -60,6 +60,7 @@ import skillbill.ports.workflow.runtimePhaseChangedPathsBetweenCommits
 import skillbill.ports.workflow.runtimePhaseHeadCommit
 import skillbill.ports.workflow.stagePaths
 import skillbill.ports.workflow.stagedPaths
+import skillbill.review.model.ReviewFindingVerdict
 import skillbill.telemetry.estimation.estimateTokens
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.model.SpecSource
@@ -4480,6 +4481,25 @@ internal class FeatureTaskRuntimeRunLoop(
     }
   }
 
+  private fun recordedFindingVerdictsForFixHandoff(
+    run: PhaseRun,
+    state: FeatureTaskRuntimeRunState,
+  ): List<ReviewFindingVerdict> {
+    if (
+      run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN_FIX &&
+      run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX
+    ) {
+      return emptyList()
+    }
+    val review = state.outputFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) ?: return emptyList()
+    val envelope = review.normalizedOutput?.envelope
+      ?: JsonSupport.parseObjectOrNull(review.payload)
+        ?.let { JsonSupport.jsonElementToValue(it) }
+        ?.let(JsonSupport::anyToStringAnyMap)
+      ?: return emptyList()
+    return recorder.recordedFindingVerdicts(envelope, request.dbPathOverride)
+  }
+
   /**
    * The shared review evidence for this launch, or null when the phase declares none or nothing is
    * resolvable. Only the phases that declare the projection pay for the resolution.
@@ -5407,7 +5427,7 @@ internal class FeatureTaskRuntimeRunLoop(
       branchIdentity = resolvedBranch,
       baseBranch = resolvedBranchRecord?.baseBranch ?: "main",
       validationDepth = run.request.goalContinuation?.validationDepth ?: ValidationDepth.DEFAULT,
-    )
+    ).copy(recordedFindingVerdicts = recordedFindingVerdictsForFixHandoff(run, state))
     recorder.validateHandoffDeclarations(handoff.projectionDeclarations)
     val sharedEvidence = resolveSharedReviewEvidence(run, repositoryCheckpoint)
     val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(

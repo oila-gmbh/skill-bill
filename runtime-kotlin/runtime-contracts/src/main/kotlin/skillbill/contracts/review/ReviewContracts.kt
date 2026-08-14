@@ -57,7 +57,7 @@ data class NumberedFindingContract(
   val citations: List<Map<String, Any?>> = emptyList(),
   val severityAdjustment: Map<String, String>? = null,
 ) : JsonPayloadContract {
-  override fun toPayload(): Map<String, Any?> = linkedMapOf(
+  override fun toPayload(): Map<String, Any?> = linkedMapOf<String, Any?>(
     "number" to number,
     "finding_id" to findingId,
     "severity" to severity,

@@ -303,21 +303,7 @@ internal object GoalSubtaskReviewSummaryReducer {
     // phase transition already used.
     val advanceBlockingCount = findings.count(GoalSubtaskReviewCompactFinding::blocksAdvance)
     val hasOnlyNonBlockingFindings = findings.isNotEmpty() && advanceBlockingCount == 0
-    val declaredVerdict = (output["verdict"] as? String)?.trim()
-    val changesRequested = declaredVerdict in setOf("needs_fix", FeatureTaskRuntimeVerdict.CHANGES_REQUESTED.wireValue)
-    val verdict = when {
-      advanceBlockingCount > 0 -> FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
-      hasOnlyNonBlockingFindings -> FeatureTaskRuntimeVerdict.APPROVED
-      changesRequested -> FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
-      // The pass vocabulary is closed, so an off-vocabulary verdict cannot be persisted as emitted.
-      // It resolves the way the transition function already resolves it — only changes_requested
-      // remediates, everything else advances — so the durable pass cannot disagree with the loop that
-      // read the same output.
-      declaredVerdict?.isNotBlank() == true -> FeatureTaskRuntimeVerdict.fromWire(declaredVerdict)
-        .takeIf(GOAL_SUBTASK_REVIEW_PASS_VERDICTS::contains)
-        ?: FeatureTaskRuntimeVerdict.APPROVED
-      else -> FeatureTaskRuntimeVerdict.APPROVED
-    }
+    val verdict = reviewPassVerdict(output, findings, advanceBlockingCount, hasOnlyNonBlockingFindings)
     return GoalSubtaskReviewOutputOutcome(
       verdict = verdict,
       unresolvedFindingCount = when {
@@ -328,6 +314,26 @@ internal object GoalSubtaskReviewSummaryReducer {
         else -> 1
       },
     )
+  }
+
+  private fun reviewPassVerdict(
+    output: Map<String, Any?>,
+    findings: List<GoalSubtaskReviewCompactFinding>,
+    advanceBlockingCount: Int,
+    hasOnlyNonBlockingFindings: Boolean,
+  ): FeatureTaskRuntimeVerdict {
+    val declaredVerdict = (output["verdict"] as? String)?.trim()
+    val changesRequested = declaredVerdict in setOf("needs_fix", FeatureTaskRuntimeVerdict.CHANGES_REQUESTED.wireValue)
+    val reportedFindingsWereFiltered = findings.isEmpty() && structuredFindings(output).isNotEmpty()
+    return when {
+      advanceBlockingCount > 0 -> FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
+      hasOnlyNonBlockingFindings || reportedFindingsWereFiltered -> FeatureTaskRuntimeVerdict.APPROVED
+      changesRequested -> FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
+      declaredVerdict?.isNotBlank() == true -> FeatureTaskRuntimeVerdict.fromWire(declaredVerdict)
+        .takeIf(GOAL_SUBTASK_REVIEW_PASS_VERDICTS::contains)
+        ?: FeatureTaskRuntimeVerdict.APPROVED
+      else -> FeatureTaskRuntimeVerdict.APPROVED
+    }
   }
 
   private fun labelFor(finding: Map<String, Any?>, message: String): String {

@@ -1,3 +1,14 @@
+## [2026-08-14] SKILL-191 subtask 6 — Verdict-aware register assembly and consumers
+Areas: runtime-kotlin/{runtime-application/{review,goalrunner,featuretask}, runtime-domain/{review,goalrunner,taskruntime}, runtime-infra-sqlite/{review,goal}, runtime-cli, runtime-contracts/review}
+- Register lines stay `[F-XXX] Severity | Confidence | location | description`; `claim_verdict`, optional `scope_disposition`, citations, and severity adjustment sit beside the line. Findings group as Actionable / Refuted / Unresolved / Out of scope — nothing is dropped.
+- `ReviewFindingActionability` is the single actionable definition (`confirmed`, and when adjudication ran `in_scope` or `spec_deviation`); ledger, triage, compact summary, and `implement_fix` all read it instead of re-deriving judgement. reusable
+- Compact/`implement_fix` projections carry only actionable findings; a refuted finding stays in the register and never opens a remediation round.
+- Under `context:feature-remediation`, a Blocker that stage 1 refuted becomes `superseded` in `blocker_dispositions` with the verification citation as evidence.
+- Coalesced lanes with disagreeing verdicts take the conservative outcome (`unresolved` over `refuted`, `in_scope` over `out_of_scope_preexisting`) and keep both source verdicts with lane provenance.
+- Limitation: telemetry stays with subtask 7; review `produced_outputs.findings` is unchanged beyond the added verdict fields.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-08-14] SKILL-191 subtask 5 — Stage 2 spec adjudication runner
 Areas: runtime-kotlin/{runtime-application/review, runtime-domain/review/context/model, runtime-infra-sqlite}
 - After stage 1, `ReviewSpecAdjudicationRunner` launches one worker per `confirmed`/`unresolved` finding with that finding, its stage-1 verdict, the spec intent projection, and cited region; `refuted` findings are never re-litigated.
