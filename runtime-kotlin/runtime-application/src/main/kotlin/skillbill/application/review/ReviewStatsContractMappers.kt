@@ -23,6 +23,13 @@ fun ReviewStatsResult.toReviewStatsPayload(): JsonPayloadContract = MapPayloadCo
     put("health", health.toPayload())
     put("review_run_id", reviewRunId)
     put("db_path", dbPath)
+    stageMetrics?.let { putAll(it.toWireMap()) }
+    if (stageMetricsByTier.isNotEmpty()) {
+      put(
+        "stage_metrics_by_tier",
+        stageMetricsByTier.mapValues { (_, metrics) -> metrics.toWireMap() },
+      )
+    }
   },
 )
 

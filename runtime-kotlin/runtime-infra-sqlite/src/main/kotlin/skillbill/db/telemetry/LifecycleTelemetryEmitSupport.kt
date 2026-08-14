@@ -1,6 +1,8 @@
 package skillbill.db.telemetry
 
 import skillbill.contracts.JsonSupport
+import skillbill.review.model.REVIEW_STAGE_DEGRADATION_EVENT_NAME
+import skillbill.review.model.ReviewStageDegradationMeasurement
 import java.sql.Connection
 
 fun emitFeatureTaskRuntimeStarted(connection: Connection, sessionId: String, level: String) {
@@ -53,6 +55,26 @@ fun emitFeatureVerifyFinished(connection: Connection, sessionId: String, level: 
 
 fun enqueueTelemetry(connection: Connection, eventName: String, payload: Map<String, Any?>) {
   TelemetryOutboxStore(connection).enqueue(eventName, JsonSupport.mapToJsonString(payload))
+}
+
+fun reviewStageDegradationExists(
+  connection: Connection,
+  record: ReviewStageDegradationMeasurement,
+): Boolean = connection.prepareStatement(
+  """
+  SELECT 1 FROM telemetry_outbox
+  WHERE event_name = ?
+    AND json_extract(payload_json, '$.review_run_id') = ?
+    AND json_extract(payload_json, '$.seam') = ?
+    AND json_extract(payload_json, '$.reason') = ?
+  LIMIT 1
+  """.trimIndent(),
+).use { statement ->
+  statement.setString(1, REVIEW_STAGE_DEGRADATION_EVENT_NAME)
+  statement.setString(2, record.reviewRunId)
+  statement.setString(3, record.seam)
+  statement.setString(4, record.reason.wireValue)
+  statement.executeQuery().use { it.next() }
 }
 
 private data class LifecycleEmitRequest(

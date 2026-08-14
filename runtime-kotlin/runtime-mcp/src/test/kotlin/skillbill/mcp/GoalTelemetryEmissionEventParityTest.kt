@@ -54,6 +54,7 @@ class GoalTelemetryEmissionEventParityTest {
     assertGoalSegmentBranches()
     assertGoalTerminalBranches()
     assertReviewFinishedBranch()
+    assertReviewStageDegradationBranch()
   }
 
   private fun assertGoalSegmentBranches() {
@@ -164,6 +165,28 @@ class GoalTelemetryEmissionEventParityTest {
         "execution_mode",
         "review_finished_at",
         "learnings",
+        "verification",
+        "adjudication",
+        "refutation_rate_by_stage",
+        "rejected_verdict_counts",
+        "severity_adjustment_counts",
+        "resolved_tier",
+      ),
+    )
+  }
+
+  private fun assertReviewStageDegradationBranch() {
+    assertBranch(
+      branchName = "skillbillReviewStageDegradationEvent",
+      eventName = "skillbill_review_stage_degradation",
+      expectedRequired = setOf(
+        "event_name",
+        "contract_version",
+        "review_run_id",
+        "seam",
+        "expected",
+        "actual",
+        "reason",
       ),
     )
   }
@@ -267,6 +290,22 @@ class GoalTelemetryEmissionEventParityTest {
   }
 
   @Test
+  fun `review_stage_degradation representative envelope validates clean`() {
+    TelemetryEventSchemaValidator.validate(
+      envelope = linkedMapOf(
+        "event_name" to "skillbill_review_stage_degradation",
+        "contract_version" to TELEMETRY_EVENT_CONTRACT_VERSION,
+        "review_run_id" to "rvw-191",
+        "seam" to "review.spec_intent",
+        "expected" to "resolved",
+        "actual" to "no_spec_found",
+        "reason" to "spec_context_none",
+      ),
+      eventName = "skillbill_review_stage_degradation",
+    )
+  }
+
+  @Test
   fun `review_finished representative envelope validates clean with normalized stack fields`() {
     TelemetryEventSchemaValidator.validate(
       envelope = validReviewFinishedEnvelope(),
@@ -336,6 +375,7 @@ class GoalTelemetryEmissionEventParityTest {
       "goal_finished",
       "goal_issue_finished",
       "skillbill_review_finished",
+      "skillbill_review_stage_degradation",
     ).forEach { name ->
       assertFalse(
         name in toolNames,
@@ -405,7 +445,28 @@ class GoalTelemetryEmissionEventParityTest {
       "execution_mode" to "runtime",
       "review_finished_at" to "2026-06-04T12:01:44Z",
       "learnings" to linkedMapOf("captured" to true),
+      "verification" to emptyStageDistribution(),
+      "adjudication" to emptyStageDistribution(),
+      "refutation_rate_by_stage" to linkedMapOf("verification" to 0.0, "adjudication" to 0.0),
+      "rejected_verdict_counts" to linkedMapOf(
+        "uncited_refutations" to 0,
+        "uncited_downgrades" to 0,
+        "finding_mutations" to 0,
+      ),
+      "severity_adjustment_counts" to linkedMapOf("raised" to 0, "lowered" to 0),
+      "resolved_tier" to "unresolved",
     ).apply {
       overrides.forEach { (key, value) -> put(key, value) }
     }
+
+  private fun emptyStageDistribution(): Map<String, Any?> = linkedMapOf(
+    "claim_verdict" to linkedMapOf("confirmed" to 0, "refuted" to 0, "unresolved" to 0),
+    "scope_disposition" to linkedMapOf(
+      "in_scope" to 0,
+      "out_of_scope_preexisting" to 0,
+      "spec_deviation" to 0,
+      "spec_accepted_tradeoff" to 0,
+    ),
+    "finding_count" to 0,
+  )
 }

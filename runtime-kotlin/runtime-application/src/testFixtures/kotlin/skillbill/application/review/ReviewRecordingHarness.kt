@@ -19,6 +19,7 @@ import skillbill.ports.config.model.ReadRepoLocalConfigResult
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
+import skillbill.ports.persistence.LifecycleTelemetryRepository
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.ReviewRepository
 import skillbill.ports.persistence.UnitOfWork
@@ -91,6 +92,9 @@ class ReviewRecorder {
     Collections.synchronizedMap(mutableMapOf())
 
   @Volatile var durableSpecProjection: ReviewSpecProjectionReference? = null
+
+  val stageDegradations: MutableList<skillbill.review.model.ReviewStageDegradationMeasurement> =
+    Collections.synchronizedList(mutableListOf())
 
   /** The prompts the inline parent lanes were actually launched with. */
   val parentPrompts: List<String>
@@ -311,6 +315,7 @@ private fun recordingDatabase(recorder: ReviewRecorder): DatabaseSessionFactory 
   ) { _, method, _ ->
     when (method.name) {
       "getReviews" -> reviews
+      "getLifecycleTelemetry" -> recordingLifecycleTelemetry(recorder)
       "getDbPath" -> Path.of("/tmp/recording-review.db")
       else -> error("Unexpected unit-of-work call: ${method.name}")
     }
@@ -324,6 +329,45 @@ private fun recordingDatabase(recorder: ReviewRecorder): DatabaseSessionFactory 
     override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork)
   }
 }
+
+private fun recordingLifecycleTelemetry(recorder: ReviewRecorder): LifecycleTelemetryRepository =
+  object : LifecycleTelemetryRepository {
+    override fun reviewStageDegradation(record: skillbill.review.model.ReviewStageDegradationMeasurement) {
+      recorder.stageDegradations += record
+    }
+
+    override fun featureTaskRuntimeStarted(
+      record: skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord,
+      level: String,
+    ) = Unit
+
+    override fun featureTaskRuntimeFinished(
+      record: skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord,
+      level: String,
+    ) = Unit
+
+    override fun qualityCheckStarted(record: skillbill.telemetry.model.QualityCheckStartedRecord, level: String) = Unit
+
+    override fun qualityCheckFinished(record: skillbill.telemetry.model.QualityCheckFinishedRecord, level: String) =
+      Unit
+
+    override fun featureVerifyStarted(record: skillbill.telemetry.model.FeatureVerifyStartedRecord, level: String) =
+      Unit
+
+    override fun featureVerifyFinished(record: skillbill.telemetry.model.FeatureVerifyFinishedRecord, level: String) =
+      Unit
+
+    override fun prDescriptionGenerated(record: skillbill.telemetry.model.PrDescriptionGeneratedRecord, level: String) =
+      Unit
+
+    override fun goalStarted(record: skillbill.telemetry.model.GoalStartedRecord, level: String) = Unit
+
+    override fun goalSubtaskFinished(record: skillbill.telemetry.model.GoalSubtaskFinishedRecord, level: String) = Unit
+
+    override fun goalFinished(record: skillbill.telemetry.model.GoalFinishedRecord, level: String) = Unit
+
+    override fun goalIssueFinished(record: skillbill.telemetry.model.GoalIssueFinishedRecord, level: String) = Unit
+  }
 
 private fun recordingCatalogGateway(manifests: List<PlatformManifest>): ScaffoldCatalogGateway =
   object : ScaffoldCatalogGateway {

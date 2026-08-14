@@ -12,6 +12,7 @@ these seams:
 - a retry, timeout, cap, truncation, or sampling decision
 - a capability that resolves to absent and is skipped
 - spec-intent resolution that records `spec_context: none` (`no_spec_found`, `ambiguous_match`, `not_applicable_scope`) or falls through from an unreadable decomposition manifest to branch-derived glob search; records carry reason, rung, and resolved path only, never spec body
+- a skipped adjudication stage, a verification or adjudication worker that failed to launch or return, and a stage that ended without a reached boundary; each emits `skillbill_review_stage_degradation` with seam, expected, actual, and a closed reason, carrying `review_run_id` only
 - a legacy-record migration, quarantine, or regeneration
 - a reconciliation that repairs drift between durable state and disk
 

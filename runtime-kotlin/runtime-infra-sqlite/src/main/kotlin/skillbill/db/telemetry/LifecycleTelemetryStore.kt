@@ -1,6 +1,8 @@
 package skillbill.db.telemetry
 
 import skillbill.ports.persistence.LifecycleTelemetryRepository
+import skillbill.review.model.REVIEW_STAGE_DEGRADATION_EVENT_NAME
+import skillbill.review.model.ReviewStageDegradationMeasurement
 import skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord
 import skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord
 import skillbill.telemetry.model.FeatureVerifyFinishedRecord
@@ -43,6 +45,11 @@ class LifecycleTelemetryStore(
       "skillbill_feature_task_runtime_diagnostic_degradation",
       record.toTelemetryMap(),
     )
+  }
+
+  override fun reviewStageDegradation(record: ReviewStageDegradationMeasurement) {
+    if (reviewStageDegradationExists(connection, record)) return
+    enqueueTelemetry(connection, REVIEW_STAGE_DEGRADATION_EVENT_NAME, record.toTelemetryMap())
   }
 
   override fun featureTaskRuntimeStarted(record: FeatureTaskRuntimeStartedRecord, level: String) {

@@ -48,6 +48,7 @@ import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.ParallelReviewMerger
 import skillbill.review.ReviewLaneAggregation
 import skillbill.review.ReviewRunLaneResolver
+import skillbill.review.ReviewStageDegradationSelection
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.ReviewExecutionModePolicy
 import skillbill.review.context.ReviewTreeAccounting
@@ -168,6 +169,7 @@ class ParallelCodeReviewRunner(
       initial.request.reviewRunId,
       verificationVerdicts + adjudicationVerdicts,
     )
+    emitReviewStageDegradations(initial.request.reviewRunId)
     val assembled = ParallelReviewMerger.withRecordedVerdicts(result.mergeResult, recordedVerdicts)
     result.accountingSummary?.let { summary ->
       database.transaction { unitOfWork ->
@@ -649,6 +651,19 @@ class ParallelCodeReviewRunner(
           contractVersion = REVIEW_CONTEXT_CONTRACT_VERSION,
         ),
       )
+    }
+  }
+
+  private fun emitReviewStageDegradations(reviewRunId: String?) {
+    if (reviewRunId == null) return
+    database.transaction { unitOfWork ->
+      ReviewStageDegradationSelection.select(
+        reviewRunId = reviewRunId,
+        spec = unitOfWork.reviews.fetchSpecProjectionReference(reviewRunId),
+        boundaries = unitOfWork.reviews.fetchStageBoundaries(reviewRunId),
+        verdicts = unitOfWork.reviews.fetchFindingVerdicts(reviewRunId),
+        claims = unitOfWork.reviews.fetchReviewPassClaims(reviewRunId),
+      ).forEach { unitOfWork.lifecycleTelemetry.reviewStageDegradation(it) }
     }
   }
 

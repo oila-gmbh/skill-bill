@@ -82,6 +82,72 @@ data class ReviewLearningsSummary(
   val entries: List<ReviewLearningEntry>,
 )
 
+data class ReviewStageVerdictDistribution(
+  val confirmed: Int,
+  val refuted: Int,
+  val unresolved: Int,
+  val inScope: Int,
+  val outOfScopePreexisting: Int,
+  val specDeviation: Int,
+  val specAcceptedTradeoff: Int,
+  val findingCount: Int,
+)
+
+data class ReviewRejectedVerdictCounts(
+  val uncitedRefutations: Int,
+  val uncitedDowngrades: Int,
+  val findingMutations: Int,
+)
+
+data class ReviewSeverityAdjustmentCounts(
+  val raised: Int,
+  val lowered: Int,
+)
+
+data class ReviewStageMetrics(
+  val verification: ReviewStageVerdictDistribution,
+  val adjudication: ReviewStageVerdictDistribution,
+  val verificationRefutationRate: Double,
+  val adjudicationRefutationRate: Double,
+  val rejectedVerdictCounts: ReviewRejectedVerdictCounts,
+  val severityAdjustmentCounts: ReviewSeverityAdjustmentCounts,
+  val resolvedTier: String,
+) {
+  fun toWireMap(): Map<String, Any?> = linkedMapOf(
+    "verification" to verification.toWireMap(),
+    "adjudication" to adjudication.toWireMap(),
+    "refutation_rate_by_stage" to linkedMapOf(
+      "verification" to verificationRefutationRate,
+      "adjudication" to adjudicationRefutationRate,
+    ),
+    "rejected_verdict_counts" to linkedMapOf(
+      "uncited_refutations" to rejectedVerdictCounts.uncitedRefutations,
+      "uncited_downgrades" to rejectedVerdictCounts.uncitedDowngrades,
+      "finding_mutations" to rejectedVerdictCounts.findingMutations,
+    ),
+    "severity_adjustment_counts" to linkedMapOf(
+      "raised" to severityAdjustmentCounts.raised,
+      "lowered" to severityAdjustmentCounts.lowered,
+    ),
+    "resolved_tier" to resolvedTier,
+  )
+}
+
+private fun ReviewStageVerdictDistribution.toWireMap(): Map<String, Any?> = linkedMapOf(
+  "claim_verdict" to linkedMapOf(
+    "confirmed" to confirmed,
+    "refuted" to refuted,
+    "unresolved" to unresolved,
+  ),
+  "scope_disposition" to linkedMapOf(
+    "in_scope" to inScope,
+    "out_of_scope_preexisting" to outOfScopePreexisting,
+    "spec_deviation" to specDeviation,
+    "spec_accepted_tradeoff" to specAcceptedTradeoff,
+  ),
+  "finding_count" to findingCount,
+)
+
 data class ReviewFinishedTelemetry(
   val findingStats: ReviewFinishedFindingStats,
   val reviewRunId: String,
@@ -101,6 +167,7 @@ data class ReviewFinishedTelemetry(
   val learnings: ReviewLearningsSummary,
   @OpenBoundaryMap("Schema-bounded review-accounting telemetry payload")
   val reviewContextAccounting: Map<String, Any?>? = null,
+  val stageMetrics: ReviewStageMetrics,
 )
 
 data class FeatureTaskRuntimeWorkflowStats(

@@ -55,6 +55,7 @@ class TelemetryEventInputSchemaParityTest {
       "goal_finished",
       "goal_issue_finished",
       "skillbill_review_finished",
+      "skillbill_review_stage_degradation",
     )
 
   private val schemaNode: JsonNode by lazy {

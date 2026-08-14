@@ -120,7 +120,10 @@ class TriageCommand(
 class ReviewStatsCommand(
   private val service: ReviewService,
   private val state: CliRunState,
-) : DocumentedCliCommand("stats", "Show aggregate or per-run review acceptance metrics.") {
+) : DocumentedCliCommand(
+  "stats",
+  "Show aggregate or per-run review acceptance metrics, including per-stage verdict distribution and refutation rate.",
+) {
   private val runId by option("--run-id", help = "Optional review run id to scope stats to one review.")
   private val format by formatOption()
 
