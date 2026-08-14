@@ -461,6 +461,11 @@ internal object DatabaseMigrations {
         name = "rekey-diagnostic-evidence-by-repair-turn",
         operation = ::rekeyDiagnosticEvidenceByRepairTurn,
       ),
+      DatabaseMigration(
+        version = 30,
+        name = "add-review-run-stage-state",
+        operation = DatabaseReviewColumnMigrations::ensureReviewStageStateTables,
+      ),
     ).also(::requireDeterministicMigrations)
 
   fun apply(connection: Connection) {

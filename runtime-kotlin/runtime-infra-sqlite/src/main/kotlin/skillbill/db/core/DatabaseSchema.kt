@@ -33,6 +33,9 @@ internal object DatabaseSchema {
       "telemetry_local_secrets",
       "unaddressed_findings",
       "review_finding_outcomes",
+      "review_run_finding_verdicts",
+      "review_run_stage_boundaries",
+      "review_run_spec_projections",
       "rejected_output_diagnostics",
       "producer_output_evidence",
     )
@@ -59,6 +62,8 @@ internal object DatabaseSchema {
       "idx_review_finding_outcomes_run",
       "idx_rejected_output_diagnostics_selector",
       "idx_review_run_lanes_pack_area",
+      "idx_review_run_finding_verdicts_run",
+      "idx_review_run_stage_boundaries_run",
       "idx_review_runs_routed_skill_canonical",
       "idx_findings_lane",
     )
@@ -576,5 +581,6 @@ internal object DatabaseSchema {
         ON feature_task_workflows(updated_at DESC)
       """.trimIndent(),
     ) + DatabaseReviewLedgerSchema.reviewRunLaneStatements +
-      DatabaseReviewLedgerSchema.reviewFindingOutcomeStatements
+      DatabaseReviewLedgerSchema.reviewFindingOutcomeStatements +
+      DatabaseReviewLedgerSchema.reviewStageStateStatements
 }

@@ -1,8 +1,11 @@
 package skillbill.ports.persistence
 
 import skillbill.ports.persistence.model.ReviewIntegrationPassRecord
+import skillbill.review.model.ReviewFindingVerdict
 import skillbill.review.model.ReviewLaneEffectivenessRow
 import skillbill.review.model.ReviewRunLane
+import skillbill.review.model.ReviewSpecProjectionReference
+import skillbill.review.model.ReviewStageBoundary
 
 /**
  * The durable completeness surface of a review run: which lanes the composed plan launched, which
@@ -40,6 +43,18 @@ interface ReviewRunCompletenessRepository {
 
   /** The durable integration state, or null when this run has not settled one yet. */
   fun fetchIntegrationPass(runId: String): ReviewIntegrationPassRecord?
+
+  fun recordFindingVerdicts(runId: String, verdicts: List<ReviewFindingVerdict>)
+
+  fun fetchFindingVerdicts(runId: String): List<ReviewFindingVerdict>
+
+  fun recordStageBoundary(runId: String, boundary: ReviewStageBoundary)
+
+  fun fetchStageBoundaries(runId: String): List<ReviewStageBoundary>
+
+  fun recordSpecProjectionReference(runId: String, reference: ReviewSpecProjectionReference)
+
+  fun fetchSpecProjectionReference(runId: String): ReviewSpecProjectionReference?
 }
 
 /**
@@ -71,5 +86,26 @@ object UnavailableReviewRunCompletenessRepository : ReviewRunCompletenessReposit
   }
 
   override fun fetchIntegrationPass(runId: String): ReviewIntegrationPassRecord? =
+    error("Review run completeness persistence is unavailable.")
+
+  override fun recordFindingVerdicts(runId: String, verdicts: List<ReviewFindingVerdict>) {
+    error("Review run completeness persistence is unavailable.")
+  }
+
+  override fun fetchFindingVerdicts(runId: String): List<ReviewFindingVerdict> =
+    error("Review run completeness persistence is unavailable.")
+
+  override fun recordStageBoundary(runId: String, boundary: ReviewStageBoundary) {
+    error("Review run completeness persistence is unavailable.")
+  }
+
+  override fun fetchStageBoundaries(runId: String): List<ReviewStageBoundary> =
+    error("Review run completeness persistence is unavailable.")
+
+  override fun recordSpecProjectionReference(runId: String, reference: ReviewSpecProjectionReference) {
+    error("Review run completeness persistence is unavailable.")
+  }
+
+  override fun fetchSpecProjectionReference(runId: String): ReviewSpecProjectionReference? =
     error("Review run completeness persistence is unavailable.")
 }

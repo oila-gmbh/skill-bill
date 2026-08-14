@@ -13,7 +13,14 @@ internal object DatabaseReviewColumnMigrations {
     ensureFindingColumns(connection)
     ensureUnaddressedFindingColumns(connection)
     ensureReviewFindingOutcomeColumns(connection)
+    ensureReviewStageStateTables(connection)
     backfillReviewSessionIds(connection)
+  }
+
+  fun ensureReviewStageStateTables(connection: Connection) {
+    DatabaseReviewLedgerSchema.reviewStageStateStatements.forEach { sql ->
+      connection.createStatement().use { statement -> statement.execute(sql) }
+    }
   }
 
   private fun ensureUnaddressedFindingColumns(connection: Connection) {

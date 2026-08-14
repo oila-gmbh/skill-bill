@@ -17,6 +17,7 @@ import skillbill.application.model.UsageValidationException
 import skillbill.application.review.model.ReviewRubricProjection
 import skillbill.application.review.model.ReviewSpecialistLaunchRequest
 import skillbill.application.workflow.repoRoot
+import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunTokenOwnership
@@ -77,6 +78,10 @@ import skillbill.review.model.ReviewCoverageReport
 import skillbill.review.model.ReviewLaneAggregationInput
 import skillbill.review.model.ReviewRunLane
 import skillbill.review.model.ReviewRunLaneSegmentAccountingJson
+import skillbill.review.model.ReviewStage
+import skillbill.review.model.ReviewStageBoundary
+import skillbill.review.model.ReviewStageReached
+import skillbill.review.model.ReviewStageResumeReport
 import skillbill.review.plan.ReviewLaneInclusionPolicy
 import skillbill.review.plan.ReviewLaunchPlanPolicy
 import skillbill.review.plan.ReviewStackRouting
@@ -84,6 +89,7 @@ import skillbill.review.plan.model.ReviewLaunchLane
 import skillbill.review.plan.model.ReviewRoutingChangedFile
 import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Path
+import java.time.Instant
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
@@ -133,9 +139,8 @@ class ParallelCodeReviewRunner(
     val initial = prepareInitialRun(originalRequest)
     val outcomes = runLanes(initial)
     recordLaneDispositions(initial, outcomes)
-    // Specialist completion is settled above; the integration pass is a separate boundary that runs
-    // exactly once afterwards and settles its own durable state below.
     val integration = runIntegrationPass(initial, outcomes)
+    recordReviewStageBoundary(initial.request.reviewRunId, integration)
     val coverage = coverageReport(initial, outcomes, integration)
     val result = parallelResult(
       initial.agent1Id,
@@ -145,6 +150,7 @@ class ParallelCodeReviewRunner(
       coverage,
       initial.compiledLaunchRequests.firstOrNull()?.packet,
       initial.budget,
+      stageResumeReport(initial.request.reviewRunId),
     )
     recordMergedFindingLanes(initial.request.reviewRunId, result)
     result.accountingSummary?.let { summary ->
@@ -431,6 +437,35 @@ class ParallelCodeReviewRunner(
       unitOfWork.reviews.recordIntegrationPass(
         reviewRunId,
         ReviewIntegrationPassRecord(outcome.commitSequenceDigest, outcome.terminalOutcome.wireValue),
+      )
+    }
+  }
+
+  private fun recordReviewStageBoundary(reviewRunId: String?, integration: ReviewIntegrationPassOutcome) {
+    if (reviewRunId == null || !integration.durable) return
+    val lanes = database.transaction { unitOfWork -> unitOfWork.reviews.fetchReviewRunLanes(reviewRunId) }
+    if (lanes.isEmpty() || lanes.any { it.reviewDisposition != ReviewRunLaneResolver.COMPLETE_DISPOSITION }) {
+      return
+    }
+    database.transaction { unitOfWork ->
+      unitOfWork.reviews.recordStageBoundary(
+        reviewRunId,
+        ReviewStageBoundary(
+          stage = ReviewStage.REVIEW,
+          reached = ReviewStageReached.REACHED,
+          recordedAt = Instant.now().toString(),
+          contractVersion = REVIEW_CONTEXT_CONTRACT_VERSION,
+        ),
+      )
+    }
+  }
+
+  private fun stageResumeReport(reviewRunId: String?): ReviewStageResumeReport? {
+    if (reviewRunId == null) return null
+    return database.transaction { unitOfWork ->
+      ReviewStageResumeSelection.select(
+        unitOfWork.reviews.fetchStageBoundaries(reviewRunId),
+        unitOfWork.reviews.fetchFindingVerdicts(reviewRunId),
       )
     }
   }
@@ -1121,6 +1156,7 @@ private fun parallelResult(
   coverage: ReviewCoverageReport?,
   packet: ReviewContextPacket?,
   budget: ReviewContextBudgetPolicy,
+  stageResume: ReviewStageResumeReport?,
 ): ParallelCodeReviewResult {
   // A lane's own `findings` already carries the right value, so the `success` check guards only the
   // raw-output fallback: re-parsing a failed run's output would surface truncated or error text as
@@ -1148,6 +1184,7 @@ private fun parallelResult(
       ?.withCommitFocusedAccounting(packet, budget, integration, coverage),
     integration = integration,
     coverage = coverage,
+    stageResume = stageResume,
   )
 }
 

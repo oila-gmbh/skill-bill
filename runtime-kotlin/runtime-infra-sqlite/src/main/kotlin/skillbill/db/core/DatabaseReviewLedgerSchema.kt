@@ -83,4 +83,63 @@ internal object DatabaseReviewLedgerSchema {
         ON review_finding_outcomes(review_run_id, finding_id)
       """.trimIndent(),
     )
+
+  val reviewStageStateStatements: List<String> =
+    listOf(
+      """
+      CREATE TABLE IF NOT EXISTS review_run_finding_verdicts (
+        review_run_id TEXT NOT NULL,
+        finding_id TEXT NOT NULL,
+        stage TEXT NOT NULL CHECK (stage IN ('verification', 'adjudication')),
+        claim_verdict TEXT NOT NULL CHECK (claim_verdict IN ('confirmed', 'refuted', 'unresolved')),
+        scope_disposition TEXT CHECK (
+          scope_disposition IS NULL OR scope_disposition IN (
+            'in_scope', 'out_of_scope_preexisting', 'spec_deviation', 'spec_accepted_tradeoff'
+          )
+        ),
+        citations TEXT NOT NULL DEFAULT '',
+        severity_adjustment_direction TEXT CHECK (
+          severity_adjustment_direction IS NULL OR severity_adjustment_direction IN ('raise', 'lower')
+        ),
+        severity_adjustment_justification TEXT,
+        recorded_at TEXT NOT NULL,
+        contract_version TEXT NOT NULL,
+        PRIMARY KEY (review_run_id, finding_id, stage),
+        FOREIGN KEY (review_run_id) REFERENCES review_runs(review_run_id) ON DELETE CASCADE
+      )
+      """.trimIndent(),
+      """
+      CREATE INDEX IF NOT EXISTS idx_review_run_finding_verdicts_run
+        ON review_run_finding_verdicts(review_run_id)
+      """.trimIndent(),
+      """
+      CREATE TABLE IF NOT EXISTS review_run_stage_boundaries (
+        review_run_id TEXT NOT NULL,
+        stage TEXT NOT NULL CHECK (stage IN ('review', 'verification', 'adjudication')),
+        reached TEXT NOT NULL CHECK (reached IN ('reached', 'not_reached')),
+        recorded_at TEXT NOT NULL,
+        contract_version TEXT NOT NULL,
+        PRIMARY KEY (review_run_id, stage),
+        FOREIGN KEY (review_run_id) REFERENCES review_runs(review_run_id) ON DELETE CASCADE
+      )
+      """.trimIndent(),
+      """
+      CREATE INDEX IF NOT EXISTS idx_review_run_stage_boundaries_run
+        ON review_run_stage_boundaries(review_run_id)
+      """.trimIndent(),
+      """
+      CREATE TABLE IF NOT EXISTS review_run_spec_projections (
+        review_run_id TEXT PRIMARY KEY,
+        spec_path TEXT,
+        content_digest TEXT,
+        absence_reason TEXT,
+        recorded_at TEXT NOT NULL,
+        FOREIGN KEY (review_run_id) REFERENCES review_runs(review_run_id) ON DELETE CASCADE,
+        CHECK (
+          (absence_reason IS NOT NULL AND spec_path IS NULL AND content_digest IS NULL) OR
+          (absence_reason IS NULL AND spec_path IS NOT NULL AND content_digest IS NOT NULL)
+        )
+      )
+      """.trimIndent(),
+    )
 }

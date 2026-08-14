@@ -34,7 +34,10 @@ import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewContextBudgetPolicy
+import skillbill.review.model.ReviewFindingVerdict
 import skillbill.review.model.ReviewRunLane
+import skillbill.review.model.ReviewSpecProjectionReference
+import skillbill.review.model.ReviewStageBoundary
 import skillbill.scaffold.model.BaselineReviewCatalog
 import skillbill.scaffold.model.CodeReviewBaselineLayer
 import skillbill.scaffold.model.CodeReviewComposition
@@ -72,6 +75,13 @@ class ReviewRecorder {
   val durableLanes: MutableList<ReviewRunLane> = Collections.synchronizedList(mutableListOf())
 
   @Volatile var durableIntegrationPass: ReviewIntegrationPassRecord? = null
+
+  val durableFindingVerdicts: MutableList<ReviewFindingVerdict> =
+    Collections.synchronizedList(mutableListOf())
+  val durableStageBoundaries: MutableList<ReviewStageBoundary> =
+    Collections.synchronizedList(mutableListOf())
+
+  @Volatile var durableSpecProjection: ReviewSpecProjectionReference? = null
 
   /** The prompts the inline parent lanes were actually launched with. */
   val parentPrompts: List<String>
@@ -241,6 +251,27 @@ private fun recordingDatabase(recorder: ReviewRecorder): DatabaseSessionFactory 
         recorder.durableIntegrationPass = args[1] as ReviewIntegrationPassRecord
       }
       "fetchIntegrationPass" -> recorder.durableIntegrationPass
+      "recordFindingVerdicts" -> {
+        @Suppress("UNCHECKED_CAST")
+        val verdicts = args[1] as List<ReviewFindingVerdict>
+        verdicts.forEach { incoming ->
+          recorder.durableFindingVerdicts.removeAll {
+            it.findingRef == incoming.findingRef && it.stage == incoming.stage
+          }
+          recorder.durableFindingVerdicts += incoming
+        }
+      }
+      "fetchFindingVerdicts" -> recorder.durableFindingVerdicts.toList()
+      "recordStageBoundary" -> {
+        val boundary = args[1] as ReviewStageBoundary
+        recorder.durableStageBoundaries.removeAll { it.stage == boundary.stage }
+        recorder.durableStageBoundaries += boundary
+      }
+      "fetchStageBoundaries" -> recorder.durableStageBoundaries.toList()
+      "recordSpecProjectionReference" -> {
+        recorder.durableSpecProjection = args[1] as ReviewSpecProjectionReference
+      }
+      "fetchSpecProjectionReference" -> recorder.durableSpecProjection
       else -> error("Unexpected review repository call: ${method.name}")
     }
   } as ReviewRepository

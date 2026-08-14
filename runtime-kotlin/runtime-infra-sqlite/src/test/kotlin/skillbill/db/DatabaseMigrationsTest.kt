@@ -86,6 +86,7 @@ class DatabaseMigrationsTest {
         27 to "add-review-finding-outcome-key",
         28 to "rekey-producer-output-evidence-by-agent",
         29 to "rekey-diagnostic-evidence-by-repair-turn",
+        30 to "add-review-run-stage-state",
       ),
       migrationDefinitions,
     )

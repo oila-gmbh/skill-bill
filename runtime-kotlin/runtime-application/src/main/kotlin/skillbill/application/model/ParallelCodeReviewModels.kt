@@ -10,6 +10,7 @@ import skillbill.review.context.model.ReviewBudgetOutcome
 import skillbill.review.context.model.ReviewLaneCompletionState
 import skillbill.review.model.ParallelReviewMergeResult
 import skillbill.review.model.ReviewCoverageReport
+import skillbill.review.model.ReviewStageResumeReport
 import skillbill.workflow.model.CodeReviewExecutionMode
 import java.nio.file.Path
 import kotlin.time.Duration
@@ -101,6 +102,7 @@ data class ParallelCodeReviewResult(
    * integration pass is never read as compensating for a lane that ended incomplete.
    */
   val coverage: ReviewCoverageReport? = null,
+  val stageResume: ReviewStageResumeReport? = null,
 )
 
 data class ParallelReviewLaneStatus(
