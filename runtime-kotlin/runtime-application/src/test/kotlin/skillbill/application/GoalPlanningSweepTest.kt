@@ -1257,7 +1257,9 @@ class GoalPlanningSweepTest {
     val resumed = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
 
     assertIs<GoalPlanningSweepOutcome.PreparedAll>(resumed)
-    assertEquals(listOf("preplan", "plan", "plan"), harness.launcher.phases)
+    // `failed` without an explicit disposition is retryable by contract, so the first sweep spends
+    // its bounded decline budget before blocking; the resume then plans once.
+    assertEquals(listOf("preplan", "plan", "plan", "plan", "plan"), harness.launcher.phases)
     assertEquals(1, discovery.calls, "resume after shared-preplan persistence must not repeat discovery")
   }
 
@@ -1466,6 +1468,25 @@ class GoalPlanningSweepTest {
     )
     val decline = recorded.single { it.rule == "planning-retryable-decline" }
     assertContains(decline.reason, "transient provider capacity")
+  }
+
+  @Test
+  fun `a decline that never resolves stops instead of relaunching forever`() {
+    var planLaunches = 0
+    val harness = sweepHarness { phase, _, _ ->
+      if (phase == "preplan") {
+        validPhaseOutcome(phase)
+      } else {
+        planLaunches += 1
+        launchFacts(stdout = blockedPhasePayload(phase, "transient provider capacity", "retryable"))
+      }
+    }
+
+    val outcome = harness.sweep.prepare(harness.stateFor(manifest(subtaskCount = 1)), harness.request())
+
+    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
+    assertContains(stopped.blockedReason, "the decline is not transient")
+    assertEquals(3, planLaunches, "a retryable disposition is believed transient a bounded number of times")
   }
 
   @Test
@@ -2210,11 +2231,7 @@ private fun phasePayload(phaseId: String): String =
     """"status":"completed","summary":"s","produced_outputs":""" +
     (PlanningProjectionFixtures.producedOutputsOrNull(phaseId) ?: """{"result":"$phaseId"}""") + "}"
 
-private fun blockedPhasePayload(
-  phaseId: String,
-  summary: String,
-  disposition: String = "needs_user_action",
-): String =
+private fun blockedPhasePayload(phaseId: String, summary: String, disposition: String = "needs_user_action"): String =
   """{"contract_version":"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION","phase_id":"$phaseId",""" +
     """"status":"blocked","failure_disposition":"$disposition","summary":"$summary",""" +
     """"produced_outputs":{"result":"$phaseId"}}"""
