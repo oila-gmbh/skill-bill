@@ -103,11 +103,22 @@ class ReviewStageStatePruneTest {
             claimVerdict = ReviewClaimVerdict.UNRESOLVED,
             recordedAt = "2026-08-14T08:00:00Z",
           ),
+          ReviewFindingVerdict(
+            stage = ReviewStage.ADJUDICATION,
+            findingRef = "F-001",
+            claimVerdict = ReviewClaimVerdict.UNRESOLVED,
+            scopeDisposition = ReviewScopeDisposition.IN_SCOPE,
+            recordedAt = "2026-08-14T08:02:00Z",
+          ),
         ),
       )
       repository.recordStageBoundary(
         RUN_ID,
         ReviewStageBoundary(ReviewStage.REVIEW, ReviewStageReached.REACHED, "2026-08-14T08:00:00Z"),
+      )
+      repository.recordStageBoundary(
+        RUN_ID,
+        ReviewStageBoundary(ReviewStage.ADJUDICATION, ReviewStageReached.REACHED, "2026-08-14T08:03:00Z"),
       )
       repository.recordSpecProjectionReference(RUN_ID, ReviewSpecProjectionReference(absenceReason = "spec_context none"))
       repository.recordReviewPassClaims(

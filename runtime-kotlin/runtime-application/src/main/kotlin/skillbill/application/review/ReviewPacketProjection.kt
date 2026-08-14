@@ -4,6 +4,7 @@ import skillbill.application.review.model.ReviewContextEnvelope
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
 import skillbill.domain.review.context.model.SpecIntentProjection
+import skillbill.review.context.model.GovernedReviewAdjudicationLaunch
 import skillbill.review.context.model.GovernedReviewIntegrationLaunch
 import skillbill.review.context.model.GovernedReviewLaunch
 import skillbill.review.context.model.GovernedReviewVerificationLaunch
@@ -19,6 +20,8 @@ import skillbill.review.context.model.ReviewLaneDecision
 import skillbill.review.context.model.ReviewPacketConsumerContract
 import skillbill.review.context.model.ReviewSpecialistSummary
 import skillbill.review.model.ParallelReviewMergedFinding
+import skillbill.review.model.ReviewFindingCitation
+import skillbill.review.model.ReviewFindingVerdict
 
 fun ReviewContextPacket.toParentPacketEnvelope(): ReviewContextEnvelope = ReviewContextEnvelope(
   linkedMapOf(
@@ -143,6 +146,55 @@ fun GovernedReviewVerificationLaunch.toVerificationLaunchEnvelope(): ReviewConte
     "isolation" to isolation.name.lowercase(),
     "budget" to budget.toEnvelope(),
   ),
+)
+
+fun GovernedReviewAdjudicationLaunch.toAdjudicationLaunchEnvelope(): ReviewContextEnvelope = ReviewContextEnvelope(
+  linkedMapOf(
+    "contract_version" to REVIEW_CONTEXT_CONTRACT_VERSION,
+    "kind" to "adjudication_launch",
+    "review_id" to packet.reviewId,
+    "packet_digest" to packet.digest,
+    "review_revision" to packet.reviewRevision.toEnvelope(),
+    "finding" to finding.toEnvelope(),
+    "stage_1_verdict" to stage1Verdict.toEnvelope(),
+    "spec_intent_projection" to specIntentProjection.toWireMap(),
+    "cited_region" to linkedMapOf(
+      "path" to citedRegion.path,
+      "start_line" to citedRegion.startLine,
+      "end_line" to citedRegion.endLine,
+    ),
+    "evidence_surface_rules" to evidenceSurfaceRules,
+    "dependency_allowlist" to dependencyAllowlist.normalized.sorted(),
+    "forbidden_rediscovery" to ReviewPacketConsumerContract.FORBIDDEN_REDISCOVERY,
+    "broker_id" to brokerId,
+    "isolation" to isolation.name.lowercase(),
+    "budget" to budget.toEnvelope(),
+  ),
+)
+
+internal fun ReviewFindingVerdict.toEnvelope(): Map<String, Any?> = buildMap {
+  put("contract_version", contractVersion)
+  put("kind", "finding_verdict")
+  put("stage", stage.wireValue)
+  put("finding_ref", findingRef)
+  put("claim_verdict", claimVerdict.wireValue)
+  put("recorded_at", recordedAt)
+  scopeDisposition?.let { put("scope_disposition", it.wireValue) }
+  if (citations.isNotEmpty()) put("citations", citations.map { it.toEnvelope() })
+  severityAdjustment?.let { adjustment ->
+    put(
+      "severity_adjustment",
+      linkedMapOf(
+        "direction" to adjustment.direction.wireValue,
+        "justification" to adjustment.justification,
+      ),
+    )
+  }
+}
+
+private fun ReviewFindingCitation.toEnvelope(): Map<String, Any?> = linkedMapOf(
+  "path" to path,
+  "line" to line,
 )
 
 private fun ParallelReviewMergedFinding.toEnvelope(): Map<String, Any?> = linkedMapOf(

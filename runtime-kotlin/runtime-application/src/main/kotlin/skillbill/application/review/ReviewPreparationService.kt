@@ -369,6 +369,8 @@ class ReviewPreparationService(
       ResolvedReviewExecutionMode.INLINE -> ReviewPacketConsumerContract.INLINE_VERIFICATION_EVIDENCE_SURFACE
       ResolvedReviewExecutionMode.DELEGATED -> ReviewPacketConsumerContract.DELEGATED_VERIFICATION_EVIDENCE_SURFACE
     }
+
+    fun adjudicationEvidenceSurfaceRules(): String = ReviewPacketConsumerContract.ADJUDICATION_EVIDENCE_SURFACE
   }
 }
 

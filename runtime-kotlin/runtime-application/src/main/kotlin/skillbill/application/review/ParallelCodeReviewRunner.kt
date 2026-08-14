@@ -132,12 +132,14 @@ class ParallelCodeReviewRunner(
      */
     val compiledLaunchRequests: List<ReviewSpecialistLaunchRequest>,
     val budget: ReviewContextBudgetPolicy,
+    val specIntentResolution: SpecIntentResolution,
   )
 
   /** The compiled lane set and the subset this attempt actually launches. */
   private data class CompiledLaunches(
     val all: List<ReviewSpecialistLaunchRequest>,
     val toRun: List<ReviewSpecialistLaunchRequest>,
+    val specIntentResolution: SpecIntentResolution,
   )
 
   fun run(originalRequest: ParallelCodeReviewRequest): ParallelCodeReviewResult {
@@ -160,6 +162,7 @@ class ParallelCodeReviewRunner(
     recordReviewStageBoundary(initial.request.reviewRunId, integration, result.mergeResult.findings)
     recordMergedFindingLanes(initial.request.reviewRunId)
     runClaimVerification(initial, result)
+    runSpecAdjudication(initial, result)
     result.accountingSummary?.let { summary ->
       database.transaction { unitOfWork ->
         unitOfWork.reviews.saveAccounting(
@@ -219,6 +222,7 @@ class ParallelCodeReviewRunner(
       preparedLaunchRequests = compiled.toRun,
       compiledLaunchRequests = compiled.all,
       budget = budget,
+      specIntentResolution = compiled.specIntentResolution,
     )
   }
 
@@ -303,7 +307,7 @@ class ParallelCodeReviewRunner(
     val selected = selectLaunchesForResume(request.reviewRunId, compiled)
     recordPlannedLanes(request.reviewRunId, plannedRubrics, selected)
     recordSpecIntent(request.reviewRunId, specIntentResolution)
-    return CompiledLaunches(all = compiled, toRun = selected)
+    return CompiledLaunches(all = compiled, toRun = selected, specIntentResolution = specIntentResolution)
   }
 
   /**
@@ -557,6 +561,68 @@ class ParallelCodeReviewRunner(
         reviewRunId,
         ReviewStageBoundary(
           stage = ReviewStage.VERIFICATION,
+          reached = ReviewStageReached.REACHED,
+          recordedAt = Instant.now().toString(),
+          contractVersion = REVIEW_CONTEXT_CONTRACT_VERSION,
+        ),
+      )
+    }
+  }
+
+  private fun runSpecAdjudication(initial: InitialRun, result: ParallelCodeReviewResult) {
+    val reviewRunId = initial.request.reviewRunId
+    if (reviewRunId != null) {
+      val boundaries = database.transaction { unitOfWork ->
+        unitOfWork.reviews.fetchStageBoundaries(reviewRunId)
+      }
+      val verificationReached = boundaries.any {
+        it.stage == ReviewStage.VERIFICATION && it.reached == ReviewStageReached.REACHED
+      }
+      if (!verificationReached) return
+      val adjudicationReached = boundaries.any {
+        it.stage == ReviewStage.ADJUDICATION && it.reached == ReviewStageReached.REACHED
+      }
+      if (adjudicationReached) return
+    }
+    val projection = (initial.specIntentResolution as? SpecIntentResolution.Resolved)?.projection
+    val claims = if (reviewRunId == null) {
+      result.mergeResult.findings
+    } else {
+      database.transaction { unitOfWork -> unitOfWork.reviews.fetchReviewPassClaims(reviewRunId) }
+        ?.findings
+        .orEmpty()
+    }
+    val existing = if (reviewRunId == null) {
+      emptyList()
+    } else {
+      database.transaction { unitOfWork -> unitOfWork.reviews.fetchFindingVerdicts(reviewRunId) }
+    }
+    val outcome = ReviewSpecAdjudicationRunner(parentReviewLauncher, reviewContextEnvelopeValidator).run(
+      packet = initial.compiledLaunchRequests.firstOrNull()?.packet,
+      findings = claims,
+      existingVerdicts = existing,
+      projection = projection,
+      budget = initial.budget,
+      brokerId = initial.agent1Id,
+      repoRoot = initial.request.repoRoot,
+      timeout = initial.request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes,
+    )
+    if (reviewRunId == null) return
+    if (outcome.skipReason == ReviewSpecAdjudicationRunner.SPEC_CONTEXT_NONE) return
+    if (outcome.verdicts.isNotEmpty()) {
+      database.transaction { unitOfWork ->
+        unitOfWork.reviews.recordFindingVerdicts(reviewRunId, outcome.verdicts)
+      }
+    }
+    recordAdjudicationBoundary(reviewRunId)
+  }
+
+  private fun recordAdjudicationBoundary(reviewRunId: String) {
+    database.transaction { unitOfWork ->
+      unitOfWork.reviews.recordStageBoundary(
+        reviewRunId,
+        ReviewStageBoundary(
+          stage = ReviewStage.ADJUDICATION,
           reached = ReviewStageReached.REACHED,
           recordedAt = Instant.now().toString(),
           contractVersion = REVIEW_CONTEXT_CONTRACT_VERSION,

@@ -204,7 +204,7 @@ internal fun parseWorkerResult(stdout: String): ReviewClaimWorkerResult? {
   )
 }
 
-private fun parseJsonObject(stdout: String): Map<String, Any?>? {
+internal fun parseJsonObject(stdout: String): Map<String, Any?>? {
   val trimmed = stdout.trim()
   JsonSupport.parseObjectOrNull(trimmed)?.let {
     return JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(it))
@@ -216,7 +216,7 @@ private fun parseJsonObject(stdout: String): Map<String, Any?>? {
     ?.let { JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(it)) }
 }
 
-private fun parseCitations(raw: Any?): List<ReviewFindingCitation> {
+internal fun parseCitations(raw: Any?): List<ReviewFindingCitation> {
   val items = raw as? List<*> ?: return emptyList()
   return items.mapNotNull { item ->
     val map = JsonSupport.anyToStringAnyMap(item) ?: return@mapNotNull null
@@ -226,14 +226,14 @@ private fun parseCitations(raw: Any?): List<ReviewFindingCitation> {
   }
 }
 
-private fun intValue(raw: Any?): Int? = when (raw) {
+internal fun intValue(raw: Any?): Int? = when (raw) {
   is Int -> raw
   is Long -> raw.toInt()
   is String -> raw.toIntOrNull()
   else -> null
 }
 
-private fun launchFailureReason(facts: AgentRunLaunchFacts): String? = when {
+internal fun launchFailureReason(facts: AgentRunLaunchFacts): String? = when {
   facts.timedOut -> "agent timed out"
   facts.spawnFailed -> "agent process failed to spawn"
   facts.interrupted -> "agent was interrupted"
