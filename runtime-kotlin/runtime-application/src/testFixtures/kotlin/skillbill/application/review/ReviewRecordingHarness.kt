@@ -278,9 +278,13 @@ private fun recordingDatabase(recorder: ReviewRecorder): DatabaseSessionFactory 
       }
       "fetchFindingVerdicts" -> recorder.durableFindingVerdicts.toList()
       "recordReviewPassClaims" -> {
-        if (recorder.durablePassClaims == null) {
-          @Suppress("UNCHECKED_CAST")
-          recorder.durablePassClaims = ReviewPassClaimSnapshot(args[1] as List<ParallelReviewMergedFinding>)
+        @Suppress("UNCHECKED_CAST")
+        val incoming = args[1] as List<ParallelReviewMergedFinding>
+        val existing = recorder.durablePassClaims?.findings
+        if (incoming.isEmpty() && !existing.isNullOrEmpty()) {
+          Unit
+        } else {
+          recorder.durablePassClaims = ReviewPassClaimSnapshot(incoming)
         }
       }
       "fetchReviewPassClaims" -> recorder.durablePassClaims

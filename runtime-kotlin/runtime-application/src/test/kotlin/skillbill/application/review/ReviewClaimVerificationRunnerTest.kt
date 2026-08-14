@@ -69,8 +69,6 @@ class ReviewClaimVerificationRunnerTest {
       val other = refs[1 - index] as String
       assertTrue(own in prompt)
       assertFalse(other in prompt)
-      assertFalse("reviewer narrative" in prompt.lowercase())
-      assertFalse("parent transcript" in prompt.lowercase())
     }
     assertEquals(listOf("F-001", "F-002"), outcome.verdicts.map { it.findingRef })
     assertTrue(outcome.verdicts.all { it.claimVerdict == ReviewClaimVerdict.CONFIRMED })

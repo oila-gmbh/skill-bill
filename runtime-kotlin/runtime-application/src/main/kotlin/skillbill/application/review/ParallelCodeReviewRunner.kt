@@ -499,12 +499,20 @@ class ParallelCodeReviewRunner(
 
   private fun runClaimVerification(initial: InitialRun, result: ParallelCodeReviewResult) {
     val reviewRunId = initial.request.reviewRunId
-    val snapshot = if (reviewRunId == null) {
-      null
+    val claims = if (reviewRunId == null) {
+      result.mergeResult.findings
     } else {
+      val boundaries = database.transaction { unitOfWork ->
+        unitOfWork.reviews.fetchStageBoundaries(reviewRunId)
+      }
+      val reviewReached = boundaries.any {
+        it.stage == ReviewStage.REVIEW && it.reached == ReviewStageReached.REACHED
+      }
+      if (!reviewReached) return
       database.transaction { unitOfWork -> unitOfWork.reviews.fetchReviewPassClaims(reviewRunId) }
+        ?.findings
+        .orEmpty()
     }
-    val claims = snapshot?.findings ?: result.mergeResult.findings
     val existing = if (reviewRunId == null) {
       emptyList()
     } else {
@@ -565,8 +573,12 @@ class ParallelCodeReviewRunner(
     if (reviewRunId == null) return
     if (findings.isEmpty() && !persistEmpty) return
     database.transaction { unitOfWork ->
-      if (unitOfWork.reviews.fetchReviewPassClaims(reviewRunId) != null) return@transaction
-      unitOfWork.reviews.recordReviewPassClaims(reviewRunId, findings)
+      val recorded = unitOfWork.reviews.fetchReviewPassClaims(reviewRunId)
+      val existing = recorded?.findings.orEmpty()
+      val unioned = unionReviewPassClaims(existing, findings)
+      if (unioned.isEmpty() && !persistEmpty) return@transaction
+      if (recorded != null && existing == unioned) return@transaction
+      unitOfWork.reviews.recordReviewPassClaims(reviewRunId, unioned)
     }
   }
 
@@ -1517,4 +1529,33 @@ private fun providerTokenUsage(outcome: AgentRunLaunchFacts): ProviderTokenUsage
       TokenOwnership.DIRECT
     },
   )
+}
+
+private fun unionReviewPassClaims(
+  existing: List<ParallelReviewMergedFinding>,
+  incoming: List<ParallelReviewMergedFinding>,
+): List<ParallelReviewMergedFinding> {
+  if (incoming.isEmpty()) return existing
+  if (existing.isEmpty()) return incoming
+  val known = existing.map { it.location to it.description }.toSet()
+  val usedNumbers = existing.map { it.fNumber }.toMutableSet()
+  val additions = incoming.filter { (it.location to it.description) !in known }.map { finding ->
+    if (finding.fNumber in usedNumbers) {
+      val next = nextPassClaimNumber(usedNumbers)
+      usedNumbers += next
+      finding.copy(fNumber = next)
+    } else {
+      usedNumbers += finding.fNumber
+      finding
+    }
+  }
+  return existing + additions
+}
+
+private fun nextPassClaimNumber(used: Set<String>): String {
+  var index = 1
+  while ("F-%03d".format(index) in used) {
+    index++
+  }
+  return "F-%03d".format(index)
 }

@@ -66,6 +66,32 @@ class ParallelCodeReviewClaimVerificationTest {
     assertTrue(recorder.durableStageBoundaries.any { it.stage == ReviewStage.VERIFICATION })
   }
 
+  @Test
+  fun `a later resumed lane's findings still receive verification launches`() {
+    val recorder = ReviewRecorder()
+    reviewHarness(architectureOnlyConfig(), recorder).run(delegatedRequest())
+    assertEquals(1, recorder.verificationLaunches.size)
+    assertEquals(listOf("F-001"), recorder.durablePassClaims?.findings?.map { it.fNumber })
+    val firstPrompt = recorder.verificationLaunches.single().skillRunRequest.promptOverride.orEmpty()
+    assertTrue("null is unchecked" in firstPrompt)
+
+    reviewHarness(architectureAndTestingConfig(), recorder).run(delegatedRequest())
+    assertEquals(
+      listOf("F-001", "F-002"),
+      recorder.durablePassClaims?.findings?.map { it.fNumber },
+    )
+    assertEquals(2, recorder.verificationLaunches.size)
+    val laterPrompt = recorder.verificationLaunches.last().skillRunRequest.promptOverride.orEmpty()
+    assertTrue("F-002" in laterPrompt)
+    assertTrue("test name is vague" in laterPrompt)
+    assertFalse("F-001" in laterPrompt)
+    assertTrue(
+      recorder.durableStageBoundaries.any {
+        it.stage == ReviewStage.VERIFICATION && it.reached == ReviewStageReached.REACHED
+      },
+    )
+  }
+
   private fun delegatedRequest() = harnessRequest(
     reviewRunId = RUN_ID,
     codeReviewMode = CodeReviewExecutionMode.DELEGATED,
@@ -75,8 +101,22 @@ class ParallelCodeReviewClaimVerificationTest {
 
   private fun inlineConfig(): ReviewHarnessConfig = verificationConfig()
 
-  private fun verificationConfig(): ReviewHarnessConfig {
-    val paths = listOf("src/Main.kt", "src/test/AppTest.kt")
+  private fun architectureOnlyConfig(): ReviewHarnessConfig = verificationConfig(
+    paths = listOf("src/Main.kt"),
+    findings = ARCHITECTURE_FINDING,
+  )
+
+  private fun architectureAndTestingConfig(): ReviewHarnessConfig = verificationConfig(
+    paths = listOf("src/Main.kt", "src/test/AppTest.kt"),
+    findings = TESTING_FINDING,
+  )
+
+  private fun verificationConfig(): ReviewHarnessConfig = verificationConfig(
+    paths = listOf("src/Main.kt", "src/test/AppTest.kt"),
+    findings = FINDINGS,
+  )
+
+  private fun verificationConfig(paths: List<String>, findings: String): ReviewHarnessConfig {
     val shas = paths.indices.map { index ->
       if (index == paths.lastIndex) HARNESS_HEAD_REVISION else "c$index"
     }
@@ -85,7 +125,7 @@ class ParallelCodeReviewClaimVerificationTest {
       diff = diffForPaths(*paths.toTypedArray()),
       response = { request ->
         when (request.skillRunRequest.issueKey) {
-          "code-review-parallel" -> RecordedWorkerResponse(stdout = FINDINGS)
+          "code-review-parallel" -> RecordedWorkerResponse(stdout = findings)
           ReviewClaimVerificationRunner.ISSUE_KEY -> RecordedWorkerResponse(stdout = CONFIRMED)
           else -> RecordedWorkerResponse()
         }
@@ -98,11 +138,13 @@ class ParallelCodeReviewClaimVerificationTest {
 
   private companion object {
     const val RUN_ID = "review-run-claim-verify"
-    const val FINDINGS =
+    const val ARCHITECTURE_FINDING =
       "- [F-001] Major | High | specialist=bill-kotlin-code-review-architecture | " +
-        "path=\"src/Main.kt\" | line=1 | null is unchecked\n" +
-        "- [F-002] Nit | Low | specialist=bill-kotlin-code-review-testing | " +
+        "path=\"src/Main.kt\" | line=1 | null is unchecked"
+    const val TESTING_FINDING =
+      "- [F-001] Nit | Low | specialist=bill-kotlin-code-review-testing | " +
         "path=\"src/test/AppTest.kt\" | line=1 | test name is vague"
+    const val FINDINGS = "$ARCHITECTURE_FINDING\n$TESTING_FINDING"
     const val CONFIRMED = """{"claim_verdict":"confirmed"}"""
   }
 }

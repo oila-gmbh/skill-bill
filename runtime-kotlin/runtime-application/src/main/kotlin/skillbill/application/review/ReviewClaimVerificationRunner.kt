@@ -206,12 +206,14 @@ internal fun parseWorkerResult(stdout: String): ReviewClaimWorkerResult? {
 
 private fun parseJsonObject(stdout: String): Map<String, Any?>? {
   val trimmed = stdout.trim()
-  JsonSupport.parseObjectOrNull(trimmed)?.let { return JsonSupport.jsonElementToValue(it) as? Map<String, Any?> }
+  JsonSupport.parseObjectOrNull(trimmed)?.let {
+    return JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(it))
+  }
   val start = trimmed.indexOf('{')
   val end = trimmed.lastIndexOf('}')
   if (start < 0 || end <= start) return null
   return JsonSupport.parseObjectOrNull(trimmed.substring(start, end + 1))
-    ?.let { JsonSupport.jsonElementToValue(it) as? Map<String, Any?> }
+    ?.let { JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(it)) }
 }
 
 private fun parseCitations(raw: Any?): List<ReviewFindingCitation> {

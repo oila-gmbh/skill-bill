@@ -110,12 +110,16 @@ fun recordReviewPassClaims(
   reviewRunId: String,
   findings: List<ParallelReviewMergedFinding>,
 ) {
+  val existing = fetchReviewPassClaims(connection, reviewRunId)
+  if (findings.isEmpty() && existing != null && existing.findings.isNotEmpty()) return
   reserveReviewRun(connection, reviewRunId)
   connection.prepareStatement(
     """
     INSERT INTO review_run_pass_claims (review_run_id, claims_json, recorded_at)
     VALUES (?, ?, ?)
-    ON CONFLICT(review_run_id) DO NOTHING
+    ON CONFLICT(review_run_id) DO UPDATE SET
+      claims_json = excluded.claims_json,
+      recorded_at = excluded.recorded_at
     """.trimIndent(),
   ).use { statement ->
     statement.setString(PARAM_ONE, reviewRunId)
