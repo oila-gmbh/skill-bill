@@ -36,7 +36,7 @@ data class ParallelCodeReviewRequest(
   val specPath: Path? = null,
 ) {
   init {
-    reviewId?.let { require(it.isNotBlank()) { "reviewRunId must be non-blank when provided." } }
+    reviewRunId?.let { require(it.isNotBlank()) { "reviewRunId must be non-blank when provided." } }
     specPath?.let { require(it.toString().isNotBlank()) { "specPath must be non-blank when provided." } }
     baseRevision?.let { require(it.isNotBlank()) { "baseRevision must be non-blank when provided." } }
     headRevision?.let { require(it.isNotBlank()) { "headRevision must be non-blank when provided." } }

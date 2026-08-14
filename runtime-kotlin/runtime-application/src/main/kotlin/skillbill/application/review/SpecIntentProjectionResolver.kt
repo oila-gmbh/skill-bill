@@ -7,6 +7,7 @@ import skillbill.domain.review.context.model.SpecIntentDegradationRecord
 import skillbill.domain.review.context.model.SpecIntentProjectionResolveRequest
 import skillbill.domain.review.context.model.SpecIntentResolution
 import skillbill.domain.review.context.model.SpecIntentResolutionRung
+import skillbill.domain.review.context.model.SpecIntentSurroundingContext
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.model.DecompositionManifest
@@ -70,9 +71,7 @@ class SpecIntentProjectionResolver(
     val manifest = matching.single()
     val owner = owningSubtask(manifest, request)
     val primary = Path.of(owner?.specPath ?: manifest.parentSpecPath)
-    val surrounding = owner?.let {
-      extractor.surroundingContext(request.repoRoot, Path.of(manifest.parentSpecPath), explicit = false)
-    }
+    val surrounding = owner?.let { loadSurroundingContext(request, manifest.parentSpecPath) }
     return try {
       SpecIntentResolution.Resolved(
         extractor.extract(request.repoRoot, primary, request.budget, surrounding, explicit = false),
@@ -120,9 +119,29 @@ class SpecIntentProjectionResolver(
       if (!fileStore.isRegularFile(path)) return null
       when (val result = validator.validateYamlTextResult(fileStore.readText(path), path.toString())) {
         is DecompositionManifestValidationResult.AcceptedUnchanged -> result.manifest
-        else -> null
+        is DecompositionManifestValidationResult.AcceptedAfterRepair -> result.manifest
+        is DecompositionManifestValidationResult.Rejected -> null
       }
     } catch (_: Exception) {
+      null
+    }
+  }
+
+  private fun loadSurroundingContext(
+    request: SpecIntentProjectionResolveRequest,
+    parentSpecPath: String,
+  ): SpecIntentSurroundingContext? {
+    return try {
+      extractor.surroundingContext(request.repoRoot, Path.of(parentSpecPath), explicit = false)
+    } catch (error: SpecIntentSourceUnavailable) {
+      emit(
+        SpecIntentDegradationRecord(
+          seam = PARENT_SPEC_UNAVAILABLE_SEAM,
+          reason = PARENT_SPEC_UNAVAILABLE_REASON,
+          rung = SpecIntentResolutionRung.MANIFEST.wireValue,
+          resolvedPath = error.specPath,
+        ),
+      )
       null
     }
   }
@@ -163,6 +182,8 @@ class SpecIntentProjectionResolver(
     const val RESOLVE_SEAM = "SpecIntentProjectionResolver.resolve"
     const val MANIFEST_UNREADABLE_SEAM = "SpecIntentProjectionResolver.manifest_unreadable"
     const val MANIFEST_UNREADABLE_REASON = "manifest_unreadable"
+    const val PARENT_SPEC_UNAVAILABLE_SEAM = "SpecIntentProjectionResolver.parent_spec_unavailable"
+    const val PARENT_SPEC_UNAVAILABLE_REASON = "parent_spec_unavailable"
     val ISSUE_KEY_IN_BRANCH = Regex("""[A-Z][A-Z0-9]*-[0-9]+""")
 
     fun issueKeyFromBranch(branchName: String): String? =

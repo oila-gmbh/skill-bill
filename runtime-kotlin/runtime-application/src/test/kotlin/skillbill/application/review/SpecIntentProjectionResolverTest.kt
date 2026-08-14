@@ -1,35 +1,31 @@
 package skillbill.application.review
 
-import skillbill.application.review.model.ReviewPreparationRequest
-import skillbill.application.testDecompositionManifestValidator
 import skillbill.application.TestDecompositionManifestFileStore
+import skillbill.application.review.model.ReviewRubricProjection
+import skillbill.application.review.model.ReviewSpecialistLaunchRequest
+import skillbill.application.testDecompositionManifestValidator
 import skillbill.domain.review.context.model.SpecIntentAbsenceReason
+import skillbill.domain.review.context.model.SpecIntentProjection
 import skillbill.domain.review.context.model.SpecIntentProjectionResolveRequest
+import skillbill.domain.review.context.model.SpecIntentProvenance
 import skillbill.domain.review.context.model.SpecIntentResolution
 import skillbill.error.UnreadableSpecIntentProjectionError
-import skillbill.ports.review.ReviewBuildTestFactsPort
-import skillbill.ports.review.ReviewGuidancePort
-import skillbill.ports.review.ReviewLaneSelectionPort
-import skillbill.ports.review.ReviewLearningsPort
-import skillbill.ports.review.ReviewScopeResolverPort
-import skillbill.ports.review.ReviewStackRoutingPort
-import skillbill.ports.review.model.ReviewFactPorts
-import skillbill.ports.review.model.ReviewLaneSelection
-import skillbill.ports.review.model.ReviewScopeFacts
-import skillbill.ports.review.model.ReviewStackRoutingFacts
 import skillbill.review.context.ReviewContextEnvelopeValidator
+import skillbill.review.context.model.GovernedReviewLaunch
 import skillbill.review.context.model.REVIEW_SPEC_INTENT_PROJECTION_BUDGET
-import skillbill.review.context.model.ReviewChangedHunk
 import skillbill.review.context.model.ReviewCommitCoverageFact
-import skillbill.review.context.model.ReviewCommitLaneDecision
-import skillbill.review.context.model.ReviewCommitLaneDisposition
-import skillbill.review.context.model.ReviewCommitLaneRoutingMatrix
 import skillbill.review.context.model.ReviewCommitSource
 import skillbill.review.context.model.ReviewCommitUnit
 import skillbill.review.context.model.ReviewContextBudgetExceededException
 import skillbill.review.context.model.ReviewContextBudgetPolicy
-import skillbill.review.context.model.ReviewLaneDecision
-import skillbill.review.context.model.ReviewRevision
+import skillbill.review.plan.model.ReviewLaunchLane
+import skillbill.workflow.DecompositionManifestCodec
+import skillbill.workflow.DecompositionManifestValidator
+import skillbill.workflow.model.DecompositionManifestRepairEvidence
+import skillbill.workflow.model.DecompositionManifestRepairOperation
+import skillbill.workflow.model.DecompositionManifestValidationFormat
+import skillbill.workflow.model.DecompositionManifestValidationResult
+import skillbill.workflow.model.DecompositionManifestValidationSourceLocation
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.logging.Handler
@@ -213,6 +209,46 @@ class SpecIntentProjectionResolverTest {
   }
 
   @Test
+  fun `a repaired manifest still wins over a glob match`() {
+    val repo = featureRepo(includeGlob = true, includeManifest = true)
+    val resolved = resolver(repairedManifestValidator()).resolve(
+      SpecIntentProjectionResolveRequest(
+        repoRoot = repo,
+        branchName = "feat/SKILL-191-runtime",
+      ),
+    )
+    val projection = assertIs<SpecIntentResolution.Resolved>(resolved).projection
+    assertEquals("Subtask outcome", projection.intendedOutcome)
+    assertEquals(
+      ".feature-specs/SKILL-191-runtime/spec_subtask_2.md",
+      projection.provenance.specPath,
+    )
+  }
+
+  @Test
+  fun `a missing parent spec degrades surrounding context and keeps the subtask primary`() {
+    val records = mutableListOf<LogRecord>()
+    val handler = capturingHandler(records)
+    specIntentResolverLog.addHandler(handler)
+    try {
+      val repo = featureRepo(includeGlob = true, includeManifest = true)
+      Files.delete(repo.resolve(".feature-specs/SKILL-191-runtime/spec.md"))
+      val resolved = resolver().resolve(
+        SpecIntentProjectionResolveRequest(
+          repoRoot = repo,
+          branchName = "feat/SKILL-191-runtime",
+        ),
+      )
+      val projection = assertIs<SpecIntentResolution.Resolved>(resolved).projection
+      assertEquals(".feature-specs/SKILL-191-runtime/spec_subtask_2.md", projection.provenance.specPath)
+      assertEquals(null, projection.surroundingContext)
+      assertTrue(records.any { "reason=parent_spec_unavailable" in it.message && "rung=manifest" in it.message })
+    } finally {
+      specIntentResolverLog.removeHandler(handler)
+    }
+  }
+
+  @Test
   fun `an unreadable manifest emits a record and falls through to glob search`() {
     val records = mutableListOf<LogRecord>()
     val handler = capturingHandler(records)
@@ -233,30 +269,40 @@ class SpecIntentProjectionResolverTest {
 
   @Test
   fun `resolved projection criteria populate assignment and launch envelopes`() {
-    val repo = tempRepo()
-    val spec = writeSpec(repo, "spec.md", governedSpec("Outcome", "First criterion.", "Second criterion."))
-    val projection = extractor().extract(repo, spec, ReviewContextBudgetPolicy.DEFAULT, explicit = true)
-    val prepared = prepareWithCriteria(projection.acceptanceCriteria)
-    val assignment = prepared.assignments.single()
-    assertEquals(projection.acceptanceCriteria, assignment.criteriaReferences)
-    val launch = skillbill.review.context.model.GovernedReviewLaunch(
-      assignment,
-      prepared.packet,
-      "contract",
-      "rubric",
-      "broker",
-      ReviewContextBudgetPolicy.DEFAULT,
-    )
+    val criteria = listOf("First criterion.", "Second criterion.")
+    val launch = compileCriteria(
+      SpecIntentResolution.Resolved(
+        SpecIntentProjection(
+          intendedOutcome = "Outcome",
+          acceptanceCriteria = criteria,
+          constraints = emptyList(),
+          nonGoals = emptyList(),
+          deferredItems = emptyList(),
+          provenance = SpecIntentProvenance("spec.md", "a".repeat(64)),
+          declaredByteBudget = ReviewContextBudgetPolicy.DEFAULT.maxSpecIntentProjectionBytes.toInt(),
+        ),
+      ),
+    ).single()
+    assertEquals(criteria, launch.assignment.criteriaReferences)
     @Suppress("UNCHECKED_CAST")
-    val launchCriteria = launch.toLaunchEnvelope().asWireMap()["criteria_references"] as List<String>
-    assertEquals(projection.acceptanceCriteria, launchCriteria)
+    val launchCriteria = GovernedReviewLaunch(
+      launch.assignment,
+      launch.packet,
+      launch.specialistContract,
+      launch.rubrics.single().body,
+      launch.brokerId,
+      ReviewContextBudgetPolicy.DEFAULT,
+    ).toLaunchEnvelope().asWireMap()["criteria_references"] as List<String>
+    assertEquals(criteria, launchCriteria)
     assertTrue(launchCriteria.none { it == "independent branch-diff specialist review" })
   }
 
   @Test
   fun `no resolved spec leaves criteria_references empty`() {
-    val prepared = prepareWithCriteria(emptyList())
-    assertEquals(emptyList(), prepared.assignments.single().criteriaReferences)
+    val launch = compileCriteria(
+      SpecIntentResolution.None(SpecIntentAbsenceReason.NOT_APPLICABLE_SCOPE),
+    ).single()
+    assertEquals(emptyList(), launch.assignment.criteriaReferences)
   }
 }
 
@@ -266,66 +312,82 @@ private fun extractor() = SpecIntentProjectionExtractor(
   },
 )
 
-private fun resolver() = SpecIntentProjectionResolver(
+private fun resolver(
+  validator: DecompositionManifestValidator = testDecompositionManifestValidator,
+) = SpecIntentProjectionResolver(
   TestDecompositionManifestFileStore,
-  testDecompositionManifestValidator,
+  validator,
   extractor(),
 )
 
-private fun prepareWithCriteria(criteria: List<String>): skillbill.application.review.model.ReviewPreparationResult {
-  val hunk = ReviewChangedHunk("src/A.kt", 1, 1, 1, 2, "+alpha")
-  val unit = ReviewCommitUnit("head", "base", "one commit", 0, listOf(hunk), ReviewCommitSource.COMMIT_RANGE)
-  val scope = ReviewScopeFacts(
-    "acme/repo",
-    "base",
-    "head",
-    "clean",
-    listOf(hunk),
-    listOf(unit),
-    ReviewCommitCoverageFact("base", "head", 1, chainVerified = true, pathCoverageVerified = true),
-  )
-  val decision = ReviewLaneDecision(
-    lane = "security",
-    included = true,
-    reason = "auth surface changed",
-    ownedPaths = listOf("src/A.kt"),
-    originLayerChains = listOf(listOf("kotlin")),
-    owningPack = "kotlin",
-    specialistSkillName = "bill-kotlin-code-review-security",
-  )
-  val ports = object :
-    ReviewScopeResolverPort,
-    ReviewStackRoutingPort,
-    ReviewGuidancePort,
-    ReviewLearningsPort,
-    ReviewBuildTestFactsPort,
-    ReviewLaneSelectionPort {
-    override fun resolveScope(reviewId: String) = scope
-    override fun resolveStackRouting(scope: ReviewScopeFacts) =
-      ReviewStackRoutingFacts("kotlin", "kotlin", emptyList(), listOf("kotlin"))
-    override fun resolveMatchedRules(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) = emptyList<skillbill.review.context.model.ReviewRuleReference>()
-    override fun resolveLearnings(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) = emptyList<skillbill.review.context.model.ReviewLearningsReference>()
-    override fun resolveBuildTestFacts(scope: ReviewScopeFacts) = emptyList<skillbill.review.context.model.ReviewBuildTestFact>()
-    override fun decideLanes(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) = ReviewLaneSelection(
-      listOf(decision),
-      ReviewCommitLaneRoutingMatrix(
-        listOf("head"),
-        listOf("security"),
-        listOf(ReviewCommitLaneDecision("head", 0, "security", ReviewCommitLaneDisposition.FOCUSED, "focused")),
-      ),
-    )
+private fun repairedManifestValidator(): DecompositionManifestValidator =
+  object : DecompositionManifestValidator by testDecompositionManifestValidator {
+    override fun validateYamlTextResult(
+      yamlText: String,
+      sourceLabel: String,
+    ): DecompositionManifestValidationResult {
+      val manifest = DecompositionManifestCodec.decodeMap(validateYamlText(yamlText, sourceLabel), sourceLabel)
+      return DecompositionManifestValidationResult.AcceptedAfterRepair(
+        manifest,
+        yamlText,
+        DecompositionManifestRepairEvidence(
+          format = DecompositionManifestValidationFormat.YAML,
+          originalDigest = "a".repeat(64),
+          repairedDigest = "b".repeat(64),
+          operation = DecompositionManifestRepairOperation.ADD_MISSING_CLOSING_DELIMITER,
+          sourceLocation = DecompositionManifestValidationSourceLocation(sourceLabel, 0, 1, 1),
+        ),
+      )
+    }
   }
-  return ReviewPreparationService(
-    ReviewFactPorts(ports, ports, ports, ports, ports, ports),
+
+private fun compileCriteria(resolution: SpecIntentResolution): List<ReviewSpecialistLaunchRequest> {
+  val repo = tempRepo()
+  val diff = """
+    diff --git a/src/A.kt b/src/A.kt
+    --- a/src/A.kt
+    +++ b/src/A.kt
+    @@ -1,1 +1,2 @@
+     line
+    +alpha
+  """.trimIndent()
+  val evidence = ReviewDiffEvidence.parse(diff)
+  val lane = ReviewLaunchLane(
+    skillName = "bill-kotlin-code-review-security",
+    packSlug = "kotlin",
+    area = "security",
+    depth = 0,
+    originLayerChain = listOf("kotlin"),
+    required = true,
+    addOns = emptyList(),
+    orderIndex = 0,
+    inclusionReason = "security surface changed",
+    ownedPaths = listOf("src/A.kt"),
+  )
+  return ParallelReviewPreparationCompiler.compile(
+    ParallelReviewPreparationInput(
+      diff = diff,
+      evidence = evidence,
+      commitSequence = ResolvedCommitSequence(
+        listOf(
+          ReviewCommitUnit("head", "base", "one commit", 0, evidence.hunks, ReviewCommitSource.COMMIT_RANGE),
+        ),
+        ReviewCommitCoverageFact("base", "head", 1, chainVerified = true, pathCoverageVerified = true),
+      ),
+      stack = "kotlin",
+      agents = listOf("claude"),
+      repoRoot = repo,
+      routedPacks = listOf("kotlin"),
+      lanes = listOf(PlannedReviewRubric(lane, ReviewRubricProjection(lane.skillName, "rubric body", "security"))),
+      baseRevision = "base",
+      headRevision = "head",
+      specIntentResolution = resolution,
+    ),
+    ReviewContextBudgetPolicy.DEFAULT,
     object : ReviewContextEnvelopeValidator {
       override fun validate(envelope: Map<String, Any?>, sourceLabel: String) = Unit
     },
-  ).prepare(
-    ReviewPreparationRequest(
-      reviewId = "review",
-      reviewRevision = ReviewRevision("rvs", 1),
-      criteriaReferences = mapOf("security" to criteria),
-    ),
+    "contract",
   )
 }
 

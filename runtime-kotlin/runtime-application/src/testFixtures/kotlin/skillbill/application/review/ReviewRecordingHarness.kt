@@ -5,6 +5,7 @@ import skillbill.application.model.ParallelReviewScope
 import skillbill.application.model.ReviewPrelaunchExpansion
 import skillbill.config.model.RepoLocalConfig
 import skillbill.infrastructure.fs.ClasspathReviewSpecialistContractProvider
+import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
 import skillbill.infrastructure.fs.FileSystemDecompositionManifestFileStore
 import skillbill.infrastructure.fs.JdkParallelReviewLaneRunner
 import skillbill.install.model.InstallAgent
@@ -48,7 +49,6 @@ import skillbill.scaffold.model.DeclaredFiles
 import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.ReviewLaneCondition
 import skillbill.scaffold.model.RoutingSignals
-import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.model.CodeReviewExecutionMode
 import java.lang.reflect.Proxy
 import java.nio.file.Files
@@ -183,14 +183,7 @@ fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): Parall
     database = recordingDatabase(recorder),
     specIntentProjectionResolver = SpecIntentProjectionResolver(
       FileSystemDecompositionManifestFileStore(),
-      object : DecompositionManifestValidator {
-        override fun validate(manifest: Map<String, Any?>, sourceLabel: String) = Unit
-
-        @Suppress("UNCHECKED_CAST")
-        override fun validateYamlText(yamlText: String, sourceLabel: String): Map<String, Any?> =
-          com.fasterxml.jackson.dataformat.yaml.YAMLMapper()
-            .readValue(yamlText, Map::class.java) as Map<String, Any?>
-      },
+      DecompositionManifestValidatorAdapter(),
       SpecIntentProjectionExtractor(
         object : ReviewContextEnvelopeValidator {
           override fun validate(envelope: Map<String, Any?>, sourceLabel: String) = Unit

@@ -1,3 +1,13 @@
+## [2026-08-14] SKILL-191 subtask 3 — Spec intent projection resolver
+Areas: runtime-kotlin/{runtime-application/review, runtime-domain/review/{context,spec}, runtime-infra-fs, runtime-contracts}, docs
+- Resolver compiles a governed spec into a bounded `spec_intent_projection` (outcome, criteria, constraints, non-goals, deferred, provenance path+digest) and records the run's spec projection reference.
+- Resolution order is explicit path, then decomposition manifest (subtask `spec_path` plus parent `spec.md` as surrounding context), then a single `.feature-specs/{ISSUE_KEY}-*/spec.md` match; more than one glob match is `ambiguous_match`.
+- Acceptance-criteria extraction reuses `GovernedSpecSectionParser` with the run-invariants reader so the two cannot disagree. reusable
+- No resolvable spec records `spec_context: none` (`no_spec_found` / `ambiguous_match` / `not_applicable_scope`) and proceeds with stage 2 skipped; an explicit missing/unreadable/unparseable path loud-fails via `UnreadableSpecIntentProjectionError`.
+- Over-budget projections reject with a typed error naming the projection and are never truncated; `criteria_references` on lane assignment/specialist launch come from the resolved criteria (placeholder retired).
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
 ## [2026-08-14] SKILL-191 subtask 2 — Durable review stage state and resume boundaries
 Areas: runtime-kotlin/{runtime-domain/review/model, runtime-ports/persistence, runtime-infra-sqlite, runtime-application/review}
 - Persist per-finding verdicts, independent per-stage boundaries (`review`/`verification`/`adjudication`), and the run's spec projection reference under existing `review_run_id`; FK `ON DELETE CASCADE` so pruning a run removes them.
