@@ -7,6 +7,7 @@ import skillbill.review.model.NumberedFinding
 import skillbill.review.model.ReviewFindingStats
 import skillbill.review.model.ReviewFinishedTelemetry
 import skillbill.review.model.ReviewHealthStats
+import skillbill.review.model.ReviewStageMetrics
 import skillbill.review.model.TriageDecision
 
 data class ReviewPreviewResult(
@@ -50,6 +51,8 @@ data class ReviewStatsResult(
   val reviewRunId: String?,
   val stats: ReviewFindingStats,
   val health: ReviewHealthStats,
+  val stageMetrics: ReviewStageMetrics? = null,
+  val stageMetricsByTier: Map<String, ReviewStageMetrics> = emptyMap(),
 )
 
 data class FeatureVerifyStatsResult(

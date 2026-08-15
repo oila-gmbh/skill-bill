@@ -7,6 +7,7 @@ import skillbill.ports.review.model.ReviewFactPorts
 import skillbill.ports.review.model.ReviewScopeFacts
 import skillbill.ports.review.model.ReviewStackRoutingFacts
 import skillbill.review.context.ReviewContextEnvelopeValidator
+import skillbill.review.context.model.ResolvedReviewExecutionMode
 import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewBuildTestFact
 import skillbill.review.context.model.ReviewChangedHunk
@@ -21,6 +22,7 @@ import skillbill.review.context.model.ReviewLaneBundle
 import skillbill.review.context.model.ReviewLaneBundleEntry
 import skillbill.review.context.model.ReviewLaneDecision
 import skillbill.review.context.model.ReviewLearningsReference
+import skillbill.review.context.model.ReviewPacketConsumerContract
 import skillbill.review.context.model.ReviewRuleReference
 
 private data class ResolvedReviewFacts(
@@ -39,6 +41,7 @@ class ReviewPreparationService(
   private val budget: ReviewContextBudgetPolicy = ReviewContextBudgetPolicy.DEFAULT,
 ) {
   fun prepare(request: ReviewPreparationRequest): ReviewPreparationResult {
+    request.specIntentProjection?.let { enforceSpecIntentProjectionBudget(it, budget) }
     val scope = ports.scope.resolveScope(request.reviewId)
     val routing = ports.stackRouting.resolveStackRouting(scope)
     val matchedRules = ports.guidance.resolveMatchedRules(scope, routing)
@@ -359,6 +362,15 @@ class ReviewPreparationService(
     if (assignment.evidenceTargets.toSet() != expectedTargets) {
       reject(label, "Assignment evidence targets differ from the packet targets for '${assignment.lane}'.")
     }
+  }
+
+  companion object {
+    fun verificationEvidenceSurfaceRules(mode: ResolvedReviewExecutionMode): String = when (mode) {
+      ResolvedReviewExecutionMode.INLINE -> ReviewPacketConsumerContract.INLINE_VERIFICATION_EVIDENCE_SURFACE
+      ResolvedReviewExecutionMode.DELEGATED -> ReviewPacketConsumerContract.DELEGATED_VERIFICATION_EVIDENCE_SURFACE
+    }
+
+    fun adjudicationEvidenceSurfaceRules(): String = ReviewPacketConsumerContract.ADJUDICATION_EVIDENCE_SURFACE
   }
 }
 

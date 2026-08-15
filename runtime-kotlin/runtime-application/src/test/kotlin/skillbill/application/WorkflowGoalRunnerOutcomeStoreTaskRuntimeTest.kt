@@ -333,6 +333,31 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
   }
 
   @Test
+  fun `operator resume reopens a running review phase left on a blocked child`() {
+    val workflows = InMemoryWorkflowStates()
+    workflows.saveFeatureTaskRuntimeWorkflow(tornBlockedReviewRecord("wftr-torn-review"))
+    val store = WorkflowGoalRunnerOutcomeStore(
+      database = FakeDatabaseSessionFactory(workflows),
+      workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    )
+
+    assertTrue(
+      store.reopenBlockedPhaseForOperatorResume(
+        workflowId = "wftr-torn-review",
+        preferredPhaseId = "review",
+        reason = "Operator resumed the goal after a blocked stop at subtask 9.",
+      ),
+    )
+
+    val updated = requireNotNull(workflows.getFeatureTaskRuntimeWorkflow("wftr-torn-review"))
+    assertEquals("running", updated.workflowStatus)
+    assertEquals("review", updated.currentStepId)
+    val review = skillbill.application.featuretask.phaseRecordsFrom(decodeArtifacts(updated.artifactsJson))
+      .getValue("review")
+    assertEquals("pending", review.status)
+  }
+
+  @Test
   fun `a goal child with a live lease or live process is never reconciled and yields no outcome`() {
     // AC-003: a live lease (not expired) and a live process (expired lease but alive) both leave the
     // row untouched, returning no outcome so the existing terminal reasons stay intact.
@@ -788,6 +813,41 @@ class WorkflowGoalRunnerOutcomeStoreTaskRuntimeTest {
   private fun decodeArtifacts(artifactsJson: String): Map<String, Any?> {
     val element = JsonSupport.json.parseToJsonElement(artifactsJson)
     return requireNotNull(JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(element)))
+  }
+
+  private fun tornBlockedReviewRecord(workflowId: String): WorkflowStateRecord {
+    val definition = WorkflowFamily.TASK_RUNTIME.definition
+    val engine = WorkflowEngine(testWorkflowSnapshotValidator)
+    val opened = engine.openRecord(definition, workflowId, "fis-001", "preplan")
+    val reviewRecord = skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord(
+      phaseId = "review",
+      status = "running",
+      attemptCount = 2,
+      startedAt = "2026-08-15T09:17:42Z",
+      resolvedAgentId = "cursor",
+    )
+    return engine.updateRecord(
+      definition,
+      opened,
+      WorkflowUpdateInput(
+        workflowStatus = "blocked",
+        currentStepId = "review",
+        stepUpdates = listOf(
+          mapOf("step_id" to "review", "status" to "blocked", "attempt_count" to 2),
+        ),
+        artifactsPatch = mapOf(
+          skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to mapOf(
+            "review" to reviewRecord.toArtifactMap(),
+          ),
+          "goal_continuation" to mapOf(
+            "issue_key" to "SKILL-191",
+            "subtask_id" to 9,
+            "suppress_pr" to true,
+          ),
+        ),
+        sessionId = "ftr-001",
+      ),
+    ).toRecord()
   }
 
   private fun crashedChildRecord(workflowId: String): WorkflowStateRecord {

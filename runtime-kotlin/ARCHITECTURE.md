@@ -396,6 +396,7 @@ runtime-ports
     - `skillbill.workflow.GoalObservabilityEventValidator.validate`
     - `skillbill.workflow.GoalPlanningPreparationEnvelopeValidator.validate`
     - `skillbill.review.context.ReviewContextEnvelopeValidator.validate`
+    - `skillbill.review.context.ReviewContextEnvelopeValidator.validateSpecIntentProjection`
     - `skillbill.application.review.model.ReviewContextEnvelope.asWireMap`
     - `skillbill.application.review.toBoundedPayload`
     - `skillbill.ports.persistence.model.ReviewAccountingRecord.boundedPayload`
@@ -1184,6 +1185,7 @@ Categories:
 - `skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope`
 - `skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator.validatePlanningProjection`
 - `skillbill.review.context.ReviewContextEnvelopeValidator.validate`
+- `skillbill.review.context.ReviewContextEnvelopeValidator.validateSpecIntentProjection`
 - `skillbill.application.review.model.ReviewContextEnvelope.asWireMap`
 - `skillbill.application.review.toBoundedPayload`
 - `skillbill.ports.persistence.model.ReviewAccountingRecord.boundedPayload`

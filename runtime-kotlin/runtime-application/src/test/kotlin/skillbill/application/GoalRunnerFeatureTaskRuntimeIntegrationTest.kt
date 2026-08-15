@@ -196,12 +196,7 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
     val reviewPrompts = phaseLauncher.requests
       .mapNotNull { it.skillRunRequest.promptOverride }
       .filter { it.contains("Phase: review") }
-    assertEquals(1, reviewPrompts.size)
-    assertContains(reviewPrompts.single(), "bill-code-review mode:inline")
-    assertContains(reviewPrompts.single(), "Combine it with `parallel:claude`")
-    assertContains(reviewPrompts.single(), "durable base `${"0".repeat(40)}`")
-    assertContains(reviewPrompts.single(), "committed, staged, unstaged, and owned untracked changes")
-    assertContains(reviewPrompts.single(), "Do not use `origin/main...HEAD`")
+    assertEquals(emptyList(), reviewPrompts, "runtime-owned review must not launch a review-phase agent")
     assertEquals(CodeReviewExecutionMode.INLINE, runtime.runInvariantsStore.resolve(workflowId)?.codeReviewMode)
     assertTrue(outcomes.acknowledgedReviewPasses.all { (_, passNumber) -> passNumber <= 2 })
   }
@@ -219,10 +214,7 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
       parity.childReports.last(),
       parity.authoritativeOutcome(),
     ).reviewComposition
-    assertEquals(1, reviews.size)
-    assertContains(reviews.single(), "bill-code-review mode:inline|parallel:claude")
-    assertContains(reviews.single(), "durable base `${"0".repeat(40)}`")
-    assertContains(reviews.single(), "committed, staged, unstaged")
+    assertEquals(emptyList(), reviews, "runtime-owned review does not compose a review-phase agent prompt")
   }
 
   @Test
@@ -275,9 +267,7 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
     val reviewCompletions = runtime.recorder.loadPhaseLedger(workflowId).orEmpty()
       .filter { it.action == skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.COMPLETE }
       .filter { it.phaseId == "review" }
-    // The goal child resolves the same audit-first graph as a standalone run: the audit_gap loop
-    // reopens only [implement, audit], so review completes exactly once, outside the loop.
-    assertEquals(1, reviewCompletions.size)
+    assertEquals(1, runtime.launchOrder().count { it == "review" })
     assertEquals(0, reviewCompletions.count { it.loopId == "audit_gap" })
   }
 
@@ -670,7 +660,15 @@ private fun RunnerHarness.goalChildObservation(
     phaseOrder = launchedPromptPhaseOrder().filterNot { it == "pr" },
     persistedOutputs = recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()
       .filterKeys { it != "pr" }
-      .mapNotNull { (phaseId, record) -> record.outputArtifact?.let { phaseId to it } }.toMap(),
+      .mapNotNull { (phaseId, record) ->
+        record.outputArtifact?.let { artifact ->
+          phaseId to if (phaseId == "review") {
+            artifact.replace(Regex("\"review_run_id\":\"rvw-[^\"]+\""), "\"review_run_id\":\"rvw-stable\"")
+          } else {
+            artifact
+          }
+        }
+      }.toMap(),
     auditGapEdgeIterations = recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
       .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && it.loopId == "audit_gap" }
       .mapNotNull { it.edgeIteration },

@@ -7,6 +7,7 @@ interface DecompositionManifestFileStore {
   fun readText(path: Path): String
   fun isRegularFile(path: Path): Boolean
   fun findDecompositionManifestFiles(repoRoot: Path): List<Path>
+  fun listDirectChildDirectories(directory: Path): List<Path> = emptyList()
   fun writeTextAtomically(target: Path, content: String)
   fun deleteIfExists(target: Path)
 
@@ -53,6 +54,8 @@ object UnavailableDecompositionManifestFileStore : DecompositionManifestFileStor
   override fun isRegularFile(path: Path): Boolean = unavailable()
 
   override fun findDecompositionManifestFiles(repoRoot: Path): List<Path> = unavailable()
+
+  override fun listDirectChildDirectories(directory: Path): List<Path> = unavailable()
 
   override fun writeTextAtomically(target: Path, content: String): Unit = unavailable()
 

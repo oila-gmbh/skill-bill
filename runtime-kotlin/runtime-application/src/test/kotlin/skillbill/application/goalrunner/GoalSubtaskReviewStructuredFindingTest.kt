@@ -57,10 +57,7 @@ class GoalSubtaskReviewStructuredFindingTest {
 
     val ledgerFindings = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
       output = output,
-      issueKey = "SKILL-135",
-      subtaskId = 3,
-      workflowId = "workflow-1",
-      reviewPassNumber = 1,
+      scope = UnaddressedFindingLedgerScope("SKILL-135", 3, "workflow-1", 1),
     )
 
     assertEquals(listOf("other", "data_persistence"), ledgerFindings.map { it.issueCategory })
@@ -90,10 +87,7 @@ class GoalSubtaskReviewStructuredFindingTest {
 
     val ledgerFindings = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
       output = output,
-      issueKey = "SKILL-135",
-      subtaskId = 3,
-      workflowId = "workflow-1",
-      reviewPassNumber = 1,
+      scope = UnaddressedFindingLedgerScope("SKILL-135", 3, "workflow-1", 1),
     )
 
     assertEquals(listOf("nit", "blocker"), ledgerFindings.map { it.severity })

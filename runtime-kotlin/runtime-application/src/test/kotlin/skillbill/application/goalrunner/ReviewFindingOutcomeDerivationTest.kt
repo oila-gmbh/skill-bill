@@ -163,10 +163,7 @@ class ReviewFindingOutcomeDerivationTest {
 
     val ledgerFindings = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
       output = output,
-      issueKey = "SKILL-136",
-      subtaskId = 6,
-      workflowId = "wf-1",
-      reviewPassNumber = 1,
+      scope = UnaddressedFindingLedgerScope("SKILL-136", 6, "wf-1", 1),
     )
     val outcomes = GoalSubtaskReviewSummaryReducer.reviewFindingOutcomes(
       supersededFindings = emptyList(),
@@ -203,10 +200,7 @@ class ReviewFindingOutcomeDerivationTest {
     ).forEach { output ->
       val ledgerFindings = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
         output = output,
-        issueKey = "SKILL-136",
-        subtaskId = 6,
-        workflowId = "wf-1",
-        reviewPassNumber = 1,
+        scope = UnaddressedFindingLedgerScope("SKILL-136", 6, "wf-1", 1),
       )
 
       val outcome = ledgerFindings.single().toOutcomeRecord(ReviewFindingOutcome.CARRIED)

@@ -382,7 +382,7 @@ class RepoValidationRuntimeTest {
     Files.writeString(wrongTarget, "wrong\n")
     createRepoValidationSkillFixture(
       repoRoot,
-      overrideTargets = mapOf("review-scope.md" to wrongTarget),
+      overrideTargets = mapOf("shell-ceremony.md" to wrongTarget),
       writeSidecars = true,
     )
 
@@ -390,7 +390,7 @@ class RepoValidationRuntimeTest {
 
     assertTrue(
       report.issues.any {
-        it.contains("skills/bill-code-review/review-scope.md") &&
+        it.contains("skills/bill-code-review/shell-ceremony.md") &&
           it.contains("committed generated supporting pointer file is not allowed")
       },
       report.issues.joinToString("\n"),
@@ -406,7 +406,7 @@ class RepoValidationRuntimeTest {
 
     assertTrue(
       report.issues.any {
-        it.contains("skills/bill-code-review/review-scope.md") &&
+        it.contains("skills/bill-code-review/shell-ceremony.md") &&
           it.contains("committed generated supporting pointer file is not allowed")
       },
       report.issues.joinToString("\n"),
@@ -417,14 +417,14 @@ class RepoValidationRuntimeTest {
   fun `repo validation rejects regular copied generated supporting pointer files beside non-platform skills`() {
     val repoRoot = Files.createTempDirectory("skillbill-regular-sidecar")
     createRepoValidationSkillFixture(repoRoot)
-    val sidecar = repoRoot.resolve("skills/bill-code-review/review-scope.md")
+    val sidecar = repoRoot.resolve("skills/bill-code-review/shell-ceremony.md")
     Files.writeString(sidecar, "copied markdown\n")
 
     val report = RepoValidationRuntime.validateRepo(repoRoot)
 
     assertTrue(
       report.issues.any {
-        it.contains("skills/bill-code-review/review-scope.md") &&
+        it.contains("skills/bill-code-review/shell-ceremony.md") &&
           it.contains("committed generated supporting pointer file is not allowed")
       },
       report.issues.joinToString("\n"),

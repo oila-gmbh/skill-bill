@@ -24,6 +24,10 @@ class ReviewContextSchemaContractVersionTest {
       assertTrue(const.isNotBlank(), "Branch '$name' does not pin contract_version")
       assertEquals(REVIEW_CONTEXT_CONTRACT_VERSION, const, "Branch '$name' pins a stale contract_version")
     }
+    assertTrue(
+      envelopeNames.containsAll(listOf("verification_launch", "adjudication_launch", "finding_verdict")),
+      "verification_launch, adjudication_launch, and finding_verdict must be oneOf envelope branches: $envelopeNames",
+    )
   }
 
   @Test fun `bundled classpath schema is byte identical to the repository schema`() {

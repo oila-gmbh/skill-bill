@@ -26,6 +26,7 @@ class FeatureTaskRuntimePhaseGates(
   val sharedEvidenceResolver: FeatureTaskRuntimeSharedEvidenceResolverPort =
     FeatureTaskRuntimeSharedEvidenceResolverPort.NONE,
   val diffResolver: DiffResolverPort = UnreadableDiffResolver,
+  val reviewDriver: FeatureTaskRuntimeReviewDriver = FeatureTaskRuntimeReviewDriver.EMPTY,
 )
 
 /** No repository access at all: every derivation reports the diff as unreadable and yields no evidence. */

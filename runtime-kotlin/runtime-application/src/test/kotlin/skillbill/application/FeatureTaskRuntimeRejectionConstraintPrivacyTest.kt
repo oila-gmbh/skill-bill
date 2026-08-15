@@ -44,7 +44,7 @@ class FeatureTaskRuntimeRejectionConstraintPrivacyTest {
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
-    val retryPrompt = reviewPrompts(harness)[1]
+    val retryPrompt = schemaRetryPrompts(harness)[1]
     assertRetryPromptNamesConstraint(retryPrompt, "phase-output-schema", payloadFreeConstraint)
     assertNoRawResponseSpan(retryPrompt, rawSpan, valueBearingReason, "offending value")
   }
@@ -61,7 +61,7 @@ class FeatureTaskRuntimeRejectionConstraintPrivacyTest {
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
-    val diagnostic = harness.io.database.rejectedDiagnostics().single { it.metadata.phaseId == "review" }
+    val diagnostic = harness.io.database.rejectedDiagnostics().single { it.metadata.phaseId == "audit" }
     assertContains(diagnostic.metadata.reason, rawSpan)
     assertTrue(diagnostic.payload?.isNotEmpty() == true, "the row must keep the raw response bytes")
   }
@@ -104,10 +104,10 @@ class FeatureTaskRuntimeRejectionConstraintPrivacyTest {
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
-    val retryPrompt = reviewPrompts(harness)[1]
+    val retryPrompt = schemaRetryPrompts(harness)[1]
     assertRetryPromptNamesConstraint(retryPrompt, "audit-repair-plan-schema", payloadFreeConstraint)
     assertNoRawResponseSpan(retryPrompt, rawSpan)
-    val diagnostic = harness.io.database.rejectedDiagnostics().single { it.metadata.phaseId == "review" }
+    val diagnostic = harness.io.database.rejectedDiagnostics().single { it.metadata.phaseId == "audit" }
     assertContains(diagnostic.metadata.reason, rawSpan)
   }
 
@@ -123,7 +123,7 @@ class FeatureTaskRuntimeRejectionConstraintPrivacyTest {
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
-    val retryPrompt = reviewPrompts(harness)[1]
+    val retryPrompt = schemaRetryPrompts(harness)[1]
     assertContains(retryPrompt, "Rejected output violated 'phase-output-schema'")
     // Null payloadFreeReason is the contract's fallback case: the prompt withholds the constraint entirely
     // rather than reaching for the value-bearing reason.
@@ -135,19 +135,19 @@ class FeatureTaskRuntimeRejectionConstraintPrivacyTest {
     // Realistic bug: helpers/composer tests pass, but gateOutput drops correctiveRepairContext before
     // PriorAttemptCorrection reaches the next launch, so the agent never sees the exact rejected body.
     val rejectedBody =
-      "{\"contract_version\":\"0.2\",\"phase_id\":\"review\",\"status\":\"completed\"," +
-        "\"summary\":\"SKILL187-GATEOUTPUT-SENTINEL\",\"produced_outputs\":{\"findings\":[]}}"
-    var reviewAttempts = 0
+      "{\"contract_version\":\"0.2\",\"phase_id\":\"audit\",\"status\":\"completed\"," +
+        "\"summary\":\"SKILL187-GATEOUTPUT-SENTINEL\",\"produced_outputs\":{\"unmet_criteria\":[]}}"
+    var auditAttempts = 0
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        if (phaseId != "review") return@RuntimeRecordingLauncher facts(defaultPhaseOutput(request))
-        reviewAttempts += 1
-        facts(if (reviewAttempts == 1) rejectedBody else defaultPhaseOutput(request))
+        if (phaseId != "audit") return@RuntimeRecordingLauncher facts(defaultPhaseOutput(request))
+        auditAttempts += 1
+        facts(if (auditAttempts == 1) rejectedBody else defaultPhaseOutput(request))
       },
       validator = object : FeatureTaskRuntimePhaseOutputValidator {
         override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
-          if (sourceLabel != "review") return
+          if (sourceLabel != "audit") return
           if (phaseOutputText.contains("SKILL187-GATEOUTPUT-SENTINEL")) {
             throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
               sourceLabel = sourceLabel,
@@ -161,28 +161,28 @@ class FeatureTaskRuntimeRejectionConstraintPrivacyTest {
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
-    val retryPrompt = reviewPrompts(harness)[1]
+    val retryPrompt = schemaRetryPrompts(harness)[1]
     assertRetryPromptNamesConstraint(retryPrompt, "phase-output-schema", payloadFreeConstraint)
     assertMatchingSchemaInvalidRepairPrompt(retryPrompt, rejectedBody, payloadFreeConstraint)
     assertNoRawResponseSpanOutsideAuthorizedRepairSection(retryPrompt, rawSpan, "offending value")
   }
 
-  private fun reviewPrompts(harness: RunnerHarness): List<String> {
+  private fun schemaRetryPrompts(harness: RunnerHarness): List<String> {
     val prompts = harness.launcher.requests
       .map { requireNotNull(it.skillRunRequest.promptOverride) }
-      .filter { phaseIdFromPrompt(it) == "review" }
-    assertTrue(prompts.size >= 2, "the review phase must have retried at least once")
+      .filter { phaseIdFromPrompt(it) == "audit" }
+    assertTrue(prompts.size >= 2, "the audit phase must have retried at least once")
     return prompts
   }
 
   private fun rejectingHarness(error: (String) -> Throwable): RunnerHarness {
-    var reviewAttempts = 0
+    var auditAttempts = 0
     return runnerHarness(
       validator = object : FeatureTaskRuntimePhaseOutputValidator {
         override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
-          if (sourceLabel != "review") return
-          reviewAttempts += 1
-          if (reviewAttempts < 2) throw error(sourceLabel)
+          if (sourceLabel != "audit") return
+          auditAttempts += 1
+          if (auditAttempts < 2) throw error(sourceLabel)
         }
       },
     )

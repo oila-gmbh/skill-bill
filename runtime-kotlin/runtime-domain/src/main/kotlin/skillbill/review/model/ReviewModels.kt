@@ -101,6 +101,10 @@ data class NumberedFinding(
   val confidence: String,
   val location: String,
   val description: String,
+  val claimVerdict: ReviewClaimVerdict? = null,
+  val scopeDisposition: ReviewScopeDisposition? = null,
+  val citations: List<ReviewFindingCitation> = emptyList(),
+  val severityAdjustment: ReviewSeverityAdjustment? = null,
 )
 
 data class TriageDecision(

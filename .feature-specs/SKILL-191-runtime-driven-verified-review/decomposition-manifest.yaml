@@ -3,24 +3,24 @@ contract_version: "0.5"
 issue_key: "SKILL-191"
 feature_name: "runtime-driven-verified-review"
 parent_spec_path: ".feature-specs/SKILL-191-runtime-driven-verified-review/spec.md"
-status: "pending"
+status: "in_progress"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-191-runtime-driven-verified-review"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 1
-  action: "start"
+  subtask_id: 9
+  action: "resume"
 subtasks:
 - id: 1
   name: "Stage contract and schema versioning"
   spec_path: ".feature-specs/SKILL-191-runtime-driven-verified-review/spec_subtask_1_stage_contract_and_schema.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260814-072202-z1xt"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -28,12 +28,12 @@ subtasks:
 - id: 2
   name: "Durable review stage state and resume boundaries"
   spec_path: ".feature-specs/SKILL-191-runtime-driven-verified-review/spec_subtask_2_durable_stage_state.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260814-075903-3q1d"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -44,12 +44,12 @@ subtasks:
 - id: 3
   name: "Spec intent projection resolver"
   spec_path: ".feature-specs/SKILL-191-runtime-driven-verified-review/spec_subtask_3_spec_intent_projection.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260814-083503-9gnt"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -60,12 +60,12 @@ subtasks:
 - id: 4
   name: "Stage 1 claim verification runner"
   spec_path: ".feature-specs/SKILL-191-runtime-driven-verified-review/spec_subtask_4_claim_verification_runner.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260814-094555-t1ko"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -79,12 +79,12 @@ subtasks:
 - id: 5
   name: "Stage 2 spec adjudication runner"
   spec_path: ".feature-specs/SKILL-191-runtime-driven-verified-review/spec_subtask_5_spec_adjudication_runner.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260814-113349-v1tc"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -104,12 +104,12 @@ subtasks:
 - id: 6
   name: "Verdict-aware register assembly and downstream consumers"
   spec_path: ".feature-specs/SKILL-191-runtime-driven-verified-review/spec_subtask_6_verdict_aware_register_and_consumers.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260814-122652-vzn6"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -123,12 +123,12 @@ subtasks:
 - id: 7
   name: "Stage telemetry and measurement"
   spec_path: ".feature-specs/SKILL-191-runtime-driven-verified-review/spec_subtask_7_stage_telemetry.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260814-135106-mh75"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -142,12 +142,12 @@ subtasks:
 - id: 8
   name: "Runtime-driven standalone entry"
   spec_path: ".feature-specs/SKILL-191-runtime-driven-verified-review/spec_subtask_8_runtime_driven_standalone_entry.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260814-151651-8wtg"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -158,12 +158,12 @@ subtasks:
 - id: 9
   name: "Feature-task review phase delegation"
   spec_path: ".feature-specs/SKILL-191-runtime-driven-verified-review/spec_subtask_9_feature_task_review_delegation.md"
-  status: "pending"
+  status: "in_progress"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260815-091742-lz72"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "review"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

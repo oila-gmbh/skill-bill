@@ -103,8 +103,22 @@ val findingMetadataSql =
 
 val numberedFindingsSql =
   """
-  SELECT finding_id, severity, confidence, location, description
-  FROM findings
-  WHERE review_run_id = ?
-  ORDER BY finding_id
+  SELECT
+    f.finding_id,
+    f.severity,
+    f.confidence,
+    f.location,
+    f.description,
+    COALESCE(v.claim_verdict, a.claim_verdict) AS claim_verdict,
+    a.scope_disposition AS scope_disposition,
+    COALESCE(NULLIF(a.citations, ''), v.citations) AS citations,
+    COALESCE(a.severity_adjustment_direction, v.severity_adjustment_direction) AS severity_adjustment_direction,
+    COALESCE(a.severity_adjustment_justification, v.severity_adjustment_justification) AS severity_adjustment_justification
+  FROM findings f
+  LEFT JOIN review_run_finding_verdicts v
+    ON v.review_run_id = f.review_run_id AND v.finding_id = f.finding_id AND v.stage = 'verification'
+  LEFT JOIN review_run_finding_verdicts a
+    ON a.review_run_id = f.review_run_id AND a.finding_id = f.finding_id AND a.stage = 'adjudication'
+  WHERE f.review_run_id = ?
+  ORDER BY f.finding_id
   """.trimIndent()

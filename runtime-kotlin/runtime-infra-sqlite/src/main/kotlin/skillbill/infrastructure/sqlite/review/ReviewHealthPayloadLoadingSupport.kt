@@ -1,6 +1,8 @@
 package skillbill.infrastructure.sqlite.review
 
 import skillbill.contracts.JsonSupport
+import skillbill.review.model.REVIEW_FINISHED_LEGACY_CONTRACT_VERSION
+import skillbill.review.model.REVIEW_STAGE_DEGRADATION_CONTRACT_VERSION
 import java.sql.Connection
 
 fun loadStandaloneReviewPayloads(connection: Connection): List<ReviewHealthPayload> = connection.prepareStatement(
@@ -14,7 +16,18 @@ fun loadStandaloneReviewPayloads(connection: Connection): List<ReviewHealthPaylo
   statement.executeQuery().use { resultSet ->
     buildList {
       while (resultSet.next()) {
-        add(ReviewHealthPayload("standalone", parseJsonObject(resultSet.getString("payload_json"))))
+        val raw = resultSet.getString("payload_json")
+        val parsed = parseHealthJsonObject(raw)
+        if (parsed.isEmpty() && raw.trim() != "{}") {
+          add(ReviewHealthPayload("malformed", emptyMap()))
+          continue
+        }
+        val materialized = materializeReviewFinishedPayload(connection, parsed)
+        if (materialized.isEmpty() && parsed.isNotEmpty()) {
+          add(ReviewHealthPayload("malformed", emptyMap()))
+        } else {
+          add(ReviewHealthPayload("standalone", materialized))
+        }
       }
     }
   }
@@ -23,47 +36,59 @@ fun loadStandaloneReviewPayloads(connection: Connection): List<ReviewHealthPaylo
 fun loadEmbeddedReviewPayloads(connection: Connection): List<ReviewHealthPayload> =
   loadRows(connection, "feature_implement_sessions").flatMap(::embeddedReviewPayloads)
 
-fun Map<String, Any?>.healthInt(key: String): Int = this[key].asInt()
+fun restampUnsyncedLegacyTelemetry(connection: Connection) {
+  connection.prepareStatement(
+    """
+    UPDATE telemetry_outbox
+    SET payload_json = json_set(payload_json, '$.contract_version', ?)
+    WHERE synced_at IS NULL
+      AND event_name != 'skillbill_review_finished'
+      AND json_extract(payload_json, '$.contract_version') = ?
+    """.trimIndent(),
+  ).use { statement ->
+    statement.setString(PARAM_ONE, REVIEW_STAGE_DEGRADATION_CONTRACT_VERSION)
+    statement.setString(PARAM_TWO, REVIEW_FINISHED_LEGACY_CONTRACT_VERSION)
+    statement.executeUpdate()
+  }
+}
+
+fun Map<String, Any?>.healthInt(key: String): Int = this[key].asHealthInt()
 
 fun Map<String, Any?>.stringHealthValue(key: String): String = this[key]?.toString().orEmpty()
 
-private fun embeddedReviewPayloads(row: Map<String, Any?>): List<ReviewHealthPayload> {
-  val rawChildSteps = row.stringValue("child_steps_json")
-  if (rawChildSteps.isBlank()) {
-    return emptyList()
+fun persistLegacyTelemetryRewrites(connection: Connection) {
+  restampUnsyncedLegacyTelemetry(connection)
+  val unsyncedReviewFinished = connection.prepareStatement(
+    """
+    SELECT id, payload_json
+    FROM telemetry_outbox
+    WHERE event_name = 'skillbill_review_finished'
+      AND synced_at IS NULL
+    ORDER BY id
+    """.trimIndent(),
+  ).use { statement ->
+    statement.executeQuery().use { resultSet ->
+      buildList {
+        while (resultSet.next()) {
+          add(resultSet.getLong("id") to resultSet.getString("payload_json"))
+        }
+      }
+    }
   }
-  val parsed = JsonSupport.parseArrayOrEmpty(rawChildSteps)
-  return if (parsed.isEmpty() && rawChildSteps.trim() != "[]") {
-    listOf(ReviewHealthPayload("malformed", emptyMap()))
-  } else {
-    parsed.mapNotNull(::childStepToReviewPayload)
+  unsyncedReviewFinished.forEach { (outboxId, raw) ->
+    persistLegacyReviewFinishedRow(connection, outboxId, raw)
   }
 }
 
-private fun childStepToReviewPayload(childStep: Any?): ReviewHealthPayload? {
-  val payload = childStep as? Map<*, *> ?: return ReviewHealthPayload("malformed", emptyMap())
-  val normalized = payload.toStringAnyMap()
-  return if (isReviewChildStep(normalized)) {
-    ReviewHealthPayload("embedded", normalized)
-  } else {
-    null
-  }
-}
-
-private fun parseJsonObject(rawJson: String): Map<String, Any?> = JsonSupport.parseObjectOrNull(rawJson)
+internal fun parseHealthJsonObject(rawJson: String): Map<String, Any?> = JsonSupport.parseObjectOrNull(rawJson)
   ?.let { JsonSupport.jsonElementToValue(it) as? Map<*, *> }
-  ?.toStringAnyMap()
+  ?.toHealthStringAnyMap()
   ?: emptyMap()
 
-private fun isReviewChildStep(payload: Map<String, Any?>): Boolean {
-  val skill = payload.stringHealthValue("skill")
-  return skill.endsWith("code-review") || "-code-review-" in skill
-}
-
-private fun Map<*, *>.toStringAnyMap(): Map<String, Any?> =
+internal fun Map<*, *>.toHealthStringAnyMap(): Map<String, Any?> =
   entries.mapNotNull { (key, value) -> key?.toString()?.let { it to value } }.toMap()
 
-private fun Any?.asInt(): Int = when (this) {
+private fun Any?.asHealthInt(): Int = when (this) {
   is Number -> toInt()
   is String -> toIntOrNull() ?: 0
   else -> 0

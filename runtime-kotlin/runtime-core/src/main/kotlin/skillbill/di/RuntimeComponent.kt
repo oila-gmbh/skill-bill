@@ -8,6 +8,7 @@ import skillbill.application.agentrun.AgentRunService
 import skillbill.application.config.ConfigResolutionService
 import skillbill.application.featuretask.FeatureTaskContinuationLookupService
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
+import skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver
 import skillbill.application.featuretask.FeatureTaskRuntimeRunner
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.featuretask.FeatureTaskRuntimeWorkerCoordinator
@@ -465,8 +466,9 @@ abstract class RuntimeComponent(
   @Provides
   @JvmSynthetic
   internal fun reviewNativeAgentPreflightPort(
+    callbacks: OptionalCallbacks,
     adapter: FileSystemReviewNativeAgentPreflight,
-  ): ReviewNativeAgentPreflightPort = adapter
+  ): ReviewNativeAgentPreflightPort = callbacks.reviewNativeAgentPreflight ?: adapter
 
   @Provides
   @JvmSynthetic
@@ -784,6 +786,11 @@ abstract class RuntimeComponent(
   @Provides
   @JvmSynthetic
   internal fun checkedOutBranchSource(source: FileSystemCheckedOutBranchSource): CheckedOutBranchSource = source
+
+  @Provides
+  @JvmSynthetic
+  internal fun featureTaskRuntimeReviewDriver(runner: ParallelCodeReviewRunner): FeatureTaskRuntimeReviewDriver =
+    FeatureTaskRuntimeReviewDriver(runner::run)
 
   abstract val parallelCodeReviewRunner: ParallelCodeReviewRunner
 

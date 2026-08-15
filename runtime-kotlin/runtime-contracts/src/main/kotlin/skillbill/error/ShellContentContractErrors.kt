@@ -88,9 +88,21 @@ class SkillContentIdentityMismatchError(
 class InvalidReviewContextSchemaError(
   val sourceLabel: String,
   val reason: String,
+  val definitionName: String? = null,
   cause: Throwable? = null,
 ) : ShellContentContractException(
-  "Review context '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation: $reason",
+  "Review context '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation" +
+    definitionName?.takeIf { it.isNotBlank() }?.let { " for definition '$it'" }.orEmpty() +
+    ": $reason",
+  cause,
+)
+
+class UnreadableSpecIntentProjectionError(
+  val specPath: String,
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Projection 'spec_intent_projection' could not be read from '${specPath.ifBlank { "<unknown>" }}': $reason",
   cause,
 )
 

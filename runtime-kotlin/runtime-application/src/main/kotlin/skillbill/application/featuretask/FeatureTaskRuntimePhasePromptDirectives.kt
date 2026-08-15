@@ -346,12 +346,8 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "path), and a bounded one-line repair intent. A legitimately unedited finding still needs its " +
     "no_edit_required entry; omission is rejected.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW to
-    "Review the implemented changes at the encoded review scope against the acceptance criteria " +
-    "and report defects with concrete file references. Emit produced_outputs.findings with every " +
-    "unresolved actionable finding from this pass — Blocker, Major, Minor, and Nit — and the exact " +
-    "repository_checkpoint reviewed; keep specialist narration and telemetry outside that repair " +
-    "projection. Do not severity-filter the findings array: the implement_fix handoff carries this " +
-    "list without re-filtering.",
+    "The runtime owns this review. Do not run bill-code-review, do not emit findings, and do not " +
+    "report unsatisfied acceptance criteria. Criterion-gap detection remains exclusive to the audit phase.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT to
     "Run the encoded completeness audit ceremony and report production-behavior or production-implementation " +
     "acceptance-criterion gaps only. Never report test adequacy, coverage, fixtures, assertions, or other " +

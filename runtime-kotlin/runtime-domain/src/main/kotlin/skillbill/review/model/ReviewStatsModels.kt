@@ -82,6 +82,38 @@ data class ReviewLearningsSummary(
   val entries: List<ReviewLearningEntry>,
 )
 
+data class ReviewStageVerdictDistribution(
+  val confirmed: Int,
+  val refuted: Int,
+  val unresolved: Int,
+  val inScope: Int,
+  val outOfScopePreexisting: Int,
+  val specDeviation: Int,
+  val specAcceptedTradeoff: Int,
+  val findingCount: Int,
+)
+
+data class ReviewRejectedVerdictCounts(
+  val uncitedRefutations: Int,
+  val uncitedDowngrades: Int,
+  val findingMutations: Int,
+)
+
+data class ReviewSeverityAdjustmentCounts(
+  val raised: Int,
+  val lowered: Int,
+)
+
+data class ReviewStageMetrics(
+  val verification: ReviewStageVerdictDistribution,
+  val adjudication: ReviewStageVerdictDistribution,
+  val verificationRefutationRate: Double,
+  val adjudicationRefutationRate: Double,
+  val rejectedVerdictCounts: ReviewRejectedVerdictCounts,
+  val severityAdjustmentCounts: ReviewSeverityAdjustmentCounts,
+  val resolvedTier: String,
+)
+
 data class ReviewFinishedTelemetry(
   val findingStats: ReviewFinishedFindingStats,
   val reviewRunId: String,
@@ -101,6 +133,7 @@ data class ReviewFinishedTelemetry(
   val learnings: ReviewLearningsSummary,
   @OpenBoundaryMap("Schema-bounded review-accounting telemetry payload")
   val reviewContextAccounting: Map<String, Any?>? = null,
+  val stageMetrics: ReviewStageMetrics,
 )
 
 data class FeatureTaskRuntimeWorkflowStats(

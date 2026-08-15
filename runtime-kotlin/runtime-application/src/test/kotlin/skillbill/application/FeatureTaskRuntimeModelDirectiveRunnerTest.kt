@@ -277,17 +277,20 @@ class FeatureTaskRuntimeModelDirectiveRunnerTest {
 
   @Test
   fun `cursor parallel-review route selects cursor adapter`() {
+    var capturedAgent1 = ""
     val harness = runnerHarness(
       agentAssignment = FeatureTaskRuntimeAgentAssignment(
         perPhaseAgentIds = mapOf("review" to "cursor"),
       ),
+      runtimeConfig = RuntimeHarnessConfig(
+        reviewDriver = skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver { request ->
+          capturedAgent1 = request.agent1Id
+          skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver.EMPTY.run(request)
+        },
+      ),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
-
-    val reviewRequest = harness.launcher.requests.single {
-      it.skillRunRequest.promptOverride.orEmpty().contains("Phase: review ")
-    }
-    assertEquals("cursor", reviewRequest.invokedAgentId)
+    assertEquals("cursor", capturedAgent1)
   }
 }

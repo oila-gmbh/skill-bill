@@ -2047,6 +2047,7 @@ class RuntimeArchitectureTest {
       // typed projection owns composition; only the validation seam and the
       // envelope wrapper expose the map, mirroring the validator ports above.
       "skillbill.review.context.ReviewContextEnvelopeValidator.validate",
+      "skillbill.review.context.ReviewContextEnvelopeValidator.validateSpecIntentProjection",
       "skillbill.application.review.model.ReviewContextEnvelope.asWireMap",
       "skillbill.application.review.toBoundedPayload",
       "skillbill.ports.persistence.model.ReviewAccountingRecord.boundedPayload",

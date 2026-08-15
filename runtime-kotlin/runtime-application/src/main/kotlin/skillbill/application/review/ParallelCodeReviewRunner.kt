@@ -15,8 +15,11 @@ import skillbill.application.model.ReviewLaneIntegrationInput
 import skillbill.application.model.StackDetectionException
 import skillbill.application.model.UsageValidationException
 import skillbill.application.review.model.ReviewRubricProjection
+import skillbill.application.review.model.ReviewSpecAdjudicationOutcome
 import skillbill.application.review.model.ReviewSpecialistLaunchRequest
+import skillbill.application.review.model.ReviewWorkerKind
 import skillbill.application.workflow.repoRoot
+import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunTokenOwnership
@@ -31,6 +34,7 @@ import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.model.ReviewAccountingRecord
 import skillbill.ports.persistence.model.ReviewIntegrationPassRecord
 import skillbill.ports.review.ParallelReviewLaneRunner
+import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.review.ReviewRubricResolver
 import skillbill.ports.review.ReviewSpecialistContractProvider
 import skillbill.ports.review.model.ParallelReviewLaneOutcome
@@ -38,6 +42,7 @@ import skillbill.ports.review.model.ParallelReviewLaneRunRequest
 import skillbill.ports.review.model.ParallelReviewLaneRunResult
 import skillbill.ports.review.model.ReviewIntegrationPassOutcome
 import skillbill.ports.review.model.ReviewLaneAccounting
+import skillbill.ports.review.model.ReviewNativeAgentPreflightRequest
 import skillbill.ports.review.model.ReviewOwnedFileEvidence
 import skillbill.ports.scaffold.InstalledPlatformPackCatalogPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
@@ -45,6 +50,7 @@ import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.ParallelReviewMerger
 import skillbill.review.ReviewLaneAggregation
 import skillbill.review.ReviewRunLaneResolver
+import skillbill.review.ReviewStageDegradationSelection
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.ReviewExecutionModePolicy
 import skillbill.review.context.ReviewTreeAccounting
@@ -67,16 +73,26 @@ import skillbill.review.context.model.ReviewLaneCompletionState
 import skillbill.review.context.model.ReviewLaneIdentity
 import skillbill.review.context.model.ReviewLaneReviewDisposition
 import skillbill.review.context.model.ReviewParentAnalysisConsumption
+import skillbill.review.context.model.SpecIntentProjectionResolveRequest
+import skillbill.review.context.model.SpecIntentResolution
 import skillbill.review.context.model.TokenOwnership
 import skillbill.review.context.model.asFailedLaneRun
 import skillbill.review.context.model.structuredString
 import skillbill.review.context.model.toCodeReviewExecutionMode
 import skillbill.review.model.ParallelReviewLaneResult
+import skillbill.review.model.ParallelReviewMergeResult
+import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ParallelReviewRawFinding
 import skillbill.review.model.ReviewCoverageReport
+import skillbill.review.model.ReviewFindingVerdict
 import skillbill.review.model.ReviewLaneAggregationInput
 import skillbill.review.model.ReviewRunLane
 import skillbill.review.model.ReviewRunLaneSegmentAccountingJson
+import skillbill.review.model.ReviewSpecProjectionReference
+import skillbill.review.model.ReviewStage
+import skillbill.review.model.ReviewStageBoundary
+import skillbill.review.model.ReviewStageReached
+import skillbill.review.model.ReviewStageResumeReport
 import skillbill.review.plan.ReviewLaneInclusionPolicy
 import skillbill.review.plan.ReviewLaunchPlanPolicy
 import skillbill.review.plan.ReviewStackRouting
@@ -84,6 +100,7 @@ import skillbill.review.plan.model.ReviewLaunchLane
 import skillbill.review.plan.model.ReviewRoutingChangedFile
 import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Path
+import java.time.Instant
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
@@ -105,13 +122,15 @@ class ParallelCodeReviewRunner(
    */
   private val sharedEvidenceResolver: FeatureTaskRuntimeSharedEvidenceResolverPort =
     FeatureTaskRuntimeSharedEvidenceResolverPort.NONE,
+  private val specIntentProjectionResolver: SpecIntentProjectionResolver,
+  private val nativeAgentPreflight: ReviewNativeAgentPreflightPort = ReviewNativeAgentPreflightPort.NONE,
 ) {
   private data class InitialRun(
     val request: ParallelCodeReviewRequest,
     val detection: StackDetection,
     val resolvedMode: ResolvedReviewExecutionMode,
     val agent1Id: String,
-    val agent2Id: String,
+    val agent2Id: String?,
     val preparedLaunchRequests: List<ReviewSpecialistLaunchRequest>,
     /**
      * Every lane the packet compiled, including lanes this resume did not re-launch because they
@@ -121,20 +140,24 @@ class ParallelCodeReviewRunner(
      */
     val compiledLaunchRequests: List<ReviewSpecialistLaunchRequest>,
     val budget: ReviewContextBudgetPolicy,
+    val specIntentResolution: SpecIntentResolution,
   )
 
   /** The compiled lane set and the subset this attempt actually launches. */
   private data class CompiledLaunches(
     val all: List<ReviewSpecialistLaunchRequest>,
     val toRun: List<ReviewSpecialistLaunchRequest>,
+    val specIntentResolution: SpecIntentResolution,
   )
 
   fun run(originalRequest: ParallelCodeReviewRequest): ParallelCodeReviewResult {
+    if (originalRequest.suppliedDiff != null && originalRequest.suppliedDiff.isBlank()) {
+      return completeEmptySuppliedDelta(originalRequest)
+    }
     val initial = prepareInitialRun(originalRequest)
+    verifyNativeWorkers(initial)
     val outcomes = runLanes(initial)
     recordLaneDispositions(initial, outcomes)
-    // Specialist completion is settled above; the integration pass is a separate boundary that runs
-    // exactly once afterwards and settles its own durable state below.
     val integration = runIntegrationPass(initial, outcomes)
     val coverage = coverageReport(initial, outcomes, integration)
     val result = parallelResult(
@@ -145,8 +168,19 @@ class ParallelCodeReviewRunner(
       coverage,
       initial.compiledLaunchRequests.firstOrNull()?.packet,
       initial.budget,
+      stageResumeReport(initial.request.reviewRunId),
     )
-    recordMergedFindingLanes(initial.request.reviewRunId, result)
+    persistReviewPassClaims(initial.request.reviewRunId, result.mergeResult.findings, persistEmpty = false)
+    recordReviewStageBoundary(initial.request.reviewRunId, integration, result.mergeResult.findings)
+    recordMergedFindingLanes(initial.request.reviewRunId)
+    val verificationVerdicts = runClaimVerification(initial, result)
+    val adjudicationVerdicts = runSpecAdjudication(initial, result)
+    val recordedVerdicts = recordedFindingVerdicts(
+      initial.request.reviewRunId,
+      verificationVerdicts + adjudicationVerdicts,
+    )
+    emitReviewStageDegradations(initial.request.reviewRunId)
+    val assembled = ParallelReviewMerger.withRecordedVerdicts(result.mergeResult, recordedVerdicts)
     result.accountingSummary?.let { summary ->
       database.transaction { unitOfWork ->
         unitOfWork.reviews.saveAccounting(
@@ -154,13 +188,16 @@ class ParallelCodeReviewRunner(
         )
       }
     }
-    return result
+    return result.copy(
+      mergeResult = assembled,
+      stageResume = stageResumeReport(initial.request.reviewRunId),
+    )
   }
 
   private fun prepareInitialRun(originalRequest: ParallelCodeReviewRequest): InitialRun {
     val agent1 = resolveAgent(originalRequest.agent1Id, "--agent1")
-    val agent2 = resolveAgent(originalRequest.agent2Id, "--agent2")
-    if (agent1.id == agent2.id) {
+    val agent2 = originalRequest.agent2Id?.let { resolveAgent(it, "--agent2") }
+    if (agent2 != null && agent1.id == agent2.id) {
       throw UsageValidationException(
         "agent1 and agent2 must be different agents; both resolved to '${agent1.id}'.",
       )
@@ -194,7 +231,7 @@ class ParallelCodeReviewRunner(
       detection.routed,
       detection.manifests,
       detection.ownedPathsBySlug,
-      listOf(agent1.id, agent2.id),
+      listOfNotNull(agent1.id, agent2?.id),
       budget,
     )
     return InitialRun(
@@ -202,10 +239,11 @@ class ParallelCodeReviewRunner(
       detection = detection,
       resolvedMode = resolvedMode,
       agent1Id = agent1.id,
-      agent2Id = agent2.id,
+      agent2Id = agent2?.id,
       preparedLaunchRequests = compiled.toRun,
       compiledLaunchRequests = compiled.all,
       budget = budget,
+      specIntentResolution = compiled.specIntentResolution,
     )
   }
 
@@ -218,24 +256,29 @@ class ParallelCodeReviewRunner(
   private fun runLanes(initial: InitialRun): ParallelReviewLaneRunResult {
     val request = initial.request
     val byAgent = initial.preparedLaunchRequests.groupBy { it.agentId }
+    val lane1 = {
+      launchParentLane(
+        initial.agent1Id,
+        byAgent[initial.agent1Id].orEmpty(),
+        initial.detection.routed,
+        initial.budget,
+        request,
+        null,
+        initial.resolvedMode,
+      )
+    }
+    val agent2Id = initial.agent2Id ?: return ParallelReviewLaneRunResult(
+      lane1 = lane1(),
+      lane2 = ParallelReviewLaneOutcome(success = true, rawOutput = ""),
+    )
     val timeoutSec = request.timeout?.inWholeSeconds ?: DEFAULT_TIMEOUT_MINUTES * SECONDS_PER_MINUTE
     return parallelLaneRunner.runTwoLanes(
       ParallelReviewLaneRunRequest(
-        lane1 = {
-          launchParentLane(
-            initial.agent1Id,
-            byAgent[initial.agent1Id].orEmpty(),
-            initial.detection.routed,
-            initial.budget,
-            request,
-            null,
-            initial.resolvedMode,
-          )
-        },
+        lane1 = lane1,
         lane2 = {
           launchParentLane(
-            initial.agent2Id,
-            byAgent[initial.agent2Id].orEmpty(),
+            agent2Id,
+            byAgent[agent2Id].orEmpty(),
             initial.detection.routed,
             initial.budget,
             request,
@@ -244,6 +287,26 @@ class ParallelCodeReviewRunner(
           )
         },
         timeout = (timeoutSec + TIMEOUT_BUFFER_SECONDS).seconds,
+      ),
+    )
+  }
+
+  private fun verifyNativeWorkers(initial: InitialRun) {
+    val nativeNames = initial.compiledLaunchRequests
+      .filter { it.workerKind == ReviewWorkerKind.PROVIDER_NATIVE }
+      .mapNotNull { it.logicalWorkerName }
+    val logicalNames = buildList {
+      addAll(nativeNames)
+      if (initial.resolvedMode == ResolvedReviewExecutionMode.INLINE) {
+        add(INLINE_NATIVE_WORKER)
+      }
+    }.distinct()
+    if (logicalNames.isEmpty()) return
+    nativeAgentPreflight.verify(
+      ReviewNativeAgentPreflightRequest(
+        repoRoot = initial.request.repoRoot,
+        agentIds = listOfNotNull(initial.agent1Id, initial.agent2Id),
+        logicalNames = logicalNames,
       ),
     )
   }
@@ -265,6 +328,7 @@ class ParallelCodeReviewRunner(
     // Every specialist lane the compiler routes reads this one projection of the shared evidence, so
     // N lanes over one checkpoint never provoke a second derivation.
     val commitSequence = SharedReviewEvidenceProjection.project(sharedSequence, evidence)
+    val specIntentResolution = resolveSpecIntent(request, evidence, budget)
     val compiled = ParallelReviewPreparationCompiler.compile(
       input = ParallelReviewPreparationInput(
         diff = diffText,
@@ -280,6 +344,7 @@ class ParallelCodeReviewRunner(
         headRevision = headRevision,
         prelaunchExpansions = request.prelaunchExpansions,
         baselineUntrackedPolicy = request.baselineUntrackedPolicy,
+        specIntentResolution = specIntentResolution,
       ),
       budget = budget,
       envelopeValidator = reviewContextEnvelopeValidator,
@@ -287,7 +352,8 @@ class ParallelCodeReviewRunner(
     )
     val selected = selectLaunchesForResume(request.reviewRunId, compiled)
     recordPlannedLanes(request.reviewRunId, plannedRubrics, selected)
-    return CompiledLaunches(all = compiled, toRun = selected)
+    recordSpecIntent(request.reviewRunId, specIntentResolution)
+    return CompiledLaunches(all = compiled, toRun = selected, specIntentResolution = specIntentResolution)
   }
 
   /**
@@ -397,6 +463,7 @@ class ParallelCodeReviewRunner(
       brokerId = initial.agent1Id,
       repoRoot = initial.request.repoRoot,
       timeout = initial.request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes,
+      promptSuffix = initial.request.selectedAgentAddonsSection,
     )
     recordIntegrationBoundary(initial.request.reviewRunId, outcome)
     return outcome
@@ -435,6 +502,269 @@ class ParallelCodeReviewRunner(
     }
   }
 
+  private fun resolveSpecIntent(
+    request: ParallelCodeReviewRequest,
+    evidence: ReviewDiffEvidence,
+    budget: ReviewContextBudgetPolicy,
+  ): SpecIntentResolution {
+    return specIntentProjectionResolver.resolve(
+      SpecIntentProjectionResolveRequest(
+        repoRoot = request.repoRoot,
+        explicitSpecPath = request.specPath,
+        branchName = currentHeadBranchName(request.repoRoot),
+        changedPaths = evidence.files.map { it.path },
+        budget = budget,
+      ),
+    )
+  }
+
+  private fun currentHeadBranchName(repoRoot: Path): String = diffResolver.runProcess(
+    listOf("git", "rev-parse", "--abbrev-ref", "HEAD"),
+    repoRoot,
+  )?.trim().orEmpty()
+
+  private fun recordSpecIntent(reviewRunId: String?, resolution: SpecIntentResolution) {
+    if (reviewRunId == null) return
+    val reference = when (resolution) {
+      is SpecIntentResolution.Resolved -> ReviewSpecProjectionReference(
+        specPath = resolution.projection.provenance.specPath,
+        contentDigest = resolution.projection.provenance.contentDigest,
+      )
+      is SpecIntentResolution.None -> ReviewSpecProjectionReference(absenceReason = resolution.reason.wireValue)
+    }
+    database.transaction { unitOfWork ->
+      unitOfWork.reviews.recordSpecProjectionReference(reviewRunId, reference)
+      if (resolution is SpecIntentResolution.None) {
+        unitOfWork.reviews.recordStageBoundary(
+          reviewRunId,
+          ReviewStageBoundary(
+            stage = ReviewStage.ADJUDICATION,
+            reached = ReviewStageReached.NOT_REACHED,
+            recordedAt = Instant.now().toString(),
+            contractVersion = REVIEW_CONTEXT_CONTRACT_VERSION,
+          ),
+        )
+      }
+    }
+  }
+
+  private fun recordedFindingVerdicts(
+    reviewRunId: String?,
+    inMemory: List<ReviewFindingVerdict>,
+  ): List<ReviewFindingVerdict> {
+    if (reviewRunId == null) return inMemory
+    return database.transaction { unitOfWork -> unitOfWork.reviews.fetchFindingVerdicts(reviewRunId) }
+  }
+
+  private fun runClaimVerification(initial: InitialRun, result: ParallelCodeReviewResult): List<ReviewFindingVerdict> {
+    val reviewRunId = initial.request.reviewRunId
+    val claims = if (reviewRunId == null) {
+      result.mergeResult.findings
+    } else {
+      val boundaries = database.transaction { unitOfWork ->
+        unitOfWork.reviews.fetchStageBoundaries(reviewRunId)
+      }
+      val reviewReached = boundaries.any {
+        it.stage == ReviewStage.REVIEW && it.reached == ReviewStageReached.REACHED
+      }
+      if (!reviewReached) return emptyList()
+      database.transaction { unitOfWork -> unitOfWork.reviews.fetchReviewPassClaims(reviewRunId) }
+        ?.findings
+        .orEmpty()
+    }
+    val existing = if (reviewRunId == null) {
+      emptyList()
+    } else {
+      database.transaction { unitOfWork -> unitOfWork.reviews.fetchFindingVerdicts(reviewRunId) }
+    }
+    val verifiedRefs = existing
+      .filter { it.stage == ReviewStage.VERIFICATION }
+      .map { it.findingRef }
+      .toSet()
+    if (claims.all { it.fNumber in verifiedRefs }) {
+      if (reviewRunId != null) recordVerificationBoundary(reviewRunId)
+      return existing
+    }
+    val outcome = ReviewClaimVerificationRunner(parentReviewLauncher, reviewContextEnvelopeValidator).run(
+      packet = initial.compiledLaunchRequests.firstOrNull()?.packet,
+      findings = claims,
+      existingVerdicts = existing,
+      mode = initial.resolvedMode,
+      budget = initial.budget,
+      brokerId = initial.agent1Id,
+      repoRoot = initial.request.repoRoot,
+      timeout = initial.request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes,
+      promptSuffix = initial.request.selectedAgentAddonsSection,
+    )
+    if (reviewRunId == null) return existing + outcome.verdicts
+    if (outcome.verdicts.isNotEmpty()) {
+      database.transaction { unitOfWork ->
+        unitOfWork.reviews.recordFindingVerdicts(reviewRunId, outcome.verdicts)
+      }
+    }
+    val recordedRefs = (existing + outcome.verdicts)
+      .filter { it.stage == ReviewStage.VERIFICATION }
+      .map { it.findingRef }
+      .toSet()
+    if (claims.all { it.fNumber in recordedRefs }) {
+      recordVerificationBoundary(reviewRunId)
+    }
+    return existing + outcome.verdicts
+  }
+
+  private fun recordVerificationBoundary(reviewRunId: String) {
+    database.transaction { unitOfWork ->
+      unitOfWork.reviews.recordStageBoundary(
+        reviewRunId,
+        ReviewStageBoundary(
+          stage = ReviewStage.VERIFICATION,
+          reached = ReviewStageReached.REACHED,
+          recordedAt = Instant.now().toString(),
+          contractVersion = REVIEW_CONTEXT_CONTRACT_VERSION,
+        ),
+      )
+    }
+  }
+
+  private fun runSpecAdjudication(initial: InitialRun, result: ParallelCodeReviewResult): List<ReviewFindingVerdict> {
+    val reviewRunId = initial.request.reviewRunId
+    durableAdjudication(reviewRunId)?.let { return it }
+    val projection = (initial.specIntentResolution as? SpecIntentResolution.Resolved)?.projection
+    val claims = if (reviewRunId == null) {
+      result.mergeResult.findings
+    } else {
+      database.transaction { unitOfWork -> unitOfWork.reviews.fetchReviewPassClaims(reviewRunId) }
+        ?.findings
+        .orEmpty()
+    }
+    val existing = if (reviewRunId == null) {
+      emptyList()
+    } else {
+      database.transaction { unitOfWork -> unitOfWork.reviews.fetchFindingVerdicts(reviewRunId) }
+    }
+    val outcome = ReviewSpecAdjudicationRunner(parentReviewLauncher, reviewContextEnvelopeValidator).run(
+      packet = initial.compiledLaunchRequests.firstOrNull()?.packet,
+      findings = claims,
+      existingVerdicts = existing,
+      projection = projection,
+      budget = initial.budget,
+      brokerId = initial.agent1Id,
+      repoRoot = initial.request.repoRoot,
+      timeout = initial.request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes,
+      promptSuffix = initial.request.selectedAgentAddonsSection,
+    )
+    return persistAdjudication(reviewRunId, outcome)
+  }
+
+  private fun durableAdjudication(reviewRunId: String?): List<ReviewFindingVerdict>? {
+    if (reviewRunId == null) return null
+    val boundaries = database.transaction { unitOfWork ->
+      unitOfWork.reviews.fetchStageBoundaries(reviewRunId)
+    }
+    val verificationReached = boundaries.any {
+      it.stage == ReviewStage.VERIFICATION && it.reached == ReviewStageReached.REACHED
+    }
+    if (!verificationReached) return emptyList()
+    val adjudicationReached = boundaries.any {
+      it.stage == ReviewStage.ADJUDICATION && it.reached == ReviewStageReached.REACHED
+    }
+    if (!adjudicationReached) return null
+    return database.transaction { unitOfWork -> unitOfWork.reviews.fetchFindingVerdicts(reviewRunId) }
+  }
+
+  private fun persistAdjudication(
+    reviewRunId: String?,
+    outcome: ReviewSpecAdjudicationOutcome,
+  ): List<ReviewFindingVerdict> {
+    if (reviewRunId == null) return outcome.verdicts
+    if (outcome.skipReason == ReviewSpecAdjudicationRunner.SPEC_CONTEXT_NONE) return emptyList()
+    if (outcome.verdicts.isNotEmpty()) {
+      database.transaction { unitOfWork ->
+        unitOfWork.reviews.recordFindingVerdicts(reviewRunId, outcome.verdicts)
+      }
+    }
+    recordAdjudicationBoundary(reviewRunId)
+    return outcome.verdicts
+  }
+
+  private fun recordAdjudicationBoundary(reviewRunId: String) {
+    database.transaction { unitOfWork ->
+      unitOfWork.reviews.recordStageBoundary(
+        reviewRunId,
+        ReviewStageBoundary(
+          stage = ReviewStage.ADJUDICATION,
+          reached = ReviewStageReached.REACHED,
+          recordedAt = Instant.now().toString(),
+          contractVersion = REVIEW_CONTEXT_CONTRACT_VERSION,
+        ),
+      )
+    }
+  }
+
+  private fun emitReviewStageDegradations(reviewRunId: String?) {
+    if (reviewRunId == null) return
+    database.transaction { unitOfWork ->
+      ReviewStageDegradationSelection.select(
+        reviewRunId = reviewRunId,
+        spec = unitOfWork.reviews.fetchSpecProjectionReference(reviewRunId),
+        boundaries = unitOfWork.reviews.fetchStageBoundaries(reviewRunId),
+        verdicts = unitOfWork.reviews.fetchFindingVerdicts(reviewRunId),
+        claims = unitOfWork.reviews.fetchReviewPassClaims(reviewRunId),
+      ).forEach { unitOfWork.lifecycleTelemetry.reviewStageDegradation(it) }
+    }
+  }
+
+  private fun persistReviewPassClaims(
+    reviewRunId: String?,
+    findings: List<ParallelReviewMergedFinding>,
+    persistEmpty: Boolean,
+  ) {
+    if (reviewRunId == null) return
+    if (findings.isEmpty() && !persistEmpty) return
+    database.transaction { unitOfWork ->
+      val recorded = unitOfWork.reviews.fetchReviewPassClaims(reviewRunId)
+      val existing = recorded?.findings.orEmpty()
+      val unioned = unionReviewPassClaims(existing, findings)
+      if (unioned.isEmpty() && !persistEmpty) return@transaction
+      if (recorded != null && existing == unioned) return@transaction
+      unitOfWork.reviews.recordReviewPassClaims(reviewRunId, unioned)
+    }
+  }
+
+  private fun recordReviewStageBoundary(
+    reviewRunId: String?,
+    integration: ReviewIntegrationPassOutcome,
+    findings: List<ParallelReviewMergedFinding>,
+  ) {
+    if (reviewRunId == null || !integration.durable) return
+    val lanes = database.transaction { unitOfWork -> unitOfWork.reviews.fetchReviewRunLanes(reviewRunId) }
+    if (lanes.isEmpty() || lanes.any { it.reviewDisposition != ReviewRunLaneResolver.COMPLETE_DISPOSITION }) {
+      return
+    }
+    persistReviewPassClaims(reviewRunId, findings, persistEmpty = true)
+    database.transaction { unitOfWork ->
+      unitOfWork.reviews.recordStageBoundary(
+        reviewRunId,
+        ReviewStageBoundary(
+          stage = ReviewStage.REVIEW,
+          reached = ReviewStageReached.REACHED,
+          recordedAt = Instant.now().toString(),
+          contractVersion = REVIEW_CONTEXT_CONTRACT_VERSION,
+        ),
+      )
+    }
+  }
+
+  private fun stageResumeReport(reviewRunId: String?): ReviewStageResumeReport? {
+    if (reviewRunId == null) return null
+    return database.transaction { unitOfWork ->
+      ReviewStageResumeSelection.select(
+        unitOfWork.reviews.fetchStageBoundaries(reviewRunId),
+        unitOfWork.reviews.fetchFindingVerdicts(reviewRunId),
+      )
+    }
+  }
+
   /**
    * Aggregation gate plus coverage honesty: a missing, duplicated, or sequence-mismatched lane
    * result fails loudly here rather than merging into a register that looks complete.
@@ -458,7 +788,8 @@ class ParallelCodeReviewRunner(
     // durable results. Expected stays the packet's full selection either way: that is what makes a
     // lane silently vanishing between attempts a loud aggregation failure rather than clean coverage.
     val results = ranThisPass + durablyCompleteLanes(initial, packet, ranThisPass)
-    val bothAgentsSucceeded = outcomes.lane1.success && outcomes.lane2.success
+    val bothAgentsSucceeded = outcomes.lane1.success &&
+      (initial.agent2Id == null || outcomes.lane2.success)
     return ReviewLaneAggregation.requireCompleteLaneResults(
       expectedLanes = packet.selectedLanes,
       results = results,
@@ -523,14 +854,12 @@ class ParallelCodeReviewRunner(
     database.transaction { unitOfWork -> unitOfWork.reviews.replaceReviewRunLanes(reviewRunId, updated) }
   }
 
-  /**
-   * Records which lane produced each merged finding straight from the merge result, where the
-   * producing specialist is already known. Ingestion reads this rather than re-deriving the lane
-   * from the formatted review text, which no agent is obliged to reproduce faithfully.
-   */
-  private fun recordMergedFindingLanes(reviewRunId: String?, result: ParallelCodeReviewResult) {
+  private fun recordMergedFindingLanes(reviewRunId: String?) {
     if (reviewRunId == null) return
-    val attribution = result.mergeResult.findings.mapNotNull { finding ->
+    val claims = database.transaction { unitOfWork ->
+      unitOfWork.reviews.fetchReviewPassClaims(reviewRunId)
+    }?.findings.orEmpty()
+    val attribution = claims.mapNotNull { finding ->
       finding.specialistSkillNames.firstOrNull()?.let { finding.fNumber to it }
     }.toMap()
     if (attribution.isEmpty()) return
@@ -560,6 +889,31 @@ class ParallelCodeReviewRunner(
 
   private fun hasSuppliedDiff(request: ParallelCodeReviewRequest): Boolean =
     request.suppliedDiff != null || request.suppliedDiffPath != null
+
+  private fun completeEmptySuppliedDelta(request: ParallelCodeReviewRequest): ParallelCodeReviewResult {
+    val budget = repoLocalConfig.readRepoLocalConfig(ReadRepoLocalConfigRequest(request.repoRoot))
+      .config.reviewContextBudget
+    val specIntent = specIntentProjectionResolver.resolve(
+      SpecIntentProjectionResolveRequest(
+        repoRoot = request.repoRoot,
+        explicitSpecPath = request.specPath,
+        branchName = currentHeadBranchName(request.repoRoot),
+        changedPaths = emptyList(),
+        budget = budget,
+      ),
+    )
+    recordSpecIntent(request.reviewRunId, specIntent)
+    request.reviewRunId?.let { runId ->
+      if (specIntent is SpecIntentResolution.Resolved) {
+        recordAdjudicationBoundary(runId)
+      }
+    }
+    return ParallelCodeReviewResult(
+      mergeResult = ParallelReviewMergeResult(findings = emptyList(), formattedOutput = "NO_FINDINGS"),
+      lane1 = ParallelReviewLaneStatus(agentId = request.agent1Id, success = true),
+      lane2 = ParallelReviewLaneStatus(agentId = request.agent2Id.orEmpty(), success = true),
+    )
+  }
 
   private fun canonicalRange(request: ParallelCodeReviewRequest): Pair<String, String> {
     val head = canonicalRevision(request.headRevision ?: HEAD_REVISION, request.repoRoot)
@@ -722,8 +1076,11 @@ class ParallelCodeReviewRunner(
   }
 
   private fun resolveDiff(request: ParallelCodeReviewRequest, revisions: Pair<String, String>): String {
+    if (request.suppliedDiff != null) {
+      return request.suppliedDiff
+    }
     val (base, head) = revisions
-    val diffText = request.suppliedDiff ?: request.suppliedDiffPath?.let { path ->
+    val diffText = request.suppliedDiffPath?.let { path ->
       diffResolver.readDiff(path, MAX_SUPPLIED_DIFF_BYTES)
         ?: throw DiffResolutionException(
           "--diff-file must name a readable, non-empty regular file no larger than $MAX_SUPPLIED_DIFF_BYTES bytes.",
@@ -731,11 +1088,7 @@ class ParallelCodeReviewRunner(
     } ?: when (request.scope) {
       ParallelReviewScope.STAGED -> runDiff(listOf("git", "diff", "--cached"), request.repoRoot)
       ParallelReviewScope.UNSTAGED -> runDiff(listOf("git", "diff"), request.repoRoot)
-      // The aggregate delta spans the same canonical range the commit sequence does, so the
-      // base-to-head equivalence fact compares two views of one range rather than two ranges.
       ParallelReviewScope.BRANCH -> runDiff(listOf("git", "diff", base, head), request.repoRoot)
-      // Falls back to the PR's own diff when its commits are not in the local object store, which
-      // is the case the SYNTHETIC_AGGREGATE_PR_DIFF unit exists for.
       ParallelReviewScope.PR -> diffResolver.runProcess(listOf("git", "diff", base, head), request.repoRoot)
         ?: runDiff(listOf("gh", "pr", "diff"), request.repoRoot)
     }
@@ -817,7 +1170,7 @@ class ParallelCodeReviewRunner(
           issueKey = "code-review-parallel",
           repoRoot = request.repoRoot,
           timeout = request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes,
-          promptOverride = launch.prompt,
+          promptOverride = request.withSelectedAgentAddons(launch.prompt),
           modelOverride = modelOverride,
         ),
       ),
@@ -1099,9 +1452,7 @@ class ParallelCodeReviewRunner(
     // A standalone review carries no run id; its evidence is still addressed by checkpoint
     // fingerprint, so one shared slot per repo is correct rather than a collision.
     const val SHARED_EVIDENCE_WORKFLOW_ID = "code-review"
-
-    // Stands in for a sequence identity on a resume that compiled no packet, so the skipped
-    // integration outcome still names something rather than carrying a blank digest.
+    const val INLINE_NATIVE_WORKER = "bill-code-review-inline"
     const val NO_SEQUENCE_DIGEST = "no-commit-sequence"
   }
 
@@ -1115,16 +1466,14 @@ class ParallelCodeReviewRunner(
 @Suppress("LongParameterList") // assembles the full result record; every part is required
 private fun parallelResult(
   agent1Id: String,
-  agent2Id: String,
+  agent2Id: String?,
   outcomes: skillbill.ports.review.model.ParallelReviewLaneRunResult,
   integration: ReviewIntegrationPassOutcome,
   coverage: ReviewCoverageReport?,
   packet: ReviewContextPacket?,
   budget: ReviewContextBudgetPolicy,
+  stageResume: ReviewStageResumeReport?,
 ): ParallelCodeReviewResult {
-  // A lane's own `findings` already carries the right value, so the `success` check guards only the
-  // raw-output fallback: re-parsing a failed run's output would surface truncated or error text as
-  // findings.
   val lane1Result = ParallelReviewLaneResult(
     agentId = agent1Id,
     findings = outcomes.lane1.findings.ifEmpty {
@@ -1132,9 +1481,13 @@ private fun parallelResult(
     },
   )
   val lane2Result = ParallelReviewLaneResult(
-    agentId = agent2Id,
-    findings = outcomes.lane2.findings.ifEmpty {
-      if (outcomes.lane2.success) ParallelReviewFindingParser.parse(outcomes.lane2.rawOutput) else emptyList()
+    agentId = agent2Id.orEmpty(),
+    findings = if (agent2Id == null) {
+      emptyList()
+    } else {
+      outcomes.lane2.findings.ifEmpty {
+        if (outcomes.lane2.success) ParallelReviewFindingParser.parse(outcomes.lane2.rawOutput) else emptyList()
+      }
     },
   )
   val integrationResult = integration.findings
@@ -1143,11 +1496,12 @@ private fun parallelResult(
   return ParallelCodeReviewResult(
     mergeResult = ParallelReviewMerger.merge(lane1Result, lane2Result, integrationResult),
     lane1 = outcomes.lane1.toStatus(agent1Id),
-    lane2 = outcomes.lane2.toStatus(agent2Id),
-    accountingSummary = parallelAccountingSummary(outcomes)
+    lane2 = outcomes.lane2.toStatus(agent2Id.orEmpty()),
+    accountingSummary = parallelAccountingSummary(outcomes, includeLane2 = agent2Id != null)
       ?.withCommitFocusedAccounting(packet, budget, integration, coverage),
     integration = integration,
     coverage = coverage,
+    stageResume = stageResume,
   )
 }
 
@@ -1163,8 +1517,10 @@ private fun ParallelReviewLaneOutcome.toStatus(agentId: String) = ParallelReview
 
 private fun parallelAccountingSummary(
   outcomes: skillbill.ports.review.model.ParallelReviewLaneRunResult,
+  includeLane2: Boolean,
 ): ReviewAccountingSummary? {
-  val specialists = listOf(outcomes.lane1, outcomes.lane2).flatMap { it.specialistAccounting }
+  val accountedLanes = listOfNotNull(outcomes.lane1, outcomes.lane2.takeIf { includeLane2 })
+  val specialists = accountedLanes.flatMap { it.specialistAccounting }
   if (specialists.isEmpty()) return null
   fun ReviewLaneAccounting.toInput() = ReviewAccountingInput(
     lane = lane,
@@ -1183,7 +1539,7 @@ private fun parallelAccountingSummary(
     segmentAccounting = segmentAccounting,
     unreviewedSegmentIds = unreviewedSegmentIds,
   )
-  val roots = listOf(outcomes.lane1, outcomes.lane2).mapIndexed { index, outcome ->
+  val roots = accountedLanes.mapIndexed { index, outcome ->
     ReviewAccountingInput(
       lane = "parallel-agent-${index + 1}",
       assignmentDigest = sha256HexUtf8("parallel-agent-${index + 1}"),

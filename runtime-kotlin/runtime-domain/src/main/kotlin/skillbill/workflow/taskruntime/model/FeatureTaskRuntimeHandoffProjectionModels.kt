@@ -5,6 +5,7 @@ import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_HANDOFF_ENVELOPE_CONTRACT_VERSION
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PHASE_HANDOFF_CONTRACT_VERSION
 import skillbill.error.InvalidFeatureTaskRuntimePhaseHandoffSchemaError
+import skillbill.review.model.ReviewFindingVerdict
 import skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.NoopFeatureTaskRuntimePlanningProjectionValidator
@@ -718,6 +719,7 @@ data class FeatureTaskRuntimeHandoffProjectionInputs(
   val auditRepairPlan: FeatureTaskRuntimeAuditRepairPlan? = null,
   val auditRepairState: FeatureTaskRuntimeAuditRepairState? = null,
   val repairLedger: FeatureTaskRuntimeRepairLedger? = null,
+  val recordedFindingVerdicts: List<ReviewFindingVerdict> = emptyList(),
   /** Runtime-owned branch identity used only by bounded finalization request projectors. */
   val branchIdentity: String? = null,
   val baseBranch: String = "main",

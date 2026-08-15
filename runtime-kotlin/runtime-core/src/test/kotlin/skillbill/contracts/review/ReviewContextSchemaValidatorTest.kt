@@ -399,13 +399,98 @@ class ReviewContextSchemaValidatorTest {
     }
   }
 
-  @Test fun `projected envelopes carry contract version 0_9`() {
+  @Test fun `projected envelopes carry contract version 1_0`() {
     val launch =
       GovernedReviewLaunch(assignment, packet, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
     assertEquals(REVIEW_CONTEXT_CONTRACT_VERSION, packet.toParentPacketEnvelope().asWireMap()["contract_version"])
     assertEquals(REVIEW_CONTEXT_CONTRACT_VERSION, assignment.toAssignmentEnvelope().asWireMap()["contract_version"])
     assertEquals(REVIEW_CONTEXT_CONTRACT_VERSION, launch.toLaunchEnvelope().asWireMap()["contract_version"])
-    assertEquals("0.9", REVIEW_CONTEXT_CONTRACT_VERSION)
+    assertEquals("1.0", REVIEW_CONTEXT_CONTRACT_VERSION)
+  }
+
+  @Test fun `a spec intent projection missing provenance is rejected and a provenanced counterpart is accepted`() {
+    ReviewContextSchemaValidator.validateSpecIntentProjection(specIntentProjection(), "projection")
+    val missing = specIntentProjection() - "provenance"
+    val failure = assertFailsWith<InvalidReviewContextSchemaError> {
+      ReviewContextSchemaValidator.validateSpecIntentProjection(missing, "projection")
+    }
+    assertTrue("for definition 'spec_intent_projection'" in failure.message.orEmpty())
+    val noDigest = specIntentProjection() + (
+      "provenance" to mapOf("spec_path" to "spec.md")
+      )
+    val digestFailure = assertFailsWith<InvalidReviewContextSchemaError> {
+      ReviewContextSchemaValidator.validateSpecIntentProjection(noDigest, "projection")
+    }
+    assertTrue("for definition 'spec_intent_projection'" in digestFailure.message.orEmpty())
+  }
+
+  @Test fun `a verification launch carrying a spec projection field is rejected and a clean launch is accepted`() {
+    ReviewContextSchemaValidator.validateVerificationLaunch(verificationLaunch(), "verification")
+    val contaminated = verificationLaunch() + ("spec_intent_projection" to specIntentProjection())
+    val failure = assertFailsWith<InvalidReviewContextSchemaError> {
+      ReviewContextSchemaValidator.validateVerificationLaunch(contaminated, "verification")
+    }
+    assertTrue("for definition 'verification_launch'" in failure.message.orEmpty())
+  }
+
+  @Test fun `a refuted finding verdict without a citation is rejected and a cited refutation is accepted`() {
+    ReviewContextSchemaValidator.validateFindingVerdict(
+      confirmedVerdict() + ("claim_verdict" to "refuted") + ("citations" to listOf(findingCitation())),
+      "verdict",
+    )
+    val failure = assertFailsWith<InvalidReviewContextSchemaError> {
+      ReviewContextSchemaValidator.validateFindingVerdict(
+        confirmedVerdict() + ("claim_verdict" to "refuted"),
+        "verdict",
+      )
+    }
+    assertTrue("for definition 'finding_verdict'" in failure.message.orEmpty())
+  }
+
+  @Test
+  fun `uncited downgrade or out of scope preexisting is rejected while cited counterparts are accepted`() {
+    val cited = listOf(findingCitation())
+    ReviewContextSchemaValidator.validateFindingVerdict(
+      confirmedVerdict("adjudication") +
+        ("severity_adjustment" to mapOf("direction" to "lower", "justification" to "listed non-goal")) +
+        ("citations" to cited),
+      "verdict",
+    )
+    ReviewContextSchemaValidator.validateFindingVerdict(
+      confirmedVerdict("adjudication") +
+        ("scope_disposition" to "out_of_scope_preexisting") +
+        ("citations" to cited),
+      "verdict",
+    )
+    val uncitedDowngrade = assertFailsWith<InvalidReviewContextSchemaError> {
+      ReviewContextSchemaValidator.validateFindingVerdict(
+        confirmedVerdict("adjudication") +
+          ("severity_adjustment" to mapOf("direction" to "lower", "justification" to "listed non-goal")),
+        "verdict",
+      )
+    }
+    val uncitedOutOfScope = assertFailsWith<InvalidReviewContextSchemaError> {
+      ReviewContextSchemaValidator.validateFindingVerdict(
+        confirmedVerdict("adjudication") + ("scope_disposition" to "out_of_scope_preexisting"),
+        "verdict",
+      )
+    }
+    assertTrue("for definition 'finding_verdict'" in uncitedDowngrade.message.orEmpty())
+    assertTrue("for definition 'finding_verdict'" in uncitedOutOfScope.message.orEmpty())
+  }
+
+  @Test fun `scope disposition at verification is rejected and the same disposition at adjudication is accepted`() {
+    ReviewContextSchemaValidator.validateFindingVerdict(
+      confirmedVerdict("adjudication") + ("scope_disposition" to "in_scope"),
+      "verdict",
+    )
+    val failure = assertFailsWith<InvalidReviewContextSchemaError> {
+      ReviewContextSchemaValidator.validateFindingVerdict(
+        confirmedVerdict("verification") + ("scope_disposition" to "in_scope"),
+        "verdict",
+      )
+    }
+    assertTrue("for definition 'finding_verdict'" in failure.message.orEmpty())
   }
 
   @Test fun `the real service validates its own projections against the canonical schema`() {
@@ -459,5 +544,74 @@ class ReviewContextSchemaValidatorTest {
       ),
       securityRouting,
     )
+  }
+
+  private fun verificationLaunch(): Map<String, Any?> = mapOf(
+    "contract_version" to REVIEW_CONTEXT_CONTRACT_VERSION,
+    "kind" to "verification_launch",
+    "review_id" to "review",
+    "packet_digest" to STAGE_DIGEST,
+    "review_revision" to mapOf("session_id" to "rvs-1", "run_revision" to 1),
+    "finding" to reviewFinding(),
+    "cited_region" to mapOf("path" to "src/A.kt", "start_line" to 12, "end_line" to 14),
+    "delta_reference" to mapOf("base_revision" to "base", "head_revision" to "head"),
+    "evidence_surface_rules" to "Cited region and direct callers only.",
+    "dependency_allowlist" to listOf("src/Dep.kt"),
+    "forbidden_rediscovery" to listOf("diff_recomputation"),
+    "broker_id" to "broker",
+    "isolation" to "fresh",
+    "budget" to stageBudget(),
+  )
+
+  private fun specIntentProjection(): Map<String, Any?> = mapOf(
+    "intended_outcome" to "Stage contract ships first.",
+    "acceptance_criteria" to listOf("AC-001"),
+    "constraints" to listOf("No worker launch"),
+    "non_goals" to listOf("Persistence"),
+    "deferred_items" to listOf("Subtask 2"),
+    "provenance" to mapOf("spec_path" to "spec.md", "content_digest" to STAGE_DIGEST),
+    "declared_byte_budget" to 4096,
+  )
+
+  private fun confirmedVerdict(stage: String = "verification"): Map<String, Any?> = mapOf(
+    "contract_version" to REVIEW_CONTEXT_CONTRACT_VERSION,
+    "kind" to "finding_verdict",
+    "stage" to stage,
+    "finding_ref" to "F-1",
+    "claim_verdict" to "confirmed",
+    "recorded_at" to "2026-08-14T07:22:00Z",
+  )
+
+  private fun reviewFinding(): Map<String, Any?> = mapOf(
+    "finding_ref" to "F-1",
+    "severity" to "Major",
+    "location" to "src/A.kt:12",
+    "description" to "Null is not checked.",
+  )
+
+  private fun findingCitation(): Map<String, Any?> = mapOf("path" to "src/A.kt", "line" to 12)
+
+  private fun stageBudget(): Map<String, Any?> = mapOf(
+    "max_parent_packet_bytes" to 8,
+    "max_lane_launch_bytes" to 4,
+    "max_lane_evidence_bytes" to 4,
+    "max_evidence_result_bytes" to 2,
+    "max_lane_result_bytes" to 2,
+    "max_assignment_expansions" to 0,
+    "max_specialist_tool_calls" to 1,
+    "max_specialist_model_turns" to 1,
+    "max_routing_analysis_pairs" to 1,
+    "max_routing_analysis_bytes" to 1,
+    "provider_token_thresholds" to mapOf(
+      "input_tokens" to 1,
+      "cached_input_tokens" to 1,
+      "output_tokens" to 1,
+      "reasoning_tokens" to 1,
+      "total_tokens" to 1,
+    ),
+  )
+
+  private companion object {
+    const val STAGE_DIGEST: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   }
 }

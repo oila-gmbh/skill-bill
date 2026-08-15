@@ -8,6 +8,14 @@ import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.goalrunner.model.normalizedUnaddressedFindingCategory
 import skillbill.goalrunner.model.normalizedUnaddressedFindingSeverity
 import skillbill.goalrunner.model.toOutcomeRecord
+import skillbill.ports.persistence.UnitOfWork
+import skillbill.review.ReviewFindingActionability
+import skillbill.review.ReviewFindingFieldCodec
+import skillbill.review.model.ReviewClaimVerdict
+import skillbill.review.model.ReviewFindingCitation
+import skillbill.review.model.ReviewFindingVerdict
+import skillbill.review.model.ReviewScopeDisposition
+import skillbill.review.model.ReviewSeverityAdjustment
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_PASS_VERDICTS
 import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition
@@ -23,11 +31,22 @@ internal data class StructuredGoalReviewFinding(
   val location: String,
   val compactLabel: String,
   val findingId: String? = null,
+  val claimVerdict: ReviewClaimVerdict? = null,
+  val scopeDisposition: ReviewScopeDisposition? = null,
+  val citations: List<ReviewFindingCitation> = emptyList(),
+  val severityAdjustment: ReviewSeverityAdjustment? = null,
 )
 
 internal data class GoalSubtaskReviewOutputOutcome(
   val verdict: FeatureTaskRuntimeVerdict,
   val unresolvedFindingCount: Int,
+)
+
+internal data class UnaddressedFindingLedgerScope(
+  val issueKey: String,
+  val subtaskId: Int,
+  val workflowId: String,
+  val reviewPassNumber: Int,
 )
 
 @Suppress("TooManyFunctions") // one reduction pipeline; each step is a named redaction stage
@@ -48,19 +67,26 @@ internal object GoalSubtaskReviewSummaryReducer {
   private val bareFilenameToken = Regex("\\b[A-Za-z0-9][A-Za-z0-9_.-]*\\.[A-Za-z0-9]+\\b")
   private val diffFragment = Regex("(?i)(?:\\bdiff\\s+--git\\b|\\bindex\\s+[0-9a-f]{7,}\\b|---|\\+\\+\\+)")
 
-  fun fromOutput(output: Map<String, Any?>): List<GoalSubtaskReviewCompactFinding> {
-    return structuredFindings(output).map { finding ->
-      GoalSubtaskReviewCompactFinding(
-        severity = finding.severity,
-        label = finding.compactLabel,
-        text = sanitize(finding.message),
-        findingId = finding.findingId,
-      )
-    }.groupBy { finding ->
-      // Repair-receipt coverage reads these persisted findings. Distinct register ids must survive
-      // even when compact labels collide; label collapse is only the legacy no-id path.
-      finding.findingId?.lowercase() ?: finding.label.lowercase()
-    }
+  fun fromOutput(
+    output: Map<String, Any?>,
+    recordedVerdicts: List<ReviewFindingVerdict> = emptyList(),
+  ): List<GoalSubtaskReviewCompactFinding> {
+    return structuredFindings(output, recordedVerdicts)
+      .filter { finding ->
+        ReviewFindingActionability.isActionable(finding.claimVerdict, finding.scopeDisposition)
+      }
+      .map { finding ->
+        GoalSubtaskReviewCompactFinding(
+          severity = finding.severity,
+          label = finding.compactLabel,
+          text = sanitize(finding.message),
+          findingId = finding.findingId,
+        )
+      }.groupBy { finding ->
+        // Repair-receipt coverage reads these persisted findings. Distinct register ids must survive
+        // even when compact labels collide; label collapse is only the legacy no-id path.
+        finding.findingId?.lowercase() ?: finding.label.lowercase()
+      }
       .values
       .map { sameKeyFindings ->
         sameKeyFindings.minByOrNull(::severityRank)
@@ -81,7 +107,10 @@ internal object GoalSubtaskReviewSummaryReducer {
       ?.let(JsonSupport::anyToStringAnyMap)
       ?.let { GoalSubtaskCommitFocusedAccounting.fromArtifactMap(it, "produced_outputs.commit_focused_accounting") }
 
-  fun structuredFindings(output: Map<String, Any?>): List<StructuredGoalReviewFinding> {
+  fun structuredFindings(
+    output: Map<String, Any?>,
+    recordedVerdicts: List<ReviewFindingVerdict> = emptyList(),
+  ): List<StructuredGoalReviewFinding> {
     val findings = output["produced_outputs"]
       ?.let(JsonSupport::anyToStringAnyMap)
       ?.get("findings") as? List<*>
@@ -92,6 +121,20 @@ internal object GoalSubtaskReviewSummaryReducer {
         ?: return@mapNotNull null
       val message = (finding["message"] as? String)?.trim()?.takeIf(String::isNotBlank)
         ?: return@mapNotNull null
+      val overlay = ReviewFindingActionability.overlayOf(
+        findingRef = ReviewFindingFieldCodec.findingRefOf(
+          finding["id"],
+          finding["finding_id"],
+          finding["f_number"],
+        ),
+        recordedVerdicts = recordedVerdicts,
+        encoded = ReviewFindingFieldCodec.recordedFieldsOf(
+          claimVerdict = finding["claim_verdict"],
+          scopeDisposition = finding["scope_disposition"],
+          citations = finding["citations"],
+          severityAdjustment = finding["severity_adjustment"],
+        ),
+      )
       StructuredGoalReviewFinding(
         severity = severity,
         message = message,
@@ -100,7 +143,15 @@ internal object GoalSubtaskReviewSummaryReducer {
         location = sequenceOf(finding["location"], finding["artifact_ref"])
           .filterIsInstance<String>().firstOrNull()?.trim()?.takeIf(String::isNotBlank) ?: "<unknown>",
         compactLabel = labelFor(finding, message),
-        findingId = (finding["id"] as? String)?.trim()?.takeIf(String::isNotBlank),
+        findingId = ReviewFindingFieldCodec.findingRefOf(
+          finding["id"],
+          finding["finding_id"],
+          finding["f_number"],
+        ),
+        claimVerdict = overlay.claimVerdict,
+        scopeDisposition = overlay.scopeDisposition,
+        citations = overlay.citations,
+        severityAdjustment = overlay.severityAdjustment,
       )
     }
   }
@@ -112,27 +163,29 @@ internal object GoalSubtaskReviewSummaryReducer {
    * reported it; the finding id is the other half. A pass that genuinely reported no run id leaves it
    * null so the pair reads as unresolved rather than being bucketed to a guessed run.
    */
-  private val Map<String, Any?>.reviewRunId: String?
-    get() = (
-      this["produced_outputs"]
-        ?.let(JsonSupport::anyToStringAnyMap)
-        ?.get(FeatureTaskRuntimeVerificationSignalKeys.REVIEW_RUN_ID) as? String
-      )?.trim()?.takeIf(String::isNotBlank)
+  fun reviewRunIdOf(output: Map<String, Any?>): String? = (
+    output["produced_outputs"]
+      ?.let(JsonSupport::anyToStringAnyMap)
+      ?.get(FeatureTaskRuntimeVerificationSignalKeys.REVIEW_RUN_ID) as? String
+    )?.trim()?.takeIf(String::isNotBlank)
+
+  fun recordedVerdicts(unitOfWork: UnitOfWork, output: Map<String, Any?>): List<ReviewFindingVerdict> {
+    val reviewRunId = reviewRunIdOf(output) ?: return emptyList()
+    return unitOfWork.reviews.fetchFindingVerdicts(reviewRunId)
+  }
 
   fun unaddressedFindings(
     output: Map<String, Any?>,
-    issueKey: String,
-    subtaskId: Int,
-    workflowId: String,
-    reviewPassNumber: Int,
+    scope: UnaddressedFindingLedgerScope,
+    recordedVerdicts: List<ReviewFindingVerdict> = emptyList(),
   ): List<UnaddressedFinding> {
-    val reviewRunId = output.reviewRunId
-    return structuredFindings(output).mapIndexed { index, finding ->
+    val reviewRunId = reviewRunIdOf(output)
+    return structuredFindings(output, recordedVerdicts).mapIndexed { index, finding ->
       UnaddressedFinding(
-        issueKey = issueKey,
-        subtaskId = subtaskId,
-        workflowId = workflowId,
-        reviewPassNumber = reviewPassNumber,
+        issueKey = scope.issueKey,
+        subtaskId = scope.subtaskId,
+        workflowId = scope.workflowId,
+        reviewPassNumber = scope.reviewPassNumber,
         findingOrdinal = index + 1,
         severity = normalizedUnaddressedFindingSeverity(finding.severity),
         issueCategory = normalizedUnaddressedFindingCategory(finding.issueCategory),
@@ -140,6 +193,10 @@ internal object GoalSubtaskReviewSummaryReducer {
         summary = finding.message,
         reviewRunId = reviewRunId,
         findingId = finding.findingId,
+        claimVerdict = finding.claimVerdict,
+        scopeDisposition = finding.scopeDisposition,
+        citations = finding.citations,
+        severityAdjustment = finding.severityAdjustment,
       )
     }
   }
@@ -226,8 +283,35 @@ internal object GoalSubtaskReviewSummaryReducer {
     return dispositions
   }
 
-  fun unresolvedCount(output: Map<String, Any?>): Int = fromOutput(output)
-    .count(GoalSubtaskReviewCompactFinding::blocksAdvance)
+  fun refutedBlockerSupersedes(
+    priorFindings: List<UnaddressedFinding>,
+    currentFindings: List<UnaddressedFinding>,
+    recordedVerdicts: List<ReviewFindingVerdict> = emptyList(),
+  ): List<GoalSubtaskBlockerDisposition> {
+    if (priorFindings.isEmpty()) return emptyList()
+    val currentByKey = currentFindings.associateBy(UnaddressedFinding::findingKey)
+    val byRef = recordedVerdicts.groupBy(ReviewFindingVerdict::findingRef)
+    return priorFindings.mapNotNull { prior ->
+      if (prior.severity != "blocker") return@mapNotNull null
+      val current = currentByKey[prior.findingKey] ?: return@mapNotNull null
+      val findingId = prior.findingId ?: return@mapNotNull null
+      val currentId = current.findingId ?: return@mapNotNull null
+      val verification = ReviewFindingActionability.verificationVerdict(byRef[currentId].orEmpty())
+        ?: ReviewFindingActionability.verificationVerdict(byRef[findingId].orEmpty())
+      if (verification?.claimVerdict != ReviewClaimVerdict.REFUTED) return@mapNotNull null
+      val evidence = verification.citations.map { citation -> "${citation.path}:${citation.line}" }
+      if (evidence.isEmpty()) return@mapNotNull null
+      GoalSubtaskBlockerDisposition(
+        findingId = findingId,
+        verdict = GoalSubtaskBlockerDispositionVerdict.SUPERSEDED,
+        evidence = evidence,
+      )
+    }
+  }
+
+  fun unresolvedCount(output: Map<String, Any?>, recordedVerdicts: List<ReviewFindingVerdict> = emptyList()): Int =
+    fromOutput(output, recordedVerdicts)
+      .count(GoalSubtaskReviewCompactFinding::blocksAdvance)
 
   fun outcomeFor(
     output: Map<String, Any?>,
@@ -239,21 +323,7 @@ internal object GoalSubtaskReviewSummaryReducer {
     // phase transition already used.
     val advanceBlockingCount = findings.count(GoalSubtaskReviewCompactFinding::blocksAdvance)
     val hasOnlyNonBlockingFindings = findings.isNotEmpty() && advanceBlockingCount == 0
-    val declaredVerdict = (output["verdict"] as? String)?.trim()
-    val changesRequested = declaredVerdict in setOf("needs_fix", FeatureTaskRuntimeVerdict.CHANGES_REQUESTED.wireValue)
-    val verdict = when {
-      advanceBlockingCount > 0 -> FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
-      hasOnlyNonBlockingFindings -> FeatureTaskRuntimeVerdict.APPROVED
-      changesRequested -> FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
-      // The pass vocabulary is closed, so an off-vocabulary verdict cannot be persisted as emitted.
-      // It resolves the way the transition function already resolves it — only changes_requested
-      // remediates, everything else advances — so the durable pass cannot disagree with the loop that
-      // read the same output.
-      declaredVerdict?.isNotBlank() == true -> FeatureTaskRuntimeVerdict.fromWire(declaredVerdict)
-        .takeIf(GOAL_SUBTASK_REVIEW_PASS_VERDICTS::contains)
-        ?: FeatureTaskRuntimeVerdict.APPROVED
-      else -> FeatureTaskRuntimeVerdict.APPROVED
-    }
+    val verdict = reviewPassVerdict(output, findings, advanceBlockingCount, hasOnlyNonBlockingFindings)
     return GoalSubtaskReviewOutputOutcome(
       verdict = verdict,
       unresolvedFindingCount = when {
@@ -264,6 +334,26 @@ internal object GoalSubtaskReviewSummaryReducer {
         else -> 1
       },
     )
+  }
+
+  private fun reviewPassVerdict(
+    output: Map<String, Any?>,
+    findings: List<GoalSubtaskReviewCompactFinding>,
+    advanceBlockingCount: Int,
+    hasOnlyNonBlockingFindings: Boolean,
+  ): FeatureTaskRuntimeVerdict {
+    val declaredVerdict = (output["verdict"] as? String)?.trim()
+    val changesRequested = declaredVerdict in setOf("needs_fix", FeatureTaskRuntimeVerdict.CHANGES_REQUESTED.wireValue)
+    val reportedFindingsWereFiltered = findings.isEmpty() && structuredFindings(output).isNotEmpty()
+    return when {
+      advanceBlockingCount > 0 -> FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
+      hasOnlyNonBlockingFindings || reportedFindingsWereFiltered -> FeatureTaskRuntimeVerdict.APPROVED
+      changesRequested -> FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
+      declaredVerdict?.isNotBlank() == true -> FeatureTaskRuntimeVerdict.fromWire(declaredVerdict)
+        .takeIf(GOAL_SUBTASK_REVIEW_PASS_VERDICTS::contains)
+        ?: FeatureTaskRuntimeVerdict.APPROVED
+      else -> FeatureTaskRuntimeVerdict.APPROVED
+    }
   }
 
   private fun labelFor(finding: Map<String, Any?>, message: String): String {

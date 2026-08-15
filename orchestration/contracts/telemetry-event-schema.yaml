@@ -71,9 +71,9 @@ properties:
       `McpToolRegistry.toolNames`.
   contract_version:
     type: string
-    const: "1.8.0"
+    const: "1.9.0"
     description: >
-      Pinned to `TELEMETRY_EVENT_CONTRACT_VERSION` (currently "1.8.0").
+      Pinned to `TELEMETRY_EVENT_CONTRACT_VERSION` (currently "1.9.0").
       The parity test `TelemetryEventSchemaContractVersionTest` keeps
       the two in lockstep.
 
@@ -116,6 +116,8 @@ oneOf:
   - $ref: "#/$defs/qualityCheckFinishedEvent"
   - $ref: "#/$defs/qualityCheckStartedEvent"
   - $ref: "#/$defs/skillbillReviewFinishedEvent"
+  - $ref: "#/$defs/skillbillReviewStageDegradationEvent"
+  - $ref: "#/$defs/skillbillReviewFinishedLegacyRegeneratedEvent"
   - $ref: "#/$defs/resolveLearningsEvent"
   - $ref: "#/$defs/reviewStatsEvent"
   - $ref: "#/$defs/telemetryProxyCapabilitiesEvent"
@@ -400,7 +402,7 @@ $defs:
       event_name:
         const: doctor
       contract_version:
-        const: "1.8.0"
+        const: "1.9.0"
 
   updateCheckEvent:
     type: object
@@ -412,7 +414,7 @@ $defs:
       event_name:
         const: update_check
       contract_version:
-        const: "1.8.0"
+        const: "1.9.0"
 
   featureVerifyStatsEvent:
     type: object
@@ -424,7 +426,7 @@ $defs:
       event_name:
         const: feature_verify_stats
       contract_version:
-        const: "1.8.0"
+        const: "1.9.0"
 
   reviewStatsEvent:
     type: object
@@ -436,7 +438,7 @@ $defs:
       event_name:
         const: review_stats
       contract_version:
-        const: "1.8.0"
+        const: "1.9.0"
       # Commit-focused sparse specialist accounting. Every field is an identity, a count, or a lane
       # name: no commit subject, path, diff text, or company identifier reaches telemetry.
       commit_sequence_digest:
@@ -519,7 +521,7 @@ $defs:
       event_name:
         const: telemetry_proxy_capabilities
       contract_version:
-        const: "1.8.0"
+        const: "1.9.0"
 
   telemetryRemoteStatsEvent:
     type: object
@@ -532,7 +534,7 @@ $defs:
       event_name:
         const: telemetry_remote_stats
       contract_version:
-        const: "1.8.0"
+        const: "1.9.0"
       workflow:
         type: string
         enum:
@@ -569,7 +571,7 @@ $defs:
       event_name:
         const: feature_verify_started
       contract_version:
-        const: "1.8.0"
+        const: "1.9.0"
       acceptance_criteria_count:
         type: integer
       rollout_relevant:
@@ -600,7 +602,7 @@ $defs:
       event_name:
         const: feature_verify_finished
       contract_version:
-        const: "1.8.0"
+        const: "1.9.0"
       feature_flag_audit_performed:
         type: boolean
       review_iterations:
@@ -651,7 +653,7 @@ $defs:
       event_name:
         const: feature_verify_workflow_continue
       contract_version:
-        const: "1.8.0"
+        const: "1.9.0"
       workflow_id:
         type: string
 
@@ -666,7 +668,7 @@ $defs:
       event_name:
         const: feature_verify_workflow_get
       contract_version:
-        const: "1.8.0"
+        const: "1.9.0"
       workflow_id:
         type: string
 
@@ -680,7 +682,7 @@ $defs:
       event_name:
         const: feature_verify_workflow_latest
       contract_version:
-        const: "1.8.0"
+        const: "1.9.0"
 
   featureVerifyWorkflowListEvent:
     type: object
@@ -692,7 +694,7 @@ $defs:
       event_name:
         const: feature_verify_workflow_list
       contract_version:
-        const: "1.8.0"
+        const: "1.9.0"
       limit:
         type: integer
 
@@ -706,7 +708,7 @@ $defs:
       event_name:
         const: feature_verify_workflow_open
       contract_version:
-        const: "1.8.0"
+        const: "1.9.0"
       session_id:
         type: string
       current_step_id:
@@ -729,7 +731,7 @@ $defs:
       event_name:
         const: feature_verify_workflow_resume
       contract_version:
-        const: "1.8.0"
+        const: "1.9.0"
       workflow_id:
         type: string
 
@@ -746,7 +748,7 @@ $defs:
       event_name:
         const: feature_verify_workflow_update
       contract_version:
-        const: "1.8.0"
+        const: "1.9.0"
       workflow_id:
         type: string
       workflow_status:
@@ -782,7 +784,7 @@ $defs:
       event_name:
         const: goal_started
       contract_version:
-        const: "1.8.0"
+        const: "1.9.0"
       issue_key:
         type: string
       feature_name:
@@ -829,7 +831,7 @@ $defs:
       event_name:
         const: goal_subtask_finished
       contract_version:
-        const: "1.8.0"
+        const: "1.9.0"
       issue_key:
         type: string
       workflow_id:
@@ -915,7 +917,7 @@ $defs:
       event_name:
         const: goal_finished
       contract_version:
-        const: "1.8.0"
+        const: "1.9.0"
       issue_key:
         type: string
       workflow_id:
@@ -978,7 +980,7 @@ $defs:
       event_name:
         const: goal_issue_finished
       contract_version:
-        const: "1.8.0"
+        const: "1.9.0"
       issue_key:
         type: string
       parent_workflow_id:
@@ -1034,7 +1036,7 @@ $defs:
       event_name:
         const: goal_stats
       contract_version:
-        const: "1.8.0"
+        const: "1.9.0"
       since:
         type: string
       date_from:
@@ -1059,7 +1061,7 @@ $defs:
       event_name:
         const: import_review
       contract_version:
-        const: "1.8.0"
+        const: "1.9.0"
       review_text:
         type: string
       orchestrated:
@@ -1076,7 +1078,7 @@ $defs:
       event_name:
         const: new_skill_scaffold
       contract_version:
-        const: "1.8.0"
+        const: "1.9.0"
       payload:
         $ref: "#/$defs/freeObjectShape"
       dry_run:
@@ -1100,7 +1102,7 @@ $defs:
       event_name:
         const: pr_description_generated
       contract_version:
-        const: "1.8.0"
+        const: "1.9.0"
       commit_count:
         type: integer
       files_changed_count:
@@ -1141,7 +1143,7 @@ $defs:
       event_name:
         const: quality_check_finished
       contract_version:
-        const: "1.8.0"
+        const: "1.9.0"
       final_failure_count:
         type: integer
       iterations:
@@ -1197,7 +1199,7 @@ $defs:
       event_name:
         const: quality_check_started
       contract_version:
-        const: "1.8.0"
+        const: "1.9.0"
       routed_skill:
         type: string
       detected_stack:
@@ -1330,11 +1332,17 @@ $defs:
       - execution_mode
       - review_finished_at
       - learnings
+      - verification
+      - adjudication
+      - refutation_rate_by_stage
+      - rejected_verdict_counts
+      - severity_adjustment_counts
+      - resolved_tier
     properties:
       event_name:
         const: skillbill_review_finished
       contract_version:
-        const: "1.8.0"
+        const: "1.9.0"
       total_findings:
         type: integer
       accepted_findings:
@@ -1400,6 +1408,139 @@ $defs:
         additionalProperties: true
       review_context_accounting:
         $ref: "#/$defs/boundedReviewAccounting"
+      verification:
+        $ref: "#/$defs/reviewStageVerdictDistribution"
+      adjudication:
+        $ref: "#/$defs/reviewStageVerdictDistribution"
+      refutation_rate_by_stage:
+        type: object
+        additionalProperties: false
+        required:
+          - verification
+          - adjudication
+        properties:
+          verification: { type: number }
+          adjudication: { type: number }
+      rejected_verdict_counts:
+        type: object
+        additionalProperties: false
+        required:
+          - uncited_refutations
+          - uncited_downgrades
+          - finding_mutations
+        properties:
+          uncited_refutations: { type: integer }
+          uncited_downgrades: { type: integer }
+          finding_mutations: { type: integer }
+      severity_adjustment_counts:
+        type: object
+        additionalProperties: false
+        required:
+          - raised
+          - lowered
+        properties:
+          raised: { type: integer }
+          lowered: { type: integer }
+      resolved_tier:
+        type: string
+        enum:
+          - inline
+          - delegated
+          - unresolved
+
+  reviewStageVerdictDistribution:
+    type: object
+    additionalProperties: false
+    required:
+      - claim_verdict
+      - scope_disposition
+      - finding_count
+    properties:
+      claim_verdict:
+        type: object
+        additionalProperties: false
+        required:
+          - confirmed
+          - refuted
+          - unresolved
+        properties:
+          confirmed: { type: integer }
+          refuted: { type: integer }
+          unresolved: { type: integer }
+      scope_disposition:
+        type: object
+        additionalProperties: false
+        required:
+          - in_scope
+          - out_of_scope_preexisting
+          - spec_deviation
+          - spec_accepted_tradeoff
+        properties:
+          in_scope: { type: integer }
+          out_of_scope_preexisting: { type: integer }
+          spec_deviation: { type: integer }
+          spec_accepted_tradeoff: { type: integer }
+      finding_count: { type: integer }
+
+  skillbillReviewStageDegradationEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - review_run_id
+      - seam
+      - expected
+      - actual
+      - reason
+    properties:
+      event_name:
+        const: skillbill_review_stage_degradation
+      contract_version:
+        const: "1.9.0"
+      review_run_id:
+        type: string
+        minLength: 1
+      seam:
+        type: string
+        minLength: 1
+      expected:
+        type: string
+        minLength: 1
+      actual:
+        type: string
+        minLength: 1
+      reason:
+        type: string
+        enum:
+          - spec_context_none
+          - adjudication_skipped
+          - worker_launch_or_return_failed
+          - stage_boundary_unreached
+
+  skillbillReviewFinishedLegacyRegeneratedEvent:
+    type: object
+    additionalProperties: false
+    required:
+      - event_name
+      - contract_version
+      - review_run_id
+      - from_version
+      - to_version
+    properties:
+      event_name:
+        const: skillbill_review_finished_legacy_regenerated
+      contract_version:
+        const: "1.9.0"
+      review_run_id:
+        type: string
+        minLength: 1
+      from_version:
+        type: string
+        minLength: 1
+      to_version:
+        type: string
+        minLength: 1
 
   resolveLearningsEvent:
     type: object
@@ -1411,7 +1552,7 @@ $defs:
       event_name:
         const: resolve_learnings
       contract_version:
-        const: "1.8.0"
+        const: "1.9.0"
       repo:
         type: string
       skill:
@@ -1431,7 +1572,7 @@ $defs:
       event_name:
         const: triage_findings
       contract_version:
-        const: "1.8.0"
+        const: "1.9.0"
       review_run_id:
         type: string
       decisions:
@@ -1472,7 +1613,9 @@ x-coherence-checks:
   goal-telemetry-emission-events:
     description: >
       `goal_started`, `goal_subtask_finished`, `goal_finished`,
-      `goal_issue_finished`, and `skillbill_review_finished` are
+      `goal_issue_finished`, `skillbill_review_finished`,
+      `skillbill_review_stage_degradation`, and
+      `skillbill_review_finished_legacy_regenerated` are
       RUNTIME-INTERNAL emission payload contracts emitted by runtime
       lifecycles. They are intentionally ABSENT from
       `McpToolRegistry.toolNames` — they are not MCP tools and have no

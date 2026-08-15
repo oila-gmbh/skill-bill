@@ -32,6 +32,11 @@ fun reviewFinishedPayload(
     routedSkillPlatformSlugs,
   )
   val detectedStackDetail = normalizedStack.detail?.takeIf { it != normalizedPlatformSlug }
+  val stageMetrics = aggregateReviewStageMetrics(
+    connection = connection,
+    reviewRunId = reviewSummary.reviewRunId,
+    runFindingCount = stats.totalFindings,
+  )
   return ReviewFinishedTelemetry(
     findingStats = stats,
     reviewRunId = reviewSummary.reviewRunId,
@@ -50,6 +55,7 @@ fun reviewFinishedPayload(
     reviewFinishedAt = reviewSummary.reviewFinishedAt,
     learnings = learningsSection,
     reviewContextAccounting = loadReviewAccounting(connection, reviewSummary.reviewRunId)?.boundedPayload,
+    stageMetrics = stageMetrics,
   )
 }
 

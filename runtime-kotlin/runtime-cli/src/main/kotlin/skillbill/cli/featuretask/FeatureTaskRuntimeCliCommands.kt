@@ -250,9 +250,6 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
     val repoRoot = repoRoot?.let(Path::of) ?: Path.of("").toAbsolutePath().normalize()
     val invokedAgentId = resolveInvokedRuntimeAgentId(agent, environment)
     val phaseAgentMap = parsePhaseAgents(phaseAgents).toMutableMap()
-    parallelReviewAgent?.takeIf(String::isNotBlank)?.let {
-      phaseAgentMap[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW] = it
-    }
     val agentAssignment = FeatureTaskRuntimeAgentAssignment(
       perPhaseAgentIds = phaseAgentMap,
       override = agentOverride?.takeIf(String::isNotBlank),
@@ -280,9 +277,6 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
         .takeUnless { it == "none" }
         ?.let(::add)
     }.distinct()
-    // Checked on resolved agents, and after the model-directive gate so the more specific refusal
-    // still wins: a phase directive naming an agent that cannot honor it is a configuration error
-    // regardless of whether that agent's CLI is installed.
     refuseUnavailableAgentLaunchers(receivingAgents, deps.executableLookup)
     val persistedSelection = parseAgentAddonSelection(agentAddonSelectionJson)
     val hydratedSelection = if (persistedSelection.entries.isEmpty()) {

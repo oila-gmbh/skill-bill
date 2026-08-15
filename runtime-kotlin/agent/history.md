@@ -1,3 +1,87 @@
+## [2026-08-14] SKILL-191 subtask 8 — Runtime-driven standalone review entry
+Areas: runtime-kotlin/{runtime-application/review, runtime-cli/codereview, runtime-ports/review, runtime-core/di}, skills/bill-code-review, orchestration/skill-classes
+- `skill-bill code-review` is a standalone entry over `ParallelCodeReviewRunner`; omitted `--agent2` is a single parent lane that still returns the register with stage verdicts.
+- `code-review-parallel` still requires `--agent2`; `parallel:` and `code_review_parallel_agent` keep `arg > config > none` and add the second lane on the same driver.
+- Native-worker preflight is driver-owned via `ReviewNativeAgentPreflightPort`: missing, dangling, stale, unreadable, or undeclared workers fail with the governed repair command and never substitute a general-purpose worker. reusable
+- `bill-code-review` content and `code-review-shell.yaml` are an entry contract (recognize args, invoke the driver, present the register); scope, routing, merge, budget, and `mktemp`/`claude -p` lane-2 prose live only in the runtime.
+- Limitation: `bill-code-review-parallel` remains; feature-task review-phase delegation is subtask 9.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
+## [2026-08-14] SKILL-191 subtask 7 — Stage telemetry and measurement
+Areas: runtime-kotlin/{runtime-application/review, runtime-domain/review, runtime-infra-sqlite/{review,telemetry}, runtime-ports/{persistence,telemetry}, runtime-cli/review, runtime-mcp/telemetry}, orchestration/contracts, docs
+- `skillbill_review_finished` carries per-stage verdict distribution, refutation rates, rejected-verdict counts, severity-adjustment counts by direction, and `resolved_tier`.
+- Counts come from durable verdict rows via `aggregateReviewStageMetrics`, never from a worker self-report.
+- Rates stay split by resolved tier (`inline` vs `delegated`); unscoped `review-stats` uses `stage_metrics_by_tier` and does not pool.
+- `ReviewStageDegradationSelection` emits a degradation for `spec_context: none`, skipped adjudication, worker launch/return failure, and a stage that never reached its boundary.
+- Telemetry event schema bumped to `1.9.0` with Kotlin constant/parity; legacy `skillbill_review_finished` payloads rewrite in band from durable rows, or quarantine when the run id is unknown.
+- Limitation: rates are visible only — no automatic tier switching, alerting, or verifier tuning.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
+## [2026-08-14] SKILL-191 subtask 6 — Verdict-aware register assembly and consumers
+Areas: runtime-kotlin/{runtime-application/{review,goalrunner,featuretask}, runtime-domain/{review,goalrunner,taskruntime}, runtime-infra-sqlite/{review,goal}, runtime-cli, runtime-contracts/review}
+- Register lines stay `[F-XXX] Severity | Confidence | location | description`; `claim_verdict`, optional `scope_disposition`, citations, and severity adjustment sit beside the line. Findings group as Actionable / Refuted / Unresolved / Out of scope — nothing is dropped.
+- `ReviewFindingActionability` is the single actionable definition (`confirmed`, and when adjudication ran `in_scope` or `spec_deviation`); ledger, triage, compact summary, and `implement_fix` all read it instead of re-deriving judgement. reusable
+- Compact/`implement_fix` projections carry only actionable findings; a refuted finding stays in the register and never opens a remediation round.
+- Under `context:feature-remediation`, a Blocker that stage 1 refuted becomes `superseded` in `blocker_dispositions` with the verification citation as evidence.
+- Coalesced lanes with disagreeing verdicts take the conservative outcome (`unresolved` over `refuted`, `in_scope` over `out_of_scope_preexisting`) and keep both source verdicts with lane provenance.
+- Limitation: telemetry stays with subtask 7; review `produced_outputs.findings` is unchanged beyond the added verdict fields.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
+## [2026-08-14] SKILL-191 subtask 5 — Stage 2 spec adjudication runner
+Areas: runtime-kotlin/{runtime-application/review, runtime-domain/review/context/model, runtime-infra-sqlite}
+- After stage 1, `ReviewSpecAdjudicationRunner` launches one worker per `confirmed`/`unresolved` finding with that finding, its stage-1 verdict, the spec intent projection, and cited region; `refuted` findings are never re-litigated.
+- Missing projection or packet skips the stage with `spec_context: none` and the review completes; resume skips findings that already hold a durable adjudication verdict.
+- `ReviewSpecAdjudicationAdmission` records exactly one of `in_scope` / `out_of_scope_preexisting` / `spec_deviation` / `spec_accepted_tradeoff`. Uncited downgrade, uncited raise, uncited `out_of_scope_preexisting`, non-constraint `spec_deviation`, altered claim, or ambiguous worker output become `in_scope` with a rejection reason so the finding survives at original severity.
+- Severity adjustments are deltas with direction and justification beside the preserved original claim; findings are never overwritten. Bidirectional: raise and lower share the same citation discipline.
+- Pattern: same compile-validate-launch-admit shape as `ReviewClaimVerificationRunner`; one finding per worker; adjudication boundary persisted independently of verification via subtask 2 storage. reusable
+- Limitation: no register assembly or telemetry (subtasks 6–7); stage 1 truth is not re-tested; unsatisfied criteria stay with the feature-task audit phase.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
+## [2026-08-14] SKILL-191 subtask 4 — Stage 1 claim verification runner
+Areas: runtime-kotlin/{runtime-application/review, runtime-domain/review/{context/model,model}, runtime-infra-sqlite, runtime-ports/persistence}
+- After a terminal review pass (inline and delegated), `ReviewClaimVerificationRunner` launches one worker per finding with the finding, cited region, and delta only — no spec projection, reviewer narrative, parent transcript, or sibling findings.
+- `ReviewClaimVerdictAdmission` records `confirmed`/`refuted`/`unresolved`; uncited refutation, altered claim text/severity/location, and launch/parse failure become `unresolved` with a reason. Findings stay immutable; a worker failure does not fail the review.
+- Inline verifiers stay on the cited region and direct callers; delegated verifiers may expand through the existing broker and expansion ledger. Verdicts persist on subtask 2 storage; the verification stage boundary is independent of review-pass and integration.
+- Pattern: same compile-validate-launch-admit shape as `ReviewIntegrationPassRunner`; one finding per worker is a correctness property, not a budget. reusable
+- Limitation: no spec weighing, register emission, or telemetry (subtasks 5–7); a missing packet or empty finding set skips verification with a recorded reason.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
+## [2026-08-14] SKILL-191 subtask 3 — Spec intent projection resolver
+Areas: runtime-kotlin/{runtime-application/review, runtime-domain/review/{context,spec}, runtime-infra-fs, runtime-contracts}, docs
+- Resolver compiles a governed spec into a bounded `spec_intent_projection` (outcome, criteria, constraints, non-goals, deferred, provenance path+digest) and records the run's spec projection reference.
+- Resolution order is explicit path, then decomposition manifest (subtask `spec_path` plus parent `spec.md` as surrounding context), then a single `.feature-specs/{ISSUE_KEY}-*/spec.md` match; more than one glob match is `ambiguous_match`.
+- Acceptance-criteria extraction reuses `GovernedSpecSectionParser` with the run-invariants reader so the two cannot disagree. reusable
+- No resolvable spec records `spec_context: none` (`no_spec_found` / `ambiguous_match` / `not_applicable_scope`) and proceeds with stage 2 skipped; an explicit missing/unreadable/unparseable path loud-fails via `UnreadableSpecIntentProjectionError`.
+- Over-budget projections reject with a typed error naming the projection and are never truncated; `criteria_references` on lane assignment/specialist launch come from the resolved criteria (placeholder retired).
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
+## [2026-08-14] SKILL-191 subtask 2 — Durable review stage state and resume boundaries
+Areas: runtime-kotlin/{runtime-domain/review/model, runtime-ports/persistence, runtime-infra-sqlite, runtime-application/review}
+- Persist per-finding verdicts, independent per-stage boundaries (`review`/`verification`/`adjudication`), and the run's spec projection reference under existing `review_run_id`; FK `ON DELETE CASCADE` so pruning a run removes them.
+- Schema lands as new tables plus unconditional startup ensures — never by editing an already-applied migration body (appending a column there is a silent no-op on an existing store).
+- `ReviewStageResumeSelection` reports which of those stages hold a durable `reached` result and re-enters at the first that does not; verification completing does not mark adjudication, and adjudication does not backfill a missing verification boundary.
+- The `review` stage boundary is recorded only after every lane is complete and integration is durable; lane resume still skips completed lanes independently of later stages.
+- Pattern: extend `ReviewRunCompletenessRepository` (lane dispositions + integration boundary), not a parallel store. reusable
+- Limitation: this subtask does not run verification/adjudication or consume verdicts; drifted `contract_version` rows are ignored with a recorded degradation rather than reinterpreted.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
+## [2026-08-14] SKILL-191 subtask 1 — Stage contract and schema versioning
+Areas: orchestration/contracts, runtime-kotlin/runtime-contracts/{review,error}, runtime-kotlin/runtime-infra-fs/contracts/review, runtime-kotlin/runtime-core tests
+- Extended `review-context-schema.yaml` with `spec_intent_projection`, `verification_launch`, `adjudication_launch`, and `finding_verdict`; bumped `contract_version` to `1.0` with Kotlin `REVIEW_CONTEXT_CONTRACT_VERSION` parity.
+- `verification_launch` declares no spec field (`additionalProperties: false`), so spec contamination fails schema validation rather than a runtime convention.
+- `finding_verdict` requires citations when `claim_verdict` is `refuted`, when severity is lowered, or when `scope_disposition` is `out_of_scope_preexisting`; `scope_disposition` is illegal on `stage: verification`.
+- Pattern: new stage envelopes join `oneOf` and get dedicated validator seams that raise `InvalidReviewContextSchemaError` naming the failing `$defs` key. reusable
+- Limitation: no stage runs, storage, or spec resolution; later SKILL-191 subtasks consume this surface.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-08-09] SKILL-179 subtask 4 — Final sweep, parity locks, and gates
 Areas: docs, orchestration/review-delegation, runtime-infra-fs (review contracts), runtime-infra-sqlite/db/telemetry, scripts, .feature-specs/SKILL-179
 - Dropped live dual-engine wording from skill-source-generation and review-delegation PLAYBOOK so governed docs describe runtime-only projection.

@@ -10,6 +10,7 @@ import skillbill.review.context.model.ReviewBudgetOutcome
 import skillbill.review.context.model.ReviewLaneCompletionState
 import skillbill.review.model.ParallelReviewMergeResult
 import skillbill.review.model.ReviewCoverageReport
+import skillbill.review.model.ReviewStageResumeReport
 import skillbill.workflow.model.CodeReviewExecutionMode
 import java.nio.file.Path
 import kotlin.time.Duration
@@ -18,7 +19,7 @@ enum class ParallelReviewScope { STAGED, UNSTAGED, BRANCH, PR }
 
 data class ParallelCodeReviewRequest(
   val agent1Id: String,
-  val agent2Id: String,
+  val agent2Id: String?,
   val agent2Model: String? = null,
   val scope: ParallelReviewScope,
   val repoRoot: Path,
@@ -32,12 +33,14 @@ data class ParallelCodeReviewRequest(
   val headRevision: String? = null,
   val prelaunchExpansions: List<ReviewPrelaunchExpansion> = emptyList(),
   val baselineUntrackedPolicy: ReviewBaselineUntrackedPolicy = ReviewBaselineUntrackedPolicy.EMPTY,
+  val specPath: Path? = null,
+  val selectedAgentAddonsSection: String = "",
 ) {
   init {
     reviewRunId?.let { require(it.isNotBlank()) { "reviewRunId must be non-blank when provided." } }
+    specPath?.let { require(it.toString().isNotBlank()) { "specPath must be non-blank when provided." } }
     baseRevision?.let { require(it.isNotBlank()) { "baseRevision must be non-blank when provided." } }
     headRevision?.let { require(it.isNotBlank()) { "headRevision must be non-blank when provided." } }
-    suppliedDiff?.let { require(it.isNotBlank()) { "suppliedDiff must be non-blank when provided." } }
     require(suppliedDiff == null || suppliedDiffPath == null) {
       "suppliedDiff and suppliedDiffPath cannot both be provided."
     }
@@ -71,6 +74,11 @@ data class ParallelCodeReviewRequest(
    */
   fun withResolvedTier(tier: CodeReviewExecutionMode): ParallelCodeReviewRequest = copy(resolvedTier = tier)
 
+  fun withSelectedAgentAddons(prompt: String): String {
+    if (selectedAgentAddonsSection.isEmpty()) return prompt
+    return prompt.trimEnd() + "\n\n" + selectedAgentAddonsSection
+  }
+
   companion object {
     fun baselineUntrackedPolicy(includedPaths: List<String>, excludedPaths: List<String>) =
       ReviewBaselineUntrackedPolicy(includedPaths, excludedPaths)
@@ -101,6 +109,7 @@ data class ParallelCodeReviewResult(
    * integration pass is never read as compensating for a lane that ended incomplete.
    */
   val coverage: ReviewCoverageReport? = null,
+  val stageResume: ReviewStageResumeReport? = null,
 )
 
 data class ParallelReviewLaneStatus(

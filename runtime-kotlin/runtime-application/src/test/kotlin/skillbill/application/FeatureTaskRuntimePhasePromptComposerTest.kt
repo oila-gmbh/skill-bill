@@ -56,9 +56,9 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       codeReviewMode = CodeReviewExecutionMode.INLINE,
     )
 
-    assertContains(prompt, "bill-code-review mode:inline")
-    assertContains(prompt, "parallel:claude")
-    assertContains(prompt, "must not launch parallel review recursively")
+    assertContains(prompt, "The runtime owns this review")
+    assertFalse(prompt.contains("Run `bill-code-review"))
+    assertFalse(prompt.contains("parallel:claude"))
   }
 
   @Test
@@ -402,12 +402,13 @@ class FeatureTaskRuntimePhasePromptComposerTest {
         codeReviewMode = mode,
       )
 
-      assertContains(prompt, "bill-code-review mode:${mode.wireValue}")
+      assertFalse(prompt.contains("Run `bill-code-review"))
+      assertFalse(prompt.contains("bill-code-review mode:${mode.wireValue}"))
     }
   }
 
   @Test
-  fun `review prompt maps the durable baseline-untracked inventory to parallel CLI excludes`() {
+  fun `review prompt lists the durable baseline-untracked inventory without CLI exclude flags`() {
     val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
       briefingFor("review"),
@@ -418,7 +419,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     )
 
     assertContains(prompt, "Baseline-untracked review policy")
-    assertContains(prompt, "--baseline-untracked-exclude")
+    assertFalse(prompt.contains("--baseline-untracked-exclude"))
     assertContains(prompt, "- `a-before.tmp`")
     assertContains(prompt, "- `z-before.tmp`")
   }
@@ -438,7 +439,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       ),
     )
 
-    assertContains(prompt, "bill-code-review mode:inline")
+    assertFalse(prompt.contains("bill-code-review mode:inline"))
     assertContains(prompt, "context:feature-remediation")
     assertContains(prompt, "review_scope: branch_diff")
     // SKILL-142 AC-012 / SKILL-178: pass two is bounded to all findings addressed union the

@@ -13,6 +13,7 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 // The audit-gap context-reuse loop exercised over the production transition topology
@@ -29,7 +30,7 @@ class FeatureTaskRuntimeAuditGapLoopTest {
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     val launched = harness.launchedPromptPhaseOrder()
-    assertEquals(ALL_PHASES, launched, "a satisfied audit launches the forward pipeline, never re-planning")
+    assertEquals(AGENT_LAUNCHED_PHASES, launched, "a satisfied audit launches the forward pipeline, never re-planning")
     assertEquals(1, launched.count { it == "audit" })
     assertEquals(1, launched.count { it == "plan" })
     assertTrue(
@@ -58,14 +59,12 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     assertEquals(2, launched.count { it == "audit" }, "initial audit + one re-audit")
     assertEquals(1, launched.count { it == "plan" }, "the original plan remains immutable")
     assertEquals(2, launched.count { it == "implement" }, "the re-implement re-enters implement once")
-    // The reopened [implement, audit] span excludes review, so an audit gap never re-runs review;
-    // review launches exactly once, on the tree the audit finally declared complete.
-    assertEquals(1, launched.count { it == "review" }, "an audit gap never reopens review")
+    assertEquals(1, harness.launchOrder().count { it == "review" }, "an audit gap never reopens review")
     val firstAudit = launched.indexOf("audit")
     val reImplement = launched.withIndex().first { (index, phase) -> phase == "implement" && index > firstAudit }.index
     assertTrue(reImplement > firstAudit, "implementation remediation runs directly after the audit gap")
     assertTrue(
-      launched.indexOf("review") > launched.indexOfLast { it == "audit" },
+      harness.launchOrder().indexOf("review") > launched.indexOfLast { it == "audit" },
       "review runs only after the final satisfied audit",
     )
     // (e) the re-entered implement briefing carries the immutable executable plan and latest gaps,
@@ -113,14 +112,17 @@ class FeatureTaskRuntimeAuditGapLoopTest {
         git.worktreeStatusValue = " M src/Foo.kt"
         git.ownedPathsValue = listOf("src/Foo.kt")
       }
-      if (phaseId == "review") {
-        commitMessagesObservedAtReview = git.createCommitMessages.toList()
-      }
       delegate.launch(request)
     }
     val harness = runnerHarness(
       launcher = launcher,
-      runtimeConfig = RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(gitOperations = git)),
+      runtimeConfig = RuntimeHarnessConfig(
+        branchSetup = BranchSetupTestConfig(gitOperations = git),
+        reviewDriver = skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver { request ->
+          commitMessagesObservedAtReview = git.createCommitMessages.toList()
+          skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver.EMPTY.run(request)
+        },
+      ),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
@@ -160,10 +162,11 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     val reviewPrompts = harness.launcher.requests
       .map { requireNotNull(it.skillRunRequest.promptOverride) }
       .filter { it.contains("Phase: review") }
-    // Under the audit-first order an audit gap reopens only [implement, audit]. Review is never
-    // re-entered, so it never burns a remediation pass and still runs in the run-selected mode.
-    assertEquals(1, reviewPrompts.size)
-    assertContains(reviewPrompts[0], "bill-code-review mode:inline")
+    assertEquals(emptyList(), reviewPrompts, "runtime-owned review must not launch a review-phase agent")
+    assertNotNull(
+      harness.recorder.loadPhaseRecords(WORKFLOW_ID)?.get("review"),
+      "review still completes as a runtime-owned phase",
+    )
   }
 
   // (c) AC2: convergence on the last allowed (2nd) iteration still advances.
@@ -577,17 +580,10 @@ class FeatureTaskRuntimeAuditGapLoopTest {
   @Test
   fun `m2 composes with m1 keeping independent loop counters`() {
     var auditLaunches = 0
-    var reviewLaunches = 0
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
         when (phaseId) {
-          // The initial review demands one fix, then pass two approves.
-          "review" -> {
-            reviewLaunches += 1
-            facts(reviewFindingsOutput(changesRequested = reviewLaunches % 2 == 1))
-          }
-          // The first audit reports a gap; the second is satisfied (one audit-gap iteration).
           "audit" -> {
             auditLaunches += 1
             facts(if (auditLaunches < 2) auditGapsOutput() else auditSatisfiedOutput())
@@ -595,6 +591,7 @@ class FeatureTaskRuntimeAuditGapLoopTest {
           else -> facts(validJsonOutput(phaseId))
         }
       },
+      runtimeConfig = reviewFixRuntimeConfig(2),
     )
 
     val report = harness.runner.run(harness.request())
@@ -609,7 +606,7 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     assertEquals(listOf(1), auditGapIterations)
     assertTrue(reviewFixIterations.all { it == 1 })
     assertEquals(1, reviewFixIterations.size, "the approving re-review settled the loop after one fix")
-    assertEquals(2, harness.launchedPromptPhaseOrder().count { it == "review" }, "one fix earned one re-review")
+    assertEquals(2, harness.launchOrder().count { it == "review" }, "one fix earned one re-review")
   }
 
   @Test
@@ -640,23 +637,15 @@ class FeatureTaskRuntimeAuditGapLoopTest {
   fun `m2 audit-gap reentry never touches the review_fix budget across a crash`() {
     var auditLaunches = 0
     var implementLaunches = 0
-    var reviewLaunches = 0
     var crashOnReImplement = true
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
         when (phaseId) {
-          // Review is reachable only after the audit satisfies; its first pass demands one fix.
-          "review" -> {
-            reviewLaunches += 1
-            facts(reviewFindingsOutput(changesRequested = reviewLaunches == 1))
-          }
-          // The first audit reports a gap; the second is satisfied.
           "audit" -> {
             auditLaunches += 1
             facts(if (auditLaunches < 2) auditGapsOutput() else auditSatisfiedOutput())
           }
-          // The audit-gap re-implement (the second implement launch) crashes once; it heals on resume.
           "implement" -> {
             implementLaunches += 1
             if (implementLaunches == 2 && crashOnReImplement) spawnFailedFacts() else facts(validJsonOutput(phaseId))
@@ -664,13 +653,14 @@ class FeatureTaskRuntimeAuditGapLoopTest {
           else -> facts(validJsonOutput(phaseId))
         }
       },
+      runtimeConfig = reviewFixRuntimeConfig(2),
     )
 
     // Run 1: the audit fires gaps_found (audit_gap iteration 1), then the re-implement crashes. Review
     // has not been reachable at any point, so no review_fix edge can exist yet.
     val firstReport = harness.runner.run(harness.request())
     assertIs<FeatureTaskRuntimeRunReport.Blocked>(firstReport)
-    assertEquals(0, reviewLaunches, "review is unreachable until the audit satisfies")
+    assertEquals(0, harness.launchOrder().count { it == "review" }, "review is unreachable until the audit satisfies")
     val preGapReviewFix = harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
       .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && it.loopId == "review_fix" }
       .mapNotNull { it.edgeIteration }
@@ -689,7 +679,7 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     )
     assertEquals(
       2,
-      harness.launcher.requests.count { it.skillRunRequest.promptOverride.orEmpty().contains("Phase: review") },
+      harness.launchOrder().count { it == "review" },
       "the durable budget prevents a third review launch",
     )
     assertTrue(
