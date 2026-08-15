@@ -10,6 +10,7 @@ import skillbill.goalrunner.model.normalizedUnaddressedFindingSeverity
 import skillbill.goalrunner.model.toOutcomeRecord
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.review.ReviewFindingActionability
+import skillbill.review.ReviewFindingFieldCodec
 import skillbill.review.model.ReviewClaimVerdict
 import skillbill.review.model.ReviewFindingCitation
 import skillbill.review.model.ReviewFindingVerdict
@@ -41,6 +42,13 @@ internal data class GoalSubtaskReviewOutputOutcome(
   val unresolvedFindingCount: Int,
 )
 
+internal data class UnaddressedFindingLedgerScope(
+  val issueKey: String,
+  val subtaskId: Int,
+  val workflowId: String,
+  val reviewPassNumber: Int,
+)
+
 @Suppress("TooManyFunctions") // one reduction pipeline; each step is a named redaction stage
 internal object GoalSubtaskReviewSummaryReducer {
   private const val MAX_TEXT_LENGTH: Int = 180
@@ -68,17 +76,17 @@ internal object GoalSubtaskReviewSummaryReducer {
         ReviewFindingActionability.isActionable(finding.claimVerdict, finding.scopeDisposition)
       }
       .map { finding ->
-      GoalSubtaskReviewCompactFinding(
-        severity = finding.severity,
-        label = finding.compactLabel,
-        text = sanitize(finding.message),
-        findingId = finding.findingId,
-      )
-    }.groupBy { finding ->
-      // Repair-receipt coverage reads these persisted findings. Distinct register ids must survive
-      // even when compact labels collide; label collapse is only the legacy no-id path.
-      finding.findingId?.lowercase() ?: finding.label.lowercase()
-    }
+        GoalSubtaskReviewCompactFinding(
+          severity = finding.severity,
+          label = finding.compactLabel,
+          text = sanitize(finding.message),
+          findingId = finding.findingId,
+        )
+      }.groupBy { finding ->
+        // Repair-receipt coverage reads these persisted findings. Distinct register ids must survive
+        // even when compact labels collide; label collapse is only the legacy no-id path.
+        finding.findingId?.lowercase() ?: finding.label.lowercase()
+      }
       .values
       .map { sameKeyFindings ->
         sameKeyFindings.minByOrNull(::severityRank)
@@ -113,7 +121,20 @@ internal object GoalSubtaskReviewSummaryReducer {
         ?: return@mapNotNull null
       val message = (finding["message"] as? String)?.trim()?.takeIf(String::isNotBlank)
         ?: return@mapNotNull null
-      val overlay = ReviewFindingActionability.overlayOf(finding, recordedVerdicts)
+      val overlay = ReviewFindingActionability.overlayOf(
+        findingRef = ReviewFindingFieldCodec.findingRefOf(
+          finding["id"],
+          finding["finding_id"],
+          finding["f_number"],
+        ),
+        recordedVerdicts = recordedVerdicts,
+        encoded = ReviewFindingFieldCodec.recordedFieldsOf(
+          claimVerdict = finding["claim_verdict"],
+          scopeDisposition = finding["scope_disposition"],
+          citations = finding["citations"],
+          severityAdjustment = finding["severity_adjustment"],
+        ),
+      )
       StructuredGoalReviewFinding(
         severity = severity,
         message = message,
@@ -122,7 +143,11 @@ internal object GoalSubtaskReviewSummaryReducer {
         location = sequenceOf(finding["location"], finding["artifact_ref"])
           .filterIsInstance<String>().firstOrNull()?.trim()?.takeIf(String::isNotBlank) ?: "<unknown>",
         compactLabel = labelFor(finding, message),
-        findingId = ReviewFindingActionability.findingRefOf(finding),
+        findingId = ReviewFindingFieldCodec.findingRefOf(
+          finding["id"],
+          finding["finding_id"],
+          finding["f_number"],
+        ),
         claimVerdict = overlay.claimVerdict,
         scopeDisposition = overlay.scopeDisposition,
         citations = overlay.citations,
@@ -151,19 +176,16 @@ internal object GoalSubtaskReviewSummaryReducer {
 
   fun unaddressedFindings(
     output: Map<String, Any?>,
-    issueKey: String,
-    subtaskId: Int,
-    workflowId: String,
-    reviewPassNumber: Int,
+    scope: UnaddressedFindingLedgerScope,
     recordedVerdicts: List<ReviewFindingVerdict> = emptyList(),
   ): List<UnaddressedFinding> {
     val reviewRunId = reviewRunIdOf(output)
     return structuredFindings(output, recordedVerdicts).mapIndexed { index, finding ->
       UnaddressedFinding(
-        issueKey = issueKey,
-        subtaskId = subtaskId,
-        workflowId = workflowId,
-        reviewPassNumber = reviewPassNumber,
+        issueKey = scope.issueKey,
+        subtaskId = scope.subtaskId,
+        workflowId = scope.workflowId,
+        reviewPassNumber = scope.reviewPassNumber,
         findingOrdinal = index + 1,
         severity = normalizedUnaddressedFindingSeverity(finding.severity),
         issueCategory = normalizedUnaddressedFindingCategory(finding.issueCategory),
@@ -287,11 +309,9 @@ internal object GoalSubtaskReviewSummaryReducer {
     }
   }
 
-  fun unresolvedCount(
-    output: Map<String, Any?>,
-    recordedVerdicts: List<ReviewFindingVerdict> = emptyList(),
-  ): Int = fromOutput(output, recordedVerdicts)
-    .count(GoalSubtaskReviewCompactFinding::blocksAdvance)
+  fun unresolvedCount(output: Map<String, Any?>, recordedVerdicts: List<ReviewFindingVerdict> = emptyList()): Int =
+    fromOutput(output, recordedVerdicts)
+      .count(GoalSubtaskReviewCompactFinding::blocksAdvance)
 
   fun outcomeFor(
     output: Map<String, Any?>,

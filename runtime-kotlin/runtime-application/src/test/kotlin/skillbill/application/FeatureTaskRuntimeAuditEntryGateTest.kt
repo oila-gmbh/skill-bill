@@ -17,7 +17,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import java.time.Instant
 import kotlin.test.Test
-import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
@@ -201,23 +200,11 @@ class FeatureTaskRuntimeAuditEntryGateTest {
 
   @Test
   fun `a migration resume cannot complete while the blocker awaits verification review`() {
-    var reviewLaunches = 0
     val harness = runnerHarness(
       agentAssignment = phasePerAgentAssignment(),
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        when (phaseId) {
-          "review" -> {
-            reviewLaunches += 1
-            if (reviewLaunches == 1) {
-              facts(reviewFindingsOutput(changesRequested = true))
-            } else {
-              spawnFailedFacts()
-            }
-          }
-          else -> facts(defaultPhaseOutput(request))
-        }
-      },
+      runtimeConfig = RuntimeHarnessConfig(
+        reviewDriver = crashingRemediationReviewDriver(),
+      ),
     )
     seedThroughImplement(harness)
     harness.seedPhase("review", "completed", 3, phaseAgent("review"), CLEAN_REVIEW_OUTPUT)
@@ -226,7 +213,11 @@ class FeatureTaskRuntimeAuditEntryGateTest {
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
     assertEquals("review", blocked.lastIncompletePhase)
-    assertEquals(2, reviewLaunches, "the failed verification launch must remain reserved as pass two")
+    assertEquals(
+      2,
+      harness.launchOrder().count { it == "review" },
+      "the failed verification launch must remain reserved as pass two",
+    )
     assertTrue(
       harness.launchedPromptPhaseOrder().none { it in setOf("validate", "commit_push", "pr") },
       "downstream phases must remain unreachable until the blocker is re-verified",
@@ -245,7 +236,7 @@ class FeatureTaskRuntimeAuditEntryGateTest {
     val report = harness.runner.run(harness.request())
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
-    val launched = harness.launchedPhaseOrder()
+    val launched = harness.launchOrder()
     assertTrue(
       report.completedPhaseIds.contains("audit"),
       "resuming at the re-entry destination must not reach a terminal report with audit unvisited",
@@ -294,7 +285,7 @@ class FeatureTaskRuntimeAuditEntryGateTest {
       !auditRetry.substringBefore("## Untrusted prior phase output").contains("off-vocabulary verdict 'x' and no y'"),
       "scrubbed retry reason must not quote the response wire verdict outside the repair section",
     )
-    val launched = harness.launchedPhaseOrder()
+    val launched = harness.launchOrder()
     assertTrue(
       launched.indexOf("review") > launched.indexOfLast { it == "audit" } - 1 &&
         launched.indexOf("review") > launched.indexOf("audit"),
@@ -316,7 +307,7 @@ class FeatureTaskRuntimeAuditEntryGateTest {
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     assertTrue(
-      harness.launchedPhaseOrder().contains("review"),
+      harness.launchOrder().contains("review"),
       "an audit whose criteria array affirms completeness must not block review on its wording",
     )
   }
@@ -340,28 +331,16 @@ class FeatureTaskRuntimeAuditEntryGateTest {
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     assertTrue(
-      harness.launchedPhaseOrder().contains("review"),
+      harness.launchOrder().contains("review"),
       "the migrated review must launch fresh, not re-block as an exhausted fix loop before launch",
     )
   }
 
   @Test
   fun `a dropped legacy review fix re-entry does not spend the fresh generation's fix pass`() {
-    val reviewPrompts = mutableListOf<String>()
     val harness = runnerHarness(
       agentAssignment = phasePerAgentAssignment(),
-      launcher = RuntimeRecordingLauncher { request ->
-        val prompt = requireNotNull(request.skillRunRequest.promptOverride)
-        when (phaseIdFromPrompt(prompt)) {
-          // The remediation loop is unbounded, so the Blocker has to actually clear for the run to
-          // converge: the fresh review raises it once, and the pass earned by it settles it.
-          "review" -> {
-            reviewPrompts += prompt
-            facts(if (reviewPrompts.size == 1) BLOCKER_REVIEW_OUTPUT else CLEAN_REVIEW_OUTPUT)
-          }
-          else -> facts(defaultPhaseOutput(request))
-        }
-      },
+      runtimeConfig = reviewFixRuntimeConfig(2),
     )
     seedThroughImplement(harness)
     // A legacy run fired review_fix once and left implement_fix in flight; review never durably
@@ -376,7 +355,11 @@ class FeatureTaskRuntimeAuditEntryGateTest {
       "the fresh review's changes_requested must still earn its fix pass rather than being charged " +
         "the watermark the dropped re-entry left behind",
     )
-    assertEquals(2, reviewPrompts.size, "the earned fix pass is re-reviewed exactly once")
+    assertEquals(
+      2,
+      harness.launchOrder().count { it == "review" },
+      "the earned fix pass is re-reviewed exactly once",
+    )
   }
 
   @Test
@@ -468,7 +451,7 @@ class FeatureTaskRuntimeAuditEntryGateTest {
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     assertTrue(
-      harness.launchedPhaseOrder().contains("review"),
+      harness.launchOrder().contains("review"),
       "the restarted review must launch; a colliding evidence key aborts the run before it advances",
     )
     assertTrue(
@@ -574,13 +557,6 @@ class FeatureTaskRuntimeAuditEntryGateTest {
   }
 }
 
-// SKILL-142 AC-012 / SKILL-178: the reserved pass is bounded to all findings addressed in that
-// round union the pre-fix-to-post-fix diff, not the subtask's complete immutable-base delta.
-private const val PASS_TWO_REMEDIATION_SCOPE =
-  "bounded to the remediation delta: all findings addressed in that round union"
-
-// Retained review bytes from the generation whose attempt watermark is about to rewind. The markers
-// are distinctive so any surface echoing them is caught.
 private const val LEGACY_FIRST_REVIEW_MARKER = "legacy-review-generation-attempt-one"
 private const val LEGACY_SECOND_REVIEW_MARKER = "legacy-review-generation-attempt-two"
 private val LEGACY_FIRST_REVIEW_PAYLOAD = LEGACY_FIRST_REVIEW_MARKER.encodeToByteArray()
@@ -597,12 +573,6 @@ private const val FRESH_IMPLEMENT_FIX_OUTPUT =
 private val PREPLAN_DIGEST_OUTPUT = validJsonOutput("preplan")
 private val PLAN_STEPS_OUTPUT = validJsonOutput("plan")
 private const val CLEAN_REVIEW_OUTPUT = """{"contract_version":"0.1","produced_outputs":{"findings":[]}}"""
-
-// A review carrying an unresolved Blocker, so the verdict derives to changes_requested and the
-// review_fix backward edge must fire.
-private const val BLOCKER_REVIEW_OUTPUT =
-  """{"contract_version":"0.1","produced_outputs":{"findings":""" +
-    """[{"severity":"blocker","message":"Foo.kt leaks a connection in the error path"}]}}"""
 
 // Carries a verdict but one outside the closed audit vocabulary, with no criteria array to derive a
 // decidable verdict from, so the audit verification-signal gate rejects it. The interior

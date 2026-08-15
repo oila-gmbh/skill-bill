@@ -4,11 +4,6 @@ import skillbill.application.TestDecompositionManifestFileStore
 import skillbill.application.review.model.ReviewRubricProjection
 import skillbill.application.review.model.ReviewSpecialistLaunchRequest
 import skillbill.application.testDecompositionManifestValidator
-import skillbill.domain.review.context.model.SpecIntentAbsenceReason
-import skillbill.domain.review.context.model.SpecIntentProjection
-import skillbill.domain.review.context.model.SpecIntentProjectionResolveRequest
-import skillbill.domain.review.context.model.SpecIntentProvenance
-import skillbill.domain.review.context.model.SpecIntentResolution
 import skillbill.error.UnreadableSpecIntentProjectionError
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.model.GovernedReviewLaunch
@@ -18,6 +13,11 @@ import skillbill.review.context.model.ReviewCommitSource
 import skillbill.review.context.model.ReviewCommitUnit
 import skillbill.review.context.model.ReviewContextBudgetExceededException
 import skillbill.review.context.model.ReviewContextBudgetPolicy
+import skillbill.review.context.model.SpecIntentAbsenceReason
+import skillbill.review.context.model.SpecIntentProjection
+import skillbill.review.context.model.SpecIntentProjectionResolveRequest
+import skillbill.review.context.model.SpecIntentProvenance
+import skillbill.review.context.model.SpecIntentResolution
 import skillbill.review.plan.model.ReviewLaunchLane
 import skillbill.workflow.DecompositionManifestCodec
 import skillbill.workflow.DecompositionManifestValidator
@@ -28,8 +28,6 @@ import skillbill.workflow.model.DecompositionManifestValidationResult
 import skillbill.workflow.model.DecompositionManifestValidationSourceLocation
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.logging.Handler
-import java.util.logging.LogRecord
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -37,6 +35,38 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class SpecIntentProjectionResolverTest {
+  @Test
+  fun `a spec the runtime invariants reader accepts still extracts without Intended Outcome`() {
+    val repo = tempRepo()
+    val spec = writeSpec(
+      repo,
+      "spec.md",
+      """
+      # SKILL-650 runtime spec
+
+      Feature size: SMALL
+
+      ## Acceptance Criteria
+
+      1. The runtime drives every ordered phase to a validated output.
+      2. The CLI delegates to the application runner without owning orchestration.
+
+      ## Mandates and Overrides
+
+      - Stay on the experimental path only when explicitly requested.
+      """.trimIndent(),
+    )
+    val projection = extractor().extract(repo, spec, ReviewContextBudgetPolicy.DEFAULT, explicit = true)
+    assertEquals("SKILL-650 runtime spec", projection.intendedOutcome)
+    assertEquals(
+      listOf(
+        "The runtime drives every ordered phase to a validated output.",
+        "The CLI delegates to the application runner without owning orchestration.",
+      ),
+      projection.acceptanceCriteria,
+    )
+  }
+
   @Test
   fun `extraction captures five sections provenance digest and empty optional lists`() {
     val repo = tempRepo()
@@ -68,6 +98,41 @@ class SpecIntentProjectionResolverTest {
     assertEquals(listOf("Stage two."), projection.deferredItems)
     assertEquals("spec.md", projection.provenance.specPath)
     assertEquals(sha256File(spec), projection.provenance.contentDigest)
+  }
+
+  @Test
+  fun `a subtask spec using Scope instead of Intended Outcome still extracts`() {
+    val repo = tempRepo()
+    val spec = writeSpec(
+      repo,
+      "spec_subtask_9.md",
+      """
+      # SKILL-191 · Subtask 9 — Feature-task review phase delegation
+
+      ## Scope
+      Make the feature-task review phase delegate to the same driver.
+
+      ## Acceptance Criteria
+      1. The feature-task review phase executes through the same driver.
+      2. The runtime records produced_outputs.findings from the driver.
+
+      ## Non-Goals
+      - Changing phase ordering.
+      """.trimIndent(),
+    )
+    val projection = extractor().extract(repo, spec, ReviewContextBudgetPolicy.DEFAULT, explicit = true)
+    assertEquals(
+      "Make the feature-task review phase delegate to the same driver.",
+      projection.intendedOutcome,
+    )
+    assertEquals(
+      listOf(
+        "The feature-task review phase executes through the same driver.",
+        "The runtime records produced_outputs.findings from the driver.",
+      ),
+      projection.acceptanceCriteria,
+    )
+    assertEquals(listOf("Changing phase ordering."), projection.nonGoals)
   }
 
   @Test
@@ -118,7 +183,10 @@ class SpecIntentProjectionResolverTest {
     val projection = assertIs<SpecIntentResolution.Resolved>(resolved).projection
     assertEquals(".feature-specs/SKILL-191-runtime/spec_subtask_2.md", projection.provenance.specPath)
     assertEquals(".feature-specs/SKILL-191-runtime/spec.md", projection.surroundingContext?.specPath)
-    assertEquals(sha256File(repo.resolve(".feature-specs/SKILL-191-runtime/spec.md")), projection.surroundingContext?.contentDigest)
+    assertEquals(
+      sha256File(repo.resolve(".feature-specs/SKILL-191-runtime/spec.md")),
+      projection.surroundingContext?.contentDigest,
+    )
   }
 
   @Test
@@ -187,25 +255,22 @@ class SpecIntentProjectionResolverTest {
 
   @Test
   fun `each closed-vocabulary none reason emits an observability record`() {
-    val records = mutableListOf<LogRecord>()
-    val handler = capturingHandler(records)
-    specIntentResolverLog.addHandler(handler)
-    try {
-      val repo = tempRepo()
-      resolver().resolve(SpecIntentProjectionResolveRequest(repoRoot = repo, branchName = "main"))
-      assertTrue(records.any { "reason=not_applicable_scope" in it.message })
-      records.clear()
-      Files.createDirectories(repo.resolve(".feature-specs"))
-      resolver().resolve(SpecIntentProjectionResolveRequest(repoRoot = repo, branchName = "feat/SKILL-191-runtime"))
-      assertTrue(records.any { "reason=no_spec_found" in it.message })
-      records.clear()
-      writeSpec(repo, ".feature-specs/SKILL-191-one/spec.md", governedSpec("One", "AC one."))
-      writeSpec(repo, ".feature-specs/SKILL-191-two/spec.md", governedSpec("Two", "AC two."))
-      resolver().resolve(SpecIntentProjectionResolveRequest(repoRoot = repo, branchName = "feat/SKILL-191-runtime"))
-      assertTrue(records.any { "reason=ambiguous_match" in it.message })
-    } finally {
-      specIntentResolverLog.removeHandler(handler)
-    }
+    val repo = tempRepo()
+    val notApplicable = resolver().resolve(SpecIntentProjectionResolveRequest(repoRoot = repo, branchName = "main"))
+    assertTrue(
+      assertIs<SpecIntentResolution.None>(notApplicable).degradations.any { "not_applicable_scope" == it.reason },
+    )
+    Files.createDirectories(repo.resolve(".feature-specs"))
+    val missing = resolver().resolve(
+      SpecIntentProjectionResolveRequest(repoRoot = repo, branchName = "feat/SKILL-191-runtime"),
+    )
+    assertTrue(assertIs<SpecIntentResolution.None>(missing).degradations.any { "no_spec_found" == it.reason })
+    writeSpec(repo, ".feature-specs/SKILL-191-one/spec.md", governedSpec("One", "AC one."))
+    writeSpec(repo, ".feature-specs/SKILL-191-two/spec.md", governedSpec("Two", "AC two."))
+    val ambiguous = resolver().resolve(
+      SpecIntentProjectionResolveRequest(repoRoot = repo, branchName = "feat/SKILL-191-runtime"),
+    )
+    assertTrue(assertIs<SpecIntentResolution.None>(ambiguous).degradations.any { "ambiguous_match" == it.reason })
   }
 
   @Test
@@ -227,44 +292,30 @@ class SpecIntentProjectionResolverTest {
 
   @Test
   fun `a missing parent spec degrades surrounding context and keeps the subtask primary`() {
-    val records = mutableListOf<LogRecord>()
-    val handler = capturingHandler(records)
-    specIntentResolverLog.addHandler(handler)
-    try {
-      val repo = featureRepo(includeGlob = true, includeManifest = true)
-      Files.delete(repo.resolve(".feature-specs/SKILL-191-runtime/spec.md"))
-      val resolved = resolver().resolve(
-        SpecIntentProjectionResolveRequest(
-          repoRoot = repo,
-          branchName = "feat/SKILL-191-runtime",
-        ),
-      )
-      val projection = assertIs<SpecIntentResolution.Resolved>(resolved).projection
-      assertEquals(".feature-specs/SKILL-191-runtime/spec_subtask_2.md", projection.provenance.specPath)
-      assertEquals(null, projection.surroundingContext)
-      assertTrue(records.any { "reason=parent_spec_unavailable" in it.message && "rung=manifest" in it.message })
-    } finally {
-      specIntentResolverLog.removeHandler(handler)
-    }
+    val repo = featureRepo(includeGlob = true, includeManifest = true)
+    Files.delete(repo.resolve(".feature-specs/SKILL-191-runtime/spec.md"))
+    val resolved = resolver().resolve(
+      SpecIntentProjectionResolveRequest(
+        repoRoot = repo,
+        branchName = "feat/SKILL-191-runtime",
+      ),
+    )
+    val projection = assertIs<SpecIntentResolution.Resolved>(resolved).projection
+    assertEquals(".feature-specs/SKILL-191-runtime/spec_subtask_2.md", projection.provenance.specPath)
+    assertEquals(null, projection.surroundingContext)
+    assertTrue(resolved.degradations.any { it.reason == "parent_spec_unavailable" && it.rung == "manifest" })
   }
 
   @Test
   fun `an unreadable manifest emits a record and falls through to glob search`() {
-    val records = mutableListOf<LogRecord>()
-    val handler = capturingHandler(records)
-    specIntentResolverLog.addHandler(handler)
-    try {
-      val repo = featureRepo(includeGlob = true, includeManifest = true)
-      Files.writeString(repo.resolve(".feature-specs/SKILL-191-runtime/decomposition-manifest.yaml"), "not: [valid")
-      val resolved = resolver().resolve(
-        SpecIntentProjectionResolveRequest(repoRoot = repo, branchName = "feat/SKILL-191-runtime"),
-      )
-      val projection = assertIs<SpecIntentResolution.Resolved>(resolved).projection
-      assertEquals(".feature-specs/SKILL-191-runtime/spec.md", projection.provenance.specPath)
-      assertTrue(records.any { "reason=manifest_unreadable" in it.message && "rung=glob" in it.message })
-    } finally {
-      specIntentResolverLog.removeHandler(handler)
-    }
+    val repo = featureRepo(includeGlob = true, includeManifest = true)
+    Files.writeString(repo.resolve(".feature-specs/SKILL-191-runtime/decomposition-manifest.yaml"), "not: [valid")
+    val resolved = resolver().resolve(
+      SpecIntentProjectionResolveRequest(repoRoot = repo, branchName = "feat/SKILL-191-runtime"),
+    )
+    val projection = assertIs<SpecIntentResolution.Resolved>(resolved).projection
+    assertEquals(".feature-specs/SKILL-191-runtime/spec.md", projection.provenance.specPath)
+    assertTrue(resolved.degradations.any { it.reason == "manifest_unreadable" && it.rung == "glob" })
   }
 
   @Test
@@ -310,22 +361,19 @@ private fun extractor() = SpecIntentProjectionExtractor(
   object : ReviewContextEnvelopeValidator {
     override fun validate(envelope: Map<String, Any?>, sourceLabel: String) = Unit
   },
+  TestDecompositionManifestFileStore,
 )
 
-private fun resolver(
-  validator: DecompositionManifestValidator = testDecompositionManifestValidator,
-) = SpecIntentProjectionResolver(
-  TestDecompositionManifestFileStore,
-  validator,
-  extractor(),
-)
+private fun resolver(validator: DecompositionManifestValidator = testDecompositionManifestValidator) =
+  SpecIntentProjectionResolver(
+    TestDecompositionManifestFileStore,
+    validator,
+    extractor(),
+  )
 
 private fun repairedManifestValidator(): DecompositionManifestValidator =
   object : DecompositionManifestValidator by testDecompositionManifestValidator {
-    override fun validateYamlTextResult(
-      yamlText: String,
-      sourceLabel: String,
-    ): DecompositionManifestValidationResult {
+    override fun validateYamlTextResult(yamlText: String, sourceLabel: String): DecompositionManifestValidationResult {
       val manifest = DecompositionManifestCodec.decodeMap(validateYamlText(yamlText, sourceLabel), sourceLabel)
       return DecompositionManifestValidationResult.AcceptedAfterRepair(
         manifest,
@@ -456,12 +504,4 @@ private fun featureRepo(includeGlob: Boolean, includeManifest: Boolean): Path {
 private fun sha256File(path: Path): String {
   val digest = java.security.MessageDigest.getInstance("SHA-256").digest(Files.readAllBytes(path))
   return digest.joinToString("") { "%02x".format(it) }
-}
-
-private fun capturingHandler(records: MutableList<LogRecord>) = object : Handler() {
-  override fun publish(record: LogRecord) {
-    records += record
-  }
-  override fun flush() = Unit
-  override fun close() = Unit
 }

@@ -2,23 +2,18 @@ package skillbill.application.review
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.repoRelativePath
-import skillbill.domain.review.context.model.SpecIntentAbsenceReason
-import skillbill.domain.review.context.model.SpecIntentDegradationRecord
-import skillbill.domain.review.context.model.SpecIntentProjectionResolveRequest
-import skillbill.domain.review.context.model.SpecIntentResolution
-import skillbill.domain.review.context.model.SpecIntentResolutionRung
-import skillbill.domain.review.context.model.SpecIntentSurroundingContext
 import skillbill.ports.workflow.DecompositionManifestFileStore
+import skillbill.review.context.model.SpecIntentAbsenceReason
+import skillbill.review.context.model.SpecIntentDegradationRecord
+import skillbill.review.context.model.SpecIntentProjectionResolveRequest
+import skillbill.review.context.model.SpecIntentResolution
+import skillbill.review.context.model.SpecIntentResolutionRung
+import skillbill.review.context.model.SpecIntentSurroundingContext
 import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionManifestValidationResult
 import skillbill.workflow.model.DecompositionSubtask
-import java.nio.file.Files
 import java.nio.file.Path
-import java.util.logging.Logger
-
-internal val specIntentResolverLog: Logger =
-  Logger.getLogger("skillbill.application.review.SpecIntentProjectionResolver")
 
 @Inject
 class SpecIntentProjectionResolver(
@@ -27,6 +22,7 @@ class SpecIntentProjectionResolver(
   private val extractor: SpecIntentProjectionExtractor,
 ) {
   fun resolve(request: SpecIntentProjectionResolveRequest): SpecIntentResolution {
+    val degradations = mutableListOf<SpecIntentDegradationRecord>()
     val explicit = request.explicitSpecPath
     if (explicit != null) {
       return SpecIntentResolution.Resolved(
@@ -34,30 +30,29 @@ class SpecIntentProjectionResolver(
       )
     }
     val issueKey = issueKeyFromBranch(request.branchName)
-    val fromManifest = resolveManifest(request, issueKey)
-    if (fromManifest != null) return fromManifest
+    val fromManifest = resolveManifest(request, issueKey, degradations)
+    if (fromManifest != null) return withDegradations(fromManifest, degradations)
     if (issueKey == null) {
-      return none(SpecIntentAbsenceReason.NOT_APPLICABLE_SCOPE, SpecIntentResolutionRung.NONE)
+      return none(SpecIntentAbsenceReason.NOT_APPLICABLE_SCOPE, SpecIntentResolutionRung.NONE, degradations)
     }
-    return resolveGlob(request, issueKey)
+    return withDegradations(resolveGlob(request, issueKey, degradations), degradations)
   }
 
   private fun resolveManifest(
     request: SpecIntentProjectionResolveRequest,
     issueKey: String?,
+    degradations: MutableList<SpecIntentDegradationRecord>,
   ): SpecIntentResolution? {
     val candidates = fileStore.findDecompositionManifestFiles(request.repoRoot)
     if (candidates.isEmpty()) return null
     val loaded = mutableListOf<Pair<Path, DecompositionManifest>>()
     candidates.forEach { path ->
       when (val manifest = readManifest(path)) {
-        null -> emit(
-          SpecIntentDegradationRecord(
-            seam = MANIFEST_UNREADABLE_SEAM,
-            reason = MANIFEST_UNREADABLE_REASON,
-            rung = SpecIntentResolutionRung.GLOB.wireValue,
-            resolvedPath = repoRelativePath(request.repoRoot, path),
-          ),
+        null -> degradations += SpecIntentDegradationRecord(
+          seam = MANIFEST_UNREADABLE_SEAM,
+          reason = MANIFEST_UNREADABLE_REASON,
+          rung = SpecIntentResolutionRung.GLOB.wireValue,
+          resolvedPath = repoRelativePath(request.repoRoot, path),
         )
         else -> loaded += path to manifest
       }
@@ -71,46 +66,42 @@ class SpecIntentProjectionResolver(
     val manifest = matching.single()
     val owner = owningSubtask(manifest, request)
     val primary = Path.of(owner?.specPath ?: manifest.parentSpecPath)
-    val surrounding = owner?.let { loadSurroundingContext(request, manifest.parentSpecPath) }
+    val surrounding = owner?.let { loadSurroundingContext(request, manifest.parentSpecPath, degradations) }
     return try {
       SpecIntentResolution.Resolved(
         extractor.extract(request.repoRoot, primary, request.budget, surrounding, explicit = false),
       )
     } catch (error: SpecIntentSourceUnavailable) {
-      emit(
-        SpecIntentDegradationRecord(
-          seam = RESOLVE_SEAM,
-          reason = SpecIntentAbsenceReason.NO_SPEC_FOUND.wireValue,
-          rung = SpecIntentResolutionRung.MANIFEST.wireValue,
-          resolvedPath = error.specPath,
-        ),
+      degradations += SpecIntentDegradationRecord(
+        seam = RESOLVE_SEAM,
+        reason = SpecIntentAbsenceReason.NO_SPEC_FOUND.wireValue,
+        rung = SpecIntentResolutionRung.MANIFEST.wireValue,
+        resolvedPath = error.specPath,
       )
       null
     }
   }
 
-  private fun resolveGlob(request: SpecIntentProjectionResolveRequest, issueKey: String): SpecIntentResolution {
-    val featureSpecs = request.repoRoot.resolve(".feature-specs")
-    if (!Files.isDirectory(featureSpecs)) {
-      return none(SpecIntentAbsenceReason.NO_SPEC_FOUND, SpecIntentResolutionRung.GLOB)
-    }
-    val matches = Files.newDirectoryStream(featureSpecs, "$issueKey-*").use { stream ->
-      stream.toList()
-        .filter { Files.isDirectory(it) }
-        .map { it.resolve("spec.md") }
-        .filter { Files.isRegularFile(it) }
-        .sorted()
-    }
+  private fun resolveGlob(
+    request: SpecIntentProjectionResolveRequest,
+    issueKey: String,
+    degradations: MutableList<SpecIntentDegradationRecord>,
+  ): SpecIntentResolution {
+    val matches = fileStore.listDirectChildDirectories(request.repoRoot.resolve(".feature-specs"))
+      .filter { it.fileName.toString().startsWith("$issueKey-") }
+      .map { it.resolve("spec.md") }
+      .filter { fileStore.isRegularFile(it) }
+      .sorted()
     return when (matches.size) {
-      0 -> none(SpecIntentAbsenceReason.NO_SPEC_FOUND, SpecIntentResolutionRung.GLOB)
+      0 -> none(SpecIntentAbsenceReason.NO_SPEC_FOUND, SpecIntentResolutionRung.GLOB, degradations)
       1 -> try {
         SpecIntentResolution.Resolved(
           extractor.extract(request.repoRoot, matches.single(), request.budget, surrounding = null, explicit = false),
         )
       } catch (_: SpecIntentSourceUnavailable) {
-        none(SpecIntentAbsenceReason.NO_SPEC_FOUND, SpecIntentResolutionRung.GLOB)
+        none(SpecIntentAbsenceReason.NO_SPEC_FOUND, SpecIntentResolutionRung.GLOB, degradations)
       }
-      else -> none(SpecIntentAbsenceReason.AMBIGUOUS_MATCH, SpecIntentResolutionRung.GLOB)
+      else -> none(SpecIntentAbsenceReason.AMBIGUOUS_MATCH, SpecIntentResolutionRung.GLOB, degradations)
     }
   }
 
@@ -130,17 +121,16 @@ class SpecIntentProjectionResolver(
   private fun loadSurroundingContext(
     request: SpecIntentProjectionResolveRequest,
     parentSpecPath: String,
+    degradations: MutableList<SpecIntentDegradationRecord>,
   ): SpecIntentSurroundingContext? {
     return try {
       extractor.surroundingContext(request.repoRoot, Path.of(parentSpecPath), explicit = false)
     } catch (error: SpecIntentSourceUnavailable) {
-      emit(
-        SpecIntentDegradationRecord(
-          seam = PARENT_SPEC_UNAVAILABLE_SEAM,
-          reason = PARENT_SPEC_UNAVAILABLE_REASON,
-          rung = SpecIntentResolutionRung.MANIFEST.wireValue,
-          resolvedPath = error.specPath,
-        ),
+      degradations += SpecIntentDegradationRecord(
+        seam = PARENT_SPEC_UNAVAILABLE_SEAM,
+        reason = PARENT_SPEC_UNAVAILABLE_REASON,
+        rung = SpecIntentResolutionRung.MANIFEST.wireValue,
+        resolvedPath = error.specPath,
       )
       null
     }
@@ -155,27 +145,32 @@ class SpecIntentProjectionResolver(
     val byBranch = manifest.subtasks.filter { it.branch == request.branchName }
     if (byBranch.size == 1) return byBranch.single()
     val byPath = manifest.subtasks.filter { subtask ->
-      request.changedPaths.any { changed -> changed == subtask.specPath || changed.startsWith(prefix(subtask.specPath)) }
+      request.changedPaths.any { changed ->
+        changed == subtask.specPath || changed.startsWith(prefix(subtask.specPath))
+      }
     }
     return byPath.singleOrNull()
   }
 
-  private fun none(reason: SpecIntentAbsenceReason, rung: SpecIntentResolutionRung): SpecIntentResolution {
-    emit(
-      SpecIntentDegradationRecord(
-        seam = RESOLVE_SEAM,
-        reason = reason.wireValue,
-        rung = rung.wireValue,
-      ),
+  private fun none(
+    reason: SpecIntentAbsenceReason,
+    rung: SpecIntentResolutionRung,
+    degradations: MutableList<SpecIntentDegradationRecord>,
+  ): SpecIntentResolution {
+    degradations += SpecIntentDegradationRecord(
+      seam = RESOLVE_SEAM,
+      reason = reason.wireValue,
+      rung = rung.wireValue,
     )
-    return SpecIntentResolution.None(reason)
+    return SpecIntentResolution.None(reason, degradations.toList())
   }
 
-  private fun emit(record: SpecIntentDegradationRecord) {
-    specIntentResolverLog.warning(
-      "spec intent resolution degraded: seam=${record.seam} reason=${record.reason} " +
-        "rung=${record.rung} resolved_path=${record.resolvedPath ?: "-"}",
-    )
+  private fun withDegradations(
+    resolution: SpecIntentResolution,
+    degradations: List<SpecIntentDegradationRecord>,
+  ): SpecIntentResolution = when (resolution) {
+    is SpecIntentResolution.Resolved -> resolution.copy(degradations = degradations.toList())
+    is SpecIntentResolution.None -> resolution.copy(degradations = degradations.toList())
   }
 
   private companion object {
@@ -186,8 +181,7 @@ class SpecIntentProjectionResolver(
     const val PARENT_SPEC_UNAVAILABLE_REASON = "parent_spec_unavailable"
     val ISSUE_KEY_IN_BRANCH = Regex("""[A-Z][A-Z0-9]*-[0-9]+""")
 
-    fun issueKeyFromBranch(branchName: String): String? =
-      ISSUE_KEY_IN_BRANCH.find(branchName)?.value
+    fun issueKeyFromBranch(branchName: String): String? = ISSUE_KEY_IN_BRANCH.find(branchName)?.value
 
     fun prefix(specPath: String): String {
       val directory = specPath.substringBeforeLast('/', "")

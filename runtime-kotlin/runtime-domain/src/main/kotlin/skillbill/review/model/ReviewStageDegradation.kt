@@ -20,16 +20,6 @@ data class ReviewStageDegradationMeasurement(
     require(expected.isNotBlank()) { "Review stage degradation expected must not be blank." }
     require(actual.isNotBlank()) { "Review stage degradation actual must not be blank." }
   }
-
-  fun toTelemetryMap(): Map<String, Any?> = linkedMapOf(
-    "event_name" to REVIEW_STAGE_DEGRADATION_EVENT_NAME,
-    "contract_version" to REVIEW_STAGE_DEGRADATION_CONTRACT_VERSION,
-    "review_run_id" to reviewRunId,
-    "seam" to seam,
-    "expected" to expected,
-    "actual" to actual,
-    "reason" to reason.wireValue,
-  )
 }
 
 const val REVIEW_STAGE_DEGRADATION_EVENT_NAME: String = "skillbill_review_stage_degradation"

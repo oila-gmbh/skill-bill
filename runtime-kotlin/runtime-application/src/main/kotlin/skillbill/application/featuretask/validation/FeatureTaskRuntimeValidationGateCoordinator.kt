@@ -119,17 +119,7 @@ class FeatureTaskRuntimeValidationGateCoordinator(
           } else {
             listOf(unparseableGateFailureFinding(intermediate))
           }
-          val projection = ValidationFindingSetProjector.project(findingsForRepair)
-          if (projection.hasUnreportedRemainder) {
-            persistRemainingFindings(request, measurements, projection, onGateRunCount)
-            return terminalBlocked(
-              "Validation gate findings exceed the handoff budget (${
-                projection.droppedCount
-              } unreported); repair cannot succeed while findings remain unreported.",
-              remainingFindings = projection,
-              measurements = measurements,
-            )
-          }
+          val projection = ValidationFindingSetProjection(findings = findingsForRepair)
 
           when (val repair = agentRepairLauncher.launch(projection, repairsUsed + 1)) {
             is ValidationGateAgentRepairResult.Blocked -> return ValidationGateCycleResult.Terminal(
@@ -209,7 +199,7 @@ class FeatureTaskRuntimeValidationGateCoordinator(
         location = intro.path,
       )
     }
-    return ValidationFindingSetProjection(findings = findings, droppedCount = 0)
+    return ValidationFindingSetProjection(findings = findings)
   }
 
   private fun extractJustifications(output: FeatureTaskRuntimePhaseOutput): List<SuppressionJustification> {
@@ -262,29 +252,17 @@ class FeatureTaskRuntimeValidationGateCoordinator(
       cacheMode = result.cacheMode.wireValue,
       executedWorkUnits = result.executedWorkUnits,
     )
-    persistProgress(request, measurements, remainingFindings = null, onGateRunCount)
-  }
-
-  private fun persistRemainingFindings(
-    request: FeatureTaskRuntimeRunRequest,
-    measurements: List<FeatureTaskRuntimeValidationGateRunRecord>,
-    remainingFindings: ValidationFindingSetProjection,
-    onGateRunCount: (Int) -> Unit,
-  ) {
-    persistProgress(request, measurements, remainingFindings, onGateRunCount)
+    persistProgress(request, measurements, onGateRunCount)
   }
 
   private fun persistProgress(
     request: FeatureTaskRuntimeRunRequest,
     measurements: List<FeatureTaskRuntimeValidationGateRunRecord>,
-    remainingFindings: ValidationFindingSetProjection?,
     onGateRunCount: (Int) -> Unit,
   ) {
     val progress = FeatureTaskRuntimeValidationGateProgress(
       gateRunCount = measurements.size,
       gateRuns = measurements.toList(),
-      remainingFindings = remainingFindings?.toHandoffMaps().orEmpty(),
-      remainingFindingsDroppedCount = remainingFindings?.droppedCount ?: 0,
     )
     progressStore.persist(request.workflowId, progress, request.dbPathOverride)
     emitFeatureTaskRuntimeEventSafely(

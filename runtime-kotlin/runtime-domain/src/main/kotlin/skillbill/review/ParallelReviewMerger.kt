@@ -8,6 +8,7 @@ import skillbill.review.model.ParallelReviewRawFinding
 import skillbill.review.model.ParallelReviewSeverity
 import skillbill.review.model.ReviewClaimVerdict
 import skillbill.review.model.ReviewFindingCitation
+import skillbill.review.model.ReviewFindingRegisterOutcome
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.review.model.ReviewLaneFindingVerdict
 import skillbill.review.model.ReviewScopeDisposition
@@ -171,6 +172,11 @@ object ParallelReviewMerger {
     return if (structuredFields.isEmpty()) claimLine else "$claimLine | ${structuredFields.joinToString(" | ")}"
   }
 
+  private fun ParallelReviewRawFinding.lacksVerdictOverlay(): Boolean = claimVerdict == null &&
+    scopeDisposition == null &&
+    severityAdjustment == null &&
+    citations.isEmpty()
+
   private fun toCandidate(head: ClusterHead): MergedCandidate {
     val entries = head.entries
     val coalesced = entries.map { it.agentId }.distinct().size > 1
@@ -183,12 +189,7 @@ object ParallelReviewMerger {
     val firstEntry = entries.minByOrNull { it.appearanceOrder }!!
     val sourceVerdicts = entries.mapNotNull { entry ->
       val finding = entry.finding
-      if (
-        finding.claimVerdict == null &&
-        finding.scopeDisposition == null &&
-        finding.severityAdjustment == null &&
-        finding.citations.isEmpty()
-      ) {
+      if (finding.lacksVerdictOverlay()) {
         null
       } else {
         ReviewLaneFindingVerdict(

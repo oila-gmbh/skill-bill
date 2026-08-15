@@ -15,7 +15,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 
 /**
  * AC-008 and AC-010: the reserved remediation pass's prompt must describe the remediation delta, must
@@ -119,10 +118,12 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
     val prompt = compose(
       passNumber = 2,
       resolvedTier = CodeReviewExecutionMode.INLINE,
-      priorBlockerFindingIds = listOf("pass1-blocker-1", "pass1-blocker-2"),
     )
 
-    assertFalse(prompt.contains("blocker_dispositions"), "Runtime synthesizes dispositions; the prompt does not order them.")
+    assertFalse(
+      prompt.contains("blocker_dispositions"),
+      "Runtime synthesizes dispositions; the prompt does not order them.",
+    )
   }
 
   @Test
@@ -130,7 +131,6 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
     val prompt = compose(
       passNumber = 1,
       resolvedTier = CodeReviewExecutionMode.INLINE,
-      priorBlockerFindingIds = listOf("pass1-blocker-1"),
     )
 
     assertFalse(prompt.contains("blocker_dispositions"), "Pass one has no prior pass to dispose.")
@@ -228,7 +228,6 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
   private fun compose(
     passNumber: Int,
     resolvedTier: CodeReviewExecutionMode,
-    priorBlockerFindingIds: List<String> = emptyList(),
     reviewInput: GoalSubtaskReviewInput? = null,
     baselineUntrackedPaths: List<String> = emptyList(),
   ): String = FeatureTaskRuntimePhasePromptComposer.compose(
@@ -239,7 +238,6 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
     goalSubtaskReviewInput = reviewInput,
     resolvedReviewTier = resolvedTier,
     reviewDecidingRule = "auto_mode_by_pass_number:pass_n_inline",
-    priorBlockerFindingIds = priorBlockerFindingIds,
     baselineUntrackedPaths = baselineUntrackedPaths,
   )
 }

@@ -397,7 +397,7 @@ class CliCodeReviewParallelRuntimeTest {
     runGit("-C", tempDir.toString(), "commit", "-m", "committed")
     Files.writeString(tempDir.resolve("StagedOnly.kt"), "fun staged() {}\n")
     runGit("-C", tempDir.toString(), "add", "StagedOnly.kt")
-    val launcher = StandaloneReviewLauncher()
+    val launcher = StandaloneReviewLauncher("StagedOnly.kt:1")
     val result = CliRuntime.run(
       listOf(
         "code-review",
@@ -474,7 +474,8 @@ private class ParallelReviewSuccessLauncher : ParallelTestAgentRunLauncher() {
   val launchCount: Int get() = count.get()
 
   override fun launch(request: AgentRunLaunchRequest): AgentRunLaunchOutcome {
-    count.incrementAndGet()
+    val issueKey = request.skillRunRequest.issueKey
+    if (issueKey == "code-review-parallel") count.incrementAndGet()
     return AgentRunLaunchFacts(
       agent = InstallAgent.fromNormalizedId(request.agentId, label = "agentId"),
       exitStatus = 0,
@@ -547,7 +548,9 @@ private class RecordingParallelLauncher : ParallelTestAgentRunLauncher() {
   }
 }
 
-private class StandaloneReviewLauncher : ParallelTestAgentRunLauncher() {
+private class StandaloneReviewLauncher(
+  private val findingLocation: String = "Test.kt:1",
+) : ParallelTestAgentRunLauncher() {
   private val lock = Any()
   var parentLaunchCount: Int = 0
     private set
@@ -562,7 +565,7 @@ private class StandaloneReviewLauncher : ParallelTestAgentRunLauncher() {
           parentLaunchCount += 1
           parentPrompt = request.skillRunRequest.promptOverride.orEmpty()
         }
-        "- [F-001] Major | High | Test.kt:1 | Issue"
+        "- [F-001] Major | High | $findingLocation | Issue"
       }
       "code-review-verification" -> """{"claim_verdict":"confirmed"}"""
       else -> ""

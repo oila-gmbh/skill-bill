@@ -23,14 +23,39 @@ class ReviewStageStatePersistenceTest {
   @Test
   fun `verdicts stage boundary and spec projection survive close and reopen`() {
     val (dbPath, first) = tempDbConnection("review-stage-durability")
-    val verification = ReviewFindingVerdict(
+    val fixtures = durableStageFixtures()
+    first.use { connection ->
+      val repository = SQLiteReviewRunCompletenessRepository(connection)
+      repository.recordFindingVerdicts(RUN_ID, listOf(fixtures.verification, fixtures.adjudication))
+      repository.recordFindingVerdicts(RUN_ID, listOf(fixtures.verification, fixtures.adjudication))
+      repository.recordStageBoundary(RUN_ID, fixtures.boundary)
+      repository.recordSpecProjectionReference(RUN_ID, fixtures.spec)
+      repository.recordReviewPassClaims(RUN_ID, fixtures.claims)
+      repository.recordReviewPassClaims(RUN_ID, emptyList())
+      assertEquals(2, repository.fetchFindingVerdicts(RUN_ID).size)
+    }
+
+    skillbill.db.core.DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
+      val repository = SQLiteReviewRunCompletenessRepository(connection)
+      assertEquals(
+        listOf(fixtures.adjudication, fixtures.verification),
+        repository.fetchFindingVerdicts(RUN_ID).sortedBy { it.stage.wireValue },
+      )
+      assertEquals(listOf(fixtures.boundary), repository.fetchStageBoundaries(RUN_ID))
+      assertEquals(fixtures.spec, repository.fetchSpecProjectionReference(RUN_ID))
+      assertEquals(ReviewPassClaimSnapshot(fixtures.claims), repository.fetchReviewPassClaims(RUN_ID))
+    }
+  }
+
+  private fun durableStageFixtures() = DurableStageFixtures(
+    verification = ReviewFindingVerdict(
       stage = ReviewStage.VERIFICATION,
       findingRef = "F-001",
       claimVerdict = ReviewClaimVerdict.CONFIRMED,
       citations = listOf(ReviewFindingCitation("src/Main.kt", 12)),
       recordedAt = "2026-08-14T08:00:00Z",
-    )
-    val adjudication = ReviewFindingVerdict(
+    ),
+    adjudication = ReviewFindingVerdict(
       stage = ReviewStage.ADJUDICATION,
       findingRef = "F-001",
       claimVerdict = ReviewClaimVerdict.REFUTED,
@@ -41,14 +66,14 @@ class ReviewStageStatePersistenceTest {
         "listed non-goal",
       ),
       recordedAt = "2026-08-14T08:05:00Z",
-    )
-    val boundary = ReviewStageBoundary(
+    ),
+    boundary = ReviewStageBoundary(
       stage = ReviewStage.VERIFICATION,
       reached = ReviewStageReached.REACHED,
       recordedAt = "2026-08-14T08:01:00Z",
-    )
-    val spec = ReviewSpecProjectionReference(absenceReason = "spec_context none")
-    val claims = listOf(
+    ),
+    spec = ReviewSpecProjectionReference(absenceReason = "spec_context none"),
+    claims = listOf(
       ParallelReviewMergedFinding(
         fNumber = "F-001",
         agentIds = listOf("codex"),
@@ -59,29 +84,16 @@ class ReviewStageStatePersistenceTest {
         repositoryPath = "src/Main.kt",
         line = 12,
       ),
-    )
-    first.use { connection ->
-      val repository = SQLiteReviewRunCompletenessRepository(connection)
-      repository.recordFindingVerdicts(RUN_ID, listOf(verification, adjudication))
-      repository.recordFindingVerdicts(RUN_ID, listOf(verification, adjudication))
-      repository.recordStageBoundary(RUN_ID, boundary)
-      repository.recordSpecProjectionReference(RUN_ID, spec)
-      repository.recordReviewPassClaims(RUN_ID, claims)
-      repository.recordReviewPassClaims(RUN_ID, emptyList())
-      assertEquals(2, repository.fetchFindingVerdicts(RUN_ID).size)
-    }
+    ),
+  )
 
-    skillbill.db.core.DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
-      val repository = SQLiteReviewRunCompletenessRepository(connection)
-      assertEquals(
-        listOf(adjudication, verification),
-        repository.fetchFindingVerdicts(RUN_ID).sortedBy { it.stage.wireValue },
-      )
-      assertEquals(listOf(boundary), repository.fetchStageBoundaries(RUN_ID))
-      assertEquals(spec, repository.fetchSpecProjectionReference(RUN_ID))
-      assertEquals(ReviewPassClaimSnapshot(claims), repository.fetchReviewPassClaims(RUN_ID))
-    }
-  }
+  private data class DurableStageFixtures(
+    val verification: ReviewFindingVerdict,
+    val adjudication: ReviewFindingVerdict,
+    val boundary: ReviewStageBoundary,
+    val spec: ReviewSpecProjectionReference,
+    val claims: List<ParallelReviewMergedFinding>,
+  )
 
   private companion object {
     const val RUN_ID = "rvw-stage-durable"
@@ -93,52 +105,11 @@ class ReviewStageStatePruneTest {
   fun `deleting a review run cascades verdicts boundaries and spec projection`() {
     val (_, connection) = tempDbConnection("review-stage-prune")
     connection.use {
-      val repository = SQLiteReviewRunCompletenessRepository(it)
-      repository.recordFindingVerdicts(
-        RUN_ID,
-        listOf(
-          ReviewFindingVerdict(
-            stage = ReviewStage.VERIFICATION,
-            findingRef = "F-001",
-            claimVerdict = ReviewClaimVerdict.UNRESOLVED,
-            recordedAt = "2026-08-14T08:00:00Z",
-          ),
-          ReviewFindingVerdict(
-            stage = ReviewStage.ADJUDICATION,
-            findingRef = "F-001",
-            claimVerdict = ReviewClaimVerdict.UNRESOLVED,
-            scopeDisposition = ReviewScopeDisposition.IN_SCOPE,
-            recordedAt = "2026-08-14T08:02:00Z",
-          ),
-        ),
-      )
-      repository.recordStageBoundary(
-        RUN_ID,
-        ReviewStageBoundary(ReviewStage.REVIEW, ReviewStageReached.REACHED, "2026-08-14T08:00:00Z"),
-      )
-      repository.recordStageBoundary(
-        RUN_ID,
-        ReviewStageBoundary(ReviewStage.ADJUDICATION, ReviewStageReached.REACHED, "2026-08-14T08:03:00Z"),
-      )
-      repository.recordSpecProjectionReference(RUN_ID, ReviewSpecProjectionReference(absenceReason = "spec_context none"))
-      repository.recordReviewPassClaims(
-        RUN_ID,
-        listOf(
-          ParallelReviewMergedFinding(
-            fNumber = "F-001",
-            agentIds = listOf("codex"),
-            severity = ParallelReviewSeverity.NIT,
-            confidence = "Low",
-            location = "src/Main.kt:1",
-            description = "nit",
-            repositoryPath = "src/Main.kt",
-            line = 1,
-          ),
-        ),
-      )
+      seedPruneRun(SQLiteReviewRunCompletenessRepository(it))
       it.createStatement().use { statement ->
         statement.executeUpdate("DELETE FROM review_runs WHERE review_run_id = '$RUN_ID'")
       }
+      val repository = SQLiteReviewRunCompletenessRepository(it)
       assertTrue(repository.fetchFindingVerdicts(RUN_ID).isEmpty())
       assertTrue(repository.fetchStageBoundaries(RUN_ID).isEmpty())
       assertEquals(null, repository.fetchSpecProjectionReference(RUN_ID))
@@ -157,6 +128,54 @@ class ReviewStageStatePruneTest {
         assertEquals(0, remaining.getInt(1))
       }
     }
+  }
+
+  private fun seedPruneRun(repository: SQLiteReviewRunCompletenessRepository) {
+    repository.recordFindingVerdicts(
+      RUN_ID,
+      listOf(
+        ReviewFindingVerdict(
+          stage = ReviewStage.VERIFICATION,
+          findingRef = "F-001",
+          claimVerdict = ReviewClaimVerdict.UNRESOLVED,
+          recordedAt = "2026-08-14T08:00:00Z",
+        ),
+        ReviewFindingVerdict(
+          stage = ReviewStage.ADJUDICATION,
+          findingRef = "F-001",
+          claimVerdict = ReviewClaimVerdict.UNRESOLVED,
+          scopeDisposition = ReviewScopeDisposition.IN_SCOPE,
+          recordedAt = "2026-08-14T08:02:00Z",
+        ),
+      ),
+    )
+    repository.recordStageBoundary(
+      RUN_ID,
+      ReviewStageBoundary(ReviewStage.REVIEW, ReviewStageReached.REACHED, "2026-08-14T08:00:00Z"),
+    )
+    repository.recordStageBoundary(
+      RUN_ID,
+      ReviewStageBoundary(ReviewStage.ADJUDICATION, ReviewStageReached.REACHED, "2026-08-14T08:03:00Z"),
+    )
+    repository.recordSpecProjectionReference(
+      RUN_ID,
+      ReviewSpecProjectionReference(absenceReason = "spec_context none"),
+    )
+    repository.recordReviewPassClaims(
+      RUN_ID,
+      listOf(
+        ParallelReviewMergedFinding(
+          fNumber = "F-001",
+          agentIds = listOf("codex"),
+          severity = ParallelReviewSeverity.NIT,
+          confidence = "Low",
+          location = "src/Main.kt:1",
+          description = "nit",
+          repositoryPath = "src/Main.kt",
+          line = 1,
+        ),
+      ),
+    )
   }
 
   private companion object {

@@ -49,22 +49,22 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
   fun `schema-invalid result body and digest match the private diagnostic capture`() {
     // Realistic bug: gateOutput records one capture diagnostically, then rebuilds Exact from a
     // different string/hash so the authorized repair section disagrees with the diagnostic row.
-    val rejectedBody = completedPhaseBody("0.2", "review", rawSpan, """{"findings":[]}""")
-    var reviewAttempts = 0
+    val rejectedBody = completedPhaseBody("0.2", "audit", rawSpan, """{"unmet_criteria":[]}""")
+    var auditAttempts = 0
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        if (phaseId != "review") return@RuntimeRecordingLauncher facts(defaultPhaseOutput(request))
-        reviewAttempts += 1
-        facts(if (reviewAttempts == 1) rejectedBody else defaultPhaseOutput(request))
+        if (phaseId != "audit") return@RuntimeRecordingLauncher facts(defaultPhaseOutput(request))
+        auditAttempts += 1
+        facts(if (auditAttempts == 1) rejectedBody else defaultPhaseOutput(request))
       },
       validator = rejectingOnceValidator(rejectedBody),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
-    val diagnostic = harness.io.database.rejectedDiagnostics().single { it.metadata.phaseId == "review" }
-    val retryPrompt = reviewPrompts(harness)[1]
+    val diagnostic = harness.io.database.rejectedDiagnostics().single { it.metadata.phaseId == "audit" }
+    val retryPrompt = schemaRetryPrompts(harness)[1]
     assertTrue(retryPrompt.contains(rejectedBody), "repair section must carry the captured body")
     assertContains(retryPrompt, "digest=${diagnostic.metadata.sha256}")
     assertContains(retryPrompt, "utf8_bytes=${diagnostic.metadata.byteSize}")
@@ -74,16 +74,16 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
 
   @Test
   fun `first launch has no repair context and matching retry carries only that attempts body`() {
-    val firstBody = completedPhaseBody("0.2", "review", "SKILL187-ATTEMPT-1", """{"findings":[]}""")
-    val secondBody = completedPhaseBody("0.2", "review", "SKILL187-ATTEMPT-2", """{"findings":[]}""")
-    var reviewAttempts = 0
+    val firstBody = completedPhaseBody("0.2", "audit", "SKILL187-ATTEMPT-1", """{"unmet_criteria":[]}""")
+    val secondBody = completedPhaseBody("0.2", "audit", "SKILL187-ATTEMPT-2", """{"unmet_criteria":[]}""")
+    var auditAttempts = 0
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        if (phaseId != "review") return@RuntimeRecordingLauncher facts(defaultPhaseOutput(request))
-        reviewAttempts += 1
+        if (phaseId != "audit") return@RuntimeRecordingLauncher facts(defaultPhaseOutput(request))
+        auditAttempts += 1
         facts(
-          when (reviewAttempts) {
+          when (auditAttempts) {
             1 -> firstBody
             2 -> secondBody
             else -> defaultPhaseOutput(request)
@@ -92,7 +92,7 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
       },
       validator = object : FeatureTaskRuntimePhaseOutputValidator {
         override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
-          if (sourceLabel != "review") return
+          if (sourceLabel != "audit") return
           if (phaseOutputText.contains("SKILL187-ATTEMPT-1") || phaseOutputText.contains("SKILL187-ATTEMPT-2")) {
             throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
               sourceLabel = sourceLabel,
@@ -106,8 +106,8 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
-    val prompts = reviewPrompts(harness)
-    assertTrue(prompts.size >= 3, "review must reject twice then succeed")
+    val prompts = schemaRetryPrompts(harness)
+    assertTrue(prompts.size >= 3, "audit must reject twice then succeed")
     assertFalse(prompts[0].contains("Untrusted prior phase output"), "first launch must omit repair section")
     assertFalse(prompts[0].contains("REJECTED by the schema gate"), "first launch must omit schema directive")
     assertTrue(prompts[1].contains(firstBody))
@@ -118,17 +118,17 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
 
   @Test
   fun `a later phase retry cannot receive a stale repair body from an earlier phase`() {
-    val reviewBody = completedPhaseBody("0.2", "review", "SKILL187-REVIEW-STALE", """{"findings":[]}""")
+    val planBody = completedPhaseBody("0.2", "plan", "SKILL187-PLAN-STALE", """{"mode":"direct","tasks":[]}""")
     val auditBody = completedPhaseBody("0.3", "audit", "SKILL187-AUDIT-CURRENT", """{"gaps":[]}""", "satisfied")
-    var reviewAttempts = 0
+    var planAttempts = 0
     var auditAttempts = 0
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
         when (phaseId) {
-          "review" -> {
-            reviewAttempts += 1
-            facts(if (reviewAttempts == 1) reviewBody else defaultPhaseOutput(request))
+          "plan" -> {
+            planAttempts += 1
+            facts(if (planAttempts == 1) planBody else defaultPhaseOutput(request))
           }
           "audit" -> {
             auditAttempts += 1
@@ -139,10 +139,10 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
       },
       validator = object : FeatureTaskRuntimePhaseOutputValidator {
         override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
-          if (sourceLabel == "review" && phaseOutputText.contains("SKILL187-REVIEW-STALE")) {
+          if (sourceLabel == "plan" && phaseOutputText.contains("SKILL187-PLAN-STALE")) {
             throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
               sourceLabel = sourceLabel,
-              reason = "review rejected",
+              reason = "plan rejected",
               payloadFreeReason = payloadFreeConstraint,
             )
           }
@@ -164,8 +164,8 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
       .filter { phaseIdFromPrompt(it) == "audit" }[1]
     assertTrue(auditRetry.contains("SKILL187-AUDIT-CURRENT"))
     assertFalse(
-      auditRetry.contains("SKILL187-REVIEW-STALE"),
-      "audit corrective retry must not inherit the prior review capture",
+      auditRetry.contains("SKILL187-PLAN-STALE"),
+      "audit corrective retry must not inherit the prior plan capture",
     )
   }
 
@@ -234,7 +234,7 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
 
   @Test
   fun `throwing telemetry status and diagnostic observers cannot change outcomes or leak the response`() {
-    val rejectedBody = completedPhaseBody("0.2", "review", rawSpan, """{"findings":[]}""")
+    val rejectedBody = completedPhaseBody("0.2", "audit", rawSpan, """{"unmet_criteria":[]}""")
     val throwingSink = FeatureTaskRuntimeRunEventSink {
       error("status/telemetry observer refused event ${it::class.simpleName}")
     }
@@ -276,9 +276,9 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
       )
     }
 
-    val completing = harnessFor(failingPhase = "review", failEveryAttempt = false)
+    val completing = harnessFor(failingPhase = "audit", failEveryAttempt = false)
     val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(completing.runner.run(completing.request()))
-    assertTrue(completed.completedPhaseIds.contains("review"))
+    assertTrue(completed.completedPhaseIds.contains("audit"))
 
     val exhausting = harnessFor(failingPhase = "write_history", failEveryAttempt = true)
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(
@@ -307,11 +307,11 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
   fun `retryable terminal launches omit the raw repair section at the run loop`() {
     // Composer requires already prove mutual exclusion; this pins the run-loop routing so a
     // schema-valid terminal envelope cannot accidentally carry a prior repair body.
-    var reviewLaunches = 0
+    var auditLaunches = 0
     val retryableFailure = """
       {
         "contract_version":"0.2",
-        "phase_id":"review",
+        "phase_id":"audit",
         "status":"failed",
         "failure_disposition":"retryable",
         "summary":"SKILL187-TERMINAL-BLOCK",
@@ -321,8 +321,8 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        if (phaseId == "review") reviewLaunches += 1
-        facts(if (phaseId == "review" && reviewLaunches == 1) retryableFailure else defaultPhaseOutput(request))
+        if (phaseId == "audit") auditLaunches += 1
+        facts(if (phaseId == "audit" && auditLaunches == 1) retryableFailure else defaultPhaseOutput(request))
       },
     )
 
@@ -330,8 +330,8 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
 
     val prompts = harness.launcher.requests
       .map { requireNotNull(it.skillRunRequest.promptOverride) }
-      .filter { phaseIdFromPrompt(it) == "review" }
-    assertTrue(prompts.size >= 2, "retryable terminal must re-enter review")
+      .filter { phaseIdFromPrompt(it) == "audit" }
+    assertTrue(prompts.size >= 2, "retryable terminal must re-enter audit")
     val retry = prompts[1]
     assertContains(retry, "reported a retryable block")
     assertOmitsAuthorizedRepairSection(retry)
@@ -346,28 +346,28 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
     // envelope must complete the phase.
     val invalidEnum = completedPhaseBody(
       "0.2",
-      "review",
+      "audit",
       "SKILL187-ENUM",
-      """{"findings":[{"severity":"catastrophic"}]}""",
+      """{"unmet_criteria":[{"severity":"catastrophic"}]}""",
     )
     val compoundRef = completedPhaseBody(
       "0.2",
-      "review",
+      "audit",
       "SKILL187-ARTIFACT",
-      """{"findings":[{"artifact_ref":"a.kt;b.kt;c.kt"}]}""",
+      """{"unmet_criteria":[{"artifact_ref":"a.kt;b.kt;c.kt"}]}""",
     )
     listOf(invalidEnum to "SKILL187-ENUM", compoundRef to "SKILL187-ARTIFACT").forEach { (rejectedBody, sentinel) ->
-      var reviewAttempts = 0
+      var auditAttempts = 0
       val harness = runnerHarness(
         launcher = RuntimeRecordingLauncher { request ->
           val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-          if (phaseId != "review") return@RuntimeRecordingLauncher facts(defaultPhaseOutput(request))
-          reviewAttempts += 1
-          facts(if (reviewAttempts == 1) rejectedBody else defaultPhaseOutput(request))
+          if (phaseId != "audit") return@RuntimeRecordingLauncher facts(defaultPhaseOutput(request))
+          auditAttempts += 1
+          facts(if (auditAttempts == 1) rejectedBody else defaultPhaseOutput(request))
         },
         validator = object : FeatureTaskRuntimePhaseOutputValidator {
           override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
-            if (sourceLabel != "review") return
+            if (sourceLabel != "audit") return
             if (phaseOutputText.contains(sentinel)) {
               throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
                 sourceLabel = sourceLabel,
@@ -380,7 +380,7 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
       )
 
       assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
-      val retryPrompt = reviewPrompts(harness)[1]
+      val retryPrompt = schemaRetryPrompts(harness)[1]
       assertTrue(retryPrompt.contains(rejectedBody))
       assertRetryPromptNamesConstraint(retryPrompt, "phase-output-schema", payloadFreeConstraint)
       assertNoRawResponseSpanOutsideAuthorizedRepairSection(retryPrompt, rejectedBody, sentinel)
@@ -393,19 +393,19 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
     // claims completeness while digest/bytes still describe the full observed stream.
     val excerpt = completedPhaseBody(
       "0.2",
-      "review",
+      "audit",
       "SKILL187-TRUNCATED-EXCERPT",
-      """{"findings":[]}""",
+      """{"unmet_criteria":[]}""",
     )
     val fullStreamDigest = "a".repeat(64)
     val fullStreamBytes = 12_345L
-    var reviewAttempts = 0
+    var auditAttempts = 0
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        if (phaseId != "review") return@RuntimeRecordingLauncher facts(defaultPhaseOutput(request))
-        reviewAttempts += 1
-        if (reviewAttempts == 1) {
+        if (phaseId != "audit") return@RuntimeRecordingLauncher facts(defaultPhaseOutput(request))
+        auditAttempts += 1
+        if (auditAttempts == 1) {
           skillbill.ports.agentrun.model.AgentRunLaunchFacts(
             agent = skillbill.install.model.InstallAgent.CLAUDE,
             exitStatus = 0,
@@ -423,7 +423,7 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
       },
       validator = object : FeatureTaskRuntimePhaseOutputValidator {
         override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
-          if (sourceLabel != "review") return
+          if (sourceLabel != "audit") return
           if (phaseOutputText.contains("SKILL187-TRUNCATED-EXCERPT")) {
             throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
               sourceLabel = sourceLabel,
@@ -437,7 +437,7 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
-    val retry = reviewPrompts(harness)[1]
+    val retry = schemaRetryPrompts(harness)[1]
     assertContains(retry, "Rejected response body not included in this prompt")
     assertContains(retry, "response_already_truncated")
     assertContains(retry, "digest: $fullStreamDigest")
@@ -449,19 +449,19 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
   fun `a degraded diagnostic leaves no rod token on the authorized repair fallback`() {
     val excerpt = completedPhaseBody(
       "0.2",
-      "review",
+      "audit",
       "SKILL187-DEGRADED-EXCERPT",
-      """{"findings":[]}""",
+      """{"unmet_criteria":[]}""",
     )
     val fullStreamDigest = "b".repeat(64)
     val fullStreamBytes = 9_001L
-    var reviewAttempts = 0
+    var auditAttempts = 0
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        if (phaseId != "review") return@RuntimeRecordingLauncher facts(defaultPhaseOutput(request))
-        reviewAttempts += 1
-        if (reviewAttempts == 1) {
+        if (phaseId != "audit") return@RuntimeRecordingLauncher facts(defaultPhaseOutput(request))
+        auditAttempts += 1
+        if (auditAttempts == 1) {
           skillbill.ports.agentrun.model.AgentRunLaunchFacts(
             agent = skillbill.install.model.InstallAgent.CLAUDE,
             exitStatus = 0,
@@ -479,7 +479,7 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
       },
       validator = object : FeatureTaskRuntimePhaseOutputValidator {
         override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
-          if (sourceLabel != "review") return
+          if (sourceLabel != "audit") return
           if (phaseOutputText.contains("SKILL187-DEGRADED-EXCERPT")) {
             throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
               sourceLabel = sourceLabel,
@@ -495,12 +495,12 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
     harness.recorder.recordRejectedOutput(
       RejectedOutputDiagnosticRequest(
         workflowId = WORKFLOW_ID,
-        phaseId = "review",
+        phaseId = "audit",
         attempt = 1,
         rule = "divergent-pre-record",
         path = "/",
         reason = "divergent-pre-record",
-        agentId = phaseAgent("review"),
+        agentId = phaseAgent("audit"),
         model = "unspecified",
         rawResponse = "divergent-pre-record".encodeToByteArray(),
       ),
@@ -508,7 +508,7 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
-    val retry = reviewPrompts(harness)[1]
+    val retry = schemaRetryPrompts(harness)[1]
     assertContains(retry, "Rejected response body not included in this prompt")
     assertContains(retry, "Private diagnostic write degraded (conflict)")
     assertFalse(retry.contains("rod_"), "degraded write must not fabricate a resolvable locator")
@@ -667,11 +667,11 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
     }
   }
 
-  private fun reviewPrompts(harness: RunnerHarness): List<String> {
+  private fun schemaRetryPrompts(harness: RunnerHarness): List<String> {
     val prompts = harness.launcher.requests
       .map { requireNotNull(it.skillRunRequest.promptOverride) }
-      .filter { phaseIdFromPrompt(it) == "review" }
-    assertTrue(prompts.size >= 2, "the review phase must have retried at least once")
+      .filter { phaseIdFromPrompt(it) == "audit" }
+    assertTrue(prompts.size >= 2, "the audit phase must have retried at least once")
     return prompts
   }
 
@@ -696,7 +696,7 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
   private fun rejectingOnceValidator(rejectedBody: String): FeatureTaskRuntimePhaseOutputValidator =
     object : FeatureTaskRuntimePhaseOutputValidator {
       override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
-        if (sourceLabel != "review") return
+        if (sourceLabel != "audit") return
         if (phaseOutputText.contains(rawSpan) || phaseOutputText == rejectedBody) {
           throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
             sourceLabel = sourceLabel,

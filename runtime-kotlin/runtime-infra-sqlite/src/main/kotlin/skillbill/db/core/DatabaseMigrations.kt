@@ -579,7 +579,7 @@ private fun addReviewRunLaneAttribution(connection: Connection) {
   DatabaseReviewLedgerSchema.reviewRunLaneStatements.forEach { sql ->
     connection.createStatement().use { statement -> statement.execute(sql) }
   }
-  DatabaseReviewColumnMigrations.ensureFindingLaneColumns(connection)
+  DatabaseReviewFindingColumnMigrations.ensureFindingLaneColumns(connection)
   DatabaseReviewColumnMigrations.ensureReviewRunLaneDispositionColumns(connection)
 }
 

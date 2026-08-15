@@ -19,8 +19,8 @@ import skillbill.ports.config.model.ReadRepoLocalConfigResult
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
-import skillbill.ports.persistence.LifecycleTelemetryRepository
 import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.persistence.LifecycleTelemetryRepository
 import skillbill.ports.persistence.ReviewRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.model.ReviewAccountingRecord
@@ -199,6 +199,7 @@ fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): Parall
         object : ReviewContextEnvelopeValidator {
           override fun validate(envelope: Map<String, Any?>, sourceLabel: String) = Unit
         },
+        FileSystemDecompositionManifestFileStore(),
       ),
     ),
   )

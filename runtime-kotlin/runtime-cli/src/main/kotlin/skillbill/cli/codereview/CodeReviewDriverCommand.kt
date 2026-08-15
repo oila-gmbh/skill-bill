@@ -9,6 +9,7 @@ import com.github.ajalt.clikt.parameters.types.long
 import skillbill.application.config.ConfigResolutionService
 import skillbill.application.model.DiffResolutionException
 import skillbill.application.model.ParallelCodeReviewRequest
+import skillbill.application.model.ParallelCodeReviewResult
 import skillbill.application.model.ParallelReviewLaneStatus
 import skillbill.application.model.ParallelReviewScope
 import skillbill.application.model.ReviewPrelaunchExpansion
@@ -106,50 +107,19 @@ open class CodeReviewDriverCommand(
   override fun run() {
     val resolvedAgent1 = resolveAgent1()
     val repo = Path.of(repoRoot).toAbsolutePath().normalize()
-    val resolvedAgent2 = try {
-      resolveAgent2(repo)
-    } catch (e: ShellContentContractException) {
-      throw UsageError(e.message.orEmpty())
-    }
+    val resolvedAgent2 = agent2ForRepo(repo)
+    val result = runParallelReviewDriver(
+      runner,
+      request(resolvedAgent1, resolvedAgent2, parsedReviewScope(scope), repo),
+      state,
+    ) ?: return
+    writeParallelReviewResult(state, result)
+  }
 
-    val resolvedScope = when (scope) {
-      "staged" -> ParallelReviewScope.STAGED
-      "unstaged" -> ParallelReviewScope.UNSTAGED
-      "branch" -> ParallelReviewScope.BRANCH
-      "pr" -> ParallelReviewScope.PR
-      else -> throw UsageError("Invalid scope: $scope")
-    }
-
-    val result = try {
-      runner.run(request(resolvedAgent1, resolvedAgent2, resolvedScope, repo))
-    } catch (@Suppress("SwallowedException") e: UsageValidationException) {
-      throw UsageError(e.message.orEmpty())
-    } catch (@Suppress("SwallowedException") e: DiffResolutionException) {
-      throw UsageError(e.message.orEmpty())
-    } catch (@Suppress("SwallowedException") e: StackDetectionException) {
-      throw UsageError(e.message.orEmpty())
-    } catch (e: ShellContentContractException) {
-      throw UsageError(e.message.orEmpty())
-    } catch (e: ReviewAggregationIntegrityError) {
-      state.result = CliExecutionResult(exitCode = 1, stdout = e.message.orEmpty())
-      return
-    }
-
-    val lanes = listOf(result.lane1, result.lane2).filter { it.agentId.isNotBlank() }
-    val exitCode = if (lanes.all(ParallelReviewLaneStatus::success)) 0 else 1
-    val output = buildString {
-      append(laneStatusOutput(lanes, result.mergeResult.formattedOutput))
-      result.coverage?.let { coverage ->
-        appendLine()
-        append(coverage.render())
-      }
-      result.accountingSummary?.let { summary ->
-        appendLine()
-        append("# Review accounting — ")
-        append(JsonSupport.mapToJsonString(summary.toBoundedPayload()))
-      }
-    }
-    state.result = CliExecutionResult(exitCode = exitCode, stdout = output)
+  private fun agent2ForRepo(repo: Path): String? = try {
+    resolveAgent2(repo)
+  } catch (error: ShellContentContractException) {
+    usageError(error)
   }
 
   private fun resolveAgent2(repo: Path): String? {
@@ -188,14 +158,6 @@ open class CodeReviewDriverCommand(
     ),
   )
 
-  private fun laneStatusOutput(lanes: List<ParallelReviewLaneStatus>, register: String): String {
-    if (lanes.all(ParallelReviewLaneStatus::success)) return register
-    val summary = lanes.joinToString(" | ") { lane ->
-      if (lane.success) "${lane.agentId}: ok" else "${lane.agentId}: failed (${lane.failureReason ?: "unknown reason"})"
-    }
-    return "# Lane status — $summary\n$register"
-  }
-
   private fun resolveAgent1(): String = agent1?.takeIf(String::isNotBlank)
     ?: state.environment["SKILL_BILL_AGENT"]?.takeIf(String::isNotBlank)
     ?: InvokingAgentContextResolver.detect(state.environment)?.id
@@ -223,4 +185,63 @@ open class CodeReviewDriverCommand(
   private companion object {
     const val DEFAULT_AGENT = "codex"
   }
+}
+
+private fun parsedReviewScope(scope: String): ParallelReviewScope = when (scope) {
+  "staged" -> ParallelReviewScope.STAGED
+  "unstaged" -> ParallelReviewScope.UNSTAGED
+  "branch" -> ParallelReviewScope.BRANCH
+  "pr" -> ParallelReviewScope.PR
+  else -> throw UsageError("Invalid scope: $scope")
+}
+
+private fun runParallelReviewDriver(
+  runner: ParallelCodeReviewRunner,
+  request: ParallelCodeReviewRequest,
+  state: CliRunState,
+): ParallelCodeReviewResult? = try {
+  runner.run(request)
+} catch (error: UsageValidationException) {
+  usageError(error)
+} catch (error: DiffResolutionException) {
+  usageError(error)
+} catch (error: StackDetectionException) {
+  usageError(error)
+} catch (error: ShellContentContractException) {
+  usageError(error)
+} catch (error: ReviewAggregationIntegrityError) {
+  state.result = CliExecutionResult(exitCode = 1, stdout = error.message.orEmpty())
+  null
+}
+
+private fun usageError(error: Throwable): Nothing {
+  throw UsageError(error.message.orEmpty()).also { usage ->
+    runCatching { usage.initCause(error) }
+  }
+}
+
+private fun writeParallelReviewResult(state: CliRunState, result: ParallelCodeReviewResult) {
+  val lanes = listOf(result.lane1, result.lane2).filter { it.agentId.isNotBlank() }
+  val exitCode = if (lanes.all(ParallelReviewLaneStatus::success)) 0 else 1
+  val output = buildString {
+    append(laneStatusOutput(lanes, result.mergeResult.formattedOutput))
+    result.coverage?.let { coverage ->
+      appendLine()
+      append(coverage.render())
+    }
+    result.accountingSummary?.let { summary ->
+      appendLine()
+      append("# Review accounting — ")
+      append(JsonSupport.mapToJsonString(summary.toBoundedPayload()))
+    }
+  }
+  state.result = CliExecutionResult(exitCode = exitCode, stdout = output)
+}
+
+private fun laneStatusOutput(lanes: List<ParallelReviewLaneStatus>, register: String): String {
+  if (lanes.all(ParallelReviewLaneStatus::success)) return register
+  val summary = lanes.joinToString(" | ") { lane ->
+    if (lane.success) "${lane.agentId}: ok" else "${lane.agentId}: failed (${lane.failureReason ?: "unknown reason"})"
+  }
+  return "# Lane status — $summary\n$register"
 }

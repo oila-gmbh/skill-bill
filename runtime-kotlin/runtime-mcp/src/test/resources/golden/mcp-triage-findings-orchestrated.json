@@ -66,6 +66,48 @@
       },
       "entries": []
     },
+    "verification": {
+      "claim_verdict": {
+        "confirmed": 0,
+        "refuted": 0,
+        "unresolved": 0
+      },
+      "scope_disposition": {
+        "in_scope": 0,
+        "out_of_scope_preexisting": 0,
+        "spec_deviation": 0,
+        "spec_accepted_tradeoff": 0
+      },
+      "finding_count": 0
+    },
+    "adjudication": {
+      "claim_verdict": {
+        "confirmed": 0,
+        "refuted": 0,
+        "unresolved": 0
+      },
+      "scope_disposition": {
+        "in_scope": 0,
+        "out_of_scope_preexisting": 0,
+        "spec_deviation": 0,
+        "spec_accepted_tradeoff": 0
+      },
+      "finding_count": 0
+    },
+    "refutation_rate_by_stage": {
+      "verification": 0.0,
+      "adjudication": 0.0
+    },
+    "rejected_verdict_counts": {
+      "uncited_refutations": 0,
+      "uncited_downgrades": 0,
+      "finding_mutations": 0
+    },
+    "severity_adjustment_counts": {
+      "raised": 0,
+      "lowered": 0
+    },
+    "resolved_tier": "inline",
     "skill": "bill-code-review"
   }
 }

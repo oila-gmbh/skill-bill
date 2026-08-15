@@ -7,6 +7,7 @@ import skillbill.ports.review.model.ReviewFactPorts
 import skillbill.ports.review.model.ReviewScopeFacts
 import skillbill.ports.review.model.ReviewStackRoutingFacts
 import skillbill.review.context.ReviewContextEnvelopeValidator
+import skillbill.review.context.model.ResolvedReviewExecutionMode
 import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewBuildTestFact
 import skillbill.review.context.model.ReviewChangedHunk
@@ -23,7 +24,6 @@ import skillbill.review.context.model.ReviewLaneDecision
 import skillbill.review.context.model.ReviewLearningsReference
 import skillbill.review.context.model.ReviewPacketConsumerContract
 import skillbill.review.context.model.ReviewRuleReference
-import skillbill.review.context.model.ResolvedReviewExecutionMode
 
 private data class ResolvedReviewFacts(
   val scope: ReviewScopeFacts,

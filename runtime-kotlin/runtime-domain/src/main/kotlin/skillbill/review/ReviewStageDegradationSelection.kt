@@ -30,60 +30,81 @@ object ReviewStageDegradationSelection {
     claims: ReviewPassClaimSnapshot?,
   ): List<ReviewStageDegradationMeasurement> {
     val byStage = boundaries.associateBy { it.stage }
-    val measurements = mutableListOf<ReviewStageDegradationMeasurement>()
-    val absenceReason = spec?.absenceReason
-    val specNone = absenceReason != null
-    if (absenceReason != null) {
-      measurements += ReviewStageDegradationMeasurement(
-        reviewRunId = reviewRunId,
-        seam = "review.spec_intent",
-        expected = "resolved",
-        actual = absenceReason,
-        reason = ReviewStageDegradationReason.SPEC_CONTEXT_NONE,
-      )
+    val specNone = spec?.absenceReason != null
+    return buildList {
+      specAbsence(reviewRunId, spec)?.let(::add)
+      if (adjudicationSkipped(specNone, byStage)) {
+        add(adjudicationSkip(reviewRunId, specNone))
+      }
+      workerFailure(reviewRunId, verdicts)?.let(::add)
+      addAll(unreachedBoundaries(reviewRunId, specNone, byStage, claims))
     }
+  }
+
+  private fun specAbsence(
+    reviewRunId: String,
+    spec: ReviewSpecProjectionReference?,
+  ): ReviewStageDegradationMeasurement? {
+    val absenceReason = spec?.absenceReason ?: return null
+    return ReviewStageDegradationMeasurement(
+      reviewRunId = reviewRunId,
+      seam = "review.spec_intent",
+      expected = "resolved",
+      actual = absenceReason,
+      reason = ReviewStageDegradationReason.SPEC_CONTEXT_NONE,
+    )
+  }
+
+  private fun adjudicationSkipped(specNone: Boolean, byStage: Map<ReviewStage, ReviewStageBoundary>): Boolean {
     val verificationReached = byStage[ReviewStage.VERIFICATION]?.reached == ReviewStageReached.REACHED
     val adjudicationReached = byStage[ReviewStage.ADJUDICATION]?.reached == ReviewStageReached.REACHED
-    val adjudicationSkipped = specNone || (!verificationReached && !adjudicationReached)
-    if (adjudicationSkipped) {
-      measurements += ReviewStageDegradationMeasurement(
-        reviewRunId = reviewRunId,
-        seam = "review.adjudication",
-        expected = "reached",
-        actual = if (specNone) "skipped_spec_context_none" else "skipped",
-        reason = ReviewStageDegradationReason.ADJUDICATION_SKIPPED,
-      )
-    }
+    return specNone || (!verificationReached && !adjudicationReached)
+  }
+
+  private fun adjudicationSkip(reviewRunId: String, specNone: Boolean): ReviewStageDegradationMeasurement =
+    ReviewStageDegradationMeasurement(
+      reviewRunId = reviewRunId,
+      seam = "review.adjudication",
+      expected = "reached",
+      actual = if (specNone) "skipped_spec_context_none" else "skipped",
+      reason = ReviewStageDegradationReason.ADJUDICATION_SKIPPED,
+    )
+
+  private fun workerFailure(
+    reviewRunId: String,
+    verdicts: List<ReviewFindingVerdict>,
+  ): ReviewStageDegradationMeasurement? {
     val failedWorker = verdicts.firstOrNull { verdict ->
       val reason = verdict.rejectionReason ?: return@firstOrNull false
       reason in workerLaunchOrReturnReasons ||
         reason.startsWith("agent exited with status ") ||
         reason.startsWith("unsupported agent:")
-    }
-    if (failedWorker != null) {
-      measurements += ReviewStageDegradationMeasurement(
-        reviewRunId = reviewRunId,
-        seam = "review.${failedWorker.stage.wireValue}.worker",
-        expected = "worker_returned",
-        actual = "launch_or_return_failed",
-        reason = ReviewStageDegradationReason.WORKER_LAUNCH_OR_RETURN_FAILED,
-      )
-    }
-    ReviewStage.entries.forEach { stage ->
+    } ?: return null
+    return ReviewStageDegradationMeasurement(
+      reviewRunId = reviewRunId,
+      seam = "review.${failedWorker.stage.wireValue}.worker",
+      expected = "worker_returned",
+      actual = "launch_or_return_failed",
+      reason = ReviewStageDegradationReason.WORKER_LAUNCH_OR_RETURN_FAILED,
+    )
+  }
+
+  private fun unreachedBoundaries(
+    reviewRunId: String,
+    specNone: Boolean,
+    byStage: Map<ReviewStage, ReviewStageBoundary>,
+    claims: ReviewPassClaimSnapshot?,
+  ): List<ReviewStageDegradationMeasurement> {
+    val verificationReached = byStage[ReviewStage.VERIFICATION]?.reached == ReviewStageReached.REACHED
+    return ReviewStage.entries.mapNotNull { stage ->
       val boundary = byStage[stage]
-      val unreached = when {
-        boundary?.reached == ReviewStageReached.NOT_REACHED -> true
-        stage == ReviewStage.VERIFICATION &&
-          !claims?.findings.isNullOrEmpty() &&
-          boundary == null -> true
-        stage == ReviewStage.ADJUDICATION &&
-          verificationReached &&
-          !specNone &&
-          boundary == null -> true
-        else -> false
-      }
-      if (unreached) {
-        measurements += ReviewStageDegradationMeasurement(
+      val unreached = boundary?.reached == ReviewStageReached.NOT_REACHED ||
+        missingVerificationBoundary(stage, claims, boundary) ||
+        missingAdjudicationBoundary(stage, verificationReached, specNone, boundary)
+      if (!unreached) {
+        null
+      } else {
+        ReviewStageDegradationMeasurement(
           reviewRunId = reviewRunId,
           seam = "review.${stage.wireValue}.boundary",
           expected = "reached",
@@ -92,6 +113,18 @@ object ReviewStageDegradationSelection {
         )
       }
     }
-    return measurements
   }
+
+  private fun missingVerificationBoundary(
+    stage: ReviewStage,
+    claims: ReviewPassClaimSnapshot?,
+    boundary: ReviewStageBoundary?,
+  ): Boolean = stage == ReviewStage.VERIFICATION && !claims?.findings.isNullOrEmpty() && boundary == null
+
+  private fun missingAdjudicationBoundary(
+    stage: ReviewStage,
+    verificationReached: Boolean,
+    specNone: Boolean,
+    boundary: ReviewStageBoundary?,
+  ): Boolean = stage == ReviewStage.ADJUDICATION && verificationReached && !specNone && boundary == null
 }

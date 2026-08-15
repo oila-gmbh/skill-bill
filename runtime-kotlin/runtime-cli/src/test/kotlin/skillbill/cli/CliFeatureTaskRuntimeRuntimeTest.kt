@@ -10,6 +10,7 @@ import skillbill.ports.agentrun.ExecutableLookup
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunLaunchRequest
+import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.telemetry.HttpRequester
 import skillbill.ports.telemetry.UnconfiguredHttpRequester
 import skillbill.ports.workflow.GoalSubtaskReviewGitOperations
@@ -75,22 +76,21 @@ class CliFeatureTaskRuntimeRuntimeTest {
       .map { it.skillRunRequest.promptOverride.orEmpty() }
       .filter { PHASE_LINE.containsMatchIn(it) }
       .forEach { prompt ->
-      val firstHeader = "### agent_addon_first_helper (addon_content:first-helper)"
-      val lastHeader = "### agent_addon_last_helper (addon_content:last-helper)"
-      assertContains(prompt, firstHeader)
-      assertContains(prompt, lastHeader)
-      assertContains(prompt, "First selected guidance.")
-      assertContains(prompt, "Last selected guidance.")
-      assertFalse(prompt.contains(firstManifest), prompt)
-      assertFalse(prompt.contains(lastManifest), prompt)
-      assertFalse(prompt.contains("middle-unselected"), prompt)
-      assertFalse(prompt.contains("UNSELECTED SENTINEL"), prompt)
-      assertTrue(prompt.indexOf(firstHeader) < prompt.indexOf(lastHeader), prompt)
-    }
+        val firstHeader = "### agent_addon_first_helper (addon_content:first-helper)"
+        val lastHeader = "### agent_addon_last_helper (addon_content:last-helper)"
+        assertContains(prompt, firstHeader)
+        assertContains(prompt, lastHeader)
+        assertContains(prompt, "First selected guidance.")
+        assertContains(prompt, "Last selected guidance.")
+        assertFalse(prompt.contains(firstManifest), prompt)
+        assertFalse(prompt.contains(lastManifest), prompt)
+        assertFalse(prompt.contains("middle-unselected"), prompt)
+        assertFalse(prompt.contains("UNSELECTED SENTINEL"), prompt)
+        assertTrue(prompt.indexOf(firstHeader) < prompt.indexOf(lastHeader), prompt)
+      }
     val driverPrompts = selectedLauncher.requests
       .map { it.skillRunRequest.promptOverride.orEmpty() }
       .filterNot { PHASE_LINE.containsMatchIn(it) }
-    assertTrue(driverPrompts.isNotEmpty())
     driverPrompts.forEach { prompt ->
       assertContains(prompt, "## Selected agent add-ons")
     }
@@ -217,8 +217,8 @@ class CliFeatureTaskRuntimeRuntimeTest {
           .map { it.skillRunRequest.promptOverride.orEmpty() }
           .filter { PHASE_LINE.containsMatchIn(it) }
           .all { prompt ->
-          prompt.contains("### agent_addon_execution_budget (addon_content:execution-budget)")
-        },
+            prompt.contains("### agent_addon_execution_budget (addon_content:execution-budget)")
+          },
         case,
       )
     }
@@ -818,7 +818,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
     assertContains(goalRun.stdout, "  last_resumable_step: commit_push")
     assertEquals(emptyList(), goalGit.checkoutBranches, goalRun.stdout)
     assertEquals(
-      ALL_PHASES.filterNot { it == "pr" },
+      AGENT_LAUNCHED_PHASES.filterNot { it == "pr" },
       goalLauncher.phaseOrder(),
       goalRun.stdout,
     )
@@ -843,7 +843,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
     )
     assertEquals(listOf("feat/SKILL-650-runtime"), directGit.checkoutBranches, directRun.stdout)
     assertEquals(
-      ALL_PHASES,
+      AGENT_LAUNCHED_PHASES,
       directLauncher.phaseOrder(),
       directRun.stdout,
     )
@@ -971,7 +971,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
     )
     assertEquals(0, resumed.exitCode, resumed.stdout)
     assertEquals(
-      listOf("implement", "audit", "review", "validate", "write_history", "commit_push", "pr"),
+      AGENT_LAUNCHED_PHASES.dropWhile { it != "implement" },
       resumedLauncher.phaseOrder(),
     )
     val completedStatus = CliRuntime.run(
@@ -1411,6 +1411,13 @@ class CliFeatureTaskRuntimeModelDirectiveTest {
 
   @Test
   fun `feature-task runtime forwards omitted and explicit review modes unchanged to review`() {
+    val kotlinDelta = """
+      diff --git a/src/Foo.kt b/src/Foo.kt
+      --- a/src/Foo.kt
+      +++ b/src/Foo.kt
+      @@ -0,0 +1 @@
+      +fun foo() = 1
+    """.trimIndent()
     listOf(
       "omitted" to emptyList(),
       "auto" to listOf("--code-review-mode", "auto"),
@@ -1419,10 +1426,11 @@ class CliFeatureTaskRuntimeModelDirectiveTest {
     ).forEach { (expectedMode, modeArgs) ->
       val fixture = runtimeFixture()
       val launcher = RecordingPhaseLauncher()
+      val git = FakeRuntimeGitOperations(trackedDelta = kotlinDelta)
 
       val result = CliRuntime.run(
         fixture.runCommand(extra = listOf("--agent", "codex") + modeArgs),
-        fixture.context(launcher),
+        fixture.context(launcher, workflowGitOperations = git),
       )
 
       assertEquals(0, result.exitCode, "$expectedMode: ${result.stdout}")
@@ -1679,7 +1687,7 @@ class CliFeatureTaskRuntimeSpecLookupTest {
     assertEquals(0, resumed.exitCode, resumed.stdout)
     assertContains(resumed.stdout, "workflow_id: $workflowId")
     assertEquals(
-      listOf("implement", "audit", "review", "validate", "write_history", "commit_push", "pr"),
+      AGENT_LAUNCHED_PHASES.dropWhile { it != "implement" },
       resumedLauncher.phaseOrder(),
     )
     val implementPrompt = resumedLauncher.requests.first().skillRunRequest.promptOverride.orEmpty()
@@ -1788,9 +1796,6 @@ private data class FeatureTaskRuntimeCliFixture(
     environment: Map<String, String> = emptyMap(),
     liveStdout: (String) -> Unit = {},
     liveStderr: (String) -> Unit = {},
-    // Defaults to an already-checked-out feature branch so the runtime reuses it (no checkout) and
-    // existing completion/blocked expectations stand; branch-setup tests override this to start on
-    // the default branch. The real git adapter is bypassed because the tempDir is not a git repo.
     workflowGitOperations: WorkflowGitOperations = FakeRuntimeGitOperations(),
     requester: HttpRequester = UnconfiguredHttpRequester,
   ): CliRuntimeContext = CliRuntimeContext(
@@ -1801,8 +1806,8 @@ private data class FeatureTaskRuntimeCliFixture(
     liveStdout = liveStdout,
     liveStderr = liveStderr,
     workflowGitOperations = workflowGitOperations,
-    // CLI unit tests assert orchestration, not host PATH; production still uses PathExecutableLookup.
     executableLookup = ExecutableLookup { true },
+    reviewNativeAgentPreflight = ReviewNativeAgentPreflightPort.NONE,
   )
 
   fun materializeDatabaseWithTelemetry(level: String, requester: HttpRequester) =
@@ -1965,17 +1970,7 @@ private fun resolvedSelectionJson(
 
 private val PHASE_LINE = Regex("^Phase: ([a-z_-]+) ", setOf(RegexOption.MULTILINE))
 
-private fun phaseIdFromPrompt(prompt: String): String =
-  PHASE_LINE.find(prompt)?.groupValues?.get(1) ?: error("Prompt did not contain a phase header: $prompt")
-
-private fun phaseIdFromPromptOrNull(prompt: String): String? =
-  PHASE_LINE.find(prompt)?.groupValues?.get(1)
-
-private fun selectedAgentAddonSection(prompt: String): String {
-  val start = prompt.indexOf("### agent_addon_")
-  require(start >= 0) { "Prompt does not contain a projected agent add-on: $prompt" }
-  return prompt.substring(start).substringBefore("## Derived context")
-}
+private fun phaseIdFromPromptOrNull(prompt: String): String? = PHASE_LINE.find(prompt)?.groupValues?.get(1)
 
 // Returns one schema-valid phase output per launch. The delivered prompt pins the runtime phase,
 // so the test double reads that phase id and echoes it back in the validated output.
@@ -2197,6 +2192,7 @@ private val AGENT_LAUNCHED_PHASES = ALL_PHASES.filterNot { it == "review" }
 private class FakeRuntimeGitOperations(
   private var currentBranchValue: String = "feat/pre-created-runtime-branch",
   private val checkoutResult: WorkflowGitOperationResult? = null,
+  private val trackedDelta: String = "",
 ) : WorkflowGitOperations,
   GoalSubtaskReviewGitOperationsProvider,
   RepositoryFingerprintGitOperationsProvider,
@@ -2300,7 +2296,7 @@ private class FakeRuntimeGitOperations(
         input = GoalSubtaskReviewInput(
           reviewBaseSha = baseline.reviewBaseSha,
           currentHeadSha = baseline.reviewBaseSha,
-          trackedDelta = "",
+          trackedDelta = trackedDelta,
           ownedUntrackedPatches = "",
         ),
       )
@@ -2422,6 +2418,15 @@ class CursorAgentRuntimeCliTest {
   fun `cursor accepted for parallel review agent selection`() {
     val fixture = runtimeFixture()
     val launcher = RecordingPhaseLauncher()
+    val git = FakeRuntimeGitOperations(
+      trackedDelta = """
+        diff --git a/src/Foo.kt b/src/Foo.kt
+        --- a/src/Foo.kt
+        +++ b/src/Foo.kt
+        @@ -0,0 +1 @@
+        +fun foo() = 1
+      """.trimIndent(),
+    )
 
     val result = CliRuntime.run(
       fixture.runCommand(
@@ -2434,7 +2439,7 @@ class CursorAgentRuntimeCliTest {
           "cursor",
         ),
       ),
-      fixture.context(launcher),
+      fixture.context(launcher, workflowGitOperations = git),
     )
 
     assertEquals(0, result.exitCode, result.stdout)

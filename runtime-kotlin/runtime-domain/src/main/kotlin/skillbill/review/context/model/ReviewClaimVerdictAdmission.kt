@@ -45,13 +45,11 @@ object ReviewClaimVerdictAdmission {
     }
   }
 
-  private fun claimAltered(claim: ParallelReviewMergedFinding, worker: ReviewClaimWorkerResult): Boolean {
-    if (worker.findingRef != null && worker.findingRef != claim.fNumber) return true
-    if (worker.severity != null && worker.severity != claim.severity.displayName) return true
-    if (worker.location != null && worker.location != claim.location) return true
-    if (worker.description != null && worker.description != claim.description) return true
-    return false
-  }
+  private fun claimAltered(claim: ParallelReviewMergedFinding, worker: ReviewClaimWorkerResult): Boolean =
+    (worker.findingRef != null && worker.findingRef != claim.fNumber) ||
+      (worker.severity != null && worker.severity != claim.severity.displayName) ||
+      (worker.location != null && worker.location != claim.location) ||
+      (worker.description != null && worker.description != claim.description)
 
   private fun unresolved(
     claim: ParallelReviewMergedFinding,

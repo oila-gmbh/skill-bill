@@ -11,10 +11,7 @@ import skillbill.review.model.ReviewStageResumeReport
 object ReviewStageResumeSelection {
   const val SEAM: String = "ReviewStageResumeSelection.select"
 
-  fun select(
-    boundaries: List<ReviewStageBoundary>,
-    verdicts: List<ReviewFindingVerdict>,
-  ): ReviewStageResumeReport {
+  fun select(boundaries: List<ReviewStageBoundary>, verdicts: List<ReviewFindingVerdict>): ReviewStageResumeReport {
     val degradations = mutableListOf<ReviewStageResumeDegradation>()
     val durableByStage = ReviewStage.entries.associateWith { stage ->
       val stageBoundaries = boundaries.filter { it.stage == stage }

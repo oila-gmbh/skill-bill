@@ -96,7 +96,6 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
   @Test
   fun `an implement re-entry under the implement phase id is gated by the same producer branch`() {
     var implementLaunches = 0
-    var reviewLaunches = 0
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
@@ -111,14 +110,11 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
               },
             )
           }
-          "review" -> {
-            reviewLaunches += 1
-            facts(verdictReviewOutput(if (reviewLaunches == 1) "needs_fix" else "advance"))
-          }
           else -> facts(validJsonOutput(phaseId))
         }
       },
       agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = reviewFixRuntimeConfig(2),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request(IMPLEMENT_REENTRY_CYCLE)))
@@ -399,7 +395,7 @@ private val IMPLEMENT_REENTRY_CYCLE = skillbill.workflow.taskruntime.model.Featu
   backwardEdges = listOf(
     skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge(
       fromPhaseId = "review",
-      triggeringVerdict = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict("needs_fix"),
+      triggeringVerdict = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
       destinationPhaseId = "implement",
       loopId = "implement-reentry",
       perEdgeCap = 2,

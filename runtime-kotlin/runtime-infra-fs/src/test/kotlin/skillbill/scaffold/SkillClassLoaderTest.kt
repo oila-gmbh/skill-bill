@@ -293,7 +293,9 @@ class SkillClassLoaderTest {
 
   @Test
   fun `code-review-shell is an entry over skill-bill code-review and keeps detected_scope labels`() {
-    val yaml = Files.readString(currentRepoRootForClassLoader().resolve("orchestration/skill-classes/code-review-shell.yaml"))
+    val yaml = Files.readString(
+      currentRepoRootForClassLoader().resolve("orchestration/skill-classes/code-review-shell.yaml"),
+    )
     assertTrue(yaml.contains("skill-bill code-review"), yaml)
     listOf(
       "staged changes",

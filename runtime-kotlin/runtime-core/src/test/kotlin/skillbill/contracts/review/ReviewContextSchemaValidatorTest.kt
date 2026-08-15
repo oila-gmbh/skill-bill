@@ -447,7 +447,8 @@ class ReviewContextSchemaValidatorTest {
     assertTrue("for definition 'finding_verdict'" in failure.message.orEmpty())
   }
 
-  @Test fun `an uncited severity downgrade or out of scope preexisting verdict is rejected and cited counterparts are accepted`() {
+  @Test
+  fun `uncited downgrade or out of scope preexisting is rejected while cited counterparts are accepted`() {
     val cited = listOf(findingCitation())
     ReviewContextSchemaValidator.validateFindingVerdict(
       confirmedVerdict("adjudication") +

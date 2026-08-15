@@ -1,6 +1,7 @@
 package skillbill.db.telemetry
 
 import skillbill.ports.persistence.LifecycleTelemetryRepository
+import skillbill.review.model.REVIEW_STAGE_DEGRADATION_CONTRACT_VERSION
 import skillbill.review.model.REVIEW_STAGE_DEGRADATION_EVENT_NAME
 import skillbill.review.model.ReviewStageDegradationMeasurement
 import skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord
@@ -49,7 +50,7 @@ class LifecycleTelemetryStore(
 
   override fun reviewStageDegradation(record: ReviewStageDegradationMeasurement) {
     if (reviewStageDegradationExists(connection, record)) return
-    enqueueTelemetry(connection, REVIEW_STAGE_DEGRADATION_EVENT_NAME, record.toTelemetryMap())
+    enqueueTelemetry(connection, REVIEW_STAGE_DEGRADATION_EVENT_NAME, record.toStageDegradationPayload())
   }
 
   override fun featureTaskRuntimeStarted(record: FeatureTaskRuntimeStartedRecord, level: String) {
@@ -131,3 +132,13 @@ class LifecycleTelemetryStore(
     }
   }
 }
+
+private fun ReviewStageDegradationMeasurement.toStageDegradationPayload(): Map<String, Any?> = linkedMapOf(
+  "event_name" to REVIEW_STAGE_DEGRADATION_EVENT_NAME,
+  "contract_version" to REVIEW_STAGE_DEGRADATION_CONTRACT_VERSION,
+  "review_run_id" to reviewRunId,
+  "seam" to seam,
+  "expected" to expected,
+  "actual" to actual,
+  "reason" to reason.wireValue,
+)

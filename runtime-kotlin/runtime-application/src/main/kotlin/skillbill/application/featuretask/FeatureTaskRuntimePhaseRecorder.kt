@@ -4,6 +4,7 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRejectedOutputWrite
 import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
+import skillbill.application.goalrunner.UnaddressedFindingLedgerScope
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.application.model.FeatureTaskRuntimePhaseLedgerRequest
 import skillbill.application.model.FeatureTaskRuntimePhaseStateRequest
@@ -87,7 +88,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition
-import skillbill.workflow.taskruntime.model.unionRefutedBlockerDispositions
 import skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
@@ -106,6 +106,7 @@ import skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineEntriesF
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineRecordToWire
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeRejectionCapOf
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeRejectionViolationClassOf
+import skillbill.workflow.taskruntime.model.unionRefutedBlockerDispositions
 import java.time.Duration
 import java.time.Instant
 
@@ -974,10 +975,9 @@ class FeatureTaskRuntimePhaseRecorder(
   internal fun fetchUnaddressedLedger(
     workflowId: String,
     dbOverride: String? = null,
-  ): List<skillbill.goalrunner.model.UnaddressedFinding> =
-    database.transaction(dbOverride) { unitOfWork ->
-      unitOfWork.unaddressedFindings.fetchWorkflowLedger(workflowId)
-    }
+  ): List<skillbill.goalrunner.model.UnaddressedFinding> = database.transaction(dbOverride) { unitOfWork ->
+    unitOfWork.unaddressedFindings.fetchWorkflowLedger(workflowId)
+  }
 
   internal fun completeGoalReviewPhase(
     completion: GoalReviewPhaseCompletionRequest,
@@ -985,85 +985,147 @@ class FeatureTaskRuntimePhaseRecorder(
   ): Boolean {
     val request = validatedGoalReviewPhaseState(completion)
     return database.transaction(dbOverride) { unitOfWork ->
-      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, request.workflowId)
-        ?: return@transaction false
-      val artifacts = decodeArtifacts(record.artifactsJson)
-      val reviewArtifacts = GoalSubtaskReviewArtifactDecoder.decode(artifacts)
-        ?: return@transaction false
-      val continuation = reviewArtifacts.continuation
-      val reservedPass = reviewArtifacts.state.reservedPassNumber ?: 1
-      val priorFindings = unitOfWork.unaddressedFindings.fetchWorkflowLedger(request.workflowId)
-      val envelope = requireNotNull(request.normalizedOutput) {
-        "Goal review completion requires normalized output to persist the unaddressed-findings ledger."
-      }.envelope
-      val recordedVerdicts = GoalSubtaskReviewSummaryReducer.recordedVerdicts(unitOfWork, envelope)
-      val currentFindings = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
-        output = envelope,
-        issueKey = continuation.issueKey,
-        subtaskId = continuation.subtaskId,
+      persistCompletedGoalReview(unitOfWork, request, completion)
+    }
+  }
+
+  private fun persistCompletedGoalReview(
+    unitOfWork: UnitOfWork,
+    request: FeatureTaskRuntimePhaseStateRequest,
+    completion: GoalReviewPhaseCompletionRequest,
+  ): Boolean {
+    val write = goalReviewCompletionWrite(unitOfWork, request, completion) ?: return false
+    persistUnaddressedFindings(
+      unitOfWork,
+      request,
+      write.continuation,
+      write.completedState.completedPassCount,
+      write.dispositions,
+    )
+    persistPatch(
+      unitOfWork.workflowStates,
+      write.record,
+      mapOf(
+        GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to write.completedState.toArtifactMap(),
+        GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY to (
+          write.persisted.rawResults +
+            (write.completedState.completedPassCount.toString() to completion.rawReviewResult)
+          ),
+        FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to
+          write.persisted.updatedRecords.mapValues { (_, value) -> value.toArtifactMap() },
+        FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY to
+          goalReviewCompletionLedger(request, write.persisted.artifacts),
+      ),
+      WorkflowRowAdvance(
+        currentStepId = request.phaseId,
+        workflowStatus = workflowStatusFor(request),
+        stepUpdates = stepUpdatesFrom(write.persisted.updatedRecords),
+      ),
+    )
+    return true
+  }
+
+  private data class GoalReviewCompletionArtifacts(
+    val artifacts: Map<String, Any?>,
+    val rawResults: Map<String, String>,
+    val updatedRecords: Map<String, FeatureTaskRuntimePhaseRecord>,
+  )
+
+  private data class GoalReviewCompletionWrite(
+    val record: WorkflowStateSnapshot,
+    val continuation: FeatureTaskRuntimeGoalContinuationArtifact,
+    val completedState: GoalSubtaskReviewState,
+    val dispositions: List<GoalSubtaskBlockerDisposition>,
+    val persisted: GoalReviewCompletionArtifacts,
+  )
+
+  private fun goalReviewCompletionWrite(
+    unitOfWork: UnitOfWork,
+    request: FeatureTaskRuntimePhaseStateRequest,
+    completion: GoalReviewPhaseCompletionRequest,
+  ): GoalReviewCompletionWrite? {
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, request.workflowId)
+      ?: return null
+    val artifacts = decodeArtifacts(record.artifactsJson)
+    val reviewArtifacts = GoalSubtaskReviewArtifactDecoder.decode(artifacts) ?: return null
+    val reservedPass = reviewArtifacts.state.reservedPassNumber ?: 1
+    val envelope = requireNotNull(request.normalizedOutput) {
+      "Goal review completion requires normalized output to persist the unaddressed-findings ledger."
+    }.envelope
+    val recordedVerdicts = GoalSubtaskReviewSummaryReducer.recordedVerdicts(unitOfWork, envelope)
+    val currentFindings = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
+      output = envelope,
+      scope = UnaddressedFindingLedgerScope(
+        issueKey = reviewArtifacts.continuation.issueKey,
+        subtaskId = reviewArtifacts.continuation.subtaskId,
         workflowId = request.workflowId,
         reviewPassNumber = reservedPass,
-        recordedVerdicts = recordedVerdicts,
-      )
-      val dispositions = if (reservedPass <= 1) {
-        completion.blockerDispositions
-      } else {
-        unionRefutedBlockerDispositions(
-          completion.blockerDispositions,
-          GoalSubtaskReviewSummaryReducer.refutedBlockerSupersedes(
-            priorFindings,
-            currentFindings,
-            recordedVerdicts,
-          ),
-        )
-      }
-      val completedState = reviewArtifacts.state.completeReservedPass(
+      ),
+      recordedVerdicts = recordedVerdicts,
+    )
+    val dispositions = goalReviewCompletionDispositions(
+      reservedPass,
+      completion.blockerDispositions,
+      unitOfWork.unaddressedFindings.fetchWorkflowLedger(request.workflowId),
+      currentFindings,
+      recordedVerdicts,
+    )
+    val existingRecords = phaseRecordsFrom(artifacts)
+    return GoalReviewCompletionWrite(
+      record = record,
+      continuation = reviewArtifacts.continuation,
+      completedState = reviewArtifacts.state.completeReservedPass(
         verdict = completion.verdict,
         unresolvedFindingCount = completion.unresolvedFindingCount,
         findings = completion.findings,
         blockerDispositions = dispositions,
         commitFocusedAccounting = completion.commitFocusedAccounting,
-      )
-      val passNumber = completedState.completedPassCount.toString()
-      val existingRecords = phaseRecordsFrom(artifacts)
-      val phaseRecord = phaseRecordFor(request, existingRecords[request.phaseId], Instant.now().toString())
-      val updatedRecords = LinkedHashMap(existingRecords).apply { put(request.phaseId, phaseRecord) }
-      val ledger = phaseLedgerFrom(artifacts)
-      val completionEntry = FeatureTaskRuntimePhaseLedgerEntry(
-        action = skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.COMPLETE,
-        sequenceNumber = (ledger.maxOfOrNull { it.sequenceNumber } ?: -1) + 1,
-        timestamp = Instant.now().toString(),
-        phaseId = request.phaseId,
-        attemptCount = request.attemptCount,
-        resolvedAgentId = request.resolvedAgentId,
-        loopId = request.loopId,
-        edgeIteration = request.edgeIteration,
-      )
-      val updatedLedger = appendBoundedHistoryBySequence(
-        ledger.map { it.toArtifactMap() },
-        completionEntry.toArtifactMap(),
-        FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT,
-      )
-      persistUnaddressedFindings(unitOfWork, request, continuation, passNumber.toInt(), dispositions)
-      persistPatch(
-        unitOfWork.workflowStates,
-        record,
-        mapOf(
-          GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to completedState.toArtifactMap(),
-          GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY to
-            (reviewArtifacts.rawResults + (passNumber to completion.rawReviewResult)),
-          FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to
-            updatedRecords.mapValues { (_, value) -> value.toArtifactMap() },
-          FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY to updatedLedger,
-        ),
-        WorkflowRowAdvance(
-          currentStepId = request.phaseId,
-          workflowStatus = workflowStatusFor(request),
-          stepUpdates = stepUpdatesFrom(updatedRecords),
-        ),
-      )
-      true
-    }
+      ),
+      dispositions = dispositions,
+      persisted = GoalReviewCompletionArtifacts(
+        artifacts = artifacts,
+        rawResults = reviewArtifacts.rawResults,
+        updatedRecords = LinkedHashMap(existingRecords).apply {
+          put(request.phaseId, phaseRecordFor(request, existingRecords[request.phaseId], Instant.now().toString()))
+        },
+      ),
+    )
+  }
+
+  private fun goalReviewCompletionDispositions(
+    reservedPass: Int,
+    requested: List<GoalSubtaskBlockerDisposition>,
+    priorFindings: List<skillbill.goalrunner.model.UnaddressedFinding>,
+    currentFindings: List<skillbill.goalrunner.model.UnaddressedFinding>,
+    recordedVerdicts: List<ReviewFindingVerdict>,
+  ): List<GoalSubtaskBlockerDisposition> {
+    if (reservedPass <= 1) return requested
+    return unionRefutedBlockerDispositions(
+      requested,
+      GoalSubtaskReviewSummaryReducer.refutedBlockerSupersedes(priorFindings, currentFindings, recordedVerdicts),
+    )
+  }
+
+  private fun goalReviewCompletionLedger(
+    request: FeatureTaskRuntimePhaseStateRequest,
+    artifacts: Map<String, Any?>,
+  ): List<Map<String, Any?>> {
+    val ledger = phaseLedgerFrom(artifacts)
+    val completionEntry = FeatureTaskRuntimePhaseLedgerEntry(
+      action = skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.COMPLETE,
+      sequenceNumber = (ledger.maxOfOrNull { it.sequenceNumber } ?: -1) + 1,
+      timestamp = Instant.now().toString(),
+      phaseId = request.phaseId,
+      attemptCount = request.attemptCount,
+      resolvedAgentId = request.resolvedAgentId,
+      loopId = request.loopId,
+      edgeIteration = request.edgeIteration,
+    )
+    return appendBoundedHistoryBySequence(
+      ledger.map { it.toArtifactMap() },
+      completionEntry.toArtifactMap(),
+      FEATURE_TASK_RUNTIME_PHASE_LEDGER_LIMIT,
+    )
   }
 
   private fun persistUnaddressedFindings(
@@ -1079,10 +1141,12 @@ class FeatureTaskRuntimePhaseRecorder(
     val recordedVerdicts = GoalSubtaskReviewSummaryReducer.recordedVerdicts(unitOfWork, output)
     val findings = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
       output = output,
-      issueKey = continuation.issueKey,
-      subtaskId = continuation.subtaskId,
-      workflowId = request.workflowId,
-      reviewPassNumber = passNumber,
+      scope = UnaddressedFindingLedgerScope(
+        issueKey = continuation.issueKey,
+        subtaskId = continuation.subtaskId,
+        workflowId = request.workflowId,
+        reviewPassNumber = passNumber,
+      ),
       recordedVerdicts = recordedVerdicts,
     )
     val superseded = unitOfWork.unaddressedFindings.fetchWorkflowLedger(request.workflowId)

@@ -59,14 +59,12 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     assertEquals(2, launched.count { it == "audit" }, "initial audit + one re-audit")
     assertEquals(1, launched.count { it == "plan" }, "the original plan remains immutable")
     assertEquals(2, launched.count { it == "implement" }, "the re-implement re-enters implement once")
-    // The reopened [implement, audit] span excludes review, so an audit gap never re-runs review;
-    // review launches exactly once, on the tree the audit finally declared complete.
-    assertEquals(1, launched.count { it == "review" }, "an audit gap never reopens review")
+    assertEquals(1, harness.launchOrder().count { it == "review" }, "an audit gap never reopens review")
     val firstAudit = launched.indexOf("audit")
     val reImplement = launched.withIndex().first { (index, phase) -> phase == "implement" && index > firstAudit }.index
     assertTrue(reImplement > firstAudit, "implementation remediation runs directly after the audit gap")
     assertTrue(
-      launched.indexOf("review") > launched.indexOfLast { it == "audit" },
+      harness.launchOrder().indexOf("review") > launched.indexOfLast { it == "audit" },
       "review runs only after the final satisfied audit",
     )
     // (e) the re-entered implement briefing carries the immutable executable plan and latest gaps,
@@ -114,14 +112,17 @@ class FeatureTaskRuntimeAuditGapLoopTest {
         git.worktreeStatusValue = " M src/Foo.kt"
         git.ownedPathsValue = listOf("src/Foo.kt")
       }
-      if (phaseId == "review") {
-        commitMessagesObservedAtReview = git.createCommitMessages.toList()
-      }
       delegate.launch(request)
     }
     val harness = runnerHarness(
       launcher = launcher,
-      runtimeConfig = RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(gitOperations = git)),
+      runtimeConfig = RuntimeHarnessConfig(
+        branchSetup = BranchSetupTestConfig(gitOperations = git),
+        reviewDriver = skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver { request ->
+          commitMessagesObservedAtReview = git.createCommitMessages.toList()
+          skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver.EMPTY.run(request)
+        },
+      ),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
@@ -579,17 +580,10 @@ class FeatureTaskRuntimeAuditGapLoopTest {
   @Test
   fun `m2 composes with m1 keeping independent loop counters`() {
     var auditLaunches = 0
-    var reviewLaunches = 0
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
         when (phaseId) {
-          // The initial review demands one fix, then pass two approves.
-          "review" -> {
-            reviewLaunches += 1
-            facts(reviewFindingsOutput(changesRequested = reviewLaunches % 2 == 1))
-          }
-          // The first audit reports a gap; the second is satisfied (one audit-gap iteration).
           "audit" -> {
             auditLaunches += 1
             facts(if (auditLaunches < 2) auditGapsOutput() else auditSatisfiedOutput())
@@ -597,6 +591,7 @@ class FeatureTaskRuntimeAuditGapLoopTest {
           else -> facts(validJsonOutput(phaseId))
         }
       },
+      runtimeConfig = reviewFixRuntimeConfig(2),
     )
 
     val report = harness.runner.run(harness.request())

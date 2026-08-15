@@ -24,19 +24,7 @@ sealed interface ValidationGateResolution {
 
 data class ValidationFindingSetProjection(
   val findings: List<ValidationGateFinding>,
-  val droppedCount: Int,
-) {
-  val hasUnreportedRemainder: Boolean get() = droppedCount > 0
-
-  fun toHandoffMaps(): List<Map<String, String?>> = findings.map { finding ->
-    linkedMapOf(
-      "module" to finding.module,
-      "rule_or_test_id" to finding.ruleOrTestId,
-      "message" to finding.message,
-      "location" to finding.location,
-    )
-  }
-}
+)
 
 /** Agent repair launch within the runtime-owned validate gate cycle. */
 fun interface ValidationGateAgentRepairLauncher {

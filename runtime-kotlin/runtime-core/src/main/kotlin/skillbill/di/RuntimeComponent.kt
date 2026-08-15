@@ -8,6 +8,7 @@ import skillbill.application.agentrun.AgentRunService
 import skillbill.application.config.ConfigResolutionService
 import skillbill.application.featuretask.FeatureTaskContinuationLookupService
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
+import skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver
 import skillbill.application.featuretask.FeatureTaskRuntimeRunner
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.featuretask.FeatureTaskRuntimeWorkerCoordinator
@@ -35,7 +36,6 @@ import skillbill.application.goalrunner.WorkflowGoalRunnerOutcomeStore
 import skillbill.application.install.ExternalAddonOverlayService
 import skillbill.application.install.InstallService
 import skillbill.application.learning.LearningService
-import skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver
 import skillbill.application.review.ParallelCodeReviewRunner
 import skillbill.application.review.ReviewService
 import skillbill.application.review.ReviewSnapshotPruneService

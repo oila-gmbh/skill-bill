@@ -1,25 +1,39 @@
 package skillbill.application
 
+import skillbill.agentaddon.model.AgentAddonPromptFormatter
+import skillbill.agentaddon.model.HydratedAgentAddonSelection
+import skillbill.agentaddon.model.HydratedAgentAddonSelectionEntry
+import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
+import skillbill.application.model.DiffResolutionException
 import skillbill.application.model.ParallelCodeReviewRequest
 import skillbill.application.model.ParallelReviewScope
 import skillbill.application.model.StackDetectionException
 import skillbill.application.model.UsageValidationException
 import skillbill.application.review.ParallelCodeReviewRunner
+import skillbill.application.review.RecordedWorkerResponse
+import skillbill.application.review.ReviewClaimVerificationRunner
+import skillbill.application.review.ReviewHarnessConfig
+import skillbill.application.review.ReviewRecorder
 import skillbill.application.review.SpecIntentProjectionExtractor
 import skillbill.application.review.SpecIntentProjectionResolver
+import skillbill.application.review.diffForPaths
+import skillbill.application.review.harnessRequest
+import skillbill.application.review.reviewHarness
+import skillbill.application.review.sparseReviewPack
 import skillbill.application.workflow.repoRoot
+import skillbill.config.model.RepoLocalConfig
 import skillbill.error.MissingInstalledNativeAgentError
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
-import skillbill.config.model.RepoLocalConfig
 import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.config.model.ReadRepoLocalConfigResult
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.persistence.LifecycleTelemetryRepository
 import skillbill.ports.persistence.ReviewRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.review.ParallelReviewLaneRunner
@@ -40,6 +54,7 @@ import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ReviewPassClaimSnapshot
 import skillbill.review.model.ReviewRunLane
+import skillbill.review.model.ReviewSpecProjectionReference
 import skillbill.scaffold.model.BaselineReviewCatalog
 import skillbill.scaffold.model.DeclaredFiles
 import skillbill.scaffold.model.PlatformManifest
@@ -308,67 +323,6 @@ class ParallelCodeReviewRunnerTest {
       resolver.calls,
       listOf("git", "rev-list", "--first-parent", "--reverse", "base-sha..head-sha"),
     )
-  }
-
-  @Test
-  fun `supplied exact diff bypasses branch-scope resolution for both lanes`() {
-    val resolver = RecordingDiffResolver(default = "unexpected branch diff")
-    val launcher = ParallelSubtaskLauncher()
-    val runner = runner(
-      launcher,
-      catalogGateway = stubCatalogGateway(listOf(platformManifest("kotlin", listOf("*.kt")))),
-      diffResolver = resolver,
-    )
-    val exactDiff = "diff --git a/Child.kt b/Child.kt\n+++ b/Child.kt\n+owned change\n"
-
-    runner.run(baseRequest(scope = ParallelReviewScope.BRANCH).copy(suppliedDiff = exactDiff))
-
-    assertTrue(resolver.calls.isEmpty())
-    assertEquals(2, launcher.requests.size)
-    launcher.requests.forEach { request ->
-      val prompt = request.skillRunRequest.promptOverride.orEmpty()
-      assertContains(prompt, "Resolved execution mode: inline")
-      assertContains(prompt, "Owned paths: \"Child.kt\"")
-      assertContains(prompt, "## Assigned bundle:")
-      assertContains(prompt, "\"Child.kt\"")
-      assertContains(prompt, "+owned change")
-      assertContains(prompt, "Use the assigned bundle evidence below as authoritative")
-      assertFalse(prompt.contains("unexpected branch diff"), "the supplied diff must replace branch resolution")
-      assertEquals(null, request.skillRunRequest.nativeReviewWorkerName)
-    }
-  }
-
-  @Test
-  fun `empty supplied diff completes without git range resolution`() {
-    val resolver = RecordingDiffResolver(default = "unexpected branch diff")
-    val launcher = ParallelSubtaskLauncher()
-    val runner = runner(launcher, diffResolver = resolver)
-
-    val result = runner.run(baseRequest(scope = ParallelReviewScope.BRANCH).copy(suppliedDiff = ""))
-
-    assertTrue(resolver.calls.isEmpty())
-    assertTrue(launcher.requests.isEmpty())
-    assertTrue(result.mergeResult.findings.isEmpty())
-  }
-
-  @Test
-  fun `selected agent add-ons section is copied onto every stage launch`() {
-    val section = "## Selected agent add-ons\nverbatim-addon-section-191"
-    val launcher = ParallelSubtaskLauncher()
-    val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = "unexpected"))
-    val exactDiff = "diff --git a/Child.kt b/Child.kt\n+++ b/Child.kt\n+owned change\n"
-
-    runner.run(
-      baseRequest(scope = ParallelReviewScope.UNSTAGED).copy(
-        suppliedDiff = exactDiff,
-        selectedAgentAddonsSection = section,
-      ),
-    )
-
-    assertTrue(launcher.requests.isNotEmpty())
-    launcher.requests.forEach { request ->
-      assertContains(request.skillRunRequest.promptOverride.orEmpty(), section)
-    }
   }
 
   @Test
@@ -659,6 +613,163 @@ class ParallelCodeReviewRunnerTest {
     assertContains(result.lane1.failureReason.orEmpty(), "review_context_budget_exceeded")
     assertEquals("review_context_budget_exceeded", result.lane1.budgetOutcome?.type)
     assertTrue(result.mergeResult.findings.isEmpty())
+  }
+}
+
+class ParallelCodeReviewSuppliedDiffTest {
+  @Test
+  fun `supplied exact diff bypasses branch-scope resolution for both lanes`() {
+    val resolver = RecordingDiffResolver(default = "unexpected branch diff")
+    val launcher = ParallelSubtaskLauncher()
+    val runner = runner(
+      launcher,
+      catalogGateway = stubCatalogGateway(listOf(platformManifest("kotlin", listOf("*.kt")))),
+      diffResolver = resolver,
+    )
+    val exactDiff = "diff --git a/Child.kt b/Child.kt\n+++ b/Child.kt\n+owned change\n"
+
+    runner.run(baseRequest(scope = ParallelReviewScope.BRANCH).copy(suppliedDiff = exactDiff))
+
+    assertEquals(listOf(HEAD_BRANCH_QUERY), resolver.calls)
+    assertEquals(2, launcher.requests.size)
+    launcher.requests.forEach { request ->
+      val prompt = request.skillRunRequest.promptOverride.orEmpty()
+      assertContains(prompt, "Resolved execution mode: inline")
+      assertContains(prompt, "Owned paths: \"Child.kt\"")
+      assertContains(prompt, "## Assigned bundle:")
+      assertContains(prompt, "\"Child.kt\"")
+      assertContains(prompt, "+owned change")
+      assertContains(prompt, "Use the assigned bundle evidence below as authoritative")
+      assertFalse(prompt.contains("unexpected branch diff"), "the supplied diff must replace branch resolution")
+      assertEquals(null, request.skillRunRequest.nativeReviewWorkerName)
+    }
+  }
+
+  @Test
+  fun `empty supplied diff completes without git range resolution`() {
+    val resolver = RecordingDiffResolver(default = "unexpected branch diff")
+    val launcher = ParallelSubtaskLauncher()
+    val runner = runner(launcher, diffResolver = resolver)
+
+    val result = runner.run(baseRequest(scope = ParallelReviewScope.BRANCH).copy(suppliedDiff = ""))
+
+    assertEquals(listOf(HEAD_BRANCH_QUERY), resolver.calls)
+    assertTrue(launcher.requests.isEmpty())
+    assertTrue(result.mergeResult.findings.isEmpty())
+  }
+
+  @Test
+  fun `supplied diff recovers spec intent from the HEAD branch without a spec path`() {
+    val repo = Files.createTempDirectory("supplied-diff-spec-intent")
+    val specDir = repo.resolve(".feature-specs/SKILL-191-runtime")
+    Files.createDirectories(specDir)
+    Files.writeString(
+      specDir.resolve("spec.md"),
+      """
+      # Feature
+
+      ## Intended Outcome
+      Ship the review driver.
+
+      ## Acceptance Criteria
+      1. Adjudication runs from the ticket-named branch.
+      """.trimIndent(),
+    )
+    val database = RecordingReviewDatabase()
+    val resolver = RecordingDiffResolver(
+      responses = mapOf(HEAD_BRANCH_QUERY to "feat/SKILL-191-runtime\n"),
+      default = "unexpected branch diff",
+    )
+    val runner = createRunner(
+      ParallelSubtaskLauncher(),
+      RunnerFixtureConfig(
+        catalogGateway = stubCatalogGateway(listOf(platformManifest("kotlin", listOf("*.kt")))),
+        diffResolver = resolver,
+        database = database,
+      ),
+    )
+    val exactDiff = "diff --git a/Child.kt b/Child.kt\n+++ b/Child.kt\n+owned change\n"
+
+    runner.run(
+      baseRequest(scope = ParallelReviewScope.BRANCH, repoRoot = repo).copy(suppliedDiff = exactDiff),
+    )
+
+    assertEquals(listOf(HEAD_BRANCH_QUERY), resolver.calls)
+    assertEquals(".feature-specs/SKILL-191-runtime/spec.md", database.specProjection?.specPath)
+    assertEquals(null, database.specProjection?.absenceReason)
+  }
+
+  @Test
+  fun `unreadable supplied diff file fails instead of empty success`() {
+    val resolver = RecordingDiffResolver(default = "unexpected branch diff")
+    val launcher = ParallelSubtaskLauncher()
+    val runner = runner(launcher, diffResolver = resolver)
+    val missing = Path.of("/tmp/skill-bill-missing-diff-file.patch")
+
+    val error = assertFailsWith<DiffResolutionException> {
+      runner.run(
+        baseRequest(scope = ParallelReviewScope.BRANCH).copy(suppliedDiffPath = missing),
+      )
+    }
+
+    assertTrue(error.message.orEmpty().contains("--diff-file"))
+    assertTrue(launcher.requests.isEmpty())
+  }
+
+  @Test
+  fun `selected agent add-ons section is copied onto every stage launch`() {
+    val selection = HydratedAgentAddonSelection(
+      listOf(
+        HydratedAgentAddonSelectionEntry(
+          PersistedAgentAddonSelectionEntry("first", "local:first", "a".repeat(64)),
+          "first",
+          "first body\n",
+        ),
+        HydratedAgentAddonSelectionEntry(
+          PersistedAgentAddonSelectionEntry("second", "local:second", "b".repeat(64)),
+          "second",
+          "second body",
+        ),
+      ),
+    )
+    val formatted = AgentAddonPromptFormatter.format(selection)
+    val pack = sparseReviewPack(
+      slug = "kotlin",
+      requiredArea = "architecture",
+      pathAreas = mapOf("testing" to listOf("src/test/")),
+    )
+    val recorder = ReviewRecorder()
+    reviewHarness(
+      ReviewHarnessConfig(
+        manifests = listOf(pack),
+        diff = diffForPaths("src/Main.kt"),
+        response = { request ->
+          when (request.skillRunRequest.issueKey) {
+            "code-review-parallel" -> RecordedWorkerResponse(stdout = STAGE_ADDON_FINDING)
+            ReviewClaimVerificationRunner.ISSUE_KEY -> RecordedWorkerResponse(stdout = STAGE_ADDON_CONFIRMED)
+            else -> RecordedWorkerResponse()
+          }
+        },
+      ),
+      recorder,
+    ).run(
+      harnessRequest(
+        reviewRunId = "runner-addons-stage",
+        codeReviewMode = CodeReviewExecutionMode.INLINE,
+        agent2Id = null,
+      ).copy(
+        suppliedDiff = diffForPaths("src/Main.kt"),
+        selectedAgentAddonsSection = formatted,
+      ),
+    )
+
+    val verificationPrompts = recorder.parentLaunches
+      .filter { it.skillRunRequest.issueKey == ReviewClaimVerificationRunner.ISSUE_KEY }
+      .map { it.skillRunRequest.promptOverride.orEmpty() }
+    assertTrue(verificationPrompts.isNotEmpty())
+    verificationPrompts.forEach { prompt ->
+      assertTrue(formatted in prompt)
+    }
   }
 }
 
@@ -1160,6 +1271,7 @@ private fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFixt
         object : skillbill.review.context.ReviewContextEnvelopeValidator {
           override fun validate(envelope: Map<String, Any?>, sourceLabel: String) = Unit
         },
+        TestDecompositionManifestFileStore,
       ),
     ),
     nativeAgentPreflight = config.nativeAgentPreflight,
@@ -1168,6 +1280,7 @@ private fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFixt
 private class RecordingReviewDatabase : DatabaseSessionFactory {
   val laneWrites = mutableListOf<Pair<String, List<ReviewRunLane>>>()
   val findingLaneWrites = mutableListOf<Pair<String, Map<String, String>>>()
+  var specProjection: ReviewSpecProjectionReference? = null
   private var passClaims: ReviewPassClaimSnapshot? = null
 
   private val reviews = Proxy.newProxyInstance(
@@ -1188,7 +1301,8 @@ private class RecordingReviewDatabase : DatabaseSessionFactory {
         @Suppress("UNCHECKED_CAST")
         findingLaneWrites += args[0] as String to (args[1] as Map<String, String>)
       }
-      "recordFindingVerdicts", "recordStageBoundary", "recordSpecProjectionReference" -> Unit
+      "recordFindingVerdicts", "recordStageBoundary" -> Unit
+      "recordSpecProjectionReference" -> specProjection = args[1] as ReviewSpecProjectionReference
       "recordReviewPassClaims" -> {
         @Suppress("UNCHECKED_CAST")
         passClaims = ReviewPassClaimSnapshot(args[1] as List<ParallelReviewMergedFinding>)
@@ -1196,7 +1310,7 @@ private class RecordingReviewDatabase : DatabaseSessionFactory {
       "fetchFindingVerdicts" -> emptyList<skillbill.review.model.ReviewFindingVerdict>()
       "fetchReviewPassClaims" -> passClaims
       "fetchStageBoundaries" -> emptyList<skillbill.review.model.ReviewStageBoundary>()
-      "fetchSpecProjectionReference" -> null
+      "fetchSpecProjectionReference" -> specProjection
       else -> error("Unexpected review repository call: ${method.name}")
     }
   } as ReviewRepository
@@ -1206,6 +1320,7 @@ private class RecordingReviewDatabase : DatabaseSessionFactory {
   ) { _, method, _ ->
     when (method.name) {
       "getReviews" -> reviews
+      "getLifecycleTelemetry" -> NoopReviewLifecycleTelemetry
       "getDbPath" -> Path.of("/tmp/noop-review.db")
       else -> error("Unexpected unit-of-work call: ${method.name}")
     }
@@ -1219,6 +1334,43 @@ private class RecordingReviewDatabase : DatabaseSessionFactory {
   override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork)
 }
 
+private object NoopReviewLifecycleTelemetry : LifecycleTelemetryRepository {
+  override fun featureTaskRuntimeStarted(
+    record: skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord,
+    level: String,
+  ) = Unit
+
+  override fun featureTaskRuntimeFinished(
+    record: skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord,
+    level: String,
+  ) = Unit
+
+  override fun qualityCheckStarted(record: skillbill.telemetry.model.QualityCheckStartedRecord, level: String) = Unit
+
+  override fun qualityCheckFinished(record: skillbill.telemetry.model.QualityCheckFinishedRecord, level: String) = Unit
+
+  override fun featureVerifyStarted(record: skillbill.telemetry.model.FeatureVerifyStartedRecord, level: String) = Unit
+
+  override fun featureVerifyFinished(record: skillbill.telemetry.model.FeatureVerifyFinishedRecord, level: String) =
+    Unit
+
+  override fun prDescriptionGenerated(record: skillbill.telemetry.model.PrDescriptionGeneratedRecord, level: String) =
+    Unit
+
+  override fun goalStarted(record: skillbill.telemetry.model.GoalStartedRecord, level: String) = Unit
+
+  override fun goalSubtaskFinished(record: skillbill.telemetry.model.GoalSubtaskFinishedRecord, level: String) = Unit
+
+  override fun goalFinished(record: skillbill.telemetry.model.GoalFinishedRecord, level: String) = Unit
+
+  override fun goalIssueFinished(record: skillbill.telemetry.model.GoalIssueFinishedRecord, level: String) = Unit
+}
+
+private const val STAGE_ADDON_FINDING: String =
+  "- [F-001] Major | High | specialist=bill-kotlin-code-review-architecture | " +
+    "path=\"src/Main.kt\" | line=1 | null is unchecked"
+private const val STAGE_ADDON_CONFIRMED: String = """{"claim_verdict":"confirmed"}"""
+
 private const val TEST_SPECIALIST_CONTRACT: String =
   "## Shared Contract For Every Specialist\n" +
     "- Evidence is mandatory\n" +
@@ -1227,6 +1379,7 @@ private const val TEST_SPECIALIST_CONTRACT: String =
     "- [F-001] <Severity> | <Confidence> | <file:line> | <description>"
 
 private val runnerRequestSequence = AtomicInteger()
+private val HEAD_BRANCH_QUERY = listOf("git", "rev-parse", "--abbrev-ref", "HEAD")
 
 private fun baseRequest(
   agent1Id: String = "claude",

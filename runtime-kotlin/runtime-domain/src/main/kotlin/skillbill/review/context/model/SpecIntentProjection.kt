@@ -1,4 +1,4 @@
-package skillbill.domain.review.context.model
+package skillbill.review.context.model
 
 enum class SpecIntentAbsenceReason(val wireValue: String) {
   NO_SPEC_FOUND("no_spec_found"),
@@ -7,9 +7,8 @@ enum class SpecIntentAbsenceReason(val wireValue: String) {
   ;
 
   companion object {
-    fun fromWire(value: String): SpecIntentAbsenceReason =
-      entries.firstOrNull { it.wireValue == value }
-        ?: error("Unknown spec-intent absence reason '$value'.")
+    fun fromWire(value: String): SpecIntentAbsenceReason = entries.firstOrNull { it.wireValue == value }
+      ?: error("Unknown spec-intent absence reason '$value'.")
   }
 }
 
@@ -61,8 +60,17 @@ data class SpecIntentProjection(
 }
 
 sealed class SpecIntentResolution {
-  data class Resolved(val projection: SpecIntentProjection) : SpecIntentResolution()
-  data class None(val reason: SpecIntentAbsenceReason) : SpecIntentResolution()
+  abstract val degradations: List<SpecIntentDegradationRecord>
+
+  data class Resolved(
+    val projection: SpecIntentProjection,
+    override val degradations: List<SpecIntentDegradationRecord> = emptyList(),
+  ) : SpecIntentResolution()
+
+  data class None(
+    val reason: SpecIntentAbsenceReason,
+    override val degradations: List<SpecIntentDegradationRecord> = emptyList(),
+  ) : SpecIntentResolution()
 }
 
 data class SpecIntentDegradationRecord(
@@ -77,8 +85,7 @@ data class SpecIntentProjectionResolveRequest(
   val explicitSpecPath: java.nio.file.Path? = null,
   val branchName: String = "",
   val changedPaths: List<String> = emptyList(),
-  val budget: skillbill.review.context.model.ReviewContextBudgetPolicy =
-    skillbill.review.context.model.ReviewContextBudgetPolicy.DEFAULT,
+  val budget: ReviewContextBudgetPolicy = ReviewContextBudgetPolicy.DEFAULT,
 )
 
 private val SHA256_HEX = Regex("^[a-f0-9]{64}$")

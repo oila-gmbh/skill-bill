@@ -67,28 +67,26 @@ fun resolvedTier(executionMode: String?): String = when (executionMode?.trim()?.
   else -> "unresolved"
 }
 
-fun fetchReviewExecutionMode(connection: Connection, reviewRunId: String): String? =
-  connection.prepareStatement(
-    "SELECT execution_mode FROM review_runs WHERE review_run_id = ?",
-  ).use { statement ->
-    statement.setString(PARAM_ONE, reviewRunId)
-    statement.executeQuery().use { resultSet ->
-      if (resultSet.next()) resultSet.getString("execution_mode") else null
-    }
+fun fetchReviewExecutionMode(connection: Connection, reviewRunId: String): String? = connection.prepareStatement(
+  "SELECT execution_mode FROM review_runs WHERE review_run_id = ?",
+).use { statement ->
+  statement.setString(PARAM_ONE, reviewRunId)
+  statement.executeQuery().use { resultSet ->
+    if (resultSet.next()) resultSet.getString("execution_mode") else null
   }
+}
 
-fun loadReviewRunTiers(connection: Connection): Map<String, String> =
-  connection.prepareStatement(
-    "SELECT review_run_id, execution_mode FROM review_runs",
-  ).use { statement ->
-    statement.executeQuery().use { resultSet ->
-      buildMap {
-        while (resultSet.next()) {
-          put(resultSet.getString("review_run_id"), resolvedTier(resultSet.getString("execution_mode")))
-        }
+fun loadReviewRunTiers(connection: Connection): Map<String, String> = connection.prepareStatement(
+  "SELECT review_run_id, execution_mode FROM review_runs",
+).use { statement ->
+  statement.executeQuery().use { resultSet ->
+    buildMap {
+      while (resultSet.next()) {
+        put(resultSet.getString("review_run_id"), resolvedTier(resultSet.getString("execution_mode")))
       }
     }
   }
+}
 
 fun stageMetricsByResolvedTier(connection: Connection): Map<String, ReviewStageMetrics> {
   val tiers = loadReviewRunTiers(connection)

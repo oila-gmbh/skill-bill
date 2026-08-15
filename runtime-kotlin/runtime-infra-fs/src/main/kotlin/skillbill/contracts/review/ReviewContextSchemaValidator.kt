@@ -28,31 +28,37 @@ object ReviewContextSchemaValidator {
 
   fun validate(envelope: Map<String, Any?>, sourceLabel: String) {
     val kind = envelope["kind"] as? String
-    validateAgainst(envelope, sourceLabel, kind, schemas.forKind(kind))
+    validatePayloadAgainst(envelope, sourceLabel, kind, schemas.forKind(kind), mapper)
   }
 
   fun validateParentPacket(envelope: Map<String, Any?>, sourceLabel: String) =
-    validateKind(envelope, sourceLabel, "parent_packet")
+    validateExpectedKind(envelope, sourceLabel, "parent_packet", schemas, mapper)
 
   fun validateAssignment(envelope: Map<String, Any?>, sourceLabel: String) =
-    validateKind(envelope, sourceLabel, "assignment")
+    validateExpectedKind(envelope, sourceLabel, "assignment", schemas, mapper)
 
-  fun validateLaunch(envelope: Map<String, Any?>, sourceLabel: String) = validateKind(envelope, sourceLabel, "launch")
+  fun validateLaunch(envelope: Map<String, Any?>, sourceLabel: String) =
+    validateExpectedKind(envelope, sourceLabel, "launch", schemas, mapper)
 
   fun validateIntegrationLaunch(envelope: Map<String, Any?>, sourceLabel: String) =
-    validateKind(envelope, sourceLabel, "integration_launch")
+    validateExpectedKind(envelope, sourceLabel, "integration_launch", schemas, mapper)
 
   fun validateVerificationLaunch(envelope: Map<String, Any?>, sourceLabel: String) =
-    validateKind(envelope, sourceLabel, "verification_launch")
+    validateExpectedKind(envelope, sourceLabel, "verification_launch", schemas, mapper)
 
   fun validateAdjudicationLaunch(envelope: Map<String, Any?>, sourceLabel: String) =
-    validateKind(envelope, sourceLabel, "adjudication_launch")
+    validateExpectedKind(envelope, sourceLabel, "adjudication_launch", schemas, mapper)
 
   fun validateFindingVerdict(envelope: Map<String, Any?>, sourceLabel: String) =
-    validateKind(envelope, sourceLabel, "finding_verdict")
+    validateExpectedKind(envelope, sourceLabel, "finding_verdict", schemas, mapper)
 
-  fun validateSpecIntentProjection(payload: Map<String, Any?>, sourceLabel: String) =
-    validateAgainst(payload, sourceLabel, "spec_intent_projection", schemas.forDefinition("spec_intent_projection"))
+  fun validateSpecIntentProjection(payload: Map<String, Any?>, sourceLabel: String) = validatePayloadAgainst(
+    payload,
+    sourceLabel,
+    "spec_intent_projection",
+    schemas.forDefinition("spec_intent_projection"),
+    mapper,
+  )
 
   fun assertIdentity(yamlNode: JsonNode) {
     val drift = identityDriftOrNull(yamlNode) ?: return
@@ -61,58 +67,65 @@ object ReviewContextSchemaValidator {
       reason = drift,
     )
   }
+}
 
-  private fun identityDriftOrNull(yamlNode: JsonNode): String? {
-    val loadedId = yamlNode.path("\$id").asText("")
-    if (loadedId != ReviewContextSchemaPaths.EXPECTED_SCHEMA_ID) {
-      return "Canonical review context schema identity mismatch: loaded '\$id' is '$loadedId' but expected " +
-        "'${ReviewContextSchemaPaths.EXPECTED_SCHEMA_ID}'. A stale or shadowed copy is on the classpath."
-    }
-    val branches = yamlNode.path("\$defs").fields().asSequence()
-      .map { (name, node) -> name to node.path("properties").path("contract_version").path("const").asText("") }
-      .filter { (_, const) -> const.isNotBlank() }
-      .toList()
-    if (branches.isEmpty()) {
-      return "Canonical review context schema declares no contract_version const; the classpath copy is " +
-        "not a governed review-context contract."
-    }
-    val drifted = branches.filterNot { (_, const) -> const == REVIEW_CONTEXT_CONTRACT_VERSION }
-    if (drifted.isEmpty()) return null
-    return "Canonical review context schema contract_version.const mismatch for " +
-      "${drifted.map { "${it.first}='${it.second}'" }} but the runtime expects " +
-      "'$REVIEW_CONTEXT_CONTRACT_VERSION'. The schema on the classpath is out of date relative to the " +
-      "running runtime-contracts."
+private fun identityDriftOrNull(yamlNode: JsonNode): String? {
+  val loadedId = yamlNode.path("\$id").asText("")
+  if (loadedId != ReviewContextSchemaPaths.EXPECTED_SCHEMA_ID) {
+    return "Canonical review context schema identity mismatch: loaded '\$id' is '$loadedId' but expected " +
+      "'${ReviewContextSchemaPaths.EXPECTED_SCHEMA_ID}'. A stale or shadowed copy is on the classpath."
   }
-
-  private fun validateKind(envelope: Map<String, Any?>, sourceLabel: String, expectedKind: String) {
-    val kind = envelope["kind"]
-    if (kind != expectedKind) {
-      throw InvalidReviewContextSchemaError(
-        sourceLabel = sourceLabel,
-        reason = "Expected a '$expectedKind' envelope but the payload declares kind='${kind ?: "<missing>"}'.",
-        definitionName = expectedKind,
-      )
-    }
-    validateAgainst(envelope, sourceLabel, expectedKind, schemas.forKind(expectedKind))
+  val branches = yamlNode.path("\$defs").fields().asSequence()
+    .map { (name, node) -> name to node.path("properties").path("contract_version").path("const").asText("") }
+    .filter { (_, const) -> const.isNotBlank() }
+    .toList()
+  if (branches.isEmpty()) {
+    return "Canonical review context schema declares no contract_version const; the classpath copy is " +
+      "not a governed review-context contract."
   }
+  val drifted = branches.filterNot { (_, const) -> const == REVIEW_CONTEXT_CONTRACT_VERSION }
+  if (drifted.isEmpty()) return null
+  return "Canonical review context schema contract_version.const mismatch for " +
+    "${drifted.map { "${it.first}='${it.second}'" }} but the runtime expects " +
+    "'$REVIEW_CONTEXT_CONTRACT_VERSION'. The schema on the classpath is out of date relative to the " +
+    "running runtime-contracts."
+}
 
-  private fun validateAgainst(
-    payload: Map<String, Any?>,
-    sourceLabel: String,
-    definitionName: String?,
-    schema: JsonSchema,
-  ) {
-    val instance: JsonNode = mapper.valueToTree(payload)
-    val errors: Set<ValidationMessage> = schema.validate(instance)
-    if (errors.isNotEmpty()) {
-      val sorted = errors.sortedWith(violationOrdering)
-      reviewContextLog.log(Level.WARNING, buildSchemaDriftLog(sourceLabel, sorted, instance))
-      throw InvalidReviewContextSchemaError(
-        sourceLabel = sourceLabel,
-        reason = formatValidationReason(sorted, instance),
-        definitionName = definitionName,
-      )
-    }
+private fun validateExpectedKind(
+  envelope: Map<String, Any?>,
+  sourceLabel: String,
+  expectedKind: String,
+  schemas: ReviewContextSchemas,
+  mapper: ObjectMapper,
+) {
+  val kind = envelope["kind"]
+  if (kind != expectedKind) {
+    throw InvalidReviewContextSchemaError(
+      sourceLabel = sourceLabel,
+      reason = "Expected a '$expectedKind' envelope but the payload declares kind='${kind ?: "<missing>"}'.",
+      definitionName = expectedKind,
+    )
+  }
+  validatePayloadAgainst(envelope, sourceLabel, expectedKind, schemas.forKind(expectedKind), mapper)
+}
+
+private fun validatePayloadAgainst(
+  payload: Map<String, Any?>,
+  sourceLabel: String,
+  definitionName: String?,
+  schema: JsonSchema,
+  mapper: ObjectMapper,
+) {
+  val instance: JsonNode = mapper.valueToTree(payload)
+  val errors: Set<ValidationMessage> = schema.validate(instance)
+  if (errors.isNotEmpty()) {
+    val sorted = errors.sortedWith(violationOrdering)
+    reviewContextLog.log(Level.WARNING, buildSchemaDriftLog(sourceLabel, sorted, instance))
+    throw InvalidReviewContextSchemaError(
+      sourceLabel = sourceLabel,
+      reason = formatValidationReason(sorted, instance),
+      definitionName = definitionName,
+    )
   }
 }
 

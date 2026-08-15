@@ -1,6 +1,5 @@
 package skillbill.review.context.model
 
-import skillbill.domain.review.context.model.SpecIntentProjection
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ReviewFindingCitation
 import skillbill.review.model.ReviewFindingVerdict
@@ -41,56 +40,28 @@ object ReviewSpecAdjudicationAdmission {
     worker: ReviewSpecAdjudicationWorkerResult?,
     recordedAt: String,
   ): ReviewFindingVerdict {
-    if (worker == null) return inScope(claim, stage1, recordedAt, UNSETTLED)
-    if (claimAltered(claim, worker)) return inScope(claim, stage1, recordedAt, ALTERED_CLAIM)
-    val dispositionWire = uniqueDisposition(worker) ?: return inScope(claim, stage1, recordedAt, AMBIGUOUS)
-    val requested = runCatching { ReviewScopeDisposition.fromWire(dispositionWire) }.getOrNull()
+    if (worker == null || claimAltered(claim, worker)) {
+      return inScope(claim, stage1, recordedAt, if (worker == null) UNSETTLED else ALTERED_CLAIM)
+    }
+    val requested = uniqueDisposition(worker)
+      ?.let { wire -> runCatching { ReviewScopeDisposition.fromWire(wire) }.getOrNull() }
       ?: return inScope(claim, stage1, recordedAt, AMBIGUOUS)
-    val citedElement = worker.citedSpecElement?.trim()?.takeIf { it.isNotEmpty() }
-    val projectionHit = citedElement?.let { element -> projection.namedElements().any { it == element } }
-    val constraintHit = citedElement != null && (
-      citedElement in projection.constraints || citedElement in projection.nonGoals
-    )
+    val cited = citedSpec(worker, projection)
     val requestedAdjustment = parsedAdjustment(worker)
-    if (requested == ReviewScopeDisposition.OUT_OF_SCOPE_PREEXISTING &&
-      (worker.citations.isEmpty() || citedElement == null)
-    ) {
-      return inScope(claim, stage1, recordedAt, UNCITED_OUT_OF_SCOPE)
+    val rejection = dispositionRejection(requested, cited, requestedAdjustment)
+    return if (rejection != null) {
+      inScope(claim, stage1, recordedAt, rejection)
+    } else {
+      ReviewFindingVerdict(
+        stage = ReviewStage.ADJUDICATION,
+        findingRef = claim.fNumber,
+        claimVerdict = stage1.claimVerdict,
+        scopeDisposition = requested,
+        citations = worker.citations,
+        severityAdjustment = requestedAdjustment,
+        recordedAt = recordedAt,
+      )
     }
-    if (requested == ReviewScopeDisposition.OUT_OF_SCOPE_PREEXISTING && projectionHit != true) {
-      return inScope(claim, stage1, recordedAt, UNKNOWN_SPEC_ELEMENT)
-    }
-    if (requested == ReviewScopeDisposition.SPEC_DEVIATION && !constraintHit) {
-      return inScope(claim, stage1, recordedAt, SPEC_DEVIATION_NOT_CONSTRAINT)
-    }
-    if (requestedAdjustment != null && worker.citations.isEmpty()) {
-      val reason = if (requestedAdjustment.direction == ReviewSeverityAdjustmentDirection.LOWER) {
-        UNCITED_DOWNGRADE
-      } else {
-        UNCITED_RAISE
-      }
-      return inScope(claim, stage1, recordedAt, reason)
-    }
-    if (requestedAdjustment != null && citedElement == null) {
-      val reason = if (requestedAdjustment.direction == ReviewSeverityAdjustmentDirection.LOWER) {
-        UNCITED_DOWNGRADE
-      } else {
-        UNCITED_RAISE
-      }
-      return inScope(claim, stage1, recordedAt, reason)
-    }
-    if (requestedAdjustment != null && projectionHit != true) {
-      return inScope(claim, stage1, recordedAt, UNKNOWN_SPEC_ELEMENT)
-    }
-    return ReviewFindingVerdict(
-      stage = ReviewStage.ADJUDICATION,
-      findingRef = claim.fNumber,
-      claimVerdict = stage1.claimVerdict,
-      scopeDisposition = requested,
-      citations = worker.citations,
-      severityAdjustment = requestedAdjustment,
-      recordedAt = recordedAt,
-    )
   }
 
   private fun uniqueDisposition(worker: ReviewSpecAdjudicationWorkerResult): String? {
@@ -112,16 +83,53 @@ object ReviewSpecAdjudicationAdmission {
     return ReviewSeverityAdjustment(direction, justification)
   }
 
-  private fun claimAltered(
-    claim: ParallelReviewMergedFinding,
-    worker: ReviewSpecAdjudicationWorkerResult,
-  ): Boolean {
-    if (worker.findingRef != null && worker.findingRef != claim.fNumber) return true
-    if (worker.severity != null && worker.severity != claim.severity.displayName) return true
-    if (worker.location != null && worker.location != claim.location) return true
-    if (worker.description != null && worker.description != claim.description) return true
-    return false
+  private fun claimAltered(claim: ParallelReviewMergedFinding, worker: ReviewSpecAdjudicationWorkerResult): Boolean =
+    (worker.findingRef != null && worker.findingRef != claim.fNumber) ||
+      (worker.severity != null && worker.severity != claim.severity.displayName) ||
+      (worker.location != null && worker.location != claim.location) ||
+      (worker.description != null && worker.description != claim.description)
+
+  private data class CitedSpec(
+    val citationsEmpty: Boolean,
+    val citedElement: String?,
+    val projectionHit: Boolean,
+    val constraintHit: Boolean,
+  )
+
+  private fun citedSpec(worker: ReviewSpecAdjudicationWorkerResult, projection: SpecIntentProjection): CitedSpec {
+    val citedElement = worker.citedSpecElement?.trim()?.takeIf { it.isNotEmpty() }
+    return CitedSpec(
+      citationsEmpty = worker.citations.isEmpty(),
+      citedElement = citedElement,
+      projectionHit = citedElement != null && projection.namedElements().any { it == citedElement },
+      constraintHit = citedElement != null &&
+        (citedElement in projection.constraints || citedElement in projection.nonGoals),
+    )
   }
+
+  private fun dispositionRejection(
+    requested: ReviewScopeDisposition,
+    cited: CitedSpec,
+    adjustment: ReviewSeverityAdjustment?,
+  ): String? = when {
+    requested == ReviewScopeDisposition.OUT_OF_SCOPE_PREEXISTING &&
+      (cited.citationsEmpty || cited.citedElement == null) -> UNCITED_OUT_OF_SCOPE
+    requested == ReviewScopeDisposition.OUT_OF_SCOPE_PREEXISTING && !cited.projectionHit ->
+      UNKNOWN_SPEC_ELEMENT
+    requested == ReviewScopeDisposition.SPEC_DEVIATION && !cited.constraintHit ->
+      SPEC_DEVIATION_NOT_CONSTRAINT
+    adjustment != null && (cited.citationsEmpty || cited.citedElement == null) ->
+      uncitedAdjustmentReason(adjustment)
+    adjustment != null && !cited.projectionHit -> UNKNOWN_SPEC_ELEMENT
+    else -> null
+  }
+
+  private fun uncitedAdjustmentReason(adjustment: ReviewSeverityAdjustment): String =
+    if (adjustment.direction == ReviewSeverityAdjustmentDirection.LOWER) {
+      UNCITED_DOWNGRADE
+    } else {
+      UNCITED_RAISE
+    }
 
   private fun inScope(
     claim: ParallelReviewMergedFinding,
@@ -138,5 +146,4 @@ object ReviewSpecAdjudicationAdmission {
   )
 }
 
-private fun SpecIntentProjection.namedElements(): List<String> =
-  constraints + nonGoals + deferredItems
+private fun SpecIntentProjection.namedElements(): List<String> = constraints + nonGoals + deferredItems

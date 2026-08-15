@@ -160,20 +160,17 @@ class ReviewClaimVerificationRunnerTest {
     facts(request, CONFIRMED).mutate()
   }
 
-  private fun finding(
-    ref: String,
-    location: String = "src/A.kt:12",
-    description: String = "Null is not checked.",
-  ) = ParallelReviewMergedFinding(
-    fNumber = ref,
-    agentIds = listOf("codex"),
-    severity = ParallelReviewSeverity.MAJOR,
-    confidence = "High",
-    location = location,
-    description = description,
-    repositoryPath = location.substringBefore(':'),
-    line = location.substringAfter(':').toInt(),
-  )
+  private fun finding(ref: String, location: String = "src/A.kt:12", description: String = "Null is not checked.") =
+    ParallelReviewMergedFinding(
+      fNumber = ref,
+      agentIds = listOf("codex"),
+      severity = ParallelReviewSeverity.MAJOR,
+      confidence = "High",
+      location = location,
+      description = description,
+      repositoryPath = location.substringBefore(':'),
+      line = location.substringAfter(':').toInt(),
+    )
 
   private fun packet(): ReviewContextPacket {
     val hunk = ReviewChangedHunk("src/A.kt", 1, 1, 1, 2, "+alpha")

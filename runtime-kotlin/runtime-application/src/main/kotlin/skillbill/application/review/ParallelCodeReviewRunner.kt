@@ -15,12 +15,11 @@ import skillbill.application.model.ReviewLaneIntegrationInput
 import skillbill.application.model.StackDetectionException
 import skillbill.application.model.UsageValidationException
 import skillbill.application.review.model.ReviewRubricProjection
+import skillbill.application.review.model.ReviewSpecAdjudicationOutcome
 import skillbill.application.review.model.ReviewSpecialistLaunchRequest
 import skillbill.application.review.model.ReviewWorkerKind
 import skillbill.application.workflow.repoRoot
 import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
-import skillbill.domain.review.context.model.SpecIntentProjectionResolveRequest
-import skillbill.domain.review.context.model.SpecIntentResolution
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunTokenOwnership
@@ -38,12 +37,12 @@ import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.review.ReviewRubricResolver
 import skillbill.ports.review.ReviewSpecialistContractProvider
-import skillbill.ports.review.model.ReviewNativeAgentPreflightRequest
 import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.ports.review.model.ParallelReviewLaneRunRequest
 import skillbill.ports.review.model.ParallelReviewLaneRunResult
 import skillbill.ports.review.model.ReviewIntegrationPassOutcome
 import skillbill.ports.review.model.ReviewLaneAccounting
+import skillbill.ports.review.model.ReviewNativeAgentPreflightRequest
 import skillbill.ports.review.model.ReviewOwnedFileEvidence
 import skillbill.ports.scaffold.InstalledPlatformPackCatalogPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
@@ -74,6 +73,8 @@ import skillbill.review.context.model.ReviewLaneCompletionState
 import skillbill.review.context.model.ReviewLaneIdentity
 import skillbill.review.context.model.ReviewLaneReviewDisposition
 import skillbill.review.context.model.ReviewParentAnalysisConsumption
+import skillbill.review.context.model.SpecIntentProjectionResolveRequest
+import skillbill.review.context.model.SpecIntentResolution
 import skillbill.review.context.model.TokenOwnership
 import skillbill.review.context.model.asFailedLaneRun
 import skillbill.review.context.model.structuredString
@@ -150,7 +151,7 @@ class ParallelCodeReviewRunner(
   )
 
   fun run(originalRequest: ParallelCodeReviewRequest): ParallelCodeReviewResult {
-    if (hasSuppliedDiff(originalRequest) && suppliedDiffText(originalRequest).isBlank()) {
+    if (originalRequest.suppliedDiff != null && originalRequest.suppliedDiff.isBlank()) {
       return completeEmptySuppliedDelta(originalRequest)
     }
     val initial = prepareInitialRun(originalRequest)
@@ -506,21 +507,21 @@ class ParallelCodeReviewRunner(
     evidence: ReviewDiffEvidence,
     budget: ReviewContextBudgetPolicy,
   ): SpecIntentResolution {
-    val resolver = specIntentProjectionResolver
-    val branchName = diffResolver.runProcess(
-      listOf("git", "rev-parse", "--abbrev-ref", "HEAD"),
-      request.repoRoot,
-    )?.trim().orEmpty()
-    return resolver.resolve(
+    return specIntentProjectionResolver.resolve(
       SpecIntentProjectionResolveRequest(
         repoRoot = request.repoRoot,
         explicitSpecPath = request.specPath,
-        branchName = branchName,
+        branchName = currentHeadBranchName(request.repoRoot),
         changedPaths = evidence.files.map { it.path },
         budget = budget,
       ),
     )
   }
+
+  private fun currentHeadBranchName(repoRoot: Path): String = diffResolver.runProcess(
+    listOf("git", "rev-parse", "--abbrev-ref", "HEAD"),
+    repoRoot,
+  )?.trim().orEmpty()
 
   private fun recordSpecIntent(reviewRunId: String?, resolution: SpecIntentResolution) {
     if (reviewRunId == null) return
@@ -627,21 +628,7 @@ class ParallelCodeReviewRunner(
 
   private fun runSpecAdjudication(initial: InitialRun, result: ParallelCodeReviewResult): List<ReviewFindingVerdict> {
     val reviewRunId = initial.request.reviewRunId
-    if (reviewRunId != null) {
-      val boundaries = database.transaction { unitOfWork ->
-        unitOfWork.reviews.fetchStageBoundaries(reviewRunId)
-      }
-      val verificationReached = boundaries.any {
-        it.stage == ReviewStage.VERIFICATION && it.reached == ReviewStageReached.REACHED
-      }
-      if (!verificationReached) return emptyList()
-      val adjudicationReached = boundaries.any {
-        it.stage == ReviewStage.ADJUDICATION && it.reached == ReviewStageReached.REACHED
-      }
-      if (adjudicationReached) {
-        return database.transaction { unitOfWork -> unitOfWork.reviews.fetchFindingVerdicts(reviewRunId) }
-      }
-    }
+    durableAdjudication(reviewRunId)?.let { return it }
     val projection = (initial.specIntentResolution as? SpecIntentResolution.Resolved)?.projection
     val claims = if (reviewRunId == null) {
       result.mergeResult.findings
@@ -666,6 +653,29 @@ class ParallelCodeReviewRunner(
       timeout = initial.request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes,
       promptSuffix = initial.request.selectedAgentAddonsSection,
     )
+    return persistAdjudication(reviewRunId, outcome)
+  }
+
+  private fun durableAdjudication(reviewRunId: String?): List<ReviewFindingVerdict>? {
+    if (reviewRunId == null) return null
+    val boundaries = database.transaction { unitOfWork ->
+      unitOfWork.reviews.fetchStageBoundaries(reviewRunId)
+    }
+    val verificationReached = boundaries.any {
+      it.stage == ReviewStage.VERIFICATION && it.reached == ReviewStageReached.REACHED
+    }
+    if (!verificationReached) return emptyList()
+    val adjudicationReached = boundaries.any {
+      it.stage == ReviewStage.ADJUDICATION && it.reached == ReviewStageReached.REACHED
+    }
+    if (!adjudicationReached) return null
+    return database.transaction { unitOfWork -> unitOfWork.reviews.fetchFindingVerdicts(reviewRunId) }
+  }
+
+  private fun persistAdjudication(
+    reviewRunId: String?,
+    outcome: ReviewSpecAdjudicationOutcome,
+  ): List<ReviewFindingVerdict> {
     if (reviewRunId == null) return outcome.verdicts
     if (outcome.skipReason == ReviewSpecAdjudicationRunner.SPEC_CONTEXT_NONE) return emptyList()
     if (outcome.verdicts.isNotEmpty()) {
@@ -880,11 +890,6 @@ class ParallelCodeReviewRunner(
   private fun hasSuppliedDiff(request: ParallelCodeReviewRequest): Boolean =
     request.suppliedDiff != null || request.suppliedDiffPath != null
 
-  private fun suppliedDiffText(request: ParallelCodeReviewRequest): String =
-    request.suppliedDiff ?: request.suppliedDiffPath?.let { path ->
-      diffResolver.readDiff(path, MAX_SUPPLIED_DIFF_BYTES).orEmpty()
-    }.orEmpty()
-
   private fun completeEmptySuppliedDelta(request: ParallelCodeReviewRequest): ParallelCodeReviewResult {
     val budget = repoLocalConfig.readRepoLocalConfig(ReadRepoLocalConfigRequest(request.repoRoot))
       .config.reviewContextBudget
@@ -892,7 +897,7 @@ class ParallelCodeReviewRunner(
       SpecIntentProjectionResolveRequest(
         repoRoot = request.repoRoot,
         explicitSpecPath = request.specPath,
-        branchName = "",
+        branchName = currentHeadBranchName(request.repoRoot),
         changedPaths = emptyList(),
         budget = budget,
       ),
@@ -1697,33 +1702,4 @@ private fun providerTokenUsage(outcome: AgentRunLaunchFacts): ProviderTokenUsage
       TokenOwnership.DIRECT
     },
   )
-}
-
-private fun unionReviewPassClaims(
-  existing: List<ParallelReviewMergedFinding>,
-  incoming: List<ParallelReviewMergedFinding>,
-): List<ParallelReviewMergedFinding> {
-  if (incoming.isEmpty()) return existing
-  if (existing.isEmpty()) return incoming
-  val known = existing.map { it.location to it.description }.toSet()
-  val usedNumbers = existing.map { it.fNumber }.toMutableSet()
-  val additions = incoming.filter { (it.location to it.description) !in known }.map { finding ->
-    if (finding.fNumber in usedNumbers) {
-      val next = nextPassClaimNumber(usedNumbers)
-      usedNumbers += next
-      finding.copy(fNumber = next)
-    } else {
-      usedNumbers += finding.fNumber
-      finding
-    }
-  }
-  return existing + additions
-}
-
-private fun nextPassClaimNumber(used: Set<String>): String {
-  var index = 1
-  while ("F-%03d".format(index) in used) {
-    index++
-  }
-  return "F-%03d".format(index)
 }

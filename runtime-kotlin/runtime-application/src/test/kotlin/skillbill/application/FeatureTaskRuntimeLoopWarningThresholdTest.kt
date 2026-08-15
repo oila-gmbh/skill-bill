@@ -126,6 +126,7 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
     val harness = runnerHarness(
       launcher = bothLoopsLauncher(convergeOnAudit = crossingIteration + 1, convergeOnReview = crossingIteration + 1),
       diagnostics = diagnostics,
+      runtimeConfig = reviewFixRuntimeConfig(crossingIteration + 1),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
@@ -150,10 +151,17 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
     val harness = runnerHarness(
       launcher = crashingReviewFixLauncher(
         convergeOnReview = crossingIteration + 2,
-        crashOnReviewLaunch = crossingIteration,
+        crashOnImplementFixLaunch = crossingIteration,
         shouldCrash = { crashOnCrossingReview },
       ),
       diagnostics = diagnostics,
+      runtimeConfig = RuntimeHarnessConfig(
+        reviewDriver = crashingReviewFixDriver(
+          convergeOnReview = crossingIteration + 2,
+          crashOnPass = crossingIteration,
+          shouldCrash = { crashOnCrossingReview },
+        ),
+      ),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
@@ -181,6 +189,7 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
         shouldCrash = { crashOnCrossingFix },
       ),
       diagnostics = diagnostics,
+      runtimeConfig = reviewFixRuntimeConfig(crossingIteration + 1),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))

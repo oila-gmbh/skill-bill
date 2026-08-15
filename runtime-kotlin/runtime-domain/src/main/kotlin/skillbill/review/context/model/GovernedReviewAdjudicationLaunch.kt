@@ -1,6 +1,5 @@
 package skillbill.review.context.model
 
-import skillbill.domain.review.context.model.SpecIntentProjection
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ReviewFindingVerdict
 

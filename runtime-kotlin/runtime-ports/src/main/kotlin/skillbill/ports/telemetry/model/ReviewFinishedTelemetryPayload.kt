@@ -5,6 +5,8 @@ import skillbill.review.model.ReviewFindingDetail
 import skillbill.review.model.ReviewFinishedFindingStats
 import skillbill.review.model.ReviewFinishedTelemetry
 import skillbill.review.model.ReviewLearningsSummary
+import skillbill.review.model.ReviewStageMetrics
+import skillbill.review.model.ReviewStageVerdictDistribution
 
 fun ReviewFinishedTelemetry.toReviewFinishedTelemetryPayload(): JsonPayloadContract =
   ReviewFinishedTelemetryPayloadContract(this)
@@ -29,7 +31,7 @@ private class ReviewFinishedTelemetryPayloadContract(
     put("execution_mode", telemetry.executionMode)
     put("review_finished_at", telemetry.reviewFinishedAt)
     put("learnings", telemetry.learnings.toPayload())
-    putAll(telemetry.stageMetrics.toWireMap())
+    putAll(telemetry.stageMetrics.toStageMetricsPayload())
     telemetry.reviewContextAccounting?.let { put("review_context_accounting", it) }
   }
 }
@@ -71,4 +73,38 @@ private fun ReviewLearningsSummary.toPayload(): Map<String, Any?> = linkedMapOf(
       entry.ruleText?.let { put("rule_text", it) }
     }.filterValues { it != null }
   },
+)
+
+private fun ReviewStageMetrics.toStageMetricsPayload(): Map<String, Any?> = linkedMapOf(
+  "verification" to verification.toStageMetricsPayload(),
+  "adjudication" to adjudication.toStageMetricsPayload(),
+  "refutation_rate_by_stage" to linkedMapOf(
+    "verification" to verificationRefutationRate,
+    "adjudication" to adjudicationRefutationRate,
+  ),
+  "rejected_verdict_counts" to linkedMapOf(
+    "uncited_refutations" to rejectedVerdictCounts.uncitedRefutations,
+    "uncited_downgrades" to rejectedVerdictCounts.uncitedDowngrades,
+    "finding_mutations" to rejectedVerdictCounts.findingMutations,
+  ),
+  "severity_adjustment_counts" to linkedMapOf(
+    "raised" to severityAdjustmentCounts.raised,
+    "lowered" to severityAdjustmentCounts.lowered,
+  ),
+  "resolved_tier" to resolvedTier,
+)
+
+private fun ReviewStageVerdictDistribution.toStageMetricsPayload(): Map<String, Any?> = linkedMapOf(
+  "claim_verdict" to linkedMapOf(
+    "confirmed" to confirmed,
+    "refuted" to refuted,
+    "unresolved" to unresolved,
+  ),
+  "scope_disposition" to linkedMapOf(
+    "in_scope" to inScope,
+    "out_of_scope_preexisting" to outOfScopePreexisting,
+    "spec_deviation" to specDeviation,
+    "spec_accepted_tradeoff" to specAcceptedTradeoff,
+  ),
+  "finding_count" to findingCount,
 )

@@ -1,5 +1,6 @@
 package skillbill.application.review
 
+import skillbill.application.review.model.ReviewClaimVerificationOutcome
 import skillbill.contracts.JsonSupport
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.SkillRunRequest
@@ -9,9 +10,9 @@ import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.model.GovernedReviewVerificationLaunch
 import skillbill.review.context.model.ResolvedReviewExecutionMode
+import skillbill.review.context.model.ReviewCitedRegion
 import skillbill.review.context.model.ReviewClaimVerdictAdmission
 import skillbill.review.context.model.ReviewClaimWorkerResult
-import skillbill.review.context.model.ReviewCitedRegion
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewContextPacket
 import skillbill.review.context.model.ReviewDependencyAllowlist
@@ -23,12 +24,6 @@ import skillbill.review.model.ReviewStage
 import java.nio.file.Path
 import java.time.Instant
 import kotlin.time.Duration
-
-data class ReviewClaimVerificationOutcome(
-  val verdicts: List<ReviewFindingVerdict>,
-  val envelopes: List<Map<String, Any?>> = emptyList(),
-  val skipReason: String? = null,
-)
 
 class ReviewClaimVerificationRunner(
   private val launcher: GoalRunnerSubtaskLauncher,
@@ -71,7 +66,6 @@ class ReviewClaimVerificationRunner(
       )
     }
     val recordedAt = Instant.now().toString()
-    val envelopes = mutableListOf<Map<String, Any?>>()
     val verdicts = pending.map { finding ->
       verifyOne(
         packet = packet,
@@ -83,14 +77,12 @@ class ReviewClaimVerificationRunner(
         timeout = timeout,
         modelOverride = modelOverride,
         recordedAt = recordedAt,
-        envelopes = envelopes,
         promptSuffix = promptSuffix,
       )
     }
     return ReviewClaimVerificationOutcome(
       verdicts = existingVerdicts.filter { it.stage == ReviewStage.VERIFICATION && it.findingRef in durableRefs } +
         verdicts,
-      envelopes = envelopes,
     )
   }
 
@@ -105,7 +97,6 @@ class ReviewClaimVerificationRunner(
     timeout: Duration,
     modelOverride: String?,
     recordedAt: String,
-    envelopes: MutableList<Map<String, Any?>>,
     promptSuffix: String,
   ): ReviewFindingVerdict {
     val region = citedRegionOf(finding)
@@ -131,7 +122,6 @@ class ReviewClaimVerificationRunner(
       )
     }
     envelopeValidator.validate(envelope, "review verification launch for ${finding.fNumber}")
-    envelopes += envelope
     val prompt = appendPromptSuffix(verificationPrompt(launch), promptSuffix)
     val outcome = launcher.launch(
       GoalRunnerSubtaskLaunchRequest(
@@ -178,7 +168,10 @@ class ReviewClaimVerificationRunner(
     )
     appendLine("Cited region: ${launch.citedRegion.path}:${launch.citedRegion.startLine}-${launch.citedRegion.endLine}")
     appendLine("Delta: ${launch.packet.baseRevision}..${launch.packet.headRevision}")
-    appendLine("Return a JSON object with claim_verdict (confirmed|refuted|unresolved) and citations as [{path, line}].")
+    appendLine(
+      "Return a JSON object with claim_verdict (confirmed|refuted|unresolved) " +
+        "and citations as [{path, line}].",
+    )
     appendLine("A refuted verdict must cite the file:line construct that makes the code safe.")
     appendLine("Do not change the finding text, severity, or location.")
   }

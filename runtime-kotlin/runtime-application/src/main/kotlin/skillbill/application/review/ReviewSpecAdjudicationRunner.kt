@@ -1,7 +1,7 @@
 package skillbill.application.review
 
+import skillbill.application.review.model.ReviewSpecAdjudicationOutcome
 import skillbill.contracts.JsonSupport
-import skillbill.domain.review.context.model.SpecIntentProjection
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
@@ -14,6 +14,7 @@ import skillbill.review.context.model.ReviewContextPacket
 import skillbill.review.context.model.ReviewDependencyAllowlist
 import skillbill.review.context.model.ReviewSpecAdjudicationAdmission
 import skillbill.review.context.model.ReviewSpecAdjudicationWorkerResult
+import skillbill.review.context.model.SpecIntentProjection
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ReviewClaimVerdict
 import skillbill.review.model.ReviewFindingVerdict
@@ -22,12 +23,6 @@ import skillbill.review.model.ReviewStage
 import java.nio.file.Path
 import java.time.Instant
 import kotlin.time.Duration
-
-data class ReviewSpecAdjudicationOutcome(
-  val verdicts: List<ReviewFindingVerdict>,
-  val envelopes: List<Map<String, Any?>> = emptyList(),
-  val skipReason: String? = null,
-)
 
 class ReviewSpecAdjudicationRunner(
   private val launcher: GoalRunnerSubtaskLauncher,
@@ -46,10 +41,7 @@ class ReviewSpecAdjudicationRunner(
     modelOverride: String? = null,
     promptSuffix: String = "",
   ): ReviewSpecAdjudicationOutcome {
-    if (projection == null) {
-      return ReviewSpecAdjudicationOutcome(verdicts = emptyList(), skipReason = SPEC_CONTEXT_NONE)
-    }
-    if (packet == null) {
+    if (projection == null || packet == null) {
       return ReviewSpecAdjudicationOutcome(verdicts = emptyList(), skipReason = SPEC_CONTEXT_NONE)
     }
     val stage1ByRef = existingVerdicts
@@ -87,19 +79,18 @@ class ReviewSpecAdjudicationRunner(
         recordedAt = recordedAt,
       )
     }
-    val envelopes = mutableListOf<Map<String, Any?>>()
     val launched = prepared.map { job ->
       when (job) {
-        is PreparedAdjudication.Rejected -> job.verdict
-        is PreparedAdjudication.Ready -> {
-          envelopes += job.envelope
-          launchOne(job, repoRoot, timeout, modelOverride, recordedAt, promptSuffix)
-        }
+        is PreparedAdjudicationRejected -> job.verdict
+        is PreparedAdjudicationReady -> launchOne(
+          job,
+          AdjudicationLaunchEnv(repoRoot, timeout, modelOverride, promptSuffix),
+          recordedAt,
+        )
       }
     }
     return ReviewSpecAdjudicationOutcome(
       verdicts = survivors.mapNotNull { durableAdj[it.fNumber] } + launched,
-      envelopes = envelopes,
     )
   }
 
@@ -114,7 +105,7 @@ class ReviewSpecAdjudicationRunner(
     recordedAt: String,
   ): PreparedAdjudication {
     val region = citedRegionOf(finding)
-      ?: return PreparedAdjudication.Rejected(
+      ?: return PreparedAdjudicationRejected(
         ReviewFindingVerdict(
           stage = ReviewStage.ADJUDICATION,
           findingRef = finding.fNumber,
@@ -138,7 +129,7 @@ class ReviewSpecAdjudicationRunner(
     val envelope = launch.toAdjudicationLaunchEnvelope().asWireMap()
     val launchBytes = JsonSupport.mapToJsonString(envelope).toByteArray(Charsets.UTF_8).size.toLong()
     if (launchBytes > budget.maxLaneLaunchBytes) {
-      return PreparedAdjudication.Rejected(
+      return PreparedAdjudicationRejected(
         ReviewFindingVerdict(
           stage = ReviewStage.ADJUDICATION,
           findingRef = finding.fNumber,
@@ -150,28 +141,32 @@ class ReviewSpecAdjudicationRunner(
       )
     }
     envelopeValidator.validate(envelope, "review adjudication launch for ${finding.fNumber}")
-    return PreparedAdjudication.Ready(finding, stage1, projection, envelope, launch)
+    return PreparedAdjudicationReady(finding, stage1, projection, launch)
   }
 
+  private data class AdjudicationLaunchEnv(
+    val repoRoot: Path,
+    val timeout: Duration,
+    val modelOverride: String?,
+    val promptSuffix: String,
+  )
+
   private fun launchOne(
-    job: PreparedAdjudication.Ready,
-    repoRoot: Path,
-    timeout: Duration,
-    modelOverride: String?,
+    job: PreparedAdjudicationReady,
+    env: AdjudicationLaunchEnv,
     recordedAt: String,
-    promptSuffix: String,
   ): ReviewFindingVerdict {
-    val prompt = appendPromptSuffix(adjudicationPrompt(job.launch), promptSuffix)
+    val prompt = appendPromptSuffix(adjudicationPrompt(job.launch), env.promptSuffix)
     val outcome = launcher.launch(
       GoalRunnerSubtaskLaunchRequest(
         invokedAgentId = job.launch.brokerId,
         configuredAgentOverrideId = null,
         skillRunRequest = SkillRunRequest(
           issueKey = ISSUE_KEY,
-          repoRoot = repoRoot,
-          timeout = timeout,
+          repoRoot = env.repoRoot,
+          timeout = env.timeout,
           promptOverride = prompt,
-          modelOverride = modelOverride,
+          modelOverride = env.modelOverride,
         ),
       ),
     )
@@ -190,7 +185,7 @@ class ReviewSpecAdjudicationRunner(
   }
 
   private fun fromLaunchFacts(
-    job: PreparedAdjudication.Ready,
+    job: PreparedAdjudicationReady,
     facts: AgentRunLaunchFacts,
     recordedAt: String,
   ): ReviewFindingVerdict {
@@ -235,7 +230,7 @@ class ReviewSpecAdjudicationRunner(
     appendLine("Stage 1 verdict: ${launch.stage1Verdict.claimVerdict.wireValue}")
     appendLine("Cited region: ${launch.citedRegion.path}:${launch.citedRegion.startLine}-${launch.citedRegion.endLine}")
     appendLine("Spec intent projection:")
-    appendLine(JsonSupport.mapToJsonString(launch.specIntentProjection.toWireMap()))
+    appendLine(JsonSupport.mapToJsonString(launch.specIntentProjection.toProjectionPayload()))
     appendLine(
       "Return a JSON object with exactly one scope_disposition " +
         "(in_scope|out_of_scope_preexisting|spec_deviation|spec_accepted_tradeoff), " +
@@ -256,17 +251,14 @@ class ReviewSpecAdjudicationRunner(
   }
 }
 
-private sealed class PreparedAdjudication {
-  data class Ready(
-    val finding: ParallelReviewMergedFinding,
-    val stage1: ReviewFindingVerdict,
-    val projection: SpecIntentProjection,
-    val envelope: Map<String, Any?>,
-    val launch: GovernedReviewAdjudicationLaunch,
-  ) : PreparedAdjudication()
-
-  data class Rejected(val verdict: ReviewFindingVerdict) : PreparedAdjudication()
-}
+private sealed class PreparedAdjudication
+private data class PreparedAdjudicationReady(
+  val finding: ParallelReviewMergedFinding,
+  val stage1: ReviewFindingVerdict,
+  val projection: SpecIntentProjection,
+  val launch: GovernedReviewAdjudicationLaunch,
+) : PreparedAdjudication()
+private data class PreparedAdjudicationRejected(val verdict: ReviewFindingVerdict) : PreparedAdjudication()
 
 internal fun parseAdjudicationWorkerResult(stdout: String): ReviewSpecAdjudicationWorkerResult? {
   val payload = parseJsonObject(stdout) ?: return null

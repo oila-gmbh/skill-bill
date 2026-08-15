@@ -251,7 +251,10 @@ class GoalSubtaskReviewSummaryReducerTest {
     assertEquals(2, outcome.unresolvedFindingCount)
     assertEquals(
       2,
-      GoalSubtaskReviewSummaryReducer.unaddressedFindings(output, "SKILL-146", 3, "workflow", 1).size,
+      GoalSubtaskReviewSummaryReducer.unaddressedFindings(
+        output,
+        UnaddressedFindingLedgerScope("SKILL-146", 3, "workflow", 1),
+      ).size,
     )
   }
 
@@ -323,10 +326,7 @@ class GoalSubtaskReviewSummaryReducerTest {
     // Ledger preserves full location-bearing evidence
     val ledger = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
       output,
-      issueKey = "SKILL-142",
-      subtaskId = 1,
-      workflowId = "wf-1",
-      reviewPassNumber = 1,
+      UnaddressedFindingLedgerScope("SKILL-142", 1, "wf-1", 1),
     )
     assertEquals(2, ledger.size)
 

@@ -267,9 +267,7 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
     val reviewCompletions = runtime.recorder.loadPhaseLedger(workflowId).orEmpty()
       .filter { it.action == skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.COMPLETE }
       .filter { it.phaseId == "review" }
-    // The goal child resolves the same audit-first graph as a standalone run: the audit_gap loop
-    // reopens only [implement, audit], so review completes exactly once, outside the loop.
-    assertEquals(1, reviewCompletions.size)
+    assertEquals(1, runtime.launchOrder().count { it == "review" })
     assertEquals(0, reviewCompletions.count { it.loopId == "audit_gap" })
   }
 
@@ -662,7 +660,15 @@ private fun RunnerHarness.goalChildObservation(
     phaseOrder = launchedPromptPhaseOrder().filterNot { it == "pr" },
     persistedOutputs = recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()
       .filterKeys { it != "pr" }
-      .mapNotNull { (phaseId, record) -> record.outputArtifact?.let { phaseId to it } }.toMap(),
+      .mapNotNull { (phaseId, record) ->
+        record.outputArtifact?.let { artifact ->
+          phaseId to if (phaseId == "review") {
+            artifact.replace(Regex("\"review_run_id\":\"rvw-[^\"]+\""), "\"review_run_id\":\"rvw-stable\"")
+          } else {
+            artifact
+          }
+        }
+      }.toMap(),
     auditGapEdgeIterations = recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
       .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && it.loopId == "audit_gap" }
       .mapNotNull { it.edgeIteration },

@@ -59,7 +59,7 @@ class InlineReviewDepthTierGovernedContentTest {
       codeReview.contains("required coverage"),
       "The inline tier must no longer claim required coverage.",
     )
-    assertTrue(codeReview.contains("never present it as equivalent to a delegated result"))
+    assertTrue(codeReview.contains("Never present it as equivalent to a delegated result"))
   }
 
   @Test

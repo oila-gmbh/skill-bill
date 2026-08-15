@@ -45,9 +45,8 @@ enum class ReviewSeverityAdjustmentDirection(val wireValue: String) {
   ;
 
   companion object {
-    fun fromWire(value: String): ReviewSeverityAdjustmentDirection =
-      entries.firstOrNull { it.wireValue == value }
-        ?: error("Unknown severity adjustment direction '$value'.")
+    fun fromWire(value: String): ReviewSeverityAdjustmentDirection = entries.firstOrNull { it.wireValue == value }
+      ?: error("Unknown severity adjustment direction '$value'.")
   }
 }
 

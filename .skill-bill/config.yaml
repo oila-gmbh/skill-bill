@@ -1,4 +1,6 @@
 spec_type: local
 code_review_parallel_agent: none
+review_context_budget:
+  max_parent_packet_bytes: 1048576
 validation_gate:
   gradle_wrapper: runtime-kotlin/gradlew

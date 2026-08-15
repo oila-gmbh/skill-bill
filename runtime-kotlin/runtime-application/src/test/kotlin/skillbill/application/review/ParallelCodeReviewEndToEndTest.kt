@@ -32,20 +32,30 @@ class ParallelCodeReviewEndToEndTest {
       recorder.diffCommands.count { it.contains("diff") },
       "Scope discovery must happen once for the whole review, not once per lane.",
     )
-    assertEquals(2, recorder.parentLaunches.size, "The surviving fan-out runs exactly two parent lanes.")
+    assertEquals(
+      2,
+      recorder.parentLaunches.filter { it.skillRunRequest.issueKey == "code-review-parallel" }.size,
+      "The surviving fan-out runs exactly two parent lanes.",
+    )
     assertEquals(
       listOf("claude", "codex"),
-      recorder.parentLaunches.map { it.invokedAgentId }.sorted(),
+      recorder.parentLaunches
+        .filter { it.skillRunRequest.issueKey == "code-review-parallel" }
+        .map { it.invokedAgentId }
+        .sorted(),
       "parallel-review keeps a second lane on a distinct agent.",
     )
-    recorder.parentPrompts.forEach { prompt ->
-      kotlinAreas.forEach { area ->
-        assertTrue(
-          prompt.contains("bill-kotlin-code-review-$area"),
-          "Inline prompt dropped routed rubric identity '$area'.",
-        )
+    recorder.parentLaunches
+      .filter { it.skillRunRequest.issueKey == "code-review-parallel" }
+      .mapNotNull { it.skillRunRequest.promptOverride }
+      .forEach { prompt ->
+        kotlinAreas.forEach { area ->
+          assertTrue(
+            prompt.contains("bill-kotlin-code-review-$area"),
+            "Inline prompt dropped routed rubric identity '$area'.",
+          )
+        }
       }
-    }
     assertTrue(result.lane1.success && result.lane2.success)
   }
 

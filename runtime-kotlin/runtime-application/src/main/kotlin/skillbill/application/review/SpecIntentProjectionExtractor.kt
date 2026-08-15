@@ -3,22 +3,23 @@ package skillbill.application.review
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.repoRelativePath
 import skillbill.application.decomposition.resolvedParentSpecPath
-import skillbill.domain.review.context.model.SpecIntentProjection
-import skillbill.domain.review.context.model.SpecIntentProvenance
-import skillbill.domain.review.context.model.SpecIntentSurroundingContext
 import skillbill.error.InvalidReviewContextSchemaError
 import skillbill.error.UnreadableSpecIntentProjectionError
+import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.model.ReviewContextBudgetPolicy
+import skillbill.review.context.model.SpecIntentProjection
+import skillbill.review.context.model.SpecIntentProvenance
+import skillbill.review.context.model.SpecIntentSurroundingContext
 import skillbill.review.spec.GovernedSpecSectionParser
 import skillbill.review.spec.GovernedSpecSectionParser.ACCEPTANCE_CRITERIA_PREFIX
-import java.nio.file.Files
 import java.nio.file.Path
 import java.security.MessageDigest
 
 @Inject
 class SpecIntentProjectionExtractor(
   private val envelopeValidator: ReviewContextEnvelopeValidator,
+  private val fileStore: DecompositionManifestFileStore,
 ) {
   fun extract(
     repoRoot: Path,
@@ -30,9 +31,8 @@ class SpecIntentProjectionExtractor(
     val normalized = resolvedParentSpecPath(repoRoot, specPath)
     val bytes = readSpecBytes(normalized, explicit)
     val specText = bytes.toString(Charsets.UTF_8)
-    val intendedOutcome = GovernedSpecSectionParser.parseProseSection(specText) {
-      it.startsWith(INTENDED_OUTCOME_PREFIX)
-    }
+    val intendedOutcome = GovernedSpecSectionParser.parseProseSection(specText, ::isIntendedOutcomeHeading)
+      .ifBlank { documentTitle(specText) }
     if (intendedOutcome.isBlank()) {
       fail(normalized, explicit, "unparseable")
     }
@@ -55,9 +55,9 @@ class SpecIntentProjectionExtractor(
     )
     enforceSpecIntentProjectionBudget(projection, budget)
     try {
-      envelopeValidator.validateSpecIntentProjection(projection.toWireMap(), "spec_intent_projection")
+      envelopeValidator.validateSpecIntentProjection(projection.toProjectionPayload(), "spec_intent_projection")
     } catch (error: InvalidReviewContextSchemaError) {
-      fail(normalized, explicit, "unparseable")
+      fail(normalized, explicit, "unparseable", error)
     }
     return projection
   }
@@ -72,25 +72,37 @@ class SpecIntentProjectionExtractor(
   }
 
   private fun readSpecBytes(path: Path, explicit: Boolean): ByteArray {
-    if (!Files.isRegularFile(path) || !Files.isReadable(path)) {
-      fail(path, explicit, if (Files.exists(path)) "unreadable" else "missing")
+    if (!fileStore.isRegularFile(path)) {
+      fail(path, explicit, "missing")
     }
     return try {
-      Files.readAllBytes(path)
+      fileStore.readText(path).toByteArray(Charsets.UTF_8)
     } catch (_: Exception) {
       fail(path, explicit, "unreadable")
     }
   }
 
-  private fun fail(path: Path, explicit: Boolean, reason: String): Nothing {
+  private fun isIntendedOutcomeHeading(title: String): Boolean =
+    title.startsWith(INTENDED_OUTCOME_PREFIX) || title == SCOPE_HEADING
+
+  private fun documentTitle(specText: String): String {
+    val heading = specText.lineSequence()
+      .map { it.trim() }
+      .firstOrNull { it.startsWith("#") && !it.startsWith("##") }
+      ?: return ""
+    return heading.trimStart('#').trim()
+  }
+
+  private fun fail(path: Path, explicit: Boolean, reason: String, cause: Throwable? = null): Nothing {
     if (explicit) {
-      throw UnreadableSpecIntentProjectionError(path.toString(), reason)
+      throw UnreadableSpecIntentProjectionError(path.toString(), reason, cause)
     }
-    throw SpecIntentSourceUnavailable(path.toString(), reason)
+    throw SpecIntentSourceUnavailable(path.toString(), reason, cause)
   }
 
   private companion object {
     const val INTENDED_OUTCOME_PREFIX = "intended outcome"
+    const val SCOPE_HEADING = "scope"
     const val CONSTRAINTS_PREFIX = "constraints"
     const val NON_GOALS_PREFIX = "non-goal"
     const val NON_GOALS_SPACED = "non goals"
@@ -101,7 +113,8 @@ class SpecIntentProjectionExtractor(
 internal class SpecIntentSourceUnavailable(
   val specPath: String,
   val reason: String,
-) : RuntimeException("Spec intent source '$specPath' is $reason")
+  cause: Throwable? = null,
+) : RuntimeException("Spec intent source '$specPath' is $reason", cause)
 
 private fun sha256Hex(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")
   .digest(bytes)

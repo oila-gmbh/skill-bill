@@ -92,15 +92,14 @@ object ParallelReviewFindingParser {
     else -> null
   }
 
-  private fun parseCitationToken(raw: String): List<ReviewFindingCitation> =
-    raw.split(',').mapNotNull { item ->
-      val trimmed = item.trim()
-      val colon = trimmed.lastIndexOf(':')
-      if (colon <= 0) return@mapNotNull null
-      val path = trimmed.substring(0, colon).trim().takeIf(String::isNotBlank) ?: return@mapNotNull null
-      val line = trimmed.substring(colon + 1).trim().toIntOrNull()?.takeIf { it > 0 } ?: return@mapNotNull null
-      ReviewFindingCitation(path, line)
-    }
+  private fun parseCitationToken(raw: String): List<ReviewFindingCitation> = raw.split(',').mapNotNull { item ->
+    val trimmed = item.trim()
+    val colon = trimmed.lastIndexOf(':')
+    if (colon <= 0) return@mapNotNull null
+    val path = trimmed.substring(0, colon).trim().takeIf(String::isNotBlank) ?: return@mapNotNull null
+    val line = trimmed.substring(colon + 1).trim().toIntOrNull()?.takeIf { it > 0 } ?: return@mapNotNull null
+    ReviewFindingCitation(path, line)
+  }
 
   private fun parseSeverityAdjustmentToken(raw: String): ReviewSeverityAdjustment? {
     val separator = raw.indexOf(": ")

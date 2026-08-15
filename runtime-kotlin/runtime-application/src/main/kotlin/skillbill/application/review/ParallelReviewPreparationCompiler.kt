@@ -22,6 +22,8 @@ import skillbill.review.context.model.ReviewCommitLaneRoutingMatrix
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewLaneDecision
 import skillbill.review.context.model.ReviewRevision
+import skillbill.review.context.model.SpecIntentAbsenceReason
+import skillbill.review.context.model.SpecIntentResolution
 import skillbill.review.plan.ReviewCommitLaneRoutingPolicy
 import skillbill.review.plan.model.ReviewLaunchLane
 import skillbill.review.plan.model.ReviewRoutedLane
@@ -136,7 +138,8 @@ internal object ParallelReviewPreparationCompiler {
       reviewRevision = ReviewRevision(revisionId, 1),
       criteriaReferences = criteriaReferences(routes, input.specIntentResolution),
       baselineUntrackedPolicy = input.baselineUntrackedPolicy,
-      specIntentProjection = (input.specIntentResolution as? skillbill.domain.review.context.model.SpecIntentResolution.Resolved)?.projection,
+      specIntentProjection = (input.specIntentResolution as? SpecIntentResolution.Resolved)
+        ?.projection,
     ),
   )
 
@@ -254,12 +257,12 @@ internal object ParallelReviewPreparationCompiler {
 
 private fun criteriaReferences(
   routes: List<SpecialistRoute>,
-  resolution: skillbill.domain.review.context.model.SpecIntentResolution,
+  resolution: SpecIntentResolution,
 ): Map<String, List<String>> {
   val criteria = when (resolution) {
-    is skillbill.domain.review.context.model.SpecIntentResolution.Resolved ->
+    is SpecIntentResolution.Resolved ->
       resolution.projection.acceptanceCriteria
-    is skillbill.domain.review.context.model.SpecIntentResolution.None -> emptyList()
+    is SpecIntentResolution.None -> emptyList()
   }
   return routes.associate { it.lane to criteria }
 }
@@ -299,8 +302,8 @@ internal data class ParallelReviewPreparationInput(
   val headRevision: String,
   val prelaunchExpansions: List<skillbill.application.model.ReviewPrelaunchExpansion> = emptyList(),
   val baselineUntrackedPolicy: ReviewBaselineUntrackedPolicy = ReviewBaselineUntrackedPolicy.EMPTY,
-  val specIntentResolution: skillbill.domain.review.context.model.SpecIntentResolution =
-    skillbill.domain.review.context.model.SpecIntentResolution.None(
-      skillbill.domain.review.context.model.SpecIntentAbsenceReason.NOT_APPLICABLE_SCOPE,
+  val specIntentResolution: SpecIntentResolution =
+    SpecIntentResolution.None(
+      SpecIntentAbsenceReason.NOT_APPLICABLE_SCOPE,
     ),
 )

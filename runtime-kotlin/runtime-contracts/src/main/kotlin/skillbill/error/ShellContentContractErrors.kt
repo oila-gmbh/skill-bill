@@ -100,8 +100,10 @@ class InvalidReviewContextSchemaError(
 class UnreadableSpecIntentProjectionError(
   val specPath: String,
   val reason: String,
+  cause: Throwable? = null,
 ) : ShellContentContractException(
   "Projection 'spec_intent_projection' could not be read from '${specPath.ifBlank { "<unknown>" }}': $reason",
+  cause,
 )
 
 /**

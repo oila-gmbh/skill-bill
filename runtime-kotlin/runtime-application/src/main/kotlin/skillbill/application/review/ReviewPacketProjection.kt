@@ -1,20 +1,13 @@
 package skillbill.application.review
 
 import skillbill.application.review.model.ReviewContextEnvelope
-import skillbill.contracts.JsonSupport
 import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
-import skillbill.domain.review.context.model.SpecIntentProjection
 import skillbill.review.context.model.GovernedReviewAdjudicationLaunch
 import skillbill.review.context.model.GovernedReviewIntegrationLaunch
 import skillbill.review.context.model.GovernedReviewLaunch
 import skillbill.review.context.model.GovernedReviewVerificationLaunch
-import skillbill.review.context.model.REVIEW_SPEC_INTENT_PROJECTION_BUDGET
 import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewChangedHunk
-import skillbill.review.context.model.ReviewCommitUnit
-import skillbill.review.context.model.ReviewContextBudgetExceeded
-import skillbill.review.context.model.ReviewContextBudgetExceededException
-import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewContextPacket
 import skillbill.review.context.model.ReviewLaneDecision
 import skillbill.review.context.model.ReviewPacketConsumerContract
@@ -157,7 +150,7 @@ fun GovernedReviewAdjudicationLaunch.toAdjudicationLaunchEnvelope(): ReviewConte
     "review_revision" to packet.reviewRevision.toEnvelope(),
     "finding" to finding.toEnvelope(),
     "stage_1_verdict" to stage1Verdict.toEnvelope(),
-    "spec_intent_projection" to specIntentProjection.toWireMap(),
+    "spec_intent_projection" to specIntentProjection.toProjectionPayload(),
     "cited_region" to linkedMapOf(
       "path" to citedRegion.path,
       "start_line" to citedRegion.startLine,
@@ -241,49 +234,3 @@ private fun ReviewSpecialistSummary.toEnvelope(): Map<String, Any?> = linkedMapO
   "unreviewed_segment_ids" to unreviewedSegmentIds,
   "summary" to summary.normalizeLineEndings(),
 )
-
-/** The lane's assigned commit units in packet order (identity metadata only). */
-private fun GovernedReviewLaunch.assignedCommitUnits(): List<ReviewCommitUnit> {
-  val unitsBySha = packet.commitUnits.associateBy { it.commitSha }
-  return assignment.assignedBundle.entries.map { entry -> unitsBySha.getValue(entry.commitSha) }
-}
-
-internal fun String.normalizeLineEndings(): String = replace("\r\n", "\n")
-
-private fun skillbill.review.context.model.ReviewBaselineUntrackedPolicy.toEnvelope() = linkedMapOf(
-  "included_paths" to includedPaths.sorted(),
-  "excluded_paths" to excludedPaths.sorted(),
-)
-
-internal fun SpecIntentProjection.toWireMap(): Map<String, Any?> = linkedMapOf(
-  "intended_outcome" to intendedOutcome,
-  "acceptance_criteria" to acceptanceCriteria,
-  "constraints" to constraints,
-  "non_goals" to nonGoals,
-  "deferred_items" to deferredItems,
-  "provenance" to linkedMapOf(
-    "spec_path" to provenance.specPath,
-    "content_digest" to provenance.contentDigest,
-  ),
-  "declared_byte_budget" to declaredByteBudget,
-)
-
-internal fun specIntentProjectionUtf8Bytes(projection: SpecIntentProjection): Int =
-  JsonSupport.mapToJsonString(projection.toWireMap()).toByteArray(Charsets.UTF_8).size
-
-internal fun enforceSpecIntentProjectionBudget(projection: SpecIntentProjection, budget: ReviewContextBudgetPolicy) {
-  val observed = specIntentProjectionUtf8Bytes(projection).toLong()
-  if (observed > budget.maxSpecIntentProjectionBytes) {
-    throw ReviewContextBudgetExceededException(
-      ReviewContextBudgetExceeded(
-        lane = REVIEW_SPEC_INTENT_PROJECTION_BUDGET,
-        budgetKind = REVIEW_SPEC_INTENT_PROJECTION_BUDGET,
-        configuredLimit = budget.maxSpecIntentProjectionBytes,
-        observedValue = observed,
-        packetDigest = projection.provenance.contentDigest,
-        assignmentDigest = projection.provenance.contentDigest,
-        enforceable = true,
-      ),
-    )
-  }
-}

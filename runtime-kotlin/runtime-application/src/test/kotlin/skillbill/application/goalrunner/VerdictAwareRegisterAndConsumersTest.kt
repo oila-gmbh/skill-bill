@@ -58,10 +58,7 @@ class VerdictAwareRegisterAndConsumersTest {
 
     val ledger = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
       output,
-      "SKILL-191",
-      6,
-      "workflow",
-      1,
+      UnaddressedFindingLedgerScope("SKILL-191", 6, "workflow", 1),
       recordedVerdicts,
     )
     assertEquals(1, ledger.size)
@@ -102,10 +99,7 @@ class VerdictAwareRegisterAndConsumersTest {
           ),
         ),
       ),
-      "SKILL-191",
-      6,
-      "workflow",
-      1,
+      UnaddressedFindingLedgerScope("SKILL-191", 6, "workflow", 1),
     )
     val current = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
       mapOf(
@@ -120,10 +114,7 @@ class VerdictAwareRegisterAndConsumersTest {
           ),
         ),
       ),
-      "SKILL-191",
-      6,
-      "workflow",
-      2,
+      UnaddressedFindingLedgerScope("SKILL-191", 6, "workflow", 2),
       recordedVerdicts,
     )
     val superseded = GoalSubtaskReviewSummaryReducer.refutedBlockerSupersedes(prior, current, recordedVerdicts)
@@ -165,49 +156,48 @@ class VerdictAwareRegisterAndConsumersTest {
     ),
   )
 
-  private fun implementFixReviewRepairEnvelope(
-    recordedVerdicts: List<ReviewFindingVerdict>,
-  ) = FeatureTaskRuntimeHandoffProjectionValidator.validate(
-    FeatureTaskRuntimeHandoffProjectionInputs(
-      consumerPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
-      declarations = listOf(
-        PhaseHandoffProjectionDeclaration(
-          consumerPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
-          sourceRef = FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(
-            FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
-          ),
-          projectionName = "review_repair_request",
-          projectionContractId =
+  private fun implementFixReviewRepairEnvelope(recordedVerdicts: List<ReviewFindingVerdict>) =
+    FeatureTaskRuntimeHandoffProjectionValidator.validate(
+      FeatureTaskRuntimeHandoffProjectionInputs(
+        consumerPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
+        declarations = listOf(
+          PhaseHandoffProjectionDeclaration(
+            consumerPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
+            sourceRef = FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(
+              FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+            ),
+            projectionName = "review_repair_request",
+            projectionContractId =
             FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REVIEW_REPAIR_REQUEST,
-          projectionContractVersion = "0.1",
-          promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
-          budget = FeatureTaskRuntimeHandoffProjectionBudget.PHASE_RECEIPT,
-          declaredFieldNames = listOf("unresolved_blocker_findings", "repository_checkpoint"),
-          checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
-          required = true,
-        ),
-      ),
-      resolvedUpstream = FeatureTaskRuntimeResolvedUpstreamOutputs(
-        mapOf(
-          FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW to FeatureTaskRuntimePhaseOutput(
-            FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
-            1,
-            """{"produced_outputs":{"findings":[{"finding_id":"F-001","severity":"Blocker",""" +
-              """"location":"Auth.kt:10","message":"Token logged",""" +
-              """"citations":[{"path":"Auth.kt","line":10}]}]}}""",
+            projectionContractVersion = "0.1",
+            promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
+            budget = FeatureTaskRuntimeHandoffProjectionBudget.PHASE_RECEIPT,
+            declaredFieldNames = listOf("unresolved_blocker_findings", "repository_checkpoint"),
+            checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
+            required = true,
           ),
         ),
+        resolvedUpstream = FeatureTaskRuntimeResolvedUpstreamOutputs(
+          mapOf(
+            FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW to FeatureTaskRuntimePhaseOutput(
+              FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+              1,
+              """{"produced_outputs":{"findings":[{"finding_id":"F-001","severity":"Blocker",""" +
+                """"location":"Auth.kt:10","message":"Token logged",""" +
+                """"citations":[{"path":"Auth.kt","line":10}]}]}}""",
+            ),
+          ),
+        ),
+        runInvariants = FeatureTaskRuntimeRunInvariants(
+          specReference = ".feature-specs/SKILL-191/spec.md",
+          acceptanceCriteria = listOf("AC-005"),
+          mandatesAndOverrides = emptyList(),
+        ),
+        resolvedCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint("reviewed-tree"),
+        expectedCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint("reviewed-tree"),
+        workflowId = "wftr-1",
+        validationDepth = ValidationDepth.DEFAULT,
+        recordedFindingVerdicts = recordedVerdicts,
       ),
-      runInvariants = FeatureTaskRuntimeRunInvariants(
-        specReference = ".feature-specs/SKILL-191/spec.md",
-        acceptanceCriteria = listOf("AC-005"),
-        mandatesAndOverrides = emptyList(),
-      ),
-      resolvedCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint("reviewed-tree"),
-      expectedCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint("reviewed-tree"),
-      workflowId = "wftr-1",
-      validationDepth = ValidationDepth.DEFAULT,
-      recordedFindingVerdicts = recordedVerdicts,
-    ),
-  )
+    )
 }

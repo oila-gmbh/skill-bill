@@ -367,9 +367,9 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "introduced defect opens, and your evidence. All evidence is read-only repository facts: never run a " +
     "build, a test, or any other command as audit evidence; validation owns test execution and failures.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE to
-    "The runtime owns the repository validation gate. You receive a bounded finding-set projection " +
+    "The runtime owns the repository validation gate. You receive the complete finding set " +
     "from the runtime (module, rule or test identity, message, location) and must not invoke the " +
-    "gate or any quality-check skill. Fix every finding in the projection at its root cause and " +
+    "gate or any quality-check skill. Fix every finding in the set at its root cause and " +
     "return; the runtime reruns the gate to verify. Never rediscover findings the previous gate " +
     "run already reported. Findings that share one root cause are one fix, not several. Validation " +
     "findings are repair work, not a reason to block the phase. Fix findings at their " +

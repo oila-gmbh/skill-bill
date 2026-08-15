@@ -3,7 +3,6 @@ package skillbill.application.featuretask
 import skillbill.agentaddon.model.AgentAddonPromptFormatter
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
-import skillbill.application.model.DiffResolutionException
 import skillbill.application.model.ParallelCodeReviewRequest
 import skillbill.application.model.ParallelCodeReviewResult
 import skillbill.application.model.ParallelReviewLaneStatus
@@ -20,7 +19,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition
 import skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting
-import java.nio.file.Files
 import java.nio.file.Path
 import java.time.LocalDateTime
 import java.time.ZoneOffset
@@ -41,66 +39,83 @@ fun interface FeatureTaskRuntimeReviewDriver {
   }
 }
 
+internal data class FeatureTaskRuntimeReviewDriverAgents(
+  val agent1Id: String,
+  val parallelReviewAgent: String?,
+)
+
+internal data class FeatureTaskRuntimeReviewDriverPass(
+  val passNumber: Int,
+  val pinnedMode: CodeReviewExecutionMode,
+  val reviewRunId: String,
+)
+
+internal data class FeatureTaskRuntimeReviewDriverWorkspace(
+  val repoRoot: Path,
+  val timeout: Duration?,
+  val agentAddonSelection: HydratedAgentAddonSelection,
+  val baselineUntrackedPaths: List<String> = emptyList(),
+)
+
+internal data class FeatureTaskRuntimeReviewCycleContext(
+  val passNumber: Int,
+  val resolvedTier: CodeReviewExecutionMode,
+  val repositoryFingerprint: String,
+  val blockerDispositions: List<GoalSubtaskBlockerDisposition> = emptyList(),
+)
+
 internal object FeatureTaskRuntimeReviewDriverMapper {
   fun request(
     input: GoalSubtaskReviewInput,
     runInvariants: FeatureTaskRuntimeRunInvariants,
-    agent1Id: String,
-    parallelReviewAgent: String?,
-    passNumber: Int,
-    pinnedMode: CodeReviewExecutionMode,
-    repoRoot: Path,
-    timeout: Duration?,
-    reviewRunId: String,
-    agentAddonSelection: HydratedAgentAddonSelection,
+    agents: FeatureTaskRuntimeReviewDriverAgents,
+    pass: FeatureTaskRuntimeReviewDriverPass,
+    workspace: FeatureTaskRuntimeReviewDriverWorkspace,
   ): ParallelCodeReviewRequest {
-    val resolution = FeatureTaskRuntimeReviewPassSequence.resolveForPass(pinnedMode, passNumber)
+    val resolution = FeatureTaskRuntimeReviewPassSequence.resolveForPass(pass.pinnedMode, pass.passNumber)
     return ParallelCodeReviewRequest(
-      agent1Id = agent1Id,
-      agent2Id = parallelReviewAgent?.takeIf(String::isNotBlank),
+      agent1Id = agents.agent1Id,
+      agent2Id = agents.parallelReviewAgent?.takeIf(String::isNotBlank),
       scope = ParallelReviewScope.UNSTAGED,
-      repoRoot = repoRoot,
-      timeout = timeout,
-      codeReviewMode = pinnedMode,
+      repoRoot = workspace.repoRoot,
+      timeout = workspace.timeout,
+      codeReviewMode = resolution.resolvedTier,
       resolvedTier = resolution.resolvedTier,
       suppliedDiff = input.reviewText,
-      reviewRunId = reviewRunId,
+      reviewRunId = pass.reviewRunId,
       baseRevision = input.reviewBaseSha,
       headRevision = input.currentHeadSha,
-      specPath = specPath(repoRoot, runInvariants.specReference),
-      selectedAgentAddonsSection = AgentAddonPromptFormatter.format(agentAddonSelection),
+      specPath = specPath(runInvariants.specReference),
+      selectedAgentAddonsSection = AgentAddonPromptFormatter.format(workspace.agentAddonSelection),
+      baselineUntrackedPolicy = ParallelCodeReviewRequest.baselineUntrackedPolicy(
+        includedPaths = emptyList(),
+        excludedPaths = workspace.baselineUntrackedPaths.filter(String::isNotBlank).distinct().sorted(),
+      ),
     )
   }
 
-  fun specPath(repoRoot: Path, specReference: String): Path {
-    val declared = Path.of(specReference)
-    if (declared.isAbsolute) return declared
-    val relative = repoRoot.resolve(specReference)
-    return if (Files.isRegularFile(relative)) relative.normalize() else declared
-  }
+  fun specPath(specReference: String): Path = Path.of(specReference)
 }
 
 internal object FeatureTaskRuntimeReviewEnvelope {
   private val CRITERION_GAP_KEYS = setOf("unmet_criteria", "gaps", "failing_criteria")
+  private const val REVIEW_RUN_ID_SUFFIX_LENGTH = 4
 
   fun assemble(
     result: ParallelCodeReviewResult,
     reviewRunId: String,
-    passNumber: Int,
-    resolvedTier: CodeReviewExecutionMode,
-    repositoryFingerprint: String,
-    blockerDispositions: List<GoalSubtaskBlockerDisposition> = emptyList(),
+    cycle: FeatureTaskRuntimeReviewCycleContext,
   ): String {
     val findings = result.mergeResult.findings.map(::findingPayload)
     val produced = linkedMapOf<String, Any?>(
       FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS to findings,
       FeatureTaskRuntimeVerificationSignalKeys.REVIEW_RUN_ID to reviewRunId,
-      "repository_checkpoint" to mapOf("fingerprint" to repositoryFingerprint),
+      "repository_checkpoint" to mapOf("fingerprint" to cycle.repositoryFingerprint),
     )
-    if (passNumber >= 2) {
-      produced["blocker_dispositions"] = blockerDispositions.map(GoalSubtaskBlockerDisposition::toArtifactMap)
+    if (cycle.passNumber >= 2) {
+      produced["blocker_dispositions"] = cycle.blockerDispositions.map(GoalSubtaskBlockerDisposition::toArtifactMap)
     }
-    commitFocusedAccounting(result, resolvedTier)?.let { accounting ->
+    commitFocusedAccounting(result, cycle.resolvedTier)?.let { accounting ->
       produced["commit_focused_accounting"] = accounting.toArtifactMap()
     }
     CRITERION_GAP_KEYS.forEach { key -> produced.remove(key) }
@@ -116,25 +131,23 @@ internal object FeatureTaskRuntimeReviewEnvelope {
     return JsonSupport.mapToJsonString(envelope)
   }
 
-  fun envelopeMap(outputText: String): Map<String, Any?> =
-    JsonSupport.parseObjectOrNull(outputText)
-      ?.let(JsonSupport::jsonElementToValue)
-      ?.let(JsonSupport::anyToStringAnyMap)
-      .orEmpty()
+  fun envelopeMap(outputText: String): Map<String, Any?> = JsonSupport.parseObjectOrNull(outputText)
+    ?.let(JsonSupport::jsonElementToValue)
+    ?.let(JsonSupport::anyToStringAnyMap)
+    .orEmpty()
 
   fun mintReviewRunId(): String {
     val stamp = LocalDateTime.now(ZoneOffset.UTC).format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))
     val alphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
-    val suffix = CharArray(4) { alphabet.random() }.concatToString()
+    val suffix = CharArray(REVIEW_RUN_ID_SUFFIX_LENGTH) { alphabet.random() }.concatToString()
     return "rvw-$stamp-$suffix"
   }
 
-  private fun reviewSummary(findingCount: Int): String =
-    if (findingCount == 0) {
-      "Runtime-owned review completed with no findings."
-    } else {
-      "Runtime-owned review completed with $findingCount findings."
-    }
+  private fun reviewSummary(findingCount: Int): String = if (findingCount == 0) {
+    "Runtime-owned review completed with no findings."
+  } else {
+    "Runtime-owned review completed with $findingCount findings."
+  }
 
   private fun findingPayload(finding: ParallelReviewMergedFinding): Map<String, Any?> = buildMap {
     put("finding_id", finding.fNumber)
@@ -187,20 +200,10 @@ internal object FeatureTaskRuntimeReviewDriverCycle {
   fun assemble(
     result: ParallelCodeReviewResult,
     request: ParallelCodeReviewRequest,
-    passNumber: Int,
-    resolvedTier: CodeReviewExecutionMode,
-    repositoryFingerprint: String,
-    blockerDispositions: List<GoalSubtaskBlockerDisposition> = emptyList(),
+    cycle: FeatureTaskRuntimeReviewCycleContext,
   ): FeatureTaskRuntimeReviewDriverCycleOutcome {
     val reviewRunId = requireNotNull(request.reviewRunId)
-    val outputText = FeatureTaskRuntimeReviewEnvelope.assemble(
-      result = result,
-      reviewRunId = reviewRunId,
-      passNumber = passNumber,
-      resolvedTier = resolvedTier,
-      repositoryFingerprint = repositoryFingerprint,
-      blockerDispositions = blockerDispositions,
-    )
+    val outputText = FeatureTaskRuntimeReviewEnvelope.assemble(result, reviewRunId, cycle)
     val envelope = FeatureTaskRuntimeReviewEnvelope.envelopeMap(outputText)
     val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(envelope)
     return FeatureTaskRuntimeReviewDriverCycleOutcome(outputText, outcome.verdict)
@@ -209,23 +212,6 @@ internal object FeatureTaskRuntimeReviewDriverCycle {
   fun run(
     driver: FeatureTaskRuntimeReviewDriver,
     request: ParallelCodeReviewRequest,
-    passNumber: Int,
-    resolvedTier: CodeReviewExecutionMode,
-    repositoryFingerprint: String,
-    blockerDispositions: List<GoalSubtaskBlockerDisposition> = emptyList(),
-  ): FeatureTaskRuntimeReviewDriverCycleOutcome {
-    val result = try {
-      driver.run(request)
-    } catch (error: DiffResolutionException) {
-      throw error
-    }
-    return assemble(
-      result = result,
-      request = request,
-      passNumber = passNumber,
-      resolvedTier = resolvedTier,
-      repositoryFingerprint = repositoryFingerprint,
-      blockerDispositions = blockerDispositions,
-    )
-  }
+    cycle: FeatureTaskRuntimeReviewCycleContext,
+  ): FeatureTaskRuntimeReviewDriverCycleOutcome = assemble(driver.run(request), request, cycle)
 }

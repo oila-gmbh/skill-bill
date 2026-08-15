@@ -52,6 +52,7 @@ import skillbill.goalrunner.model.ExecutionLiveness
 import skillbill.goalrunner.model.GoalRunnerAcceptedSubtask
 import skillbill.goalrunner.model.GoalRunnerRunReport
 import skillbill.goalrunner.model.GoalRunnerStatusProjection
+import skillbill.goalrunner.model.UnaddressedFindingsLedger
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InvokingAgentContextResolver
 import skillbill.ports.agentaddon.AgentAddonSelectionPort
@@ -62,6 +63,7 @@ import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_BYTES
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_HUNKS
 import skillbill.ports.workflow.model.DEFAULT_SELECTED_DIFF_MAX_LINES
 import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedgerEntry
 import skillbill.workflow.taskruntime.model.GoalSubtaskOperatorDecision
 import java.nio.file.Path
@@ -362,62 +364,70 @@ class GoalFindingsCommand(
   override fun run() {
     val ledger = ledgerService.ledger(issueKey, state.dbOverride)
     val repairLedgers = ledgerService.repairLedgersByWorkflow(issueKey, state.dbOverride)
-    val payload = linkedMapOf<String, Any?>(
-      "issue_key" to ledger.issueKey,
-      "unaddressed_findings" to ledger.findings.size,
-      "severity_breakdown" to ledger.severityBreakdown,
-      "findings" to ledger.findings.map { finding ->
-        linkedMapOf(
-          "subtask_id" to finding.subtaskId,
-          "workflow_id" to finding.workflowId,
-          "review_pass_number" to finding.reviewPassNumber,
-          "finding_ordinal" to finding.findingOrdinal,
-          "severity" to finding.severity,
-          "issue_category" to finding.issueCategory,
-          "location" to finding.location,
-          "summary" to finding.summary,
-          "claim_verdict" to finding.claimVerdict?.wireValue,
-          "scope_disposition" to finding.scopeDisposition?.wireValue,
-          "citations" to finding.citations.map { citation ->
-            linkedMapOf("path" to citation.path, "line" to citation.line)
-          },
-          "severity_adjustment" to finding.severityAdjustment?.let { adjustment ->
-            linkedMapOf(
-              "direction" to adjustment.direction.wireValue,
-              "justification" to adjustment.justification,
-            )
-          },
-        )
-      },
-      "repair_ledger" to repairLedgers.map { (workflowId, repairLedger) ->
-        linkedMapOf<String, Any?>(
-          "workflow_id" to workflowId,
-          "entries" to repairLedger.entries.map(FeatureTaskRuntimeRepairLedgerEntry::toProjectionMap),
-        )
-      },
-    )
-    val text = buildString {
-      appendLine("issue_key=${ledger.issueKey} unaddressed_findings=${ledger.findings.size}")
-      ledger.findings.forEach { finding ->
-        appendLine(
-          "subtask=${finding.subtaskId} pass=${finding.reviewPassNumber} " +
-            "severity=${finding.severity} category=${finding.issueCategory} " +
-            "location=${finding.location} ${finding.summary}" +
-            finding.claimVerdict?.let { " claim_verdict=${it.wireValue}" }.orEmpty() +
-            finding.scopeDisposition?.let { " scope_disposition=${it.wireValue}" }.orEmpty(),
-        )
-      }
-      repairLedgers.forEach { (workflowId, repairLedger) ->
-        repairLedger.entries.forEach { entry ->
-          appendLine(
-            "repair workflow=$workflowId finding=${entry.disturbanceRef} status=${entry.status.wireValue} " +
-              "severity=${entry.severity} round=${entry.originRound} status_round=${entry.statusRound} " +
-              "constructs=${entry.constructs.joinToString(",") { it.symbol }} ${entry.intent}",
+    state.completeText(findingsText(ledger, repairLedgers), findingsPayload(ledger, repairLedgers))
+  }
+
+  private fun findingsPayload(
+    ledger: UnaddressedFindingsLedger,
+    repairLedgers: Map<String, FeatureTaskRuntimeRepairLedger>,
+  ): LinkedHashMap<String, Any?> = linkedMapOf(
+    "issue_key" to ledger.issueKey,
+    "unaddressed_findings" to ledger.findings.size,
+    "severity_breakdown" to ledger.severityBreakdown,
+    "findings" to ledger.findings.map { finding ->
+      linkedMapOf(
+        "subtask_id" to finding.subtaskId,
+        "workflow_id" to finding.workflowId,
+        "review_pass_number" to finding.reviewPassNumber,
+        "finding_ordinal" to finding.findingOrdinal,
+        "severity" to finding.severity,
+        "issue_category" to finding.issueCategory,
+        "location" to finding.location,
+        "summary" to finding.summary,
+        "claim_verdict" to finding.claimVerdict?.wireValue,
+        "scope_disposition" to finding.scopeDisposition?.wireValue,
+        "citations" to finding.citations.map { citation ->
+          linkedMapOf("path" to citation.path, "line" to citation.line)
+        },
+        "severity_adjustment" to finding.severityAdjustment?.let { adjustment ->
+          linkedMapOf(
+            "direction" to adjustment.direction.wireValue,
+            "justification" to adjustment.justification,
           )
-        }
+        },
+      )
+    },
+    "repair_ledger" to repairLedgers.map { (workflowId, repairLedger) ->
+      linkedMapOf<String, Any?>(
+        "workflow_id" to workflowId,
+        "entries" to repairLedger.entries.map(FeatureTaskRuntimeRepairLedgerEntry::toProjectionMap),
+      )
+    },
+  )
+
+  private fun findingsText(
+    ledger: UnaddressedFindingsLedger,
+    repairLedgers: Map<String, FeatureTaskRuntimeRepairLedger>,
+  ): String = buildString {
+    appendLine("issue_key=${ledger.issueKey} unaddressed_findings=${ledger.findings.size}")
+    ledger.findings.forEach { finding ->
+      appendLine(
+        "subtask=${finding.subtaskId} pass=${finding.reviewPassNumber} " +
+          "severity=${finding.severity} category=${finding.issueCategory} " +
+          "location=${finding.location} ${finding.summary}" +
+          finding.claimVerdict?.let { " claim_verdict=${it.wireValue}" }.orEmpty() +
+          finding.scopeDisposition?.let { " scope_disposition=${it.wireValue}" }.orEmpty(),
+      )
+    }
+    repairLedgers.forEach { (workflowId, repairLedger) ->
+      repairLedger.entries.forEach { entry ->
+        appendLine(
+          "repair workflow=$workflowId finding=${entry.disturbanceRef} status=${entry.status.wireValue} " +
+            "severity=${entry.severity} round=${entry.originRound} status_round=${entry.statusRound} " +
+            "constructs=${entry.constructs.joinToString(",") { it.symbol }} ${entry.intent}",
+        )
       }
     }
-    state.completeText(text, payload)
   }
 }
 

@@ -239,10 +239,7 @@ internal class UnaddressedFindingsRuntime(private val connection: Connection) {
   }
 }
 
-private fun severityAdjustment(
-  direction: String?,
-  justification: String?,
-): ReviewSeverityAdjustment? {
+private fun severityAdjustment(direction: String?, justification: String?): ReviewSeverityAdjustment? {
   val parsedDirection = direction?.trim()?.takeIf(String::isNotBlank)?.let(ReviewSeverityAdjustmentDirection::fromWire)
     ?: return null
   val parsedJustification = justification?.trim()?.takeIf(String::isNotBlank) ?: return null

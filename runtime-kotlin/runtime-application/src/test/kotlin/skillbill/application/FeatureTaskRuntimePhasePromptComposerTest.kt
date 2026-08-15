@@ -201,7 +201,9 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     )
 
     assertContains(prompt, "runtime owns the repository validation gate")
+    assertContains(prompt, "You receive the complete finding set")
     assertContains(prompt, "must not invoke the gate or any quality-check skill")
+    assertFalse(prompt.contains("bounded finding-set"))
     assertFalse(prompt.contains("Invoke bill-code-check"))
   }
 
@@ -353,7 +355,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
-  fun `review prompt maps the durable baseline-untracked inventory to parallel CLI excludes`() {
+  fun `review prompt lists the durable baseline-untracked inventory without CLI exclude flags`() {
     val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
       briefingFor("review"),
@@ -364,7 +366,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     )
 
     assertContains(prompt, "Baseline-untracked review policy")
-    assertContains(prompt, "--baseline-untracked-exclude")
+    assertFalse(prompt.contains("--baseline-untracked-exclude"))
     assertContains(prompt, "- `a-before.tmp`")
     assertContains(prompt, "- `z-before.tmp`")
   }

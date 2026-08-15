@@ -5,6 +5,7 @@ import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import skillbill.review.ReviewFindingActionability
+import skillbill.review.ReviewFindingFieldCodec
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FORBIDDEN_PROJECTION_FIELD_NAMES
@@ -587,25 +588,40 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
   private fun reviewBlockerProjection(
     produced: Map<String, Any?>,
     recordedFindingVerdicts: List<ReviewFindingVerdict>,
-  ): List<Map<String, Any?>> =
-    (produced["findings"] as? List<*>).orEmpty()
-      .mapNotNull(JsonSupport::anyToStringAnyMap)
-      .filter { finding -> ReviewFindingActionability.isActionable(finding, recordedFindingVerdicts) }
-      .map { finding ->
-        val severity = (finding["severity"] as? String)?.takeIf(String::isNotBlank) ?: "blocker"
-        mapOf(
-          "finding_id" to (finding["finding_id"] ?: finding["f_number"] ?: finding["id"]),
-          "severity" to severity,
-          "location" to (
-            finding["location"] ?: finding["repository_path"] ?: finding["path"] ?: "repository"
-            ),
-          "expected_outcome" to (
-            finding["expected_outcome"] ?: finding["message"] ?: finding["description"] ?: "Resolve the finding."
-            ),
-          "criterion_refs" to (finding["criterion_refs"] ?: emptyList<String>()),
-          "task_refs" to (finding["task_refs"] ?: emptyList<String>()),
-        ).filterValues { it != null }
-      }
+  ): List<Map<String, Any?>> = (produced["findings"] as? List<*>).orEmpty()
+    .mapNotNull(JsonSupport::anyToStringAnyMap)
+    .filter { finding ->
+      val overlay = ReviewFindingActionability.overlayOf(
+        findingRef = ReviewFindingFieldCodec.findingRefOf(
+          finding["id"],
+          finding["finding_id"],
+          finding["f_number"],
+        ),
+        recordedVerdicts = recordedFindingVerdicts,
+        encoded = ReviewFindingFieldCodec.recordedFieldsOf(
+          claimVerdict = finding["claim_verdict"],
+          scopeDisposition = finding["scope_disposition"],
+          citations = finding["citations"],
+          severityAdjustment = finding["severity_adjustment"],
+        ),
+      )
+      ReviewFindingActionability.isActionable(overlay.claimVerdict, overlay.scopeDisposition)
+    }
+    .map { finding ->
+      val severity = (finding["severity"] as? String)?.takeIf(String::isNotBlank) ?: "blocker"
+      mapOf(
+        "finding_id" to (finding["finding_id"] ?: finding["f_number"] ?: finding["id"]),
+        "severity" to severity,
+        "location" to (
+          finding["location"] ?: finding["repository_path"] ?: finding["path"] ?: "repository"
+          ),
+        "expected_outcome" to (
+          finding["expected_outcome"] ?: finding["message"] ?: finding["description"] ?: "Resolve the finding."
+          ),
+        "criterion_refs" to (finding["criterion_refs"] ?: emptyList<String>()),
+        "task_refs" to (finding["task_refs"] ?: emptyList<String>()),
+      ).filterValues { it != null }
+    }
 
   private fun auditRepairPlanProjection(
     plan: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan,

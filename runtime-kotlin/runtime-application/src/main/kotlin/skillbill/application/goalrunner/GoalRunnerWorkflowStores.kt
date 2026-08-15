@@ -2049,9 +2049,11 @@ class WorkflowGoalRunnerOutcomeStore(
     }
     val artifacts = decodeArtifacts(existing.artifactsJson)
     val phaseRecords = phaseRecordsFrom(artifacts)
-    val blockedRecord = phaseRecords[preferredPhaseId]?.takeIf { it.status == "blocked" }
-      ?: phaseRecords.values.firstOrNull { it.status == "blocked" }
-      ?: return@transaction true
+    val blockedRecord = operatorReopenablePhaseRecord(
+      phaseRecords,
+      preferredPhaseId,
+      existing.workflowStatus,
+    ) ?: return@transaction true
     family.save(
       unitOfWork.workflowStates,
       engine.updateRecord(
@@ -2061,6 +2063,17 @@ class WorkflowGoalRunnerOutcomeStore(
       ),
     )
     true
+  }
+
+  private fun operatorReopenablePhaseRecord(
+    phaseRecords: Map<String, FeatureTaskRuntimePhaseRecord>,
+    preferredPhaseId: String,
+    workflowStatus: String,
+  ): FeatureTaskRuntimePhaseRecord? {
+    val preferred = phaseRecords[preferredPhaseId]
+    return preferred?.takeIf { it.status == "blocked" }
+      ?: phaseRecords.values.firstOrNull { it.status == "blocked" }
+      ?: preferred?.takeIf { workflowStatus == "blocked" && it.status == "running" }
   }
 
   private fun operatorBlockedPhaseReopenUpdate(

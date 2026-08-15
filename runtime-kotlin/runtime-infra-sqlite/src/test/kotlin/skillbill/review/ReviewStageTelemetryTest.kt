@@ -315,70 +315,68 @@ class ReviewStageTelemetryTest {
       }
 
   private fun seedMixedVerdicts(connection: Connection, reviewRunId: String) {
-    val repository = SQLiteReviewRunCompletenessRepository(connection)
-    repository.recordFindingVerdicts(
-      reviewRunId,
-      listOf(
-        ReviewFindingVerdict(
-          stage = ReviewStage.VERIFICATION,
-          findingRef = "F-001",
-          claimVerdict = ReviewClaimVerdict.CONFIRMED,
-          recordedAt = "2026-08-14T08:00:00Z",
-        ),
-        ReviewFindingVerdict(
-          stage = ReviewStage.VERIFICATION,
-          findingRef = "F-002",
-          claimVerdict = ReviewClaimVerdict.REFUTED,
-          citations = listOf(ReviewFindingCitation("src/Main.kt", 1)),
-          recordedAt = "2026-08-14T08:00:00Z",
-        ),
-        ReviewFindingVerdict(
-          stage = ReviewStage.VERIFICATION,
-          findingRef = "F-003",
-          claimVerdict = ReviewClaimVerdict.UNRESOLVED,
-          recordedAt = "2026-08-14T08:00:00Z",
-          rejectionReason = ReviewClaimVerdictAdmission.UNCITED_REFUTATION,
-        ),
-        ReviewFindingVerdict(
-          stage = ReviewStage.ADJUDICATION,
-          findingRef = "F-001",
-          claimVerdict = ReviewClaimVerdict.CONFIRMED,
-          scopeDisposition = ReviewScopeDisposition.IN_SCOPE,
-          recordedAt = "2026-08-14T08:01:00Z",
-          rejectionReason = ReviewSpecAdjudicationAdmission.UNCITED_DOWNGRADE,
-        ),
-        ReviewFindingVerdict(
-          stage = ReviewStage.ADJUDICATION,
-          findingRef = "F-004",
-          claimVerdict = ReviewClaimVerdict.UNRESOLVED,
-          recordedAt = "2026-08-14T08:01:00Z",
-          rejectionReason = ReviewClaimVerdictAdmission.ALTERED_CLAIM,
-        ),
-        ReviewFindingVerdict(
-          stage = ReviewStage.ADJUDICATION,
-          findingRef = "F-005",
-          claimVerdict = ReviewClaimVerdict.CONFIRMED,
-          scopeDisposition = ReviewScopeDisposition.IN_SCOPE,
-          severityAdjustment = ReviewSeverityAdjustment(
-            ReviewSeverityAdjustmentDirection.RAISE,
-            "constraint",
-          ),
-          recordedAt = "2026-08-14T08:01:00Z",
-        ),
-        ReviewFindingVerdict(
-          stage = ReviewStage.ADJUDICATION,
-          findingRef = "F-006",
-          claimVerdict = ReviewClaimVerdict.CONFIRMED,
-          scopeDisposition = ReviewScopeDisposition.IN_SCOPE,
-          severityAdjustment = ReviewSeverityAdjustment(
-            ReviewSeverityAdjustmentDirection.LOWER,
-            "non-goal",
-          ),
-          recordedAt = "2026-08-14T08:01:00Z",
-        ),
-      ),
-    )
+    SQLiteReviewRunCompletenessRepository(connection).recordFindingVerdicts(reviewRunId, mixedVerdicts())
   }
+
+  private fun mixedVerdicts(): List<ReviewFindingVerdict> = listOf(
+    ReviewFindingVerdict(
+      stage = ReviewStage.VERIFICATION,
+      findingRef = "F-001",
+      claimVerdict = ReviewClaimVerdict.CONFIRMED,
+      recordedAt = "2026-08-14T08:00:00Z",
+    ),
+    ReviewFindingVerdict(
+      stage = ReviewStage.VERIFICATION,
+      findingRef = "F-002",
+      claimVerdict = ReviewClaimVerdict.REFUTED,
+      citations = listOf(ReviewFindingCitation("src/Main.kt", 1)),
+      recordedAt = "2026-08-14T08:00:00Z",
+    ),
+    ReviewFindingVerdict(
+      stage = ReviewStage.VERIFICATION,
+      findingRef = "F-003",
+      claimVerdict = ReviewClaimVerdict.UNRESOLVED,
+      recordedAt = "2026-08-14T08:00:00Z",
+      rejectionReason = ReviewClaimVerdictAdmission.UNCITED_REFUTATION,
+    ),
+    ReviewFindingVerdict(
+      stage = ReviewStage.ADJUDICATION,
+      findingRef = "F-001",
+      claimVerdict = ReviewClaimVerdict.CONFIRMED,
+      scopeDisposition = ReviewScopeDisposition.IN_SCOPE,
+      recordedAt = "2026-08-14T08:01:00Z",
+      rejectionReason = ReviewSpecAdjudicationAdmission.UNCITED_DOWNGRADE,
+    ),
+    ReviewFindingVerdict(
+      stage = ReviewStage.ADJUDICATION,
+      findingRef = "F-004",
+      claimVerdict = ReviewClaimVerdict.UNRESOLVED,
+      recordedAt = "2026-08-14T08:01:00Z",
+      rejectionReason = ReviewClaimVerdictAdmission.ALTERED_CLAIM,
+    ),
+    ReviewFindingVerdict(
+      stage = ReviewStage.ADJUDICATION,
+      findingRef = "F-005",
+      claimVerdict = ReviewClaimVerdict.CONFIRMED,
+      scopeDisposition = ReviewScopeDisposition.IN_SCOPE,
+      severityAdjustment = ReviewSeverityAdjustment(
+        ReviewSeverityAdjustmentDirection.RAISE,
+        "constraint",
+      ),
+      recordedAt = "2026-08-14T08:01:00Z",
+    ),
+    ReviewFindingVerdict(
+      stage = ReviewStage.ADJUDICATION,
+      findingRef = "F-006",
+      claimVerdict = ReviewClaimVerdict.CONFIRMED,
+      scopeDisposition = ReviewScopeDisposition.IN_SCOPE,
+      severityAdjustment = ReviewSeverityAdjustment(
+        ReviewSeverityAdjustmentDirection.LOWER,
+        "non-goal",
+      ),
+      recordedAt = "2026-08-14T08:01:00Z",
+    ),
+  )
 
   private fun seedTierRun(connection: Connection, runId: String, mode: String, refuted: Int, total: Int) {
     val repository = SQLiteReviewRunCompletenessRepository(connection)

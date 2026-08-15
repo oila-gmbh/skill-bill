@@ -1,7 +1,5 @@
 package skillbill.application.review
 
-import skillbill.domain.review.context.model.SpecIntentProjection
-import skillbill.domain.review.context.model.SpecIntentProvenance
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
@@ -20,6 +18,8 @@ import skillbill.review.context.model.ReviewDependencyAllowlist
 import skillbill.review.context.model.ReviewLaneDecision
 import skillbill.review.context.model.ReviewRevision
 import skillbill.review.context.model.ReviewSpecAdjudicationAdmission
+import skillbill.review.context.model.SpecIntentProjection
+import skillbill.review.context.model.SpecIntentProvenance
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ParallelReviewSeverity
 import skillbill.review.model.ReviewClaimVerdict
@@ -300,20 +300,17 @@ class ReviewSpecAdjudicationRunnerTest {
     spawnFailed = false,
   )
 
-  private fun finding(
-    ref: String,
-    location: String = "src/A.kt:12",
-    description: String = "Null is not checked.",
-  ) = ParallelReviewMergedFinding(
-    fNumber = ref,
-    agentIds = listOf("codex"),
-    severity = ParallelReviewSeverity.MAJOR,
-    confidence = "High",
-    location = location,
-    description = description,
-    repositoryPath = location.substringBefore(':'),
-    line = location.substringAfter(':').toInt(),
-  )
+  private fun finding(ref: String, location: String = "src/A.kt:12", description: String = "Null is not checked.") =
+    ParallelReviewMergedFinding(
+      fNumber = ref,
+      agentIds = listOf("codex"),
+      severity = ParallelReviewSeverity.MAJOR,
+      confidence = "High",
+      location = location,
+      description = description,
+      repositoryPath = location.substringBefore(':'),
+      line = location.substringAfter(':').toInt(),
+    )
 
   private fun stage1(ref: String, verdict: ReviewClaimVerdict) = ReviewFindingVerdict(
     stage = ReviewStage.VERIFICATION,
@@ -377,11 +374,18 @@ class ReviewSpecAdjudicationRunnerTest {
     const val UNCITED_DOWNGRADE: String =
       """{"scope_disposition":"in_scope","severity_adjustment":{"direction":"lower","justification":"too noisy"}}"""
     const val RAISE: String =
-      """{"scope_disposition":"spec_deviation","cited_spec_element":"$CONSTRAINT","citations":[{"path":"spec.md","line":8}],"severity_adjustment":{"direction":"raise","adjusted_severity":"Blocker","justification":"contradicts a stated constraint"}}"""
+      """{"scope_disposition":"spec_deviation","cited_spec_element":"$CONSTRAINT",""" +
+        """"citations":[{"path":"spec.md","line":8}],"severity_adjustment":{""" +
+        """"direction":"raise","adjusted_severity":"Blocker",""" +
+        """"justification":"contradicts a stated constraint"}}"""
     const val LOWER: String =
-      """{"scope_disposition":"spec_deviation","cited_spec_element":"$CONSTRAINT","citations":[{"path":"spec.md","line":8}],"severity_adjustment":{"direction":"lower","adjusted_severity":"Nit","justification":"listed as a non-blocking constraint"}}"""
+      """{"scope_disposition":"spec_deviation","cited_spec_element":"$CONSTRAINT",""" +
+        """"citations":[{"path":"spec.md","line":8}],"severity_adjustment":{""" +
+        """"direction":"lower","adjusted_severity":"Nit",""" +
+        """"justification":"listed as a non-blocking constraint"}}"""
     const val TWO_DISPOSITIONS: String = """{"scope_disposition":["in_scope","spec_deviation"]}"""
     const val INVENTED_DEVIATION: String =
-      """{"scope_disposition":"spec_deviation","cited_spec_element":"Invented constraint","citations":[{"path":"spec.md","line":1}]}"""
+      """{"scope_disposition":"spec_deviation","cited_spec_element":"Invented constraint",""" +
+        """"citations":[{"path":"spec.md","line":1}]}"""
   }
 }
