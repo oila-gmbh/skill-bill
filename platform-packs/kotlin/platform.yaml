@@ -1,5 +1,5 @@
 platform: kotlin
-contract_version: "1.4"
+contract_version: "1.5"
 display_name: Kotlin
 
 routing_signals:
@@ -92,6 +92,16 @@ validation_gate:
     - check
     - --rerun-tasks
     - --no-build-cache
+  collect_all_full_gate_command:
+    - ./gradlew
+    - check
+    - --continue
+  cache_bypassing_collect_all_full_gate_command:
+    - ./gradlew
+    - check
+    - --continue
+    - --rerun-tasks
+    - --no-build-cache
   build_only_command:
     - ./gradlew
     - classes
@@ -100,6 +110,8 @@ validation_gate:
     format: junit_xml
     artifact_globs:
       - "runtime-kotlin/**/build/test-results/**/*.xml"
+    compiler_diagnostics:
+      format: gradle_kotlin_compiler_stdout
     executed_work:
       format: gradle_actionable_summary
   suppression_markers:

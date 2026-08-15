@@ -366,17 +366,7 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "blast_radius_inspection naming the repair batch's changed production paths, the gap ids any newly " +
     "introduced defect opens, and your evidence. All evidence is read-only repository facts: never run a " +
     "build, a test, or any other command as audit evidence; validation owns test execution and failures.",
-  FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE to
-    "The runtime owns the repository validation gate. You receive the complete finding set " +
-    "from the runtime (module, rule or test identity, message, location) and must not invoke the " +
-    "gate or any quality-check skill. Fix every finding in the set at its root cause and " +
-    "return; the runtime reruns the gate to verify. Never rediscover findings the previous gate " +
-    "run already reported. Findings that share one root cause are one fix, not several. Validation " +
-    "findings are repair work, not a reason to block the phase. Fix findings at their " +
-    "root cause; never silence them with annotations, baselines, disabled rules, weakened " +
-    "configuration, or skipped tests. Emit a " +
-    "bounded validation_result containing validation_status, checks, and repository_checkpoint; " +
-    "do not embed raw command output or telemetry.",
+  FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE to RUNTIME_OWNED_VALIDATE_PHASE_TASK,
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY to
     "Invoke bill-boundary-history inline and apply its write/skip rules for the implemented " +
     "runtime change. Emit a bounded history_result containing changed_paths and decisions_recorded " +

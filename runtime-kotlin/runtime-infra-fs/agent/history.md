@@ -1,5 +1,16 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
+## [2026-08-15] SKILL-192 subtask 1 — Collect-all gate declaration and complete finding extraction
+Areas: orchestration/contracts, platform-packs/{kotlin,kmp}, runtime-infra-fs/validation, runtime-domain/scaffold, runtime-application/featuretask/validation, tests/fixtures/shell_content_contract
+- `validation_gate` now requires pack-owned collect-all argv (cache-eligible and cache-bypassing) plus a compiler-diagnostics locator; shell contract pinned at 1.5 with schema and Kotlin together.
+- A present gate missing those argv, or with empty/blank tokens, loud-fails at pack load and never resolves to `full_gate_command`.
+- `FileSystemValidationGateRunner` COLLECT_ALL mode executes pack argv and unions compiler diagnostics with JUnit (or current findings format) by existing identity; `unparseable_gate_failure` only when the run failed and both sources are empty.
+- Pattern: continue-on-failure and cache-bypass tokens live in pack argv; Kotlin never hardcodes `--continue`, `--rerun-tasks`, or `--no-build-cache`. reusable
+- Shipped kotlin/kmp packs declare collect-all as `check --continue` and confirmation with that pack's cache-bypass tokens. BUILD_ONLY argv and non-collect-all JUnit parsing stay byte-stable for existing callers.
+- Limitation: FULL validate still uses `full_gate_command`; coordinator cycle, prompt, and goal-depth switching are subtask 2. No `agent/` under `platform-packs/`.
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
 ## [2026-08-14] SKILL-188 subtask 3 — regression, conformance, and documentation correction
 Areas: runtime-kotlin/runtime-infra-fs/nativeagent, runtime-kotlin/runtime-infra-fs/install, runtime-kotlin/runtime-infra-fs/scaffold, docs
 - Regression fixtures pin the reported defect: a Harbor-shaped pack with `addon_usage` and no `content.md` link still composes distinctive add-on bytes into every rendered harness, including the external-overlay path, without mutating upstream `content.md`.

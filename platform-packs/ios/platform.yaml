@@ -1,5 +1,5 @@
 platform: "ios"
-contract_version: "1.4"
+contract_version: "1.5"
 display_name: "iOS"
 
 routing_signals:

@@ -85,10 +85,10 @@ properties:
   contract_version:
     type: string
     minLength: 1
-    const: "1.4"
+    const: "1.5"
     x-runtime-anchored: true
     description: >
-      Pinned to `SHELL_CONTRACT_VERSION` (currently 1.4). The parity test
+      Pinned to `SHELL_CONTRACT_VERSION` (currently 1.5). The parity test
       `PlatformPackSchemaContractVersionTest` keeps the two in lockstep.
       Value mismatches at runtime are surfaced as the dedicated
       `ContractVersionMismatchError` (not generic schema error) so callers
@@ -426,6 +426,8 @@ properties:
     required:
       - full_gate_command
       - cache_bypassing_full_gate_command
+      - collect_all_full_gate_command
+      - cache_bypassing_collect_all_full_gate_command
       - build_only_command
       - findings
     properties:
@@ -448,6 +450,26 @@ properties:
           Argv for the terminal verifying full gate run. Must bypass the
           build cache and up-to-date short-circuiting using pack-declared
           flags, never a runtime-hardcoded stack flag.
+      collect_all_full_gate_command:
+        type: array
+        minItems: 1
+        items:
+          type: string
+          minLength: 1
+        description: >
+          Argv for the cache-eligible collect-all full validation gate.
+          Pack-owned complete argv; the runtime never copies
+          full_gate_command into this field.
+      cache_bypassing_collect_all_full_gate_command:
+        type: array
+        minItems: 1
+        items:
+          type: string
+          minLength: 1
+        description: >
+          Argv for the cache-bypassing collect-all full validation gate.
+          Pack-owned complete argv including that pack's cache-bypass
+          tokens; the runtime never appends stack flags.
       build_only_command:
         type: array
         minItems: 1
@@ -463,6 +485,7 @@ properties:
         required:
           - format
           - artifact_globs
+          - compiler_diagnostics
         properties:
           format:
             type: string
@@ -482,6 +505,21 @@ properties:
             description: >
               Repo-relative globs locating findings artifacts after a gate
               run (for example JUnit XML under build/test-results).
+          compiler_diagnostics:
+            type: object
+            additionalProperties: false
+            required:
+              - format
+            properties:
+              format:
+                type: string
+                enum:
+                  - gradle_kotlin_compiler_stdout
+                description: >
+                  How the runtime extracts compiler diagnostics from
+                  captured gate stdout (e: lines). This is a captured-stdout
+                  locator, not artifact_globs, and stdout is not persisted
+                  on the declaration.
           executed_work:
             type: object
             additionalProperties: false

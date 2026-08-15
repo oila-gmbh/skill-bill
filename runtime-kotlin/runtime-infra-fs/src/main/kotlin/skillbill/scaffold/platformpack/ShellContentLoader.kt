@@ -25,6 +25,8 @@ import skillbill.scaffold.model.PlatformManifest
 import skillbill.scaffold.model.PointerSpec
 import skillbill.scaffold.model.ReviewLaneCondition
 import skillbill.scaffold.model.RoutingSignals
+import skillbill.scaffold.model.ValidationGateCompilerDiagnosticsFormat
+import skillbill.scaffold.model.ValidationGateCompilerDiagnosticsLocator
 import skillbill.scaffold.model.ValidationGateDeclaration
 import skillbill.scaffold.model.ValidationGateExecutedWorkFormat
 import skillbill.scaffold.model.ValidationGateExecutedWorkSignal
@@ -1152,6 +1154,12 @@ internal fun parseValidationGate(manifest: Map<*, *>, slug: String): ValidationG
   return ValidationGateDeclaration(
     fullGateCommand = requireGateArgv(gate, slug, "full_gate_command"),
     cacheBypassingFullGateCommand = requireGateArgv(gate, slug, "cache_bypassing_full_gate_command"),
+    collectAllFullGateCommand = requireGateArgv(gate, slug, "collect_all_full_gate_command"),
+    cacheBypassingCollectAllFullGateCommand = requireGateArgv(
+      gate,
+      slug,
+      "cache_bypassing_collect_all_full_gate_command",
+    ),
     buildOnlyCommand = requireGateArgv(gate, slug, "build_only_command"),
     findings = parseValidationGateFindings(gate, slug),
     suppressionMarkers = parseSuppressionMarkers(gate, slug),
@@ -1228,7 +1236,35 @@ private fun parseValidationGateFindings(gate: Map<*, *>, slug: String): Validati
       )
   }
   val executedWork = findings["executed_work"]?.let { parseExecutedWorkSignal(it, slug) }
-  return ValidationGateFindingsLocator(format = format, artifactGlobs = globs, executedWork = executedWork)
+  val compilerDiagnostics = parseCompilerDiagnosticsLocator(findings, slug)
+  return ValidationGateFindingsLocator(
+    format = format,
+    artifactGlobs = globs,
+    compilerDiagnostics = compilerDiagnostics,
+    executedWork = executedWork,
+  )
+}
+
+private fun parseCompilerDiagnosticsLocator(
+  findings: Map<*, *>,
+  slug: String,
+): ValidationGateCompilerDiagnosticsLocator {
+  val raw = findings["compiler_diagnostics"] ?: throw InvalidValidationGateDeclarationError(
+    "Platform pack '$slug': 'validation_gate.findings.compiler_diagnostics' is required " +
+      "when validation_gate is present.",
+  )
+  val locator = raw as? Map<*, *> ?: throw InvalidValidationGateDeclarationError(
+    "Platform pack '$slug': 'validation_gate.findings.compiler_diagnostics' must be a mapping.",
+  )
+  val formatRaw = locator["format"] as? String
+    ?: throw InvalidValidationGateDeclarationError(
+      "Platform pack '$slug': 'validation_gate.findings.compiler_diagnostics.format' must be a string.",
+    )
+  val format = ValidationGateCompilerDiagnosticsFormat.fromWire(formatRaw)
+    ?: throw InvalidValidationGateDeclarationError(
+      "Platform pack '$slug': 'validation_gate.findings.compiler_diagnostics.format' '$formatRaw' is not supported.",
+    )
+  return ValidationGateCompilerDiagnosticsLocator(format = format)
 }
 
 private fun parseExecutedWorkSignal(raw: Any?, slug: String): ValidationGateExecutedWorkSignal {

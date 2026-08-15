@@ -823,7 +823,7 @@ class FeatureTaskRuntimeRunnerTest {
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     assertEquals(1, harness.launchedPhaseOrder().count { it == "validate" })
     assertTrue(harness.launchedPhaseOrder().contains("write_history"))
-    assertTrue(gateCalls.get() >= 3, "fail once, then intermediate+terminal verify after repair")
+    assertEquals(2, gateCalls.get())
     val validateOutput = requireNotNull(
       harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["validate"]?.outputArtifact,
     )
@@ -4921,7 +4921,18 @@ private val VALIDATE_REPAIR_WITHOUT_GATE_COUNTS = """
         "validation_status": "passed",
         "checks": [{"name": "check", "status": "passed"}],
         "repository_checkpoint": {"fingerprint": "fixture-checkpoint-1"}
-      }
+      },
+      "validation_repair_plan": [
+        { "identities": ["app|t|broken|A.kt"] }
+      ],
+      "substantiation_receipts": [
+        {
+          "identity": "app|t|broken|A.kt",
+          "root_cause": "fixture compile failure",
+          "changed_paths_or_symbols": ["A.kt"],
+          "rationale": "repaired for coverage"
+        }
+      ]
     }
   }
 """.trimIndent()
@@ -4949,7 +4960,13 @@ private fun failThenPassValidationGateRunner(
         request.cacheMode
       },
       executedWorkUnits = 1,
-      findings = emptyList(),
+      findings = if (call == 0) {
+        listOf(
+          skillbill.ports.validation.model.ValidationGateFinding("app", "t", "broken", "A.kt"),
+        )
+      } else {
+        emptyList()
+      },
     )
   }
 }
@@ -4958,7 +4975,7 @@ private fun kotlinPackWithValidationGate(): skillbill.scaffold.model.PlatformMan
   skillbill.scaffold.model.PlatformManifest(
     slug = "kotlin",
     packRoot = Path.of("/tmp/repo/platform-packs/kotlin"),
-    contractVersion = "1.4",
+    contractVersion = "1.5",
     routingSignals = skillbill.scaffold.model.RoutingSignals(
       strong = listOf("src"),
       tieBreakers = emptyList(),
@@ -4970,10 +4987,15 @@ private fun kotlinPackWithValidationGate(): skillbill.scaffold.model.PlatformMan
     validationGate = skillbill.scaffold.model.ValidationGateDeclaration(
       fullGateCommand = listOf("echo", "cache"),
       cacheBypassingFullGateCommand = listOf("echo", "full"),
+      collectAllFullGateCommand = listOf("echo", "collect-all"),
+      cacheBypassingCollectAllFullGateCommand = listOf("echo", "collect-all-full"),
       buildOnlyCommand = listOf("echo", "build"),
       findings = skillbill.scaffold.model.ValidationGateFindingsLocator(
         format = skillbill.scaffold.model.ValidationGateFindingsFormat.JUNIT_XML,
         artifactGlobs = listOf("**/*.xml"),
+        compilerDiagnostics = skillbill.scaffold.model.ValidationGateCompilerDiagnosticsLocator(
+          skillbill.scaffold.model.ValidationGateCompilerDiagnosticsFormat.GRADLE_KOTLIN_COMPILER_STDOUT,
+        ),
         executedWork = skillbill.scaffold.model.ValidationGateExecutedWorkSignal(
           skillbill.scaffold.model.ValidationGateExecutedWorkFormat.GRADLE_ACTIONABLE_SUMMARY,
         ),

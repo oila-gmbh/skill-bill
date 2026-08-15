@@ -43,6 +43,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     baselineUntrackedPaths: List<String> = emptyList(),
     resolvedReviewTier: CodeReviewExecutionMode? = null,
     reviewDecidingRule: String? = null,
+    priorBlockerFindingIds: List<String> = emptyList(),
     priorSchemaFailure: String? = null,
     priorTerminalFailure: String? = null,
     correctiveRepairContext: FeatureTaskRuntimeCorrectiveRepairContext? = null,
@@ -76,7 +77,7 @@ object FeatureTaskRuntimePhasePromptComposer {
       goalContinuationDirective(briefing.phaseId, suppressDecomposition),
       goalContinuationValidateDepthDirective(briefing.phaseId, validationDepth, agentRunValidateFallback),
       absentValidationGateDegradationDirective(briefing.phaseId, agentRunValidateFallback),
-      validationGateFindingsDirective(briefing.phaseId, validationGateFindings),
+      validationGateFindingsDirective(briefing.phaseId, validationGateFindings, validationDepth),
       reviewExecutionDirective(
         briefing.phaseId,
         ReviewExecutionDirectiveInputs(
@@ -99,7 +100,7 @@ object FeatureTaskRuntimePhasePromptComposer {
       implementationContinuationDirective(briefing.phaseId, effectiveContinuation),
       retryCorrectionDirective(briefing, priorSchemaFailure, correctiveRepairContext),
       terminalRetryDirective(priorTerminalFailure),
-      outputContract(briefing),
+      outputContract(briefing, reviewPassNumber, priorBlockerFindingIds, validationDepth, agentRunValidateFallback),
     ).filter(String::isNotBlank).joinToString(separator = "\n\n")
   }
 
@@ -349,7 +350,13 @@ object FeatureTaskRuntimePhasePromptComposer {
     """.trimIndent()
   }
 
-  private fun outputContract(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String {
+  private fun outputContract(
+    briefing: FeatureTaskRuntimePhaseLaunchBriefing,
+    reviewPassNumber: Int?,
+    priorBlockerFindingIds: List<String>,
+    validationDepth: ValidationDepth,
+    agentRunValidateFallback: Boolean,
+  ): String {
     val phaseId = briefing.phaseId
     return """
     ## Required final output (validated schema gate)
@@ -366,13 +373,56 @@ object FeatureTaskRuntimePhasePromptComposer {
     - "summary": non-empty string describing what this phase did
     - "produced_outputs": object with at least one entry carrying this phase's concrete
       result for downstream phases (for example plan steps, changed files, findings, or
-      validation results)${producedOutputsAddendum(briefing)}
+      validation results)${producedOutputsAddendum(
+      briefing,
+      validationDepth,
+      agentRunValidateFallback,
+    )}${dispositionAddendum(briefing, reviewPassNumber, priorBlockerFindingIds)}
     - "derived_notes": optional; when present, a non-empty string of notes for downstream
       phases
     - "verdict": optional top-level string; verifying phases (review, audit) set it to drive the
       advance-vs-remediation decision — see the verifying-phase signal above
     No top-level fields other than the ones listed above are allowed.
     """.trimIndent()
+  }
+
+  /**
+   * The only seam that instructs the reserved remediation pass to emit
+   * `produced_outputs.blocker_dispositions`. Without it the producer key is never written and the
+   * disposition path — the terminating signal for the bounded remediation loop — is unreachable in
+   * production. The prior pass's Blocker finding ids are supplied so the agent keys its entries
+   * against real ids instead of inventing them, and a disposition is required for every one of them.
+   * Empty for pass one and for every non-review phase, so those prompts stay byte-for-byte unchanged.
+   */
+  private fun dispositionAddendum(
+    briefing: FeatureTaskRuntimePhaseLaunchBriefing,
+    reviewPassNumber: Int?,
+    priorBlockerFindingIds: List<String>,
+  ): String {
+    if (briefing.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW ||
+      (reviewPassNumber ?: 1) < 2
+    ) {
+      return ""
+    }
+    if (priorBlockerFindingIds.isEmpty()) {
+      return "\n    - The prior review pass emitted no Blocker, so no disposition is required: emit\n" +
+        "      produced_outputs.blocker_dispositions as an explicit []."
+    }
+    val example = priorBlockerFindingIds.joinToString(prefix = "[", postfix = "]", separator = ", ") { findingId ->
+      "{ \"finding_id\": \"$findingId\", \"verdict\": \"resolved\", " +
+        "\"evidence\": [\"<the specific changed lines that settle it>\"] }"
+    }
+    return "\n    - This is the RESERVED REMEDIATION PASS. produced_outputs MUST carry a\n" +
+      "      \"blocker_dispositions\" array with EXACTLY ONE entry for EVERY Blocker the prior pass\n" +
+      "      emitted — these ids, all of them, no more and no fewer:\n" +
+      "      ${priorBlockerFindingIds.joinToString()}.\n" +
+      "      Each entry contains finding_id, verdict (exactly one of resolved, unresolved, superseded),\n" +
+      "      and a non-empty evidence array citing the specific changed lines that resolve or fail to\n" +
+      "      resolve it. An unevidenced disposition is rejected at the parse seam. A short list that\n" +
+      "      omits any prior Blocker id is rejected. Major findings are out of disposition scope.\n" +
+      "      ```json\n" +
+      "      { \"blocker_dispositions\": $example }\n" +
+      "      ```"
   }
 
   // Phase-specific addendum to the produced_outputs bullet. Mutating phases (implement, implement_fix)
@@ -382,34 +432,14 @@ object FeatureTaskRuntimePhasePromptComposer {
   // thorough agent from delivering its verdict as a prose Markdown table the gate cannot read (and then
   // blocking after a blind retry loop). The two phase sets are disjoint, so at most one branch is ever
   // non-empty; every other phase returns "" so its output contract stays byte-for-byte unchanged.
-  private fun producedOutputsAddendum(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String {
+  private fun producedOutputsAddendum(
+    briefing: FeatureTaskRuntimePhaseLaunchBriefing,
+    validationDepth: ValidationDepth,
+    agentRunValidateFallback: Boolean,
+  ): String {
     val phaseId = briefing.phaseId
     if (FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(phaseId)) {
-      val remediation = if (briefing.auditRepairItemIds.isEmpty()) {
-        ""
-      } else {
-        "\n    - This is AUDIT-GAP REMEDIATION. produced_outputs MUST also include repair_item_results " +
-          "with exactly these ids in order: ${briefing.auditRepairItemIds.joinToString()}. Every result must " +
-          "contain only repair_item_id, outcome (fixed or already_satisfied), non-empty " +
-          "changed_paths_or_symbols, non-empty executed_verification, and structured result_evidence " +
-          "with observation, artifact_ref, and check_ref. observation MUST be exactly one of " +
-          "required_behavior_absent, verification_failed, contract_rejected, state_mismatch, fix_verified, " +
-          "already_satisfied_verified, resolution_verified, or recurrence_verified; use " +
-          "already_satisfied_verified when the behavior already existed and you verified it, and do not " +
-          "invent a synonym outside this list. artifact_ref MUST be a repository-relative path " +
-          "optionally followed by one :symbol; do not put a sentence, spaces, test description, command, " +
-          "result, or additional prose in artifact_ref. check_ref MUST be AC-###, F-###, or a single " +
-          "name ending in Test or Check (optionally followed by :symbol); do not put a command, result, " +
-          "sentence, spaces, or shell punctuation in check_ref.\n" +
-          "    - produced_outputs MUST include deferred_repair_item_ids. Completed remediation uses []; " +
-          "blocked remediation lists every remaining item, while unresolvable_repair identifies exactly one.\n" +
-          auditRemediationOutputExample(briefing.auditRepairItemIds)
-      }
-      return "\n    - produced_outputs MUST include a reconciliation report: a \"reconciled_state\" object\n" +
-        "      (or a \"reconciled_state\" entry) with \"reconciled\": true and concrete evidence that the\n" +
-        "      changed files are at their intended target state. A status of \"completed\" with the\n" +
-        "      reconciliation report missing or \"reconciled\" not true fails the schema gate loudly." +
-        FeatureTaskRuntimePhaseProjectionShapes.exampleFor(phaseId) + remediation
+      return mutatingProducedOutputsAddendum(briefing, validationDepth, agentRunValidateFallback)
     }
     val findings = FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS
     val verdict = FeatureTaskRuntimeVerificationSignalKeys.VERDICT
@@ -417,7 +447,11 @@ object FeatureTaskRuntimePhasePromptComposer {
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
-      -> FeatureTaskRuntimePhaseProjectionShapes.exampleFor(phaseId)
+      -> FeatureTaskRuntimePhaseProjectionShapes.exampleFor(
+        phaseId,
+        validationDepth,
+        agentRunValidateFallback,
+      )
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW ->
         "\n    - This is a VERIFYING phase: produced_outputs MUST carry a \"$findings\" array (each entry a\n" +
           "      severity/message object; an explicit empty [] affirms no Blocker or Major findings) AND/OR a\n" +
@@ -440,6 +474,43 @@ object FeatureTaskRuntimePhasePromptComposer {
       )
       else -> ""
     }
+  }
+
+  private fun mutatingProducedOutputsAddendum(
+    briefing: FeatureTaskRuntimePhaseLaunchBriefing,
+    validationDepth: ValidationDepth,
+    agentRunValidateFallback: Boolean,
+  ): String {
+    val phaseId = briefing.phaseId
+    val remediation = if (briefing.auditRepairItemIds.isEmpty()) {
+      ""
+    } else {
+      "\n    - This is AUDIT-GAP REMEDIATION. produced_outputs MUST also include repair_item_results " +
+        "with exactly these ids in order: ${briefing.auditRepairItemIds.joinToString()}. Every result must " +
+        "contain only repair_item_id, outcome (fixed or already_satisfied), non-empty " +
+        "changed_paths_or_symbols, non-empty executed_verification, and structured result_evidence " +
+        "with observation, artifact_ref, and check_ref. observation MUST be exactly one of " +
+        "required_behavior_absent, verification_failed, contract_rejected, state_mismatch, fix_verified, " +
+        "already_satisfied_verified, resolution_verified, or recurrence_verified; use " +
+        "already_satisfied_verified when the behavior already existed and you verified it, and do not " +
+        "invent a synonym outside this list. artifact_ref MUST be a repository-relative path " +
+        "optionally followed by one :symbol; do not put a sentence, spaces, test description, command, " +
+        "result, or additional prose in artifact_ref. check_ref MUST be AC-###, F-###, or a single " +
+        "name ending in Test or Check (optionally followed by :symbol); do not put a command, result, " +
+        "sentence, spaces, or shell punctuation in check_ref.\n" +
+        "    - produced_outputs MUST include deferred_repair_item_ids. Completed remediation uses []; " +
+        "blocked remediation lists every remaining item, while unresolvable_repair identifies exactly one.\n" +
+        auditRemediationOutputExample(briefing.auditRepairItemIds)
+    }
+    return "\n    - produced_outputs MUST include a reconciliation report: a \"reconciled_state\" object\n" +
+      "      (or a \"reconciled_state\" entry) with \"reconciled\": true and concrete evidence that the\n" +
+      "      changed files are at their intended target state. A status of \"completed\" with the\n" +
+      "      reconciliation report missing or \"reconciled\" not true fails the schema gate loudly." +
+      FeatureTaskRuntimePhaseProjectionShapes.exampleFor(
+        phaseId,
+        validationDepth,
+        agentRunValidateFallback,
+      ) + remediation
   }
 
   /**
@@ -566,7 +637,11 @@ object FeatureTaskRuntimePhasePromptComposer {
       "        \"repair_item_results\": ${repairItemResultsJson(repairItemIds)} }\n" +
       "      ```"
 
-  private fun validationGateFindingsDirective(phaseId: String, findings: ValidationFindingSetProjection?): String {
+  private fun validationGateFindingsDirective(
+    phaseId: String,
+    findings: ValidationFindingSetProjection?,
+    validationDepth: ValidationDepth,
+  ): String {
     if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE || findings == null) return ""
     val justificationOnly = findings.findings.isNotEmpty() &&
       findings.findings.all {
@@ -584,7 +659,30 @@ object FeatureTaskRuntimePhasePromptComposer {
         )
       } else {
         add("## Runtime validation gate findings")
-        add("Fix every finding below at its root cause. Do not invoke the gate or any quality-check skill.")
+        if (validationDepth == ValidationDepth.BUILD_ONLY) {
+          add("Fix every finding below at its root cause. Do not invoke the gate or any quality-check skill.")
+        } else {
+          add(
+            "The runtime owns collect-all execution. Fix every finding in the complete persisted " +
+              "plan at its root cause. Each discovery identity needs a substantiation receipt " +
+              "naming that identity, a root cause, and changed paths or symbols. Do not invoke " +
+              "the gate or any quality-check skill. Do not rediscover findings. This projection " +
+              "is the complete discovery set, or an explicit page of that persisted set whose " +
+              "remainder is scheduled in this same pass.",
+          )
+        }
+        if (!findings.coverageRejectionReason.isNullOrBlank()) {
+          add(findings.coverageRejectionReason)
+        }
+      }
+      if (validationDepth != ValidationDepth.BUILD_ONLY && findings.scheduledRemainderCount > 0) {
+        add(
+          "scheduled_remainder=${findings.scheduledRemainderCount} remaining findings are scheduled " +
+            "in this same pass; the runtime will launch further repair pages without rerunning the gate.",
+        )
+      }
+      if (findings.droppedCount > 0) {
+        add("dropped_count=${findings.droppedCount} additional findings were omitted from this projection.")
       }
       findings.findings.forEachIndexed { index, finding ->
         add(

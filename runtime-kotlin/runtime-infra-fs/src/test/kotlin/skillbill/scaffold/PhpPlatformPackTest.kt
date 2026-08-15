@@ -43,7 +43,7 @@ class PhpPlatformPackTest {
 
     assertEquals("php", pack.slug)
     assertEquals("PHP", pack.displayName)
-    assertEquals("1.4", pack.contractVersion)
+    assertEquals("1.5", pack.contractVersion)
     assertEquals(
       packRoot.resolve("code-review/bill-php-code-review/content.md"),
       pack.declaredFiles.baseline,

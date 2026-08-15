@@ -117,6 +117,8 @@ data class GovernedAddonActivation(
 data class ValidationGateDeclaration(
   val fullGateCommand: List<String>,
   val cacheBypassingFullGateCommand: List<String>,
+  val collectAllFullGateCommand: List<String>,
+  val cacheBypassingCollectAllFullGateCommand: List<String>,
   val buildOnlyCommand: List<String>,
   val findings: ValidationGateFindingsLocator,
   /**
@@ -134,6 +136,15 @@ data class ValidationGateDeclaration(
         cacheBypassingFullGateCommand.all(String::isNotBlank),
     ) {
       "validation_gate.cache_bypassing_full_gate_command must be a non-empty argv of non-blank strings."
+    }
+    require(collectAllFullGateCommand.isNotEmpty() && collectAllFullGateCommand.all(String::isNotBlank)) {
+      "validation_gate.collect_all_full_gate_command must be a non-empty argv of non-blank strings."
+    }
+    require(
+      cacheBypassingCollectAllFullGateCommand.isNotEmpty() &&
+        cacheBypassingCollectAllFullGateCommand.all(String::isNotBlank),
+    ) {
+      "validation_gate.cache_bypassing_collect_all_full_gate_command must be a non-empty argv of non-blank strings."
     }
     require(buildOnlyCommand.isNotEmpty() && buildOnlyCommand.all(String::isNotBlank)) {
       "validation_gate.build_only_command must be a non-empty argv of non-blank strings."
@@ -162,13 +173,28 @@ enum class ValidationGateExecutedWorkFormat(val wireValue: String) {
   }
 }
 
+enum class ValidationGateCompilerDiagnosticsFormat(val wireValue: String) {
+  GRADLE_KOTLIN_COMPILER_STDOUT("gradle_kotlin_compiler_stdout"),
+  ;
+
+  companion object {
+    fun fromWire(value: String): ValidationGateCompilerDiagnosticsFormat? =
+      entries.firstOrNull { it.wireValue == value }
+  }
+}
+
 data class ValidationGateExecutedWorkSignal(
   val format: ValidationGateExecutedWorkFormat,
+)
+
+data class ValidationGateCompilerDiagnosticsLocator(
+  val format: ValidationGateCompilerDiagnosticsFormat,
 )
 
 data class ValidationGateFindingsLocator(
   val format: ValidationGateFindingsFormat,
   val artifactGlobs: List<String>,
+  val compilerDiagnostics: ValidationGateCompilerDiagnosticsLocator,
   val executedWork: ValidationGateExecutedWorkSignal? = null,
 ) {
   init {

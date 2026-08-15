@@ -178,7 +178,7 @@ class KmpPlatformPackTest {
 
     assertEquals("kmp", pack.slug)
     assertEquals("Android & Kotlin Multiplatform", pack.displayName)
-    assertEquals("1.4", pack.contractVersion)
+    assertEquals("1.5", pack.contractVersion)
     assertEquals(KMP_CODE_REVIEW_AREAS, pack.declaredCodeReviewAreas.toSet())
     assertEquals(KMP_CODE_REVIEW_AREAS, pack.declaredFiles.areas.keys)
     assertEquals(KMP_CODE_REVIEW_AREAS, pack.areaMetadata.keys)
@@ -194,6 +194,12 @@ class KmpPlatformPackTest {
       assertTrue("code-review/bill-kmp-code-review-$area:" in manifest)
     }
     assertTrue("mode: kmp-baseline" in manifest)
+    val gate = requireNotNull(pack.validationGate)
+    assertEquals(listOf("./gradlew", "check", "--continue"), gate.collectAllFullGateCommand)
+    assertEquals(
+      listOf("./gradlew", "check", "--continue", "--rerun-tasks", "--no-build-cache"),
+      gate.cacheBypassingCollectAllFullGateCommand,
+    )
   }
 
   @Test

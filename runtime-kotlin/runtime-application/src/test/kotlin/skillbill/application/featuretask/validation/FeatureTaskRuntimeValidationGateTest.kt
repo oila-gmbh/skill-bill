@@ -1,282 +1,25 @@
 package skillbill.application.featuretask.validation
 
-import skillbill.application.RecordingDiagnostics
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairLauncher
-import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairResult
 import skillbill.application.featuretask.validation.model.ValidationGateCycleRequest
 import skillbill.application.featuretask.validation.model.ValidationGateCycleResult
 import skillbill.application.featuretask.validation.model.ValidationGateCycleTerminalOutcome
-import skillbill.application.featuretask.validation.model.ValidationGateProgressStore
-import skillbill.application.featuretask.validation.model.ValidationGateResolution
-import skillbill.application.model.FeatureTaskRuntimeRunEventSink
-import skillbill.application.model.FeatureTaskRuntimeRunRequest
-import skillbill.error.ContractVersionMismatchError
-import skillbill.ports.diagnostics.RuntimeDiagnostics
-import skillbill.ports.validation.ValidationGateRunner
-import skillbill.ports.validation.model.ValidationGateCacheMode
-import skillbill.ports.validation.model.ValidationGateFinding
-import skillbill.ports.validation.model.ValidationGateRunOutcome
-import skillbill.ports.validation.model.ValidationGateRunRequest
-import skillbill.ports.validation.model.ValidationGateRunResult
-import skillbill.scaffold.model.DeclaredFiles
-import skillbill.scaffold.model.PlatformManifest
-import skillbill.scaffold.model.RoutingSignals
-import skillbill.scaffold.model.ValidationGateDeclaration
-import skillbill.scaffold.model.ValidationGateExecutedWorkFormat
-import skillbill.scaffold.model.ValidationGateExecutedWorkSignal
-import skillbill.scaffold.model.ValidationGateFindingsFormat
-import skillbill.scaffold.model.ValidationGateFindingsLocator
 import skillbill.workflow.model.ValidationDepth
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress
-import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
-import kotlin.test.assertTrue
 
 class FeatureTaskRuntimeValidationGateTest {
-  private val repoRoot: Path = Path.of(".").toAbsolutePath().normalize()
-
-  private val gateDeclaration = ValidationGateDeclaration(
-    fullGateCommand = listOf("echo", "cache"),
-    cacheBypassingFullGateCommand = listOf("echo", "full"),
-    buildOnlyCommand = listOf("echo", "build-only"),
-    findings = ValidationGateFindingsLocator(
-      format = ValidationGateFindingsFormat.JUNIT_XML,
-      artifactGlobs = listOf("**/*.xml"),
-      executedWork = ValidationGateExecutedWorkSignal(ValidationGateExecutedWorkFormat.GRADLE_ACTIONABLE_SUMMARY),
-    ),
-  )
-
-  @Test
-  fun `BUILD_ONLY selects build_only_command argv`() {
-    assertEquals(
-      listOf("echo", "build-only"),
-      validationGateArgv(gateDeclaration, ValidationDepth.BUILD_ONLY, ValidationGateCacheMode.CACHE_ELIGIBLE),
-    )
-  }
-
-  @Test
-  fun `BUILD_ONLY terminal verifying keeps build-only argv and appends cache-bypass extras`() {
-    val gradleGate = gateDeclaration.copy(
-      fullGateCommand = listOf("./gradlew", "check"),
-      cacheBypassingFullGateCommand = listOf("./gradlew", "check", "--rerun-tasks", "--no-build-cache"),
-      buildOnlyCommand = listOf("./gradlew", "classes", "testClasses"),
-    )
-    assertEquals(
-      listOf("./gradlew", "classes", "testClasses", "--rerun-tasks", "--no-build-cache"),
-      validationGateArgv(gradleGate, ValidationDepth.BUILD_ONLY, ValidationGateCacheMode.FORCED_FULL),
-    )
-  }
-
-  @Test
-  fun `terminal verifying selects cache bypass argv`() {
-    assertEquals(
-      listOf("echo", "full"),
-      validationGateArgv(gateDeclaration, ValidationDepth.FULL, ValidationGateCacheMode.FORCED_FULL),
-    )
-  }
-
-  @Test
-  fun `intermediate repair runs stay on cache-eligible argv`() {
-    assertEquals(
-      listOf("echo", "cache"),
-      validationGateArgv(gateDeclaration, ValidationDepth.FULL, ValidationGateCacheMode.CACHE_ELIGIBLE),
-    )
-  }
-
-  @Test
-  fun `repo-local gradle_wrapper rewrites pack gradlew argv before the gate runs`() {
-    val captured = mutableListOf<List<String>>()
-    val gradleGate = gateDeclaration.copy(
-      fullGateCommand = listOf("./gradlew", "check"),
-      cacheBypassingFullGateCommand = listOf("./gradlew", "check", "--rerun-tasks"),
-      buildOnlyCommand = listOf("./gradlew", "classes"),
-    )
-    val runner = object : ValidationGateRunner {
-      override fun run(request: ValidationGateRunRequest): ValidationGateRunResult {
-        captured += request.argv
-        return ValidationGateRunResult(
-          exitCode = 0,
-          durationMs = 1,
-          outcome = ValidationGateRunOutcome.PASSED,
-          cacheMode = request.cacheMode,
-          executedWorkUnits = 1,
-          findings = emptyList(),
-        )
-      }
-    }
-    val cycle = coordinator(
-      declaredResolver(gradleGate),
-      runner,
-      mutableListOf(),
-      gradleWrapper = "runtime-kotlin/gradlew",
-    ).execute(
-      ValidationGateCycleRequest(
-        repoRoot = repoRoot,
-        request = minimalRequest(),
-        validationDepth = ValidationDepth.DEFAULT,
-        changedPaths = listOf("runtime-kotlin/foo.kt"),
-        repositoryCheckpoint = "checkpoint",
-        agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _ ->
-          error("repair should not run for a clean gate")
-        },
-      ),
-    )
-    assertIs<ValidationGateCycleResult.Terminal>(cycle)
-    assertIs<ValidationGateCycleTerminalOutcome.Completed>(cycle.outcome)
-    assertEquals(
-      listOf(
-        listOf("runtime-kotlin/gradlew", "-p", "runtime-kotlin", "check"),
-        listOf("runtime-kotlin/gradlew", "-p", "runtime-kotlin", "check", "--rerun-tasks"),
-      ),
-      captured,
-    )
-  }
-
-  @Test
-  fun `repair launches with every finding when the set exceeds the former handoff item cap`() {
-    val findings = (1..65).map { index ->
-      ValidationGateFinding("m$index", "t$index", "message-$index", "loc-$index")
-    }
-    val repairLaunches = AtomicInteger(0)
-    var handed: List<ValidationGateFinding> = emptyList()
-    val runner = ScriptedGateRunner(
-      listOf(
-        failedWith(findings),
-        passed(),
-        passed(forced = true),
-      ),
-    )
-    val cycle = coordinator(declaredResolver(), runner, mutableListOf()).execute(
-      cycle = ValidationGateCycleRequest(
-        repoRoot = repoRoot,
-        request = minimalRequest(),
-        validationDepth = ValidationDepth.DEFAULT,
-        changedPaths = listOf("runtime-kotlin/foo.kt"),
-        repositoryCheckpoint = "checkpoint",
-        agentRepairLauncher = ValidationGateAgentRepairLauncher { projection, _ ->
-          repairLaunches.incrementAndGet()
-          handed = projection.findings
-          ValidationGateAgentRepairResult.Completed(
-            FeatureTaskRuntimePhaseOutput(phaseId = "validate", iteration = 1, payload = "{}"),
-          )
-        },
-      ),
-    )
-    assertEquals(1, repairLaunches.get())
-    assertEquals(findings, handed)
-    assertIs<ValidationGateCycleTerminalOutcome.Completed>(
-      assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,
-    )
-  }
-
-  @Test
-  fun `zero work terminal outcome is rejected`() {
-    val runner = object : ValidationGateRunner {
-      override fun run(request: ValidationGateRunRequest): ValidationGateRunResult = ValidationGateRunResult(
-        exitCode = 0,
-        durationMs = 3,
-        outcome = ValidationGateRunOutcome.REJECTED_ZERO_WORK,
-        cacheMode = request.cacheMode,
-        executedWorkUnits = 0,
-        findings = emptyList(),
-      )
-    }
-    val result = runner.run(
-      ValidationGateRunRequest(
-        repoRoot = repoRoot,
-        argv = listOf("true"),
-        cacheMode = ValidationGateCacheMode.FORCED_FULL,
-        declaration = gateDeclaration,
-        terminalVerifying = true,
-      ),
-    )
-    assertEquals(ValidationGateRunOutcome.REJECTED_ZERO_WORK, result.outcome)
-    assertEquals(0, result.executedWorkUnits)
-  }
-
-  @Test
-  fun `absent gate resolution returns absent for pack without declaration`() {
-    val resolver = ValidationGateResolver { listOf(kotlinPackWithoutGate()) }
-    val resolution = resolver.resolve(listOf("runtime-kotlin/foo.kt"))
-    assertTrue(resolution is ValidationGateResolution.Absent)
-  }
-
-  @Test
-  fun `out of contract packs block terminally instead of degrading or crashing`() {
-    val cycle = coordinator(outOfContractResolver(), neverRunsGate(), mutableListOf())
-      .execute(cycle = outOfContractCycle())
-    assertIs<ValidationGateCycleResult.Terminal>(cycle)
-    val blocked = assertIs<ValidationGateCycleTerminalOutcome.Blocked>(cycle.outcome)
-    assertTrue(blocked.reason.contains("contract_version '0.1'"))
-    assertTrue(blocked.reason.contains("Repair the installed platform packs"))
-  }
-
-  @Test
-  fun `throwing progress event sink does not change the gate cycle outcome`() {
-    // Realistic bug: progressStore isolation exists, but ValidationGateProgress emit escapes and
-    // aborts an otherwise passing gate cycle when a status/telemetry observer throws; or the
-    // isolation swallows the fault with no payload-free diagnostic record (observability-policy).
-    val progress = mutableListOf<FeatureTaskRuntimeValidationGateProgress>()
-    val diagnostics = RecordingDiagnostics()
-    val throwingSink = FeatureTaskRuntimeRunEventSink {
-      error("status/telemetry observer refused ValidationGateProgress")
-    }
-    val runner = ScriptedGateRunner(listOf(passed(), passed(forced = true)))
-    val cycle = coordinator(declaredResolver(), runner, progress, diagnostics = diagnostics).execute(
-      cycle = ValidationGateCycleRequest(
-        repoRoot = repoRoot,
-        request = minimalRequest().copy(eventSink = throwingSink),
-        validationDepth = ValidationDepth.DEFAULT,
-        changedPaths = listOf("runtime-kotlin/foo.kt"),
-        repositoryCheckpoint = "checkpoint",
-        agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _ ->
-          error("repair must not launch on a clean gate")
-        },
-      ),
-    )
-    assertIs<ValidationGateCycleTerminalOutcome.Completed>(
-      assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,
-    )
-    assertTrue(progress.isNotEmpty())
-    assertEquals(2, runner.calls)
-    assertTrue(
-      diagnostics.warnings.any { it.contains("ValidationGateProgress event-sink emission failed") },
-      "observer failure must leave an independent payload-free diagnostic record",
-    )
-  }
-
-  @Test
-  fun `gate declarations come from the installed pack selection`() {
-    // Only the packs the user installed are offered; a pack that ships but was not selected is
-    // simply absent from the catalog, so routing can never reach its gate.
-    val selected = ValidationGateResolver { listOf(kotlinPackWithoutGate().copy(validationGate = gateDeclaration)) }
-    val declared = assertIs<ValidationGateResolution.Declared>(selected.resolve(listOf("runtime-kotlin/foo.kt")))
-    assertEquals("kotlin", declared.packSlug)
-
-    val notSelected = ValidationGateResolver { emptyList() }
-    assertIs<ValidationGateResolution.Absent>(notSelected.resolve(listOf("runtime-kotlin/foo.kt")))
-  }
-
   @Test
   fun `FAILED gate with empty findings launches repair with synthetic finding`() {
     val progress = mutableListOf<FeatureTaskRuntimeValidationGateProgress>()
     val repairLaunches = AtomicInteger(0)
-    val runner = ScriptedGateRunner(
-      listOf(
-        failedEmptyFindings(),
-        passed(),
-        passed(forced = true),
-      ),
-    )
+    val runner = ScriptedGateRunner(listOf(failedEmptyFindings(), passed(forced = true)))
     val cycle = coordinator(declaredResolver(), runner, progress).execute(
       cycle = ValidationGateCycleRequest(
-        repoRoot = repoRoot,
+        repoRoot = validationGateTestRepoRoot,
         request = minimalRequest(),
         validationDepth = ValidationDepth.DEFAULT,
         changedPaths = listOf("runtime-kotlin/foo.kt"),
@@ -285,9 +28,7 @@ class FeatureTaskRuntimeValidationGateTest {
           repairLaunches.incrementAndGet()
           assertEquals(1, findings.findings.size)
           assertEquals("unparseable_gate_failure", findings.findings.single().ruleOrTestId)
-          ValidationGateAgentRepairResult.Completed(
-            FeatureTaskRuntimePhaseOutput(phaseId = "validate", iteration = 1, payload = "{}"),
-          )
+          completedRepair(findings.findings)
         },
       ),
     )
@@ -297,223 +38,28 @@ class FeatureTaskRuntimeValidationGateTest {
   }
 
   @Test
-  fun `gate keeps repairing beyond the previous cap and completes when findings clear`() {
-    val progress = mutableListOf<FeatureTaskRuntimeValidationGateProgress>()
-    val repairLaunches = AtomicInteger(0)
-    val finding = ValidationGateFinding("m", "t", "still broken", "loc")
-    val runner = ScriptedGateRunner(
-      List(4) { failedWith(finding) } + listOf(passed(), passed(forced = true)),
-    )
-    val cycle = coordinator(declaredResolver(), runner, progress).execute(
-      cycle = ValidationGateCycleRequest(
-        repoRoot = repoRoot,
-        request = minimalRequest(),
-        validationDepth = ValidationDepth.DEFAULT,
-        changedPaths = listOf("runtime-kotlin/foo.kt"),
-        repositoryCheckpoint = "checkpoint",
-        agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _ ->
-          repairLaunches.incrementAndGet()
-          ValidationGateAgentRepairResult.Completed(
-            FeatureTaskRuntimePhaseOutput(phaseId = "validate", iteration = 1, payload = "{}"),
-          )
-        },
-      ),
-    )
-    assertEquals(4, repairLaunches.get())
-    // Four repair runs prove the old three-turn cap no longer blocks validation.
-    assertEquals(6, runner.calls)
-    assertIs<ValidationGateCycleTerminalOutcome.Completed>(
-      assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,
-    )
-    assertTrue(progress.last().remainingFindings.isEmpty())
-  }
-
-  @Test
-  fun `successful final repair is verified by a post-repair gate run before completion`() {
-    val progress = mutableListOf<FeatureTaskRuntimeValidationGateProgress>()
-    val repairLaunches = AtomicInteger(0)
-    val finding = ValidationGateFinding("m", "t", "broken", "loc")
-    val runner = ScriptedGateRunner(
-      listOf(
-        failedWith(finding),
-        failedWith(finding),
-        failedWith(finding),
-        failedWith(finding),
-        passed(),
-        passed(forced = true),
-      ),
-    )
-    val cycle = coordinator(declaredResolver(), runner, progress).execute(
-      cycle = ValidationGateCycleRequest(
-        repoRoot = repoRoot,
-        request = minimalRequest(),
-        validationDepth = ValidationDepth.DEFAULT,
-        changedPaths = listOf("runtime-kotlin/foo.kt"),
-        repositoryCheckpoint = "checkpoint",
-        agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _ ->
-          repairLaunches.incrementAndGet()
-          ValidationGateAgentRepairResult.Completed(
-            FeatureTaskRuntimePhaseOutput(phaseId = "validate", iteration = 1, payload = "{}"),
-          )
-        },
-      ),
-    )
-    assertEquals(4, repairLaunches.get())
-    assertIs<ValidationGateCycleTerminalOutcome.Completed>(
-      assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,
-    )
-    assertTrue(progress.last().remainingFindings.isEmpty())
-  }
-
-  @Test
-  fun `each repair turn is launched under its own ordinal so turns never share an evidence key`() {
-    val finding = ValidationGateFinding("m", "t", "still broken", "loc")
-    val ordinals = mutableListOf<Int>()
-    val runner = ScriptedGateRunner(
-      List(4) { failedWith(finding) } + listOf(passed(), passed(forced = true)),
-    )
-
-    coordinator(declaredResolver(), runner, mutableListOf()).execute(
-      cycle = ValidationGateCycleRequest(
-        repoRoot = repoRoot,
-        request = minimalRequest(),
-        validationDepth = ValidationDepth.DEFAULT,
-        changedPaths = listOf("runtime-kotlin/foo.kt"),
-        repositoryCheckpoint = "checkpoint",
-        agentRepairLauncher = ValidationGateAgentRepairLauncher { _, repairIteration ->
-          ordinals += repairIteration
-          ValidationGateAgentRepairResult.Completed(
-            FeatureTaskRuntimePhaseOutput(phaseId = "validate", iteration = 1, payload = "{}"),
-          )
-        },
-      ),
-    )
-
-    assertEquals((1..4).toList(), ordinals)
-  }
-
-  private fun outOfContractResolver(): ValidationGateResolver = ValidationGateResolver {
-    throw ContractVersionMismatchError(
-      "Platform pack 'fallback': declares contract_version '0.1' but the shell expects '1.4'.",
-    )
-  }
-
-  private fun neverRunsGate(): ValidationGateRunner = object : ValidationGateRunner {
-    override fun run(request: ValidationGateRunRequest): ValidationGateRunResult =
-      error("validation gate must not launch when platform packs are out of contract")
-  }
-
-  private fun outOfContractCycle(): ValidationGateCycleRequest = ValidationGateCycleRequest(
-    repoRoot = repoRoot,
-    request = minimalRequest(),
-    validationDepth = ValidationDepth.DEFAULT,
-    changedPaths = listOf("runtime-kotlin/foo.kt"),
-    repositoryCheckpoint = "checkpoint",
-    agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _ ->
-      error("repair must not launch when platform packs are out of contract")
-    },
-  )
-
-  private fun coordinator(
-    resolver: ValidationGateResolver,
-    runner: ValidationGateRunner,
-    progress: MutableList<FeatureTaskRuntimeValidationGateProgress>,
-    gradleWrapper: String? = null,
-    diagnostics: RuntimeDiagnostics = skillbill.ports.diagnostics.NoopRuntimeDiagnostics,
-  ): FeatureTaskRuntimeValidationGateCoordinator = FeatureTaskRuntimeValidationGateCoordinator(
-    resolver,
-    runner,
-    ValidationGateProgressStore { _, p, _ -> progress += p },
-    FeatureTaskRuntimeSuppressionDeltaService(
-      object : skillbill.ports.workflow.WorkflowGitOperations by skillbill.ports.workflow.NoopWorkflowGitOperations {},
-    ),
-    repoLocalConfig(gradleWrapper),
-    diagnostics,
-  )
-
-  private fun repoLocalConfig(gradleWrapper: String? = null): skillbill.ports.config.RepoLocalConfigPort =
-    object : skillbill.ports.config.RepoLocalConfigPort {
-      override fun readRepoLocalConfig(request: skillbill.ports.config.model.ReadRepoLocalConfigRequest) =
-        skillbill.ports.config.model.ReadRepoLocalConfigResult(
-          skillbill.config.model.RepoLocalConfig.defaults().copy(
-            validationGate = skillbill.config.model.ValidationGateRepoConfig(gradleWrapper = gradleWrapper),
+  fun `fromArtifactMap decodes persistence 0_2 progress omitting additive finding fields`() {
+    val decoded = FeatureTaskRuntimeValidationGateProgress.fromArtifactMap(
+      mapOf(
+        "contract_version" to skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION,
+        "gate_run_count" to 1,
+        "gate_runs" to listOf(
+          mapOf(
+            "duration_ms" to 1L,
+            "outcome" to "passed",
+            "cache_mode" to "cache_eligible",
+            "executed_work_units" to 1,
           ),
-        )
-    }
-
-  private fun declaredResolver(declaration: ValidationGateDeclaration = gateDeclaration): ValidationGateResolver =
-    ValidationGateResolver { listOf(kotlinPackWithoutGate().copy(validationGate = declaration)) }
-
-  private fun minimalRequest(): FeatureTaskRuntimeRunRequest = FeatureTaskRuntimeRunRequest(
-    issueKey = "SKILL-180",
-    workflowId = "wf-skill-180",
-    sessionId = "session",
-    runInvariants = FeatureTaskRuntimeRunInvariants(
-      specReference = "spec.md",
-      featureSize = FeatureTaskRuntimeFeatureSize.MEDIUM,
-      acceptanceCriteria = listOf("AC-001"),
-      mandatesAndOverrides = emptyList(),
-    ),
-    invokedAgentId = "claude",
-    repoRoot = repoRoot,
-  )
-
-  private fun passed(forced: Boolean = false): ValidationGateRunResult = ValidationGateRunResult(
-    exitCode = 0,
-    durationMs = 1,
-    outcome = ValidationGateRunOutcome.PASSED,
-    cacheMode = if (forced) ValidationGateCacheMode.FORCED_FULL else ValidationGateCacheMode.CACHE_ELIGIBLE,
-    executedWorkUnits = 1,
-    findings = emptyList(),
-  )
-
-  private fun failedEmptyFindings(): ValidationGateRunResult = ValidationGateRunResult(
-    exitCode = 1,
-    durationMs = 1,
-    outcome = ValidationGateRunOutcome.FAILED,
-    cacheMode = ValidationGateCacheMode.CACHE_ELIGIBLE,
-    executedWorkUnits = 1,
-    findings = emptyList(),
-  )
-
-  private fun failedWith(finding: ValidationGateFinding): ValidationGateRunResult = failedWith(listOf(finding))
-
-  private fun failedWith(findings: List<ValidationGateFinding>): ValidationGateRunResult = ValidationGateRunResult(
-    exitCode = 1,
-    durationMs = 1,
-    outcome = ValidationGateRunOutcome.FAILED,
-    cacheMode = ValidationGateCacheMode.CACHE_ELIGIBLE,
-    executedWorkUnits = 1,
-    findings = findings,
-  )
-
-  private fun kotlinPackWithoutGate(): PlatformManifest = PlatformManifest(
-    slug = "kotlin",
-    packRoot = repoRoot.resolve("platform-packs/kotlin"),
-    contractVersion = "1.4",
-    routingSignals = RoutingSignals(
-      strong = listOf("runtime-kotlin"),
-      tieBreakers = emptyList(),
-      path = listOf("runtime-kotlin"),
-    ),
-    declaredCodeReviewAreas = emptyList(),
-    declaredFiles = DeclaredFiles(null, emptyMap()),
-    areaMetadata = emptyMap(),
-    validationGate = null,
-  )
-
-  private class ScriptedGateRunner(
-    private val results: List<ValidationGateRunResult>,
-  ) : ValidationGateRunner {
-    var calls: Int = 0
-      private set
-
-    override fun run(request: ValidationGateRunRequest): ValidationGateRunResult {
-      val index = calls
-      calls++
-      return results.getOrElse(index) {
-        error("ScriptedGateRunner exhausted after ${results.size} results; call=$index")
-      }
-    }
+        ),
+        "remaining_findings" to emptyList<Map<String, String?>>(),
+        "remaining_findings_dropped_count" to 0,
+      ),
+    )
+    assertEquals(emptyList(), decoded.completeFindings)
+    assertEquals(0, decoded.findingsPageOffset)
+    assertEquals(0, decoded.confirmationRetriesUsed)
+    assertEquals(emptyList(), decoded.discoveryIdentities)
+    assertEquals(emptyList(), decoded.validationRepairPlan)
+    assertEquals(emptyList(), decoded.substantiationReceipts)
   }
 }

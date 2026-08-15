@@ -200,10 +200,9 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE),
     )
 
-    assertContains(prompt, "runtime owns the repository validation gate")
-    assertContains(prompt, "You receive the complete finding set")
+    assertContains(prompt, "runtime owns collect-all execution")
     assertContains(prompt, "must not invoke the gate or any quality-check skill")
-    assertFalse(prompt.contains("bounded finding-set"))
+    assertContains(prompt, "Each discovery identity needs a substantiation receipt")
     assertFalse(prompt.contains("Invoke bill-code-check"))
   }
 
@@ -222,7 +221,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       prompt,
       "never silence them with annotations, baselines, disabled rules, weakened configuration, or skipped tests",
     )
-    assertFalse(prompt.contains("runtime owns the repository validation gate"))
+    assertFalse(prompt.contains("runtime owns collect-all execution"))
   }
 
   @Test
@@ -265,6 +264,9 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertFalse(prompt.contains("Never rerun the gate after an individual fix"))
     assertFalse(prompt.contains("Invoke bill-code-check for that gate"))
     assertFalse(prompt.contains("never silence them with annotations, baselines, disabled rules"))
+    assertFalse(prompt.contains("substantiation receipt"))
+    assertFalse(prompt.contains("collect-all"))
+    assertFalse(prompt.contains("confirmation identity closure"))
     assertContains(
       prompt,
       FeatureTaskRuntimeHandoffProjectionValidator.BUILD_ONLY_COMPILE_BUILDABILITY_CHECK,
@@ -288,7 +290,10 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     )
 
     listOf(fullPrompt, defaultPrompt).forEach { prompt ->
-      assertContains(prompt, "runtime owns the repository validation gate")
+      assertContains(prompt, "runtime owns collect-all execution")
+      assertContains(prompt, "complete persisted repair plan")
+      assertContains(prompt, "Each discovery identity needs a substantiation receipt")
+      assertContains(prompt, "must not invoke the gate or any quality-check skill")
       assertContains(
         prompt,
         "never silence them with annotations, baselines, disabled rules, weakened configuration, or skipped tests",
@@ -296,6 +301,54 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       assertFalse(prompt.contains("Invoke bill-code-check"))
       assertFalse(prompt.contains("Goal-continuation validate depth"))
     }
+  }
+
+  @Test
+  fun `FULL and default runtime-owned validate prompts name complete set or scheduled remainder`() {
+    val finding = skillbill.ports.validation.model.ValidationGateFinding("m", "t", "broken", "loc")
+    val page = skillbill.application.featuretask.validation.model.ValidationFindingSetProjection(
+      findings = listOf(finding),
+      droppedCount = 0,
+      scheduledRemainderCount = 1,
+    )
+    val fullPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+        validationDepth = ValidationDepth.FULL,
+      ),
+      validationDepth = ValidationDepth.FULL,
+      validationGateFindings = page,
+    )
+    val defaultPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE),
+      validationGateFindings = page,
+    )
+    listOf(fullPrompt, defaultPrompt).forEach { prompt ->
+      assertContains(prompt, "complete discovery set")
+      assertContains(prompt, "complete persisted")
+      assertContains(prompt, "remainder is scheduled in this same pass")
+      assertContains(prompt, "must not invoke the gate or any quality-check skill")
+      assertContains(prompt, "substantiation receipt")
+      assertContains(prompt, "Do not rediscover findings")
+      assertFalse(prompt.contains("additional findings were omitted"))
+    }
+    val buildOnlyPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+        validationDepth = ValidationDepth.BUILD_ONLY,
+      ),
+      validationDepth = ValidationDepth.BUILD_ONLY,
+      validationGateFindings = page,
+    )
+    assertContains(buildOnlyPrompt, "Prove compile/buildability")
+    assertFalse(buildOnlyPrompt.contains("complete discovery set"))
+    assertFalse(buildOnlyPrompt.contains("collect-all"))
+    assertFalse(buildOnlyPrompt.contains("scheduled_remainder"))
+    assertFalse(buildOnlyPrompt.contains("substantiation receipt"))
+    assertFalse(buildOnlyPrompt.contains("confirmation identity"))
   }
 
   // SKILL-180: FULL validate must carry no-suppression; other phases must not.

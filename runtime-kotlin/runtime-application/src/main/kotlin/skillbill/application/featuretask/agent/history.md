@@ -1,5 +1,25 @@
 # featuretask runtime boundary history
 
+## [2026-08-15] SKILL-192 subtask 3 — Repair plan, substantiation receipts, confirmation closure
+Areas: runtime-application/featuretask/validation, runtime-domain/workflow/taskruntime/model, runtime-ports/validation, AGENTS.md, runtime-kotlin/agent
+- FULL collect-all no longer treats a completed repair payload as proof: persist a covering repair plan, require a substantiation receipt per discovery identity, then run one confirmation collect-all
+- Green confirmation is identity closure (every discovery identity absent from the confirmation finding set), not measured PASSED; leftover identities fail substantiation and stay in the next set; new confirmation identities join that set without fail-fast rediscovery
+- Incomplete plan or receipts reject the same repair pass without a new gate run (producer-side gate, same validator as launch); grouped plan items still close every identity
+- Pattern: suite proof stays one collect-all confirmation; never substantiate via pack full gate or per-test Gradle. BUILD_ONLY stays compile/build-only without receipts or closure. reusable
+- Limitation: identity key remains exact module|ruleOrTestId|message|location; additive plan/receipt keys decode empty without a persistence version bump
+Feature flag: N/A
+Acceptance criteria: 12/12 implemented
+
+## [2026-08-15] SKILL-192 subtask 2 — FULL validate discover, plan, repair-all, confirm
+Areas: runtime-application/featuretask (coordinator, policy, projector, prompts), runtime-domain/workflow/taskruntime/model
+- FULL validate replaced unbounded fail-fast `full_gate_command` looping with collect-all discovery, persist-complete-set, one repair pass over the entire set (or pages without a gate rerun), then cache-bypassing collect-all confirmation
+- A cache-eligible green discovery is never terminal; confirmation with zero executed work never satisfies; a failed confirmation's complete set is the next repair input with no extra discovery; retry-cap exhaustion blocks with remaining findings
+- BUILD_ONLY stays on `build_only_command` cache-eligible then forced-full attestation; goal last-child FULL vs intermediate BUILD_ONLY is unchanged
+- Pattern: pack collect-all argv owns continue-on-failure and cache-bypass; coordinator never falls back to fail-fast FULL when collect-all exists. reusable
+- Limitation: repair-plan receipts and confirmation identity closure are subtask 3; this cycle treats a completed repair launch as pass-attempted
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
 ## [2026-08-13] SKILL-186 subtask 2 — Quarantine identity integrity
 Areas: runtime-application/featuretask (recorder, run loop), runtime-application/model, runtime-domain/workflow/taskruntime/model, orchestration/contracts, runtime-contracts, runtime-infra-fs (schema validator)
 - `recordRejectedOutput` returns `Written(identity)` only after the evidence transaction commits, or `Degraded(failureClass)` when it rolled back — never a `rod_` token for a row that does not exist

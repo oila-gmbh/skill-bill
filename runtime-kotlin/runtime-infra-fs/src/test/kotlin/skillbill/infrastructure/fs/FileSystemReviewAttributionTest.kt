@@ -95,7 +95,7 @@ class FileSystemReviewAttributionTest {
     }
     return """
       |platform: $slug
-      |contract_version: "1.4"
+      |contract_version: "1.5"
       |display_name: $slug
       |routing_signals:
       |  strong:
@@ -117,7 +117,7 @@ class FileSystemReviewAttributionTest {
 
   private fun platformManifest(): String = """
     |platform: ruby
-    |contract_version: "1.4"
+    |contract_version: "1.5"
     |display_name: Ruby
     |routing_signals:
     |  strong:

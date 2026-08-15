@@ -414,7 +414,7 @@ class PlatformPackCompositionTest {
     composition: String = "",
   ): String = buildString {
     appendLine("platform: $slug")
-    appendLine("contract_version: \"1.4\"")
+    appendLine("contract_version: \"1.5\"")
     appendLine("routing_signals:")
     appendLine("  strong: [\".$slug\"]")
     appendLine("declared_code_review_areas:")

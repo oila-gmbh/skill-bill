@@ -4,6 +4,13 @@ This file records architectural and implementation decisions that span the
 `runtime-kotlin/` boundary. Each entry is dated and explains the trade-off,
 not the implementation detail.
 
+## [2026-08-15] FULL validate proves repairs by confirmation identity closure
+Context: Last-subtask FULL collect-all discovery still treated a completed repair agent payload as proof, so omitted identities and leftover confirmation findings could look green.
+Decision: Persist a covering repair plan and require a substantiation receipt per discovery identity before confirmation; green confirmation is identity closure on the confirmation finding set, not measured PASSED alone.
+Reason: Suite proof stays one collect-all confirmation run; per-finding Gradle or filtered `--tests` launches recreate the SKILL-176 39-run failure. BUILD_ONLY stays compile/build-only without receipts or identity closure.
+Alternatives considered: Agent-run full_gate_command or per-test substantiation — rejected. Bumping persistence contract versions for additive plan/receipt keys — rejected; absent keys decode empty.
+Revisit when: confirmation closure needs a different identity key than exact module|ruleOrTestId|message|location.
+
 ## 2026-08-10 — Review remediation gate is Blocker or Major (SKILL-178)
 
 Context: Governed skill content and content-lock tests still stated the old
