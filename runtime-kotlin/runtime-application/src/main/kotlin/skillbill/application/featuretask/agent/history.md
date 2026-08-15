@@ -1,5 +1,15 @@
 # featuretask runtime boundary history
 
+## [2026-08-15] SKILL-192 subtask 2 — FULL validate discover, plan, repair-all, confirm
+Areas: runtime-application/featuretask (coordinator, policy, projector, prompts), runtime-domain/workflow/taskruntime/model
+- FULL validate replaced unbounded fail-fast `full_gate_command` looping with collect-all discovery, persist-complete-set, one repair pass over the entire set (or pages without a gate rerun), then cache-bypassing collect-all confirmation
+- A cache-eligible green discovery is never terminal; confirmation with zero executed work never satisfies; a failed confirmation's complete set is the next repair input with no extra discovery; retry-cap exhaustion blocks with remaining findings
+- BUILD_ONLY stays on `build_only_command` cache-eligible then forced-full attestation; goal last-child FULL vs intermediate BUILD_ONLY is unchanged
+- Pattern: pack collect-all argv owns continue-on-failure and cache-bypass; coordinator never falls back to fail-fast FULL when collect-all exists. reusable
+- Limitation: repair-plan receipts and confirmation identity closure are subtask 3; this cycle treats a completed repair launch as pass-attempted
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
 ## [2026-08-13] SKILL-186 subtask 2 — Quarantine identity integrity
 Areas: runtime-application/featuretask (recorder, run loop), runtime-application/model, runtime-domain/workflow/taskruntime/model, orchestration/contracts, runtime-contracts, runtime-infra-fs (schema validator)
 - `recordRejectedOutput` returns `Written(identity)` only after the evidence transaction commits, or `Degraded(failureClass)` when it rolled back — never a `rod_` token for a row that does not exist
