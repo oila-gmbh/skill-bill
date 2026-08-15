@@ -31,12 +31,18 @@ data class ValidationGateFinding(
   val location: String?,
 )
 
+enum class ValidationGateFindingParseMode {
+  ARTIFACTS_ONLY,
+  COLLECT_ALL,
+}
+
 data class ValidationGateRunRequest(
   val repoRoot: Path,
   val argv: List<String>,
   val cacheMode: ValidationGateCacheMode,
   val declaration: ValidationGateDeclaration,
   val terminalVerifying: Boolean,
+  val findingParseMode: ValidationGateFindingParseMode = ValidationGateFindingParseMode.ARTIFACTS_ONLY,
 )
 
 data class ValidationGateRunResult(

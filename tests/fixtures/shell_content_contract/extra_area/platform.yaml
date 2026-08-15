@@ -1,5 +1,5 @@
 platform: extra_area
-contract_version: '1.4'
+contract_version: '1.5'
 display_name: Extra-Area Fixture Pack
 routing_signals:
   strong:

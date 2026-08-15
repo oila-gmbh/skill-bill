@@ -45,10 +45,15 @@ class FeatureTaskRuntimeValidationGateTest {
   private val gateDeclaration = ValidationGateDeclaration(
     fullGateCommand = listOf("echo", "cache"),
     cacheBypassingFullGateCommand = listOf("echo", "full"),
+    collectAllFullGateCommand = listOf("echo", "collect-all"),
+    cacheBypassingCollectAllFullGateCommand = listOf("echo", "collect-all-full"),
     buildOnlyCommand = listOf("echo", "build-only"),
     findings = ValidationGateFindingsLocator(
       format = ValidationGateFindingsFormat.JUNIT_XML,
       artifactGlobs = listOf("**/*.xml"),
+      compilerDiagnostics = skillbill.scaffold.model.ValidationGateCompilerDiagnosticsLocator(
+        skillbill.scaffold.model.ValidationGateCompilerDiagnosticsFormat.GRADLE_KOTLIN_COMPILER_STDOUT,
+      ),
       executedWork = ValidationGateExecutedWorkSignal(ValidationGateExecutedWorkFormat.GRADLE_ACTIONABLE_SUMMARY),
     ),
   )
@@ -87,6 +92,18 @@ class FeatureTaskRuntimeValidationGateTest {
     assertEquals(
       listOf("echo", "cache"),
       validationGateArgv(gateDeclaration, ValidationDepth.FULL, ValidationGateCacheMode.CACHE_ELIGIBLE),
+    )
+  }
+
+  @Test
+  fun `collect-all argv helper selects pack collect-all commands`() {
+    assertEquals(
+      listOf("echo", "collect-all"),
+      validationGateCollectAllArgv(gateDeclaration, ValidationGateCacheMode.CACHE_ELIGIBLE),
+    )
+    assertEquals(
+      listOf("echo", "collect-all-full"),
+      validationGateCollectAllArgv(gateDeclaration, ValidationGateCacheMode.FORCED_FULL),
     )
   }
 
@@ -371,7 +388,7 @@ class FeatureTaskRuntimeValidationGateTest {
 
   private fun outOfContractResolver(): ValidationGateResolver = ValidationGateResolver {
     throw ContractVersionMismatchError(
-      "Platform pack 'fallback': declares contract_version '0.1' but the shell expects '1.4'.",
+      "Platform pack 'fallback': declares contract_version '0.1' but the shell expects '1.5'.",
     )
   }
 
@@ -465,7 +482,7 @@ class FeatureTaskRuntimeValidationGateTest {
   private fun kotlinPackWithoutGate(): PlatformManifest = PlatformManifest(
     slug = "kotlin",
     packRoot = repoRoot.resolve("platform-packs/kotlin"),
-    contractVersion = "1.4",
+    contractVersion = "1.5",
     routingSignals = RoutingSignals(
       strong = listOf("runtime-kotlin"),
       tieBreakers = emptyList(),

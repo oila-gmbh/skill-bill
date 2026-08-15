@@ -50,10 +50,15 @@ class FeatureTaskRuntimeSuppressionGateTest {
   private val gateDeclaration = ValidationGateDeclaration(
     fullGateCommand = listOf("echo", "cache"),
     cacheBypassingFullGateCommand = listOf("echo", "full"),
+    collectAllFullGateCommand = listOf("echo", "collect-all"),
+    cacheBypassingCollectAllFullGateCommand = listOf("echo", "collect-all-full"),
     buildOnlyCommand = listOf("echo", "build-only"),
     findings = ValidationGateFindingsLocator(
       format = ValidationGateFindingsFormat.JUNIT_XML,
       artifactGlobs = listOf("**/*.xml"),
+      compilerDiagnostics = skillbill.scaffold.model.ValidationGateCompilerDiagnosticsLocator(
+        skillbill.scaffold.model.ValidationGateCompilerDiagnosticsFormat.GRADLE_KOTLIN_COMPILER_STDOUT,
+      ),
     ),
     suppressionMarkers = listOf("@Suppress"),
   )
@@ -306,7 +311,7 @@ class FeatureTaskRuntimeSuppressionGateTest {
         PlatformManifest(
           slug = "kotlin",
           packRoot = repoRoot.resolve("platform-packs/kotlin"),
-          contractVersion = "1.4",
+          contractVersion = "1.5",
           routingSignals = RoutingSignals(strong = listOf("src"), tieBreakers = emptyList(), path = listOf("src")),
           declaredCodeReviewAreas = emptyList(),
           declaredFiles = DeclaredFiles(null, emptyMap()),

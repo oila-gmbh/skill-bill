@@ -140,7 +140,7 @@ class PointerValidationTest {
         packRoot.resolve("platform.yaml"),
         """
         platform: $slug
-        contract_version: "1.4"
+        contract_version: "1.5"
 
         routing_signals:
           strong:
@@ -256,7 +256,7 @@ class PointerValidationTest {
       packRoot.resolve("platform.yaml"),
       """
       platform: fixturepack
-      contract_version: "1.4"
+      contract_version: "1.5"
 
       routing_signals:
         strong:

@@ -54,7 +54,7 @@ class KotlinPlatformPackTest {
 
     assertEquals("kotlin", pack.slug)
     assertEquals("Kotlin", pack.displayName)
-    assertEquals("1.4", pack.contractVersion)
+    assertEquals("1.5", pack.contractVersion)
     assertEquals(
       packRoot.resolve("code-review/bill-kotlin-code-review/content.md"),
       pack.declaredFiles.baseline,
@@ -90,6 +90,31 @@ class KotlinPlatformPackTest {
     KOTLIN_CODE_REVIEW_AREAS.forEach { area ->
       assertContains(pointerConsumers, "code-review/bill-kotlin-code-review-$area")
     }
+    val gate = requireNotNull(pack.validationGate)
+    assertEquals(listOf("./gradlew", "check", "--continue"), gate.collectAllFullGateCommand)
+    assertEquals(
+      listOf("./gradlew", "check", "--continue", "--rerun-tasks", "--no-build-cache"),
+      gate.cacheBypassingCollectAllFullGateCommand,
+    )
+  }
+
+  @Test
+  fun `runtime main sources do not hardcode collect-all or cache-bypass gradle flags`() {
+    val mainRoots = repoRootFromTest().resolve("runtime-kotlin")
+    val forbidden = listOf("--continue", "--rerun-tasks", "--no-build-cache")
+    val hits = buildList {
+      Files.walk(mainRoots).use { stream ->
+        stream.forEach { path ->
+          if (!Files.isRegularFile(path)) return@forEach
+          if ("/src/main/" !in path.toString().replace('\\', '/')) return@forEach
+          val text = Files.readString(path)
+          forbidden.forEach { token ->
+            if (token in text) add("$path contains $token")
+          }
+        }
+      }
+    }
+    assertEquals(emptyList(), hits)
   }
 
   @Test

@@ -43,7 +43,7 @@ class PythonPlatformPackTest {
 
     assertEquals("python", pack.slug)
     assertEquals("Python", pack.displayName)
-    assertEquals("1.4", pack.contractVersion)
+    assertEquals("1.5", pack.contractVersion)
     assertEquals(
       packRoot.resolve("code-review/bill-python-code-review/content.md"),
       pack.declaredFiles.baseline,

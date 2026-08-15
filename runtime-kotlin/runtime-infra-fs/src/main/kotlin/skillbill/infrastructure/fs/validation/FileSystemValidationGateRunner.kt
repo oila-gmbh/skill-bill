@@ -4,9 +4,11 @@ import me.tatarka.inject.annotations.Inject
 import org.w3c.dom.Element
 import skillbill.ports.validation.ValidationGateRunner
 import skillbill.ports.validation.model.ValidationGateFinding
+import skillbill.ports.validation.model.ValidationGateFindingParseMode
 import skillbill.ports.validation.model.ValidationGateRunOutcome
 import skillbill.ports.validation.model.ValidationGateRunRequest
 import skillbill.ports.validation.model.ValidationGateRunResult
+import skillbill.scaffold.model.ValidationGateCompilerDiagnosticsFormat
 import skillbill.scaffold.model.ValidationGateExecutedWorkFormat
 import skillbill.scaffold.model.ValidationGateFindingsFormat
 import java.nio.file.FileSystems
@@ -19,8 +21,6 @@ import javax.xml.parsers.DocumentBuilderFactory
 class FileSystemValidationGateRunner : ValidationGateRunner {
   override fun run(request: ValidationGateRunRequest): ValidationGateRunResult {
     val started = System.nanoTime()
-    // Redirect to a temp file rather than the OS pipe so verbose gate output cannot fill the
-    // pipe buffer, block the child on write, and hang until GATE_TIMEOUT_MINUTES.
     val outputFile = Files.createTempFile("skillbill-validation-gate", ".out")
     return try {
       val process = ProcessBuilder(request.argv)
@@ -38,16 +38,16 @@ class FileSystemValidationGateRunner : ValidationGateRunner {
       val stdout = Files.readString(outputFile)
       val durationMs = ((System.nanoTime() - started) / NANOS_PER_MILLIS).coerceAtLeast(0L)
       val executedWorkUnits = deriveExecutedWorkUnits(request, stdout)
-      val findings = parseFindings(request)
       val exitCode = process.exitValue()
-      val outcome = deriveOutcome(exitCode, findings, executedWorkUnits, request.terminalVerifying)
+      val parsedFindings = parseFindings(request, stdout)
+      val outcome = deriveOutcome(exitCode, parsedFindings, executedWorkUnits, request.terminalVerifying)
       ValidationGateRunResult(
         exitCode = exitCode,
         durationMs = durationMs,
         outcome = outcome,
         cacheMode = request.cacheMode,
         executedWorkUnits = executedWorkUnits,
-        findings = findings,
+        findings = finalizeFindings(request, parsedFindings, exitCode, outcome),
       )
     } finally {
       runCatching { Files.deleteIfExists(outputFile) }
@@ -73,13 +73,55 @@ class FileSystemValidationGateRunner : ValidationGateRunner {
     }
   }
 
-  private fun parseFindings(request: ValidationGateRunRequest): List<ValidationGateFinding> =
+  private fun parseFindings(request: ValidationGateRunRequest, stdout: String): List<ValidationGateFinding> {
+    val artifacts = parseArtifactFindings(request)
+    if (request.findingParseMode != ValidationGateFindingParseMode.COLLECT_ALL) {
+      return artifacts
+    }
+    val compiler = parseCompilerDiagnostics(request, stdout)
+    return (compiler + artifacts).distinctBy { findingIdentity(it) }
+  }
+
+  private fun finalizeFindings(
+    request: ValidationGateRunRequest,
+    parsed: List<ValidationGateFinding>,
+    exitCode: Int,
+    outcome: ValidationGateRunOutcome,
+  ): List<ValidationGateFinding> {
+    if (request.findingParseMode != ValidationGateFindingParseMode.COLLECT_ALL) {
+      return parsed
+    }
+    val failed = exitCode != 0 || outcome == ValidationGateRunOutcome.FAILED
+    if (failed && parsed.isEmpty()) {
+      return listOf(
+        ValidationGateFinding(
+          module = UNPARSEABLE_GATE_MODULE,
+          ruleOrTestId = UNPARSEABLE_GATE_RULE_ID,
+          message = "Validation gate reported outcome=${outcome.wireValue} exit=$exitCode " +
+            "without parseable findings; repair the underlying failure the gate detected.",
+          location = null,
+        ),
+      )
+    }
+    return parsed
+  }
+
+  private fun parseArtifactFindings(request: ValidationGateRunRequest): List<ValidationGateFinding> =
     when (request.declaration.findings.format) {
       ValidationGateFindingsFormat.JUNIT_XML ->
         request.declaration.findings.artifactGlobs
           .flatMap { glob -> expandGlob(request.repoRoot, glob) }
           .flatMap(::parseJUnitXmlFile)
-          .distinctBy { "${it.module}|${it.ruleOrTestId}|${it.message}|${it.location}" }
+          .distinctBy { findingIdentity(it) }
+    }
+
+  private fun parseCompilerDiagnostics(
+    request: ValidationGateRunRequest,
+    stdout: String,
+  ): List<ValidationGateFinding> =
+    when (request.declaration.findings.compilerDiagnostics.format) {
+      ValidationGateCompilerDiagnosticsFormat.GRADLE_KOTLIN_COMPILER_STDOUT ->
+        parseGradleKotlinCompilerStdout(request.repoRoot, stdout)
     }
 
   private fun parseJUnitXmlFile(path: Path): List<ValidationGateFinding> = runCatching {
@@ -112,12 +154,54 @@ class FileSystemValidationGateRunner : ValidationGateRunner {
     private const val GATE_TIMEOUT_MINUTES = 120L
     private const val NANOS_PER_MILLIS = 1_000_000L
     private const val DEFAULT_EXECUTED_WORK_WHEN_UNDECLARED = 1
+    private const val UNPARSEABLE_GATE_MODULE = "<validation-gate>"
+    private const val UNPARSEABLE_GATE_RULE_ID = "unparseable_gate_failure"
     private val GRADLE_EXECUTED_PATTERN = Regex("""(\d+)\s+executed""", RegexOption.IGNORE_CASE)
+    private val COMPILER_E_LINE = Regex("""^e:\s+(.*)$""")
+    private val COMPILER_LOCATION = Regex("""^(?:file://)?(.+):(\d+):(\d+)\s+(.*)$""")
+    private val GRADLE_TASK_PREFIX = Regex("""^>\s*Task\s+:\S+\s+""")
     private val DOCUMENT_BUILDER = DocumentBuilderFactory.newInstance().apply {
       isNamespaceAware = false
       isValidating = false
       setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
     }.newDocumentBuilder()
+
+    private fun findingIdentity(finding: ValidationGateFinding): String =
+      "${finding.module}|${finding.ruleOrTestId}|${finding.message}|${finding.location}"
+
+    internal fun parseGradleKotlinCompilerStdout(repoRoot: Path, stdout: String): List<ValidationGateFinding> {
+      val repo = repoRoot.toAbsolutePath().normalize()
+      val repoUri = repo.toUri().toString().removeSuffix("/")
+      val repoPath = repo.toString()
+      return stdout.lineSequence().mapNotNull { line ->
+        val eMatch = COMPILER_E_LINE.matchEntire(line.trim()) ?: return@mapNotNull null
+        val rest = eMatch.groupValues[1].trim()
+        val locationMatch = COMPILER_LOCATION.matchEntire(rest) ?: return@mapNotNull null
+        val rawPath = locationMatch.groupValues[1].removePrefix("file://")
+        val lineNo = locationMatch.groupValues[2]
+        val column = locationMatch.groupValues[3]
+        val message = locationMatch.groupValues[4].trim()
+          .replace(GRADLE_TASK_PREFIX, "")
+          .replace(repoUri, "")
+          .replace("file://$repoPath", "")
+          .replace(repoPath, "")
+          .replace("file://", "")
+          .trim()
+        val absolute = Path.of(rawPath).toAbsolutePath().normalize()
+        val relative = if (absolute.startsWith(repo)) {
+          repo.relativize(absolute).toString().replace('\\', '/')
+        } else {
+          rawPath.replace('\\', '/').removePrefix("/")
+        }
+        val module = relative.substringBefore('/').ifBlank { "<compiler>" }
+        ValidationGateFinding(
+          module = module,
+          ruleOrTestId = "kotlin_compiler",
+          message = message,
+          location = "$relative:$lineNo:$column",
+        )
+      }.toList()
+    }
 
     internal fun expandGlob(repoRoot: Path, glob: String): List<Path> {
       val normalized = glob.replace('\\', '/')

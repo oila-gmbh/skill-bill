@@ -1,5 +1,5 @@
 class: quality-check-leaf
-contract_version: "1.4"
+contract_version: "1.5"
 
 matchers:
   - pattern: "^bill-[a-z0-9-]+-code-check$"
