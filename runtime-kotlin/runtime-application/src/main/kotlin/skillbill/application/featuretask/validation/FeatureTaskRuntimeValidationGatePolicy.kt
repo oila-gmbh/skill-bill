@@ -14,12 +14,7 @@ internal fun validationGateArgv(
       declaration.buildOnlyCommand
     }
   }
-  return when (cacheMode) {
-    skillbill.ports.validation.model.ValidationGateCacheMode.FORCED_FULL ->
-      declaration.cacheBypassingFullGateCommand
-    skillbill.ports.validation.model.ValidationGateCacheMode.CACHE_ELIGIBLE ->
-      declaration.fullGateCommand
-  }
+  return validationGateCollectAllArgv(declaration, cacheMode)
 }
 
 internal fun validationGateCollectAllArgv(

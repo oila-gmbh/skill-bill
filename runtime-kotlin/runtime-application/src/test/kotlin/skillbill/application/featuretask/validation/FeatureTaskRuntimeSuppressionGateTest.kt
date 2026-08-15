@@ -239,7 +239,7 @@ class FeatureTaskRuntimeSuppressionGateTest {
     val declaration = gateDeclaration.copy(suppressionMarkers = scenario.markers)
     val progress = mutableListOf<FeatureTaskRuntimeValidationGateProgress>()
     val runner = if (scenario.options.forceRepairHarvest) {
-      ScriptedGateRunner(listOf(failed(), passed(), passed(forced = true)))
+      ScriptedGateRunner(listOf(failed(), passed(forced = true)))
     } else {
       ScriptedGateRunner(listOf(passed(), passed(forced = true)))
     }

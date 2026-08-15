@@ -25,6 +25,7 @@ import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.validation.ValidationGateRunner
 import skillbill.ports.validation.model.ValidationGateCacheMode
 import skillbill.ports.validation.model.ValidationGateFinding
+import skillbill.ports.validation.model.ValidationGateFindingParseMode
 import skillbill.ports.validation.model.ValidationGateRunOutcome
 import skillbill.ports.validation.model.ValidationGateRunRequest
 import skillbill.ports.validation.model.ValidationGateRunResult
@@ -59,94 +60,252 @@ class FeatureTaskRuntimeValidationGateCoordinator(
 ) {
   @Suppress("LongMethod", "ReturnCount", "CyclomaticComplexMethod")
   fun execute(cycle: ValidationGateCycleRequest, onGateRunCount: (Int) -> Unit = {}): ValidationGateCycleResult {
-    val repoRoot = cycle.repoRoot
-    val request = cycle.request
-    val validationDepth = cycle.validationDepth
-    val changedPaths = cycle.changedPaths
-    val agentRepairLauncher = cycle.agentRepairLauncher
-    when (val resolution = resolver.resolve(changedPaths)) {
-      is ValidationGateResolution.Absent -> return ValidationGateCycleResult.AbsentFallback
-      is ValidationGateResolution.Incompatible -> return terminalBlocked(resolution.reason)
-      is ValidationGateResolution.Declared -> {
-        val declaration = resolution.declaration
-        val measurements = mutableListOf<FeatureTaskRuntimeValidationGateRunRecord>()
-        var repairsUsed = 0
-        val harvestedJustifications = mutableListOf<SuppressionJustification>()
+    return when (val resolution = resolver.resolve(cycle.changedPaths)) {
+      is ValidationGateResolution.Absent -> ValidationGateCycleResult.AbsentFallback
+      is ValidationGateResolution.Incompatible -> terminalBlocked(resolution.reason)
+      is ValidationGateResolution.Declared ->
+        if (cycle.validationDepth == ValidationDepth.BUILD_ONLY) {
+          executeBuildOnly(cycle, resolution.declaration, onGateRunCount)
+        } else {
+          executeFull(cycle, resolution.declaration, onGateRunCount)
+        }
+    }
+  }
 
-        while (true) {
-          val intermediate = runGate(
-            repoRoot = repoRoot,
-            declaration = declaration,
-            validationDepth = validationDepth,
-            cacheMode = ValidationGateCacheMode.CACHE_ELIGIBLE,
-            terminalVerifying = false,
+  @Suppress("LongMethod", "ReturnCount", "CyclomaticComplexMethod")
+  private fun executeFull(
+    cycle: ValidationGateCycleRequest,
+    declaration: ValidationGateDeclaration,
+    onGateRunCount: (Int) -> Unit,
+  ): ValidationGateCycleResult {
+    val measurements = mutableListOf<FeatureTaskRuntimeValidationGateRunRecord>()
+    var repairsUsed = 0
+    var confirmationRetriesUsed = 0
+    val harvestedJustifications = mutableListOf<SuppressionJustification>()
+    val discovery = runGate(
+      repoRoot = cycle.repoRoot,
+      declaration = declaration,
+      validationDepth = cycle.validationDepth,
+      cacheMode = ValidationGateCacheMode.CACHE_ELIGIBLE,
+      terminalVerifying = false,
+      findingParseMode = ValidationGateFindingParseMode.COLLECT_ALL,
+    )
+    recordGateProgress(cycle.request, measurements, discovery, onGateRunCount)
+    var completeFindings = findingsForRepair(discovery)
+    while (true) {
+      if (completeFindings.isNotEmpty()) {
+        when (
+          val repair = repairPagedFindings(
+            cycle = cycle,
+            measurements = measurements,
+            completeFindings = completeFindings,
+            repairsUsed = repairsUsed,
+            confirmationRetriesUsed = confirmationRetriesUsed,
+            harvestedJustifications = harvestedJustifications,
+            onGateRunCount = onGateRunCount,
           )
-          recordGateProgress(request, measurements, intermediate, onGateRunCount)
-
-          if (intermediate.outcome == ValidationGateRunOutcome.PASSED) {
-            val terminal = runGate(
-              repoRoot = repoRoot,
-              declaration = declaration,
-              validationDepth = validationDepth,
-              cacheMode = ValidationGateCacheMode.FORCED_FULL,
-              terminalVerifying = true,
+        ) {
+          is PagedRepairOutcome.Blocked -> return repair.result
+          is PagedRepairOutcome.Completed -> repairsUsed = repair.repairsUsed
+        }
+      }
+      val confirmation = runGate(
+        repoRoot = cycle.repoRoot,
+        declaration = declaration,
+        validationDepth = cycle.validationDepth,
+        cacheMode = ValidationGateCacheMode.FORCED_FULL,
+        terminalVerifying = true,
+        findingParseMode = ValidationGateFindingParseMode.COLLECT_ALL,
+      )
+      recordGateProgress(
+        cycle.request,
+        measurements,
+        confirmation,
+        onGateRunCount,
+        completeFindings = completeFindings,
+        confirmationRetriesUsed = confirmationRetriesUsed,
+      )
+      when (confirmation.outcome) {
+        ValidationGateRunOutcome.REJECTED_ZERO_WORK ->
+          return terminalBlocked(
+            "Validation gate terminal run reported zero executed work; a satisfied outcome requires " +
+              "pack-attested execution, not a cache-served no-op.",
+            measurements = measurements,
+          )
+        ValidationGateRunOutcome.PASSED ->
+          return settleSuppressionGate(
+            cycle = cycle,
+            declaration = declaration,
+            measurements = measurements,
+            justifications = harvestedJustifications,
+            repairIterationHint = repairsUsed + 1,
+          )
+        ValidationGateRunOutcome.FAILED -> {
+          val confirmationFindings = findingsForRepair(confirmation)
+          if (confirmationRetriesUsed >= FULL_CONFIRMATION_RETRY_CAP) {
+            val remaining = ValidationFindingSetProjector.page(confirmationFindings, offset = 0)
+            persistProgress(
+              request = cycle.request,
+              measurements = measurements,
+              remainingFindings = remaining,
+              onGateRunCount = onGateRunCount,
+              completeFindings = confirmationFindings,
+              findingsPageOffset = 0,
+              confirmationRetriesUsed = confirmationRetriesUsed,
             )
-            recordGateProgress(request, measurements, terminal, onGateRunCount)
-            return when {
-              terminal.outcome == ValidationGateRunOutcome.REJECTED_ZERO_WORK ->
-                terminalBlocked(
-                  "Validation gate terminal run reported zero executed work; a satisfied outcome requires " +
-                    "pack-attested execution, not a cache-served no-op.",
-                  measurements = measurements,
-                )
-              terminal.outcome == ValidationGateRunOutcome.PASSED ->
-                settleSuppressionGate(
-                  cycle = cycle,
-                  declaration = declaration,
-                  measurements = measurements,
-                  justifications = harvestedJustifications,
-                  repairIterationHint = repairsUsed + 1,
-                )
-              else -> terminalBlocked(
-                "Validation gate terminal run failed after a clean intermediate result.",
-                measurements = measurements,
-              )
-            }
-          }
-
-          val findingsForRepair = if (intermediate.findings.isNotEmpty()) {
-            intermediate.findings
-          } else {
-            listOf(unparseableGateFailureFinding(intermediate))
-          }
-          val projection = ValidationFindingSetProjector.project(findingsForRepair)
-          if (projection.hasUnreportedRemainder) {
-            persistRemainingFindings(request, measurements, projection, onGateRunCount)
             return terminalBlocked(
-              "Validation gate findings exceed the handoff budget (${
-                projection.droppedCount
-              } unreported); repair cannot succeed while findings remain unreported.",
-              remainingFindings = projection,
+              "Validation gate confirmation retry cap ($FULL_CONFIRMATION_RETRY_CAP) exhausted " +
+                "with remaining findings.",
+              remainingFindings = remaining.copy(
+                findings = confirmationFindings,
+                scheduledRemainderCount = 0,
+              ),
               measurements = measurements,
             )
           }
-
-          when (val repair = agentRepairLauncher.launch(projection, repairsUsed + 1)) {
-            is ValidationGateAgentRepairResult.Blocked -> return ValidationGateCycleResult.Terminal(
-              ValidationGateCycleTerminalOutcome.Blocked(
-                reason = repair.reason,
-                remainingFindings = projection,
-                measurements = measurements,
-              ),
-            )
-            is ValidationGateAgentRepairResult.Completed -> {
-              harvestedJustifications += extractJustifications(repair.output)
-            }
-          }
-          repairsUsed++
+          confirmationRetriesUsed++
+          completeFindings = confirmationFindings
         }
       }
     }
+  }
+
+  @Suppress("LongMethod", "ReturnCount", "CyclomaticComplexMethod")
+  private fun executeBuildOnly(
+    cycle: ValidationGateCycleRequest,
+    declaration: ValidationGateDeclaration,
+    onGateRunCount: (Int) -> Unit,
+  ): ValidationGateCycleResult {
+    val measurements = mutableListOf<FeatureTaskRuntimeValidationGateRunRecord>()
+    var repairsUsed = 0
+    val harvestedJustifications = mutableListOf<SuppressionJustification>()
+    val agentRepairLauncher = cycle.agentRepairLauncher
+    while (true) {
+      val intermediate = runGate(
+        repoRoot = cycle.repoRoot,
+        declaration = declaration,
+        validationDepth = ValidationDepth.BUILD_ONLY,
+        cacheMode = ValidationGateCacheMode.CACHE_ELIGIBLE,
+        terminalVerifying = false,
+        findingParseMode = ValidationGateFindingParseMode.ARTIFACTS_ONLY,
+      )
+      recordGateProgress(cycle.request, measurements, intermediate, onGateRunCount)
+      if (intermediate.outcome == ValidationGateRunOutcome.PASSED) {
+        val terminal = runGate(
+          repoRoot = cycle.repoRoot,
+          declaration = declaration,
+          validationDepth = ValidationDepth.BUILD_ONLY,
+          cacheMode = ValidationGateCacheMode.FORCED_FULL,
+          terminalVerifying = true,
+          findingParseMode = ValidationGateFindingParseMode.ARTIFACTS_ONLY,
+        )
+        recordGateProgress(cycle.request, measurements, terminal, onGateRunCount)
+        return when {
+          terminal.outcome == ValidationGateRunOutcome.REJECTED_ZERO_WORK ->
+            terminalBlocked(
+              "Validation gate terminal run reported zero executed work; a satisfied outcome requires " +
+                "pack-attested execution, not a cache-served no-op.",
+              measurements = measurements,
+            )
+          terminal.outcome == ValidationGateRunOutcome.PASSED ->
+            settleSuppressionGate(
+              cycle = cycle,
+              declaration = declaration,
+              measurements = measurements,
+              justifications = harvestedJustifications,
+              repairIterationHint = repairsUsed + 1,
+            )
+          else -> terminalBlocked(
+            "Validation gate terminal run failed after a clean intermediate result.",
+            measurements = measurements,
+          )
+        }
+      }
+      val findingsForRepair = findingsForRepair(intermediate)
+      val projection = ValidationFindingSetProjector.project(findingsForRepair)
+      if (projection.hasUnreportedRemainder) {
+        persistRemainingFindings(cycle.request, measurements, projection, onGateRunCount)
+        return terminalBlocked(
+          "Validation gate findings exceed the handoff budget (${
+            projection.droppedCount
+          } unreported); repair cannot succeed while findings remain unreported.",
+          remainingFindings = projection,
+          measurements = measurements,
+        )
+      }
+      when (val repair = agentRepairLauncher.launch(projection, repairsUsed + 1)) {
+        is ValidationGateAgentRepairResult.Blocked -> return ValidationGateCycleResult.Terminal(
+          ValidationGateCycleTerminalOutcome.Blocked(
+            reason = repair.reason,
+            remainingFindings = projection,
+            measurements = measurements,
+          ),
+        )
+        is ValidationGateAgentRepairResult.Completed -> {
+          harvestedJustifications += extractJustifications(repair.output)
+        }
+      }
+      repairsUsed++
+    }
+  }
+
+  private fun repairPagedFindings(
+    cycle: ValidationGateCycleRequest,
+    measurements: List<FeatureTaskRuntimeValidationGateRunRecord>,
+    completeFindings: List<ValidationGateFinding>,
+    repairsUsed: Int,
+    confirmationRetriesUsed: Int,
+    harvestedJustifications: MutableList<SuppressionJustification>,
+    onGateRunCount: (Int) -> Unit,
+  ): PagedRepairOutcome {
+    var offset = 0
+    var used = repairsUsed
+    while (offset < completeFindings.size) {
+      val page = ValidationFindingSetProjector.page(completeFindings, offset)
+      persistProgress(
+        request = cycle.request,
+        measurements = measurements,
+        remainingFindings = page,
+        onGateRunCount = onGateRunCount,
+        completeFindings = completeFindings,
+        findingsPageOffset = offset,
+        confirmationRetriesUsed = confirmationRetriesUsed,
+      )
+      when (val repair = cycle.agentRepairLauncher.launch(page, used + 1)) {
+        is ValidationGateAgentRepairResult.Blocked ->
+          return PagedRepairOutcome.Blocked(
+            ValidationGateCycleResult.Terminal(
+              ValidationGateCycleTerminalOutcome.Blocked(
+                reason = repair.reason,
+                remainingFindings = page,
+                measurements = measurements,
+              ),
+            ),
+          )
+        is ValidationGateAgentRepairResult.Completed ->
+          harvestedJustifications += extractJustifications(repair.output)
+      }
+      used++
+      offset += page.findings.size
+      if (page.findings.isEmpty()) {
+        break
+      }
+    }
+    return PagedRepairOutcome.Completed(used)
+  }
+
+  private fun findingsForRepair(result: ValidationGateRunResult): List<ValidationGateFinding> =
+    result.findings.ifEmpty {
+      if (result.outcome == ValidationGateRunOutcome.PASSED) {
+        emptyList()
+      } else {
+        listOf(unparseableGateFailureFinding(result))
+      }
+    }
+
+  private sealed interface PagedRepairOutcome {
+    data class Completed(val repairsUsed: Int) : PagedRepairOutcome
+    data class Blocked(val result: ValidationGateCycleResult) : PagedRepairOutcome
   }
 
   private fun settleSuppressionGate(
@@ -169,8 +328,6 @@ class FeatureTaskRuntimeValidationGateCoordinator(
     }
     val initial = SuppressionJustificationGate.evaluate(measured, justifications)
     val decision = when {
-      // Clean first-pass (and repair that left harvest empty) never launched an agent turn, so
-      // AC-010 cannot complete without one harvest when the delta is non-zero and unjustified.
       initial is SuppressionGateDecision.Block && justifications.isEmpty() && measured.totalIntroduced > 0 -> {
         val projection = suppressionJustificationProjection(measured)
         when (val harvest = cycle.agentRepairLauncher.launch(projection, repairIterationHint)) {
@@ -232,6 +389,7 @@ class FeatureTaskRuntimeValidationGateCoordinator(
     validationDepth: ValidationDepth,
     cacheMode: ValidationGateCacheMode,
     terminalVerifying: Boolean,
+    findingParseMode: ValidationGateFindingParseMode,
   ): ValidationGateRunResult {
     val packArgv = validationGateArgv(declaration, validationDepth, cacheMode)
     val gradleWrapper = repoLocalConfig
@@ -246,6 +404,7 @@ class FeatureTaskRuntimeValidationGateCoordinator(
         cacheMode = cacheMode,
         declaration = declaration,
         terminalVerifying = terminalVerifying,
+        findingParseMode = findingParseMode,
       ),
     )
   }
@@ -255,6 +414,8 @@ class FeatureTaskRuntimeValidationGateCoordinator(
     measurements: MutableList<FeatureTaskRuntimeValidationGateRunRecord>,
     result: ValidationGateRunResult,
     onGateRunCount: (Int) -> Unit,
+    completeFindings: List<ValidationGateFinding> = emptyList(),
+    confirmationRetriesUsed: Int = 0,
   ) {
     measurements += FeatureTaskRuntimeValidationGateRunRecord(
       durationMs = result.durationMs,
@@ -262,7 +423,14 @@ class FeatureTaskRuntimeValidationGateCoordinator(
       cacheMode = result.cacheMode.wireValue,
       executedWorkUnits = result.executedWorkUnits,
     )
-    persistProgress(request, measurements, remainingFindings = null, onGateRunCount)
+    persistProgress(
+      request,
+      measurements,
+      remainingFindings = null,
+      onGateRunCount = onGateRunCount,
+      completeFindings = completeFindings,
+      confirmationRetriesUsed = confirmationRetriesUsed,
+    )
   }
 
   private fun persistRemainingFindings(
@@ -279,12 +447,21 @@ class FeatureTaskRuntimeValidationGateCoordinator(
     measurements: List<FeatureTaskRuntimeValidationGateRunRecord>,
     remainingFindings: ValidationFindingSetProjection?,
     onGateRunCount: (Int) -> Unit,
+    completeFindings: List<ValidationGateFinding> = emptyList(),
+    findingsPageOffset: Int = 0,
+    confirmationRetriesUsed: Int = 0,
   ) {
     val progress = FeatureTaskRuntimeValidationGateProgress(
       gateRunCount = measurements.size,
       gateRuns = measurements.toList(),
       remainingFindings = remainingFindings?.toHandoffMaps().orEmpty(),
       remainingFindingsDroppedCount = remainingFindings?.droppedCount ?: 0,
+      completeFindings = ValidationFindingSetProjection(
+        findings = completeFindings,
+        droppedCount = 0,
+      ).toHandoffMaps(),
+      findingsPageOffset = findingsPageOffset,
+      confirmationRetriesUsed = confirmationRetriesUsed,
     )
     progressStore.persist(request.workflowId, progress, request.dbPathOverride)
     emitFeatureTaskRuntimeEventSafely(
@@ -333,6 +510,7 @@ class FeatureTaskRuntimeValidationGateCoordinator(
   companion object {
     const val SUPPRESSION_JUSTIFICATION_MODULE: String = "<suppression-gate>"
     const val SUPPRESSION_JUSTIFICATION_RULE_ID: String = "suppression_justification_required"
+    const val FULL_CONFIRMATION_RETRY_CAP: Int = 2
 
     fun unparseableGateFailureFinding(result: ValidationGateRunResult): ValidationGateFinding = ValidationGateFinding(
       module = "<validation-gate>",

@@ -25,6 +25,7 @@ sealed interface ValidationGateResolution {
 data class ValidationFindingSetProjection(
   val findings: List<ValidationGateFinding>,
   val droppedCount: Int,
+  val scheduledRemainderCount: Int = 0,
 ) {
   val hasUnreportedRemainder: Boolean get() = droppedCount > 0
 

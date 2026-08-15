@@ -851,7 +851,7 @@ class FeatureTaskRuntimeRunnerTest {
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     assertEquals(1, harness.launchedPhaseOrder().count { it == "validate" })
     assertTrue(harness.launchedPhaseOrder().contains("write_history"))
-    assertTrue(gateCalls.get() >= 3, "fail once, then intermediate+terminal verify after repair")
+    assertEquals(2, gateCalls.get())
     val validateOutput = requireNotNull(
       harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["validate"]?.outputArtifact,
     )

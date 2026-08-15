@@ -38,7 +38,19 @@ internal fun goalContinuationValidateDepthDirective(
   }
 }
 
-/** Task-line text for validate when [ValidationDepth.BUILD_ONLY]; keeps [phaseDirectives] untouched. */
+internal const val RUNTIME_OWNED_VALIDATE_PHASE_TASK: String =
+  "The runtime owns the repository validation gate. You receive the complete discovery finding set, " +
+    "or an explicit page of that persisted set whose remainder is scheduled in this same pass " +
+    "(module, rule or test identity, message, location), and must not invoke the gate or any " +
+    "quality-check skill. Do not rediscover findings. Fix every finding in the projection at its " +
+    "root cause and return; the runtime confirms after this repair pass. Never invoke the gate " +
+    "after an individual fix. Findings that share one root cause are one fix, not several. " +
+    "Validation findings are repair work, not a reason to block the phase. Fix findings at their " +
+    "root cause; never silence them with annotations, baselines, disabled rules, weakened " +
+    "configuration, or skipped tests. Emit a " +
+    "bounded validation_result containing validation_status, checks, and repository_checkpoint; " +
+    "do not embed raw command output or telemetry."
+
 internal const val BUILD_ONLY_VALIDATE_PHASE_TASK: String =
   "Prove compile/buildability of the changed modules only. Fix only compile/build failures from the " +
     "runtime-provided finding set. Do not invoke the gate, any quality-check skill, tests, detekt, " +

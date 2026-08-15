@@ -77,7 +77,7 @@ object FeatureTaskRuntimePhasePromptComposer {
       goalContinuationDirective(briefing.phaseId, suppressDecomposition),
       goalContinuationValidateDepthDirective(briefing.phaseId, validationDepth, agentRunValidateFallback),
       absentValidationGateDegradationDirective(briefing.phaseId, agentRunValidateFallback),
-      validationGateFindingsDirective(briefing.phaseId, validationGateFindings),
+      validationGateFindingsDirective(briefing.phaseId, validationGateFindings, validationDepth),
       reviewExecutionDirective(
         briefing.phaseId,
         ReviewExecutionDirectiveInputs(
@@ -612,7 +612,11 @@ object FeatureTaskRuntimePhasePromptComposer {
       "        \"repair_item_results\": ${repairItemResultsJson(repairItemIds)} }\n" +
       "      ```"
 
-  private fun validationGateFindingsDirective(phaseId: String, findings: ValidationFindingSetProjection?): String {
+  private fun validationGateFindingsDirective(
+    phaseId: String,
+    findings: ValidationFindingSetProjection?,
+    validationDepth: ValidationDepth,
+  ): String {
     if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE || findings == null) return ""
     val justificationOnly = findings.findings.isNotEmpty() &&
       findings.findings.all {
@@ -630,7 +634,21 @@ object FeatureTaskRuntimePhasePromptComposer {
         )
       } else {
         add("## Runtime validation gate findings")
-        add("Fix every finding below at its root cause. Do not invoke the gate or any quality-check skill.")
+        if (validationDepth == ValidationDepth.BUILD_ONLY) {
+          add("Fix every finding below at its root cause. Do not invoke the gate or any quality-check skill.")
+        } else {
+          add(
+            "Fix every finding below at its root cause. Do not invoke the gate or any quality-check skill. " +
+              "Do not rediscover findings. This projection is the complete discovery set, or an explicit " +
+              "page of that persisted set whose remainder is scheduled in this same pass.",
+          )
+        }
+      }
+      if (validationDepth != ValidationDepth.BUILD_ONLY && findings.scheduledRemainderCount > 0) {
+        add(
+          "scheduled_remainder=${findings.scheduledRemainderCount} remaining findings are scheduled " +
+            "in this same pass; the runtime will launch further repair pages without rerunning the gate.",
+        )
       }
       if (findings.droppedCount > 0) {
         add("dropped_count=${findings.droppedCount} additional findings were omitted from this projection.")

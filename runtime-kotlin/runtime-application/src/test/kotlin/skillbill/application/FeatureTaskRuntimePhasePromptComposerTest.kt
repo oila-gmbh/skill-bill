@@ -296,6 +296,50 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     }
   }
 
+  @Test
+  fun `FULL and default runtime-owned validate prompts name complete set or scheduled remainder`() {
+    val finding = skillbill.ports.validation.model.ValidationGateFinding("m", "t", "broken", "loc")
+    val page = skillbill.application.featuretask.validation.model.ValidationFindingSetProjection(
+      findings = listOf(finding),
+      droppedCount = 0,
+      scheduledRemainderCount = 1,
+    )
+    val fullPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+        validationDepth = ValidationDepth.FULL,
+      ),
+      validationDepth = ValidationDepth.FULL,
+      validationGateFindings = page,
+    )
+    val defaultPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE),
+      validationGateFindings = page,
+    )
+    listOf(fullPrompt, defaultPrompt).forEach { prompt ->
+      assertContains(prompt, "complete discovery set")
+      assertContains(prompt, "remainder is scheduled in this same pass")
+      assertContains(prompt, "must not invoke the gate or any quality-check skill")
+      assertContains(prompt, "Do not rediscover findings")
+      assertFalse(prompt.contains("additional findings were omitted"))
+    }
+    val buildOnlyPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+        validationDepth = ValidationDepth.BUILD_ONLY,
+      ),
+      validationDepth = ValidationDepth.BUILD_ONLY,
+      validationGateFindings = page,
+    )
+    assertContains(buildOnlyPrompt, "Prove compile/buildability")
+    assertFalse(buildOnlyPrompt.contains("complete discovery set"))
+    assertFalse(buildOnlyPrompt.contains("collect-all"))
+    assertFalse(buildOnlyPrompt.contains("scheduled_remainder"))
+  }
+
   // SKILL-180: FULL validate must carry no-suppression; other phases must not.
   @Test
   fun `full validate prompt carries no-suppression clause absent from non-validate phases`() {

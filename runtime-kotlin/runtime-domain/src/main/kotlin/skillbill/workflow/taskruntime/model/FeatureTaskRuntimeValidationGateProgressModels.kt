@@ -27,6 +27,9 @@ data class FeatureTaskRuntimeValidationGateProgress(
   val gateRuns: List<FeatureTaskRuntimeValidationGateRunRecord>,
   val remainingFindings: List<Map<String, String?>> = emptyList(),
   val remainingFindingsDroppedCount: Int = 0,
+  val completeFindings: List<Map<String, String?>> = emptyList(),
+  val findingsPageOffset: Int = 0,
+  val confirmationRetriesUsed: Int = 0,
 ) {
   init {
     require(gateRunCount >= 0) {
@@ -39,6 +42,13 @@ data class FeatureTaskRuntimeValidationGateProgress(
       "FeatureTaskRuntimeValidationGateProgress.remainingFindingsDroppedCount must be >= 0, " +
         "was $remainingFindingsDroppedCount."
     }
+    require(findingsPageOffset >= 0) {
+      "FeatureTaskRuntimeValidationGateProgress.findingsPageOffset must be >= 0, was $findingsPageOffset."
+    }
+    require(confirmationRetriesUsed >= 0) {
+      "FeatureTaskRuntimeValidationGateProgress.confirmationRetriesUsed must be >= 0, " +
+        "was $confirmationRetriesUsed."
+    }
   }
 
   @OpenBoundaryMap("Runtime-owned validation gate progress at the durable workflow-artifact seam")
@@ -48,6 +58,9 @@ data class FeatureTaskRuntimeValidationGateProgress(
     "gate_runs" to gateRuns.map { it.toArtifactMap() },
     "remaining_findings" to remainingFindings,
     "remaining_findings_dropped_count" to remainingFindingsDroppedCount,
+    "complete_findings" to completeFindings,
+    "findings_page_offset" to findingsPageOffset,
+    "confirmation_retries_used" to confirmationRetriesUsed,
   )
 
   companion object {
@@ -57,7 +70,16 @@ data class FeatureTaskRuntimeValidationGateProgress(
         gateRunCount = raw.asStarMap().gateProgressInt("gate_run_count"),
         gateRuns = decodeGateRuns(raw["gate_runs"]),
         remainingFindings = decodeRemainingFindings(raw["remaining_findings"]),
-        remainingFindingsDroppedCount = decodeRemainingDroppedCount(raw["remaining_findings_dropped_count"]),
+        remainingFindingsDroppedCount = decodeOptionalNonNegativeInt(
+          raw["remaining_findings_dropped_count"],
+          "remaining_findings_dropped_count",
+        ),
+        completeFindings = decodeRemainingFindings(raw["complete_findings"]),
+        findingsPageOffset = decodeOptionalNonNegativeInt(raw["findings_page_offset"], "findings_page_offset"),
+        confirmationRetriesUsed = decodeOptionalNonNegativeInt(
+          raw["confirmation_retries_used"],
+          "confirmation_retries_used",
+        ),
       )
 
     private fun decodeGateRuns(raw: Any?): List<FeatureTaskRuntimeValidationGateRunRecord> {
@@ -79,13 +101,13 @@ data class FeatureTaskRuntimeValidationGateProgress(
       }
     }
 
-    private fun decodeRemainingDroppedCount(raw: Any?): Int = when (raw) {
+    private fun decodeOptionalNonNegativeInt(raw: Any?, field: String): Int = when (raw) {
       null -> 0
       is Int -> raw
       is Long -> raw.toInt()
       is Number -> raw.toInt()
       else -> throw InvalidWorkflowStateSchemaError(
-        "FeatureTaskRuntimeValidationGateProgress.remaining_findings_dropped_count must be an int.",
+        "FeatureTaskRuntimeValidationGateProgress.$field must be an int.",
       )
     }
 
