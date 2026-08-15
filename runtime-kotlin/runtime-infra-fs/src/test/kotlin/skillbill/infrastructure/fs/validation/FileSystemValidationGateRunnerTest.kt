@@ -157,6 +157,41 @@ class FileSystemValidationGateRunnerTest {
     }
   }
 
+  @Test
+  fun `compiler diagnostic identity is repo-relative when stdout uses a realpath of a symlink repo`() {
+    val real = Files.createTempDirectory("gate-compiler-real")
+    val parent = Files.createTempDirectory("gate-compiler-link-parent")
+    val link = parent.resolve("repo")
+    try {
+      Files.createSymbolicLink(link, real)
+      val realRoot = real.toRealPath()
+      val script = real.resolve("gate.sh")
+      Files.writeString(
+        script,
+        """
+        #!/bin/sh
+        printf '%s\n' "e: file://$realRoot/module-a/Foo.kt:3:1 Unresolved reference: missing"
+        exit 1
+        """.trimIndent(),
+      )
+      val result = FileSystemValidationGateRunner().run(
+        request(
+          link,
+          argv = listOf("sh", script.toString()),
+          parseMode = ValidationGateFindingParseMode.COLLECT_ALL,
+        ),
+      )
+      val finding = result.findings.single()
+      assertEquals("module-a", finding.module)
+      assertEquals("module-a/Foo.kt:3:1", finding.location)
+      assertEquals("Unresolved reference: missing", finding.message)
+      assertTrue(realRoot.toString() !in finding.location!!)
+    } finally {
+      real.toFile().deleteRecursively()
+      parent.toFile().deleteRecursively()
+    }
+  }
+
   private fun writeGateScript(repo: Path): Path {
     val script = repo.resolve("gate.sh")
     Files.writeString(

@@ -174,8 +174,16 @@ class FileSystemValidationGateRunner : ValidationGateRunner {
 
     internal fun parseGradleKotlinCompilerStdout(repoRoot: Path, stdout: String): List<ValidationGateFinding> {
       val repo = repoRoot.toAbsolutePath().normalize()
-      val repoUri = repo.toUri().toString().removeSuffix("/")
-      val repoPath = repo.toString()
+      val canonicalRepo = canonicalizeExisting(repo)
+      val repoPrefixes = listOf(
+        canonicalRepo.toUri().toString().removeSuffix("/"),
+        repo.toUri().toString().removeSuffix("/"),
+        "file://$canonicalRepo",
+        "file://$repo",
+        canonicalRepo.toString(),
+        repo.toString(),
+        "file://",
+      ).distinct()
       return stdout.lineSequence().mapNotNull { line ->
         val eMatch = COMPILER_E_LINE.matchEntire(line.trim()) ?: return@mapNotNull null
         val rest = eMatch.groupValues[1].trim()
@@ -183,19 +191,13 @@ class FileSystemValidationGateRunner : ValidationGateRunner {
         val rawPath = locationMatch.groupValues[COMPILER_LOCATION_PATH_GROUP].removePrefix("file://")
         val lineNo = locationMatch.groupValues[COMPILER_LOCATION_LINE_GROUP]
         val column = locationMatch.groupValues[COMPILER_LOCATION_COLUMN_GROUP]
-        val message = locationMatch.groupValues[COMPILER_LOCATION_MESSAGE_GROUP].trim()
+        var message = locationMatch.groupValues[COMPILER_LOCATION_MESSAGE_GROUP].trim()
           .replace(GRADLE_TASK_PREFIX, "")
-          .replace(repoUri, "")
-          .replace("file://$repoPath", "")
-          .replace(repoPath, "")
-          .replace("file://", "")
-          .trim()
-        val absolute = Path.of(rawPath).toAbsolutePath().normalize()
-        val relative = if (absolute.startsWith(repo)) {
-          repo.relativize(absolute).toString().replace('\\', '/')
-        } else {
-          rawPath.replace('\\', '/').removePrefix("/")
+        for (prefix in repoPrefixes) {
+          message = message.replace(prefix, "")
         }
+        message = message.trim()
+        val relative = repoRelativeCompilerPath(repo, canonicalRepo, Path.of(rawPath), rawPath)
         val module = relative.substringBefore('/').ifBlank { "<compiler>" }
         ValidationGateFinding(
           module = module,
@@ -204,6 +206,39 @@ class FileSystemValidationGateRunner : ValidationGateRunner {
           location = "$relative:$lineNo:$column",
         )
       }.toList()
+    }
+
+    private fun repoRelativeCompilerPath(
+      repo: Path,
+      canonicalRepo: Path,
+      diagnosticPath: Path,
+      rawPath: String,
+    ): String {
+      val absolute = diagnosticPath.toAbsolutePath().normalize()
+      val canonicalFile = canonicalizeMaybeMissing(absolute)
+      if (canonicalFile.startsWith(canonicalRepo)) {
+        return canonicalRepo.relativize(canonicalFile).toString().replace('\\', '/')
+      }
+      if (absolute.startsWith(repo)) {
+        return repo.relativize(absolute).toString().replace('\\', '/')
+      }
+      return rawPath.replace('\\', '/').removePrefix("/")
+    }
+
+    private fun canonicalizeExisting(path: Path): Path = runCatching { path.toRealPath() }.getOrDefault(path)
+
+    private fun canonicalizeMaybeMissing(path: Path): Path {
+      if (Files.exists(path)) {
+        return canonicalizeExisting(path)
+      }
+      val tail = ArrayDeque<Path>()
+      var current: Path? = path
+      while (current != null && !Files.exists(current)) {
+        current.fileName?.let(tail::addFirst)
+        current = current.parent
+      }
+      val realBase = current?.let(::canonicalizeExisting) ?: return path
+      return tail.fold(realBase) { acc, name -> acc.resolve(name) }
     }
 
     internal fun expandGlob(repoRoot: Path, glob: String): List<Path> {
