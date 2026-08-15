@@ -23,6 +23,7 @@ data class CliRuntimeContext(
   val agentRunLauncher: AgentRunLauncher? = null,
   val goalPullRequestPort: GoalPullRequestPort? = null,
   val executableLookup: ExecutableLookup? = null,
+  val reviewNativeAgentPreflight: skillbill.ports.review.ReviewNativeAgentPreflightPort? = null,
   val liveStdout: (String) -> Unit = {},
   val liveStderr: (String) -> Unit = {},
 ) {
@@ -36,5 +37,6 @@ data class CliRuntimeContext(
     agentRunLauncher = agentRunLauncher,
     goalPullRequestPort = goalPullRequestPort,
     executableLookup = executableLookup,
+    reviewNativeAgentPreflight = reviewNativeAgentPreflight,
   )
 }

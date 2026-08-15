@@ -461,6 +461,16 @@ internal object DatabaseMigrations {
         name = "rekey-diagnostic-evidence-by-repair-turn",
         operation = ::rekeyDiagnosticEvidenceByRepairTurn,
       ),
+      DatabaseMigration(
+        version = 30,
+        name = "add-review-run-stage-state",
+        operation = DatabaseReviewColumnMigrations::ensureReviewStageStateTables,
+      ),
+      DatabaseMigration(
+        version = 31,
+        name = "add-review-run-pass-claims",
+        operation = DatabaseReviewColumnMigrations::ensureReviewStageStateTables,
+      ),
     ).also(::requireDeterministicMigrations)
 
   fun apply(connection: Connection) {
@@ -569,7 +579,7 @@ private fun addReviewRunLaneAttribution(connection: Connection) {
   DatabaseReviewLedgerSchema.reviewRunLaneStatements.forEach { sql ->
     connection.createStatement().use { statement -> statement.execute(sql) }
   }
-  DatabaseReviewColumnMigrations.ensureFindingLaneColumns(connection)
+  DatabaseReviewFindingColumnMigrations.ensureFindingLaneColumns(connection)
   DatabaseReviewColumnMigrations.ensureReviewRunLaneDispositionColumns(connection)
 }
 

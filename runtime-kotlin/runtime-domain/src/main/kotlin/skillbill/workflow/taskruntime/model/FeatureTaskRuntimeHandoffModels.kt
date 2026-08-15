@@ -2,6 +2,7 @@ package skillbill.workflow.taskruntime.model
 
 import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.boundary.OpenBoundaryMap
+import skillbill.review.model.ReviewFindingVerdict
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.ValidationDepth
 
@@ -192,6 +193,7 @@ data class FeatureTaskRuntimePhaseHandoff(
    */
   val durablyClosedCriterionRefs: List<String> = emptyList(),
   val repairLedger: FeatureTaskRuntimeRepairLedger? = null,
+  val recordedFindingVerdicts: List<ReviewFindingVerdict> = emptyList(),
 )
 
 /**

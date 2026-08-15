@@ -34,6 +34,13 @@ class FileSystemDecompositionManifestFileStore : DecompositionManifestFileStore 
     }
   }
 
+  override fun listDirectChildDirectories(directory: Path): List<Path> {
+    if (!Files.isDirectory(directory)) return emptyList()
+    return Files.list(directory).use { paths ->
+      paths.filter { path -> Files.isDirectory(path) }.toList()
+    }
+  }
+
   override fun findDecompositionManifestFiles(repoRoot: Path): List<Path> {
     val featureSpecsRoot = repoRoot.resolve(".feature-specs")
     if (!Files.isDirectory(featureSpecsRoot)) return emptyList()

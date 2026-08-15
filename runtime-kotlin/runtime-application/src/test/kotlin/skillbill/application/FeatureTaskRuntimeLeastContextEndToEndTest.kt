@@ -37,24 +37,25 @@ class FeatureTaskRuntimeLeastContextEndToEndTest {
     val forwardPhases = FeatureTaskRuntimePhaseWorkflowDefinition.transitions.run {
       forwardPhaseIds.filterNot(loopOnlyPhaseIds::contains)
     }
+    val agentPhases = forwardPhases.filterNot { it == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW }
     assertEquals(
-      forwardPhases,
+      agentPhases,
       launchedPhases,
-      "the integrated matrix must cover every forward consumer in dependency order",
+      "agent-launched phases omit runtime-owned review and cover every other forward consumer",
     )
 
     val briefings = assertNotNull(harness.recorder.loadPhaseBriefings(WORKFLOW_ID))
     val deliveredRecords = assertNotNull(harness.recorder.loadDeliveredProjections(WORKFLOW_ID))
-    assertEquals(launchedPhases.toSet(), briefings.keys)
-    assertEquals(launchedPhases.toSet(), deliveredRecords.keys)
+    assertEquals(forwardPhases.toSet(), briefings.keys)
+    assertEquals(forwardPhases.toSet(), deliveredRecords.keys)
 
-    launchedPhases.forEach { phaseId ->
+    forwardPhases.forEach { phaseId ->
       assertConsumerDelivery(phaseId, briefings.getValue(phaseId), deliveredRecords.getValue(phaseId))
     }
 
     val privatePhaseRecords = assertNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID))
-    assertEquals(launchedPhases.toSet(), privatePhaseRecords.keys)
-    launchedPhases.forEach { phaseId ->
+    assertEquals(forwardPhases.toSet(), privatePhaseRecords.keys)
+    forwardPhases.forEach { phaseId ->
       val privateOutput = assertNotNull(privatePhaseRecords.getValue(phaseId).outputArtifact)
       val deliveredWire = deliveredRecords.getValue(phaseId).toArtifactMap().toString()
       assertNotEquals(

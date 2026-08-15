@@ -43,7 +43,6 @@ object FeatureTaskRuntimePhasePromptComposer {
     baselineUntrackedPaths: List<String> = emptyList(),
     resolvedReviewTier: CodeReviewExecutionMode? = null,
     reviewDecidingRule: String? = null,
-    priorBlockerFindingIds: List<String> = emptyList(),
     priorSchemaFailure: String? = null,
     priorTerminalFailure: String? = null,
     correctiveRepairContext: FeatureTaskRuntimeCorrectiveRepairContext? = null,
@@ -100,7 +99,7 @@ object FeatureTaskRuntimePhasePromptComposer {
       implementationContinuationDirective(briefing.phaseId, effectiveContinuation),
       retryCorrectionDirective(briefing, priorSchemaFailure, correctiveRepairContext),
       terminalRetryDirective(priorTerminalFailure),
-      outputContract(briefing, reviewPassNumber, priorBlockerFindingIds),
+      outputContract(briefing),
     ).filter(String::isNotBlank).joinToString(separator = "\n\n")
   }
 
@@ -325,12 +324,12 @@ object FeatureTaskRuntimePhasePromptComposer {
         "Apply ${scaling.preplanCeremony.promptLabel}. Keep the gate real: identify concrete scope, " +
           "affected boundaries, risks, and unknowns at the requested depth."
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW -> if (remediationReview) {
-        "Apply bill-code-review mode:${CodeReviewExecutionMode.INLINE.wireValue} context:feature-remediation, " +
+        "Runtime-owned review uses mode:${CodeReviewExecutionMode.INLINE.wireValue} context:feature-remediation, " +
           "bounded to the remediation delta: all findings addressed in that round union " +
           "diff(pre-fix tree -> post-fix tree). Do not re-review the subtask's full base-to-current delta."
       } else {
-        "Apply ${scaling.reviewScope.promptLabel}. Keep the review gate real: inspect the implemented " +
-          "change for defects and report concrete file references."
+        "The runtime owns ${scaling.reviewScope.promptLabel}. Keep the review gate real: inspect the implemented " +
+          "change for defects and record concrete file references."
       }
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT ->
         "Apply ${scaling.auditCeremony.promptLabel}. Keep the audit gate real: verify acceptance " +
@@ -350,11 +349,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     """.trimIndent()
   }
 
-  private fun outputContract(
-    briefing: FeatureTaskRuntimePhaseLaunchBriefing,
-    reviewPassNumber: Int?,
-    priorBlockerFindingIds: List<String>,
-  ): String {
+  private fun outputContract(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String {
     val phaseId = briefing.phaseId
     return """
     ## Required final output (validated schema gate)
@@ -371,54 +366,13 @@ object FeatureTaskRuntimePhasePromptComposer {
     - "summary": non-empty string describing what this phase did
     - "produced_outputs": object with at least one entry carrying this phase's concrete
       result for downstream phases (for example plan steps, changed files, findings, or
-      validation results)${producedOutputsAddendum(
-      briefing,
-    )}${dispositionAddendum(briefing, reviewPassNumber, priorBlockerFindingIds)}
+      validation results)${producedOutputsAddendum(briefing)}
     - "derived_notes": optional; when present, a non-empty string of notes for downstream
       phases
     - "verdict": optional top-level string; verifying phases (review, audit) set it to drive the
       advance-vs-remediation decision — see the verifying-phase signal above
     No top-level fields other than the ones listed above are allowed.
     """.trimIndent()
-  }
-
-  /**
-   * The only seam that instructs the reserved remediation pass to emit
-   * `produced_outputs.blocker_dispositions`. Without it the producer key is never written and the
-   * disposition path — the terminating signal for the bounded remediation loop — is unreachable in
-   * production. The prior pass's Blocker finding ids are supplied so the agent keys its entries
-   * against real ids instead of inventing them, and a disposition is required for every one of them.
-   * Empty for pass one and for every non-review phase, so those prompts stay byte-for-byte unchanged.
-   */
-  private fun dispositionAddendum(
-    briefing: FeatureTaskRuntimePhaseLaunchBriefing,
-    reviewPassNumber: Int?,
-    priorBlockerFindingIds: List<String>,
-  ): String {
-    if (briefing.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW ||
-      (reviewPassNumber ?: 1) < 2
-    ) {
-      return ""
-    }
-    if (priorBlockerFindingIds.isEmpty()) {
-      return "\n    - The prior review pass emitted no Blocker, so no disposition is required: emit\n" +
-        "      produced_outputs.blocker_dispositions as an explicit []."
-    }
-    val example = priorBlockerFindingIds.joinToString(prefix = "[", postfix = "]", separator = ", ") { findingId ->
-      "{ \"finding_id\": \"$findingId\", \"verdict\": \"resolved\", " +
-        "\"evidence\": [\"<the specific changed lines that settle it>\"] }"
-    }
-    return "\n    - This is the RESERVED REMEDIATION PASS. produced_outputs MUST carry a\n" +
-      "      \"blocker_dispositions\" array with EXACTLY ONE entry for EVERY Blocker the prior pass\n" +
-      "      emitted — these ids, all of them, no more and no fewer:\n" +
-      "      ${priorBlockerFindingIds.joinToString()}.\n" +
-      "      Each entry contains finding_id, verdict (exactly one of resolved, unresolved, superseded),\n" +
-      "      and a non-empty evidence array citing the specific changed lines that resolve or fail to\n" +
-      "      resolve it. An unevidenced disposition is rejected at the parse seam. A short list that\n" +
-      "      omits any prior Blocker id is rejected. Major findings are out of disposition scope.\n" +
-      "      ```json\n" +
-      "      { \"blocker_dispositions\": $example }\n" +
-      "      ```"
   }
 
   // Phase-specific addendum to the produced_outputs bullet. Mutating phases (implement, implement_fix)
@@ -631,9 +585,6 @@ object FeatureTaskRuntimePhasePromptComposer {
       } else {
         add("## Runtime validation gate findings")
         add("Fix every finding below at its root cause. Do not invoke the gate or any quality-check skill.")
-      }
-      if (findings.droppedCount > 0) {
-        add("dropped_count=${findings.droppedCount} additional findings were omitted from this projection.")
       }
       findings.findings.forEachIndexed { index, finding ->
         add(

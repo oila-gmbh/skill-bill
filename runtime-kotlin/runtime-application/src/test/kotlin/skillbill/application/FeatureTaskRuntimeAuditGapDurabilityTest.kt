@@ -187,7 +187,7 @@ class FeatureTaskRuntimeAuditGapDurabilityTest {
     assertEquals(2, auditLaunches, "the original audit and the resumed re-audit both ran")
     assertEquals(
       1,
-      harness.launchedPromptPhaseOrder().count { it == "review" },
+      harness.launchOrder().count { it == "review" },
       "review sits outside the audit_gap span, so it runs once after the audit satisfies",
     )
   }

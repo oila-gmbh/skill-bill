@@ -54,4 +54,18 @@ class ParallelCodeReviewSharedTierTest {
       request(CodeReviewExecutionMode.AUTO, CodeReviewExecutionMode.AUTO)
     }
   }
+
+  @Test
+  fun `a blank reviewRunId is rejected`() {
+    assertFailsWith<IllegalArgumentException> {
+      ParallelCodeReviewRequest(
+        agent1Id = "claude",
+        agent2Id = "codex",
+        scope = ParallelReviewScope.BRANCH,
+        repoRoot = Path.of("."),
+        timeout = null,
+        reviewRunId = " ",
+      )
+    }
+  }
 }

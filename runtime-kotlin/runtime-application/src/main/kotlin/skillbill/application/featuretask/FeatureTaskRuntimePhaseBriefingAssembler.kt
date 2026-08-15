@@ -57,8 +57,7 @@ object FeatureTaskRuntimeRunInvariantPromptAllowlist {
 
   fun forPhase(phaseId: String): Set<FeatureTaskRuntimeRunInvariantPromptField> = when (phaseId) {
     in FINALIZATION_PHASE_IDS -> FINALIZATION
-    // The bounded PR request explicitly carries the acceptance contract; it still excludes
-    // planning, audit, review, history, and raw validation context.
+    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW -> IDENTITY_CEREMONY_AND_POLICY
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR -> ACCEPTANCE_CONTRACT_PHASES
     else -> ACCEPTANCE_CONTRACT_PHASES
   }
@@ -115,23 +114,13 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
         )
       }
     val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
-      FeatureTaskRuntimeHandoffProjectionInputs(
-        consumerPhaseId = handoff.phaseId,
+      projectionInputs(
+        handoff = handoff,
         declarations = promptDeclarations,
-        resolvedUpstream = handoff.upstreamOutputs,
-        runInvariants = handoff.runInvariants,
-        resolvedCheckpoint = handoff.repositoryCheckpoint,
-        sharedReviewEvidence = sharedReviewEvidence,
-        expectedCheckpoint = handoff.expectedRepositoryCheckpoint,
-        auditRepairPlan = handoff.auditRepairPlan,
-        auditRepairState = handoff.auditRepairState,
-        repairLedger = handoff.repairLedger,
-        branchIdentity = handoff.branchIdentity,
-        baseBranch = handoff.baseBranch,
         workflowId = workflowId,
         planningProjectionValidator = planningProjectionValidator,
+        sharedReviewEvidence = sharedReviewEvidence,
         addonContentBySlug = boundedAddonSelection.entries.associate { it.persisted.slug to it.content },
-        validationDepth = handoff.validationDepth,
       ),
     )
     val projectedHandoff = handoff.copy(projectionDeclarations = promptDeclarations)
@@ -153,6 +142,34 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
       durablyClosedCriterionRefs = handoff.durablyClosedCriterionRefs,
     )
   }
+
+  @Suppress("LongParameterList")
+  private fun projectionInputs(
+    handoff: FeatureTaskRuntimePhaseHandoff,
+    declarations: List<PhaseHandoffProjectionDeclaration>,
+    workflowId: String?,
+    planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator,
+    sharedReviewEvidence: FeatureTaskRuntimeSharedReviewEvidenceReference?,
+    addonContentBySlug: Map<String, String>,
+  ): FeatureTaskRuntimeHandoffProjectionInputs = FeatureTaskRuntimeHandoffProjectionInputs(
+    consumerPhaseId = handoff.phaseId,
+    declarations = declarations,
+    resolvedUpstream = handoff.upstreamOutputs,
+    runInvariants = handoff.runInvariants,
+    resolvedCheckpoint = handoff.repositoryCheckpoint,
+    sharedReviewEvidence = sharedReviewEvidence,
+    expectedCheckpoint = handoff.expectedRepositoryCheckpoint,
+    auditRepairPlan = handoff.auditRepairPlan,
+    auditRepairState = handoff.auditRepairState,
+    repairLedger = handoff.repairLedger,
+    recordedFindingVerdicts = handoff.recordedFindingVerdicts,
+    branchIdentity = handoff.branchIdentity,
+    baseBranch = handoff.baseBranch,
+    workflowId = workflowId,
+    planningProjectionValidator = planningProjectionValidator,
+    addonContentBySlug = addonContentBySlug,
+    validationDepth = handoff.validationDepth,
+  )
 
   private fun invariantDeclarations(phaseId: String): List<PhaseHandoffProjectionDeclaration> =
     FeatureTaskRuntimeRunInvariantPromptAllowlist.forPhase(phaseId).map { field ->

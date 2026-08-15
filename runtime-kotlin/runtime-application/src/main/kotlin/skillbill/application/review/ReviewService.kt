@@ -257,6 +257,8 @@ private fun reviewStatsResult(
     reviewRunId = snapshot.reviewRunId,
     stats = snapshot.stats,
     health = snapshot.health,
+    stageMetrics = snapshot.stageMetrics,
+    stageMetricsByTier = snapshot.stageMetricsByTier,
   )
 }
 

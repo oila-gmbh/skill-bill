@@ -29,9 +29,6 @@ import kotlin.test.assertTrue
  */
 private val LEGACY_POINTER_GOLDEN: Map<String, Set<String>> = mapOf(
   "bill-code-review" to setOf(
-    "review-scope.md",
-    "stack-routing.md",
-    "review-delegation.md",
     "telemetry-contract.md",
     "shell-content-contract.md",
     "shell-ceremony.md",
@@ -292,6 +289,24 @@ class SkillClassLoaderTest {
     assertTrue(Files.isRegularFile(repoRoot.resolve("$SKILL_CLASSES_DIR/feature-task.yaml")))
     assertTrue(!Files.exists(repoRoot.resolve("$SKILL_CLASSES_DIR/feature-" + "implement.yaml")))
     assertEquals(FEATURE_TASK_CEREMONY_GOLDEN.trimStart(), renderCeremonySection(manifest))
+  }
+
+  @Test
+  fun `code-review-shell is an entry over skill-bill code-review and keeps detected_scope labels`() {
+    val yaml = Files.readString(
+      currentRepoRootForClassLoader().resolve("orchestration/skill-classes/code-review-shell.yaml"),
+    )
+    assertTrue(yaml.contains("skill-bill code-review"), yaml)
+    listOf(
+      "staged changes",
+      "unstaged changes",
+      "working tree",
+      "commit range",
+      "PR diff",
+      "files",
+    ).forEach { label ->
+      assertTrue(yaml.contains(label), "missing detected_scope label '$label'")
+    }
   }
 
   private fun manifest(

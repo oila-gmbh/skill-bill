@@ -9,4 +9,8 @@ class ReviewContextEnvelopeValidatorAdapter : ReviewContextEnvelopeValidator {
   override fun validate(envelope: Map<String, Any?>, sourceLabel: String) {
     ReviewContextSchemaValidator.validate(envelope, sourceLabel)
   }
+
+  override fun validateSpecIntentProjection(payload: Map<String, Any?>, sourceLabel: String) {
+    ReviewContextSchemaValidator.validateSpecIntentProjection(payload, sourceLabel)
+  }
 }

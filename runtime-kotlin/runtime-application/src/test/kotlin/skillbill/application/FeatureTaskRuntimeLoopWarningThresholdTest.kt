@@ -30,6 +30,7 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
     val harness = runnerHarness(
       launcher = reviewFixLauncher(convergeOnReview = crossingIteration + 1),
       diagnostics = diagnostics,
+      runtimeConfig = reviewFixRuntimeConfig(crossingIteration + 1),
     )
 
     val request = harness.request()
@@ -77,6 +78,7 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
     val reviewHarness = runnerHarness(
       launcher = reviewFixLauncher(convergeOnReview = threshold + 1),
       diagnostics = reviewDiagnostics,
+      runtimeConfig = reviewFixRuntimeConfig(threshold + 1),
     )
     assertIs<FeatureTaskRuntimeRunReport.Completed>(reviewHarness.runner.run(reviewHarness.request()))
     assertEquals(
@@ -101,7 +103,11 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
   @Test
   fun `iterations past the crossing do not repeat the warning`() {
     val diagnostics = RecordingDiagnostics()
-    val harness = runnerHarness(launcher = reviewFixLauncher(convergeOnReview = 9), diagnostics = diagnostics)
+    val harness = runnerHarness(
+      launcher = reviewFixLauncher(convergeOnReview = 9),
+      diagnostics = diagnostics,
+      runtimeConfig = reviewFixRuntimeConfig(9),
+    )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
@@ -120,6 +126,7 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
     val harness = runnerHarness(
       launcher = bothLoopsLauncher(convergeOnAudit = crossingIteration + 1, convergeOnReview = crossingIteration + 1),
       diagnostics = diagnostics,
+      runtimeConfig = reviewFixRuntimeConfig(crossingIteration + 1),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
@@ -144,10 +151,17 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
     val harness = runnerHarness(
       launcher = crashingReviewFixLauncher(
         convergeOnReview = crossingIteration + 2,
-        crashOnReviewLaunch = crossingIteration,
+        crashOnImplementFixLaunch = crossingIteration,
         shouldCrash = { crashOnCrossingReview },
       ),
       diagnostics = diagnostics,
+      runtimeConfig = RuntimeHarnessConfig(
+        reviewDriver = crashingReviewFixDriver(
+          convergeOnReview = crossingIteration + 2,
+          crashOnPass = crossingIteration,
+          shouldCrash = { crashOnCrossingReview },
+        ),
+      ),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
@@ -175,6 +189,7 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
         shouldCrash = { crashOnCrossingFix },
       ),
       diagnostics = diagnostics,
+      runtimeConfig = reviewFixRuntimeConfig(crossingIteration + 1),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
@@ -192,6 +207,7 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
     val harness = runnerHarness(
       launcher = reviewFixLauncher(convergeOnReview = crossingIteration + 1),
       diagnostics = diagnostics,
+      runtimeConfig = reviewFixRuntimeConfig(crossingIteration + 1),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
@@ -212,6 +228,7 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
       val harness = runnerHarness(
         launcher = reviewFixLauncher(convergeOnReview = crossingIteration + 1),
         diagnostics = diagnostics,
+        runtimeConfig = reviewFixRuntimeConfig(crossingIteration + 1),
       )
       val report = assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
       RunOutcome(
@@ -255,7 +272,10 @@ class FeatureTaskRuntimeLoopWarningThresholdTest {
 
   @Test
   fun `finished telemetry round-trips semantic loop iteration counts above the threshold`() {
-    val reviewHarness = telemetryRunnerHarness(launcher = reviewFixLauncher(convergeOnReview = 11))
+    val reviewHarness = telemetryRunnerHarness(
+      launcher = reviewFixLauncher(convergeOnReview = 11),
+      runtimeConfig = reviewFixRuntimeConfig(11),
+    )
     assertIs<FeatureTaskRuntimeRunReport.Completed>(reviewHarness.runner.run(reviewHarness.request))
     assertEquals(10, reviewHarness.lifecycle.finishedRecords.single().reviewFixIterationCount)
 

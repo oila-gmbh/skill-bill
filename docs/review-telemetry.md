@@ -94,6 +94,8 @@ skill-bill goal-stats --format json
 skill-bill verify-stats --format json
 ```
 
+`skill-bill stats` (and MCP `review_stats`) include per-stage verdict distribution and `refutation_rate_by_stage` from the same durable-row aggregator as `skillbill_review_finished`. A `--run-id` payload also carries that run's `resolved_tier`. Unscoped stats group those rates by `inline` and `delegated` under `stage_metrics_by_tier` and do not emit a pooled rate.
+
 The `triage` command maps the visible numbers back to the stable `F-001` ids internally. For agent-driven flows, prefer a structured selection string like `fix=[1,3] reject=[2]` so every finding is resolved deterministically in one step. Use `all <action>` to apply the same action to every finding. Supported triage actions are:
 
 - `fix` -> records `fix_applied`
@@ -284,7 +286,7 @@ Telemetry has three levels:
 
 | Level | What is sent |
 |-------|-------------|
-| `off` | Nothing is transmitted; `sync` and `autoSync` short-circuit on the disabled level. Four events are still queued locally: `skillbill_runtime_exception` (message redacted to `[redacted]`, `skillbill.` frames only), `skillbill_feature_task_runtime_projection_measurement` (bounded counters, the repository checkpoint fingerprint, `contract_version`, `consumer_phase_id`, and a raw `workflow_id`), `skillbill_feature_task_runtime_shared_evidence` (checkpoint fingerprint, consuming phase id, outcome, and bounded index counters), and `skillbill_feature_task_runtime_diagnostic_degradation` (workflow, phase, attempt, generation, operation, typed failure class, conflicting key; `repair_turn` only when scoped to one turn). Enabling telemetry later does not discard those rows — `clearsPendingOutbox("off", "anonymous")` is `false` — so they can upload on the next sync. |
+| `off` | Nothing is transmitted; `sync` and `autoSync` short-circuit on the disabled level. Five events are still queued locally: `skillbill_runtime_exception` (message redacted to `[redacted]`, `skillbill.` frames only), `skillbill_feature_task_runtime_projection_measurement` (bounded counters, the repository checkpoint fingerprint, `contract_version`, `consumer_phase_id`, and a raw `workflow_id`), `skillbill_feature_task_runtime_shared_evidence` (checkpoint fingerprint, consuming phase id, outcome, and bounded index counters), `skillbill_feature_task_runtime_diagnostic_degradation` (workflow, phase, attempt, generation, operation, typed failure class, conflicting key; `repair_turn` only when scoped to one turn), and `skillbill_review_stage_degradation` (review_run_id, seam, expected, actual, and a closed reason). Enabling telemetry later does not discard those rows — `clearsPendingOutbox("off", "anonymous")` is `false` — so they can upload on the next sync. |
 | `anonymous` | Aggregate counts, finding ids with issue category/severity/confidence/outcome type, anonymized learning references, and `install_id` plus `skill_bill_version` on every uploaded event. Issue keys — and issue keys embedded in correlation ids such as `SKILL-1:subtask:2` — are replaced with a salted SHA-256 prefix. `skillbill_runtime_exception` carries `error_message` as `[redacted]` and keeps only `skillbill.` stack frames. No file paths, descriptions, notes, learning content, or repository name. Exceptions: `skillbill_feature_task_runtime_projection_measurement` and `skillbill_feature_task_runtime_shared_evidence` are enqueued without a telemetry level and upload `contract_version`, `consumer_phase_id`, and a raw, unhashed `workflow_id` alongside their bounded counters. `skillbill_feature_task_runtime_diagnostic_degradation` is likewise enqueued without a telemetry level and uploads `contract_version`, `phase_id`, `attempt`, `generation`, `operation`, `failure_class`, `conflicting_key`, and a raw `workflow_id`. |
 | `full` | Everything in `anonymous` plus: finding descriptions/titles, file locations, rejection notes, learning content (title, rule text), raw issue keys and correlation ids, and unredacted `error_message` and stack frames. Useful for teams that want actionable detail. |
 
@@ -402,6 +404,7 @@ If a parent skill forgets to pass `orchestrated=true` to a child, the child emit
 | Event | Emitted by | Orchestrated alternative |
 |-------|------------|--------------------------|
 | `skillbill_review_finished` | top-level code-review lifecycle once findings are resolved | `import_review` / `triage_findings` with `orchestrated=true` return payload instead |
+| `skillbill_review_stage_degradation` | verification/adjudication measurement after those stages settle | none; queued even at telemetry `off` |
 | `skillbill_quality_check_started` | standalone quality-check lifecycle | skipped in orchestrated mode |
 | `skillbill_quality_check_finished` | standalone quality-check lifecycle | `quality_check_finished(orchestrated=true)` returns payload |
 | `skillbill_feature_verify_started` | `bill-feature-verify` (standalone) | skipped in orchestrated mode |

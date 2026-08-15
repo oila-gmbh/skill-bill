@@ -655,7 +655,13 @@ private fun runAuditGapLoop(wrap: (String) -> String): NormalizedRunObservation 
       .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && it.loopId == "audit_gap" }
       .mapNotNull { it.edgeIteration },
     persistedOutputs = records.mapNotNull { (phaseId, record) ->
-      record.outputArtifact?.let { phaseId to it }
+      record.outputArtifact?.let { artifact ->
+        phaseId to if (phaseId == "review") {
+          artifact.replace(Regex("\"review_run_id\":\"rvw-[^\"]+\""), "\"review_run_id\":\"rvw-stable\"")
+        } else {
+          artifact
+        }
+      }
     }.toMap(),
     firstAuditArtifact = requireNotNull(firstAuditArtifact),
     implementBriefing = requireNotNull(harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()["implement"])

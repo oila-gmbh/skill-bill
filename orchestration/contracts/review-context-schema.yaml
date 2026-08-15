@@ -7,6 +7,9 @@ oneOf:
   - $ref: "#/$defs/assignment"
   - $ref: "#/$defs/launch"
   - $ref: "#/$defs/integration_launch"
+  - $ref: "#/$defs/verification_launch"
+  - $ref: "#/$defs/adjudication_launch"
+  - $ref: "#/$defs/finding_verdict"
   - $ref: "#/$defs/budget_outcome"
   - $ref: "#/$defs/accounting_summary"
 $defs:
@@ -295,7 +298,7 @@ $defs:
     additionalProperties: false
     required: [contract_version, kind, review_id, packet_digest, review_revision, repository_identity, base_revision, head_revision, status, composed_layers, selected_lanes, lane_decisions, changed_hunks, commit_units, commit_sequence_digest, coverage_fact, routing_matrix, matched_rules, learnings_references, build_test_facts, dependency_allowlist, evidence_targets, expansion_ledger, baseline_untracked_policy]
     properties:
-      contract_version: { const: "0.9" }
+      contract_version: { const: "1.0" }
       kind: { const: parent_packet }
       review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
@@ -334,7 +337,7 @@ $defs:
     additionalProperties: false
     required: [contract_version, kind, review_id, packet_digest, assignment_digest, review_revision, lane, lane_decision, base_revision, head_revision, assigned_paths, assigned_hunks, assigned_bundle, lane_routing, criteria_references, matched_rules, evidence_targets, dependency_allowlist, expansions, baseline_untracked_policy]
     properties:
-      contract_version: { const: "0.9" }
+      contract_version: { const: "1.0" }
       kind: { const: assignment }
       review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
@@ -359,7 +362,7 @@ $defs:
     additionalProperties: false
     required: [contract_version, kind, review_id, packet_digest, assignment_digest, review_revision, lane, base_revision, head_revision, specialist_contract, consumer_contract, rubric, assigned_paths, assigned_hunks, assigned_commit_units, lane_routing, coverage_fact, bundle, brokered_evidence, criteria_references, matched_rules, evidence_targets, dependency_allowlist, baseline_untracked_policy, forbidden_rediscovery, evidence_surface_rules, report_structure, broker_id, isolation, budget]
     properties:
-      contract_version: { const: "0.9" }
+      contract_version: { const: "1.0" }
       kind: { const: launch }
       review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
@@ -430,7 +433,7 @@ $defs:
     additionalProperties: false
     required: [contract_version, kind, review_id, packet_digest, review_revision, commit_sequence_digest, base_revision, head_revision, integration_contract, consumer_contract, commit_units, specialist_summaries, coverage_fact, final_state_evidence_targets, dependency_allowlist, forbidden_rediscovery, evidence_surface_rules, report_structure, broker_id, isolation, budget]
     properties:
-      contract_version: { const: "0.9" }
+      contract_version: { const: "1.0" }
       kind: { const: integration_launch }
       review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
@@ -456,6 +459,156 @@ $defs:
       broker_id: { $ref: "#/$defs/identifier" }
       isolation: { const: fresh }
       budget: { $ref: "#/$defs/budget" }
+  spec_intent_provenance:
+    type: object
+    additionalProperties: false
+    required: [spec_path, content_digest]
+    properties:
+      spec_path: { $ref: "#/$defs/path" }
+      content_digest: { $ref: "#/$defs/digest" }
+  spec_intent_projection:
+    type: object
+    additionalProperties: false
+    required: [intended_outcome, acceptance_criteria, constraints, non_goals, deferred_items, provenance, declared_byte_budget]
+    properties:
+      intended_outcome: { type: string, minLength: 1, pattern: '.*\S.*' }
+      acceptance_criteria: { $ref: "#/$defs/strings" }
+      constraints: { $ref: "#/$defs/strings" }
+      non_goals: { $ref: "#/$defs/strings" }
+      deferred_items: { $ref: "#/$defs/strings" }
+      provenance: { $ref: "#/$defs/spec_intent_provenance" }
+      declared_byte_budget: { type: integer, minimum: 1 }
+  review_finding:
+    type: object
+    additionalProperties: false
+    required: [finding_ref, severity, location, description]
+    properties:
+      finding_ref: { $ref: "#/$defs/identifier" }
+      severity: { $ref: "#/$defs/identifier" }
+      location: { type: string, minLength: 1, pattern: '.*\S.*' }
+      description: { type: string, minLength: 1, pattern: '.*\S.*' }
+      confidence: { type: string, minLength: 1, pattern: '.*\S.*' }
+  cited_region:
+    type: object
+    additionalProperties: false
+    required: [path, start_line, end_line]
+    properties:
+      path: { $ref: "#/$defs/path" }
+      start_line: { type: integer, minimum: 1 }
+      end_line: { type: integer, minimum: 1 }
+  delta_reference:
+    type: object
+    additionalProperties: false
+    required: [base_revision, head_revision]
+    properties:
+      base_revision: { $ref: "#/$defs/identifier" }
+      head_revision: { $ref: "#/$defs/identifier" }
+  finding_citation:
+    type: object
+    additionalProperties: false
+    required: [path, line]
+    properties:
+      path: { $ref: "#/$defs/path" }
+      line: { type: integer, minimum: 1 }
+  severity_adjustment:
+    type: object
+    additionalProperties: false
+    required: [direction, justification]
+    properties:
+      direction: { enum: [raise, lower] }
+      justification: { type: string, minLength: 1, pattern: '.*\S.*' }
+  verification_launch:
+    type: object
+    additionalProperties: false
+    required: [contract_version, kind, review_id, packet_digest, review_revision, finding, cited_region, delta_reference, evidence_surface_rules, dependency_allowlist, forbidden_rediscovery, broker_id, isolation, budget]
+    properties:
+      contract_version: { const: "1.0" }
+      kind: { const: verification_launch }
+      review_id: { $ref: "#/$defs/identifier" }
+      packet_digest: { $ref: "#/$defs/digest" }
+      review_revision: { $ref: "#/$defs/review_revision" }
+      finding: { $ref: "#/$defs/review_finding" }
+      cited_region: { $ref: "#/$defs/cited_region" }
+      delta_reference: { $ref: "#/$defs/delta_reference" }
+      evidence_surface_rules: { type: string, minLength: 1, pattern: '.*\S.*' }
+      dependency_allowlist: { $ref: "#/$defs/dependency_allowlist" }
+      forbidden_rediscovery: { $ref: "#/$defs/strings", minItems: 1 }
+      broker_id: { $ref: "#/$defs/identifier" }
+      isolation: { const: fresh }
+      budget: { $ref: "#/$defs/budget" }
+  adjudication_launch:
+    type: object
+    additionalProperties: false
+    required: [contract_version, kind, review_id, packet_digest, review_revision, finding, stage_1_verdict, spec_intent_projection, cited_region, evidence_surface_rules, dependency_allowlist, forbidden_rediscovery, broker_id, isolation, budget]
+    properties:
+      contract_version: { const: "1.0" }
+      kind: { const: adjudication_launch }
+      review_id: { $ref: "#/$defs/identifier" }
+      packet_digest: { $ref: "#/$defs/digest" }
+      review_revision: { $ref: "#/$defs/review_revision" }
+      finding: { $ref: "#/$defs/review_finding" }
+      stage_1_verdict: { $ref: "#/$defs/finding_verdict" }
+      spec_intent_projection: { $ref: "#/$defs/spec_intent_projection" }
+      cited_region: { $ref: "#/$defs/cited_region" }
+      evidence_surface_rules: { type: string, minLength: 1, pattern: '.*\S.*' }
+      dependency_allowlist: { $ref: "#/$defs/dependency_allowlist" }
+      forbidden_rediscovery: { $ref: "#/$defs/strings", minItems: 1 }
+      broker_id: { $ref: "#/$defs/identifier" }
+      isolation: { const: fresh }
+      budget: { $ref: "#/$defs/budget" }
+  finding_verdict:
+    type: object
+    additionalProperties: false
+    required: [contract_version, kind, stage, finding_ref, claim_verdict, recorded_at]
+    properties:
+      contract_version: { const: "1.0" }
+      kind: { const: finding_verdict }
+      stage: { enum: [verification, adjudication] }
+      finding_ref: { $ref: "#/$defs/identifier" }
+      claim_verdict: { enum: [confirmed, refuted, unresolved] }
+      scope_disposition:
+        enum: [in_scope, out_of_scope_preexisting, spec_deviation, spec_accepted_tradeoff]
+      citations:
+        type: array
+        items: { $ref: "#/$defs/finding_citation" }
+      severity_adjustment: { $ref: "#/$defs/severity_adjustment" }
+      recorded_at: { type: string, format: date-time }
+    allOf:
+      - if:
+          properties:
+            claim_verdict: { const: refuted }
+          required: [claim_verdict]
+        then:
+          required: [citations]
+          properties:
+            citations: { minItems: 1 }
+      - if:
+          properties:
+            severity_adjustment:
+              type: object
+              required: [direction]
+              properties:
+                direction: { const: lower }
+          required: [severity_adjustment]
+        then:
+          required: [citations]
+          properties:
+            citations: { minItems: 1 }
+      - if:
+          properties:
+            scope_disposition: { const: out_of_scope_preexisting }
+          required: [scope_disposition]
+        then:
+          required: [citations]
+          properties:
+            citations: { minItems: 1 }
+      - if:
+          properties:
+            stage: { const: verification }
+          required: [stage]
+        then:
+          properties:
+            scope_disposition: false
   budget:
     type: object
     additionalProperties: false
@@ -487,7 +640,7 @@ $defs:
     additionalProperties: false
     required: [contract_version, kind, review_id, packet_digest, assignment_digest, lane, terminal_outcome, budget_kind, configured_limit, observed_value, enforceable]
     properties:
-      contract_version: { const: "0.9" }
+      contract_version: { const: "1.0" }
       kind: { const: budget_outcome }
       review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }
@@ -515,7 +668,7 @@ $defs:
     additionalProperties: false
     required: [contract_version, kind, review_id, packet_digest, parent, lanes, commit_routing_accounting, parent_analysis_consumption, integration, aggregate_counters, aggregate_direct_usage, aggregate_inclusive_usage, budget_regression]
     properties:
-      contract_version: { const: "0.9" }
+      contract_version: { const: "1.0" }
       kind: { const: accounting_summary }
       review_id: { $ref: "#/$defs/identifier" }
       packet_digest: { $ref: "#/$defs/digest" }

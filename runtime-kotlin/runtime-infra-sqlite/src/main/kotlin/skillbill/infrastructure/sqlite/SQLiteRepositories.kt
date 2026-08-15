@@ -13,6 +13,7 @@ import skillbill.infrastructure.sqlite.review.ReviewStatsRuntime
 import skillbill.infrastructure.sqlite.review.TriageRuntime
 import skillbill.infrastructure.sqlite.review.loadReviewAccounting
 import skillbill.infrastructure.sqlite.review.persistImportedReview
+import skillbill.infrastructure.sqlite.review.persistLegacyTelemetryRewrites
 import skillbill.infrastructure.sqlite.review.upsertReviewAccounting
 import skillbill.learnings.LearningsRuntime
 import skillbill.learnings.model.CreateLearningRequest
@@ -37,6 +38,7 @@ import skillbill.ports.persistence.model.LearningResolution
 import skillbill.ports.persistence.model.ReviewAccountingRecord
 import skillbill.ports.persistence.model.ReviewRepositoryStatsSnapshot
 import skillbill.ports.persistence.model.TelemetryReconciliationRequest
+import skillbill.ports.persistence.model.TelemetryReconciliationResult
 import skillbill.review.model.FeatureTaskRuntimeWorkflowStats
 import skillbill.review.model.FeatureVerifyWorkflowStats
 import skillbill.review.model.FeedbackRequest
@@ -100,10 +102,15 @@ class SQLiteUnaddressedFindingsRepository(connection: Connection) : UnaddressedF
 class SQLiteTelemetryReconciliationRepository(
   private val connection: Connection,
 ) : TelemetryReconciliationRepository {
-  override fun reconcileStaleSessions(level: String) = reconcileStaleTelemetrySessions(connection, level)
+  override fun reconcileStaleSessions(level: String): TelemetryReconciliationResult {
+    persistLegacyTelemetryRewrites(connection)
+    return reconcileStaleTelemetrySessions(connection, level)
+  }
 
-  override fun reconcileStaleSessions(request: TelemetryReconciliationRequest) =
-    reconcileStaleTelemetrySessions(connection, request)
+  override fun reconcileStaleSessions(request: TelemetryReconciliationRequest): TelemetryReconciliationResult {
+    persistLegacyTelemetryRewrites(connection)
+    return reconcileStaleTelemetrySessions(connection, request)
+  }
 }
 
 class SQLiteWorkflowStatsRepository(

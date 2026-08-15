@@ -1606,7 +1606,7 @@ class WorkflowGoalRunnerOutcomeStore(
     // where continuation children were never read by this RUNTIME-only emission path.
     if (GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY !in artifacts) return@read emptyList()
     val review = goalReviewArtifacts(artifacts) ?: return@read emptyList()
-    validatedGoalReviewPasses(review, phaseOutputValidator)
+    validatedGoalReviewPasses(review, phaseOutputValidator, unitOfWork)
       .drop(review.state.emittedPassCount)
   }
 
@@ -1616,7 +1616,7 @@ class WorkflowGoalRunnerOutcomeStore(
       val artifacts = decodeArtifacts(record.artifactsJson)
       val review = goalReviewArtifacts(artifacts) ?: return@transaction false
       val state = review.state
-      validatedGoalReviewPasses(review, phaseOutputValidator)
+      validatedGoalReviewPasses(review, phaseOutputValidator, unitOfWork)
       if (passNumber != state.emittedPassCount + 1 || passNumber > state.completedPassCount) {
         return@transaction false
       }
@@ -2049,9 +2049,11 @@ class WorkflowGoalRunnerOutcomeStore(
     }
     val artifacts = decodeArtifacts(existing.artifactsJson)
     val phaseRecords = phaseRecordsFrom(artifacts)
-    val blockedRecord = phaseRecords[preferredPhaseId]?.takeIf { it.status == "blocked" }
-      ?: phaseRecords.values.firstOrNull { it.status == "blocked" }
-      ?: return@transaction true
+    val blockedRecord = operatorReopenablePhaseRecord(
+      phaseRecords,
+      preferredPhaseId,
+      existing.workflowStatus,
+    ) ?: return@transaction true
     family.save(
       unitOfWork.workflowStates,
       engine.updateRecord(
@@ -2061,6 +2063,17 @@ class WorkflowGoalRunnerOutcomeStore(
       ),
     )
     true
+  }
+
+  private fun operatorReopenablePhaseRecord(
+    phaseRecords: Map<String, FeatureTaskRuntimePhaseRecord>,
+    preferredPhaseId: String,
+    workflowStatus: String,
+  ): FeatureTaskRuntimePhaseRecord? {
+    val preferred = phaseRecords[preferredPhaseId]
+    return preferred?.takeIf { it.status == "blocked" }
+      ?: phaseRecords.values.firstOrNull { it.status == "blocked" }
+      ?: preferred?.takeIf { workflowStatus == "blocked" && it.status == "running" }
   }
 
   private fun operatorBlockedPhaseReopenUpdate(
@@ -2565,6 +2578,7 @@ private fun goalReviewArtifacts(artifacts: Map<String, Any?>): GoalSubtaskReview
 private fun validatedGoalReviewPasses(
   review: GoalSubtaskReviewArtifacts,
   phaseOutputValidator: FeatureTaskRuntimePhaseOutputValidator,
+  unitOfWork: UnitOfWork,
 ): List<GoalSubtaskReviewPassResult> {
   review.state.passResults.forEach { pass ->
     val rawResult = review.rawResults.getValue(pass.passNumber.toString())
@@ -2573,7 +2587,8 @@ private fun validatedGoalReviewPasses(
       .requireAcceptedOutput(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
       .normalizedOutput
       .envelope
-    val findings = GoalSubtaskReviewSummaryReducer.fromOutput(output)
+    val recordedVerdicts = GoalSubtaskReviewSummaryReducer.recordedVerdicts(unitOfWork, output)
+    val findings = GoalSubtaskReviewSummaryReducer.fromOutput(output, recordedVerdicts)
     val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(output, findings)
     if (
       pass.verdict != outcome.verdict ||

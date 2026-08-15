@@ -1,5 +1,6 @@
 package skillbill.ports.persistence
 
+import skillbill.review.model.ReviewStageDegradationMeasurement
 import skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord
 import skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord
 import skillbill.telemetry.model.FeatureVerifyFinishedRecord
@@ -16,9 +17,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionMeasurem
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRejectionMeasurement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceMeasurement
 
-// SKILL-66 Subtask 2: the lifecycle telemetry contract spans the
-// implement/verify/quality/pr families plus the goal family; the cohesive
-// write surface legitimately exceeds the per-type function budget.
 @Suppress("TooManyFunctions")
 interface LifecycleTelemetryRepository {
   fun featureTaskRuntimeProjectionMeasurement(record: FeatureTaskRuntimeProjectionMeasurement) = Unit
@@ -28,6 +26,8 @@ interface LifecycleTelemetryRepository {
   fun featureTaskRuntimeRejection(record: FeatureTaskRuntimeRejectionMeasurement) = Unit
 
   fun featureTaskRuntimeDiagnosticDegradation(record: FeatureTaskRuntimeDiagnosticDegradationMeasurement) = Unit
+
+  fun reviewStageDegradation(record: ReviewStageDegradationMeasurement) = Unit
 
   fun featureTaskRuntimeStarted(record: FeatureTaskRuntimeStartedRecord, level: String)
 

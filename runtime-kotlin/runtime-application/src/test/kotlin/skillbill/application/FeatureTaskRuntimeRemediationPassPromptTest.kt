@@ -15,7 +15,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 
 /**
  * AC-008 and AC-010: the reserved remediation pass's prompt must describe the remediation delta, must
@@ -104,7 +103,7 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
   fun `the remediation pass always renders mode inline`() {
     val prompt = compose(passNumber = 2, resolvedTier = CodeReviewExecutionMode.INLINE)
 
-    assertContains(prompt, "bill-code-review mode:inline context:feature-remediation")
+    assertContains(prompt, "mode:inline context:feature-remediation")
     assertFalse(
       prompt.contains("mode:delegated context:feature-remediation"),
       "context:feature-remediation paired with mode:delegated is rejected by the governed skill.",
@@ -119,15 +118,11 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
     val prompt = compose(
       passNumber = 2,
       resolvedTier = CodeReviewExecutionMode.INLINE,
-      priorBlockerFindingIds = listOf("pass1-blocker-1", "pass1-blocker-2"),
     )
 
-    assertContains(prompt, "blocker_dispositions")
-    assertContains(prompt, "pass1-blocker-1, pass1-blocker-2")
-    assertContains(prompt, "resolved, unresolved, superseded")
-    assertTrue(
-      prompt.contains("no more and no fewer"),
-      "The pass must require a disposition for every prior Blocker id under the durable key.",
+    assertFalse(
+      prompt.contains("blocker_dispositions"),
+      "Runtime synthesizes dispositions; the prompt does not order them.",
     )
   }
 
@@ -136,7 +131,6 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
     val prompt = compose(
       passNumber = 1,
       resolvedTier = CodeReviewExecutionMode.INLINE,
-      priorBlockerFindingIds = listOf("pass1-blocker-1"),
     )
 
     assertFalse(prompt.contains("blocker_dispositions"), "Pass one has no prior pass to dispose.")
@@ -223,8 +217,8 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
   fun `review ceremony orders every severity into produced_outputs findings without Blocker-only filter`() {
     val prompt = compose(passNumber = 1, resolvedTier = CodeReviewExecutionMode.INLINE)
 
-    assertContains(prompt, "Blocker, Major, Minor, and Nit")
-    assertContains(prompt, "Do not severity-filter the findings array")
+    assertContains(prompt, "The runtime owns this review")
+    assertFalse(prompt.contains("Do not severity-filter the findings array"))
     assertFalse(
       prompt.contains("only unresolved actionable Blocker findings"),
       "PHASE_REVIEW must not order a Blocker-only findings array; AC-005 needs the full producer set.",
@@ -234,7 +228,6 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
   private fun compose(
     passNumber: Int,
     resolvedTier: CodeReviewExecutionMode,
-    priorBlockerFindingIds: List<String> = emptyList(),
     reviewInput: GoalSubtaskReviewInput? = null,
     baselineUntrackedPaths: List<String> = emptyList(),
   ): String = FeatureTaskRuntimePhasePromptComposer.compose(
@@ -245,7 +238,6 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
     goalSubtaskReviewInput = reviewInput,
     resolvedReviewTier = resolvedTier,
     reviewDecidingRule = "auto_mode_by_pass_number:pass_n_inline",
-    priorBlockerFindingIds = priorBlockerFindingIds,
     baselineUntrackedPaths = baselineUntrackedPaths,
   )
 }

@@ -28,7 +28,6 @@ import skillbill.scaffold.model.ValidationGateFindingsFormat
 import skillbill.scaffold.model.ValidationGateFindingsLocator
 import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionBudget
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress
@@ -140,16 +139,40 @@ class FeatureTaskRuntimeValidationGateTest {
   }
 
   @Test
-  fun `truncated projection reports dropped count and blocks success semantics`() {
-    val findings = (1..100).map { index ->
+  fun `repair launches with every finding when the set exceeds the former handoff item cap`() {
+    val findings = (1..65).map { index ->
       ValidationGateFinding("m$index", "t$index", "message-$index", "loc-$index")
     }
-    val projection = ValidationFindingSetProjector.project(
-      findings,
-      FeatureTaskRuntimeHandoffProjectionBudget(maxUtf8Bytes = 256, maxCollectionItems = 2),
+    val repairLaunches = AtomicInteger(0)
+    var handed: List<ValidationGateFinding> = emptyList()
+    val runner = ScriptedGateRunner(
+      listOf(
+        failedWith(findings),
+        passed(),
+        passed(forced = true),
+      ),
     )
-    assertTrue(projection.droppedCount > 0)
-    assertTrue(projection.hasUnreportedRemainder)
+    val cycle = coordinator(declaredResolver(), runner, mutableListOf()).execute(
+      cycle = ValidationGateCycleRequest(
+        repoRoot = repoRoot,
+        request = minimalRequest(),
+        validationDepth = ValidationDepth.DEFAULT,
+        changedPaths = listOf("runtime-kotlin/foo.kt"),
+        repositoryCheckpoint = "checkpoint",
+        agentRepairLauncher = ValidationGateAgentRepairLauncher { projection, _ ->
+          repairLaunches.incrementAndGet()
+          handed = projection.findings
+          ValidationGateAgentRepairResult.Completed(
+            FeatureTaskRuntimePhaseOutput(phaseId = "validate", iteration = 1, payload = "{}"),
+          )
+        },
+      ),
+    )
+    assertEquals(1, repairLaunches.get())
+    assertEquals(findings, handed)
+    assertIs<ValidationGateCycleTerminalOutcome.Completed>(
+      assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,
+    )
   }
 
   @Test
@@ -453,13 +476,15 @@ class FeatureTaskRuntimeValidationGateTest {
     findings = emptyList(),
   )
 
-  private fun failedWith(finding: ValidationGateFinding): ValidationGateRunResult = ValidationGateRunResult(
+  private fun failedWith(finding: ValidationGateFinding): ValidationGateRunResult = failedWith(listOf(finding))
+
+  private fun failedWith(findings: List<ValidationGateFinding>): ValidationGateRunResult = ValidationGateRunResult(
     exitCode = 1,
     durationMs = 1,
     outcome = ValidationGateRunOutcome.FAILED,
     cacheMode = ValidationGateCacheMode.CACHE_ELIGIBLE,
     executedWorkUnits = 1,
-    findings = listOf(finding),
+    findings = findings,
   )
 
   private fun kotlinPackWithoutGate(): PlatformManifest = PlatformManifest(

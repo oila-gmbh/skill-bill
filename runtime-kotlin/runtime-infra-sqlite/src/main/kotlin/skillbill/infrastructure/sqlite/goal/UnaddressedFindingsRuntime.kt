@@ -3,6 +3,11 @@ package skillbill.infrastructure.sqlite.goal
 import skillbill.goalrunner.model.ReviewFindingOutcome
 import skillbill.goalrunner.model.ReviewFindingOutcomeRecord
 import skillbill.goalrunner.model.UnaddressedFinding
+import skillbill.review.model.ReviewClaimVerdict
+import skillbill.review.model.ReviewFindingCitation
+import skillbill.review.model.ReviewScopeDisposition
+import skillbill.review.model.ReviewSeverityAdjustment
+import skillbill.review.model.ReviewSeverityAdjustmentDirection
 import java.sql.Connection
 
 @Suppress("TooManyFunctions")
@@ -13,8 +18,10 @@ internal class UnaddressedFindingsRuntime(private val connection: Connection) {
       """
       INSERT INTO unaddressed_findings (
         issue_key, workflow_id, subtask_id, review_pass_number, finding_ordinal,
-        severity, issue_category, location, summary, review_run_id, finding_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        severity, issue_category, location, summary, review_run_id, finding_id,
+        claim_verdict, scope_disposition, citations,
+        severity_adjustment_direction, severity_adjustment_justification
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       """.trimIndent(),
     ).use { statement ->
       findings.forEach { finding ->
@@ -29,7 +36,12 @@ internal class UnaddressedFindingsRuntime(private val connection: Connection) {
         statement.setString(parameterIndex++, finding.location)
         statement.setString(parameterIndex++, finding.summary)
         statement.setString(parameterIndex++, finding.reviewRunId)
-        statement.setString(parameterIndex, finding.findingId)
+        statement.setString(parameterIndex++, finding.findingId)
+        statement.setString(parameterIndex++, finding.claimVerdict?.wireValue)
+        statement.setString(parameterIndex++, finding.scopeDisposition?.wireValue)
+        statement.setString(parameterIndex++, ReviewFindingCitation.encodeList(finding.citations))
+        statement.setString(parameterIndex++, finding.severityAdjustment?.direction?.wireValue)
+        statement.setString(parameterIndex, finding.severityAdjustment?.justification)
         statement.addBatch()
       }
       statement.executeBatch()
@@ -165,7 +177,9 @@ internal class UnaddressedFindingsRuntime(private val connection: Connection) {
   private fun fetchLedgerBy(column: String, value: String): List<UnaddressedFinding> = connection.prepareStatement(
     """
     SELECT issue_key, workflow_id, subtask_id, review_pass_number, finding_ordinal,
-           severity, issue_category, location, summary, review_run_id, finding_id
+           severity, issue_category, location, summary, review_run_id, finding_id,
+           claim_verdict, scope_disposition, citations,
+           severity_adjustment_direction, severity_adjustment_justification
     FROM unaddressed_findings
     WHERE $column = ?
     ORDER BY subtask_id, review_pass_number, finding_ordinal
@@ -188,6 +202,15 @@ internal class UnaddressedFindingsRuntime(private val connection: Connection) {
               summary = rows.getString("summary"),
               reviewRunId = rows.getString("review_run_id"),
               findingId = rows.getString("finding_id"),
+              claimVerdict = rows.getString("claim_verdict")?.trim()?.takeIf(String::isNotBlank)
+                ?.let(ReviewClaimVerdict::fromWire),
+              scopeDisposition = rows.getString("scope_disposition")?.trim()?.takeIf(String::isNotBlank)
+                ?.let(ReviewScopeDisposition::fromWire),
+              citations = ReviewFindingCitation.decodeList(rows.getString("citations")),
+              severityAdjustment = severityAdjustment(
+                rows.getString("severity_adjustment_direction"),
+                rows.getString("severity_adjustment_justification"),
+              ),
             ),
           )
         }
@@ -214,4 +237,11 @@ internal class UnaddressedFindingsRuntime(private val connection: Connection) {
     statement.setString(1, issueKey)
     statement.executeQuery().use { it.next() }
   }
+}
+
+private fun severityAdjustment(direction: String?, justification: String?): ReviewSeverityAdjustment? {
+  val parsedDirection = direction?.trim()?.takeIf(String::isNotBlank)?.let(ReviewSeverityAdjustmentDirection::fromWire)
+    ?: return null
+  val parsedJustification = justification?.trim()?.takeIf(String::isNotBlank) ?: return null
+  return ReviewSeverityAdjustment(parsedDirection, parsedJustification)
 }

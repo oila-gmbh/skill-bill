@@ -3,9 +3,12 @@ package skillbill.application.featuretask
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
+import skillbill.application.goalrunner.UnaddressedFindingLedgerScope
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
+import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.buildGoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
@@ -15,6 +18,7 @@ import skillbill.ports.workflow.model.GoalSubtaskReviewInputFailureReason
 import skillbill.ports.workflow.recoverGoalSubtaskReviewBaseline
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.WorkflowSnapshotValidator
+import skillbill.workflow.model.WorkflowStateSnapshot
 import skillbill.workflow.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY
@@ -36,6 +40,7 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewDisposition
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesFromArtifact
+import skillbill.workflow.taskruntime.model.unionRefutedBlockerDispositions
 
 @Inject
 @Suppress("TooManyFunctions") // one cohesive goal-continuation recorder; each method is a distinct durable seam
@@ -198,48 +203,96 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     request: GoalReviewPassCompletionRequest,
     dbOverride: String? = null,
   ): GoalSubtaskReviewState? = database.transaction(dbOverride) { unitOfWork ->
-    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, request.workflowId)
-      ?: return@transaction null
-    val artifacts = decodeArtifacts(record.artifactsJson)
-    val state = reviewStateFromArtifacts(artifacts)
-      ?: return@transaction null
-    require(request.rawReviewResult.isNotBlank()) { "Goal-subtask review pass result must be non-blank." }
-    val previousResults = rawReviewResultsFromArtifacts(artifacts, state)
-    val completed = state.completeReservedPass(
+    val loaded = loadGoalReviewPassWrite(unitOfWork, request) ?: return@transaction null
+    val completed = loaded.state.completeReservedPass(
       request.verdict,
       request.unresolvedFindingCount,
       request.findings,
-      request.blockerDispositions,
+      loaded.dispositions,
       request.commitFocusedAccounting,
     )
-    val passNumber = completed.completedPassCount.toString()
+    persistGoalReviewPassWrite(unitOfWork, loaded, request, completed)
+    completed
+  }
+
+  private data class GoalReviewPassWrite(
+    val record: WorkflowStateSnapshot,
+    val state: GoalSubtaskReviewState,
+    val previousResults: Map<String, String>,
+    val ledgerFindings: List<UnaddressedFinding>,
+    val supersededFindings: List<UnaddressedFinding>,
+    val dispositions: List<GoalSubtaskBlockerDisposition>,
+  )
+
+  private fun loadGoalReviewPassWrite(
+    unitOfWork: UnitOfWork,
+    request: GoalReviewPassCompletionRequest,
+  ): GoalReviewPassWrite? {
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, request.workflowId)
+      ?: return null
+    val artifacts = decodeArtifacts(record.artifactsJson)
+    val state = reviewStateFromArtifacts(artifacts) ?: return null
+    require(request.rawReviewResult.isNotBlank()) { "Goal-subtask review pass result must be non-blank." }
     val continuation = continuationFromArtifacts(artifacts)
       ?: error("Goal-subtask review continuation is missing during reserved-pass recovery.")
+    val reservedPass = state.reservedPassNumber ?: 1
+    val recordedVerdicts = GoalSubtaskReviewSummaryReducer.recordedVerdicts(unitOfWork, request.normalizedOutput)
     val ledgerFindings = GoalSubtaskReviewSummaryReducer.unaddressedFindings(
       output = request.normalizedOutput,
-      issueKey = continuation.issueKey,
-      subtaskId = continuation.subtaskId,
-      workflowId = request.workflowId,
-      reviewPassNumber = passNumber.toInt(),
+      scope = UnaddressedFindingLedgerScope(
+        issueKey = continuation.issueKey,
+        subtaskId = continuation.subtaskId,
+        workflowId = request.workflowId,
+        reviewPassNumber = reservedPass,
+      ),
+      recordedVerdicts = recordedVerdicts,
     )
     val supersededFindings = unitOfWork.unaddressedFindings.fetchWorkflowLedger(request.workflowId)
-    unitOfWork.unaddressedFindings.replaceLedgerForPass(request.workflowId, passNumber.toInt(), ledgerFindings)
+    val dispositions = if (reservedPass <= 1) {
+      request.blockerDispositions
+    } else {
+      unionRefutedBlockerDispositions(
+        request.blockerDispositions,
+        GoalSubtaskReviewSummaryReducer.refutedBlockerSupersedes(
+          supersededFindings,
+          ledgerFindings,
+          recordedVerdicts,
+        ),
+      )
+    }
+    return GoalReviewPassWrite(
+      record = record,
+      state = state,
+      previousResults = rawReviewResultsFromArtifacts(artifacts, state),
+      ledgerFindings = ledgerFindings,
+      supersededFindings = supersededFindings,
+      dispositions = dispositions,
+    )
+  }
+
+  private fun persistGoalReviewPassWrite(
+    unitOfWork: UnitOfWork,
+    loaded: GoalReviewPassWrite,
+    request: GoalReviewPassCompletionRequest,
+    completed: GoalSubtaskReviewState,
+  ) {
+    val passNumber = completed.completedPassCount.toString()
+    unitOfWork.unaddressedFindings.replaceLedgerForPass(request.workflowId, passNumber.toInt(), loaded.ledgerFindings)
     unitOfWork.unaddressedFindings.recordOutcomes(
       GoalSubtaskReviewSummaryReducer.reviewFindingOutcomes(
-        supersededFindings = supersededFindings,
-        currentFindings = ledgerFindings,
-        blockerDispositions = request.blockerDispositions,
+        supersededFindings = loaded.supersededFindings,
+        currentFindings = loaded.ledgerFindings,
+        blockerDispositions = loaded.dispositions,
       ),
     )
     savePatch(
-      record,
+      loaded.record,
       unitOfWork.workflowStates,
       mapOf(
         GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to completed.toArtifactMap(),
-        GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY to (previousResults + (passNumber to request.rawReviewResult)),
+        GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY to (loaded.previousResults + (passNumber to request.rawReviewResult)),
       ),
     )
-    completed
   }
 
   /**

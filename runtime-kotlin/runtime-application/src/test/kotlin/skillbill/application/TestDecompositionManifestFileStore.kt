@@ -32,6 +32,13 @@ internal object TestDecompositionManifestFileStore : DecompositionManifestFileSt
     }
   }
 
+  override fun listDirectChildDirectories(directory: Path): List<Path> {
+    if (!Files.isDirectory(directory)) return emptyList()
+    return Files.list(directory).use { paths ->
+      paths.filter { path -> Files.isDirectory(path) }.toList()
+    }
+  }
+
   override fun deleteIfExists(target: Path) {
     Files.deleteIfExists(target)
   }

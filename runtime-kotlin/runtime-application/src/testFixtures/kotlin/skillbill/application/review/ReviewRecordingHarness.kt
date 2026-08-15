@@ -5,6 +5,8 @@ import skillbill.application.model.ParallelReviewScope
 import skillbill.application.model.ReviewPrelaunchExpansion
 import skillbill.config.model.RepoLocalConfig
 import skillbill.infrastructure.fs.ClasspathReviewSpecialistContractProvider
+import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
+import skillbill.infrastructure.fs.FileSystemDecompositionManifestFileStore
 import skillbill.infrastructure.fs.JdkParallelReviewLaneRunner
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
@@ -18,6 +20,7 @@ import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.persistence.LifecycleTelemetryRepository
 import skillbill.ports.persistence.ReviewRepository
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.model.ReviewAccountingRecord
@@ -34,7 +37,12 @@ import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewContextBudgetPolicy
+import skillbill.review.model.ParallelReviewMergedFinding
+import skillbill.review.model.ReviewFindingVerdict
+import skillbill.review.model.ReviewPassClaimSnapshot
 import skillbill.review.model.ReviewRunLane
+import skillbill.review.model.ReviewSpecProjectionReference
+import skillbill.review.model.ReviewStageBoundary
 import skillbill.scaffold.model.BaselineReviewCatalog
 import skillbill.scaffold.model.CodeReviewBaselineLayer
 import skillbill.scaffold.model.CodeReviewComposition
@@ -72,6 +80,21 @@ class ReviewRecorder {
   val durableLanes: MutableList<ReviewRunLane> = Collections.synchronizedList(mutableListOf())
 
   @Volatile var durableIntegrationPass: ReviewIntegrationPassRecord? = null
+
+  val durableFindingVerdicts: MutableList<ReviewFindingVerdict> =
+    Collections.synchronizedList(mutableListOf())
+  val durableStageBoundaries: MutableList<ReviewStageBoundary> =
+    Collections.synchronizedList(mutableListOf())
+
+  @Volatile var durablePassClaims: ReviewPassClaimSnapshot? = null
+
+  val durableFindingLanes: MutableMap<String, String> =
+    Collections.synchronizedMap(mutableMapOf())
+
+  @Volatile var durableSpecProjection: ReviewSpecProjectionReference? = null
+
+  val stageDegradations: MutableList<skillbill.review.model.ReviewStageDegradationMeasurement> =
+    Collections.synchronizedList(mutableListOf())
 
   /** The prompts the inline parent lanes were actually launched with. */
   val parentPrompts: List<String>
@@ -169,6 +192,16 @@ fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): Parall
     reviewRubricResolver = recordingRubricResolver(recorder, config.rubricBody),
     reviewSpecialistContractProvider = ClasspathReviewSpecialistContractProvider(),
     database = recordingDatabase(recorder),
+    specIntentProjectionResolver = SpecIntentProjectionResolver(
+      FileSystemDecompositionManifestFileStore(),
+      DecompositionManifestValidatorAdapter(),
+      SpecIntentProjectionExtractor(
+        object : ReviewContextEnvelopeValidator {
+          override fun validate(envelope: Map<String, Any?>, sourceLabel: String) = Unit
+        },
+        FileSystemDecompositionManifestFileStore(),
+      ),
+    ),
   )
 
 /** The base revision every harness request declares; the root commit of a fixture range parents onto it. */
@@ -227,9 +260,10 @@ private fun recordingDatabase(recorder: ReviewRecorder): DatabaseSessionFactory 
     when (method.name) {
       "saveAccounting" -> recorder.savedAccounting.add(args[0] as ReviewAccountingRecord).let { }
       "loadAccounting" -> null
-      // Finding attribution carries no measured content, so this harness only has to tolerate it;
-      // what the runner actually writes is asserted in ParallelCodeReviewRunnerTest.
-      "recordFindingLaneAttribution" -> Unit
+      "recordFindingLaneAttribution" -> {
+        @Suppress("UNCHECKED_CAST")
+        recorder.durableFindingLanes.putAll(args[1] as Map<String, String>)
+      }
       "replaceReviewRunLanes" -> {
         @Suppress("UNCHECKED_CAST")
         val lanes = args[1] as List<ReviewRunLane>
@@ -241,6 +275,38 @@ private fun recordingDatabase(recorder: ReviewRecorder): DatabaseSessionFactory 
         recorder.durableIntegrationPass = args[1] as ReviewIntegrationPassRecord
       }
       "fetchIntegrationPass" -> recorder.durableIntegrationPass
+      "recordFindingVerdicts" -> {
+        @Suppress("UNCHECKED_CAST")
+        val verdicts = args[1] as List<ReviewFindingVerdict>
+        verdicts.forEach { incoming ->
+          recorder.durableFindingVerdicts.removeAll {
+            it.findingRef == incoming.findingRef && it.stage == incoming.stage
+          }
+          recorder.durableFindingVerdicts += incoming
+        }
+      }
+      "fetchFindingVerdicts" -> recorder.durableFindingVerdicts.toList()
+      "recordReviewPassClaims" -> {
+        @Suppress("UNCHECKED_CAST")
+        val incoming = args[1] as List<ParallelReviewMergedFinding>
+        val existing = recorder.durablePassClaims?.findings
+        if (incoming.isEmpty() && !existing.isNullOrEmpty()) {
+          Unit
+        } else {
+          recorder.durablePassClaims = ReviewPassClaimSnapshot(incoming)
+        }
+      }
+      "fetchReviewPassClaims" -> recorder.durablePassClaims
+      "recordStageBoundary" -> {
+        val boundary = args[1] as ReviewStageBoundary
+        recorder.durableStageBoundaries.removeAll { it.stage == boundary.stage }
+        recorder.durableStageBoundaries += boundary
+      }
+      "fetchStageBoundaries" -> recorder.durableStageBoundaries.toList()
+      "recordSpecProjectionReference" -> {
+        recorder.durableSpecProjection = args[1] as ReviewSpecProjectionReference
+      }
+      "fetchSpecProjectionReference" -> recorder.durableSpecProjection
       else -> error("Unexpected review repository call: ${method.name}")
     }
   } as ReviewRepository
@@ -250,6 +316,7 @@ private fun recordingDatabase(recorder: ReviewRecorder): DatabaseSessionFactory 
   ) { _, method, _ ->
     when (method.name) {
       "getReviews" -> reviews
+      "getLifecycleTelemetry" -> recordingLifecycleTelemetry(recorder)
       "getDbPath" -> Path.of("/tmp/recording-review.db")
       else -> error("Unexpected unit-of-work call: ${method.name}")
     }
@@ -263,6 +330,45 @@ private fun recordingDatabase(recorder: ReviewRecorder): DatabaseSessionFactory 
     override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = block(unitOfWork)
   }
 }
+
+private fun recordingLifecycleTelemetry(recorder: ReviewRecorder): LifecycleTelemetryRepository =
+  object : LifecycleTelemetryRepository {
+    override fun reviewStageDegradation(record: skillbill.review.model.ReviewStageDegradationMeasurement) {
+      recorder.stageDegradations += record
+    }
+
+    override fun featureTaskRuntimeStarted(
+      record: skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord,
+      level: String,
+    ) = Unit
+
+    override fun featureTaskRuntimeFinished(
+      record: skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord,
+      level: String,
+    ) = Unit
+
+    override fun qualityCheckStarted(record: skillbill.telemetry.model.QualityCheckStartedRecord, level: String) = Unit
+
+    override fun qualityCheckFinished(record: skillbill.telemetry.model.QualityCheckFinishedRecord, level: String) =
+      Unit
+
+    override fun featureVerifyStarted(record: skillbill.telemetry.model.FeatureVerifyStartedRecord, level: String) =
+      Unit
+
+    override fun featureVerifyFinished(record: skillbill.telemetry.model.FeatureVerifyFinishedRecord, level: String) =
+      Unit
+
+    override fun prDescriptionGenerated(record: skillbill.telemetry.model.PrDescriptionGeneratedRecord, level: String) =
+      Unit
+
+    override fun goalStarted(record: skillbill.telemetry.model.GoalStartedRecord, level: String) = Unit
+
+    override fun goalSubtaskFinished(record: skillbill.telemetry.model.GoalSubtaskFinishedRecord, level: String) = Unit
+
+    override fun goalFinished(record: skillbill.telemetry.model.GoalFinishedRecord, level: String) = Unit
+
+    override fun goalIssueFinished(record: skillbill.telemetry.model.GoalIssueFinishedRecord, level: String) = Unit
+  }
 
 private fun recordingCatalogGateway(manifests: List<PlatformManifest>): ScaffoldCatalogGateway =
   object : ScaffoldCatalogGateway {
@@ -280,7 +386,7 @@ private fun recordingCatalogGateway(manifests: List<PlatformManifest>): Scaffold
 fun harnessRequest(
   repoRoot: Path = Files.createTempDirectory("review-e2e"),
   agent1Id: String = "codex",
-  agent2Id: String = "claude",
+  agent2Id: String? = "claude",
   timeout: Duration? = null,
   reviewRunId: String? = null,
   prelaunchExpansions: List<ReviewPrelaunchExpansion> = emptyList(),

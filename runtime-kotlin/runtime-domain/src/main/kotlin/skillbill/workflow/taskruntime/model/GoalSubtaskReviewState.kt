@@ -96,6 +96,16 @@ data class GoalSubtaskBlockerDisposition(
   }
 }
 
+fun unionRefutedBlockerDispositions(
+  agentEmitted: List<GoalSubtaskBlockerDisposition>,
+  runtimeSuperseded: List<GoalSubtaskBlockerDisposition>,
+): List<GoalSubtaskBlockerDisposition> {
+  if (runtimeSuperseded.isEmpty()) return agentEmitted
+  val byId = agentEmitted.associateBy(GoalSubtaskBlockerDisposition::findingId).toMutableMap()
+  runtimeSuperseded.forEach { disposition -> byId[disposition.findingId] = disposition }
+  return byId.values.toList()
+}
+
 enum class GoalSubtaskReviewDisposition(val wireValue: String) {
   PENDING("pending"),
   PAUSED("paused"),

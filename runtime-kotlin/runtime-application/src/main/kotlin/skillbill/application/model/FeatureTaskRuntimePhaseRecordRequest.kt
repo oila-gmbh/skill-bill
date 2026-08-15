@@ -58,6 +58,7 @@ data class FeatureTaskRuntimePhaseStateRequest(
    * run cannot erase or half-overwrite it.
    */
   val launchOutcomeKnown: Boolean = false,
+  val reviewRunId: String? = null,
 )
 
 /**

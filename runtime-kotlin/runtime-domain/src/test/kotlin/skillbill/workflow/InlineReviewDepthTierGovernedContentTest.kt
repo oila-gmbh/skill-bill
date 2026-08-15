@@ -31,12 +31,9 @@ class InlineReviewDepthTierGovernedContentTest {
     assertTrue(codeReview.contains("reduced depth"))
   }
 
-  // The light tier's cost model depends on one traversal carrying every area at once. Area-major
-  // phrasing reads as an iteration order and makes the worker re-review the same delta per area, so
-  // the single-pass rule and the explicit prohibition are both pinned.
   @Test
   fun `inline traverses the delta once with every area held simultaneously`() {
-    assertTrue(codeReview.contains("merge it into one combined"))
+    assertTrue(codeReview.contains("one combined"))
     assertTrue(codeReview.contains("traverses the delta exactly once"))
     assertTrue(codeReview.contains("never re-walk the same delta once per area"))
     assertTrue(codeReview.contains("holding all areas in mind simultaneously"))
@@ -45,19 +42,11 @@ class InlineReviewDepthTierGovernedContentTest {
     assertTrue(inlineWorker.contains("not an iteration order"))
   }
 
-  // One isolated worker for the whole review is still one review at reduced depth: the tier stays
-  // distinct by depth, and the parent keeps neither the rubric text nor the delta after it returns.
   @Test
-  fun `inline runs as exactly one parent-launched subagent over parent-selected rubrics`() {
+  fun `inline runs as the declared native agent the driver launches`() {
     assertTrue(codeReview.contains("one review subagent launched by the"))
-    assertTrue(codeReview.contains("run exactly one review prompt in exactly one"))
     assertTrue(codeReview.contains("`bill-code-review-inline` native agent"))
-    assertTrue(codeReview.contains("never substitute a general-purpose agent"))
-    assertTrue(codeReview.contains("Do not launch a per-area"))
-    assertTrue(codeReview.contains("Area selection is the parent's work"))
-    assertTrue(codeReview.contains("`declared_files.areas`"))
-    assertTrue(codeReview.contains("Name those paths and `declared_files.baseline`"))
-    assertTrue(codeReview.contains("Reading every declared rubric regardless of signal"))
+    assertTrue(codeReview.contains("skill-bill code-review"))
   }
 
   @Test
@@ -70,7 +59,7 @@ class InlineReviewDepthTierGovernedContentTest {
       codeReview.contains("required coverage"),
       "The inline tier must no longer claim required coverage.",
     )
-    assertTrue(codeReview.contains("never present it as equivalent to a delegated result"))
+    assertTrue(codeReview.contains("Never present it as equivalent to a delegated result"))
   }
 
   @Test
@@ -103,12 +92,14 @@ class InlineReviewDepthTierGovernedContentTest {
   }
 
   @Test
-  fun `the single-prompt inline seam is governed content`() {
-    assertTrue(codeReview.contains("## Single-prompt inline review"))
-    assertTrue(codeReview.contains("run exactly one review prompt in exactly one"))
-    assertTrue(codeReview.contains("Do not launch a per-area"))
-    assertTrue(codeReview.contains("minus the baseline-untracked inventory"))
-    assertTrue(codeReview.contains("risk-register lines the delegated path emits"))
+  fun `the entry contract invokes the driver instead of orchestrating lanes`() {
+    assertTrue(codeReview.contains("skill-bill code-review"))
+    assertTrue(codeReview.contains("parallel: arg > code_review_parallel_agent"))
+    assertFalse(codeReview.contains("mktemp"))
+    assertFalse(codeReview.contains("claude -p"))
+    assertFalse(codeReview.contains("stdin-pipe"))
+    assertFalse(codeReview.contains("## Scope Resolution"))
+    assertFalse(codeReview.contains("skill-bill code-review-merge"))
   }
 
   @Test

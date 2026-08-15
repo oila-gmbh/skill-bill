@@ -9,7 +9,7 @@ The default telemetry level is `anonymous`. Collection is on unless you disable 
 
 | Level | Behavior |
 |-------|----------|
-| `off` | Nothing is transmitted: `sync` and `autoSync` short-circuit on the disabled level. Four events are still written to the local outbox — `skillbill_runtime_exception`, `skillbill_feature_task_runtime_projection_measurement`, `skillbill_feature_task_runtime_shared_evidence`, and `skillbill_feature_task_runtime_diagnostic_degradation` — see [What is still queued at `off`](#what-is-still-queued-at-off). |
+| `off` | Nothing is transmitted: `sync` and `autoSync` short-circuit on the disabled level. Five events are still written to the local outbox — `skillbill_runtime_exception`, `skillbill_feature_task_runtime_projection_measurement`, `skillbill_feature_task_runtime_shared_evidence`, `skillbill_feature_task_runtime_diagnostic_degradation`, and `skillbill_review_stage_degradation` — see [What is still queued at `off`](#what-is-still-queued-at-off). |
 | `anonymous` | Counts, enums, durations, and identifiers derived by one-way hash. No file paths, descriptions, notes, learning text, error messages, or non-Skill-Bill stack frames. |
 | `full` | Everything in `anonymous`, plus the free-text and path fields marked below. |
 
@@ -21,7 +21,7 @@ outbox but never transmitted while the level is `off`.
 
 ### What is still queued at `off`
 
-Four producers enqueue without consulting the telemetry level:
+Five producers enqueue without consulting the telemetry level:
 
 - `TelemetryService.captureException` enqueues `skillbill_runtime_exception` guarded only by
   `database.databaseExists`; the level is used solely to choose redaction, so at `off` the row is
@@ -37,6 +37,11 @@ Four producers enqueue without consulting the telemetry level:
   `skillbill_feature_task_runtime_diagnostic_degradation` with no telemetry gate; the row carries
   the workflow, phase, attempt, generation, operation, typed failure class, and conflicting key
   (`repair_turn` only when the failure was scoped to one turn).
+- `ParallelCodeReviewRunner` / `LifecycleTelemetryStore.reviewStageDegradation` enqueues
+  `skillbill_review_stage_degradation` with no telemetry gate; the row carries `review_run_id`,
+  seam, expected, actual, and a closed reason (`spec_context_none`, `adjudication_skipped`,
+  `worker_launch_or_return_failed`, `stage_boundary_unreached`). It never carries finding text,
+  spec excerpts, or paths.
 
 Nothing is transmitted while the level is `off`: `TelemetryService.sync` and
 `TelemetryService.autoSync` return before upload when the resolved settings are disabled.
@@ -147,6 +152,18 @@ is present on the map.
 | `learnings.applied_count`, `applied_references`, `applied_summary`, `scope_counts`, entry `reference` and `scope` | — | ✓ | ✓ | `buildLearningsSection` |
 | Learning entry `title`, `rule_text` | — | — | ✓ | `learningsEntries` |
 | `review_context_accounting` (bounded counters) | — | ✓ | ✓ | `reviewFinishedPayload` |
+| Per-stage verdict distribution (`verification`, `adjudication` claim_verdict and scope_disposition counts, `finding_count`) | — | ✓ | ✓ | durable `review_run_finding_verdicts` via `aggregateReviewStageMetrics` |
+| `refutation_rate_by_stage`, `rejected_verdict_counts`, `severity_adjustment_counts`, `resolved_tier` | — | ✓ | ✓ | durable verdict rows and `review_runs.execution_mode`; never a worker self-report |
+
+### `skillbill_review_stage_degradation`
+
+| Field | off | anonymous | full | Source |
+|-------|-----|-----------|------|--------|
+| `review_run_id`, `seam`, `expected`, `actual`, `reason` | queued only | ✓ | ✓ | `ReviewStageDegradationSelection` |
+
+Counts and closed enums only. No finding text, paths, or spec bodies.
+
+This event is enqueued regardless of level. At `off` the row is written locally and not sent.
 
 ### `skillbill_pr_description_generated`
 
@@ -199,7 +216,7 @@ Every supported mechanism:
   `~/.config/skill-bill/config.json` has the same effect.
 
 At `off`, no telemetry is transmitted and no telemetry config is required. Payload building is
-skipped for every event except the two listed in
+skipped for every event except the producers listed in
 [What is still queued at `off`](#what-is-still-queued-at-off), which are enqueued locally without
 consulting the level and are not discarded when telemetry is later enabled.
 

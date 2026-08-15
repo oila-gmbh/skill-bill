@@ -21,6 +21,18 @@ object ReviewStatsRuntime {
       stats = summarizeFindingRows(queryLatestFindingOutcomes(connection, reviewRunId)),
       health = buildReviewHealthStats(connection, reviewRunId),
       laneEffectiveness = queryReviewLaneEffectiveness(connection, reviewRunId),
+      stageMetrics = reviewRunId?.let { runId ->
+        aggregateReviewStageMetrics(
+          connection,
+          runId,
+          queryLatestFindingOutcomes(connection, runId).size,
+        )
+      },
+      stageMetricsByTier = if (reviewRunId == null) {
+        stageMetricsByResolvedTier(connection)
+      } else {
+        emptyMap()
+      },
     )
   }
 

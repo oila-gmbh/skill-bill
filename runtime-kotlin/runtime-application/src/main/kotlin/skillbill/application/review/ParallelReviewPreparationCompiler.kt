@@ -22,6 +22,8 @@ import skillbill.review.context.model.ReviewCommitLaneRoutingMatrix
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewLaneDecision
 import skillbill.review.context.model.ReviewRevision
+import skillbill.review.context.model.SpecIntentAbsenceReason
+import skillbill.review.context.model.SpecIntentResolution
 import skillbill.review.plan.ReviewCommitLaneRoutingPolicy
 import skillbill.review.plan.model.ReviewLaunchLane
 import skillbill.review.plan.model.ReviewRoutedLane
@@ -134,8 +136,10 @@ internal object ParallelReviewPreparationCompiler {
     ReviewPreparationRequest(
       reviewId = input.reviewRunId ?: "code-review-parallel-$revisionId",
       reviewRevision = ReviewRevision(revisionId, 1),
-      criteriaReferences = routes.associate { it.lane to listOf("independent branch-diff specialist review") },
+      criteriaReferences = criteriaReferences(routes, input.specIntentResolution),
       baselineUntrackedPolicy = input.baselineUntrackedPolicy,
+      specIntentProjection = (input.specIntentResolution as? SpecIntentResolution.Resolved)
+        ?.projection,
     ),
   )
 
@@ -251,6 +255,18 @@ internal object ParallelReviewPreparationCompiler {
   private const val PARALLEL_REVIEW_SELECTOR = "parallel-code-review"
 }
 
+private fun criteriaReferences(
+  routes: List<SpecialistRoute>,
+  resolution: SpecIntentResolution,
+): Map<String, List<String>> {
+  val criteria = when (resolution) {
+    is SpecIntentResolution.Resolved ->
+      resolution.projection.acceptanceCriteria
+    is SpecIntentResolution.None -> emptyList()
+  }
+  return routes.associate { it.lane to criteria }
+}
+
 private data class SelectedRubric(val planned: PlannedReviewRubric, val ownedPaths: List<String>)
 
 private data class SpecialistRoute(
@@ -286,4 +302,8 @@ internal data class ParallelReviewPreparationInput(
   val headRevision: String,
   val prelaunchExpansions: List<skillbill.application.model.ReviewPrelaunchExpansion> = emptyList(),
   val baselineUntrackedPolicy: ReviewBaselineUntrackedPolicy = ReviewBaselineUntrackedPolicy.EMPTY,
+  val specIntentResolution: SpecIntentResolution =
+    SpecIntentResolution.None(
+      SpecIntentAbsenceReason.NOT_APPLICABLE_SCOPE,
+    ),
 )

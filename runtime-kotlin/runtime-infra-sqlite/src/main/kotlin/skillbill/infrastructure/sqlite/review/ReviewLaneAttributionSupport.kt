@@ -68,7 +68,7 @@ fun replaceReviewRunLanes(connection: Connection, reviewRunId: String, lanes: Li
 // a registration seam of their own. The import upsert overwrites every reserved placeholder field.
 // Until then the empty raw_text is the marker that distinguishes a reservation from an imported
 // review — see ReviewRuntime.reviewExists, which run-facing reads gate on.
-private fun reserveReviewRun(connection: Connection, reviewRunId: String) {
+internal fun reserveReviewRun(connection: Connection, reviewRunId: String) {
   connection.prepareStatement(
     "INSERT OR IGNORE INTO review_runs (review_run_id, review_session_id, raw_text) VALUES (?, ?, '')",
   ).use { statement ->
