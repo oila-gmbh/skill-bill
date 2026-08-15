@@ -39,15 +39,18 @@ internal fun goalContinuationValidateDepthDirective(
 }
 
 internal const val RUNTIME_OWNED_VALIDATE_PHASE_TASK: String =
-  "The runtime owns the repository validation gate. You receive the complete discovery finding set, " +
-    "or an explicit page of that persisted set whose remainder is scheduled in this same pass " +
-    "(module, rule or test identity, message, location), and must not invoke the gate or any " +
-    "quality-check skill. Do not rediscover findings. Fix every finding in the projection at its " +
-    "root cause and return; the runtime confirms after this repair pass. Never invoke the gate " +
-    "after an individual fix. Findings that share one root cause are one fix, not several. " +
-    "Validation findings are repair work, not a reason to block the phase. Fix findings at their " +
-    "root cause; never silence them with annotations, baselines, disabled rules, weakened " +
-    "configuration, or skipped tests. Emit a " +
+  "The runtime owns collect-all execution of the repository validation gate. You receive the complete " +
+    "persisted repair plan and the complete discovery finding set, or an explicit page of that persisted " +
+    "set whose remainder is scheduled in this same pass (module, rule or test identity, message, location), " +
+    "and must not invoke the gate or any quality-check skill. Do not rediscover findings. Fix every finding " +
+    "in the complete plan at its root cause and return; the runtime confirms after this repair pass. Never " +
+    "invoke the gate after an individual fix. Each discovery identity needs a substantiation receipt naming " +
+    "that identity, a root cause, and changed paths or symbols. Emit receipts on " +
+    "produced_outputs.substantiation_receipts; an optional grouped produced_outputs.validation_repair_plan " +
+    "may replace the 1:1 plan only when the identity union is unchanged. Findings that share one root " +
+    "cause are one fix, not several. Validation findings are repair work, not a reason to block the " +
+    "phase. Fix findings at their root cause; never silence them with annotations, baselines, disabled " +
+    "rules, weakened configuration, or skipped tests. Emit a " +
     "bounded validation_result containing validation_status, checks, and repository_checkpoint; " +
     "do not embed raw command output or telemetry."
 

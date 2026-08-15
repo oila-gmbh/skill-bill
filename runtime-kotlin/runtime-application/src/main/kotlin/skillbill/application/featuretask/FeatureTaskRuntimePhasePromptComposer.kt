@@ -638,10 +638,16 @@ object FeatureTaskRuntimePhasePromptComposer {
           add("Fix every finding below at its root cause. Do not invoke the gate or any quality-check skill.")
         } else {
           add(
-            "Fix every finding below at its root cause. Do not invoke the gate or any quality-check skill. " +
-              "Do not rediscover findings. This projection is the complete discovery set, or an explicit " +
-              "page of that persisted set whose remainder is scheduled in this same pass.",
+            "The runtime owns collect-all execution. Fix every finding in the complete persisted " +
+              "plan at its root cause. Each discovery identity needs a substantiation receipt " +
+              "naming that identity, a root cause, and changed paths or symbols. Do not invoke " +
+              "the gate or any quality-check skill. Do not rediscover findings. This projection " +
+              "is the complete discovery set, or an explicit page of that persisted set whose " +
+              "remainder is scheduled in this same pass.",
           )
+        }
+        if (!findings.coverageRejectionReason.isNullOrBlank()) {
+          add(findings.coverageRejectionReason)
         }
       }
       if (validationDepth != ValidationDepth.BUILD_ONLY && findings.scheduledRemainderCount > 0) {

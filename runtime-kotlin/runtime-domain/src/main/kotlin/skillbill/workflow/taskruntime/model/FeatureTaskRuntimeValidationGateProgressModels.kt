@@ -22,6 +22,42 @@ data class FeatureTaskRuntimeValidationGateRunRecord(
   )
 }
 
+data class FullValidateRepairPlanItem(
+  val identities: List<String>,
+) {
+  init {
+    require(identities.isNotEmpty()) {
+      "FullValidateRepairPlanItem.identities must not be empty."
+    }
+    require(identities.all { it.isNotBlank() }) {
+      "FullValidateRepairPlanItem.identities must not contain blank identities."
+    }
+  }
+
+  @OpenBoundaryMap("FULL validate repair-plan item at the durable workflow-artifact seam")
+  fun toArtifactMap(): Map<String, Any?> = linkedMapOf("identities" to identities)
+}
+
+data class FullValidateSubstantiationReceipt(
+  val identity: String,
+  val rootCause: String,
+  val changedPathsOrSymbols: List<String>,
+  val rationale: String,
+) {
+  fun covers(requiredIdentity: String): Boolean =
+    identity == requiredIdentity &&
+      rootCause.isNotBlank() &&
+      changedPathsOrSymbols.any { it.isNotBlank() }
+
+  @OpenBoundaryMap("FULL validate substantiation receipt at the durable workflow-artifact seam")
+  fun toArtifactMap(): Map<String, Any?> = linkedMapOf(
+    "identity" to identity,
+    "root_cause" to rootCause,
+    "changed_paths_or_symbols" to changedPathsOrSymbols,
+    "rationale" to rationale,
+  )
+}
+
 data class FeatureTaskRuntimeValidationGateProgress(
   val gateRunCount: Int,
   val gateRuns: List<FeatureTaskRuntimeValidationGateRunRecord>,
@@ -30,6 +66,9 @@ data class FeatureTaskRuntimeValidationGateProgress(
   val completeFindings: List<Map<String, String?>> = emptyList(),
   val findingsPageOffset: Int = 0,
   val confirmationRetriesUsed: Int = 0,
+  val discoveryIdentities: List<String> = emptyList(),
+  val validationRepairPlan: List<FullValidateRepairPlanItem> = emptyList(),
+  val substantiationReceipts: List<FullValidateSubstantiationReceipt> = emptyList(),
 ) {
   init {
     require(gateRunCount >= 0) {
@@ -61,6 +100,9 @@ data class FeatureTaskRuntimeValidationGateProgress(
     "complete_findings" to completeFindings,
     "findings_page_offset" to findingsPageOffset,
     "confirmation_retries_used" to confirmationRetriesUsed,
+    "discovery_identities" to discoveryIdentities,
+    "validation_repair_plan" to validationRepairPlan.map { it.toArtifactMap() },
+    "substantiation_receipts" to substantiationReceipts.map { it.toArtifactMap() },
   )
 
   companion object {
@@ -80,6 +122,9 @@ data class FeatureTaskRuntimeValidationGateProgress(
           raw["confirmation_retries_used"],
           "confirmation_retries_used",
         ),
+        discoveryIdentities = decodeOptionalStringList(raw["discovery_identities"], "discovery_identities"),
+        validationRepairPlan = decodeOptionalRepairPlan(raw["validation_repair_plan"]),
+        substantiationReceipts = decodeOptionalReceipts(raw["substantiation_receipts"]),
       )
 
     private fun decodeGateRuns(raw: Any?): List<FeatureTaskRuntimeValidationGateRunRecord> {
@@ -109,6 +154,70 @@ data class FeatureTaskRuntimeValidationGateProgress(
       else -> throw InvalidWorkflowStateSchemaError(
         "FeatureTaskRuntimeValidationGateProgress.$field must be an int.",
       )
+    }
+
+    private fun decodeOptionalStringList(raw: Any?, field: String): List<String> {
+      if (raw == null) return emptyList()
+      val list = raw as? List<*>
+        ?: throw InvalidWorkflowStateSchemaError(
+          "FeatureTaskRuntimeValidationGateProgress.$field must be a list.",
+        )
+      return list.mapIndexed { index, entry ->
+        entry as? String
+          ?: throw InvalidWorkflowStateSchemaError(
+            "FeatureTaskRuntimeValidationGateProgress.$field[$index] must be a string.",
+          )
+      }
+    }
+
+    private fun decodeOptionalRepairPlan(raw: Any?): List<FullValidateRepairPlanItem> {
+      if (raw == null) return emptyList()
+      val list = raw as? List<*>
+        ?: throw InvalidWorkflowStateSchemaError(
+          "FeatureTaskRuntimeValidationGateProgress.validation_repair_plan must be a list.",
+        )
+      return list.mapIndexed { index, entry ->
+        val map = entry as? Map<*, *>
+          ?: throw InvalidWorkflowStateSchemaError(
+            "FeatureTaskRuntimeValidationGateProgress.validation_repair_plan[$index] must be a mapping.",
+          )
+        val identities = decodeOptionalStringList(map["identities"], "validation_repair_plan[$index].identities")
+        if (identities.isEmpty()) {
+          throw InvalidWorkflowStateSchemaError(
+            "FeatureTaskRuntimeValidationGateProgress.validation_repair_plan[$index].identities must not be empty.",
+          )
+        }
+        FullValidateRepairPlanItem(identities = identities)
+      }
+    }
+
+    private fun decodeOptionalReceipts(raw: Any?): List<FullValidateSubstantiationReceipt> {
+      if (raw == null) return emptyList()
+      val list = raw as? List<*>
+        ?: throw InvalidWorkflowStateSchemaError(
+          "FeatureTaskRuntimeValidationGateProgress.substantiation_receipts must be a list.",
+        )
+      return list.mapIndexed { index, entry ->
+        val map = entry as? Map<*, *>
+          ?: throw InvalidWorkflowStateSchemaError(
+            "FeatureTaskRuntimeValidationGateProgress.substantiation_receipts[$index] must be a mapping.",
+          )
+        val pathsRaw = map["changed_paths_or_symbols"]
+        val paths = when (pathsRaw) {
+          null -> emptyList()
+          is List<*> -> decodeOptionalStringList(pathsRaw, "substantiation_receipts[$index].changed_paths_or_symbols")
+          else -> throw InvalidWorkflowStateSchemaError(
+            "FeatureTaskRuntimeValidationGateProgress.substantiation_receipts[$index]." +
+              "changed_paths_or_symbols must be a list.",
+          )
+        }
+        FullValidateSubstantiationReceipt(
+          identity = (map["identity"] as? String).orEmpty(),
+          rootCause = (map["root_cause"] as? String).orEmpty(),
+          changedPathsOrSymbols = paths,
+          rationale = (map["rationale"] as? String).orEmpty(),
+        )
+      }
     }
 
     private fun decodeRemainingFindings(raw: Any?): List<Map<String, String?>> {

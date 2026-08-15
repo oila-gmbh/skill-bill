@@ -29,7 +29,9 @@ data class ValidationGateFinding(
   val ruleOrTestId: String,
   val message: String,
   val location: String?,
-)
+) {
+  fun identity(): String = "$module|$ruleOrTestId|$message|${location.orEmpty()}"
+}
 
 enum class ValidationGateFindingParseMode {
   ARTIFACTS_ONLY,

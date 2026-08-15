@@ -11,6 +11,7 @@ import skillbill.application.featuretask.validation.model.ValidationGateResoluti
 import skillbill.application.model.FeatureTaskRuntimeRunEventSink
 import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.error.ContractVersionMismatchError
+import skillbill.contracts.JsonSupport
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.validation.ValidationGateRunner
 import skillbill.ports.validation.model.ValidationGateCacheMode
@@ -283,9 +284,7 @@ class FeatureTaskRuntimeValidationGateTest {
           repairLaunches.incrementAndGet()
           assertEquals(1, findings.findings.size)
           assertEquals("unparseable_gate_failure", findings.findings.single().ruleOrTestId)
-          ValidationGateAgentRepairResult.Completed(
-            FeatureTaskRuntimePhaseOutput(phaseId = "validate", iteration = 1, payload = "{}"),
-          )
+          completedRepair(findings.findings)
         },
       ),
     )
@@ -315,9 +314,7 @@ class FeatureTaskRuntimeValidationGateTest {
         repositoryCheckpoint = "checkpoint",
         agentRepairLauncher = ValidationGateAgentRepairLauncher { findings, _ ->
           firstRepairIds += findings.findings.map { it.ruleOrTestId }
-          ValidationGateAgentRepairResult.Completed(
-            FeatureTaskRuntimePhaseOutput(phaseId = "validate", iteration = 1, payload = "{}"),
-          )
+          completedRepair(findings.findings)
         },
       ),
     )
@@ -337,6 +334,9 @@ class FeatureTaskRuntimeValidationGateTest {
     assertEquals(ValidationGateFindingParseMode.COLLECT_ALL, runner.requests[1].findingParseMode)
     assertTrue(runner.requests.none { it.argv == gateDeclaration.fullGateCommand })
     assertTrue(runner.requests.none { it.argv == gateDeclaration.cacheBypassingFullGateCommand })
+    assertTrue(runner.requests.none { "--tests" in it.argv })
+    assertTrue(progress.any { it.discoveryIdentities.size == 2 })
+    assertTrue(progress.any { it.substantiationReceipts.size == 2 })
     assertIs<ValidationGateCycleTerminalOutcome.Completed>(
       assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,
     )
@@ -364,10 +364,8 @@ class FeatureTaskRuntimeValidationGateTest {
         validationDepth = ValidationDepth.FULL,
         changedPaths = listOf("runtime-kotlin/foo.kt"),
         repositoryCheckpoint = "checkpoint",
-        agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _ ->
-          ValidationGateAgentRepairResult.Completed(
-            FeatureTaskRuntimePhaseOutput(phaseId = "validate", iteration = 1, payload = "{}"),
-          )
+        agentRepairLauncher = ValidationGateAgentRepairLauncher { findings, _ ->
+          completedRepair(findings.findings)
         },
       ),
     )
@@ -464,9 +462,7 @@ class FeatureTaskRuntimeValidationGateTest {
           pageSizes += page.findings.size
           ordinals += repairIteration
           assertEquals(0, page.droppedCount)
-          ValidationGateAgentRepairResult.Completed(
-            FeatureTaskRuntimePhaseOutput(phaseId = "validate", iteration = 1, payload = "{}"),
-          )
+          completedRepair(page.findings)
         },
       ),
     )
@@ -501,6 +497,9 @@ class FeatureTaskRuntimeValidationGateTest {
     assertEquals(emptyList(), decoded.completeFindings)
     assertEquals(0, decoded.findingsPageOffset)
     assertEquals(0, decoded.confirmationRetriesUsed)
+    assertEquals(emptyList(), decoded.discoveryIdentities)
+    assertEquals(emptyList(), decoded.validationRepairPlan)
+    assertEquals(emptyList(), decoded.substantiationReceipts)
   }
 
   @Test
@@ -524,9 +523,7 @@ class FeatureTaskRuntimeValidationGateTest {
         repositoryCheckpoint = "checkpoint",
         agentRepairLauncher = ValidationGateAgentRepairLauncher { findings, _ ->
           repairIds += findings.findings.map { it.ruleOrTestId }
-          ValidationGateAgentRepairResult.Completed(
-            FeatureTaskRuntimePhaseOutput(phaseId = "validate", iteration = 1, payload = "{}"),
-          )
+          completedRepair(findings.findings)
         },
       ),
     )
@@ -553,10 +550,8 @@ class FeatureTaskRuntimeValidationGateTest {
         validationDepth = ValidationDepth.FULL,
         changedPaths = listOf("runtime-kotlin/foo.kt"),
         repositoryCheckpoint = "checkpoint",
-        agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _ ->
-          ValidationGateAgentRepairResult.Completed(
-            FeatureTaskRuntimePhaseOutput(phaseId = "validate", iteration = 1, payload = "{}"),
-          )
+        agentRepairLauncher = ValidationGateAgentRepairLauncher { findings, _ ->
+          completedRepair(findings.findings)
         },
       ),
     )
@@ -568,6 +563,164 @@ class FeatureTaskRuntimeValidationGateTest {
     assertTrue(progress.last().completeFindings.isNotEmpty())
     assertEquals(4, runner.calls)
     assertEquals(1, runner.requests.count { it.cacheMode == ValidationGateCacheMode.CACHE_ELIGIBLE })
+  }
+
+  @Test
+  fun `omitted receipt relaunches the same FULL repair pass without a new gate run`() {
+    val finding = ValidationGateFinding("app", "compile", "broken", "A.kt")
+    val gateCountsAtLaunch = mutableListOf<Int>()
+    val progress = mutableListOf<FeatureTaskRuntimeValidationGateProgress>()
+    val runner = ScriptedGateRunner(listOf(failedWith(finding), passed(forced = true)))
+    val cycle = coordinator(declaredResolver(), runner, progress).execute(
+      cycle = ValidationGateCycleRequest(
+        repoRoot = repoRoot,
+        request = minimalRequest(),
+        validationDepth = ValidationDepth.FULL,
+        changedPaths = listOf("runtime-kotlin/foo.kt"),
+        repositoryCheckpoint = "checkpoint",
+        agentRepairLauncher = ValidationGateAgentRepairLauncher { findings, _ ->
+          gateCountsAtLaunch += progress.last().gateRunCount
+          if (gateCountsAtLaunch.size == 1) {
+            ValidationGateAgentRepairResult.Completed(
+              FeatureTaskRuntimePhaseOutput(phaseId = "validate", iteration = 1, payload = "{}"),
+            )
+          } else {
+            completedRepair(findings.findings)
+          }
+        },
+      ),
+    )
+    assertEquals(listOf(1, 1), gateCountsAtLaunch)
+    assertEquals(2, runner.calls)
+    assertIs<ValidationGateCycleTerminalOutcome.Completed>(
+      assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,
+    )
+  }
+
+  @Test
+  fun `grouped two-identity plan with one receipt is not confirmation eligible`() {
+    val first = ValidationGateFinding("app", "one", "broken", "A.kt")
+    val second = ValidationGateFinding("app", "two", "broken", "B.kt")
+    val launches = AtomicInteger(0)
+    val runner = ScriptedGateRunner(listOf(failedWith(first, second), passed(forced = true)))
+    val cycle = coordinator(declaredResolver(), runner, mutableListOf()).execute(
+      cycle = ValidationGateCycleRequest(
+        repoRoot = repoRoot,
+        request = minimalRequest(),
+        validationDepth = ValidationDepth.FULL,
+        changedPaths = listOf("runtime-kotlin/foo.kt"),
+        repositoryCheckpoint = "checkpoint",
+        agentRepairLauncher = ValidationGateAgentRepairLauncher { findings, _ ->
+          val n = launches.incrementAndGet()
+          if (n == 1) {
+            completedRepair(findings.findings, receiptsFor = listOf(first), grouped = true)
+          } else {
+            completedRepair(findings.findings, grouped = true)
+          }
+        },
+      ),
+    )
+    assertEquals(2, launches.get())
+    assertEquals(2, runner.calls)
+    assertIs<ValidationGateCycleTerminalOutcome.Completed>(
+      assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,
+    )
+  }
+
+  @Test
+  fun `leftover discovery identity fails confirmation even when the stub reports PASSED`() {
+    val leftover = ValidationGateFinding("app", "compile", "still broken", "A.kt")
+    val repairIds = mutableListOf<List<String>>()
+    val runner = ScriptedGateRunner(
+      listOf(
+        failedWith(leftover),
+        passed(forced = true).copy(findings = listOf(leftover)),
+        passed(forced = true),
+      ),
+    )
+    val cycle = coordinator(declaredResolver(), runner, mutableListOf()).execute(
+      cycle = ValidationGateCycleRequest(
+        repoRoot = repoRoot,
+        request = minimalRequest(),
+        validationDepth = ValidationDepth.FULL,
+        changedPaths = listOf("runtime-kotlin/foo.kt"),
+        repositoryCheckpoint = "checkpoint",
+        agentRepairLauncher = ValidationGateAgentRepairLauncher { findings, _ ->
+          repairIds += findings.findings.map { it.identity() }
+          completedRepair(findings.findings)
+        },
+      ),
+    )
+    assertEquals(listOf(leftover.identity(), leftover.identity()), repairIds)
+    assertEquals(3, runner.calls)
+    assertTrue(runner.requests.none { it.argv == gateDeclaration.fullGateCommand })
+    assertIs<ValidationGateCycleTerminalOutcome.Completed>(
+      assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,
+    )
+  }
+
+  @Test
+  fun `novel confirmation identities join the next collect-all repair set`() {
+    val discovery = ValidationGateFinding("app", "compile", "first", "A.kt")
+    val novel = ValidationGateFinding("later", "LaterTest", "new failure", "LaterTest.kt")
+    val repairIds = mutableListOf<List<String>>()
+    val runner = ScriptedGateRunner(
+      listOf(
+        failedWith(discovery),
+        passed(forced = true).copy(findings = listOf(novel)),
+        passed(forced = true),
+      ),
+    )
+    val cycle = coordinator(declaredResolver(), runner, mutableListOf()).execute(
+      cycle = ValidationGateCycleRequest(
+        repoRoot = repoRoot,
+        request = minimalRequest(),
+        validationDepth = ValidationDepth.FULL,
+        changedPaths = listOf("runtime-kotlin/foo.kt"),
+        repositoryCheckpoint = "checkpoint",
+        agentRepairLauncher = ValidationGateAgentRepairLauncher { findings, _ ->
+          repairIds += findings.findings.map { it.identity() }
+          completedRepair(findings.findings)
+        },
+      ),
+    )
+    assertEquals(listOf(discovery.identity(), novel.identity()), repairIds)
+    assertEquals(3, runner.calls)
+    assertTrue(runner.requests.all { "--tests" !in it.argv })
+    assertTrue(runner.requests.none { it.argv == gateDeclaration.fullGateCommand })
+    assertEquals(listOf("echo", "collect-all-full"), runner.requests[1].argv)
+    assertEquals(listOf("echo", "collect-all-full"), runner.requests[2].argv)
+    assertIs<ValidationGateCycleTerminalOutcome.Completed>(
+      assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,
+    )
+  }
+
+  @Test
+  fun `BUILD_ONLY completed repair with empty produced_outputs skips FULL coverage`() {
+    val finding = ValidationGateFinding("m", "t", "still broken", "loc")
+    val runner = ScriptedGateRunner(listOf(failedWith(finding), passed(), passed(forced = true)))
+    val cycle = coordinator(declaredResolver(), runner, mutableListOf()).execute(
+      cycle = ValidationGateCycleRequest(
+        repoRoot = repoRoot,
+        request = minimalRequest(),
+        validationDepth = ValidationDepth.BUILD_ONLY,
+        changedPaths = listOf("runtime-kotlin/foo.kt"),
+        repositoryCheckpoint = "checkpoint",
+        agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _ ->
+          ValidationGateAgentRepairResult.Completed(
+            FeatureTaskRuntimePhaseOutput(phaseId = "validate", iteration = 1, payload = "{}"),
+          )
+        },
+      ),
+    )
+    assertEquals(3, runner.calls)
+    assertEquals(ValidationGateCacheMode.CACHE_ELIGIBLE, runner.requests[0].cacheMode)
+    assertEquals(ValidationGateCacheMode.CACHE_ELIGIBLE, runner.requests[1].cacheMode)
+    assertEquals(ValidationGateCacheMode.FORCED_FULL, runner.requests[2].cacheMode)
+    assertTrue(runner.requests.all { it.argv.contains("build-only") })
+    assertIs<ValidationGateCycleTerminalOutcome.Completed>(
+      assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,
+    )
   }
 
   private fun outOfContractResolver(): ValidationGateResolver = ValidationGateResolver {
@@ -662,6 +815,37 @@ class FeatureTaskRuntimeValidationGateTest {
     executedWorkUnits = 1,
     findings = findings.toList(),
   )
+
+  private fun completedRepair(
+    findings: List<ValidationGateFinding>,
+    receiptsFor: List<ValidationGateFinding> = findings,
+    grouped: Boolean = false,
+  ): ValidationGateAgentRepairResult {
+    val plan = if (grouped) {
+      listOf(mapOf("identities" to findings.map { it.identity() }))
+    } else {
+      findings.map { mapOf("identities" to listOf(it.identity())) }
+    }
+    val receipts = receiptsFor.map { finding ->
+      mapOf(
+        "identity" to finding.identity(),
+        "root_cause" to "root ${finding.ruleOrTestId}",
+        "changed_paths_or_symbols" to listOf(finding.location ?: finding.ruleOrTestId),
+        "rationale" to "fixed ${finding.ruleOrTestId}",
+      )
+    }
+    val payload = JsonSupport.mapToJsonString(
+      mapOf(
+        "produced_outputs" to mapOf(
+          "validation_repair_plan" to plan,
+          "substantiation_receipts" to receipts,
+        ),
+      ),
+    )
+    return ValidationGateAgentRepairResult.Completed(
+      FeatureTaskRuntimePhaseOutput(phaseId = "validate", iteration = 1, payload = payload),
+    )
+  }
 
   private fun kotlinPackWithoutGate(): PlatformManifest = PlatformManifest(
     slug = "kotlin",

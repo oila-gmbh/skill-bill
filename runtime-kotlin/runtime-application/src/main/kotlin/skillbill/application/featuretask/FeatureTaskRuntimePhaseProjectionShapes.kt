@@ -146,5 +146,10 @@ internal object FeatureTaskRuntimePhaseProjectionShapes {
       "      from agent claims. suppression_justifications is optional and required only when the\n" +
       "      runtime measures a non-zero suppression delta; omit it on clean runs. Each entry needs\n" +
       "      path, silenced_rule_or_check, and a short rationale — never raw command output,\n" +
-      "      transcripts, or telemetry."
+      "      transcripts, or telemetry.\n" +
+      "      FULL runtime-owned repair also emits produced_outputs.validation_repair_plan and\n" +
+      "      produced_outputs.substantiation_receipts (not on validation_result): one receipt per\n" +
+      "      discovery identity with identity, root_cause, changed_paths_or_symbols, and a short\n" +
+      "      rationale. The runtime owns collect-all execution and confirmation identity closure;\n" +
+      "      do not invoke the gate or any quality-check skill."
 }

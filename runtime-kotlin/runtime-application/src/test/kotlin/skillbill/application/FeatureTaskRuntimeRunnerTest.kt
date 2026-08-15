@@ -5072,7 +5072,18 @@ private val VALIDATE_REPAIR_WITHOUT_GATE_COUNTS = """
         "validation_status": "passed",
         "checks": [{"name": "check", "status": "passed"}],
         "repository_checkpoint": {"fingerprint": "fixture-checkpoint-1"}
-      }
+      },
+      "validation_repair_plan": [
+        { "identities": ["app|t|broken|A.kt"] }
+      ],
+      "substantiation_receipts": [
+        {
+          "identity": "app|t|broken|A.kt",
+          "root_cause": "fixture compile failure",
+          "changed_paths_or_symbols": ["A.kt"],
+          "rationale": "repaired for coverage"
+        }
+      ]
     }
   }
 """.trimIndent()
@@ -5100,7 +5111,13 @@ private fun failThenPassValidationGateRunner(
         request.cacheMode
       },
       executedWorkUnits = 1,
-      findings = emptyList(),
+      findings = if (call == 0) {
+        listOf(
+          skillbill.ports.validation.model.ValidationGateFinding("app", "t", "broken", "A.kt"),
+        )
+      } else {
+        emptyList()
+      },
     )
   }
 }

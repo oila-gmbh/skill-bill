@@ -279,24 +279,38 @@ class FeatureTaskRuntimeSuppressionGateTest {
         baseRef = "base",
         agentRepairLauncher = ValidationGateAgentRepairLauncher { findings, iteration ->
           scenario.options.onRepairLaunch(findings, iteration)
-          val payload = if (scenario.options.repairJustifications.isEmpty()) {
-            """{"contract_version":"0.3","phase_id":"validate","status":"completed",""" +
-              """"summary":"repair","produced_outputs":{}}"""
-          } else {
-            JsonSupport.mapToJsonString(
+          val justificationOnly = findings.findings.isNotEmpty() &&
+            findings.findings.all {
+              it.ruleOrTestId == FeatureTaskRuntimeValidationGateCoordinator.SUPPRESSION_JUSTIFICATION_RULE_ID
+            }
+          val produced = mutableMapOf<String, Any?>()
+          if (!justificationOnly && findings.findings.isNotEmpty()) {
+            produced["validation_repair_plan"] = findings.findings.map { finding ->
+              mapOf("identities" to listOf(finding.identity()))
+            }
+            produced["substantiation_receipts"] = findings.findings.map { finding ->
               mapOf(
-                "contract_version" to "0.3",
-                "phase_id" to "validate",
-                "status" to "completed",
-                "summary" to "repair with justification",
-                "produced_outputs" to mapOf(
-                  "validation_result" to mapOf(
-                    "suppression_justifications" to scenario.options.repairJustifications,
-                  ),
-                ),
-              ),
+                "identity" to finding.identity(),
+                "root_cause" to "root ${finding.ruleOrTestId}",
+                "changed_paths_or_symbols" to listOf(finding.location ?: finding.ruleOrTestId),
+                "rationale" to "fixed ${finding.ruleOrTestId}",
+              )
+            }
+          }
+          if (scenario.options.repairJustifications.isNotEmpty()) {
+            produced["validation_result"] = mapOf(
+              "suppression_justifications" to scenario.options.repairJustifications,
             )
           }
+          val payload = JsonSupport.mapToJsonString(
+            mapOf(
+              "contract_version" to "0.3",
+              "phase_id" to "validate",
+              "status" to "completed",
+              "summary" to "repair",
+              "produced_outputs" to produced,
+            ),
+          )
           ValidationGateAgentRepairResult.Completed(
             FeatureTaskRuntimePhaseOutput(phaseId = "validate", iteration = 1, payload = payload),
           )

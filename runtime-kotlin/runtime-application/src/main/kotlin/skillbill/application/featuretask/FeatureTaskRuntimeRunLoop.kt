@@ -9,6 +9,9 @@ import skillbill.application.evidence.FeatureTaskRuntimeSharedReviewEvidenceReso
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointDecision
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointScopeInput
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRejectedOutputWrite
+import skillbill.application.featuretask.validation.FeatureTaskRuntimeValidationGateCoordinator
+import skillbill.application.featuretask.validation.FullValidateRepairArtifacts
+import skillbill.application.featuretask.validation.FullValidateRepairCoverage
 import skillbill.application.featuretask.validation.model.ValidationFindingSetProjection
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairLauncher
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairResult
@@ -2944,6 +2947,7 @@ internal class FeatureTaskRuntimeRunLoop(
     var attemptIteration = iteration
     var malformedAttemptCount = 0
     var schemaAttempt = 1
+    var coverageRelaunches = 0
     var result: ValidationGateAgentRepairResult? = null
     while (result == null) {
       val attempt = attemptOnce(
@@ -2957,11 +2961,18 @@ internal class FeatureTaskRuntimeRunLoop(
       val settled = attempt.settledOutcome
       val completed = settled?.completedOutput
       when {
-        // A schema-valid completed repair receipt means the agent finished its segment; the
-        // coordinator re-runs the runtime-owned gate. Treating completed as Blocked aborted the
-        // cycle after attemptOnce had already accepted the receipt, and left agent-authored
-        // gate_run_count/gate_runs as durable validate evidence (AC-001/AC-008/AC-011).
-        completed != null -> result = ValidationGateAgentRepairResult.Completed(completed)
+        completed != null -> {
+          val coverage = fullValidateRepairCoverage(repairRun, findings, completed)
+          if (coverage == null || coverage.accepted) {
+            result = ValidationGateAgentRepairResult.Completed(completed)
+          } else if (coverageRelaunches >= FullValidateRepairCoverage.RELAUNCH_CAP) {
+            result = ValidationGateAgentRepairResult.Blocked(coverage.reason)
+          } else {
+            coverageRelaunches++
+            priorCorrection = PriorAttemptCorrection.schemaGate(coverage.reason)
+            attemptIteration += 1
+          }
+        }
         settled != null -> result = ValidationGateAgentRepairResult.Blocked(
           settled.blockedReason
             ?: settled.pausedReason
@@ -3005,6 +3016,27 @@ internal class FeatureTaskRuntimeRunLoop(
       }
     }
     return requireNotNull(result)
+  }
+
+  private fun fullValidateRepairCoverage(
+    run: PhaseRun,
+    findings: ValidationFindingSetProjection,
+    output: FeatureTaskRuntimePhaseOutput,
+  ): FullValidateRepairCoverage.Evaluation? {
+    val depth = run.request.goalContinuation?.validationDepth ?: ValidationDepth.DEFAULT
+    if (depth == ValidationDepth.BUILD_ONLY) return null
+    if (
+      findings.findings.isNotEmpty() &&
+      findings.findings.all {
+        it.ruleOrTestId == FeatureTaskRuntimeValidationGateCoordinator.SUPPRESSION_JUSTIFICATION_RULE_ID
+      }
+    ) {
+      return null
+    }
+    val parsed = FullValidateRepairArtifacts.parse(output)
+    val launched = findings.findings.map { it.identity() }
+    val plan = parsed.plan ?: FullValidateRepairCoverage.oneToOnePlan(findings.findings)
+    return FullValidateRepairCoverage.evaluate(launched, plan, parsed.receipts)
   }
 
   private fun settleRuntimeOwnedValidation(

@@ -26,6 +26,7 @@ data class ValidationFindingSetProjection(
   val findings: List<ValidationGateFinding>,
   val droppedCount: Int,
   val scheduledRemainderCount: Int = 0,
+  val coverageRejectionReason: String? = null,
 ) {
   val hasUnreportedRemainder: Boolean get() = droppedCount > 0
 
