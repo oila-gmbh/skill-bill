@@ -12,6 +12,7 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimeRejectedOutputW
 import skillbill.application.featuretask.validation.FeatureTaskRuntimeValidationGateCoordinator
 import skillbill.application.featuretask.validation.FullValidateRepairArtifacts
 import skillbill.application.featuretask.validation.FullValidateRepairCoverage
+import skillbill.application.featuretask.validation.model.FullValidateRepairCoverageEvaluation
 import skillbill.application.featuretask.validation.model.ValidationFindingSetProjection
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairLauncher
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairResult
@@ -2963,14 +2964,15 @@ internal class FeatureTaskRuntimeRunLoop(
       when {
         completed != null -> {
           val coverage = fullValidateRepairCoverage(repairRun, findings, completed)
-          if (coverage == null || coverage.accepted) {
-            result = ValidationGateAgentRepairResult.Completed(completed)
-          } else if (coverageRelaunches >= FullValidateRepairCoverage.RELAUNCH_CAP) {
-            result = ValidationGateAgentRepairResult.Blocked(coverage.reason)
-          } else {
-            coverageRelaunches++
-            priorCorrection = PriorAttemptCorrection.schemaGate(coverage.reason)
-            attemptIteration += 1
+          when (
+            val decision = validationGateRepairCoverageDecision(coverage, completed, coverageRelaunches)
+          ) {
+            is ValidationGateCoverageDecision.Finish -> result = decision.result
+            is ValidationGateCoverageDecision.Relaunch -> {
+              coverageRelaunches++
+              priorCorrection = PriorAttemptCorrection.schemaGate(decision.reason)
+              attemptIteration += 1
+            }
           }
         }
         settled != null -> result = ValidationGateAgentRepairResult.Blocked(
@@ -3022,7 +3024,7 @@ internal class FeatureTaskRuntimeRunLoop(
     run: PhaseRun,
     findings: ValidationFindingSetProjection,
     output: FeatureTaskRuntimePhaseOutput,
-  ): FullValidateRepairCoverage.Evaluation? {
+  ): FullValidateRepairCoverageEvaluation? {
     val depth = run.request.goalContinuation?.validationDepth ?: ValidationDepth.DEFAULT
     if (depth == ValidationDepth.BUILD_ONLY) return null
     if (
@@ -3037,6 +3039,25 @@ internal class FeatureTaskRuntimeRunLoop(
     val launched = findings.findings.map { it.identity() }
     val plan = parsed.plan ?: FullValidateRepairCoverage.oneToOnePlan(findings.findings)
     return FullValidateRepairCoverage.evaluate(launched, plan, parsed.receipts)
+  }
+
+  private sealed interface ValidationGateCoverageDecision {
+    class Finish(val result: ValidationGateAgentRepairResult) : ValidationGateCoverageDecision
+    class Relaunch(val reason: String) : ValidationGateCoverageDecision
+  }
+
+  private fun validationGateRepairCoverageDecision(
+    coverage: FullValidateRepairCoverageEvaluation?,
+    completed: FeatureTaskRuntimePhaseOutput,
+    coverageRelaunches: Int,
+  ): ValidationGateCoverageDecision {
+    if (coverage == null || coverage.accepted) {
+      return ValidationGateCoverageDecision.Finish(ValidationGateAgentRepairResult.Completed(completed))
+    }
+    if (coverageRelaunches >= FullValidateRepairCoverage.RELAUNCH_CAP) {
+      return ValidationGateCoverageDecision.Finish(ValidationGateAgentRepairResult.Blocked(coverage.reason))
+    }
+    return ValidationGateCoverageDecision.Relaunch(coverage.reason)
   }
 
   private fun settleRuntimeOwnedValidation(

@@ -3,6 +3,7 @@ package skillbill.application.featuretask
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_REPAIR_PLAN_CONTRACT_VERSION
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION
+import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 
 /**
@@ -16,13 +17,22 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
  * PlanningProjectionFixtures so the guidance and the gate cannot drift.
  */
 internal object FeatureTaskRuntimePhaseProjectionShapes {
-  fun exampleFor(phaseId: String): String = when (phaseId) {
+  fun exampleFor(
+    phaseId: String,
+    validationDepth: ValidationDepth = ValidationDepth.DEFAULT,
+    agentRunValidateFallback: Boolean = false,
+  ): String = when (phaseId) {
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN -> PREPLAN
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN -> PLAN
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT -> IMPLEMENT
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN_FIX -> PLAN_FIX
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX -> IMPLEMENT_FIX
-    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE -> VALIDATION
+    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE ->
+      if (validationDepth == ValidationDepth.BUILD_ONLY || agentRunValidateFallback) {
+        VALIDATION
+      } else {
+        VALIDATION + VALIDATION_FULL_RUNTIME_OWNED_REPAIR
+      }
     else -> ""
   }
 
@@ -146,8 +156,10 @@ internal object FeatureTaskRuntimePhaseProjectionShapes {
       "      from agent claims. suppression_justifications is optional and required only when the\n" +
       "      runtime measures a non-zero suppression delta; omit it on clean runs. Each entry needs\n" +
       "      path, silenced_rule_or_check, and a short rationale — never raw command output,\n" +
-      "      transcripts, or telemetry.\n" +
-      "      FULL runtime-owned repair also emits produced_outputs.validation_repair_plan and\n" +
+      "      transcripts, or telemetry."
+
+  private const val VALIDATION_FULL_RUNTIME_OWNED_REPAIR: String =
+    "\n      FULL runtime-owned repair also emits produced_outputs.validation_repair_plan and\n" +
       "      produced_outputs.substantiation_receipts (not on validation_result): one receipt per\n" +
       "      discovery identity with identity, root_cause, changed_paths_or_symbols, and a short\n" +
       "      rationale. The runtime owns collect-all execution and confirmation identity closure;\n" +

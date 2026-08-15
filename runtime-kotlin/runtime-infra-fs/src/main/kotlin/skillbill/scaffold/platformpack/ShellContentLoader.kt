@@ -1155,7 +1155,11 @@ internal fun parseValidationGate(manifest: Map<*, *>, slug: String): ValidationG
     fullGateCommand = requireGateArgv(gate, slug, "full_gate_command"),
     cacheBypassingFullGateCommand = requireGateArgv(gate, slug, "cache_bypassing_full_gate_command"),
     collectAllFullGateCommand = requireGateArgv(gate, slug, "collect_all_full_gate_command"),
-    cacheBypassingCollectAllFullGateCommand = requireGateArgv(gate, slug, "cache_bypassing_collect_all_full_gate_command"),
+    cacheBypassingCollectAllFullGateCommand = requireGateArgv(
+      gate,
+      slug,
+      "cache_bypassing_collect_all_full_gate_command",
+    ),
     buildOnlyCommand = requireGateArgv(gate, slug, "build_only_command"),
     findings = parseValidationGateFindings(gate, slug),
     suppressionMarkers = parseSuppressionMarkers(gate, slug),
@@ -1246,7 +1250,8 @@ private fun parseCompilerDiagnosticsLocator(
   slug: String,
 ): ValidationGateCompilerDiagnosticsLocator {
   val raw = findings["compiler_diagnostics"] ?: throw InvalidValidationGateDeclarationError(
-    "Platform pack '$slug': 'validation_gate.findings.compiler_diagnostics' is required when validation_gate is present.",
+    "Platform pack '$slug': 'validation_gate.findings.compiler_diagnostics' is required " +
+      "when validation_gate is present.",
   )
   val locator = raw as? Map<*, *> ?: throw InvalidValidationGateDeclarationError(
     "Platform pack '$slug': 'validation_gate.findings.compiler_diagnostics' must be a mapping.",

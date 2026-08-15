@@ -118,11 +118,10 @@ class FileSystemValidationGateRunner : ValidationGateRunner {
   private fun parseCompilerDiagnostics(
     request: ValidationGateRunRequest,
     stdout: String,
-  ): List<ValidationGateFinding> =
-    when (request.declaration.findings.compilerDiagnostics.format) {
-      ValidationGateCompilerDiagnosticsFormat.GRADLE_KOTLIN_COMPILER_STDOUT ->
-        parseGradleKotlinCompilerStdout(request.repoRoot, stdout)
-    }
+  ): List<ValidationGateFinding> = when (request.declaration.findings.compilerDiagnostics.format) {
+    ValidationGateCompilerDiagnosticsFormat.GRADLE_KOTLIN_COMPILER_STDOUT ->
+      parseGradleKotlinCompilerStdout(request.repoRoot, stdout)
+  }
 
   private fun parseJUnitXmlFile(path: Path): List<ValidationGateFinding> = runCatching {
     val document = DOCUMENT_BUILDER.parse(path.toFile())
@@ -156,6 +155,10 @@ class FileSystemValidationGateRunner : ValidationGateRunner {
     private const val DEFAULT_EXECUTED_WORK_WHEN_UNDECLARED = 1
     private const val UNPARSEABLE_GATE_MODULE = "<validation-gate>"
     private const val UNPARSEABLE_GATE_RULE_ID = "unparseable_gate_failure"
+    private const val COMPILER_LOCATION_PATH_GROUP = 1
+    private const val COMPILER_LOCATION_LINE_GROUP = 2
+    private const val COMPILER_LOCATION_COLUMN_GROUP = 3
+    private const val COMPILER_LOCATION_MESSAGE_GROUP = 4
     private val GRADLE_EXECUTED_PATTERN = Regex("""(\d+)\s+executed""", RegexOption.IGNORE_CASE)
     private val COMPILER_E_LINE = Regex("""^e:\s+(.*)$""")
     private val COMPILER_LOCATION = Regex("""^(?:file://)?(.+):(\d+):(\d+)\s+(.*)$""")
@@ -177,10 +180,10 @@ class FileSystemValidationGateRunner : ValidationGateRunner {
         val eMatch = COMPILER_E_LINE.matchEntire(line.trim()) ?: return@mapNotNull null
         val rest = eMatch.groupValues[1].trim()
         val locationMatch = COMPILER_LOCATION.matchEntire(rest) ?: return@mapNotNull null
-        val rawPath = locationMatch.groupValues[1].removePrefix("file://")
-        val lineNo = locationMatch.groupValues[2]
-        val column = locationMatch.groupValues[3]
-        val message = locationMatch.groupValues[4].trim()
+        val rawPath = locationMatch.groupValues[COMPILER_LOCATION_PATH_GROUP].removePrefix("file://")
+        val lineNo = locationMatch.groupValues[COMPILER_LOCATION_LINE_GROUP]
+        val column = locationMatch.groupValues[COMPILER_LOCATION_COLUMN_GROUP]
+        val message = locationMatch.groupValues[COMPILER_LOCATION_MESSAGE_GROUP].trim()
           .replace(GRADLE_TASK_PREFIX, "")
           .replace(repoUri, "")
           .replace("file://$repoPath", "")

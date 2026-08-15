@@ -1,5 +1,6 @@
 package skillbill.application.featuretask.validation
 
+import skillbill.application.featuretask.validation.model.FullValidateRepairCoverageEvaluation
 import skillbill.ports.validation.model.ValidationGateFinding
 import skillbill.workflow.taskruntime.model.FullValidateRepairPlanItem
 import skillbill.workflow.taskruntime.model.FullValidateSubstantiationReceipt
@@ -26,32 +27,27 @@ object FullValidateRepairCoverage {
     requiredIdentities: Collection<String>,
     plan: List<FullValidateRepairPlanItem>,
     receipts: List<FullValidateSubstantiationReceipt>,
-  ): Evaluation {
+  ): FullValidateRepairCoverageEvaluation {
     if (requiredIdentities.isEmpty()) {
-      return Evaluation(accepted = true, reason = "")
+      return FullValidateRepairCoverageEvaluation(accepted = true, reason = "")
     }
     val required = requiredIdentities.toSet()
     val planned = plan.flatMap { it.identities }.toSet()
     if (!required.all { it in planned }) {
-      return Evaluation(
+      return FullValidateRepairCoverageEvaluation(
         accepted = false,
         reason = "FULL validate repair plan must list every launched discovery identity.",
       )
     }
     val missing = required.filter { identity -> receipts.none { it.covers(identity) } }
     if (missing.isNotEmpty()) {
-      return Evaluation(
+      return FullValidateRepairCoverageEvaluation(
         accepted = false,
         reason = "FULL validate repair coverage rejected: a substantiation receipt naming the " +
           "identity, a root cause, and changed paths or symbols is required for every discovery " +
           "identity before confirmation.",
       )
     }
-    return Evaluation(accepted = true, reason = "")
+    return FullValidateRepairCoverageEvaluation(accepted = true, reason = "")
   }
-
-  data class Evaluation(
-    val accepted: Boolean,
-    val reason: String,
-  )
 }

@@ -44,10 +44,9 @@ data class FullValidateSubstantiationReceipt(
   val changedPathsOrSymbols: List<String>,
   val rationale: String,
 ) {
-  fun covers(requiredIdentity: String): Boolean =
-    identity == requiredIdentity &&
-      rootCause.isNotBlank() &&
-      changedPathsOrSymbols.any { it.isNotBlank() }
+  fun covers(requiredIdentity: String): Boolean = identity == requiredIdentity &&
+    rootCause.isNotBlank() &&
+    changedPathsOrSymbols.any { it.isNotBlank() }
 
   @OpenBoundaryMap("FULL validate substantiation receipt at the durable workflow-artifact seam")
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf(
@@ -173,17 +172,17 @@ data class FeatureTaskRuntimeValidationGateProgress(
     private fun decodeOptionalRepairPlan(raw: Any?): List<FullValidateRepairPlanItem> {
       if (raw == null) return emptyList()
       val list = raw as? List<*>
-        ?: throw InvalidWorkflowStateSchemaError(
+        ?: failValidationGateProgress(
           "FeatureTaskRuntimeValidationGateProgress.validation_repair_plan must be a list.",
         )
       return list.mapIndexed { index, entry ->
         val map = entry as? Map<*, *>
-          ?: throw InvalidWorkflowStateSchemaError(
+          ?: failValidationGateProgress(
             "FeatureTaskRuntimeValidationGateProgress.validation_repair_plan[$index] must be a mapping.",
           )
         val identities = decodeOptionalStringList(map["identities"], "validation_repair_plan[$index].identities")
         if (identities.isEmpty()) {
-          throw InvalidWorkflowStateSchemaError(
+          failValidationGateProgress(
             "FeatureTaskRuntimeValidationGateProgress.validation_repair_plan[$index].identities must not be empty.",
           )
         }
@@ -194,19 +193,19 @@ data class FeatureTaskRuntimeValidationGateProgress(
     private fun decodeOptionalReceipts(raw: Any?): List<FullValidateSubstantiationReceipt> {
       if (raw == null) return emptyList()
       val list = raw as? List<*>
-        ?: throw InvalidWorkflowStateSchemaError(
+        ?: failValidationGateProgress(
           "FeatureTaskRuntimeValidationGateProgress.substantiation_receipts must be a list.",
         )
       return list.mapIndexed { index, entry ->
         val map = entry as? Map<*, *>
-          ?: throw InvalidWorkflowStateSchemaError(
+          ?: failValidationGateProgress(
             "FeatureTaskRuntimeValidationGateProgress.substantiation_receipts[$index] must be a mapping.",
           )
         val pathsRaw = map["changed_paths_or_symbols"]
         val paths = when (pathsRaw) {
           null -> emptyList()
           is List<*> -> decodeOptionalStringList(pathsRaw, "substantiation_receipts[$index].changed_paths_or_symbols")
-          else -> throw InvalidWorkflowStateSchemaError(
+          else -> failValidationGateProgress(
             "FeatureTaskRuntimeValidationGateProgress.substantiation_receipts[$index]." +
               "changed_paths_or_symbols must be a list.",
           )
@@ -241,6 +240,8 @@ data class FeatureTaskRuntimeValidationGateProgress(
     }
   }
 }
+
+private fun failValidationGateProgress(detail: String): Nothing = throw InvalidWorkflowStateSchemaError(detail)
 
 private fun Map<String, Any?>.asStarMap(): Map<*, *> = this
 

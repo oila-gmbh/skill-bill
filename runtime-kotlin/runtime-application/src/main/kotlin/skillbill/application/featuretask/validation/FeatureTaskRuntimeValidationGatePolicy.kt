@@ -20,13 +20,12 @@ internal fun validationGateArgv(
 internal fun validationGateCollectAllArgv(
   declaration: skillbill.scaffold.model.ValidationGateDeclaration,
   cacheMode: skillbill.ports.validation.model.ValidationGateCacheMode,
-): List<String> =
-  when (cacheMode) {
-    skillbill.ports.validation.model.ValidationGateCacheMode.FORCED_FULL ->
-      declaration.cacheBypassingCollectAllFullGateCommand
-    skillbill.ports.validation.model.ValidationGateCacheMode.CACHE_ELIGIBLE ->
-      declaration.collectAllFullGateCommand
-  }
+): List<String> = when (cacheMode) {
+  skillbill.ports.validation.model.ValidationGateCacheMode.FORCED_FULL ->
+    declaration.cacheBypassingCollectAllFullGateCommand
+  skillbill.ports.validation.model.ValidationGateCacheMode.CACHE_ELIGIBLE ->
+    declaration.collectAllFullGateCommand
+}
 
 internal fun validationGateCacheBypassExtraArgs(
   declaration: skillbill.scaffold.model.ValidationGateDeclaration,

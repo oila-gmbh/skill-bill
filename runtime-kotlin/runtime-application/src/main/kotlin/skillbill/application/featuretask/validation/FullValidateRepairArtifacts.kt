@@ -1,17 +1,18 @@
 package skillbill.application.featuretask.validation
 
+import skillbill.application.featuretask.validation.model.FullValidateRepairParsedArtifacts
 import skillbill.contracts.JsonSupport
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FullValidateRepairPlanItem
 import skillbill.workflow.taskruntime.model.FullValidateSubstantiationReceipt
 
 object FullValidateRepairArtifacts {
-  fun parse(output: FeatureTaskRuntimePhaseOutput): Parsed {
+  fun parse(output: FeatureTaskRuntimePhaseOutput): FullValidateRepairParsedArtifacts {
     val envelope = JsonSupport.parseObjectOrNull(output.payload)?.let(JsonSupport::jsonElementToValue)
       ?.let(JsonSupport::anyToStringAnyMap)
-      ?: return Parsed(plan = null, receipts = emptyList())
+      ?: return FullValidateRepairParsedArtifacts(plan = null, receipts = emptyList())
     val produced = JsonSupport.anyToStringAnyMap(envelope["produced_outputs"]).orEmpty()
-    return Parsed(
+    return FullValidateRepairParsedArtifacts(
       plan = parsePlan(produced["validation_repair_plan"]),
       receipts = parseReceipts(produced["substantiation_receipts"]),
     )
@@ -46,9 +47,4 @@ object FullValidateRepairArtifacts {
       )
     }
   }
-
-  data class Parsed(
-    val plan: List<FullValidateRepairPlanItem>?,
-    val receipts: List<FullValidateSubstantiationReceipt>,
-  )
 }
