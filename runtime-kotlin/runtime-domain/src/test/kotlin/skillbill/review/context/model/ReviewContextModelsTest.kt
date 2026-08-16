@@ -31,8 +31,8 @@ class ReviewContextModelsTest {
   }
 
   @Test fun `parent canonical bytes exclude hunk body size`() {
-    val tiny = ReviewChangedHunk.fromBody("A.kt", 1, 1, 1, 2, "+tiny")
-    val huge = ReviewChangedHunk.fromBody("A.kt", 1, 1, 1, 2, "+" + "x".repeat(1_048_576))
+    val tiny = ReviewChangedHunk("A.kt", 1, 1, 1, 2, "+tiny")
+    val huge = ReviewChangedHunk("A.kt", 1, 1, 1, 2, "+" + "x".repeat(1_048_576))
     fun packetFor(hunk: ReviewChangedHunk) = ReviewContextPacket(
       "review", "repo", "base", "head", "clean", "kotlin", "kotlin", emptyList(), listOf("security"),
       listOf(hunk),

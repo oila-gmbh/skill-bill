@@ -73,10 +73,10 @@ class ReviewCommitEvidenceTest {
     unit("head", "c1", 1, listOf(hunkB)),
   )
 
-  @Test fun `fromBody mints a content addressed hunk id that changes when body bytes change`() {
-    val first = ReviewChangedHunk.fromBody("src/A.kt", 1, 1, 1, 2, "+alpha")
-    val same = ReviewChangedHunk.fromBody("src/A.kt", 1, 1, 1, 2, "+alpha")
-    val changed = ReviewChangedHunk.fromBody("src/A.kt", 1, 1, 1, 2, "+alphaX")
+  @Test fun `hunk id is content addressed and changes when body bytes change`() {
+    val first = ReviewChangedHunk("src/A.kt", 1, 1, 1, 2, "+alpha")
+    val same = ReviewChangedHunk("src/A.kt", 1, 1, 1, 2, "+alpha")
+    val changed = ReviewChangedHunk("src/A.kt", 1, 1, 1, 2, "+alphaX")
     assertEquals(first.hunkId, same.hunkId)
     assertNotEquals(first.hunkId, changed.hunkId)
     assertTrue(first.hunkId.matches(Regex("[a-f0-9]{64}")))

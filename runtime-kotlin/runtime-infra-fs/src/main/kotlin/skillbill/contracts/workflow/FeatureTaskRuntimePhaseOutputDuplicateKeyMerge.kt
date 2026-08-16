@@ -35,30 +35,37 @@ internal object DuplicateKeyMergeParser {
   ): FeatureTaskRuntimePhaseOutputStructuralRepairDecision? {
     val trimmed = text.trimStart()
     if (!(trimmed.startsWith("{") || trimmed.startsWith("["))) return null
-    val formats = StrictPhaseOutputParser.formatsFor(text)
-    for (format in formats) {
-      if (
-        format == FeatureTaskRuntimePhaseOutputFormat.YAML &&
-        !StructuralRepairSyntax.isConservativeYamlFlow(text)
-      ) {
-        continue
-      }
-      val merged = merge(text, format) ?: continue
-      if (!merged.node.isObject) continue
-      val evidence = FeatureTaskRuntimePhaseOutputRepairEvidence(
-        format = merged.format,
-        originalDigest = StructuralRepairSyntax.sha256(text),
-        repairedDigest = StructuralRepairSyntax.sha256(merged.repairedText),
-        operation = FeatureTaskRuntimePhaseOutputRepairOperation.DEDUPLICATE_KEYS,
-        sourceLocation = StructuralRepairSyntax.sourceLocation(
-          sourceLabel,
-          sourceText,
-          sourceOffset + merged.firstDuplicateOffset,
-        ),
-      )
-      return StructuralRepairDecisions.accepted(merged.repairedText, merged.node, evidence)
+    return StrictPhaseOutputParser.formatsFor(text).firstNotNullOfOrNull { format ->
+      acceptedMerge(text, format, sourceLabel, sourceOffset, sourceText)
     }
-    return null
+  }
+
+  private fun acceptedMerge(
+    text: String,
+    format: FeatureTaskRuntimePhaseOutputFormat,
+    sourceLabel: String,
+    sourceOffset: Int,
+    sourceText: String,
+  ): FeatureTaskRuntimePhaseOutputStructuralRepairDecision? {
+    if (
+      format == FeatureTaskRuntimePhaseOutputFormat.YAML &&
+      !StructuralRepairSyntax.isConservativeYamlFlow(text)
+    ) {
+      return null
+    }
+    val merged = merge(text, format)?.takeIf { it.node.isObject } ?: return null
+    val evidence = FeatureTaskRuntimePhaseOutputRepairEvidence(
+      format = merged.format,
+      originalDigest = StructuralRepairSyntax.sha256(text),
+      repairedDigest = StructuralRepairSyntax.sha256(merged.repairedText),
+      operation = FeatureTaskRuntimePhaseOutputRepairOperation.DEDUPLICATE_KEYS,
+      sourceLocation = StructuralRepairSyntax.sourceLocation(
+        sourceLabel,
+        sourceText,
+        sourceOffset + merged.firstDuplicateOffset,
+      ),
+    )
+    return StructuralRepairDecisions.accepted(merged.repairedText, merged.node, evidence)
   }
 
   fun merge(text: String, format: FeatureTaskRuntimePhaseOutputFormat): DuplicateKeyMerge? = try {

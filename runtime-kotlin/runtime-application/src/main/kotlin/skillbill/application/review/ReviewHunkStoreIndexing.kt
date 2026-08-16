@@ -104,11 +104,7 @@ internal object ReviewHunkStoreIndexing {
     return storedBody(hunk, record, storePath)
   }
 
-  private fun storedBody(
-    hunk: ReviewChangedHunk,
-    record: SharedReviewEvidenceRecord,
-    storePath: String,
-  ): String {
+  private fun storedBody(hunk: ReviewChangedHunk, record: SharedReviewEvidenceRecord, storePath: String): String {
     val scoped = hunk.commitScope
     val body = if (scoped != null) {
       val sha = scoped.substringBefore('@')
@@ -129,20 +125,18 @@ internal object ReviewHunkStoreIndexing {
     else -> null
   }
 
-  private fun hunkBodyIn(diff: String?, hunk: ReviewChangedHunk): String? =
-    diff?.let { payload ->
-      runCatching { ReviewDiffEvidence.parse(payload) }.getOrNull()
-        ?.hunks
-        ?.find { sameSpan(it, hunk) }
-        ?.content
-    }
+  private fun hunkBodyIn(diff: String?, hunk: ReviewChangedHunk): String? = diff?.let { payload ->
+    runCatching { ReviewDiffEvidence.parse(payload) }.getOrNull()
+      ?.hunks
+      ?.find { sameSpan(it, hunk) }
+      ?.content
+  }
 
-  private fun sameSpan(left: ReviewChangedHunk, right: ReviewChangedHunk): Boolean =
-    left.path == right.path &&
-      left.oldStart == right.oldStart &&
-      left.oldCount == right.oldCount &&
-      left.newStart == right.newStart &&
-      left.newCount == right.newCount
+  private fun sameSpan(left: ReviewChangedHunk, right: ReviewChangedHunk): Boolean = left.path == right.path &&
+    left.oldStart == right.oldStart &&
+    left.oldCount == right.oldCount &&
+    left.newStart == right.newStart &&
+    left.newCount == right.newCount
 
   private fun hunkKey(hunk: ReviewChangedHunk): String =
     listOf(hunk.path, hunk.oldStart, hunk.oldCount, hunk.newStart, hunk.newCount, hunk.commitScope.orEmpty())

@@ -1,3 +1,13 @@
+## [2026-08-16] SKILL-193 subtask 3 — Brokered hunk fetch and lane evidence budget
+Areas: runtime-application/review, runtime-domain/review/context/model, runtime-infra-fs, runtime-ports/review, orchestration/contracts
+- Launch envelopes, governed launches, and inline prompt assembly name locators, ids, spans, and digests only; they no longer serialize hunk bodies.
+- Assigned bodies reach workers only through the existing review evidence broker, in batches counted against `max_lane_evidence_bytes`; out-of-assignment reads still need a recorded expansion.
+- Evidence overflow ends that lane incomplete (`review_context_budget_exceeded`, evidence budget dimension, unreviewed hunk ids). Parent compose and sibling lanes continue; required lanes are not omitted; delivered hunks are not truncated.
+- Inline is one lane over the full assignment with the same broker rule; a huge stored patch may compose the parent and still report incomplete inline coverage. Integration accounting does not close that gap.
+- Findings, accounting summaries, and goal-facing review output stay free of hunk bodies. reusable: locator-indexed launch plus brokered bodies; lane overflow is incomplete coverage, not a parent failure.
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
 ## [2026-08-16] SKILL-193 subtask 2 — Store-backed packet composition
 Areas: runtime-application/review
 - `ReviewHunkStoreIndexing` builds 2.0 `changed_hunks` from the SKILL-164 shared evidence store (store path plus file/hunk index); standalone and feature-task review share that seam.

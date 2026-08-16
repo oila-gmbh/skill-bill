@@ -168,10 +168,10 @@ internal object FeatureTaskRuntimeReviewEnvelope {
     result: ParallelCodeReviewResult,
     resolvedTier: CodeReviewExecutionMode,
   ): GoalSubtaskCommitFocusedAccounting? {
-    if (resolvedTier != CodeReviewExecutionMode.DELEGATED) return null
     val summary = result.accountingSummary ?: return null
-    val routing = summary.commitRouting ?: return null
-    if (routing.commitCount < 1) return null
+    val routing = summary.commitRouting
+      ?.takeIf { resolvedTier == CodeReviewExecutionMode.DELEGATED && it.commitCount >= 1 }
+      ?: return null
     val accounting = summary.integration
     val pass = result.integration
     val terminalOutcome = accounting?.terminalOutcome

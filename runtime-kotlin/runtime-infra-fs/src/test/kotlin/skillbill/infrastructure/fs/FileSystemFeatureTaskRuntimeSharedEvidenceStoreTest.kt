@@ -184,7 +184,9 @@ class FileSystemFeatureTaskRuntimeSharedEvidenceStoreTest {
   @Test
   fun `compose-time locator read of an unreadable payload fails closed instead of re-deriving`() {
     val resolution = store.resolve(request("fp-unread"), CountingDeriver())
-    Files.delete(artifactDir(request("fp-unread")).resolve(FileSystemFeatureTaskRuntimeSharedEvidenceStore.PAYLOAD_FILE_NAME))
+    val payload = artifactDir(request("fp-unread"))
+      .resolve(FileSystemFeatureTaskRuntimeSharedEvidenceStore.PAYLOAD_FILE_NAME)
+    Files.delete(payload)
     val error = assertFailsWith<ReviewHunkEvidenceLocatorUnreadableError> {
       store.readDiffPayload(
         FeatureTaskRuntimeSharedEvidenceLocatorReadRequest(repoRoot, resolution.storePath!!),

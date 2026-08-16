@@ -53,7 +53,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
-/** Every fixture commit is relevant to every selected lane unless a test says otherwise. */
 private fun focusedMatrix(scope: ReviewScopeFacts, lanes: List<String>) = ReviewCommitLaneRoutingMatrix(
   scope.commitUnits.sortedBy { it.orderIndex }.map { it.commitSha },
   lanes,
@@ -63,6 +62,63 @@ private fun focusedMatrix(scope: ReviewScopeFacts, lanes: List<String>) = Review
     }
   },
 )
+
+private class CountingPorts(
+  val scope: ReviewScopeFacts,
+  val routing: ReviewStackRoutingFacts,
+  val rules: List<ReviewRuleReference>,
+  val learnings: List<ReviewLearningsReference>,
+  val facts: List<ReviewBuildTestFact>,
+  val decisions: List<ReviewLaneDecision>,
+) : ReviewScopeResolverPort,
+  ReviewStackRoutingPort,
+  ReviewGuidancePort,
+  ReviewLearningsPort,
+  ReviewBuildTestFactsPort,
+  ReviewLaneSelectionPort {
+  val calls: MutableMap<String, Int> = linkedMapOf()
+
+  private fun <T> record(name: String, value: T): T {
+    calls[name] = calls.getOrDefault(name, 0) + 1
+    return value
+  }
+
+  override fun resolveScope(reviewId: String) = record("scope", scope)
+  override fun resolveStackRouting(scope: ReviewScopeFacts) = record("routing", routing)
+  override fun resolveMatchedRules(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) = record("rules", rules)
+
+  override fun resolveLearnings(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) =
+    record("learnings", learnings)
+
+  override fun resolveBuildTestFacts(scope: ReviewScopeFacts) = record("facts", facts)
+  override fun decideLanes(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) = record(
+    "lanes",
+    run {
+      val included = decisions.filter { it.included }.map { it.lane }
+      val analyzed = included.ifEmpty { decisions.map { it.lane } }
+      ReviewLaneSelection(decisions, focusedMatrix(scope, analyzed))
+    },
+  )
+}
+
+private class RecordingValidator : ReviewContextEnvelopeValidator {
+  val labels: MutableList<String> = mutableListOf()
+  override fun validate(envelope: Map<String, Any?>, sourceLabel: String) {
+    labels += sourceLabel
+  }
+}
+
+private class PayloadLocatorReader(private val payloadByPath: Map<String, String>) :
+  FeatureTaskRuntimeSharedEvidenceLocatorReadPort {
+  override fun readDiffPayload(request: FeatureTaskRuntimeSharedEvidenceLocatorReadRequest): String =
+    payloadByPath[request.storePath]
+      ?: throw ReviewHunkEvidenceLocatorMissingError(request.storePath)
+}
+
+private class ThrowingLocatorReader(private val error: () -> Nothing) :
+  FeatureTaskRuntimeSharedEvidenceLocatorReadPort {
+  override fun readDiffPayload(request: FeatureTaskRuntimeSharedEvidenceLocatorReadRequest): String = error()
+}
 
 class ReviewPreparationServiceTest {
   private val hunkA = ReviewChangedHunk("src/A.kt", 1, 1, 1, 2, "+alpha")
@@ -77,53 +133,6 @@ class ReviewPreparationServiceTest {
     owningPack = "kotlin",
     specialistSkillName = "bill-kotlin-code-review-$lane",
   )
-
-  private class CountingPorts(
-    val scope: ReviewScopeFacts,
-    val routing: ReviewStackRoutingFacts,
-    val rules: List<ReviewRuleReference>,
-    val learnings: List<ReviewLearningsReference>,
-    val facts: List<ReviewBuildTestFact>,
-    val decisions: List<ReviewLaneDecision>,
-  ) : ReviewScopeResolverPort,
-    ReviewStackRoutingPort,
-    ReviewGuidancePort,
-    ReviewLearningsPort,
-    ReviewBuildTestFactsPort,
-    ReviewLaneSelectionPort {
-    val calls: MutableMap<String, Int> = linkedMapOf()
-
-    private fun <T> record(name: String, value: T): T {
-      calls[name] = calls.getOrDefault(name, 0) + 1
-      return value
-    }
-
-    override fun resolveScope(reviewId: String) = record("scope", scope)
-    override fun resolveStackRouting(scope: ReviewScopeFacts) = record("routing", routing)
-    override fun resolveMatchedRules(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) = record("rules", rules)
-
-    override fun resolveLearnings(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) =
-      record("learnings", learnings)
-
-    override fun resolveBuildTestFacts(scope: ReviewScopeFacts) = record("facts", facts)
-    override fun decideLanes(scope: ReviewScopeFacts, routing: ReviewStackRoutingFacts) = record(
-      "lanes",
-      run {
-        val included = decisions.filter { it.included }.map { it.lane }
-        // When every lane is excluded, still analyze the decided lanes so prepare can surface the
-        // typed "no included lane" rejection instead of failing matrix construction first.
-        val analyzed = included.ifEmpty { decisions.map { it.lane } }
-        ReviewLaneSelection(decisions, focusedMatrix(scope, analyzed))
-      },
-    )
-  }
-
-  private class RecordingValidator : ReviewContextEnvelopeValidator {
-    val labels: MutableList<String> = mutableListOf()
-    override fun validate(envelope: Map<String, Any?>, sourceLabel: String) {
-      labels += sourceLabel
-    }
-  }
 
   private fun ports(
     hunks: List<ReviewChangedHunk> = listOf(hunkB, hunkA),
@@ -494,18 +503,6 @@ class ReviewPreparationServiceTest {
     assertEquals(observedBytes, failure.outcome.observedValue)
   }
 
-  private class PayloadLocatorReader(private val payloadByPath: Map<String, String>) :
-    FeatureTaskRuntimeSharedEvidenceLocatorReadPort {
-    override fun readDiffPayload(request: FeatureTaskRuntimeSharedEvidenceLocatorReadRequest): String =
-      payloadByPath[request.storePath]
-        ?: throw ReviewHunkEvidenceLocatorMissingError(request.storePath)
-  }
-
-  private class ThrowingLocatorReader(private val error: () -> Nothing) :
-    FeatureTaskRuntimeSharedEvidenceLocatorReadPort {
-    override fun readDiffPayload(request: FeatureTaskRuntimeSharedEvidenceLocatorReadRequest): String = error()
-  }
-
   private fun oversizedPatch(path: String = "src/Huge.kt"): String {
     val body = "+" + "x".repeat(700 * 1024)
     return "diff --git a/$path b/$path\n--- a/$path\n+++ b/$path\n@@ -1,1 +1,2 @@\n$body\n"
@@ -705,21 +702,15 @@ class ReviewPreparationServiceTest {
     assertEquals(expected, failure.expectedDigest)
     assertEquals(observed, failure.observedDigest)
     assertTrue(failure.message.orEmpty().contains(REVIEW_HUNK_EVIDENCE_INTEGRITY))
-    val expectedId = ReviewChangedHunk.idFor(
-      hunk.path,
-      hunk.oldStart,
-      hunk.oldCount,
-      hunk.newStart,
-      hunk.newCount,
-      hunk.content,
-      hunk.commitScope,
-    )
+    val expectedId = ReviewChangedHunk.idFor(hunk)
     assertEquals(indexed.hunkId, expectedId)
   }
 
   @Test fun `commit-scoped hunk missing from that commit does not bind the aggregate body`() {
-    val aggregate = "diff --git a/src/A.kt b/src/A.kt\n--- a/src/A.kt\n+++ b/src/A.kt\n@@ -1,1 +1,2 @@\n+alpha\n"
-    val commitDiff = "diff --git a/src/Other.kt b/src/Other.kt\n--- a/src/Other.kt\n+++ b/src/Other.kt\n@@ -1,1 +1,2 @@\n+other\n"
+    val aggregate =
+      "diff --git a/src/A.kt b/src/A.kt\n--- a/src/A.kt\n+++ b/src/A.kt\n@@ -1,1 +1,2 @@\n+alpha\n"
+    val commitDiff =
+      "diff --git a/src/Other.kt b/src/Other.kt\n--- a/src/Other.kt\n+++ b/src/Other.kt\n@@ -1,1 +1,2 @@\n+other\n"
     val hunk = ReviewDiffEvidence.parse(aggregate).hunks.single().copy(
       commitScope = ReviewCommitUnit.commitScopeKey("head", 0),
     )
@@ -764,24 +755,8 @@ class ReviewPreparationServiceTest {
     )
     val result = storePrepare(listOf(hunk), payload, storePath)
     val first = (result.packetEnvelope.asWireMap()["changed_hunks"] as List<*>).single() as Map<*, *>
-    val fromStored = ReviewChangedHunk.idFor(
-      storedHunk.path,
-      storedHunk.oldStart,
-      storedHunk.oldCount,
-      storedHunk.newStart,
-      storedHunk.newCount,
-      storedHunk.content,
-      hunk.commitScope,
-    )
-    val fromAggregate = ReviewChangedHunk.idFor(
-      aggregateHunk.path,
-      aggregateHunk.oldStart,
-      aggregateHunk.oldCount,
-      aggregateHunk.newStart,
-      aggregateHunk.newCount,
-      aggregateHunk.content,
-      hunk.commitScope,
-    )
+    val fromStored = ReviewChangedHunk.idFor(storedHunk.copy(commitScope = hunk.commitScope))
+    val fromAggregate = ReviewChangedHunk.idFor(aggregateHunk.copy(commitScope = hunk.commitScope))
     assertEquals(fromStored, first["hunk_id"])
     assertNotEquals(fromAggregate, first["hunk_id"])
     assertEquals(ReviewChangedHunk.digestOfBody(storedHunk.content), first["content_digest"])

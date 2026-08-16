@@ -133,7 +133,12 @@ class ReviewPacketProjectionTest {
     assertEquals(listOf("src/Dep.kt"), first["dependency_allowlist"])
     @Suppress("UNCHECKED_CAST")
     val hunks = first["changed_hunks"] as List<Map<String, Any?>>
-    assertEquals(true, hunks.all { it.containsKey("hunk_id") && it.containsKey("content_digest") && it.containsKey("evidence_locator") })
+    assertEquals(
+      true,
+      hunks.all {
+        it.containsKey("hunk_id") && it.containsKey("content_digest") && it.containsKey("evidence_locator")
+      },
+    )
     assertEquals(false, hunks.any { it.containsKey("content") })
   }
 
@@ -252,7 +257,12 @@ class ReviewPacketProjectionTest {
     @Suppress("UNCHECKED_CAST")
     val entries = bundle["entries"] as List<Map<String, Any?>>
     assertEquals(2, entries.size)
-    assertEquals(true, entries.all { it.containsKey("hunk_id") && it.containsKey("content_digest") && it.containsKey("evidence_locator") })
+    assertEquals(
+      true,
+      entries.all {
+        it.containsKey("hunk_id") && it.containsKey("content_digest") && it.containsKey("evidence_locator")
+      },
+    )
     assertEquals(false, entries.any { it.containsKey("content") })
     assertEquals(setOf(hunkA.hunkId, hunkB.hunkId), entries.map { it["hunk_id"] }.toSet())
     assertEquals(true, entries.all { it.containsKey("commit_sha") && it.containsKey("order_index") })

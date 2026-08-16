@@ -1,12 +1,12 @@
 package skillbill.application
 
 import skillbill.application.featuretask.FeatureTaskRuntimeWorkerCoordinator
+import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.persistence.model.WorkflowStateRecord
-import skillbill.ports.persistence.DatabaseSessionFactory
-import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.taskruntime.FeatureTaskRuntimeHeartbeat
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatPlan
@@ -225,8 +225,7 @@ private class BumpUpdatedAtAfterReadDatabase(
     return result
   }
 
-  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T =
-    inner.transaction(dbOverride, block)
+  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T = inner.transaction(dbOverride, block)
 
   override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T =
     inner.selfManagedWrite(dbOverride, block)
