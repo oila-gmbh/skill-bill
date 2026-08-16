@@ -198,10 +198,10 @@ class FeatureTaskRuntimeWorkerCoordinator(
     const val UNOWNED_ACQUIRE_ATTEMPTS: Int = 3
     val TERMINAL_WORKFLOW_STATUSES: Set<String> = setOf("completed", "failed", "abandoned")
   }
-}
 
-private sealed interface UnownedClaim {
-  data class Owned(val ownership: FeatureTaskRuntimeWorkerOwnership) : UnownedClaim
-  data class Recover(val existing: FeatureTaskRuntimeWorkerOwnership) : UnownedClaim
-  data object Lost : UnownedClaim
+  private sealed class UnownedClaim {
+    class Owned(val ownership: FeatureTaskRuntimeWorkerOwnership) : UnownedClaim()
+    class Recover(val existing: FeatureTaskRuntimeWorkerOwnership) : UnownedClaim()
+    data object Lost : UnownedClaim()
+  }
 }

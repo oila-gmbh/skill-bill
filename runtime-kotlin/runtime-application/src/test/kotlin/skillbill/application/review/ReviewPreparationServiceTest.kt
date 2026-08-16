@@ -570,12 +570,14 @@ class ReviewPreparationServiceTest {
   @Test fun `evidence overflow on one assignment leaves the sibling selected and complete`() {
     val hugePatch = oversizedPatch("src/A.kt")
     val smallPatch = "diff --git a/src/B.kt b/src/B.kt\n--- a/src/B.kt\n+++ b/src/B.kt\n@@ -1,1 +1,2 @@\n+beta\n"
-    val huge = ReviewDiffEvidence.parse(hugePatch).hunks.single()
-    val small = ReviewDiffEvidence.parse(smallPatch).hunks.single()
+    val stored = hugePatch + smallPatch
+    val parsed = ReviewDiffEvidence.parse(stored).hunks
+    val huge = parsed.single { it.path == "src/A.kt" }
+    val small = parsed.single { it.path == "src/B.kt" }
     val storePath = ".skill-bill/run-evidence/code-review/fp-sibling"
     val result = storePrepare(
       listOf(huge, small),
-      hugePatch + "\n" + smallPatch,
+      stored,
       storePath,
       decisions = listOf(
         includedDecision("testing", "test sources changed", "src/A.kt").copy(required = true),

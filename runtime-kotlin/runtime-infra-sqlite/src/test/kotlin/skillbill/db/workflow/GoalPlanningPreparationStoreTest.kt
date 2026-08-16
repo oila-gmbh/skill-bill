@@ -223,6 +223,41 @@ class GoalPlanningPreparationStoreTest {
   }
 
   @Test
+  fun `hydrate reuses shared preplan and plan after installed runtime schema ids change`() {
+    DatabaseRuntime.ensureDatabase(tempDb()).use { connection ->
+      val store = GoalPlanningPreparationStore(connection)
+      store.checkpointSharedPreplan(sharedCheckpoint())
+      store.checkpointSubtaskPlan(planCheckpoint(1, 0))
+      connection.createStatement().use { statement ->
+        statement.executeUpdate(
+          """
+          UPDATE goal_shared_preplans SET
+            planning_contract_id = 'https://installed.example/planning',
+            phase_output_contract_id = 'https://installed.example/phase',
+            phase_output_contract_version = '0.2'
+          """.trimIndent(),
+        )
+        statement.executeUpdate(
+          """
+          UPDATE goal_subtask_plans SET
+            planning_contract_id = 'https://installed.example/planning',
+            phase_output_contract_id = 'https://installed.example/phase',
+            phase_output_contract_version = '0.2'
+          """.trimIndent(),
+        )
+      }
+
+      val shared = store.findSharedPreplan(identity())
+      val plan = store.findSubtaskPlan(identity(), 1, descriptor(1, 0).governedSubSpecPath)
+      assertEquals("preplan-payload", shared?.preplanPayload)
+      assertEquals("plan-1", plan?.planPayload)
+      assertEquals("https://installed.example/planning", shared?.provenance?.planningContractId)
+      assertEquals("https://installed.example/phase", plan?.provenance?.phaseOutputContractId)
+      assertEquals("0.2", plan?.provenance?.phaseOutputContractVersion)
+    }
+  }
+
+  @Test
   fun `mark prepared stores and recovers a single subtask pair`() {
     DatabaseRuntime.ensureDatabase(tempDb()).use { connection ->
       val store = GoalPlanningPreparationStore(connection)

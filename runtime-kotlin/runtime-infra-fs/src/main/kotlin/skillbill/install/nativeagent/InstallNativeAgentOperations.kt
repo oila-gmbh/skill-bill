@@ -274,13 +274,11 @@ object InstallNativeAgentOperations {
         add(source.resolve("platform.yaml"))
         manifest.declaredFiles.baseline?.let(::add)
         addAll(manifest.declaredFiles.areas.values)
-        // The published manifest is reloaded by every consumer, and loading validates that declared
-        // add-on pointers resolve. Publishing the manifest without them made the pack unloadable.
-        manifest.featureAddonUsage.forEach { usage ->
-          usage.addons.forEach { addon ->
-            add(source.resolve("addons").resolve(addon.entrypoint))
-            addon.companionPointers.forEach { pointer -> add(source.resolve("addons").resolve(pointer)) }
-          }
+        val declaredAddons = manifest.addonUsage.flatMap { it.addons } +
+          manifest.featureAddonUsage.flatMap { it.addons }
+        declaredAddons.forEach { addon ->
+          add(source.resolve("addons").resolve(addon.entrypoint))
+          addon.companionPointers.forEach { pointer -> add(source.resolve("addons").resolve(pointer)) }
         }
       }.distinct()
       runtimeFiles.forEach { path ->

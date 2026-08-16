@@ -32,8 +32,9 @@ internal sealed interface FeatureTaskRuntimePhaseOutputStructuralRepairDecision 
 /**
  * Strict, bounded syntax repair for phase-output payloads.
  *
- * The engine first parses the original text with duplicate-key detection enabled. Repair is
- * considered only for delimiter imbalance, and every candidate is parsed again before one can be
+ * The engine first parses the original text with duplicate-key detection enabled. Duplicate keys
+ * merge object or array values when both sides share a type; otherwise the first value is kept.
+ * Delimiter imbalance is repaired separately, and every candidate is parsed again before one can be
  * selected. JSON is the default for flow-shaped payloads; YAML repair is restricted to conservative
  * flow documents so block indentation and plain scalar content are never guessed at.
  */
@@ -115,12 +116,7 @@ internal object FeatureTaskRuntimePhaseOutputStructuralRepair {
     sourceLabel: String,
     exact: StrictParse.Failure,
   ): FeatureTaskRuntimePhaseOutputStructuralRepairDecision {
-    if (exact.code == FeatureTaskRuntimePhaseOutputFailureCode.DUPLICATE_KEY) {
-      return StructuralRepairDecisions.reject(
-        exact.code,
-        "Phase output contains a duplicate key; duplicate keys are never repaired.",
-      )
-    }
+    DuplicateKeyMergeParser.repair(phaseOutputText, sourceLabel)?.let { return it }
     val trimmed = phaseOutputText.trimStart()
     val wholeResponseRepair = if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
       StructuralRepairCandidateEngine.repairExactText(phaseOutputText, sourceLabel)
@@ -168,19 +164,22 @@ internal object FeatureTaskRuntimePhaseOutputStructuralRepair {
             "<root> must be an object.",
           )
         }
-        is StrictParse.Failure -> if (result.code == FeatureTaskRuntimePhaseOutputFailureCode.DUPLICATE_KEY) {
-          StructuralRepairDecisions.reject(
-            result.code,
-            "Phase output contains a duplicate key; duplicate keys are never repaired.",
-          )
-        } else {
-          StructuralRepairCandidateEngine.repairExactText(
+        is StrictParse.Failure ->
+          DuplicateKeyMergeParser.repair(
             text = candidate.text,
             sourceLabel = sourceLabel,
             sourceOffset = candidate.sourceOffset,
             sourceText = text,
-          )
-        }
+          ) ?: if (result.code == FeatureTaskRuntimePhaseOutputFailureCode.DUPLICATE_KEY) {
+            null
+          } else {
+            StructuralRepairCandidateEngine.repairExactText(
+              text = candidate.text,
+              sourceLabel = sourceLabel,
+              sourceOffset = candidate.sourceOffset,
+              sourceText = text,
+            )
+          }
       }
       (decision as? FeatureTaskRuntimePhaseOutputStructuralRepairDecision.Accepted)
         ?.let { EmbeddedDocument(it.text, it.node, it.evidence, candidate.sourceOffset, candidate.sourceEnd) }
@@ -266,7 +265,7 @@ internal object FeatureTaskRuntimePhaseOutputStructuralRepair {
   ) : RuntimeException(safeReason)
 }
 
-private object StrictPhaseOutputParser {
+internal object StrictPhaseOutputParser {
   private val strictJsonMapper: ObjectMapper by lazy {
     ObjectMapper().enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
   }
@@ -307,7 +306,7 @@ private object StrictPhaseOutputParser {
       }
     }
   } catch (error: Exception) {
-    val duplicate = error.message.orEmpty().contains("duplicate", ignoreCase = true)
+    val duplicate = DUPLICATE_FIELD_OR_KEY.containsMatchIn(error.message.orEmpty())
     StrictParse.Failure(
       if (duplicate) {
         FeatureTaskRuntimePhaseOutputFailureCode.DUPLICATE_KEY
@@ -321,6 +320,8 @@ private object StrictPhaseOutputParser {
       },
     )
   }
+
+  private val DUPLICATE_FIELD_OR_KEY = Regex("(?i)duplicate (field|key)\\b")
 
   fun formatsFor(text: String): List<FeatureTaskRuntimePhaseOutputFormat> {
     val first = text.firstOrNull { !it.isWhitespace() }
@@ -421,61 +422,69 @@ internal object StructuralRepairCandidateEngine {
     sourceOffset: Int,
     sourceText: String,
   ): FeatureTaskRuntimePhaseOutputStructuralRepairDecision {
-    val parsed = candidates.map { candidate ->
-      candidate to StrictPhaseOutputParser.parseStrict(candidate.text, candidate.format)
-    }
-    val duplicateKey = parsed.mapNotNull { (_, result) ->
-      (result as? StrictParse.Failure)?.takeIf {
-        it.code == FeatureTaskRuntimePhaseOutputFailureCode.DUPLICATE_KEY
+    val considered = candidates.mapNotNull { candidate ->
+      when (val result = StrictPhaseOutputParser.parseStrict(candidate.text, candidate.format)) {
+        is StrictParse.Success -> Triple(candidate, result.node, false)
+        is StrictParse.Failure -> if (result.code == FeatureTaskRuntimePhaseOutputFailureCode.DUPLICATE_KEY) {
+          DuplicateKeyMergeParser.merge(candidate.text, candidate.format)?.let { merged ->
+            Triple(
+              candidate.copy(text = merged.repairedText, changedOffset = merged.firstDuplicateOffset),
+              merged.node,
+              true,
+            )
+          }
+        } else {
+          null
+        }
       }
-    }.firstOrNull()
-    val parseable = parsed.mapNotNull { (candidate, result) ->
-      (result as? StrictParse.Success)?.let { candidate to it }
     }
     return when {
-      duplicateKey != null -> StructuralRepairDecisions.reject(
-        duplicateKey.code,
-        "Phase output contains a duplicate key; duplicate keys are never repaired.",
-      )
-      parseable.isEmpty() -> StructuralRepairDecisions.reject(
+      considered.isEmpty() -> StructuralRepairDecisions.reject(
         FeatureTaskRuntimePhaseOutputFailureCode.NO_REPAIR_CANDIDATE,
         "Phase output is malformed and no bounded structural-repair candidate parses strictly.",
       )
-      parseable.size != 1 -> StructuralRepairDecisions.reject(
+      considered.size != 1 -> StructuralRepairDecisions.reject(
         FeatureTaskRuntimePhaseOutputFailureCode.AMBIGUOUS_REPAIR,
         "Phase output has multiple strictly parseable structural-repair candidates.",
       )
-      else -> acceptCandidate(
-        parseable.single(),
-        originalText,
-        sourceLabel,
-        sourceOffset,
-        sourceText,
-      )
+      else -> {
+        val (candidate, node, mergedDuplicateKeys) = considered.single()
+        acceptCandidate(
+          candidate,
+          node,
+          mergedDuplicateKeys,
+          originalText,
+          sourceLabel,
+          sourceOffset,
+          sourceText,
+        )
+      }
     }
   }
 
   private fun acceptCandidate(
-    parseable: Pair<Candidate, StrictParse.Success>,
+    candidate: Candidate,
+    node: JsonNode,
+    mergedDuplicateKeys: Boolean,
     originalText: String,
     sourceLabel: String,
     sourceOffset: Int,
     sourceText: String,
   ): FeatureTaskRuntimePhaseOutputStructuralRepairDecision {
-    val (candidate, parsed) = parseable
-    return if (!parsed.node.isObject) {
+    return if (!node.isObject) {
       StructuralRepairDecisions.reject(
         FeatureTaskRuntimePhaseOutputFailureCode.ROOT_NOT_OBJECT,
         "<root> must be an object after structural repair.",
       )
     } else {
-      val operation = if (candidate.text.length < originalText.length) {
-        FeatureTaskRuntimePhaseOutputRepairOperation.REMOVE_EXTRA_CLOSING_DELIMITER
-      } else {
-        FeatureTaskRuntimePhaseOutputRepairOperation.ADD_MISSING_CLOSING_DELIMITER
+      val operation = when {
+        mergedDuplicateKeys -> FeatureTaskRuntimePhaseOutputRepairOperation.DEDUPLICATE_KEYS
+        candidate.text.length < originalText.length ->
+          FeatureTaskRuntimePhaseOutputRepairOperation.REMOVE_EXTRA_CLOSING_DELIMITER
+        else -> FeatureTaskRuntimePhaseOutputRepairOperation.ADD_MISSING_CLOSING_DELIMITER
       }
       val evidence = FeatureTaskRuntimePhaseOutputRepairEvidence(
-        format = candidate.format,
+        format = if (mergedDuplicateKeys) FeatureTaskRuntimePhaseOutputFormat.JSON else candidate.format,
         originalDigest = StructuralRepairSyntax.sha256(originalText),
         repairedDigest = StructuralRepairSyntax.sha256(candidate.text),
         operation = operation,
@@ -485,12 +494,12 @@ internal object StructuralRepairCandidateEngine {
           sourceOffset + candidate.changedOffset,
         ),
       )
-      StructuralRepairDecisions.accepted(candidate.text, parsed.node, evidence)
+      StructuralRepairDecisions.accepted(candidate.text, node, evidence)
     }
   }
 }
 
-private object StructuralRepairSyntax {
+internal object StructuralRepairSyntax {
   fun generateCandidates(
     text: String,
     format: FeatureTaskRuntimePhaseOutputFormat,
@@ -600,7 +609,7 @@ private object StructuralRepairSyntax {
     .joinToString("") { byte -> "%02x".format(byte) }
 }
 
-private object StructuralRepairDecisions {
+internal object StructuralRepairDecisions {
   fun accepted(
     text: String,
     node: JsonNode,
@@ -743,13 +752,13 @@ internal data class Candidate(
   val changedOffset: Int,
 )
 
-private data class DelimiterScan(
+internal data class DelimiterScan(
   val openingStack: List<Char>,
   val unmatchedClosingOffsets: List<Int>,
   val firstMismatchedClosing: MismatchedClosing?,
 )
 
-private data class MismatchedClosing(
+internal data class MismatchedClosing(
   val offset: Int,
   val missingCloser: Char?,
 )
@@ -768,7 +777,7 @@ private data class EmbeddedDocument(
   val sourceEnd: Int,
 )
 
-private sealed interface StrictParse {
+internal sealed interface StrictParse {
   data class Success(
     val format: FeatureTaskRuntimePhaseOutputFormat,
     val node: JsonNode,

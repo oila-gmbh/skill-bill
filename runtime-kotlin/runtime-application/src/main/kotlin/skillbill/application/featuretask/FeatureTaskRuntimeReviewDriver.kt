@@ -169,24 +169,36 @@ internal object FeatureTaskRuntimeReviewEnvelope {
     resolvedTier: CodeReviewExecutionMode,
   ): GoalSubtaskCommitFocusedAccounting? {
     if (resolvedTier != CodeReviewExecutionMode.DELEGATED) return null
-    val routing = result.accountingSummary?.commitRouting ?: return null
+    val summary = result.accountingSummary ?: return null
+    val routing = summary.commitRouting ?: return null
     if (routing.commitCount < 1) return null
-    val integration = result.accountingSummary.integration
+    val accounting = summary.integration
+    val pass = result.integration
+    val terminalOutcome = accounting?.terminalOutcome
+      ?: pass?.terminalOutcome?.wireValue
+      ?: GoalSubtaskCommitFocusedAccounting.SKIPPED_NOT_APPLICABLE
     return GoalSubtaskCommitFocusedAccounting(
       commitSequenceDigest = routing.commitSequenceDigest,
       commitCount = routing.commitCount,
       laneCount = routing.laneCount,
       focusedCommitCount = routing.focusedCommitCount,
       skippedCommitCount = routing.skippedCommitCount,
-      integrationTerminalOutcome = integration?.terminalOutcome
-        ?: GoalSubtaskCommitFocusedAccounting.SKIPPED_NOT_APPLICABLE,
+      integrationTerminalOutcome = terminalOutcome,
       routingDigest = routing.routingDigest,
       focusedPairCount = routing.focusedPairCount,
       skippedPairCount = routing.skippedPairCount,
       incompleteLanes = routing.incompleteLanes,
-      parentAnalysisPairs = result.accountingSummary.parentAnalysis?.analyzedPairs,
-      parentAnalysisBytes = result.accountingSummary.parentAnalysis?.analyzedBytes,
-      integrationFindingCount = integration?.findingCount,
+      parentAnalysisPairs = summary.parentAnalysis?.analyzedPairs,
+      parentAnalysisBytes = summary.parentAnalysis?.analyzedBytes,
+      integrationSkipReason = when (terminalOutcome) {
+        GoalSubtaskCommitFocusedAccounting.SKIPPED_NOT_APPLICABLE ->
+          accounting?.skipReason?.takeIf { it.isNotBlank() }
+            ?: pass?.skipReason?.takeIf { it.isNotBlank() }
+            ?: result.coverage?.integrationNotApplicableReason?.takeIf { it.isNotBlank() }
+            ?: "commit-focused accounting was recorded without a settled integration pass"
+        else -> accounting?.skipReason ?: pass?.skipReason
+      },
+      integrationFindingCount = accounting?.findingCount ?: pass?.findings?.size,
     )
   }
 }

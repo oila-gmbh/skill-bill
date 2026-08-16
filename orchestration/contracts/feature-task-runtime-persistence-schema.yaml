@@ -81,7 +81,7 @@ $defs:
           format: { enum: [json, yaml] }
           original_digest: { type: string, pattern: "^[0-9a-f]{64}$" }
           repaired_digest: { type: string, pattern: "^[0-9a-f]{64}$" }
-          operation: { enum: [remove_extra_closing_delimiter, add_missing_closing_delimiter] }
+          operation: { enum: [remove_extra_closing_delimiter, add_missing_closing_delimiter, deduplicate_keys] }
           source_location:
             type: object
             additionalProperties: false

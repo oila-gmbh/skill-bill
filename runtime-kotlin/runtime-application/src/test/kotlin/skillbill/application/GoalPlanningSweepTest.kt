@@ -1010,6 +1010,30 @@ class GoalPlanningSweepTest {
   }
 
   @Test
+  fun `recoverability classifier returns Reuse when only installed runtime schema ids drift`() {
+    val parentSpec = "# Stable parent contract"
+    val checkpoint = recoverabilityCheckpoint(parentSpec = parentSpec)
+    val current = checkpoint.provenance.copy(
+      parentSpecHash = sha256HexUtf8(parentSpec),
+      planningContractId = "https://installed.example/planning-schema",
+      planningContractVersion = "9.9",
+      phaseOutputContractId = "https://installed.example/phase-output-schema",
+      phaseOutputContractVersion = "9.9",
+    )
+
+    val result = classifyGoalPlanningProvenanceRecoverability(
+      existing = checkpoint,
+      current = current,
+      savedParentSpec = parentSpec,
+      currentParentSpec = parentSpec,
+      freshCatalogHeadingIds = emptySet(),
+    )
+
+    val reuse = assertIs<GoalPlanningProvenanceRecoverability.Reuse>(result)
+    assertEquals(checkpoint.provenance, reuse.provenance)
+  }
+
+  @Test
   fun `recoverability classifier returns Invalid when payload sha does not match bytes`() {
     val parentSpec = "# Parent contract"
     val checkpoint = recoverabilityCheckpoint(parentSpec = parentSpec).copy(payloadSha256 = "0".repeat(64))

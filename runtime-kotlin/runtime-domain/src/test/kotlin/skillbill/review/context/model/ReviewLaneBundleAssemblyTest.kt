@@ -357,17 +357,18 @@ class ReviewLaneBundleAssemblyTest {
   }
 
   @Test fun `canonical payload renders each segment with commit metadata and segment id`() {
-    val firstBig = ReviewChangedHunk("src/BigA.kt", 1, 1, 1, 1, "+${"x".repeat(400)}")
-    val secondBig = ReviewChangedHunk("src/BigB.kt", 1, 1, 1, 1, "+${"y".repeat(400)}")
+    val pad = 2_000
+    val firstBig = ReviewChangedHunk("src/${"A".repeat(pad)}.kt", 1, 1, 1, 1, "+a")
+    val secondBig = ReviewChangedHunk("src/${"B".repeat(pad)}.kt", 1, 1, 1, 1, "+b")
     val built = packet(listOf(unit("c1", "base", 0, listOf(firstBig, secondBig))))
     val bundle = ReviewLaneBundle(listOf(ReviewLaneBundleEntry("c1", 0, listOf(firstBig.hunkId, secondBig.hunkId))))
-    // The budget is derived from the single-segment payload so the fixed governance overhead, which
-    // dwarfs any hand-picked byte count, cannot make every entry unreviewable instead of split.
-    val singleSegmentBytes = launch(built, bundle).canonicalPayload.toByteArray(Charsets.UTF_8).size.toLong()
+    val twoEntryBytes = launch(built, bundle).canonicalPayload.toByteArray(Charsets.UTF_8).size.toLong()
+    val splitBudget = twoEntryBytes - pad
+    assertTrue(splitBudget in 1 until twoEntryBytes)
     val governed = launch(
       built,
       bundle,
-      ReviewContextBudgetPolicy.DEFAULT.copy(maxLaneLaunchBytes = singleSegmentBytes - 1),
+      ReviewContextBudgetPolicy.DEFAULT.copy(maxLaneLaunchBytes = splitBudget),
     )
 
     assertTrue(governed.segmentation.segments.size >= 2, "Fixture must force multiple segments.")

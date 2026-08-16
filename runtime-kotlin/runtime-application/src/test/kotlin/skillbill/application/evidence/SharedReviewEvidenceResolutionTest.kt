@@ -261,12 +261,14 @@ class SharedReviewEvidenceResolutionTest {
       aggregate,
       queryOf(workflowId = "wftr-1"),
     )
-    assertTrue(standalone.storePath!!.startsWith(".skill-bill/run-evidence/code-review/"))
-    assertTrue(featureTask.storePath!!.startsWith(".skill-bill/run-evidence/wftr-1/"))
-    assertTrue(standalone.storePath!!.endsWith(standalone.storePath!!.substringAfterLast('/')))
+    val standalonePath = checkNotNull(standalone.storePath)
+    val featureTaskPath = checkNotNull(featureTask.storePath)
+    assertTrue(standalonePath.startsWith(".skill-bill/run-evidence/code-review/"))
+    assertTrue(featureTaskPath.startsWith(".skill-bill/run-evidence/wftr-1/"))
+    assertTrue(standalonePath.endsWith(standalonePath.substringAfterLast('/')))
     assertEquals(
-      standalone.storePath!!.count { it == '/' },
-      featureTask.storePath!!.count { it == '/' },
+      standalonePath.count { it == '/' },
+      featureTaskPath.count { it == '/' },
     )
   }
 }

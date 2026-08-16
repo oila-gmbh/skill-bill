@@ -1432,9 +1432,10 @@ internal sealed interface GoalPlanningProvenanceRecoverability {
 }
 
 /**
- * Validity: manifest hash, phase-output schema id, parent-spec self-hash, payload sha, and every
- * selected heading id resolving in [freshCatalogHeadingIds]. Freshness: canonical parent-spec equality.
- * Empty or absent selected headings are vacuously valid.
+ * Validity: manifest hash, parent-spec self-hash, payload sha, and every selected heading id
+ * resolving in [freshCatalogHeadingIds]. Runtime schema ids are install identity and are not
+ * validity. Freshness: canonical parent-spec equality. Empty or absent selected headings are
+ * vacuously valid.
  */
 internal fun classifyGoalPlanningProvenanceRecoverability(
   existing: SharedGoalPreplanCheckpoint?,
@@ -1447,7 +1448,6 @@ internal fun classifyGoalPlanningProvenanceRecoverability(
   val saved = existing.provenance
   val selected = selectedBoundaryHeadingIds(existing.preplanPayload)
   val valid = saved.decompositionManifestHash == current.decompositionManifestHash &&
-    saved.phaseOutputContractId == current.phaseOutputContractId &&
     savedParentSpec != null &&
     sha256HexUtf8(savedParentSpec) == saved.parentSpecHash &&
     sha256HexUtf8(existing.preplanPayload) == existing.payloadSha256 &&

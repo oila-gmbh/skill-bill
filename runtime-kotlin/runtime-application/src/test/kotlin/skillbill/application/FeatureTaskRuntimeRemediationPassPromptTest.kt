@@ -18,8 +18,9 @@ import kotlin.test.assertFalse
 
 /**
  * AC-008 and AC-010: the reserved remediation pass's prompt must describe the remediation delta, must
- * not restate the immutable-base scope that contradicts it, must derive its mode token from the
- * resolved tier, and must be the seam that orders `produced_outputs.blocker_dispositions`.
+ * not restate the immutable-base scope that contradicts it, and must derive its mode token from the
+ * resolved tier. Runtime-owned review synthesizes `produced_outputs.blocker_dispositions`; the prompt
+ * does not order that key.
  *
  * SKILL-178 subtask 2: the finding half of the remediation-delta union widens to all addressed
  * findings; remediation survival wording covers Blocker or Major; pass-two still suppresses
@@ -112,9 +113,6 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
 
   @Test
   fun `pass two orders one evidenced disposition per prior Blocker finding id`() {
-    // Durable wire key remains blocker_dispositions (SKILL-178 keeps the key name). Governed
-    // PLAYBOOK/code-review prose and this prompt seam both require dispositions for prior Blocker
-    // ids only; widening to every addressed finding waits on a review-execution directive change.
     val prompt = compose(
       passNumber = 2,
       resolvedTier = CodeReviewExecutionMode.INLINE,

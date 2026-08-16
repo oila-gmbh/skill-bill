@@ -1687,7 +1687,12 @@ private fun ReviewAccountingSummary.withCommitFocusedAccounting(
         modelTurns = integration.modelTurns,
       ),
       usage = integration.providerUsage ?: ProviderTokenUsage(),
-      skipReason = integration.skipReason,
+      skipReason = integration.skipReason?.takeIf { it.isNotBlank() }
+        ?: coverage?.integrationNotApplicableReason?.takeIf { it.isNotBlank() }
+        ?: "the review compiled commit routing without recording why integration was not applicable"
+          .takeIf {
+            integration.terminalOutcome == ReviewIntegrationTerminalOutcome.SKIPPED_NOT_APPLICABLE
+          },
     ),
   )
 }

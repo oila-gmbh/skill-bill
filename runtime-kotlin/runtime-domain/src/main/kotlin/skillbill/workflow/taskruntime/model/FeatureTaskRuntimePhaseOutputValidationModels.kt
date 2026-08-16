@@ -27,6 +27,7 @@ enum class FeatureTaskRuntimePhaseOutputFormat(val wireValue: String) {
 enum class FeatureTaskRuntimePhaseOutputRepairOperation(val wireValue: String) {
   REMOVE_EXTRA_CLOSING_DELIMITER("remove_extra_closing_delimiter"),
   ADD_MISSING_CLOSING_DELIMITER("add_missing_closing_delimiter"),
+  DEDUPLICATE_KEYS("deduplicate_keys"),
 
   ;
 

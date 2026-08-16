@@ -1072,8 +1072,8 @@ private fun ResultSet.toShared(expected: GoalPlanningIdentity): SharedGoalPrepla
     preplanPayload = requireColumn(this, label, "preplan_payload_json"),
     repairEvidence = optionalRepairEvidence(this, label, "repair_evidence_json"),
     createdAt = requireColumn(this, label, "created_at"),
-    contractVersion = requireNormalizedVersion(this, label),
-  ).also(::requireNormalizedSharedPreplan)
+    contractVersion = requireColumn(this, label, "contract_version"),
+  ).also(::requireHydratedSharedPreplan)
 }
 
 private fun ResultSet.toPlan(expected: GoalPlanningIdentity, expectedPath: String): GoalSubtaskPlanCheckpoint {
@@ -1115,20 +1115,10 @@ private fun ResultSet.toPlan(expected: GoalPlanningIdentity, expectedPath: Strin
     payloadSha256 = requireColumn(this, label, "payload_sha256"),
     planPayload = requireColumn(this, label, "plan_payload_json"),
     repairEvidence = optionalRepairEvidence(this, label, "repair_evidence_json"),
-    createdAt = requireColumn(this, label, "created_at"), contractVersion = requireNormalizedVersion(this, label),
-  ).also(::requireNormalizedSubtaskPlan)
+    createdAt = requireColumn(this, label, "created_at"),
+    contractVersion = requireColumn(this, label, "contract_version"),
+  ).also(::requireHydratedSubtaskPlan)
 }
-
-private fun requireNormalizedVersion(rows: ResultSet, label: String): String =
-  requireColumn(rows, label, "contract_version").also {
-    if (it != GOAL_PLANNING_PREPARATION_CONTRACT_VERSION) {
-      throw InvalidGoalPlanningPreparationSchemaError(
-        label,
-        "contract_version",
-        "loaded contract_version '$it' is not '$GOAL_PLANNING_PREPARATION_CONTRACT_VERSION'",
-      )
-    }
-  }
 
 private fun requirePositiveInt(rows: ResultSet, label: String, column: String): Int = rows.getInt(column).also {
   if (rows.wasNull() || it < 1) {
@@ -1199,6 +1189,42 @@ private fun requireNormalizedSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint) 
   }
 }
 
+private fun requireHydratedSharedPreplan(checkpoint: SharedGoalPreplanCheckpoint) {
+  val label = checkpoint.identity.parentGoalWorkflowId
+  val failure = normalizedIdentityFailure(checkpoint.identity)
+    ?: hydratedProvenanceFailure(checkpoint.provenance)
+    ?: hydratedEnvelopeFailure(
+      checkpoint.preparationStatus,
+      checkpoint.payloadSha256,
+      checkpoint.preplanPayload,
+    )
+  if (failure != null) {
+    throw InvalidGoalPlanningPreparationSchemaError(label, failure.first, failure.second)
+  }
+}
+
+private fun requireHydratedSubtaskPlan(checkpoint: GoalSubtaskPlanCheckpoint) {
+  val label = "${checkpoint.identity.parentGoalWorkflowId}#${checkpoint.subtaskId}"
+  val failure = normalizedIdentityFailure(checkpoint.identity)
+    ?: hydratedProvenanceFailure(checkpoint.provenance)
+    ?: hydratedEnvelopeFailure(
+      checkpoint.preparationStatus,
+      checkpoint.payloadSha256,
+      checkpoint.planPayload,
+    )
+    ?: when {
+      checkpoint.subtaskId < 1 -> "subtask_id" to "subtask_id must be a positive integer"
+      checkpoint.manifestOrder < 0 -> "manifest_order" to "manifest_order must be non-negative"
+      checkpoint.governedSubSpecPath.isBlank() ->
+        "governed_sub_spec_path" to "governed_sub_spec_path is required"
+      !checkpoint.subSpecHash.isSha256() -> "sub_spec_hash" to "sub_spec_hash must be a lowercase SHA-256"
+      else -> null
+    }
+  if (failure != null) {
+    throw InvalidGoalPlanningPreparationSchemaError(label, failure.first, failure.second)
+  }
+}
+
 private fun normalizedIdentityFailure(identity: GoalPlanningIdentity): Pair<String, String>? = when {
   identity.parentGoalWorkflowId.isBlank() ->
     "identity.parent_goal_workflow_id" to "parent_goal_workflow_id is required"
@@ -1233,6 +1259,26 @@ private fun normalizedEnvelopeFailure(
 ): Pair<String, String>? = when {
   contractVersion != GOAL_PLANNING_PREPARATION_CONTRACT_VERSION ->
     "contract_version" to "contract_version is incompatible"
+  status != GoalPlanningPreparationState.PREPARED ->
+    "preparation_status" to "preparation_status must be prepared"
+  !payloadSha256.isSha256() -> "payload_sha256" to "payload_sha256 must be a lowercase SHA-256"
+  payload.isBlank() -> "payload" to "payload is required"
+  else -> null
+}
+
+private fun hydratedProvenanceFailure(provenance: GoalPlanningContractProvenance): Pair<String, String>? = when {
+  !provenance.parentSpecHash.isSha256() ->
+    "provenance.parent_spec_hash" to "parent_spec_hash must be a lowercase SHA-256"
+  !provenance.decompositionManifestHash.isSha256() ->
+    "provenance.decomposition_manifest_hash" to "decomposition_manifest_hash must be a lowercase SHA-256"
+  else -> null
+}
+
+private fun hydratedEnvelopeFailure(
+  status: GoalPlanningPreparationState,
+  payloadSha256: String,
+  payload: String,
+): Pair<String, String>? = when {
   status != GoalPlanningPreparationState.PREPARED ->
     "preparation_status" to "preparation_status must be prepared"
   !payloadSha256.isSha256() -> "payload_sha256" to "payload_sha256 must be a lowercase SHA-256"

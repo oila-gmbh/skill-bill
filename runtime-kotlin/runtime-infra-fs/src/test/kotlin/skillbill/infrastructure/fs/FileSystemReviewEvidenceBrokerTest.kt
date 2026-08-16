@@ -22,22 +22,6 @@ import skillbill.review.context.model.ReviewHunkEvidenceLocator
 import skillbill.review.context.model.ReviewLaneDecision
 import skillbill.review.context.model.ReviewOperationKind
 import skillbill.review.context.model.ReviewRevision
-import skillbill.ports.review.model.ReviewEvidenceBatchRequest
-import skillbill.ports.review.model.ReviewEvidenceBrokerBinding
-import skillbill.ports.review.model.ReviewEvidenceRequest
-import skillbill.ports.review.model.ReviewExpansionAuthorizationRequest
-import skillbill.ports.review.model.ReviewToolCall
-import skillbill.review.context.model.ProviderTokenUsage
-import skillbill.review.context.model.REVIEW_BUDGET_REGRESSION
-import skillbill.review.context.model.REVIEW_CONTEXT_BUDGET_EXCEEDED
-import skillbill.review.context.model.ReviewAssignment
-import skillbill.review.context.model.ReviewChangedHunk
-import skillbill.review.context.model.ReviewContextBudgetPolicy
-import skillbill.review.context.model.ReviewDependencyAllowlist
-import skillbill.review.context.model.ReviewExpansionRecord
-import skillbill.review.context.model.ReviewLaneDecision
-import skillbill.review.context.model.ReviewOperationKind
-import skillbill.review.context.model.ReviewRevision
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -518,7 +502,7 @@ class FileSystemReviewEvidenceBrokerTest {
       listOf(small, large),
       storePath,
       mapOf(storePath to "aa"),
-      policy(result = 8, cumulative = 3),
+      policy(result = 3, cumulative = 3),
       ReviewStoredHunkBodyExtractor { _, hunk -> if (hunk.path == "A.kt") "aa" else "bbbb" },
     )
     val first = broker.readBatch(batch("A.kt")).results.single()

@@ -23,7 +23,9 @@ import skillbill.nativeagent.rendering.NativeAgentOperations
 import skillbill.nativeagent.rendering.NativeAgentProvider
 import skillbill.ports.review.model.ReviewNativeAgentPreflightRequest
 import skillbill.testing.HARBOR_ARCHITECTURE_WORKER
+import skillbill.testing.HARBOR_COMPANION_NAME
 import skillbill.testing.HARBOR_ENTRYPOINT_MARKER
+import skillbill.testing.HARBOR_ENTRYPOINT_NAME
 import skillbill.testing.HARBOR_PACK_SLUG
 import skillbill.testing.seedHarborAddonPack
 import java.nio.file.Files
@@ -855,6 +857,30 @@ class InstallNativeAgentLinkApplyTest : InstallApplyTestSupport() {
     )
     assertFalse(Files.exists(installedPack.resolve("agent/history.md"), LinkOption.NOFOLLOW_LINKS))
     assertFalse(Files.exists(installedPack.resolve("unrelated-custom-file.txt"), LinkOption.NOFOLLOW_LINKS))
+  }
+
+  @Test
+  fun `installed review catalog includes addon_usage entrypoint and companions`() {
+    val fixture = setupApplyFixture()
+    seedHarborAddonPack(fixture.repoRoot)
+    Files.createDirectories(fixture.home.resolve(".codex"))
+    val plan = InstallOperations.planInstall(
+      fixture.request(selectedPlatforms = setOf(HARBOR_PACK_SLUG), agents = setOf(InstallAgent.CODEX)),
+    )
+
+    assertEquals(InstallApplyStatus.SUCCESS, InstallOperations.applyInstall(plan).status)
+
+    val installedPack = currentNativeAgentApplyCacheRoot(
+      fixture.home,
+      fixture.repoRoot.resolve("platform-packs"),
+      fixture.repoRoot.resolve("skills"),
+    ).resolve("review-catalog/platform-packs/$HARBOR_PACK_SLUG")
+    assertTrue(Files.isRegularFile(installedPack.resolve("addons/$HARBOR_ENTRYPOINT_NAME")))
+    assertTrue(Files.isRegularFile(installedPack.resolve("addons/$HARBOR_COMPANION_NAME")))
+    assertEquals(
+      "$HARBOR_ENTRYPOINT_MARKER\n",
+      Files.readString(installedPack.resolve("addons/$HARBOR_ENTRYPOINT_NAME")),
+    )
   }
 
   @Test

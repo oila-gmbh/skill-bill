@@ -140,14 +140,46 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
   }
 
   @Test
-  fun `duplicate keys are rejected before structural repair`() {
-    val duplicate = validJson.replace("\"phase_id\":\"plan\",", "\"phase_id\":\"plan\",\"phase_id\":\"plan\",")
+  fun `duplicate scalar keys keep the first value`() {
+    val duplicate = validJson.replace("\"phase_id\":\"plan\",", "\"phase_id\":\"plan\",\"phase_id\":\"audit\",")
 
     val result = adapter.validatePhaseOutput(duplicate, "plan")
 
-    val rejected = assertIs<FeatureTaskRuntimePhaseOutputValidationResult.Rejected>(result)
-    assertEquals(FeatureTaskRuntimePhaseOutputFailureCode.DUPLICATE_KEY, rejected.code)
-    assertFalse(rejected.reason.contains("phase_id\":\"plan\""))
+    val repaired = assertIs<FeatureTaskRuntimePhaseOutputValidationResult.AcceptedAfterRepair>(result)
+    assertEquals(FeatureTaskRuntimePhaseOutputRepairOperation.DEDUPLICATE_KEYS, repaired.evidence.operation)
+    assertEquals("plan", repaired.normalizedOutput.envelope["phase_id"])
+    assertEquals(sha256(duplicate), repaired.evidence.originalDigest)
+  }
+
+  @Test
+  fun `duplicate object keys merge contents and concatenate arrays`() {
+    val payload =
+      """{"contract_version":"0.3","phase_id":"plan","status":"completed","summary":"Plan output.",""" +
+        """"produced_outputs":{"tasks":["task-1"]},"produced_outputs":{"notes":["n-1"],"tasks":["task-2"]}}"""
+
+    val result = adapter.validatePhaseOutput(payload, "plan")
+
+    val repaired = assertIs<FeatureTaskRuntimePhaseOutputValidationResult.AcceptedAfterRepair>(result)
+    @Suppress("UNCHECKED_CAST")
+    val producedOutputs = repaired.normalizedOutput.envelope["produced_outputs"] as Map<String, Any?>
+    assertEquals(listOf("task-1", "task-2"), producedOutputs["tasks"])
+    assertEquals(listOf("n-1"), producedOutputs["notes"])
+  }
+
+  @Test
+  fun `prose mentioning Duplicate does not skip a valid fenced envelope`() {
+    val response = """
+      Duplicate broker-test imports were removed.
+
+      ```json
+      $validJson
+      ```
+    """.trimIndent()
+
+    val result = adapter.validatePhaseOutput(response, "plan")
+
+    val accepted = assertIs<FeatureTaskRuntimePhaseOutputValidationResult.AcceptedUnchanged>(result)
+    assertEquals("plan", accepted.normalizedOutput.envelope["phase_id"])
   }
 
   @Test

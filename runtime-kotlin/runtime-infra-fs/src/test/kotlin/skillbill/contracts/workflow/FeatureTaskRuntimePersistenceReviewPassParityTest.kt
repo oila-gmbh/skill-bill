@@ -2,6 +2,10 @@ package skillbill.contracts.workflow
 
 import skillbill.error.InvalidFeatureTaskRuntimePersistenceSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFormat
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairOperation
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputSourceLocation
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -62,6 +66,31 @@ class FeatureTaskRuntimePersistenceReviewPassParityTest {
           .let { it.launchedModel to it.launchedEffort },
       )
     }
+  }
+
+  @Test
+  fun `schema accepts duplicate-key merge repair evidence the model persists`() {
+    val record = FeatureTaskRuntimePhaseRecord(
+      phaseId = "validate",
+      status = "completed",
+      attemptCount = 1,
+      startedAt = "2026-08-16T12:00:00Z",
+      resolvedAgentId = "cursor",
+      outputArtifact = "{\"phase_id\":\"validate\"}",
+      repairEvidence = FeatureTaskRuntimePhaseOutputRepairEvidence(
+        format = FeatureTaskRuntimePhaseOutputFormat.JSON,
+        originalDigest = "a".repeat(64),
+        repairedDigest = "b".repeat(64),
+        operation = FeatureTaskRuntimePhaseOutputRepairOperation.DEDUPLICATE_KEYS,
+        sourceLocation = FeatureTaskRuntimePhaseOutputSourceLocation("validate", 12, 1, 13),
+      ),
+    )
+
+    FeatureTaskRuntimePersistenceSchemaValidator.validate(record.toArtifactMap(), "validate.record")
+    assertEquals(
+      FeatureTaskRuntimePhaseOutputRepairOperation.DEDUPLICATE_KEYS,
+      FeatureTaskRuntimePhaseRecord.fromArtifactMap(record.toArtifactMap()).repairEvidence?.operation,
+    )
   }
 
   private fun reviewRecord(pass: Int): FeatureTaskRuntimePhaseRecord = FeatureTaskRuntimePhaseRecord(
