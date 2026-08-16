@@ -45,6 +45,7 @@ import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.ports.review.model.ReviewNativeAgentPreflightRequest
 import skillbill.ports.review.model.ReviewOwnedFileEvidence
 import skillbill.ports.scaffold.InstalledPlatformPackCatalogPort
+import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceLocatorReadPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
 import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.ParallelReviewMerger
@@ -122,6 +123,8 @@ class ParallelCodeReviewRunner(
    */
   private val sharedEvidenceResolver: FeatureTaskRuntimeSharedEvidenceResolverPort =
     FeatureTaskRuntimeSharedEvidenceResolverPort.NONE,
+  private val sharedEvidenceLocatorReader: FeatureTaskRuntimeSharedEvidenceLocatorReadPort =
+    FeatureTaskRuntimeSharedEvidenceLocatorReadPort.NONE,
   private val specIntentProjectionResolver: SpecIntentProjectionResolver,
   private val nativeAgentPreflight: ReviewNativeAgentPreflightPort = ReviewNativeAgentPreflightPort.NONE,
 ) {
@@ -233,6 +236,7 @@ class ParallelCodeReviewRunner(
       detection.ownedPathsBySlug,
       listOfNotNull(agent1.id, agent2?.id),
       budget,
+      sharedEvidence.storePath,
     )
     return InitialRun(
       request = request,
@@ -324,6 +328,7 @@ class ParallelCodeReviewRunner(
     ownedPathsBySlug: Map<String, Set<String>>,
     agentIds: List<String>,
     budget: skillbill.review.context.model.ReviewContextBudgetPolicy,
+    evidenceStorePath: String?,
   ): CompiledLaunches {
     val plannedRubrics = resolvePlannedRubrics(evidence, routedManifests, manifests, ownedPathsBySlug)
     val (baseRevision, headRevision) = revisions
@@ -347,10 +352,12 @@ class ParallelCodeReviewRunner(
         prelaunchExpansions = request.prelaunchExpansions,
         baselineUntrackedPolicy = request.baselineUntrackedPolicy,
         specIntentResolution = specIntentResolution,
+        evidenceStorePath = evidenceStorePath,
       ),
       budget = budget,
       envelopeValidator = reviewContextEnvelopeValidator,
       specialistContract = reviewSpecialistContractProvider.authoritativeContract(),
+      hunkLocatorReader = sharedEvidenceLocatorReader,
     )
     val selected = selectLaunchesForResume(request.reviewRunId, compiled)
     recordPlannedLanes(request.reviewRunId, plannedRubrics, selected)

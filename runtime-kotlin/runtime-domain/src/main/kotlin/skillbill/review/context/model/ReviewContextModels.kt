@@ -715,6 +715,9 @@ data class ReviewHunkEvidenceLocator(
   companion object {
     const val PAYLOAD_FILE: String = "diff.patch"
 
+    fun header(oldStart: Int, oldCount: Int, newStart: Int, newCount: Int): String =
+      "@@ -$oldStart,$oldCount +$newStart,$newCount @@"
+
     fun inProcess(
       contentDigest: String,
       oldStart: Int,
@@ -723,7 +726,18 @@ data class ReviewHunkEvidenceLocator(
       newCount: Int,
     ): ReviewHunkEvidenceLocator = ReviewHunkEvidenceLocator(
       storePath = ".skill-bill/run-evidence/in-process/$contentDigest",
-      hunkHeader = "@@ -$oldStart,$oldCount +$newStart,$newCount @@",
+      hunkHeader = header(oldStart, oldCount, newStart, newCount),
+    )
+
+    fun atStore(
+      storePath: String,
+      oldStart: Int,
+      oldCount: Int,
+      newStart: Int,
+      newCount: Int,
+    ): ReviewHunkEvidenceLocator = ReviewHunkEvidenceLocator(
+      storePath = storePath,
+      hunkHeader = header(oldStart, oldCount, newStart, newCount),
     )
   }
 }
@@ -736,28 +750,33 @@ data class ReviewChangedHunk(
   val newCount: Int,
   val content: String,
   val commitScope: String? = null,
+  internal val indexedContentDigest: String? = null,
+  internal val indexedEvidenceLocator: ReviewHunkEvidenceLocator? = null,
+  internal val indexedHunkId: String? = null,
 ) {
   init {
     requireRepositoryRelativePath(path)
     require(oldStart >= 0 && oldCount >= 0 && newStart >= 0 && newCount >= 0)
     require(commitScope == null || commitScope.isNotBlank()) { "Changed hunk commit scope must not be blank." }
+    indexedContentDigest?.let { require(it.matches(SHA256_HEX)) { "Changed hunk content digest must be lowercase SHA-256." } }
+    indexedHunkId?.let { require(it.matches(SHA256_HEX)) { "Changed hunk id must be lowercase SHA-256." } }
   }
 
-  val contentDigest: String = sha256(content.replace("\r\n", "\n"))
+  val contentDigest: String = indexedContentDigest ?: sha256(content.replace("\r\n", "\n"))
 
-  val evidenceLocator: ReviewHunkEvidenceLocator =
-    ReviewHunkEvidenceLocator.inProcess(contentDigest, oldStart, oldCount, newStart, newCount)
+  val evidenceLocator: ReviewHunkEvidenceLocator = indexedEvidenceLocator
+    ?: ReviewHunkEvidenceLocator.inProcess(contentDigest, oldStart, oldCount, newStart, newCount)
 
-  val hunkId: String by lazy(LazyThreadSafetyMode.PUBLICATION) { sha256(identityCanonical()) }
+  val hunkId: String = indexedHunkId ?: sha256(identityCanonical())
 
-  internal fun identityCanonical(): String = canonicalFields(
+  internal fun identityCanonical(): String = identityCanonical(
     path,
     oldStart,
     oldCount,
     newStart,
     newCount,
-    content.replace("\r\n", "\n"),
-    commitScope.orEmpty(),
+    content,
+    commitScope,
   )
 
   internal fun packetCanonical(): String = canonicalFields(
@@ -770,7 +789,29 @@ data class ReviewChangedHunk(
     evidenceLocator.canonical,
   )
 
+  fun asIndex(locator: ReviewHunkEvidenceLocator, body: String): ReviewChangedHunk {
+    val normalized = body.replace("\r\n", "\n")
+    return copy(
+      content = "",
+      indexedContentDigest = digestOfBody(normalized),
+      indexedEvidenceLocator = locator,
+      indexedHunkId = idFor(path, oldStart, oldCount, newStart, newCount, normalized, commitScope),
+    )
+  }
+
   companion object {
+    fun digestOfBody(body: String): String = sha256(body.replace("\r\n", "\n"))
+
+    fun idFor(
+      path: String,
+      oldStart: Int,
+      oldCount: Int,
+      newStart: Int,
+      newCount: Int,
+      body: String,
+      commitScope: String?,
+    ): String = sha256(identityCanonical(path, oldStart, oldCount, newStart, newCount, body, commitScope))
+
     fun fromBody(
       path: String,
       oldStart: Int,
@@ -780,6 +821,24 @@ data class ReviewChangedHunk(
       body: String,
       commitScope: String? = null,
     ): ReviewChangedHunk = ReviewChangedHunk(path, oldStart, oldCount, newStart, newCount, body, commitScope)
+
+    private fun identityCanonical(
+      path: String,
+      oldStart: Int,
+      oldCount: Int,
+      newStart: Int,
+      newCount: Int,
+      body: String,
+      commitScope: String?,
+    ): String = canonicalFields(
+      path,
+      oldStart,
+      oldCount,
+      newStart,
+      newCount,
+      body.replace("\r\n", "\n"),
+      commitScope.orEmpty(),
+    )
   }
 }
 

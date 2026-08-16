@@ -1,7 +1,12 @@
 package skillbill.application.review
 
 import skillbill.application.review.model.ReviewPreparationRequest
+import skillbill.application.review.model.ReviewPreparationResult
 import skillbill.error.InvalidReviewContextSchemaError
+import skillbill.error.REVIEW_HUNK_EVIDENCE_INTEGRITY
+import skillbill.error.ReviewHunkEvidenceIntegrityError
+import skillbill.error.ReviewHunkEvidenceLocatorMissingError
+import skillbill.error.ReviewHunkEvidenceLocatorUnreadableError
 import skillbill.ports.review.ReviewBuildTestFactsPort
 import skillbill.ports.review.ReviewGuidancePort
 import skillbill.ports.review.ReviewLaneSelectionPort
@@ -12,6 +17,9 @@ import skillbill.ports.review.model.ReviewFactPorts
 import skillbill.ports.review.model.ReviewLaneSelection
 import skillbill.ports.review.model.ReviewScopeFacts
 import skillbill.ports.review.model.ReviewStackRoutingFacts
+import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceFingerprintContradictionError
+import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceLocatorReadPort
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceLocatorReadRequest
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewBaselineUntrackedPolicy
@@ -31,9 +39,11 @@ import skillbill.review.context.model.ReviewLaneDecision
 import skillbill.review.context.model.ReviewLearningsReference
 import skillbill.review.context.model.ReviewRevision
 import skillbill.review.context.model.ReviewRuleReference
+import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /** Every fixture commit is relevant to every selected lane unless a test says otherwise. */
@@ -475,5 +485,144 @@ class ReviewPreparationServiceTest {
     assertEquals("parent_packet_bytes", failure.outcome.budgetKind)
     assertEquals(observedBytes - 1, failure.outcome.configuredLimit)
     assertEquals(observedBytes, failure.outcome.observedValue)
+  }
+
+  private class PayloadLocatorReader(private val payloadByPath: Map<String, String>) :
+    FeatureTaskRuntimeSharedEvidenceLocatorReadPort {
+    override fun readDiffPayload(request: FeatureTaskRuntimeSharedEvidenceLocatorReadRequest): String =
+      payloadByPath[request.storePath]
+        ?: throw ReviewHunkEvidenceLocatorMissingError(request.storePath)
+  }
+
+  private class ThrowingLocatorReader(private val error: () -> Nothing) :
+    FeatureTaskRuntimeSharedEvidenceLocatorReadPort {
+    override fun readDiffPayload(request: FeatureTaskRuntimeSharedEvidenceLocatorReadRequest): String = error()
+  }
+
+  private fun oversizedPatch(path: String = "src/Huge.kt"): String {
+    val body = "+" + "x".repeat(700 * 1024)
+    return "diff --git a/$path b/$path\n--- a/$path\n+++ b/$path\n@@ -1,1 +1,2 @@\n$body\n"
+  }
+
+  private fun storePrepare(
+    hunks: List<ReviewChangedHunk>,
+    payload: String,
+    storePath: String = ".skill-bill/run-evidence/code-review/fp-store",
+    reader: FeatureTaskRuntimeSharedEvidenceLocatorReadPort = PayloadLocatorReader(mapOf(storePath to payload)),
+    decisions: List<ReviewLaneDecision> = listOf(
+      includedDecision("testing", "test sources changed", hunks.first().path),
+    ),
+  ): ReviewPreparationResult {
+    val counting = ports(hunks = hunks, decisions = decisions)
+    val factPorts = ReviewFactPorts(counting, counting, counting, counting, counting, counting)
+    return ReviewPreparationService(factPorts, RecordingValidator(), hunkLocatorReader = reader).prepare(
+      request().copy(evidenceStorePath = storePath, repoRoot = Path.of(".")),
+    )
+  }
+
+  @Test fun `oversized stored patch composes an index-only parent under the default budget`() {
+    val patch = oversizedPatch()
+    val hunk = ReviewDiffEvidence.parse(patch).hunks.single()
+    val storePath = ".skill-bill/run-evidence/code-review/fp-oversize"
+    var workerLaunches = 0
+    val result = storePrepare(listOf(hunk), patch, storePath)
+    val parentBytes = result.packet.canonicalBytes
+    val wireHunks = result.packetEnvelope.asWireMap()["changed_hunks"] as List<*>
+    val first = wireHunks.single() as Map<*, *>
+    assertTrue(parentBytes < 524_288, "parent canonicalBytes $parentBytes")
+    assertTrue(parentBytes < patch.toByteArray().size)
+    assertEquals(hunk.hunkId, first["hunk_id"])
+    assertEquals(ReviewChangedHunk.digestOfBody(hunk.content), first["content_digest"])
+    assertFalse(first.containsKey("content"))
+    val locator = first["evidence_locator"] as Map<*, *>
+    assertEquals(storePath, locator["store_path"])
+    assertEquals("diff.patch", locator["payload_file"])
+    assertEquals(1, result.assignments.size)
+    assertEquals(result.packet.ownedHunkIds, result.assignments.single().assignedHunks.toSet())
+    assertTrue(result.assignments.single().assignedHunks.all { it in result.packet.ownedHunkIds })
+    val assignmentWire = result.assignmentEnvelopes.single().asWireMap()
+    assertFalse(assignmentWire.containsKey("changed_hunks"))
+    assertTrue((assignmentWire["assigned_hunks"] as List<*>).all { it is String })
+    assertEquals(0, workerLaunches)
+    result.packet.changedHunks.forEach { assertEquals("", it.content) }
+  }
+
+  @Test fun `missing locator store path fails compose without launching workers`() {
+    val hunk = hunkA
+    var workerLaunches = 0
+    val failure = assertFailsWith<ReviewHunkEvidenceLocatorMissingError> {
+      storePrepare(
+        listOf(hunk),
+        "unused",
+        storePath = ".skill-bill/run-evidence/code-review/missing",
+        reader = PayloadLocatorReader(emptyMap()),
+      )
+    }
+    assertTrue(failure.message.orEmpty().contains("review_hunk_evidence_locator_missing"))
+    assertEquals(0, workerLaunches)
+  }
+
+  @Test fun `unreadable stored payload fails compose without launching workers`() {
+    val hunk = hunkA
+    var workerLaunches = 0
+    val storePath = ".skill-bill/run-evidence/code-review/fp-unreadable"
+    val failure = assertFailsWith<ReviewHunkEvidenceLocatorUnreadableError> {
+      storePrepare(
+        listOf(hunk),
+        "not-a-diff",
+        storePath,
+        reader = PayloadLocatorReader(mapOf(storePath to "not-a-diff")),
+      )
+    }
+    assertTrue(failure.message.orEmpty().contains("review_hunk_evidence_locator_unreadable"))
+    assertEquals(0, workerLaunches)
+  }
+
+  @Test fun `fingerprint contradiction at compose-time locator dereference is not composed`() {
+    var workerLaunches = 0
+    val storePath = ".skill-bill/run-evidence/code-review/fp-wrong"
+    val failure = assertFailsWith<FeatureTaskRuntimeSharedEvidenceFingerprintContradictionError> {
+      storePrepare(
+        listOf(hunkA),
+        oversizedPatch("src/A.kt"),
+        storePath,
+        reader = ThrowingLocatorReader {
+          throw FeatureTaskRuntimeSharedEvidenceFingerprintContradictionError(
+            addressedFingerprint = "fp-wrong",
+            recordedFingerprint = "fp-other",
+            sourceLabel = storePath,
+          )
+        },
+      )
+    }
+    assertEquals("fp-wrong", failure.addressedFingerprint)
+    assertEquals("fp-other", failure.recordedFingerprint)
+    assertEquals(0, workerLaunches)
+  }
+
+  @Test fun `overwriting stored body without updating digest fails compose with integrity error`() {
+    val original = "diff --git a/src/A.kt b/src/A.kt\n--- a/src/A.kt\n+++ b/src/A.kt\n@@ -1,1 +1,2 @@\n+alpha\n"
+    val overwritten = "diff --git a/src/A.kt b/src/A.kt\n--- a/src/A.kt\n+++ b/src/A.kt\n@@ -1,1 +1,2 @@\n+omega\n"
+    val hunk = ReviewDiffEvidence.parse(original).hunks.single()
+    val storePath = ".skill-bill/run-evidence/code-review/fp-integrity"
+    val expected = ReviewChangedHunk.digestOfBody(hunk.content)
+    val observed = ReviewChangedHunk.digestOfBody(ReviewDiffEvidence.parse(overwritten).hunks.single().content)
+    val failure = assertFailsWith<ReviewHunkEvidenceIntegrityError> {
+      storePrepare(listOf(hunk), overwritten, storePath)
+    }
+    assertEquals(storePath, failure.storePath)
+    assertEquals(expected, failure.expectedDigest)
+    assertEquals(observed, failure.observedDigest)
+    assertTrue(failure.message.orEmpty().contains(REVIEW_HUNK_EVIDENCE_INTEGRITY))
+    val expectedId = ReviewChangedHunk.idFor(
+      hunk.path,
+      hunk.oldStart,
+      hunk.oldCount,
+      hunk.newStart,
+      hunk.newCount,
+      hunk.content,
+      hunk.commitScope,
+    )
+    assertEquals(hunk.hunkId, expectedId)
   }
 }

@@ -199,6 +199,7 @@ import skillbill.ports.scaffold.staging.ScaffoldGeneratedStagingPort
 import skillbill.ports.system.CheckedOutBranchSource
 import skillbill.ports.system.UninstallFileSystemGateway
 import skillbill.ports.taskruntime.FeatureTaskRuntimeRunInvariantsSource
+import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceLocatorReadPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSpecStatusWriter
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
@@ -567,6 +568,12 @@ abstract class RuntimeComponent(
   internal fun sharedEvidenceResolverPort(
     adapter: FileSystemFeatureTaskRuntimeSharedEvidenceStore,
   ): FeatureTaskRuntimeSharedEvidenceResolverPort = adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun sharedEvidenceLocatorReadPort(
+    adapter: FileSystemFeatureTaskRuntimeSharedEvidenceStore,
+  ): FeatureTaskRuntimeSharedEvidenceLocatorReadPort = adapter
 
   @Provides
   @JvmSynthetic

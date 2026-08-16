@@ -97,6 +97,35 @@ class InvalidReviewContextSchemaError(
   cause,
 )
 
+const val REVIEW_HUNK_EVIDENCE_LOCATOR_MISSING: String = "review_hunk_evidence_locator_missing"
+
+const val REVIEW_HUNK_EVIDENCE_LOCATOR_UNREADABLE: String = "review_hunk_evidence_locator_unreadable"
+
+const val REVIEW_HUNK_EVIDENCE_INTEGRITY: String = "review_hunk_evidence_integrity"
+
+class ReviewHunkEvidenceLocatorMissingError(
+  val storePath: String,
+) : ShellContentContractException(
+  "$REVIEW_HUNK_EVIDENCE_LOCATOR_MISSING: store_path '$storePath' is missing; refusing to compose or launch.",
+)
+
+class ReviewHunkEvidenceLocatorUnreadableError(
+  val storePath: String,
+  val reason: String,
+) : ShellContentContractException(
+  "$REVIEW_HUNK_EVIDENCE_LOCATOR_UNREADABLE: store_path '$storePath' is unreadable ($reason); " +
+    "refusing to compose or launch.",
+)
+
+class ReviewHunkEvidenceIntegrityError(
+  val storePath: String,
+  val expectedDigest: String,
+  val observedDigest: String,
+) : ShellContentContractException(
+  "$REVIEW_HUNK_EVIDENCE_INTEGRITY: store_path '$storePath' body digest '$observedDigest' does not match " +
+    "locator digest '$expectedDigest'; refusing to compose or launch.",
+)
+
 class UnreadableSpecIntentProjectionError(
   val specPath: String,
   val reason: String,

@@ -1,6 +1,9 @@
 package skillbill.infrastructure.fs
 
+import skillbill.error.ReviewHunkEvidenceLocatorMissingError
+import skillbill.error.ReviewHunkEvidenceLocatorUnreadableError
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceFingerprintContradictionError
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceLocatorReadRequest
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceRequest
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import java.io.IOException
@@ -163,6 +166,31 @@ class FileSystemFeatureTaskRuntimeSharedEvidenceStoreTest {
     store.resolve(request("fp-gitignore"), CountingDeriver())
 
     assertTrue(before.contentEquals(Files.readAllBytes(gitignore)))
+  }
+
+  @Test
+  fun `compose-time locator read of a missing store path fails closed without deriving`() {
+    val error = assertFailsWith<ReviewHunkEvidenceLocatorMissingError> {
+      store.readDiffPayload(
+        FeatureTaskRuntimeSharedEvidenceLocatorReadRequest(
+          repoRoot,
+          ".skill-bill/run-evidence/wf-1/fp-absent",
+        ),
+      )
+    }
+    assertEquals(".skill-bill/run-evidence/wf-1/fp-absent", error.storePath)
+  }
+
+  @Test
+  fun `compose-time locator read of an unreadable payload fails closed instead of re-deriving`() {
+    val resolution = store.resolve(request("fp-unread"), CountingDeriver())
+    Files.delete(artifactDir(request("fp-unread")).resolve(FileSystemFeatureTaskRuntimeSharedEvidenceStore.PAYLOAD_FILE_NAME))
+    val error = assertFailsWith<ReviewHunkEvidenceLocatorUnreadableError> {
+      store.readDiffPayload(
+        FeatureTaskRuntimeSharedEvidenceLocatorReadRequest(repoRoot, resolution.storePath!!),
+      )
+    }
+    assertEquals(resolution.storePath, error.storePath)
   }
 
   private fun request(fingerprint: String) = FeatureTaskRuntimeSharedEvidenceRequest(

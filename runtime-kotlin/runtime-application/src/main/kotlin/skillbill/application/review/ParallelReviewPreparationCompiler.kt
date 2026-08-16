@@ -15,6 +15,7 @@ import skillbill.ports.review.model.ReviewFactPorts
 import skillbill.ports.review.model.ReviewLaneSelection
 import skillbill.ports.review.model.ReviewScopeFacts
 import skillbill.ports.review.model.ReviewStackRoutingFacts
+import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceLocatorReadPort
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.model.ReviewBaselineUntrackedPolicy
 import skillbill.review.context.model.ReviewChangedHunk
@@ -37,6 +38,8 @@ internal object ParallelReviewPreparationCompiler {
     budget: ReviewContextBudgetPolicy,
     envelopeValidator: ReviewContextEnvelopeValidator,
     specialistContract: String,
+    hunkLocatorReader: FeatureTaskRuntimeSharedEvidenceLocatorReadPort =
+      FeatureTaskRuntimeSharedEvidenceLocatorReadPort.NONE,
   ): List<ReviewSpecialistLaunchRequest> {
     // Commit units are the authoritative hunk surface: the packet's flat changedHunks is exactly
     // their union, so every hunk stays attributable to the commit that introduced it.
@@ -65,7 +68,16 @@ internal object ParallelReviewPreparationCompiler {
     }
     val revisionId = digest("${input.baseRevision}\u0000${input.headRevision}\u0000${input.diff}")
     val selection = ReviewLaneSelection(decisions, routingMatrix)
-    val preparation = prepareReview(input, hunks, routes, selection, revisionId, budget, envelopeValidator)
+    val preparation = prepareReview(
+      input,
+      hunks,
+      routes,
+      selection,
+      revisionId,
+      budget,
+      envelopeValidator,
+      hunkLocatorReader,
+    )
     return launchRequests(input, preparation, routes, budget, specialistContract)
   }
 
@@ -128,10 +140,12 @@ internal object ParallelReviewPreparationCompiler {
     revisionId: String,
     budget: ReviewContextBudgetPolicy,
     envelopeValidator: ReviewContextEnvelopeValidator,
+    hunkLocatorReader: FeatureTaskRuntimeSharedEvidenceLocatorReadPort,
   ) = ReviewPreparationService(
     reviewFactPorts(input, hunks, selection),
     envelopeValidator,
     budget,
+    hunkLocatorReader,
   ).prepare(
     ReviewPreparationRequest(
       reviewId = input.reviewRunId ?: "code-review-parallel-$revisionId",
@@ -140,6 +154,8 @@ internal object ParallelReviewPreparationCompiler {
       baselineUntrackedPolicy = input.baselineUntrackedPolicy,
       specIntentProjection = (input.specIntentResolution as? SpecIntentResolution.Resolved)
         ?.projection,
+      evidenceStorePath = input.evidenceStorePath,
+      repoRoot = input.repoRoot,
     ),
   )
 
@@ -295,8 +311,6 @@ internal data class ParallelReviewPreparationInput(
   val repoRoot: Path,
   val routedPacks: List<String>,
   val lanes: List<PlannedReviewRubric>,
-  // review_finished telemetry resolves accounting by the caller's run id, but the row is keyed by the
-  // packet review id, so the packet must adopt that run id whenever the caller supplies one.
   val reviewRunId: String? = null,
   val baseRevision: String,
   val headRevision: String,
@@ -306,4 +320,5 @@ internal data class ParallelReviewPreparationInput(
     SpecIntentResolution.None(
       SpecIntentAbsenceReason.NOT_APPLICABLE_SCOPE,
     ),
+  val evidenceStorePath: String? = null,
 )

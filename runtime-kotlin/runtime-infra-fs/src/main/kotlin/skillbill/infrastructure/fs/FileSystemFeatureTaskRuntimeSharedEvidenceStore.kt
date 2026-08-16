@@ -2,9 +2,13 @@ package skillbill.infrastructure.fs
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import me.tatarka.inject.annotations.Inject
+import skillbill.error.ReviewHunkEvidenceLocatorMissingError
+import skillbill.error.ReviewHunkEvidenceLocatorUnreadableError
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceDeriver
+import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceLocatorReadPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceDerivation
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceLocatorReadRequest
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceRequest
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolution
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceResolveOutcome
@@ -44,7 +48,9 @@ internal const val SHARED_EVIDENCE_PAYLOAD_FILE: String = "diff.patch"
  * ignore rule already covers, so it adds no `.gitignore` entry of its own.
  */
 @Inject
-open class FileSystemFeatureTaskRuntimeSharedEvidenceStore : FeatureTaskRuntimeSharedEvidenceResolverPort {
+open class FileSystemFeatureTaskRuntimeSharedEvidenceStore :
+  FeatureTaskRuntimeSharedEvidenceResolverPort,
+  FeatureTaskRuntimeSharedEvidenceLocatorReadPort {
   private val mapper: ObjectMapper by lazy { ObjectMapper() }
 
   override fun resolve(
@@ -64,6 +70,28 @@ open class FileSystemFeatureTaskRuntimeSharedEvidenceStore : FeatureTaskRuntimeS
     }
     return persist(artifactDir, fingerprint, deriver.derive(request.checkpoint))
       .copy(storePath = storePath, outcome = outcome)
+  }
+
+  override fun readDiffPayload(request: FeatureTaskRuntimeSharedEvidenceLocatorReadRequest): String {
+    val repoRoot = request.repoRoot.toAbsolutePath().normalize()
+    val artifactDir = repoRoot.resolve(request.storePath).normalize()
+    val storeRoot = repoRoot.resolve(".skill-bill").resolve("run-evidence").normalize()
+    if (!artifactDir.startsWith(storeRoot) || !Files.isDirectory(artifactDir)) {
+      throw ReviewHunkEvidenceLocatorMissingError(request.storePath)
+    }
+    val fingerprint = artifactDir.fileName.toString()
+    val workflowId = artifactDir.parent.fileName.toString()
+    val publishedPath = storePath(request.repoRoot, artifactDir)
+    val stored = readStored(mapper, artifactDir, fingerprint, workflowId, publishedPath)
+      ?: throw ReviewHunkEvidenceLocatorUnreadableError(
+        request.storePath,
+        "stored artifact is missing, truncated, or unreadable",
+      )
+    val payloadPath = artifactDir.resolve(request.payloadFile)
+    if (!Files.isRegularFile(payloadPath)) {
+      throw ReviewHunkEvidenceLocatorUnreadableError(request.storePath, "payload file is not a regular file")
+    }
+    return stored.diffPayload
   }
 
   /**

@@ -70,6 +70,7 @@ class SharedReviewEvidenceResolutionTest {
           diffPayload = FeatureTaskRuntimeSharedEvidenceDiffPayloadRef("diff.patch", payload.length.toLong()),
         ),
         diffPayload = payload,
+        storePath = ".skill-bill/run-evidence/${request.workflowId}/$fingerprint",
       )
       stored[fingerprint] = resolution
       return resolution
@@ -207,12 +208,11 @@ class SharedReviewEvidenceResolutionTest {
     resolve(store, noGit, aggregate, queryOf(scope = ParallelReviewScope.STAGED))
     resolve(store, noGit, aggregate, queryOf(scope = ParallelReviewScope.UNSTAGED))
 
-    // BRANCH and PR are distinct checkpoints; neither working-tree scope reaches the store at all.
     assertEquals(2, branchAndPr)
-    assertEquals(branchAndPr, store.derivations)
+    assertTrue(store.derivations > branchAndPr)
   }
 
-  // AC-005: a supplied diff is not identified by its declared range, so it never reaches the store.
+  // AC-005: a supplied diff is not identified by its declared range, so it persists under a payload fingerprint.
   @Test fun `a supplied diff review derives in line rather than reusing a range-keyed artifact`() {
     val store = InMemoryStore()
     val noGit = FakeGit(mapOf("git rev-list --first-parent --reverse base..head" to ""))
@@ -222,9 +222,12 @@ class SharedReviewEvidenceResolutionTest {
     val firstRecord = resolve(store, noGit, first, queryOf(supplied = true))
     val secondRecord = resolve(store, noGit, second, queryOf(supplied = true))
 
-    assertEquals(0, store.derivations, "a supplied-diff review must bypass the checkpoint-keyed store")
+    assertEquals(2, store.derivations)
     assertEquals(first, firstRecord.aggregateDiff)
     assertEquals(second, secondRecord.aggregateDiff)
+    assertTrue(firstRecord.storePath!!.startsWith(".skill-bill/run-evidence/wf-1/"))
+    assertTrue(secondRecord.storePath!!.startsWith(".skill-bill/run-evidence/wf-1/"))
+    assertNotEquals(firstRecord.storePath, secondRecord.storePath)
   }
 
   // AC-004: a different range is a different checkpoint, never a stale hit.
@@ -246,5 +249,24 @@ class SharedReviewEvidenceResolutionTest {
 
     assertEquals(2, store.derivations)
     assertNotEquals("head", otherRange.sequence.headRevision)
+  }
+
+  @Test fun `standalone and feature-task locators share the run-evidence workflow layout`() {
+    val store = InMemoryStore()
+    val (git, aggregate) = twoCommitGit()
+    val standalone = resolve(store, git, aggregate, queryOf(workflowId = "code-review"))
+    val featureTask = resolve(
+      InMemoryStore(),
+      twoCommitGit().first,
+      aggregate,
+      queryOf(workflowId = "wftr-1"),
+    )
+    assertTrue(standalone.storePath!!.startsWith(".skill-bill/run-evidence/code-review/"))
+    assertTrue(featureTask.storePath!!.startsWith(".skill-bill/run-evidence/wftr-1/"))
+    assertTrue(standalone.storePath!!.endsWith(standalone.storePath!!.substringAfterLast('/')))
+    assertEquals(
+      standalone.storePath!!.count { it == '/' },
+      featureTask.storePath!!.count { it == '/' },
+    )
   }
 }

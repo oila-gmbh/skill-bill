@@ -67,3 +67,18 @@ enum class FeatureTaskRuntimeSharedEvidenceResolveOutcome {
   REUSE,
   CHECKPOINT_CHANGE_REDERIVATION,
 }
+
+data class FeatureTaskRuntimeSharedEvidenceLocatorReadRequest(
+  val repoRoot: Path,
+  val storePath: String,
+  val payloadFile: String = "diff.patch",
+) {
+  init {
+    require(storePath.isNotBlank()) {
+      "FeatureTaskRuntimeSharedEvidenceLocatorReadRequest.storePath must be non-blank."
+    }
+    require(payloadFile == "diff.patch") {
+      "FeatureTaskRuntimeSharedEvidenceLocatorReadRequest.payloadFile must be 'diff.patch'."
+    }
+  }
+}

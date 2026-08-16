@@ -42,6 +42,7 @@ internal data class SharedReviewEvidenceCommits(
 internal data class SharedReviewEvidenceRecord(
   val aggregateDiff: String,
   val sequence: SharedReviewEvidenceCommits,
+  val storePath: String? = null,
 )
 
 /**

@@ -6,6 +6,7 @@ import skillbill.error.InvalidReviewContextSchemaError
 import skillbill.ports.review.model.ReviewFactPorts
 import skillbill.ports.review.model.ReviewScopeFacts
 import skillbill.ports.review.model.ReviewStackRoutingFacts
+import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceLocatorReadPort
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.model.ResolvedReviewExecutionMode
 import skillbill.review.context.model.ReviewAssignment
@@ -39,6 +40,8 @@ class ReviewPreparationService(
   private val ports: ReviewFactPorts,
   private val envelopeValidator: ReviewContextEnvelopeValidator,
   private val budget: ReviewContextBudgetPolicy = ReviewContextBudgetPolicy.DEFAULT,
+  private val hunkLocatorReader: FeatureTaskRuntimeSharedEvidenceLocatorReadPort =
+    FeatureTaskRuntimeSharedEvidenceLocatorReadPort.NONE,
 ) {
   fun prepare(request: ReviewPreparationRequest): ReviewPreparationResult {
     request.specIntentProjection?.let { enforceSpecIntentProjectionBudget(it, budget) }
@@ -132,6 +135,14 @@ class ReviewPreparationService(
       reject(request.reviewId, "Lane selection produced no included lane; a review packet needs at least one lane.")
     }
 
+    val indexed = ReviewHunkStoreIndexing.index(
+      hunks = resolved.scope.changedHunks,
+      commitUnits = resolved.scope.commitUnits,
+      storePath = request.evidenceStorePath,
+      repoRoot = request.repoRoot,
+      locatorReader = hunkLocatorReader,
+    )
+
     val packet = ReviewContextPacket(
       reviewId = request.reviewId,
       repositoryIdentity = resolved.scope.repositoryIdentity,
@@ -143,8 +154,8 @@ class ReviewPreparationService(
       addOns = resolved.routing.addOns,
       composedLayers = resolved.routing.composedLayers,
       selectedLanes = includedLanes,
-      changedHunks = resolved.scope.changedHunks,
-      commitUnits = resolved.scope.commitUnits,
+      changedHunks = indexed.hunks,
+      commitUnits = indexed.commitUnits,
       coverageFact = resolved.scope.coverageFact,
       routingMatrix = resolved.routingMatrix,
       reviewRevision = request.reviewRevision,
@@ -154,7 +165,7 @@ class ReviewPreparationService(
       buildTestFacts = resolved.buildTestFacts,
       dependencyAllowlist = request.dependencyAllowlist,
       baselineUntrackedPolicy = request.baselineUntrackedPolicy,
-      evidenceTargets = evidenceTargetsFor(resolved.scope.changedHunks),
+      evidenceTargets = evidenceTargetsFor(indexed.hunks),
     )
 
     val overlap = packet.dependencyAllowlist.normalized.filter { it in packet.ownedPaths }

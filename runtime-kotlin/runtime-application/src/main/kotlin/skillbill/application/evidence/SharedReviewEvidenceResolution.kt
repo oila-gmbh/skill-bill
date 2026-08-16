@@ -48,16 +48,35 @@ internal class SharedReviewEvidenceResolution(
           .assemble(query.scope, query.repoRoot, query.range, query.suppliedDiff),
       )
     }
-    val checkpoint = checkpoint(query) ?: return derive()
-    // A record derived inside the port's deriver is returned as-is: decoding what this process just
-    // encoded would be a round trip whose only possible outcome is the value already in hand.
+    val checkpoint = checkpoint(query)
+    if (checkpoint == null) {
+      return persistAlreadyDerived(query, derive())
+    }
     var derived: SharedReviewEvidenceRecord? = null
     val resolution = sharedEvidenceResolver.resolve(
       FeatureTaskRuntimeSharedEvidenceRequest(query.repoRoot, query.workflowId, checkpoint),
     ) {
       derive().also { derived = it }.let(::derivationOf)
     }
-    return derived ?: SharedReviewEvidenceCodec.decode(resolution.diffPayload) ?: derive()
+    val record = derived ?: SharedReviewEvidenceCodec.decode(resolution.diffPayload) ?: derive()
+    return record.copy(storePath = resolution.storePath)
+  }
+
+  private fun persistAlreadyDerived(
+    query: SharedReviewEvidenceQuery,
+    record: SharedReviewEvidenceRecord,
+  ): SharedReviewEvidenceRecord {
+    val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint(
+      fingerprint = sha256HexUtf8(record.aggregateDiff),
+      baseRef = query.range.baseRevision,
+      headRef = query.range.headRevision,
+    )
+    val resolution = sharedEvidenceResolver.resolve(
+      FeatureTaskRuntimeSharedEvidenceRequest(query.repoRoot, query.workflowId, checkpoint),
+    ) {
+      derivationOf(record)
+    }
+    return record.copy(storePath = resolution.storePath)
   }
 
   /**
