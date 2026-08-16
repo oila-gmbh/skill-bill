@@ -3,6 +3,10 @@ package skillbill.application
 import skillbill.application.featuretask.FeatureTaskRuntimeWorkerCoordinator
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
+import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
+import skillbill.ports.persistence.model.WorkflowStateRecord
+import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.taskruntime.FeatureTaskRuntimeHeartbeat
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatPlan
@@ -18,6 +22,24 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class FeatureTaskRuntimeWorkerCoordinatorTest {
+  @Test
+  fun `unowned acquire still claims after a concurrent updated_at bump`() {
+    val repository = InMemoryRuntimeWorkflowRepository()
+    repository.saveFeatureTaskRuntimeWorkflow(unownedRuntimeRow(updatedAt = "2026-08-15T20:57:11Z"))
+    val coordinator = FeatureTaskRuntimeWorkerCoordinator(
+      BumpUpdatedAtAfterReadDatabase(repository),
+      FakeWorkerSupervisor(FeatureTaskRuntimeProcessInspection.NotRunning),
+    )
+
+    coordinator.runOwned(WORKFLOW_ID, null) {
+      val owned = requireNotNull(repository.getFeatureTaskRuntimeWorkerOwnership(WORKFLOW_ID))
+      assertEquals(1, owned.generation)
+      assertEquals("implement", owned.phaseId)
+    }
+
+    assertNull(repository.getFeatureTaskRuntimeWorkerOwnership(WORKFLOW_ID))
+  }
+
   @Test
   fun `orphaned worker lease is atomically reclaimed with a new generation`() {
     val repository = InMemoryRuntimeWorkflowRepository()
@@ -187,6 +209,43 @@ private class FakeWorkerSupervisor(
 
   override fun pause(durationMillis: Long) = Unit
 }
+
+private class BumpUpdatedAtAfterReadDatabase(
+  private val workflows: InMemoryRuntimeWorkflowRepository,
+) : DatabaseSessionFactory {
+  private val inner = RuntimeFakeDatabaseSessionFactory(workflows)
+
+  override fun resolveDbPath(dbOverride: String?) = inner.resolveDbPath(dbOverride)
+
+  override fun databaseExists(dbOverride: String?) = inner.databaseExists(dbOverride)
+
+  override fun <T> read(dbOverride: String?, block: (UnitOfWork) -> T): T {
+    val result = inner.read(dbOverride, block)
+    workflows.bumpUpdatedAt(WORKFLOW_ID)
+    return result
+  }
+
+  override fun <T> transaction(dbOverride: String?, block: (UnitOfWork) -> T): T =
+    inner.transaction(dbOverride, block)
+
+  override fun <T> selfManagedWrite(dbOverride: String?, block: (UnitOfWork) -> T): T =
+    inner.selfManagedWrite(dbOverride, block)
+}
+
+private fun unownedRuntimeRow(updatedAt: String) = WorkflowStateRecord(
+  workflowId = WORKFLOW_ID,
+  sessionId = "ftr-unowned",
+  workflowName = "bill-feature-task",
+  contractVersion = "0.1",
+  workflowStatus = "pending",
+  currentStepId = "implement",
+  stepsJson = "[]",
+  artifactsJson = "{}",
+  startedAt = "2026-08-15T20:57:11Z",
+  updatedAt = updatedAt,
+  finishedAt = null,
+  mode = FeatureTaskWorkflowMode.RUNTIME,
+)
 
 private fun ownership(
   expiresAt: String = "2999-01-01T00:00:30Z",

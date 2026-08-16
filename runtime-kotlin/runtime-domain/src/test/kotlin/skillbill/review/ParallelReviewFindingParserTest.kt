@@ -126,4 +126,19 @@ class ParallelReviewFindingParserTest {
 
     assertEquals(listOf("src/Legacy.kt", "src/Structured.kt"), findings.map { it.repositoryPath })
   }
+
+  @Test
+  fun `invalid path still parses and does not abort later findings`() {
+    val findings = ParallelReviewFindingParser.parse(
+      """
+      - [F-001] Major | High | path="/tmp/outside.kt" | line=3 | outside the packet
+      - [F-002] Minor | Low | path="src/Ok.kt" | line=4 | inside the packet
+      """.trimIndent(),
+    )
+
+    assertEquals(
+      listOf(ParallelReviewFindingParser.UNASSIGNED_REPOSITORY_PATH, "src/Ok.kt"),
+      findings.map { it.repositoryPath },
+    )
+  }
 }
