@@ -57,6 +57,7 @@ import skillbill.ports.goalrunner.model.GoalRunnerProgressEventRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerReviewPolicy
 import skillbill.ports.goalrunner.model.GoalRunnerSessionAccountingRecordRequest
 import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.persistence.GoalChildWorkflowDeletionScope
 import skillbill.ports.persistence.GoalPlanningPreparationRepository
 import skillbill.ports.persistence.GoalRunnerControlRepository
 import skillbill.ports.persistence.LearningRepository
@@ -1133,7 +1134,7 @@ class WorkflowServiceTest {
    */
   @Test
   fun `scoped replan deletes the replanned subtask's hydrated child and preserves completed siblings`() {
-    val workflows = RecordingGoalChildDeletionWorkflowStates()
+    val workflows = RecordingGoalChildDeletionWorkflowStates(childStatus = "paused")
     val before = decompositionRuntime(status = "in_progress").copy(
       currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 2, action = "start"),
       subtasks = listOf(
@@ -1180,7 +1181,7 @@ class WorkflowServiceTest {
 
   @Test
   fun `scoped replan keeps a live child that scoped deletion refuses to remove`() {
-    val workflows = RecordingGoalChildDeletionWorkflowStates(deletable = false)
+    val workflows = RecordingGoalChildDeletionWorkflowStates(childStatus = "running")
     val before = decompositionRuntime(status = "in_progress").copy(
       currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "resume"),
       subtasks = listOf(
@@ -3701,18 +3702,23 @@ private class RecordingGoalRunnerControlRepository : GoalRunnerControlRepository
 }
 
 /**
- * Mirrors `WorkflowStateStore.deleteGoalChildWorkflow`, which deletes only terminal goal children;
- * [deletable] stands in for a live or resumable child the SQL predicate refuses to remove.
+ * Mirrors `WorkflowStateStore.deleteGoalChildWorkflow`, whose SQL predicate removes a goal child only
+ * when [childStatus] is one of the requested scope's deletable statuses.
  */
 internal class RecordingGoalChildDeletionWorkflowStates(
-  private val deletable: Boolean = true,
+  private val childStatus: String = "blocked",
   delegate: InMemoryWorkflowStates = InMemoryWorkflowStates(),
 ) : WorkflowStateRepository by delegate {
   val scopedDeletions = mutableListOf<Triple<String, Int, String>>()
 
-  override fun deleteGoalChildWorkflow(parentWorkflowId: String, subtaskId: Int, workflowId: String): Int {
+  override fun deleteGoalChildWorkflow(
+    parentWorkflowId: String,
+    subtaskId: Int,
+    workflowId: String,
+    scope: GoalChildWorkflowDeletionScope,
+  ): Int {
     scopedDeletions += Triple(parentWorkflowId, subtaskId, workflowId)
-    return if (deletable) 1 else 0
+    return if (childStatus in scope.deletableStatuses) 1 else 0
   }
 }
 

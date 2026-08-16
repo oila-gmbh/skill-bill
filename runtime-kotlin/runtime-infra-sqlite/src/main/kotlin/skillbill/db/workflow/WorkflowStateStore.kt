@@ -13,6 +13,7 @@ import skillbill.ports.persistence.FeatureTaskRuntimeWorkerRepository
 import skillbill.ports.persistence.FeatureTaskRuntimeWorkflowStateRepository
 import skillbill.ports.persistence.FeatureTaskWorkflowStateRepository
 import skillbill.ports.persistence.FeatureVerifyWorkflowStateRepository
+import skillbill.ports.persistence.GoalChildWorkflowDeletionScope
 import skillbill.ports.persistence.GoalChildWorkflowStateRepository
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureImplementSessionSummary
@@ -47,7 +48,7 @@ private const val LOOKUP_IDENTITY_ISSUE_KEY_INDEX: Int = 2
 private const val LOOKUP_LEGACY_ROUTE_SCOPE_INDEX: Int = 3
 private const val LOOKUP_REPOSITORY_IDENTITY_INDEX: Int = 4
 private const val LOOKUP_ROUTE_SCOPE_INDEX: Int = 5
-private const val DELETE_GOAL_CHILD_SUBTASK_ID_INDEX: Int = 3
+private const val DELETE_GOAL_CHILD_FIRST_STATUS_INDEX: Int = 2
 private const val MINIMUM_OWNER_TOKEN_LENGTH: Int = 16
 
 /**
@@ -309,12 +310,18 @@ private class FeatureTaskWorkflowStateStore(
     statement.executeUpdate()
   }
 
-  override fun deleteGoalChildWorkflow(parentWorkflowId: String, subtaskId: Int, workflowId: String): Int =
-    connection.prepareStatement(
+  override fun deleteGoalChildWorkflow(
+    parentWorkflowId: String,
+    subtaskId: Int,
+    workflowId: String,
+    scope: GoalChildWorkflowDeletionScope,
+  ): Int {
+    val deletableStatuses = scope.deletableStatuses
+    return connection.prepareStatement(
       """
         DELETE FROM feature_task_workflows
         WHERE workflow_id = ?
-          AND workflow_status IN ('blocked', 'failed', 'abandoned', 'completed')
+          AND workflow_status IN (${deletableStatuses.joinToString(", ") { "?" }})
           AND EXISTS (
             SELECT 1
             FROM feature_task_execution_identities AS identities
@@ -326,10 +333,14 @@ private class FeatureTaskWorkflowStateStore(
       """.trimIndent(),
     ).use { statement ->
       statement.setString(1, workflowId)
-      statement.setString(2, parentWorkflowId)
-      statement.setInt(DELETE_GOAL_CHILD_SUBTASK_ID_INDEX, subtaskId)
+      deletableStatuses.forEachIndexed { offset, status ->
+        statement.setString(DELETE_GOAL_CHILD_FIRST_STATUS_INDEX + offset, status)
+      }
+      statement.setString(DELETE_GOAL_CHILD_FIRST_STATUS_INDEX + deletableStatuses.size, parentWorkflowId)
+      statement.setInt(DELETE_GOAL_CHILD_FIRST_STATUS_INDEX + deletableStatuses.size + 1, subtaskId)
       statement.executeUpdate()
     }
+  }
 
   override fun findStandaloneFeatureTaskCandidates(
     normalizedIssueKey: String,

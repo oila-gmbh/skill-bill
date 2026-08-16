@@ -95,12 +95,21 @@ interface FeatureTaskWorkflowStateRepository {
   }
 }
 
+enum class GoalChildWorkflowDeletionScope(val deletableStatuses: List<String>) {
+  TERMINAL_ONLY(listOf("blocked", "failed", "abandoned", "completed")),
+  TERMINAL_OR_RESUMABLE(listOf("blocked", "failed", "abandoned", "completed", "pending", "paused")),
+}
+
 interface GoalChildWorkflowStateRepository {
   fun deleteGoalChildWorkflowsByParent(parentWorkflowId: String): Int =
     error("Goal-child workflow deletion is not implemented by this persistence adapter.")
 
-  fun deleteGoalChildWorkflow(parentWorkflowId: String, subtaskId: Int, workflowId: String): Int =
-    error("Scoped goal-child workflow deletion is not implemented by this persistence adapter.")
+  fun deleteGoalChildWorkflow(
+    parentWorkflowId: String,
+    subtaskId: Int,
+    workflowId: String,
+    scope: GoalChildWorkflowDeletionScope = GoalChildWorkflowDeletionScope.TERMINAL_ONLY,
+  ): Int = error("Scoped goal-child workflow deletion is not implemented by this persistence adapter.")
 }
 
 interface FeatureTaskRuntimeWorkerRepository {

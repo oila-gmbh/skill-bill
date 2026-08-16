@@ -67,6 +67,7 @@ import skillbill.ports.goalrunner.model.GoalRunnerScopedReplanWriteResult
 import skillbill.ports.goalrunner.model.GoalRunnerSessionAccountingRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
 import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.ports.persistence.GoalChildWorkflowDeletionScope
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureTaskExecutionIdentity
@@ -1387,8 +1388,12 @@ private fun deleteStaleReplanChildren(
   if (subtask == null || childWorkflowId == null || subtask.status in setOf("complete", "skipped")) {
     false
   } else {
-    // Only terminal children are deletable here, so a live or resumable child is left untouched.
-    unitOfWork.workflowStates.deleteGoalChildWorkflow(state.parentWorkflowId, id, childWorkflowId) == 1
+    unitOfWork.workflowStates.deleteGoalChildWorkflow(
+      state.parentWorkflowId,
+      id,
+      childWorkflowId,
+      GoalChildWorkflowDeletionScope.TERMINAL_OR_RESUMABLE,
+    ) == 1
   }
 }
 
