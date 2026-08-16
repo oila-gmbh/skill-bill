@@ -1958,8 +1958,9 @@ private const val MAX_VALIDATION_QUALITY_RETRIES = 3
 private const val MAX_REPORTED_FINALIZE_DIRTY_PATHS = 10
 
 private fun isFeatureSpecPath(path: String): Boolean {
-  val normalized = path.trim().trimEnd('/')
-  return normalized == FEATURE_SPEC_ROOT || normalized.startsWith("$FEATURE_SPEC_ROOT/")
+  val normalized = path.trim().trimEnd('/').removeSurrounding("\"").removePrefix("./")
+  val dotted = if (normalized.startsWith(".")) normalized else ".$normalized"
+  return dotted == FEATURE_SPEC_ROOT || dotted.startsWith("$FEATURE_SPEC_ROOT/")
 }
 
 private val PROTECTED_GOAL_BRANCHES: Set<String> = setOf("main", "master", "trunk")
