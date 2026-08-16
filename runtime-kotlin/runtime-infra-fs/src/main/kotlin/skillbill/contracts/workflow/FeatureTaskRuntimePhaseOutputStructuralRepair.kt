@@ -453,23 +453,24 @@ internal object StructuralRepairCandidateEngine {
           candidate,
           node,
           mergedDuplicateKeys,
-          originalText,
-          sourceLabel,
-          sourceOffset,
-          sourceText,
+          StructuralRepairOrigin(originalText, sourceLabel, sourceOffset, sourceText),
         )
       }
     }
   }
 
+  private data class StructuralRepairOrigin(
+    val originalText: String,
+    val sourceLabel: String,
+    val sourceOffset: Int,
+    val sourceText: String,
+  )
+
   private fun acceptCandidate(
     candidate: Candidate,
     node: JsonNode,
     mergedDuplicateKeys: Boolean,
-    originalText: String,
-    sourceLabel: String,
-    sourceOffset: Int,
-    sourceText: String,
+    origin: StructuralRepairOrigin,
   ): FeatureTaskRuntimePhaseOutputStructuralRepairDecision {
     return if (!node.isObject) {
       StructuralRepairDecisions.reject(
@@ -479,19 +480,19 @@ internal object StructuralRepairCandidateEngine {
     } else {
       val operation = when {
         mergedDuplicateKeys -> FeatureTaskRuntimePhaseOutputRepairOperation.DEDUPLICATE_KEYS
-        candidate.text.length < originalText.length ->
+        candidate.text.length < origin.originalText.length ->
           FeatureTaskRuntimePhaseOutputRepairOperation.REMOVE_EXTRA_CLOSING_DELIMITER
         else -> FeatureTaskRuntimePhaseOutputRepairOperation.ADD_MISSING_CLOSING_DELIMITER
       }
       val evidence = FeatureTaskRuntimePhaseOutputRepairEvidence(
         format = if (mergedDuplicateKeys) FeatureTaskRuntimePhaseOutputFormat.JSON else candidate.format,
-        originalDigest = StructuralRepairSyntax.sha256(originalText),
+        originalDigest = StructuralRepairSyntax.sha256(origin.originalText),
         repairedDigest = StructuralRepairSyntax.sha256(candidate.text),
         operation = operation,
         sourceLocation = StructuralRepairSyntax.sourceLocation(
-          sourceLabel,
-          sourceText,
-          sourceOffset + candidate.changedOffset,
+          origin.sourceLabel,
+          origin.sourceText,
+          origin.sourceOffset + candidate.changedOffset,
         ),
       )
       StructuralRepairDecisions.accepted(candidate.text, node, evidence)

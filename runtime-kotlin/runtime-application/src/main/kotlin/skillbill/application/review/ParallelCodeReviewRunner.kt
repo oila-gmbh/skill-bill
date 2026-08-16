@@ -1356,9 +1356,11 @@ class ParallelCodeReviewRunner(
       appendLine("hunk_id: ${hunk.hunkId}")
       appendLine("spans: -${hunk.oldStart},${hunk.oldCount} +${hunk.newStart},${hunk.newCount}")
       appendLine("content_digest: ${hunk.contentDigest}")
-      appendLine("evidence_locator: store_path=${structuredString(locator.storePath)} " +
-        "payload_file=${structuredString(locator.payloadFile)} " +
-        "hunk_header=${structuredString(locator.hunkHeader)}")
+      appendLine(
+        "evidence_locator: store_path=${structuredString(locator.storePath)} " +
+          "payload_file=${structuredString(locator.payloadFile)} " +
+          "hunk_header=${structuredString(locator.hunkHeader)}",
+      )
     }
   }
 
@@ -1372,10 +1374,7 @@ class ParallelCodeReviewRunner(
     return brokers.values.singleOrNull() ?: FanOutReviewEvidenceBroker(brokers)
   }
 
-  private fun brokerBinding(
-    launch: ReviewSpecialistLaunchRequest,
-    repoRoot: Path,
-  ): ReviewEvidenceBrokerBinding {
+  private fun brokerBinding(launch: ReviewSpecialistLaunchRequest, repoRoot: Path): ReviewEvidenceBrokerBinding {
     val assigned = launch.assignment.assignedHunks.toSet()
     return ReviewEvidenceBrokerBinding(
       repoRoot = repoRoot,

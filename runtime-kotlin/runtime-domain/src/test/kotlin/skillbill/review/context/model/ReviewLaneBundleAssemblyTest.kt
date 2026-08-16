@@ -383,7 +383,7 @@ class ReviewLaneBundleAssemblyTest {
   }
 
   @Test fun `an oversized body is not rendered in the canonical launch payload`() {
-    val oversized = ReviewChangedHunk.fromBody("src/Huge.kt", 1, 1, 1, 1, "+" + "z".repeat(4_000))
+    val oversized = ReviewChangedHunk("src/Huge.kt", 1, 1, 1, 1, "+" + "z".repeat(4_000))
     val built = packet(listOf(unit("c1", "base", 0, listOf(hunkA, oversized))))
     val bundle = ReviewLaneBundle(listOf(ReviewLaneBundleEntry("c1", 0, listOf(hunkA.hunkId, oversized.hunkId))))
     val governed = launch(built, bundle)

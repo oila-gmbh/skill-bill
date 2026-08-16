@@ -759,7 +759,9 @@ data class ReviewChangedHunk(
     requireRepositoryRelativePath(path)
     require(oldStart >= 0 && oldCount >= 0 && newStart >= 0 && newCount >= 0)
     require(commitScope == null || commitScope.isNotBlank()) { "Changed hunk commit scope must not be blank." }
-    indexedContentDigest?.let { require(it.matches(SHA256_HEX)) { "Changed hunk content digest must be lowercase SHA-256." } }
+    indexedContentDigest?.let {
+      require(it.matches(SHA256_HEX)) { "Changed hunk content digest must be lowercase SHA-256." }
+    }
     indexedHunkId?.let { require(it.matches(SHA256_HEX)) { "Changed hunk id must be lowercase SHA-256." } }
   }
 
@@ -768,20 +770,12 @@ data class ReviewChangedHunk(
   val evidenceLocator: ReviewHunkEvidenceLocator = indexedEvidenceLocator
     ?: ReviewHunkEvidenceLocator.inProcess(contentDigest, oldStart, oldCount, newStart, newCount)
 
-  val hunkId: String = indexedHunkId ?: sha256(identityCanonical())
+  val hunkId: String = indexedHunkId ?: sha256(canonicalIdentity(this, content))
 
   val contentBytes: Long = indexedContentBytes
     ?: content.replace("\r\n", "\n").toByteArray(StandardCharsets.UTF_8).size.toLong()
 
-  internal fun identityCanonical(): String = identityCanonical(
-    path,
-    oldStart,
-    oldCount,
-    newStart,
-    newCount,
-    content,
-    commitScope,
-  )
+  internal fun identityCanonical(): String = canonicalIdentity(this, content)
 
   internal fun packetCanonical(): String = canonicalFields(
     hunkId,
@@ -799,7 +793,7 @@ data class ReviewChangedHunk(
       content = "",
       indexedContentDigest = digestOfBody(normalized),
       indexedEvidenceLocator = locator,
-      indexedHunkId = idFor(path, oldStart, oldCount, newStart, newCount, normalized, commitScope),
+      indexedHunkId = idFor(this, normalized),
       indexedContentBytes = normalized.toByteArray(StandardCharsets.UTF_8).size.toLong(),
     )
   }
@@ -807,42 +801,16 @@ data class ReviewChangedHunk(
   companion object {
     fun digestOfBody(body: String): String = sha256(body.replace("\r\n", "\n"))
 
-    fun idFor(
-      path: String,
-      oldStart: Int,
-      oldCount: Int,
-      newStart: Int,
-      newCount: Int,
-      body: String,
-      commitScope: String?,
-    ): String = sha256(identityCanonical(path, oldStart, oldCount, newStart, newCount, body, commitScope))
+    fun idFor(hunk: ReviewChangedHunk, body: String = hunk.content): String = sha256(canonicalIdentity(hunk, body))
 
-    fun fromBody(
-      path: String,
-      oldStart: Int,
-      oldCount: Int,
-      newStart: Int,
-      newCount: Int,
-      body: String,
-      commitScope: String? = null,
-    ): ReviewChangedHunk = ReviewChangedHunk(path, oldStart, oldCount, newStart, newCount, body, commitScope)
-
-    private fun identityCanonical(
-      path: String,
-      oldStart: Int,
-      oldCount: Int,
-      newStart: Int,
-      newCount: Int,
-      body: String,
-      commitScope: String?,
-    ): String = canonicalFields(
-      path,
-      oldStart,
-      oldCount,
-      newStart,
-      newCount,
+    private fun canonicalIdentity(hunk: ReviewChangedHunk, body: String): String = canonicalFields(
+      hunk.path,
+      hunk.oldStart,
+      hunk.oldCount,
+      hunk.newStart,
+      hunk.newCount,
       body.replace("\r\n", "\n"),
-      commitScope.orEmpty(),
+      hunk.commitScope.orEmpty(),
     )
   }
 }

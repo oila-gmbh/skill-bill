@@ -18,17 +18,14 @@ internal class FanOutReviewEvidenceBroker(
     require(brokers.isNotEmpty()) { "A fan-out evidence broker must bind at least one assignment." }
   }
 
-  private fun broker(lane: String): ReviewEvidenceBroker = requireNotNull(brokers[lane]) {
-    "Evidence lane '$lane' is not bound to this parent session."
-  }
-
   override fun authorizeExpansion(request: ReviewExpansionAuthorizationRequest): ReviewExpansionRecord =
-    broker(request.lane).authorizeExpansion(request)
+    brokerForLane(brokers, request.lane).authorizeExpansion(request)
 
   override fun readBatch(request: ReviewEvidenceBatchRequest): ReviewEvidenceBatchResult =
-    broker(request.lane).readBatch(request)
+    brokerForLane(brokers, request.lane).readBatch(request)
 
-  override fun recordToolCall(call: ReviewToolCall): ReviewToolCallResult = broker(call.lane).recordToolCall(call)
+  override fun recordToolCall(call: ReviewToolCall): ReviewToolCallResult =
+    brokerForLane(brokers, call.lane).recordToolCall(call)
 
   override fun recordModelTurn(): ReviewBudgetOutcome? =
     brokers.values.mapNotNull { it.recordModelTurn() }.firstOrNull()
@@ -48,3 +45,6 @@ internal class FanOutReviewEvidenceBroker(
 
   override fun terminalOutcome(): ReviewBudgetOutcome? = null
 }
+
+private fun brokerForLane(brokers: Map<String, ReviewEvidenceBroker>, lane: String): ReviewEvidenceBroker =
+  requireNotNull(brokers[lane]) { "Evidence lane '$lane' is not bound to this parent session." }

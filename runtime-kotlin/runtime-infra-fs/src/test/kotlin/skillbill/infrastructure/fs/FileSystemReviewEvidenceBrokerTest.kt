@@ -30,7 +30,6 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
-import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
 class FileSystemReviewEvidenceBrokerTest {
@@ -466,7 +465,7 @@ class FileSystemReviewEvidenceBrokerTest {
     val root = repo("A.kt" to "working-tree")
     val hunk = ReviewChangedHunk("A.kt", 2, 1, 2, 1, "@@ -2 +2 @@\n-owned\n+changed")
     val storePath = ".skill-bill/run-evidence/code-review/fp-assigned"
-    val broker = locatorBroker(root, listOf(hunk), storePath, mapOf(storePath to hunk.content))
+    val broker = locatorBroker(LocatorBrokerSpec(root, listOf(hunk), storePath, mapOf(storePath to hunk.content)))
 
     val first = broker.readBatch(batch("A.kt")).results.single()
     assertEquals(hunk.content, first.content)
@@ -480,7 +479,7 @@ class FileSystemReviewEvidenceBrokerTest {
     val hunk = ReviewChangedHunk("A.kt", 2, 1, 2, 1, original)
     val storePath = ".skill-bill/run-evidence/code-review/fp-integrity"
     val payloads = mutableMapOf(storePath to original)
-    val broker = locatorBroker(root, listOf(hunk), storePath, payloads)
+    val broker = locatorBroker(LocatorBrokerSpec(root, listOf(hunk), storePath, payloads))
     payloads[storePath] = overwritten
 
     val failure = assertFailsWith<ReviewHunkEvidenceIntegrityError> {
@@ -498,10 +497,7 @@ class FileSystemReviewEvidenceBrokerTest {
     val large = ReviewChangedHunk("B.kt", 1, 1, 1, 1, "bbbb")
     val storePath = ".skill-bill/run-evidence/code-review/fp-budget"
     val broker = locatorBroker(
-      root,
-      listOf(small, large),
-      storePath,
-      mapOf(storePath to "aa"),
+      LocatorBrokerSpec(root, listOf(small, large), storePath, mapOf(storePath to "aa")),
       policy(result = 3, cumulative = 3),
       ReviewStoredHunkBodyExtractor { _, hunk -> if (hunk.path == "A.kt") "aa" else "bbbb" },
     )
@@ -572,30 +568,40 @@ class FileSystemReviewEvidenceBrokerTest {
     )
   }
 
+  private data class LocatorBrokerSpec(
+    val root: Path,
+    val hunks: List<ReviewChangedHunk>,
+    val storePath: String,
+    val payloads: Map<String, String>,
+  )
+
   private fun locatorBroker(
-    root: Path,
-    hunks: List<ReviewChangedHunk>,
-    storePath: String,
-    payloads: Map<String, String>,
+    spec: LocatorBrokerSpec,
     budget: ReviewContextBudgetPolicy = policy(),
     extractor: ReviewStoredHunkBodyExtractor? = null,
   ): FileSystemReviewEvidenceBroker {
-    val indexed = hunks.map { hunk ->
+    val indexed = spec.hunks.map { hunk ->
       hunk.asIndex(
-        ReviewHunkEvidenceLocator.atStore(storePath, hunk.oldStart, hunk.oldCount, hunk.newStart, hunk.newCount),
+        ReviewHunkEvidenceLocator.atStore(
+          spec.storePath,
+          hunk.oldStart,
+          hunk.oldCount,
+          hunk.newStart,
+          hunk.newCount,
+        ),
         hunk.content,
       )
     }
     val assigned = assignment(indexed.map { it.path }.distinct()).copy(assignedHunks = indexed.map { it.hunkId })
     return FileSystemReviewEvidenceBroker(
       ReviewEvidenceBrokerBinding(
-        root,
+        spec.root,
         assigned,
         "security",
         budget,
         projectedHunks = indexed,
         locatorReader = FeatureTaskRuntimeSharedEvidenceLocatorReadPort { request ->
-          payloads[request.storePath] ?: error("missing locator payload")
+          spec.payloads[request.storePath] ?: error("missing locator payload")
         },
         bodyExtractor = extractor ?: ReviewStoredHunkBodyExtractor { payload, _ ->
           payload.replace("\r\n", "\n")

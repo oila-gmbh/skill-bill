@@ -413,39 +413,6 @@ class ParallelCodeReviewRunnerTest {
   }
 
   @Test
-  fun `evidence overflow leaves the sibling required lane selected and the parent composed`() {
-    val pack = sparseReviewPack(
-      slug = "kotlin",
-      requiredArea = "architecture",
-      pathAreas = mapOf("testing" to listOf("src/test/")),
-    )
-    val recorder = ReviewRecorder()
-    val huge = "x".repeat(300_000)
-    val result = reviewHarness(
-      ReviewHarnessConfig(
-        manifests = listOf(pack),
-        diff = diffForChanges(
-          "src/Main.kt" to huge,
-          "src/test/MainTest.kt" to "ok",
-        ),
-      ),
-      recorder,
-    ).run(harnessRequest())
-
-    assertTrue(recorder.parentLaunches.isNotEmpty())
-    recorder.parentPrompts.forEach { prompt ->
-      assertTrue(prompt.contains("bill-kotlin-code-review-architecture"))
-      assertTrue(prompt.contains("bill-kotlin-code-review-testing"))
-      assertFalse(prompt.contains(huge))
-    }
-    val coverage = assertNotNull(result.coverage)
-    assertFalse(coverage.isCleanCoverage)
-    assertTrue(
-      coverage.incompleteLanes.any { lane -> lane.unreviewedUnits.any { it.contains("src/Main.kt") } },
-    )
-  }
-
-  @Test
   fun `the parallel-review lane inherits the primary lane resolved mode`() {
     listOf(
       CodeReviewExecutionMode.INLINE to "inline",
@@ -467,158 +434,6 @@ class ParallelCodeReviewRunnerTest {
         )
       }
     }
-  }
-
-  @Test
-  fun `inline review keeps a rubric-tagged finding on a path owned by another selected specialist`() {
-    val persistencePath =
-      "application/src/test/kotlin/dev/skillbill/application/slot/InMemoryPersistencePorts.kt"
-    val finding =
-      "[F-001] Major | High | specialist=bill-kotlin-code-review-persistence | " +
-        "path=\"$persistencePath\" | line=956 | RunStateConflict hides a cancelled committed attempt"
-    val runner = runner(
-      alwaysSuccessLauncher(finding),
-      catalogGateway = stubCatalogGateway(
-        listOf(
-          PlatformManifest(
-            slug = "kotlin",
-            packRoot = Path.of("platform-packs/kotlin"),
-            contractVersion = "1.3",
-            routingSignals = RoutingSignals(strong = listOf("*.kt"), tieBreakers = emptyList()),
-            declaredCodeReviewAreas = listOf("architecture", "persistence"),
-            declaredFiles = DeclaredFiles(
-              baseline = Path.of("content.md"),
-              areas = mapOf(
-                "architecture" to Path.of("architecture.md"),
-                "persistence" to Path.of("persistence.md"),
-              ),
-            ),
-            areaMetadata = emptyMap(),
-            laneConditions = mapOf(
-              "architecture" to ReviewLaneCondition(required = true),
-              "persistence" to ReviewLaneCondition(
-                content = listOf("transaction", "hibernate", "exposed", "database"),
-              ),
-            ),
-          ),
-        ),
-      ),
-      diffResolver = RecordingDiffResolver(
-        default = """
-          +++ b/$persistencePath
-          @@ -950,1 +950,1 @@
-          - old
-          + RunStateConflict
-          +++ b/src/Dao.kt
-          @@ -1,1 +1,1 @@
-          - old
-          + transaction {
-        """.trimIndent(),
-      ),
-      rubricResolver = ReviewRubricResolver {
-        ResolvedReviewRubric(
-          "bill-kotlin-code-review",
-          "parent routing rubric",
-          specialists = listOf(
-            ResolvedReviewRubric(
-              "bill-kotlin-code-review-architecture",
-              "architecture specialist rubric",
-              area = "architecture",
-            ),
-            ResolvedReviewRubric(
-              "bill-kotlin-code-review-persistence",
-              "persistence specialist rubric",
-              area = "persistence",
-            ),
-          ),
-        )
-      },
-    )
-
-    val result = runner.run(baseRequest(agent2Id = null, scope = ParallelReviewScope.STAGED))
-
-    assertTrue(result.lane1.success, result.lane1.failureReason.orEmpty())
-    assertEquals(
-      listOf("bill-kotlin-code-review-persistence"),
-      result.mergeResult.findings.single().specialistSkillNames,
-    )
-  }
-
-  @Test
-  fun `inline review assigns an unknown specialist tag to a path-owning lane and still reports the finding`() {
-    val finding =
-      "[F-001] Major | High | specialist=bill-kotlin-code-review-unknown | " +
-        "path=\"src/FooTest.kt\" | line=12 | test dispatcher never advances"
-    val runner = runner(
-      alwaysSuccessLauncher(finding),
-      catalogGateway = stubCatalogGateway(listOf(platformManifest("kotlin", listOf("*.kt")))),
-      diffResolver = RecordingDiffResolver(default = diffFor("src/FooTest.kt")),
-      rubricResolver = ReviewRubricResolver {
-        ResolvedReviewRubric(
-          "bill-kotlin-code-review",
-          "parent routing rubric",
-          specialists = listOf(
-            ResolvedReviewRubric(
-              "bill-kotlin-code-review-architecture",
-              "architecture specialist rubric",
-              area = "architecture",
-            ),
-            ResolvedReviewRubric(
-              "bill-kotlin-code-review-testing",
-              "testing specialist rubric",
-              area = "testing",
-            ),
-          ),
-        )
-      },
-    )
-
-    val result = runner.run(baseRequest(agent2Id = null, scope = ParallelReviewScope.STAGED))
-
-    assertTrue(result.lane1.success, result.lane1.failureReason.orEmpty())
-    assertEquals(1, result.mergeResult.findings.size)
-    assertEquals(
-      listOf("bill-kotlin-code-review-architecture"),
-      result.mergeResult.findings.single().specialistSkillNames,
-    )
-  }
-
-  @Test
-  fun `inline review keeps an unowned path finding on the default lane without failing the run`() {
-    val finding =
-      "[F-001] Major | High | specialist=bill-kotlin-code-review-unknown | " +
-        "path=\"docs/OUTSIDE.md\" | line=3 | cited a file the packet does not own"
-    val runner = runner(
-      alwaysSuccessLauncher(finding),
-      catalogGateway = stubCatalogGateway(listOf(platformManifest("kotlin", listOf("*.kt")))),
-      diffResolver = RecordingDiffResolver(default = diffFor("src/FooTest.kt")),
-      rubricResolver = ReviewRubricResolver {
-        ResolvedReviewRubric(
-          "bill-kotlin-code-review",
-          "parent routing rubric",
-          specialists = listOf(
-            ResolvedReviewRubric(
-              "bill-kotlin-code-review-architecture",
-              "architecture specialist rubric",
-              area = "architecture",
-            ),
-            ResolvedReviewRubric(
-              "bill-kotlin-code-review-testing",
-              "testing specialist rubric",
-              area = "testing",
-            ),
-          ),
-        )
-      },
-    )
-
-    val result = runner.run(baseRequest(agent2Id = null, scope = ParallelReviewScope.STAGED))
-
-    assertTrue(result.lane1.success, result.lane1.failureReason.orEmpty())
-    val reported = result.mergeResult.findings.single()
-    assertEquals("docs/OUTSIDE.md:3", reported.location)
-    assertEquals("docs/OUTSIDE.md", reported.repositoryPath)
-    assertEquals(listOf("bill-kotlin-code-review-architecture"), reported.specialistSkillNames)
   }
 
   @Test
@@ -802,7 +617,87 @@ class ParallelCodeReviewRunnerTest {
   }
 }
 
+class ParallelCodeReviewInlineFindingTest {
+  @Test
+  fun `inline review keeps a rubric-tagged finding on a path owned by another selected specialist`() {
+    val persistencePath =
+      "application/src/test/kotlin/dev/skillbill/application/slot/InMemoryPersistencePorts.kt"
+    val finding =
+      "[F-001] Major | High | specialist=bill-kotlin-code-review-persistence | " +
+        "path=\"$persistencePath\" | line=956 | RunStateConflict hides a cancelled committed attempt"
+    val result = kotlinPersistenceInlineRunner(finding, persistencePath)
+      .run(baseRequest(agent2Id = null, scope = ParallelReviewScope.STAGED))
+    assertTrue(result.lane1.success, result.lane1.failureReason.orEmpty())
+    assertEquals(
+      listOf("bill-kotlin-code-review-persistence"),
+      result.mergeResult.findings.single().specialistSkillNames,
+    )
+  }
+
+  @Test
+  fun `inline review assigns an unknown specialist tag to a path-owning lane and still reports the finding`() {
+    val finding =
+      "[F-001] Major | High | specialist=bill-kotlin-code-review-unknown | " +
+        "path=\"src/FooTest.kt\" | line=12 | test dispatcher never advances"
+    val result = kotlinArchitectureTestingRunner(finding)
+      .run(baseRequest(agent2Id = null, scope = ParallelReviewScope.STAGED))
+    assertTrue(result.lane1.success, result.lane1.failureReason.orEmpty())
+    assertEquals(1, result.mergeResult.findings.size)
+    assertEquals(
+      listOf("bill-kotlin-code-review-architecture"),
+      result.mergeResult.findings.single().specialistSkillNames,
+    )
+  }
+
+  @Test
+  fun `inline review keeps an unowned path finding on the default lane without failing the run`() {
+    val finding =
+      "[F-001] Major | High | specialist=bill-kotlin-code-review-unknown | " +
+        "path=\"docs/OUTSIDE.md\" | line=3 | cited a file the packet does not own"
+    val result = kotlinArchitectureTestingRunner(finding)
+      .run(baseRequest(agent2Id = null, scope = ParallelReviewScope.STAGED))
+    assertTrue(result.lane1.success, result.lane1.failureReason.orEmpty())
+    val reported = result.mergeResult.findings.single()
+    assertEquals("docs/OUTSIDE.md:3", reported.location)
+    assertEquals("docs/OUTSIDE.md", reported.repositoryPath)
+    assertEquals(listOf("bill-kotlin-code-review-architecture"), reported.specialistSkillNames)
+  }
+}
+
 class ParallelCodeReviewSuppliedDiffTest {
+  @Test
+  fun `evidence overflow leaves the sibling required lane selected and the parent composed`() {
+    val pack = sparseReviewPack(
+      slug = "kotlin",
+      requiredArea = "architecture",
+      pathAreas = mapOf("testing" to listOf("src/test/")),
+    )
+    val recorder = ReviewRecorder()
+    val huge = "x".repeat(300_000)
+    val result = reviewHarness(
+      ReviewHarnessConfig(
+        manifests = listOf(pack),
+        diff = diffForChanges(
+          "src/Main.kt" to huge,
+          "src/test/MainTest.kt" to "ok",
+        ),
+      ),
+      recorder,
+    ).run(harnessRequest())
+
+    assertTrue(recorder.parentLaunches.isNotEmpty())
+    recorder.parentPrompts.forEach { prompt ->
+      assertTrue(prompt.contains("bill-kotlin-code-review-architecture"))
+      assertTrue(prompt.contains("bill-kotlin-code-review-testing"))
+      assertFalse(prompt.contains(huge))
+    }
+    val coverage = assertNotNull(result.coverage)
+    assertFalse(coverage.isCleanCoverage)
+    assertTrue(
+      coverage.incompleteLanes.any { lane -> lane.unreviewedUnits.any { it.contains("src/Main.kt") } },
+    )
+  }
+
   @Test
   fun `supplied exact diff bypasses branch-scope resolution for both lanes`() {
     val resolver = RecordingDiffResolver(default = "unexpected branch diff")
@@ -1604,6 +1499,87 @@ private fun alwaysSuccessLauncher(stdout: String = "NO_FINDINGS") = GoalRunnerSu
     spawnFailed = false,
   )
 }
+
+private fun kotlinArchitectureTestingRunner(finding: String): ParallelCodeReviewRunner = runner(
+  alwaysSuccessLauncher(finding),
+  catalogGateway = stubCatalogGateway(listOf(platformManifest("kotlin", listOf("*.kt")))),
+  diffResolver = RecordingDiffResolver(default = diffFor("src/FooTest.kt")),
+  rubricResolver = ReviewRubricResolver {
+    ResolvedReviewRubric(
+      "bill-kotlin-code-review",
+      "parent routing rubric",
+      specialists = listOf(
+        ResolvedReviewRubric(
+          "bill-kotlin-code-review-architecture",
+          "architecture specialist rubric",
+          area = "architecture",
+        ),
+        ResolvedReviewRubric(
+          "bill-kotlin-code-review-testing",
+          "testing specialist rubric",
+          area = "testing",
+        ),
+      ),
+    )
+  },
+)
+
+private fun kotlinPersistenceInlineRunner(finding: String, persistencePath: String): ParallelCodeReviewRunner = runner(
+  alwaysSuccessLauncher(finding),
+  catalogGateway = stubCatalogGateway(listOf(kotlinPersistenceManifest())),
+  diffResolver = RecordingDiffResolver(
+    default = """
+      +++ b/$persistencePath
+      @@ -950,1 +950,1 @@
+      - old
+      + RunStateConflict
+      +++ b/src/Dao.kt
+      @@ -1,1 +1,1 @@
+      - old
+      + transaction {
+    """.trimIndent(),
+  ),
+  rubricResolver = ReviewRubricResolver {
+    ResolvedReviewRubric(
+      "bill-kotlin-code-review",
+      "parent routing rubric",
+      specialists = listOf(
+        ResolvedReviewRubric(
+          "bill-kotlin-code-review-architecture",
+          "architecture specialist rubric",
+          area = "architecture",
+        ),
+        ResolvedReviewRubric(
+          "bill-kotlin-code-review-persistence",
+          "persistence specialist rubric",
+          area = "persistence",
+        ),
+      ),
+    )
+  },
+)
+
+private fun kotlinPersistenceManifest() = PlatformManifest(
+  slug = "kotlin",
+  packRoot = Path.of("platform-packs/kotlin"),
+  contractVersion = "1.3",
+  routingSignals = RoutingSignals(strong = listOf("*.kt"), tieBreakers = emptyList()),
+  declaredCodeReviewAreas = listOf("architecture", "persistence"),
+  declaredFiles = DeclaredFiles(
+    baseline = Path.of("content.md"),
+    areas = mapOf(
+      "architecture" to Path.of("architecture.md"),
+      "persistence" to Path.of("persistence.md"),
+    ),
+  ),
+  areaMetadata = emptyMap(),
+  laneConditions = mapOf(
+    "architecture" to ReviewLaneCondition(required = true),
+    "persistence" to ReviewLaneCondition(
+      content = listOf("transaction", "hibernate", "exposed", "database"),
+    ),
+  ),
+)
 
 private fun assertThrowsUsageValidation(block: () -> Unit) {
   assertFailsWith<UsageValidationException> { block() }

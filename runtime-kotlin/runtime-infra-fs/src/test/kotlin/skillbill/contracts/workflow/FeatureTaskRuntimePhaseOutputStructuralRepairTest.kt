@@ -160,6 +160,7 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
     val result = adapter.validatePhaseOutput(payload, "plan")
 
     val repaired = assertIs<FeatureTaskRuntimePhaseOutputValidationResult.AcceptedAfterRepair>(result)
+
     @Suppress("UNCHECKED_CAST")
     val producedOutputs = repaired.normalizedOutput.envelope["produced_outputs"] as Map<String, Any?>
     assertEquals(listOf("task-1", "task-2"), producedOutputs["tasks"])

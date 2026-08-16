@@ -153,7 +153,10 @@ class ReviewContextSchemaValidatorTest {
       assertEquals(false, hunk.containsKey("content"))
     }
     @Suppress("UNCHECKED_CAST")
-    val launchEntries = (launch.toLaunchEnvelope().asWireMap()["bundle"] as Map<String, Any?>)["entries"] as List<Map<String, Any?>>
+    val bundle = launch.toLaunchEnvelope().asWireMap()["bundle"] as Map<String, Any?>
+
+    @Suppress("UNCHECKED_CAST")
+    val launchEntries = bundle["entries"] as List<Map<String, Any?>>
     launchEntries.forEach { entry ->
       INDEX_HUNK_KEYS.forEach { key -> assertTrue(key in entry.keys, "launch entry missing $key") }
       assertEquals(false, entry.containsKey("content"))
@@ -433,6 +436,7 @@ class ReviewContextSchemaValidatorTest {
 
   @Test fun `index hunks reject inlined diff bodies on parent assignment and launch`() {
     val parent = packet.toParentPacketEnvelope().asWireMap().toMutableMap()
+
     @Suppress("UNCHECKED_CAST")
     val hunks = (parent["changed_hunks"] as List<Map<String, Any?>>).map { it.toMutableMap() }
     hunks[0]["content"] = "+smuggled"

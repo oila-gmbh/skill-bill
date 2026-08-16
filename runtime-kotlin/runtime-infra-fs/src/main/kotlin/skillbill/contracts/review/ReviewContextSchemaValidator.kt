@@ -12,8 +12,6 @@ import com.networknt.schema.SpecVersion
 import com.networknt.schema.ValidationMessage
 import skillbill.contracts.LOCALE_STABLE_SCHEMA_CONFIG
 import skillbill.error.InvalidReviewContextSchemaError
-import java.nio.file.Files
-import java.nio.file.Path
 import java.util.logging.Level
 import java.util.logging.Logger
 
@@ -109,11 +107,7 @@ private fun validateExpectedKind(
   validatePayloadAgainst(envelope, sourceLabel, expectedKind, schemas.forKind(expectedKind), mapper)
 }
 
-private fun requireMatchingContractVersion(
-  payload: Map<String, Any?>,
-  sourceLabel: String,
-  definitionName: String?,
-) {
+private fun requireMatchingContractVersion(payload: Map<String, Any?>, sourceLabel: String, definitionName: String?) {
   val declared = payload["contract_version"] ?: return
   val declaredText = declared as? String ?: declared.toString()
   if (declaredText == REVIEW_CONTEXT_CONTRACT_VERSION) return
@@ -272,34 +266,4 @@ private fun loadReviewContextSchema(): ReviewContextSchemas {
     )
     throw error
   }
-}
-
-private fun readReviewContextSchemaText(): String {
-  ReviewContextSchemaValidator::class.java.classLoader
-    .getResourceAsStream(REVIEW_CONTEXT_SCHEMA_CLASSPATH_RESOURCE)
-    ?.use { return it.readBytes().toString(Charsets.UTF_8) }
-
-  val walkAnchor: Path = Path.of("").toAbsolutePath()
-  val resolved = walkForReviewContextSchemaFile(walkAnchor)
-  if (resolved != null) {
-    return Files.readString(resolved)
-  }
-  throw InvalidReviewContextSchemaError(
-    sourceLabel = REVIEW_CONTEXT_SCHEMA_CLASSPATH_RESOURCE,
-    reason = "Canonical review context schema is missing. Expected to find it on the JVM classpath at " +
-      "'$REVIEW_CONTEXT_SCHEMA_CLASSPATH_RESOURCE' or on disk under " +
-      "'$REVIEW_CONTEXT_SCHEMA_REPO_RELATIVE_PATH' walked up from: $walkAnchor.",
-  )
-}
-
-private fun walkForReviewContextSchemaFile(hint: Path): Path? {
-  var current: Path? = hint.toAbsolutePath().normalize()
-  while (current != null) {
-    val candidate = current.resolve(REVIEW_CONTEXT_SCHEMA_REPO_RELATIVE_PATH)
-    if (Files.isRegularFile(candidate)) {
-      return candidate
-    }
-    current = current.parent
-  }
-  return null
 }

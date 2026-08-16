@@ -124,17 +124,7 @@ class ReviewPreparationService(
   }
 
   private fun composePacket(request: ReviewPreparationRequest, resolved: ResolvedReviewFacts): ReviewContextPacket {
-    val laneDecisions = resolved.laneDecisions
-    if (laneDecisions.map { it.lane }.distinct().size != laneDecisions.size) {
-      reject(request.reviewId, "Lane selection returned duplicate lane decisions.")
-    }
-    val includedLanes = laneDecisions.filter { it.included }
-      .sortedWith(compareBy(ReviewLaneDecision::orderIndex, ReviewLaneDecision::lane))
-      .map { it.lane }
-    if (includedLanes.isEmpty()) {
-      reject(request.reviewId, "Lane selection produced no included lane; a review packet needs at least one lane.")
-    }
-
+    val includedLanes = includedLanesForPacket(request.reviewId, resolved.laneDecisions)
     val indexed = ReviewHunkStoreIndexing.index(
       hunks = resolved.scope.changedHunks,
       commitUnits = resolved.scope.commitUnits,
@@ -142,7 +132,6 @@ class ReviewPreparationService(
       repoRoot = request.repoRoot,
       locatorReader = hunkLocatorReader,
     )
-
     val packet = ReviewContextPacket(
       reviewId = request.reviewId,
       repositoryIdentity = resolved.scope.repositoryIdentity,
@@ -167,27 +156,8 @@ class ReviewPreparationService(
       baselineUntrackedPolicy = request.baselineUntrackedPolicy,
       evidenceTargets = evidenceTargetsFor(indexed.hunks),
     )
-
-    val overlap = packet.dependencyAllowlist.normalized.filter { it in packet.ownedPaths }
-    if (overlap.isNotEmpty()) {
-      reject(
-        request.reviewId,
-        "Dependency-allowlist entries overlap changed paths owned by the packet: ${overlap.sorted()}.",
-      )
-    }
-    if (packet.canonicalBytes > budget.maxParentPacketBytes) {
-      throw ReviewContextBudgetExceededException(
-        ReviewContextBudgetExceeded(
-          lane = includedLanes.first(),
-          budgetKind = "parent_packet_bytes",
-          configuredLimit = budget.maxParentPacketBytes,
-          observedValue = packet.canonicalBytes,
-          packetDigest = packet.digest,
-          assignmentDigest = packet.digest,
-          enforceable = true,
-        ),
-      )
-    }
+    rejectAllowlistOverlap(request.reviewId, packet)
+    enforceParentPacketBudget(includedLanes, packet, budget)
     return packet
   }
 
@@ -410,3 +380,45 @@ private fun rejectUnknownAssignmentDigests(
 
 private fun reject(sourceLabel: String, reason: String): Nothing =
   throw InvalidReviewContextSchemaError(sourceLabel = sourceLabel, reason = reason)
+
+private fun includedLanesForPacket(reviewId: String, laneDecisions: List<ReviewLaneDecision>): List<String> {
+  if (laneDecisions.map { it.lane }.distinct().size != laneDecisions.size) {
+    reject(reviewId, "Lane selection returned duplicate lane decisions.")
+  }
+  val included = laneDecisions.filter { it.included }
+    .sortedWith(compareBy(ReviewLaneDecision::orderIndex, ReviewLaneDecision::lane))
+    .map { it.lane }
+  if (included.isEmpty()) {
+    reject(reviewId, "Lane selection produced no included lane; a review packet needs at least one lane.")
+  }
+  return included
+}
+
+private fun rejectAllowlistOverlap(reviewId: String, packet: ReviewContextPacket) {
+  val overlap = packet.dependencyAllowlist.normalized.filter { it in packet.ownedPaths }
+  if (overlap.isNotEmpty()) {
+    reject(
+      reviewId,
+      "Dependency-allowlist entries overlap changed paths owned by the packet: ${overlap.sorted()}.",
+    )
+  }
+}
+
+private fun enforceParentPacketBudget(
+  includedLanes: List<String>,
+  packet: ReviewContextPacket,
+  budget: ReviewContextBudgetPolicy,
+) {
+  if (packet.canonicalBytes <= budget.maxParentPacketBytes) return
+  throw ReviewContextBudgetExceededException(
+    ReviewContextBudgetExceeded(
+      lane = includedLanes.first(),
+      budgetKind = "parent_packet_bytes",
+      configuredLimit = budget.maxParentPacketBytes,
+      observedValue = packet.canonicalBytes,
+      packetDigest = packet.digest,
+      assignmentDigest = packet.digest,
+      enforceable = true,
+    ),
+  )
+}
