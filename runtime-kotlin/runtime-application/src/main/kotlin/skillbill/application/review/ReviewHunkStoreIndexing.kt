@@ -99,6 +99,11 @@ internal object ReviewHunkStoreIndexing {
     return hunk.asIndex(locator, storedBody)
   }
 
+  fun extractStoredBody(hunk: ReviewChangedHunk, payload: String, storePath: String): String {
+    val record = SharedReviewEvidenceCodec.decode(payload) ?: rawRecord(payload, storePath)
+    return storedBody(hunk, record, storePath)
+  }
+
   private fun storedBody(
     hunk: ReviewChangedHunk,
     record: SharedReviewEvidenceRecord,

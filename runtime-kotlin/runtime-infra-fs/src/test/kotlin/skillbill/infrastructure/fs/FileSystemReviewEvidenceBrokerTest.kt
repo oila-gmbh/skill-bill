@@ -1,7 +1,27 @@
 package skillbill.infrastructure.fs
 
 import skillbill.error.InvalidReviewContextSchemaError
+import skillbill.error.ReviewHunkEvidenceIntegrityError
 import skillbill.ports.review.BrokerBackedNativeReviewOperationProtocol
+import skillbill.ports.review.ReviewStoredHunkBodyExtractor
+import skillbill.ports.review.model.ReviewEvidenceBatchRequest
+import skillbill.ports.review.model.ReviewEvidenceBrokerBinding
+import skillbill.ports.review.model.ReviewEvidenceRequest
+import skillbill.ports.review.model.ReviewExpansionAuthorizationRequest
+import skillbill.ports.review.model.ReviewToolCall
+import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceLocatorReadPort
+import skillbill.review.context.model.ProviderTokenUsage
+import skillbill.review.context.model.REVIEW_BUDGET_REGRESSION
+import skillbill.review.context.model.REVIEW_CONTEXT_BUDGET_EXCEEDED
+import skillbill.review.context.model.ReviewAssignment
+import skillbill.review.context.model.ReviewChangedHunk
+import skillbill.review.context.model.ReviewContextBudgetPolicy
+import skillbill.review.context.model.ReviewDependencyAllowlist
+import skillbill.review.context.model.ReviewExpansionRecord
+import skillbill.review.context.model.ReviewHunkEvidenceLocator
+import skillbill.review.context.model.ReviewLaneDecision
+import skillbill.review.context.model.ReviewOperationKind
+import skillbill.review.context.model.ReviewRevision
 import skillbill.ports.review.model.ReviewEvidenceBatchRequest
 import skillbill.ports.review.model.ReviewEvidenceBrokerBinding
 import skillbill.ports.review.model.ReviewEvidenceRequest
@@ -159,20 +179,20 @@ class FileSystemReviewEvidenceBrokerTest {
     assertEquals(expectedBytes, broker.accounting().evidenceBytes)
   }
 
-  @Test fun `per-result excess terminates the lane and the rest of the batch`() {
+  @Test fun `per-result excess on a complete-file expansion terminates the lane`() {
     val root = repo("A.kt" to "assigned", "B.kt" to "second")
-    val broker = projectedBroker(root, assignment(listOf("A.kt", "B.kt")), policy(result = 4, cumulative = 8))
-    val result = broker.readBatch(
-      ReviewEvidenceBatchRequest(
-        "security",
-        listOf(ReviewEvidenceRequest("security", "A.kt"), ReviewEvidenceRequest("security", "B.kt")),
-      ),
+    val assignment = assignment(listOf("A.kt"), listOf("B.kt"))
+    val request = expansionRequest(assignment, "B.kt", "called by assigned hunk")
+    val broker = broker(
+      root,
+      assignment,
+      policy(result = 4, cumulative = 80),
+      trustedExpansionLedger = listOf(requireNotNull(request.authorizedExpansion)),
     )
+    val result = broker.readBatch(ReviewEvidenceBatchRequest.of(request))
     assertEquals(REVIEW_CONTEXT_BUDGET_EXCEEDED, result.terminalOutcome?.type)
     assertEquals("evidence_result_bytes", result.terminalOutcome?.budgetKind)
     assertTrue(result.results.all { it.content == null })
-    val repeated = broker.readBatch(ReviewEvidenceBatchRequest.of(ReviewEvidenceRequest("security", "A.kt")))
-    assertSame(result.terminalOutcome, repeated.terminalOutcome)
   }
 
   @Test fun `cumulative evidence excess terminates the lane`() {
@@ -458,6 +478,58 @@ class FileSystemReviewEvidenceBrokerTest {
     assertFailsWith<IllegalArgumentException> { broker.readBatch(batch("../outside.kt")) }
   }
 
+  @Test fun `assigned locator read returns the stored hunk body`() {
+    val root = repo("A.kt" to "working-tree")
+    val hunk = ReviewChangedHunk("A.kt", 2, 1, 2, 1, "@@ -2 +2 @@\n-owned\n+changed")
+    val storePath = ".skill-bill/run-evidence/code-review/fp-assigned"
+    val broker = locatorBroker(root, listOf(hunk), storePath, mapOf(storePath to hunk.content))
+
+    val first = broker.readBatch(batch("A.kt")).results.single()
+    assertEquals(hunk.content, first.content)
+    assertEquals(hunk.content.toByteArray(Charsets.UTF_8).size.toLong(), first.bytes)
+  }
+
+  @Test fun `overwriting stored body without updating content digest throws integrity error`() {
+    val root = repo("A.kt" to "working-tree")
+    val original = "@@ -2 +2 @@\n-owned\n+changed"
+    val overwritten = "@@ -2 +2 @@\n-owned\n+tampered"
+    val hunk = ReviewChangedHunk("A.kt", 2, 1, 2, 1, original)
+    val storePath = ".skill-bill/run-evidence/code-review/fp-integrity"
+    val payloads = mutableMapOf(storePath to original)
+    val broker = locatorBroker(root, listOf(hunk), storePath, payloads)
+    payloads[storePath] = overwritten
+
+    val failure = assertFailsWith<ReviewHunkEvidenceIntegrityError> {
+      broker.readBatch(batch("A.kt"))
+    }
+    assertEquals(storePath, failure.storePath)
+    assertEquals(ReviewChangedHunk.digestOfBody(original), failure.expectedDigest)
+    assertEquals(ReviewChangedHunk.digestOfBody(overwritten), failure.observedDigest)
+    assertEquals(0, broker.accounting().evidenceBytes)
+  }
+
+  @Test fun `a hunk larger than remaining evidence budget is omitted entirely`() {
+    val root = repo("A.kt" to "aa", "B.kt" to "bbbb")
+    val small = ReviewChangedHunk("A.kt", 1, 1, 1, 1, "aa")
+    val large = ReviewChangedHunk("B.kt", 1, 1, 1, 1, "bbbb")
+    val storePath = ".skill-bill/run-evidence/code-review/fp-budget"
+    val broker = locatorBroker(
+      root,
+      listOf(small, large),
+      storePath,
+      mapOf(storePath to "aa"),
+      policy(result = 8, cumulative = 3),
+      ReviewStoredHunkBodyExtractor { _, hunk -> if (hunk.path == "A.kt") "aa" else "bbbb" },
+    )
+    val first = broker.readBatch(batch("A.kt")).results.single()
+    val second = broker.readBatch(batch("B.kt")).results.single()
+
+    assertEquals("aa", first.content)
+    assertEquals(null, second.content)
+    assertEquals("lane_evidence_bytes", second.budgetExceeded?.budgetKind)
+    assertTrue(second.bytes == 0L)
+  }
+
   @Test fun `an ordinary bounded review completes with full accounting and no termination`() {
     val root = repo("A.kt" to "assigned")
     val broker = projectedBroker(root, assignment(listOf("A.kt")))
@@ -513,6 +585,38 @@ class FileSystemReviewEvidenceBrokerTest {
     val projectedAssignment = assignment.copy(assignedHunks = hunks.map { it.hunkId })
     return FileSystemReviewEvidenceBroker(
       ReviewEvidenceBrokerBinding(root, projectedAssignment, "security", budget, projectedHunks = hunks),
+    )
+  }
+
+  private fun locatorBroker(
+    root: Path,
+    hunks: List<ReviewChangedHunk>,
+    storePath: String,
+    payloads: Map<String, String>,
+    budget: ReviewContextBudgetPolicy = policy(),
+    extractor: ReviewStoredHunkBodyExtractor? = null,
+  ): FileSystemReviewEvidenceBroker {
+    val indexed = hunks.map { hunk ->
+      hunk.asIndex(
+        ReviewHunkEvidenceLocator.atStore(storePath, hunk.oldStart, hunk.oldCount, hunk.newStart, hunk.newCount),
+        hunk.content,
+      )
+    }
+    val assigned = assignment(indexed.map { it.path }.distinct()).copy(assignedHunks = indexed.map { it.hunkId })
+    return FileSystemReviewEvidenceBroker(
+      ReviewEvidenceBrokerBinding(
+        root,
+        assigned,
+        "security",
+        budget,
+        projectedHunks = indexed,
+        locatorReader = FeatureTaskRuntimeSharedEvidenceLocatorReadPort { request ->
+          payloads[request.storePath] ?: error("missing locator payload")
+        },
+        bodyExtractor = extractor ?: ReviewStoredHunkBodyExtractor { payload, _ ->
+          payload.replace("\r\n", "\n")
+        },
+      ),
     )
   }
 

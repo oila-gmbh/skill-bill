@@ -24,6 +24,7 @@ import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceFingerprintCo
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceLocatorReadPort
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceLocatorReadRequest
 import skillbill.review.context.ReviewContextEnvelopeValidator
+import skillbill.review.context.model.GovernedReviewLaunch
 import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewBaselineUntrackedPolicy
 import skillbill.review.context.model.ReviewBuildTestFact
@@ -40,6 +41,7 @@ import skillbill.review.context.model.ReviewExpansionRecord
 import skillbill.review.context.model.ReviewHunkEvidenceLocator
 import skillbill.review.context.model.ReviewLaneBundle
 import skillbill.review.context.model.ReviewLaneDecision
+import skillbill.review.context.model.ReviewLaneReviewDisposition
 import skillbill.review.context.model.ReviewLearningsReference
 import skillbill.review.context.model.ReviewRevision
 import skillbill.review.context.model.ReviewRuleReference
@@ -552,6 +554,56 @@ class ReviewPreparationServiceTest {
     assertTrue(assignmentBytes < patch.toByteArray().size / 10, "assignment envelope $assignmentBytes")
     assertEquals(0, workerLaunches)
     result.packet.changedHunks.forEach { assertEquals("", it.content) }
+    val launch = GovernedReviewLaunch(
+      result.assignments.single(),
+      result.packet,
+      "contract",
+      "rubric",
+      "broker",
+      ReviewContextBudgetPolicy.DEFAULT,
+    )
+    assertEquals(ReviewLaneReviewDisposition.INCOMPLETE, launch.completionState.disposition)
+    assertEquals("lane_evidence_bytes", launch.completionState.budgetDimension)
+    assertTrue(launch.completionState.unreviewedUnits.isNotEmpty())
+  }
+
+  @Test fun `evidence overflow on one assignment leaves the sibling selected and complete`() {
+    val hugePatch = oversizedPatch("src/A.kt")
+    val smallPatch = "diff --git a/src/B.kt b/src/B.kt\n--- a/src/B.kt\n+++ b/src/B.kt\n@@ -1,1 +1,2 @@\n+beta\n"
+    val huge = ReviewDiffEvidence.parse(hugePatch).hunks.single()
+    val small = ReviewDiffEvidence.parse(smallPatch).hunks.single()
+    val storePath = ".skill-bill/run-evidence/code-review/fp-sibling"
+    val result = storePrepare(
+      listOf(huge, small),
+      hugePatch + "\n" + smallPatch,
+      storePath,
+      decisions = listOf(
+        includedDecision("testing", "test sources changed", "src/A.kt").copy(required = true),
+        includedDecision("security", "auth surface changed", "src/B.kt"),
+      ),
+    )
+    assertEquals(listOf("security", "testing"), result.packet.selectedLanes)
+    assertTrue(result.packet.canonicalBytes < 524_288)
+    val testing = GovernedReviewLaunch(
+      result.assignments.single { it.lane == "testing" },
+      result.packet,
+      "contract",
+      "rubric",
+      "broker",
+      ReviewContextBudgetPolicy.DEFAULT,
+    )
+    val security = GovernedReviewLaunch(
+      result.assignments.single { it.lane == "security" },
+      result.packet,
+      "contract",
+      "rubric",
+      "broker",
+      ReviewContextBudgetPolicy.DEFAULT,
+    )
+    assertEquals(ReviewLaneReviewDisposition.INCOMPLETE, testing.completionState.disposition)
+    assertEquals("lane_evidence_bytes", testing.completionState.budgetDimension)
+    assertEquals(ReviewLaneReviewDisposition.COMPLETE, security.completionState.disposition)
+    assertTrue(result.packet.laneDecisions.single { it.lane == "testing" }.required)
   }
 
   @Test fun `blank store path with a live locator reader fails compose without launching workers`() {

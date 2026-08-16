@@ -202,6 +202,7 @@ fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): Parall
         FileSystemDecompositionManifestFileStore(),
       ),
     ),
+    reviewEvidenceBrokerFactory = skillbill.infrastructure.fs.FileSystemReviewEvidenceBrokerFactory(),
   )
 
 /** The base revision every harness request declares; the root commit of a fixture range parents onto it. */

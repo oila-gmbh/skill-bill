@@ -279,6 +279,30 @@ class ReviewLaneBundleAssemblyTest {
     assertEquals(emptyList(), complete.unreviewedUnits)
   }
 
+  @Test fun `lane evidence overflow names undelivered units and does not truncate a hunk`() {
+    val built = packet(listOf(unit("c1", "base", 0, listOf(hunkA, hunkB))))
+    val assembled = ReviewLaneAssembledBundle.assemble(
+      assignment(
+        built,
+        ReviewLaneBundle(listOf(ReviewLaneBundleEntry("c1", 0, listOf(hunkA.hunkId, hunkB.hunkId)))),
+      ),
+      built,
+    )
+    val complete = segmentAssembledBundle(assembled, maxLaneLaunchBytes = 10_000) { _ -> 10L }
+      .toCompletionState(assembled.compositionDigest)
+    val overflow = complete.withLaneEvidenceBudget(assembled.entries, maxLaneEvidenceBytes = hunkA.contentBytes)
+    val fits = complete.withLaneEvidenceBudget(
+      assembled.entries,
+      maxLaneEvidenceBytes = hunkA.contentBytes + hunkB.contentBytes,
+    )
+
+    assertEquals(ReviewLaneReviewDisposition.INCOMPLETE, overflow.disposition)
+    assertEquals(LANE_EVIDENCE_BYTES_DIMENSION, overflow.budgetDimension)
+    assertEquals(listOf("c1@${hunkB.path}"), overflow.unreviewedUnits)
+    assertEquals(listOf(EVIDENCE_UNREVIEWABLE_SEGMENT_ID), overflow.unreviewedSegmentIds)
+    assertEquals(ReviewLaneReviewDisposition.COMPLETE, fits.disposition)
+  }
+
   // AC-009: a bundle that fit the budget still is not clean coverage when the lane's run failed.
   @Test fun `a failed lane run downgrades a complete state to incomplete naming its whole bundle`() {
     val built = packet(listOf(unit("c1", "base", 0, listOf(hunkA))))

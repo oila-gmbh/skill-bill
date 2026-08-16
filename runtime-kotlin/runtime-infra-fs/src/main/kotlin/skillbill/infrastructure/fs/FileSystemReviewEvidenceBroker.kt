@@ -2,6 +2,8 @@ package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.error.InvalidReviewContextSchemaError
+import skillbill.error.ReviewHunkEvidenceIntegrityError
+import skillbill.error.ReviewHunkEvidenceLocatorMissingError
 import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.ReviewEvidenceBrokerFactory
 import skillbill.ports.review.model.ReviewEvidenceBatchRequest
@@ -22,6 +24,9 @@ import skillbill.review.context.model.ReviewLaneIdentity
 import skillbill.review.context.model.ReviewOperationKind
 import skillbill.review.context.model.ReviewOperationPolicy
 import skillbill.review.context.model.ReviewRequestedOperation
+import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceLocatorReadPort
+import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceLocatorReadRequest
+import skillbill.review.context.model.ReviewChangedHunk
 import skillbill.review.context.model.requireRepositoryRelativePath
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
@@ -45,6 +50,8 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
   private val policy = ReviewOperationPolicy(assignment, binding.laneRubricId, binding.namedDependencies)
   private val authorizedExpansionLedger = binding.trustedExpansionLedger.toMutableList()
   private val projectedHunks = binding.projectedHunks
+  private val locatorReader = binding.locatorReader
+  private val bodyExtractor = binding.bodyExtractor
   private val completeFileCheckpoint = (
     assignment.assignedPaths + assignment.dependencyAllowlist.normalized
     ).distinct().associateWith(::checkpointDigest)
@@ -175,11 +182,66 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
   }
 
   private fun readProjectedHunks(path: String): ReviewEvidenceResult {
-    val content = projectedHunks
+    val hunks = projectedHunks
       .filter { it.path == path }
       .sortedWith(compareBy({ it.newStart }, { it.oldStart }, { it.hunkId }))
-      .joinToString("\n") { it.content.replace("\r\n", "\n") }
-    return serveEvidence(content.toByteArray(StandardCharsets.UTF_8))
+    val delivered = mutableListOf<String>()
+    for (hunk in hunks) {
+      val body = materializeAssignedHunk(hunk)
+      val bytes = body.toByteArray(StandardCharsets.UTF_8).size.toLong()
+      assignedHunkBudgetOutcome(bytes)?.let { exceeded ->
+        return if (delivered.isEmpty()) {
+          exceeded
+        } else {
+          val content = delivered.joinToString("\n")
+          ReviewEvidenceResult(
+            content,
+            content.toByteArray(StandardCharsets.UTF_8).size.toLong(),
+            cumulativeBytes,
+            expansionLedger.size,
+            budgetExceeded = exceeded.budgetExceeded,
+          )
+        }
+      }
+      cumulativeBytes += bytes
+      delivered += body
+    }
+    val content = delivered.joinToString("\n")
+    return ReviewEvidenceResult(
+      content,
+      content.toByteArray(StandardCharsets.UTF_8).size.toLong(),
+      cumulativeBytes,
+      expansionLedger.size,
+    )
+  }
+
+  private fun materializeAssignedHunk(hunk: ReviewChangedHunk): String {
+    val locator = hunk.evidenceLocator
+    val body = if (locatorReader !== FeatureTaskRuntimeSharedEvidenceLocatorReadPort.NONE) {
+      val payload = locatorReader.readDiffPayload(
+        FeatureTaskRuntimeSharedEvidenceLocatorReadRequest(root, locator.storePath, locator.payloadFile),
+      )
+      bodyExtractor.extract(payload, hunk)
+    } else {
+      val fallback = hunk.content.replace("\r\n", "\n")
+      if (fallback.isEmpty()) throw ReviewHunkEvidenceLocatorMissingError(locator.storePath)
+      fallback
+    }
+    val normalized = body.replace("\r\n", "\n")
+    val observed = ReviewChangedHunk.digestOfBody(normalized)
+    if (observed != hunk.contentDigest) {
+      throw ReviewHunkEvidenceIntegrityError(locator.storePath, hunk.contentDigest, observed)
+    }
+    return normalized
+  }
+
+  private fun assignedHunkBudgetOutcome(bytes: Long): ReviewEvidenceResult? {
+    val observedCumulative = cumulativeBytes + bytes
+    return if (observedCumulative > budget.maxLaneEvidenceBytes) {
+      exceeded("lane_evidence_bytes", budget.maxLaneEvidenceBytes, observedCumulative)
+    } else {
+      null
+    }
   }
 
   private fun readCompleteFile(path: String, assigned: Boolean): ReviewEvidenceResult {

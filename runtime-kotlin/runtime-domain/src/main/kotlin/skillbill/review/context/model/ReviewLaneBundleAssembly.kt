@@ -299,6 +299,42 @@ fun ReviewLaneBundleSegment.toAccounting(): ReviewLaneSegmentAccounting = Review
   compositionDigest = compositionDigest,
 )
 
+const val LANE_EVIDENCE_BYTES_DIMENSION: String = "lane_evidence_bytes"
+
+const val EVIDENCE_UNREVIEWABLE_SEGMENT_ID: String = "evidence-unreviewable"
+
+fun ReviewLaneCompletionState.withLaneEvidenceBudget(
+  entries: List<ReviewLaneAssembledEntry>,
+  maxLaneEvidenceBytes: Long,
+): ReviewLaneCompletionState {
+  if (disposition == ReviewLaneReviewDisposition.INCOMPLETE) return this
+  var used = 0L
+  val undelivered = mutableListOf<ReviewLaneAssembledEntry>()
+  var overflow = false
+  for (entry in entries) {
+    val size = entry.hunk.contentBytes
+    if (overflow || used + size > maxLaneEvidenceBytes) {
+      overflow = true
+      undelivered += entry
+    } else {
+      used += size
+    }
+  }
+  if (!overflow) return this
+  return copy(
+    disposition = ReviewLaneReviewDisposition.INCOMPLETE,
+    unreviewedSegmentIds = listOf(EVIDENCE_UNREVIEWABLE_SEGMENT_ID),
+    budgetDimension = LANE_EVIDENCE_BYTES_DIMENSION,
+    unreviewedUnits = undelivered.map { "${it.commitSha}@${it.hunk.path}" }.distinct(),
+    segments = segments + ReviewLaneSegmentAccounting(
+      segmentId = EVIDENCE_UNREVIEWABLE_SEGMENT_ID,
+      measuredBytes = undelivered.sumOf { it.hunk.contentBytes },
+      entryCount = undelivered.size,
+      compositionDigest = sha256Hex(canonicalFieldList(undelivered.map { it.canonical })),
+    ),
+  )
+}
+
 /** The dimension named when a lane is incomplete because its parent agent run did not succeed. */
 const val LANE_RUN_OUTCOME_DIMENSION: String = "lane_run_outcome"
 

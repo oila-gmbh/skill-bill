@@ -16,6 +16,7 @@ import skillbill.application.review.ReviewHarnessConfig
 import skillbill.application.review.ReviewRecorder
 import skillbill.application.review.SpecIntentProjectionExtractor
 import skillbill.application.review.SpecIntentProjectionResolver
+import skillbill.application.review.diffForChanges
 import skillbill.application.review.diffForPaths
 import skillbill.application.review.harnessRequest
 import skillbill.application.review.reviewHarness
@@ -356,7 +357,7 @@ class ParallelCodeReviewRunnerTest {
 
     assertEquals(2, launcher.requests.size)
     launcher.requests.forEach { request ->
-      assertEquals(null, request.skillRunRequest.reviewEvidenceBroker)
+      assertNotNull(request.skillRunRequest.reviewEvidenceBroker)
       assertContains(request.skillRunRequest.promptOverride.orEmpty(), "bill-code-review mode:inline")
       assertContains(request.skillRunRequest.promptOverride.orEmpty(), "do not launch specialists")
       assertContains(request.skillRunRequest.promptOverride.orEmpty(), "governed generic rubric")
@@ -409,6 +410,39 @@ class ParallelCodeReviewRunnerTest {
       assertContains(prompt, "do not launch specialists")
       assertFalse(prompt.contains("Launch one specialist worker per resolved rubric"))
     }
+  }
+
+  @Test
+  fun `evidence overflow leaves the sibling required lane selected and the parent composed`() {
+    val pack = sparseReviewPack(
+      slug = "kotlin",
+      requiredArea = "architecture",
+      pathAreas = mapOf("testing" to listOf("src/test/")),
+    )
+    val recorder = ReviewRecorder()
+    val huge = "x".repeat(300_000)
+    val result = reviewHarness(
+      ReviewHarnessConfig(
+        manifests = listOf(pack),
+        diff = diffForChanges(
+          "src/Main.kt" to huge,
+          "src/test/MainTest.kt" to "ok",
+        ),
+      ),
+      recorder,
+    ).run(harnessRequest())
+
+    assertTrue(recorder.parentLaunches.isNotEmpty())
+    recorder.parentPrompts.forEach { prompt ->
+      assertTrue(prompt.contains("bill-kotlin-code-review-architecture"))
+      assertTrue(prompt.contains("bill-kotlin-code-review-testing"))
+      assertFalse(prompt.contains(huge))
+    }
+    val coverage = assertNotNull(result.coverage)
+    assertFalse(coverage.isCleanCoverage)
+    assertTrue(
+      coverage.incompleteLanes.any { lane -> lane.unreviewedUnits.any { it.contains("src/Main.kt") } },
+    )
   }
 
   @Test
@@ -790,8 +824,11 @@ class ParallelCodeReviewSuppliedDiffTest {
       assertContains(prompt, "Owned paths: \"Child.kt\"")
       assertContains(prompt, "## Assigned bundle:")
       assertContains(prompt, "\"Child.kt\"")
-      assertContains(prompt, "+owned change")
-      assertContains(prompt, "Use the assigned bundle evidence below as authoritative")
+      assertFalse(prompt.contains("+owned change"))
+      assertContains(prompt, "hunk_id:")
+      assertContains(prompt, "content_digest:")
+      assertContains(prompt, "evidence_locator:")
+      assertContains(prompt, "Use the assigned bundle locators below as authoritative")
       assertFalse(prompt.contains("unexpected branch diff"), "the supplied diff must replace branch resolution")
       assertEquals(null, request.skillRunRequest.nativeReviewWorkerName)
     }
@@ -1427,6 +1464,7 @@ private fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFixt
       ),
     ),
     nativeAgentPreflight = config.nativeAgentPreflight,
+    reviewEvidenceBrokerFactory = skillbill.infrastructure.fs.FileSystemReviewEvidenceBrokerFactory(),
   )
 
 private class RecordingReviewDatabase : DatabaseSessionFactory {

@@ -753,6 +753,7 @@ data class ReviewChangedHunk(
   internal val indexedContentDigest: String? = null,
   internal val indexedEvidenceLocator: ReviewHunkEvidenceLocator? = null,
   internal val indexedHunkId: String? = null,
+  internal val indexedContentBytes: Long? = null,
 ) {
   init {
     requireRepositoryRelativePath(path)
@@ -768,6 +769,9 @@ data class ReviewChangedHunk(
     ?: ReviewHunkEvidenceLocator.inProcess(contentDigest, oldStart, oldCount, newStart, newCount)
 
   val hunkId: String = indexedHunkId ?: sha256(identityCanonical())
+
+  val contentBytes: Long = indexedContentBytes
+    ?: content.replace("\r\n", "\n").toByteArray(StandardCharsets.UTF_8).size.toLong()
 
   internal fun identityCanonical(): String = identityCanonical(
     path,
@@ -796,6 +800,7 @@ data class ReviewChangedHunk(
       indexedContentDigest = digestOfBody(normalized),
       indexedEvidenceLocator = locator,
       indexedHunkId = idFor(path, oldStart, oldCount, newStart, newCount, normalized, commitScope),
+      indexedContentBytes = normalized.toByteArray(StandardCharsets.UTF_8).size.toLong(),
     )
   }
 
@@ -1142,6 +1147,7 @@ data class GovernedReviewLaunch(
 
   val completionState: ReviewLaneCompletionState by lazy(LazyThreadSafetyMode.PUBLICATION) {
     segmentation.toCompletionState(assembledBundle.compositionDigest)
+      .withLaneEvidenceBudget(assembledBundle.entries, budget.maxLaneEvidenceBytes)
   }
 
   fun requireCodexForkTurns(forkTurns: String?) {

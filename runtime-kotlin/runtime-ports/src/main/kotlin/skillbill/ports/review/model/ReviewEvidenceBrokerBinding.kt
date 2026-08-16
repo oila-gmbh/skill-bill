@@ -1,5 +1,7 @@
 package skillbill.ports.review.model
 
+import skillbill.ports.review.ReviewStoredHunkBodyExtractor
+import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceLocatorReadPort
 import skillbill.review.context.model.ReviewAssignment
 import skillbill.review.context.model.ReviewChangedHunk
 import skillbill.review.context.model.ReviewContextBudgetPolicy
@@ -14,6 +16,9 @@ data class ReviewEvidenceBrokerBinding(
   val namedDependencies: Set<String> = emptySet(),
   val trustedExpansionLedger: List<ReviewExpansionRecord> = emptyList(),
   val projectedHunks: List<ReviewChangedHunk> = emptyList(),
+  val locatorReader: FeatureTaskRuntimeSharedEvidenceLocatorReadPort =
+    FeatureTaskRuntimeSharedEvidenceLocatorReadPort.NONE,
+  val bodyExtractor: ReviewStoredHunkBodyExtractor = ReviewStoredHunkBodyExtractor.HUNK_CONTENT,
 ) {
   init {
     require(laneRubricId.isNotBlank()) { "A bound lane must name the single rubric it owns." }

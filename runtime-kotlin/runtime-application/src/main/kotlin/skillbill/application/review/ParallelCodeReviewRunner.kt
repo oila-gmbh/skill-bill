@@ -24,6 +24,7 @@ import skillbill.error.ReviewHunkEvidenceLocatorMissingError
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunTokenOwnership
+import skillbill.ports.agentrun.model.ConversationIsolation
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.config.RepoLocalConfigPort
@@ -34,13 +35,17 @@ import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.model.ReviewAccountingRecord
 import skillbill.ports.persistence.model.ReviewIntegrationPassRecord
+import skillbill.ports.review.BrokerBackedNativeReviewOperationProtocol
 import skillbill.ports.review.ParallelReviewLaneRunner
+import skillbill.ports.review.ReviewEvidenceBroker
+import skillbill.ports.review.ReviewEvidenceBrokerFactory
 import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.review.ReviewRubricResolver
 import skillbill.ports.review.ReviewSpecialistContractProvider
 import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.ports.review.model.ParallelReviewLaneRunRequest
 import skillbill.ports.review.model.ParallelReviewLaneRunResult
+import skillbill.ports.review.model.ReviewEvidenceBrokerBinding
 import skillbill.ports.review.model.ReviewIntegrationPassOutcome
 import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.ports.review.model.ReviewNativeAgentPreflightRequest
@@ -127,6 +132,7 @@ class ParallelCodeReviewRunner(
   private val sharedEvidenceLocatorReader: FeatureTaskRuntimeSharedEvidenceLocatorReadPort =
     FeatureTaskRuntimeSharedEvidenceLocatorReadPort.NONE,
   private val specIntentProjectionResolver: SpecIntentProjectionResolver,
+  private val reviewEvidenceBrokerFactory: ReviewEvidenceBrokerFactory,
   private val nativeAgentPreflight: ReviewNativeAgentPreflightPort = ReviewNativeAgentPreflightPort.NONE,
 ) {
   private data class InitialRun(
@@ -1178,6 +1184,7 @@ class ParallelCodeReviewRunner(
       prompt = parentPrompt(selected, routedManifests, resolvedMode),
       bundleState = aggregateBundleCompletion(bundleStates),
     )
+    val evidenceBroker = parentEvidenceBroker(selected, request.repoRoot)
     val outcome = parentReviewLauncher.launch(
       GoalRunnerSubtaskLaunchRequest(
         invokedAgentId = agentId,
@@ -1188,6 +1195,9 @@ class ParallelCodeReviewRunner(
           timeout = request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes,
           promptOverride = request.withSelectedAgentAddons(launch.prompt),
           modelOverride = modelOverride,
+          conversationIsolation = ConversationIsolation.NONE,
+          reviewEvidenceBroker = evidenceBroker,
+          nativeReviewOperations = BrokerBackedNativeReviewOperationProtocol(evidenceBroker),
         ),
       ),
     )
@@ -1212,6 +1222,7 @@ class ParallelCodeReviewRunner(
       segmentAccounting = bundleState.segments,
       unreviewedSegmentIds = bundleState.unreviewedSegmentIds,
       budgetDimension = bundleState.budgetDimension,
+      unreviewedUnits = bundleState.unreviewedUnits,
     )
   }
 
@@ -1245,6 +1256,7 @@ class ParallelCodeReviewRunner(
       segmentAccounting = bundleState.segments,
       unreviewedSegmentIds = bundleState.unreviewedSegmentIds,
       budgetDimension = bundleState.budgetDimension,
+      unreviewedUnits = bundleState.unreviewedUnits,
     )
   }
 
@@ -1294,7 +1306,7 @@ class ParallelCodeReviewRunner(
         appendLine("Owned paths: ${launch.assignment.assignedPaths.joinToString(",") { structuredString(it) }}")
         launch.rubrics.forEach { rubric -> appendLine(rubric.body) }
       }
-      appendLine("Use the assigned bundle evidence below as authoritative; do not rediscover or replace its scope.")
+      appendLine("Use the assigned bundle locators below as authoritative; fetch bodies through the bound broker.")
       if (inline) {
         appendLine(
           "Merge every routed rubric above into one combined checklist, then traverse the diff exactly " +
@@ -1334,13 +1346,48 @@ class ParallelCodeReviewRunner(
 
   private fun StringBuilder.appendAssignedBundleEvidence(launch: ReviewSpecialistLaunchRequest) {
     governedLaunchFor(launch).deliveredEntries.forEach { entry ->
+      val hunk = entry.hunk
+      val locator = hunk.evidenceLocator
       appendLine(
         "### Commit ${structuredString(entry.commitSha)} (order=${entry.orderIndex}, " +
-          "path=${structuredString(entry.hunk.path)})",
+          "path=${structuredString(hunk.path)})",
       )
       appendLine("Subject: ${structuredString(entry.subject.replace("\r\n", "\n"))}")
-      appendLine(entry.hunk.content)
+      appendLine("hunk_id: ${hunk.hunkId}")
+      appendLine("spans: -${hunk.oldStart},${hunk.oldCount} +${hunk.newStart},${hunk.newCount}")
+      appendLine("content_digest: ${hunk.contentDigest}")
+      appendLine("evidence_locator: store_path=${structuredString(locator.storePath)} " +
+        "payload_file=${structuredString(locator.payloadFile)} " +
+        "hunk_header=${structuredString(locator.hunkHeader)}")
     }
+  }
+
+  private fun parentEvidenceBroker(
+    selected: List<ReviewSpecialistLaunchRequest>,
+    repoRoot: Path,
+  ): ReviewEvidenceBroker {
+    val brokers = selected.associate { launch ->
+      launch.assignment.lane to reviewEvidenceBrokerFactory.brokerFor(brokerBinding(launch, repoRoot))
+    }
+    return brokers.values.singleOrNull() ?: FanOutReviewEvidenceBroker(brokers)
+  }
+
+  private fun brokerBinding(
+    launch: ReviewSpecialistLaunchRequest,
+    repoRoot: Path,
+  ): ReviewEvidenceBrokerBinding {
+    val assigned = launch.assignment.assignedHunks.toSet()
+    return ReviewEvidenceBrokerBinding(
+      repoRoot = repoRoot,
+      assignment = launch.assignment,
+      laneRubricId = launch.rubrics.first().rubricId,
+      budget = launch.budget,
+      namedDependencies = launch.namedDependencies,
+      trustedExpansionLedger = launch.assignment.expansions,
+      projectedHunks = launch.packet.changedHunks.filter { it.hunkId in assigned },
+      locatorReader = sharedEvidenceLocatorReader,
+      bodyExtractor = ReviewLocatorHunkBodyExtractor,
+    )
   }
 
   private fun governedLaunchFor(request: ReviewSpecialistLaunchRequest): GovernedReviewLaunch = GovernedReviewLaunch(
@@ -1684,6 +1731,7 @@ private fun inlineParentAccounting(launch: InlineParentLaunch, terminalStatus: S
     segmentAccounting = launch.bundleState.segments,
     unreviewedSegmentIds = launch.bundleState.unreviewedSegmentIds,
     budgetDimension = launch.bundleState.budgetDimension,
+    unreviewedUnits = launch.bundleState.unreviewedUnits,
   )
 
 /** Terminal status of a resume pass that had no incomplete lane left to launch a worker for. */

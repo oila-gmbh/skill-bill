@@ -51,9 +51,11 @@ class ReviewAccountingDurableRedactionTest {
 
     val prompts = recorder.parentPrompts
     assertTrue(prompts.isNotEmpty(), "The redaction proof is only meaningful if a lane was launched.")
-    assertTrue(prompts.all { it.contains("DIFF_SENTINEL") }, "The diff body must reach the lane prompt.")
+    assertTrue(prompts.all { it.contains("hunk_id:") }, "Indexed hunk locators must reach the lane prompt.")
+    assertTrue(prompts.all { !it.contains("DIFF_SENTINEL") }, "The stored hunk body must not be inlined in the prompt.")
     assertTrue(prompts.all { it.contains("RUBRIC_SENTINEL") }, "The rubric body must reach the lane prompt.")
-    assertTrue(prompts.all { it.contains("GUIDANCE_SENTINEL") }, "The changed guidance body must reach the prompt.")
+    assertTrue(prompts.all { it.contains("docs/GUIDANCE.md") }, "Changed guidance paths must reach the prompt.")
+    assertTrue(prompts.all { !it.contains("GUIDANCE_SENTINEL") }, "Guidance hunk bodies must not be inlined.")
     assertTrue(summary.aggregateCounters.launchBytes > 0)
     assertTrue(summary.aggregateCounters.resultBytes > 0)
   }

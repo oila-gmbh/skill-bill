@@ -25,7 +25,7 @@ class ReviewAccountingProjectionRedactionTest {
     assertTrue(
       recorder.parentPrompts.isNotEmpty() &&
         recorder.parentPrompts.all { prompt -> forbidden.dropLast(1).all { prompt.contains(it) } },
-      "The projection proof needs a run whose prompts actually carried the content bodies.",
+      "The projection proof needs a run whose prompts actually carried rubric bodies and owned paths.",
     )
     forbidden.forEach { assertFalse(serialized.contains(it), "Accounting projection leaked '$it'.") }
     assertEquals(
