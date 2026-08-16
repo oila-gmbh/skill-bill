@@ -124,7 +124,11 @@ private object GitStandardWorkflowGitOperations : WorkflowGitOperations {
 
   override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult {
     val commit = runGitCommand(repoRoot, "commit", "-m", message)
-    return if (commit.ok) runGitCommand(repoRoot, "rev-parse", "HEAD") else commit
+    return when {
+      commit.ok -> runGitCommand(repoRoot, "rev-parse", "HEAD")
+      commit.recordsNothingToCommit() -> WorkflowGitOperationResult(status = "ok", value = "")
+      else -> commit
+    }
   }
 
   override fun pushBranch(repoRoot: Path, branch: String): WorkflowGitOperationResult {

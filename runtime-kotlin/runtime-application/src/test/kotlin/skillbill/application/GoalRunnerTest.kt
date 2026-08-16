@@ -940,6 +940,42 @@ class GoalRunnerLinearScratchFinalizeTest {
   }
 
   @Test
+  fun `finalize continues when commit-all has nothing to commit`() {
+    val repoRoot = Files.createTempDirectory("goal-empty-commit-finalize")
+    val git = CommitAllRecordingGitOperations(
+      dirtyPorcelain = " M .feature-specs/SKILL-56-goal/decomposition-manifest.yaml\n M src/Extra.kt",
+      currentBranch = "feat/SKILL-56-goal",
+      commitError =
+        "git commit -m chore(SKILL-56): goal finalization commit-all on 'feat/SKILL-56-goal' " +
+          "failed with exit code 1: On branch feat/SKILL-56-goal\n" +
+          "Changes not staged for commit:\n" +
+          "\tmodified:   .feature-specs/SKILL-56-goal/decomposition-manifest.yaml\n" +
+          "no changes added to commit (use \"git add\" and/or \"git commit -a\")",
+    )
+    val pullRequests = RecordingPullRequestPort()
+    val store = InMemoryGoalManifestStore(
+      manifest = manifest(subtaskCount = 1)
+        .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1"),
+    )
+    val runner = GoalRunner(
+      store,
+      RecordingSubtaskLauncher { launchFacts() },
+      RecordingOutcomeStore(),
+      pullRequests,
+      specScratchStore = RecordingSpecScratchStore(),
+      gitOperations = git,
+    )
+
+    assertIs<GoalRunnerRunReport.Completed>(runner.run(linearRunRequest(repoRoot)))
+    assertEquals(
+      listOf("chore(SKILL-56): goal finalization commit-all on 'feat/SKILL-56-goal'"),
+      git.commitMessages,
+    )
+    assertTrue(git.pushedBranches.isEmpty())
+    assertEquals(1, pullRequests.openCount)
+  }
+
+  @Test
   fun `finalize with a clean worktree skips commit-all and still opens the PR`() {
     val repoRoot = Files.createTempDirectory("goal-clean-finalize")
     val git = CommitAllRecordingGitOperations(dirtyPorcelain = "", currentBranch = "feat/SKILL-56-goal")
@@ -1417,6 +1453,7 @@ private class CommitAllRecordingGitOperations(
   private val currentBranch: String,
   private val unpushedCommits: Boolean = false,
   private val pushError: String? = null,
+  private val commitError: String? = null,
 ) : WorkflowGitOperations, GoalSubtaskReviewGitOperationsProvider, ScopedStagingGitOperationsProvider {
   var stageAllCalls: Int = 0
   val stagePathsCalls: MutableList<List<String>> = mutableListOf()
@@ -1467,7 +1504,8 @@ private class CommitAllRecordingGitOperations(
           }
       }
       .joinToString("\n")
-    return WorkflowGitOperationResult(status = "ok", value = "sha-finalize")
+    return commitError?.let { WorkflowGitOperationResult(status = "error", error = it) }
+      ?: WorkflowGitOperationResult(status = "ok", value = "sha-finalize")
   }
 
   override fun pushBranch(repoRoot: Path, branch: String): WorkflowGitOperationResult {
