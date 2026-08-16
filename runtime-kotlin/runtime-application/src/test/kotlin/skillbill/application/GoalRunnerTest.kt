@@ -973,11 +973,11 @@ class GoalRunnerLinearScratchFinalizeTest {
       dirtyPorcelain = " M .feature-specs/SKILL-56-goal/decomposition-manifest.yaml\n M src/Extra.kt",
       currentBranch = "feat/SKILL-56-goal",
       commitError =
-        "git commit -m chore(SKILL-56): goal finalization commit-all on 'feat/SKILL-56-goal' " +
-          "failed with exit code 1: On branch feat/SKILL-56-goal\n" +
-          "Changes not staged for commit:\n" +
-          "\tmodified:   .feature-specs/SKILL-56-goal/decomposition-manifest.yaml\n" +
-          "no changes added to commit (use \"git add\" and/or \"git commit -a\")",
+      "git commit -m chore(SKILL-56): goal finalization commit-all on 'feat/SKILL-56-goal' " +
+        "failed with exit code 1: On branch feat/SKILL-56-goal\n" +
+        "Changes not staged for commit:\n" +
+        "\tmodified:   .feature-specs/SKILL-56-goal/decomposition-manifest.yaml\n" +
+        "no changes added to commit (use \"git add\" and/or \"git commit -a\")",
     )
     val pullRequests = RecordingPullRequestPort()
     val store = InMemoryGoalManifestStore(
