@@ -3036,6 +3036,11 @@ internal class FeatureTaskRuntimeRunLoop(
     ReviewDriverFailed(
       "Runtime-owned review produced an invalid review-context envelope: ${error.message.orEmpty()}",
     )
+  } catch (@Suppress("TooGenericExceptionCaught") error: Exception) {
+    ReviewDriverFailed(
+      "Runtime-owned review failed: ${error::class.simpleName}: ${error.message.orEmpty()}",
+      FeatureTaskRuntimeFailureDisposition.RETRYABLE,
+    )
   }
 
   private fun settleReviewDriverResult(

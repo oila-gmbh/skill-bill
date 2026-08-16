@@ -24,17 +24,25 @@ object ParallelReviewFindingParser {
     RegexOption.MULTILINE,
   )
 
+  const val UNASSIGNED_REPOSITORY_PATH = "unassigned"
+
   fun parse(text: String): List<ParallelReviewRawFinding> = parallelFindingPattern.findAll(text).mapNotNull { match ->
+    runCatching { parseMatch(match) }.getOrNull()
+  }.toList()
+
+  private fun parseMatch(match: MatchResult): ParallelReviewRawFinding? {
     val severityStr = match.groups["severity"]?.value.orEmpty()
-    val severity = mapSeverity(severityStr) ?: return@mapNotNull null
+    val severity = mapSeverity(severityStr) ?: return null
     val structuredPath = match.groups["path"]?.value
-    val path = structuredPath?.let(::decodeStructuredString)
-      ?: match.groups["legacyPath"]?.value?.trim().orEmpty()
-    requireRepositoryRelativePath(path)
+    val decodedPath = runCatching {
+      structuredPath?.let(::decodeStructuredString)
+        ?: match.groups["legacyPath"]?.value?.trim().orEmpty()
+    }.getOrDefault("")
+    val path = admittedRepositoryPath(decodedPath)
     val lineText = match.groups["line"]?.value ?: match.groups["legacyLine"]?.value
-    val line = lineText?.toIntOrNull()?.takeIf { it > 0 } ?: return@mapNotNull null
+    val line = lineText?.toIntOrNull()?.takeIf { it > 0 } ?: return null
     val peeled = peelTrailingStructuredFields(match.groups["description"]?.value.orEmpty().trim())
-    ParallelReviewRawFinding(
+    return ParallelReviewRawFinding(
       severity = severity,
       confidence = match.groups["confidenceLevel"]?.value.orEmpty(),
       location = "$path:$line",
@@ -48,7 +56,18 @@ object ParallelReviewFindingParser {
       citations = peeled.citations,
       severityAdjustment = peeled.severityAdjustment,
     )
-  }.toList()
+  }
+
+  private fun admittedRepositoryPath(path: String): String {
+    if (path.isNotEmpty()) {
+      try {
+        requireRepositoryRelativePath(path)
+        return path
+      } catch (_: IllegalArgumentException) {
+      }
+    }
+    return UNASSIGNED_REPOSITORY_PATH
+  }
 
   private fun parseCommitShas(raw: String?): List<String> {
     if (raw.isNullOrBlank()) return emptyList()

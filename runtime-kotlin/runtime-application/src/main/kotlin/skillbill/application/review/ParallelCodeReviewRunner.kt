@@ -268,23 +268,25 @@ class ParallelCodeReviewRunner(
       )
     }
     val agent2Id = initial.agent2Id ?: return ParallelReviewLaneRunResult(
-      lane1 = lane1(),
+      lane1 = captureLane(lane1),
       lane2 = ParallelReviewLaneOutcome(success = true, rawOutput = ""),
     )
     val timeoutSec = request.timeout?.inWholeSeconds ?: DEFAULT_TIMEOUT_MINUTES * SECONDS_PER_MINUTE
     return parallelLaneRunner.runTwoLanes(
       ParallelReviewLaneRunRequest(
-        lane1 = lane1,
+        lane1 = { captureLane(lane1) },
         lane2 = {
-          launchParentLane(
-            agent2Id,
-            byAgent[agent2Id].orEmpty(),
-            initial.detection.routed,
-            initial.budget,
-            request,
-            request.agent2Model,
-            initial.resolvedMode,
-          )
+          captureLane {
+            launchParentLane(
+              agent2Id,
+              byAgent[agent2Id].orEmpty(),
+              initial.detection.routed,
+              initial.budget,
+              request,
+              request.agent2Model,
+              initial.resolvedMode,
+            )
+          }
         },
         timeout = (timeoutSec + TIMEOUT_BUFFER_SECONDS).seconds,
       ),
@@ -1375,35 +1377,59 @@ class ParallelCodeReviewRunner(
     )
   }
 
+  private fun captureLane(lane: () -> ParallelReviewLaneOutcome): ParallelReviewLaneOutcome = try {
+    lane()
+  } catch (@Suppress("TooGenericExceptionCaught") thrown: Exception) {
+    ParallelReviewLaneOutcome(
+      success = false,
+      rawOutput = "",
+      failureReason = "lane launch threw ${thrown::class.simpleName}: ${thrown.message ?: "no detail"}",
+    )
+  }
+
   private fun attributeInlineFindings(
     stdout: String,
     selected: List<ReviewSpecialistLaunchRequest>,
-  ): List<ParallelReviewRawFinding> = ParallelReviewFindingParser.parse(stdout).map { finding ->
-    val findingPath = requireNotNull(finding.repositoryPath)
-    val owners = selected.filter { launch ->
-      launch.assignment.assignedPaths.any { path -> path == findingPath }
-    }
-    require(owners.isNotEmpty()) {
-      "Inline finding location '${finding.location}' is outside the authoritative assignment ownership."
-    }
-    val distinctOwners = owners.distinctBy { it.assignment.laneDecision.specialistSkillName }
-    val declaredSpecialist = finding.specialistSkillName
-    require(declaredSpecialist != null || distinctOwners.size == 1) {
-      "Inline finding location '${finding.location}' has overlapping ownership and must name its specialist."
-    }
-    val owner = if (declaredSpecialist == null) {
-      distinctOwners.single()
-    } else {
-      distinctOwners.singleOrNull {
-        it.assignment.laneDecision.specialistSkillName == declaredSpecialist
-      } ?: error(
-        "Inline finding specialist '$declaredSpecialist' does not own '${finding.location}'.",
+  ): List<ParallelReviewRawFinding> {
+    val fallbackLane = selected.minByOrNull { it.assignment.laneDecision.orderIndex }
+    val fallbackPath = fallbackLane?.assignment?.assignedPaths?.firstOrNull()
+      ?: ParallelReviewFindingParser.UNASSIGNED_REPOSITORY_PATH
+    val parsed = runCatching { ParallelReviewFindingParser.parse(stdout) }.getOrDefault(emptyList())
+    return parsed.map { finding ->
+      val findingPath = finding.repositoryPath
+      val pathOwners = selected.filter { launch ->
+        findingPath != null && launch.assignment.assignedPaths.any { path -> path == findingPath }
+      }.distinctBy { it.assignment.laneDecision.specialistSkillName }
+      val owner = resolveInlineFindingOwner(finding.specialistSkillName, pathOwners, selected)
+        ?: fallbackLane
+      val path = when {
+        findingPath != null &&
+          findingPath != ParallelReviewFindingParser.UNASSIGNED_REPOSITORY_PATH -> findingPath
+        else -> fallbackPath
+      }
+      val line = finding.line ?: FIRST_SOURCE_LINE
+      finding.copy(
+        specialistSkillName = owner?.assignment?.laneDecision?.specialistSkillName
+          ?: finding.specialistSkillName,
+        originLayerChains = owner?.assignment?.laneDecision?.originLayerChains.orEmpty(),
+        repositoryPath = path,
+        line = line,
+        location = "$path:$line",
       )
     }
-    finding.copy(
-      specialistSkillName = owner.assignment.laneDecision.specialistSkillName,
-      originLayerChains = owner.assignment.laneDecision.originLayerChains,
-    )
+  }
+
+  private fun resolveInlineFindingOwner(
+    declaredSpecialist: String?,
+    pathOwners: List<ReviewSpecialistLaunchRequest>,
+    selected: List<ReviewSpecialistLaunchRequest>,
+  ): ReviewSpecialistLaunchRequest? {
+    val selectedByName = selected.distinctBy { it.assignment.laneDecision.specialistSkillName }
+    if (declaredSpecialist != null) {
+      selectedByName.singleOrNull { it.assignment.laneDecision.specialistSkillName == declaredSpecialist }
+        ?.let { return it }
+    }
+    return pathOwners.minByOrNull { it.assignment.laneDecision.orderIndex }
   }
 
   private fun laneOwnedPaths(lane: ReviewLaunchLane, files: List<ReviewChangedFileEvidence>): List<String> {

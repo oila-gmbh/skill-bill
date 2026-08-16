@@ -7130,6 +7130,12 @@ internal class InMemoryRuntimeWorkflowRepository : WorkflowStateRepository {
     taskRuntimeRows[row.workflowId] = row
   }
 
+  fun bumpUpdatedAt(workflowId: String) {
+    val row = taskRuntimeRows[workflowId] ?: return
+    val current = java.time.Instant.parse(row.updatedAt ?: "2026-01-01T00:00:00Z")
+    taskRuntimeRows[workflowId] = row.copy(updatedAt = current.plusSeconds(1).toString())
+  }
+
   override fun getFeatureTaskRuntimeWorkflow(workflowId: String): WorkflowStateRecord? = taskRuntimeRows[workflowId]
 
   override fun listFeatureTaskRuntimeWorkflows(limit: Int): List<WorkflowStateRecord> =
