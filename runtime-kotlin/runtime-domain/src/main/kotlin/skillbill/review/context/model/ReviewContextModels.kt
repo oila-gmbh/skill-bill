@@ -592,7 +592,7 @@ data class ReviewCommitUnit(
     subject.replace("\r\n", "\n"),
     orderIndex,
     source.name,
-    canonicalFields(*canonicalHunks.map { it.canonicalValue() }.toTypedArray()),
+    canonicalFields(*canonicalHunks.map { it.packetCanonical() }.toTypedArray()),
   )
 
   companion object {
@@ -699,6 +699,35 @@ data class ReviewLaneBundle(val entries: List<ReviewLaneBundleEntry> = emptyList
   }
 }
 
+data class ReviewHunkEvidenceLocator(
+  val storePath: String,
+  val hunkHeader: String,
+  val payloadFile: String = PAYLOAD_FILE,
+) {
+  init {
+    requireRepositoryRelativePath(storePath)
+    require(payloadFile == PAYLOAD_FILE) { "Hunk evidence payload file must be '$PAYLOAD_FILE'." }
+    require(hunkHeader.isNotBlank()) { "Hunk evidence locator header must not be blank." }
+  }
+
+  val canonical: String get() = canonicalFields(storePath, payloadFile, hunkHeader)
+
+  companion object {
+    const val PAYLOAD_FILE: String = "diff.patch"
+
+    fun inProcess(
+      contentDigest: String,
+      oldStart: Int,
+      oldCount: Int,
+      newStart: Int,
+      newCount: Int,
+    ): ReviewHunkEvidenceLocator = ReviewHunkEvidenceLocator(
+      storePath = ".skill-bill/run-evidence/in-process/$contentDigest",
+      hunkHeader = "@@ -$oldStart,$oldCount +$newStart,$newCount @@",
+    )
+  }
+}
+
 data class ReviewChangedHunk(
   val path: String,
   val oldStart: Int,
@@ -706,11 +735,6 @@ data class ReviewChangedHunk(
   val newStart: Int,
   val newCount: Int,
   val content: String,
-  /**
-   * The owning commit's identity, folded into hunk identity so byte-identical hunks in two
-   * different commits stay distinct while a hunk repeated inside one commit still collides.
-   * Null for the single synthetic unit a non-commit scope owns.
-   */
   val commitScope: String? = null,
 ) {
   init {
@@ -719,9 +743,14 @@ data class ReviewChangedHunk(
     require(commitScope == null || commitScope.isNotBlank()) { "Changed hunk commit scope must not be blank." }
   }
 
-  val hunkId: String by lazy(LazyThreadSafetyMode.PUBLICATION) { sha256(canonicalValue()) }
+  val contentDigest: String = sha256(content.replace("\r\n", "\n"))
 
-  internal fun canonicalValue(): String = canonicalFields(
+  val evidenceLocator: ReviewHunkEvidenceLocator =
+    ReviewHunkEvidenceLocator.inProcess(contentDigest, oldStart, oldCount, newStart, newCount)
+
+  val hunkId: String by lazy(LazyThreadSafetyMode.PUBLICATION) { sha256(identityCanonical()) }
+
+  internal fun identityCanonical(): String = canonicalFields(
     path,
     oldStart,
     oldCount,
@@ -730,6 +759,28 @@ data class ReviewChangedHunk(
     content.replace("\r\n", "\n"),
     commitScope.orEmpty(),
   )
+
+  internal fun packetCanonical(): String = canonicalFields(
+    hunkId,
+    oldStart,
+    oldCount,
+    newStart,
+    newCount,
+    contentDigest,
+    evidenceLocator.canonical,
+  )
+
+  companion object {
+    fun fromBody(
+      path: String,
+      oldStart: Int,
+      oldCount: Int,
+      newStart: Int,
+      newCount: Int,
+      body: String,
+      commitScope: String? = null,
+    ): ReviewChangedHunk = ReviewChangedHunk(path, oldStart, oldCount, newStart, newCount, body, commitScope)
+  }
 }
 
 data class ReviewContextPacket(
@@ -911,8 +962,8 @@ data class ReviewContextPacket(
     canonicalFields(*selectedLanes.toTypedArray()),
     laneDecisions.sortedWith(compareBy(ReviewLaneDecision::orderIndex, ReviewLaneDecision::lane))
       .map { it.canonical }.let { canonicalFields(*it.toTypedArray()) },
-    changedHunks.sortedBy { it.canonicalValue() }
-      .map { it.canonicalValue() }.let { canonicalFields(*it.toTypedArray()) },
+    changedHunks.sortedBy { it.packetCanonical() }
+      .map { it.packetCanonical() }.let { canonicalFields(*it.toTypedArray()) },
     // Declared order, never sorted by content: reordering commits must stay digest-visible.
     commitUnits.sortedBy { it.orderIndex }
       .map { it.canonicalValue() }.let { canonicalFields(*it.toTypedArray()) },
@@ -1175,8 +1226,11 @@ data class GovernedReviewLaunch(
       appendLine("      old_count: ${entry.hunk.oldCount}")
       appendLine("      new_start: ${entry.hunk.newStart}")
       appendLine("      new_count: ${entry.hunk.newCount}")
-      appendLine("      content: |")
-      entry.hunk.content.replace("\r\n", "\n").lineSequence().forEach { appendLine("        $it") }
+      appendLine("      content_digest: ${entry.hunk.contentDigest}")
+      appendLine("      evidence_locator:")
+      appendLine("        store_path: ${structuredString(entry.hunk.evidenceLocator.storePath)}")
+      appendLine("        payload_file: ${structuredString(entry.hunk.evidenceLocator.payloadFile)}")
+      appendLine("        hunk_header: ${structuredString(entry.hunk.evidenceLocator.hunkHeader)}")
     }
     appendLine("  segments:")
     segments.segments.forEach { segment ->

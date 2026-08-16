@@ -30,6 +30,23 @@ class ReviewContextModelsTest {
     assertTrue("  - \"odd|name\\\\tab\\t.kt\"" in launch.canonicalPayload)
   }
 
+  @Test fun `parent canonical bytes exclude hunk body size`() {
+    val tiny = ReviewChangedHunk.fromBody("A.kt", 1, 1, 1, 2, "+tiny")
+    val huge = ReviewChangedHunk.fromBody("A.kt", 1, 1, 1, 2, "+" + "x".repeat(1_048_576))
+    fun packetFor(hunk: ReviewChangedHunk) = ReviewContextPacket(
+      "review", "repo", "base", "head", "clean", "kotlin", "kotlin", emptyList(), listOf("security"),
+      listOf(hunk),
+      commitUnits = listOf(syntheticUnit(listOf(hunk))),
+      coverageFact = fact(),
+      routingMatrix = focusedMatrix(listOf(syntheticUnit(listOf(hunk))), listOf("security")),
+      reviewRevision = revision(),
+      laneDecisions = listOf(lane("security", listOf("A.kt"))),
+    )
+    val growth = packetFor(huge).canonicalBytes - packetFor(tiny).canonicalBytes
+    assertTrue(growth < 1_048_576)
+    assertNotEquals(tiny.hunkId, huge.hunkId)
+  }
+
   @Test fun `repository paths accept supplementary Unicode and reject unpaired surrogates`() {
     requireRepositoryRelativePath("src/rocket-\uD83D\uDE80.kt")
     assertFailsWith<IllegalArgumentException> { requireRepositoryRelativePath("src/broken-\uD83D.kt") }

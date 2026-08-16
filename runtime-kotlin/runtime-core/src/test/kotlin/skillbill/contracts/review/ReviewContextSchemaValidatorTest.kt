@@ -145,6 +145,18 @@ class ReviewContextSchemaValidatorTest {
     val launch =
       GovernedReviewLaunch(assignment, packet, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
     ReviewContextSchemaValidator.validateLaunch(launch.toLaunchEnvelope().asWireMap(), "launch")
+    @Suppress("UNCHECKED_CAST")
+    val parentHunks = packet.toParentPacketEnvelope().asWireMap()["changed_hunks"] as List<Map<String, Any?>>
+    parentHunks.forEach { hunk ->
+      INDEX_HUNK_KEYS.forEach { key -> assertTrue(key in hunk.keys, "parent hunk missing $key") }
+      assertEquals(false, hunk.containsKey("content"))
+    }
+    @Suppress("UNCHECKED_CAST")
+    val launchEntries = (launch.toLaunchEnvelope().asWireMap()["bundle"] as Map<String, Any?>)["entries"] as List<Map<String, Any?>>
+    launchEntries.forEach { entry ->
+      INDEX_HUNK_KEYS.forEach { key -> assertTrue(key in entry.keys, "launch entry missing $key") }
+      assertEquals(false, entry.containsKey("content"))
+    }
   }
 
   @Test fun `launch envelope carries the governed forbidden rediscovery list`() {
@@ -399,13 +411,59 @@ class ReviewContextSchemaValidatorTest {
     }
   }
 
-  @Test fun `projected envelopes carry contract version 1_0`() {
+  @Test fun `projected envelopes carry contract version 2_0`() {
     val launch =
       GovernedReviewLaunch(assignment, packet, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
     assertEquals(REVIEW_CONTEXT_CONTRACT_VERSION, packet.toParentPacketEnvelope().asWireMap()["contract_version"])
     assertEquals(REVIEW_CONTEXT_CONTRACT_VERSION, assignment.toAssignmentEnvelope().asWireMap()["contract_version"])
     assertEquals(REVIEW_CONTEXT_CONTRACT_VERSION, launch.toLaunchEnvelope().asWireMap()["contract_version"])
-    assertEquals("1.0", REVIEW_CONTEXT_CONTRACT_VERSION)
+    assertEquals("2.0", REVIEW_CONTEXT_CONTRACT_VERSION)
+  }
+
+  @Test fun `a 1_0 envelope fails with a typed version mismatch naming both versions`() {
+    val envelope = packet.toParentPacketEnvelope().asWireMap().toMutableMap()
+    envelope["contract_version"] = "1.0"
+    val failure = assertFailsWith<InvalidReviewContextSchemaError> {
+      ReviewContextSchemaValidator.validateParentPacket(envelope, "packet")
+    }
+    assertTrue("1.0" in failure.reason)
+    assertTrue("2.0" in failure.reason)
+  }
+
+  @Test fun `index hunks reject inlined diff bodies on parent assignment and launch`() {
+    val parent = packet.toParentPacketEnvelope().asWireMap().toMutableMap()
+    @Suppress("UNCHECKED_CAST")
+    val hunks = (parent["changed_hunks"] as List<Map<String, Any?>>).map { it.toMutableMap() }
+    hunks[0]["content"] = "+smuggled"
+    parent["changed_hunks"] = hunks
+    assertFailsWith<InvalidReviewContextSchemaError> {
+      ReviewContextSchemaValidator.validateParentPacket(parent, "packet")
+    }
+
+    val assignmentBody = assignment.toAssignmentEnvelope().asWireMap() + ("hunk_body" to "+smuggled")
+    assertFailsWith<InvalidReviewContextSchemaError> {
+      ReviewContextSchemaValidator.validateAssignment(assignmentBody, "assignment")
+    }
+
+    val launch =
+      GovernedReviewLaunch(assignment, packet, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
+    val launchBody = launch.toLaunchEnvelope().asWireMap() + (
+      "brokered_evidence" to listOf(mapOf("path" to "src/A.kt", "content" to "+smuggled"))
+      )
+    assertFailsWith<InvalidReviewContextSchemaError> {
+      ReviewContextSchemaValidator.validateLaunch(launchBody, "launch")
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    val launchEnvelope = launch.toLaunchEnvelope().asWireMap().toMutableMap()
+    val bundle = (launchEnvelope["bundle"] as Map<String, Any?>).toMutableMap()
+    val entries = (bundle["entries"] as List<Map<String, Any?>>).map { it.toMutableMap() }
+    entries[0]["content"] = "+smuggled"
+    bundle["entries"] = entries
+    launchEnvelope["bundle"] = bundle
+    assertFailsWith<InvalidReviewContextSchemaError> {
+      ReviewContextSchemaValidator.validateLaunch(launchEnvelope, "launch")
+    }
   }
 
   @Test fun `a spec intent projection missing provenance is rejected and a provenanced counterpart is accepted`() {
@@ -613,5 +671,15 @@ class ReviewContextSchemaValidatorTest {
 
   private companion object {
     const val STAGE_DIGEST: String = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    val INDEX_HUNK_KEYS: Set<String> = setOf(
+      "hunk_id",
+      "path",
+      "old_start",
+      "old_count",
+      "new_start",
+      "new_count",
+      "content_digest",
+      "evidence_locator",
+    )
   }
 }

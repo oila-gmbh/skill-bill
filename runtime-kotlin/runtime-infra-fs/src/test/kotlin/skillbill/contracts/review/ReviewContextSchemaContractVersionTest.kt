@@ -30,6 +30,27 @@ class ReviewContextSchemaContractVersionTest {
     )
   }
 
+  @Test fun `schema hunk required keys match the index envelope and omit content`() {
+    val node = YAMLMapper().readTree(Files.readString(repoSchema))
+    val hunk = node.path("\$defs").path("hunk")
+    val required = hunk.path("required").map { it.asText() }.toSet()
+    val properties = hunk.path("properties").fieldNames().asSequence().toSet()
+    val indexKeys = setOf(
+      "hunk_id",
+      "path",
+      "old_start",
+      "old_count",
+      "new_start",
+      "new_count",
+      "content_digest",
+      "evidence_locator",
+    )
+    assertEquals(indexKeys, required)
+    assertEquals(indexKeys, properties)
+    assertTrue("content" !in required)
+    assertTrue("content" !in properties)
+  }
+
   @Test fun `bundled classpath schema is byte identical to the repository schema`() {
     val bundled = javaClass.classLoader.getResourceAsStream(ReviewContextSchemaPaths.CLASSPATH_RESOURCE)
       ?.use { it.readBytes() }

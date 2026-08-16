@@ -131,6 +131,10 @@ class ReviewPacketProjectionTest {
     assertEquals(listOf("a-addon", "z-addon"), first["add_ons"])
     assertEquals(listOf("security", "testing"), first["selected_lanes"])
     assertEquals(listOf("src/Dep.kt"), first["dependency_allowlist"])
+    @Suppress("UNCHECKED_CAST")
+    val hunks = first["changed_hunks"] as List<Map<String, Any?>>
+    assertEquals(true, hunks.all { it.containsKey("hunk_id") && it.containsKey("content_digest") && it.containsKey("evidence_locator") })
+    assertEquals(false, hunks.any { it.containsKey("content") })
   }
 
   @Test fun `lane decisions must cover exactly the selected lanes`() {
@@ -248,7 +252,9 @@ class ReviewPacketProjectionTest {
     @Suppress("UNCHECKED_CAST")
     val entries = bundle["entries"] as List<Map<String, Any?>>
     assertEquals(2, entries.size)
-    assertEquals(setOf(hunkA.content, hunkB.content), entries.map { it["content"] }.toSet())
+    assertEquals(true, entries.all { it.containsKey("hunk_id") && it.containsKey("content_digest") && it.containsKey("evidence_locator") })
+    assertEquals(false, entries.any { it.containsKey("content") })
+    assertEquals(setOf(hunkA.hunkId, hunkB.hunkId), entries.map { it["hunk_id"] }.toSet())
     assertEquals(true, entries.all { it.containsKey("commit_sha") && it.containsKey("order_index") })
     assertEquals(false, envelope.containsKey("assigned_hunk_bodies"))
     assertEquals(false, envelope.containsKey("complete_diff"))

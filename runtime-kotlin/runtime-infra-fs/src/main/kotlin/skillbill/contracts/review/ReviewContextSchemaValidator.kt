@@ -109,6 +109,22 @@ private fun validateExpectedKind(
   validatePayloadAgainst(envelope, sourceLabel, expectedKind, schemas.forKind(expectedKind), mapper)
 }
 
+private fun requireMatchingContractVersion(
+  payload: Map<String, Any?>,
+  sourceLabel: String,
+  definitionName: String?,
+) {
+  val declared = payload["contract_version"] ?: return
+  val declaredText = declared as? String ?: declared.toString()
+  if (declaredText == REVIEW_CONTEXT_CONTRACT_VERSION) return
+  throw InvalidReviewContextSchemaError(
+    sourceLabel = sourceLabel,
+    reason = "contract_version mismatch: envelope declares '$declaredText' but the runtime requires " +
+      "'$REVIEW_CONTEXT_CONTRACT_VERSION'.",
+    definitionName = definitionName,
+  )
+}
+
 private fun validatePayloadAgainst(
   payload: Map<String, Any?>,
   sourceLabel: String,
@@ -116,6 +132,7 @@ private fun validatePayloadAgainst(
   schema: JsonSchema,
   mapper: ObjectMapper,
 ) {
+  requireMatchingContractVersion(payload, sourceLabel, definitionName)
   val instance: JsonNode = mapper.valueToTree(payload)
   val errors: Set<ValidationMessage> = schema.validate(instance)
   if (errors.isNotEmpty()) {

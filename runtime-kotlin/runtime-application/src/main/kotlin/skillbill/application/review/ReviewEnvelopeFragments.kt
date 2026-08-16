@@ -5,6 +5,7 @@ import skillbill.review.context.model.ReviewChangedHunk
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewEvidenceTarget
 import skillbill.review.context.model.ReviewExpansionRecord
+import skillbill.review.context.model.ReviewHunkEvidenceLocator
 import skillbill.review.context.model.ReviewLaneDecision
 import skillbill.review.context.model.ReviewLearningsReference
 import skillbill.review.context.model.ReviewRevision
@@ -15,6 +16,12 @@ internal fun ReviewRevision.toEnvelope(): Map<String, Any?> = linkedMapOf(
   "run_revision" to runRevision,
 )
 
+internal fun ReviewHunkEvidenceLocator.toEnvelope(): Map<String, Any?> = linkedMapOf(
+  "store_path" to storePath,
+  "payload_file" to payloadFile,
+  "hunk_header" to hunkHeader,
+)
+
 internal fun ReviewChangedHunk.toEnvelope(): Map<String, Any?> = linkedMapOf(
   "hunk_id" to hunkId,
   "path" to path,
@@ -22,7 +29,8 @@ internal fun ReviewChangedHunk.toEnvelope(): Map<String, Any?> = linkedMapOf(
   "old_count" to oldCount,
   "new_start" to newStart,
   "new_count" to newCount,
-  "content" to content.normalizeLineEndings(),
+  "content_digest" to contentDigest,
+  "evidence_locator" to evidenceLocator.toEnvelope(),
 )
 
 internal fun ReviewLaneDecision.toEnvelope(): Map<String, Any?> = linkedMapOf(

@@ -76,9 +76,7 @@ fun ReviewAssignment.toAssignmentEnvelope(): ReviewContextEnvelope = ReviewConte
     "expansions" to expansions.sortedWith(compareBy({ it.sequence }, { it.expansionId })).map { it.toEnvelope() },
   ),
 )
-fun GovernedReviewLaunch.toLaunchEnvelope(
-  brokeredEvidence: List<Pair<String, String>> = emptyList(),
-): ReviewContextEnvelope = ReviewContextEnvelope(
+fun GovernedReviewLaunch.toLaunchEnvelope(): ReviewContextEnvelope = ReviewContextEnvelope(
   linkedMapOf(
     "contract_version" to REVIEW_CONTEXT_CONTRACT_VERSION,
     "kind" to "launch",
@@ -98,9 +96,6 @@ fun GovernedReviewLaunch.toLaunchEnvelope(
     "lane_routing" to assignment.laneRouting.map { it.toEnvelope() },
     "coverage_fact" to packet.coverageFact.toEnvelope(),
     "bundle" to assembledBundle.toLaunchEnvelope(segmentation, completionState),
-    "brokered_evidence" to brokeredEvidence.map { (path, content) ->
-      linkedMapOf("path" to path, "content" to content)
-    },
     "criteria_references" to assignment.criteriaReferences.sorted(),
     "matched_rules" to assignment.matchedRules.sortedBy { it.ruleId }.map { it.toEnvelope() },
     "evidence_targets" to assignment.evidenceTargets.sortedBy { it.targetId }.map { it.toEnvelope() },

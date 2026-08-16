@@ -87,7 +87,8 @@ internal fun ReviewLaneAssembledEntry.toEnvelope(): Map<String, Any?> = linkedMa
   "old_count" to hunk.oldCount,
   "new_start" to hunk.newStart,
   "new_count" to hunk.newCount,
-  "content" to hunk.content.normalizeLineEndings(),
+  "content_digest" to hunk.contentDigest,
+  "evidence_locator" to hunk.evidenceLocator.toEnvelope(),
 )
 
 internal fun ReviewLaneBundleSegment.toEnvelope(): Map<String, Any?> = linkedMapOf(

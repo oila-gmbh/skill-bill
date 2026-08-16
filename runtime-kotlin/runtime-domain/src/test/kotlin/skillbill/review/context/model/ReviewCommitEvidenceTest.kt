@@ -73,7 +73,15 @@ class ReviewCommitEvidenceTest {
     unit("head", "c1", 1, listOf(hunkB)),
   )
 
-  // AC-002
+  @Test fun `fromBody mints a content addressed hunk id that changes when body bytes change`() {
+    val first = ReviewChangedHunk.fromBody("src/A.kt", 1, 1, 1, 2, "+alpha")
+    val same = ReviewChangedHunk.fromBody("src/A.kt", 1, 1, 1, 2, "+alpha")
+    val changed = ReviewChangedHunk.fromBody("src/A.kt", 1, 1, 1, 2, "+alphaX")
+    assertEquals(first.hunkId, same.hunkId)
+    assertNotEquals(first.hunkId, changed.hunkId)
+    assertTrue(first.hunkId.matches(Regex("[a-f0-9]{64}")))
+  }
+
   @Test fun `commit unit id tracks identity order parent subject and hunk content`() {
     val base = unit("c1", "base", 0, listOf(hunkA))
     assertEquals(base.commitUnitId, unit("c1", "base", 0, listOf(hunkA)).commitUnitId)
@@ -300,8 +308,10 @@ class ReviewCommitEvidenceTest {
     val payload = launch(packet(twoCommits), fullBundle).canonicalPayload
     assertTrue("commit_sha: \"c1\"" in payload)
     assertTrue("commit_sha: \"head\"" in payload)
-    assertEquals(1, Regex(Regex.escape(hunkA.content)).findAll(payload).count())
-    assertEquals(1, Regex(Regex.escape(hunkB.content)).findAll(payload).count())
+    assertTrue(hunkA.hunkId in payload)
+    assertTrue(hunkB.hunkId in payload)
+    assertTrue(hunkA.content !in payload)
+    assertTrue(hunkB.content !in payload)
     assertTrue("complete_diff" !in payload)
     assertTrue("coverage_fact:" in payload)
   }

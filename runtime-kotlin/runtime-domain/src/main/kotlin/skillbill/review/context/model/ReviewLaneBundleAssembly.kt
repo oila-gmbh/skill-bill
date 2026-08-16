@@ -29,7 +29,7 @@ data class ReviewLaneAssembledEntry(
     parentSha,
     subject.replace("\r\n", "\n"),
     orderIndex,
-    hunk.canonicalValue(),
+    hunk.packetCanonical(),
   )
 }
 
