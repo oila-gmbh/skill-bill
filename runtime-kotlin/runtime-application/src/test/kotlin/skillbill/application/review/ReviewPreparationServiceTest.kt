@@ -1,5 +1,8 @@
 package skillbill.application.review
 
+import skillbill.application.evidence.SharedReviewEvidenceCodec
+import skillbill.application.evidence.SharedReviewEvidenceCommits
+import skillbill.application.evidence.SharedReviewEvidenceRecord
 import skillbill.application.review.model.ReviewPreparationRequest
 import skillbill.application.review.model.ReviewPreparationResult
 import skillbill.error.InvalidReviewContextSchemaError
@@ -34,6 +37,7 @@ import skillbill.review.context.model.ReviewCommitUnit
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewDependencyAllowlist
 import skillbill.review.context.model.ReviewExpansionRecord
+import skillbill.review.context.model.ReviewHunkEvidenceLocator
 import skillbill.review.context.model.ReviewLaneBundle
 import skillbill.review.context.model.ReviewLaneDecision
 import skillbill.review.context.model.ReviewLearningsReference
@@ -543,8 +547,29 @@ class ReviewPreparationServiceTest {
     val assignmentWire = result.assignmentEnvelopes.single().asWireMap()
     assertFalse(assignmentWire.containsKey("changed_hunks"))
     assertTrue((assignmentWire["assigned_hunks"] as List<*>).all { it is String })
+    val assignmentBytes = assignmentWire.toString().toByteArray().size
+    assertTrue(assignmentBytes < patch.toByteArray().size / 10, "assignment envelope $assignmentBytes")
     assertEquals(0, workerLaunches)
     result.packet.changedHunks.forEach { assertEquals("", it.content) }
+  }
+
+  @Test fun `blank store path with a live locator reader fails compose without launching workers`() {
+    val hunk = hunkA
+    var workerLaunches = 0
+    val counting = ports(
+      hunks = listOf(hunk),
+      decisions = listOf(includedDecision("testing", "test sources changed", hunk.path)),
+    )
+    val factPorts = ReviewFactPorts(counting, counting, counting, counting, counting, counting)
+    val failure = assertFailsWith<ReviewHunkEvidenceLocatorMissingError> {
+      ReviewPreparationService(
+        factPorts,
+        RecordingValidator(),
+        hunkLocatorReader = PayloadLocatorReader(emptyMap()),
+      ).prepare(request().copy(evidenceStorePath = "", repoRoot = Path.of(".")))
+    }
+    assertTrue(failure.message.orEmpty().contains("review_hunk_evidence_locator_missing"))
+    assertEquals(0, workerLaunches)
   }
 
   @Test fun `missing locator store path fails compose without launching workers`() {
@@ -605,10 +630,21 @@ class ReviewPreparationServiceTest {
     val overwritten = "diff --git a/src/A.kt b/src/A.kt\n--- a/src/A.kt\n+++ b/src/A.kt\n@@ -1,1 +1,2 @@\n+omega\n"
     val hunk = ReviewDiffEvidence.parse(original).hunks.single()
     val storePath = ".skill-bill/run-evidence/code-review/fp-integrity"
-    val expected = ReviewChangedHunk.digestOfBody(hunk.content)
+    val indexed = hunk.asIndex(
+      ReviewHunkEvidenceLocator.atStore(
+        storePath,
+        hunk.oldStart,
+        hunk.oldCount,
+        hunk.newStart,
+        hunk.newCount,
+      ),
+      hunk.content,
+    )
+    assertEquals("", indexed.content)
+    val expected = indexed.contentDigest
     val observed = ReviewChangedHunk.digestOfBody(ReviewDiffEvidence.parse(overwritten).hunks.single().content)
     val failure = assertFailsWith<ReviewHunkEvidenceIntegrityError> {
-      storePrepare(listOf(hunk), overwritten, storePath)
+      storePrepare(listOf(indexed), overwritten, storePath)
     }
     assertEquals(storePath, failure.storePath)
     assertEquals(expected, failure.expectedDigest)
@@ -623,6 +659,32 @@ class ReviewPreparationServiceTest {
       hunk.content,
       hunk.commitScope,
     )
-    assertEquals(hunk.hunkId, expectedId)
+    assertEquals(indexed.hunkId, expectedId)
+  }
+
+  @Test fun `commit-scoped hunk missing from that commit does not bind the aggregate body`() {
+    val aggregate = "diff --git a/src/A.kt b/src/A.kt\n--- a/src/A.kt\n+++ b/src/A.kt\n@@ -1,1 +1,2 @@\n+alpha\n"
+    val commitDiff = "diff --git a/src/Other.kt b/src/Other.kt\n--- a/src/Other.kt\n+++ b/src/Other.kt\n@@ -1,1 +1,2 @@\n+other\n"
+    val hunk = ReviewDiffEvidence.parse(aggregate).hunks.single().copy(
+      commitScope = ReviewCommitUnit.commitScopeKey("head", 0),
+    )
+    val storePath = ".skill-bill/run-evidence/code-review/fp-commit-scope"
+    val payload = SharedReviewEvidenceCodec.encode(
+      SharedReviewEvidenceRecord(
+        aggregateDiff = aggregate,
+        sequence = SharedReviewEvidenceCommits(
+          baseRevision = "base",
+          headRevision = "head",
+          commits = listOf(RawCommitDiff("head", "base", "one commit", commitDiff)),
+          syntheticSource = null,
+          syntheticReason = null,
+        ),
+      ),
+    )
+    val failure = assertFailsWith<ReviewHunkEvidenceLocatorUnreadableError> {
+      storePrepare(listOf(hunk), payload, storePath)
+    }
+    assertEquals(storePath, failure.storePath)
+    assertTrue(failure.message.orEmpty().contains("review_hunk_evidence_locator_unreadable"))
   }
 }

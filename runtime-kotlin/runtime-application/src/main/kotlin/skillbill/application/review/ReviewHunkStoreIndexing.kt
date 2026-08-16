@@ -4,6 +4,7 @@ import skillbill.application.evidence.SharedReviewEvidenceCodec
 import skillbill.application.evidence.SharedReviewEvidenceCommits
 import skillbill.application.evidence.SharedReviewEvidenceRecord
 import skillbill.error.ReviewHunkEvidenceIntegrityError
+import skillbill.error.ReviewHunkEvidenceLocatorMissingError
 import skillbill.error.ReviewHunkEvidenceLocatorUnreadableError
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceLocatorReadPort
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceLocatorReadRequest
@@ -27,6 +28,9 @@ internal object ReviewHunkStoreIndexing {
     locatorReader: FeatureTaskRuntimeSharedEvidenceLocatorReadPort,
   ): IndexedReviewHunks {
     if (storePath.isNullOrBlank()) {
+      if (locatorReader !== FeatureTaskRuntimeSharedEvidenceLocatorReadPort.NONE) {
+        throw ReviewHunkEvidenceLocatorMissingError(storePath.orEmpty())
+      }
       return IndexedReviewHunks(
         hunks = hunks.map { it.asIndex(it.evidenceLocator, it.content) },
         commitUnits = commitUnits.map { unit ->
@@ -81,11 +85,9 @@ internal object ReviewHunkStoreIndexing {
   ): ReviewChangedHunk {
     val storedBody = storedBody(hunk, record, storePath)
     val storedDigest = ReviewChangedHunk.digestOfBody(storedBody)
-    if (hunk.content.isNotEmpty()) {
-      val expected = ReviewChangedHunk.digestOfBody(hunk.content)
-      if (expected != storedDigest) {
-        throw ReviewHunkEvidenceIntegrityError(storePath, expected, storedDigest)
-      }
+    val expectedDigest = claimedDigest(hunk, storePath)
+    if (expectedDigest != null && expectedDigest != storedDigest) {
+      throw ReviewHunkEvidenceIntegrityError(storePath, expectedDigest, storedDigest)
     }
     val locator = ReviewHunkEvidenceLocator.atStore(
       storePath,
@@ -102,21 +104,33 @@ internal object ReviewHunkStoreIndexing {
     record: SharedReviewEvidenceRecord,
     storePath: String,
   ): String {
-    val scopedDiff = hunk.commitScope?.let { scope ->
-      val sha = scope.substringBefore('@')
-      record.sequence.commits.find { it.commitSha == sha }?.diff
+    val scoped = hunk.commitScope
+    val body = if (scoped != null) {
+      val sha = scoped.substringBefore('@')
+      hunkBodyIn(record.sequence.commits.find { it.commitSha == sha }?.diff, hunk)
+    } else {
+      hunkBodyIn(record.aggregateDiff, hunk)
     }
-    val match = listOfNotNull(scopedDiff, record.aggregateDiff).firstNotNullOfOrNull { diff ->
-      runCatching { ReviewDiffEvidence.parse(diff) }.getOrNull()
-        ?.hunks
-        ?.find { sameSpan(it, hunk) }
-    } ?: throw ReviewHunkEvidenceLocatorUnreadableError(
+    return body ?: throw ReviewHunkEvidenceLocatorUnreadableError(
       storePath,
       "stored payload has no hunk at ${hunk.path} " +
         ReviewHunkEvidenceLocator.header(hunk.oldStart, hunk.oldCount, hunk.newStart, hunk.newCount),
     )
-    return match.content
   }
+
+  private fun claimedDigest(hunk: ReviewChangedHunk, storePath: String): String? = when {
+    hunk.content.isNotEmpty() -> ReviewChangedHunk.digestOfBody(hunk.content)
+    hunk.evidenceLocator.storePath == storePath -> hunk.contentDigest
+    else -> null
+  }
+
+  private fun hunkBodyIn(diff: String?, hunk: ReviewChangedHunk): String? =
+    diff?.let { payload ->
+      runCatching { ReviewDiffEvidence.parse(payload) }.getOrNull()
+        ?.hunks
+        ?.find { sameSpan(it, hunk) }
+        ?.content
+    }
 
   private fun sameSpan(left: ReviewChangedHunk, right: ReviewChangedHunk): Boolean =
     left.path == right.path &&

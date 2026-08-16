@@ -20,6 +20,7 @@ import skillbill.application.review.model.ReviewSpecialistLaunchRequest
 import skillbill.application.review.model.ReviewWorkerKind
 import skillbill.application.workflow.repoRoot
 import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
+import skillbill.error.ReviewHunkEvidenceLocatorMissingError
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunTokenOwnership
@@ -330,6 +331,12 @@ class ParallelCodeReviewRunner(
     budget: skillbill.review.context.model.ReviewContextBudgetPolicy,
     evidenceStorePath: String?,
   ): CompiledLaunches {
+    if (
+      sharedEvidenceLocatorReader !== FeatureTaskRuntimeSharedEvidenceLocatorReadPort.NONE &&
+      evidenceStorePath.isNullOrBlank()
+    ) {
+      throw ReviewHunkEvidenceLocatorMissingError(evidenceStorePath.orEmpty())
+    }
     val plannedRubrics = resolvePlannedRubrics(evidence, routedManifests, manifests, ownedPathsBySlug)
     val (baseRevision, headRevision) = revisions
     // Every specialist lane the compiler routes reads this one projection of the shared evidence, so
