@@ -69,6 +69,26 @@ class GitWorkflowGitOperationsTest {
   }
 
   @Test
+  fun `create commit with nothing staged is a no-op`() {
+    val repoRoot = Files.createTempDirectory("skillbill-git-empty-commit")
+    git(repoRoot, "init")
+    git(repoRoot, "config", "user.email", "skill-bill@example.test")
+    git(repoRoot, "config", "user.name", "Skill Bill")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "one\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "initial")
+    val before = git(repoRoot, "rev-parse", "HEAD")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "two\n")
+
+    val result = GitWorkflowGitOperations().createCommit(repoRoot, "chore: nothing staged")
+
+    assertTrue(result.ok, result.error)
+    assertEquals("", result.value)
+    assertEquals(before, git(repoRoot, "rev-parse", "HEAD"))
+    assertContains(git(repoRoot, "status", "--porcelain"), "tracked.txt")
+  }
+
+  @Test
   fun `branch exists reports presence without creating the branch`() {
     val repoRoot = Files.createTempDirectory("skillbill-git-branch-exists")
     git(repoRoot, "init")

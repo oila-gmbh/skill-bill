@@ -1504,8 +1504,12 @@ class GoalRunner(
     }
     val message = "chore(${manifest.issueKey}): goal finalization commit-all on '$featureBranch'"
     val commit = gitOperations.createCommit(request.repoRoot, message)
-    if (!commit.ok) {
-      return "Goal finalization commit-all could not commit remaining worktree changes: ${commit.error}"
+    val createdCommit = commit.ok && commit.value.isNotBlank()
+    if (!createdCommit) {
+      if (!commit.ok && !commit.recordsNothingToCommit()) {
+        return "Goal finalization commit-all could not commit remaining worktree changes: ${commit.error}"
+      }
+      return pushUnpushedFeatureBranchIfNeeded(featureBranch, request.repoRoot)
     }
     val pushed = gitOperations.pushBranch(request.repoRoot, featureBranch)
     return if (pushed.ok) {
