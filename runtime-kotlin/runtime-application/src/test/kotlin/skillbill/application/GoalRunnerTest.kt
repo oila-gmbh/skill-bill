@@ -940,6 +940,33 @@ class GoalRunnerLinearScratchFinalizeTest {
   }
 
   @Test
+  fun `finalize ignores spec dirt when porcelain omits the leading dot`() {
+    val repoRoot = Files.createTempDirectory("goal-spec-dot-finalize")
+    val git = CommitAllRecordingGitOperations(
+      dirtyPorcelain = " M feature-specs/SKILL-56-goal/decomposition-manifest.yaml",
+      currentBranch = "feat/SKILL-56-goal",
+    )
+    val pullRequests = RecordingPullRequestPort()
+    val store = InMemoryGoalManifestStore(
+      manifest = manifest(subtaskCount = 1)
+        .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1"),
+    )
+    val runner = GoalRunner(
+      store,
+      RecordingSubtaskLauncher { launchFacts() },
+      RecordingOutcomeStore(),
+      pullRequests,
+      specScratchStore = RecordingSpecScratchStore(),
+      gitOperations = git,
+    )
+
+    assertIs<GoalRunnerRunReport.Completed>(runner.run(linearRunRequest(repoRoot)))
+    assertTrue(git.stagePathsCalls.isEmpty())
+    assertTrue(git.commitMessages.isEmpty())
+    assertEquals(1, pullRequests.openCount)
+  }
+
+  @Test
   fun `finalize continues when commit-all has nothing to commit`() {
     val repoRoot = Files.createTempDirectory("goal-empty-commit-finalize")
     val git = CommitAllRecordingGitOperations(
