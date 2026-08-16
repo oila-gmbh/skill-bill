@@ -1,3 +1,14 @@
+## [2026-08-16] SKILL-193 subtask 2 — Store-backed packet composition
+Areas: runtime-application/review
+- `ReviewHunkStoreIndexing` builds 2.0 `changed_hunks` from the SKILL-164 shared evidence store (store path plus file/hunk index); standalone and feature-task review share that seam.
+- Compose reads stored hunk bytes only to compute `hunk_id` and SHA-256 `content_digest`, then drops the body; parent packet and envelope keep locator, digest, spans, and id.
+- Digest mismatch, missing/unreadable store path, or a fingerprint-contradicting locator loud-fails with a typed integrity/locator error and does not launch workers.
+- Assignments stay hunk-id ownership and do not grow with body size; an oversized stored patch composes when the index itself fits `max_parent_packet_bytes`.
+- Pattern: index-only parent envelope; hunk bodies live only in the shared store. reusable
+- Known limit: broker batching into workers and incomplete-lane evidence overflow remain subtask 3.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-08-16] SKILL-193 subtask 1 — Index-only parent packet contract
 Areas: orchestration/contracts, runtime-domain/review/context/model, runtime-application/review, runtime-contracts/review, runtime-infra-fs/review, runtime-core schema tests
 - `review-context-schema.yaml` and `REVIEW_CONTEXT_CONTRACT_VERSION` bumped 1.0 → 2.0 incompatibly; 1.0 envelopes loud-fail with a typed version-mismatch error rather than being reinterpreted.

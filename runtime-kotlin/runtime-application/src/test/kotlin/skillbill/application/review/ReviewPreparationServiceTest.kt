@@ -48,6 +48,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 /** Every fixture commit is relevant to every selected lane unless a test says otherwise. */
@@ -686,5 +687,52 @@ class ReviewPreparationServiceTest {
     }
     assertEquals(storePath, failure.storePath)
     assertTrue(failure.message.orEmpty().contains("review_hunk_evidence_locator_unreadable"))
+  }
+
+  @Test fun `commit-scoped hunk present in that commit's stored incremental composes from those bytes`() {
+    val aggregate = "diff --git a/src/A.kt b/src/A.kt\n--- a/src/A.kt\n+++ b/src/A.kt\n@@ -1,1 +1,2 @@\n+alpha\n"
+    val commitDiff = "diff --git a/src/A.kt b/src/A.kt\n--- a/src/A.kt\n+++ b/src/A.kt\n@@ -1,1 +1,2 @@\n+commit-only\n"
+    val storedHunk = ReviewDiffEvidence.parse(commitDiff).hunks.single()
+    val hunk = storedHunk.copy(commitScope = ReviewCommitUnit.commitScopeKey("head", 0))
+    val aggregateHunk = ReviewDiffEvidence.parse(aggregate).hunks.single()
+    val storePath = ".skill-bill/run-evidence/code-review/fp-commit-scope-hit"
+    val payload = SharedReviewEvidenceCodec.encode(
+      SharedReviewEvidenceRecord(
+        aggregateDiff = aggregate,
+        sequence = SharedReviewEvidenceCommits(
+          baseRevision = "base",
+          headRevision = "head",
+          commits = listOf(RawCommitDiff("head", "base", "one commit", commitDiff)),
+          syntheticSource = null,
+          syntheticReason = null,
+        ),
+      ),
+    )
+    val result = storePrepare(listOf(hunk), payload, storePath)
+    val first = (result.packetEnvelope.asWireMap()["changed_hunks"] as List<*>).single() as Map<*, *>
+    val fromStored = ReviewChangedHunk.idFor(
+      storedHunk.path,
+      storedHunk.oldStart,
+      storedHunk.oldCount,
+      storedHunk.newStart,
+      storedHunk.newCount,
+      storedHunk.content,
+      hunk.commitScope,
+    )
+    val fromAggregate = ReviewChangedHunk.idFor(
+      aggregateHunk.path,
+      aggregateHunk.oldStart,
+      aggregateHunk.oldCount,
+      aggregateHunk.newStart,
+      aggregateHunk.newCount,
+      aggregateHunk.content,
+      hunk.commitScope,
+    )
+    assertEquals(fromStored, first["hunk_id"])
+    assertNotEquals(fromAggregate, first["hunk_id"])
+    assertEquals(ReviewChangedHunk.digestOfBody(storedHunk.content), first["content_digest"])
+    assertNotEquals(ReviewChangedHunk.digestOfBody(aggregateHunk.content), first["content_digest"])
+    assertFalse(first.containsKey("content"))
+    assertEquals("", result.packet.changedHunks.single().content)
   }
 }
