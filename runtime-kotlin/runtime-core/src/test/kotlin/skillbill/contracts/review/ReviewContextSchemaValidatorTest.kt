@@ -6,6 +6,7 @@ import skillbill.application.review.toAssignmentEnvelope
 import skillbill.application.review.toIntegrationLaunchEnvelope
 import skillbill.application.review.toLaunchEnvelope
 import skillbill.application.review.toParentPacketEnvelope
+import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidReviewContextSchemaError
 import skillbill.infrastructure.fs.ReviewContextEnvelopeValidatorAdapter
 import skillbill.ports.review.ReviewBuildTestFactsPort
@@ -454,10 +455,10 @@ class ReviewContextSchemaValidatorTest {
       ReviewContextSchemaValidator.validateLaunch(launchBody, "launch")
     }
 
-    @Suppress("UNCHECKED_CAST")
     val launchEnvelope = launch.toLaunchEnvelope().asWireMap().toMutableMap()
-    val bundle = (launchEnvelope["bundle"] as Map<String, Any?>).toMutableMap()
-    val entries = (bundle["entries"] as List<Map<String, Any?>>).map { it.toMutableMap() }
+    val bundle = requireNotNull(JsonSupport.anyToStringAnyMap(launchEnvelope["bundle"])).toMutableMap()
+    val entries = (bundle["entries"] as? List<*>).orEmpty()
+      .map { requireNotNull(JsonSupport.anyToStringAnyMap(it)).toMutableMap() }
     entries[0]["content"] = "+smuggled"
     bundle["entries"] = entries
     launchEnvelope["bundle"] = bundle

@@ -1,3 +1,14 @@
+## [2026-08-16] SKILL-193 subtask 1 — Index-only parent packet contract
+Areas: orchestration/contracts, runtime-domain/review/context/model, runtime-application/review, runtime-contracts/review, runtime-infra-fs/review, runtime-core schema tests
+- `review-context-schema.yaml` and `REVIEW_CONTEXT_CONTRACT_VERSION` bumped 1.0 → 2.0 incompatibly; 1.0 envelopes loud-fail with a typed version-mismatch error rather than being reinterpreted.
+- `$defs/hunk` and launch assembled entries are index-only: `hunk_id`, path, spans, `content_digest`, `evidence_locator`; `content` and any other diff-body property are forbidden (`additionalProperties: false`).
+- Coherence check: parent-packet, assignment, and launch envelopes never accept inlined hunk bodies — same rule as the SKILL-164 shared-evidence projection. reusable
+- Parent canonical form (`packetCanonical` / envelope projection) emits the index and excludes hunk bodies, so megabyte-scale stored body text does not inflate `parent_packet_bytes`; hunk ids stay content-addressed over stored/normalized body via identity canonical, not the parent envelope.
+- Pattern: removing a required wire field is an incompatible bump plus loud-fail of legacy records, not a silent reshape. reusable
+- Known limit: composition may still derive ids from in-memory body via a factory; subtask 2 wires the shared evidence store so packets never copy bodies.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-08-14] SKILL-191 subtask 8 — Runtime-driven standalone review entry
 Areas: runtime-kotlin/{runtime-application/review, runtime-cli/codereview, runtime-ports/review, runtime-core/di}, skills/bill-code-review, orchestration/skill-classes
 - `skill-bill code-review` is a standalone entry over `ParallelCodeReviewRunner`; omitted `--agent2` is a single parent lane that still returns the register with stage verdicts.
