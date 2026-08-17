@@ -1,5 +1,17 @@
 # featuretask runtime boundary history
 
+## [2026-08-17] SKILL-191 subtask 9 — Feature-task review phase delegation
+Areas: runtime-application/featuretask (run loop, review driver, prompt directives, briefing assembler), runtime-core/di, runtime-application tests
+- `PHASE_REVIEW` stopped being an agent phase: `runDeclaredReviewDriverCycle` prepares the pass, mints or reuses the `review_run_id`, pins the repository checkpoint, and invokes `FeatureTaskRuntimeReviewDriver` — bound in `RuntimeComponent` to `ParallelCodeReviewRunner::run`, the same driver the standalone entry uses
+- A reused `review_run_id` is now claimed only when the durable record belongs to the same review pass, so a second pass mints its own id instead of inheriting pass one's
+- `FeatureTaskRuntimeReviewEnvelope` assembles `produced_outputs.findings` and `review_run_id` from the driver result only, strips criterion-gap keys (`unmet_criteria`, `gaps`, `failing_criteria`), and adds `blocker_dispositions` from pass two onward
+- The review directive now states the runtime owns the review; the briefing allowlist keeps `ACCEPTANCE_CRITERIA` out of the review phase, so criterion-gap detection stays exclusive to audit
+- The mapper pins `ParallelReviewScope.UNSTAGED` with the caller-supplied diff, base and head revisions from `GoalSubtaskReviewInput`, and the governed spec path, so no stage rediscovers a baseline and adjudication always runs
+- Reusable: the validate-phase precedent of runtime-run gate plus bounded agent projection, now applied to review
+- Limitation: `code_review_mode` resolution and continuation conflict rejection are unchanged; pass two still forces `INLINE` via `FeatureTaskRuntimeReviewPassSequence.resolveForPass`
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
 ## [2026-08-15] SKILL-192 subtask 3 — Repair plan, substantiation receipts, confirmation closure
 Areas: runtime-application/featuretask/validation, runtime-domain/workflow/taskruntime/model, runtime-ports/validation, AGENTS.md, runtime-kotlin/agent
 - FULL collect-all no longer treats a completed repair payload as proof: persist a covering repair plan, require a substantiation receipt per discovery identity, then run one confirmation collect-all
