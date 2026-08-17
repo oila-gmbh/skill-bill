@@ -37,8 +37,7 @@ class LaunchAlignedGoalPlanningStatusReasonCoherence(
     }
     val remedySubtaskId = request.snapshot.currentPlanningSubtaskId
       ?.takeIf { it > 0 }
-      ?: request.manifest.subtasks.firstOrNull { it.status != "skipped" }?.id
-      ?: 1
+      ?: goalPlanningRemedySubtaskId(request.manifest.subtasks)
     return alignPlanningStatusWithLaunchRecoverability(
       snapshot = request.snapshot,
       recoverability = recoverability,

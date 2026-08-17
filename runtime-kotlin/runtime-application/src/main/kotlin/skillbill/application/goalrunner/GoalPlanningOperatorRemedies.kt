@@ -4,39 +4,51 @@ import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
 import skillbill.goalrunner.model.GoalPlanningStatusReasons
 import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
 import skillbill.goalrunner.model.GoalPlanningStatusState
+import skillbill.workflow.model.DecompositionSubtask
 
 /** Copy-pasteable operator remedy for incompatible shared-preplan provenance. */
 internal fun goalPlanningIncludeSharedPreplanRemedy(issueKey: String, subtaskId: Int): String =
   "skill-bill goal replan $issueKey --subtask $subtaskId --include-shared-preplan"
 
-internal fun goalPlanningIncompatibleProvenanceStopReason(issueKey: String, subtaskId: Int): String =
-  "Goal planning shared preplan provenance is incompatible with the current governed inputs. " +
-    "Recover with: ${goalPlanningIncludeSharedPreplanRemedy(issueKey, subtaskId)}"
+/**
+ * The subtask the advertised replan can actually target. `replan` refuses a `complete` or `skipped`
+ * subtask, so picking the lowest id — or any non-skipped one — hands the operator a command the
+ * runtime then rejects, which is what happens on every goal whose early subtasks already finished.
+ * Null means no subtask is replannable and no command should be advertised.
+ */
+internal fun goalPlanningRemedySubtaskId(subtasks: List<DecompositionSubtask>): Int? =
+  subtasks.firstOrNull { it.status != "complete" && it.status != "skipped" }?.id
 
-internal fun goalPlanningMissingSharedContextPacketStopReason(issueKey: String, subtaskId: Int): String =
+private fun recoverySuffix(issueKey: String, subtaskId: Int?): String = if (subtaskId == null) {
+  "No subtask is replannable, so reset the goal before planning can be repaired."
+} else {
+  "Recover with: ${goalPlanningIncludeSharedPreplanRemedy(issueKey, subtaskId)}"
+}
+
+internal fun goalPlanningIncompatibleProvenanceStopReason(issueKey: String, subtaskId: Int?): String =
+  "Goal planning shared preplan provenance is incompatible with the current governed inputs. " +
+    recoverySuffix(issueKey, subtaskId)
+
+internal fun goalPlanningMissingSharedContextPacketStopReason(issueKey: String, subtaskId: Int?): String =
   "Goal planning shared preplan does not contain a valid shared context packet. " +
-    "Recover with: ${goalPlanningIncludeSharedPreplanRemedy(issueKey, subtaskId)}"
+    recoverySuffix(issueKey, subtaskId)
 
 /**
  * Surviving preparation-state hard stop. Uses [IncompatibleGoalPlanningPreparationRecoveryError.reason]
  * rather than [Throwable.message] so the stop does not claim the state "cannot be recovered" when
  * `--include-shared-preplan` is the documented recovery path.
  */
-internal fun goalPlanningPreparationStateReadStopReason(error: Throwable, issueKey: String, subtaskId: Int): String {
+internal fun goalPlanningPreparationStateReadStopReason(error: Throwable, issueKey: String, subtaskId: Int?): String {
   val recovery = error as? IncompatibleGoalPlanningPreparationRecoveryError
     ?: return "Goal planning preparation state could not be read: ${error.message.orEmpty()}"
-  val remedySubtaskId = when {
-    subtaskId > 0 -> subtaskId
-    recovery.subtaskId > 0 -> recovery.subtaskId
-    else -> 1
-  }
+  val remedySubtaskId = subtaskId?.takeIf { it > 0 } ?: recovery.subtaskId.takeIf { it > 0 }
   return "Goal planning preparation state could not be read: ${recovery.reason}. " +
-    "Recover with: ${goalPlanningIncludeSharedPreplanRemedy(issueKey, remedySubtaskId)}"
+    recoverySuffix(issueKey, remedySubtaskId)
 }
 
-internal fun goalPlanningNonResumableStatusReason(issueKey: String, subtaskId: Int): String =
-  "Saved planning is not resumable until provenance is repaired. Recover with: " +
-    goalPlanningIncludeSharedPreplanRemedy(issueKey, subtaskId)
+internal fun goalPlanningNonResumableStatusReason(issueKey: String, subtaskId: Int?): String =
+  "Saved planning is not resumable until provenance is repaired. " +
+    recoverySuffix(issueKey, subtaskId)
 
 /**
  * Launch refuses when shared-preplan classification cannot complete (identity mismatch, schema
@@ -57,7 +69,7 @@ internal fun alignPlanningStatusWithLaunchRecoverability(
   snapshot: GoalPlanningStatusSnapshot,
   recoverability: GoalPlanningProvenanceRecoverability,
   issueKey: String,
-  remedySubtaskId: Int,
+  remedySubtaskId: Int?,
 ): GoalPlanningStatusSnapshot {
   if (recoverability !is GoalPlanningProvenanceRecoverability.Invalid) return snapshot
   if (

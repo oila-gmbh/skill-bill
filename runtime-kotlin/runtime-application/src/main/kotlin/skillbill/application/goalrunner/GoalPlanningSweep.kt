@@ -132,7 +132,7 @@ class DefaultGoalPlanningSweep(
       }
     val recoveredPacket = existingShared?.let(::planningPacketFrom)
     if (existingShared != null && recoveredPacket == null) {
-      val remedySubtaskId = state.manifest.subtasks.firstOrNull { it.status != "skipped" }?.id ?: 1
+      val remedySubtaskId = goalPlanningRemedySubtaskId(state.manifest.subtasks)
       return preSweepStopped(
         request,
         goalPlanningMissingSharedContextPacketStopReason(request.issueKey, remedySubtaskId),
@@ -473,7 +473,7 @@ class DefaultGoalPlanningSweep(
   }
 
   private fun incompatibleProvenance(shared: GoalPlanningSharedContext): GoalPlanningSweepOutcome.Stopped {
-    val remedySubtaskId = shared.manifest.subtasks.firstOrNull { it.status != "skipped" }?.id ?: 1
+    val remedySubtaskId = goalPlanningRemedySubtaskId(shared.manifest.subtasks)
     return stopped(
       shared,
       0,
