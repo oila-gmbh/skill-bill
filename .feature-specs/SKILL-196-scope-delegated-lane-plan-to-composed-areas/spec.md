@@ -184,6 +184,16 @@ launching both lanes.
   area, independent of manifest iteration order.
 - The domain policy is already correct. Fix the callers and the router; do not weaken `flatten`'s
   winner selection or its ambiguity error to accommodate them.
+- **AC 4 must not ship before SKILL-197 lands.** Excluding the generic lane is only safe once the
+  owning native pack can ask the questions the generic rubric was asking. On
+  `rvw-20260817-183143-ilvx`, `bill-generic-code-review-architecture` produced the run's sharpest
+  architectural findings — **F-001, Major severity at High confidence, adjudicated `confirmed`**: a
+  schema pull added `OF_workerEntryV2.description`, only the new subscription document selected it,
+  and the same backend payload therefore persisted a silent null description on legacy VISITS
+  projects. It also produced F-015, naming the byte-for-byte fragment clone that hid F-001.
+  `bill-kotlin-code-review-architecture` found neither. Landing AC 4 before SKILL-197 would remove
+  the only lane that caught a confirmed Major, so the two ship together or SKILL-197 ships first.
+  Every other acceptance criterion in this spec is independent of that ordering.
 - No comments are added to any changed file.
 
 ## Non-Goals
