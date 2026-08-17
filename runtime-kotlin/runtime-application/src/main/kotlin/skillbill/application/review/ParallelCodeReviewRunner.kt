@@ -1341,6 +1341,45 @@ class ParallelCodeReviewRunner(
     }
   }
 
+  private fun StringBuilder.appendModeInstruction(inline: Boolean) {
+    if (inline) {
+      appendLine(
+        "Merge every routed rubric above into one combined checklist, then traverse the diff exactly " +
+          "once against it at reduced depth in this agent context, holding all rubrics in mind " +
+          "simultaneously, and do not launch specialists. Never re-walk the diff once per rubric: " +
+          "iterating rubrics over the same code is the same review repeated N times at N times the " +
+          "cost, and it misses defects that only surface where two rubrics intersect. " +
+          "Follow only the signals that appear; do not build a case for a marginal finding. " +
+          "Depth and budget are lowered here — the severity vocabulary, the finding admission gate, the " +
+          "evidence and observable-consequence requirements, the F-XXX register format, and telemetry are " +
+          "inherited unchanged.",
+      )
+    } else {
+      appendLine(
+        "Assign each routed rubric above to its own specialist worker over that rubric's owned paths " +
+          "and merge the returned registers. The severity vocabulary, the finding admission gate, the " +
+          "evidence and observable-consequence requirements, the F-XXX register format, and telemetry " +
+          "are the same as every other mode.",
+      )
+    }
+  }
+
+  private fun StringBuilder.appendRegisterContract() {
+    appendLine(
+      "Return only '[F-XXX] Severity | Confidence | specialist=<exact resolved rubric identity> | " +
+        "commits=<sha>[,<sha>] | path=<JSON string> | line=<positive integer> | description' lines. " +
+        "The commits= segment is optional for a finding confined to a single assigned commit and " +
+        "required whenever a finding relates code from more than one assigned commit; list the " +
+        "involved commit shas in the bundle's commit order.",
+    )
+    appendLine(
+      "If the full assigned review executed and no finding met the admission gate, return exactly " +
+        "$NO_FINDINGS_TOKEN on its own line. Never return an empty or prose-only result: output " +
+        "with neither [F-XXX] lines nor $NO_FINDINGS_TOKEN is treated as a lane that did not " +
+        "execute and fails the run.",
+    )
+  }
+
   private fun StringBuilder.appendAssignedBundleEvidence(launch: ReviewSpecialistLaunchRequest) {
     governedLaunchFor(launch).deliveredEntries.forEach { entry ->
       val hunk = entry.hunk
@@ -1579,7 +1618,13 @@ private fun parallelResult(
       emptyList()
     } else {
       outcomes.lane2.findings.ifEmpty {
-        if (outcomes.lane2.success) ParallelReviewFindingParser.parse(outcomes.lane2.rawOutput).findings else emptyList()
+        if (outcomes.lane2.success) {
+          ParallelReviewFindingParser.parse(
+            outcomes.lane2.rawOutput,
+          ).findings
+        } else {
+          emptyList()
+        }
       }
     },
   )
