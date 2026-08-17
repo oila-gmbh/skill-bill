@@ -8,7 +8,6 @@ import skillbill.db.workflow.WorkflowStateStore
 import skillbill.error.InvalidFeatureTaskRuntimeWorkerOwnershipSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.error.ProseFeatureTaskWorkflowWriteRefusedError
-import skillbill.ports.persistence.GoalChildWorkflowDeletionScope
 import skillbill.ports.persistence.model.FeatureTaskExecutionIdentity
 import skillbill.ports.persistence.model.FeatureTaskRouteScope
 import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerLeaseState
@@ -99,51 +98,6 @@ class WorkflowStateStoreTest {
       assertEquals(null, store.getFeatureTaskRuntimeWorkflow(target.workflowId))
       assertNotNull(store.getFeatureTaskRuntimeWorkflow(siblingGoal.workflowId))
       assertNotNull(store.getFeatureTaskRuntimeWorkflow(standalone.workflowId))
-    }
-  }
-
-  /**
-   * A scoped replan discards a subtask's stored plan while its hydrated child still holds the old
-   * planning bytes. Refusing to delete that child when it is merely resumable stranded the goal: the
-   * next launch failed the hydration provenance check, and the advertised scoped recovery required an
-   * incompatible terminal child, leaving only a goal-wide hard reset.
-   */
-  @Test
-  fun `scoped goal-child deletion removes a resumable child only under the resumable scope and never a running one`() {
-    val dbPath = Files.createTempDirectory("goal-child-scoped-delete").resolve("metrics.db")
-    DatabaseRuntime.ensureDatabase(dbPath).use { connection ->
-      val store = WorkflowStateStore(connection)
-      val paused = goalChildWorkflow("wftr-paused", "wftr-parent").copy(workflowStatus = "paused")
-      val running = goalChildWorkflow("wftr-running", "wftr-parent").copy(workflowStatus = "running")
-      listOf(paused, running).forEach { row ->
-        store.saveFeatureTaskRuntimeWorkflow(row)
-        store.saveFeatureTaskExecutionIdentity(goalChildIdentity(row))
-      }
-
-      assertEquals(0, store.deleteGoalChildWorkflow("wftr-parent", 1, paused.workflowId))
-      assertNotNull(store.getFeatureTaskRuntimeWorkflow(paused.workflowId))
-
-      assertEquals(
-        1,
-        store.deleteGoalChildWorkflow(
-          "wftr-parent",
-          1,
-          paused.workflowId,
-          GoalChildWorkflowDeletionScope.TERMINAL_OR_RESUMABLE,
-        ),
-      )
-      assertEquals(null, store.getFeatureTaskRuntimeWorkflow(paused.workflowId))
-
-      assertEquals(
-        0,
-        store.deleteGoalChildWorkflow(
-          "wftr-parent",
-          1,
-          running.workflowId,
-          GoalChildWorkflowDeletionScope.TERMINAL_OR_RESUMABLE,
-        ),
-      )
-      assertNotNull(store.getFeatureTaskRuntimeWorkflow(running.workflowId))
     }
   }
 

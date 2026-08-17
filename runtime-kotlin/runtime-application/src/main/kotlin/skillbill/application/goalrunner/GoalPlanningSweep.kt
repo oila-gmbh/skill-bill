@@ -357,9 +357,8 @@ class DefaultGoalPlanningSweep(
   )
 
   /**
-   * Classifies saved shared-preplan recoverability. Payload integrity and selected-heading resolution
-   * always run when a checkpoint exists — never short-circuit on provenance equality alone.
-   * Fresh catalog ids come from [contextDiscovery], not the recovered packet catalog.
+   * Classifies saved shared-preplan recoverability. Payload integrity always runs when a checkpoint
+   * exists — never short-circuit on provenance equality alone.
    *
    * When provenance was already advanced to the current parent-spec hash (equal-set refresh) while the
    * embedded packet still carries the prior parent_spec text, treat the current on-disk parent spec as
@@ -374,12 +373,6 @@ class DefaultGoalPlanningSweep(
     if (existing == null) {
       return GoalPlanningProvenanceRecoverability.Reuse(current)
     }
-    val selected = selectedBoundaryHeadingIds(existing.preplanPayload)
-    val freshCatalogHeadingIds = if (selected.isEmpty()) {
-      emptySet()
-    } else {
-      contextDiscovery.discover(shared.repoRoot).boundaryCatalog.mapTo(linkedSetOf()) { it.headingId }
-    }
     val packetParentSpec = shared.planningPacket["parent_spec"] as? String
     val savedParentSpec = if (existing.provenance.parentSpecHash == shared.parentSpecHash) {
       shared.parentSpec
@@ -391,7 +384,6 @@ class DefaultGoalPlanningSweep(
       current = current,
       savedParentSpec = savedParentSpec,
       currentParentSpec = shared.parentSpec,
-      freshCatalogHeadingIds = freshCatalogHeadingIds,
     )
   }
 
@@ -1432,26 +1424,27 @@ internal sealed interface GoalPlanningProvenanceRecoverability {
 }
 
 /**
- * Validity: manifest hash, parent-spec self-hash, payload sha, and every selected heading id
- * resolving in [freshCatalogHeadingIds]. Runtime schema ids are install identity and are not
- * validity. Freshness: canonical parent-spec equality. Empty or absent selected headings are
- * vacuously valid.
+ * Validity: manifest hash, parent-spec self-hash, and payload sha. Runtime schema ids are install
+ * identity and are not validity. Freshness: canonical parent-spec equality.
+ *
+ * A selected heading id that no longer resolves is not a validity failure. The body resolver already
+ * refuses an off-catalog id and reports it in `unresolvedHeadingIds`, which reaches the plan prompt, so
+ * an unresolvable selection costs one body rather than the whole saved preplan. Treating it as invalid
+ * made a single mis-copied digest permanently discard planning the producer gate had already accepted,
+ * recoverable only by regenerating and re-rolling the same copy.
  */
 internal fun classifyGoalPlanningProvenanceRecoverability(
   existing: SharedGoalPreplanCheckpoint?,
   current: GoalPlanningContractProvenance,
   savedParentSpec: String?,
   currentParentSpec: String,
-  freshCatalogHeadingIds: Set<String>,
 ): GoalPlanningProvenanceRecoverability {
   if (existing == null) return GoalPlanningProvenanceRecoverability.Reuse(current)
   val saved = existing.provenance
-  val selected = selectedBoundaryHeadingIds(existing.preplanPayload)
   val valid = saved.decompositionManifestHash == current.decompositionManifestHash &&
     savedParentSpec != null &&
     sha256HexUtf8(savedParentSpec) == saved.parentSpecHash &&
-    sha256HexUtf8(existing.preplanPayload) == existing.payloadSha256 &&
-    selected.all { headingId -> headingId in freshCatalogHeadingIds }
+    sha256HexUtf8(existing.preplanPayload) == existing.payloadSha256
   if (!valid) return GoalPlanningProvenanceRecoverability.Invalid
   val fresh = GoalPlanningSpecCanonicalization.canonical(savedParentSpec) ==
     GoalPlanningSpecCanonicalization.canonical(currentParentSpec)

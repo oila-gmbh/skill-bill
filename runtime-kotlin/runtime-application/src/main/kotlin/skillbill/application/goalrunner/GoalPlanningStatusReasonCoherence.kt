@@ -7,7 +7,6 @@ import skillbill.application.workflow.GoalPlanningPreparationCheckpoint
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.GoalPlanningPreparationSchemaPaths
 import skillbill.goalrunner.model.GoalPlanningStatusSnapshot
-import skillbill.ports.goalrunner.GoalPlanningContextDiscovery
 import skillbill.ports.persistence.model.GoalPlanningContractProvenance
 import skillbill.ports.persistence.model.GoalPlanningIdentity
 import skillbill.ports.persistence.model.SharedGoalPreplanCheckpoint
@@ -29,7 +28,6 @@ fun interface GoalPlanningStatusReasonCoherence {
 @Inject
 class LaunchAlignedGoalPlanningStatusReasonCoherence(
   private val checkpoint: GoalPlanningPreparationCheckpoint,
-  private val contextDiscovery: GoalPlanningContextDiscovery,
   private val manifestFileStore: DecompositionManifestFileStore,
 ) : GoalPlanningStatusReasonCoherence {
   override fun align(request: GoalPlanningStatusAlignRequest): GoalPlanningStatusSnapshot {
@@ -78,18 +76,11 @@ class LaunchAlignedGoalPlanningStatusReasonCoherence(
     } else {
       packetParentSpec
     }
-    val selected = selectedBoundaryHeadingIds(existing.preplanPayload)
-    val freshCatalogHeadingIds = if (selected.isEmpty()) {
-      emptySet()
-    } else {
-      contextDiscovery.discover(canonicalRepository).boundaryCatalog.mapTo(linkedSetOf()) { it.headingId }
-    }
     return classifyGoalPlanningProvenanceRecoverability(
       existing = existing,
       current = current,
       savedParentSpec = savedParentSpec,
       currentParentSpec = currentParentSpec,
-      freshCatalogHeadingIds = freshCatalogHeadingIds,
     )
   }
 

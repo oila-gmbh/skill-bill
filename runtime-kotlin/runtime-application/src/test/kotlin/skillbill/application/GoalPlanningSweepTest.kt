@@ -906,7 +906,7 @@ class GoalPlanningSweepTest {
   }
 
   @Test
-  fun `resume stops when selected boundary heading is absent from the fresh catalog`() {
+  fun `resume reuses saved planning when a selected boundary heading is absent from the fresh catalog`() {
     val discovery = MutableContextDiscovery()
     val harness = sweepHarness(contextDiscovery = discovery) { phase, _, _ ->
       if (phase == "preplan") {
@@ -917,21 +917,18 @@ class GoalPlanningSweepTest {
     }
     val state = harness.stateFor(manifest(subtaskCount = 1))
     harness.sweep.prepare(state, harness.request())
-    val launchCount = harness.launcher.requests.size
+    val sharedBefore = requireNotNull(harness.fixtures.database.repository.findSharedPreplan(harness.identity()))
     discovery.clearCatalog()
 
     val outcome = harness.sweep.prepare(state, harness.request())
 
-    val stopped = assertIs<GoalPlanningSweepOutcome.Stopped>(outcome)
-    assertEquals(0, stopped.currentSubtaskId)
-    assertEquals("preplan", stopped.lastResumableStep)
-    assertTrue(stopped.blockedReason.contains("provenance"), stopped.blockedReason)
-    assertTrue(
-      stopped.blockedReason.contains("skill-bill goal replan SKILL-56 --subtask 1 --include-shared-preplan"),
-      stopped.blockedReason,
+    assertIs<GoalPlanningSweepOutcome.PreparedAll>(outcome)
+    val sharedAfter = requireNotNull(harness.fixtures.database.repository.findSharedPreplan(harness.identity()))
+    assertEquals(
+      sharedBefore.preplanPayload,
+      sharedAfter.preplanPayload,
+      "An unresolvable heading must not discard the accepted preplan.",
     )
-    assertEquals(launchCount, harness.launcher.requests.size)
-    assertEquals(2, discovery.calls, "heading validity must re-parse the catalog without launching planning")
   }
 
   @Test
@@ -945,7 +942,6 @@ class GoalPlanningSweepTest {
       current = current,
       savedParentSpec = parentSpec,
       currentParentSpec = parentSpec,
-      freshCatalogHeadingIds = emptySet(),
     )
 
     assertIs<GoalPlanningProvenanceRecoverability.Reuse>(result)
@@ -963,7 +959,6 @@ class GoalPlanningSweepTest {
       current = current,
       savedParentSpec = savedParent,
       currentParentSpec = currentParent,
-      freshCatalogHeadingIds = emptySet(),
     )
 
     assertIs<GoalPlanningProvenanceRecoverability.StaleValid>(result)
@@ -983,27 +978,6 @@ class GoalPlanningSweepTest {
       current = current,
       savedParentSpec = parentSpec,
       currentParentSpec = parentSpec,
-      freshCatalogHeadingIds = emptySet(),
-    )
-
-    assertIs<GoalPlanningProvenanceRecoverability.Invalid>(result)
-  }
-
-  @Test
-  fun `recoverability classifier returns Invalid for an unresolved selected heading id`() {
-    val parentSpec = "# Parent contract"
-    val checkpoint = recoverabilityCheckpoint(
-      parentSpec = parentSpec,
-      preplanPayload = preplanPayloadSelecting(FIXTURE_HEADING_ID),
-    )
-    val current = checkpoint.provenance.copy(parentSpecHash = sha256HexUtf8(parentSpec))
-
-    val result = classifyGoalPlanningProvenanceRecoverability(
-      existing = checkpoint,
-      current = current,
-      savedParentSpec = parentSpec,
-      currentParentSpec = parentSpec,
-      freshCatalogHeadingIds = emptySet(),
     )
 
     assertIs<GoalPlanningProvenanceRecoverability.Invalid>(result)
@@ -1026,7 +1000,6 @@ class GoalPlanningSweepTest {
       current = current,
       savedParentSpec = parentSpec,
       currentParentSpec = parentSpec,
-      freshCatalogHeadingIds = emptySet(),
     )
 
     val reuse = assertIs<GoalPlanningProvenanceRecoverability.Reuse>(result)
@@ -1044,7 +1017,6 @@ class GoalPlanningSweepTest {
       current = current,
       savedParentSpec = parentSpec,
       currentParentSpec = parentSpec,
-      freshCatalogHeadingIds = emptySet(),
     )
 
     assertIs<GoalPlanningProvenanceRecoverability.Invalid>(result)
