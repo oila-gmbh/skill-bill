@@ -4,7 +4,7 @@
 
 A delegated review of a five-commit Kotlin/Android PR (`rvw-20260817-183143-ilvx`, capmo-android)
 planned **13 specialist lanes across 8 distinct areas**. Five areas were claimed by more than one
-pack:
+pack, and the fallback pack claimed five lanes of its own:
 
 | Area | Packs that planned a lane | Required |
 |---|---|---|
@@ -15,8 +15,37 @@ pack:
 | api-contracts | generic | no |
 | persistence, testing, ux-accessibility | kotlin | no |
 
-The duplication is not a heuristic that fired too eagerly. Per-area winner selection **already
-exists and is correct**; two caller defects route around it.
+Neither the duplication nor the generic participation is a heuristic that fired too eagerly. Both
+the per-area winner selection and the fallback-only status of the generic pack are **already
+declared and already implemented**; caller defects route around them.
+
+### `generic` is a declared fallback pack that must never compete with a native pack
+
+`platform-packs/generic/platform.yaml` declares:
+
+```yaml
+routing_signals:
+  strong:
+    - "manifest-declared code-review fallback"
+  tie_breakers: []
+
+fallback_capabilities:
+  - code-review
+```
+
+Its only routing signal is a literal description of its fallback status — not a path marker, not a
+content marker. It is a fallback for the case where **no native pack declares an area**, not a peer
+that reviews alongside one.
+
+The composition graph confirms it is not meant to appear in a native plan. `kmp` composes `kotlin`
+as a required baseline layer (`kmp/platform.yaml`, `code_review_composition.baseline_layers`), and
+`kotlin` declares no `code_review_composition` at all. **`generic` is therefore not in the
+composition chain of any native pack.** The only way its five lanes entered this plan is
+`ReviewStackRouting` returning `generic` as a routed root alongside `kotlin` and `kmp`, ignoring the
+pack's own `fallback_capabilities` declaration.
+
+Because generic sits in no composition chain, depth-based winner selection cannot demote it. It
+arrives at depth 0 of its own plan and wins every area it declares — all ten.
 
 ### The policy already selects one owner per area
 
@@ -63,6 +92,16 @@ the pack slug (`ReviewLaunchPlanPolicy.kt:106`), so `bill-generic-code-review-ar
 `bill-kotlin-code-review-architecture` are distinct keys and never merge. The dedupe is structurally
 incapable of catching cross-root duplication, which is the only kind that occurs.
 
+### Defect 3 — a fallback pack is routed as a root
+
+`ReviewStackRouting` returns `generic` among `routedSlugs` for a diff that already routed `kotlin`
+and `kmp`, despite `generic` declaring `fallback_capabilities: [code-review]` and no substantive
+routing signal. Fallback status is per-capability and must be evaluated per area, not per review: a
+fallback pack supplies a lane for an area **only when no native routed pack declares that area**.
+
+The correct plan for the observed diff routes `kmp` (which composes `kotlin`) and plans **zero**
+generic lanes, because every area generic declares is also declared by `kotlin` or `kmp`.
+
 ### The cost lands on required lanes specifically
 
 A required lane claims the owning pack's entire routed file set, while an optional lane claims only
@@ -72,22 +111,17 @@ its signal-matched subset (`ParallelCodeReviewRunner.kt:1039`):
 val ownedPaths = if (lane.required) rootOwnedPaths else laneOwnedPaths(lane, rootFiles)
 ```
 
-`architecture` and `platform-correctness` are `required: true` in all three packs
-(`kotlin/platform.yaml`, `kmp/platform.yaml`, `generic/platform.yaml`). The observed run therefore
-planned **five required lanes**, each claiming the whole routed diff, where correct per-area
+`architecture` and `platform-correctness` are `required: true` in all three packs. The observed run
+therefore planned **five required lanes**, each claiming the whole routed diff, where correct
 selection plans **two**. Each lane is a separate `claude --print` process paying a full launch
 envelope, so the duplicated required lanes are the most expensive lanes in the run.
 
-Correct selection on the observed diff yields **8 lanes instead of 13**, with no area losing
-coverage.
-
 ## Intended Outcome
 
-A delegated review plans exactly one specialist lane per review area, owned by the nearest pack in
-the routed composition, regardless of how many packs routed. The launch path and the attribution
-path derive their area sets from the same policy function, so a planned lane and an attributed lane
-describe the same set. Coverage is unchanged: every area that would have been reviewed is still
-reviewed, once, by its most specific owner.
+A delegated review plans exactly one specialist lane per review area, owned by the nearest native
+pack in the routed composition. A fallback pack supplies a lane for an area only when no native
+routed pack declares that area. The launch path and the attribution path derive their area sets from
+the same policy function, so a planned lane and an attributed lane describe the same set.
 
 Cross-root ambiguity is resolved deterministically or fails loudly. It is never resolved by
 launching both lanes.
@@ -99,27 +133,36 @@ launching both lanes.
    `declaredCodeReviewAreas` across all installed manifests.
 2. A single review plans at most one lane per area. For any review run, `review_run_lanes` contains
    no two rows sharing the same `area`.
-3. With `generic`, `kotlin`, and `kmp` installed and a Kotlin/Android diff that routes all three,
-   `platform-correctness` plans exactly one lane and its `pack_slug` is `kmp`; `architecture` plans
-   exactly one lane and its `pack_slug` is `kotlin`.
-4. Cross-root duplicate areas are resolved by composition depth, not by skill name. The merge key
-   used to reconcile lanes across routed roots is the area, and two lanes for the same area at the
-   same nearest depth from different packs raise `AmbiguousLaneOwnershipError` rather than both
-   launching.
-5. For the same routed pack and manifest set, the launch path and `FileSystemReviewAttribution`
+3. A pack declaring a capability in `fallback_capabilities` is never planned as a routed root
+   alongside a native pack. It supplies a lane for an area if and only if no native routed pack in
+   the composition declares that area.
+4. With `generic`, `kotlin`, and `kmp` installed and a Kotlin/Android diff, `review_run_lanes`
+   contains **zero** rows with `pack_slug = 'generic'`, because `kotlin` and `kmp` between them
+   declare every area `generic` declares.
+5. With the same setup, `platform-correctness` plans exactly one lane with `pack_slug = 'kmp'`, and
+   `architecture` plans exactly one lane with `pack_slug = 'kotlin'`.
+6. An area declared only by a fallback pack, with no native routed pack declaring it, still plans its
+   fallback lane. Fallback exclusion is per-area, never per-review.
+7. Cross-root duplicate areas are resolved by composition depth, not by skill name. The merge key
+   used to reconcile lanes across routed roots is the area, and two native packs tying at the same
+   nearest depth for one area raise `AmbiguousLaneOwnershipError` rather than both launching.
+8. For the same routed pack and manifest set, the launch path and `FileSystemReviewAttribution`
    produce identical area sets, pinned by a parity test.
-6. No area is claimed by more than one required lane, so the whole-routed-diff claim at
+9. No area is claimed by more than one required lane, so the whole-routed-diff claim at
    `ParallelCodeReviewRunner.kt:1039` is paid at most once per area.
-7. A regression test reproduces the observed 13-lane cross-stack plan and asserts it resolves to one
-   lane per distinct area, with the owning pack asserted per area.
-8. Lane coverage is unchanged: the set of distinct areas in the resolved plan equals the set of
-   distinct areas in the pre-change plan for the same diff.
-9. `inline` execution mode is behaviourally unchanged.
-10. `unreviewedSegmentIds`, segment accounting, coverage facts, and integration terminal state record
-    exactly as before. Removing a duplicate lane must not be recorded as unreviewed coverage.
+10. A regression test reproduces the observed 13-lane cross-stack plan and asserts it resolves to one
+    lane per distinct area with no generic lane, asserting the owning pack per area.
+11. Every area present in the pre-change plan is present in the post-change plan. Lane count falls;
+    the set of distinct areas does not.
+12. `inline` execution mode is behaviourally unchanged.
+13. `unreviewedSegmentIds`, segment accounting, coverage facts, and integration terminal state record
+    exactly as before. Removing a duplicate or fallback lane must not be recorded as unreviewed
+    coverage.
 
 ## Scope
 
+- Honour `fallback_capabilities` in routing so a fallback pack is never a routed root beside a native
+  pack, and contributes an area only when no native pack declares it.
 - Replace the all-manifest area union at `ParallelCodeReviewRunner.kt:1030` with
   `ReviewLaunchPlanPolicy.composedAreas`, per routed root.
 - Reconcile lanes across routed roots by area with nearest-depth ownership, replacing the
@@ -131,23 +174,27 @@ launching both lanes.
 
 ## Constraints
 
-- Coverage must not shrink. This change removes duplicate lanes for an area, never the last lane for
-  an area.
+- Area coverage must not shrink. This change removes duplicate and fallback-redundant lanes for an
+  area, never the last lane for an area.
 - A removed duplicate is not a coverage gap and must not be recorded in `unreviewedSegmentIds` or
   reduce a lane disposition to `incomplete`.
-- Ambiguity fails loudly. No silent fallback to a general-purpose or generic-pack lane when the
-  owning pack cannot be determined — consistent with the existing loud-fail contract.
+- Ambiguity fails loudly. No silent fallback to a general-purpose lane when the owning native pack
+  cannot be determined — consistent with the existing loud-fail contract.
 - Determinism is required: the same manifest set and diff must always produce the same owner per
   area, independent of manifest iteration order.
-- The domain policy is already correct. Fix the callers; do not weaken `flatten`'s winner selection
-  or its ambiguity error to accommodate them.
+- The domain policy is already correct. Fix the callers and the router; do not weaken `flatten`'s
+  winner selection or its ambiguity error to accommodate them.
 - No comments are added to any changed file.
 
 ## Non-Goals
 
+- **Composing a fallback pack's rubric into the winning native lane.** Considered and rejected. The
+  generic pack is a fallback for a missing native lane, not a second opinion on a covered area. Where
+  a native rubric asks fewer or weaker questions than the generic one for the same area, the repair
+  is to strengthen that native pack's area content, not to run both lanes or merge their rubrics.
 - **Bundling multiple areas into one lane.** Collapsing e.g. platform-correctness + reliability into
   a single worker is a depth tradeoff and a separate design change. This spec reduces lane count only
-  by removing duplicates, at zero coverage or depth cost.
+  by removing duplicate and fallback-redundant lanes, at zero coverage cost.
 - **Tightening `lane_conditions` content triggers.** The optional-lane triggers are broad substring
   matches (`"schema"`, `"retry"`, `"timeout"`, `"database"`) that fire on most non-trivial diffs. That
   is a real second-order cost driver and a follow-up ticket, not part of this correctness fix.
@@ -163,12 +210,19 @@ launching both lanes.
   reduction remains measurable through the byte and count surfaces SKILL-194 retains.
 - **Running specialist lanes as in-process subagents instead of separate processes.** Larger change;
   the per-lane fixed overhead argument stands, but it is independent of plan correctness.
-- Changing routing itself, including whether `ReviewStackRouting` should return a single dominant
-  root. This spec makes the plan correct for however many roots routing returns.
 
 ## Diagnostic Evidence
 
-Policy that already implements the intended behaviour:
+Declarations that already encode the intended behaviour:
+
+- `platform-packs/generic/platform.yaml` — `fallback_capabilities: [code-review]`, empty
+  `tie_breakers`, and a single non-substantive routing signal.
+- `platform-packs/kmp/platform.yaml` — `code_review_composition.baseline_layers` composing `kotlin`
+  with `required: true`.
+- `platform-packs/kotlin/platform.yaml` — no `code_review_composition`, so `generic` is in no native
+  composition chain; `tie_breakers` already state that KMP markers establish ownership over this pack.
+
+Policy that already implements per-area selection:
 
 - `runtime-domain/.../review/plan/ReviewLaunchPlanPolicy.kt:12-17` — `composedAreas` KDoc stating the
   constraint the launch path violates.
@@ -177,29 +231,28 @@ Policy that already implements the intended behaviour:
 - `:106` — skill name derived from pack slug, which is why the skill-name merge key cannot dedupe
   across packs.
 
-Caller defects:
+Caller and router defects:
 
 - `runtime-application/.../review/ParallelCodeReviewRunner.kt:1030` — the forbidden all-manifest area
   union.
 - `:1035-1037` — `flatten` invoked per routed root, scoping winner selection to one root.
 - `:1039` — required lanes claim `rootOwnedPaths`, the whole routed file set.
 - `:1049` — `groupBy { it.skillName }`, structurally unable to merge same-area lanes across packs.
+- `ReviewStackRouting` — returns `generic` among `routedSlugs` beside native packs, ignoring
+  `fallback_capabilities`.
 
 Correct usage that establishes the parity gap:
 
 - `runtime-infra-fs/.../FileSystemReviewAttribution.kt:32` — the only `composedAreas` caller.
 
-Manifest declarations producing the observed overlap:
+Rubric resolution, establishing that a dropped lane drops its questions:
 
-- `platform-packs/generic/platform.yaml` — declares all ten areas; `architecture` and
-  `platform-correctness` `required: true`.
-- `platform-packs/kotlin/platform.yaml` — declares all ten areas; `architecture` and
-  `platform-correctness` `required: true`; `tie_breakers` already articulate that KMP markers should
-  establish ownership over this pack.
-- `platform-packs/kmp/platform.yaml` — declares five areas; `platform-correctness` `required: true`;
-  composes `kotlin`/`generic` as baseline layers.
+- `runtime-infra-fs/.../FileSystemReviewRubricResolver.kt:20-50` — resolves only the owning pack's
+  declared baseline and area content; rubric content is not composed across baseline layers. This is
+  why fallback exclusion must be decided per area (AC 3, AC 6) rather than by assuming a winning
+  lane inherits the fallback pack's questions.
 
 Observed run:
 
 - `review_run_lanes` for `rvw-20260817-183143-ilvx` — 13 rows, 8 distinct areas, 5 rows with
-  `required = 1` spanning 2 distinct areas.
+  `pack_slug = 'generic'`, 5 rows with `required = 1` spanning 2 distinct areas.
