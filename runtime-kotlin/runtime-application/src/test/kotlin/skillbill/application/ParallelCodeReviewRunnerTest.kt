@@ -10,6 +10,7 @@ import skillbill.application.model.ParallelReviewScope
 import skillbill.application.model.StackDetectionException
 import skillbill.application.model.UsageValidationException
 import skillbill.application.review.ParallelCodeReviewRunner
+import skillbill.application.review.REGISTER_ABSENT_TERMINAL_STATUS
 import skillbill.application.review.RecordedWorkerResponse
 import skillbill.application.review.ReviewClaimVerificationRunner
 import skillbill.application.review.ReviewHarnessConfig
@@ -249,7 +250,7 @@ class ParallelCodeReviewRunnerTest {
         AgentRunLaunchFacts(
           agent = agent,
           exitStatus = 0,
-          stdout = "",
+          stdout = "NO_FINDINGS",
           stderr = "",
           timedOut = false,
           spawnFailed = false,
@@ -437,6 +438,55 @@ class ParallelCodeReviewRunnerTest {
   }
 
   @Test
+  fun `delegated parent launches request a fan-out surface and inline launches do not`() {
+    listOf(
+      CodeReviewExecutionMode.DELEGATED to true,
+      CodeReviewExecutionMode.INLINE to false,
+    ).forEach { (mode, expectedFanOut) ->
+      val launcher = ParallelSubtaskLauncher()
+      val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))
+
+      runner.run(baseRequest(scope = ParallelReviewScope.STAGED).copy(codeReviewMode = mode))
+
+      launcher.requests.forEach { request ->
+        assertEquals(expectedFanOut, request.skillRunRequest.reviewFanOut, "$mode fan-out flag")
+      }
+    }
+  }
+
+  @Test
+  fun `a zero-exit lane without a findings register fails instead of reporting clean coverage`() {
+    val blocked = """
+      This session has no worker-launch capability and no bound evidence broker.
+      Per the contract I am not running the review inline as a single prompt, and I am not
+      emitting a findings register — zero [F-XXX] lines here means not executed, not clean.
+    """.trimIndent()
+    val launcher = GoalRunnerSubtaskLauncher { request ->
+      AgentRunLaunchFacts(
+        agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),
+        exitStatus = 0,
+        stdout = blocked,
+        stderr = "",
+        timedOut = false,
+        spawnFailed = false,
+      )
+    }
+    val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))
+
+    val result = runner.run(
+      baseRequest(scope = ParallelReviewScope.STAGED).copy(codeReviewMode = CodeReviewExecutionMode.DELEGATED),
+    )
+
+    assertFalse(result.lane1.success)
+    assertEquals(REGISTER_ABSENT_TERMINAL_STATUS, result.lane1.accounting?.terminalStatus)
+    assertTrue(result.lane1.failureReason.orEmpty().contains("did not emit a findings register"))
+    assertTrue(result.mergeResult.findings.isEmpty())
+    val coverage = assertNotNull(result.coverage)
+    assertFalse(coverage.isCleanCoverage)
+    assertTrue(coverage.render().contains("Coverage: NOT clean"))
+  }
+
+  @Test
   fun `inline mode accounting carries the parent prompt and stdout as one specialist-free turn`() {
     val launcher = GoalRunnerSubtaskLauncher { request ->
       AgentRunLaunchFacts(
@@ -580,7 +630,7 @@ class ParallelCodeReviewRunnerTest {
       AgentRunLaunchFacts(
         agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),
         exitStatus = 0,
-        stdout = "",
+        stdout = "NO_FINDINGS",
         stderr = "",
         timedOut = false,
         spawnFailed = false,
@@ -598,7 +648,7 @@ class ParallelCodeReviewRunnerTest {
     assertEquals(110, result.lane2.tokenUsage?.totalTokens)
     assertEquals("claude", result.lane1.accounting?.lane)
     assertEquals(1, result.lane1.accounting?.modelTurns)
-    assertEquals(0, result.lane1.accounting?.resultBytes)
+    assertEquals("NO_FINDINGS".toByteArray().size.toLong(), result.lane1.accounting?.resultBytes)
   }
 
   @Test

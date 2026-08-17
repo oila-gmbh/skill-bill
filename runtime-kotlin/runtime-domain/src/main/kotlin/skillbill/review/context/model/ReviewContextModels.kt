@@ -392,9 +392,6 @@ data class ProviderTokenUsage(
       },
     )
     require(cachedInputTokens == null || inputTokens != null) { "Cached-input tokens require input tokens." }
-    require(cachedInputTokens == null || cachedInputTokens <= inputTokens!!) {
-      "Cached-input tokens cannot exceed input tokens."
-    }
   }
   val freshTokenApproximation: Long?
     get() = if (inputTokens == null && outputTokens == null) {

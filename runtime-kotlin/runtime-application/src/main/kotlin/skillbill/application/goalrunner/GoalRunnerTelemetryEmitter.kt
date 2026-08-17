@@ -6,6 +6,7 @@ import skillbill.application.model.GoalStartedRequest
 import skillbill.application.model.GoalSubtaskFinishedRequest
 import skillbill.application.telemetry.normalizedBlockedReason
 import skillbill.goalrunner.model.GoalRunnerRunReport
+import skillbill.goalrunner.model.GoalRunnerStopReason
 import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
@@ -120,7 +121,7 @@ internal class GoalRunnerTelemetryEmitter(
       GoalFinishedRequest(
         issueKey = manifest.issueKey,
         workflowId = segmentWorkflowId,
-        status = if (report is GoalRunnerRunReport.Completed) "completed" else "blocked",
+        status = goalFinishedStatus(report),
         startedAt = segmentStartedAt,
         finishedAt = finishedAtInstant.toString(),
         durationMs = durationMs(segmentStartedAt, finishedAtInstant),
@@ -133,6 +134,18 @@ internal class GoalRunnerTelemetryEmitter(
       ),
       dbPathOverride,
     )
+  }
+
+  /**
+   * A goal that stopped at a durable pause boundary is resumable state, not a blocker, and the
+   * distinction is the whole content of the IDE and CLI surfaces an operator acts on. Kept in
+   * lockstep with `goalRunExitCode`, where [GoalRunnerStopReason.PAUSED] alone is exit code 2:
+   * every other stop reason is reported blocked there and must stay blocked here.
+   */
+  private fun goalFinishedStatus(report: GoalRunnerRunReport): String = when {
+    report is GoalRunnerRunReport.Completed -> "completed"
+    (report as? GoalRunnerRunReport.Stopped)?.stop?.reason == GoalRunnerStopReason.PAUSED -> "paused"
+    else -> "blocked"
   }
 
   fun goalIssueFinished(manifest: DecompositionManifest, report: GoalRunnerRunReport.Completed) {

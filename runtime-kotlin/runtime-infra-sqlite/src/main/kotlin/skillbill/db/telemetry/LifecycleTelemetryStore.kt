@@ -120,7 +120,13 @@ class LifecycleTelemetryStore(
     val outcome = saveGoalFinished(connection, record)
     if (outcome == GoalFinishedSaveOutcome.FIRST_TERMINAL && record.status != "completed") {
       record.parentWorkflowId?.takeIf(String::isNotBlank)?.let { parentWorkflowId ->
-        recordGoalIssueBlockedSegment(connection, parentWorkflowId, record.issueKey, record.workflowId)
+        recordGoalIssueSegmentEnd(
+          connection,
+          parentWorkflowId,
+          record.issueKey,
+          record.workflowId,
+          record.status,
+        )
       }
     }
     emitGoalFinished(connection, record.workflowId, level)

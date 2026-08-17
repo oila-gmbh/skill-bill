@@ -413,6 +413,26 @@ class AgentRunCommandBuildersTest {
   }
 
   @Test
+  fun `claude review isolation strips tools unless the parent must fan out`() {
+    val isolated = request().copy(
+      conversationIsolation = ConversationIsolation.NONE,
+      reviewEvidenceBroker = NoOpReviewEvidenceBroker,
+      nativeReviewOperations = BrokerBackedNativeReviewOperationProtocol(NoOpReviewEvidenceBroker),
+    )
+    val stripped = ClaudeAgentRunCommandBuilder().build(isolated).command
+    val toolsIndex = stripped.indexOf("--tools")
+    assertTrue(toolsIndex >= 0)
+    assertEquals("", stripped[toolsIndex + 1])
+
+    val fanOut = ClaudeAgentRunCommandBuilder().build(isolated.copy(reviewFanOut = true)).command
+    val fanOutTools = fanOut[fanOut.indexOf("--tools") + 1]
+    assertTrue("Agent" in fanOutTools)
+    assertTrue("Task" in fanOutTools)
+    assertTrue("Read" in fanOutTools)
+    assertTrue("Grep" in fanOutTools)
+  }
+
+  @Test
   fun `claude builder forwards provider passthrough keys when review evidence broker is present`() {
     val isolated = request().copy(
       conversationIsolation = ConversationIsolation.NONE,

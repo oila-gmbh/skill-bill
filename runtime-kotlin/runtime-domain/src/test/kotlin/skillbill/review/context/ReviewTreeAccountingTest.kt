@@ -6,7 +6,6 @@ import skillbill.review.context.model.ReviewAccountingInput
 import skillbill.review.context.model.TokenOwnership
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -112,10 +111,6 @@ class ReviewTreeAccountingTest {
     assertEquals(null, summary.aggregateInclusiveUsage.reasoningTokens)
     assertEquals(12, summary.aggregateInclusiveUsage.outputTokens)
     assertEquals(12, summary.aggregateInclusiveUsage.freshTokenApproximation)
-  }
-
-  @Test fun `cached input above input is rejected at the usage boundary`() {
-    assertFailsWith<IllegalArgumentException> { ProviderTokenUsage(inputTokens = 10, cachedInputTokens = 11) }
   }
 
   @Test fun `lane ordering is stable and independent of input order`() {

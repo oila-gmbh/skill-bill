@@ -1,3 +1,13 @@
+## [2026-08-17] Paused goal segments are no longer recorded as blocked
+Areas: runtime-application/goalrunner, runtime-infra-sqlite/telemetry, orchestration/contracts
+- `goalFinished` classified every non-completed run as `blocked`, so an operator pause wrote `goal_issue_progress.status='blocked'` and incremented `total_blocks`. The CLI read control state and reported `paused` while the IDE read the telemetry column and reported `blocked` for the same goal.
+- `GoalRunnerTelemetryEmitter.goalFinishedStatus` now maps `GoalRunnerStopReason.PAUSED` to `paused`, in lockstep with `goalRunExitCode` where PAUSED alone is exit 2; every other stop reason stays `blocked`.
+- `recordGoalIssueBlockedSegment` became `recordGoalIssueSegmentEnd`, which skips `total_blocks`, `last_blocked_at`, and `last_blocked_segment_workflow_id` for a paused end. Blocker history now counts only real blockers.
+- Telemetry contract `1.9.0` → `1.10.0` adds `paused` to `goalFinishedStatusEnum`. `REVIEW_STAGE_DEGRADATION_CONTRACT_VERSION` moved with it: that event's payload carries its own constant while the schema pins the shared version, so the two must be bumped together or stage-degradation events fail validation.
+- No compensating read-side fix in `IdeStatusProjector`: `lifecycleFromDurableState` already mapped `paused`, so correcting the writer was sufficient. Masking a bad durable value at the projector would have hidden the next real mislabel. reusable
+Feature flag: N/A
+Acceptance criteria: N/A (defect fix)
+
 ## [2026-08-16] SKILL-193 subtask 3 — Brokered hunk fetch and lane evidence budget
 Areas: runtime-application/review, runtime-domain/review/context/model, runtime-infra-fs, runtime-ports/review, orchestration/contracts
 - Launch envelopes, governed launches, and inline prompt assembly name locators, ids, spans, and digests only; they no longer serialize hunk bodies.

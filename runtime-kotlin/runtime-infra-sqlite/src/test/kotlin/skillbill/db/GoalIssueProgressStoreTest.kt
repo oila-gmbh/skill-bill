@@ -4,7 +4,7 @@ import skillbill.contracts.JsonSupport
 import skillbill.db.core.DatabaseRuntime
 import skillbill.db.telemetry.LifecycleTelemetryStore
 import skillbill.db.telemetry.TelemetryOutboxStore
-import skillbill.db.telemetry.recordGoalIssueBlockedSegment
+import skillbill.db.telemetry.recordGoalIssueSegmentEnd
 import skillbill.ports.persistence.model.TelemetryOutboxRecord
 import skillbill.telemetry.model.GoalFinishedRecord
 import skillbill.telemetry.model.GoalIssueFinishedRecord
@@ -50,7 +50,7 @@ class GoalIssueProgressStoreTest {
       store.goalIssueFinished(completed, "full")
 
       val terminal = goalIssueState(connection, parentWorkflowId)
-      recordGoalIssueBlockedSegment(connection, parentWorkflowId, "SKILL-66", "$parentWorkflowId:seg:1")
+      recordGoalIssueSegmentEnd(connection, parentWorkflowId, "SKILL-66", "$parentWorkflowId:seg:1", "blocked")
       assertEquals(terminal, goalIssueState(connection, parentWorkflowId))
     }
   }
@@ -101,6 +101,31 @@ class GoalIssueProgressStoreTest {
     }
   }
 
+  @Test
+  fun `paused goal segments record a resumable status without counting a block`() {
+    withConnection { connection ->
+      val store = LifecycleTelemetryStore(connection)
+      val parentWorkflowId = "wf-paused-parent"
+      store.goalStarted(startedRecord(parentWorkflowId, "seg:1", resumed = false), "full")
+
+      store.goalFinished(finishedRecord("$parentWorkflowId:seg:1", "paused", "2026-06-04T10:10:00Z"), "full")
+
+      assertEquals("paused", goalIssueState(connection, parentWorkflowId).status)
+      assertEquals(0, totalBlocks(connection, parentWorkflowId))
+    }
+  }
+
+  private fun totalBlocks(connection: Connection, parentWorkflowId: String): Int = connection.prepareStatement(
+    "SELECT total_blocks FROM goal_issue_progress WHERE parent_workflow_id = ? AND issue_key = ?",
+  ).use { statement ->
+    statement.setString(1, parentWorkflowId)
+    statement.setString(2, "SKILL-66")
+    statement.executeQuery().use { rows ->
+      rows.next()
+      rows.getInt(1)
+    }
+  }
+
   private fun finishBlockedSegment(
     connection: Connection,
     store: LifecycleTelemetryStore,
@@ -118,7 +143,7 @@ class GoalIssueProgressStoreTest {
     parentWorkflowId: String,
     blocked: GoalIssueState,
   ) {
-    recordGoalIssueBlockedSegment(connection, parentWorkflowId, "SKILL-66", "$parentWorkflowId:seg:2-repeat")
+    recordGoalIssueSegmentEnd(connection, parentWorkflowId, "SKILL-66", "$parentWorkflowId:seg:2-repeat", "blocked")
     assertEquals(blocked, goalIssueState(connection, parentWorkflowId))
   }
 

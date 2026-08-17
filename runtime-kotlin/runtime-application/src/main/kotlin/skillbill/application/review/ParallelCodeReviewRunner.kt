@@ -1198,6 +1198,7 @@ class ParallelCodeReviewRunner(
           conversationIsolation = ConversationIsolation.NONE,
           reviewEvidenceBroker = evidenceBroker,
           nativeReviewOperations = BrokerBackedNativeReviewOperationProtocol(evidenceBroker),
+          reviewFanOut = resolvedMode == ResolvedReviewExecutionMode.DELEGATED,
         ),
       ),
     )
@@ -1237,8 +1238,11 @@ class ParallelCodeReviewRunner(
       budget,
       outcome.stdout.toByteArray().size.toLong(),
     )
-    val reason = budgetOutcome?.let { ReviewContextBudgetExceededException(it).message }
+    val launchReason = budgetOutcome?.let { ReviewContextBudgetExceededException(it).message }
       ?: laneFailureReason(outcome)
+    val findings = if (launchReason == null) attributeInlineFindings(outcome.stdout, launch.selected) else emptyList()
+    val registerReason = if (launchReason == null) registerAbsenceReason(outcome.stdout, findings) else null
+    val reason = launchReason ?: registerReason
     return ParallelReviewLaneOutcome(
       success = reason == null,
       rawOutput = outcome.stdout,
@@ -1247,10 +1251,14 @@ class ParallelCodeReviewRunner(
       tokenUsage = providerTokenUsage(outcome),
       accounting = inlineParentAccounting(
         launch,
-        inlineTerminalStatus(outcome, bundleState.disposition),
+        if (registerReason != null) {
+          REGISTER_ABSENT_TERMINAL_STATUS
+        } else {
+          inlineTerminalStatus(outcome, bundleState.disposition)
+        },
         outcome,
       ),
-      findings = if (reason == null) attributeInlineFindings(outcome.stdout, launch.selected) else emptyList(),
+      findings = if (reason == null) findings else emptyList(),
       reviewDisposition = bundleState.disposition,
       bundleCompositionDigest = bundleState.bundleCompositionDigest,
       segmentAccounting = bundleState.segments,
@@ -1333,6 +1341,12 @@ class ParallelCodeReviewRunner(
           "The commits= segment is optional for a finding confined to a single assigned commit and " +
           "required whenever a finding relates code from more than one assigned commit; list the " +
           "involved commit shas in the bundle's commit order.",
+      )
+      appendLine(
+        "If the full assigned review executed and no finding met the admission gate, return exactly " +
+          "$NO_FINDINGS_TOKEN on its own line. Never return an empty or prose-only result: output " +
+          "with neither [F-XXX] lines nor $NO_FINDINGS_TOKEN is treated as a lane that did not " +
+          "execute and fails the run.",
       )
       appendLine()
       selected.forEach { launch ->
@@ -1526,6 +1540,13 @@ class ParallelCodeReviewRunner(
     else -> null
   }
 
+  private fun registerAbsenceReason(stdout: String, findings: List<ParallelReviewRawFinding>): String? {
+    if (findings.isNotEmpty()) return null
+    if (stdout.lineSequence().any { it.trim() == NO_FINDINGS_TOKEN }) return null
+    return "lane did not emit a findings register; zero [F-XXX] lines without $NO_FINDINGS_TOKEN " +
+      "means the review did not execute"
+  }
+
   private companion object {
     const val DEFAULT_TIMEOUT_MINUTES = 30L
     const val TIMEOUT_BUFFER_SECONDS = 30L
@@ -1540,6 +1561,7 @@ class ParallelCodeReviewRunner(
     const val SHARED_EVIDENCE_WORKFLOW_ID = "code-review"
     const val INLINE_NATIVE_WORKER = "bill-code-review-inline"
     const val NO_SEQUENCE_DIGEST = "no-commit-sequence"
+    const val NO_FINDINGS_TOKEN = "NO_FINDINGS"
   }
 
   private data class StackDetection(
@@ -1740,6 +1762,7 @@ private fun inlineParentAccounting(launch: InlineParentLaunch, terminalStatus: S
 
 /** Terminal status of a resume pass that had no incomplete lane left to launch a worker for. */
 internal const val NO_OP_RESUME_TERMINAL_STATUS: String = "no_op_resume"
+internal const val REGISTER_ABSENT_TERMINAL_STATUS: String = "register_absent"
 
 /**
  * A parent pass that launched no worker because every lane already held a durable result. It records

@@ -4,7 +4,6 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertFalse
 
 class InstallPlanModelTest {
   @Test
@@ -22,12 +21,11 @@ class InstallPlanModelTest {
   }
 
   @Test
-  fun `cursor carries no invoking-agent environment marker`() {
-    assertFalse(
-      InvokingAgentContextResolver.INVOKING_AGENT_CONTEXT_SIGNALS.any { signal ->
-        signal.agent == InstallAgent.CURSOR
-      },
-    )
+  fun `cursor invoking-agent markers are session identity not api credentials`() {
+    val cursor = InvokingAgentContextResolver.INVOKING_AGENT_CONTEXT_SIGNALS.single { signal ->
+      signal.agent == InstallAgent.CURSOR
+    }
+    assertEquals(listOf("CURSOR_AGENT", "CURSOR_INVOKED_AS"), cursor.markerKeys)
   }
 
   @Test

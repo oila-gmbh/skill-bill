@@ -1,5 +1,13 @@
 # Boundary History — runtime-domain
 
+## [2026-08-17] Cursor sessions resolve as invoking agent
+Areas: runtime-domain/install, runtime-cli/codereview
+- Flagless `skill-bill` from a Cursor agent used to miss detection and fall through to the last-resort `codex` lane, so review/goal/task workers launched Codex instead of Cursor.
+- `INVOKING_AGENT_CONTEXT_SIGNALS` now maps session markers `CURSOR_AGENT` and `CURSOR_INVOKED_AS` to `cursor`, after Claude and Codex so existing dual-marker precedence is unchanged. `CURSOR_API_KEY` stays a credential, not a session identity.
+- `--agent1` / `SKILL_BILL_AGENT` still win; empty environments still default to Codex.
+Feature flag: N/A
+Acceptance criteria: N/A (defect fix)
+
 ## [2026-08-06] SKILL-158 subtask 3 — Single-pass bundled lane review
 Areas: runtime-domain/review, runtime-domain/review/context/model, runtime-application/review, runtime-infra-sqlite/db/core, runtime-infra-sqlite/review, runtime-ports/review/model, orchestration/contracts, orchestration/review-orchestrator
 - `ReviewLaneBundleAssembly` assembles one bundle per selected lane from the sparse commit-to-lane assignments: assignment-limited hunk bodies only, ordered by commit order then path, with readable commit identity and a stable composition digest. Workers never see the raw complete diff

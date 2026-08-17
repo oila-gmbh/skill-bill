@@ -52,6 +52,13 @@ class AgentRunLauncherModelsTest {
   }
 
   @Test
+  fun `review fan-out is valid only on a governed review launch`() {
+    assertFailsWith<IllegalArgumentException> {
+      SkillRunRequest(issueKey = "SKILL-56", repoRoot = Path.of("."), reviewFanOut = true)
+    }
+  }
+
+  @Test
   fun `launch facts do not allow terminal process status on timeout or spawn failure`() {
     assertFailsWith<IllegalArgumentException> {
       AgentRunLaunchFacts(

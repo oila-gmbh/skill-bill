@@ -123,7 +123,7 @@ data class ReviewHarnessConfig(
   val diff: String,
   val budget: ReviewContextBudgetPolicy = ReviewContextBudgetPolicy.DEFAULT,
   val rubricBody: (String) -> String = { "governed rubric body for $it" },
-  val response: (GoalRunnerSubtaskLaunchRequest) -> RecordedWorkerResponse = { RecordedWorkerResponse(stdout = "") },
+  val response: (GoalRunnerSubtaskLaunchRequest) -> RecordedWorkerResponse = { RecordedWorkerResponse() },
   /**
    * Commit range the fixture enumerates. Empty keeps the default single synthetic unit; the last
    * entry's sha must be the request's head revision, exactly as a real range resolves.

@@ -18,6 +18,17 @@ class InvokingAgentContextResolverTest {
   }
 
   @Test
+  fun `cursor session markers resolve to cursor`() {
+    assertEquals(InstallAgent.CURSOR, InvokingAgentContextResolver.detect(mapOf("CURSOR_AGENT" to "1")))
+    assertEquals(InstallAgent.CURSOR, InvokingAgentContextResolver.detect(mapOf("CURSOR_INVOKED_AS" to "agent")))
+  }
+
+  @Test
+  fun `cursor api key alone does not count as invoking context`() {
+    assertNull(InvokingAgentContextResolver.detect(mapOf("CURSOR_API_KEY" to "not-a-session-marker")))
+  }
+
+  @Test
   fun `no marker returns null so callers use the documented last-resort default`() {
     assertNull(InvokingAgentContextResolver.detect(emptyMap()))
     assertNull(InvokingAgentContextResolver.detect(mapOf("UNRELATED" to "x")))
@@ -30,13 +41,22 @@ class InvokingAgentContextResolverTest {
 
   @Test
   fun `ordering is deterministic when multiple markers are present`() {
-    // Claude appears first in the signal order, so it wins over codex.
     assertEquals(
       InstallAgent.CLAUDE,
       InvokingAgentContextResolver.detect(
         mapOf(
           "CLAUDECODE" to "1",
           "CODEX_SANDBOX" to "1",
+          "CURSOR_AGENT" to "1",
+        ),
+      ),
+    )
+    assertEquals(
+      InstallAgent.CODEX,
+      InvokingAgentContextResolver.detect(
+        mapOf(
+          "CODEX_SANDBOX" to "1",
+          "CURSOR_AGENT" to "1",
         ),
       ),
     )

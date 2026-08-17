@@ -95,7 +95,7 @@ class TelemetryReliabilityContractTest {
     val stopReasons = schemaEnum("goalRunnerStopReasonEnum")
 
     assertEquals(setOf("complete", "blocked", "skipped"), subtaskStatuses)
-    assertEquals(setOf("completed", "blocked", "abandoned"), goalStatuses)
+    assertEquals(setOf("completed", "paused", "blocked", "abandoned"), goalStatuses)
     assertEquals(GoalRunnerStopReason.entries.map { it.name }.toSet(), stopReasons)
 
     val blockedSubtask = goalSubtaskFinishedEnvelope(
@@ -103,9 +103,10 @@ class TelemetryReliabilityContractTest {
       "blocked_reason" to "validation: tests failed",
     )
     val blockedGoal = goalFinishedEnvelope("status" to "blocked", "stop_reason" to "BLOCKED")
+    val pausedGoal = goalFinishedEnvelope("status" to "paused", "stop_reason" to "PAUSED")
 
     assertBlockedReason(blockedSubtask)
-    listOf(blockedSubtask, blockedGoal).forEach { envelope ->
+    listOf(blockedSubtask, blockedGoal, pausedGoal).forEach { envelope ->
       TelemetryEventSchemaValidator.validate(envelope = envelope, eventName = envelope["event_name"] as String)
     }
   }

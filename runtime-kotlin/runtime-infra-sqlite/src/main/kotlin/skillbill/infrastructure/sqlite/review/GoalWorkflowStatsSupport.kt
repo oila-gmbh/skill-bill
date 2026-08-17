@@ -19,7 +19,7 @@ import java.util.Locale
 // retired. `buildByModeStats` therefore emits only runtime-mode buckets so a
 // retained prose row never surfaces as a live `prose` bucket in goal stats.
 
-private val goalFinishedStatuses = listOf("completed", "blocked")
+private val goalFinishedStatuses = listOf("completed", "paused", "blocked", "abandoned")
 private val goalSubtaskStatuses = listOf("complete", "blocked", "skipped")
 
 fun loadGoalRows(connection: Connection, tableName: String): List<Map<String, Any?>> =

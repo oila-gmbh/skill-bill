@@ -125,9 +125,12 @@ class ReviewContextModelsTest {
     assertEquals(56_000, ReviewContextBudgetPolicy.DEFAULT.providerTokenThresholds.totalTokens)
   }
 
-  @Test fun `cached input cannot exceed or exist without input`() {
+  @Test fun `cached input cannot exist without input`() {
     assertFailsWith<IllegalArgumentException> { ProviderTokenUsage(cachedInputTokens = 1) }
-    assertFailsWith<IllegalArgumentException> { ProviderTokenUsage(inputTokens = 1, cachedInputTokens = 2) }
+  }
+
+  @Test fun `additive provider cache reads exceeding input are accepted`() {
+    assertEquals(17_931, ProviderTokenUsage(inputTokens = 2, cachedInputTokens = 17_931).cachedInputTokens)
   }
 
   @Test fun `inconsistent budgets loud fail`() {

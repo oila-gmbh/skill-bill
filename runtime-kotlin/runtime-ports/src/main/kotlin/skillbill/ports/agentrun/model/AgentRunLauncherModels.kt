@@ -55,6 +55,7 @@ data class SkillRunRequest(
   val reviewEvidenceBroker: ReviewEvidenceBroker? = null,
   val nativeReviewOperations: NativeReviewOperationProtocol? = null,
   val nativeReviewWorkerName: String? = null,
+  val reviewFanOut: Boolean = false,
   val spawnAuthorization: AgentRunSpawnAuthorization? = null,
 ) {
   init {
@@ -77,6 +78,9 @@ data class SkillRunRequest(
     }
     require(nativeReviewWorkerName == null || reviewEvidenceBroker != null) {
       "A native review worker name is valid only for a governed review launch."
+    }
+    require(!reviewFanOut || reviewEvidenceBroker != null) {
+      "A review fan-out surface is valid only for a governed review launch."
     }
   }
 }

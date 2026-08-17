@@ -342,6 +342,30 @@ class CliCodeReviewParallelRuntimeTest {
   }
 
   @Test
+  fun `code-review resolves agent1 from CURSOR_AGENT invoking context`() {
+    val tempDir = createGitRepo()
+    createStagedFile(tempDir)
+    writeParallelAgentConfig(tempDir, "none")
+    val launcher = StandaloneReviewLauncher()
+    val result = CliRuntime.run(
+      listOf(
+        "code-review",
+        "--scope",
+        "staged",
+        "--repo-root",
+        tempDir.toString(),
+      ),
+      parallelReviewContext(
+        environment = mapOf("CURSOR_AGENT" to "1"),
+        agentRunLauncher = launcher,
+      ),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    assertEquals(listOf("cursor"), launcher.launchedAgentIds)
+  }
+
+  @Test
   fun `code-review with no agent2 and none config launches one parent and returns the register`() {
     val tempDir = createGitRepo()
     createStagedFile(tempDir)
@@ -462,7 +486,7 @@ private class NoOpAgentRunLauncher : ParallelTestAgentRunLauncher() {
   override fun launch(request: AgentRunLaunchRequest): AgentRunLaunchOutcome = AgentRunLaunchFacts(
     agent = InstallAgent.fromNormalizedId(request.agentId, label = "agentId"),
     exitStatus = 0,
-    stdout = "",
+    stdout = "NO_FINDINGS",
     stderr = "",
     timedOut = false,
     spawnFailed = false,
@@ -505,7 +529,7 @@ private class ParallelReviewFailFirstLaneLauncher : ParallelTestAgentRunLauncher
       AgentRunLaunchFacts(
         agent = agent,
         exitStatus = 0,
-        stdout = "",
+        stdout = "NO_FINDINGS",
         stderr = "",
         timedOut = false,
         spawnFailed = false,
@@ -556,6 +580,7 @@ private class StandaloneReviewLauncher(
     private set
   var parentPrompt: String = ""
     private set
+  val launchedAgentIds: MutableList<String> = mutableListOf()
 
   override fun launch(request: AgentRunLaunchRequest): AgentRunLaunchOutcome {
     val issueKey = request.skillRunRequest.issueKey
@@ -564,6 +589,7 @@ private class StandaloneReviewLauncher(
         synchronized(lock) {
           parentLaunchCount += 1
           parentPrompt = request.skillRunRequest.promptOverride.orEmpty()
+          launchedAgentIds += request.agentId
         }
         "- [F-001] Major | High | $findingLocation | Issue"
       }

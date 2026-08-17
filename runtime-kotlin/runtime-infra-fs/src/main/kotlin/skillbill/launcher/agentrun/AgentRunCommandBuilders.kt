@@ -143,6 +143,8 @@ private val ANTHROPIC_MODEL_ALIASES = setOf("opus", "sonnet", "haiku")
 private fun isAnthropicModelReference(model: String): Boolean =
   model.startsWith("claude-") || model in ANTHROPIC_MODEL_ALIASES
 
+private const val REVIEW_FAN_OUT_TOOLS = "Agent,Task,Read,Grep,Glob,Bash"
+
 class ClaudeAgentRunCommandBuilder(
   /** Provider environment for model-directive resolution; defaults to the parent process. */
   private val providerEnvironment: Map<String, String> = System.getenv(),
@@ -173,7 +175,7 @@ class ClaudeAgentRunCommandBuilder(
         }
         if (request.reviewEvidenceBroker != null) {
           add("--tools")
-          add("")
+          add(if (request.reviewFanOut) REVIEW_FAN_OUT_TOOLS else "")
         }
         add("--dangerously-skip-permissions")
         add("--add-dir")

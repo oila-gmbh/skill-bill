@@ -162,35 +162,52 @@ data class GoalIssueSegmentStart(
   val mode: String,
 )
 
-fun recordGoalIssueBlockedSegment(
+/**
+ * Records a non-completed segment end against the issue row. A pause is resumable state, so it
+ * advances `status` without touching `total_blocks` or the `last_blocked_*` columns: counting it as
+ * a block would inflate the blocker history that operators and goal stats read to find the goals
+ * that actually need intervention.
+ */
+fun recordGoalIssueSegmentEnd(
   connection: Connection,
   parentWorkflowId: String,
   issueKey: String,
   workflowId: String,
+  status: String,
 ) {
+  val blocked = status != "paused"
+  val blockedColumns = if (blocked) {
+    """
+    total_blocks = total_blocks + 1,
+        last_blocked_at = CURRENT_TIMESTAMP,
+        last_blocked_segment_workflow_id = ?,
+    """.trimIndent()
+  } else {
+    ""
+  }
   connection.prepareStatement(
     """
     UPDATE goal_issue_progress
-    SET total_blocks = total_blocks + 1,
-        status = 'blocked',
+    SET $blockedColumns
+        status = ?,
         state_entered_at = CASE
-          WHEN COALESCE(status, '') != 'blocked' THEN ${nextGoalStateEnteredAtSql(SQLITE_TIMESTAMP_NOW)}
+          WHEN COALESCE(status, '') != ? THEN ${nextGoalStateEnteredAtSql(SQLITE_TIMESTAMP_NOW)}
           ELSE state_entered_at
         END,
         state_entered_at_estimated = CASE
-          WHEN COALESCE(status, '') != 'blocked' THEN 0
+          WHEN COALESCE(status, '') != ? THEN 0
           ELSE state_entered_at_estimated
         END,
-        last_activity_at = CURRENT_TIMESTAMP,
-        last_blocked_at = CURRENT_TIMESTAMP,
-        last_blocked_segment_workflow_id = ?
+        last_activity_at = CURRENT_TIMESTAMP
     WHERE parent_workflow_id = ?
       AND issue_key = ?
       AND finished_at IS NULL
       AND COALESCE(status, '') NOT IN ('completed', 'failed', 'abandoned')
     """.trimIndent(),
   ).use { statement ->
-    statement.bind(workflowId, parentWorkflowId, issueKey)
+    val tail = listOf(status, status, status, parentWorkflowId, issueKey)
+    val params = if (blocked) listOf(workflowId) + tail else tail
+    params.forEachIndexed { offset, value -> statement.setString(offset + 1, value) }
     statement.executeUpdate()
   }
 }
