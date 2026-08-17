@@ -344,7 +344,7 @@ class ParallelCodeReviewRunnerTest {
       "[F-001] Major | High | specialist=generic-security | commits=aaa111,bbb222 | " +
         "path=\"A.kt\" | line=4 | contract introduced then changed",
     )
-    assertEquals(listOf("aaa111", "bbb222"), parsed.single().commitShas)
+    assertEquals(listOf("aaa111", "bbb222"), parsed.findings.single().commitShas)
   }
 
   @Test

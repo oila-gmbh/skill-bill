@@ -292,6 +292,7 @@ private fun decodeCursorStreamJson(stdout: String): DecodedAgentRunOutput {
 
   var terminalText: String? = null
   var longestAssistantText: String? = null
+  var lastAssistantText: String? = null
   var assistantEventCount = 0
   var usage: com.fasterxml.jackson.databind.JsonNode? = null
   var decodedEnvelope = false
@@ -329,6 +330,7 @@ private fun decodeCursorStreamJson(stdout: String): DecodedAgentRunOutput {
       "assistant" -> {
         assistantEventCount += 1
         cursorAssistantText(event)?.let { text ->
+          lastAssistantText = text
           if (text.length > (longestAssistantText?.length ?: 0)) longestAssistantText = text
         }
       }
@@ -357,12 +359,7 @@ private fun decodeCursorStreamJson(stdout: String): DecodedAgentRunOutput {
     }
   }
 
-  // A terminal `result` of "" is a real Cursor outcome: the CLI can exit 0 having charged input
-  // tokens and produced no answer at all. Fall back to the longest assistant turn so a blank
-  // terminal event does not discard text the provider actually emitted, and never promote raw
-  // transport bytes to phase output — the phase schema gate reads several JSON envelopes as
-  // conflicting candidates rather than as an empty turn.
-  val harvested = terminalText?.takeIf(String::isNotBlank) ?: longestAssistantText.orEmpty()
+  val harvested = pickCursorHarvest(terminalText, lastAssistantText, longestAssistantText)
   return DecodedAgentRunOutput(
     text = harvested,
     inputTokens = usage.cursorTokens("inputTokens", "input_tokens"),
@@ -379,6 +376,36 @@ private fun decodeCursorStreamJson(stdout: String): DecodedAgentRunOutput {
 private fun com.fasterxml.jackson.databind.JsonNode?.cursorTokens(vararg fields: String): Long? =
   this?.let { node -> fields.firstNotNullOfOrNull { field -> node.longOrNull(field) } }
 
+private fun pickCursorHarvest(
+  terminalText: String?,
+  lastAssistantText: String?,
+  longestAssistantText: String?,
+): String {
+  val last = lastAssistantText?.trim().orEmpty()
+  if (isStrictReviewRegister(last)) return last
+  val terminal = terminalText?.takeIf { it.isNotBlank() }
+  if (terminal != null) {
+    peelTrailingNoFindings(terminal)?.let { return it }
+    return terminal
+  }
+  return longestAssistantText.orEmpty()
+}
+
+private fun isStrictReviewRegister(text: String): Boolean {
+  val trimmed = text.trim()
+  if (trimmed == NO_FINDINGS_TOKEN) return true
+  val lines = trimmed.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList()
+  return lines.isNotEmpty() && lines.all { FINDING_LINE_START.containsMatchIn(it) }
+}
+
+private fun peelTrailingNoFindings(text: String): String? {
+  val trimmed = text.trim()
+  if (trimmed == NO_FINDINGS_TOKEN) return NO_FINDINGS_TOKEN
+  if (FINDING_CANDIDATE.containsMatchIn(trimmed)) return null
+  if (TRAILING_NO_FINDINGS.containsMatchIn(trimmed)) return NO_FINDINGS_TOKEN
+  return null
+}
+
 private fun cursorAssistantText(event: com.fasterxml.jackson.databind.JsonNode): String? {
   val content = event.path("message").path("content")
   if (content.isArray) {
@@ -391,6 +418,10 @@ private fun cursorAssistantText(event: com.fasterxml.jackson.databind.JsonNode):
 }
 
 private const val RAW_OUTPUT_PREVIEW_MAX_CHARS = 2_000
+private const val NO_FINDINGS_TOKEN = "NO_FINDINGS"
+private val FINDING_LINE_START = Regex("^\\s*(?:-\\s+)?\\[F-\\d{3}]")
+private val FINDING_CANDIDATE = Regex("\\[F-\\d+]")
+private val TRAILING_NO_FINDINGS = Regex("(?:^|[^A-Z0-9_])NO_FINDINGS\\s*$")
 
 private fun com.fasterxml.jackson.databind.JsonNode.longOrNull(field: String): Long? =
   path(field).takeIf { it.isIntegralNumber && it.canConvertToLong() }?.longValue()

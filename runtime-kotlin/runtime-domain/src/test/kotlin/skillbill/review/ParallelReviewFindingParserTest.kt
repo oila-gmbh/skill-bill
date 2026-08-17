@@ -2,6 +2,8 @@
 
 package skillbill.review
 
+import skillbill.review.model.ParallelReviewFindingRejectionReason
+import skillbill.review.model.ReviewClaimVerdict
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -12,7 +14,7 @@ class ParallelReviewFindingParserTest {
     val finding = ParallelReviewFindingParser.parse(
       "[F-001] Major | High | specialist=bill-kotlin-code-review-security | " +
         "path=\"src/Auth.kt\" | line=12 | missing check",
-    ).single()
+    ).findings.single()
 
     assertEquals("bill-kotlin-code-review-security", finding.specialistSkillName)
     assertEquals("src/Auth.kt:12", finding.location)
@@ -24,7 +26,7 @@ class ParallelReviewFindingParserTest {
   fun `structured delegated finding remains parseable without specialist identity`() {
     val finding = ParallelReviewFindingParser.parse(
       "[F-001] Minor | Medium | path=\"src/Main.kt\" | line=2 | stale branch",
-    ).single()
+    ).findings.single()
 
     assertEquals(null, finding.specialistSkillName)
   }
@@ -33,7 +35,7 @@ class ParallelReviewFindingParserTest {
   fun `documented file line finding remains parseable`() {
     val finding = ParallelReviewFindingParser.parse(
       "- [F-001] Blocker | High | src/main/App.kt:42 | compliant worker output",
-    ).single()
+    ).findings.single()
 
     assertEquals("src/main/App.kt:42", finding.location)
     assertEquals("src/main/App.kt", finding.repositoryPath)
@@ -45,7 +47,7 @@ class ParallelReviewFindingParserTest {
   fun `documented file line finding retains specialist identity`() {
     val finding = ParallelReviewFindingParser.parse(
       "[F-001] Major | Medium | specialist=bill-kotlin-code-review-testing | src/Test.kt:9 | weak assertion",
-    ).single()
+    ).findings.single()
 
     assertEquals("bill-kotlin-code-review-testing", finding.specialistSkillName)
     assertEquals("src/Test.kt", finding.repositoryPath)
@@ -55,7 +57,7 @@ class ParallelReviewFindingParserTest {
   fun `structured path round trips punctuation backslash and controls`() {
     val finding = ParallelReviewFindingParser.parse(
       "[F-001] Minor | High | path=\"A|b\\\\c\\t.kt\" | line=7 | exact owner",
-    ).single()
+    ).findings.single()
     assertEquals("A|b\\c\t.kt", finding.repositoryPath)
   }
 
@@ -68,10 +70,10 @@ class ParallelReviewFindingParserTest {
       )
     }
 
-    assertTrue(parsed[0].isEmpty())
-    assertTrue(parsed[1].isEmpty())
-    assertEquals(1, parsed[2].single().line)
-    assertTrue(parsed[3].isEmpty())
+    assertTrue(parsed[0].findings.isEmpty())
+    assertTrue(parsed[1].findings.isEmpty())
+    assertEquals(1, parsed[2].findings.single().line)
+    assertTrue(parsed[3].findings.isEmpty())
   }
 
   @Test
@@ -83,17 +85,17 @@ class ParallelReviewFindingParserTest {
       )
     }
 
-    assertTrue(parsed[0].isEmpty())
-    assertTrue(parsed[1].isEmpty())
-    assertEquals(1, parsed[2].single().line)
-    assertTrue(parsed[3].isEmpty())
+    assertTrue(parsed[0].findings.isEmpty())
+    assertTrue(parsed[1].findings.isEmpty())
+    assertEquals(1, parsed[2].findings.single().line)
+    assertTrue(parsed[3].findings.isEmpty())
   }
 
   @Test
   fun `finding naming two commits retains both shas and structured fields`() {
     val finding = ParallelReviewFindingParser.parse(
       "[F-001] Major | High | commits=c1,head | path=\"src/Contract.kt\" | line=12 | cross-commit drift",
-    ).single()
+    ).findings.single()
 
     assertEquals("cross-commit drift", finding.description)
     assertEquals(listOf("c1", "head"), finding.commitShas)
@@ -107,7 +109,7 @@ class ParallelReviewFindingParserTest {
   fun `finding with no commit attribution still parses`() {
     val finding = ParallelReviewFindingParser.parse(
       "[F-002] Minor | Medium | path=\"src/Main.kt\" | line=4 | no commit attribution",
-    ).single()
+    ).findings.single()
 
     assertEquals(emptyList(), finding.commitShas)
     assertEquals("src/Main.kt", finding.repositoryPath)
@@ -122,23 +124,107 @@ class ParallelReviewFindingParserTest {
       - [F-001] Major | High | src/Legacy.kt:3 | legacy contract
       - [F-002] Minor | Low | path="src/Structured.kt" | line=4 | structured contract
       """.trimIndent(),
-    )
+    ).findings
 
     assertEquals(listOf("src/Legacy.kt", "src/Structured.kt"), findings.map { it.repositoryPath })
   }
 
   @Test
   fun `invalid path still parses and does not abort later findings`() {
-    val findings = ParallelReviewFindingParser.parse(
+    val result = ParallelReviewFindingParser.parse(
       """
       - [F-001] Major | High | path="/tmp/outside.kt" | line=3 | outside the packet
-      - [F-002] Minor | Low | path="src/Ok.kt" | line=4 | inside the packet
+      - [F-002] Minor | Low | path="src\u12" | line=5 | malformed escape
+      - [F-003] Minor | Low | path="src/Ok.kt" | line=4 | inside the packet
       """.trimIndent(),
     )
 
     assertEquals(
-      listOf(ParallelReviewFindingParser.UNASSIGNED_REPOSITORY_PATH, "src/Ok.kt"),
-      findings.map { it.repositoryPath },
+      listOf(
+        ParallelReviewFindingParser.UNASSIGNED_REPOSITORY_PATH,
+        ParallelReviewFindingParser.UNASSIGNED_REPOSITORY_PATH,
+        "src/Ok.kt",
+      ),
+      result.findings.map { it.repositoryPath },
     )
+    assertEquals(
+      listOf(
+        ParallelReviewFindingRejectionReason.NO_ADMISSIBLE_LOCATION,
+        ParallelReviewFindingRejectionReason.UNPARSEABLE_STRUCTURED_PATH,
+      ),
+      result.rejections.map { it.reason },
+    )
+    assertEquals(listOf(1, 2), result.rejections.map { it.linePosition })
+  }
+
+  @Test
+  fun `one garbled register line is reported as a rejection without discarding its siblings`() {
+    val result = ParallelReviewFindingParser.parse(
+      """
+      - [F-001] Major | High | src/A.kt:1 | first
+      - [F-002] Bogus | High | src/B.kt:2 | garbled severity
+      - [F-003] Minor | Low | src/C.kt:3 | third
+      """.trimIndent(),
+    )
+
+    assertEquals(listOf("src/A.kt", "src/C.kt"), result.findings.map { it.repositoryPath })
+    val rejection = result.rejections.single()
+    assertEquals("- [F-002] Bogus | High | src/B.kt:2 | garbled severity", rejection.lineText)
+    assertEquals(2, rejection.linePosition)
+    assertEquals(ParallelReviewFindingRejectionReason.UNRECOGNIZED_SEVERITY, rejection.reason)
+    assertEquals(3, result.candidateCount)
+  }
+
+  @Test
+  fun `well formed mixed register admits every finding and rejects nothing`() {
+    val result = ParallelReviewFindingParser.parse(
+      """
+      [F-001] Major | High | path="src/Structured.kt" | line=4 | structured | claim_verdict=confirmed
+      - [F-002] Minor | Low | src/Legacy.kt:9 | legacy prefixed
+      [F-003] Blocker | Medium | specialist=bill-kotlin-code-review-security | src/Auth.kt:1 | legacy plain
+      """.trimIndent(),
+    )
+
+    assertEquals(
+      listOf("src/Structured.kt:4", "src/Legacy.kt:9", "src/Auth.kt:1"),
+      result.findings.map { it.location },
+    )
+    assertEquals(listOf("Major", "Minor", "Blocker"), result.findings.map { it.severity.displayName })
+    assertEquals(listOf("structured", "legacy prefixed", "legacy plain"), result.findings.map { it.description })
+    assertEquals(ReviewClaimVerdict.CONFIRMED, result.findings.first().claimVerdict)
+    assertEquals(emptyList(), result.rejections)
+    assertEquals(3, result.candidateCount)
+  }
+
+  @Test
+  fun `near miss finding ids are reported as unadmitted candidates rather than absence`() {
+    val nearMisses = listOf(
+      "- [F-1] Major | High | src/A.kt:1 | short id",
+      "- [F-0001] Major | High | src/A.kt:1 | long id",
+      "**[F-001]** Major | High | src/A.kt:1 | bolded id",
+      "| [F-001] | Major | High | src/A.kt:1 | table wrapped id",
+    )
+
+    nearMisses.forEach { line ->
+      val result = ParallelReviewFindingParser.parse("Preamble prose.\n\n$line")
+
+      assertEquals(emptyList(), result.findings, line)
+      assertEquals(1, result.candidateCount, line)
+      val rejection = result.rejections.single()
+      assertEquals(line, rejection.lineText, line)
+      assertEquals(3, rejection.linePosition, line)
+      assertEquals(ParallelReviewFindingRejectionReason.UNMATCHED_CANDIDATE_LINE, rejection.reason, line)
+    }
+  }
+
+  @Test
+  fun `prose without any finding token yields no candidates and no rejections`() {
+    val result = ParallelReviewFindingParser.parse(
+      "I reviewed the diff and found nothing worth reporting. No F- register applies here.",
+    )
+
+    assertEquals(emptyList(), result.findings)
+    assertEquals(emptyList(), result.rejections)
+    assertEquals(0, result.candidateCount)
   }
 }

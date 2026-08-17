@@ -1451,7 +1451,7 @@ class ParallelCodeReviewRunner(
     val fallbackLane = selected.minByOrNull { it.assignment.laneDecision.orderIndex }
     val fallbackPath = fallbackLane?.assignment?.assignedPaths?.firstOrNull()
       ?: ParallelReviewFindingParser.UNASSIGNED_REPOSITORY_PATH
-    val parsed = runCatching { ParallelReviewFindingParser.parse(stdout) }.getOrDefault(emptyList())
+    val parsed = runCatching { ParallelReviewFindingParser.parse(stdout).findings }.getOrDefault(emptyList())
     return parsed.map { finding ->
       val findingPath = finding.repositoryPath
       val pathOwners = selected.filter { launch ->
@@ -1570,7 +1570,7 @@ private fun parallelResult(
   val lane1Result = ParallelReviewLaneResult(
     agentId = agent1Id,
     findings = outcomes.lane1.findings.ifEmpty {
-      if (outcomes.lane1.success) ParallelReviewFindingParser.parse(outcomes.lane1.rawOutput) else emptyList()
+      if (outcomes.lane1.success) ParallelReviewFindingParser.parse(outcomes.lane1.rawOutput).findings else emptyList()
     },
   )
   val lane2Result = ParallelReviewLaneResult(
@@ -1579,7 +1579,7 @@ private fun parallelResult(
       emptyList()
     } else {
       outcomes.lane2.findings.ifEmpty {
-        if (outcomes.lane2.success) ParallelReviewFindingParser.parse(outcomes.lane2.rawOutput) else emptyList()
+        if (outcomes.lane2.success) ParallelReviewFindingParser.parse(outcomes.lane2.rawOutput).findings else emptyList()
       }
     },
   )

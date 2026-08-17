@@ -201,7 +201,7 @@ class ParallelCodeReviewBundledLaneReviewTest {
     val finding = ParallelReviewFindingParser.parse(
       "[F-001] Major | High | commits=c4,head | path=\"src/contract/Api.yaml\" | line=1 | " +
         "contract drift across commits",
-    ).single()
+    ).findings.single()
     assertEquals(listOf("c4", "head"), finding.commitShas)
   }
 

@@ -811,6 +811,7 @@ x-coherence-checks:
   - An assignment records no more expansions than max_assignment_expansions allows.
   - A budget_regression terminal_outcome is reported only for a non-enforceable provider dimension observed after the worker exited, and is never enforceable.
   - Specialist tool calls and model turns are measured at the broker seam and terminate the lane with review_context_budget_exceeded once their budget is passed.
+  - A register_absent terminal_outcome is reported only for a lane that returned output carrying neither a findings register nor the explicit no-findings token, so an unexecuted review is never accounted as a clean completion.
   - Every inclusive usage value equals the node's direct usage plus each child node's direct usage exactly once.
   - Aggregate direct usage sums direct ownership only; aggregate inclusive usage is the parent root and nested sessions are never added twice.
   - Hunk ids are content-addressed over path, spans, and normalized content, not positional.

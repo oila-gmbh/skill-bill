@@ -91,7 +91,7 @@ class ParallelReviewMergerTest {
     assertEquals(first.formattedOutput, second.formattedOutput)
   }
   private fun laneResult(agentId: String, rawOutput: String) =
-    ParallelReviewLaneResult(agentId = agentId, findings = ParallelReviewFindingParser.parse(rawOutput))
+    ParallelReviewLaneResult(agentId = agentId, findings = ParallelReviewFindingParser.parse(rawOutput).findings)
 
   private fun finding(
     id: String = "F-001",
