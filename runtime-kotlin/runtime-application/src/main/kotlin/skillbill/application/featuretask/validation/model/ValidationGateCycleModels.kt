@@ -7,8 +7,6 @@ import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRunRecord
-import skillbill.workflow.taskruntime.model.FullValidateRepairPlanItem
-import skillbill.workflow.taskruntime.model.FullValidateSubstantiationReceipt
 import java.nio.file.Path
 
 sealed interface ValidationGateResolution {
@@ -26,12 +24,7 @@ sealed interface ValidationGateResolution {
 
 data class ValidationFindingSetProjection(
   val findings: List<ValidationGateFinding>,
-  val droppedCount: Int,
-  val scheduledRemainderCount: Int = 0,
-  val coverageRejectionReason: String? = null,
 ) {
-  val hasUnreportedRemainder: Boolean get() = droppedCount > 0
-
   fun toHandoffMaps(): List<Map<String, String?>> = findings.map { finding ->
     linkedMapOf(
       "module" to finding.module,
@@ -82,15 +75,4 @@ data class ValidationGateCycleRequest(
   val changedPaths: List<String>,
   val repositoryCheckpoint: String,
   val agentRepairLauncher: ValidationGateAgentRepairLauncher,
-  val baseRef: String = "",
-)
-
-data class FullValidateRepairCoverageEvaluation(
-  val accepted: Boolean,
-  val reason: String,
-)
-
-data class FullValidateRepairParsedArtifacts(
-  val plan: List<FullValidateRepairPlanItem>?,
-  val receipts: List<FullValidateSubstantiationReceipt>,
 )

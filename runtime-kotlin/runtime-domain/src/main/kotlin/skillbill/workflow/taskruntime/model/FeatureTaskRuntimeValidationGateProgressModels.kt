@@ -22,52 +22,11 @@ data class FeatureTaskRuntimeValidationGateRunRecord(
   )
 }
 
-data class FullValidateRepairPlanItem(
-  val identities: List<String>,
-) {
-  init {
-    require(identities.isNotEmpty()) {
-      "FullValidateRepairPlanItem.identities must not be empty."
-    }
-    require(identities.all { it.isNotBlank() }) {
-      "FullValidateRepairPlanItem.identities must not contain blank identities."
-    }
-  }
-
-  @OpenBoundaryMap("FULL validate repair-plan item at the durable workflow-artifact seam")
-  fun toArtifactMap(): Map<String, Any?> = linkedMapOf("identities" to identities)
-}
-
-data class FullValidateSubstantiationReceipt(
-  val identity: String,
-  val rootCause: String,
-  val changedPathsOrSymbols: List<String>,
-  val rationale: String,
-) {
-  fun covers(requiredIdentity: String): Boolean = identity == requiredIdentity &&
-    rootCause.isNotBlank() &&
-    changedPathsOrSymbols.any { it.isNotBlank() }
-
-  @OpenBoundaryMap("FULL validate substantiation receipt at the durable workflow-artifact seam")
-  fun toArtifactMap(): Map<String, Any?> = linkedMapOf(
-    "identity" to identity,
-    "root_cause" to rootCause,
-    "changed_paths_or_symbols" to changedPathsOrSymbols,
-    "rationale" to rationale,
-  )
-}
-
 data class FeatureTaskRuntimeValidationGateProgress(
   val gateRunCount: Int,
   val gateRuns: List<FeatureTaskRuntimeValidationGateRunRecord>,
   val remainingFindings: List<Map<String, String?>> = emptyList(),
-  val remainingFindingsDroppedCount: Int = 0,
   val completeFindings: List<Map<String, String?>> = emptyList(),
-  val findingsPageOffset: Int = 0,
-  val confirmationRetriesUsed: Int = 0,
-  val discoveryIdentities: List<String> = emptyList(),
-  val validationRepairPlan: List<FullValidateRepairPlanItem> = emptyList(),
-  val substantiationReceipts: List<FullValidateSubstantiationReceipt> = emptyList(),
 ) {
   init {
     require(gateRunCount >= 0) {
@@ -75,17 +34,6 @@ data class FeatureTaskRuntimeValidationGateProgress(
     }
     require(gateRuns.size <= gateRunCount) {
       "FeatureTaskRuntimeValidationGateProgress.gateRuns size ${gateRuns.size} exceeds gateRunCount $gateRunCount."
-    }
-    require(remainingFindingsDroppedCount >= 0) {
-      "FeatureTaskRuntimeValidationGateProgress.remainingFindingsDroppedCount must be >= 0, " +
-        "was $remainingFindingsDroppedCount."
-    }
-    require(findingsPageOffset >= 0) {
-      "FeatureTaskRuntimeValidationGateProgress.findingsPageOffset must be >= 0, was $findingsPageOffset."
-    }
-    require(confirmationRetriesUsed >= 0) {
-      "FeatureTaskRuntimeValidationGateProgress.confirmationRetriesUsed must be >= 0, " +
-        "was $confirmationRetriesUsed."
     }
   }
 
@@ -95,13 +43,7 @@ data class FeatureTaskRuntimeValidationGateProgress(
     "gate_run_count" to gateRunCount,
     "gate_runs" to gateRuns.map { it.toArtifactMap() },
     "remaining_findings" to remainingFindings,
-    "remaining_findings_dropped_count" to remainingFindingsDroppedCount,
     "complete_findings" to completeFindings,
-    "findings_page_offset" to findingsPageOffset,
-    "confirmation_retries_used" to confirmationRetriesUsed,
-    "discovery_identities" to discoveryIdentities,
-    "validation_repair_plan" to validationRepairPlan.map { it.toArtifactMap() },
-    "substantiation_receipts" to substantiationReceipts.map { it.toArtifactMap() },
   )
 
   companion object {
@@ -110,20 +52,8 @@ data class FeatureTaskRuntimeValidationGateProgress(
       FeatureTaskRuntimeValidationGateProgress(
         gateRunCount = raw.asStarMap().gateProgressInt("gate_run_count"),
         gateRuns = decodeGateRuns(raw["gate_runs"]),
-        remainingFindings = decodeRemainingFindings(raw["remaining_findings"]),
-        remainingFindingsDroppedCount = decodeOptionalNonNegativeInt(
-          raw["remaining_findings_dropped_count"],
-          "remaining_findings_dropped_count",
-        ),
-        completeFindings = decodeRemainingFindings(raw["complete_findings"]),
-        findingsPageOffset = decodeOptionalNonNegativeInt(raw["findings_page_offset"], "findings_page_offset"),
-        confirmationRetriesUsed = decodeOptionalNonNegativeInt(
-          raw["confirmation_retries_used"],
-          "confirmation_retries_used",
-        ),
-        discoveryIdentities = decodeOptionalStringList(raw["discovery_identities"], "discovery_identities"),
-        validationRepairPlan = decodeOptionalRepairPlan(raw["validation_repair_plan"]),
-        substantiationReceipts = decodeOptionalReceipts(raw["substantiation_receipts"]),
+        remainingFindings = decodeFindings(raw["remaining_findings"], "remaining_findings"),
+        completeFindings = decodeFindings(raw["complete_findings"], "complete_findings"),
       )
 
     private fun decodeGateRuns(raw: Any?): List<FeatureTaskRuntimeValidationGateRunRecord> {
@@ -145,90 +75,16 @@ data class FeatureTaskRuntimeValidationGateProgress(
       }
     }
 
-    private fun decodeOptionalNonNegativeInt(raw: Any?, field: String): Int = when (raw) {
-      null -> 0
-      is Int -> raw
-      is Long -> raw.toInt()
-      is Number -> raw.toInt()
-      else -> throw InvalidWorkflowStateSchemaError(
-        "FeatureTaskRuntimeValidationGateProgress.$field must be an int.",
-      )
-    }
-
-    private fun decodeOptionalStringList(raw: Any?, field: String): List<String> {
+    private fun decodeFindings(raw: Any?, field: String): List<Map<String, String?>> {
       if (raw == null) return emptyList()
       val list = raw as? List<*>
         ?: throw InvalidWorkflowStateSchemaError(
           "FeatureTaskRuntimeValidationGateProgress.$field must be a list.",
         )
       return list.mapIndexed { index, entry ->
-        entry as? String
-          ?: throw InvalidWorkflowStateSchemaError(
-            "FeatureTaskRuntimeValidationGateProgress.$field[$index] must be a string.",
-          )
-      }
-    }
-
-    private fun decodeOptionalRepairPlan(raw: Any?): List<FullValidateRepairPlanItem> {
-      if (raw == null) return emptyList()
-      val list = raw as? List<*>
-        ?: failValidationGateProgress(
-          "FeatureTaskRuntimeValidationGateProgress.validation_repair_plan must be a list.",
-        )
-      return list.mapIndexed { index, entry ->
-        val map = entry as? Map<*, *>
-          ?: failValidationGateProgress(
-            "FeatureTaskRuntimeValidationGateProgress.validation_repair_plan[$index] must be a mapping.",
-          )
-        val identities = decodeOptionalStringList(map["identities"], "validation_repair_plan[$index].identities")
-        if (identities.isEmpty()) {
-          failValidationGateProgress(
-            "FeatureTaskRuntimeValidationGateProgress.validation_repair_plan[$index].identities must not be empty.",
-          )
-        }
-        FullValidateRepairPlanItem(identities = identities)
-      }
-    }
-
-    private fun decodeOptionalReceipts(raw: Any?): List<FullValidateSubstantiationReceipt> {
-      if (raw == null) return emptyList()
-      val list = raw as? List<*>
-        ?: failValidationGateProgress(
-          "FeatureTaskRuntimeValidationGateProgress.substantiation_receipts must be a list.",
-        )
-      return list.mapIndexed { index, entry ->
-        val map = entry as? Map<*, *>
-          ?: failValidationGateProgress(
-            "FeatureTaskRuntimeValidationGateProgress.substantiation_receipts[$index] must be a mapping.",
-          )
-        val pathsRaw = map["changed_paths_or_symbols"]
-        val paths = when (pathsRaw) {
-          null -> emptyList()
-          is List<*> -> decodeOptionalStringList(pathsRaw, "substantiation_receipts[$index].changed_paths_or_symbols")
-          else -> failValidationGateProgress(
-            "FeatureTaskRuntimeValidationGateProgress.substantiation_receipts[$index]." +
-              "changed_paths_or_symbols must be a list.",
-          )
-        }
-        FullValidateSubstantiationReceipt(
-          identity = (map["identity"] as? String).orEmpty(),
-          rootCause = (map["root_cause"] as? String).orEmpty(),
-          changedPathsOrSymbols = paths,
-          rationale = (map["rationale"] as? String).orEmpty(),
-        )
-      }
-    }
-
-    private fun decodeRemainingFindings(raw: Any?): List<Map<String, String?>> {
-      if (raw == null) return emptyList()
-      val list = raw as? List<*>
-        ?: throw InvalidWorkflowStateSchemaError(
-          "FeatureTaskRuntimeValidationGateProgress.remaining_findings must be a list.",
-        )
-      return list.mapIndexed { index, entry ->
         val map = entry as? Map<*, *>
           ?: throw InvalidWorkflowStateSchemaError(
-            "FeatureTaskRuntimeValidationGateProgress.remaining_findings[$index] must be a mapping.",
+            "FeatureTaskRuntimeValidationGateProgress.$field[$index] must be a mapping.",
           )
         linkedMapOf(
           "module" to (map["module"] as? String),
@@ -240,8 +96,6 @@ data class FeatureTaskRuntimeValidationGateProgress(
     }
   }
 }
-
-private fun failValidationGateProgress(detail: String): Nothing = throw InvalidWorkflowStateSchemaError(detail)
 
 private fun Map<String, Any?>.asStarMap(): Map<*, *> = this
 

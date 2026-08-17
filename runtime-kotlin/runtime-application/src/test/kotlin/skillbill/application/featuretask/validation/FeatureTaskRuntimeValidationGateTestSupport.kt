@@ -79,9 +79,6 @@ internal fun coordinator(
   resolver,
   runner,
   ValidationGateProgressStore { _, p, _ -> progress += p },
-  FeatureTaskRuntimeSuppressionDeltaService(
-    object : skillbill.ports.workflow.WorkflowGitOperations by skillbill.ports.workflow.NoopWorkflowGitOperations {},
-  ),
   repoLocalConfig(gradleWrapper),
   diagnostics,
 )

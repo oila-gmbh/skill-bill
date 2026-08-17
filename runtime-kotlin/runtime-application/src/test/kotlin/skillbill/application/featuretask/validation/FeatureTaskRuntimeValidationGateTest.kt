@@ -16,7 +16,7 @@ class FeatureTaskRuntimeValidationGateTest {
   fun `FAILED gate with empty findings launches repair with synthetic finding`() {
     val progress = mutableListOf<FeatureTaskRuntimeValidationGateProgress>()
     val repairLaunches = AtomicInteger(0)
-    val runner = ScriptedGateRunner(listOf(failedEmptyFindings(), passed(forced = true)))
+    val runner = ScriptedGateRunner(listOf(failedEmptyFindings(), passed()))
     val cycle = coordinator(declaredResolver(), runner, progress).execute(
       cycle = ValidationGateCycleRequest(
         repoRoot = validationGateTestRepoRoot,
@@ -38,7 +38,7 @@ class FeatureTaskRuntimeValidationGateTest {
   }
 
   @Test
-  fun `fromArtifactMap decodes persistence 0_2 progress omitting additive finding fields`() {
+  fun `fromArtifactMap decodes legacy progress rows carrying retired coverage fields`() {
     val decoded = FeatureTaskRuntimeValidationGateProgress.fromArtifactMap(
       mapOf(
         "contract_version" to skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION,
@@ -53,13 +53,11 @@ class FeatureTaskRuntimeValidationGateTest {
         ),
         "remaining_findings" to emptyList<Map<String, String?>>(),
         "remaining_findings_dropped_count" to 0,
+        "confirmation_retries_used" to 3,
+        "substantiation_receipts" to listOf(mapOf("identity" to "legacy")),
       ),
     )
+    assertEquals(1, decoded.gateRunCount)
     assertEquals(emptyList(), decoded.completeFindings)
-    assertEquals(0, decoded.findingsPageOffset)
-    assertEquals(0, decoded.confirmationRetriesUsed)
-    assertEquals(emptyList(), decoded.discoveryIdentities)
-    assertEquals(emptyList(), decoded.validationRepairPlan)
-    assertEquals(emptyList(), decoded.substantiationReceipts)
   }
 }

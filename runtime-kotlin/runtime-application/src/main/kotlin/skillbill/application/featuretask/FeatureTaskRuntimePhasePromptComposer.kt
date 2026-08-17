@@ -1,7 +1,6 @@
 package skillbill.application.featuretask
 
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
-import skillbill.application.featuretask.validation.FeatureTaskRuntimeValidationGateCoordinator
 import skillbill.application.featuretask.validation.model.ValidationFindingSetProjection
 import skillbill.application.model.FeatureTaskRuntimeImplementationContinuation
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
@@ -601,46 +600,16 @@ object FeatureTaskRuntimePhasePromptComposer {
     validationDepth: ValidationDepth,
   ): String {
     if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE || findings == null) return ""
-    val justificationOnly = findings.findings.isNotEmpty() &&
-      findings.findings.all {
-        it.ruleOrTestId ==
-          FeatureTaskRuntimeValidationGateCoordinator.SUPPRESSION_JUSTIFICATION_RULE_ID
-      }
     val lines = buildList {
-      if (justificationOnly) {
-        add("## Runtime suppression justification required")
-        add(
-          "The validation gate passed, but the runtime measured introduced suppression markers. " +
-            "Do not invoke the gate or any quality-check skill. Account for every introduction below " +
-            "by emitting suppression_justifications on validation_result " +
-            "(path, silenced_rule_or_check, short rationale).",
-        )
+      add("## Runtime validation gate findings")
+      if (validationDepth == ValidationDepth.BUILD_ONLY) {
+        add("Fix every finding below at its root cause. Do not invoke the gate or any quality-check skill.")
       } else {
-        add("## Runtime validation gate findings")
-        if (validationDepth == ValidationDepth.BUILD_ONLY) {
-          add("Fix every finding below at its root cause. Do not invoke the gate or any quality-check skill.")
-        } else {
-          add(
-            "The runtime owns collect-all execution. Fix every finding in the complete persisted " +
-              "plan at its root cause. Each discovery identity needs a substantiation receipt " +
-              "naming that identity, a root cause, and changed paths or symbols. Do not invoke " +
-              "the gate or any quality-check skill. Do not rediscover findings. This projection " +
-              "is the complete discovery set, or an explicit page of that persisted set whose " +
-              "remainder is scheduled in this same pass.",
-          )
-        }
-        if (!findings.coverageRejectionReason.isNullOrBlank()) {
-          add(findings.coverageRejectionReason)
-        }
-      }
-      if (validationDepth != ValidationDepth.BUILD_ONLY && findings.scheduledRemainderCount > 0) {
         add(
-          "scheduled_remainder=${findings.scheduledRemainderCount} remaining findings are scheduled " +
-            "in this same pass; the runtime will launch further repair pages without rerunning the gate.",
+          "This is the complete finding set from one gate run. Fix every finding at its root cause. " +
+            "Do not invoke the gate or any quality-check skill, and do not rediscover findings; " +
+            "the runtime reruns the gate to confirm.",
         )
-      }
-      if (findings.droppedCount > 0) {
-        add("dropped_count=${findings.droppedCount} additional findings were omitted from this projection.")
       }
       findings.findings.forEachIndexed { index, finding ->
         add(
