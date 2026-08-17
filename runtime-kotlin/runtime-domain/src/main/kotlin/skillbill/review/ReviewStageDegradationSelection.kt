@@ -23,13 +23,14 @@ object ReviewStageDegradationSelection {
     "unparseable adjudication output",
   )
 
+  @Suppress("LongParameterList")
   fun select(
     reviewRunId: String,
     spec: ReviewSpecProjectionReference?,
     boundaries: List<ReviewStageBoundary>,
     verdicts: List<ReviewFindingVerdict>,
     claims: ReviewPassClaimSnapshot?,
-    evidenceBoundary: ReviewEvidenceBoundaryAccounting = ReviewEvidenceBoundaryAccounting.NONE,
+    evidenceBoundaries: List<ReviewEvidenceBoundaryAccounting> = emptyList(),
   ): List<ReviewStageDegradationMeasurement> {
     val byStage = boundaries.associateBy { it.stage }
     val specNone = spec?.absenceReason != null
@@ -40,7 +41,7 @@ object ReviewStageDegradationSelection {
       }
       workerFailure(reviewRunId, verdicts)?.let(::add)
       addAll(unreachedBoundaries(reviewRunId, specNone, byStage, claims))
-      addAll(evidenceBoundaryRecords(reviewRunId, evidenceBoundary))
+      evidenceBoundaries.forEach { addAll(evidenceBoundaryRecords(reviewRunId, it)) }
     }
   }
 

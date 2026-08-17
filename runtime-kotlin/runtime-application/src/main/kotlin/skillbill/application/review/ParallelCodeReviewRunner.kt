@@ -731,7 +731,7 @@ class ParallelCodeReviewRunner(
 
   private fun emitReviewStageDegradations(reviewRunId: String?, outcomes: ParallelReviewLaneRunResult) {
     if (reviewRunId == null) return
-    val evidenceBoundary = evidenceBoundaryAccounting(outcomes)
+    val evidenceBoundaries = evidenceBoundaryAccountings(outcomes)
     database.transaction { unitOfWork ->
       ReviewStageDegradationSelection.select(
         reviewRunId = reviewRunId,
@@ -739,23 +739,30 @@ class ParallelCodeReviewRunner(
         boundaries = unitOfWork.reviews.fetchStageBoundaries(reviewRunId),
         verdicts = unitOfWork.reviews.fetchFindingVerdicts(reviewRunId),
         claims = unitOfWork.reviews.fetchReviewPassClaims(reviewRunId),
-        evidenceBoundary = evidenceBoundary,
+        evidenceBoundaries = evidenceBoundaries,
       ).forEach { unitOfWork.lifecycleTelemetry.reviewStageDegradation(it) }
     }
   }
 
-  private fun evidenceBoundaryAccounting(outcomes: ParallelReviewLaneRunResult): ReviewEvidenceBoundaryAccounting {
-    val lanes = listOf(outcomes.lane1, outcomes.lane2).filter { outcome ->
-      outcome.accounting != null || outcome.unboundSeam != null
-    }
-    val accountings = lanes.mapNotNull { it.accounting }
+  private fun evidenceBoundaryAccountings(
+    outcomes: ParallelReviewLaneRunResult,
+  ): List<ReviewEvidenceBoundaryAccounting> = listOf(outcomes.lane1, outcomes.lane2).mapNotNull(::laneEvidenceBoundary)
+
+  private fun laneEvidenceBoundary(outcome: ParallelReviewLaneOutcome): ReviewEvidenceBoundaryAccounting? {
+    if (outcome.accounting?.terminalStatus == UNSUPPORTED_PROVIDER_TERMINAL_STATUS) return null
+    if (outcome.accounting == null && outcome.unboundSeam == null) return null
+    val accounting = outcome.accounting
     return ReviewEvidenceBoundaryAccounting(
-      governedLaunchCount = lanes.count { it.accounting?.terminalStatus != NO_OP_RESUME_TERMINAL_STATUS },
-      authorizedReadCount = accountings.count { it.evidenceBytes > 0 },
-      evidenceBytes = accountings.sumOf { it.evidenceBytes },
-      expansionCount = accountings.sumOf { it.expansions.size },
-      rejectedCandidateCount = lanes.sumOf { it.rejectedCandidateCount },
-      unboundSeam = lanes.mapNotNull { it.unboundSeam }.firstOrNull(),
+      governedLaunchCount = if (accounting != null && accounting.terminalStatus != NO_OP_RESUME_TERMINAL_STATUS) {
+        1
+      } else {
+        0
+      },
+      authorizedReadCount = if ((accounting?.evidenceBytes ?: 0L) > 0L) 1 else 0,
+      evidenceBytes = accounting?.evidenceBytes ?: 0,
+      expansionCount = accounting?.expansions?.size ?: 0,
+      rejectedCandidateCount = outcome.rejectedCandidateCount,
+      unboundSeam = outcome.unboundSeam,
     )
   }
 
@@ -1304,14 +1311,13 @@ class ParallelCodeReviewRunner(
       success = false,
       rawOutput = "",
       failureReason = "unsupported agent: ${outcome.reason}",
-      accounting = inlineParentAccounting(launch, "unsupported_provider", null, null),
+      accounting = inlineParentAccounting(launch, UNSUPPORTED_PROVIDER_TERMINAL_STATUS, null, null),
       reviewDisposition = bundleState.disposition,
       bundleCompositionDigest = bundleState.bundleCompositionDigest,
       segmentAccounting = bundleState.segments,
       unreviewedSegmentIds = bundleState.unreviewedSegmentIds,
       budgetDimension = bundleState.budgetDimension,
       unreviewedUnits = bundleState.unreviewedUnits,
-      unboundSeam = ReviewEvidenceBoundaryAccounting.GOVERNED_EVIDENCE_SEAM,
     )
   }
 
@@ -1680,12 +1686,12 @@ class ParallelCodeReviewRunner(
   }
 
   private sealed class GovernedEvidenceBind {
-    data class Bound(
+    class Bound(
       val broker: ReviewEvidenceBroker,
       val protocol: NativeReviewOperationProtocol,
     ) : GovernedEvidenceBind()
 
-    data class Unbound(
+    class Unbound(
       val seam: String,
       val fault: GovernedEvidenceBindFault,
     ) : GovernedEvidenceBind()
@@ -1900,27 +1906,26 @@ private fun inlineParentAccounting(
   terminalStatus: String,
   outcome: AgentRunLaunchFacts?,
   brokerAccounting: ReviewLaneAccounting?,
-) =
-  ReviewLaneAccounting(
-    lane = launch.agentId,
-    reviewId = launch.assignment.reviewId,
-    packetDigest = launch.assignment.packetDigest,
-    assignmentDigest = launch.assignment.digest,
-    launchBytes = launch.prompt.toByteArray(Charsets.UTF_8).size.toLong(),
-    evidenceBytes = brokerAccounting?.evidenceBytes ?: 0,
-    expansions = brokerAccounting?.expansions.orEmpty(),
-    toolCalls = brokerAccounting?.toolCalls ?: 0,
-    modelTurns = 1,
-    resultBytes = outcome?.stdout?.toByteArray(Charsets.UTF_8)?.size?.toLong() ?: 0,
-    providerUsage = outcome?.let(::providerTokenUsage),
-    terminalStatus = terminalStatus,
-    reviewDisposition = launch.bundleState.disposition,
-    bundleCompositionDigest = launch.bundleState.bundleCompositionDigest,
-    segmentAccounting = launch.bundleState.segments,
-    unreviewedSegmentIds = launch.bundleState.unreviewedSegmentIds,
-    budgetDimension = launch.bundleState.budgetDimension,
-    unreviewedUnits = launch.bundleState.unreviewedUnits,
-  )
+) = ReviewLaneAccounting(
+  lane = launch.agentId,
+  reviewId = launch.assignment.reviewId,
+  packetDigest = launch.assignment.packetDigest,
+  assignmentDigest = launch.assignment.digest,
+  launchBytes = launch.prompt.toByteArray(Charsets.UTF_8).size.toLong(),
+  evidenceBytes = brokerAccounting?.evidenceBytes ?: 0,
+  expansions = brokerAccounting?.expansions.orEmpty(),
+  toolCalls = brokerAccounting?.toolCalls ?: 0,
+  modelTurns = 1,
+  resultBytes = outcome?.stdout?.toByteArray(Charsets.UTF_8)?.size?.toLong() ?: 0,
+  providerUsage = outcome?.let(::providerTokenUsage),
+  terminalStatus = terminalStatus,
+  reviewDisposition = launch.bundleState.disposition,
+  bundleCompositionDigest = launch.bundleState.bundleCompositionDigest,
+  segmentAccounting = launch.bundleState.segments,
+  unreviewedSegmentIds = launch.bundleState.unreviewedSegmentIds,
+  budgetDimension = launch.bundleState.budgetDimension,
+  unreviewedUnits = launch.bundleState.unreviewedUnits,
+)
 
 private const val INLINE_DEPTH_DIRECTIVE: String =
   "Merge every routed rubric above into one combined checklist, then traverse the diff exactly " +
@@ -1941,6 +1946,7 @@ private const val DELEGATED_DEPTH_DIRECTIVE: String =
 
 /** Terminal status of a resume pass that had no incomplete lane left to launch a worker for. */
 internal const val NO_OP_RESUME_TERMINAL_STATUS: String = "no_op_resume"
+internal const val UNSUPPORTED_PROVIDER_TERMINAL_STATUS: String = "unsupported_provider"
 internal const val REGISTER_ABSENT_TERMINAL_STATUS: String = "register_absent"
 
 internal const val INLINE_FINDING_PARSE_SEAM: String = "attributeInlineFindings"

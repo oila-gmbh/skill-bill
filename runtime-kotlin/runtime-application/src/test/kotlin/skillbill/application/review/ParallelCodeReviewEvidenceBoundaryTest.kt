@@ -1,13 +1,17 @@
 package skillbill.application.review
 
+import skillbill.install.model.InstallAgent
+import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.review.ReviewEvidenceBrokerFactory
 import skillbill.review.model.ReviewEvidenceBoundaryAccounting
 import skillbill.review.model.ReviewStageDegradationReason
 import skillbill.workflow.model.CodeReviewExecutionMode
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertTrue
 
 class ParallelCodeReviewEvidenceBoundaryTest {
   @Test
@@ -91,5 +95,66 @@ class ParallelCodeReviewEvidenceBoundaryTest {
     assertEquals(1, rejected.size)
     assertEquals("rejected_candidates=1", rejected.single().actual)
     assertEquals("review.register.parse", rejected.single().seam)
+  }
+
+  @Test
+  fun `unsupported provider omits unbound-broker and unexercised evidence records`() {
+    val recorder = ReviewRecorder()
+    val result = reviewHarness(
+      ReviewHarnessConfig(
+        manifests = listOf(reviewPack("kotlin", listOf("architecture"), routingSignals = listOf("*.kt"))),
+        diff = diffForPaths("src/Repo.kt"),
+        parentLaunch = { request ->
+          UnsupportedAgentRunLaunch(
+            agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),
+            reason = "not configured for this repo",
+          )
+        },
+      ),
+      recorder,
+    ).run(
+      harnessRequest(
+        agent2Id = null,
+        reviewRunId = "rvw-195-unsupported",
+        codeReviewMode = CodeReviewExecutionMode.INLINE,
+      ),
+    )
+
+    assertFalse(result.lane1.success)
+    assertEquals(UNSUPPORTED_PROVIDER_TERMINAL_STATUS, result.lane1.accounting?.terminalStatus)
+    assertTrue(
+      recorder.stageDegradations.none {
+        it.reason == ReviewStageDegradationReason.EVIDENCE_BOUNDARY_UNBOUND_BROKER ||
+          it.reason == ReviewStageDegradationReason.EVIDENCE_BOUNDARY_UNEXERCISED
+      },
+    )
+  }
+
+  @Test
+  fun `bound unread parent lane does not hide the other lane unbound evidence record`() {
+    val recorder = ReviewRecorder()
+    val binds = AtomicInteger()
+    val defaults = ReviewHarnessConfig(
+      manifests = listOf(reviewPack("kotlin", listOf("architecture"), routingSignals = listOf("*.kt"))),
+      diff = diffForPaths("src/Repo.kt"),
+    )
+    reviewHarness(
+      defaults.copy(
+        evidenceBrokerFactory = ReviewEvidenceBrokerFactory { binding ->
+          if (binds.incrementAndGet() > 1) error("second parent bind failed")
+          defaults.evidenceBrokerFactory.brokerFor(binding)
+        },
+      ),
+      recorder,
+    ).run(
+      harnessRequest(
+        reviewRunId = "rvw-195-mixed-lanes",
+        codeReviewMode = CodeReviewExecutionMode.INLINE,
+      ),
+    )
+
+    val reasons = recorder.stageDegradations.map { it.reason }
+    assertEquals(1, reasons.count { it == ReviewStageDegradationReason.EVIDENCE_BOUNDARY_UNBOUND_BROKER })
+    assertEquals(1, reasons.count { it == ReviewStageDegradationReason.EVIDENCE_BOUNDARY_UNEXERCISED })
   }
 }

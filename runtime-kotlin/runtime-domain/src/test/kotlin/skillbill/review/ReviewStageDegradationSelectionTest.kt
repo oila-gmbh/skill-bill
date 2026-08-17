@@ -82,6 +82,21 @@ class ReviewStageDegradationSelectionTest {
   }
 
   @Test
+  fun `exercised lane accounting does not hide another lane unexercised record`() {
+    val records = evidenceReasons(
+      ReviewEvidenceBoundaryAccounting(
+        governedLaunchCount = 1,
+        authorizedReadCount = 1,
+        evidenceBytes = 12,
+      ),
+      ReviewEvidenceBoundaryAccounting(governedLaunchCount = 1, authorizedReadCount = 0),
+    )
+
+    val unexercised = records.single()
+    assertEquals(ReviewStageDegradationReason.EVIDENCE_BOUNDARY_UNEXERCISED, unexercised.reason)
+  }
+
+  @Test
   fun `evidence degradation payloads carry seam identity reasons and counts only`() {
     val records = evidenceReasons(
       ReviewEvidenceBoundaryAccounting(
@@ -97,14 +112,14 @@ class ReviewStageDegradationSelectionTest {
   }
 
   private fun evidenceReasons(
-    accounting: ReviewEvidenceBoundaryAccounting,
+    vararg accounting: ReviewEvidenceBoundaryAccounting,
   ): List<ReviewStageDegradationMeasurement> = ReviewStageDegradationSelection.select(
     reviewRunId = "rvw-195",
     spec = null,
     boundaries = emptyList(),
     verdicts = emptyList(),
     claims = null,
-    evidenceBoundary = accounting,
+    evidenceBoundaries = accounting.toList(),
   ).filter { it.reason in EVIDENCE_REASONS }
 
   private fun assertCountsOnly(measurement: ReviewStageDegradationMeasurement) {

@@ -126,6 +126,7 @@ data class ReviewHarnessConfig(
   val response: (GoalRunnerSubtaskLaunchRequest) -> RecordedWorkerResponse = { RecordedWorkerResponse() },
   val evidenceBrokerFactory: skillbill.ports.review.ReviewEvidenceBrokerFactory =
     skillbill.infrastructure.fs.FileSystemReviewEvidenceBrokerFactory(),
+  val parentLaunch: ((GoalRunnerSubtaskLaunchRequest) -> AgentRunLaunchOutcome)? = null,
   /**
    * Commit range the fixture enumerates. Empty keeps the default single synthetic unit; the last
    * entry's sha must be the request's head revision, exactly as a real range resolves.
@@ -137,6 +138,7 @@ fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): Parall
   ParallelCodeReviewRunner(
     parentReviewLauncher = GoalRunnerSubtaskLauncher { request ->
       recorder.parentLaunches += request
+      config.parentLaunch?.invoke(request)?.let { return@GoalRunnerSubtaskLauncher it }
       val response = config.response(request)
       AgentRunLaunchFacts(
         agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),
