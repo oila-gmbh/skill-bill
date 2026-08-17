@@ -192,6 +192,13 @@ launching both lanes.
   generic pack is a fallback for a missing native lane, not a second opinion on a covered area. Where
   a native rubric asks fewer or weaker questions than the generic one for the same area, the repair
   is to strengthen that native pack's area content, not to run both lanes or merge their rubrics.
+- **Repairing the native content this change newly exposes.** Tracked as **SKILL-197**. Excluding the
+  generic lane means `architecture`, `performance`, `security`, `testing`, and `api-contracts` are
+  reviewed on Android by `kotlin` content written for backend and desktop JVM, because `kmp` does not
+  declare those areas. On the observed run `bill-generic-code-review-architecture` found 2 findings
+  against `bill-kotlin-code-review-architecture`'s 1, and `architecture` is the most backend-skewed
+  area at 7 of 15 rule lines. That is a content-ownership defect, not a reason to keep the fallback
+  lane, and it must not be read as a coverage regression introduced by AC 4.
 - **Bundling multiple areas into one lane.** Collapsing e.g. platform-correctness + reliability into
   a single worker is a depth tradeoff and a separate design change. This spec reduces lane count only
   by removing duplicate and fallback-redundant lanes, at zero coverage cost.
