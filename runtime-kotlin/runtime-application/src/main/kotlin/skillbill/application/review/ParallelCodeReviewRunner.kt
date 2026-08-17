@@ -112,6 +112,7 @@ import skillbill.review.plan.model.ReviewRoutingChangedFile
 import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Path
 import java.time.Instant
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
@@ -1203,7 +1204,7 @@ class ParallelCodeReviewRunner(
       bundleState = aggregateBundleCompletion(bundleStates),
     )
     return when (val bound = bindGovernedEvidence(selected, request.repoRoot)) {
-      is GovernedEvidenceBind.Unbound -> unboundParentOutcome(launch, bound.seam)
+      is GovernedEvidenceBind.Unbound -> unboundParentOutcome(launch, bound)
       is GovernedEvidenceBind.Bound -> launchedBoundParent(
         launch,
         bound,
@@ -1254,22 +1255,35 @@ class ParallelCodeReviewRunner(
   ): GovernedEvidenceBind {
     val broker = try {
       parentEvidenceBroker(selected, repoRoot)
+    } catch (cancellation: CancellationException) {
+      throw cancellation
     } catch (@Suppress("TooGenericExceptionCaught") _: Exception) {
-      return GovernedEvidenceBind.Unbound(ReviewEvidenceBoundaryAccounting.GOVERNED_EVIDENCE_SEAM)
+      return GovernedEvidenceBind.Unbound(
+        ReviewEvidenceBoundaryAccounting.GOVERNED_EVIDENCE_SEAM,
+        GovernedEvidenceBindFault.CONSTRUCTION,
+      )
     }
     return try {
       GovernedEvidenceBind.Bound(broker, BrokerBackedNativeReviewOperationProtocol(broker))
+    } catch (cancellation: CancellationException) {
+      throw cancellation
     } catch (@Suppress("TooGenericExceptionCaught") _: Exception) {
-      GovernedEvidenceBind.Unbound(ReviewEvidenceBoundaryAccounting.GOVERNED_EVIDENCE_SEAM)
+      GovernedEvidenceBind.Unbound(
+        ReviewEvidenceBoundaryAccounting.GOVERNED_EVIDENCE_SEAM,
+        GovernedEvidenceBindFault.PROTOCOL,
+      )
     }
   }
 
-  private fun unboundParentOutcome(launch: InlineParentLaunch, seam: String): ParallelReviewLaneOutcome {
+  private fun unboundParentOutcome(
+    launch: InlineParentLaunch,
+    unbound: GovernedEvidenceBind.Unbound,
+  ): ParallelReviewLaneOutcome {
     val bundleState = launch.bundleState
     return ParallelReviewLaneOutcome(
       success = false,
       rawOutput = "",
-      failureReason = "governed evidence broker unbound",
+      failureReason = "governed evidence broker ${unbound.fault.wireValue} failed",
       accounting = inlineParentAccounting(launch, "unbound_broker", null, null),
       reviewDisposition = bundleState.disposition,
       bundleCompositionDigest = bundleState.bundleCompositionDigest,
@@ -1277,7 +1291,7 @@ class ParallelCodeReviewRunner(
       unreviewedSegmentIds = bundleState.unreviewedSegmentIds,
       budgetDimension = bundleState.budgetDimension,
       unreviewedUnits = bundleState.unreviewedUnits,
-      unboundSeam = seam,
+      unboundSeam = unbound.seam,
     )
   }
 
@@ -1671,7 +1685,15 @@ class ParallelCodeReviewRunner(
       val protocol: NativeReviewOperationProtocol,
     ) : GovernedEvidenceBind()
 
-    data class Unbound(val seam: String) : GovernedEvidenceBind()
+    data class Unbound(
+      val seam: String,
+      val fault: GovernedEvidenceBindFault,
+    ) : GovernedEvidenceBind()
+  }
+
+  private enum class GovernedEvidenceBindFault(val wireValue: String) {
+    CONSTRUCTION("construction"),
+    PROTOCOL("protocol"),
   }
 
   private companion object {
