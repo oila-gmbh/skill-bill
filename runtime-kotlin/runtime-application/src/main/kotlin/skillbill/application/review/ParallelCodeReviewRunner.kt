@@ -1198,6 +1198,8 @@ class ParallelCodeReviewRunner(
           conversationIsolation = ConversationIsolation.NONE,
           reviewEvidenceBroker = evidenceBroker,
           nativeReviewOperations = BrokerBackedNativeReviewOperationProtocol(evidenceBroker),
+          nativeReviewWorkerName = INLINE_NATIVE_WORKER
+            .takeIf { resolvedMode == ResolvedReviewExecutionMode.INLINE },
           reviewFanOut = resolvedMode == ResolvedReviewExecutionMode.DELEGATED,
         ),
       ),
@@ -1543,8 +1545,9 @@ class ParallelCodeReviewRunner(
   private fun registerAbsenceReason(stdout: String, findings: List<ParallelReviewRawFinding>): String? {
     if (findings.isNotEmpty()) return null
     if (stdout.lineSequence().any { it.trim() == NO_FINDINGS_TOKEN }) return null
+    val excerpt = stdout.trim().take(REGISTER_ABSENCE_EXCERPT_MAX_LENGTH).ifBlank { "<empty>" }
     return "lane did not emit a findings register; zero [F-XXX] lines without $NO_FINDINGS_TOKEN " +
-      "means the review did not execute"
+      "means the review did not execute. Lane returned ${stdout.length} bytes starting: $excerpt"
   }
 
   private companion object {
@@ -1552,6 +1555,7 @@ class ParallelCodeReviewRunner(
     const val TIMEOUT_BUFFER_SECONDS = 30L
     const val SECONDS_PER_MINUTE = 60L
     const val STDERR_EXCERPT_MAX_LENGTH = 120
+    const val REGISTER_ABSENCE_EXCERPT_MAX_LENGTH = 800
     const val MAX_SUPPLIED_DIFF_BYTES = 1_000_000L
     const val FIRST_SOURCE_LINE = 1
     const val HEAD_REVISION = "HEAD"

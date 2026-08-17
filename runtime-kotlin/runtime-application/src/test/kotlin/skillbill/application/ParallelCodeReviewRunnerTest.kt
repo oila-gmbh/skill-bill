@@ -382,9 +382,9 @@ class ParallelCodeReviewRunnerTest {
     )
     launcher.requests.forEach { request ->
       assertEquals(
-        null,
+        "bill-code-review-inline",
         request.skillRunRequest.nativeReviewWorkerName,
-        "An inline prompt is never a specialist worker launch.",
+        "An inline prompt runs as the declared inline worker, never a per-area specialist.",
       )
       assertContains(request.skillRunRequest.promptOverride.orEmpty(), "Resolved execution mode: inline")
       assertContains(
@@ -775,7 +775,7 @@ class ParallelCodeReviewSuppliedDiffTest {
       assertContains(prompt, "evidence_locator:")
       assertContains(prompt, "Use the assigned bundle locators below as authoritative")
       assertFalse(prompt.contains("unexpected branch diff"), "the supplied diff must replace branch resolution")
-      assertEquals(null, request.skillRunRequest.nativeReviewWorkerName)
+      assertEquals("bill-code-review-inline", request.skillRunRequest.nativeReviewWorkerName)
     }
   }
 

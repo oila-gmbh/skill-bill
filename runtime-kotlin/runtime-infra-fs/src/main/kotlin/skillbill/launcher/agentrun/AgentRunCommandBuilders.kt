@@ -145,6 +145,8 @@ private fun isAnthropicModelReference(model: String): Boolean =
 
 private const val REVIEW_FAN_OUT_TOOLS = "Agent,Task,Read,Grep,Glob,Bash"
 
+private const val REVIEW_INLINE_TOOLS = "Read,Grep,Glob,Bash"
+
 class ClaudeAgentRunCommandBuilder(
   /** Provider environment for model-directive resolution; defaults to the parent process. */
   private val providerEnvironment: Map<String, String> = System.getenv(),
@@ -174,8 +176,12 @@ class ClaudeAgentRunCommandBuilder(
           add(it)
         }
         if (request.reviewEvidenceBroker != null) {
+          request.nativeReviewWorkerName?.let { worker ->
+            add("--agent")
+            add(worker)
+          }
           add("--tools")
-          add(if (request.reviewFanOut) REVIEW_FAN_OUT_TOOLS else "")
+          add(if (request.reviewFanOut) REVIEW_FAN_OUT_TOOLS else REVIEW_INLINE_TOOLS)
         }
         add("--dangerously-skip-permissions")
         add("--add-dir")

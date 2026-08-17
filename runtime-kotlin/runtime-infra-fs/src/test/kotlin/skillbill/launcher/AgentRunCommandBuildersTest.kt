@@ -406,23 +406,25 @@ class AgentRunCommandBuildersTest {
     assertTrue(codexCommand.contains("tools.web_search=false"))
     assertTrue(codexCommand.contains("tools.shell=false"))
     assertFalse(codexCommand.any { it.startsWith("agent=") })
-    assertFalse(claudeCommand.contains("--agent"))
+    assertEquals(
+      "bill-kotlin-code-review-architecture",
+      claudeCommand[claudeCommand.indexOf("--agent") + 1],
+    )
     assertFalse(
       CodexAgentRunCommandBuilder().build(request()).command.contains("--skip-git-repo-check"),
     )
   }
 
   @Test
-  fun `claude review isolation strips tools unless the parent must fan out`() {
+  fun `claude review grants read tools inline and delegation tools only when fanning out`() {
     val isolated = request().copy(
       conversationIsolation = ConversationIsolation.NONE,
       reviewEvidenceBroker = NoOpReviewEvidenceBroker,
       nativeReviewOperations = BrokerBackedNativeReviewOperationProtocol(NoOpReviewEvidenceBroker),
     )
-    val stripped = ClaudeAgentRunCommandBuilder().build(isolated).command
-    val toolsIndex = stripped.indexOf("--tools")
-    assertTrue(toolsIndex >= 0)
-    assertEquals("", stripped[toolsIndex + 1])
+    val inline = ClaudeAgentRunCommandBuilder().build(isolated).command
+    val inlineTools = inline[inline.indexOf("--tools") + 1]
+    assertEquals("Read,Grep,Glob,Bash", inlineTools)
 
     val fanOut = ClaudeAgentRunCommandBuilder().build(isolated.copy(reviewFanOut = true)).command
     val fanOutTools = fanOut[fanOut.indexOf("--tools") + 1]
