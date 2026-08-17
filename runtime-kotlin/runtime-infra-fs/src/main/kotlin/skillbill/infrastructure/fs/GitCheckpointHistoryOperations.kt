@@ -109,7 +109,7 @@ internal object GitCheckpointHistoryOperations : CheckpointHistoryGitOperations 
     val prefix = namespacePrefix.trim()
     val ref = refName.trim()
     if (prefix.isBlank() || ref.isBlank()) return null
-    if (!ref.startsWith(prefix) || ref == prefix) return null
+    if (!ref.startsWith(prefix.removeSuffix("/") + "/")) return null
     if (ref.endsWith("/") || ref.endsWith(".lock")) return null
     val segments = ref.split('/')
     if (segments.any { it in REF_NAME_REJECTED_SEGMENTS || it.endsWith(".lock") || it.contains("..") }) return null

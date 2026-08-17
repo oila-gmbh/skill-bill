@@ -109,9 +109,18 @@ class GitCheckpointHistoryOperationsTest {
     val update = GitCheckpointHistoryOperations.updateRef(repo, CHECKPOINT_PREFIX, "refs/heads/main", sha)
     val delete = GitCheckpointHistoryOperations.deleteRef(repo, CHECKPOINT_PREFIX, "refs/heads/main")
 
+    val siblingPrefix = GitCheckpointHistoryOperations.updateRef(
+      repo,
+      CHECKPOINT_PREFIX,
+      CHECKPOINT_PREFIX.trimEnd('/') + "-tmp/a",
+      sha,
+    )
+
     assertFalse(update.ok)
     assertFalse(delete.ok)
+    assertFalse(siblingPrefix.ok)
     assertEquals(sha, runGitCommand(repo, "rev-parse", "refs/heads/main").value?.trim())
+    assertEquals(emptyMap(), listedRefs())
   }
 
   private fun listedRefs(): Map<String, String> = GitCheckpointHistoryOperations
