@@ -183,6 +183,111 @@ fun WorkflowGitOperations.stagedPaths(repoRoot: Path): WorkflowGitOperationResul
 fun WorkflowGitOperations.pathContentIdentities(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
   scopedStagingOperations().pathContentIdentities(repoRoot, paths)
 
+/**
+ * SKILL-190: the amend and namespace-scoped ref primitives a per-subtask checkpoint history needs.
+ *
+ * Amending rewrites HEAD from whatever the index already carries; staging is the caller's job and
+ * ownership is decided entirely from the caller-supplied [expectedOwnedHeadSha]. Ref operations are
+ * confined to a caller-supplied namespace prefix so nothing here can move or delete a branch ref.
+ */
+interface CheckpointHistoryGitOperations {
+  /**
+   * Rewrites HEAD from the current index, keeping its message unless [replacementMessage] is given,
+   * and returns the new commit sha. Fails when HEAD is missing, when HEAD is not
+   * [expectedOwnedHeadSha], or when the index carries nothing to commit.
+   */
+  fun amendHeadCommit(
+    repoRoot: Path,
+    expectedOwnedHeadSha: String,
+    replacementMessage: String? = null,
+  ): WorkflowGitOperationResult
+
+  /** Creates or moves [refName] (which must sit under [namespacePrefix]) to [targetSha]. */
+  fun updateRef(
+    repoRoot: Path,
+    namespacePrefix: String,
+    refName: String,
+    targetSha: String,
+  ): WorkflowGitOperationResult
+
+  /** The commit sha [refName] points at, or a typed failure when it names nothing. */
+  fun resolveRef(repoRoot: Path, namespacePrefix: String, refName: String): WorkflowGitOperationResult
+
+  /** NUL-delimited `<objectname><NUL><refname>` records for every ref under [namespacePrefix]. */
+  fun listRefs(repoRoot: Path, namespacePrefix: String): WorkflowGitOperationResult
+
+  /** Deletes [refName]; an already-absent ref is success, so a re-run of an interrupted prune passes. */
+  fun deleteRef(repoRoot: Path, namespacePrefix: String, refName: String): WorkflowGitOperationResult
+}
+
+interface CheckpointHistoryGitOperationsProvider {
+  val checkpointHistoryOperations: CheckpointHistoryGitOperations
+}
+
+// Answering "ok" without amending or writing a ref reads downstream as a recorded checkpoint identity
+// that does not exist, which no later read can recover. An adapter without real git refuses instead.
+private object UnavailableCheckpointHistoryGitOperations : CheckpointHistoryGitOperations {
+  override fun amendHeadCommit(
+    repoRoot: Path,
+    expectedOwnedHeadSha: String,
+    replacementMessage: String?,
+  ): WorkflowGitOperationResult = unavailable("amend the HEAD commit")
+
+  override fun updateRef(
+    repoRoot: Path,
+    namespacePrefix: String,
+    refName: String,
+    targetSha: String,
+  ): WorkflowGitOperationResult = unavailable("write checkpoint ref '$refName'")
+
+  override fun resolveRef(repoRoot: Path, namespacePrefix: String, refName: String): WorkflowGitOperationResult =
+    unavailable("resolve checkpoint ref '$refName'")
+
+  override fun listRefs(repoRoot: Path, namespacePrefix: String): WorkflowGitOperationResult =
+    unavailable("list checkpoint refs under '$namespacePrefix'")
+
+  override fun deleteRef(repoRoot: Path, namespacePrefix: String, refName: String): WorkflowGitOperationResult =
+    unavailable("delete checkpoint ref '$refName'")
+
+  private fun unavailable(capability: String) = WorkflowGitOperationResult(
+    status = "error",
+    error = "This git operations implementation cannot $capability; checkpoint history requires a git adapter.",
+  )
+}
+
+private fun WorkflowGitOperations.checkpointHistoryOperations(): CheckpointHistoryGitOperations =
+  (this as? CheckpointHistoryGitOperationsProvider)?.checkpointHistoryOperations
+    ?: UnavailableCheckpointHistoryGitOperations
+
+fun WorkflowGitOperations.amendHeadCommit(
+  repoRoot: Path,
+  expectedOwnedHeadSha: String,
+  replacementMessage: String? = null,
+): WorkflowGitOperationResult =
+  checkpointHistoryOperations().amendHeadCommit(repoRoot, expectedOwnedHeadSha, replacementMessage)
+
+fun WorkflowGitOperations.updateCheckpointRef(
+  repoRoot: Path,
+  namespacePrefix: String,
+  refName: String,
+  targetSha: String,
+): WorkflowGitOperationResult = checkpointHistoryOperations().updateRef(repoRoot, namespacePrefix, refName, targetSha)
+
+fun WorkflowGitOperations.resolveCheckpointRef(
+  repoRoot: Path,
+  namespacePrefix: String,
+  refName: String,
+): WorkflowGitOperationResult = checkpointHistoryOperations().resolveRef(repoRoot, namespacePrefix, refName)
+
+fun WorkflowGitOperations.listCheckpointRefs(repoRoot: Path, namespacePrefix: String): WorkflowGitOperationResult =
+  checkpointHistoryOperations().listRefs(repoRoot, namespacePrefix)
+
+fun WorkflowGitOperations.deleteCheckpointRef(
+  repoRoot: Path,
+  namespacePrefix: String,
+  refName: String,
+): WorkflowGitOperationResult = checkpointHistoryOperations().deleteRef(repoRoot, namespacePrefix, refName)
+
 interface RepositoryFingerprintGitOperations {
   fun repositoryFingerprint(repoRoot: Path): WorkflowGitOperationResult
 

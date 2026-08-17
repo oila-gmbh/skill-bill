@@ -1,6 +1,8 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.ports.workflow.CheckpointHistoryGitOperations
+import skillbill.ports.workflow.CheckpointHistoryGitOperationsProvider
 import skillbill.ports.workflow.GoalSubtaskReviewGitOperations
 import skillbill.ports.workflow.GoalSubtaskReviewGitOperationsProvider
 import skillbill.ports.workflow.RepositoryFingerprintGitOperations
@@ -36,12 +38,14 @@ import kotlin.concurrent.thread
 @Inject
 class GitWorkflowGitOperations :
   WorkflowGitOperations by GitStandardWorkflowGitOperations,
+  CheckpointHistoryGitOperationsProvider,
   GoalSubtaskReviewGitOperationsProvider,
   RepositoryFingerprintGitOperationsProvider,
   RepositoryOwnedPathsGitOperationsProvider,
   RuntimePhaseFileManifestGitOperationsProvider,
   ScopedStagingGitOperationsProvider,
   SuppressionEvidenceGitOperationsProvider {
+  override val checkpointHistoryOperations: CheckpointHistoryGitOperations = GitCheckpointHistoryOperations
   override val goalSubtaskReviewOperations: GoalSubtaskReviewGitOperations = GitGoalSubtaskReviewOperations
   override val scopedStagingOperations: ScopedStagingGitOperations = GitScopedStagingOperations
   override val runtimePhaseFileManifestOperations: RuntimePhaseFileManifestGitOperations =
