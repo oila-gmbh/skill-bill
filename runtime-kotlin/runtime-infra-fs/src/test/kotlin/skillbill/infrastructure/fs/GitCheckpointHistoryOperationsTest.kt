@@ -49,7 +49,7 @@ class GitCheckpointHistoryOperationsTest {
     val amended = GitCheckpointHistoryOperations.amendHeadCommit(repo, before)
 
     assertTrue(amended.ok, amended.error)
-    assertEquals(head(), amended.value?.trim())
+    assertEquals(head(), amended.value.trim())
     assertTrue(head() != before, "amend must rewrite HEAD")
     assertEquals("amended\n", showAtHead("owned/Base.kt"))
     assertEquals("other\n", showAtHead("foreign/Other.kt"))
@@ -90,7 +90,7 @@ class GitCheckpointHistoryOperationsTest {
     val ref = "${CHECKPOINT_PREFIX}subtask-1/städte-checkpoint"
 
     assertTrue(GitCheckpointHistoryOperations.updateRef(repo, CHECKPOINT_PREFIX, ref, sha).ok)
-    assertEquals(sha, GitCheckpointHistoryOperations.resolveRef(repo, CHECKPOINT_PREFIX, ref).value?.trim())
+    assertEquals(sha, GitCheckpointHistoryOperations.resolveRef(repo, CHECKPOINT_PREFIX, ref).value.trim())
     assertEquals(mapOf(ref to sha), listedRefs())
 
     assertTrue(GitCheckpointHistoryOperations.deleteRef(repo, CHECKPOINT_PREFIX, ref).ok)
@@ -119,7 +119,7 @@ class GitCheckpointHistoryOperationsTest {
     assertFalse(update.ok)
     assertFalse(delete.ok)
     assertFalse(siblingPrefix.ok)
-    assertEquals(sha, runGitCommand(repo, "rev-parse", "refs/heads/main").value?.trim())
+    assertEquals(sha, runGitCommand(repo, "rev-parse", "refs/heads/main").value.trim())
     assertEquals(emptyMap(), listedRefs())
   }
 

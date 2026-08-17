@@ -20,6 +20,18 @@ Areas: runtime-infra-fs/install/reconcile, runtime-domain/install/model, runtime
 Feature flag: N/A
 Acceptance criteria: N/A
 
+## [2026-08-17] SKILL-190 subtask 1 — Amend and namespace-scoped checkpoint ref primitives
+Areas: runtime-ports/workflow, runtime-infra-fs (GitCheckpointHistoryOperations, GitWorkflowGitOperations)
+- New `CheckpointHistoryGitOperations` port: `amendHeadCommit` plus create-or-update, resolve, list-by-prefix, and delete for refs confined to a caller-supplied namespace prefix. No caller behaviour changes yet.
+- Amend never stages: it rewrites HEAD from the existing index only, requires HEAD to equal the caller-supplied `expectedOwnedHeadSha`, and fails typed on missing HEAD or empty index instead of creating an empty commit.
+- Pattern: capability extension via optional `CheckpointHistoryGitOperationsProvider` on `WorkflowGitOperations`, with extension functions as the call surface. Adapters that don't provide it get a refusing implementation, not a silent "ok" — a fake success would record a checkpoint identity that doesn't exist. reusable
+- All git invocation goes through the existing `GitProcessSupport.runGitCommand` seam; no second `ProcessBuilder`, same `WorkflowGitOperationResult` error channel as the older operations.
+- Ref writes use `update-ref` semantics (old or new value, never partial); ref names outside the prefix are rejected typed; deleting an absent ref succeeds so an interrupted prune is re-runnable.
+- Adapter tests run against real temporary repositories rather than mocks, since the behaviour under test is git's.
+- Limitation: nothing consumes these yet — run-loop/checkpoint wiring and the `refs/skill-bill/checkpoints/...` layout land in later subtasks; `resetSoftToCommit` and legacy `stageAll` are untouched.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
 ## [2026-08-15] SKILL-192 subtask 1 — Collect-all gate declaration and complete finding extraction
 Areas: orchestration/contracts, platform-packs/{kotlin,kmp}, runtime-infra-fs/validation, runtime-domain/scaffold, runtime-application/featuretask/validation, tests/fixtures/shell_content_contract
 - `validation_gate` now requires pack-owned collect-all argv (cache-eligible and cache-bypassing) plus a compiler-diagnostics locator; shell contract pinned at 1.5 with schema and Kotlin together.
