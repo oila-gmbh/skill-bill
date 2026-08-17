@@ -163,7 +163,6 @@ class GoalPlanningStatusReasonCoherenceTest {
       current = current,
       savedParentSpec = parentSpec,
       currentParentSpec = parentSpec,
-      freshCatalogHeadingIds = emptySet(),
     )
     assertIs<GoalPlanningProvenanceRecoverability.Invalid>(recoverability)
 

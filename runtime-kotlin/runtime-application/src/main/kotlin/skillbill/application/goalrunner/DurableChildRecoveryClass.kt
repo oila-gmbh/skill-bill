@@ -21,3 +21,12 @@ internal fun classifyDurableChild(progress: GoalRunnerWorkflowProgress?): Durabl
 
 internal fun scopedChildRecoveryCommand(issueKey: String, subtaskId: Int): String =
   "skill-bill goal reset $issueKey --subtask $subtaskId --delete-child-workflow"
+
+/**
+ * Recovery for a child holding planning bytes its parent has since replaced. Scoped reset refuses a
+ * `pending` or `paused` child — it is resumable, and resuming is normally right — but resuming this
+ * one re-imports the stale bytes and blocks again. Scoped replan is the command that both regenerates
+ * the subtask's plan and drops the stale child, so it is what a planning-import conflict advertises.
+ */
+internal fun staleChildPlanningRecoveryCommand(issueKey: String, subtaskId: Int): String =
+  "skill-bill goal replan $issueKey --subtask $subtaskId"

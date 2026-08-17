@@ -72,6 +72,7 @@ import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureTaskExecutionIdentity
 import skillbill.ports.persistence.model.FeatureTaskRouteScope
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
+import skillbill.ports.persistence.model.GoalChildWorkflowDeletionScope
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.taskruntime.NoopFeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.workflow.DecompositionManifestFileStore
@@ -1387,8 +1388,12 @@ private fun deleteStaleReplanChildren(
   if (subtask == null || childWorkflowId == null || subtask.status in setOf("complete", "skipped")) {
     false
   } else {
-    // Only terminal children are deletable here, so a live or resumable child is left untouched.
-    unitOfWork.workflowStates.deleteGoalChildWorkflow(state.parentWorkflowId, id, childWorkflowId) == 1
+    unitOfWork.workflowStates.deleteGoalChildWorkflow(
+      state.parentWorkflowId,
+      id,
+      childWorkflowId,
+      GoalChildWorkflowDeletionScope.TERMINAL_OR_RESUMABLE,
+    ) == 1
   }
 }
 

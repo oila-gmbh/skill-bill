@@ -7,6 +7,7 @@ import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.persistence.model.FeatureTaskWorkflowCandidate
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.persistence.model.FeatureVerifySessionSummary
+import skillbill.ports.persistence.model.GoalChildWorkflowDeletionScope
 import skillbill.ports.persistence.model.WorkflowStateRecord
 
 /**
@@ -99,8 +100,12 @@ interface GoalChildWorkflowStateRepository {
   fun deleteGoalChildWorkflowsByParent(parentWorkflowId: String): Int =
     error("Goal-child workflow deletion is not implemented by this persistence adapter.")
 
-  fun deleteGoalChildWorkflow(parentWorkflowId: String, subtaskId: Int, workflowId: String): Int =
-    error("Scoped goal-child workflow deletion is not implemented by this persistence adapter.")
+  fun deleteGoalChildWorkflow(
+    parentWorkflowId: String,
+    subtaskId: Int,
+    workflowId: String,
+    scope: GoalChildWorkflowDeletionScope = GoalChildWorkflowDeletionScope.TERMINAL_ONLY,
+  ): Int = error("Scoped goal-child workflow deletion is not implemented by this persistence adapter.")
 }
 
 interface FeatureTaskRuntimeWorkerRepository {
