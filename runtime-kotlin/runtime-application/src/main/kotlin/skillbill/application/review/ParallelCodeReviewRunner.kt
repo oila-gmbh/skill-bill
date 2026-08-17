@@ -1834,7 +1834,7 @@ internal fun parseLaneRegisterSeam(
   parse: (String) -> ParallelReviewParseResult = ParallelReviewFindingParser::parse,
 ): ParallelReviewParseResult = try {
   parse(stdout)
-} catch (thrown: RuntimeException) {
+} catch (@Suppress("TooGenericExceptionCaught") thrown: RuntimeException) {
   throw ReviewRegisterParseSeamException(seam = INLINE_FINDING_PARSE_SEAM, lane = lane, cause = thrown)
 }
 
