@@ -4,6 +4,37 @@ This file records architectural and implementation decisions that span the
 `runtime-kotlin/` boundary. Each entry is dated and explains the trade-off,
 not the implementation detail.
 
+## [2026-08-17] Checkpoint-identity 0.2 keeps its parity test; quarantine enum widens without a bump (SKILL-190 subtask 2)
+
+Context: Bumping the checkpoint-identity contract to 0.2 hit two governance collisions the parent
+spec flagged. First, `CLAUDE.md` forbids new tests while the runtime-contract recipe requires a
+parity test for every version bump. Second, recording the quarantine of a legacy checkpoint-identity
+store needs a `rejection_class` the quarantine schema's enum does not carry.
+
+Decision (AC-008 parity): The collision is abstract here — `FeatureTaskRuntimeCheckpointIdentitySchemaContractVersionTest`
+already exists and is version-agnostic, asserting the YAML const against the Kotlin constant. Follow
+the contract rule by retaining that test unchanged and adding no new test file. The subtask therefore
+proceeds on a recorded decision, not an unrecorded default.
+Alternative rejected: waiving the parity check on the no-new-tests rule — it would leave a
+YAML-versus-Kotlin divergence with no gate, which is exactly the drift the recipe exists to catch.
+
+Decision (quarantine enum): Add `checkpoint_identity_contract_version` to the quarantine schema's
+`rejection_class` enum WITHOUT bumping the quarantine contract from 0.3. Enum widening is
+read-compatible in the only direction that occurs: a store is written and read by the same installed
+runtime, and every 0.3 record stays valid under the widened enum.
+Alternative rejected: bumping the quarantine contract to 0.4 per the usual per-change precedent. The
+quarantine store has no quarantine-of-quarantine recovery path, so a bump would loud-fail every
+in-flight workflow that already holds evidence — trading the wedge this subtask removes for a worse
+one.
+Revisit when: the quarantine record gains or changes a field (not just an enum member), or a
+downgrade path where an older runtime reads a newer store becomes real.
+
+Known residual gap handed to subtask 4: `FeatureTaskRuntimeGoalContinuationRecorder.reconcileRemediationBaseCoherence`
+decodes the checkpoint-identity store at run startup and rethrows anything that is not an
+`InvalidGoalSubtaskReviewStateSchemaError`. That seam is correctly loud (AC-006) but runs BEFORE
+`appendCheckpointIdentity`'s quarantine repair, so a goal-continuation run holding a 0.1 store can
+still fail there first. Subtask 4 owns that consumer; this subtask audited it and left it unedited.
+
 ## [2026-08-15] FULL validate proves repairs by confirmation identity closure
 Context: Last-subtask FULL collect-all discovery still treated a completed repair agent payload as proof, so omitted identities and leftover confirmation findings could look green.
 Decision: Persist a covering repair plan and require a substantiation receipt per discovery identity before confirmation; green confirmation is identity closure on the confirmation finding set, not measured PASSED alone.

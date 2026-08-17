@@ -201,10 +201,12 @@ object FeatureTaskRuntimeAuditGenerationSchemaPaths {
 /**
  * Runtime-side mirror of the checkpoint-identity schema's `contract_version`;
  * `FeatureTaskRuntimeCheckpointIdentitySchemaContractVersionTest` fails the build if they diverge.
- * Pins the append-only history binding every scoped checkpoint commit to the authority boundary,
- * loop generation, parent commit, and owned-path digest that produced it.
+ * Pins the append-only history binding every scoped checkpoint to the authority boundary, owning
+ * subtask, loop generation, parent commit, and owned-path digest that produced it. At 0.2 identity is
+ * keyed on the checkpoint ref rather than the commit sha, so an amended subtask commit that several
+ * checkpoints share no longer fails the uniqueness invariant.
  */
-const val FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITY_CONTRACT_VERSION: String = "0.1"
+const val FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITY_CONTRACT_VERSION: String = "0.2"
 
 object FeatureTaskRuntimeCheckpointIdentitySchemaPaths {
   const val REPO_RELATIVE_PATH: String =

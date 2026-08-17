@@ -492,6 +492,8 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     val identity = FeatureTaskRuntimeCheckpointIdentity(
       sequenceNumber = 0,
       issueKey = "SKILL-176",
+      subtaskId = "15",
+      checkpointRef = "refs/skill-bill/checkpoints/SKILL-176/15/0",
       branch = "feat/skill-15",
       phaseId = "review",
       generation = 1,
@@ -550,6 +552,8 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     val identity = FeatureTaskRuntimeCheckpointIdentity(
       sequenceNumber = 0,
       issueKey = "SKILL-176",
+      subtaskId = "15",
+      checkpointRef = "refs/skill-bill/checkpoints/SKILL-176/15/0",
       branch = "feat/skill-15",
       phaseId = "review",
       generation = 1,

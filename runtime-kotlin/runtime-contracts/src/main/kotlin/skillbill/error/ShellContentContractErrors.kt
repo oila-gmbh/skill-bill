@@ -159,7 +159,7 @@ class ReviewAggregationIntegrityError(
  * parse-seam failures distinguishable from platform-pack manifest
  * failures in logs and tests.
  */
-class InvalidWorkflowStateSchemaError(
+open class InvalidWorkflowStateSchemaError(
   message: String,
   cause: Throwable? = null,
 ) : ShellContentContractException(message, cause)
@@ -483,6 +483,28 @@ class InvalidFeatureTaskRuntimeCheckpointIdentitySchemaError(
 ) : ShellContentContractException(
   "Feature-task-runtime checkpoint identity '${sourceLabel.ifBlank { "<unknown>" }}' fails schema " +
     "validation: $reason",
+  cause,
+)
+
+/**
+ * Surfaced when a durable checkpoint-identity store was written under a contract version this
+ * runtime cannot read. Distinct from a malformed record at the current version: a version mismatch
+ * is repairable in band (quarantine the store, regenerate from the next checkpoint forward), while
+ * corruption at the current version is not. Callers branch on the type, so both versions are carried
+ * as typed fields rather than only in the message.
+ *
+ * Subclasses [InvalidWorkflowStateSchemaError] deliberately: the run loop, workflow service, IDE
+ * status service, and goal-runner stores all catch that type, and a sibling class would turn a loud
+ * rejection into an uncaught crash at those seams.
+ */
+class InvalidFeatureTaskRuntimeCheckpointIdentityVersionError(
+  val expectedContractVersion: String,
+  val actualContractVersion: String,
+  cause: Throwable? = null,
+) : InvalidWorkflowStateSchemaError(
+  "Feature-task-runtime checkpoint-identity record uses unsupported contract version " +
+    "'${actualContractVersion.ifBlank { "<absent>" }}'; this runtime reads " +
+    "'$expectedContractVersion'. The store is quarantined and regenerated rather than reinterpreted.",
   cause,
 )
 

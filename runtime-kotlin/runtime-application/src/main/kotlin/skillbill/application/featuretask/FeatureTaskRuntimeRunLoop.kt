@@ -73,6 +73,7 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeTransitionFunction
 import skillbill.workflow.taskruntime.model.CorrectiveRepairCapturedResponse
 import skillbill.workflow.taskruntime.model.CorrectiveRepairDiagnosticLocator
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairGapIdentities
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
@@ -1374,6 +1375,10 @@ internal class FeatureTaskRuntimeRunLoop(
       recorder.appendCheckpointIdentity(
         workflowId = request.workflowId,
         issueKey = request.issueKey,
+        // A standalone feature-task run owns no decomposed subtask; the reserved literal keeps the
+        // ref name well-formed instead of leaving the segment blank.
+        subtaskId = request.goalContinuation?.subtaskId?.toString()
+          ?: FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID,
         branch = branch,
         phaseId = precedingPhaseId,
         loopId = loopId,

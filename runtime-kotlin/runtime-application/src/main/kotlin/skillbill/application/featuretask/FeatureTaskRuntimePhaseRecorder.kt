@@ -13,6 +13,7 @@ import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.toRecord
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
+import skillbill.error.InvalidFeatureTaskRuntimeCheckpointIdentityVersionError
 import skillbill.error.InvalidProducerOutputEvidenceSchemaError
 import skillbill.error.InvalidRejectedOutputDiagnosticSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
@@ -94,11 +95,13 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
+import skillbill.workflow.taskruntime.model.QUARANTINE_REJECTION_CLASS_CHECKPOINT_IDENTITY_VERSION
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeAppendCheckpointIdentity
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeAppendDiagnosticSignal
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeAppendImplementationAttempt
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesFromArtifact
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesToArtifact
+import skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointRefName
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeDiagnosticSignalsFromWire
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeImplementationAttemptRecordToWire
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeImplementationAttemptsFromWire
@@ -108,6 +111,7 @@ import skillbill.workflow.taskruntime.model.featureTaskRuntimeQuarantineRecordTo
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeRejectionCapOf
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeRejectionViolationClassOf
 import skillbill.workflow.taskruntime.model.unionRefutedBlockerDispositions
+import java.security.MessageDigest
 import java.time.Duration
 import java.time.Instant
 
@@ -1653,8 +1657,8 @@ class FeatureTaskRuntimePhaseRecorder(
   /**
    * Appends one checkpoint identity in the same transaction that advanced the checkpoint, so a crash
    * cannot leave a commit whose authority boundary was never recorded. The append is idempotent on
-   * commit sha: a resume that re-reaches this seam converges on the single existing record instead of
-   * duplicating it.
+   * the checkpoint ref: a resume that re-reaches this seam converges on the single existing record
+   * instead of duplicating it.
    *
    * A store at an incompatible contract version is quarantined and regenerated rather than
    * reinterpreted — the same edge every other feature-task-runtime durable artifact takes. Returns
@@ -1664,6 +1668,7 @@ class FeatureTaskRuntimePhaseRecorder(
   fun appendCheckpointIdentity(
     workflowId: String,
     issueKey: String,
+    subtaskId: String,
     branch: String,
     phaseId: String,
     loopId: String?,
@@ -1672,14 +1677,47 @@ class FeatureTaskRuntimePhaseRecorder(
     ownedPaths: List<String>,
     commitSha: String,
     dbOverride: String? = null,
+  ): Boolean {
+    quarantineCheckpointIdentitiesOnVersionDrift(workflowId, phaseId, generation, dbOverride)
+    return appendCheckpointIdentityAtCurrentVersion(
+      workflowId = workflowId,
+      issueKey = issueKey,
+      subtaskId = subtaskId,
+      branch = branch,
+      phaseId = phaseId,
+      loopId = loopId,
+      generation = generation,
+      parentSha = parentSha,
+      ownedPaths = ownedPaths,
+      commitSha = commitSha,
+      dbOverride = dbOverride,
+    )
+  }
+
+  @Suppress("LongParameterList") // mirrors appendCheckpointIdentity's durable identity contract
+  private fun appendCheckpointIdentityAtCurrentVersion(
+    workflowId: String,
+    issueKey: String,
+    subtaskId: String,
+    branch: String,
+    phaseId: String,
+    loopId: String?,
+    generation: Int,
+    parentSha: String?,
+    ownedPaths: List<String>,
+    commitSha: String,
+    dbOverride: String?,
   ): Boolean = database.transaction(dbOverride) { unitOfWork ->
     val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
       ?: return@transaction false
     val artifacts = decodeArtifacts(record.artifactsJson)
     val existing = checkpointIdentitiesFrom(artifacts)
+    val sequenceNumber = (existing.maxOfOrNull { it.sequenceNumber } ?: -1) + 1
     val entry = FeatureTaskRuntimeCheckpointIdentity(
-      sequenceNumber = (existing.maxOfOrNull { it.sequenceNumber } ?: -1) + 1,
+      sequenceNumber = sequenceNumber,
       issueKey = issueKey,
+      subtaskId = subtaskId,
+      checkpointRef = featureTaskRuntimeCheckpointRefName(issueKey, subtaskId, sequenceNumber),
       branch = branch,
       phaseId = phaseId,
       generation = generation,
@@ -1734,6 +1772,56 @@ class FeatureTaskRuntimePhaseRecorder(
       )
       true
     }
+
+  /**
+   * Recovery edge for the checkpoint-identity contract bump, run before the append transaction so no
+   * nested transaction is opened. Scoped to the typed version error alone: a malformed record at the
+   * current version propagates, because quarantine is a version-drift repair and must never become a
+   * silent swallow for real corruption. The reset and its evidence are separate transactions from the
+   * append, so a crash between them leaves a clean current-version store the next append can extend.
+   */
+  private fun quarantineCheckpointIdentitiesOnVersionDrift(
+    workflowId: String,
+    phaseId: String,
+    generation: Int,
+    dbOverride: String?,
+  ) {
+    val rejected = database.read(dbOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+        ?: return@read null
+      val artifacts = decodeArtifacts(record.artifactsJson)
+      try {
+        checkpointIdentitiesFrom(artifacts)
+        null
+      } catch (error: InvalidFeatureTaskRuntimeCheckpointIdentityVersionError) {
+        error to artifacts[FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY].toString()
+      }
+    } ?: return
+    val (error, rejectedPayload) = rejected
+    val iteration = (generation + 1).coerceAtLeast(1)
+    appendQuarantineEntry(
+      workflowId,
+      FeatureTaskRuntimeQuarantineEntry(
+        producingPhaseId = phaseId,
+        consumingPhaseId = phaseId,
+        producingIteration = iteration,
+        rejectionClass = QUARANTINE_REJECTION_CLASS_CHECKPOINT_IDENTITY_VERSION,
+        rejectionDetail = "seam=FeatureTaskRuntimePhaseRecorder.appendCheckpointIdentity " +
+          "expected=${error.expectedContractVersion} actual=${error.actualContractVersion} " +
+          "cause=checkpoint-identity store predates the current contract; reset and regenerated forward",
+        regenerationAttempt = 1,
+        quarantinedAtIteration = iteration,
+        diagnosticIdentity = null,
+        rejectedRecordByteSize = rejectedPayload.toByteArray().size.toLong(),
+        rejectedRecordSha256 = sha256Hex(rejectedPayload),
+        // There is no rejected-payload diagnostic capture for a version bump; the contract's xor
+        // makes this the only way to record the honest absence of one.
+        diagnosticDegraded = true,
+      ),
+      dbOverride,
+    )
+    quarantineCheckpointIdentities(workflowId, dbOverride)
+  }
 
   private fun checkpointIdentitiesFrom(artifacts: Map<String, Any?>): List<FeatureTaskRuntimeCheckpointIdentity> =
     featureTaskRuntimeCheckpointIdentitiesFromArtifact(
@@ -2064,3 +2152,7 @@ private fun attemptStatusFor(
 
 private fun durationMillis(startedAt: String, finishedAt: String): Long =
   Duration.between(Instant.parse(startedAt), Instant.parse(finishedAt)).toMillis().coerceAtLeast(0)
+
+private fun sha256Hex(value: String): String = MessageDigest.getInstance("SHA-256")
+  .digest(value.toByteArray())
+  .joinToString("") { "%02x".format(it) }

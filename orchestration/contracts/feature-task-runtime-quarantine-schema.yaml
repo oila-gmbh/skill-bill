@@ -89,6 +89,7 @@ $defs:
         enum:
           - planning_projection_schema
           - handoff_envelope_schema
+          - checkpoint_identity_contract_version
         description: Typed class of the launch-seam rejection that triggered quarantine.
       rejection_detail:
         type: string

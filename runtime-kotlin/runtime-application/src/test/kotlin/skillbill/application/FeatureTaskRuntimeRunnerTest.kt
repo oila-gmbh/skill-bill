@@ -109,10 +109,12 @@ import skillbill.workflow.model.GoalObservabilityDiffStat
 import skillbill.workflow.model.GoalObservabilitySelectedDiffHunks
 import skillbill.workflow.model.SpecSource
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DECOMPOSE_TERMINAL_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
@@ -131,6 +133,8 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewDisposition
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.QUARANTINE_REJECTION_CLASS_CHECKPOINT_IDENTITY_VERSION
+import skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointRefName
 import java.lang.reflect.Method
 import java.lang.reflect.Proxy
 import java.nio.file.Files
@@ -4466,17 +4470,82 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
 
     val identities = requireNotNull(harness.recorder.loadCheckpointIdentities(WORKFLOW_ID))
     assertEquals(git.createCommitMessages.size, identities.size, "one identity record per checkpoint commit")
-    assertEquals(identities.map { it.commitSha }.distinct().size, identities.size, "commit shas are unique")
+    assertEquals(
+      identities.map { it.checkpointRef }.distinct().size,
+      identities.size,
+      "the ref, not the amendable commit sha, is what must be unique per checkpoint",
+    )
     identities.forEach { identity ->
       assertEquals("feat/existing-runtime-branch", identity.branch)
       assertEquals(ISSUE_KEY, identity.issueKey)
       assertEquals(1, identity.ownedPathCount)
       assertTrue(identity.phaseId.isNotBlank())
+      // This run carries no goal-continuation artifact, so every ref names the reserved sentinel.
+      assertEquals(FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID, identity.subtaskId)
+      assertEquals(
+        featureTaskRuntimeCheckpointRefName(ISSUE_KEY, FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID, identity.sequenceNumber),
+        identity.checkpointRef,
+      )
     }
     assertTrue(
       identities.any { it.loopId != null },
       "a backward-edge checkpoint must record the loop it belongs to",
     )
+  }
+
+  // AC-005: the contract bump's recovery path. A store written under 0.1 must not wedge the run at its
+  // next checkpoint, and must not be silently accepted either.
+  @Test
+  fun `a legacy checkpoint-identity store is quarantined with durable evidence and regenerated forward`() {
+    val harness = checkpointRunHarness(checkpointGit(ownedPaths = listOf("src/Owned.kt")))
+    harness.seedResolvedBranch("feat/existing-runtime-branch", baseBranch = "main", created = false)
+    harness.seedLegacyCheckpointIdentityStore()
+
+    val appended = harness.recorder.appendCheckpointIdentity(
+      workflowId = WORKFLOW_ID,
+      issueKey = ISSUE_KEY,
+      subtaskId = FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID,
+      branch = "feat/existing-runtime-branch",
+      phaseId = "implement",
+      loopId = null,
+      generation = 0,
+      parentSha = null,
+      ownedPaths = listOf("src/Owned.kt"),
+      commitSha = "e".repeat(40),
+    )
+
+    assertTrue(appended)
+    val identities = requireNotNull(harness.recorder.loadCheckpointIdentities(WORKFLOW_ID))
+    assertEquals(listOf("e".repeat(40)), identities.map { it.commitSha }, "the legacy store is reset, not merged")
+    val evidence = requireNotNull(harness.recorder.loadQuarantinedRecords(WORKFLOW_ID))
+      .single { it.rejectionClass == QUARANTINE_REJECTION_CLASS_CHECKPOINT_IDENTITY_VERSION }
+    assertContains(evidence.rejectionDetail, "expected=0.2")
+    assertContains(evidence.rejectionDetail, "actual=0.1")
+  }
+
+  // AC-006: quarantine is scoped to the version bump alone; corruption at the current version must
+  // still propagate rather than be reset away as if it were a legacy record.
+  @Test
+  fun `a malformed current-version checkpoint-identity store propagates instead of quarantining`() {
+    val harness = checkpointRunHarness(checkpointGit(ownedPaths = listOf("src/Owned.kt")))
+    harness.seedResolvedBranch("feat/existing-runtime-branch", baseBranch = "main", created = false)
+    harness.seedMalformedCurrentCheckpointIdentityStore()
+
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      harness.recorder.appendCheckpointIdentity(
+        workflowId = WORKFLOW_ID,
+        issueKey = ISSUE_KEY,
+        subtaskId = FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID,
+        branch = "feat/existing-runtime-branch",
+        phaseId = "implement",
+        loopId = null,
+        generation = 0,
+        parentSha = null,
+        ownedPaths = listOf("src/Owned.kt"),
+        commitSha = "e".repeat(40),
+      )
+    }
+    assertTrue(harness.recorder.loadQuarantinedRecords(WORKFLOW_ID).orEmpty().isEmpty())
   }
 
   // AC-002 / task-2: when the durable base record rejects the checkpoint sha, the branch soft-resets
@@ -5168,6 +5237,49 @@ internal class RunnerHarness(
         outputArtifact = outputArtifact,
         reviewPassNumber = reviewPassNumber,
       ),
+    )
+  }
+
+  // Seeds a checkpoint-identity store at the superseded 0.1 contract version.
+  fun seedLegacyCheckpointIdentityStore() {
+    seedCheckpointIdentityStore(
+      mapOf(
+        "contract_version" to "0.1",
+        "checkpoints" to listOf(
+          mapOf(
+            "sequence_number" to 0,
+            "issue_key" to ISSUE_KEY,
+            "branch" to "feat/existing-runtime-branch",
+            "phase_id" to "implement",
+            "generation" to 0,
+            "owned_path_digest" to "a".repeat(64),
+            "owned_path_count" to 1,
+            "commit_sha" to "b".repeat(40),
+            "recorded_at" to "2026-08-10T00:00:00Z",
+          ),
+        ),
+      ),
+    )
+  }
+
+  // Seeds a store at the CURRENT version whose entry is corrupt, which is not a quarantine trigger.
+  fun seedMalformedCurrentCheckpointIdentityStore() {
+    seedCheckpointIdentityStore(
+      mapOf(
+        "contract_version" to
+          skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITY_CONTRACT_VERSION,
+        "checkpoints" to listOf(mapOf("sequence_number" to 0)),
+      ),
+    )
+  }
+
+  private fun seedCheckpointIdentityStore(store: Map<String, Any?>) {
+    recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
+    repository.replaceTaskRuntimeArtifacts(
+      WORKFLOW_ID,
+      LinkedHashMap(repository.taskRuntimeArtifacts(WORKFLOW_ID)).apply {
+        put(FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY, store)
+      },
     )
   }
 
