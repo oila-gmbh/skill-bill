@@ -7,6 +7,7 @@ import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.persistence.model.FeatureTaskWorkflowCandidate
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.persistence.model.FeatureVerifySessionSummary
+import skillbill.ports.persistence.model.GoalChildWorkflowDeletionScope
 import skillbill.ports.persistence.model.WorkflowStateRecord
 
 /**
@@ -93,11 +94,6 @@ interface FeatureTaskWorkflowStateRepository {
     FeatureTaskWorkflowMode.RUNTIME ->
       (this as FeatureTaskRuntimeWorkflowStateRepository).latestFeatureTaskRuntimeWorkflow()
   }
-}
-
-enum class GoalChildWorkflowDeletionScope(val deletableStatuses: List<String>) {
-  TERMINAL_ONLY(listOf("blocked", "failed", "abandoned", "completed")),
-  TERMINAL_OR_RESUMABLE(listOf("blocked", "failed", "abandoned", "completed", "pending", "paused")),
 }
 
 interface GoalChildWorkflowStateRepository {

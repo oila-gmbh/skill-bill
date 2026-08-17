@@ -13,7 +13,6 @@ import skillbill.ports.persistence.FeatureTaskRuntimeWorkerRepository
 import skillbill.ports.persistence.FeatureTaskRuntimeWorkflowStateRepository
 import skillbill.ports.persistence.FeatureTaskWorkflowStateRepository
 import skillbill.ports.persistence.FeatureVerifyWorkflowStateRepository
-import skillbill.ports.persistence.GoalChildWorkflowDeletionScope
 import skillbill.ports.persistence.GoalChildWorkflowStateRepository
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.persistence.model.FeatureImplementSessionSummary
@@ -25,6 +24,7 @@ import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.persistence.model.FeatureTaskWorkflowCandidate
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.persistence.model.FeatureVerifySessionSummary
+import skillbill.ports.persistence.model.GoalChildWorkflowDeletionScope
 import skillbill.ports.persistence.model.WorkflowStateRecord
 import java.sql.Connection
 import java.time.Instant

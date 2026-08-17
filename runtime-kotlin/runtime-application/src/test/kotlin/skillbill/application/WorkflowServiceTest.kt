@@ -57,7 +57,6 @@ import skillbill.ports.goalrunner.model.GoalRunnerProgressEventRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerReviewPolicy
 import skillbill.ports.goalrunner.model.GoalRunnerSessionAccountingRecordRequest
 import skillbill.ports.persistence.DatabaseSessionFactory
-import skillbill.ports.persistence.GoalChildWorkflowDeletionScope
 import skillbill.ports.persistence.GoalPlanningPreparationRepository
 import skillbill.ports.persistence.GoalRunnerControlRepository
 import skillbill.ports.persistence.LearningRepository
@@ -74,6 +73,7 @@ import skillbill.ports.persistence.model.FeatureTaskRuntimeWorkerOwnership
 import skillbill.ports.persistence.model.FeatureTaskWorkflowCandidate
 import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.persistence.model.FeatureVerifySessionSummary
+import skillbill.ports.persistence.model.GoalChildWorkflowDeletionScope
 import skillbill.ports.persistence.model.GoalPlanningContractProvenance
 import skillbill.ports.persistence.model.GoalPlanningIdentity
 import skillbill.ports.persistence.model.GoalPlanningPreparationRecord
