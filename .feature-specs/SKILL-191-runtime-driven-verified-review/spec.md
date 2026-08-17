@@ -196,8 +196,29 @@ Each subtask carries its own validation. Across the feature:
   the feature-task review phase produce the same stage records for the same delta and
   spec.
 
+## Status
+
+Complete. All 9 subtasks carry a durable commit.
+
+Subtasks 1–8 landed on `main` as PR #294 (`eda17102e`, squash merge, 2026-08-15).
+Subtask 9 was implemented after that merge on `feat/SKILL-191-runtime-driven-verified-review`
+(`fdb3c29d5`) and lands separately on a main-based branch as
+`7952622e2` — cherry-picking it applies cleanly, whereas merging `main` back into the
+feature branch would have meant resolving 24 files of squash-versus-original conflict to
+re-derive code `main` already carried.
+
+Subtask 9 is recorded by `skill-bill goal accept --subtask 9` rather than by a
+runtime-owned review pass. That review could not run: `main` raised the platform-pack
+shell contract to 1.5 in SKILL-192 (`122f15f97`), so the installed packs no longer load
+under this branch's 1.4 runtime, and `ParallelCodeReviewRunner` loud-fails on the
+mismatch by design. The delivered change is 4 lines and is covered by
+`:runtime-application:check` on the main-based branch.
+
+Two goal-runtime defects surfaced during this feature and are fixed on
+`fix/skill-191-replan-child`, not here: scoped replan could not clear a resumable
+hydrated child, and an unresolvable `selected_boundary_headings` id invalidated an
+already-accepted preplan.
+
 ## Next Path
 
-```bash
-skill-bill goal SKILL-191
-```
+Land `7952622e2`. No further goal runs are required.
