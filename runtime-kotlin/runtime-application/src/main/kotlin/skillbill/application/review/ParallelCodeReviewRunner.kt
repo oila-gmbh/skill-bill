@@ -80,6 +80,7 @@ import skillbill.review.context.model.ReviewLaneCompletionState
 import skillbill.review.context.model.ReviewLaneIdentity
 import skillbill.review.context.model.ReviewLaneReviewDisposition
 import skillbill.review.context.model.ReviewParentAnalysisConsumption
+import skillbill.review.context.model.ReviewRegisterParseSeamException
 import skillbill.review.context.model.SpecIntentProjectionResolveRequest
 import skillbill.review.context.model.SpecIntentResolution
 import skillbill.review.context.model.TokenOwnership
@@ -89,6 +90,7 @@ import skillbill.review.context.model.toCodeReviewExecutionMode
 import skillbill.review.model.ParallelReviewLaneResult
 import skillbill.review.model.ParallelReviewMergeResult
 import skillbill.review.model.ParallelReviewMergedFinding
+import skillbill.review.model.ParallelReviewParseResult
 import skillbill.review.model.ParallelReviewRawFinding
 import skillbill.review.model.ReviewCoverageReport
 import skillbill.review.model.ReviewFindingVerdict
@@ -1242,8 +1244,9 @@ class ParallelCodeReviewRunner(
     )
     val launchReason = budgetOutcome?.let { ReviewContextBudgetExceededException(it).message }
       ?: laneFailureReason(outcome)
-    val findings = if (launchReason == null) attributeInlineFindings(outcome.stdout, launch.selected) else emptyList()
-    val registerReason = if (launchReason == null) registerAbsenceReason(outcome.stdout, findings) else null
+    val parsed = if (launchReason == null) parseLaneRegisterSeam(outcome.stdout, launch.assignment.lane) else null
+    val findings = parsed?.let { attributeInlineFindings(it, launch.selected) }.orEmpty()
+    val registerReason = parsed?.let { registerAbsenceReason(outcome.stdout, it) }
     val reason = launchReason ?: registerReason
     return ParallelReviewLaneOutcome(
       success = reason == null,
@@ -1484,14 +1487,13 @@ class ParallelCodeReviewRunner(
   }
 
   private fun attributeInlineFindings(
-    stdout: String,
+    parsed: ParallelReviewParseResult,
     selected: List<ReviewSpecialistLaunchRequest>,
   ): List<ParallelReviewRawFinding> {
     val fallbackLane = selected.minByOrNull { it.assignment.laneDecision.orderIndex }
     val fallbackPath = fallbackLane?.assignment?.assignedPaths?.firstOrNull()
       ?: ParallelReviewFindingParser.UNASSIGNED_REPOSITORY_PATH
-    val parsed = runCatching { ParallelReviewFindingParser.parse(stdout).findings }.getOrDefault(emptyList())
-    return parsed.map { finding ->
+    return parsed.findings.map { finding ->
       val findingPath = finding.repositoryPath
       val pathOwners = selected.filter { launch ->
         findingPath != null && launch.assignment.assignedPaths.any { path -> path == findingPath }
@@ -1562,12 +1564,20 @@ class ParallelCodeReviewRunner(
     else -> null
   }
 
-  private fun registerAbsenceReason(stdout: String, findings: List<ParallelReviewRawFinding>): String? {
-    if (findings.isNotEmpty()) return null
+  private fun registerAbsenceReason(stdout: String, parsed: ParallelReviewParseResult): String? {
+    if (parsed.findings.isNotEmpty()) return null
     if (stdout.lineSequence().any { it.trim() == NO_FINDINGS_TOKEN }) return null
+    val bytes = stdout.toByteArray().size
+    if (parsed.candidateCount > 0) {
+      val rejection = parsed.rejections.firstOrNull()
+      return "lane emitted ${parsed.candidateCount} [F-XXX] candidate line(s) in $bytes bytes but none " +
+        "were admissible; register format drift at line ${rejection?.linePosition ?: 0} " +
+        "rejected as ${rejection?.reason?.wireValue ?: "unknown"}: " +
+        "${rejection?.lineText?.take(REGISTER_ABSENCE_EXCERPT_MAX_LENGTH).orEmpty()}"
+    }
     val excerpt = stdout.trim().take(REGISTER_ABSENCE_EXCERPT_MAX_LENGTH).ifBlank { "<empty>" }
-    return "lane did not emit a findings register; zero [F-XXX] lines without $NO_FINDINGS_TOKEN " +
-      "means the review did not execute. Lane returned ${stdout.length} bytes starting: $excerpt"
+    return "lane did not emit a findings register; zero [F-XXX] candidate lines without $NO_FINDINGS_TOKEN " +
+      "means the review did not execute. Lane returned $bytes bytes starting: $excerpt"
   }
 
   private companion object {
@@ -1810,6 +1820,23 @@ private const val DELEGATED_DEPTH_DIRECTIVE: String =
 /** Terminal status of a resume pass that had no incomplete lane left to launch a worker for. */
 internal const val NO_OP_RESUME_TERMINAL_STATUS: String = "no_op_resume"
 internal const val REGISTER_ABSENT_TERMINAL_STATUS: String = "register_absent"
+
+internal const val INLINE_FINDING_PARSE_SEAM: String = "attributeInlineFindings"
+
+/**
+ * The single seam every inline lane register parse routes through. A parser fault escapes as a typed
+ * error naming the seam and lane instead of degrading into an empty finding list, so no lane outcome
+ * and no register-absent accounting row is built for what is actually a parser defect.
+ */
+internal fun parseLaneRegisterSeam(
+  stdout: String,
+  lane: String,
+  parse: (String) -> ParallelReviewParseResult = ParallelReviewFindingParser::parse,
+): ParallelReviewParseResult = try {
+  parse(stdout)
+} catch (thrown: RuntimeException) {
+  throw ReviewRegisterParseSeamException(seam = INLINE_FINDING_PARSE_SEAM, lane = lane, cause = thrown)
+}
 
 /**
  * A parent pass that launched no worker because every lane already held a durable result. It records
