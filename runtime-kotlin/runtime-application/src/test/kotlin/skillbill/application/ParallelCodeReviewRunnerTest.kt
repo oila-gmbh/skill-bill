@@ -10,8 +10,6 @@ import skillbill.application.model.ParallelReviewScope
 import skillbill.application.model.StackDetectionException
 import skillbill.application.model.UsageValidationException
 import skillbill.application.review.ParallelCodeReviewRunner
-import skillbill.application.review.REGISTER_ABSENT_TERMINAL_STATUS
-import skillbill.application.review.parseLaneRegisterSeam
 import skillbill.application.review.RecordedWorkerResponse
 import skillbill.application.review.ReviewClaimVerificationRunner
 import skillbill.application.review.ReviewHarnessConfig
@@ -75,9 +73,7 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
-import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -456,121 +452,6 @@ class ParallelCodeReviewRunnerTest {
         assertEquals(expectedFanOut, request.skillRunRequest.reviewFanOut, "$mode fan-out flag")
       }
     }
-  }
-
-  @Test
-  fun `a zero-exit lane without a findings register fails instead of reporting clean coverage`() {
-    val blocked = """
-      This session has no worker-launch capability and no bound evidence broker.
-      Per the contract I am not running the review inline as a single prompt, and I am not
-      emitting a findings register — zero [F-XXX] lines here means not executed, not clean.
-    """.trimIndent()
-    val launcher = GoalRunnerSubtaskLauncher { request ->
-      AgentRunLaunchFacts(
-        agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),
-        exitStatus = 0,
-        stdout = blocked,
-        stderr = "",
-        timedOut = false,
-        spawnFailed = false,
-      )
-    }
-    val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))
-
-    val result = runner.run(
-      baseRequest(scope = ParallelReviewScope.STAGED).copy(codeReviewMode = CodeReviewExecutionMode.DELEGATED),
-    )
-
-    assertFalse(result.lane1.success)
-    assertEquals(REGISTER_ABSENT_TERMINAL_STATUS, result.lane1.accounting?.terminalStatus)
-    val reason = result.lane1.failureReason.orEmpty()
-    assertTrue(reason.contains("did not emit a findings register"))
-    assertTrue(reason.contains("${blocked.toByteArray().size} bytes"), "no-candidates state reports byte count")
-    assertTrue(
-      reason.contains("This session has no worker-launch capability"),
-      "no-candidates state carries an excerpt",
-    )
-    assertTrue(result.mergeResult.findings.isEmpty())
-    val coverage = assertNotNull(result.coverage)
-    assertFalse(coverage.isCleanCoverage)
-    assertTrue(coverage.render().contains("Coverage: NOT clean"))
-  }
-
-  @Test
-  fun `a near-miss register line is reported as format drift rather than a review that did not execute`() {
-    val drifted = "[F-1] Major | High | a.kt:3 | x"
-    val runner = runner(
-      stdoutLauncher(drifted),
-      diffResolver = RecordingDiffResolver(default = diffFor("A.kt")),
-    )
-
-    val result = runner.run(
-      baseRequest(scope = ParallelReviewScope.STAGED).copy(codeReviewMode = CodeReviewExecutionMode.INLINE),
-    )
-
-    assertFalse(result.lane1.success)
-    assertEquals(REGISTER_ABSENT_TERMINAL_STATUS, result.lane1.accounting?.terminalStatus)
-    val reason = assertNotNull(result.lane1.failureReason)
-    assertTrue(reason.contains("format drift"), "drift state must be named: $reason")
-    assertTrue(reason.contains(drifted), "the offending line must be named: $reason")
-    assertTrue(reason.contains("unmatched_candidate_line"), "the typed rejection reason must be given: $reason")
-    assertFalse(reason.contains("did not execute"), "a drifted register did execute the review: $reason")
-  }
-
-  @Test
-  fun `an oversized lane body is bounded by the excerpt cap instead of leaking into the register`() {
-    val body = "prose ".repeat(2_000)
-    val runner = runner(
-      stdoutLauncher(body),
-      diffResolver = RecordingDiffResolver(default = diffFor("A.kt")),
-    )
-
-    val result = runner.run(
-      baseRequest(scope = ParallelReviewScope.STAGED).copy(codeReviewMode = CodeReviewExecutionMode.INLINE),
-    )
-
-    val reason = assertNotNull(result.lane1.failureReason)
-    assertFalse(reason.contains(body.trim()), "the full lane output must never reach the failure reason")
-    assertTrue(reason.length < body.length, "the excerpt must be bounded well below the lane body")
-  }
-
-  @Test
-  fun `an admissible register produces findings with no absence verdict and no register-absent accounting`() {
-    val runner = runner(
-      stdoutLauncher("[F-001] Major | High | path=\"A.kt\" | line=1 | admissible"),
-      diffResolver = RecordingDiffResolver(default = diffFor("A.kt")),
-    )
-
-    val result = runner.run(
-      baseRequest(scope = ParallelReviewScope.STAGED).copy(codeReviewMode = CodeReviewExecutionMode.INLINE),
-    )
-
-    assertTrue(result.lane1.success)
-    assertNull(result.lane1.failureReason)
-    assertNotEquals(REGISTER_ABSENT_TERMINAL_STATUS, result.lane1.accounting?.terminalStatus)
-    assertTrue(result.lane1.findings.isNotEmpty())
-  }
-
-  @Test
-  fun `a throwing parse at the register seam escapes as a typed seam error instead of an empty register`() {
-    val thrown = assertFailsWith<ReviewRegisterParseSeamException> {
-      parseLaneRegisterSeam("any lane output", lane = "lane-1") { error("parser exploded") }
-    }
-
-    assertEquals("attributeInlineFindings", thrown.seam)
-    assertEquals("lane-1", thrown.lane)
-    assertFalse(thrown.message.orEmpty().contains("any lane output"), "the seam error carries no lane output body")
-  }
-
-  private fun stdoutLauncher(stdout: String) = GoalRunnerSubtaskLauncher { request ->
-    AgentRunLaunchFacts(
-      agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),
-      exitStatus = 0,
-      stdout = stdout,
-      stderr = "",
-      timedOut = false,
-      spawnFailed = false,
-    )
   }
 
   @Test
@@ -1429,7 +1310,7 @@ class ParallelCodeReviewRunnerFailureTest {
     assertTrue(launcher.requests.isEmpty(), "routing budget breach must not launch specialists")
   }
 }
-private data class RunnerFixtureConfig(
+internal data class RunnerFixtureConfig(
   val catalogGateway: ScaffoldCatalogGateway = stubCatalogGateway(),
   val diffResolver: DiffResolverPort = RealProcessDiffResolver(),
   val parallelLaneRunner: ParallelReviewLaneRunner = TestParallelLaneRunner(),
@@ -1439,12 +1320,14 @@ private data class RunnerFixtureConfig(
   val database: RecordingReviewDatabase = RecordingReviewDatabase(),
   val budget: ReviewContextBudgetPolicy = ReviewContextBudgetPolicy.DEFAULT,
   val nativeAgentPreflight: ReviewNativeAgentPreflightPort = ReviewNativeAgentPreflightPort.NONE,
+  val registerParse: (String) -> skillbill.review.model.ParallelReviewParseResult =
+    skillbill.review.ParallelReviewFindingParser::parse,
 ) {
   val installedPackCatalog: InstalledPlatformPackCatalogPort =
     InstalledPlatformPackCatalogPort { catalogGateway.discoverPlatformManifests(Path.of(".")) }
 }
 
-private fun runner(
+internal fun runner(
   launcher: GoalRunnerSubtaskLauncher,
   catalogGateway: ScaffoldCatalogGateway = stubCatalogGateway(),
   diffResolver: DiffResolverPort = RealProcessDiffResolver(),
@@ -1469,7 +1352,7 @@ private fun runnerWithParallelLane(
   RunnerFixtureConfig(diffResolver = diffResolver, parallelLaneRunner = parallelLaneRunner),
 )
 
-private fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFixtureConfig): ParallelCodeReviewRunner =
+internal fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFixtureConfig): ParallelCodeReviewRunner =
   ParallelCodeReviewRunner(
     parentReviewLauncher = launcher,
     diffResolver = config.diffResolver,
@@ -1497,9 +1380,10 @@ private fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFixt
     ),
     nativeAgentPreflight = config.nativeAgentPreflight,
     reviewEvidenceBrokerFactory = skillbill.infrastructure.fs.FileSystemReviewEvidenceBrokerFactory(),
+    registerParse = config.registerParse,
   )
 
-private class RecordingReviewDatabase : DatabaseSessionFactory {
+internal class RecordingReviewDatabase : DatabaseSessionFactory {
   val laneWrites = mutableListOf<Pair<String, List<ReviewRunLane>>>()
   val findingLaneWrites = mutableListOf<Pair<String, Map<String, String>>>()
   var specProjection: ReviewSpecProjectionReference? = null
@@ -1603,7 +1487,7 @@ private const val TEST_SPECIALIST_CONTRACT: String =
 private val runnerRequestSequence = AtomicInteger()
 private val HEAD_BRANCH_QUERY = listOf("git", "rev-parse", "--abbrev-ref", "HEAD")
 
-private fun baseRequest(
+internal fun baseRequest(
   agent1Id: String = "claude",
   agent2Id: String? = "codex",
   scope: ParallelReviewScope = ParallelReviewScope.STAGED,
@@ -1754,7 +1638,7 @@ private class ParallelSubtaskLauncher(
   }
 }
 
-private class RecordingDiffResolver(
+internal class RecordingDiffResolver(
   private val responses: Map<List<String>, String?> = emptyMap(),
   private val default: String? = null,
 ) : DiffResolverPort {
@@ -1766,12 +1650,14 @@ private class RecordingDiffResolver(
   }
 }
 
-private class TestParallelLaneRunner : ParallelReviewLaneRunner {
+internal class TestParallelLaneRunner : ParallelReviewLaneRunner {
   override fun runTwoLanes(request: ParallelReviewLaneRunRequest): ParallelReviewLaneRunResult =
     ParallelReviewLaneRunResult(runLane(request.lane1), runLane(request.lane2))
 
   private fun runLane(lane: () -> ParallelReviewLaneOutcome): ParallelReviewLaneOutcome = try {
     lane()
+  } catch (seam: ReviewRegisterParseSeamException) {
+    throw seam
   } catch (e: Exception) {
     ParallelReviewLaneOutcome(
       success = false,
@@ -1879,4 +1765,4 @@ private fun fallbackManifest(): PlatformManifest = platformManifest("generic", l
   fallbackCapabilities = setOf("code-review"),
 )
 
-private fun diffFor(path: String): String = "+++ b/$path"
+internal fun diffFor(path: String): String = "+++ b/$path"

@@ -136,6 +136,7 @@ class ParallelCodeReviewRunner(
   private val specIntentProjectionResolver: SpecIntentProjectionResolver,
   private val reviewEvidenceBrokerFactory: ReviewEvidenceBrokerFactory,
   private val nativeAgentPreflight: ReviewNativeAgentPreflightPort = ReviewNativeAgentPreflightPort.NONE,
+  private val registerParse: (String) -> ParallelReviewParseResult = ParallelReviewFindingParser::parse,
 ) {
   private data class InitialRun(
     val request: ParallelCodeReviewRequest,
@@ -1244,7 +1245,11 @@ class ParallelCodeReviewRunner(
     )
     val launchReason = budgetOutcome?.let { ReviewContextBudgetExceededException(it).message }
       ?: laneFailureReason(outcome)
-    val parsed = if (launchReason == null) parseLaneRegisterSeam(outcome.stdout, launch.assignment.lane) else null
+    val parsed = if (launchReason == null) {
+      parseLaneRegisterSeam(outcome.stdout, launch.assignment.lane, registerParse)
+    } else {
+      null
+    }
     val findings = parsed?.let { attributeInlineFindings(it, launch.selected) }.orEmpty()
     val registerReason = parsed?.let { registerAbsenceReason(outcome.stdout, it) }
     val reason = launchReason ?: registerReason
@@ -1252,6 +1257,7 @@ class ParallelCodeReviewRunner(
       success = reason == null,
       rawOutput = outcome.stdout,
       failureReason = reason,
+      droppedCandidateDiagnostic = parsed?.let(::rejectedCandidateDiagnostic),
       budgetOutcome = budgetOutcome,
       tokenUsage = providerTokenUsage(outcome),
       accounting = inlineParentAccounting(
@@ -1478,6 +1484,8 @@ class ParallelCodeReviewRunner(
 
   private fun captureLane(lane: () -> ParallelReviewLaneOutcome): ParallelReviewLaneOutcome = try {
     lane()
+  } catch (seam: ReviewRegisterParseSeamException) {
+    throw seam
   } catch (@Suppress("TooGenericExceptionCaught") thrown: Exception) {
     ParallelReviewLaneOutcome(
       success = false,
@@ -1564,16 +1572,20 @@ class ParallelCodeReviewRunner(
     else -> null
   }
 
+  private fun rejectedCandidateDiagnostic(parsed: ParallelReviewParseResult): String? {
+    val rejection = parsed.rejections.firstOrNull() ?: return null
+    return "dropped ${parsed.rejections.size} of ${parsed.candidateCount} [F-XXX] candidate line(s); " +
+      "first at line ${rejection.linePosition} rejected as ${rejection.reason.wireValue}: " +
+      rejection.lineText.take(REGISTER_ABSENCE_EXCERPT_MAX_LENGTH)
+  }
+
   private fun registerAbsenceReason(stdout: String, parsed: ParallelReviewParseResult): String? {
     if (parsed.findings.isNotEmpty()) return null
     if (stdout.lineSequence().any { it.trim() == NO_FINDINGS_TOKEN }) return null
     val bytes = stdout.toByteArray().size
     if (parsed.candidateCount > 0) {
-      val rejection = parsed.rejections.firstOrNull()
       return "lane emitted ${parsed.candidateCount} [F-XXX] candidate line(s) in $bytes bytes but none " +
-        "were admissible; register format drift at line ${rejection?.linePosition ?: 0} " +
-        "rejected as ${rejection?.reason?.wireValue ?: "unknown"}: " +
-        "${rejection?.lineText?.take(REGISTER_ABSENCE_EXCERPT_MAX_LENGTH).orEmpty()}"
+        "were admissible; register format drift: ${rejectedCandidateDiagnostic(parsed) ?: "no rejection detail"}"
     }
     val excerpt = stdout.trim().take(REGISTER_ABSENCE_EXCERPT_MAX_LENGTH).ifBlank { "<empty>" }
     return "lane did not emit a findings register; zero [F-XXX] candidate lines without $NO_FINDINGS_TOKEN " +
@@ -1657,6 +1669,7 @@ private fun ParallelReviewLaneOutcome.toStatus(agentId: String) = ParallelReview
   agentId,
   success,
   failureReason,
+  droppedCandidateDiagnostic,
   tokenUsage,
   budgetOutcome,
   accounting,

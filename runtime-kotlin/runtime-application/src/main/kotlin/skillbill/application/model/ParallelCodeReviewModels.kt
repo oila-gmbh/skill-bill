@@ -116,6 +116,7 @@ data class ParallelReviewLaneStatus(
   val agentId: String,
   val success: Boolean,
   val failureReason: String? = null,
+  val droppedCandidateDiagnostic: String? = null,
   val tokenUsage: ProviderTokenUsage? = null,
   val budgetOutcome: ReviewBudgetOutcome? = null,
   val accounting: ReviewLaneAccounting? = null,

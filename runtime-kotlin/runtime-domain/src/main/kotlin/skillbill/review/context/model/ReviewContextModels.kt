@@ -1333,8 +1333,9 @@ class ReviewContextBudgetExceededException(
 
 /**
  * Loud failure raised when the lane register parse seam throws. It names the seam and the lane and
- * never carries the lane output body, so a parser fault stays diagnosable without becoming a false
- * absence verdict.
+ * bounds the cause detail, so a parser throw-site that echoes the lane output into its own message
+ * still cannot turn this message into a lane body dump; the untruncated cause stays reachable
+ * through [cause].
  */
 class ReviewRegisterParseSeamException(
   val seam: String,
@@ -1342,13 +1343,17 @@ class ReviewRegisterParseSeamException(
   cause: Throwable,
 ) : RuntimeException(
   "Review register parse seam '$seam' failed for lane '$lane': " +
-    "${cause::class.simpleName}: ${cause.message ?: "no detail"}",
+    "${cause::class.simpleName}: ${cause.message?.take(CAUSE_DETAIL_MAX_LENGTH) ?: "no detail"}",
   cause,
 ) {
   init {
     require(seam.isNotBlank() && lane.isNotBlank()) {
       "Review register parse seam failure must name its seam and lane."
     }
+  }
+
+  companion object {
+    const val CAUSE_DETAIL_MAX_LENGTH: Int = 200
   }
 }
 

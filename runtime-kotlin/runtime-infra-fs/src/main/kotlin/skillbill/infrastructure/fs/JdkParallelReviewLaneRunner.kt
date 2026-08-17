@@ -5,6 +5,7 @@ import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.ports.review.model.ParallelReviewLaneRunRequest
 import skillbill.ports.review.model.ParallelReviewLaneRunResult
+import skillbill.review.context.model.ReviewRegisterParseSeamException
 import java.util.concurrent.Callable
 import java.util.concurrent.CancellationException
 import java.util.concurrent.ExecutionException
@@ -68,6 +69,7 @@ class JdkParallelReviewLaneRunner : ParallelReviewLaneRunner {
     ParallelReviewLaneOutcome(false, "", "lane timed out (cancelled by shared budget)")
   } catch (e: ExecutionException) {
     val cause = e.cause ?: e
+    if (cause is ReviewRegisterParseSeamException) throw cause
     ParallelReviewLaneOutcome(
       success = false,
       rawOutput = "",
