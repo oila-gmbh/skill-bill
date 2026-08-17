@@ -26,7 +26,7 @@ class ReviewStageDegradationSelectionTest {
     val parsed = ParallelReviewFindingParser.parse(
       "- [F-001] Major | High | path=\"src/Main.kt\" | line=1 | admitted finding",
     )
-    val rejected = parsed.candidateCount - parsed.findings.size
+    val rejected = parsed.rejections.size
 
     val records = evidenceReasons(
       ReviewEvidenceBoundaryAccounting(
@@ -43,7 +43,7 @@ class ReviewStageDegradationSelectionTest {
   @Test
   fun `near miss register yields one rejected-candidate record carrying the count`() {
     val parsed = ParallelReviewFindingParser.parse("- [F-1] Major | High | src/A.kt:1 | short id")
-    val rejected = parsed.candidateCount - parsed.findings.size
+    val rejected = parsed.rejections.size
     assertTrue(rejected > 0)
 
     val records = evidenceReasons(
@@ -68,7 +68,7 @@ class ReviewStageDegradationSelectionTest {
     val prose = ParallelReviewFindingParser.parse("I reviewed the diff and found nothing worth reporting.")
 
     listOf(wellFormed, prose).forEach { parsed ->
-      val rejected = parsed.candidateCount - parsed.findings.size
+      val rejected = parsed.rejections.size
       assertEquals(0, rejected)
       val records = evidenceReasons(
         ReviewEvidenceBoundaryAccounting(

@@ -1321,9 +1321,7 @@ class ParallelCodeReviewRunner(
       null
     }
     val findings = parsed?.let { attributeInlineFindings(it, launch.selected) }.orEmpty()
-    val rejectedCount = parsed?.let {
-      (ParallelReviewFindingParser.countRegisterCandidates(outcome.stdout) - it.findings.size).coerceAtLeast(0)
-    } ?: 0
+    val rejectedCount = parsed?.rejections?.size ?: 0
     val registerReason = parsed?.let { registerAbsenceReason(outcome.stdout, it) }
     val reason = launchReason ?: registerReason
     return ParallelReviewLaneOutcome(
