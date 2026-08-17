@@ -1,3 +1,13 @@
+## [2026-08-17] SKILL-195 subtask 1 — Review parse result shape, and validate reduced to check/repair/confirm
+Areas: runtime-domain/review, runtime-application/review, runtime-application/featuretask/validation, runtime-infra-fs/launcher/agentrun, orchestration/contracts
+- `ParallelReviewFindingParser.parse` returns `ParallelReviewParseResult` (admitted findings + structured rejections + candidate count) instead of `List<ParallelReviewRawFinding>`. `runCatching {}.getOrNull()` no longer erases why a match was dropped. reusable
+- Rejections carry offending line text, 1-indexed line position, and a typed reason (`unrecognized_severity`, `invalid_line_number`, `unparseable_structured_path`, `no_admissible_location`, `unmatched_candidate_line`).
+- A permissive `\[F-\d+]` candidate probe runs independently of `parallelFindingPattern`, so "no register at all" is now distinguishable from "candidates present, none admitted" — the drift class that faked a "review did not execute" during SKILL-194. Severity group widened to `[A-Za-z]+` so a bad severity is rejected with a reason instead of never matching.
+- Admission behaviour is unchanged: structured `path="..." | line=N` and legacy `file:line` still parse identically. Messaging and observability records are subtasks 2 and 3; `register_absent` is only reserved in the review-context contract enum here.
+- Validate gate reduced to: run the pack gate once, hand the agent every finding, repair, rerun to confirm; repeat only while findings remain, block loudly when a repair stops converging. Deleted substantiation receipts, repair-plan coverage gate, finding paging/handoff-budget block, the FORCED_FULL confirmation pass, REJECTED_ZERO_WORK, the confirmation retry cap, and the suppression delta gate. Retired progress fields decode as absent, so legacy workflow rows still read. reusable
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-08-17] Paused goal segments are no longer recorded as blocked
 Areas: runtime-application/goalrunner, runtime-infra-sqlite/telemetry, orchestration/contracts
 - `goalFinished` classified every non-completed run as `blocked`, so an operator pause wrote `goal_issue_progress.status='blocked'` and incremented `total_blocks`. The CLI read control state and reported `paused` while the IDE read the telemetry column and reported `blocked` for the same goal.
