@@ -2898,7 +2898,10 @@ internal class FeatureTaskRuntimeRunLoop(
     val passNumber = reviewPassNumber(run, state) ?: 1
     val pinnedMode = run.request.runInvariants.codeReviewMode
     val resolution = FeatureTaskRuntimeReviewPassSequence.resolveForPass(pinnedMode, passNumber)
-    val reviewRunId = state.recordFor(run.phaseId)?.reviewRunId
+    val durableRecord = state.recordFor(run.phaseId)
+    val reviewRunId = durableRecord
+      ?.takeIf { (it.reviewPassNumber ?: 1) == passNumber }
+      ?.reviewRunId
       ?.takeIf(String::isNotBlank)
       ?: FeatureTaskRuntimeReviewEnvelope.mintReviewRunId()
     persistPhase(
