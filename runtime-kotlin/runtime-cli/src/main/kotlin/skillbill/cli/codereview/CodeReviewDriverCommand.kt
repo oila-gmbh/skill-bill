@@ -225,6 +225,10 @@ private fun writeParallelReviewResult(state: CliRunState, result: ParallelCodeRe
   val exitCode = if (lanes.all(ParallelReviewLaneStatus::success)) 0 else 1
   val output = buildString {
     append(laneStatusOutput(lanes, result.mergeResult.formattedOutput))
+    laneDiagnosticsOutput(lanes)?.let { diagnostics ->
+      appendLine()
+      append(diagnostics)
+    }
     result.coverage?.let { coverage ->
       appendLine()
       append(coverage.render())
@@ -245,3 +249,8 @@ private fun laneStatusOutput(lanes: List<ParallelReviewLaneStatus>, register: St
   }
   return "# Lane status — $summary\n$register"
 }
+
+private fun laneDiagnosticsOutput(lanes: List<ParallelReviewLaneStatus>): String? = lanes
+  .mapNotNull { lane -> lane.droppedCandidateDiagnostic?.let { "${lane.agentId}: $it" } }
+  .takeIf { it.isNotEmpty() }
+  ?.joinToString(" | ", prefix = "# Lane diagnostics — ")

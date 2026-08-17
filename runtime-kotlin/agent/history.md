@@ -1,3 +1,12 @@
+## [2026-08-17] SKILL-195 subtask 2 — Loud-fail the parse seam and diagnose register absence
+Areas: runtime-application/review, runtime-application/featuretask, runtime-application/model, runtime-cli/codereview, runtime-domain/review/context/model, runtime-infra-fs, runtime-ports/review
+- Inline register parse goes through `parseLaneRegisterSeam`; a parser throw is `ReviewRegisterParseSeamException` naming seam and lane, not an empty list or `register_absent`.
+- `registerAbsenceReason` splits no-candidates (byte count + bounded excerpt) from format-drift (first offending line + typed rejection). `REGISTER_ABSENT_TERMINAL_STATUS` stays on genuine absence only.
+- Admissible registers stay silent: no absence verdict, no excerpt. Excerpt cap never ships the full lane body. reusable
+- Limitation: format-drift is diagnostic only; widening admission and the parentPrompt/content.md format conflict remain the parent spec Next Path. Telemetry and degradation records are subtask 3.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-08-17] SKILL-195 subtask 1 — Review parse result shape, and validate reduced to check/repair/confirm
 Areas: runtime-domain/review, runtime-application/review, runtime-application/featuretask/validation, runtime-infra-fs/launcher/agentrun, orchestration/contracts
 - `ParallelReviewFindingParser.parse` returns `ParallelReviewParseResult` (admitted findings + structured rejections + candidate count) instead of `List<ParallelReviewRawFinding>`. `runCatching {}.getOrNull()` no longer erases why a match was dropped. reusable
