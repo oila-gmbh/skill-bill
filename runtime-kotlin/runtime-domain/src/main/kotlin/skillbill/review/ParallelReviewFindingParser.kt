@@ -29,7 +29,10 @@ object ParallelReviewFindingParser {
 
   const val UNASSIGNED_REPOSITORY_PATH = "unassigned"
 
-  private val candidatePattern = Regex("\\[F-\\d+]")
+  val findingCandidatePattern: Regex = Regex("\\[F-\\d+]")
+
+  fun countRegisterCandidates(text: String): Int =
+    text.lineSequence().count { findingCandidatePattern.containsMatchIn(it) }
 
   fun parse(text: String): ParallelReviewParseResult {
     val lines = text.lines()
@@ -51,7 +54,7 @@ object ParallelReviewFindingParser {
     }
     var candidateCount = 0
     lines.forEachIndexed { index, line ->
-      if (!candidatePattern.containsMatchIn(line)) return@forEachIndexed
+      if (!findingCandidatePattern.containsMatchIn(line)) return@forEachIndexed
       candidateCount++
       if (index + 1 in matchedPositions) return@forEachIndexed
       rejections += ParallelReviewFindingRejection(

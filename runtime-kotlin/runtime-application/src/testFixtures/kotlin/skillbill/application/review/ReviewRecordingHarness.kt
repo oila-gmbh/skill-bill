@@ -124,6 +124,8 @@ data class ReviewHarnessConfig(
   val budget: ReviewContextBudgetPolicy = ReviewContextBudgetPolicy.DEFAULT,
   val rubricBody: (String) -> String = { "governed rubric body for $it" },
   val response: (GoalRunnerSubtaskLaunchRequest) -> RecordedWorkerResponse = { RecordedWorkerResponse() },
+  val evidenceBrokerFactory: skillbill.ports.review.ReviewEvidenceBrokerFactory =
+    skillbill.infrastructure.fs.FileSystemReviewEvidenceBrokerFactory(),
   /**
    * Commit range the fixture enumerates. Empty keeps the default single synthetic unit; the last
    * entry's sha must be the request's head revision, exactly as a real range resolves.
@@ -202,7 +204,7 @@ fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): Parall
         FileSystemDecompositionManifestFileStore(),
       ),
     ),
-    reviewEvidenceBrokerFactory = skillbill.infrastructure.fs.FileSystemReviewEvidenceBrokerFactory(),
+    reviewEvidenceBrokerFactory = config.evidenceBrokerFactory,
   )
 
 /** The base revision every harness request declares; the root commit of a fixture range parents onto it. */

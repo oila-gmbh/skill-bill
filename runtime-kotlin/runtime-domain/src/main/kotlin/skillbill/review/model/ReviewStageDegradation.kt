@@ -5,6 +5,29 @@ enum class ReviewStageDegradationReason(val wireValue: String) {
   ADJUDICATION_SKIPPED("adjudication_skipped"),
   WORKER_LAUNCH_OR_RETURN_FAILED("worker_launch_or_return_failed"),
   STAGE_BOUNDARY_UNREACHED("stage_boundary_unreached"),
+  EVIDENCE_BOUNDARY_UNBOUND_BROKER("evidence_boundary_unbound_broker"),
+  EVIDENCE_BOUNDARY_UNEXERCISED("evidence_boundary_unexercised"),
+  REGISTER_CANDIDATES_REJECTED("register_candidates_rejected"),
+}
+
+data class ReviewEvidenceBoundaryAccounting(
+  val governedLaunchCount: Int = 0,
+  val authorizedReadCount: Int = 0,
+  val evidenceBytes: Long = 0,
+  val expansionCount: Int = 0,
+  val rejectedCandidateCount: Int = 0,
+  val unboundSeam: String? = null,
+) {
+  init {
+    require(governedLaunchCount >= 0 && authorizedReadCount >= 0)
+    require(evidenceBytes >= 0 && expansionCount >= 0 && rejectedCandidateCount >= 0)
+    unboundSeam?.let { require(it.isNotBlank()) { "Review evidence unbound seam must not be blank." } }
+  }
+
+  companion object {
+    const val GOVERNED_EVIDENCE_SEAM: String = "review.evidence.broker"
+    val NONE: ReviewEvidenceBoundaryAccounting = ReviewEvidenceBoundaryAccounting()
+  }
 }
 
 data class ReviewStageDegradationMeasurement(

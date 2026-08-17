@@ -1,5 +1,6 @@
 package skillbill.review
 
+import skillbill.review.model.ReviewEvidenceBoundaryAccounting
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.review.model.ReviewPassClaimSnapshot
 import skillbill.review.model.ReviewSpecProjectionReference
@@ -28,6 +29,7 @@ object ReviewStageDegradationSelection {
     boundaries: List<ReviewStageBoundary>,
     verdicts: List<ReviewFindingVerdict>,
     claims: ReviewPassClaimSnapshot?,
+    evidenceBoundary: ReviewEvidenceBoundaryAccounting = ReviewEvidenceBoundaryAccounting.NONE,
   ): List<ReviewStageDegradationMeasurement> {
     val byStage = boundaries.associateBy { it.stage }
     val specNone = spec?.absenceReason != null
@@ -38,6 +40,7 @@ object ReviewStageDegradationSelection {
       }
       workerFailure(reviewRunId, verdicts)?.let(::add)
       addAll(unreachedBoundaries(reviewRunId, specNone, byStage, claims))
+      addAll(evidenceBoundaryRecords(reviewRunId, evidenceBoundary))
     }
   }
 
@@ -127,4 +130,47 @@ object ReviewStageDegradationSelection {
     specNone: Boolean,
     boundary: ReviewStageBoundary?,
   ): Boolean = stage == ReviewStage.ADJUDICATION && verificationReached && !specNone && boundary == null
+
+  private fun evidenceBoundaryRecords(
+    reviewRunId: String,
+    accounting: ReviewEvidenceBoundaryAccounting,
+  ): List<ReviewStageDegradationMeasurement> = buildList {
+    accounting.unboundSeam?.let { seam ->
+      add(
+        ReviewStageDegradationMeasurement(
+          reviewRunId = reviewRunId,
+          seam = seam,
+          expected = "bound",
+          actual = "unbound",
+          reason = ReviewStageDegradationReason.EVIDENCE_BOUNDARY_UNBOUND_BROKER,
+        ),
+      )
+    }
+    if (
+      accounting.unboundSeam == null &&
+      accounting.governedLaunchCount > 0 &&
+      accounting.authorizedReadCount == 0
+    ) {
+      add(
+        ReviewStageDegradationMeasurement(
+          reviewRunId = reviewRunId,
+          seam = ReviewEvidenceBoundaryAccounting.GOVERNED_EVIDENCE_SEAM,
+          expected = "authorized_reads>0",
+          actual = "authorized_reads=0",
+          reason = ReviewStageDegradationReason.EVIDENCE_BOUNDARY_UNEXERCISED,
+        ),
+      )
+    }
+    if (accounting.rejectedCandidateCount > 0) {
+      add(
+        ReviewStageDegradationMeasurement(
+          reviewRunId = reviewRunId,
+          seam = "review.register.parse",
+          expected = "rejected_candidates=0",
+          actual = "rejected_candidates=${accounting.rejectedCandidateCount}",
+          reason = ReviewStageDegradationReason.REGISTER_CANDIDATES_REJECTED,
+        ),
+      )
+    }
+  }
 }

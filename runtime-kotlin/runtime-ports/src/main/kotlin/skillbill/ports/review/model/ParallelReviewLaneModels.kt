@@ -35,4 +35,6 @@ data class ParallelReviewLaneOutcome(
   val unreviewedSegmentIds: List<String> = emptyList(),
   val budgetDimension: String? = null,
   val unreviewedUnits: List<String> = emptyList(),
+  val rejectedCandidateCount: Int = 0,
+  val unboundSeam: String? = null,
 )

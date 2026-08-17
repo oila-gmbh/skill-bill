@@ -8,6 +8,7 @@ import skillbill.mcp.core.McpToolRegistry
 import skillbill.mcp.telemetry.TELEMETRY_EVENT_CONTRACT_VERSION
 import skillbill.mcp.telemetry.TelemetryEventSchemaPaths
 import skillbill.mcp.telemetry.TelemetryEventSchemaValidator
+import skillbill.review.model.ReviewStageDegradationReason
 import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import kotlin.test.Test
@@ -301,6 +302,25 @@ class GoalTelemetryEmissionEventParityTest {
         put("boundary_history_written", true)
       },
       eventName = "goal_subtask_finished",
+    )
+  }
+
+  @Test
+  fun `review_stage_degradation reason enum matches schema in both directions`() {
+    val schemaValues = schemaNode.path("\$defs")
+      .path("skillbillReviewStageDegradationEvent")
+      .path("properties")
+      .path("reason")
+      .path("enum")
+      .elements()
+      .asSequence()
+      .map { it.asText() }
+      .toSet()
+
+    assertEquals(
+      ReviewStageDegradationReason.entries.map { it.wireValue }.toSet(),
+      schemaValues,
+      "skillbillReviewStageDegradationEvent.reason must accept every ReviewStageDegradationReason.wireValue.",
     )
   }
 
