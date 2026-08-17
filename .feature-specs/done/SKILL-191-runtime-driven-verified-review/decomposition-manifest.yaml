@@ -3,14 +3,14 @@ contract_version: "0.5"
 issue_key: "SKILL-191"
 feature_name: "runtime-driven-verified-review"
 parent_spec_path: ".feature-specs/SKILL-191-runtime-driven-verified-review/spec.md"
-status: "in_progress"
+status: "complete"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-191-runtime-driven-verified-review"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 9
-  action: "resume"
+  subtask_id: 0
+  action: "complete"
 subtasks:
 - id: 1
   name: "Stage contract and schema versioning"
@@ -158,12 +158,12 @@ subtasks:
 - id: 9
   name: "Feature-task review phase delegation"
   spec_path: ".feature-specs/SKILL-191-runtime-driven-verified-review/spec_subtask_9_feature_task_review_delegation.md"
-  status: "in_progress"
+  status: "complete"
   branch: null
   commit_sha: null
-  workflow_id: "wftr-20260815-091742-lz72"
+  workflow_id: "wftr-20260817-061612-4nht"
   blocked_reason: null
-  last_resumable_step: "review"
+  last_resumable_step: null
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
