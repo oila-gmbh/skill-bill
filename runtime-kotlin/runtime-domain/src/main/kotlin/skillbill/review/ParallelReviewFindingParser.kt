@@ -85,13 +85,13 @@ object ParallelReviewFindingParser {
     val severity = mapSeverity(severityStr)
       ?: return MatchOutcome(reason = ParallelReviewFindingRejectionReason.UNRECOGNIZED_SEVERITY)
     val resolvedPath = resolvePath(match)
+    resolvedPath.reason?.let { return MatchOutcome(reason = it) }
     val path = resolvedPath.path
     val lineText = match.groups["line"]?.value ?: match.groups["legacyLine"]?.value
     val line = lineText?.toIntOrNull()?.takeIf { it > 0 }
       ?: return MatchOutcome(reason = ParallelReviewFindingRejectionReason.INVALID_LINE_NUMBER)
     val peeled = peelTrailingStructuredFields(match.groups["description"]?.value.orEmpty().trim())
     return MatchOutcome(
-      reason = resolvedPath.reason,
       finding = ParallelReviewRawFinding(
         severity = severity,
         confidence = match.groups["confidenceLevel"]?.value.orEmpty(),

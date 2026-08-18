@@ -139,14 +139,7 @@ class ParallelReviewFindingParserTest {
       """.trimIndent(),
     )
 
-    assertEquals(
-      listOf(
-        ParallelReviewFindingParser.UNASSIGNED_REPOSITORY_PATH,
-        ParallelReviewFindingParser.UNASSIGNED_REPOSITORY_PATH,
-        "src/Ok.kt",
-      ),
-      result.findings.map { it.repositoryPath },
-    )
+    assertEquals(listOf("src/Ok.kt"), result.findings.map { it.repositoryPath })
     assertEquals(
       listOf(
         ParallelReviewFindingRejectionReason.NO_ADMISSIBLE_LOCATION,

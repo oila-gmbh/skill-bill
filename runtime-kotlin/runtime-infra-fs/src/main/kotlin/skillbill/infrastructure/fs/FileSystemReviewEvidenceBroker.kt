@@ -57,6 +57,7 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
     ).distinct().associateWith(::checkpointDigest)
 
   private var cumulativeBytes = 0L
+  private var authorizedReadCount = 0
   private var resultBytes = 0L
   private var laneResultObserved = false
   private var toolCalls = 0
@@ -175,10 +176,13 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
     normalized: String,
     assigned: Boolean,
     completeFileAuthorized: Boolean,
-  ): ReviewEvidenceResult = if (assigned && !completeFileAuthorized) {
-    readProjectedHunks(normalized)
-  } else {
-    readCompleteFile(normalized, assigned)
+  ): ReviewEvidenceResult {
+    authorizedReadCount += 1
+    return if (assigned && !completeFileAuthorized) {
+      readProjectedHunks(normalized)
+    } else {
+      readCompleteFile(normalized, assigned)
+    }
   }
 
   private fun readProjectedHunks(path: String): ReviewEvidenceResult {
@@ -356,6 +360,7 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
   @Synchronized
   override fun accounting(): ReviewLaneAccounting = ReviewLaneAccounting(
     lane = assignment.lane,
+    authorizedReadCount = authorizedReadCount,
     evidenceBytes = cumulativeBytes,
     expansions = expansionLedger.toList(),
     toolCalls = toolCalls,

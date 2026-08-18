@@ -2,6 +2,7 @@ package skillbill.application.review
 
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
+import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.ReviewEvidenceBrokerFactory
 import skillbill.review.model.ReviewEvidenceBoundaryAccounting
 import skillbill.review.model.ReviewStageDegradationReason
@@ -70,15 +71,47 @@ class ParallelCodeReviewEvidenceBoundaryTest {
   }
 
   @Test
-  fun `parse rejection that still admits a finding emits one rejected-candidate record carrying the count`() {
+  fun `zero-byte authorized reads do not emit an unexercised-boundary record`() {
     val recorder = ReviewRecorder()
-    val admittedWithRejectedLocation =
-      "- [F-001] Major | High | path=\"/tmp/outside.kt\" | line=3 | outside the packet"
+    val defaults = ReviewHarnessConfig(
+      manifests = listOf(reviewPack("kotlin", listOf("architecture"), routingSignals = listOf("*.kt"))),
+      diff = diffForPaths("src/Repo.kt"),
+    )
     reviewHarness(
+      defaults.copy(
+        evidenceBrokerFactory = ReviewEvidenceBrokerFactory { binding ->
+          val inner = defaults.evidenceBrokerFactory.brokerFor(binding)
+          object : ReviewEvidenceBroker by inner {
+            override fun accounting() = inner.accounting().copy(authorizedReadCount = 1)
+          }
+        },
+      ),
+      recorder,
+    ).run(
+      harnessRequest(
+        agent2Id = null,
+        reviewRunId = "rvw-195-zero-byte",
+        codeReviewMode = CodeReviewExecutionMode.INLINE,
+      ),
+    )
+
+    assertTrue(
+      recorder.stageDegradations.none {
+        it.reason == ReviewStageDegradationReason.EVIDENCE_BOUNDARY_UNEXERCISED
+      },
+    )
+  }
+
+  @Test
+  fun `parse rejection of an inadmissible path emits one rejected-candidate record carrying the count`() {
+    val recorder = ReviewRecorder()
+    val rejectedLocation =
+      "- [F-001] Major | High | path=\"/tmp/outside.kt\" | line=3 | outside the packet"
+    val result = reviewHarness(
       ReviewHarnessConfig(
         manifests = listOf(reviewPack("kotlin", listOf("architecture"), routingSignals = listOf("*.kt"))),
         diff = diffForPaths("src/Repo.kt"),
-        response = { RecordedWorkerResponse(stdout = admittedWithRejectedLocation) },
+        response = { RecordedWorkerResponse(stdout = rejectedLocation) },
       ),
       recorder,
     ).run(
@@ -95,6 +128,7 @@ class ParallelCodeReviewEvidenceBoundaryTest {
     assertEquals(1, rejected.size)
     assertEquals("rejected_candidates=1", rejected.single().actual)
     assertEquals("review.register.parse", rejected.single().seam)
+    assertEquals(emptyList(), result.mergeResult.findings)
   }
 
   @Test
