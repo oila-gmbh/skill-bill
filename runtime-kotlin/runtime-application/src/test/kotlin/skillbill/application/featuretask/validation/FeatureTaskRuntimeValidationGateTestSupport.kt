@@ -75,10 +75,11 @@ internal fun coordinator(
   progress: MutableList<FeatureTaskRuntimeValidationGateProgress>,
   gradleWrapper: String? = null,
   diagnostics: RuntimeDiagnostics = skillbill.ports.diagnostics.NoopRuntimeDiagnostics,
+  progressStore: ValidationGateProgressStore = ValidationGateProgressStore { _, p, _ -> progress += p },
 ): FeatureTaskRuntimeValidationGateCoordinator = FeatureTaskRuntimeValidationGateCoordinator(
   resolver,
   runner,
-  ValidationGateProgressStore { _, p, _ -> progress += p },
+  progressStore,
   repoLocalConfig(gradleWrapper),
   diagnostics,
 )

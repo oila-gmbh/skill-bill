@@ -11,6 +11,7 @@ import skillbill.ports.validation.model.ValidationGateFindingParseMode
 import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRepairWindowPhase
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -21,10 +22,10 @@ class FeatureTaskRuntimeValidationGateBuildOnlyTest {
   private val finding = ValidationGateFinding("m", "t", "still broken", "loc")
 
   @Test
-  fun `BUILD_ONLY dirty then green uses only build_only_command and one run per repair`() {
+  fun `BUILD_ONLY uses build_only discovery then cache-bypassing verify outside findings_open`() {
     val progress = mutableListOf<FeatureTaskRuntimeValidationGateProgress>()
     val repairLaunches = AtomicInteger(0)
-    val runner = ScriptedGateRunner(List(4) { failedWith(finding) } + listOf(passed()))
+    val runner = ScriptedGateRunner(List(4) { failedWith(finding) } + listOf(passed(forced = true)))
     val cycle = coordinator(declaredResolver(), runner, progress).execute(
       cycle = buildOnlyCycle { _, _ ->
         repairLaunches.incrementAndGet()
@@ -35,10 +36,12 @@ class FeatureTaskRuntimeValidationGateBuildOnlyTest {
     )
     assertEquals(4, repairLaunches.get())
     assertEquals(5, runner.calls)
-    assertTrue(runner.requests.all { it.argv.first() == "echo" && it.argv.contains("build-only") })
+    assertEquals(listOf("echo", "build-only"), runner.requests[0].argv)
+    assertEquals(ValidationGateCacheMode.CACHE_ELIGIBLE, runner.requests[0].cacheMode)
+    assertTrue(runner.requests.drop(1).all { it.argv == listOf("echo", "full") })
+    assertTrue(runner.requests.drop(1).all { it.cacheMode == ValidationGateCacheMode.FORCED_FULL })
     assertTrue(runner.requests.none { "collect-all" in it.argv })
     assertTrue(runner.requests.all { it.findingParseMode == ValidationGateFindingParseMode.ARTIFACTS_ONLY })
-    assertTrue(runner.requests.all { it.cacheMode == ValidationGateCacheMode.CACHE_ELIGIBLE })
     assertIs<ValidationGateCycleTerminalOutcome.Completed>(
       assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,
     )
@@ -48,7 +51,7 @@ class FeatureTaskRuntimeValidationGateBuildOnlyTest {
   @Test
   fun `each repair turn is launched under its own ordinal so turns never share an evidence key`() {
     val ordinals = mutableListOf<Int>()
-    val runner = ScriptedGateRunner(List(4) { failedWith(finding) } + listOf(passed()))
+    val runner = ScriptedGateRunner(List(4) { failedWith(finding) } + listOf(passed(forced = true)))
     coordinator(declaredResolver(), runner, mutableListOf()).execute(
       cycle = buildOnlyCycle { _, repairIteration ->
         ordinals += repairIteration

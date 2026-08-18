@@ -2,9 +2,11 @@ package skillbill.application.featuretask.validation
 
 import skillbill.application.RecordingDiagnostics
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairLauncher
+import skillbill.application.featuretask.validation.model.ValidationGateCyclePhase
 import skillbill.application.featuretask.validation.model.ValidationGateCycleRequest
 import skillbill.application.featuretask.validation.model.ValidationGateCycleResult
 import skillbill.application.featuretask.validation.model.ValidationGateCycleTerminalOutcome
+import skillbill.application.featuretask.validation.model.ValidationGateProgressStore
 import skillbill.application.featuretask.validation.model.ValidationGateResolution
 import skillbill.application.model.FeatureTaskRuntimeRunEventSink
 import skillbill.ports.validation.ValidationGateRunner
@@ -20,14 +22,41 @@ import kotlin.test.assertTrue
 
 class FeatureTaskRuntimeValidationGateSelectionTest {
   @Test
-  fun `depth selects build-only or collect-all argv and never full_gate_command`() {
+  fun `depth and cycle phase select discovery or verify argv and never full_gate_command`() {
     assertEquals(
       listOf("echo", "build-only"),
-      validationGateArgv(validationGateTestDeclaration, ValidationDepth.BUILD_ONLY),
+      validationGateArgv(
+        validationGateTestDeclaration,
+        ValidationDepth.BUILD_ONLY,
+        ValidationGateCyclePhase.INITIAL_DISCOVERY,
+      ),
     )
-    val full = validationGateArgv(validationGateTestDeclaration, ValidationDepth.FULL)
-    assertEquals(listOf("echo", "collect-all"), full)
-    assertTrue(full != validationGateTestDeclaration.fullGateCommand)
+    assertEquals(
+      listOf("echo", "full"),
+      validationGateArgv(
+        validationGateTestDeclaration,
+        ValidationDepth.BUILD_ONLY,
+        ValidationGateCyclePhase.POST_REPAIR_VERIFY,
+      ),
+    )
+    val discovery = validationGateArgv(
+      validationGateTestDeclaration,
+      ValidationDepth.FULL,
+      ValidationGateCyclePhase.INITIAL_DISCOVERY,
+    )
+    assertEquals(listOf("echo", "collect-all"), discovery)
+    val verify = validationGateArgv(
+      validationGateTestDeclaration,
+      ValidationDepth.FULL,
+      ValidationGateCyclePhase.POST_REPAIR_VERIFY,
+    )
+    assertEquals(listOf("echo", "collect-all-full"), verify)
+    for (depth in listOf(ValidationDepth.FULL, ValidationDepth.DEFAULT, ValidationDepth.BUILD_ONLY)) {
+      for (phase in ValidationGateCyclePhase.entries) {
+        val argv = validationGateArgv(validationGateTestDeclaration, depth, phase)
+        assertTrue(argv != validationGateTestDeclaration.fullGateCommand)
+      }
+    }
   }
 
   @Test
@@ -134,5 +163,79 @@ class FeatureTaskRuntimeValidationGateSelectionTest {
 
     val notSelected = ValidationGateResolver { emptyList() }
     assertIs<ValidationGateResolution.Absent>(notSelected.resolve(listOf("runtime-kotlin/foo.kt")))
+  }
+
+  @Test
+  fun `findings_open resume skips discovery and hands back the persisted open set`() {
+    val findingOne = skillbill.ports.validation.model.ValidationGateFinding("m1", "r1", "msg1", "loc1")
+    val findingTwo = skillbill.ports.validation.model.ValidationGateFinding("m2", "r2", "msg2", "loc2")
+    val recorded = mutableListOf<FeatureTaskRuntimeValidationGateProgress>()
+    var loaded: FeatureTaskRuntimeValidationGateProgress? = FeatureTaskRuntimeValidationGateProgress(
+      gateRunCount = 1,
+      gateRuns = listOf(
+        skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRunRecord(
+          durationMs = 1,
+          outcome = "failed",
+          cacheMode = "cache_eligible",
+          executedWorkUnits = 1,
+        ),
+      ),
+      completeFindings = listOf(
+        linkedMapOf(
+          "module" to findingOne.module,
+          "rule_or_test_id" to findingOne.ruleOrTestId,
+          "message" to findingOne.message,
+          "location" to findingOne.location,
+        ),
+        linkedMapOf(
+          "module" to findingTwo.module,
+          "rule_or_test_id" to findingTwo.ruleOrTestId,
+          "message" to findingTwo.message,
+          "location" to findingTwo.location,
+        ),
+      ),
+      repairWindowPhase = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRepairWindowPhase.FINDINGS_OPEN,
+    )
+    val progressStore = object : ValidationGateProgressStore {
+      override fun persist(
+        workflowId: String,
+        progress: FeatureTaskRuntimeValidationGateProgress,
+        dbOverride: String?,
+      ) {
+        recorded += progress
+        loaded = progress
+      }
+
+      override fun load(workflowId: String, dbOverride: String?): FeatureTaskRuntimeValidationGateProgress? = loaded
+    }
+    val repairSizes = mutableListOf<Int>()
+    val runner = ScriptedGateRunner(listOf(passed(forced = true)))
+    coordinator(
+      declaredResolver(),
+      runner,
+      recorded,
+      progressStore = progressStore,
+    ).execute(
+      cycle = ValidationGateCycleRequest(
+        repoRoot = validationGateTestRepoRoot,
+        request = minimalRequest(),
+        validationDepth = ValidationDepth.FULL,
+        changedPaths = listOf("runtime-kotlin/foo.kt"),
+        repositoryCheckpoint = "checkpoint",
+        agentRepairLauncher = ValidationGateAgentRepairLauncher { findings, _ ->
+          repairSizes += findings.findings.size
+          skillbill.application.featuretask.validation.model.ValidationGateAgentRepairResult.Completed(
+            skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput(
+              phaseId = "validate",
+              iteration = 1,
+              payload = "{}",
+            ),
+          )
+        },
+      ),
+    )
+    assertEquals(listOf(2), repairSizes)
+    assertEquals(1, runner.calls)
+    assertEquals(listOf("echo", "collect-all-full"), runner.requests.single().argv)
   }
 }

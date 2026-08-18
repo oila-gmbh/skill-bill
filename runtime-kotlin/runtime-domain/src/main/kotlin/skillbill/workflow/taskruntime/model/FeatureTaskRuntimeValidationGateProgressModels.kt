@@ -7,6 +7,22 @@ import skillbill.error.InvalidWorkflowStateSchemaError
 const val FEATURE_TASK_RUNTIME_VALIDATION_GATE_PROGRESS_ARTIFACT_KEY: String =
   "feature_task_runtime_validation_gate_progress"
 
+enum class FeatureTaskRuntimeValidationGateRepairWindowPhase(val wireValue: String) {
+  NONE("none"),
+  FINDINGS_OPEN("findings_open"),
+  ;
+
+  companion object {
+    fun fromWire(value: String?): FeatureTaskRuntimeValidationGateRepairWindowPhase = when (value) {
+      null, NONE.wireValue -> NONE
+      FINDINGS_OPEN.wireValue -> FINDINGS_OPEN
+      else -> throw InvalidWorkflowStateSchemaError(
+        "FeatureTaskRuntimeValidationGateProgress.repair_window_phase must be 'none' or 'findings_open'.",
+      )
+    }
+  }
+}
+
 data class FeatureTaskRuntimeValidationGateRunRecord(
   val durationMs: Long,
   val outcome: String,
@@ -27,6 +43,8 @@ data class FeatureTaskRuntimeValidationGateProgress(
   val gateRuns: List<FeatureTaskRuntimeValidationGateRunRecord>,
   val remainingFindings: List<Map<String, String?>> = emptyList(),
   val completeFindings: List<Map<String, String?>> = emptyList(),
+  val repairWindowPhase: FeatureTaskRuntimeValidationGateRepairWindowPhase =
+    FeatureTaskRuntimeValidationGateRepairWindowPhase.NONE,
 ) {
   init {
     require(gateRunCount >= 0) {
@@ -44,6 +62,7 @@ data class FeatureTaskRuntimeValidationGateProgress(
     "gate_runs" to gateRuns.map { it.toArtifactMap() },
     "remaining_findings" to remainingFindings,
     "complete_findings" to completeFindings,
+    "repair_window_phase" to repairWindowPhase.wireValue,
   )
 
   companion object {
@@ -54,6 +73,9 @@ data class FeatureTaskRuntimeValidationGateProgress(
         gateRuns = decodeGateRuns(raw["gate_runs"]),
         remainingFindings = decodeFindings(raw["remaining_findings"], "remaining_findings"),
         completeFindings = decodeFindings(raw["complete_findings"], "complete_findings"),
+        repairWindowPhase = FeatureTaskRuntimeValidationGateRepairWindowPhase.fromWire(
+          raw["repair_window_phase"] as? String,
+        ),
       )
 
     private fun decodeGateRuns(raw: Any?): List<FeatureTaskRuntimeValidationGateRunRecord> {

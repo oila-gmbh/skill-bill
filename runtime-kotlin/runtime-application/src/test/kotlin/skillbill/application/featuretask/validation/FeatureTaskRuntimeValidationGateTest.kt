@@ -6,6 +6,7 @@ import skillbill.application.featuretask.validation.model.ValidationGateCycleRes
 import skillbill.application.featuretask.validation.model.ValidationGateCycleTerminalOutcome
 import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRepairWindowPhase
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -16,7 +17,7 @@ class FeatureTaskRuntimeValidationGateTest {
   fun `FAILED gate with empty findings launches repair with synthetic finding`() {
     val progress = mutableListOf<FeatureTaskRuntimeValidationGateProgress>()
     val repairLaunches = AtomicInteger(0)
-    val runner = ScriptedGateRunner(listOf(failedEmptyFindings(), passed()))
+    val runner = ScriptedGateRunner(listOf(failedEmptyFindings(), passed(forced = true)))
     val cycle = coordinator(declaredResolver(), runner, progress).execute(
       cycle = ValidationGateCycleRequest(
         repoRoot = validationGateTestRepoRoot,
@@ -38,8 +39,40 @@ class FeatureTaskRuntimeValidationGateTest {
   }
 
   @Test
-  fun `fromArtifactMap decodes legacy progress rows carrying retired coverage fields`() {
-    val decoded = FeatureTaskRuntimeValidationGateProgress.fromArtifactMap(
+  fun `fromArtifactMap decodes findings_open with complete findings and legacy rows without repair_window_phase`() {
+    val findingOne = linkedMapOf(
+      "module" to "m1",
+      "rule_or_test_id" to "r1",
+      "message" to "msg1",
+      "location" to "loc1",
+    )
+    val findingTwo = linkedMapOf(
+      "module" to "m2",
+      "rule_or_test_id" to "r2",
+      "message" to "msg2",
+      "location" to "loc2",
+    )
+    val decodedOpen = FeatureTaskRuntimeValidationGateProgress.fromArtifactMap(
+      mapOf(
+        "contract_version" to skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION,
+        "gate_run_count" to 1,
+        "gate_runs" to listOf(
+          mapOf(
+            "duration_ms" to 1L,
+            "outcome" to "failed",
+            "cache_mode" to "cache_eligible",
+            "executed_work_units" to 1,
+          ),
+        ),
+        "remaining_findings" to emptyList<Map<String, String?>>(),
+        "complete_findings" to listOf(findingOne, findingTwo),
+        "repair_window_phase" to "findings_open",
+      ),
+    )
+    assertEquals(FeatureTaskRuntimeValidationGateRepairWindowPhase.FINDINGS_OPEN, decodedOpen.repairWindowPhase)
+    assertEquals(2, decodedOpen.completeFindings.size)
+
+    val decodedLegacy = FeatureTaskRuntimeValidationGateProgress.fromArtifactMap(
       mapOf(
         "contract_version" to skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION,
         "gate_run_count" to 1,
@@ -57,7 +90,8 @@ class FeatureTaskRuntimeValidationGateTest {
         "substantiation_receipts" to listOf(mapOf("identity" to "legacy")),
       ),
     )
-    assertEquals(1, decoded.gateRunCount)
-    assertEquals(emptyList(), decoded.completeFindings)
+    assertEquals(FeatureTaskRuntimeValidationGateRepairWindowPhase.NONE, decodedLegacy.repairWindowPhase)
+    assertEquals(1, decodedLegacy.gateRunCount)
+    assertEquals(emptyList(), decodedLegacy.completeFindings)
   }
 }

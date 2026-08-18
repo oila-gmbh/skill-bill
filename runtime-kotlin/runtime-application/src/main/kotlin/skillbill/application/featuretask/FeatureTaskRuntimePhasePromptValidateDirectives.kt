@@ -41,22 +41,24 @@ internal fun goalContinuationValidateDepthDirective(
 internal const val RUNTIME_OWNED_VALIDATE_PHASE_TASK: String =
   "The runtime owns execution of the repository validation gate. You receive the complete finding set " +
     "from one collect-all gate run (module, rule or test identity, message, location) and must not invoke the gate " +
-    "or any quality-check skill. Do not rediscover findings. While the finding set is open, do not invoke any " +
-    "check, test, compile, format-task, or quality-check command, including the gate, `bill-code-check`, `detekt`, " +
-    "`ktlintCheck`, `test`, `compileKotlin`, Gradle module tasks, pack checkers, or delegated subagent checks; " +
-    "allowed work is read, search, and source edits only. Fix every finding at its root cause and return; the " +
-    "runtime runs one cache-bypassing verification gate to confirm. Never invoke the gate or any check after an " +
-    "individual fix. Findings that share one root cause are one fix, not several. Validation findings are repair " +
-    "work, not a reason to block the phase. Fix findings at their root cause; never silence them with " +
+    "or any quality-check skill. Do not rediscover findings. While validate state is findings_open, do not invoke " +
+    "any check, test, compile, format-task, or quality-check command, including the gate, `bill-code-check`, " +
+    "`detekt`, `ktlintCheck`, `test`, `compileKotlin`, Gradle module tasks, pack checkers, or delegated subagent " +
+    "checks; allowed work is read, search, and source edits only. Signal that the current set is fully repaired " +
+    "without running any check to confirm first; that signal is the only way to leave findings_open. The runtime " +
+    "alone runs one cache-bypassing verification gate after you signal repair. Never invoke the gate or any check " +
+    "after an individual fix. Findings that share one root cause are one fix, not several. Validation findings are " +
+    "repair work, not a reason to block the phase. Fix findings at their root cause; never silence them with " +
     "annotations, baselines, disabled rules, weakened configuration, or skipped tests. Emit a " +
     "bounded validation_result containing validation_status, checks, and repository_checkpoint; " +
     "do not embed raw command output or telemetry."
 
 internal const val BUILD_ONLY_VALIDATE_PHASE_TASK: String =
   "Prove compile/buildability of the changed modules only. Fix only compile/build failures from the " +
-    "runtime-provided finding set. While the finding set is open, do not invoke the gate, any quality-check " +
+    "runtime-provided finding set. While validate state is findings_open, do not invoke the gate, any quality-check " +
     "skill, tests, `detekt`, `ktlintCheck`, `test`, `compileKotlin`, spotless, lint, dependency scanners, or " +
-    "Gradle module tasks; allowed work is read, search, and source edits only. Do not introduce " +
+    "Gradle module tasks; allowed work is read, search, and source edits only. Signal full repair without running " +
+    "any confirm check; the runtime alone runs one cache-bypassing verification gate. Do not introduce " +
     "suppressions, disable rules, or weaken configuration. Emit a bounded validation_result " +
     "containing validation_status, checks, and repository_checkpoint; do not embed raw command " +
     "output or telemetry."
@@ -65,14 +67,13 @@ private val BUILD_ONLY_VALIDATE_DIRECTIVE_SECTION: String =
   """
     ## Goal-continuation validate depth
     validation_depth=build_only. Prove compile/buildability only. Fix only compile/build failures from
-    the runtime-provided finding set. While the finding set is open, do not invoke the gate or any
+    the runtime-provided finding set. While validate state is findings_open, do not invoke the gate or any
     quality-check skill. Do not run tests written during implement, do not execute test suites, and do
     not run `detekt`, `ktlintCheck`, `test`, `compileKotlin`, spotless, lint, or dependency scanners.
-    Allowed work is read, search, and source edits only. While repairing compile/build failures, do
-    not introduce suppressions, disable rules, or weaken configuration. Batch compile/build repairs:
-    fix every finding at its root cause and return; the runtime reruns the compile/build gate to
-    verify. Emit a bounded validation_result containing validation_status, checks, and
-    repository_checkpoint; do not embed raw command output or telemetry.
+    Allowed work is read, search, and source edits only. Signal full repair without any confirm check;
+    the runtime alone runs one cache-bypassing verification gate. While repairing compile/build failures, do
+    not introduce suppressions, disable rules, or weaken configuration. Emit a bounded validation_result
+    containing validation_status, checks, and repository_checkpoint; do not embed raw command output or telemetry.
   """.trimIndent()
 
 /**
@@ -82,20 +83,19 @@ private val BUILD_ONLY_VALIDATE_DIRECTIVE_SECTION: String =
 internal const val AGENT_RUN_VALIDATE_PHASE_TASK: String =
   "Run tests written during the implement phase, then run the repository validation gate " +
     "relevant to the change through bill-code-check once to collect the complete finding set. A gate " +
-    "run costs minutes because it recompiles every dependent module and reruns their suites. While that " +
-    "finding set is open, do not invoke any check, test, compile, format-task, or quality-check command, " +
+    "run costs minutes because it recompiles every dependent module and reruns their suites. While validate " +
+    "state is findings_open, do not invoke any check, test, compile, format-task, or quality-check command, " +
     "including the gate, `bill-code-check`, `detekt`, `ktlintCheck`, `test`, `compileKotlin`, Gradle " +
     "module tasks, pack checkers, or delegated subagent checks; allowed work is read, search, and source " +
-    "edits only. Fix every finding at its root cause, then run exactly one verification gate to confirm. " +
-    "Never rerun the gate, bill-code-check, or any targeted command after an individual fix, and never " +
-    "rerun to rediscover findings the previous run already reported. Findings that share one root cause " +
-    "are one fix, not several. Validation findings are repair work, not a reason to block the phase. " +
-    "Invoke bill-code-check for that gate — it auto-routes to the pack-declared quality-check skill; " +
-    "never name a stack-specific quality-check skill such as bill-kotlin-code-check. Fix findings at their " +
-    "root cause; never silence them with annotations, baselines, disabled rules, weakened " +
-    "configuration, or skipped tests. Emit a " +
-    "bounded validation_result containing validation_status, checks, and repository_checkpoint; " +
-    "do not embed raw command output or telemetry."
+    "edits only. Signal full repair without any confirm check; that signal is the only way to leave findings_open. " +
+    "Then run exactly one verification gate to confirm. Never rerun the gate, bill-code-check, or any targeted " +
+    "command after an individual fix, and never rerun to rediscover findings the previous run already reported. " +
+    "Findings that share one root cause are one fix, not several. Validation findings are repair work, not a " +
+    "reason to block the phase. Invoke bill-code-check for that gate — it auto-routes to the pack-declared " +
+    "quality-check skill; never name a stack-specific quality-check skill such as bill-kotlin-code-check. Fix " +
+    "findings at their root cause; never silence them with annotations, baselines, disabled rules, weakened " +
+    "configuration, or skipped tests. Emit a bounded validation_result containing validation_status, checks, and " +
+    "repository_checkpoint; do not embed raw command output or telemetry."
 
 /** Agent-run BUILD_ONLY Task text for packs without a validation_gate declaration. */
 internal const val AGENT_RUN_BUILD_ONLY_VALIDATE_PHASE_TASK: String =

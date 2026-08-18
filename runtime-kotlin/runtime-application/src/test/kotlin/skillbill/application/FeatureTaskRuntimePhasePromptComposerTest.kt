@@ -292,8 +292,11 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     listOf(fullPrompt, defaultPrompt).forEach { prompt ->
       assertContains(prompt, "runtime owns execution of the repository validation gate")
       assertContains(prompt, "complete finding set from one collect-all gate run")
+      assertContains(prompt, "findings_open")
       assertContains(prompt, "cache-bypassing verification gate")
       assertContains(prompt, "must not invoke the gate or any quality-check skill")
+      assertContains(prompt, "`bill-code-check`")
+      assertContains(prompt, "delegated subagent")
       assertContains(prompt, "`detekt`")
       assertContains(prompt, "`ktlintCheck`")
       assertContains(prompt, "`test`")
@@ -315,7 +318,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       agentRunValidateFallback = true,
     )
 
-    assertContains(prompt, "While that finding set is open")
+    assertContains(prompt, "findings_open")
     assertContains(prompt, "`detekt`")
     assertContains(prompt, "`ktlintCheck`")
     assertContains(prompt, "`test`")
