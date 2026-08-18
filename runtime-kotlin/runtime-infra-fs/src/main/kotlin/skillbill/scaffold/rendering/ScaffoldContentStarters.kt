@@ -23,7 +23,13 @@ internal fun qualityCheckContent(summary: String): String = buildString {
   appendLine()
   appendLine("- Follow a priority-ordered fix ladder and never suppress failures or add TODO comments.")
   appendLine("- Keep changes aligned with the project's existing conventions and build tooling.")
-  appendLine("- Re-run targeted checks after each fix category.")
+  appendLine("### Repair Window")
+  appendLine()
+  appendLine(
+    "Collect one complete finding set before repairing anything. While that set is open, do not invoke " +
+      "any check, test, compile, format-task, quality-check command, pack checker, `bill-code-check`, " +
+      "or delegated subagent check. Allowed work is read, search, and source edits only.",
+  )
   appendLine("- Escalate to the full suite when targeted checks cannot establish safety.")
   appendLine("- Call out any blocker that requires a maintainer decision instead of guessing.")
   appendLine(

@@ -208,7 +208,7 @@ class RustPlatformPackTest {
       "When generated bindings are owned",
       "When changed unsafe code",
       "Attribute each failure",
-      "Re-run the smallest affected package",
+      "Repair Window",
     )
     val orderedPositions = orderedMarkers.map(content::indexOf)
     assertTrue(orderedPositions.all { position -> position >= 0 })

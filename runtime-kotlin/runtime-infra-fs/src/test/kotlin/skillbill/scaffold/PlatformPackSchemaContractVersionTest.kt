@@ -9,6 +9,7 @@ import skillbill.testing.repoRootFromTest
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -67,6 +68,26 @@ class PlatformPackSchemaContractVersionTest {
       "Schema \$defs.codeReviewArea.enum must equal APPROVED_CODE_REVIEW_AREAS. " +
         "Schema-only: ${schemaAreas - APPROVED_CODE_REVIEW_AREAS}. " +
         "Kotlin-only: ${APPROVED_CODE_REVIEW_AREAS - schemaAreas}.",
+    )
+  }
+
+  @Test
+  fun `full_gate_command description does not permit intermediate repair-cycle runs`() {
+    val schemaFile = repoRootFromTest().resolve(PlatformPackSchemaPaths.REPO_RELATIVE_PATH)
+    val schema: JsonNode = YAMLMapper().readTree(Files.readString(schemaFile))
+    val description = schema.path("properties")
+      .path("validation_gate")
+      .path("properties")
+      .path("full_gate_command")
+      .path("description")
+      .asText()
+    assertFalse(
+      description.contains("intermediate repair-cycle", ignoreCase = true),
+      "full_gate_command description must not call argv an intermediate repair-cycle run",
+    )
+    assertTrue(
+      description.contains("Not permitted while a finding set remains open", ignoreCase = true),
+      "full_gate_command description must forbid use during an open repair window",
     )
   }
 }

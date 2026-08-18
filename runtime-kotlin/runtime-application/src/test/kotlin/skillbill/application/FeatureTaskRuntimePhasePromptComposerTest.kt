@@ -291,9 +291,13 @@ class FeatureTaskRuntimePhasePromptComposerTest {
 
     listOf(fullPrompt, defaultPrompt).forEach { prompt ->
       assertContains(prompt, "runtime owns execution of the repository validation gate")
-      assertContains(prompt, "complete finding set from one gate run")
-      assertContains(prompt, "the runtime reruns the gate to confirm")
+      assertContains(prompt, "complete finding set from one collect-all gate run")
+      assertContains(prompt, "cache-bypassing verification gate")
       assertContains(prompt, "must not invoke the gate or any quality-check skill")
+      assertContains(prompt, "`detekt`")
+      assertContains(prompt, "`ktlintCheck`")
+      assertContains(prompt, "`test`")
+      assertContains(prompt, "`compileKotlin`")
       assertContains(
         prompt,
         "never silence them with annotations, baselines, disabled rules, weakened configuration, or skipped tests",
@@ -301,6 +305,24 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       assertFalse(prompt.contains("Invoke bill-code-check"))
       assertFalse(prompt.contains("Goal-continuation validate depth"))
     }
+  }
+
+  @Test
+  fun `agent-run validate prompts forbid intermediate checks not only full gate`() {
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE),
+      agentRunValidateFallback = true,
+    )
+
+    assertContains(prompt, "While that finding set is open")
+    assertContains(prompt, "`detekt`")
+    assertContains(prompt, "`ktlintCheck`")
+    assertContains(prompt, "`test`")
+    assertContains(prompt, "`compileKotlin`")
+    assertContains(prompt, "Never rerun the gate, bill-code-check, or any targeted command after an individual fix")
+    assertFalse(prompt.contains("Rerun early only when"))
+    assertFalse(prompt.contains("rerun the failing command after each fix"))
   }
 
   @Test
@@ -324,7 +346,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       validationGateFindings = page,
     )
     listOf(fullPrompt, defaultPrompt).forEach { prompt ->
-      assertContains(prompt, "complete finding set from one gate run")
+      assertContains(prompt, "complete finding set from one collect-all gate run")
       assertContains(prompt, "must not invoke the gate or any quality-check skill")
       assertContains(prompt, "Do not rediscover findings")
     }

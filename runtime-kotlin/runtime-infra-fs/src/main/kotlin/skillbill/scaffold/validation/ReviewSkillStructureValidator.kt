@@ -267,8 +267,8 @@ internal object ReviewSkillStructureValidator {
       if (!containsAll(fixStrategy, "priority-ordered", "never suppress")) {
         add(violation(file, "quality-check fix discipline"))
       }
-      if (!containsAll(fixStrategy, "re-run targeted checks")) {
-        add(violation(file, "quality-check targeted rerun"))
+      if (!containsAll(fixStrategy, "Repair Window") || !containsAll(fixStrategy, "do not invoke")) {
+        add(violation(file, "quality-check repair window"))
       }
       if (!containsAll(fixStrategy, "full suite when targeted checks cannot establish safety")) {
         add(violation(file, "quality-check escalation"))

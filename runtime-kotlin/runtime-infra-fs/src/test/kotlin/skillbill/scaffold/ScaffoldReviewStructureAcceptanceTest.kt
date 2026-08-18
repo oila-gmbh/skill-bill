@@ -109,7 +109,7 @@ class ScaffoldReviewStructureAcceptanceTest {
     assertContains(content, "build files, wrappers, and CI configuration before falling back")
     assertContains(content, "pack's quality-check entrypoint")
     assertContains(content, "priority-ordered fix ladder and never suppress")
-    assertContains(content, "Re-run targeted checks")
+    assertContains(content, "Repair Window")
     assertContains(content, "full suite when targeted checks cannot establish safety")
   }
 

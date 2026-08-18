@@ -105,7 +105,8 @@ class IosPlatformPackTest {
       ".swiftformat",
       "priority-ordered fix ladder",
       "never suppress",
-      "Re-run targeted checks",
+      "Repair Window",
+      "do not invoke",
       "full suite when targeted checks cannot establish safety",
     ).forEach { marker -> assertContains(qualityCheck, marker) }
   }

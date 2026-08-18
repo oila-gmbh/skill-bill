@@ -235,7 +235,7 @@ class TypeScriptPlatformPackTest {
       "dependency, lockfile, license, provenance, and security checks",
       "moduleResolution",
       "environmental blocker",
-      "Re-run the smallest failing command",
+      "Repair Window",
       "full suite when targeted checks cannot establish safety",
     ).forEach { marker -> assertContains(content, marker) }
   }

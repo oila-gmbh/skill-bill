@@ -24,7 +24,7 @@ Validate changed Rust code with the repository's own wrappers, CI commands, tool
 10. When generated bindings are owned by the repository, run its `bindgen`, `cbindgen`, UniFFI, wasm-bindgen, or other generation verification and fail on drift. Do not regenerate or require binding tools when the project does not configure that path.
 11. When changed unsafe code is covered by an existing policy, run configured analysis such as `cargo miri test` with the repository's selected target and features. Report an environmental blocker if the required component or target is unavailable rather than installing it or silently skipping the gate.
 12. Attribute each failure to the changed files or scoped work when evidence supports ownership. Identify unrelated pre-existing failures separately with command output and do not mutate out-of-scope code merely to make the run green.
-13. Re-run the smallest affected package, test target, or command after each fix, then escalate only after targeted checks pass to the repository-required full suite, using its wrapper or fallbacks such as `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo check --workspace --all-targets`, `cargo build --workspace`, `cargo test --workspace`, and `cargo test --doc`. Report every command that cannot run with the missing tool, target, runtime, credential, service, or maintainer decision.
+13. Preserve exact command, workspace, environment, exit status, and diagnostics for each failure; distinguish an owned regression from an environmental blocker requiring a maintainer decision.
 
 ## Fix Strategy
 
@@ -37,4 +37,8 @@ Validate changed Rust code with the repository's own wrappers, CI commands, tool
 - Do not install cargo-nextest, cargo-deny, cargo-audit, targets, components, or toolchains during the check; report unavailable required tooling explicitly.
 - Do not silently replace a missing repository command with a weaker fallback or skip a required workspace member, feature combination, or target.
 - Treat a required but unavailable service, credential, tool, target, runtime, or maintainer decision as an environmental blocker with the exact blocked command.
-- Re-run targeted checks after each fix category. Run the full suite when targeted checks cannot establish safety; otherwise run the full repository gate required by policy before completion.
+- Run the full suite when targeted checks cannot establish safety; otherwise run the full repository gate required by policy before completion.
+
+### Repair Window
+
+Collect one complete finding set before repairing anything. While that set is open, do not invoke any check, test, compile, format-task, quality-check command, `cargo` task, pack checker, `bill-code-check`, or delegated subagent check. Allowed work is read, search, and source edits only. Repair every finding at its root cause; verification runs only after the full set is repaired.
