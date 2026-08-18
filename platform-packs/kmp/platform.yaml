@@ -39,6 +39,7 @@ routing_signals:
 declared_code_review_areas:
   - architecture
   - platform-correctness
+  - security
   - persistence
   - reliability
   - ui
@@ -49,6 +50,7 @@ declared_files:
   areas:
     architecture: code-review/bill-kmp-code-review-architecture/content.md
     platform-correctness: code-review/bill-kmp-code-review-platform-correctness/content.md
+    security: code-review/bill-kmp-code-review-security/content.md
     persistence: code-review/bill-kmp-code-review-persistence/content.md
     reliability: code-review/bill-kmp-code-review-reliability/content.md
     ui: code-review/bill-kmp-code-review-ui/content.md
@@ -96,6 +98,8 @@ area_metadata:
     focus: "Gradle module boundaries and dependency direction, Hilt or Koin scope ownership, ViewModel lifecycle ownership, repository, use-case, and sync-engine authority, WorkManager ownership, and offline single-source-of-truth"
   platform-correctness:
     focus: "KMP expect/actual, source-set, target-runtime, and native-boundary correctness"
+  security:
+    focus: "Exported component and deeplink exposure, PendingIntent mutability, WebView bridge and file access, cleartext traffic and pinning, Keystore and encrypted storage key handling, backup and provider export, and PII in logs and clipboard"
   persistence:
     focus: "Room, SQLDelight, and DataStore write atomicity, migration safety, and offline-first cursor correctness"
   reliability:
@@ -110,6 +114,8 @@ lane_conditions:
     required: true
   platform-correctness:
     required: true
+  security:
+    content: ["authorization", "jwt", "secret", "unsafe"]
   persistence:
     content: ["room", "sqldelight", "datastore", "migration", "dao"]
   reliability:
@@ -287,6 +293,9 @@ pointers:
       target: orchestration/review-orchestrator/specialist-contract.md
     - name: android-r8-review.md
       target: platform-packs/kmp/addons/android-r8-review.md
+  code-review/bill-kmp-code-review-security:
+    - name: specialist-contract.md
+      target: orchestration/review-orchestrator/specialist-contract.md
   code-review/bill-kmp-code-review-persistence:
     - name: specialist-contract.md
       target: orchestration/review-orchestrator/specialist-contract.md

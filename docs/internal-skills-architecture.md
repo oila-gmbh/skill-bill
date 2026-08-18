@@ -286,7 +286,7 @@ directory contains `SKILL.md` plus 84 sibling sidecars — and no agent
       bill-kotlin-code-review.md            sidecar: Kotlin stack entry (selected)
       ... (10 Kotlin specialists total)
       bill-kmp-code-review.md               sidecar: KMP stack entry (selected)
-      ... (6 KMP specialists; 4 effective lanes compose from Kotlin)
+      ... (7 KMP specialists; 3 effective lanes compose from Kotlin)
       bill-php-code-review.md               sidecar: PHP stack entry (selected)
       ... (10 PHP specialists total)
       bill-python-code-review.md            sidecar: Python stack entry (selected)
@@ -352,10 +352,10 @@ standalone `skills_dir` path (PD5).
 
 | Selection | Sidecars staged inside `bill-code-review/` |
 |---|---|
-| `ALL` | 84 (8 stack entries + 76 specialists) |
+| `ALL` | 85 (8 stack entries + 77 specialists) |
 | Kotlin only | 11 (`bill-kotlin-code-review.md` + 10 specialists) |
 | KMP only | fails — Kotlin is a required baseline (PD8) |
-| KMP + Kotlin | 18 (`bill-kmp-code-review` + 6 KMP specialists, `bill-kotlin-code-review` + 10 Kotlin specialists) |
+| KMP + Kotlin | 19 (`bill-kmp-code-review` + 7 KMP specialists, `bill-kotlin-code-review` + 10 Kotlin specialists) |
 | None | 0; `bill-code-review` stages inert (byte-identical to no pack internals) |
 
 ### File map additions (platform-pack side)

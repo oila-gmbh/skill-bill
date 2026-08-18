@@ -20,7 +20,7 @@ import kotlin.test.assertTrue
 
 class ComposedReviewLaunchPlanTest {
   @Test
-  fun `composed kmp plan resolves six kmp lanes and four kotlin baseline lanes`() {
+  fun `composed kmp plan resolves seven kmp lanes and three kotlin baseline lanes`() {
     val plan = ReviewLaunchPlanPolicy.flatten("kmp", manifests("kmp", "kotlin", "generic"), APPROVED_CODE_REVIEW_AREAS)
 
     assertEquals(
@@ -32,7 +32,7 @@ class ComposedReviewLaunchPlanTest {
         "ui" to "bill-kmp-code-review-ui",
         "ux-accessibility" to "bill-kmp-code-review-ux-accessibility",
         "performance" to "bill-kotlin-code-review-performance",
-        "security" to "bill-kotlin-code-review-security",
+        "security" to "bill-kmp-code-review-security",
         "testing" to "bill-kotlin-code-review-testing",
         "api-contracts" to "bill-kotlin-code-review-api-contracts",
       ),

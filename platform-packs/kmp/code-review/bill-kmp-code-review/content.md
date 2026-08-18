@@ -23,6 +23,7 @@ Treat the generated flattened Review Composition plan as authoritative. Launch i
 - Room entities, DAOs, `@Transaction`, `.sq` files, SQLDelight drivers, `DataStore` edits, schema migrations, or offline sync cursors and idempotency keys -> `persistence` specialist.
 - `WorkManager` enqueue, `CoroutineWorker`, backoff policy, work constraints, foreground services, process-death recovery, or long-lived collector supervision -> `reliability` specialist.
 - `@Composable`, UI state, `Modifier`, `remember`, `LaunchedEffect`, navigation, previews, or loading/content/error/empty states -> `ui` specialist.
+- `AndroidManifest.xml` exported components, `intent-filter` deeplinks, `PendingIntent` flags, `WebView` settings, network security configuration, `Keystore` or `EncryptedSharedPreferences` key handling, `allowBackup`, clipboard use, or logged user data -> `security` specialist.
 - Compose semantics, labels, focus, TalkBack, keyboard behavior, localization, or touch targets -> `ux-accessibility` specialist.
 - `proguard-rules.pro`, `consumer-rules.pro`, `isMinifyEnabled`, `minifyEnabled`, or R8 configuration -> `platform-correctness` specialist; include the baseline `android-r8` add-on.
 - Navigation graphs, `NavController`, `SavedStateHandle`, `popUpTo`, `launchSingleTop`, or dialog destinations -> `ui` specialist; include the UI `android-navigation` add-on.

@@ -8,6 +8,10 @@ agents:
     description: "Android & Kotlin Multiplatform platform correctness specialist — KMP expect/actual, source-set, target-runtime, and native-boundary correctness."
     compose: governed-content
     tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
+  - name: bill-kmp-code-review-security
+    description: "Android & Kotlin Multiplatform security specialist — Exported component and deeplink exposure, PendingIntent mutability, WebView bridge and file access, cleartext traffic and pinning, Keystore and encrypted storage key handling, backup and provider export, and PII in logs and clipboard."
+    compose: governed-content
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-kmp-code-review-persistence
     description: "Android & Kotlin Multiplatform persistence specialist — Room, SQLDelight, and DataStore write atomicity, migration safety, and offline-first cursor correctness."
     compose: governed-content
