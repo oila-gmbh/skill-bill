@@ -277,7 +277,7 @@ review-pack skill is internal — all entries under
 `platform-packs/{go,ios,kotlin,kmp,php,python,rust,typescript}/code-review/`: eight stack entry skills
 (`bill-ios-code-review`, `bill-kotlin-code-review`, `bill-kmp-code-review`,
 `bill-go-code-review`, `bill-php-code-review`, `bill-python-code-review`, `bill-rust-code-review`,
-`bill-typescript-code-review`) plus their area specialists. Go, iOS, Kotlin, PHP, Python, Rust, and TypeScript declare all ten areas; KMP covers Android and Kotlin Multiplatform, declaring five areas (`platform-correctness`, `persistence`, `reliability`, `ui`, `ux-accessibility`) and composing the remaining five from Kotlin. All carry
+`bill-typescript-code-review`) plus their area specialists. Go, iOS, Kotlin, PHP, Python, Rust, and TypeScript declare all ten areas; KMP covers Android and Kotlin Multiplatform, declaring six areas (`architecture`, `platform-correctness`, `persistence`, `reliability`, `ui`, `ux-accessibility`) and composing the remaining four (`performance`, `security`, `testing`, `api-contracts`) from Kotlin. All carry
 `internal-for: bill-code-review` and install as siblings inside
 `bill-code-review/`'s staged directory; the eight stack entries do **not** become
 parents of their specialists (PD2 flatten rule). After install with all packs

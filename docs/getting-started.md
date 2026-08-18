@@ -219,7 +219,7 @@ The shipped platform packs are reference packs. They are real, validated, ready 
 
 Reference packs currently shipped:
 
-Seven packs—Go, iOS, Kotlin, PHP, Python, Rust, and TypeScript—declare all ten approved review areas directly. KMP reaches the same effective coverage for Android and Kotlin Multiplatform by declaring `platform-correctness`, `persistence`, `reliability`, `ui`, and `ux-accessibility` and composing the remaining five areas from Kotlin. Quality checks do not follow review composition: every pack declares and routes directly to its own checker, including `bill-kmp-code-check`.
+Seven packs—Go, iOS, Kotlin, PHP, Python, Rust, and TypeScript—declare all ten approved review areas directly. KMP reaches the same effective coverage for Android and Kotlin Multiplatform by declaring `architecture`, `platform-correctness`, `persistence`, `reliability`, `ui`, and `ux-accessibility` and composing the remaining four areas (`performance`, `security`, `testing`, `api-contracts`) from Kotlin. Quality checks do not follow review composition: every pack declares and routes directly to its own checker, including `bill-kmp-code-check`.
 
 - `kotlin`: Kotlin baseline review and quality-check behavior
 - `kmp`: Android and Kotlin Multiplatform review declaring `platform-correctness`, `persistence`, `reliability`, `ui`, and `ux-accessibility` on the Kotlin baseline, governed Android add-ons, and direct multiplatform quality-check behavior
