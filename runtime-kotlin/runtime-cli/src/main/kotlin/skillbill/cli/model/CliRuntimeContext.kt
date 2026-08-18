@@ -24,6 +24,7 @@ data class CliRuntimeContext(
   val goalPullRequestPort: GoalPullRequestPort? = null,
   val executableLookup: ExecutableLookup? = null,
   val reviewNativeAgentPreflight: skillbill.ports.review.ReviewNativeAgentPreflightPort? = null,
+  val runtimeTimingPort: skillbill.ports.time.RuntimeTimingPort? = null,
   val liveStdout: (String) -> Unit = {},
   val liveStderr: (String) -> Unit = {},
 ) {
@@ -38,5 +39,6 @@ data class CliRuntimeContext(
     goalPullRequestPort = goalPullRequestPort,
     executableLookup = executableLookup,
     reviewNativeAgentPreflight = reviewNativeAgentPreflight,
+    runtimeTimingPort = runtimeTimingPort,
   )
 }

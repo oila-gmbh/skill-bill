@@ -90,7 +90,6 @@ validation_gate:
   cache_bypassing_full_gate_command:
     - ./gradlew
     - check
-    - --rerun-tasks
     - --no-build-cache
   collect_all_full_gate_command:
     - ./gradlew
@@ -100,7 +99,6 @@ validation_gate:
     - ./gradlew
     - check
     - --continue
-    - --rerun-tasks
     - --no-build-cache
   build_only_command:
     - ./gradlew

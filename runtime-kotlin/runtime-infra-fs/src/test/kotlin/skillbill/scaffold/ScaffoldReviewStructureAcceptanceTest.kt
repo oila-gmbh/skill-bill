@@ -6,6 +6,7 @@ import skillbill.scaffold.policy.APPROVED_CODE_REVIEW_AREAS
 import skillbill.scaffold.rendering.canonicalSeverityCloser
 import skillbill.scaffold.rendering.defaultAreaFocus
 import skillbill.scaffold.runtime.scaffold
+import skillbill.scaffold.validation.ReviewSkillStructureValidator
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -27,7 +28,7 @@ class ScaffoldReviewStructureAcceptanceTest {
     assertBaseline(pack)
     assertQualityCheck(pack)
     assertNativeAgents(pack)
-    val violations = ReviewSkillStructureConformanceTest().structureViolations(pack)
+    val violations = ReviewSkillStructureValidator.violations(pack)
     assertEquals(emptyList(), violations, violations.joinToString("\n"))
     APPROVED_CODE_REVIEW_AREAS.forEach { area ->
       val content = Files.readString(

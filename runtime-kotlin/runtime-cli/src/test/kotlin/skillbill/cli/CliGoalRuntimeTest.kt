@@ -25,6 +25,7 @@ import skillbill.ports.goalrunner.model.GoalPullRequestRequest
 import skillbill.ports.goalrunner.model.GoalPullRequestResult
 import skillbill.ports.telemetry.HttpRequester
 import skillbill.ports.telemetry.UnconfiguredHttpRequester
+import skillbill.ports.time.NoopRuntimeTimingPort
 import skillbill.ports.workflow.GoalSubtaskReviewGitOperations
 import skillbill.ports.workflow.GoalSubtaskReviewGitOperationsProvider
 import skillbill.ports.workflow.RepositoryFingerprintGitOperations
@@ -1701,6 +1702,7 @@ internal data class GoalCliFixture(
     liveStderr = liveStderr,
     // CLI unit tests assert orchestration, not host PATH; production still uses PathExecutableLookup.
     executableLookup = ExecutableLookup { true },
+    runtimeTimingPort = NoopRuntimeTimingPort,
   )
 
   fun materializeDatabaseWithTelemetry(level: String, requester: HttpRequester) = materializeTelemetryDatabase(
