@@ -1,3 +1,11 @@
+## [2026-08-18] SKILL-198 subtask 1 — repair window in bill-code-check
+Areas: skills/bill-code-check
+- `bill-code-check` is no longer frontmatter-only: Purpose, Repair Window, and Routing sections state one collect-all finding set, zero checks while the set is open, and one post-repair verification gate.
+- Forbidden-command list names gate variants, `bill-code-check` re-invocation, Gradle module tasks (`detekt`, `ktlintCheck`, `test`, `compileKotlin`), pack checkers, and subagent-delegated checks; allowed work is read, search, and source edits only. reusable PATTERN: horizontal router skill carries the same repair-window contract as pack sidecars and validate briefing.
+- `BillCodeCheckRepairWindowContractTest` pins substantive content and the prohibition vocabulary.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-08-10] SKILL-178 subtask 4 — Governed content and parity-lock sweep
 Areas: skills/bill-feature-goal, skills/bill-feature-task-runtime, skills/bill-code-review, orchestration/review-orchestrator, runtime-kotlin/agent, runtime-kotlin content-lock tests
 - Aligned governed remediation prose so a remediation round is handed all findings and both Blocker and Major reopen `implement_fix` / block advance; Minor and Nit stay ledger-only via `skill-bill goal findings`
