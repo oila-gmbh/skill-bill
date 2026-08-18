@@ -17,7 +17,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 private val KMP_CODE_REVIEW_AREAS =
-  setOf("platform-correctness", "persistence", "reliability", "ui", "ux-accessibility")
+  setOf("architecture", "platform-correctness", "security", "persistence", "reliability", "ui", "ux-accessibility")
 
 private val BACKEND_RUBRIC_TERMS = listOf(
   "Exposed",
@@ -25,10 +25,15 @@ private val BACKEND_RUBRIC_TERMS = listOf(
   "Hibernate",
   "JDBC",
   "R2DBC",
+  "Spring",
+  "DataSource",
+  "servlet",
+  "api(project(",
   "resilience4j",
-  "offset",
   "broker",
 )
+
+private val BACKEND_STORAGE_RUBRIC_TERMS = listOf("offset")
 
 private const val COMPOSE_NAV_PATH = "app/src/main/java/com/acme/nav/NavGraph.kt"
 
@@ -217,7 +222,7 @@ class KmpPlatformPackTest {
   }
 
   @Test
-  fun `kmp effective review coverage is Kotlin baseline with five overriding lanes`() {
+  fun `kmp effective review coverage is Kotlin baseline with seven overriding lanes`() {
     val repoRoot = repoRootFromTest()
     val report = PlatformPackSubstanceAudit.audit(repoRoot)
     val kmp = report.packs.single { it.pack == "kmp" }
@@ -471,14 +476,110 @@ class KmpPlatformPackTest {
     listOf("WorkManager", "CoroutineWorker", "BackoffPolicy", "Constraints", "process death", "collector")
       .forEach { term -> assertContains(reliability, term, message = "Missing reliability rubric term $term") }
 
+    val architecture = Files.readString(reviewRoot.resolve("bill-kmp-code-review-architecture/content.md"))
+
+    val security = Files.readString(reviewRoot.resolve("bill-kmp-code-review-security/content.md"))
+
+    mapOf(
+      "persistence" to persistence,
+      "reliability" to reliability,
+      "architecture" to architecture,
+      "security" to security,
+    )
+      .forEach { (area, rubric) ->
+        BACKEND_RUBRIC_TERMS.forEach { term ->
+          assertFalse(term in rubric, "Backend rubric term $term leaked into the kmp $area specialist")
+        }
+      }
     mapOf("persistence" to persistence, "reliability" to reliability).forEach { (area, rubric) ->
-      BACKEND_RUBRIC_TERMS.forEach { term ->
+      BACKEND_STORAGE_RUBRIC_TERMS.forEach { term ->
         assertFalse(term in rubric, "Backend rubric term $term leaked into the kmp $area specialist")
       }
       assertFalse(
         Regex("(?i)\\back\\b").containsMatchIn(rubric),
         "Broker acknowledgement semantics leaked into the kmp $area specialist",
       )
+    }
+  }
+
+  @Test
+  fun `kmp architecture rubric covers the mandated Android ownership concerns`() {
+    val architecture = Files.readString(
+      repoRootFromTest().resolve("platform-packs/kmp/code-review/bill-kmp-code-review-architecture/content.md"),
+    )
+
+    listOf(
+      "Gradle module",
+      "dependency direction",
+      "scope",
+      "ViewModel",
+      "repository",
+      "use case",
+      "sync engine",
+      "worker",
+      "single-source-of-truth",
+    ).forEach { term -> assertContains(architecture, term, message = "Missing architecture rubric subject $term") }
+  }
+
+  @Test
+  fun `kmp security rubric covers the on-device surface the Kotlin baseline cannot reach`() {
+    val security = Files.readString(
+      repoRootFromTest().resolve("platform-packs/kmp/code-review/bill-kmp-code-review-security/content.md"),
+    )
+
+    listOf(
+      "exported",
+      "PendingIntent",
+      "WebView",
+      "cleartextTrafficPermitted",
+      "Keystore",
+      "EncryptedSharedPreferences",
+      "allowBackup",
+      "ContentProvider",
+      "deeplink",
+      "ClipboardManager",
+    ).forEach { term -> assertContains(security, term, message = "Missing security rubric subject $term") }
+  }
+
+  @Test
+  fun `kmp architecture rubric pins the cross-document selection-set divergence rule`() {
+    val architecture = Files.readString(
+      repoRootFromTest().resolve("platform-packs/kmp/code-review/bill-kmp-code-review-architecture/content.md"),
+    )
+    val section = architecture.substringAfter("### Cross-Document Selection-Set Divergence Rules", "")
+
+    assertTrue(section.isNotBlank(), "Missing the F-001-class named subsection")
+    listOf(
+      "two documents, fragments, or model trees describe one payload",
+      "selection set",
+      "runtime predicate",
+      "decodes differently",
+    ).forEach { trigger -> assertContains(section, trigger, message = "Missing F-001 trigger vocabulary $trigger") }
+  }
+
+  @Test
+  fun `declared area ownership follows the routed pack on both Android and backend diffs`() {
+    val manifests = routingManifests()
+    val declaredHere = listOf("architecture", "security")
+
+    val androidRoute = ReviewStackRouting.route(manifests, PLAIN_ANDROID_DIFF)
+    assertContains(androidRoute.routedSlugs, "kmp")
+    val androidPlan = ReviewLaunchPlanPolicy.flatten("kmp", manifests, APPROVED_CODE_REVIEW_AREAS)
+    declaredHere.forEach { area ->
+      val lane = androidPlan.lanes.single { it.area == area }
+      assertEquals("kmp", lane.packSlug)
+      assertEquals("bill-kmp-code-review-$area", lane.skillName)
+    }
+    assertEquals(APPROVED_CODE_REVIEW_AREAS, androidPlan.lanes.map { it.area }.toSet())
+    assertTrue(androidPlan.lanes.none { it.packSlug == "generic" })
+
+    val backendRoute = ReviewStackRouting.route(manifests, BACKEND_DOMINANT_DIFF)
+    assertContains(backendRoute.routedSlugs, "kotlin")
+    val backendPlan = ReviewLaunchPlanPolicy.flatten("kotlin", manifests, APPROVED_CODE_REVIEW_AREAS)
+    declaredHere.forEach { area ->
+      val lane = backendPlan.lanes.single { it.area == area }
+      assertEquals("kotlin", lane.packSlug)
+      assertEquals("bill-kotlin-code-review-$area", lane.skillName)
     }
   }
 

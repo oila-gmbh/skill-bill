@@ -15,7 +15,7 @@ Review only user-impacting UX and accessibility failures.
 ## Ignore
 
 - UI framework, rendering, preview, navigation, or loading/content/error/empty-state correctness owned by the `ui` specialist
-- Escaping, secrets, or sensitive-data failures owned by the Kotlin `security` baseline specialist
+- Escaping, secrets, or sensitive-data failures owned by the `security` specialist
 
 ## Applicability
 

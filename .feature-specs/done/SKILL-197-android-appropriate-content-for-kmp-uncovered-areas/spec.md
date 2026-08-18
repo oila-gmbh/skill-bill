@@ -88,6 +88,11 @@ published ABI.
 Backend and desktop Kotlin reviews are unaffected: the `kotlin` pack keeps its content and its
 consumers see no change.
 
+The per-area disposition this spec decides is recorded durably in
+[docs/review-area-ownership.md](../../../docs/review-area-ownership.md), which outlives this spec: it
+carries the owning pack for every approved review area and, for each area retained on `kotlin`, the
+audited rules and why the backend-only ones are inert rather than misleading on an Android/KMP diff.
+
 ## Acceptance Criteria
 
 1. `kmp` declares `architecture` in `declared_code_review_areas`, with a declared area content file
@@ -132,6 +137,18 @@ consumers see no change.
   record a per-area disposition, implementing a `kmp` declaration wherever the audit finds the
   `kotlin` content unreachable.
 - Add the ownership regression test covering both the Android/KMP and backend Kotlin routes.
+
+## Subtasks
+
+Prepared as two dependency-ordered subtasks; `decomposition-manifest.yaml` is authoritative.
+
+1. **Own `architecture` in the `kmp` pack with Android-appropriate content** —
+   `spec_subtask_1_kmp_architecture_ownership.md`. Manifest declaration, content authoring including
+   the F-001-class cross-document selection-set rule, native-agent registration, pointer block,
+   pinned area-set updates, and the ownership regression test.
+2. **Record a disposition for every remaining KMP-uncovered area** —
+   `spec_subtask_2_uncovered_area_disposition.md`. Audit `performance`, `security`, `testing`, and
+   `api-contracts`; declare on `kmp` or justify retention on `kotlin`. Depends on subtask 1.
 
 ## Constraints
 

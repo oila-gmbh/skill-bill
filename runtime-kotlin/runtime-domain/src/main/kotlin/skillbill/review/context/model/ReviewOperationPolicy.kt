@@ -83,7 +83,7 @@ class ReviewOperationPolicy(
   private fun classifySearch(operation: ReviewRequestedOperation): ForbiddenReviewOperation? {
     val normalizedScopes = operation.searchScopes
     normalizedScopes.forEach { scope ->
-      classifyAbsoluteProhibitions(scope)?.let { return it }
+      classifyAbsoluteProhibitions(scope, isAssigned(scope))?.let { return it }
       if (!isReachable(scope)) {
         return forbidden(
           "broad_repository_search",
@@ -117,9 +117,10 @@ class ReviewOperationPolicy(
 
   private fun classifyFileRead(operation: ReviewRequestedOperation): ForbiddenReviewOperation? {
     val path = operation.target
-    classifyAbsoluteProhibitions(path)?.let { return it }
+    val assigned = path in assignedPaths
+    classifyAbsoluteProhibitions(path, assigned)?.let { return it }
     return when {
-      path in assignedPaths -> null
+      assigned -> null
       isReachable(path) && !operation.reachabilityReason.isNullOrBlank() -> null
       else -> forbidden(
         "unassigned_file_access",
@@ -129,8 +130,8 @@ class ReviewOperationPolicy(
     }
   }
 
-  private fun classifyAbsoluteProhibitions(path: String): ForbiddenReviewOperation? {
-    if (DIFF_ARTIFACT_FRAGMENTS.any { it in path.lowercase() }) {
+  private fun classifyAbsoluteProhibitions(path: String, assigned: Boolean): ForbiddenReviewOperation? {
+    if (!assigned && DIFF_ARTIFACT_FRAGMENTS.any { it in path.lowercase() }) {
       return forbidden(
         "diff_artifact_rediscovery",
         path,
@@ -158,9 +159,13 @@ class ReviewOperationPolicy(
         "Project guidance reaches a specialist only as packet-attested matched rules.",
       )
     }
-    val routingViolation = ROUTING_PATH_FRAGMENTS.firstNotNullOfOrNull { (fragments, category) ->
-      category.takeIf { fragments.any { it in path } }?.let {
-        forbidden(it, path, "The parent packet already resolved this routing decision.")
+    val routingViolation = if (assigned) {
+      null
+    } else {
+      ROUTING_PATH_FRAGMENTS.firstNotNullOfOrNull { (fragments, category) ->
+        category.takeIf { fragments.any { it in path } }?.let {
+          forbidden(it, path, "The parent packet already resolved this routing decision.")
+        }
       }
     }
     return when {

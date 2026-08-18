@@ -63,7 +63,15 @@ class PlatformPackCompositionTest {
     assertEquals(CodeReviewCompositionMode.KmpBaseline, layer.mode)
     assertEquals(APPROVED_CODE_REVIEW_AREAS, kotlin.declaredCodeReviewAreas.toSet())
     assertEquals(
-      setOf("platform-correctness", "persistence", "reliability", "ui", "ux-accessibility"),
+      setOf(
+        "architecture",
+        "platform-correctness",
+        "security",
+        "persistence",
+        "reliability",
+        "ui",
+        "ux-accessibility",
+      ),
       kmp.declaredCodeReviewAreas.toSet(),
     )
   }

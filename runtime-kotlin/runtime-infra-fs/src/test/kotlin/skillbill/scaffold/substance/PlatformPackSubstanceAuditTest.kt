@@ -78,8 +78,8 @@ class PlatformPackSubstanceAuditTest {
       first.packs.filter { it.physicalAreas.toSet() == APPROVED_CODE_REVIEW_AREAS }.map { it.pack }.toSet(),
     )
     val kmp = first.packs.single { it.pack == "kmp" }
-    assertEquals(5, kmp.physicalAreas.size)
-    assertEquals(5, kmp.inheritedAreas.size)
+    assertEquals(7, kmp.physicalAreas.size)
+    assertEquals(3, kmp.inheritedAreas.size)
     assertEquals(APPROVED_CODE_REVIEW_AREAS, (kmp.physicalAreas + kmp.inheritedAreas).toSet())
   }
 

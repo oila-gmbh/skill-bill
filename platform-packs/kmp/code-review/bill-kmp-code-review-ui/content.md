@@ -16,7 +16,7 @@ Review only UI state, rendering, framework usage, and interaction correctness.
 ## Ignore
 
 - Accessibility-only findings that belong to the `ux-accessibility` specialist
-- Escaping, secrets, or sensitive-data failures that belong to the Kotlin `security` baseline specialist
+- Escaping, secrets, and sensitive-data failures that belong to the `security` specialist
 
 ## Applicability
 
