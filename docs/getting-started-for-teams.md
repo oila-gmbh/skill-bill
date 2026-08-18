@@ -146,7 +146,7 @@ The shipped skills and platform packs are reference assets. They are production-
 
 Start from reference packs when they fit:
 
-Go, iOS, Kotlin, PHP, Python, Rust, and TypeScript directly declare all ten approved review areas. KMP covers Android and Kotlin Multiplatform with six declared areas — `architecture`, `platform-correctness`, `persistence`, `reliability`, `ui`, and `ux-accessibility` — composing the remaining four (`performance`, `security`, `testing`, `api-contracts`) from the Kotlin baseline. Review composition never supplies quality behavior: every dominant stack selects its own manifest-declared checker, including KMP through `bill-kmp-code-check` with no fallback.
+Go, iOS, Kotlin, PHP, Python, Rust, and TypeScript directly declare all ten approved review areas. KMP covers Android and Kotlin Multiplatform with seven declared areas — `architecture`, `platform-correctness`, `security`, `persistence`, `reliability`, `ui`, and `ux-accessibility` — composing the remaining three (`performance`, `testing`, `api-contracts`) from the Kotlin baseline. Review composition never supplies quality behavior: every dominant stack selects its own manifest-declared checker, including KMP through `bill-kmp-code-check` with no fallback.
 
 The shipped `generic` pack is the manifest-declared review fallback for unsupported,
 documentation-only, and unresolved paths. It is not appended after a concrete or

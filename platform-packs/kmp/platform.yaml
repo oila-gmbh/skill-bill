@@ -115,7 +115,8 @@ lane_conditions:
   platform-correctness:
     required: true
   security:
-    content: ["authorization", "jwt", "secret", "unsafe"]
+    path: ["AndroidManifest.xml"]
+    content: ["authorization", "jwt", "secret", "unsafe", "exported", "intent-filter", "PendingIntent", "WebView", "cleartext", "allowBackup", "Keystore", "EncryptedSharedPreferences", "clipboard", "deeplink"]
   persistence:
     content: ["room", "sqldelight", "datastore", "migration", "dao"]
   reliability:
