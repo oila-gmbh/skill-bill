@@ -57,6 +57,8 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
     ).distinct().associateWith(::checkpointDigest)
 
   private var cumulativeBytes = 0L
+  private var authorizedReadCount = 0
+  private var refusedOperationCount = 0
   private var resultBytes = 0L
   private var laneResultObserved = false
   private var toolCalls = 0
@@ -128,18 +130,16 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
       requireRepositoryRelativePath(exactPath)
     }
     val operation = ReviewRequestedOperation(ReviewOperationKind.FILE_READ, exactPath, request.reachabilityReason)
-    policy.classify(operation)?.let { return forbiddenResult(it, cumulativeBytes, expansionLedger.size) }
+    policy.classify(operation)?.let { return refused(it) }
     requireRepositoryRelativePath(exactPath)
     val normalizedTarget = normalizeEvidenceIdentity(exactPath)
     if (!admittedEvidenceTargets.add(normalizedTarget)) {
-      return forbiddenResult(
+      return refused(
         ForbiddenReviewOperation(
           "repeated_evidence_read",
           exactPath,
           "The normalized evidence target was already read by this lane.",
         ),
-        cumulativeBytes,
-        expansionLedger.size,
       )
     }
     val assigned = policy.isAssigned(exactPath)
@@ -175,10 +175,13 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
     normalized: String,
     assigned: Boolean,
     completeFileAuthorized: Boolean,
-  ): ReviewEvidenceResult = if (assigned && !completeFileAuthorized) {
-    readProjectedHunks(normalized)
-  } else {
-    readCompleteFile(normalized, assigned)
+  ): ReviewEvidenceResult {
+    authorizedReadCount += 1
+    return if (assigned && !completeFileAuthorized) {
+      readProjectedHunks(normalized)
+    } else {
+      readCompleteFile(normalized, assigned)
+    }
   }
 
   private fun readProjectedHunks(path: String): ReviewEvidenceResult {
@@ -356,6 +359,8 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
   @Synchronized
   override fun accounting(): ReviewLaneAccounting = ReviewLaneAccounting(
     lane = assignment.lane,
+    authorizedReadCount = authorizedReadCount,
+    refusedOperationCount = refusedOperationCount,
     evidenceBytes = cumulativeBytes,
     expansions = expansionLedger.toList(),
     toolCalls = toolCalls,
@@ -379,6 +384,9 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
     }
   }
 
+  private fun refused(forbidden: ForbiddenReviewOperation): ReviewEvidenceResult =
+    forbiddenResult(forbidden, cumulativeBytes, expansionLedger.size)
+
   private fun exceeded(kind: String, limit: Long, observed: Long): ReviewEvidenceResult {
     val outcome = checkNotNull(ReviewBudgetEvaluator.exceededOrNull(identity, kind, limit, observed)) {
       "Budget dimension '$kind' reported an excess of $observed against $limit that does not exceed it."
@@ -387,8 +395,13 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
     return terminalResult(outcome, cumulativeBytes, expansionLedger.size)
   }
 
-  private fun batchResult(results: List<ReviewEvidenceResult>, outcome: ReviewBudgetOutcome?) =
-    ReviewEvidenceBatchResult(results, cumulativeBytes, expansionLedger.toList(), outcome)
+  private fun batchResult(
+    results: List<ReviewEvidenceResult>,
+    outcome: ReviewBudgetOutcome?,
+  ): ReviewEvidenceBatchResult {
+    refusedOperationCount += results.count { it.forbidden != null || it.budgetExceeded != null }
+    return ReviewEvidenceBatchResult(results, cumulativeBytes, expansionLedger.toList(), outcome)
+  }
 }
 
 private fun normalizeEvidenceIdentity(path: String): String =

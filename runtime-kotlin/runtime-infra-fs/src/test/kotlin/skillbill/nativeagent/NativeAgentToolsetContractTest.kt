@@ -93,11 +93,11 @@ class NativeAgentToolsetContractTest {
         agent.tools.isNotEmpty(),
         "${agent.name} in $bundle must declare a toolset; an undeclared worker inherits every host tool.",
       )
-      val forbidden = agent.tools.filter { it in setOf("Edit", "Write", "NotebookEdit", "Agent") }
       assertEquals(
-        emptyList(),
-        forbidden,
-        "${agent.name} must hold no mutation or delegation tool, but declares $forbidden",
+        GOVERNED_EVIDENCE_TOOLS,
+        agent.tools,
+        "${agent.name} in $bundle must reach repository content only through the governed evidence " +
+          "operations; any other tool restores ungoverned filesystem or shell access on the review path.",
       )
       assertTrue(
         NativeAgentProvider.Cursor.render(agent).contains("readonly: true"),
@@ -115,13 +115,20 @@ class NativeAgentToolsetContractTest {
     val bundle = root.resolve("skills/bill-code-review-inline/native-agents/agents.yaml")
     val inline = parseNativeAgentSourceFile(bundle).single { it.name == "bill-code-review-inline" }
 
-    assertEquals(listOf("Read", "Grep", "Glob", "Bash"), inline.tools)
+    assertEquals(GOVERNED_EVIDENCE_TOOLS, inline.tools)
     // The body is composed from the internal skill's governed content, so the rubric lives in one
     // place rather than being duplicated into the bundle entry.
     assertEquals(NativeAgentCompositionKind.GovernedContent, inline.composition?.kind)
     val governed = Files.readString(root.resolve("skills/bill-code-review-inline/content.md"))
     assertTrue("internal-for: bill-code-review" in governed, "The inline worker must install as a sidecar")
     assertTrue("never launches one" in governed, "The governed content must forbid per-area fan-out")
+  }
+
+  private companion object {
+    val GOVERNED_EVIDENCE_TOOLS = listOf(
+      "mcp__skill-bill-review-evidence__read_evidence",
+      "mcp__skill-bill-review-evidence__request_expansion",
+    )
   }
 
   private fun repoRoot(): Path {

@@ -8,7 +8,9 @@ description: "Inline review worker for bill-code-review mode:inline. Parent-laun
 
 `bill-code-review-inline` is the single worker for one `mode:inline` review. There are no other workers: it performs the whole review itself at the light depth tier. It is not a per-area specialist and it never launches one.
 
-The parent launches this declared agent rather than a general-purpose worker. The declared toolset is the point: a reviewer needs to read code, search for direct dependencies, and read git history, and nothing else. A general-purpose worker inherits the host's entire tool surface and re-sends every unused tool schema on each of its model turns, paying for mutation and delegation capability that the read-only review contract forbids anyway.
+The parent launches this declared agent rather than a general-purpose worker. The declared toolset is the point: every byte of repository content arrives through the two governed evidence operations, `read_evidence` and `request_expansion`, and nothing else. There is no raw filesystem, search, or shell tool. A general-purpose worker inherits the host's entire tool surface and re-sends every unused tool schema on each of its model turns, paying for mutation and delegation capability that the read-only review contract forbids anyway.
+
+The packet ships locators, not bodies. Call `read_evidence` with the locator's path to pull a body on demand; call `request_expansion` first when a path lies outside the assigned hunks and pass the returned `expansion_id` back on the read. A refused response carries no content: record what it refused and continue, never work around it.
 
 ## Authoritative Inputs
 
@@ -22,7 +24,7 @@ Scope is the delta the parent materialized. Do not substitute `origin/main...HEA
 
 **One pass over the delta. Never re-walk it per area.**
 
-Read the baseline and every rubric the parent named *first*, and merge them into a single combined checklist before you read any changed code. Then traverse the delta exactly once, holding all areas in mind simultaneously — each changed hunk is judged against every applicable area's concerns at the moment you read it.
+Pull the baseline and every rubric the parent named through `read_evidence` *first*, and merge them into a single combined checklist before you read any changed code. Then traverse the delta exactly once, holding all areas in mind simultaneously — each changed hunk is judged against every applicable area's concerns at the moment you read it.
 
 This is explicitly forbidden: reading the delta with architecture in mind, then reading it again for performance, then again for security, and so on. Iterating areas over the same code is not thoroughness — it is the same review repeated N times at N times the cost, and it produces worse findings than one pass with the full checklist loaded, because a defect that only shows up where two areas intersect is invisible to both single-area passes.
 

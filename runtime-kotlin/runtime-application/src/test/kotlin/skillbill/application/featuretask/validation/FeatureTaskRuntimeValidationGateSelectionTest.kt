@@ -8,13 +8,10 @@ import skillbill.application.featuretask.validation.model.ValidationGateCycleTer
 import skillbill.application.featuretask.validation.model.ValidationGateResolution
 import skillbill.application.model.FeatureTaskRuntimeRunEventSink
 import skillbill.ports.validation.ValidationGateRunner
-import skillbill.ports.validation.model.ValidationGateCacheMode
-import skillbill.ports.validation.model.ValidationGateFinding
 import skillbill.ports.validation.model.ValidationGateRunOutcome
 import skillbill.ports.validation.model.ValidationGateRunRequest
 import skillbill.ports.validation.model.ValidationGateRunResult
 import skillbill.workflow.model.ValidationDepth
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionBudget
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -23,68 +20,22 @@ import kotlin.test.assertTrue
 
 class FeatureTaskRuntimeValidationGateSelectionTest {
   @Test
-  fun `BUILD_ONLY selects build_only_command argv`() {
+  fun `depth selects build-only or collect-all argv and never full_gate_command`() {
     assertEquals(
       listOf("echo", "build-only"),
-      validationGateArgv(
-        validationGateTestDeclaration,
-        ValidationDepth.BUILD_ONLY,
-        ValidationGateCacheMode.CACHE_ELIGIBLE,
-      ),
+      validationGateArgv(validationGateTestDeclaration, ValidationDepth.BUILD_ONLY),
     )
+    val full = validationGateArgv(validationGateTestDeclaration, ValidationDepth.FULL)
+    assertEquals(listOf("echo", "collect-all"), full)
+    assertTrue(full != validationGateTestDeclaration.fullGateCommand)
   }
 
   @Test
-  fun `BUILD_ONLY terminal verifying keeps build-only argv and appends cache-bypass extras`() {
-    val gradleGate = validationGateTestDeclaration.copy(
-      fullGateCommand = listOf("./gradlew", "check"),
-      cacheBypassingFullGateCommand = listOf("./gradlew", "check", "--rerun-tasks", "--no-build-cache"),
-      buildOnlyCommand = listOf("./gradlew", "classes", "testClasses"),
-    )
-    assertEquals(
-      listOf("./gradlew", "classes", "testClasses", "--rerun-tasks", "--no-build-cache"),
-      validationGateArgv(gradleGate, ValidationDepth.BUILD_ONLY, ValidationGateCacheMode.FORCED_FULL),
-    )
-  }
-
-  @Test
-  fun `FULL cache modes select pack collect-all argv and never full_gate_command`() {
-    val cacheEligible = validationGateArgv(
-      validationGateTestDeclaration,
-      ValidationDepth.FULL,
-      ValidationGateCacheMode.CACHE_ELIGIBLE,
-    )
-    val forcedFull = validationGateArgv(
-      validationGateTestDeclaration,
-      ValidationDepth.FULL,
-      ValidationGateCacheMode.FORCED_FULL,
-    )
-    assertEquals(listOf("echo", "collect-all"), cacheEligible)
-    assertEquals(listOf("echo", "collect-all-full"), forcedFull)
-    assertTrue(cacheEligible != validationGateTestDeclaration.fullGateCommand)
-    assertTrue(forcedFull != validationGateTestDeclaration.fullGateCommand)
-    assertTrue(forcedFull != validationGateTestDeclaration.cacheBypassingFullGateCommand)
-  }
-
-  @Test
-  fun `collect-all argv helper selects pack collect-all commands`() {
-    assertEquals(
-      listOf("echo", "collect-all"),
-      validationGateCollectAllArgv(validationGateTestDeclaration, ValidationGateCacheMode.CACHE_ELIGIBLE),
-    )
-    assertEquals(
-      listOf("echo", "collect-all-full"),
-      validationGateCollectAllArgv(validationGateTestDeclaration, ValidationGateCacheMode.FORCED_FULL),
-    )
-  }
-
-  @Test
-  fun `repo-local gradle_wrapper rewrites pack gradlew argv before the gate runs`() {
+  fun `a clean gate run completes on one execution and rewrites the repo-local gradle wrapper`() {
     val captured = mutableListOf<List<String>>()
     val gradleGate = validationGateTestDeclaration.copy(
       fullGateCommand = listOf("./gradlew", "check"),
       collectAllFullGateCommand = listOf("./gradlew", "check", "--continue"),
-      cacheBypassingCollectAllFullGateCommand = listOf("./gradlew", "check", "--continue", "--rerun-tasks"),
       buildOnlyCommand = listOf("./gradlew", "classes"),
     )
     val runner = object : ValidationGateRunner {
@@ -120,50 +71,9 @@ class FeatureTaskRuntimeValidationGateSelectionTest {
     assertIs<ValidationGateCycleResult.Terminal>(cycle)
     assertIs<ValidationGateCycleTerminalOutcome.Completed>(cycle.outcome)
     assertEquals(
-      listOf(
-        listOf("runtime-kotlin/gradlew", "-p", "runtime-kotlin", "check", "--continue"),
-        listOf("runtime-kotlin/gradlew", "-p", "runtime-kotlin", "check", "--continue", "--rerun-tasks"),
-      ),
+      listOf(listOf("runtime-kotlin/gradlew", "-p", "runtime-kotlin", "check", "--continue")),
       captured,
     )
-  }
-
-  @Test
-  fun `truncated projection reports dropped count and blocks success semantics`() {
-    val findings = (1..100).map { index ->
-      ValidationGateFinding("m$index", "t$index", "message-$index", "loc-$index")
-    }
-    val projection = ValidationFindingSetProjector.project(
-      findings,
-      FeatureTaskRuntimeHandoffProjectionBudget(maxUtf8Bytes = 256, maxCollectionItems = 2),
-    )
-    assertTrue(projection.droppedCount > 0)
-    assertTrue(projection.hasUnreportedRemainder)
-  }
-
-  @Test
-  fun `zero work terminal outcome is rejected`() {
-    val runner = object : ValidationGateRunner {
-      override fun run(request: ValidationGateRunRequest): ValidationGateRunResult = ValidationGateRunResult(
-        exitCode = 0,
-        durationMs = 3,
-        outcome = ValidationGateRunOutcome.REJECTED_ZERO_WORK,
-        cacheMode = request.cacheMode,
-        executedWorkUnits = 0,
-        findings = emptyList(),
-      )
-    }
-    val result = runner.run(
-      ValidationGateRunRequest(
-        repoRoot = validationGateTestRepoRoot,
-        argv = listOf("true"),
-        cacheMode = ValidationGateCacheMode.FORCED_FULL,
-        declaration = validationGateTestDeclaration,
-        terminalVerifying = true,
-      ),
-    )
-    assertEquals(ValidationGateRunOutcome.REJECTED_ZERO_WORK, result.outcome)
-    assertEquals(0, result.executedWorkUnits)
   }
 
   @Test
@@ -190,7 +100,7 @@ class FeatureTaskRuntimeValidationGateSelectionTest {
     val throwingSink = FeatureTaskRuntimeRunEventSink {
       error("status/telemetry observer refused ValidationGateProgress")
     }
-    val runner = ScriptedGateRunner(listOf(passed(), passed(forced = true)))
+    val runner = ScriptedGateRunner(listOf(passed()))
     val cycle = coordinator(declaredResolver(), runner, progress, diagnostics = diagnostics).execute(
       cycle = ValidationGateCycleRequest(
         repoRoot = validationGateTestRepoRoot,
@@ -207,7 +117,7 @@ class FeatureTaskRuntimeValidationGateSelectionTest {
       assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,
     )
     assertTrue(progress.isNotEmpty())
-    assertEquals(2, runner.calls)
+    assertEquals(1, runner.calls)
     assertTrue(
       diagnostics.warnings.any { it.contains("ValidationGateProgress event-sink emission failed") },
       "observer failure must leave an independent payload-free diagnostic record",

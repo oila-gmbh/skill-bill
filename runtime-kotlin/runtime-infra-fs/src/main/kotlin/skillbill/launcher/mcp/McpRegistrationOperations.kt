@@ -44,6 +44,15 @@ object McpRegistrationOperations {
     }
   }
 
+  fun configFormatFor(agent: InstallAgent): McpConfigFormat = when (agent) {
+    InstallAgent.CODEX -> McpConfigFormat.TOML
+    InstallAgent.CLAUDE,
+    InstallAgent.COPILOT,
+    InstallAgent.JUNIE,
+    InstallAgent.CURSOR,
+    -> McpConfigFormat.JSON
+  }
+
   fun configPathFor(agent: InstallAgent, home: Path): Path = when (agent) {
     InstallAgent.CLAUDE -> home.resolve(".claude.json")
     InstallAgent.COPILOT -> home.resolve(".copilot/mcp-config.json")
@@ -91,4 +100,9 @@ object McpRegistrationOperations {
       profiles = outcomes,
     )
   }
+}
+
+enum class McpConfigFormat {
+  JSON,
+  TOML,
 }

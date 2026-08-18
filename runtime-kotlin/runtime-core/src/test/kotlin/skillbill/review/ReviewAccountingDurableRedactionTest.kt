@@ -10,6 +10,7 @@ import skillbill.application.review.reviewHarness
 import skillbill.application.review.reviewPack
 import skillbill.application.review.toBoundedPayload
 import skillbill.contracts.JsonSupport
+import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
 import skillbill.contracts.review.ReviewContextSchemaValidator
 import skillbill.db.core.DatabaseRuntime
 import skillbill.infrastructure.sqlite.review.loadReviewAccounting
@@ -91,6 +92,39 @@ class ReviewAccountingDurableRedactionTest {
       assertEquals(JsonSupport.mapToJsonString(payload), JsonSupport.mapToJsonString(loaded.boundedPayload))
       assertNoSentinels(storedAccountingJson(connection))
       ReviewContextSchemaValidator.validate(loaded.boundedPayload, "durable-review-accounting")
+    }
+  }
+
+  @Test fun `a pre-bump accounting record quarantines and regenerates in band`() {
+    withConnection { connection ->
+      val summary = recordedReview().second
+      val current = summary.toBoundedPayload()
+      val legacy = LinkedHashMap(current).apply { this["contract_version"] = "2.0" }
+      connection.prepareStatement(
+        """
+        INSERT INTO review_accounting (review_id, packet_digest, bounded_payload_json, updated_at)
+        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        """.trimIndent(),
+      ).use { statement ->
+        statement.setString(1, REVIEW_RUN_ID)
+        statement.setString(2, summary.packetDigest)
+        statement.setString(3, JsonSupport.mapToJsonString(legacy))
+        statement.executeUpdate()
+      }
+
+      assertNull(loadReviewAccounting(connection, REVIEW_RUN_ID))
+      val quarantined = skillbill.db.telemetry.TelemetryOutboxStore(connection).listPending(null)
+      assertTrue(
+        quarantined.any { record ->
+          record.eventName == skillbill.review.model.REVIEW_STAGE_DEGRADATION_EVENT_NAME &&
+            record.payloadJson.contains("accounting_contract_quarantined")
+        },
+      )
+
+      upsertReviewAccounting(connection, ReviewAccountingRecord(REVIEW_RUN_ID, summary.packetDigest, current))
+      val regenerated = assertNotNull(loadReviewAccounting(connection, REVIEW_RUN_ID))
+      assertEquals(REVIEW_CONTEXT_CONTRACT_VERSION, regenerated.boundedPayload["contract_version"])
+      assertEquals("2.1", regenerated.boundedPayload["contract_version"])
     }
   }
 

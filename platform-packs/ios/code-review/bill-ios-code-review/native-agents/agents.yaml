@@ -3,40 +3,40 @@ agents:
   - name: bill-ios-code-review-api-contracts
     description: "iOS api contracts specialist — REST/Codable decoding and Apollo GraphQL schema/cache compatibility."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-ios-code-review-architecture
     description: "iOS architecture specialist — Swift module boundaries, dependency injection, and SPM package ownership."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-ios-code-review-performance
     description: "iOS performance specialist — SwiftUI recomputation, ImageIO downsampling, and import-loop memory pressure."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-ios-code-review-persistence
     description: "iOS persistence specialist — Core Data and SwiftData context/migration safety plus GRDB transaction consistency."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-ios-code-review-platform-correctness
     description: "iOS platform correctness specialist — Swift actor isolation, Sendable crossings, task cancellation, and iOS lifecycle correctness."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-ios-code-review-reliability
     description: "iOS reliability specialist — BGTaskScheduler, background URLSession relaunch recovery, expiration, and interrupted sync."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-ios-code-review-security
     description: "iOS security specialist — Keychain accessibility, ATS exceptions, privacy-safe Logger output, and pasteboard expiry."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-ios-code-review-testing
     description: "iOS testing specialist — XCTest, snapshot intent, reducer behavior, and SQL regression coverage."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-ios-code-review-ui
     description: "iOS ui specialist — SwiftUI state ownership, navigation, rendering identity, and deployment-version fallbacks."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-ios-code-review-ux-accessibility
     description: "iOS ux accessibility specialist — VoiceOver semantics, Dynamic Type, localization completeness, and task completion."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]

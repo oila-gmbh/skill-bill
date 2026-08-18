@@ -519,8 +519,6 @@ runtime-ports
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRunRecord.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress.fromArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FullValidateRepairPlanItem.toArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FullValidateSubstantiationReceipt.toArtifactMap`
     - `skillbill.application.telemetry.lifecycleOkPayload`
     - `skillbill.application.telemetry.lifecycleSkippedPayload`
     - `skillbill.application.telemetry.lifecycleErrorPayload`
@@ -562,6 +560,10 @@ runtime-ports
     - `skillbill.workflow.model.WorkflowUpdateInput.artifactsPatch`
     - `skillbill.ports.validation.model.RepoValidationReport.toPayload`
     - `skillbill.ports.validation.model.ReleaseRefMetadata.toPayload`
+    - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.TOOL_SPECS`
+    - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.readRequest`
+    - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.expansionRequest`
+    - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.payload`
 
     <!-- open-boundary-allowlist:end -->
 
@@ -1180,6 +1182,10 @@ Categories:
 
 ### open_extension (@OpenBoundaryMap)
 
+- `skillbill.ports.review.model.GovernedReviewEvidenceCodec.TOOL_SPECS`
+- `skillbill.ports.review.model.GovernedReviewEvidenceCodec.readRequest`
+- `skillbill.ports.review.model.GovernedReviewEvidenceCodec.expansionRequest`
+- `skillbill.ports.review.model.GovernedReviewEvidenceCodec.payload`
 - `skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore.progressEvents`
 - `skillbill.workflow.GoalPlanningPreparationEnvelopeValidator.validate`
 - `skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope`
@@ -1325,8 +1331,6 @@ Categories:
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRunRecord.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress.fromArtifactMap`
-- `skillbill.workflow.taskruntime.model.FullValidateRepairPlanItem.toArtifactMap`
-- `skillbill.workflow.taskruntime.model.FullValidateSubstantiationReceipt.toArtifactMap`
 - `skillbill.application.model.WorkflowUpdateRequest.stepUpdates`
 - `skillbill.application.model.WorkflowUpdateRequest.artifactsPatch`
 - `skillbill.application.model.DecompositionManifestWriteRequest.planningResult`

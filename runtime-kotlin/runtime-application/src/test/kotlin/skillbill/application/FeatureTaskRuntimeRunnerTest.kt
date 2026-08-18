@@ -5412,7 +5412,6 @@ private fun runtimePhaseGates(
       validationGateResolver,
       validationGateRunner,
       skillbill.application.featuretask.validation.FeatureTaskRuntimeValidationGateProgressStore(recorder),
-      skillbill.application.featuretask.validation.FeatureTaskRuntimeSuppressionDeltaService(gitOperations),
       defaultRepoLocalConfigPort(),
     ),
     sharedEvidenceResolver,

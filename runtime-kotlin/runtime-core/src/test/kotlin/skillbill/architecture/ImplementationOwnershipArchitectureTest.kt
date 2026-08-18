@@ -643,6 +643,7 @@ class ImplementationOwnershipArchitectureTest {
       "skillbill.install.model.InstallPlanWireValidator",
       "skillbill.launcher.agentrun.FileSystemAgentRunLauncher",
       "skillbill.launcher.agentrun.PathExecutableLookup",
+      "skillbill.launcher.review.UnixSocketGovernedReviewEvidenceEndpointBinder",
       "skillbill.workflow.DecompositionManifestValidator",
       "skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator",
       "skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator",

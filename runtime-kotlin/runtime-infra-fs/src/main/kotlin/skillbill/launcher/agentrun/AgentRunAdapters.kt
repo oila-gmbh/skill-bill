@@ -152,6 +152,7 @@ class ProcessAgentRunAdapter(
     conversationIsolation = command.conversationIsolation,
     reviewEvidenceBroker = request.reviewEvidenceBroker,
     nativeReviewOperations = request.nativeReviewOperations,
+    reviewEvidenceEndpoint = request.reviewEvidenceEndpoint,
     spawnAuthorization = request.spawnAuthorization,
   )
 
@@ -219,7 +220,7 @@ interface AgentRunOutputDecoder {
   }
 }
 
-private val structuredOutputMapper: ObjectMapper by lazy { ObjectMapper() }
+internal val structuredOutputMapper: ObjectMapper by lazy { ObjectMapper() }
 
 private fun decodeClaudeJson(stdout: String): DecodedAgentRunOutput = runCatching {
   val root = structuredOutputMapper.readTree(stdout.trim())
@@ -284,115 +285,9 @@ private fun decodeCodexJsonl(stdout: String): DecodedAgentRunOutput {
   )
 }
 
-@Suppress("LongMethod", "CyclomaticComplexMethod", "MagicNumber")
-private fun decodeCursorStreamJson(stdout: String): DecodedAgentRunOutput {
-  if (stdout.isBlank()) {
-    return DecodedAgentRunOutput("")
-  }
+internal const val RAW_OUTPUT_PREVIEW_MAX_CHARS = 2_000
 
-  var terminalText: String? = null
-  var longestAssistantText: String? = null
-  var assistantEventCount = 0
-  var usage: com.fasterxml.jackson.databind.JsonNode? = null
-  var decodedEnvelope = false
-  var errorEvent = false
-  var errorType: String? = null
-  var errorMessage: String? = null
-  var totalByteCount = 0
-  val maxTotalBytes = 10_000_000 // 10MB limit for Cursor stream processing
-  val cursorStreamPreviewLength = 100 // Characters to show in error messages
-  val lines = stdout.lineSequence().toList()
-
-  if (lines.isEmpty()) {
-    return DecodedAgentRunOutput("")
-  }
-
-  lines.asSequence().takeWhile { line ->
-    totalByteCount += line.toByteArray().size
-    totalByteCount <= maxTotalBytes
-  }.filter(String::isNotBlank).forEach { line ->
-    val event =
-      runCatching { structuredOutputMapper.readTree(line) }.getOrElse {
-        throw skillbill.infrastructure.fs.CursorReviewStreamMalformedError(
-          "Malformed Cursor stream JSONL line: ${line.take(cursorStreamPreviewLength)}",
-          it,
-        )
-      }
-    decodedEnvelope = true
-    when (event.path("type").takeIf { it.isTextual }?.asText()) {
-      "error" -> {
-        errorEvent = true
-        errorType = event.path("error_type").takeIf { it.isTextual }?.asText()
-        errorMessage = event.path("message").takeIf { it.isTextual }?.asText()
-        // Error is stored and thrown later after parsing completes
-      }
-      "assistant" -> {
-        assistantEventCount += 1
-        cursorAssistantText(event)?.let { text ->
-          if (text.length > (longestAssistantText?.length ?: 0)) longestAssistantText = text
-        }
-      }
-      "result" -> {
-        terminalText = event.path("result").takeIf { it.isTextual }?.asText()
-        event.path("usage").takeUnless { it.isMissingNode || it.isNull }?.let { usage = it }
-      }
-    }
-  }
-
-  // Throw cursor-specific errors after parsing is complete (reduces throw count)
-  if (errorEvent) {
-    throw when (errorType) {
-      "forbidden_operation" -> skillbill.infrastructure.fs.CursorReviewStreamForbiddenOperationError(
-        errorMessage ?: "Cursor reported a forbidden operation",
-      )
-      "provider_failure" -> skillbill.infrastructure.fs.CursorReviewStreamProviderFailureError(
-        errorMessage ?: "Cursor reported a provider failure",
-      )
-      "termination" -> skillbill.infrastructure.fs.CursorReviewStreamTerminationError(
-        errorMessage ?: "Cursor process terminated prematurely",
-      )
-      else -> skillbill.infrastructure.fs.CursorReviewStreamError(
-        errorMessage ?: "Cursor reported an unknown error",
-      )
-    }
-  }
-
-  // A terminal `result` of "" is a real Cursor outcome: the CLI can exit 0 having charged input
-  // tokens and produced no answer at all. Fall back to the longest assistant turn so a blank
-  // terminal event does not discard text the provider actually emitted, and never promote raw
-  // transport bytes to phase output — the phase schema gate reads several JSON envelopes as
-  // conflicting candidates rather than as an empty turn.
-  val harvested = terminalText?.takeIf(String::isNotBlank) ?: longestAssistantText.orEmpty()
-  return DecodedAgentRunOutput(
-    text = harvested,
-    inputTokens = usage.cursorTokens("inputTokens", "input_tokens"),
-    cachedInputTokens = usage.cursorTokens("cachedInputTokens", "cached_input_tokens"),
-    outputTokens = usage.cursorTokens("outputTokens", "output_tokens"),
-    reasoningTokens = usage.cursorTokens("reasoningTokens", "reasoning_tokens"),
-    totalTokens = usage.cursorTokens("totalTokens", "total_tokens"),
-    assistantEventCount = assistantEventCount.takeIf { decodedEnvelope },
-    rawOutputPreview = stdout.take(RAW_OUTPUT_PREVIEW_MAX_CHARS).takeIf { harvested.isBlank() },
-  )
-}
-
-/** Cursor emits camelCase usage keys; older captures and fixtures use snake_case. Accept both. */
-private fun com.fasterxml.jackson.databind.JsonNode?.cursorTokens(vararg fields: String): Long? =
-  this?.let { node -> fields.firstNotNullOfOrNull { field -> node.longOrNull(field) } }
-
-private fun cursorAssistantText(event: com.fasterxml.jackson.databind.JsonNode): String? {
-  val content = event.path("message").path("content")
-  if (content.isArray) {
-    val joined = content.mapNotNull { part -> part.path("text").takeIf { it.isTextual }?.asText() }
-      .joinToString("")
-    return joined.takeIf(String::isNotBlank)
-  }
-  return event.path("message").path("text").takeIf { it.isTextual }?.asText()?.takeIf(String::isNotBlank)
-    ?: event.path("text").takeIf { it.isTextual }?.asText()?.takeIf(String::isNotBlank)
-}
-
-private const val RAW_OUTPUT_PREVIEW_MAX_CHARS = 2_000
-
-private fun com.fasterxml.jackson.databind.JsonNode.longOrNull(field: String): Long? =
+internal fun com.fasterxml.jackson.databind.JsonNode.longOrNull(field: String): Long? =
   path(field).takeIf { it.isIntegralNumber && it.canConvertToLong() }?.longValue()
 
 fun headlessAgentRunAdapters(

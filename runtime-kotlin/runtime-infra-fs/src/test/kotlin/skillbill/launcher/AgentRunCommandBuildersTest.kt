@@ -1,21 +1,28 @@
 package skillbill.launcher
 
 import skillbill.config.model.PhaseCompactionDirective
+import skillbill.error.GovernedReviewLaunchCapabilityError
 import skillbill.infrastructure.fs.CursorReviewStreamError
 import skillbill.infrastructure.fs.CursorReviewStreamMalformedError
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.MODEL_DIRECTIVE_CAPABLE_AGENTS
+import skillbill.launcher.agentrun.AgentRunCommand
+import skillbill.launcher.agentrun.AgentRunCommandBuilder
 import skillbill.launcher.agentrun.AgentRunOutputDecoder
 import skillbill.launcher.agentrun.ClaudeAgentRunCommandBuilder
 import skillbill.launcher.agentrun.CodexAgentRunCommandBuilder
 import skillbill.launcher.agentrun.CursorAgentRunCommandBuilder
+import skillbill.launcher.agentrun.GovernedReviewLaunchCapability
 import skillbill.launcher.agentrun.JunieAgentRunCommandBuilder
+import skillbill.launcher.mcp.GovernedReviewMcpConfigWriter
+import skillbill.launcher.mcp.McpConfigFormat
 import skillbill.launcher.process.AgentRunIdlePolicy
 import skillbill.ports.agentrun.model.ConversationIsolation
 import skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.review.BrokerBackedNativeReviewOperationProtocol
 import skillbill.ports.review.ReviewEvidenceBroker
+import skillbill.ports.review.model.GovernedReviewEvidenceCodec
 import skillbill.ports.review.model.ReviewEvidenceBatchRequest
 import skillbill.ports.review.model.ReviewToolCall
 import skillbill.review.context.model.ProviderTokenUsage
@@ -380,35 +387,22 @@ class AgentRunCommandBuildersTest {
   }
 
   @Test
-  fun `builders materialize governed specialist isolation without provider branching`() {
+  fun `a governed claude launch is a fresh isolated process naming its worker`() {
     val isolated = request().copy(
       conversationIsolation = ConversationIsolation.NONE,
       reviewEvidenceBroker = NoOpReviewEvidenceBroker,
       nativeReviewOperations = BrokerBackedNativeReviewOperationProtocol(NoOpReviewEvidenceBroker),
+      reviewEvidenceEndpoint = StubReviewEvidenceEndpoint,
       nativeReviewWorkerName = "bill-kotlin-code-review-architecture",
     )
+    val builder = ClaudeAgentRunCommandBuilder()
+    val command = builder.build(isolated)
 
-    val builders = listOf(
-      ClaudeAgentRunCommandBuilder() to ReviewLaunchIsolationStrategy.FRESH_PROCESS,
-      CodexAgentRunCommandBuilder() to ReviewLaunchIsolationStrategy.CODEX_NATIVE_FORK_TURNS_NONE,
-      JunieAgentRunCommandBuilder() to ReviewLaunchIsolationStrategy.FRESH_PROCESS,
-    )
-    builders.forEach { (builder, expectedIsolation) ->
-      assertEquals(expectedIsolation, builder.reviewIsolation)
-      assertEquals(ConversationIsolation.NONE, builder.build(isolated).conversationIsolation)
-    }
-    val codexCommand = CodexAgentRunCommandBuilder().build(isolated).command
-    val claudeCommand = ClaudeAgentRunCommandBuilder().build(isolated).command
-    assertTrue(codexCommand.contains("--skip-git-repo-check"))
-    assertTrue(codexCommand.contains("--ignore-user-config"))
-    assertTrue(codexCommand.contains("read-only"))
-    assertTrue(codexCommand.contains("fork_turns=none"))
-    assertTrue(codexCommand.contains("tools.web_search=false"))
-    assertTrue(codexCommand.contains("tools.shell=false"))
-    assertFalse(codexCommand.any { it.startsWith("agent=") })
+    assertEquals(ReviewLaunchIsolationStrategy.FRESH_PROCESS, builder.reviewIsolation)
+    assertEquals(ConversationIsolation.NONE, command.conversationIsolation)
     assertEquals(
       "bill-kotlin-code-review-architecture",
-      claudeCommand[claudeCommand.indexOf("--agent") + 1],
+      command.command[command.command.indexOf("--agent") + 1],
     )
     assertFalse(
       CodexAgentRunCommandBuilder().build(request()).command.contains("--skip-git-repo-check"),
@@ -416,22 +410,61 @@ class AgentRunCommandBuildersTest {
   }
 
   @Test
-  fun `claude review grants read tools inline and delegation tools only when fanning out`() {
+  fun `a provider missing a governed launch capability fails with a typed error and no command`() {
+    val governed = governedReviewRequest()
+    val capable = GovernedReviewLaunchCapability(
+      governedOnlyTooling = true,
+      mcpIsolation = true,
+      configFormat = McpConfigFormat.TOML,
+    )
+    listOf(
+      capable.copy(governedOnlyTooling = false) to "governed-only tooling",
+      capable.copy(mcpIsolation = false) to "MCP isolation",
+    ).forEach { (capability, missing) ->
+      val builder = CodexAgentRunCommandBuilder(governedReviewLaunchCapability = capability)
+      val error = assertFailsWith<GovernedReviewLaunchCapabilityError> { builder.build(governed) }
+      assertEquals("codex", error.provider)
+      assertEquals(missing, error.capability)
+    }
+  }
+
+  @Test
+  fun `governed review launches carry isolated mcp config and governed-only tools`() {
+    val governed = governedReviewRequest(nativeReviewWorkerName = "bill-code-review-inline")
+    listOf(
+      ClaudeAgentRunCommandBuilder(),
+      CodexAgentRunCommandBuilder(),
+      CursorAgentRunCommandBuilder(),
+      JunieAgentRunCommandBuilder(),
+    ).forEach { builder ->
+      assertGovernedReviewLaunch(builder, governed)
+    }
+  }
+
+  @Test
+  fun `governed claude review names only governed operations and no raw filesystem tool`() {
     val isolated = request().copy(
       conversationIsolation = ConversationIsolation.NONE,
       reviewEvidenceBroker = NoOpReviewEvidenceBroker,
       nativeReviewOperations = BrokerBackedNativeReviewOperationProtocol(NoOpReviewEvidenceBroker),
+      reviewEvidenceEndpoint = StubReviewEvidenceEndpoint,
     )
-    val inline = ClaudeAgentRunCommandBuilder().build(isolated).command
-    val inlineTools = inline[inline.indexOf("--tools") + 1]
-    assertEquals("Read,Grep,Glob,Bash", inlineTools)
+    val governedOperations = skillbill.ports.review.model.GovernedReviewEvidenceCodec.OPERATIONS
 
-    val fanOut = ClaudeAgentRunCommandBuilder().build(isolated.copy(reviewFanOut = true)).command
-    val fanOutTools = fanOut[fanOut.indexOf("--tools") + 1]
-    assertTrue("Agent" in fanOutTools)
-    assertTrue("Task" in fanOutTools)
-    assertTrue("Read" in fanOutTools)
-    assertTrue("Grep" in fanOutTools)
+    listOf(false to emptyList<String>(), true to listOf("Agent", "Task")).forEach { (fanOut, delegation) ->
+      val command = ClaudeAgentRunCommandBuilder().build(isolated.copy(reviewFanOut = fanOut)).command
+      assertEquals(
+        StubReviewEvidenceEndpoint.descriptor.mcpConfigPath.toString(),
+        command[command.indexOf("--mcp-config") + 1],
+      )
+      assertTrue(command.contains("--strict-mcp-config"))
+      val tools = command[command.indexOf("--tools") + 1].split(",")
+      assertEquals(
+        delegation + governedOperations.map { "mcp__skill-bill-review-evidence__$it" },
+        tools,
+      )
+      assertTrue(tools.none { it in setOf("Read", "Grep", "Glob", "Bash") })
+    }
   }
 
   @Test
@@ -440,6 +473,7 @@ class AgentRunCommandBuildersTest {
       conversationIsolation = ConversationIsolation.NONE,
       reviewEvidenceBroker = NoOpReviewEvidenceBroker,
       nativeReviewOperations = BrokerBackedNativeReviewOperationProtocol(NoOpReviewEvidenceBroker),
+      reviewEvidenceEndpoint = StubReviewEvidenceEndpoint,
       nativeReviewWorkerName = "bill-kotlin-code-review-architecture",
     )
     val command = ClaudeAgentRunCommandBuilder().build(isolated)
@@ -501,6 +535,81 @@ class AgentRunCommandBuildersTest {
     assertEquals(AgentRunIdlePolicy.DB_PROGRESS_ONLY, JunieAgentRunCommandBuilder().build(request()).idlePolicy)
   }
 
+  private fun assertGovernedReviewLaunch(builder: AgentRunCommandBuilder, governed: SkillRunRequest) {
+    if (!builder.governedReviewLaunchCapability.governedOnlyTooling ||
+      !builder.governedReviewLaunchCapability.mcpIsolation
+    ) {
+      val error = assertFailsWith<GovernedReviewLaunchCapabilityError> { builder.build(governed) }
+      assertEquals(builder.agent.id, error.provider)
+      assertTrue(
+        error.capability == "governed-only tooling" || error.capability == "MCP isolation",
+        "Junie must name the missing capability, got '${error.capability}'",
+      )
+      return
+    }
+    val built = builder.build(governed)
+    val rawFilesystemTools = setOf("Read", "Grep", "Glob", "Bash")
+    assertTrue(
+      built.command.none { arg -> arg.split(',').any { it in rawFilesystemTools } },
+      built.command.toString(),
+    )
+    when (builder.agent) {
+      InstallAgent.CLAUDE -> assertClaudeGovernedLaunch(built.command)
+      InstallAgent.CODEX -> assertCodexGovernedLaunch(built.command)
+      InstallAgent.CURSOR -> assertCursorGovernedLaunch(built, governed, rawFilesystemTools)
+      else -> error("unexpected provider ${builder.agent.id}")
+    }
+  }
+
+  private fun assertClaudeGovernedLaunch(command: List<String>) {
+    val mcpJson = StubReviewEvidenceEndpoint.descriptor.mcpConfigPath.toString()
+    assertEquals(mcpJson, command[command.indexOf("--mcp-config") + 1])
+    assertTrue(command.contains("--strict-mcp-config"))
+    val tools = command[command.indexOf("--tools") + 1].split(",")
+    assertEquals(GovernedReviewEvidenceCodec.OPERATIONS.map { "mcp__skill-bill-review-evidence__$it" }, tools)
+  }
+
+  private fun assertCodexGovernedLaunch(command: List<String>) {
+    val mcpTomlServer = "mcp_servers.${GovernedReviewEvidenceCodec.SERVER_NAME}"
+    val governedOperations = GovernedReviewEvidenceCodec.OPERATIONS
+    assertTrue(command.contains("--ignore-user-config"))
+    val configValues = command.filterIndexed { index, _ -> index > 0 && command[index - 1] == "--config" }
+    assertTrue(configValues.any { it.startsWith(mcpTomlServer) && it.contains("enabled_tools=") })
+    assertTrue(
+      configValues.any { value ->
+        governedOperations.all { operation -> value.contains(operation) } && value.contains("enabled_tools=")
+      },
+    )
+  }
+
+  private fun assertCursorGovernedLaunch(
+    built: AgentRunCommand,
+    governed: SkillRunRequest,
+    rawFilesystemTools: Set<String>,
+  ) {
+    val command = built.command
+    val workspace = StubReviewEvidenceEndpoint.descriptor.mcpConfigPath.parent
+    assertEquals(workspace.toString(), command[command.indexOf("--workspace") + 1])
+    assertEquals(workspace, built.workingDirectory)
+    assertNull(built.stdinText)
+    val prompt = command.last()
+    assertEquals(requireNotNull(governed.promptOverride), prompt)
+    assertFalse(prompt.startsWith("/"))
+    assertTrue(command.none { it.startsWith("/bill-code-review-inline") })
+    assertTrue(command.contains("--approve-mcps"))
+    assertFalse(command.contains("--force"))
+    val allowList = java.nio.file.Files.readString(
+      GovernedReviewMcpConfigWriter.cursorCliConfigPath(StubReviewEvidenceEndpoint.descriptor.mcpConfigPath),
+    ).substringBefore("\"deny\"")
+    assertTrue(
+      GovernedReviewEvidenceCodec.OPERATIONS.all { operation ->
+        allowList.contains("Mcp(skill-bill-review-evidence, $operation)")
+      },
+      allowList,
+    )
+    assertTrue(rawFilesystemTools.none { tool -> allowList.contains(tool) }, allowList)
+  }
+
   private fun request(
     model: String? = null,
     effort: String? = null,
@@ -515,6 +624,25 @@ class AgentRunCommandBuildersTest {
     effortOverride = effort,
     compaction = compaction,
   )
+
+  private fun governedReviewRequest(nativeReviewWorkerName: String? = null): SkillRunRequest = request().copy(
+    conversationIsolation = ConversationIsolation.NONE,
+    reviewEvidenceBroker = NoOpReviewEvidenceBroker,
+    nativeReviewOperations = BrokerBackedNativeReviewOperationProtocol(NoOpReviewEvidenceBroker),
+    reviewEvidenceEndpoint = StubReviewEvidenceEndpoint,
+    nativeReviewWorkerName = nativeReviewWorkerName,
+  )
+
+  private object StubReviewEvidenceEndpoint : skillbill.ports.review.GovernedReviewEvidenceEndpointHandle {
+    override val descriptor = skillbill.ports.review.model.GovernedReviewEvidenceEndpointDescriptor(
+      lane = "architecture",
+      socketPath = java.nio.file.Path.of("/tmp/skill-bill-review/evidence.sock"),
+      mcpConfigPath = java.nio.file.Path.of("/tmp/skill-bill-review/mcp.json"),
+      token = "launch-token",
+    )
+
+    override fun close() = Unit
+  }
 
   private object NoOpReviewEvidenceBroker : ReviewEvidenceBroker {
     override fun readBatch(request: skillbill.ports.review.model.ReviewEvidenceBatchRequest) = error("unused")
@@ -787,27 +915,6 @@ $hugeLine
   }
 
   @Test
-  fun `cursor isolated review forwards provider passthrough keys`() {
-    val builder = CursorAgentRunCommandBuilder()
-    val isolated = request().copy(
-      conversationIsolation = ConversationIsolation.NONE,
-      reviewEvidenceBroker = NoOpReviewEvidenceBroker,
-      nativeReviewOperations = BrokerBackedNativeReviewOperationProtocol(NoOpReviewEvidenceBroker),
-      nativeReviewWorkerName = "bill-kotlin-code-review-architecture",
-    )
-    val command = builder.build(isolated)
-
-    assertTrue(
-      command.environmentPassthroughKeys.contains("CURSOR_API_KEY"),
-      "Isolated cursor review worker must forward CURSOR_API_KEY",
-    )
-    assertTrue(
-      command.environmentPassthroughKeys.contains("HTTP_PROXY"),
-      "Isolated cursor review worker must forward proxy keys",
-    )
-  }
-
-  @Test
   fun `cursor builder sets empty passthrough keys when review evidence broker is absent`() {
     val builder = CursorAgentRunCommandBuilder()
     val command = builder.build(request())
@@ -816,19 +923,5 @@ $hugeLine
       command.environmentPassthroughKeys.isEmpty(),
       "Non-isolated cursor run must not passthrough provider keys",
     )
-  }
-
-  @Test
-  fun `governed specialist ConversationIsolation request follows requireProcessLaunch contract for cursor`() {
-    val builder = CursorAgentRunCommandBuilder()
-    val isolated = request().copy(
-      conversationIsolation = ConversationIsolation.NONE,
-      reviewEvidenceBroker = NoOpReviewEvidenceBroker,
-      nativeReviewOperations = BrokerBackedNativeReviewOperationProtocol(NoOpReviewEvidenceBroker),
-      nativeReviewWorkerName = "bill-kotlin-code-review-architecture",
-    )
-
-    assertEquals(ReviewLaunchIsolationStrategy.FRESH_PROCESS, builder.reviewIsolation)
-    assertEquals(ConversationIsolation.NONE, builder.build(isolated).conversationIsolation)
   }
 }

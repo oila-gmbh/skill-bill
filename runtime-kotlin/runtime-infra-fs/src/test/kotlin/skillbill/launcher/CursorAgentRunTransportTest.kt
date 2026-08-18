@@ -49,6 +49,58 @@ class CursorAgentRunTransportTest {
     assertEquals(14L, decoded.outputTokens)
   }
 
+  @Test
+  fun `buffered result with progress glued onto NO_FINDINGS harvests the register`() {
+    val glued =
+      "I'll fetch the bound evidence then score the parse return type is the core change.reachaNO_FINDINGS"
+    val decoded = AgentRunOutputDecoder.CURSOR_STREAM_JSON.decode(
+      """{"type":"result","subtype":"success","is_error":false,"result":"$glued",""" +
+        """"usage":{"inputTokens":134323,"outputTokens":21191}}""",
+    )
+
+    assertEquals("NO_FINDINGS", decoded.text)
+  }
+
+  @Test
+  fun `last assistant register wins over concatenated terminal result`() {
+    val jsonl =
+      """
+      {"type":"assistant","message":{"content":[{"type":"text","text":"I'll fetch the bound evidence."}]}}
+      {"type":"assistant","message":{"content":[{"type":"text","text":"NO_FINDINGS"}]}}
+      {"type":"result","result":"I'll fetch the bound evidence.NO_FINDINGS","usage":{"inputTokens":10,"outputTokens":4}}
+      """.trimIndent()
+
+    assertEquals("NO_FINDINGS", AgentRunOutputDecoder.CURSOR_STREAM_JSON.decode(jsonl).text)
+  }
+
+  @Test
+  fun `glued finding lines are harvested and trailing NO_FINDINGS is dropped`() {
+    val glued = "progress[F-001] Major | High | path.kt:1 | bugNO_FINDINGS"
+    val decoded = AgentRunOutputDecoder.CURSOR_STREAM_JSON.decode(
+      """{"type":"result","result":"$glued"}""",
+    )
+
+    assertEquals("[F-001] Major | High | path.kt:1 | bug", decoded.text)
+  }
+
+  @Test
+  fun `progress sentences glued onto a finding harvest the finding line`() {
+    val glued =
+      "I'll follow the bill-code-review skill and fetch the assigned evidence." +
+        "MCP read_evidence is still blocked. I'll read the assigned files from there." +
+        "[F-001] Major | High | specialist=bill-kotlin-code-review-architecture | " +
+        "path=\\\"runtime-kotlin/Foo.kt\\\" | line=12 | endpoint close leaks on spawn failure"
+    val decoded = AgentRunOutputDecoder.CURSOR_STREAM_JSON.decode(
+      """{"type":"result","subtype":"success","is_error":false,"result":"$glued"}""",
+    )
+
+    assertEquals(
+      "[F-001] Major | High | specialist=bill-kotlin-code-review-architecture | " +
+        "path=\"runtime-kotlin/Foo.kt\" | line=12 | endpoint close leaks on spawn failure",
+      decoded.text,
+    )
+  }
+
   private fun request(): SkillRunRequest = SkillRunRequest(
     issueKey = "SKILL-113",
     repoRoot = Path.of("/tmp/skillbill-agent-run"),

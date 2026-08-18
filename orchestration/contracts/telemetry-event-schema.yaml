@@ -1518,6 +1518,11 @@ $defs:
           - adjudication_skipped
           - worker_launch_or_return_failed
           - stage_boundary_unreached
+          - evidence_boundary_unbound_broker
+          - evidence_boundary_unexercised
+          - evidence_boundary_operation_refused
+          - register_candidates_rejected
+          - accounting_contract_quarantined
 
   skillbillReviewFinishedLegacyRegeneratedEvent:
     type: object

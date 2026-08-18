@@ -1,3 +1,52 @@
+## [2026-08-18] SKILL-195 subtask 5 — Provider parity, contract bump, and stopgap removal
+Areas: orchestration/contracts, runtime-contracts/review, runtime-contracts/error, runtime-infra-fs/launcher/{agentrun,mcp,review}, runtime-infra-sqlite/review, runtime-domain/review/model
+- Codex and Cursor governed review launches now take the same governed-only tool list and per-launch MCP isolation as Claude: Codex via `--ignore-user-config` plus TOML `--config` overrides; Cursor via per-launch `.cursor/mcp.json` and `cli.json` allow/deny plus retained `--workspace`.
+- `GovernedReviewLaunchCapability` is the launch gate: missing governed-only tooling or MCP isolation throws `GovernedReviewLaunchCapabilityError` naming provider and capability; Junie is incapable today and fails there instead of launching ungoverned. reusable
+- `REVIEW_INLINE_TOOLS` and raw `Read`/`Grep`/`Glob`/`Bash` grants are gone from every governed launch path.
+- Review-context contract `2.0` → `2.1` (schema first, then `REVIEW_CONTEXT_CONTRACT_VERSION` plus parity test) because accounting `evidence_bytes`/`expansions`/`tool_calls` are now boundary-fed. A pre-bump row quarantines with `accounting_contract_quarantined` and regenerates in-band.
+- Limitation: Junie remains a loud-fail provider, not a verified governed-MCP peer. Claude and Codex stay the e2e-verified tiers; Cursor is code parity.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
+## [2026-08-18] SKILL-195 subtask 4 — Governed MCP evidence transport
+Areas: runtime-ports/review, runtime-mcp/review, runtime-infra-fs/{launcher/review,launcher/mcp,launcher/process,launcher/agentrun}, runtime-application/review, runtime-core/di, skills/bill-code-review-inline, platform-packs/*/code-review native-agents
+- Per-launch Unix-domain-socket endpoint binds `NativeReviewOperationProtocol` before the worker starts and tears down on completion, timeout, or crash; loopback plus a per-launch token; the endpoint does not outlive its launch.
+- MCP adapter is codec and forward only: `read_evidence` and `request_expansion` map onto existing broker models. Reachability, byte budget, expansion ledger, and lane termination stay in the protocol — `forbidden`/`budgetExceeded` return as tool responses and do not execute. reusable
+- Claude governed launch writes a per-launch `--mcp-config` and `--strict-mcp-config`; `--tools` names only the two MCP operations (fan-out keeps `Agent`,`Task`). Native-agent sources drop `Read`/`Grep`/`Glob`/`Bash`. Locators stay in the packet; bodies pull on demand.
+- Limitation: Codex, Cursor, and Junie parity is subtask 5. No `agent/` under `platform-packs/`.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
+## [2026-08-18] SKILL-195 subtask 3 — Degradation records for the review evidence boundary
+Areas: runtime-domain/review, runtime-domain/review/model, runtime-application/review, runtime-infra-fs, runtime-ports/review/model, runtime-mcp, orchestration/contracts
+- `ReviewEvidenceBoundaryAccounting` (governed launches, authorized reads, evidence bytes, expansions, rejected candidates, optional unbound seam) is the single per-lane-run counter carrier feeding degradation selection. reusable
+- `ReviewStageDegradationSelection.select` takes an optional `evidenceBoundaries` list and emits three new reasons: `evidence_boundary_unbound_broker`, `evidence_boundary_unexercised` (governed launch with zero authorized reads), `register_candidates_rejected` (count from subtask 1's parse rejections).
+- Unbound suppresses unexercised — an unbound broker reports one cause, not two. A healthy governed lane that read and admitted a register emits none of the three, so the records stay signal rather than always-on noise.
+- Records carry seam identity, expected/actual counters, and typed enum `wireValue`s only; no repository content and no free-text reasons. Brokers (`FanOutReviewEvidenceBroker`, `FileSystemReviewEvidenceBroker`) accumulate counts, they do not classify.
+- Telemetry event schema gained the reasons with parity asserted by `GoalTelemetryEmissionEventParityTest`.
+- Limitation: records observe the boundary's absence; the transport itself is subtask 4, whose acceptance is "the unexercised record stops appearing".
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
+## [2026-08-17] SKILL-195 subtask 2 — Loud-fail the parse seam and diagnose register absence
+Areas: runtime-application/review, runtime-application/featuretask, runtime-application/model, runtime-cli/codereview, runtime-domain/review/context/model, runtime-infra-fs, runtime-ports/review
+- Inline register parse goes through `parseLaneRegisterSeam`; a parser throw is `ReviewRegisterParseSeamException` naming seam and lane, not an empty list or `register_absent`.
+- `registerAbsenceReason` splits no-candidates (byte count + bounded excerpt) from format-drift (first offending line + typed rejection). `REGISTER_ABSENT_TERMINAL_STATUS` stays on genuine absence only.
+- Admissible registers stay silent: no absence verdict, no excerpt. Excerpt cap never ships the full lane body. reusable
+- Limitation: format-drift is diagnostic only; widening admission and the parentPrompt/content.md format conflict remain the parent spec Next Path. Telemetry and degradation records are subtask 3.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
+## [2026-08-17] SKILL-195 subtask 1 — Review parse result shape, and validate reduced to check/repair/confirm
+Areas: runtime-domain/review, runtime-application/review, runtime-application/featuretask/validation, runtime-infra-fs/launcher/agentrun, orchestration/contracts
+- `ParallelReviewFindingParser.parse` returns `ParallelReviewParseResult` (admitted findings + structured rejections + candidate count) instead of `List<ParallelReviewRawFinding>`. `runCatching {}.getOrNull()` no longer erases why a match was dropped. reusable
+- Rejections carry offending line text, 1-indexed line position, and a typed reason (`unrecognized_severity`, `invalid_line_number`, `unparseable_structured_path`, `no_admissible_location`, `unmatched_candidate_line`).
+- A permissive `\[F-\d+]` candidate probe runs independently of `parallelFindingPattern`, so "no register at all" is now distinguishable from "candidates present, none admitted" — the drift class that faked a "review did not execute" during SKILL-194. Severity group widened to `[A-Za-z]+` so a bad severity is rejected with a reason instead of never matching.
+- Admission behaviour is unchanged: structured `path="..." | line=N` and legacy `file:line` still parse identically. Messaging and observability records are subtasks 2 and 3; `register_absent` is only reserved in the review-context contract enum here.
+- Validate gate reduced to: run the pack gate once, hand the agent every finding, repair, rerun to confirm; repeat only while findings remain, block loudly when a repair stops converging. Deleted substantiation receipts, repair-plan coverage gate, finding paging/handoff-budget block, the FORCED_FULL confirmation pass, REJECTED_ZERO_WORK, the confirmation retry cap, and the suppression delta gate. Retired progress fields decode as absent, so legacy workflow rows still read. reusable
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-08-17] Paused goal segments are no longer recorded as blocked
 Areas: runtime-application/goalrunner, runtime-infra-sqlite/telemetry, orchestration/contracts
 - `goalFinished` classified every non-completed run as `blocked`, so an operator pause wrote `goal_issue_progress.status='blocked'` and incremented `total_blocks`. The CLI read control state and reported `paused` while the IDE read the telemetry column and reported `blocked` for the same goal.

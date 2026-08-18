@@ -2199,8 +2199,6 @@ class RuntimeArchitectureTest {
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRunRecord.toArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress.toArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress.fromArtifactMap",
-      "skillbill.workflow.taskruntime.model.FullValidateRepairPlanItem.toArtifactMap",
-      "skillbill.workflow.taskruntime.model.FullValidateSubstantiationReceipt.toArtifactMap",
       // SKILL-52.2 subtask 2: the 11 scaffold input raw-map allow-list entries — the two public
       // application + port `scaffold(payload, dryRun)` overloads on
       // `skillbill.application.ScaffoldService` / `skillbill.ports.scaffold.ScaffoldGateway`
@@ -2261,6 +2259,10 @@ class RuntimeArchitectureTest {
       "skillbill.workflow.model.WorkflowUpdateInput.artifactsPatch",
       "skillbill.ports.validation.model.RepoValidationReport.toPayload",
       "skillbill.ports.validation.model.ReleaseRefMetadata.toPayload",
+      "skillbill.ports.review.model.GovernedReviewEvidenceCodec.TOOL_SPECS",
+      "skillbill.ports.review.model.GovernedReviewEvidenceCodec.readRequest",
+      "skillbill.ports.review.model.GovernedReviewEvidenceCodec.expansionRequest",
+      "skillbill.ports.review.model.GovernedReviewEvidenceCodec.payload",
     )
 
     // SKILL-52.3 subtask 5 (AC4): runtime-contracts is a pure DTO/constants/

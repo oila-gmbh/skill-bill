@@ -3,40 +3,40 @@ agents:
   - name: bill-typescript-code-review-api-contracts
     description: "TypeScript api contracts specialist — erased TypeScript declarations, runtime schemas, JavaScript consumers, HTTP/RPC/events, serialization, idempotency, and version skew."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-typescript-code-review-architecture
     description: "TypeScript architecture specialist — TypeScript workspaces, project references, package exports, build graphs, dependency direction, runtime partitions, and lifecycle ownership."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-typescript-code-review-performance
     description: "TypeScript performance specialist — Node/browser event loops, promise fan-out, streams and backpressure, allocation, bundles, rendering, hydration, and retained resources."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-typescript-code-review-persistence
     description: "TypeScript persistence specialist — TypeScript ORM/query clients, transaction isolation and retries, migrations, mixed versions, connection lifecycles, and durable serialization."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-typescript-code-review-platform-correctness
     description: "TypeScript platform correctness specialist — TypeScript narrowing, generics and escape hatches, declaration/emission parity, ESM/CommonJS, bundlers, targets, and runtime availability."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-typescript-code-review-reliability
     description: "TypeScript reliability specialist — observed promises, causal errors, AbortSignal cancellation, bounded queues, retries, stream cleanup, process shutdown, and telemetry."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-typescript-code-review-security
     description: "TypeScript security specialist — browser/server identity boundaries, runtime validation, XSS/CSRF and injection sinks, client secrets, lockfiles, build plugins, and supply chain."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-typescript-code-review-testing
     description: "TypeScript testing specialist — TypeScript type assertions, behavioral unit/integration/contract/browser/worker tests, package entry points, module matrices, async races, and regression proof."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-typescript-code-review-ui
     description: "TypeScript ui specialist — detected DOM/TSX frameworks, state and effects, typed events and forms, async races, rendering, routing, hydration, cleanup, and recovery."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-typescript-code-review-ux-accessibility
     description: "TypeScript ux accessibility specialist — framework-rendered semantics, accessible names, focus and keyboard behavior, live feedback, localization, direction, zoom, motion, and assistive technology."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]

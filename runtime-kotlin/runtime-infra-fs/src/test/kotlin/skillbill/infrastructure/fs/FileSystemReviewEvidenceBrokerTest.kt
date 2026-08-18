@@ -129,6 +129,20 @@ class FileSystemReviewEvidenceBrokerTest {
     assertEquals(14, broker.accounting().evidenceBytes)
   }
 
+  @Test fun `admitted assigned read with no projected hunks counts a zero-byte authorized read`() {
+    val root = repo("A.kt" to "ignored")
+    val broker = FileSystemReviewEvidenceBroker(
+      ReviewEvidenceBrokerBinding(root, assignment(listOf("A.kt")), "security", policy(), projectedHunks = emptyList()),
+    )
+
+    val result = broker.readBatch(batch("A.kt")).results.single()
+
+    assertEquals("", result.content)
+    assertEquals(0, result.bytes)
+    assertEquals(0, broker.accounting().evidenceBytes)
+    assertEquals(1, broker.accounting().authorizedReadCount)
+  }
+
   @Test fun `literal backslash and slash paths remain distinct evidence identities`() {
     val root = repo("dir/name.kt" to "slash", "dir\\name.kt" to "backslash")
     val backslashBroker = projectedBroker(root, assignment(listOf("dir\\name.kt")))
@@ -189,6 +203,15 @@ class FileSystemReviewEvidenceBrokerTest {
     )
     assertEquals("lane_evidence_bytes", result.terminalOutcome?.budgetKind)
     assertEquals(10, result.terminalOutcome?.observedValue)
+    assertEquals(1, broker.accounting().refusedOperationCount)
+    val followOn = broker.readBatch(
+      ReviewEvidenceBatchRequest(
+        "security",
+        listOf(ReviewEvidenceRequest("security", "A.kt"), ReviewEvidenceRequest("security", "B.kt")),
+      ),
+    )
+    assertTrue(followOn.results.all { it.budgetExceeded != null })
+    assertEquals(3, broker.accounting().refusedOperationCount)
   }
 
   @Test fun `authorized expansion is admitted and audited with its reachability reason`() {

@@ -3,40 +3,40 @@ agents:
   - name: bill-python-code-review-api-contracts
     description: "Python api contracts specialist — Python runtime validation, framework request/response contracts, serialization, and compatibility."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-python-code-review-architecture
     description: "Python architecture specialist — Python imports, package and entry-point ownership, composition roots, and dependency lifetimes."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-python-code-review-performance
     description: "Python performance specialist — Python ORM evaluation, I/O, memory, GIL-aware executors, bounded concurrency, and async latency."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-python-code-review-persistence
     description: "Python persistence specialist — Python ORM sessions, transactions, locking, migrations, tenant scope, and cross-store consistency."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-python-code-review-platform-correctness
     description: "Python platform correctness specialist — Python mutation and model semantics, runtime typing, asyncio cancellation, resources, and time logic."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-python-code-review-reliability
     description: "Python reliability specialist — Python client timeouts, retries, queues, workers, task shutdown, observability, and degradation."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-python-code-review-security
     description: "Python security specialist — Python supply chain, authorization, unsafe parsing/rendering/uploads/paths, subprocesses, SSRF, and secrets."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-python-code-review-testing
     description: "Python testing specialist — High-value pytest, property and async evidence, fixtures, concurrency, integration boundaries, and regression proof."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-python-code-review-ui
     description: "Python ui specialist — Python-owned admin, templates, notebooks, reports, dashboards, forms, state, and desktop rendering."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-python-code-review-ux-accessibility
     description: "Python ux accessibility specialist — Python-owned semantics, forms, focus and keyboard flow, feedback, localization, notebooks, and reports."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]

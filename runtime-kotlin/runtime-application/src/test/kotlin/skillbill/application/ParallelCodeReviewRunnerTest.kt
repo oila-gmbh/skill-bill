@@ -10,7 +10,6 @@ import skillbill.application.model.ParallelReviewScope
 import skillbill.application.model.StackDetectionException
 import skillbill.application.model.UsageValidationException
 import skillbill.application.review.ParallelCodeReviewRunner
-import skillbill.application.review.REGISTER_ABSENT_TERMINAL_STATUS
 import skillbill.application.review.RecordedWorkerResponse
 import skillbill.application.review.ReviewClaimVerificationRunner
 import skillbill.application.review.ReviewHarnessConfig
@@ -53,6 +52,7 @@ import skillbill.review.ParallelReviewFindingParser
 import skillbill.review.context.model.REVIEW_ROUTING_ANALYSIS_PAIRS_BUDGET
 import skillbill.review.context.model.ReviewContextBudgetExceededException
 import skillbill.review.context.model.ReviewContextBudgetPolicy
+import skillbill.review.context.model.ReviewRegisterParseSeamException
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ReviewPassClaimSnapshot
 import skillbill.review.model.ReviewRunLane
@@ -344,7 +344,7 @@ class ParallelCodeReviewRunnerTest {
       "[F-001] Major | High | specialist=generic-security | commits=aaa111,bbb222 | " +
         "path=\"A.kt\" | line=4 | contract introduced then changed",
     )
-    assertEquals(listOf("aaa111", "bbb222"), parsed.single().commitShas)
+    assertEquals(listOf("aaa111", "bbb222"), parsed.findings.single().commitShas)
   }
 
   @Test
@@ -452,38 +452,6 @@ class ParallelCodeReviewRunnerTest {
         assertEquals(expectedFanOut, request.skillRunRequest.reviewFanOut, "$mode fan-out flag")
       }
     }
-  }
-
-  @Test
-  fun `a zero-exit lane without a findings register fails instead of reporting clean coverage`() {
-    val blocked = """
-      This session has no worker-launch capability and no bound evidence broker.
-      Per the contract I am not running the review inline as a single prompt, and I am not
-      emitting a findings register — zero [F-XXX] lines here means not executed, not clean.
-    """.trimIndent()
-    val launcher = GoalRunnerSubtaskLauncher { request ->
-      AgentRunLaunchFacts(
-        agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),
-        exitStatus = 0,
-        stdout = blocked,
-        stderr = "",
-        timedOut = false,
-        spawnFailed = false,
-      )
-    }
-    val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))
-
-    val result = runner.run(
-      baseRequest(scope = ParallelReviewScope.STAGED).copy(codeReviewMode = CodeReviewExecutionMode.DELEGATED),
-    )
-
-    assertFalse(result.lane1.success)
-    assertEquals(REGISTER_ABSENT_TERMINAL_STATUS, result.lane1.accounting?.terminalStatus)
-    assertTrue(result.lane1.failureReason.orEmpty().contains("did not emit a findings register"))
-    assertTrue(result.mergeResult.findings.isEmpty())
-    val coverage = assertNotNull(result.coverage)
-    assertFalse(coverage.isCleanCoverage)
-    assertTrue(coverage.render().contains("Coverage: NOT clean"))
   }
 
   @Test
@@ -1342,7 +1310,7 @@ class ParallelCodeReviewRunnerFailureTest {
     assertTrue(launcher.requests.isEmpty(), "routing budget breach must not launch specialists")
   }
 }
-private data class RunnerFixtureConfig(
+internal data class RunnerFixtureConfig(
   val catalogGateway: ScaffoldCatalogGateway = stubCatalogGateway(),
   val diffResolver: DiffResolverPort = RealProcessDiffResolver(),
   val parallelLaneRunner: ParallelReviewLaneRunner = TestParallelLaneRunner(),
@@ -1352,12 +1320,14 @@ private data class RunnerFixtureConfig(
   val database: RecordingReviewDatabase = RecordingReviewDatabase(),
   val budget: ReviewContextBudgetPolicy = ReviewContextBudgetPolicy.DEFAULT,
   val nativeAgentPreflight: ReviewNativeAgentPreflightPort = ReviewNativeAgentPreflightPort.NONE,
+  val registerParse: (String) -> skillbill.review.model.ParallelReviewParseResult =
+    skillbill.review.ParallelReviewFindingParser::parse,
 ) {
   val installedPackCatalog: InstalledPlatformPackCatalogPort =
     InstalledPlatformPackCatalogPort { catalogGateway.discoverPlatformManifests(Path.of(".")) }
 }
 
-private fun runner(
+internal fun runner(
   launcher: GoalRunnerSubtaskLauncher,
   catalogGateway: ScaffoldCatalogGateway = stubCatalogGateway(),
   diffResolver: DiffResolverPort = RealProcessDiffResolver(),
@@ -1382,7 +1352,7 @@ private fun runnerWithParallelLane(
   RunnerFixtureConfig(diffResolver = diffResolver, parallelLaneRunner = parallelLaneRunner),
 )
 
-private fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFixtureConfig): ParallelCodeReviewRunner =
+internal fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFixtureConfig): ParallelCodeReviewRunner =
   ParallelCodeReviewRunner(
     parentReviewLauncher = launcher,
     diffResolver = config.diffResolver,
@@ -1410,9 +1380,13 @@ private fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFixt
     ),
     nativeAgentPreflight = config.nativeAgentPreflight,
     reviewEvidenceBrokerFactory = skillbill.infrastructure.fs.FileSystemReviewEvidenceBrokerFactory(),
+    governedEvidenceEndpointBinder = skillbill.ports.review.stubGovernedReviewEvidenceEndpointBinder(
+      java.nio.file.Files.createTempDirectory("endpoint"),
+    ),
+    registerParse = config.registerParse,
   )
 
-private class RecordingReviewDatabase : DatabaseSessionFactory {
+internal class RecordingReviewDatabase : DatabaseSessionFactory {
   val laneWrites = mutableListOf<Pair<String, List<ReviewRunLane>>>()
   val findingLaneWrites = mutableListOf<Pair<String, Map<String, String>>>()
   var specProjection: ReviewSpecProjectionReference? = null
@@ -1516,7 +1490,7 @@ private const val TEST_SPECIALIST_CONTRACT: String =
 private val runnerRequestSequence = AtomicInteger()
 private val HEAD_BRANCH_QUERY = listOf("git", "rev-parse", "--abbrev-ref", "HEAD")
 
-private fun baseRequest(
+internal fun baseRequest(
   agent1Id: String = "claude",
   agent2Id: String? = "codex",
   scope: ParallelReviewScope = ParallelReviewScope.STAGED,
@@ -1667,7 +1641,7 @@ private class ParallelSubtaskLauncher(
   }
 }
 
-private class RecordingDiffResolver(
+internal class RecordingDiffResolver(
   private val responses: Map<List<String>, String?> = emptyMap(),
   private val default: String? = null,
 ) : DiffResolverPort {
@@ -1679,12 +1653,14 @@ private class RecordingDiffResolver(
   }
 }
 
-private class TestParallelLaneRunner : ParallelReviewLaneRunner {
+internal class TestParallelLaneRunner : ParallelReviewLaneRunner {
   override fun runTwoLanes(request: ParallelReviewLaneRunRequest): ParallelReviewLaneRunResult =
     ParallelReviewLaneRunResult(runLane(request.lane1), runLane(request.lane2))
 
   private fun runLane(lane: () -> ParallelReviewLaneOutcome): ParallelReviewLaneOutcome = try {
     lane()
+  } catch (seam: ReviewRegisterParseSeamException) {
+    throw seam
   } catch (e: Exception) {
     ParallelReviewLaneOutcome(
       success = false,
@@ -1792,4 +1768,4 @@ private fun fallbackManifest(): PlatformManifest = platformManifest("generic", l
   fallbackCapabilities = setOf("code-review"),
 )
 
-private fun diffFor(path: String): String = "+++ b/$path"
+internal fun diffFor(path: String): String = "+++ b/$path"

@@ -1,10 +1,14 @@
 package skillbill.infrastructure.sqlite.review
 
 import skillbill.contracts.JsonSupport
+import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
+import skillbill.db.telemetry.LifecycleTelemetryStore
 import skillbill.ports.persistence.model.ReviewAccountingRecord
 import skillbill.review.model.ImportedFinding
 import skillbill.review.model.ImportedReview
 import skillbill.review.model.ReviewRunLane
+import skillbill.review.model.ReviewStageDegradationMeasurement
+import skillbill.review.model.ReviewStageDegradationReason
 import skillbill.review.model.ReviewSummary
 import java.sql.Connection
 
@@ -33,15 +37,35 @@ fun loadReviewAccounting(connection: Connection, reviewId: String): ReviewAccoun
     statement.setString(1, reviewId)
     statement.executeQuery().use { rows ->
       if (!rows.next()) return@use null
+      val payload = requireNotNull(decodeBoundedAccounting(rows.getString("bounded_payload_json"))) {
+        "Malformed bounded review accounting for '$reviewId'."
+      }
+      val declaredVersion = payload["contract_version"]?.toString()
+      if (declaredVersion != REVIEW_CONTEXT_CONTRACT_VERSION) {
+        quarantineReviewAccounting(connection, reviewId, declaredVersion)
+        return@use null
+      }
       ReviewAccountingRecord(
         reviewId,
         rows.getString("packet_digest"),
-        requireNotNull(decodeBoundedAccounting(rows.getString("bounded_payload_json"))) {
-          "Malformed bounded review accounting for '$reviewId'."
-        },
+        payload,
       )
     }
   }
+
+private const val ACCOUNTING_LOAD_SEAM: String = "ReviewPersistenceSupport.loadReviewAccounting"
+
+private fun quarantineReviewAccounting(connection: Connection, reviewId: String, declaredVersion: String?) {
+  LifecycleTelemetryStore(connection).reviewStageDegradation(
+    ReviewStageDegradationMeasurement(
+      reviewRunId = reviewId,
+      seam = ACCOUNTING_LOAD_SEAM,
+      expected = REVIEW_CONTEXT_CONTRACT_VERSION,
+      actual = declaredVersion?.takeIf(String::isNotBlank) ?: "<missing>",
+      reason = ReviewStageDegradationReason.ACCOUNTING_CONTRACT_QUARANTINED,
+    ),
+  )
+}
 
 // The bounded-payload contract is expressed in plain Kotlin values, so a stored row is decoded all
 // the way down before it reaches the record's validator.

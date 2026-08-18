@@ -41,7 +41,17 @@ internal class FanOutReviewEvidenceBroker(
   override fun evaluateProviderUsage(usage: ProviderTokenUsage, enforceable: Boolean): ReviewBudgetOutcome? =
     brokers.values.mapNotNull { it.evaluateProviderUsage(usage, enforceable) }.firstOrNull()
 
-  override fun accounting(): ReviewLaneAccounting = brokers.values.first().accounting()
+  override fun accounting(): ReviewLaneAccounting {
+    val parts = brokers.values.map { it.accounting() }
+    val first = parts.first()
+    return first.copy(
+      authorizedReadCount = parts.sumOf { it.authorizedReadCount },
+      refusedOperationCount = parts.sumOf { it.refusedOperationCount },
+      evidenceBytes = parts.sumOf { it.evidenceBytes },
+      expansions = parts.flatMap { it.expansions },
+      toolCalls = parts.sumOf { it.toolCalls },
+    )
+  }
 
   override fun terminalOutcome(): ReviewBudgetOutcome? = null
 }

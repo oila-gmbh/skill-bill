@@ -415,13 +415,13 @@ class ReviewContextSchemaValidatorTest {
     }
   }
 
-  @Test fun `projected envelopes carry contract version 2_0`() {
+  @Test fun `projected envelopes carry contract version 2_1`() {
     val launch =
       GovernedReviewLaunch(assignment, packet, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
     assertEquals(REVIEW_CONTEXT_CONTRACT_VERSION, packet.toParentPacketEnvelope().asWireMap()["contract_version"])
     assertEquals(REVIEW_CONTEXT_CONTRACT_VERSION, assignment.toAssignmentEnvelope().asWireMap()["contract_version"])
     assertEquals(REVIEW_CONTEXT_CONTRACT_VERSION, launch.toLaunchEnvelope().asWireMap()["contract_version"])
-    assertEquals("2.0", REVIEW_CONTEXT_CONTRACT_VERSION)
+    assertEquals("2.1", REVIEW_CONTEXT_CONTRACT_VERSION)
   }
 
   @Test fun `a 1_0 envelope fails with a typed version mismatch naming both versions`() {
@@ -431,7 +431,7 @@ class ReviewContextSchemaValidatorTest {
       ReviewContextSchemaValidator.validateParentPacket(envelope, "packet")
     }
     assertTrue("1.0" in failure.reason)
-    assertTrue("2.0" in failure.reason)
+    assertTrue("2.1" in failure.reason)
   }
 
   @Test fun `index hunks reject inlined diff bodies on parent assignment and launch`() {

@@ -200,9 +200,9 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE),
     )
 
-    assertContains(prompt, "runtime owns collect-all execution")
+    assertContains(prompt, "runtime owns execution of the repository validation gate")
     assertContains(prompt, "must not invoke the gate or any quality-check skill")
-    assertContains(prompt, "Each discovery identity needs a substantiation receipt")
+    assertContains(prompt, "Never invoke the gate after an individual fix")
     assertFalse(prompt.contains("Invoke bill-code-check"))
   }
 
@@ -290,9 +290,9 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     )
 
     listOf(fullPrompt, defaultPrompt).forEach { prompt ->
-      assertContains(prompt, "runtime owns collect-all execution")
-      assertContains(prompt, "complete persisted repair plan")
-      assertContains(prompt, "Each discovery identity needs a substantiation receipt")
+      assertContains(prompt, "runtime owns execution of the repository validation gate")
+      assertContains(prompt, "complete finding set from one gate run")
+      assertContains(prompt, "the runtime reruns the gate to confirm")
       assertContains(prompt, "must not invoke the gate or any quality-check skill")
       assertContains(
         prompt,
@@ -304,12 +304,10 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
-  fun `FULL and default runtime-owned validate prompts name complete set or scheduled remainder`() {
+  fun `FULL and default runtime-owned validate prompts name the complete finding set`() {
     val finding = skillbill.ports.validation.model.ValidationGateFinding("m", "t", "broken", "loc")
     val page = skillbill.application.featuretask.validation.model.ValidationFindingSetProjection(
       findings = listOf(finding),
-      droppedCount = 0,
-      scheduledRemainderCount = 1,
     )
     val fullPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
@@ -326,13 +324,9 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       validationGateFindings = page,
     )
     listOf(fullPrompt, defaultPrompt).forEach { prompt ->
-      assertContains(prompt, "complete discovery set")
-      assertContains(prompt, "complete persisted")
-      assertContains(prompt, "remainder is scheduled in this same pass")
+      assertContains(prompt, "complete finding set from one gate run")
       assertContains(prompt, "must not invoke the gate or any quality-check skill")
-      assertContains(prompt, "substantiation receipt")
       assertContains(prompt, "Do not rediscover findings")
-      assertFalse(prompt.contains("additional findings were omitted"))
     }
     val buildOnlyPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,

@@ -1,8 +1,11 @@
-@file:Suppress("MagicNumber")
+@file:Suppress("MagicNumber", "TooManyFunctions")
 
 package skillbill.review
 
 import skillbill.review.context.model.requireRepositoryRelativePath
+import skillbill.review.model.ParallelReviewFindingRejection
+import skillbill.review.model.ParallelReviewFindingRejectionReason
+import skillbill.review.model.ParallelReviewParseResult
 import skillbill.review.model.ParallelReviewRawFinding
 import skillbill.review.model.ParallelReviewSeverity
 import skillbill.review.model.ReviewClaimVerdict
@@ -14,7 +17,7 @@ import skillbill.review.model.ReviewSeverityAdjustmentDirection
 object ParallelReviewFindingParser {
   val parallelFindingPattern: Regex = Regex(
     "^\\s*(?:-\\s+)?\\[(?<findingId>F-\\d{3})]\\s+" +
-      "(?<severity>Blocker|Critical|Major|Minor|Nit)\\s+\\|\\s+" +
+      "(?<severity>[A-Za-z]+)\\s+\\|\\s+" +
       "(?<confidenceLevel>High|Medium|Low)\\s+\\|\\s+" +
       "(?:specialist=(?<specialistSkillName>[a-z0-9-]+)\\s+\\|\\s+)?" +
       "(?:commits=(?<commits>[^|\\r\\n]+?)\\s+\\|\\s+)?" +
@@ -26,47 +29,113 @@ object ParallelReviewFindingParser {
 
   const val UNASSIGNED_REPOSITORY_PATH = "unassigned"
 
-  fun parse(text: String): List<ParallelReviewRawFinding> = parallelFindingPattern.findAll(text).mapNotNull { match ->
-    runCatching { parseMatch(match) }.getOrNull()
-  }.toList()
+  val findingCandidatePattern: Regex = Regex("\\[F-\\d+]")
 
-  private fun parseMatch(match: MatchResult): ParallelReviewRawFinding? {
-    val severityStr = match.groups["severity"]?.value.orEmpty()
-    val severity = mapSeverity(severityStr) ?: return null
-    val structuredPath = match.groups["path"]?.value
-    val decodedPath = runCatching {
-      structuredPath?.let(::decodeStructuredString)
-        ?: match.groups["legacyPath"]?.value?.trim().orEmpty()
-    }.getOrDefault("")
-    val path = admittedRepositoryPath(decodedPath)
-    val lineText = match.groups["line"]?.value ?: match.groups["legacyLine"]?.value
-    val line = lineText?.toIntOrNull()?.takeIf { it > 0 } ?: return null
-    val peeled = peelTrailingStructuredFields(match.groups["description"]?.value.orEmpty().trim())
-    return ParallelReviewRawFinding(
-      severity = severity,
-      confidence = match.groups["confidenceLevel"]?.value.orEmpty(),
-      location = "$path:$line",
-      description = peeled.description,
-      specialistSkillName = match.groups["specialistSkillName"]?.value,
-      repositoryPath = path,
-      line = line,
-      commitShas = parseCommitShas(match.groups["commits"]?.value),
-      claimVerdict = peeled.claimVerdict,
-      scopeDisposition = peeled.scopeDisposition,
-      citations = peeled.citations,
-      severityAdjustment = peeled.severityAdjustment,
+  fun countRegisterCandidates(text: String): Int =
+    text.lineSequence().count { findingCandidatePattern.containsMatchIn(it) }
+
+  fun parse(text: String): ParallelReviewParseResult {
+    val lines = text.lines()
+    val admitted = mutableListOf<ParallelReviewRawFinding>()
+    val rejections = mutableListOf<ParallelReviewFindingRejection>()
+    val matchedPositions = mutableSetOf<Int>()
+    parallelFindingPattern.findAll(text).forEach { match ->
+      val position = text.take(match.range.first).count { it == '\n' } + 1
+      matchedPositions += position
+      val outcome = parseMatch(match)
+      outcome.finding?.let { admitted += it }
+      outcome.reason?.let { reason ->
+        rejections += ParallelReviewFindingRejection(
+          lineText = lines.getOrElse(position - 1) { match.value }.trim(),
+          linePosition = position,
+          reason = reason,
+        )
+      }
+    }
+    var candidateCount = 0
+    lines.forEachIndexed { index, line ->
+      if (!findingCandidatePattern.containsMatchIn(line)) return@forEachIndexed
+      candidateCount++
+      if (index + 1 in matchedPositions) return@forEachIndexed
+      rejections += ParallelReviewFindingRejection(
+        lineText = line.trim(),
+        linePosition = index + 1,
+        reason = ParallelReviewFindingRejectionReason.UNMATCHED_CANDIDATE_LINE,
+      )
+    }
+    return ParallelReviewParseResult(
+      findings = admitted,
+      rejections = rejections.sortedBy(ParallelReviewFindingRejection::linePosition),
+      candidateCount = candidateCount,
     )
   }
 
-  private fun admittedRepositoryPath(path: String): String {
-    if (path.isNotEmpty()) {
+  private data class MatchOutcome(
+    val finding: ParallelReviewRawFinding? = null,
+    val reason: ParallelReviewFindingRejectionReason? = null,
+  )
+
+  private data class ResolvedPath(
+    val path: String,
+    val reason: ParallelReviewFindingRejectionReason? = null,
+  )
+
+  private fun parseMatch(match: MatchResult): MatchOutcome {
+    val severityStr = match.groups["severity"]?.value.orEmpty()
+    val severity = mapSeverity(severityStr)
+      ?: return MatchOutcome(reason = ParallelReviewFindingRejectionReason.UNRECOGNIZED_SEVERITY)
+    val resolvedPath = resolvePath(match)
+    resolvedPath.reason?.let { return MatchOutcome(reason = it) }
+    val path = resolvedPath.path
+    val lineText = match.groups["line"]?.value ?: match.groups["legacyLine"]?.value
+    val line = lineText?.toIntOrNull()?.takeIf { it > 0 }
+      ?: return MatchOutcome(reason = ParallelReviewFindingRejectionReason.INVALID_LINE_NUMBER)
+    val peeled = peelTrailingStructuredFields(match.groups["description"]?.value.orEmpty().trim())
+    return MatchOutcome(
+      finding = ParallelReviewRawFinding(
+        severity = severity,
+        confidence = match.groups["confidenceLevel"]?.value.orEmpty(),
+        location = "$path:$line",
+        description = peeled.description,
+        specialistSkillName = match.groups["specialistSkillName"]?.value,
+        repositoryPath = path,
+        line = line,
+        commitShas = parseCommitShas(match.groups["commits"]?.value),
+        claimVerdict = peeled.claimVerdict,
+        scopeDisposition = peeled.scopeDisposition,
+        citations = peeled.citations,
+        severityAdjustment = peeled.severityAdjustment,
+      ),
+    )
+  }
+
+  private fun resolvePath(match: MatchResult): ResolvedPath {
+    val structuredPath = match.groups["path"]?.value
+    val decoded = if (structuredPath == null) {
+      match.groups["legacyPath"]?.value?.trim().orEmpty()
+    } else {
       try {
-        requireRepositoryRelativePath(path)
-        return path
+        decodeStructuredString(structuredPath)
+      } catch (_: IllegalArgumentException) {
+        return ResolvedPath(
+          UNASSIGNED_REPOSITORY_PATH,
+          ParallelReviewFindingRejectionReason.UNPARSEABLE_STRUCTURED_PATH,
+        )
+      } catch (_: IllegalStateException) {
+        return ResolvedPath(
+          UNASSIGNED_REPOSITORY_PATH,
+          ParallelReviewFindingRejectionReason.UNPARSEABLE_STRUCTURED_PATH,
+        )
+      }
+    }
+    if (decoded.isNotEmpty()) {
+      try {
+        requireRepositoryRelativePath(decoded)
+        return ResolvedPath(decoded)
       } catch (_: IllegalArgumentException) {
       }
     }
-    return UNASSIGNED_REPOSITORY_PATH
+    return ResolvedPath(UNASSIGNED_REPOSITORY_PATH, ParallelReviewFindingRejectionReason.NO_ADMISSIBLE_LOCATION)
   }
 
   private fun parseCommitShas(raw: String?): List<String> {

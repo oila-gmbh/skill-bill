@@ -3,20 +3,20 @@ agents:
   - name: bill-kmp-code-review-platform-correctness
     description: "Android & Kotlin Multiplatform platform correctness specialist — KMP expect/actual, source-set, target-runtime, and native-boundary correctness."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-kmp-code-review-persistence
     description: "Android & Kotlin Multiplatform persistence specialist — Room, SQLDelight, and DataStore write atomicity, migration safety, and offline-first cursor correctness."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-kmp-code-review-reliability
     description: "Android & Kotlin Multiplatform reliability specialist — WorkManager and CoroutineWorker retry, process-death recovery, and collector supervision."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-kmp-code-review-ui
     description: "Android & Kotlin Multiplatform ui specialist — KMP Compose UI correctness and framework usage."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-kmp-code-review-ux-accessibility
     description: "Android & Kotlin Multiplatform ux accessibility specialist — KMP user experience, Compose semantics, and accessibility."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]

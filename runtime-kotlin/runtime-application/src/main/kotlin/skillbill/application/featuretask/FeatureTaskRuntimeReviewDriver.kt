@@ -118,6 +118,7 @@ internal object FeatureTaskRuntimeReviewEnvelope {
     commitFocusedAccounting(result, cycle.resolvedTier)?.let { accounting ->
       produced["commit_focused_accounting"] = accounting.toArtifactMap()
     }
+    laneDiagnostics(result)?.let { produced["lane_diagnostics"] = it }
     CRITERION_GAP_KEYS.forEach { key -> produced.remove(key) }
     val envelope = linkedMapOf<String, Any?>(
       "contract_version" to FEATURE_TASK_RUNTIME_CONTRACT_VERSION,
@@ -148,6 +149,13 @@ internal object FeatureTaskRuntimeReviewEnvelope {
   } else {
     "Runtime-owned review completed with $findingCount findings."
   }
+
+  private fun laneDiagnostics(result: ParallelCodeReviewResult): List<Map<String, Any?>>? =
+    listOf(result.lane1, result.lane2)
+      .mapNotNull { lane ->
+        lane.droppedCandidateDiagnostic?.let { mapOf("agent_id" to lane.agentId, "diagnostic" to it) }
+      }
+      .takeIf { it.isNotEmpty() }
 
   private fun findingPayload(finding: ParallelReviewMergedFinding): Map<String, Any?> = buildMap {
     put("finding_id", finding.fNumber)

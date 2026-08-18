@@ -8,6 +8,7 @@ import skillbill.ports.agentrun.model.AgentRunProgressEmitter
 import skillbill.ports.agentrun.model.AgentRunProgressProbe
 import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
 import skillbill.ports.agentrun.model.ConversationIsolation
+import skillbill.ports.review.GovernedReviewEvidenceEndpointHandle
 import skillbill.ports.review.NativeReviewOperationProtocol
 import skillbill.ports.review.ReviewEvidenceBroker
 import java.nio.file.Path
@@ -46,6 +47,7 @@ data class AgentRunProcessRequest(
   val conversationIsolation: ConversationIsolation? = null,
   val reviewEvidenceBroker: ReviewEvidenceBroker? = null,
   val nativeReviewOperations: NativeReviewOperationProtocol? = null,
+  val reviewEvidenceEndpoint: GovernedReviewEvidenceEndpointHandle? = null,
   val spawnAuthorization: AgentRunSpawnAuthorization? = null,
 ) {
   init {
@@ -67,6 +69,9 @@ data class AgentRunProcessRequest(
     }
     require((reviewEvidenceBroker == null) == (nativeReviewOperations == null)) {
       "A process review evidence transport and its pre-execution operation protocol must be supplied together."
+    }
+    require((reviewEvidenceBroker == null) == (reviewEvidenceEndpoint == null)) {
+      "A process review evidence transport and its bound endpoint must be supplied together."
     }
   }
 }

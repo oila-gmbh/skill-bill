@@ -1331,6 +1331,32 @@ class ReviewContextBudgetExceededException(
   "${outcome.type}: ${outcome.budgetKind} ${outcome.observedValue} > ${outcome.configuredLimit}",
 )
 
+/**
+ * Loud failure raised when the lane register parse seam throws. It names the seam and the lane and
+ * bounds the cause detail, so a parser throw-site that echoes the lane output into its own message
+ * still cannot turn this message into a lane body dump; the untruncated cause stays reachable
+ * through [cause].
+ */
+class ReviewRegisterParseSeamException(
+  val seam: String,
+  val lane: String,
+  cause: Throwable,
+) : RuntimeException(
+  "Review register parse seam '$seam' failed for lane '$lane': " +
+    "${cause::class.simpleName}: ${cause.message?.take(CAUSE_DETAIL_MAX_LENGTH) ?: "no detail"}",
+  cause,
+) {
+  init {
+    require(seam.isNotBlank() && lane.isNotBlank()) {
+      "Review register parse seam failure must name its seam and lane."
+    }
+  }
+
+  companion object {
+    const val CAUSE_DETAIL_MAX_LENGTH: Int = 200
+  }
+}
+
 data class ReviewContextBudgetExceeded(
   override val lane: String,
   override val budgetKind: String,

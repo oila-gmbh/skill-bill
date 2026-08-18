@@ -6,6 +6,7 @@ import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.config.model.PhaseCompactionDirective
 import skillbill.goalrunner.model.GoalRunnerLivenessState
 import skillbill.install.model.InstallAgent
+import skillbill.ports.review.GovernedReviewEvidenceEndpointHandle
 import skillbill.ports.review.NativeReviewOperationProtocol
 import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.model.ReviewProcessOutcome
@@ -54,6 +55,7 @@ data class SkillRunRequest(
   val conversationIsolation: ConversationIsolation? = null,
   val reviewEvidenceBroker: ReviewEvidenceBroker? = null,
   val nativeReviewOperations: NativeReviewOperationProtocol? = null,
+  val reviewEvidenceEndpoint: GovernedReviewEvidenceEndpointHandle? = null,
   val nativeReviewWorkerName: String? = null,
   val reviewFanOut: Boolean = false,
   val spawnAuthorization: AgentRunSpawnAuthorization? = null,
@@ -75,6 +77,9 @@ data class SkillRunRequest(
     }
     require((reviewEvidenceBroker == null) == (nativeReviewOperations == null)) {
       "A governed review evidence transport and its pre-execution operation protocol must be supplied together."
+    }
+    require((reviewEvidenceBroker == null) == (reviewEvidenceEndpoint == null)) {
+      "A governed review evidence transport and its bound endpoint must be supplied together."
     }
     require(nativeReviewWorkerName == null || reviewEvidenceBroker != null) {
       "A native review worker name is valid only for a governed review launch."

@@ -1691,7 +1691,7 @@ internal data class GoalCliFixture(
     workflowGitOperations: WorkflowGitOperations = GoalTestWorkflowGitOperations,
     requester: HttpRequester = UnconfiguredHttpRequester,
   ): CliRuntimeContext = CliRuntimeContext(
-    userHome = tempDir,
+    userHome = tempDir.also { installFakeRuntimeMcpBin(it) },
     environment = emptyMap(),
     requester = requester,
     workflowGitOperations = workflowGitOperations,

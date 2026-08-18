@@ -122,7 +122,7 @@ class ReviewIntegrationPassRunner(
     integration: GovernedReviewIntegrationLaunch,
   ): List<ParallelReviewRawFinding> {
     val owned = integration.packet.ownedCommitIds
-    return ParallelReviewFindingParser.parse(stdout).mapNotNull { finding ->
+    return ParallelReviewFindingParser.parse(stdout).findings.mapNotNull { finding ->
       val resolved = finding.commitShas.map { sha -> resolveCommitSha(sha, owned) }
       if (resolved.any { it == null }) return@mapNotNull null
       finding.copy(

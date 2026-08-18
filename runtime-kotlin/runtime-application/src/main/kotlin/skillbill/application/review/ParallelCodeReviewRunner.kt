@@ -36,6 +36,9 @@ import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.model.ReviewAccountingRecord
 import skillbill.ports.persistence.model.ReviewIntegrationPassRecord
 import skillbill.ports.review.BrokerBackedNativeReviewOperationProtocol
+import skillbill.ports.review.GovernedReviewEvidenceEndpointBinder
+import skillbill.ports.review.GovernedReviewEvidenceEndpointHandle
+import skillbill.ports.review.NativeReviewOperationProtocol
 import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.ReviewEvidenceBrokerFactory
@@ -80,6 +83,7 @@ import skillbill.review.context.model.ReviewLaneCompletionState
 import skillbill.review.context.model.ReviewLaneIdentity
 import skillbill.review.context.model.ReviewLaneReviewDisposition
 import skillbill.review.context.model.ReviewParentAnalysisConsumption
+import skillbill.review.context.model.ReviewRegisterParseSeamException
 import skillbill.review.context.model.SpecIntentProjectionResolveRequest
 import skillbill.review.context.model.SpecIntentResolution
 import skillbill.review.context.model.TokenOwnership
@@ -89,8 +93,10 @@ import skillbill.review.context.model.toCodeReviewExecutionMode
 import skillbill.review.model.ParallelReviewLaneResult
 import skillbill.review.model.ParallelReviewMergeResult
 import skillbill.review.model.ParallelReviewMergedFinding
+import skillbill.review.model.ParallelReviewParseResult
 import skillbill.review.model.ParallelReviewRawFinding
 import skillbill.review.model.ReviewCoverageReport
+import skillbill.review.model.ReviewEvidenceBoundaryAccounting
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.review.model.ReviewLaneAggregationInput
 import skillbill.review.model.ReviewRunLane
@@ -108,6 +114,7 @@ import skillbill.review.plan.model.ReviewRoutingChangedFile
 import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Path
 import java.time.Instant
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
@@ -133,7 +140,9 @@ class ParallelCodeReviewRunner(
     FeatureTaskRuntimeSharedEvidenceLocatorReadPort.NONE,
   private val specIntentProjectionResolver: SpecIntentProjectionResolver,
   private val reviewEvidenceBrokerFactory: ReviewEvidenceBrokerFactory,
+  private val governedEvidenceEndpointBinder: GovernedReviewEvidenceEndpointBinder,
   private val nativeAgentPreflight: ReviewNativeAgentPreflightPort = ReviewNativeAgentPreflightPort.NONE,
+  private val registerParse: (String) -> ParallelReviewParseResult = ParallelReviewFindingParser::parse,
 ) {
   private data class InitialRun(
     val request: ParallelCodeReviewRequest,
@@ -189,7 +198,7 @@ class ParallelCodeReviewRunner(
       initial.request.reviewRunId,
       verificationVerdicts + adjudicationVerdicts,
     )
-    emitReviewStageDegradations(initial.request.reviewRunId)
+    emitReviewStageDegradations(initial.request.reviewRunId, outcomes)
     val assembled = ParallelReviewMerger.withRecordedVerdicts(result.mergeResult, recordedVerdicts)
     result.accountingSummary?.let { summary ->
       database.transaction { unitOfWork ->
@@ -723,8 +732,9 @@ class ParallelCodeReviewRunner(
     }
   }
 
-  private fun emitReviewStageDegradations(reviewRunId: String?) {
+  private fun emitReviewStageDegradations(reviewRunId: String?, outcomes: ParallelReviewLaneRunResult) {
     if (reviewRunId == null) return
+    val evidenceBoundaries = evidenceBoundaryAccountings(outcomes)
     database.transaction { unitOfWork ->
       ReviewStageDegradationSelection.select(
         reviewRunId = reviewRunId,
@@ -732,8 +742,32 @@ class ParallelCodeReviewRunner(
         boundaries = unitOfWork.reviews.fetchStageBoundaries(reviewRunId),
         verdicts = unitOfWork.reviews.fetchFindingVerdicts(reviewRunId),
         claims = unitOfWork.reviews.fetchReviewPassClaims(reviewRunId),
+        evidenceBoundaries = evidenceBoundaries,
       ).forEach { unitOfWork.lifecycleTelemetry.reviewStageDegradation(it) }
     }
+  }
+
+  private fun evidenceBoundaryAccountings(
+    outcomes: ParallelReviewLaneRunResult,
+  ): List<ReviewEvidenceBoundaryAccounting> = listOf(outcomes.lane1, outcomes.lane2).mapNotNull(::laneEvidenceBoundary)
+
+  private fun laneEvidenceBoundary(outcome: ParallelReviewLaneOutcome): ReviewEvidenceBoundaryAccounting? {
+    if (outcome.accounting?.terminalStatus == UNSUPPORTED_PROVIDER_TERMINAL_STATUS) return null
+    if (outcome.accounting == null && outcome.unboundSeam == null) return null
+    val accounting = outcome.accounting
+    return ReviewEvidenceBoundaryAccounting(
+      governedLaunchCount = if (accounting != null && accounting.terminalStatus != NO_OP_RESUME_TERMINAL_STATUS) {
+        1
+      } else {
+        0
+      },
+      authorizedReadCount = accounting?.authorizedReadCount ?: 0,
+      refusedOperationCount = accounting?.refusedOperationCount ?: 0,
+      evidenceBytes = accounting?.evidenceBytes ?: 0,
+      expansionCount = accounting?.expansions?.size ?: 0,
+      rejectedCandidateCount = outcome.rejectedCandidateCount,
+      unboundSeam = outcome.unboundSeam,
+    )
   }
 
   private fun persistReviewPassClaims(
@@ -1171,10 +1205,6 @@ class ParallelCodeReviewRunner(
     modelOverride: String?,
     resolvedMode: ResolvedReviewExecutionMode,
   ): ParallelReviewLaneOutcome {
-    // Resume may leave one or both parent agents with no incomplete specialists; that is a no-op
-    // pass, not a routing failure. The compiled launch set is non-empty on a fresh run, so an empty
-    // set here means every lane already held a durable result. It launches no worker, so it emits an
-    // explicit no-op accounting record rather than passing silently as a completed review.
     if (launchRequests.isEmpty()) return noOpResumeOutcome(agentId)
     val selected = launchRequests.sortedBy { it.assignment.laneDecision.orderIndex }
     val bundleStates = selected.map(::governedLaunchFor).map { it.completionState }
@@ -1184,30 +1214,114 @@ class ParallelCodeReviewRunner(
       prompt = parentPrompt(selected, routedManifests, resolvedMode),
       bundleState = aggregateBundleCompletion(bundleStates),
     )
-    val evidenceBroker = parentEvidenceBroker(selected, request.repoRoot)
-    val outcome = parentReviewLauncher.launch(
-      GoalRunnerSubtaskLaunchRequest(
-        invokedAgentId = agentId,
-        configuredAgentOverrideId = null,
-        skillRunRequest = SkillRunRequest(
-          issueKey = "code-review-parallel",
-          repoRoot = request.repoRoot,
-          timeout = request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes,
-          promptOverride = request.withSelectedAgentAddons(launch.prompt),
-          modelOverride = modelOverride,
-          conversationIsolation = ConversationIsolation.NONE,
-          reviewEvidenceBroker = evidenceBroker,
-          nativeReviewOperations = BrokerBackedNativeReviewOperationProtocol(evidenceBroker),
-          nativeReviewWorkerName = INLINE_NATIVE_WORKER
-            .takeIf { resolvedMode == ResolvedReviewExecutionMode.INLINE },
-          reviewFanOut = resolvedMode == ResolvedReviewExecutionMode.DELEGATED,
+    return when (val bound = bindGovernedEvidence(selected, request.repoRoot)) {
+      is GovernedEvidenceBind.Unbound -> unboundParentOutcome(launch, bound)
+      is GovernedEvidenceBind.Bound -> launchedBoundParent(
+        launch,
+        bound,
+        budget,
+        request,
+        modelOverride,
+        resolvedMode,
+      )
+    }
+  }
+
+  private fun launchedBoundParent(
+    launch: InlineParentLaunch,
+    bound: GovernedEvidenceBind.Bound,
+    budget: ReviewContextBudgetPolicy,
+    request: ParallelCodeReviewRequest,
+    modelOverride: String?,
+    resolvedMode: ResolvedReviewExecutionMode,
+  ): ParallelReviewLaneOutcome {
+    val outcome = bound.endpoint.use {
+      parentReviewLauncher.launch(
+        GoalRunnerSubtaskLaunchRequest(
+          invokedAgentId = launch.agentId,
+          configuredAgentOverrideId = null,
+          skillRunRequest = SkillRunRequest(
+            issueKey = "code-review-parallel",
+            repoRoot = request.repoRoot,
+            timeout = request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes,
+            promptOverride = request.withSelectedAgentAddons(launch.prompt),
+            modelOverride = modelOverride,
+            conversationIsolation = ConversationIsolation.NONE,
+            reviewEvidenceBroker = bound.broker,
+            nativeReviewOperations = bound.protocol,
+            reviewEvidenceEndpoint = bound.endpoint,
+            nativeReviewWorkerName = INLINE_NATIVE_WORKER
+              .takeIf { resolvedMode == ResolvedReviewExecutionMode.INLINE },
+            reviewFanOut = resolvedMode == ResolvedReviewExecutionMode.DELEGATED,
+          ),
         ),
-      ),
-    )
+      )
+    }
     return when (outcome) {
       is UnsupportedAgentRunLaunch -> unsupportedParentOutcome(launch, outcome)
-      is AgentRunLaunchFacts -> launchedParentOutcome(launch, outcome, budget)
+      is AgentRunLaunchFacts -> launchedParentOutcome(launch, outcome, budget, bound.broker)
     }
+  }
+
+  @Suppress("ThrowsCount")
+  private fun bindGovernedEvidence(
+    selected: List<ReviewSpecialistLaunchRequest>,
+    repoRoot: Path,
+  ): GovernedEvidenceBind {
+    val broker = try {
+      parentEvidenceBroker(selected, repoRoot)
+    } catch (cancellation: CancellationException) {
+      throw cancellation
+    } catch (@Suppress("TooGenericExceptionCaught") _: Exception) {
+      return GovernedEvidenceBind.Unbound(
+        ReviewEvidenceBoundaryAccounting.GOVERNED_EVIDENCE_SEAM,
+        GovernedEvidenceBindFault.CONSTRUCTION,
+      )
+    }
+    val protocol = try {
+      BrokerBackedNativeReviewOperationProtocol(broker)
+    } catch (cancellation: CancellationException) {
+      throw cancellation
+    } catch (@Suppress("TooGenericExceptionCaught") _: Exception) {
+      return GovernedEvidenceBind.Unbound(
+        ReviewEvidenceBoundaryAccounting.GOVERNED_EVIDENCE_SEAM,
+        GovernedEvidenceBindFault.PROTOCOL,
+      )
+    }
+    return try {
+      GovernedEvidenceBind.Bound(
+        broker,
+        protocol,
+        governedEvidenceEndpointBinder.bind(broker.accounting().lane, protocol),
+      )
+    } catch (cancellation: CancellationException) {
+      throw cancellation
+    } catch (@Suppress("TooGenericExceptionCaught") _: Exception) {
+      GovernedEvidenceBind.Unbound(
+        ReviewEvidenceBoundaryAccounting.GOVERNED_EVIDENCE_SEAM,
+        GovernedEvidenceBindFault.ENDPOINT,
+      )
+    }
+  }
+
+  private fun unboundParentOutcome(
+    launch: InlineParentLaunch,
+    unbound: GovernedEvidenceBind.Unbound,
+  ): ParallelReviewLaneOutcome {
+    val bundleState = launch.bundleState
+    return ParallelReviewLaneOutcome(
+      success = false,
+      rawOutput = "",
+      failureReason = "governed evidence broker ${unbound.fault.wireValue} failed",
+      accounting = inlineParentAccounting(launch, "unbound_broker", null, null),
+      reviewDisposition = bundleState.disposition,
+      bundleCompositionDigest = bundleState.bundleCompositionDigest,
+      segmentAccounting = bundleState.segments,
+      unreviewedSegmentIds = bundleState.unreviewedSegmentIds,
+      budgetDimension = bundleState.budgetDimension,
+      unreviewedUnits = bundleState.unreviewedUnits,
+      unboundSeam = unbound.seam,
+    )
   }
 
   private fun unsupportedParentOutcome(
@@ -1219,7 +1333,7 @@ class ParallelCodeReviewRunner(
       success = false,
       rawOutput = "",
       failureReason = "unsupported agent: ${outcome.reason}",
-      accounting = inlineParentAccounting(launch, "unsupported_provider", null),
+      accounting = inlineParentAccounting(launch, UNSUPPORTED_PROVIDER_TERMINAL_STATUS, null, null),
       reviewDisposition = bundleState.disposition,
       bundleCompositionDigest = bundleState.bundleCompositionDigest,
       segmentAccounting = bundleState.segments,
@@ -1233,6 +1347,7 @@ class ParallelCodeReviewRunner(
     launch: InlineParentLaunch,
     outcome: AgentRunLaunchFacts,
     budget: ReviewContextBudgetPolicy,
+    evidenceBroker: ReviewEvidenceBroker,
   ): ParallelReviewLaneOutcome {
     val bundleState = launch.bundleState
     val budgetOutcome = ReviewBudgetEvaluator.laneResultOutcome(
@@ -1242,13 +1357,20 @@ class ParallelCodeReviewRunner(
     )
     val launchReason = budgetOutcome?.let { ReviewContextBudgetExceededException(it).message }
       ?: laneFailureReason(outcome)
-    val findings = if (launchReason == null) attributeInlineFindings(outcome.stdout, launch.selected) else emptyList()
-    val registerReason = if (launchReason == null) registerAbsenceReason(outcome.stdout, findings) else null
+    val parsed = if (launchReason == null) {
+      parseLaneRegisterSeam(outcome.stdout, launch.assignment.lane, registerParse)
+    } else {
+      null
+    }
+    val findings = parsed?.let { attributeInlineFindings(it, launch.selected) }.orEmpty()
+    val rejectedCount = parsed?.rejections?.size ?: 0
+    val registerReason = parsed?.let { registerAbsenceReason(outcome.stdout, it) }
     val reason = launchReason ?: registerReason
     return ParallelReviewLaneOutcome(
       success = reason == null,
       rawOutput = outcome.stdout,
       failureReason = reason,
+      droppedCandidateDiagnostic = parsed?.let(::rejectedCandidateDiagnostic),
       budgetOutcome = budgetOutcome,
       tokenUsage = providerTokenUsage(outcome),
       accounting = inlineParentAccounting(
@@ -1259,6 +1381,7 @@ class ParallelCodeReviewRunner(
           inlineTerminalStatus(outcome, bundleState.disposition)
         },
         outcome,
+        evidenceBroker.accounting(),
       ),
       findings = if (reason == null) findings else emptyList(),
       reviewDisposition = bundleState.disposition,
@@ -1267,6 +1390,7 @@ class ParallelCodeReviewRunner(
       unreviewedSegmentIds = bundleState.unreviewedSegmentIds,
       budgetDimension = bundleState.budgetDimension,
       unreviewedUnits = bundleState.unreviewedUnits,
+      rejectedCandidateCount = rejectedCount,
     )
   }
 
@@ -1436,6 +1560,8 @@ class ParallelCodeReviewRunner(
 
   private fun captureLane(lane: () -> ParallelReviewLaneOutcome): ParallelReviewLaneOutcome = try {
     lane()
+  } catch (seam: ReviewRegisterParseSeamException) {
+    throw seam
   } catch (@Suppress("TooGenericExceptionCaught") thrown: Exception) {
     ParallelReviewLaneOutcome(
       success = false,
@@ -1445,14 +1571,13 @@ class ParallelCodeReviewRunner(
   }
 
   private fun attributeInlineFindings(
-    stdout: String,
+    parsed: ParallelReviewParseResult,
     selected: List<ReviewSpecialistLaunchRequest>,
   ): List<ParallelReviewRawFinding> {
     val fallbackLane = selected.minByOrNull { it.assignment.laneDecision.orderIndex }
     val fallbackPath = fallbackLane?.assignment?.assignedPaths?.firstOrNull()
       ?: ParallelReviewFindingParser.UNASSIGNED_REPOSITORY_PATH
-    val parsed = runCatching { ParallelReviewFindingParser.parse(stdout) }.getOrDefault(emptyList())
-    return parsed.map { finding ->
+    return parsed.findings.map { finding ->
       val findingPath = finding.repositoryPath
       val pathOwners = selected.filter { launch ->
         findingPath != null && launch.assignment.assignedPaths.any { path -> path == findingPath }
@@ -1523,12 +1648,43 @@ class ParallelCodeReviewRunner(
     else -> null
   }
 
-  private fun registerAbsenceReason(stdout: String, findings: List<ParallelReviewRawFinding>): String? {
-    if (findings.isNotEmpty()) return null
+  private fun rejectedCandidateDiagnostic(parsed: ParallelReviewParseResult): String? {
+    val rejection = parsed.rejections.firstOrNull() ?: return null
+    return "dropped ${parsed.rejections.size} of ${parsed.candidateCount} [F-XXX] candidate line(s); " +
+      "first at line ${rejection.linePosition} rejected as ${rejection.reason.wireValue}: " +
+      rejection.lineText.take(REGISTER_ABSENCE_EXCERPT_MAX_LENGTH)
+  }
+
+  private fun registerAbsenceReason(stdout: String, parsed: ParallelReviewParseResult): String? {
+    if (parsed.findings.isNotEmpty()) return null
     if (stdout.lineSequence().any { it.trim() == NO_FINDINGS_TOKEN }) return null
+    val bytes = stdout.toByteArray().size
+    if (parsed.candidateCount > 0) {
+      return "lane emitted ${parsed.candidateCount} [F-XXX] candidate line(s) in $bytes bytes but none " +
+        "were admissible; register format drift: ${rejectedCandidateDiagnostic(parsed) ?: "no rejection detail"}"
+    }
     val excerpt = stdout.trim().take(REGISTER_ABSENCE_EXCERPT_MAX_LENGTH).ifBlank { "<empty>" }
-    return "lane did not emit a findings register; zero [F-XXX] lines without $NO_FINDINGS_TOKEN " +
-      "means the review did not execute. Lane returned ${stdout.length} bytes starting: $excerpt"
+    return "lane did not emit a findings register; zero [F-XXX] candidate lines without $NO_FINDINGS_TOKEN " +
+      "means the review did not execute. Lane returned $bytes bytes starting: $excerpt"
+  }
+
+  private sealed class GovernedEvidenceBind {
+    class Bound(
+      val broker: ReviewEvidenceBroker,
+      val protocol: NativeReviewOperationProtocol,
+      val endpoint: GovernedReviewEvidenceEndpointHandle,
+    ) : GovernedEvidenceBind()
+
+    class Unbound(
+      val seam: String,
+      val fault: GovernedEvidenceBindFault,
+    ) : GovernedEvidenceBind()
+  }
+
+  private enum class GovernedEvidenceBindFault(val wireValue: String) {
+    CONSTRUCTION("construction"),
+    PROTOCOL("protocol"),
+    ENDPOINT("endpoint"),
   }
 
   private companion object {
@@ -1570,7 +1726,7 @@ private fun parallelResult(
   val lane1Result = ParallelReviewLaneResult(
     agentId = agent1Id,
     findings = outcomes.lane1.findings.ifEmpty {
-      if (outcomes.lane1.success) ParallelReviewFindingParser.parse(outcomes.lane1.rawOutput) else emptyList()
+      if (outcomes.lane1.success) ParallelReviewFindingParser.parse(outcomes.lane1.rawOutput).findings else emptyList()
     },
   )
   val lane2Result = ParallelReviewLaneResult(
@@ -1579,7 +1735,13 @@ private fun parallelResult(
       emptyList()
     } else {
       outcomes.lane2.findings.ifEmpty {
-        if (outcomes.lane2.success) ParallelReviewFindingParser.parse(outcomes.lane2.rawOutput) else emptyList()
+        if (outcomes.lane2.success) {
+          ParallelReviewFindingParser.parse(
+            outcomes.lane2.rawOutput,
+          ).findings
+        } else {
+          emptyList()
+        }
       }
     },
   )
@@ -1602,6 +1764,7 @@ private fun ParallelReviewLaneOutcome.toStatus(agentId: String) = ParallelReview
   agentId,
   success,
   failureReason,
+  droppedCandidateDiagnostic,
   tokenUsage,
   budgetOutcome,
   accounting,
@@ -1723,27 +1886,33 @@ private class InlineParentLaunch(
  * An inline lane runs the whole review in one parent session, so its accounting node owns the
  * parent's own launch and result bytes and exactly one model turn. It has no specialist children.
  */
-private fun inlineParentAccounting(launch: InlineParentLaunch, terminalStatus: String, outcome: AgentRunLaunchFacts?) =
-  ReviewLaneAccounting(
-    lane = launch.agentId,
-    reviewId = launch.assignment.reviewId,
-    packetDigest = launch.assignment.packetDigest,
-    assignmentDigest = launch.assignment.digest,
-    launchBytes = launch.prompt.toByteArray(Charsets.UTF_8).size.toLong(),
-    evidenceBytes = 0,
-    expansions = emptyList(),
-    toolCalls = 0,
-    modelTurns = 1,
-    resultBytes = outcome?.stdout?.toByteArray(Charsets.UTF_8)?.size?.toLong() ?: 0,
-    providerUsage = outcome?.let(::providerTokenUsage),
-    terminalStatus = terminalStatus,
-    reviewDisposition = launch.bundleState.disposition,
-    bundleCompositionDigest = launch.bundleState.bundleCompositionDigest,
-    segmentAccounting = launch.bundleState.segments,
-    unreviewedSegmentIds = launch.bundleState.unreviewedSegmentIds,
-    budgetDimension = launch.bundleState.budgetDimension,
-    unreviewedUnits = launch.bundleState.unreviewedUnits,
-  )
+private fun inlineParentAccounting(
+  launch: InlineParentLaunch,
+  terminalStatus: String,
+  outcome: AgentRunLaunchFacts?,
+  brokerAccounting: ReviewLaneAccounting?,
+) = ReviewLaneAccounting(
+  lane = launch.agentId,
+  reviewId = launch.assignment.reviewId,
+  packetDigest = launch.assignment.packetDigest,
+  assignmentDigest = launch.assignment.digest,
+  launchBytes = launch.prompt.toByteArray(Charsets.UTF_8).size.toLong(),
+  authorizedReadCount = brokerAccounting?.authorizedReadCount ?: 0,
+  refusedOperationCount = brokerAccounting?.refusedOperationCount ?: 0,
+  evidenceBytes = brokerAccounting?.evidenceBytes ?: 0,
+  expansions = brokerAccounting?.expansions.orEmpty(),
+  toolCalls = brokerAccounting?.toolCalls ?: 0,
+  modelTurns = 1,
+  resultBytes = outcome?.stdout?.toByteArray(Charsets.UTF_8)?.size?.toLong() ?: 0,
+  providerUsage = outcome?.let(::providerTokenUsage),
+  terminalStatus = terminalStatus,
+  reviewDisposition = launch.bundleState.disposition,
+  bundleCompositionDigest = launch.bundleState.bundleCompositionDigest,
+  segmentAccounting = launch.bundleState.segments,
+  unreviewedSegmentIds = launch.bundleState.unreviewedSegmentIds,
+  budgetDimension = launch.bundleState.budgetDimension,
+  unreviewedUnits = launch.bundleState.unreviewedUnits,
+)
 
 private const val INLINE_DEPTH_DIRECTIVE: String =
   "Merge every routed rubric above into one combined checklist, then traverse the diff exactly " +
@@ -1764,7 +1933,25 @@ private const val DELEGATED_DEPTH_DIRECTIVE: String =
 
 /** Terminal status of a resume pass that had no incomplete lane left to launch a worker for. */
 internal const val NO_OP_RESUME_TERMINAL_STATUS: String = "no_op_resume"
+internal const val UNSUPPORTED_PROVIDER_TERMINAL_STATUS: String = "unsupported_provider"
 internal const val REGISTER_ABSENT_TERMINAL_STATUS: String = "register_absent"
+
+internal const val INLINE_FINDING_PARSE_SEAM: String = "attributeInlineFindings"
+
+/**
+ * The single seam every inline lane register parse routes through. A parser fault escapes as a typed
+ * error naming the seam and lane instead of degrading into an empty finding list, so no lane outcome
+ * and no register-absent accounting row is built for what is actually a parser defect.
+ */
+internal fun parseLaneRegisterSeam(
+  stdout: String,
+  lane: String,
+  parse: (String) -> ParallelReviewParseResult = ParallelReviewFindingParser::parse,
+): ParallelReviewParseResult = try {
+  parse(stdout)
+} catch (@Suppress("TooGenericExceptionCaught") thrown: RuntimeException) {
+  throw ReviewRegisterParseSeamException(seam = INLINE_FINDING_PARSE_SEAM, lane = lane, cause = thrown)
+}
 
 /**
  * A parent pass that launched no worker because every lane already held a durable result. It records
