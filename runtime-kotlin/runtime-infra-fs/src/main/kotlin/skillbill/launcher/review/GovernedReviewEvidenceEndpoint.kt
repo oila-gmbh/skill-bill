@@ -4,6 +4,7 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.contracts.JsonSupport
 import skillbill.error.GovernedReviewEvidenceTransportError
 import skillbill.launcher.mcp.GovernedReviewMcpConfigWriter
+import skillbill.model.EnvironmentContext
 import skillbill.ports.review.GovernedReviewEvidenceEndpointBinder
 import skillbill.ports.review.GovernedReviewEvidenceEndpointHandle
 import skillbill.ports.review.NativeReviewOperationProtocol
@@ -28,16 +29,19 @@ private const val JSON_RPC_METHOD_NOT_FOUND = -32601
 private const val JSON_RPC_INVALID_PARAMS = -32602
 
 @Inject
-class UnixSocketGovernedReviewEvidenceEndpointBinder : GovernedReviewEvidenceEndpointBinder {
+class UnixSocketGovernedReviewEvidenceEndpointBinder(
+  private val environment: EnvironmentContext,
+) : GovernedReviewEvidenceEndpointBinder {
   override fun bind(lane: String, protocol: NativeReviewOperationProtocol): GovernedReviewEvidenceEndpointHandle =
-    GovernedReviewEvidenceEndpoint.bind(lane, protocol, bridgeCommand(System.getenv()))
+    GovernedReviewEvidenceEndpoint.bind(lane, protocol, bridgeCommand(environment.environment, environment.userHome))
 }
 
-internal fun bridgeCommand(environment: Map<String, String>): List<String> {
+internal fun bridgeCommand(environment: Map<String, String>, userHome: Path): List<String> {
   val configured = environment["SKILL_BILL_RUNTIME_MCP_BIN"]?.takeIf(String::isNotBlank)
-  val home = environment["HOME"]?.takeIf(String::isNotBlank) ?: System.getProperty("user.home")
+  val home = userHome.takeUnless { it.toString().isBlank() }
+    ?: Path.of(environment["HOME"]?.takeIf(String::isNotBlank) ?: System.getProperty("user.home"))
   val bin = configured?.let(Path::of)
-    ?: Path.of(home, ".skill-bill", "runtime", "runtime-mcp", "bin", "runtime-mcp")
+    ?: home.resolve(".skill-bill").resolve("runtime").resolve("runtime-mcp").resolve("bin").resolve("runtime-mcp")
   if (!Files.isExecutable(bin)) {
     throw GovernedReviewEvidenceTransportError(
       "Governed review evidence bridge binary '$bin' is missing or not executable.",

@@ -1799,7 +1799,7 @@ private data class FeatureTaskRuntimeCliFixture(
     workflowGitOperations: WorkflowGitOperations = FakeRuntimeGitOperations(),
     requester: HttpRequester = UnconfiguredHttpRequester,
   ): CliRuntimeContext = CliRuntimeContext(
-    userHome = tempDir,
+    userHome = tempDir.also { installFakeRuntimeMcpBin(it) },
     agentRunLauncher = launcher,
     environment = environment,
     requester = requester,

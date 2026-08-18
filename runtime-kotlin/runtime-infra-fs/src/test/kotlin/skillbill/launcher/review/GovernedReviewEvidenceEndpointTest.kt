@@ -94,6 +94,16 @@ class GovernedReviewEvidenceEndpointTest {
     assertEquals(before, perLaunchDirectories(tempRoot))
   }
 
+  @Test
+  fun `an isolated home without runtime-mcp loud-fails instead of inheriting the host binary`() {
+    val home = Files.createTempDirectory("review-evidence-home")
+    val error = assertFailsWith<skillbill.error.GovernedReviewEvidenceTransportError> {
+      bridgeCommand(emptyMap(), home)
+    }
+    assertTrue(error.message!!.contains(home.toString()))
+    assertTrue(error.message!!.contains("missing or not executable"))
+  }
+
   private fun perLaunchDirectories(root: java.nio.file.Path): Set<String> = Files.list(root).use { paths ->
     paths.map { it.fileName.toString() }
       .filter { it.startsWith("skill-bill-review-evidence-") }

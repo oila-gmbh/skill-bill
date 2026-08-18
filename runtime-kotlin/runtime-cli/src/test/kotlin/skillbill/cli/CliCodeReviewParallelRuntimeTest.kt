@@ -445,13 +445,17 @@ class CliCodeReviewParallelRuntimeTest {
 private fun parallelReviewContext(
   environment: Map<String, String> = System.getenv(),
   agentRunLauncher: AgentRunLauncher? = null,
-): CliRuntimeContext = CliRuntimeContext(
-  environment = environment,
-  userHome = Files.createTempDirectory("cli-parallel-review-home"),
-  agentRunLauncher = agentRunLauncher,
-  executableLookup = ExecutableLookup { true },
-  reviewNativeAgentPreflight = skillbill.ports.review.ReviewNativeAgentPreflightPort.NONE,
-)
+): CliRuntimeContext {
+  val userHome = Files.createTempDirectory("cli-parallel-review-home")
+  installFakeRuntimeMcpBin(userHome)
+  return CliRuntimeContext(
+    environment = environment,
+    userHome = userHome,
+    agentRunLauncher = agentRunLauncher,
+    executableLookup = ExecutableLookup { true },
+    reviewNativeAgentPreflight = skillbill.ports.review.ReviewNativeAgentPreflightPort.NONE,
+  )
+}
 
 private fun createGitRepo(): Path {
   val dir = Files.createTempDirectory("cli-parallel-review-git")

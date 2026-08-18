@@ -10,7 +10,9 @@ import skillbill.cli.workflow.toCliMap
 import skillbill.contracts.JsonSupport
 import skillbill.di.RuntimeComponent
 import skillbill.di.create
+import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.attribute.PosixFilePermissions
 import kotlin.test.assertIs
 
 /**
@@ -18,6 +20,14 @@ import kotlin.test.assertIs
  * tests can exercise goal/runtime behavior without the removed `skill-bill workflow`
  * command tree.
  */
+internal fun installFakeRuntimeMcpBin(home: Path): Path {
+  val bin = home.resolve(".skill-bill").resolve("runtime").resolve("runtime-mcp").resolve("bin").resolve("runtime-mcp")
+  Files.createDirectories(bin.parent)
+  Files.writeString(bin, "#!/bin/sh\nexit 0\n")
+  Files.setPosixFilePermissions(bin, PosixFilePermissions.fromString("rwx------"))
+  return bin
+}
+
 internal object RuntimeWorkflowTestSupport {
   fun open(dbPath: Path, context: CliRuntimeContext): Map<String, Any?> {
     val service = component(context).workflowService
