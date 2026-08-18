@@ -31,6 +31,7 @@ dependencies {
   // test classpath because adapter-side smoke tests import concrete runtime
   // classes. Test code crossing module boundaries for fixtures is expected;
   // main source must not.
+  testImplementation(testFixtures(project(":runtime-application")))
   testImplementation(project(":runtime-infra-fs"))
   testImplementation(project(":runtime-infra-http"))
   testImplementation(project(":runtime-infra-sqlite"))

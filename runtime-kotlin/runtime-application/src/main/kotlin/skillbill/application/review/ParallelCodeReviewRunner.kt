@@ -49,8 +49,8 @@ import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.ports.review.model.ParallelReviewLaneRunRequest
 import skillbill.ports.review.model.ParallelReviewLaneRunResult
 import skillbill.ports.review.model.ReviewEvidenceBrokerBinding
-import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.ports.review.model.ReviewIntegrationPassOutcome
+import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.ports.review.model.ReviewNativeAgentPreflightRequest
 import skillbill.ports.review.model.ReviewOwnedFileEvidence
 import skillbill.ports.scaffold.InstalledPlatformPackCatalogPort
@@ -1368,7 +1368,14 @@ class ParallelCodeReviewRunner(
     val findings = parsed?.let { attributeInlineFindings(it, launch.selected) }.orEmpty()
     val rejectedCount = parsed?.rejections?.size ?: 0
     val registerReason = parsed?.let { registerAbsenceReason(outcome.stdout, it) }
-    val reason = launchReason ?: registerReason
+    val evidenceAccounting = evidenceBroker.accounting()
+    // Ordered by specificity: a lane that emitted no register at all is already diagnosed by
+    // registerReason, and that names the failure better than "it read nothing" would. The guard
+    // below catches the remaining case — a well-formed register reporting nothing, from a lane
+    // that never opened its evidence.
+    val reason = launchReason
+      ?: registerReason
+      ?: unreadEvidenceReason(launch, evidenceAccounting, findings.isEmpty())
     return ParallelReviewLaneOutcome(
       success = reason == null,
       rawOutput = outcome.stdout,
@@ -1384,7 +1391,7 @@ class ParallelCodeReviewRunner(
           inlineTerminalStatus(outcome, bundleState.disposition)
         },
         outcome,
-        evidenceBroker.accounting(),
+        evidenceAccounting,
       ),
       findings = if (reason == null) findings else emptyList(),
       reviewDisposition = bundleState.disposition,
@@ -1395,6 +1402,24 @@ class ParallelCodeReviewRunner(
       unreviewedUnits = bundleState.unreviewedUnits,
       rejectedCandidateCount = rejectedCount,
     )
+  }
+
+  /**
+   * A lane that never read a byte of its assigned evidence reviewed nothing, whatever its register
+   * says. `NO_FINDINGS` from such a lane asserts a completed review, so admitting it would launder
+   * an unexercised evidence surface into clean coverage; the lane fails loudly instead.
+   */
+  private fun unreadEvidenceReason(
+    launch: InlineParentLaunch,
+    accounting: ReviewLaneAccounting,
+    reportedNothing: Boolean,
+  ): String? {
+    if (!reportedNothing) return null
+    if (accounting.authorizedReadCount > 0) return null
+    if (launch.selected.none { it.assignment.assignedHunks.isNotEmpty() }) return null
+    return "governed evidence was never read: the lane returned a register after " +
+      "${accounting.authorizedReadCount} authorized read(s) and " +
+      "${accounting.refusedOperationCount} refused operation(s) against a non-empty assignment"
   }
 
   private fun modeFraming(resolvedMode: ResolvedReviewExecutionMode): String = buildString {
@@ -1499,6 +1524,17 @@ class ParallelCodeReviewRunner(
     repoRoot: Path,
   ): ReviewEvidenceBroker = reviewEvidenceBrokerFactory.brokerFor(parentBrokerBinding(selected, repoRoot))
 
+  /**
+   * The merged surface is one session doing the reads [laneCount] separate lanes would each have
+   * been budgeted for, so the cumulative allowances scale with it. Per-read and per-turn caps do
+   * not: inline still traverses the delta once, and one read is still one read.
+   */
+  private fun mergedBudget(budget: ReviewContextBudgetPolicy, laneCount: Int): ReviewContextBudgetPolicy = budget.copy(
+    maxLaneEvidenceBytes = budget.maxLaneEvidenceBytes * laneCount,
+    maxSpecialistToolCalls = budget.maxSpecialistToolCalls * laneCount,
+    maxAssignmentExpansions = budget.maxAssignmentExpansions * laneCount,
+  )
+
   private fun mergedBundle(packet: ReviewContextPacket, assignedHunks: Set<String>): ReviewLaneBundle =
     ReviewLaneBundle(
       packet.commitUnits.sortedBy { it.orderIndex }.mapNotNull { unit ->
@@ -1537,7 +1573,7 @@ class ParallelCodeReviewRunner(
       repoRoot = repoRoot,
       assignment = merged,
       laneRubricId = primary.rubrics.first().rubricId,
-      budget = primary.budget,
+      budget = mergedBudget(primary.budget, selected.size),
       namedDependencies = selected.flatMap { it.namedDependencies }.toSet(),
       trustedExpansionLedger = expansions,
       projectedHunks = primary.packet.changedHunks.filter { it.hunkId in assigned },

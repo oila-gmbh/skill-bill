@@ -89,7 +89,6 @@ class GovernedReviewEvidenceEndpoint private constructor(
     runCatching { Files.deleteIfExists(GovernedReviewMcpConfigWriter.tomlConfigPath(descriptor.mcpConfigPath)) }
     val cursorConfig = GovernedReviewMcpConfigWriter.cursorProjectConfigPath(descriptor.mcpConfigPath)
     runCatching { Files.deleteIfExists(cursorConfig) }
-    runCatching { Files.deleteIfExists(GovernedReviewMcpConfigWriter.cursorCliConfigPath(descriptor.mcpConfigPath)) }
     runCatching { Files.deleteIfExists(cursorConfig.parent) }
     runCatching { Files.deleteIfExists(directory) }
   }

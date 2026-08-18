@@ -1,5 +1,6 @@
 package skillbill.cli
 
+import skillbill.application.review.simulateGovernedEvidenceReads
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliRuntimeContext
 import skillbill.install.model.InstallAgent
@@ -487,7 +488,12 @@ private fun runGit(vararg args: String) {
 private abstract class ParallelTestAgentRunLauncher : AgentRunLauncher
 
 private class NoOpAgentRunLauncher : ParallelTestAgentRunLauncher() {
-  override fun launch(request: AgentRunLaunchRequest): AgentRunLaunchOutcome = AgentRunLaunchFacts(
+  override fun launch(request: AgentRunLaunchRequest): AgentRunLaunchOutcome = launchedAfterReading(request)
+}
+
+private fun launchedAfterReading(request: AgentRunLaunchRequest): AgentRunLaunchOutcome {
+  simulateGovernedEvidenceReads(request.skillRunRequest)
+  return AgentRunLaunchFacts(
     agent = InstallAgent.fromNormalizedId(request.agentId, label = "agentId"),
     exitStatus = 0,
     stdout = "NO_FINDINGS",
@@ -530,14 +536,7 @@ private class ParallelReviewFailFirstLaneLauncher : ParallelTestAgentRunLauncher
         spawnFailed = false,
       )
     } else {
-      AgentRunLaunchFacts(
-        agent = agent,
-        exitStatus = 0,
-        stdout = "NO_FINDINGS",
-        stderr = "",
-        timedOut = false,
-        spawnFailed = false,
-      )
+      launchedAfterReading(request)
     }
   }
 }
@@ -565,14 +564,7 @@ private class RecordingParallelLauncher : ParallelTestAgentRunLauncher() {
       modelsByAgent[request.agentId] = request.skillRunRequest.modelOverride
       promptsByAgent[request.agentId] = request.skillRunRequest.promptOverride.orEmpty()
     }
-    return AgentRunLaunchFacts(
-      agent = InstallAgent.fromNormalizedId(request.agentId, label = "agentId"),
-      exitStatus = 0,
-      stdout = "NO_FINDINGS",
-      stderr = "",
-      timedOut = false,
-      spawnFailed = false,
-    )
+    return launchedAfterReading(request)
   }
 }
 

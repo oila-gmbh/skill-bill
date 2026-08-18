@@ -141,19 +141,9 @@ class GovernedReviewEvidenceEndpointTest {
     val tomlConfig = skillbill.launcher.mcp.GovernedReviewMcpConfigWriter.tomlConfigPath(
       endpoint.descriptor.mcpConfigPath,
     )
-    val cursorCli = skillbill.launcher.mcp.GovernedReviewMcpConfigWriter.cursorCliConfigPath(
-      endpoint.descriptor.mcpConfigPath,
-    )
     assertEquals(Files.readString(endpoint.descriptor.mcpConfigPath), Files.readString(cursorConfig))
     assertTrue(Files.exists(tomlConfig))
     assertTrue(Files.readString(tomlConfig).contains("[mcp_servers.skill-bill-review-evidence]"))
-    assertTrue(Files.exists(cursorCli))
-    val cliConfig = Files.readString(cursorCli)
-    assertTrue(cliConfig.contains("Mcp(skill-bill-review-evidence, read_evidence)"))
-    assertTrue(cliConfig.contains("Mcp(skill-bill-review-evidence, request_expansion)"))
-    assertFalse(cliConfig.contains("approvalMode"))
-    assertTrue(cliConfig.contains("Read(**)"))
-    assertTrue(cliConfig.contains("Shell(**)"))
 
     endpoint.close()
 
@@ -161,7 +151,6 @@ class GovernedReviewEvidenceEndpointTest {
     assertFalse(Files.exists(endpoint.descriptor.mcpConfigPath))
     assertFalse(Files.exists(tomlConfig))
     assertFalse(Files.exists(cursorConfig))
-    assertFalse(Files.exists(cursorCli))
   }
 
   private class Client(private val channel: SocketChannel) : AutoCloseable {

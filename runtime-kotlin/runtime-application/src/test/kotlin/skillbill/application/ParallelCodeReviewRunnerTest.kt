@@ -20,6 +20,7 @@ import skillbill.application.review.diffForChanges
 import skillbill.application.review.diffForPaths
 import skillbill.application.review.harnessRequest
 import skillbill.application.review.reviewHarness
+import skillbill.application.review.simulateGovernedEvidenceReads
 import skillbill.application.review.sparseReviewPack
 import skillbill.application.workflow.repoRoot
 import skillbill.config.model.RepoLocalConfig
@@ -1514,6 +1515,7 @@ internal fun baseRequest(
 private fun ParallelCodeReviewRequest.detectingRevisions() = copy(baseRevision = null, headRevision = null)
 
 private fun alwaysSuccessLauncher(stdout: String = "NO_FINDINGS") = GoalRunnerSubtaskLauncher { request ->
+  simulateGovernedEvidenceReads(request.skillRunRequest)
   AgentRunLaunchFacts(
     agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),
     exitStatus = 0,
@@ -1630,6 +1632,7 @@ private class ParallelSubtaskLauncher(
 
   override fun launch(request: GoalRunnerSubtaskLaunchRequest): AgentRunLaunchOutcome {
     requests += request
+    simulateGovernedEvidenceReads(request.skillRunRequest)
     return outcome ?: AgentRunLaunchFacts(
       agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),
       exitStatus = 0,

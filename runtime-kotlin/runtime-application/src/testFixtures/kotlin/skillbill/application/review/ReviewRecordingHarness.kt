@@ -13,6 +13,7 @@ import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunLivenessSnapshot
 import skillbill.ports.agentrun.model.AgentRunTokenOwnership
+import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.config.model.ReadRepoLocalConfigRequest
 import skillbill.ports.config.model.ReadRepoLocalConfigResult
@@ -31,6 +32,8 @@ import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.ports.review.model.ParallelReviewLaneRunRequest
 import skillbill.ports.review.model.ParallelReviewLaneRunResult
 import skillbill.ports.review.model.ResolvedReviewRubric
+import skillbill.ports.review.model.ReviewEvidenceBatchRequest
+import skillbill.ports.review.model.ReviewEvidenceRequest
 import skillbill.ports.review.stubGovernedReviewEvidenceEndpointBinder
 import skillbill.ports.scaffold.InstalledPlatformPackCatalogPort
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
@@ -128,6 +131,8 @@ data class ReviewHarnessConfig(
   val evidenceBrokerFactory: skillbill.ports.review.ReviewEvidenceBrokerFactory =
     skillbill.infrastructure.fs.FileSystemReviewEvidenceBrokerFactory(),
   val parentLaunch: ((GoalRunnerSubtaskLaunchRequest) -> AgentRunLaunchOutcome)? = null,
+  /** Set false to model a worker that answered without reading its assigned evidence. */
+  val simulateEvidenceReads: Boolean = true,
   val evidenceEndpointBinder: skillbill.ports.review.GovernedReviewEvidenceEndpointBinder =
     stubGovernedReviewEvidenceEndpointBinder(Files.createTempDirectory("review-endpoint")),
   /**
@@ -141,6 +146,11 @@ fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): Parall
   ParallelCodeReviewRunner(
     parentReviewLauncher = GoalRunnerSubtaskLauncher { request ->
       recorder.parentLaunches += request
+      // A real review worker pulls its assigned bodies through the governed broker before it
+      // answers, whichever launcher stub stands in for it. The fixture reads them too, so a lane
+      // here is a lane that reviewed something and the unread-evidence guard stays a signal about
+      // the worker rather than about the stub.
+      if (config.simulateEvidenceReads) simulateGovernedEvidenceReads(request.skillRunRequest)
       config.parentLaunch?.invoke(request)?.let { return@GoalRunnerSubtaskLauncher it }
       val response = config.response(request)
       AgentRunLaunchFacts(
@@ -481,3 +491,31 @@ fun diffForChanges(vararg changes: Pair<String, String>): String = changes.joinT
   +$added
   """.trimIndent()
 }
+
+/** Replays the one thing the stub launcher cannot fake: the lane's own governed evidence reads. */
+/**
+ * Replays the one thing a launcher stub cannot fake: the lane's own governed evidence reads. Paths
+ * come from the launch prompt's own `Owned paths:` lines, so this stays correct for any fixture
+ * without the test having to restate its assignment.
+ */
+fun simulateGovernedEvidenceReads(request: SkillRunRequest) {
+  val protocol = request.nativeReviewOperations ?: return
+  val lane = request.reviewEvidenceBroker?.accounting()?.lane ?: return
+  val prompt = request.promptOverride ?: return
+  val paths = prompt.lineSequence()
+    .filter { it.startsWith("Owned paths: ") }
+    .flatMap { line -> OWNED_PATH.findAll(line.removePrefix("Owned paths: ")).map { it.groupValues[1] } }
+    .distinct()
+    .toList()
+  if (paths.isEmpty()) return
+  runCatching {
+    protocol.read(
+      ReviewEvidenceBatchRequest(
+        lane = lane,
+        requests = paths.map { ReviewEvidenceRequest(lane = lane, path = it) },
+      ),
+    )
+  }
+}
+
+private val OWNED_PATH = Regex("\"([^\"]+)\"")
