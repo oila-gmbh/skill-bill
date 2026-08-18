@@ -74,13 +74,31 @@ class CursorAgentRunTransportTest {
   }
 
   @Test
-  fun `trailing NO_FINDINGS is not harvested when a finding candidate is also present`() {
+  fun `glued finding lines are harvested and trailing NO_FINDINGS is dropped`() {
     val glued = "progress[F-001] Major | High | path.kt:1 | bugNO_FINDINGS"
     val decoded = AgentRunOutputDecoder.CURSOR_STREAM_JSON.decode(
       """{"type":"result","result":"$glued"}""",
     )
 
-    assertEquals(glued, decoded.text)
+    assertEquals("[F-001] Major | High | path.kt:1 | bug", decoded.text)
+  }
+
+  @Test
+  fun `progress sentences glued onto a finding harvest the finding line`() {
+    val glued =
+      "I'll follow the bill-code-review skill and fetch the assigned evidence." +
+        "MCP read_evidence is still blocked. I'll read the assigned files from there." +
+        "[F-001] Major | High | specialist=bill-kotlin-code-review-architecture | " +
+        "path=\\\"runtime-kotlin/Foo.kt\\\" | line=12 | endpoint close leaks on spawn failure"
+    val decoded = AgentRunOutputDecoder.CURSOR_STREAM_JSON.decode(
+      """{"type":"result","subtype":"success","is_error":false,"result":"$glued"}""",
+    )
+
+    assertEquals(
+      "[F-001] Major | High | specialist=bill-kotlin-code-review-architecture | " +
+        "path=\"runtime-kotlin/Foo.kt\" | line=12 | endpoint close leaks on spawn failure",
+      decoded.text,
+    )
   }
 
   private fun request(): SkillRunRequest = SkillRunRequest(

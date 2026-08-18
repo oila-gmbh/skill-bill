@@ -99,12 +99,27 @@ private fun pickCursorHarvest(
 ): String {
   val last = lastAssistantText?.trim().orEmpty()
   if (isStrictReviewRegister(last)) return last
-  val terminal = terminalText?.takeIf { it.isNotBlank() }
-  if (terminal != null) {
-    peelTrailingNoFindings(terminal)?.let { return it }
-    return terminal
-  }
-  return longestAssistantText.orEmpty()
+  val source = terminalText?.takeIf { it.isNotBlank() } ?: longestAssistantText.orEmpty()
+  return harvestCursorRegister(source)
+}
+
+private fun harvestCursorRegister(text: String): String {
+  val trimmed = text.trim()
+  if (trimmed.isEmpty() || isStrictReviewRegister(trimmed)) return trimmed
+  peelTrailingNoFindings(trimmed)?.let { return it }
+  val split = insertCursorRegisterBoundaries(trimmed)
+  val findingLines = split.lineSequence()
+    .map { it.trim() }
+    .filter { it.isNotEmpty() && FINDING_LINE_START.containsMatchIn(it) }
+    .toList()
+  if (findingLines.isNotEmpty()) return findingLines.joinToString("\n")
+  if (split.lineSequence().any { it.trim() == NO_FINDINGS_TOKEN }) return NO_FINDINGS_TOKEN
+  return trimmed
+}
+
+private fun insertCursorRegisterBoundaries(text: String): String {
+  val withFindings = GLUED_FINDING_START.replace(text, "\n$1")
+  return GLUED_TRAILING_NO_FINDINGS.replace(withFindings, "\n$1")
 }
 
 private fun isStrictReviewRegister(text: String): Boolean {
@@ -137,3 +152,5 @@ private const val NO_FINDINGS_TOKEN = "NO_FINDINGS"
 private val FINDING_LINE_START = Regex("^\\s*(?:-\\s+)?\\[F-\\d{3}]")
 private val FINDING_CANDIDATE = Regex("\\[F-\\d+]")
 private val TRAILING_NO_FINDINGS = Regex("(?:^|[^A-Z0-9_])NO_FINDINGS\\s*$")
+private val GLUED_FINDING_START = Regex("(?<![\\n\\r])(\\[F-\\d{3}])")
+private val GLUED_TRAILING_NO_FINDINGS = Regex("(?<![\\n\\r])(NO_FINDINGS)\\s*$")
