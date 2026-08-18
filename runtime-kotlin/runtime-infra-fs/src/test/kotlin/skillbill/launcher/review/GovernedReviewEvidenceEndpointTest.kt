@@ -109,12 +109,18 @@ class GovernedReviewEvidenceEndpointTest {
     val cursorConfig = skillbill.launcher.mcp.GovernedReviewMcpConfigWriter.cursorProjectConfigPath(
       endpoint.descriptor.mcpConfigPath,
     )
+    val tomlConfig = skillbill.launcher.mcp.GovernedReviewMcpConfigWriter.tomlConfigPath(
+      endpoint.descriptor.mcpConfigPath,
+    )
     assertEquals(Files.readString(endpoint.descriptor.mcpConfigPath), Files.readString(cursorConfig))
+    assertTrue(Files.exists(tomlConfig))
+    assertTrue(Files.readString(tomlConfig).contains("[mcp_servers.skill-bill-review-evidence]"))
 
     endpoint.close()
 
     assertFalse(Files.exists(endpoint.descriptor.socketPath))
     assertFalse(Files.exists(endpoint.descriptor.mcpConfigPath))
+    assertFalse(Files.exists(tomlConfig))
     assertFalse(Files.exists(cursorConfig))
   }
 

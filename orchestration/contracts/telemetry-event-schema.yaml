@@ -1522,6 +1522,7 @@ $defs:
           - evidence_boundary_unexercised
           - evidence_boundary_operation_refused
           - register_candidates_rejected
+          - accounting_contract_quarantined
 
   skillbillReviewFinishedLegacyRegeneratedEvent:
     type: object

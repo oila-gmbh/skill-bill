@@ -9,6 +9,7 @@ enum class ReviewStageDegradationReason(val wireValue: String) {
   EVIDENCE_BOUNDARY_UNEXERCISED("evidence_boundary_unexercised"),
   EVIDENCE_BOUNDARY_OPERATION_REFUSED("evidence_boundary_operation_refused"),
   REGISTER_CANDIDATES_REJECTED("register_candidates_rejected"),
+  ACCOUNTING_CONTRACT_QUARANTINED("accounting_contract_quarantined"),
 }
 
 data class ReviewEvidenceBoundaryAccounting(

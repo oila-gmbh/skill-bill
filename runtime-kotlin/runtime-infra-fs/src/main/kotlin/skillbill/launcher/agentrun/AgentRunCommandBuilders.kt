@@ -3,10 +3,12 @@
 package skillbill.launcher.agentrun
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import skillbill.error.GovernedReviewEvidenceTransportError
+import skillbill.error.GovernedReviewLaunchCapabilityError
 import skillbill.install.model.AGENT_LAUNCHER_CLIS
 import skillbill.install.model.AgentLauncherCli
 import skillbill.install.model.InstallAgent
+import skillbill.launcher.mcp.GovernedReviewMcpConfigWriter
+import skillbill.launcher.mcp.McpRegistrationOperations
 import skillbill.launcher.process.AgentRunIdlePolicy
 import skillbill.ports.agentrun.model.ConversationIsolation
 import skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy
@@ -40,6 +42,7 @@ interface AgentRunCommandBuilder {
   val agent: InstallAgent
   val outputDecoder: AgentRunOutputDecoder get() = AgentRunOutputDecoder.PLAIN
   val reviewIsolation: ReviewLaunchIsolationStrategy get() = ReviewLaunchIsolationStrategy.UNSUPPORTED
+  val governedReviewLaunchCapability: GovernedReviewLaunchCapability
 
   /** The headless CLI this builder's command execs, resolved against PATH before every spawn. */
   val launcherCli: AgentLauncherCli get() = requireNotNull(AGENT_LAUNCHER_CLIS[agent]) {
@@ -149,13 +152,18 @@ private val GOVERNED_REVIEW_TOOLS: List<String> = GovernedReviewEvidenceCodec.OP
   "mcp__${GovernedReviewEvidenceCodec.SERVER_NAME}__$operation"
 }
 
-private val REVIEW_INLINE_TOOLS = GOVERNED_REVIEW_TOOLS.joinToString(",")
-
 private val REVIEW_FAN_OUT_TOOLS = (listOf("Agent", "Task") + GOVERNED_REVIEW_TOOLS).joinToString(",")
 
+private fun governedReviewToolList(fanOut: Boolean): String =
+  if (fanOut) REVIEW_FAN_OUT_TOOLS else GOVERNED_REVIEW_TOOLS.joinToString(",")
+
 class ClaudeAgentRunCommandBuilder(
-  /** Provider environment for model-directive resolution; defaults to the parent process. */
   private val providerEnvironment: Map<String, String> = System.getenv(),
+  override val governedReviewLaunchCapability: GovernedReviewLaunchCapability = GovernedReviewLaunchCapability(
+    governedOnlyTooling = true,
+    mcpIsolation = true,
+    configFormat = McpRegistrationOperations.configFormatFor(InstallAgent.CLAUDE),
+  ),
 ) : AgentRunCommandBuilder {
   override val agent: InstallAgent = InstallAgent.CLAUDE
   override val outputDecoder: AgentRunOutputDecoder = AgentRunOutputDecoder.CLAUDE_JSON
@@ -163,6 +171,7 @@ class ClaudeAgentRunCommandBuilder(
 
   override fun build(request: SkillRunRequest): AgentRunCommand {
     requireProcessLaunch(request, reviewIsolation)
+    requireGovernedReviewLaunch(request, agent, governedReviewLaunchCapability)
     val streaming = request.streamProviderOutput || request.streamOutputForLiveness
     return goalContinuationCommand(request, agent) ?: AgentRunCommand(
       command = buildList {
@@ -190,7 +199,7 @@ class ClaudeAgentRunCommandBuilder(
           add(endpoint.descriptor.mcpConfigPath.toString())
           add("--strict-mcp-config")
           add("--tools")
-          add(if (request.reviewFanOut) REVIEW_FAN_OUT_TOOLS else REVIEW_INLINE_TOOLS)
+          add(governedReviewToolList(request.reviewFanOut))
         }
         add("--dangerously-skip-permissions")
         add("--add-dir")
@@ -214,7 +223,13 @@ class ClaudeAgentRunCommandBuilder(
   }
 }
 
-class CodexAgentRunCommandBuilder : AgentRunCommandBuilder {
+class CodexAgentRunCommandBuilder(
+  override val governedReviewLaunchCapability: GovernedReviewLaunchCapability = GovernedReviewLaunchCapability(
+    governedOnlyTooling = true,
+    mcpIsolation = true,
+    configFormat = McpRegistrationOperations.configFormatFor(InstallAgent.CODEX),
+  ),
+) : AgentRunCommandBuilder {
   override val agent: InstallAgent = InstallAgent.CODEX
   override val outputDecoder: AgentRunOutputDecoder = AgentRunOutputDecoder.CODEX_JSONL
   override val reviewIsolation: ReviewLaunchIsolationStrategy =
@@ -222,7 +237,7 @@ class CodexAgentRunCommandBuilder : AgentRunCommandBuilder {
 
   override fun build(request: SkillRunRequest): AgentRunCommand {
     requireProcessLaunch(request, reviewIsolation)
-    requireGovernedEvidenceConfigSupport(request, agent)
+    requireGovernedReviewLaunch(request, agent, governedReviewLaunchCapability)
     return goalContinuationCommand(request, agent) ?: AgentRunCommand(
       command = buildList {
         add("codex")
@@ -247,6 +262,17 @@ class CodexAgentRunCommandBuilder : AgentRunCommandBuilder {
           add("tools.web_search=false")
           add("--config")
           add("tools.shell=false")
+          request.reviewEvidenceEndpoint?.let { endpoint ->
+            GovernedReviewMcpConfigWriter.codexConfigOverrides(
+              mcpConfigPath = endpoint.descriptor.mcpConfigPath,
+              socketPath = endpoint.descriptor.socketPath,
+              token = endpoint.descriptor.token,
+              lane = endpoint.descriptor.lane,
+            ).forEach { override ->
+              add("--config")
+              add(override)
+            }
+          }
         }
         request.modelOverride?.let {
           add("--model")
@@ -270,13 +296,19 @@ class CodexAgentRunCommandBuilder : AgentRunCommandBuilder {
   }
 }
 
-class JunieAgentRunCommandBuilder : AgentRunCommandBuilder {
+class JunieAgentRunCommandBuilder(
+  override val governedReviewLaunchCapability: GovernedReviewLaunchCapability = GovernedReviewLaunchCapability(
+    governedOnlyTooling = false,
+    mcpIsolation = false,
+    configFormat = McpRegistrationOperations.configFormatFor(InstallAgent.JUNIE),
+  ),
+) : AgentRunCommandBuilder {
   override val agent: InstallAgent = InstallAgent.JUNIE
   override val reviewIsolation: ReviewLaunchIsolationStrategy = ReviewLaunchIsolationStrategy.FRESH_PROCESS
 
   override fun build(request: SkillRunRequest): AgentRunCommand {
     requireProcessLaunch(request, reviewIsolation)
-    requireGovernedEvidenceConfigSupport(request, agent)
+    requireGovernedReviewLaunch(request, agent, governedReviewLaunchCapability)
     return goalContinuationCommand(request, agent) ?: AgentRunCommand(
       command = buildList {
         require(request.modelOverride == null && request.effortOverride == null) {
@@ -306,13 +338,20 @@ class JunieAgentRunCommandBuilder : AgentRunCommandBuilder {
   }
 }
 
-class CursorAgentRunCommandBuilder : AgentRunCommandBuilder {
+class CursorAgentRunCommandBuilder(
+  override val governedReviewLaunchCapability: GovernedReviewLaunchCapability = GovernedReviewLaunchCapability(
+    governedOnlyTooling = true,
+    mcpIsolation = true,
+    configFormat = McpRegistrationOperations.configFormatFor(InstallAgent.CURSOR),
+  ),
+) : AgentRunCommandBuilder {
   override val agent: InstallAgent = InstallAgent.CURSOR
   override val outputDecoder: AgentRunOutputDecoder = AgentRunOutputDecoder.CURSOR_STREAM_JSON
   override val reviewIsolation: ReviewLaunchIsolationStrategy = ReviewLaunchIsolationStrategy.FRESH_PROCESS
 
   override fun build(request: SkillRunRequest): AgentRunCommand {
     requireProcessLaunch(request, reviewIsolation)
+    requireGovernedReviewLaunch(request, agent, governedReviewLaunchCapability)
     // --stream-partial-output turns one answer into a run of incremental assistant deltas. That is
     // what a caller asking for provider output wants, and precisely what a caller asking only for a
     // liveness signal does not: the deltas are indistinguishable from finished turns at harvest
@@ -358,6 +397,7 @@ class CursorAgentRunCommandBuilder : AgentRunCommandBuilder {
         request.reviewEvidenceEndpoint?.descriptor?.mcpConfigPath?.parent?.toString()
           ?: request.repoRoot.toString(),
       )
+      request.nativeReviewWorkerName?.let { worker -> add("/$worker") }
     } else {
       add("--force")
       add("--trust")
@@ -435,12 +475,17 @@ internal fun launchPrompt(request: SkillRunRequest): String = requireNotNull(req
   "launchPrompt requires a promptOverride; goal-continuation runs spawn skill-bill directly."
 }
 
-private fun requireGovernedEvidenceConfigSupport(request: SkillRunRequest, agent: InstallAgent) {
-  if (request.reviewEvidenceEndpoint != null) {
-    throw GovernedReviewEvidenceTransportError(
-      "Agent '${agent.id}' cannot launch a governed review: its CLI supplies no governed MCP config flag, " +
-        "so the governed evidence toolset would name a server the worker cannot reach.",
-    )
+private fun requireGovernedReviewLaunch(
+  request: SkillRunRequest,
+  agent: InstallAgent,
+  capability: GovernedReviewLaunchCapability,
+) {
+  if (request.reviewEvidenceEndpoint == null) return
+  if (!capability.governedOnlyTooling) {
+    throw GovernedReviewLaunchCapabilityError(agent.id, "governed-only tooling")
+  }
+  if (!capability.mcpIsolation) {
+    throw GovernedReviewLaunchCapabilityError(agent.id, "MCP isolation")
   }
 }
 

@@ -78,6 +78,7 @@ class GovernedReviewEvidenceEndpoint private constructor(
   private fun deleteDirectory() {
     runCatching { Files.deleteIfExists(descriptor.socketPath) }
     runCatching { Files.deleteIfExists(descriptor.mcpConfigPath) }
+    runCatching { Files.deleteIfExists(GovernedReviewMcpConfigWriter.tomlConfigPath(descriptor.mcpConfigPath)) }
     val cursorConfig = GovernedReviewMcpConfigWriter.cursorProjectConfigPath(descriptor.mcpConfigPath)
     runCatching { Files.deleteIfExists(cursorConfig) }
     runCatching { Files.deleteIfExists(cursorConfig.parent) }
@@ -219,6 +220,7 @@ class GovernedReviewEvidenceEndpoint private constructor(
         runCatching { channel.close() }
         runCatching { Files.deleteIfExists(socketPath) }
         runCatching { Files.deleteIfExists(directory.resolve("mcp.json")) }
+        runCatching { Files.deleteIfExists(GovernedReviewMcpConfigWriter.tomlConfigPath(directory.resolve("mcp.json"))) }
         val cursorConfig = directory.resolve(".cursor").resolve("mcp.json")
         runCatching { Files.deleteIfExists(cursorConfig) }
         runCatching { Files.deleteIfExists(cursorConfig.parent) }
