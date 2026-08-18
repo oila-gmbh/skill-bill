@@ -31,6 +31,8 @@ Use when validating iOS changes with the shared quality-check contract.
 
 Collect one complete finding set before repairing anything. While that set is open, do not invoke any check, test, compile, format-task, quality-check command, build or test command, pack checker, `bill-code-check`, or delegated subagent check. Allowed work is read, search, and source edits only. Repair every finding at its root cause; verification runs only after the full set is repaired.
 
+Once the whole set is repaired, re-run the discovered scheme verification once.
+
 Escalate to the full suite when targeted checks cannot establish safety.
 - Keep changes aligned with the project's existing conventions and build tooling.
 - Escalate missing schemes, genuine tool defects, and policy decisions to maintainers instead of guessing.

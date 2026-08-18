@@ -42,3 +42,5 @@ Validate changed Rust code with the repository's own wrappers, CI commands, tool
 ### Repair Window
 
 Collect one complete finding set before repairing anything. While that set is open, do not invoke any check, test, compile, format-task, quality-check command, `cargo` task, pack checker, `bill-code-check`, or delegated subagent check. Allowed work is read, search, and source edits only. Repair every finding at its root cause; verification runs only after the full set is repaired.
+
+Once the complete set is repaired, re-run the repository wrapper's verification once, escalating to full-suite fallbacks such as `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo check --workspace --all-targets`, `cargo build --workspace`, `cargo test --workspace`, and `cargo test --doc` when targeted coverage cannot establish safety.

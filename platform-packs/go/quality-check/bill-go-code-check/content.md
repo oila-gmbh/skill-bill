@@ -53,6 +53,8 @@ Never suppress a failure to make the checker pass; preserve the configured analy
 
 Collect one complete finding set before repairing anything. While that set is open, do not invoke any check, test, compile, format-task, quality-check command, `go test`, `go vet`, `go build`, pack checker, `bill-code-check`, or delegated subagent check. Allowed work is read, search, and source edits only. Repair every finding at its root cause; verification runs only after the full set is repaired.
 
+Once every finding is repaired, re-run the discovered module verification command once, then escalate to the full suite when package or generated-output coverage stays unproven.
+
 ### Failure Ownership and Blockers
 
 - A failure belongs to scoped work when the diff introduced it, changed the exercised contract, or owns the required generated output; record evidence rather than filtering all diagnostics outside changed line numbers.

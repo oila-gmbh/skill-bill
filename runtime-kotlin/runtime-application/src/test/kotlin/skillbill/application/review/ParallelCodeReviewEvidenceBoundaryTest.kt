@@ -9,6 +9,7 @@ import skillbill.ports.review.ReviewEvidenceBrokerFactory
 import skillbill.ports.review.model.GovernedReviewEvidenceEndpointDescriptor
 import skillbill.review.model.ReviewEvidenceBoundaryAccounting
 import skillbill.review.model.ReviewStageDegradationReason
+import skillbill.scaffold.model.ReviewLaneCondition
 import skillbill.workflow.model.CodeReviewExecutionMode
 import java.nio.file.Files
 import java.util.concurrent.atomic.AtomicInteger
@@ -270,5 +271,44 @@ class ParallelCodeReviewEvidenceBoundaryTest {
     val reasons = recorder.stageDegradations.map { it.reason }
     assertEquals(1, reasons.count { it == ReviewStageDegradationReason.EVIDENCE_BOUNDARY_UNBOUND_BROKER })
     assertEquals(1, reasons.count { it == ReviewStageDegradationReason.EVIDENCE_BOUNDARY_UNEXERCISED })
+  }
+
+  @Test
+  fun `inline parent binds one evidence surface covering every routed area it was selected for`() {
+    val recorder = ReviewRecorder()
+    val bindings = mutableListOf<skillbill.ports.review.model.ReviewEvidenceBrokerBinding>()
+    val defaults = ReviewHarnessConfig(
+      manifests = listOf(
+        reviewPack("kotlin", listOf("architecture", "security"), routingSignals = listOf("*.kt")).copy(
+          laneConditions = mapOf(
+            "architecture" to ReviewLaneCondition(path = listOf("src/core/")),
+            "security" to ReviewLaneCondition(path = listOf("src/secure/")),
+          ),
+        ),
+      ),
+      diff = diffForPaths("src/core/Repo.kt", "src/secure/Auth.kt"),
+    )
+    reviewHarness(
+      defaults.copy(
+        evidenceBrokerFactory = ReviewEvidenceBrokerFactory { binding ->
+          bindings += binding
+          defaults.evidenceBrokerFactory.brokerFor(binding)
+        },
+      ),
+      recorder,
+    ).run(
+      harnessRequest(
+        agent2Id = null,
+        reviewRunId = "rvw-198-inline-union",
+        codeReviewMode = CodeReviewExecutionMode.INLINE,
+      ),
+    )
+
+    val binding = bindings.single()
+    assertTrue(
+      binding.assignment.assignedPaths.containsAll(listOf("src/core/Repo.kt", "src/secure/Auth.kt")),
+      "the inline parent reaches the broker through one endpoint that stamps one lane, so its " +
+        "surface must cover every routed area; it covered ${binding.assignment.assignedPaths}",
+    )
   }
 }

@@ -43,4 +43,6 @@ Use this priority-ordered fix ladder so environment or package drift is understo
 
 Collect one complete finding set before repairing anything. While that set is open, do not invoke any check, test, compile, format-task, quality-check command, `pytest`, `ruff`, `mypy`, pack checker, `bill-code-check`, or delegated subagent check. Allowed work is read, search, and source edits only. Repair every finding at its root cause; verification runs only after the full set is repaired.
 
+Once the complete set is repaired, re-run the discovered verification command once before escalating to the authoritative full suite.
+
 Stop and report a blocker when credentials, external services, an unavailable supported interpreter, a missing repository-pinned tool, destructive migrations, or a maintainer decision prevents a required check. Preserve unrelated user changes and report pre-existing failures separately.

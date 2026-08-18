@@ -21,10 +21,10 @@ class BillCodeCheckRepairWindowContractTest {
   }
 
   private fun repoRootFromTest(): Path {
-    var current = Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize()
+    val start = Path.of(System.getProperty("user.dir")).toAbsolutePath().normalize()
+    var current = start
     while (!Files.isDirectory(current.resolve("skills"))) {
-      val parent = current.parent ?: error("Could not locate repository root from ${Path.of(System.getProperty("user.dir"))}")
-      current = parent
+      current = current.parent ?: error("Could not locate repository root from $start")
     }
     return current
   }

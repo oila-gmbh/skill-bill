@@ -591,10 +591,10 @@ class AgentRunCommandBuildersTest {
     val workspace = StubReviewEvidenceEndpoint.descriptor.mcpConfigPath.parent
     assertEquals(workspace.toString(), command[command.indexOf("--workspace") + 1])
     assertEquals(workspace, built.workingDirectory)
-    assertNull(built.stdinText)
-    val prompt = command.last()
-    assertEquals(requireNotNull(governed.promptOverride), prompt)
-    assertFalse(prompt.startsWith("/"))
+    // A review packet runs to hundreds of KB, past the 128 KB Linux caps on one argv element, so
+    // the prompt travels on stdin like every other launch rather than as the trailing argument.
+    assertEquals(requireNotNull(governed.promptOverride), built.stdinText)
+    assertTrue(command.none { it == governed.promptOverride })
     assertTrue(command.none { it.startsWith("/bill-code-review-inline") })
     assertTrue(command.contains("--approve-mcps"))
     assertFalse(command.contains("--force"))

@@ -379,7 +379,7 @@ class CursorAgentRunCommandBuilder(
         request.repoRoot
       },
       timeout = request.timeout,
-      stdinText = launchPrompt(request).takeUnless { isReviewLaunch },
+      stdinText = launchPrompt(request),
       environment = GoalContinuationEnvironment + goalContinuationEnvironment(request),
       inheritEnvironment = !isReviewLaunch,
       conversationIsolation = request.conversationIsolation,
@@ -434,9 +434,6 @@ class CursorAgentRunCommandBuilder(
           "Cursor effort directive requires a model directive; add a model directive or remove the effort assignment."
         }
       }
-    }
-    if (isReviewLaunch) {
-      add(launchPrompt(request))
     }
   }
 

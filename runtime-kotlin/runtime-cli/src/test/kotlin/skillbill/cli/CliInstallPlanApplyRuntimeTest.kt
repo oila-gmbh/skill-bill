@@ -936,7 +936,11 @@ private fun cliQualityCheckBody(slug: String): String = """
 
   ## Fix Strategy
 
-  Follow the priority-ordered fix ladder and never suppress failures. Re-run targeted checks after fixes.
+  Follow the priority-ordered fix ladder and never suppress failures.
+
+  ### Repair Window
+
+  Collect one complete finding set before repairing anything. While that set is open, do not invoke any check, test, compile, format-task, quality-check command, pack checker, `bill-code-check`, or delegated subagent check. Allowed work is read, search, and source edits only.
   Escalate to the full suite when targeted checks cannot establish safety.
 """.trimIndent()
 
