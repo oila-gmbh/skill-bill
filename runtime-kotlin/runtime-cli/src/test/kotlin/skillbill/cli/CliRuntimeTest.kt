@@ -774,7 +774,6 @@ class CliRuntimeTest {
         "json",
         "--release",
         "v0.2.0",
-        "--prefer-upstream",
         "--clean",
       ),
     )
@@ -783,11 +782,11 @@ class CliRuntimeTest {
     assertEquals(0, json.exitCode, json.stdout)
     assertEquals("dry_run", payload["status"])
     assertEquals(
-      "$EXPECTED_UPDATE_COMMAND --release v0.2.0 --prefer-upstream --clean",
+      "$EXPECTED_UPDATE_COMMAND --release v0.2.0 --clean",
       payload["command"],
     )
     assertEquals(
-      listOf("--reuse-last-selection", "--release", "v0.2.0", "--prefer-upstream", "--clean"),
+      listOf("--reuse-last-selection", "--release", "v0.2.0", "--clean"),
       payload["installer_args"],
     )
   }

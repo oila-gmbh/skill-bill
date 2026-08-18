@@ -1,3 +1,13 @@
+## [2026-08-18] Install reconcile: upstream always wins
+Areas: install.sh, runtime-kotlin/runtime-cli (update command)
+- Reconcile no longer preserves local edits. `install.sh` lost `--prefer-upstream`, `PREFER_UPSTREAM`, the y/n conflict prompt, the no-TTY conflict abort, the `SKILL_BILL_RECONCILE_CONFLICT_CHOICE` test seam, `--accept-conflicts`, `RECONCILE_CONFLICT_PATHS` and the summary block that reported overwritten conflicts. `skill-bill update` lost its `--prefer-upstream` passthrough.
+- `parse_reconcile_report` now only fail-closes on a missing/unparseable `reconcile_summary:` line (it keys off `applied=`); `has_conflicts` / `conflict_count` are gone from the line protocol.
+- The compute-only `install reconcile` pass is retained ON PURPOSE even though it no longer gates a decision: it is the pre-mutation failure detector that sets `RECONCILE_FAILURE_KIND=compute`, which is the only trigger for `reconcile_and_commit_authored_source_with_recovery`'s clean copied-source reset. Deleting the pass would leave a stale copied source (e.g. a pack manifest at an older `contract_version`) failing inside `--apply` instead, after partial mutation and with no recovery. reusable
+- Preserved on purpose: `clean_install_state` still wipes only `skills/`, `platform-packs/`, `orchestration/` and the baseline manifest, so `agent-addons/`, `install-selection.json`, and the durable DBs survive both a `--clean` install and the recovery reset.
+- Mirror semantics: `skills/` and `platform-packs/` under `~/.skill-bill` now mirror the source — content removed upstream is deleted on the next install. `agent-addons/` is exempt because it is user-owned. The line protocol carries `pruned_count` in `reconcile_summary:` and a `kind=prune` outcome line.
+Feature flag: N/A
+Acceptance criteria: N/A
+
 ## [2026-08-07] SKILL-167 subtask 2 latest-release resolution hardening
 Areas: install.sh, scripts, runtime-kotlin/runtime-application (updatecheck tests), .feature-specs/SKILL-167-intellij-plugin-ci-and-release
 - `install.sh` no longer calls `/releases/latest`: that endpoint returns the most recently *published* release of any kind, so an IntelliJ `plugin-v*` release would win and the installer would try to fetch runtime assets from a plugin tag. It now lists `/releases?per_page=100` and picks the highest plain `vMAJOR.MINOR.PATCH` tag. reusable — reuse this shape for any repo publishing more than one release series.

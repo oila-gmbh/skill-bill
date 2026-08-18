@@ -1317,26 +1317,7 @@ class ParallelCodeReviewRunner(
         launch.rubrics.forEach { rubric -> appendLine(rubric.body) }
       }
       appendLine("Use the assigned bundle locators below as authoritative; fetch bodies through the bound broker.")
-      if (inline) {
-        appendLine(
-          "Merge every routed rubric above into one combined checklist, then traverse the diff exactly " +
-            "once against it at reduced depth in this agent context, holding all rubrics in mind " +
-            "simultaneously, and do not launch specialists. Never re-walk the diff once per rubric: " +
-            "iterating rubrics over the same code is the same review repeated N times at N times the " +
-            "cost, and it misses defects that only surface where two rubrics intersect. " +
-            "Follow only the signals that appear; do not build a case for a marginal finding. " +
-            "Depth and budget are lowered here — the severity vocabulary, the finding admission gate, the " +
-            "evidence and observable-consequence requirements, the F-XXX register format, and telemetry are " +
-            "inherited unchanged.",
-        )
-      } else {
-        appendLine(
-          "Assign each routed rubric above to its own specialist worker over that rubric's owned paths " +
-            "and merge the returned registers. The severity vocabulary, the finding admission gate, the " +
-            "evidence and observable-consequence requirements, the F-XXX register format, and telemetry " +
-            "are the same as every other mode.",
-        )
-      }
+      appendLine(if (inline) INLINE_DEPTH_DIRECTIVE else DELEGATED_DEPTH_DIRECTIVE)
       appendLine(
         "Return only '[F-XXX] Severity | Confidence | specialist=<exact resolved rubric identity> | " +
           "commits=<sha>[,<sha>] | path=<JSON string> | line=<positive integer> | description' lines. " +
@@ -1763,6 +1744,23 @@ private fun inlineParentAccounting(launch: InlineParentLaunch, terminalStatus: S
     budgetDimension = launch.bundleState.budgetDimension,
     unreviewedUnits = launch.bundleState.unreviewedUnits,
   )
+
+private const val INLINE_DEPTH_DIRECTIVE: String =
+  "Merge every routed rubric above into one combined checklist, then traverse the diff exactly " +
+    "once against it at reduced depth in this agent context, holding all rubrics in mind " +
+    "simultaneously, and do not launch specialists. Never re-walk the diff once per rubric: " +
+    "iterating rubrics over the same code is the same review repeated N times at N times the " +
+    "cost, and it misses defects that only surface where two rubrics intersect. " +
+    "Follow only the signals that appear; do not build a case for a marginal finding. " +
+    "Depth and budget are lowered here — the severity vocabulary, the finding admission gate, the " +
+    "evidence and observable-consequence requirements, the F-XXX register format, and telemetry are " +
+    "inherited unchanged."
+
+private const val DELEGATED_DEPTH_DIRECTIVE: String =
+  "Assign each routed rubric above to its own specialist worker over that rubric's owned paths " +
+    "and merge the returned registers. The severity vocabulary, the finding admission gate, the " +
+    "evidence and observable-consequence requirements, the F-XXX register format, and telemetry " +
+    "are the same as every other mode."
 
 /** Terminal status of a resume pass that had no incomplete lane left to launch a worker for. */
 internal const val NO_OP_RESUME_TERMINAL_STATUS: String = "no_op_resume"

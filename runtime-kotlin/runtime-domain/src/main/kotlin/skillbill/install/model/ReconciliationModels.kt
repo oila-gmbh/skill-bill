@@ -1,69 +1,37 @@
 package skillbill.install.model
 
 /**
- * SKILL-76 Subtask 2: per-skill reconciliation outcome computed by comparing a
- * skill's UPSTREAM (clone/candidate), LOCAL (~/.skill-bill copy), and BASELINE
- * (last-copied-in) content hashes. The hashes are exactly the
- * `computeInstallContentHash` 16-hex digests that key the install staging leaf,
- * so reconciliation never introduces a second hashing scheme.
- *
- * Each subtype is a TYPED case (no public raw `Map`) carrying the skill-relative
- * path plus the hashes relevant to that classification. Hashes are nullable only
- * where a side genuinely has no counterpart (a missing baseline entry, or a skill
- * with no upstream counterpart).
+ * Per-skill reconciliation outcome. Upstream always wins: any skill with an upstream
+ * counterpart is installed from upstream regardless of local or baseline state, and a
+ * skill or platform pack upstream no longer ships is deleted so the installed tree
+ * mirrors the source. Only user-owned agent add-ons survive without an upstream
+ * counterpart. Hashes are the `computeInstallContentHash` 16-hex digests that key the
+ * install staging leaf, so reconciliation never introduces a second hashing scheme.
  */
 sealed interface SkillReconciliationOutcome {
   val skillRelativePath: String
 
-  /**
-   * local == baseline and upstream != baseline: the local copy was untouched, so
-   * the new upstream is adopted and the baseline is refreshed to the upstream hash.
-   */
   data class Adopt(
     override val skillRelativePath: String,
     val upstreamHash: String,
-    val localHash: String,
-    val baselineHash: String,
-  ) : SkillReconciliationOutcome
-
-  /**
-   * local != baseline and upstream == baseline: the user edited the local copy and
-   * upstream did not change. The local edit is kept and the baseline is untouched.
-   */
-  data class KeepLocal(
-    override val skillRelativePath: String,
-    val upstreamHash: String,
-    val localHash: String,
-    val baselineHash: String,
-  ) : SkillReconciliationOutcome
-
-  /**
-   * local != baseline and upstream != baseline: BOTH sides changed. The shell must
-   * WARN + prompt (accept overwrites local + refreshes baseline; abort changes
-   * nothing). Detection happens before the atomic swap so an abort leaves the
-   * existing install fully intact.
-   */
-  data class Conflict(
-    override val skillRelativePath: String,
-    val upstreamHash: String,
-    val localHash: String,
-    val baselineHash: String,
-  ) : SkillReconciliationOutcome
-
-  /**
-   * No baseline entry exists for this skill (first install, or a newly-shipped
-   * upstream skill): copy the upstream in and write a fresh baseline entry.
-   */
-  data class NewUpstream(
-    override val skillRelativePath: String,
-    val upstreamHash: String,
     val localHash: String?,
+    val baselineHash: String?,
   ) : SkillReconciliationOutcome
 
-  /**
-   * No upstream counterpart exists for a skill present in the local copy: it was
-   * authored locally and must be preserved (never deleted) and reported.
-   */
+  data class Unchanged(
+    override val skillRelativePath: String,
+    val upstreamHash: String,
+    val baselineHash: String?,
+  ) : SkillReconciliationOutcome
+
+  /** A `skills/` or `platform-packs/` entry upstream no longer ships: delete it. */
+  data class Prune(
+    override val skillRelativePath: String,
+    val localHash: String,
+    val baselineHash: String?,
+  ) : SkillReconciliationOutcome
+
+  /** A user-owned `agent-addons/` entry with no upstream counterpart: never written, never deleted. */
   data class LocallyAuthored(
     override val skillRelativePath: String,
     val localHash: String,
@@ -72,52 +40,43 @@ sealed interface SkillReconciliationOutcome {
 }
 
 /**
- * Aggregate reconciliation plan: the ordered per-skill outcomes plus the derived
- * conflict list. The plan is the typed result returned by the reconcile-compute
- * port; the CLI renders it to a machine-readable report and install.sh drives the
- * stage -> reconcile -> swap sequence from it.
+ * Aggregate reconciliation plan: the ordered per-skill outcomes, the baseline entries a
+ * successful apply must record, and the paths it must delete.
  */
 data class ReconciliationPlan(
   val outcomes: List<SkillReconciliationOutcome>,
 ) {
-  /** Conflicts derived from [outcomes]; non-empty means the shell must prompt/abort. */
-  val conflicts: List<SkillReconciliationOutcome.Conflict> =
-    outcomes.filterIsInstance<SkillReconciliationOutcome.Conflict>()
-
-  val hasConflicts: Boolean get() = conflicts.isNotEmpty()
-
-  /** Skills whose baseline must be (re)written after a successful, accepted apply. */
-  val baselineRefreshPaths: List<String>
+  val baselineOverlay: Map<String, String>
     get() = outcomes.mapNotNull { outcome ->
       when (outcome) {
-        is SkillReconciliationOutcome.Adopt -> outcome.skillRelativePath
-        is SkillReconciliationOutcome.NewUpstream -> outcome.skillRelativePath
-        is SkillReconciliationOutcome.Conflict -> outcome.skillRelativePath
-        is SkillReconciliationOutcome.KeepLocal -> null
+        is SkillReconciliationOutcome.Adopt -> outcome.skillRelativePath to outcome.upstreamHash
+        is SkillReconciliationOutcome.Unchanged -> outcome.skillRelativePath to outcome.upstreamHash
+        is SkillReconciliationOutcome.Prune -> null
         is SkillReconciliationOutcome.LocallyAuthored -> null
       }
-    }
+    }.toMap()
+
+  val prunedPaths: List<String>
+    get() = outcomes.filterIsInstance<SkillReconciliationOutcome.Prune>().map { it.skillRelativePath }
 }
 
 /**
- * SKILL-76 Subtask 2: typed result of a runtime-owned per-skill reconcile APPLY. Carries
- * the computed [plan], the skill-relative paths whose live dir was actually replaced from
- * upstream ([installedPaths]), and whether the baseline manifest was rewritten
- * ([refreshed]). Returned by `InstallService.applyReconcile`; the CLI renders it to the
- * machine-readable line report install.sh consumes.
+ * Typed result of a runtime-owned per-skill reconcile APPLY: the computed [plan], the
+ * skill-relative paths whose live dir was replaced from upstream, and whether the
+ * baseline manifest was rewritten.
  */
 data class InstallReconcileApplyOutcome(
   val plan: ReconciliationPlan,
   val installedPaths: List<String>,
+  val prunedPaths: List<String>,
   val refreshed: Boolean,
 )
 
 /**
- * Typed baseline manifest: the durable record of the last-copied-in upstream
- * content hash per skill-relative path. Persisted at
- * `~/.skill-bill/baseline-manifest.json`. Keys are stored sorted by the wire codec
- * for byte-stable, idempotent writes; this model keeps them in a sorted map so the
- * in-memory ordering matches the persisted ordering.
+ * Typed baseline manifest: the durable record of the last-copied-in upstream content
+ * hash per skill-relative path, persisted at `~/.skill-bill/baseline-manifest.json`.
+ * Read-only consumers compare a live skill's hash against its entry to report which
+ * installed skills have been edited since the last install.
  */
 data class BaselineManifest(
   val contractVersion: String,
@@ -127,12 +86,14 @@ data class BaselineManifest(
 
   fun withEntries(updated: Map<String, String>): BaselineManifest = copy(entries = (entries + updated).toSortedMap())
 
+  fun withoutEntries(removed: Collection<String>): BaselineManifest =
+    copy(entries = entries.filterKeys { it !in removed }.toSortedMap())
+
   companion object {
     const val CONTRACT_VERSION: String = "1.0"
 
     fun empty(): BaselineManifest = BaselineManifest(CONTRACT_VERSION, emptyMap())
 
-    /** Build a manifest with sorted entries from any iterable of path -> hash pairs. */
     fun of(contractVersion: String, entries: Map<String, String>): BaselineManifest =
       BaselineManifest(contractVersion, entries.toSortedMap())
   }

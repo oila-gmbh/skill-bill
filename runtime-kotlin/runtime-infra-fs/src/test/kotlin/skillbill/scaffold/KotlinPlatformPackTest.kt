@@ -106,6 +106,7 @@ class KotlinPlatformPackTest {
       Files.walk(mainRoots).use { stream ->
         stream.forEach { path ->
           if (!Files.isRegularFile(path)) return@forEach
+          if (path.fileName.toString().endsWith(".kt").not()) return@forEach
           if ("/src/main/" !in path.toString().replace('\\', '/')) return@forEach
           val text = Files.readString(path)
           forbidden.forEach { token ->

@@ -15,7 +15,6 @@ import skillbill.install.model.PlatformPackSelection
 import skillbill.install.model.PlatformPackSelectionMode
 import skillbill.install.model.ReconciliationPlan
 import skillbill.install.model.SharedInstallSelection
-import skillbill.install.model.SkillReconciliationOutcome
 import skillbill.install.policy.InstallPlanPolicy
 import skillbill.ports.install.apply.InstallApplyExecutionPort
 import skillbill.ports.install.apply.model.InstallApplyExecutionRequest
@@ -93,14 +92,11 @@ class InstallService(
     reconcilePorts.reconcilePort.reconcile(request).plan
 
   /**
-   * SKILL-76 Subtask 2: runtime-owned per-skill APPLY. The infra-fs adapter recomputes
-   * the plan from the same inputs, gates on conflicts (refusing loudly when conflicts
-   * remain and accept-conflicts is unset), and replaces ONLY the changed skill dirs in
-   * the live tree from upstream — keep-local and locally-authored skills are preserved by
-   * construction. The baseline is then refreshed from the SAME returned plan via
-   * [refreshBaselineFromPlan] (single refresh-eligibility rule, the domain
-   * [ReconciliationPlan.baselineRefreshPaths]). Returns the plan, the installed paths,
-   * and whether the baseline was rewritten.
+   * Runtime-owned per-skill APPLY. The infra-fs adapter recomputes the plan from the same
+   * inputs and replaces every live skill dir whose upstream counterpart differs;
+   * locally-authored skills (no upstream counterpart) are preserved by construction. The
+   * baseline is then refreshed from the SAME returned plan via [refreshBaselineFromPlan].
+   * Returns the plan, the installed paths, and whether the baseline was rewritten.
    */
   fun applyReconcile(request: InstallReconcileApplyRequest): InstallReconcileApplyOutcome {
     val applied = reconcilePorts.reconcileApplyPort.apply(request)
@@ -111,32 +107,23 @@ class InstallService(
     return InstallReconcileApplyOutcome(
       plan = applied.plan,
       installedPaths = applied.installedPaths,
+      prunedPaths = applied.prunedPaths,
       refreshed = updated != before,
     )
   }
 
   /**
-   * Refresh the baseline manifest after a successful, accepted apply. Adopt,
-   * new-upstream, and (accepted) conflict skills baseline to their UPSTREAM hash;
-   * keep-local and locally-authored skills are left untouched so a user edit is
-   * never silently re-baselined. Idempotent: a no-change reinstall produces only
-   * keep-local outcomes, so the overlay is empty and the manifest is unchanged
-   * (no baseline churn).
+   * Refresh the baseline manifest after a successful apply. Every skill with an upstream
+   * counterpart baselines to its UPSTREAM hash, pruned paths drop their entry, and
+   * locally-authored add-ons are left untouched so their entry keeps reporting them as
+   * user-owned. Idempotent: a no-change reinstall produces an overlay identical to the
+   * current manifest, so nothing is written.
    */
   fun refreshBaselineFromPlan(home: Path, plan: ReconciliationPlan): BaselineManifest {
     val current = reconcilePorts.baselineManifestPersistencePort
       .readBaseline(ReadBaselineManifestRequest(installHome = home))
       .manifest
-    val overlay = plan.outcomes.mapNotNull { outcome ->
-      when (outcome) {
-        is SkillReconciliationOutcome.Adopt -> outcome.skillRelativePath to outcome.upstreamHash
-        is SkillReconciliationOutcome.NewUpstream -> outcome.skillRelativePath to outcome.upstreamHash
-        is SkillReconciliationOutcome.Conflict -> outcome.skillRelativePath to outcome.upstreamHash
-        is SkillReconciliationOutcome.KeepLocal -> null
-        is SkillReconciliationOutcome.LocallyAuthored -> null
-      }
-    }.toMap()
-    val updated = current.withEntries(overlay)
+    val updated = current.withEntries(plan.baselineOverlay).withoutEntries(plan.prunedPaths)
     if (updated != current) {
       reconcilePorts.baselineManifestPersistencePort.writeBaseline(
         WriteBaselineManifestRequest(installHome = home, manifest = updated),

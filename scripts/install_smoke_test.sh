@@ -107,19 +107,12 @@ case "$cmd" in
       skills="$(flag_value --skills "${cmd_parts[@]}")"
       if [[ -n "${upstream_skills:-}" && -n "${skills:-}" && -d "$upstream_skills" ]]; then
         mkdir -p "$skills"
-        if has_flag "--accept-conflicts" "${cmd_parts[@]}"; then
-          cp -R "$upstream_skills/." "$skills/"
-        else
-          cp -Rn "$upstream_skills/." "$skills/"
-        fi
+        cp -R "$upstream_skills/." "$skills/"
       fi
+      echo "reconcile_summary: applied=true baseline_refreshed=true installed_count=1 pruned_count=0"
     else
-      if [[ "${SKILL_BILL_SMOKE_HAS_CONFLICTS:-}" == "1" ]]; then
-        echo "reconcile_outcome: kind=conflict upstream_hash=aaa path=skills/bill-code-review/content.md"
-        echo "reconcile_summary: has_conflicts=true conflict_count=1"
-      else
-        echo "reconcile_summary: has_conflicts=false conflict_count=0"
-      fi
+      echo "reconcile_outcome: kind=adopt upstream_hash=aaa path=skills/bill-code-review"
+      echo "reconcile_summary: applied=false baseline_refreshed=false installed_count=0 pruned_count=0"
     fi
     ;;
 
@@ -533,7 +526,7 @@ else
 fi
 
 echo ""
-echo "--- scenario 6: --prefer-upstream conflict (AC#3) ---"
+echo "--- scenario 6: a local edit is overwritten by upstream (AC#3) ---"
 
 TARGET_SKILL="$FAKE_HOME/.skill-bill/skills/bill-code-review"
 if [[ ! -d "$TARGET_SKILL" ]]; then
@@ -558,16 +551,15 @@ env \
   SKILL_BILL_RELEASE_DIR="$RELEASE_DIR" \
   SKILL_BILL_SKIP_PREINSTALL_UNINSTALL=1 \
   SKILL_BILL_BIN_DIR="$FAKE_HOME/.local/bin" \
-  SKILL_BILL_SMOKE_HAS_CONFLICTS=1 \
-  bash "$INSTALL_SH" --reuse-last-selection --prefer-upstream \
+  bash "$INSTALL_SH" --reuse-last-selection \
   </dev/null
-pass "install.sh --prefer-upstream exited 0"
+pass "install.sh exited 0 with a locally edited skill present"
 
 AFTER_CONTENT="$(cat "$CONTENT_FILE")"
 if [[ "$AFTER_CONTENT" == "$ORIGINAL_CONTENT" ]]; then
-  pass "upstream version restored after --prefer-upstream (local edit overwritten)"
+  pass "upstream version restored (local edit overwritten)"
 else
-  fail "content not restored after --prefer-upstream; file still contains local edit"
+  fail "content not restored; file still contains local edit"
 fi
 
 echo ""

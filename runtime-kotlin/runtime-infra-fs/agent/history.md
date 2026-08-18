@@ -1,5 +1,16 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
+## [2026-08-18] Install reconcile: upstream always wins
+Areas: runtime-infra-fs/install/reconcile, runtime-domain/install/model, runtime-ports/install/reconcile, runtime-application/install, runtime-cli, runtime-contracts
+- `SkillReconciliationOutcome` collapsed from five cases to four: `Adopt` (upstream exists and differs from local — install it), `Unchanged` (upstream hash == local hash — no file op), `Prune` (no upstream counterpart under `skills/` or `platform-packs/` — DELETE it), `LocallyAuthored` (no upstream counterpart under `agent-addons/` — user-owned, never written, never deleted). `KeepLocal`, `Conflict`, and `NewUpstream` are gone, as are `ReconciliationPlan.conflicts` / `hasConflicts` and `ReconciliationApplyRefusedError`.
+- `skills/` and `platform-packs/` mirror the source: a skill removed upstream is deleted on the next install, and `adoptPlatformPackNonSkillFiles` also deletes live non-skill pack files absent upstream then drops the emptied directories, so a whole removed pack disappears rather than leaving an orphan `platform.yaml` that pack discovery would still load. The prefix constants moved to the policy file (`SKILLS_PREFIX` / `PLATFORM_PACKS_PREFIX` / `AGENT_ADDONS_PREFIX`) because classification now needs the category, not just apply. reusable
+- Prune safety: `guardPruneAgainstEmptyUpstream` loud-fails when the plan carries prune outcomes AND the upstream enumeration returned ZERO skills. A mis-staged or truncated candidate would otherwise classify the entire live install as prune and delete it irrecoverably — there is no backup, since `replaceSkillDirAtomically` drops its rename-aside copy in `finally`. Any irreversible delete driven by a diff against a staged tree needs this shape of guard. reusable
+- The baseline manifest no longer influences classification — it is recorded output only. It is still written on every apply because `InstalledWorkspaceBaselineStatusPort` is an independent consumer: it reports which installed skills the user has edited since the last install, and that answer needs a per-skill baseline hash.
+- `ReconciliationPlan.baselineRefreshPaths` (paths) became `baselineOverlay` (path -> upstream hash) plus `prunedPaths`. `InstallService.refreshBaselineFromPlan` applies both (`withEntries(...).withoutEntries(...)`) instead of re-deriving the same `when`, so a pruned skill also drops its baseline entry rather than lingering as a phantom 'modified' row. reusable
+- Test pitfall: an empty baseline no longer forces an install. Two identically-seeded repo roots classify as `Unchanged`, so an apply-idempotence test must start from an EMPTY local tree to get a non-empty first `installedPaths` — under the old model `BaselineManifest.empty()` alone guaranteed `NewUpstream` for everything.
+Feature flag: N/A
+Acceptance criteria: N/A
+
 ## [2026-08-15] SKILL-192 subtask 1 — Collect-all gate declaration and complete finding extraction
 Areas: orchestration/contracts, platform-packs/{kotlin,kmp}, runtime-infra-fs/validation, runtime-domain/scaffold, runtime-application/featuretask/validation, tests/fixtures/shell_content_contract
 - `validation_gate` now requires pack-owned collect-all argv (cache-eligible and cache-bypassing) plus a compiler-diagnostics locator; shell contract pinned at 1.5 with schema and Kotlin together.

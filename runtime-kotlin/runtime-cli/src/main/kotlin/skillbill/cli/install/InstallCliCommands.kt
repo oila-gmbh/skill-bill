@@ -17,7 +17,6 @@ import skillbill.cli.core.DocumentedCliCommand
 import skillbill.cli.core.formatOption
 import skillbill.di.RuntimeComponent
 import skillbill.di.create
-import skillbill.error.ReconciliationApplyRefusedError
 import skillbill.error.SkillBillRuntimeException
 import skillbill.install.model.ClaudeMcpProfileFailure
 import skillbill.install.model.InstallAgent
@@ -124,18 +123,10 @@ class InstallReconcileCommand(
     help = "Upstream/candidate platform-packs root. Defaults to <upstream-repo-root>/platform-packs.",
   )
 
-  // SKILL-76 Subtask 2: APPLY mode. When set, the runtime performs the per-skill FILE
-  // operations + baseline refresh from a SINGLE computed plan (no shell whole-tree swap).
   private val apply by option(
     "--apply",
     help = "Apply the computed plan: install changed upstream skills into the live tree and refresh the baseline.",
   ).flag(default = false)
-  private val acceptConflicts by option(
-    "--accept-conflicts",
-    help = "With --apply, overwrite both-changed conflicting skills with upstream. " +
-      "Without it, apply refuses on conflict.",
-  ).flag(default = false)
-
   override fun run() {
     val localRequest = toRequest(state)
     val resolvedUpstreamRepoRoot = Path.of(upstreamRepoRoot).toAbsolutePath().normalize()
@@ -148,34 +139,24 @@ class InstallReconcileCommand(
       if (state.refuseInstallMutationDuringGoalContinuation("reconcile")) {
         return
       }
-      try {
-        val outcome = installService.applyReconcile(
-          InstallReconcileApplyRequest(
-            home = state.userHome,
-            upstreamRepoRoot = resolvedUpstreamRepoRoot,
-            upstreamSkillsRoot = resolvedUpstreamSkills,
-            upstreamPlatformPacksRoot = resolvedUpstreamPacks,
-            localRepoRoot = localRequest.repoRoot,
-            localSkillsRoot = localRequest.targetPaths.skillsRoot,
-            localPlatformPacksRoot = localRequest.targetPaths.platformPacksRoot,
-            acceptConflicts = acceptConflicts,
-          ),
-        )
-        completeReconcile(
-          outcome.plan,
-          refreshed = outcome.refreshed,
-          applied = true,
-          installedPaths = outcome.installedPaths,
-        )
-      } catch (error: ReconciliationApplyRefusedError) {
-        // Conflict gating: apply refused and changed nothing. Surface the typed message
-        // as a non-zero exit so the shell aborts the install.
-        state.completeText(
-          "${error.message.orEmpty()}\n",
-          mapOf("status" to "error", "error" to error.message),
-          exitCode = 1,
-        )
-      }
+      val outcome = installService.applyReconcile(
+        InstallReconcileApplyRequest(
+          home = state.userHome,
+          upstreamRepoRoot = resolvedUpstreamRepoRoot,
+          upstreamSkillsRoot = resolvedUpstreamSkills,
+          upstreamPlatformPacksRoot = resolvedUpstreamPacks,
+          localRepoRoot = localRequest.repoRoot,
+          localSkillsRoot = localRequest.targetPaths.skillsRoot,
+          localPlatformPacksRoot = localRequest.targetPaths.platformPacksRoot,
+        ),
+      )
+      completeReconcile(
+        outcome.plan,
+        refreshed = outcome.refreshed,
+        applied = true,
+        installedPaths = outcome.installedPaths,
+        prunedPaths = outcome.prunedPaths,
+      )
       return
     }
 
@@ -201,10 +182,23 @@ class InstallReconcileCommand(
     refreshed: Boolean,
     applied: Boolean,
     installedPaths: List<String>,
+    prunedPaths: List<String> = emptyList(),
   ) {
     state.completeText(
-      reconcileMachineReport(plan, refreshed = refreshed, applied = applied, installedPaths = installedPaths),
-      reconcilePayload(plan, refreshed = refreshed, applied = applied, installedPaths = installedPaths),
+      reconcileMachineReport(
+        plan,
+        refreshed = refreshed,
+        applied = applied,
+        installedPaths = installedPaths,
+        prunedPaths = prunedPaths,
+      ),
+      reconcilePayload(
+        plan,
+        refreshed = refreshed,
+        applied = applied,
+        installedPaths = installedPaths,
+        prunedPaths = prunedPaths,
+      ),
     )
   }
 }

@@ -21,16 +21,12 @@ RUNTIME_MCP_INSTALL_DIR="$RUNTIME_INSTALL_ROOT/runtime-mcp"
 RUNTIME_CLI_BIN="$RUNTIME_CLI_INSTALL_DIR/bin/runtime-cli"
 RUNTIME_MCP_BIN="$RUNTIME_MCP_INSTALL_DIR/bin/runtime-mcp"
 RUNTIME_LAUNCHER_BIN_DIR="${SKILL_BILL_BIN_DIR:-$HOME/.local/bin}"
-# SKILL-76 subtask 2: space-separated skill-relative paths whose both-changed
-# reconcile conflict the user accepted (overwrote). Surfaced in the install summary.
-RECONCILE_CONFLICT_PATHS=""
 
 # Install source. `auto` means a full local checkout installs from source, while a
 # standalone downloaded installer falls back to published prebuilt release assets.
 INSTALL_SOURCE="auto"
 RELEASE_TAG="${SKILL_BILL_RELEASE_TAG:-}"
 REUSE_LAST_SELECTION=0
-PREFER_UPSTREAM=0
 CLEAN_INSTALL=0
 RELEASE_REPO="${SKILL_BILL_RELEASE_REPO:-oila-gmbh/skill-bill}"
 # Memoized result of resolve_latest_runtime_release_tag. The tag is consumed once per
@@ -86,14 +82,9 @@ Options:
                            stable release. Ignored with --from-source.
   --reuse-last-selection   Reuse the latest successful agent, platform,
                            telemetry, and MCP choices from ~/.skill-bill.
-  --prefer-upstream        When a skill changed both upstream and locally,
-                           overwrite the local copy with the upstream version
-                           instead of keeping local. Useful for non-interactive
-                           installs: curl ... | bash -s -- --prefer-upstream
   --clean                  Wipe ~/.skill-bill/skills/, ~/.skill-bill/platform-packs/,
                            and ~/.skill-bill/orchestration/ before staging the
-                           candidate tree. Useful for a clean-slate install. Composable
-                           with --prefer-upstream.
+                           candidate tree. Useful for a clean-slate install.
 USAGE
 }
 
@@ -110,10 +101,6 @@ parse_args() {
         ;;
       --reuse-last-selection)
         REUSE_LAST_SELECTION=1
-        shift
-        ;;
-      --prefer-upstream)
-        PREFER_UPSTREAM=1
         shift
         ;;
       --clean)
@@ -853,66 +840,44 @@ adopt_non_skill_source_trees() {
   fi
 }
 
-# Parse the line-oriented machine report (mirrors the SKILL-74 line protocol) into the
-# RECONCILE_* shell state. FAIL-CLOSED: if the `reconcile_summary:` line is absent the
-# caller MUST abort. Sets RECONCILE_HAS_CONFLICTS / RECONCILE_CONFLICT_COUNT and appends
-# conflicting paths to RECONCILE_CONFLICT_PATHS. Each per-outcome line is
-# `reconcile_outcome: kind=<k> [upstream_hash=<hex>] path=<p>` with `path` LAST so a path
-# containing spaces survives the trailing-remainder extraction.
-RECONCILE_HAS_CONFLICTS=""
-RECONCILE_CONFLICT_COUNT=""
+# Parse the line-oriented machine report (mirrors the SKILL-74 line protocol). FAIL-CLOSED:
+# if the `reconcile_summary:` line is absent or unparseable the caller MUST abort rather
+# than treat an empty report as a clean run.
 RECONCILE_FAILURE_KIND=""
 parse_reconcile_report() {
   local report="$1"
-  RECONCILE_HAS_CONFLICTS=""
-  RECONCILE_CONFLICT_COUNT=""
-  RECONCILE_CONFLICT_PATHS=""
-  local summary_line conflict_lines line
+  local summary_line applied
   summary_line="$( { printf '%s\n' "$report" | grep -m1 '^reconcile_summary:'; } || true )"
   if [[ -z "$summary_line" ]]; then
     return 1
   fi
-  # Extract has_conflicts / conflict_count from the summary key=value tokens.
-  RECONCILE_HAS_CONFLICTS="$( { printf '%s' "$summary_line" | grep -o 'has_conflicts=[a-z]*' | cut -d= -f2; } || true )"
-  RECONCILE_CONFLICT_COUNT="$( { printf '%s' "$summary_line" | grep -o 'conflict_count=[0-9]*' | cut -d= -f2; } || true )"
-  if [[ -z "$RECONCILE_HAS_CONFLICTS" || -z "$RECONCILE_CONFLICT_COUNT" ]]; then
+  applied="$( { printf '%s' "$summary_line" | grep -o 'applied=[a-z]*' | cut -d= -f2; } || true )"
+  if [[ -z "$applied" ]]; then
     return 1
-  fi
-  # Collect conflicting skill paths from the per-outcome lines. `kind` is anchored as the
-  # first token so this filter cannot collide with a path that contains "kind=conflict",
-  # and `path=` is the LAST token so the trailing-remainder extraction below keeps paths
-  # that contain spaces intact (no [^ ]* truncation).
-  conflict_lines="$( { printf '%s\n' "$report" | grep '^reconcile_outcome: kind=conflict '; } || true )"
-  if [[ -n "$conflict_lines" ]]; then
-    while IFS= read -r line; do
-      [[ -n "$line" ]] || continue
-      local p
-      p="$( { printf '%s' "$line" | sed -n 's/^.* path=//p'; } || true )"
-      [[ -n "$p" ]] && RECONCILE_CONFLICT_PATHS+="$p "
-    done <<< "$conflict_lines"
   fi
   return 0
 }
 
-# Step 2-4: reconcile the staged candidate against the existing local copy + the
-# baseline manifest, drive the interactive conflict decision, and ONLY then call the
+# Step 2-4: reconcile the staged candidate against the existing local copy, then call the
 # runtime per-skill APPLY (which owns the per-skill file ops + baseline refresh). Runs
 # AFTER the runtime CLI is installed so run_runtime_cli is available.
 #
-# - First install (no existing skills copy, no baseline): every skill is new-upstream
-#   → apply installs them all, refreshes baseline, no prompt.
-# - keep-local: a user edit survives (local!=baseline, upstream==baseline) — apply
-#   leaves the live skill untouched.
-# - adopt: an untouched local adopts new upstream + refreshes baseline.
-# - locally-authored: a skill with no upstream counterpart is NEVER deleted.
-# - conflict (both changed): TTY → WARN + prompt y/n; NO-TTY → abort with a
-#   clear message. y → apply --accept-conflicts; n → discard, change nothing.
-#   ALL conflicts are reported in the install summary. No sidecar.
+# UPSTREAM ALWAYS WINS: every skill with an upstream counterpart is installed from
+# upstream, overwriting any local edit, and skills/ + platform-packs/ mirror the source.
+# There is no prompt and no keep-local path.
+# - adopt: upstream differs from the local copy → the live skill dir is replaced.
+# - unchanged: upstream and local are byte-identical → nothing is written.
+# - prune: a skills/ or platform-packs/ entry upstream no longer ships is DELETED.
+# - locally-authored: a user-owned agent-addons/ entry is NEVER written or deleted.
+#
+# The compute pass runs first purely as a pre-mutation failure detector: enumeration
+# errors (contract drift in a stale copied source) surface as RECONCILE_FAILURE_KIND=compute
+# BEFORE any live tree is touched, which is what drives the clean-reset recovery below.
 #
 # The shell performs NO whole-tree rm/mv swap of skills/ — the runtime per-skill apply
 # is the sole writer of the live skill dirs.
 reconcile_and_commit_authored_source() {
-  local report status accept_conflicts=0
+  local report status
   RECONCILE_FAILURE_KIND=""
   info "Reconciling staged source against existing copy and baseline manifest..."
   # Compute the per-skill plan against UPSTREAM=candidate, LOCAL=existing copy. The
@@ -933,7 +898,7 @@ reconcile_and_commit_authored_source() {
   fi
 
   # FAIL-CLOSED: a missing/unparseable summary line aborts the install rather than
-  # treating the absence of conflicts as "no conflicts".
+  # treating an empty report as a clean run.
   if ! parse_reconcile_report "$report"; then
     RECONCILE_FAILURE_KIND="parse"
     err "Could not parse the reconcile machine report; aborting the install. Nothing was changed."
@@ -941,70 +906,10 @@ reconcile_and_commit_authored_source() {
     return 1
   fi
 
-  if [[ "$RECONCILE_HAS_CONFLICTS" == "true" || "${RECONCILE_CONFLICT_COUNT:-0}" -ne 0 ]]; then
-    warn "Reconcile conflict: both upstream and your local copy changed for:"
-    local p
-    for p in $RECONCILE_CONFLICT_PATHS; do
-      warn "  conflict: $p"
-    done
-    # TEST-ONLY SEAM: SKILL_BILL_RECONCILE_CONFLICT_CHOICE supplies the conflict decision
-    # (y/n) and bypasses ONLY the TTY check, so integration tests can drive the
-    # y branch under piped stdin (where [[ ! -t 0 ]] would otherwise abort). When the
-    # env var is UNSET/empty, production behavior is unchanged: TTY -> prompt,
-    # no-TTY -> keep local. Mirrors the SKILL_BILL_SKIP_PREINSTALL_UNINSTALL opt-out style.
-    if [[ -n "${SKILL_BILL_RECONCILE_CONFLICT_CHOICE:-}" ]]; then
-      local answer="$SKILL_BILL_RECONCILE_CONFLICT_CHOICE"
-      info "Using SKILL_BILL_RECONCILE_CONFLICT_CHOICE=$answer for the conflict decision (test seam)."
-      case "$answer" in
-        [Yy]|[Yy][Ee][Ss])
-          info "Accepting upstream for conflicting skills; your local edits will be overwritten."
-          accept_conflicts=1
-          ;;
-        *)
-          err "Aborting the whole install at your request; nothing was changed."
-          discard_authored_candidates
-          return 1
-          ;;
-      esac
-    elif [[ "$PREFER_UPSTREAM" -eq 1 ]]; then
-      info "Accepting upstream for conflicting skills (--prefer-upstream); your local edits will be overwritten."
-      accept_conflicts=1
-    elif ! prompt_input_available; then
-      warn "Aborting: no TTY is attached to prompt for conflict resolution. Your local copies were not changed."
-      local p
-      for p in $RECONCILE_CONFLICT_PATHS; do
-        warn "  kept local: $p"
-      done
-      warn "To take the upstream version instead, re-run with --prefer-upstream:"
-      warn "  curl -fsSL https://raw.githubusercontent.com/oila-gmbh/skill-bill/main/install.sh | bash -s -- --prefer-upstream"
-      RECONCILE_FAILURE_KIND="conflict"
-      discard_authored_candidates
-      return 1
-    else
-      printf '%s' "Overwrite your local copy with the upstream version for the conflicting skills? [y/n]: "
-      local answer=""
-      if ! read_prompt_input answer; then
-        answer="n"
-      fi
-      case "$answer" in
-        [Yy]|[Yy][Ee][Ss])
-          info "Accepting upstream for conflicting skills; your local edits will be overwritten."
-          accept_conflicts=1
-          ;;
-        *)
-          err "Aborting the whole install at your request; nothing was changed."
-          discard_authored_candidates
-          return 1
-          ;;
-      esac
-    fi
-  fi
-
-  # Decision is accept / no-conflict. Hand the per-skill file ops to the runtime apply
-  # while the candidate remains a complete repo root for support-pointer validation. The
-  # runtime is the SOLE writer of the live skill dirs in BOTH skills/ AND platform-packs/
-  # (and of the non-skill platform-pack files): keep-local + locally-authored skills are
-  # preserved by construction.
+  # Hand the per-skill file ops to the runtime apply while the candidate remains a
+  # complete repo root for support-pointer validation. The runtime is the SOLE writer of
+  # the live skill dirs in BOTH skills/ AND platform-packs/ (and of the non-skill
+  # platform-pack files); locally-authored skills are preserved by construction.
   local apply_args=(
     install reconcile --apply
     --repo-root "$SKILL_BILL_STATE_DIR"
@@ -1014,9 +919,6 @@ reconcile_and_commit_authored_source() {
     --upstream-skills "$SKILL_BILL_CANDIDATE_SKILLS"
     --upstream-platform-packs "$SKILL_BILL_CANDIDATE_PLATFORM_PACKS"
   )
-  if [[ "$accept_conflicts" -eq 1 ]]; then
-    apply_args+=(--accept-conflicts)
-  fi
   if ! run_runtime_cli "${apply_args[@]}" >/dev/null; then
     RECONCILE_FAILURE_KIND="apply"
     err "Runtime reconcile apply failed; some skills may not have been updated."
@@ -2202,15 +2104,6 @@ run_full_install() {
   echo ""
   info "Source of truth: $PLUGIN_DIR/skills/"
   info "Staging cache:   $SKILL_BILL_STATE_DIR/installed-skills"
-  # SKILL-76 AC-7: report every reconcile conflict that was accepted (overwritten)
-  # in the install summary. No sidecar file; the summary is the single record.
-  if [[ -n "${RECONCILE_CONFLICT_PATHS:-}" ]]; then
-    info "Reconcile:       overwrote local edits with upstream for conflicting skills:"
-    local conflict_path
-    for conflict_path in $RECONCILE_CONFLICT_PATHS; do
-      info "  conflict:      $conflict_path"
-    done
-  fi
   info "Platforms:       $SELECTED_PLATFORM_LABEL"
   info "Launchers:       $RUNTIME_LAUNCHER_BIN_DIR/skill-bill, $RUNTIME_LAUNCHER_BIN_DIR/skill-bill-mcp"
   info "Telemetry:       $TELEMETRY_LEVEL"

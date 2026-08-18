@@ -812,23 +812,6 @@ class ReconciliationConflictError(
 )
 
 /**
- * SKILL-76 Subtask 2: surfaced when the runtime-owned per-skill reconcile APPLY is
- * invoked while the computed plan still has unresolved both-changed conflicts and the
- * caller did NOT pass `--accept-conflicts`. Apply refuses and changes NOTHING on disk,
- * so AC-7 "abort changes nothing" holds even if the shell mis-calls. The message lists
- * the conflicting skill-relative paths so the failure is actionable.
- */
-class ReconciliationApplyRefusedError(
-  val conflictPaths: List<String>,
-  cause: Throwable? = null,
-) : ShellContentContractException(
-  "Refusing to apply reconciliation: ${conflictPaths.size} unresolved both-changed conflict(s) " +
-    "(${conflictPaths.joinToString(", ").ifBlank { "<none>" }}) and --accept-conflicts was not set. " +
-    "Nothing was changed.",
-  cause,
-)
-
-/**
  * SKILL-71 Subtask 1 (AC3): surfaced when the repo-local `.skill-bill/config.yaml`
  * exists but cannot be read (IO/permission failure). The message names the
  * offending file path so config-load failures fail loudly at the read seam.

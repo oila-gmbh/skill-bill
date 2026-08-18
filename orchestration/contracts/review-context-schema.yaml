@@ -777,7 +777,7 @@ $defs:
       direct_usage: { $ref: "#/$defs/usage" }
       inclusive_usage: { $ref: "#/$defs/usage" }
       terminal_outcome:
-        enum: [completed, incomplete, review_context_budget_exceeded, budget_regression, failed, timeout, interrupted, spawn_failure, process_failure, unsupported_provider, forbidden_operation, partial_failure, no_op_resume]
+        enum: [completed, incomplete, review_context_budget_exceeded, budget_regression, failed, timeout, interrupted, spawn_failure, process_failure, unsupported_provider, forbidden_operation, partial_failure, no_op_resume, register_absent]
       bundle_composition_digest: { $ref: "#/$defs/digest" }
       segment_accounting:
         type: array

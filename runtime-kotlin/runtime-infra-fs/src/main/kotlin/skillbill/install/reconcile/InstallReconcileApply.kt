@@ -1,8 +1,8 @@
 package skillbill.install.reconcile
 
-import skillbill.error.ReconciliationApplyRefusedError
 import skillbill.error.ReconciliationConflictError
 import skillbill.install.model.BaselineManifest
+import skillbill.install.model.ReconciliationPlan
 import skillbill.install.model.SkillReconciliationOutcome
 import java.io.IOException
 import java.nio.file.AtomicMoveNotSupportedException
@@ -21,12 +21,11 @@ import java.nio.file.StandardCopyOption
  */
 
 /**
- * Recompute the plan ONCE from the same upstream/local/baseline inputs the compute path
- * uses, gate on conflicts, then replace ONLY the changed skill dirs in the live (`local`)
- * tree from upstream. Because the live tree is the base and untouched skills are never
- * written, keep-local and locally-authored skills are preserved by construction
- * (locally-authored is NEVER deleted). Returns the plan + the list of skill-relative paths
- * actually installed.
+ * Recompute the plan ONCE from the same upstream/local inputs the compute path uses, then
+ * replace every skill dir in the live (`local`) tree whose upstream counterpart differs
+ * and delete every `skills/` or `platform-packs/` entry upstream no longer ships. Only
+ * user-owned `agent-addons/` entries survive without an upstream counterpart. Returns the
+ * plan, the paths installed, and the paths deleted.
  *
  * Atomicity: each skill dir is replaced individually via [replaceSkillDirAtomically]
  * (stage upstream into a temp sibling under the live skill's parent, RENAME the existing
@@ -39,15 +38,11 @@ internal fun applyReconciliation(
   local: ReconcileSourceRoots,
   home: Path,
   baseline: BaselineManifest,
-  acceptConflicts: Boolean,
 ): ReconcileApplyOutput {
   val upstreamSkills = enumerateSkills(upstream, home)
   val localSkills = enumerateSkills(local, home)
   val plan = classifyReconciliation(upstreamSkills, localSkills, baseline)
-
-  if (plan.hasConflicts && !acceptConflicts) {
-    throw ReconciliationApplyRefusedError(plan.conflicts.map { it.skillRelativePath })
-  }
+  guardPruneAgainstEmptyUpstream(plan, upstreamSkills)
 
   val installedPaths = mutableListOf<String>()
   plan.outcomes.forEach { outcome ->
@@ -69,17 +64,47 @@ internal fun applyReconciliation(
   // metadata with no baseline; adopt them always from upstream (idempotent: a byte-identical
   // copy is a no-op). The shell no longer blanket-copies the pack tree, so this is the SOLE
   // writer of the platform-packs tree.
+  val prunedPaths = plan.outcomes
+    .filterIsInstance<SkillReconciliationOutcome.Prune>()
+    .map { outcome ->
+      deleteTreeRecursively(liveSkillDir(local, outcome.skillRelativePath))
+      outcome.skillRelativePath
+    }
   adoptPlatformPackNonSkillFiles(upstream, local, upstreamSkills)
-  return ReconcileApplyOutput(plan = plan, installedPaths = installedPaths)
+  return ReconcileApplyOutput(plan = plan, installedPaths = installedPaths, prunedPaths = prunedPaths)
 }
 
 /**
- * Copy every file under the UPSTREAM platform-packs tree that is NOT inside an enumerated
- * skill's sourceDir into the LOCAL platform-packs tree. Enumerated platform-pack skill dirs
- * are excluded because the per-skill swap is their sole writer (a blanket copy would defeat
- * keep-local/conflict). Non-skill files have no baseline and are adopt-always; a copy that
- * lands byte-identical bytes is an idempotent no-op. Best-effort and non-fatal: a missing
- * upstream pack tree just means nothing to adopt.
+ * Refuse to prune when the upstream enumeration produced NO skills at all. A mis-staged or
+ * truncated candidate tree would otherwise classify the entire live install as prune and
+ * delete it irrecoverably, so an empty upstream with live content is a loud failure rather
+ * than a wipe.
+ */
+private fun guardPruneAgainstEmptyUpstream(
+  plan: ReconciliationPlan,
+  upstreamSkills: Map<String, ReconcileSkillEntry>,
+) {
+  if (upstreamSkills.isNotEmpty()) {
+    return
+  }
+  val pruned = plan.prunedPaths
+  if (pruned.isNotEmpty()) {
+    throw ReconciliationConflictError(
+      skillRelativePath = pruned.first(),
+      reason = "refusing to prune ${pruned.size} installed path(s) because the upstream source " +
+        "tree enumerated no skills at all; the candidate source is missing or incomplete.",
+    )
+  }
+}
+
+/**
+ * Mirror the non-skill part of the UPSTREAM platform-packs tree into the LOCAL one: copy
+ * every upstream file that is NOT inside an enumerated skill's sourceDir, then delete every
+ * live non-skill file upstream no longer ships and drop the directories left empty.
+ * Enumerated platform-pack skill dirs are excluded because the per-skill swap and the prune
+ * step are their sole writers. Non-skill files have no baseline and are adopt-always; a
+ * copy that lands byte-identical bytes is an idempotent no-op. A missing upstream pack tree
+ * means nothing to adopt.
  */
 private fun adoptPlatformPackNonSkillFiles(
   upstream: ReconcileSourceRoots,
@@ -114,20 +139,52 @@ private fun adoptPlatformPackNonSkillFiles(
       )
     }
   }
+  deleteLivePackFilesAbsentUpstream(upstreamPacks, livePacks, local, upstreamSkills)
 }
 
-/** adopt / new-upstream / (accepted) conflict all install the upstream skill dir. */
+/**
+ * Delete every live non-skill platform-pack file with no upstream counterpart, then remove
+ * the directories that leaves empty (deepest first, so a whole removed pack root goes with
+ * its contents). Live files inside a skill dir that is still enumerated upstream are
+ * skipped — that dir is owned by the per-skill swap.
+ */
+private fun deleteLivePackFilesAbsentUpstream(
+  upstreamPacks: Path,
+  livePacks: Path,
+  local: ReconcileSourceRoots,
+  upstreamSkills: Map<String, ReconcileSkillEntry>,
+) {
+  if (!Files.isDirectory(livePacks)) {
+    return
+  }
+  val liveSkillDirs = upstreamSkills.keys
+    .filter { it.startsWith(PLATFORM_PACKS_PREFIX) }
+    .map { liveSkillDir(local, it) }
+  Files.walk(livePacks).use { stream ->
+    stream.filter { !Files.isDirectory(it, LinkOption.NOFOLLOW_LINKS) }.forEach { path ->
+      if (liveSkillDirs.any { skillDir -> path.startsWith(skillDir) }) {
+        return@forEach
+      }
+      if (!Files.exists(upstreamPacks.resolve(livePacks.relativize(path).toString()), LinkOption.NOFOLLOW_LINKS)) {
+        Files.deleteIfExists(path)
+      }
+    }
+  }
+  Files.walk(livePacks).use { stream ->
+    stream.sorted(Comparator.reverseOrder()).forEach { path ->
+      if (path != livePacks && Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) {
+        runCatching { Files.delete(path) }
+      }
+    }
+  }
+}
+
 private fun outcomeInstallsUpstream(outcome: SkillReconciliationOutcome): Boolean = when (outcome) {
   is SkillReconciliationOutcome.Adopt -> true
-  is SkillReconciliationOutcome.NewUpstream -> true
-  is SkillReconciliationOutcome.Conflict -> true
-  is SkillReconciliationOutcome.KeepLocal -> false
+  is SkillReconciliationOutcome.Unchanged -> false
+  is SkillReconciliationOutcome.Prune -> false
   is SkillReconciliationOutcome.LocallyAuthored -> false
 }
-
-private const val SKILLS_PREFIX = "skills/"
-private const val PLATFORM_PACKS_PREFIX = "platform-packs/"
-private const val AGENT_ADDONS_PREFIX = "agent-addons/"
 
 /**
  * Resolve the live (target) skill dir for a skill-relative path under the LOCAL roots.

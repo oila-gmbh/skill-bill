@@ -57,10 +57,6 @@ class UpdateCommand(
   private val state: CliRunState,
 ) : DocumentedCliCommand("update", "Update Skill Bill by running the official installer.") {
   private val release by option("--release", help = "Install a specific release tag instead of latest stable.")
-  private val preferUpstream by option(
-    "--prefer-upstream",
-    help = "Overwrite local skill conflicts with the upstream version.",
-  ).flag(default = false)
   private val clean by option(
     "--clean",
     help = "Wipe installed skills, platform packs, and orchestration before staging the candidate tree.",
@@ -100,7 +96,6 @@ class UpdateCommand(
         add("--release")
         add(it)
       }
-      if (preferUpstream) add("--prefer-upstream")
       if (clean) add("--clean")
     }
     val command = buildString {

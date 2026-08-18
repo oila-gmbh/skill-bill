@@ -146,11 +146,11 @@ class FileSystemInstallReconcileApply(
       ),
       home = request.home,
       baseline = baseline,
-      acceptConflicts = request.acceptConflicts,
     )
     return InstallReconcileApplyResult(
       plan = output.plan,
       installedPaths = output.installedPaths,
+      prunedPaths = output.prunedPaths,
     )
   }
 }

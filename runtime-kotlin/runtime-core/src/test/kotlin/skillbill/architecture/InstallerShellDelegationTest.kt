@@ -702,13 +702,12 @@ internal object InstallerShellFixtures {
     Files.writeString(agentAddon.resolve("content.md"), "Review helper.\n")
   }
 
-  // SKILL-76 subtask 2: the installer drives `install reconcile` (compute) then
-  // `install reconcile --apply`. The fake CLI cannot compute real hashes, so it emits the
-  // controlled LINE-ORIENTED machine report install.sh consumes, and on --apply performs a
-  // faithful per-skill copy from the staged candidate into the live skills/ tree. Env knobs:
-  //   SKILL_BILL_FAKE_RECONCILE_CONFLICTS=<path> -> report a both-changed conflict.
-  //   SKILL_BILL_FAKE_KEEPLOCAL=<path>           -> classify that path keep-local (apply
-  //     leaves the live skill untouched, preserving the user edit).
+  // The installer drives `install reconcile` (compute) then `install reconcile --apply`.
+  // The fake CLI cannot compute real hashes, so it emits the controlled LINE-ORIENTED
+  // machine report install.sh consumes, and on --apply performs a faithful per-skill copy
+  // from the staged candidate into the live tree (upstream always wins). Env knob:
+  //   SKILL_BILL_FAKE_RECONCILE_FAIL_ONCE=1 -> fail the first invocation, exercising the
+  //     clean copied-source reset recovery.
   // Extracted to a constant so seedInstallerRuntime stays under detekt's LongMethod limit.
   private val reconcileFakeCliBlock: String =
     """
@@ -720,28 +719,19 @@ internal object InstallerShellFixtures {
     |    exit 9
     |  fi
     |  applying=0
-    |  accept_conflicts=0
     |  if printf '%s ' "${'$'}@" | grep -q -- '--apply'; then applying=1; fi
-    |  if printf '%s ' "${'$'}@" | grep -q -- '--accept-conflicts'; then accept_conflicts=1; fi
     |  cand_skills="${'$'}home/.skill-bill/.candidate-source/skills"
     |  cand_packs="${'$'}home/.skill-bill/.candidate-source/platform-packs"
     |  cand_agent_addons="${'$'}home/.skill-bill/.candidate-source/agent-addons"
     |  live_skills="${'$'}home/.skill-bill/skills"
     |  live_packs="${'$'}home/.skill-bill/platform-packs"
     |  live_agent_addons="${'$'}home/.skill-bill/agent-addons"
-    |  conflict="${'$'}{SKILL_BILL_FAKE_RECONCILE_CONFLICTS:-}"
-    |  keeplocal="${'$'}{SKILL_BILL_FAKE_KEEPLOCAL:-}"
     |  if [[ "${'$'}applying" -eq 1 ]]; then
-    |    if [[ -n "${'$'}conflict" && "${'$'}accept_conflicts" -ne 1 ]]; then
-    |      printf 'reconcile apply refused: unresolved conflict %s\n' "${'$'}conflict" >&2
-    |      exit 1
-    |    fi
     |    if [[ -d "${'$'}cand_skills" ]]; then
     |      mkdir -p "${'$'}live_skills"
     |      for sd in "${'$'}cand_skills"/*/; do
     |        [[ -d "${'$'}sd" ]] || continue
     |        name="${'$'}(basename "${'$'}sd")"
-    |        if [[ "skills/${'$'}name" == "${'$'}keeplocal" ]]; then continue; fi
     |        rm -rf "${'$'}live_skills/${'$'}name"
     |        cp -R "${'$'}sd" "${'$'}live_skills/${'$'}name"
     |      done
@@ -757,34 +747,17 @@ internal object InstallerShellFixtures {
     |      for addon_dir in "${'$'}cand_agent_addons"/*/; do
     |        [[ -d "${'$'}addon_dir" ]] || continue
     |        name="${'$'}(basename "${'$'}addon_dir")"
-    |        if [[ "agent-addons/${'$'}name" == "${'$'}keeplocal" ]]; then continue; fi
     |        rm -rf "${'$'}live_agent_addons/${'$'}name"
     |        cp -R "${'$'}addon_dir" "${'$'}live_agent_addons/${'$'}name"
     |      done
     |    fi
     |    printf '%s\n' '{"version":"1.0"}' > "${'$'}home/.skill-bill/baseline-manifest.json"
-    |    if [[ -n "${'$'}conflict" ]]; then
-    |      printf 'reconcile_outcome: kind=conflict upstream_hash=deadbeefdeadbeef path=%s\n' "${'$'}conflict"
-    |      printf 'reconcile_summary: applied=true has_conflicts=true conflict_count=1 baseline_refreshed=true installed_count=1\n'
-    |    elif [[ -n "${'$'}keeplocal" ]]; then
-    |      printf 'reconcile_outcome: kind=keep-local path=%s\n' "${'$'}keeplocal"
-    |      printf 'reconcile_summary: applied=true has_conflicts=false conflict_count=0 baseline_refreshed=false installed_count=0\n'
-    |    else
-    |      printf 'reconcile_outcome: kind=new-upstream upstream_hash=deadbeefdeadbeef path=skills/bill-sample\n'
-    |      printf 'reconcile_summary: applied=true has_conflicts=false conflict_count=0 baseline_refreshed=true installed_count=1\n'
-    |    fi
+    |    printf 'reconcile_outcome: kind=adopt upstream_hash=deadbeefdeadbeef path=skills/bill-sample\n'
+    |    printf 'reconcile_summary: applied=true baseline_refreshed=true installed_count=1 pruned_count=0\n'
     |    exit 0
     |  fi
-    |  if [[ -n "${'$'}conflict" ]]; then
-    |    printf 'reconcile_outcome: kind=conflict upstream_hash=deadbeefdeadbeef path=%s\n' "${'$'}conflict"
-    |    printf 'reconcile_summary: applied=false has_conflicts=true conflict_count=1 baseline_refreshed=false installed_count=0\n'
-    |  elif [[ -n "${'$'}keeplocal" ]]; then
-    |    printf 'reconcile_outcome: kind=keep-local path=%s\n' "${'$'}keeplocal"
-    |    printf 'reconcile_summary: applied=false has_conflicts=false conflict_count=0 baseline_refreshed=false installed_count=0\n'
-    |  else
-    |    printf 'reconcile_outcome: kind=new-upstream upstream_hash=deadbeefdeadbeef path=skills/bill-sample\n'
-    |    printf 'reconcile_summary: applied=false has_conflicts=false conflict_count=0 baseline_refreshed=false installed_count=0\n'
-    |  fi
+    |  printf 'reconcile_outcome: kind=adopt upstream_hash=deadbeefdeadbeef path=skills/bill-sample\n'
+    |  printf 'reconcile_summary: applied=false baseline_refreshed=false installed_count=0 pruned_count=0\n'
     |  exit 0
     |fi
     """.trimMargin()
@@ -910,7 +883,7 @@ internal object InstallerShellFixtures {
       |# catch-all exit 2. The uninstaller path never drives reconcile, but the whitelist
       |# keeps the stubs symmetric.
       |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "reconcile" ]]; then
-      |  printf 'reconcile_summary: applied=false has_conflicts=false conflict_count=0 baseline_refreshed=false installed_count=0\n'
+      |  printf 'reconcile_summary: applied=false baseline_refreshed=false installed_count=0 pruned_count=0\n'
       |  exit 0
       |fi
       |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "apply-external-addons" ]]; then
@@ -970,7 +943,7 @@ internal object InstallerShellFixtures {
       |  exit 0
       |fi
       |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "reconcile" ]]; then
-      |  printf 'reconcile_summary: applied=false has_conflicts=false conflict_count=0 baseline_refreshed=false installed_count=0\n'
+      |  printf 'reconcile_summary: applied=false baseline_refreshed=false installed_count=0 pruned_count=0\n'
       |  exit 0
       |fi
       |case "${'$'}{1:-} ${'$'}{2:-}" in
@@ -1224,7 +1197,7 @@ private object PrebuiltReleaseStager {
     |  exit 0
     |fi
     |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "reconcile" ]]; then
-    |  printf 'reconcile_summary: applied=false has_conflicts=false conflict_count=0 baseline_refreshed=false installed_count=0\n'
+    |  printf 'reconcile_summary: applied=false baseline_refreshed=false installed_count=0 pruned_count=0\n'
     |  exit 0
     |fi
     |exit 0

@@ -50,24 +50,23 @@ import java.security.MessageDigest
  * Enumeration: skills are discovered via [InstallPlanPolicy.buildPlanDraft] over a
  * synthetic ALL-platform request for each source root, exactly like the install
  * planning seam. For each skill-relative path (the skill `sourceDir` relativized
- * against its repo root), three hashes are computed:
- *  - UPSTREAM (the candidate/clone source root),
- *  - LOCAL    (the copied `~/.skill-bill` source root),
- *  - BASELINE (the manifest's last-copied-in hash).
+ * against its repo root), the UPSTREAM (candidate/clone source root) and LOCAL (copied
+ * `~/.skill-bill` source root) hashes are computed. The BASELINE (manifest last-copied-in)
+ * hash is carried through for recording only; it no longer influences classification.
  *
- * Classification:
- *  - no baseline entry, no/identical local     -> new-upstream
- *  - no baseline entry, divergent local copy   -> conflict (migration window: WARN + prompt,
- *                                                 never silently overwrite the local edit)
- *  - no upstream counterpart (local only)      -> locally-authored (preserve, report)
- *  - local == baseline && upstream != baseline -> adopt (take upstream, refresh baseline)
- *  - local != baseline && upstream == baseline -> keep-local
- *  - local != baseline && upstream != baseline -> conflict (WARN + prompt)
- *  - local == baseline && upstream == baseline -> no-op (idempotent keep-local with no churn)
+ * Classification (upstream always wins):
+ *  - no upstream counterpart, `agent-addons/` -> locally-authored (user-owned, preserved)
+ *  - no upstream counterpart, otherwise       -> prune (delete; the installed tree mirrors source)
+ *  - upstream hash == local hash              -> unchanged (no file op, baseline recorded)
+ *  - otherwise                                -> adopt (install upstream, record baseline)
  *
- * Idempotent: identical upstream/local/baseline inputs yield only keep-local/no-op
- * outcomes, an empty conflicts list, and no baseline change.
+ * Idempotent: identical upstream and local inputs yield only unchanged outcomes and no
+ * baseline change.
  */
+internal const val SKILLS_PREFIX = "skills/"
+internal const val PLATFORM_PACKS_PREFIX = "platform-packs/"
+internal const val AGENT_ADDONS_PREFIX = "agent-addons/"
+
 internal data class ReconcileSourceRoots(
   val repoRoot: Path,
   val skillsRoot: Path,
@@ -88,6 +87,7 @@ internal data class ReconcileSkillEntry(
 internal data class ReconcileApplyOutput(
   val plan: ReconciliationPlan,
   val installedPaths: List<String>,
+  val prunedPaths: List<String>,
 )
 
 internal fun computeReconciliationPlan(
@@ -124,101 +124,39 @@ private fun classifySkill(
   localHash: String?,
   baselineHash: String?,
 ): SkillReconciliationOutcome {
-  // No upstream counterpart: the skill was authored locally; preserve + report.
   if (upstreamHash == null) {
     if (localHash == null) {
-      // Defensive: a path appears in neither source set. Loud-fail rather than emit a bogus outcome.
       throw ReconciliationConflictError(
         skillRelativePath = skillRelativePath,
         reason = "skill is present in neither the upstream nor the local source tree.",
       )
     }
-    return SkillReconciliationOutcome.LocallyAuthored(
+    return if (skillRelativePath.startsWith(AGENT_ADDONS_PREFIX)) {
+      SkillReconciliationOutcome.LocallyAuthored(
+        skillRelativePath = skillRelativePath,
+        localHash = localHash,
+        baselineHash = baselineHash,
+      )
+    } else {
+      SkillReconciliationOutcome.Prune(
+        skillRelativePath = skillRelativePath,
+        localHash = localHash,
+        baselineHash = baselineHash,
+      )
+    }
+  }
+  if (localHash == upstreamHash) {
+    return SkillReconciliationOutcome.Unchanged(
       skillRelativePath = skillRelativePath,
-      localHash = localHash,
+      upstreamHash = upstreamHash,
       baselineHash = baselineHash,
     )
   }
-
-  // No baseline entry: first install, a newly-shipped upstream skill, or the migration
-  // window. Delegated so a divergent local copy is never silently overwritten.
-  if (baselineHash == null) {
-    return classifyNoBaseline(skillRelativePath, upstreamHash, localHash)
-  }
-
-  if (localHash == null) {
-    return SkillReconciliationOutcome.Adopt(
-      skillRelativePath = skillRelativePath,
-      upstreamHash = upstreamHash,
-      localHash = baselineHash,
-      baselineHash = baselineHash,
-    )
-  }
-
-  val effectiveLocalHash = localHash
-  val localMatchesBaseline = effectiveLocalHash == baselineHash
-  val upstreamMatchesBaseline = upstreamHash == baselineHash
-
-  return when {
-    localMatchesBaseline && upstreamMatchesBaseline ->
-      // No-op: nothing changed on either side. Modelled as keep-local so no baseline churn.
-      SkillReconciliationOutcome.KeepLocal(
-        skillRelativePath = skillRelativePath,
-        upstreamHash = upstreamHash,
-        localHash = effectiveLocalHash,
-        baselineHash = baselineHash,
-      )
-    localMatchesBaseline && !upstreamMatchesBaseline ->
-      SkillReconciliationOutcome.Adopt(
-        skillRelativePath = skillRelativePath,
-        upstreamHash = upstreamHash,
-        localHash = effectiveLocalHash,
-        baselineHash = baselineHash,
-      )
-    !localMatchesBaseline && upstreamMatchesBaseline ->
-      SkillReconciliationOutcome.KeepLocal(
-        skillRelativePath = skillRelativePath,
-        upstreamHash = upstreamHash,
-        localHash = effectiveLocalHash,
-        baselineHash = baselineHash,
-      )
-    else ->
-      SkillReconciliationOutcome.Conflict(
-        skillRelativePath = skillRelativePath,
-        upstreamHash = upstreamHash,
-        localHash = effectiveLocalHash,
-        baselineHash = baselineHash,
-      )
-  }
-}
-
-/**
- * Classify a skill that has NO baseline entry (first install, newly-shipped upstream, or
- * the migration window where an existing user has a populated local copy but no manifest
- * yet). When the local copy is absent or already byte-identical to upstream there is no
- * edit to lose -> new-upstream (no prompt). When a local copy exists AND diverges from
- * upstream we cannot prove the difference is safe to overwrite, so classify it a CONFLICT
- * (WARN + prompt; no-TTY aborts) rather than silently clobbering the local edit. The
- * conflict's baseline hash is synthesized to the upstream hash so an accepted apply
- * baselines to upstream (there is no real prior baseline to carry).
- */
-private fun classifyNoBaseline(
-  skillRelativePath: String,
-  upstreamHash: String,
-  localHash: String?,
-): SkillReconciliationOutcome {
-  if (localHash == null || localHash == upstreamHash) {
-    return SkillReconciliationOutcome.NewUpstream(
-      skillRelativePath = skillRelativePath,
-      upstreamHash = upstreamHash,
-      localHash = localHash,
-    )
-  }
-  return SkillReconciliationOutcome.Conflict(
+  return SkillReconciliationOutcome.Adopt(
     skillRelativePath = skillRelativePath,
     upstreamHash = upstreamHash,
     localHash = localHash,
-    baselineHash = upstreamHash,
+    baselineHash = baselineHash,
   )
 }
 
@@ -226,7 +164,7 @@ private fun classifyNoBaseline(
  * Enumerate every skill under [roots] and map its skill-relative path -> ([content
  * hash] + on-disk skill dir). Returns an empty map when a source root is absent (e.g. a
  * fresh install with no copied `~/.skill-bill` source yet) so reconciliation classifies
- * upstream skills as new-upstream rather than failing. The skill dir is carried so the
+ * upstream skills as adopt rather than failing. The skill dir is carried so the
  * APPLY can replace the live dir from the upstream dir without rebuilding paths.
  */
 internal fun enumerateSkills(roots: ReconcileSourceRoots, home: Path): Map<String, ReconcileSkillEntry> {

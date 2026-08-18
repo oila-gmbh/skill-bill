@@ -32,7 +32,10 @@ class GoalTelemetryStoreTest {
       assertEquals(0, stats.inProgressRuns)
       assertEquals(0, stats.totalSubtaskEvents)
       assertEquals(mapOf("complete" to 0, "blocked" to 0, "skipped" to 0), stats.subtaskOutcomeCounts)
-      assertEquals(mapOf("completed" to 0, "paused" to 0, "blocked" to 0, "abandoned" to 0), stats.completionStatusCounts)
+      assertEquals(
+        mapOf("completed" to 0, "paused" to 0, "blocked" to 0, "abandoned" to 0),
+        stats.completionStatusCounts,
+      )
       assertEquals(0.0, stats.averageRunDurationMs)
       assertNull(stats.mostRecentRun)
     }
@@ -52,7 +55,10 @@ class GoalTelemetryStoreTest {
       assertEquals(0, stats.completedRuns)
       assertEquals(1, stats.blockedRuns)
       assertEquals(1.0, stats.blockedRate)
-      assertEquals(mapOf("completed" to 0, "paused" to 0, "blocked" to 1, "abandoned" to 0), stats.completionStatusCounts)
+      assertEquals(
+        mapOf("completed" to 0, "paused" to 0, "blocked" to 1, "abandoned" to 0),
+        stats.completionStatusCounts,
+      )
       assertEquals(mapOf("complete" to 1, "blocked" to 1, "skipped" to 1), stats.subtaskOutcomeCounts)
       assertEquals(3, stats.totalSubtaskEvents)
       assertEquals(1_800_000.0, stats.averageRunDurationMs)
@@ -189,7 +195,10 @@ class GoalTelemetryStoreTest {
       assertEquals(0, stats.completedRuns)
       assertEquals(0, stats.blockedRuns)
       assertEquals(0.0, stats.blockedRate)
-      assertEquals(mapOf("completed" to 0, "paused" to 1, "blocked" to 0, "abandoned" to 0), stats.completionStatusCounts)
+      assertEquals(
+        mapOf("completed" to 0, "paused" to 1, "blocked" to 0, "abandoned" to 0),
+        stats.completionStatusCounts,
+      )
       assertEquals("paused", requireNotNull(stats.mostRecentRun).status)
     }
   }
