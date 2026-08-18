@@ -79,41 +79,58 @@ class FeatureTaskRuntimeValidationGateCoordinator(
     val loaded = progressStore.load(cycle.request.workflowId, cycle.request.dbPathOverride)
     val measurements = loaded?.gateRuns?.toMutableList() ?: mutableListOf()
     val state = ValidationGateCycleState(cycle, measurements, onGateRunCount)
-    var repairsUsed = 0
-    var openFindings: List<ValidationGateFinding>? = null
 
     if (loaded?.repairWindowPhase == FeatureTaskRuntimeValidationGateRepairWindowPhase.FINDINGS_OPEN) {
-      openFindings = decodePersistedFindings(loaded.completeFindings)
-    } else {
-      val discovery = runGate(cycle, declaration, ValidationGateCyclePhase.INITIAL_DISCOVERY)
-      val discoveryFindings = findingsForRepairFromResult(discovery)
-      recordGateProgress(
+      return repairLoop(
         state = state,
-        result = discovery,
-        findings = discoveryFindings,
-        repairWindowPhase = if (discoveryFindings.isEmpty()) {
-          FeatureTaskRuntimeValidationGateRepairWindowPhase.NONE
-        } else {
-          FeatureTaskRuntimeValidationGateRepairWindowPhase.FINDINGS_OPEN
-        },
+        declaration = declaration,
+        openFindings = decodePersistedFindings(loaded.completeFindings),
+        initialRepairsUsed = loaded.repairsUsed,
       )
-      if (discoveryFindings.isEmpty()) {
-        return terminalCompletedResult(cycle.repositoryCheckpoint, measurements)
-      }
-      openFindings = discoveryFindings
     }
 
+    val discovery = runGate(cycle, declaration, ValidationGateCyclePhase.INITIAL_DISCOVERY)
+    val discoveryFindings = findingsForRepairFromResult(discovery)
+    recordGateProgress(
+      state = state,
+      result = discovery,
+      findings = discoveryFindings,
+      repairWindowPhase = repairWindowPhaseFor(discoveryFindings),
+      repairsUsed = 0,
+    )
+    if (discoveryFindings.isEmpty()) {
+      return terminalCompletedResult(cycle.repositoryCheckpoint, measurements)
+    }
+    return repairLoop(
+      state = state,
+      declaration = declaration,
+      openFindings = discoveryFindings,
+      initialRepairsUsed = 0,
+    )
+  }
+
+  private fun repairLoop(
+    state: ValidationGateCycleState,
+    declaration: ValidationGateDeclaration,
+    openFindings: List<ValidationGateFinding>,
+    initialRepairsUsed: Int,
+  ): ValidationGateCycleResult {
+    val cycle = state.cycle
+    val measurements = state.measurements
+    var repairsUsed = initialRepairsUsed
+    var currentFindings = openFindings
     while (true) {
-      val projection = ValidationFindingSetProjection(findings = openFindings)
+      val projection = ValidationFindingSetProjection(findings = currentFindings)
       if (repairsUsed >= MAX_REPAIR_TURNS) {
         persistProgress(
           state = state,
           repairWindowPhase = FeatureTaskRuntimeValidationGateRepairWindowPhase.FINDINGS_OPEN,
           remainingFindings = projection,
-          completeFindings = openFindings,
+          completeFindings = currentFindings,
+          repairsUsed = repairsUsed,
         )
         return terminalBlockedResult(
-          "Validation gate still reports ${openFindings.size} finding(s) after $MAX_REPAIR_TURNS repair " +
+          "Validation gate still reports ${currentFindings.size} finding(s) after $MAX_REPAIR_TURNS repair " +
             "turns; the repair is not converging.",
           remainingFindings = projection,
           measurements = measurements,
@@ -123,7 +140,8 @@ class FeatureTaskRuntimeValidationGateCoordinator(
         state = state,
         repairWindowPhase = FeatureTaskRuntimeValidationGateRepairWindowPhase.FINDINGS_OPEN,
         remainingFindings = null,
-        completeFindings = openFindings,
+        completeFindings = currentFindings,
+        repairsUsed = repairsUsed,
       )
       when (val repair = cycle.agentRepairLauncher.launch(projection, repairsUsed + 1)) {
         is ValidationGateAgentRepairResult.Blocked -> return terminalBlockedResult(
@@ -140,17 +158,22 @@ class FeatureTaskRuntimeValidationGateCoordinator(
         state = state,
         result = verify,
         findings = verifyFindings,
-        repairWindowPhase = if (verifyFindings.isEmpty()) {
-          FeatureTaskRuntimeValidationGateRepairWindowPhase.NONE
-        } else {
-          FeatureTaskRuntimeValidationGateRepairWindowPhase.FINDINGS_OPEN
-        },
+        repairWindowPhase = repairWindowPhaseFor(verifyFindings),
+        repairsUsed = repairsUsed,
       )
       if (verifyFindings.isEmpty()) {
         return terminalCompletedResult(cycle.repositoryCheckpoint, measurements)
       }
-      openFindings = verifyFindings
+      currentFindings = verifyFindings
     }
+  }
+
+  private fun repairWindowPhaseFor(
+    findings: List<ValidationGateFinding>,
+  ): FeatureTaskRuntimeValidationGateRepairWindowPhase = if (findings.isEmpty()) {
+    FeatureTaskRuntimeValidationGateRepairWindowPhase.NONE
+  } else {
+    FeatureTaskRuntimeValidationGateRepairWindowPhase.FINDINGS_OPEN
   }
 
   private fun runGate(
@@ -191,6 +214,7 @@ class FeatureTaskRuntimeValidationGateCoordinator(
     result: ValidationGateRunResult,
     findings: List<ValidationGateFinding>,
     repairWindowPhase: FeatureTaskRuntimeValidationGateRepairWindowPhase,
+    repairsUsed: Int,
   ) {
     state.measurements += FeatureTaskRuntimeValidationGateRunRecord(
       durationMs = result.durationMs,
@@ -203,6 +227,7 @@ class FeatureTaskRuntimeValidationGateCoordinator(
       repairWindowPhase = repairWindowPhase,
       remainingFindings = null,
       completeFindings = findings,
+      repairsUsed = repairsUsed,
     )
   }
 
@@ -211,6 +236,7 @@ class FeatureTaskRuntimeValidationGateCoordinator(
     repairWindowPhase: FeatureTaskRuntimeValidationGateRepairWindowPhase,
     remainingFindings: ValidationFindingSetProjection?,
     completeFindings: List<ValidationGateFinding>,
+    repairsUsed: Int,
   ) {
     val progress = FeatureTaskRuntimeValidationGateProgress(
       gateRunCount = state.measurements.size,
@@ -218,6 +244,7 @@ class FeatureTaskRuntimeValidationGateCoordinator(
       remainingFindings = remainingFindings?.toHandoffMaps().orEmpty(),
       completeFindings = ValidationFindingSetProjection(findings = completeFindings).toHandoffMaps(),
       repairWindowPhase = repairWindowPhase,
+      repairsUsed = repairsUsed,
     )
     progressStore.persist(state.cycle.request.workflowId, progress, state.cycle.request.dbPathOverride)
     emitFeatureTaskRuntimeEventSafely(
@@ -288,15 +315,14 @@ private fun findingsForRepairFromResult(result: ValidationGateRunResult): List<V
     }
   }
 
-private fun decodePersistedFindings(raw: List<Map<String, String?>>): List<ValidationGateFinding> =
-  raw.map { map ->
-    ValidationGateFinding(
-      module = map["module"] ?: "",
-      ruleOrTestId = map["rule_or_test_id"] ?: "",
-      message = map["message"] ?: "",
-      location = map["location"],
-    )
-  }
+private fun decodePersistedFindings(raw: List<Map<String, String?>>): List<ValidationGateFinding> = raw.map { map ->
+  ValidationGateFinding(
+    module = map["module"] ?: "",
+    ruleOrTestId = map["rule_or_test_id"] ?: "",
+    message = map["message"] ?: "",
+    location = map["location"],
+  )
+}
 
 private fun terminalCompletedResult(
   repositoryCheckpoint: String,

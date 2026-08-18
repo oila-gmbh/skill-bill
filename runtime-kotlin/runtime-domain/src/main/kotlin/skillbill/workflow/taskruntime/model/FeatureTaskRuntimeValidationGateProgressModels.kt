@@ -45,6 +45,7 @@ data class FeatureTaskRuntimeValidationGateProgress(
   val completeFindings: List<Map<String, String?>> = emptyList(),
   val repairWindowPhase: FeatureTaskRuntimeValidationGateRepairWindowPhase =
     FeatureTaskRuntimeValidationGateRepairWindowPhase.NONE,
+  val repairsUsed: Int = 0,
 ) {
   init {
     require(gateRunCount >= 0) {
@@ -52,6 +53,9 @@ data class FeatureTaskRuntimeValidationGateProgress(
     }
     require(gateRuns.size <= gateRunCount) {
       "FeatureTaskRuntimeValidationGateProgress.gateRuns size ${gateRuns.size} exceeds gateRunCount $gateRunCount."
+    }
+    require(repairsUsed >= 0) {
+      "FeatureTaskRuntimeValidationGateProgress.repairsUsed must be >= 0, was $repairsUsed."
     }
   }
 
@@ -63,6 +67,7 @@ data class FeatureTaskRuntimeValidationGateProgress(
     "remaining_findings" to remainingFindings,
     "complete_findings" to completeFindings,
     "repair_window_phase" to repairWindowPhase.wireValue,
+    "repairs_used" to repairsUsed,
   )
 
   companion object {
@@ -76,6 +81,7 @@ data class FeatureTaskRuntimeValidationGateProgress(
         repairWindowPhase = FeatureTaskRuntimeValidationGateRepairWindowPhase.fromWire(
           raw["repair_window_phase"] as? String,
         ),
+        repairsUsed = raw.asStarMap().gateProgressOptionalInt("repairs_used") ?: 0,
       )
 
     private fun decodeGateRuns(raw: Any?): List<FeatureTaskRuntimeValidationGateRunRecord> {
@@ -136,4 +142,11 @@ private fun Map<*, *>.gateProgressLong(key: String): Long = when (val value = th
   is Int -> value.toLong()
   is Number -> value.toLong()
   else -> throw InvalidWorkflowStateSchemaError("Missing required long field '$key'.")
+}
+
+private fun Map<*, *>.gateProgressOptionalInt(key: String): Int? {
+  if (!containsKey(key) || this[key] == null) {
+    return null
+  }
+  return gateProgressInt(key)
 }

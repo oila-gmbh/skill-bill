@@ -2,19 +2,23 @@ package skillbill.application.featuretask.validation
 
 import skillbill.application.RecordingDiagnostics
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairLauncher
+import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairResult
 import skillbill.application.featuretask.validation.model.ValidationGateCyclePhase
 import skillbill.application.featuretask.validation.model.ValidationGateCycleRequest
 import skillbill.application.featuretask.validation.model.ValidationGateCycleResult
 import skillbill.application.featuretask.validation.model.ValidationGateCycleTerminalOutcome
-import skillbill.application.featuretask.validation.model.ValidationGateProgressStore
 import skillbill.application.featuretask.validation.model.ValidationGateResolution
 import skillbill.application.model.FeatureTaskRuntimeRunEventSink
 import skillbill.ports.validation.ValidationGateRunner
+import skillbill.ports.validation.model.ValidationGateFinding
 import skillbill.ports.validation.model.ValidationGateRunOutcome
 import skillbill.ports.validation.model.ValidationGateRunRequest
 import skillbill.ports.validation.model.ValidationGateRunResult
 import skillbill.workflow.model.ValidationDepth
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRepairWindowPhase
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRunRecord
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -167,55 +171,28 @@ class FeatureTaskRuntimeValidationGateSelectionTest {
 
   @Test
   fun `findings_open resume skips discovery and hands back the persisted open set`() {
-    val findingOne = skillbill.ports.validation.model.ValidationGateFinding("m1", "r1", "msg1", "loc1")
-    val findingTwo = skillbill.ports.validation.model.ValidationGateFinding("m2", "r2", "msg2", "loc2")
+    val findingOne = ValidationGateFinding("m1", "r1", "msg1", "loc1")
+    val findingTwo = ValidationGateFinding("m2", "r2", "msg2", "loc2")
     val recorded = mutableListOf<FeatureTaskRuntimeValidationGateProgress>()
-    var loaded: FeatureTaskRuntimeValidationGateProgress? = FeatureTaskRuntimeValidationGateProgress(
-      gateRunCount = 1,
-      gateRuns = listOf(
-        skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRunRecord(
-          durationMs = 1,
-          outcome = "failed",
-          cacheMode = "cache_eligible",
-          executedWorkUnits = 1,
+    val progressStore = RecordingProgressStore(
+      recorded,
+      FeatureTaskRuntimeValidationGateProgress(
+        gateRunCount = 1,
+        gateRuns = listOf(
+          FeatureTaskRuntimeValidationGateRunRecord(
+            durationMs = 1,
+            outcome = "failed",
+            cacheMode = "cache_eligible",
+            executedWorkUnits = 1,
+          ),
         ),
+        completeFindings = listOf(findingRow(findingOne), findingRow(findingTwo)),
+        repairWindowPhase = FeatureTaskRuntimeValidationGateRepairWindowPhase.FINDINGS_OPEN,
       ),
-      completeFindings = listOf(
-        linkedMapOf(
-          "module" to findingOne.module,
-          "rule_or_test_id" to findingOne.ruleOrTestId,
-          "message" to findingOne.message,
-          "location" to findingOne.location,
-        ),
-        linkedMapOf(
-          "module" to findingTwo.module,
-          "rule_or_test_id" to findingTwo.ruleOrTestId,
-          "message" to findingTwo.message,
-          "location" to findingTwo.location,
-        ),
-      ),
-      repairWindowPhase = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRepairWindowPhase.FINDINGS_OPEN,
     )
-    val progressStore = object : ValidationGateProgressStore {
-      override fun persist(
-        workflowId: String,
-        progress: FeatureTaskRuntimeValidationGateProgress,
-        dbOverride: String?,
-      ) {
-        recorded += progress
-        loaded = progress
-      }
-
-      override fun load(workflowId: String, dbOverride: String?): FeatureTaskRuntimeValidationGateProgress? = loaded
-    }
     val repairSizes = mutableListOf<Int>()
     val runner = ScriptedGateRunner(listOf(passed(forced = true)))
-    coordinator(
-      declaredResolver(),
-      runner,
-      recorded,
-      progressStore = progressStore,
-    ).execute(
+    coordinator(declaredResolver(), runner, progressStore).execute(
       cycle = ValidationGateCycleRequest(
         repoRoot = validationGateTestRepoRoot,
         request = minimalRequest(),
@@ -224,12 +201,8 @@ class FeatureTaskRuntimeValidationGateSelectionTest {
         repositoryCheckpoint = "checkpoint",
         agentRepairLauncher = ValidationGateAgentRepairLauncher { findings, _ ->
           repairSizes += findings.findings.size
-          skillbill.application.featuretask.validation.model.ValidationGateAgentRepairResult.Completed(
-            skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput(
-              phaseId = "validate",
-              iteration = 1,
-              payload = "{}",
-            ),
+          ValidationGateAgentRepairResult.Completed(
+            FeatureTaskRuntimePhaseOutput(phaseId = "validate", iteration = 1, payload = "{}"),
           )
         },
       ),
@@ -237,5 +210,51 @@ class FeatureTaskRuntimeValidationGateSelectionTest {
     assertEquals(listOf(2), repairSizes)
     assertEquals(1, runner.calls)
     assertEquals(listOf("echo", "collect-all-full"), runner.requests.single().argv)
+  }
+
+  @Test
+  fun `findings_open resume restores repairs_used and blocks without further gate runs when max turns exhausted`() {
+    val maxTurns = FeatureTaskRuntimeValidationGateCoordinator.MAX_REPAIR_TURNS
+    val finding = ValidationGateFinding("m", "t", "still broken", "loc")
+    val recorded = mutableListOf<FeatureTaskRuntimeValidationGateProgress>()
+    val progressStore = RecordingProgressStore(
+      recorded,
+      FeatureTaskRuntimeValidationGateProgress(
+        gateRunCount = maxTurns,
+        gateRuns = List(maxTurns) {
+          FeatureTaskRuntimeValidationGateRunRecord(
+            durationMs = 1,
+            outcome = "failed",
+            cacheMode = "forced_full",
+            executedWorkUnits = 1,
+          )
+        },
+        completeFindings = listOf(findingRow(finding)),
+        repairWindowPhase = FeatureTaskRuntimeValidationGateRepairWindowPhase.FINDINGS_OPEN,
+        repairsUsed = maxTurns,
+      ),
+    )
+    var repairLaunches = 0
+    val runner = ScriptedGateRunner(emptyList())
+    val cycle = coordinator(declaredResolver(), runner, progressStore).execute(
+      cycle = ValidationGateCycleRequest(
+        repoRoot = validationGateTestRepoRoot,
+        request = minimalRequest(),
+        validationDepth = ValidationDepth.FULL,
+        changedPaths = listOf("runtime-kotlin/foo.kt"),
+        repositoryCheckpoint = "checkpoint",
+        agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _ ->
+          repairLaunches++
+          error("repair must not launch when repairs_used already reached MAX_REPAIR_TURNS")
+        },
+      ),
+    )
+    val blocked = assertIs<ValidationGateCycleTerminalOutcome.Blocked>(
+      assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,
+    )
+    assertTrue(blocked.reason.contains("not converging"))
+    assertEquals(0, runner.calls)
+    assertEquals(0, repairLaunches)
+    assertEquals(maxTurns, recorded.last().repairsUsed)
   }
 }

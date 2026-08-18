@@ -75,14 +75,46 @@ internal fun coordinator(
   progress: MutableList<FeatureTaskRuntimeValidationGateProgress>,
   gradleWrapper: String? = null,
   diagnostics: RuntimeDiagnostics = skillbill.ports.diagnostics.NoopRuntimeDiagnostics,
-  progressStore: ValidationGateProgressStore = ValidationGateProgressStore { _, p, _ -> progress += p },
+): FeatureTaskRuntimeValidationGateCoordinator = FeatureTaskRuntimeValidationGateCoordinator(
+  resolver,
+  runner,
+  ValidationGateProgressStore { _, p, _ -> progress += p },
+  repoLocalConfig(gradleWrapper),
+  diagnostics,
+)
+
+internal fun coordinator(
+  resolver: ValidationGateResolver,
+  runner: ValidationGateRunner,
+  progressStore: ValidationGateProgressStore,
 ): FeatureTaskRuntimeValidationGateCoordinator = FeatureTaskRuntimeValidationGateCoordinator(
   resolver,
   runner,
   progressStore,
-  repoLocalConfig(gradleWrapper),
-  diagnostics,
+  repoLocalConfig(),
+  skillbill.ports.diagnostics.NoopRuntimeDiagnostics,
 )
+
+internal fun findingRow(finding: ValidationGateFinding): Map<String, String?> = linkedMapOf(
+  "module" to finding.module,
+  "rule_or_test_id" to finding.ruleOrTestId,
+  "message" to finding.message,
+  "location" to finding.location,
+)
+
+internal class RecordingProgressStore(
+  private val recorded: MutableList<FeatureTaskRuntimeValidationGateProgress>,
+  initial: FeatureTaskRuntimeValidationGateProgress?,
+) : ValidationGateProgressStore {
+  private var loaded: FeatureTaskRuntimeValidationGateProgress? = initial
+
+  override fun persist(workflowId: String, progress: FeatureTaskRuntimeValidationGateProgress, dbOverride: String?) {
+    recorded += progress
+    loaded = progress
+  }
+
+  override fun load(workflowId: String, dbOverride: String?): FeatureTaskRuntimeValidationGateProgress? = loaded
+}
 
 internal fun repoLocalConfig(gradleWrapper: String? = null): skillbill.ports.config.RepoLocalConfigPort =
   object : skillbill.ports.config.RepoLocalConfigPort {

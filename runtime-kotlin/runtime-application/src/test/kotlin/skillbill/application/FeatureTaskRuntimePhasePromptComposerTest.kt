@@ -202,7 +202,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
 
     assertContains(prompt, "runtime owns execution of the repository validation gate")
     assertContains(prompt, "must not invoke the gate or any quality-check skill")
-    assertContains(prompt, "Never invoke the gate after an individual fix")
+    assertContains(prompt, "Never invoke the gate or any check after an individual fix")
     assertFalse(prompt.contains("Invoke bill-code-check"))
   }
 

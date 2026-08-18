@@ -71,9 +71,10 @@ private val BUILD_ONLY_VALIDATE_DIRECTIVE_SECTION: String =
     quality-check skill. Do not run tests written during implement, do not execute test suites, and do
     not run `detekt`, `ktlintCheck`, `test`, `compileKotlin`, spotless, lint, or dependency scanners.
     Allowed work is read, search, and source edits only. Signal full repair without any confirm check;
-    the runtime alone runs one cache-bypassing verification gate. While repairing compile/build failures, do
-    not introduce suppressions, disable rules, or weaken configuration. Emit a bounded validation_result
-    containing validation_status, checks, and repository_checkpoint; do not embed raw command output or telemetry.
+    the runtime alone runs one cache-bypassing verification gate. While repairing compile/build failures,
+    do not introduce suppressions, disable rules, or weaken configuration.
+    Emit a bounded validation_result containing validation_status, checks, and repository_checkpoint;
+    do not embed raw command output or telemetry.
   """.trimIndent()
 
 /**
@@ -115,11 +116,11 @@ private val AGENT_RUN_BUILD_ONLY_VALIDATE_DIRECTIVE_SECTION: String =
     While the finding set is open, do not run tests written during implement, do not execute test
     suites, and do not run `detekt`, `ktlintCheck`, `test`, `compileKotlin`, spotless, lint,
     dependency scanners, bill-code-check, or the full repository validation gate. Allowed work is
-    read, search, and source edits only. While repairing compile/build failures, do not introduce
-    suppressions, disable rules, or weaken configuration. Batch compile/build repairs: read the
-    complete finding set from one compile/build run, fix every finding at its root cause, then rerun
-    once to verify. Emit a bounded validation_result containing validation_status, checks, and
-    repository_checkpoint; do not embed raw command output or telemetry.
+    read, search, and source edits only. While repairing compile/build failures,
+    do not introduce suppressions, disable rules, or weaken configuration.
+    Batch compile/build repairs: read the complete finding set from one compile/build run,
+    fix every finding at its root cause, then rerun once to verify. Emit a bounded validation_result
+    containing validation_status, checks, and repository_checkpoint; do not embed raw command output or telemetry.
   """.trimIndent()
 
 /** Surfaces the absent-gate degradation so agent-run validate is never a silent no-gate path. */
