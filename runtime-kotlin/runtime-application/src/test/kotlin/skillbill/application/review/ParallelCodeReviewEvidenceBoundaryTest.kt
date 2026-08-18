@@ -71,13 +71,13 @@ class ParallelCodeReviewEvidenceBoundaryTest {
   }
 
   @Test
-  fun `zero-byte authorized reads do not emit an unexercised-boundary record`() {
+  fun `a lane reporting an authorized read with zero evidence bytes suppresses the unexercised-boundary record`() {
     val recorder = ReviewRecorder()
     val defaults = ReviewHarnessConfig(
       manifests = listOf(reviewPack("kotlin", listOf("architecture"), routingSignals = listOf("*.kt"))),
       diff = diffForPaths("src/Repo.kt"),
     )
-    reviewHarness(
+    val result = reviewHarness(
       defaults.copy(
         evidenceBrokerFactory = ReviewEvidenceBrokerFactory { binding ->
           val inner = defaults.evidenceBrokerFactory.brokerFor(binding)
@@ -95,6 +95,8 @@ class ParallelCodeReviewEvidenceBoundaryTest {
       ),
     )
 
+    assertEquals(1, result.lane1.accounting?.authorizedReadCount)
+    assertEquals(0L, result.lane1.accounting?.evidenceBytes)
     assertTrue(
       recorder.stageDegradations.none {
         it.reason == ReviewStageDegradationReason.EVIDENCE_BOUNDARY_UNEXERCISED

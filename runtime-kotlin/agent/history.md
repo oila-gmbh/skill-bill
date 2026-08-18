@@ -1,3 +1,14 @@
+## [2026-08-18] SKILL-195 subtask 3 — Degradation records for the review evidence boundary
+Areas: runtime-domain/review, runtime-domain/review/model, runtime-application/review, runtime-infra-fs, runtime-ports/review/model, runtime-mcp, orchestration/contracts
+- `ReviewEvidenceBoundaryAccounting` (governed launches, authorized reads, evidence bytes, expansions, rejected candidates, optional unbound seam) is the single per-lane-run counter carrier feeding degradation selection. reusable
+- `ReviewStageDegradationSelection.select` takes an optional `evidenceBoundaries` list and emits three new reasons: `evidence_boundary_unbound_broker`, `evidence_boundary_unexercised` (governed launch with zero authorized reads), `register_candidates_rejected` (count from subtask 1's parse rejections).
+- Unbound suppresses unexercised — an unbound broker reports one cause, not two. A healthy governed lane that read and admitted a register emits none of the three, so the records stay signal rather than always-on noise.
+- Records carry seam identity, expected/actual counters, and typed enum `wireValue`s only; no repository content and no free-text reasons. Brokers (`FanOutReviewEvidenceBroker`, `FileSystemReviewEvidenceBroker`) accumulate counts, they do not classify.
+- Telemetry event schema gained the reasons with parity asserted by `GoalTelemetryEmissionEventParityTest`.
+- Limitation: records observe the boundary's absence; the transport itself is subtask 4, whose acceptance is "the unexercised record stops appearing".
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-08-17] SKILL-195 subtask 2 — Loud-fail the parse seam and diagnose register absence
 Areas: runtime-application/review, runtime-application/featuretask, runtime-application/model, runtime-cli/codereview, runtime-domain/review/context/model, runtime-infra-fs, runtime-ports/review
 - Inline register parse goes through `parseLaneRegisterSeam`; a parser throw is `ReviewRegisterParseSeamException` naming seam and lane, not an empty list or `register_absent`.
