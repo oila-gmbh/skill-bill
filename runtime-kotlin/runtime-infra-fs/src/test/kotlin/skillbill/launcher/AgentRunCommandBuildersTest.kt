@@ -6,12 +6,15 @@ import skillbill.infrastructure.fs.CursorReviewStreamError
 import skillbill.infrastructure.fs.CursorReviewStreamMalformedError
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.MODEL_DIRECTIVE_CAPABLE_AGENTS
+import skillbill.launcher.agentrun.AgentRunCommand
+import skillbill.launcher.agentrun.AgentRunCommandBuilder
 import skillbill.launcher.agentrun.AgentRunOutputDecoder
 import skillbill.launcher.agentrun.ClaudeAgentRunCommandBuilder
 import skillbill.launcher.agentrun.CodexAgentRunCommandBuilder
 import skillbill.launcher.agentrun.CursorAgentRunCommandBuilder
 import skillbill.launcher.agentrun.GovernedReviewLaunchCapability
 import skillbill.launcher.agentrun.JunieAgentRunCommandBuilder
+import skillbill.launcher.mcp.GovernedReviewMcpConfigWriter
 import skillbill.launcher.mcp.McpConfigFormat
 import skillbill.launcher.process.AgentRunIdlePolicy
 import skillbill.ports.agentrun.model.ConversationIsolation
@@ -19,6 +22,7 @@ import skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy
 import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.review.BrokerBackedNativeReviewOperationProtocol
 import skillbill.ports.review.ReviewEvidenceBroker
+import skillbill.ports.review.model.GovernedReviewEvidenceCodec
 import skillbill.ports.review.model.ReviewEvidenceBatchRequest
 import skillbill.ports.review.model.ReviewToolCall
 import skillbill.review.context.model.ProviderTokenUsage
@@ -427,70 +431,13 @@ class AgentRunCommandBuildersTest {
   @Test
   fun `governed review launches carry isolated mcp config and governed-only tools`() {
     val governed = governedReviewRequest(nativeReviewWorkerName = "bill-code-review-inline")
-    val rawFilesystemTools = setOf("Read", "Grep", "Glob", "Bash")
-    val mcpJson = StubReviewEvidenceEndpoint.descriptor.mcpConfigPath.toString()
-    val mcpTomlServer = "mcp_servers.${skillbill.ports.review.model.GovernedReviewEvidenceCodec.SERVER_NAME}"
-    val governedOperations = skillbill.ports.review.model.GovernedReviewEvidenceCodec.OPERATIONS
-
     listOf(
       ClaudeAgentRunCommandBuilder(),
       CodexAgentRunCommandBuilder(),
       CursorAgentRunCommandBuilder(),
       JunieAgentRunCommandBuilder(),
     ).forEach { builder ->
-      if (!builder.governedReviewLaunchCapability.governedOnlyTooling ||
-        !builder.governedReviewLaunchCapability.mcpIsolation
-      ) {
-        val error = assertFailsWith<GovernedReviewLaunchCapabilityError> { builder.build(governed) }
-        assertEquals(builder.agent.id, error.provider)
-        assertTrue(
-          error.capability == "governed-only tooling" || error.capability == "MCP isolation",
-          "Junie must name the missing capability, got '${error.capability}'",
-        )
-        return@forEach
-      }
-      val command = builder.build(governed).command
-      assertTrue(command.none { arg -> arg.split(',').any { it in rawFilesystemTools } }, command.toString())
-      when (builder.agent) {
-        InstallAgent.CLAUDE -> {
-          assertEquals(mcpJson, command[command.indexOf("--mcp-config") + 1])
-          assertTrue(command.contains("--strict-mcp-config"))
-          val tools = command[command.indexOf("--tools") + 1].split(",")
-          assertEquals(governedOperations.map { "mcp__skill-bill-review-evidence__$it" }, tools)
-        }
-        InstallAgent.CODEX -> {
-          assertTrue(command.contains("--ignore-user-config"))
-          val configValues = command.filterIndexed { index, _ -> index > 0 && command[index - 1] == "--config" }
-          assertTrue(configValues.any { it.startsWith(mcpTomlServer) && it.contains("enabled_tools=") })
-          assertTrue(
-            configValues.any { value ->
-              governedOperations.all { operation -> value.contains(operation) } && value.contains("enabled_tools=")
-            },
-          )
-        }
-        InstallAgent.CURSOR -> {
-          assertEquals(
-            StubReviewEvidenceEndpoint.descriptor.mcpConfigPath.parent.toString(),
-            command[command.indexOf("--workspace") + 1],
-          )
-          assertTrue(command.contains("/bill-code-review-inline"))
-          assertFalse(command.contains("--force"))
-          assertFalse(command.contains("--approve-mcps"))
-          val allowList = java.nio.file.Files.readString(
-            skillbill.launcher.mcp.GovernedReviewMcpConfigWriter.cursorCliConfigPath(
-              StubReviewEvidenceEndpoint.descriptor.mcpConfigPath,
-            ),
-          ).substringBefore("\"deny\"")
-          assertTrue(
-            governedOperations.all { operation ->
-              allowList.contains("Mcp(skill-bill-review-evidence:$operation)")
-            },
-            allowList,
-          )
-          assertTrue(rawFilesystemTools.none { tool -> allowList.contains(tool) }, allowList)
-        }
-        else -> error("unexpected provider ${builder.agent.id}")
-      }
+      assertGovernedReviewLaunch(builder, governed)
     }
   }
 
@@ -586,6 +533,81 @@ class AgentRunCommandBuildersTest {
     assertEquals(AgentRunIdlePolicy.DB_PROGRESS_ONLY, ClaudeAgentRunCommandBuilder().build(request()).idlePolicy)
     assertEquals(AgentRunIdlePolicy.DB_PROGRESS_ONLY, CodexAgentRunCommandBuilder().build(request()).idlePolicy)
     assertEquals(AgentRunIdlePolicy.DB_PROGRESS_ONLY, JunieAgentRunCommandBuilder().build(request()).idlePolicy)
+  }
+
+  private fun assertGovernedReviewLaunch(builder: AgentRunCommandBuilder, governed: SkillRunRequest) {
+    if (!builder.governedReviewLaunchCapability.governedOnlyTooling ||
+      !builder.governedReviewLaunchCapability.mcpIsolation
+    ) {
+      val error = assertFailsWith<GovernedReviewLaunchCapabilityError> { builder.build(governed) }
+      assertEquals(builder.agent.id, error.provider)
+      assertTrue(
+        error.capability == "governed-only tooling" || error.capability == "MCP isolation",
+        "Junie must name the missing capability, got '${error.capability}'",
+      )
+      return
+    }
+    val built = builder.build(governed)
+    val rawFilesystemTools = setOf("Read", "Grep", "Glob", "Bash")
+    assertTrue(
+      built.command.none { arg -> arg.split(',').any { it in rawFilesystemTools } },
+      built.command.toString(),
+    )
+    when (builder.agent) {
+      InstallAgent.CLAUDE -> assertClaudeGovernedLaunch(built.command)
+      InstallAgent.CODEX -> assertCodexGovernedLaunch(built.command)
+      InstallAgent.CURSOR -> assertCursorGovernedLaunch(built, governed, rawFilesystemTools)
+      else -> error("unexpected provider ${builder.agent.id}")
+    }
+  }
+
+  private fun assertClaudeGovernedLaunch(command: List<String>) {
+    val mcpJson = StubReviewEvidenceEndpoint.descriptor.mcpConfigPath.toString()
+    assertEquals(mcpJson, command[command.indexOf("--mcp-config") + 1])
+    assertTrue(command.contains("--strict-mcp-config"))
+    val tools = command[command.indexOf("--tools") + 1].split(",")
+    assertEquals(GovernedReviewEvidenceCodec.OPERATIONS.map { "mcp__skill-bill-review-evidence__$it" }, tools)
+  }
+
+  private fun assertCodexGovernedLaunch(command: List<String>) {
+    val mcpTomlServer = "mcp_servers.${GovernedReviewEvidenceCodec.SERVER_NAME}"
+    val governedOperations = GovernedReviewEvidenceCodec.OPERATIONS
+    assertTrue(command.contains("--ignore-user-config"))
+    val configValues = command.filterIndexed { index, _ -> index > 0 && command[index - 1] == "--config" }
+    assertTrue(configValues.any { it.startsWith(mcpTomlServer) && it.contains("enabled_tools=") })
+    assertTrue(
+      configValues.any { value ->
+        governedOperations.all { operation -> value.contains(operation) } && value.contains("enabled_tools=")
+      },
+    )
+  }
+
+  private fun assertCursorGovernedLaunch(
+    built: AgentRunCommand,
+    governed: SkillRunRequest,
+    rawFilesystemTools: Set<String>,
+  ) {
+    val command = built.command
+    val workspace = StubReviewEvidenceEndpoint.descriptor.mcpConfigPath.parent
+    assertEquals(workspace.toString(), command[command.indexOf("--workspace") + 1])
+    assertEquals(workspace, built.workingDirectory)
+    assertNull(built.stdinText)
+    val prompt = command.last()
+    assertEquals(requireNotNull(governed.promptOverride), prompt)
+    assertFalse(prompt.startsWith("/"))
+    assertTrue(command.none { it.startsWith("/bill-code-review-inline") })
+    assertTrue(command.contains("--approve-mcps"))
+    assertFalse(command.contains("--force"))
+    val allowList = java.nio.file.Files.readString(
+      GovernedReviewMcpConfigWriter.cursorCliConfigPath(StubReviewEvidenceEndpoint.descriptor.mcpConfigPath),
+    ).substringBefore("\"deny\"")
+    assertTrue(
+      GovernedReviewEvidenceCodec.OPERATIONS.all { operation ->
+        allowList.contains("Mcp(skill-bill-review-evidence, $operation)")
+      },
+      allowList,
+    )
+    assertTrue(rawFilesystemTools.none { tool -> allowList.contains(tool) }, allowList)
   }
 
   private fun request(

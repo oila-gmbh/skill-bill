@@ -221,7 +221,11 @@ class GovernedReviewEvidenceEndpoint private constructor(
         runCatching { channel.close() }
         runCatching { Files.deleteIfExists(socketPath) }
         runCatching { Files.deleteIfExists(directory.resolve("mcp.json")) }
-        runCatching { Files.deleteIfExists(GovernedReviewMcpConfigWriter.tomlConfigPath(directory.resolve("mcp.json"))) }
+        runCatching {
+          Files.deleteIfExists(
+            GovernedReviewMcpConfigWriter.tomlConfigPath(directory.resolve("mcp.json")),
+          )
+        }
         val cursorConfig = directory.resolve(".cursor").resolve("mcp.json")
         runCatching { Files.deleteIfExists(cursorConfig) }
         runCatching { Files.deleteIfExists(directory.resolve(".cursor").resolve("cli.json")) }

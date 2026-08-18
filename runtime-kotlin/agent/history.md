@@ -1,3 +1,13 @@
+## [2026-08-18] SKILL-195 subtask 5 — Provider parity, contract bump, and stopgap removal
+Areas: orchestration/contracts, runtime-contracts/review, runtime-contracts/error, runtime-infra-fs/launcher/{agentrun,mcp,review}, runtime-infra-sqlite/review, runtime-domain/review/model
+- Codex and Cursor governed review launches now take the same governed-only tool list and per-launch MCP isolation as Claude: Codex via `--ignore-user-config` plus TOML `--config` overrides; Cursor via per-launch `.cursor/mcp.json` and `cli.json` allow/deny plus retained `--workspace`.
+- `GovernedReviewLaunchCapability` is the launch gate: missing governed-only tooling or MCP isolation throws `GovernedReviewLaunchCapabilityError` naming provider and capability; Junie is incapable today and fails there instead of launching ungoverned. reusable
+- `REVIEW_INLINE_TOOLS` and raw `Read`/`Grep`/`Glob`/`Bash` grants are gone from every governed launch path.
+- Review-context contract `2.0` → `2.1` (schema first, then `REVIEW_CONTEXT_CONTRACT_VERSION` plus parity test) because accounting `evidence_bytes`/`expansions`/`tool_calls` are now boundary-fed. A pre-bump row quarantines with `accounting_contract_quarantined` and regenerates in-band.
+- Limitation: Junie remains a loud-fail provider, not a verified governed-MCP peer. Claude and Codex stay the e2e-verified tiers; Cursor is code parity.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-08-18] SKILL-195 subtask 4 — Governed MCP evidence transport
 Areas: runtime-ports/review, runtime-mcp/review, runtime-infra-fs/{launcher/review,launcher/mcp,launcher/process,launcher/agentrun}, runtime-application/review, runtime-core/di, skills/bill-code-review-inline, platform-packs/*/code-review native-agents
 - Per-launch Unix-domain-socket endpoint binds `NativeReviewOperationProtocol` before the worker starts and tears down on completion, timeout, or crash; loopback plus a per-launch token; the endpoint does not outlive its launch.

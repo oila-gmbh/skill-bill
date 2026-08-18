@@ -29,21 +29,22 @@ internal object McpTomlConfig {
     return McpMutationResult(agent, path, changed = changed)
   }
 
-  fun writeGovernedServer(
-    path: Path,
-    serverName: String,
-    command: String,
-    args: List<String>,
-    env: Map<String, String>,
-    enabledTools: List<String>,
-  ) {
+  data class GovernedServer(
+    val serverName: String,
+    val command: String,
+    val args: List<String>,
+    val env: Map<String, String>,
+    val enabledTools: List<String>,
+  )
+
+  fun writeGovernedServer(path: Path, server: GovernedServer) {
     val lines = buildList {
-      add("[mcp_servers.$serverName]")
-      add("command = \"${tomlString(command)}\"")
-      add("args = [${args.joinToString(", ") { "\"${tomlString(it)}\"" }}]")
-      add("enabled_tools = [${enabledTools.joinToString(", ") { "\"${tomlString(it)}\"" }}]")
-      add("[mcp_servers.$serverName.env]")
-      env.forEach { (key, value) -> add("$key = \"${tomlString(value)}\"") }
+      add("[mcp_servers.${server.serverName}]")
+      add("command = \"${tomlString(server.command)}\"")
+      add("args = [${server.args.joinToString(", ") { "\"${tomlString(it)}\"" }}]")
+      add("enabled_tools = [${server.enabledTools.joinToString(", ") { "\"${tomlString(it)}\"" }}]")
+      add("[mcp_servers.${server.serverName}.env]")
+      server.env.forEach { (key, value) -> add("$key = \"${tomlString(value)}\"") }
     }
     writeLines(path, lines)
   }

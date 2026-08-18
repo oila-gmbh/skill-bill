@@ -120,8 +120,9 @@ class GovernedReviewEvidenceEndpointTest {
     assertTrue(Files.readString(tomlConfig).contains("[mcp_servers.skill-bill-review-evidence]"))
     assertTrue(Files.exists(cursorCli))
     val cliConfig = Files.readString(cursorCli)
-    assertTrue(cliConfig.contains("Mcp(skill-bill-review-evidence:read_evidence)"))
-    assertTrue(cliConfig.contains("Mcp(skill-bill-review-evidence:request_expansion)"))
+    assertTrue(cliConfig.contains("Mcp(skill-bill-review-evidence, read_evidence)"))
+    assertTrue(cliConfig.contains("Mcp(skill-bill-review-evidence, request_expansion)"))
+    assertFalse(cliConfig.contains("approvalMode"))
     assertTrue(cliConfig.contains("Read(**)"))
     assertTrue(cliConfig.contains("Shell(**)"))
 

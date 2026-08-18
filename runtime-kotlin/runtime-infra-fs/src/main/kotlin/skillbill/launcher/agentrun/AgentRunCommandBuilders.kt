@@ -363,12 +363,23 @@ class CursorAgentRunCommandBuilder(
     // exactly as Claude does, so an unstreamed launch harvests one small object.
     val streaming = streamPartialOutput || request.streamOutputForLiveness
     val isReviewLaunch = request.reviewEvidenceBroker != null
+    val reviewLaunchDirectory = request.reviewEvidenceEndpoint?.descriptor?.mcpConfigPath?.parent
 
     return goalContinuationCommand(request, agent) ?: AgentRunCommand(
-      command = buildCursorCommand(request, isReviewLaunch, streamPartialOutput, streaming),
-      workingDirectory = request.repoRoot,
+      command = buildCursorCommand(
+        request,
+        isReviewLaunch,
+        reviewLaunchDirectory,
+        streamPartialOutput,
+        streaming,
+      ),
+      workingDirectory = if (isReviewLaunch) {
+        reviewLaunchDirectory ?: request.repoRoot
+      } else {
+        request.repoRoot
+      },
       timeout = request.timeout,
-      stdinText = launchPrompt(request),
+      stdinText = launchPrompt(request).takeUnless { isReviewLaunch },
       environment = GoalContinuationEnvironment + goalContinuationEnvironment(request),
       inheritEnvironment = !isReviewLaunch,
       conversationIsolation = request.conversationIsolation,
@@ -383,6 +394,7 @@ class CursorAgentRunCommandBuilder(
   private fun buildCursorCommand(
     request: SkillRunRequest,
     isReviewLaunch: Boolean,
+    reviewLaunchDirectory: Path?,
     streamPartialOutput: Boolean,
     streaming: Boolean,
   ): List<String> = buildList {
@@ -391,15 +403,12 @@ class CursorAgentRunCommandBuilder(
 
     if (isReviewLaunch) {
       add("--trust")
+      add("--approve-mcps")
       add("--workspace")
-      add(
-        request.reviewEvidenceEndpoint?.descriptor?.mcpConfigPath?.parent?.toString()
-          ?: request.repoRoot.toString(),
-      )
+      add((reviewLaunchDirectory ?: request.repoRoot).toString())
       request.reviewEvidenceEndpoint?.let { endpoint ->
         GovernedReviewMcpConfigWriter.writeCursorGovernedCliConfig(endpoint.descriptor.mcpConfigPath)
       }
-      request.nativeReviewWorkerName?.let { worker -> add("/$worker") }
     } else {
       add("--force")
       add("--trust")
@@ -425,6 +434,9 @@ class CursorAgentRunCommandBuilder(
           "Cursor effort directive requires a model directive; add a model directive or remove the effort assignment."
         }
       }
+    }
+    if (isReviewLaunch) {
+      add(launchPrompt(request))
     }
   }
 

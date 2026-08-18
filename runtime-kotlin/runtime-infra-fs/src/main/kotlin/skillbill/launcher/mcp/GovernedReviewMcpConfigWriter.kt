@@ -35,12 +35,14 @@ object GovernedReviewMcpConfigWriter {
       writeCursorGovernedCliConfig(configPath)
       val tomlPath = tomlConfigPath(configPath)
       McpTomlConfig.writeGovernedServer(
-        path = tomlPath,
-        serverName = GovernedReviewEvidenceCodec.SERVER_NAME,
-        command = bridgeCommand.first(),
-        args = bridgeCommand.drop(1),
-        env = env,
-        enabledTools = GovernedReviewEvidenceCodec.OPERATIONS,
+        tomlPath,
+        McpTomlConfig.GovernedServer(
+          serverName = GovernedReviewEvidenceCodec.SERVER_NAME,
+          command = bridgeCommand.first(),
+          args = bridgeCommand.drop(1),
+          env = env,
+          enabledTools = GovernedReviewEvidenceCodec.OPERATIONS,
+        ),
       )
       Files.setPosixFilePermissions(tomlPath, PosixFilePermissions.fromString("rw-------"))
     } catch (error: IOException) {
@@ -62,10 +64,9 @@ object GovernedReviewMcpConfigWriter {
     writeJson(
       path,
       linkedMapOf(
-        "approvalMode" to "allowlist",
         "permissions" to linkedMapOf(
           "allow" to GovernedReviewEvidenceCodec.OPERATIONS.map { operation ->
-            "Mcp(${GovernedReviewEvidenceCodec.SERVER_NAME}:$operation)"
+            "Mcp(${GovernedReviewEvidenceCodec.SERVER_NAME}, $operation)"
           },
           "deny" to listOf("Read(**)", "Write(**)", "Shell(**)", "WebFetch(*)"),
         ),
@@ -77,12 +78,7 @@ object GovernedReviewMcpConfigWriter {
 
   fun tomlConfigPath(mcpConfigPath: Path): Path = mcpConfigPath.resolveSibling("mcp.toml")
 
-  fun codexConfigOverrides(
-    mcpConfigPath: Path,
-    socketPath: Path,
-    token: String,
-    lane: String,
-  ): List<String> {
+  fun codexConfigOverrides(mcpConfigPath: Path, socketPath: Path, token: String, lane: String): List<String> {
     val prefix = "mcp_servers.${GovernedReviewEvidenceCodec.SERVER_NAME}"
     val server = if (Files.isRegularFile(mcpConfigPath)) {
       mutableStringAnyMap(readJsonObject(mcpConfigPath)["mcpServers"])

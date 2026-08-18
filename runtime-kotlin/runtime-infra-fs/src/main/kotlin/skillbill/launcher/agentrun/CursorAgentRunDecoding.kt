@@ -112,9 +112,11 @@ private fun harvestCursorRegister(text: String): String {
     .map { it.trim() }
     .filter { it.isNotEmpty() && FINDING_LINE_START.containsMatchIn(it) }
     .toList()
-  if (findingLines.isNotEmpty()) return findingLines.joinToString("\n")
-  if (split.lineSequence().any { it.trim() == NO_FINDINGS_TOKEN }) return NO_FINDINGS_TOKEN
-  return trimmed
+  return when {
+    findingLines.isNotEmpty() -> findingLines.joinToString("\n")
+    split.lineSequence().any { it.trim() == NO_FINDINGS_TOKEN } -> NO_FINDINGS_TOKEN
+    else -> trimmed
+  }
 }
 
 private fun insertCursorRegisterBoundaries(text: String): String {
