@@ -100,6 +100,7 @@ import skillbill.infrastructure.fs.FileSystemRepoSourceDiscoveryGateway
 import skillbill.infrastructure.fs.FileSystemRepoValidationGateway
 import skillbill.infrastructure.fs.FileSystemReviewAttribution
 import skillbill.infrastructure.fs.FileSystemReviewEvidenceBrokerFactory
+import skillbill.launcher.review.UnixSocketGovernedReviewEvidenceEndpointBinder
 import skillbill.infrastructure.fs.FileSystemReviewInputSource
 import skillbill.infrastructure.fs.FileSystemReviewNativeAgentPreflight
 import skillbill.infrastructure.fs.FileSystemReviewRubricResolver
@@ -177,6 +178,7 @@ import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.ProducerOutputEvidenceValidator
 import skillbill.ports.persistence.RejectedOutputDiagnosticMetadataValidator
 import skillbill.ports.review.DeclaredReviewSpecialistsPort
+import skillbill.ports.review.GovernedReviewEvidenceEndpointBinder
 import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewAttributionPort
 import skillbill.ports.review.ReviewEvidenceBrokerFactory
@@ -760,6 +762,12 @@ abstract class RuntimeComponent(
   internal fun reviewEvidenceBrokerFactory(
     adapter: FileSystemReviewEvidenceBrokerFactory,
   ): ReviewEvidenceBrokerFactory = adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun governedReviewEvidenceEndpointBinder(
+    adapter: UnixSocketGovernedReviewEvidenceEndpointBinder,
+  ): GovernedReviewEvidenceEndpointBinder = adapter
 
   @Provides
   @JvmSynthetic

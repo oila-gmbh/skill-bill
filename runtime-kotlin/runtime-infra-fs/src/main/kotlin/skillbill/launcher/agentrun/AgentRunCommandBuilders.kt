@@ -11,6 +11,7 @@ import skillbill.ports.agentrun.model.ConversationIsolation
 import skillbill.ports.agentrun.model.ReviewLaunchIsolationStrategy
 import skillbill.ports.agentrun.model.SkillRunGoalContinuationContext
 import skillbill.ports.agentrun.model.SkillRunRequest
+import skillbill.ports.review.model.GovernedReviewEvidenceCodec
 import java.nio.file.Path
 import kotlin.time.DurationUnit
 
@@ -143,9 +144,13 @@ private val ANTHROPIC_MODEL_ALIASES = setOf("opus", "sonnet", "haiku")
 private fun isAnthropicModelReference(model: String): Boolean =
   model.startsWith("claude-") || model in ANTHROPIC_MODEL_ALIASES
 
-private const val REVIEW_FAN_OUT_TOOLS = "Agent,Task,Read,Grep,Glob,Bash"
+private val GOVERNED_REVIEW_TOOLS: List<String> = GovernedReviewEvidenceCodec.OPERATIONS.map { operation ->
+  "mcp__${GovernedReviewEvidenceCodec.SERVER_NAME}__$operation"
+}
 
-private const val REVIEW_INLINE_TOOLS = "Read,Grep,Glob,Bash"
+private val REVIEW_INLINE_TOOLS = GOVERNED_REVIEW_TOOLS.joinToString(",")
+
+private val REVIEW_FAN_OUT_TOOLS = (listOf("Agent", "Task") + GOVERNED_REVIEW_TOOLS).joinToString(",")
 
 class ClaudeAgentRunCommandBuilder(
   /** Provider environment for model-directive resolution; defaults to the parent process. */
@@ -175,11 +180,14 @@ class ClaudeAgentRunCommandBuilder(
           add("--effort")
           add(it)
         }
-        if (request.reviewEvidenceBroker != null) {
+        request.reviewEvidenceEndpoint?.let { endpoint ->
           request.nativeReviewWorkerName?.let { worker ->
             add("--agent")
             add(worker)
           }
+          add("--mcp-config")
+          add(endpoint.descriptor.mcpConfigPath.toString())
+          add("--strict-mcp-config")
           add("--tools")
           add(if (request.reviewFanOut) REVIEW_FAN_OUT_TOOLS else REVIEW_INLINE_TOOLS)
         }

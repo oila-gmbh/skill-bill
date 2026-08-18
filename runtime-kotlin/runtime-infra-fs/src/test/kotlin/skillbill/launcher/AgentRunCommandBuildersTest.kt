@@ -385,6 +385,7 @@ class AgentRunCommandBuildersTest {
       conversationIsolation = ConversationIsolation.NONE,
       reviewEvidenceBroker = NoOpReviewEvidenceBroker,
       nativeReviewOperations = BrokerBackedNativeReviewOperationProtocol(NoOpReviewEvidenceBroker),
+      reviewEvidenceEndpoint = StubReviewEvidenceEndpoint,
       nativeReviewWorkerName = "bill-kotlin-code-review-architecture",
     )
 
@@ -416,22 +417,29 @@ class AgentRunCommandBuildersTest {
   }
 
   @Test
-  fun `claude review grants read tools inline and delegation tools only when fanning out`() {
+  fun `governed claude review names only governed operations and no raw filesystem tool`() {
     val isolated = request().copy(
       conversationIsolation = ConversationIsolation.NONE,
       reviewEvidenceBroker = NoOpReviewEvidenceBroker,
       nativeReviewOperations = BrokerBackedNativeReviewOperationProtocol(NoOpReviewEvidenceBroker),
+      reviewEvidenceEndpoint = StubReviewEvidenceEndpoint,
     )
-    val inline = ClaudeAgentRunCommandBuilder().build(isolated).command
-    val inlineTools = inline[inline.indexOf("--tools") + 1]
-    assertEquals("Read,Grep,Glob,Bash", inlineTools)
+    val governedOperations = skillbill.ports.review.model.GovernedReviewEvidenceCodec.OPERATIONS
 
-    val fanOut = ClaudeAgentRunCommandBuilder().build(isolated.copy(reviewFanOut = true)).command
-    val fanOutTools = fanOut[fanOut.indexOf("--tools") + 1]
-    assertTrue("Agent" in fanOutTools)
-    assertTrue("Task" in fanOutTools)
-    assertTrue("Read" in fanOutTools)
-    assertTrue("Grep" in fanOutTools)
+    listOf(false to emptyList<String>(), true to listOf("Agent", "Task")).forEach { (fanOut, delegation) ->
+      val command = ClaudeAgentRunCommandBuilder().build(isolated.copy(reviewFanOut = fanOut)).command
+      assertEquals(
+        StubReviewEvidenceEndpoint.descriptor.mcpConfigPath.toString(),
+        command[command.indexOf("--mcp-config") + 1],
+      )
+      assertTrue(command.contains("--strict-mcp-config"))
+      val tools = command[command.indexOf("--tools") + 1].split(",")
+      assertEquals(
+        delegation + governedOperations.map { "mcp__skill-bill-review-evidence__$it" },
+        tools,
+      )
+      assertTrue(tools.none { it in setOf("Read", "Grep", "Glob", "Bash") })
+    }
   }
 
   @Test
@@ -440,6 +448,7 @@ class AgentRunCommandBuildersTest {
       conversationIsolation = ConversationIsolation.NONE,
       reviewEvidenceBroker = NoOpReviewEvidenceBroker,
       nativeReviewOperations = BrokerBackedNativeReviewOperationProtocol(NoOpReviewEvidenceBroker),
+      reviewEvidenceEndpoint = StubReviewEvidenceEndpoint,
       nativeReviewWorkerName = "bill-kotlin-code-review-architecture",
     )
     val command = ClaudeAgentRunCommandBuilder().build(isolated)
@@ -515,6 +524,17 @@ class AgentRunCommandBuildersTest {
     effortOverride = effort,
     compaction = compaction,
   )
+
+  private object StubReviewEvidenceEndpoint : skillbill.ports.review.GovernedReviewEvidenceEndpointHandle {
+    override val descriptor = skillbill.ports.review.GovernedReviewEvidenceEndpointDescriptor(
+      lane = "architecture",
+      socketPath = java.nio.file.Path.of("/tmp/skill-bill-review/evidence.sock"),
+      mcpConfigPath = java.nio.file.Path.of("/tmp/skill-bill-review/mcp.json"),
+      token = "launch-token",
+    )
+
+    override fun close() = Unit
+  }
 
   private object NoOpReviewEvidenceBroker : ReviewEvidenceBroker {
     override fun readBatch(request: skillbill.ports.review.model.ReviewEvidenceBatchRequest) = error("unused")
@@ -793,6 +813,7 @@ $hugeLine
       conversationIsolation = ConversationIsolation.NONE,
       reviewEvidenceBroker = NoOpReviewEvidenceBroker,
       nativeReviewOperations = BrokerBackedNativeReviewOperationProtocol(NoOpReviewEvidenceBroker),
+      reviewEvidenceEndpoint = StubReviewEvidenceEndpoint,
       nativeReviewWorkerName = "bill-kotlin-code-review-architecture",
     )
     val command = builder.build(isolated)
@@ -825,6 +846,7 @@ $hugeLine
       conversationIsolation = ConversationIsolation.NONE,
       reviewEvidenceBroker = NoOpReviewEvidenceBroker,
       nativeReviewOperations = BrokerBackedNativeReviewOperationProtocol(NoOpReviewEvidenceBroker),
+      reviewEvidenceEndpoint = StubReviewEvidenceEndpoint,
       nativeReviewWorkerName = "bill-kotlin-code-review-architecture",
     )
 

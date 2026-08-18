@@ -36,6 +36,8 @@ import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.model.ReviewAccountingRecord
 import skillbill.ports.persistence.model.ReviewIntegrationPassRecord
 import skillbill.ports.review.BrokerBackedNativeReviewOperationProtocol
+import skillbill.ports.review.GovernedReviewEvidenceEndpointBinder
+import skillbill.ports.review.GovernedReviewEvidenceEndpointHandle
 import skillbill.ports.review.NativeReviewOperationProtocol
 import skillbill.ports.review.ParallelReviewLaneRunner
 import skillbill.ports.review.ReviewEvidenceBroker
@@ -138,6 +140,7 @@ class ParallelCodeReviewRunner(
     FeatureTaskRuntimeSharedEvidenceLocatorReadPort.NONE,
   private val specIntentProjectionResolver: SpecIntentProjectionResolver,
   private val reviewEvidenceBrokerFactory: ReviewEvidenceBrokerFactory,
+  private val governedEvidenceEndpointBinder: GovernedReviewEvidenceEndpointBinder,
   private val nativeAgentPreflight: ReviewNativeAgentPreflightPort = ReviewNativeAgentPreflightPort.NONE,
   private val registerParse: (String) -> ParallelReviewParseResult = ParallelReviewFindingParser::parse,
 ) {
@@ -1244,6 +1247,7 @@ class ParallelCodeReviewRunner(
           conversationIsolation = ConversationIsolation.NONE,
           reviewEvidenceBroker = bound.broker,
           nativeReviewOperations = bound.protocol,
+          reviewEvidenceEndpoint = bound.endpoint,
           nativeReviewWorkerName = INLINE_NATIVE_WORKER
             .takeIf { resolvedMode == ResolvedReviewExecutionMode.INLINE },
           reviewFanOut = resolvedMode == ResolvedReviewExecutionMode.DELEGATED,
@@ -1251,7 +1255,10 @@ class ParallelCodeReviewRunner(
       ),
     )
     return when (outcome) {
-      is UnsupportedAgentRunLaunch -> unsupportedParentOutcome(launch, outcome)
+      is UnsupportedAgentRunLaunch -> {
+        runCatching { bound.endpoint.close() }
+        unsupportedParentOutcome(launch, outcome)
+      }
       is AgentRunLaunchFacts -> launchedParentOutcome(launch, outcome, budget, bound.broker)
     }
   }
@@ -1270,14 +1277,28 @@ class ParallelCodeReviewRunner(
         GovernedEvidenceBindFault.CONSTRUCTION,
       )
     }
+    val protocol = try {
+      BrokerBackedNativeReviewOperationProtocol(broker)
+    } catch (cancellation: CancellationException) {
+      throw cancellation
+    } catch (@Suppress("TooGenericExceptionCaught") _: Exception) {
+      return GovernedEvidenceBind.Unbound(
+        ReviewEvidenceBoundaryAccounting.GOVERNED_EVIDENCE_SEAM,
+        GovernedEvidenceBindFault.PROTOCOL,
+      )
+    }
     return try {
-      GovernedEvidenceBind.Bound(broker, BrokerBackedNativeReviewOperationProtocol(broker))
+      GovernedEvidenceBind.Bound(
+        broker,
+        protocol,
+        governedEvidenceEndpointBinder.bind(broker.accounting().lane, protocol),
+      )
     } catch (cancellation: CancellationException) {
       throw cancellation
     } catch (@Suppress("TooGenericExceptionCaught") _: Exception) {
       GovernedEvidenceBind.Unbound(
         ReviewEvidenceBoundaryAccounting.GOVERNED_EVIDENCE_SEAM,
-        GovernedEvidenceBindFault.PROTOCOL,
+        GovernedEvidenceBindFault.ENDPOINT,
       )
     }
   }
@@ -1689,6 +1710,7 @@ class ParallelCodeReviewRunner(
     class Bound(
       val broker: ReviewEvidenceBroker,
       val protocol: NativeReviewOperationProtocol,
+      val endpoint: GovernedReviewEvidenceEndpointHandle,
     ) : GovernedEvidenceBind()
 
     class Unbound(
@@ -1700,6 +1722,7 @@ class ParallelCodeReviewRunner(
   private enum class GovernedEvidenceBindFault(val wireValue: String) {
     CONSTRUCTION("construction"),
     PROTOCOL("protocol"),
+    ENDPOINT("endpoint"),
   }
 
   private companion object {

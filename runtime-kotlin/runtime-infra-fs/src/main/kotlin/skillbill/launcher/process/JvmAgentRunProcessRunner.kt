@@ -13,6 +13,7 @@ import skillbill.ports.agentrun.model.AgentRunMcpStartupProbe
 import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.ports.agentrun.model.AgentRunOutputStream
 import skillbill.ports.agentrun.model.AgentRunProgressEmission
+import skillbill.ports.review.GovernedReviewEvidenceEndpointHandle
 import skillbill.workflow.model.GoalProgressEvent
 import skillbill.workflow.model.GoalProgressEventKind
 import skillbill.workflow.model.GoalProgressOutcome
@@ -35,6 +36,15 @@ import kotlin.time.DurationUnit
 @Inject
 class JvmAgentRunProcessRunner : AgentRunProcessRunner {
   override fun run(request: AgentRunProcessRequest): AgentRunProcessResult {
+    request.reviewEvidenceEndpoint?.let(liveEndpoints::add)
+    return try {
+      runGoverned(request)
+    } finally {
+      closeEndpoint(request)
+    }
+  }
+
+  private fun runGoverned(request: AgentRunProcessRequest): AgentRunProcessResult {
     var startedProcess: ProcessStart? = null
     val processStart = runCatching {
       request.spawnAuthorization?.withAuthorization {
@@ -57,13 +67,32 @@ class JvmAgentRunProcessRunner : AgentRunProcessRunner {
 
   companion object {
     private val liveProcesses = java.util.concurrent.ConcurrentHashMap.newKeySet<Process>()
+    private val liveEndpoints =
+      java.util.concurrent.ConcurrentHashMap.newKeySet<GovernedReviewEvidenceEndpointHandle>()
 
     init {
       Runtime.getRuntime().addShutdownHook(object : Thread("skill-bill-agent-run-shutdown") {
         override fun run() {
           reapLiveProcesses(liveProcesses.toList())
+          liveEndpoints.toList().forEach { endpoint ->
+            liveEndpoints.remove(endpoint)
+            runCatching { endpoint.close() }
+          }
         }
       })
+    }
+
+    internal fun closeEndpoint(request: AgentRunProcessRequest) {
+      val endpoint = request.reviewEvidenceEndpoint ?: return
+      liveEndpoints.remove(endpoint)
+      runCatching { endpoint.close() }.onFailure { failure ->
+        runCatching {
+          request.outputSink.write(
+            AgentRunOutputStream.STDERR,
+            "governed review evidence endpoint teardown failed: ${failure.message.orEmpty()}\n",
+          )
+        }
+      }
     }
 
     internal fun reapLiveProcesses(processes: List<Process>) {

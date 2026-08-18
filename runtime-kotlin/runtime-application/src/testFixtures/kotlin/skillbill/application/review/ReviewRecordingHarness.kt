@@ -14,6 +14,7 @@ import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunLivenessSnapshot
 import skillbill.ports.agentrun.model.AgentRunTokenOwnership
 import skillbill.ports.config.RepoLocalConfigPort
+import skillbill.ports.review.stubGovernedReviewEvidenceEndpointBinder
 import skillbill.ports.config.model.ReadRepoLocalConfigRequest
 import skillbill.ports.config.model.ReadRepoLocalConfigResult
 import skillbill.ports.diff.DiffResolverPort
@@ -127,6 +128,8 @@ data class ReviewHarnessConfig(
   val evidenceBrokerFactory: skillbill.ports.review.ReviewEvidenceBrokerFactory =
     skillbill.infrastructure.fs.FileSystemReviewEvidenceBrokerFactory(),
   val parentLaunch: ((GoalRunnerSubtaskLaunchRequest) -> AgentRunLaunchOutcome)? = null,
+  val evidenceEndpointBinder: skillbill.ports.review.GovernedReviewEvidenceEndpointBinder =
+    stubGovernedReviewEvidenceEndpointBinder(Files.createTempDirectory("review-endpoint")),
   /**
    * Commit range the fixture enumerates. Empty keeps the default single synthetic unit; the last
    * entry's sha must be the request's head revision, exactly as a real range resolves.
@@ -207,6 +210,7 @@ fun reviewHarness(config: ReviewHarnessConfig, recorder: ReviewRecorder): Parall
       ),
     ),
     reviewEvidenceBrokerFactory = config.evidenceBrokerFactory,
+    governedEvidenceEndpointBinder = config.evidenceEndpointBinder,
   )
 
 /** The base revision every harness request declares; the root commit of a fixture range parents onto it. */

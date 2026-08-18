@@ -1380,6 +1380,9 @@ internal fun createRunner(launcher: GoalRunnerSubtaskLauncher, config: RunnerFix
     ),
     nativeAgentPreflight = config.nativeAgentPreflight,
     reviewEvidenceBrokerFactory = skillbill.infrastructure.fs.FileSystemReviewEvidenceBrokerFactory(),
+    governedEvidenceEndpointBinder = skillbill.ports.review.stubGovernedReviewEvidenceEndpointBinder(
+      java.nio.file.Files.createTempDirectory("endpoint"),
+    ),
     registerParse = config.registerParse,
   )
 

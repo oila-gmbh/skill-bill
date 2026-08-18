@@ -15,6 +15,7 @@ dependencies {
   // The harness must enforce budgets through the real FileSystemReviewEvidenceBroker; main source
   // still depends on the port only.
   testFixturesImplementation(project(":runtime-infra-fs"))
+  testFixturesImplementation(testFixtures(project(":runtime-ports")))
   testImplementation(testFixtures(project(":runtime-ports")))
   // SKILL-174: the "an unselected body never reaches the plan prompt" proof must run the real
   // discovery and resolver against an on-disk fixture. A stub that filters by heading id would only

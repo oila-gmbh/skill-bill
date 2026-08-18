@@ -4,10 +4,20 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import skillbill.launcher.review.GovernedReviewEvidenceEndpoint
 import skillbill.ports.agentrun.model.AgentRunMcpStartupProbe
+import skillbill.ports.agentrun.model.ConversationIsolation
+import skillbill.ports.review.BrokerBackedNativeReviewOperationProtocol
+import skillbill.ports.review.ReviewEvidenceBroker
+import skillbill.ports.review.model.ReviewEvidenceBatchRequest
+import skillbill.ports.review.model.ReviewLaneAccounting
+import skillbill.ports.review.model.ReviewToolCall
+import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
 import java.nio.file.Path
+import java.nio.file.Files
 import java.util.concurrent.TimeUnit
+import kotlin.time.Duration.Companion.seconds
 
 class JvmAgentRunProcessRunnerTest {
   @Test
@@ -224,4 +234,48 @@ private class FakeReapableProcess(private val staysAlive: Boolean) : Process() {
   }
   override fun isAlive(): Boolean = staysAlive
   override fun waitFor(timeout: Long, unit: TimeUnit): Boolean = !staysAlive
+
+  @Test
+  fun `a timed-out governed launch leaves no endpoint bound`() {
+    val endpoint = GovernedReviewEvidenceEndpoint.bind(
+      "architecture",
+      BrokerBackedNativeReviewOperationProtocol(TeardownProbeBroker),
+      listOf("/bin/true"),
+    )
+
+    val result = JvmAgentRunProcessRunner().run(
+      AgentRunProcessRequest(
+        command = listOf("sh", "-c", "sleep 30"),
+        workingDirectory = Path.of("."),
+        timeout = 1.seconds,
+        conversationIsolation = ConversationIsolation.NONE,
+        reviewEvidenceBroker = TeardownProbeBroker,
+        nativeReviewOperations = BrokerBackedNativeReviewOperationProtocol(TeardownProbeBroker),
+        reviewEvidenceEndpoint = endpoint,
+      ),
+    )
+
+    assertTrue(result.timedOut)
+    assertTrue(Files.notExists(endpoint.descriptor.socketPath))
+    assertTrue(Files.notExists(endpoint.descriptor.mcpConfigPath))
+  }
+
+  private object TeardownProbeBroker : ReviewEvidenceBroker {
+    override fun readBatch(request: ReviewEvidenceBatchRequest) = error("unused")
+    override fun recordToolCall(call: ReviewToolCall) = error("unused")
+    override fun recordModelTurn() = null
+    override fun validateLaneResult(result: String) = null
+    override fun observeLaneResultChunk(chunk: String) = null
+    override fun evaluateProviderUsage(usage: ProviderTokenUsage, enforceable: Boolean) = null
+    override fun accounting() = ReviewLaneAccounting(
+      lane = "architecture",
+      evidenceBytes = 0,
+      expansions = emptyList(),
+      toolCalls = 0,
+      modelTurns = 0,
+      resultBytes = 0,
+    )
+
+    override fun terminalOutcome() = null
+  }
 }

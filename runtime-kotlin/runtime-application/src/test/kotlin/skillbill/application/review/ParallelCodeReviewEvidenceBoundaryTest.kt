@@ -44,6 +44,36 @@ class ParallelCodeReviewEvidenceBoundaryTest {
   }
 
   @Test
+  fun `endpoint bind failure emits the unbound degradation and launches nothing`() {
+    val recorder = ReviewRecorder()
+    val result = reviewHarness(
+      ReviewHarnessConfig(
+        manifests = listOf(reviewPack("kotlin", listOf("architecture"), routingSignals = listOf("*.kt"))),
+        diff = diffForPaths("src/Repo.kt"),
+        evidenceEndpointBinder = skillbill.ports.review.GovernedReviewEvidenceEndpointBinder { _, _ ->
+          error("endpoint bind failed")
+        },
+        parentLaunch = { error("a governed review must not launch when its evidence endpoint is unbound") },
+      ),
+      recorder,
+    ).run(
+      harnessRequest(
+        agent2Id = null,
+        reviewRunId = "rvw-195-endpoint-unbound",
+        codeReviewMode = CodeReviewExecutionMode.INLINE,
+      ),
+    )
+
+    assertFalse(result.lane1.success)
+    assertEquals("governed evidence broker endpoint failed", result.lane1.failureReason)
+    val unbound = recorder.stageDegradations.filter {
+      it.reason == ReviewStageDegradationReason.EVIDENCE_BOUNDARY_UNBOUND_BROKER
+    }
+    assertEquals(1, unbound.size)
+    assertEquals(ReviewEvidenceBoundaryAccounting.GOVERNED_EVIDENCE_SEAM, unbound.single().seam)
+  }
+
+  @Test
   fun `governed launch with locators and zero authorized reads emits one unexercised-boundary record`() {
     val recorder = ReviewRecorder()
     reviewHarness(
