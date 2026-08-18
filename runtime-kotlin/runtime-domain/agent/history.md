@@ -1,5 +1,15 @@
 # Boundary History — runtime-domain
 
+## [2026-08-18] KMP owns the architecture review area
+Areas: runtime-domain/review-context, platform-packs/kmp (code-review), docs
+- `kmp` now declares `architecture` in `routing_signals`, `declared_code_review_areas`, `area_metadata`, and `pointers`, with Android-appropriate content at `code-review/bill-kmp-code-review-architecture/`; the area no longer falls through to the backend/desktop-oriented `kotlin` baseline. `kotlin` is byte-unchanged.
+- `ReviewOperationPolicy` now threads the assigned-path check into `classifyAbsoluteProhibitions`: a path explicitly assigned to a specialist outranks both the diff-artifact-rediscovery ban and the routing-path prohibitions. Unassigned paths keep the old bans. This unblocks specialists whose own rubric or pack file sits under a routing-shaped path.
+- Ownership is pinned by regression tests on both routes (`KmpPlatformPackTest`, `ComposedReviewLaunchPlanTest`): an Android/KMP diff plans `architecture` owned by `kmp`, a backend Kotlin diff still plans it owned by `kotlin`, and the planned area set is unchanged.
+- Native-agent bundle and snapshot updated for all six declared `kmp` areas.
+- Docs/README wording refreshed alongside; SKILL-198 spec artifacts landed in the same branch.
+Feature flag: N/A
+Acceptance criteria: 11/11 implemented
+
 ## [2026-08-17] Cursor sessions resolve as invoking agent
 Areas: runtime-domain/install, runtime-cli/codereview
 - Flagless `skill-bill` from a Cursor agent used to miss detection and fall through to the last-resort `codex` lane, so review/goal/task workers launched Codex instead of Cursor.
