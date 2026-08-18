@@ -3,40 +3,40 @@ agents:
   - name: bill-kotlin-code-review-api-contracts
     description: "Kotlin api contracts specialist — Kotlin explicitNulls and encodeDefaults compatibility, Jackson module behavior, validation, and stable error contracts."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-kotlin-code-review-architecture
     description: "Kotlin architecture specialist — Kotlin use-case and transaction ownership, injected CoroutineScope lifecycles, internal visibility, and Gradle module boundaries."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-kotlin-code-review-performance
     description: "Kotlin performance specialist — Kotlin runBlocking and dispatcher starvation, Flow backpressure, eager collections, and ORM hydration costs."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-kotlin-code-review-persistence
     description: "Kotlin persistence specialist — Kotlin Exposed newSuspendedTransaction boundaries, Spring proxy transactions, Hibernate sessions, and scoped atomic writes."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-kotlin-code-review-platform-correctness
     description: "Kotlin platform correctness specialist — Kotlin CancellationException propagation, SupervisorJob isolation, Mutex reentrancy, and StateFlow or SharedFlow delivery invariants."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-kotlin-code-review-reliability
     description: "Kotlin reliability specialist — Kotlin consumer supervision, TimeoutCancellationException classification, bounded replay, outbox ordering, and failure telemetry."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-kotlin-code-review-security
     description: "Kotlin security specialist — Kotlin dangerous input sinks, object authorization, tenant isolation, unsafe deserialization, and JWT verification."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-kotlin-code-review-testing
     description: "Kotlin testing specialist — Kotlin runTest virtual time, test dispatcher ordering, Flow sequence assertions, and real persistence effects."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-kotlin-code-review-ui
     description: "Kotlin ui specialist — Kotlin Compose Desktop state and lifecycle, Swing or JavaFX thread interop, server rendering, and CLI or TUI behavior."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-kotlin-code-review-ux-accessibility
     description: "Kotlin ux accessibility specialist — Kotlin desktop semantics and focus, semantic server output, terminal accessibility, keyboard use, and localization."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]

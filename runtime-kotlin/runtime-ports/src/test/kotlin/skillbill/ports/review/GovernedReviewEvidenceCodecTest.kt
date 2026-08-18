@@ -4,6 +4,7 @@ import skillbill.ports.review.model.GovernedReviewEvidenceCodec
 import skillbill.ports.review.model.ReviewEvidenceBatchResult
 import skillbill.ports.review.model.ReviewEvidenceResult
 import skillbill.review.context.model.ForbiddenReviewOperation
+import skillbill.review.context.model.ReviewExpansionRecord
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -37,6 +38,26 @@ class GovernedReviewEvidenceCodecTest {
     assertFalse(result.containsKey("content"))
     assertEquals(true, result["refused"])
     assertEquals("outside the assignment surface", result["reason"])
+  }
+
+  @Test
+  fun `a read naming an issued expansion inherits that expansion's reachability reason`() {
+    val record = ReviewExpansionRecord(
+      expansionId = "exp-1",
+      assignmentDigest = "a".repeat(64),
+      requestedPath = "src/Other.kt",
+      reachabilityReason = "called by the assigned hunk",
+      authorized = true,
+      sequence = 1,
+    )
+
+    val request = GovernedReviewEvidenceCodec.readRequest(
+      lane = "lane-a",
+      arguments = mapOf("requests" to listOf(mapOf("path" to "src/Other.kt", "expansion_id" to "exp-1"))),
+      expansionById = { id -> record.takeIf { id == it.expansionId } },
+    )
+
+    assertEquals("called by the assigned hunk", request.requests.single().reachabilityReason)
   }
 
   @Test

@@ -3,40 +3,40 @@ agents:
   - name: bill-go-code-review-api-contracts
     description: "Go api contracts specialist — net/http and applicable RPC validation, cancellation, JSON/protobuf evolution, response ordering, idempotency, and compatibility."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-go-code-review-architecture
     description: "Go architecture specialist — Package and module dependency direction, interface ownership, composition roots, component lifecycles, and goroutine scope ownership."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-go-code-review-performance
     description: "Go performance specialist — Measured pprof and benchmark evidence, allocations, retention, lock contention, scheduler pressure, batching, and bounded resources."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-go-code-review-persistence
     description: "Go persistence specialist — database/sql row and transaction lifecycles, isolation, locking, pools, migrations, mapping, and applicable data libraries."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-go-code-review-platform-correctness
     description: "Go platform correctness specialist — Goroutine exits, protocol-specific channel ownership, context cancellation, wrapped errors, typed nils, aliasing, synchronization, races, and deadlocks."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-go-code-review-reliability
     description: "Go reliability specialist — Graceful server, hijacked-connection, worker, and queue shutdown; delivery semantics, deadlines, retries, backpressure, and partial failure."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-go-code-review-security
     description: "Go security specialist — Sessions, OAuth/OIDC, authorization, template trust, bounded parsing, symlink-safe paths, process options, connection-time SSRF, and dependencies."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-go-code-review-testing
     description: "Go testing specialist — Behavioral regression proof, subtests, parallel capture, deterministic concurrency and time, race tests, fuzzing, and weak assertions."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-go-code-review-ui
     description: "Go ui specialist — Go-owned HTML templates and components, forms, htmx fragment ownership, repository-defined view states, interactive CLI and TUI output."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-go-code-review-ux-accessibility
     description: "Go ux accessibility specialist — Accessible names, error association, conditional focus restoration, keyboard flow, semantics, live feedback, localization, and terminal interaction."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]

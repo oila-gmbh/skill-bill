@@ -3,40 +3,40 @@ agents:
   - name: bill-rust-code-review-api-contracts
     description: "Rust api contracts specialist — Rust trait, FFI, serde, wire-format, and compatibility contracts."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-rust-code-review-architecture
     description: "Rust architecture specialist — Rust crate and workspace boundaries, trait ownership, dependency direction, and feature architecture."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-rust-code-review-performance
     description: "Rust performance specialist — Rust allocation, cloning, locking, async scheduling, I/O, and hot-path behavior."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-rust-code-review-persistence
     description: "Rust persistence specialist — Rust database clients, transactions, migrations, locking, and durable data consistency."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-rust-code-review-platform-correctness
     description: "Rust platform correctness specialist — Rust ownership, borrowing, lifetimes, error semantics, concurrency, and runtime correctness."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-rust-code-review-reliability
     description: "Rust reliability specialist — Rust cancellation, backpressure, retries, shutdown, observability, and degradation behavior."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-rust-code-review-security
     description: "Rust security specialist — Rust unsafe boundaries, auth, parsing, secrets, dependencies, FFI, and sensitive data."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-rust-code-review-testing
     description: "Rust testing specialist — Rust unit, integration, doc, feature-matrix, concurrency, and regression tests."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-rust-code-review-ui
     description: "Rust ui specialist — Rust wasm, server-rendered, desktop GUI, terminal UI, and interactive output."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]
   - name: bill-rust-code-review-ux-accessibility
     description: "Rust ux accessibility specialist — Rust UI semantics, keyboard and focus behavior, feedback, localization, and assistive access."
     compose: governed-content
-    tools: [Read, Grep, Glob, Bash]
+    tools: [mcp__skill-bill-review-evidence__read_evidence, mcp__skill-bill-review-evidence__request_expansion]

@@ -162,6 +162,17 @@ object ReviewStageDegradationSelection {
         ),
       )
     }
+    if (accounting.refusedOperationCount > 0) {
+      add(
+        ReviewStageDegradationMeasurement(
+          reviewRunId = reviewRunId,
+          seam = ReviewEvidenceBoundaryAccounting.GOVERNED_EVIDENCE_SEAM,
+          expected = "refused_operations=0",
+          actual = "refused_operations=${accounting.refusedOperationCount}",
+          reason = ReviewStageDegradationReason.EVIDENCE_BOUNDARY_OPERATION_REFUSED,
+        ),
+      )
+    }
     if (accounting.rejectedCandidateCount > 0) {
       add(
         ReviewStageDegradationMeasurement(

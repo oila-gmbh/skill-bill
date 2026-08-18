@@ -58,6 +58,7 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
 
   private var cumulativeBytes = 0L
   private var authorizedReadCount = 0
+  private var refusedOperationCount = 0
   private var resultBytes = 0L
   private var laneResultObserved = false
   private var toolCalls = 0
@@ -129,18 +130,16 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
       requireRepositoryRelativePath(exactPath)
     }
     val operation = ReviewRequestedOperation(ReviewOperationKind.FILE_READ, exactPath, request.reachabilityReason)
-    policy.classify(operation)?.let { return forbiddenResult(it, cumulativeBytes, expansionLedger.size) }
+    policy.classify(operation)?.let { return refused(it) }
     requireRepositoryRelativePath(exactPath)
     val normalizedTarget = normalizeEvidenceIdentity(exactPath)
     if (!admittedEvidenceTargets.add(normalizedTarget)) {
-      return forbiddenResult(
+      return refused(
         ForbiddenReviewOperation(
           "repeated_evidence_read",
           exactPath,
           "The normalized evidence target was already read by this lane.",
         ),
-        cumulativeBytes,
-        expansionLedger.size,
       )
     }
     val assigned = policy.isAssigned(exactPath)
@@ -361,6 +360,7 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
   override fun accounting(): ReviewLaneAccounting = ReviewLaneAccounting(
     lane = assignment.lane,
     authorizedReadCount = authorizedReadCount,
+    refusedOperationCount = refusedOperationCount,
     evidenceBytes = cumulativeBytes,
     expansions = expansionLedger.toList(),
     toolCalls = toolCalls,
@@ -382,6 +382,11 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
     } else {
       null
     }
+  }
+
+  private fun refused(forbidden: ForbiddenReviewOperation): ReviewEvidenceResult {
+    refusedOperationCount += 1
+    return forbiddenResult(forbidden, cumulativeBytes, expansionLedger.size)
   }
 
   private fun exceeded(kind: String, limit: Long, observed: Long): ReviewEvidenceResult {

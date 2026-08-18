@@ -94,6 +94,7 @@ data class ReviewLaneAccounting(
   val assignmentDigest: String = lane,
   val launchBytes: Long = 0,
   val authorizedReadCount: Int = 0,
+  val refusedOperationCount: Int = 0,
   val evidenceBytes: Long,
   val expansions: List<ReviewExpansionRecord>,
   val toolCalls: Int,
@@ -112,6 +113,6 @@ data class ReviewLaneAccounting(
   init {
     require(lane.isNotBlank() && reviewId.isNotBlank() && packetDigest.isNotBlank() && assignmentDigest.isNotBlank())
     require(launchBytes >= 0 && evidenceBytes >= 0 && resultBytes >= 0)
-    require(toolCalls >= 0 && modelTurns >= 0 && authorizedReadCount >= 0)
+    require(toolCalls >= 0 && modelTurns >= 0 && authorizedReadCount >= 0 && refusedOperationCount >= 0)
   }
 }

@@ -136,7 +136,7 @@ object GovernedReviewEvidenceCodec {
     return ReviewEvidenceRequest(
       lane = lane,
       path = requiredString(raw, "path"),
-      reachabilityReason = optionalString(raw, "reachability_reason"),
+      reachabilityReason = optionalString(raw, "reachability_reason") ?: authorized?.reachabilityReason,
       authorizedExpansion = authorized,
       offset = optionalLong(raw, "offset"),
       limit = optionalLong(raw, "limit"),

@@ -762,6 +762,7 @@ class ParallelCodeReviewRunner(
         0
       },
       authorizedReadCount = accounting?.authorizedReadCount ?: 0,
+      refusedOperationCount = accounting?.refusedOperationCount ?: 0,
       evidenceBytes = accounting?.evidenceBytes ?: 0,
       expansionCount = accounting?.expansions?.size ?: 0,
       rejectedCandidateCount = outcome.rejectedCandidateCount,
@@ -1936,6 +1937,7 @@ private fun inlineParentAccounting(
   assignmentDigest = launch.assignment.digest,
   launchBytes = launch.prompt.toByteArray(Charsets.UTF_8).size.toLong(),
   authorizedReadCount = brokerAccounting?.authorizedReadCount ?: 0,
+  refusedOperationCount = brokerAccounting?.refusedOperationCount ?: 0,
   evidenceBytes = brokerAccounting?.evidenceBytes ?: 0,
   expansions = brokerAccounting?.expansions.orEmpty(),
   toolCalls = brokerAccounting?.toolCalls ?: 0,

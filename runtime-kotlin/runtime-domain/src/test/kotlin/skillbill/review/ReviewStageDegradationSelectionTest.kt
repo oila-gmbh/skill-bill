@@ -111,6 +111,23 @@ class ReviewStageDegradationSelectionTest {
     records.forEach(::assertCountsOnly)
   }
 
+  @Test
+  fun `a refused governed operation is recorded with its count and no repository content`() {
+    val records = evidenceReasons(
+      ReviewEvidenceBoundaryAccounting(
+        governedLaunchCount = 1,
+        authorizedReadCount = 1,
+        evidenceBytes = 12,
+        refusedOperationCount = 2,
+      ),
+    )
+
+    val refused = records.single()
+    assertEquals(ReviewStageDegradationReason.EVIDENCE_BOUNDARY_OPERATION_REFUSED, refused.reason)
+    assertEquals("refused_operations=2", refused.actual)
+    assertCountsOnly(refused)
+  }
+
   private fun evidenceReasons(
     vararg accounting: ReviewEvidenceBoundaryAccounting,
   ): List<ReviewStageDegradationMeasurement> = ReviewStageDegradationSelection.select(
@@ -138,6 +155,7 @@ class ReviewStageDegradationSelectionTest {
       ReviewStageDegradationReason.EVIDENCE_BOUNDARY_UNBOUND_BROKER,
       ReviewStageDegradationReason.EVIDENCE_BOUNDARY_UNEXERCISED,
       ReviewStageDegradationReason.REGISTER_CANDIDATES_REJECTED,
+      ReviewStageDegradationReason.EVIDENCE_BOUNDARY_OPERATION_REFUSED,
     )
   }
 }

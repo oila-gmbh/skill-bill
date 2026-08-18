@@ -46,6 +46,7 @@ internal class FanOutReviewEvidenceBroker(
     val first = parts.first()
     return first.copy(
       authorizedReadCount = parts.sumOf { it.authorizedReadCount },
+      refusedOperationCount = parts.sumOf { it.refusedOperationCount },
       evidenceBytes = parts.sumOf { it.evidenceBytes },
       expansions = parts.flatMap { it.expansions },
       toolCalls = parts.sumOf { it.toolCalls },
