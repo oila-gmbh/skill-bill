@@ -65,10 +65,10 @@ class ReviewOperationPolicyTest {
     )
   }
 
-  @Test fun `absolute guidance and routing prohibitions override assignment ownership`() {
+  @Test fun `guidance prohibition overrides assignment but routing and diff-artifact prohibitions do not`() {
     val assignedForbiddenPolicy = ReviewOperationPolicy(
       assignment = assignment().copy(
-        assignedPaths = listOf("AGENTS.md", "platform-packs/kotlin/platform.yaml"),
+        assignedPaths = listOf("AGENTS.md", "platform-packs/kotlin/platform.yaml", "fixtures/legacy.patch"),
       ),
       laneRubricId = "security",
     )
@@ -79,10 +79,20 @@ class ReviewOperationPolicyTest {
         ReviewRequestedOperation(ReviewOperationKind.FILE_READ, "AGENTS.md"),
       )?.category,
     )
+    assertNull(
+      assignedForbiddenPolicy.classify(
+        ReviewRequestedOperation(ReviewOperationKind.FILE_READ, "platform-packs/kotlin/platform.yaml"),
+      ),
+    )
+    assertNull(
+      assignedForbiddenPolicy.classify(
+        ReviewRequestedOperation(ReviewOperationKind.FILE_READ, "fixtures/legacy.patch"),
+      ),
+    )
     assertEquals(
       "platform_pack_and_addon_resolution",
       assignedForbiddenPolicy.classify(
-        ReviewRequestedOperation(ReviewOperationKind.FILE_READ, "platform-packs/kotlin/platform.yaml"),
+        ReviewRequestedOperation(ReviewOperationKind.FILE_READ, "platform-packs/kmp/platform.yaml"),
       )?.category,
     )
   }
@@ -105,6 +115,18 @@ class ReviewOperationPolicyTest {
           searchScopes = listOf("src/Assigned.kt", "AGENTS.md"),
         ),
       )?.category,
+    )
+    assertNull(
+      ReviewOperationPolicy(
+        assignment = assignment().copy(assignedPaths = listOf("platform-packs/kmp/platform.yaml")),
+        laneRubricId = "security",
+      ).classify(
+        ReviewRequestedOperation(
+          ReviewOperationKind.SEARCH,
+          "declared_code_review_areas",
+          searchScopes = listOf("platform-packs/kmp/platform.yaml"),
+        ),
+      ),
     )
     assertFailsWith<IllegalArgumentException> {
       ReviewRequestedOperation(ReviewOperationKind.SEARCH, "rg secret src/Assigned.kt")

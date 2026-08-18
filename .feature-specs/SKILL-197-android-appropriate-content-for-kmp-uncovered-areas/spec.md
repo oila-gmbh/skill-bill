@@ -133,6 +133,18 @@ consumers see no change.
   `kotlin` content unreachable.
 - Add the ownership regression test covering both the Android/KMP and backend Kotlin routes.
 
+## Subtasks
+
+Prepared as two dependency-ordered subtasks; `decomposition-manifest.yaml` is authoritative.
+
+1. **Own `architecture` in the `kmp` pack with Android-appropriate content** —
+   `spec_subtask_1_kmp_architecture_ownership.md`. Manifest declaration, content authoring including
+   the F-001-class cross-document selection-set rule, native-agent registration, pointer block,
+   pinned area-set updates, and the ownership regression test.
+2. **Record a disposition for every remaining KMP-uncovered area** —
+   `spec_subtask_2_uncovered_area_disposition.md`. Audit `performance`, `security`, `testing`, and
+   `api-contracts`; declare on `kmp` or justify retention on `kotlin`. Depends on subtask 1.
+
 ## Constraints
 
 - The `kotlin` pack must not be weakened for its backend consumers. Its rules are correct for the
