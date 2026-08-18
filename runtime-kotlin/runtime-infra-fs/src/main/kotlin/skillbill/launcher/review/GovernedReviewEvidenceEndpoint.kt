@@ -25,6 +25,10 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.concurrent.thread
 
 private const val TOKEN_BYTES = 24
+private const val UNIX_SOCKET_PATH_LIMIT = 103
+private const val TEMP_SUFFIX_DIGITS = 20
+private const val PER_LAUNCH_PREFIX = "skill-bill-review-evidence-"
+private const val SOCKET_FILE_NAME = "evidence.sock"
 private const val JSON_RPC_METHOD_NOT_FOUND = -32601
 private const val JSON_RPC_INVALID_PARAMS = -32602
 
@@ -192,7 +196,7 @@ class GovernedReviewEvidenceEndpoint private constructor(
       bridgeCommand: List<String>,
     ): GovernedReviewEvidenceEndpoint {
       val directory = privateDirectory()
-      val socketPath = directory.resolve("evidence.sock")
+      val socketPath = directory.resolve(SOCKET_FILE_NAME)
       val token = newToken()
 
       @Suppress("TooGenericExceptionCaught")
@@ -241,12 +245,27 @@ class GovernedReviewEvidenceEndpoint private constructor(
 
     private fun privateDirectory(): Path = try {
       Files.createTempDirectory(
-        "skill-bill-review-evidence-",
+        perLaunchRoot(),
+        PER_LAUNCH_PREFIX,
         PosixFilePermissions.asFileAttribute(PosixFilePermissions.fromString("rwx------")),
       )
     } catch (error: IOException) {
       throw GovernedReviewEvidenceTransportError("Failed to create the per-launch governed review directory.", error)
     }
+
+    internal fun perLaunchRoot(): Path {
+      val configured = Path.of(System.getProperty("java.io.tmpdir"))
+      if (socketPathFits(configured)) return configured
+      val shortest = Path.of("/tmp")
+      return if (Files.isDirectory(shortest) && socketPathFits(shortest)) shortest else configured
+    }
+
+    private fun socketPathFits(root: Path): Boolean = root
+      .resolve(PER_LAUNCH_PREFIX + "0".repeat(TEMP_SUFFIX_DIGITS))
+      .resolve(SOCKET_FILE_NAME)
+      .toString()
+      .toByteArray(Charsets.UTF_8)
+      .size <= UNIX_SOCKET_PATH_LIMIT
 
     private fun newToken(): String = ByteArray(TOKEN_BYTES)
       .also(SecureRandom()::nextBytes)

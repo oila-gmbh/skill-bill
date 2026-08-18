@@ -84,7 +84,7 @@ class GovernedReviewEvidenceEndpointTest {
 
   @Test
   fun `a bind that fails after opening the listener leaves no per-launch directory behind`() {
-    val tempRoot = Path.of(System.getProperty("java.io.tmpdir"))
+    val tempRoot = GovernedReviewEvidenceEndpoint.perLaunchRoot()
     val before = perLaunchDirectories(tempRoot)
 
     assertFailsWith<IllegalArgumentException> {
@@ -104,11 +104,30 @@ class GovernedReviewEvidenceEndpointTest {
     assertTrue(error.message!!.contains("missing or not executable"))
   }
 
-  private fun perLaunchDirectories(root: java.nio.file.Path): Set<String> = Files.list(root).use { paths ->
+  private fun perLaunchDirectories(root: Path): Set<String> = Files.list(root).use { paths ->
     paths.map { it.fileName.toString() }
       .filter { it.startsWith("skill-bill-review-evidence-") }
       .toList()
       .toSet()
+  }
+
+  @Test
+  fun `a temp root too long for a unix socket path still yields a bindable endpoint`() {
+    val longRoot = Files.createTempDirectory("review-evidence-long-root").resolve("d".repeat(80))
+    Files.createDirectories(longRoot)
+    val previousTempRoot = System.getProperty("java.io.tmpdir")
+    System.setProperty("java.io.tmpdir", longRoot.toString())
+    try {
+      val protocol = RecordingProtocol()
+      GovernedReviewEvidenceEndpoint.bind("architecture", protocol, listOf("/bin/true")).use { endpoint ->
+        connect(endpoint, endpoint.descriptor.token).use { connection ->
+          connection.call(readFrame("src/Elsewhere.kt"))
+        }
+        assertEquals(listOf("src/Elsewhere.kt"), protocol.reads.map { it.requests.single().path })
+      }
+    } finally {
+      System.setProperty("java.io.tmpdir", previousTempRoot)
+    }
   }
 
   @Test
