@@ -2,11 +2,15 @@ package skillbill.application.review
 
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
+import skillbill.ports.review.GovernedReviewEvidenceEndpointBinder
+import skillbill.ports.review.GovernedReviewEvidenceEndpointHandle
 import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.ReviewEvidenceBrokerFactory
+import skillbill.ports.review.model.GovernedReviewEvidenceEndpointDescriptor
 import skillbill.review.model.ReviewEvidenceBoundaryAccounting
 import skillbill.review.model.ReviewStageDegradationReason
 import skillbill.workflow.model.CodeReviewExecutionMode
+import java.nio.file.Files
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -161,6 +165,50 @@ class ParallelCodeReviewEvidenceBoundaryTest {
     assertEquals("rejected_candidates=1", rejected.single().actual)
     assertEquals("review.register.parse", rejected.single().seam)
     assertEquals(emptyList(), result.mergeResult.findings)
+  }
+
+  @Test
+  fun `a governed review whose launcher never starts still tears down the bound endpoint`() {
+    val directory = Files.createTempDirectory("skill-bill-review-evidence-")
+    val socketPath = directory.resolve("evidence.sock")
+    val configPath = directory.resolve("mcp.json")
+    Files.createFile(socketPath)
+    Files.createFile(configPath)
+
+    val result = reviewHarness(
+      ReviewHarnessConfig(
+        manifests = listOf(reviewPack("kotlin", listOf("architecture"), routingSignals = listOf("*.kt"))),
+        diff = diffForPaths("src/Repo.kt"),
+        evidenceEndpointBinder = GovernedReviewEvidenceEndpointBinder { lane, _ ->
+          object : GovernedReviewEvidenceEndpointHandle {
+            override val descriptor = GovernedReviewEvidenceEndpointDescriptor(
+              lane = lane,
+              socketPath = socketPath,
+              mcpConfigPath = configPath,
+              token = "unavailable-cli",
+            )
+
+            override fun close() {
+              Files.deleteIfExists(socketPath)
+              Files.deleteIfExists(configPath)
+              Files.deleteIfExists(directory)
+            }
+          }
+        },
+        response = { RecordedWorkerResponse(spawnFailed = true, processStarted = false, exitStatus = null) },
+      ),
+      ReviewRecorder(),
+    ).run(
+      harnessRequest(
+        agent2Id = null,
+        reviewRunId = "rvw-195-unavailable-cli",
+        codeReviewMode = CodeReviewExecutionMode.INLINE,
+      ),
+    )
+
+    assertFalse(result.lane1.success)
+    assertFalse(Files.exists(socketPath))
+    assertFalse(Files.exists(directory))
   }
 
   @Test

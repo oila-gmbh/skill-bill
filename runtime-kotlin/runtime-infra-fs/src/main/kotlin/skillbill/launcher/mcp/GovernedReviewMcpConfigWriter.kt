@@ -27,6 +27,10 @@ object GovernedReviewMcpConfigWriter {
     try {
       writeJson(configPath, settings)
       Files.setPosixFilePermissions(configPath, PosixFilePermissions.fromString("rw-------"))
+      val cursorConfig = cursorProjectConfigPath(configPath)
+      Files.createDirectories(cursorConfig.parent)
+      writeJson(cursorConfig, settings)
+      Files.setPosixFilePermissions(cursorConfig, PosixFilePermissions.fromString("rw-------"))
     } catch (error: IOException) {
       throw GovernedReviewEvidenceTransportError(
         "Failed to write the per-launch governed review MCP config at '$configPath'.",
@@ -35,4 +39,6 @@ object GovernedReviewMcpConfigWriter {
     }
     return configPath
   }
+
+  fun cursorProjectConfigPath(mcpConfigPath: Path): Path = mcpConfigPath.parent.resolve(".cursor").resolve("mcp.json")
 }

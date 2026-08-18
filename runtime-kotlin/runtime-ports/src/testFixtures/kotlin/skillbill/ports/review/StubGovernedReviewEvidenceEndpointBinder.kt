@@ -1,5 +1,6 @@
 package skillbill.ports.review
 
+import skillbill.ports.review.model.GovernedReviewEvidenceEndpointDescriptor
 import java.nio.file.Path
 
 /**

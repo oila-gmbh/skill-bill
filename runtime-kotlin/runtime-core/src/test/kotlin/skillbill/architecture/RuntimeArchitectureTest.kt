@@ -2259,6 +2259,10 @@ class RuntimeArchitectureTest {
       "skillbill.workflow.model.WorkflowUpdateInput.artifactsPatch",
       "skillbill.ports.validation.model.RepoValidationReport.toPayload",
       "skillbill.ports.validation.model.ReleaseRefMetadata.toPayload",
+      "skillbill.ports.review.model.GovernedReviewEvidenceCodec.TOOL_SPECS",
+      "skillbill.ports.review.model.GovernedReviewEvidenceCodec.readRequest",
+      "skillbill.ports.review.model.GovernedReviewEvidenceCodec.expansionRequest",
+      "skillbill.ports.review.model.GovernedReviewEvidenceCodec.payload",
     )
 
     // SKILL-52.3 subtask 5 (AC4): runtime-contracts is a pure DTO/constants/

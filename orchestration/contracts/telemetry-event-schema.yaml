@@ -1520,6 +1520,7 @@ $defs:
           - stage_boundary_unreached
           - evidence_boundary_unbound_broker
           - evidence_boundary_unexercised
+          - evidence_boundary_operation_refused
           - register_candidates_rejected
 
   skillbillReviewFinishedLegacyRegeneratedEvent:

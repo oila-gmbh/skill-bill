@@ -1,5 +1,6 @@
 package skillbill.ports.review.model
 
+import skillbill.boundary.OpenBoundaryMap
 import skillbill.review.context.model.ForbiddenReviewOperation
 import skillbill.review.context.model.ReviewBudgetOutcome
 import skillbill.review.context.model.ReviewExpansionRecord
@@ -9,6 +10,7 @@ import skillbill.review.context.model.ReviewExpansionRecord
  * speaks. It decides nothing: reachability, byte budgeting, the expansion ledger, and lane
  * termination all stay behind [skillbill.ports.review.NativeReviewOperationProtocol].
  */
+@Suppress("TooManyFunctions")
 object GovernedReviewEvidenceCodec {
   const val READ_EVIDENCE: String = "read_evidence"
   const val REQUEST_EXPANSION: String = "request_expansion"
@@ -19,6 +21,7 @@ object GovernedReviewEvidenceCodec {
 
   val OPERATIONS: List<String> = listOf(READ_EVIDENCE, REQUEST_EXPANSION)
 
+  @OpenBoundaryMap("JSON-RPC wire maps at the governed review evidence MCP seam")
   val TOOL_SPECS: List<Map<String, Any?>> = listOf(
     toolSpec(
       READ_EVIDENCE,
@@ -54,6 +57,7 @@ object GovernedReviewEvidenceCodec {
     ),
   )
 
+  @OpenBoundaryMap("JSON-RPC wire maps at the governed review evidence MCP seam")
   fun readRequest(
     lane: String,
     arguments: Map<String, Any?>,
@@ -67,6 +71,7 @@ object GovernedReviewEvidenceCodec {
     )
   }
 
+  @OpenBoundaryMap("JSON-RPC wire maps at the governed review evidence MCP seam")
   fun expansionRequest(lane: String, arguments: Map<String, Any?>): ReviewExpansionAuthorizationRequest =
     ReviewExpansionAuthorizationRequest(
       lane = lane,
@@ -74,13 +79,15 @@ object GovernedReviewEvidenceCodec {
       reachabilityReason = requiredString(arguments, "reachability_reason"),
     )
 
+  @OpenBoundaryMap("JSON-RPC wire maps at the governed review evidence MCP seam")
   fun payload(result: ReviewEvidenceBatchResult): Map<String, Any?> = linkedMapOf(
     "results" to result.results.map(::payload),
     "cumulative_bytes" to result.cumulativeBytes,
     "expansions" to result.expansions.map(::payload),
-    "terminal_outcome" to result.terminalOutcome?.let(::payload),
+    "terminal_outcome" to result.terminalOutcome?.let(::budgetPayload),
   )
 
+  @OpenBoundaryMap("JSON-RPC wire maps at the governed review evidence MCP seam")
   fun payload(record: ReviewExpansionRecord): Map<String, Any?> = linkedMapOf(
     "expansion_id" to record.expansionId,
     "requested_path" to record.requestedPath,

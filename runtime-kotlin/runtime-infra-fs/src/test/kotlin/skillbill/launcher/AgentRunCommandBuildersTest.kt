@@ -1,6 +1,7 @@
 package skillbill.launcher
 
 import skillbill.config.model.PhaseCompactionDirective
+import skillbill.error.GovernedReviewEvidenceTransportError
 import skillbill.infrastructure.fs.CursorReviewStreamError
 import skillbill.infrastructure.fs.CursorReviewStreamMalformedError
 import skillbill.install.model.InstallAgent
@@ -380,7 +381,7 @@ class AgentRunCommandBuildersTest {
   }
 
   @Test
-  fun `builders materialize governed specialist isolation without provider branching`() {
+  fun `a governed claude launch is a fresh isolated process naming its worker`() {
     val isolated = request().copy(
       conversationIsolation = ConversationIsolation.NONE,
       reviewEvidenceBroker = NoOpReviewEvidenceBroker,
@@ -388,32 +389,57 @@ class AgentRunCommandBuildersTest {
       reviewEvidenceEndpoint = StubReviewEvidenceEndpoint,
       nativeReviewWorkerName = "bill-kotlin-code-review-architecture",
     )
+    val builder = ClaudeAgentRunCommandBuilder()
+    val command = builder.build(isolated)
 
-    val builders = listOf(
-      ClaudeAgentRunCommandBuilder() to ReviewLaunchIsolationStrategy.FRESH_PROCESS,
-      CodexAgentRunCommandBuilder() to ReviewLaunchIsolationStrategy.CODEX_NATIVE_FORK_TURNS_NONE,
-      JunieAgentRunCommandBuilder() to ReviewLaunchIsolationStrategy.FRESH_PROCESS,
-    )
-    builders.forEach { (builder, expectedIsolation) ->
-      assertEquals(expectedIsolation, builder.reviewIsolation)
-      assertEquals(ConversationIsolation.NONE, builder.build(isolated).conversationIsolation)
-    }
-    val codexCommand = CodexAgentRunCommandBuilder().build(isolated).command
-    val claudeCommand = ClaudeAgentRunCommandBuilder().build(isolated).command
-    assertTrue(codexCommand.contains("--skip-git-repo-check"))
-    assertTrue(codexCommand.contains("--ignore-user-config"))
-    assertTrue(codexCommand.contains("read-only"))
-    assertTrue(codexCommand.contains("fork_turns=none"))
-    assertTrue(codexCommand.contains("tools.web_search=false"))
-    assertTrue(codexCommand.contains("tools.shell=false"))
-    assertFalse(codexCommand.any { it.startsWith("agent=") })
+    assertEquals(ReviewLaunchIsolationStrategy.FRESH_PROCESS, builder.reviewIsolation)
+    assertEquals(ConversationIsolation.NONE, command.conversationIsolation)
     assertEquals(
       "bill-kotlin-code-review-architecture",
-      claudeCommand[claudeCommand.indexOf("--agent") + 1],
+      command.command[command.command.indexOf("--agent") + 1],
     )
     assertFalse(
       CodexAgentRunCommandBuilder().build(request()).command.contains("--skip-git-repo-check"),
     )
+  }
+
+  @Test
+  fun `a governed endpoint on an agent without governed mcp config loud-fails instead of launching`() {
+    val governed = request().copy(
+      conversationIsolation = ConversationIsolation.NONE,
+      reviewEvidenceBroker = NoOpReviewEvidenceBroker,
+      nativeReviewOperations = BrokerBackedNativeReviewOperationProtocol(NoOpReviewEvidenceBroker),
+      reviewEvidenceEndpoint = StubReviewEvidenceEndpoint,
+    )
+
+    listOf(
+      CodexAgentRunCommandBuilder(),
+      JunieAgentRunCommandBuilder(),
+    ).forEach { builder ->
+      val error = assertFailsWith<GovernedReviewEvidenceTransportError> { builder.build(governed) }
+      assertTrue(error.message!!.contains(builder.agent.id))
+    }
+  }
+
+  @Test
+  fun `a governed cursor launch attaches the per-launch mcp project and does not invoke a listed skill`() {
+    val governed = request().copy(
+      conversationIsolation = ConversationIsolation.NONE,
+      reviewEvidenceBroker = NoOpReviewEvidenceBroker,
+      nativeReviewOperations = BrokerBackedNativeReviewOperationProtocol(NoOpReviewEvidenceBroker),
+      reviewEvidenceEndpoint = StubReviewEvidenceEndpoint,
+      nativeReviewWorkerName = "bill-code-review-inline",
+    )
+    val command = CursorAgentRunCommandBuilder().build(governed)
+    val workspace = StubReviewEvidenceEndpoint.descriptor.mcpConfigPath.parent.toString()
+
+    assertFalse(command.inheritEnvironment)
+    assertFalse(command.command.contains("--force"))
+    assertFalse(command.command.any { it.startsWith("/") && it.contains("bill-code-review") })
+    assertEquals(workspace, command.command[command.command.indexOf("--workspace") + 1])
+    assertTrue(command.command.contains("--approve-mcps"))
+    assertNull(command.environment["HOME"])
+    assertNull(command.environment["XDG_CONFIG_HOME"])
   }
 
   @Test
@@ -526,7 +552,7 @@ class AgentRunCommandBuildersTest {
   )
 
   private object StubReviewEvidenceEndpoint : skillbill.ports.review.GovernedReviewEvidenceEndpointHandle {
-    override val descriptor = skillbill.ports.review.GovernedReviewEvidenceEndpointDescriptor(
+    override val descriptor = skillbill.ports.review.model.GovernedReviewEvidenceEndpointDescriptor(
       lane = "architecture",
       socketPath = java.nio.file.Path.of("/tmp/skill-bill-review/evidence.sock"),
       mcpConfigPath = java.nio.file.Path.of("/tmp/skill-bill-review/mcp.json"),
@@ -807,28 +833,6 @@ $hugeLine
   }
 
   @Test
-  fun `cursor isolated review forwards provider passthrough keys`() {
-    val builder = CursorAgentRunCommandBuilder()
-    val isolated = request().copy(
-      conversationIsolation = ConversationIsolation.NONE,
-      reviewEvidenceBroker = NoOpReviewEvidenceBroker,
-      nativeReviewOperations = BrokerBackedNativeReviewOperationProtocol(NoOpReviewEvidenceBroker),
-      reviewEvidenceEndpoint = StubReviewEvidenceEndpoint,
-      nativeReviewWorkerName = "bill-kotlin-code-review-architecture",
-    )
-    val command = builder.build(isolated)
-
-    assertTrue(
-      command.environmentPassthroughKeys.contains("CURSOR_API_KEY"),
-      "Isolated cursor review worker must forward CURSOR_API_KEY",
-    )
-    assertTrue(
-      command.environmentPassthroughKeys.contains("HTTP_PROXY"),
-      "Isolated cursor review worker must forward proxy keys",
-    )
-  }
-
-  @Test
   fun `cursor builder sets empty passthrough keys when review evidence broker is absent`() {
     val builder = CursorAgentRunCommandBuilder()
     val command = builder.build(request())
@@ -837,20 +841,5 @@ $hugeLine
       command.environmentPassthroughKeys.isEmpty(),
       "Non-isolated cursor run must not passthrough provider keys",
     )
-  }
-
-  @Test
-  fun `governed specialist ConversationIsolation request follows requireProcessLaunch contract for cursor`() {
-    val builder = CursorAgentRunCommandBuilder()
-    val isolated = request().copy(
-      conversationIsolation = ConversationIsolation.NONE,
-      reviewEvidenceBroker = NoOpReviewEvidenceBroker,
-      nativeReviewOperations = BrokerBackedNativeReviewOperationProtocol(NoOpReviewEvidenceBroker),
-      reviewEvidenceEndpoint = StubReviewEvidenceEndpoint,
-      nativeReviewWorkerName = "bill-kotlin-code-review-architecture",
-    )
-
-    assertEquals(ReviewLaunchIsolationStrategy.FRESH_PROCESS, builder.reviewIsolation)
-    assertEquals(ConversationIsolation.NONE, builder.build(isolated).conversationIsolation)
   }
 }

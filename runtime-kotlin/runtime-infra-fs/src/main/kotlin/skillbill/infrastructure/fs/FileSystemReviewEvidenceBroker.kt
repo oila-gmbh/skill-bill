@@ -384,10 +384,8 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
     }
   }
 
-  private fun refused(forbidden: ForbiddenReviewOperation): ReviewEvidenceResult {
-    refusedOperationCount += 1
-    return forbiddenResult(forbidden, cumulativeBytes, expansionLedger.size)
-  }
+  private fun refused(forbidden: ForbiddenReviewOperation): ReviewEvidenceResult =
+    forbiddenResult(forbidden, cumulativeBytes, expansionLedger.size)
 
   private fun exceeded(kind: String, limit: Long, observed: Long): ReviewEvidenceResult {
     val outcome = checkNotNull(ReviewBudgetEvaluator.exceededOrNull(identity, kind, limit, observed)) {
@@ -397,8 +395,13 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
     return terminalResult(outcome, cumulativeBytes, expansionLedger.size)
   }
 
-  private fun batchResult(results: List<ReviewEvidenceResult>, outcome: ReviewBudgetOutcome?) =
-    ReviewEvidenceBatchResult(results, cumulativeBytes, expansionLedger.toList(), outcome)
+  private fun batchResult(
+    results: List<ReviewEvidenceResult>,
+    outcome: ReviewBudgetOutcome?,
+  ): ReviewEvidenceBatchResult {
+    refusedOperationCount += results.count { it.forbidden != null || it.budgetExceeded != null }
+    return ReviewEvidenceBatchResult(results, cumulativeBytes, expansionLedger.toList(), outcome)
+  }
 }
 
 private fun normalizeEvidenceIdentity(path: String): String =

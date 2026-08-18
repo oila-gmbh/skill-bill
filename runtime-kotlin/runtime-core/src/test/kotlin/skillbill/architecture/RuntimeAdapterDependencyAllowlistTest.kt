@@ -191,7 +191,7 @@ class RuntimeAdapterDependencyAllowlistTest {
     )
 
     val TEST_FIXTURES_PROJECT_DEPENDENCIES: Map<String, Set<String>> = mapOf(
-      "runtime-application" to setOf("runtime-infra-fs"),
+      "runtime-application" to setOf("runtime-infra-fs", "runtime-ports"),
       "runtime-contracts" to emptySet(),
       "runtime-core" to emptySet(),
       "runtime-domain" to emptySet(),

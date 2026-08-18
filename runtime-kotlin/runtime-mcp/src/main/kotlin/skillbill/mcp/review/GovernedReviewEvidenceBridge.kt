@@ -8,7 +8,6 @@ import skillbill.ports.review.model.GovernedReviewEvidenceCodec
 import java.io.BufferedReader
 import java.io.BufferedWriter
 import java.io.IOException
-import java.net.StandardProtocolFamily
 import java.net.UnixDomainSocketAddress
 import java.nio.channels.Channels
 import java.nio.channels.SocketChannel
@@ -77,6 +76,7 @@ object GovernedReviewEvidenceBridge {
     }
   }
 
+  @Suppress("ThrowsCount")
   private fun connect(socketPath: Path, token: String): Connection {
     val connection = try {
       SocketChannel.open(UnixDomainSocketAddress.of(socketPath))

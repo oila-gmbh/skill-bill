@@ -1,3 +1,12 @@
+## [2026-08-18] SKILL-195 subtask 4 — Governed MCP evidence transport
+Areas: runtime-ports/review, runtime-mcp/review, runtime-infra-fs/{launcher/review,launcher/mcp,launcher/process,launcher/agentrun}, runtime-application/review, runtime-core/di, skills/bill-code-review-inline, platform-packs/*/code-review native-agents
+- Per-launch Unix-domain-socket endpoint binds `NativeReviewOperationProtocol` before the worker starts and tears down on completion, timeout, or crash; loopback plus a per-launch token; the endpoint does not outlive its launch.
+- MCP adapter is codec and forward only: `read_evidence` and `request_expansion` map onto existing broker models. Reachability, byte budget, expansion ledger, and lane termination stay in the protocol — `forbidden`/`budgetExceeded` return as tool responses and do not execute. reusable
+- Claude governed launch writes a per-launch `--mcp-config` and `--strict-mcp-config`; `--tools` names only the two MCP operations (fan-out keeps `Agent`,`Task`). Native-agent sources drop `Read`/`Grep`/`Glob`/`Bash`. Locators stay in the packet; bodies pull on demand.
+- Limitation: Codex, Cursor, and Junie parity is subtask 5. No `agent/` under `platform-packs/`.
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
 ## [2026-08-18] SKILL-195 subtask 3 — Degradation records for the review evidence boundary
 Areas: runtime-domain/review, runtime-domain/review/model, runtime-application/review, runtime-infra-fs, runtime-ports/review/model, runtime-mcp, orchestration/contracts
 - `ReviewEvidenceBoundaryAccounting` (governed launches, authorized reads, evidence bytes, expansions, rejected candidates, optional unbound seam) is the single per-lane-run counter carrier feeding degradation selection. reusable

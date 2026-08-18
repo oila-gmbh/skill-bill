@@ -203,6 +203,15 @@ class FileSystemReviewEvidenceBrokerTest {
     )
     assertEquals("lane_evidence_bytes", result.terminalOutcome?.budgetKind)
     assertEquals(10, result.terminalOutcome?.observedValue)
+    assertEquals(1, broker.accounting().refusedOperationCount)
+    val followOn = broker.readBatch(
+      ReviewEvidenceBatchRequest(
+        "security",
+        listOf(ReviewEvidenceRequest("security", "A.kt"), ReviewEvidenceRequest("security", "B.kt")),
+      ),
+    )
+    assertTrue(followOn.results.all { it.budgetExceeded != null })
+    assertEquals(3, broker.accounting().refusedOperationCount)
   }
 
   @Test fun `authorized expansion is admitted and audited with its reachability reason`() {

@@ -560,6 +560,10 @@ runtime-ports
     - `skillbill.workflow.model.WorkflowUpdateInput.artifactsPatch`
     - `skillbill.ports.validation.model.RepoValidationReport.toPayload`
     - `skillbill.ports.validation.model.ReleaseRefMetadata.toPayload`
+    - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.TOOL_SPECS`
+    - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.readRequest`
+    - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.expansionRequest`
+    - `skillbill.ports.review.model.GovernedReviewEvidenceCodec.payload`
 
     <!-- open-boundary-allowlist:end -->
 
@@ -1178,6 +1182,10 @@ Categories:
 
 ### open_extension (@OpenBoundaryMap)
 
+- `skillbill.ports.review.model.GovernedReviewEvidenceCodec.TOOL_SPECS`
+- `skillbill.ports.review.model.GovernedReviewEvidenceCodec.readRequest`
+- `skillbill.ports.review.model.GovernedReviewEvidenceCodec.expansionRequest`
+- `skillbill.ports.review.model.GovernedReviewEvidenceCodec.payload`
 - `skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore.progressEvents`
 - `skillbill.workflow.GoalPlanningPreparationEnvelopeValidator.validate`
 - `skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope`

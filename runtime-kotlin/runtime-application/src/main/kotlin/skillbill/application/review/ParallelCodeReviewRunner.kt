@@ -1235,35 +1235,35 @@ class ParallelCodeReviewRunner(
     modelOverride: String?,
     resolvedMode: ResolvedReviewExecutionMode,
   ): ParallelReviewLaneOutcome {
-    val outcome = parentReviewLauncher.launch(
-      GoalRunnerSubtaskLaunchRequest(
-        invokedAgentId = launch.agentId,
-        configuredAgentOverrideId = null,
-        skillRunRequest = SkillRunRequest(
-          issueKey = "code-review-parallel",
-          repoRoot = request.repoRoot,
-          timeout = request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes,
-          promptOverride = request.withSelectedAgentAddons(launch.prompt),
-          modelOverride = modelOverride,
-          conversationIsolation = ConversationIsolation.NONE,
-          reviewEvidenceBroker = bound.broker,
-          nativeReviewOperations = bound.protocol,
-          reviewEvidenceEndpoint = bound.endpoint,
-          nativeReviewWorkerName = INLINE_NATIVE_WORKER
-            .takeIf { resolvedMode == ResolvedReviewExecutionMode.INLINE },
-          reviewFanOut = resolvedMode == ResolvedReviewExecutionMode.DELEGATED,
+    val outcome = bound.endpoint.use {
+      parentReviewLauncher.launch(
+        GoalRunnerSubtaskLaunchRequest(
+          invokedAgentId = launch.agentId,
+          configuredAgentOverrideId = null,
+          skillRunRequest = SkillRunRequest(
+            issueKey = "code-review-parallel",
+            repoRoot = request.repoRoot,
+            timeout = request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes,
+            promptOverride = request.withSelectedAgentAddons(launch.prompt),
+            modelOverride = modelOverride,
+            conversationIsolation = ConversationIsolation.NONE,
+            reviewEvidenceBroker = bound.broker,
+            nativeReviewOperations = bound.protocol,
+            reviewEvidenceEndpoint = bound.endpoint,
+            nativeReviewWorkerName = INLINE_NATIVE_WORKER
+              .takeIf { resolvedMode == ResolvedReviewExecutionMode.INLINE },
+            reviewFanOut = resolvedMode == ResolvedReviewExecutionMode.DELEGATED,
+          ),
         ),
-      ),
-    )
+      )
+    }
     return when (outcome) {
-      is UnsupportedAgentRunLaunch -> {
-        runCatching { bound.endpoint.close() }
-        unsupportedParentOutcome(launch, outcome)
-      }
+      is UnsupportedAgentRunLaunch -> unsupportedParentOutcome(launch, outcome)
       is AgentRunLaunchFacts -> launchedParentOutcome(launch, outcome, budget, bound.broker)
     }
   }
 
+  @Suppress("ThrowsCount")
   private fun bindGovernedEvidence(
     selected: List<ReviewSpecialistLaunchRequest>,
     repoRoot: Path,

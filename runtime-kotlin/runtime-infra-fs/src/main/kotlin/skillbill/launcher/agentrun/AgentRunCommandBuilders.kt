@@ -3,6 +3,7 @@
 package skillbill.launcher.agentrun
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import skillbill.error.GovernedReviewEvidenceTransportError
 import skillbill.install.model.AGENT_LAUNCHER_CLIS
 import skillbill.install.model.AgentLauncherCli
 import skillbill.install.model.InstallAgent
@@ -221,6 +222,7 @@ class CodexAgentRunCommandBuilder : AgentRunCommandBuilder {
 
   override fun build(request: SkillRunRequest): AgentRunCommand {
     requireProcessLaunch(request, reviewIsolation)
+    requireGovernedEvidenceConfigSupport(request, agent)
     return goalContinuationCommand(request, agent) ?: AgentRunCommand(
       command = buildList {
         add("codex")
@@ -274,6 +276,7 @@ class JunieAgentRunCommandBuilder : AgentRunCommandBuilder {
 
   override fun build(request: SkillRunRequest): AgentRunCommand {
     requireProcessLaunch(request, reviewIsolation)
+    requireGovernedEvidenceConfigSupport(request, agent)
     return goalContinuationCommand(request, agent) ?: AgentRunCommand(
       command = buildList {
         require(request.modelOverride == null && request.effortOverride == null) {
@@ -348,11 +351,13 @@ class CursorAgentRunCommandBuilder : AgentRunCommandBuilder {
     add("--print")
 
     if (isReviewLaunch) {
-      request.nativeReviewWorkerName?.let { worker ->
-        add("/$worker")
-      }
+      add("--trust")
+      add("--approve-mcps")
       add("--workspace")
-      add(request.repoRoot.toString())
+      add(
+        request.reviewEvidenceEndpoint?.descriptor?.mcpConfigPath?.parent?.toString()
+          ?: request.repoRoot.toString(),
+      )
     } else {
       add("--force")
       add("--trust")
@@ -428,6 +433,15 @@ private fun unstreamedLivenessPolicy(request: SkillRunRequest): AgentRunIdlePoli
 
 internal fun launchPrompt(request: SkillRunRequest): String = requireNotNull(request.promptOverride) {
   "launchPrompt requires a promptOverride; goal-continuation runs spawn skill-bill directly."
+}
+
+private fun requireGovernedEvidenceConfigSupport(request: SkillRunRequest, agent: InstallAgent) {
+  if (request.reviewEvidenceEndpoint != null) {
+    throw GovernedReviewEvidenceTransportError(
+      "Agent '${agent.id}' cannot launch a governed review: its CLI supplies no governed MCP config flag, " +
+        "so the governed evidence toolset would name a server the worker cannot reach.",
+    )
+  }
 }
 
 private fun requireProcessLaunch(request: SkillRunRequest, strategy: ReviewLaunchIsolationStrategy) {

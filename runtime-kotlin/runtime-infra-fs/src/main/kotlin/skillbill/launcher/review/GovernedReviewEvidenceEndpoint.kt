@@ -5,10 +5,10 @@ import skillbill.contracts.JsonSupport
 import skillbill.error.GovernedReviewEvidenceTransportError
 import skillbill.launcher.mcp.GovernedReviewMcpConfigWriter
 import skillbill.ports.review.GovernedReviewEvidenceEndpointBinder
-import skillbill.ports.review.GovernedReviewEvidenceEndpointDescriptor
 import skillbill.ports.review.GovernedReviewEvidenceEndpointHandle
 import skillbill.ports.review.NativeReviewOperationProtocol
 import skillbill.ports.review.model.GovernedReviewEvidenceCodec
+import skillbill.ports.review.model.GovernedReviewEvidenceEndpointDescriptor
 import skillbill.review.context.model.ReviewExpansionRecord
 import java.io.IOException
 import java.net.StandardProtocolFamily
@@ -51,6 +51,7 @@ internal fun bridgeCommand(environment: Map<String, String>): List<String> {
  * the supplied protocol. It holds no filesystem access of its own and re-implements no policy,
  * budget, expansion ledger, or lane termination: every answer is whatever the broker returned.
  */
+@Suppress("TooManyFunctions")
 class GovernedReviewEvidenceEndpoint private constructor(
   override val descriptor: GovernedReviewEvidenceEndpointDescriptor,
   private val protocol: NativeReviewOperationProtocol,
@@ -77,6 +78,9 @@ class GovernedReviewEvidenceEndpoint private constructor(
   private fun deleteDirectory() {
     runCatching { Files.deleteIfExists(descriptor.socketPath) }
     runCatching { Files.deleteIfExists(descriptor.mcpConfigPath) }
+    val cursorConfig = GovernedReviewMcpConfigWriter.cursorProjectConfigPath(descriptor.mcpConfigPath)
+    runCatching { Files.deleteIfExists(cursorConfig) }
+    runCatching { Files.deleteIfExists(cursorConfig.parent) }
     runCatching { Files.deleteIfExists(directory) }
   }
 
@@ -184,6 +188,7 @@ class GovernedReviewEvidenceEndpoint private constructor(
       val directory = privateDirectory()
       val socketPath = directory.resolve("evidence.sock")
       val token = newToken()
+
       @Suppress("TooGenericExceptionCaught")
       val channel = try {
         ServerSocketChannel.open(StandardProtocolFamily.UNIX)
@@ -195,19 +200,31 @@ class GovernedReviewEvidenceEndpoint private constructor(
           error,
         )
       }
-      val configPath = GovernedReviewMcpConfigWriter.write(
-        configPath = directory.resolve("mcp.json"),
-        bridgeCommand = bridgeCommand,
-        socketPath = socketPath,
-        token = token,
-        lane = lane,
-      )
-      return GovernedReviewEvidenceEndpoint(
-        GovernedReviewEvidenceEndpointDescriptor(lane, socketPath, configPath, token),
-        protocol,
-        channel,
-        directory,
-      )
+      @Suppress("TooGenericExceptionCaught")
+      return try {
+        val configPath = GovernedReviewMcpConfigWriter.write(
+          configPath = directory.resolve("mcp.json"),
+          bridgeCommand = bridgeCommand,
+          socketPath = socketPath,
+          token = token,
+          lane = lane,
+        )
+        GovernedReviewEvidenceEndpoint(
+          GovernedReviewEvidenceEndpointDescriptor(lane, socketPath, configPath, token),
+          protocol,
+          channel,
+          directory,
+        )
+      } catch (error: Exception) {
+        runCatching { channel.close() }
+        runCatching { Files.deleteIfExists(socketPath) }
+        runCatching { Files.deleteIfExists(directory.resolve("mcp.json")) }
+        val cursorConfig = directory.resolve(".cursor").resolve("mcp.json")
+        runCatching { Files.deleteIfExists(cursorConfig) }
+        runCatching { Files.deleteIfExists(cursorConfig.parent) }
+        runCatching { Files.deleteIfExists(directory) }
+        throw error
+      }
     }
 
     private fun privateDirectory(): Path = try {

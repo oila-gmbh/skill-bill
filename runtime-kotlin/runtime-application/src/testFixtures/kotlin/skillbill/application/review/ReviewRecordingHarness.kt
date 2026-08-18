@@ -14,7 +14,6 @@ import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.agentrun.model.AgentRunLivenessSnapshot
 import skillbill.ports.agentrun.model.AgentRunTokenOwnership
 import skillbill.ports.config.RepoLocalConfigPort
-import skillbill.ports.review.stubGovernedReviewEvidenceEndpointBinder
 import skillbill.ports.config.model.ReadRepoLocalConfigRequest
 import skillbill.ports.config.model.ReadRepoLocalConfigResult
 import skillbill.ports.diff.DiffResolverPort
@@ -32,6 +31,7 @@ import skillbill.ports.review.model.ParallelReviewLaneOutcome
 import skillbill.ports.review.model.ParallelReviewLaneRunRequest
 import skillbill.ports.review.model.ParallelReviewLaneRunResult
 import skillbill.ports.review.model.ResolvedReviewRubric
+import skillbill.ports.review.stubGovernedReviewEvidenceEndpointBinder
 import skillbill.ports.scaffold.InstalledPlatformPackCatalogPort
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.model.PilotedPlatformPackProjection

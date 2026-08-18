@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import skillbill.launcher.review.GovernedReviewEvidenceEndpoint
 import skillbill.ports.agentrun.model.AgentRunMcpStartupProbe
+import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
 import skillbill.ports.agentrun.model.ConversationIsolation
 import skillbill.ports.review.BrokerBackedNativeReviewOperationProtocol
 import skillbill.ports.review.ReviewEvidenceBroker
@@ -13,9 +14,8 @@ import skillbill.ports.review.model.ReviewEvidenceBatchRequest
 import skillbill.ports.review.model.ReviewLaneAccounting
 import skillbill.ports.review.model.ReviewToolCall
 import skillbill.review.context.model.ProviderTokenUsage
-import skillbill.ports.agentrun.model.AgentRunSpawnAuthorization
-import java.nio.file.Path
 import java.nio.file.Files
+import java.nio.file.Path
 import java.util.concurrent.TimeUnit
 import kotlin.time.Duration.Companion.seconds
 
@@ -212,28 +212,6 @@ class JvmAgentRunProcessRunnerTest {
     assertEquals("1", builder.environment()["SKILL_BILL_GOAL_CONTINUATION"])
     assertNull(builder.environment()["SOME_AMBIENT_SECRET"])
   }
-}
-
-private class FakeReapableProcess(private val staysAlive: Boolean) : Process() {
-  var destroyCount = 0
-    private set
-  var forcibleCount = 0
-    private set
-
-  override fun getOutputStream() = error("unused")
-  override fun getInputStream() = error("unused")
-  override fun getErrorStream() = error("unused")
-  override fun waitFor(): Int = error("unused")
-  override fun exitValue(): Int = error("unused")
-  override fun destroy() {
-    destroyCount++
-  }
-  override fun destroyForcibly(): Process {
-    forcibleCount++
-    return this
-  }
-  override fun isAlive(): Boolean = staysAlive
-  override fun waitFor(timeout: Long, unit: TimeUnit): Boolean = !staysAlive
 
   @Test
   fun `a timed-out governed launch leaves no endpoint bound`() {
@@ -278,4 +256,26 @@ private class FakeReapableProcess(private val staysAlive: Boolean) : Process() {
 
     override fun terminalOutcome() = null
   }
+}
+
+private class FakeReapableProcess(private val staysAlive: Boolean) : Process() {
+  var destroyCount = 0
+    private set
+  var forcibleCount = 0
+    private set
+
+  override fun getOutputStream() = error("unused")
+  override fun getInputStream() = error("unused")
+  override fun getErrorStream() = error("unused")
+  override fun waitFor(): Int = error("unused")
+  override fun exitValue(): Int = error("unused")
+  override fun destroy() {
+    destroyCount++
+  }
+  override fun destroyForcibly(): Process {
+    forcibleCount++
+    return this
+  }
+  override fun isAlive(): Boolean = staysAlive
+  override fun waitFor(timeout: Long, unit: TimeUnit): Boolean = !staysAlive
 }

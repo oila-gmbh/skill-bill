@@ -16,8 +16,10 @@ import java.net.UnixDomainSocketAddress
 import java.nio.channels.Channels
 import java.nio.channels.SocketChannel
 import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -81,15 +83,39 @@ class GovernedReviewEvidenceEndpointTest {
   }
 
   @Test
+  fun `a bind that fails after opening the listener leaves no per-launch directory behind`() {
+    val tempRoot = Path.of(System.getProperty("java.io.tmpdir"))
+    val before = perLaunchDirectories(tempRoot)
+
+    assertFailsWith<IllegalArgumentException> {
+      GovernedReviewEvidenceEndpoint.bind("architecture", RecordingProtocol(), emptyList())
+    }
+
+    assertEquals(before, perLaunchDirectories(tempRoot))
+  }
+
+  private fun perLaunchDirectories(root: java.nio.file.Path): Set<String> = Files.list(root).use { paths ->
+    paths.map { it.fileName.toString() }
+      .filter { it.startsWith("skill-bill-review-evidence-") }
+      .toList()
+      .toSet()
+  }
+
+  @Test
   fun `closing the endpoint removes the per-launch socket and config`() {
     val endpoint = GovernedReviewEvidenceEndpoint.bind("architecture", RecordingProtocol(), listOf("/bin/true"))
     assertTrue(Files.exists(endpoint.descriptor.socketPath))
     assertTrue(Files.exists(endpoint.descriptor.mcpConfigPath))
+    val cursorConfig = skillbill.launcher.mcp.GovernedReviewMcpConfigWriter.cursorProjectConfigPath(
+      endpoint.descriptor.mcpConfigPath,
+    )
+    assertEquals(Files.readString(endpoint.descriptor.mcpConfigPath), Files.readString(cursorConfig))
 
     endpoint.close()
 
     assertFalse(Files.exists(endpoint.descriptor.socketPath))
     assertFalse(Files.exists(endpoint.descriptor.mcpConfigPath))
+    assertFalse(Files.exists(cursorConfig))
   }
 
   private class Client(private val channel: SocketChannel) : AutoCloseable {

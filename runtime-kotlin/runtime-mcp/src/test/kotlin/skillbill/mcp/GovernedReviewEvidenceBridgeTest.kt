@@ -37,7 +37,10 @@ class GovernedReviewEvidenceBridgeTest {
             "params" to mapOf("name" to "Read", "arguments" to mapOf("path" to "/etc/passwd")),
           ),
         ),
-      ) { forwarded = true; "{}" },
+      ) {
+        forwarded = true
+        "{}"
+      },
     )
 
     assertTrue(!forwarded)

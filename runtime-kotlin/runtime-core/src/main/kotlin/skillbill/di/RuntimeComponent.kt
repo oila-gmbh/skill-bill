@@ -100,7 +100,6 @@ import skillbill.infrastructure.fs.FileSystemRepoSourceDiscoveryGateway
 import skillbill.infrastructure.fs.FileSystemRepoValidationGateway
 import skillbill.infrastructure.fs.FileSystemReviewAttribution
 import skillbill.infrastructure.fs.FileSystemReviewEvidenceBrokerFactory
-import skillbill.launcher.review.UnixSocketGovernedReviewEvidenceEndpointBinder
 import skillbill.infrastructure.fs.FileSystemReviewInputSource
 import skillbill.infrastructure.fs.FileSystemReviewNativeAgentPreflight
 import skillbill.infrastructure.fs.FileSystemReviewRubricResolver
@@ -139,6 +138,7 @@ import skillbill.infrastructure.sqlite.SQLiteDatabaseSessionFactory
 import skillbill.install.model.InstallPlanWireValidator
 import skillbill.launcher.agentrun.FileSystemAgentRunLauncher
 import skillbill.launcher.agentrun.PathExecutableLookup
+import skillbill.launcher.review.UnixSocketGovernedReviewEvidenceEndpointBinder
 import skillbill.model.EnvironmentContext
 import skillbill.model.OptionalCallbacks
 import skillbill.model.RuntimeContext
