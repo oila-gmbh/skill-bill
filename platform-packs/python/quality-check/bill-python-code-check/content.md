@@ -32,7 +32,7 @@ Discover and run the repository's authoritative Python checks in safe dependency
 Use this priority-ordered fix ladder so environment or package drift is understood before formatting churn and cheap failures stop expensive suites early. Never suppress a failure to make the checker pass.
 
 1. Repair interpreter, environment, lock, import, package metadata, generated-stub, or framework configuration failures that prevent reliable analysis without changing the repository's supported versions.
-2. Apply formatting only through the configured formatter and only to owned scoped files, then rerun its read-only verification command.
+2. Apply formatting only through the configured formatter and only to owned scoped files.
 3. Fix lint and typing findings at their source; never add ignores, baselines, `# noqa`, or relaxed mypy or pyright settings merely to obtain a pass.
 4. Repair deterministic unit and async behavior failures before integration tests, then fix database, service, worker, migration, and framework integration failures without replacing production semantics with mocks.
 5. Repair build, wheel, sdist, entry-point, package-data, and generated-contract drift, inspecting the diff so build output or regenerated files are not accidentally committed.

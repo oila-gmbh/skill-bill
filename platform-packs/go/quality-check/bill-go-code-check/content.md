@@ -42,7 +42,7 @@ Use this priority-ordered ladder so structural drift is understood before format
 Never suppress a failure to make the checker pass; preserve the configured analyzer, test, generation, module, workspace, and target contracts.
 
 1. Repair module, workspace, vendor, package, import, generation, or build-constraint failures that prevent reliable analysis.
-2. Apply formatting only to owned scoped files, then verify `gofmt -l` returns no paths.
+2. Apply formatting only to owned scoped files.
 3. Fix `go vet`, staticcheck, and golangci-lint findings at their source without suppressions or weakened configuration.
 4. Repair compilation and target-specific build failures before interpreting downstream test results.
 5. Fix deterministic unit and integration failures, then investigate `go test -race` findings as concurrency correctness defects.
