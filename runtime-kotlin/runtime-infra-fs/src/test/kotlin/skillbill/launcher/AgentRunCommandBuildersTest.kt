@@ -475,6 +475,19 @@ class AgentRunCommandBuildersTest {
           )
           assertTrue(command.contains("/bill-code-review-inline"))
           assertFalse(command.contains("--force"))
+          assertFalse(command.contains("--approve-mcps"))
+          val allowList = java.nio.file.Files.readString(
+            skillbill.launcher.mcp.GovernedReviewMcpConfigWriter.cursorCliConfigPath(
+              StubReviewEvidenceEndpoint.descriptor.mcpConfigPath,
+            ),
+          ).substringBefore("\"deny\"")
+          assertTrue(
+            governedOperations.all { operation ->
+              allowList.contains("Mcp(skill-bill-review-evidence:$operation)")
+            },
+            allowList,
+          )
+          assertTrue(rawFilesystemTools.none { tool -> allowList.contains(tool) }, allowList)
         }
         else -> error("unexpected provider ${builder.agent.id}")
       }

@@ -391,12 +391,14 @@ class CursorAgentRunCommandBuilder(
 
     if (isReviewLaunch) {
       add("--trust")
-      add("--approve-mcps")
       add("--workspace")
       add(
         request.reviewEvidenceEndpoint?.descriptor?.mcpConfigPath?.parent?.toString()
           ?: request.repoRoot.toString(),
       )
+      request.reviewEvidenceEndpoint?.let { endpoint ->
+        GovernedReviewMcpConfigWriter.writeCursorGovernedCliConfig(endpoint.descriptor.mcpConfigPath)
+      }
       request.nativeReviewWorkerName?.let { worker -> add("/$worker") }
     } else {
       add("--force")

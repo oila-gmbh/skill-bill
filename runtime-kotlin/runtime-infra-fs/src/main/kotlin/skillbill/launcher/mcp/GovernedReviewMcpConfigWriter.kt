@@ -32,6 +32,7 @@ object GovernedReviewMcpConfigWriter {
       Files.createDirectories(cursorConfig.parent)
       writeJson(cursorConfig, settings)
       Files.setPosixFilePermissions(cursorConfig, PosixFilePermissions.fromString("rw-------"))
+      writeCursorGovernedCliConfig(configPath)
       val tomlPath = tomlConfigPath(configPath)
       McpTomlConfig.writeGovernedServer(
         path = tomlPath,
@@ -52,6 +53,27 @@ object GovernedReviewMcpConfigWriter {
   }
 
   fun cursorProjectConfigPath(mcpConfigPath: Path): Path = mcpConfigPath.parent.resolve(".cursor").resolve("mcp.json")
+
+  fun cursorCliConfigPath(mcpConfigPath: Path): Path = mcpConfigPath.parent.resolve(".cursor").resolve("cli.json")
+
+  fun writeCursorGovernedCliConfig(mcpConfigPath: Path): Path {
+    val path = cursorCliConfigPath(mcpConfigPath)
+    Files.createDirectories(path.parent)
+    writeJson(
+      path,
+      linkedMapOf(
+        "approvalMode" to "allowlist",
+        "permissions" to linkedMapOf(
+          "allow" to GovernedReviewEvidenceCodec.OPERATIONS.map { operation ->
+            "Mcp(${GovernedReviewEvidenceCodec.SERVER_NAME}:$operation)"
+          },
+          "deny" to listOf("Read(**)", "Write(**)", "Shell(**)", "WebFetch(*)"),
+        ),
+      ),
+    )
+    Files.setPosixFilePermissions(path, PosixFilePermissions.fromString("rw-------"))
+    return path
+  }
 
   fun tomlConfigPath(mcpConfigPath: Path): Path = mcpConfigPath.resolveSibling("mcp.toml")
 
