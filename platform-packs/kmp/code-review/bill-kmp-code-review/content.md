@@ -17,6 +17,7 @@ Treat the generated flattened Review Composition plan as authoritative. Launch i
 
 ## Diff-Signal Routing Table
 
+- Gradle module boundaries, `build.gradle.kts` dependency direction, Hilt or Koin scope ownership, `ViewModel` ownership of long-lived work, repository, use-case, or sync-engine authority, `WorkManager` enqueue ownership, or offline single-source-of-truth writes -> `architecture` specialist.
 - `expect`/`actual`, `commonMain`, `androidMain`, `iosMain`, source-set dependencies, or target-boundary declarations -> `platform-correctness` specialist.
 - `kotlinx.serialization`, polymorphic registration, `kotlinx-datetime`, timezone behavior, `Dispatchers.Main`, iOS dispatchers, ObjC exports, Skie `Flow`, or suspend cancellation -> `platform-correctness` specialist.
 - Room entities, DAOs, `@Transaction`, `.sq` files, SQLDelight drivers, `DataStore` edits, schema migrations, or offline sync cursors and idempotency keys -> `persistence` specialist.

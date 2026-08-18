@@ -189,15 +189,15 @@ sidecar hosting another sidecar), and sibling co-location is exactly what a
 router flow needs: the parent's installed directory holds the routed entry
 sidecar and the specialist sidecars it reads as siblings, all resolvable as
 "a file next to this `SKILL.md`" with no per-agent path knowledge. The
-code-review family is the worked example: 83 review-pack skills — eight stack
-entries plus their 75 specialists — all carry `internal-for: bill-code-review`
+code-review family is the worked example: 84 review-pack skills — eight stack
+entries plus their 76 specialists — all carry `internal-for: bill-code-review`
 and all install as siblings inside `bill-code-review/`. The stack entry skills
 do **not** become parents of their specialists.
 
-The maintained manifest-derived totals are 83 review sidecars, eight direct
-quality-check sidecars, and 75 provider-neutral specialist agents. KMP accounts
-for one review entry, five physical specialists, one direct checker, and five
-neutral agents; its five inherited review lanes reuse Kotlin rather than
+The maintained manifest-derived totals are 84 review sidecars, eight direct
+quality-check sidecars, and 76 provider-neutral specialist agents. KMP accounts
+for one review entry, six physical specialists, one direct checker, and six
+neutral agents; its four inherited review lanes reuse Kotlin rather than
 duplicating Kotlin source or native-agent declarations.
 
 ### Selection-aware sidecars for platform-pack internals (PD3)

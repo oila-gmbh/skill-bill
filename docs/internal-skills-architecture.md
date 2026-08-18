@@ -270,7 +270,7 @@ parsed `internalFor`) rather than re-scanning `platform-packs/` independently
 of selection. The parent's content hash folds exactly the selected sidecars.
 
 After a scratch install with all packs selected, `bill-code-review`'s staged
-directory contains `SKILL.md` plus 83 sibling sidecars — and no agent
+directory contains `SKILL.md` plus 84 sibling sidecars — and no agent
 `skills_dir` symlink exists for any manifest-discovered review sidecar:
 
 ```
@@ -286,7 +286,7 @@ directory contains `SKILL.md` plus 83 sibling sidecars — and no agent
       bill-kotlin-code-review.md            sidecar: Kotlin stack entry (selected)
       ... (10 Kotlin specialists total)
       bill-kmp-code-review.md               sidecar: KMP stack entry (selected)
-      ... (5 KMP specialists; 5 effective lanes compose from Kotlin)
+      ... (6 KMP specialists; 4 effective lanes compose from Kotlin)
       bill-php-code-review.md               sidecar: PHP stack entry (selected)
       ... (10 PHP specialists total)
       bill-python-code-review.md            sidecar: Python stack entry (selected)
@@ -352,10 +352,10 @@ standalone `skills_dir` path (PD5).
 
 | Selection | Sidecars staged inside `bill-code-review/` |
 |---|---|
-| `ALL` | 83 (8 stack entries + 75 specialists) |
+| `ALL` | 84 (8 stack entries + 76 specialists) |
 | Kotlin only | 11 (`bill-kotlin-code-review.md` + 10 specialists) |
 | KMP only | fails — Kotlin is a required baseline (PD8) |
-| KMP + Kotlin | 17 (`bill-kmp-code-review` + 5 KMP specialists, `bill-kotlin-code-review` + 10 Kotlin specialists) |
+| KMP + Kotlin | 18 (`bill-kmp-code-review` + 6 KMP specialists, `bill-kotlin-code-review` + 10 Kotlin specialists) |
 | None | 0; `bill-code-review` stages inert (byte-identical to no pack internals) |
 
 ### File map additions (platform-pack side)
