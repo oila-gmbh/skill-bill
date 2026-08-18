@@ -6,8 +6,12 @@ directly. An area is either **declared on `kmp`** with Android-appropriate conte
 sufficient on an Android/KMP diff.
 
 `kmp` composes the `kotlin` pack as a required baseline layer, so a retained area still plans a
-lane — it plans the `kotlin` rubric. Retention is a statement about content quality, not about
-coverage: the area set planned for an Android/KMP diff is the full approved set either way.
+lane — it plans the `kotlin` rubric. A declared area plans the `kmp` rubric instead: lane flattening
+picks one owner per area at the nearest composition depth, so declaring an area on `kmp` displaces
+the `kotlin` rubric for that area entirely. A `kmp` rubric therefore cannot defer a concern to the
+`kotlin` specialist for the same area — that lane does not run. Retention is a statement about
+content quality, not about coverage: the area set planned for an Android/KMP diff is the full
+approved set either way.
 
 ## Disposition Table
 
@@ -29,13 +33,24 @@ coverage: the area set planned for an Android/KMP diff is the full approved set 
 Four of the sixteen `kotlin` security rules reach an Android/KMP diff: `kotlinx.serialization`
 DTO validation before domain use, canonical path resolution with `toRealPath` under an allowed
 root, secrets and `Authorization` headers in `logger` calls, and Gradle dependency integrity plus
-advisory checking. The remaining twelve are server-side. Their triggers — `Principal`-based object
-authorization at a service boundary, `SecurityContext`-derived tenant predicates, concatenated SQL
-in Exposed `exec` or JDBC statements, `kotlinx.html`/Thymeleaf/FreeMarker output escaping,
-`HttpClient` destination validation for SSRF against metadata or internal services, `ProcessBuilder`
-and `sh -c` command construction, JVM `ObjectInputStream` and Jackson polymorphic typing gadget
-chains, and JWT signature/issuer/audience verification against trusted keys — do not exist in an
-Android application process.
+advisory checking. All four are restated as `kmp` analogs — untrusted payload and path validation,
+secrets and PII reaching logs, hardcoded key material, and a dependency-advisory plus
+`verification-metadata.xml` rule in the release-surface cluster — because declaring the area
+displaces the `kotlin` rubric.
+
+The remaining twelve are server-side. Their triggers — `Principal`-based object authorization at a
+service boundary, `SecurityContext`-derived tenant predicates, concatenated SQL in ORM or raw
+statements, `kotlinx.html`/Thymeleaf/FreeMarker output escaping, `HttpClient` destination validation
+for SSRF against metadata or internal services, `ProcessBuilder` and `sh -c` command construction,
+JVM `ObjectInputStream` and Jackson polymorphic typing gadget chains, and JWT
+signature/issuer/audience verification against trusted keys — do not exist in an Android application
+process. They do exist in a `jvmMain` or server source set of a Kotlin Multiplatform repository,
+which this pack also owns. The `kmp` rubric therefore carries a shared-and-JVM source-set cluster
+covering entry-point object authorization and tenant derivation, bound parameters instead of
+assembled statements or shell strings, token signature plus issuer, audience, and expiry
+verification, and outbound destination and path allowlisting. The framework-specific view-templating
+and gadget-chain triggers stay out because no source set this pack builds renders server-side
+templates or accepts Java-serialized input.
 
 Retention was rejected on sufficiency, not only on reachability. The four reachable rules leave the
 entire on-device attack surface unrepresented: exported components and intent redirection,

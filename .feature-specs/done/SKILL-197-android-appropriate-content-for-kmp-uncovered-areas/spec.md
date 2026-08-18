@@ -88,6 +88,11 @@ published ABI.
 Backend and desktop Kotlin reviews are unaffected: the `kotlin` pack keeps its content and its
 consumers see no change.
 
+The per-area disposition this spec decides is recorded durably in
+[docs/review-area-ownership.md](../../../docs/review-area-ownership.md), which outlives this spec: it
+carries the owning pack for every approved review area and, for each area retained on `kotlin`, the
+audited rules and why the backend-only ones are inert rather than misleading on an Android/KMP diff.
+
 ## Acceptance Criteria
 
 1. `kmp` declares `architecture` in `declared_code_review_areas`, with a declared area content file

@@ -18,14 +18,13 @@ Review only the on-device attack surface an installed Android or Kotlin Multipla
 
 ## Ignore
 
-- Server-side authorization, tenant isolation, and injection failures owned by the Kotlin baseline specialist
+- Deployment and host hardening outside this Gradle build: image, proxy, and network-appliance configuration
 - Compose rendering and navigation state correctness owned by the ui specialist
 - Room and `DataStore` write atomicity and migration mechanics owned by the persistence specialist
-- Dependency version currency without a reachable exploit path in the shipped application
 
 ## Applicability
 
-Use this specialist when a diff edits `AndroidManifest.xml`, adds or changes an `Activity`, `Service`, `BroadcastReceiver`, or `ContentProvider`, constructs an `Intent` or `PendingIntent`, configures a `WebView`, changes network or certificate configuration, touches `Keystore`, `EncryptedSharedPreferences`, or credential persistence, handles a deeplink or an incoming `Uri`, or logs, copies, or serializes user data. Evaluate every rule against a hostile application installed alongside this one and against a rooted or physically held device.
+Use this specialist for every source set this pack builds — `androidMain`, `commonMain`, and any `jvmMain` or server source set living in the same repository. Use it when a diff edits `AndroidManifest.xml`, adds or changes an `Activity`, `Service`, `BroadcastReceiver`, or `ContentProvider`, constructs an `Intent` or `PendingIntent`, configures a `WebView`, changes network or certificate configuration, touches `Keystore`, `EncryptedSharedPreferences`, or credential persistence, handles a deeplink or an incoming `Uri`, or logs, copies, or serializes user data. Evaluate every rule against a hostile application installed alongside this one, against a rooted or physically held device, and — for shared or JVM source sets — against an unauthenticated remote caller.
 
 ## Project-Specific Rules
 
@@ -43,6 +42,13 @@ Use this specialist when a diff edits `AndroidManifest.xml`, adds or changes an 
 - Require `Uri` host, scheme, and path matching to use structured `Uri` accessors against a fixed allowlist rather than `startsWith`, `contains`, or a regular expression over the raw string; prefix and substring matching accepts an attacker-controlled host that merely embeds the expected one and routes trusted handling to a hostile origin.
 - Reject decoding `Parcelable`, `Serializable`, or JSON payloads received from another application, a notification, or a deeplink directly into a domain type without range, length, and invariant validation; a syntactically valid hostile value reaches persistence and corrupts local state or exhausts device storage.
 - Require any file received as a `content://` or `file://` URI to be read through `ContentResolver` with its size and type checked, and reject resolving an attacker-supplied path against the application's private directory; a traversal segment or a symlink otherwise reads or overwrites internal application files.
+
+### Shared And JVM Source-Set Rules
+
+- Require every request-handling entry point declared in a shared or JVM source set to authorize the caller against the specific object it reads or mutates, not merely to prove authentication, and reject deriving the tenant or owner from a request-supplied identifier; an authenticated caller otherwise reads or edits another account's records by changing one path or body value.
+- Reject building a database statement, a filter expression, or a shell invocation by concatenating or interpolating request-derived values, and require bound parameters or an equivalent structured builder; a value carrying a quote or a statement separator otherwise executes as code with the process's own privileges.
+- Require every bearer token or session assertion accepted by a shared or JVM entry point to have its signature, issuer, audience, and expiry verified against a trusted key before any claim inside it is read; decoding a token without verifying it accepts an attacker-minted claim set as identity.
+- Reject sending a request-supplied URL, host, or file path to an outbound client or a file read without validating it against a fixed allowlist; an unvalidated destination reaches internal services, cloud metadata endpoints, or files outside the intended root.
 
 ### WebView And Remote Content Rules
 
@@ -64,5 +70,6 @@ Use this specialist when a diff edits `AndroidManifest.xml`, adds or changes an 
 - Reject tokens, authorization headers, personal data, and full request or response payloads reaching `Log`, `println`, or a crash or analytics reporter; device logs and third-party crash payloads leave the application's trust boundary and are readable outside it.
 - Require values copied to `ClipboardManager` to set the sensitive-content flag and to avoid credentials entirely, and require screens showing credentials or payment data to set `FLAG_SECURE`; the clipboard is readable by other applications and unflagged screens land in the recents thumbnail and in screenshots.
 - Verify that debug-only affordances — developer menus, network logging interceptors, mock authentication paths, and exported debug receivers — are excluded from the release variant by source-set placement rather than a runtime flag; a runtime-flag guard leaves the code and its entry point in the shipped binary.
+- Require a dependency added or bumped in `libs.versions.toml` or a Gradle build script to be checked against the repository's advisory source, and reject dropping or loosening a `gradle/verification-metadata.xml` entry; transitive code ships inside the APK or the published KMP artifact and runs with the application's own permissions.
 - Require permissions requested in the manifest to be justified by a use in the diff and reduced to the narrowest available variant; an unused or over-broad permission expands what a compromise of this application can reach on the device.
 - For Blocker or Major findings, describe the concrete authorization-bypass or data-exposure scenario.
