@@ -2,6 +2,7 @@ package skillbill.application
 
 import skillbill.application.decomposition.decompositionManifestPath
 import skillbill.application.decomposition.parentSpecPath
+import skillbill.application.featuretask.RemediationBaseCoherenceResult
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.application.featuretask.FeatureSpecPreparationRuntime
@@ -1494,15 +1495,13 @@ class FeatureTaskRuntimeRemediationGenerationTest {
     )
     assertEquals(recordedBase, harness.goalContinuationRecorder.reviewState(WORKFLOW_ID)?.remediationBaseSha)
 
-    val healed = requireNotNull(
+    val healed = assertIs<RemediationBaseCoherenceResult.Coherent>(
       harness.goalContinuationRecorder.reconcileRemediationBaseCoherence(WORKFLOW_ID, git, repoRoot),
     )
-    assertEquals(siblingTip, healed.remediationBaseSha)
-    assertEquals(siblingTip, harness.goalContinuationRecorder.reviewState(WORKFLOW_ID)?.remediationBaseSha)
-    assertEquals("true", git.isCommitAncestor(repoRoot, healed.remediationBaseSha!!, siblingTip).value)
-    @Suppress("UNCHECKED_CAST")
-    val evidence = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_review_base_recoveries"] as List<*>
-    assertTrue(evidence.isNotEmpty(), "silent heal must emit durable evidence")
+    assertEquals(recordedBase, healed.state?.remediationBaseSha)
+    assertEquals(recordedBase, harness.goalContinuationRecorder.reviewState(WORKFLOW_ID)?.remediationBaseSha)
+    assertEquals("false", git.isCommitAncestor(repoRoot, recordedBase, siblingTip).value)
+    assertNull(harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_review_base_recoveries"])
   }
 
   // A settled subtask's review is replayed from its durable result on resume rather than relaunched,

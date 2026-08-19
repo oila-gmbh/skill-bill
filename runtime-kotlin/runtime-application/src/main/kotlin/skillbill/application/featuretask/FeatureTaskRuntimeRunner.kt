@@ -154,12 +154,18 @@ class FeatureTaskRuntimeRunner(
     val report = runCatching {
       reopenCappedReviewOnChangedDelta(runRequest)
       if (isGoalContinuationRun(runRequest)) {
-        goalContinuationRecorder.reconcileRemediationBaseCoherence(
-          workflowId = runRequest.workflowId,
-          gitOperations = phaseGates.gitOperations,
-          repoRoot = runRequest.repoRoot,
-          dbOverride = runRequest.dbPathOverride,
-        )
+        when (
+          val reconciliation = goalContinuationRecorder.reconcileRemediationBaseCoherence(
+            workflowId = runRequest.workflowId,
+            gitOperations = phaseGates.gitOperations,
+            repoRoot = runRequest.repoRoot,
+            dbOverride = runRequest.dbPathOverride,
+          )
+        ) {
+          is RemediationBaseCoherenceResult.Blocked ->
+            return remediationBaseCoherenceBlockedReport(runRequest, reconciliation.operatorGuidance)
+          is RemediationBaseCoherenceResult.Coherent -> Unit
+        }
       }
       val state = FeatureTaskRuntimeRunState(
         recorder.loadPhaseRecords(runRequest.workflowId, runRequest.dbPathOverride).orEmpty(),

@@ -39,6 +39,7 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -447,9 +448,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
   }
 
   @Test
-  fun `resume coherence heals a recorded-but-superseded remediation base to HEAD with evidence`() {
-    // SKILL-15 topology: stored base is the orphaned sibling; branch tip is the later sibling.
-    // Pre-fix, these disagree. Post-fix resume heal makes the durable row agree with the ref.
+  fun `resume coherence blocks when stored remediation base is orphaned and no ref resolves`() {
     val fixture = skill15GitFixture()
     val head = git(fixture.repoRoot, "rev-parse", "HEAD")
     assertTrue(head != fixture.orphanedBase, "fixture must leave the orphan unreachable from HEAD")
@@ -460,25 +459,17 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     val recorder = recorderWith(state, repository, goalBranch = "feat/skill-15")
     val gitOps = realGitOps()
 
-    val healed = assertNotNull(
+    val blocked = assertIs<RemediationBaseCoherenceResult.Blocked>(
       recorder.reconcileRemediationBaseCoherence(workflowId, gitOps, fixture.repoRoot),
     )
 
-    assertEquals(head, healed.remediationBaseSha, "durable remediation_base_sha must match the branch tip")
-    assertEquals(head, recorder.reviewState(workflowId)?.remediationBaseSha)
-    assertEquals(
-      "true",
-      gitOps.isCommitAncestor(fixture.repoRoot, healed.remediationBaseSha!!, head).value,
-      "healed base must be reachable from HEAD",
-    )
+    assertContains(blocked.operatorGuidance, "feat/skill-15")
+    assertEquals(fixture.orphanedBase, recorder.reviewState(workflowId)?.remediationBaseSha)
+    assertNotEquals(head, recorder.reviewState(workflowId)?.remediationBaseSha)
     @Suppress("UNCHECKED_CAST")
     val evidence = repository.taskRuntimeArtifacts(workflowId)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY]
       as List<Map<String, Any?>>
-    val entry = evidence.single()
-    assertEquals(fixture.orphanedBase, entry["original_sha"])
-    assertEquals(head, entry["replacement_sha"])
-    assertEquals("recorded_but_superseded", entry["failure_reason"])
-    assertEquals("remediation_base_sha", entry["repointed_field"])
+    assertEquals("reconciliation_blocked", evidence.single()["failure_reason"])
   }
 
   @Test
@@ -511,12 +502,13 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
       checkpointIdentities = listOf(identity),
     )
     val gitOps = realGitOps()
+    git(fixture.repoRoot, "update-ref", identity.checkpointRef, fixture.checkpointSha)
 
-    val healed = assertNotNull(
+    val healed = assertIs<RemediationBaseCoherenceResult.Coherent>(
       recorder.reconcileRemediationBaseCoherence(workflowId, gitOps, fixture.repoRoot),
     )
 
-    assertEquals(fixture.checkpointSha, healed.remediationBaseSha)
+    assertEquals(fixture.checkpointSha, healed.state?.remediationBaseSha)
     assertEquals(fixture.checkpointSha, git(fixture.repoRoot, "rev-parse", "HEAD"))
     @Suppress("UNCHECKED_CAST")
     val evidence = repository.taskRuntimeArtifacts(workflowId)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY]
@@ -571,11 +563,11 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
       checkpointIdentities = listOf(identity),
     )
 
-    val after = assertNotNull(
+    val after = assertIs<RemediationBaseCoherenceResult.Coherent>(
       recorder.reconcileRemediationBaseCoherence(workflowId, realGitOps(), fixture.repoRoot),
     )
 
-    assertEquals(fixture.skipRecordedTip, after.remediationBaseSha)
+    assertEquals(fixture.skipRecordedTip, after.state?.remediationBaseSha)
     assertEquals(fixture.skipRecordedTip, recorder.reviewState(workflowId)?.remediationBaseSha)
     assertEquals(fixture.skipRecordedTip, git(fixture.repoRoot, "rev-parse", "HEAD"))
     assertNull(

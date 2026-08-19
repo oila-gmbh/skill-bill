@@ -10,6 +10,7 @@ import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.workflow.WorkflowGitOperations
+import skillbill.ports.workflow.resolveCheckpointRef
 import skillbill.ports.workflow.buildGoalSubtaskReviewInput
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineRecoveryRequest
@@ -22,6 +23,8 @@ import skillbill.workflow.model.WorkflowStateSnapshot
 import skillbill.workflow.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_FIELD_ADOPTION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_OUTCOME_ARTIFACT_KEY
@@ -494,29 +497,22 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
   /**
    * Resume-side coherence for the remediation checkpoint commit → base-record window (SKILL-176).
    *
-   * Advances `remediation_base_sha` to the latest on-branch review_fix identity only for
-   * committed-but-unrecorded cases (stored null or a strict ancestor of that identity). Keeps a
-   * Skip-recorded descendant tip that is still an ancestor of HEAD. Replaces with HEAD only when
-   * the stored base is recorded-but-superseded (not an ancestor of HEAD). Every heal appends durable
-   * evidence under [GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY] with an explicit reason. Returns the
-   * post-heal state when a write occurred, the current state when already coherent, or null when
-   * there is no review state to reconcile.
+   * Advances `remediation_base_sha` to the latest review_fix checkpoint ref that resolves, not to
+   * branch ancestry against HEAD. Every heal or blocked reconciliation appends durable evidence under
+   * [GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY] with an explicit reason. Returns [RemediationBaseCoherenceResult.Coherent]
+   * when reconciliation completes or is unnecessary, or [RemediationBaseCoherenceResult.Blocked] when no
+   * remediation base can be resolved without rewriting to HEAD.
    */
   @Suppress("LongMethod", "CyclomaticComplexMethod", "ReturnCount")
-  // SKILL-176: each branch is a distinct coherence case
   internal fun reconcileRemediationBaseCoherence(
     workflowId: String,
     gitOperations: WorkflowGitOperations,
     repoRoot: java.nio.file.Path,
     dbOverride: String? = null,
-  ): GoalSubtaskReviewState? {
+  ): RemediationBaseCoherenceResult {
     val snapshot = database.read(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
       val artifacts = decodeArtifacts(record.artifactsJson)
-      // A schema violation here (e.g. a review state genuinely absent or malformed) is not this
-      // best-effort coherence pass's failure to surface: the actual review-phase preparation path
-      // decodes the same artifacts and produces the properly scoped diagnostic. Loud-failing this
-      // early, unconditional call would misattribute a review-phase problem to run startup.
       runCatching {
         val state = reviewStateFromArtifacts(artifacts) ?: return@read null
         val continuation = continuationFromArtifacts(artifacts) ?: return@read null
@@ -527,82 +523,280 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
       }.getOrElse { error ->
         if (error is InvalidGoalSubtaskReviewStateSchemaError) return@read null else throw error
       }
-    } ?: return null
+    } ?: return RemediationBaseCoherenceResult.Coherent(null)
     val (state, continuation, checkpoints) = snapshot
-    // Nothing to reconcile without either a stored remediation base or a remediation checkpoint on
-    // record, so HEAD is never measured on the common no-remediation-yet path (a payload-sourced
-    // commit sha must never trigger a git HEAD read it does not need).
     if (state.remediationBaseSha == null &&
       checkpoints.none { it.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID }
     ) {
-      return state
+      return RemediationBaseCoherenceResult.Coherent(state)
     }
-    val head = gitOperations.headCommitSha(repoRoot)
-    if (!head.ok || head.value.isBlank()) return state
-    val headSha = head.value.trim()
-    val latestRemediationOnBranch = checkpoints
-      .asReversed()
-      .firstOrNull { identity ->
-        identity.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID &&
-          gitOperations.isCommitAncestor(repoRoot, identity.commitSha, headSha).let { it.ok && it.value == "true" }
-      }
-      ?.commitSha
+    val latestRemediationResolved = latestResolvedReviewFixCheckpointCommit(
+      checkpoints = checkpoints,
+      gitOperations = gitOperations,
+      repoRoot = repoRoot,
+    )
     val stored = state.remediationBaseSha
+    val storedResolves = stored?.let { resolvesCommit(gitOperations, repoRoot, it) } == true
     fun isStrictAncestor(ancestor: String, descendant: String): Boolean {
       if (ancestor == descendant) return false
       val ancestry = gitOperations.isCommitAncestor(repoRoot, ancestor, descendant)
       return ancestry.ok && ancestry.value == "true"
     }
-    val target = when {
-      // Committed-but-unrecorded: advance only when stored is missing or behind the identity.
-      // A Skip-recorded descendant tip (stored ahead of the identity, still on the branch) stays.
-      latestRemediationOnBranch != null &&
-        (stored == null || isStrictAncestor(stored, latestRemediationOnBranch)) ->
-        latestRemediationOnBranch
-      stored != null -> {
-        val ancestry = gitOperations.isCommitAncestor(repoRoot, stored, headSha)
-        when {
-          !ancestry.ok -> return state
-          ancestry.value == "true" -> null
-          else -> headSha
+    val reconciliation = when {
+      latestRemediationResolved != null &&
+        (stored == null || isStrictAncestor(stored, latestRemediationResolved.sha)) ->
+        ReconciliationDecision.Heal(latestRemediationResolved.sha)
+      stored != null && storedResolves -> {
+        val head = gitOperations.headCommitSha(repoRoot)
+        if (!head.ok || head.value.isBlank()) {
+          ReconciliationDecision.Coherent
+        } else {
+          val headSha = head.value.trim()
+          val onBranch = gitOperations.isCommitAncestor(repoRoot, stored, headSha)
+          when {
+            !onBranch.ok -> ReconciliationDecision.Coherent
+            onBranch.value == "true" -> ReconciliationDecision.Coherent
+            latestRemediationResolved != null ->
+              ReconciliationDecision.Heal(latestRemediationResolved.sha)
+            else -> ReconciliationDecision.Blocked
+          }
         }
       }
-      else -> null
-    } ?: return state
-    if (target == stored) return state
-    val reason = when {
-      stored == null -> "committed_but_unrecorded"
-      latestRemediationOnBranch != null && latestRemediationOnBranch == target -> "committed_but_unrecorded"
-      else -> "recorded_but_superseded"
+      latestRemediationResolved != null -> ReconciliationDecision.Heal(latestRemediationResolved.sha)
+      stored != null && !storedResolves -> ReconciliationDecision.Blocked
+      else -> ReconciliationDecision.Blocked
     }
-    return database.transaction(dbOverride) { unitOfWork ->
-      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
-        ?: return@transaction null
+    when (reconciliation) {
+      ReconciliationDecision.Coherent -> return RemediationBaseCoherenceResult.Coherent(state)
+      ReconciliationDecision.Blocked -> {
+        val failedRef = latestReviewFixCheckpointRef(checkpoints)
+        val guidance = remediationBaseReconciliationBlockedGuidance(
+          workflowId = workflowId,
+          issueKey = continuation.issueKey,
+          subtaskId = continuation.subtaskId,
+          goalBranch = continuation.goalBranch,
+          failedRef = failedRef,
+          storedSha = stored,
+        )
+        appendRemediationBaseReconciliationEvidence(
+          workflowId = workflowId,
+          continuation = continuation,
+          stored = stored,
+          target = null,
+          reason = "reconciliation_blocked",
+          failureMessage = guidance,
+          seam = "FeatureTaskRuntimeGoalContinuationRecorder.reconcileRemediationBaseCoherence",
+          valueUsed = failedRef ?: stored.orEmpty(),
+          valueExpected = "resolvable review_fix checkpoint ref commit",
+          cause = remediationBlockedCause(stored, storedResolves, failedRef),
+          dbOverride = dbOverride,
+        )
+        return RemediationBaseCoherenceResult.Blocked(guidance)
+      }
+      is ReconciliationDecision.Heal -> {
+        val target = reconciliation.sha
+        if (target == stored) return RemediationBaseCoherenceResult.Coherent(state)
+        val reason = when {
+          stored == null -> "committed_but_unrecorded"
+          latestRemediationResolved != null && latestRemediationResolved.sha == target ->
+            "committed_but_unrecorded"
+          else -> "recorded_but_superseded"
+        }
+        if (!storedResolves && stored != null) {
+          appendRemediationBaseReconciliationEvidence(
+            workflowId = workflowId,
+            continuation = continuation,
+            stored = stored,
+            target = target,
+            reason = reason,
+            failureMessage =
+              "Resume reconciled remediation_base_sha ($reason) through checkpoint ref after stored base missed.",
+            seam = "FeatureTaskRuntimeGoalContinuationRecorder.reconcileRemediationBaseCoherence",
+            valueUsed = stored,
+            valueExpected = "resolvable remediation_base_sha commit",
+            cause = "stored remediation base did not resolve; reconciled through checkpoint ref",
+            dbOverride = dbOverride,
+          )
+        }
+        val headSha = gitOperations.headCommitSha(repoRoot).value.orEmpty().trim()
+        val healed = database.transaction(dbOverride) { unitOfWork ->
+          val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+            ?: return@transaction null
+          val artifacts = decodeArtifacts(record.artifactsJson)
+          val latest = reviewStateFromArtifacts(artifacts) ?: return@transaction null
+          if (latest.remediationBaseSha == target) return@transaction latest
+          val updated = latest.copy(remediationBaseSha = target)
+          val evidenceEntry = remediationBaseRecoveryEvidenceEntry(
+            originalSha = stored,
+            replacementSha = target,
+            reason = reason,
+            goalBranch = continuation.goalBranch,
+            headSha = headSha,
+            seam = null,
+            valueUsed = null,
+            valueExpected = null,
+            cause = null,
+          )
+          val priorEvidence = (artifacts[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY] as? List<*>).orEmpty()
+          savePatch(
+            record,
+            unitOfWork.workflowStates,
+            mapOf(
+              GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to updated.toArtifactMap(),
+              GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY to priorEvidence + evidenceEntry,
+            ),
+          )
+          updated
+        }
+        return RemediationBaseCoherenceResult.Coherent(healed ?: state)
+      }
+    }
+  }
+
+  private sealed interface ReconciliationDecision {
+    data object Coherent : ReconciliationDecision
+    data object Blocked : ReconciliationDecision
+    data class Heal(val sha: String) : ReconciliationDecision
+  }
+
+  private fun remediationBlockedCause(
+    stored: String?,
+    storedResolves: Boolean,
+    failedRef: String?,
+  ): String = when {
+    stored != null && !storedResolves ->
+      "stored remediation_base_sha '$stored' did not resolve to a commit"
+    failedRef != null ->
+      "checkpoint ref '$failedRef' did not resolve to a commit"
+    else -> "no review_fix checkpoint ref resolved to a commit"
+  }
+
+  private data class ResolvedReviewFixCheckpoint(val identity: FeatureTaskRuntimeCheckpointIdentity, val sha: String)
+
+  private fun latestResolvedReviewFixCheckpointCommit(
+    checkpoints: List<FeatureTaskRuntimeCheckpointIdentity>,
+    gitOperations: WorkflowGitOperations,
+    repoRoot: java.nio.file.Path,
+  ): ResolvedReviewFixCheckpoint? = checkpoints
+    .asReversed()
+    .firstNotNullOfOrNull { identity ->
+      if (identity.loopId != FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID) return@firstNotNullOfOrNull null
+      resolveCheckpointRefCommit(gitOperations, repoRoot, identity.checkpointRef)
+        ?.let { ResolvedReviewFixCheckpoint(identity, it) }
+    }
+
+  private fun latestReviewFixCheckpointRef(checkpoints: List<FeatureTaskRuntimeCheckpointIdentity>): String? =
+    checkpoints
+      .asReversed()
+      .firstOrNull { it.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID }
+      ?.checkpointRef
+
+  private fun resolveCheckpointRefCommit(
+    gitOperations: WorkflowGitOperations,
+    repoRoot: java.nio.file.Path,
+    checkpointRef: String,
+  ): String? {
+    val resolved = gitOperations.resolveCheckpointRef(
+      repoRoot,
+      FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE,
+      checkpointRef,
+    )
+    if (!resolved.ok) return null
+    return resolved.value.orEmpty().trim().takeIf(String::isNotBlank)
+  }
+
+  private fun resolvesCommit(
+    gitOperations: WorkflowGitOperations,
+    repoRoot: java.nio.file.Path,
+    sha: String,
+  ): Boolean {
+    val resolved = gitOperations.resolveCommit(repoRoot, sha.trim())
+    return resolved.ok && resolved.value.orEmpty().trim().isNotBlank()
+  }
+
+  private fun remediationBaseReconciliationBlockedGuidance(
+    workflowId: String,
+    issueKey: String,
+    subtaskId: Int,
+    goalBranch: String,
+    failedRef: String?,
+    storedSha: String?,
+  ): String {
+    val refDetail = failedRef?.let { "checkpoint ref '$it'" } ?: "stored remediation base"
+    val storedDetail = storedSha?.let { " (stored sha '$it' also failed to resolve)" }.orEmpty()
+    return "Remediation base reconciliation blocked for workflow '$workflowId' on branch '$goalBranch': " +
+      "$refDetail could not be resolved to a commit$storedDetail. " +
+      "Run `skill-bill goal repair --issue-key $issueKey --subtask $subtaskId --apply` to repoint or clear " +
+      "the unreachable remediation base, then resume the goal child."
+  }
+
+  private fun appendRemediationBaseReconciliationEvidence(
+    workflowId: String,
+    continuation: FeatureTaskRuntimeGoalContinuationArtifact,
+    stored: String?,
+    target: String?,
+    reason: String,
+    failureMessage: String,
+    seam: String,
+    valueUsed: String,
+    valueExpected: String,
+    cause: String,
+    dbOverride: String?,
+  ) {
+    database.transaction(dbOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@transaction
       val artifacts = decodeArtifacts(record.artifactsJson)
-      val latest = reviewStateFromArtifacts(artifacts) ?: return@transaction null
-      if (latest.remediationBaseSha == target) return@transaction latest
-      val healed = latest.copy(remediationBaseSha = target)
-      val evidenceEntry = linkedMapOf<String, Any?>(
-        "original_sha" to stored,
-        "replacement_sha" to target,
-        "repointed_field" to GoalReviewBaseField.REMEDIATION_BASE.wireValue,
-        "failure_reason" to reason,
-        "failure_message" to
-          "Resume reconciled remediation_base_sha ($reason) so the recorded base stays reachable " +
-          "from branch '${continuation.goalBranch}' at HEAD '$headSha'.",
-        "goal_branch" to continuation.goalBranch,
+      val evidenceEntry = remediationBaseRecoveryEvidenceEntry(
+        originalSha = stored,
+        replacementSha = target,
+        reason = reason,
+        goalBranch = continuation.goalBranch,
+        headSha = null,
+        seam = seam,
+        valueUsed = valueUsed,
+        valueExpected = valueExpected,
+        cause = cause,
+        failureMessageOverride = failureMessage,
       )
       val priorEvidence = (artifacts[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY] as? List<*>).orEmpty()
       savePatch(
         record,
         unitOfWork.workflowStates,
-        mapOf(
-          GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to healed.toArtifactMap(),
-          GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY to priorEvidence + evidenceEntry,
-        ),
+        mapOf(GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY to priorEvidence + evidenceEntry),
       )
-      healed
-    } ?: state
+    }
+  }
+
+  private fun remediationBaseRecoveryEvidenceEntry(
+    originalSha: String?,
+    replacementSha: String?,
+    reason: String,
+    goalBranch: String,
+    headSha: String?,
+    seam: String?,
+    valueUsed: String?,
+    valueExpected: String?,
+    cause: String?,
+    failureMessageOverride: String? = null,
+  ): LinkedHashMap<String, Any?> {
+    val failureMessage = failureMessageOverride ?: run {
+      val headDetail = headSha?.takeIf(String::isNotBlank)?.let { " at HEAD '$it'" }.orEmpty()
+      "Resume reconciled remediation_base_sha ($reason) so the recorded base stays reachable " +
+        "from branch '$goalBranch'$headDetail."
+    }
+    return linkedMapOf<String, Any?>(
+      "original_sha" to originalSha,
+      "replacement_sha" to replacementSha,
+      "repointed_field" to GoalReviewBaseField.REMEDIATION_BASE.wireValue,
+      "failure_reason" to reason,
+      "failure_message" to failureMessage,
+      "goal_branch" to goalBranch,
+    ).also { entry ->
+      if (seam != null) entry["seam"] = seam
+      if (valueUsed != null) entry["value_used"] = valueUsed
+      if (valueExpected != null) entry["value_expected"] = valueExpected
+      if (cause != null) entry["cause"] = cause
+    }
   }
 
   private val savePatch =

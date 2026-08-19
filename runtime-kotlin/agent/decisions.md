@@ -4,6 +4,26 @@ This file records architectural and implementation decisions that span the
 `runtime-kotlin/` boundary. Each entry is dated and explains the trade-off,
 not the implementation detail.
 
+## [2026-08-19] Ref-based remediation reconciliation supersedes compensating soft-reset (SKILL-190 subtask 4)
+
+Context: Subtask 3 introduced runtime-owned amend semantics; the SKILL-176 compensating soft-reset and
+HEAD-rewrite reconciliation path contradicted amend-owned history and reintroduced SKILL-189 empty-review
+diffs when checkpoint commits were orphaned.
+
+Decision: `reconcileRemediationBaseCoherence` resolves the latest `review_fix` base through checkpoint
+refs, not branch ancestry; unresolvable bases return a typed blocked outcome with `skill-bill goal repair`
+guidance instead of rewriting to HEAD. `rollbackRemediationCheckpointCommit` restores the prior checkpoint
+ref (or removes the first subtask commit) and is idempotent when HEAD already moved.
+
+Reason: Refs preserve pre-amend commits the branch no longer names; soft-reset to `parentSha` fails once
+amend dissolves the intermediate commit object the old rollback targeted.
+
+Alternatives considered: Keeping HEAD rewrite for recorded-but-superseded — rejected; that was the
+SKILL-189 failure door. Retaining parent-only soft-reset — rejected; amend orphans the parent link the
+rollback relied on.
+
+Revisit when: finalisation or push semantics change how checkpoint refs are pruned after subtask completion.
+
 ## [2026-08-17] Checkpoint-identity 0.2 keeps its parity test; quarantine enum widens without a bump (SKILL-190 subtask 2)
 
 Context: Bumping the checkpoint-identity contract to 0.2 hit two governance collisions the parent
@@ -123,6 +143,10 @@ committed-but-unrecorded and recorded-but-superseded bases to the branch tip (or
 latest review_fix checkpoint still on the branch) before review preparation
 consumes the base, emitting durable `goal_review_base_recoveries` evidence.
 Subtask 2 recovery remains the degradation path for pre-existing orphans.
+
+**Superseded 2026-08-19 (SKILL-190 subtask 4):** resume reconciliation and compensating rollback now use
+checkpoint refs under amend semantics; the HEAD rewrite and parent-only soft-reset described above no
+longer apply. See the 2026-08-19 entry in this file.
 
 Reason: Git and SQLite cannot share one ACID transaction; compensating soft-reset
 plus resume heal close both the crash window and the post-record rewrite window

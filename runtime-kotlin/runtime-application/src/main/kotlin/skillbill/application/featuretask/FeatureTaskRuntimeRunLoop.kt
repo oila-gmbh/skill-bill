@@ -80,6 +80,7 @@ import skillbill.workflow.taskruntime.model.CorrectiveRepairCapturedResponse
 import skillbill.workflow.taskruntime.model.CorrectiveRepairDiagnosticLocator
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairGapIdentities
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
@@ -848,8 +849,7 @@ internal class FeatureTaskRuntimeRunLoop(
       blockedReason = ::remediationCheckpointBlockedReason,
     )
     if (!recorded) {
-      // Identity failed after the commit: soft-reset so the tip does not outrun durable authority.
-      rollbackRemediationCheckpointCommit(parentSha, commitSha)
+      rollbackRemediationCheckpointCommit(commitSha, parentSha, identityRecorded = false)
       return null
     }
     return RemediationCheckpointCommit(commitSha = commitSha, parentSha = parentSha)
@@ -867,20 +867,72 @@ internal class FeatureTaskRuntimeRunLoop(
     val recorded = recordRemediationBaseSha(precedingPhaseId, commitSha)
     if (recorded) return true
     if (commitSha != null) {
-      rollbackRemediationCheckpointCommit(parentSha, commitSha)
+      rollbackRemediationCheckpointCommit(commitSha, parentSha, identityRecorded = true)
     }
     return false
   }
 
   /**
-   * Soft-resets HEAD to [parentSha] when it still sits on [commitSha], so a failed base record (or
-   * identity write) does not leave the branch tip naming an unrecorded remediation checkpoint.
+   * Restores the branch tip from the prior checkpoint ref when one exists; otherwise removes the
+   * subtask commit and leaves the branch at its pre-subtask tip. Idempotent when HEAD no longer names
+   * [commitSha].
    */
-  private fun rollbackRemediationCheckpointCommit(parentSha: String?, commitSha: String) {
-    val parent = parentSha?.trim()?.takeIf(String::isNotBlank) ?: return
+  private fun rollbackRemediationCheckpointCommit(
+    commitSha: String,
+    parentSha: String?,
+    identityRecorded: Boolean,
+  ) {
+    val normalizedCommit = commitSha.trim()
     val head = phaseGates.gitOperations.headCommitSha(request.repoRoot)
-    if (!head.ok || head.value.trim() != commitSha.trim()) return
-    phaseGates.gitOperations.resetSoftToCommit(request.repoRoot, parent)
+    if (!head.ok || head.value.trim() != normalizedCommit) return
+    val subtaskId = request.goalContinuation?.subtaskId?.toString()
+      ?: FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID
+    val identities = runCatching {
+      recorder.loadCheckpointIdentities(request.workflowId, request.dbPathOverride)
+    }.getOrNull()
+      .orEmpty()
+      .filter { it.issueKey == request.issueKey && it.subtaskId == subtaskId }
+      .sortedBy { it.sequenceNumber }
+    val restoreSha = remediationRollbackTargetSha(
+      identities = identities,
+      commitSha = normalizedCommit,
+      parentSha = parentSha,
+      identityRecorded = identityRecorded,
+    ) ?: return
+    phaseGates.gitOperations.resetSoftToCommit(request.repoRoot, restoreSha)
+  }
+
+  private fun remediationRollbackTargetSha(
+    identities: List<FeatureTaskRuntimeCheckpointIdentity>,
+    commitSha: String,
+    parentSha: String?,
+    identityRecorded: Boolean,
+  ): String? {
+    val currentIdentity = if (identityRecorded) {
+      identities.lastOrNull { it.commitSha == commitSha }
+    } else {
+      null
+    }
+    val predecessor = when {
+      identityRecorded && currentIdentity != null && currentIdentity.sequenceNumber > 0 ->
+        identities.find { it.sequenceNumber == currentIdentity.sequenceNumber - 1 }
+      identityRecorded && currentIdentity != null ->
+        null
+      identities.isEmpty() ->
+        null
+      else ->
+        identities.maxByOrNull { it.sequenceNumber }
+    }
+    if (predecessor == null) {
+      return parentSha?.trim()?.takeIf(String::isNotBlank)
+    }
+    val resolved = phaseGates.gitOperations.resolveCheckpointRef(
+      request.repoRoot,
+      FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE,
+      predecessor.checkpointRef,
+    )
+    val predecessorSha = resolved.value.orEmpty().trim().takeIf { resolved.ok && it.isNotBlank() }
+    return predecessorSha ?: parentSha?.trim()?.takeIf(String::isNotBlank)
   }
 
   /**

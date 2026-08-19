@@ -1,12 +1,14 @@
 package skillbill.application.featuretask
 
 import skillbill.application.model.FeatureTaskRuntimeGoalContinuationContext
+import skillbill.application.model.FeatureTaskRuntimeRunReport
 import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.model.FeatureTaskRuntimeSubtaskOutcome
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import skillbill.application.workflow.repoRoot
 import skillbill.contracts.JsonSupport
 import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
@@ -158,3 +160,22 @@ internal fun Map<String, Any?>.commitShaFromPhasePayload(): String? {
     ?: producedOutputs?.get("commit_sha")?.toString()?.takeIf(String::isNotBlank)
     ?: (this["commit_sha"]?.toString()?.takeIf(String::isNotBlank))
 }
+
+internal sealed interface RemediationBaseCoherenceResult {
+  data class Coherent(val state: GoalSubtaskReviewState?) : RemediationBaseCoherenceResult
+
+  data class Blocked(val operatorGuidance: String) : RemediationBaseCoherenceResult
+}
+
+internal fun remediationBaseCoherenceBlockedReport(
+  request: FeatureTaskRuntimeRunRequest,
+  operatorGuidance: String,
+): FeatureTaskRuntimeRunReport.Blocked = FeatureTaskRuntimeRunReport.Blocked(
+  issueKey = request.issueKey,
+  workflowId = request.workflowId,
+  featureSize = request.runInvariants.featureSize.name,
+  lastIncompletePhase = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
+  blockedReason = operatorGuidance,
+  completedPhaseIds = emptyList(),
+  resolvedBranch = request.goalContinuation?.goalBranch,
+)
