@@ -6,14 +6,12 @@ import skillbill.application.testWorkflowSnapshotValidator
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.toRecord
 import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.ports.workflow.resolveCheckpointRef
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
@@ -135,17 +133,17 @@ class RemediationBaseReconciliationUnderAmendTest {
   }
 
   @Test
-  fun `rollback after remediation amend restores prior checkpoint ref and is idempotent`() {
+  fun `rollback after remediation amend restores prior identity commit and is idempotent`() {
     val fixture = amendRemediationFixture()
     val preFixSha = fixture.preRemediationSha
     val ref0 = featureTaskRuntimeCheckpointRefName(issueKey, subtaskId, 0)
     git(fixture.repoRoot, "update-ref", ref0, fixture.implementSha)
     val identity0 = reviewFixIdentity(
       sequenceNumber = 0,
-      commitSha = fixture.implementSha,
+      commitSha = preFixSha,
       parentSha = fixture.parentSha,
       repoRoot = fixture.repoRoot,
-      preFixSha = null,
+      preFixSha = fixture.implementSha,
       refName = ref0,
     )
     val identity1 = reviewFixIdentity(
@@ -163,7 +161,7 @@ class RemediationBaseReconciliationUnderAmendTest {
       identityRecorded = true,
       identities = listOf(identity0, identity1),
     )
-    assertEquals(fixture.implementSha, git(fixture.repoRoot, "rev-parse", "HEAD"))
+    assertEquals(preFixSha, git(fixture.repoRoot, "rev-parse", "HEAD"))
     rollbackRemediation(
       repoRoot = fixture.repoRoot,
       commitSha = rollbackHead,
@@ -171,7 +169,7 @@ class RemediationBaseReconciliationUnderAmendTest {
       identityRecorded = true,
       identities = listOf(identity0, identity1),
     )
-    assertEquals(fixture.implementSha, git(fixture.repoRoot, "rev-parse", "HEAD"))
+    assertEquals(preFixSha, git(fixture.repoRoot, "rev-parse", "HEAD"))
     val log = git(fixture.repoRoot, "rev-list", "--count", "HEAD")
     assertEquals("2", log.trim())
   }
@@ -341,12 +339,13 @@ class RemediationBaseReconciliationUnderAmendTest {
     val restoreSha = when {
       predecessor == null -> parentSha?.trim()?.takeIf(String::isNotBlank)
       else -> {
-        val resolved = realGitOps().resolveCheckpointRef(
-          repoRoot,
-          FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE,
-          predecessor.checkpointRef,
-        )
-        resolved.value.orEmpty().trim().takeIf { resolved.ok && it.isNotBlank() } ?: parentSha?.trim()
+        val predecessorCommitSha = predecessor.commitSha.trim()
+        if (predecessorCommitSha.isBlank()) {
+          parentSha?.trim()?.takeIf(String::isNotBlank)
+        } else {
+          val resolved = realGitOps().resolveCommit(repoRoot, predecessorCommitSha)
+          resolved.value.orEmpty().trim().takeIf { resolved.ok && it.isNotBlank() } ?: parentSha?.trim()
+        }
       }
     }
     requireNotNull(restoreSha) { "rollback target missing" }

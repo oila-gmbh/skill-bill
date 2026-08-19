@@ -4753,17 +4753,17 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
   }
 
   @Test
-  fun `remediation rollback records evidence when predecessor checkpoint ref misses`() {
-    val repoRoot = Files.createTempDirectory("skillbill-runtime-rollback-ref-miss")
+  fun `remediation rollback records evidence when predecessor identity commit misses`() {
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-rollback-commit-miss")
     val parentSha = COMMITTED_HEAD_SHA
-    val predecessorRef = featureTaskRuntimeCheckpointRefName(ISSUE_KEY, "5", 0)
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
       .also {
         it.headCommitShaValue = parentSha
         it.invalidShaOnRemediationCommit = true
-        it.onResolveCheckpointRef = { ref ->
-          if (ref == predecessorRef &&
-            it.createCommitMessages.any { message -> message.contains("remediation checkpoint") }
+        it.onResolveCommit = { revision ->
+          if (revision.trim().matches(Regex("^[0-9a-fA-F]{40,64}$")) &&
+            it.createCommitMessages.any { message -> message.contains("remediation checkpoint") } &&
+            revision.trim() != parentSha.trim()
           ) {
             WorkflowGitOperationResult(status = "ok", value = "")
           } else {
@@ -4794,8 +4794,9 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     val evidence = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY]
       as List<Map<String, Any?>>
     val entry = evidence.single { it["seam"] == "FeatureTaskRuntimeRunLoop.remediationRollbackTargetSha" }
-    assertEquals(predecessorRef, entry["value_used"])
-    assertEquals("resolvable predecessor checkpoint ref commit", entry["value_expected"])
+    assertEquals("resolvable predecessor identity commit", entry["value_expected"])
+    assertNotNull(entry["value_used"])
+    assertNotEquals(parentSha, entry["value_used"])
     assertNotNull(entry["cause"])
   }
 
@@ -6653,6 +6654,7 @@ internal class RecordingWorkflowGitOperations(
   // A ref lookup that fails rather than reporting an absent ref, so occupancy is undetermined.
   var resolveCheckpointRefResult: WorkflowGitOperationResult? = null
   var onResolveCheckpointRef: ((String) -> WorkflowGitOperationResult?)? = null
+  var onResolveCommit: ((String) -> WorkflowGitOperationResult?)? = null
 
   // When true, a remediation-checkpoint createCommit returns a malformed sha so the paired base
   // record fails GoalSubtaskReviewState validation and the soft-reset rollback path is exercised.
@@ -6833,10 +6835,12 @@ internal class RecordingWorkflowGitOperations(
     return headCommitShaResult ?: WorkflowGitOperationResult(status = "ok", value = headCommitShaValue)
   }
 
-  override fun resolveCommit(repoRoot: Path, revision: String): WorkflowGitOperationResult = WorkflowGitOperationResult(
-    status = "ok",
-    value = revision.takeIf { it.matches(Regex("^[0-9a-fA-F]{40,64}$")) } ?: COMMITTED_HEAD_SHA,
-  )
+  override fun resolveCommit(repoRoot: Path, revision: String): WorkflowGitOperationResult =
+    onResolveCommit?.invoke(revision)
+      ?: WorkflowGitOperationResult(
+        status = "ok",
+        value = revision.takeIf { it.matches(Regex("^[0-9a-fA-F]{40,64}$")) } ?: COMMITTED_HEAD_SHA,
+      )
 
   override val runtimePhaseFileManifestOperations: RuntimePhaseFileManifestGitOperations =
     object : RuntimePhaseFileManifestGitOperations {

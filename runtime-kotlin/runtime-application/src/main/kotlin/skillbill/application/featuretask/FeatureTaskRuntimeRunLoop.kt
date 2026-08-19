@@ -873,9 +873,9 @@ internal class FeatureTaskRuntimeRunLoop(
   }
 
   /**
-   * Restores the branch tip from the prior checkpoint ref when one exists; otherwise removes the
-   * subtask commit and leaves the branch at its pre-subtask tip. Idempotent when HEAD no longer names
-   * [commitSha].
+   * Restores the branch tip from the prior checkpoint identity commit when one exists; otherwise
+   * removes the subtask commit and leaves the branch at its pre-subtask tip. Idempotent when HEAD
+   * no longer names [commitSha].
    */
   private fun rollbackRemediationCheckpointCommit(
     commitSha: String,
@@ -890,7 +890,7 @@ internal class FeatureTaskRuntimeRunLoop(
     val identities = runCatching {
       recorder.loadCheckpointIdentities(request.workflowId, request.dbPathOverride)
     }.fold(
-      onSuccess = { loaded -> loaded },
+      onSuccess = { loaded -> loaded.orEmpty() },
       onFailure = { error ->
         recordRemediationRollbackDegradation(
           seam = "FeatureTaskRuntimeRunLoop.rollbackRemediationCheckpointCommit",
@@ -960,31 +960,27 @@ internal class FeatureTaskRuntimeRunLoop(
     if (predecessor == null) {
       return parentSha?.trim()?.takeIf(String::isNotBlank)
     }
-    val ref = predecessor.checkpointRef.trim()
-    if (ref.isBlank()) {
+    val predecessorCommitSha = predecessor.commitSha.trim()
+    if (predecessorCommitSha.isBlank()) {
       recordRemediationRollbackDegradation(
         seam = "FeatureTaskRuntimeRunLoop.remediationRollbackTargetSha",
         valueUsed = "(blank)",
-        valueExpected = "resolvable predecessor checkpoint ref commit",
-        cause = "predecessor checkpoint ref was missing or blank",
+        valueExpected = "resolvable predecessor identity commit",
+        cause = "predecessor identity commit sha was missing or blank",
       )
       return parentSha?.trim()?.takeIf(String::isNotBlank)
     }
-    val resolved = phaseGates.gitOperations.resolveCheckpointRef(
-      request.repoRoot,
-      FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE,
-      ref,
-    )
+    val resolved = phaseGates.gitOperations.resolveCommit(request.repoRoot, predecessorCommitSha)
     val predecessorSha = resolved.value.orEmpty().trim().takeIf { resolved.ok && it.isNotBlank() }
     if (predecessorSha == null) {
       recordRemediationRollbackDegradation(
         seam = "FeatureTaskRuntimeRunLoop.remediationRollbackTargetSha",
-        valueUsed = ref,
-        valueExpected = "resolvable predecessor checkpoint ref commit",
+        valueUsed = predecessorCommitSha,
+        valueExpected = "resolvable predecessor identity commit",
         cause = if (!resolved.ok) {
-          resolved.error.ifBlank { "checkpoint ref '$ref' did not resolve to a commit" }
+          resolved.error.ifBlank { "predecessor commit '$predecessorCommitSha' did not resolve" }
         } else {
-          "checkpoint ref '$ref' did not resolve to a commit"
+          "predecessor commit '$predecessorCommitSha' did not resolve"
         },
       )
     }
