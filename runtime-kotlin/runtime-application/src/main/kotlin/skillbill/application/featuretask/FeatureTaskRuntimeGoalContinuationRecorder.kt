@@ -730,6 +730,39 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
       "the unreachable remediation base, then resume the goal child."
   }
 
+  internal fun appendRemediationRollbackDegradationEvidence(
+    workflowId: String,
+    seam: String,
+    valueUsed: String,
+    valueExpected: String,
+    cause: String,
+    dbOverride: String?,
+  ) {
+    database.transaction(dbOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@transaction
+      val artifacts = decodeArtifacts(record.artifactsJson)
+      val goalBranch = continuationFromArtifacts(artifacts)?.goalBranch.orEmpty()
+      val evidenceEntry = remediationBaseRecoveryEvidenceEntry(
+        originalSha = null,
+        replacementSha = null,
+        reason = "rollback_degradation",
+        goalBranch = goalBranch,
+        headSha = null,
+        seam = seam,
+        valueUsed = valueUsed,
+        valueExpected = valueExpected,
+        cause = cause,
+        failureMessageOverride = "Remediation rollback degradation at $seam.",
+      )
+      val priorEvidence = (artifacts[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY] as? List<*>).orEmpty()
+      savePatch(
+        record,
+        unitOfWork.workflowStates,
+        mapOf(GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY to priorEvidence + evidenceEntry),
+      )
+    }
+  }
+
   private fun appendRemediationBaseReconciliationEvidence(
     workflowId: String,
     continuation: FeatureTaskRuntimeGoalContinuationArtifact,

@@ -889,8 +889,18 @@ internal class FeatureTaskRuntimeRunLoop(
       ?: FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID
     val identities = runCatching {
       recorder.loadCheckpointIdentities(request.workflowId, request.dbPathOverride)
-    }.getOrNull()
-      .orEmpty()
+    }.fold(
+      onSuccess = { loaded -> loaded },
+      onFailure = { error ->
+        recordRemediationRollbackDegradation(
+          seam = "FeatureTaskRuntimeRunLoop.rollbackRemediationCheckpointCommit",
+          valueUsed = request.workflowId,
+          valueExpected = "checkpoint identities for rollback",
+          cause = "loadCheckpointIdentities failed: ${error.message.orEmpty().ifBlank { error::class.simpleName.orEmpty() }}",
+        )
+        emptyList()
+      },
+    )
       .filter { it.issueKey == request.issueKey && it.subtaskId == subtaskId }
       .sortedBy { it.sequenceNumber }
     val restoreSha = remediationRollbackTargetSha(
@@ -899,7 +909,31 @@ internal class FeatureTaskRuntimeRunLoop(
       parentSha = parentSha,
       identityRecorded = identityRecorded,
     ) ?: return
-    phaseGates.gitOperations.resetSoftToCommit(request.repoRoot, restoreSha)
+    val reset = phaseGates.gitOperations.resetSoftToCommit(request.repoRoot, restoreSha)
+    if (!reset.ok) {
+      recordRemediationRollbackDegradation(
+        seam = "FeatureTaskRuntimeRunLoop.rollbackRemediationCheckpointCommit",
+        valueUsed = restoreSha,
+        valueExpected = "successful soft reset to restore target",
+        cause = reset.error.ifBlank { "resetSoftToCommit failed" },
+      )
+    }
+  }
+
+  private fun recordRemediationRollbackDegradation(
+    seam: String,
+    valueUsed: String,
+    valueExpected: String,
+    cause: String,
+  ) {
+    goalContinuationRecorder.appendRemediationRollbackDegradationEvidence(
+      workflowId = request.workflowId,
+      seam = seam,
+      valueUsed = valueUsed,
+      valueExpected = valueExpected,
+      cause = cause,
+      dbOverride = request.dbPathOverride,
+    )
   }
 
   private fun remediationRollbackTargetSha(
@@ -926,12 +960,34 @@ internal class FeatureTaskRuntimeRunLoop(
     if (predecessor == null) {
       return parentSha?.trim()?.takeIf(String::isNotBlank)
     }
+    val ref = predecessor.checkpointRef.trim()
+    if (ref.isBlank()) {
+      recordRemediationRollbackDegradation(
+        seam = "FeatureTaskRuntimeRunLoop.remediationRollbackTargetSha",
+        valueUsed = "(blank)",
+        valueExpected = "resolvable predecessor checkpoint ref commit",
+        cause = "predecessor checkpoint ref was missing or blank",
+      )
+      return parentSha?.trim()?.takeIf(String::isNotBlank)
+    }
     val resolved = phaseGates.gitOperations.resolveCheckpointRef(
       request.repoRoot,
       FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE,
-      predecessor.checkpointRef,
+      ref,
     )
     val predecessorSha = resolved.value.orEmpty().trim().takeIf { resolved.ok && it.isNotBlank() }
+    if (predecessorSha == null) {
+      recordRemediationRollbackDegradation(
+        seam = "FeatureTaskRuntimeRunLoop.remediationRollbackTargetSha",
+        valueUsed = ref,
+        valueExpected = "resolvable predecessor checkpoint ref commit",
+        cause = if (!resolved.ok) {
+          resolved.error.ifBlank { "checkpoint ref '$ref' did not resolve to a commit" }
+        } else {
+          "checkpoint ref '$ref' did not resolve to a commit"
+        },
+      )
+    }
     return predecessorSha ?: parentSha?.trim()?.takeIf(String::isNotBlank)
   }
 

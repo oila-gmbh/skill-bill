@@ -130,6 +130,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputValidat
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
+import skillbill.workflow.taskruntime.model.GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
@@ -4751,6 +4752,53 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     )
   }
 
+  @Test
+  fun `remediation rollback records evidence when predecessor checkpoint ref misses`() {
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-rollback-ref-miss")
+    val parentSha = COMMITTED_HEAD_SHA
+    val predecessorRef = featureTaskRuntimeCheckpointRefName(ISSUE_KEY, "5", 0)
+    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
+      .also {
+        it.headCommitShaValue = parentSha
+        it.invalidShaOnRemediationCommit = true
+        it.onResolveCheckpointRef = { ref ->
+          if (ref == predecessorRef &&
+            it.createCommitMessages.any { message -> message.contains("remediation checkpoint") }
+          ) {
+            WorkflowGitOperationResult(status = "ok", value = "")
+          } else {
+            null
+          }
+        }
+      }
+    val harness = goalContinuationHarness(
+      repoRoot,
+      git,
+      RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        if (phaseId == "implement" || phaseId == "implement_fix") {
+          git.worktreeStatusValue = " M src/Foo.kt"
+          git.ownedPathsValue = listOf("src/Foo.kt")
+        }
+        facts(validJsonOutput(phaseId))
+      },
+      reviewDriver = reviewFixDriver(2),
+    )
+
+    val report = harness.runner.run(
+      harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE),
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    @Suppress("UNCHECKED_CAST")
+    val evidence = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)[GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY]
+      as List<Map<String, Any?>>
+    val entry = evidence.single { it["seam"] == "FeatureTaskRuntimeRunLoop.remediationRollbackTargetSha" }
+    assertEquals(predecessorRef, entry["value_used"])
+    assertEquals("resolvable predecessor checkpoint ref commit", entry["value_expected"])
+    assertNotNull(entry["cause"])
+  }
+
   // AC-004/AC-010: a concurrently prepared foreign spec is never staged, committed, or reviewed here.
   @Test
   fun `a concurrently prepared foreign feature spec is never staged committed or reviewed`() {
@@ -6604,6 +6652,7 @@ internal class RecordingWorkflowGitOperations(
 
   // A ref lookup that fails rather than reporting an absent ref, so occupancy is undetermined.
   var resolveCheckpointRefResult: WorkflowGitOperationResult? = null
+  var onResolveCheckpointRef: ((String) -> WorkflowGitOperationResult?)? = null
 
   // When true, a remediation-checkpoint createCommit returns a malformed sha so the paired base
   // record fails GoalSubtaskReviewState validation and the soft-reset rollback path is exercised.
@@ -6734,7 +6783,8 @@ internal class RecordingWorkflowGitOperations(
         repoRoot: Path,
         namespacePrefix: String,
         refName: String,
-      ): WorkflowGitOperationResult = resolveCheckpointRefResult
+      ): WorkflowGitOperationResult = onResolveCheckpointRef?.invoke(refName)
+        ?: resolveCheckpointRefResult
         ?: WorkflowGitOperationResult(status = "ok", value = checkpointRefs[refName].orEmpty())
 
       override fun listRefs(repoRoot: Path, namespacePrefix: String): WorkflowGitOperationResult =
