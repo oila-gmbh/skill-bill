@@ -145,10 +145,7 @@ internal class GoalRunnerChildRepairOperations(
             goalBranch,
           )
           if (!recovered.ok) {
-            error(
-              "Goal repair could not recover unreachable ${wedgeClass.durableField} " +
-                "'$failedSha' on branch '$goalBranch': ${recovered.error}",
-            )
+            continue
           }
           val recoveredBaseline = requireNotNull(recovered.baseline)
           val replacement = recoveredBaseline.reviewBaseSha

@@ -33,10 +33,17 @@ internal fun diagnoseUnsettledCompletedUpstreamPhaseId(
   val blockedConsumers = phaseRecords.filterValues { it.status == "blocked" }.keys
   for (consumerPhaseId in blockedConsumers) {
     val declaration = phaseDeclaration(consumerPhaseId, featureSize)
-    val missing = missingUpstream(declaration, recordedOutputs) ?: continue
-    val unsettled = missing.filter { phaseId -> phaseRecords[phaseId].isUnsettledCompleted() }
-    if (unsettled.isNotEmpty()) {
-      return unsettled.minBy { stepOrder.indexOf(it).takeIf { index -> index >= 0 } ?: Int.MAX_VALUE }
+    val blockedReason = phaseRecords[consumerPhaseId]?.blockedReason.orEmpty()
+    val missing = missingUpstream(declaration, recordedOutputs)
+      ?.filter { upstreamId -> phaseRecords[upstreamId]?.outputArtifact.isNullOrBlank() }
+    if (!missing.isNullOrEmpty()) {
+      return missing.minBy { stepOrder.indexOf(it).takeIf { index -> index >= 0 } ?: Int.MAX_VALUE }
+    }
+    if (
+      blockedReason.contains("upstream output", ignoreCase = true) &&
+      blockedReason.contains("not present", ignoreCase = true)
+    ) {
+      return consumerPhaseId
     }
   }
   return null
@@ -51,15 +58,18 @@ internal fun buildCompletedUpstreamMissingOutputRepair(
 ): WorkflowUpdateInput {
   val stepOrder = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds
   val recordedOutputs = settledPhaseOutputs(phaseRecords)
-  val phasesToReopen = buildList {
-    add(resumePhaseId)
-    phaseRecords.forEach { (phaseId, record) ->
-      if (record.status == "blocked") {
-        val missing = missingUpstream(phaseDeclaration(phaseId, featureSize), recordedOutputs)
-        if (missing?.contains(resumePhaseId) == true) add(phaseId)
+  val phasesToReopen = when {
+    phaseRecords[resumePhaseId]?.status == "blocked" -> listOf(resumePhaseId)
+    else -> buildList {
+      add(resumePhaseId)
+      phaseRecords.forEach { (phaseId, record) ->
+        if (record.status == "blocked") {
+          val missing = missingUpstream(phaseDeclaration(phaseId, featureSize), recordedOutputs)
+          if (missing?.contains(resumePhaseId) == true) add(phaseId)
+        }
       }
-    }
-  }.distinct().sortedBy { stepOrder.indexOf(it).takeIf { index -> index >= 0 } ?: Int.MAX_VALUE }
+    }.distinct().sortedBy { stepOrder.indexOf(it).takeIf { index -> index >= 0 } ?: Int.MAX_VALUE }
+  }
   val reopenedRecords = LinkedHashMap(phaseRecords)
   phasesToReopen.forEach { phaseId ->
     val existing = requireNotNull(reopenedRecords[phaseId]) {
@@ -116,6 +126,3 @@ private fun settledPhaseOutputs(
     )
   }
 }
-
-private fun FeatureTaskRuntimePhaseRecord?.isUnsettledCompleted(): Boolean =
-  this != null && status == "completed" && outputArtifact.isNullOrBlank()

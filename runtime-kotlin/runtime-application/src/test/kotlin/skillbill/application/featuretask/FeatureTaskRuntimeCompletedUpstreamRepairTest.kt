@@ -9,6 +9,7 @@ class FeatureTaskRuntimeCompletedUpstreamRepairTest {
   @Test
   fun `diagnose returns plan_fix when implement_fix is blocked on missing settled output`() {
     val phaseRecords = mapOf(
+      "review" to completedPhaseRecord("review"),
       "plan_fix" to phaseRecord(
         phaseId = "plan_fix",
         status = "completed",
@@ -30,6 +31,7 @@ class FeatureTaskRuntimeCompletedUpstreamRepairTest {
   @Test
   fun `diagnose is null when completed upstream has settled output`() {
     val phaseRecords = mapOf(
+      "review" to completedPhaseRecord("review"),
       "plan_fix" to phaseRecord(
         phaseId = "plan_fix",
         status = "completed",
@@ -46,6 +48,34 @@ class FeatureTaskRuntimeCompletedUpstreamRepairTest {
       diagnoseUnsettledCompletedUpstreamPhaseId(phaseRecords, skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize.MEDIUM),
     )
   }
+
+  @Test
+  fun `diagnose returns blocked consumer when upstream block reason is stale`() {
+    val phaseRecords = mapOf(
+      "review" to completedPhaseRecord("review"),
+      "plan_fix" to phaseRecord(
+        phaseId = "plan_fix",
+        status = "completed",
+        outputArtifact = """{"repair_plan":{"contract_version":"0.1","round_number":1,"entries":[]}}""",
+      ),
+      "implement_fix" to phaseRecord(
+        phaseId = "implement_fix",
+        status = "blocked",
+        blockedReason = "Phase 'implement_fix' requires upstream output(s) plan_fix that are not present",
+      ),
+    )
+
+    assertEquals(
+      "implement_fix",
+      diagnoseUnsettledCompletedUpstreamPhaseId(phaseRecords, skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize.MEDIUM),
+    )
+  }
+
+  private fun completedPhaseRecord(phaseId: String): FeatureTaskRuntimePhaseRecord = phaseRecord(
+    phaseId = phaseId,
+    status = "completed",
+    outputArtifact = """{"contract_version":"0.1"}""",
+  )
 
   private fun phaseRecord(
     phaseId: String,
