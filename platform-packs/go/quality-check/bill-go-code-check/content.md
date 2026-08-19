@@ -21,7 +21,7 @@ Discover and run the repository's authoritative Go checks, diagnose complete fai
 7. Run targeted tests first with `go test ./path/...`, then expand to `go test ./...`; run `go test -race ./...` on supported host targets or the repository's narrower race suite.
 8. Run dependency and vulnerability checks with `govulncheck ./...`, plus repository-owned license, protobuf, API generation, or supply-chain checks when configured.
 9. Attribute each failure to owned changed code, pre-existing code, generated output, environment, toolchain, or a maintainer decision before modifying files.
-10. Apply fixes in the ordering below, rerun the narrow failing command after each category, and escalate to the full suite after shared code, module metadata, generation inputs, build tags, or configuration changes.
+10. Apply fixes in the ordering below and escalate to the full suite when shared code, module metadata, generation inputs, build tags, or configuration changes require it.
 11. Report every command, result, changed-file ownership decision, and blocker; never describe an unrun check as passing.
 
 ### Command Selection
@@ -42,12 +42,18 @@ Use this priority-ordered ladder so structural drift is understood before format
 Never suppress a failure to make the checker pass; preserve the configured analyzer, test, generation, module, workspace, and target contracts.
 
 1. Repair module, workspace, vendor, package, import, generation, or build-constraint failures that prevent reliable analysis.
-2. Apply formatting only to owned scoped files, then verify `gofmt -l` returns no paths.
+2. Apply formatting only to owned scoped files.
 3. Fix `go vet`, staticcheck, and golangci-lint findings at their source without suppressions or weakened configuration.
 4. Repair compilation and target-specific build failures before interpreting downstream test results.
 5. Fix deterministic unit and integration failures, then investigate `go test -race` findings as concurrency correctness defects.
 6. Resolve reachable `govulncheck` findings through compatible dependency or code changes; do not dismiss reachable vulnerabilities solely because no exploit was observed.
-7. Re-run targeted checks after each fix category, and run the full suite when targeted checks cannot establish safety; inspect `git diff` for unrelated formatter, generator, module, or vendor churn.
+7. Run the full suite when targeted checks cannot establish safety; inspect `git diff` for unrelated formatter, generator, module, or vendor churn.
+
+### Repair Window
+
+Collect one complete finding set before repairing anything. While that set is open, do not invoke any check, test, compile, format-task, quality-check command, `go test`, `go vet`, `go build`, pack checker, `bill-code-check`, or delegated subagent check. Allowed work is read, search, and source edits only. Repair every finding at its root cause; verification runs only after the full set is repaired.
+
+Once every finding is repaired, re-run the discovered module verification command once, then escalate to the full suite when package or generated-output coverage stays unproven.
 
 ### Failure Ownership and Blockers
 

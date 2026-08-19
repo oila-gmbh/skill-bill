@@ -9,6 +9,7 @@ import skillbill.ports.review.ReviewEvidenceBrokerFactory
 import skillbill.ports.review.model.GovernedReviewEvidenceEndpointDescriptor
 import skillbill.review.model.ReviewEvidenceBoundaryAccounting
 import skillbill.review.model.ReviewStageDegradationReason
+import skillbill.scaffold.model.ReviewLaneCondition
 import skillbill.workflow.model.CodeReviewExecutionMode
 import java.nio.file.Files
 import java.util.concurrent.atomic.AtomicInteger
@@ -84,6 +85,7 @@ class ParallelCodeReviewEvidenceBoundaryTest {
       ReviewHarnessConfig(
         manifests = listOf(reviewPack("kotlin", listOf("architecture"), routingSignals = listOf("*.kt"))),
         diff = diffForPaths("src/Repo.kt"),
+        simulateEvidenceReads = false,
       ),
       recorder,
     ).run(
@@ -251,6 +253,7 @@ class ParallelCodeReviewEvidenceBoundaryTest {
     val defaults = ReviewHarnessConfig(
       manifests = listOf(reviewPack("kotlin", listOf("architecture"), routingSignals = listOf("*.kt"))),
       diff = diffForPaths("src/Repo.kt"),
+      simulateEvidenceReads = false,
     )
     reviewHarness(
       defaults.copy(
@@ -270,5 +273,84 @@ class ParallelCodeReviewEvidenceBoundaryTest {
     val reasons = recorder.stageDegradations.map { it.reason }
     assertEquals(1, reasons.count { it == ReviewStageDegradationReason.EVIDENCE_BOUNDARY_UNBOUND_BROKER })
     assertEquals(1, reasons.count { it == ReviewStageDegradationReason.EVIDENCE_BOUNDARY_UNEXERCISED })
+  }
+
+  @Test
+  fun `inline parent binds one evidence surface covering every routed area it was selected for`() {
+    val recorder = ReviewRecorder()
+    val bound = mutableListOf<Pair<skillbill.ports.review.model.ReviewEvidenceBrokerBinding, ReviewEvidenceBroker>>()
+    val defaults = ReviewHarnessConfig(
+      manifests = listOf(
+        reviewPack("kotlin", listOf("architecture", "security"), routingSignals = listOf("*.kt")).copy(
+          laneConditions = mapOf(
+            "architecture" to ReviewLaneCondition(path = listOf("src/core/")),
+            "security" to ReviewLaneCondition(path = listOf("src/secure/")),
+          ),
+        ),
+      ),
+      diff = diffForPaths("src/core/Repo.kt", "src/secure/Auth.kt"),
+    )
+    reviewHarness(
+      defaults.copy(
+        evidenceBrokerFactory = ReviewEvidenceBrokerFactory { binding ->
+          defaults.evidenceBrokerFactory.brokerFor(binding).also { bound += binding to it }
+        },
+      ),
+      recorder,
+    ).run(
+      harnessRequest(
+        agent2Id = null,
+        reviewRunId = "rvw-198-inline-union",
+        codeReviewMode = CodeReviewExecutionMode.INLINE,
+      ),
+    )
+
+    val (binding, broker) = bound.single()
+    assertTrue(
+      binding.assignment.assignedPaths.containsAll(listOf("src/core/Repo.kt", "src/secure/Auth.kt")),
+      "the inline parent reaches the broker through one endpoint that stamps one lane, so its " +
+        "surface must cover every routed area; it covered ${binding.assignment.assignedPaths}",
+    )
+    // Admitting the path is only half of it: the surface must also carry the hunks behind it, or
+    // the lane is handed a path whose body it can never obtain. ReviewEvidenceBrokerBinding's own
+    // invariant then ties projectedHunks to exactly these ids, so a servable body follows.
+    assertEquals(
+      setOf("src/core/Repo.kt", "src/secure/Auth.kt"),
+      binding.projectedHunks.map { it.path }.toSet(),
+      "the merged surface must carry every routed area's hunks, not just its paths",
+    )
+    assertEquals(
+      binding.assignment.assignedHunks.toSet(),
+      binding.projectedHunks.map { it.hunkId }.toSet(),
+    )
+  }
+
+  @Test
+  fun `a lane reporting no findings after reading no evidence fails instead of passing as clean`() {
+    val recorder = ReviewRecorder()
+    val result = reviewHarness(
+      ReviewHarnessConfig(
+        manifests = listOf(reviewPack("kotlin", listOf("architecture"), routingSignals = listOf("*.kt"))),
+        diff = diffForPaths("src/Repo.kt"),
+        simulateEvidenceReads = false,
+        response = { RecordedWorkerResponse(stdout = "NO_FINDINGS") },
+      ),
+      recorder,
+    ).run(
+      harnessRequest(
+        agent2Id = null,
+        reviewRunId = "rvw-198-unread-clean",
+        codeReviewMode = CodeReviewExecutionMode.INLINE,
+      ),
+    )
+
+    assertEquals(0, result.lane1.accounting?.authorizedReadCount)
+    assertFalse(
+      result.lane1.success,
+      "NO_FINDINGS from a lane that never opened its evidence asserts a review that did not happen",
+    )
+    assertTrue(result.lane1.failureReason.orEmpty().contains("governed evidence was never read"))
+    val coverage = assertNotNull(result.coverage)
+    assertFalse(coverage.isCleanCoverage, "an unread lane must not render as clean coverage")
   }
 }

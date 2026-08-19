@@ -24,10 +24,16 @@ Run the repository's authoritative multiplatform build matrix, distinguish unava
 10. Capture every command and outcome, classifying failures as scoped, pre-existing, environmental, or maintainer-owned configuration.
 11. Verify expect/actual declarations, compiler arguments, opt-ins, and generated sources through both common metadata and each consuming target compilation rather than accepting metadata compilation alone.
 12. Exercise target-specific test binaries and runtime launch tasks when shared behavior depends on platform clocks, serialization, coroutines, files, networking, or native interop.
-13. Re-run the smallest discovered failing task after each fix, expand to every consumer target, and preserve exact task, host, environment, exit status, and diagnostic evidence.
+13. Preserve exact task, host, environment, exit status, and diagnostic evidence for every failure.
 
 ## Fix Strategy
 
-Use a priority-ordered fix ladder: repair source-set and Gradle topology first, then compilation and resource generation, tests and analysis, dependency alignment, and finally packaging or shrinker failures. Never suppress failures by disabling targets, removing release tasks, suppressing diagnostics, or weakening tests. Re-run targeted checks after each repair and the affected target matrix after they pass. Run the full suite when targeted checks cannot establish safety, especially after shared build logic, common APIs, dependency alignment, resources, or publication behavior changes.
+Use a priority-ordered fix ladder: repair source-set and Gradle topology first, then compilation and resource generation, tests and analysis, dependency alignment, and finally packaging or shrinker failures. Never suppress failures by disabling targets, removing release tasks, suppressing diagnostics, or weakening tests. Run the full suite when targeted checks cannot establish safety, especially after shared build logic, common APIs, dependency alignment, resources, or publication behavior changes.
+
+### Repair Window
+
+Collect one complete finding set before repairing anything. While that set is open, do not invoke any check, test, compile, format-task, quality-check command, Gradle or module task, pack checker, `bill-code-check`, or delegated subagent check. Allowed work is read, search, and source edits only. Repair every finding at its root cause; verification runs only after the full set is repaired.
+
+Once the last finding is repaired, re-run the discovered verification task once, then escalate to the full suite when module and source-set coverage stays unproven.
 
 When the host cannot supply a required SDK, simulator, signing identity, browser, or native toolchain, return a blocker containing the discovered task, host constraint, affected target, and the command maintainers must run on a capable runner.

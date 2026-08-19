@@ -1,5 +1,6 @@
 package skillbill.cli
 
+import skillbill.application.review.simulateGovernedEvidenceReads
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliRuntimeContext
 import skillbill.contracts.JsonSupport
@@ -1993,6 +1994,7 @@ private class RecordingPhaseLauncher(
     val prompt = request.skillRunRequest.promptOverride.orEmpty()
     val phaseId = PHASE_LINE.find(prompt)?.groupValues?.get(1)
     if (phaseId == null) {
+      simulateGovernedEvidenceReads(request.skillRunRequest)
       return AgentRunLaunchFacts(
         agent = InstallAgent.fromNormalizedId(request.agentId, label = "agentId"),
         exitStatus = 0,
@@ -2149,6 +2151,7 @@ private class InterruptAtImplementLauncher : AgentRunLauncher {
     requests += request
     val phaseId = phaseIdFromPromptOrNull(request.skillRunRequest.promptOverride.orEmpty())
     if (phaseId == null) {
+      simulateGovernedEvidenceReads(request.skillRunRequest)
       return AgentRunLaunchFacts(
         agent = InstallAgent.fromNormalizedId(request.agentId, label = "agentId"),
         exitStatus = 0,

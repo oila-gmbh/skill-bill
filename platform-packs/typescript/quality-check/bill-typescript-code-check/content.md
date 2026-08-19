@@ -24,7 +24,7 @@ Validate changed TypeScript through the repository's pinned package manager, wra
 10. Run configured dependency, lockfile, license, provenance, and security checks such as `npm audit`, while attributing pre-existing advisories separately from scoped failures.
 11. Exercise supported `module`, `moduleResolution`, `target`, runtime, browser, and bundler matrices when the diff changes conditional exports, compilation, declarations, or environment boundaries.
 12. Preserve exact command, workspace, environment, exit status, and diagnostics for each failure; distinguish an owned regression from an environmental blocker requiring a maintainer decision.
-13. Re-run the smallest failing command after each fix, expand through dependency-aware affected packages, and escalate to the full suite after targeted checks pass.
+13. Escalate through dependency-aware affected packages to the full suite when shared boundaries or configuration change.
 
 ### Conditional Command Guidance
 
@@ -41,4 +41,10 @@ Validate changed TypeScript through the repository's pinned package manager, wra
 - Never introduce `any`, unchecked casts, non-null assertions, ignored diagnostics, disabled rules, reduced strictness, skipped tests, or a smaller runtime matrix merely to make checks green.
 - Keep failures belonging to unrelated packages or pre-existing diagnostics separate from scoped work, with reproducible evidence rather than incidental cleanup.
 - Do not install missing tooling or silently replace an unavailable browser, service, credential, or runtime; report the blocked command and the exact maintainer decision needed.
-- Re-run targeted checks after each fix category, escalate through affected dependants, and run the full suite when targeted checks cannot establish safety.
+- Escalate through affected dependants and run the full suite when targeted checks cannot establish safety.
+
+### Repair Window
+
+Collect one complete finding set before repairing anything. While that set is open, do not invoke any check, test, compile, format-task, quality-check command, npm or workspace script, pack checker, `bill-code-check`, or delegated subagent check. Allowed work is read, search, and source edits only. Repair every finding at its root cause; verification runs only after the full set is repaired.
+
+Once the complete set is repaired, re-run the discovered verification script once, then escalate to the full suite when project references or emitted output stay unverified.

@@ -6,6 +6,7 @@ import skillbill.ports.goalrunner.GoalPullRequestPort
 import skillbill.ports.review.ReviewNativeAgentPreflightPort
 import skillbill.ports.telemetry.HttpRequester
 import skillbill.ports.telemetry.UnconfiguredHttpRequester
+import skillbill.ports.time.RuntimeTimingPort
 import skillbill.ports.workflow.NoopWorkflowGitOperations
 import skillbill.ports.workflow.WorkflowGitOperations
 import java.nio.file.Path
@@ -33,6 +34,7 @@ data class OptionalCallbacks(
   val goalPullRequestPort: GoalPullRequestPort? = null,
   val executableLookup: ExecutableLookup? = null,
   val reviewNativeAgentPreflight: ReviewNativeAgentPreflightPort? = null,
+  val runtimeTimingPort: RuntimeTimingPort? = null,
 )
 
 data class RuntimeContext(
@@ -52,11 +54,18 @@ data class RuntimeContext(
     goalPullRequestPort: GoalPullRequestPort? = null,
     executableLookup: ExecutableLookup? = null,
     reviewNativeAgentPreflight: ReviewNativeAgentPreflightPort? = null,
+    runtimeTimingPort: RuntimeTimingPort? = null,
   ) : this(
     EnvironmentContext(dbPathOverride, stdinText, environment, userHome),
     TransportContext(requester),
     WorkflowOpsContext(workflowGitOperations),
-    OptionalCallbacks(agentRunLauncher, goalPullRequestPort, executableLookup, reviewNativeAgentPreflight),
+    OptionalCallbacks(
+      agentRunLauncher,
+      goalPullRequestPort,
+      executableLookup,
+      reviewNativeAgentPreflight,
+      runtimeTimingPort,
+    ),
   )
 
   companion object {

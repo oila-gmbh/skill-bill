@@ -25,18 +25,24 @@ Discover and run the repository's authoritative Python checks in safe dependency
 11. Run configured dependency and security checks such as `pip-audit`, `safety`, `bandit`, Semgrep, license policy, or lock verification only through repository-owned commands and existing environments; do not fetch a new scanner or mutate dependency state.
 12. When detected, run framework and lifecycle validation such as `python manage.py check`, migration drift commands, FastAPI/OpenAPI generation checks, Flask application smoke checks, Celery configuration or worker tests, and notebook or generated-report validation.
 13. Attribute every failure to scoped changed work, a pre-existing condition, generated output, or an environmental blocker. Record the command, evidence, owner, and residual risk; never report an unrun check as passing.
-14. Apply the ordered fix strategy below, rerun the narrow failing command after each category, and escalate to the authoritative full suite after shared contracts or configuration change.
+14. Apply the ordered fix strategy below and escalate to the authoritative full suite after shared contracts or configuration change.
 
 ## Fix Strategy
 
 Use this priority-ordered fix ladder so environment or package drift is understood before formatting churn and cheap failures stop expensive suites early. Never suppress a failure to make the checker pass.
 
 1. Repair interpreter, environment, lock, import, package metadata, generated-stub, or framework configuration failures that prevent reliable analysis without changing the repository's supported versions.
-2. Apply formatting only through the configured formatter and only to owned scoped files, then rerun its read-only verification command.
+2. Apply formatting only through the configured formatter and only to owned scoped files.
 3. Fix lint and typing findings at their source; never add ignores, baselines, `# noqa`, or relaxed mypy or pyright settings merely to obtain a pass.
 4. Repair deterministic unit and async behavior failures before integration tests, then fix database, service, worker, migration, and framework integration failures without replacing production semantics with mocks.
 5. Repair build, wheel, sdist, entry-point, package-data, and generated-contract drift, inspecting the diff so build output or regenerated files are not accidentally committed.
 6. Resolve configured dependency and security failures through repository-approved constraints or code changes; ask for direction when the fix changes dependency security posture or public compatibility.
-7. Re-run targeted checks after each category and run the full suite when targeted checks cannot establish safety or shared code, fixtures, configuration, package exports, schemas, or lifecycle ownership changed.
+7. Run the full suite when targeted checks cannot establish safety or shared code, fixtures, configuration, package exports, schemas, or lifecycle ownership changed.
+
+### Repair Window
+
+Collect one complete finding set before repairing anything. While that set is open, do not invoke any check, test, compile, format-task, quality-check command, `pytest`, `ruff`, `mypy`, pack checker, `bill-code-check`, or delegated subagent check. Allowed work is read, search, and source edits only. Repair every finding at its root cause; verification runs only after the full set is repaired.
+
+Once the complete set is repaired, re-run the discovered verification command once before escalating to the authoritative full suite.
 
 Stop and report a blocker when credentials, external services, an unavailable supported interpreter, a missing repository-pinned tool, destructive migrations, or a maintainer decision prevents a required check. Preserve unrelated user changes and report pre-existing failures separately.

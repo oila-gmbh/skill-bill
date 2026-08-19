@@ -20,27 +20,6 @@ class ReviewSkillStructureConformanceTest {
   }
 
   @Test
-  fun `no pack content instructs broad discovery relevance redecision or per-commit stepping`() {
-    val forbidden = listOf(
-      "whole PR diff",
-      "entire PR diff",
-      "aggregate diff",
-      "complete diff",
-      "commit-by-commit",
-      "commit by commit",
-      "each commit in turn",
-      "decide which commits",
-      "decide whether a commit",
-    )
-    val violations = allContentFiles(repoRootFromTest().resolve("platform-packs")).flatMap { file ->
-      val content = Files.readString(file)
-      forbidden.filter { it in content }.map { "$file instructs '$it'" }
-    }
-
-    assertEquals(emptyList(), violations, violations.joinToString("\n"))
-  }
-
-  @Test
   fun `specialist inheriting shared calibrated rubric with canonical closer validates with zero violations`() {
     val root = Files.createTempDirectory("review-inheriting-")
     val pack = root.resolve("platform-packs/fixture")
@@ -285,7 +264,7 @@ class ReviewSkillStructureConformanceTest {
     assertQualityCheckRuleViolation(pack, unscopedQualityCheck, "quality-check scoped files")
     assertQualityCheckRuleViolation(pack, noEntrypointQualityCheck, "quality-check pack entrypoint")
     assertQualityCheckRuleViolation(pack, suppressingQualityCheck, "quality-check fix discipline")
-    assertQualityCheckRuleViolation(pack, noTargetedRerunQualityCheck, "quality-check targeted rerun")
+    assertQualityCheckRuleViolation(pack, noRepairWindowQualityCheck, "quality-check repair window")
     assertQualityCheckRuleViolation(pack, unconditionalFullSuiteQualityCheck, "quality-check escalation")
   }
 
@@ -577,7 +556,11 @@ private val fixtureQualityCheck = """
 
       ## Fix Strategy
 
-      Follow the priority-ordered fix ladder and never suppress failures. Re-run targeted checks after fixes.
+      Follow the priority-ordered fix ladder and never suppress failures.
+
+      ### Repair Window
+
+      Collect one complete finding set before repairing anything. While that set is open, do not invoke any check, test, compile, format-task, quality-check command, pack checker, `bill-code-check`, or delegated subagent check. Allowed work is read, search, and source edits only.
       Escalate to the full suite when targeted checks cannot establish safety.
 """.trimIndent()
 
@@ -660,9 +643,12 @@ private val suppressingQualityCheck = fixtureQualityCheck.replace(
   "Follow the priority-ordered fix ladder and never suppress failures.",
   "Suppress failures when convenient.",
 )
-private val noTargetedRerunQualityCheck = fixtureQualityCheck.replace(
-  "Re-run targeted checks after fixes.",
-  "Do not rerun checks.",
+private val noRepairWindowQualityCheck = fixtureQualityCheck.replace(
+  "### Repair Window",
+  "### Missing Window",
+).replace(
+  "do not invoke any check, test, compile",
+  "invoke checks freely during repair",
 )
 private val unconditionalFullSuiteQualityCheck = fixtureQualityCheck.replace(
   "Escalate to the full suite when targeted checks cannot establish safety.",

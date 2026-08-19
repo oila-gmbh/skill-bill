@@ -33,6 +33,14 @@ Use this priority-ordered fix ladder:
 4. Fix behavioral test failures without weakening assertions or deleting coverage.
 5. Resolve dependency or security failures through supported versions and verification metadata.
 
-Never suppress a failure with annotations, baselines, disabled rules, or skipped tests. After each fix, re-run targeted checks. Run the full suite when targeted checks cannot establish safety, including when build logic, shared APIs, toolchains, generated sources, dependencies, or cross-module behavior changed.
+Never suppress a failure with annotations, baselines, disabled rules, or skipped tests.
+
+### Repair Window
+
+Collect one complete finding set before repairing anything. While that set is open, do not invoke any check, test, compile, format-task, quality-check command, Gradle or module task, pack checker, `bill-code-check`, or delegated subagent check. Allowed work is read, search, and source edits only. Repair every finding at its root cause; verification runs only after the full set is repaired.
+
+Once the complete set is repaired, re-run the discovered verification task in one cache-bypassing pass.
+
+Run the full suite when targeted checks cannot establish safety, including when build logic, shared APIs, toolchains, generated sources, dependencies, or cross-module behavior changed.
 
 Report a blocker with the exact command, owned failure, attempted diagnosis, and required maintainer decision when credentials, unavailable infrastructure, conflicting compatibility requirements, or out-of-scope repository state prevents completion.

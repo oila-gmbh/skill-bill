@@ -9,6 +9,11 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProg
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRunRecord
 import java.nio.file.Path
 
+enum class ValidationGateCyclePhase {
+  INITIAL_DISCOVERY,
+  POST_REPAIR_VERIFY,
+}
+
 sealed interface ValidationGateResolution {
   data class Declared(
     val packSlug: String,
@@ -65,6 +70,8 @@ sealed interface ValidationGateCycleTerminalOutcome {
 /** Durable (or test) sink for live validate-gate progress, including remaining findings on exhaust. */
 fun interface ValidationGateProgressStore {
   fun persist(workflowId: String, progress: FeatureTaskRuntimeValidationGateProgress, dbOverride: String?)
+
+  fun load(workflowId: String, dbOverride: String?): FeatureTaskRuntimeValidationGateProgress? = null
 }
 
 /** Inputs for one runtime-owned validate gate cycle. */

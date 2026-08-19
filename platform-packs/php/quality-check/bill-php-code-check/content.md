@@ -19,7 +19,7 @@ Execute the repository's authoritative PHP checks, repair only failures belongin
 5. Determine files in scope and run the pack's quality-check entrypoint through the discovered commands, using narrow or changed-file checks when they preserve repository configuration and bootstrap behavior.
 6. Attribute every failure to changed work, a pre-existing condition, or an environmental blocker; never claim ownership merely because a full command reported it.
 7. Apply the priority fix ladder below to scoped failures without new ignores, baselines, or weakened settings.
-8. Re-run each targeted failing command after repair, then escalate to the repository-authoritative full suite when shared code, configuration, generated state, or cross-cutting behavior changed.
+8. Escalate to the repository-authoritative full suite when shared code, configuration, generated state, or cross-cutting behavior changed.
 9. Report commands, outcomes, pre-existing failures, blockers, and residual risk. A missing dependency, service, credential, extension, or maintainer decision is a blocker, not an implicit pass.
 
 ### Required PHP Coverage
@@ -51,4 +51,10 @@ Use this priority-ordered fix ladder and never suppress a failure:
 4. Fix behavioral, integration, and framework test failures with production changes plus meaningful regression proof.
 5. Resolve dependency audit failures according to repository policy, escalating version or compatibility trade-offs for a maintainer decision.
 
-Never skip required scripts silently, edit snapshots mechanically, relax configuration, add ignore rules, or install a replacement toolchain merely to pass. After every repair, re-run targeted checks. Run the full suite when targeted checks cannot establish safety or shared configuration and behavior changed.
+Never skip required scripts silently, edit snapshots mechanically, relax configuration, add ignore rules, or install a replacement toolchain merely to pass. Run the full suite when targeted checks cannot establish safety or shared configuration and behavior changed.
+
+### Repair Window
+
+Collect one complete finding set before repairing anything. While that set is open, do not invoke any check, test, compile, format-task, quality-check command, Composer script, pack checker, `bill-code-check`, or delegated subagent check. Allowed work is read, search, and source edits only. Repair every finding at its root cause; verification runs only after the full set is repaired.
+
+Once the complete set is repaired, re-run the discovered verification script once, then escalate to the full suite when autoload, Composer, or configuration ownership changed.

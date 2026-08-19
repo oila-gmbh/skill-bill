@@ -456,7 +456,8 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
-  internal fun runtimeTimingPort(adapter: JdkRuntimeTimingPort): RuntimeTimingPort = adapter
+  internal fun runtimeTimingPort(callbacks: OptionalCallbacks, adapter: JdkRuntimeTimingPort): RuntimeTimingPort =
+    callbacks.runtimeTimingPort ?: adapter
 
   @Provides
   @JvmSynthetic

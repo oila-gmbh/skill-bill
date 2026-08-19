@@ -1,5 +1,23 @@
 # featuretask runtime boundary history
 
+## [2026-08-18] SKILL-198 subtask 2 — runtime repair window owns check execution
+Areas: runtime-application/featuretask (validation coordinator, policy, cycle models), runtime-domain/workflow/taskruntime/model, AGENTS.md
+- Durable `repair_window_phase` (`none` | `findings_open`) on validation gate progress; while `findings_open` the coordinator runs zero pack argv and resume hands back the persisted complete finding set without a discovery rerun.
+- Gate cycle phases are `INITIAL_DISCOVERY` then `POST_REPAIR_VERIFY` only; `full_gate_command` is never an intermediate repair argv; leaving `findings_open` requires the agent repaired signal, then exactly one cache-bypassing collect-all or build-only verify.
+- `validationGateArgv` maps discovery to collect-all or build-only and verify to cache-bypassing counterparts; a failing verify replaces the finding set and re-enters `findings_open` without targeted module commands.
+- Pattern: runtime-owned repair window aligned with subtask 1 briefing — agent edits only during `findings_open`, runtime is the sole declared-gate executor. reusable
+- Limitation: agent-run fallback without `validation_gate` stays prompt-only; arbitrary shell Gradle is not intercepted
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
+## [2026-08-18] SKILL-198 subtask 1 — validate briefing repair-window contract
+Areas: runtime-application/featuretask (validate directives), AGENTS.md
+- Runtime-owned FULL, BUILD_ONLY, and agent-run fallback validate briefings declare an open finding set as a repair window: no gate, `bill-code-check`, targeted Gradle tasks, pack checkers, or subagent checks until every finding is repaired; verification is one cache-bypassing gate after the batch.
+- `AGENTS.md` validate paragraph aligned: dropped "no cache-bypassing confirmation pass", named `detekt`/`ktlintCheck`/`test`/`compileKotlin`, and states BUILD_ONLY runs outside an open repair window only.
+- `FeatureTaskRuntimePhasePromptComposerTest` pins forbidden-command phrases in composed validate prompts; `MaintainerPolicyRepairWindowParityTest` locks `AGENTS.md` and `CLAUDE.md` to the same vocabulary.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-08-17] SKILL-191 subtask 9 — Feature-task review phase delegation
 Areas: runtime-application/featuretask (run loop, review driver, prompt directives, briefing assembler), runtime-core/di, runtime-application tests
 - `PHASE_REVIEW` stopped being an agent phase: `runDeclaredReviewDriverCycle` prepares the pass, mints or reuses the `review_run_id`, pins the repository checkpoint, and invokes `FeatureTaskRuntimeReviewDriver` — bound in `RuntimeComponent` to `ParallelCodeReviewRunner::run`, the same driver the standalone entry uses

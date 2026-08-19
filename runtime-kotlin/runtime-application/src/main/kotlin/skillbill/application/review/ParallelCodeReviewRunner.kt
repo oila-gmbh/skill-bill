@@ -76,9 +76,12 @@ import skillbill.review.context.model.ReviewCommitRoutingAccounting
 import skillbill.review.context.model.ReviewContextBudgetExceededException
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewContextPacket
+import skillbill.review.context.model.ReviewDependencyAllowlist
 import skillbill.review.context.model.ReviewIntegrationAccounting
 import skillbill.review.context.model.ReviewIntegrationTerminalOutcome
 import skillbill.review.context.model.ReviewLaneAssembledBundle
+import skillbill.review.context.model.ReviewLaneBundle
+import skillbill.review.context.model.ReviewLaneBundleEntry
 import skillbill.review.context.model.ReviewLaneCompletionState
 import skillbill.review.context.model.ReviewLaneIdentity
 import skillbill.review.context.model.ReviewLaneReviewDisposition
@@ -1217,12 +1220,12 @@ class ParallelCodeReviewRunner(
     return when (val bound = bindGovernedEvidence(selected, request.repoRoot)) {
       is GovernedEvidenceBind.Unbound -> unboundParentOutcome(launch, bound)
       is GovernedEvidenceBind.Bound -> launchedBoundParent(
-        launch,
-        bound,
-        budget,
-        request,
-        modelOverride,
-        resolvedMode,
+        launch = launch,
+        bound = bound,
+        budget = budget,
+        request = request,
+        modelOverride = modelOverride,
+        resolvedMode = resolvedMode,
       )
     }
   }
@@ -1365,7 +1368,14 @@ class ParallelCodeReviewRunner(
     val findings = parsed?.let { attributeInlineFindings(it, launch.selected) }.orEmpty()
     val rejectedCount = parsed?.rejections?.size ?: 0
     val registerReason = parsed?.let { registerAbsenceReason(outcome.stdout, it) }
-    val reason = launchReason ?: registerReason
+    val evidenceAccounting = evidenceBroker.accounting()
+    // Ordered by specificity: a lane that emitted no register at all is already diagnosed by
+    // registerReason, and that names the failure better than "it read nothing" would. The guard
+    // below catches the remaining case — a well-formed register reporting nothing, from a lane
+    // that never opened its evidence.
+    val reason = launchReason
+      ?: registerReason
+      ?: unreadEvidenceReason(launch, evidenceAccounting, findings.isEmpty())
     return ParallelReviewLaneOutcome(
       success = reason == null,
       rawOutput = outcome.stdout,
@@ -1381,7 +1391,7 @@ class ParallelCodeReviewRunner(
           inlineTerminalStatus(outcome, bundleState.disposition)
         },
         outcome,
-        evidenceBroker.accounting(),
+        evidenceAccounting,
       ),
       findings = if (reason == null) findings else emptyList(),
       reviewDisposition = bundleState.disposition,
@@ -1392,6 +1402,24 @@ class ParallelCodeReviewRunner(
       unreviewedUnits = bundleState.unreviewedUnits,
       rejectedCandidateCount = rejectedCount,
     )
+  }
+
+  /**
+   * A lane that never read a byte of its assigned evidence reviewed nothing, whatever its register
+   * says. `NO_FINDINGS` from such a lane asserts a completed review, so admitting it would launder
+   * an unexercised evidence surface into clean coverage; the lane fails loudly instead.
+   */
+  private fun unreadEvidenceReason(
+    launch: InlineParentLaunch,
+    accounting: ReviewLaneAccounting,
+    reportedNothing: Boolean,
+  ): String? {
+    if (!reportedNothing) return null
+    if (accounting.authorizedReadCount > 0) return null
+    if (launch.selected.none { it.assignment.assignedHunks.isNotEmpty() }) return null
+    return "governed evidence was never read: the lane returned a register after " +
+      "${accounting.authorizedReadCount} authorized read(s) and " +
+      "${accounting.refusedOperationCount} refused operation(s) against a non-empty assignment"
   }
 
   private fun modeFraming(resolvedMode: ResolvedReviewExecutionMode): String = buildString {
@@ -1485,14 +1513,73 @@ class ParallelCodeReviewRunner(
     }
   }
 
+  /**
+   * One parent session reaches the broker through one endpoint, and that endpoint stamps a single
+   * lane on every request it forwards. Binding a lane-keyed fan-out here would therefore expose
+   * only the first lane's assignment and refuse every other routed area's owned paths as
+   * unassigned, so the parent binds one surface: the union of the areas it was selected to review.
+   */
   private fun parentEvidenceBroker(
     selected: List<ReviewSpecialistLaunchRequest>,
     repoRoot: Path,
-  ): ReviewEvidenceBroker {
-    val brokers = selected.associate { launch ->
-      launch.assignment.lane to reviewEvidenceBrokerFactory.brokerFor(brokerBinding(launch, repoRoot))
-    }
-    return brokers.values.singleOrNull() ?: FanOutReviewEvidenceBroker(brokers)
+  ): ReviewEvidenceBroker = reviewEvidenceBrokerFactory.brokerFor(parentBrokerBinding(selected, repoRoot))
+
+  /**
+   * The merged surface is one session doing the reads [laneCount] separate lanes would each have
+   * been budgeted for, so the cumulative allowances scale with it. Per-read and per-turn caps do
+   * not: inline still traverses the delta once, and one read is still one read.
+   */
+  private fun mergedBudget(budget: ReviewContextBudgetPolicy, laneCount: Int): ReviewContextBudgetPolicy = budget.copy(
+    maxLaneEvidenceBytes = budget.maxLaneEvidenceBytes * laneCount,
+    maxSpecialistToolCalls = budget.maxSpecialistToolCalls * laneCount,
+    maxAssignmentExpansions = budget.maxAssignmentExpansions * laneCount,
+  )
+
+  private fun mergedBundle(packet: ReviewContextPacket, assignedHunks: Set<String>): ReviewLaneBundle =
+    ReviewLaneBundle(
+      packet.commitUnits.sortedBy { it.orderIndex }.mapNotNull { unit ->
+        unit.hunkIds.filter { it in assignedHunks }
+          .takeIf { it.isNotEmpty() }
+          ?.let { ReviewLaneBundleEntry(unit.commitSha, unit.orderIndex, it) }
+      },
+    )
+
+  private fun parentBrokerBinding(
+    selected: List<ReviewSpecialistLaunchRequest>,
+    repoRoot: Path,
+  ): ReviewEvidenceBrokerBinding {
+    val primary = selected.minByOrNull { it.assignment.laneDecision.orderIndex } ?: selected.first()
+    if (selected.size == 1) return brokerBinding(primary, repoRoot)
+    val assignedPaths = selected.flatMap { it.assignment.assignedPaths }.distinct()
+    val assignedHunks = selected.flatMap { it.assignment.assignedHunks }.distinct()
+    val expansions = selected.flatMap { it.assignment.expansions }.distinctBy { it.expansionId }
+    val assigned = assignedHunks.toSet()
+    val merged = primary.assignment.copy(
+      // The merged surface is every routed area's union, so it is no longer any single routed
+      // lane's column: it carries no routing, and commits one area skipped are still owned here.
+      laneRouting = emptyList(),
+      assignedPaths = assignedPaths,
+      assignedHunks = assignedHunks,
+      assignedBundle = mergedBundle(primary.packet, assigned),
+      evidenceTargets = selected.flatMap { it.assignment.evidenceTargets }.distinctBy { it.targetId },
+      dependencyAllowlist = ReviewDependencyAllowlist(
+        selected.flatMap { it.assignment.dependencyAllowlist.normalized }
+          .distinct()
+          .filterNot { it in assignedPaths.toSet() },
+      ),
+      expansions = expansions,
+    )
+    return ReviewEvidenceBrokerBinding(
+      repoRoot = repoRoot,
+      assignment = merged,
+      laneRubricId = primary.rubrics.first().rubricId,
+      budget = mergedBudget(primary.budget, selected.size),
+      namedDependencies = selected.flatMap { it.namedDependencies }.toSet(),
+      trustedExpansionLedger = expansions,
+      projectedHunks = primary.packet.changedHunks.filter { it.hunkId in assigned },
+      locatorReader = sharedEvidenceLocatorReader,
+      bodyExtractor = ReviewLocatorHunkBodyExtractor,
+    )
   }
 
   private fun brokerBinding(launch: ReviewSpecialistLaunchRequest, repoRoot: Path): ReviewEvidenceBrokerBinding {

@@ -27,6 +27,12 @@ Use when validating iOS changes with the shared quality-check contract.
 
 - Use this priority-ordered fix ladder: build and configuration failures; compile and type errors; behavioral test failures; lint failures; formatting failures.
 - Prefer root-cause fixes and never suppress a scoped failure with inline `swiftlint:disable`, an equivalent suppression, weakened configuration, or a TODO-based bypass.
-- Re-run targeted checks after each fix category. Escalate to the full suite when targeted checks cannot establish safety.
+### Repair Window
+
+Collect one complete finding set before repairing anything. While that set is open, do not invoke any check, test, compile, format-task, quality-check command, build or test command, pack checker, `bill-code-check`, or delegated subagent check. Allowed work is read, search, and source edits only. Repair every finding at its root cause; verification runs only after the full set is repaired.
+
+Once the whole set is repaired, re-run the discovered scheme verification once.
+
+Escalate to the full suite when targeted checks cannot establish safety.
 - Keep changes aligned with the project's existing conventions and build tooling.
 - Escalate missing schemes, genuine tool defects, and policy decisions to maintainers instead of guessing.

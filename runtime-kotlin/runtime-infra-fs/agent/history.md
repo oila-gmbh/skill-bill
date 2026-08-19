@@ -1,5 +1,14 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
+## [2026-08-18] SKILL-198 subtask 1 — pack quality-check repair window engraved in contracts
+Areas: orchestration/contracts, platform-packs/*/quality-check, runtime-infra-fs/scaffold/{rendering,validation}, tests
+- All eight maintained pack quality-check `content.md` files lost per-fix "re-run targeted checks" language and gained a Repair Window section matching `bill-code-check`; scaffold `qualityCheckContent` starter emits the same block for new packs.
+- `full_gate_command` schema description no longer calls collect-all argv an "intermediate repair-cycle" run — discovery/collect-all only; verification after repair uses cache-bypass argv. Shell contract stays 1.5.
+- `QualityCheckRepairWindowConformanceTest` denylists per-fix rerun phrases across every pack sidecar; platform pack snapshot tests updated for the new sections.
+- Limitation: runtime command interception during repair is subtask 2; this subtask is agent-facing text and schema wording only.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-08-18] Install reconcile: upstream always wins
 Areas: runtime-infra-fs/install/reconcile, runtime-domain/install/model, runtime-ports/install/reconcile, runtime-application/install, runtime-cli, runtime-contracts
 - `SkillReconciliationOutcome` collapsed from five cases to four: `Adopt` (upstream exists and differs from local — install it), `Unchanged` (upstream hash == local hash — no file op), `Prune` (no upstream counterpart under `skills/` or `platform-packs/` — DELETE it), `LocallyAuthored` (no upstream counterpart under `agent-addons/` — user-owned, never written, never deleted). `KeepLocal`, `Conflict`, and `NewUpstream` are gone, as are `ReconciliationPlan.conflicts` / `hasConflicts` and `ReconciliationApplyRefusedError`.

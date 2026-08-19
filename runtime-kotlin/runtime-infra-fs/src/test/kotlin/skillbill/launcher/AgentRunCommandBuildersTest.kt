@@ -14,7 +14,6 @@ import skillbill.launcher.agentrun.CodexAgentRunCommandBuilder
 import skillbill.launcher.agentrun.CursorAgentRunCommandBuilder
 import skillbill.launcher.agentrun.GovernedReviewLaunchCapability
 import skillbill.launcher.agentrun.JunieAgentRunCommandBuilder
-import skillbill.launcher.mcp.GovernedReviewMcpConfigWriter
 import skillbill.launcher.mcp.McpConfigFormat
 import skillbill.launcher.process.AgentRunIdlePolicy
 import skillbill.ports.agentrun.model.ConversationIsolation
@@ -591,23 +590,21 @@ class AgentRunCommandBuildersTest {
     val workspace = StubReviewEvidenceEndpoint.descriptor.mcpConfigPath.parent
     assertEquals(workspace.toString(), command[command.indexOf("--workspace") + 1])
     assertEquals(workspace, built.workingDirectory)
-    assertNull(built.stdinText)
-    val prompt = command.last()
-    assertEquals(requireNotNull(governed.promptOverride), prompt)
-    assertFalse(prompt.startsWith("/"))
+    // A review packet runs to hundreds of KB, past the 128 KB Linux caps on one argv element, so
+    // the prompt travels on stdin like every other launch rather than as the trailing argument.
+    assertEquals(requireNotNull(governed.promptOverride), built.stdinText)
+    assertTrue(command.none { it == governed.promptOverride })
     assertTrue(command.none { it.startsWith("/bill-code-review-inline") })
     assertTrue(command.contains("--approve-mcps"))
-    assertFalse(command.contains("--force"))
-    val allowList = java.nio.file.Files.readString(
-      GovernedReviewMcpConfigWriter.cursorCliConfigPath(StubReviewEvidenceEndpoint.descriptor.mcpConfigPath),
-    ).substringBefore("\"deny\"")
-    assertTrue(
-      GovernedReviewEvidenceCodec.OPERATIONS.all { operation ->
-        allowList.contains("Mcp(skill-bill-review-evidence, $operation)")
-      },
-      allowList,
-    )
-    assertTrue(rawFilesystemTools.none { tool -> allowList.contains(tool) }, allowList)
+    // --approve-mcps admits the server; only --force admits its tool calls, and a --print launch
+    // auto-rejects anything it cannot prompt for. Without it the lane lists the evidence tools and
+    // is refused every read, then answers from the prompt alone.
+    assertTrue(command.contains("--force"))
+    // This lane carries no tool allowlist of its own: the CLI honours no workspace-scoped
+    // permission file, so unlike Claude's --tools there is nothing here that can deny the agent's
+    // own file and shell tools. Broker-only evidence is enforced by the unread-evidence gate on
+    // the returned lane, not by a config file, and no filesystem tool is named on the command.
+    assertTrue(rawFilesystemTools.none { tool -> command.any { it.contains(tool) } })
   }
 
   private fun request(

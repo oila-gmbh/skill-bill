@@ -379,7 +379,7 @@ class CursorAgentRunCommandBuilder(
         request.repoRoot
       },
       timeout = request.timeout,
-      stdinText = launchPrompt(request).takeUnless { isReviewLaunch },
+      stdinText = launchPrompt(request),
       environment = GoalContinuationEnvironment + goalContinuationEnvironment(request),
       inheritEnvironment = !isReviewLaunch,
       conversationIsolation = request.conversationIsolation,
@@ -402,13 +402,19 @@ class CursorAgentRunCommandBuilder(
     add("--print")
 
     if (isReviewLaunch) {
+      // --approve-mcps only admits the server; every tools/call still needs approval, and a
+      // --print launch auto-rejects what it cannot prompt for. Without --force the governed lane
+      // loads the evidence server, lists its tools, and is refused every read it attempts.
+      //
+      // --force also unlocks this agent's own file and shell tools, and the CLI honours no
+      // workspace-scoped permission file that could deny them back, so unlike the other agents
+      // this lane cannot be confined to broker-supplied evidence. What keeps it honest is the
+      // evidence accounting: a lane that answers without reading fails as unread.
+      add("--force")
       add("--trust")
       add("--approve-mcps")
       add("--workspace")
       add((reviewLaunchDirectory ?: request.repoRoot).toString())
-      request.reviewEvidenceEndpoint?.let { endpoint ->
-        GovernedReviewMcpConfigWriter.writeCursorGovernedCliConfig(endpoint.descriptor.mcpConfigPath)
-      }
     } else {
       add("--force")
       add("--trust")
@@ -434,9 +440,6 @@ class CursorAgentRunCommandBuilder(
           "Cursor effort directive requires a model directive; add a model directive or remove the effort assignment."
         }
       }
-    }
-    if (isReviewLaunch) {
-      add(launchPrompt(request))
     }
   }
 
