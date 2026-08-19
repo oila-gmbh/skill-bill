@@ -42,7 +42,15 @@ object ReviewCrossRootLaneReconciliation {
   fun reconcile(roots: List<ReviewRootLanes>): List<ReviewReconciledLane> {
     val candidates = roots.flatMap { root -> root.lanes.map { Candidate(root.depthOffset + it.depth, it) } }
       .sortedWith(
-        compareBy<Candidate>({ it.effectiveDepth }, { it.lane.packSlug }, { it.lane.area }, { it.lane.skillName }),
+        compareBy<Candidate>(
+          { it.effectiveDepth },
+          { it.lane.packSlug },
+          { it.lane.area },
+          { it.lane.skillName },
+          { it.lane.depth },
+          { it.lane.originLayerChain.joinToString(">") },
+          { it.lane.inclusionReason },
+        ),
       )
     return candidates.groupBy { it.lane.area }.map { (area, areaCandidates) ->
       val nearestDepth = areaCandidates.minOf { it.effectiveDepth }
