@@ -4795,8 +4795,14 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
       as List<Map<String, Any?>>
     val entry = evidence.single { it["seam"] == "FeatureTaskRuntimeRunLoop.remediationRollbackTargetSha" }
     assertEquals("resolvable predecessor identity commit", entry["value_expected"])
-    assertNotNull(entry["value_used"])
-    assertNotEquals(parentSha, entry["value_used"])
+    val identities = requireNotNull(harness.recorder.loadCheckpointIdentities(WORKFLOW_ID))
+    val wellFormedCommitSha = Regex("^[0-9a-fA-F]{40,64}$")
+    val predecessorIdentityCommitSha = identities
+      .filter { it.commitSha.trim().matches(wellFormedCommitSha) }
+      .maxByOrNull { it.sequenceNumber }
+      ?.commitSha
+      ?.trim()
+    assertEquals(predecessorIdentityCommitSha, entry["value_used"])
     assertNotNull(entry["cause"])
   }
 
@@ -6759,8 +6765,15 @@ internal class RecordingWorkflowGitOperations(
             error = "HEAD is '$headCommitShaValue' but the caller owns '$expectedOwnedHeadSha'.",
           )
         }
-        replacementMessage?.let { amendCommitMessages += it }
-        // An amend rewrites the commit, so it yields a new sha exactly as git does.
+        replacementMessage?.let { message ->
+          amendCommitMessages += message
+          if (invalidShaOnRemediationCommit && message.contains("remediation checkpoint")) {
+            createCommitMessages += message
+            val bogus = "not-a-valid-commit-sha"
+            headCommitShaValue = bogus
+            return WorkflowGitOperationResult(status = "ok", value = bogus)
+          }
+        }
         headCommitShaValue = "a${amendCommitMessages.size.toString(16)}".padStart(40, '0')
         headCommitMessageValue = replacementMessage ?: headCommitMessageValue
         return WorkflowGitOperationResult(status = "ok", value = headCommitShaValue)
