@@ -4827,12 +4827,14 @@ internal class FeatureTaskRuntimeRunLoop(
         branch = branch,
         intent = FeatureTaskRuntimeCheckpointMessage.INTENT_FINALISED_SUBTASK,
       ),
+      recordCommit = { commitSha, stagedPaths ->
+        recordFinalisedCheckpointIdentity(run.phaseId, branch, ledger, commitSha, stagedPaths)
+      },
     )
     if (outcome is FeatureTaskRuntimeSubtaskFinalisationResult.Blocked) {
       return CommitPushFinalisation.Blocked(outcome.reason)
     }
     val finalised = outcome as FeatureTaskRuntimeSubtaskFinalisationResult.Finalised
-    recordFinalisedCheckpointIdentity(run.phaseId, branch, ledger, finalised)
     return CommitPushFinalisation.Settled(
       revalidated(
         run.phaseId,
@@ -4879,12 +4881,19 @@ internal class FeatureTaskRuntimeRunLoop(
     return branch.takeIf { head.ok && head.value.trim() == branch.trim() }
   }
 
+  /**
+   * The durable pointer to the finalisation commit, appended between the commit and the push. Returns
+   * the blocking reason when it cannot be appended: without the pointer a re-entry after a failed push
+   * resolves Create against an already-committed tree and the subtask can never finish, so continuing
+   * past a failed append would trade a resumable block for a permanently stuck one.
+   */
   private fun recordFinalisedCheckpointIdentity(
     phaseId: String,
     branch: String,
     ledger: SubtaskCommitLedgerState,
-    finalised: FeatureTaskRuntimeSubtaskFinalisationResult.Finalised,
-  ) {
+    commitSha: String,
+    stagedPaths: List<String>,
+  ): String? {
     val appended = runCatching {
       recorder.appendCheckpointIdentity(
         workflowId = request.workflowId,
@@ -4895,22 +4904,25 @@ internal class FeatureTaskRuntimeRunLoop(
         loopId = null,
         generation = checkpointGeneration(null),
         parentSha = ledger.commitSha,
-        ownedPaths = finalised.stagedPaths,
-        commitSha = finalised.commitSha,
+        ownedPaths = stagedPaths,
+        commitSha = commitSha,
         dbOverride = request.dbPathOverride,
       )
     }
-    // The commit and its push already happened and are not undoable; a missing ledger row only costs a
-    // later re-entry its durable amend target, which the Skill-Bill-Subtask trailer still recovers.
-    if (appended.getOrDefault(false)) return
+    if (appended.getOrDefault(false)) return null
+    val cause = appended.exceptionOrNull()?.message ?: "the workflow row was absent"
     runCatching {
       diagnostics.warning(
         "seam=FeatureTaskRuntimeRunLoop.recordFinalisedCheckpointIdentity " +
-          "value_used='no durable identity for finalised commit ${finalised.commitSha}' " +
+          "value_used='no durable identity for finalised commit $commitSha' " +
           "value_expected=an appended checkpoint identity for '${request.issueKey}' " +
-          "cause=${appended.exceptionOrNull()?.message ?: "the workflow row was absent"}",
+          "cause=$cause",
       )
     }
+    return "needs_human: the finalised subtask commit '$commitSha' was written but its durable " +
+      "checkpoint identity could not be recorded ($cause), so it was not pushed. Without that pointer " +
+      "a resumed run would open a second commit for this subtask instead of amending this one. Repair " +
+      "the workflow store and resume; the commit is already on the branch."
   }
 
   private fun revalidated(

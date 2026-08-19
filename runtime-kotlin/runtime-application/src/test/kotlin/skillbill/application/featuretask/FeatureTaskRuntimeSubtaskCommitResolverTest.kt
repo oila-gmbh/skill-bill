@@ -31,9 +31,18 @@ class FeatureTaskRuntimeSubtaskCommitResolverTest {
     assertIs<FeatureTaskRuntimeSubtaskCommitDecision.Create>(
       decide(durableCommitSha = null, headCommitMessage = "a hand-written commit\n"),
     )
-    // Already published: rewriting it would diverge the remote.
-    assertIs<FeatureTaskRuntimeSubtaskCommitDecision.Create>(
+    // Already published but durably ours: a reopened subtask must amend its one commit rather than
+    // stack a second one on the branch, and finalisation's lease reconciles the remote.
+    assertIs<FeatureTaskRuntimeSubtaskCommitDecision.Amend>(
       decide(durableCommitSha = HEAD_SHA, headCommitMessage = null, headIsUnpushed = false),
+    )
+    // Already published and no durable pointer claims it: someone else's history.
+    assertIs<FeatureTaskRuntimeSubtaskCommitDecision.Create>(
+      decide(
+        durableCommitSha = null,
+        headCommitMessage = "wip\n\nSkill-Bill-Subtask: $ISSUE/3\n",
+        headIsUnpushed = false,
+      ),
     )
     // Nothing to amend onto.
     assertIs<FeatureTaskRuntimeSubtaskCommitDecision.Create>(

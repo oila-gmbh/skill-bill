@@ -34,7 +34,8 @@ internal data class FeatureTaskRuntimeSubtaskCommitHeadState(
  * The guard is identity-keyed, never ownership-keyed. HEAD being some runtime-written commit is not
  * enough: the previous subtask's finished commit is also runtime-written, and amending it would
  * destroy a completed deliverable on the shared branch. Everything that is not a confirmed match on
- * this subtask's own unpushed commit creates instead.
+ * this subtask's own commit creates instead, and an already-published HEAD is amendable only under a
+ * durable pointer that names it.
  */
 internal object FeatureTaskRuntimeSubtaskCommitResolver {
   @Suppress("ReturnCount") // each early return is one disqualifying condition, flatter than nesting
@@ -43,16 +44,17 @@ internal object FeatureTaskRuntimeSubtaskCommitResolver {
     durableCommitSha: String?,
     head: FeatureTaskRuntimeSubtaskCommitHeadState,
     sequenceNumber: Int,
-    finalisation: Boolean = false,
   ): FeatureTaskRuntimeSubtaskCommitDecision {
     val headSha = head.sha?.trim()?.takeIf(String::isNotBlank)
       ?: return FeatureTaskRuntimeSubtaskCommitDecision.Create
     val durable = durableCommitSha?.trim()?.takeIf(String::isNotBlank)
-    // Finalisation is the only caller allowed to rewrite a published commit, and only when durable
-    // state proves HEAD is this subtask's own: a reopened subtask must still end with one commit, and
-    // the push finalisation drives leases against the remote tip instead of overwriting it. Every
-    // other caller treats a pushed commit as someone else's history and creates.
-    val ownsPublishedHead = finalisation && durable != null && durable == headSha
+    // Rewriting a published commit is allowed exactly when durable state proves that commit is this
+    // subtask's own, for every caller rather than for finalisation alone. Keying it on the caller made
+    // a reopened subtask's first checkpoint create a second commit on top of its published one, which
+    // finalisation then amended, so the branch ended the subtask carrying two commits. Finalisation's
+    // force-with-lease push reconciles the remote for whichever commit the rewrite produced. A pushed
+    // HEAD no durable pointer claims is still someone else's history and still creates.
+    val ownsPublishedHead = durable != null && durable == headSha
     if (!head.isUnpushed && !ownsPublishedHead) return FeatureTaskRuntimeSubtaskCommitDecision.Create
     if (durable != null) {
       return if (durable == headSha) {

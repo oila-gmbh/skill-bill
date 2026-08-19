@@ -51,6 +51,11 @@ internal sealed interface FeatureTaskRuntimeSubtaskFinalisationResult {
  * amend that stages the content, so no commit ever reaches a pushed state carrying the provisional
  * subject; and the sha is captured after that amend, so the value threaded into the manifest is the
  * final one rather than an intermediate.
+ *
+ * [recordCommit] persists the durable pointer to the commit just written and runs BEFORE the push,
+ * returning a blocking reason when it cannot. Recording after the push left a failed push blocked with
+ * HEAD at the finalisation commit while the pointer still named the pre-amend checkpoint sha, so the
+ * re-entry resolved Create against a clean index and the subtask could never finish.
  */
 internal class FeatureTaskRuntimeSubtaskFinalisation(
   private val gitOperations: WorkflowGitOperations,
@@ -65,6 +70,7 @@ internal class FeatureTaskRuntimeSubtaskFinalisation(
     sequenceNumber: Int,
     handoff: FeatureTaskRuntimeCommitPushHandoff,
     metadata: FeatureTaskRuntimeCheckpointMetadata,
+    recordCommit: (commitSha: String, stagedPaths: List<String>) -> String?,
   ): FeatureTaskRuntimeSubtaskFinalisationResult {
     val excluded = handoff.changedPaths.filter(::isGovernedSpecPath).distinct().sorted()
     val stageable = handoff.changedPaths.filter(String::isNotBlank)
@@ -79,8 +85,7 @@ internal class FeatureTaskRuntimeSubtaskFinalisation(
     if (!staged.ok) return blocked(restoring(staged.error, stageable, snapshot.value.orEmpty()))
 
     val decision = decide(branch, identity, durableCommitSha, sequenceNumber)
-    val amendTarget = (decision as? FeatureTaskRuntimeSubtaskCommitDecision.Amend)?.ownedHeadSha
-    val rewritesPublishedCommit = amendTarget != null && isPublished(branch, amendTarget)
+    val rewrites = decision is FeatureTaskRuntimeSubtaskCommitDecision.Amend
     val message = FeatureTaskRuntimeCheckpointMessage.finalise(handoff.outcomeMessage, metadata, identity)
 
     val commit = gitOperations.writeSubtaskCommitPreservingHistory(
@@ -95,13 +100,16 @@ internal class FeatureTaskRuntimeSubtaskFinalisation(
     val commitSha = commit.value.orEmpty().trim().takeIf(String::isNotBlank)
       ?: return blocked(restoring("the finalisation commit returned an empty sha", stageable, snapshot.value.orEmpty()))
 
-    val pushFailure = push(branch, identity, commitSha, rewritesPublishedCommit)
+    recordCommit(commitSha, stageable)?.let { return FeatureTaskRuntimeSubtaskFinalisationResult.Blocked(it) }
+
+    val forcedWithLease = rewrites && remoteDiverged(branch, commitSha)
+    val pushFailure = push(branch, identity, commitSha, forcedWithLease)
     if (pushFailure != null) return blocked(pushFailure)
     return FeatureTaskRuntimeSubtaskFinalisationResult.Finalised(
       commitSha = commitSha,
       stagedPaths = stageable,
       excludedSpecPaths = excluded,
-      forcedWithLease = rewritesPublishedCommit,
+      forcedWithLease = forcedWithLease,
     )
   }
 
@@ -122,18 +130,25 @@ internal class FeatureTaskRuntimeSubtaskFinalisation(
         isUnpushed = unpushed.ok && unpushed.value.orEmpty().trim().equals("true", ignoreCase = true),
       ),
       sequenceNumber = sequenceNumber,
-      finalisation = true,
     )
   }
 
   private fun headMessage(): String? =
     gitOperations.headCommitMessage(repoRoot).takeIf { it.ok }?.value
 
-  private fun isPublished(branch: String, sha: String): Boolean {
+  /**
+   * Whether the remote tip has left the lineage of the commit finalisation just wrote. Read after the
+   * write and only for an amend, so the lease is reachable from a rewrite of this subtask's own history
+   * and never as a retry of a rejected create-path push: a created commit keeps the remote tip as an
+   * ancestor unless someone else pushed, and that case must stay a plain rejected push. An ancestry
+   * check that could not run reads as no divergence, so an unreadable remote never escalates to a
+   * force.
+   */
+  private fun remoteDiverged(branch: String, commitSha: String): Boolean {
     val remoteTip = gitOperations.resolveCommit(repoRoot, "origin/$branch")
       .takeIf { it.ok }?.value?.trim()?.takeIf(String::isNotBlank) ?: return false
-    val ancestor = gitOperations.isCommitAncestor(repoRoot, sha, remoteTip)
-    return ancestor.ok && ancestor.value.orEmpty().trim().equals("true", ignoreCase = true)
+    val ancestor = gitOperations.isCommitAncestor(repoRoot, remoteTip, commitSha)
+    return ancestor.ok && ancestor.value.orEmpty().trim().equals("false", ignoreCase = true)
   }
 
   private fun push(

@@ -170,6 +170,70 @@ class FeatureTaskRuntimeSubtaskFinalisationTest {
     assertTrue(records.any { it.contains("cause=the lease was rejected") })
   }
 
+  // The bug: recording the durable pointer after the push leaves a failed push blocked with HEAD at
+  // the finalisation commit while the pointer still names the pre-amend sha, so the re-entry resolves
+  // Create against a clean index and the subtask can never finish.
+  @Test
+  fun `the durable pointer is recorded before the push and a failed recording blocks without pushing`() {
+    val repo = repoWithRemote()
+    Files.writeString(repo.root.resolve("owned.txt"), "checkpoint\n")
+    git(repo.root, "add", "owned.txt")
+    git(repo.root, "commit", "-m", "$issueKey: subtask $subtaskId\n\nprovisional\n\n${identity.trailer}")
+    val checkpointSha = git(repo.root, "rev-parse", "HEAD")
+    val remoteTipsSeenWhileRecording = mutableListOf<String>()
+    atRecordTime = { remoteTipsSeenWhileRecording += remoteBranchTip(repo.remote) }
+
+    Files.writeString(repo.root.resolve("owned.txt"), "final\n")
+    val finalised = assertIs<FeatureTaskRuntimeSubtaskFinalisationResult.Finalised>(
+      finalise(repo, durableCommitSha = checkpointSha, paths = listOf("owned.txt")),
+    )
+
+    assertEquals(listOf(finalised.commitSha), recordedCommits)
+    assertEquals(listOf(""), remoteTipsSeenWhileRecording, "the pointer must be durable before the push")
+
+    val second = repoWithRemote()
+    Files.writeString(second.root.resolve("owned.txt"), "work\n")
+    recordedCommits.clear()
+    atRecordTime = {}
+    recordFailure = "needs_human: the workflow row was absent"
+
+    val blocked = assertIs<FeatureTaskRuntimeSubtaskFinalisationResult.Blocked>(
+      finalise(second, durableCommitSha = null, paths = listOf("owned.txt")),
+    )
+
+    assertEquals("needs_human: the workflow row was absent", blocked.reason)
+    assertEquals(recordedCommits.single(), git(second.root, "rev-parse", "HEAD"), "the commit must stand")
+    assertEquals("", remoteBranchTip(second.remote), "an unrecorded commit must not be published")
+  }
+
+  // The bug: a reopened subtask whose first checkpoint amends its published commit leaves the remote
+  // tip off the new lineage; without a lease the finalisation push is rejected, and treating that as a
+  // plain push failure strands a subtask that legitimately owns the commit it rewrote.
+  @Test
+  fun `a reopened subtask that checkpointed over its published commit still leases its push`() {
+    val repo = repoWithRemote()
+    Files.writeString(repo.root.resolve("owned.txt"), "published\n")
+    git(repo.root, "add", "owned.txt")
+    git(repo.root, "commit", "-m", "$issueKey: subtask $subtaskId\n\nprovisional\n\n${identity.trailer}")
+    git(repo.root, "push", "-u", "origin", branch)
+    val publishedSha = git(repo.root, "rev-parse", "HEAD")
+    Files.writeString(repo.root.resolve("owned.txt"), "reopened checkpoint\n")
+    git(repo.root, "add", "owned.txt")
+    git(repo.root, "commit", "--amend", "-m", "$issueKey: subtask $subtaskId\n\nprovisional\n\n${identity.trailer}")
+    val checkpointSha = git(repo.root, "rev-parse", "HEAD")
+    val commitsBefore = commitCount(repo.root)
+
+    Files.writeString(repo.root.resolve("owned.txt"), "reopened final\n")
+    val finalised = assertIs<FeatureTaskRuntimeSubtaskFinalisationResult.Finalised>(
+      finalise(repo, durableCommitSha = checkpointSha, paths = listOf("owned.txt"), sequenceNumber = 1),
+    )
+
+    assertTrue(finalised.forcedWithLease, "the remote still carries the pre-checkpoint commit")
+    assertEquals(commitsBefore, commitCount(repo.root), "the subtask must still end with one commit")
+    assertEquals(finalised.commitSha, git(repo.remote, "rev-parse", branch))
+    assertTrue(finalised.commitSha != publishedSha)
+  }
+
   @Test
   fun `a blank outcome message is rejected before any git write`() {
     val blank = FeatureTaskRuntimeSubtaskFinalisation.readHandoff(
@@ -200,6 +264,9 @@ class FeatureTaskRuntimeSubtaskFinalisationTest {
   }
 
   private val records = mutableListOf<String>()
+  private val recordedCommits = mutableListOf<String>()
+  private var recordFailure: String? = null
+  private var atRecordTime: (String) -> Unit = {}
 
   private data class Fixture(val root: Path, val remote: Path)
 
@@ -218,6 +285,11 @@ class FeatureTaskRuntimeSubtaskFinalisationTest {
     durableCommitSha = durableCommitSha,
     sequenceNumber = sequenceNumber,
     handoff = FeatureTaskRuntimeCommitPushHandoff(outcomeMessage = agentSubject, changedPaths = paths),
+    recordCommit = { sha, _ ->
+      recordedCommits += sha
+      atRecordTime(sha)
+      recordFailure
+    },
     metadata = FeatureTaskRuntimeCheckpointMetadata(
       phaseId = "commit_push",
       loopId = null,
@@ -263,6 +335,10 @@ class FeatureTaskRuntimeSubtaskFinalisationTest {
   }
 
   private fun commitCount(repoRoot: Path): Int = git(repoRoot, "rev-list", "--count", "HEAD").toInt()
+
+  /** The remote's tip for the subtask branch, blank while the remote carries no such branch yet. */
+  private fun remoteBranchTip(remote: Path): String =
+    git(remote, "for-each-ref", "--format=%(objectname)", "refs/heads/$branch")
 
   private fun git(repoRoot: Path, vararg args: String): String {
     val process = ProcessBuilder(listOf("git", "-C", repoRoot.toString()) + args.toList())
