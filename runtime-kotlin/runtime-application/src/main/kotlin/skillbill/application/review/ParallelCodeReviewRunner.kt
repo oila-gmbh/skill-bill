@@ -109,8 +109,10 @@ import skillbill.review.model.ReviewStage
 import skillbill.review.model.ReviewStageBoundary
 import skillbill.review.model.ReviewStageReached
 import skillbill.review.model.ReviewStageResumeReport
+import skillbill.review.plan.ReviewCrossRootLaneReconciliation
 import skillbill.review.plan.ReviewLaneInclusionPolicy
 import skillbill.review.plan.ReviewLaunchPlanPolicy
+import skillbill.review.plan.ReviewRootLanes
 import skillbill.review.plan.ReviewStackRouting
 import skillbill.review.plan.model.ReviewLaunchLane
 import skillbill.review.plan.model.ReviewRoutingChangedFile
@@ -1067,11 +1069,13 @@ class ParallelCodeReviewRunner(
     // Each root pack only owns the files that actually routed to it; a required baseline lane
     // must claim exactly that root's routed files, never every changed file across the whole
     // (possibly cross-stack) diff, or a Kotlin required specialist would also claim Python files.
-    val flattened = routedManifests.flatMap { root ->
+    val depthOffsets = ReviewCrossRootLaneReconciliation
+      .compositionDepthOffsets(routedManifests.map { it.slug }, manifests)
+    val rootLanes = routedManifests.map { root ->
       val rootOwnedPaths = ownedPathsBySlug[root.slug].orEmpty()
       val rootFiles = evidence.files.filter { it.path in rootOwnedPaths }
       val selectedAreas = ReviewLaunchPlanPolicy.composedAreas(root.slug, manifests)
-      ReviewLaunchPlanPolicy.flatten(root.slug, manifests, selectedAreas).lanes.also { lanes ->
+      val lanes = ReviewLaunchPlanPolicy.flatten(root.slug, manifests, selectedAreas).lanes.also { lanes ->
         require(lanes.isNotEmpty()) {
           "Routed pack '${root.slug}' resolved no declared flattened specialist worker."
         }
@@ -1082,23 +1086,15 @@ class ParallelCodeReviewRunner(
           changedHunkIds = evidence.hunks.filter { it.path in ownedPaths }.map { it.hunkId },
         )
       }
+      ReviewRootLanes(depthOffsets[root.slug] ?: 0, lanes.filter { it.ownedPaths.isNotEmpty() })
     }
-    flattened
-      .filter { lane -> lane.ownedPaths.isNotEmpty() }
-      .groupBy { it.skillName }
-      .values
-      .mapIndexed { index, matches ->
-        val first = matches.first()
-        val lane = first.copy(
-          orderIndex = index,
-          required = matches.any { it.required },
-          ownedPaths = matches.flatMap { it.ownedPaths }.distinct().sorted(),
-          changedHunkIds = matches.flatMap { it.changedHunkIds }.distinct(),
-        )
+    ReviewCrossRootLaneReconciliation
+      .reconcile(rootLanes)
+      .map { reconciled ->
+        val lane = reconciled.lane
         require(
-          matches.all {
-            it.packSlug == lane.packSlug && it.area == lane.area && it.skillName == lane.skillName &&
-              it.addOns == lane.addOns
+          reconciled.inputs.filter { it.packSlug == lane.packSlug }.all {
+            it.area == lane.area && it.skillName == lane.skillName && it.addOns == lane.addOns
           },
         ) {
           "Conflicting ownership for specialist '${lane.skillName}'."
@@ -1114,7 +1110,7 @@ class ParallelCodeReviewRunner(
         PlannedReviewRubric(
           descriptor = lane.copy(addOns = resolved.selectedAddOns),
           rubric = ReviewRubricProjection(lane.skillName, resolved.body, resolved.area ?: lane.area),
-          originLayerChains = matches.flatMap { it.originLayerChains }.distinct(),
+          originLayerChains = reconciled.inputs.flatMap { it.originLayerChains }.distinct(),
         )
       }
   }
