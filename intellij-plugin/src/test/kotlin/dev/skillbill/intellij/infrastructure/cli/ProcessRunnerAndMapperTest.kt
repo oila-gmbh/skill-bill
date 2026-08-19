@@ -166,6 +166,19 @@ class IdeStatusJsonMapperTest {
     fun `stale freshness maps to stale`() {
         val outcome = IdeStatusJsonMapper.map(runtimeFixture(freshness = "stale"), now, 0)
         assertTrue(outcome is SkillBillStatusOutcome.Stale)
+        assertFalse((outcome as SkillBillStatusOutcome.Stale).fromCache)
+    }
+
+    @Test
+    fun `a fresh active read-only step maps to active`() {
+        for (step in listOf("audit", "review", "validate")) {
+            val json = fixture("active-runtime.json")
+                .replaceField("id", "implement", step)
+                .replaceField("label", "Implement", step.replaceFirstChar { it.titlecase() })
+            val outcome = IdeStatusJsonMapper.map(json, now, 0)
+            assertTrue("$step must map to Active", outcome is SkillBillStatusOutcome.Active)
+            assertEquals(step, (outcome as SkillBillStatusOutcome.Active).currentStepId)
+        }
     }
 
     @Test

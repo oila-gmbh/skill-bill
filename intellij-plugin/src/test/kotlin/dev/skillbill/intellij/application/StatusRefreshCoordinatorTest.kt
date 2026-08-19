@@ -2,6 +2,7 @@ package dev.skillbill.intellij.application
 
 import dev.skillbill.intellij.composition.SkillBillStatusCompositionRoot
 import dev.skillbill.intellij.domain.NO_MATCHING_WORK_REASON_CODE
+import dev.skillbill.intellij.domain.POLL_FAILED_REASON_CODE
 import dev.skillbill.intellij.domain.SkillBillStatusOutcome
 import dev.skillbill.intellij.domain.StatusDiagnostic
 import dev.skillbill.intellij.domain.UnavailableReason
@@ -249,6 +250,55 @@ class StatusRefreshCoordinatorTest {
         assertEquals(cacheAfterLive, prefs.getLastKnownDisplayCache())
         // The held emission is the prior live outcome, never a cache-derived stale one.
         assertEquals(active(), coordinator.outcomes.value)
+        coordinator.dispose()
+    }
+
+    @Test
+    fun `a transport-failure poll after a live active retains the live display`() = runBlocking {
+        val transportFailures = listOf(
+            UnavailableReason.TIMEOUT,
+            UnavailableReason.CANCELLED,
+            UnavailableReason.PROCESS_FAILURE,
+        )
+        for (reason in transportFailures) {
+            val prefs = FakePreferenceCache(refreshIntervalSeconds = 60)
+            val repo = scripted(
+                active(),
+                SkillBillStatusOutcome.Unavailable(
+                    observedAt = Instant.parse("2026-08-06T10:00:15Z"),
+                    summary = "poll failed",
+                    reasonCode = reason,
+                ),
+            )
+            val coordinator = StatusRefreshCoordinator(repo, prefs, scope, Path.of("/tmp/transport"))
+            pollTimes(coordinator, repo, 2)
+            val outcome = coordinator.outcomes.value
+            assertTrue("$reason must retain Active", outcome is SkillBillStatusOutcome.Active)
+            outcome as SkillBillStatusOutcome.Active
+            assertEquals("implement", outcome.currentStepId)
+            assertEquals(POLL_FAILED_REASON_CODE, outcome.diagnostic?.reasonCode)
+            coordinator.dispose()
+        }
+    }
+
+    @Test
+    fun `a timeout with no live display and no cache stays unavailable`() = runBlocking {
+        val prefs = FakePreferenceCache(refreshIntervalSeconds = 60)
+        val repo = scripted(
+            SkillBillStatusOutcome.Unavailable(
+                observedAt = Instant.parse("2026-08-06T10:00:00Z"),
+                summary = "poll timed out",
+                reasonCode = UnavailableReason.TIMEOUT,
+            ),
+        )
+        val coordinator = StatusRefreshCoordinator(repo, prefs, scope, Path.of("/tmp/first-timeout"))
+        pollTimes(coordinator, repo, 1)
+        val outcome = coordinator.outcomes.value
+        assertTrue(outcome is SkillBillStatusOutcome.Unavailable)
+        assertEquals(
+            UnavailableReason.TIMEOUT,
+            (outcome as SkillBillStatusOutcome.Unavailable).reasonCode,
+        )
         coordinator.dispose()
     }
 

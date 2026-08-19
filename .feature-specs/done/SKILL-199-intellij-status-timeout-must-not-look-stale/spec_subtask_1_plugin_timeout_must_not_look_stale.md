@@ -33,7 +33,7 @@ Required behaviour:
 - Update or replace `unavailable falls back to stale cache only` so it no longer requires
   timeout-after-live to become Stale.
 
-Touched area: `intellij-plugin/` only.
+Touched area: `../../../intellij-plugin` only.
 
 ## Acceptance Criteria
 
@@ -78,4 +78,4 @@ Touched area: `intellij-plugin/` only.
 
 ## Next Path
 
-Prepared for `skill-bill goal SKILL-199`. Implementation starts in `intellij-plugin/`.
+Prepared for `skill-bill goal SKILL-199`. Implementation starts in `../../../intellij-plugin`.

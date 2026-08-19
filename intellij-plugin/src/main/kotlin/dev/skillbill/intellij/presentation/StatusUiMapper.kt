@@ -1,7 +1,9 @@
 package dev.skillbill.intellij.presentation
 
 import dev.skillbill.intellij.domain.GoalPlanningInfo
+import dev.skillbill.intellij.domain.POLL_FAILED_REASON_CODE
 import dev.skillbill.intellij.domain.SkillBillStatusOutcome
+import dev.skillbill.intellij.domain.StatusDiagnostic
 import java.time.Duration
 import java.time.Instant
 
@@ -10,6 +12,10 @@ import java.time.Instant
  * start timestamps via [now]; absent starts stay absent (never synthesized).
  */
 object StatusUiMapper {
+    const val POLL_TIMEOUT_NOTE: String = "Status poll timed out. Showing the last live snapshot."
+    const val POLL_CANCELLED_NOTE: String = "Status poll was cancelled. Showing the last live snapshot."
+    const val POLL_FAILED_NOTE: String = "Status poll failed. Showing the last live snapshot."
+
     fun map(outcome: SkillBillStatusOutcome, now: Instant): SkillBillStatusUiState =
         when (outcome) {
             is SkillBillStatusOutcome.Idle ->
@@ -66,6 +72,7 @@ object StatusUiMapper {
                     pauseRequested = outcome.pauseRequested,
                     currentModel = outcome.currentModel,
                     currentPhaseExecution = outcome.currentPhaseExecution,
+                    problemSummary = problemSummaryWith(null, outcome.diagnostic),
                     activeDurationMs = outcome.activeDurationMs,
                     activeDurationAsOf = outcome.activeDurationAsOf,
                 )
@@ -99,6 +106,7 @@ object StatusUiMapper {
                     currentModel = outcome.currentModel,
                     currentPhaseExecution = outcome.currentPhaseExecution,
                     pauseReason = outcome.pauseReason,
+                    problemSummary = problemSummaryWith(null, outcome.diagnostic),
                 )
 
             is SkillBillStatusOutcome.Stale ->
@@ -120,7 +128,10 @@ object StatusUiMapper {
                     startedAt = outcome.startedAt,
                     subtaskStartedAt = outcome.subtaskStartedAt,
                     lastUpdated = outcome.updatedAt ?: outcome.observedAt,
-                    problemSummary = if (outcome.fromCache) "Cached status is stale" else "Status is stale",
+                    problemSummary = problemSummaryWith(
+                        if (outcome.fromCache) "Cached status is stale" else "Status is stale",
+                        outcome.diagnostic,
+                    ),
                     planning = relevantPlanning(
                         outcome.planning,
                         outcome.currentSubtaskId,
@@ -151,7 +162,7 @@ object StatusUiMapper {
                     startedAt = outcome.startedAt,
                     subtaskStartedAt = outcome.subtaskStartedAt,
                     lastUpdated = outcome.updatedAt ?: outcome.observedAt,
-                    problemSummary = outcome.summary,
+                    problemSummary = problemSummaryWith(outcome.summary, outcome.diagnostic),
                     stale = outcome.stale,
                     currentModel = outcome.currentModel,
                     currentPhaseExecution = outcome.currentPhaseExecution,
@@ -174,7 +185,7 @@ object StatusUiMapper {
                     startedAt = outcome.startedAt,
                     subtaskStartedAt = outcome.subtaskStartedAt,
                     lastUpdated = outcome.updatedAt ?: outcome.observedAt,
-                    problemSummary = outcome.summary,
+                    problemSummary = problemSummaryWith(outcome.summary, outcome.diagnostic),
                     stale = outcome.stale,
                     currentModel = outcome.currentModel,
                     currentPhaseExecution = outcome.currentPhaseExecution,
@@ -202,6 +213,21 @@ object StatusUiMapper {
                     },
                 )
         }
+
+    private fun problemSummaryWith(base: String?, diagnostic: StatusDiagnostic?): String? {
+        val note = pollFailureNote(diagnostic) ?: return base
+        val kept = base?.takeIf { it.isNotBlank() } ?: return note
+        return "$kept $note"
+    }
+
+    private fun pollFailureNote(diagnostic: StatusDiagnostic?): String? {
+        if (diagnostic?.reasonCode != POLL_FAILED_REASON_CODE) return null
+        return when {
+            diagnostic.timedOut -> POLL_TIMEOUT_NOTE
+            diagnostic.cancelled -> POLL_CANCELLED_NOTE
+            else -> POLL_FAILED_NOTE
+        }
+    }
 
     /**
      * Anchor for work that is no longer running. Elapsed for a settled state is measured

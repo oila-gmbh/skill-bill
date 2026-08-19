@@ -110,6 +110,7 @@ sealed class SkillBillStatusUiState {
         override val pauseRequested: Boolean? = null,
         override val currentModel: CurrentPhaseModel? = null,
         override val currentPhaseExecution: CurrentPhaseExecution? = null,
+        override val problemSummary: String? = null,
         /** Retained so the 1s ticker re-anchors the active clock without a new poll. */
         val activeDurationMs: Long? = null,
         val activeDurationAsOf: Instant? = null,
@@ -141,6 +142,7 @@ sealed class SkillBillStatusUiState {
         override val currentModel: CurrentPhaseModel? = null,
         override val currentPhaseExecution: CurrentPhaseExecution? = null,
         override val pauseReason: PauseReason? = null,
+        override val problemSummary: String? = null,
     ) : SkillBillStatusUiState() {
         override val accessibilityText: String = "$headline (paused)"
     }

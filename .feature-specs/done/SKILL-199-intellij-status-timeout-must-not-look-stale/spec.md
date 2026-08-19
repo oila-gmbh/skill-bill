@@ -106,7 +106,7 @@ Poll failure and contract freshness stay distinct in the UI.
 
 ## Diagnostic Evidence
 
-- `intellij-plugin/src/main/kotlin/dev/skillbill/intellij/domain/Constants.kt` —
+- `../../../intellij-plugin/src/main/kotlin/dev/skillbill/intellij/domain/Constants.kt` —
   `DEFAULT_CLI_TIMEOUT_MS = 10_000L`.
 - `CliSkillBillStatusRepository.kt` — timeout → `UnavailableReason.TIMEOUT`.
 - `StatusRefreshCoordinator.kt:124-127` — `Unavailable` / `Incompatible` →

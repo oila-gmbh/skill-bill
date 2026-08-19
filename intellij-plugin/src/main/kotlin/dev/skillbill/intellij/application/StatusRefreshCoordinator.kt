@@ -2,10 +2,13 @@ package dev.skillbill.intellij.application
 
 import dev.skillbill.intellij.domain.SkillBillStatusOutcome
 import dev.skillbill.intellij.domain.UNCORROBORATED_IDLE_TOLERANCE
+import dev.skillbill.intellij.domain.UnavailableReason
 import dev.skillbill.intellij.domain.isLiveOutcome
+import dev.skillbill.intellij.domain.isPollTransportFailure
 import dev.skillbill.intellij.domain.isUncorroboratedIdle
 import dev.skillbill.intellij.domain.toCacheSnapshotOrNull
 import dev.skillbill.intellij.domain.toStaleOutcome
+import dev.skillbill.intellij.domain.withPollFailure
 import java.nio.file.Path
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
@@ -103,8 +106,8 @@ class StatusRefreshCoordinator(
             } catch (_: kotlinx.coroutines.CancellationException) {
                 return
             } catch (_: Exception) {
-                preferences.getLastKnownDisplayCache()?.toStaleOutcome()
-                    ?: return
+                emit(transportFailureFallback(UnavailableReason.PROCESS_FAILURE) ?: return)
+                return
             }
             // A single unconfirmed idle is usually the gap between two runtime records,
             // not a finished goal: hold the live display until a second sample agrees.
@@ -113,27 +116,37 @@ class StatusRefreshCoordinator(
                 if (held != null && held.isLiveOutcome()) {
                     unconfirmedIdleSamples += 1
                     if (unconfirmedIdleSamples <= UNCORROBORATED_IDLE_TOLERANCE) {
-                        _outcomes.value = held
-                        _events.tryEmit(CoordinatorEvent.Refreshed(held))
+                        emit(held)
                         return
                     }
                 }
             } else {
                 unconfirmedIdleSamples = 0
             }
-            val toEmit = when (outcome) {
-                is SkillBillStatusOutcome.Unavailable,
-                is SkillBillStatusOutcome.Incompatible,
-                -> preferences.getLastKnownDisplayCache()?.toStaleOutcome() ?: outcome
+            val toEmit = when {
+                outcome is SkillBillStatusOutcome.Unavailable && outcome.reasonCode.isPollTransportFailure() ->
+                    transportFailureFallback(outcome.reasonCode) ?: outcome
+
+                outcome is SkillBillStatusOutcome.Unavailable ||
+                    outcome is SkillBillStatusOutcome.Incompatible ->
+                    preferences.getLastKnownDisplayCache()?.toStaleOutcome() ?: outcome
 
                 else -> {
                     outcome.toCacheSnapshotOrNull()?.let { preferences.setLastKnownDisplayCache(it) }
                     outcome
                 }
             }
-            _outcomes.value = toEmit
-            _events.tryEmit(CoordinatorEvent.Refreshed(toEmit))
+            emit(toEmit)
         }
+    }
+
+    private fun transportFailureFallback(reason: UnavailableReason): SkillBillStatusOutcome? =
+        _outcomes.value?.takeIf { it.isLiveOutcome() }?.withPollFailure(reason)
+            ?: preferences.getLastKnownDisplayCache()?.toStaleOutcome()
+
+    private fun emit(outcome: SkillBillStatusOutcome) {
+        _outcomes.value = outcome
+        _events.tryEmit(CoordinatorEvent.Refreshed(outcome))
     }
 }
 

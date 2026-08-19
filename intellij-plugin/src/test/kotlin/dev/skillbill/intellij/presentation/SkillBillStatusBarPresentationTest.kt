@@ -5,7 +5,9 @@ import dev.skillbill.intellij.domain.CurrentPhaseModel
 import dev.skillbill.intellij.domain.FEATURE_GOAL_WORKFLOW_FAMILY
 import dev.skillbill.intellij.domain.MODEL_TEXT_MAX_LENGTH
 import dev.skillbill.intellij.domain.GoalPlanningInfo
+import dev.skillbill.intellij.domain.POLL_FAILED_REASON_CODE
 import dev.skillbill.intellij.domain.SkillBillStatusOutcome
+import dev.skillbill.intellij.domain.StatusDiagnostic
 import java.time.Duration
 import java.time.Instant
 import org.junit.Assert.assertEquals
@@ -677,6 +679,120 @@ class SkillBillStatusBarPresentationTest {
             "model row must stay bounded, was ${long.details.modelText?.length}",
             (long.details.modelText?.length ?: 0) <= MODEL_TEXT_MAX_LENGTH,
         )
+    }
+
+    @Test
+    fun `a live active retained across a timed-out poll keeps active and says the poll timed out`() {
+        val retained = StatusUiMapper.map(
+            activeOutcome(planning = null, currentSubtaskId = "subtask-1", completed = 1)
+                .copy(
+                    currentStepId = "audit",
+                    currentStepLabel = "Audit",
+                    diagnostic = StatusDiagnostic(timedOut = true, reasonCode = POLL_FAILED_REASON_CODE),
+                ),
+            now,
+        )
+        val mapped = SkillBillStatusBarPresentation.map(retained, now)
+        assertEquals("active", mapped.details.lifecycleState)
+        assertEquals("Audit", mapped.details.stepLabel)
+        assertFalse(mapped.isStaleMarked)
+        assertNull(mapped.details.staleNote)
+        assertFalse(mapped.tooltipText.contains(SkillBillStatusBarPresentation.STALE_NOTE))
+        assertEquals(StatusUiMapper.POLL_TIMEOUT_NOTE, mapped.details.problemSummary)
+        assertTrue(mapped.tooltipText.contains(StatusUiMapper.POLL_TIMEOUT_NOTE))
+    }
+
+    @Test
+    fun `a poll failure never replaces the reason a run is blocked failed or stale`() {
+        val marker = StatusDiagnostic(timedOut = true, reasonCode = POLL_FAILED_REASON_CODE)
+        val cases = listOf(
+            "blocked" to SkillBillStatusOutcome.Blocked(
+                observedAt = now,
+                summary = "Waiting on operator decision",
+                repositoryIdentity = "repo",
+                issueKey = "SKILL-165",
+                currentStepId = "audit",
+                currentStepLabel = "Audit",
+                startedAt = started,
+                currentSubtaskId = "subtask-1",
+                subtaskStartedAt = subtaskStarted,
+                updatedAt = now,
+                diagnostic = marker,
+            ),
+            "failed" to SkillBillStatusOutcome.Failed(
+                observedAt = now,
+                summary = "Validate gate did not converge",
+                repositoryIdentity = "repo",
+                issueKey = "SKILL-165",
+                currentStepId = "validate",
+                currentStepLabel = "Validate",
+                startedAt = started,
+                currentSubtaskId = "subtask-1",
+                subtaskStartedAt = subtaskStarted,
+                updatedAt = now,
+                diagnostic = marker,
+            ),
+            "stale" to SkillBillStatusOutcome.Stale(
+                observedAt = now,
+                summary = "working",
+                repositoryIdentity = "repo",
+                issueKey = "SKILL-165",
+                currentStepId = "audit",
+                currentStepLabel = "Audit",
+                progressCompleted = 1,
+                progressTotal = 4,
+                startedAt = started,
+                currentSubtaskId = "subtask-1",
+                subtaskStartedAt = subtaskStarted,
+                updatedAt = now,
+                fromCache = false,
+                diagnostic = marker,
+            ),
+        )
+        val expectedBase = mapOf(
+            "blocked" to "Waiting on operator decision",
+            "failed" to "Validate gate did not converge",
+            "stale" to "Status is stale",
+        )
+        for ((label, outcome) in cases) {
+            val mapped = SkillBillStatusBarPresentation.map(StatusUiMapper.map(outcome, now), now)
+            val problem = mapped.details.problemSummary
+            assertTrue(
+                "$label must keep its own reason, was: $problem",
+                problem != null && problem.contains(expectedBase.getValue(label)),
+            )
+            assertTrue(
+                "$label must also surface the poll-failure note, was: $problem",
+                problem != null && problem.contains(StatusUiMapper.POLL_TIMEOUT_NOTE),
+            )
+        }
+    }
+
+    @Test
+    fun `contract freshness stale keeps the stale label instead of poll-failed copy`() {
+        val mapped = SkillBillStatusBarPresentation.map(
+            StatusUiMapper.map(
+                SkillBillStatusOutcome.Stale(
+                    observedAt = now,
+                    summary = "working",
+                    repositoryIdentity = "repo",
+                    issueKey = "SKILL-165",
+                    currentStepId = "audit",
+                    currentStepLabel = "Audit",
+                    progressCompleted = 1,
+                    progressTotal = 4,
+                    startedAt = started,
+                    currentSubtaskId = "subtask-1",
+                    subtaskStartedAt = subtaskStarted,
+                    updatedAt = now,
+                    fromCache = false,
+                ),
+                now,
+            ),
+            now,
+        )
+        assertEquals(SkillBillStatusBarPresentation.STALE_NOTE, mapped.details.staleNote)
+        assertEquals("Status is stale", mapped.details.problemSummary)
     }
 
     private fun activeOutcome(
