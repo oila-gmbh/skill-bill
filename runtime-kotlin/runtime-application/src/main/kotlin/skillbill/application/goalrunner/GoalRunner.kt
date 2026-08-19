@@ -2156,7 +2156,7 @@ private fun DecompositionManifest.withAttemptedSubtask(subtaskId: Int): Decompos
   status = "in_progress",
   currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = subtaskId, action = "resume"),
   subtasks = subtasks.map { subtask ->
-    if (subtask.id == subtaskId && subtask.status == "blocked") {
+    if (subtask.id == subtaskId && subtask.status in setOf("blocked", "pending")) {
       subtask.copy(status = "in_progress", blockedReason = null)
     } else {
       subtask
