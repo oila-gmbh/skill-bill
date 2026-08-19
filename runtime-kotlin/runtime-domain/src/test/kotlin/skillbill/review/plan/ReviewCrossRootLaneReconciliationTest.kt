@@ -118,6 +118,20 @@ class ReviewCrossRootLaneReconciliationTest {
     assertEquals(mapOf("kmp" to 0, "kotlin" to 1), offsets)
   }
 
+  @Test
+  fun `excluded fallback paths transfer into the surviving native lane for the area`() {
+    val native = root(0, lane("kmp", "architecture", depth = 0, ownedPaths = listOf("a.kt")))
+    val fallback = lane("generic", "architecture", depth = 0, ownedPaths = listOf("fallback.py"))
+
+    val reconciled = ReviewCrossRootLaneReconciliation.reconcile(
+      listOf(native),
+      mapOf("architecture" to fallback),
+    )
+
+    assertEquals(listOf("a.kt", "fallback.py"), reconciled.single().lane.ownedPaths)
+    assertEquals(listOf("hunk-a.kt", "hunk-fallback.py"), reconciled.single().lane.changedHunkIds)
+  }
+
   private fun root(depthOffset: Int, vararg lanes: ReviewLaunchLane) = ReviewRootLanes(depthOffset, lanes.toList())
 
   private fun pack(slug: String, baselines: List<String> = emptyList()) = PlatformManifest(

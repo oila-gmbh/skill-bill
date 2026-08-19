@@ -430,6 +430,7 @@ fun reviewPack(
   layers: List<CodeReviewBaselineLayer> = emptyList(),
   routingSignals: List<String> = emptyList(),
   contentSignals: List<String> = emptyList(),
+  fallback: Boolean = false,
 ) = PlatformManifest(
   slug = slug,
   packRoot = Path.of("platform-packs", slug),
@@ -450,6 +451,7 @@ fun reviewPack(
   areaMetadata = emptyMap(),
   laneConditions = areas.associateWith { ReviewLaneCondition(path = listOf("*")) },
   codeReviewComposition = layers.takeIf { it.isNotEmpty() }?.let(::CodeReviewComposition),
+  fallbackCapabilities = if (fallback) setOf("code-review") else emptySet(),
 )
 
 /**

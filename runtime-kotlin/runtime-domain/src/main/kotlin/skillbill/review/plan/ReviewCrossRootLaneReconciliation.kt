@@ -31,7 +31,10 @@ object ReviewCrossRootLaneReconciliation {
     return offsets.mapValues { (_, offset) -> if (offset == Int.MAX_VALUE) 0 else offset }
   }
 
-  fun reconcile(roots: List<ReviewRootLanes>): List<ReviewReconciledLane> {
+  fun reconcile(
+    roots: List<ReviewRootLanes>,
+    excludedFallbackLanesByArea: Map<String, ReviewLaunchLane> = emptyMap(),
+  ): List<ReviewReconciledLane> {
     val candidates = roots.flatMap { root -> root.lanes.map { Candidate(root.depthOffset + it.depth, it) } }
       .sortedWith(
         compareBy<Candidate>(
@@ -55,7 +58,7 @@ object ReviewCrossRootLaneReconciliation {
         )
       }
       val ownerLanes = areaCandidates.filter { it.lane.packSlug == owners.single() }.map { it.lane }
-      val inputs = areaCandidates.map { it.lane }
+      val inputs = areaCandidates.map { it.lane } + listOfNotNull(excludedFallbackLanesByArea[area])
       Candidate(
         nearestDepth,
         nearest.first().lane.copy(
