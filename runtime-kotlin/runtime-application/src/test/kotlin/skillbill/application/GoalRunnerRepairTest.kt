@@ -1,5 +1,6 @@
 package skillbill.application
 
+import skillbill.application.featuretask.phaseRecordsFrom
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
@@ -9,6 +10,7 @@ import skillbill.application.goalrunner.GoalRunnerStatusService
 import skillbill.application.goalrunner.PASSED_CONTINUATION_OUTCOME
 import skillbill.application.goalrunner.PASSED_REMEDIATION_BASE
 import skillbill.application.goalrunner.PASSED_REVIEW_BASE
+import skillbill.application.goalrunner.PASSED_UPSTREAM_OUTPUT
 import skillbill.application.goalrunner.PASSED_VALIDATION_DEPTH
 import skillbill.application.goalrunner.WorkflowGoalRunnerOutcomeStore
 import skillbill.application.model.GoalRunnerRepairRequest
@@ -46,7 +48,9 @@ import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
 import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.model.WorkflowUpdateInput
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
@@ -120,6 +124,7 @@ class GoalRunnerRepairTest {
         PASSED_REVIEW_BASE,
         PASSED_REMEDIATION_BASE,
         PASSED_CONTINUATION_OUTCOME,
+        PASSED_UPSTREAM_OUTPUT,
       ),
       diagnosis.passedChecks,
     )
@@ -190,6 +195,106 @@ class GoalRunnerRepairTest {
   }
 
   @Test
+  fun `diagnosis names completed upstream missing settled output`() {
+    val workflows = InMemoryWorkflowStates()
+    val workflowId = "wftr-repair-unsettled-upstream"
+    val artifacts = linkedMapOf<String, Any?>(
+      "goal_continuation" to continuationMap(includeValidationDepth = true),
+      GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to healthyReviewState().toArtifactMap(),
+      FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to mapOf(
+        "plan_fix" to unsettledUpstreamPhaseRecord("plan_fix").toArtifactMap(),
+        "implement_fix" to unsettledUpstreamPhaseRecord(
+          phaseId = "implement_fix",
+          status = "blocked",
+          blockedReason = "Phase 'implement_fix' requires upstream output(s) plan_fix that are not present",
+        ).toArtifactMap(),
+      ),
+    )
+    val definition = WorkflowFamily.TASK_RUNTIME.definition
+    val engine = WorkflowEngine(testWorkflowSnapshotValidator)
+    val opened = engine.openRecord(definition, workflowId, "fis-repair", "implement_fix")
+    workflows.saveFeatureTaskRuntimeWorkflow(
+      engine.updateRecord(
+        definition,
+        opened,
+        WorkflowUpdateInput(
+          workflowStatus = "running",
+          currentStepId = "implement_fix",
+          stepUpdates = null,
+          artifactsPatch = artifacts,
+          sessionId = "ftr-repair",
+        ),
+      ).toRecord(),
+    )
+    val store = repairStore(workflows, git = ReachableGit())
+
+    val diagnosis = store.diagnoseChildWedges(
+      workflowId = workflowId,
+      issueKey = ISSUE_KEY,
+      subtaskId = 1,
+      subtasks = listOf(subtask(1, workflowId)),
+      repoRoot = Path.of("."),
+    )
+
+    assertEquals(GoalRunnerWedgeClass.COMPLETED_UPSTREAM_MISSING_OUTPUT, diagnosis.wedges.single().wedgeClass)
+    assertEquals("plan_fix", diagnosis.wedges.single().field)
+    assertFalse(PASSED_UPSTREAM_OUTPUT in diagnosis.passedChecks)
+  }
+
+  @Test
+  fun `repairing completed upstream missing output reopens plan_fix and clears implement_fix block`() {
+    val workflows = InMemoryWorkflowStates()
+    val workflowId = "wftr-repair-apply-unsettled-upstream"
+    val artifacts = linkedMapOf<String, Any?>(
+      "goal_continuation" to continuationMap(includeValidationDepth = true),
+      GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to healthyReviewState().toArtifactMap(),
+      FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to mapOf(
+        "plan_fix" to unsettledUpstreamPhaseRecord("plan_fix").toArtifactMap(),
+        "implement_fix" to unsettledUpstreamPhaseRecord(
+          phaseId = "implement_fix",
+          status = "blocked",
+          blockedReason = "Phase 'implement_fix' requires upstream output(s) plan_fix that are not present",
+        ).toArtifactMap(),
+      ),
+    )
+    val definition = WorkflowFamily.TASK_RUNTIME.definition
+    val engine = WorkflowEngine(testWorkflowSnapshotValidator)
+    val opened = engine.openRecord(definition, workflowId, "fis-repair", "implement_fix")
+    workflows.saveFeatureTaskRuntimeWorkflow(
+      engine.updateRecord(
+        definition,
+        opened,
+        WorkflowUpdateInput(
+          workflowStatus = "blocked",
+          currentStepId = "implement_fix",
+          stepUpdates = null,
+          artifactsPatch = artifacts,
+          sessionId = "ftr-repair",
+        ),
+      ).toRecord(),
+    )
+    val store = repairStore(workflows, git = ReachableGit())
+
+    val applied = store.applyChildWedgeRepairs(
+      workflowId = workflowId,
+      issueKey = ISSUE_KEY,
+      subtaskId = 1,
+      wedgeClasses = listOf(GoalRunnerWedgeClass.COMPLETED_UPSTREAM_MISSING_OUTPUT),
+      subtasks = listOf(subtask(1, workflowId)),
+      repoRoot = Path.of("."),
+    )
+
+    assertEquals(1, applied.repairs.size)
+    assertEquals("plan_fix", applied.repairs.single().field)
+    val updated = requireNotNull(workflows.getFeatureTaskRuntimeWorkflow(workflowId))
+    assertEquals("running", updated.workflowStatus)
+    assertEquals("plan_fix", updated.currentStepId)
+    val records = phaseRecordsFrom(decodeArtifacts(updated.artifactsJson))
+    assertEquals("pending", records.getValue("plan_fix").status)
+    assertEquals("pending", records.getValue("implement_fix").status)
+  }
+
+  @Test
   fun `repairing missing validation_depth preserves review passes and stamps depth with evidence`() {
     val workflows = InMemoryWorkflowStates()
     val workflowId = "wftr-repair-apply-depth"
@@ -224,8 +329,8 @@ class GoalRunnerRepairTest {
       repoRoot = Path.of("."),
     )
 
-    assertEquals(1, applied.size)
-    assertEquals("build_only", applied.single().newValue)
+    assertEquals(1, applied.repairs.size)
+    assertEquals("build_only", applied.repairs.single().newValue)
     val after = decodeArtifacts(
       requireNotNull(workflows.getFeatureTaskRuntimeWorkflow(workflowId)).artifactsJson,
     )
@@ -280,9 +385,9 @@ class GoalRunnerRepairTest {
       repoRoot = Path.of("."),
     )
 
-    assertEquals(1, applied.size)
-    assertEquals(staleReason, applied.single().priorValue)
-    assertNull(applied.single().newValue)
+    assertEquals(1, applied.repairs.size)
+    assertEquals(staleReason, applied.repairs.single().priorValue)
+    assertNull(applied.repairs.single().newValue)
     val after = decodeArtifacts(
       requireNotNull(workflows.getFeatureTaskRuntimeWorkflow(workflowId)).artifactsJson,
     )
@@ -331,9 +436,9 @@ class GoalRunnerRepairTest {
       repoRoot = Path.of("."),
     )
 
-    assertEquals(1, applied.size)
-    assertEquals(unreachable, applied.single().priorValue)
-    assertEquals(recovered, applied.single().newValue)
+    assertEquals(1, applied.repairs.size)
+    assertEquals(unreachable, applied.repairs.single().priorValue)
+    assertEquals(recovered, applied.repairs.single().newValue)
     val after = decodeArtifacts(
       requireNotNull(workflows.getFeatureTaskRuntimeWorkflow(workflowId)).artifactsJson,
     )
@@ -563,6 +668,22 @@ class GoalRunnerRepairTest {
     specPath = ".feature-specs/$ISSUE_KEY/spec_subtask_$id.md",
     status = if (workflowId == null) "pending" else "in_progress",
     workflowId = workflowId,
+  )
+
+  private fun unsettledUpstreamPhaseRecord(
+    phaseId: String,
+    status: String = "completed",
+    blockedReason: String? = null,
+  ): FeatureTaskRuntimePhaseRecord = FeatureTaskRuntimePhaseRecord(
+    phaseId = phaseId,
+    status = status,
+    attemptCount = 1,
+    startedAt = "2026-08-19T10:00:00Z",
+    resolvedAgentId = "cursor",
+    outputArtifact = null,
+    blockedReason = blockedReason,
+    loopId = "review_fix",
+    edgeIteration = 1,
   )
 
   private class RepairManifestStore(

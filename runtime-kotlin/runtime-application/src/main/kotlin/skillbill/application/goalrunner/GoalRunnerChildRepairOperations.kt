@@ -1,14 +1,23 @@
 package skillbill.application.goalrunner
 
 import skillbill.application.decomposition.decodeArtifacts
+import skillbill.application.featuretask.buildCompletedUpstreamMissingOutputRepair
+import skillbill.application.featuretask.diagnoseUnsettledCompletedUpstreamPhaseId
+import skillbill.application.featuretask.featureSizeFromArtifacts
+import skillbill.application.featuretask.phaseLedgerFrom
+import skillbill.application.featuretask.phaseRecordsFrom
 import skillbill.application.model.GoalRunnerAppliedRepair
+import skillbill.application.model.GoalRunnerChildRepairApplyResult
 import skillbill.application.model.GoalRunnerChildWedgeDiagnosis
 import skillbill.application.model.GoalRunnerWedgeClass
 import skillbill.application.model.GoalRunnerWedgeFinding
 import skillbill.application.workflow.WorkflowFamily
+import skillbill.application.workflow.updateGoalParentForBlockedPhaseRetry
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
+import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.workflow.WorkflowGitOperations
+import skillbill.workflow.DecompositionManifestValidator
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineRecoveryRequest
 import skillbill.ports.workflow.model.GoalSubtaskReviewInputFailureReason
 import skillbill.ports.workflow.recoverGoalSubtaskReviewBaseline
@@ -30,6 +39,7 @@ internal const val PASSED_VALIDATION_DEPTH: String = "validation_depth_present"
 internal const val PASSED_REVIEW_BASE: String = "review_base_reachable"
 internal const val PASSED_REMEDIATION_BASE: String = "remediation_base_reachable_or_absent"
 internal const val PASSED_CONTINUATION_OUTCOME: String = "continuation_outcome_corroborated_or_absent"
+internal const val PASSED_UPSTREAM_OUTPUT: String = "upstream_output_present"
 
 /**
  * Shared diagnosis/repair helpers for [WorkflowGoalRunnerOutcomeStore]. Reachability uses
@@ -39,6 +49,7 @@ internal const val PASSED_CONTINUATION_OUTCOME: String = "continuation_outcome_c
 internal class GoalRunnerChildRepairOperations(
   private val engine: WorkflowEngine,
   private val gitOperations: WorkflowGitOperations,
+  private val decompositionManifestValidator: DecompositionManifestValidator? = null,
 ) {
   fun diagnose(
     workflowStates: WorkflowStateRepository,
@@ -56,6 +67,7 @@ internal class GoalRunnerChildRepairOperations(
     diagnoseValidationDepth(artifacts, wedges, passed)
     diagnoseReviewBases(artifacts, repoRoot, wedges, passed)
     diagnoseStaleBlockedOutcome(record, artifacts, issueKey, subtaskId, wedges, passed)
+    diagnoseCompletedUpstreamMissingOutput(artifacts, wedges, passed)
 
     return GoalRunnerChildWedgeDiagnosis(
       subtaskId = subtaskId,
@@ -72,16 +84,17 @@ internal class GoalRunnerChildRepairOperations(
     "LoopWithTooManyJumpStatements",
   ) // SKILL-176: one transactional repair pass; each wedge class is a distinct continue/apply branch
   fun apply(
-    workflowStates: WorkflowStateRepository,
+    unitOfWork: UnitOfWork,
     workflowId: String,
     issueKey: String,
     subtaskId: Int,
     wedgeClasses: List<GoalRunnerWedgeClass>,
     subtasks: List<DecompositionSubtask>,
     repoRoot: Path,
-  ): List<GoalRunnerAppliedRepair> {
-    if (wedgeClasses.isEmpty()) return emptyList()
-    val record = WorkflowFamily.TASK_RUNTIME.get(workflowStates, workflowId) ?: return emptyList()
+  ): GoalRunnerChildRepairApplyResult {
+    if (wedgeClasses.isEmpty()) return GoalRunnerChildRepairApplyResult()
+    val workflowStates = unitOfWork.workflowStates
+    val record = WorkflowFamily.TASK_RUNTIME.get(workflowStates, workflowId) ?: return GoalRunnerChildRepairApplyResult()
     val artifacts = decodeArtifacts(record.artifactsJson)
     val patch = linkedMapOf<String, Any?>()
     val applied = mutableListOf<GoalRunnerAppliedRepair>()
@@ -208,10 +221,46 @@ internal class GoalRunnerChildRepairOperations(
           applied += repair
           evidenceEntries += repairEvidenceMap(repair)
         }
+        GoalRunnerWedgeClass.COMPLETED_UPSTREAM_MISSING_OUTPUT -> {
+          val phaseRecords = phaseRecordsFrom(artifacts)
+          val featureSize = featureSizeFromArtifacts(artifacts)
+          val resumePhaseId = diagnoseUnsettledCompletedUpstreamPhaseId(phaseRecords, featureSize) ?: continue
+          val input = buildCompletedUpstreamMissingOutputRepair(
+            phaseRecords = phaseRecords,
+            ledger = phaseLedgerFrom(artifacts),
+            featureSize = featureSize,
+            resumePhaseId = resumePhaseId,
+            reason = "Operator goal repair reopened '$resumePhaseId' because a completed upstream phase " +
+              "record had no settled output for a blocked consumer.",
+          )
+          val updated = engine.updateRecord(WorkflowFamily.TASK_RUNTIME.definition, record, input)
+          WorkflowFamily.TASK_RUNTIME.save(workflowStates, updated)
+          val projection = decompositionManifestValidator?.let { validator ->
+            engine.updateGoalParentForBlockedPhaseRetry(
+              unitOfWork = unitOfWork,
+              childWorkflowId = workflowId,
+              childArtifacts = decodeArtifacts(updated.artifactsJson),
+              phaseId = resumePhaseId,
+              validator = validator,
+            )
+          }
+          val repair = GoalRunnerAppliedRepair(
+            subtaskId = subtaskId,
+            workflowId = workflowId,
+            wedgeClass = wedgeClass,
+            field = resumePhaseId,
+            priorValue = "completed_without_output",
+            newValue = "pending",
+          )
+          return GoalRunnerChildRepairApplyResult(
+            repairs = listOf(repair),
+            manifestProjectionArtifactsJson = projection,
+          )
+        }
       }
     }
 
-    if (applied.isEmpty()) return emptyList()
+    if (applied.isEmpty()) return GoalRunnerChildRepairApplyResult()
     patch[GOAL_CHILD_REPAIR_EVIDENCE_ARTIFACT_KEY] = priorEvidence + evidenceEntries
     val updated = engine.updateRecord(
       WorkflowFamily.TASK_RUNTIME.definition,
@@ -225,7 +274,7 @@ internal class GoalRunnerChildRepairOperations(
       ),
     )
     WorkflowFamily.TASK_RUNTIME.save(workflowStates, updated)
-    return applied
+    return GoalRunnerChildRepairApplyResult(repairs = applied)
   }
 
   private fun healthyDiagnosis(subtaskId: Int, workflowId: String) = GoalRunnerChildWedgeDiagnosis(
@@ -236,8 +285,30 @@ internal class GoalRunnerChildRepairOperations(
       PASSED_REVIEW_BASE,
       PASSED_REMEDIATION_BASE,
       PASSED_CONTINUATION_OUTCOME,
+      PASSED_UPSTREAM_OUTPUT,
     ),
   )
+
+  private fun diagnoseCompletedUpstreamMissingOutput(
+    artifacts: Map<String, Any?>,
+    wedges: MutableList<GoalRunnerWedgeFinding>,
+    passed: MutableList<String>,
+  ) {
+    val phaseRecords = phaseRecordsFrom(artifacts)
+    val resumePhaseId = diagnoseUnsettledCompletedUpstreamPhaseId(
+      phaseRecords,
+      featureSizeFromArtifacts(artifacts),
+    )
+    if (resumePhaseId == null) {
+      passed += PASSED_UPSTREAM_OUTPUT
+      return
+    }
+    wedges += GoalRunnerWedgeFinding(
+      wedgeClass = GoalRunnerWedgeClass.COMPLETED_UPSTREAM_MISSING_OUTPUT,
+      field = resumePhaseId,
+      currentValue = "completed_without_output",
+    )
+  }
 
   private fun diagnoseValidationDepth(
     artifacts: Map<String, Any?>,

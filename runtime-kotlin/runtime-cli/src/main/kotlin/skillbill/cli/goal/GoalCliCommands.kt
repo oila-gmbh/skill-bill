@@ -859,7 +859,8 @@ class GoalRepairCommand(
     "Default is inspect-only; pass --apply to act. " +
     "Clears: missing validation_depth on the continuation artifact; unreachable stored " +
     "review_base_sha; unreachable stored remediation_base_sha; stale blocked " +
-    "goal_continuation_outcome. Does not touch: completed commit shas, review pass history, " +
+    "goal_continuation_outcome; completed upstream phase records missing settled output for a " +
+    "blocked consumer. Does not touch: completed commit shas, review pass history, " +
     "audit repair state, planning checkpoints, or anything goal reset/replan/accept own.",
 ) {
   private val issueKey by argument(help = "Parent issue key for the decomposed goal.")

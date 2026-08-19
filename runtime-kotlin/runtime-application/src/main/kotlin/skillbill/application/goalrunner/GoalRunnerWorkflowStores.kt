@@ -11,8 +11,10 @@ import skillbill.application.decomposition.loadManifestOrNull
 import skillbill.application.decomposition.withParentStatus
 import skillbill.application.featuretask.FeatureTaskExecutionIdentityPolicy
 import skillbill.application.featuretask.FeatureTaskRuntimeCrashLiveness
+import skillbill.application.featuretask.asPendingForOperatorResume
 import skillbill.application.featuretask.phaseLedgerFrom
 import skillbill.application.featuretask.phaseRecordsFrom
+import skillbill.application.model.GoalRunnerChildRepairApplyResult
 import skillbill.application.normalizeRequiredIssueKey
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.decompositionRuntime
@@ -1551,9 +1553,10 @@ class WorkflowGoalRunnerOutcomeStore(
   // Injectable liveness probe for goal-parent crash reconciliation (AC-005). The no-op default never
   // confirms a process dead, so a seam wired without a real supervisor never reconciles.
   private val workerSupervisor: FeatureTaskRuntimeWorkerSupervisor = NoopFeatureTaskRuntimeWorkerSupervisor,
+  private val decompositionManifestValidator: DecompositionManifestValidator? = null,
 ) : GoalRunnerWorkflowOutcomeStore, GoalRunnerAttemptLedgerStore, GoalRunnerChildRepairStore {
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
-  private val childRepair = GoalRunnerChildRepairOperations(engine, gitOperations)
+  private val childRepair = GoalRunnerChildRepairOperations(engine, gitOperations, decompositionManifestValidator)
 
   override fun diagnoseChildWedges(
     workflowId: String,
@@ -1580,9 +1583,9 @@ class WorkflowGoalRunnerOutcomeStore(
     subtasks: List<DecompositionSubtask>,
     repoRoot: Path,
     dbPathOverride: String?,
-  ): List<skillbill.application.model.GoalRunnerAppliedRepair> = database.transaction(dbPathOverride) { unitOfWork ->
+  ): GoalRunnerChildRepairApplyResult = database.transaction(dbPathOverride) { unitOfWork ->
     childRepair.apply(
-      workflowStates = unitOfWork.workflowStates,
+      unitOfWork = unitOfWork,
       workflowId = workflowId,
       issueKey = issueKey,
       subtaskId = subtaskId,
@@ -3191,16 +3194,3 @@ private fun Any?.asGoalRunnerIntOrNull(): Int? = when (this) {
   is String -> toIntOrNull()
   else -> null
 }
-
-private fun FeatureTaskRuntimePhaseRecord.asPendingForOperatorResume(): FeatureTaskRuntimePhaseRecord = copy(
-  status = "pending",
-  finishedAt = null,
-  durationMillis = null,
-  outputArtifact = null,
-  rejectedOutput = null,
-  blockedReason = null,
-  failureDisposition = null,
-  fileManifestBefore = emptyList(),
-  fileManifestAfter = emptyList(),
-  fileManifestIntroduced = emptyList(),
-)

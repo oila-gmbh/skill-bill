@@ -359,6 +359,7 @@ enum class GoalRunnerWedgeClass(val wireValue: String, val durableField: String)
   UNREACHABLE_REVIEW_BASE("unreachable_review_base", "review_base_sha"),
   UNREACHABLE_REMEDIATION_BASE("unreachable_remediation_base", "remediation_base_sha"),
   STALE_BLOCKED_CONTINUATION_OUTCOME("stale_blocked_continuation_outcome", "goal_continuation_outcome"),
+  COMPLETED_UPSTREAM_MISSING_OUTPUT("completed_upstream_missing_output", "phase_output"),
   ;
 
   companion object {
@@ -414,6 +415,11 @@ data class GoalRunnerChildWedgeDiagnosis(
 ) {
   val isHealthy: Boolean get() = wedges.isEmpty()
 }
+
+data class GoalRunnerChildRepairApplyResult(
+  val repairs: List<GoalRunnerAppliedRepair> = emptyList(),
+  val manifestProjectionArtifactsJson: String? = null,
+)
 
 data class GoalRunnerAppliedRepair(
   val subtaskId: Int,

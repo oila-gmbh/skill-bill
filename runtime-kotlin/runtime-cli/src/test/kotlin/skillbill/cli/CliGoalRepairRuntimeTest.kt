@@ -27,6 +27,7 @@ class CliGoalRepairRuntimeTest {
     assertContains(result.stdout, "review_base_sha")
     assertContains(result.stdout, "remediation_base_sha")
     assertContains(result.stdout, "goal_continuation_outcome")
+    assertContains(result.stdout, "completed upstream")
     // Clikt wraps help across lines; normalize whitespace so mid-phrase wraps do not flake.
     val help = result.stdout.replace(Regex("\\s+"), " ")
     assertContains(help, "Does not touch")

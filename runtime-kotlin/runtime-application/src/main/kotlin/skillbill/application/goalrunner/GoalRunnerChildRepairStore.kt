@@ -1,6 +1,6 @@
 package skillbill.application.goalrunner
 
-import skillbill.application.model.GoalRunnerAppliedRepair
+import skillbill.application.model.GoalRunnerChildRepairApplyResult
 import skillbill.application.model.GoalRunnerChildWedgeDiagnosis
 import skillbill.application.model.GoalRunnerWedgeClass
 import skillbill.workflow.model.DecompositionSubtask
@@ -34,7 +34,7 @@ interface GoalRunnerChildRepairStore {
     subtasks: List<DecompositionSubtask>,
     repoRoot: Path,
     dbPathOverride: String? = null,
-  ): List<GoalRunnerAppliedRepair>
+  ): GoalRunnerChildRepairApplyResult
 }
 
 object NoopGoalRunnerChildRepairStore : GoalRunnerChildRepairStore {
@@ -53,6 +53,7 @@ object NoopGoalRunnerChildRepairStore : GoalRunnerChildRepairStore {
       "review_base_reachable",
       "remediation_base_reachable_or_absent",
       "continuation_outcome_corroborated_or_absent",
+      "upstream_output_present",
     ),
   )
 
@@ -64,5 +65,5 @@ object NoopGoalRunnerChildRepairStore : GoalRunnerChildRepairStore {
     subtasks: List<DecompositionSubtask>,
     repoRoot: Path,
     dbPathOverride: String?,
-  ): List<GoalRunnerAppliedRepair> = emptyList()
+  ): GoalRunnerChildRepairApplyResult = GoalRunnerChildRepairApplyResult()
 }
