@@ -7,6 +7,7 @@ import kotlin.io.path.writeText
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
@@ -121,6 +122,46 @@ class GitCheckpointHistoryOperationsTest {
     assertFalse(siblingPrefix.ok)
     assertEquals(sha, runGitCommand(repo, "rev-parse", "refs/heads/main").value.trim())
     assertEquals(emptyMap(), listedRefs())
+  }
+
+  // AC-006/AC-007: the amend discards a commit from branch history, so the ref written first is the
+  // only thing that can still reach it. A ref that did not survive the amend means the runtime threw
+  // away a checkpoint nothing can recover.
+  @Test
+  fun `a pre-amend ref keeps the discarded commit reachable while git log never lists it`() {
+    val preAmend = head()
+    val ref = "${CHECKPOINT_PREFIX}SKILL-190/3/0"
+    assertTrue(GitCheckpointHistoryOperations.updateRef(repo, CHECKPOINT_PREFIX, ref, preAmend).ok)
+    write("owned/Base.kt", "amended\n")
+    git("add", "--", "owned/Base.kt")
+
+    assertTrue(GitCheckpointHistoryOperations.amendHeadCommit(repo, preAmend).ok)
+
+    assertTrue(head() != preAmend, "the amend must have rewritten HEAD")
+    assertEquals(
+      preAmend,
+      GitCheckpointHistoryOperations.resolveRef(repo, CHECKPOINT_PREFIX, ref).value.trim(),
+      "the pre-amend commit must stay reachable through its checkpoint ref",
+    )
+    assertEquals(
+      listOf(head()),
+      runGitCommand(repo, "log", "--format=%H").value.orEmpty().lines().filter(String::isNotBlank),
+      "checkpoint refs must not appear in branch history",
+    )
+  }
+
+  // The create-or-amend fallback reads the subtask trailer off HEAD, so the whole body must come back.
+  @Test
+  fun `the HEAD commit message read returns the full body including its trailer`() {
+    write("owned/Base.kt", "trailered\n")
+    git("add", "--", "owned/Base.kt")
+    git("commit", "-m", "SKILL-190: subtask work\n\nphase=audit generation=0\n\nSkill-Bill-Subtask: SKILL-190/3\n")
+
+    val message = GitCheckpointHistoryOperations.headCommitMessage(repo)
+
+    assertTrue(message.ok, message.error)
+    assertContains(message.value, "Skill-Bill-Subtask: SKILL-190/3")
+    assertContains(message.value, "phase=audit generation=0")
   }
 
   private fun listedRefs(): Map<String, String> = GitCheckpointHistoryOperations

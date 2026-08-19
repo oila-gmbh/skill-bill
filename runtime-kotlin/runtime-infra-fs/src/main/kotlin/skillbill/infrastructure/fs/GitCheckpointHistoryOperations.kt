@@ -58,6 +58,12 @@ internal object GitCheckpointHistoryOperations : CheckpointHistoryGitOperations 
     return runGitCommand(repoRoot, "rev-parse", "HEAD")
   }
 
+  override fun headCommitMessage(repoRoot: Path): WorkflowGitOperationResult {
+    val message = runGitCommand(repoRoot, "log", "-1", "--format=%B")
+    if (!message.ok) return message
+    return WorkflowGitOperationResult(status = "ok", value = message.value.orEmpty())
+  }
+
   override fun updateRef(
     repoRoot: Path,
     namespacePrefix: String,

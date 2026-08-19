@@ -710,6 +710,7 @@ class WorkflowGoalRunnerManifestStore(
       codeReviewMode = setup.reviewPolicy.codeReviewMode,
       validationDepth = validationDepthForSubtask(state.manifest.subtasks, setup.subtaskId),
       parallelReviewAgent = setup.reviewPolicy.parallelReviewAgent,
+      subtaskName = state.manifest.subtasks.firstOrNull { it.id == setup.subtaskId }?.name?.takeIf(String::isNotBlank),
     ).toArtifactMap(),
     GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to GoalSubtaskReviewState.initial(
       reviewBaseSha = setup.reviewBaseline.reviewBaseSha,

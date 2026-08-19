@@ -58,12 +58,17 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
       ?: return@transaction false
     val artifacts = decodeArtifacts(record.artifactsJson)
     val existingContinuation = continuationFromArtifacts(artifacts)
-    check(existingContinuation.compatibleWith(request.continuation)) {
+    // The manifest subtask name reaches the row only from the goal parent. A launcher that supplies
+    // none must not erase it, or the provisional commit subject silently regresses to the fallback.
+    val supplied = request.continuation?.let { continuation ->
+      continuation.copy(subtaskName = continuation.subtaskName ?: existingContinuation?.subtaskName)
+    }
+    check(existingContinuation.compatibleWith(supplied)) {
       "Goal continuation is immutable for workflow '${request.workflowId}'; " +
         "parent, subtask, branch, and review mode cannot change on resume."
     }
-    val continuationPatch = continuationPatch(request.continuation, existingContinuation)
-    val reviewStatePatch = reviewStatePatch(request, artifacts, existingContinuation)
+    val continuationPatch = continuationPatch(supplied, existingContinuation)
+    val reviewStatePatch = reviewStatePatch(request.copy(continuation = supplied), artifacts, existingContinuation)
     val outcomePatch = request.outcome?.let {
       mapOf(FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_OUTCOME_ARTIFACT_KEY to it.toArtifactMap())
     }.orEmpty()

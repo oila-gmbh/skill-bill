@@ -32,7 +32,13 @@ private const val OWNED_PATH_DIGEST_DELIMITER: Char = '\u0000'
  */
 const val FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID: String = "standalone"
 
-private const val CHECKPOINT_REF_PREFIX: String = "refs/skill-bill/checkpoints"
+/**
+ * The one ref namespace runtime checkpoint refs live in. Every ref write is confined to it, so nothing
+ * in this ceremony can move or delete a branch ref.
+ */
+const val FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE: String = "refs/skill-bill/checkpoints"
+
+private const val CHECKPOINT_REF_PREFIX: String = FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE
 
 /**
  * The one place a checkpoint ref name is minted. Deterministic in its inputs so a resume that

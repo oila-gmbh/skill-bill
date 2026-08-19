@@ -50,12 +50,16 @@ import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.persistence.ProducerOutputEvidence
+import skillbill.ports.workflow.amendHeadCommit
 import skillbill.ports.workflow.buildGoalSubtaskReviewInput
 import skillbill.ports.workflow.captureIndexState
+import skillbill.ports.workflow.headCommitMessage
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
+import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.pathContentIdentities
 import skillbill.ports.workflow.repositoryCheckpointFingerprint
+import skillbill.ports.workflow.resolveCheckpointRef
 import skillbill.ports.workflow.repositoryFingerprint
 import skillbill.ports.workflow.repositoryOwnedPaths
 import skillbill.ports.workflow.restoreIndexState
@@ -63,6 +67,7 @@ import skillbill.ports.workflow.runtimePhaseChangedPathsBetweenCommits
 import skillbill.ports.workflow.runtimePhaseHeadCommit
 import skillbill.ports.workflow.stagePaths
 import skillbill.ports.workflow.stagedPaths
+import skillbill.ports.workflow.updateCheckpointRef
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.telemetry.estimation.estimateTokens
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
@@ -73,6 +78,7 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeTransitionFunction
 import skillbill.workflow.taskruntime.model.CorrectiveRepairCapturedResponse
 import skillbill.workflow.taskruntime.model.CorrectiveRepairDiagnosticLocator
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairGapIdentities
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
@@ -804,17 +810,15 @@ internal class FeatureTaskRuntimeRunLoop(
       )
       return null
     }
-    val message = FeatureTaskRuntimeCheckpointMessage.build(
-      issueKey = request.issueKey,
+    val subtaskIdentity = subtaskCommitIdentity()
+    val message = checkpointCommitMessage(
       branch = branch,
-      identity = FeatureTaskRuntimeCheckpointIdentity(
-        phaseId = precedingPhaseId,
-        loopId = loopId,
-        generation = checkpointGeneration(loopId),
-      ),
+      phaseId = precedingPhaseId,
+      loopId = loopId,
+      identity = subtaskIdentity,
       intent = FeatureTaskRuntimeCheckpointMessage.INTENT_REMEDIATION,
     )
-    val commit = phaseGates.gitOperations.createCommit(request.repoRoot, message)
+    val commit = writeSubtaskCommit(branch, message, subtaskIdentity)
     if (!commit.ok) {
       blockCheckpoint(
         precedingPhaseId,
@@ -1315,17 +1319,15 @@ internal class FeatureTaskRuntimeRunLoop(
         blockedReason,
       )
     }
-    val message = FeatureTaskRuntimeCheckpointMessage.build(
-      issueKey = request.issueKey,
+    val subtaskIdentity = subtaskCommitIdentity()
+    val message = checkpointCommitMessage(
       branch = branch,
-      identity = FeatureTaskRuntimeCheckpointIdentity(
-        phaseId = precedingPhaseId,
-        loopId = loopId,
-        generation = checkpointGeneration(loopId),
-      ),
+      phaseId = precedingPhaseId,
+      loopId = loopId,
+      identity = subtaskIdentity,
       intent = intent,
     )
-    val commit = phaseGates.gitOperations.createCommit(request.repoRoot, message)
+    val commit = writeSubtaskCommit(branch, message, subtaskIdentity)
     if (!commit.ok) {
       return blockCheckpoint(
         precedingPhaseId,
@@ -1344,6 +1346,155 @@ internal class FeatureTaskRuntimeRunLoop(
       blockedReason = blockedReason,
     )
   }
+
+  /**
+   * The subtask every checkpoint of this run belongs to. A standalone feature-task run owns no
+   * decomposed subtask; the reserved literal keeps one commit and one ref namespace per run anyway.
+   */
+  private fun subtaskCommitIdentity(): FeatureTaskRuntimeSubtaskCommitIdentity =
+    FeatureTaskRuntimeSubtaskCommitIdentity(
+      issueKey = request.issueKey,
+      subtaskId = request.goalContinuation?.subtaskId?.toString() ?: FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID,
+    )
+
+  private fun checkpointCommitMessage(
+    branch: String,
+    phaseId: String,
+    loopId: String?,
+    identity: FeatureTaskRuntimeSubtaskCommitIdentity,
+    intent: String,
+  ): String {
+    val subtaskName = request.goalContinuation?.subtaskName?.trim()?.takeIf(String::isNotBlank)
+    // A standalone run has no manifest to carry a name, so only a goal continuation missing one is a
+    // degradation worth a record.
+    if (subtaskName == null && request.goalContinuation != null) {
+      runCatching {
+        diagnostics.warning(
+          FeatureTaskRuntimeCheckpointMessage.missingSubtaskNameRecord(identity.issueKey, identity.subtaskId),
+        )
+      }
+    }
+    return FeatureTaskRuntimeCheckpointMessage.build(
+      issueKey = request.issueKey,
+      subtaskName = subtaskName,
+      metadata = FeatureTaskRuntimeCheckpointMetadata(
+        phaseId = phaseId,
+        loopId = loopId,
+        generation = checkpointGeneration(loopId),
+        branch = branch,
+        intent = intent,
+      ),
+      identity = identity,
+    )
+  }
+
+  private data class SubtaskCommitLedgerState(val commitSha: String?, val nextSequenceNumber: Int)
+
+  /**
+   * The durable subtask-commit pointer, read out of the checkpoint-identity ledger that already
+   * records it. Deriving it from the ledger rather than storing a second copy is what makes the
+   * pointer and the ledger unable to disagree, and it mints the same sequence number the identity
+   * append will. A ledger this runtime cannot read reports no pointer at sequence 0, which is exactly
+   * the state the append's quarantine-and-regenerate path leaves behind.
+   */
+  private fun subtaskCommitLedgerState(
+    identity: FeatureTaskRuntimeSubtaskCommitIdentity,
+  ): SubtaskCommitLedgerState = runCatching {
+    recorder.loadCheckpointIdentities(request.workflowId, request.dbPathOverride)
+  }.getOrNull()?.let { identities ->
+    SubtaskCommitLedgerState(
+      commitSha = identities
+        .filter { it.issueKey == identity.issueKey && it.subtaskId == identity.subtaskId }
+        .maxByOrNull { it.sequenceNumber }
+        ?.commitSha,
+      nextSequenceNumber = (identities.maxOfOrNull { it.sequenceNumber } ?: -1) + 1,
+    )
+  } ?: SubtaskCommitLedgerState(commitSha = null, nextSequenceNumber = 0)
+
+  /**
+   * One subtask, one branch commit: the first checkpoint with staged content creates it and every
+   * later checkpoint amends it. Failures return an error result so the caller's existing index-restore
+   * reporting handles them exactly as a failed create.
+   */
+  private fun writeSubtaskCommit(
+    branch: String,
+    message: String,
+    identity: FeatureTaskRuntimeSubtaskCommitIdentity,
+  ): WorkflowGitOperationResult {
+    val ledger = subtaskCommitLedgerState(identity)
+    val headSha = phaseGates.gitOperations.headCommitSha(request.repoRoot)
+      .takeIf { it.ok }?.value?.trim()?.takeIf(String::isNotBlank)
+    val decision = FeatureTaskRuntimeSubtaskCommitResolver.decide(
+      identity = identity,
+      durableCommitSha = ledger.commitSha,
+      head = FeatureTaskRuntimeSubtaskCommitHeadState(
+        sha = headSha,
+        commitMessage = if (ledger.commitSha == null && headSha != null) headCommitMessageOrNull() else null,
+        isUnpushed = branchHasUnpushedCommits(branch),
+      ),
+      sequenceNumber = ledger.nextSequenceNumber,
+    )
+    return when (decision) {
+      is FeatureTaskRuntimeSubtaskCommitDecision.Create ->
+        phaseGates.gitOperations.createCommit(request.repoRoot, message)
+      is FeatureTaskRuntimeSubtaskCommitDecision.Amend -> amendSubtaskCommit(decision, identity, message)
+    }
+  }
+
+  private fun headCommitMessageOrNull(): String? =
+    phaseGates.gitOperations.headCommitMessage(request.repoRoot).takeIf { it.ok }?.value
+
+  private fun branchHasUnpushedCommits(branch: String): Boolean {
+    val unpushed = phaseGates.gitOperations.localBranchHasUnpushedCommits(request.repoRoot, branch)
+    return unpushed.ok && unpushed.value.orEmpty().trim().equals("true", ignoreCase = true)
+  }
+
+  /**
+   * Preserves the pre-amend commit under this checkpoint's own ref BEFORE the amend rewrites HEAD, and
+   * confirms the ref resolves to it. Only then does the amend run: the runtime never discards a state
+   * it could not first preserve, so a failed or unverifiable ref write leaves HEAD exactly where it is.
+   */
+  private fun amendSubtaskCommit(
+    decision: FeatureTaskRuntimeSubtaskCommitDecision.Amend,
+    identity: FeatureTaskRuntimeSubtaskCommitIdentity,
+    message: String,
+  ): WorkflowGitOperationResult {
+    if (decision.recoveredFromTrailer) {
+      runCatching {
+        diagnostics.warning(
+          FeatureTaskRuntimeSubtaskCommitResolver.trailerFallbackRecord(identity, decision.ownedHeadSha),
+        )
+      }
+    }
+    val refName = identity.checkpointRefName(decision.sequenceNumber)
+    val written = phaseGates.gitOperations.updateCheckpointRef(
+      request.repoRoot,
+      FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE,
+      refName,
+      decision.ownedHeadSha,
+    )
+    if (!written.ok) return preAmendPreservationFailure(refName, written.error)
+    val resolved = phaseGates.gitOperations.resolveCheckpointRef(
+      request.repoRoot,
+      FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE,
+      refName,
+    )
+    val preserved = resolved.value.orEmpty().trim()
+    if (!resolved.ok || preserved != decision.ownedHeadSha) {
+      return preAmendPreservationFailure(
+        refName,
+        resolved.error.takeIf { it.isNotBlank() }
+          ?: "the ref resolved to '$preserved' rather than the pre-amend commit '${decision.ownedHeadSha}'",
+      )
+    }
+    return phaseGates.gitOperations.amendHeadCommit(request.repoRoot, decision.ownedHeadSha, message)
+  }
+
+  private fun preAmendPreservationFailure(refName: String, error: String) = WorkflowGitOperationResult(
+    status = "error",
+    error = "the pre-amend checkpoint commit could not be preserved at '$refName' ($error); the amend " +
+      "did not run and HEAD is unchanged",
+  )
 
   /**
    * A failed restore is worse than the failure that triggered it: the index is now in an unknown

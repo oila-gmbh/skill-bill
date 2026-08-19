@@ -7,6 +7,7 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class FeatureTaskRuntimeCheckpointScopeTest {
@@ -274,24 +275,9 @@ class FeatureTaskRuntimeCheckpointScopeTest {
 
   @Test
   fun `commit messages distinguish initial implementation from audit repair and review remediation`() {
-    val initial = FeatureTaskRuntimeCheckpointMessage.build(
-      issueKey = ISSUE,
-      branch = BRANCH,
-      identity = FeatureTaskRuntimeCheckpointIdentity(phaseId = "audit", loopId = null, generation = 0),
-      intent = FeatureTaskRuntimeCheckpointMessage.INTENT_AUDITED_IMPLEMENTATION,
-    )
-    val auditRepair = FeatureTaskRuntimeCheckpointMessage.build(
-      issueKey = ISSUE,
-      branch = BRANCH,
-      identity = FeatureTaskRuntimeCheckpointIdentity(phaseId = "audit", loopId = "audit_gap", generation = 1),
-      intent = FeatureTaskRuntimeCheckpointMessage.INTENT_REMEDIATION,
-    )
-    val reviewRemediation = FeatureTaskRuntimeCheckpointMessage.build(
-      issueKey = ISSUE,
-      branch = BRANCH,
-      identity = FeatureTaskRuntimeCheckpointIdentity(phaseId = "review", loopId = "review_fix", generation = 2),
-      intent = FeatureTaskRuntimeCheckpointMessage.INTENT_REMEDIATION,
-    )
+    val initial = message(phaseId = "audit", loopId = null, generation = 0, intent = INTENT_INITIAL)
+    val auditRepair = message(phaseId = "audit", loopId = "audit_gap", generation = 1, intent = INTENT_FIX)
+    val reviewRemediation = message(phaseId = "review", loopId = "review_fix", generation = 2, intent = INTENT_FIX)
 
     assertEquals(3, setOf(initial, auditRepair, reviewRemediation).size)
     listOf(initial, auditRepair, reviewRemediation).forEach { message ->
@@ -303,6 +289,65 @@ class FeatureTaskRuntimeCheckpointScopeTest {
     assertContains(reviewRemediation, "loop=review_fix")
     assertContains(reviewRemediation, "generation=2")
   }
+
+  @Test
+  fun `checkpoint subject carries the subtask name while metadata and trailer stay in the body`() {
+    val named = message(
+      phaseId = "audit",
+      loopId = "review_fix",
+      generation = 3,
+      intent = INTENT_FIX,
+      subtaskName = SUBTASK_NAME,
+    )
+
+    val lines = named.lines()
+    assertEquals("$ISSUE: $SUBTASK_NAME", lines.first())
+    listOf("phase=", "loop=", "generation=").forEach { metadata ->
+      assertFalse(lines.first().contains(metadata), "checkpoint metadata must not occupy the commit subject")
+      assertContains(named, metadata)
+    }
+    assertEquals(
+      "Skill-Bill-Subtask: $ISSUE/7",
+      named.lines().last { it.isNotBlank() },
+      "the subtask trailer must terminate the message so git reads it as a trailer",
+    )
+
+    // No manifest name is a degradation, not a blank subject.
+    val unnamed = message(phaseId = "audit", loopId = null, generation = 0, intent = INTENT_INITIAL)
+    assertEquals("$ISSUE: subtask 7", unnamed.lines().first())
+  }
+
+  @Test
+  fun `subtask trailers round-trip and never match another subtask`() {
+    val identity = FeatureTaskRuntimeSubtaskCommitIdentity(issueKey = ISSUE, subtaskId = "7")
+    val rendered = message(phaseId = "audit", loopId = null, generation = 0, intent = INTENT_INITIAL)
+
+    assertEquals(identity, FeatureTaskRuntimeSubtaskCommitIdentity.parse(rendered))
+    assertTrue(identity.matches(rendered))
+    // The predecessor subtask's finished commit: amending it would destroy a completed deliverable.
+    assertFalse(identity.matches("done\n\nSkill-Bill-Subtask: $ISSUE/6\n"))
+    assertFalse(identity.matches("done\n\nSkill-Bill-Subtask: OTHER-1/7\n"))
+    assertNull(FeatureTaskRuntimeSubtaskCommitIdentity.parse("done\n\nno trailer here\n"))
+  }
+
+  private fun message(
+    phaseId: String,
+    loopId: String?,
+    generation: Int,
+    intent: String,
+    subtaskName: String? = null,
+  ): String = FeatureTaskRuntimeCheckpointMessage.build(
+    issueKey = ISSUE,
+    subtaskName = subtaskName,
+    metadata = FeatureTaskRuntimeCheckpointMetadata(
+      phaseId = phaseId,
+      loopId = loopId,
+      generation = generation,
+      branch = BRANCH,
+      intent = intent,
+    ),
+    identity = FeatureTaskRuntimeSubtaskCommitIdentity(issueKey = ISSUE, subtaskId = "7"),
+  )
 
   @Test
   fun `runtime-private run-evidence does not block outside-inventory ownership`() {
@@ -358,5 +403,8 @@ class FeatureTaskRuntimeCheckpointScopeTest {
   private companion object {
     const val ISSUE = "SKILL-150"
     const val BRANCH = "feat/SKILL-150-scoped-checkpoint"
+    const val SUBTASK_NAME = "scoped-checkpoint-staging"
+    val INTENT_INITIAL = FeatureTaskRuntimeCheckpointMessage.INTENT_AUDITED_IMPLEMENTATION
+    val INTENT_FIX = FeatureTaskRuntimeCheckpointMessage.INTENT_REMEDIATION
   }
 }

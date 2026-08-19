@@ -73,6 +73,8 @@ import skillbill.ports.taskruntime.model.FeatureTaskRuntimeHeartbeatTick
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessIdentity
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
 import skillbill.ports.telemetry.TelemetrySettingsProvider
+import skillbill.ports.workflow.CheckpointHistoryGitOperations
+import skillbill.ports.workflow.CheckpointHistoryGitOperationsProvider
 import skillbill.ports.workflow.GoalSubtaskReviewGitOperations
 import skillbill.ports.workflow.GoalSubtaskReviewGitOperationsProvider
 import skillbill.ports.workflow.NoopWorkflowGitOperations
@@ -1442,10 +1444,11 @@ class FeatureTaskRuntimeRemediationGenerationTest {
       harness.runner.run(harness.request().copy(requestedCodeReviewMode = CodeReviewExecutionMode.INLINE)),
     )
 
-    val remediationMessages = git.createCommitMessages.filter { it.contains("remediation checkpoint") }
+    assertEquals(1, git.createCommitMessages.size, "one subtask commit on the branch")
+    val remediationMessages = git.amendCommitMessages.filter { it.contains("remediation checkpoint") }
     assertEquals(1, remediationMessages.size, "exactly one remediation checkpoint on a healthy round")
-    val remediationIndex = git.createCommitMessages.indexOf(remediationMessages.single())
-    val remediationSha = (remediationIndex + 1).toString(16).padStart(40, '0')
+    val remediationIndex = git.amendCommitMessages.indexOf(remediationMessages.single())
+    val remediationSha = "a${(remediationIndex + 1).toString(16)}".padStart(40, '0')
     val reviewState = requireNotNull(harness.goalContinuationRecorder.reviewState(WORKFLOW_ID))
     assertEquals(remediationSha, reviewState.remediationBaseSha, "recorded base must equal the checkpoint tip")
     // Soft-reset must not fire on the happy path; recovery evidence must stay absent.
@@ -4335,11 +4338,13 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
-    assertEquals(3, git.createCommitMessages.size)
-    assertContains(git.createCommitMessages[0], "audited implementation checkpoint")
-    assertContains(git.createCommitMessages[1], "remediation checkpoint")
-    assertContains(git.createCommitMessages[2], "audited implementation checkpoint")
-    assertTrue(git.createCommitMessages.all { it.contains("feat/existing-runtime-branch") })
+    val checkpointMessages = git.createCommitMessages + git.amendCommitMessages
+    assertEquals(3, checkpointMessages.size)
+    assertEquals(1, git.createCommitMessages.size, "three checkpoints, one subtask commit on the branch")
+    assertContains(checkpointMessages[0], "audited implementation checkpoint")
+    assertContains(checkpointMessages[1], "remediation checkpoint")
+    assertContains(checkpointMessages[2], "audited implementation checkpoint")
+    assertTrue(checkpointMessages.all { it.contains("feat/existing-runtime-branch") })
     // The checkpoint stages its owned inventory before committing: agents never `git add`, so
     // without an explicit staging the bare commit would run against an empty index and fail (F-001).
     assertEquals(
@@ -4414,6 +4419,8 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     assertTrue(git.createCommitMessages.isEmpty(), "an empty owned delta must not commit foreign dirt")
     assertTrue(git.stagePathsCalls.isEmpty())
+    assertTrue(git.amendCommitMessages.isEmpty(), "a Skip verdict must neither create nor amend")
+    assertTrue(git.checkpointRefs.isEmpty(), "a Skip verdict must write no checkpoint ref")
   }
 
   // AC-005: an owned path staged outside the workflow is adopted on-branch, never a reason to refuse.
@@ -4469,7 +4476,11 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE)))
 
     val identities = requireNotNull(harness.recorder.loadCheckpointIdentities(WORKFLOW_ID))
-    assertEquals(git.createCommitMessages.size, identities.size, "one identity record per checkpoint commit")
+    assertEquals(
+      git.createCommitMessages.size + git.amendCommitMessages.size,
+      identities.size,
+      "one identity record per checkpoint, whether it created or amended the subtask commit",
+    )
     assertEquals(
       identities.map { it.checkpointRef }.distinct().size,
       identities.size,
@@ -4490,6 +4501,80 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     assertTrue(
       identities.any { it.loopId != null },
       "a backward-edge checkpoint must record the loop it belongs to",
+    )
+  }
+
+  // AC-001/AC-002/AC-004/AC-006: the whole defect this ceremony exists to fix. Ceremony commits used to
+  // stack on the branch, one per checkpoint; now one forward checkpoint plus its remediation loops
+  // leave a single commit, and every amend first preserves the commit it is about to rewrite.
+  @Test
+  fun `every checkpoint after the first amends one trailered subtask commit and preserves its predecessor`() {
+    val git = checkpointGit(ownedPaths = listOf("src/Owned.kt"))
+    val harness = checkpointRunHarness(git)
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE)))
+
+    assertEquals(1, git.createCommitMessages.size, "one subtask, one commit on the feature branch")
+    assertEquals(2, git.amendCommitMessages.size, "every later checkpoint amends instead of committing")
+    (git.createCommitMessages + git.amendCommitMessages).forEach { message ->
+      assertContains(message, "Skill-Bill-Subtask: $ISSUE_KEY/$FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID")
+    }
+
+    val identities = requireNotNull(harness.recorder.loadCheckpointIdentities(WORKFLOW_ID))
+    assertEquals(3, identities.size)
+    // Each amend wrote the commit it replaced to its own checkpoint ref, so no rewritten state was
+    // discarded before it was reachable somewhere else.
+    assertEquals(
+      identities.drop(1).associate { it.checkpointRef to identities[it.sequenceNumber - 1].commitSha },
+      git.checkpointRefs,
+    )
+  }
+
+  // AC-007: a ref write that fails must stop the amend. Amending anyway discards a checkpoint state
+  // nothing in the repository can reach afterwards.
+  @Test
+  fun `a failed pre-amend ref write blocks the checkpoint and leaves HEAD unchanged`() {
+    val git = checkpointGit(ownedPaths = listOf("src/Owned.kt"))
+    git.updateCheckpointRefResult = WorkflowGitOperationResult(status = "error", error = "ref write refused")
+    val harness = checkpointRunHarness(git)
+
+    val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertContains(blocked.blockedReason, "could not be preserved")
+    assertContains(blocked.blockedReason, "ref write refused")
+    assertTrue(git.amendCommitMessages.isEmpty(), "the amend must not run after a failed ref write")
+    assertEquals(
+      git.createCommitMessages.size.toString(16).padStart(40, '0'),
+      git.headCommitShaValue,
+      "HEAD must still be the commit the failed amend was about to rewrite",
+    )
+  }
+
+  // AC-005/AC-010: process death between staging and amend can wipe the durable pointer. The trailer on
+  // HEAD is what stops the resume from opening a second commit for the same subtask.
+  @Test
+  fun `a wiped durable pointer recovers the amend target from the HEAD trailer and records the fallback`() {
+    val git = checkpointGit(ownedPaths = listOf("src/Owned.kt"))
+    val diagnostics = RecordingDiagnostics()
+    var harness: RunnerHarness? = null
+    harness = checkpointRunHarness(
+      git,
+      diagnostics = diagnostics,
+      // Fires after the first checkpoint landed, modelling a crash that lost the durable pointer.
+      onPhase = { phaseId ->
+        if (phaseId == "review") harness?.recorder?.quarantineCheckpointIdentities(WORKFLOW_ID)
+      },
+    )
+    val run = requireNotNull(harness)
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(run.runner.run(run.request(IMPLEMENT_FIX_CYCLE)))
+
+    assertEquals(1, git.createCommitMessages.size, "the recovered checkpoint must not open a second commit")
+    assertTrue(git.amendCommitMessages.isNotEmpty())
+    assertTrue(
+      diagnostics.warnings.any { it.contains("FeatureTaskRuntimeSubtaskCommitResolver.decide") },
+      "the trailer fallback is a degradation and must emit an observability record",
     )
   }
 
@@ -4625,6 +4710,8 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
       val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
       assertContains(blocked.blockedReason, "OTHER-999")
       assertTrue(git.createCommitMessages.isEmpty())
+      assertTrue(git.amendCommitMessages.isEmpty(), "a Block verdict must neither create nor amend")
+      assertTrue(git.checkpointRefs.isEmpty(), "a Block verdict must write no checkpoint ref")
     }
     // Excluded either way it can be: named in the untracked exclusion list, or absent from the
     // pathspec that bounds the tracked delta. Neither disjunct is satisfiable by doing nothing.
@@ -4750,6 +4837,7 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
   private fun checkpointRunHarness(
     git: RecordingWorkflowGitOperations,
     reviewDriver: skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver = reviewFixDriver(2),
+    diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
     onPhase: (String) -> Unit = {},
   ): RunnerHarness {
     val ownedPaths = git.ownedPathsValue
@@ -4770,6 +4858,7 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
         onPhase(phaseId)
         facts(validJsonOutput(phaseId))
       },
+      diagnostics = diagnostics,
     )
   }
 
@@ -4832,14 +4921,16 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE)))
+    val checkpointMessages = git.createCommitMessages + git.amendCommitMessages
     assertEquals(
       3,
-      git.createCommitMessages.size,
+      checkpointMessages.size,
       "suppress_pr must preserve both review checkpoints and the remediation checkpoint",
     )
-    assertContains(git.createCommitMessages[0], "audited implementation checkpoint")
-    assertContains(git.createCommitMessages[1], "remediation checkpoint")
-    assertContains(git.createCommitMessages[2], "audited implementation checkpoint")
+    assertEquals(1, git.createCommitMessages.size, "three checkpoints, one subtask commit on the branch")
+    assertContains(checkpointMessages[0], "audited implementation checkpoint")
+    assertContains(checkpointMessages[1], "remediation checkpoint")
+    assertContains(checkpointMessages[2], "audited implementation checkpoint")
   }
 
   // (c continued) A checkpoint is never created on the default branch: a non-mutating cycle (no
@@ -6397,6 +6488,7 @@ internal class RecordingWorkflowGitOperations(
   var existingBranches: Set<String>? = null,
   var branchExistsResult: WorkflowGitOperationResult? = null,
 ) : WorkflowGitOperations,
+  CheckpointHistoryGitOperationsProvider,
   GoalSubtaskReviewGitOperationsProvider,
   RepositoryFingerprintGitOperationsProvider,
   RepositoryOwnedPathsGitOperationsProvider,
@@ -6430,6 +6522,21 @@ internal class RecordingWorkflowGitOperations(
   // model a failed checkpoint commit.
   val createCommitMessages = mutableListOf<String>()
   var createCommitResult: WorkflowGitOperationResult? = null
+
+  // SKILL-190 subtask-commit ceremony. The branch reports unpushed commits by default: a fake repo has
+  // no remote, and a pushed HEAD would refuse every amend and collapse the ceremony back to create.
+  var localBranchHasUnpushedCommitsValue: Boolean = true
+  var headCommitMessageValue: String = ""
+
+  // Every message the checkpoint amended HEAD with, in call order.
+  val amendCommitMessages = mutableListOf<String>()
+  var amendHeadCommitResult: WorkflowGitOperationResult? = null
+
+  // Checkpoint refs written by name, and the ordered write log. updateCheckpointRefResult models a
+  // ref write that fails so the amend must not run.
+  val checkpointRefs = mutableMapOf<String, String>()
+  val updateCheckpointRefCalls = mutableListOf<Pair<String, String>>()
+  var updateCheckpointRefResult: WorkflowGitOperationResult? = null
 
   // When true, a remediation-checkpoint createCommit returns a malformed sha so the paired base
   // record fails GoalSubtaskReviewState validation and the soft-reset rollback path is exercised.
@@ -6510,11 +6617,75 @@ internal class RecordingWorkflowGitOperations(
     }
     val result = createCommitResult
       ?: WorkflowGitOperationResult(status = "ok", value = createCommitMessages.size.toString(16).padStart(40, '0'))
-    if (result.ok && !result.value.isNullOrBlank()) {
+    if (result.ok && result.value.isNotBlank()) {
       headCommitShaValue = result.value.trim()
+      headCommitMessageValue = message
     }
     return result
   }
+
+  override fun localBranchHasUnpushedCommits(repoRoot: Path, branch: String): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = localBranchHasUnpushedCommitsValue.toString())
+
+  override val checkpointHistoryOperations: CheckpointHistoryGitOperations =
+    object : CheckpointHistoryGitOperations {
+      override fun amendHeadCommit(
+        repoRoot: Path,
+        expectedOwnedHeadSha: String,
+        replacementMessage: String?,
+      ): WorkflowGitOperationResult {
+        amendHeadCommitResult?.let { return it }
+        if (expectedOwnedHeadSha.trim() != headCommitShaValue.trim()) {
+          return WorkflowGitOperationResult(
+            status = "error",
+            error = "HEAD is '$headCommitShaValue' but the caller owns '$expectedOwnedHeadSha'.",
+          )
+        }
+        replacementMessage?.let { amendCommitMessages += it }
+        // An amend rewrites the commit, so it yields a new sha exactly as git does.
+        headCommitShaValue = "a${amendCommitMessages.size.toString(16)}".padStart(40, '0')
+        headCommitMessageValue = replacementMessage ?: headCommitMessageValue
+        return WorkflowGitOperationResult(status = "ok", value = headCommitShaValue)
+      }
+
+      override fun headCommitMessage(repoRoot: Path): WorkflowGitOperationResult =
+        WorkflowGitOperationResult(status = "ok", value = headCommitMessageValue)
+
+      override fun updateRef(
+        repoRoot: Path,
+        namespacePrefix: String,
+        refName: String,
+        targetSha: String,
+      ): WorkflowGitOperationResult {
+        updateCheckpointRefCalls += refName to targetSha
+        updateCheckpointRefResult?.let { return it }
+        checkpointRefs[refName] = targetSha
+        return WorkflowGitOperationResult(status = "ok", value = refName)
+      }
+
+      override fun resolveRef(
+        repoRoot: Path,
+        namespacePrefix: String,
+        refName: String,
+      ): WorkflowGitOperationResult = checkpointRefs[refName]
+        ?.let { WorkflowGitOperationResult(status = "ok", value = it) }
+        ?: WorkflowGitOperationResult(status = "error", error = "Ref '$refName' names nothing.")
+
+      override fun listRefs(repoRoot: Path, namespacePrefix: String): WorkflowGitOperationResult =
+        WorkflowGitOperationResult(
+          status = "ok",
+          value = checkpointRefs.entries.joinToString("") { (ref, sha) -> "$sha\u0000$ref\u0000" },
+        )
+
+      override fun deleteRef(
+        repoRoot: Path,
+        namespacePrefix: String,
+        refName: String,
+      ): WorkflowGitOperationResult {
+        checkpointRefs.remove(refName)
+        return WorkflowGitOperationResult(status = "ok", value = refName)
+      }
+    }
 
   override fun resetSoftToCommit(repoRoot: Path, commitSha: String): WorkflowGitOperationResult {
     resetSoftToCommitCalls += commitSha.trim()

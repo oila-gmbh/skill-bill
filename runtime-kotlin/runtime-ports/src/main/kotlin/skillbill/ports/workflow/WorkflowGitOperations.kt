@@ -202,6 +202,12 @@ interface CheckpointHistoryGitOperations {
     replacementMessage: String? = null,
   ): WorkflowGitOperationResult
 
+  /**
+   * The full commit message of HEAD, for reading a runtime-written trailer back off branch history.
+   * Fails when HEAD names no commit.
+   */
+  fun headCommitMessage(repoRoot: Path): WorkflowGitOperationResult
+
   /** Creates or moves [refName] (which must sit under [namespacePrefix]) to [targetSha]. */
   fun updateRef(
     repoRoot: Path,
@@ -232,6 +238,9 @@ private object UnavailableCheckpointHistoryGitOperations : CheckpointHistoryGitO
     expectedOwnedHeadSha: String,
     replacementMessage: String?,
   ): WorkflowGitOperationResult = unavailable("amend the HEAD commit")
+
+  override fun headCommitMessage(repoRoot: Path): WorkflowGitOperationResult =
+    unavailable("read the HEAD commit message")
 
   override fun updateRef(
     repoRoot: Path,
@@ -265,6 +274,9 @@ fun WorkflowGitOperations.amendHeadCommit(
   replacementMessage: String? = null,
 ): WorkflowGitOperationResult =
   checkpointHistoryOperations().amendHeadCommit(repoRoot, expectedOwnedHeadSha, replacementMessage)
+
+fun WorkflowGitOperations.headCommitMessage(repoRoot: Path): WorkflowGitOperationResult =
+  checkpointHistoryOperations().headCommitMessage(repoRoot)
 
 fun WorkflowGitOperations.updateCheckpointRef(
   repoRoot: Path,

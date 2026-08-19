@@ -74,6 +74,7 @@ data class FeatureTaskRuntimeGoalContinuationContext(
   val codeReviewMode: CodeReviewExecutionMode? = null,
   val validationDepth: ValidationDepth = ValidationDepth.DEFAULT,
   val parallelReviewAgent: String? = null,
+  val subtaskName: String? = null,
   val reviewBaseline: GoalSubtaskReviewBaseline? = null,
   val agentAddonSelection: skillbill.agentaddon.model.AgentAddonSelection =
     skillbill.agentaddon.model.AgentAddonSelection(),
@@ -88,6 +89,7 @@ data class FeatureTaskRuntimeGoalContinuationContext(
     parentWorkflowId?.let { require(it.isNotBlank()) { "parentWorkflowId must be non-blank when provided." } }
     lastResumableStep?.let { require(it.isNotBlank()) { "lastResumableStep must be non-blank when provided." } }
     parallelReviewAgent?.let { require(it.isNotBlank()) { "parallelReviewAgent must be non-blank when provided." } }
+    subtaskName?.let { require(it.isNotBlank()) { "subtaskName must be non-blank when provided." } }
   }
 }
 
