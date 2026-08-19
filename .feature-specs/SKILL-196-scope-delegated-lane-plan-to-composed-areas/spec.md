@@ -184,7 +184,9 @@ launching both lanes.
   area, independent of manifest iteration order.
 - The domain policy is already correct. Fix the callers and the router; do not weaken `flatten`'s
   winner selection or its ambiguity error to accommodate them.
-- **AC 4 must not ship before SKILL-197 lands.** Excluding the generic lane is only safe once the
+- **AC 4's SKILL-197 dependency is satisfied.** SKILL-197 landed in `7ffac2f4f`, so the native packs
+  now carry Android-appropriate content for the areas `kmp` does not declare. The original ordering
+  constraint is recorded here for provenance: excluding the generic lane is only safe once the
   owning native pack can ask the questions the generic rubric was asking. On
   `rvw-20260817-183143-ilvx`, `bill-generic-code-review-architecture` produced the run's sharpest
   architectural findings — **F-001, Major severity at High confidence, adjudicated `confirmed`**: a
@@ -273,3 +275,33 @@ Observed run:
 
 - `review_run_lanes` for `rvw-20260817-183143-ilvx` — 13 rows, 8 distinct areas, 5 rows with
   `pack_slug = 'generic'`, 5 rows with `required = 1` spanning 2 distinct areas.
+
+## Subtask Decomposition
+
+Three dependency-ordered subtasks. Each lands independently and leaves the delegated review plan in a
+valid state.
+
+1. **Scope the launch path's area set to the routed composition** — replaces the all-manifest union at
+   `ParallelCodeReviewRunner.kt:1030` with `ReviewLaunchPlanPolicy.composedAreas` per routed root, and
+   pins launch/attribution area-set parity. Covers AC 1, AC 8, AC 12.
+2. **Reconcile lanes across routed roots by area** — replaces the `groupBy { it.skillName }` merge at
+   `:1049` with area-keyed nearest-depth ownership, extends `AmbiguousLaneOwnershipError` to
+   cross-root ties, and holds coverage accounting unchanged. Covers AC 2, AC 7, AC 9, AC 11, AC 13.
+3. **Exclude fallback lanes per area** — a pack declaring `code-review` in `fallback_capabilities`
+   contributes a lane for an area only when no native routed pack declares that area, with the
+   cross-stack regression test reproducing the observed 13-lane plan. Covers AC 3, AC 4, AC 5, AC 6,
+   AC 10.
+
+Subtask 2 depends on subtask 1: comparing composition depth across roots is only meaningful once each
+root's area set is scoped to its own composition. Subtask 3 depends on subtask 2: per-area fallback
+exclusion is expressed as a rule inside the cross-root reconciliation the second subtask introduces.
+
+### Routing observation carried into the subtasks
+
+`ReviewStackRouting.route` already excludes fallback packs from `concreteManifests` when scoring
+routing signals. `generic` therefore never wins a file on signal strength. It becomes a routed root
+only through the per-file fallback branch, for changed files that matched no native pack's path
+signal. The defect is not that routing ignores `fallback_capabilities` when scoring; it is that a
+fallback root, once present for unmatched files, then plans a lane for every area — including areas a
+native routed pack already owns. Fallback exclusion is therefore decided per area over the assembled
+cross-root plan, not by deleting the fallback root from routing.

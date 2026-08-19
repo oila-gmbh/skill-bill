@@ -37,6 +37,7 @@ import skillbill.workflow.model.GoalObservabilitySelectedDiffHunks
 import java.nio.file.Files
 import java.nio.file.Path
 import java.sql.DriverManager
+import java.util.concurrent.CopyOnWriteArrayList
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
@@ -1982,7 +1983,7 @@ private class RecordingPhaseLauncher(
   private val invalidReviewUntilLaunchIndex: Int? = null,
   private val decomposePlan: Boolean = false,
 ) : AgentRunLauncher {
-  val requests: MutableList<AgentRunLaunchRequest> = mutableListOf()
+  val requests: MutableList<AgentRunLaunchRequest> = CopyOnWriteArrayList()
 
   fun phaseOrder(): List<String> = requests.mapNotNull { request ->
     PHASE_LINE.find(request.skillRunRequest.promptOverride.orEmpty())?.groupValues?.get(1)
