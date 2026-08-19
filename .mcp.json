@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "skill-bill": {
-      "type": "stdio",
-      "command": "skill-bill-mcp",
-      "args": []
-    }
-  }
-}
