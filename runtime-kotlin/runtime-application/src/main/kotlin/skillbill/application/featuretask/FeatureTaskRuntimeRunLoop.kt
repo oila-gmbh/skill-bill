@@ -1551,11 +1551,14 @@ internal class FeatureTaskRuntimeRunLoop(
       ),
       sequenceNumber = ledger.nextSequenceNumber,
     )
-    return when (decision) {
-      is FeatureTaskRuntimeSubtaskCommitDecision.Create ->
-        phaseGates.gitOperations.createCommit(request.repoRoot, message)
-      is FeatureTaskRuntimeSubtaskCommitDecision.Amend -> amendSubtaskCommit(decision, identity, message)
-    }
+    return phaseGates.gitOperations.writeSubtaskCommitPreservingHistory(
+      repoRoot = request.repoRoot,
+      decision = decision,
+      identity = identity,
+      message = message,
+      allowUnchangedIndex = false,
+      record = { record -> runCatching { diagnostics.warning(record) } },
+    )
   }
 
   private fun headCommitMessageOrNull(): String? =
@@ -1565,73 +1568,6 @@ internal class FeatureTaskRuntimeRunLoop(
     val unpushed = phaseGates.gitOperations.localBranchHasUnpushedCommits(request.repoRoot, branch)
     return unpushed.ok && unpushed.value.orEmpty().trim().equals("true", ignoreCase = true)
   }
-
-  /**
-   * Preserves the pre-amend commit under this checkpoint's own ref BEFORE the amend rewrites HEAD, and
-   * confirms the ref resolves to it. Only then does the amend run: the runtime never discards a state
-   * it could not first preserve, so a failed or unverifiable ref write leaves HEAD exactly where it is.
-   */
-  private fun amendSubtaskCommit(
-    decision: FeatureTaskRuntimeSubtaskCommitDecision.Amend,
-    identity: FeatureTaskRuntimeSubtaskCommitIdentity,
-    message: String,
-  ): WorkflowGitOperationResult {
-    if (decision.recoveredFromTrailer) {
-      runCatching {
-        diagnostics.warning(
-          FeatureTaskRuntimeSubtaskCommitResolver.trailerFallbackRecord(identity, decision.ownedHeadSha),
-        )
-      }
-    }
-    val refName = identity.checkpointRefName(decision.sequenceNumber)
-    val existing = phaseGates.gitOperations.resolveCheckpointRef(
-      request.repoRoot,
-      FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE,
-      refName,
-    )
-    if (!existing.ok) {
-      return preAmendPreservationFailure(
-        refName,
-        "whether that ref already preserves another commit could not be determined (${existing.error})",
-      )
-    }
-    val occupant = existing.value.orEmpty().trim()
-    if (occupant.isNotBlank() && occupant != decision.ownedHeadSha) {
-      return preAmendPreservationFailure(
-        refName,
-        "that ref already preserves '$occupant' and writing '${decision.ownedHeadSha}' over it would discard " +
-          "the only reachability that commit has; the checkpoint sequence restarted, so this ref name is not " +
-          "this checkpoint's to reuse",
-      )
-    }
-    val written = phaseGates.gitOperations.updateCheckpointRef(
-      request.repoRoot,
-      FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE,
-      refName,
-      decision.ownedHeadSha,
-    )
-    if (!written.ok) return preAmendPreservationFailure(refName, written.error)
-    val resolved = phaseGates.gitOperations.resolveCheckpointRef(
-      request.repoRoot,
-      FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE,
-      refName,
-    )
-    val preserved = resolved.value.orEmpty().trim()
-    if (!resolved.ok || preserved != decision.ownedHeadSha) {
-      return preAmendPreservationFailure(
-        refName,
-        resolved.error.takeIf { it.isNotBlank() }
-          ?: "the ref resolved to '$preserved' rather than the pre-amend commit '${decision.ownedHeadSha}'",
-      )
-    }
-    return phaseGates.gitOperations.amendHeadCommit(request.repoRoot, decision.ownedHeadSha, message)
-  }
-
-  private fun preAmendPreservationFailure(refName: String, error: String) = WorkflowGitOperationResult(
-    status = "error",
-    error = "the pre-amend checkpoint commit could not be preserved at '$refName' ($error); the amend " +
-      "did not run and HEAD is unchanged",
-  )
 
   /**
    * A failed restore is worse than the failure that triggered it: the index is now in an unknown
@@ -4802,6 +4738,20 @@ internal class FeatureTaskRuntimeRunLoop(
       observability,
       fileManifest,
     )?.let { return it }
+    val finalised = when (val finalisation = finaliseSubtaskCommit(run, attested)) {
+      is CommitPushFinalisation.NotApplicable -> attested
+      is CommitPushFinalisation.Settled -> finalisation.output
+      is CommitPushFinalisation.Blocked -> return AttemptResult.settled(
+        blockAndPersistInPhase(
+          run,
+          iteration,
+          finalisation.reason,
+          observability,
+          failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
+          fileManifest = fileManifest,
+        ),
+      )
+    }
     recorder.retainProducerOutput(
       ProducerOutputEvidence(
         workflowId = request.workflowId,
@@ -4821,13 +4771,155 @@ internal class FeatureTaskRuntimeRunLoop(
     return persistAcceptedOutput(
       run,
       iteration,
-      attested,
+      finalised,
       repairEvidence,
       observability,
       fileManifest,
       repositoryFingerprint,
     )
   }
+
+  private sealed interface CommitPushFinalisation {
+    data object NotApplicable : CommitPushFinalisation
+
+    data class Settled(val output: NormalizedFeatureTaskRuntimePhaseOutput) : CommitPushFinalisation
+
+    data class Blocked(val reason: String) : CommitPushFinalisation
+  }
+
+  /**
+   * SKILL-190: the runtime performs `commit_push`. The agent's completed envelope contributes the
+   * outcome message and the enumerated path set; the staging, amend, sha capture and push below are
+   * the runtime's, and the captured post-amend sha is written back into the envelope this phase record
+   * persists so `commit_push_result.commit_sha` and the goal-continuation outcome derived from that same
+   * record cannot disagree.
+   */
+  @Suppress("ReturnCount") // each early return is one distinct non-applicable or blocking condition
+  private fun finaliseSubtaskCommit(
+    run: PhaseRun,
+    normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
+  ): CommitPushFinalisation {
+    if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH) {
+      return CommitPushFinalisation.NotApplicable
+    }
+    if (normalizedOutput.envelope["status"] != STATUS_COMPLETED) return CommitPushFinalisation.NotApplicable
+    val branch = finalisationBranch() ?: return unownedWorktreeCommitSha(run, normalizedOutput)
+    val handoff = when (val read = FeatureTaskRuntimeSubtaskFinalisation.readHandoff(normalizedOutput.envelope)) {
+      is FeatureTaskRuntimeCommitPushHandoffResult.Invalid -> return CommitPushFinalisation.Blocked(read.reason)
+      is FeatureTaskRuntimeCommitPushHandoffResult.Valid -> read.handoff
+    }
+    val identity = subtaskCommitIdentity()
+    val ledger = subtaskCommitLedgerState(identity)
+    val outcome = FeatureTaskRuntimeSubtaskFinalisation(
+      gitOperations = phaseGates.gitOperations,
+      repoRoot = request.repoRoot,
+      record = { record -> runCatching { diagnostics.warning(record) } },
+    ).finalise(
+      branch = branch,
+      identity = identity,
+      durableCommitSha = ledger.commitSha,
+      sequenceNumber = ledger.nextSequenceNumber,
+      handoff = handoff,
+      metadata = FeatureTaskRuntimeCheckpointMetadata(
+        phaseId = run.phaseId,
+        loopId = null,
+        generation = checkpointGeneration(null),
+        branch = branch,
+        intent = FeatureTaskRuntimeCheckpointMessage.INTENT_FINALISED_SUBTASK,
+      ),
+    )
+    if (outcome is FeatureTaskRuntimeSubtaskFinalisationResult.Blocked) {
+      return CommitPushFinalisation.Blocked(outcome.reason)
+    }
+    val finalised = outcome as FeatureTaskRuntimeSubtaskFinalisationResult.Finalised
+    recordFinalisedCheckpointIdentity(run.phaseId, branch, ledger, finalised)
+    return CommitPushFinalisation.Settled(
+      revalidated(
+        run.phaseId,
+        FeatureTaskRuntimeSubtaskFinalisation.withCommitSha(normalizedOutput.envelope, finalised.commitSha),
+      ),
+    )
+  }
+
+  /**
+   * The runtime owns no branch here, so it committed nothing and has nothing to amend. Downstream
+   * consumers still need a commit sha, so the measured HEAD is published as one and the degradation is
+   * recorded: a phase record with no sha at all would fail the `pr` consumer projection and the
+   * per-subtask commit invariant alike.
+   */
+  private fun unownedWorktreeCommitSha(
+    run: PhaseRun,
+    normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
+  ): CommitPushFinalisation {
+    val head = phaseGates.gitOperations.headCommitSha(request.repoRoot)
+    val sha = head.value.orEmpty().trim().takeIf { head.ok && it.isNotBlank() }
+      ?: return CommitPushFinalisation.NotApplicable
+    runCatching {
+      diagnostics.warning(
+        "seam=FeatureTaskRuntimeRunLoop.finaliseSubtaskCommit value_used='measured HEAD $sha' " +
+          "value_expected=a runtime-finalised subtask commit for '${request.issueKey}' " +
+          "cause=the run has no resolved, unprotected, checked-out branch, so finalisation could not " +
+          "stage, amend, or push and the commit sha degrades to whatever HEAD already names",
+      )
+    }
+    return CommitPushFinalisation.Settled(
+      revalidated(run.phaseId, FeatureTaskRuntimeSubtaskFinalisation.withCommitSha(normalizedOutput.envelope, sha)),
+    )
+  }
+
+  /**
+   * The branch finalisation may write to: the run's own resolved, unprotected, currently checked-out
+   * branch. Anything else means the runtime does not own this working tree, which is the same condition
+   * under which no checkpoint ever committed here either.
+   */
+  private fun finalisationBranch(): String? {
+    val branch = resolvedBranch?.takeIf { FeatureTaskRuntimeBranchSetup.protectedBranchName(it) == null }
+      ?: return null
+    val head = phaseGates.gitOperations.currentBranch(request.repoRoot)
+    return branch.takeIf { head.ok && head.value.trim() == branch.trim() }
+  }
+
+  private fun recordFinalisedCheckpointIdentity(
+    phaseId: String,
+    branch: String,
+    ledger: SubtaskCommitLedgerState,
+    finalised: FeatureTaskRuntimeSubtaskFinalisationResult.Finalised,
+  ) {
+    val appended = runCatching {
+      recorder.appendCheckpointIdentity(
+        workflowId = request.workflowId,
+        issueKey = request.issueKey,
+        subtaskId = request.goalContinuation?.subtaskId?.toString() ?: FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID,
+        branch = branch,
+        phaseId = phaseId,
+        loopId = null,
+        generation = checkpointGeneration(null),
+        parentSha = ledger.commitSha,
+        ownedPaths = finalised.stagedPaths,
+        commitSha = finalised.commitSha,
+        dbOverride = request.dbPathOverride,
+      )
+    }
+    // The commit and its push already happened and are not undoable; a missing ledger row only costs a
+    // later re-entry its durable amend target, which the Skill-Bill-Subtask trailer still recovers.
+    if (appended.getOrDefault(false)) return
+    runCatching {
+      diagnostics.warning(
+        "seam=FeatureTaskRuntimeRunLoop.recordFinalisedCheckpointIdentity " +
+          "value_used='no durable identity for finalised commit ${finalised.commitSha}' " +
+          "value_expected=an appended checkpoint identity for '${request.issueKey}' " +
+          "cause=${appended.exceptionOrNull()?.message ?: "the workflow row was absent"}",
+      )
+    }
+  }
+
+  private fun revalidated(
+    phaseId: String,
+    envelope: Map<String, Any?>,
+  ): NormalizedFeatureTaskRuntimePhaseOutput = outputValidator
+    .validatePhaseOutput(JsonSupport.mapToJsonString(envelope), sourceLabel = phaseId)
+    .requireAcceptedOutput(phaseId)
+    .normalizedOutput
 
   /**
    * Packs without `validation_gate` fall back to agent-run validate. That path must never publish

@@ -45,6 +45,18 @@ interface WorkflowGitOperations {
   )
 
   /**
+   * Pushes [branch] to `origin` under a lease: the push is refused when `origin/[branch]` no longer
+   * holds the value this repository last observed. Reachable only when finalisation amends a subtask
+   * commit that is already published, so a rewritten tip can never silently overwrite a remote a PR
+   * or CI already references. Default refuses for the same reason [pushBranch] does.
+   */
+  fun pushBranchWithLease(repoRoot: Path, branch: String): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(
+      status = "error",
+      error = "This git operations implementation cannot push branch '$branch' under a lease.",
+    )
+
+  /**
    * Whether [branch]'s local tip has commits not on `origin/[branch]`.
    * Value is `"true"` or `"false"`. Missing `origin/[branch]` counts as unpushed so a prior
    * commit-all whose push failed is re-pushed on the next finalize instead of being treated as done
@@ -195,11 +207,16 @@ interface CheckpointHistoryGitOperations {
    * Rewrites HEAD from the current index, keeping its message unless [replacementMessage] is given,
    * and returns the new commit sha. Fails when HEAD is missing, when HEAD is not
    * [expectedOwnedHeadSha], or when the index carries nothing to commit.
+   *
+   * [allowUnchangedIndex] lifts only that last refusal, for the one caller that amends to replace a
+   * message rather than to add content: subtask finalisation rewrites a provisional subject onto an
+   * already-committed tree, and a clean tree there is the normal case, not a caller bug.
    */
   fun amendHeadCommit(
     repoRoot: Path,
     expectedOwnedHeadSha: String,
     replacementMessage: String? = null,
+    allowUnchangedIndex: Boolean = false,
   ): WorkflowGitOperationResult
 
   /**
@@ -241,6 +258,7 @@ private object UnavailableCheckpointHistoryGitOperations : CheckpointHistoryGitO
     repoRoot: Path,
     expectedOwnedHeadSha: String,
     replacementMessage: String?,
+    allowUnchangedIndex: Boolean,
   ): WorkflowGitOperationResult = unavailable("amend the HEAD commit")
 
   override fun headCommitMessage(repoRoot: Path): WorkflowGitOperationResult =
@@ -276,8 +294,9 @@ fun WorkflowGitOperations.amendHeadCommit(
   repoRoot: Path,
   expectedOwnedHeadSha: String,
   replacementMessage: String? = null,
-): WorkflowGitOperationResult =
-  checkpointHistoryOperations().amendHeadCommit(repoRoot, expectedOwnedHeadSha, replacementMessage)
+  allowUnchangedIndex: Boolean = false,
+): WorkflowGitOperationResult = checkpointHistoryOperations()
+  .amendHeadCommit(repoRoot, expectedOwnedHeadSha, replacementMessage, allowUnchangedIndex)
 
 fun WorkflowGitOperations.headCommitMessage(repoRoot: Path): WorkflowGitOperationResult =
   checkpointHistoryOperations().headCommitMessage(repoRoot)

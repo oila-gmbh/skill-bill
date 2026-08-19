@@ -405,7 +405,7 @@ class FeatureTaskRuntimeRunnerTest {
       skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput(
         "commit_push",
         1,
-        validJsonOutput("commit_push"),
+        FINALISED_COMMIT_PUSH_OUTPUT,
       ),
     )
 
@@ -1952,7 +1952,8 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
     )
     val outcome = artifacts["goal_continuation_outcome"] as Map<*, *>
     assertEquals("complete", outcome["status"])
-    assertEquals("commit-runtime-1", outcome["commit_sha"])
+    assertEquals(completed.subtaskOutcome?.commitSha, outcome["commit_sha"])
+    assertTrue(outcome["commit_sha"].toString().isNotBlank(), "the runtime-captured finalisation sha is recorded")
     assertEquals("commit_push", outcome["last_resumable_step"])
     assertEquals(phaseAgent("commit_push"), outcome["finalizing_agent_id"])
     @Suppress("UNCHECKED_CAST")
@@ -1963,23 +1964,24 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
     assertContains(installSync["reason"].toString(), "must not block subtask completion")
   }
 
+  // SKILL-190 AC-009/AC-011: the recorded sha is the one the runtime captured after its own finalisation
+  // commit, and the goal-continuation outcome carries that same value rather than a second reading.
   @Test
-  fun `goal-continuation with payload commit sha completes without measuring git head`() {
+  fun `goal-continuation records the runtime-captured finalisation sha`() {
     val repoRoot = Files.createTempDirectory("skillbill-runtime-goal-payload-sha")
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
       .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
-      .also { it.headCommitShaValue = "measured-head-should-not-be-used" }
     val harness = goalContinuationHarness(repoRoot, git, goalContinuationLauncher(validJsonOutput("commit_push")))
 
     val report = harness.runner.run(harness.request())
 
     val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     assertEquals("complete", completed.subtaskOutcome?.status)
-    assertEquals("commit-runtime-1", completed.subtaskOutcome?.commitSha)
-    assertEquals(0, git.headCommitShaCalls, "payload SHA present must not trigger a git HEAD measurement")
+    assertEquals(git.headCommitShaValue, completed.subtaskOutcome?.commitSha)
+    assertEquals(listOf("feat/existing-runtime-branch"), git.pushedBranches, "finalisation pushes exactly once")
     val outcome = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_continuation_outcome"] as Map<*, *>
     assertEquals("complete", outcome["status"])
-    assertEquals("commit-runtime-1", outcome["commit_sha"])
+    assertEquals(completed.subtaskOutcome?.commitSha, outcome["commit_sha"])
   }
 
   @Test
@@ -2587,40 +2589,23 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
     )
   }
 
+  // SKILL-190 AC-002: the runtime commits from the agent's outcome message, so an agent that emits no
+  // message must stop the subtask rather than let a provisional checkpoint subject reach a pushed commit.
   @Test
-  fun `goal-continuation without payload sha completes with measured git head`() {
-    val repoRoot = Files.createTempDirectory("skillbill-runtime-goal-measured-sha")
+  fun `goal-continuation blocks at commit_push when the agent supplies no outcome message`() {
+    val repoRoot = Files.createTempDirectory("skillbill-runtime-goal-no-message")
     val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
-      .also { it.headCommitShaValue = "measured-head-sha" }
+      .also { it.headCommitShaValue = COMMITTED_HEAD_SHA }
     val harness = goalContinuationHarness(repoRoot, git, goalContinuationLauncher(COMMIT_PUSH_NO_SHA_OUTPUT))
 
     val report = harness.runner.run(harness.request())
 
-    val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
-    assertEquals("complete", completed.subtaskOutcome?.status)
-    assertEquals("measured-head-sha", completed.subtaskOutcome?.commitSha)
-    assertTrue(git.headCommitShaCalls >= 1, "a missing payload SHA must trigger a git HEAD measurement")
-    val outcome = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_continuation_outcome"] as Map<*, *>
-    assertEquals("complete", outcome["status"])
-    assertEquals("measured-head-sha", outcome["commit_sha"])
-  }
-
-  @Test
-  fun `goal-continuation without payload sha and unmeasurable head blocks instead of completing`() {
-    val repoRoot = Files.createTempDirectory("skillbill-runtime-goal-no-sha")
-    val git = RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch")
-    val harness = goalContinuationHarness(repoRoot, git, goalContinuationLauncher(COMMIT_PUSH_NO_SHA_OUTPUT))
-
-    val report = harness.runner.run(harness.request())
-
-    val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
-    assertEquals("blocked", completed.subtaskOutcome?.status)
-    assertNull(completed.subtaskOutcome?.commitSha)
-    assertEquals("commit_push", completed.subtaskOutcome?.lastResumableStep)
-    assertContains(requireNotNull(completed.subtaskOutcome?.blockedReason), "no commit SHA")
-    val outcome = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_continuation_outcome"] as Map<*, *>
-    assertEquals("blocked", outcome["status"])
-    assertNull(outcome["commit_sha"], "a blocked SHA-less outcome must not record a commit_sha")
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertEquals("commit_push", blocked.lastIncompletePhase)
+    assertContains(blocked.blockedReason, "commit_push_result.message")
+    assertTrue(git.pushedBranches.isEmpty(), "a rejected handoff must not push")
+    assertTrue(git.leasePushedBranches.isEmpty(), "a rejected handoff must not force-push")
+    assertEquals(COMMITTED_HEAD_SHA, git.headCommitShaValue, "a rejected handoff must not move HEAD")
   }
 
   @Test
@@ -6300,8 +6285,9 @@ internal fun reviewFixLauncher(
   }
 }
 
-// A commit_push phase output that completes without emitting a commit_sha, modelling the
-// goal-continuation SHA-drop the SKILL-68 capture-at-source path must recover from.
+// A commit_push phase output that completes without the outcome message the runtime commits from.
+// SKILL-190 moved commit authorship into the runtime, so this is the payload the finalisation gate
+// must refuse rather than publish under a provisional subject.
 private val COMMIT_PUSH_NO_SHA_OUTPUT: String = """
   {
     "contract_version": "0.2",
@@ -6757,6 +6743,7 @@ internal class RecordingWorkflowGitOperations(
         repoRoot: Path,
         expectedOwnedHeadSha: String,
         replacementMessage: String?,
+        allowUnchangedIndex: Boolean,
       ): WorkflowGitOperationResult {
         amendHeadCommitResult?.let { return it }
         if (expectedOwnedHeadSha.trim() != headCommitShaValue.trim()) {
@@ -6848,12 +6835,35 @@ internal class RecordingWorkflowGitOperations(
     return headCommitShaResult ?: WorkflowGitOperationResult(status = "ok", value = headCommitShaValue)
   }
 
+  val pushedBranches: MutableList<String> = mutableListOf()
+  val leasePushedBranches: MutableList<String> = mutableListOf()
+  var pushBranchResult: WorkflowGitOperationResult? = null
+
+  override fun pushBranch(repoRoot: Path, branch: String): WorkflowGitOperationResult {
+    pushedBranches += branch
+    return pushBranchResult ?: WorkflowGitOperationResult(status = "ok", value = branch)
+  }
+
+  override fun pushBranchWithLease(repoRoot: Path, branch: String): WorkflowGitOperationResult {
+    leasePushedBranches += branch
+    return pushBranchResult ?: WorkflowGitOperationResult(status = "ok", value = branch)
+  }
+
   override fun resolveCommit(repoRoot: Path, revision: String): WorkflowGitOperationResult =
     onResolveCommit?.invoke(revision)
-      ?: WorkflowGitOperationResult(
-        status = "ok",
-        value = revision.takeIf { it.matches(Regex("^[0-9a-fA-F]{40,64}$")) } ?: COMMITTED_HEAD_SHA,
-      )
+      // No remote-tracking ref exists in this fake, so an `origin/<branch>` lookup fails exactly as it
+      // does in a repository whose branch was never pushed. Finalisation reads that as "not published".
+      ?: if (revision.startsWith("origin/")) {
+        WorkflowGitOperationResult(
+          status = "error",
+          error = "Revision '$revision' does not name a commit in this repository.",
+        )
+      } else {
+        WorkflowGitOperationResult(
+          status = "ok",
+          value = revision.takeIf { it.matches(Regex("^[0-9a-fA-F]{40,64}$")) } ?: COMMITTED_HEAD_SHA,
+        )
+      }
 
   override val runtimePhaseFileManifestOperations: RuntimePhaseFileManifestGitOperations =
     object : RuntimePhaseFileManifestGitOperations {

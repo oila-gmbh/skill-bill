@@ -269,6 +269,25 @@ internal object FeatureTaskRuntimeCheckpointMessage {
     val subject = subtaskName?.trim()?.takeIf(String::isNotBlank)
       ?.let { "$issueKey: $it" }
       ?: fallbackSubject(issueKey, identity.subtaskId)
+    return compose(subject, metadata, identity)
+  }
+
+  /**
+   * The finalised subtask commit message: the agent-authored subject verbatim, the same checkpoint
+   * metadata body every intermediate commit carried, and the subtask trailer the amend-target
+   * recovery reads. The subject is never re-prefixed with the issue key — the agent owns it whole.
+   */
+  fun finalise(
+    subject: String,
+    metadata: FeatureTaskRuntimeCheckpointMetadata,
+    identity: FeatureTaskRuntimeSubtaskCommitIdentity,
+  ): String = compose(subject.trim(), metadata, identity)
+
+  private fun compose(
+    subject: String,
+    metadata: FeatureTaskRuntimeCheckpointMetadata,
+    identity: FeatureTaskRuntimeSubtaskCommitIdentity,
+  ): String {
     val body = "${metadata.intent} checkpoint on '${metadata.branch}'"
     return "$subject\n\n$body\n$metadata\n\n${identity.trailer}\n"
   }
@@ -284,4 +303,5 @@ internal object FeatureTaskRuntimeCheckpointMessage {
 
   const val INTENT_AUDITED_IMPLEMENTATION: String = "audited implementation"
   const val INTENT_REMEDIATION: String = "remediation"
+  const val INTENT_FINALISED_SUBTASK: String = "finalised subtask"
 }

@@ -143,6 +143,16 @@ private object GitStandardWorkflowGitOperations : WorkflowGitOperations {
     return runGitCommand(repoRoot, "push", "-u", "origin", normalized).withValue(normalized)
   }
 
+  override fun pushBranchWithLease(repoRoot: Path, branch: String): WorkflowGitOperationResult {
+    val normalized = branch.trim()
+    if (normalized.isBlank()) {
+      return WorkflowGitOperationResult(status = "error", error = "Branch name is required to push.")
+    }
+    // Argument-less --force-with-lease leases against the remote-tracking ref, so a remote that moved
+    // since this repository last observed it rejects the push instead of being overwritten.
+    return runGitCommand(repoRoot, "push", "--force-with-lease", "-u", "origin", normalized).withValue(normalized)
+  }
+
   override fun localBranchHasUnpushedCommits(repoRoot: Path, branch: String): WorkflowGitOperationResult {
     val normalized = branch.trim()
     if (normalized.isBlank()) {

@@ -18,6 +18,7 @@ internal object GitCheckpointHistoryOperations : CheckpointHistoryGitOperations 
     repoRoot: Path,
     expectedOwnedHeadSha: String,
     replacementMessage: String?,
+    allowUnchangedIndex: Boolean,
   ): WorkflowGitOperationResult {
     val expected = expectedOwnedHeadSha.trim()
     if (expected.isBlank()) {
@@ -34,18 +35,20 @@ internal object GitCheckpointHistoryOperations : CheckpointHistoryGitOperations 
         error = "HEAD is '$currentHead' but the caller owns '$expected'; refusing to amend an unowned commit.",
       )
     }
-    val staged = runGitProcess(repoRoot, listOf("diff", "--cached", "--quiet"))
-    if (staged.timedOut || staged.readFailure != null) {
-      return WorkflowGitOperationResult(
-        status = "error",
-        error = staged.readFailure?.message ?: "git diff --cached timed out after ${GIT_TIMEOUT_SECONDS}s.",
-      )
-    }
-    if (staged.exitCode == 0) {
-      return WorkflowGitOperationResult(
-        status = "error",
-        error = "The index carries no staged content; refusing to amend '$currentHead'.",
-      )
+    if (!allowUnchangedIndex) {
+      val staged = runGitProcess(repoRoot, listOf("diff", "--cached", "--quiet"))
+      if (staged.timedOut || staged.readFailure != null) {
+        return WorkflowGitOperationResult(
+          status = "error",
+          error = staged.readFailure?.message ?: "git diff --cached timed out after ${GIT_TIMEOUT_SECONDS}s.",
+        )
+      }
+      if (staged.exitCode == 0) {
+        return WorkflowGitOperationResult(
+          status = "error",
+          error = "The index carries no staged content; refusing to amend '$currentHead'.",
+        )
+      }
     }
     val message = replacementMessage?.trim()
     val amendArgs = if (message.isNullOrBlank()) {

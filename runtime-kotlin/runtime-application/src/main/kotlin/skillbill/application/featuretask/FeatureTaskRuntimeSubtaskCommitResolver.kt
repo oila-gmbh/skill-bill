@@ -43,12 +43,17 @@ internal object FeatureTaskRuntimeSubtaskCommitResolver {
     durableCommitSha: String?,
     head: FeatureTaskRuntimeSubtaskCommitHeadState,
     sequenceNumber: Int,
+    finalisation: Boolean = false,
   ): FeatureTaskRuntimeSubtaskCommitDecision {
     val headSha = head.sha?.trim()?.takeIf(String::isNotBlank)
       ?: return FeatureTaskRuntimeSubtaskCommitDecision.Create
-    // A pushed commit is already someone else's history; rewriting it would diverge the remote.
-    if (!head.isUnpushed) return FeatureTaskRuntimeSubtaskCommitDecision.Create
     val durable = durableCommitSha?.trim()?.takeIf(String::isNotBlank)
+    // Finalisation is the only caller allowed to rewrite a published commit, and only when durable
+    // state proves HEAD is this subtask's own: a reopened subtask must still end with one commit, and
+    // the push finalisation drives leases against the remote tip instead of overwriting it. Every
+    // other caller treats a pushed commit as someone else's history and creates.
+    val ownsPublishedHead = finalisation && durable != null && durable == headSha
+    if (!head.isUnpushed && !ownsPublishedHead) return FeatureTaskRuntimeSubtaskCommitDecision.Create
     if (durable != null) {
       return if (durable == headSha) {
         FeatureTaskRuntimeSubtaskCommitDecision.Amend(headSha, sequenceNumber, recoveredFromTrailer = false)

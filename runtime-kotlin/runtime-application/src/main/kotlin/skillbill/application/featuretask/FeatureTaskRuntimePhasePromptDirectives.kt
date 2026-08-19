@@ -243,13 +243,13 @@ internal fun commitExclusionDirective(phaseId: String, issueKey: String): String
   }
   return """
     ## Feature-spec commit exclusion
-    Feature specs are workflow inputs, not implementation output. Do not stage or commit any
-    `.feature-specs/` path — especially this feature's `.feature-specs/$issueKey-*` (or
-    `.feature-specs/$issueKey/`) tree, including the parent spec, every subtask spec, and
-    `decomposition-manifest.yaml`. Stage every implementation path by explicit enumeration and never
-    run `git add -A` / `git add .`. Leave `.feature-specs/` dirty locally if it changed. If a human
-    operator already committed spec files, leave those committed files alone: do not add, amend,
-    unstage, or uncommit them.
+    Feature specs are workflow inputs, not implementation output. Never list any `.feature-specs/`
+    path in `commit_push_result.changed_paths` — especially this feature's
+    `.feature-specs/$issueKey-*` (or `.feature-specs/$issueKey/`) tree, including the parent spec,
+    every subtask spec, and `decomposition-manifest.yaml`. The runtime stages the paths you enumerate
+    and nothing else; it never runs `git add -A` / `git add .`. Leave `.feature-specs/` dirty locally
+    if it changed. Never amend, reset, or restage a commit this runtime does not own, including a
+    commit a human operator authored: leave those alone.
   """.trimIndent()
 }
 
@@ -372,11 +372,14 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "runtime change. Emit a bounded history_result containing changed_paths and decisions_recorded " +
     "alongside whether history was written or skipped; do not forward implementation or validation reports.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH to
-    "Stage and commit the implemented, reviewed, audited, validated, and history-updated " +
-    "changes on the resolved feature branch, then push the branch. Stage by explicit enumerated " +
-    "path; never run `git add -A` or `git add .`. Emit commit_push_result " +
-    "with commit_sha, branch, base_branch, and pushed status. If goal-continuation suppresses PR, " +
-    "this successful phase is the terminal success signal for the goal subtask.",
+    "Run no git command in this phase. The runtime stages, commits, and pushes the subtask on the " +
+    "resolved feature branch from what you emit here. Emit commit_push_result with `message` (the " +
+    "commit subject describing the implemented, reviewed, audited, validated, and history-updated " +
+    "outcome) and `changed_paths` (every implementation path this subtask touched, enumerated; the " +
+    "runtime stages exactly this set). A missing or blank `message` blocks the subtask rather than " +
+    "publishing a provisional subject. Do not emit commit_sha: the runtime captures it after the " +
+    "commit. If goal-continuation suppresses PR, this successful phase is the terminal success " +
+    "signal for the goal subtask.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR to
     "Invoke bill-pr-description, honor any repo-native PR template, create or reuse the open " +
     "pull request for the branch idempotently, and emit pr_result with the PR URL/number, " +

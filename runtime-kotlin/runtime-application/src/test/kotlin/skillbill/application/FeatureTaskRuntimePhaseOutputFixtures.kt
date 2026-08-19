@@ -32,6 +32,13 @@ internal fun verdictPlanOutput(verdict: String): String = """
   }
 """.trimIndent()
 
+// The commit_push record as it exists AFTER runtime finalisation: the agent contributed message and
+// changed_paths, and the runtime wrote the post-amend commit_sha back into the same container. This is
+// what the `pr` consumer projection reads, so any suite that assembles a pr briefing from static
+// records must use this rather than the pre-finalisation agent payload.
+internal val FINALISED_COMMIT_PUSH_OUTPUT: String = validJsonOutput("commit_push")
+  .replace("\"message\":", "\"commit_sha\":\"commit-runtime-1\",\n      \"message\":")
+
 internal fun validJsonOutput(phaseId: String): String = """
   {
     "contract_version": "0.2",
@@ -55,9 +62,12 @@ internal fun validProducedOutputs(phaseId: String): String = when (phaseId) {
     """.trimIndent()
   "write_history" ->
     """{"history_result":{"changed_paths":["agent/history.md"],"decisions_recorded":[]}}"""
+  // The runtime, not the agent, supplies commit_sha: the agent contributes the outcome message and
+  // the enumerated path set, and finalisation writes the post-amend sha back into this container.
   "commit_push" ->
     """{"commit_push_result":{
-      "commit_sha":"commit-runtime-1",
+      "message":"SKILL-65: runtime feature-task parity",
+      "changed_paths":["src/Runtime.kt"],
       "branch":"feat/SKILL-65-runtime-feature-task-parity",
       "base_branch":"main",
       "pushed":true
