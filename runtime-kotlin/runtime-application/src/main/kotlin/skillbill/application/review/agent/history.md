@@ -1,5 +1,15 @@
 # Review Boundary History
 
+## [2026-08-19] SKILL-196 subtask 3 — exclude fallback lanes per area
+Areas: application/review, domain/review/plan
+- `ReviewPerAreaFallbackExclusion.partition` runs after per-root lane assembly and before cross-root reconciliation; a fallback pack contributes a lane for area A only when no native routed pack in the assembled plan declares A.
+- Fallback owner resolves through `ReviewFallbackResolver`; with `generic` + `kotlin` + `kmp` on a Kotlin/Android diff the plan carries exactly one lane per area and zero `generic` rows.
+- Excluded fallback lanes fold `ownedPaths` and `changedHunkIds` into the winning native lane via `ReviewCrossRootLaneReconciliation`'s `excludedFallbackLanesByArea` input — claim transfer only, no rubric composition (rationale in `runtime-domain/agent/decisions.md`).
+- Pattern followed: domain-owned `ReviewFallbackExclusionPartition` consumed by `ParallelCodeReviewRunner`; `ReviewStackRouting` scoring and the per-file fallback branch untouched.
+- Regression: the 13-lane cross-stack fixture resolves to one lane per area; coverage ledger and `unreviewedSegmentIds` stay unchanged when a redundant fallback lane drops.
+Feature flag: N/A
+Acceptance criteria: 11/11 implemented
+
 ## [2026-08-19] SKILL-196 subtask 2 — reconcile lanes across routed roots by area
 Areas: application/review, domain/review/plan
 - Cross-root reconciliation now keys on `lane.area` instead of `skillName`; the delegated launch path no longer uses `groupBy { it.skillName }`, so `kotlin` and `kmp` lanes for the same area collapse to one owner.
