@@ -1399,17 +1399,30 @@ internal class FeatureTaskRuntimeRunLoop(
    */
   private fun subtaskCommitLedgerState(
     identity: FeatureTaskRuntimeSubtaskCommitIdentity,
-  ): SubtaskCommitLedgerState = runCatching {
-    recorder.loadCheckpointIdentities(request.workflowId, request.dbPathOverride)
-  }.getOrNull()?.let { identities ->
-    SubtaskCommitLedgerState(
-      commitSha = identities
+  ): SubtaskCommitLedgerState {
+    val read = runCatching { recorder.loadCheckpointIdentities(request.workflowId, request.dbPathOverride) }
+    val identities = read.getOrNull()
+    val cause = read.exceptionOrNull()
+      ?.let { "the checkpoint-identity store could not be read (${it.message ?: it::class.simpleName})" }
+      ?: "no workflow row recorded any checkpoint identity for this run".takeIf { identities == null }
+    if (cause != null) {
+      runCatching { diagnostics.warning(ledgerUnavailableRecord(identity, cause)) }
+      return SubtaskCommitLedgerState(commitSha = null, nextSequenceNumber = 0)
+    }
+    val recorded = requireNotNull(identities)
+    return SubtaskCommitLedgerState(
+      commitSha = recorded
         .filter { it.issueKey == identity.issueKey && it.subtaskId == identity.subtaskId }
         .maxByOrNull { it.sequenceNumber }
         ?.commitSha,
-      nextSequenceNumber = (identities.maxOfOrNull { it.sequenceNumber } ?: -1) + 1,
+      nextSequenceNumber = (recorded.maxOfOrNull { it.sequenceNumber } ?: -1) + 1,
     )
-  } ?: SubtaskCommitLedgerState(commitSha = null, nextSequenceNumber = 0)
+  }
+
+  private fun ledgerUnavailableRecord(identity: FeatureTaskRuntimeSubtaskCommitIdentity, cause: String): String =
+    "seam=FeatureTaskRuntimeRunLoop.subtaskCommitLedgerState value_used='no durable pointer, sequence 0' " +
+      "value_expected=the recorded checkpoint-identity ledger for '${identity.issueKey}/${identity.subtaskId}' " +
+      "cause=$cause"
 
   /**
    * One subtask, one branch commit: the first checkpoint with staged content creates it and every
@@ -1467,6 +1480,19 @@ internal class FeatureTaskRuntimeRunLoop(
       }
     }
     val refName = identity.checkpointRefName(decision.sequenceNumber)
+    val occupant = phaseGates.gitOperations.resolveCheckpointRef(
+      request.repoRoot,
+      FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE,
+      refName,
+    ).value.orEmpty().trim()
+    if (occupant.isNotBlank() && occupant != decision.ownedHeadSha) {
+      return preAmendPreservationFailure(
+        refName,
+        "that ref already preserves '$occupant' and writing '${decision.ownedHeadSha}' over it would discard " +
+          "the only reachability that commit has; the checkpoint sequence restarted, so this ref name is not " +
+          "this checkpoint's to reuse",
+      )
+    }
     val written = phaseGates.gitOperations.updateCheckpointRef(
       request.repoRoot,
       FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE,

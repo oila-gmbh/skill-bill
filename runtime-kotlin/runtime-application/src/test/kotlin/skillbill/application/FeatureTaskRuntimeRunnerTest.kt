@@ -4494,7 +4494,11 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
       // This run carries no goal-continuation artifact, so every ref names the reserved sentinel.
       assertEquals(FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID, identity.subtaskId)
       assertEquals(
-        featureTaskRuntimeCheckpointRefName(ISSUE_KEY, FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID, identity.sequenceNumber),
+        featureTaskRuntimeCheckpointRefName(
+          ISSUE_KEY,
+          FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID,
+          identity.sequenceNumber,
+        ),
         identity.checkpointRef,
       )
     }
@@ -4557,13 +4561,17 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
   fun `a wiped durable pointer recovers the amend target from the HEAD trailer and records the fallback`() {
     val git = checkpointGit(ownedPaths = listOf("src/Owned.kt"))
     val diagnostics = RecordingDiagnostics()
+    var pointerWiped = false
     var harness: RunnerHarness? = null
     harness = checkpointRunHarness(
       git,
       diagnostics = diagnostics,
-      // Fires after the first checkpoint landed, modelling a crash that lost the durable pointer.
+      // Fires once the first checkpoint has landed, modelling a crash that lost the durable pointer.
       onPhase = { phaseId ->
-        if (phaseId == "review") harness?.recorder?.quarantineCheckpointIdentities(WORKFLOW_ID)
+        if (phaseId == "audit" && !pointerWiped && git.createCommitMessages.isNotEmpty()) {
+          pointerWiped = true
+          harness?.recorder?.quarantineCheckpointIdentities(WORKFLOW_ID)
+        }
       },
     )
     val run = requireNotNull(harness)
@@ -4576,6 +4584,42 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
       diagnostics.warnings.any { it.contains("FeatureTaskRuntimeSubtaskCommitResolver.decide") },
       "the trailer fallback is a degradation and must emit an observability record",
     )
+    // The quarantine restarts the checkpoint sequence, so a post-restart amend can target a ref name an
+    // earlier amend already owns. Every preserved commit must still have its own ref afterwards.
+    assertEquals(
+      git.updateCheckpointRefCalls.size,
+      git.checkpointRefs.size,
+      "each amend preserves its predecessor under its own ref; a reused ref name discards a checkpoint state",
+    )
+    assertContains(
+      git.checkpointRefs.values,
+      1.toString(16).padStart(40, '0'),
+      "the created subtask commit must still be reachable after the post-restart amend",
+    )
+  }
+
+  // AC-007: the sequence restart can aim an amend at a ref another checkpoint already holds. Preserving is
+  // the point of the ref, so the runtime refuses to move it rather than overwriting the commit it preserves.
+  @Test
+  fun `an amend whose checkpoint ref already preserves another commit is refused before HEAD is rewritten`() {
+    val git = checkpointGit(ownedPaths = listOf("src/Owned.kt"))
+    val occupiedRef = featureTaskRuntimeCheckpointRefName(ISSUE_KEY, FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID, 1)
+    val preserved = "d".repeat(40)
+    git.checkpointRefs[occupiedRef] = preserved
+    val harness = checkpointRunHarness(git)
+
+    val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertContains(blocked.blockedReason, "could not be preserved")
+    assertContains(blocked.blockedReason, preserved)
+    assertTrue(git.amendCommitMessages.isEmpty(), "the amend must not run against an occupied checkpoint ref")
+    assertEquals(
+      1.toString(16).padStart(40, '0'),
+      git.headCommitShaValue,
+      "HEAD must still be the commit the refused amend was about to rewrite",
+    )
+    assertEquals(preserved, git.checkpointRefs[occupiedRef], "the occupied ref must still preserve its commit")
   }
 
   // AC-005: the contract bump's recovery path. A store written under 0.1 must not wedge the run at its
