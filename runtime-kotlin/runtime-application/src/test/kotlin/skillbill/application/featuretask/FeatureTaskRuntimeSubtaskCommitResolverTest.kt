@@ -15,29 +15,29 @@ class FeatureTaskRuntimeSubtaskCommitResolverTest {
   // finished commit, destroying a delivered subtask on the shared branch.
   @Test
   fun `amend is keyed on this subtask's own unpushed commit and nothing else`() {
-    assertIs<FeatureTaskRuntimeSubtaskCommitDecision.Amend>(
+    assertIs<FeatureTaskRuntimeSubtaskCommitAmend>(
       decide(durableCommitSha = HEAD_SHA, headCommitMessage = null),
     )
 
     // The predecessor subtask's finished commit at HEAD: runtime-written, but not ours.
-    assertIs<FeatureTaskRuntimeSubtaskCommitDecision.Create>(
+    assertIs<FeatureTaskRuntimeSubtaskCommitCreate>(
       decide(durableCommitSha = null, headCommitMessage = "done\n\nSkill-Bill-Subtask: $ISSUE/2\n"),
     )
     // A human commit landed on top of our recorded commit.
-    assertIs<FeatureTaskRuntimeSubtaskCommitDecision.Create>(
+    assertIs<FeatureTaskRuntimeSubtaskCommitCreate>(
       decide(durableCommitSha = OTHER_SHA, headCommitMessage = null),
     )
     // No identity at all.
-    assertIs<FeatureTaskRuntimeSubtaskCommitDecision.Create>(
+    assertIs<FeatureTaskRuntimeSubtaskCommitCreate>(
       decide(durableCommitSha = null, headCommitMessage = "a hand-written commit\n"),
     )
     // Already published but durably ours: a reopened subtask must amend its one commit rather than
     // stack a second one on the branch, and finalisation's lease reconciles the remote.
-    assertIs<FeatureTaskRuntimeSubtaskCommitDecision.Amend>(
+    assertIs<FeatureTaskRuntimeSubtaskCommitAmend>(
       decide(durableCommitSha = HEAD_SHA, headCommitMessage = null, headIsUnpushed = false),
     )
     // Already published and no durable pointer claims it: someone else's history.
-    assertIs<FeatureTaskRuntimeSubtaskCommitDecision.Create>(
+    assertIs<FeatureTaskRuntimeSubtaskCommitCreate>(
       decide(
         durableCommitSha = null,
         headCommitMessage = "wip\n\nSkill-Bill-Subtask: $ISSUE/3\n",
@@ -45,7 +45,7 @@ class FeatureTaskRuntimeSubtaskCommitResolverTest {
       ),
     )
     // Nothing to amend onto.
-    assertIs<FeatureTaskRuntimeSubtaskCommitDecision.Create>(
+    assertIs<FeatureTaskRuntimeSubtaskCommitCreate>(
       decide(durableCommitSha = HEAD_SHA, headCommitMessage = null, headSha = null),
     )
   }
@@ -54,7 +54,7 @@ class FeatureTaskRuntimeSubtaskCommitResolverTest {
   // and the recovery is a degradation the caller has to be able to record.
   @Test
   fun `an absent pointer recovers the amend target from the HEAD trailer and flags the fallback`() {
-    val decision = assertIs<FeatureTaskRuntimeSubtaskCommitDecision.Amend>(
+    val decision = assertIs<FeatureTaskRuntimeSubtaskCommitAmend>(
       decide(durableCommitSha = null, headCommitMessage = "wip\n\nSkill-Bill-Subtask: $ISSUE/3\n"),
     )
 

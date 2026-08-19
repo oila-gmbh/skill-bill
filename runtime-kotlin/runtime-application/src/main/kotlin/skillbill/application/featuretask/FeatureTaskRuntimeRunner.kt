@@ -162,9 +162,9 @@ class FeatureTaskRuntimeRunner(
             dbOverride = runRequest.dbPathOverride,
           )
         ) {
-          is RemediationBaseCoherenceResult.Blocked ->
+          is RemediationBaseBlocked ->
             return remediationBaseCoherenceBlockedReport(runRequest, reconciliation.operatorGuidance)
-          is RemediationBaseCoherenceResult.Coherent -> Unit
+          is RemediationBaseCoherent -> Unit
         }
       }
       val state = FeatureTaskRuntimeRunState(

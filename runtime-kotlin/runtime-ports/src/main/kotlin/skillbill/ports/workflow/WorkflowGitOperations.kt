@@ -50,11 +50,10 @@ interface WorkflowGitOperations {
    * commit that is already published, so a rewritten tip can never silently overwrite a remote a PR
    * or CI already references. Default refuses for the same reason [pushBranch] does.
    */
-  fun pushBranchWithLease(repoRoot: Path, branch: String): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(
-      status = "error",
-      error = "This git operations implementation cannot push branch '$branch' under a lease.",
-    )
+  fun pushBranchWithLease(repoRoot: Path, branch: String): WorkflowGitOperationResult = WorkflowGitOperationResult(
+    status = "error",
+    error = "This git operations implementation cannot push branch '$branch' under a lease.",
+  )
 
   /**
    * Whether [branch]'s local tip has commits not on `origin/[branch]`.

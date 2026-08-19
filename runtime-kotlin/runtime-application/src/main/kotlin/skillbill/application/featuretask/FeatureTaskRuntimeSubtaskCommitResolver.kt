@@ -4,17 +4,19 @@ package skillbill.application.featuretask
  * SKILL-190: whether a checkpoint creates the subtask commit or amends it.
  *
  * [Amend] carries the sha the caller declares it owns, so the amend primitive is handed the ownership
- * signal rather than inferring policy from branch state.
+ * signal rather than inferring policy from branch state, plus whether that sha is already published so
+ * the write seam can record the rewrite of published history for every caller, not only finalisation.
  */
-internal sealed interface FeatureTaskRuntimeSubtaskCommitDecision {
-  data object Create : FeatureTaskRuntimeSubtaskCommitDecision
+internal sealed interface FeatureTaskRuntimeSubtaskCommitDecision
 
-  data class Amend(
-    val ownedHeadSha: String,
-    val sequenceNumber: Int,
-    val recoveredFromTrailer: Boolean,
-  ) : FeatureTaskRuntimeSubtaskCommitDecision
-}
+internal data object FeatureTaskRuntimeSubtaskCommitCreate : FeatureTaskRuntimeSubtaskCommitDecision
+
+internal data class FeatureTaskRuntimeSubtaskCommitAmend(
+  val ownedHeadSha: String,
+  val sequenceNumber: Int,
+  val recoveredFromTrailer: Boolean,
+  val rewritesPublishedHistory: Boolean,
+) : FeatureTaskRuntimeSubtaskCommitDecision
 
 /** The HEAD facts the create-or-amend decision reads. */
 internal data class FeatureTaskRuntimeSubtaskCommitHeadState(
@@ -46,7 +48,7 @@ internal object FeatureTaskRuntimeSubtaskCommitResolver {
     sequenceNumber: Int,
   ): FeatureTaskRuntimeSubtaskCommitDecision {
     val headSha = head.sha?.trim()?.takeIf(String::isNotBlank)
-      ?: return FeatureTaskRuntimeSubtaskCommitDecision.Create
+      ?: return FeatureTaskRuntimeSubtaskCommitCreate
     val durable = durableCommitSha?.trim()?.takeIf(String::isNotBlank)
     // Rewriting a published commit is allowed exactly when durable state proves that commit is this
     // subtask's own, for every caller rather than for finalisation alone. Keying it on the caller made
@@ -55,20 +57,30 @@ internal object FeatureTaskRuntimeSubtaskCommitResolver {
     // force-with-lease push reconciles the remote for whichever commit the rewrite produced. A pushed
     // HEAD no durable pointer claims is still someone else's history and still creates.
     val ownsPublishedHead = durable != null && durable == headSha
-    if (!head.isUnpushed && !ownsPublishedHead) return FeatureTaskRuntimeSubtaskCommitDecision.Create
+    if (!head.isUnpushed && !ownsPublishedHead) return FeatureTaskRuntimeSubtaskCommitCreate
     if (durable != null) {
       return if (durable == headSha) {
-        FeatureTaskRuntimeSubtaskCommitDecision.Amend(headSha, sequenceNumber, recoveredFromTrailer = false)
+        FeatureTaskRuntimeSubtaskCommitAmend(
+          ownedHeadSha = headSha,
+          sequenceNumber = sequenceNumber,
+          recoveredFromTrailer = false,
+          rewritesPublishedHistory = !head.isUnpushed,
+        )
       } else {
-        FeatureTaskRuntimeSubtaskCommitDecision.Create
+        FeatureTaskRuntimeSubtaskCommitCreate
       }
     }
     val message = head.commitMessage?.takeIf(String::isNotBlank)
-      ?: return FeatureTaskRuntimeSubtaskCommitDecision.Create
+      ?: return FeatureTaskRuntimeSubtaskCommitCreate
     return if (identity.matches(message)) {
-      FeatureTaskRuntimeSubtaskCommitDecision.Amend(headSha, sequenceNumber, recoveredFromTrailer = true)
+      FeatureTaskRuntimeSubtaskCommitAmend(
+        ownedHeadSha = headSha,
+        sequenceNumber = sequenceNumber,
+        recoveredFromTrailer = true,
+        rewritesPublishedHistory = !head.isUnpushed,
+      )
     } else {
-      FeatureTaskRuntimeSubtaskCommitDecision.Create
+      FeatureTaskRuntimeSubtaskCommitCreate
     }
   }
 
@@ -78,4 +90,12 @@ internal object FeatureTaskRuntimeSubtaskCommitResolver {
       "value_expected=durable subtask-commit pointer for '${identity.issueKey}/${identity.subtaskId}' " +
       "cause=no durable checkpoint identity recorded this subtask's commit, so the amend target was " +
       "recovered from the Skill-Bill-Subtask trailer on HEAD"
+
+  /** Names the seam, the value used, the value expected, and the cause, per docs/observability-policy.md. */
+  fun publishedHistoryRewriteRecord(identity: FeatureTaskRuntimeSubtaskCommitIdentity, headSha: String): String =
+    "seam=writeSubtaskCommitPreservingHistory value_used='an amend of the published commit $headSha' " +
+      "value_expected=an amend of an unpushed commit for '${identity.issueKey}/${identity.subtaskId}' " +
+      "cause=durable state proves this subtask owns the published HEAD, so its history is rewritten in " +
+      "place rather than stacked; the local branch diverges from origin until finalisation pushes it " +
+      "with --force-with-lease, and a manual push before then is rejected as non-fast-forward"
 }

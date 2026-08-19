@@ -2,7 +2,6 @@ package skillbill.application
 
 import skillbill.application.decomposition.decompositionManifestPath
 import skillbill.application.decomposition.parentSpecPath
-import skillbill.application.featuretask.RemediationBaseCoherenceResult
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.application.featuretask.FeatureSpecPreparationRuntime
@@ -26,6 +25,7 @@ import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.featuretask.GoalContinuationStateRecordRequest
 import skillbill.application.featuretask.GoalSubtaskReviewInputBlocked
 import skillbill.application.featuretask.GoalSubtaskReviewInputReady
+import skillbill.application.featuretask.RemediationBaseCoherent
 import skillbill.application.featuretask.SpecSourceResolver
 import skillbill.application.featuretask.reconcileCheckpointPathInventory
 import skillbill.application.model.FeatureTaskRuntimeAgentAssignment
@@ -1496,13 +1496,17 @@ class FeatureTaskRuntimeRemediationGenerationTest {
     )
     assertEquals(recordedBase, harness.goalContinuationRecorder.reviewState(WORKFLOW_ID)?.remediationBaseSha)
 
-    val healed = assertIs<RemediationBaseCoherenceResult.Coherent>(
+    val healed = assertIs<RemediationBaseCoherent>(
       harness.goalContinuationRecorder.reconcileRemediationBaseCoherence(WORKFLOW_ID, git, repoRoot),
     )
-    assertEquals(recordedBase, healed.state?.remediationBaseSha)
-    assertEquals(recordedBase, harness.goalContinuationRecorder.reviewState(WORKFLOW_ID)?.remediationBaseSha)
+    val reconciledBase = requireNotNull(healed.state?.remediationBaseSha)
+    assertEquals(reconciledBase, harness.goalContinuationRecorder.reviewState(WORKFLOW_ID)?.remediationBaseSha)
+    assertNotEquals(siblingTip, reconciledBase)
     assertEquals("false", git.isCommitAncestor(repoRoot, recordedBase, siblingTip).value)
-    assertNull(harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_review_base_recoveries"])
+    @Suppress("UNCHECKED_CAST")
+    val recoveries = harness.repository.taskRuntimeArtifacts(WORKFLOW_ID)["goal_review_base_recoveries"]
+      as List<Map<String, Any?>>?
+    recoveries?.forEach { entry -> assertEquals(reconciledBase, entry["replacement_sha"]) }
   }
 
   // A settled subtask's review is replayed from its durable result on resume rather than relaunched,
@@ -4267,6 +4271,7 @@ class FeatureTaskRuntimeLegacyBriefingBlockTest {
 
 // SKILL-85 Subtask 3 (AC2/3/4/5/6/8): reconcile-on-resume idempotency for the now-fix-loop mutating
 // implement phase, exercised through a synthetic backward edge review --needs_fix--> implement.
+@Suppress("LargeClass")
 class FeatureTaskRuntimeReconcileOnResumeTest {
   // (a) A mutating-phase re-run is a no-op when the tree matches target: the re-entered implement
   // returns the reconciliation report and the reconciliation gate passes, the clean worktree produces
@@ -4682,7 +4687,50 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     }
     assertTrue(harness.recorder.loadQuarantinedRecords(WORKFLOW_ID).orEmpty().isEmpty())
   }
+}
 
+// The tree starts clean and the writing phase dirties it, so the phase file manifest the checkpoint
+// reads shows those paths as this phase's own writes rather than as ambient pre-existing dirt.
+private fun checkpointGit(
+  ownedPaths: List<String>,
+  stagedPaths: List<String> = emptyList(),
+): RecordingWorkflowGitOperations =
+  RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch").also {
+    it.ownedPathsValue = ownedPaths
+    it.stagedPathsValue = stagedPaths
+  }
+
+private fun checkpointRunHarness(
+  git: RecordingWorkflowGitOperations,
+  reviewDriver: skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver = reviewFixDriver(2),
+  diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
+  onPhase: (String) -> Unit = {},
+): RunnerHarness {
+  val ownedPaths = git.ownedPathsValue
+  val writtenStatus = ownedPaths.joinToString("\n") { path -> " M $path" }
+  git.ownedPathsValue = emptyList()
+  return runnerHarness(
+    agentAssignment = phasePerAgentAssignment(),
+    runtimeConfig = RuntimeHarnessConfig(
+      branchSetup = BranchSetupTestConfig(gitOperations = git),
+      reviewDriver = reviewDriver,
+    ),
+    launcher = RuntimeRecordingLauncher { request ->
+      val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+      if (phaseId == "implement" || phaseId == "implement_fix") {
+        git.worktreeStatusValue = writtenStatus
+        git.ownedPathsValue = (git.ownedPathsValue + ownedPaths).distinct()
+      }
+      onPhase(phaseId)
+      facts(validJsonOutput(phaseId))
+    },
+    diagnostics = diagnostics,
+  )
+}
+
+// SKILL-190: checkpoint-identity, amend and remediation-rollback behaviour on resume, split from
+// FeatureTaskRuntimeReconcileOnResumeTest so neither class carries the whole reconcile surface.
+class FeatureTaskRuntimeCheckpointHistoryOnResumeTest {
   // AC-002 / task-2: when the durable base record rejects the checkpoint sha, the branch soft-resets
   // to the pre-commit parent so the ref and the durable row stay paired (both unchanged).
   @Test
@@ -4924,45 +4972,6 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     assertTrue(
       git.goalReviewBuildInputs.any { fixFile in it.ownedPathspec },
       "the fix's new file must be inside the delta the remediation review judges",
-    )
-  }
-
-  // The tree starts clean and the writing phase dirties it, so the phase file manifest the checkpoint
-  // reads shows those paths as this phase's own writes rather than as ambient pre-existing dirt.
-  private fun checkpointGit(
-    ownedPaths: List<String>,
-    stagedPaths: List<String> = emptyList(),
-  ): RecordingWorkflowGitOperations =
-    RecordingWorkflowGitOperations(currentBranchValue = "feat/existing-runtime-branch").also {
-      it.ownedPathsValue = ownedPaths
-      it.stagedPathsValue = stagedPaths
-    }
-
-  private fun checkpointRunHarness(
-    git: RecordingWorkflowGitOperations,
-    reviewDriver: skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver = reviewFixDriver(2),
-    diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
-    onPhase: (String) -> Unit = {},
-  ): RunnerHarness {
-    val ownedPaths = git.ownedPathsValue
-    val writtenStatus = ownedPaths.joinToString("\n") { path -> " M $path" }
-    git.ownedPathsValue = emptyList()
-    return runnerHarness(
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(
-        branchSetup = BranchSetupTestConfig(gitOperations = git),
-        reviewDriver = reviewDriver,
-      ),
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        if (phaseId == "implement" || phaseId == "implement_fix") {
-          git.worktreeStatusValue = writtenStatus
-          git.ownedPathsValue = (git.ownedPathsValue + ownedPaths).distinct()
-        }
-        onPhase(phaseId)
-        facts(validJsonOutput(phaseId))
-      },
-      diagnostics = diagnostics,
     )
   }
 
@@ -6781,13 +6790,10 @@ internal class RecordingWorkflowGitOperations(
         return WorkflowGitOperationResult(status = "ok", value = refName)
       }
 
-      override fun resolveRef(
-        repoRoot: Path,
-        namespacePrefix: String,
-        refName: String,
-      ): WorkflowGitOperationResult = onResolveCheckpointRef?.invoke(refName)
-        ?: resolveCheckpointRefResult
-        ?: WorkflowGitOperationResult(status = "ok", value = checkpointRefs[refName].orEmpty())
+      override fun resolveRef(repoRoot: Path, namespacePrefix: String, refName: String): WorkflowGitOperationResult =
+        onResolveCheckpointRef?.invoke(refName)
+          ?: resolveCheckpointRefResult
+          ?: WorkflowGitOperationResult(status = "ok", value = checkpointRefs[refName].orEmpty())
 
       override fun listRefs(repoRoot: Path, namespacePrefix: String): WorkflowGitOperationResult =
         WorkflowGitOperationResult(
@@ -6795,11 +6801,7 @@ internal class RecordingWorkflowGitOperations(
           value = checkpointRefs.entries.joinToString("") { (ref, sha) -> "$sha\u0000$ref\u0000" },
         )
 
-      override fun deleteRef(
-        repoRoot: Path,
-        namespacePrefix: String,
-        refName: String,
-      ): WorkflowGitOperationResult {
+      override fun deleteRef(repoRoot: Path, namespacePrefix: String, refName: String): WorkflowGitOperationResult {
         checkpointRefs.remove(refName)
         return WorkflowGitOperationResult(status = "ok", value = refName)
       }

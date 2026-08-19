@@ -31,7 +31,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class RemediationBaseReconciliationUnderAmendTest {
@@ -48,17 +47,17 @@ class RemediationBaseReconciliationUnderAmendTest {
       sequenceNumber = 1,
       commitSha = fixture.postRemediationSha,
       parentSha = preFixSha,
-      repoRoot = fixture.repoRoot,
-      preFixSha = preFixSha,
     )
+    seedPreFixRef(fixture.repoRoot, identity, preFixSha)
     val state = remediationState(remediationBaseSha = preFixSha)
-    val recorder = recorderWith(state, fixture.repoRoot, listOf(identity))
+    val recorder = recorderWith(state, listOf(identity))
     val git = realGitOps()
 
     val result = recorder.reconcileRemediationBaseCoherence(workflowId, git, fixture.repoRoot)
-    val coherent = assertIs<RemediationBaseCoherenceResult.Coherent>(result)
+    val coherent = assertIs<RemediationBaseCoherent>(result)
     assertEquals(preFixSha, coherent.state?.remediationBaseSha)
-    assertFalse(git.isCommitAncestor(fixture.repoRoot, preFixSha, fixture.postRemediationSha).let { it.ok && it.value == "true" })
+    val ancestry = git.isCommitAncestor(fixture.repoRoot, preFixSha, fixture.postRemediationSha)
+    assertFalse(ancestry.ok && ancestry.value == "true")
   }
 
   @Test
@@ -71,14 +70,12 @@ class RemediationBaseReconciliationUnderAmendTest {
       sequenceNumber = 1,
       commitSha = fixture.postRemediationSha,
       parentSha = fixture.preRemediationSha,
-      repoRoot = fixture.repoRoot,
-      preFixSha = null,
     )
     val state = remediationState(remediationBaseSha = fixture.preRemediationSha)
     val repository = InMemoryRuntimeWorkflowRepository()
-    val recorder = recorderWith(state, fixture.repoRoot, listOf(identity), repository)
+    val recorder = recorderWith(state, listOf(identity), repository)
 
-    val blocked = assertIs<RemediationBaseCoherenceResult.Blocked>(
+    val blocked = assertIs<RemediationBaseBlocked>(
       recorder.reconcileRemediationBaseCoherence(workflowId, realGitOps(), fixture.repoRoot),
     )
     assertContains(blocked.operatorGuidance, workflowId)
@@ -105,14 +102,13 @@ class RemediationBaseReconciliationUnderAmendTest {
       sequenceNumber = 1,
       commitSha = fixture.postRemediationSha,
       parentSha = preFixSha,
-      repoRoot = fixture.repoRoot,
-      preFixSha = preFixSha,
     )
+    seedPreFixRef(fixture.repoRoot, identity, preFixSha)
     val state = remediationState(remediationBaseSha = preFixSha)
-    val recorder = recorderWith(state, fixture.repoRoot, listOf(identity))
+    val recorder = recorderWith(state, listOf(identity))
     val diff = git(fixture.repoRoot, "diff", preFixSha, fixture.postRemediationSha)
     assertTrue(diff.contains("pass-one-marker"), "diff must contain pass-one remediation changes")
-    val coherent = assertIs<RemediationBaseCoherenceResult.Coherent>(
+    val coherent = assertIs<RemediationBaseCoherent>(
       recorder.reconcileRemediationBaseCoherence(workflowId, realGitOps(), fixture.repoRoot),
     )
     assertEquals(preFixSha, coherent.state?.remediationBaseSha)
@@ -123,13 +119,13 @@ class RemediationBaseReconciliationUnderAmendTest {
     val repoRoot = Files.createTempDirectory("skillbill-no-remediation-yet")
     initRepo(repoRoot)
     val state = remediationState(remediationBaseSha = null)
-    val recorder = recorderWith(state, repoRoot, emptyList())
+    val recorder = recorderWith(state, emptyList())
     val git = object : WorkflowGitOperations by realGitOps() {
       override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult =
         WorkflowGitOperationResult(status = "error", error = "HEAD read forbidden on cheap path")
     }
     val result = recorder.reconcileRemediationBaseCoherence(workflowId, git, repoRoot)
-    assertIs<RemediationBaseCoherenceResult.Coherent>(result)
+    assertIs<RemediationBaseCoherent>(result)
   }
 
   @Test
@@ -142,17 +138,15 @@ class RemediationBaseReconciliationUnderAmendTest {
       sequenceNumber = 0,
       commitSha = preFixSha,
       parentSha = fixture.parentSha,
-      repoRoot = fixture.repoRoot,
-      preFixSha = fixture.implementSha,
       refName = ref0,
     )
+    seedPreFixRef(fixture.repoRoot, identity0, fixture.implementSha)
     val identity1 = reviewFixIdentity(
       sequenceNumber = 1,
       commitSha = fixture.postRemediationSha,
       parentSha = preFixSha,
-      repoRoot = fixture.repoRoot,
-      preFixSha = preFixSha,
     )
+    seedPreFixRef(fixture.repoRoot, identity1, preFixSha)
     val rollbackHead = fixture.postRemediationSha
     rollbackRemediation(
       repoRoot = fixture.repoRoot,
@@ -243,37 +237,33 @@ class RemediationBaseReconciliationUnderAmendTest {
     return state.reserveNextPass().copy(remediationBaseSha = remediationBaseSha)
   }
 
+  private fun seedPreFixRef(repoRoot: Path, identity: FeatureTaskRuntimeCheckpointIdentity, preFixSha: String) {
+    git(repoRoot, "update-ref", identity.checkpointRef, preFixSha)
+  }
+
   private fun reviewFixIdentity(
     sequenceNumber: Int,
     commitSha: String,
     parentSha: String?,
-    repoRoot: Path,
-    preFixSha: String?,
     refName: String = featureTaskRuntimeCheckpointRefName(issueKey, subtaskId, sequenceNumber),
-  ): FeatureTaskRuntimeCheckpointIdentity {
-    if (preFixSha != null) {
-      git(repoRoot, "update-ref", refName, preFixSha)
-    }
-    return FeatureTaskRuntimeCheckpointIdentity(
-      sequenceNumber = sequenceNumber,
-      issueKey = issueKey,
-      subtaskId = subtaskId,
-      checkpointRef = refName,
-      branch = goalBranch,
-      phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
-      generation = 1,
-      ownedPathDigest = "a".repeat(64),
-      ownedPathCount = 1,
-      commitSha = commitSha,
-      recordedAt = "2026-08-19T00:00:00Z",
-      loopId = FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID,
-      parentSha = parentSha,
-    )
-  }
+  ): FeatureTaskRuntimeCheckpointIdentity = FeatureTaskRuntimeCheckpointIdentity(
+    sequenceNumber = sequenceNumber,
+    issueKey = issueKey,
+    subtaskId = subtaskId,
+    checkpointRef = refName,
+    branch = goalBranch,
+    phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+    generation = 1,
+    ownedPathDigest = "a".repeat(64),
+    ownedPathCount = 1,
+    commitSha = commitSha,
+    recordedAt = "2026-08-19T00:00:00Z",
+    loopId = FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID,
+    parentSha = parentSha,
+  )
 
   private fun recorderWith(
     state: GoalSubtaskReviewState,
-    repoRoot: Path,
     checkpointIdentities: List<FeatureTaskRuntimeCheckpointIdentity>,
     repository: InMemoryRuntimeWorkflowRepository = InMemoryRuntimeWorkflowRepository(),
   ): FeatureTaskRuntimeGoalContinuationRecorder {

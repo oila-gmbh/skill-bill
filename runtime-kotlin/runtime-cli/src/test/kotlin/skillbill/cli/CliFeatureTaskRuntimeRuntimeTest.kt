@@ -2245,7 +2245,7 @@ private class FakeRuntimeGitOperations(
     WorkflowGitOperationResult(status = "ok", value = currentBranchValue)
 
   override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "recorded")
+    WorkflowGitOperationResult(status = "ok", value = "2".repeat(40))
 
   override fun pushBranch(repoRoot: Path, branch: String): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = branch)

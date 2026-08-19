@@ -55,8 +55,13 @@ class GitCheckpointHistoryOperationsTest {
     assertEquals("amended\n", showAtHead("owned/Base.kt"))
     assertEquals("other\n", showAtHead("foreign/Other.kt"))
     assertEquals(
-      listOf(" M foreign/Other.kt"),
-      runGitCommand(repo, "status", "--porcelain").value.orEmpty().lines().filter(String::isNotBlank),
+      emptyList(),
+      runGitCommand(repo, "diff", "--cached", "--name-only").value.orEmpty().lines().filter(String::isNotBlank),
+      "the amend must consume the index and stage nothing further",
+    )
+    assertEquals(
+      listOf("foreign/Other.kt"),
+      runGitCommand(repo, "diff", "--name-only").value.orEmpty().lines().filter(String::isNotBlank),
     )
   }
 
@@ -176,8 +181,7 @@ class GitCheckpointHistoryOperationsTest {
 
   private fun head(): String = runGitCommand(repo, "rev-parse", "HEAD").value.orEmpty().trim()
 
-  private fun showAtHead(relative: String): String =
-    runGitProcess(repo, listOf("show", "HEAD:$relative")).output + "\n"
+  private fun showAtHead(relative: String): String = runGitProcess(repo, listOf("show", "HEAD:$relative")).output + "\n"
 
   private fun write(relative: String, content: String) {
     val target = repo.resolve(relative)

@@ -4,14 +4,14 @@ import skillbill.application.model.FeatureTaskRuntimeGoalContinuationContext
 import skillbill.application.model.FeatureTaskRuntimeRunReport
 import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.model.FeatureTaskRuntimeSubtaskOutcome
-import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import skillbill.application.workflow.repoRoot
 import skillbill.contracts.JsonSupport
 import skillbill.ports.workflow.WorkflowGitOperations
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 
 internal const val BRANCH_SETUP_AGENT_SENTINEL = "branch-setup"
 internal const val GOAL_PLANNING_IMPORT_AGENT_SENTINEL = "goal-planning-import"
@@ -161,11 +161,11 @@ internal fun Map<String, Any?>.commitShaFromPhasePayload(): String? {
     ?: (this["commit_sha"]?.toString()?.takeIf(String::isNotBlank))
 }
 
-internal sealed interface RemediationBaseCoherenceResult {
-  data class Coherent(val state: GoalSubtaskReviewState?) : RemediationBaseCoherenceResult
+internal sealed interface RemediationBaseCoherenceResult
 
-  data class Blocked(val operatorGuidance: String) : RemediationBaseCoherenceResult
-}
+internal data class RemediationBaseCoherent(val state: GoalSubtaskReviewState?) : RemediationBaseCoherenceResult
+
+internal data class RemediationBaseBlocked(val operatorGuidance: String) : RemediationBaseCoherenceResult
 
 internal fun remediationBaseCoherenceBlockedReport(
   request: FeatureTaskRuntimeRunRequest,

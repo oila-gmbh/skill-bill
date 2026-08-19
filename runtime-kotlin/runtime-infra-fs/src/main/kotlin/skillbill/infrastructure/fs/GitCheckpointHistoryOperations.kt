@@ -5,6 +5,7 @@ import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import java.nio.file.Path
 
 private val REF_NAME_REJECTED_SEGMENTS = setOf("", ".", "..")
+private val REF_NAME_REJECTED_CHARS = setOf(':', '?', '*', '[', '\\', '~', '^')
 
 /**
  * SKILL-190: amend and namespace-scoped ref plumbing for per-subtask checkpoint history.
@@ -13,6 +14,7 @@ private val REF_NAME_REJECTED_SEGMENTS = setOf("", ".", "..")
  * HEAD is exactly the sha the caller declared it owns. Every ref operation validates the name against
  * the caller-supplied prefix before any git write, so a rejected name can never partially apply.
  */
+@Suppress("TooManyFunctions")
 internal object GitCheckpointHistoryOperations : CheckpointHistoryGitOperations {
   override fun amendHeadCommit(
     repoRoot: Path,
@@ -21,34 +23,9 @@ internal object GitCheckpointHistoryOperations : CheckpointHistoryGitOperations 
     allowUnchangedIndex: Boolean,
   ): WorkflowGitOperationResult {
     val expected = expectedOwnedHeadSha.trim()
-    if (expected.isBlank()) {
-      return WorkflowGitOperationResult(status = "error", error = "An owned HEAD sha is required to amend.")
-    }
-    val head = runGitCommand(repoRoot, "rev-parse", "--verify", "--quiet", "HEAD")
-    val currentHead = head.value.orEmpty().trim()
-    if (!head.ok || currentHead.isBlank()) {
-      return WorkflowGitOperationResult(status = "error", error = "HEAD does not name a commit; nothing to amend.")
-    }
-    if (currentHead != expected) {
-      return WorkflowGitOperationResult(
-        status = "error",
-        error = "HEAD is '$currentHead' but the caller owns '$expected'; refusing to amend an unowned commit.",
-      )
-    }
+    ownedHeadFailure(repoRoot, expected)?.let { return it }
     if (!allowUnchangedIndex) {
-      val staged = runGitProcess(repoRoot, listOf("diff", "--cached", "--quiet"))
-      if (staged.timedOut || staged.readFailure != null) {
-        return WorkflowGitOperationResult(
-          status = "error",
-          error = staged.readFailure?.message ?: "git diff --cached timed out after ${GIT_TIMEOUT_SECONDS}s.",
-        )
-      }
-      if (staged.exitCode == 0) {
-        return WorkflowGitOperationResult(
-          status = "error",
-          error = "The index carries no staged content; refusing to amend '$currentHead'.",
-        )
-      }
+      stagedContentFailure(repoRoot, expected)?.let { return it }
     }
     val message = replacementMessage?.trim()
     val amendArgs = if (message.isNullOrBlank()) {
@@ -59,6 +36,37 @@ internal object GitCheckpointHistoryOperations : CheckpointHistoryGitOperations 
     val amended = runGitCommand(repoRoot, amendArgs)
     if (!amended.ok) return amended
     return runGitCommand(repoRoot, "rev-parse", "HEAD")
+  }
+
+  private fun ownedHeadFailure(repoRoot: Path, expected: String): WorkflowGitOperationResult? {
+    if (expected.isBlank()) {
+      return WorkflowGitOperationResult(status = "error", error = "An owned HEAD sha is required to amend.")
+    }
+    val head = runGitCommand(repoRoot, "rev-parse", "--verify", "--quiet", "HEAD")
+    val currentHead = head.value.orEmpty().trim()
+    if (!head.ok || currentHead.isBlank()) {
+      return WorkflowGitOperationResult(status = "error", error = "HEAD does not name a commit; nothing to amend.")
+    }
+    if (currentHead == expected) return null
+    return WorkflowGitOperationResult(
+      status = "error",
+      error = "HEAD is '$currentHead' but the caller owns '$expected'; refusing to amend an unowned commit.",
+    )
+  }
+
+  private fun stagedContentFailure(repoRoot: Path, currentHead: String): WorkflowGitOperationResult? {
+    val staged = runGitProcess(repoRoot, listOf("diff", "--cached", "--quiet"))
+    if (staged.timedOut || staged.readFailure != null) {
+      return WorkflowGitOperationResult(
+        status = "error",
+        error = staged.readFailure?.message ?: "git diff --cached timed out after ${GIT_TIMEOUT_SECONDS}s.",
+      )
+    }
+    if (staged.exitCode != 0) return null
+    return WorkflowGitOperationResult(
+      status = "error",
+      error = "The index carries no staged content; refusing to amend '$currentHead'.",
+    )
   }
 
   override fun headCommitMessage(repoRoot: Path): WorkflowGitOperationResult {
@@ -116,18 +124,17 @@ internal object GitCheckpointHistoryOperations : CheckpointHistoryGitOperations 
   }
 
   private fun validatedRef(namespacePrefix: String, refName: String): String? {
-    val prefix = namespacePrefix.trim()
+    val prefix = namespacePrefix.trim().removeSuffix("/")
     val ref = refName.trim()
-    if (prefix.isBlank() || ref.isBlank()) return null
-    if (!ref.startsWith(prefix.removeSuffix("/") + "/")) return null
+    if (prefix.isBlank() || !ref.startsWith("$prefix/")) return null
     if (ref.endsWith("/") || ref.endsWith(".lock")) return null
-    val segments = ref.split('/')
-    if (segments.any { it in REF_NAME_REJECTED_SEGMENTS || it.endsWith(".lock") || it.contains("..") }) return null
-    if (ref.any { it.isWhitespace() || it.isISOControl() } || ref.contains('~') || ref.contains('^')) return null
-    if (ref.contains(':') || ref.contains('?') || ref.contains('*') || ref.contains('[') || ref.contains("\\")) {
-      return null
+    val segmentRejected = ref.split('/').any { segment ->
+      segment in REF_NAME_REJECTED_SEGMENTS || segment.endsWith(".lock") || segment.contains("..")
     }
-    return ref
+    val charRejected = ref.any { char ->
+      char.isWhitespace() || char.isISOControl() || char in REF_NAME_REJECTED_CHARS
+    }
+    return ref.takeIf { !segmentRejected && !charRejected }
   }
 
   private fun rejected(namespacePrefix: String, refName: String) = WorkflowGitOperationResult(

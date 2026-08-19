@@ -36,8 +36,33 @@ internal fun verdictPlanOutput(verdict: String): String = """
 // changed_paths, and the runtime wrote the post-amend commit_sha back into the same container. This is
 // what the `pr` consumer projection reads, so any suite that assembles a pr briefing from static
 // records must use this rather than the pre-finalisation agent payload.
-internal val FINALISED_COMMIT_PUSH_OUTPUT: String = validJsonOutput("commit_push")
-  .replace("\"message\":", "\"commit_sha\":\"commit-runtime-1\",\n      \"message\":")
+internal val FINALISED_COMMIT_PUSH_OUTPUT: String = """
+  {
+    "contract_version": "0.2",
+    "phase_id": "commit_push",
+    "status": "completed",
+    "summary": "Phase produced a validated output.",
+    "produced_outputs": ${commitPushProducedOutputs(commitSha = "commit-runtime-1")}
+  }
+""".trimIndent()
+
+// The runtime, not the agent, supplies commit_sha: the agent contributes the outcome message and the
+// enumerated path set, and finalisation writes the post-amend sha back into this container. Both the
+// pre- and post-finalisation fixtures are built here so the sha lands inside commit_push_result by
+// construction; deriving one from the other by text substitution let a template rename yield a fixture
+// that silently no longer carried the finalised shape.
+internal fun commitPushProducedOutputs(commitSha: String?): String {
+  val sha = commitSha?.let { """"commit_sha":"$it",""" } ?: ""
+  return """{"commit_push_result":{
+    $sha
+    "message":"SKILL-65: runtime feature-task parity",
+    "changed_paths":["src/Runtime.kt"],
+    "branch":"feat/SKILL-65-runtime-feature-task-parity",
+    "base_branch":"main",
+    "pushed":true
+  }}
+  """.trimIndent()
+}
 
 internal fun validJsonOutput(phaseId: String): String = """
   {
@@ -62,17 +87,7 @@ internal fun validProducedOutputs(phaseId: String): String = when (phaseId) {
     """.trimIndent()
   "write_history" ->
     """{"history_result":{"changed_paths":["agent/history.md"],"decisions_recorded":[]}}"""
-  // The runtime, not the agent, supplies commit_sha: the agent contributes the outcome message and
-  // the enumerated path set, and finalisation writes the post-amend sha back into this container.
-  "commit_push" ->
-    """{"commit_push_result":{
-      "message":"SKILL-65: runtime feature-task parity",
-      "changed_paths":["src/Runtime.kt"],
-      "branch":"feat/SKILL-65-runtime-feature-task-parity",
-      "base_branch":"main",
-      "pushed":true
-    }}
-    """.trimIndent()
+  "commit_push" -> commitPushProducedOutputs(commitSha = null)
   // preplan and plan feed the bounded planning projections on the preplan->plan and plan->implement
   // (and plan->audit commitment) edges, so their fixture payloads carry the declared projection shape.
   "preplan" ->

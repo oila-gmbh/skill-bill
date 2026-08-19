@@ -459,7 +459,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     val recorder = recorderWith(state, repository, goalBranch = "feat/skill-15")
     val gitOps = realGitOps()
 
-    val blocked = assertIs<RemediationBaseCoherenceResult.Blocked>(
+    val blocked = assertIs<RemediationBaseBlocked>(
       recorder.reconcileRemediationBaseCoherence(workflowId, gitOps, fixture.repoRoot),
     )
 
@@ -504,7 +504,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     val gitOps = realGitOps()
     git(fixture.repoRoot, "update-ref", identity.checkpointRef, fixture.checkpointSha)
 
-    val healed = assertIs<RemediationBaseCoherenceResult.Coherent>(
+    val healed = assertIs<RemediationBaseCoherent>(
       recorder.reconcileRemediationBaseCoherence(workflowId, gitOps, fixture.repoRoot),
     )
 
@@ -563,7 +563,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
       checkpointIdentities = listOf(identity),
     )
 
-    val after = assertIs<RemediationBaseCoherenceResult.Coherent>(
+    val after = assertIs<RemediationBaseCoherent>(
       recorder.reconcileRemediationBaseCoherence(workflowId, realGitOps(), fixture.repoRoot),
     )
 

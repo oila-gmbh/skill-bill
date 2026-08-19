@@ -25,22 +25,28 @@ internal data class FeatureTaskRuntimeCommitPushHandoff(
   val changedPaths: List<String>,
 )
 
-internal sealed interface FeatureTaskRuntimeCommitPushHandoffResult {
-  data class Valid(val handoff: FeatureTaskRuntimeCommitPushHandoff) : FeatureTaskRuntimeCommitPushHandoffResult
+internal sealed interface FeatureTaskRuntimeCommitPushHandoffResult
 
-  data class Invalid(val reason: String) : FeatureTaskRuntimeCommitPushHandoffResult
-}
+internal data class FeatureTaskRuntimeCommitPushHandoffValid(
+  val handoff: FeatureTaskRuntimeCommitPushHandoff,
+) : FeatureTaskRuntimeCommitPushHandoffResult
 
-internal sealed interface FeatureTaskRuntimeSubtaskFinalisationResult {
-  data class Finalised(
-    val commitSha: String,
-    val stagedPaths: List<String>,
-    val excludedSpecPaths: List<String>,
-    val forcedWithLease: Boolean,
-  ) : FeatureTaskRuntimeSubtaskFinalisationResult
+internal data class FeatureTaskRuntimeCommitPushHandoffInvalid(
+  val reason: String,
+) : FeatureTaskRuntimeCommitPushHandoffResult
 
-  data class Blocked(val reason: String) : FeatureTaskRuntimeSubtaskFinalisationResult
-}
+internal sealed interface FeatureTaskRuntimeSubtaskFinalisationResult
+
+internal data class FeatureTaskRuntimeSubtaskFinalised(
+  val commitSha: String,
+  val stagedPaths: List<String>,
+  val excludedSpecPaths: List<String>,
+  val forcedWithLease: Boolean,
+) : FeatureTaskRuntimeSubtaskFinalisationResult
+
+internal data class FeatureTaskRuntimeSubtaskFinalisationBlocked(
+  val reason: String,
+) : FeatureTaskRuntimeSubtaskFinalisationResult
 
 /**
  * SKILL-190: the runtime half of `commit_push`.
@@ -61,23 +67,27 @@ internal class FeatureTaskRuntimeSubtaskFinalisation(
   private val gitOperations: WorkflowGitOperations,
   private val repoRoot: Path,
   private val record: (String) -> Unit,
+  private val recordCommit: (commitSha: String, stagedPaths: List<String>) -> String?,
 ) {
-  @Suppress("ReturnCount") // each early return is one failure the caller must see as a distinct block
+  @Suppress(
+    "ReturnCount",
+    "LongParameterList",
+  ) // each early return is one failure the caller must see as a distinct block
   fun finalise(
-    branch: String,
     identity: FeatureTaskRuntimeSubtaskCommitIdentity,
     durableCommitSha: String?,
     sequenceNumber: Int,
     handoff: FeatureTaskRuntimeCommitPushHandoff,
     metadata: FeatureTaskRuntimeCheckpointMetadata,
-    recordCommit: (commitSha: String, stagedPaths: List<String>) -> String?,
   ): FeatureTaskRuntimeSubtaskFinalisationResult {
+    val branch = metadata.branch
     val excluded = handoff.changedPaths.filter(::isGovernedSpecPath).distinct().sorted()
     val stageable = handoff.changedPaths.filter(String::isNotBlank)
       .filterNot(::isGovernedSpecPath)
       .distinct()
       .sorted()
     if (excluded.isNotEmpty()) record(specExclusionRecord(identity, excluded))
+    if (stageable.isEmpty()) return blocked(emptyStageableReason(excluded))
 
     val snapshot = gitOperations.captureIndexState(repoRoot, stageable)
     if (!snapshot.ok) return blocked("the pre-finalisation index could not be captured (${snapshot.error})")
@@ -85,7 +95,7 @@ internal class FeatureTaskRuntimeSubtaskFinalisation(
     if (!staged.ok) return blocked(restoring(staged.error, stageable, snapshot.value.orEmpty()))
 
     val decision = decide(branch, identity, durableCommitSha, sequenceNumber)
-    val rewrites = decision is FeatureTaskRuntimeSubtaskCommitDecision.Amend
+    val rewrites = decision is FeatureTaskRuntimeSubtaskCommitAmend
     val message = FeatureTaskRuntimeCheckpointMessage.finalise(handoff.outcomeMessage, metadata, identity)
 
     val commit = gitOperations.writeSubtaskCommitPreservingHistory(
@@ -100,12 +110,12 @@ internal class FeatureTaskRuntimeSubtaskFinalisation(
     val commitSha = commit.value.orEmpty().trim().takeIf(String::isNotBlank)
       ?: return blocked(restoring("the finalisation commit returned an empty sha", stageable, snapshot.value.orEmpty()))
 
-    recordCommit(commitSha, stageable)?.let { return FeatureTaskRuntimeSubtaskFinalisationResult.Blocked(it) }
+    recordCommit(commitSha, stageable)?.let { return FeatureTaskRuntimeSubtaskFinalisationBlocked(it) }
 
     val forcedWithLease = rewrites && remoteDiverged(branch, commitSha)
     val pushFailure = push(branch, identity, commitSha, forcedWithLease)
     if (pushFailure != null) return blocked(pushFailure)
-    return FeatureTaskRuntimeSubtaskFinalisationResult.Finalised(
+    return FeatureTaskRuntimeSubtaskFinalised(
       commitSha = commitSha,
       stagedPaths = stageable,
       excludedSpecPaths = excluded,
@@ -133,8 +143,7 @@ internal class FeatureTaskRuntimeSubtaskFinalisation(
     )
   }
 
-  private fun headMessage(): String? =
-    gitOperations.headCommitMessage(repoRoot).takeIf { it.ok }?.value
+  private fun headMessage(): String? = gitOperations.headCommitMessage(repoRoot).takeIf { it.ok }?.value
 
   /**
    * Whether the remote tip has left the lineage of the commit finalisation just wrote. Read after the
@@ -180,10 +189,11 @@ internal class FeatureTaskRuntimeSubtaskFinalisation(
     }
   }
 
-  private fun blocked(reason: String) = FeatureTaskRuntimeSubtaskFinalisationResult.Blocked(
+  private fun blocked(reason: String) = FeatureTaskRuntimeSubtaskFinalisationBlocked(
     "needs_human: subtask finalisation could not complete because $reason.",
   )
 
+  @Suppress("TooManyFunctions")
   companion object {
     /**
      * The agent-supplied half of `commit_push_result`, read before any git write so a non-conforming
@@ -195,13 +205,14 @@ internal class FeatureTaskRuntimeSubtaskFinalisation(
         ?: return invalid("`produced_outputs.$COMMIT_PUSH_RESULT_KEY` is absent")
       val message = result[OUTCOME_MESSAGE_KEY]?.toString()?.trim()?.takeIf(String::isNotBlank)
         ?: return invalid("`$COMMIT_PUSH_RESULT_KEY.$OUTCOME_MESSAGE_KEY` is missing or blank")
-      if (!result.containsKey(CHANGED_PATHS_KEY)) {
-        return invalid("`$COMMIT_PUSH_RESULT_KEY.$CHANGED_PATHS_KEY` is absent")
-      }
-      val paths = (result[CHANGED_PATHS_KEY] as? List<*>)
-        ?.mapNotNull { it?.toString()?.trim()?.takeIf(String::isNotBlank) }
-        ?: return invalid("`$COMMIT_PUSH_RESULT_KEY.$CHANGED_PATHS_KEY` is not a list of paths")
-      return FeatureTaskRuntimeCommitPushHandoffResult.Valid(
+      val paths = changedPaths(result) ?: return invalid(
+        if (result.containsKey(CHANGED_PATHS_KEY)) {
+          "`$COMMIT_PUSH_RESULT_KEY.$CHANGED_PATHS_KEY` is not a list of paths"
+        } else {
+          "`$COMMIT_PUSH_RESULT_KEY.$CHANGED_PATHS_KEY` is absent"
+        },
+      )
+      return FeatureTaskRuntimeCommitPushHandoffValid(
         FeatureTaskRuntimeCommitPushHandoff(outcomeMessage = message, changedPaths = paths),
       )
     }
@@ -221,12 +232,15 @@ internal class FeatureTaskRuntimeSubtaskFinalisation(
       return envelope.toMutableMap().apply { this["produced_outputs"] = produced }
     }
 
+    private fun changedPaths(result: Map<String, Any?>): List<String>? =
+      (result[CHANGED_PATHS_KEY] as? List<*>)?.mapNotNull { it?.toString()?.trim()?.takeIf(String::isNotBlank) }
+
     private fun commitPushResult(envelope: Map<String, Any?>): Map<String, Any?>? =
       JsonSupport.anyToStringAnyMap(envelope["produced_outputs"])?.let { produced ->
         JsonSupport.anyToStringAnyMap(produced[COMMIT_PUSH_RESULT_KEY])
       } ?: JsonSupport.anyToStringAnyMap(envelope[COMMIT_PUSH_RESULT_KEY])
 
-    private fun invalid(detail: String) = FeatureTaskRuntimeCommitPushHandoffResult.Invalid(
+    private fun invalid(detail: String) = FeatureTaskRuntimeCommitPushHandoffInvalid(
       "needs_human: commit_push completed but $detail. The runtime performs the commit and push from " +
         "that payload, so without it the subtask would publish the provisional checkpoint subject. " +
         "Re-run commit_push emitting `$COMMIT_PUSH_RESULT_KEY` with a non-blank `$OUTCOME_MESSAGE_KEY` " +
@@ -234,6 +248,24 @@ internal class FeatureTaskRuntimeSubtaskFinalisation(
     )
 
     private fun isGovernedSpecPath(path: String): Boolean = path.trim().startsWith(GOVERNED_SPEC_ROOT)
+
+    /**
+     * The empty-stageable refusal, load-bearing for the same reason the blank-message one is. Staging an
+     * empty pathspec set is a silent no-op, and finalisation amends with `allowUnchangedIndex`, so the
+     * amend would succeed on the unchanged checkpoint tree and the subtask would report a commit sha
+     * while every post-checkpoint edit stayed uncommitted and out of the deliverable.
+     */
+    private fun emptyStageableReason(excluded: List<String>): String {
+      val cause = if (excluded.isEmpty()) {
+        "`$COMMIT_PUSH_RESULT_KEY.$CHANGED_PATHS_KEY` enumerated no paths"
+      } else {
+        "every path in `$COMMIT_PUSH_RESULT_KEY.$CHANGED_PATHS_KEY` is a governed `$GOVERNED_SPEC_ROOT` " +
+          "path (${excluded.joinToString(", ")}), which finalisation never stages"
+      }
+      return "$cause, so there is nothing to stage. Finalisation would otherwise publish the " +
+        "already-committed checkpoint tree and silently drop this subtask's remaining work. Re-run " +
+        "commit_push enumerating the deliverable paths this subtask changed"
+    }
 
     /** Names the seam, the value used, the value expected, and the cause, per docs/observability-policy.md. */
     private fun specExclusionRecord(identity: FeatureTaskRuntimeSubtaskCommitIdentity, paths: List<String>) =
@@ -253,14 +285,11 @@ internal class FeatureTaskRuntimeSubtaskFinalisation(
       "published, so finalisation rewrote a commit the remote already carries"
 
     /** Names the seam, the value used, the value expected, and the cause, per docs/observability-policy.md. */
-    private fun leaseAbortRecord(
-      identity: FeatureTaskRuntimeSubtaskCommitIdentity,
-      branch: String,
-      error: String,
-    ) = "seam=FeatureTaskRuntimeSubtaskFinalisation.push value_used='an unpushed local tip' " +
-      "value_expected='origin/$branch' still at the value this repository last observed for subtask " +
-      "'${identity.issueKey}/${identity.subtaskId}' cause=the lease was rejected, so the remote moved " +
-      "under this run and the push was abandoned without touching it ($error)"
+    private fun leaseAbortRecord(identity: FeatureTaskRuntimeSubtaskCommitIdentity, branch: String, error: String) =
+      "seam=FeatureTaskRuntimeSubtaskFinalisation.push value_used='an unpushed local tip' " +
+        "value_expected='origin/$branch' still at the value this repository last observed for subtask " +
+        "'${identity.issueKey}/${identity.subtaskId}' cause=the lease was rejected, so the remote moved " +
+        "under this run and the push was abandoned without touching it ($error)"
   }
 }
 
@@ -282,9 +311,12 @@ internal fun WorkflowGitOperations.writeSubtaskCommitPreservingHistory(
   allowUnchangedIndex: Boolean,
   record: (String) -> Unit,
 ): WorkflowGitOperationResult {
-  if (decision !is FeatureTaskRuntimeSubtaskCommitDecision.Amend) return createCommit(repoRoot, message)
+  if (decision !is FeatureTaskRuntimeSubtaskCommitAmend) return createCommit(repoRoot, message)
   if (decision.recoveredFromTrailer) {
     record(FeatureTaskRuntimeSubtaskCommitResolver.trailerFallbackRecord(identity, decision.ownedHeadSha))
+  }
+  if (decision.rewritesPublishedHistory) {
+    record(FeatureTaskRuntimeSubtaskCommitResolver.publishedHistoryRewriteRecord(identity, decision.ownedHeadSha))
   }
   val refName = identity.checkpointRefName(decision.sequenceNumber)
   val existing = resolveCheckpointRef(repoRoot, FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE, refName)
@@ -303,7 +335,8 @@ internal fun WorkflowGitOperations.writeSubtaskCommitPreservingHistory(
         "this checkpoint's to reuse",
     )
   }
-  val written = updateCheckpointRef(repoRoot, FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE, refName, decision.ownedHeadSha)
+  val written =
+    updateCheckpointRef(repoRoot, FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE, refName, decision.ownedHeadSha)
   if (!written.ok) return preAmendPreservationFailure(refName, written.error)
   val resolved = resolveCheckpointRef(repoRoot, FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE, refName)
   val preserved = resolved.value.orEmpty().trim()
