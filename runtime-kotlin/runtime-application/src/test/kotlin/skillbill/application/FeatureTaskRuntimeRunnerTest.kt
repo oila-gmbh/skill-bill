@@ -4622,6 +4622,27 @@ class FeatureTaskRuntimeReconcileOnResumeTest {
     assertEquals(preserved, git.checkpointRefs[occupiedRef], "the occupied ref must still preserve its commit")
   }
 
+  // AC-007: a lookup that fails is not an absent ref. Treating it as free would overwrite a ref that is
+  // the only reachability a preserved commit has, so undetermined occupancy must block the amend.
+  @Test
+  fun `an amend whose checkpoint ref occupancy cannot be determined is refused before HEAD is rewritten`() {
+    val git = checkpointGit(ownedPaths = listOf("src/Owned.kt"))
+    git.resolveCheckpointRefResult = WorkflowGitOperationResult(status = "error", error = "ref lookup failed")
+    val harness = checkpointRunHarness(git)
+
+    val report = harness.runner.run(harness.request(IMPLEMENT_FIX_CYCLE))
+
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
+    assertContains(blocked.blockedReason, "could not be preserved")
+    assertTrue(git.amendCommitMessages.isEmpty(), "the amend must not run on an undetermined checkpoint ref")
+    assertTrue(git.updateCheckpointRefCalls.isEmpty(), "no ref may be written while occupancy is undetermined")
+    assertEquals(
+      1.toString(16).padStart(40, '0'),
+      git.headCommitShaValue,
+      "HEAD must still be the commit the refused amend was about to rewrite",
+    )
+  }
+
   // AC-005: the contract bump's recovery path. A store written under 0.1 must not wedge the run at its
   // next checkpoint, and must not be silently accepted either.
   @Test
@@ -6582,6 +6603,9 @@ internal class RecordingWorkflowGitOperations(
   val updateCheckpointRefCalls = mutableListOf<Pair<String, String>>()
   var updateCheckpointRefResult: WorkflowGitOperationResult? = null
 
+  // A ref lookup that fails rather than reporting an absent ref, so occupancy is undetermined.
+  var resolveCheckpointRefResult: WorkflowGitOperationResult? = null
+
   // When true, a remediation-checkpoint createCommit returns a malformed sha so the paired base
   // record fails GoalSubtaskReviewState validation and the soft-reset rollback path is exercised.
   var invalidShaOnRemediationCommit: Boolean = false
@@ -6711,9 +6735,8 @@ internal class RecordingWorkflowGitOperations(
         repoRoot: Path,
         namespacePrefix: String,
         refName: String,
-      ): WorkflowGitOperationResult = checkpointRefs[refName]
-        ?.let { WorkflowGitOperationResult(status = "ok", value = it) }
-        ?: WorkflowGitOperationResult(status = "error", error = "Ref '$refName' names nothing.")
+      ): WorkflowGitOperationResult = resolveCheckpointRefResult
+        ?: WorkflowGitOperationResult(status = "ok", value = checkpointRefs[refName].orEmpty())
 
       override fun listRefs(repoRoot: Path, namespacePrefix: String): WorkflowGitOperationResult =
         WorkflowGitOperationResult(

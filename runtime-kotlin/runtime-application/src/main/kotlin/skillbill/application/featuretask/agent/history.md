@@ -1,5 +1,16 @@
 # featuretask runtime boundary history
 
+## [2026-08-19] SKILL-190 subtask 3 — Runtime-owned subtask commit identity and amend ceremony
+Areas: runtime-application/featuretask (run loop, commit resolver, checkpoint scope), runtime-domain/workflow/taskruntime/model, runtime-infra-fs (GitCheckpointHistoryOperations), runtime-ports/workflow
+- Forward and remediation checkpoints now create-or-amend exactly one subtask commit instead of appending branch commits; Skip and Block verdicts still write nothing.
+- `FeatureTaskRuntimeSubtaskCommitResolver` decides create vs amend from durable identity first, falling back to the `Skill-Bill-Subtask: <issue>/<subtask-id>` trailer on HEAD with an observability record when state is unavailable. reusable
+- Provisional subject comes from the manifest subtask `name`; `phase`, `loop`, and `generation` move to the commit body alongside the trailer, retiring the old single-line checkpoint subject.
+- Before each amend, the pre-amend commit is written to `refs/skill-bill/checkpoints/<issue>/<subtask>/<sequence>` and must resolve before amend runs; ref failure blocks the checkpoint loudly.
+- Pattern: extend subtask 1 amend/ref primitives through the checkpoint write path without changing ceremony dispatch or scope verdicts; checkpoint-identity idempotency from subtask 2 is preserved in the same transaction.
+- Limitation: reconciliation consumers still read branch ancestry until subtask 4; pair this with subtask 4 before treating production-safe.
+Feature flag: N/A
+Acceptance criteria: 12/12 implemented
+
 ## [2026-08-18] SKILL-198 subtask 2 — runtime repair window owns check execution
 Areas: runtime-application/featuretask (validation coordinator, policy, cycle models), runtime-domain/workflow/taskruntime/model, AGENTS.md
 - Durable `repair_window_phase` (`none` | `findings_open`) on validation gate progress; while `findings_open` the coordinator runs zero pack argv and resume hands back the persisted complete finding set without a discovery rerun.

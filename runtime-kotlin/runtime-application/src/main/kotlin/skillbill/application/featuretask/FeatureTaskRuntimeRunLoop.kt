@@ -1480,11 +1480,18 @@ internal class FeatureTaskRuntimeRunLoop(
       }
     }
     val refName = identity.checkpointRefName(decision.sequenceNumber)
-    val occupant = phaseGates.gitOperations.resolveCheckpointRef(
+    val existing = phaseGates.gitOperations.resolveCheckpointRef(
       request.repoRoot,
       FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE,
       refName,
-    ).value.orEmpty().trim()
+    )
+    if (!existing.ok) {
+      return preAmendPreservationFailure(
+        refName,
+        "whether that ref already preserves another commit could not be determined (${existing.error})",
+      )
+    }
+    val occupant = existing.value.orEmpty().trim()
     if (occupant.isNotBlank() && occupant != decision.ownedHeadSha) {
       return preAmendPreservationFailure(
         refName,

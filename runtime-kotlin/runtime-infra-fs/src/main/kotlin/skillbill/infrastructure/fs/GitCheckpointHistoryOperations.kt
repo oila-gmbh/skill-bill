@@ -80,13 +80,14 @@ internal object GitCheckpointHistoryOperations : CheckpointHistoryGitOperations 
 
   override fun resolveRef(repoRoot: Path, namespacePrefix: String, refName: String): WorkflowGitOperationResult {
     val ref = validatedRef(namespacePrefix, refName) ?: return rejected(namespacePrefix, refName)
-    val resolved = runGitCommand(repoRoot, "rev-parse", "--verify", "--quiet", ref)
-    val sha = resolved.value.orEmpty().trim()
-    return if (resolved.ok && sha.isNotBlank()) {
-      WorkflowGitOperationResult(status = "ok", value = sha)
-    } else {
-      WorkflowGitOperationResult(status = "error", error = "Ref '$ref' names nothing in this repository.")
+    val resolved = runGitCommand(repoRoot, "for-each-ref", "--format=%(objectname)", ref)
+    if (!resolved.ok) {
+      return WorkflowGitOperationResult(
+        status = "error",
+        error = "Ref '$ref' could not be looked up (${resolved.error}).",
+      )
     }
+    return WorkflowGitOperationResult(status = "ok", value = resolved.value.orEmpty().trim())
   }
 
   override fun listRefs(repoRoot: Path, namespacePrefix: String): WorkflowGitOperationResult {

@@ -216,7 +216,11 @@ interface CheckpointHistoryGitOperations {
     targetSha: String,
   ): WorkflowGitOperationResult
 
-  /** The commit sha [refName] points at, or a typed failure when it names nothing. */
+  /**
+   * The commit sha [refName] points at, blank when the ref is genuinely absent, and a typed failure
+   * only when the lookup itself could not run. A caller deciding whether a ref is free must be able to
+   * tell "nothing is there" from "we could not find out".
+   */
   fun resolveRef(repoRoot: Path, namespacePrefix: String, refName: String): WorkflowGitOperationResult
 
   /** NUL-delimited `<objectname><NUL><refname>` records for every ref under [namespacePrefix]. */

@@ -100,6 +100,9 @@ class GitCheckpointHistoryOperationsTest {
       "a repeated delete must stay idempotent so an interrupted prune can re-run",
     )
     assertEquals(emptyMap(), listedRefs())
+    val absent = GitCheckpointHistoryOperations.resolveRef(repo, CHECKPOINT_PREFIX, ref)
+    assertTrue(absent.ok, "an absent ref must resolve ok so callers can tell it from a failed lookup")
+    assertEquals("", absent.value.trim())
   }
 
   // A namespace escape would move or delete a real branch ref, destroying delivered work.
