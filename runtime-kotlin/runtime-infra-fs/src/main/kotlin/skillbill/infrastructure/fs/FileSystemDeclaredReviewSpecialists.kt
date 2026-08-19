@@ -17,9 +17,9 @@ class FileSystemDeclaredReviewSpecialists(
     val manifests = installedCatalog.manifests()
     if (manifests.isEmpty()) return emptyList()
     val routing = ReviewStackRouting.route(manifests, changedFiles)
-    val selectedAreas = manifests.flatMap { it.declaredCodeReviewAreas }.toSet()
     return routing.routedSlugs.flatMap { slug ->
       val owned = changedFiles.filter { it.path in routing.ownedPathsBySlug[slug].orEmpty() }
+      val selectedAreas = ReviewLaunchPlanPolicy.composedAreas(slug, manifests)
       ReviewLaunchPlanPolicy.flatten(slug, manifests, selectedAreas).lanes
         .filter { lane ->
           owned.any { ReviewLaneInclusionPolicy.ownsChangedFile(lane, it.path, it.changedContent) }

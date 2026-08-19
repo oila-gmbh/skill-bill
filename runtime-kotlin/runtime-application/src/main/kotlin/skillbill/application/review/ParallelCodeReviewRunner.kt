@@ -1064,13 +1064,13 @@ class ParallelCodeReviewRunner(
       horizontalPlannedRubrics(evidence)
     }
   } else {
-    val selectedAreas = manifests.flatMap { it.declaredCodeReviewAreas }.toSet()
     // Each root pack only owns the files that actually routed to it; a required baseline lane
     // must claim exactly that root's routed files, never every changed file across the whole
     // (possibly cross-stack) diff, or a Kotlin required specialist would also claim Python files.
     val flattened = routedManifests.flatMap { root ->
       val rootOwnedPaths = ownedPathsBySlug[root.slug].orEmpty()
       val rootFiles = evidence.files.filter { it.path in rootOwnedPaths }
+      val selectedAreas = ReviewLaunchPlanPolicy.composedAreas(root.slug, manifests)
       ReviewLaunchPlanPolicy.flatten(root.slug, manifests, selectedAreas).lanes.also { lanes ->
         require(lanes.isNotEmpty()) {
           "Routed pack '${root.slug}' resolved no declared flattened specialist worker."

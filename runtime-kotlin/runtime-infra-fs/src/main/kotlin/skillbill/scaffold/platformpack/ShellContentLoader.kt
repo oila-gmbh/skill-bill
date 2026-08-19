@@ -167,7 +167,7 @@ internal fun validatePlatformPackCompositions(packs: List<PlatformManifest>) {
       ReviewLaunchPlanPolicy.flatten(
         routedSlug = root.slug,
         manifests = packs,
-        selectedAreas = packs.flatMapTo(linkedSetOf()) { it.declaredCodeReviewAreas },
+        selectedAreas = ReviewLaunchPlanPolicy.composedAreas(root.slug, packs),
       )
     }
 }
