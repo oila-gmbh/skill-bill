@@ -1087,11 +1087,12 @@ class ParallelCodeReviewRunner(
           changedHunkIds = evidence.hunks.filter { it.path in ownedPaths }.map { it.hunkId },
         )
       }
-      ReviewRootLanes(depthOffsets[root.slug] ?: 0, lanes.filter { it.ownedPaths.isNotEmpty() })
+      ReviewRootLanes(depthOffsets[root.slug] ?: 0, lanes)
     }
     val exclusion = ReviewPerAreaFallbackExclusion.partition(rootLanes, manifests)
     ReviewCrossRootLaneReconciliation
       .reconcile(exclusion.roots, exclusion.excludedFallbackLanesByArea)
+      .filter { it.lane.ownedPaths.isNotEmpty() }
       .map { reconciled ->
         val lane = reconciled.lane
         require(
