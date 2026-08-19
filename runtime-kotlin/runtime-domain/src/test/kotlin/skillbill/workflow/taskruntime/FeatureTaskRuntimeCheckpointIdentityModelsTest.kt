@@ -69,16 +69,33 @@ class FeatureTaskRuntimeCheckpointIdentityModelsTest {
     )
 
     val duplicatedRef = listOf(
-      identity(sequenceNumber = 0),
-      identity(sequenceNumber = 1).copy(checkpointRef = amended.first().checkpointRef),
+      identity(sequenceNumber = 0).toArtifactMap(),
+      identity(sequenceNumber = 0, commitSuffix = 2).toArtifactMap(),
     )
     val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
       featureTaskRuntimeCheckpointIdentitiesFromArtifact(
-        mapOf("contract_version" to "0.2", "checkpoints" to duplicatedRef.map { it.toArtifactMap() }),
+        mapOf("contract_version" to "0.2", "checkpoints" to duplicatedRef),
       )
     }
 
     assertContains(error.message.orEmpty(), "more than once")
+  }
+
+  @Test
+  fun `a record whose ref names a different subtask than its own fields fails the whole read`() {
+    val drifted = identity(sequenceNumber = 0).toArtifactMap() +
+      ("checkpoint_ref" to featureTaskRuntimeCheckpointRefName("SKILL-150", "9", 0))
+
+    val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
+      featureTaskRuntimeCheckpointIdentitiesFromArtifact(
+        mapOf(
+          "contract_version" to "0.2",
+          "checkpoints" to listOf(identity(sequenceNumber = 1).toArtifactMap(), drifted),
+        ),
+      )
+    }
+
+    assertContains(error.message.orEmpty(), "does not derive from")
   }
 
   @Test

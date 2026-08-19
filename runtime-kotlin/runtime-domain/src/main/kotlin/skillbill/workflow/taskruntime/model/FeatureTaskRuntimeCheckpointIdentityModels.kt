@@ -77,6 +77,11 @@ data class FeatureTaskRuntimeCheckpointIdentity(
     require(checkpointRef.matches(CHECKPOINT_REF_PATTERN) && checkpointRef.length <= CHECKPOINT_REF_MAX_LENGTH) {
       "FeatureTaskRuntimeCheckpointIdentity.checkpointRef must be a bounded skill-bill checkpoint ref."
     }
+    require(checkpointRef == featureTaskRuntimeCheckpointRefName(issueKey, subtaskId, sequenceNumber)) {
+      "FeatureTaskRuntimeCheckpointIdentity.checkpointRef '$checkpointRef' does not derive from issueKey " +
+        "'$issueKey', subtaskId '$subtaskId' and sequenceNumber $sequenceNumber; the ref is the identity, so a " +
+        "ref naming a different authority boundary than its own record is rejected."
+    }
     require(branch.isNotBlank()) { "FeatureTaskRuntimeCheckpointIdentity.branch must be non-blank." }
     require(phaseId.isNotBlank()) { "FeatureTaskRuntimeCheckpointIdentity.phaseId must be non-blank." }
     require(generation >= 0) {

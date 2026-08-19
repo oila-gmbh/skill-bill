@@ -105,6 +105,13 @@ $defs:
 x-coherence-checks:
   - name: sequence_numbers_are_unique
     description: No two checkpoint entries may share a sequence number; the history is append-only.
+  - name: checkpoint_ref_derives_from_its_boundary
+    description: >-
+      `checkpoint_ref` MUST equal `refs/skill-bill/checkpoints/{issue_key}/{subtask_id}/{sequence_number}`
+      built from this same record's fields. The pattern alone only proves shape; without this agreement a
+      ref formatted inline or from a stale subtask id would validate and dedupe under an authority
+      boundary the record does not own, and because the ref is the identity the mismatch would be
+      invisible on every later read.
   - name: checkpoint_refs_are_unique
     description: >-
       One checkpoint ref yields exactly one identity record. A duplicate ref means a resume

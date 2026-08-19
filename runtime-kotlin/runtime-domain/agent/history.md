@@ -1,5 +1,15 @@
 # Boundary History — runtime-domain
 
+## [2026-08-19] Amend-aware checkpoint-identity contract
+Areas: runtime-domain/workflow/taskruntime, orchestration/contracts
+- `FeatureTaskRuntimeCheckpointIdentity` now requires `checkpointRef` to equal `featureTaskRuntimeCheckpointRefName(issueKey, subtaskId, sequenceNumber)`. The pattern alone only proved shape, so an inline-formatted or stale-subtask ref used to validate and then dedupe under an authority boundary its own record does not own; because the ref is the identity, that drift was invisible on every later read.
+- The same rule is written as the `checkpoint_ref_derives_from_its_boundary` coherence check in `feature-task-runtime-checkpoint-identity-schema.yaml`, keeping the YAML contract and the Kotlin `require` in agreement.
+- Ledger reads stay fail-whole: one drifted record raises `InvalidWorkflowStateSchemaError` for the entire artifact, never a valid subset.
+- Duplicate-ref coverage was rewritten to build the collision from two records sharing a sequence number, since a hand-copied ref can no longer survive construction.
+- Contract shape follows the amend model: `sequence_numbers_are_unique` stays (append-only ledger), `commit_shas_are_unique` is gone, ref uniqueness replaces it.
+Feature flag: N/A
+Acceptance criteria: 8/8 implemented
+
 ## [2026-08-18] KMP owns the architecture review area
 Areas: runtime-domain/review-context, platform-packs/kmp (code-review), docs
 - `kmp` now declares `architecture` in `routing_signals`, `declared_code_review_areas`, `area_metadata`, and `pointers`, with Android-appropriate content at `code-review/bill-kmp-code-review-architecture/`; the area no longer falls through to the backend/desktop-oriented `kotlin` baseline. `kotlin` is byte-unchanged.
