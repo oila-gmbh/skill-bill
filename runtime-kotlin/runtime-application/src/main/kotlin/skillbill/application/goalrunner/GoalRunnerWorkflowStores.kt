@@ -79,6 +79,7 @@ import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.taskruntime.NoopFeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.ports.workflow.NoopWorkflowGitOperations
+import skillbill.ports.workflow.UnavailableDecompositionManifestFileStore
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.workflow.DecompositionManifestValidator
@@ -1555,6 +1556,8 @@ class WorkflowGoalRunnerOutcomeStore(
   // confirms a process dead, so a seam wired without a real supervisor never reconciles.
   private val workerSupervisor: FeatureTaskRuntimeWorkerSupervisor = NoopFeatureTaskRuntimeWorkerSupervisor,
   private val decompositionManifestValidator: DecompositionManifestValidator? = null,
+  private val decompositionManifestFileStore: DecompositionManifestFileStore =
+    UnavailableDecompositionManifestFileStore,
 ) : GoalRunnerWorkflowOutcomeStore, GoalRunnerAttemptLedgerStore, GoalRunnerChildRepairStore {
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
   private val childRepair = GoalRunnerChildRepairOperations(engine, gitOperations, decompositionManifestValidator)
@@ -1584,16 +1587,32 @@ class WorkflowGoalRunnerOutcomeStore(
     subtasks: List<DecompositionSubtask>,
     repoRoot: Path,
     dbPathOverride: String?,
-  ): GoalRunnerChildRepairApplyResult = database.transaction(dbPathOverride) { unitOfWork ->
-    childRepair.apply(
-      unitOfWork = unitOfWork,
-      workflowId = workflowId,
-      issueKey = issueKey,
-      subtaskId = subtaskId,
-      wedgeClasses = wedgeClasses,
-      subtasks = subtasks,
-      repoRoot = repoRoot,
-    )
+  ): GoalRunnerChildRepairApplyResult {
+    val result = database.transaction(dbPathOverride) { unitOfWork ->
+      childRepair.apply(
+        unitOfWork = unitOfWork,
+        workflowId = workflowId,
+        issueKey = issueKey,
+        subtaskId = subtaskId,
+        wedgeClasses = wedgeClasses,
+        subtasks = subtasks,
+        repoRoot = repoRoot,
+      )
+    }
+    result.manifestProjectionArtifactsJson?.let { artifactsJson ->
+      val validator = decompositionManifestValidator ?: return@let
+      checkNotNull(
+        DecompositionManifestWriter.writeProjectionFromWorkflowState(
+          repoRoot = repoRoot,
+          artifactsJson = artifactsJson,
+          validator = validator,
+          fileStore = decompositionManifestFileStore,
+        ),
+      ) {
+        "Goal repair reopened the durable goal child but could not write its decomposition manifest projection."
+      }
+    }
+    return result
   }
 
   override fun goalSubtaskReviewState(workflowId: String, dbPathOverride: String?): GoalSubtaskReviewState? =

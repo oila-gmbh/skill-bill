@@ -1,7 +1,6 @@
 package skillbill.application.goalrunner
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.withParentStatus
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.featuretask.agentAttributionFromPhaseState
@@ -48,12 +47,9 @@ import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.taskruntime.NoopFeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
-import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.ports.workflow.NoopWorkflowGitOperations
-import skillbill.ports.workflow.UnavailableDecompositionManifestFileStore
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
-import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
@@ -90,8 +86,6 @@ class GoalRunnerStatusService(
   private val clock: Clock = Clock.systemUTC(),
   private val workerSupervisor: FeatureTaskRuntimeWorkerSupervisor = NoopFeatureTaskRuntimeWorkerSupervisor,
   private val childRepairStore: GoalRunnerChildRepairStore = NoopGoalRunnerChildRepairStore,
-  private val decompositionManifestValidator: DecompositionManifestValidator? = null,
-  private val decompositionManifestFileStore: DecompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
   private val planningStatusReasonCoherence: GoalPlanningStatusReasonCoherence =
     GoalPlanningStatusReasonCoherence.NONE,
 ) {
@@ -705,7 +699,6 @@ class GoalRunnerStatusService(
       )
     }
     val applied = mutableListOf<GoalRunnerAppliedRepair>()
-    var manifestProjectionArtifactsJson: String? = null
     for (diagnosis in wedged) {
       val workflowId = diagnosis.workflowId ?: continue
       val liveLease = childWorkerLeaseLive(workflowId, request.dbPathOverride)
@@ -731,18 +724,6 @@ class GoalRunnerStatusService(
         dbPathOverride = request.dbPathOverride,
       )
       applied += repairResult.repairs
-      manifestProjectionArtifactsJson = repairResult.manifestProjectionArtifactsJson
-        ?: manifestProjectionArtifactsJson
-    }
-    manifestProjectionArtifactsJson?.let { artifactsJson ->
-      decompositionManifestValidator?.let { validator ->
-        DecompositionManifestWriter.writeProjectionFromWorkflowState(
-          repoRoot = repoRoot,
-          artifactsJson = artifactsJson,
-          validator = validator,
-          fileStore = decompositionManifestFileStore,
-        )
-      }
     }
     return GoalRunnerRepairResult(
       issueKey = request.issueKey,
