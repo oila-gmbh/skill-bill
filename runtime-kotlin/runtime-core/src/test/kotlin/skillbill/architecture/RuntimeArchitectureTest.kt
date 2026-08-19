@@ -209,6 +209,27 @@ class RuntimeArchitectureTest {
   }
 
   @Test
+  fun `no main source unions declaredCodeReviewAreas across all installed manifests`() {
+    val unionSites = sourceFiles()
+      .filter { file -> file.relativePath.contains("/src/main/kotlin/") }
+      .flatMap { file ->
+        Files.readString(runtimeRoot.resolve(file.relativePath)).lines()
+          .withIndex()
+          .filter { (_, line) -> "declaredCodeReviewAreas" in line && "flatMap" in line }
+          .map { (index, _) -> "${file.relativePath}:${index + 1}" }
+      }
+
+    assertEquals(
+      emptyList(),
+      unionSites,
+      "A review area set must come from ReviewLaunchPlanPolicy.composedAreas for the routed pack, " +
+        "never from a union of declaredCodeReviewAreas across every installed manifest: that union " +
+        "puts areas the routed composition never declares into the plan, and a plan lane is read " +
+        "downstream as a lane the run launched.",
+    )
+  }
+
+  @Test
   fun `domain avoids random ids clock reads and java util logging`() {
     val domainFiles =
       sourceFiles()

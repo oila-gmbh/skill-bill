@@ -469,7 +469,7 @@ When changing the IntelliJ plugin, also run its isolated gate (JDK 21):
 (cd intellij-plugin && ./gradlew check verifyPlugin)
 ```
 
-Do not fold IntelliJ Platform tasks into `runtime-kotlin`. Plugin local setup, CLI path resolution (preference override then `PATH` lookup of `skill-bill`), compatibility range (IDEA 2025.2–2026.1), and architecture notes live in `intellij-plugin/README.md` and `intellij-plugin/ARCHITECTURE.md`.
+Do not fold IntelliJ Platform tasks into `runtime-kotlin`. Plugin local setup, CLI path resolution (preference override then `PATH` lookup of `skill-bill`), compatibility range (IDEA 2025.2 and newer), and architecture notes live in `intellij-plugin/README.md` and `intellij-plugin/ARCHITECTURE.md`.
 
 ## Reference Docs
 

@@ -235,6 +235,43 @@ fun SkillBillStatusOutcome.isLiveOutcome(): Boolean = when (this) {
     -> false
 }
 
+fun UnavailableReason.isPollTransportFailure(): Boolean = when (this) {
+    UnavailableReason.TIMEOUT,
+    UnavailableReason.CANCELLED,
+    UnavailableReason.PROCESS_FAILURE,
+    -> true
+
+    UnavailableReason.MISSING_EXECUTABLE,
+    UnavailableReason.MISCONFIGURED,
+    UnavailableReason.MISSING_REPOSITORY,
+    UnavailableReason.ABSENT_DATABASE,
+    UnavailableReason.NO_MATCHING_WORK,
+    UnavailableReason.INVALID_REPOSITORY_INPUT,
+    UnavailableReason.MALFORMED_OUTPUT,
+    -> false
+}
+
+fun SkillBillStatusOutcome.withPollFailure(reason: UnavailableReason): SkillBillStatusOutcome {
+    val marker = StatusDiagnostic(
+        timedOut = reason == UnavailableReason.TIMEOUT,
+        cancelled = reason == UnavailableReason.CANCELLED,
+        reasonCode = POLL_FAILED_REASON_CODE,
+    )
+    return when (this) {
+        is SkillBillStatusOutcome.Active -> copy(diagnostic = marker)
+        is SkillBillStatusOutcome.Paused -> copy(diagnostic = marker)
+        is SkillBillStatusOutcome.Blocked -> copy(diagnostic = marker)
+        is SkillBillStatusOutcome.Failed -> copy(diagnostic = marker)
+        is SkillBillStatusOutcome.Stale -> copy(diagnostic = marker)
+
+        is SkillBillStatusOutcome.Idle,
+        is SkillBillStatusOutcome.Done,
+        is SkillBillStatusOutcome.Unavailable,
+        is SkillBillStatusOutcome.Incompatible,
+        -> this
+    }
+}
+
 /**
  * Goal planning progress carried alongside a live goal snapshot. [state] holds the raw
  * wire value; the plugin never restates the runtime's planning-state vocabulary.

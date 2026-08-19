@@ -128,8 +128,8 @@ private fun validatePlannedWorkerDeclarations(
       issues += "platform-packs: cannot derive native-agent worker set: ${error.message.orEmpty()}"
       return
     }
-  val selectedAreas = manifests.flatMapTo(linkedSetOf()) { it.declaredCodeReviewAreas }
   val plannedNames = manifests.flatMap { manifest ->
+    val selectedAreas = ReviewLaunchPlanPolicy.composedAreas(manifest.slug, manifests)
     ReviewLaunchPlanPolicy.flatten(manifest.slug, manifests, selectedAreas).lanes.map { it.skillName }
   }.toSortedSet()
   val declarations = sources.groupBy { it.name }

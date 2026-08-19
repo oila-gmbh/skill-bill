@@ -1,5 +1,6 @@
 import dev.skillbill.runtime.buildlogic.RuntimeImageExtension
 import dev.skillbill.runtime.buildlogic.RuntimeImageLicense
+import dev.skillbill.runtime.buildlogic.configureStartScriptJavaGuard
 import dev.skillbill.runtime.buildlogic.writeSha256Sidecar
 import org.beryx.runtime.BaseTask
 import org.beryx.runtime.data.RuntimePluginExtension
@@ -59,6 +60,7 @@ class RuntimeImageConventionPlugin : Plugin<Project> {
       val hostRuntimeToken = extension.hostRuntimeToken
 
       logUnsupportedHost(hostRuntimeToken)
+      configureStartScriptJavaGuard()
       configureStaticRuntimeWiring(hostRuntimeToken)
 
       // imageBaseName is the only consumer-supplied input and is set inside the

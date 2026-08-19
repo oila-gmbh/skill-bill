@@ -1,5 +1,6 @@
 package dev.skillbill.intellij.infrastructure.cli
 
+import dev.skillbill.intellij.domain.DEFAULT_CLI_TIMEOUT_MS
 import dev.skillbill.intellij.domain.SkillBillStatusOutcome
 import dev.skillbill.intellij.domain.StatusClock
 import dev.skillbill.intellij.domain.UnavailableReason
@@ -16,6 +17,14 @@ import org.junit.rules.TemporaryFolder
 class CliSkillBillStatusRepositoryTest {
     @get:Rule
     val temp = TemporaryFolder()
+
+    @Test
+    fun `the poll timeout keeps headroom over an observed nine-second work status`() {
+        assertTrue(
+            "poll timeout $DEFAULT_CLI_TIMEOUT_MS must stay at or above 30000ms",
+            DEFAULT_CLI_TIMEOUT_MS >= 30_000L,
+        )
+    }
 
     @Test
     fun `missing executable is typed unavailable`() = runBlocking {

@@ -46,7 +46,7 @@ intellijPlatform {
 
         ideaVersion {
             sinceBuild = providers.gradleProperty("pluginSinceBuild")
-            untilBuild = providers.gradleProperty("pluginUntilBuild")
+            untilBuild = provider { null }
         }
 
         vendor {
@@ -57,9 +57,9 @@ intellijPlatform {
 
     pluginVerification {
         ides {
-            // Declared range ends: IDEA 2025.2 (IC still published) and 2026.1 (unified IDEA).
+            // Oldest supported IDEA (IC still published) and newest released IDEA.
             create(IntelliJPlatformType.IntellijIdeaCommunity, "2025.2.5")
-            create(IntelliJPlatformType.IntellijIdea, "2026.1")
+            create(IntelliJPlatformType.IntellijIdea, "2026.2")
         }
         failureLevel.set(
             listOf(

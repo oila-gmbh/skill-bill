@@ -19,6 +19,8 @@ const val NO_MATCHING_WORK_REASON_CODE: String = "no_matching_work"
  */
 const val UNCORROBORATED_IDLE_TOLERANCE: Int = 1
 
+const val POLL_FAILED_REASON_CODE: String = "poll_failed"
+
 /**
  * Wire key carrying "a pause is requested but not yet consumed at a boundary".
  * Optional and goal-family-only on the contract; absence is not `false`.
@@ -103,7 +105,7 @@ const val REPO_ROOT_OPTION: String = "--repo-root"
 const val DEFAULT_REFRESH_INTERVAL_SECONDS: Long = 15L
 
 /** Process timeout for a single status poll. */
-const val DEFAULT_CLI_TIMEOUT_MS: Long = 10_000L
+const val DEFAULT_CLI_TIMEOUT_MS: Long = 30_000L
 
 /** Bounded stdout capture for the status command. */
 const val DEFAULT_STDOUT_LIMIT_BYTES: Int = 256 * 1024

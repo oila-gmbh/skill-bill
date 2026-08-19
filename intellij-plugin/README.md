@@ -11,7 +11,7 @@ source-of-truth rules, status-bar expected states, and the deferred tool-window 
 ## Requirements
 
 - JDK 21
-- IntelliJ IDEA 2025.2–2026.1 (Community or Ultimate) for `runIde`
+- IntelliJ IDEA 2025.2 or newer (Community or Ultimate) for `runIde`
 - A `skill-bill` CLI on `PATH`, or a preference override to the executable
 
 ## Installing the plugin
@@ -54,7 +54,7 @@ cd intellij-plugin
 ./gradlew check          # unit + presentation + architecture + platform fixture tests
 ./gradlew buildPlugin    # package the plugin archive
 ./gradlew runIde         # launch a sandbox IDE with the plugin
-./gradlew verifyPlugin   # Plugin Verifier against 2025.2 and 2026.1 baselines
+./gradlew verifyPlugin   # Plugin Verifier against 2025.2 and 2026.2 baselines
 ```
 
 Configuration cache is enabled via `gradle.properties`
@@ -111,7 +111,7 @@ launch environment the IDE does not own, so it stays a CLI decision.
 | --- | --- |
 | Plugin id | `dev.skillbill.status` |
 | Products | IntelliJ IDEA Community, Ultimate |
-| Builds | `252`–`261.*` (IDEA 2025.2 through 2026.1) |
+| Builds | `252`+ (IDEA 2025.2 and newer, no `until-build`) |
 | Platform Gradle Plugin | 2.x |
 | JVM | 21 |
 | Status-bar widget id | `SkillBillStatusBarWidget` |
