@@ -2,17 +2,9 @@ package skillbill.review.plan
 
 import skillbill.error.AmbiguousLaneOwnershipError
 import skillbill.review.plan.model.ReviewLaunchLane
+import skillbill.review.plan.model.ReviewReconciledLane
+import skillbill.review.plan.model.ReviewRootLanes
 import skillbill.scaffold.model.PlatformManifest
-
-data class ReviewRootLanes(
-  val depthOffset: Int,
-  val lanes: List<ReviewLaunchLane>,
-)
-
-data class ReviewReconciledLane(
-  val lane: ReviewLaunchLane,
-  val inputs: List<ReviewLaunchLane>,
-)
 
 object ReviewCrossRootLaneReconciliation {
   fun compositionDepthOffsets(

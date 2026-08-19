@@ -1,7 +1,6 @@
 package skillbill.application.review
 
-import skillbill.infrastructure.fs.FileSystemReviewAttribution
-import skillbill.ports.scaffold.InstalledPlatformPackCatalogPort
+import skillbill.review.plan.ReviewLaunchPlanPolicy
 import skillbill.scaffold.model.PlatformManifest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -38,15 +37,13 @@ class ParallelReviewComposedAreaPlanTest {
   }
 
   @Test fun `launch and attribution pin the same composed area set for a routed pack`() {
-    val attribution = FileSystemReviewAttribution(InstalledPlatformPackCatalogPort { manifests })
-
     assertEquals(
-      attribution.composedLaunchPlan("kotlin").lanes.map { it.area }.toSet(),
+      composedPlanAreas("kotlin"),
       plannedAreas(kotlinDiff()),
       "Parity pin: a pack with no composed baseline layer resolves one area set on both sides.",
     )
     assertEquals(
-      attribution.composedLaunchPlan("kmp").lanes.map { it.area }.toSet(),
+      composedPlanAreas("kmp"),
       plannedAreas(kmpDiff()),
       "Parity pin: a pack composing a baseline layer resolves one area set on both sides.",
     )
@@ -63,6 +60,10 @@ class ParallelReviewComposedAreaPlanTest {
       "The empty-composition failure must name the routed pack: ${failure.message}",
     )
   }
+
+  private fun composedPlanAreas(slug: String): Set<String> = ReviewLaunchPlanPolicy
+    .flatten(slug, manifests, ReviewLaunchPlanPolicy.composedAreas(slug, manifests))
+    .lanes.map { it.area }.toSet()
 
   private fun kotlinDiff() = diffForPaths("src/Repo.kt")
 

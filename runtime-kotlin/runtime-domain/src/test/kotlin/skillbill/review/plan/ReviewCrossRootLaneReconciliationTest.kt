@@ -3,6 +3,7 @@ package skillbill.review.plan
 import org.junit.jupiter.api.Test
 import skillbill.error.AmbiguousLaneOwnershipError
 import skillbill.review.plan.model.ReviewLaunchLane
+import skillbill.review.plan.model.ReviewRootLanes
 import skillbill.scaffold.model.CodeReviewBaselineLayer
 import skillbill.scaffold.model.CodeReviewComposition
 import skillbill.scaffold.model.CodeReviewCompositionMode
@@ -64,7 +65,6 @@ class ReviewCrossRootLaneReconciliationTest {
         depth = 0,
         required = false,
         ownedPaths = listOf("b.kt", "a.kt"),
-        hunks = listOf("h2"),
       ),
     )
     val far = root(
@@ -75,14 +75,13 @@ class ReviewCrossRootLaneReconciliationTest {
         depth = 0,
         required = true,
         ownedPaths = listOf("c.kt", "a.kt"),
-        hunks = listOf("h1", "h2"),
       ),
     )
 
     val survivor = ReviewCrossRootLaneReconciliation.reconcile(listOf(near, far)).single().lane
 
     assertEquals(listOf("a.kt", "b.kt", "c.kt"), survivor.ownedPaths)
-    assertEquals(listOf("h2", "h1"), survivor.changedHunkIds)
+    assertEquals(listOf("hunk-b.kt", "hunk-a.kt", "hunk-c.kt"), survivor.changedHunkIds)
     assertTrue(survivor.required)
   }
 
@@ -153,7 +152,6 @@ class ReviewCrossRootLaneReconciliationTest {
     depth: Int,
     required: Boolean = true,
     ownedPaths: List<String> = listOf("a.kt"),
-    hunks: List<String> = listOf("h1"),
   ) = ReviewLaunchLane(
     skillName = "bill-$packSlug-code-review-$area",
     packSlug = packSlug,
@@ -165,6 +163,6 @@ class ReviewCrossRootLaneReconciliationTest {
     orderIndex = 0,
     inclusionReason = "test",
     ownedPaths = ownedPaths,
-    changedHunkIds = hunks,
+    changedHunkIds = ownedPaths.map { "hunk-$it" },
   )
 }

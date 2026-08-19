@@ -1,9 +1,12 @@
 package skillbill.application.review
 
+import skillbill.error.AmbiguousLaneOwnershipError
 import skillbill.review.plan.ReviewLaunchPlanPolicy
 import skillbill.scaffold.model.PlatformManifest
+import skillbill.workflow.model.CodeReviewExecutionMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -69,10 +72,33 @@ class ParallelReviewCrossRootLanePlanTest {
     )
   }
 
+  @Test fun `two non-composing routed packs tying on one area abort planning instead of launching both lanes`() {
+    val swift = reviewPack("swift", listOf("architecture", "ui"), routingSignals = listOf("*.swift"))
+    val recorder = ReviewRecorder()
+    val diff = diffForChanges(
+      "src/main/kotlin/Repo.kt" to "class Repo",
+      "Sources/App/View.swift" to "struct View",
+    )
+
+    val error = assertFailsWith<AmbiguousLaneOwnershipError> {
+      reviewHarness(ReviewHarnessConfig(manifests = listOf(kotlin, swift), diff = diff), recorder)
+        .run(harnessRequest(reviewRunId = "cross-root-ambiguous", codeReviewMode = CodeReviewExecutionMode.DELEGATED))
+    }
+
+    assertTrue(
+      listOf("architecture", "kotlin", "swift").all { it in error.message.orEmpty() },
+      "The typed error must name the contested area and both owning packs: \${error.message}",
+    )
+    assertTrue(
+      recorder.durableLanes.isEmpty() && recorder.durableIntegrationPass == null,
+      "An unresolvable cross-root tie must leave no durable lanes and no integration pass.",
+    )
+  }
+
   private fun run(packs: List<PlatformManifest>, diff: String): ReviewRecorder {
     val recorder = ReviewRecorder()
     reviewHarness(ReviewHarnessConfig(manifests = packs, diff = diff), recorder)
-      .run(harnessRequest(reviewRunId = "cross-root-lane-plan"))
+      .run(harnessRequest(reviewRunId = "cross-root-lane-plan", codeReviewMode = CodeReviewExecutionMode.DELEGATED))
     return recorder
   }
 }
