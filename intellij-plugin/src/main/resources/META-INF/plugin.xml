@@ -6,10 +6,10 @@
 
     <!--
       Supported products: IntelliJ IDEA Community and Ultimate only.
-      Compatibility range: IDEA 2025.2 (build 252) through 2026.1 (build 261.*) inclusive.
-      since-build / until-build are also patched from gradle.properties.
+      Compatibility: IDEA 2025.2 (build 252) and newer. No until-build, so newer
+      IDEs load the plugin; since-build is patched from gradle.properties.
     -->
-    <idea-version since-build="252" until-build="261.*"/>
+    <idea-version since-build="252"/>
 
     <description><![CDATA[
       Shows Skill Bill feature-work status in IntelliJ IDEA. Consumes the
