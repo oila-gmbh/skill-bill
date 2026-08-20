@@ -196,7 +196,13 @@ internal class GoalRunnerChildRepairOperations(
             subtaskId,
             continuation.suppressPr,
           )?.takeIf { it.status == GoalRunnerTerminalStatus.BLOCKED } ?: continue
-          val derived = derivedTerminalOutcomeFor(record, artifacts, identity) { null }
+          val derived = derivedTerminalOutcomeFor(
+            record,
+            artifacts,
+            identity,
+            { null },
+            independentOfStoredOutcome = true,
+          )
           if (
             nonCompleteStoredOutcomeIsCorroborated(
               stored.copy(workflowId = workflowId),
@@ -378,7 +384,13 @@ internal class GoalRunnerChildRepairOperations(
       passed += PASSED_CONTINUATION_OUTCOME
       return
     }
-    val derived = derivedTerminalOutcomeFor(record, artifacts, identity) { null }
+    val derived = derivedTerminalOutcomeFor(
+            record,
+            artifacts,
+            identity,
+            { null },
+            independentOfStoredOutcome = true,
+          )
     if (
       nonCompleteStoredOutcomeIsCorroborated(
         stored.copy(workflowId = record.workflowId),

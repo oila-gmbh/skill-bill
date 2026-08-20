@@ -195,6 +195,49 @@ class GoalRunnerRepairTest {
   }
 
   @Test
+  fun `a blocked step the fix loop moved past does not corroborate a stale blocked outcome`() {
+    // The fix loop leaves the step it abandons marked blocked and advances. Deriving BLOCKED from
+    // that historical step, then reading the derived reason back out of goal_continuation_outcome,
+    // makes the stored outcome corroborate itself: the child reads terminal forever, repair reports
+    // healthy, and every later goal run re-reports the stale reason without relaunching the child.
+    val staleReason = "Feature-task-runtime phase 'review' governed evidence was never read"
+    val workflows = InMemoryWorkflowStates()
+    val workflowId = "wftr-repair-abandoned-upstream-block"
+    workflows.saveFeatureTaskRuntimeWorkflow(
+      repairChildRecord(
+        workflowId = workflowId,
+        continuation = continuationMap(includeValidationDepth = true),
+        reviewState = healthyReviewState(),
+        workflowStatus = "running",
+        goalContinuationOutcome = mapOf(
+          "issue_key" to ISSUE_KEY,
+          "subtask_id" to 1,
+          "status" to "blocked",
+          "workflow_id" to workflowId,
+          "blocked_reason" to staleReason,
+          "last_resumable_step" to "review",
+        ),
+        abandonedBlockedStepId = "plan_fix",
+      ),
+    )
+    val store = repairStore(workflows, git = ReachableGit())
+
+    val diagnosis = store.diagnoseChildWedges(
+      workflowId = workflowId,
+      issueKey = ISSUE_KEY,
+      subtaskId = 1,
+      subtasks = listOf(subtask(1, workflowId)),
+      repoRoot = Path.of("."),
+    )
+
+    assertEquals(
+      GoalRunnerWedgeClass.STALE_BLOCKED_CONTINUATION_OUTCOME,
+      diagnosis.wedges.single().wedgeClass,
+    )
+    assertEquals(staleReason, diagnosis.wedges.single().currentValue)
+  }
+
+  @Test
   fun `diagnosis names completed upstream missing settled output`() {
     val workflows = InMemoryWorkflowStates()
     val workflowId = "wftr-repair-unsettled-upstream"
@@ -613,6 +656,7 @@ class GoalRunnerRepairTest {
     workflowStatus: String = "running",
     goalContinuationOutcome: Map<String, Any?>? = null,
     commitSha: String? = null,
+    abandonedBlockedStepId: String? = null,
   ): WorkflowStateRecord {
     val definition = WorkflowFamily.TASK_RUNTIME.definition
     val engine = WorkflowEngine(testWorkflowSnapshotValidator)
@@ -634,9 +678,12 @@ class GoalRunnerRepairTest {
       WorkflowUpdateInput(
         workflowStatus = workflowStatus,
         currentStepId = "review",
-        stepUpdates = listOf(
-          mapOf("step_id" to "review", "status" to "running", "attempt_count" to 1),
-        ),
+        stepUpdates = buildList {
+          abandonedBlockedStepId?.let { stepId ->
+            add(mapOf("step_id" to stepId, "status" to "blocked", "attempt_count" to 13))
+          }
+          add(mapOf("step_id" to "review", "status" to "running", "attempt_count" to 1))
+        },
         artifactsPatch = artifacts,
         sessionId = "ftr-repair",
       ),

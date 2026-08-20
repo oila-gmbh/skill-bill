@@ -1983,7 +1983,13 @@ class WorkflowGoalRunnerOutcomeStore(
     val stored = goalContinuationOutcome(artifacts, issueKey, subtaskId, continuation.suppressPr)
       ?.takeIf { it.status == GoalRunnerTerminalStatus.BLOCKED }
       ?: return
-    val derived = derivedTerminalOutcomeFor(record, artifacts, continuation) { null }
+    val derived = derivedTerminalOutcomeFor(
+      record,
+      artifacts,
+      continuation,
+      { null },
+      independentOfStoredOutcome = true,
+    )
     if (nonCompleteStoredOutcomeIsCorroborated(stored.copy(workflowId = workflowId), derived, record)) {
       return
     }
@@ -2681,7 +2687,13 @@ private fun terminalOutcomeFor(
     if (stored.status == GoalRunnerTerminalStatus.COMPLETE ||
       nonCompleteStoredOutcomeIsCorroborated(
         stored,
-        derivedTerminalOutcomeFor(snapshot, artifacts, goalContinuation, measuredCommitSha),
+        derivedTerminalOutcomeFor(
+          snapshot,
+          artifacts,
+          goalContinuation,
+          measuredCommitSha,
+          independentOfStoredOutcome = true,
+        ),
         snapshot,
       )
     ) {
@@ -2696,6 +2708,7 @@ internal fun derivedTerminalOutcomeFor(
   artifacts: Map<String, Any?>,
   goalContinuation: GoalContinuation,
   measuredCommitSha: () -> String?,
+  independentOfStoredOutcome: Boolean = false,
 ): GoalRunnerStoredOutcome? {
   val steps = decodeWorkflowSteps(snapshot.stepsJson)
   val commitSha = commitShaFrom(artifacts)
@@ -2705,7 +2718,7 @@ internal fun derivedTerminalOutcomeFor(
       status = status,
       workflowId = snapshot.workflowId,
       commitSha = commitSha,
-      blockedReason = blockedReasonFrom(artifacts, steps, status),
+      blockedReason = blockedReasonFrom(artifacts, steps, status, !independentOfStoredOutcome),
       lastResumableStep = snapshot.currentStepId,
       suppressPr = goalContinuation.suppressPr,
     )
@@ -2870,20 +2883,40 @@ private fun terminalStatus(
       GoalRunnerTerminalStatus.COMPLETE
     }
   snapshot.workflowStatus == "failed" || steps.any { it.status == "failed" } -> GoalRunnerTerminalStatus.FAILED
-  snapshot.workflowStatus == "blocked" || steps.any { it.status == "blocked" } -> GoalRunnerTerminalStatus.BLOCKED
+  snapshot.workflowStatus == "blocked" || liveBlockedStep(snapshot, steps) != null -> GoalRunnerTerminalStatus.BLOCKED
   snapshot.workflowStatus in setOf("completed", "abandoned") -> GoalRunnerTerminalStatus.NO_TERMINAL_STORE_OUTCOME
   else -> null
+}
+
+/**
+ * A fix loop leaves the step it abandoned marked blocked and moves on, so a blocked step earlier
+ * than the current one is history rather than the child's present state. Deriving BLOCKED from it
+ * pins the child terminal for the rest of the goal: the parent re-reports the abandoned step's
+ * block on every later run and never relaunches. Only a block at or after the current step speaks
+ * for where the child actually stands.
+ */
+private fun liveBlockedStep(
+  snapshot: WorkflowStateSnapshot,
+  steps: List<WorkflowStepState>,
+): WorkflowStepState? {
+  val currentIndex = steps.indexOfFirst { it.stepId == snapshot.currentStepId }
+  if (currentIndex < 0) return steps.firstOrNull { it.status == "blocked" }
+  return steps.drop(currentIndex).firstOrNull { it.status == "blocked" }
 }
 
 private fun blockedReasonFrom(
   artifacts: Map<String, Any?>,
   steps: List<WorkflowStepState>,
   status: GoalRunnerTerminalStatus,
+  includeContinuationOutcome: Boolean = true,
 ): String? = artifacts["blocked_reason"]?.toString()?.takeIf(String::isNotBlank)
   // Normal runtime blocks persist the reason only under goal_continuation_outcome (via
   // FeatureTaskRuntimeRunner.persistGoalContinuationOutcome); top-level blocked_reason is the
-  // reconcile markBlocked path. Reading both keeps still-blocked children corroborating (AC-003).
+  // reconcile markBlocked path. Reporting reads both. Corroboration must not: comparing the stored
+  // artifact against a derivation that reads the same artifact is always equal, which makes a stale
+  // blocked outcome self-corroborating and unreachable by the SKILL-176 displacement.
   ?: (artifacts["goal_continuation_outcome"] as? Map<*, *>)
+    ?.takeIf { includeContinuationOutcome }
     ?.get("blocked_reason")?.toString()?.takeIf(String::isNotBlank)
   ?: steps.firstOrNull { it.status in setOf("failed", "blocked") }
     ?.let { step -> "Workflow step '${step.stepId}' is ${step.status}." }
