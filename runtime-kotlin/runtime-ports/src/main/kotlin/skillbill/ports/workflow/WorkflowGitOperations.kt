@@ -118,6 +118,8 @@ interface ScopedStagingGitOperations {
    * Stages exactly [paths] by literal pathspec, leaving every other index entry untouched. A path
    * absent from both the worktree and the index (for example a deletion an earlier attempt already
    * staged) has nothing left to stage and is skipped as a no-op rather than failing the staging.
+   * An untracked path that `.gitignore` excludes is skipped the same way: naming it in the pathspec
+   * makes `git add` refuse the whole inventory, even though a directory or bare `--all` would skip it.
    */
   fun stagePaths(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult
 

@@ -93,6 +93,42 @@ class GitScopedStagingOperationsTest {
   }
 
   @Test
+  fun `stagePaths skips an untracked ignored path and still stages the rest of the inventory`() {
+    write(".gitignore", "**/agent/\n")
+    git("add", "--", ".gitignore")
+    git("commit", "-m", "ignore agent dirs")
+    write("owned/Live.kt", "owned\n")
+    write("feature/sitejournals/agent/history.md", "boundary history\n")
+
+    val result = GitScopedStagingOperations.stagePaths(
+      repo,
+      listOf("owned/Live.kt", "feature/sitejournals/agent/history.md"),
+    )
+
+    assertTrue(result.ok, result.error)
+    assertTrue("owned/Live.kt" in indexSnapshot().keys)
+    assertFalse("feature/sitejournals/agent/history.md" in indexSnapshot().keys)
+  }
+
+  @Test
+  fun `stagePaths still stages a tracked path that matches an ignore pattern`() {
+    write("tracked/secret.md", "secret\n")
+    git("add", "--", "tracked/secret.md")
+    git("commit", "-m", "track secret")
+    write(".gitignore", "tracked/secret.md\n")
+    git("add", "--", ".gitignore")
+    git("commit", "-m", "ignore secret")
+    write("tracked/secret.md", "updated\n")
+
+    val result = GitScopedStagingOperations.stagePaths(repo, listOf("tracked/secret.md"))
+
+    assertTrue(result.ok, result.error)
+    val indexSha = indexSnapshot()["tracked/secret.md"]?.split(' ')?.getOrNull(1)
+    val worktreeSha = runGitCommand(repo, "hash-object", "--", "tracked/secret.md").value.orEmpty().trim()
+    assertEquals(worktreeSha, indexSha, "a tracked ignored path must still receive the worktree update")
+  }
+
+  @Test
   fun `stagePaths round-trips paths carrying spaces and non-ASCII bytes`() {
     write("owned/a file with spaces.kt", "spaces\n")
     write("owned/ünïcødé.kt", "unicode\n")

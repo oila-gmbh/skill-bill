@@ -26,20 +26,9 @@ internal object GitScopedStagingOperations : ScopedStagingGitOperations {
   override fun stagePaths(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult {
     val normalized = paths.filter(String::isNotBlank).distinct()
     if (normalized.isEmpty()) return WorkflowGitOperationResult(status = "ok", value = "")
-    // A pathspec that matches nothing makes `git add --all` abort the entire batch with exit 128
-    // ("did not match any files"). That happens legitimately when a checkpoint owns a deletion an
-    // earlier attempt already staged: the path is absent from both the worktree and the index, so it
-    // has nothing left to stage. `ls-files` treats a non-matching pathspec as simply absent rather
-    // than failing, so index presence is resolved here and no-op paths are filtered out first.
-    val indexed = mutableSetOf<String>()
-    for (batch in normalized.chunked(PATHSPEC_BATCH_SIZE)) {
-      val listed = runGitCommand(repoRoot, listOf("ls-files", "--stage", "-z", "--") + batch)
-      if (!listed.ok) return listed
-      listed.value.orEmpty().split(GIT_NUL).filter(String::isNotBlank).forEach { entry ->
-        indexEntryPath(entry)?.let { indexed += it }
-      }
-    }
-    val stageable = normalized.filter { Files.isRegularFile(repoRoot.resolve(it)) || it in indexed }
+    val resolved = resolveStageablePaths(repoRoot, normalized)
+    if (!resolved.ok) return resolved
+    val stageable = resolved.value.orEmpty().split(GIT_NUL).filter(String::isNotBlank)
     stageable.chunked(PATHSPEC_BATCH_SIZE).forEach { batch ->
       // `--all` scoped to explicit pathspecs, so a deleted owned path still present in the index is
       // staged as a deletion instead of being silently skipped. Scope stays the listed paths; there
@@ -106,4 +95,58 @@ internal object GitScopedStagingOperations : ScopedStagingGitOperations {
   // first tab, so a path containing a tab still parses correctly.
   private fun indexEntryPath(entry: String): String? =
     entry.substringAfter('\t', missingDelimiterValue = "").takeIf(String::isNotBlank)
+
+  private fun resolveStageablePaths(repoRoot: Path, normalized: List<String>): WorkflowGitOperationResult {
+    // A pathspec that matches nothing makes `git add --all` abort the entire batch with exit 128
+    // ("did not match any files"). That happens legitimately when a checkpoint owns a deletion an
+    // earlier attempt already staged: the path is absent from both the worktree and the index, so it
+    // has nothing left to stage. `ls-files` treats a non-matching pathspec as simply absent rather
+    // than failing, so index presence is resolved here and no-op paths are filtered out first.
+    // An untracked ignored file is the other abort: `git add --all -- ignored.md live.kt` exits 1
+    // ("paths are ignored") even though a bare `--all` would skip the ignored path. Drop those
+    // before the add; tracked files that match an ignore pattern stay stageable.
+    val indexed = mutableSetOf<String>()
+    for (batch in normalized.chunked(PATHSPEC_BATCH_SIZE)) {
+      val listed = runGitCommand(repoRoot, listOf("ls-files", "--stage", "-z", "--") + batch)
+      if (!listed.ok) return listed
+      listed.value.orEmpty().split(GIT_NUL).filter(String::isNotBlank).forEach { entry ->
+        indexEntryPath(entry)?.let { indexed += it }
+      }
+    }
+    val presentOrIndexed = normalized.filter { Files.isRegularFile(repoRoot.resolve(it)) || it in indexed }
+    val ignored = ignoredUntrackedPaths(repoRoot, presentOrIndexed)
+    if (!ignored.ok) return ignored
+    val ignoredSet = ignored.value.orEmpty().split(GIT_NUL).filter(String::isNotBlank).toSet()
+    val stageable = presentOrIndexed.filterNot { it in ignoredSet }
+    return WorkflowGitOperationResult(status = "ok", value = stageable.joinToString(GIT_NUL.toString()))
+  }
+
+  private fun ignoredUntrackedPaths(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult {
+    if (paths.isEmpty()) return WorkflowGitOperationResult(status = "ok", value = "")
+    val ignored = mutableListOf<String>()
+    for (batch in paths.chunked(PATHSPEC_BATCH_SIZE)) {
+      val stdin = batch.joinToString(separator = GIT_NUL.toString(), postfix = GIT_NUL.toString()).toByteArray()
+      val parsed = parseCheckIgnore(runGitProcess(repoRoot, listOf("check-ignore", "-z", "--stdin"), stdin))
+      if (!parsed.ok) return parsed
+      ignored += parsed.value.orEmpty().split(GIT_NUL).filter(String::isNotBlank)
+    }
+    return WorkflowGitOperationResult(status = "ok", value = ignored.joinToString(GIT_NUL.toString()))
+  }
+
+  private fun parseCheckIgnore(result: GitProcessResult): WorkflowGitOperationResult = when {
+    result.timedOut -> WorkflowGitOperationResult(
+      status = "error",
+      error = "git check-ignore timed out after ${GIT_TIMEOUT_SECONDS}s.",
+    )
+    result.readFailure != null -> WorkflowGitOperationResult(
+      status = "error",
+      error = result.readFailure.message.orEmpty(),
+    )
+    result.exitCode == 0 -> WorkflowGitOperationResult(status = "ok", value = result.output)
+    result.exitCode == 1 -> WorkflowGitOperationResult(status = "ok", value = "")
+    else -> WorkflowGitOperationResult(
+      status = "error",
+      error = "git check-ignore failed with exit code ${result.exitCode}: ${result.output}",
+    )
+  }
 }
