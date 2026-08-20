@@ -64,6 +64,7 @@ import skillbill.review.ReviewStageDegradationSelection
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.ReviewExecutionModePolicy
 import skillbill.review.context.ReviewTreeAccounting
+import skillbill.review.context.model.LANE_EVIDENCE_BYTES_DIMENSION
 import skillbill.review.context.model.GovernedReviewLaunch
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ResolvedReviewExecutionMode
@@ -91,6 +92,7 @@ import skillbill.review.context.model.SpecIntentProjectionResolveRequest
 import skillbill.review.context.model.SpecIntentResolution
 import skillbill.review.context.model.TokenOwnership
 import skillbill.review.context.model.asFailedLaneRun
+import skillbill.review.context.model.withBrokerEvidenceRefusal
 import skillbill.review.context.model.structuredString
 import skillbill.review.context.model.toCodeReviewExecutionMode
 import skillbill.review.model.ParallelReviewLaneResult
@@ -1369,10 +1371,7 @@ class ParallelCodeReviewRunner(
     val rejectedCount = parsed?.rejections?.size ?: 0
     val registerReason = parsed?.let { registerAbsenceReason(outcome.stdout, it) }
     val evidenceAccounting = evidenceBroker.accounting()
-    // Ordered by specificity: a lane that emitted no register at all is already diagnosed by
-    // registerReason, and that names the failure better than "it read nothing" would. The guard
-    // below catches the remaining case — a well-formed register reporting nothing, from a lane
-    // that never opened its evidence.
+    val completion = brokerEvidenceCompletionState(bundleState, evidenceAccounting)
     val reason = launchReason
       ?: registerReason
       ?: unreadEvidenceReason(launch, evidenceAccounting, findings.isEmpty())
@@ -1388,18 +1387,19 @@ class ParallelCodeReviewRunner(
         if (registerReason != null) {
           REGISTER_ABSENT_TERMINAL_STATUS
         } else {
-          inlineTerminalStatus(outcome, bundleState.disposition)
+          inlineTerminalStatus(outcome, completion.disposition)
         },
         outcome,
         evidenceAccounting,
+        completion,
       ),
       findings = if (reason == null) findings else emptyList(),
-      reviewDisposition = bundleState.disposition,
-      bundleCompositionDigest = bundleState.bundleCompositionDigest,
-      segmentAccounting = bundleState.segments,
-      unreviewedSegmentIds = bundleState.unreviewedSegmentIds,
-      budgetDimension = bundleState.budgetDimension,
-      unreviewedUnits = bundleState.unreviewedUnits,
+      reviewDisposition = completion.disposition,
+      bundleCompositionDigest = completion.bundleCompositionDigest,
+      segmentAccounting = completion.segments,
+      unreviewedSegmentIds = completion.unreviewedSegmentIds,
+      budgetDimension = completion.budgetDimension,
+      unreviewedUnits = completion.unreviewedUnits,
       rejectedCandidateCount = rejectedCount,
     )
   }
@@ -1652,11 +1652,41 @@ class ParallelCodeReviewRunner(
     outcomes: ParallelReviewLaneRunResult,
   ): ReviewLaneCompletionState {
     val governed = governedLaunchFor(launch)
-    if (outcomes.lane1.success && outcomes.lane2.success) return governed.completionState
-    return governed.completionState.asFailedLaneRun(
-      governed.assembledBundle.entries.map { "${it.commitSha}@${it.hunk.path}" },
-    )
+    val runCompletion = if (outcomes.lane1.success && outcomes.lane2.success) {
+      governed.completionState
+    } else {
+      governed.completionState.asFailedLaneRun(
+        governed.assembledBundle.entries.map { "${it.commitSha}@${it.hunk.path}" },
+      )
+    }
+    val assignedUnits = governed.assembledBundle.entries
+      .map { "${it.commitSha}@${it.hunk.path}" }
+      .toSet()
+    val deniedUnits = listOf(outcomes.lane1, outcomes.lane2)
+      .flatMap { outcome ->
+        outcome.accounting
+          ?.takeIf { it.budgetDimension == LANE_EVIDENCE_BYTES_DIMENSION }
+          ?.unreviewedUnits
+          .orEmpty()
+      }
+      .filter { it in assignedUnits }
+      .distinct()
+    return if (deniedUnits.isEmpty()) {
+      runCompletion
+    } else {
+      runCompletion.withBrokerEvidenceRefusal(deniedUnits)
+    }
   }
+
+  private fun brokerEvidenceCompletionState(
+    completion: ReviewLaneCompletionState,
+    accounting: ReviewLaneAccounting,
+  ): ReviewLaneCompletionState =
+    if (accounting.budgetDimension == LANE_EVIDENCE_BYTES_DIMENSION) {
+      completion.withBrokerEvidenceRefusal(accounting.unreviewedUnits)
+    } else {
+      completion
+    }
 
   private fun aggregateBundleCompletion(states: List<ReviewLaneCompletionState>): ReviewLaneCompletionState {
     if (states.isEmpty()) {
@@ -2014,6 +2044,7 @@ private fun inlineParentAccounting(
   terminalStatus: String,
   outcome: AgentRunLaunchFacts?,
   brokerAccounting: ReviewLaneAccounting?,
+  completionState: ReviewLaneCompletionState = launch.bundleState,
 ) = ReviewLaneAccounting(
   lane = launch.agentId,
   reviewId = launch.assignment.reviewId,
@@ -2030,12 +2061,13 @@ private fun inlineParentAccounting(
   resultBytes = outcome?.stdout?.toByteArray(Charsets.UTF_8)?.size?.toLong() ?: 0,
   providerUsage = outcome?.let(::providerTokenUsage),
   terminalStatus = terminalStatus,
-  reviewDisposition = launch.bundleState.disposition,
-  bundleCompositionDigest = launch.bundleState.bundleCompositionDigest,
-  segmentAccounting = launch.bundleState.segments,
-  unreviewedSegmentIds = launch.bundleState.unreviewedSegmentIds,
-  budgetDimension = launch.bundleState.budgetDimension,
-  unreviewedUnits = launch.bundleState.unreviewedUnits,
+  terminalOutcome = brokerAccounting?.terminalOutcome,
+  reviewDisposition = completionState.disposition,
+  bundleCompositionDigest = completionState.bundleCompositionDigest,
+  segmentAccounting = completionState.segments,
+  unreviewedSegmentIds = completionState.unreviewedSegmentIds,
+  budgetDimension = completionState.budgetDimension,
+  unreviewedUnits = completionState.unreviewedUnits,
 )
 
 private const val INLINE_DEPTH_DIRECTIVE: String =

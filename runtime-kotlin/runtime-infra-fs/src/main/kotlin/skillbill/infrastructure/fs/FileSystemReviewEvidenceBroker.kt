@@ -24,6 +24,7 @@ import skillbill.review.context.model.ReviewBudgetEvaluator
 import skillbill.review.context.model.ReviewBudgetOutcome
 import skillbill.review.context.model.ReviewChangedHunk
 import skillbill.review.context.model.ReviewExpansionRecord
+import skillbill.review.context.model.LANE_EVIDENCE_BYTES_DIMENSION
 import skillbill.review.context.model.ReviewLaneIdentity
 import skillbill.review.context.model.ReviewOperationKind
 import skillbill.review.context.model.ReviewOperationPolicy
@@ -68,6 +69,10 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
   private val refusalLedger = mutableListOf<ReviewRefusedOperationRecord>()
   private val admittedEvidenceTargets = mutableSetOf<String>()
   private var terminalOutcome: ReviewBudgetOutcome? = null
+  private val deniedUnits = mutableListOf<String>()
+  private val hunkCommitById = assignment.assignedBundle.entries
+    .flatMap { entry -> entry.hunkIds.map { it to entry.commitSha } }
+    .toMap()
 
   init {
     val admitted = assignment.assignedPaths + assignment.dependencyAllowlist.normalized +
@@ -194,7 +199,7 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
     for (hunk in hunks) {
       val body = materializeAssignedHunk(hunk)
       val bytes = body.toByteArray(StandardCharsets.UTF_8).size.toLong()
-      assignedHunkBudgetOutcome(bytes)?.let { exceeded ->
+      assignedHunkBudgetOutcome(bytes, unitForHunk(hunk))?.let { exceeded ->
         return if (delivered.isEmpty()) {
           exceeded
         } else {
@@ -240,9 +245,10 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
     return normalized
   }
 
-  private fun assignedHunkBudgetOutcome(bytes: Long): ReviewEvidenceResult? {
+  private fun assignedHunkBudgetOutcome(bytes: Long, unit: String): ReviewEvidenceResult? {
     val observedCumulative = cumulativeBytes + bytes
     return if (observedCumulative > budget.maxLaneEvidenceBytes) {
+      recordLaneEvidenceDenial(unit)
       exceeded("lane_evidence_bytes", budget.maxLaneEvidenceBytes, observedCumulative)
     } else {
       null
@@ -261,12 +267,12 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
     if (expectedDigest == null || digest(contentBytes) != expectedDigest) {
       rejectCheckpointDrift(path)
     }
-    return serveEvidence(contentBytes)
+    return serveEvidence(path, contentBytes)
   }
 
-  private fun serveEvidence(contentBytes: ByteArray): ReviewEvidenceResult {
+  private fun serveEvidence(path: String, contentBytes: ByteArray): ReviewEvidenceResult {
     val bytes = contentBytes.size.toLong()
-    evidenceBudgetOutcome(bytes)?.let { return it }
+    evidenceBudgetOutcome(bytes, unitAtPath(path))?.let { return it }
     cumulativeBytes += bytes
     return ReviewEvidenceResult(
       contentBytes.toString(StandardCharsets.UTF_8),
@@ -359,33 +365,55 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
   }
 
   @Synchronized
-  override fun accounting(): ReviewLaneAccounting = ReviewLaneAccounting(
-    lane = assignment.lane,
-    authorizedReadCount = authorizedReadCount,
-    refusedOperationCount = refusedOperationCount,
-    refusals = refusalLedger.toList(),
-    evidenceBytes = cumulativeBytes,
-    expansions = expansionLedger.toList(),
-    toolCalls = toolCalls,
-    modelTurns = modelTurns,
-    resultBytes = resultBytes,
-    terminalOutcome = terminalOutcome,
-  )
+  override fun accounting(): ReviewLaneAccounting {
+    val terminal = terminalOutcome
+    val evidenceIncomplete = terminal?.budgetKind == LANE_EVIDENCE_BYTES_DIMENSION
+    return ReviewLaneAccounting(
+      lane = assignment.lane,
+      authorizedReadCount = authorizedReadCount,
+      refusedOperationCount = refusedOperationCount,
+      refusals = refusalLedger.toList(),
+      evidenceBytes = cumulativeBytes,
+      expansions = expansionLedger.toList(),
+      toolCalls = toolCalls,
+      modelTurns = modelTurns,
+      resultBytes = resultBytes,
+      terminalOutcome = terminal,
+      budgetDimension = if (evidenceIncomplete) LANE_EVIDENCE_BYTES_DIMENSION else null,
+      unreviewedUnits = if (evidenceIncomplete) deniedUnits.distinct() else emptyList(),
+    )
+  }
 
   @Synchronized
   override fun terminalOutcome(): ReviewBudgetOutcome? = terminalOutcome
 
-  private fun evidenceBudgetOutcome(bytes: Long): ReviewEvidenceResult? {
+  private fun evidenceBudgetOutcome(bytes: Long, unit: String): ReviewEvidenceResult? {
     if (bytes > budget.maxEvidenceResultBytes) {
       return exceeded("evidence_result_bytes", budget.maxEvidenceResultBytes, bytes)
     }
     val observedCumulative = cumulativeBytes + bytes
     return if (observedCumulative > budget.maxLaneEvidenceBytes) {
+      recordLaneEvidenceDenial(unit)
       exceeded("lane_evidence_bytes", budget.maxLaneEvidenceBytes, observedCumulative)
     } else {
       null
     }
   }
+
+  private fun recordLaneEvidenceDenial(unit: String) {
+    deniedUnits += unit
+  }
+
+  private fun unitForHunk(hunk: ReviewChangedHunk): String = "${commitShaForHunk(hunk.hunkId)}@${hunk.path}"
+
+  private fun unitAtPath(path: String): String {
+    val hunkId = projectedHunks.firstOrNull { it.path == path }?.hunkId
+    val commit = hunkId?.let(::commitShaForHunk) ?: assignment.headRevision
+    return "$commit@$path"
+  }
+
+  private fun commitShaForHunk(hunkId: String): String =
+    hunkCommitById[hunkId] ?: assignment.headRevision
 
   private fun refused(forbidden: ForbiddenReviewOperation): ReviewEvidenceResult =
     forbiddenResult(forbidden, cumulativeBytes, expansionLedger.size)

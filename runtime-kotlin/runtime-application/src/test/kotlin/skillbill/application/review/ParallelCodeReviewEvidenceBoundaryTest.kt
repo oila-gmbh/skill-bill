@@ -7,6 +7,9 @@ import skillbill.ports.review.GovernedReviewEvidenceEndpointHandle
 import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.ReviewEvidenceBrokerFactory
 import skillbill.ports.review.model.GovernedReviewEvidenceEndpointDescriptor
+import skillbill.review.context.model.LANE_EVIDENCE_BYTES_DIMENSION
+import skillbill.review.context.model.ReviewContextBudgetPolicy
+import skillbill.review.context.model.ReviewLaneReviewDisposition
 import skillbill.review.model.ReviewEvidenceBoundaryAccounting
 import skillbill.review.model.ReviewStageDegradationReason
 import skillbill.scaffold.model.ReviewLaneCondition
@@ -357,5 +360,41 @@ class ParallelCodeReviewEvidenceBoundaryTest {
     assertTrue(reason.contains("read_evidence"), "the reason must name the call that would have read it: $reason")
     val coverage = assertNotNull(result.coverage)
     assertFalse(coverage.isCleanCoverage, "an unread lane must not render as clean coverage")
+  }
+
+  @Test
+  fun `broker lane evidence refusal reports incomplete naming only denied units`() {
+    val recorder = ReviewRecorder()
+    val result = reviewHarness(
+      ReviewHarnessConfig(
+        manifests = listOf(reviewPack("kotlin", listOf("architecture"), routingSignals = listOf("*.kt"))),
+        diff = diffForChanges(
+          "src/A.kt" to "a",
+          "src/B.kt" to "b".repeat(200),
+        ),
+        budget = ReviewContextBudgetPolicy.DEFAULT.copy(
+          maxLaneEvidenceBytes = 50,
+          maxEvidenceResultBytes = 50,
+          maxLaneLaunchBytes = 100_000,
+        ),
+      ),
+      recorder,
+    ).run(
+      harnessRequest(
+        agent2Id = null,
+        reviewRunId = "rvw-201-broker-refusal",
+        codeReviewMode = CodeReviewExecutionMode.INLINE,
+      ),
+    )
+
+    assertTrue(result.lane1.success)
+    val accounting = assertNotNull(result.lane1.accounting)
+    assertEquals(ReviewLaneReviewDisposition.INCOMPLETE, accounting.reviewDisposition)
+    assertEquals(LANE_EVIDENCE_BYTES_DIMENSION, accounting.budgetDimension)
+    assertEquals(1, accounting.unreviewedUnits.size)
+    assertTrue(accounting.unreviewedUnits.single().endsWith("@src/B.kt"))
+    assertFalse(accounting.unreviewedUnits.any { it.endsWith("@src/A.kt") })
+    val coverage = assertNotNull(result.coverage)
+    assertFalse(coverage.isCleanCoverage)
   }
 }

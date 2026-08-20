@@ -335,6 +335,28 @@ fun ReviewLaneCompletionState.withLaneEvidenceBudget(
   )
 }
 
+fun ReviewLaneCompletionState.withBrokerEvidenceRefusal(
+  brokerDeniedUnits: List<String>,
+): ReviewLaneCompletionState {
+  val distinct = brokerDeniedUnits.distinct()
+  require(distinct.isNotEmpty()) { "Broker evidence refusal must name at least one denied unit." }
+  if (
+    disposition == ReviewLaneReviewDisposition.INCOMPLETE &&
+    budgetDimension == LANE_EVIDENCE_BYTES_DIMENSION &&
+    unreviewedUnits == distinct
+  ) {
+    return this
+  }
+  return copy(
+    disposition = ReviewLaneReviewDisposition.INCOMPLETE,
+    unreviewedSegmentIds = segments.map { it.segmentId }.ifEmpty { listOf(BROKER_EVIDENCE_REFUSAL_SEGMENT_ID) },
+    budgetDimension = LANE_EVIDENCE_BYTES_DIMENSION,
+    unreviewedUnits = distinct,
+  )
+}
+
+private const val BROKER_EVIDENCE_REFUSAL_SEGMENT_ID = "seg-evidence-refused"
+
 /** The dimension named when a lane is incomplete because its parent agent run did not succeed. */
 const val LANE_RUN_OUTCOME_DIMENSION: String = "lane_run_outcome"
 
