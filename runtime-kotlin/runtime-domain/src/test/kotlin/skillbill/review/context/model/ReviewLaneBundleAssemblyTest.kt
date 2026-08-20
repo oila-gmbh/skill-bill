@@ -6,6 +6,7 @@ import skillbill.review.context.model.ReviewLaneBundleSegmentation.Companion.UNR
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
@@ -300,7 +301,45 @@ class ReviewLaneBundleAssemblyTest {
     assertEquals(null, governed.completionState.budgetDimension)
   }
 
-  // AC-009: a bundle that fit the budget still is not clean coverage when the lane's run failed.
+  @Test fun `broker evidence refusal names supplied units not bundle alphabetical tail`() {
+    val firstPath = ReviewChangedHunk("src/A.kt", 1, 1, 1, 2, "+a")
+    val middlePath = ReviewChangedHunk("src/M.kt", 4, 1, 4, 1, "+m")
+    val latePath = ReviewChangedHunk("src/Z.kt", 7, 1, 7, 1, "+z")
+    val built = packet(listOf(unit("c1", "base", 0, listOf(firstPath, middlePath, latePath))))
+    val bundle = ReviewLaneBundle(
+      listOf(ReviewLaneBundleEntry("c1", 0, listOf(firstPath.hunkId, middlePath.hunkId, latePath.hunkId))),
+    )
+    val assembled = ReviewLaneAssembledBundle.assemble(assignment(built, bundle), built)
+    val complete = segmentAssembledBundle(assembled, maxLaneLaunchBytes = 10_000) { _ -> 10L }
+      .toCompletionState(assembled.compositionDigest)
+    val brokerDenied = "c1@src/M.kt"
+    val result = complete.withBrokerEvidenceRefusal(listOf(brokerDenied))
+
+    assertEquals(ReviewLaneReviewDisposition.INCOMPLETE, result.disposition)
+    assertEquals(LANE_EVIDENCE_BYTES_DIMENSION, result.budgetDimension)
+    assertEquals(listOf(brokerDenied), result.unreviewedUnits)
+    assertFalse(result.unreviewedUnits.contains("c1@src/Z.kt"))
+    assertFalse(result.unreviewedSegmentIds.contains(UNREVIEWABLE_SEGMENT_ID))
+  }
+
+  @Test fun `withBrokerEvidenceRefusal on a complete state yields incomplete with broker denied units`() {
+    val built = packet(listOf(unit("c1", "base", 0, listOf(hunkA))))
+    val assembled = ReviewLaneAssembledBundle.assemble(
+      assignment(built, ReviewLaneBundle(listOf(ReviewLaneBundleEntry("c1", 0, listOf(hunkA.hunkId))))),
+      built,
+    )
+    val complete = segmentAssembledBundle(assembled, maxLaneLaunchBytes = 10_000) { _ -> 10L }
+      .toCompletionState(assembled.compositionDigest)
+    val denied = listOf("c1@${hunkA.path}")
+
+    val result = complete.withBrokerEvidenceRefusal(denied)
+
+    assertEquals(ReviewLaneReviewDisposition.INCOMPLETE, result.disposition)
+    assertEquals(LANE_EVIDENCE_BYTES_DIMENSION, result.budgetDimension)
+    assertEquals(denied, result.unreviewedUnits)
+    assertFalse(result.unreviewedSegmentIds.contains(UNREVIEWABLE_SEGMENT_ID))
+  }
+
   @Test fun `a failed lane run downgrades a complete state to incomplete naming its whole bundle`() {
     val built = packet(listOf(unit("c1", "base", 0, listOf(hunkA))))
     val assembled = ReviewLaneAssembledBundle.assemble(

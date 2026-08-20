@@ -70,6 +70,10 @@ specific path only when there is no match or the matches are ambiguous.
 
 Classify size only to decide whether preparation produces one subtask or multiple dependency-ordered subtasks. Never execute a prepared small goal directly outside the manifest workflow.
 
+Size subtasks by the **Subtask Sizing** rule in `bill-feature-spec`: one subtask by default, no
+cap on a subtask's breadth, and a split only when one pass cannot carry the work, a later part
+needs an earlier contract, or the parts ship separately.
+
 ## Decomposition Proposal
 
 For all prepared goals, first ensure manifest-backed artifacts exist through the
@@ -84,7 +88,8 @@ Then present a concise proposal that includes:
 
 - the issue key and feature name
 - the parent acceptance criteria
-- one or more ordered subtasks with dependency notes
+- one or more ordered subtasks with dependency notes; when there is more than one, a line per
+  subtask saying why it cannot be folded into its neighbor
 - the expected first runnable subtask
 - the agent that will be used for child runs, including any explicit override
 - the parallel review agent when `parallel-review:<agent>` was passed, or `none` otherwise
@@ -221,20 +226,29 @@ into the conversation. There is no in-session transition relay; agent silence
 during the run is deliberate, not a failure, and ends only when a sanctioned
 completion signal or error reaches the session.
 
+After launch, keep the session on the original foreground `skill-bill goal`
+blocking call until it returns, or keep the original process alive across yields
+and await its exit through the harness process-completion primitive. That single
+long wait is the completion signal. It is required, not optional, and it is not
+progress observation — the agent makes no separate tool calls while that call runs.
+
 While a foreground or detached run is in flight:
 
 1. Do not run `skill-bill goal watch` in-session, at any interval or refresh count.
 2. Do not call `skill-bill goal status` on a timer or repeatedly to observe change.
-3. Do not sleep, wait, or otherwise idle in order to re-read progress.
+3. Do not sleep between separate progress checks, schedule wake-ups, or otherwise
+   idle between tool calls whose only purpose is to re-read progress.
 4. Do not tail, poll, or re-read runtime logs, the workflow DB, `git diff`, or
    changed files to infer progress.
 5. Do not re-invoke the runtime or launch an observer process or subagent to
    observe a run that is already executing.
 
 These prohibitions apply to shell loops, scheduled wake-ups, repeated tool
-calls, and delegated observers. The cost rule is request count, not output size:
-one completion signal beats any number of short polls, and trimming a poll's
-output does not make polling acceptable.
+calls, and delegated observers. The cost rule is request count, not wall-clock
+time: one completion signal — one blocking launch call or one background-exit
+re-invocation — beats any number of short polls, and trimming a poll's output
+does not make polling acceptable. A multi-hour blocking wait on the launch
+command is the completion signal, not token waste from observing.
 
 The only permitted in-session surface is one bounded terminal notification,
 errors such as launch failures, loud-fails, or non-zero exits, and one

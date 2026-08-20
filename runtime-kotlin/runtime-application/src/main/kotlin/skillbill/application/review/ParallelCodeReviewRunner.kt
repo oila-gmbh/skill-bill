@@ -1560,15 +1560,18 @@ class ParallelCodeReviewRunner(
   ): ReviewEvidenceBroker = reviewEvidenceBrokerFactory.brokerFor(parentBrokerBinding(selected, repoRoot))
 
   /**
-   * The merged surface is one session doing the reads [laneCount] separate lanes would each have
-   * been budgeted for, so the cumulative allowances scale with it. Per-read and per-turn caps do
-   * not: inline still traverses the delta once, and one read is still one read.
+   * Parent broker allowance is the sum of each selected specialist's derived lane evidence budget,
+   * so [ReviewContextBudgetPolicy.maxLaneEvidenceBytes] means the same cumulative read_evidence cap
+   * at both seams. Per-read and per-turn caps do not scale with lane count.
    */
-  private fun mergedBudget(budget: ReviewContextBudgetPolicy, laneCount: Int): ReviewContextBudgetPolicy = budget.copy(
-    maxLaneEvidenceBytes = budget.maxLaneEvidenceBytes * laneCount,
-    maxSpecialistToolCalls = budget.maxSpecialistToolCalls * laneCount,
-    maxAssignmentExpansions = budget.maxAssignmentExpansions * laneCount,
-  )
+  private fun mergedBudget(selected: List<ReviewSpecialistLaunchRequest>): ReviewContextBudgetPolicy {
+    val primary = selected.minByOrNull { it.assignment.laneDecision.orderIndex } ?: selected.first()
+    return primary.budget.copy(
+      maxLaneEvidenceBytes = selected.sumOf { it.budget.maxLaneEvidenceBytes },
+      maxSpecialistToolCalls = primary.budget.maxSpecialistToolCalls * selected.size,
+      maxAssignmentExpansions = primary.budget.maxAssignmentExpansions * selected.size,
+    )
+  }
 
   private fun mergedBundle(packet: ReviewContextPacket, assignedHunks: Set<String>): ReviewLaneBundle =
     ReviewLaneBundle(
@@ -1608,7 +1611,7 @@ class ParallelCodeReviewRunner(
       repoRoot = repoRoot,
       assignment = merged,
       laneRubricId = primary.rubrics.first().rubricId,
-      budget = mergedBudget(primary.budget, selected.size),
+      budget = mergedBudget(selected),
       namedDependencies = selected.flatMap { it.namedDependencies }.toSet(),
       trustedExpansionLedger = expansions,
       projectedHunks = primary.packet.changedHunks.filter { it.hunkId in assigned },

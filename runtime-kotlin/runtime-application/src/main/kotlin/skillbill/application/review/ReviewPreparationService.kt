@@ -378,6 +378,14 @@ private fun rejectUnknownAssignmentDigests(
   reject(label, "$subject name assignment digests that belong to no assignment in this review: $described.")
 }
 
+internal fun deriveSpecialistBudget(
+  basePolicy: ReviewContextBudgetPolicy,
+  assignment: ReviewAssignment,
+  packet: ReviewContextPacket,
+): ReviewContextBudgetPolicy = basePolicy.copy(
+  maxLaneEvidenceBytes = ReviewContextBudgetPolicy.deriveLaneEvidenceBytes(basePolicy, assignment, packet),
+)
+
 private fun reject(sourceLabel: String, reason: String): Nothing =
   throw InvalidReviewContextSchemaError(sourceLabel = sourceLabel, reason = reason)
 

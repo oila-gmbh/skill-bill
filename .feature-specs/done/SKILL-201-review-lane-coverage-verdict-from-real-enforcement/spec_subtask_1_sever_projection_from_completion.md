@@ -26,14 +26,14 @@ pre-flight projection in `withLaneEvidenceBudget` no longer writes incomplete co
 4. `unreviewedUnits` is populated only from units that were withheld, refused, or lost to a failed run. No code path derives it from a size comparison against an allowance for an operation that was not attempted.
 5. `ReviewLaneBundleAssemblyTest`'s evidence-overflow case is deleted or rewritten against criterion 1, not weakened to keep passing.
 6. `(cd runtime-kotlin && ./gradlew check)` passes.
-7. `skill-bill validate`, `npx --yes agnix --strict .`, and `scripts/validate_agent_configs` pass.
+7. `skill-bill validate`, `npx --yes agnix --strict .`, and `../../../scripts/validate_agent_configs` pass.
 
 ## Non-Goals
 
 - Wiring broker refusal into lane completion (subtask 2).
 - Per-lane budget derivation or parent budget reconciliation (subtask 3).
 - Coverage report or integration-pass prompt changes (subtask 4).
-- Raising `max_lane_evidence_bytes` in `.skill-bill/config.yaml`.
+- Raising `max_lane_evidence_bytes` in `../../../.skill-bill/config.yaml`.
 - Changing `max_lane_launch_bytes`, segmentation, or `deliveredEntries`.
 
 ## Dependency Notes

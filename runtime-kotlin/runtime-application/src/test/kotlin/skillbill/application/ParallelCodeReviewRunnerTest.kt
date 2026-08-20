@@ -50,9 +50,11 @@ import skillbill.ports.scaffold.InstalledPlatformPackCatalogPort
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
 import skillbill.review.ParallelReviewFindingParser
+import skillbill.review.context.model.LANE_EVIDENCE_BYTES_DIMENSION
 import skillbill.review.context.model.REVIEW_ROUTING_ANALYSIS_PAIRS_BUDGET
 import skillbill.review.context.model.ReviewContextBudgetExceededException
 import skillbill.review.context.model.ReviewContextBudgetPolicy
+import skillbill.review.context.model.ReviewLaneReviewDisposition
 import skillbill.review.context.model.ReviewRegisterParseSeamException
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ReviewPassClaimSnapshot
@@ -1003,6 +1005,29 @@ class ParallelCodeReviewRunnerFailureTest {
   }
 
   @Test
+  fun `denied units outside the lane assigned bundle never become a coverage gap`() {
+    val tempDir = createGitRepo()
+    createStagedFile(tempDir)
+    val compositionDigest = "a".repeat(64)
+    val runner = runnerWithParallelLane(
+      alwaysSuccessLauncher(),
+      RecordingDiffResolver(default = diffForChanges("src/A.kt" to "a", "src/B.kt" to "b")),
+      StaticParallelLaneRunner(
+        ParallelReviewLaneRunResult(
+          lane1 = brokerEvidenceIncompleteOutcome(compositionDigest, listOf("not-an-assigned-sha@src/A.kt")),
+          lane2 = brokerEvidenceIncompleteOutcome(compositionDigest, listOf("not-an-assigned-sha@src/B.kt")),
+        ),
+      ),
+    )
+
+    val result = runner.run(baseRequest(repoRoot = tempDir))
+
+    val coverage = assertNotNull(result.coverage)
+    assertTrue(coverage.isCleanCoverage, coverage.render())
+    assertTrue(coverage.incompleteLanes.flatMap { it.unreviewedUnits }.isEmpty())
+  }
+
+  @Test
   fun `UnsupportedAgentRunLaunch produces failed lane outcome`() {
     val launcher = GoalRunnerSubtaskLauncher { request ->
       val agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId")
@@ -1677,6 +1702,19 @@ private class StaticParallelLaneRunner(
 ) : ParallelReviewLaneRunner {
   override fun runTwoLanes(request: ParallelReviewLaneRunRequest): ParallelReviewLaneRunResult = result
 }
+
+private fun brokerEvidenceIncompleteOutcome(
+  compositionDigest: String,
+  deniedUnits: List<String>,
+): ParallelReviewLaneOutcome = ParallelReviewLaneOutcome(
+  success = true,
+  rawOutput = "NO_FINDINGS",
+  reviewDisposition = ReviewLaneReviewDisposition.INCOMPLETE,
+  bundleCompositionDigest = compositionDigest,
+  unreviewedSegmentIds = listOf("seg-evidence-refused"),
+  budgetDimension = LANE_EVIDENCE_BYTES_DIMENSION,
+  unreviewedUnits = deniedUnits,
+)
 
 private class RealProcessDiffResolver : DiffResolverPort {
   override fun runProcess(args: List<String>, workDir: Path): String? = try {

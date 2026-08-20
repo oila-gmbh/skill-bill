@@ -3,14 +3,14 @@ contract_version: "0.5"
 issue_key: "SKILL-201"
 feature_name: "review-lane-coverage-verdict-from-real-enforcement"
 parent_spec_path: ".feature-specs/SKILL-201-review-lane-coverage-verdict-from-real-enforcement/spec.md"
-status: "blocked"
+status: "in_progress"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-201-review-lane-coverage-verdict-from-real-enforcement"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 4
-  action: "blocked"
+  subtask_id: 5
+  action: "resume"
 subtasks:
 - id: 1
   name: "Sever projection from completion path"
@@ -60,22 +60,12 @@ subtasks:
 - id: 4
   name: "Reporting schema and projections"
   spec_path: ".feature-specs/SKILL-201-review-lane-coverage-verdict-from-real-enforcement/spec_subtask_4_reporting_schema_projections.md"
-  status: "blocked"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260820-161954-c9oy"
-  blocked_reason: "Feature-task-runtime could not re-attach to the persisted feature\
-    \ branch 'feat/SKILL-201-review-lane-coverage-verdict-from-real-enforcement' from\
-    \ 'main' (git checkout feat/SKILL-201-review-lane-coverage-verdict-from-real-enforcement\
-    \ failed with exit code 1: error: Your local changes to the following files would\
-    \ be overwritten by checkout:\n\truntime-kotlin/runtime-application/src/main/kotlin/skillbill/application/review/ParallelCodeReviewRunner.kt\n\
-    \truntime-kotlin/runtime-application/src/test/kotlin/skillbill/application/review/ReviewPreparationServiceTest.kt\n\
-    \truntime-kotlin/runtime-domain/src/main/kotlin/skillbill/review/context/model/ReviewContextModels.kt\n\
-    \truntime-kotlin/runtime-domain/src/main/kotlin/skillbill/review/context/model/ReviewLaneBundleAssembly.kt\n\
-    \truntime-kotlin/runtime-domain/src/test/kotlin/skillbill/review/context/model/ReviewLaneBundleAssemblyTest.kt\n\
-    Please commit your changes or stash them before you switch branches.\nAborting).\
-    \ Refusing to run file-mutating phases on the default branch."
-  last_resumable_step: "audit"
+  blocked_reason: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -86,10 +76,10 @@ subtasks:
 - id: 5
   name: "Reproduction verification"
   spec_path: ".feature-specs/SKILL-201-review-lane-coverage-verdict-from-real-enforcement/spec_subtask_5_reproduction_verification.md"
-  status: "pending"
+  status: "in_progress"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260820-172621-xv1w"
   blocked_reason: null
   last_resumable_step: null
   linear_issue_id: null

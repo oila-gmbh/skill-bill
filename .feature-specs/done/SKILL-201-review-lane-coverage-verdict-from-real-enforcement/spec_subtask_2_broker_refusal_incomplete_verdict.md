@@ -22,7 +22,7 @@ names only the units the refusal actually denied — not a greedy alphabetical t
 3. A lane with no broker refusal and a successful worker run does not report incomplete for `lane_evidence_bytes` (builds on subtask 1).
 4. `FileSystemReviewEvidenceBrokerTest` covers the refusal-to-completion wiring at the broker seam.
 5. `(cd runtime-kotlin && ./gradlew check)` passes.
-6. `skill-bill validate`, `npx --yes agnix --strict .`, and `scripts/validate_agent_configs` pass.
+6. `skill-bill validate`, `npx --yes agnix --strict .`, and `../../../scripts/validate_agent_configs` pass.
 
 ## Non-Goals
 

@@ -77,7 +77,7 @@ A coverage report whose contents depend on path spelling is not a coverage repor
 
 ### Raising the limit is not the fix
 
-`.skill-bill/config.yaml` in this repository sets `max_parent_packet_bytes: 1048576` and leaves
+`../../../.skill-bill/config.yaml` in this repository sets `max_parent_packet_bytes: 1048576` and leaves
 `max_lane_evidence_bytes` at its `262_144` default (`ReviewContextModels.kt:341`). The config is
 read on the live path (`ParallelCodeReviewRunner.kt:244`) and `max_lane_evidence_bytes` is an
 accepted key (`FileSystemRepoLocalConfig.kt:229`), so a raise would take effect and would flip both
@@ -92,7 +92,7 @@ while each specialist gets the flat value. The same number means two different t
 
 The test name states the original intent: `lane evidence overflow names undelivered units and does
 not truncate a hunk`
-(`runtime-kotlin/runtime-domain/src/test/kotlin/skillbill/review/context/model/ReviewLaneBundleAssemblyTest.kt`).
+(`../../../runtime-kotlin/runtime-domain/src/test/kotlin/skillbill/review/context/model/ReviewLaneBundleAssemblyTest.kt`).
 Refusing to cut a hunk in half and naming what did not fit is the right instinct. The
 `asFailedLaneRun` path is the same instinct wired correctly: a lane whose worker run failed is
 downgraded to incomplete and names its whole bundle
@@ -133,12 +133,12 @@ to lanes owning 100% and 10% of the changed paths.
 9. Every per-lane byte budget that survives is derived from the lane's own assignment rather than applied as one flat value across lanes with different assigned path counts, or the flat value is documented as intentional at its definition with the reason.
 10. `max_lane_evidence_bytes` has exactly one meaning across the runtime. The `budget.maxLaneEvidenceBytes * laneCount` derivation at `ParallelCodeReviewRunner.kt:1568` either resolves to the same meaning as the specialist value or is replaced by a separately named parent budget.
 11. Re-running `mode:delegated` over the SKILL-190 branch range produces `Coverage: clean` with the same finding set, and no lane names a file the worker received.
-12. `orchestration/contracts/review-context-schema.yaml` still requires `budget_dimension` whenever `lane_disposition` is `incomplete` (the `allOf` rule at line 301), and `ReviewIntegrationPass`'s invariant that an incomplete summary must name what it left unreviewed (`ReviewIntegrationPass.kt:27`) still holds for every remaining incomplete path.
+12. `../../../orchestration/contracts/review-context-schema.yaml` still requires `budget_dimension` whenever `lane_disposition` is `incomplete` (the `allOf` rule at line 301), and `ReviewIntegrationPass`'s invariant that an incomplete summary must name what it left unreviewed (`ReviewIntegrationPass.kt:27`) still holds for every remaining incomplete path.
 13. Any schema change to the lane completion or accounting records lands as a contract version bump with a parity test and a typed rejection, per the runtime contract rules.
 14. `evidence-unreviewable` is absent from the runtime, or retained only under criterion 8 with the segment id renamed to match what it now means.
 15. Legacy accounting records carrying the old `evidence-unreviewable` segment id do not crash a read; they are quarantined or migrated in band and the degradation is recorded.
 16. Every test that pinned the removed behavior is deleted or rewritten against the new rule, not weakened to keep passing. The five suites naming this path are `ReviewLaneBundleAssemblyTest`, `ReviewPreparationServiceTest`, `ReviewContextSchemaValidatorTest`, `FileSystemRepoLocalConfigTest`, and `FileSystemReviewEvidenceBrokerTest`.
-17. `skill-bill validate`, `(cd runtime-kotlin && ./gradlew check)`, `npx --yes agnix --strict .`, and `scripts/validate_agent_configs` all pass.
+17. `skill-bill validate`, `(cd runtime-kotlin && ./gradlew check)`, `npx --yes agnix --strict .`, and `../../../scripts/validate_agent_configs` all pass.
 
 ## Scope
 
@@ -156,7 +156,7 @@ rollup that distinct-flattens incomplete lanes into the parent.
 
 `ReviewCoverageReport.kt` and `ReviewIntegrationPassRunner.kt` reporting seams.
 `ReviewAccountingProjection.kt` and `ReviewCommitEnvelopeFragments.kt` wire projections.
-`orchestration/contracts/review-context-schema.yaml` if any record shape changes.
+`../../../orchestration/contracts/review-context-schema.yaml` if any record shape changes.
 
 ## Constraints
 
@@ -174,7 +174,7 @@ Schema and durable record changes follow the runtime contract rules: YAML schema
 Kotlin `*_CONTRACT_VERSION`, then the parity test, then the typed error, then loud-fail at every
 parse seam.
 
-Do not raise `max_lane_evidence_bytes` in `.skill-bill/config.yaml` as part of this work. That would
+Do not raise `max_lane_evidence_bytes` in `../../../.skill-bill/config.yaml` as part of this work. That would
 mask the defect on this repository's current diffs and remove the reproduction.
 
 Reproduction range for verification is `a1afecd5f..feat/SKILL-190-one-commit-per-subtask`, which
@@ -237,7 +237,7 @@ Subtask 5 is the end-to-end check. Re-run `mode:delegated` over
 findings.
 
 Every subtask finishes with `skill-bill validate`, `npx --yes agnix --strict .`, and
-`scripts/validate_agent_configs`.
+`../../../scripts/validate_agent_configs`.
 
 ## Next Path
 

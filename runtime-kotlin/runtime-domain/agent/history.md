@@ -1,5 +1,44 @@
 # Boundary History — runtime-domain
 
+## [2026-08-20] SKILL-201 subtask 4 — Reporting schema and projections
+Areas: runtime-infra-sqlite/sqlite/review, runtime-core/review (test)
+- `loadReviewAccounting` quarantines persisted accounting rows whose lanes still list `evidence-unreviewable` in `unreviewed_segment_ids`; read returns null and emits `ACCOUNTING_CONTRACT_QUARANTINED` degradation telemetry instead of serving stale projection semantics or crashing
+- `quarantineReviewAccounting` now takes an expected/actual pair shared by contract-version drift and legacy segment-id detection (reusable)
+- `ReviewAccountingDurableRedactionTest` pins in-band quarantine and regeneration when a pre-subtask-1 row carries the retired segment id
+- Pattern: legacy review accounting contracts fail loud at the SQLite load seam; regeneration belongs to the writer, matching runtime contract quarantine rules
+- Known limits: end-to-end delegated review reproduction remains subtask 5
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
+## [2026-08-20] SKILL-201 subtask 3 — Per-lane budget derivation from assignment breadth
+Areas: runtime-domain/review/context/model, runtime-application/review
+- `ReviewContextBudgetPolicy.deriveLaneEvidenceBytes` scales each lane's cumulative broker `read_evidence` cap from the repo base policy by that lane's share of packet hunk content bytes, floored at `maxEvidenceResultBytes`; lanes owning more diff surface receive a larger allowance than narrow lanes
+- `ReviewPreparationService.deriveSpecialistBudget` applies assignment-scaled derivation when composing specialist launches; `ParallelCodeReviewRunner.mergedBudget` sums each specialist's derived cap for the parent broker instead of `base * laneCount`
+- `maxLaneEvidenceBytes` now names one thing everywhere: the cumulative broker read_evidence allowance for the bound assignment surface, not a flat per-lane constant independent of ownership breadth
+- Pattern: derive enforcement budgets from assignment breadth at preparation; parent fan-out sums specialist-derived caps so parent and lane seams stay aligned. reusable
+- Known limits: coverage report and integration-pass prompt changes remain subtask 4
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
+## [2026-08-20] SKILL-201 subtask 2 — Broker refusal drives lane_evidence_bytes incomplete verdict
+Areas: runtime-domain/review/context/model, runtime-infra-fs/infrastructure/fs, runtime-application/review
+- `FileSystemReviewEvidenceBroker` records each `lane_evidence_bytes` refusal at the read that triggers it, appending a `commitSha@path` unit to `deniedUnits`; accounting exposes `budgetDimension` and `unreviewedUnits` only when the terminal outcome names that budget kind.
+- `ReviewLaneCompletionState.withBrokerEvidenceRefusal` is the completion seam: incomplete disposition, `lane_evidence_bytes` dimension, and the broker's denied-unit list — not a path-sorted greedy tail over the assembled bundle.
+- `ParallelCodeReviewRunner` applies broker accounting to bundle completion after a worker run; a successful lane with no evidence refusal stays complete (builds on subtask 1's severed projection).
+- Pattern: name unreviewed units only from enforcement (broker reads), never from pre-flight projection or alphabetical bundle order. reusable
+- Known limits: per-lane budget derivation remains subtask 3; coverage report and integration-pass prompt changes are subtask 4.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
+## [2026-08-20] SKILL-201 subtask 1 — Sever coverage verdict from projected evidence budget
+Areas: runtime-domain/review/context/model
+- Removed `withLaneEvidenceBudget` from `GovernedReviewLaunch.completionState`; a lane whose worker run succeeded and whose segmentation stayed clean no longer flips to `incomplete` from a pre-flight sum of `entry.hunk.contentBytes` against `maxLaneEvidenceBytes`
+- Retired `EVIDENCE_UNREVIEWABLE_SEGMENT_ID` and the projection-only evidence-budget rewrite; `unreviewedUnits` may now come only from withheld or refused reads or a failed run, not from an allowance the broker never attempted to spend
+- Segmentation's `unreviewable` path for entries exceeding `maxLaneLaunchBytes` and `asFailedLaneRun` are unchanged; subtask 2 owns wiring broker refusal into completion
+- Pattern: keep enforcement (broker reads) and projection (pre-flight size sums) separate at the completion seam so coverage verdicts name only code the worker did not receive. reusable
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-08-19] Amend-aware checkpoint-identity contract
 Areas: runtime-domain/workflow/taskruntime, orchestration/contracts
 - `FeatureTaskRuntimeCheckpointIdentity` now requires `checkpointRef` to equal `featureTaskRuntimeCheckpointRefName(issueKey, subtaskId, sequenceNumber)`. The pattern alone only proved shape, so an inline-formatted or stale-subtask ref used to validate and then dedupe under an authority boundary its own record does not own; because the ref is the identity, that drift was invisible on every later read.

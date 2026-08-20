@@ -26,10 +26,25 @@ internal fun subtaskCommitReachableOnRemote(
   val sha = commitSha.trim()
   if (branch.isBlank() || sha.isBlank()) return false
   val remoteTip = gitOperations.resolveCommit(repoRoot, "origin/$branch")
-  if (!remoteTip.ok) return false
-  val remoteSha = remoteTip.value.orEmpty().trim().takeIf(String::isNotBlank) ?: return false
+  val remoteSha = remoteTip.value.orEmpty().trim().takeIf { remoteTip.ok && it.isNotBlank() } ?: return false
   val reachable = gitOperations.isCommitAncestor(repoRoot, sha, remoteSha)
   return reachable.ok && reachable.value.orEmpty().trim().equals("true", ignoreCase = true)
+}
+
+internal fun subtaskCommitSupersededOnPublishedBranch(
+  gitOperations: WorkflowGitOperations,
+  repoRoot: Path,
+  featureBranch: String,
+  commitSha: String,
+): Boolean {
+  if (subtaskCommitReachableOnRemote(gitOperations, repoRoot, featureBranch, commitSha)) return false
+  val branch = featureBranch.trim()
+  val sha = commitSha.trim()
+  if (branch.isBlank() || sha.isBlank()) return false
+  val remoteTip = gitOperations.resolveCommit(repoRoot, "origin/$branch")
+  if (!remoteTip.ok || remoteTip.value.orEmpty().isBlank()) return false
+  val recordedCommit = gitOperations.resolveCommit(repoRoot, sha)
+  return recordedCommit.ok && recordedCommit.value.orEmpty().trim().isNotBlank()
 }
 
 internal data class FeatureTaskRuntimeCheckpointRefPruneResult(
@@ -82,7 +97,8 @@ private fun WorkflowGitOperations.pruneEligibilityResult(
   }
   val featureBranch = request.featureBranch?.trim().orEmpty()
   if (featureBranch.isNotBlank() &&
-    !subtaskCommitReachableOnRemote(this, repoRoot, featureBranch, manifestSha)
+    !subtaskCommitReachableOnRemote(this, repoRoot, featureBranch, manifestSha) &&
+    !subtaskCommitSupersededOnPublishedBranch(this, repoRoot, featureBranch, manifestSha)
   ) {
     record(
       "seam=FeatureTaskRuntimeCheckpointRefPrune.pruneSubtaskCheckpointRefs " +
