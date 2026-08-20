@@ -1,11 +1,13 @@
 package skillbill.workflow.taskruntime
 
+import skillbill.error.InvalidFeatureTaskRuntimeCheckpointIdentityVersionError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_LIMIT
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeAppendCheckpointIdentity
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesFromArtifact
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesToArtifact
+import skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointRefName
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeOwnedPathDigest
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -31,14 +33,15 @@ class FeatureTaskRuntimeCheckpointIdentityModelsTest {
   }
 
   @Test
-  fun `an unsupported contract version loud-fails so the store is quarantined and regenerated`() {
-    val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
+  fun `an unsupported contract version loud-fails with both versions so quarantine can be distinguished`() {
+    val error = assertFailsWith<InvalidFeatureTaskRuntimeCheckpointIdentityVersionError> {
       featureTaskRuntimeCheckpointIdentitiesFromArtifact(
-        mapOf("contract_version" to "0.0", "checkpoints" to emptyList<Any?>()),
+        mapOf("contract_version" to "0.1", "checkpoints" to emptyList<Any?>()),
       )
     }
 
-    assertContains(error.message.orEmpty(), "unsupported contract version")
+    assertEquals("0.2", error.expectedContractVersion)
+    assertEquals("0.1", error.actualContractVersion)
   }
 
   @Test
@@ -46,7 +49,7 @@ class FeatureTaskRuntimeCheckpointIdentityModelsTest {
     assertFailsWith<InvalidWorkflowStateSchemaError> {
       featureTaskRuntimeCheckpointIdentitiesFromArtifact(
         mapOf(
-          "contract_version" to "0.1",
+          "contract_version" to "0.2",
           "checkpoints" to listOf(identity().toArtifactMap() + ("raw_prompt" to "…")),
         ),
       )
@@ -54,12 +57,24 @@ class FeatureTaskRuntimeCheckpointIdentityModelsTest {
   }
 
   @Test
-  fun `a duplicated commit sha loud-fails because one commit yields exactly one record`() {
-    val duplicated = listOf(identity(sequenceNumber = 0), identity(sequenceNumber = 1))
+  fun `an amended commit sha is shared across checkpoints but a duplicated ref loud-fails`() {
+    val amended = listOf(identity(sequenceNumber = 0), identity(sequenceNumber = 1))
 
+    assertEquals(
+      amended,
+      featureTaskRuntimeCheckpointIdentitiesFromArtifact(
+        mapOf("contract_version" to "0.2", "checkpoints" to amended.map { it.toArtifactMap() }),
+      ),
+      "an amend leaves two checkpoints on one sha; only the ref is the identity",
+    )
+
+    val duplicatedRef = listOf(
+      identity(sequenceNumber = 0).toArtifactMap(),
+      identity(sequenceNumber = 0, commitSuffix = 2).toArtifactMap(),
+    )
     val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
       featureTaskRuntimeCheckpointIdentitiesFromArtifact(
-        mapOf("contract_version" to "0.1", "checkpoints" to duplicated.map { it.toArtifactMap() }),
+        mapOf("contract_version" to "0.2", "checkpoints" to duplicatedRef),
       )
     }
 
@@ -67,14 +82,46 @@ class FeatureTaskRuntimeCheckpointIdentityModelsTest {
   }
 
   @Test
-  fun `re-appending an already-recorded commit is a no-op so crash resume converges`() {
-    val first = identity(sequenceNumber = 0)
-    val history = featureTaskRuntimeAppendCheckpointIdentity(emptyList(), first)
+  fun `a record whose ref names a different subtask than its own fields fails the whole read`() {
+    val drifted = identity(sequenceNumber = 0).toArtifactMap() +
+      ("checkpoint_ref" to featureTaskRuntimeCheckpointRefName("SKILL-150", "9", 0))
 
-    val resumed = featureTaskRuntimeAppendCheckpointIdentity(history, identity(sequenceNumber = 1))
+    val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
+      featureTaskRuntimeCheckpointIdentitiesFromArtifact(
+        mapOf(
+          "contract_version" to "0.2",
+          "checkpoints" to listOf(identity(sequenceNumber = 1).toArtifactMap(), drifted),
+        ),
+      )
+    }
 
+    assertContains(error.message.orEmpty(), "does not derive from")
+  }
+
+  @Test
+  fun `a ledger mixing current records with one legacy-shaped record fails whole`() {
+    val legacy = identity(sequenceNumber = 1).toArtifactMap() - "checkpoint_ref"
+
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      featureTaskRuntimeCheckpointIdentitiesFromArtifact(
+        mapOf(
+          "contract_version" to "0.2",
+          "checkpoints" to listOf(identity(sequenceNumber = 0).toArtifactMap(), legacy),
+        ),
+      )
+    }
+  }
+
+  @Test
+  fun `re-appending an already-recorded ref is a no-op while a later ref on the same sha appends`() {
+    val history = featureTaskRuntimeAppendCheckpointIdentity(emptyList(), identity(sequenceNumber = 0))
+
+    val resumed = featureTaskRuntimeAppendCheckpointIdentity(history, identity(sequenceNumber = 0))
     assertEquals(history, resumed)
-    assertEquals(1, resumed.size)
+
+    // The subtask commit was amended, so this later checkpoint names the same sha under a new ref.
+    val postAmend = featureTaskRuntimeAppendCheckpointIdentity(resumed, identity(sequenceNumber = 1))
+    assertEquals(2, postAmend.size)
   }
 
   @Test
@@ -117,6 +164,8 @@ class FeatureTaskRuntimeCheckpointIdentityModelsTest {
     FeatureTaskRuntimeCheckpointIdentity(
       sequenceNumber = sequenceNumber,
       issueKey = "SKILL-150",
+      subtaskId = "2",
+      checkpointRef = featureTaskRuntimeCheckpointRefName("SKILL-150", "2", sequenceNumber),
       branch = "feat/SKILL-150-scoped-checkpoint",
       phaseId = "audit",
       generation = 1,

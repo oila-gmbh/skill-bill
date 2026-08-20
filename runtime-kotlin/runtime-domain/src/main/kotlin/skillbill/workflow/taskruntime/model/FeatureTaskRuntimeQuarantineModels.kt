@@ -22,10 +22,12 @@ const val FEATURE_TASK_RUNTIME_QUARANTINE_ARTIFACT_CONTRACT_VERSION: String = "0
 /** Typed classes of launch-seam rejection that trigger quarantine; mirror the schema enum. */
 const val QUARANTINE_REJECTION_CLASS_PLANNING_PROJECTION: String = "planning_projection_schema"
 const val QUARANTINE_REJECTION_CLASS_HANDOFF_ENVELOPE: String = "handoff_envelope_schema"
+const val QUARANTINE_REJECTION_CLASS_CHECKPOINT_IDENTITY_VERSION: String = "checkpoint_identity_contract_version"
 
 private val QUARANTINE_REJECTION_CLASSES: Set<String> = setOf(
   QUARANTINE_REJECTION_CLASS_PLANNING_PROJECTION,
   QUARANTINE_REJECTION_CLASS_HANDOFF_ENVELOPE,
+  QUARANTINE_REJECTION_CLASS_CHECKPOINT_IDENTITY_VERSION,
 )
 
 private val QUARANTINE_ENVELOPE_FIELDS: Set<String> = setOf("contract_version", "entries")

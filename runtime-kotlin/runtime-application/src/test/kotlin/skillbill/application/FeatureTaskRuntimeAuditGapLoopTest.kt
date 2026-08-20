@@ -119,7 +119,7 @@ class FeatureTaskRuntimeAuditGapLoopTest {
       runtimeConfig = RuntimeHarnessConfig(
         branchSetup = BranchSetupTestConfig(gitOperations = git),
         reviewDriver = skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver { request ->
-          commitMessagesObservedAtReview = git.createCommitMessages.toList()
+          commitMessagesObservedAtReview = git.createCommitMessages + git.amendCommitMessages
           skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver.EMPTY.run(request)
         },
       ),
@@ -130,7 +130,16 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     assertEquals(2, commitMessagesObservedAtReview.size)
     assertContains(commitMessagesObservedAtReview[0], "remediation checkpoint")
     assertContains(commitMessagesObservedAtReview[1], "audited implementation checkpoint")
-    assertEquals(2, git.stagePathsCalls.size, "each checkpoint stages exactly its owned inventory")
+    assertEquals(
+      1,
+      git.createCommitMessages.size,
+      "both checkpoints collapse onto one subtask commit; the second amends it",
+    )
+    assertEquals(
+      3,
+      git.stagePathsCalls.size,
+      "each checkpoint stages exactly its owned inventory, then finalisation stages the agent's path set",
+    )
   }
 
   @Test

@@ -15,6 +15,9 @@ these seams:
 - a skipped adjudication stage, a verification or adjudication worker that failed to launch or return, and a stage that ended without a reached boundary; each emits `skillbill_review_stage_degradation` with seam, expected, actual, and a closed reason, carrying `review_run_id` only
 - a legacy-record migration, quarantine, or regeneration
 - a reconciliation that repairs drift between durable state and disk
+- checkpoint-ref prune: `FeatureTaskRuntimeCheckpointRefPrune.pruneSubtaskCheckpointRefs`
+  when listing or deleting a ref under `refs/skill-bill/checkpoints/` fails, or when
+  pruning is skipped because `commit_sha` is still blank
 
 Each record names the seam, the value actually used, the value that was expected,
 and why the substitution happened. A fallback that cannot be attributed to a

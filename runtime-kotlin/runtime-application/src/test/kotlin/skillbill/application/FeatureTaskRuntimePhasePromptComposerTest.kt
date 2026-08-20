@@ -74,7 +74,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertFalse(prompt.contains("bill-code-review mode:"), "review execution mode must not reach preplan")
     assertFalse(prompt.contains("Review execution mode"), "review execution directive must not reach preplan")
     assertFalse(
-      prompt.contains("commit_push") && prompt.contains("Stage and commit"),
+      prompt.contains("commit_push") && prompt.contains("Run no git command in this phase"),
       "commit/PR instructions must not reach preplan",
     )
     assertFalse(prompt.contains("PR URL"), "PR finalization language must not reach preplan")
@@ -726,9 +726,13 @@ class FeatureTaskRuntimePhasePromptComposerTest {
 
     assertContains(prompt, "Feature-spec commit exclusion")
     assertContains(prompt, ".feature-specs/$ISSUE_KEY-")
-    assertContains(prompt, "never run `git add -A`")
     assertContains(prompt, "decomposition-manifest.yaml")
-    assertContains(prompt, "leave those committed files alone")
+    assertContains(prompt, "Never list any `.feature-specs/`")
+    assertContains(prompt, "Never amend, reset, or restage a commit this runtime does not own")
+    assertTrue(
+      !prompt.contains("do not add, amend,"),
+      "the blanket amend prohibition is replaced by a scope bound to runtime-owned commits",
+    )
     assertTrue(!prompt.contains("The committed tree must contain no feature spec"))
   }
 
@@ -1639,7 +1643,7 @@ private fun briefingFor(
         FeatureTaskRuntimePhaseOutput("review", 1, validJsonOutput("review")),
         FeatureTaskRuntimePhaseOutput("validate", 1, validJsonOutput("validate")),
         FeatureTaskRuntimePhaseOutput("write_history", 1, validJsonOutput("write_history")),
-        FeatureTaskRuntimePhaseOutput("commit_push", 1, validJsonOutput("commit_push")),
+        FeatureTaskRuntimePhaseOutput("commit_push", 1, FINALISED_COMMIT_PUSH_OUTPUT),
       ),
       auditRepairState = auditRepairState,
       // audit's implementation-receipt edge refreshes from a resolved checkpoint (AC-012).

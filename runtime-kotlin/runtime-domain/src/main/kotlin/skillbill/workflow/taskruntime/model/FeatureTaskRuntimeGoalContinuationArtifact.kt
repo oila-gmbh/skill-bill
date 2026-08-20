@@ -17,6 +17,8 @@ data class FeatureTaskRuntimeGoalContinuationArtifact(
   /** Null means the durable row never recorded a depth (pre-contract / key absent). */
   val validationDepth: ValidationDepth? = null,
   val parallelReviewAgent: String? = null,
+  /** The manifest subtask `name`; null when the durable row never recorded one. */
+  val subtaskName: String? = null,
   val agentAddonSelection: AgentAddonSelection = AgentAddonSelection(),
 ) {
   init {
@@ -25,6 +27,9 @@ data class FeatureTaskRuntimeGoalContinuationArtifact(
     require(goalBranch.isNotBlank()) { "FeatureTaskRuntimeGoalContinuationArtifact.goalBranch must be non-blank." }
     parallelReviewAgent?.let {
       require(it.isNotBlank()) { "FeatureTaskRuntimeGoalContinuationArtifact.parallelReviewAgent must be non-blank." }
+    }
+    subtaskName?.let {
+      require(it.isNotBlank()) { "FeatureTaskRuntimeGoalContinuationArtifact.subtaskName must be non-blank." }
     }
   }
 
@@ -39,6 +44,7 @@ data class FeatureTaskRuntimeGoalContinuationArtifact(
     parentWorkflowId?.let { put("parent_workflow_id", it) }
     validationDepth?.let { put("validation_depth", it.wireValue) }
     parallelReviewAgent?.let { put("parallel_review_agent", it) }
+    subtaskName?.let { put("subtask_name", it) }
     if (agentAddonSelection.entries.isNotEmpty()) {
       put(
         "agent_addon_selection",
@@ -66,6 +72,7 @@ data class FeatureTaskRuntimeGoalContinuationArtifact(
         codeReviewMode = raw.requireGoalContinuationCodeReviewMode(),
         validationDepth = raw.optionalGoalContinuationValidationDepth(),
         parallelReviewAgent = raw.optionalStringField("parallel_review_agent"),
+        subtaskName = raw.optionalStringField("subtask_name"),
         agentAddonSelection = raw.optionalGoalAgentAddonSelection(),
       )
     }
@@ -81,6 +88,7 @@ private val goalContinuationKeys: Set<String> = setOf(
   "code_review_mode",
   "validation_depth",
   "parallel_review_agent",
+  "subtask_name",
   "agent_addon_selection",
 )
 

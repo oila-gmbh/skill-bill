@@ -45,8 +45,8 @@ This is the subtask that prevents SKILL-190 from silently reintroducing the SKIL
    commit and leaves the branch at its pre-subtask tip.
 8. `audit_gap` continues to record no remediation base.
 9. Every degradation this subtask can hit emits an observability record per
-   `docs/observability-policy.md`, including ref-resolution misses and blocked reconciliation.
-10. `runtime-kotlin/agent/decisions.md` and the featuretask `agent/history.md` record that the
+   `../../../docs/observability-policy.md`, including ref-resolution misses and blocked reconciliation.
+10. `../../../runtime-kotlin/agent/decisions.md` and the featuretask `../../../agent/history.md` record that the
     runtime-owned history rewrite has landed and that the paired base update they anticipated is
     this subtask.
 

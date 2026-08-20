@@ -1,10 +1,10 @@
 package skillbill.application.goalrunner
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.decomposition.DecompositionManifestWriter
 import skillbill.application.decomposition.withParentStatus
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.featuretask.agentAttributionFromPhaseState
+import skillbill.application.featuretask.pruneResetSubtaskCheckpointRefs
 import skillbill.application.model.GoalPlanningStatusAlignRequest
 import skillbill.application.model.GoalRunnerAcceptRequest
 import skillbill.application.model.GoalRunnerAcceptResult
@@ -34,6 +34,8 @@ import skillbill.goalrunner.model.GoalRunnerAcceptedSubtask
 import skillbill.goalrunner.model.GoalRunnerStatusProjection
 import skillbill.goalrunner.model.GoalRunnerStatusProjectionExtras
 import skillbill.goalrunner.model.GoalRunnerStatusProjector
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
+import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.goalrunner.GoalRunnerAttemptLedgerStore
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
 import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
@@ -48,12 +50,9 @@ import skillbill.ports.persistence.model.FeatureTaskWorkflowMode
 import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.taskruntime.NoopFeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
-import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.ports.workflow.NoopWorkflowGitOperations
-import skillbill.ports.workflow.UnavailableDecompositionManifestFileStore
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.WorkflowSelectedDiffHunksRequest
-import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
@@ -90,10 +89,9 @@ class GoalRunnerStatusService(
   private val clock: Clock = Clock.systemUTC(),
   private val workerSupervisor: FeatureTaskRuntimeWorkerSupervisor = NoopFeatureTaskRuntimeWorkerSupervisor,
   private val childRepairStore: GoalRunnerChildRepairStore = NoopGoalRunnerChildRepairStore,
-  private val decompositionManifestValidator: DecompositionManifestValidator? = null,
-  private val decompositionManifestFileStore: DecompositionManifestFileStore = UnavailableDecompositionManifestFileStore,
   private val planningStatusReasonCoherence: GoalPlanningStatusReasonCoherence =
     GoalPlanningStatusReasonCoherence.NONE,
+  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
 ) {
   fun status(request: GoalRunnerStatusRequest): GoalRunnerStatusProjection? {
     return manifestStore.readByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
@@ -185,13 +183,24 @@ class GoalRunnerStatusService(
     state: GoalRunnerManifestState,
     request: GoalRunnerStatusRequest,
     acceptances: Map<Int, GoalRunnerOutOfBandAcceptance>,
-  ): DecompositionManifest = reconcileGoalManifest(
-    manifest = state.manifest,
-    dbPathOverride = request.dbPathOverride,
-    authoritativeOutcomes = outcomeStore.authoritativeOutcomes(state.manifest.issueKey, request.dbPathOverride),
-    acceptances = acceptances,
-    outcomeStore = outcomeStore,
-  )
+  ): DecompositionManifest {
+    val reconciled = reconcileGoalManifest(
+      manifest = state.manifest,
+      dbPathOverride = request.dbPathOverride,
+      authoritativeOutcomes = outcomeStore.authoritativeOutcomes(state.manifest.issueKey, request.dbPathOverride),
+      acceptances = acceptances,
+      outcomeStore = outcomeStore,
+    )
+    request.repoRoot?.let { repoRoot ->
+      pruneEligibleCheckpointRefsForManifest(
+        manifest = reconciled,
+        gitOperations = gitOperations,
+        repoRoot = repoRoot,
+        record = { message -> runCatching { diagnostics.warning(message) } },
+      )
+    }
+    return reconciled
+  }
 
   /** Write the operator pause boundary directly; this does not inspect status, logs, files, or child state. */
   fun pause(
@@ -448,6 +457,7 @@ class GoalRunnerStatusService(
       dbPathOverride = request.dbPathOverride,
     )
     val latest = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot) ?: loaded
+    val hardResetRepoRoot = request.takeHardResetRepositoryRoot(latest)
     val before = latest.manifest.toResetSnapshot()
     val resetManifest = latest.manifest.resetManifest(request.hard)
     val resetState = latest.copy(manifest = resetManifest)
@@ -455,6 +465,15 @@ class GoalRunnerStatusService(
       manifestStore.saveHardReset(resetState, request.dbPathOverride, request.preservePlanning)
     } else {
       manifestStore.save(resetState, request.dbPathOverride)
+    }
+    if (request.hard) {
+      pruneResetSubtaskCheckpointRefs(
+        gitOperations = gitOperations,
+        repoRoot = requireNotNull(hardResetRepoRoot),
+        issueKey = saved.manifest.issueKey,
+        subtaskIds = before.subtasks.map { it.id },
+        record = { message -> runCatching { diagnostics.warning(message) } },
+      )
     }
     val staleChild = if (!request.hard) {
       currentChildRecoveryDiagnostic(saved.manifest, request.dbPathOverride)
@@ -469,6 +488,19 @@ class GoalRunnerStatusService(
       after = saved.manifest.toResetSnapshot(),
       recovery = staleChild,
     )
+  }
+
+  private fun GoalRunnerResetRequest.takeHardResetRepositoryRoot(latest: GoalRunnerManifestState): Path? {
+    if (!hard) return null
+    val repoRoot = requireNotNull(repoRoot) {
+      "A repository root is required for a hard reset so checkpoint refs are pruned from the correct repository."
+    }
+    manifestStore.bindRepositoryIdentity(
+      latest.parentWorkflowId,
+      goalRepositoryIdentity(repoRoot),
+      dbPathOverride,
+    )
+    return repoRoot
   }
 
   fun replan(request: GoalRunnerReplanRequest): GoalRunnerReplanResult? {
@@ -705,7 +737,6 @@ class GoalRunnerStatusService(
       )
     }
     val applied = mutableListOf<GoalRunnerAppliedRepair>()
-    var manifestProjectionArtifactsJson: String? = null
     for (diagnosis in wedged) {
       val workflowId = diagnosis.workflowId ?: continue
       val liveLease = childWorkerLeaseLive(workflowId, request.dbPathOverride)
@@ -731,18 +762,6 @@ class GoalRunnerStatusService(
         dbPathOverride = request.dbPathOverride,
       )
       applied += repairResult.repairs
-      manifestProjectionArtifactsJson = repairResult.manifestProjectionArtifactsJson
-        ?: manifestProjectionArtifactsJson
-    }
-    manifestProjectionArtifactsJson?.let { artifactsJson ->
-      decompositionManifestValidator?.let { validator ->
-        DecompositionManifestWriter.writeProjectionFromWorkflowState(
-          repoRoot = repoRoot,
-          artifactsJson = artifactsJson,
-          validator = validator,
-          fileStore = decompositionManifestFileStore,
-        )
-      }
     }
     return GoalRunnerRepairResult(
       issueKey = request.issueKey,

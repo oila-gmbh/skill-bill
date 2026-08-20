@@ -1,10 +1,10 @@
 package skillbill.application
 
-import skillbill.application.featuretask.phaseRecordsFrom
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.application.featuretask.AcceptingFeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
+import skillbill.application.featuretask.phaseRecordsFrom
 import skillbill.application.goalrunner.GOAL_CHILD_REPAIR_EVIDENCE_ARTIFACT_KEY
 import skillbill.application.goalrunner.GoalRunnerStatusService
 import skillbill.application.goalrunner.PASSED_CONTINUATION_OUTCOME
@@ -63,11 +63,17 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+private const val ISSUE_KEY = "SKILL-176"
+private const val GOAL_BRANCH = "feat/SKILL-176-goal-child-resume-self-heal"
+private val REACHABLE_SHA = "c".repeat(40)
+private val HEAD_SHA = "d".repeat(40)
+private val COMPLETED_COMMIT = "e".repeat(40)
+
 /**
  * SKILL-176 subtask 5: operator `goal repair` diagnosis, atomic mutation, evidence, and
  * orchestration preconditions. Wedge fixtures mirror SKILL-15 durable artifact shapes.
  */
-class GoalRunnerRepairTest {
+internal class GoalRunnerRepairTest : GoalRunnerRepairFixtures() {
   @Test
   fun `diagnosis names missing validation_depth with absent current value`() {
     val workflows = InMemoryWorkflowStates()
@@ -335,6 +341,73 @@ class GoalRunnerRepairTest {
     val records = phaseRecordsFrom(decodeArtifacts(updated.artifactsJson))
     assertEquals("pending", records.getValue("plan_fix").status)
     assertEquals("pending", records.getValue("implement_fix").status)
+    val evidence = (decodeArtifacts(updated.artifactsJson)[GOAL_CHILD_REPAIR_EVIDENCE_ARTIFACT_KEY] as List<*>)
+      .single() as Map<*, *>
+    assertEquals("completed_upstream_missing_output", evidence["wedge_class"])
+    assertEquals("plan_fix", evidence["field"])
+  }
+}
+
+internal class GoalRunnerRepairContinuationTest : GoalRunnerRepairFixtures() {
+  @Test
+  fun `repairing completed upstream missing output with another wedge applies both repairs`() {
+    val workflows = InMemoryWorkflowStates()
+    val workflowId = "wftr-repair-apply-upstream-and-depth"
+    val artifacts = linkedMapOf<String, Any?>(
+      "goal_continuation" to continuationMap(includeValidationDepth = false),
+      GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to healthyReviewState().toArtifactMap(),
+      FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to mapOf(
+        "plan_fix" to unsettledUpstreamPhaseRecord("plan_fix").toArtifactMap(),
+        "implement_fix" to unsettledUpstreamPhaseRecord(
+          phaseId = "implement_fix",
+          status = "blocked",
+          blockedReason = "Phase 'implement_fix' requires upstream output(s) plan_fix that are not present",
+        ).toArtifactMap(),
+      ),
+    )
+    val definition = WorkflowFamily.TASK_RUNTIME.definition
+    val engine = WorkflowEngine(testWorkflowSnapshotValidator)
+    val opened = engine.openRecord(definition, workflowId, "fis-repair", "implement_fix")
+    workflows.saveFeatureTaskRuntimeWorkflow(
+      engine.updateRecord(
+        definition,
+        opened,
+        WorkflowUpdateInput(
+          workflowStatus = "blocked",
+          currentStepId = "implement_fix",
+          stepUpdates = null,
+          artifactsPatch = artifacts,
+          sessionId = "ftr-repair",
+        ),
+      ).toRecord(),
+    )
+    val store = repairStore(workflows, git = ReachableGit())
+    val applied = store.applyChildWedgeRepairs(
+      workflowId = workflowId,
+      issueKey = ISSUE_KEY,
+      subtaskId = 1,
+      wedgeClasses = listOf(
+        GoalRunnerWedgeClass.COMPLETED_UPSTREAM_MISSING_OUTPUT,
+        GoalRunnerWedgeClass.MISSING_VALIDATION_DEPTH,
+      ),
+      subtasks = listOf(subtask(1, workflowId), subtask(2, null)),
+      repoRoot = Path.of("."),
+    )
+    assertEquals(2, applied.repairs.size)
+    assertEquals(
+      setOf(GoalRunnerWedgeClass.COMPLETED_UPSTREAM_MISSING_OUTPUT, GoalRunnerWedgeClass.MISSING_VALIDATION_DEPTH),
+      applied.repairs.map { it.wedgeClass }.toSet(),
+    )
+    val updated = requireNotNull(workflows.getFeatureTaskRuntimeWorkflow(workflowId))
+    assertEquals("running", updated.workflowStatus)
+    assertEquals("plan_fix", updated.currentStepId)
+    val after = decodeArtifacts(updated.artifactsJson)
+    val continuation = after["goal_continuation"] as Map<*, *>
+    assertEquals("build_only", continuation["validation_depth"])
+    val records = phaseRecordsFrom(after)
+    assertEquals("pending", records.getValue("plan_fix").status)
+    assertEquals("pending", records.getValue("implement_fix").status)
+    assertEquals(2, (after[GOAL_CHILD_REPAIR_EVIDENCE_ARTIFACT_KEY] as List<*>).size)
   }
 
   @Test
@@ -640,16 +713,20 @@ class GoalRunnerRepairTest {
     assertNotNull(result.refusalReason)
     assertTrue(result.refusalReason.contains(PASSED_VALIDATION_DEPTH))
   }
+}
 
-  private fun repairStore(workflows: InMemoryWorkflowStates, git: WorkflowGitOperations = NoopWorkflowGitOperations) =
-    WorkflowGoalRunnerOutcomeStore(
-      database = FakeDatabaseSessionFactory(workflows),
-      workflowSnapshotValidator = testWorkflowSnapshotValidator,
-      gitOperations = git,
-    )
+internal abstract class GoalRunnerRepairFixtures {
+  protected fun repairStore(
+    workflows: InMemoryWorkflowStates,
+    git: WorkflowGitOperations = NoopWorkflowGitOperations,
+  ) = WorkflowGoalRunnerOutcomeStore(
+    database = FakeDatabaseSessionFactory(workflows),
+    workflowSnapshotValidator = testWorkflowSnapshotValidator,
+    gitOperations = git,
+  )
 
-  @Suppress("LongParameterList") // mirrors blocked child repair fixture fields varied per case
-  private fun repairChildRecord(
+  @Suppress("LongParameterList")
+  protected fun repairChildRecord(
     workflowId: String,
     continuation: Map<String, Any?>,
     reviewState: GoalSubtaskReviewState,
@@ -690,7 +767,7 @@ class GoalRunnerRepairTest {
     ).toRecord()
   }
 
-  private fun continuationMap(includeValidationDepth: Boolean): Map<String, Any?> =
+  protected fun continuationMap(includeValidationDepth: Boolean): Map<String, Any?> =
     FeatureTaskRuntimeGoalContinuationArtifact(
       issueKey = ISSUE_KEY,
       subtaskId = 1,
@@ -703,13 +780,13 @@ class GoalRunnerRepairTest {
       if (includeValidationDepth) map else map.filterKeys { it != "validation_depth" }
     }
 
-  private fun healthyReviewState(): GoalSubtaskReviewState = GoalSubtaskReviewState.initial(
+  protected fun healthyReviewState(): GoalSubtaskReviewState = GoalSubtaskReviewState.initial(
     reviewBaseSha = REACHABLE_SHA,
     baselineUntrackedPaths = emptyList(),
     codeReviewMode = CodeReviewExecutionMode.INLINE,
   )
 
-  private fun subtask(id: Int, workflowId: String?) = DecompositionSubtask(
+  protected fun subtask(id: Int, workflowId: String?) = DecompositionSubtask(
     id = id,
     name = "subtask-$id",
     specPath = ".feature-specs/$ISSUE_KEY/spec_subtask_$id.md",
@@ -717,7 +794,7 @@ class GoalRunnerRepairTest {
     workflowId = workflowId,
   )
 
-  private fun unsettledUpstreamPhaseRecord(
+  protected fun unsettledUpstreamPhaseRecord(
     phaseId: String,
     status: String = "completed",
     blockedReason: String? = null,
@@ -733,7 +810,7 @@ class GoalRunnerRepairTest {
     edgeIteration = 1,
   )
 
-  private class RepairManifestStore(
+  protected class RepairManifestStore(
     private val childWorkflowId: String,
   ) : GoalRunnerManifestStore {
     override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState =
@@ -786,7 +863,7 @@ class GoalRunnerRepairTest {
     ): Boolean = true
   }
 
-  private class ReachableGit(
+  protected class ReachableGit(
     private val unreachableShas: Set<String> = emptySet(),
     private val recoveredSha: String = "b".repeat(40),
   ) : WorkflowGitOperations by NoopWorkflowGitOperations, GoalSubtaskReviewGitOperationsProvider {
@@ -835,7 +912,7 @@ class GoalRunnerRepairTest {
       }
   }
 
-  private object LiveProcessSupervisor : FeatureTaskRuntimeWorkerSupervisor {
+  protected object LiveProcessSupervisor : FeatureTaskRuntimeWorkerSupervisor {
     override fun currentProcess(): FeatureTaskRuntimeProcessIdentity =
       FeatureTaskRuntimeProcessIdentity("host", "boot", 1, "birth")
 
@@ -851,13 +928,5 @@ class GoalRunnerRepairTest {
       plan: FeatureTaskRuntimeHeartbeatPlan,
       heartbeat: () -> FeatureTaskRuntimeHeartbeatTick,
     ) = NoopFeatureTaskRuntimeHeartbeat
-  }
-
-  companion object {
-    private const val ISSUE_KEY = "SKILL-176"
-    private const val GOAL_BRANCH = "feat/SKILL-176-goal-child-resume-self-heal"
-    private val REACHABLE_SHA = "c".repeat(40)
-    private val HEAD_SHA = "d".repeat(40)
-    private val COMPLETED_COMMIT = "e".repeat(40)
   }
 }

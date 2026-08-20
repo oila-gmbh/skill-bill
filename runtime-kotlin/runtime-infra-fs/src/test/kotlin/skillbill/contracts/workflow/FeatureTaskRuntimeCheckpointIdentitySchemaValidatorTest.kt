@@ -9,7 +9,7 @@ class FeatureTaskRuntimeCheckpointIdentitySchemaValidatorTest {
   @Test
   fun `accepts a full checkpoint-identity record`() {
     FeatureTaskRuntimeCheckpointIdentitySchemaValidator.validate(
-      mapOf("contract_version" to "0.1", "checkpoints" to listOf(entry())),
+      mapOf("contract_version" to "0.2", "checkpoints" to listOf(entry())),
       SOURCE,
     )
   }
@@ -22,7 +22,7 @@ class FeatureTaskRuntimeCheckpointIdentitySchemaValidatorTest {
     }
 
     FeatureTaskRuntimeCheckpointIdentitySchemaValidator.validate(
-      mapOf("contract_version" to "0.1", "checkpoints" to listOf(forwardEdge)),
+      mapOf("contract_version" to "0.2", "checkpoints" to listOf(forwardEdge)),
       SOURCE,
     )
   }
@@ -30,7 +30,7 @@ class FeatureTaskRuntimeCheckpointIdentitySchemaValidatorTest {
   @Test
   fun `accepts an empty history`() {
     FeatureTaskRuntimeCheckpointIdentitySchemaValidator.validate(
-      mapOf("contract_version" to "0.1", "checkpoints" to emptyList<Any?>()),
+      mapOf("contract_version" to "0.2", "checkpoints" to emptyList<Any?>()),
       SOURCE,
     )
   }
@@ -40,7 +40,7 @@ class FeatureTaskRuntimeCheckpointIdentitySchemaValidatorTest {
     val error = assertFailsWith<InvalidFeatureTaskRuntimeCheckpointIdentitySchemaError> {
       FeatureTaskRuntimeCheckpointIdentitySchemaValidator.validate(
         mapOf(
-          "contract_version" to "0.1",
+          "contract_version" to "0.2",
           "checkpoints" to listOf(entry() + ("raw_diff" to "@@ -1 +1 @@")),
         ),
         SOURCE,
@@ -54,9 +54,37 @@ class FeatureTaskRuntimeCheckpointIdentitySchemaValidatorTest {
   fun `rejects a wrong contract version`() {
     assertFailsWith<InvalidFeatureTaskRuntimeCheckpointIdentitySchemaError> {
       FeatureTaskRuntimeCheckpointIdentitySchemaValidator.validate(
-        mapOf("contract_version" to "0.2", "checkpoints" to listOf(entry())),
+        mapOf("contract_version" to "0.1", "checkpoints" to listOf(entry())),
         SOURCE,
       )
+    }
+  }
+
+  @Test
+  fun `accepts two checkpoints on one amended commit sha under distinct refs`() {
+    val amendedSha = "d".repeat(40)
+
+    FeatureTaskRuntimeCheckpointIdentitySchemaValidator.validate(
+      mapOf(
+        "contract_version" to "0.2",
+        "checkpoints" to listOf(
+          entry(sequenceNumber = 0, commitSha = amendedSha),
+          entry(sequenceNumber = 1, commitSha = amendedSha),
+        ),
+      ),
+      SOURCE,
+    )
+  }
+
+  @Test
+  fun `rejects a checkpoint missing its ref or owning subtask`() {
+    listOf("checkpoint_ref", "subtask_id").forEach { field ->
+      assertFailsWith<InvalidFeatureTaskRuntimeCheckpointIdentitySchemaError> {
+        FeatureTaskRuntimeCheckpointIdentitySchemaValidator.validate(
+          mapOf("contract_version" to "0.2", "checkpoints" to listOf(entry() - field)),
+          SOURCE,
+        )
+      }
     }
   }
 
@@ -65,7 +93,7 @@ class FeatureTaskRuntimeCheckpointIdentitySchemaValidatorTest {
     assertFailsWith<InvalidFeatureTaskRuntimeCheckpointIdentitySchemaError> {
       FeatureTaskRuntimeCheckpointIdentitySchemaValidator.validate(
         mapOf(
-          "contract_version" to "0.1",
+          "contract_version" to "0.2",
           "checkpoints" to listOf(entry() - "owned_path_digest"),
         ),
         SOURCE,
@@ -78,7 +106,7 @@ class FeatureTaskRuntimeCheckpointIdentitySchemaValidatorTest {
     assertFailsWith<InvalidFeatureTaskRuntimeCheckpointIdentitySchemaError> {
       FeatureTaskRuntimeCheckpointIdentitySchemaValidator.validate(
         mapOf(
-          "contract_version" to "0.1",
+          "contract_version" to "0.2",
           "checkpoints" to listOf(entry() + ("issue_key" to "not an issue key")),
         ),
         SOURCE,
@@ -91,7 +119,7 @@ class FeatureTaskRuntimeCheckpointIdentitySchemaValidatorTest {
     assertFailsWith<InvalidFeatureTaskRuntimeCheckpointIdentitySchemaError> {
       FeatureTaskRuntimeCheckpointIdentitySchemaValidator.validate(
         mapOf(
-          "contract_version" to "0.1",
+          "contract_version" to "0.2",
           "checkpoints" to listOf(entry() + ("commit_sha" to "checkpoint-sha")),
         ),
         SOURCE,
@@ -99,9 +127,11 @@ class FeatureTaskRuntimeCheckpointIdentitySchemaValidatorTest {
     }
   }
 
-  private fun entry(): Map<String, Any?> = mapOf(
-    "sequence_number" to 0,
+  private fun entry(sequenceNumber: Int = 0, commitSha: String = "a".repeat(40)): Map<String, Any?> = mapOf(
+    "sequence_number" to sequenceNumber,
     "issue_key" to "SKILL-150",
+    "subtask_id" to "2",
+    "checkpoint_ref" to "refs/skill-bill/checkpoints/SKILL-150/2/$sequenceNumber",
     "branch" to "feat/SKILL-150-scoped-checkpoint",
     "phase_id" to "audit",
     "loop_id" to "audit_gap",
@@ -109,7 +139,7 @@ class FeatureTaskRuntimeCheckpointIdentitySchemaValidatorTest {
     "parent_sha" to "b".repeat(40),
     "owned_path_digest" to "c".repeat(64),
     "owned_path_count" to 3,
-    "commit_sha" to "a".repeat(40),
+    "commit_sha" to commitSha,
     "recorded_at" to "2026-08-04T00:00:00Z",
   )
 

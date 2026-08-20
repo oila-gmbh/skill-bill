@@ -2,11 +2,15 @@ package skillbill.application.featuretask
 
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointDecision
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointScopeInput
+import skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointRefName
 import java.util.Locale
 
 private const val GOVERNED_SPEC_ROOT = ".feature-specs/"
 private const val RUNTIME_PRIVATE_ROOT = ".skill-bill/"
 private const val RUNTIME_TRACKABLE_CONFIG = ".skill-bill/config.yaml"
+
+/** The git trailer key naming the subtask a runtime-written commit belongs to. */
+private const val SUBTASK_TRAILER_KEY = "Skill-Bill-Subtask"
 
 /** Bounds a block message so one pathological inventory cannot flood a durable blocked reason. */
 private const val MAX_REPORTED_PATHS = 10
@@ -196,15 +200,13 @@ internal object FeatureTaskRuntimeCheckpointScope {
   }
 }
 
-/**
- * Checkpoint commit messages. Git history alone has to answer which boundary produced a commit and
- * which loop generation it belongs to — otherwise initial implementation, audit repair, and review
- * remediation checkpoints on one branch are indistinguishable after the fact.
- */
-internal class FeatureTaskRuntimeCheckpointIdentity(
+/** Everything one checkpoint records in its commit body: which branch, which intent, which generation. */
+internal class FeatureTaskRuntimeCheckpointMetadata(
   val phaseId: String,
   val loopId: String?,
   val generation: Int,
+  val branch: String,
+  val intent: String,
 ) {
   override fun toString(): String = buildList {
     add("phase=$phaseId")
@@ -213,10 +215,93 @@ internal class FeatureTaskRuntimeCheckpointIdentity(
   }.joinToString(" ")
 }
 
+/**
+ * SKILL-190: which subtask a runtime-written commit belongs to, as a git-visible trailer.
+ *
+ * The trailer is the durable fallback the create-or-amend decision reads when workflow state is
+ * unavailable, so its exact rendered form is a contract: parsing is exact-match on both the issue key
+ * and the subtask id. A trailer naming any other subtask is not a match, because amending on a loose
+ * match would rewrite an already-finished subtask's deliverable on the shared branch.
+ */
+internal data class FeatureTaskRuntimeSubtaskCommitIdentity(val issueKey: String, val subtaskId: String) {
+  init {
+    require(issueKey.isNotBlank()) { "FeatureTaskRuntimeSubtaskCommitIdentity.issueKey must be non-blank." }
+    require(subtaskId.isNotBlank()) { "FeatureTaskRuntimeSubtaskCommitIdentity.subtaskId must be non-blank." }
+  }
+
+  val trailer: String get() = "$SUBTASK_TRAILER_KEY: $issueKey/$subtaskId"
+
+  fun checkpointRefName(sequenceNumber: Int): String =
+    featureTaskRuntimeCheckpointRefName(issueKey, subtaskId, sequenceNumber)
+
+  fun matches(commitMessage: String): Boolean = parse(commitMessage) == this
+
+  companion object {
+    fun parse(commitMessage: String): FeatureTaskRuntimeSubtaskCommitIdentity? = commitMessage.lineSequence()
+      .map(String::trim)
+      .filter { it.startsWith("$SUBTASK_TRAILER_KEY:") }
+      .mapNotNull { line -> identityFrom(line.removePrefix("$SUBTASK_TRAILER_KEY:").trim()) }
+      .lastOrNull()
+
+    private fun identityFrom(value: String): FeatureTaskRuntimeSubtaskCommitIdentity? {
+      val segments = value.split('/')
+      if (segments.size != 2) return null
+      val (issueKey, subtaskId) = segments
+      if (issueKey.isBlank() || subtaskId.isBlank()) return null
+      return FeatureTaskRuntimeSubtaskCommitIdentity(issueKey, subtaskId)
+    }
+  }
+}
+
+/**
+ * Checkpoint commit messages. Git history alone has to answer which subtask produced a commit and
+ * which loop generation it belongs to. The subject is the human-facing subtask name; the phase, loop,
+ * and generation metadata sits in the body, where it no longer pollutes `git log --oneline`, and the
+ * subtask trailer terminates the message so git reads it as a trailer.
+ */
 internal object FeatureTaskRuntimeCheckpointMessage {
-  fun build(issueKey: String, branch: String, identity: FeatureTaskRuntimeCheckpointIdentity, intent: String): String =
-    "chore($issueKey): $intent checkpoint on '$branch' [$identity]"
+  fun build(
+    issueKey: String,
+    subtaskName: String?,
+    metadata: FeatureTaskRuntimeCheckpointMetadata,
+    identity: FeatureTaskRuntimeSubtaskCommitIdentity,
+  ): String {
+    val subject = subtaskName?.trim()?.takeIf(String::isNotBlank)
+      ?.let { "$issueKey: $it" }
+      ?: fallbackSubject(issueKey, identity.subtaskId)
+    return compose(subject, metadata, identity)
+  }
+
+  /**
+   * The finalised subtask commit message: the agent-authored subject verbatim, the same checkpoint
+   * metadata body every intermediate commit carried, and the subtask trailer the amend-target
+   * recovery reads. The subject is never re-prefixed with the issue key — the agent owns it whole.
+   */
+  fun finalise(
+    subject: String,
+    metadata: FeatureTaskRuntimeCheckpointMetadata,
+    identity: FeatureTaskRuntimeSubtaskCommitIdentity,
+  ): String = compose(subject.trim(), metadata, identity)
+
+  private fun compose(
+    subject: String,
+    metadata: FeatureTaskRuntimeCheckpointMetadata,
+    identity: FeatureTaskRuntimeSubtaskCommitIdentity,
+  ): String {
+    val body = "${metadata.intent} checkpoint on '${metadata.branch}'"
+    return "$subject\n\n$body\n$metadata\n\n${identity.trailer}\n"
+  }
+
+  fun fallbackSubject(issueKey: String, subtaskId: String): String = "$issueKey: subtask $subtaskId"
+
+  /** Names the seam, the value used, the value expected, and the cause, per docs/observability-policy.md. */
+  fun missingSubtaskNameRecord(issueKey: String, subtaskId: String): String =
+    "seam=FeatureTaskRuntimeCheckpointMessage.build value_used='${fallbackSubject(issueKey, subtaskId)}' " +
+      "value_expected=manifest subtask name for '$issueKey' subtask '$subtaskId' " +
+      "cause=the durable goal-continuation row carried no subtask name; the checkpoint subject " +
+      "degrades to the issue key until finalisation rewrites it"
 
   const val INTENT_AUDITED_IMPLEMENTATION: String = "audited implementation"
   const val INTENT_REMEDIATION: String = "remediation"
+  const val INTENT_FINALISED_SUBTASK: String = "finalised subtask"
 }

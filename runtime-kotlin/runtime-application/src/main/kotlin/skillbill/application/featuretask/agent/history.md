@@ -1,5 +1,48 @@
 # featuretask runtime boundary history
 
+Revisit when: prune eligibility or the checkpoint namespace layout changes.
+
+## [2026-08-20] SKILL-190 subtask 6 — Checkpoint-ref prune lifecycle and docs
+Areas: runtime-application/featuretask, runtime-application/goalrunner, runtime-ports/workflow, AGENTS.md, orchestration/workflow-contract/PLAYBOOK.md, skills/bill-feature-task-runtime
+- `FeatureTaskRuntimeCheckpointRefPrune` deletes refs under `refs/skill-bill/checkpoints/<issue>/<subtask>/` only after push plus a recorded manifest `commit_sha`; hard reset bypasses the gate; pruning is idempotent.
+- Goal runner prunes on subtask completion and on status reconcile for complete subtasks; hard reset prunes every reset subtask namespace.
+- `commit_push` finalisation defers prune until the manifest records `commit_sha`; agents emit message and paths only.
+- Pattern: gated ref lifecycle paired with runtime-owned finalisation; reset-driven namespace bounding. reusable
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
+## [2026-08-20] SKILL-190 — Completed-upstream-missing-output goal repair wedge
+Areas: runtime-application/featuretask, runtime-application/goalrunner, runtime-application/model, runtime-cli/goal
+- Added `COMPLETED_UPSTREAM_MISSING_OUTPUT` goal repair wedge: blocked consumers missing upstream projections diagnose `completed` phase rows with no settled output
+- `FeatureTaskRuntimeCompletedUpstreamRepair` reopens the earliest unsettled upstream and dependent blocked phases via operator-resume repair input; `asPendingForOperatorResume` lives in `FeatureTaskRuntimePhaseRecordRepair`
+- `GoalRunnerChildRepairApplyResult` carries manifest projection artifacts; outcome store writes decomposition projection after `updateGoalParentForBlockedPhaseRetry`
+- `RemediationBaseReconciler` quarantines superseded checkpoint-identity stores to sibling evidence and clears the live key so children regenerate identities instead of dying on version errors
+- Pattern: operator `goal repair` wedge for durable phase-record inconsistencies that otherwise strand children with nonzero exit and no recovery path. reusable
+- Limitation: runtime-owned `commit_push` finalisation from subtask 5 spec remains outstanding on this branch checkpoint
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
+## [2026-08-19] SKILL-190 subtask 4 — Ref-based remediation reconciliation and rollback under amend
+Areas: runtime-application/featuretask (goal continuation recorder, run loop), runtime-kotlin/agent, runtime-ports/workflow
+- `reconcileRemediationBaseCoherence` resolves the latest `review_fix` base through checkpoint refs instead of branch ancestry; unresolvable bases block with operator guidance rather than rewriting to HEAD.
+- `rollbackRemediationCheckpointCommit` restores the prior checkpoint ref (or removes the first subtask commit) and no-ops when HEAD already moved; compensating rollback no longer soft-resets to `parentSha` alone.
+- Durable `goal_review_base_recoveries` evidence carries seam, value used, value expected, and cause on blocked reconciliation and stored-base misses.
+- Reusable: ref-resolved remediation base + typed blocked outcome at goal-child resume; ref-based compensating rollback paired with subtask 3 amend ceremony.
+- Limitation: none for this bundle; pair with integrated verification before treating production-safe.
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
+## [2026-08-19] SKILL-190 subtask 3 — Runtime-owned subtask commit identity and amend ceremony
+Areas: runtime-application/featuretask (run loop, commit resolver, checkpoint scope), runtime-domain/workflow/taskruntime/model, runtime-infra-fs (GitCheckpointHistoryOperations), runtime-ports/workflow
+- Forward and remediation checkpoints now create-or-amend exactly one subtask commit instead of appending branch commits; Skip and Block verdicts still write nothing.
+- `FeatureTaskRuntimeSubtaskCommitResolver` decides create vs amend from durable identity first, falling back to the `Skill-Bill-Subtask: <issue>/<subtask-id>` trailer on HEAD with an observability record when state is unavailable. reusable
+- Provisional subject comes from the manifest subtask `name`; `phase`, `loop`, and `generation` move to the commit body alongside the trailer, retiring the old single-line checkpoint subject.
+- Before each amend, the pre-amend commit is written to `refs/skill-bill/checkpoints/<issue>/<subtask>/<sequence>` and must resolve before amend runs; ref failure blocks the checkpoint loudly.
+- Pattern: extend subtask 1 amend/ref primitives through the checkpoint write path without changing ceremony dispatch or scope verdicts; checkpoint-identity idempotency from subtask 2 is preserved in the same transaction.
+- Limitation: none for this bundle; pair with integrated verification before treating production-safe.
+Feature flag: N/A
+Acceptance criteria: 12/12 implemented
+
 ## [2026-08-18] SKILL-198 subtask 2 — runtime repair window owns check execution
 Areas: runtime-application/featuretask (validation coordinator, policy, cycle models), runtime-domain/workflow/taskruntime/model, AGENTS.md
 - Durable `repair_window_phase` (`none` | `findings_open`) on validation gate progress; while `findings_open` the coordinator runs zero pack argv and resume hands back the persisted complete finding set without a discovery rerun.
@@ -157,7 +200,7 @@ Areas: runtime-application/featuretask, runtime-ports/workflow, runtime-infra-fs
 - Remediation Stage commit and `remediation_base_sha` write are one unit: commit sha is passed into `updateReviewState`; a failed base record soft-resets HEAD to the pre-commit parent so ref and durable row stay paired
 - Goal-child resume reconciles committed-but-unrecorded and recorded-but-superseded bases to the branch tip (or latest on-branch review_fix checkpoint) before review prep, with `goal_review_base_recoveries` evidence
 - Investigation eliminated in-runtime sibling-orphan producers (failed-checkpoint index restore, crash between commit and record, resume Skip+re-record); stranding needs a post-record history rewrite off the recorded sha
-- Reusable: `WorkflowGitOperations.resetSoftToCommit` compensating soft-reset; resume heal closes the crash and post-record rewrite windows without a second healthy-path reconciliation pass
+- Reusable: `WorkflowGitOperations.resetSoftToCommit` for ref-targeted compensating rollback; resume reconciliation resolves checkpoint refs before review prep
 - Limitation: only remediation bases are scope-critical at this seam; any future runtime-owned amend/rebase must call the paired base update
 Feature flag: N/A
 Acceptance criteria: 7/7 implemented

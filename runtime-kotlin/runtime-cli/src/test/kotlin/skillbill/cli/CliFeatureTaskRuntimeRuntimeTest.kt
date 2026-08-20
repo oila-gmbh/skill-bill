@@ -2096,7 +2096,8 @@ private class RecordingPhaseLauncher(
       """{history_result: {changed_paths: ["agent/history.md"], decisions_recorded: []}}"""
 
     private const val COMMIT_PUSH_RESULT_OUTPUTS: String =
-      """{commit_push_result: {commit_sha: "commit-runtime-1", """ +
+      """{commit_push_result: {message: "SKILL-650: runtime cli fixture subtask", """ +
+        """changed_paths: ["src/Foo.kt"], """ +
         """branch: "feat/pre-created-runtime-branch", base_branch: "main", pushed: true}}"""
 
     fun validPhaseOutputForTest(phaseId: String): String = validPhaseOutput(phaseId)
@@ -2244,7 +2245,13 @@ private class FakeRuntimeGitOperations(
     WorkflowGitOperationResult(status = "ok", value = currentBranchValue)
 
   override fun createCommit(repoRoot: Path, message: String): WorkflowGitOperationResult =
-    WorkflowGitOperationResult(status = "ok", value = "recorded")
+    WorkflowGitOperationResult(status = "ok", value = "2".repeat(40))
+
+  override fun pushBranch(repoRoot: Path, branch: String): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = branch)
+
+  override fun pushBranchWithLease(repoRoot: Path, branch: String): WorkflowGitOperationResult =
+    WorkflowGitOperationResult(status = "ok", value = branch)
 
   override fun headCommitSha(repoRoot: Path): WorkflowGitOperationResult =
     WorkflowGitOperationResult(status = "ok", value = "")

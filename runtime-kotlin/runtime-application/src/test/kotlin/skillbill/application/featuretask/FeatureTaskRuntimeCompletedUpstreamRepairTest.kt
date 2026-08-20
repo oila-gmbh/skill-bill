@@ -1,5 +1,6 @@
 package skillbill.application.featuretask
 
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -24,7 +25,10 @@ class FeatureTaskRuntimeCompletedUpstreamRepairTest {
 
     assertEquals(
       "plan_fix",
-      diagnoseUnsettledCompletedUpstreamPhaseId(phaseRecords, skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize.MEDIUM),
+      diagnoseUnsettledCompletedUpstreamPhaseId(
+        phaseRecords,
+        FeatureTaskRuntimeFeatureSize.MEDIUM,
+      ),
     )
   }
 
@@ -45,7 +49,10 @@ class FeatureTaskRuntimeCompletedUpstreamRepairTest {
     )
 
     assertNull(
-      diagnoseUnsettledCompletedUpstreamPhaseId(phaseRecords, skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize.MEDIUM),
+      diagnoseUnsettledCompletedUpstreamPhaseId(
+        phaseRecords,
+        FeatureTaskRuntimeFeatureSize.MEDIUM,
+      ),
     )
   }
 
@@ -67,7 +74,7 @@ class FeatureTaskRuntimeCompletedUpstreamRepairTest {
 
     assertEquals(
       "implement_fix",
-      diagnoseUnsettledCompletedUpstreamPhaseId(phaseRecords, skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize.MEDIUM),
+      diagnoseUnsettledCompletedUpstreamPhaseId(phaseRecords, FeatureTaskRuntimeFeatureSize.MEDIUM),
     )
   }
 

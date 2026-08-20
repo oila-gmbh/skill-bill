@@ -79,6 +79,7 @@ import skillbill.ports.taskruntime.FeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.taskruntime.NoopFeatureTaskRuntimeWorkerSupervisor
 import skillbill.ports.workflow.DecompositionManifestFileStore
 import skillbill.ports.workflow.NoopWorkflowGitOperations
+import skillbill.ports.workflow.UnavailableDecompositionManifestFileStore
 import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.workflow.DecompositionManifestValidator
@@ -710,6 +711,7 @@ class WorkflowGoalRunnerManifestStore(
       codeReviewMode = setup.reviewPolicy.codeReviewMode,
       validationDepth = validationDepthForSubtask(state.manifest.subtasks, setup.subtaskId),
       parallelReviewAgent = setup.reviewPolicy.parallelReviewAgent,
+      subtaskName = state.manifest.subtasks.firstOrNull { it.id == setup.subtaskId }?.name?.takeIf(String::isNotBlank),
     ).toArtifactMap(),
     GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to GoalSubtaskReviewState.initial(
       reviewBaseSha = setup.reviewBaseline.reviewBaseSha,
@@ -1554,6 +1556,8 @@ class WorkflowGoalRunnerOutcomeStore(
   // confirms a process dead, so a seam wired without a real supervisor never reconciles.
   private val workerSupervisor: FeatureTaskRuntimeWorkerSupervisor = NoopFeatureTaskRuntimeWorkerSupervisor,
   private val decompositionManifestValidator: DecompositionManifestValidator? = null,
+  private val decompositionManifestFileStore: DecompositionManifestFileStore =
+    UnavailableDecompositionManifestFileStore,
 ) : GoalRunnerWorkflowOutcomeStore, GoalRunnerAttemptLedgerStore, GoalRunnerChildRepairStore {
   private val engine: WorkflowEngine = WorkflowEngine(workflowSnapshotValidator)
   private val childRepair = GoalRunnerChildRepairOperations(engine, gitOperations, decompositionManifestValidator)
@@ -1583,16 +1587,32 @@ class WorkflowGoalRunnerOutcomeStore(
     subtasks: List<DecompositionSubtask>,
     repoRoot: Path,
     dbPathOverride: String?,
-  ): GoalRunnerChildRepairApplyResult = database.transaction(dbPathOverride) { unitOfWork ->
-    childRepair.apply(
-      unitOfWork = unitOfWork,
-      workflowId = workflowId,
-      issueKey = issueKey,
-      subtaskId = subtaskId,
-      wedgeClasses = wedgeClasses,
-      subtasks = subtasks,
-      repoRoot = repoRoot,
-    )
+  ): GoalRunnerChildRepairApplyResult {
+    val result = database.transaction(dbPathOverride) { unitOfWork ->
+      childRepair.apply(
+        unitOfWork = unitOfWork,
+        workflowId = workflowId,
+        issueKey = issueKey,
+        subtaskId = subtaskId,
+        wedgeClasses = wedgeClasses,
+        subtasks = subtasks,
+        repoRoot = repoRoot,
+      )
+    }
+    result.manifestProjectionArtifactsJson?.let { artifactsJson ->
+      val validator = decompositionManifestValidator ?: return@let
+      checkNotNull(
+        DecompositionManifestWriter.writeProjectionFromWorkflowState(
+          repoRoot = repoRoot,
+          artifactsJson = artifactsJson,
+          validator = validator,
+          fileStore = decompositionManifestFileStore,
+        ),
+      ) {
+        "Goal repair reopened the durable goal child but could not write its decomposition manifest projection."
+      }
+    }
+    return result
   }
 
   override fun goalSubtaskReviewState(workflowId: String, dbPathOverride: String?): GoalSubtaskReviewState? =
@@ -2882,10 +2902,7 @@ private fun terminalStatus(
  * block on every later run and never relaunches. Only a block at or after the current step speaks
  * for where the child actually stands.
  */
-private fun liveBlockedStep(
-  snapshot: WorkflowStateSnapshot,
-  steps: List<WorkflowStepState>,
-): WorkflowStepState? {
+private fun liveBlockedStep(snapshot: WorkflowStateSnapshot, steps: List<WorkflowStepState>): WorkflowStepState? {
   val currentIndex = steps.indexOfFirst { it.stepId == snapshot.currentStepId }
   if (currentIndex < 0) return steps.firstOrNull { it.status == "blocked" }
   return steps.drop(currentIndex).firstOrNull { it.status == "blocked" }

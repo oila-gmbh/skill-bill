@@ -45,6 +45,17 @@ interface WorkflowGitOperations {
   )
 
   /**
+   * Pushes [branch] to `origin` under a lease: the push is refused when `origin/[branch]` no longer
+   * holds the value this repository last observed. Reachable only when finalisation amends a subtask
+   * commit that is already published, so a rewritten tip can never silently overwrite a remote a PR
+   * or CI already references. Default refuses for the same reason [pushBranch] does.
+   */
+  fun pushBranchWithLease(repoRoot: Path, branch: String): WorkflowGitOperationResult = WorkflowGitOperationResult(
+    status = "error",
+    error = "This git operations implementation cannot push branch '$branch' under a lease.",
+  )
+
+  /**
    * Whether [branch]'s local tip has commits not on `origin/[branch]`.
    * Value is `"true"` or `"false"`. Missing `origin/[branch]` counts as unpushed so a prior
    * commit-all whose push failed is re-pushed on the next finalize instead of being treated as done
@@ -182,6 +193,158 @@ fun WorkflowGitOperations.stagedPaths(repoRoot: Path): WorkflowGitOperationResul
 
 fun WorkflowGitOperations.pathContentIdentities(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult =
   scopedStagingOperations().pathContentIdentities(repoRoot, paths)
+
+/**
+ * SKILL-190: the amend and namespace-scoped ref primitives a per-subtask checkpoint history needs.
+ *
+ * Amending rewrites HEAD from whatever the index already carries; staging is the caller's job and
+ * ownership is decided entirely from the caller-supplied [expectedOwnedHeadSha]. Ref operations are
+ * confined to a caller-supplied namespace prefix so nothing here can move or delete a branch ref.
+ */
+interface CheckpointHistoryGitOperations {
+  /**
+   * Rewrites HEAD from the current index, keeping its message unless [replacementMessage] is given,
+   * and returns the new commit sha. Fails when HEAD is missing, when HEAD is not
+   * [expectedOwnedHeadSha], or when the index carries nothing to commit.
+   *
+   * [allowUnchangedIndex] lifts only that last refusal, for the one caller that amends to replace a
+   * message rather than to add content: subtask finalisation rewrites a provisional subject onto an
+   * already-committed tree, and a clean tree there is the normal case, not a caller bug.
+   */
+  fun amendHeadCommit(
+    repoRoot: Path,
+    expectedOwnedHeadSha: String,
+    replacementMessage: String? = null,
+    allowUnchangedIndex: Boolean = false,
+  ): WorkflowGitOperationResult
+
+  /**
+   * The full commit message of HEAD, for reading a runtime-written trailer back off branch history.
+   * Fails when HEAD names no commit.
+   */
+  fun headCommitMessage(repoRoot: Path): WorkflowGitOperationResult
+
+  /** Creates or moves [refName] (which must sit under [namespacePrefix]) to [targetSha]. */
+  fun updateRef(
+    repoRoot: Path,
+    namespacePrefix: String,
+    refName: String,
+    targetSha: String,
+  ): WorkflowGitOperationResult
+
+  /**
+   * The commit sha [refName] points at, blank when the ref is genuinely absent, and a typed failure
+   * only when the lookup itself could not run. A caller deciding whether a ref is free must be able to
+   * tell "nothing is there" from "we could not find out".
+   */
+  fun resolveRef(repoRoot: Path, namespacePrefix: String, refName: String): WorkflowGitOperationResult
+
+  /** NUL-delimited `<objectname><NUL><refname>` records for every ref under [namespacePrefix]. */
+  fun listRefs(repoRoot: Path, namespacePrefix: String): WorkflowGitOperationResult
+
+  /** Deletes [refName]; an already-absent ref is success, so a re-run of an interrupted prune passes. */
+  fun deleteRef(repoRoot: Path, namespacePrefix: String, refName: String): WorkflowGitOperationResult
+}
+
+interface CheckpointHistoryGitOperationsProvider {
+  val checkpointHistoryOperations: CheckpointHistoryGitOperations
+}
+
+// Answering "ok" without amending or writing a ref reads downstream as a recorded checkpoint identity
+// that does not exist, which no later read can recover. An adapter without real git refuses instead.
+private object UnavailableCheckpointHistoryGitOperations : CheckpointHistoryGitOperations {
+  override fun amendHeadCommit(
+    repoRoot: Path,
+    expectedOwnedHeadSha: String,
+    replacementMessage: String?,
+    allowUnchangedIndex: Boolean,
+  ): WorkflowGitOperationResult = unavailable("amend the HEAD commit")
+
+  override fun headCommitMessage(repoRoot: Path): WorkflowGitOperationResult =
+    unavailable("read the HEAD commit message")
+
+  override fun updateRef(
+    repoRoot: Path,
+    namespacePrefix: String,
+    refName: String,
+    targetSha: String,
+  ): WorkflowGitOperationResult = unavailable("write checkpoint ref '$refName'")
+
+  override fun resolveRef(repoRoot: Path, namespacePrefix: String, refName: String): WorkflowGitOperationResult =
+    unavailable("resolve checkpoint ref '$refName'")
+
+  override fun listRefs(repoRoot: Path, namespacePrefix: String): WorkflowGitOperationResult =
+    unavailable("list checkpoint refs under '$namespacePrefix'")
+
+  override fun deleteRef(repoRoot: Path, namespacePrefix: String, refName: String): WorkflowGitOperationResult =
+    unavailable("delete checkpoint ref '$refName'")
+
+  private fun unavailable(capability: String) = WorkflowGitOperationResult(
+    status = "error",
+    error = "This git operations implementation cannot $capability; checkpoint history requires a git adapter.",
+  )
+}
+
+private fun WorkflowGitOperations.checkpointHistoryOperations(): CheckpointHistoryGitOperations =
+  (this as? CheckpointHistoryGitOperationsProvider)?.checkpointHistoryOperations
+    ?: UnavailableCheckpointHistoryGitOperations
+
+fun WorkflowGitOperations.amendHeadCommit(
+  repoRoot: Path,
+  expectedOwnedHeadSha: String,
+  replacementMessage: String? = null,
+  allowUnchangedIndex: Boolean = false,
+): WorkflowGitOperationResult = checkpointHistoryOperations()
+  .amendHeadCommit(repoRoot, expectedOwnedHeadSha, replacementMessage, allowUnchangedIndex)
+
+fun WorkflowGitOperations.headCommitMessage(repoRoot: Path): WorkflowGitOperationResult =
+  checkpointHistoryOperations().headCommitMessage(repoRoot)
+
+fun WorkflowGitOperations.updateCheckpointRef(
+  repoRoot: Path,
+  namespacePrefix: String,
+  refName: String,
+  targetSha: String,
+): WorkflowGitOperationResult = checkpointHistoryOperations().updateRef(repoRoot, namespacePrefix, refName, targetSha)
+
+fun WorkflowGitOperations.resolveCheckpointRef(
+  repoRoot: Path,
+  namespacePrefix: String,
+  refName: String,
+): WorkflowGitOperationResult = checkpointHistoryOperations().resolveRef(repoRoot, namespacePrefix, refName)
+
+fun WorkflowGitOperations.listCheckpointRefs(repoRoot: Path, namespacePrefix: String): WorkflowGitOperationResult =
+  checkpointHistoryOperations().listRefs(repoRoot, namespacePrefix)
+
+fun WorkflowGitOperations.deleteCheckpointRef(
+  repoRoot: Path,
+  namespacePrefix: String,
+  refName: String,
+): WorkflowGitOperationResult = checkpointHistoryOperations().deleteRef(repoRoot, namespacePrefix, refName)
+
+/**
+ * SKILL-190: deletes every ref under [subtaskRefPrefix], which must name
+ * `refs/skill-bill/checkpoints/<issue-key>/<subtask-id>/`. An absent ref is success so an interrupted
+ * prune or a second run converges on the same end state.
+ */
+fun WorkflowGitOperations.deleteCheckpointRefsUnderPrefix(
+  repoRoot: Path,
+  namespacePrefix: String,
+  subtaskRefPrefix: String,
+): WorkflowGitOperationResult {
+  val listed = listCheckpointRefs(repoRoot, subtaskRefPrefix)
+  if (!listed.ok) return listed
+  val refs = listed.value.orEmpty()
+    .split('\u0000')
+    .filter(String::isNotBlank)
+    .chunked(2)
+    .mapNotNull { parts -> parts.getOrNull(1)?.trim()?.takeIf(String::isNotBlank) }
+  refs.forEach { refName ->
+    val deleted = deleteCheckpointRef(repoRoot, namespacePrefix, refName)
+    if (!deleted.ok) return deleted
+  }
+  return WorkflowGitOperationResult(status = "ok", value = refs.size.toString())
+}
 
 interface RepositoryFingerprintGitOperations {
   fun repositoryFingerprint(repoRoot: Path): WorkflowGitOperationResult

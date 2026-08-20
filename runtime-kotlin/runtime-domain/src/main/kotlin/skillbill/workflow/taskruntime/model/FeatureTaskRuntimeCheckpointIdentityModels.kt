@@ -3,6 +3,7 @@ package skillbill.workflow.taskruntime.model
 import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITY_CONTRACT_VERSION
+import skillbill.error.InvalidFeatureTaskRuntimeCheckpointIdentityVersionError
 import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.model.appendBoundedHistoryBySequence
 import java.security.MessageDigest
@@ -25,7 +26,30 @@ const val FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_LIMIT: Int = 200
 private const val OWNED_PATH_DIGEST_DELIMITER: Char = '\u0000'
 
 /**
- * One checkpoint commit's identity. Effect-free: the application layer mints `sequenceNumber` and
+ * Reserved [FeatureTaskRuntimeCheckpointIdentity.subtaskId] for a feature-task run that is not a goal
+ * continuation and therefore owns no decomposed subtask. A contract-level value: it appears in the
+ * schema's `subtask_id` pattern and in every checkpoint ref a standalone run names.
+ */
+const val FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID: String = "standalone"
+
+/**
+ * The one ref namespace runtime checkpoint refs live in. Every ref write is confined to it, so nothing
+ * in this ceremony can move or delete a branch ref.
+ */
+const val FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE: String = "refs/skill-bill/checkpoints"
+
+private const val CHECKPOINT_REF_PREFIX: String = FEATURE_TASK_RUNTIME_CHECKPOINT_REF_NAMESPACE
+
+/**
+ * The one place a checkpoint ref name is minted. Deterministic in its inputs so a resume that
+ * re-reaches the checkpoint seam names the same ref and converges on the existing record instead of
+ * appending a second one.
+ */
+fun featureTaskRuntimeCheckpointRefName(issueKey: String, subtaskId: String, sequenceNumber: Int): String =
+  "$CHECKPOINT_REF_PREFIX/$issueKey/$subtaskId/$sequenceNumber"
+
+/**
+ * One checkpoint's identity. Effect-free: the application layer mints `sequenceNumber` and
  * `recordedAt` and passes them in, so this model carries no clock and no randomness.
  *
  * Every field is bounded and derived. The owned-path inventory is reduced to a digest and a count
@@ -35,6 +59,8 @@ private const val OWNED_PATH_DIGEST_DELIMITER: Char = '\u0000'
 data class FeatureTaskRuntimeCheckpointIdentity(
   val sequenceNumber: Int,
   val issueKey: String,
+  val subtaskId: String,
+  val checkpointRef: String,
   val branch: String,
   val phaseId: String,
   val generation: Int,
@@ -50,6 +76,18 @@ data class FeatureTaskRuntimeCheckpointIdentity(
       "FeatureTaskRuntimeCheckpointIdentity.sequenceNumber must be non-negative, was $sequenceNumber."
     }
     require(issueKey.isNotBlank()) { "FeatureTaskRuntimeCheckpointIdentity.issueKey must be non-blank." }
+    require(subtaskId.matches(SUBTASK_ID_PATTERN)) {
+      "FeatureTaskRuntimeCheckpointIdentity.subtaskId must be a positive integer or " +
+        "'$FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID', was '$subtaskId'."
+    }
+    require(checkpointRef.matches(CHECKPOINT_REF_PATTERN) && checkpointRef.length <= CHECKPOINT_REF_MAX_LENGTH) {
+      "FeatureTaskRuntimeCheckpointIdentity.checkpointRef must be a bounded skill-bill checkpoint ref."
+    }
+    require(checkpointRef == featureTaskRuntimeCheckpointRefName(issueKey, subtaskId, sequenceNumber)) {
+      "FeatureTaskRuntimeCheckpointIdentity.checkpointRef '$checkpointRef' does not derive from issueKey " +
+        "'$issueKey', subtaskId '$subtaskId' and sequenceNumber $sequenceNumber; the ref is the identity, so a " +
+        "ref naming a different authority boundary than its own record is rejected."
+    }
     require(branch.isNotBlank()) { "FeatureTaskRuntimeCheckpointIdentity.branch must be non-blank." }
     require(phaseId.isNotBlank()) { "FeatureTaskRuntimeCheckpointIdentity.phaseId must be non-blank." }
     require(generation >= 0) {
@@ -77,6 +115,8 @@ data class FeatureTaskRuntimeCheckpointIdentity(
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
     "sequence_number" to sequenceNumber,
     "issue_key" to issueKey,
+    "subtask_id" to subtaskId,
+    "checkpoint_ref" to checkpointRef,
     "branch" to branch,
     "phase_id" to phaseId,
     "generation" to generation,
@@ -92,10 +132,16 @@ data class FeatureTaskRuntimeCheckpointIdentity(
   companion object {
     private val DIGEST_PATTERN = Regex("^[0-9a-f]{64}$")
     private val SHA_PATTERN = Regex("^[0-9a-f]{40,64}$")
+    private val SUBTASK_ID_PATTERN = Regex("^([0-9]+|$FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID)$")
+    private val CHECKPOINT_REF_PATTERN =
+      Regex("^$CHECKPOINT_REF_PREFIX/[A-Z][A-Z0-9]*-[0-9]+/[a-z0-9-]+/[0-9]+$")
+    private const val CHECKPOINT_REF_MAX_LENGTH: Int = 255
 
     private val ALLOWED_FIELDS = setOf(
       "sequence_number",
       "issue_key",
+      "subtask_id",
+      "checkpoint_ref",
       "branch",
       "phase_id",
       "generation",
@@ -121,6 +167,8 @@ data class FeatureTaskRuntimeCheckpointIdentity(
         FeatureTaskRuntimeCheckpointIdentity(
           sequenceNumber = raw.requireIntField("sequence_number"),
           issueKey = raw.requireStringField("issue_key"),
+          subtaskId = raw.requireStringField("subtask_id"),
+          checkpointRef = raw.requireStringField("checkpoint_ref"),
           branch = raw.requireStringField("branch"),
           phaseId = raw.requireStringField("phase_id"),
           generation = raw.requireIntField("generation"),
@@ -175,9 +223,9 @@ fun featureTaskRuntimeCheckpointIdentitiesFromArtifact(raw: Any?): List<FeatureT
     ?: checkpointIdentityError("Feature-task-runtime checkpoint-identity record must be an object.")
   val version = map["contract_version"] as? String
   if (version != FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITY_CONTRACT_VERSION) {
-    checkpointIdentityError(
-      "Feature-task-runtime checkpoint-identity record uses unsupported contract version " +
-        "'${version.orEmpty()}'; $FEATURE_TASK_RUNTIME_INCOMPATIBLE_RECORD_GUIDANCE.",
+    throw InvalidFeatureTaskRuntimeCheckpointIdentityVersionError(
+      expectedContractVersion = FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITY_CONTRACT_VERSION,
+      actualContractVersion = version.orEmpty(),
     )
   }
   val checkpoints = map["checkpoints"] as? List<*>
@@ -190,11 +238,11 @@ fun featureTaskRuntimeCheckpointIdentitiesFromArtifact(raw: Any?): List<FeatureT
         ?: checkpointIdentityError("Feature-task-runtime checkpoint-identity entry must be an object."),
     )
   }
-  val duplicateCommits = decoded.groupBy { it.commitSha }.filterValues { it.size > 1 }.keys
-  if (duplicateCommits.isNotEmpty()) {
+  val duplicateRefs = decoded.groupBy { it.checkpointRef }.filterValues { it.size > 1 }.keys
+  if (duplicateRefs.isNotEmpty()) {
     checkpointIdentityError(
-      "Feature-task-runtime checkpoint-identity history records commit(s) ${duplicateCommits.sorted()} " +
-        "more than once; one checkpoint commit yields exactly one identity record.",
+      "Feature-task-runtime checkpoint-identity history records checkpoint ref(s) ${duplicateRefs.sorted()} " +
+        "more than once; one checkpoint ref yields exactly one identity record.",
     )
   }
   return decoded
@@ -202,16 +250,18 @@ fun featureTaskRuntimeCheckpointIdentitiesFromArtifact(raw: Any?): List<FeatureT
 
 /**
  * Appends one checkpoint identity and prunes oldest-first to
- * [FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_LIMIT]. Re-recording an already-recorded commit sha is
- * a no-op rather than a duplicate: a resume that reaches this seam again after a crash between the
- * commit and the durable write must converge on the same single record.
+ * [FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_LIMIT]. Re-recording an already-recorded checkpoint ref
+ * is a no-op rather than a duplicate: a resume that reaches this seam again after a crash between the
+ * commit and the durable write must converge on the same single record. Dedupe keys on the ref, not
+ * the sha — after an amend a later checkpoint legitimately points at an already-recorded sha, and
+ * keying on the sha would silently swallow it.
  */
 fun featureTaskRuntimeAppendCheckpointIdentity(
   existing: List<FeatureTaskRuntimeCheckpointIdentity>,
   entry: FeatureTaskRuntimeCheckpointIdentity,
   retentionLimit: Int = FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_LIMIT,
 ): List<FeatureTaskRuntimeCheckpointIdentity> {
-  if (existing.any { it.commitSha == entry.commitSha }) return existing
+  if (existing.any { it.checkpointRef == entry.checkpointRef }) return existing
   return appendBoundedHistoryBySequence(
     existing = existing.map { it.toArtifactMap() },
     entry = entry.toArtifactMap(),

@@ -16,12 +16,12 @@ real repository.
 - Prune refs for subtasks abandoned by a hard manifest reset
   (`DecompositionManifestWriter.kt:351` nulls every `commitSha`), so a reset does not strand refs
   forever.
-- Update `AGENTS.md` to describe the one-commit-per-subtask ceremony, the runtime-owned finalisation,
+- Update `../../../AGENTS.md` to describe the one-commit-per-subtask ceremony, the runtime-owned finalisation,
   and the `refs/skill-bill/` namespace. `AGENTS.md:85` currently states commit prose style only and
   says nothing about commit structure.
-- Update the workflow contract documentation in `orchestration/workflow-contract/PLAYBOOK.md`
+- Update the workflow contract documentation in `../../../orchestration/workflow-contract/PLAYBOOK.md`
   (`:295`, `:323`, `:334`) for the changed `commit_push` ownership.
-- Update `skills/bill-feature-task-runtime/content.md` where it describes commit behaviour,
+- Update `../../../skills/bill-feature-task-runtime/content.md` where it describes commit behaviour,
   including the guard note at `:376`.
 - Run the integrated verification described below.
 
@@ -34,14 +34,14 @@ real repository.
 3. A hard manifest reset prunes the refs of the subtasks it reset; no ref namespace grows without
    bound across repeated resets.
 4. A blocked or abandoned subtask retains its refs, so it stays recoverable.
-5. `AGENTS.md` describes the one-commit-per-subtask ceremony, runtime-owned finalisation, and the
+5. `../../../AGENTS.md` describes the one-commit-per-subtask ceremony, runtime-owned finalisation, and the
    `refs/skill-bill/` namespace, and no longer implies checkpoint commits appear in branch history.
-6. `PLAYBOOK.md` and `skills/bill-feature-task-runtime/content.md` describe the changed `commit_push`
+6. `PLAYBOOK.md` and `../../../skills/bill-feature-task-runtime/content.md` describe the changed `commit_push`
    ownership, and no document instructs an agent to run `git commit` for a subtask.
 7. A full feature-task run over a multi-subtask manifest, in a real temporary repository, produces
    exactly one branch commit per completed subtask, each with the correct trailer and outcome
    message.
-8. `skill-bill validate`, `(cd runtime-kotlin && ./gradlew check)`, and `scripts/validate_agent_configs`
+8. `skill-bill validate`, `(cd runtime-kotlin && ./gradlew check)`, and `../../../scripts/validate_agent_configs`
    all pass.
 9. No document or code comment claims behaviour this bundle did not deliver.
 
@@ -70,12 +70,12 @@ temporary repository and assert on git state, not on log strings:
 - Checkpoint refs present during a subtask, absent after it is pushed and recorded.
 - A blocked subtask retains its refs and remains recoverable.
 - A hard reset prunes the refs it orphaned.
-- `.feature-specs/` unstaged throughout.
+- `../..` unstaged throughout.
 - The SKILL-189 review-base scenario still resolves a non-empty base, verifying subtask 4 under the
   full pipeline rather than in isolation.
 
 Close with `skill-bill validate`, `(cd runtime-kotlin && ./gradlew check)`, and
-`scripts/validate_agent_configs`.
+`../../../scripts/validate_agent_configs`.
 
 ## Next Path
 

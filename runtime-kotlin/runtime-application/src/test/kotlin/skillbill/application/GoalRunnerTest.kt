@@ -15,6 +15,7 @@ import skillbill.application.goalrunner.GoalRunnerProgressEventEmitter
 import skillbill.application.goalrunner.GoalRunnerStatusService
 import skillbill.application.goalrunner.UnaddressedFindingsLedgerService
 import skillbill.application.goalrunner.cascadeEligiblePlanSubtaskIds
+import skillbill.application.goalrunner.goalRepositoryIdentity
 import skillbill.application.model.GoalRunnerAcceptRequest
 import skillbill.application.model.GoalRunnerAcceptResult
 import skillbill.application.model.GoalRunnerEventSink
@@ -90,6 +91,7 @@ import skillbill.ports.workflow.model.WorkflowWorktreeActivityResult
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionDependency
+import skillbill.workflow.model.DecompositionExecutionModel
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
 import skillbill.workflow.model.GoalObservabilityDiffStat
@@ -828,7 +830,7 @@ class GoalRunnerLinearScratchFinalizeTest {
     val store = InMemoryGoalManifestStore(
       manifest = manifest(subtaskCount = 1)
         .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1")
-        .copy(specSource = SpecSource.LINEAR),
+        .copy(specSource = SpecSource.LINEAR, executionModel = DecompositionExecutionModel.STACKED_BRANCHES),
     )
     val runner = GoalRunner(
       store,
@@ -888,7 +890,8 @@ class GoalRunnerLinearScratchFinalizeTest {
     )
     val store = InMemoryGoalManifestStore(
       manifest = manifest(subtaskCount = 1)
-        .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1"),
+        .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1")
+        .copy(executionModel = DecompositionExecutionModel.STACKED_BRANCHES),
     )
     val runner = GoalRunner(
       store,
@@ -918,7 +921,8 @@ class GoalRunnerLinearScratchFinalizeTest {
     )
     val store = InMemoryGoalManifestStore(
       manifest = manifest(subtaskCount = 1)
-        .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1"),
+        .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1")
+        .copy(executionModel = DecompositionExecutionModel.STACKED_BRANCHES),
     )
     val runner = GoalRunner(
       store,
@@ -982,7 +986,8 @@ class GoalRunnerLinearScratchFinalizeTest {
     val pullRequests = RecordingPullRequestPort()
     val store = InMemoryGoalManifestStore(
       manifest = manifest(subtaskCount = 1)
-        .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1"),
+        .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1")
+        .copy(executionModel = DecompositionExecutionModel.STACKED_BRANCHES),
     )
     val runner = GoalRunner(
       store,
@@ -1000,6 +1005,34 @@ class GoalRunnerLinearScratchFinalizeTest {
     )
     assertTrue(git.pushedBranches.isEmpty())
     assertEquals(1, pullRequests.openCount)
+  }
+
+  @Test
+  fun `same-branch finalize blocks leftover implementation paths instead of goal-level commit`() {
+    val repoRoot = Files.createTempDirectory("goal-same-branch-finalize-block")
+    val git = CommitAllRecordingGitOperations(
+      dirtyPorcelain = " M src/Extra.kt",
+      currentBranch = "feat/SKILL-56-goal",
+    )
+    val pullRequests = RecordingPullRequestPort()
+    val store = InMemoryGoalManifestStore(
+      manifest = manifest(subtaskCount = 1)
+        .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1"),
+    )
+    val runner = GoalRunner(
+      store,
+      RecordingSubtaskLauncher { launchFacts() },
+      RecordingOutcomeStore(),
+      pullRequests,
+      specScratchStore = RecordingSpecScratchStore(),
+      gitOperations = git,
+    )
+
+    val stopped = assertIs<GoalRunnerRunReport.Stopped>(runner.run(linearRunRequest(repoRoot)))
+    assertEquals(GoalRunnerStopReason.PULL_REQUEST_FAILED, stopped.stop.reason)
+    assertContains(stopped.stop.blockedReason, "same-branch mode refuses to commit leftover implementation paths")
+    assertTrue(git.commitMessages.isEmpty())
+    assertEquals(0, pullRequests.openCount)
   }
 
   @Test
@@ -1090,7 +1123,8 @@ class GoalRunnerLinearScratchFinalizeTest {
     )
     val store = InMemoryGoalManifestStore(
       manifest = manifest(subtaskCount = 1)
-        .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1"),
+        .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1")
+        .copy(executionModel = DecompositionExecutionModel.STACKED_BRANCHES),
     )
     val runner = GoalRunner(
       store,
@@ -1113,7 +1147,7 @@ class GoalRunnerLinearScratchFinalizeTest {
     val store = InMemoryGoalManifestStore(
       manifest = manifest(subtaskCount = 1)
         .withCompletedSubtask(1, workflowId = "wfl-1", commitSha = "sha-1")
-        .copy(featureBranch = "main"),
+        .copy(featureBranch = "main", executionModel = DecompositionExecutionModel.STACKED_BRANCHES),
     )
     val runner = GoalRunner(
       store,
@@ -2618,6 +2652,7 @@ class GoalRunnerObservabilityTest {
         issueKey = "SKILL-56",
         hard = true,
         dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
+        repoRoot = Path.of("/tmp/skillbill-goal-runner"),
       ),
     )
 
@@ -2657,7 +2692,7 @@ class GoalRunnerObservabilityTest {
       listOf(GoalRunnerAcceptedSubtask(1, acceptedSha, "reviewed; ship it", accepted.acceptedAt)),
       service.hardResetPreflight("SKILL-56", null),
     )
-    service.reset(GoalRunnerResetRequest("SKILL-56", hard = true))
+    service.reset(GoalRunnerResetRequest(issueKey = "SKILL-56", hard = true, repoRoot = Path.of(".")))
     assertEquals(emptyList(), service.hardResetPreflight("SKILL-56", null))
     assertIs<GoalRunnerAcceptResult.Rejected>(
       service.accept(
@@ -2687,6 +2722,40 @@ class GoalRunnerObservabilityTest {
       listOf(GoalRunnerAcceptedSubtask(1, acceptedSha, "reviewed; ship it", restored.acceptedAt)),
       service.hardResetPreflight("SKILL-56", null),
     )
+  }
+
+  @Test
+  fun `hard reset requires repository root for checkpoint ref cleanup`() {
+    val service = GoalRunnerStatusService(
+      InMemoryGoalManifestStore(manifest(subtaskCount = 1)),
+      RecordingOutcomeStore(),
+      goalTestPhaseRecorder(),
+    )
+
+    assertFailsWith<IllegalArgumentException> {
+      service.reset(GoalRunnerResetRequest(issueKey = "SKILL-56", hard = true))
+    }
+  }
+
+  @Test
+  fun `hard reset rejects repository root that does not match the goal identity`() {
+    val store = InMemoryGoalManifestStore(
+      manifest = manifest(subtaskCount = 1),
+      initialControlState = GoalRunnerControlState(
+        repositoryIdentity = goalRepositoryIdentity(Path.of("/tmp/bound-repo")),
+      ),
+    )
+    val service = GoalRunnerStatusService(store, RecordingOutcomeStore(), goalTestPhaseRecorder())
+
+    assertFailsWith<IllegalArgumentException> {
+      service.reset(
+        GoalRunnerResetRequest(
+          issueKey = "SKILL-56",
+          hard = true,
+          repoRoot = Path.of("/tmp/other-repo"),
+        ),
+      )
+    }
   }
 
   private fun runRequest(): GoalRunnerRunRequest = GoalRunnerRunRequest(
@@ -2741,6 +2810,7 @@ internal class InMemoryGoalManifestStore(
   manifest: DecompositionManifest,
   private val hardReset: ((GoalRunnerManifestState, String?) -> Unit)? = null,
   private val projectionSaved: (() -> Unit)? = null,
+  initialControlState: GoalRunnerControlState = GoalRunnerControlState(),
 ) : GoalRunnerManifestStore {
   var manifest: DecompositionManifest = manifest
     private set
@@ -2748,7 +2818,7 @@ internal class InMemoryGoalManifestStore(
     private set
   var runtimeStateSaveCount: Int = 0
     private set
-  var controlState: GoalRunnerControlState = GoalRunnerControlState()
+  var controlState: GoalRunnerControlState = initialControlState
     private set
   var executionLeaseForTest: GoalRunnerExecutionLease? = null
   var boundaryTransitionCount: Int = 0
@@ -2781,6 +2851,20 @@ internal class InMemoryGoalManifestStore(
   }
 
   override fun controlState(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerControlState = controlState
+
+  override fun bindRepositoryIdentity(
+    parentWorkflowId: String,
+    repositoryIdentity: String,
+    dbPathOverride: String?,
+  ): GoalRunnerControlState {
+    require(controlState.repositoryIdentity == null || controlState.repositoryIdentity == repositoryIdentity) {
+      "Goal parent '$parentWorkflowId' belongs to another repository."
+    }
+    if (controlState.repositoryIdentity == null) {
+      controlState = controlState.copy(repositoryIdentity = repositoryIdentity)
+    }
+    return controlState
+  }
 
   override fun executionLease(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerExecutionLease? =
     executionLeaseForTest

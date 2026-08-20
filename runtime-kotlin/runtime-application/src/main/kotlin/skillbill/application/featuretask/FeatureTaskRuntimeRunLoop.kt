@@ -52,8 +52,10 @@ import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.persistence.ProducerOutputEvidence
 import skillbill.ports.workflow.buildGoalSubtaskReviewInput
 import skillbill.ports.workflow.captureIndexState
+import skillbill.ports.workflow.headCommitMessage
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
+import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.pathContentIdentities
 import skillbill.ports.workflow.repositoryCheckpointFingerprint
 import skillbill.ports.workflow.repositoryFingerprint
@@ -73,11 +75,13 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeTransitionFunction
 import skillbill.workflow.taskruntime.model.CorrectiveRepairCapturedResponse
 import skillbill.workflow.taskruntime.model.CorrectiveRepairDiagnosticLocator
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairGapIdentities
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
@@ -803,17 +807,15 @@ internal class FeatureTaskRuntimeRunLoop(
       )
       return null
     }
-    val message = FeatureTaskRuntimeCheckpointMessage.build(
-      issueKey = request.issueKey,
+    val subtaskIdentity = subtaskCommitIdentity()
+    val message = checkpointCommitMessage(
       branch = branch,
-      identity = FeatureTaskRuntimeCheckpointIdentity(
-        phaseId = precedingPhaseId,
-        loopId = loopId,
-        generation = checkpointGeneration(loopId),
-      ),
+      phaseId = precedingPhaseId,
+      loopId = loopId,
+      identity = subtaskIdentity,
       intent = FeatureTaskRuntimeCheckpointMessage.INTENT_REMEDIATION,
     )
-    val commit = phaseGates.gitOperations.createCommit(request.repoRoot, message)
+    val commit = writeSubtaskCommit(branch, message, subtaskIdentity)
     if (!commit.ok) {
       blockCheckpoint(
         precedingPhaseId,
@@ -843,8 +845,7 @@ internal class FeatureTaskRuntimeRunLoop(
       blockedReason = ::remediationCheckpointBlockedReason,
     )
     if (!recorded) {
-      // Identity failed after the commit: soft-reset so the tip does not outrun durable authority.
-      rollbackRemediationCheckpointCommit(parentSha, commitSha)
+      rollbackRemediationCheckpointCommit(commitSha, parentSha, identityRecorded = false)
       return null
     }
     return RemediationCheckpointCommit(commitSha = commitSha, parentSha = parentSha)
@@ -862,20 +863,122 @@ internal class FeatureTaskRuntimeRunLoop(
     val recorded = recordRemediationBaseSha(precedingPhaseId, commitSha)
     if (recorded) return true
     if (commitSha != null) {
-      rollbackRemediationCheckpointCommit(parentSha, commitSha)
+      rollbackRemediationCheckpointCommit(commitSha, parentSha, identityRecorded = true)
     }
     return false
   }
 
   /**
-   * Soft-resets HEAD to [parentSha] when it still sits on [commitSha], so a failed base record (or
-   * identity write) does not leave the branch tip naming an unrecorded remediation checkpoint.
+   * Restores the branch tip from the prior checkpoint identity commit when one exists; otherwise
+   * removes the subtask commit and leaves the branch at its pre-subtask tip. Idempotent when HEAD
+   * no longer names [commitSha].
    */
-  private fun rollbackRemediationCheckpointCommit(parentSha: String?, commitSha: String) {
-    val parent = parentSha?.trim()?.takeIf(String::isNotBlank) ?: return
+  private fun rollbackRemediationCheckpointCommit(commitSha: String, parentSha: String?, identityRecorded: Boolean) {
+    val normalizedCommit = commitSha.trim()
     val head = phaseGates.gitOperations.headCommitSha(request.repoRoot)
-    if (!head.ok || head.value.trim() != commitSha.trim()) return
-    phaseGates.gitOperations.resetSoftToCommit(request.repoRoot, parent)
+    if (!head.ok || head.value.trim() != normalizedCommit) return
+    val subtaskId = request.goalContinuation?.subtaskId?.toString()
+      ?: FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID
+    val identities = runCatching {
+      recorder.loadCheckpointIdentities(request.workflowId, request.dbPathOverride)
+    }.fold(
+      onSuccess = { loaded -> loaded.orEmpty() },
+      onFailure = { error ->
+        recordRemediationRollbackDegradation(
+          seam = "FeatureTaskRuntimeRunLoop.rollbackRemediationCheckpointCommit",
+          valueUsed = request.workflowId,
+          valueExpected = "checkpoint identities for rollback",
+          cause = "loadCheckpointIdentities failed: " +
+            error.message.orEmpty().ifBlank { error::class.simpleName.orEmpty() },
+        )
+        emptyList()
+      },
+    )
+      .filter { it.issueKey == request.issueKey && it.subtaskId == subtaskId }
+      .sortedBy { it.sequenceNumber }
+    val restoreSha = remediationRollbackTargetSha(
+      identities = identities,
+      commitSha = normalizedCommit,
+      parentSha = parentSha,
+      identityRecorded = identityRecorded,
+    ) ?: return
+    val reset = phaseGates.gitOperations.resetSoftToCommit(request.repoRoot, restoreSha)
+    if (!reset.ok) {
+      recordRemediationRollbackDegradation(
+        seam = "FeatureTaskRuntimeRunLoop.rollbackRemediationCheckpointCommit",
+        valueUsed = restoreSha,
+        valueExpected = "successful soft reset to restore target",
+        cause = reset.error.ifBlank { "resetSoftToCommit failed" },
+      )
+    }
+  }
+
+  private fun recordRemediationRollbackDegradation(
+    seam: String,
+    valueUsed: String,
+    valueExpected: String,
+    cause: String,
+  ) {
+    goalContinuationRecorder.appendRemediationRollbackDegradationEvidence(
+      workflowId = request.workflowId,
+      signal = RemediationDegradationSignal(
+        seam = seam,
+        valueUsed = valueUsed,
+        valueExpected = valueExpected,
+        cause = cause,
+      ),
+      dbOverride = request.dbPathOverride,
+    )
+  }
+
+  private fun remediationRollbackTargetSha(
+    identities: List<FeatureTaskRuntimeCheckpointIdentity>,
+    commitSha: String,
+    parentSha: String?,
+    identityRecorded: Boolean,
+  ): String? {
+    val fallback = parentSha?.trim()?.takeIf(String::isNotBlank)
+    val predecessor = rollbackPredecessor(identities, commitSha, identityRecorded) ?: return fallback
+    return resolvedPredecessorSha(predecessor) ?: fallback
+  }
+
+  private fun rollbackPredecessor(
+    identities: List<FeatureTaskRuntimeCheckpointIdentity>,
+    commitSha: String,
+    identityRecorded: Boolean,
+  ): FeatureTaskRuntimeCheckpointIdentity? {
+    val currentIdentity = if (identityRecorded) identities.lastOrNull { it.commitSha == commitSha } else null
+    return when {
+      currentIdentity != null && currentIdentity.sequenceNumber > 0 ->
+        identities.find { it.sequenceNumber == currentIdentity.sequenceNumber - 1 }
+      currentIdentity != null -> null
+      else -> identities.maxByOrNull { it.sequenceNumber }
+    }
+  }
+
+  private fun resolvedPredecessorSha(predecessor: FeatureTaskRuntimeCheckpointIdentity): String? {
+    val predecessorCommitSha = predecessor.commitSha.trim()
+    if (predecessorCommitSha.isBlank()) {
+      recordRemediationRollbackDegradation(
+        seam = "FeatureTaskRuntimeRunLoop.remediationRollbackTargetSha",
+        valueUsed = "(blank)",
+        valueExpected = "resolvable predecessor identity commit",
+        cause = "predecessor identity commit sha was missing or blank",
+      )
+      return null
+    }
+    val resolved = phaseGates.gitOperations.resolveCommit(request.repoRoot, predecessorCommitSha)
+    val predecessorSha = resolved.value.orEmpty().trim().takeIf { resolved.ok && it.isNotBlank() }
+    if (predecessorSha == null) {
+      recordRemediationRollbackDegradation(
+        seam = "FeatureTaskRuntimeRunLoop.remediationRollbackTargetSha",
+        valueUsed = predecessorCommitSha,
+        valueExpected = "resolvable predecessor identity commit",
+        cause = resolved.error.takeIf { !resolved.ok && it.isNotBlank() }
+          ?: "predecessor commit '$predecessorCommitSha' did not resolve",
+      )
+    }
+    return predecessorSha
   }
 
   /**
@@ -1314,17 +1417,15 @@ internal class FeatureTaskRuntimeRunLoop(
         blockedReason,
       )
     }
-    val message = FeatureTaskRuntimeCheckpointMessage.build(
-      issueKey = request.issueKey,
+    val subtaskIdentity = subtaskCommitIdentity()
+    val message = checkpointCommitMessage(
       branch = branch,
-      identity = FeatureTaskRuntimeCheckpointIdentity(
-        phaseId = precedingPhaseId,
-        loopId = loopId,
-        generation = checkpointGeneration(loopId),
-      ),
+      phaseId = precedingPhaseId,
+      loopId = loopId,
+      identity = subtaskIdentity,
       intent = intent,
     )
-    val commit = phaseGates.gitOperations.createCommit(request.repoRoot, message)
+    val commit = writeSubtaskCommit(branch, message, subtaskIdentity)
     if (!commit.ok) {
       return blockCheckpoint(
         precedingPhaseId,
@@ -1342,6 +1443,122 @@ internal class FeatureTaskRuntimeRunLoop(
       commitSha = commit.value.orEmpty().trim(),
       blockedReason = blockedReason,
     )
+  }
+
+  /**
+   * The subtask every checkpoint of this run belongs to. A standalone feature-task run owns no
+   * decomposed subtask; the reserved literal keeps one commit and one ref namespace per run anyway.
+   */
+  private fun subtaskCommitIdentity(): FeatureTaskRuntimeSubtaskCommitIdentity =
+    FeatureTaskRuntimeSubtaskCommitIdentity(
+      issueKey = request.issueKey,
+      subtaskId = request.goalContinuation?.subtaskId?.toString() ?: FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID,
+    )
+
+  private fun checkpointCommitMessage(
+    branch: String,
+    phaseId: String,
+    loopId: String?,
+    identity: FeatureTaskRuntimeSubtaskCommitIdentity,
+    intent: String,
+  ): String {
+    val subtaskName = request.goalContinuation?.subtaskName?.trim()?.takeIf(String::isNotBlank)
+    // A standalone run has no manifest to carry a name, so only a goal continuation missing one is a
+    // degradation worth a record.
+    if (subtaskName == null && request.goalContinuation != null) {
+      runCatching {
+        diagnostics.warning(
+          FeatureTaskRuntimeCheckpointMessage.missingSubtaskNameRecord(identity.issueKey, identity.subtaskId),
+        )
+      }
+    }
+    return FeatureTaskRuntimeCheckpointMessage.build(
+      issueKey = request.issueKey,
+      subtaskName = subtaskName,
+      metadata = FeatureTaskRuntimeCheckpointMetadata(
+        phaseId = phaseId,
+        loopId = loopId,
+        generation = checkpointGeneration(loopId),
+        branch = branch,
+        intent = intent,
+      ),
+      identity = identity,
+    )
+  }
+
+  private data class SubtaskCommitLedgerState(val commitSha: String?, val nextSequenceNumber: Int)
+
+  /**
+   * The durable subtask-commit pointer, read out of the checkpoint-identity ledger that already
+   * records it. Deriving it from the ledger rather than storing a second copy is what makes the
+   * pointer and the ledger unable to disagree, and it mints the same sequence number the identity
+   * append will. A ledger this runtime cannot read reports no pointer at sequence 0, which is exactly
+   * the state the append's quarantine-and-regenerate path leaves behind.
+   */
+  private fun subtaskCommitLedgerState(identity: FeatureTaskRuntimeSubtaskCommitIdentity): SubtaskCommitLedgerState {
+    val read = runCatching { recorder.loadCheckpointIdentities(request.workflowId, request.dbPathOverride) }
+    val identities = read.getOrNull()
+    val cause = read.exceptionOrNull()
+      ?.let { "the checkpoint-identity store could not be read (${it.message ?: it::class.simpleName})" }
+      ?: "no workflow row recorded any checkpoint identity for this run".takeIf { identities == null }
+    if (cause != null) {
+      runCatching { diagnostics.warning(ledgerUnavailableRecord(identity, cause)) }
+      return SubtaskCommitLedgerState(commitSha = null, nextSequenceNumber = 0)
+    }
+    val recorded = requireNotNull(identities)
+    return SubtaskCommitLedgerState(
+      commitSha = recorded
+        .filter { it.issueKey == identity.issueKey && it.subtaskId == identity.subtaskId }
+        .maxByOrNull { it.sequenceNumber }
+        ?.commitSha,
+      nextSequenceNumber = (recorded.maxOfOrNull { it.sequenceNumber } ?: -1) + 1,
+    )
+  }
+
+  private fun ledgerUnavailableRecord(identity: FeatureTaskRuntimeSubtaskCommitIdentity, cause: String): String =
+    "seam=FeatureTaskRuntimeRunLoop.subtaskCommitLedgerState value_used='no durable pointer, sequence 0' " +
+      "value_expected=the recorded checkpoint-identity ledger for '${identity.issueKey}/${identity.subtaskId}' " +
+      "cause=$cause"
+
+  /**
+   * One subtask, one branch commit: the first checkpoint with staged content creates it and every
+   * later checkpoint amends it. Failures return an error result so the caller's existing index-restore
+   * reporting handles them exactly as a failed create.
+   */
+  private fun writeSubtaskCommit(
+    branch: String,
+    message: String,
+    identity: FeatureTaskRuntimeSubtaskCommitIdentity,
+  ): WorkflowGitOperationResult {
+    val ledger = subtaskCommitLedgerState(identity)
+    val headSha = phaseGates.gitOperations.headCommitSha(request.repoRoot)
+      .takeIf { it.ok }?.value?.trim()?.takeIf(String::isNotBlank)
+    val decision = FeatureTaskRuntimeSubtaskCommitResolver.decide(
+      identity = identity,
+      durableCommitSha = ledger.commitSha,
+      head = FeatureTaskRuntimeSubtaskCommitHeadState(
+        sha = headSha,
+        commitMessage = if (ledger.commitSha == null && headSha != null) headCommitMessageOrNull() else null,
+        isUnpushed = branchHasUnpushedCommits(branch),
+      ),
+      sequenceNumber = ledger.nextSequenceNumber,
+    )
+    return phaseGates.gitOperations.writeSubtaskCommitPreservingHistory(
+      repoRoot = request.repoRoot,
+      decision = decision,
+      identity = identity,
+      message = message,
+      allowUnchangedIndex = false,
+      record = { record -> runCatching { diagnostics.warning(record) } },
+    )
+  }
+
+  private fun headCommitMessageOrNull(): String? =
+    phaseGates.gitOperations.headCommitMessage(request.repoRoot).takeIf { it.ok }?.value
+
+  private fun branchHasUnpushedCommits(branch: String): Boolean {
+    val unpushed = phaseGates.gitOperations.localBranchHasUnpushedCommits(request.repoRoot, branch)
+    return unpushed.ok && unpushed.value.orEmpty().trim().equals("true", ignoreCase = true)
   }
 
   /**
@@ -1374,6 +1591,10 @@ internal class FeatureTaskRuntimeRunLoop(
       recorder.appendCheckpointIdentity(
         workflowId = request.workflowId,
         issueKey = request.issueKey,
+        // A standalone feature-task run owns no decomposed subtask; the reserved literal keeps the
+        // ref name well-formed instead of leaving the segment blank.
+        subtaskId = request.goalContinuation?.subtaskId?.toString()
+          ?: FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID,
         branch = branch,
         phaseId = precedingPhaseId,
         loopId = loopId,
@@ -4399,44 +4620,18 @@ internal class FeatureTaskRuntimeRunLoop(
     val attested = attestAbsentGateValidationReceipt(run, normalizedOutput)
     val outputTextCanonical = attested.canonicalJson
     val outputMap = attested.envelope
-    fun reject(rule: String, detail: String): AttemptResult {
-      val structuredIdentity = structuredRepairDiagnosticIdentity(detail)
-      val diagnosticRule = structuredIdentity?.first ?: rule
-      val path = structuredIdentity?.second ?: rejectionPath(detail)
-      val reason = payloadFreeRejectionReason(rule, if (structuredIdentity == null) path else "/")
-      // Only scrubbed semantic templates reach the retry reason. Response-derived dumps stay in the
-      // private diagnostic and the authorized repair body.
-      val retryFacingConstraint = payloadFreeSemanticGateConstraint(rule, detail, outputMap)
-      val retryReason = retryRejectionReason(reason, retryFacingConstraint)
-      val diagnosticWrite = recordRejectedOutput(
-        run, iteration, diagnosticRule, detail, outputBytes, path = path,
-        outputTruncated = outputTruncated, outputByteSize = outputByteSize, outputSha256 = outputSha256,
-      )
-      // Semantic/schema rejection after a successful parse: rebuild the repair context from the same
-      // capture that was just recorded, using only payload-free constraint text so value-bearing detail
-      // stays out of the typed context and out of the next prompt outside the repair section.
-      return schemaInvalidAttempt(
-        reason,
-        fileManifest,
-        retryReason = retryReason,
-        correctiveRepairContext = correctiveRepairContextForRejection(
-          run = run,
-          iteration = iteration,
-          outputText = outputText,
-          outputTruncated = outputTruncated,
-          outputByteSize = outputByteSize,
-          outputSha256 = outputSha256,
-          diagnosticWrite = diagnosticWrite,
-          rejectionRule = diagnosticRule,
-          rejectionPath = path,
-          payloadFreeConstraint = retryFacingConstraint ?: reason,
-          // Semantic rejection after AcceptedAfterRepair: syntax repair succeeded earlier; the phase
-          // schema or semantic gate still rejected the post-capture response.
-          acceptedAfterStructuralRepair = repairEvidence != null,
-          structuralRepairEvidence = repairEvidence,
-        ),
-      )
-    }
+    val capture = ValidatedOutputCapture(
+      run = run,
+      iteration = iteration,
+      outputText = outputText,
+      outputBytes = outputBytes,
+      outputTruncated = outputTruncated,
+      outputByteSize = outputByteSize,
+      outputSha256 = outputSha256,
+      repairEvidence = repairEvidence,
+      fileManifest = fileManifest,
+    )
+    fun reject(rule: String, detail: String): AttemptResult = rejectValidatedOutput(capture, outputMap, rule, detail)
     firstValidatedOutputRejection(run.phaseId, outputTextCanonical, outputMap)?.let { (rule, reason) ->
       return reject(rule, reason)
     }
@@ -4509,32 +4704,269 @@ internal class FeatureTaskRuntimeRunLoop(
       observability,
       fileManifest,
     )?.let { return it }
-    recorder.retainProducerOutput(
-      ProducerOutputEvidence(
-        workflowId = request.workflowId,
-        phaseId = run.phaseId,
-        attempt = iteration,
-        agentId = run.resolvedAgent.resolvedAgentId,
-        model = run.modelDirective?.model ?: "unspecified",
-        recordedAt = java.time.Instant.now(),
-        byteSize = outputByteSize,
-        sha256 = outputSha256,
-        payload = outputBytes.takeUnless { outputTruncated },
-        generation = state.evidenceGeneration(run.phaseId),
-        repairTurn = run.validationGateRepairTurn,
-      ),
-      run.request.dbPathOverride,
-    )
+    val finalised = when (val finalisation = finaliseSubtaskCommit(run, attested)) {
+      is CommitPushNotApplicable -> attested
+      is CommitPushSettled -> finalisation.output
+      is CommitPushBlocked -> return AttemptResult.settled(
+        blockAndPersistInPhase(
+          run,
+          iteration,
+          finalisation.reason,
+          observability,
+          failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
+          fileManifest = fileManifest,
+        ),
+      )
+    }
+    retainSettledProducerOutput(capture)
     return persistAcceptedOutput(
       run,
       iteration,
-      attested,
+      finalised,
       repairEvidence,
       observability,
       fileManifest,
       repositoryFingerprint,
     )
   }
+
+  private class ValidatedOutputCapture(
+    val run: PhaseRun,
+    val iteration: Int,
+    val outputText: String,
+    val outputBytes: ByteArray,
+    val outputTruncated: Boolean,
+    val outputByteSize: Long,
+    val outputSha256: String,
+    val repairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence?,
+    val fileManifest: FeatureTaskRuntimePhaseFileManifest,
+  )
+
+  private fun rejectValidatedOutput(
+    capture: ValidatedOutputCapture,
+    outputMap: Map<String, Any?>,
+    rule: String,
+    detail: String,
+  ): AttemptResult {
+    val structuredIdentity = structuredRepairDiagnosticIdentity(detail)
+    val diagnosticRule = structuredIdentity?.first ?: rule
+    val path = structuredIdentity?.second ?: rejectionPath(detail)
+    val reason = payloadFreeRejectionReason(rule, if (structuredIdentity == null) path else "/")
+    // Only scrubbed semantic templates reach the retry reason. Response-derived dumps stay in the
+    // private diagnostic and the authorized repair body.
+    val retryFacingConstraint = payloadFreeSemanticGateConstraint(rule, detail, outputMap)
+    val retryReason = retryRejectionReason(reason, retryFacingConstraint)
+    val diagnosticWrite = recordRejectedOutput(
+      capture.run, capture.iteration, diagnosticRule, detail, capture.outputBytes, path = path,
+      outputTruncated = capture.outputTruncated,
+      outputByteSize = capture.outputByteSize,
+      outputSha256 = capture.outputSha256,
+    )
+    // Semantic/schema rejection after a successful parse: rebuild the repair context from the same
+    // capture that was just recorded, using only payload-free constraint text so value-bearing detail
+    // stays out of the typed context and out of the next prompt outside the repair section.
+    return schemaInvalidAttempt(
+      reason,
+      capture.fileManifest,
+      retryReason = retryReason,
+      correctiveRepairContext = correctiveRepairContextForRejection(
+        run = capture.run,
+        iteration = capture.iteration,
+        outputText = capture.outputText,
+        outputTruncated = capture.outputTruncated,
+        outputByteSize = capture.outputByteSize,
+        outputSha256 = capture.outputSha256,
+        diagnosticWrite = diagnosticWrite,
+        rejectionRule = diagnosticRule,
+        rejectionPath = path,
+        payloadFreeConstraint = retryFacingConstraint ?: reason,
+        // Semantic rejection after AcceptedAfterRepair: syntax repair succeeded earlier; the phase
+        // schema or semantic gate still rejected the post-capture response.
+        acceptedAfterStructuralRepair = capture.repairEvidence != null,
+        structuralRepairEvidence = capture.repairEvidence,
+      ),
+    )
+  }
+
+  private fun retainSettledProducerOutput(capture: ValidatedOutputCapture) {
+    val run = capture.run
+    recorder.retainProducerOutput(
+      ProducerOutputEvidence(
+        workflowId = request.workflowId,
+        phaseId = run.phaseId,
+        attempt = capture.iteration,
+        agentId = run.resolvedAgent.resolvedAgentId,
+        model = run.modelDirective?.model ?: "unspecified",
+        recordedAt = java.time.Instant.now(),
+        byteSize = capture.outputByteSize,
+        sha256 = capture.outputSha256,
+        payload = capture.outputBytes.takeUnless { capture.outputTruncated },
+        generation = state.evidenceGeneration(run.phaseId),
+        repairTurn = run.validationGateRepairTurn,
+      ),
+      run.request.dbPathOverride,
+    )
+  }
+
+  private sealed interface CommitPushFinalisation
+
+  private data object CommitPushNotApplicable : CommitPushFinalisation
+
+  private data class CommitPushSettled(
+    val output: NormalizedFeatureTaskRuntimePhaseOutput,
+  ) : CommitPushFinalisation
+
+  private data class CommitPushBlocked(val reason: String) : CommitPushFinalisation
+
+  /**
+   * SKILL-190: the runtime performs `commit_push`. The agent's completed envelope contributes the
+   * outcome message and the enumerated path set; the staging, amend, sha capture and push below are
+   * the runtime's, and the captured post-amend sha is written back into the envelope this phase record
+   * persists so `commit_push_result.commit_sha` and the goal-continuation outcome derived from that same
+   * record cannot disagree.
+   */
+  @Suppress("ReturnCount") // each early return is one distinct non-applicable or blocking condition
+  private fun finaliseSubtaskCommit(
+    run: PhaseRun,
+    normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
+  ): CommitPushFinalisation {
+    if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH) {
+      return CommitPushNotApplicable
+    }
+    if (normalizedOutput.envelope["status"] != STATUS_COMPLETED) return CommitPushNotApplicable
+    val branch = finalisationBranch() ?: return unownedWorktreeCommitSha(run, normalizedOutput)
+    val handoff = when (val read = FeatureTaskRuntimeSubtaskFinalisation.readHandoff(normalizedOutput.envelope)) {
+      is FeatureTaskRuntimeCommitPushHandoffInvalid -> return CommitPushBlocked(read.reason)
+      is FeatureTaskRuntimeCommitPushHandoffValid -> read.handoff
+    }
+    val identity = subtaskCommitIdentity()
+    val ledger = subtaskCommitLedgerState(identity)
+    val outcome = FeatureTaskRuntimeSubtaskFinalisation(
+      gitOperations = phaseGates.gitOperations,
+      repoRoot = request.repoRoot,
+      record = { record -> runCatching { diagnostics.warning(record) } },
+      recordCommit = { commitSha, stagedPaths ->
+        recordFinalisedCheckpointIdentity(run.phaseId, branch, ledger, commitSha, stagedPaths)
+      },
+    ).finalise(
+      identity = identity,
+      durableCommitSha = ledger.commitSha,
+      sequenceNumber = ledger.nextSequenceNumber,
+      handoff = handoff,
+      metadata = FeatureTaskRuntimeCheckpointMetadata(
+        phaseId = run.phaseId,
+        loopId = null,
+        generation = checkpointGeneration(null),
+        branch = branch,
+        intent = FeatureTaskRuntimeCheckpointMessage.INTENT_FINALISED_SUBTASK,
+      ),
+      manifestCommitSha = goalContinuationManifestCommitSha,
+    )
+    if (outcome is FeatureTaskRuntimeSubtaskFinalisationBlocked) {
+      return CommitPushBlocked(outcome.reason)
+    }
+    val finalised = outcome as FeatureTaskRuntimeSubtaskFinalised
+    return CommitPushSettled(
+      revalidated(
+        run.phaseId,
+        FeatureTaskRuntimeSubtaskFinalisation.withCommitSha(normalizedOutput.envelope, finalised.commitSha),
+      ),
+    )
+  }
+
+  /**
+   * The runtime owns no branch here, so it committed nothing and has nothing to amend. Downstream
+   * consumers still need a commit sha, so the measured HEAD is published as one and the degradation is
+   * recorded: a phase record with no sha at all would fail the `pr` consumer projection and the
+   * per-subtask commit invariant alike.
+   */
+  private fun unownedWorktreeCommitSha(
+    run: PhaseRun,
+    normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
+  ): CommitPushFinalisation {
+    val head = phaseGates.gitOperations.headCommitSha(request.repoRoot)
+    val sha = head.value.orEmpty().trim().takeIf { head.ok && it.isNotBlank() }
+      ?: return CommitPushNotApplicable
+    runCatching {
+      diagnostics.warning(
+        "seam=FeatureTaskRuntimeRunLoop.finaliseSubtaskCommit value_used='measured HEAD $sha' " +
+          "value_expected=a runtime-finalised subtask commit for '${request.issueKey}' " +
+          "cause=the run has no resolved, unprotected, checked-out branch, so finalisation could not " +
+          "stage, amend, or push and the commit sha degrades to whatever HEAD already names",
+      )
+    }
+    return CommitPushSettled(
+      revalidated(run.phaseId, FeatureTaskRuntimeSubtaskFinalisation.withCommitSha(normalizedOutput.envelope, sha)),
+    )
+  }
+
+  /**
+   * The branch finalisation may write to: the run's own resolved, unprotected, currently checked-out
+   * branch. Anything else means the runtime does not own this working tree, which is the same condition
+   * under which no checkpoint ever committed here either.
+   */
+  private fun finalisationBranch(): String? {
+    val branch = resolvedBranch?.takeIf { FeatureTaskRuntimeBranchSetup.protectedBranchName(it) == null }
+      ?: return null
+    val head = phaseGates.gitOperations.currentBranch(request.repoRoot)
+    return branch.takeIf { head.ok && head.value.trim() == branch.trim() }
+  }
+
+  /**
+   * The decomposition manifest records the post-push commit sha only after the goal runner reconciles a
+   * completed child, so finalisation usually sees null here and defers pruning to that boundary.
+   */
+  private val goalContinuationManifestCommitSha: String? = null
+
+  /**
+   * The durable pointer to the finalisation commit, appended between the commit and the push. Returns
+   * the blocking reason when it cannot be appended: without the pointer a re-entry after a failed push
+   * resolves Create against an already-committed tree and the subtask can never finish, so continuing
+   * past a failed append would trade a resumable block for a permanently stuck one.
+   */
+  private fun recordFinalisedCheckpointIdentity(
+    phaseId: String,
+    branch: String,
+    ledger: SubtaskCommitLedgerState,
+    commitSha: String,
+    stagedPaths: List<String>,
+  ): String? {
+    val appended = runCatching {
+      recorder.appendCheckpointIdentity(
+        workflowId = request.workflowId,
+        issueKey = request.issueKey,
+        subtaskId = request.goalContinuation?.subtaskId?.toString() ?: FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID,
+        branch = branch,
+        phaseId = phaseId,
+        loopId = null,
+        generation = checkpointGeneration(null),
+        parentSha = ledger.commitSha,
+        ownedPaths = stagedPaths,
+        commitSha = commitSha,
+        dbOverride = request.dbPathOverride,
+      )
+    }
+    if (appended.getOrDefault(false)) return null
+    val cause = appended.exceptionOrNull()?.message ?: "the workflow row was absent"
+    runCatching {
+      diagnostics.warning(
+        "seam=FeatureTaskRuntimeRunLoop.recordFinalisedCheckpointIdentity " +
+          "value_used='no durable identity for finalised commit $commitSha' " +
+          "value_expected=an appended checkpoint identity for '${request.issueKey}' " +
+          "cause=$cause",
+      )
+    }
+    return "needs_human: the finalised subtask commit '$commitSha' was written but its durable " +
+      "checkpoint identity could not be recorded ($cause), so it was not pushed. Without that pointer " +
+      "a resumed run would open a second commit for this subtask instead of amending this one. Repair " +
+      "the workflow store and resume; the commit is already on the branch."
+  }
+
+  private fun revalidated(phaseId: String, envelope: Map<String, Any?>): NormalizedFeatureTaskRuntimePhaseOutput =
+    outputValidator
+      .validatePhaseOutput(JsonSupport.mapToJsonString(envelope), sourceLabel = phaseId)
+      .requireAcceptedOutput(phaseId)
+      .normalizedOutput
 
   /**
    * Packs without `validation_gate` fall back to agent-run validate. That path must never publish

@@ -7,6 +7,8 @@ import skillbill.agentaddon.model.AgentAddonSelection
 import skillbill.application.decomposition.executionModel
 import skillbill.application.decomposition.parentSpecPath
 import skillbill.application.decomposition.resolvedParentSpecPath
+import skillbill.application.featuretask.FeatureTaskRuntimeCheckpointRefPruneRequest
+import skillbill.application.featuretask.pruneCompletedSubtaskCheckpointRefs
 import skillbill.application.model.GoalPlanningSweepOutcome
 import skillbill.application.model.GoalRunPreparation
 import skillbill.application.model.GoalRunnerRunEvent
@@ -647,7 +649,7 @@ class GoalRunner(
     )
     if (!launchAuthorization.authorized) {
       return SelectedSubtaskLaunch.Stopped(
-        deniedLaunchPause(prepared.attemptedState, request, launchAuthorization.controlState, subtaskId),
+        deniedLaunchPause(prepared, request, launchAuthorization.controlState),
       )
     }
     attempted += subtaskId
@@ -664,7 +666,7 @@ class GoalRunner(
       )
     } catch (denied: GoalRunnerLaunchAuthorizationDeniedException) {
       return SelectedSubtaskLaunch.Stopped(
-        deniedLaunchPause(prepared.attemptedState, request, denied.controlState, subtaskId),
+        deniedLaunchPause(prepared, request, denied.controlState),
       )
     }
     return SelectedSubtaskLaunch.Completed(
@@ -675,12 +677,23 @@ class GoalRunner(
   }
 
   private fun deniedLaunchPause(
-    state: GoalRunnerManifestState,
+    prepared: SelectedSubtaskPreparation.Ready,
     request: GoalRunnerRunRequest,
     controlState: GoalRunnerControlState,
-    subtaskId: Int,
-  ): GoalRunnerIterationResult = pauseBeforeLaunch(state, request, controlState)
-    ?: error("Subtask $subtaskId launch authorization was denied without a durable pause boundary.")
+  ): GoalRunnerIterationResult {
+    val state = prepared.openWithAssignedId?.let { workflowId ->
+      manifestStore.deleteIncompatibleChildWorkflow(
+        state = prepared.attemptedState,
+        subtaskId = prepared.subtaskId,
+        workflowId = workflowId,
+        dbPathOverride = request.dbPathOverride,
+      )
+    } ?: prepared.attemptedState
+    return pauseBeforeLaunch(state, request, controlState)
+      ?: error(
+        "Subtask ${prepared.subtaskId} launch authorization was denied without a durable pause boundary.",
+      )
+  }
 
   private fun dispatchWorkerResult(
     state: GoalRunnerManifestState,
@@ -1306,11 +1319,40 @@ class GoalRunner(
       request.dbPathOverride,
     )
     val completed = completedTransition.state
+    pruneCompletedCheckpointRefs(completed, subtaskId, reconciled, request, observability)
     // Linear mode: the subtask's spec scratch is excluded from the commit, so once its commit is
     // durable (commitSha recorded above) delete that subtask's spec file. The manifest survives — it
     // is live runtime state for the remaining subtasks and is removed only at finalize. Local mode
     // keeps the spec on disk (it was committed). Deletion is failure-isolated and idempotent.
     deleteCompletedSubtaskSpecScratch(completed.manifest, subtaskId, request)
+    recordCompletedSubtask(completed, subtaskId, reconciled, request, observability, ledger, attemptStartMillis)
+    return if (!completedTransition.paused) {
+      GoalRunnerIterationResult(state = completed)
+    } else {
+      GoalRunnerIterationResult(
+        state = completed,
+        report = stopped(
+          issueKey = completed.manifest.issueKey,
+          attempted = emptyList(),
+          subtaskId = subtaskId,
+          reason = GoalRunnerStopReason.PAUSED,
+          blockedReason = "Goal paused at a durable boundary: ${completed.controlState.pauseReason}",
+          workflowId = reconciled.workflowId,
+          lastResumableStep = reconciled.lastResumableStep,
+        ),
+      )
+    }
+  }
+
+  private fun recordCompletedSubtask(
+    completed: GoalRunnerManifestState,
+    subtaskId: Int,
+    reconciled: GoalRunnerReconciledOutcome.Complete,
+    request: GoalRunnerRunRequest,
+    observability: GoalRunnerObservabilityEmitter,
+    ledger: GoalRunnerLedgerRecorder,
+    attemptStartMillis: Long?,
+  ) {
     request.eventSink.emit(
       GoalRunnerRunEvent.SubtaskCompleted(
         issueKey = completed.manifest.issueKey,
@@ -1337,22 +1379,35 @@ class GoalRunner(
         attemptDurationMillis = attemptStartMillis?.let { clock.millis() - it },
       ),
     )
-    return if (!completedTransition.paused) {
-      GoalRunnerIterationResult(state = completed)
-    } else {
-      GoalRunnerIterationResult(
-        state = completed,
-        report = stopped(
-          issueKey = completed.manifest.issueKey,
-          attempted = emptyList(),
-          subtaskId = subtaskId,
-          reason = GoalRunnerStopReason.PAUSED,
-          blockedReason = "Goal paused at a durable boundary: ${completed.controlState.pauseReason}",
-          workflowId = reconciled.workflowId,
-          lastResumableStep = reconciled.lastResumableStep,
-        ),
-      )
-    }
+  }
+
+  private fun pruneCompletedCheckpointRefs(
+    completed: GoalRunnerManifestState,
+    subtaskId: Int,
+    reconciled: GoalRunnerReconciledOutcome.Complete,
+    request: GoalRunnerRunRequest,
+    observability: GoalRunnerObservabilityEmitter,
+  ) {
+    pruneCompletedSubtaskCheckpointRefs(
+      gitOperations = gitOperations,
+      repoRoot = request.repoRoot,
+      request = FeatureTaskRuntimeCheckpointRefPruneRequest(
+        issueKey = completed.manifest.issueKey,
+        subtaskId = subtaskId.toString(),
+        manifestCommitSha = reconciled.commitSha,
+        featureBranch = completed.manifest.featureBranch,
+      ),
+      record = { message ->
+        observability.record(
+          GoalRunnerObservabilitySubject(reconciled.workflowId, completed.manifest.issueKey, subtaskId),
+          GoalRunnerObservabilitySignal(
+            workflowPhase = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH,
+            livenessClass = "degradation",
+            activitySummary = message,
+          ),
+        )
+      },
+    )
   }
 
   private fun resolveFindingsLedger(issueKey: String, dbPathOverride: String?): UnaddressedFindingsLedger? {
@@ -1484,12 +1539,22 @@ class GoalRunner(
     featureBranch: String,
     implementationPaths: List<String>,
   ): String? {
+    if (manifest.executionModel == DecompositionExecutionModel.SAME_BRANCH_COMMIT_PER_SUBTASK) {
+      val sample = implementationPaths.take(MAX_REPORTED_FINALIZE_DIRTY_PATHS).joinToString(", ")
+      val suffix = if (implementationPaths.size > MAX_REPORTED_FINALIZE_DIRTY_PATHS) {
+        " (+${implementationPaths.size - MAX_REPORTED_FINALIZE_DIRTY_PATHS} more)"
+      } else {
+        ""
+      }
+      return "Goal finalization in same-branch mode refuses to commit leftover implementation paths " +
+        "($sample$suffix); route each through subtask commit_push finalization."
+    }
     if (featureBranch.isBlank()) {
       return "Goal finalization commit-all requires a feature branch."
     }
-    requireFeatureBranchForFinalize(featureBranch, request.repoRoot)?.let { return it }
-    stageCommitAndPushAll(manifest, request, featureBranch, implementationPaths)?.let { return it }
-    return verifyWorktreeCleanAfterCommitAll(request)
+    val branchError = requireFeatureBranchForFinalize(featureBranch, request.repoRoot)
+    val commitError = branchError ?: stageCommitAndPushAll(manifest, request, featureBranch, implementationPaths)
+    return commitError ?: verifyWorktreeCleanAfterCommitAll(request)
   }
 
   private fun stageCommitAndPushAll(
@@ -2156,7 +2221,7 @@ private fun DecompositionManifest.withAttemptedSubtask(subtaskId: Int): Decompos
   status = "in_progress",
   currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = subtaskId, action = "resume"),
   subtasks = subtasks.map { subtask ->
-    if (subtask.id == subtaskId && subtask.status == "blocked") {
+    if (subtask.id == subtaskId && subtask.status in setOf("blocked", "pending")) {
       subtask.copy(status = "in_progress", blockedReason = null)
     } else {
       subtask

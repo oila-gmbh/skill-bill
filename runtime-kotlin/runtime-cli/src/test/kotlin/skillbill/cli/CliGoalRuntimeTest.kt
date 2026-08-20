@@ -430,6 +430,8 @@ class CliGoalRuntimeTest {
         "--hard",
         "--confirm-issue-key",
         "SKILL-901",
+        "--repo-root",
+        fixture.tempDir.toString(),
       ),
       fixture.context(launcher = launcher),
     )
@@ -454,6 +456,8 @@ class CliGoalRuntimeTest {
         "SKILL-901",
         "--hard",
         "--force",
+        "--repo-root",
+        fixture.tempDir.toString(),
       ),
       fixture.context(launcher = launcher),
     )

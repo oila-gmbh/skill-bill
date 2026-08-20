@@ -52,7 +52,7 @@ working.
    finalisation never remains on the provisional subject.
 10. A resume after process death between staging and amend reattaches to the existing subtask commit
     and does not create a second one.
-11. `.feature-specs/` paths are staged by no path in this ceremony, unchanged from today.
+11. `../..` paths are staged by no path in this ceremony, unchanged from today.
 12. The existing checkpoint-identity idempotency holds: re-recording the same checkpoint after a
     resume does not append a duplicate ledger entry.
 

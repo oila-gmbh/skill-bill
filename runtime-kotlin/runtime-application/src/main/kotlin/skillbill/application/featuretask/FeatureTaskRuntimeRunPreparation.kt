@@ -191,6 +191,7 @@ internal class FeatureTaskRuntimeRunPreparation(
           codeReviewMode = selectedMode,
           validationDepth = context.validationDepth,
           parallelReviewAgent = context.parallelReviewAgent ?: request.parallelReviewAgent,
+          subtaskName = context.subtaskName,
           agentAddonSelection = context.agentAddonSelection.takeUnless { it.entries.isEmpty() }
             ?: request.agentAddonSelection.persisted,
         ),
@@ -289,6 +290,7 @@ private fun goalContinuationContext(
     ?: request.goalContinuation?.validationDepth
     ?: ValidationDepth.DEFAULT,
   parallelReviewAgent = continuation.parallelReviewAgent,
+  subtaskName = continuation.subtaskName,
   reviewBaseline = baseline,
   agentAddonSelection = continuation.agentAddonSelection,
 )

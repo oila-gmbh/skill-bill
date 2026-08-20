@@ -3,11 +3,16 @@ $id: "https://skill-bill.dev/contracts/feature-task-runtime-checkpoint-identity-
 title: Feature task runtime checkpoint identity
 description: >-
   Append-only durable identity for every scoped checkpoint commit a feature-task-runtime workflow
-  creates. Each entry binds one commit to the authority boundary that produced it: the issue key and
-  branch it was allowed to touch, the phase and loop generation that produced it, the parent commit it
-  advanced from, and the digest of the owned-path inventory that was staged. The record is bounded and
-  derived by construction — there is no field that can hold a raw prompt, a raw phase response, or a
-  diff body — so it survives crash and resume as the sole authority for what a checkpoint owned.
+  creates. Each entry binds one checkpoint to the authority boundary that produced it: the issue key
+  and branch it was allowed to touch, the owning subtask, the stable per-checkpoint ref, the phase and
+  loop generation that produced it, the parent commit it advanced from, and the digest of the
+  owned-path inventory that was staged. The record is bounded and derived by construction — there is
+  no field that can hold a raw prompt, a raw phase response, or a diff body — so it survives crash and
+  resume as the sole authority for what a checkpoint owned.
+
+  A subtask commit is amended rather than re-created, so a commit sha is NOT a checkpoint identity:
+  several checkpoints may name the same sha. The checkpoint ref is the identity, and `commit_sha`
+  records the sha that ref pointed at when the checkpoint was taken.
 type: object
 additionalProperties: false
 required:
@@ -15,7 +20,7 @@ required:
   - checkpoints
 properties:
   contract_version:
-    const: "0.1"
+    const: "0.2"
   checkpoints:
     type: array
     maxItems: 200
@@ -28,6 +33,8 @@ $defs:
     required:
       - sequence_number
       - issue_key
+      - subtask_id
+      - checkpoint_ref
       - branch
       - phase_id
       - generation
@@ -43,6 +50,19 @@ $defs:
         description: The authority boundary; a checkpoint may only ever carry paths this issue owns.
         type: string
         pattern: "^[A-Z][A-Z0-9]*-[0-9]+$"
+      subtask_id:
+        description: >-
+          The decomposed subtask that owns this checkpoint, or the reserved literal `standalone` for a
+          feature-task run that is not a goal continuation.
+        type: string
+        pattern: "^([0-9]+|standalone)$"
+      checkpoint_ref:
+        description: >-
+          Stable per-checkpoint git ref name. Unlike `commit_sha` this survives an amend of the
+          underlying subtask commit, so it — not the sha — is the checkpoint's identity.
+        type: string
+        maxLength: 255
+        pattern: "^refs/skill-bill/checkpoints/[A-Z][A-Z0-9]*-[0-9]+/[a-z0-9-]+/[0-9]+$"
       branch:
         type: string
         minLength: 1
@@ -75,6 +95,7 @@ $defs:
         minimum: 0
         maximum: 5000
       commit_sha:
+        description: The sha `checkpoint_ref` pointed at when the checkpoint was taken.
         type: string
         pattern: "^[0-9a-f]{40,64}$"
       recorded_at:
@@ -84,7 +105,19 @@ $defs:
 x-coherence-checks:
   - name: sequence_numbers_are_unique
     description: No two checkpoint entries may share a sequence number; the history is append-only.
-  - name: commit_shas_are_unique
+  - name: checkpoint_ref_derives_from_its_boundary
     description: >-
-      One checkpoint commit yields exactly one identity record. A duplicate commit sha means a resume
-      re-recorded an already-recorded checkpoint instead of reconstructing it.
+      `checkpoint_ref` MUST equal `refs/skill-bill/checkpoints/{issue_key}/{subtask_id}/{sequence_number}`
+      built from this same record's fields. The pattern alone only proves shape; without this agreement a
+      ref formatted inline or from a stale subtask id would validate and dedupe under an authority
+      boundary the record does not own, and because the ref is the identity the mismatch would be
+      invisible on every later read.
+  - name: checkpoint_refs_are_unique
+    description: >-
+      One checkpoint ref yields exactly one identity record. A duplicate ref means a resume
+      re-recorded an already-recorded checkpoint instead of reconstructing it. Two entries MAY share a
+      `commit_sha`: an amended subtask commit keeps its sha across the checkpoints that observe it.
+  - name: checkpoint_ref_binds_recorded_sha
+    description: >-
+      `commit_sha` is the sha `checkpoint_ref` pointed at when the checkpoint was taken, not the sha
+      the ref resolves to now. A later amend moves the subtask commit without rewriting this record.
