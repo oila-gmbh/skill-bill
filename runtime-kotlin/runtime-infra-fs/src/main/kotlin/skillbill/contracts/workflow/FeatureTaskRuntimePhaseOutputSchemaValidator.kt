@@ -17,6 +17,7 @@ import skillbill.contracts.LOCALE_STABLE_SCHEMA_CONFIG
 import skillbill.error.InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_AUDIT_REPAIR_RULE_FAMILY
+import skillbill.workflow.taskruntime.model.MAX_AUDIT_REPAIR_REF_LENGTH
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGap
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairRuleViolation
@@ -230,23 +231,16 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
     val gaps = values.map { it as Map<String, Any?> }
     val first = gaps.first()
     val criterion = first.getValue("criterion") as String
-    val location = first.getValue("location") as String
     val issue = first.getValue("issue") as String
     val gapId = "${criterion.lowercase()}-gap-1"
-    val artifactRef = "$criterion:" + gaps.joinToString("--") { gap ->
-      val gapLocation = gap.getValue("location") as String
-      listOfNotNull(gap["file"] as? String, gapLocation)
-        .joinToString("-")
-        .replace('/', '-')
-        .replace(':', '-')
-    }
+    val sitePointers = gaps.map(::compactGapSitePointer)
     return mapOf(
       "gap_id" to gapId,
       "acceptance_criterion_ref" to criterion,
       "acceptance_criterion_text" to issue,
       "failure_evidence" to mapOf(
         "observation" to "required_behavior_absent",
-        "artifact_ref" to artifactRef,
+        "artifact_ref" to boundedJoinedArtifactRef(criterion, sitePointers),
         "check_ref" to criterion,
       ),
       "diagnosis" to issue,
@@ -254,18 +248,36 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
       "repair_items" to gaps.mapIndexed { index, gap ->
         val itemLocation = gap.getValue("location") as String
         val itemFix = gap.getValue("fix") as String
-        val itemArtifactRef = (gap["file"] as? String)?.let { "$it:$itemLocation" } ?: itemLocation
         mapOf(
           "repair_item_id" to "$gapId-item-${index + 1}",
           "intended_outcome" to itemFix,
           "implementation_actions" to listOf(itemFix),
-          "affected_paths_or_symbols" to listOf(itemArtifactRef),
+          "affected_paths_or_symbols" to listOf(compactGapItemArtifactRef(gap)),
           "required_verification" to listOf("Verify $criterion at $itemLocation"),
           "depends_on" to emptyList<String>(),
           "status" to "pending",
         )
       },
     )
+  }
+
+  private fun compactGapSitePointer(gap: Map<String, Any?>): String {
+    val gapLocation = gap.getValue("location") as String
+    return listOfNotNull(gap["file"] as? String, gapLocation)
+      .joinToString("-")
+      .replace('/', '-')
+      .replace(':', '-')
+  }
+
+  private fun compactGapItemArtifactRef(gap: Map<String, Any?>): String {
+    val itemLocation = gap.getValue("location") as String
+    return (gap["file"] as? String)?.let { "$it:$itemLocation" } ?: itemLocation
+  }
+
+  private fun boundedJoinedArtifactRef(criterion: String, sitePointers: List<String>): String {
+    val joined = "$criterion:" + sitePointers.joinToString("--")
+    if (joined.length <= MAX_AUDIT_REPAIR_REF_LENGTH) return joined
+    return "$criterion:" + sitePointers.first()
   }
 
   private fun compactGapsToUnmetCriterion(values: List<Any?>): Map<String, Any?> {

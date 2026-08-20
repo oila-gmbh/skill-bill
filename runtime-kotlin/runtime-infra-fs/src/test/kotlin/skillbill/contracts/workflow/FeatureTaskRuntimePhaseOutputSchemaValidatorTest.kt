@@ -425,6 +425,80 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
   }
 
   @Test
+  fun `compact audit gaps for one criterion keep every repair site when the joined artifact_ref would exceed the bound`() {
+    val output =
+      """
+      {
+        "contract_version":"0.3",
+        "phase_id":"audit",
+        "status":"completed",
+        "summary":"One criterion has four distinct production gaps.",
+        "verdict":"gaps_found",
+        "produced_outputs":{
+          "gaps":[
+            {
+              "criterion":"AC-006",
+              "severity":"major",
+              "location":"GoalSubtaskReviewState.pauseForNonConvergence",
+              "file":"GoalSubtaskReviewState.kt",
+              "issue":"Non-convergence pause remains.",
+              "fix":"Remove the pause."
+            },
+            {
+              "criterion":"AC-006",
+              "severity":"major",
+              "location":"FeatureTaskRuntimeRepairPlanEntry",
+              "file":"FeatureTaskRuntimeRepairPlan.kt",
+              "issue":"Repair-plan classification remains.",
+              "fix":"Remove the repair-plan model."
+            },
+            {
+              "criterion":"AC-006",
+              "severity":"major",
+              "location":"FeatureTaskRuntimeNextPhase.TerminalPause",
+              "file":"FeatureTaskRuntimeTransitionModels.kt",
+              "issue":"TerminalPause remains.",
+              "fix":"Remove TerminalPause."
+            },
+            {
+              "criterion":"AC-006",
+              "severity":"major",
+              "location":"FeatureTaskRuntimeRepairLedgerEntry",
+              "file":"FeatureTaskRuntimeRepairLedger.kt",
+              "issue":"Cross-round ledger remains.",
+              "fix":"Remove cross-round ledger status."
+            }
+          ]
+        }
+      }
+      """.trimIndent()
+
+    val normalized = FeatureTaskRuntimePhaseOutputValidatorAdapter().normalizePhaseOutput(output, "audit")
+    val produced = JsonSupport.anyToStringAnyMap(normalized.envelope["produced_outputs"]).orEmpty()
+    val plan = JsonSupport.anyToStringAnyMap(produced["audit_repair_plan"]).orEmpty()
+    val gaps = (plan["gaps"] as List<*>).map { JsonSupport.anyToStringAnyMap(it).orEmpty() }
+    val evidence = JsonSupport.anyToStringAnyMap(gaps.single()["failure_evidence"]).orEmpty()
+    val artifactRef = evidence.getValue("artifact_ref") as String
+    assertTrue(artifactRef.length <= 256)
+    assertEquals(
+      "AC-006:GoalSubtaskReviewState.kt-GoalSubtaskReviewState.pauseForNonConvergence",
+      artifactRef,
+    )
+    val repairItems = (gaps.single()["repair_items"] as List<*>).map {
+      JsonSupport.anyToStringAnyMap(it).orEmpty()
+    }
+    assertEquals(
+      listOf(
+        "GoalSubtaskReviewState.kt:GoalSubtaskReviewState.pauseForNonConvergence",
+        "FeatureTaskRuntimeRepairPlan.kt:FeatureTaskRuntimeRepairPlanEntry",
+        "FeatureTaskRuntimeTransitionModels.kt:FeatureTaskRuntimeNextPhase.TerminalPause",
+        "FeatureTaskRuntimeRepairLedger.kt:FeatureTaskRuntimeRepairLedgerEntry",
+      ),
+      repairItems.map { (it["affected_paths_or_symbols"] as List<*>).single() },
+    )
+  }
+
+  @Test
   fun `json with surrounding prose passes validation`() {
     val withProse =
       """
