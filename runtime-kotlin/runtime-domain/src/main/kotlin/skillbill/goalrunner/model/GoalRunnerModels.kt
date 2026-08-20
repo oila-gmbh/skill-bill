@@ -469,10 +469,16 @@ object GoalRunnerStatusProjector {
       }
     }
     // Only goal_runner_supervisor events are persisted; the per-tick foreground heartbeats are console-only.
-    // So a block recorded when a prior run stopped stays the newest stored event while a relaunched child
-    // runs, and rendering it would contradict the live workflow status.
-    val staleBlockSignal = extras.currentWorkflowStatus in LIVE_WORKFLOW_STATUSES &&
-      extras.latestObservabilityEvent?.get("liveness_class") == "block"
+    // So the newest stored event still describes the process that produced it while a relaunched child runs:
+    // a block recorded when a prior run stopped, or a worker_output_summary carrying the exit status and
+    // stderr of a worker that already exited. Rendering either contradicts the live workflow status once the
+    // live child has moved past that event's phase.
+    val liveChild = extras.currentWorkflowStatus in LIVE_WORKFLOW_STATUSES
+    val liveStep = extras.currentStepOverride?.takeIf(String::isNotBlank)
+    val eventPhase = extras.latestObservabilityEvent?.get("workflow_phase")?.toString()?.takeIf(String::isNotBlank)
+    val blockEvent = extras.latestObservabilityEvent?.get("liveness_class") == "block"
+    val supersededPhaseEvent = liveStep != null && eventPhase != null && eventPhase != liveStep
+    val staleSignal = liveChild && (blockEvent || supersededPhaseEvent)
     return GoalRunnerStatusProjection(
       issueKey = manifest.issueKey,
       completeCount = manifest.subtasks.count { statusOf(it) == "complete" || statusOf(it) == "skipped" },
@@ -488,8 +494,8 @@ object GoalRunnerStatusProjector {
       activeAgent = activeAgent?.takeIf(String::isNotBlank),
       executionLiveness = extras.executionLiveness,
       planning = extras.planning,
-      latestLivenessSignal = extras.latestLivenessSignal?.takeIf { it.isNotBlank() && !staleBlockSignal },
-      latestObservabilityEvent = extras.latestObservabilityEvent?.takeUnless { staleBlockSignal },
+      latestLivenessSignal = extras.latestLivenessSignal?.takeIf { it.isNotBlank() && !staleSignal },
+      latestObservabilityEvent = extras.latestObservabilityEvent?.takeUnless { staleSignal },
       requestedDiffStat = extras.requestedDiffStat,
       selectedDiffHunks = extras.selectedDiffHunks,
       blockedAttemptCount = extras.blockedAttemptCount,

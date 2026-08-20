@@ -1,6 +1,7 @@
 package skillbill.application.work
 
 import skillbill.application.model.IdeStatusCandidate
+import skillbill.application.model.IdeStatusFreshness
 import skillbill.application.model.IdeStatusLifecycleState
 import skillbill.application.model.IdeStatusSelectionTier
 import java.time.Duration
@@ -12,10 +13,11 @@ import java.time.Instant
  * Precedence (documented adjacent to the selector per AC-005):
  * 1. Candidates are already filtered to one canonical repository identity.
  * 2. Non-live work past its retention ceiling is dropped entirely (see [retainedAt]).
- * 3. Rank lifecycle tiers: active > paused > blocked > failed > recently_terminal > idle.
- * 4. Within a tier, never prefer a child prose/runtime/verify projection over an
+ * 3. Work with a fresh authoritative update ranks ahead of stale work (see [freshnessKey]).
+ * 4. Rank lifecycle tiers: active > paused > blocked > failed > recently_terminal > idle.
+ * 5. Within a tier, never prefer a child prose/runtime/verify projection over an
  *    authoritative feature-goal projection for the same issue key.
- * 5. Remaining ties break by more recent authoritative updated_at, then stable
+ * 6. Remaining ties break by more recent authoritative updated_at, then stable
  *    workflow_id lexicographic order.
  *
  * Selection never synthesizes started_at clocks from updated_at.
@@ -50,8 +52,19 @@ object IdeStatusSelectionPolicy {
   fun select(candidates: List<IdeStatusCandidate>, observedAt: Instant): IdeStatusCandidate? {
     val retained = candidates.filter { retainedAt(it, observedAt) }
     if (retained.isEmpty()) return null
-    return retained.sortedWith(comparator).first()
+    return retained.sortedWith(comparator(observedAt)).first()
   }
+
+  /**
+   * A durable lifecycle is a claim, not proof: a goal that finished or was killed is not always
+   * transitioned, so rows keep claiming `running` for the whole retention window and a finished
+   * goal outranks the run that is actually moving. Work with a fresh authoritative update is
+   * therefore ranked ahead of work without one, and tier precedence decides between candidates
+   * that are equally fresh. A goal's update already folds in its newest same-repo child write,
+   * so a genuine run stays ranked as live through every phase its child writes through.
+   */
+  private fun freshnessKey(candidate: IdeStatusCandidate, observedAt: Instant): Int =
+    if (IdeStatusFreshnessClassifier.classify(candidate.updatedAt, observedAt) == IdeStatusFreshness.STALE) 1 else 0
 
   /**
    * The IDE surface reports work the runtime is currently reporting on, not a ledger of
@@ -73,8 +86,9 @@ object IdeStatusSelectionPolicy {
     return age.isNegative || age <= ceiling
   }
 
-  private val comparator: Comparator<IdeStatusCandidate> =
-    compareBy<IdeStatusCandidate> { it.selectionTier.rank }
+  private fun comparator(observedAt: Instant): Comparator<IdeStatusCandidate> =
+    compareBy<IdeStatusCandidate> { freshnessKey(it, observedAt) }
+      .thenBy { it.selectionTier.rank }
       .thenBy { if (it.isGoalAuthoritative) 0 else 1 }
       .thenByDescending { it.updatedAt }
       .thenBy { it.workflowId }

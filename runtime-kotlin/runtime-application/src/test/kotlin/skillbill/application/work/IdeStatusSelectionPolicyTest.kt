@@ -49,7 +49,7 @@ class IdeStatusSelectionPolicyTest {
       currentState = "running",
       lifecycleState = IdeStatusLifecycleState.ACTIVE,
       selectionTier = IdeStatusSelectionTier.ACTIVE,
-      updatedAt = Instant.parse("2026-08-06T09:00:00Z"),
+      updatedAt = Instant.parse("2026-08-06T11:50:00Z"),
       startedAt = Instant.parse("2026-08-06T08:00:00Z"),
       isGoalAuthoritative = true,
     )
@@ -140,6 +140,32 @@ class IdeStatusSelectionPolicyTest {
     val abandonedPaused = candidate("c", IdeStatusLifecycleState.PAUSED, "w-dead-p", "2026-08-01T00:00:00Z")
     assertNull(IdeStatusSelectionPolicy.select(listOf(abandonedActive), OBSERVED))
     assertNull(IdeStatusSelectionPolicy.select(listOf(abandonedPaused), OBSERVED))
+  }
+
+  @Test
+  fun `a finished goal still claiming running loses to the work that is moving`() {
+    // Regression: SKILL-190 completed but its durable goal row stayed `running`, so the ACTIVE tier
+    // held the surface for hours while SKILL-201 was the live run.
+    val finishedClaimingRunning =
+      candidate("SKILL-190", IdeStatusLifecycleState.ACTIVE, "w-190", "2026-08-06T02:00:00Z")
+    val live = candidate("SKILL-201", IdeStatusLifecycleState.BLOCKED, "w-201", "2026-08-06T11:58:00Z")
+
+    assertEquals("w-201", IdeStatusSelectionPolicy.select(listOf(finishedClaimingRunning, live), OBSERVED)?.workflowId)
+  }
+
+  @Test
+  fun `a live run quiet inside the fresh window keeps its tier lead`() {
+    val quietButFresh = candidate("SKILL-201", IdeStatusLifecycleState.ACTIVE, "w-201", "2026-08-06T11:45:00Z")
+    val settled = candidate("SKILL-190", IdeStatusLifecycleState.BLOCKED, "w-190", "2026-08-06T11:59:00Z")
+
+    assertEquals("w-201", IdeStatusSelectionPolicy.select(listOf(settled, quietButFresh), OBSERVED)?.workflowId)
+  }
+
+  @Test
+  fun `stale work is still selectable when nothing fresher exists`() {
+    val stale = candidate("SKILL-190", IdeStatusLifecycleState.ACTIVE, "w-190", "2026-08-06T02:00:00Z")
+
+    assertEquals("w-190", IdeStatusSelectionPolicy.select(listOf(stale), OBSERVED)?.workflowId)
   }
 
   @Test
