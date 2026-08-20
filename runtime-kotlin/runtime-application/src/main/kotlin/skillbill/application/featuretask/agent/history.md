@@ -1,5 +1,16 @@
 # featuretask runtime boundary history
 
+## [2026-08-20] SKILL-190 — Completed-upstream-missing-output goal repair wedge
+Areas: runtime-application/featuretask, runtime-application/goalrunner, runtime-application/model, runtime-cli/goal
+- Added `COMPLETED_UPSTREAM_MISSING_OUTPUT` goal repair wedge: blocked consumers missing upstream projections diagnose `completed` phase rows with no settled output
+- `FeatureTaskRuntimeCompletedUpstreamRepair` reopens the earliest unsettled upstream and dependent blocked phases via operator-resume repair input; `asPendingForOperatorResume` lives in `FeatureTaskRuntimePhaseRecordRepair`
+- `GoalRunnerChildRepairApplyResult` carries manifest projection artifacts; outcome store writes decomposition projection after `updateGoalParentForBlockedPhaseRetry`
+- `RemediationBaseReconciler` quarantines superseded checkpoint-identity stores to sibling evidence and clears the live key so children regenerate identities instead of dying on version errors
+- Pattern: operator `goal repair` wedge for durable phase-record inconsistencies that otherwise strand children with nonzero exit and no recovery path. reusable
+- Limitation: runtime-owned `commit_push` finalisation from subtask 5 spec remains outstanding on this branch checkpoint
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-08-19] SKILL-190 subtask 4 — Ref-based remediation reconciliation and rollback under amend
 Areas: runtime-application/featuretask (goal continuation recorder, run loop), runtime-kotlin/agent, runtime-ports/workflow
 - `reconcileRemediationBaseCoherence` resolves the latest `review_fix` base through checkpoint refs instead of branch ancestry; unresolvable bases block with operator guidance rather than rewriting to HEAD.

@@ -94,12 +94,12 @@ internal class GoalRunnerChildRepairOperations(
   ): GoalRunnerChildRepairApplyResult {
     if (wedgeClasses.isEmpty()) return GoalRunnerChildRepairApplyResult()
     val workflowStates = unitOfWork.workflowStates
-    val record = WorkflowFamily.TASK_RUNTIME.get(workflowStates, workflowId) ?: return GoalRunnerChildRepairApplyResult()
-    val artifacts = decodeArtifacts(record.artifactsJson)
+    var record = WorkflowFamily.TASK_RUNTIME.get(workflowStates, workflowId) ?: return GoalRunnerChildRepairApplyResult()
+    var artifacts = decodeArtifacts(record.artifactsJson)
     val patch = linkedMapOf<String, Any?>()
     val applied = mutableListOf<GoalRunnerAppliedRepair>()
     val evidenceEntries = mutableListOf<Map<String, Any?>>()
-    val priorEvidence = (artifacts[GOAL_CHILD_REPAIR_EVIDENCE_ARTIFACT_KEY] as? List<*>).orEmpty()
+    var manifestProjectionArtifactsJson: String? = null
 
     var workingContinuation = continuationArtifact(artifacts)
     var workingReview = GoalSubtaskReviewArtifactDecoder.decode(artifacts)?.state
@@ -232,11 +232,15 @@ internal class GoalRunnerChildRepairOperations(
           )
           val updated = engine.updateRecord(WorkflowFamily.TASK_RUNTIME.definition, record, input)
           WorkflowFamily.TASK_RUNTIME.save(workflowStates, updated)
-          val projection = decompositionManifestValidator?.let { validator ->
+          record = updated
+          artifacts = decodeArtifacts(updated.artifactsJson)
+          workingContinuation = continuationArtifact(artifacts)
+          workingReview = GoalSubtaskReviewArtifactDecoder.decode(artifacts)?.state
+          manifestProjectionArtifactsJson = decompositionManifestValidator?.let { validator ->
             engine.updateGoalParentForBlockedPhaseRetry(
               unitOfWork = unitOfWork,
               childWorkflowId = workflowId,
-              childArtifacts = decodeArtifacts(updated.artifactsJson),
+              childArtifacts = artifacts,
               phaseId = resumePhaseId,
               validator = validator,
             )
@@ -249,15 +253,14 @@ internal class GoalRunnerChildRepairOperations(
             priorValue = "completed_without_output",
             newValue = "pending",
           )
-          return GoalRunnerChildRepairApplyResult(
-            repairs = listOf(repair),
-            manifestProjectionArtifactsJson = projection,
-          )
+          applied += repair
+          evidenceEntries += repairEvidenceMap(repair)
         }
       }
     }
 
     if (applied.isEmpty()) return GoalRunnerChildRepairApplyResult()
+    val priorEvidence = (artifacts[GOAL_CHILD_REPAIR_EVIDENCE_ARTIFACT_KEY] as? List<*>).orEmpty()
     patch[GOAL_CHILD_REPAIR_EVIDENCE_ARTIFACT_KEY] = priorEvidence + evidenceEntries
     val updated = engine.updateRecord(
       WorkflowFamily.TASK_RUNTIME.definition,
@@ -271,7 +274,10 @@ internal class GoalRunnerChildRepairOperations(
       ),
     )
     WorkflowFamily.TASK_RUNTIME.save(workflowStates, updated)
-    return GoalRunnerChildRepairApplyResult(repairs = applied)
+    return GoalRunnerChildRepairApplyResult(
+      repairs = applied,
+      manifestProjectionArtifactsJson = manifestProjectionArtifactsJson,
+    )
   }
 
   private fun healthyDiagnosis(subtaskId: Int, workflowId: String) = GoalRunnerChildWedgeDiagnosis(

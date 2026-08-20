@@ -1,5 +1,16 @@
 # goalrunner boundary history
 
+## [2026-08-20] SKILL-190 — Completed-upstream-missing-output child repair wedge
+Areas: runtime-application/goalrunner, runtime-application/featuretask, runtime-cli/goal
+- `GoalRunnerChildRepairOperations` diagnoses and applies `COMPLETED_UPSTREAM_MISSING_OUTPUT`: earliest unsettled `completed` upstream for a blocked consumer is reopened to `pending` with ledger retry evidence
+- Repair apply now runs inside `UnitOfWork`, returns `GoalRunnerChildRepairApplyResult`, and projects parent manifest state through `updateGoalParentForBlockedPhaseRetry` when a validator is wired
+- `WorkflowGoalRunnerOutcomeStore.applyChildWedgeRepairs` persists manifest projection artifacts to the decomposition file after repair
+- CLI `goal repair` help documents the wedge alongside continuation-outcome and validation-depth repairs
+- Reusable: wedge apply result that separates applied repairs from optional manifest projection side effects
+- Limitation: wedge does not amend commits, rewrite review history, or replace goal reset/replan/accept
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
 ## [2026-08-11] SKILL-181 subtask 4 — Distinct exit codes and truthful planning stops
 Areas: runtime-application/goalrunner, runtime-cli/goal, runtime-domain/goalrunner model, runtime-infra-sqlite/db/workflow, runtime-core/di, skills/bill-feature-goal
 - Goal run exit codes: complete=0, failed/timeout=1, paused=2, blocked=3 (CLI help + bill-feature-goal)

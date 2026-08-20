@@ -335,6 +335,73 @@ class GoalRunnerRepairTest {
     val records = phaseRecordsFrom(decodeArtifacts(updated.artifactsJson))
     assertEquals("pending", records.getValue("plan_fix").status)
     assertEquals("pending", records.getValue("implement_fix").status)
+    val evidence = (decodeArtifacts(updated.artifactsJson)[GOAL_CHILD_REPAIR_EVIDENCE_ARTIFACT_KEY] as List<*>).single() as Map<*, *>
+    assertEquals("completed_upstream_missing_output", evidence["wedge_class"])
+    assertEquals("plan_fix", evidence["field"])
+  }
+
+  @Test
+  fun `repairing completed upstream missing output with another wedge applies both repairs`() {
+    val workflows = InMemoryWorkflowStates()
+    val workflowId = "wftr-repair-apply-upstream-and-depth"
+    val artifacts = linkedMapOf<String, Any?>(
+      "goal_continuation" to continuationMap(includeValidationDepth = false),
+      GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to healthyReviewState().toArtifactMap(),
+      FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to mapOf(
+        "plan_fix" to unsettledUpstreamPhaseRecord("plan_fix").toArtifactMap(),
+        "implement_fix" to unsettledUpstreamPhaseRecord(
+          phaseId = "implement_fix",
+          status = "blocked",
+          blockedReason = "Phase 'implement_fix' requires upstream output(s) plan_fix that are not present",
+        ).toArtifactMap(),
+      ),
+    )
+    val definition = WorkflowFamily.TASK_RUNTIME.definition
+    val engine = WorkflowEngine(testWorkflowSnapshotValidator)
+    val opened = engine.openRecord(definition, workflowId, "fis-repair", "implement_fix")
+    workflows.saveFeatureTaskRuntimeWorkflow(
+      engine.updateRecord(
+        definition,
+        opened,
+        WorkflowUpdateInput(
+          workflowStatus = "blocked",
+          currentStepId = "implement_fix",
+          stepUpdates = null,
+          artifactsPatch = artifacts,
+          sessionId = "ftr-repair",
+        ),
+      ).toRecord(),
+    )
+    val store = repairStore(workflows, git = ReachableGit())
+
+    val applied = store.applyChildWedgeRepairs(
+      workflowId = workflowId,
+      issueKey = ISSUE_KEY,
+      subtaskId = 1,
+      wedgeClasses = listOf(
+        GoalRunnerWedgeClass.COMPLETED_UPSTREAM_MISSING_OUTPUT,
+        GoalRunnerWedgeClass.MISSING_VALIDATION_DEPTH,
+      ),
+      subtasks = listOf(subtask(1, workflowId), subtask(2, null)),
+      repoRoot = Path.of("."),
+    )
+
+    assertEquals(2, applied.repairs.size)
+    assertEquals(
+      setOf(GoalRunnerWedgeClass.COMPLETED_UPSTREAM_MISSING_OUTPUT, GoalRunnerWedgeClass.MISSING_VALIDATION_DEPTH),
+      applied.repairs.map { it.wedgeClass }.toSet(),
+    )
+    val updated = requireNotNull(workflows.getFeatureTaskRuntimeWorkflow(workflowId))
+    assertEquals("running", updated.workflowStatus)
+    assertEquals("plan_fix", updated.currentStepId)
+    val after = decodeArtifacts(updated.artifactsJson)
+    val continuation = after["goal_continuation"] as Map<*, *>
+    assertEquals("build_only", continuation["validation_depth"])
+    val records = phaseRecordsFrom(after)
+    assertEquals("pending", records.getValue("plan_fix").status)
+    assertEquals("pending", records.getValue("implement_fix").status)
+    val evidence = after[GOAL_CHILD_REPAIR_EVIDENCE_ARTIFACT_KEY] as List<*>
+    assertEquals(2, evidence.size)
   }
 
   @Test
