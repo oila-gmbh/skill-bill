@@ -1693,19 +1693,6 @@ class ParallelCodeReviewRunner(
     completion
   }
 
-  private fun completionStateFromOutcome(outcome: ParallelReviewLaneOutcome): ReviewLaneCompletionState? {
-    val disposition = outcome.reviewDisposition ?: return null
-    val digest = outcome.bundleCompositionDigest ?: return null
-    return ReviewLaneCompletionState(
-      disposition = disposition,
-      bundleCompositionDigest = digest,
-      segments = outcome.segmentAccounting,
-      unreviewedSegmentIds = outcome.unreviewedSegmentIds,
-      budgetDimension = outcome.budgetDimension,
-      unreviewedUnits = outcome.unreviewedUnits,
-    )
-  }
-
   private fun aggregateBundleCompletion(states: List<ReviewLaneCompletionState>): ReviewLaneCompletionState {
     if (states.isEmpty()) {
       return ReviewLaneCompletionState(

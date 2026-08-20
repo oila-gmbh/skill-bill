@@ -124,7 +124,7 @@ class ReviewPreparationServiceTest {
   private val hunkA = ReviewChangedHunk("src/A.kt", 1, 1, 1, 2, "+alpha")
   private val hunkB = ReviewChangedHunk("src/B.kt", 4, 1, 4, 1, "+beta")
 
-  private fun includedDecision(lane: String, reason: String, path: String) = ReviewLaneDecision(
+  internal fun includedDecision(lane: String, reason: String, path: String) = ReviewLaneDecision(
     lane = lane,
     included = true,
     reason = reason,
@@ -503,12 +503,12 @@ class ReviewPreparationServiceTest {
     assertEquals(observedBytes, failure.outcome.observedValue)
   }
 
-  private fun oversizedPatch(path: String = "src/Huge.kt"): String {
+  internal fun oversizedPatch(path: String = "src/Huge.kt"): String {
     val body = "+" + "x".repeat(700 * 1024)
     return "diff --git a/$path b/$path\n--- a/$path\n+++ b/$path\n@@ -1,1 +1,2 @@\n$body\n"
   }
 
-  private fun storePrepare(
+  internal fun storePrepare(
     hunks: List<ReviewChangedHunk>,
     payload: String,
     storePath: String = ".skill-bill/run-evidence/code-review/fp-store",
@@ -522,117 +522,6 @@ class ReviewPreparationServiceTest {
     return ReviewPreparationService(factPorts, RecordingValidator(), hunkLocatorReader = reader).prepare(
       request().copy(evidenceStorePath = storePath, repoRoot = Path.of(".")),
     )
-  }
-
-  @Test fun `oversized stored patch composes an index-only parent under the default budget`() {
-    val patch = oversizedPatch()
-    val hunk = ReviewDiffEvidence.parse(patch).hunks.single()
-    val storePath = ".skill-bill/run-evidence/code-review/fp-oversize"
-    var workerLaunches = 0
-    val result = storePrepare(listOf(hunk), patch, storePath)
-    val parentBytes = result.packet.canonicalBytes
-    val wireHunks = result.packetEnvelope.asWireMap()["changed_hunks"] as List<*>
-    val first = wireHunks.single() as Map<*, *>
-    assertTrue(parentBytes < 524_288, "parent canonicalBytes $parentBytes")
-    assertTrue(parentBytes < patch.toByteArray().size)
-    assertEquals(hunk.hunkId, first["hunk_id"])
-    assertEquals(ReviewChangedHunk.digestOfBody(hunk.content), first["content_digest"])
-    assertFalse(first.containsKey("content"))
-    val locator = first["evidence_locator"] as Map<*, *>
-    assertEquals(storePath, locator["store_path"])
-    assertEquals("diff.patch", locator["payload_file"])
-    assertEquals(1, result.assignments.size)
-    assertEquals(result.packet.ownedHunkIds, result.assignments.single().assignedHunks.toSet())
-    assertTrue(result.assignments.single().assignedHunks.all { it in result.packet.ownedHunkIds })
-    val assignmentWire = result.assignmentEnvelopes.single().asWireMap()
-    assertFalse(assignmentWire.containsKey("changed_hunks"))
-    assertTrue((assignmentWire["assigned_hunks"] as List<*>).all { it is String })
-    val assignmentBytes = assignmentWire.toString().toByteArray().size
-    assertTrue(assignmentBytes < patch.toByteArray().size / 10, "assignment envelope $assignmentBytes")
-    assertEquals(0, workerLaunches)
-    result.packet.changedHunks.forEach { assertEquals("", it.content) }
-    val launch = GovernedReviewLaunch(
-      result.assignments.single(),
-      result.packet,
-      "contract",
-      "rubric",
-      "broker",
-      ReviewContextBudgetPolicy.DEFAULT,
-    )
-    assertEquals(ReviewLaneReviewDisposition.COMPLETE, launch.completionState.disposition)
-    assertEquals(null, launch.completionState.budgetDimension)
-    assertTrue(launch.completionState.unreviewedUnits.isEmpty())
-  }
-
-  @Test fun `evidence overflow on one assignment leaves the sibling selected and complete`() {
-    val hugePatch = oversizedPatch("src/A.kt")
-    val smallPatch = "diff --git a/src/B.kt b/src/B.kt\n--- a/src/B.kt\n+++ b/src/B.kt\n@@ -1,1 +1,2 @@\n+beta\n"
-    val stored = hugePatch + smallPatch
-    val parsed = ReviewDiffEvidence.parse(stored).hunks
-    val huge = parsed.single { it.path == "src/A.kt" }
-    val small = parsed.single { it.path == "src/B.kt" }
-    val storePath = ".skill-bill/run-evidence/code-review/fp-sibling"
-    val result = storePrepare(
-      listOf(huge, small),
-      stored,
-      storePath,
-      decisions = listOf(
-        includedDecision("testing", "test sources changed", "src/A.kt").copy(required = true),
-        includedDecision("security", "auth surface changed", "src/B.kt"),
-      ),
-    )
-    assertEquals(listOf("security", "testing"), result.packet.selectedLanes)
-    assertTrue(result.packet.canonicalBytes < 524_288)
-    val testing = GovernedReviewLaunch(
-      result.assignments.single { it.lane == "testing" },
-      result.packet,
-      "contract",
-      "rubric",
-      "broker",
-      ReviewContextBudgetPolicy.DEFAULT,
-    )
-    val security = GovernedReviewLaunch(
-      result.assignments.single { it.lane == "security" },
-      result.packet,
-      "contract",
-      "rubric",
-      "broker",
-      ReviewContextBudgetPolicy.DEFAULT,
-    )
-    assertEquals(ReviewLaneReviewDisposition.COMPLETE, testing.completionState.disposition)
-    assertEquals(null, testing.completionState.budgetDimension)
-    assertTrue(testing.completionState.unreviewedUnits.isEmpty())
-    assertEquals(ReviewLaneReviewDisposition.COMPLETE, security.completionState.disposition)
-    assertTrue(result.packet.laneDecisions.single { it.lane == "testing" }.required)
-  }
-
-  @Test fun `assignment-scaled specialist budgets differ when lane assignments differ in breadth`() {
-    val hugePatch = oversizedPatch("src/A.kt")
-    val smallPatch = "diff --git a/src/B.kt b/src/B.kt\n--- a/src/B.kt\n+++ b/src/B.kt\n@@ -1,1 +1,2 @@\n+beta\n"
-    val stored = hugePatch + smallPatch
-    val parsed = ReviewDiffEvidence.parse(stored).hunks
-    val result = storePrepare(
-      parsed,
-      stored,
-      ".skill-bill/run-evidence/code-review/fp-budget-scale",
-      decisions = listOf(
-        includedDecision("testing", "test sources changed", "src/A.kt").copy(required = true),
-        includedDecision("security", "auth surface changed", "src/B.kt"),
-      ),
-    )
-    val base = ReviewContextBudgetPolicy.DEFAULT
-    val testingBudget = deriveSpecialistBudget(
-      base,
-      result.assignments.single { it.lane == "testing" },
-      result.packet,
-    ).maxLaneEvidenceBytes
-    val securityBudget = deriveSpecialistBudget(
-      base,
-      result.assignments.single { it.lane == "security" },
-      result.packet,
-    ).maxLaneEvidenceBytes
-    assertNotEquals(testingBudget, securityBudget)
-    assertTrue(testingBudget > securityBudget)
   }
 
   @Test fun `blank store path with a live locator reader fails compose without launching workers`() {
@@ -793,5 +682,118 @@ class ReviewPreparationServiceTest {
     assertNotEquals(ReviewChangedHunk.digestOfBody(aggregateHunk.content), first["content_digest"])
     assertFalse(first.containsKey("content"))
     assertEquals("", result.packet.changedHunks.single().content)
+  }
+}
+
+class ReviewPreparationServiceBudgetTest {
+  private val fixture = ReviewPreparationServiceTest()
+
+  @Test fun `oversized stored patch composes an index-only parent under the default budget`() {
+    val patch = fixture.oversizedPatch()
+    val hunk = ReviewDiffEvidence.parse(patch).hunks.single()
+    val storePath = ".skill-bill/run-evidence/code-review/fp-oversize"
+    val result = fixture.storePrepare(listOf(hunk), patch, storePath)
+    val parentBytes = result.packet.canonicalBytes
+    val wireHunks = result.packetEnvelope.asWireMap()["changed_hunks"] as List<*>
+    val first = wireHunks.single() as Map<*, *>
+    assertTrue(parentBytes < 524_288, "parent canonicalBytes $parentBytes")
+    assertTrue(parentBytes < patch.toByteArray().size)
+    assertEquals(hunk.hunkId, first["hunk_id"])
+    assertEquals(ReviewChangedHunk.digestOfBody(hunk.content), first["content_digest"])
+    assertFalse(first.containsKey("content"))
+    val locator = first["evidence_locator"] as Map<*, *>
+    assertEquals(storePath, locator["store_path"])
+    assertEquals("diff.patch", locator["payload_file"])
+    assertEquals(1, result.assignments.size)
+    assertEquals(result.packet.ownedHunkIds, result.assignments.single().assignedHunks.toSet())
+    assertTrue(result.assignments.single().assignedHunks.all { it in result.packet.ownedHunkIds })
+    val assignmentWire = result.assignmentEnvelopes.single().asWireMap()
+    assertFalse(assignmentWire.containsKey("changed_hunks"))
+    assertTrue((assignmentWire["assigned_hunks"] as List<*>).all { it is String })
+    val assignmentBytes = assignmentWire.toString().toByteArray().size
+    assertTrue(assignmentBytes < patch.toByteArray().size / 10, "assignment envelope $assignmentBytes")
+    result.packet.changedHunks.forEach { assertEquals("", it.content) }
+    val launch = GovernedReviewLaunch(
+      result.assignments.single(),
+      result.packet,
+      "contract",
+      "rubric",
+      "broker",
+      ReviewContextBudgetPolicy.DEFAULT,
+    )
+    assertEquals(ReviewLaneReviewDisposition.COMPLETE, launch.completionState.disposition)
+    assertEquals(null, launch.completionState.budgetDimension)
+    assertTrue(launch.completionState.unreviewedUnits.isEmpty())
+  }
+
+  @Test fun `evidence overflow on one assignment leaves the sibling selected and complete`() {
+    val hugePatch = fixture.oversizedPatch("src/A.kt")
+    val smallPatch = "diff --git a/src/B.kt b/src/B.kt\n--- a/src/B.kt\n+++ b/src/B.kt\n@@ -1,1 +1,2 @@\n+beta\n"
+    val stored = hugePatch + smallPatch
+    val parsed = ReviewDiffEvidence.parse(stored).hunks
+    val huge = parsed.single { it.path == "src/A.kt" }
+    val small = parsed.single { it.path == "src/B.kt" }
+    val storePath = ".skill-bill/run-evidence/code-review/fp-sibling"
+    val result = fixture.storePrepare(
+      listOf(huge, small),
+      stored,
+      storePath,
+      decisions = listOf(
+        fixture.includedDecision("testing", "test sources changed", "src/A.kt").copy(required = true),
+        fixture.includedDecision("security", "auth surface changed", "src/B.kt"),
+      ),
+    )
+    assertEquals(listOf("security", "testing"), result.packet.selectedLanes)
+    assertTrue(result.packet.canonicalBytes < 524_288)
+    val testing = GovernedReviewLaunch(
+      result.assignments.single { it.lane == "testing" },
+      result.packet,
+      "contract",
+      "rubric",
+      "broker",
+      ReviewContextBudgetPolicy.DEFAULT,
+    )
+    val security = GovernedReviewLaunch(
+      result.assignments.single { it.lane == "security" },
+      result.packet,
+      "contract",
+      "rubric",
+      "broker",
+      ReviewContextBudgetPolicy.DEFAULT,
+    )
+    assertEquals(ReviewLaneReviewDisposition.COMPLETE, testing.completionState.disposition)
+    assertEquals(null, testing.completionState.budgetDimension)
+    assertTrue(testing.completionState.unreviewedUnits.isEmpty())
+    assertEquals(ReviewLaneReviewDisposition.COMPLETE, security.completionState.disposition)
+    assertTrue(result.packet.laneDecisions.single { it.lane == "testing" }.required)
+  }
+
+  @Test fun `assignment-scaled specialist budgets differ when lane assignments differ in breadth`() {
+    val hugePatch = fixture.oversizedPatch("src/A.kt")
+    val smallPatch = "diff --git a/src/B.kt b/src/B.kt\n--- a/src/B.kt\n+++ b/src/B.kt\n@@ -1,1 +1,2 @@\n+beta\n"
+    val stored = hugePatch + smallPatch
+    val parsed = ReviewDiffEvidence.parse(stored).hunks
+    val result = fixture.storePrepare(
+      parsed,
+      stored,
+      ".skill-bill/run-evidence/code-review/fp-budget-scale",
+      decisions = listOf(
+        fixture.includedDecision("testing", "test sources changed", "src/A.kt").copy(required = true),
+        fixture.includedDecision("security", "auth surface changed", "src/B.kt"),
+      ),
+    )
+    val base = ReviewContextBudgetPolicy.DEFAULT
+    val testingBudget = deriveSpecialistBudget(
+      base,
+      result.assignments.single { it.lane == "testing" },
+      result.packet,
+    ).maxLaneEvidenceBytes
+    val securityBudget = deriveSpecialistBudget(
+      base,
+      result.assignments.single { it.lane == "security" },
+      result.packet,
+    ).maxLaneEvidenceBytes
+    assertNotEquals(testingBudget, securityBudget)
+    assertTrue(testingBudget > securityBudget)
   }
 }

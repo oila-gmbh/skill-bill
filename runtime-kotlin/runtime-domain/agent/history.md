@@ -1,5 +1,15 @@
 # Boundary History — runtime-domain
 
+## [2026-08-20] SKILL-201 subtask 3 — Per-lane budget derivation from assignment breadth
+Areas: runtime-domain/review/context/model, runtime-application/review
+- `ReviewContextBudgetPolicy.deriveLaneEvidenceBytes` scales each lane's cumulative broker `read_evidence` cap from the repo base policy by that lane's share of packet hunk content bytes, floored at `maxEvidenceResultBytes`; lanes owning more diff surface receive a larger allowance than narrow lanes
+- `ReviewPreparationService.deriveSpecialistBudget` applies assignment-scaled derivation when composing specialist launches; `ParallelCodeReviewRunner.mergedBudget` sums each specialist's derived cap for the parent broker instead of `base * laneCount`
+- `maxLaneEvidenceBytes` now names one thing everywhere: the cumulative broker read_evidence allowance for the bound assignment surface, not a flat per-lane constant independent of ownership breadth
+- Pattern: derive enforcement budgets from assignment breadth at preparation; parent fan-out sums specialist-derived caps so parent and lane seams stay aligned. reusable
+- Known limits: coverage report and integration-pass prompt changes remain subtask 4
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-08-20] SKILL-201 subtask 2 — Broker refusal drives lane_evidence_bytes incomplete verdict
 Areas: runtime-domain/review/context/model, runtime-infra-fs/infrastructure/fs, runtime-application/review
 - `FileSystemReviewEvidenceBroker` records each `lane_evidence_bytes` refusal at the read that triggers it, appending a `commitSha@path` unit to `deniedUnits`; accounting exposes `budgetDimension` and `unreviewedUnits` only when the terminal outcome names that budget kind.
