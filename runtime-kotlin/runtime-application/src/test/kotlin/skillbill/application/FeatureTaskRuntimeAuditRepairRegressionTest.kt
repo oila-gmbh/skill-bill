@@ -19,7 +19,7 @@ class FeatureTaskRuntimeAuditRepairRegressionTest {
     val harness = skill128Harness(
       nextAuditLaunch = { ++auditLaunches },
       nextImplementLaunch = { ++implementLaunches },
-      allowExhaustiveRepair = { implementLaunches >= 5 },
+      allowExhaustiveRepair = { implementLaunches >= 3 },
     )
 
     val report = harness.runner.run(harness.request())
@@ -41,7 +41,7 @@ class FeatureTaskRuntimeAuditRepairRegressionTest {
       listOf("ac-001-gap-1-item-1", "ac-002-gap-1-item-1", "ac-003-gap-1-item-1"),
       plan.gaps.flatMap { gap -> gap.repairItems.map { it.repairItemId } },
     )
-    assertEquals(5, implementLaunches, "three partial attempts precede one exhaustive repair")
+    assertEquals(3, implementLaunches, "one partial attempt precedes one exhaustive repair")
     assertEquals(2, auditLaunches, "completion requires a following audit after exhaustive remediation")
     assertTrue(
       harness.launchedPromptPhaseOrder().indexOf("validate") >

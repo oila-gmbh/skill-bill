@@ -19,12 +19,12 @@ import skillbill.ports.review.model.ReviewToolCallResult
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceLocatorReadPort
 import skillbill.ports.taskruntime.model.FeatureTaskRuntimeSharedEvidenceLocatorReadRequest
 import skillbill.review.context.model.ForbiddenReviewOperation
+import skillbill.review.context.model.LANE_EVIDENCE_BYTES_DIMENSION
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewBudgetEvaluator
 import skillbill.review.context.model.ReviewBudgetOutcome
 import skillbill.review.context.model.ReviewChangedHunk
 import skillbill.review.context.model.ReviewExpansionRecord
-import skillbill.review.context.model.LANE_EVIDENCE_BYTES_DIMENSION
 import skillbill.review.context.model.ReviewLaneIdentity
 import skillbill.review.context.model.ReviewOperationKind
 import skillbill.review.context.model.ReviewOperationPolicy
@@ -412,8 +412,7 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
     return "$commit@$path"
   }
 
-  private fun commitShaForHunk(hunkId: String): String =
-    hunkCommitById[hunkId] ?: assignment.headRevision
+  private fun commitShaForHunk(hunkId: String): String = hunkCommitById[hunkId] ?: assignment.headRevision
 
   private fun refused(forbidden: ForbiddenReviewOperation): ReviewEvidenceResult =
     forbiddenResult(forbidden, cumulativeBytes, expansionLedger.size)

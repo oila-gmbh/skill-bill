@@ -154,7 +154,7 @@ internal object FeatureTaskRuntimePhaseProjectionShapes {
       "      transcripts, or telemetry."
 
   private const val VALIDATION_FULL_RUNTIME_OWNED_REPAIR: String =
-      "\n      You run only the pack-declared collect-all command and the same command once to confirm.\n" +
+    "\n      You run only the pack-declared collect-all command and the same command once to confirm.\n" +
       "      Do not run skill-bill validate, agnix, or validate_agent_configs.\n" +
       "      The runtime may record one cache-bypassing verify afterward; gate_run_count and\n" +
       "      gate_runs stay runtime-measured — never invent them."

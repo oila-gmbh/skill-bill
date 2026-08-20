@@ -219,9 +219,7 @@ object FeatureTaskRuntimePhasePromptComposer {
       FeatureTaskRuntimeSchemaFailureCorrections.unreconciledReceipt(priorSchemaFailure)
   }
 
-  private fun unparseableRootCorrection(
-    priorSchemaFailure: String,
-  ): String {
+  private fun unparseableRootCorrection(priorSchemaFailure: String): String {
     val rootNotParseable = priorSchemaFailure.contains("<root> must be an object") ||
       priorSchemaFailure.contains("Phase output is malformed")
     if (!rootNotParseable) {

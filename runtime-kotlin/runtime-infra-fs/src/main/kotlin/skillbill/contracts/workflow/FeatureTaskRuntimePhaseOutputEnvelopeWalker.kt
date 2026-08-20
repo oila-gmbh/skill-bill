@@ -9,10 +9,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairE
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairOperation
 
 internal object FeatureTaskRuntimePhaseOutputEnvelopeWalker {
-  fun select(
-    text: String,
-    phaseId: String,
-  ): FeatureTaskRuntimePhaseOutputStructuralRepairDecision? {
+  fun select(text: String, phaseId: String): FeatureTaskRuntimePhaseOutputStructuralRepairDecision? {
     val matches = linkedMapOf<String, WalkedEnvelope>()
     StructuralRepairSyntax.balancedTopLevelObjectSpans(text).forEach { span ->
       considerSpan(text, span, phaseId)?.let { envelope ->
@@ -50,19 +47,17 @@ internal object FeatureTaskRuntimePhaseOutputEnvelopeWalker {
   }
 
   private fun considerSpan(text: String, span: IntRange, phaseId: String): WalkedEnvelope? {
-    val slice = text.substring(span)
-    shapedEnvelope(slice, span.first, span.last + 1, spliced = false, spliceOffset = null, phaseId)?.let {
+    shapedEnvelope(text.substring(span), span, spliced = false, spliceOffset = null, phaseId)?.let {
       return it
     }
     if (!StructuralRepairSyntax.looksLikeObjectFieldContinuation(text, span.last + 1)) return null
     val repaired = text.removeRange(span.last, span.last + 1).substring(span.first)
-    return shapedEnvelope(repaired, span.first, span.last + 1, spliced = true, spliceOffset = span.last, phaseId)
+    return shapedEnvelope(repaired, span, spliced = true, spliceOffset = span.last, phaseId)
   }
 
   private fun shapedEnvelope(
     slice: String,
-    sourceStart: Int,
-    sourceEnd: Int,
+    span: IntRange,
     spliced: Boolean,
     spliceOffset: Int?,
     phaseId: String,
@@ -74,8 +69,8 @@ internal object FeatureTaskRuntimePhaseOutputEnvelopeWalker {
     return WalkedEnvelope(
       envelopeText = envelopeText,
       node = aligned,
-      sourceStart = sourceStart,
-      sourceEnd = sourceEnd,
+      sourceStart = span.first,
+      sourceEnd = span.last + 1,
       spliced = spliced,
       shapeAligned = changed,
       spliceOffset = spliceOffset,
@@ -96,22 +91,17 @@ internal object FeatureTaskRuntimePhaseOutputEnvelopeWalker {
     sourceLocation = StructuralRepairSyntax.sourceLocation(phaseId, originalText, offset),
   )
 
-  private fun originalSliceForDigest(
-    text: String,
-    selected: WalkedEnvelope,
-    extraCloser: Int?,
-  ): String {
+  private fun originalSliceForDigest(text: String, selected: WalkedEnvelope, extraCloser: Int?): String {
     if (selected.spliced || selected.shapeAligned) return text.substring(selected.sourceStart)
     if (extraCloser == null) return text.substring(selected.sourceStart, selected.sourceEnd)
     if (extraCloser < selected.sourceStart) return text
     return text.substring(selected.sourceStart, extraCloser + 1)
   }
 
-  private fun parseObject(slice: String): JsonNode? =
-    when (val parsed = StrictPhaseOutputParser.parseDocument(slice)) {
-      is StrictParse.Success -> parsed.node.takeIf { it.isObject }
-      is StrictParse.Failure -> null
-    }
+  private fun parseObject(slice: String): JsonNode? = when (val parsed = StrictPhaseOutputParser.parseDocument(slice)) {
+    is StrictParse.Success -> parsed.node.takeIf { it.isObject }
+    is StrictParse.Failure -> null
+  }
 
   private fun canonical(node: JsonNode): String = when {
     node.isObject -> node.fieldNames().asSequence().sorted().joinToString(prefix = "{", postfix = "}") { field ->

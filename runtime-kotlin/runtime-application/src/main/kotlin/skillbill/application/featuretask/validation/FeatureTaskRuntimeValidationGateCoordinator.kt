@@ -149,6 +149,16 @@ class FeatureTaskRuntimeValidationGateCoordinator(
       is ValidationGateAgentRepairResult.Completed -> repairsUsed++
     }
 
+    return verifyAfterRepair(state = state, declaration = declaration, repairsUsed = repairsUsed)
+  }
+
+  private fun verifyAfterRepair(
+    state: ValidationGateCycleState,
+    declaration: ValidationGateDeclaration,
+    repairsUsed: Int,
+  ): ValidationGateCycleResult {
+    val cycle = state.cycle
+    val measurements = state.measurements
     val verify = runGate(cycle, declaration, ValidationGateCyclePhase.POST_REPAIR_VERIFY)
     val verifyFindings = findingsForRepairFromResult(verify)
     recordGateProgress(

@@ -903,7 +903,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
     assertContains(run.stdout, "status: blocked")
     assertContains(run.stdout, "last_incomplete_phase: implement")
     assertContains(run.stdout, "blocked_reason:")
-    assertContains(run.stdout, "output-format correction budget")
+    assertContains(run.stdout, "output-gate correction budget")
     val workflowId = run.stdout.lines().single { it.startsWith("workflow_id:") }.substringAfter(":").trim()
 
     val status = CliRuntime.run(
@@ -975,7 +975,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
       fixture.context(RecordingPhaseLauncher()),
     )
     assertEquals(0, completedStatus.exitCode, completedStatus.stdout)
-    assertContains(completedStatus.stdout, "phase: id=implement status=completed attempt=4")
+    assertContains(completedStatus.stdout, "phase: id=implement status=completed attempt=3")
     val resumedPrompts = resumedLauncher.requests.map { it.skillRunRequest.promptOverride.orEmpty() }
     assertContains(resumedPrompts.first(), operatorReason)
     assertTrue(resumedPrompts.drop(1).none { it.contains(operatorReason) })
