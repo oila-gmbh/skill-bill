@@ -1,5 +1,15 @@
 # Boundary History — runtime-domain
 
+## [2026-08-20] SKILL-201 subtask 4 — Reporting schema and projections
+Areas: runtime-infra-sqlite/sqlite/review, runtime-core/review (test)
+- `loadReviewAccounting` quarantines persisted accounting rows whose lanes still list `evidence-unreviewable` in `unreviewed_segment_ids`; read returns null and emits `ACCOUNTING_CONTRACT_QUARANTINED` degradation telemetry instead of serving stale projection semantics or crashing
+- `quarantineReviewAccounting` now takes an expected/actual pair shared by contract-version drift and legacy segment-id detection (reusable)
+- `ReviewAccountingDurableRedactionTest` pins in-band quarantine and regeneration when a pre-subtask-1 row carries the retired segment id
+- Pattern: legacy review accounting contracts fail loud at the SQLite load seam; regeneration belongs to the writer, matching runtime contract quarantine rules
+- Known limits: end-to-end delegated review reproduction remains subtask 5
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
 ## [2026-08-20] SKILL-201 subtask 3 — Per-lane budget derivation from assignment breadth
 Areas: runtime-domain/review/context/model, runtime-application/review
 - `ReviewContextBudgetPolicy.deriveLaneEvidenceBytes` scales each lane's cumulative broker `read_evidence` cap from the repo base policy by that lane's share of packet hunk content bytes, floored at `maxEvidenceResultBytes`; lanes owning more diff surface receive a larger allowance than narrow lanes

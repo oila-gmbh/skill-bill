@@ -22,13 +22,13 @@ the same meaning as the specialist value or is replaced by a separately named pa
 3. A test asserts two lanes with different assigned path counts receive different derived budgets when assignment-scaled derivation is the chosen approach.
 4. A test asserts one consistent meaning across specialist and parent derivations.
 5. `(cd runtime-kotlin && ./gradlew check)` passes.
-6. `skill-bill validate`, `npx --yes agnix --strict .`, and `scripts/validate_agent_configs` pass.
+6. `skill-bill validate`, `npx --yes agnix --strict .`, and `../../../scripts/validate_agent_configs` pass.
 
 ## Non-Goals
 
 - Reporting seam or schema changes (subtask 4).
 - End-to-end delegated review reproduction (subtask 5).
-- Raising `max_lane_evidence_bytes` in `.skill-bill/config.yaml`.
+- Raising `max_lane_evidence_bytes` in `../../../.skill-bill/config.yaml`.
 - Changing lane selection or which paths an area owns.
 
 ## Dependency Notes

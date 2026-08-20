@@ -102,21 +102,30 @@ into the conversation. There is no in-session transition relay; agent silence
 during the run is deliberate, not a failure, and ends only when a sanctioned
 completion signal or error reaches the session.
 
+After launch, keep the session on the original foreground feature-task runtime
+blocking call until it returns, or keep the original process alive across yields
+and await its exit through the harness process-completion primitive. That single
+long wait is the completion signal. It is required, not optional, and it is not
+progress observation — the agent makes no separate tool calls while that call runs.
+
 While a foreground or detached run is in flight:
 
 1. Do not run `skill-bill goal watch` in-session, at any interval or refresh count.
 2. Do not call `skill-bill feature-task status <workflow_id>` on a timer or
    repeatedly to observe change.
-3. Do not sleep, wait, or otherwise idle in order to re-read progress.
+3. Do not sleep between separate progress checks, schedule wake-ups, or otherwise
+   idle between tool calls whose only purpose is to re-read progress.
 4. Do not tail, poll, or re-read runtime logs, the workflow DB, `git diff`, or
    changed files to infer progress.
 5. Do not re-invoke the runtime or launch an observer process or subagent to
    observe a run that is already executing.
 
 These prohibitions apply to shell loops, scheduled wake-ups, repeated tool
-calls, and delegated observers. The cost rule is request count, not output size:
-one completion signal beats any number of short polls, and trimming a poll's
-output does not make polling acceptable.
+calls, and delegated observers. The cost rule is request count, not wall-clock
+time: one completion signal — one blocking launch call or one background-exit
+re-invocation — beats any number of short polls, and trimming a poll's output
+does not make polling acceptable. A multi-hour blocking wait on the launch
+command is the completion signal, not token waste from observing.
 
 The only permitted in-session surface is exactly one completion line, errors
 such as launch failures, loud-fails, or non-zero exits, and one

@@ -17,12 +17,12 @@ finding set as review `rvw-20260820-052146-53de`, and no lane names a file the w
 2. `skill-bill validate` passes.
 3. `(cd runtime-kotlin && ./gradlew check)` passes.
 4. `npx --yes agnix --strict .` passes.
-5. `scripts/validate_agent_configs` passes.
+5. `../../../scripts/validate_agent_configs` passes.
 
 ## Non-Goals
 
 - Changing the SKILL-190 branch or its findings.
-- Raising `max_lane_evidence_bytes` in `.skill-bill/config.yaml` to mask the defect.
+- Raising `max_lane_evidence_bytes` in `../../../.skill-bill/config.yaml` to mask the defect.
 
 ## Dependency Notes
 

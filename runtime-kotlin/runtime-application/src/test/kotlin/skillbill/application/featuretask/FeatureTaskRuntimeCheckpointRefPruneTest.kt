@@ -172,6 +172,40 @@ class FeatureTaskRuntimeCheckpointRefPruneTest {
   }
 
   @Test
+  fun `prune with superseded recorded sha on published branch deletes checkpoint refs`() {
+    val issueKey = "SKILL-201"
+    val subtaskId = "2"
+    val base = head()
+    gitCommand("checkout", "-B", "feat/skill-201", base)
+    write("owned/Subtask2.kt", "v1\n")
+    gitCommand("add", "-A")
+    gitCommand("commit", "-m", "subtask 2 v1")
+    val supersededSha = head()
+    seedRefs(issueKey, subtaskId, count = 2)
+    gitCommand("checkout", "-B", "feat/skill-201", base)
+    write("owned/Subtask2.kt", "v2\n")
+    gitCommand("add", "-A")
+    gitCommand("commit", "-m", "subtask 2 v2")
+    gitCommand("remote", "add", "origin", repo.toUri().toString())
+    gitCommand("push", "-u", "origin", "feat/skill-201")
+
+    val result = git.pruneSubtaskCheckpointRefs(
+      repoRoot = repo,
+      request = FeatureTaskRuntimeCheckpointRefPruneRequest(
+        issueKey = issueKey,
+        subtaskId = subtaskId,
+        manifestCommitSha = supersededSha,
+        featureBranch = "feat/skill-201",
+      ),
+      record = {},
+    )
+
+    assertTrue(result.attempted)
+    assertEquals(2, result.deletedRefCount)
+    assertEquals(0, listedRefCount(issueKey, subtaskId))
+  }
+
+  @Test
   fun `reset-driven prune bypasses the manifest commit_sha gate`() {
     val issueKey = "SKILL-190"
     val subtaskId = "4"

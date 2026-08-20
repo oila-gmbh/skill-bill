@@ -27,6 +27,26 @@ Classify into one of two modes:
 
 Use `single_spec` by default unless the work clearly needs multiple dependency-ordered subtasks. Mode is sizing and planning metadata only; it never changes the artifact shape or executor.
 
+## Subtask Sizing
+
+A subtask pays the whole ceremony: preplan, plan, implement, review, validate, one commit. That
+cost barely moves between a two-file change and a twenty-file one, so decomposition exists to cut
+work too large for a single pass, not to give each layer, file, or logical unit its own ticket.
+
+Default to one subtask. Split only when one implement pass cannot carry the work to a reviewable
+end, a later part cannot be specified until an earlier contract or schema lands, or the parts ship
+separately. Not reasons to split: layer order, one file or symbol each, "add the field, then read
+the field", tests on their own, or a narrative of steps one agent would finish in a sitting.
+
+Breadth is never a reason. A subtask has no cap on files or diff size, and one coherent twenty-file
+commit is cheaper to run and easier to judge than four five-file commits that only make sense read
+together. Since each subtask is one commit, the only shape that matters is whether that commit
+stands alone: a commit that deletes a path whose replacement lands later, or adds a field nothing
+reads, belongs in the commit that finishes the change.
+
+Floor: a candidate that reads as "change X so it does Y" is below the cost of its own cycle. Two or
+three subtasks is a normal decomposition; name the condition behind each extra split.
+
 ## Service / Spec Source Mode
 
 `bill-feature-spec` accepts an optional `service:default/linear` argument that selects where

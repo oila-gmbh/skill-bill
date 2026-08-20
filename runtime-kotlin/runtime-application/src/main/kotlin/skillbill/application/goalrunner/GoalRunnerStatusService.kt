@@ -196,7 +196,7 @@ class GoalRunnerStatusService(
         manifest = reconciled,
         gitOperations = gitOperations,
         repoRoot = repoRoot,
-        record = { message -> runCatching { diagnostics.warning(message) } },
+        record = {},
       )
     }
     return reconciled
