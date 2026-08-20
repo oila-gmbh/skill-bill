@@ -14,7 +14,7 @@ what it is good at — describing what it did and enumerating what it touched �
   enumerated path set in `commit_push_result`, and does not run `git commit` or `git push` itself.
 - Amend `commitExclusionDirective()` (`:238-254`). Its current blanket prohibition at `:251-252` —
   "do not add, amend, unstage, or uncommit them" — becomes scoped: never amend a commit the runtime
-  does not own, and never stage any `.feature-specs/` path. The runtime's own subtask commit is
+  does not own, and never stage any `../..` path. The runtime's own subtask commit is
   amendable by the runtime.
 - Perform staging, amend, sha capture, and push in the runtime, reusing the scoped staging path
   (`GitScopedStagingOperations.kt:47`) rather than `git add -A`.
@@ -39,7 +39,7 @@ what it is good at — describing what it did and enumerating what it touched �
 4. The final commit carries the agent-authored subject, the `Skill-Bill-Subtask` trailer, and the
    checkpoint metadata body.
 5. `commitExclusionDirective()` forbids amending commits the runtime does not own instead of
-   forbidding amend outright, and still forbids staging any `.feature-specs/` path.
+   forbidding amend outright, and still forbids staging any `../..` path.
 6. Staging uses the scoped enumerated-path operation; no path in this ceremony runs `git add -A` or
    `git add .`.
 7. Push happens once per subtask at finalisation and does not force-push on the normal path.
@@ -78,7 +78,7 @@ commit would end a subtask with uncommitted work.
 - An empty or missing agent message fails loudly and does not push a provisional subject.
 - The pushed sha equals the manifest `commit_sha`.
 - A reopened pushed subtask takes the force-with-lease path, and aborts when the remote moved.
-- `.feature-specs/` stays unstaged, including when it is dirty.
+- `../..` stays unstaged, including when it is dirty.
 - A human-authored HEAD commit is refused as an amend target.
 
 Then the `runtime-application`, `runtime-cli`, and `runtime-mcp` module checks.

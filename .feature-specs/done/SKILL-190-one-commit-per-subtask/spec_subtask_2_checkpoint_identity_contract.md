@@ -10,7 +10,7 @@ contract so it can describe an amended subtask commit plus a stable per-checkpoi
 ## Scope
 
 - Bump the contract version in
-  `orchestration/contracts/feature-task-runtime-checkpoint-identity-schema.yaml` and its paired
+  `../../../orchestration/contracts/feature-task-runtime-checkpoint-identity-schema.yaml` and its paired
   Kotlin `*_CONTRACT_VERSION` constant in `runtime-contracts/.../FeatureTaskRuntimeSchemaPaths.kt:203-215`.
 - Replace `commit_shas_are_unique` (`:87-90`) with invariants that hold under amend: the checkpoint
   **ref** is unique per sequence, and the recorded commit sha is the sha that ref pointed at when the
@@ -28,7 +28,7 @@ contract so it can describe an amended subtask commit plus a stable per-checkpoi
 - Update the validator in
   `runtime-infra-fs/.../FeatureTaskRuntimeCheckpointIdentitySchemaValidator.kt`.
 - Legacy records loud-fail and are quarantined and regenerated in band, matching the existing
-  schema-bump behaviour described in `CLAUDE.md`. Do not write a silent compatibility reader.
+  schema-bump behaviour described in `../../../CLAUDE.md`. Do not write a silent compatibility reader.
 
 ## Acceptance Criteria
 
@@ -60,13 +60,13 @@ contract so it can describe an amended subtask commit plus a stable per-checkpoi
 
 No dependencies. Runs in parallel with subtask 1; subtasks 3 and 4 depend on both.
 
-The repo's runtime-contract rule in `CLAUDE.md` governs the sequence here: YAML schema first, then
+The repo's runtime-contract rule in `../../../CLAUDE.md` governs the sequence here: YAML schema first, then
 the Kotlin constant, then the parity check, then the typed error, then loud-fail at every parse
 seam, then the classpath `Copy` with `inputs.file` and a `doFirst {}` existence guard.
 
 ## Open Tension
 
-`CLAUDE.md` forbids new tests and simultaneously requires a parity test for every contract version
+`../../../CLAUDE.md` forbids new tests and simultaneously requires a parity test for every contract version
 bump. Acceptance criterion 8 forces this into the open rather than letting the executing agent pick
 a side quietly. Surface the choice, record the decision, then proceed.
 

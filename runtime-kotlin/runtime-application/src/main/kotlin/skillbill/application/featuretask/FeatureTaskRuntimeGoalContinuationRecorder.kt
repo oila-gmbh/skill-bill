@@ -629,7 +629,11 @@ private class RemediationBaseReconciler(
   private fun readRemediationSnapshot(
     workflowId: String,
     dbOverride: String?,
-  ): Triple<GoalSubtaskReviewState, FeatureTaskRuntimeGoalContinuationArtifact, List<FeatureTaskRuntimeCheckpointIdentity>>? =
+  ): Triple<
+    GoalSubtaskReviewState,
+    FeatureTaskRuntimeGoalContinuationArtifact,
+    List<FeatureTaskRuntimeCheckpointIdentity>,
+    >? =
     database.read(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
       val artifacts = decodeArtifacts(record.artifactsJson)
@@ -647,7 +651,11 @@ private class RemediationBaseReconciler(
 
   @Suppress("LongMethod", "CyclomaticComplexMethod", "ReturnCount")
   private fun reconcileFromSnapshot(
-    snapshot: Triple<GoalSubtaskReviewState, FeatureTaskRuntimeGoalContinuationArtifact, List<FeatureTaskRuntimeCheckpointIdentity>>,
+    snapshot: Triple<
+      GoalSubtaskReviewState,
+      FeatureTaskRuntimeGoalContinuationArtifact,
+      List<FeatureTaskRuntimeCheckpointIdentity>,
+      >,
     workflowId: String,
     gitOperations: WorkflowGitOperations,
     repoRoot: java.nio.file.Path,
@@ -794,14 +802,6 @@ private class RemediationBaseReconciler(
 
   private data class ReconciliationHeal(val sha: String) : ReconciliationDecision
 
-  private fun remediationBlockedCause(stored: String?, storedResolves: Boolean, failedRef: String?): String = when {
-    stored != null && !storedResolves ->
-      "stored remediation_base_sha '$stored' did not resolve to a commit"
-    failedRef != null ->
-      "checkpoint ref '$failedRef' did not resolve to a commit"
-    else -> "no review_fix checkpoint ref resolved to a commit"
-  }
-
   private data class ResolvedReviewFixCheckpoint(val identity: FeatureTaskRuntimeCheckpointIdentity, val sha: String)
 
   private fun latestResolvedReviewFixCheckpointCommit(
@@ -817,12 +817,6 @@ private class RemediationBaseReconciler(
       resolveCheckpointRefCommit(gitOperations, repoRoot, identity.checkpointRef)
         ?.let { ResolvedReviewFixCheckpoint(identity, it) }
     }
-
-  private fun latestReviewFixCheckpointRef(checkpoints: List<FeatureTaskRuntimeCheckpointIdentity>): String? =
-    checkpoints
-      .asReversed()
-      .firstOrNull { it.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID }
-      ?.checkpointRef
 
   private fun resolveCheckpointRefCommit(
     gitOperations: WorkflowGitOperations,
@@ -907,29 +901,46 @@ private class RemediationBaseReconciler(
       )
     }
   }
+}
 
-  private fun remediationBaseRecoveryEvidenceEntry(
-    recovery: RemediationBaseRecovery,
-    signal: RemediationDegradationSignal = RemediationDegradationSignal(),
-  ): LinkedHashMap<String, Any?> {
-    val failureMessage = recovery.failureMessageOverride ?: run {
-      val headDetail = recovery.headSha?.takeIf(String::isNotBlank)?.let { " at HEAD '$it'" }.orEmpty()
-      "Resume reconciled remediation_base_sha (${recovery.reason}) so the recorded base stays reachable " +
-        "from branch '${recovery.goalBranch}'$headDetail."
-    }
-    return linkedMapOf<String, Any?>(
-      "original_sha" to recovery.originalSha,
-      "replacement_sha" to recovery.replacementSha,
-      "repointed_field" to GoalReviewBaseField.REMEDIATION_BASE.wireValue,
-      "failure_reason" to recovery.reason,
-      "failure_message" to failureMessage,
-      "goal_branch" to recovery.goalBranch,
-    ).also { entry ->
-      signal.seam?.let { entry["seam"] = it }
-      signal.valueUsed?.let { entry["value_used"] = it }
-      signal.valueExpected?.let { entry["value_expected"] = it }
-      signal.cause?.let { entry["cause"] = it }
-    }
+private val remediationBlockedCause: (String?, Boolean, String?) -> String = { stored, storedResolves, failedRef ->
+  when {
+    stored != null && !storedResolves ->
+      "stored remediation_base_sha '$stored' did not resolve to a commit"
+    failedRef != null ->
+      "checkpoint ref '$failedRef' did not resolve to a commit"
+    else -> "no review_fix checkpoint ref resolved to a commit"
+  }
+}
+
+private val latestReviewFixCheckpointRef: (List<FeatureTaskRuntimeCheckpointIdentity>) -> String? = { checkpoints ->
+  checkpoints
+    .asReversed()
+    .firstOrNull { it.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID }
+    ?.checkpointRef
+}
+
+private fun remediationBaseRecoveryEvidenceEntry(
+  recovery: RemediationBaseRecovery,
+  signal: RemediationDegradationSignal = RemediationDegradationSignal(),
+): LinkedHashMap<String, Any?> {
+  val failureMessage = recovery.failureMessageOverride ?: run {
+    val headDetail = recovery.headSha?.takeIf(String::isNotBlank)?.let { " at HEAD '$it'" }.orEmpty()
+    "Resume reconciled remediation_base_sha (${recovery.reason}) so the recorded base stays reachable " +
+      "from branch '${recovery.goalBranch}'$headDetail."
+  }
+  return linkedMapOf<String, Any?>(
+    "original_sha" to recovery.originalSha,
+    "replacement_sha" to recovery.replacementSha,
+    "repointed_field" to GoalReviewBaseField.REMEDIATION_BASE.wireValue,
+    "failure_reason" to recovery.reason,
+    "failure_message" to failureMessage,
+    "goal_branch" to recovery.goalBranch,
+  ).also { entry ->
+    signal.seam?.let { entry["seam"] = it }
+    signal.valueUsed?.let { entry["value_used"] = it }
+    signal.valueExpected?.let { entry["value_expected"] = it }
+    signal.cause?.let { entry["cause"] = it }
   }
 }
 

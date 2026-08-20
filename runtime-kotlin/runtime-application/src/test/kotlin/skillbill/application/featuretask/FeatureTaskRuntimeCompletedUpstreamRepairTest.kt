@@ -24,7 +24,10 @@ class FeatureTaskRuntimeCompletedUpstreamRepairTest {
 
     assertEquals(
       "plan_fix",
-      diagnoseUnsettledCompletedUpstreamPhaseId(phaseRecords, skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize.MEDIUM),
+      diagnoseUnsettledCompletedUpstreamPhaseId(
+        phaseRecords,
+        skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize.MEDIUM,
+      ),
     )
   }
 
@@ -45,7 +48,10 @@ class FeatureTaskRuntimeCompletedUpstreamRepairTest {
     )
 
     assertNull(
-      diagnoseUnsettledCompletedUpstreamPhaseId(phaseRecords, skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize.MEDIUM),
+      diagnoseUnsettledCompletedUpstreamPhaseId(
+        phaseRecords,
+        skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize.MEDIUM,
+      ),
     )
   }
 

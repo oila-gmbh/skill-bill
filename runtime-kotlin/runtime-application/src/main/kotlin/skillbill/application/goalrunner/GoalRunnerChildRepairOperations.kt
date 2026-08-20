@@ -17,10 +17,10 @@ import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
 import skillbill.ports.workflow.WorkflowGitOperations
-import skillbill.workflow.DecompositionManifestValidator
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaselineRecoveryRequest
 import skillbill.ports.workflow.model.GoalSubtaskReviewInputFailureReason
 import skillbill.ports.workflow.recoverGoalSubtaskReviewBaseline
+import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.model.DecompositionSubtask
 import skillbill.workflow.model.WorkflowUpdateInput
@@ -94,7 +94,8 @@ internal class GoalRunnerChildRepairOperations(
   ): GoalRunnerChildRepairApplyResult {
     if (wedgeClasses.isEmpty()) return GoalRunnerChildRepairApplyResult()
     val workflowStates = unitOfWork.workflowStates
-    var record = WorkflowFamily.TASK_RUNTIME.get(workflowStates, workflowId) ?: return GoalRunnerChildRepairApplyResult()
+    var record = WorkflowFamily.TASK_RUNTIME.get(workflowStates, workflowId)
+      ?: return GoalRunnerChildRepairApplyResult()
     var artifacts = decodeArtifacts(record.artifactsJson)
     val patch = linkedMapOf<String, Any?>()
     val applied = mutableListOf<GoalRunnerAppliedRepair>()

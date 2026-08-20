@@ -137,7 +137,7 @@ branch commit becomes a commit reachable from a runtime-private ref outside the 
    instruct the agent to emit a message and an enumerated path set, and the runtime performs
    staging, amend, sha capture, and push.
 10. `commitExclusionDirective()` no longer forbids amend outright; it forbids amending commits the
-    runtime does not own, and continues to forbid staging any `.feature-specs/` path.
+    runtime does not own, and continues to forbid staging any `../..` path.
 11. Push happens once per subtask at finalisation and never force-pushes on the normal path;
     `--force-with-lease` is used only when a already-pushed subtask is legitimately reopened, and
     that case is recorded.
@@ -149,7 +149,7 @@ branch commit becomes a commit reachable from a runtime-private ref outside the 
 14. A resume that begins mid-subtask, after process death, reconstructs the amend target from
     durable state or the trailer and does not start a second commit for the same subtask.
 15. Every fallback or degradation introduced by this program emits a record per
-    `docs/observability-policy.md`, including ref-lookup misses, trailer-based recovery, and
+    `../../../docs/observability-policy.md`, including ref-lookup misses, trailer-based recovery, and
     force-with-lease use.
 
 ## Scope
@@ -172,7 +172,7 @@ branch commit becomes a commit reachable from a runtime-private ref outside the 
   `feat/SKILL-16-runtime-production-hardening` branch in `skill-bill-v2`.
 - Do not weaken the recovery guarantees the checkpoint commits currently provide. Every state that
   is reachable today must remain reachable, through a ref rather than through branch history.
-- Never stage or commit any `.feature-specs/` path; that exclusion survives this change unchanged.
+- Never stage or commit any `../..` path; that exclusion survives this change unchanged.
 - No transaction may remain open across a git process invocation.
 - The manifest `commit_sha` contract is load-bearing for the planning cascade; it must never be
   recorded as an intermediate pre-amend sha.
@@ -230,7 +230,7 @@ Boundary records naming this change as their trigger:
 
 ## Open Tension To Resolve During Execution
 
-`CLAUDE.md` states a blanket no-new-tests policy. The same file's runtime-contract rules require, for
+`../../../CLAUDE.md` states a blanket no-new-tests policy. The same file's runtime-contract rules require, for
 every contract version bump, a parity test on the pattern of `PlatformPackSchemaContractVersionTest`.
 Subtask 2 bumps a contract version, so the two rules collide.
 
@@ -264,10 +264,10 @@ The load-bearing scenarios:
   second.
 - A legacy checkpoint-identity record is rejected with the typed error, not silently accepted.
 - A pushed-then-reopened subtask takes the `--force-with-lease` path and records the degradation.
-- `.feature-specs/` remains unstaged across every path.
+- `../..` remains unstaged across every path.
 
 Close with `skill-bill validate`, `(cd runtime-kotlin && ./gradlew check)`, and
-`scripts/validate_agent_configs`. Note the known pre-existing `:runtime-infra-fs:sourcesJar` failure
+`../../../scripts/validate_agent_configs`. Note the known pre-existing `:runtime-infra-fs:sourcesJar` failure
 on `./gradlew build`; verify with `-x sourcesJar` if that path is used.
 
 ## Next Path

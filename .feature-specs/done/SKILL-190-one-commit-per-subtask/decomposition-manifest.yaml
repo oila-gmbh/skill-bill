@@ -3,14 +3,14 @@ contract_version: "0.5"
 issue_key: "SKILL-190"
 feature_name: "one-commit-per-subtask"
 parent_spec_path: ".feature-specs/SKILL-190-one-commit-per-subtask/spec.md"
-status: "blocked"
+status: "complete"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-190-one-commit-per-subtask"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 5
-  action: "blocked"
+  subtask_id: 0
+  action: "complete"
 subtasks:
 - id: 1
   name: "Amend and checkpoint-ref git primitives"
@@ -82,14 +82,12 @@ subtasks:
 - id: 5
   name: "Runtime-owned finalisation, message handoff, and push"
   spec_path: ".feature-specs/SKILL-190-one-commit-per-subtask/spec_subtask_5_runtime_owned_finalisation.md"
-  status: "blocked"
+  status: "complete"
   branch: null
   commit_sha: null
   workflow_id: "wftr-20260819-195931-hekx"
-  blocked_reason: "Feature-task-runtime phase 'review' governed evidence was never\
-    \ read: the lane returned a register after 0 authorized read(s) and 2 refused\
-    \ operation(s) against a non-empty assignment"
-  last_resumable_step: "review"
+  blocked_reason: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -103,12 +101,12 @@ subtasks:
 - id: 6
   name: "Ref lifecycle, documentation, and integrated verification"
   spec_path: ".feature-specs/SKILL-190-one-commit-per-subtask/spec_subtask_6_ref_lifecycle_and_verification.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260820-055611-qaqy"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

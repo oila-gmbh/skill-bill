@@ -38,6 +38,8 @@ class CliGoalResetOptionGateTest {
         "--preserve-planning",
         "--confirm-issue-key",
         "SKILL-901",
+        "--repo-root",
+        fixture.tempDir.toString(),
       ),
       fixture.context(launcher = launcher),
     )
