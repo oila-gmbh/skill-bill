@@ -78,7 +78,7 @@ Code review: pack root + conforming manifest/`content.md`, manifest-registered p
 
 Agent-specific behavior uses injectable strategies on `AgentRunProcessRequest`, not identity branching in the process runner: `progressProbe`, `declaredProgressProbe`, `activityProbe`, `progressEmitter`, `idlePolicy` (`HEARTBEAT_EXTENDED` | `DB_PROGRESS_ONLY`). `ProcessWaitLoop` calls strategies only; new agents add a strategy constant. Crash reconciliation: `FeatureTaskRuntimeWorkerSupervisor` self-heals expired-lease rows to resumable at startup.
 
-Validate-phase build, test, and gate execution is runtime-owned when the dominant platform pack declares `validation_gate`. The loop is one collect-all gate run to produce the complete finding set, then a `findings_open` repair window with zero check, test, compile, format-task, or quality-check invocations until the agent signals full repair, then one cache-bypassing verification gate — repeating only while findings remain, and blocking loudly once repair stops converging. There is no per-fix gate run, no substantiation receipt or coverage gate, and no finding paging. `full_gate_command` is not an intermediate repair-cycle run. Every goal child validate runs the pack's collect-all argv for discovery and cache-bypassing collect-all for verification. The validate agent repairs findings and must not invoke the gate, any quality-check skill, or targeted tasks such as `detekt`, `ktlintCheck`, `test`, or `compileKotlin` while `findings_open`. When a pack declares no gate, validate falls back to agent-run behavior with the same repair-window prohibition and that degradation is surfaced. Audit and repair evidence remain read-only repository facts — never builds or tests.
+When the dominant platform pack declares `validation_gate`, validate is one agent session that runs only that pack's `collect_all_full_gate_command` (Kotlin: `./gradlew check --continue`), reads that output, fixes every finding in that session, then runs that same command once to confirm. It must not run `skill-bill validate`, `npx agnix`, `scripts/validate_agent_configs`, `bill-code-check`, or any other repo-root checklist. The runtime does not start another agent for repair turns. It may still run one cache-bypassing verify after the agent signals complete; remaining findings persist `findings_open` and block, and an operator resume starts one new validate session. The agent must not rerun the full collect-all gate after each individual finding, and must not launch delegated subagents. Targeted `test`, `compileKotlin`, `detekt`, and `ktlintCheck` are allowed while repairing when they are part of that same pack gate. There is no per-fix gate run, no substantiation receipt or coverage gate, and no finding paging. `full_gate_command` is not an intermediate repair-cycle run. When a pack declares no gate, the same session owns collect-all through `bill-code-check`, then one confirmation, and that degradation is surfaced. Audit and review stay read-only repository facts; validate runs builds and tests.
 
 ## Commit Structure (feature-task / goal subtasks)
 
@@ -106,9 +106,10 @@ Prefer `bill-code-check`; document fallback if no platform checker. Bias: stable
 
 ## Validation Commands
 
+Maintainer checks for this repository. Feature-task validate uses only the pack `validation_gate` and must not run this list.
+
 ```bash
 skill-bill validate
 (cd runtime-kotlin && ./gradlew check)
-npx --yes agnix --strict .
 scripts/validate_agent_configs
 ```

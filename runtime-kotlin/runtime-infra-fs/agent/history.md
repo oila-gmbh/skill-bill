@@ -1,5 +1,13 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
+## [2026-08-20] Keep a complete phase envelope when surrounding prose has a stray closer
+Areas: runtime-infra-fs/contracts/workflow, phase-output structural repair
+- Jackson still parses phase output; when one complete envelope is selected, a bare `}` or `]` in surrounding prose is dropped instead of rejecting as `NO_REPAIR_CANDIDATE`.
+- The phase does not relaunch: the existing capture is repaired to the selected envelope. Two complete conflicting envelopes still reject.
+- Backtick-quoted braces stay commentary and continue to accept unchanged.
+Feature flag: N/A
+Acceptance criteria: 1/1 implemented
+
 ## [2026-08-18] SKILL-198 subtask 1 — pack quality-check repair window engraved in contracts
 Areas: orchestration/contracts, platform-packs/*/quality-check, runtime-infra-fs/scaffold/{rendering,validation}, tests
 - All eight maintained pack quality-check `content.md` files lost per-fix "re-run targeted checks" language and gained a Repair Window section matching `bill-code-check`; scaffold `qualityCheckContent` starter emits the same block for new packs.

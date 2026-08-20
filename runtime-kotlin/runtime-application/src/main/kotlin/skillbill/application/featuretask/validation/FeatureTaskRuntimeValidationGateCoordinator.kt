@@ -117,54 +117,64 @@ class FeatureTaskRuntimeValidationGateCoordinator(
     val cycle = state.cycle
     val measurements = state.measurements
     var repairsUsed = initialRepairsUsed
-    var currentFindings = openFindings
-    while (true) {
-      val projection = ValidationFindingSetProjection(findings = currentFindings)
-      if (repairsUsed >= MAX_REPAIR_TURNS) {
-        persistProgress(
-          state = state,
-          repairWindowPhase = FeatureTaskRuntimeValidationGateRepairWindowPhase.FINDINGS_OPEN,
-          remainingFindings = projection,
-          completeFindings = currentFindings,
-          repairsUsed = repairsUsed,
-        )
-        return terminalBlockedResult(
-          "Validation gate still reports ${currentFindings.size} finding(s) after $MAX_REPAIR_TURNS repair " +
-            "turns; the repair is not converging.",
-          remainingFindings = projection,
-          measurements = measurements,
-        )
-      }
+    val projection = ValidationFindingSetProjection(findings = openFindings)
+    if (repairsUsed >= MAX_REPAIR_TURNS) {
       persistProgress(
         state = state,
         repairWindowPhase = FeatureTaskRuntimeValidationGateRepairWindowPhase.FINDINGS_OPEN,
-        remainingFindings = null,
-        completeFindings = currentFindings,
+        remainingFindings = projection,
+        completeFindings = openFindings,
         repairsUsed = repairsUsed,
       )
-      when (val repair = cycle.agentRepairLauncher.launch(projection, repairsUsed + 1)) {
-        is ValidationGateAgentRepairResult.Blocked -> return terminalBlockedResult(
-          repair.reason,
-          remainingFindings = projection,
-          measurements = measurements,
-        )
-        is ValidationGateAgentRepairResult.Completed -> repairsUsed++
-      }
-
-      val verify = runGate(cycle, declaration, ValidationGateCyclePhase.POST_REPAIR_VERIFY)
-      val verifyFindings = findingsForRepairFromResult(verify)
-      recordGateProgress(
-        state = state,
-        result = verify,
-        findings = verifyFindings,
-        repairWindowPhase = repairWindowPhaseFor(verifyFindings),
-        repairsUsed = repairsUsed,
+      return terminalBlockedResult(
+        "Validation gate still reports ${openFindings.size} finding(s) after $MAX_REPAIR_TURNS repair " +
+          "turns; the repair is not converging.",
+        remainingFindings = projection,
+        measurements = measurements,
       )
-      if (verifyFindings.isEmpty()) {
-        return terminalCompletedResult(cycle.repositoryCheckpoint, measurements)
-      }
-      currentFindings = verifyFindings
     }
+    persistProgress(
+      state = state,
+      repairWindowPhase = FeatureTaskRuntimeValidationGateRepairWindowPhase.FINDINGS_OPEN,
+      remainingFindings = null,
+      completeFindings = openFindings,
+      repairsUsed = repairsUsed,
+    )
+    when (val repair = cycle.agentRepairLauncher.launch(projection, repairsUsed + 1)) {
+      is ValidationGateAgentRepairResult.Blocked -> return terminalBlockedResult(
+        repair.reason,
+        remainingFindings = projection,
+        measurements = measurements,
+      )
+      is ValidationGateAgentRepairResult.Completed -> repairsUsed++
+    }
+
+    val verify = runGate(cycle, declaration, ValidationGateCyclePhase.POST_REPAIR_VERIFY)
+    val verifyFindings = findingsForRepairFromResult(verify)
+    recordGateProgress(
+      state = state,
+      result = verify,
+      findings = verifyFindings,
+      repairWindowPhase = repairWindowPhaseFor(verifyFindings),
+      repairsUsed = repairsUsed,
+    )
+    if (verifyFindings.isEmpty()) {
+      return terminalCompletedResult(cycle.repositoryCheckpoint, measurements)
+    }
+    val remaining = ValidationFindingSetProjection(findings = verifyFindings)
+    persistProgress(
+      state = state,
+      repairWindowPhase = FeatureTaskRuntimeValidationGateRepairWindowPhase.FINDINGS_OPEN,
+      remainingFindings = remaining,
+      completeFindings = verifyFindings,
+      repairsUsed = repairsUsed,
+    )
+    return terminalBlockedResult(
+      "Validation gate still reports ${verifyFindings.size} finding(s) after the validate agent session; " +
+        "the runtime will not launch another agent.",
+      remainingFindings = remaining,
+      measurements = measurements,
+    )
   }
 
   private fun repairWindowPhaseFor(

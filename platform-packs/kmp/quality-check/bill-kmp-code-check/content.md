@@ -32,7 +32,7 @@ Use a priority-ordered fix ladder: repair source-set and Gradle topology first, 
 
 ### Repair Window
 
-Collect one complete finding set before repairing anything. While that set is open, do not invoke any check, test, compile, format-task, quality-check command, Gradle or module task, pack checker, `bill-code-check`, or delegated subagent check. Allowed work is read, search, and source edits only. Repair every finding at its root cause; verification runs only after the full set is repaired.
+Run the collect-all check once and read that output. Fix every finding in the same session. Do not invoke the full gate after each individual finding. Targeted compile, test, and module checks are allowed while repairing. Repair every finding at its root cause; run one confirmation check after the full set is repaired.
 
 Once the last finding is repaired, re-run the discovered verification task once, then escalate to the full suite when module and source-set coverage stays unproven.
 

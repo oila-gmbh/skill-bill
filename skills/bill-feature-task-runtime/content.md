@@ -186,18 +186,20 @@ Two obligations survive:
 - Report the terminal result only through the single structured completion line
   defined above. On a blocked or failed gate, surface that line loudly and
   immediately and stop — never narrate a blocked run as if it were progressing.
-  Validation findings are the exception: the runtime reopens `validate` for
-  repair instead of persisting a blocked phase.
 - Never re-derive or re-order the phase loop. The durable workflow state is
   authoritative over any terminal line.
 
 The runtime owns everything after launch: it opens the durable runtime workflow,
 runs each phase through its own agent, validates each phase output against the
 schema gate, persists per-phase state, and blocks loudly on a failed
-non-validation gate or a missing upstream output. Validation findings never
-persist `validate` as blocked; they are fed back to the validation agent to fix
-and rerun, the same way code-review findings are fixed before the workflow
-continues. Treat the durable workflow state as authoritative over any prose.
+non-validation gate or a missing upstream output. The validate agent runs only the
+pack-declared collect-all command, reads that output, fixes every finding in that session,
+then runs that same command once to confirm. It must not run `skill-bill validate`,
+`npx agnix`, `scripts/validate_agent_configs`, or any other repo-root checklist.
+Remaining findings after that session persist
+`validate` as blocked with `findings_open`; resume starts one new session over
+that set instead of spawning another agent in the same visit. Treat the durable
+workflow state as authoritative over any prose.
 
 ## Audit-first review gate
 

@@ -71,33 +71,8 @@ class FeatureTaskRuntimeValidationGateFullDiscoverTest {
   }
 
   @Test
-  fun `findings still present after a repair become the next repair set`() {
-    val discovery = ValidationGateFinding("app", "compile", "first", "A.kt")
-    val remaining = ValidationGateFinding("later", "LaterTest", "still failing", "LaterTest.kt")
-    val repairIds = mutableListOf<List<String>>()
-    val runner = ScriptedGateRunner(
-      listOf(
-        failedWith(discovery),
-        failedWith(remaining),
-        passed(forced = true),
-      ),
-    )
-    val cycle = coordinator(declaredResolver(), runner, mutableListOf()).execute(
-      cycle = fullCycle { findings, _ ->
-        repairIds += findings.findings.map { it.ruleOrTestId }
-        completedRepair(findings.findings)
-      },
-    )
-    assertEquals(listOf(listOf("compile"), listOf("LaterTest")), repairIds)
-    assertEquals(3, runner.calls)
-    assertTrue(runner.requests.all { it.argv != declaration.fullGateCommand })
-    assertIs<ValidationGateCycleTerminalOutcome.Completed>(
-      assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,
-    )
-  }
-
-  @Test
-  fun `failing verify reopens findings_open without targeted module argv`() {
+  fun `failing verify after the single agent session blocks without launching another agent`() {
+    val progress = mutableListOf<FeatureTaskRuntimeValidationGateProgress>()
     val discovery = ValidationGateFinding("app", "compile", "first", "A.kt")
     val verifyFinding = ValidationGateFinding("later", "LaterTest", "still failing", "LaterTest.kt")
     val repairIds = mutableListOf<List<String>>()
@@ -105,46 +80,29 @@ class FeatureTaskRuntimeValidationGateFullDiscoverTest {
       listOf(
         failedWith(discovery),
         failedWith(verifyFinding),
-        passed(forced = true),
       ),
     )
-    val cycle = coordinator(declaredResolver(), runner, mutableListOf()).execute(
+    val cycle = coordinator(declaredResolver(), runner, progress).execute(
       cycle = fullCycle { findings, _ ->
         repairIds += findings.findings.map { it.ruleOrTestId }
         completedRepair(findings.findings)
       },
     )
-    assertEquals(listOf(listOf("compile"), listOf("LaterTest")), repairIds)
-    assertEquals(3, runner.calls)
-    assertTrue(runner.requests.none { it.argv == declaration.fullGateCommand })
-    assertIs<ValidationGateCycleTerminalOutcome.Completed>(
-      assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,
-    )
-  }
-
-  @Test
-  fun `a repair that never converges blocks instead of looping forever`() {
-    val progress = mutableListOf<FeatureTaskRuntimeValidationGateProgress>()
-    val finding = ValidationGateFinding("m", "t", "still broken", "loc")
-    val runner = ScriptedGateRunner(
-      List(FeatureTaskRuntimeValidationGateCoordinator.MAX_REPAIR_TURNS + 1) {
-        failedWith(finding)
-      },
-    )
-    val cycle = coordinator(declaredResolver(), runner, progress).execute(
-      cycle = fullCycle { findings, _ -> completedRepair(findings.findings) },
-    )
     val blocked = assertIs<ValidationGateCycleTerminalOutcome.Blocked>(
       assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,
     )
-    assertTrue(blocked.reason.contains("not converging"))
-    assertEquals(1, blocked.remainingFindings?.findings?.size)
-    assertEquals(FeatureTaskRuntimeValidationGateCoordinator.MAX_REPAIR_TURNS + 1, runner.calls)
-    assertTrue(progress.last().completeFindings.isNotEmpty())
+    assertEquals(listOf(listOf("compile")), repairIds)
+    assertEquals(2, runner.calls)
+    assertEquals(listOf("echo", "collect-all"), runner.requests[0].argv)
+    assertEquals(listOf("echo", "collect-all-full"), runner.requests[1].argv)
+    assertTrue(runner.requests.none { it.argv == declaration.fullGateCommand })
+    assertTrue(blocked.reason.contains("will not launch another agent"))
+    assertEquals("LaterTest", blocked.remainingFindings?.findings?.single()?.ruleOrTestId)
     assertEquals(
       FeatureTaskRuntimeValidationGateRepairWindowPhase.FINDINGS_OPEN,
       progress.last().repairWindowPhase,
     )
+    assertEquals(1, progress.last().completeFindings.size)
   }
 
   private fun fullCycle(repair: ValidationGateAgentRepairLauncher): ValidationGateCycleRequest =

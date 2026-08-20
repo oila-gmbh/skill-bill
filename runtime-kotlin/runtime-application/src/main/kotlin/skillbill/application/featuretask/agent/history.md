@@ -2,6 +2,22 @@
 
 Revisit when: prune eligibility or the checkpoint namespace layout changes.
 
+## [2026-08-20] Validate runs only the pack collect-all command
+Areas: runtime-application/featuretask (validate directives, prompt composer, run loop), AGENTS.md, skills/bill-feature-task-runtime
+- Validate briefing names the pack `collect_all_full_gate_command` and forbids `skill-bill validate`, `npx agnix`, `scripts/validate_agent_configs`, and `bill-code-check`.
+- The launch seam interpolates the declared argv into the Task line so the session sees the exact command.
+- Pattern: platform pack owns the validate command set; repo-root checklists stay maintainer-only. reusable
+Feature flag: N/A
+Acceptance criteria: 1/1 implemented
+
+## [2026-08-20] Validate agent runs collect-all, fixes, then confirms
+Areas: runtime-application/featuretask (validate directives, prompt composer, projection shapes), AGENTS.md, skills/bill-feature-task-runtime, skills/bill-code-check, platform-packs/kotlin and kmp quality-check
+- Validate briefing tells the single session to run the pack collect-all gate, read that output, fix every finding, then run one confirmation check. Parsed runtime findings are a hint, not a substitute for the log.
+- Repair windows no longer forbid Gradle during repair; they forbid rerunning the full gate after each individual finding. Targeted compile/test stays allowed.
+- Pattern: collect-all once, repair the set, confirm once, in the same process. reusable
+Feature flag: N/A
+Acceptance criteria: 1/1 implemented
+
 ## [2026-08-20] SKILL-190 subtask 6 — Checkpoint-ref prune lifecycle and docs
 Areas: runtime-application/featuretask, runtime-application/goalrunner, runtime-ports/workflow, AGENTS.md, orchestration/workflow-contract/PLAYBOOK.md, skills/bill-feature-task-runtime
 - `FeatureTaskRuntimeCheckpointRefPrune` deletes refs under `refs/skill-bill/checkpoints/<issue>/<subtask>/` only after push plus a recorded manifest `commit_sha`; hard reset bypasses the gate; pruning is idempotent.

@@ -4,6 +4,36 @@ This file records architectural and implementation decisions that span the
 `runtime-kotlin/` boundary. Each entry is dated and explains the trade-off,
 not the implementation detail.
 
+## [2026-08-20] Phase JSON repair keeps the existing envelope; the agent does not regenerate it
+
+Context: A complete valid audit envelope was rejected because surrounding prose had a bare `}`, which exhausted the format-retry budget and relaunched the phase.
+
+Decision: Structural repair is library-owned. Parse with Jackson, compare to the expected envelope shape, and repair the existing capture (drop extra closers, add a missing closer when bounded). Do not ask the agent to generate a new envelope. Reject only when there is no unique complete candidate.
+
+Reason: Format retries repeat the whole phase. An extra bracket around an already-valid object is a syntax fix, not a new authoring turn.
+
+Alternatives considered: Keep rejecting outside closers so agents learn to omit them (rejected: it burned the format cap on wrapping, not on the envelope).
+
+## [2026-08-20] Validate uses only the pack-declared collect-all command
+
+Context: The validate agent ran AGENTS.md extras (`npx agnix --strict`, `skill-bill validate`) after Gradle was already green, then blocked on those results.
+
+Decision: Validate may run only the pack `validation_gate.collect_all_full_gate_command` (and targeted tasks that belong to that gate while repairing). The prompt names that argv and forbids repo-root checklists. `npx agnix --strict` is no longer in AGENTS.md.
+
+Reason: Agnix lints instruction files. It is not the Kotlin pack gate. Mixing the two made a green `./gradlew check` look blocked.
+
+Alternatives considered: Keep agnix on the maintainer list and hope the phase prompt wins (rejected: AGENTS.md is always applied).
+
+## [2026-08-20] Validate session owns collect-all and confirmation
+
+Context: Runtime-owned collect-all parsed findings, deleted the log, and told the agent not to run the gate. "Do not rerun the full gate after every finding" became "this process cannot run check."
+
+Decision: The validate agent runs the pack collect-all gate, reads that output, fixes the set, then runs one confirmation check. The runtime may still verify once after the session. Parsed findings are a hint.
+
+Reason: The working loop is check, read the real output, fix, confirm. A finding list without the log is not that loop.
+
+Alternatives considered: Keep runtime-owned collect-all and only allow targeted module tasks (rejected: the agent still never sees check output).
+
 ## [2026-08-20] Checkpoint-ref prune lifecycle supersedes amend-era ref-retention trigger (SKILL-190 subtask 6)
 
 Context: Subtask 4's ref-based remediation reconciliation kept checkpoint refs for the life of a

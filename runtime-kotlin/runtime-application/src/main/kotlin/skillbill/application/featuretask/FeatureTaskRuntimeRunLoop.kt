@@ -15,6 +15,7 @@ import skillbill.application.featuretask.validation.model.ValidationGateAgentRep
 import skillbill.application.featuretask.validation.model.ValidationGateCycleRequest
 import skillbill.application.featuretask.validation.model.ValidationGateCycleResult
 import skillbill.application.featuretask.validation.model.ValidationGateCycleTerminalOutcome
+import skillbill.application.featuretask.validation.model.ValidationGateResolution
 import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
 import skillbill.application.goalrunner.UnaddressedFindingLedgerScope
 import skillbill.application.model.FeatureTaskRuntimeImplementationContinuation
@@ -3634,6 +3635,16 @@ internal class FeatureTaskRuntimeRunLoop(
     return (receipt["changed_paths"] as? List<*>)?.filterIsInstance<String>().orEmpty()
   }
 
+  private fun packCollectAllCommand(run: PhaseRun, state: FeatureTaskRuntimeRunState): String? {
+    if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE || run.agentRunValidateFallback) {
+      return null
+    }
+    return when (val resolution = phaseGates.validationGateResolver.resolve(validationChangedPaths(state))) {
+      is ValidationGateResolution.Declared -> resolution.declaration.collectAllFullGateCommand.joinToString(" ")
+      else -> null
+    }
+  }
+
   private fun runPhaseAttempts(
     run: PhaseRun,
     state: FeatureTaskRuntimeRunState,
@@ -6255,6 +6266,7 @@ internal class FeatureTaskRuntimeRunLoop(
       implementationContinuation = implementationContinuationFor(run),
       validationGateFindings = run.validationGateFindings,
       agentRunValidateFallback = run.agentRunValidateFallback,
+      packCollectAllCommand = packCollectAllCommand(run, state),
     )
     return PreparedLaunch(briefing, prompt)
   }

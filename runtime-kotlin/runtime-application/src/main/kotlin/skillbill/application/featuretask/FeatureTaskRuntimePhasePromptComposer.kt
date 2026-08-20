@@ -48,6 +48,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     implementationContinuation: FeatureTaskRuntimeImplementationContinuation? = null,
     validationGateFindings: ValidationFindingSetProjection? = null,
     agentRunValidateFallback: Boolean = false,
+    packCollectAllCommand: String? = null,
     repairLedger: FeatureTaskRuntimeRepairLedger? = null,
     priorReviewContext: FeatureTaskRuntimePriorReviewContext? = null,
   ): String {
@@ -65,7 +66,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     // corrective path must render only the schema rejection plus authorized repair context.
     val effectiveContinuation = implementationContinuation.takeUnless { correctiveRepairContext != null }
     return listOf(
-      header(issueKey, briefing.phaseId, agentRunValidateFallback),
+      header(issueKey, briefing.phaseId, agentRunValidateFallback, packCollectAllCommand),
       ceremonyDirective(briefing, reviewPassNumber),
       mutatingPhaseIdempotencyDirective(briefing.phaseId),
       minimalismDisciplineDirective(briefing.phaseId),
@@ -290,9 +291,14 @@ object FeatureTaskRuntimePhasePromptComposer {
       .filterNot { it in FeatureTaskRuntimePhaseWorkflowDefinition.transitions.loopOnlyPhaseIds }
       .joinToString(" -> ")
 
-  private fun header(issueKey: String, phaseId: String, agentRunValidateFallback: Boolean = false): String {
+  private fun header(
+    issueKey: String,
+    phaseId: String,
+    agentRunValidateFallback: Boolean = false,
+    packCollectAllCommand: String? = null,
+  ): String {
     val label = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepLabels[phaseId] ?: phaseId
-    val directive = phaseTaskDirective(phaseId, agentRunValidateFallback)
+    val directive = phaseTaskDirective(phaseId, agentRunValidateFallback, packCollectAllCommand)
     return """
       You are executing exactly one phase of the EXPERIMENTAL skill-bill feature-task-runtime
       loop ($forwardPhaseOrder)
@@ -585,9 +591,9 @@ object FeatureTaskRuntimePhasePromptComposer {
     val lines = buildList {
       add("## Runtime validation gate findings")
       add(
-        "This is the complete finding set from one gate run. Fix every finding at its root cause. " +
-          "Do not invoke the gate or any quality-check skill, and do not rediscover findings; " +
-          "the runtime reruns the gate to confirm.",
+        "A prior gate run parsed these items; they are a hint. Run only the pack-declared collect-all " +
+          "command, read that output, and fix every finding in this session. Do not run `skill-bill " +
+          "validate`, `npx agnix`, or `scripts/validate_agent_configs`. Do not launch another agent.",
       )
       findings.findings.forEachIndexed { index, finding ->
         add(

@@ -263,15 +263,27 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
   }
 
   @Test
-  fun `bare closing delimiter in prose outside the envelope still rejects with an actionable reason`() {
-    val response = "trailing fragment of a truncated draft }\n```json\n$validJson\n```"
+  fun `bare closing delimiter in prose outside a complete envelope is removed and the envelope is kept`() {
+    val cases = listOf(
+      "before fence" to "trailing fragment of a truncated draft }\n```json\n$validJson\n```",
+      "after unfenced" to "$validJson\nNote: the template placeholder } above is intentional.",
+      "after fence" to "```json\n$validJson\n```\nNote: the template placeholder } above is intentional.",
+    )
 
-    val result = adapter.validatePhaseOutput(response, "plan")
-
-    val rejected = assertIs<FeatureTaskRuntimePhaseOutputValidationResult.Rejected>(result)
-    assertEquals(FeatureTaskRuntimePhaseOutputFailureCode.NO_REPAIR_CANDIDATE, rejected.code)
-    assertTrue(rejected.reason.contains("outside the selected"))
-    assertTrue(rejected.reason.contains("offset"))
+    cases.forEach { (label, response) ->
+      val result = adapter.validatePhaseOutput(response, "plan")
+      val repaired = assertIs<FeatureTaskRuntimePhaseOutputValidationResult.AcceptedAfterRepair>(
+        result,
+        "$label should keep the envelope after dropping the stray closer",
+      )
+      assertEquals(
+        FeatureTaskRuntimePhaseOutputRepairOperation.REMOVE_EXTRA_CLOSING_DELIMITER,
+        repaired.evidence.operation,
+        label,
+      )
+      assertEquals("plan", repaired.normalizedOutput.envelope["phase_id"], label)
+      assertEquals("completed", repaired.normalizedOutput.envelope["status"], label)
+    }
   }
 
   @Test

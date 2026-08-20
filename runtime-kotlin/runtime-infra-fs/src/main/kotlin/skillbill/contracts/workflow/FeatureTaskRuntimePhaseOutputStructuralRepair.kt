@@ -188,8 +188,6 @@ internal object FeatureTaskRuntimePhaseOutputStructuralRepair {
 
     val matching = parsed.filter { it.node.path("phase_id").asText("") == sourceLabel }
     val relevant = if (matching.isNotEmpty()) matching else parsed
-    // Keep the existing final-envelope precedence for a discarded draft that is visibly incomplete,
-    // while still rejecting two complete conflicting envelopes before schema normalization.
     val completeShape = relevant.filter { candidate ->
       listOf("contract_version", "phase_id", "status", "summary", "produced_outputs")
         .all { field -> candidate.node.has(field) }
@@ -203,26 +201,25 @@ internal object FeatureTaskRuntimePhaseOutputStructuralRepair {
       )
     }
     val selected = comparable.firstOrNull() ?: relevant.first()
-    unmatchedClosingOutsideOffset(text, selected.sourceStart, selected.sourceEnd)?.let { offset ->
-      throw StructuralRepairSelectionException(
-        FeatureTaskRuntimePhaseOutputFailureCode.NO_REPAIR_CANDIDATE,
-        "Phase output contains a bare closing delimiter ('}' or ']') in the text outside the selected " +
-          "envelope, at offset $offset of that surrounding text. Delimiters quoted in backticks or " +
-          "inside fenced code blocks are ignored, so mention braces only in backticks or in words; " +
-          "keep the JSON envelope itself unchanged.",
-      )
-    }
-    return selected
+    val extraCloser = unmatchedClosingOutsideOffset(text, selected.sourceStart, selected.sourceEnd)
+      ?: return selected
+    val evidence = selected.evidence ?: FeatureTaskRuntimePhaseOutputRepairEvidence(
+      format = FeatureTaskRuntimePhaseOutputFormat.JSON,
+      originalDigest = StructuralRepairSyntax.sha256(text),
+      repairedDigest = StructuralRepairSyntax.sha256(selected.text),
+      operation = FeatureTaskRuntimePhaseOutputRepairOperation.REMOVE_EXTRA_CLOSING_DELIMITER,
+      sourceLocation = StructuralRepairSyntax.sourceLocation(sourceLabel, text, extraCloser),
+    )
+    return selected.copy(evidence = evidence)
   }
 
-  // This guard looks for a competing partial document, not for prose punctuation: a delimiter the
-  // agent quoted in backticks (e.g. describing a brace fix as `}`) is commentary, so code spans and
-  // fenced blocks are masked before scanning. Masking preserves length, so the reported offset is
-  // valid in the unmasked outside text.
   private fun unmatchedClosingOutsideOffset(text: String, sourceStart: Int, sourceEnd: Int): Int? {
-    val outside = text.removeRange(sourceStart.coerceAtLeast(0), sourceEnd.coerceAtMost(text.length))
-    return StructuralRepairSyntax.scanDelimiters(maskCodeQuoting(outside))
-      .unmatchedClosingOffsets.firstOrNull()
+    val start = sourceStart.coerceAtLeast(0)
+    val end = sourceEnd.coerceAtMost(text.length)
+    val outside = text.removeRange(start, end)
+    val outsideOffset = StructuralRepairSyntax.scanDelimiters(maskCodeQuoting(outside))
+      .unmatchedClosingOffsets.firstOrNull() ?: return null
+    return if (outsideOffset < start) outsideOffset else outsideOffset + (end - start)
   }
 
   private fun maskCodeQuoting(text: String): String {

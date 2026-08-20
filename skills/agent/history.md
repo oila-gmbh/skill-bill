@@ -1,3 +1,17 @@
+## [2026-08-20] Validate runs only the pack collect-all command
+Areas: skills/bill-feature-task-runtime
+- Feature-task validate uses only the pack-declared collect-all command. Repo-root `skill-bill validate` / agnix / validate_agent_configs stay off that phase.
+- Pattern: pack gate owns validate; maintainer lists do not. reusable
+Feature flag: N/A
+Acceptance criteria: 1/1 implemented
+
+## [2026-08-20] Validate agent runs collect-all then confirms
+Areas: skills/bill-feature-task-runtime, skills/bill-code-check
+- Validate and quality-check repair windows tell the session to run collect-all, read the output, fix the set, then confirm once. They no longer forbid checks during repair.
+- Pattern: one process, one collect-all, one confirm. reusable
+Feature flag: N/A
+Acceptance criteria: 1/1 implemented
+
 ## [2026-08-18] SKILL-198 subtask 1 — repair window in bill-code-check
 Areas: skills/bill-code-check
 - `bill-code-check` is no longer frontmatter-only: Purpose, Repair Window, and Routing sections state one collect-all finding set, zero checks while the set is open, and one post-repair verification gate.

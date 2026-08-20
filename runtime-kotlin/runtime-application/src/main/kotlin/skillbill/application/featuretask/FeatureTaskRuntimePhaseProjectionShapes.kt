@@ -154,9 +154,8 @@ internal object FeatureTaskRuntimePhaseProjectionShapes {
       "      transcripts, or telemetry."
 
   private const val VALIDATION_FULL_RUNTIME_OWNED_REPAIR: String =
-    "\n      FULL runtime-owned repair also emits produced_outputs.validation_repair_plan and\n" +
-      "      produced_outputs.substantiation_receipts (not on validation_result): one receipt per\n" +
-      "      discovery identity with identity, root_cause, changed_paths_or_symbols, and a short\n" +
-      "      rationale. The runtime owns collect-all execution and confirmation identity closure;\n" +
-      "      do not invoke the gate or any quality-check skill."
+      "\n      You run only the pack-declared collect-all command and the same command once to confirm.\n" +
+      "      Do not run skill-bill validate, agnix, or validate_agent_configs.\n" +
+      "      The runtime may record one cache-bypassing verify afterward; gate_run_count and\n" +
+      "      gate_runs stay runtime-measured — never invent them."
 }

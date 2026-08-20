@@ -199,10 +199,29 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE),
     )
 
-    assertContains(prompt, "runtime owns execution of the repository validation gate")
-    assertContains(prompt, "must not invoke the gate or any quality-check skill")
-    assertContains(prompt, "Never invoke the gate or any check after an individual fix")
+    assertContains(prompt, "Run only the pack-declared validation_gate collect_all_full_gate_command")
+    assertContains(prompt, "only validate agent for this step")
+    assertContains(prompt, "will not launch another agent")
+    assertContains(prompt, "Do not run `skill-bill validate`")
+    assertContains(prompt, "`npx agnix`")
     assertFalse(prompt.contains("Invoke bill-code-check"))
+  }
+
+  @Test
+  fun `validate prompt names the pack collect-all argv and forbids extra checklists`() {
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE),
+      packCollectAllCommand = "./gradlew check --continue",
+    )
+
+    assertContains(prompt, "Run only this pack-declared collect-all command")
+    assertContains(prompt, "`./gradlew check --continue`")
+    assertContains(prompt, "Do not run `skill-bill validate`")
+    assertContains(prompt, "`npx agnix`")
+    assertContains(prompt, "scripts/validate_agent_configs")
+    assertContains(prompt, "Do not run `bill-code-check`")
+    assertFalse(prompt.contains("collect_all_full_gate_command"))
   }
 
   @Test
@@ -213,7 +232,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       agentRunValidateFallback = true,
     )
 
-    assertContains(prompt, "Invoke bill-code-check for that gate")
+    assertContains(prompt, "Invoke bill-code-check for those gate runs")
     assertContains(prompt, "Validation gate degradation")
     assertContains(prompt, "declares no validation_gate")
     assertContains(
@@ -235,13 +254,14 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     )
 
     listOf(fullPrompt, defaultPrompt).forEach { prompt ->
-      assertContains(prompt, "runtime owns execution of the repository validation gate")
-      assertContains(prompt, "complete finding set from one collect-all gate run")
-      assertContains(prompt, "findings_open")
-      assertContains(prompt, "cache-bypassing verification gate")
-      assertContains(prompt, "must not invoke the gate or any quality-check skill")
-      assertContains(prompt, "`bill-code-check`")
-      assertContains(prompt, "delegated subagent")
+      assertContains(prompt, "Run only the pack-declared validation_gate collect_all_full_gate_command")
+      assertContains(prompt, "Do not run `skill-bill validate`")
+      assertContains(prompt, "`npx agnix`")
+      assertContains(prompt, "scripts/validate_agent_configs")
+      assertContains(prompt, "that same collect-all command once to confirm")
+      assertContains(prompt, "only validate agent for this step")
+      assertContains(prompt, "will not launch another agent")
+      assertContains(prompt, "delegated subagents")
       assertContains(prompt, "`detekt`")
       assertContains(prompt, "`ktlintCheck`")
       assertContains(prompt, "`test`")
@@ -252,25 +272,31 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       )
       assertFalse(prompt.contains("Invoke bill-code-check"))
       assertFalse(prompt.contains("Goal-continuation validate depth"))
+      assertFalse(prompt.contains("runtime owns execution of the repository validation gate"))
     }
   }
 
   @Test
-  fun `agent-run validate prompts forbid intermediate checks not only full gate`() {
+  fun `agent-run validate prompts allow targeted checks and forbid a second agent`() {
     val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
       briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE),
       agentRunValidateFallback = true,
     )
 
-    assertContains(prompt, "findings_open")
     assertContains(prompt, "`detekt`")
     assertContains(prompt, "`ktlintCheck`")
     assertContains(prompt, "`test`")
     assertContains(prompt, "`compileKotlin`")
-    assertContains(prompt, "Never rerun the gate, bill-code-check, or any targeted command after an individual fix")
+    assertContains(prompt, "only validate agent for this step")
+    assertContains(prompt, "will not launch another agent")
+    assertContains(prompt, "Do not rerun the full gate, bill-code-check, or a cache-bypassing full check")
+    assertContains(prompt, "Do not run `skill-bill validate`")
+    assertContains(prompt, "`npx agnix`")
     assertFalse(prompt.contains("Rerun early only when"))
     assertFalse(prompt.contains("rerun the failing command after each fix"))
+    assertFalse(prompt.contains("allowed work is read, search, and source edits only"))
+    assertFalse(prompt.contains("findings_open"))
   }
 
   @Test
@@ -290,9 +316,10 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       validationGateFindings = page,
     )
     listOf(fullPrompt, defaultPrompt).forEach { prompt ->
-      assertContains(prompt, "complete finding set from one collect-all gate run")
-      assertContains(prompt, "must not invoke the gate or any quality-check skill")
-      assertContains(prompt, "Do not rediscover findings")
+      assertContains(prompt, "A prior gate run parsed these items; they are a hint")
+      assertContains(prompt, "Run only the pack-declared collect-all command")
+      assertContains(prompt, "Do not run `skill-bill validate`")
+      assertContains(prompt, "Do not launch another agent")
     }
   }
 
@@ -324,7 +351,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     nonValidatePhases.forEach { phaseId ->
       val prompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor(phaseId))
       assertFalse(
-        prompt.contains("Invoke bill-code-check for that gate"),
+        prompt.contains("Invoke bill-code-check for those gate runs"),
         "phase $phaseId must not carry the validate gate-invocation clause",
       )
       assertFalse(
