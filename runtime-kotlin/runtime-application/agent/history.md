@@ -1,9 +1,9 @@
-## [2026-08-20] Output-gate JSON retries block after two attempts
+## [2026-08-20] Output-gate JSON failures block on the first invalid envelope
 Areas: runtime-application/featuretask
 - Extracted phase JSON is aligned to that phase's expected fields before the schema gate; nested or trailing required fields are restored on the existing capture.
-- If that still fails, one salvage launch receives the original capture plus the expected shape; the result is extracted and validated the same way, and a second failure blocks.
-- Schema-invalid and malformed phase output share that one salvage; there is no third launch.
+- A remaining schema or malformed failure blocks immediately. There is no salvage relaunch: a second attempt was not recovering invalid envelopes in practice.
 - Audit-gap and review-fix loops stay uncapped; this bound is only the per-visit output-gate correction loop.
+- Audit prompts now name closed token sets for verdict and carried_gap_dispositions.observation, with accepted and rejected examples.
 Feature flag: N/A
 Acceptance criteria: 1/1 implemented
 

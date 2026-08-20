@@ -1,7 +1,7 @@
 package skillbill.application.featuretask
 
 internal object FeatureTaskRuntimeAttemptBudgets {
-  const val MAX_OUTPUT_GATE_RETRY_ATTEMPTS: Int = 2
+  const val MAX_OUTPUT_GATE_RETRY_ATTEMPTS: Int = 1
   const val MAX_FORMAT_RETRY_ATTEMPTS: Int = MAX_OUTPUT_GATE_RETRY_ATTEMPTS
   const val MAX_PROCESS_FAILURE_ATTEMPTS: Int = 3
 
@@ -21,8 +21,9 @@ internal object FeatureTaskRuntimeAttemptBudgets {
       "failureCount must be >= 1, was $failureCount."
     }
     return if (failureCount >= MAX_OUTPUT_GATE_RETRY_ATTEMPTS) {
+      val attemptWord = if (failureCount == 1) "attempt" else "attempts"
       "Phase '$phaseId' exhausted the bounded output-gate correction budget after " +
-        "$failureCount attempts (cap=$MAX_OUTPUT_GATE_RETRY_ATTEMPTS); the run blocks rather than relaunching."
+        "$failureCount $attemptWord (cap=$MAX_OUTPUT_GATE_RETRY_ATTEMPTS); the run blocks rather than relaunching."
     } else {
       null
     }

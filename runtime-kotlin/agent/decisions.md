@@ -4,6 +4,16 @@ This file records architectural and implementation decisions that span the
 `runtime-kotlin/` boundary. Each entry is dated and explains the trade-off,
 not the implementation detail.
 
+## [2026-08-20] Output-gate failures block on the first invalid envelope
+
+Context: The one salvage agent launch after a schema-invalid audit did not recover. SKILL-202 burned both attempts on missing `verdict` then prose in `carried_gap_dispositions.evidence.observation`.
+
+Decision: Cap the per-visit output-gate correction budget at one. Programmatic extract-and-shape-repair still runs on the existing capture. If that capture is still invalid, the run blocks. No second agent launch.
+
+Reason: The salvage prompt did not convert contract misses into valid envelopes in practice; it doubled latency and still blocked.
+
+Alternatives considered: Keep the salvage launch (rejected: observed zero recoveries on the SKILL-202 audit path).
+
 ## [2026-08-20] Extracted phase JSON is aligned to the expected shape; gate retries cap at two
 
 Context: Audit kept relaunching because an extra `}` closed the envelope before `verdict`, or `verdict` sat under `produced_outputs`. Schema-invalid retries had no cap.

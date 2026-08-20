@@ -1,5 +1,12 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
+## [2026-08-20] Output-gate failures block on the first invalid envelope
+Areas: runtime-application/featuretask, runtime-infra-fs/contracts/workflow
+- Programmatic JSON extract-and-shape-repair still runs on the existing capture.
+- A remaining schema or malformed failure blocks immediately; there is no salvage relaunch.
+Feature flag: N/A
+Acceptance criteria: 1/1 implemented
+
 ## [2026-08-20] Phase JSON walk takes a shape-matching envelope and caps gate retries at two
 Areas: runtime-infra-fs/contracts/workflow, runtime-application/featuretask
 - Phase output is scanned for JSON objects; the one matching the phase's expected fields is kept and the rest (stray closers, trailing prose) is ignored.

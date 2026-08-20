@@ -15,6 +15,22 @@ internal object FeatureTaskRuntimeSchemaFailureCorrections {
   // `reconciled: false` is not describing a repairable field error — it is describing work it did not
   // finish, and no edit to that field makes the claim true. This names the envelope that carries
   // unfinished work instead; what happens after that envelope is not this directive's business.
+  fun closedEnumeration(priorSchemaFailure: String): String {
+    val namesObservation = priorSchemaFailure.contains("observation")
+    val namesEnumeration = priorSchemaFailure.contains("enumeration") ||
+      priorSchemaFailure.contains("enum")
+    if (!namesObservation || !namesEnumeration) return ""
+    if (!priorSchemaFailure.contains("carried_gap_dispositions")) return ""
+    return """
+
+      evidence.observation is a closed token, not a description. Copy exactly one of:
+      resolution_verified or recurrence_verified.
+      REJECTED: any sentence or synonym in observation.
+      ACCEPTED: {"observation":"resolution_verified","artifact_ref":"Type.kt:Type.member","check_ref":"AC-006"}
+      Put the paragraph in summary only.
+    """.trimIndent()
+  }
+
   fun unreconciledReceipt(priorSchemaFailure: String): String {
     val namesReconciled = priorSchemaFailure.contains("reconciliation_evidence.reconciled") ||
       priorSchemaFailure.contains("reconciliation_evidence/reconciled")

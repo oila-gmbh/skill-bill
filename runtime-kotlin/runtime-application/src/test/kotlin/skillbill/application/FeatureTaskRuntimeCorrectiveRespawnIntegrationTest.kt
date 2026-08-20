@@ -61,15 +61,13 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
       validator = rejectingOnceValidator(rejectedBody),
     )
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    assertContains(blocked.blockedReason, "cap=1")
 
     val diagnostic = harness.io.database.rejectedDiagnostics().single { it.metadata.phaseId == "audit" }
-    val retryPrompt = schemaRetryPrompts(harness)[1]
-    assertTrue(retryPrompt.contains(rejectedBody), "repair section must carry the captured body")
-    assertContains(retryPrompt, "digest=${diagnostic.metadata.sha256}")
-    assertContains(retryPrompt, "utf8_bytes=${diagnostic.metadata.byteSize}")
     assertEquals(rejectedBody.encodeToByteArray().toList(), diagnostic.payload?.toList())
-    assertNoRawResponseSpanOutsideAuthorizedRepairSection(retryPrompt, rejectedBody, rawSpan)
+    assertEquals(1, auditPrompts(harness).size, "schema-invalid audit must not relaunch")
+    assertFalse(auditPrompts(harness).single().contains("REJECTED by the schema gate"))
   }
 
   @Test
@@ -105,17 +103,12 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
     )
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
-    assertContains(blocked.blockedReason, "cap=2")
+    assertContains(blocked.blockedReason, "cap=1")
 
-    val prompts = schemaRetryPrompts(harness)
-    assertEquals(2, prompts.size, "audit must reject twice then block")
+    val prompts = auditPrompts(harness)
+    assertEquals(1, prompts.size, "audit must reject once then block")
     assertFalse(prompts[0].contains("Untrusted prior phase output"), "first launch must omit repair section")
     assertFalse(prompts[0].contains("REJECTED by the schema gate"), "first launch must omit schema directive")
-    assertTrue(prompts[1].contains(firstBody))
-    assertTrue(prompts[1].contains("last salvage attempt"))
-    assertTrue(prompts[1].contains("Expected shape:"))
-    assertTrue(prompts[1].contains("if it still fails, the run blocks"))
-    assertFalse(prompts[1].contains("SKILL187-ATTEMPT-2"), "first retry must not carry the later attempt body")
   }
 
   @Test
@@ -159,15 +152,13 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
       },
     )
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
-
-    val auditRetry = harness.launcher.requests
-      .map { requireNotNull(it.skillRunRequest.promptOverride) }
-      .filter { phaseIdFromPrompt(it) == "audit" }[1]
-    assertTrue(auditRetry.contains("SKILL187-AUDIT-CURRENT"))
-    assertFalse(
-      auditRetry.contains("SKILL187-PLAN-STALE"),
-      "audit corrective retry must not inherit the prior plan capture",
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    assertEquals("plan", blocked.lastIncompletePhase)
+    assertTrue(
+      harness.launcher.requests.none {
+        phaseIdFromPrompt(requireNotNull(it.skillRunRequest.promptOverride)) == "audit"
+      },
+      "a schema-invalid plan must block before audit launches",
     )
   }
 
@@ -245,7 +236,10 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
       )
     }
 
-    val completing = harnessFor(failingPhase = "audit", failEveryAttempt = false)
+    val completing = runnerHarness(
+      runtimeConfig = RuntimeHarnessConfig(eventSink = throwingSink),
+      diagnostics = throwingDiagnostics,
+    )
     val completed = assertIs<FeatureTaskRuntimeRunReport.Completed>(completing.runner.run(completing.request()))
     assertTrue(completed.completedPhaseIds.contains("audit"))
 
@@ -348,11 +342,11 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
         },
       )
 
-      assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
-      val retryPrompt = schemaRetryPrompts(harness)[1]
-      assertTrue(retryPrompt.contains(rejectedBody))
-      assertRetryPromptNamesConstraint(retryPrompt, "phase-output-schema", payloadFreeConstraint)
-      assertNoRawResponseSpanOutsideAuthorizedRepairSection(retryPrompt, rejectedBody, sentinel)
+      assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+      assertEquals(1, auditAttempts)
+      val diagnostic = harness.io.database.rejectedDiagnostics().single { it.metadata.phaseId == "audit" }
+      assertEquals(rejectedBody.encodeToByteArray().toList(), diagnostic.payload?.toList())
+      assertFalse(auditPrompts(harness).single().contains("REJECTED by the schema gate"))
     }
   }
 
@@ -404,14 +398,10 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
       },
     )
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
-
-    val retry = schemaRetryPrompts(harness)[1]
-    assertContains(retry, "Rejected response body not included in this prompt")
-    assertContains(retry, "response_already_truncated")
-    assertContains(retry, "digest: $fullStreamDigest")
-    assertContains(retry, "utf8_bytes: $fullStreamBytes")
-    assertFalse(retry.contains("SKILL187-TRUNCATED-EXCERPT"), "truncated excerpt must not be framed as exact")
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    assertContains(blocked.blockedReason, "cap=1")
+    assertEquals(1, auditAttempts)
+    assertFalse(auditPrompts(harness).single().contains("SKILL187-TRUNCATED-EXCERPT"))
   }
 
   @Test
@@ -475,12 +465,10 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
       ),
     )
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
-
-    val retry = schemaRetryPrompts(harness)[1]
-    assertContains(retry, "Rejected response body not included in this prompt")
-    assertContains(retry, "Private diagnostic write degraded (conflict)")
-    assertFalse(retry.contains("rod_"), "degraded write must not fabricate a resolvable locator")
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    assertContains(blocked.blockedReason, "cap=1")
+    assertFalse(blocked.blockedReason.contains("rod_"), "degraded write must not fabricate a resolvable locator")
+    assertEquals(1, auditAttempts)
   }
 
   @Test
@@ -531,24 +519,12 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
         validator = realAuditValidator(),
       )
 
-      assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
-
-      val retry = harness.launcher.requests
-        .map { requireNotNull(it.skillRunRequest.promptOverride) }
-        .filter { phaseIdFromPrompt(it) == "audit" }[1]
-      assertMatchingSchemaInvalidRepairPrompt(retry, rejectedBody)
-      if (sentinel == Skill187SyntheticAuditResponses.OBSERVATION_SENTINEL) {
-        assertTrue(retry.contains("observation") || retry.contains("enumeration") || retry.contains("enum"))
-        assertNoRawResponseSpanOutsideAuthorizedRepairSection(retry, "blast_radius_inspected")
-      } else {
-        assertContains(retry, "artifact_ref")
-        assertTrue(
-          retry.contains("bounded pointer") || retry.contains("at most"),
-          "oversized artifact_ref must receive bounded-reference guidance",
-        )
-      }
+      val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+      assertContains(blocked.blockedReason, "cap=1")
+      assertEquals(1, auditAttempts)
       val diagnostic = harness.io.database.rejectedDiagnostics().single { it.metadata.phaseId == "audit" }
       assertEquals(rejectedBody.encodeToByteArray().toList(), diagnostic.payload?.toList())
+      assertNoRawResponseSpan(blocked.blockedReason, sentinel)
     }
   }
 
@@ -591,19 +567,14 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
       validator = realAuditValidator(),
     )
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
-    val retryPrompt = harness.launcher.requests
-      .map { requireNotNull(it.skillRunRequest.promptOverride) }
-      .filter { phaseIdFromPrompt(it) == "audit" }[1]
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    assertContains(blocked.blockedReason, "cap=1")
     assertPrivateDiagnosticRejection(
-      retryPrompt.substringBefore("Violated constraint:"),
+      blocked.blockedReason,
       "phase-output-schema",
       Skill187SyntheticAuditResponses.OBSERVATION_SENTINEL,
     )
-    assertNoRawResponseSpanOutsideAuthorizedRepairSection(
-      retryPrompt,
-      Skill187SyntheticAuditResponses.OBSERVATION_SENTINEL,
-    )
+    assertEquals(1, auditAttempts)
     val diagnostics = harness.io.database.rejectedDiagnostics().filter { it.metadata.phaseId == "audit" }
     assertTrue(diagnostics.isNotEmpty())
     diagnostics.forEach { row ->
@@ -611,13 +582,10 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
     }
   }
 
-  private fun schemaRetryPrompts(harness: RunnerHarness): List<String> {
-    val prompts = harness.launcher.requests
+  private fun auditPrompts(harness: RunnerHarness): List<String> =
+    harness.launcher.requests
       .map { requireNotNull(it.skillRunRequest.promptOverride) }
       .filter { phaseIdFromPrompt(it) == "audit" }
-    assertTrue(prompts.size >= 2, "the audit phase must have retried at least once")
-    return prompts
-  }
 
   private fun realAuditValidator(): FeatureTaskRuntimePhaseOutputValidator =
     object : FeatureTaskRuntimePhaseOutputValidator {

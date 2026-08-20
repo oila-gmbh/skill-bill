@@ -719,9 +719,21 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     )
     assertContains(
       auditPrompt,
-      "\"satisfied\" or \"gaps_found\"",
+      "satisfied | gaps_found",
       false,
       "audit names the verdict values",
+    )
+    assertContains(
+      auditPrompt,
+      "for audit, top-level \"verdict\" is REQUIRED",
+      false,
+      "audit contradicts the optional-verdict bullet",
+    )
+    assertContains(
+      auditPrompt,
+      "resolution_verified | recurrence_verified",
+      false,
+      "audit names the closed observation tokens",
     )
     assertContains(auditPrompt, "\"verdict\": optional top-level string", false, "top-level verdict is documented")
     assertContains(auditPrompt, "TEST EXCLUSION", false, "audit makes the test-only exclusion explicit")
@@ -802,10 +814,43 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       false,
       "reinterpretation of the criterion cannot reopen a repaired gap",
     )
+    assertContains(
+      followUpPrompt,
+      "resolution_verified | recurrence_verified",
+      false,
+      "follow-up names the closed observation tokens",
+    )
+    assertContains(
+      followUpPrompt,
+      "COPY this satisfied follow-up envelope",
+      false,
+      "follow-up supplies a copyable envelope with the carried gap ids",
+    )
+    assertContains(followUpPrompt, "\"observation\":\"resolution_verified\"", false, "the copyable envelope uses the token")
+    assertContains(
+      followUpPrompt,
+      "example of REJECTED",
+      false,
+      "follow-up shows a prose observation as rejected",
+    )
     assertFalse(
       followUpPrompt.contains("INITIAL AUDIT SCOPE"),
       "a carried-gap round must not rescan the full criterion surface",
     )
+  }
+
+  @Test
+  fun `carried disposition observation enumeration failure names the closed token set`() {
+    val retry = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("audit", auditRepairState = carriedGapRepairState()),
+      priorSchemaFailure =
+      "produced_outputs.carried_gap_dispositions[0].evidence.observation: does not have a value in the " +
+        "enumeration [\"resolution_verified\", \"recurrence_verified\"]",
+    )
+    assertContains(retry, "closed token", false, "the correction must say observation is not prose")
+    assertContains(retry, "resolution_verified or recurrence_verified", false, "the closed set must be named")
+    assertContains(retry, "Put the paragraph in summary only", false, "prose is redirected off observation")
   }
 
   @Test

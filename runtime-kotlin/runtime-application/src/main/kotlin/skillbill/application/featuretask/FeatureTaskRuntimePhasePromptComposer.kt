@@ -216,6 +216,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     return base + structuralRepairNote + repairProjection + remediationCorrection +
       unparseableRootCorrection(priorSchemaFailure) +
       FeatureTaskRuntimeSchemaFailureCorrections.lengthViolation(priorSchemaFailure) +
+      FeatureTaskRuntimeSchemaFailureCorrections.closedEnumeration(priorSchemaFailure) +
       FeatureTaskRuntimeSchemaFailureCorrections.unreconciledReceipt(priorSchemaFailure)
   }
 
@@ -259,9 +260,7 @@ object FeatureTaskRuntimePhasePromptComposer {
 
   private fun producedOutputsSkeletonEntry(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String =
     when (briefing.phaseId) {
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT ->
-        "\"${FeatureTaskRuntimeVerificationSignalKeys.AUDIT_GAPS}\": [], " +
-          "\"${FeatureTaskRuntimeVerificationSignalKeys.AUDIT_NON_BLOCKING_FINDINGS}\": []"
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT -> auditProducedOutputsSkeleton(briefing)
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW ->
         "\"${FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS}\": [], " +
           "\"${FeatureTaskRuntimeVerificationSignalKeys.REVIEW_RUN_ID}\": \"<the Review run ID this pass " +
@@ -273,6 +272,22 @@ object FeatureTaskRuntimePhasePromptComposer {
           "\"repair_item_results\": ${repairItemResultsJson(briefing.auditRepairItemIds)}"
       }
     }
+
+  private fun auditProducedOutputsSkeleton(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String {
+    val gaps = "\"${FeatureTaskRuntimeVerificationSignalKeys.AUDIT_GAPS}\": []"
+    val nonBlocking =
+      "\"${FeatureTaskRuntimeVerificationSignalKeys.AUDIT_NON_BLOCKING_FINDINGS}\": []"
+    if (briefing.unresolvedAuditGapIds.isEmpty()) return "$gaps, $nonBlocking"
+    val dispositions = briefing.unresolvedAuditGapIds.joinToString(",") { id ->
+      "{\"gap_id\":\"$id\",\"status\":\"resolved\",\"evidence\":{" +
+        "\"observation\":\"resolution_verified\",\"artifact_ref\":\"Type.kt:Type.member\"," +
+        "\"check_ref\":\"AC-001\"}}"
+    }
+    return "$gaps, $nonBlocking, \"carried_gap_dispositions\": [$dispositions], " +
+      "\"blast_radius_inspection\": {\"inspected_paths\":[\"Type.kt\"],\"newly_introduced_gap_ids\":[]," +
+      "\"evidence\":{\"observation\":\"resolution_verified\",\"artifact_ref\":\"Type.kt\"," +
+      "\"check_ref\":\"AC-001\"}}"
+  }
 
   // The forward phase order as prose, derived from the single topology source so the briefing can
   // never drift from the graph the runtime actually drives. Loop-only phases are excluded because a
@@ -479,8 +494,13 @@ object FeatureTaskRuntimePhasePromptComposer {
       "      than fabricating a sequence identity; never invent or guess a digest or a count."
 
   private fun auditProducedOutputsAddendum(verdict: String, briefing: FeatureTaskRuntimePhaseLaunchBriefing): String =
-    "\n    - This is a VERIFYING phase. Set top-level \"$verdict\" to \"satisfied\" or \"gaps_found\" and\n" +
-      "      emit exactly one shallow produced_outputs.gaps array. Use [] for satisfied. For gaps_found,\n" +
+    "\n    - This is a VERIFYING phase. Ignore the optional-verdict bullet above: for audit, top-level " +
+      "\"$verdict\" is REQUIRED. Copy exactly one token: satisfied | gaps_found.\n" +
+      "      REJECTED: omitting verdict; any other string; nesting verdict only inside produced_outputs.\n" +
+      "      ACCEPTED root: {\"contract_version\":\"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION\"," +
+      "\"phase_id\":\"audit\",\"status\":\"completed\",\"verdict\":\"satisfied\"," +
+      "\"summary\":\"<one sentence>\",\"produced_outputs\":{\"gaps\":[]}}.\n" +
+      "      Emit exactly one shallow produced_outputs.gaps array. Use [] for satisfied. For gaps_found,\n" +
       "      each entry contains only criterion, severity (blocker or major), location, optional file, " +
       "issue, and fix.\n" +
       "      location MUST be ClassName or ClassName.memberName, never a package-qualified class name.\n" +
@@ -491,19 +511,7 @@ object FeatureTaskRuntimePhasePromptComposer {
       "      A gaps entry never carries a gap ID, a repair-item ID, a dependency array, acceptance-criterion\n" +
       "      text, or repeated paths, and produced_outputs never carries unmet_criteria, audit_repair_plan,\n" +
       "      or prior_gap_dispositions; the runtime derives its durable repair model.\n" +
-      "      Carried gaps are the exception: they are addressed by gap_id, in\n" +
-      "      produced_outputs.carried_gap_dispositions (one entry per carried gap you verified is no longer\n" +
-      "      present) and produced_outputs.blast_radius_inspection (required before any satisfied verdict in a\n" +
-      "      follow-up round). Example:\n" +
-      "      \"carried_gap_dispositions\":[{\"gap_id\":\"ac-006-gap-1\",\"status\":\"resolved\",\n" +
-      "       \"evidence\":{\"observation\":\"resolution_verified\",\"artifact_ref\":\"AuditGates.kt:56\",\n" +
-      "       \"check_ref\":\"AC-006\"}}],\n" +
-      "      \"blast_radius_inspection\":{\"inspected_paths\":[\"AuditGates.kt\"],\n" +
-      "       \"newly_introduced_gap_ids\":[],\"evidence\":{\"observation\":\"resolution_verified\",\n" +
-      "       \"artifact_ref\":\"AuditGates.kt\",\"check_ref\":\"AC-006\"}}.\n" +
-      "      status resolved pairs only with observation resolution_verified, and status recurring only with\n" +
-      "      recurrence_verified. A carried gap you dispositioned resolved must NOT also appear in gaps, and a\n" +
-      "      carried gap that still recurs is re-reported in gaps instead of dispositioned.\n" +
+      auditCarriedDispositionContract() +
       "      Minor and nit entries go only in produced_outputs.non_blocking_findings and they\n" +
       "      NEVER trigger gaps_found. Those entries use their own shape, not the gap shape:\n" +
       "      severity (minor or nit) is required, acceptance_criterion_ref and message are expected.\n" +
@@ -517,6 +525,21 @@ object FeatureTaskRuntimePhasePromptComposer {
       "      evidenced, emit satisfied even if test coverage is absent or inadequate.\n" +
       auditRoundScopeAddendum(briefing) +
       auditClosedCriterionAddendum(briefing.durablyClosedCriterionRefs)
+
+  private fun auditCarriedDispositionContract(): String =
+    "      Carried gaps use produced_outputs.carried_gap_dispositions. Each evidence.observation is a " +
+      "closed token, not a sentence. Copy exactly one of: resolution_verified | recurrence_verified.\n" +
+      "      Pairing is closed too: status resolved ONLY with observation resolution_verified; status " +
+      "recurring ONLY with observation recurrence_verified.\n" +
+      "      ACCEPTED: {\"gap_id\":\"ac-006-gap-1\",\"status\":\"resolved\"," +
+      "\"evidence\":{\"observation\":\"resolution_verified\",\"artifact_ref\":\"AuditGates.kt:AuditGates\"," +
+      "\"check_ref\":\"AC-006\"}}.\n" +
+      "      REJECTED observation values: any paragraph, synonym, or description of what you verified " +
+      "(example of REJECTED: \"The governed prose now states one review pass\").\n" +
+      "      Put that paragraph in summary only. artifact_ref is one path or path:symbol; check_ref is " +
+      "AC-###. A resolved carried gap MUST NOT also appear in gaps; a still-recurring carried gap is " +
+      "re-reported in gaps instead of dispositioned. Follow-up satisfied also requires " +
+      "produced_outputs.blast_radius_inspection whose evidence.observation is exactly resolution_verified.\n"
 
   private fun auditRoundScopeAddendum(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String =
     if (briefing.unresolvedAuditGapIds.isEmpty()) {
@@ -537,13 +560,26 @@ object FeatureTaskRuntimePhasePromptComposer {
         "      disposition is legal ONLY when the carried gap's ORIGINAL failure_evidence check still fails at its\n" +
         "      recorded artifact_ref; a stricter reading of the criterion, a new concern at the same location, or\n" +
         "      a preference for a different repair approach never makes a resolved gap recurring. Emit a\n" +
-        "      compact gap only when one of the carried gaps still recurs. Every carried gap you verified is\n" +
-        "      fixed needs its own produced_outputs.carried_gap_dispositions entry with status resolved and\n" +
-        "      resolution_verified evidence: silence about a carried gap claims nothing and is rejected. A\n" +
-        "      satisfied verdict in this round therefore carries gaps [], one carried_gap_dispositions entry\n" +
-        "      per carried gap, and produced_outputs.blast_radius_inspection over the repair batch's changed\n" +
-        "      production paths.\n"
+        "      compact gap only when one of the carried gaps still recurs. Silence about a carried gap claims " +
+        "nothing and is rejected.\n" +
+        auditFollowUpSatisfiedExample(briefing.unresolvedAuditGapIds)
     }
+
+  private fun auditFollowUpSatisfiedExample(gapIds: List<String>): String {
+    val dispositions = gapIds.joinToString(",") { id ->
+      "{\"gap_id\":\"$id\",\"status\":\"resolved\",\"evidence\":{" +
+        "\"observation\":\"resolution_verified\",\"artifact_ref\":\"Type.kt:Type.member\"," +
+        "\"check_ref\":\"AC-001\"}}"
+    }
+    return "      COPY this satisfied follow-up envelope (keep the gap_id values; replace Type.kt:Type.member " +
+      "and AC-001 with the real pointer). Do not put prose in observation:\n" +
+      "      {\"contract_version\":\"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION\",\"phase_id\":\"audit\"," +
+      "\"status\":\"completed\",\"verdict\":\"satisfied\",\"summary\":\"Carried gaps are closed.\"," +
+      "\"produced_outputs\":{\"gaps\":[],\"carried_gap_dispositions\":[$dispositions]," +
+      "\"blast_radius_inspection\":{\"inspected_paths\":[\"Type.kt\"],\"newly_introduced_gap_ids\":[]," +
+      "\"evidence\":{\"observation\":\"resolution_verified\",\"artifact_ref\":\"Type.kt\"," +
+      "\"check_ref\":\"AC-001\"}}}}.\n"
+  }
 
   private fun auditClosedCriterionAddendum(closedCriterionRefs: List<String>): String =
     if (closedCriterionRefs.isEmpty()) {

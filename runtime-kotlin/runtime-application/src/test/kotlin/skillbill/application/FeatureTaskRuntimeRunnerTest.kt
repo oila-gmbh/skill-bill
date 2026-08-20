@@ -595,7 +595,8 @@ class FeatureTaskRuntimeRunnerTest {
       ),
     )
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    assertEquals("audit", blocked.lastIncompletePhase)
 
     val diagnostic = harness.io.database.rejectedDiagnostics().single { it.metadata.phaseId == "audit" }
     assertContentEquals("""{"private":"goal-child-secret"}""".encodeToByteArray(), diagnostic.payload)

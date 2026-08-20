@@ -42,11 +42,11 @@ class FeatureTaskRuntimeRejectionConstraintPrivacyTest {
       )
     }
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
-
-    val retryPrompt = schemaRetryPrompts(harness)[1]
-    assertRetryPromptNamesConstraint(retryPrompt, "phase-output-schema", payloadFreeConstraint)
-    assertNoRawResponseSpan(retryPrompt, rawSpan, valueBearingReason, "offending value")
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    assertContains(blocked.blockedReason, "cap=1")
+    assertEquals(1, auditPrompts(harness).size)
+    assertPrivateDiagnosticRejection(blocked.blockedReason, "phase-output-schema", rawSpan, payloadFreeConstraint)
+    assertNoRawResponseSpan(blocked.blockedReason, rawSpan)
   }
 
   @Test
@@ -59,7 +59,8 @@ class FeatureTaskRuntimeRejectionConstraintPrivacyTest {
       )
     }
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    assertContains(blocked.blockedReason, "cap=1")
 
     val diagnostic = harness.io.database.rejectedDiagnostics().single { it.metadata.phaseId == "audit" }
     assertContains(diagnostic.metadata.reason, rawSpan)
@@ -102,11 +103,9 @@ class FeatureTaskRuntimeRejectionConstraintPrivacyTest {
       )
     }
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
-
-    val retryPrompt = schemaRetryPrompts(harness)[1]
-    assertRetryPromptNamesConstraint(retryPrompt, "audit-repair-plan-schema", payloadFreeConstraint)
-    assertNoRawResponseSpan(retryPrompt, rawSpan)
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    assertContains(blocked.blockedReason, "cap=1")
+    assertPrivateDiagnosticRejection(blocked.blockedReason, "audit-repair-plan-schema", rawSpan, payloadFreeConstraint)
     val diagnostic = harness.io.database.rejectedDiagnostics().single { it.metadata.phaseId == "audit" }
     assertContains(diagnostic.metadata.reason, rawSpan)
   }
@@ -121,13 +120,9 @@ class FeatureTaskRuntimeRejectionConstraintPrivacyTest {
       )
     }
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
-
-    val retryPrompt = schemaRetryPrompts(harness)[1]
-    assertContains(retryPrompt, "Rejected output violated 'phase-output-schema'")
-    // Null payloadFreeReason is the contract's fallback case: the prompt withholds the constraint entirely
-    // rather than reaching for the value-bearing reason.
-    assertNoRawResponseSpan(retryPrompt, rawSpan, "Violated constraint: ")
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    assertContains(blocked.blockedReason, "Rejected output violated 'phase-output-schema'")
+    assertNoRawResponseSpan(blocked.blockedReason, rawSpan, "Violated constraint: ")
   }
 
   @Test
@@ -159,21 +154,17 @@ class FeatureTaskRuntimeRejectionConstraintPrivacyTest {
       },
     )
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
-
-    val retryPrompt = schemaRetryPrompts(harness)[1]
-    assertRetryPromptNamesConstraint(retryPrompt, "phase-output-schema", payloadFreeConstraint)
-    assertMatchingSchemaInvalidRepairPrompt(retryPrompt, rejectedBody, payloadFreeConstraint)
-    assertNoRawResponseSpanOutsideAuthorizedRepairSection(retryPrompt, rawSpan, "offending value")
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    assertContains(blocked.blockedReason, "cap=1")
+    assertEquals(1, auditAttempts)
+    val diagnostic = harness.io.database.rejectedDiagnostics().single { it.metadata.phaseId == "audit" }
+    assertEquals(rejectedBody.encodeToByteArray().toList(), diagnostic.payload?.toList())
   }
 
-  private fun schemaRetryPrompts(harness: RunnerHarness): List<String> {
-    val prompts = harness.launcher.requests
+  private fun auditPrompts(harness: RunnerHarness): List<String> =
+    harness.launcher.requests
       .map { requireNotNull(it.skillRunRequest.promptOverride) }
       .filter { phaseIdFromPrompt(it) == "audit" }
-    assertTrue(prompts.size >= 2, "the audit phase must have retried at least once")
-    return prompts
-  }
 
   private fun rejectingHarness(error: (String) -> Throwable): RunnerHarness {
     var auditAttempts = 0
