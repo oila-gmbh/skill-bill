@@ -45,6 +45,10 @@ fun loadReviewAccounting(connection: Connection, reviewId: String): ReviewAccoun
         quarantineReviewAccounting(connection, reviewId, declaredVersion)
         return@use null
       }
+      if (payloadCarriesLegacyEvidenceUnreviewableSegment(payload)) {
+        quarantineReviewAccounting(connection, reviewId, declaredVersion)
+        return@use null
+      }
       ReviewAccountingRecord(
         reviewId,
         rows.getString("packet_digest"),

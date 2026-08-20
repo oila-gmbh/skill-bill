@@ -64,8 +64,8 @@ import skillbill.review.ReviewStageDegradationSelection
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.ReviewExecutionModePolicy
 import skillbill.review.context.ReviewTreeAccounting
-import skillbill.review.context.model.LANE_EVIDENCE_BYTES_DIMENSION
 import skillbill.review.context.model.GovernedReviewLaunch
+import skillbill.review.context.model.LANE_EVIDENCE_BYTES_DIMENSION
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ResolvedReviewExecutionMode
 import skillbill.review.context.model.ReviewAccountingCounters
@@ -92,9 +92,9 @@ import skillbill.review.context.model.SpecIntentProjectionResolveRequest
 import skillbill.review.context.model.SpecIntentResolution
 import skillbill.review.context.model.TokenOwnership
 import skillbill.review.context.model.asFailedLaneRun
-import skillbill.review.context.model.withBrokerEvidenceRefusal
 import skillbill.review.context.model.structuredString
 import skillbill.review.context.model.toCodeReviewExecutionMode
+import skillbill.review.context.model.withBrokerEvidenceRefusal
 import skillbill.review.model.ParallelReviewLaneResult
 import skillbill.review.model.ParallelReviewMergeResult
 import skillbill.review.model.ParallelReviewMergedFinding
@@ -421,7 +421,7 @@ class ParallelCodeReviewRunner(
    * Records the launch plan for a runtime-launched review at the moment it is resolved, so the run's
    * lane attribution comes from the plan itself rather than round-tripping through review text.
    * Disposition stays non-complete until [recordLaneDispositions] observes a durable single-pass
-   * result, except budget-unreviewable segments which are incomplete immediately.
+   * result, except segmentation-unreviewable entries which are incomplete immediately.
    */
   private fun recordPlannedLanes(
     reviewRunId: String?,
@@ -1664,10 +1664,13 @@ class ParallelCodeReviewRunner(
       .toSet()
     val deniedUnits = listOf(outcomes.lane1, outcomes.lane2)
       .flatMap { outcome ->
-        outcome.accounting
-          ?.takeIf { it.budgetDimension == LANE_EVIDENCE_BYTES_DIMENSION }
+        val fromAccounting = (outcome.specialistAccounting + listOfNotNull(outcome.accounting))
+          .filter { it.budgetDimension == LANE_EVIDENCE_BYTES_DIMENSION }
+          .flatMap { it.unreviewedUnits }
+        val fromOutcome = outcome.takeIf { it.budgetDimension == LANE_EVIDENCE_BYTES_DIMENSION }
           ?.unreviewedUnits
           .orEmpty()
+        fromAccounting + fromOutcome
       }
       .filter { it in assignedUnits }
       .distinct()
@@ -1681,12 +1684,11 @@ class ParallelCodeReviewRunner(
   private fun brokerEvidenceCompletionState(
     completion: ReviewLaneCompletionState,
     accounting: ReviewLaneAccounting,
-  ): ReviewLaneCompletionState =
-    if (accounting.budgetDimension == LANE_EVIDENCE_BYTES_DIMENSION) {
-      completion.withBrokerEvidenceRefusal(accounting.unreviewedUnits)
-    } else {
-      completion
-    }
+  ): ReviewLaneCompletionState = if (accounting.budgetDimension == LANE_EVIDENCE_BYTES_DIMENSION) {
+    completion.withBrokerEvidenceRefusal(accounting.unreviewedUnits)
+  } else {
+    completion
+  }
 
   private fun aggregateBundleCompletion(states: List<ReviewLaneCompletionState>): ReviewLaneCompletionState {
     if (states.isEmpty()) {

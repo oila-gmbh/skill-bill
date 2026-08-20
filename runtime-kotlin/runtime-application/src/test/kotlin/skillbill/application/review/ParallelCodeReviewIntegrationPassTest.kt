@@ -52,6 +52,10 @@ class ParallelCodeReviewIntegrationPassTest {
     )
     assertTrue(prompt.contains("do not re-run their rubrics"))
     assertTrue(prompt.contains("Specialist lane summaries"))
+    assertFalse(
+      prompt.contains("Coverage gap — this lane left unreviewed:"),
+      "Complete lanes must not tell the integration pass to compensate for a non-gap.",
+    )
   }
 
   @Test fun `specialist worker count equals lane count and does not move with commit count`() {

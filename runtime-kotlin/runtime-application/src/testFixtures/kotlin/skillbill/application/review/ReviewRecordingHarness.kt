@@ -39,6 +39,7 @@ import skillbill.ports.scaffold.InstalledPlatformPackCatalogPort
 import skillbill.ports.scaffold.ScaffoldCatalogGateway
 import skillbill.ports.scaffold.model.PilotedPlatformPackProjection
 import skillbill.review.context.ReviewContextEnvelopeValidator
+import skillbill.review.context.model.LANE_EVIDENCE_BYTES_DIMENSION
 import skillbill.review.context.model.ProviderTokenUsage
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.model.ParallelReviewMergedFinding
@@ -521,3 +522,21 @@ fun simulateGovernedEvidenceReads(request: SkillRunRequest) {
 }
 
 private val OWNED_PATH = Regex("\"([^\"]+)\"")
+
+/**
+ * The harness broker with one lane-evidence denial injected where the runner reads it. A fixture
+ * packet carries no materializable hunk bodies, so a byte-driven refusal cannot be provoked here.
+ */
+fun brokerDenyingUnit(deniedPath: String): skillbill.ports.review.ReviewEvidenceBrokerFactory =
+  skillbill.ports.review.ReviewEvidenceBrokerFactory { binding ->
+    val delegate = skillbill.infrastructure.fs.FileSystemReviewEvidenceBrokerFactory().brokerFor(binding)
+    val hunkId = binding.projectedHunks.first { it.path == deniedPath }.hunkId
+    val commitSha = binding.assignment.assignedBundle.entries.first { hunkId in it.hunkIds }.commitSha
+    val deniedUnit = "$commitSha@$deniedPath"
+    object : skillbill.ports.review.ReviewEvidenceBroker by delegate {
+      override fun accounting(): skillbill.ports.review.model.ReviewLaneAccounting = delegate.accounting().copy(
+        budgetDimension = LANE_EVIDENCE_BYTES_DIMENSION,
+        unreviewedUnits = listOf(deniedUnit),
+      )
+    }
+  }

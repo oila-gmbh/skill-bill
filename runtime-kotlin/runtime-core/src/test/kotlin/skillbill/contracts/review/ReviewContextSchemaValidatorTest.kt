@@ -434,6 +434,22 @@ class ReviewContextSchemaValidatorTest {
     assertTrue("2.1" in failure.reason)
   }
 
+  @Test fun `incomplete launch bundle without budget dimension is rejected`() {
+    val launch =
+      GovernedReviewLaunch(assignment, packet, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
+    val envelope = launch.toLaunchEnvelope().asWireMap().toMutableMap()
+
+    @Suppress("UNCHECKED_CAST")
+    val bundle = (envelope["bundle"] as Map<String, Any?>).toMutableMap()
+    bundle["lane_disposition"] = "incomplete"
+    bundle["unreviewed_segment_ids"] = listOf("unreviewable")
+    bundle.remove("budget_dimension")
+    envelope["bundle"] = bundle
+    assertFailsWith<InvalidReviewContextSchemaError> {
+      ReviewContextSchemaValidator.validateLaunch(envelope, "launch")
+    }
+  }
+
   @Test fun `index hunks reject inlined diff bodies on parent assignment and launch`() {
     val parent = packet.toParentPacketEnvelope().asWireMap().toMutableMap()
 

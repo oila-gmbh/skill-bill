@@ -177,9 +177,9 @@ data class ReviewLaneCompletionState(
   val unreviewedSegmentIds: List<String> = emptyList(),
   val budgetDimension: String? = null,
   /**
-   * The concrete review units budget exhaustion left unreviewed, as `commit@path` labels. Reporting
-   * has to name what was not covered; a segment id alone tells a reader nothing about which code
-   * went unreviewed.
+   * The concrete review units the lane left unreviewed, as `commit@path` labels. Reporting has to
+   * name what was not covered; a segment id alone tells a reader nothing about which code went
+   * unreviewed.
    */
   val unreviewedUnits: List<String> = emptyList(),
 ) {
@@ -301,43 +301,7 @@ fun ReviewLaneBundleSegment.toAccounting(): ReviewLaneSegmentAccounting = Review
 
 const val LANE_EVIDENCE_BYTES_DIMENSION: String = "lane_evidence_bytes"
 
-const val EVIDENCE_UNREVIEWABLE_SEGMENT_ID: String = "evidence-unreviewable"
-
-fun ReviewLaneCompletionState.withLaneEvidenceBudget(
-  entries: List<ReviewLaneAssembledEntry>,
-  maxLaneEvidenceBytes: Long,
-): ReviewLaneCompletionState {
-  if (disposition == ReviewLaneReviewDisposition.INCOMPLETE) return this
-  var used = 0L
-  val undelivered = mutableListOf<ReviewLaneAssembledEntry>()
-  var overflow = false
-  for (entry in entries) {
-    val size = entry.hunk.contentBytes
-    if (overflow || used + size > maxLaneEvidenceBytes) {
-      overflow = true
-      undelivered += entry
-    } else {
-      used += size
-    }
-  }
-  if (!overflow) return this
-  return copy(
-    disposition = ReviewLaneReviewDisposition.INCOMPLETE,
-    unreviewedSegmentIds = listOf(EVIDENCE_UNREVIEWABLE_SEGMENT_ID),
-    budgetDimension = LANE_EVIDENCE_BYTES_DIMENSION,
-    unreviewedUnits = undelivered.map { "${it.commitSha}@${it.hunk.path}" }.distinct(),
-    segments = segments + ReviewLaneSegmentAccounting(
-      segmentId = EVIDENCE_UNREVIEWABLE_SEGMENT_ID,
-      measuredBytes = undelivered.sumOf { it.hunk.contentBytes },
-      entryCount = undelivered.size,
-      compositionDigest = sha256Hex(canonicalFieldList(undelivered.map { it.canonical })),
-    ),
-  )
-}
-
-fun ReviewLaneCompletionState.withBrokerEvidenceRefusal(
-  brokerDeniedUnits: List<String>,
-): ReviewLaneCompletionState {
+fun ReviewLaneCompletionState.withBrokerEvidenceRefusal(brokerDeniedUnits: List<String>): ReviewLaneCompletionState {
   val distinct = brokerDeniedUnits.distinct()
   require(distinct.isNotEmpty()) { "Broker evidence refusal must name at least one denied unit." }
   if (

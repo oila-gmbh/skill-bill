@@ -11,10 +11,10 @@ data class ReviewLaneAggregationInput(
 )
 
 /**
- * Coverage honesty for one review. A lane that ended incomplete — budget exhaustion, or a parent
- * agent run that did not succeed — is not clean
- * coverage, and the integration pass never offsets it: the integration pass reviews cross-commit
- * behavior over what the lanes *did* review, so it has nothing to say about what they did not.
+ * Coverage honesty for one review. A lane that ended incomplete — broker refusal, segmentation
+ * unreviewable entries, or a failed worker run — is not clean coverage, and the integration pass
+ * never offsets it: the integration pass reviews cross-commit behavior over what the lanes *did*
+ * review, so it has nothing to say about what they did not.
  */
 data class ReviewCoverageReport(
   val cleanLanes: List<String>,

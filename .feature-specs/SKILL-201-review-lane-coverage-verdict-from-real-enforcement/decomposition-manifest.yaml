@@ -3,24 +3,24 @@ contract_version: "0.5"
 issue_key: "SKILL-201"
 feature_name: "review-lane-coverage-verdict-from-real-enforcement"
 parent_spec_path: ".feature-specs/SKILL-201-review-lane-coverage-verdict-from-real-enforcement/spec.md"
-status: "pending"
+status: "blocked"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
 feature_branch: "feat/SKILL-201-review-lane-coverage-verdict-from-real-enforcement"
 stack_branches: []
 current_subtask_intent:
-  subtask_id: 1
-  action: "start"
+  subtask_id: 4
+  action: "blocked"
 subtasks:
 - id: 1
   name: "Sever projection from completion path"
   spec_path: ".feature-specs/SKILL-201-review-lane-coverage-verdict-from-real-enforcement/spec_subtask_1_sever_projection_from_completion.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260820-074400-re72"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -28,12 +28,12 @@ subtasks:
 - id: 2
   name: "Broker refusal incomplete verdict"
   spec_path: ".feature-specs/SKILL-201-review-lane-coverage-verdict-from-real-enforcement/spec_subtask_2_broker_refusal_incomplete_verdict.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260820-081437-lcbd"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -44,12 +44,12 @@ subtasks:
 - id: 3
   name: "Per-lane budget derivation"
   spec_path: ".feature-specs/SKILL-201-review-lane-coverage-verdict-from-real-enforcement/spec_subtask_3_per_lane_budget_derivation.md"
-  status: "pending"
+  status: "complete"
   branch: null
   commit_sha: null
-  workflow_id: null
+  workflow_id: "wftr-20260820-132805-yx54"
   blocked_reason: null
-  last_resumable_step: null
+  last_resumable_step: "commit_push"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []
@@ -60,12 +60,22 @@ subtasks:
 - id: 4
   name: "Reporting schema and projections"
   spec_path: ".feature-specs/SKILL-201-review-lane-coverage-verdict-from-real-enforcement/spec_subtask_4_reporting_schema_projections.md"
-  status: "pending"
+  status: "blocked"
   branch: null
   commit_sha: null
-  workflow_id: null
-  blocked_reason: null
-  last_resumable_step: null
+  workflow_id: "wftr-20260820-161954-c9oy"
+  blocked_reason: "Feature-task-runtime could not re-attach to the persisted feature\
+    \ branch 'feat/SKILL-201-review-lane-coverage-verdict-from-real-enforcement' from\
+    \ 'main' (git checkout feat/SKILL-201-review-lane-coverage-verdict-from-real-enforcement\
+    \ failed with exit code 1: error: Your local changes to the following files would\
+    \ be overwritten by checkout:\n\truntime-kotlin/runtime-application/src/main/kotlin/skillbill/application/review/ParallelCodeReviewRunner.kt\n\
+    \truntime-kotlin/runtime-application/src/test/kotlin/skillbill/application/review/ReviewPreparationServiceTest.kt\n\
+    \truntime-kotlin/runtime-domain/src/main/kotlin/skillbill/review/context/model/ReviewContextModels.kt\n\
+    \truntime-kotlin/runtime-domain/src/main/kotlin/skillbill/review/context/model/ReviewLaneBundleAssembly.kt\n\
+    \truntime-kotlin/runtime-domain/src/test/kotlin/skillbill/review/context/model/ReviewLaneBundleAssemblyTest.kt\n\
+    Please commit your changes or stash them before you switch branches.\nAborting).\
+    \ Refusing to run file-mutating phases on the default branch."
+  last_resumable_step: "audit"
   linear_issue_id: null
   finalizing_agent_id: null
   participating_agent_ids: []

@@ -559,9 +559,9 @@ class ReviewPreparationServiceTest {
       "broker",
       ReviewContextBudgetPolicy.DEFAULT,
     )
-    assertEquals(ReviewLaneReviewDisposition.INCOMPLETE, launch.completionState.disposition)
-    assertEquals("lane_evidence_bytes", launch.completionState.budgetDimension)
-    assertTrue(launch.completionState.unreviewedUnits.isNotEmpty())
+    assertEquals(ReviewLaneReviewDisposition.COMPLETE, launch.completionState.disposition)
+    assertEquals(null, launch.completionState.budgetDimension)
+    assertTrue(launch.completionState.unreviewedUnits.isEmpty())
   }
 
   @Test fun `evidence overflow on one assignment leaves the sibling selected and complete`() {
@@ -599,8 +599,9 @@ class ReviewPreparationServiceTest {
       "broker",
       ReviewContextBudgetPolicy.DEFAULT,
     )
-    assertEquals(ReviewLaneReviewDisposition.INCOMPLETE, testing.completionState.disposition)
-    assertEquals("lane_evidence_bytes", testing.completionState.budgetDimension)
+    assertEquals(ReviewLaneReviewDisposition.COMPLETE, testing.completionState.disposition)
+    assertEquals(null, testing.completionState.budgetDimension)
+    assertTrue(testing.completionState.unreviewedUnits.isEmpty())
     assertEquals(ReviewLaneReviewDisposition.COMPLETE, security.completionState.disposition)
     assertTrue(result.packet.laneDecisions.single { it.lane == "testing" }.required)
   }

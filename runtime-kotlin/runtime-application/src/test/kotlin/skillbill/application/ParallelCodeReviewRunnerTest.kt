@@ -685,7 +685,7 @@ class ParallelCodeReviewInlineFindingTest {
 
 class ParallelCodeReviewSuppliedDiffTest {
   @Test
-  fun `evidence overflow leaves the sibling required lane selected and the parent composed`() {
+  fun `a huge changed file leaves the sibling required lane selected and the parent composed`() {
     val pack = sparseReviewPack(
       slug = "kotlin",
       requiredArea = "architecture",
@@ -710,11 +710,10 @@ class ParallelCodeReviewSuppliedDiffTest {
       assertTrue(prompt.contains("bill-kotlin-code-review-testing"))
       assertFalse(prompt.contains(huge))
     }
+    // Projected headroom is not unreviewed code: nothing refused a read, segmentation carried every
+    // entry, and both workers ran, so the only honest verdict is clean coverage.
     val coverage = assertNotNull(result.coverage)
-    assertFalse(coverage.isCleanCoverage)
-    assertTrue(
-      coverage.incompleteLanes.any { lane -> lane.unreviewedUnits.any { it.contains("src/Main.kt") } },
-    )
+    assertTrue(coverage.isCleanCoverage, coverage.render())
   }
 
   @Test

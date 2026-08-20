@@ -125,6 +125,33 @@ class ReviewAccountingProjectionRedactionTest {
     assertEquals(2, segments.single()["entry_count"])
   }
 
+  @Test fun `incomplete broker-refusal accounting projects refused segment ids only`() {
+    val digest = "a".repeat(64)
+    val summary = ReviewTreeAccounting.summarize(
+      "review-id",
+      "packet-digest",
+      ReviewAccountingInput(
+        lane = "parent",
+        assignmentDigest = "assignment-digest",
+        children = listOf(
+          ReviewAccountingInput(
+            lane = "architecture",
+            assignmentDigest = "architecture-digest",
+            terminalOutcome = "incomplete",
+            bundleCompositionDigest = digest,
+            segmentAccounting = listOf(ReviewLaneSegmentAccounting("seg-000", 128, 2, digest)),
+            unreviewedSegmentIds = listOf("seg-evidence-refused"),
+          ),
+        ),
+      ),
+    )
+
+    @Suppress("UNCHECKED_CAST")
+    val lane = (summary.toBoundedPayload()["lanes"] as List<Map<String, Any?>>).single()
+    assertEquals(listOf("seg-evidence-refused"), lane["unreviewed_segment_ids"])
+    assertFalse(lane.toString().contains("evidence-unreviewable"))
+  }
+
   @Test fun `bounded payload survives the durable record contract`() {
     val recorded = recordedReview().second
     val payload = recorded.toBoundedPayload()

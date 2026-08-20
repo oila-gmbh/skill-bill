@@ -279,28 +279,25 @@ class ReviewLaneBundleAssemblyTest {
     assertEquals(emptyList(), complete.unreviewedUnits)
   }
 
-  @Test fun `lane evidence overflow names undelivered units and does not truncate a hunk`() {
+  @Test fun `assembled bundle exceeding evidence budget with clean segmentation reports complete`() {
     val built = packet(listOf(unit("c1", "base", 0, listOf(hunkA, hunkB))))
-    val assembled = ReviewLaneAssembledBundle.assemble(
-      assignment(
-        built,
-        ReviewLaneBundle(listOf(ReviewLaneBundleEntry("c1", 0, listOf(hunkA.hunkId, hunkB.hunkId)))),
-      ),
+    val bundle = ReviewLaneBundle(listOf(ReviewLaneBundleEntry("c1", 0, listOf(hunkA.hunkId, hunkB.hunkId))))
+    val evidenceBudget = hunkA.contentBytes
+    require(hunkA.contentBytes + hunkB.contentBytes > evidenceBudget)
+    val governed = launch(
       built,
-    )
-    val complete = segmentAssembledBundle(assembled, maxLaneLaunchBytes = 10_000) { _ -> 10L }
-      .toCompletionState(assembled.compositionDigest)
-    val overflow = complete.withLaneEvidenceBudget(assembled.entries, maxLaneEvidenceBytes = hunkA.contentBytes)
-    val fits = complete.withLaneEvidenceBudget(
-      assembled.entries,
-      maxLaneEvidenceBytes = hunkA.contentBytes + hunkB.contentBytes,
+      bundle,
+      ReviewContextBudgetPolicy.DEFAULT.copy(
+        maxLaneEvidenceBytes = evidenceBudget,
+        maxEvidenceResultBytes = evidenceBudget,
+        maxLaneLaunchBytes = 10_000,
+      ),
     )
 
-    assertEquals(ReviewLaneReviewDisposition.INCOMPLETE, overflow.disposition)
-    assertEquals(LANE_EVIDENCE_BYTES_DIMENSION, overflow.budgetDimension)
-    assertEquals(listOf("c1@${hunkB.path}"), overflow.unreviewedUnits)
-    assertEquals(listOf(EVIDENCE_UNREVIEWABLE_SEGMENT_ID), overflow.unreviewedSegmentIds)
-    assertEquals(ReviewLaneReviewDisposition.COMPLETE, fits.disposition)
+    assertEquals(ReviewLaneReviewDisposition.COMPLETE, governed.completionState.disposition)
+    assertEquals(emptyList(), governed.completionState.unreviewedSegmentIds)
+    assertEquals(emptyList(), governed.completionState.unreviewedUnits)
+    assertEquals(null, governed.completionState.budgetDimension)
   }
 
   // AC-009: a bundle that fit the budget still is not clean coverage when the lane's run failed.

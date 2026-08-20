@@ -128,6 +128,45 @@ class ReviewAccountingDurableRedactionTest {
     }
   }
 
+  @Test fun `a legacy evidence-unreviewable segment quarantines and regenerates in band`() {
+    withConnection { connection ->
+      val summary = recordedReview().second
+      val current = summary.toBoundedPayload()
+
+      @Suppress("UNCHECKED_CAST")
+      val lanes = (current["lanes"] as List<Map<String, Any?>>).map { lane ->
+        LinkedHashMap(lane).apply {
+          this["unreviewed_segment_ids"] = listOf("evidence-unreviewable")
+          this["terminal_outcome"] = "incomplete"
+        }
+      }
+      val legacy = LinkedHashMap(current).apply { this["lanes"] = lanes }
+      connection.prepareStatement(
+        """
+        INSERT INTO review_accounting (review_id, packet_digest, bounded_payload_json, updated_at)
+        VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+        """.trimIndent(),
+      ).use { statement ->
+        statement.setString(1, REVIEW_RUN_ID)
+        statement.setString(2, summary.packetDigest)
+        statement.setString(3, JsonSupport.mapToJsonString(legacy))
+        statement.executeUpdate()
+      }
+
+      assertNull(loadReviewAccounting(connection, REVIEW_RUN_ID))
+      val quarantined = skillbill.db.telemetry.TelemetryOutboxStore(connection).listPending(null)
+      assertTrue(
+        quarantined.any { record ->
+          record.eventName == skillbill.review.model.REVIEW_STAGE_DEGRADATION_EVENT_NAME &&
+            record.payloadJson.contains("accounting_contract_quarantined")
+        },
+      )
+
+      upsertReviewAccounting(connection, ReviewAccountingRecord(REVIEW_RUN_ID, summary.packetDigest, current))
+      assertNotNull(loadReviewAccounting(connection, REVIEW_RUN_ID))
+    }
+  }
+
   @Test fun `review-finished telemetry carries bounded accounting and no measured content`() {
     withConnection { connection ->
       val summary = recordedReview().second

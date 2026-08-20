@@ -8,7 +8,6 @@ import skillbill.ports.review.ReviewEvidenceBroker
 import skillbill.ports.review.ReviewEvidenceBrokerFactory
 import skillbill.ports.review.model.GovernedReviewEvidenceEndpointDescriptor
 import skillbill.review.context.model.LANE_EVIDENCE_BYTES_DIMENSION
-import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewLaneReviewDisposition
 import skillbill.review.model.ReviewEvidenceBoundaryAccounting
 import skillbill.review.model.ReviewStageDegradationReason
@@ -372,11 +371,7 @@ class ParallelCodeReviewEvidenceBoundaryTest {
           "src/A.kt" to "a",
           "src/B.kt" to "b".repeat(200),
         ),
-        budget = ReviewContextBudgetPolicy.DEFAULT.copy(
-          maxLaneEvidenceBytes = 50,
-          maxEvidenceResultBytes = 50,
-          maxLaneLaunchBytes = 100_000,
-        ),
+        evidenceBrokerFactory = brokerDenyingUnit("src/B.kt"),
       ),
       recorder,
     ).run(

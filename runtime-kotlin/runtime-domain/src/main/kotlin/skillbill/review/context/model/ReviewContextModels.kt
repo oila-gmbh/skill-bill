@@ -1112,7 +1112,6 @@ data class GovernedReviewLaunch(
 
   val completionState: ReviewLaneCompletionState by lazy(LazyThreadSafetyMode.PUBLICATION) {
     segmentation.toCompletionState(assembledBundle.compositionDigest)
-      .withLaneEvidenceBudget(assembledBundle.entries, budget.maxLaneEvidenceBytes)
   }
 
   fun requireCodexForkTurns(forkTurns: String?) {
