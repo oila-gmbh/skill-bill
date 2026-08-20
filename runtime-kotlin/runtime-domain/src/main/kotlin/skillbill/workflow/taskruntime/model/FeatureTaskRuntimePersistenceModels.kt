@@ -432,6 +432,9 @@ data class FeatureTaskRuntimeDeliveredProjectionRecord(
 /** Terminal status persisted on a phase record that the runtime blocked on. */
 const val FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED: String = "blocked"
 
+/** Unstarted work: what a reopened phase record carries until the phase runs again. */
+const val FEATURE_TASK_RUNTIME_PHASE_STATUS_PENDING: String = "pending"
+
 /** Non-terminal and resumable: the subtask waits on a bounded operator decision, it is not blocked. */
 const val FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED: String = "paused"
 

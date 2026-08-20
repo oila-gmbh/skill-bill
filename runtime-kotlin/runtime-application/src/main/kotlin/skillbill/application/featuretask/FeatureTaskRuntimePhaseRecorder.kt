@@ -53,6 +53,7 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_LI
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_PENDING
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_QUARANTINED_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_RESOLVED_BRANCH_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_REVIEW_GENERATION_ARTIFACT_KEY
@@ -1975,12 +1976,17 @@ private data class WorkflowRowAdvance(
 // stays blocked even when it also carries a finished timestamp; otherwise a finished record is
 // completed. An unrecognized status loud-fails rather than silently producing an out-of-vocabulary
 // step status the engine would reject.
-private fun stepUpdatesFrom(records: Map<String, FeatureTaskRuntimePhaseRecord>): List<Map<String, Any?>> {
+internal fun stepUpdatesFrom(records: Map<String, FeatureTaskRuntimePhaseRecord>): List<Map<String, Any?>> {
   fun stepStatusFor(record: FeatureTaskRuntimePhaseRecord): String = when {
     record.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED -> FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED
     // A paused record is resumable, not finished: it keeps its paused step status even though the
     // pause is recorded with a finished timestamp.
     record.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED -> FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED
+    // A reopened record (asPendingForOperatorResume) is unstarted work, not finished work. It is
+    // checked ahead of the finished-timestamp branch so a reopen can never read as completed, and
+    // it must map at all: without it every operator reopen makes the next steps[] projection throw
+    // and the child exits before it can redo the phase.
+    record.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_PENDING -> FEATURE_TASK_RUNTIME_PHASE_STATUS_PENDING
     record.finishedAt != null -> "completed"
     record.status == "running" || record.status == "completed" -> record.status
     else -> throw InvalidWorkflowStateSchemaError(

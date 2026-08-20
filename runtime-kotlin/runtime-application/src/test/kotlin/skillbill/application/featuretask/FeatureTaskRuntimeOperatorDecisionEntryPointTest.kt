@@ -1,5 +1,6 @@
 package skillbill.application.featuretask
 
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.GoalSubtaskOperatorDecision
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -17,6 +18,28 @@ class FeatureTaskRuntimeOperatorDecisionEntryPointTest {
       GoalSubtaskOperatorDecision.entries.map { it.wireValue }.toSet(),
       "The CLI parses --operator-decision against exactly this vocabulary.",
     )
+  }
+
+  @Test
+  fun `a reopened phase record projects onto a pending step instead of failing the projection`() {
+    // asPendingForOperatorResume is the only writer of a pending phase record, and every recorder
+    // write projects records onto steps[]. With no mapping for pending the projection threw
+    // InvalidWorkflowStateSchemaError, so the child died at the first write after any reopen and the
+    // parent saw only a non-zero exit.
+    val reopened = FeatureTaskRuntimePhaseRecord(
+      phaseId = "plan_fix",
+      status = "blocked",
+      attemptCount = 13,
+      startedAt = "2026-08-19T20:07:08Z",
+      finishedAt = "2026-08-19T21:42:42Z",
+      resolvedAgentId = "cursor",
+      blockedReason = "an operator decision is required before implementation",
+    ).asPendingForOperatorResume()
+
+    val projected = stepUpdatesFrom(mapOf(reopened.phaseId to reopened)).single()
+
+    assertEquals("plan_fix", projected["step_id"])
+    assertEquals("pending", projected["status"], "a reopened phase is unstarted work, not completed work")
   }
 
   @Test
