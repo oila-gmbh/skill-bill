@@ -300,7 +300,6 @@ class ReviewLaneBundleAssemblyTest {
     assertEquals(null, governed.completionState.budgetDimension)
   }
 
-  // AC-009: a bundle that fit the budget still is not clean coverage when the lane's run failed.
   @Test fun `a failed lane run downgrades a complete state to incomplete naming its whole bundle`() {
     val built = packet(listOf(unit("c1", "base", 0, listOf(hunkA))))
     val assembled = ReviewLaneAssembledBundle.assemble(

@@ -1,5 +1,14 @@
 # Boundary History — runtime-domain
 
+## [2026-08-20] SKILL-201 subtask 1 — Sever coverage verdict from projected evidence budget
+Areas: runtime-domain/review/context/model
+- Removed `withLaneEvidenceBudget` from `GovernedReviewLaunch.completionState`; a lane whose worker run succeeded and whose segmentation stayed clean no longer flips to `incomplete` from a pre-flight sum of `entry.hunk.contentBytes` against `maxLaneEvidenceBytes`
+- Retired `EVIDENCE_UNREVIEWABLE_SEGMENT_ID` and the projection-only evidence-budget rewrite; `unreviewedUnits` may now come only from withheld or refused reads or a failed run, not from an allowance the broker never attempted to spend
+- Segmentation's `unreviewable` path for entries exceeding `maxLaneLaunchBytes` and `asFailedLaneRun` are unchanged; subtask 2 owns wiring broker refusal into completion
+- Pattern: keep enforcement (broker reads) and projection (pre-flight size sums) separate at the completion seam so coverage verdicts name only code the worker did not receive. reusable
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-08-19] Amend-aware checkpoint-identity contract
 Areas: runtime-domain/workflow/taskruntime, orchestration/contracts
 - `FeatureTaskRuntimeCheckpointIdentity` now requires `checkpointRef` to equal `featureTaskRuntimeCheckpointRefName(issueKey, subtaskId, sequenceNumber)`. The pattern alone only proved shape, so an inline-formatted or stale-subtask ref used to validate and then dedupe under an authority boundary its own record does not own; because the ref is the identity, that drift was invisible on every later read.
