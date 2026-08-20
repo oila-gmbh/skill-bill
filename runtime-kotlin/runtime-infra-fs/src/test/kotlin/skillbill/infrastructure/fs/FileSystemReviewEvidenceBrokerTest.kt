@@ -8,6 +8,7 @@ import skillbill.ports.review.model.ReviewEvidenceBatchRequest
 import skillbill.ports.review.model.ReviewEvidenceBrokerBinding
 import skillbill.ports.review.model.ReviewEvidenceRequest
 import skillbill.ports.review.model.ReviewExpansionAuthorizationRequest
+import skillbill.ports.review.model.ReviewRefusedOperationRecord
 import skillbill.ports.review.model.ReviewToolCall
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceLocatorReadPort
 import skillbill.review.context.model.ProviderTokenUsage
@@ -309,11 +310,17 @@ class FileSystemReviewEvidenceBrokerTest {
 
   @Test fun `absolute scratch rediscovery is typed before repository path validation`() {
     val root = repo("A.kt" to "assigned")
-    val result = broker(root, assignment(listOf("A.kt"))).readBatch(
+    val broker = broker(root, assignment(listOf("A.kt")))
+    val result = broker.readBatch(
       ReviewEvidenceBatchRequest.of(ReviewEvidenceRequest("security", "/tmp/review.diff")),
     )
 
     assertEquals("diff_artifact_rediscovery", result.results.single().forbidden?.category)
+    assertEquals(
+      listOf("diff_artifact_rediscovery=/tmp/review.diff"),
+      broker.accounting().refusals.map(ReviewRefusedOperationRecord::toString),
+      "a refusal the accounting only counts cannot tell an operator which operation was turned down",
+    )
   }
 
   @Test fun `lane accepts its expansion at a later global packet sequence`() {

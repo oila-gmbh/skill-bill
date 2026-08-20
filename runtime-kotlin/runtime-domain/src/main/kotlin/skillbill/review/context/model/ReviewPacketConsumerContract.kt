@@ -58,7 +58,9 @@ object ReviewPacketConsumerContract {
   const val EVIDENCE_SURFACE_RULES: String =
     "Use only the measured evidence broker. Assigned evidence is limited to projected hunk windows. " +
       "A complete-file expansion requires a launch-authorized record with a nonblank reachability reason. " +
-      "Each normalized evidence target may be read once."
+      "Each normalized evidence target may be read once. " +
+      "Read an assigned repository-relative path; an evidence_locator store_path or payload_file " +
+      "identifies a hunk inside the broker's store and is refused as a read argument."
 
   const val INLINE_VERIFICATION_EVIDENCE_SURFACE: String =
     "Cited region and direct callers only. Do not expand through the evidence broker or the expansion ledger."

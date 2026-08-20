@@ -168,7 +168,15 @@ object ReviewStageDegradationSelection {
           reviewRunId = reviewRunId,
           seam = ReviewEvidenceBoundaryAccounting.GOVERNED_EVIDENCE_SEAM,
           expected = "refused_operations=0",
-          actual = "refused_operations=${accounting.refusedOperationCount}",
+          actual = "refused_operations=${accounting.refusedOperationCount}" +
+            accounting.refusedCategories
+              .groupingBy { it }
+              .eachCount()
+              .entries
+              .sortedBy { it.key }
+              .joinToString(",", prefix = " [", postfix = "]") { "${it.key}=${it.value}" }
+              .takeIf { accounting.refusedCategories.isNotEmpty() }
+              .orEmpty(),
           reason = ReviewStageDegradationReason.EVIDENCE_BOUNDARY_OPERATION_REFUSED,
         ),
       )

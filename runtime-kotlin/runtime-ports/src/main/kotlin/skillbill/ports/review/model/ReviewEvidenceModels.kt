@@ -87,6 +87,16 @@ data class ReviewToolCallResult(
   val admitted: Boolean get() = forbidden == null && budgetExceeded == null
 }
 
+data class ReviewRefusedOperationRecord(val category: String, val target: String) {
+  init {
+    require(category.isNotBlank() && target.isNotBlank()) {
+      "A refused review operation record must carry a category and a target."
+    }
+  }
+
+  override fun toString(): String = "$category=$target"
+}
+
 data class ReviewLaneAccounting(
   val lane: String,
   val reviewId: String = "unknown",
@@ -95,6 +105,7 @@ data class ReviewLaneAccounting(
   val launchBytes: Long = 0,
   val authorizedReadCount: Int = 0,
   val refusedOperationCount: Int = 0,
+  val refusals: List<ReviewRefusedOperationRecord> = emptyList(),
   val evidenceBytes: Long,
   val expansions: List<ReviewExpansionRecord>,
   val toolCalls: Int,

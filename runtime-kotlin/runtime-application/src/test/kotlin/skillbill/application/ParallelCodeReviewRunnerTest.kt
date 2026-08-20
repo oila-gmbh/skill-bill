@@ -742,7 +742,7 @@ class ParallelCodeReviewSuppliedDiffTest {
       assertContains(prompt, "hunk_id:")
       assertContains(prompt, "content_digest:")
       assertContains(prompt, "evidence_locator:")
-      assertContains(prompt, "Use the assigned bundle locators below as authoritative")
+      assertContains(prompt, "they are not read_evidence arguments and passing one is refused")
       assertFalse(prompt.contains("unexpected branch diff"), "the supplied diff must replace branch resolution")
       assertEquals("bill-code-review-inline", request.skillRunRequest.nativeReviewWorkerName)
     }

@@ -16,6 +16,7 @@ data class ReviewEvidenceBoundaryAccounting(
   val governedLaunchCount: Int = 0,
   val authorizedReadCount: Int = 0,
   val refusedOperationCount: Int = 0,
+  val refusedCategories: List<String> = emptyList(),
   val evidenceBytes: Long = 0,
   val expansionCount: Int = 0,
   val rejectedCandidateCount: Int = 0,
@@ -23,6 +24,7 @@ data class ReviewEvidenceBoundaryAccounting(
 ) {
   init {
     require(governedLaunchCount >= 0 && authorizedReadCount >= 0 && refusedOperationCount >= 0)
+    require(refusedCategories.none(String::isBlank)) { "A refused-operation category must not be blank." }
     require(evidenceBytes >= 0 && expansionCount >= 0 && rejectedCandidateCount >= 0)
     unboundSeam?.let { require(it.isNotBlank()) { "Review evidence unbound seam must not be blank." } }
   }

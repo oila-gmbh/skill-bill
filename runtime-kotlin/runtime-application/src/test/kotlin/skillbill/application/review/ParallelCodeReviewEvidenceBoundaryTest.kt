@@ -350,6 +350,11 @@ class ParallelCodeReviewEvidenceBoundaryTest {
       "NO_FINDINGS from a lane that never opened its evidence asserts a review that did not happen",
     )
     assertTrue(result.lane1.failureReason.orEmpty().contains("governed evidence was never read"))
+    // Counters alone ("0 reads, 2 refusals") cannot be acted on: the operator has to reproduce the
+    // launch to learn which path the lane asked for and which one it should have asked for.
+    val reason = result.lane1.failureReason.orEmpty()
+    assertTrue(reason.contains("src/Repo.kt"), "the reason must name the assignment the lane left unread: $reason")
+    assertTrue(reason.contains("read_evidence"), "the reason must name the call that would have read it: $reason")
     val coverage = assertNotNull(result.coverage)
     assertFalse(coverage.isCleanCoverage, "an unread lane must not render as clean coverage")
   }

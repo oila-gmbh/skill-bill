@@ -80,7 +80,7 @@ class ParallelCodeReviewEndToEndTest {
     recorder.parentPrompts.forEach { prompt ->
       assertTrue(prompt.contains("## Assigned bundle:"))
       assertTrue(prompt.contains("\"src/Repo.kt\""))
-      assertTrue(prompt.contains("Use the assigned bundle locators below as authoritative"))
+      assertTrue(prompt.contains("they are not read_evidence arguments and passing one is refused"))
     }
   }
 

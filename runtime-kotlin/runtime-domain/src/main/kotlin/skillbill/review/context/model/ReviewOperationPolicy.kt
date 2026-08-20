@@ -135,7 +135,9 @@ class ReviewOperationPolicy(
       return forbidden(
         "diff_artifact_rediscovery",
         path,
-        "Complete-diff files and references are forbidden; assigned hunk bodies are launch-supplied.",
+        "Complete-diff files and references are forbidden. This is not a substitute for reading: " +
+          "re-request the owned repository-relative path this hunk belongs to, never a store_path " +
+          "or payload_file from an evidence_locator.",
       )
     }
     if (SCRATCH_PATH_FRAGMENTS.any { it in path.lowercase() }) {

@@ -769,6 +769,7 @@ class ParallelCodeReviewRunner(
       },
       authorizedReadCount = accounting?.authorizedReadCount ?: 0,
       refusedOperationCount = accounting?.refusedOperationCount ?: 0,
+      refusedCategories = accounting?.refusals.orEmpty().map { it.category },
       evidenceBytes = accounting?.evidenceBytes ?: 0,
       expansionCount = accounting?.expansions?.size ?: 0,
       rejectedCandidateCount = outcome.rejectedCandidateCount,
@@ -1416,9 +1417,39 @@ class ParallelCodeReviewRunner(
     if (!reportedNothing) return null
     if (accounting.authorizedReadCount > 0) return null
     if (launch.selected.none { it.assignment.assignedHunks.isNotEmpty() }) return null
-    return "governed evidence was never read: the lane returned a register after " +
-      "${accounting.authorizedReadCount} authorized read(s) and " +
-      "${accounting.refusedOperationCount} refused operation(s) against a non-empty assignment"
+    val hunkCount = launch.selected.sumOf { it.assignment.assignedHunks.size }
+    val paths = launch.selected.flatMap { it.assignment.assignedPaths }.distinct().sorted()
+    return buildString {
+      append(
+        "governed evidence was never read: the lane answered '$NO_FINDINGS_TOKEN' without opening " +
+          "its assignment. It read 0 of $hunkCount assigned hunk(s) across " +
+          "${paths.size} assigned path(s): ${paths.joinToString(", ")}.",
+      )
+      append(refusalDetail(accounting))
+      append(
+        " read_evidence admits an assigned repository-relative path; an evidence_locator store_path " +
+          "or payload_file is hunk identity, never a read argument.",
+      )
+    }
+  }
+
+  /**
+   * Names every operation the broker turned down. Without it a refused lane reports only how many
+   * calls failed, which cannot distinguish a lane that asked for the wrong path from one that
+   * exhausted a budget, and leaves the operator reproducing the launch to find out.
+   */
+  private fun refusalDetail(accounting: ReviewLaneAccounting): String {
+    if (accounting.refusals.isEmpty()) {
+      return if (accounting.refusedOperationCount > 0) {
+        " The broker refused ${accounting.refusedOperationCount} operation(s) it did not record."
+      } else {
+        " The broker refused nothing, so the lane never called it."
+      }
+    }
+    val reported = accounting.refusals.take(MAX_REPORTED_REFUSALS)
+    val elided = accounting.refusals.size - reported.size
+    val tail = if (elided > 0) " (and $elided more)" else ""
+    return " Refused: ${reported.joinToString("; ")}$tail."
   }
 
   private fun modeFraming(resolvedMode: ResolvedReviewExecutionMode): String = buildString {
@@ -1467,7 +1498,12 @@ class ParallelCodeReviewRunner(
         appendLine("Owned paths: ${launch.assignment.assignedPaths.joinToString(",") { structuredString(it) }}")
         launch.rubrics.forEach { rubric -> appendLine(rubric.body) }
       }
-      appendLine("Use the assigned bundle locators below as authoritative; fetch bodies through the bound broker.")
+      appendLine(
+        "Use the assigned bundle below as authoritative. Fetch every body through the bound broker " +
+          "by calling read_evidence with an owned repository-relative path exactly as spelled in " +
+          "'Owned paths'. The evidence_locator store_path and payload_file identify a hunk inside " +
+          "the broker's own store; they are not read_evidence arguments and passing one is refused.",
+      )
       appendLine(if (inline) INLINE_DEPTH_DIRECTIVE else DELEGATED_DEPTH_DIRECTIVE)
       appendLine(
         "Return only '[F-XXX] Severity | Confidence | specialist=<exact resolved rubric identity> | " +
@@ -1789,6 +1825,7 @@ class ParallelCodeReviewRunner(
     const val INLINE_NATIVE_WORKER = "bill-code-review-inline"
     const val NO_SEQUENCE_DIGEST = "no-commit-sequence"
     const val NO_FINDINGS_TOKEN = "NO_FINDINGS"
+    const val MAX_REPORTED_REFUSALS = 5
   }
 
   private data class StackDetection(
@@ -1985,6 +2022,7 @@ private fun inlineParentAccounting(
   launchBytes = launch.prompt.toByteArray(Charsets.UTF_8).size.toLong(),
   authorizedReadCount = brokerAccounting?.authorizedReadCount ?: 0,
   refusedOperationCount = brokerAccounting?.refusedOperationCount ?: 0,
+  refusals = brokerAccounting?.refusals.orEmpty(),
   evidenceBytes = brokerAccounting?.evidenceBytes ?: 0,
   expansions = brokerAccounting?.expansions.orEmpty(),
   toolCalls = brokerAccounting?.toolCalls ?: 0,

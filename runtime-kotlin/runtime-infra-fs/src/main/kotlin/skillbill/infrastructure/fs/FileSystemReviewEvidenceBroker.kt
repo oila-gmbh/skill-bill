@@ -13,6 +13,7 @@ import skillbill.ports.review.model.ReviewEvidenceRequest
 import skillbill.ports.review.model.ReviewEvidenceResult
 import skillbill.ports.review.model.ReviewExpansionAuthorizationRequest
 import skillbill.ports.review.model.ReviewLaneAccounting
+import skillbill.ports.review.model.ReviewRefusedOperationRecord
 import skillbill.ports.review.model.ReviewToolCall
 import skillbill.ports.review.model.ReviewToolCallResult
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceLocatorReadPort
@@ -64,6 +65,7 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
   private var toolCalls = 0
   private var modelTurns = 0
   private val expansionLedger = mutableListOf<ReviewExpansionRecord>()
+  private val refusalLedger = mutableListOf<ReviewRefusedOperationRecord>()
   private val admittedEvidenceTargets = mutableSetOf<String>()
   private var terminalOutcome: ReviewBudgetOutcome? = null
 
@@ -361,6 +363,7 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
     lane = assignment.lane,
     authorizedReadCount = authorizedReadCount,
     refusedOperationCount = refusedOperationCount,
+    refusals = refusalLedger.toList(),
     evidenceBytes = cumulativeBytes,
     expansions = expansionLedger.toList(),
     toolCalls = toolCalls,
@@ -400,6 +403,10 @@ class FileSystemReviewEvidenceBroker(binding: ReviewEvidenceBrokerBinding) : Rev
     outcome: ReviewBudgetOutcome?,
   ): ReviewEvidenceBatchResult {
     refusedOperationCount += results.count { it.forbidden != null || it.budgetExceeded != null }
+    results.forEach { result ->
+      result.forbidden?.let { refusalLedger += ReviewRefusedOperationRecord(it.category, it.target) }
+      result.budgetExceeded?.let { refusalLedger += ReviewRefusedOperationRecord(it.type, it.budgetKind) }
+    }
     return ReviewEvidenceBatchResult(results, cumulativeBytes, expansionLedger.toList(), outcome)
   }
 }

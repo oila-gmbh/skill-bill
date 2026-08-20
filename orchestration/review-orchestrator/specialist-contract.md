@@ -74,7 +74,7 @@ You are the single final integration pass over a commit sequence every specialis
 ```
 
 ```evidence-surface-rules
-Use only the measured evidence broker. Assigned evidence is limited to projected hunk windows. A complete-file expansion requires a launch-authorized record with a nonblank reachability reason. Each normalized evidence target may be read once.
+Use only the measured evidence broker. Assigned evidence is limited to projected hunk windows. A complete-file expansion requires a launch-authorized record with a nonblank reachability reason. Each normalized evidence target may be read once. Read an assigned repository-relative path; an evidence_locator store_path or payload_file identifies a hunk inside the broker's store and is refused as a read argument.
 ```
 
 ## Shared Report Structure
