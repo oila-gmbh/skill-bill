@@ -41,4 +41,6 @@ internal object FeatureTaskRuntimeVerificationSignalKeys {
    * the verdict cannot disagree.
    */
   const val AUDIT_FAILING_CRITERIA_REJECTED_ALIAS = "failing_criteria"
+
+  const val FINDINGS_VERIFICATION_DISPOSITIONS = "finding_dispositions"
 }

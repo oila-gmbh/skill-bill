@@ -2081,6 +2081,8 @@ class RuntimeArchitectureTest {
       "skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding.fromArtifactMap",
       "skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition.toArtifactMap",
       "skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition.fromArtifactMap",
+      "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition.toArtifactMap",
+      "skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition.fromArtifactMap",
       "skillbill.workflow.taskruntime.model.GoalSubtaskReviewState.boundedDispositionSummary",
       "skillbill.workflow.taskruntime.model.GoalSubtaskReviewPassResult.toArtifactMap",
       "skillbill.workflow.taskruntime.model.GoalSubtaskReviewPassResult.fromArtifactMap",

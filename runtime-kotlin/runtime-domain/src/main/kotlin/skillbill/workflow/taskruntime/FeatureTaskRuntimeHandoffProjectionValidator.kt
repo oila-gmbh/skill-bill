@@ -4,13 +4,12 @@ import skillbill.contracts.JsonSupport
 import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
-import skillbill.review.ReviewFindingActionability
-import skillbill.review.ReviewFindingFieldCodec
-import skillbill.review.model.ReviewFindingVerdict
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FORBIDDEN_PROJECTION_FIELD_NAMES
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCompactReferenceKind
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeExecutablePlan
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDispositionVerdict
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionField
@@ -517,6 +516,8 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_REPAIR_REQUEST,
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REVIEW_CLEARANCE,
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REVIEW_REPAIR_REQUEST,
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.FINDINGS_VERIFICATION_INPUT,
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.FINDINGS_VERIFICATION_DISPOSITIONS,
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REPAIR_PLAN,
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.CHANGE_RECEIPT,
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_REQUEST,
@@ -584,7 +585,15 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
       "repository_checkpoint" to inputs.resolvedCheckpoint?.let { mapOf("fingerprint" to it.fingerprint) },
     )
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REVIEW_REPAIR_REQUEST -> mapOf(
-      "unresolved_blocker_findings" to reviewBlockerProjection(produced, inputs.recordedFindingVerdicts),
+      "unresolved_blocker_findings" to verifiedFindingsProjection(produced),
+      "repository_checkpoint" to inputs.resolvedCheckpoint?.let { mapOf("fingerprint" to it.fingerprint) },
+    )
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.FINDINGS_VERIFICATION_INPUT -> mapOf(
+      "findings" to reviewFindingsForVerificationProjection(produced),
+      "repository_checkpoint" to inputs.resolvedCheckpoint?.let { mapOf("fingerprint" to it.fingerprint) },
+    )
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.FINDINGS_VERIFICATION_DISPOSITIONS -> mapOf(
+      "finding_dispositions" to produced["finding_dispositions"],
       "repository_checkpoint" to inputs.resolvedCheckpoint?.let { mapOf("fingerprint" to it.fingerprint) },
     )
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.CHANGE_RECEIPT -> mapOf(
@@ -598,6 +607,13 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
   }.filterValues { it != null }
 
   private fun auditClearanceStatus(produced: Map<String, Any?>): String? {
+    val gaps = produced["gaps"] as? List<*>
+    if (gaps != null) {
+      return when {
+        gaps.isEmpty() -> FeatureTaskRuntimeVerdict.SATISFIED.wireValue
+        else -> FeatureTaskRuntimeVerdict.GAPS_FOUND.wireValue
+      }
+    }
     val unmetCriteria = produced["unmet_criteria"] as? List<*>
     return when {
       unmetCriteria == null -> resolveDeclaredPhaseField(produced, "clearance_status")?.toString()
@@ -606,43 +622,42 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
     }
   }
 
-  private fun reviewBlockerProjection(
-    produced: Map<String, Any?>,
-    recordedFindingVerdicts: List<ReviewFindingVerdict>,
-  ): List<Map<String, Any?>> = (produced["findings"] as? List<*>).orEmpty()
-    .mapNotNull(JsonSupport::anyToStringAnyMap)
-    .filter { finding ->
-      val overlay = ReviewFindingActionability.overlayOf(
-        findingRef = ReviewFindingFieldCodec.findingRefOf(
-          finding["id"],
-          finding["finding_id"],
-          finding["f_number"],
-        ),
-        recordedVerdicts = recordedFindingVerdicts,
-        encoded = ReviewFindingFieldCodec.recordedFieldsOf(
-          claimVerdict = finding["claim_verdict"],
-          scopeDisposition = finding["scope_disposition"],
-          citations = finding["citations"],
-          severityAdjustment = finding["severity_adjustment"],
-        ),
-      )
-      ReviewFindingActionability.isActionable(overlay.claimVerdict, overlay.scopeDisposition)
-    }
-    .map { finding ->
-      val severity = (finding["severity"] as? String)?.takeIf(String::isNotBlank) ?: "blocker"
-      mapOf(
-        "finding_id" to (finding["finding_id"] ?: finding["f_number"] ?: finding["id"]),
-        "severity" to severity,
-        "location" to (
-          finding["location"] ?: finding["repository_path"] ?: finding["path"] ?: "repository"
-          ),
-        "expected_outcome" to (
-          finding["expected_outcome"] ?: finding["message"] ?: finding["description"] ?: "Resolve the finding."
-          ),
-        "criterion_refs" to (finding["criterion_refs"] ?: emptyList<String>()),
-        "task_refs" to (finding["task_refs"] ?: emptyList<String>()),
-      ).filterValues { it != null }
-    }
+  private fun verifiedFindingsProjection(produced: Map<String, Any?>): List<Map<String, Any?>> =
+    FeatureTaskRuntimeFindingVerificationDisposition.parseList(
+      produced["finding_dispositions"],
+      "produced_outputs.finding_dispositions",
+    )
+      .filter { it.disposition == FeatureTaskRuntimeFindingVerificationDispositionVerdict.VERIFIED }
+      .map { disposition ->
+        mapOf(
+          "finding_id" to disposition.findingId,
+          "severity" to disposition.severity.wireValue,
+          "location" to disposition.location,
+          "expected_outcome" to disposition.message,
+          "criterion_refs" to emptyList<String>(),
+          "task_refs" to emptyList<String>(),
+        )
+      }
+
+  private fun reviewFindingsForVerificationProjection(produced: Map<String, Any?>): List<Map<String, Any?>> =
+    (produced["findings"] as? List<*>).orEmpty()
+      .mapNotNull(JsonSupport::anyToStringAnyMap)
+      .map { finding ->
+        val severity = (finding["severity"] as? String)?.takeIf(String::isNotBlank) ?: "blocker"
+        mapOf(
+          "finding_id" to (finding["finding_id"] ?: finding["f_number"] ?: finding["id"]),
+          "severity" to severity,
+          "location" to (
+            finding["location"] ?: finding["repository_path"] ?: finding["path"] ?: "repository"
+            ),
+          "message" to (
+            finding["message"] ?: finding["description"] ?: finding["expected_outcome"] ?: "Review finding."
+            ),
+          "issue_category" to (finding["issue_category"] ?: finding["category"] ?: "other"),
+          "claim_verdict" to finding["claim_verdict"],
+          "scope_disposition" to finding["scope_disposition"],
+        ).filterValues { it != null }
+      }
 
   private fun finalizationProjectionValues(
     inputs: FeatureTaskRuntimeHandoffProjectionInputs,

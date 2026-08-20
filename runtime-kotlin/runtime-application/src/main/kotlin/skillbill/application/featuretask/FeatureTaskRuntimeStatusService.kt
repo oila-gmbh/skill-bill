@@ -213,6 +213,8 @@ private class CurrentPhaseExecutionDeriver {
         auditExecution(phaseId, phaseStatus, record, context.auditGapIterationCount)
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW ->
         reviewExecution(phaseId, phaseStatus, record, context.ledger)
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS ->
+        attemptExecution(phaseId, phaseStatus.attemptCount)
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE ->
         validationExecution(phaseId, phaseStatus, context.gateRunCount)
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD ->
@@ -423,8 +425,13 @@ private fun currentReentryPhaseId(
     .indexOf(declaration.destinationPhaseId)
   val sourceIndex = FeatureTaskRuntimePhaseWorkflowDefinition.transitions.forwardPhaseIds
     .indexOf(declaration.fromPhaseId)
-  val reopenedSpan = FeatureTaskRuntimePhaseWorkflowDefinition.transitions.forwardPhaseIds
-    .subList(destinationIndex, sourceIndex + 1)
+  val reopenedSpan = when {
+    destinationIndex <= sourceIndex ->
+      FeatureTaskRuntimePhaseWorkflowDefinition.transitions.forwardPhaseIds
+        .subList(destinationIndex, sourceIndex + 1)
+    else ->
+      listOf(FeatureTaskRuntimePhaseWorkflowDefinition.transitions.forwardPhaseIds[destinationIndex])
+  }
   val completedAfterEdge = ledger
     .asSequence()
     .filter { it.sequenceNumber > edgeEntry.sequenceNumber }

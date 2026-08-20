@@ -4,6 +4,8 @@ import skillbill.application.featuretask.FeatureTaskRuntimeVerificationSignalKey
 import skillbill.contracts.JsonSupport
 import skillbill.goalrunner.model.ReviewFindingOutcome
 import skillbill.goalrunner.model.ReviewFindingOutcomeRecord
+import skillbill.goalrunner.model.UNADDRESSED_FINDING_DEFAULT_CATEGORY
+import skillbill.goalrunner.model.UNADDRESSED_FINDING_DEFAULT_SEVERITY
 import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.goalrunner.model.normalizedUnaddressedFindingCategory
 import skillbill.goalrunner.model.normalizedUnaddressedFindingSeverity
@@ -199,6 +201,57 @@ internal object GoalSubtaskReviewSummaryReducer {
         scopeDisposition = finding.scopeDisposition,
         citations = finding.citations,
         severityAdjustment = finding.severityAdjustment,
+      )
+    }
+  }
+
+  @Suppress("CyclomaticComplexMethod")
+  fun rejectedVerificationFindings(
+    verifyOutput: Map<String, Any?>,
+    reviewOutput: Map<String, Any?>,
+    scope: UnaddressedFindingLedgerScope,
+    recordedVerdicts: List<ReviewFindingVerdict> = emptyList(),
+  ): List<UnaddressedFinding> {
+    val reviewRunId = reviewRunIdOf(reviewOutput)
+    val reviewById = structuredFindings(reviewOutput, recordedVerdicts).associateBy { it.findingId.orEmpty() }
+    val dispositionsRaw = verifyOutput["produced_outputs"]
+      ?.let(JsonSupport::anyToStringAnyMap)
+      ?.get(FeatureTaskRuntimeVerificationSignalKeys.FINDINGS_VERIFICATION_DISPOSITIONS) as? List<*>
+      ?: return emptyList()
+    return dispositionsRaw.mapIndexedNotNull { index, entry ->
+      val map = JsonSupport.anyToStringAnyMap(entry) ?: return@mapIndexedNotNull null
+      if ((map["disposition"] as? String)?.trim()?.lowercase() != "rejected") return@mapIndexedNotNull null
+      val findingId = (map["finding_id"] as? String)?.takeIf(String::isNotBlank) ?: return@mapIndexedNotNull null
+      val reason = (map["reason"] as? String)?.takeIf(String::isNotBlank) ?: return@mapIndexedNotNull null
+      val reviewFinding = reviewById[findingId]
+      val existingOrdinal = reviewFinding?.let {
+        structuredFindings(reviewOutput, recordedVerdicts).indexOfFirst { candidate ->
+          candidate.findingId == findingId
+        }.takeIf { it >= 0 }?.plus(1)
+      }
+      val severity = (map["severity"] as? String)?.takeIf(String::isNotBlank)
+        ?: reviewFinding?.severity
+        ?: UNADDRESSED_FINDING_DEFAULT_SEVERITY
+      UnaddressedFinding(
+        issueKey = scope.issueKey,
+        subtaskId = scope.subtaskId,
+        workflowId = scope.workflowId,
+        reviewPassNumber = scope.reviewPassNumber,
+        findingOrdinal = existingOrdinal ?: (index + 1),
+        severity = normalizedUnaddressedFindingSeverity(severity),
+        issueCategory = normalizedUnaddressedFindingCategory(
+          reviewFinding?.issueCategory ?: UNADDRESSED_FINDING_DEFAULT_CATEGORY,
+        ),
+        location = (map["location"] as? String)?.takeIf(String::isNotBlank) ?: reviewFinding?.location ?: "<unknown>",
+        summary = (map["message"] as? String)?.takeIf(String::isNotBlank) ?: reviewFinding?.message ?: reason,
+        reviewRunId = reviewRunId,
+        findingId = findingId,
+        claimVerdict = reviewFinding?.claimVerdict,
+        scopeDisposition = reviewFinding?.scopeDisposition,
+        citations = reviewFinding?.citations.orEmpty(),
+        severityAdjustment = reviewFinding?.severityAdjustment,
+        verificationDisposition = "rejected",
+        verificationReason = reason,
       )
     }
   }

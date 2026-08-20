@@ -8,7 +8,7 @@ description: "Runtime-backed bill-feature-task via foreground `skill-bill featur
 
 `bill-feature-task-runtime` is the runtime-backed mode for running a single
 governed spec through the runtime-driven feature-task phase loop
-(`plan -> implement -> audit -> review -> validate`) owned by the local
+(`plan -> implement -> audit -> review -> verify_findings -> validate`) owned by the local
 `skill-bill feature-task` driver.
 
 Durable workflow rows use the public workflow identity `bill-feature-task` with
@@ -218,31 +218,39 @@ workflow state as authoritative over any prose.
 
 ## Audit-first review gate
 
-The authoritative phase order is `implement -> audit -> review -> validate` on the default path.
-Goal children stamped for build use `review -> build -> write_history` instead of validate (subtask 2).
+The authoritative phase order is `implement -> audit -> review -> verify_findings -> validate` on the default path.
+Goal children stamped for build use `review -> verify_findings -> build -> write_history` instead of validate.
 Audit-gap repair re-enters only `implement -> audit`; after audit is satisfied,
 review runs once in the selected mode. Review never reopens audit.
 
-## Review-driven implement-fix loop
+## Verify-findings and implement-fix loop
 
-The authoritative phase order is `implement -> audit -> review -> validate`.
-Review runs exactly once. The `review` phase emits a structured verdict derived
-from its findings: `approved` when no unresolved Blocker or Major findings remain,
-or `changes_requested` when any are present. Minor and Nit findings are recorded
-in the goal-wide ledger and never alone block advancement.
+Review runs exactly once and records its findings; its verdict never routes.
+`verify_findings` follows review, settles once per subtask, and never edits the
+worktree. Every review finding receives one disposition — `verified` or
+`rejected` — with a bounded reason derived against the subtask spec intent
+projection. Rejected findings are recorded in the goal-wide unaddressed-findings
+ledger with their reason and severity and are never passed to `implement_fix`.
 
-- On `approved`, the run advances to `validate` (a clean run never launches `implement_fix`).
-- On `changes_requested`, the runtime takes one bounded backward edge to
-  `implement_fix`, which addresses every carried finding on the current working
-  tree as incremental reconciliation (not a plan re-application). `implement_fix`
-  is loop-only, so a clean run never launches it. After that single fix round the
-  run advances to `validate` regardless of whether every finding resolved. Review
-  does not run again. The `review_fix` edge declares `perEdgeCap = 1` and
-  `capExhaustionBehavior = ADVANCE`.
+- When no finding is verified, `verify_findings` settles `no_findings_verified`
+  and the run advances to `validate` without launching `implement_fix`.
+- When at least one finding is verified — including Minor-only or Nit-only
+  surviving sets — `verify_findings` settles `findings_verified` and the runtime
+  takes one bounded `review_fix` backward edge to `implement_fix`, which
+  addresses every verified finding regardless of severity. After that single fix
+  round the run advances to `validate` even when verified findings remain
+  unfixed; those survivors stay in the ledger. Review and verify_findings do not
+  run again. The edge declares `perEdgeCap = 1` and `capExhaustionBehavior = ADVANCE`.
 
 Each `implement_fix` round emits a durable, construct-granular repair receipt.
-The loop is crash-safe: a death during `implement_fix` resumes at the correct
-phase and iteration with no double-applied mutations.
+The loop is crash-safe: interruption during `verify_findings` or `implement_fix`
+resumes the same dispositions and round accounting without minting a second
+verification pass or second fix round.
+
+## Review-driven implement-fix loop (removed)
+
+The prior `changes_requested` review verdict and review-driven fix trigger are
+retired. Fix routing is owned exclusively by `verify_findings` as described above.
 
 ## Audit-gap context-reuse implementation-remediation loop
 
@@ -294,7 +302,7 @@ or unrelated acceptance surface and does not discover new gaps. Equivalent
 recurring gap sets without repository change or newly resolved repair items block
 loudly as non-progress instead of looping indefinitely.
 
-Review begins only after the audit-gap loop is closed. Review runs exactly once in the selected mode against the branch diff. A `changes_requested` verdict triggers at most one `implement_fix` round, then the run advances to `validate` without re-reviewing a remediation delta. Each backward
+Review begins only after the audit-gap loop is closed. Review runs exactly once in the selected mode against the branch diff. `verify_findings` follows, settles once, and may trigger at most one `implement_fix` round from verified findings; the run then advances to `validate` without a second review or verification pass.
 edge carries the `audit_gap` loop id and iteration in the
 ledger and status output, and finished telemetry reflects the audit-gap
 iteration count alongside the review-fix count.
@@ -390,4 +398,4 @@ only; the runtime gains no Linear dependency.
 
 ## Audit-first review and findings ledger
 
-The phase order is `implement -> audit -> review -> validate`, and review is gated on a satisfied audit. Review runs exactly once in the selected mode against the branch diff. A `changes_requested` verdict triggers at most one `implement_fix` round, then the run advances to `validate` without re-reviewing a remediation delta. Location-bearing detail is available only through `skill-bill goal findings --issue-key <KEY>`, during or after the goal.
+The phase order is `implement -> audit -> review -> verify_findings -> validate`, and review is gated on a satisfied audit. Review runs exactly once. `verify_findings` verifies each finding, may trigger one `implement_fix` round from verified findings regardless of severity, then the run advances to `validate`. Location-bearing detail and verification dispositions are available through `skill-bill goal findings --issue-key <KEY>`, during or after the goal.

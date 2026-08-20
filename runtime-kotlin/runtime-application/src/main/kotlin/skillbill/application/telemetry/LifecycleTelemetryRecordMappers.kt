@@ -45,6 +45,9 @@ fun FeatureTaskRuntimeFinishedRequest.toRecord(): FeatureTaskRuntimeFinishedReco
   crashReconciliationReasonCounts = crashReconciliationReasonCounts,
   estimatedPhaseTokenBreakdownJson = estimatedPhaseTokenBreakdownJson,
   estimatedTotalTokens = estimatedTotalTokens,
+  findingVerificationVerifiedCount = findingVerificationVerifiedCount,
+  findingVerificationRejectedCount = findingVerificationRejectedCount,
+  reviewFixCapExhausted = reviewFixCapExhausted,
 )
 
 fun QualityCheckStartedRequest.toRecord(sessionId: String): QualityCheckStartedRecord = QualityCheckStartedRecord(

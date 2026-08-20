@@ -40,6 +40,9 @@ data class FeatureTaskRuntimeFinishedRequest(
   val crashReconciliationReasonCounts: Map<String, Int> = emptyMap(),
   val estimatedPhaseTokenBreakdownJson: String? = null,
   val estimatedTotalTokens: Int? = null,
+  val findingVerificationVerifiedCount: Int = 0,
+  val findingVerificationRejectedCount: Int = 0,
+  val reviewFixCapExhausted: Boolean = false,
 )
 
 /**
@@ -50,6 +53,12 @@ data class FeatureTaskRuntimeRegenerationTelemetry(
   val activationCount: Int = 0,
   val attemptCount: Int = 0,
   val outcomeCounts: Map<String, Int> = emptyMap(),
+)
+
+data class FeatureTaskRuntimeFindingVerificationTelemetry(
+  val verifiedCount: Int = 0,
+  val rejectedCount: Int = 0,
+  val reviewFixCapExhausted: Boolean = false,
 )
 
 data class QualityCheckStartedRequest(

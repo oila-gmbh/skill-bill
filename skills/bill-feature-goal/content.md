@@ -145,7 +145,7 @@ new child-owned untracked files after implementation, repair, or resume. Never
 replace this scope with a branch-wide diff, merge base, `origin/main`, or
 sibling-subtask substitute.
 
-Audit completes before review starts. The child runs review once in the selected mode. A `changes_requested` verdict triggers at most one bounded `implement_fix` round, then the child advances to `validate` regardless of whether every finding resolved. Minor and Nit findings advance, are recorded in the goal-wide unaddressed-findings ledger, and never reopen the loop.
+Audit completes before review starts. The child runs review once in the selected mode. After review, `verify_findings` verifies each finding against the subtask spec intent and settles once. A `findings_verified` verdict triggers at most one bounded `implement_fix` round for every verified finding regardless of severity, then the child advances to `validate` even when verified findings remain unfixed. Rejected findings are recorded in the goal-wide unaddressed-findings ledger and are never fixed. Minor and Nit findings that verify still enter the fix round.
 
 Goal-facing review output and terminal summaries contain only subtask id, pass,
 verdict/disposition, finding count, severity, class/symbol-or-sanitized-stem
@@ -418,4 +418,4 @@ remain authoritative.
 
 ## Audit-first review and findings ledger
 
-Goal children use the audit-first order `implement -> audit -> review -> validate`; review starts only after audit is satisfied. Review runs once. A `changes_requested` verdict triggers at most one bounded `implement_fix` round, then the child advances to `validate` regardless of whether every finding resolved. Minor and Nit findings advance and are durably recorded in the goal-wide unaddressed-findings ledger. Retrieve the location-bearing ledger, including after goal completion, with `skill-bill goal findings --issue-key <KEY>`.
+Goal children use the audit-first order `implement -> audit -> review -> verify_findings -> validate`; review starts only after audit is satisfied. Review runs once. `verify_findings` settles once and routes at most one `implement_fix` round from verified findings, then the child advances to `validate` regardless of whether every verified finding resolved. Rejected findings and unfixed verified findings are durably recorded in the goal-wide unaddressed-findings ledger with disposition and reason. Retrieve the location-bearing ledger, including after goal completion, with `skill-bill goal findings --issue-key <KEY>`.

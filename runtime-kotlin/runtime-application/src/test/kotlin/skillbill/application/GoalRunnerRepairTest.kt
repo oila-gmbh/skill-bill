@@ -339,10 +339,11 @@ internal class GoalRunnerRepairTest : GoalRunnerRepairFixtures() {
       GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to healthyReviewState().toArtifactMap(),
       FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to mapOf(
         "review" to unsettledUpstreamPhaseRecord("review").toArtifactMap(),
+        "verify_findings" to unsettledUpstreamPhaseRecord("verify_findings").toArtifactMap(),
         "implement_fix" to unsettledUpstreamPhaseRecord(
           phaseId = "implement_fix",
           status = "blocked",
-          blockedReason = "Phase 'implement_fix' requires upstream output(s) review that are not present",
+          blockedReason = "Phase 'implement_fix' requires upstream output(s) verify_findings that are not present",
         ).toArtifactMap(),
       ),
     )
@@ -373,7 +374,7 @@ internal class GoalRunnerRepairTest : GoalRunnerRepairFixtures() {
     )
 
     assertEquals(GoalRunnerWedgeClass.COMPLETED_UPSTREAM_MISSING_OUTPUT, diagnosis.wedges.single().wedgeClass)
-    assertEquals("review", diagnosis.wedges.single().field)
+    assertEquals("verify_findings", diagnosis.wedges.single().field)
     assertFalse(PASSED_UPSTREAM_OUTPUT in diagnosis.passedChecks)
   }
 
@@ -502,7 +503,7 @@ internal class GoalRunnerRepairTest : GoalRunnerRepairFixtures() {
   }
 
   @Test
-  fun `repairing completed upstream missing output reopens review and clears implement_fix block`() {
+  fun `repairing completed upstream missing output reopens verify_findings and clears implement_fix block`() {
     val workflows = InMemoryWorkflowStates()
     val workflowId = "wftr-repair-apply-unsettled-upstream"
     val artifacts = linkedMapOf<String, Any?>(
@@ -510,10 +511,11 @@ internal class GoalRunnerRepairTest : GoalRunnerRepairFixtures() {
       GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to healthyReviewState().toArtifactMap(),
       FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to mapOf(
         "review" to unsettledUpstreamPhaseRecord("review").toArtifactMap(),
+        "verify_findings" to unsettledUpstreamPhaseRecord("verify_findings").toArtifactMap(),
         "implement_fix" to unsettledUpstreamPhaseRecord(
           phaseId = "implement_fix",
           status = "blocked",
-          blockedReason = "Phase 'implement_fix' requires upstream output(s) review that are not present",
+          blockedReason = "Phase 'implement_fix' requires upstream output(s) verify_findings that are not present",
         ).toArtifactMap(),
       ),
     )
@@ -544,17 +546,17 @@ internal class GoalRunnerRepairTest : GoalRunnerRepairFixtures() {
     )
 
     assertEquals(1, applied.repairs.size)
-    assertEquals("review", applied.repairs.single().field)
+    assertEquals("verify_findings", applied.repairs.single().field)
     val updated = requireNotNull(workflows.getFeatureTaskRuntimeWorkflow(workflowId))
     assertEquals("running", updated.workflowStatus)
-    assertEquals("review", updated.currentStepId)
+    assertEquals("verify_findings", updated.currentStepId)
     val records = phaseRecordsFrom(decodeArtifacts(updated.artifactsJson))
-    assertEquals("pending", records.getValue("review").status)
+    assertEquals("pending", records.getValue("verify_findings").status)
     assertEquals("pending", records.getValue("implement_fix").status)
     val evidence = (decodeArtifacts(updated.artifactsJson)[GOAL_CHILD_REPAIR_EVIDENCE_ARTIFACT_KEY] as List<*>)
       .single() as Map<*, *>
     assertEquals("completed_upstream_missing_output", evidence["wedge_class"])
-    assertEquals("review", evidence["field"])
+    assertEquals("verify_findings", evidence["field"])
   }
 }
 
@@ -568,10 +570,11 @@ internal class GoalRunnerRepairContinuationTest : GoalRunnerRepairFixtures() {
       GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to healthyReviewState().toArtifactMap(),
       FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to mapOf(
         "review" to unsettledUpstreamPhaseRecord("review").toArtifactMap(),
+        "verify_findings" to unsettledUpstreamPhaseRecord("verify_findings").toArtifactMap(),
         "implement_fix" to unsettledUpstreamPhaseRecord(
           phaseId = "implement_fix",
           status = "blocked",
-          blockedReason = "Phase 'implement_fix' requires upstream output(s) review that are not present",
+          blockedReason = "Phase 'implement_fix' requires upstream output(s) verify_findings that are not present",
         ).toArtifactMap(),
       ),
     )
@@ -609,12 +612,12 @@ internal class GoalRunnerRepairContinuationTest : GoalRunnerRepairFixtures() {
     )
     val updated = requireNotNull(workflows.getFeatureTaskRuntimeWorkflow(workflowId))
     assertEquals("running", updated.workflowStatus)
-    assertEquals("review", updated.currentStepId)
+    assertEquals("verify_findings", updated.currentStepId)
     val after = decodeArtifacts(updated.artifactsJson)
     val continuation = after["goal_continuation"] as Map<*, *>
     assertEquals("full", continuation["validation_depth"])
     val records = phaseRecordsFrom(after)
-    assertEquals("pending", records.getValue("review").status)
+    assertEquals("pending", records.getValue("verify_findings").status)
     assertEquals("pending", records.getValue("implement_fix").status)
     assertEquals(2, (after[GOAL_CHILD_REPAIR_EVIDENCE_ARTIFACT_KEY] as List<*>).size)
   }

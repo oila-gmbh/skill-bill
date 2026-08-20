@@ -46,6 +46,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
   const val PHASE_IMPLEMENT_FIX: String = "implement_fix"
   const val PHASE_REVIEW: String = "review"
   const val PHASE_BUILD: String = "build"
+  const val PHASE_VERIFY_FINDINGS: String = "verify_findings"
   const val PHASE_AUDIT: String = "audit"
   const val PHASE_VALIDATE: String = "validate"
   const val PHASE_WRITE_HISTORY: String = "write_history"
@@ -129,6 +130,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     PHASE_IMPLEMENT,
     PHASE_IMPLEMENT_FIX,
     PHASE_REVIEW,
+    PHASE_VERIFY_FINDINGS,
     PHASE_BUILD,
     PHASE_AUDIT,
     PHASE_VALIDATE,
@@ -153,6 +155,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       PHASE_IMPLEMENT,
       PHASE_AUDIT,
       PHASE_REVIEW,
+      PHASE_VERIFY_FINDINGS,
       PHASE_IMPLEMENT_FIX,
       PHASE_BUILD,
       PHASE_VALIDATE,
@@ -167,8 +170,9 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       PHASE_IMPLEMENT to "Phase 3: Implement",
       PHASE_AUDIT to "Phase 4: Completeness Audit",
       PHASE_REVIEW to "Phase 5: Code Review",
-      PHASE_IMPLEMENT_FIX to "Phase 5a: Implement Fix",
-      PHASE_BUILD to "Phase 5b: Build",
+      PHASE_VERIFY_FINDINGS to "Phase 5a: Verify Findings",
+      PHASE_IMPLEMENT_FIX to "Phase 5b: Implement Fix",
+      PHASE_BUILD to "Phase 5c: Build",
       PHASE_VALIDATE to "Phase 6: Quality Validation",
       PHASE_WRITE_HISTORY to "Phase 7: Boundary History",
       PHASE_COMMIT_PUSH to "Phase 8: Commit and Push",
@@ -181,7 +185,8 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       PHASE_IMPLEMENT to listOf(PHASE_PLAN),
       PHASE_AUDIT to listOf(PHASE_PLAN, PHASE_IMPLEMENT),
       PHASE_REVIEW to listOf(PHASE_AUDIT),
-      PHASE_IMPLEMENT_FIX to listOf(PHASE_REVIEW),
+      PHASE_VERIFY_FINDINGS to listOf(PHASE_REVIEW),
+      PHASE_IMPLEMENT_FIX to listOf(PHASE_VERIFY_FINDINGS),
       PHASE_BUILD to listOf(PHASE_IMPLEMENT, PHASE_AUDIT),
       PHASE_VALIDATE to listOf(PHASE_IMPLEMENT, PHASE_AUDIT),
       PHASE_WRITE_HISTORY to listOf(PHASE_IMPLEMENT, PHASE_VALIDATE),
@@ -196,10 +201,14 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
         "Resume implementation reconciliation from the immutable initial preplan and plan outputs when an " +
         "audit-gap loop is active, then persist the validated output.",
       PHASE_IMPLEMENT_FIX to
-        "Resume the implement-fix phase from the latest review findings, reconciling the " +
+        "Resume the implement-fix phase from the latest verified findings, reconciling the " +
         "current tree, then persist the validated output.",
       PHASE_AUDIT to "Resume the completeness audit from the latest plan and implement outputs.",
-      PHASE_REVIEW to "Resume code review from the latest implement and audit outputs and the derived diff context.",
+      PHASE_REVIEW to
+        "Resume code review from the latest implement and audit outputs and the derived diff context.",
+      PHASE_VERIFY_FINDINGS to
+        "Resume finding verification from the latest review output and in-flight dispositions " +
+        "without re-running review.",
       PHASE_BUILD to "Resume compile/build proof from the latest implement and audit outputs.",
       PHASE_VALIDATE to "Resume quality validation from the latest implement and audit outputs.",
       PHASE_WRITE_HISTORY to
@@ -238,6 +247,8 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     const val AUDIT_REPAIR_REQUEST: String = "feature_task_runtime.audit_repair_request"
     const val REVIEW_CLEARANCE: String = "feature_task_runtime.review_clearance"
     const val REVIEW_REPAIR_REQUEST: String = "feature_task_runtime.review_repair_request"
+    const val FINDINGS_VERIFICATION_INPUT: String = "feature_task_runtime.findings_verification_input"
+    const val FINDINGS_VERIFICATION_DISPOSITIONS: String = "feature_task_runtime.findings_verification_dispositions"
     const val REPAIR_LEDGER: String = "feature_task_runtime.repair_ledger"
     const val REPAIR_PLAN: String = "feature_task_runtime.repair_plan"
     const val CHANGE_RECEIPT: String = "feature_task_runtime.change_receipt"
@@ -440,11 +451,21 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     PHASE_IMPLEMENT_FIX to listOf(
       phaseProjection(
         PHASE_IMPLEMENT_FIX,
-        PHASE_REVIEW,
+        PHASE_VERIFY_FINDINGS,
         "review_repair_request",
         PhaseProjectionContract.REVIEW_REPAIR_REQUEST,
         listOf("unresolved_blocker_findings", "repository_checkpoint"),
         FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
+      ),
+    ),
+    PHASE_VERIFY_FINDINGS to listOf(
+      phaseProjection(
+        PHASE_VERIFY_FINDINGS,
+        PHASE_REVIEW,
+        "review_findings_for_verification",
+        PhaseProjectionContract.FINDINGS_VERIFICATION_INPUT,
+        listOf("findings", "repository_checkpoint"),
+        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
       ),
     ),
     PHASE_REVIEW to listOf(
@@ -661,17 +682,20 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
   /**
    * Transition topology: the ordered [stepIds] forward pipeline plus the M1 `review_fix` and M2
    * `audit_gap` backward edges. The pipeline is audit-first: a clean run advances
-   * `implement` -> `audit` -> `review` -> `validate`, skipping loop-only `implement_fix`.
+   * `implement` -> `audit` -> `review` -> `verify_findings` -> `validate`, skipping loop-only
+   * `implement_fix`.
    *
    * An audit `gaps_found` verdict reopens the `[implement, audit]` span to reconcile implementation
    * against the failing criteria using the immutable initial planning context, then re-`audit`.
    *
-   * A `review` `changes_requested` verdict takes the single bounded `review_fix` backward edge to
-   * `implement_fix` (perEdgeCap 1, cap exhaustion ADVANCE). The run always advances to `validate`
-   * after that one fix round regardless of unresolved findings.
+   * A `verify_findings` `findings_verified` verdict takes the single bounded `review_fix` backward
+   * edge to `implement_fix` (perEdgeCap 1, cap exhaustion ADVANCE). The run always advances to
+   * `validate` after that one fix round regardless of unresolved findings. `review` records its
+   * verdict and never routes.
    *
    * [FeatureTaskRuntimeTransitionDeclaration.entryGates] makes the ordering enforceable rather than
-   * merely implied: `review` is unreachable until `audit` has settled `satisfied`.
+   * merely implied: `review` is unreachable until `audit` has settled `satisfied`, and
+   * `implement_fix` is unreachable until `verify_findings` has settled `findings_verified`.
    */
   val transitions: FeatureTaskRuntimeTransitionDeclaration =
     FeatureTaskRuntimeTransitionDeclaration(
@@ -682,11 +706,16 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
           requiredPhaseId = PHASE_AUDIT,
           requiredVerdict = FeatureTaskRuntimeVerdict.SATISFIED,
         ),
+        FeatureTaskRuntimePhaseEntryGate(
+          phaseId = PHASE_IMPLEMENT_FIX,
+          requiredPhaseId = PHASE_VERIFY_FINDINGS,
+          requiredVerdict = FeatureTaskRuntimeVerdict.FINDINGS_VERIFIED,
+        ),
       ),
       backwardEdges = listOf(
         FeatureTaskRuntimeBackwardEdge(
-          fromPhaseId = PHASE_REVIEW,
-          triggeringVerdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+          fromPhaseId = PHASE_VERIFY_FINDINGS,
+          triggeringVerdict = FeatureTaskRuntimeVerdict.FINDINGS_VERIFIED,
           destinationPhaseId = PHASE_IMPLEMENT_FIX,
           loopId = REVIEW_FIX_LOOP_ID,
           perEdgeCap = 1,

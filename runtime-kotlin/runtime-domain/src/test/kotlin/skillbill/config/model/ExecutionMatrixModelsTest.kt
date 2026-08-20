@@ -176,6 +176,7 @@ class ExecutionMatrixModelsTest {
     }
     assertEquals(ExecutionTier.REASONING, matrix.tierOf("plan"))
     assertEquals(ExecutionTier.REASONING, matrix.tierOf("review"))
+    assertEquals(ExecutionTier.REASONING, matrix.tierOf("verify_findings"))
     assertEquals(ExecutionTier.REASONING, matrix.tierOf("audit"))
     assertEquals(ExecutionTier.REASONING, matrix.tierOf("validate"))
     assertEquals(ExecutionTier.IMPLEMENTATION, matrix.tierOf("preplan"))

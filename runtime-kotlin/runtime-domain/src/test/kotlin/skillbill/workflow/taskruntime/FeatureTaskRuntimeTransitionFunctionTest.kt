@@ -17,6 +17,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
+@Suppress("LargeClass")
 class FeatureTaskRuntimeTransitionFunctionTest {
   private val pipeline = listOf("a", "b", "c", "d")
   private val needsFix = FeatureTaskRuntimeVerdict("needs_fix")
@@ -457,7 +458,7 @@ class FeatureTaskRuntimeTransitionFunctionTest {
   )
 
   @Test
-  fun `a clean run advances implement to audit to review to validate`() {
+  fun `a clean run advances implement to audit to review to verify_findings to validate`() {
     val def = FeatureTaskRuntimePhaseWorkflowDefinition
     assertEquals(
       def.PHASE_AUDIT,
@@ -472,9 +473,23 @@ class FeatureTaskRuntimeTransitionFunctionTest {
       ).phaseId,
     )
     assertEquals(
-      def.PHASE_VALIDATE,
+      def.PHASE_VERIFY_FINDINGS,
       assertIs<FeatureTaskRuntimeNextPhase.Next>(
         shippedTransition(def.PHASE_REVIEW, FeatureTaskRuntimeVerdict.APPROVED),
+      ).phaseId,
+    )
+    val noFindingsVerified = satisfiedAudit + mapOf(
+      def.PHASE_REVIEW to FeatureTaskRuntimeVerdict.APPROVED,
+      def.PHASE_VERIFY_FINDINGS to FeatureTaskRuntimeVerdict.NO_FINDINGS_VERIFIED,
+    )
+    assertEquals(
+      def.PHASE_VALIDATE,
+      assertIs<FeatureTaskRuntimeNextPhase.Next>(
+        shippedTransition(
+          def.PHASE_VERIFY_FINDINGS,
+          FeatureTaskRuntimeVerdict.NO_FINDINGS_VERIFIED,
+          settledVerdicts = noFindingsVerified,
+        ),
       ).phaseId,
     )
   }
@@ -504,16 +519,72 @@ class FeatureTaskRuntimeTransitionFunctionTest {
   }
 
   @Test
-  fun `review remediation enters implement_fix once then advances to validate without re-review`() {
+  fun `entering implement_fix with no_findings_verified verify verdict loud-fails with the typed phase-order error`() {
     val def = FeatureTaskRuntimePhaseWorkflowDefinition
-    val reviewFix = shipped.backwardEdges.single { it.loopId == def.REVIEW_FIX_LOOP_ID }
-    assertEquals(1, reviewFix.perEdgeCap)
-    assertEquals(FeatureTaskRuntimeCapExhaustionBehavior.ADVANCE, reviewFix.capExhaustionBehavior)
+    val settled = satisfiedAudit + mapOf(
+      def.PHASE_REVIEW to FeatureTaskRuntimeVerdict.APPROVED,
+      def.PHASE_VERIFY_FINDINGS to FeatureTaskRuntimeVerdict.NO_FINDINGS_VERIFIED,
+    )
+    val error = assertFailsWith<FeatureTaskRuntimePhaseOrderViolationError> {
+      shippedTransition(
+        def.PHASE_VERIFY_FINDINGS,
+        FeatureTaskRuntimeVerdict.FINDINGS_VERIFIED,
+        settledVerdicts = settled,
+      )
+    }
+    assertEquals(def.PHASE_IMPLEMENT_FIX, error.phaseId)
+    assertEquals(def.PHASE_VERIFY_FINDINGS, error.requiredPhaseId)
+    assertEquals("findings_verified", error.requiredVerdict)
+    assertEquals("no_findings_verified", error.observedVerdict)
+  }
+
+  @Test
+  fun `Minor and Nit only verified findings still route the review_fix round`() {
+    val def = FeatureTaskRuntimePhaseWorkflowDefinition
+    val reviewApproved = satisfiedAudit + mapOf(def.PHASE_REVIEW to FeatureTaskRuntimeVerdict.APPROVED)
+    val minorOnlyVerified = reviewApproved + mapOf(
+      def.PHASE_VERIFY_FINDINGS to FeatureTaskRuntimeVerdict.FINDINGS_VERIFIED,
+    )
     val fix = assertIs<FeatureTaskRuntimeNextPhase.Next>(
       shippedTransition(
-        def.PHASE_REVIEW,
-        FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+        def.PHASE_VERIFY_FINDINGS,
+        FeatureTaskRuntimeVerdict.FINDINGS_VERIFIED,
         edgeIterationCount = 0,
+        settledVerdicts = minorOnlyVerified,
+      ),
+    )
+    assertEquals(def.PHASE_IMPLEMENT_FIX, fix.phaseId)
+    assertEquals(def.REVIEW_FIX_LOOP_ID, fix.loopId)
+  }
+
+  @Test
+  @Suppress("LongMethod")
+  fun `verify_findings remediation enters implement_fix once then advances to validate without re-review`() {
+    val def = FeatureTaskRuntimePhaseWorkflowDefinition
+    val reviewFix = shipped.backwardEdges.single { it.loopId == def.REVIEW_FIX_LOOP_ID }
+    assertEquals(def.PHASE_VERIFY_FINDINGS, reviewFix.fromPhaseId)
+    assertEquals(1, reviewFix.perEdgeCap)
+    assertEquals(FeatureTaskRuntimeCapExhaustionBehavior.ADVANCE, reviewFix.capExhaustionBehavior)
+    val reviewApproved = satisfiedAudit + mapOf(def.PHASE_REVIEW to FeatureTaskRuntimeVerdict.APPROVED)
+    assertEquals(
+      def.PHASE_VERIFY_FINDINGS,
+      assertIs<FeatureTaskRuntimeNextPhase.Next>(
+        shippedTransition(
+          def.PHASE_REVIEW,
+          FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+          settledVerdicts = reviewApproved,
+        ),
+      ).phaseId,
+    )
+    val findingsVerifiedSettled = reviewApproved + mapOf(
+      def.PHASE_VERIFY_FINDINGS to FeatureTaskRuntimeVerdict.FINDINGS_VERIFIED,
+    )
+    val fix = assertIs<FeatureTaskRuntimeNextPhase.Next>(
+      shippedTransition(
+        def.PHASE_VERIFY_FINDINGS,
+        FeatureTaskRuntimeVerdict.FINDINGS_VERIFIED,
+        edgeIterationCount = 0,
+        settledVerdicts = findingsVerifiedSettled,
       ),
     )
     assertEquals(def.PHASE_IMPLEMENT_FIX, fix.phaseId)
@@ -521,22 +592,34 @@ class FeatureTaskRuntimeTransitionFunctionTest {
     assertEquals(1, fix.edgeIteration)
     val capExhausted = assertIs<FeatureTaskRuntimeNextPhase.Next>(
       shippedTransition(
-        def.PHASE_REVIEW,
-        FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+        def.PHASE_VERIFY_FINDINGS,
+        FeatureTaskRuntimeVerdict.FINDINGS_VERIFIED,
         edgeIterationCount = 1,
+        settledVerdicts = findingsVerifiedSettled,
       ),
     )
     assertEquals(def.PHASE_VALIDATE, capExhausted.phaseId)
     assertEquals(null, capExhausted.loopId)
-    val approved = assertIs<FeatureTaskRuntimeNextPhase.Next>(
-      shippedTransition(def.PHASE_REVIEW, FeatureTaskRuntimeVerdict.APPROVED),
+    val noFindingsSettled = reviewApproved + mapOf(
+      def.PHASE_VERIFY_FINDINGS to FeatureTaskRuntimeVerdict.NO_FINDINGS_VERIFIED,
     )
-    assertEquals(def.PHASE_VALIDATE, approved.phaseId)
-    assertEquals(null, approved.loopId)
+    val noFindings = assertIs<FeatureTaskRuntimeNextPhase.Next>(
+      shippedTransition(
+        def.PHASE_VERIFY_FINDINGS,
+        FeatureTaskRuntimeVerdict.NO_FINDINGS_VERIFIED,
+        settledVerdicts = noFindingsSettled,
+      ),
+    )
+    assertEquals(def.PHASE_VALIDATE, noFindings.phaseId)
+    assertEquals(null, noFindings.loopId)
     assertEquals(
       def.PHASE_VALIDATE,
       assertIs<FeatureTaskRuntimeNextPhase.Next>(
-        shippedTransition(def.PHASE_IMPLEMENT_FIX, FeatureTaskRuntimeVerdict.ADVANCE),
+        shippedTransition(
+          def.PHASE_IMPLEMENT_FIX,
+          FeatureTaskRuntimeVerdict.ADVANCE,
+          settledVerdicts = findingsVerifiedSettled,
+        ),
       ).phaseId,
     )
   }

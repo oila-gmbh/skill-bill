@@ -47,8 +47,15 @@ class FeatureFamilyRenderingIntegrationTest {
     assertContains(task, "Forward the resolved selection unchanged to the runtime sidecar")
     assertContains(task, "selected agent add-on slugs and manifest descriptions in caller order, or `none`")
     assertContains(goal, "forward it unchanged to every runtime\nchild and child continuation artifact")
-    assertContains(goal, "Blocker and Major findings both reopen\n`implement_fix` and block advancement")
-    assertContains(goal, "no finite count pauses or advances the\nrun")
+    assertContains(goal, "After review, `verify_findings` verifies each finding against the subtask spec intent")
+    assertContains(goal, "at most one bounded `implement_fix` round for every verified finding regardless of severity")
+    assertContains(goal, "then the child advances to `validate` even when verified findings remain unfixed")
+    assertContains(
+      goal,
+      "Rejected findings are recorded in the goal-wide unaddressed-findings ledger and are never fixed",
+    )
+    assertContains(runtime, "Review runs exactly once and records its findings; its verdict never routes.")
+    assertContains(runtime, "without a second review or verification pass")
     assertContains(runtime, "--code-review-mode <auto|inline|delegated>")
     assertContains(runtime, "--agent-addon-selection-json <structured-json>")
     assertContains(runtime, "Do not parse, reorder, or rediscover it")

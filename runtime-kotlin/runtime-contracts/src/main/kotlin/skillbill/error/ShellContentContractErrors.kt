@@ -421,6 +421,14 @@ class InvalidFeatureTaskRuntimeRepairPlanError(
   cause,
 )
 
+class InvalidFeatureTaskRuntimeFindingVerificationRecordError(
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Feature-task-runtime finding verification record is invalid: $reason",
+  cause,
+)
+
 /**
  * Surfaced when a feature-task-runtime planning projection (preplanning digest, executable plan,
  * plan commitment, or implementation receipt) fails the canonical planning-projections schema.

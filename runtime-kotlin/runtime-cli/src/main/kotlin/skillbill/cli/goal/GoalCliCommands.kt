@@ -395,6 +395,8 @@ class GoalFindingsCommand(
             "justification" to adjustment.justification,
           )
         },
+        "verification_disposition" to finding.verificationDisposition,
+        "verification_reason" to finding.verificationReason,
       )
     },
     "repair_ledger" to repairLedgers.map { (workflowId, repairLedger) ->
@@ -416,7 +418,9 @@ class GoalFindingsCommand(
           "severity=${finding.severity} category=${finding.issueCategory} " +
           "location=${finding.location} ${finding.summary}" +
           finding.claimVerdict?.let { " claim_verdict=${it.wireValue}" }.orEmpty() +
-          finding.scopeDisposition?.let { " scope_disposition=${it.wireValue}" }.orEmpty(),
+          finding.scopeDisposition?.let { " scope_disposition=${it.wireValue}" }.orEmpty() +
+          finding.verificationDisposition?.let { " verification_disposition=$it" }.orEmpty() +
+          finding.verificationReason?.let { " verification_reason=$it" }.orEmpty(),
       )
     }
     repairLedgers.forEach { (workflowId, repairLedger) ->

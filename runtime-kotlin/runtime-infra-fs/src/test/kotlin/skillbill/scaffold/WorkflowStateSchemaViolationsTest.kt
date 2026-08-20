@@ -220,7 +220,7 @@ class WorkflowStateSchemaViolationsTest {
     "session_id" to "",
     "workflow_name" to "bill-feature-task",
     "mode" to "runtime",
-    "contract_version" to "0.2",
+    "contract_version" to "0.3",
     "workflow_status" to "running",
     "current_step_id" to "plan",
     "steps" to listOf(
@@ -240,7 +240,7 @@ class WorkflowStateSchemaViolationsTest {
     "workflow_id" to "wfv-19700101-000000-aaaa",
     "session_id" to "",
     "workflow_name" to "bill-feature-verify",
-    "contract_version" to "0.1",
+    "contract_version" to "0.3",
     "workflow_status" to "running",
     "current_step_id" to "gather_diff",
     "steps" to listOf(

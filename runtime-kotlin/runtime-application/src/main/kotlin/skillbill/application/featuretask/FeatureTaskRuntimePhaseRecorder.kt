@@ -48,6 +48,7 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_IDEN
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DECOMPOSE_TERMINAL_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DELIVERED_PROJECTIONS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DIAGNOSTIC_SIGNALS_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_CHECKPOINT_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_IMPLEMENTATION_ATTEMPTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
@@ -68,6 +69,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectio
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticDegradationMeasurement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticFailureClass
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticSignal
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttempt
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationAttemptStatus
@@ -506,7 +508,8 @@ class FeatureTaskRuntimePhaseRecorder(
       val patch = mapOf(
         FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to
           updatedRecords.mapValues { (_, value) -> value.toArtifactMap() },
-      ) + implementationAttemptPatch(artifacts, request, attemptStatusFor(request))
+      ) + implementationAttemptPatch(artifacts, request, attemptStatusFor(request)) +
+        findingVerificationCheckpointPatch(artifacts, request)
       persistPatch(
         unitOfWork.workflowStates,
         record,
@@ -554,7 +557,8 @@ class FeatureTaskRuntimePhaseRecorder(
           FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to
             updatedRecords.mapValues { (_, value) -> value.toArtifactMap() },
           FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY to updatedLedger,
-        ) + implementationAttemptPatch(artifacts, request, FeatureTaskRuntimeImplementationAttemptStatus.COMPLETED),
+        ) + implementationAttemptPatch(artifacts, request, FeatureTaskRuntimeImplementationAttemptStatus.COMPLETED) +
+          findingVerificationCheckpointPatch(artifacts, request),
         WorkflowRowAdvance(request.phaseId, workflowStatusFor(request), stepUpdatesFrom(updatedRecords)),
       )
       true
@@ -802,6 +806,80 @@ class FeatureTaskRuntimePhaseRecorder(
   ): List<skillbill.goalrunner.model.UnaddressedFinding> = database.transaction(dbOverride) { unitOfWork ->
     unitOfWork.unaddressedFindings.fetchWorkflowLedger(workflowId)
   }
+
+  internal fun appendRejectedVerificationFindings(
+    workflowId: String,
+    passNumber: Int,
+    rejected: List<skillbill.goalrunner.model.UnaddressedFinding>,
+    dbOverride: String? = null,
+  ) {
+    if (rejected.isEmpty()) return
+    database.transaction(dbOverride) { unitOfWork ->
+      val existing = unitOfWork.unaddressedFindings.fetchWorkflowLedger(workflowId)
+      val rejectedById = rejected.mapNotNull { finding ->
+        finding.findingId?.let { id -> id to finding }
+      }.toMap()
+      val mergedExisting = existing.map { finding ->
+        val rejection = finding.findingId?.let { rejectedById[it] } ?: return@map finding
+        finding.copy(
+          verificationDisposition = rejection.verificationDisposition,
+          verificationReason = rejection.verificationReason,
+        )
+      }
+      val existingIds = existing.mapNotNull { it.findingId }.toSet()
+      val appended = rejected.filter { it.findingId !in existingIds }
+      unitOfWork.unaddressedFindings.replaceLedgerForPass(
+        workflowId,
+        passNumber,
+        mergedExisting + appended,
+      )
+    }
+  }
+
+  internal fun loadFindingVerificationCheckpoint(
+    workflowId: String,
+    dbOverride: String? = null,
+  ): List<FeatureTaskRuntimeFindingVerificationDisposition>? = database.transaction(dbOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@transaction null
+    val artifacts = decodeArtifacts(record.artifactsJson)
+    findingVerificationCheckpointFrom(artifacts[FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_CHECKPOINT_ARTIFACT_KEY])
+  }
+
+  internal fun persistFindingVerificationCheckpoint(
+    workflowId: String,
+    dispositions: List<FeatureTaskRuntimeFindingVerificationDisposition>,
+    dbOverride: String? = null,
+  ): Boolean {
+    if (dispositions.isEmpty()) return false
+    return database.transaction(dbOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@transaction false
+      val artifacts = decodeArtifacts(record.artifactsJson)
+      persistPatch(
+        unitOfWork.workflowStates,
+        record,
+        mapOf(
+          FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_CHECKPOINT_ARTIFACT_KEY to
+            dispositions.map { it.toArtifactMap() },
+        ),
+        WorkflowRowAdvance.keepFrom(record),
+      )
+      true
+    }
+  }
+
+  internal fun clearFindingVerificationCheckpoint(workflowId: String, dbOverride: String? = null): Boolean =
+    database.transaction(dbOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@transaction false
+      val artifacts = decodeArtifacts(record.artifactsJson)
+      if (artifacts[FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_CHECKPOINT_ARTIFACT_KEY] == null) return@transaction true
+      persistPatch(
+        unitOfWork.workflowStates,
+        record,
+        mapOf(FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_CHECKPOINT_ARTIFACT_KEY to null),
+        WorkflowRowAdvance.keepFrom(record),
+      )
+      true
+    }
 
   internal fun completeGoalReviewPhase(
     completion: GoalReviewPhaseCompletionRequest,
@@ -1826,6 +1904,32 @@ class FeatureTaskRuntimePhaseRecorder(
       ),
     )
     WorkflowFamily.TASK_RUNTIME.save(workflowStates, updated)
+  }
+
+  private fun findingVerificationCheckpointPatch(
+    artifacts: Map<String, Any?>,
+    request: FeatureTaskRuntimePhaseStateRequest,
+  ): Map<String, Any?> {
+    if (request.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS) return emptyMap()
+    if (request.finished && request.status == "completed") {
+      return if (artifacts[FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_CHECKPOINT_ARTIFACT_KEY] != null) {
+        mapOf(FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_CHECKPOINT_ARTIFACT_KEY to null)
+      } else {
+        emptyMap()
+      }
+    }
+    val checkpoint = request.findingVerificationCheckpoint?.takeIf { it.isNotEmpty() } ?: return emptyMap()
+    return mapOf(
+      FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_CHECKPOINT_ARTIFACT_KEY to checkpoint.map { it.toArtifactMap() },
+    )
+  }
+
+  private fun findingVerificationCheckpointFrom(raw: Any?): List<FeatureTaskRuntimeFindingVerificationDisposition>? {
+    if (raw == null) return null
+    return FeatureTaskRuntimeFindingVerificationDisposition.parseList(
+      raw,
+      "finding_verification_checkpoint",
+    )
   }
 
   private fun phaseRecordFor(

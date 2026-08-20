@@ -7,6 +7,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class GoalSubtaskReviewStateTest {
@@ -85,83 +86,55 @@ class GoalSubtaskReviewStateTest {
   }
 
   @Test
-  fun `unresolved blockers keep reserving the next pass with contiguous watermarks`() {
-    var state = GoalSubtaskReviewState.initial(
+  fun `a completed pass prevents another review reservation`() {
+    val state = GoalSubtaskReviewState.initial(
       reviewBaseSha = "a".repeat(40),
       baselineUntrackedPaths = listOf("preexisting.tmp"),
       codeReviewMode = CodeReviewExecutionMode.INLINE,
+    ).reserveNextPass().completeReservedPass(
+      verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+      unresolvedFindingCount = 1,
+      findings = listOf(GoalSubtaskReviewCompactFinding("blocker", "Repository", "Unsafe mutation")),
     )
 
-    (1..10).forEach { passNumber ->
-      val reserved = state.reserveNextPass()
-      assertEquals(passNumber, reserved.reservedPassNumber, "Pass $passNumber must be reservable.")
-      assertEquals(passNumber - 1, reserved.completedPassCount)
-      state = reserved.completeReservedPass(
-        verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
-        unresolvedFindingCount = 1,
-        findings = listOf(GoalSubtaskReviewCompactFinding("blocker", "Repository$passNumber", "Unsafe mutation")),
-      )
-      assertEquals(passNumber, state.completedPassCount)
-      assertFalse(state.reviewCapReached, "No pass count may mint a cap disposition.")
-      assertFalse(state.pausedForOperatorDecision, "No pass count may mint a pause.")
-      assertEquals(
-        (1..passNumber).toList(),
-        state.passResults.map(GoalSubtaskReviewPassResult::passNumber),
-        "Pass results must stay ordered and contiguous.",
-      )
-    }
+    assertEquals(1, state.completedPassCount)
+    assertEquals(state, state.reserveNextPass())
+    assertNull(state.reservedPassNumber)
+    assertFalse(state.reviewCapReached)
+    assertFalse(state.pausedForOperatorDecision)
   }
 
   @Test
-  fun `the first blocker-free pass settles regardless of how many passes preceded it`() {
-    var state = GoalSubtaskReviewState.initial(
+  fun `the single review pass settles when blocker-free`() {
+    val settled = GoalSubtaskReviewState.initial(
       reviewBaseSha = "9".repeat(40),
       baselineUntrackedPaths = emptyList(),
       codeReviewMode = CodeReviewExecutionMode.INLINE,
-    )
-    repeat(6) {
-      state = state.reserveNextPass().completeReservedPass(
-        verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
-        unresolvedFindingCount = 1,
-        findings = emptyList(),
-      )
-    }
-
-    val settled = state.reserveNextPass().completeReservedPass(
+    ).reserveNextPass().completeReservedPass(
       verdict = FeatureTaskRuntimeVerdict.APPROVED,
       unresolvedFindingCount = 0,
       findings = emptyList(),
     )
 
-    assertEquals(7, settled.completedPassCount)
-    assertEquals(FeatureTaskRuntimeVerdict.APPROVED, settled.passResults.last().verdict)
+    assertEquals(1, settled.completedPassCount)
+    assertEquals(FeatureTaskRuntimeVerdict.APPROVED, settled.passResults.single().verdict)
     assertFalse(settled.reviewCapReached)
     assertFalse(settled.pausedForOperatorDecision)
   }
 
   @Test
-  fun `arbitrary positive pass numbers survive serialization and resume`() {
-    var state = GoalSubtaskReviewState.initial(
+  fun `pass one reservation survives serialization and resume`() {
+    val reserved = GoalSubtaskReviewState.initial(
       reviewBaseSha = "7".repeat(40),
       baselineUntrackedPaths = emptyList(),
       codeReviewMode = CodeReviewExecutionMode.INLINE,
-    )
-    repeat(12) {
-      state = state.reserveNextPass().completeReservedPass(
-        verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
-        unresolvedFindingCount = 1,
-        findings = emptyList(),
-      )
-    }
-    val reservedThirteenth = state.acknowledgeSummariesThrough(12).reserveNextPass()
+    ).reserveNextPass()
 
-    val decoded = GoalSubtaskReviewState.fromArtifactMap(reservedThirteenth.toArtifactMap())
+    val decoded = GoalSubtaskReviewState.fromArtifactMap(reserved.toArtifactMap())
 
-    assertEquals(reservedThirteenth, decoded)
-    assertEquals(13, decoded.reservedPassNumber)
-    assertEquals(12, decoded.completedPassCount)
-    assertEquals(12, decoded.emittedPassCount)
-    assertEquals((1..12).toList(), decoded.passResults.map(GoalSubtaskReviewPassResult::passNumber))
+    assertEquals(reserved, decoded)
+    assertEquals(1, decoded.reservedPassNumber)
+    assertEquals(0, decoded.completedPassCount)
   }
 
   @Test
@@ -180,25 +153,19 @@ class GoalSubtaskReviewStateTest {
   }
 
   @Test
-  fun `a later pass with only major findings can carry the legacy cap disposition`() {
-    val firstPass = GoalSubtaskReviewState.initial(
+  fun `review_cap_reached can be recorded against the single completed pass`() {
+    val capped = GoalSubtaskReviewState.initial(
       reviewBaseSha = "e".repeat(40),
       baselineUntrackedPaths = emptyList(),
       codeReviewMode = CodeReviewExecutionMode.INLINE,
     ).reserveNextPass().completeReservedPass(
       verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
       unresolvedFindingCount = 1,
-      findings = listOf(GoalSubtaskReviewCompactFinding("blocker", "Repository", "Unsafe mutation")),
-    )
-
-    val secondPass = firstPass.reserveNextPass().completeReservedPass(
-      verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
-      unresolvedFindingCount = 1,
       findings = listOf(GoalSubtaskReviewCompactFinding("major", "Service", "Missing behavior")),
     ).copy(disposition = GoalSubtaskReviewDisposition.REVIEW_CAP_REACHED)
 
-    assertTrue(secondPass.reviewCapReached)
-    assertEquals(FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, secondPass.passResults.last().verdict)
+    assertTrue(capped.reviewCapReached)
+    assertEquals(FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, capped.passResults.single().verdict)
   }
 
   @Test

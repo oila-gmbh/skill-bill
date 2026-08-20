@@ -115,11 +115,7 @@ class FeatureTaskRuntimeAuditEntryGateTest {
     assertEquals(1, firstRelaunchedReviewPassNumber)
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     val reviewRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["review"])
-    assertEquals(2, reviewRecord.reviewPassNumber)
-    assertFalse(
-      reviewRecord.outputArtifact.orEmpty().contains(REVIEW_BLOCKER_MESSAGE),
-      "the run must not reach Completed while the blocker finding stands unverified",
-    )
+    assertEquals(1, reviewRecord.reviewPassNumber)
   }
 
   @Test
@@ -185,17 +181,21 @@ class FeatureTaskRuntimeAuditEntryGateTest {
 
   private fun assertMigrationRemediationLaunchOrder(launched: List<String>) {
     assertEquals(
-      2,
+      1,
       launched.count { it == "review" },
-      "the blocker from the relaunched review must be re-verified by a second pass, was $launched",
+      "the relaunched review runs exactly once before verification, was $launched",
     )
     assertTrue(
       launched.indexOf("audit") < launched.indexOf("review"),
       "review must be relaunched only after audit settled, was $launched",
     )
     assertTrue(
-      launched.indexOf("implement_fix") in (launched.indexOf("review") + 1) until launched.lastIndexOf("review"),
-      "the fix must run between the two review passes, was $launched",
+      launched.indexOf("verify_findings") > launched.indexOf("review"),
+      "finding verification must follow the relaunched review, was $launched",
+    )
+    assertTrue(
+      launched.indexOf("implement_fix") > launched.indexOf("verify_findings"),
+      "the fix round must follow verified findings, was $launched",
     )
   }
 
@@ -204,8 +204,12 @@ class FeatureTaskRuntimeAuditEntryGateTest {
     val harness = runnerHarness(
       agentAssignment = phasePerAgentAssignment(),
       runtimeConfig = RuntimeHarnessConfig(
-        reviewDriver = crashingRemediationReviewDriver(),
+        reviewDriver = reviewFixDriver(2),
       ),
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        if (phaseId == "verify_findings") spawnFailedFacts() else facts(defaultPhaseOutput(request))
+      },
     )
     seedThroughImplement(harness)
     harness.seedPhase("review", "completed", 3, phaseAgent("review"), CLEAN_REVIEW_OUTPUT)
@@ -213,15 +217,15 @@ class FeatureTaskRuntimeAuditEntryGateTest {
     val report = harness.runner.run(harness.request())
 
     val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(report)
-    assertEquals("review", blocked.lastIncompletePhase)
+    assertEquals("verify_findings", blocked.lastIncompletePhase)
     assertEquals(
-      2,
-      harness.launchOrder().count { it == "review" },
-      "the failed verification launch must remain reserved as pass two",
+      1,
+      harness.launchOrder().count { it == "verify_findings" },
+      "the failed verification launch must remain reserved",
     )
     assertTrue(
       harness.launchedPromptPhaseOrder().none { it in setOf("validate", "commit_push", "pr") },
-      "downstream phases must remain unreachable until the blocker is re-verified",
+      "downstream phases must remain unreachable until findings are verified",
     )
   }
 
@@ -343,9 +347,13 @@ class FeatureTaskRuntimeAuditEntryGateTest {
         "the watermark the dropped re-entry left behind",
     )
     assertEquals(
-      2,
+      1,
       harness.launchOrder().count { it == "review" },
-      "the earned fix pass is re-reviewed exactly once",
+      "the single review pass still runs before verification",
+    )
+    assertTrue(
+      harness.launchOrder().contains("verify_findings"),
+      "verified findings must be settled before the earned fix pass",
     )
   }
 

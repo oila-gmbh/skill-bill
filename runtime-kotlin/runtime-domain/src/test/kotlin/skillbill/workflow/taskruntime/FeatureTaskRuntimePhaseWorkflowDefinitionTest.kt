@@ -46,6 +46,7 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS,
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD,
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
@@ -62,6 +63,7 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT to "Phase 3: Implement",
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT to "Phase 4: Completeness Audit",
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW to "Phase 5: Code Review",
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS to "Phase 5b: Verify Findings",
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX to "Phase 5a: Implement Fix",
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD to "Phase 5b: Build",
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE to "Phase 6: Quality Validation",
@@ -102,6 +104,10 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
     )
     assertEquals(
       listOf(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW),
+      dependenciesOf(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS),
+    )
+    assertEquals(
+      listOf(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS),
       dependenciesOf(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX),
     )
     assertEquals(
@@ -164,14 +170,14 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
     assertEquals(setOf(def.PHASE_IMPLEMENT_FIX, def.PHASE_BUILD), transitions.loopOnlyPhaseIds)
     assertEquals(emptyMap(), transitions.loopOnlySuccessors)
     val edge = transitions.backwardEdges.single { it.loopId == def.REVIEW_FIX_LOOP_ID }
-    assertEquals(def.PHASE_REVIEW, edge.fromPhaseId)
+    assertEquals(def.PHASE_VERIFY_FINDINGS, edge.fromPhaseId)
     assertEquals(def.PHASE_IMPLEMENT_FIX, edge.destinationPhaseId)
     assertEquals("review_fix", edge.loopId)
     assertEquals(1, edge.perEdgeCap)
     assertEquals(FeatureTaskRuntimeCapExhaustionBehavior.ADVANCE, edge.capExhaustionBehavior)
-    assertEquals(FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, edge.triggeringVerdict)
+    assertEquals(FeatureTaskRuntimeVerdict.FINDINGS_VERIFIED, edge.triggeringVerdict)
     assertEquals(
-      listOf(def.PHASE_REVIEW),
+      listOf(def.PHASE_VERIFY_FINDINGS),
       dependenciesOf(def.PHASE_IMPLEMENT_FIX),
     )
     val fixProjections = def.phaseDeclarations.getValue(def.PHASE_IMPLEMENT_FIX).projectionDeclarations
@@ -290,7 +296,12 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
         def.PHASE_IMPLEMENT to "feature_task_runtime.implementation_receipt",
       ),
       def.PHASE_IMPLEMENT_FIX to setOf(
-        def.PHASE_REVIEW to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REVIEW_REPAIR_REQUEST,
+        def.PHASE_VERIFY_FINDINGS to
+          FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REVIEW_REPAIR_REQUEST,
+      ),
+      def.PHASE_VERIFY_FINDINGS to setOf(
+        def.PHASE_REVIEW to
+          FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.FINDINGS_VERIFICATION_INPUT,
       ),
       def.PHASE_REVIEW to setOf(
         def.PHASE_AUDIT to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_CLEARANCE,
@@ -481,12 +492,19 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
     val ids = def.transitions.forwardPhaseIds
     assertTrue(ids.indexOf(def.PHASE_IMPLEMENT) < ids.indexOf(def.PHASE_AUDIT))
     assertTrue(ids.indexOf(def.PHASE_AUDIT) < ids.indexOf(def.PHASE_REVIEW))
-    assertTrue(ids.indexOf(def.PHASE_REVIEW) < ids.indexOf(def.PHASE_VALIDATE))
+    assertTrue(ids.indexOf(def.PHASE_REVIEW) < ids.indexOf(def.PHASE_VERIFY_FINDINGS))
+    assertTrue(ids.indexOf(def.PHASE_VERIFY_FINDINGS) < ids.indexOf(def.PHASE_IMPLEMENT_FIX))
+    assertTrue(ids.indexOf(def.PHASE_IMPLEMENT_FIX) < ids.indexOf(def.PHASE_BUILD))
+    assertTrue(ids.indexOf(def.PHASE_BUILD) < ids.indexOf(def.PHASE_VALIDATE))
     assertTrue(def.PHASE_BUILD in def.transitions.loopOnlyPhaseIds)
-    val gate = def.transitions.entryGates.single()
-    assertEquals(def.PHASE_REVIEW, gate.phaseId)
-    assertEquals(def.PHASE_AUDIT, gate.requiredPhaseId)
-    assertEquals(FeatureTaskRuntimeVerdict.SATISFIED, gate.requiredVerdict)
+    assertTrue(def.PHASE_IMPLEMENT_FIX in def.transitions.loopOnlyPhaseIds)
+    assertTrue(def.PHASE_VERIFY_FINDINGS !in def.transitions.loopOnlyPhaseIds)
+    val reviewGate = def.transitions.entryGates.single { it.phaseId == def.PHASE_REVIEW }
+    assertEquals(def.PHASE_AUDIT, reviewGate.requiredPhaseId)
+    assertEquals(FeatureTaskRuntimeVerdict.SATISFIED, reviewGate.requiredVerdict)
+    val implementFixGate = def.transitions.entryGates.single { it.phaseId == def.PHASE_IMPLEMENT_FIX }
+    assertEquals(def.PHASE_VERIFY_FINDINGS, implementFixGate.requiredPhaseId)
+    assertEquals(FeatureTaskRuntimeVerdict.FINDINGS_VERIFIED, implementFixGate.requiredVerdict)
   }
 
   @Test
@@ -588,17 +606,23 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
           requiredPhaseId = def.PHASE_AUDIT,
           requiredVerdict = FeatureTaskRuntimeVerdict.SATISFIED,
         ),
+        FeatureTaskRuntimePhaseEntryGate(
+          phaseId = def.PHASE_IMPLEMENT_FIX,
+          requiredPhaseId = def.PHASE_VERIFY_FINDINGS,
+          requiredVerdict = FeatureTaskRuntimeVerdict.FINDINGS_VERIFIED,
+        ),
       ),
       transitions.entryGates,
     )
     val semantic = transitions.backwardEdges.filterNot { def.isRegenerationLoopId(it.loopId) }
     assertEquals(
       listOf(
-        Triple(def.PHASE_REVIEW, FeatureTaskRuntimeVerdict.CHANGES_REQUESTED, def.PHASE_IMPLEMENT_FIX),
+        Triple(def.PHASE_VERIFY_FINDINGS, FeatureTaskRuntimeVerdict.FINDINGS_VERIFIED, def.PHASE_IMPLEMENT_FIX),
         Triple(def.PHASE_AUDIT, FeatureTaskRuntimeVerdict.GAPS_FOUND, def.PHASE_IMPLEMENT),
       ),
       semantic.map { Triple(it.fromPhaseId, it.triggeringVerdict, it.destinationPhaseId) },
     )
+    assertTrue(semantic.none { it.fromPhaseId == def.PHASE_REVIEW && it.loopId == def.REVIEW_FIX_LOOP_ID })
     val reviewFixEdge = semantic.single { it.loopId == def.REVIEW_FIX_LOOP_ID }
     assertEquals(1, reviewFixEdge.perEdgeCap)
     assertEquals(FeatureTaskRuntimeCapExhaustionBehavior.ADVANCE, reviewFixEdge.capExhaustionBehavior)

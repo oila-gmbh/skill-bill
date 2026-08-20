@@ -27,6 +27,7 @@ import skillbill.application.model.FeatureTaskRuntimeRunReport
 import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.model.ParallelCodeReviewRequest
 import skillbill.application.model.ParallelCodeReviewResult
+import skillbill.application.review.toProjectionPayload
 import skillbill.application.workflow.repoRoot
 import skillbill.config.model.PhaseCompactionDirective
 import skillbill.config.model.PhaseModelDirective
@@ -64,6 +65,9 @@ import skillbill.ports.workflow.runtimePhaseChangedPathsBetweenCommits
 import skillbill.ports.workflow.runtimePhaseHeadCommit
 import skillbill.ports.workflow.stagePaths
 import skillbill.ports.workflow.stagedPaths
+import skillbill.review.context.model.ReviewContextBudgetPolicy
+import skillbill.review.context.model.SpecIntentProjectionResolveRequest
+import skillbill.review.context.model.SpecIntentResolution
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.telemetry.estimation.estimateTokens
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
@@ -1785,8 +1789,13 @@ internal class FeatureTaskRuntimeRunLoop(
    * keep replaying the already-reviewed fix instead of earning the next remediation pass.
    */
   private fun resumeInFlightReviewFix(edge: FeatureTaskRuntimeBackwardEdge): String? {
-    if (edge.loopId != FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID) return null
-    if (state.isLoopLiveClaimed(edge.loopId)) return null
+    if (
+      edge.loopId != FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID ||
+      state.isLoopLiveClaimed(edge.loopId) ||
+      state.isComplete(edge.destinationPhaseId)
+    ) {
+      return null
+    }
     val destinationRecord = state.recordFor(edge.destinationPhaseId)
       ?.takeIf { it.loopId == edge.loopId && it.edgeIteration == state.edgeIterationCount(edge.loopId) }
       ?: return null
@@ -4420,6 +4429,7 @@ internal class FeatureTaskRuntimeRunLoop(
       outputText, outputBytes, outputTruncated, outputByteSize, outputSha256,
     )
   } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
+    persistVerifyFindingsCheckpointIfPresent(run, outputText)
     val path = rejectionPath(error.reason)
     val reason = payloadFreeRejectionReason("phase-output-schema", path)
     val diagnosticWrite = recordRejectedOutput(
@@ -4575,6 +4585,9 @@ internal class FeatureTaskRuntimeRunLoop(
       fileManifest = fileManifest,
     )
     fun reject(rule: String, detail: String): AttemptResult = rejectValidatedOutput(capture, outputMap, rule, detail)
+    FeatureTaskRuntimeVerificationGateReasons.verifyFindingsWorktree(run.phaseId, fileManifest)?.let { reason ->
+      return reject("verify-findings-worktree", reason)
+    }
     firstValidatedOutputRejection(run.phaseId, outputMap)?.let { (rule, reason) ->
       return reject(rule, reason)
     }
@@ -5368,8 +5381,38 @@ internal class FeatureTaskRuntimeRunLoop(
   }
 
   private fun outputVerificationGateReason(phaseId: String, outputMap: Map<String, Any?>): String? =
-    reviewVerificationSignalGateReason(phaseId, outputMap)
-      ?: auditVerificationSignalGateReason(phaseId, outputMap)
+    FeatureTaskRuntimeVerificationGateReasons.reviewVerificationSignal(phaseId, outputMap)
+      ?: FeatureTaskRuntimeVerificationGateReasons.findingVerificationDisposition(
+        phaseId,
+        outputMap,
+        reviewFindingIdsForVerification(),
+      )
+      ?: FeatureTaskRuntimeVerificationGateReasons.auditVerificationSignal(phaseId, outputMap)
+
+  private fun persistVerifyFindingsCheckpointIfPresent(run: PhaseRun, outputText: String) {
+    if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS) return
+    val outputMap = JsonSupport.parseObjectOrNull(outputText)
+      ?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
+      ?: return
+    val dispositions = FeatureTaskRuntimeOutputVerification.dispositionsFrom(outputMap)
+    if (dispositions.isEmpty()) return
+    recorder.persistFindingVerificationCheckpoint(
+      workflowId = run.request.workflowId,
+      dispositions = dispositions,
+      dbOverride = run.request.dbPathOverride,
+    )
+  }
+
+  private fun reviewFindingIdsForVerification(): Set<String> {
+    val reviewOutput = state.outputFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
+      ?.normalizedOutput?.envelope
+      ?: return emptySet()
+    val recordedVerdicts = recorder.recordedFindingVerdicts(reviewOutput, request.dbPathOverride)
+    return GoalSubtaskReviewSummaryReducer.structuredFindings(reviewOutput, recordedVerdicts)
+      .mapNotNull { it.findingId }
+      .toSet()
+  }
 
   /**
    * Rebuilds payload-free structural-repair evidence from digest/location fields carried on the
@@ -5455,6 +5498,9 @@ internal class FeatureTaskRuntimeRunLoop(
         return AttemptResult.settled(outcome)
       }
     } else {
+      if (run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS) {
+        persistRejectedVerificationFindings(run, normalizedOutput.envelope)
+      }
       val persisted = recorder.recordCompletedPhase(
         phaseStateRequest(
           run,
@@ -5493,6 +5539,35 @@ internal class FeatureTaskRuntimeRunLoop(
           repairEvidence,
         ),
       ),
+    )
+  }
+
+  private fun persistRejectedVerificationFindings(run: PhaseRun, verifyOutput: Map<String, Any?>) {
+    if (!isGoalContinuationRun(run.request)) return
+    val continuation = run.request.goalContinuation ?: return
+    val reviewOutput = state.outputFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
+      ?.normalizedOutput?.envelope
+      ?: return
+    val reviewState = goalContinuationRecorder.reviewState(run.request.workflowId, run.request.dbPathOverride)
+    val passNumber = reviewState?.completedPassCount?.takeIf { it > 0 } ?: 1
+    val recordedVerdicts = recorder.recordedFindingVerdicts(reviewOutput, run.request.dbPathOverride)
+    val rejected = GoalSubtaskReviewSummaryReducer.rejectedVerificationFindings(
+      verifyOutput = verifyOutput,
+      reviewOutput = reviewOutput,
+      scope = UnaddressedFindingLedgerScope(
+        issueKey = continuation.parentIssueKey,
+        subtaskId = continuation.subtaskId,
+        workflowId = run.request.workflowId,
+        reviewPassNumber = passNumber,
+      ),
+      recordedVerdicts = recordedVerdicts,
+    )
+    if (rejected.isEmpty()) return
+    recorder.appendRejectedVerificationFindings(
+      workflowId = run.request.workflowId,
+      passNumber = passNumber,
+      rejected = rejected,
+      dbOverride = run.request.dbPathOverride,
     )
   }
 
@@ -5758,8 +5833,45 @@ internal class FeatureTaskRuntimeRunLoop(
       agentRunValidateFallback = run.agentRunValidateFallback,
       packCollectAllCommand = packCollectAllCommand(run, state),
       packBuildCommand = packBuildCommand(run, state),
-    )
+    ) + verifyFindingsSpecIntentSection(run)
     return PreparedLaunch(briefing, prompt)
+  }
+
+  private fun verifyFindingsSpecIntentSection(run: PhaseRun): String {
+    if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS) return ""
+    val checkpoint = recorder.loadFindingVerificationCheckpoint(run.request.workflowId, run.request.dbPathOverride)
+    val resolution = phaseGates.specIntentProjectionResolver.resolve(
+      SpecIntentProjectionResolveRequest(
+        repoRoot = run.request.repoRoot,
+        explicitSpecPath = java.nio.file.Path.of(run.request.runInvariants.specReference),
+        branchName = resolvedBranch ?: "HEAD",
+        changedPaths = emptyList(),
+        budget = ReviewContextBudgetPolicy.DEFAULT,
+      ),
+    )
+    return buildString {
+      when (resolution) {
+        is SpecIntentResolution.Resolved -> {
+          appendLine()
+          appendLine("## Spec intent projection (verify_findings)")
+          appendLine(JsonSupport.mapToJsonString(resolution.projection.toProjectionPayload()))
+        }
+        else -> Unit
+      }
+      if (!checkpoint.isNullOrEmpty()) {
+        appendLine()
+        appendLine("## Persisted verify_findings checkpoint")
+        appendLine(
+          "Reuse these in-flight dispositions verbatim unless repository evidence contradicts them; " +
+            "do not mint a second verification pass.",
+        )
+        appendLine(
+          checkpoint.joinToString(prefix = "[", postfix = "]") { disposition ->
+            JsonSupport.mapToJsonString(disposition.toArtifactMap())
+          },
+        )
+      }
+    }
   }
 
   @Suppress("ReturnCount")
@@ -5790,6 +5902,7 @@ internal class FeatureTaskRuntimeRunLoop(
     }
     val briefing = prepared.briefing
     val isReviewPhase = run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW
+    val isVerifyFindingsPhase = run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS
 
     val launched = launchedModelDirective(run)
 
@@ -5806,8 +5919,9 @@ internal class FeatureTaskRuntimeRunLoop(
           effortOverride = launched.effortOverride,
           compaction = run.compaction,
           promptOverride = prepared.prompt,
-          readOnlyPhase = isReviewPhase,
-          progressIdleTimeout = READ_ONLY_PHASE_PROGRESS_IDLE_TIMEOUT_MINUTES.minutes.takeIf { isReviewPhase },
+          readOnlyPhase = isReviewPhase || isVerifyFindingsPhase,
+          progressIdleTimeout = READ_ONLY_PHASE_PROGRESS_IDLE_TIMEOUT_MINUTES.minutes
+            .takeIf { isReviewPhase || isVerifyFindingsPhase },
         ),
       ),
     )

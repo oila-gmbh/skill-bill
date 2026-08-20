@@ -19,13 +19,20 @@ class ReviewFixCapReconciliationTest {
   private fun transitionAt(iteration: Int, verdict: FeatureTaskRuntimeVerdict) =
     FeatureTaskRuntimeTransitionFunction.nextTransition(
       declaration = transitions,
-      currentPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+      currentPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS,
       verdict = verdict,
       edgeIterationCount = iteration,
       context = FeatureTaskRuntimeTransitionContext(
-        settledVerdictsByPhaseId = mapOf(
-          FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT to FeatureTaskRuntimeVerdict.SATISFIED,
-        ),
+        settledVerdictsByPhaseId = buildMap {
+          put(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT, FeatureTaskRuntimeVerdict.SATISFIED)
+          put(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW, FeatureTaskRuntimeVerdict.APPROVED)
+          if (verdict == FeatureTaskRuntimeVerdict.FINDINGS_VERIFIED) {
+            put(
+              FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS,
+              FeatureTaskRuntimeVerdict.FINDINGS_VERIFIED,
+            )
+          }
+        },
       ),
     )
 
@@ -36,11 +43,12 @@ class ReviewFixCapReconciliationTest {
       FeatureTaskRuntimeCapExhaustionBehavior.ADVANCE,
       reviewFixEdge.capExhaustionBehavior,
     )
+    assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS, reviewFixEdge.fromPhaseId)
   }
 
   @Test
-  fun `the first changes_requested re-enters implement_fix`() {
-    val transition = transitionAt(0, FeatureTaskRuntimeVerdict.CHANGES_REQUESTED)
+  fun `the first findings_verified re-enters implement_fix`() {
+    val transition = transitionAt(0, FeatureTaskRuntimeVerdict.FINDINGS_VERIFIED)
     val next = assertIs<FeatureTaskRuntimeNextPhase.Next>(transition)
     assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX, next.phaseId)
     assertEquals(1, next.edgeIteration)
@@ -48,18 +56,18 @@ class ReviewFixCapReconciliationTest {
   }
 
   @Test
-  fun `a second changes_requested advances to validate without re-review`() {
+  fun `a second findings_verified advances to validate without re-review`() {
     val next = assertIs<FeatureTaskRuntimeNextPhase.Next>(
-      transitionAt(1, FeatureTaskRuntimeVerdict.CHANGES_REQUESTED),
+      transitionAt(1, FeatureTaskRuntimeVerdict.FINDINGS_VERIFIED),
     )
     assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE, next.phaseId)
     assertEquals(null, next.loopId)
   }
 
   @Test
-  fun `an approved review advances to validate`() {
+  fun `no_findings_verified advances to validate`() {
     val next = assertIs<FeatureTaskRuntimeNextPhase.Next>(
-      transitionAt(0, FeatureTaskRuntimeVerdict.APPROVED),
+      transitionAt(0, FeatureTaskRuntimeVerdict.NO_FINDINGS_VERIFIED),
     )
     assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE, next.phaseId)
   }

@@ -16,55 +16,32 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertFalse
 
-/**
- * AC-008 and AC-010: the reserved remediation pass's prompt must describe the remediation delta, must
- * not restate the immutable-base scope that contradicts it, and must derive its mode token from the
- * resolved tier. Runtime-owned review synthesizes `produced_outputs.blocker_dispositions`; the prompt
- * does not order that key.
- *
- * SKILL-178 subtask 2: the finding half of the remediation-delta union widens to all addressed
- * findings; remediation survival wording covers Blocker or Major; pass-two still suppresses
- * immutable-base and baseline-untracked framing.
- */
 class FeatureTaskRuntimeRemediationPassPromptTest {
   @Test
   fun `pass two ceremony directive orders the remediation delta, not the complete immutable-base delta`() {
-    val prompt = compose(passNumber = 2, resolvedTier = CodeReviewExecutionMode.INLINE)
+    val prompt = implementFixPrompt()
 
-    assertContains(prompt, "context:feature-remediation")
-    assertContains(prompt, "diff(pre-fix tree -> post-fix tree)")
-    assertContains(prompt, "all findings addressed in that round")
-    assertFalse(
-      prompt.contains("prior pass's Blocker findings"),
-      "Pass two must not scope remediation to Blocker-only findings.",
-    )
+    assertContains(prompt, "Address every verified finding from verify_findings")
+    assertContains(prompt, "Every carried finding — Blocker, Major, Minor, and Nit — is in scope")
     assertFalse(
       prompt.contains("to the subtask's complete delta from its immutable base"),
-      "Pass two must not order the complete immutable-base delta.",
+      "implement_fix must not order the complete immutable-base delta.",
     )
   }
 
   @Test
   fun `pass two reserved remediation section preserves prohibitions and Blocker-or-Major survival`() {
-    val prompt = compose(passNumber = 2, resolvedTier = CodeReviewExecutionMode.INLINE)
+    val prompt = implementFixPrompt()
 
-    assertContains(prompt, "all findings addressed in that round union")
-    assertContains(prompt, "Do not re-review the subtask's full base-to-current delta")
-    assertContains(prompt, "review_base_sha")
-    assertContains(prompt, "pass one's authority only")
-    assertContains(prompt, "A defect introduced by the remediation itself must still be caught")
-    assertContains(prompt, "unresolved Blocker or Major survives")
+    assertContains(prompt, "Every carried finding — Blocker, Major, Minor, and Nit — is in scope")
+    assertContains(prompt, "Do not re-apply the plan from scratch")
+    assertFalse(prompt.contains("## Immutable-base review scope"))
     assertFalse(prompt.contains("immediately preceding pass's Blocker findings"))
   }
 
   @Test
   fun `pass two omits the immutable-base materialized scope block and baseline-untracked policy`() {
-    val prompt = compose(
-      passNumber = 2,
-      resolvedTier = CodeReviewExecutionMode.INLINE,
-      reviewInput = REVIEW_INPUT,
-      baselineUntrackedPaths = listOf("preexisting.tmp"),
-    )
+    val prompt = implementFixPrompt()
 
     assertFalse(
       prompt.contains("## Immutable-base review scope"),
@@ -74,12 +51,12 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
       prompt.contains("## Baseline-untracked review policy"),
       "Baseline-untracked policy is pass one's authority only.",
     )
-    assertContains(prompt, "## Reserved remediation pass (pass 2)")
+    assertContains(prompt, "Phase: implement_fix")
   }
 
   @Test
   fun `pass one keeps the immutable-base materialized scope block`() {
-    val prompt = compose(
+    val prompt = composeReview(
       passNumber = 1,
       resolvedTier = CodeReviewExecutionMode.INLINE,
       reviewInput = REVIEW_INPUT,
@@ -90,7 +67,7 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
 
   @Test
   fun `pass one keeps baseline-untracked policy when inventory is present`() {
-    val prompt = compose(
+    val prompt = composeReview(
       passNumber = 1,
       resolvedTier = CodeReviewExecutionMode.INLINE,
       baselineUntrackedPaths = listOf("preexisting.tmp"),
@@ -102,31 +79,29 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
 
   @Test
   fun `the remediation pass always renders mode inline`() {
-    val prompt = compose(passNumber = 2, resolvedTier = CodeReviewExecutionMode.INLINE)
+    val prompt = implementFixPrompt()
 
-    assertContains(prompt, "mode:inline context:feature-remediation")
+    assertContains(prompt, "Phase: implement_fix")
     assertFalse(
       prompt.contains("mode:delegated context:feature-remediation"),
-      "context:feature-remediation paired with mode:delegated is rejected by the governed skill.",
+      "implement_fix is runtime-owned reconciliation, not a delegated remediation review.",
     )
   }
 
   @Test
   fun `pass two orders one evidenced disposition per prior Blocker finding id`() {
-    val prompt = compose(
-      passNumber = 2,
-      resolvedTier = CodeReviewExecutionMode.INLINE,
-    )
+    val prompt = implementFixPrompt()
 
+    assertContains(prompt, "produced_outputs.repair_receipt")
     assertFalse(
       prompt.contains("blocker_dispositions"),
-      "Runtime synthesizes dispositions; the prompt does not order them.",
+      "implement_fix emits repair receipts; review dispositions stay on verify_findings.",
     )
   }
 
   @Test
   fun `pass one never orders blocker dispositions`() {
-    val prompt = compose(
+    val prompt = composeReview(
       passNumber = 1,
       resolvedTier = CodeReviewExecutionMode.INLINE,
     )
@@ -142,34 +117,50 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
       "src/TouchedThree.kt",
       "src/TouchedFour.kt",
     )
-    val untouched = listOf(
-      "src/UntouchedOne.kt",
-      "src/UntouchedTwo.kt",
-      "src/UntouchedThree.kt",
-      "src/UntouchedFour.kt",
-      "src/UntouchedFive.kt",
-      "src/UntouchedSix.kt",
-    )
-    val remediationDelta = touched.joinToString("\n") { path ->
-      "diff --git a/$path b/$path\n--- a/$path\n+++ b/$path\n@@ -1 +1 @@\n-old\n+new"
-    }
-    val prompt = compose(
-      passNumber = 2,
-      resolvedTier = CodeReviewExecutionMode.INLINE,
-      reviewInput = GoalSubtaskReviewInput(
-        reviewBaseSha = "c".repeat(40),
-        currentHeadSha = "d".repeat(40),
-        trackedDelta = remediationDelta,
-        ownedUntrackedPatches = "",
+    val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint(fingerprint = "fixture-checkpoint-1")
+    val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
+      declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclaration(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
+        FeatureTaskRuntimeFeatureSize.MEDIUM,
       ),
+      runInvariants = FeatureTaskRuntimeRunInvariants(
+        specReference = ".feature-specs/SKILL-142/spec.md",
+        featureSize = FeatureTaskRuntimeFeatureSize.MEDIUM,
+        acceptanceCriteria = listOf("AC-008", "AC-010"),
+        mandatesAndOverrides = emptyList(),
+      ),
+      recordedOutputs = listOf(
+        FeatureTaskRuntimePhaseOutput(
+          FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+          1,
+          """{"produced_outputs":{"findings":[""" +
+            """{"finding_id":"F-001","severity":"Blocker","location":"${
+              touched.first()
+            }:1","message":"must fix"}]}}""",
+        ),
+        verifyFindingsPhaseOutput(listOf("F-001")).copy(
+          payload = verifyFindingsOutput(listOf("F-001")).replace(
+            """"location":"Foo.kt:1"""",
+            """"location":"${touched.first()}:1"""",
+          ).replace(
+            """"message":"Foo.kt leaks a connection in the error path"""",
+            """"message":"must fix"""",
+          ),
+        ),
+      ),
+      repositoryCheckpoint = checkpoint,
+      expectedRepositoryCheckpoint = checkpoint,
+    )
+    val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      issueKey = "SKILL-142",
+      briefing = briefing,
     )
 
-    assertContains(prompt, "all findings addressed in that round")
+    assertContains(prompt, touched.first())
+    assertContains(prompt, "must fix")
+    assertContains(prompt, "F-001")
     assertFalse(prompt.contains("immediately preceding pass's Blocker findings"))
-    touched.forEach { path -> assertContains(prompt, path) }
-    untouched.forEach { path ->
-      assertFalse(prompt.contains(path), "untouched path $path must not appear in the remediation materialization")
-    }
   }
 
   @Test
@@ -194,6 +185,14 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
             """{"finding_id":"F-BLOCKER","severity":"Blocker","location":"A.kt:1","message":"must fix"},""" +
             """{"finding_id":"F-MINOR","severity":"Minor","location":"B.kt:2","message":"polish naming"}]}}""",
         ),
+        verifyFindingsPhaseOutput(listOf("F-BLOCKER", "F-MINOR")).copy(
+          payload = """
+            {"produced_outputs":{"finding_dispositions":[
+              {"finding_id":"F-BLOCKER","disposition":"verified","reason":"Matches spec intent.","severity":"blocker","location":"A.kt:1","message":"must fix"},
+              {"finding_id":"F-MINOR","disposition":"verified","reason":"Matches spec intent.","severity":"minor","location":"B.kt:2","message":"polish naming"}
+            ]}}
+          """.trimIndent(),
+        ),
       ),
       repositoryCheckpoint = checkpoint,
       expectedRepositoryCheckpoint = checkpoint,
@@ -205,15 +204,15 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
     )
 
     assertContains(prompt, "F-MINOR")
-    assertContains(prompt, "Minor")
+    assertContains(prompt, "minor")
     assertContains(prompt, "polish naming")
-    assertContains(prompt, "Every finding in the briefing — Blocker, Major, Minor, and Nit — is in")
+    assertContains(prompt, "Every carried finding — Blocker, Major, Minor, and Nit — is in scope")
     assertFalse(prompt.contains("Major, Minor, and Nit findings, specialist narratives"))
   }
 
   @Test
   fun `review ceremony orders every severity into produced_outputs findings without Blocker-only filter`() {
-    val prompt = compose(passNumber = 1, resolvedTier = CodeReviewExecutionMode.INLINE)
+    val prompt = composeReview(passNumber = 1, resolvedTier = CodeReviewExecutionMode.INLINE)
 
     assertContains(prompt, "The runtime owns this review")
     assertFalse(prompt.contains("Do not severity-filter the findings array"))
@@ -223,7 +222,39 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
     )
   }
 
-  private fun compose(
+  private fun implementFixPrompt(): String {
+    val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint(fingerprint = "fixture-checkpoint-1")
+    val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
+      declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclaration(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
+        FeatureTaskRuntimeFeatureSize.MEDIUM,
+      ),
+      runInvariants = FeatureTaskRuntimeRunInvariants(
+        specReference = ".feature-specs/SKILL-142/spec.md",
+        featureSize = FeatureTaskRuntimeFeatureSize.MEDIUM,
+        acceptanceCriteria = listOf("AC-008", "AC-010"),
+        mandatesAndOverrides = emptyList(),
+      ),
+      recordedOutputs = listOf(
+        FeatureTaskRuntimePhaseOutput(
+          FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+          1,
+          """{"produced_outputs":{"findings":[{"finding_id":"F-001","severity":"Blocker",""" +
+            """"location":"A.kt:1","message":"must fix"}]}}""",
+        ),
+        verifyFindingsPhaseOutput(listOf("F-001")),
+      ),
+      repositoryCheckpoint = checkpoint,
+      expectedRepositoryCheckpoint = checkpoint,
+    )
+    val briefing = FeatureTaskRuntimePhaseBriefingAssembler.assemble(handoff)
+    return FeatureTaskRuntimePhasePromptComposer.compose(
+      issueKey = "SKILL-142",
+      briefing = briefing,
+    )
+  }
+
+  private fun composeReview(
     passNumber: Int,
     resolvedTier: CodeReviewExecutionMode,
     reviewInput: GoalSubtaskReviewInput? = null,
