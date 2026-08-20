@@ -306,25 +306,52 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
   }
 
   @Test
-  fun `audit nested-verdict missing delimiter repairs then remains schema-invalid`() {
-    // SKILL-187 AC-001: delimiter repair is syntax-only; nested verdict still fails the phase schema.
+  fun `audit extra closer before trailing verdict is dropped and the envelope is kept`() {
+    val payload =
+      """{"contract_version":"0.3","phase_id":"audit","status":"completed","summary":"Audited production.",""" +
+        """"produced_outputs":{"gaps":[]},"derived_notes":"no production gap"},"verdict":"satisfied"}"""
+
+    val result = adapter.validatePhaseOutput(payload, "audit")
+
+    val repaired = assertIs<FeatureTaskRuntimePhaseOutputValidationResult.AcceptedAfterRepair>(result)
+    assertEquals("satisfied", repaired.normalizedOutput.envelope["verdict"])
+    assertEquals("audit", repaired.normalizedOutput.envelope["phase_id"])
+    assertEquals(
+      FeatureTaskRuntimePhaseOutputRepairOperation.REMOVE_EXTRA_CLOSING_DELIMITER,
+      repaired.evidence.operation,
+    )
+  }
+
+  @Test
+  fun `audit nested verdict with a missing closer is closed then aligned to the expected shape`() {
     val malformed =
-      """{"contract_version":"0.3","phase_id":"audit","status":"completed","summary":"SKILL187-AUDIT-DELIM",""" +
+      """{"contract_version":"0.3","phase_id":"audit","status":"completed","summary":"Audited production.",""" +
         """"produced_outputs":{"gaps":[],"verdict":"satisfied"}"""
 
     val result = adapter.validatePhaseOutput(malformed, "audit")
 
-    val rejected = assertIs<FeatureTaskRuntimePhaseOutputValidationResult.Rejected>(result)
-    assertEquals(FeatureTaskRuntimePhaseOutputFailureCode.SCHEMA_INVALID, rejected.code)
-    val evidence = requireNotNull(rejected.structuralRepairEvidence) {
-      "schema rejection after delimiter repair must retain payload-free structural evidence"
-    }
+    val repaired = assertIs<FeatureTaskRuntimePhaseOutputValidationResult.AcceptedAfterRepair>(result)
+    assertEquals("satisfied", repaired.normalizedOutput.envelope["verdict"])
+    assertEquals("audit", repaired.normalizedOutput.envelope["phase_id"])
+  }
+
+  @Test
+  fun `audit nested verdict is hoisted onto the expected envelope shape`() {
+    val nested =
+      """{"contract_version":"0.3","phase_id":"audit","status":"completed","summary":"Audited production.",""" +
+        """"produced_outputs":{"gaps":[],"verdict":"satisfied"}}"""
+
+    val result = adapter.validatePhaseOutput(nested, "audit")
+
+    val repaired = assertIs<FeatureTaskRuntimePhaseOutputValidationResult.AcceptedAfterRepair>(result)
+    assertEquals("satisfied", repaired.normalizedOutput.envelope["verdict"])
     assertEquals(
-      FeatureTaskRuntimePhaseOutputRepairOperation.ADD_MISSING_CLOSING_DELIMITER,
-      evidence.operation,
+      FeatureTaskRuntimePhaseOutputRepairOperation.RESTORE_EXPECTED_SHAPE,
+      repaired.evidence.operation,
     )
-    assertEquals(sha256(malformed), evidence.originalDigest)
-    assertFalse(rejected.reason.contains("SKILL187-AUDIT-DELIM"))
+    @Suppress("UNCHECKED_CAST")
+    val produced = repaired.normalizedOutput.envelope["produced_outputs"] as Map<String, Any?>
+    assertEquals(null, produced["verdict"])
   }
 
   @Test

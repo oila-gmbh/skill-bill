@@ -54,7 +54,7 @@ $defs:
       repaired_digest: { type: string, pattern: "^[a-f0-9]{64}$" }
       operation:
         type: string
-        enum: [remove_extra_closing_delimiter, add_missing_closing_delimiter, deduplicate_keys]
+        enum: [remove_extra_closing_delimiter, add_missing_closing_delimiter, deduplicate_keys, restore_expected_shape]
       source_location:
         type: object
         additionalProperties: false

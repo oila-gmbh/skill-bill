@@ -1,3 +1,12 @@
+## [2026-08-20] Output-gate JSON retries block after two attempts
+Areas: runtime-application/featuretask
+- Extracted phase JSON is aligned to that phase's expected fields before the schema gate; nested or trailing required fields are restored on the existing capture.
+- If that still fails, one salvage launch receives the original capture plus the expected shape; the result is extracted and validated the same way, and a second failure blocks.
+- Schema-invalid and malformed phase output share that one salvage; there is no third launch.
+- Audit-gap and review-fix loops stay uncapped; this bound is only the per-visit output-gate correction loop.
+Feature flag: N/A
+Acceptance criteria: 1/1 implemented
+
 ## [2026-08-11] SKILL-184 subtask 1 — Current-phase execution on the IDE status wire
 Areas: runtime-application/featuretask, runtime-application/model, runtime-application/work, runtime-domain/workflow/taskruntime, orchestration/contracts, runtime-infra-fs (schema fixtures)
 - Additive optional `current_phase_execution` (`phase_id`, `kind`, `count`, optional `total`) on the IDE status wire and typed models; absent value keeps older producers valid; `IDE_STATUS_CONTRACT_VERSION` unchanged

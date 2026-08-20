@@ -921,6 +921,22 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
+  fun `salvage retry names the expected shape and that a second failure blocks`() {
+    val retry = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("audit"),
+      priorSchemaFailure = "verdict: must be a top-level string",
+    )
+
+    assertContains(retry, "last salvage attempt")
+    assertContains(retry, "Expected shape:")
+    assertContains(retry, "do not redo the phase work")
+    assertContains(retry, "if it still fails, the run blocks")
+    assertContains(retry, "\"phase_id\": \"audit\"")
+    assertContains(retry, "\"verdict\": \"satisfied\"")
+  }
+
+  @Test
   fun `an unparseable-root failure appends a phase-correct fill-in skeleton`() {
     // When the runtime could not parse any JSON object out of the prior output (the audit/review prose
     // or array case), the retry must do more than echo the reason: name the mistake and hand back a
@@ -965,9 +981,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
-  fun `a field-level violation echoes the reason without the parse-failure skeleton`() {
-    // A reason that already pinpoints an offending field must keep the lean reason-only correction so
-    // those retries stay byte-for-byte unchanged.
+  fun `a field-level violation still carries the expected salvage shape`() {
     val retry = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
       briefingFor("audit"),
@@ -975,12 +989,11 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     )
 
     assertContains(retry, "Previous attempt was REJECTED by the schema gate", false, "still corrects")
+    assertContains(retry, "last salvage attempt", false, "field errors still get one salvage")
     assertContains(retry, "summary: must be a non-empty string", false, "still carries the field reason")
+    assertContains(retry, "Expected shape:", false, "salvage always names the expected shape")
+    assertContains(retry, "\"phase_id\": \"audit\"", false, "expected shape pins the phase")
     assertTrue(!retry.contains("could NOT parse a single JSON object"), "no parse-failure block for field errors")
-    assertTrue(
-      !retry.contains("<one sentence describing what this phase did>"),
-      "no skeleton for field-level violations",
-    )
   }
 
   @Test

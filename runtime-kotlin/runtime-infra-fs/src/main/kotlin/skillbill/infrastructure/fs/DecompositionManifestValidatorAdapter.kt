@@ -101,8 +101,10 @@ class DecompositionManifestValidatorAdapter : DecompositionManifestValidator {
           DecompositionManifestRepairOperation.REMOVE_EXTRA_CLOSING_DELIMITER
         FeatureTaskRuntimePhaseOutputRepairOperation.ADD_MISSING_CLOSING_DELIMITER ->
           DecompositionManifestRepairOperation.ADD_MISSING_CLOSING_DELIMITER
-        FeatureTaskRuntimePhaseOutputRepairOperation.DEDUPLICATE_KEYS ->
-          error("Decomposition-manifest repair does not include duplicate-key merge.")
+        FeatureTaskRuntimePhaseOutputRepairOperation.DEDUPLICATE_KEYS,
+        FeatureTaskRuntimePhaseOutputRepairOperation.RESTORE_EXPECTED_SHAPE,
+        ->
+          error("Decomposition-manifest repair does not include ${operation.wireValue}.")
       },
       sourceLocation = sourceLocation.toManifestLocation(),
     )

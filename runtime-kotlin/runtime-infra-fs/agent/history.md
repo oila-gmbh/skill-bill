@@ -1,5 +1,13 @@
 # Boundary History — runtime-kotlin/runtime-infra-fs
 
+## [2026-08-20] Phase JSON walk takes a shape-matching envelope and caps gate retries at two
+Areas: runtime-infra-fs/contracts/workflow, runtime-application/featuretask
+- Phase output is scanned for JSON objects; the one matching the phase's expected fields is kept and the rest (stray closers, trailing prose) is ignored.
+- Missing required fields that already exist in the capture (premature `}` before `verdict`, nested `verdict` under `produced_outputs`) are restored on the existing payload.
+- If programmatic repair still cannot accept the capture, one salvage launch receives the original body plus the expected shape; the result is extracted and validated the same way, then a second failure blocks.
+Feature flag: N/A
+Acceptance criteria: 1/1 implemented
+
 ## [2026-08-20] Keep a complete phase envelope when surrounding prose has a stray closer
 Areas: runtime-infra-fs/contracts/workflow, phase-output structural repair
 - Jackson still parses phase output; when one complete envelope is selected, a bare `}` or `]` in surrounding prose is dropped instead of rejecting as `NO_REPAIR_CANDIDATE`.

@@ -50,10 +50,11 @@ internal object FeatureTaskRuntimePhaseOutputStructuralRepair {
       )
     }
 
-    return when (val exact = StrictPhaseOutputParser.parseDocument(phaseOutputText)) {
+    val raw = when (val exact = StrictPhaseOutputParser.parseDocument(phaseOutputText)) {
       is StrictParse.Success -> inspectSuccessfulParse(phaseOutputText, sourceLabel, exact)
       is StrictParse.Failure -> inspectFailedParse(phaseOutputText, sourceLabel, exact)
     }
+    return PhaseOutputExpectedShape.alignDecision(raw, sourceLabel, phaseOutputText)
   }
 
   /**
@@ -117,6 +118,7 @@ internal object FeatureTaskRuntimePhaseOutputStructuralRepair {
     exact: StrictParse.Failure,
   ): FeatureTaskRuntimePhaseOutputStructuralRepairDecision {
     DuplicateKeyMergeParser.repair(phaseOutputText, sourceLabel)?.let { return it }
+    FeatureTaskRuntimePhaseOutputEnvelopeWalker.select(phaseOutputText, sourceLabel)?.let { return it }
     val trimmed = phaseOutputText.trimStart()
     val wholeResponseRepair = if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
       StructuralRepairCandidateEngine.repairExactText(phaseOutputText, sourceLabel)
@@ -189,8 +191,7 @@ internal object FeatureTaskRuntimePhaseOutputStructuralRepair {
     val matching = parsed.filter { it.node.path("phase_id").asText("") == sourceLabel }
     val relevant = if (matching.isNotEmpty()) matching else parsed
     val completeShape = relevant.filter { candidate ->
-      listOf("contract_version", "phase_id", "status", "summary", "produced_outputs")
-        .all { field -> candidate.node.has(field) }
+      PhaseOutputExpectedShape.matches(candidate.node, sourceLabel)
     }
     val comparable = if (completeShape.isNotEmpty()) completeShape else relevant
     val distinct = comparable.distinctBy { canonicalNode(it.node) }
@@ -525,6 +526,11 @@ internal object StructuralRepairSyntax {
       if (scan.openingStack.size == 1) {
         add(Candidate(text + scan.openingStack.single(), format, text.length))
       }
+      balancedTopLevelObjectSpans(text).forEach { span ->
+        if (looksLikeObjectFieldContinuation(text, span.last + 1)) {
+          add(Candidate(text.removeRange(span.last, span.last + 1), format, span.last))
+        }
+      }
     }
     return candidates.distinctBy(Candidate::text)
   }
@@ -534,8 +540,18 @@ internal object StructuralRepairSyntax {
     val scan = scanDelimiters(text)
     val candidateCount = scan.unmatchedClosingOffsets.size +
       (if (scan.firstMismatchedClosing?.missingCloser != null) 1 else 0) +
-      (if (scan.openingStack.size == 1) 1 else 0)
+      (if (scan.openingStack.size == 1) 1 else 0) +
+      balancedTopLevelObjectSpans(text).count { span -> looksLikeObjectFieldContinuation(text, span.last + 1) }
     return candidateCount > maxCandidates
+  }
+
+  fun looksLikeObjectFieldContinuation(text: String, offset: Int): Boolean {
+    var index = offset
+    while (index < text.length && text[index].isWhitespace()) index++
+    if (index >= text.length || text[index] != ',') return false
+    index++
+    while (index < text.length && text[index].isWhitespace()) index++
+    return index < text.length && (text[index] == '"' || text[index].isLetter())
   }
 
   fun isConservativeYamlFlow(text: String): Boolean {

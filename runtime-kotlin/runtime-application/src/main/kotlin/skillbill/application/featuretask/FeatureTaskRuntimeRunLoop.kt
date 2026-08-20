@@ -3511,8 +3511,7 @@ internal class FeatureTaskRuntimeRunLoop(
     val repairRun = run.copy(validationGateFindings = findings, validationGateRepairTurn = repairTurn)
     var priorCorrection: PriorAttemptCorrection? = null
     var attemptIteration = iteration
-    var malformedAttemptCount = 0
-    var schemaAttempt = 1
+    var outputGateFailures = 0
     var result: ValidationGateAgentRepairResult? = null
     while (result == null) {
       val attempt = attemptOnce(
@@ -3534,19 +3533,15 @@ internal class FeatureTaskRuntimeRunLoop(
         )
         attempt.malformedOutput || attempt.schemaInvalidRetryReason != null -> {
           var blockedReason: String? = null
-          if (attempt.malformedOutput) {
-            malformedAttemptCount += 1
-            FeatureTaskRuntimeAttemptBudgets.malformedOutputBlockReason(
-              run.phaseId,
-              malformedAttemptCount,
-            )?.let { formatBlock ->
-              blockedReason = withSchemaGateDetail(
-                formatBlock,
-                requireNotNull(attempt.schemaInvalidOperatorReason),
-              )
-            }
-          } else {
-            schemaAttempt += 1
+          outputGateFailures += 1
+          FeatureTaskRuntimeAttemptBudgets.outputGateBlockReason(
+            run.phaseId,
+            outputGateFailures,
+          )?.let { formatBlock ->
+            blockedReason = withSchemaGateDetail(
+              formatBlock,
+              requireNotNull(attempt.schemaInvalidOperatorReason),
+            )
           }
           if (blockedReason != null) {
             result = ValidationGateAgentRepairResult.Blocked(blockedReason)
@@ -3710,6 +3705,7 @@ internal class FeatureTaskRuntimeRunLoop(
     val loop = PhaseAttemptLoopState(
       iteration = iteration,
       malformedAttemptCount = 0,
+      outputGateFailures = 0,
       semanticIteration = semanticIteration,
       continuationSegmentCount = continuationSegmentCount,
     )
@@ -3733,6 +3729,7 @@ internal class FeatureTaskRuntimeRunLoop(
   private class PhaseAttemptLoopState(
     var iteration: Int,
     var malformedAttemptCount: Int,
+    var outputGateFailures: Int,
     var semanticIteration: Int,
     var continuationSegmentCount: Int,
     var priorCorrection: PriorAttemptCorrection? = null,
@@ -3781,10 +3778,11 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private fun settleMalformedOutput(context: FixLoopBranchContext): PhaseOutcome? {
     val (run, attempt, loop, observability, agentId) = context
+    loop.outputGateFailures += 1
     loop.malformedAttemptCount += 1
-    val formatBlock = FeatureTaskRuntimeAttemptBudgets.malformedOutputBlockReason(
+    val formatBlock = FeatureTaskRuntimeAttemptBudgets.outputGateBlockReason(
       run.phaseId,
-      loop.malformedAttemptCount,
+      loop.outputGateFailures,
     )
     if (formatBlock == null) {
       loop.iteration += 1
@@ -3852,6 +3850,18 @@ internal class FeatureTaskRuntimeRunLoop(
           nonRetryingPhaseSchemaBlockReason(run.phaseId),
           requireNotNull(attempt.retryableOperatorReason),
         ),
+        observability,
+        failureDisposition = FeatureTaskRuntimeFailureDisposition.INVALID_OUTPUT,
+        fileManifest = attempt.fileManifest,
+        rejectedOutput = attempt.rejectedOutput,
+      )
+    }
+    loop.outputGateFailures += 1
+    FeatureTaskRuntimeAttemptBudgets.outputGateBlockReason(run.phaseId, loop.outputGateFailures)?.let { capReason ->
+      return blockAndPersistInPhase(
+        run,
+        loop.iteration,
+        withSchemaGateDetail(capReason, requireNotNull(attempt.retryableOperatorReason)),
         observability,
         failureDisposition = FeatureTaskRuntimeFailureDisposition.INVALID_OUTPUT,
         fileManifest = attempt.fileManifest,

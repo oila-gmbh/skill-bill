@@ -104,16 +104,18 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
       },
     )
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    assertContains(blocked.blockedReason, "cap=2")
 
     val prompts = schemaRetryPrompts(harness)
-    assertTrue(prompts.size >= 3, "audit must reject twice then succeed")
+    assertEquals(2, prompts.size, "audit must reject twice then block")
     assertFalse(prompts[0].contains("Untrusted prior phase output"), "first launch must omit repair section")
     assertFalse(prompts[0].contains("REJECTED by the schema gate"), "first launch must omit schema directive")
     assertTrue(prompts[1].contains(firstBody))
+    assertTrue(prompts[1].contains("last salvage attempt"))
+    assertTrue(prompts[1].contains("Expected shape:"))
+    assertTrue(prompts[1].contains("if it still fails, the run blocks"))
     assertFalse(prompts[1].contains("SKILL187-ATTEMPT-2"), "first retry must not carry the later attempt body")
-    assertTrue(prompts[2].contains(secondBody))
-    assertFalse(prompts[2].contains("SKILL187-ATTEMPT-1"), "second retry must not carry the stale prior body")
   }
 
   @Test
@@ -170,66 +172,33 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
   }
 
   @Test
-  fun `delimiter repair then schema rejection marks acceptedAfterStructuralRepair without durable raw body`() {
-    // Missing closing delimiter + nested verdict: structural repair can close the brace; phase schema
-    // still rejects. The next launch must see the capture and the syntax-repair note, not a claim that
-    // the phase schema accepted the document.
+  fun `delimiter repair then expected-shape restore accepts nested verdict without a relaunch`() {
     val malformed = completedPhaseBody(
       "0.3",
       "audit",
       "SKILL187-DELIMITER",
       """{"gaps":[],"verdict":"satisfied"}""",
     ).dropLast(1)
-    val corrected = completedPhaseBody(
-      "0.3",
-      "audit",
-      "criteria met",
-      """{"gaps":[],"non_blocking_findings":[]}""",
-      "satisfied",
-    )
     var auditAttempts = 0
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
         if (phaseId != "audit") return@RuntimeRecordingLauncher facts(defaultPhaseOutput(request))
         auditAttempts += 1
-        facts(if (auditAttempts == 1) malformed else corrected)
+        facts(malformed)
       },
-      validator = object : FeatureTaskRuntimePhaseOutputValidator {
-        private val auditValidator = realFeatureTaskRuntimePhaseOutputValidator
-
-        override fun validatePhaseOutput(
-          phaseOutputText: String,
-          sourceLabel: String,
-        ): FeatureTaskRuntimePhaseOutputValidationResult = if (sourceLabel == "audit") {
-          auditValidator.validatePhaseOutput(phaseOutputText, sourceLabel)
-        } else {
-          AlwaysValidValidator.validatePhaseOutput(phaseOutputText, sourceLabel)
-        }
-
-        override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
-          validatePhaseOutput(phaseOutputText, sourceLabel).requireAccepted(sourceLabel)
-        }
-      },
+      validator = realAuditValidator(),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
-    val rejected = realFeatureTaskRuntimePhaseOutputValidator.validatePhaseOutput(malformed, "audit")
-    assertIs<FeatureTaskRuntimePhaseOutputValidationResult.Rejected>(rejected)
-    assertTrue(rejected.structuralRepairEvidence != null, "adapter must retain payload-free repair evidence")
-
-    val auditRetry = harness.launcher.requests
-      .map { requireNotNull(it.skillRunRequest.promptOverride) }
-      .filter { phaseIdFromPrompt(it) == "audit" }[1]
-    assertContains(auditRetry, "Deterministic syntax repair previously succeeded")
-    assertContains(auditRetry, "That does not mean the phase schema accepted it")
-    assertTrue(auditRetry.contains(malformed), "post-capture rejected body must reach the repair section")
+    val accepted = realFeatureTaskRuntimePhaseOutputValidator.validatePhaseOutput(malformed, "audit")
+    val repaired = assertIs<FeatureTaskRuntimePhaseOutputValidationResult.AcceptedAfterRepair>(accepted)
+    assertEquals("satisfied", repaired.normalizedOutput.envelope["verdict"])
+    assertEquals(1, auditAttempts, "shape restore must not relaunch audit")
     val auditRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["audit"])
-    assertFalse(
-      requireNotNull(auditRecord.outputArtifact).contains("SKILL187-DELIMITER"),
-      "durable accepted artifact must not retain the rejected raw body",
-    )
+    assertEquals("completed", auditRecord.status)
+    assertContains(requireNotNull(auditRecord.outputArtifact), "\"verdict\"")
   }
 
   @Test
@@ -515,40 +484,28 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
   }
 
   @Test
-  fun `audit nested verdict JSON and flow-YAML share the corrective context contract`() {
-    // SKILL-187 AC-002/AC-005: both formats keep the exact capture and a payload-free root-verdict cue.
+  fun `audit nested verdict JSON and flow-YAML are restored to the expected shape without a relaunch`() {
     val cases = listOf(
-      Skill187SyntheticAuditResponses.nestedVerdictComplete() to
-        Skill187SyntheticAuditResponses.NESTED_VERDICT_SENTINEL,
-      Skill187SyntheticAuditResponses.nestedVerdictConservativeYaml() to
-        Skill187SyntheticAuditResponses.YAML_NESTED_SENTINEL,
+      Skill187SyntheticAuditResponses.nestedVerdictComplete(),
+      Skill187SyntheticAuditResponses.nestedVerdictConservativeYaml(),
     )
-    cases.forEach { (rejectedBody, sentinel) ->
+    cases.forEach { rejectedBody ->
       var auditAttempts = 0
       val harness = runnerHarness(
         launcher = RuntimeRecordingLauncher { request ->
           val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
           if (phaseId != "audit") return@RuntimeRecordingLauncher facts(defaultPhaseOutput(request))
           auditAttempts += 1
-          facts(
-            if (auditAttempts == 1) rejectedBody else Skill187SyntheticAuditResponses.correctedSatisfied(),
-          )
+          facts(rejectedBody)
         },
         validator = realAuditValidator(),
       )
 
       assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
-
-      val prompts = harness.launcher.requests
-        .map { requireNotNull(it.skillRunRequest.promptOverride) }
-        .filter { phaseIdFromPrompt(it) == "audit" }
-      assertTrue(prompts.size >= 2, "audit must reject then accept")
-      assertOmitsAuthorizedRepairSection(prompts[0], sentinel)
-      assertMatchingSchemaInvalidRepairPrompt(prompts[1], rejectedBody, "verdict")
-      assertTrue(
-        prompts[1].contains("top-level") || prompts[1].contains("\"verdict\""),
-        "corrective prompt must cue the required root-level verdict shape",
-      )
+      assertEquals(1, auditAttempts, "nested verdict must be restored on the existing capture")
+      val accepted = realFeatureTaskRuntimePhaseOutputValidator.validatePhaseOutput(rejectedBody, "audit")
+      assertIs<FeatureTaskRuntimePhaseOutputValidationResult.AcceptedAfterRepair>(accepted)
+      assertEquals("satisfied", accepted.normalizedOutput.envelope["verdict"])
     }
   }
 
@@ -596,8 +553,7 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
   }
 
   @Test
-  fun `delimiter then schema rejection keeps digests correlated across the private diagnostic and repair prompt`() {
-    // SKILL-187 AC-001/AC-009: original digest on the repair evidence and Exact capture digest stay aligned.
+  fun `delimiter plus nested verdict is restored on the existing capture`() {
     val malformed = Skill187SyntheticAuditResponses.nestedVerdictMissingDelimiter()
     var auditAttempts = 0
     val harness = runnerHarness(
@@ -605,35 +561,23 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
         if (phaseId != "audit") return@RuntimeRecordingLauncher facts(defaultPhaseOutput(request))
         auditAttempts += 1
-        facts(
-          if (auditAttempts == 1) malformed else Skill187SyntheticAuditResponses.correctedSatisfied(),
-        )
+        facts(malformed)
       },
       validator = realAuditValidator(),
     )
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
 
-    val rejected = realFeatureTaskRuntimePhaseOutputValidator.validatePhaseOutput(malformed, "audit")
-    val evidence = requireNotNull(
-      assertIs<FeatureTaskRuntimePhaseOutputValidationResult.Rejected>(rejected).structuralRepairEvidence,
-    )
-    val diagnostic = harness.io.database.rejectedDiagnostics().single { it.metadata.phaseId == "audit" }
-    val retry = harness.launcher.requests
-      .map { requireNotNull(it.skillRunRequest.promptOverride) }
-      .filter { phaseIdFromPrompt(it) == "audit" }[1]
-    assertEquals(evidence.originalDigest, diagnostic.metadata.sha256)
-    assertContains(retry, "digest=${diagnostic.metadata.sha256}")
-    assertContains(retry, "Deterministic syntax repair previously succeeded")
-    assertMatchingSchemaInvalidRepairPrompt(retry, malformed)
-    assertTrue(retry.contains(Skill187SyntheticAuditResponses.NESTED_VERDICT_SENTINEL))
-    assertEquals(1, diagnostic.metadata.attempt)
-    assertEquals("audit", diagnostic.metadata.phaseId)
+    val accepted = realFeatureTaskRuntimePhaseOutputValidator.validatePhaseOutput(malformed, "audit")
+    val repaired = assertIs<FeatureTaskRuntimePhaseOutputValidationResult.AcceptedAfterRepair>(accepted)
+    assertEquals("satisfied", repaired.normalizedOutput.envelope["verdict"])
+    assertEquals(1, auditAttempts)
+    assertTrue(harness.io.database.rejectedDiagnostics().none { it.metadata.phaseId == "audit" })
   }
 
   @Test
   fun `audit schema correction keeps INVALID_OUTPUT payload-free on every operator surface`() {
-    val rejectedBody = Skill187SyntheticAuditResponses.nestedVerdictComplete()
+    val rejectedBody = Skill187SyntheticAuditResponses.unauthorizedObservation()
     var auditAttempts = 0
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
@@ -654,11 +598,11 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
     assertPrivateDiagnosticRejection(
       retryPrompt.substringBefore("Violated constraint:"),
       "phase-output-schema",
-      Skill187SyntheticAuditResponses.NESTED_VERDICT_SENTINEL,
+      Skill187SyntheticAuditResponses.OBSERVATION_SENTINEL,
     )
     assertNoRawResponseSpanOutsideAuthorizedRepairSection(
       retryPrompt,
-      Skill187SyntheticAuditResponses.NESTED_VERDICT_SENTINEL,
+      Skill187SyntheticAuditResponses.OBSERVATION_SENTINEL,
     )
     val diagnostics = harness.io.database.rejectedDiagnostics().filter { it.metadata.phaseId == "audit" }
     assertTrue(diagnostics.isNotEmpty())

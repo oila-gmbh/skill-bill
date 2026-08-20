@@ -4,6 +4,16 @@ This file records architectural and implementation decisions that span the
 `runtime-kotlin/` boundary. Each entry is dated and explains the trade-off,
 not the implementation detail.
 
+## [2026-08-20] Extracted phase JSON is aligned to the expected shape; gate retries cap at two
+
+Context: Audit kept relaunching because an extra `}` closed the envelope before `verdict`, or `verdict` sat under `produced_outputs`. Schema-invalid retries had no cap.
+
+Decision: Walk the capture for JSON, keep the object that matches the phase's expected fields, and repair that object in place (drop extra closers, pull trailing or nested required fields onto the envelope). If programmatic salvage cannot accept it, one last agent launch receives the original capture plus the expected shape; that result is extracted and validated the same way, and a second failure blocks.
+
+Reason: The agent already emitted the envelope. Regenerating it burns the session; one salvage pass is enough to catch a remaining contract miss, then the run must stop.
+
+Alternatives considered: Keep syntax-only delimiter repair and uncapped schema retries (rejected: SKILL-201 spent 35 audit launches on the same extra `}`).
+
 ## [2026-08-20] Phase JSON repair keeps the existing envelope; the agent does not regenerate it
 
 Context: A complete valid audit envelope was rejected because surrounding prose had a bare `}`, which exhausted the format-retry budget and relaunched the phase.

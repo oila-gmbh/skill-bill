@@ -7,16 +7,12 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/**
- * Process-death and malformed-serialization keep their own budgets so a dead process or unparseable
- * payload cannot loop forever. Schema-invalid retries are uncapped and live on the phase predicate,
- * not on these budgets.
- */
 class FeatureTaskRuntimeAttemptBudgetsTest {
   @Test
-  fun `the process-failure and malformed-output caps stay pinned at three`() {
+  fun `output-gate retries cap at two and process-failure stays at three`() {
+    assertEquals(2, FeatureTaskRuntimeAttemptBudgets.MAX_OUTPUT_GATE_RETRY_ATTEMPTS)
+    assertEquals(2, FeatureTaskRuntimeAttemptBudgets.MAX_FORMAT_RETRY_ATTEMPTS)
     assertEquals(3, FeatureTaskRuntimeAttemptBudgets.MAX_PROCESS_FAILURE_ATTEMPTS)
-    assertEquals(3, FeatureTaskRuntimeAttemptBudgets.MAX_FORMAT_RETRY_ATTEMPTS)
   }
 
   @Test
@@ -43,17 +39,13 @@ class FeatureTaskRuntimeAttemptBudgetsTest {
   }
 
   @Test
-  fun `malformed output uses a separate bounded formatting budget`() {
-    (1 until FeatureTaskRuntimeAttemptBudgets.MAX_FORMAT_RETRY_ATTEMPTS).forEach { attempt ->
-      assertEquals(
-        null,
-        FeatureTaskRuntimeAttemptBudgets.malformedOutputBlockReason("audit", attempt),
-      )
-    }
-    val reason = FeatureTaskRuntimeAttemptBudgets.malformedOutputBlockReason(
-      "audit",
-      FeatureTaskRuntimeAttemptBudgets.MAX_FORMAT_RETRY_ATTEMPTS,
+  fun `the second schema-invalid output blocks instead of relaunching`() {
+    assertEquals(
+      null,
+      FeatureTaskRuntimeAttemptBudgets.outputGateBlockReason("audit", 1),
     )
-    assertContains(requireNotNull(reason), "semantic repair attempts were not consumed")
+    val reason = FeatureTaskRuntimeAttemptBudgets.outputGateBlockReason("audit", 2)
+    assertContains(requireNotNull(reason), "cap=2")
+    assertContains(reason, "blocks rather than relaunching")
   }
 }

@@ -181,14 +181,16 @@ object FeatureTaskRuntimePhasePromptComposer {
       return ""
     }
     val base = """
-      ## Previous attempt was REJECTED by the schema gate — correct it now
-      Your previous attempt at this phase did not produce schema-valid output and was rejected. Reason:
+      ## Previous attempt was REJECTED by the schema gate — salvage the capture
+      Programmatic extraction and shape repair could not accept the previous output. Reason:
       $priorSchemaFailure
-      Re-read the required-final-output contract below and emit exactly one schema-valid JSON object that
-      carries the missing signal. Do not repeat the same mistake; prose alone does not satisfy the gate.
-      Preserve valid content from the prior attempt, correct the named violation, and place
-      phase-required fields at their contract-defined locations. Do not copy a raw response unchanged.
-    """.trimIndent()
+      This is the last salvage attempt. Rewrite the untrusted prior output into exactly one JSON object
+      matching the expected shape below. Keep facts already in that capture; do not redo the phase work
+      and do not emit a second envelope. The runtime will extract and validate the result the same way;
+      if it still fails, the run blocks.
+
+      Expected shape:
+    """.trimIndent() + "\n" + retrySkeleton(briefing)
     val structuralRepairNote = correctiveRepairContext?.structuralRepairEvidence?.let { evidence ->
       "\nDeterministic syntax repair previously succeeded on this capture (delimiter-only; " +
         "original_digest=${evidence.originalDigest} repaired_digest=${evidence.repairedDigest} " +
@@ -212,20 +214,12 @@ object FeatureTaskRuntimePhasePromptComposer {
         auditRemediationOutputExample(briefing.auditRepairItemIds)
     }
     return base + structuralRepairNote + repairProjection + remediationCorrection +
-      unparseableRootCorrection(briefing, priorSchemaFailure) +
+      unparseableRootCorrection(priorSchemaFailure) +
       FeatureTaskRuntimeSchemaFailureCorrections.lengthViolation(priorSchemaFailure) +
       FeatureTaskRuntimeSchemaFailureCorrections.unreconciledReceipt(priorSchemaFailure)
   }
 
-  // The `<root> must be an object` / malformed-output failures mean the runtime could not extract ANY
-  // JSON object from the response — the agent answered with a prose Markdown table, a bare array, or an
-  // empty body. Echoing that validator reason alone is what lets a verifying phase (audit especially)
-  // burn its whole fix loop re-emitting the same prose: it reads "must be an object" and assumes its
-  // table was the object. This appends the concrete correction — name the likely mistake and hand back a
-  // minimal fill-in skeleton for this phase. Empty for field-level violations, where the reason already
-  // pinpoints the offending field, so those retries stay byte-for-byte unchanged.
   private fun unparseableRootCorrection(
-    briefing: FeatureTaskRuntimePhaseLaunchBriefing,
     priorSchemaFailure: String,
   ): String {
     val rootNotParseable = priorSchemaFailure.contains("<root> must be an object") ||
@@ -234,9 +228,8 @@ object FeatureTaskRuntimePhasePromptComposer {
       return ""
     }
     return "\nThe runtime could NOT parse a single JSON object out of your previous output — you likely " +
-      "answered\nwith prose, a Markdown table, or a JSON array. None of those can advance the gate. Emit " +
-      "exactly ONE\nJSON object as the final thing in your response — no array wrapper and no leading " +
-      "table — matching\nthis skeleton with real values:\n" + retrySkeleton(briefing)
+      "answered\nwith prose, a Markdown table, or a JSON array. None of those can advance the gate. Salvage " +
+      "that capture into the expected shape above."
   }
 
   // A minimal, phase-correct object the agent can fill in. Built line-by-line (the optional verdict line
