@@ -1,5 +1,6 @@
 package skillbill.install
 
+import skillbill.error.ContractVersionMismatchError
 import skillbill.infrastructure.fs.FileSystemBaselineManifestPersistence
 import skillbill.install.model.BaselineManifest
 import skillbill.install.model.ReconciliationPlan
@@ -8,13 +9,21 @@ import skillbill.install.reconcile.ReconcileSourceRoots
 import skillbill.install.reconcile.computeReconciliationPlan
 import skillbill.ports.install.baseline.model.ReadBaselineManifestRequest
 import skillbill.ports.install.baseline.model.WriteBaselineManifestRequest
+import skillbill.scaffold.platformpack.platformPackSchemaLog
+import skillbill.scaffold.runtime.SHELL_CONTRACT_VERSION
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.logging.Handler
+import java.util.logging.LogRecord
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+
+private const val STALE_CONTRACT_VERSION: String = "0.9"
 
 /**
  * Unit tests for the reconcile hash-compare policy and the baseline manifest persistence
@@ -144,6 +153,77 @@ class InstallReconcileTest : InstallApplyTestSupport() {
       Regex("^[0-9a-f]{16}$").matches(addon.upstreamHash),
       "agent add-on baseline hashes must use the same 16-hex width as skill hashes: ${addon.upstreamHash}",
     )
+  }
+
+  private fun stalePackContractVersion(repoRoot: Path) {
+    val manifest = repoRoot.resolve("platform-packs/generic/platform.yaml")
+    val current = Files.readString(manifest)
+    val stale = current.replace(
+      "contract_version: \"$SHELL_CONTRACT_VERSION\"",
+      "contract_version: \"$STALE_CONTRACT_VERSION\"",
+    )
+    assertTrue(stale != current, "fixture pack must declare contract_version $SHELL_CONTRACT_VERSION")
+    Files.writeString(manifest, stale)
+  }
+
+  private fun <T> capturingSchemaRecords(block: () -> T): Pair<T, List<String>> {
+    val records = mutableListOf<LogRecord>()
+    val handler = object : Handler() {
+      override fun publish(record: LogRecord) {
+        records += record
+      }
+      override fun flush() = Unit
+      override fun close() = Unit
+    }
+    platformPackSchemaLog.addHandler(handler)
+    return try {
+      block() to records.map { record -> record.message }
+    } finally {
+      platformPackSchemaLog.removeHandler(handler)
+    }
+  }
+
+  @Test
+  fun `stale local platform pack contract version reconciles from upstream and records the tolerated version`() {
+    val upstream = seedRepo("reconcile-upstream-stale-local")
+    val local = seedRepo("reconcile-local-stale")
+    val home = home()
+    seedPlatformPack(upstream, "generic")
+    seedPlatformPack(local, "generic")
+    stalePackContractVersion(local)
+    Files.writeString(
+      local.resolve("platform-packs/generic/code-review/bill-generic-code-review/content.md"),
+      Files.readString(local.resolve("platform-packs/generic/code-review/bill-generic-code-review/content.md")) +
+        "\nlocal stale copy\n",
+    )
+
+    val (plan, schemaRecords) = capturingSchemaRecords {
+      planWith(upstream, local, home, BaselineManifest.empty())
+    }
+
+    val degradation = schemaRecords.first { it.contains("contract_version enforcement degraded") }
+    assertTrue(degradation.contains("pack=generic"), degradation)
+    assertTrue(degradation.contains("used=$STALE_CONTRACT_VERSION"), degradation)
+    assertTrue(degradation.contains("expected=$SHELL_CONTRACT_VERSION"), degradation)
+
+    val path = "platform-packs/generic/code-review/bill-generic-code-review"
+    val adopt = assertIs<SkillReconciliationOutcome.Adopt>(outcomeFor(plan, path))
+    assertNotNull(adopt.localHash, "the stale local pack must stay enumerable, not drop out of the plan")
+    assertEquals(adopt.upstreamHash, plan.baselineOverlay[path])
+  }
+
+  @Test
+  fun `stale upstream platform pack contract version fails the reconcile computation`() {
+    val upstream = seedRepo("reconcile-upstream-stale-upstream")
+    val local = seedRepo("reconcile-local-current")
+    val home = home()
+    seedPlatformPack(upstream, "generic")
+    seedPlatformPack(local, "generic")
+    stalePackContractVersion(upstream)
+
+    assertFailsWith<ContractVersionMismatchError> {
+      planWith(upstream, local, home, BaselineManifest.empty())
+    }
   }
 
   @Test

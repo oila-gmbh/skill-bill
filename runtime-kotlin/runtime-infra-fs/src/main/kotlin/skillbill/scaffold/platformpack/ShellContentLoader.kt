@@ -43,7 +43,7 @@ import skillbill.scaffold.validation.validateSkillMdShape
 import java.nio.file.Files
 import java.nio.file.Path
 
-internal fun loadPlatformManifest(packRoot: Path): PlatformManifest {
+internal fun loadPlatformManifest(packRoot: Path, enforceContractVersion: Boolean = true): PlatformManifest {
   val resolvedPackRoot = packRoot.toAbsolutePath().normalize()
   val slug = resolvedPackRoot.fileName?.toString().orEmpty()
   val manifestPath = resolvedPackRoot.resolve("platform.yaml")
@@ -51,7 +51,7 @@ internal fun loadPlatformManifest(packRoot: Path): PlatformManifest {
     throw MissingManifestError("Platform pack '$slug': expected manifest at '$manifestPath' but it is missing.")
   }
   val raw = readManifest(manifestPath, slug)
-  return buildPack(slug, resolvedPackRoot, manifestPath, raw)
+  return buildPack(slug, resolvedPackRoot, manifestPath, raw, enforceContractVersion)
 }
 
 internal fun loadPlatformPack(packRoot: Path, enforceGovernedReviewStructure: Boolean = false): PlatformManifest {
@@ -78,8 +78,13 @@ internal fun discoverPlatformPacks(platformPacksRoot: Path): List<PlatformManife
   return packs
 }
 
-internal fun discoverPlatformPackManifests(platformPacksRoot: Path): List<PlatformManifest> {
-  val packs = childDirectories(platformPacksRoot).map(::loadPlatformManifest)
+internal fun discoverPlatformPackManifests(
+  platformPacksRoot: Path,
+  enforceContractVersion: Boolean = true,
+): List<PlatformManifest> {
+  val packs = childDirectories(platformPacksRoot).map { packRoot ->
+    loadPlatformManifest(packRoot, enforceContractVersion)
+  }
   validatePlatformPackCompositions(packs)
   validatePlatformPackFallbacks(packs)
   return packs
@@ -118,7 +123,11 @@ fun discoverGovernedAddonFiles(repoRoot: Path): List<GovernedAddonFile> {
   }
 }
 
-internal fun validatePlatformPack(pack: PlatformManifest, contractVersion: String) {
+internal fun validatePlatformPack(
+  pack: PlatformManifest,
+  contractVersion: String,
+  enforceContractVersion: Boolean = true,
+) {
   // F-009: defense-in-depth. The canonical schema validator (run from
   // `buildPack` via `loadPlatformManifest`) already raises
   // `ContractVersionMismatchError` for any version drift, so callers that
@@ -126,7 +135,7 @@ internal fun validatePlatformPack(pack: PlatformManifest, contractVersion: Strin
   // Keep this duplicate check so any future caller that constructs a
   // `PlatformManifest` directly (bypassing the schema validator) is still
   // gated here.
-  if (pack.contractVersion != contractVersion) {
+  if (enforceContractVersion && pack.contractVersion != contractVersion) {
     throw ContractVersionMismatchError(
       buildString {
         append("Platform pack '${pack.slug}': declares contract_version '${pack.contractVersion}' ")
@@ -319,9 +328,15 @@ private fun readManifest(manifestPath: Path, slug: String): Any? = try {
   )
 }
 
-private fun buildPack(slug: String, packRoot: Path, manifestPath: Path, raw: Any?): PlatformManifest {
+private fun buildPack(
+  slug: String,
+  packRoot: Path,
+  manifestPath: Path,
+  raw: Any?,
+  enforceContractVersion: Boolean,
+): PlatformManifest {
   val manifest = requireManifestMap(slug, manifestPath, raw)
-  val typedManifest = validateAgainstCanonicalSchema(slug, manifest)
+  val typedManifest = validateAgainstCanonicalSchema(slug, manifest, enforceContractVersion)
   validatePlatformSlug(slug, requireStringField(manifest, slug, "platform"))
   val contractVersion = requireStringField(manifest, slug, "contract_version")
   val declaredAreas = parseDeclaredAreas(manifest, slug)
@@ -480,7 +495,11 @@ private val canonicalSchemaValidator: PlatformPackSchemaValidator by lazy {
   CanonicalPlatformPackSchemaValidator()
 }
 
-private fun validateAgainstCanonicalSchema(slug: String, manifest: Map<*, *>): Map<String, Any?> {
+private fun validateAgainstCanonicalSchema(
+  slug: String,
+  manifest: Map<*, *>,
+  enforceContractVersion: Boolean,
+): Map<String, Any?> {
   // SKILL-48 C2: the validator's tightened signature requires `Map<String, Any?>`.
   // The YAML parser may legitimately surface non-string keys (e.g. `true:` or `1:` at
   // the top level). Convert them with a loud-fail so we never silently drop entries.
@@ -494,7 +513,7 @@ private fun validateAgainstCanonicalSchema(slug: String, manifest: Map<*, *>): M
       }
     stringKey to value
   }
-  canonicalSchemaValidator.validate(typedManifest, slug)
+  canonicalSchemaValidator.validate(typedManifest, slug, enforceContractVersion)
   // SKILL-48 Subtask 3: callers reuse the validated typed map to derive `customFields` so
   // we do not re-walk the raw `Map<*, *>` and re-do the key shape check.
   return typedManifest

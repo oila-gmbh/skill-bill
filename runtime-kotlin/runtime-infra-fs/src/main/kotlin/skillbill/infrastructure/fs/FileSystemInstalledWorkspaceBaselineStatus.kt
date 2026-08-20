@@ -2,6 +2,7 @@ package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.install.reconcile.ReconcileSourceRoots
+import skillbill.install.reconcile.ReconcileSourceSide
 import skillbill.install.reconcile.enumerateSkills
 import skillbill.ports.install.baseline.BaselineManifestPersistencePort
 import skillbill.ports.install.baseline.InstalledWorkspaceBaselineStatusPort
@@ -34,7 +35,7 @@ class FileSystemInstalledWorkspaceBaselineStatus(
       skillsRoot = installRoot.resolve("skills"),
       platformPacksRoot = installRoot.resolve("platform-packs"),
     )
-    val live = enumerateSkills(roots, home = request.installHome)
+    val live = enumerateSkills(roots, home = request.installHome, sourceSide = ReconcileSourceSide.LOCAL)
     val modified = live.asSequence()
       .filter { (skillRelativePath, entry) -> baseline.hashFor(skillRelativePath) != entry.hash }
       .map { (skillRelativePath, _) -> skillRelativePath }

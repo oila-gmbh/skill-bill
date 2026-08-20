@@ -39,8 +39,8 @@ internal fun applyReconciliation(
   home: Path,
   baseline: BaselineManifest,
 ): ReconcileApplyOutput {
-  val upstreamSkills = enumerateSkills(upstream, home)
-  val localSkills = enumerateSkills(local, home)
+  val upstreamSkills = enumerateSkills(upstream, home, ReconcileSourceSide.UPSTREAM)
+  val localSkills = enumerateSkills(local, home, ReconcileSourceSide.LOCAL)
   val plan = classifyReconciliation(upstreamSkills, localSkills, baseline)
   guardPruneAgainstEmptyUpstream(plan, upstreamSkills)
 

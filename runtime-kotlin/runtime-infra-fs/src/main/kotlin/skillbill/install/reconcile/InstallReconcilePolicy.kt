@@ -60,6 +60,9 @@ import java.security.MessageDigest
  *  - upstream hash == local hash              -> unchanged (no file op, baseline recorded)
  *  - otherwise                                -> adopt (install upstream, record baseline)
  *
+ * Local enumeration tolerates stale `contract_version` values in preserved platform-pack
+ * manifests because upstream always replaces them on adopt; upstream enumeration stays strict.
+ *
  * Idempotent: identical upstream and local inputs yield only unchanged outcomes and no
  * baseline change.
  */
@@ -72,6 +75,13 @@ internal data class ReconcileSourceRoots(
   val skillsRoot: Path,
   val platformPacksRoot: Path,
 )
+
+internal enum class ReconcileSourceSide {
+  UPSTREAM,
+  LOCAL,
+}
+
+private fun ReconcileSourceSide.enforcesPlatformPackContractVersion(): Boolean = this == ReconcileSourceSide.UPSTREAM
 
 /**
  * One enumerated skill: its content hash plus the on-disk skill directory it was
@@ -96,8 +106,8 @@ internal fun computeReconciliationPlan(
   home: Path,
   baseline: BaselineManifest,
 ): ReconciliationPlan {
-  val upstreamSkills = enumerateSkills(upstream, home)
-  val localSkills = enumerateSkills(local, home)
+  val upstreamSkills = enumerateSkills(upstream, home, ReconcileSourceSide.UPSTREAM)
+  val localSkills = enumerateSkills(local, home, ReconcileSourceSide.LOCAL)
   return classifyReconciliation(upstreamSkills, localSkills, baseline)
 }
 
@@ -167,19 +177,30 @@ private fun classifySkill(
  * upstream skills as adopt rather than failing. The skill dir is carried so the
  * APPLY can replace the live dir from the upstream dir without rebuilding paths.
  */
-internal fun enumerateSkills(roots: ReconcileSourceRoots, home: Path): Map<String, ReconcileSkillEntry> {
+internal fun enumerateSkills(
+  roots: ReconcileSourceRoots,
+  home: Path,
+  sourceSide: ReconcileSourceSide,
+): Map<String, ReconcileSkillEntry> {
+  val enforceContractVersion = sourceSide.enforcesPlatformPackContractVersion()
   val skillEntries = if (Files.isDirectory(roots.skillsRoot)) {
     val request = reconcileEnumerationRequest(roots, home)
-    val platformManifests = discoverPlatformManifests(roots.platformPacksRoot)
+    val platformManifests = discoverPlatformManifests(roots.platformPacksRoot, enforceContractVersion)
     // Reuse the approved builder seam for skill enumeration so this policy never
     // references the domain InstallPlanPolicy directly (adapter-ownership rule).
-    val skills = enumerateInstallPlanSkills(request)
+    val skills = enumerateInstallPlanSkills(request, enforceContractVersion)
     val selectedPackSkills = skills.filter { candidate ->
       candidate.kind == InstallPlanSkillKind.PLATFORM_PACK && candidate.internalFor != null
     }
     skills.associate { skill ->
       skillRelativePath(roots, skill) to ReconcileSkillEntry(
-        hash = reconcileSkillHash(roots, skill, platformManifests, selectedPackSkills),
+        hash = reconcileSkillHash(
+          roots,
+          skill,
+          platformManifests,
+          selectedPackSkills,
+          enforceContractVersion,
+        ),
         sourceDir = skill.sourceDir.toAbsolutePath().normalize(),
       )
     }
@@ -213,6 +234,7 @@ private fun reconcileSkillHash(
   skill: InstallPlanSkill,
   platformManifests: List<PlatformManifest>,
   selectedPackSkills: List<InstallPlanSkill>,
+  enforceContractVersion: Boolean,
 ): String {
   val applicablePointers = applicablePointers(roots.repoRoot, skill.sourceDir, platformManifests)
   val supportPointers = generatedSupportPointersFor(
@@ -233,6 +255,7 @@ private fun reconcileSkillHash(
       selectedPlatformManifests = platformManifests,
       parentSupportPointers = supportPointers,
       parentPointerNames = applicablePointers.map { it.second.name }.toSet(),
+      enforceContractVersion = enforceContractVersion,
     ),
   )
   val authored = authoredFilesFor(

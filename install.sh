@@ -871,8 +871,9 @@ parse_reconcile_report() {
 # - locally-authored: a user-owned agent-addons/ entry is NEVER written or deleted.
 #
 # The compute pass runs first purely as a pre-mutation failure detector: enumeration
-# errors (contract drift in a stale copied source) surface as RECONCILE_FAILURE_KIND=compute
-# BEFORE any live tree is touched, which is what drives the clean-reset recovery below.
+# errors in the upstream candidate (contract drift, malformed manifests) surface as
+# RECONCILE_FAILURE_KIND=compute BEFORE any live tree is touched. Stale contract
+# versions in the preserved local copy are tolerated because upstream always wins.
 #
 # The shell performs NO whole-tree rm/mv swap of skills/ — the runtime per-skill apply
 # is the sole writer of the live skill dirs.

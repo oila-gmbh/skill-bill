@@ -22,7 +22,7 @@ import java.nio.file.Path
 internal fun buildInstallPlan(request: InstallPlanRequest): InstallPlan {
   requireSupportedAgentContract()
   val platformManifests = discoverPlatformManifests(request.targetPaths.platformPacksRoot)
-  val policyInput = buildInstallPolicyInput(request, platformManifests)
+  val policyInput = buildInstallPolicyInput(request, platformManifests, enforceContractVersion = true)
   val draft = InstallPlanPolicy.buildPlanDraft(policyInput)
   validateInstallPlanInternalSkills(draft.skills)
   val staging = buildInstallStagingIntent(request, draft.skills, platformManifests)
@@ -46,6 +46,7 @@ private fun requireSupportedAgentContract() {
 private fun buildInstallPolicyInput(
   request: InstallPlanRequest,
   platformManifests: List<PlatformManifest>,
+  enforceContractVersion: Boolean,
 ): InstallPolicyInput {
   val baseSkills = discoverBaseSkills(request.targetPaths.skillsRoot)
   val resolvedReviewFallback = baseSkills
@@ -71,7 +72,7 @@ private fun buildInstallPolicyInput(
         slug = manifest.slug,
         packRoot = manifest.packRoot,
         skills = if (manifest.slug in selectedPlatformSlugs) {
-          platformSkills(manifest)
+          platformSkills(manifest, enforceContractVersion)
         } else {
           emptyList()
         },
@@ -97,10 +98,18 @@ private fun buildInstallPolicyInput(
  * policy callers to this file). Returns the same `draft.skills` the staging-intent
  * builder consumes.
  */
-internal fun enumerateInstallPlanSkills(request: InstallPlanRequest): List<InstallPlanSkill> {
+internal fun enumerateInstallPlanSkills(
+  request: InstallPlanRequest,
+  enforceContractVersion: Boolean = true,
+): List<InstallPlanSkill> {
   requireSupportedAgentContract()
-  val platformManifests = discoverPlatformManifests(request.targetPaths.platformPacksRoot)
-  val skills = InstallPlanPolicy.buildPlanDraft(buildInstallPolicyInput(request, platformManifests)).skills
+  val platformManifests = discoverPlatformManifests(
+    request.targetPaths.platformPacksRoot,
+    enforceContractVersion,
+  )
+  val skills = InstallPlanPolicy.buildPlanDraft(
+    buildInstallPolicyInput(request, platformManifests, enforceContractVersion),
+  ).skills
   validateInstallPlanInternalSkills(skills)
   return skills
 }

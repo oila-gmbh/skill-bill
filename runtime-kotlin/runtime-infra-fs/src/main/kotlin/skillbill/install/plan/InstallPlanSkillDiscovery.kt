@@ -16,12 +16,14 @@ import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
 
-internal fun discoverPlatformManifests(platformPacksRoot: Path): List<PlatformManifest> =
-  if (Files.isDirectory(platformPacksRoot)) {
-    discoverPlatformPackManifests(platformPacksRoot)
-  } else {
-    emptyList()
-  }
+internal fun discoverPlatformManifests(
+  platformPacksRoot: Path,
+  enforceContractVersion: Boolean = true,
+): List<PlatformManifest> = if (Files.isDirectory(platformPacksRoot)) {
+  discoverPlatformPackManifests(platformPacksRoot, enforceContractVersion)
+} else {
+  emptyList()
+}
 
 internal fun discoverBaseSkills(skillsRoot: Path): List<InstallPlanSkill> {
   if (!Files.isDirectory(skillsRoot)) {
@@ -76,7 +78,10 @@ internal fun validateInstallPlanInternalSkills(skills: List<InstallPlanSkill>) {
   )
 }
 
-internal fun platformSkills(manifest: PlatformManifest): List<InstallPlanSkill> {
+internal fun platformSkills(
+  manifest: PlatformManifest,
+  enforceContractVersion: Boolean = true,
+): List<InstallPlanSkill> {
   val contentFiles = listOfNotNull(
     manifest.declaredFiles.baseline,
     manifest.declaredQualityCheckFile,
@@ -86,7 +91,7 @@ internal fun platformSkills(manifest: PlatformManifest): List<InstallPlanSkill> 
   require(duplicateSkillDir == null) {
     "Platform pack '${manifest.slug}' produces duplicate skill name '${duplicateSkillDir?.fileName}'."
   }
-  validatePlatformPack(manifest, SHELL_CONTRACT_VERSION)
+  validatePlatformPack(manifest, SHELL_CONTRACT_VERSION, enforceContractVersion)
   manifest.declaredQualityCheckFile?.let { loadQualityCheckContent(manifest) }
   ReviewSkillStructureValidator.validate(manifest.packRoot)
   return skillDirs

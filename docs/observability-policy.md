@@ -18,6 +18,10 @@ these seams:
 - checkpoint-ref prune: `FeatureTaskRuntimeCheckpointRefPrune.pruneSubtaskCheckpointRefs`
   when listing or deleting a ref under `refs/skill-bill/checkpoints/` fails, or when
   pruning is skipped because `commit_sha` is still blank
+- platform-pack `contract_version` leniency: `CanonicalPlatformPackSchemaValidator.validate`
+  when a caller enumerates with `enforceContractVersion=false` (reconcile's LOCAL side and
+  installed-workspace baseline status) and a stale `const` violation is tolerated instead of
+  raising `ContractVersionMismatchError`
 
 Each record names the seam, the value actually used, the value that was expected,
 and why the substitution happened. A fallback that cannot be attributed to a

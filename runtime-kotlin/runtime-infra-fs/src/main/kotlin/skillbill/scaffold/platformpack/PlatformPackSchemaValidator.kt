@@ -13,6 +13,7 @@ import skillbill.error.InvalidManifestSchemaError
 import skillbill.scaffold.runtime.SHELL_CONTRACT_VERSION
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.logging.Logger
 
 /**
  * SKILL-47: validates a parsed `platform.yaml` against the canonical
@@ -26,6 +27,9 @@ import java.nio.file.Path
  * [ShellContentLoader.buildPack]; see `x-coherence-checks` in the schema
  * file for the named list.
  */
+internal val platformPackSchemaLog: Logger =
+  Logger.getLogger("skillbill.scaffold.platformpack.PlatformPackSchemaValidator")
+
 internal interface PlatformPackSchemaValidator {
   /**
    * Validates the parsed YAML manifest against the canonical schema. On
@@ -38,7 +42,7 @@ internal interface PlatformPackSchemaValidator {
    * already enforces this via `requireManifestMap`), so this method no longer
    * carries dead defensive coercion.
    */
-  fun validate(parsedYaml: Map<String, Any?>, slug: String)
+  fun validate(parsedYaml: Map<String, Any?>, slug: String, enforceContractVersion: Boolean = true)
 }
 
 /**
@@ -59,7 +63,7 @@ internal class CanonicalPlatformPackSchemaValidator : PlatformPackSchemaValidato
   private val schema: JsonSchema by lazy { loadSchema() }
   private val mapper: ObjectMapper by lazy { ObjectMapper() }
 
-  override fun validate(parsedYaml: Map<String, Any?>, slug: String) {
+  override fun validate(parsedYaml: Map<String, Any?>, slug: String, enforceContractVersion: Boolean) {
     val instance: JsonNode = mapper.valueToTree(parsedYaml)
     val errors: Set<ValidationMessage> = schema.validate(instance)
     // F-009 (SKILL-47): `contract_version` value mismatches must surface as
@@ -71,15 +75,33 @@ internal class CanonicalPlatformPackSchemaValidator : PlatformPackSchemaValidato
     // version with no signal. Now we throw the typed error directly the
     // moment the const violation is observed.
     val contractVersionConst = errors.firstOrNull { it.isContractVersionConstMismatch() }
-    if (contractVersionConst != null) {
+    if (contractVersionConst != null && enforceContractVersion) {
       throw ContractVersionMismatchError(
         buildContractVersionMismatchMessage(slug, instance, contractVersionConst),
       )
     }
-    if (errors.isEmpty()) {
+    val remainingErrors = if (contractVersionConst != null) {
+      recordToleratedContractVersion(slug, instance, contractVersionConst)
+      errors - contractVersionConst
+    } else {
+      errors
+    }
+    if (remainingErrors.isEmpty()) {
       return
     }
-    throw InvalidManifestSchemaError(formatValidationMessage(slug, errors, instance))
+    throw InvalidManifestSchemaError(formatValidationMessage(slug, remainingErrors, instance))
+  }
+
+  private fun recordToleratedContractVersion(slug: String, instance: JsonNode, error: ValidationMessage) {
+    val actual = extractOffendingValue(instance, error.instanceLocation?.toString().orEmpty())
+    platformPackSchemaLog.warning(
+      "platform pack contract_version enforcement degraded: " +
+        "seam=CanonicalPlatformPackSchemaValidator.validate pack=$slug " +
+        "used=${actual.ifBlank { "<unreadable>" }} expected=$SHELL_CONTRACT_VERSION " +
+        "cause=caller enumerated with enforceContractVersion=false, so a preserved local " +
+        "manifest pinned to an unsupported contract stays enumerable and is replaced by " +
+        "upstream on adopt",
+    )
   }
 
   private fun ValidationMessage.isContractVersionConstMismatch(): Boolean {

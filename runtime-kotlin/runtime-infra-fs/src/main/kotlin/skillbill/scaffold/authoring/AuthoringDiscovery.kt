@@ -55,9 +55,12 @@ internal fun resolveTarget(repoRoot: Path, skillName: String): AuthoringTarget =
     "Skill '$skillName' is not a content-managed skill with a sibling content.md file.",
   )
 
-internal fun discoverTargets(repoRoot: Path): Map<String, AuthoringTarget> {
+internal fun discoverTargets(repoRoot: Path, enforceContractVersion: Boolean = true): Map<String, AuthoringTarget> {
   val discovered = linkedMapOf<String, AuthoringTarget>()
-  discoverPlatformPackManifests(repoRoot.resolve("platform-packs")).forEach { pack ->
+  discoverPlatformPackManifests(
+    repoRoot.resolve("platform-packs"),
+    enforceContractVersion,
+  ).forEach { pack ->
     recordPackTargets(discovered, pack)
   }
 

@@ -43,6 +43,7 @@ internal data class InternalStagingPreparation(
   val selectedPlatformManifests: List<PlatformManifest>,
   val parentSupportPointers: List<GeneratedSupportPointer>,
   val parentPointerNames: Set<String>,
+  val enforceContractVersion: Boolean = true,
 )
 
 internal data class PreparedInternalStaging(
@@ -62,6 +63,7 @@ internal fun prepareInternalStaging(request: InternalStagingPreparation): Prepar
     parentSkillName = request.parentSkillName,
     skillsRoot = request.skillsRoot,
     selectedPackSkills = request.selectedPackSkills,
+    enforceContractVersion = request.enforceContractVersion,
   )
   val supportPointers = mergeInternalSupportPointers(request, children)
   val sidecarNames = internalSidecarStagingNames(children)
@@ -129,6 +131,7 @@ internal fun discoverInternalSidecarTargets(
   parentSkillName: String,
   skillsRoot: Path,
   selectedPackSkills: List<InstallPlanSkill> = emptyList(),
+  enforceContractVersion: Boolean = true,
 ): List<InternalSidecarTarget> {
   val baseChildren = discoverBaseSkillSidecarTargets(parentSkillName, skillsRoot)
   val packChildren = selectedPackSkills
@@ -137,7 +140,7 @@ internal fun discoverInternalSidecarTargets(
   if (baseChildren.isEmpty() && packChildren.isEmpty()) {
     return emptyList()
   }
-  val discovered = discoverTargets(repoRoot.toAbsolutePath().normalize())
+  val discovered = discoverTargets(repoRoot.toAbsolutePath().normalize(), enforceContractVersion)
   val byName = sortedMapOf<String, InternalSidecarTarget>()
   baseChildren.forEach { (skillName, sourceDir) ->
     byName[skillName] = InternalSidecarTarget(
