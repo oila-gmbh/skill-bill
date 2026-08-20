@@ -1561,6 +1561,7 @@ private fun briefingFor(
         FeatureTaskRuntimePhaseOutput("implement", 1, IMPLEMENT_OUTPUT),
         FeatureTaskRuntimePhaseOutput("audit", 1, validJsonOutput("audit")),
         FeatureTaskRuntimePhaseOutput("review", 1, validJsonOutput("review")),
+        verifyFindingsPhaseOutput(),
         FeatureTaskRuntimePhaseOutput("validate", 1, validJsonOutput("validate")),
         FeatureTaskRuntimePhaseOutput("write_history", 1, validJsonOutput("write_history")),
         FeatureTaskRuntimePhaseOutput("commit_push", 1, FINALISED_COMMIT_PUSH_OUTPUT),

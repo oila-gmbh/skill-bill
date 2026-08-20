@@ -33,6 +33,10 @@ data class FeatureTaskRuntimeVerdict(
      */
     val CHANGES_REQUESTED: FeatureTaskRuntimeVerdict = FeatureTaskRuntimeVerdict("changes_requested")
 
+    val FINDINGS_VERIFIED: FeatureTaskRuntimeVerdict = FeatureTaskRuntimeVerdict("findings_verified")
+
+    val NO_FINDINGS_VERIFIED: FeatureTaskRuntimeVerdict = FeatureTaskRuntimeVerdict("no_findings_verified")
+
     /**
      * Goal-only continuation verdict retained so legacy durable records stay decodable. SKILL-157
      * retired the count-based stop that minted it; pass accounting never produces it again.

@@ -109,9 +109,11 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
       "fixture-checkpoint",
     )
     val recordedOutputs = listOf(
-      phaseOutput(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN, """{"plan":"$planBody"}"""),
-      phaseOutput(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT, """{"implement":"$implementBody"}"""),
-      phaseOutput(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW, """{"review":"$reviewBody"}"""),
+      phaseOutput(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS,
+        """{"produced_outputs":{"finding_dispositions":[{"finding_id":"F-1","disposition":"verified",""" +
+          """"reason":"Matches spec intent.","severity":"blocker","location":"x","message":"fix"}]}}""",
+      ),
     )
     val handoff = FeatureTaskRuntimeHandoffContract.assembleHandoff(
       declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations
@@ -314,14 +316,12 @@ class FeatureTaskRuntimePhaseBriefingBudgetTest {
   )
 
   private fun multiUpstreamOutputs(bodyBytes: Int) = listOf(
-    phaseOutput(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN, """{"plan":"${"p".repeat(bodyBytes)}"}"""),
     phaseOutput(
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
-      """{"implement":"${"i".repeat(bodyBytes)}"}""",
-    ),
-    phaseOutput(
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
-      """{"produced_outputs":{"findings":[{"severity":"blocker","message":"${"r".repeat(bodyBytes)}"}]}}""",
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS,
+      """{"produced_outputs":{"finding_dispositions":[{"finding_id":"F-1","disposition":"verified",""" +
+        """"reason":"Matches spec intent.","severity":"blocker","location":"x","message":"${"r".repeat(
+          bodyBytes,
+        )}"}]}}""",
     ),
   )
 

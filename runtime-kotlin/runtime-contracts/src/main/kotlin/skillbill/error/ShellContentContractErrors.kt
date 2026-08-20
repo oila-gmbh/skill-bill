@@ -421,6 +421,14 @@ class InvalidFeatureTaskRuntimeRepairPlanError(
   cause,
 )
 
+class InvalidFeatureTaskRuntimeFindingVerificationRecordError(
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Feature-task-runtime finding verification record is invalid: $reason",
+  cause,
+)
+
 class InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError(
   val sourceLabel: String,
   val reason: String,

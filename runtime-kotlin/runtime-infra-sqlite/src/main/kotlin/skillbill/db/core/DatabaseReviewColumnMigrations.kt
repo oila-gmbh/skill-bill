@@ -86,6 +86,8 @@ internal object DatabaseReviewColumnMigrations {
     if (!DatabaseColumnMigrations.tableExists(connection, "unaddressed_findings")) return
     DatabaseColumnMigrations.ensureColumn(connection, "unaddressed_findings", "review_run_id", "TEXT")
     DatabaseColumnMigrations.ensureColumn(connection, "unaddressed_findings", "finding_id", "TEXT")
+    DatabaseColumnMigrations.ensureColumn(connection, "unaddressed_findings", "verification_disposition", "TEXT")
+    DatabaseColumnMigrations.ensureColumn(connection, "unaddressed_findings", "verification_reason", "TEXT")
     connection.createStatement().use { statement ->
       statement.execute(
         "CREATE INDEX IF NOT EXISTS idx_unaddressed_findings_run " +

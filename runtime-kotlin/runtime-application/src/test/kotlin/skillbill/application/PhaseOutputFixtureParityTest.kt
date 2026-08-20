@@ -38,12 +38,12 @@ class PhaseOutputFixtureParityTest {
     // No fixture is silently skipped: the union of validated and exempt phases is the closed corpus.
     val validated = PLANNING_PROJECTION_FIXTURES.map { it.phaseId }.toSet()
     assertEquals(
-      setOf("preplan", "plan", "implement", "implement_fix"),
+      setOf("preplan", "plan", "implement"),
       validated,
       "the producing-phase corpus drifted from the fixtures the planning-projections schema governs",
     )
     assertEquals(
-      setOf("review", "audit", "commit_push"),
+      setOf("review", "audit", "verify_findings", "implement_fix", "commit_push"),
       PLANNING_PROJECTION_EXEMPT_PHASES,
       "the exemption list drifted; every non-producing phase must be named and justified, never skipped",
     )

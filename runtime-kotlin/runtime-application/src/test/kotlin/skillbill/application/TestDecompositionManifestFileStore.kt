@@ -17,6 +17,25 @@ import java.nio.file.Path
 import java.nio.file.StandardCopyOption.ATOMIC_MOVE
 import java.nio.file.StandardCopyOption.REPLACE_EXISTING
 
+internal fun seedHarnessSpecIntentProjection(repoRoot: Path, specReference: String) {
+  val specPath = repoRoot.resolve(specReference)
+  if (Files.isRegularFile(specPath)) return
+  TestDecompositionManifestFileStore.writeTextAtomically(
+    specPath,
+    """
+    # Harness spec intent
+
+    ## Intended Outcome
+    Exercise the feature-task runtime harness.
+
+    ## Acceptance Criteria
+
+    1. AC-1
+    2. AC-2
+    """.trimIndent(),
+  )
+}
+
 internal object TestDecompositionManifestFileStore : DecompositionManifestFileStore {
   override fun readText(path: Path): String = Files.readString(path)
 

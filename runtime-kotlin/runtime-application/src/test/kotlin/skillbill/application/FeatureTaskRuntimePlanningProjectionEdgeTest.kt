@@ -595,7 +595,7 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
     val edge = FeatureTaskRuntimePhaseWorkflowDefinition.transitions.backwardEdges.single {
       it.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID
     }
-    assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW, edge.fromPhaseId)
+    assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS, edge.fromPhaseId)
     assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX, edge.destinationPhaseId)
     assertEquals(1, edge.perEdgeCap)
     assertEquals(

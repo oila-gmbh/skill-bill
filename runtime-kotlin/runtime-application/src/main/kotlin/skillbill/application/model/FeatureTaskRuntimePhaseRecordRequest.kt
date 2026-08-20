@@ -59,6 +59,8 @@ data class FeatureTaskRuntimePhaseStateRequest(
    */
   val launchOutcomeKnown: Boolean = false,
   val reviewRunId: String? = null,
+  val findingVerificationCheckpoint:
+  List<skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition>? = null,
 )
 
 /**

@@ -4,7 +4,6 @@ import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.contracts.JsonSupport
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 
 internal const val STATUS_RUNNING = "running"
 internal const val STATUS_COMPLETED = "completed"
@@ -91,57 +90,6 @@ internal fun mutatingReconciliationGateReason(phaseId: String, outputMap: Map<St
   }
 }
 
-internal fun reviewVerificationSignalGateReason(phaseId: String, outputMap: Map<String, Any?>): String? {
-  if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) return null
-  val hasVerdict = (outputMap[FeatureTaskRuntimeVerificationSignalKeys.VERDICT] as? String)?.isNotBlank() == true
-  val producedOutputs = outputMap["produced_outputs"] as? Map<*, *>
-  val findingsKey = FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS
-  val hasFindingsArray = producedOutputs?.containsKey(findingsKey) == true && producedOutputs[findingsKey] is List<*>
-  return if (hasVerdict || hasFindingsArray) {
-    null
-  } else {
-    "Review phase reported 'completed' without a verification signal: the output must carry either a " +
-      "top-level 'verdict' or a 'produced_outputs.findings' array (an explicit empty array affirms no " +
-      "blocking findings). A review that emits neither cannot advance past a possible Blocker/Major; " +
-      "the schema gate fails rather than silently advancing to validation."
-  }
-}
-
-internal fun auditVerificationSignalGateReason(phaseId: String, outputMap: Map<String, Any?>): String? {
-  if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) return null
-  FeatureTaskRuntimeOutputVerification.auditGapPayloadError(outputMap)?.let { return it }
-  val wireVerdict = (outputMap[FeatureTaskRuntimeVerificationSignalKeys.VERDICT] as? String)
-    ?.takeIf(String::isNotBlank)
-  val producedOutputs = outputMap["produced_outputs"] as? Map<*, *>
-  val criteriaKey = FeatureTaskRuntimeVerificationSignalKeys.AUDIT_UNMET_CRITERIA
-  val hasCriteriaArray = producedOutputs?.containsKey(criteriaKey) == true && producedOutputs[criteriaKey] is List<*>
-  if (hasCriteriaArray) return null
-  val auditVocabulary = FeatureTaskRuntimeVerdict.AUDIT_VERDICTS.joinToString("', '") { it.wireValue }
-  // Without a criteria array the wire verdict is the only decidable signal, and the review entry gate
-  // matches the closed audit vocabulary. An off-vocabulary verdict would settle as a completed audit
-  // that can never satisfy the gate, and the gating phase is not itself invalidated, so the run would
-  // wedge unrecoverably. Failing the schema gate makes it a bounded, in-band retry instead.
-  return when {
-    wireVerdict == null ->
-      "Audit phase reported 'completed' without a verification signal: the output must carry either a " +
-        "top-level 'verdict' or a 'produced_outputs.unmet_criteria' array (an explicit empty array affirms " +
-        "every acceptance criterion is met). An audit that emits neither cannot advance past a possibly-unmet " +
-        "criterion; the schema gate fails rather than silently advancing past audit."
-    FeatureTaskRuntimeVerdict.fromWire(wireVerdict) !in FeatureTaskRuntimeVerdict.AUDIT_VERDICTS ->
-      "Audit phase reported 'completed' with the off-vocabulary verdict '$wireVerdict' and no " +
-        "'produced_outputs.unmet_criteria' array. With no criteria array the verdict is the only decidable " +
-        "signal and it gates entry into review, so it must be one of '$auditVocabulary' — or emit the " +
-        "criteria array (an explicit empty array affirms every acceptance criterion is met)."
-    else -> null
-  }
-}
-
-/**
- * The single ceiling on validator-authored detail. Every path that carries a validation failure onward —
- * an operator-facing blocked reason through [withSchemaGateDetail], and the constraint text a fix-loop
- * retry prompt and its private diagnostic row receive — passes through this one bound, so no validator
- * message can widen either surface past [SCHEMA_GATE_DETAIL_MAX_CHARS].
- */
 internal fun boundedSchemaGateDetail(validationReason: String): String =
   if (validationReason.length <= SCHEMA_GATE_DETAIL_MAX_CHARS) {
     validationReason

@@ -323,7 +323,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
     assertContains(run.stdout, "status: complete")
     assertContains(
       run.stdout,
-      "completed_phases: preplan, plan, implement, audit, review, validate, write_history, commit_push, pr",
+      "completed_phases: $COMPLETED_PHASES_CLEAN_RUN",
     )
     assertEquals(AGENT_LAUNCHED_PHASES, launcher.phaseOrder())
     assertContains(stderr.toString(), "feature-task-runtime is a deprecated alias for feature-task")
@@ -455,7 +455,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
     assertContains(result.stdout, "feature_size: SMALL")
     assertContains(
       result.stdout,
-      "completed_phases: preplan, plan, implement, audit, review, validate, write_history, commit_push, pr",
+      "completed_phases: $COMPLETED_PHASES_CLEAN_RUN",
     )
     assertEquals(listOf("codex"), launcher.requests.map { it.agentId }.distinct())
     assertEquals(AGENT_LAUNCHED_PHASES, launcher.phaseOrder())
@@ -808,7 +808,8 @@ class CliFeatureTaskRuntimeRuntimeTest {
     assertContains(goalRun.stdout, "resolved_branch: feat/pre-created-runtime-branch")
     assertContains(
       goalRun.stdout,
-      "completed_phases: preplan, plan, implement, audit, review, validate, write_history, commit_push",
+      "completed_phases: preplan, plan, implement, audit, review, verify_findings, validate, " +
+        "write_history, commit_push",
     )
     assertContains(goalRun.stdout, "subtask_outcome:")
     assertContains(goalRun.stdout, "  last_resumable_step: commit_push")
@@ -835,7 +836,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
     assertContains(directRun.stdout, "resolved_branch: feat/SKILL-650-runtime")
     assertContains(
       directRun.stdout,
-      "completed_phases: preplan, plan, implement, audit, review, validate, write_history, commit_push, pr",
+      "completed_phases: $COMPLETED_PHASES_CLEAN_RUN",
     )
     assertEquals(listOf("feat/SKILL-650-runtime"), directGit.checkoutBranches, directRun.stdout)
     assertEquals(
@@ -863,7 +864,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
     assertContains(status.stdout, "feature_size: SMALL")
     // A clean run launches the nine forward phases; the loop-only implement_fix is never launched, so
     // it stays pending in the durable projection even on a fully forward-completed run (SKILL-85 M1).
-    assertContains(status.stdout, "complete: ${ALL_PHASES.size}")
+    assertContains(status.stdout, "complete: ${ALL_PHASES.size - 1}")
     assertContains(status.stdout, "pending: 1")
     assertContains(status.stdout, "blocked: 0")
     assertContains(status.stdout, "phase: id=plan status=completed")
@@ -1128,7 +1129,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
     assertContains(result.stdout, "status: complete")
     assertContains(
       result.stdout,
-      "completed_phases: preplan, plan, implement, audit, review, validate, write_history, commit_push, pr",
+      "completed_phases: $COMPLETED_PHASES_CLEAN_RUN",
     )
     assertEquals(AGENT_LAUNCHED_PHASES, launcher.phaseOrder())
   }
@@ -2034,8 +2035,7 @@ private class RecordingPhaseLauncher(
       val producedOutputs = when (phaseId) {
         "review" -> "findings: []"
         "audit" -> "gaps: []"
-        // preplan, plan, and implement feed the bounded planning projections, so they emit the
-        // declared projection body rather than a generic task list.
+        "verify_findings" -> "finding_dispositions: []"
         "preplan" -> PREPLAN_DIGEST_OUTPUTS
         "plan" -> EXECUTABLE_PLAN_OUTPUTS
         "implement" -> IMPLEMENTATION_RECEIPT_OUTPUTS
@@ -2044,13 +2044,18 @@ private class RecordingPhaseLauncher(
         "commit_push" -> COMMIT_PUSH_RESULT_OUTPUTS
         else -> """tasks: ["task-1"]"""
       }
+      val phaseVerdict = when (phaseId) {
+        "audit" -> "verdict: \"satisfied\""
+        "verify_findings" -> "verdict: \"no_findings_verified\""
+        else -> ""
+      }
       val base =
         """
         contract_version: "0.3"
         phase_id: "$phaseId"
         status: "completed"
         summary: "Phase produced a validated output."
-        ${if (phaseId == "audit") "verdict: \"satisfied\"" else ""}
+        $phaseVerdict
         produced_outputs:
           $producedOutputs
         """.trimIndent()
@@ -2182,8 +2187,22 @@ private class InterruptAtImplementLauncher : AgentRunLauncher {
 }
 
 private val ALL_PHASES =
-  listOf("preplan", "plan", "implement", "audit", "review", "validate", "write_history", "commit_push", "pr")
-private val AGENT_LAUNCHED_PHASES = ALL_PHASES.filterNot { it == "review" }
+  listOf(
+    "preplan",
+    "plan",
+    "implement",
+    "audit",
+    "review",
+    "verify_findings",
+    "implement_fix",
+    "validate",
+    "write_history",
+    "commit_push",
+    "pr",
+  )
+private val AGENT_LAUNCHED_PHASES = ALL_PHASES.filterNot { it == "review" || it == "implement_fix" }
+private const val COMPLETED_PHASES_CLEAN_RUN =
+  "preplan, plan, implement, audit, review, verify_findings, validate, write_history, commit_push, pr"
 
 // Records checkouts and reports a configurable current branch so branch-setup is exercised through
 // the CLI without a real git repo. The default reports an existing feature branch (reuse path).

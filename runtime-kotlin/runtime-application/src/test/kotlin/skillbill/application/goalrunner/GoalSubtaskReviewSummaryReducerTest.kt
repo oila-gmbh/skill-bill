@@ -1,5 +1,6 @@
 package skillbill.application.goalrunner
 
+import skillbill.application.featuretask.FeatureTaskRuntimeVerificationSignalKeys
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -271,6 +272,46 @@ class GoalSubtaskReviewSummaryReducerTest {
     val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(output)
     assertEquals(FeatureTaskRuntimeVerdict.APPROVED, outcome.verdict)
     assertEquals(0, outcome.unresolvedFindingCount)
+  }
+
+  @Test
+  fun `rejected verification findings land in the ledger with reason and severity`() {
+    val reviewOutput = mapOf(
+      "produced_outputs" to mapOf(
+        "findings" to listOf(
+          mapOf(
+            "finding_id" to "F-001",
+            "severity" to "minor",
+            "message" to "Prefer clearer name",
+            "location" to "Example.kt",
+          ),
+        ),
+      ),
+    )
+    val verifyOutput = mapOf(
+      "produced_outputs" to mapOf(
+        FeatureTaskRuntimeVerificationSignalKeys.FINDINGS_VERIFICATION_DISPOSITIONS to listOf(
+          mapOf(
+            "finding_id" to "F-001",
+            "disposition" to "rejected",
+            "reason" to "False positive against spec intent.",
+            "severity" to "minor",
+            "location" to "Example.kt",
+            "message" to "Prefer clearer name",
+          ),
+        ),
+      ),
+    )
+    val scope = UnaddressedFindingLedgerScope("SKILL-202", 2, "wf-verify", 1)
+    val rejected = GoalSubtaskReviewSummaryReducer.rejectedVerificationFindings(
+      verifyOutput = verifyOutput,
+      reviewOutput = reviewOutput,
+      scope = scope,
+    )
+    assertEquals(1, rejected.size)
+    assertEquals("rejected", rejected.single().verificationDisposition)
+    assertEquals("False positive against spec intent.", rejected.single().verificationReason)
+    assertEquals("minor", rejected.single().severity)
   }
 
   @Test

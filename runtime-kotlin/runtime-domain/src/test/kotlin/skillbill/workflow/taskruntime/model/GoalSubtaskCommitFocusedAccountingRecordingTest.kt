@@ -49,20 +49,17 @@ class GoalSubtaskCommitFocusedAccountingRecordingTest {
   }
 
   @Test
-  fun `an inline remediation pass records no commit-focused accounting`() {
-    val delegated = reservedFirstPass().completeReservedPass(
-      verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
-      unresolvedFindingCount = 1,
-      findings = listOf(GoalSubtaskReviewCompactFinding("blocker", "Repository", "Unsafe mutation")),
-      commitFocusedAccounting = accounting,
-    )
-
-    val inlinePass = delegated.reserveNextPass().completeReservedPass(
+  fun `an inline review pass records no commit-focused accounting`() {
+    val inlinePass = GoalSubtaskReviewState.initial(
+      reviewBaseSha = "b".repeat(40),
+      baselineUntrackedPaths = emptyList(),
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
+    ).reserveNextPass().completeReservedPass(
       verdict = FeatureTaskRuntimeVerdict.APPROVED,
       unresolvedFindingCount = 0,
       findings = emptyList(),
       commitFocusedAccounting = accounting,
-    ).passResults.last()
+    ).passResults.single()
 
     assertEquals(CodeReviewExecutionMode.INLINE, inlinePass.executedMode)
     assertNull(inlinePass.commitFocusedAccounting)

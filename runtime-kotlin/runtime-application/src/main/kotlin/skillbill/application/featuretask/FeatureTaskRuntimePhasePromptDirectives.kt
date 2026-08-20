@@ -311,8 +311,8 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "items than you were carried is a resumable partial repair, not a completion. Repair evidence is " +
     "read-only repository facts: do not run builds or tests here.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX to
-    "Address the carried findings from the preceding review pass on the CURRENT working tree as " +
-    "incremental reconciliation. Every finding in the briefing — Blocker, Major, Minor, and Nit — is in " +
+    "Address every verified finding from verify_findings on the CURRENT working tree as " +
+    "incremental reconciliation. Every carried finding — Blocker, Major, Minor, and Nit — is in " +
     "scope; specialist narratives and raw review output are not. Do not re-apply " +
     "the plan from scratch or expand scope beyond the carried findings. Treat any fix already present " +
     "as a no-op. See the mutating-phase idempotency contract below. Emit " +
@@ -326,6 +326,14 @@ internal val phaseDirectives: Map<String, String> = mapOf(
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW to
     "The runtime owns this review. Do not run bill-code-review, do not emit findings, and do not " +
     "report unsatisfied acceptance criteria. Criterion-gap detection remains exclusive to the audit phase.",
+  FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS to
+    "Verify every finding from the single preceding review pass against the subtask spec intent " +
+    "projection carried in the briefing. Emit exactly one disposition per finding — verified or " +
+    "rejected — each with a bounded reason derived from that intent projection. Do not edit the " +
+    "worktree. Settle once: verdict findings_verified when at least one finding is verified, otherwise " +
+    "no_findings_verified. Emit " +
+    "produced_outputs.${FeatureTaskRuntimeVerificationSignalKeys.FINDINGS_VERIFICATION_DISPOSITIONS} " +
+    "with finding_id, disposition, reason, severity, location, and message per entry.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT to
     "Run the encoded completeness audit ceremony and report production-behavior or production-implementation " +
     "acceptance-criterion gaps only. Never report test adequacy, coverage, fixtures, assertions, or other " +

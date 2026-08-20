@@ -133,6 +133,7 @@ $defs:
           - implement
           - implement_fix
           - review
+          - verify_findings
           - audit
           - validate
           - write_history
@@ -152,6 +153,7 @@ $defs:
                     - implement
                     - implement_fix
                     - review
+                    - verify_findings
                     - audit
                     - validate
                     - write_history
@@ -263,7 +265,7 @@ properties:
   contract_version:
     type: string
     minLength: 1
-    const: "0.2"
+    const: "0.3"
     description: >
       Pinned to `WORKFLOW_STATE_CONTRACT_VERSION` (currently "0.1"). The
       parity test `WorkflowStateSchemaContractVersionTest` keeps the two

@@ -8,9 +8,53 @@ package skillbill.application
 // An implement output that completes WITHOUT the reconciliation report, so the runtime's
 // mutating-phase reconciliation gate must reject it (silent skip fails the gate loudly). This is a
 // NEGATIVE fixture: it is deliberately invalid and is excluded from the parity corpus by design.
+internal const val REVIEW_FIX_BLOCKER_FINDING_ID = "F-001"
+
+internal var harnessPendingVerifyFindingIds: List<String> = emptyList()
+
+internal fun harnessReviewDriverSyncingPendingVerifyFindings(
+  delegate: skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver,
+): skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver =
+  skillbill.application.featuretask.FeatureTaskRuntimeReviewDriver { request ->
+    val result = delegate.run(request)
+    harnessPendingVerifyFindingIds = result.mergeResult.findings.map { it.fNumber }
+    result
+  }
+
+internal fun verifyFindingsPhaseOutput(
+  verifiedFindingIds: List<String> = harnessPendingVerifyFindingIds,
+): skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput =
+  skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput(
+    "verify_findings",
+    1,
+    verifyFindingsOutput(verifiedFindingIds),
+  )
+
+internal fun verifyFindingsOutputForFindingIds(vararg findingIds: String): String =
+  verifyFindingsOutput(findingIds.toList())
+
+internal fun verifyFindingsOutput(verifiedFindingIds: List<String> = harnessPendingVerifyFindingIds): String {
+  val dispositions = verifiedFindingIds.joinToString(",") { findingId ->
+    """{"finding_id":"$findingId","disposition":"verified","reason":"Matches spec intent AC-002.",""" +
+      """"severity":"blocker","location":"Foo.kt:1","message":"Foo.kt leaks a connection in the error path"}"""
+  }
+  val verdict = if (verifiedFindingIds.isEmpty()) "no_findings_verified" else "findings_verified"
+  val dispositionsJson = if (dispositions.isEmpty()) "[]" else "[$dispositions]"
+  return """
+  {
+    "contract_version": "0.3",
+    "phase_id": "verify_findings",
+    "status": "completed",
+    "summary": "Phase produced a validated output.",
+    "verdict": "$verdict",
+    "produced_outputs": {"finding_dispositions": $dispositionsJson}
+  }
+  """.trimIndent()
+}
+
 internal val IMPLEMENT_NO_RECONCILE_OUTPUT: String = """
   {
-    "contract_version": "0.2",
+    "contract_version": "0.3",
     "phase_id": "implement",
     "status": "completed",
     "summary": "Phase produced a validated output.",
@@ -23,7 +67,7 @@ internal val IMPLEMENT_NO_RECONCILE_OUTPUT: String = """
 // its consumer parses, and the producer gate rejects it otherwise (SKILL-140 Subtask 1).
 internal fun verdictPlanOutput(verdict: String): String = """
   {
-    "contract_version": "0.2",
+    "contract_version": "0.3",
     "phase_id": "plan",
     "status": "completed",
     "summary": "Plan produced a validated output.",
@@ -38,7 +82,7 @@ internal fun verdictPlanOutput(verdict: String): String = """
 // records must use this rather than the pre-finalisation agent payload.
 internal val FINALISED_COMMIT_PUSH_OUTPUT: String = """
   {
-    "contract_version": "0.2",
+    "contract_version": "0.3",
     "phase_id": "commit_push",
     "status": "completed",
     "summary": "Phase produced a validated output.",
@@ -64,15 +108,32 @@ internal fun commitPushProducedOutputs(commitSha: String?): String {
   """.trimIndent()
 }
 
-internal fun validJsonOutput(phaseId: String): String = """
+internal fun validJsonOutput(phaseId: String): String {
+  if (phaseId == "verify_findings") {
+    return verifyFindingsOutput()
+  }
+  if (phaseId == "audit") {
+    return """
+    {
+      "contract_version": "0.3",
+      "phase_id": "audit",
+      "status": "completed",
+      "summary": "Phase produced a validated output.",
+      "verdict": "satisfied",
+      "produced_outputs": ${validProducedOutputs(phaseId)}
+    }
+    """.trimIndent()
+  }
+  return """
   {
-    "contract_version": "0.2",
+    "contract_version": "0.3",
     "phase_id": "$phaseId",
     "status": "completed",
     "summary": "Phase produced a validated output.",
     "produced_outputs": ${validProducedOutputs(phaseId)}
   }
-""".trimIndent()
+  """.trimIndent()
+}
 
 @Suppress("LongMethod")
 internal fun validProducedOutputs(phaseId: String): String = when (phaseId) {
@@ -127,7 +188,7 @@ internal fun validProducedOutputs(phaseId: String): String = when (phaseId) {
   // rather than widen implementation_receipt to admit it: widening the schema to keep a duplicate wire
   // field is the rejected alternative (schema-shape changes are a stated non-goal, and `changed_paths`
   // already carries the path list this variant delivers).
-  "implement", "implement_fix" ->
+  "implement" ->
     """{
       "projection_kind":"implementation_receipt",
       "contract_version":"0.1",
@@ -147,12 +208,30 @@ internal fun validProducedOutputs(phaseId: String): String = when (phaseId) {
       }]
     }
     """.trimIndent()
+  "implement_fix" ->
+    """{
+      "repair_receipt": {
+        "contract_version": "0.1",
+        "entries": [{
+          "finding_id": "F-001",
+          "severity": "blocker",
+          "label": "Foo",
+          "text": "Foo.kt leaks a connection in the error path",
+          "outcome": "addressed",
+          "constructs": [{"symbol": "Foo.member", "file": "Foo.kt"}],
+          "intent": "close the finding at Foo.member"
+        }]
+      },
+      "reconciled_state": {"reconciled": true, "evidence": "Fixture tree at target state."}
+    }
+    """.trimIndent()
   // A clean review must emit a verification signal or the review gate blocks (SKILL-85 Subtask 4):
   // an explicit empty findings array affirms "no blocking findings" and advances.
   "review" -> """{"findings": []}"""
   // A clean audit must emit a verification signal or the audit gate blocks (SKILL-85 Subtask 5):
-  // an explicit empty unmet_criteria array affirms "every acceptance criterion is met" and advances.
-  "audit" -> """{"unmet_criteria": []}"""
+  // an explicit empty gaps array affirms "every acceptance criterion is met" and advances.
+  "audit" -> """{"gaps": []}"""
+  "verify_findings" -> """{"finding_dispositions": []}"""
   else -> """{"tasks":["task-1"]}"""
 }
 
@@ -168,7 +247,7 @@ internal data class PhaseOutputFixture(
 // against the canonical planning-projections schema. `implement_fix` re-enters the implement phase and
 // reuses the same implementation_receipt projection, so it is validated too.
 internal val PLANNING_PROJECTION_FIXTURES: List<PhaseOutputFixture> =
-  listOf("preplan", "plan", "implement", "implement_fix").map { phaseId ->
+  listOf("preplan", "plan", "implement").map { phaseId ->
     PhaseOutputFixture(
       id = "validProducedOutputs:$phaseId",
       phaseId = phaseId,
@@ -180,7 +259,8 @@ internal val PLANNING_PROJECTION_FIXTURES: List<PhaseOutputFixture> =
 // produced_outputs are not validated against the planning-projections schema.
 // - review / audit: emit verification signals (findings / unmet_criteria), not a bounded projection.
 // - commit_push: emits a commit_push_result, owned by the phase-output contract, not this schema.
-internal val PLANNING_PROJECTION_EXEMPT_PHASES: Set<String> = setOf("review", "audit", "commit_push")
+internal val PLANNING_PROJECTION_EXEMPT_PHASES: Set<String> =
+  setOf("review", "audit", "verify_findings", "implement_fix", "commit_push")
 
 /**
  * SKILL-187 subtask 3: synthetic audit envelopes for repair-context conformance. Sentinels only —

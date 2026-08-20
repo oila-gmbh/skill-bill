@@ -94,10 +94,10 @@ class FeatureTaskRuntimeStatusServiceTest {
 
     assertEquals("LARGE", projection.featureSize)
     assertEquals(0, projection.completeCount)
-    assertEquals(10, projection.pendingCount)
+    assertEquals(11, projection.pendingCount)
     assertEquals(0, projection.blockedCount)
     assertEquals("preplan", projection.currentPhaseId)
-    assertEquals(List(10) { "pending" }, projection.phases.map { it.status })
+    assertEquals(List(11) { "pending" }, projection.phases.map { it.status })
   }
 
   @Test
@@ -437,7 +437,7 @@ class FeatureTaskRuntimeStatusServiceTest {
   fun `ledger-only review fix projects implement fix as current`() {
     val harness = statusHarness()
     harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
-    listOf("preplan", "plan", "implement", "audit", "review")
+    listOf("preplan", "plan", "implement", "audit", "review", "verify_findings")
       .forEach { harness.recordCompleted(it, attemptCount = 1) }
     harness.recordLoopEdge(
       phaseId = "implement_fix",
@@ -450,7 +450,7 @@ class FeatureTaskRuntimeStatusServiceTest {
       harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
     )
 
-    assertEquals("validate", projection.currentPhaseId)
+    assertEquals("implement_fix", projection.currentPhaseId)
   }
 
   @Test
@@ -555,14 +555,25 @@ class FeatureTaskRuntimeStatusServiceTest {
     // it rather than report a never-run loop-only phase; with no other incomplete phase it reports none.
     val harness = statusHarness()
     harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
-    listOf("preplan", "plan", "implement", "audit", "review", "validate", "write_history", "commit_push", "pr")
+    listOf(
+      "preplan",
+      "plan",
+      "implement",
+      "audit",
+      "review",
+      "verify_findings",
+      "validate",
+      "write_history",
+      "commit_push",
+      "pr",
+    )
       .forEach { harness.recordCompleted(it, attemptCount = 1) }
 
     val projection = requireNotNull(
       harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
     )
 
-    assertEquals(9, projection.completeCount)
+    assertEquals(10, projection.completeCount)
     assertEquals("pending", projection.phases.single { it.phaseId == "implement_fix" }.status)
     assertNull(projection.currentPhaseId, "a completed forward run reports no current phase, not implement_fix")
   }
@@ -840,7 +851,8 @@ class FeatureTaskRuntimeStatusAttributionTest {
   fun `stale completed review pass is omitted after review_fix implement_fix completes`() {
     val harness = statusHarness()
     harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
-    listOf("preplan", "plan", "implement", "audit").forEach { harness.recordCompleted(it, attemptCount = 1) }
+    listOf("preplan", "plan", "implement", "audit", "review", "verify_findings")
+      .forEach { harness.recordCompleted(it, attemptCount = 1) }
     harness.recorder.recordPhaseState(
       FeatureTaskRuntimePhaseStateRequest(
         workflowId = WORKFLOW_ID,
@@ -888,7 +900,8 @@ class FeatureTaskRuntimeStatusAttributionTest {
   fun `completed review pass is omitted when a later phase is current`() {
     val harness = statusHarness()
     harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
-    listOf("preplan", "plan", "implement", "audit").forEach { harness.recordCompleted(it, attemptCount = 1) }
+    listOf("preplan", "plan", "implement", "audit", "review", "verify_findings")
+      .forEach { harness.recordCompleted(it, attemptCount = 1) }
     harness.recorder.recordPhaseState(
       FeatureTaskRuntimePhaseStateRequest(
         workflowId = WORKFLOW_ID,
@@ -917,7 +930,7 @@ class FeatureTaskRuntimeStatusAttributionTest {
   fun `validation gate run count is gate_run after the gate begins and never invents a total`() {
     val harness = statusHarness()
     harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
-    listOf("preplan", "plan", "implement", "audit", "review").forEach {
+    listOf("preplan", "plan", "implement", "audit", "review", "verify_findings").forEach {
       harness.recordCompleted(it, attemptCount = 1)
     }
     harness.recordRunning("validate", attemptCount = 2)

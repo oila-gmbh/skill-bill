@@ -1,0 +1,147 @@
+package skillbill.workflow.taskruntime.model
+
+import skillbill.boundary.OpenBoundaryMap
+import skillbill.contracts.JsonSupport
+import skillbill.error.InvalidFeatureTaskRuntimeFindingVerificationRecordError
+
+enum class FeatureTaskRuntimeFindingVerificationDispositionVerdict(val wireValue: String) {
+  VERIFIED("verified"),
+  REJECTED("rejected"),
+  ;
+
+  companion object {
+    fun fromWire(value: String): FeatureTaskRuntimeFindingVerificationDispositionVerdict =
+      entries.firstOrNull { it.wireValue == value.trim().lowercase() }
+        ?: throw InvalidFeatureTaskRuntimeFindingVerificationRecordError(
+          "finding verification disposition must be verified or rejected, was '$value'.",
+        )
+  }
+}
+
+data class FeatureTaskRuntimeFindingVerificationDisposition(
+  val findingId: String,
+  val disposition: FeatureTaskRuntimeFindingVerificationDispositionVerdict,
+  val reason: String,
+  val severity: FeatureTaskRuntimeReviewSeverity,
+  val location: String,
+  val message: String,
+) {
+  init {
+    if (findingId.isBlank()) {
+      throw InvalidFeatureTaskRuntimeFindingVerificationRecordError(
+        "finding verification disposition finding_id must be non-blank.",
+      )
+    }
+    if (reason.isBlank()) {
+      throw InvalidFeatureTaskRuntimeFindingVerificationRecordError(
+        "finding verification disposition reason must be non-blank.",
+      )
+    }
+    if (location.isBlank()) {
+      throw InvalidFeatureTaskRuntimeFindingVerificationRecordError(
+        "finding verification disposition location must be non-blank.",
+      )
+    }
+    if (message.isBlank()) {
+      throw InvalidFeatureTaskRuntimeFindingVerificationRecordError(
+        "finding verification disposition message must be non-blank.",
+      )
+    }
+  }
+
+  @OpenBoundaryMap("Finding verification disposition at the durable workflow-artifact seam")
+  fun toArtifactMap(): Map<String, Any?> = mapOf(
+    "finding_id" to findingId,
+    "disposition" to disposition.wireValue,
+    "reason" to reason,
+    "severity" to severity.wireValue,
+    "location" to location,
+    "message" to message,
+  )
+
+  companion object {
+    @OpenBoundaryMap("Finding verification disposition decode from the durable workflow-artifact map")
+    fun fromArtifactMap(raw: Map<String, Any?>, path: String): FeatureTaskRuntimeFindingVerificationDisposition {
+      val findingId = (raw["finding_id"] as? String)?.trim()?.takeIf(String::isNotBlank) ?: invalid(path, "finding_id")
+      val disposition = (raw["disposition"] as? String)
+        ?.let(FeatureTaskRuntimeFindingVerificationDispositionVerdict::fromWire)
+        ?: invalid(path, "disposition")
+      val reason = (raw["reason"] as? String)?.trim()?.takeIf(String::isNotBlank) ?: invalid(path, "reason")
+      val severityWire =
+        (raw["severity"] as? String)?.trim()?.takeIf(String::isNotBlank) ?: invalid(path, "severity")
+      val severity = FeatureTaskRuntimeReviewSeverity.entries
+        .firstOrNull { it.wireValue == severityWire.trim().lowercase() }
+        ?: throw InvalidFeatureTaskRuntimeFindingVerificationRecordError(
+          "$path.severity must be blocker, major, minor, or nit, was '$severityWire'.",
+        )
+      val location = (raw["location"] as? String)?.trim()?.takeIf(String::isNotBlank) ?: invalid(path, "location")
+      val message = (raw["message"] as? String)?.trim()?.takeIf(String::isNotBlank) ?: invalid(path, "message")
+      return FeatureTaskRuntimeFindingVerificationDisposition(
+        findingId = findingId,
+        disposition = disposition,
+        reason = reason,
+        severity = severity,
+        location = location,
+        message = message,
+      )
+    }
+
+    fun parseList(raw: Any?, path: String): List<FeatureTaskRuntimeFindingVerificationDisposition> {
+      val entries = raw as? List<*> ?: throw InvalidFeatureTaskRuntimeFindingVerificationRecordError(
+        "$path must be an array of finding verification dispositions.",
+      )
+      return entries.mapIndexed { index, entry ->
+        val map = JsonSupport.anyToStringAnyMap(entry)
+          ?: throw InvalidFeatureTaskRuntimeFindingVerificationRecordError(
+            "$path[$index] must be an object.",
+          )
+        fromArtifactMap(map, "$path[$index]")
+      }
+    }
+
+    private fun invalid(path: String, field: String): Nothing =
+      throw InvalidFeatureTaskRuntimeFindingVerificationRecordError("$path.$field must be a non-blank string.")
+  }
+}
+
+data class FeatureTaskRuntimeFindingVerificationVerdict(
+  val dispositions: List<FeatureTaskRuntimeFindingVerificationDisposition>,
+) {
+  val verdict: FeatureTaskRuntimeVerdict
+    get() = if (
+      dispositions.any { it.disposition == FeatureTaskRuntimeFindingVerificationDispositionVerdict.VERIFIED }
+    ) {
+      FeatureTaskRuntimeVerdict.FINDINGS_VERIFIED
+    } else {
+      FeatureTaskRuntimeVerdict.NO_FINDINGS_VERIFIED
+    }
+
+  val verifiedDispositions: List<FeatureTaskRuntimeFindingVerificationDisposition>
+    get() = dispositions.filter { it.disposition == FeatureTaskRuntimeFindingVerificationDispositionVerdict.VERIFIED }
+
+  val rejectedDispositions: List<FeatureTaskRuntimeFindingVerificationDisposition>
+    get() = dispositions.filter { it.disposition == FeatureTaskRuntimeFindingVerificationDispositionVerdict.REJECTED }
+}
+
+fun validateDispositionCoverage(
+  dispositions: List<FeatureTaskRuntimeFindingVerificationDisposition>,
+  reviewFindingIds: Set<String>,
+): String? {
+  val dispositionIds = dispositions.map { it.findingId }
+  val duplicates = dispositionIds.groupingBy { it }.eachCount().filterValues { it > 1 }.keys
+  if (duplicates.isNotEmpty()) {
+    return "finding verification must carry exactly one disposition per review finding; " +
+      "duplicate finding_id: ${duplicates.sorted().joinToString()}."
+  }
+  val foreign = dispositionIds.filter { it !in reviewFindingIds }.toSet()
+  if (foreign.isNotEmpty()) {
+    return "finding verification dispositions name finding ids absent from the preceding review pass: " +
+      foreign.sorted().joinToString() + "."
+  }
+  val omitted = reviewFindingIds - dispositionIds.toSet()
+  if (omitted.isNotEmpty()) {
+    return "finding verification must disposition every review finding exactly once; " +
+      "omitted finding_id: ${omitted.sorted().joinToString()}."
+  }
+  return null
+}

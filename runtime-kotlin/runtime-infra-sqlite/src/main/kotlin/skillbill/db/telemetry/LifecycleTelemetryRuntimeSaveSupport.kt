@@ -65,6 +65,7 @@ fun saveFeatureTaskRuntimeFinished(
   return TerminalSaveOutcome.FIRST_TERMINAL
 }
 
+@Suppress("LongMethod")
 private fun updateFeatureTaskRuntimeFinished(
   connection: Connection,
   record: FeatureTaskRuntimeFinishedRecord,
@@ -94,6 +95,9 @@ private fun updateFeatureTaskRuntimeFinished(
       crash_reconciliation_reason_counts_json = ?,
       estimated_phase_tokens_json = ?,
       estimated_total_tokens = ?,
+      finding_verification_verified_count = ?,
+      finding_verification_rejected_count = ?,
+      review_fix_cap_exhausted = ?,
       finished_at = CURRENT_TIMESTAMP
     WHERE session_id = ?
       AND (finished_event_emitted_at IS NULL OR completion_status = 'stale')
@@ -120,6 +124,9 @@ private fun updateFeatureTaskRuntimeFinished(
       crashReconciliationReasonCountsJson(record),
       record.estimatedPhaseTokenBreakdownJson,
       record.estimatedTotalTokens,
+      record.findingVerificationVerifiedCount,
+      record.findingVerificationRejectedCount,
+      if (record.reviewFixCapExhausted) 1 else 0,
       record.sessionId,
     )
     statement.executeUpdate()
@@ -148,8 +155,10 @@ private fun insertFeatureTaskRuntimeFinished(
       audit_attempted_repair_item_count, audit_resolved_repair_item_count,
       regeneration_activation_count, regeneration_attempt_count, regeneration_outcome_counts_json,
       crash_reconciliation_count, crash_reconciliation_reason_counts_json,
-      estimated_phase_tokens_json, estimated_total_tokens, finished_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      estimated_phase_tokens_json, estimated_total_tokens,
+      finding_verification_verified_count, finding_verification_rejected_count,
+      review_fix_cap_exhausted, finished_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     """.trimIndent(),
   ).use { statement ->
     statement.bind(
@@ -174,6 +183,9 @@ private fun insertFeatureTaskRuntimeFinished(
       crashReconciliationReasonCountsJson(record),
       record.estimatedPhaseTokenBreakdownJson,
       record.estimatedTotalTokens,
+      record.findingVerificationVerifiedCount,
+      record.findingVerificationRejectedCount,
+      if (record.reviewFixCapExhausted) 1 else 0,
     )
     statement.executeUpdate()
   }

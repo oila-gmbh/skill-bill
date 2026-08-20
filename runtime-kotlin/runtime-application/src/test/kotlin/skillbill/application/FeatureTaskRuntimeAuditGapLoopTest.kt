@@ -615,7 +615,8 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     assertEquals(listOf(1), auditGapIterations)
     assertTrue(reviewFixIterations.all { it == 1 })
     assertEquals(1, reviewFixIterations.size, "the approving re-review settled the loop after one fix")
-    assertEquals(2, harness.launchOrder().count { it == "review" }, "one fix earned one re-review")
+    assertEquals(1, harness.launchOrder().count { it == "review" }, "one fix still runs exactly one review pass")
+    assertTrue(harness.launchOrder().contains("verify_findings"), "findings are verified before the fix round")
   }
 
   @Test
@@ -687,9 +688,9 @@ class FeatureTaskRuntimeAuditGapLoopTest {
       "every review_fix edge is minted after the audit_gap loop has already closed",
     )
     assertEquals(
-      2,
+      1,
       harness.launchOrder().count { it == "review" },
-      "the durable budget prevents a third review launch",
+      "review runs exactly once after the audit gap closes",
     )
     assertTrue(
       reviewFixEdges.mapNotNull { it.edgeIteration }.all { it <= 1 },

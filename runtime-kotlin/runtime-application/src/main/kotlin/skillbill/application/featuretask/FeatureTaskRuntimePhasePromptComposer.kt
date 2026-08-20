@@ -253,6 +253,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     return when (phaseId) {
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT -> "  \"$verdict\": \"satisfied\","
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW -> "  \"$verdict\": \"approved\","
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS -> "  \"$verdict\": \"findings_verified\","
       else -> null
     }
   }
@@ -266,6 +267,11 @@ object FeatureTaskRuntimePhasePromptComposer {
         "\"${FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS}\": [], " +
           "\"${FeatureTaskRuntimeVerificationSignalKeys.REVIEW_RUN_ID}\": \"<the Review run ID this pass " +
           "reported>\""
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS ->
+        "\"${FeatureTaskRuntimeVerificationSignalKeys.FINDINGS_VERIFICATION_DISPOSITIONS}\": [ " +
+          "{ \"finding_id\": \"F-001\", \"disposition\": \"verified\", " +
+          "\"reason\": \"<bounded reason against spec intent>\", \"severity\": \"major\", " +
+          "\"location\": \"<location>\", \"message\": \"<finding message>\" } ]"
       else -> if (briefing.auditRepairItemIds.isEmpty()) {
         "\"result\": \"<concrete output for downstream phases>\""
       } else {
@@ -403,6 +409,16 @@ object FeatureTaskRuntimePhasePromptComposer {
           "      finding here to the imported review run, so a finding's \"id\" plus this run id must be the same\n" +
           "      pair that review recorded. Omit it ONLY if the review genuinely reported no run id; never\n" +
           "      invent, reuse an older, or guess one." + commitFocusedAccountingAddendum()
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS ->
+        "\n    - This is a VERIFYING phase: set top-level \"$verdict\" to \"findings_verified\" or " +
+          "\"no_findings_verified\" and emit exactly one " +
+          "produced_outputs.${FeatureTaskRuntimeVerificationSignalKeys.FINDINGS_VERIFICATION_DISPOSITIONS} " +
+          "array with one entry per review finding. Each entry carries finding_id, disposition " +
+          "(verified or rejected), reason, severity, location, and message. Do not edit the worktree.\n" +
+          "      Example: {\"finding_id\":\"F-001\",\"disposition\":\"verified\"," +
+          "\"reason\":\"Matches spec intent AC-002.\",\"severity\":\"major\"," +
+          "\"location\":\"FeatureTaskRuntimePhaseWorkflowDefinition.kt\"," +
+          "\"message\":\"Missing verify_findings wiring\"}."
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT -> auditProducedOutputsAddendum(
         verdict = verdict,
         briefing = briefing,

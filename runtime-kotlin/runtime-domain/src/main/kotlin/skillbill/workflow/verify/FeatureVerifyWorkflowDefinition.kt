@@ -1,5 +1,6 @@
 package skillbill.workflow.verify
 
+import skillbill.contracts.workflow.WORKFLOW_STATE_CONTRACT_VERSION
 import skillbill.workflow.model.WorkflowDefinition
 import skillbill.workflow.model.WorkflowInputProjectionDeclaration
 
@@ -40,7 +41,7 @@ object FeatureVerifyWorkflowDefinition {
     workflowName = "bill-feature-verify",
     workflowIdPrefix = "wfv",
     defaultSessionPrefix = "fvr",
-    contractVersion = "0.1",
+    contractVersion = WORKFLOW_STATE_CONTRACT_VERSION,
     workflowStatuses = setOf("pending", "running", "completed", "failed", "abandoned"),
     stepStatuses = setOf("pending", "running", "completed", "failed", "blocked", "skipped"),
     terminalStatuses = setOf("completed", "failed", "abandoned"),

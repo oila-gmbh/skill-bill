@@ -18,10 +18,13 @@ class FeatureTaskRuntimeAuditVerdictCoherenceTest {
     )
 
     val reason = assertNotNull(
-      auditVerificationSignalGateReason(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT, aliasEnvelope),
+      FeatureTaskRuntimeVerificationGateReasons.auditVerificationSignal(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
+        aliasEnvelope,
+      ),
     )
     assertContains(reason, "failing_criteria")
-    assertContains(reason, "unmet_criteria")
+    assertContains(reason, "gaps")
     assertContains(reason, "audit_repair_plan")
   }
 
@@ -44,34 +47,67 @@ class FeatureTaskRuntimeAuditVerdictCoherenceTest {
   }
 
   @Test
-  fun `satisfied verdict rejects absent or non-array unmet criteria`() {
-    listOf(
-      mapOf("verdict" to "satisfied", "produced_outputs" to mapOf("evidence" to "complete")),
-      mapOf("verdict" to "satisfied", "produced_outputs" to mapOf("unmet_criteria" to "none")),
-    ).forEach { envelope ->
-      assertNotNull(FeatureTaskRuntimeOutputVerification.auditGapPayloadError(envelope))
-    }
-  }
-
-  @Test
-  fun `satisfied verdict rejects nonempty unmet criteria`() {
+  fun `legacy unmet criteria key is rejected when gaps are required`() {
     assertNotNull(
       FeatureTaskRuntimeOutputVerification.auditGapPayloadError(
         mapOf(
+          "verdict" to "gaps_found",
+          "produced_outputs" to mapOf(
+            "unmet_criteria" to listOf(mapOf("message" to "gap", "severity" to "major")),
+          ),
+        ),
+      ),
+    )
+    assertEquals(
+      null,
+      FeatureTaskRuntimeOutputVerification.auditGapPayloadError(
+        mapOf(
           "verdict" to "satisfied",
-          "produced_outputs" to mapOf("unmet_criteria" to listOf(mapOf("message" to "gap"))),
+          "produced_outputs" to mapOf("unmet_criteria" to emptyList<Any?>()),
         ),
       ),
     )
   }
 
   @Test
-  fun `gaps found verdict rejects empty unmet criteria`() {
+  fun `satisfied verdict rejects absent or non-array gaps`() {
+    listOf(
+      mapOf("verdict" to "satisfied", "produced_outputs" to mapOf("evidence" to "complete")),
+      mapOf("verdict" to "satisfied", "produced_outputs" to mapOf("gaps" to "none")),
+    ).forEach { envelope ->
+      assertNotNull(FeatureTaskRuntimeOutputVerification.auditGapPayloadError(envelope))
+    }
+  }
+
+  @Test
+  fun `satisfied verdict rejects nonempty gaps`() {
+    assertNotNull(
+      FeatureTaskRuntimeOutputVerification.auditGapPayloadError(
+        mapOf(
+          "verdict" to "satisfied",
+          "produced_outputs" to mapOf(
+            "gaps" to listOf(
+              mapOf(
+                "criterion" to "AC-001",
+                "severity" to "major",
+                "location" to "Example.kt",
+                "issue" to "gap",
+                "fix" to "fix it",
+              ),
+            ),
+          ),
+        ),
+      ),
+    )
+  }
+
+  @Test
+  fun `gaps found verdict rejects empty gaps`() {
     assertNotNull(
       FeatureTaskRuntimeOutputVerification.auditGapPayloadError(
         mapOf(
           "verdict" to "gaps_found",
-          "produced_outputs" to mapOf("unmet_criteria" to emptyList<Any?>()),
+          "produced_outputs" to mapOf("gaps" to emptyList<Any?>()),
         ),
       ),
     )
@@ -83,7 +119,15 @@ class FeatureTaskRuntimeAuditVerdictCoherenceTest {
       val envelope = mapOf(
         "verdict" to "gaps_found",
         "produced_outputs" to mapOf(
-          "unmet_criteria" to listOf(mapOf("message" to "non-blocking", "severity" to severity)),
+          "gaps" to listOf(
+            mapOf(
+              "criterion" to "AC-001",
+              "severity" to severity,
+              "location" to "Example.kt",
+              "issue" to "non-blocking",
+              "fix" to "optional",
+            ),
+          ),
         ),
       )
 
@@ -104,7 +148,7 @@ class FeatureTaskRuntimeAuditVerdictCoherenceTest {
     val envelope = mapOf(
       "verdict" to "satisfied",
       "produced_outputs" to mapOf(
-        "unmet_criteria" to emptyList<Any?>(),
+        "gaps" to emptyList<Any?>(),
         "non_blocking_findings" to listOf(
           mapOf("message" to "small cleanup", "severity" to "minor"),
           mapOf("message" to "naming preference", "severity" to "nit"),

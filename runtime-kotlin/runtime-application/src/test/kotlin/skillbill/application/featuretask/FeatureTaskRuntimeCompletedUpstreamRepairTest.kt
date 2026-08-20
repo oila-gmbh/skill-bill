@@ -8,22 +8,22 @@ import kotlin.test.assertNull
 
 class FeatureTaskRuntimeCompletedUpstreamRepairTest {
   @Test
-  fun `diagnose returns review when implement_fix is blocked on missing settled output`() {
+  fun `diagnose returns verify_findings when implement_fix is blocked on missing settled output`() {
     val phaseRecords = mapOf(
-      "review" to phaseRecord(
-        phaseId = "review",
+      "verify_findings" to phaseRecord(
+        phaseId = "verify_findings",
         status = "completed",
         outputArtifact = null,
       ),
       "implement_fix" to phaseRecord(
         phaseId = "implement_fix",
         status = "blocked",
-        blockedReason = "missing review output",
+        blockedReason = "missing verify_findings output",
       ),
     )
 
     assertEquals(
-      "review",
+      "verify_findings",
       diagnoseUnsettledCompletedUpstreamPhaseId(
         phaseRecords,
         FeatureTaskRuntimeFeatureSize.MEDIUM,
@@ -34,10 +34,10 @@ class FeatureTaskRuntimeCompletedUpstreamRepairTest {
   @Test
   fun `diagnose is null when completed upstream has settled output`() {
     val phaseRecords = mapOf(
-      "review" to phaseRecord(
-        phaseId = "review",
+      "verify_findings" to phaseRecord(
+        phaseId = "verify_findings",
         status = "completed",
-        outputArtifact = """{"contract_version":"0.1","findings":[]}""",
+        outputArtifact = """{"contract_version":"0.2","verdict":"no_findings_verified","finding_dispositions":[]}""",
       ),
       "implement_fix" to phaseRecord(
         phaseId = "implement_fix",
@@ -57,15 +57,15 @@ class FeatureTaskRuntimeCompletedUpstreamRepairTest {
   @Test
   fun `diagnose returns blocked consumer when upstream block reason is stale`() {
     val phaseRecords = mapOf(
-      "review" to phaseRecord(
-        phaseId = "review",
+      "verify_findings" to phaseRecord(
+        phaseId = "verify_findings",
         status = "completed",
-        outputArtifact = """{"contract_version":"0.1","findings":[]}""",
+        outputArtifact = """{"contract_version":"0.2","verdict":"findings_verified","finding_dispositions":[]}""",
       ),
       "implement_fix" to phaseRecord(
         phaseId = "implement_fix",
         status = "blocked",
-        blockedReason = "Phase 'implement_fix' requires upstream output(s) review that are not present",
+        blockedReason = "Phase 'implement_fix' requires upstream output(s) verify_findings that are not present",
       ),
     )
 
@@ -84,11 +84,10 @@ class FeatureTaskRuntimeCompletedUpstreamRepairTest {
     phaseId = phaseId,
     status = status,
     attemptCount = 1,
-    startedAt = "2026-08-19T10:00:00Z",
-    resolvedAgentId = "cursor",
+    startedAt = "2026-01-01T00:00:00Z",
+    firstStartedAt = "2026-01-01T00:00:00Z",
+    resolvedAgentId = "claude",
     outputArtifact = outputArtifact,
     blockedReason = blockedReason,
-    loopId = "review_fix",
-    edgeIteration = 1,
   )
 }
