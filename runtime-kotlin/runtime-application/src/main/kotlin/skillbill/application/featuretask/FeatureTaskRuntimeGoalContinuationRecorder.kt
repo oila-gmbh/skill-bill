@@ -5,6 +5,7 @@ import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
 import skillbill.application.goalrunner.UnaddressedFindingLedgerScope
 import skillbill.application.workflow.WorkflowFamily
+import skillbill.error.InvalidFeatureTaskRuntimeCheckpointIdentityVersionError
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.ports.persistence.DatabaseSessionFactory
@@ -44,6 +45,7 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskReviewDisposition
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesFromArtifact
 import skillbill.workflow.taskruntime.model.unionRefutedBlockerDispositions
+import java.time.Instant
 
 @Inject
 @Suppress(
@@ -559,6 +561,10 @@ internal data class RemediationDegradationSignal(
   val cause: String? = null,
 )
 
+/** Sibling evidence key: rejected checkpoint-identity stores, never read back into any prompt. */
+private const val CHECKPOINT_IDENTITY_QUARANTINE_ARTIFACT_KEY: String =
+  "feature_task_runtime_checkpoint_identities_quarantine"
+
 private class RemediationBaseReconciler(
   private val database: DatabaseSessionFactory,
   private val savePatch: (
@@ -574,7 +580,57 @@ private class RemediationBaseReconciler(
     repoRoot: java.nio.file.Path,
     dbOverride: String? = null,
   ): RemediationBaseCoherenceResult {
-    val snapshot = database.read(dbOverride) { unitOfWork ->
+    val snapshot = try {
+      readRemediationSnapshot(workflowId, dbOverride)
+    } catch (error: InvalidFeatureTaskRuntimeCheckpointIdentityVersionError) {
+      quarantineLegacyCheckpointIdentities(workflowId, error, dbOverride)
+      return RemediationBaseCoherent(null)
+    } ?: return RemediationBaseCoherent(null)
+    return reconcileFromSnapshot(snapshot, workflowId, gitOperations, repoRoot, dbOverride)
+  }
+
+  /**
+   * A checkpoint-identity store written under a superseded contract version is preserved as sibling
+   * evidence and cleared from the live key, so the child regenerates its identities in band on the
+   * next checkpoint instead of dying at startup. Reinterpreting the legacy record is never an
+   * option, but neither is letting one make the subtask permanently unrunnable: without this the
+   * parent only ever sees a non-zero child exit and no goal command can recover it.
+   */
+  private fun quarantineLegacyCheckpointIdentities(
+    workflowId: String,
+    error: InvalidFeatureTaskRuntimeCheckpointIdentityVersionError,
+    dbOverride: String?,
+  ) {
+    database.transaction(dbOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+        ?: return@transaction
+      val artifacts = decodeArtifacts(record.artifactsJson)
+      val rejected = artifacts[FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY]
+        ?: return@transaction
+      val existing = (artifacts[CHECKPOINT_IDENTITY_QUARANTINE_ARTIFACT_KEY] as? List<*>).orEmpty()
+      savePatch(
+        record,
+        unitOfWork.workflowStates,
+        mapOf(
+          FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY to null,
+          CHECKPOINT_IDENTITY_QUARANTINE_ARTIFACT_KEY to existing + listOf(
+            linkedMapOf(
+              "workflow_id" to workflowId,
+              "rejection_detail" to error.message.orEmpty(),
+              "quarantined_at" to Instant.now().toString(),
+              "rejected_record" to rejected,
+            ),
+          ),
+        ),
+      )
+    }
+  }
+
+  private fun readRemediationSnapshot(
+    workflowId: String,
+    dbOverride: String?,
+  ): Triple<GoalSubtaskReviewState, FeatureTaskRuntimeGoalContinuationArtifact, List<FeatureTaskRuntimeCheckpointIdentity>>? =
+    database.read(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
       val artifacts = decodeArtifacts(record.artifactsJson)
       runCatching {
@@ -587,7 +643,16 @@ private class RemediationBaseReconciler(
       }.getOrElse { error ->
         if (error is InvalidGoalSubtaskReviewStateSchemaError) return@read null else throw error
       }
-    } ?: return RemediationBaseCoherent(null)
+    }
+
+  @Suppress("LongMethod", "CyclomaticComplexMethod", "ReturnCount")
+  private fun reconcileFromSnapshot(
+    snapshot: Triple<GoalSubtaskReviewState, FeatureTaskRuntimeGoalContinuationArtifact, List<FeatureTaskRuntimeCheckpointIdentity>>,
+    workflowId: String,
+    gitOperations: WorkflowGitOperations,
+    repoRoot: java.nio.file.Path,
+    dbOverride: String?,
+  ): RemediationBaseCoherenceResult {
     val (state, continuation, checkpoints) = snapshot
     if (state.remediationBaseSha == null &&
       checkpoints.none { it.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID }

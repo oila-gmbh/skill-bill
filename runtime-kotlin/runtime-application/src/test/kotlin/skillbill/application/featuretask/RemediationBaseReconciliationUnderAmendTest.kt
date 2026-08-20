@@ -262,10 +262,39 @@ class RemediationBaseReconciliationUnderAmendTest {
     parentSha = parentSha,
   )
 
+  @Test
+  fun `a checkpoint-identity store on a superseded contract is quarantined instead of killing the run`() {
+    // A legacy store used to escape as InvalidFeatureTaskRuntimeCheckpointIdentityVersionError out of
+    // executeRun, so the child exited non-zero at startup, the parent only ever saw "exited with
+    // status 1", and no goal command could recover the subtask.
+    val repository = InMemoryRuntimeWorkflowRepository()
+    val recorder = recorderWith(
+      state = remediationState(remediationBaseSha = null),
+      checkpointIdentities = emptyList(),
+      repository = repository,
+      legacyCheckpointRecord = mapOf(
+        "contract_version" to "0.1",
+        "checkpoints" to listOf<Map<String, Any?>>(),
+      ),
+    )
+
+    val result = recorder.reconcileRemediationBaseCoherence(workflowId, realGitOps(), Path.of("."))
+
+    assertIs<RemediationBaseCoherent>(result)
+    val artifacts = assertNotNull(repository.getFeatureTaskRuntimeWorkflow(workflowId)).artifactsJson
+    assertFalse(
+      artifacts.contains("\"contract_version\":\"0.1\"") &&
+        !artifacts.contains("feature_task_runtime_checkpoint_identities_quarantine"),
+      "the rejected store must be preserved as quarantine evidence, not silently dropped",
+    )
+    assertContains(artifacts, "feature_task_runtime_checkpoint_identities_quarantine")
+  }
+
   private fun recorderWith(
     state: GoalSubtaskReviewState,
     checkpointIdentities: List<FeatureTaskRuntimeCheckpointIdentity>,
     repository: InMemoryRuntimeWorkflowRepository = InMemoryRuntimeWorkflowRepository(),
+    legacyCheckpointRecord: Map<String, Any?>? = null,
   ): FeatureTaskRuntimeGoalContinuationRecorder {
     val engine = WorkflowEngine(testWorkflowSnapshotValidator)
     val definition = WorkflowFamily.TASK_RUNTIME.definition
@@ -287,6 +316,7 @@ class RemediationBaseReconciliationUnderAmendTest {
       artifactsPatch[FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY] =
         featureTaskRuntimeCheckpointIdentitiesToArtifact(checkpointIdentities)
     }
+    legacyCheckpointRecord?.let { artifactsPatch[FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY] = it }
     val seeded = engine.updateRecord(
       definition,
       opened,
