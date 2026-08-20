@@ -1,6 +1,6 @@
 package skillbill.contracts.workflow
 
-const val GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION: String = "0.5"
+const val GOAL_SUBTASK_REVIEW_STATE_CONTRACT_VERSION: String = "0.6"
 
 object GoalSubtaskReviewStateSchemaPaths {
   const val REPO_RELATIVE_PATH: String =

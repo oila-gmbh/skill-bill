@@ -12,7 +12,7 @@ package skillbill.contracts.workflow
  * today, so every snapshot the runtime produces validates clean
  * against the canonical schema.
  */
-const val WORKFLOW_STATE_CONTRACT_VERSION: String = "0.1"
+const val WORKFLOW_STATE_CONTRACT_VERSION: String = "0.2"
 
 /**
  * SKILL-48 Subtask 2a: single source of truth for where the canonical

@@ -212,13 +212,6 @@ $defs:
         type: array
         maxItems: 50
         items: { $ref: "#/$defs/repairReceiptEntry" }
-      disturbed_remedies:
-        description: >-
-          Optional and additive: omitted by a round that disturbed nothing settled. Adding it does
-          not bump contract_version, so a producer written before it existed still validates.
-        type: array
-        maxItems: 50
-        items: { $ref: "#/$defs/repairDisturbedRemedy" }
   repairPlanEntry:
     type: object
     additionalProperties: false
@@ -476,15 +469,3 @@ allOf:
           required: [repair_receipt]
           properties:
             repair_receipt: { $ref: "#/$defs/repairReceipt" }
-  - if:
-      properties:
-        phase_id: { const: plan_fix }
-        status: { const: completed }
-      required: [phase_id, status]
-    then:
-      properties:
-        produced_outputs:
-          type: object
-          required: [repair_plan]
-          properties:
-            repair_plan: { $ref: "#/$defs/repairPlan" }

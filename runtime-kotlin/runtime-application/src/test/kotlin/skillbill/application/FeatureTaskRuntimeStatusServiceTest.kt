@@ -94,10 +94,10 @@ class FeatureTaskRuntimeStatusServiceTest {
 
     assertEquals("LARGE", projection.featureSize)
     assertEquals(0, projection.completeCount)
-    assertEquals(11, projection.pendingCount)
+    assertEquals(10, projection.pendingCount)
     assertEquals(0, projection.blockedCount)
     assertEquals("preplan", projection.currentPhaseId)
-    assertEquals(List(11) { "pending" }, projection.phases.map { it.status })
+    assertEquals(List(10) { "pending" }, projection.phases.map { it.status })
   }
 
   @Test
@@ -437,7 +437,7 @@ class FeatureTaskRuntimeStatusServiceTest {
   fun `ledger-only review fix projects implement fix as current`() {
     val harness = statusHarness()
     harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
-    listOf("preplan", "plan", "implement", "review")
+    listOf("preplan", "plan", "implement", "audit", "review")
       .forEach { harness.recordCompleted(it, attemptCount = 1) }
     harness.recordLoopEdge(
       phaseId = "implement_fix",
@@ -450,7 +450,7 @@ class FeatureTaskRuntimeStatusServiceTest {
       harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
     )
 
-    assertEquals("plan_fix", projection.currentPhaseId)
+    assertEquals("validate", projection.currentPhaseId)
   }
 
   @Test
@@ -837,7 +837,7 @@ class FeatureTaskRuntimeStatusAttributionTest {
   }
 
   @Test
-  fun `stale completed review pass is omitted after a newer review_fix reentry`() {
+  fun `stale completed review pass is omitted after review_fix implement_fix completes`() {
     val harness = statusHarness()
     harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
     listOf("preplan", "plan", "implement", "audit").forEach { harness.recordCompleted(it, attemptCount = 1) }
@@ -854,23 +854,10 @@ class FeatureTaskRuntimeStatusAttributionTest {
       ),
     )
     harness.recordLoopEdge(
-      phaseId = "plan_fix",
+      phaseId = "implement_fix",
       attemptCount = 1,
       loopId = "review_fix",
       edgeIteration = 1,
-    )
-    harness.recorder.recordPhaseState(
-      FeatureTaskRuntimePhaseStateRequest(
-        workflowId = WORKFLOW_ID,
-        phaseId = "plan_fix",
-        status = "completed",
-        attemptCount = 1,
-        resolvedAgentId = "claude",
-        finished = true,
-        outputArtifact = """{"contract_version":"0.1"}""",
-        loopId = "review_fix",
-        edgeIteration = 1,
-      ),
     )
     harness.recorder.recordPhaseState(
       FeatureTaskRuntimePhaseStateRequest(
@@ -889,9 +876,8 @@ class FeatureTaskRuntimeStatusAttributionTest {
     val projection = requireNotNull(
       harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
     )
-    assertEquals("review", projection.currentPhaseId)
+    assertEquals("validate", projection.currentPhaseId)
     val execution = projection.currentPhaseExecution
-    // Stale completed pass 2 must not appear; no active running review pass yet.
     assertTrue(
       execution == null || execution.kind != IdeStatusCurrentPhaseExecutionKind.PASS || execution.count != 2,
       "stale completed review pass must not be reported as current, was $execution",

@@ -10,7 +10,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairPlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
@@ -177,16 +176,13 @@ internal class FeatureTaskRuntimeRunState(
   fun resetInvalidatedReviewGeneration() {
     val loopId = FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID
     val reviewPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW
-    val planFixPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN_FIX
     val fixPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX
     inFlightReentries.remove(loopId)
     edgeIterationByLoop.remove(loopId)
     liveClaimedLoops.remove(loopId)
     fixLoopBudgetBaseByPhase.remove(fixPhaseId)
-    fixLoopBudgetBaseByPhase.remove(planFixPhaseId)
     fixLoopBudgetBaseByPhase.remove(reviewPhaseId)
     persistedAttemptCounts.remove(fixPhaseId)
-    persistedAttemptCounts.remove(planFixPhaseId)
     persistedAttemptCounts.remove(reviewPhaseId)
     priorRecords.remove(reviewPhaseId)
     blockedRecords.remove(reviewPhaseId)
@@ -536,9 +532,6 @@ internal class FeatureTaskRuntimeRunState(
 
   fun unmetAuditCriteria(phaseId: String): List<String> =
     FeatureTaskRuntimeOutputVerification.unmetAuditCriteria(parsedOutput(outputFor(phaseId)))
-
-  fun repairPlan(phaseId: String): FeatureTaskRuntimeRepairPlan? =
-    FeatureTaskRuntimeOutputVerification.repairPlanFrom(parsedOutput(outputFor(phaseId)))
 
   fun auditRepairPlan(phaseId: String): FeatureTaskRuntimeAuditRepairPlan? = outputFor(phaseId)
     ?.normalizedOutput

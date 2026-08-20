@@ -119,7 +119,7 @@ class VerdictAwareRegisterAndConsumersTest {
     )
     val superseded = GoalSubtaskReviewSummaryReducer.refutedBlockerSupersedes(prior, current, recordedVerdicts)
     assertEquals("F-001", superseded.single().findingId)
-    assertEquals(GoalSubtaskBlockerDispositionVerdict.SUPERSEDED, superseded.single().verdict)
+    assertEquals(GoalSubtaskBlockerDispositionVerdict.RESOLVED, superseded.single().verdict)
     assertEquals(listOf("Auth.kt:10"), superseded.single().evidence)
   }
 

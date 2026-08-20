@@ -67,7 +67,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     val effectiveContinuation = implementationContinuation.takeUnless { correctiveRepairContext != null }
     return listOf(
       header(issueKey, briefing.phaseId, agentRunValidateFallback, packCollectAllCommand),
-      ceremonyDirective(briefing, reviewPassNumber),
+      ceremonyDirective(briefing),
       mutatingPhaseIdempotencyDirective(briefing.phaseId),
       minimalismDisciplineDirective(briefing.phaseId),
       testValueDisciplineDirective(briefing.phaseId),
@@ -301,24 +301,17 @@ object FeatureTaskRuntimePhasePromptComposer {
     """.trimIndent()
   }
 
-  private fun ceremonyDirective(briefing: FeatureTaskRuntimePhaseLaunchBriefing, reviewPassNumber: Int?): String {
+  private fun ceremonyDirective(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String {
     val featureSize = FeatureTaskRuntimeFeatureSize.fromWire(briefing.featureSize)
     val scaling = FeatureTaskRuntimePhaseWorkflowDefinition.ceremonyScaling(featureSize)
-    val remediationReview = briefing.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
-      (reviewPassNumber ?: 1) >= 2
     val reviewScope = scaling.reviewScope.wireValue
     val phaseSpecific = when (briefing.phaseId) {
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN ->
         "Apply ${scaling.preplanCeremony.promptLabel}. Keep the gate real: identify concrete scope, " +
           "affected boundaries, risks, and unknowns at the requested depth."
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW -> if (remediationReview) {
-        "Runtime-owned review uses mode:${CodeReviewExecutionMode.INLINE.wireValue} context:feature-remediation, " +
-          "bounded to the remediation delta: all findings addressed in that round union " +
-          "diff(pre-fix tree -> post-fix tree). Do not re-review the subtask's full base-to-current delta."
-      } else {
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW ->
         "The runtime owns ${scaling.reviewScope.promptLabel}. Keep the review gate real: inspect the implemented " +
           "change for defects and record concrete file references."
-      }
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT ->
         "Apply ${scaling.auditCeremony.promptLabel}. Keep the audit gate real: verify acceptance " +
           "criteria and report concrete gaps."

@@ -4,6 +4,7 @@ import skillbill.boundary.OpenBoundaryMap
 import skillbill.contracts.JsonSupport
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PERSISTENCE_CONTRACT_VERSION
 import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import java.math.BigDecimal
 import java.math.BigInteger
 
@@ -22,6 +23,25 @@ const val FEATURE_TASK_RUNTIME_GOAL_PLANNING_IMPORT_ARTIFACT_KEY: String = "goal
 const val FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_ARTIFACT_KEY: String = "operator_block_retry"
 const val FEATURE_TASK_RUNTIME_REVIEW_GENERATION_ARTIFACT_KEY: String = "feature_task_runtime_review_generation"
 const val FEATURE_TASK_RUNTIME_OPERATOR_BLOCK_RETRY_REASON_MAX_LENGTH: Int = 1000
+
+private val REMOVED_FEATURE_TASK_RUNTIME_PHASE_IDS: Set<String> = setOf("plan_fix")
+
+private val KNOWN_FEATURE_TASK_RUNTIME_PHASE_IDS: Set<String> =
+  FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds.toSet()
+
+private fun requireKnownFeatureTaskRuntimePhaseId(phaseId: String, fieldPath: String): String {
+  if (phaseId in REMOVED_FEATURE_TASK_RUNTIME_PHASE_IDS) {
+    throw InvalidWorkflowStateSchemaError(
+      "Feature-task-runtime artifact field '$fieldPath' names removed phase '$phaseId'.",
+    )
+  }
+  if (phaseId !in KNOWN_FEATURE_TASK_RUNTIME_PHASE_IDS) {
+    throw InvalidWorkflowStateSchemaError(
+      "Feature-task-runtime artifact field '$fieldPath' has unknown phase '$phaseId'.",
+    )
+  }
+  return phaseId
+}
 
 /**
  * Durable evidence that a resume adopted a launcher-supplied goal-continuation field because the
@@ -563,9 +583,10 @@ data class FeatureTaskRuntimePhaseRecord(
     @OpenBoundaryMap("Feature-task-runtime per-phase record decode from the durable workflow-artifact map")
     fun fromArtifactMap(raw: Map<String, Any?>): FeatureTaskRuntimePhaseRecord {
       requireCompatibleShape(raw)
+      val phaseId = requireKnownFeatureTaskRuntimePhaseId(raw.requireStringField("phase_id"), "phase_id")
       return try {
         FeatureTaskRuntimePhaseRecord(
-          phaseId = raw.requireStringField("phase_id"),
+          phaseId = phaseId,
           status = raw.requireStringField("status"),
           attemptCount = raw.requireIntField("attempt_count"),
           startedAt = raw.requireStringField("started_at"),
@@ -600,8 +621,6 @@ data class FeatureTaskRuntimePhaseRecord(
           launchedEffort = raw.optionalStringField("launched_effort"),
           reviewRunId = raw.optionalStringField("review_run_id"),
         )
-      } catch (_: InvalidWorkflowStateSchemaError) {
-        incompatiblePhaseRecord()
       } catch (_: IllegalArgumentException) {
         incompatiblePhaseRecord()
       }
@@ -768,7 +787,7 @@ data class FeatureTaskRuntimePhaseLedgerEntry(
         action = FeatureTaskRuntimePhaseLedgerAction.fromWire(raw.requireStringField("action")),
         sequenceNumber = raw.requireIntField("sequence_number"),
         timestamp = raw.requireStringField("timestamp"),
-        phaseId = raw.requireStringField("phase_id"),
+        phaseId = requireKnownFeatureTaskRuntimePhaseId(raw.requireStringField("phase_id"), "phase_id"),
         attemptCount = raw.requireIntField("attempt_count"),
         resolvedAgentId = raw.optionalStringField("resolved_agent_id"),
         executionOrigin = raw.optionalStringField("execution_origin")?.let(

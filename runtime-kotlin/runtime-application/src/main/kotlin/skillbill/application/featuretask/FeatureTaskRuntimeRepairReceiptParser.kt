@@ -3,14 +3,11 @@ package skillbill.application.featuretask
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskRuntimeRepairReceiptError
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairConstruct
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.coversCarriedFindings
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeRemediationRoundNumber
-import skillbill.workflow.taskruntime.model.featureTaskRuntimeUndeclaredDisturbances
 
 internal fun featureTaskRuntimeParseRepairReceiptOrNull(
   producedOutputs: Map<String, Any?>,
@@ -87,11 +84,6 @@ internal fun featureTaskRuntimeRemediationRoundNumberOrNull(reviewState: GoalSub
       if (error is InvalidFeatureTaskRuntimeRepairReceiptError) null else throw error
     }
 
-/**
- * The entry-shape gate for a round that has no runtime-owned anchor to stamp. Rejecting on the
- * absent anchor is what produced the unrepairable loop this seam exists to end, but the entries
- * still carry the sanitizer contract, and a receipt is durable either way.
- */
 internal fun featureTaskRuntimeRepairReceiptShapeRejection(producedOutputs: Map<String, Any?>): String? {
   val raw = producedOutputs["repair_receipt"] ?: return null
   return try {
@@ -111,31 +103,6 @@ internal fun featureTaskRuntimeRepairReceiptSettleRejection(
   receipt,
   reviewState.passResults.lastOrNull()?.findings.orEmpty(),
 )
-  ?: derivedRepairLedgerOrNull(reviewState)?.let { ledger ->
-    featureTaskRuntimeRepairReceiptDisturbanceRejection(receipt, ledger)
-  }
-
-// A ledger that cannot be derived rejects nothing: the disturbance gate is a memory check, and a
-// round must not be refused because the memory of earlier rounds is unreadable.
-private fun derivedRepairLedgerOrNull(reviewState: GoalSubtaskReviewState): FeatureTaskRuntimeRepairLedger? =
-  runCatching { reviewState.repairLedger }.getOrNull()
-
-internal fun featureTaskRuntimeRepairReceiptDisturbanceRejection(
-  receipt: FeatureTaskRuntimeRepairReceipt,
-  ledger: FeatureTaskRuntimeRepairLedger,
-): String? {
-  val undeclared = featureTaskRuntimeUndeclaredDisturbances(receipt, ledger)
-  if (undeclared.isEmpty()) return null
-  val disturbed = undeclared.joinToString("; ") { entry ->
-    val symbols = entry.constructs.joinToString(", ", transform = FeatureTaskRuntimeRepairConstruct::symbol)
-    "${entry.disturbanceRef} (holds closed by $symbols)"
-  }
-  return featureTaskRuntimeRepairReceiptRejectionDetail(
-    "disturbed_remedies",
-    "must name every settled finding whose closing constructs this round rewrote, with a reason. " +
-      "Undeclared: $disturbed.",
-  )
-}
 
 internal fun featureTaskRuntimeRepairReceiptCoverageRejection(
   receipt: FeatureTaskRuntimeRepairReceipt,

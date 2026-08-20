@@ -46,12 +46,17 @@ enum class GoalSubtaskPauseRelease {
 enum class GoalSubtaskBlockerDispositionVerdict(val wireValue: String) {
   RESOLVED("resolved"),
   UNRESOLVED("unresolved"),
-  SUPERSEDED("superseded"),
   ;
 
   companion object {
-    fun fromWire(value: String): GoalSubtaskBlockerDispositionVerdict = entries.firstOrNull { it.wireValue == value }
-      ?: reviewStateError("verdict", "must be one of ${entries.joinToString { it.wireValue }}.")
+    fun fromWire(value: String): GoalSubtaskBlockerDispositionVerdict = when (value) {
+      "superseded" -> reviewStateError(
+        "verdict",
+        "superseded is removed; records naming it must be regenerated.",
+      )
+      else -> entries.firstOrNull { it.wireValue == value }
+        ?: reviewStateError("verdict", "must be one of ${entries.joinToString { it.wireValue }}.")
+    }
   }
 }
 
@@ -521,32 +526,12 @@ data class GoalSubtaskReviewState(
   val reviewSkippedByUser: Boolean get() =
     passResults.lastOrNull()?.verdict == FeatureTaskRuntimeVerdict.REVIEW_SKIPPED_BY_USER
 
-  /**
-   * Remediation is bounded by the Blocker disposition, not by a pass count: an unresolved Blocker
-   * always reserves the next pass. An operator-granted retry round instead re-opens the
-   * already-consumed pass rather than reserving a new one, dropping only the stale result and its
-   * pause so the granted fix is genuinely re-reviewed instead of having the overridden verdict
-   * replayed at it.
-   *
-   * The re-opened round's repair receipt is dropped with the pass result that produced it. Receipt
-   * entries carry `finding_id`, and finding ids are per-pass row numbers, so a receipt left behind
-   * would resolve its entries against the re-run pass's unrelated findings of the same id and record
-   * a still-open finding as settled.
-   */
   fun reserveNextPass(): GoalSubtaskReviewState = when {
-    retryReviewPending && reservedPassNumber == null && passResults.isNotEmpty() -> copy(
-      reservedPassNumber = completedPassCount,
-      completedPassCount = completedPassCount - 1,
-      passResults = passResults.dropLast(1),
-      repairReceipts = repairReceipts.filterNot { it.roundNumber == completedPassCount },
-      emittedPassCount = emittedPassCount.coerceAtMost(completedPassCount - 1),
-      disposition = GoalSubtaskReviewDisposition.PENDING,
-      blockerDispositions = emptyList(),
-    )
     reviewCapReached -> this
     reviewSkippedByUser -> this
     reservedPassNumber != null -> this
-    else -> copy(reservedPassNumber = completedPassCount + 1)
+    completedPassCount >= 1 -> this
+    else -> copy(reservedPassNumber = 1)
   }
 
   fun completeReservedPass(
@@ -578,9 +563,6 @@ data class GoalSubtaskReviewState(
       commitFocusedAccounting = commitFocusedAccounting
         ?.takeIf { executedMode != CodeReviewExecutionMode.INLINE },
     )
-    // A settled pass never carries a count-derived disposition: an unresolved Blocker reserves the
-    // next remediation pass instead. The pause survives only as an operator-driven control, and a
-    // freshly settled pass is by definition not waiting on one.
     return copy(
       reservedPassNumber = null,
       completedPassCount = passNumber,
@@ -588,94 +570,14 @@ data class GoalSubtaskReviewState(
       passResults = passResults + result,
       blockerDispositions = if (disposedPass) blockerDispositions else this.blockerDispositions,
       operatorDecision = null,
-      // The granted round has now been re-reviewed, so the carried-forward result is fresh again.
       operatorRetryRounds = 0,
     )
   }
 
-  /** Non-terminal: the subtask waits on a bounded operator decision, and resume reuses this state. */
   val pausedForOperatorDecision: Boolean get() = disposition == GoalSubtaskReviewDisposition.PAUSED
-
-  /**
-   * The remediation loop is unbounded, so no cap exhaustion ever mints the pause. Non-convergence of
-   * an advance-blocking Blocker or Major set pauses the subtask; the operator's own decision is the
-   * only escape. Any subtask still carrying unresolved advance-blocking evidence may also be taken
-   * over explicitly before a pause is minted.
-   */
-  val acceptsOperatorDecision: Boolean get() =
-    pausedForOperatorDecision ||
-      blockerDispositions.any { it.verdict == GoalSubtaskBlockerDispositionVerdict.UNRESOLVED } ||
-      passResults.lastOrNull()?.blocksAdvance == true
 
   val unresolvedBlockerDispositions: List<GoalSubtaskBlockerDisposition>
     get() = blockerDispositions.filter { it.verdict == GoalSubtaskBlockerDispositionVerdict.UNRESOLVED }
-
-  /**
-   * Mints the non-terminal operator pause for a non-converging remediation. Requires advance-blocking
-   * evidence so the PAUSED invariant stays honest without a schema bump.
-   */
-  fun pauseForNonConvergence(): GoalSubtaskReviewState {
-    require(
-      blockerDispositions.any { it.verdict == GoalSubtaskBlockerDispositionVerdict.UNRESOLVED } ||
-        passResults.lastOrNull()?.blocksAdvance == true,
-    ) {
-      "pauseForNonConvergence requires an unresolved Blocker disposition or a Blocker or Major on the last pass."
-    }
-    return copy(disposition = GoalSubtaskReviewDisposition.PAUSED, operatorDecision = null)
-  }
-
-  /**
-   * The single production reader of `operator_decision`: every decision maps to a release, so no
-   * decision is write-only and none leaves the subtask re-pausing on its own answer.
-   */
-  val pauseRelease: GoalSubtaskPauseRelease?
-    get() = if (!pausedForOperatorDecision) {
-      null
-    } else {
-      when (operatorDecision) {
-        GoalSubtaskOperatorDecision.RETRY_FIX -> GoalSubtaskPauseRelease.RETRY_FIX
-        GoalSubtaskOperatorDecision.ACCEPT_AND_ADVANCE -> GoalSubtaskPauseRelease.ADVANCE
-        GoalSubtaskOperatorDecision.ABANDON_SUBTASK -> GoalSubtaskPauseRelease.ABANDON
-        null -> null
-      }
-    }
-
-  /**
-   * `retry_fix` grants one fresh `implement_fix` iteration per operator choice and is unbudgeted; it
-   * is recorded as a disposition round inside the already-consumed reserved pass. The grant itself
-   * leaves `completedPassCount` and `reservedPassNumber` untouched; [reserveNextPass] is what later
-   * re-opens the consumed pass so the granted fix is re-reviewed.
-   */
-  fun applyOperatorDecision(decision: GoalSubtaskOperatorDecision): GoalSubtaskReviewState {
-    if (!acceptsOperatorDecision) {
-      reviewStateError(
-        "operator_decision",
-        "is only accepted while the subtask carries an unresolved Blocker or Major.",
-      )
-    }
-    return copy(disposition = GoalSubtaskReviewDisposition.PAUSED, operatorDecision = decision)
-  }
-
-  /**
-   * Clears the durable decision so the grant is single-use across processes. Without this, every
-   * resume would read the same `retry_fix` back and re-grant an unbudgeted iteration, turning one
-   * operator choice into an unbounded loop.
-   */
-  fun consumeOperatorDecision(): GoalSubtaskReviewState = when (operatorDecision) {
-    null -> this
-    // A consumed retry_fix opens a remediation round inside the already-reserved pass. The round
-    // marks the carried-forward pass result stale so review re-runs instead of replaying it.
-    GoalSubtaskOperatorDecision.RETRY_FIX ->
-      copy(operatorDecision = null, operatorRetryRounds = operatorRetryRounds + 1)
-    else -> copy(operatorDecision = null)
-  }
-
-  /**
-   * A granted remediation is in flight, so the last recorded pass result no longer describes the
-   * tree. Replaying it would re-settle the verdict the operator just overrode and the fix would
-   * never be re-reviewed.
-   */
-  val retryReviewPending: Boolean get() = operatorRetryRounds > 0
 
   /**
    * The only disposition projection any goal-facing surface may read: pass number, per-finding

@@ -95,7 +95,7 @@ class ReviewFindingOutcomeDerivationTest {
   }
 
   @Test
-  fun `an explicit blocker disposition overrides the cross-pass inference`() {
+  fun `an explicit resolved blocker disposition overrides the cross-pass inference`() {
     val superseded = finding(ordinal = 1, findingId = "F-001")
 
     val outcomes = GoalSubtaskReviewSummaryReducer.reviewFindingOutcomes(
@@ -104,16 +104,16 @@ class ReviewFindingOutcomeDerivationTest {
       blockerDispositions = listOf(
         GoalSubtaskBlockerDisposition(
           findingId = "F-001",
-          verdict = GoalSubtaskBlockerDispositionVerdict.SUPERSEDED,
+          verdict = GoalSubtaskBlockerDispositionVerdict.RESOLVED,
           evidence = listOf("src/First.kt:7 no longer exists"),
         ),
       ),
     )
 
     assertEquals(
-      ReviewFindingOutcome.REJECTED,
+      ReviewFindingOutcome.ADDRESSED,
       outcomes.single().outcome,
-      "An explicitly superseded Blocker is rejected, not silently counted as addressed.",
+      "An explicitly resolved Blocker is addressed, not silently counted as carried.",
     )
   }
 

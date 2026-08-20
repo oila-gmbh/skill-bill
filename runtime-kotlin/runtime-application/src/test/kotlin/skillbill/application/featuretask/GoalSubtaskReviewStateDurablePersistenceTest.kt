@@ -21,13 +21,13 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceiptEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULT_ARTIFACT_PREFIX
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition
 import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDispositionVerdict
-import skillbill.workflow.taskruntime.model.GoalSubtaskOperatorDecision
-import skillbill.workflow.taskruntime.model.GoalSubtaskPauseRelease
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewDisposition
+import skillbill.workflow.taskruntime.model.GoalSubtaskReviewPassResult
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.REPAIR_RECEIPT_MAX_INTENT_UTF8_BYTES
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesToArtifact
@@ -51,45 +51,6 @@ import kotlin.test.assertTrue
  */
 class GoalSubtaskReviewStateDurablePersistenceTest {
   private val workflowId = "wftr-skill142-1"
-
-  @Test
-  fun `an operator decision and its consumption survive a reload`() {
-    val recorder = recorderWith(pausedState())
-
-    val decided = recorder.updateReviewState(workflowId) {
-      it.applyOperatorDecision(GoalSubtaskOperatorDecision.RETRY_FIX)
-    }
-    assertNotNull(decided)
-    assertEquals(
-      GoalSubtaskPauseRelease.RETRY_FIX,
-      recorder.reviewState(workflowId)?.pauseRelease,
-      "A resumed run must read the grant back off durable state.",
-    )
-
-    recorder.updateReviewState(workflowId) { it.consumeOperatorDecision() }
-    val afterConsume = assertNotNull(recorder.reviewState(workflowId))
-    assertNull(
-      afterConsume.operatorDecision,
-      "A consumed grant must be cleared durably; otherwise every resume re-grants an unbudgeted iteration.",
-    )
-    assertTrue(afterConsume.retryReviewPending, "The granted round is in flight until it is re-reviewed.")
-  }
-
-  @Test
-  fun `accept_and_advance and abandon_subtask are readable releases, not write-only records`() {
-    listOf(
-      GoalSubtaskOperatorDecision.ACCEPT_AND_ADVANCE to GoalSubtaskPauseRelease.ADVANCE,
-      GoalSubtaskOperatorDecision.ABANDON_SUBTASK to GoalSubtaskPauseRelease.ABANDON,
-    ).forEach { (decision, expected) ->
-      val recorder = recorderWith(pausedState())
-      recorder.updateReviewState(workflowId) { it.applyOperatorDecision(decision) }
-      assertEquals(
-        expected,
-        recorder.reviewState(workflowId)?.pauseRelease,
-        "${decision.wireValue} must release the pause it answers.",
-      )
-    }
-  }
 
   @Test
   fun `the resolved tier, deciding rule, and remediation base sha all survive a reload`() {
@@ -116,7 +77,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     val reloaded = assertNotNull(recorder.reviewState(workflowId))
     assertEquals("a".repeat(40), reloaded.reviewBaseSha, "review_base_sha is immutable across the pause.")
     assertEquals(listOf("scratch/untracked.txt"), reloaded.baselineUntrackedPaths)
-    assertEquals(2, reloaded.completedPassCount)
+    assertEquals(1, reloaded.completedPassCount)
     assertNull(reloaded.reservedPassNumber, "A consumed pass must never be re-reserved by a plain resume.")
   }
 
@@ -304,10 +265,8 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
         ),
       ),
     )
-    return passOne.reserveNextPass().completeReservedPass(
-      verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
-      unresolvedFindingCount = 1,
-      findings = emptyList(),
+    return passOne.copy(
+      disposition = GoalSubtaskReviewDisposition.PAUSED,
       blockerDispositions = listOf(
         GoalSubtaskBlockerDisposition(
           findingId = "F-001",
@@ -315,27 +274,25 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
           evidence = listOf("still reproduces at the same seam"),
         ),
       ),
-      // Since SKILL-157 no pass count mints the pause; the operator control is applied directly.
-    ).copy(disposition = GoalSubtaskReviewDisposition.PAUSED)
+    )
   }
 
   @Test
-  fun `a crash mid-remediation resumes the same reserved high pass without allocating another`() {
-    val reservedNinth = deepRemediationState(completedPasses = 8).reserveNextPass()
-    val recorder = recorderWith(reservedNinth)
+  fun `a crash mid-remediation resumes the same reserved pass without allocating another`() {
+    val reserved = GoalSubtaskReviewState.initial(
+      reviewBaseSha = "a".repeat(40),
+      baselineUntrackedPaths = listOf("scratch/untracked.txt"),
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
+    ).reserveNextPass()
+    val recorder = recorderWith(reserved)
 
     val reloaded = assertNotNull(recorder.reviewState(workflowId))
-    assertEquals(9, reloaded.reservedPassNumber, "Resume must reuse the pass the crashed attempt reserved.")
-    assertEquals(8, reloaded.completedPassCount)
-    assertEquals(
-      (1..8).toList(),
-      reloaded.passResults.map { it.passNumber },
-      "Watermarks must stay contiguous across the crash.",
-    )
+    assertEquals(1, reloaded.reservedPassNumber, "Resume must reuse the pass the crashed attempt reserved.")
+    assertEquals(0, reloaded.completedPassCount)
 
     val reReserved = recorder.reserveGoalReviewPass(workflowId)
     val inFlight = assertIs<GoalSubtaskReviewPassInFlight>(reReserved)
-    assertEquals(9, inFlight.state.reservedPassNumber, "A resumed reservation is reused, never re-allocated.")
+    assertEquals(1, inFlight.state.reservedPassNumber, "A resumed reservation is reused, never re-allocated.")
   }
 
   @Test
@@ -343,8 +300,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     val fixture = skill15GitFixture()
     val orphaned = fixture.orphanedBase
     val parent = fixture.parent
-    val state = deepRemediationState(completedPasses = 2)
-      .reserveNextPass()
+    val state = deepRemediationState(completedPasses = 1)
       .copy(remediationBaseSha = orphaned)
     val repository = InMemoryRuntimeWorkflowRepository()
     val recorder = recorderWith(state, repository, goalBranch = "feat/skill-15")
@@ -375,8 +331,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
   @Test
   fun `recovery gate allows completed passes and reserved remediation while refusing terminal dispositions`() {
     val fixture = skill15GitFixture()
-    val remediationState = deepRemediationState(completedPasses = 2)
-      .reserveNextPass()
+    val remediationState = deepRemediationState(completedPasses = 1)
       .copy(remediationBaseSha = fixture.orphanedBase)
     assertIs<GoalSubtaskReviewInputReady>(
       recorderWith(remediationState, goalBranch = "feat/skill-15").buildGoalReviewInput(
@@ -411,6 +366,16 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     val capped = deepRemediationState(completedPasses = 1).copy(
       disposition = GoalSubtaskReviewDisposition.REVIEW_CAP_REACHED,
       remediationBaseSha = fixture.orphanedBase,
+      passResults = listOf(
+        GoalSubtaskReviewPassResult(
+          passNumber = 1,
+          verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+          reviewResultArtifact = "$GOAL_SUBTASK_REVIEW_RESULT_ARTIFACT_PREFIX.1",
+          unresolvedFindingCount = 1,
+          findings = listOf(GoalSubtaskReviewCompactFinding("major", "Service", "Missing behavior")),
+          executedMode = CodeReviewExecutionMode.INLINE,
+        ),
+      ),
     )
     assertIs<GoalSubtaskReviewInputBlocked>(
       recorderWith(capped, goalBranch = "feat/skill-15").buildGoalReviewInput(
@@ -424,8 +389,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
   @Test
   fun `reachable bases take no recovery path and keep byte-identical review input`() {
     val fixture = skill15GitFixture()
-    val state = deepRemediationState(completedPasses = 2)
-      .reserveNextPass()
+    val state = deepRemediationState(completedPasses = 1)
       .copy(remediationBaseSha = fixture.parent)
     val repository = InMemoryRuntimeWorkflowRepository()
     val recorder = recorderWith(state, repository, goalBranch = "feat/skill-15")
@@ -452,8 +416,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     val fixture = skill15GitFixture()
     val head = git(fixture.repoRoot, "rev-parse", "HEAD")
     assertTrue(head != fixture.orphanedBase, "fixture must leave the orphan unreachable from HEAD")
-    val state = deepRemediationState(completedPasses = 2)
-      .reserveNextPass()
+    val state = deepRemediationState(completedPasses = 1)
       .copy(remediationBaseSha = fixture.orphanedBase)
     val repository = InMemoryRuntimeWorkflowRepository()
     val recorder = recorderWith(state, repository, goalBranch = "feat/skill-15")
@@ -520,8 +483,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
   fun `resume coherence is a no-op when the recorded base already agrees with HEAD`() {
     val fixture = skill15GitFixture()
     val head = git(fixture.repoRoot, "rev-parse", "HEAD")
-    val state = deepRemediationState(completedPasses = 2)
-      .reserveNextPass()
+    val state = deepRemediationState(completedPasses = 1)
       .copy(remediationBaseSha = head)
     val repository = InMemoryRuntimeWorkflowRepository()
     val recorder = recorderWith(state, repository, goalBranch = "feat/skill-15")
@@ -538,7 +500,6 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
     // R). Pre-fix resume replaced H with R because identity != stored; post-fix must keep H.
     val fixture = skipRecordedDescendantFixture()
     val state = deepRemediationState(completedPasses = 1)
-      .reserveNextPass()
       .copy(remediationBaseSha = fixture.skipRecordedTip)
     val repository = InMemoryRuntimeWorkflowRepository()
     val identity = FeatureTaskRuntimeCheckpointIdentity(
@@ -650,8 +611,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
   @Test
   fun `recovery that cannot find a reachable base blocks naming the sha and branch`() {
     val fixture = unreachableOnlyGitFixture()
-    val state = deepRemediationState(completedPasses = 2)
-      .reserveNextPass()
+    val state = deepRemediationState(completedPasses = 1)
       .copy(remediationBaseSha = fixture.unreachable)
     val prepared = recorderWith(state, goalBranch = "feat/orphan-goal").buildGoalReviewInput(
       workflowId,
@@ -664,6 +624,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
   }
 
   private fun deepRemediationState(completedPasses: Int): GoalSubtaskReviewState {
+    require(completedPasses in 0..1) { "collapsed topology allows at most one completed review pass" }
     var state = GoalSubtaskReviewState.initial(
       reviewBaseSha = "a".repeat(40),
       baselineUntrackedPaths = listOf("scratch/untracked.txt"),

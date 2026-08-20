@@ -137,6 +137,16 @@ class FeatureTaskRuntimeTransitionFunctionTest {
     assertFailsWith<InvalidWorkflowStateSchemaError> { FeatureTaskRuntimeVerdict.fromWire("  ") }
   }
 
+  @Test
+  fun `removed verdicts loud-fail through rejectRemovedVerdict`() {
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      FeatureTaskRuntimeVerdict.rejectRemovedVerdict("escalated", "test")
+    }
+    assertFailsWith<InvalidWorkflowStateSchemaError> {
+      FeatureTaskRuntimeVerdict.rejectRemovedVerdict("repair_planned", "test")
+    }
+  }
+
   // --- Loop-only forward skip (Subtask 4) -------------------------------------------------------
 
   // A pipeline mirroring the real review_fix topology: `fix` is loop-only, sitting between `impl` and
@@ -254,7 +264,7 @@ class FeatureTaskRuntimeTransitionFunctionTest {
   }
 
   @Test
-  fun `review changes_requested at cap blocks`() {
+  fun `review changes_requested at cap blocks on a blocking exhaustion edge`() {
     val cap = requireNotNull(reviewFixEdge.perEdgeCap)
     val transition = FeatureTaskRuntimeTransitionFunction.nextTransition(
       declaration = loopDeclaration,
@@ -494,40 +504,37 @@ class FeatureTaskRuntimeTransitionFunctionTest {
   }
 
   @Test
-  fun `review remediation re-enters implement_fix at any iteration and never reopens audit`() {
+  fun `review remediation enters implement_fix once then advances to validate without re-review`() {
     val def = FeatureTaskRuntimePhaseWorkflowDefinition
-    assertEquals(
-      null,
-      shipped.backwardEdges.single { it.loopId == def.REVIEW_FIX_LOOP_ID }.perEdgeCap,
-      "The review_fix edge declares no finite iteration cap.",
+    val reviewFix = shipped.backwardEdges.single { it.loopId == def.REVIEW_FIX_LOOP_ID }
+    assertEquals(1, reviewFix.perEdgeCap)
+    assertEquals(FeatureTaskRuntimeCapExhaustionBehavior.ADVANCE, reviewFix.capExhaustionBehavior)
+    val fix = assertIs<FeatureTaskRuntimeNextPhase.Next>(
+      shippedTransition(
+        def.PHASE_REVIEW,
+        FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+        edgeIterationCount = 0,
+      ),
     )
-    // An unresolved Blocker re-enters implement_fix at every iteration count, never audit and never
-    // a count-derived advance to validate.
-    listOf(0, 1, 3, 9, 24).forEach { priorIterations ->
-      val fix = assertIs<FeatureTaskRuntimeNextPhase.Next>(
-        shippedTransition(
-          def.PHASE_REVIEW,
-          FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
-          edgeIterationCount = priorIterations,
-        ),
-      )
-      assertEquals(def.PHASE_PLAN_FIX, fix.phaseId, "iteration $priorIterations re-enters plan_fix")
-      assertEquals(def.REVIEW_FIX_LOOP_ID, fix.loopId)
-      assertEquals(priorIterations + 1, fix.edgeIteration)
-    }
-    // The first Blocker-free result advances regardless of how many remediation passes ran.
+    assertEquals(def.PHASE_IMPLEMENT_FIX, fix.phaseId)
+    assertEquals(def.REVIEW_FIX_LOOP_ID, fix.loopId)
+    assertEquals(1, fix.edgeIteration)
+    val capExhausted = assertIs<FeatureTaskRuntimeNextPhase.Next>(
+      shippedTransition(
+        def.PHASE_REVIEW,
+        FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+        edgeIterationCount = 1,
+      ),
+    )
+    assertEquals(def.PHASE_VALIDATE, capExhausted.phaseId)
+    assertEquals(null, capExhausted.loopId)
     val approved = assertIs<FeatureTaskRuntimeNextPhase.Next>(
-      shippedTransition(def.PHASE_REVIEW, FeatureTaskRuntimeVerdict.APPROVED, edgeIterationCount = 24),
+      shippedTransition(def.PHASE_REVIEW, FeatureTaskRuntimeVerdict.APPROVED),
     )
     assertEquals(def.PHASE_VALIDATE, approved.phaseId)
     assertEquals(null, approved.loopId)
-    val plannedRepair = assertIs<FeatureTaskRuntimeNextPhase.Next>(
-      shippedTransition(def.PHASE_PLAN_FIX, FeatureTaskRuntimeVerdict.REPAIR_PLANNED),
-    )
-    assertEquals(def.PHASE_IMPLEMENT_FIX, plannedRepair.phaseId)
-    assertEquals(null, plannedRepair.loopId, "The intra-loop step mints no second review_fix iteration.")
     assertEquals(
-      def.PHASE_REVIEW,
+      def.PHASE_VALIDATE,
       assertIs<FeatureTaskRuntimeNextPhase.Next>(
         shippedTransition(def.PHASE_IMPLEMENT_FIX, FeatureTaskRuntimeVerdict.ADVANCE),
       ).phaseId,

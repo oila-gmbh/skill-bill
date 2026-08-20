@@ -5,29 +5,20 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditCriterionGap
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditSeverity
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditVerdict
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairPlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewSeverity
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewVerdict
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 
-/**
- * Reads the verification signals a settled phase's structured output carries. Every entry point
- * takes the ALREADY-PARSED output object rather than the raw payload: the phase-output contract
- * accepts YAML and fenced or prose-trailed JSON, so a raw-text JSON parse here would silently see
- * nothing for those shapes and report [FeatureTaskRuntimeVerdict.ADVANCE] for an audit that in fact
- * reported gaps. The caller owns parsing through the same validator that admitted the output.
- */
 @Suppress("TooManyFunctions")
 internal object FeatureTaskRuntimeOutputVerification {
   fun verdictFor(phaseId: String, outputObject: Map<String, Any?>?): FeatureTaskRuntimeVerdict {
     val wireVerdict = (outputObject?.get("verdict") as? String)
       ?.takeIf(String::isNotBlank)
-      ?.let(FeatureTaskRuntimeVerdict::fromWire)
+      ?.let { value -> FeatureTaskRuntimeVerdict.rejectRemovedVerdict(value, "phase output verdict") }
     return when (phaseId) {
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW -> reviewVerdict(outputObject, wireVerdict)
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT -> auditVerdict(outputObject, wireVerdict)
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN_FIX -> planFixVerdict(outputObject, wireVerdict)
       else -> wireVerdict ?: FeatureTaskRuntimeVerdict.ADVANCE
     }
   }
@@ -59,27 +50,6 @@ internal object FeatureTaskRuntimeOutputVerification {
     }
   }
 
-  fun repairPlanFrom(outputObject: Map<String, Any?>?): FeatureTaskRuntimeRepairPlan? = outputObject
-    ?.get("produced_outputs")
-    ?.let(JsonSupport::anyToStringAnyMap)
-    ?.get("repair_plan")
-    ?.let(JsonSupport::anyToStringAnyMap)
-    ?.let { raw ->
-      runCatching { FeatureTaskRuntimeRepairPlan.fromArtifactMap(raw, "produced_outputs.repair_plan") }.getOrNull()
-    }
-
-  private fun planFixVerdict(
-    outputObject: Map<String, Any?>?,
-    wireVerdict: FeatureTaskRuntimeVerdict?,
-  ): FeatureTaskRuntimeVerdict {
-    val plan = repairPlanFrom(outputObject) ?: return wireVerdict ?: FeatureTaskRuntimeVerdict.ADVANCE
-    return if (plan.escalates) {
-      FeatureTaskRuntimeVerdict.ESCALATED
-    } else {
-      FeatureTaskRuntimeVerdict.REPAIR_PLANNED
-    }
-  }
-
   private fun reviewVerdict(
     outputObject: Map<String, Any?>?,
     wireVerdict: FeatureTaskRuntimeVerdict?,
@@ -88,12 +58,6 @@ internal object FeatureTaskRuntimeOutputVerification {
     return reviewVerdict?.verdict ?: wireVerdict ?: FeatureTaskRuntimeVerdict.ADVANCE
   }
 
-  // The audit verdict gates entry into review, so it must be canonical rather than whatever string
-  // the phase happened to emit: FeatureTaskRuntimeVerdict.fromWire accepts any non-blank value, and
-  // an audit reporting no unmet criteria under a synonym ("pass", "Satisfied") would otherwise
-  // settle with an off-vocabulary verdict and block a run that has no gap at all. The derived
-  // verdict wins wherever a criteria array makes it decidable; a bare wire verdict is honoured only
-  // when it is a known audit verdict, so an undecidable audit blocks loudly instead of advancing.
   private fun auditVerdict(
     outputObject: Map<String, Any?>?,
     wireVerdict: FeatureTaskRuntimeVerdict?,

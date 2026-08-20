@@ -233,19 +233,12 @@ internal object GoalSubtaskReviewSummaryReducer {
     fun supersededOutcome(finding: UnaddressedFinding): ReviewFindingOutcome =
       when (dispositionVerdictsByKey[finding.findingKey]) {
         GoalSubtaskBlockerDispositionVerdict.RESOLVED -> ReviewFindingOutcome.ADDRESSED
-        GoalSubtaskBlockerDispositionVerdict.SUPERSEDED -> ReviewFindingOutcome.REJECTED
         GoalSubtaskBlockerDispositionVerdict.UNRESOLVED -> ReviewFindingOutcome.CARRIED
         null -> ReviewFindingOutcome.ADDRESSED
       }
 
-    // A finding this pass still reports was not addressed, whatever the disposition claimed. Only an
-    // explicit supersede — the loop declining the finding — is a terminal outcome for a survivor.
-    fun currentOutcome(finding: UnaddressedFinding): ReviewFindingOutcome =
-      if (dispositionVerdictsByKey[finding.findingKey] == GoalSubtaskBlockerDispositionVerdict.SUPERSEDED) {
-        ReviewFindingOutcome.REJECTED
-      } else {
-        ReviewFindingOutcome.CARRIED
-      }
+    fun currentOutcome(@Suppress("UNUSED_PARAMETER") finding: UnaddressedFinding): ReviewFindingOutcome =
+      ReviewFindingOutcome.CARRIED
     val supersededOutcomes = supersededFindings
       .filter { finding -> finding.findingKey !in stillReported }
       .map { finding -> finding.toOutcomeRecord(supersededOutcome(finding)) }
@@ -303,7 +296,7 @@ internal object GoalSubtaskReviewSummaryReducer {
       if (evidence.isEmpty()) return@mapNotNull null
       GoalSubtaskBlockerDisposition(
         findingId = findingId,
-        verdict = GoalSubtaskBlockerDispositionVerdict.SUPERSEDED,
+        verdict = GoalSubtaskBlockerDispositionVerdict.RESOLVED,
         evidence = evidence,
       )
     }
@@ -427,7 +420,7 @@ private fun blockerDisposition(index: Int, entry: Any?): GoalSubtaskBlockerDispo
       ?: reviewStateError("$path.finding_id", "must be a non-blank prior Blocker finding id."),
     verdict = GoalSubtaskBlockerDispositionVerdict.fromWire(
       (disposition["verdict"] as? String)?.trim()
-        ?: reviewStateError("$path.verdict", "must be resolved, unresolved, or superseded."),
+        ?: reviewStateError("$path.verdict", "must be resolved or unresolved."),
     ),
     evidence = evidence,
   )

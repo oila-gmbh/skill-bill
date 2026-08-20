@@ -172,12 +172,8 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     )
     assertContains(prompt, "specialist narratives and raw review output are not")
     assertContains(prompt, "Do not re-apply the plan from scratch")
-    assertContains(prompt, "settled load-bearing work, not open")
-    assertContains(prompt, "disturbed_remedies")
-    assertFalse(
-      prompt.contains("prior repair history are not"),
-      "Prior repair history is carried now, so the withholding clause must be gone.",
-    )
+    assertContains(prompt, "repair_receipt")
+    assertContains(prompt, "\"symbol\": \"Type.member\"")
   }
 
   @Test
@@ -393,36 +389,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
-  fun `second standalone review pass stays inline and receives the materialized immutable-base delta`() {
-    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
-      ISSUE_KEY,
-      briefingFor("review"),
-      codeReviewMode = CodeReviewExecutionMode.INLINE,
-      reviewPassNumber = 2,
-      goalSubtaskReviewInput = GoalSubtaskReviewInput(
-        reviewBaseSha = "0".repeat(40),
-        currentHeadSha = "1".repeat(40),
-        trackedDelta = "tracked delta",
-        ownedUntrackedPatches = "owned untracked patch",
-      ),
-    )
-
-    assertFalse(prompt.contains("bill-code-review mode:inline"))
-    assertContains(prompt, "context:feature-remediation")
-    assertContains(prompt, "review_scope: branch_diff")
-    // SKILL-142 AC-012 / SKILL-178: pass two is bounded to all findings addressed union the
-    // pre-fix-to-post-fix diff. The immutable-base framing is pass one's authority and must not
-    // be restated here, or the two would contradict.
-    assertContains(prompt, "Reserved remediation pass (pass 2)")
-    assertContains(prompt, "all findings addressed in that round")
-    assertFalse(prompt.contains("Immutable-base review scope"))
-    assertContains(prompt, "${"0".repeat(40)}")
-    assertContains(prompt, "tracked delta")
-    assertContains(prompt, "owned untracked patch")
-  }
-
-  @Test
-  fun `each review pass receives its own scope framing over the same materialized delta`() {
+  fun `the single review pass receives immutable-base scope framing`() {
     val input = GoalSubtaskReviewInput(
       reviewBaseSha = "a".repeat(40),
       currentHeadSha = "b".repeat(40),
@@ -430,26 +397,17 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       ownedUntrackedPatches = "run-owned untracked delta",
     )
 
-    val prompts = listOf(1, 2).map { pass ->
-      FeatureTaskRuntimePhasePromptComposer.compose(
-        ISSUE_KEY,
-        briefingFor("review"),
-        codeReviewMode = if (pass == 1) CodeReviewExecutionMode.INLINE else CodeReviewExecutionMode.INLINE,
-        reviewPassNumber = pass,
-        goalSubtaskReviewInput = input,
-      )
-    }
-
-    prompts.forEach { prompt ->
-      assertContains(prompt, input.trackedDelta)
-      assertContains(prompt, input.ownedUntrackedPatches)
-    }
-    assertContains(prompts[0], "durable base `${input.reviewBaseSha}` to current HEAD `${input.currentHeadSha}`")
-    assertContains(
-      prompts[1],
-      "pre-fix tree `${input.reviewBaseSha}` to post-fix HEAD `${input.currentHeadSha}`",
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("review"),
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
+      reviewPassNumber = 1,
+      goalSubtaskReviewInput = input,
     )
-    assertFalse(prompts[1].contains("Immutable-base review scope"))
+
+    assertContains(prompt, input.trackedDelta)
+    assertContains(prompt, input.ownedUntrackedPatches)
+    assertContains(prompt, "durable base `${input.reviewBaseSha}` to current HEAD `${input.currentHeadSha}`")
   }
 
   @Test

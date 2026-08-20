@@ -425,7 +425,8 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
   }
 
   @Test
-  fun `compact audit gaps for one criterion keep every repair site when the joined artifact_ref would exceed the bound`() {
+  @Suppress("LongMethod")
+  fun `compact audit gaps keep every repair site when joined artifact_ref exceeds bound`() {
     val output =
       """
       {

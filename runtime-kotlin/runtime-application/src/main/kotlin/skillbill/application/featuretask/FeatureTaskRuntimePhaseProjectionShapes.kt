@@ -1,7 +1,6 @@
 package skillbill.application.featuretask
 
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION
-import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_REPAIR_PLAN_CONTRACT_VERSION
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 
@@ -20,7 +19,6 @@ internal object FeatureTaskRuntimePhaseProjectionShapes {
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN -> PREPLAN
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN -> PLAN
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT -> IMPLEMENT
-    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN_FIX -> PLAN_FIX
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX -> IMPLEMENT_FIX
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE ->
       if (agentRunValidateFallback) {
@@ -95,37 +93,19 @@ internal object FeatureTaskRuntimePhaseProjectionShapes {
       "        validate) is not open work at all. Populate it only under a 'blocked' or 'failed'\n" +
       "        envelope, as a plain line or the same { \"ref\", \"note\" } pair deviations uses."
 
-  private val PLAN_FIX: String =
-    "\n    - Required produced_outputs.repair_plan shape. One entry per carried finding; root_cause and\n" +
-      "      minimal_change are one line each with no diff hunk, source body, or line number.\n" +
-      "      prior_round_remedy_ref is admissible only on a design_symptom entry:\n" +
-      "      ```json\n" +
-      "      { \"repair_plan\": {\n" +
-      "          \"contract_version\": \"$FEATURE_TASK_RUNTIME_REPAIR_PLAN_CONTRACT_VERSION\",\n" +
-      "          \"round_number\": 1,\n" +
-      "          \"entries\": [ { \"finding_ref\": \"<finding id or label>\",\n" +
-      "            \"root_cause\": \"<why the defect exists>\",\n" +
-      "            \"minimal_change\": \"<smallest change that closes it>\",\n" +
-      "            \"classification\": \"local_patch_site\" } ] } }\n" +
-      "      ```"
-
   private val IMPLEMENT_FIX: String =
     "\n    - Required produced_outputs.repair_receipt shape. Emit one entry per carried finding;\n" +
       "      constructs are Type or Type.member with an optional file basename, never a bare path;\n" +
       "      intent is one line with no diff hunk, source body, or line number. A finding that needed\n" +
-      "      no edit still needs its no_edit_required entry. Add disturbed_remedies only when this round\n" +
-      "      removed or materially rewrote a construct a resolved repair_ledger entry names; omit it\n" +
-      "      otherwise. The round number and the pre-fix checkpoint sha are runtime-owned: omit them,\n" +
-      "      never guess them from a briefing hash:\n" +
+      "      no edit still needs its no_edit_required entry. The round number and the pre-fix\n" +
+      "      checkpoint sha are runtime-owned: omit them, never guess them from a briefing hash:\n" +
       "      ```json\n" +
       "      { \"repair_receipt\": {\n" +
       "          \"contract_version\": \"$FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION\",\n" +
       "          \"entries\": [ { \"severity\": \"blocker\", \"label\": \"<TypeOrSymbol>\",\n" +
       "            \"text\": \"<sanitized finding text>\", \"outcome\": \"addressed\",\n" +
       "            \"constructs\": [ { \"symbol\": \"Type.member\", \"file\": \"Type.kt\" } ],\n" +
-      "            \"intent\": \"<one-line repair intent>\" } ],\n" +
-      "          \"disturbed_remedies\": [ { \"finding_ref\": \"<ledger finding_ref>\",\n" +
-      "            \"reason\": \"<one line on why the settled construct had to change>\" } ] } }\n" +
+      "            \"intent\": \"<one-line repair intent>\" } ] } }\n" +
       "      ```"
 
   private const val VALIDATION: String =

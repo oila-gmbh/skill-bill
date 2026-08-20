@@ -7,14 +7,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/**
- * SKILL-157: `review_fix` declares no finite cap. The unresolved Blocker signal alone drives
- * re-entry into `implement_fix`, and the first Blocker-free review advances however many remediation
- * rounds preceded it.
- */
 class ReviewFixCapReconciliationTest {
   private val transitions = FeatureTaskRuntimePhaseWorkflowDefinition.transitions
 
@@ -36,41 +30,38 @@ class ReviewFixCapReconciliationTest {
     )
 
   @Test
-  fun `the review fix edge declares no finite cap and keeps its per-subtask scope`() {
-    assertNull(reviewFixEdge.perEdgeCap, "A finite cap would re-impose the two-pass ceiling.")
+  fun `the review fix edge declares cap one with advance exhaustion`() {
+    assertEquals(1, reviewFixEdge.perEdgeCap)
     assertEquals(
-      FeatureTaskRuntimeCapExhaustionBehavior.BLOCK,
+      FeatureTaskRuntimeCapExhaustionBehavior.ADVANCE,
       reviewFixEdge.capExhaustionBehavior,
-      "An uncapped edge never exhausts, so it must not declare an advance-or-pause exhaustion rule.",
     )
   }
 
   @Test
-  fun `an unresolved blocker re-enters implement_fix at every iteration count`() {
-    listOf(0, 1, 3, 9, 24, 199).forEach { consumed ->
-      val transition = transitionAt(consumed, FeatureTaskRuntimeVerdict.CHANGES_REQUESTED)
-      val next = assertIs<FeatureTaskRuntimeNextPhase.Next>(
-        transition,
-        "Iteration ${consumed + 1} must re-enter the fix loop, not settle.",
-      )
-      assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN_FIX, next.phaseId)
-      assertEquals(consumed + 1, next.edgeIteration)
-      assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID, next.loopId)
-    }
+  fun `the first changes_requested re-enters implement_fix`() {
+    val transition = transitionAt(0, FeatureTaskRuntimeVerdict.CHANGES_REQUESTED)
+    val next = assertIs<FeatureTaskRuntimeNextPhase.Next>(transition)
+    assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX, next.phaseId)
+    assertEquals(1, next.edgeIteration)
+    assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID, next.loopId)
   }
 
   @Test
-  fun `the first blocker-free review advances however many rounds preceded it`() {
-    listOf(0, 1, 4, 12, 40).forEach { consumed ->
-      val next = assertIs<FeatureTaskRuntimeNextPhase.Next>(
-        transitionAt(consumed, FeatureTaskRuntimeVerdict.APPROVED),
-      )
-      assertEquals(
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
-        next.phaseId,
-        "An approved review after $consumed remediation rounds must advance normally.",
-      )
-    }
+  fun `a second changes_requested advances to validate without re-review`() {
+    val next = assertIs<FeatureTaskRuntimeNextPhase.Next>(
+      transitionAt(1, FeatureTaskRuntimeVerdict.CHANGES_REQUESTED),
+    )
+    assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE, next.phaseId)
+    assertEquals(null, next.loopId)
+  }
+
+  @Test
+  fun `an approved review advances to validate`() {
+    val next = assertIs<FeatureTaskRuntimeNextPhase.Next>(
+      transitionAt(0, FeatureTaskRuntimeVerdict.APPROVED),
+    )
+    assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE, next.phaseId)
   }
 
   @Test

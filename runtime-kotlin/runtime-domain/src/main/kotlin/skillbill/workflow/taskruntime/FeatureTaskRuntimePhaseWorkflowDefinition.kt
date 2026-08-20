@@ -6,6 +6,7 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_A
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditCeremony
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdgeCapScope
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCeremonyScaling
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeExecutablePlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
@@ -40,7 +41,6 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
   const val PHASE_PREPLAN: String = "preplan"
   const val PHASE_PLAN: String = "plan"
   const val PHASE_IMPLEMENT: String = "implement"
-  const val PHASE_PLAN_FIX: String = "plan_fix"
   const val PHASE_IMPLEMENT_FIX: String = "implement_fix"
   const val PHASE_REVIEW: String = "review"
   const val PHASE_AUDIT: String = "audit"
@@ -70,10 +70,6 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
   // iterations warns the operator once and remediation continues. Declared here once so no seam can
   // drift to its own literal.
   const val SEMANTIC_LOOP_WARNING_THRESHOLD: Int = 3
-
-  const val REMEDIATION_CHURN_CONSECUTIVE_ROUND_THRESHOLD: Int = 3
-
-  const val REMEDIATION_ESCALATION_EVIDENCE_MIN_CONSECUTIVE_ROUNDS: Int = 1
 
   // SKILL-140: per-producer regeneration loop ids. A launch seam that quarantines an upstream
   // producer's rejected durable record re-enters that producer under its own bounded loop, so each
@@ -106,7 +102,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
   // Phases whose attempt watermark a review-generation restart rewinds. Only these carry a non-zero
   // evidence generation, so every other phase keeps a generation-blind key and a byte-identical
   // re-write after a restart stays an idempotent no-op.
-  val GENERATION_SCOPED_PHASE_IDS: Set<String> = setOf(PHASE_REVIEW, PHASE_PLAN_FIX, PHASE_IMPLEMENT_FIX)
+  val GENERATION_SCOPED_PHASE_IDS: Set<String> = setOf(PHASE_REVIEW, PHASE_IMPLEMENT_FIX)
 
   val REGENERATION_LOOP_IDS: Set<String> = REGENERATION_LOOP_ID_BY_PRODUCER.values.toSet()
 
@@ -128,7 +124,6 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     PHASE_PREPLAN,
     PHASE_PLAN,
     PHASE_IMPLEMENT,
-    PHASE_PLAN_FIX,
     PHASE_IMPLEMENT_FIX,
     PHASE_REVIEW,
     PHASE_AUDIT,
@@ -153,9 +148,8 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       PHASE_PLAN,
       PHASE_IMPLEMENT,
       PHASE_AUDIT,
-      PHASE_PLAN_FIX,
-      PHASE_IMPLEMENT_FIX,
       PHASE_REVIEW,
+      PHASE_IMPLEMENT_FIX,
       PHASE_VALIDATE,
       PHASE_WRITE_HISTORY,
       PHASE_COMMIT_PUSH,
@@ -167,9 +161,8 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       PHASE_PLAN to "Phase 2: Plan",
       PHASE_IMPLEMENT to "Phase 3: Implement",
       PHASE_AUDIT to "Phase 4: Completeness Audit",
-      PHASE_PLAN_FIX to "Phase 4a: Plan Fix",
-      PHASE_IMPLEMENT_FIX to "Phase 4b: Implement Fix",
       PHASE_REVIEW to "Phase 5: Code Review",
+      PHASE_IMPLEMENT_FIX to "Phase 5a: Implement Fix",
       PHASE_VALIDATE to "Phase 6: Quality Validation",
       PHASE_WRITE_HISTORY to "Phase 7: Boundary History",
       PHASE_COMMIT_PUSH to "Phase 8: Commit and Push",
@@ -181,9 +174,8 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       PHASE_PLAN to listOf(PHASE_PREPLAN),
       PHASE_IMPLEMENT to listOf(PHASE_PLAN),
       PHASE_AUDIT to listOf(PHASE_PLAN, PHASE_IMPLEMENT),
-      PHASE_PLAN_FIX to listOf(PHASE_REVIEW, PHASE_PREPLAN, PHASE_PLAN),
-      PHASE_IMPLEMENT_FIX to listOf(PHASE_REVIEW, PHASE_PLAN_FIX),
       PHASE_REVIEW to listOf(PHASE_AUDIT),
+      PHASE_IMPLEMENT_FIX to listOf(PHASE_REVIEW),
       PHASE_VALIDATE to listOf(PHASE_IMPLEMENT, PHASE_AUDIT),
       PHASE_WRITE_HISTORY to listOf(PHASE_IMPLEMENT, PHASE_VALIDATE),
       PHASE_COMMIT_PUSH to listOf(PHASE_IMPLEMENT, PHASE_VALIDATE, PHASE_WRITE_HISTORY),
@@ -196,11 +188,8 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       PHASE_IMPLEMENT to
         "Resume implementation reconciliation from the immutable initial preplan and plan outputs when an " +
         "audit-gap loop is active, then persist the validated output.",
-      PHASE_PLAN_FIX to
-        "Resume the plan-fix phase from the latest review findings, the remediation repair ledger, and the " +
-        "immutable initial preplan and plan outputs, then persist the validated repair plan.",
       PHASE_IMPLEMENT_FIX to
-        "Resume the implement-fix phase from the latest repair plan and review findings, reconciling the " +
+        "Resume the implement-fix phase from the latest review findings, reconciling the " +
         "current tree, then persist the validated output.",
       PHASE_AUDIT to "Resume the completeness audit from the latest plan and implement outputs.",
       PHASE_REVIEW to
@@ -293,32 +282,6 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     ),
   )
 
-  fun reviewRetryProjections(): List<PhaseHandoffProjectionDeclaration> = listOf(
-    phaseProjection(
-      consumerPhaseId = PHASE_REVIEW,
-      producingPhaseId = PHASE_IMPLEMENT_FIX,
-      name = "change_receipt",
-      contractId = PhaseProjectionContract.CHANGE_RECEIPT,
-      fields = listOf("changed_paths", "tests_added", "tests_updated", "deviations", "repository_checkpoint"),
-      checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
-    ),
-    phaseProjection(
-      consumerPhaseId = PHASE_REVIEW,
-      producingPhaseId = PHASE_AUDIT,
-      name = "audit_clearance",
-      contractId = PhaseProjectionContract.AUDIT_CLEARANCE,
-      fields = listOf("clearance_status", "review_scope", "repository_checkpoint"),
-      checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
-    ),
-  )
-
-  /**
-   * Concrete bounded planning projections for the preplan->plan, plan->implement, and
-   * plan+implement->audit edges (AC-003/005/008/011). Each names its source, the concrete projection
-   * contract id/version, the prompt-visible field set declared by the owning domain model, and a
-   * budget; the consumer cannot widen the shape at runtime. The plan_commitment narrows the source
-   * executable plan to its obligation-only subset for audit.
-   */
   fun preplanningDigestDeclaration(
     consumerPhaseId: String,
     producingPhaseId: String = PHASE_PREPLAN,
@@ -442,19 +405,6 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       implementationReceiptDeclaration(PHASE_AUDIT),
       sharedReviewEvidenceDeclaration(PHASE_AUDIT),
     ),
-    PHASE_PLAN_FIX to listOf(
-      phaseProjection(
-        PHASE_PLAN_FIX,
-        PHASE_REVIEW,
-        "review_repair_request",
-        PhaseProjectionContract.REVIEW_REPAIR_REQUEST,
-        listOf("unresolved_blocker_findings", "repository_checkpoint"),
-        FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
-      ),
-      repairLedgerDeclaration(PHASE_PLAN_FIX),
-      preplanningDigestDeclaration(PHASE_PLAN_FIX),
-      executablePlanDeclaration(PHASE_PLAN_FIX),
-    ),
     PHASE_IMPLEMENT_FIX to listOf(
       phaseProjection(
         PHASE_IMPLEMENT_FIX,
@@ -464,15 +414,6 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
         listOf("unresolved_blocker_findings", "repository_checkpoint"),
         FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
       ),
-      phaseProjection(
-        PHASE_IMPLEMENT_FIX,
-        PHASE_PLAN_FIX,
-        "repair_plan",
-        PhaseProjectionContract.REPAIR_PLAN,
-        listOf("repair_plan"),
-        required = false,
-      ),
-      repairLedgerDeclaration(PHASE_IMPLEMENT_FIX),
     ),
     PHASE_REVIEW to listOf(
       phaseProjection(
@@ -634,31 +575,17 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
   /**
    * Transition topology: the ordered [stepIds] forward pipeline plus the M1 `review_fix` and M2
    * `audit_gap` backward edges. The pipeline is audit-first: a clean run advances
-   * `implement` -> `audit` -> `review`, so review only ever inspects a tree the audit already
-   * declared complete. `implement_fix` sits between `audit` and `review` but is loop-only — the
-   * forward edge skips it, so a clean run never launches a fix.
+   * `implement` -> `audit` -> `review` -> `validate`, skipping loop-only `implement_fix`.
    *
    * An audit `gaps_found` verdict reopens the `[implement, audit]` span to reconcile implementation
-   * against the failing criteria using the immutable initial planning context, then re-`audit`. That
-   * span structurally excludes `review`, which now sits after `audit`. Audit-gap reconciliation is
-   * unbounded because each new audit verdict is the authority on whether implementation is complete.
+   * against the failing criteria using the immutable initial planning context, then re-`audit`.
    *
-   * A `review` `changes_requested` verdict reopens the `[plan_fix, review]` span. The edge declares no
-   * finite cap: an unresolved advance-blocking finding is the sole re-entry signal, so remediation runs
-   * as many rounds as those findings survive and the first clean review advances to `validate`
-   * regardless of how many rounds preceded it. Blocker and Major both block advancing and both reopen
-   * the span; Minor and Nit stay advisory. That span structurally excludes `audit`, so no review outcome
-   * can reopen an audit repair plan.
-   *
-   * Inside the span the round runs `plan_fix` then `implement_fix`: `plan_fix` decides root cause before
-   * any edit and may instead settle `escalated`, which has no successor and no edge, so it can neither
-   * advance to `implement_fix` nor route back to `plan`. The `plan_fix` to `implement_fix` step is a
-   * declared loop-only successor rather than a second backward edge, so one round mints exactly one
-   * `review_fix` iteration.
+   * A `review` `changes_requested` verdict takes the single bounded `review_fix` backward edge to
+   * `implement_fix` (perEdgeCap 1, cap exhaustion ADVANCE). The run always advances to `validate`
+   * after that one fix round regardless of unresolved findings.
    *
    * [FeatureTaskRuntimeTransitionDeclaration.entryGates] makes the ordering enforceable rather than
-   * merely implied: `review` is unreachable until `audit` has settled `satisfied`, and any path that
-   * would enter it earlier loud-fails.
+   * merely implied: `review` is unreachable until `audit` has settled `satisfied`.
    */
   val transitions: FeatureTaskRuntimeTransitionDeclaration =
     FeatureTaskRuntimeTransitionDeclaration(
@@ -674,11 +601,11 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
         FeatureTaskRuntimeBackwardEdge(
           fromPhaseId = PHASE_REVIEW,
           triggeringVerdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
-          destinationPhaseId = PHASE_PLAN_FIX,
+          destinationPhaseId = PHASE_IMPLEMENT_FIX,
           loopId = REVIEW_FIX_LOOP_ID,
-          perEdgeCap = null,
+          perEdgeCap = 1,
+          capExhaustionBehavior = FeatureTaskRuntimeCapExhaustionBehavior.ADVANCE,
           capScope = FeatureTaskRuntimeBackwardEdgeCapScope.PER_SUBTASK,
-          warnAfterIterations = SEMANTIC_LOOP_WARNING_THRESHOLD,
         ),
         FeatureTaskRuntimeBackwardEdge(
           fromPhaseId = PHASE_AUDIT,
@@ -717,8 +644,8 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
           capScope = FeatureTaskRuntimeBackwardEdgeCapScope.PER_SUBTASK,
         ),
       ),
-      loopOnlyPhaseIds = setOf(PHASE_PLAN_FIX, PHASE_IMPLEMENT_FIX),
-      loopOnlySuccessors = mapOf(PHASE_PLAN_FIX to PHASE_IMPLEMENT_FIX),
+      loopOnlyPhaseIds = setOf(PHASE_IMPLEMENT_FIX),
+      loopOnlySuccessors = emptyMap(),
     )
 
   /** The declared backward edge for [loopId], or null when the id is not part of the topology. */

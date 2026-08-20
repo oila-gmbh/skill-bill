@@ -127,20 +127,6 @@ internal fun validProducedOutputs(phaseId: String): String = when (phaseId) {
   // rather than widen implementation_receipt to admit it: widening the schema to keep a duplicate wire
   // field is the rejected alternative (schema-shape changes are a stated non-goal, and `changed_paths`
   // already carries the path list this variant delivers).
-  "plan_fix" ->
-    """{
-      "repair_plan":{
-        "contract_version":"0.1",
-        "round_number":1,
-        "entries":[{
-          "finding_ref":"F-001",
-          "root_cause":"Fixture root cause for the carried finding.",
-          "minimal_change":"Fixture minimal change closing the carried finding.",
-          "classification":"local_patch_site"
-        }]
-      }
-    }
-    """
   "implement", "implement_fix" ->
     """{
       "projection_kind":"implementation_receipt",

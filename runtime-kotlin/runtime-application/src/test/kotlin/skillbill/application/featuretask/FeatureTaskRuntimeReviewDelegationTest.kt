@@ -24,8 +24,6 @@ import skillbill.review.model.ReviewScopeDisposition
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
-import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition
-import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDispositionVerdict
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -121,25 +119,6 @@ class FeatureTaskRuntimeReviewDelegationTest {
   }
 
   @Test
-  fun `remediation pass two pins inline from the reserved pass rule`() {
-    val request = mappedRequest(
-      input = reviewInput(
-        base = "c".repeat(40),
-        head = "d".repeat(40),
-        trackedDelta = "remediation delta",
-      ),
-      agents = FeatureTaskRuntimeReviewDriverAgents("codex", "claude"),
-      pass = FeatureTaskRuntimeReviewDriverPass(2, CodeReviewExecutionMode.DELEGATED, "rvw-191-remediation"),
-      runInvariants = invariants(mode = CodeReviewExecutionMode.DELEGATED),
-    )
-
-    assertEquals("remediation delta", request.suppliedDiff)
-    assertEquals("c".repeat(40), request.baseRevision)
-    assertEquals(CodeReviewExecutionMode.INLINE, request.codeReviewMode)
-    assertEquals(CodeReviewExecutionMode.INLINE, request.resolvedTier)
-  }
-
-  @Test
   fun `settlement envelope takes findings and review_run_id from the driver register`() {
     val result = FeatureTaskRuntimeReviewDriver.EMPTY.run(
       mappedRequest(
@@ -185,40 +164,6 @@ class FeatureTaskRuntimeReviewDelegationTest {
     assertFalse(produced.containsKey("unmet_criteria"))
     assertFalse(produced.containsKey("gaps"))
     assertFalse(produced.containsKey("failing_criteria"))
-  }
-
-  @Test
-  fun `pass two envelope carries verdict-informed blocker dispositions`() {
-    val result = FeatureTaskRuntimeReviewDriver.EMPTY.run(
-      mappedRequest(
-        agents = FeatureTaskRuntimeReviewDriverAgents("codex", null),
-        pass = FeatureTaskRuntimeReviewDriverPass(2, CodeReviewExecutionMode.INLINE, "rvw-191-disp"),
-      ),
-    )
-    val output = FeatureTaskRuntimeReviewEnvelope.assemble(
-      result = result,
-      reviewRunId = "rvw-191-disp",
-      cycle = FeatureTaskRuntimeReviewCycleContext(
-        passNumber = 2,
-        resolvedTier = CodeReviewExecutionMode.INLINE,
-        repositoryFingerprint = "fp-2",
-        blockerDispositions = listOf(
-          GoalSubtaskBlockerDisposition(
-            findingId = "F-001",
-            verdict = GoalSubtaskBlockerDispositionVerdict.SUPERSEDED,
-            evidence = listOf("Foo.kt:42"),
-          ),
-        ),
-      ),
-    )
-    val produced = JsonSupport.anyToStringAnyMap(
-      FeatureTaskRuntimeReviewEnvelope.envelopeMap(output)["produced_outputs"],
-    ).orEmpty()
-    val dispositions = produced["blocker_dispositions"] as List<*>
-    val first = JsonSupport.anyToStringAnyMap(dispositions.single()).orEmpty()
-    assertEquals("F-001", first["finding_id"])
-    assertEquals("superseded", first["verdict"])
-    assertEquals(listOf("Foo.kt:42"), first["evidence"])
   }
 
   @Test
