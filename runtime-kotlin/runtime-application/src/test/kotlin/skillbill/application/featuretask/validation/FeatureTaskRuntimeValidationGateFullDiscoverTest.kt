@@ -91,7 +91,6 @@ class FeatureTaskRuntimeValidationGateFullDiscoverTest {
     assertEquals(listOf(listOf("compile"), listOf("LaterTest")), repairIds)
     assertEquals(3, runner.calls)
     assertTrue(runner.requests.all { it.argv != declaration.fullGateCommand })
-    assertTrue(runner.requests.none { it.argv == declaration.buildOnlyCommand })
     assertIs<ValidationGateCycleTerminalOutcome.Completed>(
       assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,
     )
@@ -117,7 +116,6 @@ class FeatureTaskRuntimeValidationGateFullDiscoverTest {
     )
     assertEquals(listOf(listOf("compile"), listOf("LaterTest")), repairIds)
     assertEquals(3, runner.calls)
-    assertTrue(runner.requests.none { it.argv == declaration.buildOnlyCommand })
     assertTrue(runner.requests.none { it.argv == declaration.fullGateCommand })
     assertIs<ValidationGateCycleTerminalOutcome.Completed>(
       assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,

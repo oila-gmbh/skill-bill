@@ -55,8 +55,6 @@ class AgentRunGoalContinuationCommandTest {
         "implement",
         "--code-review-mode",
         "inline",
-        "--validation-depth",
-        "full",
         "--agent",
         "claude",
       ),
@@ -102,8 +100,6 @@ class AgentRunGoalContinuationCommandTest {
         "implement",
         "--code-review-mode",
         "inline",
-        "--validation-depth",
-        "full",
         "--agent",
         "claude",
       ),
@@ -253,8 +249,6 @@ class AgentRunGoalContinuationCommandTest {
         "implement",
         "--code-review-mode",
         "inline",
-        "--validation-depth",
-        "full",
         "--agent",
         "cursor",
       ),
@@ -298,8 +292,6 @@ class AgentRunGoalContinuationCommandTest {
         "implement",
         "--code-review-mode",
         "inline",
-        "--validation-depth",
-        "full",
         "--agent",
         "cursor",
       ),
@@ -332,26 +324,16 @@ class AgentRunGoalContinuationCommandTest {
   }
 
   @Test
-  fun `goal-continuation builder emits stamped build_only and full validation depths`() {
+  fun `goal-continuation builder stamps full validation depth in environment only`() {
     val runner = RecordingAgentRunProcessRunner()
     val adapter = requireNotNull(headlessAgentRunAdapters(runner, ALL_EXECUTABLES_AVAILABLE)[InstallAgent.CLAUDE])
 
     adapter.launch(
-      skillRunRequest(goalContinuation = goalContinuationContext().copy(validationDepth = ValidationDepth.BUILD_ONLY)),
-    )
-    adapter.launch(
       skillRunRequest(goalContinuation = goalContinuationContext().copy(validationDepth = ValidationDepth.FULL)),
     )
 
-    val buildOnly = runner.requests[0]
-    val full = runner.requests[1]
-    val buildOnlyIndex = buildOnly.command.indexOf("--validation-depth")
-    val fullIndex = full.command.indexOf("--validation-depth")
-    assertTrue(buildOnlyIndex >= 0)
-    assertEquals("build_only", buildOnly.command[buildOnlyIndex + 1])
-    assertEquals("build_only", buildOnly.environment["SKILL_BILL_VALIDATION_DEPTH"])
-    assertTrue(fullIndex >= 0)
-    assertEquals("full", full.command[fullIndex + 1])
-    assertEquals("full", full.environment["SKILL_BILL_VALIDATION_DEPTH"])
+    val request = runner.requests.single()
+    assertFalse(request.command.contains("--validation-depth"))
+    assertEquals("full", request.environment["SKILL_BILL_VALIDATION_DEPTH"])
   }
 }

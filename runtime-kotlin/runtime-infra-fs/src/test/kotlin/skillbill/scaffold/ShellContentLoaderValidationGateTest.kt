@@ -91,7 +91,6 @@ class ShellContentLoaderValidationGateTest {
     "cache_bypassing_full_gate_command" to listOf("./gradlew", "check", "--rerun-tasks"),
     "collect_all_full_gate_command" to listOf("./gradlew", "check", "--continue"),
     "cache_bypassing_collect_all_full_gate_command" to listOf("./gradlew", "check", "--continue", "--rerun-tasks"),
-    "build_only_command" to listOf("./gradlew", "classes"),
     "findings" to mapOf(
       "format" to "junit_xml",
       "artifact_globs" to listOf("**/build/test-results/**/*.xml"),

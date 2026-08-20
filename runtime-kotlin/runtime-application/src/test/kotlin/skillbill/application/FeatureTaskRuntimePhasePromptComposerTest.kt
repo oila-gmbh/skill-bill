@@ -15,7 +15,6 @@ import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
-import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffProjectionValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.AUDIT_REPAIR_CONTRACT_VERSION
 import skillbill.workflow.taskruntime.model.CorrectiveRepairCapturedResponse
@@ -225,64 +224,10 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
-  fun `absent gate build_only agent-run prompt keeps compile-only prohibitions`() {
-    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
-      ISSUE_KEY,
-      briefingFor(
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
-        validationDepth = ValidationDepth.BUILD_ONLY,
-      ),
-      validationDepth = ValidationDepth.BUILD_ONLY,
-      agentRunValidateFallback = true,
-    )
-
-    assertContains(prompt, "Prove compile/buildability")
-    assertContains(prompt, "do not introduce suppressions, disable rules, or weaken configuration")
-    assertContains(prompt, "Validation gate degradation")
-    assertFalse(prompt.contains("runtime-provided finding set"))
-    assertFalse(prompt.contains("must not invoke the gate or any quality-check skill"))
-  }
-
-  @Test
-  fun `build_only validate prompt carries compile-only language and excludes gate invocation`() {
-    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
-      ISSUE_KEY,
-      briefingFor(
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
-        validationDepth = ValidationDepth.BUILD_ONLY,
-      ),
-      validationDepth = ValidationDepth.BUILD_ONLY,
-    )
-
-    assertContains(prompt, "Goal-continuation validate depth")
-    assertContains(prompt, "validation_depth=build_only")
-    assertContains(prompt, "Prove compile/buildability")
-    assertContains(prompt, "Do not run tests")
-    assertContains(prompt, "do not introduce suppressions, disable rules, or weaken configuration")
-    assertFalse(prompt.contains("Run tests written during the implement phase"))
-    assertFalse(prompt.contains("then run the repository validation gate"))
-    assertFalse(prompt.contains("Never rerun the gate after an individual fix"))
-    assertFalse(prompt.contains("Invoke bill-code-check for that gate"))
-    assertFalse(prompt.contains("never silence them with annotations, baselines, disabled rules"))
-    assertFalse(prompt.contains("substantiation receipt"))
-    assertFalse(prompt.contains("collect-all"))
-    assertFalse(prompt.contains("confirmation identity closure"))
-    assertContains(
-      prompt,
-      FeatureTaskRuntimeHandoffProjectionValidator.BUILD_ONLY_COMPILE_BUILDABILITY_CHECK,
-    )
-    assertFalse(prompt.contains("Focused test."))
-  }
-
-  @Test
   fun `full and non-goal validate prompts carry runtime-owned gate contract`() {
     val fullPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
-      briefingFor(
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
-        validationDepth = ValidationDepth.FULL,
-      ),
-      validationDepth = ValidationDepth.FULL,
+      briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE),
     )
     val defaultPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
@@ -336,11 +281,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     )
     val fullPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
-      briefingFor(
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
-        validationDepth = ValidationDepth.FULL,
-      ),
-      validationDepth = ValidationDepth.FULL,
+      briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE),
       validationGateFindings = page,
     )
     val defaultPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
@@ -353,21 +294,6 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       assertContains(prompt, "must not invoke the gate or any quality-check skill")
       assertContains(prompt, "Do not rediscover findings")
     }
-    val buildOnlyPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
-      ISSUE_KEY,
-      briefingFor(
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
-        validationDepth = ValidationDepth.BUILD_ONLY,
-      ),
-      validationDepth = ValidationDepth.BUILD_ONLY,
-      validationGateFindings = page,
-    )
-    assertContains(buildOnlyPrompt, "Prove compile/buildability")
-    assertFalse(buildOnlyPrompt.contains("complete discovery set"))
-    assertFalse(buildOnlyPrompt.contains("collect-all"))
-    assertFalse(buildOnlyPrompt.contains("scheduled_remainder"))
-    assertFalse(buildOnlyPrompt.contains("substantiation receipt"))
-    assertFalse(buildOnlyPrompt.contains("confirmation identity"))
   }
 
   // SKILL-180: FULL validate must carry no-suppression; other phases must not.
@@ -375,11 +301,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   fun `full validate prompt carries no-suppression clause absent from non-validate phases`() {
     val validatePrompt = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
-      briefingFor(
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
-        validationDepth = ValidationDepth.FULL,
-      ),
-      validationDepth = ValidationDepth.FULL,
+      briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE),
     )
     assertContains(
       validatePrompt,

@@ -159,11 +159,6 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
       "fan-out, explicit only). Supply at most once; a resumed workflow remains " +
       "pinned to its original mode.",
   ).multiple()
-  protected val validationDepths by option(
-    "--validation-depth",
-    help = "Goal-continuation validate depth: build_only or full (default). Supply at most once; " +
-      "a resumed goal child remains pinned to its durable depth.",
-  ).multiple()
   protected val operatorDecisions by option(
     "--operator-decision",
     help = "Release a subtask paused on an unresolved Blocker or Major: " +
@@ -344,7 +339,7 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
       parentWorkflowId = goalParentWorkflowId?.takeIf(String::isNotBlank),
       lastResumableStep = goalLastResumableStep?.takeIf(String::isNotBlank),
       codeReviewMode = requestedReviewMode,
-      validationDepth = requestedValidationDepth(),
+      validationDepth = ValidationDepth.FULL,
       parallelReviewAgent = parallelReviewAgent?.takeIf(String::isNotBlank),
       reviewBaseline = requireNotNull(goalReviewBaseSha?.takeIf(String::isNotBlank)) {
         "--goal-review-base-sha is required with goal-continuation options."
@@ -389,25 +384,6 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
     }
   }
 
-  private fun requestedValidationDepth(): ValidationDepth {
-    val depths = validationDepths.map(::parseRequestedValidationDepth)
-    return when (depths.size) {
-      0 -> ValidationDepth.DEFAULT
-      1 -> depths.single()
-      else -> {
-        val rawDepths = validationDepths.joinToString(", ")
-        if (depths.distinct().size == 1) {
-          throw UsageError(
-            "Duplicate --validation-depth '$rawDepths' is not allowed; supply it at most once.",
-          )
-        }
-        throw UsageError(
-          "Conflicting --validation-depth values '$rawDepths' are not allowed; supply exactly one depth.",
-        )
-      }
-    }
-  }
-
   private fun parseRequestedCodeReviewMode(raw: String): CodeReviewExecutionMode = (
     CodeReviewExecutionMode.entries.firstOrNull { it.wireValue == raw }
       ?: throw UsageError(
@@ -415,13 +391,6 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
           "${CodeReviewExecutionMode.entries.joinToString { it.wireValue }}.",
       )
     )
-
-  private fun parseRequestedValidationDepth(raw: String): ValidationDepth =
-    ValidationDepth.entries.firstOrNull { it.wireValue == raw }
-      ?: throw UsageError(
-        "Unknown validation depth '$raw'. Allowed: " +
-          "${ValidationDepth.entries.joinToString { it.wireValue }}.",
-      )
 
   private fun goalContinuationMissingFields(): List<String> = buildList {
     if (goalParentIssueKey.isNullOrBlank()) add("--goal-parent-issue-key is")

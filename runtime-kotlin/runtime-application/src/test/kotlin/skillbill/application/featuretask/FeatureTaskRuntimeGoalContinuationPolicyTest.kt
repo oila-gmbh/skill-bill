@@ -15,31 +15,9 @@ import kotlin.test.assertNull
 
 class FeatureTaskRuntimeGoalContinuationPolicyTest {
   private val baseline = GoalSubtaskReviewBaseline("0".repeat(40), emptyList())
-  private val conflictMessage =
-    "The supplied goal-continuation validation depth conflicts with its durable child policy."
-
-  @Test
-  fun `supplied vs durable validation depth mismatch blocks with byte-identical message`() {
-    val conflict = goalContinuationConflict(
-      request = request(
-        goalContinuation = continuation(validationDepth = ValidationDepth.BUILD_ONLY),
-      ),
-      durable = durable(validationDepth = ValidationDepth.FULL),
-      baseline = baseline,
-    )
-
-    assertEquals(conflictMessage, conflict)
-  }
 
   @Test
   fun `absent durable validation depth adopts supplied depth without conflict`() {
-    assertNull(
-      goalContinuationConflict(
-        request = request(goalContinuation = continuation(validationDepth = ValidationDepth.BUILD_ONLY)),
-        durable = durable(validationDepth = null),
-        baseline = baseline,
-      ),
-    )
     assertNull(
       goalContinuationConflict(
         request = request(goalContinuation = continuation(validationDepth = ValidationDepth.FULL)),
@@ -55,13 +33,6 @@ class FeatureTaskRuntimeGoalContinuationPolicyTest {
       goalContinuationConflict(
         request = request(goalContinuation = continuation(validationDepth = ValidationDepth.DEFAULT)),
         durable = durable(validationDepth = ValidationDepth.FULL),
-        baseline = baseline,
-      ),
-    )
-    assertNull(
-      goalContinuationConflict(
-        request = request(goalContinuation = continuation(validationDepth = ValidationDepth.BUILD_ONLY)),
-        durable = durable(validationDepth = ValidationDepth.BUILD_ONLY),
         baseline = baseline,
       ),
     )

@@ -6253,7 +6253,6 @@ internal class FeatureTaskRuntimeRunLoop(
       operatorBlockRetry = operatorBlockRetry
         ?.takeIf { it.phaseId == run.phaseId && !operatorBlockRetryCompleted },
       implementationContinuation = implementationContinuationFor(run),
-      validationDepth = run.request.goalContinuation?.validationDepth ?: ValidationDepth.DEFAULT,
       validationGateFindings = run.validationGateFindings,
       agentRunValidateFallback = run.agentRunValidateFallback,
     )

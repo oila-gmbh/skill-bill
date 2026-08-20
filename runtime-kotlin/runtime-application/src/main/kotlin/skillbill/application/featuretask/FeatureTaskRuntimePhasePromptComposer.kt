@@ -11,7 +11,6 @@ import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.review.model.ReviewIssueCategory
 import skillbill.workflow.model.CodeReviewExecutionMode
-import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
@@ -47,7 +46,6 @@ object FeatureTaskRuntimePhasePromptComposer {
     correctiveRepairContext: FeatureTaskRuntimeCorrectiveRepairContext? = null,
     operatorBlockRetry: FeatureTaskRuntimeOperatorBlockRetry? = null,
     implementationContinuation: FeatureTaskRuntimeImplementationContinuation? = null,
-    validationDepth: ValidationDepth = ValidationDepth.DEFAULT,
     validationGateFindings: ValidationFindingSetProjection? = null,
     agentRunValidateFallback: Boolean = false,
     repairLedger: FeatureTaskRuntimeRepairLedger? = null,
@@ -67,15 +65,14 @@ object FeatureTaskRuntimePhasePromptComposer {
     // corrective path must render only the schema rejection plus authorized repair context.
     val effectiveContinuation = implementationContinuation.takeUnless { correctiveRepairContext != null }
     return listOf(
-      header(issueKey, briefing.phaseId, validationDepth, agentRunValidateFallback),
+      header(issueKey, briefing.phaseId, agentRunValidateFallback),
       ceremonyDirective(briefing, reviewPassNumber),
       mutatingPhaseIdempotencyDirective(briefing.phaseId),
       minimalismDisciplineDirective(briefing.phaseId),
       testValueDisciplineDirective(briefing.phaseId),
       goalContinuationDirective(briefing.phaseId, suppressDecomposition),
-      goalContinuationValidateDepthDirective(briefing.phaseId, validationDepth, agentRunValidateFallback),
       absentValidationGateDegradationDirective(briefing.phaseId, agentRunValidateFallback),
-      validationGateFindingsDirective(briefing.phaseId, validationGateFindings, validationDepth),
+      validationGateFindingsDirective(briefing.phaseId, validationGateFindings),
       reviewExecutionDirective(
         briefing.phaseId,
         ReviewExecutionDirectiveInputs(
@@ -98,7 +95,7 @@ object FeatureTaskRuntimePhasePromptComposer {
       implementationContinuationDirective(briefing.phaseId, effectiveContinuation),
       retryCorrectionDirective(briefing, priorSchemaFailure, correctiveRepairContext),
       terminalRetryDirective(priorTerminalFailure),
-      outputContract(briefing, validationDepth, agentRunValidateFallback),
+      outputContract(briefing, agentRunValidateFallback),
     ).filter(String::isNotBlank).joinToString(separator = "\n\n")
   }
 
@@ -293,14 +290,9 @@ object FeatureTaskRuntimePhasePromptComposer {
       .filterNot { it in FeatureTaskRuntimePhaseWorkflowDefinition.transitions.loopOnlyPhaseIds }
       .joinToString(" -> ")
 
-  private fun header(
-    issueKey: String,
-    phaseId: String,
-    validationDepth: ValidationDepth,
-    agentRunValidateFallback: Boolean = false,
-  ): String {
+  private fun header(issueKey: String, phaseId: String, agentRunValidateFallback: Boolean = false): String {
     val label = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepLabels[phaseId] ?: phaseId
-    val directive = phaseTaskDirective(phaseId, validationDepth, agentRunValidateFallback)
+    val directive = phaseTaskDirective(phaseId, agentRunValidateFallback)
     return """
       You are executing exactly one phase of the EXPERIMENTAL skill-bill feature-task-runtime
       loop ($forwardPhaseOrder)
@@ -350,7 +342,6 @@ object FeatureTaskRuntimePhasePromptComposer {
 
   private fun outputContract(
     briefing: FeatureTaskRuntimePhaseLaunchBriefing,
-    validationDepth: ValidationDepth,
     agentRunValidateFallback: Boolean,
   ): String {
     val phaseId = briefing.phaseId
@@ -371,7 +362,6 @@ object FeatureTaskRuntimePhasePromptComposer {
       result for downstream phases (for example plan steps, changed files, findings, or
       validation results)${producedOutputsAddendum(
       briefing,
-      validationDepth,
       agentRunValidateFallback,
     )}
     - "derived_notes": optional; when present, a non-empty string of notes for downstream
@@ -391,12 +381,11 @@ object FeatureTaskRuntimePhasePromptComposer {
   // non-empty; every other phase returns "" so its output contract stays byte-for-byte unchanged.
   private fun producedOutputsAddendum(
     briefing: FeatureTaskRuntimePhaseLaunchBriefing,
-    validationDepth: ValidationDepth,
     agentRunValidateFallback: Boolean,
   ): String {
     val phaseId = briefing.phaseId
     if (FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(phaseId)) {
-      return mutatingProducedOutputsAddendum(briefing, validationDepth, agentRunValidateFallback)
+      return mutatingProducedOutputsAddendum(briefing, agentRunValidateFallback)
     }
     val findings = FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS
     val verdict = FeatureTaskRuntimeVerificationSignalKeys.VERDICT
@@ -406,7 +395,6 @@ object FeatureTaskRuntimePhasePromptComposer {
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
       -> FeatureTaskRuntimePhaseProjectionShapes.exampleFor(
         phaseId,
-        validationDepth,
         agentRunValidateFallback,
       )
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW ->
@@ -435,7 +423,6 @@ object FeatureTaskRuntimePhasePromptComposer {
 
   private fun mutatingProducedOutputsAddendum(
     briefing: FeatureTaskRuntimePhaseLaunchBriefing,
-    validationDepth: ValidationDepth,
     agentRunValidateFallback: Boolean,
   ): String {
     val phaseId = briefing.phaseId
@@ -465,7 +452,6 @@ object FeatureTaskRuntimePhasePromptComposer {
       "      reconciliation report missing or \"reconciled\" not true fails the schema gate loudly." +
       FeatureTaskRuntimePhaseProjectionShapes.exampleFor(
         phaseId,
-        validationDepth,
         agentRunValidateFallback,
       ) + remediation
   }
@@ -594,23 +580,15 @@ object FeatureTaskRuntimePhasePromptComposer {
       "        \"repair_item_results\": ${repairItemResultsJson(repairItemIds)} }\n" +
       "      ```"
 
-  private fun validationGateFindingsDirective(
-    phaseId: String,
-    findings: ValidationFindingSetProjection?,
-    validationDepth: ValidationDepth,
-  ): String {
+  private fun validationGateFindingsDirective(phaseId: String, findings: ValidationFindingSetProjection?): String {
     if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE || findings == null) return ""
     val lines = buildList {
       add("## Runtime validation gate findings")
-      if (validationDepth == ValidationDepth.BUILD_ONLY) {
-        add("Fix every finding below at its root cause. Do not invoke the gate or any quality-check skill.")
-      } else {
-        add(
-          "This is the complete finding set from one gate run. Fix every finding at its root cause. " +
-            "Do not invoke the gate or any quality-check skill, and do not rediscover findings; " +
-            "the runtime reruns the gate to confirm.",
-        )
-      }
+      add(
+        "This is the complete finding set from one gate run. Fix every finding at its root cause. " +
+          "Do not invoke the gate or any quality-check skill, and do not rediscover findings; " +
+          "the runtime reruns the gate to confirm.",
+      )
       findings.findings.forEachIndexed { index, finding ->
         add(
           "${index + 1}. module=${finding.module} id=${finding.ruleOrTestId} " +

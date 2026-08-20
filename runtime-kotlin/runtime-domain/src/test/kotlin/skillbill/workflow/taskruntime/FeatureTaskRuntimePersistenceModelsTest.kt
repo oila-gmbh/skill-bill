@@ -605,7 +605,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceModelsTest {
       goalBranch = "feat/SKILL-119-subtask-2",
       parentWorkflowId = "wfl-parent",
       codeReviewMode = CodeReviewExecutionMode.DELEGATED,
-      validationDepth = ValidationDepth.BUILD_ONLY,
+      validationDepth = ValidationDepth.FULL,
       parallelReviewAgent = "claude",
       agentAddonSelection = AgentAddonSelection(
         listOf(
@@ -634,12 +634,12 @@ class FeatureTaskRuntimeGoalContinuationPersistenceModelsTest {
     assertEquals(full, FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(full.toArtifactMap()))
     assertEquals("full", full.toArtifactMap()["validation_depth"])
 
-    val buildOnly = full.copy(validationDepth = ValidationDepth.BUILD_ONLY)
     assertEquals(
-      buildOnly,
-      FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(buildOnly.toArtifactMap()),
+      full,
+      FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(
+        full.toArtifactMap() + ("validation_depth" to "build_only"),
+      ),
     )
-    assertEquals("build_only", buildOnly.toArtifactMap()["validation_depth"])
 
     val absentKey = linkedMapOf<String, Any?>(
       "issue_key" to "SKILL-173",

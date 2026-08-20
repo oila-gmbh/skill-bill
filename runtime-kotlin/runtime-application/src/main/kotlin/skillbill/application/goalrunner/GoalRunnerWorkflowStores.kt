@@ -100,6 +100,7 @@ import skillbill.workflow.model.GOAL_PROGRESS_RUN_HISTORY_ARTIFACT_KEY
 import skillbill.workflow.model.GoalProgressEvent
 import skillbill.workflow.model.GoalProgressEventKind
 import skillbill.workflow.model.GoalProgressOutcome
+import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.model.WorkflowStateSnapshot
 import skillbill.workflow.model.WorkflowStepState
 import skillbill.workflow.model.WorkflowUpdateInput
@@ -709,7 +710,7 @@ class WorkflowGoalRunnerManifestStore(
       goalBranch = setup.goalBranch,
       parentWorkflowId = parentWorkflowId,
       codeReviewMode = setup.reviewPolicy.codeReviewMode,
-      validationDepth = validationDepthForSubtask(state.manifest.subtasks, setup.subtaskId),
+      validationDepth = ValidationDepth.FULL,
       parallelReviewAgent = setup.reviewPolicy.parallelReviewAgent,
       subtaskName = state.manifest.subtasks.firstOrNull { it.id == setup.subtaskId }?.name?.takeIf(String::isNotBlank),
     ).toArtifactMap(),
@@ -1584,7 +1585,6 @@ class WorkflowGoalRunnerOutcomeStore(
     issueKey: String,
     subtaskId: Int,
     wedgeClasses: List<skillbill.application.model.GoalRunnerWedgeClass>,
-    subtasks: List<DecompositionSubtask>,
     repoRoot: Path,
     dbPathOverride: String?,
   ): GoalRunnerChildRepairApplyResult {
@@ -1595,7 +1595,6 @@ class WorkflowGoalRunnerOutcomeStore(
         issueKey = issueKey,
         subtaskId = subtaskId,
         wedgeClasses = wedgeClasses,
-        subtasks = subtasks,
         repoRoot = repoRoot,
       )
     }

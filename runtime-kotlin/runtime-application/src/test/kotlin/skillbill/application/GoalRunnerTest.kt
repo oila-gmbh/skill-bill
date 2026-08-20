@@ -653,7 +653,7 @@ class GoalRunnerTest {
 // so that suite stays under the detekt LargeClass threshold.
 class GoalRunnerValidationDepthTest {
   @Test
-  fun `three non-skipped children stamp build_only then build_only then full`() {
+  fun `every non-skipped child stamps full validation depth`() {
     val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 3))
     val outcomes = RecordingOutcomeStore()
     val launcher = RecordingSubtaskLauncher { request ->
@@ -667,7 +667,7 @@ class GoalRunnerValidationDepthTest {
     assertIs<GoalRunnerRunReport.Completed>(runner.run(runRequest()))
 
     assertEquals(
-      listOf(ValidationDepth.BUILD_ONLY, ValidationDepth.BUILD_ONLY, ValidationDepth.FULL),
+      listOf(ValidationDepth.FULL, ValidationDepth.FULL, ValidationDepth.FULL),
       launcher.requests.map { requireNotNull(it.skillRunRequest.goalContinuation).validationDepth },
     )
   }
@@ -713,7 +713,7 @@ class GoalRunnerValidationDepthTest {
 
     assertEquals(listOf(1, 2), launcher.requests.map { it.skillRunRequest.subtaskId })
     assertEquals(
-      listOf(ValidationDepth.BUILD_ONLY, ValidationDepth.FULL),
+      listOf(ValidationDepth.FULL, ValidationDepth.FULL),
       launcher.requests.map { requireNotNull(it.skillRunRequest.goalContinuation).validationDepth },
     )
   }

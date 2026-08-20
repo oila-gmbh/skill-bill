@@ -267,30 +267,8 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
   }
 
   @Test
-  fun `build_only validation_request required_checks is compile buildability only`() {
-    val fields = validationRequestFields(ValidationDepth.BUILD_ONLY)
-    val requiredChecks = assertIs<FeatureTaskRuntimeHandoffProjectionValue.TextList>(
-      fields.getValue("required_checks").value,
-    ).items
-    assertEquals(
-      listOf(FeatureTaskRuntimeHandoffProjectionValidator.BUILD_ONLY_COMPILE_BUILDABILITY_CHECK),
-      requiredChecks,
-    )
-    assertFalse(requiredChecks.any { it.contains("test", ignoreCase = true) })
-    assertFalse(requiredChecks.contains("Focused runtime tests."))
-    assertFalse(requiredChecks.contains("Focused unit test."))
-    // Shape stays stable: strategy is still projected, only required_checks contents narrow.
-    assertEquals(
-      listOf("Focused runtime tests."),
-      assertIs<FeatureTaskRuntimeHandoffProjectionValue.TextList>(
-        fields.getValue("validation_strategy").value,
-      ).items,
-    )
-  }
-
-  @Test
   fun `full and default validation_request required_checks merge strategy and test obligations`() {
-    listOf(ValidationDepth.FULL, ValidationDepth.DEFAULT).forEach { depth ->
+    ValidationDepth.entries.forEach { depth ->
       val requiredChecks = assertIs<FeatureTaskRuntimeHandoffProjectionValue.TextList>(
         validationRequestFields(depth).getValue("required_checks").value,
       ).items

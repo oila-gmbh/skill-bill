@@ -27,7 +27,7 @@ class PlatformPackFallbackTest {
     packRoot.resolve("platform.yaml").writeText(
       """
       platform: custom-neutral
-      contract_version: "1.5"
+      contract_version: "1.6"
       routing_signals:
         strong: [fallback-only]
       fallback_capabilities: [code-review]
@@ -79,7 +79,7 @@ class PlatformPackFallbackTest {
     packRoot.resolve("platform.yaml").writeText(
       """
       platform: malformed
-      contract_version: "1.5"
+      contract_version: "1.6"
       routing_signals:
         strong: [fallback-only]
       fallback_capabilities: [quality-check]

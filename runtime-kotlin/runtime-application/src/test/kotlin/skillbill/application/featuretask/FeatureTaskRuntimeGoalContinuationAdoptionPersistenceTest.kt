@@ -26,15 +26,9 @@ import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/**
- * AC-007 / AC-008: resume preparation against a durable goal-continuation map seeded without
- * going through toArtifactMap, so the missing-key pre-contract shape is exact.
- */
 class FeatureTaskRuntimeGoalContinuationAdoptionPersistenceTest {
   private val workflowId = "wftr-skill176-adopt-1"
   private val baselineSha = "a".repeat(40)
-  private val conflictMessage =
-    "The supplied goal-continuation validation depth conflicts with its durable child policy."
 
   @Test
   fun `resume from durable map missing validation_depth adopts supplied depth and records evidence`() {
@@ -43,19 +37,19 @@ class FeatureTaskRuntimeGoalContinuationAdoptionPersistenceTest {
     )
 
     val prepared = assertIs<FeatureTaskRuntimePreparation.Prepared>(
-      harness.preparation.prepare(resumeRequest(ValidationDepth.BUILD_ONLY)),
+      harness.preparation.prepare(resumeRequest(ValidationDepth.FULL)),
     )
 
-    assertEquals(ValidationDepth.BUILD_ONLY, prepared.request.goalContinuation?.validationDepth)
+    assertEquals(ValidationDepth.FULL, prepared.request.goalContinuation?.validationDepth)
     val artifacts = harness.repository.taskRuntimeArtifacts(workflowId)
 
     @Suppress("UNCHECKED_CAST")
     val continuation = artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY] as Map<String, Any?>
-    assertEquals("build_only", continuation["validation_depth"])
+    assertEquals("full", continuation["validation_depth"])
     @Suppress("UNCHECKED_CAST")
     val adoption = artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_FIELD_ADOPTION_ARTIFACT_KEY] as Map<String, Any?>
     assertEquals("validation_depth", adoption["field"])
-    assertEquals("build_only", adoption["adopted_value"])
+    assertEquals("full", adoption["adopted_value"])
     assertTrue(
       (adoption["reason"] as String).contains("predated the validation_depth contract"),
       "adoption evidence must record why the heal happened",
@@ -65,32 +59,14 @@ class FeatureTaskRuntimeGoalContinuationAdoptionPersistenceTest {
   @Test
   fun `resume with equal recorded validation_depth proceeds without adoption evidence`() {
     val harness = seedHarness(
-      continuationMap = preContractContinuationMap(includeValidationDepth = "build_only"),
-    )
-
-    val prepared = assertIs<FeatureTaskRuntimePreparation.Prepared>(
-      harness.preparation.prepare(resumeRequest(ValidationDepth.BUILD_ONLY)),
-    )
-
-    assertEquals(ValidationDepth.BUILD_ONLY, prepared.request.goalContinuation?.validationDepth)
-    val artifacts = harness.repository.taskRuntimeArtifacts(workflowId)
-    assertNull(artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_FIELD_ADOPTION_ARTIFACT_KEY])
-    @Suppress("UNCHECKED_CAST")
-    val continuation = artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY] as Map<String, Any?>
-    assertEquals("build_only", continuation["validation_depth"])
-  }
-
-  @Test
-  fun `resume with differing recorded validation_depth blocks with byte-identical message`() {
-    val harness = seedHarness(
       continuationMap = preContractContinuationMap(includeValidationDepth = "full"),
     )
 
-    val blocked = assertIs<FeatureTaskRuntimePreparation.PreparationBlocked>(
-      harness.preparation.prepare(resumeRequest(ValidationDepth.BUILD_ONLY)),
+    val prepared = assertIs<FeatureTaskRuntimePreparation.Prepared>(
+      harness.preparation.prepare(resumeRequest(ValidationDepth.FULL)),
     )
 
-    assertEquals(conflictMessage, blocked.report.blockedReason)
+    assertEquals(ValidationDepth.FULL, prepared.request.goalContinuation?.validationDepth)
     val artifacts = harness.repository.taskRuntimeArtifacts(workflowId)
     assertNull(artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_FIELD_ADOPTION_ARTIFACT_KEY])
     @Suppress("UNCHECKED_CAST")

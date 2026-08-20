@@ -36,7 +36,6 @@ internal val validationGateTestDeclaration: ValidationGateDeclaration = Validati
   cacheBypassingFullGateCommand = listOf("echo", "full"),
   collectAllFullGateCommand = listOf("echo", "collect-all"),
   cacheBypassingCollectAllFullGateCommand = listOf("echo", "collect-all-full"),
-  buildOnlyCommand = listOf("echo", "build-only"),
   findings = ValidationGateFindingsLocator(
     format = ValidationGateFindingsFormat.JUNIT_XML,
     artifactGlobs = listOf("**/*.xml"),
@@ -49,7 +48,7 @@ internal val validationGateTestDeclaration: ValidationGateDeclaration = Validati
 
 internal fun outOfContractResolver(): ValidationGateResolver = ValidationGateResolver {
   throw ContractVersionMismatchError(
-    "Platform pack 'fallback': declares contract_version '0.1' but the shell expects '1.5'.",
+    "Platform pack 'fallback': declares contract_version '0.1' but the shell expects '1.6'.",
   )
 }
 
@@ -206,7 +205,7 @@ internal fun completedRepair(
 internal fun kotlinPackWithoutGate(): PlatformManifest = PlatformManifest(
   slug = "kotlin",
   packRoot = validationGateTestRepoRoot.resolve("platform-packs/kotlin"),
-  contractVersion = "1.5",
+  contractVersion = "1.6",
   routingSignals = RoutingSignals(
     strong = listOf("runtime-kotlin"),
     tieBreakers = emptyList(),

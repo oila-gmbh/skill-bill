@@ -329,7 +329,6 @@ internal class GoalRunnerRepairTest : GoalRunnerRepairFixtures() {
       issueKey = ISSUE_KEY,
       subtaskId = 1,
       wedgeClasses = listOf(GoalRunnerWedgeClass.COMPLETED_UPSTREAM_MISSING_OUTPUT),
-      subtasks = listOf(subtask(1, workflowId)),
       repoRoot = Path.of("."),
     )
 
@@ -390,7 +389,6 @@ internal class GoalRunnerRepairContinuationTest : GoalRunnerRepairFixtures() {
         GoalRunnerWedgeClass.COMPLETED_UPSTREAM_MISSING_OUTPUT,
         GoalRunnerWedgeClass.MISSING_VALIDATION_DEPTH,
       ),
-      subtasks = listOf(subtask(1, workflowId), subtask(2, null)),
       repoRoot = Path.of("."),
     )
     assertEquals(2, applied.repairs.size)
@@ -403,7 +401,7 @@ internal class GoalRunnerRepairContinuationTest : GoalRunnerRepairFixtures() {
     assertEquals("plan_fix", updated.currentStepId)
     val after = decodeArtifacts(updated.artifactsJson)
     val continuation = after["goal_continuation"] as Map<*, *>
-    assertEquals("build_only", continuation["validation_depth"])
+    assertEquals("full", continuation["validation_depth"])
     val records = phaseRecordsFrom(after)
     assertEquals("pending", records.getValue("plan_fix").status)
     assertEquals("pending", records.getValue("implement_fix").status)
@@ -441,12 +439,11 @@ internal class GoalRunnerRepairContinuationTest : GoalRunnerRepairFixtures() {
       issueKey = ISSUE_KEY,
       subtaskId = 1,
       wedgeClasses = listOf(GoalRunnerWedgeClass.MISSING_VALIDATION_DEPTH),
-      subtasks = listOf(subtask(1, workflowId), subtask(2, null)),
       repoRoot = Path.of("."),
     )
 
     assertEquals(1, applied.repairs.size)
-    assertEquals("build_only", applied.repairs.single().newValue)
+    assertEquals("full", applied.repairs.single().newValue)
     val after = decodeArtifacts(
       requireNotNull(workflows.getFeatureTaskRuntimeWorkflow(workflowId)).artifactsJson,
     )
@@ -457,12 +454,12 @@ internal class GoalRunnerRepairContinuationTest : GoalRunnerRepairFixtures() {
       "review pass results must survive validation_depth repair",
     )
     val continuation = after["goal_continuation"] as Map<*, *>
-    assertEquals("build_only", continuation["validation_depth"])
+    assertEquals("full", continuation["validation_depth"])
     val evidence = (after[GOAL_CHILD_REPAIR_EVIDENCE_ARTIFACT_KEY] as List<*>).single() as Map<*, *>
     assertEquals("missing_validation_depth", evidence["wedge_class"])
     assertEquals("validation_depth", evidence["field"])
     assertNull(evidence["prior_value"])
-    assertEquals("build_only", evidence["new_value"])
+    assertEquals("full", evidence["new_value"])
   }
 
   @Test
@@ -497,7 +494,6 @@ internal class GoalRunnerRepairContinuationTest : GoalRunnerRepairFixtures() {
       issueKey = ISSUE_KEY,
       subtaskId = 1,
       wedgeClasses = listOf(GoalRunnerWedgeClass.STALE_BLOCKED_CONTINUATION_OUTCOME),
-      subtasks = listOf(subtask(1, workflowId)),
       repoRoot = Path.of("."),
     )
 
@@ -548,7 +544,6 @@ internal class GoalRunnerRepairContinuationTest : GoalRunnerRepairFixtures() {
       issueKey = ISSUE_KEY,
       subtaskId = 1,
       wedgeClasses = listOf(GoalRunnerWedgeClass.UNREACHABLE_REMEDIATION_BASE),
-      subtasks = listOf(subtask(1, workflowId)),
       repoRoot = Path.of("."),
     )
 
@@ -592,7 +587,6 @@ internal class GoalRunnerRepairContinuationTest : GoalRunnerRepairFixtures() {
         issueKey = ISSUE_KEY,
         subtaskId = 1,
         wedgeClasses = listOf(GoalRunnerWedgeClass.MISSING_VALIDATION_DEPTH),
-        subtasks = listOf(subtask(1, workflowId)),
         repoRoot = Path.of("."),
       )
     }
@@ -775,7 +769,7 @@ internal abstract class GoalRunnerRepairFixtures {
       goalBranch = GOAL_BRANCH,
       parentWorkflowId = "wfl-parent",
       codeReviewMode = CodeReviewExecutionMode.INLINE,
-      validationDepth = if (includeValidationDepth) ValidationDepth.BUILD_ONLY else null,
+      validationDepth = if (includeValidationDepth) ValidationDepth.FULL else null,
     ).toArtifactMap().let { map ->
       if (includeValidationDepth) map else map.filterKeys { it != "validation_depth" }
     }

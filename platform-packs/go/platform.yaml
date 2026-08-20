@@ -1,5 +1,5 @@
 platform: go
-contract_version: "1.5"
+contract_version: "1.6"
 display_name: Go
 
 routing_signals:

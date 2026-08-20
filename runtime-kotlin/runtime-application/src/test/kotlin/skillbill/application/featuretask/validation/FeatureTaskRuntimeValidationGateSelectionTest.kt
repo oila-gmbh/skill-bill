@@ -26,40 +26,24 @@ import kotlin.test.assertTrue
 
 class FeatureTaskRuntimeValidationGateSelectionTest {
   @Test
-  fun `depth and cycle phase select discovery or verify argv and never full_gate_command`() {
+  fun `cycle phase selects collect-all discovery or verify argv and never full_gate_command`() {
     assertEquals(
-      listOf("echo", "build-only"),
+      listOf("echo", "collect-all"),
       validationGateArgv(
         validationGateTestDeclaration,
-        ValidationDepth.BUILD_ONLY,
         ValidationGateCyclePhase.INITIAL_DISCOVERY,
       ),
     )
     assertEquals(
-      listOf("echo", "full"),
+      listOf("echo", "collect-all-full"),
       validationGateArgv(
         validationGateTestDeclaration,
-        ValidationDepth.BUILD_ONLY,
         ValidationGateCyclePhase.POST_REPAIR_VERIFY,
       ),
     )
-    val discovery = validationGateArgv(
-      validationGateTestDeclaration,
-      ValidationDepth.FULL,
-      ValidationGateCyclePhase.INITIAL_DISCOVERY,
-    )
-    assertEquals(listOf("echo", "collect-all"), discovery)
-    val verify = validationGateArgv(
-      validationGateTestDeclaration,
-      ValidationDepth.FULL,
-      ValidationGateCyclePhase.POST_REPAIR_VERIFY,
-    )
-    assertEquals(listOf("echo", "collect-all-full"), verify)
-    for (depth in listOf(ValidationDepth.FULL, ValidationDepth.DEFAULT, ValidationDepth.BUILD_ONLY)) {
-      for (phase in ValidationGateCyclePhase.entries) {
-        val argv = validationGateArgv(validationGateTestDeclaration, depth, phase)
-        assertTrue(argv != validationGateTestDeclaration.fullGateCommand)
-      }
+    for (phase in ValidationGateCyclePhase.entries) {
+      val argv = validationGateArgv(validationGateTestDeclaration, phase)
+      assertTrue(argv != validationGateTestDeclaration.fullGateCommand)
     }
   }
 
@@ -69,7 +53,6 @@ class FeatureTaskRuntimeValidationGateSelectionTest {
     val gradleGate = validationGateTestDeclaration.copy(
       fullGateCommand = listOf("./gradlew", "check"),
       collectAllFullGateCommand = listOf("./gradlew", "check", "--continue"),
-      buildOnlyCommand = listOf("./gradlew", "classes"),
     )
     val runner = object : ValidationGateRunner {
       override fun run(request: ValidationGateRunRequest): ValidationGateRunResult {

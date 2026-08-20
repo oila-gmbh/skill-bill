@@ -1,5 +1,5 @@
 class: feature-task
-contract_version: "1.5"
+contract_version: "1.6"
 
 matchers:
   - pattern: "^bill-[a-z0-9-]*feature-task$"

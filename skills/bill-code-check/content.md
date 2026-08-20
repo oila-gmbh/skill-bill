@@ -11,7 +11,7 @@ Route dominant-stack quality checks to the pack-declared quality-check sidecar. 
 
 ## Repair Window
 
-After a complete finding set exists from one gate or collect-all quality-check run, do not invoke any check command until every finding in that set is repaired at its root cause. While the set is open, forbidden work includes the full gate, collect-all gate, build-only gate, stack-specific checkers, `bill-code-check` re-invocation, format tasks, Gradle or module tasks (including `detekt`, `ktlintCheck`, `test`, and `compileKotlin`), and subagent-delegated checks. Allowed work is read, search, and source edits only. Verification runs once after the full set is repaired; if it fails, its output is the new complete finding set and a new repair window opens.
+After a complete finding set exists from one gate or collect-all quality-check run, do not invoke any check command until every finding in that set is repaired at its root cause. While the set is open, forbidden work includes the full gate, collect-all gate, stack-specific checkers, `bill-code-check` re-invocation, format tasks, Gradle or module tasks (including `detekt`, `ktlintCheck`, `test`, and `compileKotlin`), and subagent-delegated checks. Allowed work is read, search, and source edits only. Verification runs once after the full set is repaired; if it fails, its output is the new complete finding set and a new repair window opens.
 
 ## Routing
 

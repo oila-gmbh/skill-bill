@@ -225,7 +225,6 @@ class FileSystemValidationGateRunnerTest {
       cacheBypassingFullGateCommand = listOf("sh", "gate.sh", "--rerun-tasks"),
       collectAllFullGateCommand = listOf("sh", "gate.sh", "--continue"),
       cacheBypassingCollectAllFullGateCommand = listOf("sh", "gate.sh", "--continue", "--rerun-tasks"),
-      buildOnlyCommand = listOf("sh", "-c", "exit 0"),
       findings = ValidationGateFindingsLocator(
         format = ValidationGateFindingsFormat.JUNIT_XML,
         artifactGlobs = listOf("**/build/test-results/**/*.xml"),

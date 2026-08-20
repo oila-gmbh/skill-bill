@@ -71,6 +71,7 @@ import skillbill.workflow.model.DecompositionExecutionModel
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
 import skillbill.workflow.model.SpecSource
+import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import java.nio.file.Path
 
@@ -1906,7 +1907,7 @@ internal class GoalRunnerLaunchReconciler(
         childWorkflowId = childWorkflowId,
         assignedWorkflowId = assignedWorkflowId,
         codeReviewMode = request.codeReviewMode ?: CodeReviewExecutionMode.DEFAULT,
-        validationDepth = validationDepthForSubtask(state.manifest.subtasks, subtaskId),
+        validationDepth = ValidationDepth.FULL,
         parallelReviewAgent = request.parallelReviewAgent,
         agentAddonSelection = manifestStore.effectiveAgentAddonSelection(state.parentWorkflowId, request),
         reviewBaseline = state.manifest.workflowIdFor(subtaskId)

@@ -6,9 +6,13 @@ import kotlin.test.assertFailsWith
 
 class ValidationDepthTest {
   @Test
-  fun `fromWire accepts build_only and full`() {
-    assertEquals(ValidationDepth.BUILD_ONLY, ValidationDepth.fromWire("build_only"))
+  fun `fromWire accepts full`() {
     assertEquals(ValidationDepth.FULL, ValidationDepth.fromWire("full"))
+  }
+
+  @Test
+  fun `fromWire decodes the retired build_only value to full`() {
+    assertEquals(ValidationDepth.FULL, ValidationDepth.fromWire("build_only"))
   }
 
   @Test

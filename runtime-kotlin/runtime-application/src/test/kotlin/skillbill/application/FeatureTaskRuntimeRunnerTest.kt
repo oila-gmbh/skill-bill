@@ -5248,7 +5248,7 @@ private fun kotlinPackWithValidationGate(): skillbill.scaffold.model.PlatformMan
   skillbill.scaffold.model.PlatformManifest(
     slug = "kotlin",
     packRoot = Path.of("/tmp/repo/platform-packs/kotlin"),
-    contractVersion = "1.5",
+    contractVersion = "1.6",
     routingSignals = skillbill.scaffold.model.RoutingSignals(
       strong = listOf("src"),
       tieBreakers = emptyList(),
@@ -5262,7 +5262,6 @@ private fun kotlinPackWithValidationGate(): skillbill.scaffold.model.PlatformMan
       cacheBypassingFullGateCommand = listOf("echo", "full"),
       collectAllFullGateCommand = listOf("echo", "collect-all"),
       cacheBypassingCollectAllFullGateCommand = listOf("echo", "collect-all-full"),
-      buildOnlyCommand = listOf("echo", "build"),
       findings = skillbill.scaffold.model.ValidationGateFindingsLocator(
         format = skillbill.scaffold.model.ValidationGateFindingsFormat.JUNIT_XML,
         artifactGlobs = listOf("**/*.xml"),

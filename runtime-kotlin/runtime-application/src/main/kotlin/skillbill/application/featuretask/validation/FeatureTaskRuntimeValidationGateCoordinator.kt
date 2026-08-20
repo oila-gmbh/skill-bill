@@ -27,7 +27,6 @@ import skillbill.ports.validation.model.ValidationGateRunOutcome
 import skillbill.ports.validation.model.ValidationGateRunRequest
 import skillbill.ports.validation.model.ValidationGateRunResult
 import skillbill.scaffold.model.ValidationGateDeclaration
-import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress
@@ -181,17 +180,13 @@ class FeatureTaskRuntimeValidationGateCoordinator(
     declaration: ValidationGateDeclaration,
     cyclePhase: ValidationGateCyclePhase,
   ): ValidationGateRunResult {
-    val packArgv = validationGateArgv(declaration, cycle.validationDepth, cyclePhase)
+    val packArgv = validationGateArgv(declaration, cyclePhase)
     val cacheMode = when (cyclePhase) {
       ValidationGateCyclePhase.INITIAL_DISCOVERY -> ValidationGateCacheMode.CACHE_ELIGIBLE
       ValidationGateCyclePhase.POST_REPAIR_VERIFY -> ValidationGateCacheMode.FORCED_FULL
     }
     val terminalVerifying = cyclePhase == ValidationGateCyclePhase.POST_REPAIR_VERIFY
-    val findingParseMode = when {
-      cycle.validationDepth == ValidationDepth.BUILD_ONLY -> ValidationGateFindingParseMode.ARTIFACTS_ONLY
-      cyclePhase == ValidationGateCyclePhase.POST_REPAIR_VERIFY -> ValidationGateFindingParseMode.COLLECT_ALL
-      else -> ValidationGateFindingParseMode.COLLECT_ALL
-    }
+    val findingParseMode = ValidationGateFindingParseMode.COLLECT_ALL
     val gradleWrapper = repoLocalConfig
       .readRepoLocalConfig(ReadRepoLocalConfigRequest(cycle.repoRoot))
       .config

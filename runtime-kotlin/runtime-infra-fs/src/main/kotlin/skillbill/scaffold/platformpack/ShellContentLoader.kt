@@ -1160,7 +1160,6 @@ internal fun parseValidationGate(manifest: Map<*, *>, slug: String): ValidationG
       slug,
       "cache_bypassing_collect_all_full_gate_command",
     ),
-    buildOnlyCommand = requireGateArgv(gate, slug, "build_only_command"),
     findings = parseValidationGateFindings(gate, slug),
     suppressionMarkers = parseSuppressionMarkers(gate, slug),
   )

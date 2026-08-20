@@ -31,7 +31,6 @@ interface GoalRunnerChildRepairStore {
     issueKey: String,
     subtaskId: Int,
     wedgeClasses: List<GoalRunnerWedgeClass>,
-    subtasks: List<DecompositionSubtask>,
     repoRoot: Path,
     dbPathOverride: String? = null,
   ): GoalRunnerChildRepairApplyResult
@@ -62,7 +61,6 @@ object NoopGoalRunnerChildRepairStore : GoalRunnerChildRepairStore {
     issueKey: String,
     subtaskId: Int,
     wedgeClasses: List<GoalRunnerWedgeClass>,
-    subtasks: List<DecompositionSubtask>,
     repoRoot: Path,
     dbPathOverride: String?,
   ): GoalRunnerChildRepairApplyResult = GoalRunnerChildRepairApplyResult()

@@ -1,5 +1,5 @@
 platform: missing_content_file
-contract_version: '1.5'
+contract_version: '1.6'
 routing_signals:
   strong:
   - .missing

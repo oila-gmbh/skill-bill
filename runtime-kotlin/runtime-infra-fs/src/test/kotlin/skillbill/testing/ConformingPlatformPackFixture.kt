@@ -91,7 +91,7 @@ private fun conformingManifest(
 ): String = buildString {
   val baselineName = "bill-$slug-code-review"
   appendLine("platform: \"$slug\"")
-  appendLine("contract_version: \"1.5\"")
+  appendLine("contract_version: \"1.6\"")
   appendLine("routing_signals:")
   appendLine("  strong: [\".$slug\", \"*.$slug\"]")
   appendLine("  tie_breakers:")

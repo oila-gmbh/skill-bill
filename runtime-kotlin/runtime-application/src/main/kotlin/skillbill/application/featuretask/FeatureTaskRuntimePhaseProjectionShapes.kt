@@ -3,7 +3,6 @@ package skillbill.application.featuretask
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_REPAIR_PLAN_CONTRACT_VERSION
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION
-import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 
 /**
@@ -17,18 +16,14 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
  * PlanningProjectionFixtures so the guidance and the gate cannot drift.
  */
 internal object FeatureTaskRuntimePhaseProjectionShapes {
-  fun exampleFor(
-    phaseId: String,
-    validationDepth: ValidationDepth = ValidationDepth.DEFAULT,
-    agentRunValidateFallback: Boolean = false,
-  ): String = when (phaseId) {
+  fun exampleFor(phaseId: String, agentRunValidateFallback: Boolean = false): String = when (phaseId) {
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN -> PREPLAN
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN -> PLAN
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT -> IMPLEMENT
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN_FIX -> PLAN_FIX
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX -> IMPLEMENT_FIX
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE ->
-      if (validationDepth == ValidationDepth.BUILD_ONLY || agentRunValidateFallback) {
+      if (agentRunValidateFallback) {
         VALIDATION
       } else {
         VALIDATION + VALIDATION_FULL_RUNTIME_OWNED_REPAIR

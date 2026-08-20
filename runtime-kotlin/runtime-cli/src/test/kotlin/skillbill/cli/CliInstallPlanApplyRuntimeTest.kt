@@ -846,7 +846,7 @@ private fun seedCliPlatformPack(repoRoot: Path, slug: String) {
 
 private fun cliPlatformManifest(slug: String, codeReviewName: String, qualityCheckName: String): String = """
   |platform: "$slug"
-  |contract_version: "1.5"
+  |contract_version: "1.6"
   |routing_signals:
   |  strong: [".$slug", "*.$slug"]
   |  tie_breakers:

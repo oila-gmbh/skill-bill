@@ -578,8 +578,6 @@ private fun MutableList<String>.addGoalContinuationArguments(context: SkillRunGo
   }
   add("--code-review-mode")
   add(context.codeReviewMode.wireValue)
-  add("--validation-depth")
-  add(context.validationDepth.wireValue)
   context.parallelReviewAgent?.takeIf(String::isNotBlank)?.let { parallelAgent ->
     add("--parallel-review-agent")
     add(parallelAgent)

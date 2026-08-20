@@ -85,10 +85,10 @@ properties:
   contract_version:
     type: string
     minLength: 1
-    const: "1.5"
+    const: "1.6"
     x-runtime-anchored: true
     description: >
-      Pinned to `SHELL_CONTRACT_VERSION` (currently 1.5). The parity test
+      Pinned to `SHELL_CONTRACT_VERSION` (currently 1.6). The parity test
       `PlatformPackSchemaContractVersionTest` keeps the two in lockstep.
       Value mismatches at runtime are surfaced as the dedicated
       `ContractVersionMismatchError` (not generic schema error) so callers
@@ -428,7 +428,6 @@ properties:
       - cache_bypassing_full_gate_command
       - collect_all_full_gate_command
       - cache_bypassing_collect_all_full_gate_command
-      - build_only_command
       - findings
     properties:
       full_gate_command:
@@ -473,15 +472,6 @@ properties:
           Argv for the cache-bypassing collect-all full validation gate.
           Pack-owned complete argv including that pack's cache-bypass
           tokens; the runtime never appends stack flags.
-      build_only_command:
-        type: array
-        minItems: 1
-        items:
-          type: string
-          minLength: 1
-        description: >
-          Argv for ValidationDepth.BUILD_ONLY — compile/build only, no
-          tests or static-analysis gate.
       findings:
         type: object
         additionalProperties: false

@@ -197,7 +197,7 @@ class CliGoalRepairRuntimeTest {
         }
       }
       val stripped = current
-        .replace(Regex(""""validation_depth"\s*:\s*"(full|build_only)"\s*,?"""), "")
+        .replace(Regex(""""validation_depth"\s*:\s*"full"\s*,?"""), "")
         .replace(",}", "}")
         .replace(",,", ",")
       check(stripped != current) { "could not strip validation_depth from $workflowId" }

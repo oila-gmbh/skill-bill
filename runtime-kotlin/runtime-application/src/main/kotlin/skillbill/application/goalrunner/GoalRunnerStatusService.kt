@@ -757,7 +757,6 @@ class GoalRunnerStatusService(
         issueKey = request.issueKey,
         subtaskId = diagnosis.subtaskId,
         wedgeClasses = diagnosis.wedges.map { it.wedgeClass },
-        subtasks = loaded.manifest.subtasks,
         repoRoot = repoRoot,
         dbPathOverride = request.dbPathOverride,
       )

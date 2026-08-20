@@ -725,37 +725,31 @@ class CliFeatureTaskRuntimeRuntimeTest {
   }
 
   @Test
-  fun `feature-task-runtime parses explicit and omitted validation depths on goal continuation`() {
-    listOf(
-      "build_only" to listOf("--validation-depth", "build_only"),
-      "full" to listOf("--validation-depth", "full"),
-      "full" to emptyList(),
-    ).forEach { (expectedDepth, depthArgs) ->
-      val fixture = runtimeFixture(specFileName = "spec_subtask_5_runtime.md")
-      val launcher = RecordingPhaseLauncher()
-      val goalContinuationArgs = listOf(
-        "--agent",
-        "codex",
-        "--goal-parent-issue-key",
-        "SKILL-650",
-        "--goal-subtask-id",
-        "5",
-        "--goal-branch",
-        "feat/existing-runtime-branch",
-        "--goal-review-base-sha",
-        "0000000000000000000000000000000000000000",
-        "--suppress-pr",
-      ) + depthArgs
+  fun `feature-task-runtime stamps full validation depth on goal continuation when flag omitted`() {
+    val fixture = runtimeFixture(specFileName = "spec_subtask_5_runtime.md")
+    val launcher = RecordingPhaseLauncher()
+    val goalContinuationArgs = listOf(
+      "--agent",
+      "codex",
+      "--goal-parent-issue-key",
+      "SKILL-650",
+      "--goal-subtask-id",
+      "5",
+      "--goal-branch",
+      "feat/existing-runtime-branch",
+      "--goal-review-base-sha",
+      "0000000000000000000000000000000000000000",
+      "--suppress-pr",
+    )
 
-      val result = CliRuntime.run(
-        fixture.runCommand(extra = goalContinuationArgs),
-        fixture.context(launcher),
-      )
+    val result = CliRuntime.run(
+      fixture.runCommand(extra = goalContinuationArgs),
+      fixture.context(launcher),
+    )
 
-      assertEquals(0, result.exitCode, "$expectedDepth: ${result.stdout}")
-      val workflowId = result.stdout.lines().single { it.startsWith("workflow_id:") }.substringAfter(":").trim()
-      assertEquals(expectedDepth, goalContinuationValidationDepth(fixture.dbPath, workflowId), expectedDepth)
-    }
+    assertEquals(0, result.exitCode, result.stdout)
+    val workflowId = result.stdout.lines().single { it.startsWith("workflow_id:") }.substringAfter(":").trim()
+    assertEquals("full", goalContinuationValidationDepth(fixture.dbPath, workflowId))
   }
 
   @Test

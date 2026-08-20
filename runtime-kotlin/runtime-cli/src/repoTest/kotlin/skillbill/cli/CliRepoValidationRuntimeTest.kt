@@ -155,7 +155,7 @@ class CliRepoValidationRuntimeTest {
       packRoot.resolve("platform.yaml"),
       """
       platform: fixture
-      contract_version: "1.5"
+      contract_version: "1.6"
       routing_signals:
         strong:
           - ".fixture"

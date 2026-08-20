@@ -22,7 +22,7 @@ import skillbill.ports.workflow.model.GoalSubtaskReviewInputFailureReason
 import skillbill.ports.workflow.recoverGoalSubtaskReviewBaseline
 import skillbill.workflow.DecompositionManifestValidator
 import skillbill.workflow.WorkflowEngine
-import skillbill.workflow.model.DecompositionSubtask
+import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
@@ -89,7 +89,6 @@ internal class GoalRunnerChildRepairOperations(
     issueKey: String,
     subtaskId: Int,
     wedgeClasses: List<GoalRunnerWedgeClass>,
-    subtasks: List<DecompositionSubtask>,
     repoRoot: Path,
   ): GoalRunnerChildRepairApplyResult {
     if (wedgeClasses.isEmpty()) return GoalRunnerChildRepairApplyResult()
@@ -110,7 +109,7 @@ internal class GoalRunnerChildRepairOperations(
         GoalRunnerWedgeClass.MISSING_VALIDATION_DEPTH -> {
           val continuation = workingContinuation ?: continue
           if (continuation.validationDepth != null) continue
-          val depth = validationDepthForSubtask(subtasks, subtaskId)
+          val depth = ValidationDepth.FULL
           val healed = continuation.copy(validationDepth = depth)
           workingContinuation = healed
           patch[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY] = healed.toArtifactMap()

@@ -1,5 +1,5 @@
 platform: kotlin
-contract_version: "1.5"
+contract_version: "1.6"
 display_name: Kotlin
 
 routing_signals:
@@ -100,10 +100,6 @@ validation_gate:
     - check
     - --continue
     - --no-build-cache
-  build_only_command:
-    - ./gradlew
-    - classes
-    - testClasses
   findings:
     format: junit_xml
     artifact_globs:
