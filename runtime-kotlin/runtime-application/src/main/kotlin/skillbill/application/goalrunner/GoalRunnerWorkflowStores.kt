@@ -2902,10 +2902,7 @@ private fun terminalStatus(
  * block on every later run and never relaunches. Only a block at or after the current step speaks
  * for where the child actually stands.
  */
-private fun liveBlockedStep(
-  snapshot: WorkflowStateSnapshot,
-  steps: List<WorkflowStepState>,
-): WorkflowStepState? {
+private fun liveBlockedStep(snapshot: WorkflowStateSnapshot, steps: List<WorkflowStepState>): WorkflowStepState? {
   val currentIndex = steps.indexOfFirst { it.stepId == snapshot.currentStepId }
   if (currentIndex < 0) return steps.firstOrNull { it.status == "blocked" }
   return steps.drop(currentIndex).firstOrNull { it.status == "blocked" }
