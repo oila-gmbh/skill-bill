@@ -120,7 +120,7 @@ class ParallelCodeReviewEvidenceBoundaryTest {
         evidenceBrokerFactory = ReviewEvidenceBrokerFactory { binding ->
           val inner = defaults.evidenceBrokerFactory.brokerFor(binding)
           object : ReviewEvidenceBroker by inner {
-            override fun accounting() = inner.accounting().copy(authorizedReadCount = 1)
+            override fun accounting() = inner.accounting().copy(authorizedReadCount = 1, evidenceBytes = 0)
           }
         },
       ),
@@ -328,6 +328,45 @@ class ParallelCodeReviewEvidenceBoundaryTest {
   }
 
   @Test
+  fun `inline parent evidence allowance equals sum of per-lane derived caps not base times lane count`() {
+    val recorder = ReviewRecorder()
+    val bound = mutableListOf<ReviewEvidenceBrokerBinding>()
+    val defaults = ReviewHarnessConfig(
+      manifests = listOf(
+        reviewPack("kotlin", listOf("architecture", "security"), routingSignals = listOf("*.kt")).copy(
+          laneConditions = mapOf(
+            "architecture" to ReviewLaneCondition(path = listOf("src/core/")),
+            "security" to ReviewLaneCondition(path = listOf("src/secure/")),
+          ),
+        ),
+      ),
+      diff = diffForChanges(
+        "src/core/Repo.kt" to "x".repeat(200_000),
+        "src/secure/Auth.kt" to "ok",
+      ),
+    )
+    reviewHarness(
+      defaults.copy(
+        evidenceBrokerFactory = ReviewEvidenceBrokerFactory { binding ->
+          defaults.evidenceBrokerFactory.brokerFor(binding).also { bound += binding }
+        },
+      ),
+      recorder,
+    ).run(
+      harnessRequest(
+        agent2Id = null,
+        reviewRunId = "rvw-201-parent-derived-budget",
+        codeReviewMode = CodeReviewExecutionMode.INLINE,
+      ),
+    )
+
+    val parentBinding = bound.single()
+    val base = ReviewContextBudgetPolicy.DEFAULT.maxLaneEvidenceBytes
+    assertNotEquals(base * 2, parentBinding.budget.maxLaneEvidenceBytes)
+    assertTrue(parentBinding.budget.maxLaneEvidenceBytes < base * 2)
+  }
+
+  @Test
   fun `a lane reporting no findings after reading no evidence fails instead of passing as clean`() {
     val recorder = ReviewRecorder()
     val result = reviewHarness(
@@ -391,5 +430,30 @@ class ParallelCodeReviewEvidenceBoundaryTest {
     assertFalse(accounting.unreviewedUnits.any { it.endsWith("@src/A.kt") })
     val coverage = assertNotNull(result.coverage)
     assertFalse(coverage.isCleanCoverage)
+  }
+
+  @Test
+  fun `successful governed run with no broker refusal stays complete for lane evidence bytes`() {
+    val recorder = ReviewRecorder()
+    val result = reviewHarness(
+      ReviewHarnessConfig(
+        manifests = listOf(reviewPack("kotlin", listOf("architecture"), routingSignals = listOf("*.kt"))),
+        diff = diffForPaths("src/Repo.kt"),
+      ),
+      recorder,
+    ).run(
+      harnessRequest(
+        agent2Id = null,
+        reviewRunId = "rvw-201-broker-clean",
+        codeReviewMode = CodeReviewExecutionMode.INLINE,
+      ),
+    )
+
+    assertTrue(result.lane1.success)
+    val accounting = assertNotNull(result.lane1.accounting)
+    assertEquals(ReviewLaneReviewDisposition.COMPLETE, accounting.reviewDisposition)
+    assertTrue(accounting.unreviewedUnits.isEmpty())
+    assertEquals(null, accounting.budgetDimension)
+    assertTrue(assertNotNull(result.coverage).isCleanCoverage)
   }
 }

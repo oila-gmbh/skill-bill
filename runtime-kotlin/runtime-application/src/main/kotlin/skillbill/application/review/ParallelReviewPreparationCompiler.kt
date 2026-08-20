@@ -240,7 +240,7 @@ internal object ParallelReviewPreparationCompiler {
         specialistContract = specialistContract,
         rubrics = listOf(route.rubric),
         brokerId = "review-evidence-${assignment.digest}",
-        budget = budget,
+        budget = deriveSpecialistBudget(budget, assignment, preparation.packet),
         agentId = route.agentId,
         workerKind = route.workerKind,
         logicalWorkerName = route.descriptor.skillName.takeIf {

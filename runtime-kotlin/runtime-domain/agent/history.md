@@ -1,5 +1,15 @@
 # Boundary History — runtime-domain
 
+## [2026-08-20] SKILL-201 subtask 2 — Broker refusal drives lane_evidence_bytes incomplete verdict
+Areas: runtime-domain/review/context/model, runtime-infra-fs/infrastructure/fs, runtime-application/review
+- `FileSystemReviewEvidenceBroker` records each `lane_evidence_bytes` refusal at the read that triggers it, appending a `commitSha@path` unit to `deniedUnits`; accounting exposes `budgetDimension` and `unreviewedUnits` only when the terminal outcome names that budget kind.
+- `ReviewLaneCompletionState.withBrokerEvidenceRefusal` is the completion seam: incomplete disposition, `lane_evidence_bytes` dimension, and the broker's denied-unit list — not a path-sorted greedy tail over the assembled bundle.
+- `ParallelCodeReviewRunner` applies broker accounting to bundle completion after a worker run; a successful lane with no evidence refusal stays complete (builds on subtask 1's severed projection).
+- Pattern: name unreviewed units only from enforcement (broker reads), never from pre-flight projection or alphabetical bundle order. reusable
+- Known limits: per-lane budget derivation remains subtask 3; coverage report and integration-pass prompt changes are subtask 4.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-08-20] SKILL-201 subtask 1 — Sever coverage verdict from projected evidence budget
 Areas: runtime-domain/review/context/model
 - Removed `withLaneEvidenceBudget` from `GovernedReviewLaunch.completionState`; a lane whose worker run succeeded and whose segmentation stayed clean no longer flips to `incomplete` from a pre-flight sum of `entry.hunk.contentBytes` against `maxLaneEvidenceBytes`

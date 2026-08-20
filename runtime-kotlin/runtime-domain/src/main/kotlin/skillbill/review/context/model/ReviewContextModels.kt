@@ -372,6 +372,24 @@ data class ReviewContextBudgetPolicy(
 
   companion object {
     val DEFAULT: ReviewContextBudgetPolicy = ReviewContextBudgetPolicy()
+
+    /**
+     * [maxLaneEvidenceBytes] is the cumulative broker `read_evidence` allowance for this lane's
+     * assigned surface, scaled from [basePolicy] by the lane's share of packet hunk content bytes,
+     * not a flat cap independent of assignment breadth.
+     */
+    fun deriveLaneEvidenceBytes(
+      basePolicy: ReviewContextBudgetPolicy,
+      assignment: ReviewAssignment,
+      packet: ReviewContextPacket,
+    ): Long {
+      val packetBytes = packet.changedHunks.sumOf { it.contentBytes }
+      if (packetBytes == 0L) return basePolicy.maxLaneEvidenceBytes
+      val bytesByHunkId = packet.changedHunks.associate { it.hunkId to it.contentBytes }
+      val assignmentBytes = assignment.assignedHunks.sumOf { bytesByHunkId.getValue(it) }
+      val scaled = basePolicy.maxLaneEvidenceBytes * assignmentBytes / packetBytes
+      return maxOf(scaled, basePolicy.maxEvidenceResultBytes)
+    }
   }
 }
 

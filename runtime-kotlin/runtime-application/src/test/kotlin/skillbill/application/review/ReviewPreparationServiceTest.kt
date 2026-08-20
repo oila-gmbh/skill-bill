@@ -606,6 +606,35 @@ class ReviewPreparationServiceTest {
     assertTrue(result.packet.laneDecisions.single { it.lane == "testing" }.required)
   }
 
+  @Test fun `assignment-scaled specialist budgets differ when lane assignments differ in breadth`() {
+    val hugePatch = oversizedPatch("src/A.kt")
+    val smallPatch = "diff --git a/src/B.kt b/src/B.kt\n--- a/src/B.kt\n+++ b/src/B.kt\n@@ -1,1 +1,2 @@\n+beta\n"
+    val stored = hugePatch + smallPatch
+    val parsed = ReviewDiffEvidence.parse(stored).hunks
+    val result = storePrepare(
+      parsed,
+      stored,
+      ".skill-bill/run-evidence/code-review/fp-budget-scale",
+      decisions = listOf(
+        includedDecision("testing", "test sources changed", "src/A.kt").copy(required = true),
+        includedDecision("security", "auth surface changed", "src/B.kt"),
+      ),
+    )
+    val base = ReviewContextBudgetPolicy.DEFAULT
+    val testingBudget = deriveSpecialistBudget(
+      base,
+      result.assignments.single { it.lane == "testing" },
+      result.packet,
+    ).maxLaneEvidenceBytes
+    val securityBudget = deriveSpecialistBudget(
+      base,
+      result.assignments.single { it.lane == "security" },
+      result.packet,
+    ).maxLaneEvidenceBytes
+    assertNotEquals(testingBudget, securityBudget)
+    assertTrue(testingBudget > securityBudget)
+  }
+
   @Test fun `blank store path with a live locator reader fails compose without launching workers`() {
     val hunk = hunkA
     var workerLaunches = 0

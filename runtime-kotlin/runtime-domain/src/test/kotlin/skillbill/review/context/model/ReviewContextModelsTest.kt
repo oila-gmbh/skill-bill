@@ -333,6 +333,91 @@ class ReviewContextModelsTest {
     }
   }
 
+  @Test fun `assignment-scaled lane evidence budgets differ when bundle content bytes differ`() {
+    val small = ReviewChangedHunk("src/A.kt", 1, 1, 1, 2, "+a")
+    val large = ReviewChangedHunk("src/B.kt", 1, 1, 1, 2, "+" + "x".repeat(100_000))
+    val packet = ReviewContextPacket(
+      "review", "repo", "base", "head", "clean", "kotlin", "kotlin", emptyList(),
+      listOf("security", "testing"),
+      listOf(small, large),
+      commitUnits = listOf(syntheticUnit(listOf(small, large))),
+      coverageFact = fact(),
+      routingMatrix = focusedMatrix(listOf(syntheticUnit(listOf(small, large))), listOf("security", "testing")),
+      reviewRevision = revision(),
+      laneDecisions = listOf(lane("security", listOf("src/A.kt")), lane("testing", listOf("src/B.kt"))),
+    )
+    val narrow = launchAssignment(packet, listOf(small.hunkId)).copy(
+      lane = "security",
+      assignedPaths = listOf("src/A.kt"),
+      laneDecision = lane("security", listOf("src/A.kt")),
+      laneRouting = packet.routingMatrix.decisionsFor("security"),
+    )
+    val broad = launchAssignment(packet, listOf(large.hunkId)).copy(
+      lane = "testing",
+      assignedPaths = listOf("src/B.kt"),
+      laneDecision = lane("testing", listOf("src/B.kt")),
+      laneRouting = packet.routingMatrix.decisionsFor("testing"),
+    )
+    val base = ReviewContextBudgetPolicy.DEFAULT
+    val narrowBudget = ReviewContextBudgetPolicy.deriveLaneEvidenceBytes(base, narrow, packet)
+    val broadBudget = ReviewContextBudgetPolicy.deriveLaneEvidenceBytes(base, broad, packet)
+    assertNotEquals(narrowBudget, broadBudget)
+    assertTrue(broadBudget > narrowBudget)
+  }
+
+  @Test fun `derived lane evidence budget satisfies policy init`() {
+    val small = ReviewChangedHunk("src/A.kt", 1, 1, 1, 2, "+a")
+    val large = ReviewChangedHunk("src/B.kt", 1, 1, 1, 2, "+" + "x".repeat(100_000))
+    val packet = ReviewContextPacket(
+      "review", "repo", "base", "head", "clean", "kotlin", "kotlin", emptyList(),
+      listOf("security"),
+      listOf(small, large),
+      commitUnits = listOf(syntheticUnit(listOf(small, large))),
+      coverageFact = fact(),
+      routingMatrix = focusedMatrix(listOf(syntheticUnit(listOf(small, large))), listOf("security")),
+      reviewRevision = revision(),
+      laneDecisions = listOf(lane("security", listOf("src/A.kt"))),
+    )
+    val assignment = launchAssignment(packet, listOf(small.hunkId))
+    val base = ReviewContextBudgetPolicy.DEFAULT
+    val derived = ReviewContextBudgetPolicy.deriveLaneEvidenceBytes(base, assignment, packet)
+    ReviewContextBudgetPolicy(
+      maxLaneEvidenceBytes = derived,
+      maxEvidenceResultBytes = base.maxEvidenceResultBytes,
+    )
+  }
+
+  @Test fun `parent merged evidence allowance matches sum of per-lane derived caps`() {
+    val small = ReviewChangedHunk("src/A.kt", 1, 1, 1, 2, "+a")
+    val large = ReviewChangedHunk("src/B.kt", 1, 1, 1, 2, "+" + "x".repeat(100_000))
+    val packet = ReviewContextPacket(
+      "review", "repo", "base", "head", "clean", "kotlin", "kotlin", emptyList(),
+      listOf("security", "testing"),
+      listOf(small, large),
+      commitUnits = listOf(syntheticUnit(listOf(small, large))),
+      coverageFact = fact(),
+      routingMatrix = focusedMatrix(listOf(syntheticUnit(listOf(small, large))), listOf("security", "testing")),
+      reviewRevision = revision(),
+      laneDecisions = listOf(lane("security", listOf("src/A.kt")), lane("testing", listOf("src/B.kt"))),
+    )
+    val base = ReviewContextBudgetPolicy.DEFAULT
+    val narrow = launchAssignment(packet, listOf(small.hunkId)).copy(
+      lane = "security",
+      assignedPaths = listOf("src/A.kt"),
+      laneDecision = lane("security", listOf("src/A.kt")),
+      laneRouting = packet.routingMatrix.decisionsFor("security"),
+    )
+    val broad = launchAssignment(packet, listOf(large.hunkId)).copy(
+      lane = "testing",
+      assignedPaths = listOf("src/B.kt"),
+      laneDecision = lane("testing", listOf("src/B.kt")),
+      laneRouting = packet.routingMatrix.decisionsFor("testing"),
+    )
+    val mergedSum = ReviewContextBudgetPolicy.deriveLaneEvidenceBytes(base, narrow, packet) +
+      ReviewContextBudgetPolicy.deriveLaneEvidenceBytes(base, broad, packet)
+    assertNotEquals(base.maxLaneEvidenceBytes * 2, mergedSum)
+  }
+
   @Test fun `oversized compact launch segments instead of failing the whole payload`() {
     val packet = launchPacket()
     val assignment = launchAssignment(packet)
