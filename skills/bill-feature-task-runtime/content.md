@@ -221,84 +221,28 @@ workflow state as authoritative over any prose.
 The authoritative phase order is `implement -> audit -> review -> validate` on the default path.
 Goal children stamped for build use `review -> build -> write_history` instead of validate (subtask 2).
 Audit-gap repair re-enters only `implement -> audit`; after audit is satisfied,
-review pass one uses the selected delegated mode and every later remediation
-pass is inline. Review never reopens audit.
+review runs once in the selected mode. Review never reopens audit.
 
 ## Review-driven implement-fix loop
 
-The runtime closes an unbounded remediation loop around `review`. The `review`
-phase emits a structured verdict derived from its findings: `approved` when no
-unresolved Blocker or Major findings remain, or `changes_requested` when any are
-present. A remediation round is handed all findings. Blocker and Major findings
-both reopen `implement_fix` and block advancement. The runtime evaluates that
-verdict — prose alone cannot advance past a Blocker or Major finding.
+The authoritative phase order is `implement -> audit -> review -> validate`.
+Review runs exactly once. The `review` phase emits a structured verdict derived
+from its findings: `approved` when no unresolved Blocker or Major findings remain,
+or `changes_requested` when any are present. Minor and Nit findings are recorded
+in the goal-wide ledger and never alone block advancement.
 
-- On `approved`, the run advances to `validate` (a clean run never launches a fix).
-- On `changes_requested`, the runtime takes a backward edge to a dedicated
-  `plan_fix` phase, which decides the root cause of each carried finding before
-  any edit is made, then to `implement_fix`, which addresses the carried findings
-  on the current working tree as incremental reconciliation (not a plan
-  re-application), then re-runs `review`. `plan_fix` mutates nothing and never
-  regenerates, mutates, or overwrites the durable `preplan` or `plan` outputs: it
-  reads them, the carried findings, and the remediation repair ledger, and emits
-  its own bounded `repair_plan` naming per finding the root cause, the minimal
-  change that addresses it, and a `local_patch_site` or `design_symptom`
-  classification. Both fix phases are loop-only, so a clean run launches neither,
-  and the `plan_fix` → `implement_fix` step is a declared loop-only successor
-  rather than a second backward edge, so one round still mints exactly one
-  `review_fix` iteration. This `review` → `plan_fix` → `implement_fix` → `review`
-  cycle carries no iteration cap: it continues while any Blocker or Major finding remains. A
-  durable per-edge counter with PER_SUBTASK scope accumulates across parent
-  resumes for accounting and warning purposes only. Goal status reports cumulative
-  iteration counts across all runs for the same subtask. The initial review may
-  use the selected mode, while every re-review is reserved before launch and
-  always invokes `bill-code-review mode:inline context:feature-remediation` against
-  the remediation delta — all findings addressed in that round unioned with the
-  pre-fix-to-post-fix diff since the checkpoint created before `implement_fix`
-  — never the full feature-branch diff. The first `approved` verdict advances the
-  run to `validate`.
-- Each `implement_fix` round emits a durable, construct-granular repair receipt, and
-  the runtime folds those receipts together with the review pass results into the
-  remediation repair ledger: per closed finding, the constructs holding it closed
-  and a status drawn from a closed vocabulary — `resolved` (the remedy stands),
-  `superseded` (a later round's remedy replaced the constructs holding it), and
-  `reopened` (a later pass reported an advance-blocking finding against those
-  constructs). The ledger is derived from durable receipts and pass results rather
-  than stored as a second record, so it survives process death and parent resume
-  without drifting from what the rounds actually recorded. `plan_fix` and
-  `implement_fix` receive it as a bounded, named, versioned projection; the
-  remediation review pass receives it as delimited reference material that is
-  escalation signal only and never softens a finding's severity. An `implement_fix`
-  round that rewrites a construct the ledger records as another finding's live
-  remedy must declare that finding and its rationale, or its receipt is rejected.
-- Crossing from iteration 3 to iteration 4 prints a user-visible warning that the
-  advisory threshold of 3 was exceeded and remediation continues. The threshold is
-  a warning signal, not a cap: it never stops, pauses, or advances the run.
-- When `plan_fix` classifies a carried finding as a `design_symptom` — a
-  consequence of an earlier round's remedy rather than a local defect — it settles
-  the `escalated` verdict instead. `escalated` has no successor and no backward
-  edge, so it neither advances to `implement_fix` nor routes back to `plan`; it
-  pauses the subtask on the existing resumable operator pause with the repair
-  ledger and the root-cause analysis as durable evidence, released through the
-  existing `retry_fix`, `accept_and_advance`, and `abandon_subtask` decisions.
-- The loop ends only on an `approved` verdict, an `escalated` operator pause, or an
-  existing non-count-based failure, non-convergence, or churn path. Non-convergence is the same unresolved
-  Blocker-or-Major set with no repository change. Churn is its widened companion: advance-blocking findings
-  recurring against constructs the repair ledger already records as repaired, across 3 consecutive rounds,
-  with an advance-blocking finding set that is not shrinking. Churn is what a changing finding set against a
-  changing tree produces, which the non-convergence condition alone never detects. Both pause as a
-  human-resumable, uncapped block released through the same `retry_fix`, `accept_and_advance`, and
-  `abandon_subtask` decisions; an active retry grant suppresses either for exactly one transition, and
-  neither ever abandons or auto-accepts an unresolved Blocker or Major. Minor and Nit findings are written to the
-  goal-wide ledger and never hold the loop open.
+- On `approved`, the run advances to `validate` (a clean run never launches `implement_fix`).
+- On `changes_requested`, the runtime takes one bounded backward edge to
+  `implement_fix`, which addresses every carried finding on the current working
+  tree as incremental reconciliation (not a plan re-application). `implement_fix`
+  is loop-only, so a clean run never launches it. After that single fix round the
+  run advances to `validate` regardless of whether every finding resolved. Review
+  does not run again. The `review_fix` edge declares `perEdgeCap = 1` and
+  `capExhaustionBehavior = ADVANCE`.
 
-The loop is crash-safe: a death during `plan_fix`, `implement_fix`, or a re-`review` resumes
-at the correct phase and iteration with no double-applied mutations, and the
-recovered iteration count resumes warning accounting rather than terminating
-remediation.
-Each `plan_fix` launch, `implement_fix` launch, and re-`review` carries the `review_fix` loop id
-and iteration in the ledger and status output, and finished telemetry reflects
-the review-fix iteration count.
+Each `implement_fix` round emits a durable, construct-granular repair receipt.
+The loop is crash-safe: a death during `implement_fix` resumes at the correct
+phase and iteration with no double-applied mutations.
 
 ## Audit-gap context-reuse implementation-remediation loop
 
@@ -350,8 +294,7 @@ or unrelated acceptance surface and does not discover new gaps. Equivalent
 recurring gap sets without repository change or newly resolved repair items block
 loudly as non-progress instead of looping indefinitely.
 
-Review begins only after the audit-gap loop is closed. Its first pass uses the
-selected delegated mode and every later remediation pass is inline. Each backward
+Review begins only after the audit-gap loop is closed. Review runs exactly once in the selected mode against the branch diff. A `changes_requested` verdict triggers at most one `implement_fix` round, then the run advances to `validate` without re-reviewing a remediation delta. Each backward
 edge carries the `audit_gap` loop id and iteration in the
 ledger and status output, and finished telemetry reflects the audit-gap
 iteration count alongside the review-fix count.
@@ -447,4 +390,4 @@ only; the runtime gains no Linear dependency.
 
 ## Audit-first review and findings ledger
 
-The phase order is `implement -> audit -> review -> validate`, and review is gated on a satisfied audit. Review pass one uses the selected mode, and every later pass runs inline against the remediation delta via `context:feature-remediation`. Blocker and Major findings prevent advancement; Minor and Nit findings advance and are persisted in the goal-wide unaddressed-findings ledger. Location-bearing detail is available only through `skill-bill goal findings --issue-key <KEY>`, during or after the goal.
+The phase order is `implement -> audit -> review -> validate`, and review is gated on a satisfied audit. Review runs exactly once in the selected mode against the branch diff. A `changes_requested` verdict triggers at most one `implement_fix` round, then the run advances to `validate` without re-reviewing a remediation delta. Location-bearing detail is available only through `skill-bill goal findings --issue-key <KEY>`, during or after the goal.

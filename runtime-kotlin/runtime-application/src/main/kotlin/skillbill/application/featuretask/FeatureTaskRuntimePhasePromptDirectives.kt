@@ -4,7 +4,6 @@ package skillbill.application.featuretask
 
 import skillbill.application.model.FeatureTaskRuntimeImplementationContinuation
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION
-import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_REPAIR_PLAN_CONTRACT_VERSION
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.workflow.model.CodeReviewExecutionMode
@@ -376,38 +375,17 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "it applied none, names what already satisfied the work, and stops — the audit re-reads the tree " +
     "itself, so proving convergence path by path here only risks overflowing the field. When the " +
     "briefing carries audit_gaps, reuse its immutable initial preplan and plan outputs and change " +
-    "only what the listed acceptance criteria require; do not regenerate planning, expand scope, or " +
-    "disturb settled implementation. The receipt is the same implementation_receipt as any other " +
-    "round: there are no repair-item identifiers to report and no per-item evidence to record, because " +
-    "the next audit re-reads the tree and decides every criterion again. Repair evidence is read-only " +
-    "repository facts: do not run builds or tests here.",
-  FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN_FIX to
-    "Decide the root cause of each carried review finding before any edit is made. Do not modify " +
-    "repository files during this phase; the following implement_fix phase applies your plan. Read the " +
-    "carried findings, the repair_ledger of what earlier rounds of this same remediation already fixed, " +
-    "and the immutable initial preplan and plan outputs as read-only context — you never regenerate, " +
-    "mutate, or overwrite them. Emit produced_outputs.repair_plan with contract_version " +
-    "\"$FEATURE_TASK_RUNTIME_REPAIR_PLAN_CONTRACT_VERSION\", the round number, and exactly one entry per " +
-    "carried finding: finding_id (the briefing's finding_id; aliases finding_ref, id, and ref are " +
-    "accepted), the root_cause, the minimal_change that addresses it, and a " +
-    "classification of local_patch_site or design_symptom. Classify design_symptom when the finding is a " +
-    "consequence of an earlier round's remedy rather than a local defect, and name that earlier finding " +
-    "in prior_round_remedy_ref. A design_symptom classification escalates the round for an operator " +
-    "decision instead of advancing to implement_fix, so use it when another local patch would be the " +
-    "wrong repair — not merely when the fix is awkward.",
+    "only what the latest listed gaps require; do not regenerate planning, expand scope, or disturb " +
+    "settled implementation. Under the audit-gap loop, report repair_item_results for every carried " +
+    "repair item with a terminal fixed or already_satisfied outcome. Reporting fewer " +
+    "items than you were carried is a resumable partial repair, not a completion. Repair evidence is " +
+    "read-only repository facts: do not run builds or tests here.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX to
     "Address the carried findings from the preceding review pass on the CURRENT working tree as " +
     "incremental reconciliation. Every finding in the briefing — Blocker, Major, Minor, and Nit — is in " +
     "scope; specialist narratives and raw review output are not. Do not re-apply " +
     "the plan from scratch or expand scope beyond the carried findings. Treat any fix already present " +
-    "as a no-op. See the mutating-phase idempotency contract below. From round two onward the briefing " +
-    "also carries repair_ledger: what earlier rounds of this same remediation already fixed and which " +
-    "named constructs hold each finding closed. Those entries are settled load-bearing work, not open " +
-    "findings awaiting action — do not re-address a resolved entry and do not treat it as scope. If " +
-    "closing a carried finding requires you to remove or materially rewrite a construct a resolved " +
-    "entry names, say so: list that entry's finding_id in produced_outputs.repair_receipt." +
-    "disturbed_remedies with a one-line reason. Silent removal is rejected, because the finding that " +
-    "construct closed can otherwise be reintroduced without anyone seeing it. Emit " +
+    "as a no-op. See the mutating-phase idempotency contract below. Emit " +
     "produced_outputs.repair_receipt " +
     "with contract_version \"$FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION\" and exactly one " +
     "entry per carried finding named by finding_id (the briefing's finding_id values; aliases " +

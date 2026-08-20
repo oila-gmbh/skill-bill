@@ -268,7 +268,6 @@ data class FeatureTaskRuntimeRepairReceipt(
   val roundNumber: Int,
   val preFixCheckpointSha: String,
   val entries: List<FeatureTaskRuntimeRepairReceiptEntry>,
-  val disturbedRemedies: List<FeatureTaskRuntimeRepairDisturbedRemedy> = emptyList(),
 ) {
   init {
     if (contractVersion !in ACCEPTED_REPAIR_RECEIPT_CONTRACT_VERSIONS) {
@@ -289,15 +288,6 @@ data class FeatureTaskRuntimeRepairReceipt(
     if (entries.size > REPAIR_RECEIPT_MAX_ENTRIES) {
       receiptError("entries", "allows at most $REPAIR_RECEIPT_MAX_ENTRIES entries.")
     }
-    if (disturbedRemedies.size > REPAIR_RECEIPT_MAX_DISTURBED_REMEDIES) {
-      receiptError(
-        "disturbed_remedies",
-        "allows at most $REPAIR_RECEIPT_MAX_DISTURBED_REMEDIES declarations.",
-      )
-    }
-    if (disturbedRemedies.map { normalizeIdentityPart(it.findingRef) }.distinct().size != disturbedRemedies.size) {
-      receiptError("disturbed_remedies", "may declare each disturbed finding at most once.")
-    }
   }
 
   @OpenBoundaryMap("Repair receipt at the durable workflow-artifact seam")
@@ -306,11 +296,7 @@ data class FeatureTaskRuntimeRepairReceipt(
     "round_number" to roundNumber,
     "pre_fix_checkpoint_sha" to preFixCheckpointSha,
     "entries" to entries.map(FeatureTaskRuntimeRepairReceiptEntry::toArtifactMap),
-  ).apply {
-    if (disturbedRemedies.isNotEmpty()) {
-      put("disturbed_remedies", disturbedRemedies.map(FeatureTaskRuntimeRepairDisturbedRemedy::toArtifactMap))
-    }
-  }
+  )
 
   companion object {
     @OpenBoundaryMap("Repair receipt decode from the durable workflow-artifact map")
@@ -319,6 +305,12 @@ data class FeatureTaskRuntimeRepairReceipt(
         setOf("contract_version", "round_number", "pre_fix_checkpoint_sha", "entries", "disturbed_remedies"),
         path,
       )
+      if (raw.containsKey("disturbed_remedies")) {
+        receiptError(
+          "disturbed_remedies",
+          "is removed; records naming it must be regenerated.",
+        )
+      }
       val entries = raw.requireReviewStateList("entries", path).mapIndexed { index, value ->
         FeatureTaskRuntimeRepairReceiptEntry.fromArtifactMap(
           value.asReviewStateMap("$path.entries[$index]"),
@@ -331,13 +323,6 @@ data class FeatureTaskRuntimeRepairReceipt(
           roundNumber = raw.requireReviewStateInt("round_number", path),
           preFixCheckpointSha = raw.requireReviewStateString("pre_fix_checkpoint_sha", path),
           entries = entries,
-          disturbedRemedies = raw.optionalReviewStateList("disturbed_remedies", path)
-            ?.mapIndexed { index, value ->
-              FeatureTaskRuntimeRepairDisturbedRemedy.fromArtifactMap(
-                value.asReviewStateMap("$path.disturbed_remedies[$index]"),
-                "$path.disturbed_remedies[$index]",
-              )
-            }.orEmpty(),
         )
       }
     }

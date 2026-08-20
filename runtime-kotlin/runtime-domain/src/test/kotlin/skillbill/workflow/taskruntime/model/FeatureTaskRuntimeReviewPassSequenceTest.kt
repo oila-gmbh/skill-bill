@@ -7,8 +7,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
 class FeatureTaskRuntimeReviewPassSequenceTest {
-  private val remediationPasses = listOf(2, 3, 5, 10, 47)
-
   @Test
   fun `pass one keeps the tier its pinned mode resolves to`() {
     assertEquals(
@@ -26,19 +24,10 @@ class FeatureTaskRuntimeReviewPassSequenceTest {
   }
 
   @Test
-  fun `every remediation pass runs inline under the remediation rule for any pinned mode`() {
-    CodeReviewExecutionMode.entries.forEach { pinnedMode ->
-      remediationPasses.forEach { passNumber ->
-        val resolution = FeatureTaskRuntimeReviewPassSequence.resolveForPass(pinnedMode, passNumber)
-        assertEquals(
-          CodeReviewExecutionMode.INLINE,
-          resolution.resolvedTier,
-          "Pass $passNumber under '$pinnedMode' must review only the remediation delta inline.",
-        )
-        assertEquals(
-          FeatureTaskRuntimeReviewPassSequence.REMEDIATION_PASS_RULE,
-          resolution.decidingRule,
-        )
+  fun `pass two and later fail loudly instead of reserving remediation review`() {
+    listOf(2, 3, 7).forEach { passNumber ->
+      assertFailsWith<InvalidGoalSubtaskReviewStateSchemaError> {
+        FeatureTaskRuntimeReviewPassSequence.resolveForPass(CodeReviewExecutionMode.INLINE, passNumber)
       }
     }
   }
@@ -70,7 +59,9 @@ class FeatureTaskRuntimeReviewPassSequenceTest {
       baselineUntrackedPaths = emptyList(),
       codeReviewMode = CodeReviewExecutionMode.AUTO,
     )
-    FeatureTaskRuntimeReviewPassSequence.resolveForPass(state.codeReviewMode, 2)
+    assertFailsWith<InvalidGoalSubtaskReviewStateSchemaError> {
+      FeatureTaskRuntimeReviewPassSequence.resolveForPass(state.codeReviewMode, 2)
+    }
     assertEquals(CodeReviewExecutionMode.AUTO, state.codeReviewMode)
     assertEquals("auto", state.toArtifactMap()["code_review_mode"])
   }

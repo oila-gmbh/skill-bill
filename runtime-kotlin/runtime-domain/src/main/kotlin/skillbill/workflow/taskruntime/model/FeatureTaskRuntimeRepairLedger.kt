@@ -19,8 +19,6 @@ private const val LEDGER_CLOSE_MARKER_PREFIX: String = "<<<END_REPAIR_LEDGER"
 
 enum class FeatureTaskRuntimeRepairLedgerStatus(val wireValue: String) {
   RESOLVED("resolved"),
-  SUPERSEDED("superseded"),
-  REOPENED("reopened"),
   DISREGARDED("disregarded"),
 }
 
@@ -114,15 +112,6 @@ data class FeatureTaskRuntimeRepairLedger(
 
   val resolvedEntries: List<FeatureTaskRuntimeRepairLedgerEntry>
     get() = entries.filter { it.status == FeatureTaskRuntimeRepairLedgerStatus.RESOLVED }
-
-  fun hasReopenedEntryFor(findingRefs: Collection<String>): Boolean {
-    if (findingRefs.isEmpty()) return false
-    val normalized = findingRefs.mapTo(mutableSetOf(), ::normalizeIdentityPart)
-    return entries.any { entry ->
-      entry.status == FeatureTaskRuntimeRepairLedgerStatus.REOPENED &&
-        normalizeIdentityPart(entry.disturbanceRef) in normalized
-    }
-  }
 
   fun boundedProjection(): FeatureTaskRuntimeRepairLedgerProjection {
     val complete = FeatureTaskRuntimeRepairLedgerProjection(entryCount = entries.size, entries = entries)
@@ -261,12 +250,10 @@ fun featureTaskRuntimeFoldRepairLedger(
     val round = receipt.roundNumber
     val carried = ReviewStateFindingIdentities(findingsByPass[round].orEmpty())
     val addressed = receipt.entries.filter { it.outcome == FeatureTaskRuntimeRepairOutcome.ADDRESSED }
-    supersedeConstructsReplacedByAnotherFinding(accumulated, addressed, carried, round)
     addressed.forEach { entry -> accumulated.recordResolved(entry, carried, round) }
     receipt.entries
       .filter { it.outcome == FeatureTaskRuntimeRepairOutcome.NO_EDIT_REQUIRED }
       .forEach { entry -> accumulated.recordDisregarded(entry, carried, round) }
-    reopenAgainstPassFindings(accumulated, findingsByPass[round + 1].orEmpty(), round + 1)
   }
   return FeatureTaskRuntimeRepairLedger(
     entries = accumulated.values.sortedWith(
@@ -288,33 +275,6 @@ private class ReviewStateFindingIdentities(carriedFindings: List<GoalSubtaskRevi
 
   fun identityOf(entry: FeatureTaskRuntimeRepairReceiptEntry): String =
     resolve(entry)?.let(::compactReviewFindingIdentity) ?: entry.findingIdentity()
-}
-
-private fun supersedeConstructsReplacedByAnotherFinding(
-  accumulated: MutableMap<String, FeatureTaskRuntimeRepairLedgerEntry>,
-  addressed: List<FeatureTaskRuntimeRepairReceiptEntry>,
-  carried: ReviewStateFindingIdentities,
-  round: Int,
-) {
-  if (addressed.isEmpty()) return
-  val claimedByFinding = addressed.associate { entry ->
-    carried.identityOf(entry) to entry.constructs.mapTo(
-      linkedSetOf(),
-      FeatureTaskRuntimeRepairConstruct::identity,
-    )
-  }
-  accumulated.keys.toList().forEach { identity ->
-    val existing = accumulated.getValue(identity)
-    val replacedByAnotherFinding = claimedByFinding.any { (claimingFinding, claimed) ->
-      claimingFinding != identity && existing.constructIdentities.any { it in claimed }
-    }
-    if (replacedByAnotherFinding && existing.status != FeatureTaskRuntimeRepairLedgerStatus.SUPERSEDED) {
-      accumulated[identity] = existing.copy(
-        status = FeatureTaskRuntimeRepairLedgerStatus.SUPERSEDED,
-        statusRound = round,
-      )
-    }
-  }
 }
 
 private fun MutableMap<String, FeatureTaskRuntimeRepairLedgerEntry>.recordResolved(
@@ -361,44 +321,6 @@ private fun MutableMap<String, FeatureTaskRuntimeRepairLedgerEntry>.recordDisreg
     statusRound = round,
     noEditReason = entry.noEditReason,
   )
-}
-
-private fun reopenAgainstPassFindings(
-  accumulated: MutableMap<String, FeatureTaskRuntimeRepairLedgerEntry>,
-  findings: List<GoalSubtaskReviewCompactFinding>,
-  passNumber: Int,
-) {
-  val advanceBlocking = findings.filter(GoalSubtaskReviewCompactFinding::blocksAdvance)
-  if (advanceBlocking.isEmpty()) return
-  accumulated.keys.toList().forEach { identity ->
-    val existing = accumulated.getValue(identity)
-    if (existing.status == FeatureTaskRuntimeRepairLedgerStatus.REOPENED) return@forEach
-    if (advanceBlocking.any(existing::disturbedBy)) {
-      accumulated[identity] = existing.copy(
-        status = FeatureTaskRuntimeRepairLedgerStatus.REOPENED,
-        statusRound = passNumber,
-        rationaleContested = existing.rationaleContested ||
-          existing.status == FeatureTaskRuntimeRepairLedgerStatus.DISREGARDED,
-      )
-    }
-  }
-}
-
-fun featureTaskRuntimeUndeclaredDisturbances(
-  receipt: FeatureTaskRuntimeRepairReceipt,
-  ledger: FeatureTaskRuntimeRepairLedger,
-): List<FeatureTaskRuntimeRepairLedgerEntry> {
-  if (ledger.isEmpty) return emptyList()
-  val declared = receipt.disturbedRemedies.mapTo(mutableSetOf()) { remedy -> normalizeIdentityPart(remedy.findingRef) }
-  val ownFindings = receipt.entries.mapTo(mutableSetOf(), FeatureTaskRuntimeRepairReceiptEntry::findingIdentity)
-  val touchedConstructs = receipt.entries
-    .flatMap(FeatureTaskRuntimeRepairReceiptEntry::constructs)
-    .mapTo(mutableSetOf(), FeatureTaskRuntimeRepairConstruct::identity)
-  return ledger.resolvedEntries.filter { entry ->
-    entry.findingIdentity !in ownFindings &&
-      entry.constructIdentities.any { it in touchedConstructs } &&
-      normalizeIdentityPart(entry.disturbanceRef) !in declared
-  }
 }
 
 private fun identifierTokens(value: String): List<String> =

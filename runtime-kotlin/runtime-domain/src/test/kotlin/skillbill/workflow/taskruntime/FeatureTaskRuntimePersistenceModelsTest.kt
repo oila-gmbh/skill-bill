@@ -365,6 +365,36 @@ class FeatureTaskRuntimePersistenceModelsTest {
   }
 
   @Test
+  fun `removed plan_fix phase id loud-fails on private phase records`() {
+    val record = FeatureTaskRuntimePhaseRecord(
+      phaseId = "implement",
+      status = "completed",
+      attemptCount = 1,
+      startedAt = "2026-06-02T10:00:00Z",
+      resolvedAgentId = "agent-implement-1",
+    )
+    val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
+      FeatureTaskRuntimePhaseRecord.fromArtifactMap(record.toArtifactMap() + ("phase_id" to "plan_fix"))
+    }
+    assertTrue(error.message.orEmpty().contains("plan_fix"))
+  }
+
+  @Test
+  fun `removed plan_fix phase id loud-fails on phase ledger entries`() {
+    val entry = FeatureTaskRuntimePhaseLedgerEntry(
+      action = FeatureTaskRuntimePhaseLedgerAction.START,
+      sequenceNumber = 1,
+      timestamp = "2026-06-02T10:00:00Z",
+      phaseId = "implement",
+      attemptCount = 1,
+    )
+    val error = assertFailsWith<InvalidWorkflowStateSchemaError> {
+      FeatureTaskRuntimePhaseLedgerEntry.fromArtifactMap(entry.toArtifactMap() + ("phase_id" to "plan_fix"))
+    }
+    assertTrue(error.message.orEmpty().contains("plan_fix"))
+  }
+
+  @Test
   fun `review phase record round trips the durably reserved pass number`() {
     val record = FeatureTaskRuntimePhaseRecord(
       phaseId = "review",

@@ -132,32 +132,6 @@ internal fun validProducedOutputs(phaseId: String, commitPushChangedPaths: List<
       "validation_strategy":["Focused runtime tests."]
     }
       """.trimIndent()
-    // Mutating phases must carry the reconciliation report or the runtime's reconciliation gate
-    // rejects the output (SKILL-85 Subtask 3). implement_fix is mutating too (SKILL-85 Subtask 4).
-    // implement additionally feeds audit's bounded implementation-receipt projection.
-    //
-    // SKILL-140 Subtask 3 (task-8) decision: the implementation_receipt variant is
-    // additionalProperties:false and declares `changed_paths` (normalized repo-relative paths) plus the
-    // governed co-residents `reconciled_state` and `repair_item_results`. It does NOT declare
-    // `changed_files`. The prior fixture carried a redundant `changed_files` list that duplicated
-    // `changed_paths` and is rejected by the real Draft 2020-12 validator. We remove the undeclared key
-    // rather than widen implementation_receipt to admit it: widening the schema to keep a duplicate wire
-    // field is the rejected alternative (schema-shape changes are a stated non-goal, and `changed_paths`
-    // already carries the path list this variant delivers).
-    "plan_fix" ->
-      """{
-      "repair_plan":{
-        "contract_version":"0.1",
-        "round_number":1,
-        "entries":[{
-          "finding_ref":"F-001",
-          "root_cause":"Fixture root cause for the carried finding.",
-          "minimal_change":"Fixture minimal change closing the carried finding.",
-          "classification":"local_patch_site"
-        }]
-      }
-    }
-    """
     "implement", "implement_fix" ->
       """{
       "projection_kind":"implementation_receipt",

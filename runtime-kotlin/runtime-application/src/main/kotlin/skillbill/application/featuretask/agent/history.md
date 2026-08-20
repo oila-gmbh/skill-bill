@@ -35,6 +35,15 @@ Areas: runtime-application/featuretask, runtime-domain/workflow/taskruntime, run
 Feature flag: N/A
 Acceptance criteria: 6/6 implemented
 
+## [2026-08-21] SKILL-202 — single-pass review remediation
+Areas: runtime-application/featuretask, runtime-application/goalrunner, runtime-domain/taskruntime, runtime contracts, governed feature-task skills
+- Review remediation is one `implement_fix` round: `review --changes_requested` uses a per-subtask cap of one and advances to validate after that round.
+- Removed `plan_fix`, second-round escalation, churn, and unresolved-finding pause vocabulary from runtime projections, durable review state, transition wiring, and prompts.
+- Pattern: declare bounded remediation edges in workflow topology and keep prompts, persistence, schemas, and projections aligned. reusable
+- Durable records naming retired phase, verdict, or ledger values loud-fail rather than being coerced; audit-gap and rejected-output loops retain their independent behavior.
+Feature flag: N/A
+Acceptance criteria: 11/11 implemented
+
 ## [2026-08-20] Validate runs only the pack collect-all command
 Areas: runtime-application/featuretask (validate directives, prompt composer, run loop), AGENTS.md, skills/bill-feature-task-runtime
 - Validate briefing names the pack `collect_all_full_gate_command` and forbids `skill-bill validate`, `npx agnix`, `scripts/validate_agent_configs`, and `bill-code-check`.

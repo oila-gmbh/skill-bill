@@ -70,7 +70,7 @@ class GoalRunnerStatusProjectorTest {
       manifest = manifest(currentSubtaskStatus = "in_progress"),
       extras = GoalRunnerStatusProjectionExtras(
         currentWorkflowStatus = "running",
-        currentStepOverride = "plan_fix",
+        currentStepOverride = "implement_fix",
         latestLivenessSignal = "liveness=worker_output_summary phase=audit activity=exit_status=1",
         latestObservabilityEvent = mapOf(
           "liveness_class" to "worker_output_summary",
@@ -79,7 +79,7 @@ class GoalRunnerStatusProjectorTest {
       ),
     )
 
-    assertEquals("plan_fix", projection.currentStep)
+    assertEquals("implement_fix", projection.currentStep)
     assertNull(projection.latestLivenessSignal)
     assertNull(projection.latestObservabilityEvent)
   }

@@ -117,9 +117,6 @@ internal object FeatureTaskRuntimeReviewEnvelope {
       FeatureTaskRuntimeVerificationSignalKeys.REVIEW_RUN_ID to reviewRunId,
       "repository_checkpoint" to mapOf("fingerprint" to cycle.repositoryFingerprint),
     )
-    if (cycle.passNumber >= 2) {
-      produced["blocker_dispositions"] = cycle.blockerDispositions.map(GoalSubtaskBlockerDisposition::toArtifactMap)
-    }
     commitFocusedAccounting(result, cycle.resolvedTier)?.let { accounting ->
       produced["commit_focused_accounting"] = accounting.toArtifactMap()
     }

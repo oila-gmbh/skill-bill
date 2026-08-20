@@ -136,7 +136,7 @@ stored baseline exactly; a missing, rewritten, unrelated, or non-ancestor base
 blocks loudly. Never substitute `HEAD`, `origin/main`, a merge base, the full
 feature branch, or an earlier subtask's commits.
 
-Pass one reviews the complete base-to-current delta against the immutable `review_base_sha` and baseline untracked inventory: committed, staged, unstaged, and untracked paths that were not in the baseline inventory. Review pass one uses the selected mode, and every later pass runs inline against the remediation delta via `context:feature-remediation`. Pass one's two full parallel lanes both receive the selected `mode:<auto|inline|delegated>` contract. Lanes remain non-recursive and the coordinated lanes count as one review pass.
+Pass one reviews the complete base-to-current delta against the immutable `review_base_sha` and baseline untracked inventory: committed, staged, unstaged, and untracked paths that were not in the baseline inventory. Review runs once in the selected mode. Pass one's two full parallel lanes both receive the selected `mode:<auto|inline|delegated>` contract. Lanes remain non-recursive and the coordinated lanes count as one review pass.
 
 The complete child-owned delta is the immutable `review_base_sha` through the
 current worktree plus `current untracked paths - baseline untracked inventory`.
@@ -145,25 +145,7 @@ new child-owned untracked files after implementation, repair, or resume. Never
 replace this scope with a branch-wide diff, merge base, `origin/main`, or
 sibling-subtask substitute.
 
-Audit completes before review starts. Each child then reserves pass one in the
-selected delegated mode and every later remediation pass inline. A remediation
-round is handed all findings. Blocker and Major findings both reopen
-`implement_fix` and block advancement. Minor and Nit findings advance, are
-recorded in the goal-wide unaddressed-findings ledger, and never reopen the loop.
-While any pass still has unresolved Blocker or Major findings, the child repairs
-them and reserves another accounted pass; no finite count pauses or advances the
-run. Crossing from iteration 3 to iteration 4 prints a warning that the advisory
-threshold of 3 was exceeded and remediation continues.
-
-On a remaining non-count-based stop path — an existing failure, or non-convergence
-where a re-review returns the same unresolved Blocker-or-Major set with no
-repository change — persist full evidence, emit a compact path-free summary, and
-pause as a human-resumable, uncapped block before validate.
-
-If a crash leaves a reserved pass without its completed durable output, resume
-that reserved pass rather than allocating another. Carry the durable pass
-accounting forward on every repair and audit re-entry. A blocking disposition with
-unresolved Blocker or Major evidence is blocking.
+Audit completes before review starts. The child runs review once in the selected mode. A `changes_requested` verdict triggers at most one bounded `implement_fix` round, then the child advances to `validate` regardless of whether every finding resolved. Minor and Nit findings advance, are recorded in the goal-wide unaddressed-findings ledger, and never reopen the loop.
 
 Goal-facing review output and terminal summaries contain only subtask id, pass,
 verdict/disposition, finding count, severity, class/symbol-or-sanitized-stem
@@ -436,4 +418,4 @@ remain authoritative.
 
 ## Audit-first review and findings ledger
 
-Goal children use the audit-first order `implement -> audit -> review -> validate`; review starts only after audit is satisfied. Review pass one uses the selected mode, and every later pass runs inline against the remediation delta via `context:feature-remediation`. An unresolved Blocker or Major finding reopens `implement_fix`. Minor and Nit findings advance and are durably recorded in the goal-wide unaddressed-findings ledger. Remediation continues while any unresolved Blocker or Major remains. Retrieve the location-bearing ledger, including after goal completion, with `skill-bill goal findings --issue-key <KEY>`.
+Goal children use the audit-first order `implement -> audit -> review -> validate`; review starts only after audit is satisfied. Review runs once. A `changes_requested` verdict triggers at most one bounded `implement_fix` round, then the child advances to `validate` regardless of whether every finding resolved. Minor and Nit findings advance and are durably recorded in the goal-wide unaddressed-findings ledger. Retrieve the location-bearing ledger, including after goal completion, with `skill-bill goal findings --issue-key <KEY>`.

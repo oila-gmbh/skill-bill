@@ -131,7 +131,6 @@ $defs:
           - preplan
           - plan
           - implement
-          - plan_fix
           - implement_fix
           - review
           - build
@@ -152,7 +151,6 @@ $defs:
                     - preplan
                     - plan
                     - implement
-                    - plan_fix
                     - implement_fix
                     - review
                     - build
@@ -267,7 +265,7 @@ properties:
   contract_version:
     type: string
     minLength: 1
-    const: "0.1"
+    const: "0.2"
     description: >
       Pinned to `WORKFLOW_STATE_CONTRACT_VERSION` (currently "0.1"). The
       parity test `WorkflowStateSchemaContractVersionTest` keeps the two
