@@ -84,7 +84,7 @@ class FeatureTaskRuntimeValidationGateCoordinator(
         state = state,
         declaration = declaration,
         openFindings = decodePersistedFindings(loaded.completeFindings),
-        initialRepairsUsed = loaded.repairsUsed,
+        initialRepairsUsed = operatorResumeRepairTurns(loaded.repairsUsed),
       )
     }
 
@@ -259,6 +259,9 @@ class FeatureTaskRuntimeValidationGateCoordinator(
 
   companion object {
     const val MAX_REPAIR_TURNS: Int = 5
+
+    private fun operatorResumeRepairTurns(repairsUsed: Int): Int =
+      if (repairsUsed >= MAX_REPAIR_TURNS) 0 else repairsUsed
 
     fun unparseableGateFailureFinding(result: ValidationGateRunResult): ValidationGateFinding = ValidationGateFinding(
       module = "<validation-gate>",

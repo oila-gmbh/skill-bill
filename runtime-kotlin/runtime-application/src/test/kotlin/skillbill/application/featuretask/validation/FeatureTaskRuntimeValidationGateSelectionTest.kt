@@ -196,7 +196,7 @@ class FeatureTaskRuntimeValidationGateSelectionTest {
   }
 
   @Test
-  fun `findings_open resume restores repairs_used and blocks without further gate runs when max turns exhausted`() {
+  fun `operator resume after exhausted repair turns starts a new repair window`() {
     val maxTurns = FeatureTaskRuntimeValidationGateCoordinator.MAX_REPAIR_TURNS
     val finding = ValidationGateFinding("m", "t", "still broken", "loc")
     val recorded = mutableListOf<FeatureTaskRuntimeValidationGateProgress>()
@@ -217,8 +217,8 @@ class FeatureTaskRuntimeValidationGateSelectionTest {
         repairsUsed = maxTurns,
       ),
     )
-    var repairLaunches = 0
-    val runner = ScriptedGateRunner(emptyList())
+    val repairSizes = mutableListOf<Int>()
+    val runner = ScriptedGateRunner(listOf(passed(forced = true)))
     val cycle = coordinator(declaredResolver(), runner, progressStore).execute(
       cycle = ValidationGateCycleRequest(
         repoRoot = validationGateTestRepoRoot,
@@ -226,18 +226,20 @@ class FeatureTaskRuntimeValidationGateSelectionTest {
         validationDepth = ValidationDepth.FULL,
         changedPaths = listOf("runtime-kotlin/foo.kt"),
         repositoryCheckpoint = "checkpoint",
-        agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _ ->
-          repairLaunches++
-          error("repair must not launch when repairs_used already reached MAX_REPAIR_TURNS")
+        agentRepairLauncher = ValidationGateAgentRepairLauncher { findings, _ ->
+          repairSizes += findings.findings.size
+          ValidationGateAgentRepairResult.Completed(
+            FeatureTaskRuntimePhaseOutput(phaseId = "validate", iteration = 1, payload = "{}"),
+          )
         },
       ),
     )
-    val blocked = assertIs<ValidationGateCycleTerminalOutcome.Blocked>(
+    assertIs<ValidationGateCycleTerminalOutcome.Completed>(
       assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,
     )
-    assertTrue(blocked.reason.contains("not converging"))
-    assertEquals(0, runner.calls)
-    assertEquals(0, repairLaunches)
-    assertEquals(maxTurns, recorded.last().repairsUsed)
+    assertEquals(listOf(1), repairSizes)
+    assertEquals(1, runner.calls)
+    assertEquals(listOf("echo", "collect-all-full"), runner.requests.single().argv)
+    assertEquals(1, recorded.last().repairsUsed)
   }
 }
