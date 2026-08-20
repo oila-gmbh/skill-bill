@@ -1,13 +1,17 @@
 package skillbill.application.goalrunner
 
 import skillbill.application.decomposition.withParentStatus
+import skillbill.application.featuretask.FeatureTaskRuntimeCheckpointRefPruneRequest
+import skillbill.application.featuretask.pruneCompletedSubtaskCheckpointRefs
 import skillbill.goalrunner.model.GoalRunnerStoredOutcome
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.model.GoalRunnerOutOfBandAcceptance
+import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.workflow.model.CurrentSubtaskIntent
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
+import java.nio.file.Path
 
 internal fun reconcileGoalManifest(
   manifest: DecompositionManifest,
@@ -26,6 +30,29 @@ internal fun reconcileGoalManifest(
   return manifest.copy(subtasks = manifest.subtasks.map { subtask -> context.reconcile(subtask) })
     .withParentStatus()
     .withDerivedCurrentIntent()
+}
+
+internal fun pruneEligibleCheckpointRefsForManifest(
+  manifest: DecompositionManifest,
+  gitOperations: WorkflowGitOperations,
+  repoRoot: Path,
+  record: (String) -> Unit,
+) {
+  manifest.subtasks.forEach { subtask ->
+    if (subtask.status == "complete" && !subtask.commitSha.isNullOrBlank()) {
+      pruneCompletedSubtaskCheckpointRefs(
+        gitOperations = gitOperations,
+        repoRoot = repoRoot,
+        request = FeatureTaskRuntimeCheckpointRefPruneRequest(
+          issueKey = manifest.issueKey,
+          subtaskId = subtask.id.toString(),
+          manifestCommitSha = subtask.commitSha,
+          featureBranch = manifest.featureBranch,
+        ),
+        record = record,
+      )
+    }
+  }
 }
 
 private data class GoalManifestReconciliationContext(

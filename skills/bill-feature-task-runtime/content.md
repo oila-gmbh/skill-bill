@@ -375,6 +375,14 @@ issue, the runtime records a non-retryable policy block. A path already dirty
 before the phase remains evidence but is not attributed to that phase. Do not
 work around this guard by committing, staging, or renaming the unrelated spec.
 
+`commit_push` is runtime-owned. Emit `commit_push_result` with a non-blank
+`message` and an enumerated `changed_paths` list only; do not run `git commit` or
+`git push` for the subtask deliverable. The runtime stages the path set, amends the
+subtask commit to the outcome message, captures the post-amend sha, pushes once,
+and prunes `refs/skill-bill/checkpoints/<issue-key>/<subtask-id>/*` after the
+manifest records a non-blank `commit_sha`. Governed `.feature-specs/` paths stay
+unstaged throughout.
+
 To deliberately replace a nonterminal run, terminalize that exact workflow
 through the supported operator path:
 

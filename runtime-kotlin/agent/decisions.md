@@ -4,6 +4,21 @@ This file records architectural and implementation decisions that span the
 `runtime-kotlin/` boundary. Each entry is dated and explains the trade-off,
 not the implementation detail.
 
+## [2026-08-20] Checkpoint-ref prune lifecycle supersedes amend-era ref-retention trigger (SKILL-190 subtask 6)
+
+Context: Subtask 4's ref-based remediation reconciliation kept checkpoint refs for the life of a
+subtask; subtask 6 adds a gated prune after push plus recorded `commit_sha`, reset-driven pruning,
+and idempotent resume.
+
+Decision: Prune `refs/skill-bill/checkpoints/<issue-key>/<subtask-id>/*` only after the subtask
+commit is pushed and the decomposition manifest entry carries a non-blank `commit_sha`; hard reset
+prunes without that gate; blocked or abandoned subtasks retain refs.
+
+Reason: Refs remain the recovery surface until the deliverable commit is durable on the branch and
+in the manifest; afterward they would only grow the namespace without adding reachability.
+
+Revisit when: prune eligibility or the checkpoint namespace layout changes.
+
 ## [2026-08-19] Ref-based remediation reconciliation supersedes compensating soft-reset (SKILL-190 subtask 4)
 
 Context: Subtask 3 introduced runtime-owned amend semantics; the SKILL-176 compensating soft-reset and
@@ -22,7 +37,7 @@ Alternatives considered: Keeping HEAD rewrite for recorded-but-superseded — re
 SKILL-189 failure door. Retaining parent-only soft-reset — rejected; amend orphans the parent link the
 rollback relied on.
 
-Revisit when: finalisation or push semantics change how checkpoint refs are pruned after subtask completion.
+Superseded by: checkpoint-ref prune lifecycle (SKILL-190 subtask 6, 2026-08-20).
 
 ## [2026-08-17] Checkpoint-identity 0.2 keeps its parity test; quarantine enum widens without a bump (SKILL-190 subtask 2)
 

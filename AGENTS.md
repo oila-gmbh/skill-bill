@@ -80,6 +80,14 @@ Agent-specific behavior uses injectable strategies on `AgentRunProcessRequest`, 
 
 Validate-phase build, test, and gate execution is runtime-owned when the dominant platform pack declares `validation_gate`. The loop is one collect-all gate run to produce the complete finding set, then a `findings_open` repair window with zero check, test, compile, format-task, or quality-check invocations until the agent signals full repair, then one cache-bypassing verification gate — repeating only while findings remain, and blocking loudly once repair stops converging. There is no per-fix gate run, no substantiation receipt or coverage gate, and no finding paging. `full_gate_command` is not an intermediate repair-cycle run. FULL depth runs the pack's collect-all argv for discovery; BUILD_ONLY validate runs the pack's build-only argv only outside `findings_open`. The validate agent repairs findings and must not invoke the gate, any quality-check skill, or targeted tasks such as `detekt`, `ktlintCheck`, `test`, or `compileKotlin` while `findings_open`. When a pack declares no gate, validate falls back to agent-run behavior with the same repair-window prohibition and that degradation is surfaced. Audit and repair evidence remain read-only repository facts — never builds or tests.
 
+## Commit Structure (feature-task / goal subtasks)
+
+Decomposed goal runs use `same_branch_commit_per_subtask`: each completed subtask leaves exactly one commit on the feature branch, not a chain of checkpoint commits in branch history.
+
+- The runtime owns finalisation: it stages the agent's enumerated path set, amends (or creates) the subtask commit, captures the post-amend sha, pushes, and records `commit_sha` into the decomposition manifest. The agent supplies the outcome message and path list in `commit_push_result`; it does not run `git commit` or `git push` for a subtask.
+- Checkpoint history lives under `refs/skill-bill/checkpoints/<issue-key>/<subtask-id>/<sequence>`. Those refs preserve pre-amend commits the branch no longer names; they are not reachable through `git log` on the branch without an explicit ref argument.
+- Pruning deletes a subtask's checkpoint refs only after that subtask's commit is pushed and its manifest entry records a non-blank `commit_sha`. Pruning is idempotent; a hard manifest reset prunes the refs of the subtasks it reset. Blocked or abandoned subtasks keep their refs for recovery.
+
 ## Writing And Comments
 
 Write direct, active prose; drop filler, stale phrases, praise, and repetition, but preserve names, numbers, and qualifications. Commits/PRs/docs: lead with the outcome, state what changed and why, and avoid unsupported terms such as "successfully", "perfect", "comprehensive", and "robust". Prefer clear names and small functions over comments; comment only a non-obvious *why* code cannot express — never explain *what* code does.

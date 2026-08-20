@@ -1,5 +1,16 @@
 # featuretask runtime boundary history
 
+Revisit when: prune eligibility or the checkpoint namespace layout changes.
+
+## [2026-08-20] SKILL-190 subtask 6 — Checkpoint-ref prune lifecycle and docs
+Areas: runtime-application/featuretask, runtime-application/goalrunner, runtime-ports/workflow, AGENTS.md, orchestration/workflow-contract/PLAYBOOK.md, skills/bill-feature-task-runtime
+- `FeatureTaskRuntimeCheckpointRefPrune` deletes refs under `refs/skill-bill/checkpoints/<issue>/<subtask>/` only after push plus a recorded manifest `commit_sha`; hard reset bypasses the gate; pruning is idempotent.
+- Goal runner prunes on subtask completion and on status reconcile for complete subtasks; hard reset prunes every reset subtask namespace.
+- `commit_push` finalisation defers prune until the manifest records `commit_sha`; agents emit message and paths only.
+- Pattern: gated ref lifecycle paired with runtime-owned finalisation; reset-driven namespace bounding. reusable
+Feature flag: N/A
+Acceptance criteria: 9/9 implemented
+
 ## [2026-08-20] SKILL-190 — Completed-upstream-missing-output goal repair wedge
 Areas: runtime-application/featuretask, runtime-application/goalrunner, runtime-application/model, runtime-cli/goal
 - Added `COMPLETED_UPSTREAM_MISSING_OUTPUT` goal repair wedge: blocked consumers missing upstream projections diagnose `completed` phase rows with no settled output
@@ -17,7 +28,7 @@ Areas: runtime-application/featuretask (goal continuation recorder, run loop), r
 - `rollbackRemediationCheckpointCommit` restores the prior checkpoint ref (or removes the first subtask commit) and no-ops when HEAD already moved; compensating rollback no longer soft-resets to `parentSha` alone.
 - Durable `goal_review_base_recoveries` evidence carries seam, value used, value expected, and cause on blocked reconciliation and stored-base misses.
 - Reusable: ref-resolved remediation base + typed blocked outcome at goal-child resume; ref-based compensating rollback paired with subtask 3 amend ceremony.
-- Limitation: checkpoint-ref pruning lifecycle remains subtask 6; pair with subtask 5 finalisation before treating production-safe.
+- Limitation: none for this bundle; pair with integrated verification before treating production-safe.
 Feature flag: N/A
 Acceptance criteria: 10/10 implemented
 
@@ -28,7 +39,7 @@ Areas: runtime-application/featuretask (run loop, commit resolver, checkpoint sc
 - Provisional subject comes from the manifest subtask `name`; `phase`, `loop`, and `generation` move to the commit body alongside the trailer, retiring the old single-line checkpoint subject.
 - Before each amend, the pre-amend commit is written to `refs/skill-bill/checkpoints/<issue>/<subtask>/<sequence>` and must resolve before amend runs; ref failure blocks the checkpoint loudly.
 - Pattern: extend subtask 1 amend/ref primitives through the checkpoint write path without changing ceremony dispatch or scope verdicts; checkpoint-identity idempotency from subtask 2 is preserved in the same transaction.
-- Limitation: reconciliation consumers now use checkpoint refs; pair with subtask 4 before treating production-safe.
+- Limitation: none for this bundle; pair with integrated verification before treating production-safe.
 Feature flag: N/A
 Acceptance criteria: 12/12 implemented
 

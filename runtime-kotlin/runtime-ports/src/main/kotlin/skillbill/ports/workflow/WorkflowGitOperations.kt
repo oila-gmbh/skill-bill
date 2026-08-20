@@ -322,6 +322,30 @@ fun WorkflowGitOperations.deleteCheckpointRef(
   refName: String,
 ): WorkflowGitOperationResult = checkpointHistoryOperations().deleteRef(repoRoot, namespacePrefix, refName)
 
+/**
+ * SKILL-190: deletes every ref under [subtaskRefPrefix], which must name
+ * `refs/skill-bill/checkpoints/<issue-key>/<subtask-id>/`. An absent ref is success so an interrupted
+ * prune or a second run converges on the same end state.
+ */
+fun WorkflowGitOperations.deleteCheckpointRefsUnderPrefix(
+  repoRoot: Path,
+  namespacePrefix: String,
+  subtaskRefPrefix: String,
+): WorkflowGitOperationResult {
+  val listed = listCheckpointRefs(repoRoot, subtaskRefPrefix)
+  if (!listed.ok) return listed
+  val refs = listed.value.orEmpty()
+    .split('\u0000')
+    .filter(String::isNotBlank)
+    .chunked(2)
+    .mapNotNull { parts -> parts.getOrNull(1)?.trim()?.takeIf(String::isNotBlank) }
+  refs.forEach { refName ->
+    val deleted = deleteCheckpointRef(repoRoot, namespacePrefix, refName)
+    if (!deleted.ok) return deleted
+  }
+  return WorkflowGitOperationResult(status = "ok", value = refs.size.toString())
+}
+
 interface RepositoryFingerprintGitOperations {
   fun repositoryFingerprint(repoRoot: Path): WorkflowGitOperationResult
 

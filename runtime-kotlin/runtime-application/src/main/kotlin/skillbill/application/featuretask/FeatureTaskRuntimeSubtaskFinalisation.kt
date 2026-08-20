@@ -79,6 +79,7 @@ internal class FeatureTaskRuntimeSubtaskFinalisation(
     sequenceNumber: Int,
     handoff: FeatureTaskRuntimeCommitPushHandoff,
     metadata: FeatureTaskRuntimeCheckpointMetadata,
+    manifestCommitSha: String? = null,
   ): FeatureTaskRuntimeSubtaskFinalisationResult {
     val branch = metadata.branch
     val excluded = handoff.changedPaths.filter(::isGovernedSpecPath).distinct().sorted()
@@ -115,6 +116,18 @@ internal class FeatureTaskRuntimeSubtaskFinalisation(
     val forcedWithLease = rewrites && remoteDiverged(branch, commitSha)
     val pushFailure = push(branch, identity, commitSha, forcedWithLease)
     if (pushFailure != null) return blocked(pushFailure)
+    if (!manifestCommitSha.isNullOrBlank()) {
+      gitOperations.pruneSubtaskCheckpointRefs(
+        repoRoot = repoRoot,
+        request = FeatureTaskRuntimeCheckpointRefPruneRequest(
+          issueKey = identity.issueKey,
+          subtaskId = identity.subtaskId,
+          manifestCommitSha = manifestCommitSha,
+          featureBranch = branch,
+        ),
+        record = record,
+      )
+    }
     return FeatureTaskRuntimeSubtaskFinalised(
       commitSha = commitSha,
       stagedPaths = stageable,

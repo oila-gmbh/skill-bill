@@ -4860,6 +4860,7 @@ internal class FeatureTaskRuntimeRunLoop(
         branch = branch,
         intent = FeatureTaskRuntimeCheckpointMessage.INTENT_FINALISED_SUBTASK,
       ),
+      manifestCommitSha = goalContinuationManifestCommitSha,
     )
     if (outcome is FeatureTaskRuntimeSubtaskFinalisationBlocked) {
       return CommitPushBlocked(outcome.reason)
@@ -4910,6 +4911,12 @@ internal class FeatureTaskRuntimeRunLoop(
     val head = phaseGates.gitOperations.currentBranch(request.repoRoot)
     return branch.takeIf { head.ok && head.value.trim() == branch.trim() }
   }
+
+  /**
+   * The decomposition manifest records the post-push commit sha only after the goal runner reconciles a
+   * completed child, so finalisation usually sees null here and defers pruning to that boundary.
+   */
+  private val goalContinuationManifestCommitSha: String? = null
 
   /**
    * The durable pointer to the finalisation commit, appended between the commit and the push. Returns
