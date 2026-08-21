@@ -1,6 +1,7 @@
 package skillbill.review.model
 
 import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
+import skillbill.review.context.model.requireRepositoryRelativePath
 
 enum class ReviewStage(val wireValue: String) {
   REVIEW("review"),
@@ -68,6 +69,7 @@ data class ReviewFindingCitation(
   init {
     require(path.isNotBlank()) { "Finding citation path must not be blank." }
     require(line >= 1) { "Finding citation line must be a positive integer." }
+    requireRepositoryRelativePath(path)
   }
 
   fun encoded(): String = "$path\t$line"

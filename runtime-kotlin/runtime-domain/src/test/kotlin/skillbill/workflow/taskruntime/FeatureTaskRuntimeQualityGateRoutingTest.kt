@@ -23,26 +23,27 @@ class FeatureTaskRuntimeQualityGateRoutingTest {
   }
 
   @Test
-  fun `default forward path advances review to validate skipping loop-only build`() {
+  fun `default forward path advances review to verify_findings skipping loop-only build`() {
     val transition = FeatureTaskRuntimeTransitionFunction.nextTransition(
       declaration = def.transitions,
       currentPhaseId = def.PHASE_REVIEW,
       verdict = FeatureTaskRuntimeVerdict.APPROVED,
       edgeIterationCount = 0,
     )
-    assertEquals(def.PHASE_VALIDATE, assertIs<FeatureTaskRuntimeNextPhase.Next>(transition).phaseId)
+    assertEquals(def.PHASE_VERIFY_FINDINGS, assertIs<FeatureTaskRuntimeNextPhase.Next>(transition).phaseId)
   }
 
   @Test
-  fun `build-selected path advances review to build not validate`() {
+  fun `build-selected path remaps verify_findings advance to validate into build`() {
     val transition = FeatureTaskRuntimeTransitionFunction.nextTransition(
       declaration = def.transitions,
-      currentPhaseId = def.PHASE_REVIEW,
-      verdict = FeatureTaskRuntimeVerdict.APPROVED,
+      currentPhaseId = def.PHASE_VERIFY_FINDINGS,
+      verdict = FeatureTaskRuntimeVerdict.NO_FINDINGS_VERIFIED,
       edgeIterationCount = 0,
     )
+    assertEquals(def.PHASE_VALIDATE, assertIs<FeatureTaskRuntimeNextPhase.Next>(transition).phaseId)
     val routed = FeatureTaskRuntimeQualityGateRouting.applyAfterReview(
-      def.PHASE_REVIEW,
+      def.PHASE_VERIFY_FINDINGS,
       transition,
       FeatureTaskRuntimeQualityGateSelection.BUILD,
     )

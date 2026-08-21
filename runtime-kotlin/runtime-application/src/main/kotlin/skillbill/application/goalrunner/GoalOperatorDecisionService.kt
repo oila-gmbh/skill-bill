@@ -1,7 +1,6 @@
 package skillbill.application.goalrunner
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.featuretask.FeatureTaskRuntimeGoalContinuationRecorder
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.model.GoalRunnerOperatorDecisionRequest
 import skillbill.application.model.GoalRunnerOperatorDecisionResult
@@ -13,7 +12,6 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskOperatorDecision
 @Inject
 class GoalOperatorDecisionService(
   private val manifestStore: GoalRunnerManifestStore,
-  private val goalContinuationRecorder: FeatureTaskRuntimeGoalContinuationRecorder,
   private val recorder: FeatureTaskRuntimePhaseRecorder,
 ) {
   @Suppress("ReturnCount")

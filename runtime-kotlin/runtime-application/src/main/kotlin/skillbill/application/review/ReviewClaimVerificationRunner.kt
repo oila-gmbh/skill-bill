@@ -7,6 +7,7 @@ import skillbill.ports.agentrun.model.SkillRunRequest
 import skillbill.ports.agentrun.model.UnsupportedAgentRunLaunch
 import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
+import skillbill.review.ReviewFindingFieldCodec
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.review.context.model.GovernedReviewVerificationLaunch
 import skillbill.review.context.model.ResolvedReviewExecutionMode
@@ -16,6 +17,7 @@ import skillbill.review.context.model.ReviewClaimWorkerResult
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import skillbill.review.context.model.ReviewContextPacket
 import skillbill.review.context.model.ReviewDependencyAllowlist
+import skillbill.review.context.model.requireRepositoryRelativePath
 import skillbill.review.model.ParallelReviewMergedFinding
 import skillbill.review.model.ReviewClaimVerdict
 import skillbill.review.model.ReviewFindingCitation
@@ -187,7 +189,13 @@ internal fun appendPromptSuffix(prompt: String, suffix: String): String {
 }
 
 internal fun citedRegionOf(finding: ParallelReviewMergedFinding): ReviewCitedRegion? {
-  val path = finding.repositoryPath ?: finding.location.substringBefore(':').takeIf { it.isNotBlank() } ?: return null
+  val rawPath = finding.repositoryPath ?: finding.location.substringBefore(
+    ':',
+  ).takeIf { it.isNotBlank() } ?: return null
+  val path = runCatching {
+    requireRepositoryRelativePath(rawPath.trim())
+    rawPath.trim()
+  }.getOrNull() ?: return null
   val line = finding.line ?: finding.location.substringAfter(':', "").toIntOrNull()?.takeIf { it >= 1 } ?: return null
   return runCatching { ReviewCitedRegion(path, line, line) }.getOrNull()
 }
@@ -217,15 +225,7 @@ internal fun parseJsonObject(stdout: String): Map<String, Any?>? {
     ?.let { JsonSupport.anyToStringAnyMap(JsonSupport.jsonElementToValue(it)) }
 }
 
-internal fun parseCitations(raw: Any?): List<ReviewFindingCitation> {
-  val items = raw as? List<*> ?: return emptyList()
-  return items.mapNotNull { item ->
-    val map = JsonSupport.anyToStringAnyMap(item) ?: return@mapNotNull null
-    val path = map["path"] as? String ?: return@mapNotNull null
-    val line = intValue(map["line"]) ?: return@mapNotNull null
-    runCatching { ReviewFindingCitation(path, line) }.getOrNull()
-  }
-}
+internal fun parseCitations(raw: Any?): List<ReviewFindingCitation> = ReviewFindingFieldCodec.citationsOf(raw)
 
 internal fun intValue(raw: Any?): Int? = when (raw) {
   is Int -> raw

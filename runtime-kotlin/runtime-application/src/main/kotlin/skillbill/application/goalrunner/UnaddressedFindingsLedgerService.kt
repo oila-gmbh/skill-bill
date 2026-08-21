@@ -10,6 +10,9 @@ import skillbill.goalrunner.model.UNADDRESSED_FINDING_SEVERITIES
 import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.goalrunner.model.UnaddressedFindingsLedger
 import skillbill.ports.persistence.DatabaseSessionFactory
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_CHECKPOINT_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_DISPOSITIONS_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder
 
@@ -30,6 +33,33 @@ class UnaddressedFindingsLedgerService(private val database: DatabaseSessionFact
       }
       UnaddressedFindingsLedger(issueKey, findings)
     }
+
+  fun verificationDispositions(
+    issueKey: String,
+    dbOverride: String? = null,
+  ): List<FeatureTaskRuntimeFindingVerificationDisposition> = database.read(dbOverride) { unitOfWork ->
+    if (!unitOfWork.unaddressedFindings.issueExists(issueKey)) {
+      throw UnaddressedFindingsLedgerAbsentError("No goal exists for issue key '$issueKey'.")
+    }
+    unitOfWork.unaddressedFindings.workflowIdsForIssue(issueKey).flatMap { workflowId ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@flatMap emptyList()
+      val artifacts = decodeArtifacts(record.artifactsJson)
+      val artifactKey = when {
+        artifacts[FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_DISPOSITIONS_ARTIFACT_KEY] != null ->
+          FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_DISPOSITIONS_ARTIFACT_KEY
+        artifacts[FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_CHECKPOINT_ARTIFACT_KEY] != null ->
+          FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_CHECKPOINT_ARTIFACT_KEY
+        else -> return@flatMap emptyList()
+      }
+      val raw = artifacts[artifactKey] ?: return@flatMap emptyList()
+      runCatching {
+        FeatureTaskRuntimeFindingVerificationDisposition.parseList(
+          raw,
+          artifactKey,
+        )
+      }.getOrDefault(emptyList())
+    }
+  }
 
   fun repairLedgersByWorkflow(
     issueKey: String,

@@ -13,6 +13,7 @@ import skillbill.goalrunner.model.toOutcomeRecord
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.review.ReviewFindingActionability
 import skillbill.review.ReviewFindingFieldCodec
+import skillbill.review.context.model.requireRepositoryRelativePath
 import skillbill.review.model.ReviewClaimVerdict
 import skillbill.review.model.ReviewFindingCitation
 import skillbill.review.model.ReviewFindingVerdict
@@ -34,6 +35,7 @@ internal data class StructuredGoalReviewFinding(
   val location: String,
   val compactLabel: String,
   val findingId: String? = null,
+  val repositoryPath: String? = null,
   val claimVerdict: ReviewClaimVerdict? = null,
   val scopeDisposition: ReviewScopeDisposition? = null,
   val citations: List<ReviewFindingCitation> = emptyList(),
@@ -152,6 +154,7 @@ internal object GoalSubtaskReviewSummaryReducer {
           finding["finding_id"],
           finding["f_number"],
         ),
+        repositoryPath = admissibleRepositoryPath(finding["repository_path"] as? String),
         claimVerdict = overlay.claimVerdict,
         scopeDisposition = overlay.scopeDisposition,
         citations = overlay.citations,
@@ -176,6 +179,39 @@ internal object GoalSubtaskReviewSummaryReducer {
   fun recordedVerdicts(unitOfWork: UnitOfWork, output: Map<String, Any?>): List<ReviewFindingVerdict> {
     val reviewRunId = reviewRunIdOf(output) ?: return emptyList()
     return unitOfWork.reviews.fetchFindingVerdicts(reviewRunId)
+  }
+
+  fun verificationBoundaryFindingPaths(finding: StructuredGoalReviewFinding): List<String> {
+    val paths = mutableListOf<String>()
+    finding.repositoryPath?.let { paths += it }
+    finding.citations.map(ReviewFindingCitation::path).filter { it.isNotBlank() }.forEach { paths += it }
+    pathFromLocationLine(finding.location)?.let { paths += it }
+    return paths.distinct()
+  }
+
+  private fun admissibleRepositoryPath(raw: String?): String? {
+    val trimmed = raw?.trim()?.takeIf(String::isNotBlank) ?: return null
+    return runCatching {
+      requireRepositoryRelativePath(trimmed)
+      trimmed
+    }.getOrNull()
+  }
+
+  private fun pathFromLocationLine(location: String): String? {
+    val token = location.trim()
+    if (token.isBlank() || token == "<unknown>") return null
+    val colon = token.lastIndexOf(':')
+    val candidate = if (colon > 0) {
+      val line = token.substring(colon + 1).trim().toIntOrNull()
+      if (line != null && line >= 1) {
+        token.substring(0, colon).trim().takeIf(String::isNotBlank)
+      } else {
+        token
+      }
+    } else {
+      token
+    }
+    return admissibleRepositoryPath(candidate)
   }
 
   fun unaddressedFindings(

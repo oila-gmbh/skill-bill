@@ -446,11 +446,15 @@ object FeatureTaskRuntimePhasePromptComposer {
           "\"no_findings_verified\" and emit exactly one " +
           "produced_outputs.${FeatureTaskRuntimeVerificationSignalKeys.FINDINGS_VERIFICATION_DISPOSITIONS} " +
           "array with one entry per review finding. Each entry carries finding_id, disposition " +
-          "(verified or rejected), reason, severity, location, and message. Do not edit the worktree.\n" +
+          "(verified or rejected), reason, severity, location, message, optional " +
+          "selected_boundary_headings (heading_id and source_path), and boundary_context_unavailable " +
+          "when no eligible boundary owns the finding paths. Do not edit the worktree.\n" +
           "      Example: {\"finding_id\":\"F-001\",\"disposition\":\"verified\"," +
           "\"reason\":\"Matches spec intent AC-002.\",\"severity\":\"major\"," +
           "\"location\":\"FeatureTaskRuntimePhaseWorkflowDefinition.kt\"," +
-          "\"message\":\"Missing verify_findings wiring\"}."
+          "\"message\":\"Missing verify_findings wiring\"," +
+          "\"selected_boundary_headings\":[{\"heading_id\":\"runtime-kotlin/agent/history.md#abc\"," +
+          "\"source_path\":\"runtime-kotlin/agent/history.md\"}]}."
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT -> auditProducedOutputsAddendum(
         verdict = verdict,
         briefing = briefing,

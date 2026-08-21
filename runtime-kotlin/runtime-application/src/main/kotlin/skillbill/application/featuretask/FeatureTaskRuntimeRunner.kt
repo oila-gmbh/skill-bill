@@ -345,7 +345,6 @@ class FeatureTaskRuntimeRunner(
     )
   }
 
-
   private fun loadAuditGapIterationCount(request: FeatureTaskRuntimeRunRequest): Int =
     FeatureTaskRuntimeAuditConvergence.auditGapIterationCount(
       recorder.loadPhaseLedger(request.workflowId, request.dbPathOverride).orEmpty(),

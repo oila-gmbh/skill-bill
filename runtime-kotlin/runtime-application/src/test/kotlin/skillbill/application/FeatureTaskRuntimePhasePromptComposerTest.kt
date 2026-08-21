@@ -174,20 +174,19 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   @Test
   fun `only validate may run the pack check gate`() {
     val ownershipTitle = "Validation ownership"
-    val forbiddenPhases = listOf(
+    val phasesRequiringValidationOwnership = listOf(
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS,
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR,
     )
-    forbiddenPhases.forEach { phaseId ->
+    phasesRequiringValidationOwnership.forEach { phaseId ->
       val prompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor(phaseId))
       assertContains(prompt, ownershipTitle, false, "ownership title for $phaseId")
       assertContains(prompt, "Only the validate phase may run the pack validation gate", false, phaseId)
@@ -211,6 +210,13 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW),
     )
     assertContains(reviewPrompt, "validate owns those")
+
+    val buildPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD),
+    )
+    assertFalse(buildPrompt.contains(ownershipTitle), "build owns compile proof, not validate gate ownership")
+    assertContains(buildPrompt, "pack build_command")
   }
 
   @Test

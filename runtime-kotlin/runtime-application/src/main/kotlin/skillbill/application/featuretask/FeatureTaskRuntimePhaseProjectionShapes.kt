@@ -99,7 +99,6 @@ internal object FeatureTaskRuntimePhaseProjectionShapes {
       "        validate) is not open work at all. Populate it only under a 'blocked' or 'failed'\n" +
       "        envelope, as a plain line or the same { \"ref\", \"note\" } pair deviations uses."
 
-
   private val IMPLEMENT_FIX: String =
     "\n    - Required produced_outputs.repair_receipt shape. Emit one entry per carried finding,\n" +
       "      named by finding_id (aliases finding_ref, id, ref accepted). Coverage matches on\n" +

@@ -1,0 +1,8 @@
+contract_version: "0.1"
+max_discovery_file_count: 16
+max_headings_per_file: 32
+max_catalog_headings: 128
+max_selected_bodies: 12
+max_body_bytes: 4096
+max_total_body_bytes: 32768
+max_boundary_file_bytes: 131072

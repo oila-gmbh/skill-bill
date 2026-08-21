@@ -229,7 +229,12 @@ Review runs exactly once and records its findings; its verdict never routes.
 `verify_findings` follows review, settles once per subtask, and never edits the
 worktree. Every review finding receives one disposition — `verified` or
 `rejected` — with a bounded reason derived against the subtask spec intent
-projection. Rejected findings are recorded in the goal-wide unaddressed-findings
+projection and scoped boundary memory. For each finding, the briefing carries a
+titles-only heading catalog for boundaries that own the finding paths; the agent
+selects relevant `heading_id` values in `selected_boundary_headings` and sets
+`boundary_context_unavailable` when no eligible boundary owns the paths. Whole
+`history.md` or `decisions.md` files and unselected entry bodies never belong in
+the briefing. Rejected findings are recorded in the goal-wide unaddressed-findings
 ledger with their reason and severity and are never passed to `implement_fix`.
 
 - When no finding is verified, `verify_findings` settles `no_findings_verified`

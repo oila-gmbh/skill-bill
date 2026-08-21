@@ -376,10 +376,10 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "itself, so proving convergence path by path here only risks overflowing the field. When the " +
     "briefing carries audit_gaps, reuse its immutable initial preplan and plan outputs and change " +
     "only what the latest listed gaps require; do not regenerate planning, expand scope, or disturb " +
-    "settled implementation. Under the audit-gap loop, report repair_item_results for every carried " +
-    "repair item with a terminal fixed or already_satisfied outcome. Reporting fewer " +
-    "items than you were carried is a resumable partial repair, not a completion. Repair evidence is " +
-    "read-only repository facts: do not run builds or tests here.",
+    "settled implementation. Under the audit-gap loop, follow each listed gap's implement-ready fix " +
+    "plan in this one invocation and report the ordinary implementation receipt; the next audit " +
+    "re-reads the tree and decides every criterion again. Repair evidence is read-only repository " +
+    "facts: do not run builds or tests here.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX to
     "Address every verified finding from verify_findings on the CURRENT working tree as " +
     "incremental reconciliation. Every carried finding — Blocker, Major, Minor, and Nit — is in " +
@@ -409,12 +409,16 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "Do not run `./gradlew check`, the pack collect-all gate, or `bill-code-check`; validate owns those.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS to
     "Verify every finding from the single preceding review pass against the subtask spec intent " +
-    "projection carried in the briefing. Emit exactly one disposition per finding — verified or " +
-    "rejected — each with a bounded reason derived from that intent projection. Do not edit the " +
-    "worktree. Settle once: verdict findings_verified when at least one finding is verified, otherwise " +
-    "no_findings_verified. Emit " +
+    "projection and the scoped boundary-memory catalog in the briefing. Each finding receives a " +
+    "titles-only heading catalog for boundaries that own its paths; select relevant heading_id " +
+    "values in selected_boundary_headings and set boundary_context_unavailable when no eligible " +
+    "boundary owns the finding paths. Emit exactly one disposition per finding — verified or " +
+    "rejected — each with a bounded reason derived from that intent projection and selected " +
+    "boundary titles. Do not edit the worktree. Settle once: verdict findings_verified when at " +
+    "least one finding is verified, otherwise no_findings_verified. Emit " +
     "produced_outputs.${FeatureTaskRuntimeVerificationSignalKeys.FINDINGS_VERIFICATION_DISPOSITIONS} " +
-    "with finding_id, disposition, reason, severity, location, and message per entry.",
+    "with finding_id, disposition, reason, severity, location, message, optional " +
+    "selected_boundary_headings, and boundary_context_unavailable per entry.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT to
     "Answer one question: is every acceptance criterion in the briefing implemented in the repository? " +
     "Read the tree itself at the resolved checkpoint — the diff over its base_ref/head_ref plus its " +

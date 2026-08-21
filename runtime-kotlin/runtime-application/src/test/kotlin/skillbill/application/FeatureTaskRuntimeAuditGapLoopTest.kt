@@ -441,7 +441,7 @@ class FeatureTaskRuntimeAuditGapLoopTest {
             },
           )
         } else {
-          facts(validJsonOutput(phaseId))
+          facts(defaultPhaseOutput(request))
         }
       },
       runtimeConfig = RuntimeHarnessConfig(
@@ -612,7 +612,7 @@ internal fun auditGapsOutput(): String = """
     "summary": "Audit found unmet acceptance criteria.",
     "verdict": "gaps_found",
     "produced_outputs": {
-      "unmet_criteria": [{"criterion":"AC-002","note":"$AUDIT_GAP_MESSAGE"}]
+      "gaps": [{"criterion":"AC-002","severity":"major","location":"src/Foo.kt","issue":"$AUDIT_GAP_MESSAGE","fix":"Implement AC-002 per the acceptance criteria."}]
     }
   }
 """.trimIndent()
@@ -625,9 +625,9 @@ internal fun auditTwoGapsOutput(): String = """
     "summary": "Audit found unmet acceptance criteria.",
     "verdict": "gaps_found",
     "produced_outputs": {
-      "unmet_criteria": [
-        {"criterion":"AC-003","note":"$AUDIT_GAP_MESSAGE"},
-        {"criterion":"AC-002","note":"$AUDIT_GAP_MESSAGE"}
+      "gaps": [
+        {"criterion":"AC-003","severity":"major","location":"src/Foo.kt","issue":"$AUDIT_GAP_MESSAGE","fix":"Implement AC-003 per the acceptance criteria."},
+        {"criterion":"AC-002","severity":"major","location":"src/Foo.kt","issue":"$AUDIT_GAP_MESSAGE","fix":"Implement AC-002 per the acceptance criteria."}
       ]
     }
   }
@@ -641,7 +641,7 @@ internal fun auditSatisfiedOutput(): String = """
     "summary": "Every acceptance criterion is met.",
     "verdict": "satisfied",
     "produced_outputs": {
-      "unmet_criteria": []
+      "gaps": []
     }
   }
 """.trimIndent()
@@ -654,8 +654,10 @@ internal fun auditCriteriaOutput(vararg criteria: String): String = """
     "summary": "Audit found unmet acceptance criteria.",
     "verdict": "gaps_found",
     "produced_outputs": {
-      "unmet_criteria": [
-        ${criteria.joinToString(",\n        ") { """{"criterion":"$it","note":"$AUDIT_GAP_MESSAGE"}""" }}
+      "gaps": [
+        ${criteria.joinToString(
+  ",\n        ",
+) { """{"criterion":"$it","severity":"major","location":"src/Foo.kt","issue":"$AUDIT_GAP_MESSAGE","fix":"Implement $it per the acceptance criteria."}""" }}
       ]
     }
   }
@@ -675,7 +677,7 @@ internal fun auditGapLauncher(convergeOnAudit: Int): RuntimeRecordingLauncher {
         },
       )
     } else {
-      facts(validJsonOutput(phaseId))
+      facts(defaultPhaseOutput(request))
     }
   }
 }

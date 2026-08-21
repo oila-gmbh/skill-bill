@@ -10,13 +10,11 @@ object FeatureTaskRuntimeQualityGateRouting {
   }
 
   fun applyAfterReview(
-    currentPhaseId: String,
+    @Suppress("UnusedParameter") currentPhaseId: String,
     transition: FeatureTaskRuntimeNextPhase,
     selection: FeatureTaskRuntimeQualityGateSelection,
   ): FeatureTaskRuntimeNextPhase {
-    if (currentPhaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW ||
-      selection != FeatureTaskRuntimeQualityGateSelection.BUILD
-    ) {
+    if (selection != FeatureTaskRuntimeQualityGateSelection.BUILD) {
       return transition
     }
     val next = transition as? FeatureTaskRuntimeNextPhase.Next ?: return transition

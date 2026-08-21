@@ -33,6 +33,7 @@ class FeatureTaskRuntimePhaseGates(
   val diffResolver: DiffResolverPort = UnreadableDiffResolver,
   val reviewDriver: FeatureTaskRuntimeReviewDriver = FeatureTaskRuntimeReviewDriver.EMPTY,
   val specIntentProjectionResolver: SpecIntentProjectionResolver,
+  val findingVerificationBoundaryMemory: FeatureTaskRuntimeFindingVerificationBoundaryMemory,
 )
 
 /** No repository access at all: every derivation reports the diff as unreadable and yields no evidence. */

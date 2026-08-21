@@ -1,10 +1,14 @@
 package skillbill.application.goalrunner
 
 import skillbill.application.featuretask.FeatureTaskRuntimeVerificationSignalKeys
+import skillbill.review.ReviewFindingFieldCodec
+import skillbill.review.model.ReviewFindingCitation
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class GoalSubtaskReviewSummaryReducerTest {
@@ -378,5 +382,109 @@ class GoalSubtaskReviewSummaryReducerTest {
     val blockerFinding = ledger.first { it.severity == "blocker" }
     assertEquals("CheckoutService.kt:17", blockerFinding.location)
     assertEquals("security_privacy", blockerFinding.issueCategory)
+  }
+
+  @Test
+  fun `verification boundary paths union repository path location suffix and citation paths`() {
+    val finding = StructuredGoalReviewFinding(
+      severity = "major",
+      message = "Mismatch between cited evidence and primary location.",
+      issueCategory = "behavior_correctness",
+      location = "runtime-kotlin/runtime-application/src/Primary.kt:17",
+      compactLabel = "Review",
+      repositoryPath = "runtime-kotlin/runtime-application/src/Primary.kt",
+      citations = listOf(ReviewFindingCitation("runtime-kotlin/runtime-application/src/Cited.kt", 42)),
+    )
+    assertEquals(
+      listOf(
+        "runtime-kotlin/runtime-application/src/Primary.kt",
+        "runtime-kotlin/runtime-application/src/Cited.kt",
+      ),
+      GoalSubtaskReviewSummaryReducer.verificationBoundaryFindingPaths(finding),
+    )
+  }
+
+  @Test
+  fun `verification boundary paths accept root level locations without slash`() {
+    val finding = StructuredGoalReviewFinding(
+      severity = "minor",
+      message = "Root-level file reference.",
+      issueCategory = "other",
+      location = "Foo.kt",
+      compactLabel = "Review",
+    )
+    assertEquals(listOf("Foo.kt"), GoalSubtaskReviewSummaryReducer.verificationBoundaryFindingPaths(finding))
+  }
+
+  @Test
+  fun `structured findings carry repository_path from review envelope`() {
+    val output = mapOf(
+      "produced_outputs" to mapOf(
+        "findings" to listOf(
+          mapOf(
+            "severity" to "major",
+            "message" to "Writer-produced finding",
+            "location" to "src/Feature.kt:42",
+            "repository_path" to "src/Feature.kt",
+          ),
+        ),
+      ),
+    )
+    assertEquals(
+      "src/Feature.kt",
+      GoalSubtaskReviewSummaryReducer.structuredFindings(output).single().repositoryPath,
+    )
+  }
+
+  @Test
+  fun `citationsOf rejects absolute and traversal citation paths before discovery`() {
+    assertFailsWith<IllegalArgumentException> {
+      ReviewFindingFieldCodec.citationsOf(listOf(mapOf("path" to "/etc/passwd", "line" to 1)))
+    }
+    assertFailsWith<IllegalArgumentException> {
+      ReviewFindingFieldCodec.citationsOf(listOf(mapOf("path" to "../secret.kt", "line" to 1)))
+    }
+  }
+
+  @Test
+  fun `verification boundary paths reject absolute and traversal location suffixes`() {
+    val absolute = StructuredGoalReviewFinding(
+      severity = "major",
+      message = "Absolute location must not widen discovery.",
+      issueCategory = "other",
+      location = "/runtime-kotlin/runtime-application/src/Primary.kt:17",
+      compactLabel = "Review",
+      repositoryPath = "runtime-kotlin/runtime-application/src/Primary.kt",
+    )
+    assertEquals(
+      listOf("runtime-kotlin/runtime-application/src/Primary.kt"),
+      GoalSubtaskReviewSummaryReducer.verificationBoundaryFindingPaths(absolute),
+    )
+
+    val traversal = StructuredGoalReviewFinding(
+      severity = "major",
+      message = "Traversal location must not widen discovery.",
+      issueCategory = "other",
+      location = "../runtime-kotlin/runtime-application/src/Primary.kt:17",
+      compactLabel = "Review",
+    )
+    assertEquals(emptyList(), GoalSubtaskReviewSummaryReducer.verificationBoundaryFindingPaths(traversal))
+  }
+
+  @Test
+  fun `structured findings drop invalid repository_path values`() {
+    val output = mapOf(
+      "produced_outputs" to mapOf(
+        "findings" to listOf(
+          mapOf(
+            "severity" to "major",
+            "message" to "Invalid primary path",
+            "location" to "src/Feature.kt:42",
+            "repository_path" to "/etc/passwd",
+          ),
+        ),
+      ),
+    )
+    assertNull(GoalSubtaskReviewSummaryReducer.structuredFindings(output).single().repositoryPath)
   }
 }

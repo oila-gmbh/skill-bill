@@ -12,6 +12,7 @@ import skillbill.application.featuretask.FeatureTaskRuntimeBranchSetupRunner
 import skillbill.application.featuretask.FeatureTaskRuntimeCrashReconciler
 import skillbill.application.featuretask.FeatureTaskRuntimeDecomposeTerminalRecorder
 import skillbill.application.featuretask.FeatureTaskRuntimeDecompositionPlanner
+import skillbill.application.featuretask.FeatureTaskRuntimeFindingVerificationBoundaryMemory
 import skillbill.application.featuretask.FeatureTaskRuntimeGoalContinuationRecorder
 import skillbill.application.featuretask.FeatureTaskRuntimeLifecycleTelemetry
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
@@ -1042,12 +1043,28 @@ class FeatureTaskRuntimeRunnerTest {
     val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
     val forwardOnly = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration(
       forwardPhaseIds = ALL_PHASES,
+      loopOnlyPhaseIds = setOf("implement_fix", "build"),
+      entryGates = FeatureTaskRuntimePhaseWorkflowDefinition.transitions.entryGates,
     )
 
     val report = harness.runner.run(harness.request(forwardOnly))
 
     assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
-    assertEquals(ALL_PHASES, harness.launchOrder())
+    assertEquals(
+      listOf(
+        "preplan",
+        "plan",
+        "implement",
+        "audit",
+        "review",
+        "verify_findings",
+        "validate",
+        "write_history",
+        "commit_push",
+        "pr",
+      ),
+      harness.launchOrder(),
+    )
   }
 
   @Test
@@ -5256,7 +5273,7 @@ private fun kotlinPackWithValidationGate(): skillbill.scaffold.model.PlatformMan
 private const val VALID_REVIEW_OUTPUT = """{"contract_version":"0.3","produced_outputs":{"findings":[]}}"""
 
 private const val VALID_AUDIT_OUTPUT =
-  """{"contract_version":"0.3","verdict":"satisfied","produced_outputs":{"gaps":[]}}"""
+  """{"contract_version":"0.4","verdict":"satisfied","produced_outputs":{"gaps":[]}}"""
 
 private val VALID_VERIFY_FINDINGS_OUTPUT = verifyFindingsOutput()
 
@@ -5740,6 +5757,10 @@ private fun runtimePhaseGates(
         ReviewContextEnvelopeValidator { _, _ -> },
         TestDecompositionManifestFileStore,
       ),
+    ),
+    FeatureTaskRuntimeFindingVerificationBoundaryMemory(
+      skillbill.goalplanning.FileSystemGoalPlanningContextDiscovery(),
+      skillbill.goalplanning.FileSystemGoalPlanningBoundaryBodyResolver(),
     ),
   )
 }

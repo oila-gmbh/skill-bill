@@ -25,6 +25,8 @@ data class FeatureTaskRuntimeFindingVerificationDisposition(
   val severity: FeatureTaskRuntimeReviewSeverity,
   val location: String,
   val message: String,
+  val selectedBoundaryHeadings: List<FeatureTaskRuntimeVerificationBoundaryHeadingProvenance> = emptyList(),
+  val boundaryContextUnavailable: Boolean = false,
 ) {
   init {
     if (findingId.isBlank()) {
@@ -50,14 +52,18 @@ data class FeatureTaskRuntimeFindingVerificationDisposition(
   }
 
   @OpenBoundaryMap("Finding verification disposition at the durable workflow-artifact seam")
-  fun toArtifactMap(): Map<String, Any?> = mapOf(
-    "finding_id" to findingId,
-    "disposition" to disposition.wireValue,
-    "reason" to reason,
-    "severity" to severity.wireValue,
-    "location" to location,
-    "message" to message,
-  )
+  fun toArtifactMap(): Map<String, Any?> = buildMap {
+    put("finding_id", findingId)
+    put("disposition", disposition.wireValue)
+    put("reason", reason)
+    put("severity", severity.wireValue)
+    put("location", location)
+    put("message", message)
+    if (selectedBoundaryHeadings.isNotEmpty()) {
+      put("selected_boundary_headings", selectedBoundaryHeadings.map { it.toArtifactMap() })
+    }
+    if (boundaryContextUnavailable) put("boundary_context_unavailable", true)
+  }
 
   companion object {
     @OpenBoundaryMap("Finding verification disposition decode from the durable workflow-artifact map")
@@ -76,6 +82,11 @@ data class FeatureTaskRuntimeFindingVerificationDisposition(
         )
       val location = (raw["location"] as? String)?.trim()?.takeIf(String::isNotBlank) ?: invalid(path, "location")
       val message = (raw["message"] as? String)?.trim()?.takeIf(String::isNotBlank) ?: invalid(path, "message")
+      val selectedBoundaryHeadings = FeatureTaskRuntimeVerificationBoundaryHeadingProvenance.parseList(
+        raw["selected_boundary_headings"],
+        "$path.selected_boundary_headings",
+      )
+      val boundaryContextUnavailable = raw["boundary_context_unavailable"] == true
       return FeatureTaskRuntimeFindingVerificationDisposition(
         findingId = findingId,
         disposition = disposition,
@@ -83,6 +94,8 @@ data class FeatureTaskRuntimeFindingVerificationDisposition(
         severity = severity,
         location = location,
         message = message,
+        selectedBoundaryHeadings = selectedBoundaryHeadings,
+        boundaryContextUnavailable = boundaryContextUnavailable,
       )
     }
 

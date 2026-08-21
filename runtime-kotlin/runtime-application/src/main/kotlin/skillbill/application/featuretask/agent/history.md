@@ -2,6 +2,16 @@
 
 Revisit when: prune eligibility or the checkpoint namespace layout changes.
 
+## [2026-08-23] SKILL-202 subtask 3 — scoped boundary memory for verification
+Areas: runtime-application/{featuretask,goalrunner,review}, runtime-domain/{review,taskruntime}, runtime-infra-fs/goalplanning, runtime-ports/goalrunner, runtime contracts, runtime-cli/goal, governed feature-task skills
+- Verification now discovers boundary memory by title first and scopes it to boundaries owning each finding's paths; excluded roots contribute nothing and unmatched paths stay intent-only.
+- Verification-specific discovery and body caps are declared below planning caps; the shared maximum boundary-file size remains unchanged, and over-budget resolution loud-fails without truncation.
+- Dispositions persist selected heading ids with source paths and expose that provenance through goal findings; unselected history and decision bodies never enter prompts.
+- Pattern: reuse GoalPlanningContextDiscovery and GoalPlanningBoundaryBodyResolver with a path-scoped, titles-first projection. reusable
+- Limitation: findings with no eligible owning boundary retain intent-only verification and record unavailable boundary context.
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
 ## [2026-08-22] SKILL-205 subtask 2 — Prior-gap memory for continuing audit_gap rounds
 Areas: runtime-application/featuretask, runtime-application/goalrunner, runtime-domain/workflow/taskruntime/model, orchestration/contracts, platform-packs/{kotlin,kmp}/quality-check
 - Added bounded durable `prior_gap_memory` to audit-gap handoffs, retaining unmet criterion refs/notes and subsequent implement claims while degrading legacy workflows to empty memory.

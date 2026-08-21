@@ -204,6 +204,21 @@ $defs:
           properties:
             constructs: { minItems: 1 }
           not: { required: [no_edit_reason] }
+  verificationBoundaryHeadingProvenance:
+    type: object
+    additionalProperties: false
+    required: [heading_id, source_path]
+    properties:
+      heading_id:
+        type: string
+        minLength: 1
+        maxLength: 256
+        pattern: "^[^\\n\\r`]*\\S[^\\n\\r`]*$"
+      source_path:
+        type: string
+        minLength: 1
+        maxLength: 256
+        pattern: "^[^\\n\\r`]*\\S[^\\n\\r`]*$"
   repairDisturbedRemedy:
     type: object
     additionalProperties: false
@@ -493,16 +508,30 @@ allOf:
               type: array
               maxItems: 100
               items:
-                type: object
-                additionalProperties: false
-                required: [finding_id, disposition, reason, severity, location, message]
-                properties:
-                  finding_id: { type: string, minLength: 1, pattern: ".*\\S.*" }
-                  disposition: { enum: [verified, rejected] }
-                  reason: { type: string, minLength: 1, maxLength: 280 }
-                  severity: { enum: [blocker, major, minor, nit] }
-                  location: { type: string, minLength: 1, maxLength: 180 }
-                  message: { type: string, minLength: 1, maxLength: 280 }
+                allOf:
+                  - type: object
+                    additionalProperties: false
+                    required: [finding_id, disposition, reason, severity, location, message]
+                    properties:
+                      finding_id: { type: string, minLength: 1, pattern: ".*\\S.*" }
+                      disposition: { enum: [verified, rejected] }
+                      reason: { type: string, minLength: 1, maxLength: 280 }
+                      severity: { enum: [blocker, major, minor, nit] }
+                      location: { type: string, minLength: 1, maxLength: 180 }
+                      message: { type: string, minLength: 1, maxLength: 280 }
+                      boundary_context_unavailable: { type: boolean }
+                      selected_boundary_headings:
+                        type: array
+                        maxItems: 12
+                        items: { $ref: "#/$defs/verificationBoundaryHeadingProvenance" }
+                  - if:
+                      properties:
+                        boundary_context_unavailable: { const: true }
+                      required: [boundary_context_unavailable]
+                    then:
+                      properties:
+                        selected_boundary_headings:
+                          maxItems: 0
   - if:
       properties:
         phase_id: { const: implement_fix }

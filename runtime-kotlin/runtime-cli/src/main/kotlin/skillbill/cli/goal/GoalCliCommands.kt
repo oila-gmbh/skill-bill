@@ -364,12 +364,18 @@ class GoalFindingsCommand(
   override fun run() {
     val ledger = ledgerService.ledger(issueKey, state.dbOverride)
     val repairLedgers = ledgerService.repairLedgersByWorkflow(issueKey, state.dbOverride)
-    state.completeText(findingsText(ledger, repairLedgers), findingsPayload(ledger, repairLedgers))
+    val verificationDispositions = ledgerService.verificationDispositions(issueKey, state.dbOverride)
+    state.completeText(
+      findingsText(ledger, repairLedgers, verificationDispositions),
+      findingsPayload(ledger, repairLedgers, verificationDispositions),
+    )
   }
 
   private fun findingsPayload(
     ledger: UnaddressedFindingsLedger,
     repairLedgers: Map<String, FeatureTaskRuntimeRepairLedger>,
+    verificationDispositions:
+    List<skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition>,
   ): LinkedHashMap<String, Any?> = linkedMapOf(
     "issue_key" to ledger.issueKey,
     "unaddressed_findings" to ledger.findings.size,
@@ -405,11 +411,27 @@ class GoalFindingsCommand(
         "entries" to repairLedger.entries.map(FeatureTaskRuntimeRepairLedgerEntry::toProjectionMap),
       )
     },
+    "finding_verification_dispositions" to verificationDispositions.map { disposition ->
+      linkedMapOf(
+        "finding_id" to disposition.findingId,
+        "disposition" to disposition.disposition.wireValue,
+        "reason" to disposition.reason,
+        "boundary_context_unavailable" to disposition.boundaryContextUnavailable,
+        "selected_boundary_headings" to disposition.selectedBoundaryHeadings.map { heading ->
+          linkedMapOf(
+            "heading_id" to heading.headingId,
+            "source_path" to heading.sourcePath,
+          )
+        },
+      )
+    },
   )
 
   private fun findingsText(
     ledger: UnaddressedFindingsLedger,
     repairLedgers: Map<String, FeatureTaskRuntimeRepairLedger>,
+    verificationDispositions:
+    List<skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition>,
   ): String = buildString {
     appendLine("issue_key=${ledger.issueKey} unaddressed_findings=${ledger.findings.size}")
     ledger.findings.forEach { finding ->
@@ -431,6 +453,15 @@ class GoalFindingsCommand(
             "constructs=${entry.constructs.joinToString(",") { it.symbol }} ${entry.intent}",
         )
       }
+    }
+    verificationDispositions.forEach { disposition ->
+      appendLine(
+        "verification finding=${disposition.findingId} disposition=${disposition.disposition.wireValue} " +
+          "boundary_context_unavailable=${disposition.boundaryContextUnavailable} " +
+          "selected_boundary_headings=${
+            disposition.selectedBoundaryHeadings.joinToString(";") { "${it.headingId}@${it.sourcePath}" }
+          }",
+      )
     }
   }
 }

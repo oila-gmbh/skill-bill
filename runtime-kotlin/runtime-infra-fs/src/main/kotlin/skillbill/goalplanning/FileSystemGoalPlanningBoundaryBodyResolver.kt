@@ -1,24 +1,23 @@
 package skillbill.goalplanning
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.error.GoalVerificationBoundaryCapExceededError
 import skillbill.ports.goalrunner.GoalPlanningBoundaryBodyResolver
 import skillbill.ports.goalrunner.model.GoalPlanningBoundaryBody
+import skillbill.ports.goalrunner.model.GoalPlanningBoundaryBodyResolutionCaps
 import skillbill.ports.goalrunner.model.GoalPlanningContext
 import skillbill.ports.goalrunner.model.GoalPlanningResolvedBoundaryBodies
 import java.nio.file.Path
 
-/**
- * Re-reads only the files owning the selected heading ids and returns those bodies. An id is honoured
- * only when the catalog published it, its path is governed boundary memory, and re-parsing the current
- * file still produces that exact id — so a stale, forged, or off-catalog selection resolves to nothing
- * rather than to whatever entry now occupies its place.
- */
 @Inject
+@Suppress("LoopWithTooManyJumpStatements")
 class FileSystemGoalPlanningBoundaryBodyResolver : GoalPlanningBoundaryBodyResolver {
   override fun resolve(
     repoRoot: Path,
     headingIds: List<String>,
     catalogHeadingIds: Set<String>,
+    caps: GoalPlanningBoundaryBodyResolutionCaps,
+    loudFailOnCapExceeded: Boolean,
   ): GoalPlanningResolvedBoundaryBodies {
     val canonicalRoot = GoalPlanningRepositoryScope.canonicalRoot(repoRoot)
     val bodies = mutableListOf<GoalPlanningBoundaryBody>()
@@ -28,11 +27,12 @@ class FileSystemGoalPlanningBoundaryBodyResolver : GoalPlanningBoundaryBodyResol
     var totalBytes = 0
     val requested = headingIds.distinct()
     for ((index, headingId) in requested.withIndex()) {
-      if (bodies.size >= GoalPlanningContext.MAX_SELECTED_BODIES ||
-        totalBytes >= GoalPlanningContext.MAX_TOTAL_BODY_BYTES
-      ) {
-        // Everything past the cap is still a selection that got no body. Reporting it keeps
-        // unresolvedHeadingIds a complete account of what the plan phase did not receive.
+      if (bodies.size >= caps.maxSelectedBodies || totalBytes >= caps.maxTotalBodyBytes) {
+        if (loudFailOnCapExceeded) {
+          throw GoalVerificationBoundaryCapExceededError(
+            "finding verification boundary body resolution exceeded max_selected_bodies or max_total_body_bytes",
+          )
+        }
         truncated = true
         unresolved.addAll(requested.subList(index, requested.size))
         break
@@ -41,9 +41,27 @@ class FileSystemGoalPlanningBoundaryBodyResolver : GoalPlanningBoundaryBodyResol
       if (entry == null) {
         unresolved.add(headingId)
       } else {
-        val body = GoalPlanningRepositoryScope.truncateToUtf8Bytes(entry.body, GoalPlanningContext.MAX_BODY_BYTES)
-        if (body.length < entry.body.length) truncated = true
-        totalBytes += GoalPlanningRepositoryScope.utf8Size(body)
+        val body = GoalPlanningRepositoryScope.truncateToUtf8Bytes(entry.body, caps.maxBodyBytes)
+        val bodyBytes = GoalPlanningRepositoryScope.utf8Size(body)
+        if (body.length < entry.body.length) {
+          if (loudFailOnCapExceeded) {
+            throw GoalVerificationBoundaryCapExceededError(
+              "finding verification boundary body resolution exceeded max_body_bytes for heading '$headingId'",
+            )
+          }
+          truncated = true
+        }
+        if (totalBytes + bodyBytes > caps.maxTotalBodyBytes) {
+          if (loudFailOnCapExceeded) {
+            throw GoalVerificationBoundaryCapExceededError(
+              "finding verification boundary body resolution exceeded max_total_body_bytes",
+            )
+          }
+          truncated = true
+          unresolved.addAll(requested.subList(index, requested.size))
+          break
+        }
+        totalBytes += bodyBytes
         bodies.add(
           GoalPlanningBoundaryBody(
             headingId = headingId,

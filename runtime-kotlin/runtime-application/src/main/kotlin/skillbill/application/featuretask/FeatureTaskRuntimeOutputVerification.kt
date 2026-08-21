@@ -150,32 +150,39 @@ internal object FeatureTaskRuntimeOutputVerification {
 }
 
 private fun auditCriterionGapFromEntry(entry: Any?): FeatureTaskRuntimeAuditCriterionGap? {
-  val parsed = if (entry is String) {
-    entry.takeIf(String::isNotBlank)?.let { it to FeatureTaskRuntimeAuditSeverity.MAJOR }
-  } else {
-    val map = JsonSupport.anyToStringAnyMap(entry)
-    val criterionNote = map?.let {
-      val criterion = (it["criterion"] as? String)?.trim()?.takeIf(String::isNotBlank)
-      val note = (it["note"] as? String)?.trim()?.takeIf(String::isNotBlank)
-      if (criterion != null && note != null) "$criterion: $note" else null
+  if (entry is String) {
+    return entry.takeIf(String::isNotBlank)?.let {
+      FeatureTaskRuntimeAuditCriterionGap(it, FeatureTaskRuntimeAuditSeverity.MAJOR)
     }
-    val message = criterionNote ?: map?.let {
-      sequenceOf(it["issue"], it["message"], it["criterion"])
-        .filterIsInstance<String>()
-        .map(String::trim)
-        .firstOrNull(String::isNotBlank)
-    }
-    val severity = map?.let {
-      runCatching { FeatureTaskRuntimeAuditSeverity.fromWire(it["severity"] as? String) }.getOrNull()
-        ?: if (criterionNote != null) FeatureTaskRuntimeAuditSeverity.MAJOR else null
-    }
-    if (message != null && (severity == null || severity.blocksAuditGap)) {
-      message to (severity ?: FeatureTaskRuntimeAuditSeverity.MAJOR)
+  }
+  val map = JsonSupport.anyToStringAnyMap(entry) ?: return null
+  val criterion = (map["criterion"] as? String)?.trim()?.takeIf(String::isNotBlank)
+  val note = (map["note"] as? String)?.trim()?.takeIf(String::isNotBlank)
+  val issue = sequenceOf(map["issue"], map["message"])
+    .filterIsInstance<String>()
+    .map(String::trim)
+    .firstOrNull(String::isNotBlank)
+  val message = auditCriterionGapMessage(criterion, note, issue)
+  val wired = runCatching { FeatureTaskRuntimeAuditSeverity.fromWire(map["severity"] as? String) }.getOrNull()
+  val severity = wired
+    ?: if (criterion != null && (note != null || issue != null)) {
+      FeatureTaskRuntimeAuditSeverity.MAJOR
     } else {
       null
     }
+  return when {
+    message == null -> null
+    severity != null && !severity.blocksAuditGap -> null
+    else -> FeatureTaskRuntimeAuditCriterionGap(message, severity ?: FeatureTaskRuntimeAuditSeverity.MAJOR)
   }
-  return parsed?.let { (message, severity) -> FeatureTaskRuntimeAuditCriterionGap(message, severity) }
+}
+
+private fun auditCriterionGapMessage(criterion: String?, note: String?, issue: String?): String? = when {
+  criterion != null && note != null -> "$criterion: $note"
+  criterion != null && issue != null -> "$criterion: $issue"
+  issue != null -> issue
+  criterion != null -> criterion
+  else -> null
 }
 
 private fun rejectedCriteriaAliasError(producedOutputs: Map<String, Any?>?): String? {

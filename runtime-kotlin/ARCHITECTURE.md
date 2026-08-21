@@ -502,6 +502,8 @@ runtime-ports
     - `skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition.fromArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerificationBoundaryHeadingProvenance.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerificationBoundaryHeadingProvenance.fromArtifactMap`
     - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewState.boundedDispositionSummary`
     - `skillbill.ports.workflow.model.GoalSubtaskReviewInput.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome.toArtifactMap`
@@ -1322,6 +1324,8 @@ Categories:
 - `skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition.fromArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerificationBoundaryHeadingProvenance.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerificationBoundaryHeadingProvenance.fromArtifactMap`
 - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewState.boundedDispositionSummary`
 - `skillbill.ports.workflow.model.GoalSubtaskReviewInput.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome.toArtifactMap`

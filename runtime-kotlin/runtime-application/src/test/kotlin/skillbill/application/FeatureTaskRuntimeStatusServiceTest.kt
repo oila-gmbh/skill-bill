@@ -83,10 +83,10 @@ class FeatureTaskRuntimeStatusServiceTest {
 
     assertEquals("LARGE", projection.featureSize)
     assertEquals(0, projection.completeCount)
-    assertEquals(11, projection.pendingCount)
+    assertEquals(12, projection.pendingCount)
     assertEquals(0, projection.blockedCount)
     assertEquals("preplan", projection.currentPhaseId)
-    assertEquals(List(11) { "pending" }, projection.phases.map { it.status })
+    assertEquals(List(12) { "pending" }, projection.phases.map { it.status })
   }
 
   @Test

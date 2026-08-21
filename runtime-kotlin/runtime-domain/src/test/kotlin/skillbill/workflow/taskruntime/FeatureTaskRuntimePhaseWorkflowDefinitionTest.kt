@@ -63,9 +63,9 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT to "Phase 3: Implement",
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT to "Phase 4: Completeness Audit",
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW to "Phase 5: Code Review",
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS to "Phase 5b: Verify Findings",
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX to "Phase 5a: Implement Fix",
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD to "Phase 5b: Build",
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS to "Phase 5a: Verify Findings",
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX to "Phase 5b: Implement Fix",
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD to "Phase 5c: Build",
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE to "Phase 6: Quality Validation",
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY to "Phase 7: Boundary History",
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH to "Phase 8: Commit and Push",
@@ -81,6 +81,7 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
   }
 
   @Test
+  @Suppress("LongMethod")
   fun `per-phase dependency-set resolution over the DAG matches declarations`() {
     assertEquals(emptyList(), dependenciesOf(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN))
     assertEquals(
@@ -346,10 +347,17 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
         "$consumer must not receive a complete upstream phase receipt",
       )
       upstream.forEach { declaration ->
+        val isBuildReceipt =
+          declaration.projectionContractId ==
+            FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.BUILD_RECEIPT
+        val producingBuild =
+          (declaration.sourceRef as FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput)
+            .producingPhaseId == def.PHASE_BUILD
+        val optionalBuildReceipt = isBuildReceipt && producingBuild
         assertEquals(
-          true,
+          !optionalBuildReceipt,
           declaration.required,
-          "${declaration.projectionName} must reject missing required fields",
+          "${declaration.projectionName} required flag",
         )
         assertTrue("phase_output_receipt" !in declaration.declaredFieldNames)
         assertTrue(

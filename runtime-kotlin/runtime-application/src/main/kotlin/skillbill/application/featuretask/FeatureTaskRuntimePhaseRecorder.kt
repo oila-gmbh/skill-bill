@@ -48,7 +48,9 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_IDEN
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DECOMPOSE_TERMINAL_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DELIVERED_PROJECTIONS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DIAGNOSTIC_SIGNALS_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_BOUNDARY_SELECTION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_CHECKPOINT_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_DISPOSITIONS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_IMPLEMENTATION_ATTEMPTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_BRIEFINGS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_ARTIFACT_KEY
@@ -88,6 +90,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceMeasurement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerificationBoundaryHeadingProvenance
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition
@@ -845,6 +848,49 @@ class FeatureTaskRuntimePhaseRecorder(
     findingVerificationCheckpointFrom(artifacts[FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_CHECKPOINT_ARTIFACT_KEY])
   }
 
+  internal fun loadFindingVerificationBoundarySelection(
+    workflowId: String,
+    dbOverride: String? = null,
+  ): Map<String, List<FeatureTaskRuntimeVerificationBoundaryHeadingProvenance>>? =
+    database.transaction(dbOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@transaction null
+      val artifacts = decodeArtifacts(record.artifactsJson)
+      findingVerificationBoundarySelectionFrom(
+        artifacts[FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_BOUNDARY_SELECTION_ARTIFACT_KEY],
+      )
+    }
+
+  internal fun persistFindingVerificationBoundarySelection(
+    workflowId: String,
+    selections: Map<String, List<FeatureTaskRuntimeVerificationBoundaryHeadingProvenance>>,
+    dbOverride: String? = null,
+  ): Boolean {
+    if (selections.isEmpty()) return false
+    return database.transaction(dbOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@transaction false
+      val artifacts = decodeArtifacts(record.artifactsJson)
+      persistPatch(
+        unitOfWork.workflowStates,
+        record,
+        mapOf(
+          FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_BOUNDARY_SELECTION_ARTIFACT_KEY to
+            selections.mapValues { (_, headings) -> headings.map { it.toArtifactMap() } },
+        ),
+        WorkflowRowAdvance.keepFrom(record),
+      )
+      true
+    }
+  }
+
+  internal fun loadFindingVerificationDispositions(
+    workflowId: String,
+    dbOverride: String? = null,
+  ): List<FeatureTaskRuntimeFindingVerificationDisposition>? = database.transaction(dbOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@transaction null
+    val artifacts = decodeArtifacts(record.artifactsJson)
+    findingVerificationCheckpointFrom(artifacts[FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_DISPOSITIONS_ARTIFACT_KEY])
+  }
+
   internal fun persistFindingVerificationCheckpoint(
     workflowId: String,
     dispositions: List<FeatureTaskRuntimeFindingVerificationDisposition>,
@@ -853,13 +899,13 @@ class FeatureTaskRuntimePhaseRecorder(
     if (dispositions.isEmpty()) return false
     return database.transaction(dbOverride) { unitOfWork ->
       val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@transaction false
-      val artifacts = decodeArtifacts(record.artifactsJson)
+      val serialized = dispositions.map { it.toArtifactMap() }
       persistPatch(
         unitOfWork.workflowStates,
         record,
         mapOf(
-          FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_CHECKPOINT_ARTIFACT_KEY to
-            dispositions.map { it.toArtifactMap() },
+          FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_CHECKPOINT_ARTIFACT_KEY to serialized,
+          FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_DISPOSITIONS_ARTIFACT_KEY to serialized,
         ),
         WorkflowRowAdvance.keepFrom(record),
       )
@@ -1906,22 +1952,45 @@ class FeatureTaskRuntimePhaseRecorder(
     WorkflowFamily.TASK_RUNTIME.save(workflowStates, updated)
   }
 
+  @Suppress("UnusedParameter")
   private fun findingVerificationCheckpointPatch(
     artifacts: Map<String, Any?>,
     request: FeatureTaskRuntimePhaseStateRequest,
   ): Map<String, Any?> {
     if (request.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS) return emptyMap()
     if (request.finished && request.status == "completed") {
-      return if (artifacts[FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_CHECKPOINT_ARTIFACT_KEY] != null) {
-        mapOf(FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_CHECKPOINT_ARTIFACT_KEY to null)
-      } else {
-        emptyMap()
+      val dispositions = request.normalizedOutput?.envelope
+        ?.let(FeatureTaskRuntimeOutputVerification::dispositionsFrom)
+        .orEmpty()
+      return buildMap {
+        put(FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_CHECKPOINT_ARTIFACT_KEY, null)
+        put(FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_BOUNDARY_SELECTION_ARTIFACT_KEY, null)
+        if (dispositions.isNotEmpty()) {
+          put(
+            FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_DISPOSITIONS_ARTIFACT_KEY,
+            dispositions.map { it.toArtifactMap() },
+          )
+        }
       }
     }
     val checkpoint = request.findingVerificationCheckpoint?.takeIf { it.isNotEmpty() } ?: return emptyMap()
     return mapOf(
       FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_CHECKPOINT_ARTIFACT_KEY to checkpoint.map { it.toArtifactMap() },
     )
+  }
+
+  private fun findingVerificationBoundarySelectionFrom(
+    raw: Any?,
+  ): Map<String, List<FeatureTaskRuntimeVerificationBoundaryHeadingProvenance>>? {
+    val entries = raw as? Map<*, *> ?: return null
+    return entries.mapNotNull { (findingIdRaw, headingsRaw) ->
+      val findingId = findingIdRaw as? String ?: return@mapNotNull null
+      val headings = FeatureTaskRuntimeVerificationBoundaryHeadingProvenance.parseList(
+        headingsRaw,
+        "$FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_BOUNDARY_SELECTION_ARTIFACT_KEY.$findingId",
+      )
+      findingId to headings
+    }.toMap()
   }
 
   private fun findingVerificationCheckpointFrom(raw: Any?): List<FeatureTaskRuntimeFindingVerificationDisposition>? {

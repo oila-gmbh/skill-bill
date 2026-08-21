@@ -233,6 +233,12 @@ const val FEATURE_TASK_RUNTIME_IMPLEMENTATION_ATTEMPTS_LIMIT: Int = 64
 const val FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_CHECKPOINT_ARTIFACT_KEY: String =
   "feature_task_runtime_finding_verification_checkpoint"
 
+const val FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_BOUNDARY_SELECTION_ARTIFACT_KEY: String =
+  "feature_task_runtime_finding_verification_boundary_selection"
+
+const val FEATURE_TASK_RUNTIME_FINDING_VERIFICATION_DISPOSITIONS_ARTIFACT_KEY: String =
+  "feature_task_runtime_finding_verification_dispositions"
+
 data class FeatureTaskRuntimeOperatorBlockRetry(
   val phaseId: String,
   val reason: String,

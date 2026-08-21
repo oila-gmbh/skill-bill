@@ -8,6 +8,8 @@ import skillbill.application.evidence.FeatureTaskRuntimeSharedReviewEvidenceReso
 import skillbill.application.evidence.FeatureTaskRuntimeSharedReviewEvidenceResolver
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointDecision
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointScopeInput
+import skillbill.application.featuretask.model.FeatureTaskRuntimeFindingBoundaryMemoryRequest
+import skillbill.application.featuretask.model.FeatureTaskRuntimeFindingBoundaryMemorySection
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRejectedOutputWrite
 import skillbill.application.featuretask.validation.model.ValidationFindingSetProjection
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairLauncher
@@ -127,6 +129,7 @@ import skillbill.workflow.taskruntime.model.detectAuditRepairNonProgress
 import skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 import skillbill.workflow.taskruntime.model.upsertRepairReceipt
+import skillbill.workflow.taskruntime.model.validateDispositionCoverage
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 
@@ -5010,7 +5013,7 @@ internal class FeatureTaskRuntimeRunLoop(
       repairEvidence,
       repositoryFingerprint,
     )?.let { "consumer-projection" to it }
-    ?: outputVerificationGateReason(run.phaseId, outputMap)?.let { "output-verification" to it }
+    ?: outputVerificationGateReason(run, outputMap)?.let { "output-verification" to it }
 
   private fun firstValidatedOutputRejection(phaseId: String, outputMap: Map<String, Any?>): Pair<String, String>? =
     mutatingReconciliationGateReason(phaseId, outputMap)?.let { "mutating-reconciliation" to it }
@@ -5380,14 +5383,103 @@ internal class FeatureTaskRuntimeRunLoop(
     }
   }
 
-  private fun outputVerificationGateReason(phaseId: String, outputMap: Map<String, Any?>): String? =
-    FeatureTaskRuntimeVerificationGateReasons.reviewVerificationSignal(phaseId, outputMap)
+  private fun outputVerificationGateReason(run: PhaseRun, outputMap: Map<String, Any?>): String? =
+    findingVerificationBoundaryBodyDeliveryGate(run, outputMap)
+      ?: findingVerificationBoundaryDispositionGate(run, outputMap)
+      ?: FeatureTaskRuntimeVerificationGateReasons.reviewVerificationSignal(run.phaseId, outputMap)
       ?: FeatureTaskRuntimeVerificationGateReasons.findingVerificationDisposition(
-        phaseId,
+        run.phaseId,
         outputMap,
         reviewFindingIdsForVerification(),
       )
-      ?: FeatureTaskRuntimeVerificationGateReasons.auditVerificationSignal(phaseId, outputMap)
+      ?: FeatureTaskRuntimeVerificationGateReasons.auditVerificationSignal(run.phaseId, outputMap)
+
+  private fun findingVerificationBoundarySections(run: PhaseRun): List<FeatureTaskRuntimeFindingBoundaryMemorySection> {
+    val reviewOutput = state.outputFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
+      ?.normalizedOutput?.envelope
+    val recordedVerdicts = reviewOutput?.let {
+      recorder.recordedFindingVerdicts(
+        it,
+        run.request.dbPathOverride,
+      )
+    }.orEmpty()
+    val findings = reviewOutput?.let {
+      skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer.structuredFindings(it, recordedVerdicts)
+    }.orEmpty()
+    return phaseGates.findingVerificationBoundaryMemory.sectionsForFindings(
+      run.request.repoRoot,
+      findings.mapNotNull { finding ->
+        val findingId = finding.findingId?.takeIf(String::isNotBlank) ?: return@mapNotNull null
+        FeatureTaskRuntimeFindingBoundaryMemoryRequest(
+          findingId = findingId,
+          findingPaths = findingPathsForBoundaryMemory(finding),
+        )
+      },
+    )
+  }
+
+  private fun findingVerificationBoundaryBodyDeliveryGate(run: PhaseRun, outputMap: Map<String, Any?>): String? =
+    findingVerificationBoundaryBodyDeliveryGateImpl(run, outputMap)
+
+  @Suppress("ReturnCount")
+  private fun findingVerificationBoundaryBodyDeliveryGateImpl(run: PhaseRun, outputMap: Map<String, Any?>): String? {
+    if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS) return null
+    val dispositions = FeatureTaskRuntimeOutputVerification.dispositionsFrom(outputMap)
+    if (dispositions.isEmpty()) return null
+    if (validateDispositionCoverage(dispositions, reviewFindingIdsForVerification()) != null) return null
+    val sections = findingVerificationBoundarySections(run)
+    val memory = phaseGates.findingVerificationBoundaryMemory
+    memory.validateDispositionBoundaryContext(sections, dispositions)?.let { return it }
+    memory.validateDispositionBoundaryProvenance(sections, dispositions)?.let { return it }
+    val selections = memory.selectionsRequiringBodyDelivery(sections, dispositions)
+    if (selections.isEmpty()) return null
+    val delivered = recorder.loadFindingVerificationBoundarySelection(
+      run.request.workflowId,
+      run.request.dbPathOverride,
+    )
+    if (delivered != null) return null
+    recorder.persistFindingVerificationBoundarySelection(
+      workflowId = run.request.workflowId,
+      selections = selections,
+      dbOverride = run.request.dbPathOverride,
+    )
+    recorder.persistFindingVerificationCheckpoint(
+      workflowId = run.request.workflowId,
+      dispositions = dispositions,
+      dbOverride = run.request.dbPathOverride,
+    )
+    return "Selected boundary headings recorded; re-read the briefing with resolved entry bodies and re-emit " +
+      "finding_dispositions before verify_findings can settle."
+  }
+
+  private fun findingVerificationBoundaryDispositionGate(run: PhaseRun, outputMap: Map<String, Any?>): String? =
+    findingVerificationBoundaryDispositionGateImpl(run, outputMap)
+
+  @Suppress("ReturnCount")
+  private fun findingVerificationBoundaryDispositionGateImpl(run: PhaseRun, outputMap: Map<String, Any?>): String? {
+    if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS) return null
+    val dispositions = FeatureTaskRuntimeOutputVerification.dispositionsFrom(outputMap)
+    if (dispositions.isEmpty()) return null
+    if (validateDispositionCoverage(dispositions, reviewFindingIdsForVerification()) != null) return null
+    val sections = findingVerificationBoundarySections(run)
+    val memory = phaseGates.findingVerificationBoundaryMemory
+    memory.validateDispositionBoundaryContext(sections, dispositions)?.let { return it }
+    memory.validateDispositionBoundaryProvenance(sections, dispositions)?.let { return it }
+    val persisted = recorder.loadFindingVerificationBoundarySelection(
+      run.request.workflowId,
+      run.request.dbPathOverride,
+    )
+    memory.validateBoundarySelectionsDelivered(sections, dispositions, persisted)?.let { return it }
+    if (persisted != null) {
+      return memory.validateDispositionBoundaryBodies(
+        repoRoot = run.request.repoRoot,
+        sections = sections,
+        dispositions = dispositions,
+        persistedSelections = persisted,
+      )
+    }
+    return null
+  }
 
   private fun persistVerifyFindingsCheckpointIfPresent(run: PhaseRun, outputText: String) {
     if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS) return
@@ -5837,9 +5929,20 @@ internal class FeatureTaskRuntimeRunLoop(
     return PreparedLaunch(briefing, prompt)
   }
 
+  private fun findingPathsForBoundaryMemory(
+    finding: skillbill.application.goalrunner.StructuredGoalReviewFinding,
+  ): List<String> = skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
+    .verificationBoundaryFindingPaths(finding)
+
   private fun verifyFindingsSpecIntentSection(run: PhaseRun): String {
     if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS) return ""
     val checkpoint = recorder.loadFindingVerificationCheckpoint(run.request.workflowId, run.request.dbPathOverride)
+    val boundarySelection = phaseGates.findingVerificationBoundaryMemory.boundarySelectionsForResolvedBodies(
+      persisted = recorder.loadFindingVerificationBoundarySelection(
+        run.request.workflowId,
+        run.request.dbPathOverride,
+      ),
+    )
     val resolution = phaseGates.specIntentProjectionResolver.resolve(
       SpecIntentProjectionResolveRequest(
         repoRoot = run.request.repoRoot,
@@ -5849,6 +5952,7 @@ internal class FeatureTaskRuntimeRunLoop(
         budget = ReviewContextBudgetPolicy.DEFAULT,
       ),
     )
+    val boundarySections = findingVerificationBoundarySections(run)
     return buildString {
       when (resolution) {
         is SpecIntentResolution.Resolved -> {
@@ -5857,6 +5961,16 @@ internal class FeatureTaskRuntimeRunLoop(
           appendLine(JsonSupport.mapToJsonString(resolution.projection.toProjectionPayload()))
         }
         else -> Unit
+      }
+      append(phaseGates.findingVerificationBoundaryMemory.promptSection(boundarySections))
+      if (boundarySelection != null) {
+        append(
+          phaseGates.findingVerificationBoundaryMemory.resolvedBodiesPromptSection(
+            repoRoot = run.request.repoRoot,
+            sections = boundarySections,
+            selectionsByFindingId = boundarySelection,
+          ),
+        )
       }
       if (!checkpoint.isNullOrEmpty()) {
         appendLine()

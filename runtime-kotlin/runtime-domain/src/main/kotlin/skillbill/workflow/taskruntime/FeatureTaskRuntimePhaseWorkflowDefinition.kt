@@ -563,6 +563,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
           "suppression_justifications",
         ),
         FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+        required = false,
       ),
     ),
     PHASE_COMMIT_PUSH to listOf(
@@ -610,6 +611,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
           "suppression_justifications",
         ),
         FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+        required = false,
       ),
       phaseProjection(
         PHASE_COMMIT_PUSH,

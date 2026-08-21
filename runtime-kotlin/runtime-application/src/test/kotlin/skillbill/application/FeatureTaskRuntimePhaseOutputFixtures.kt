@@ -36,13 +36,14 @@ internal fun verifyFindingsOutputForFindingIds(vararg findingIds: String): Strin
 internal fun verifyFindingsOutput(verifiedFindingIds: List<String> = harnessPendingVerifyFindingIds): String {
   val dispositions = verifiedFindingIds.joinToString(",") { findingId ->
     """{"finding_id":"$findingId","disposition":"verified","reason":"Matches spec intent AC-002.",""" +
-      """"severity":"blocker","location":"Foo.kt:1","message":"Foo.kt leaks a connection in the error path"}"""
+      """"severity":"blocker","location":"Foo.kt:1","message":"Foo.kt leaks a connection in the error path",""" +
+      """"boundary_context_unavailable":true}"""
   }
   val verdict = if (verifiedFindingIds.isEmpty()) "no_findings_verified" else "findings_verified"
   val dispositionsJson = if (dispositions.isEmpty()) "[]" else "[$dispositions]"
   return """
   {
-    "contract_version": "0.3",
+    "contract_version": "0.4",
     "phase_id": "verify_findings",
     "status": "completed",
     "summary": "Phase produced a validated output.",
@@ -54,7 +55,7 @@ internal fun verifyFindingsOutput(verifiedFindingIds: List<String> = harnessPend
 
 internal val IMPLEMENT_NO_RECONCILE_OUTPUT: String = """
   {
-    "contract_version": "0.3",
+    "contract_version": "0.4",
     "phase_id": "implement",
     "status": "completed",
     "summary": "Phase produced a validated output.",
@@ -67,7 +68,7 @@ internal val IMPLEMENT_NO_RECONCILE_OUTPUT: String = """
 // its consumer parses, and the producer gate rejects it otherwise (SKILL-140 Subtask 1).
 internal fun verdictPlanOutput(verdict: String): String = """
   {
-    "contract_version": "0.3",
+    "contract_version": "0.4",
     "phase_id": "plan",
     "status": "completed",
     "summary": "Plan produced a validated output.",
@@ -82,7 +83,7 @@ internal fun verdictPlanOutput(verdict: String): String = """
 // records must use this rather than the pre-finalisation agent payload.
 internal val FINALISED_COMMIT_PUSH_OUTPUT: String = """
   {
-    "contract_version": "0.3",
+    "contract_version": "0.4",
     "phase_id": "commit_push",
     "status": "completed",
     "summary": "Phase produced a validated output.",
@@ -119,7 +120,7 @@ internal fun validJsonOutput(phaseId: String, commitPushChangedPaths: List<Strin
   if (phaseId == "audit") {
     return """
     {
-      "contract_version": "0.3",
+      "contract_version": "0.4",
       "phase_id": "audit",
       "status": "completed",
       "summary": "Phase produced a validated output.",
@@ -130,7 +131,7 @@ internal fun validJsonOutput(phaseId: String, commitPushChangedPaths: List<Strin
   }
   return """
   {
-    "contract_version": "0.3",
+    "contract_version": "0.4",
     "phase_id": "$phaseId",
     "status": "completed",
     "summary": "Phase produced a validated output.",

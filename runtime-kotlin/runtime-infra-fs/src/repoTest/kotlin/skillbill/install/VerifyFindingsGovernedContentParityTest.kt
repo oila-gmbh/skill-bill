@@ -25,5 +25,18 @@ class VerifyFindingsGovernedContentParityTest {
     assertTrue(goal.contains("at most one bounded `implement_fix` round"))
     assertTrue(goal.contains("advances to `validate` even when verified findings remain unfixed"))
     assertFalse(goal.contains("Blocker and Major findings both reopen"))
+
+    assertTrue(runtime.contains("titles-only heading catalog"))
+    assertTrue(runtime.contains("scoped boundary memory"))
+    assertTrue(runtime.contains("boundary_context_unavailable"))
+    assertTrue(runtime.contains("Whole"))
+    assertTrue(runtime.contains("`history.md` or `decisions.md` files and unselected entry bodies never belong"))
+    assertFalse(runtime.contains("delivers whole `history.md`"))
+
+    assertTrue(goal.contains("titles-only heading catalog"))
+    assertTrue(goal.contains("scoped boundary memory"))
+    assertTrue(goal.contains("boundary_context_unavailable"))
+    assertTrue(goal.contains("skill-bill goal findings --issue-key"))
+    assertFalse(goal.contains("delivers whole `history.md`"))
   }
 }

@@ -223,6 +223,12 @@ class InvalidProducerOutputEvidenceSchemaError(message: String) :
 class InvalidGoalPlanningDiscoveryExclusionsSchemaError(message: String) :
   ShellContentContractException(message)
 
+class InvalidGoalVerificationBoundaryCapsSchemaError(message: String) :
+  ShellContentContractException(message)
+
+class GoalVerificationBoundaryCapExceededError(message: String) :
+  ShellContentContractException(message)
+
 /**
  * SKILL-51: surfaced when a parent decomposition manifest fails the
  * canonical `orchestration/contracts/decomposition-manifest-schema.yaml`

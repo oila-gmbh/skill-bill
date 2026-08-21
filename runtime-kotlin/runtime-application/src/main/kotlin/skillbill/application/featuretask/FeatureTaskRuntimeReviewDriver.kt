@@ -173,6 +173,7 @@ internal object FeatureTaskRuntimeReviewEnvelope {
     put("severity", finding.severity.name.lowercase())
     put("message", finding.description)
     put("location", finding.location)
+    finding.repositoryPath?.let { put("repository_path", it) }
     finding.claimVerdict?.let { put("claim_verdict", it.wireValue) }
     finding.scopeDisposition?.let { put("scope_disposition", it.wireValue) }
     if (finding.citations.isNotEmpty()) {
