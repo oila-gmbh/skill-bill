@@ -107,14 +107,17 @@ internal object FeatureTaskRuntimePhaseProjectionShapes {
       "      { \"repair_plan\": {\n" +
       "          \"contract_version\": \"$FEATURE_TASK_RUNTIME_REPAIR_PLAN_CONTRACT_VERSION\",\n" +
       "          \"round_number\": 1,\n" +
-      "          \"entries\": [ { \"finding_ref\": \"<finding id or label>\",\n" +
+      "          \"entries\": [ { \"finding_ref\": \"F-001\",\n" +
       "            \"root_cause\": \"<why the defect exists>\",\n" +
       "            \"minimal_change\": \"<smallest change that closes it>\",\n" +
       "            \"classification\": \"local_patch_site\" } ] } }\n" +
-      "      ```"
+      "      ```\n" +
+      "      Name each finding with the briefing's finding_id (finding_ref / id / ref aliases accepted)."
 
   private val IMPLEMENT_FIX: String =
-    "\n    - Required produced_outputs.repair_receipt shape. Emit one entry per carried finding;\n" +
+    "\n    - Required produced_outputs.repair_receipt shape. Emit one entry per carried finding,\n" +
+      "      named by finding_id (aliases finding_ref, id, ref accepted). Coverage matches on\n" +
+      "      finding_id alone; label and text are optional decoration.\n" +
       "      constructs are Type or Type.member with an optional file basename, never a bare path;\n" +
       "      intent is one line with no diff hunk, source body, or line number. A finding that needed\n" +
       "      no edit still needs its no_edit_required entry, and a finding you attempted and could not\n" +
@@ -132,8 +135,8 @@ internal object FeatureTaskRuntimePhaseProjectionShapes {
       "      ```json\n" +
       "      { \"repair_receipt\": {\n" +
       "          \"contract_version\": \"$FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION\",\n" +
-      "          \"entries\": [ { \"severity\": \"blocker\", \"label\": \"<TypeOrSymbol>\",\n" +
-      "            \"text\": \"<sanitized finding text>\", \"outcome\": \"addressed\",\n" +
+      "          \"entries\": [ { \"finding_id\": \"F-001\", \"severity\": \"blocker\",\n" +
+      "            \"outcome\": \"addressed\",\n" +
       "            \"constructs\": [ { \"symbol\": \"Type.member\", \"file\": \"Type.kt\" } ],\n" +
       "            \"intent\": \"<one-line repair intent>\" } ],\n" +
       "          \"disturbed_remedies\": [ { \"finding_ref\": \"<ledger finding_ref>\",\n" +

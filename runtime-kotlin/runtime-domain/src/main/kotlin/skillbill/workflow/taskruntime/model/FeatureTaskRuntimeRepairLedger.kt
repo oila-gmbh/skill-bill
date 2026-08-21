@@ -284,7 +284,7 @@ private class ReviewStateFindingIdentities(carriedFindings: List<GoalSubtaskRevi
     .toMap()
 
   fun resolve(entry: FeatureTaskRuntimeRepairReceiptEntry): GoalSubtaskReviewCompactFinding? =
-    entry.findingId?.let { id -> byFindingId[normalizeIdentityPart(id)] }
+    byFindingId[normalizeIdentityPart(entry.findingId)]
 
   fun identityOf(entry: FeatureTaskRuntimeRepairReceiptEntry): String =
     resolve(entry)?.let(::compactReviewFindingIdentity) ?: entry.findingIdentity()

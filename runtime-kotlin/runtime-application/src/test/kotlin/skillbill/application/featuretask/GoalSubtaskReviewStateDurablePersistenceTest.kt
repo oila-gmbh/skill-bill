@@ -589,6 +589,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
           outcome = FeatureTaskRuntimeRepairOutcome.NO_EDIT_REQUIRED,
           constructs = emptyList(),
           intent = "placeholder intent with no hunk",
+          findingId = "F-001",
           noEditReason = "already present on the tree",
         ),
       ),
@@ -602,6 +603,7 @@ class GoalSubtaskReviewStateDurablePersistenceTest {
           outcome = FeatureTaskRuntimeRepairOutcome.ADDRESSED,
           constructs = listOf(FeatureTaskRuntimeRepairConstruct(symbol = "SentinelType.close")),
           intent = "close SentinelType.close",
+          findingId = "F-001",
         ),
       ),
     )

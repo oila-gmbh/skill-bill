@@ -94,8 +94,8 @@ class FeatureTaskRuntimeRepairReceiptTest {
   }
 
   @Test
-  fun `receipt contract version is the pinned 0_1 constant`() {
-    assertEquals("0.1", FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION)
+  fun `receipt contract version is the pinned 0_2 constant`() {
+    assertEquals("0.2", FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION)
     assertEquals(
       FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION,
       validReceipt().contractVersion,
@@ -153,6 +153,59 @@ class FeatureTaskRuntimeRepairReceiptTest {
   }
 
   @Test
+  fun `finding_ref alias on a receipt entry satisfies coverage for that finding`() {
+    val carried = listOf(
+      GoalSubtaskReviewCompactFinding(
+        severity = "nit",
+        label = "StormLabel",
+        text = "a".repeat(300),
+        findingId = "F-003",
+      ),
+    )
+    val map = mapOf(
+      "severity" to "nit",
+      "label" to "SomeClass",
+      "text" to "short",
+      "finding_ref" to "F-003",
+      "outcome" to "addressed",
+      "constructs" to listOf(mapOf("symbol" to "SomeClass")),
+      "intent" to "close the storm finding by ref",
+    )
+    val entry = FeatureTaskRuntimeRepairReceiptEntry.fromArtifactMap(map, "repair_receipt.entries[0]")
+    assertEquals("F-003", entry.findingId)
+    val receipt = FeatureTaskRuntimeRepairReceipt(
+      roundNumber = 1,
+      preFixCheckpointSha = sha,
+      entries = listOf(entry),
+    )
+    assertTrue(receipt.coversCarriedFindings(carried))
+  }
+
+  @Test
+  fun `coverage ignores wrong label and text when finding_id matches`() {
+    val carried = listOf(
+      GoalSubtaskReviewCompactFinding(
+        severity = "major",
+        label = "Review",
+        text = "description=Merge semantics preserve across phase completion",
+        findingId = "F-001",
+      ),
+    )
+    val receipt = FeatureTaskRuntimeRepairReceipt(
+      roundNumber = 1,
+      preFixCheckpointSha = sha,
+      entries = listOf(
+        addressedEntry(
+          label = "PhaseRecorder",
+          text = "clear signature fields on finished writes",
+          findingId = "F-001",
+        ),
+      ),
+    )
+    assertTrue(receipt.coversCarriedFindings(carried))
+  }
+
+  @Test
   fun `an attempted_unresolved entry must carry a reason and the constructs it touched`() {
     val unresolved = FeatureTaskRuntimeRepairReceiptEntry(
       severity = "major",
@@ -161,6 +214,7 @@ class FeatureTaskRuntimeRepairReceiptTest {
       outcome = FeatureTaskRuntimeRepairOutcome.ATTEMPTED_UNRESOLVED,
       constructs = listOf(FeatureTaskRuntimeRepairConstruct(symbol = "Policy.gate")),
       intent = "reject an empty disposition set at the gate",
+      findingId = "F-010",
       unresolvedReason = "the gate cannot reach the review pass ids it would compare",
     )
     assertEquals(
@@ -227,7 +281,7 @@ class FeatureTaskRuntimeRepairReceiptTest {
     label: String = "Type",
     intent: String = "close the finding at Type.member",
     text: String = "unsafe mutation at the seam",
-    findingId: String? = null,
+    findingId: String = "F-001",
   ) = FeatureTaskRuntimeRepairReceiptEntry(
     severity = "blocker",
     label = label,

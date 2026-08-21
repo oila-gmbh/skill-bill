@@ -143,12 +143,12 @@ data class FeatureTaskRuntimeRepairDisturbedRemedy(
 
 data class FeatureTaskRuntimeRepairReceiptEntry(
   val severity: String,
-  val label: String,
-  val text: String,
   val outcome: FeatureTaskRuntimeRepairOutcome,
   val constructs: List<FeatureTaskRuntimeRepairConstruct>,
   val intent: String,
-  val findingId: String? = null,
+  val findingId: String,
+  val label: String = "",
+  val text: String = "",
   val noEditReason: String? = null,
   val unresolvedReason: String? = null,
 ) {
@@ -156,9 +156,13 @@ data class FeatureTaskRuntimeRepairReceiptEntry(
     if (severity !in setOf("blocker", "major", "minor", "nit")) {
       receiptError("severity", "must be one of blocker, major, minor, nit.")
     }
-    requireReceiptSanitizedText(label, "label", REPAIR_RECEIPT_MAX_LABEL_UTF8_BYTES)
-    requireReceiptSanitizedText(text, "text", REPAIR_RECEIPT_MAX_TEXT_UTF8_BYTES)
-    findingId?.let { requireReceiptIdentityText(it, "finding_id", REPAIR_RECEIPT_MAX_LABEL_UTF8_BYTES) }
+    requireReceiptIdentityText(findingId, "finding_id", REPAIR_RECEIPT_MAX_LABEL_UTF8_BYTES)
+    if (label.isNotEmpty()) {
+      requireReceiptSanitizedText(label, "label", REPAIR_RECEIPT_MAX_LABEL_UTF8_BYTES)
+    }
+    if (text.isNotEmpty()) {
+      requireReceiptSanitizedText(text, "text", REPAIR_RECEIPT_MAX_TEXT_UTF8_BYTES)
+    }
     requireReceiptSanitizedText(intent, "intent", REPAIR_RECEIPT_MAX_INTENT_UTF8_BYTES)
     if (constructs.size > REPAIR_RECEIPT_MAX_CONSTRUCTS_PER_ENTRY) {
       receiptError(
@@ -200,20 +204,18 @@ data class FeatureTaskRuntimeRepairReceiptEntry(
     }
   }
 
-  fun findingIdentity(): String = compactReviewFindingIdentity(
-    GoalSubtaskReviewCompactFinding(severity = severity, label = label, text = text, findingId = findingId),
-  )
+  fun findingIdentity(): String = normalizeIdentityPart(findingId)
 
   @OpenBoundaryMap("Repair receipt entry at the durable workflow-artifact seam")
   fun toArtifactMap(): Map<String, Any?> = linkedMapOf<String, Any?>(
+    "finding_id" to findingId,
     "severity" to severity,
-    "label" to label,
-    "text" to text,
     "outcome" to outcome.wireValue,
     "constructs" to constructs.map(FeatureTaskRuntimeRepairConstruct::toArtifactMap),
     "intent" to intent,
   ).apply {
-    findingId?.let { put("finding_id", it) }
+    if (label.isNotEmpty()) put("label", label)
+    if (text.isNotEmpty()) put("text", text)
     noEditReason?.let { put("no_edit_reason", it) }
     unresolvedReason?.let { put("unresolved_reason", it) }
   }
@@ -230,6 +232,9 @@ data class FeatureTaskRuntimeRepairReceiptEntry(
           "constructs",
           "intent",
           "finding_id",
+          "finding_ref",
+          "id",
+          "ref",
           "no_edit_reason",
           "unresolved_reason",
         ),
@@ -244,12 +249,12 @@ data class FeatureTaskRuntimeRepairReceiptEntry(
       return anchoredToDecodePath(path) {
         FeatureTaskRuntimeRepairReceiptEntry(
           severity = raw.requireReviewStateString("severity", path),
-          label = raw.requireReviewStateString("label", path),
-          text = raw.requireReviewStateString("text", path),
+          label = raw.optionalReviewStateString("label", path).orEmpty(),
+          text = raw.optionalReviewStateString("text", path).orEmpty(),
           outcome = FeatureTaskRuntimeRepairOutcome.fromWire(raw.requireReviewStateString("outcome", path)),
           constructs = constructs,
           intent = raw.requireReviewStateString("intent", path),
-          findingId = raw.optionalReviewStateString("finding_id", path),
+          findingId = requireFindingRefAlias(raw, path),
           noEditReason = raw.optionalReviewStateString("no_edit_reason", path),
           unresolvedReason = raw.optionalReviewStateString("unresolved_reason", path),
         )
@@ -266,10 +271,10 @@ data class FeatureTaskRuntimeRepairReceipt(
   val disturbedRemedies: List<FeatureTaskRuntimeRepairDisturbedRemedy> = emptyList(),
 ) {
   init {
-    if (contractVersion != FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION) {
+    if (contractVersion !in ACCEPTED_REPAIR_RECEIPT_CONTRACT_VERSIONS) {
       receiptError(
         "contract_version",
-        "must be '$FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION'.",
+        "must be one of ${ACCEPTED_REPAIR_RECEIPT_CONTRACT_VERSIONS.joinToString { "'$it'" }}.",
       )
     }
     if (roundNumber < 1) {
@@ -355,6 +360,11 @@ data class FeatureTaskRuntimeRepairReceipt(
   }
 }
 
+private val ACCEPTED_REPAIR_RECEIPT_CONTRACT_VERSIONS: Set<String> = setOf(
+  "0.1",
+  FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION,
+)
+
 /**
  * The review pass this `implement_fix` round remediates: the completed pass count at
  * `implement_fix` entry. Never a phase-launch count.
@@ -380,10 +390,9 @@ fun GoalSubtaskReviewState.upsertRepairReceipt(receipt: FeatureTaskRuntimeRepair
 }
 
 /**
- * Coverage for a round's carried findings. Prefer finding_id when the compact finding has one:
- * implement_fix is briefed with unresolved_blocker_findings (finding_id, severity, location,
- * expected_outcome), not the reducer-built label and sanitized text. Findings written before
- * finding_id was captured still match on the compact severity|label|text identity.
+ * Coverage for a round's carried findings. Match only on the briefing's finding ref
+ * (`finding_id`). Label and text are decoration and never decide coverage. Carried findings must
+ * carry a ref before coverage runs; [withStableFindingRefs] assigns one when review omitted it.
  */
 fun FeatureTaskRuntimeRepairReceipt.coversCarriedFindings(
   carriedFindings: List<GoalSubtaskReviewCompactFinding>,
@@ -399,21 +408,62 @@ fun FeatureTaskRuntimeRepairReceipt.omittedCarriedFindings(
   carriedFindings: List<GoalSubtaskReviewCompactFinding>,
 ): List<GoalSubtaskReviewCompactFinding> {
   if (carriedFindings.isEmpty()) return emptyList()
-  val reportedIds = entries.mapNotNull { entry -> entry.findingId?.let(::normalizeIdentityPart) }.toSet()
-  val reportedCompact = entries.mapTo(linkedSetOf(), FeatureTaskRuntimeRepairReceiptEntry::findingIdentity)
+  val reportedIds = entries.mapTo(linkedSetOf()) { normalizeIdentityPart(it.findingId) }
   return carriedFindings.filterNot { carried ->
     val id = carried.findingId?.let(::normalizeIdentityPart)
-    if (id != null) {
-      id in reportedIds
-    } else {
-      compactReviewFindingIdentity(carried) in reportedCompact
-    }
+    id != null && id in reportedIds
   }
 }
 
-/** Entries declaring the round tried and left the finding open. Each one is an operator dead end. */
 fun FeatureTaskRuntimeRepairReceipt.attemptedUnresolvedEntries(): List<FeatureTaskRuntimeRepairReceiptEntry> =
   entries.filter { it.outcome == FeatureTaskRuntimeRepairOutcome.ATTEMPTED_UNRESOLVED }
 
 internal fun compactReviewFindingIdentity(finding: GoalSubtaskReviewCompactFinding): String =
   listOf(finding.severity, finding.label, finding.text).joinToString("|", transform = ::normalizeIdentityPart)
+
+private val FINDING_REF_ALIASES = listOf("finding_id", "finding_ref", "id", "ref")
+
+internal fun requireFindingRefAlias(raw: Map<String, Any?>, path: String): String {
+  for (key in FINDING_REF_ALIASES) {
+    val value = raw[key] as? String ?: continue
+    val normalized = canonicalizeFindingRef(value)
+    if (normalized != null) return normalized
+  }
+  val severity = raw["severity"] as? String
+  val label = raw["label"] as? String
+  val text = raw["text"] as? String
+  if (!severity.isNullOrBlank() && !label.isNullOrBlank() && !text.isNullOrBlank()) {
+    return "legacy:" + listOf(severity, label, text).joinToString("|", transform = ::normalizeIdentityPart)
+  }
+  receiptError(
+    "finding_id",
+    "must name the finding under finding_id (aliases finding_ref, id, ref also accepted).",
+  )
+}
+
+internal fun canonicalizeFindingRef(raw: String): String? {
+  val trimmed = raw.trim().removePrefix("#").trim()
+  return trimmed.takeIf { it.isNotEmpty() }
+}
+
+fun withStableFindingRefs(
+  findings: List<GoalSubtaskReviewCompactFinding>,
+): List<GoalSubtaskReviewCompactFinding> {
+  val used = findings.mapNotNull { it.findingId?.let(::normalizeIdentityPart) }.toMutableSet()
+  var next = 1
+  return findings.map { finding ->
+    val existing = finding.findingId?.let(::canonicalizeFindingRef)
+    if (existing != null) {
+      used += normalizeIdentityPart(existing)
+      finding.copy(findingId = existing)
+    } else {
+      var assigned: String
+      do {
+        assigned = "F-" + next.toString().padStart(3, '0')
+        next++
+      } while (normalizeIdentityPart(assigned) in used)
+      used += normalizeIdentityPart(assigned)
+      finding.copy(findingId = assigned)
+    }
+  }
+}

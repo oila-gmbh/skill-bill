@@ -33,6 +33,7 @@ class FeatureTaskRuntimeRepairReceiptParserTest {
                 "severity" to "blocker",
                 "label" to "Type",
                 "text" to "unsafe mutation at the seam",
+                "finding_id" to "F-001",
                 "outcome" to "addressed",
                 "constructs" to listOf(mapOf("symbol" to "Type.member")),
                 "intent" to "close the finding at Type.member",
@@ -60,6 +61,7 @@ class FeatureTaskRuntimeRepairReceiptParserTest {
                 "severity" to "blocker",
                 "label" to "Type",
                 "text" to "unsafe mutation at the seam",
+                "finding_id" to "F-001",
                 "outcome" to "addressed",
                 "constructs" to listOf(mapOf("symbol" to "Type.member")),
                 "intent" to "close the finding at Type.member",
@@ -77,8 +79,8 @@ class FeatureTaskRuntimeRepairReceiptParserTest {
 
   @Test
   fun `a round that edits one finding and records no_edit_required for the other is accepted`() {
-    val edited = GoalSubtaskReviewCompactFinding("blocker", "Type", "unsafe mutation at the seam")
-    val leftover = GoalSubtaskReviewCompactFinding("major", "Policy", "stale comment is already gone")
+    val edited = GoalSubtaskReviewCompactFinding("blocker", "Type", "unsafe mutation at the seam", "F-001")
+    val leftover = GoalSubtaskReviewCompactFinding("major", "Policy", "stale comment is already gone", "F-002")
     val receipt = receiptFor(
       FeatureTaskRuntimeRepairReceiptEntry(
         severity = edited.severity,
@@ -87,6 +89,7 @@ class FeatureTaskRuntimeRepairReceiptParserTest {
         outcome = FeatureTaskRuntimeRepairOutcome.ADDRESSED,
         constructs = listOf(FeatureTaskRuntimeRepairConstruct(symbol = "Type.member")),
         intent = "close the finding at Type.member",
+        findingId = edited.findingId!!,
       ),
       FeatureTaskRuntimeRepairReceiptEntry(
         severity = leftover.severity,
@@ -95,6 +98,7 @@ class FeatureTaskRuntimeRepairReceiptParserTest {
         outcome = FeatureTaskRuntimeRepairOutcome.NO_EDIT_REQUIRED,
         constructs = emptyList(),
         intent = "no tree change required",
+        findingId = leftover.findingId!!,
         noEditReason = "construct already matched the finding",
       ),
     )
@@ -103,8 +107,8 @@ class FeatureTaskRuntimeRepairReceiptParserTest {
 
   @Test
   fun `a receipt that omits a carried finding names it for the next attempt without echoing it`() {
-    val edited = GoalSubtaskReviewCompactFinding("blocker", "Type", "unsafe mutation at the seam")
-    val leftover = GoalSubtaskReviewCompactFinding("major", "Policy", "stale comment is already gone")
+    val edited = GoalSubtaskReviewCompactFinding("blocker", "Type", "unsafe mutation at the seam", "F-001")
+    val leftover = GoalSubtaskReviewCompactFinding("major", "Policy", "stale comment is already gone", "F-002")
     val receipt = receiptFor(
       FeatureTaskRuntimeRepairReceiptEntry(
         severity = edited.severity,
@@ -113,6 +117,7 @@ class FeatureTaskRuntimeRepairReceiptParserTest {
         outcome = FeatureTaskRuntimeRepairOutcome.ADDRESSED,
         constructs = listOf(FeatureTaskRuntimeRepairConstruct(symbol = "Type.member")),
         intent = "close the finding at Type.member",
+        findingId = edited.findingId!!,
       ),
     )
     val omitted = receipt.omittedCarriedFindings(listOf(edited, leftover))
@@ -134,7 +139,7 @@ class FeatureTaskRuntimeRepairReceiptParserTest {
         outcome = FeatureTaskRuntimeRepairOutcome.ATTEMPTED_UNRESOLVED,
         constructs = listOf(FeatureTaskRuntimeRepairConstruct(symbol = "Policy.gate")),
         intent = "reject an empty disposition set at the gate",
-        findingId = carried.findingId,
+        findingId = requireNotNull(carried.findingId),
         unresolvedReason = "the gate has no access to the review pass ids it would have to compare",
       ),
     )
@@ -156,6 +161,7 @@ class FeatureTaskRuntimeRepairReceiptParserTest {
         outcome = FeatureTaskRuntimeRepairOutcome.ADDRESSED,
         constructs = listOf(FeatureTaskRuntimeRepairConstruct(symbol = "Policy.gate")),
         intent = "reject an empty disposition set at the gate",
+        findingId = "F-002",
       ),
     )
 

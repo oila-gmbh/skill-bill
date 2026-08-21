@@ -11,7 +11,7 @@ const val FEATURE_TASK_RUNTIME_CONTRACT_VERSION: String = "0.4"
  * `produced_outputs.repair_receipt`. Independent from the envelope
  * [FEATURE_TASK_RUNTIME_CONTRACT_VERSION]: adding the receipt does not bump 0.3.
  */
-const val FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION: String = "0.1"
+const val FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION: String = "0.2"
 
 const val FEATURE_TASK_RUNTIME_REPAIR_LEDGER_CONTRACT_VERSION: String = "0.1"
 

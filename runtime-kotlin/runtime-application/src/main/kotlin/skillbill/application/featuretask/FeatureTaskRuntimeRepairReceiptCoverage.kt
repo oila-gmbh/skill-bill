@@ -6,10 +6,12 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.attemptedUnresolvedEntries
 import skillbill.workflow.taskruntime.model.omittedCarriedFindings
+import skillbill.workflow.taskruntime.model.withStableFindingRefs
 
 internal fun featureTaskRuntimeCarriedFindings(
   reviewState: GoalSubtaskReviewState,
-): List<GoalSubtaskReviewCompactFinding> = reviewState.passResults.lastOrNull()?.findings.orEmpty()
+): List<GoalSubtaskReviewCompactFinding> =
+  withStableFindingRefs(reviewState.passResults.lastOrNull()?.findings.orEmpty())
 
 /** The carried findings this round neither closed, waived, nor declared it had tried and failed. */
 internal fun featureTaskRuntimeRepairReceiptOmittedFindings(
@@ -19,14 +21,16 @@ internal fun featureTaskRuntimeRepairReceiptOmittedFindings(
   receipt.omittedCarriedFindings(featureTaskRuntimeCarriedFindings(reviewState))
 
 internal fun featureTaskRuntimeCompactFindingRef(finding: GoalSubtaskReviewCompactFinding): String =
-  finding.findingId?.takeIf(String::isNotBlank) ?: "${finding.severity}: ${finding.label}"
+  finding.findingId?.takeIf(String::isNotBlank)
+    ?: error("Carried finding must carry a stable finding_id before coverage runs.")
 
 internal fun featureTaskRuntimeOmittedFindingsRetryReason(omitted: List<GoalSubtaskReviewCompactFinding>): String =
-  "The repair receipt left these carried findings unaccounted for: " +
+  "The repair receipt left these carried findings unaccounted for under finding_id: " +
     omitted.joinToString(", ", transform = ::featureTaskRuntimeCompactFindingRef) +
-    ". Continue this round: address each one and add its entry, or, if the fix was attempted and the " +
-    "finding is still open, declare outcome 'attempted_unresolved' with unresolved_reason and the " +
-    "constructs you touched. A carried finding may never be left out of the receipt."
+    ". Continue this round: add one entry per owed ref using finding_id (aliases finding_ref, id, " +
+    "and ref are accepted), or, if the fix was attempted and the finding is still open, declare " +
+    "outcome 'attempted_unresolved' with unresolved_reason and the constructs you touched. A " +
+    "carried finding may never be left out of the receipt."
 
 /**
  * What a round reported it tried and could not close. The refs carry the per-finding retry budget,
@@ -54,7 +58,7 @@ internal fun featureTaskRuntimeUnresolvedFindings(
 }
 
 private fun unresolvedEntryRef(entry: FeatureTaskRuntimeRepairReceiptEntry): String =
-  entry.findingId?.takeIf(String::isNotBlank) ?: "${entry.severity}: ${entry.label}"
+  entry.findingId
 
 private fun unresolvedEntryDetail(entry: FeatureTaskRuntimeRepairReceiptEntry): String =
   "${unresolvedEntryRef(entry)} (${entry.unresolvedReason.orEmpty()})"

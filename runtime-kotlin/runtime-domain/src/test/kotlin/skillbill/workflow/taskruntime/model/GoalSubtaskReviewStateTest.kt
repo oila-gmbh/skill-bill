@@ -424,6 +424,7 @@ class GoalSubtaskReviewStateTest {
           outcome = FeatureTaskRuntimeRepairOutcome.ADDRESSED,
           constructs = listOf(FeatureTaskRuntimeRepairConstruct(symbol = "Repository.commit")),
           intent = "close the mutation at Repository.commit",
+          findingId = "F-001",
         ),
       ),
     )
@@ -453,6 +454,7 @@ class GoalSubtaskReviewStateTest {
           outcome = FeatureTaskRuntimeRepairOutcome.NO_EDIT_REQUIRED,
           constructs = emptyList(),
           intent = "already closed on the tree",
+          findingId = "F-001",
           noEditReason = "construct already matched the finding",
         ),
       ),
@@ -466,6 +468,7 @@ class GoalSubtaskReviewStateTest {
           outcome = FeatureTaskRuntimeRepairOutcome.ADDRESSED,
           constructs = listOf(FeatureTaskRuntimeRepairConstruct(symbol = "Repository.commit")),
           intent = "close the mutation at Repository.commit",
+          findingId = "F-001",
         ),
       ),
     )

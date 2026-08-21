@@ -530,8 +530,8 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
       """"repair_receipt":$receiptJson}}"""
 
   private fun validRepairReceiptJson(): String =
-    """{"contract_version":"0.1","round_number":1,"pre_fix_checkpoint_sha":"${"a".repeat(40)}",""" +
+    """{"contract_version":"0.2","round_number":1,"pre_fix_checkpoint_sha":"${"a".repeat(40)}",""" +
       """"entries":[{"severity":"blocker","label":"Type","text":"unsafe mutation at the seam",""" +
-      """"outcome":"addressed","constructs":[{"symbol":"Type.member","file":"Type.kt"}],""" +
+      """"finding_id":"F-001","outcome":"addressed","constructs":[{"symbol":"Type.member","file":"Type.kt"}],""" +
       """"intent":"close the finding at Type.member"}]}"""
 }

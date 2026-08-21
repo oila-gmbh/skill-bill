@@ -361,7 +361,8 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "and the immutable initial preplan and plan outputs as read-only context — you never regenerate, " +
     "mutate, or overwrite them. Emit produced_outputs.repair_plan with contract_version " +
     "\"$FEATURE_TASK_RUNTIME_REPAIR_PLAN_CONTRACT_VERSION\", the round number, and exactly one entry per " +
-    "carried finding: finding_ref, the root_cause, the minimal_change that addresses it, and a " +
+    "carried finding: finding_id (the briefing's finding_id; aliases finding_ref, id, and ref are " +
+    "accepted), the root_cause, the minimal_change that addresses it, and a " +
     "classification of local_patch_site or design_symptom. Classify design_symptom when the finding is a " +
     "consequence of an earlier round's remedy rather than a local defect, and name that earlier finding " +
     "in prior_round_remedy_ref. A design_symptom classification escalates the round for an operator " +
@@ -377,13 +378,15 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "named constructs hold each finding closed. Those entries are settled load-bearing work, not open " +
     "findings awaiting action — do not re-address a resolved entry and do not treat it as scope. If " +
     "closing a carried finding requires you to remove or materially rewrite a construct a resolved " +
-    "entry names, say so: list that entry's finding_ref in produced_outputs.repair_receipt." +
+    "entry names, say so: list that entry's finding_id in produced_outputs.repair_receipt." +
     "disturbed_remedies with a one-line reason. Silent removal is rejected, because the finding that " +
     "construct closed can otherwise be reintroduced without anyone seeing it. Emit " +
     "produced_outputs.repair_receipt " +
     "with contract_version \"$FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION\" and exactly one " +
-    "entry per carried finding: the finding's severity, label, " +
-    "and sanitized text, an explicit outcome (addressed; no_edit_required with no_edit_reason; or " +
+    "entry per carried finding named by finding_id (the briefing's finding_id values; aliases " +
+    "finding_ref, id, and ref are accepted). Coverage matches on finding_id alone — do not restate " +
+    "severity, label, or sanitized text as identity; label and text are optional decoration. Each " +
+    "entry needs an explicit outcome (addressed; no_edit_required with no_edit_reason; or " +
     "attempted_unresolved with unresolved_reason when you tried and the finding is still open), " +
     "symbol-granularity closing constructs (Type or Type.member, optional file basename — never a bare " +
     "path), and a bounded one-line repair intent. A legitimately unedited finding still needs its " +

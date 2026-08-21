@@ -154,8 +154,10 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     )
 
     assertContains(prompt, "\"repair_receipt\": {")
-    assertContains(prompt, "\"contract_version\": \"0.1\"")
+    assertContains(prompt, "\"contract_version\": \"0.2\"")
     assertContains(prompt, "\"symbol\": \"Type.member\"")
+    assertContains(prompt, "finding_id")
+    assertContains(prompt, "Coverage matches on finding_id alone")
     assertFalse(
       prompt.contains("pre_fix_checkpoint_sha"),
       "The remediation base sha is runtime-owned and absent from the briefing, so asking for it can " +

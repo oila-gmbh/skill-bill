@@ -97,7 +97,11 @@ $defs:
   repairReceiptEntry:
     type: object
     additionalProperties: false
-    required: [severity, label, text, outcome, constructs, intent]
+    description: >-
+      One carried finding's repair outcome. Identity is finding_id (canonical). Parsing accepts
+      finding_ref, id, and ref as aliases; label and text are optional decoration and never gate
+      coverage.
+    required: [severity, outcome, constructs, intent]
     properties:
       severity:
         type: string
@@ -111,6 +115,21 @@ $defs:
         minLength: 1
         maxLength: 256
       finding_id:
+        type: string
+        minLength: 1
+        maxLength: 256
+      finding_ref:
+        description: "Historical alias for finding_id; canonicalized at parse."
+        type: string
+        minLength: 1
+        maxLength: 256
+      id:
+        description: "Historical alias for finding_id; canonicalized at parse."
+        type: string
+        minLength: 1
+        maxLength: 256
+      ref:
+        description: "Historical alias for finding_id; canonicalized at parse."
         type: string
         minLength: 1
         maxLength: 256
@@ -148,6 +167,11 @@ $defs:
         maxLength: 356
         pattern: "^[^\\n\\r`]*\\S[^\\n\\r`]*$"
     allOf:
+      - anyOf:
+          - required: [finding_id]
+          - required: [finding_ref]
+          - required: [id]
+          - required: [ref]
       - if:
           properties:
             outcome: { const: addressed }
@@ -201,7 +225,7 @@ $defs:
     properties:
       contract_version:
         type: string
-        const: "0.1"
+        const: "0.2"
       round_number:
         description: >-
           Runtime-authored. Accepted when a producer still emits it and then overwritten with the

@@ -23,6 +23,7 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDispositionVerdict
 import skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.reviewStateError
+import skillbill.workflow.taskruntime.model.withStableFindingRefs
 
 internal data class StructuredGoalReviewFinding(
   val severity: String,
@@ -82,9 +83,9 @@ internal object GoalSubtaskReviewSummaryReducer {
           text = sanitize(finding.message),
           findingId = finding.findingId,
         )
-      }.groupBy { finding ->
-        // Repair-receipt coverage reads these persisted findings. Distinct register ids must survive
-        // even when compact labels collide; label collapse is only the legacy no-id path.
+      }
+      .let(::withStableFindingRefs)
+      .groupBy { finding ->
         finding.findingId?.lowercase() ?: finding.label.lowercase()
       }
       .values
