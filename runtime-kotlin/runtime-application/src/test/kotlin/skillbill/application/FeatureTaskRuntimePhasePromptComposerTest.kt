@@ -172,6 +172,38 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
+  fun `only validate may run the pack check gate`() {
+    val ownershipTitle = "Validation ownership"
+    val mutatingPhases = listOf(
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
+    )
+    mutatingPhases.forEach { phaseId ->
+      val prompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor(phaseId))
+      assertContains(prompt, ownershipTitle, false, "ownership title for $phaseId")
+      assertContains(prompt, "Only the validate phase may run the pack validation gate", false, phaseId)
+      assertContains(prompt, "./gradlew check", false, phaseId)
+      assertContains(prompt, "must not compile, build, or execute tests", false, phaseId)
+    }
+
+    val validatePrompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE),
+    )
+    assertFalse(
+      validatePrompt.contains(ownershipTitle),
+      "validate must not carry the mutating-phase forbid; it owns the gate",
+    )
+    assertContains(validatePrompt, "Run only the pack-declared validation_gate collect_all_full_gate_command")
+
+    val planPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN),
+    )
+    assertFalse(planPrompt.contains(ownershipTitle), "plan is not a mutating phase")
+  }
+
+  @Test
   fun `validate prompt shows repository checkpoint as a fingerprint object`() {
     val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,

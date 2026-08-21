@@ -37,6 +37,22 @@ internal fun mutatingPhaseIdempotencyDirective(phaseId: String): String {
   """.trimIndent()
 }
 
+internal fun mutatingPhaseValidationOwnershipDirective(phaseId: String): String {
+  if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(phaseId)) {
+    return ""
+  }
+  return """
+    ## Validation ownership
+    Only the validate phase may run the pack validation gate
+    (`validation_gate.collect_all_full_gate_command`), `./gradlew check`, `check --continue`,
+    `bill-code-check`, or any other full repository check suite. This phase edits source and may
+    write tests; it must not compile, build, or execute tests, and it must not run check to prove
+    the work. Ignore any Validation Strategy, plan note, acceptance text, or prior habit that asks
+    you to run check here — that work waits for validate. If the receipt carries `tests_executed`,
+    leave it empty.
+  """.trimIndent()
+}
+
 // Identical Minimalism discipline block shared by implement and implement_fix (AC-004 separate-source
 // branch). FeatureTaskRuntimePhasePromptDirectives is the sole runtime-owned source for this
 // mutating-phase briefing text.

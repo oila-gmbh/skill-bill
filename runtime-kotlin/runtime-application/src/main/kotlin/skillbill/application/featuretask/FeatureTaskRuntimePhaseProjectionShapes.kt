@@ -138,7 +138,9 @@ internal object FeatureTaskRuntimePhaseProjectionShapes {
       "            \"intent\": \"<one-line repair intent>\" } ],\n" +
       "          \"disturbed_remedies\": [ { \"finding_ref\": \"<ledger finding_ref>\",\n" +
       "            \"reason\": \"<one line on why the settled construct had to change>\" } ] } }\n" +
-      "      ```"
+      "      ```\n" +
+      "      Compilation and test execution belong exclusively to the validate phase. Do NOT build,\n" +
+      "      compile, run tests, or invoke `./gradlew check` / the pack collect-all gate here."
 
   private const val VALIDATION: String =
     "\n    - Required produced_outputs shape: emit a validation_result OBJECT. Its repository_checkpoint\n" +
