@@ -466,6 +466,24 @@ val copyFeatureTaskRuntimeSharedEvidenceProjectionSchema =
     }
   }
 
+val canonicalFeatureTaskRuntimeBuildReceiptSchemaPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/feature-task-runtime-build-receipt.yaml")
+    .absolutePath
+
+val copyFeatureTaskRuntimeBuildReceiptSchema =
+  tasks.register<Copy>("copyFeatureTaskRuntimeBuildReceiptSchema") {
+    val schemaPath = canonicalFeatureTaskRuntimeBuildReceiptSchemaPath
+    from(schemaPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    inputs.file(schemaPath)
+    doFirst {
+      require(File(schemaPath).exists()) {
+        "SKILL-204: canonical build-receipt schema is missing at $schemaPath."
+      }
+    }
+  }
+
 val canonicalGoalPlanningPreparationSchemaPath: String =
   rootProject.projectDir.parentFile
     .resolve("orchestration/contracts/goal-planning-preparation-schema.yaml")
@@ -583,6 +601,7 @@ tasks.named("processResources") {
   dependsOn(copyFeatureTaskRuntimePersistenceSchema)
   dependsOn(copyFeatureTaskRuntimeProjectionMeasurementSchema)
   dependsOn(copyFeatureTaskRuntimeSharedEvidenceProjectionSchema)
+  dependsOn(copyFeatureTaskRuntimeBuildReceiptSchema)
   dependsOn(copyFeatureTaskExecutionIdentitySchema)
   dependsOn(copyFeatureTaskRuntimeWorkerOwnershipSchema)
   dependsOn(copyGoalPlanningPreparationSchema)
@@ -613,6 +632,7 @@ tasks.named("processTestResources") {
   dependsOn(copyFeatureTaskRuntimePersistenceSchema)
   dependsOn(copyFeatureTaskRuntimeProjectionMeasurementSchema)
   dependsOn(copyFeatureTaskRuntimeSharedEvidenceProjectionSchema)
+  dependsOn(copyFeatureTaskRuntimeBuildReceiptSchema)
   dependsOn(copyFeatureTaskExecutionIdentitySchema)
   dependsOn(copyFeatureTaskRuntimeWorkerOwnershipSchema)
   dependsOn(copyGoalPlanningPreparationSchema)

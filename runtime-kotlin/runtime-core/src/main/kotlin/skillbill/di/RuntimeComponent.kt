@@ -64,6 +64,7 @@ import skillbill.goalplanning.FileSystemGoalPlanningContextDiscovery
 import skillbill.infrastructure.fs.AgentRunReviewIsolationResolver
 import skillbill.infrastructure.fs.ClasspathReviewSpecialistContractProvider
 import skillbill.infrastructure.fs.DecompositionManifestValidatorAdapter
+import skillbill.infrastructure.fs.FeatureTaskRuntimeBuildReceiptValidatorAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimeHandoffEnvelopeValidatorInfraAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimeHandoffFoundationValidatorInfraAdapter
 import skillbill.infrastructure.fs.FeatureTaskRuntimeImplementationAttemptValidatorAdapter
@@ -220,6 +221,7 @@ import skillbill.ports.workflow.WorkflowGitOperations
 import skillbill.review.context.ReviewContextEnvelopeValidator
 import skillbill.telemetry.settings.DefaultTelemetrySettingsProvider
 import skillbill.workflow.DecompositionManifestValidator
+import skillbill.workflow.FeatureTaskRuntimeBuildReceiptValidator
 import skillbill.workflow.FeatureTaskRuntimeHandoffEnvelopeValidator
 import skillbill.workflow.FeatureTaskRuntimeHandoffFoundationValidator
 import skillbill.workflow.FeatureTaskRuntimeImplementationAttemptValidator
@@ -593,12 +595,6 @@ abstract class RuntimeComponent(
 
   @Provides
   @JvmSynthetic
-  internal fun validationGateProgressStore(
-    store: skillbill.application.featuretask.validation.FeatureTaskRuntimeValidationGateProgressStore,
-  ): skillbill.application.featuretask.validation.model.ValidationGateProgressStore = store
-
-  @Provides
-  @JvmSynthetic
   internal fun uninstallFileSystemGateway(gateway: FileSystemUninstallFileSystemGateway): UninstallFileSystemGateway =
     gateway
 
@@ -707,6 +703,12 @@ abstract class RuntimeComponent(
   internal fun featureTaskRuntimePlanningProjectionValidator(
     adapter: FeatureTaskRuntimePlanningProjectionValidatorAdapter,
   ): FeatureTaskRuntimePlanningProjectionValidator = adapter
+
+  @Provides
+  @JvmSynthetic
+  internal fun featureTaskRuntimeBuildReceiptValidator(
+    adapter: FeatureTaskRuntimeBuildReceiptValidatorAdapter,
+  ): FeatureTaskRuntimeBuildReceiptValidator = adapter
 
   @Provides
   @JvmSynthetic

@@ -1,0 +1,74 @@
+# Feature-task-runtime build receipt projection schema (canonical source of truth).
+#
+# Settled output from the runtime-owned build gate phase. Mirrors validation_receipt field
+# parity where semantics match; consumers in subtask 1 still require validation_receipt
+# until subtask 2 wires either-or handoff.
+#
+# Versioning rule:
+#
+# - contract_version is pinned by FEATURE_TASK_RUNTIME_BUILD_RECEIPT_CONTRACT_VERSION in
+#   runtime-kotlin/runtime-contracts/src/main/kotlin/skillbill/contracts/workflow/FeatureTaskRuntimeSchemaPaths.kt.
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://skill-bill.dev/contracts/feature-task-runtime-build-receipt.yaml"
+title: "Feature-task-runtime build receipt"
+description: >-
+  Bounded build gate receipt from the feature-task-runtime build phase: compile/buildability
+  proof only via pack build_command, never collect-all validation.
+type: object
+additionalProperties: false
+required:
+  - contract_version
+  - validation_status
+  - checks
+  - repository_checkpoint
+  - gate_run_count
+  - gate_runs
+properties:
+  contract_version:
+    type: string
+    const: "0.1"
+  validation_status:
+    type: string
+    enum:
+      - passed
+      - failed
+  checks:
+    type: array
+    items:
+      type: string
+      minLength: 1
+  repository_checkpoint:
+    type: object
+    additionalProperties: false
+    required:
+      - fingerprint
+    properties:
+      fingerprint:
+        type: string
+        minLength: 1
+  gate_run_count:
+    type: integer
+    minimum: 0
+  gate_runs:
+    type: array
+    items:
+      type: object
+      additionalProperties: false
+      required:
+        - duration_ms
+        - outcome
+        - cache_mode
+        - executed_work_units
+      properties:
+        duration_ms:
+          type: integer
+          minimum: 0
+        outcome:
+          type: string
+          minLength: 1
+        cache_mode:
+          type: string
+          minLength: 1
+        executed_work_units:
+          type: integer
+          minimum: 0

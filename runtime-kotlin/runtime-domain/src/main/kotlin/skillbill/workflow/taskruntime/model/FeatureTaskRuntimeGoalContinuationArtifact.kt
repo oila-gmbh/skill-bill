@@ -16,6 +16,8 @@ data class FeatureTaskRuntimeGoalContinuationArtifact(
   val codeReviewMode: CodeReviewExecutionMode,
   /** Null means the durable row never recorded a depth (pre-contract / key absent). */
   val validationDepth: ValidationDepth? = null,
+  /** Null means the durable row never recorded a selection (pre-contract / key absent). */
+  val qualityGateSelection: FeatureTaskRuntimeQualityGateSelection? = null,
   val parallelReviewAgent: String? = null,
   /** The manifest subtask `name`; null when the durable row never recorded one. */
   val subtaskName: String? = null,
@@ -43,6 +45,7 @@ data class FeatureTaskRuntimeGoalContinuationArtifact(
   ).apply {
     parentWorkflowId?.let { put("parent_workflow_id", it) }
     validationDepth?.let { put("validation_depth", it.wireValue) }
+    qualityGateSelection?.let { put("quality_gate_selection", it.wireValue) }
     parallelReviewAgent?.let { put("parallel_review_agent", it) }
     subtaskName?.let { put("subtask_name", it) }
     if (agentAddonSelection.entries.isNotEmpty()) {
@@ -71,6 +74,7 @@ data class FeatureTaskRuntimeGoalContinuationArtifact(
         parentWorkflowId = raw.optionalStringField("parent_workflow_id"),
         codeReviewMode = raw.requireGoalContinuationCodeReviewMode(),
         validationDepth = raw.optionalGoalContinuationValidationDepth(),
+        qualityGateSelection = raw.optionalGoalContinuationQualityGateSelection(),
         parallelReviewAgent = raw.optionalStringField("parallel_review_agent"),
         subtaskName = raw.optionalStringField("subtask_name"),
         agentAddonSelection = raw.optionalGoalAgentAddonSelection(),
@@ -87,6 +91,7 @@ private val goalContinuationKeys: Set<String> = setOf(
   "parent_workflow_id",
   "code_review_mode",
   "validation_depth",
+  "quality_gate_selection",
   "parallel_review_agent",
   "subtask_name",
   "agent_addon_selection",
@@ -148,5 +153,14 @@ private fun Map<String, Any?>.optionalGoalContinuationValidationDepth(): Validat
     ValidationDepth.fromWire(raw)
   } catch (error: IllegalArgumentException) {
     throw InvalidWorkflowStateSchemaError("Goal-continuation artifact validation_depth is invalid.", error)
+  }
+}
+
+private fun Map<String, Any?>.optionalGoalContinuationQualityGateSelection(): FeatureTaskRuntimeQualityGateSelection? {
+  val raw = optionalStringField("quality_gate_selection") ?: return null
+  return try {
+    FeatureTaskRuntimeQualityGateSelection.fromWire(raw)
+  } catch (error: IllegalArgumentException) {
+    throw InvalidWorkflowStateSchemaError("Goal-continuation artifact quality_gate_selection is invalid.", error)
   }
 }

@@ -18,7 +18,7 @@ import java.nio.file.Path
  * historical `runtime-infra-fs` `SHELL_CONTRACT_VERSION` is now a `get()` alias of this constant
  * (see `runtime-infra-fs/.../scaffold/ScaffoldSupport.kt`) so the two cannot drift.
  */
-const val PLATFORM_PACK_SHELL_CONTRACT_VERSION: String = "1.6"
+const val PLATFORM_PACK_SHELL_CONTRACT_VERSION: String = "1.7"
 
 /**
  * Renders the canonical `platform.yaml` text for a freshly scaffolded platform pack. All path

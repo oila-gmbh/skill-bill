@@ -2,6 +2,17 @@
 
 Revisit when: prune eligibility or the checkpoint namespace layout changes.
 
+## [2026-08-22] SKILL-204 subtask 1 — First-class build phase and pack build command
+Areas: runtime-application/featuretask, runtime-domain/workflow/taskruntime, runtime-infra-fs/contracts/workflow, orchestration/contracts, platform-packs/{kotlin,kmp}, AGENTS.md
+- Added a real `build` phase between clean review and write-history, with runtime-owned discover → repair → confirm gate execution.
+- Platform validation gates now declare a build command; Kotlin and KMP use compile/buildability argv distinct from their collect-all full gate.
+- Settled build output projects a schema-validated `build_receipt`, while downstream receipt acceptance remains deferred to subtask 2.
+- Build prompts and repository guidance prohibit suite tests, full checks, substitute agent-run gates, and delegated subagents; targeted repair commands remain allowed.
+- Pattern: keep pack command ownership in manifests and share typed gate/projection validation across launch and settlement. reusable
+- Limitation: goal-child routing still defaults to `review → validate`; selecting `build` for intermediate children is subtask 2.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-08-20] Validate runs only the pack collect-all command
 Areas: runtime-application/featuretask (validate directives, prompt composer, run loop), AGENTS.md, skills/bill-feature-task-runtime
 - Validate briefing names the pack `collect_all_full_gate_command` and forbids `skill-bill validate`, `npx agnix`, `scripts/validate_agent_configs`, and `bill-code-check`.

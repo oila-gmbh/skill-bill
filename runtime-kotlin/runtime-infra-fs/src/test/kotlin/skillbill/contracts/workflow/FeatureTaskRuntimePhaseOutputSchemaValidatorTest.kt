@@ -2,11 +2,14 @@ package skillbill.contracts.workflow
 
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.infrastructure.fs.FeatureTaskRuntimePhaseOutputValidatorAdapter
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFailureCode
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputValidationResult
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
@@ -534,4 +537,36 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
       """"entries":[{"severity":"blocker","label":"Type","text":"unsafe mutation at the seam",""" +
       """"finding_id":"F-001","outcome":"addressed","constructs":[{"symbol":"Type.member","file":"Type.kt"}],""" +
       """"intent":"close the finding at Type.member"}]}"""
+
+  @Test
+  fun `completed build phase output validates nested build_receipt through production schema gate`() {
+    val envelope = buildPhaseEnvelope(
+      buildReceipt =
+      """{"contract_version":"0.1","validation_status":"passed","checks":[],""" +
+        """"repository_checkpoint":{"fingerprint":"fp"},"gate_run_count":1,""" +
+        """"gate_runs":[{"duration_ms":1,"outcome":"passed","cache_mode":"cache_eligible",""" +
+        """"executed_work_units":1}]}""",
+    )
+    FeatureTaskRuntimePhaseOutputValidatorAdapter().validatePhaseOutputText(envelope, "build")
+  }
+
+  @Test
+  fun `completed build phase output with malformed build_receipt is rejected before acceptance`() {
+    val envelope = buildPhaseEnvelope(
+      buildReceipt =
+      """{"contract_version":"0.1","validation_status":"passed","checks":[],""" +
+        """"repository_checkpoint":{"fingerprint":"fp"}}""",
+    )
+    val result = FeatureTaskRuntimePhaseOutputValidatorAdapter().validatePhaseOutput(envelope, "build")
+    val rejected = assertIs<FeatureTaskRuntimePhaseOutputValidationResult.Rejected>(result)
+    assertEquals(FeatureTaskRuntimePhaseOutputFailureCode.SCHEMA_INVALID, rejected.code)
+    assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
+      FeatureTaskRuntimePhaseOutputValidatorAdapter().validatePhaseOutputText(envelope, "build")
+    }
+  }
+
+  private fun buildPhaseEnvelope(buildReceipt: String): String =
+    """{"contract_version":"0.4","phase_id":"build","status":"completed",""" +
+      """"summary":"Build satisfied by runtime-owned gate execution.",""" +
+      """"verdict":"satisfied","produced_outputs":{"build_receipt":$buildReceipt}}"""
 }

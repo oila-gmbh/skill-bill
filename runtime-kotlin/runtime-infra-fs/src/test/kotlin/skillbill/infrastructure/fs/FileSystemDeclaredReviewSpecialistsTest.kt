@@ -168,7 +168,7 @@ class FileSystemDeclaredReviewSpecialistsTest {
         val fallback = pathSignals.isEmpty()
         val strongSignals = pathSignals.ifEmpty { listOf("manifest-declared code-review fallback") }
         appendLine("platform: $slug")
-        appendLine("contract_version: \"1.6\"")
+        appendLine("contract_version: \"1.7\"")
         appendLine("display_name: $slug")
         appendLine("routing_signals:")
         appendLine("  strong:")

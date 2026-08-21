@@ -2,11 +2,15 @@
 
 package skillbill.contracts.workflow
 
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
+import com.networknt.schema.JsonSchema
 import com.networknt.schema.JsonSchemaFactory
 import com.networknt.schema.SpecVersion
+import com.networknt.schema.ValidationMessage
 import skillbill.contracts.LOCALE_STABLE_SCHEMA_CONFIG
+import skillbill.error.InvalidFeatureTaskRuntimeBuildReceiptSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePersistenceSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseHandoffSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimeProjectionMeasurementSchemaError
@@ -50,6 +54,85 @@ object FeatureTaskRuntimeSharedEvidenceProjectionSchemaValidator {
     FeatureTaskRuntimeSharedEvidenceProjectionSchemaPaths.CLASSPATH_RESOURCE,
     FeatureTaskRuntimeSharedEvidenceProjectionSchemaPaths.EXPECTED_SCHEMA_ID,
   ) { reason -> InvalidFeatureTaskRuntimeSharedEvidenceProjectionSchemaError(sourceLabel, reason) }
+}
+
+object FeatureTaskRuntimeBuildReceiptSchemaValidator {
+  private val schema: JsonSchema by lazy { loadBuildReceiptSchema() }
+  private val mapper: ObjectMapper by lazy { ObjectMapper() }
+
+  fun validate(payload: Map<String, Any?>, sourceLabel: String) {
+    val instance = mapper.valueToTree<JsonNode>(payload)
+    val failures = schema.validate(instance)
+    if (failures.isNotEmpty()) {
+      val sorted = failures.sortedBy { it.instanceLocation.toString() }
+      val reasons = formatBuildReceiptViolationReasons(sorted.take(MAX_REPORTED_SCHEMA_FAILURES), instance)
+      throw InvalidFeatureTaskRuntimeBuildReceiptSchemaError(
+        sourceLabel = sourceLabel,
+        reason = reasons.valueBearing,
+        payloadFreeReason = reasons.payloadFree,
+      )
+    }
+  }
+}
+
+private fun loadBuildReceiptSchema(): JsonSchema {
+  val yamlNode = YAMLMapper().readTree(readBuildReceiptSchemaText())
+  assertBuildReceiptSchemaIdentity(yamlNode)
+  return JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012)
+    .getSchema(ObjectMapper().writeValueAsString(yamlNode), LOCALE_STABLE_SCHEMA_CONFIG)
+}
+
+private fun assertBuildReceiptSchemaIdentity(yamlNode: JsonNode) {
+  val loadedId = yamlNode.path("\$id").asText("")
+  require(loadedId == FeatureTaskRuntimeBuildReceiptSchemaPaths.EXPECTED_SCHEMA_ID) {
+    "Canonical feature-task-runtime build receipt schema identity mismatch: loaded '$loadedId' but expected " +
+      "'${FeatureTaskRuntimeBuildReceiptSchemaPaths.EXPECTED_SCHEMA_ID}'."
+  }
+  val loadedConst = yamlNode.path("properties").path("contract_version").path("const").asText("")
+  require(loadedConst == FEATURE_TASK_RUNTIME_BUILD_RECEIPT_CONTRACT_VERSION) {
+    "Canonical feature-task-runtime build receipt schema contract_version.const mismatch: loaded " +
+      "'$loadedConst' but the runtime expects '$FEATURE_TASK_RUNTIME_BUILD_RECEIPT_CONTRACT_VERSION'."
+  }
+}
+
+private fun readBuildReceiptSchemaText(): String {
+  FeatureTaskRuntimeBuildReceiptSchemaValidator::class.java.classLoader
+    .getResourceAsStream(FeatureTaskRuntimeBuildReceiptSchemaPaths.CLASSPATH_RESOURCE)
+    ?.use { return it.readBytes().toString(Charsets.UTF_8) }
+  var current: Path? = Path.of("").toAbsolutePath().normalize()
+  while (current != null) {
+    val candidate = current.resolve(FeatureTaskRuntimeBuildReceiptSchemaPaths.REPO_RELATIVE_PATH)
+    if (Files.isRegularFile(candidate)) return Files.readString(candidate)
+    current = current.parent
+  }
+  throw IllegalStateException(
+    "Canonical feature-task-runtime build receipt schema is missing. Expected it on the JVM classpath at " +
+      "'${FeatureTaskRuntimeBuildReceiptSchemaPaths.CLASSPATH_RESOURCE}' or on disk under " +
+      "'${FeatureTaskRuntimeBuildReceiptSchemaPaths.REPO_RELATIVE_PATH}'.",
+  )
+}
+
+private data class BuildReceiptViolationReasons(val valueBearing: String, val payloadFree: String)
+
+private fun formatBuildReceiptViolationReasons(
+  sorted: List<ValidationMessage>,
+  instance: JsonNode,
+): BuildReceiptViolationReasons {
+  val violations = sorted.map { error ->
+    val location = error.instanceLocation?.toString().orEmpty()
+    val fieldPath = featureTaskRuntimePhaseOutputDottedFieldPath(location).ifBlank { "<root>" }
+    val head = "$fieldPath: ${error.message}"
+    head to extractFeatureTaskRuntimePhaseOutputOffendingValue(instance, location)
+  }
+  fun render(includeOffendingValues: Boolean): String =
+    violations.joinToString(separator = " | ") { (head, offendingValue) ->
+      if (includeOffendingValues && offendingValue.isNotBlank()) {
+        "$head — offending value: $offendingValue"
+      } else {
+        head
+      }
+    }
+  return BuildReceiptViolationReasons(valueBearing = render(true), payloadFree = render(false))
 }
 
 private fun validateAgainst(

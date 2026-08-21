@@ -202,8 +202,10 @@ The runtime owns everything after launch: it opens the durable runtime workflow,
 runs each phase through its own agent, validates each phase output against the
 schema gate, persists per-phase state, and blocks loudly on a failed
 non-validation gate or a missing upstream output. Only the validate phase may run the pack collect-all gate (`./gradlew check` and
-equivalents). Every other phase — including `implement`, `implement_fix`, `audit`, and
-`review` — must not compile, build, execute tests, or run check. Repair receipts name each
+equivalents). Only the build phase may run the pack `build_command` (compile/buildability proof only).
+Every other phase — including `implement`, `implement_fix`, `audit`, and
+`review` — must not compile, build, execute tests, or run check. The build phase must not run
+`check --continue`, `skill-bill validate`, `bill-code-check`, or the collect-all gate. Repair receipts name each
 carried finding by `finding_id` (aliases `finding_ref`, `id`, and `ref` are accepted);
 coverage matches that ref alone — `label` and `text` are optional decoration. The validate agent runs only the
 pack-declared collect-all command, reads that output, fixes every finding in that session,
@@ -216,7 +218,8 @@ workflow state as authoritative over any prose.
 
 ## Audit-first review gate
 
-The authoritative phase order is `implement -> audit -> review -> validate`.
+The authoritative phase order is `implement -> audit -> review -> validate` on the default path.
+Goal children stamped for build use `review -> build -> write_history` instead of validate (subtask 2).
 Audit-gap repair re-enters only `implement -> audit`; after audit is satisfied,
 review pass one uses the selected delegated mode and every later remediation
 pass is inline. Review never reopens audit.

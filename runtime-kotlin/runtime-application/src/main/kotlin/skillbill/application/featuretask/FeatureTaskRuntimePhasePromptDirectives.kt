@@ -38,14 +38,17 @@ internal fun mutatingPhaseIdempotencyDirective(phaseId: String): String {
 }
 
 internal fun nonValidatePhaseValidationOwnershipDirective(phaseId: String): String {
-  if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE) {
+  if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE ||
+    phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD
+  ) {
     return ""
   }
   return """
     ## Validation ownership
     Only the validate phase may run the pack validation gate
-    (`validation_gate.collect_all_full_gate_command`), `./gradlew check`, `check --continue`,
-    `bill-code-check`, or any other full repository check suite. This phase must not compile, build,
+    (`validation_gate.collect_all_full_gate_command`), `./gradlew check`, `check ${"--"}continue`,
+    `bill-code-check`, or any other full repository check suite. Only the build phase may run the
+    pack build_command for compile/buildability proof. This phase must not compile, build,
     execute tests, or run check to prove the work. Ignore any Validation Strategy, plan note,
     acceptance text, review habit, or prior habit that asks you to run check here — that work waits
     for validate. If a receipt carries `tests_executed`, leave it empty.

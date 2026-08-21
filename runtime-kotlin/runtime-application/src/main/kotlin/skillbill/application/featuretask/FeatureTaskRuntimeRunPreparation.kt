@@ -9,6 +9,7 @@ import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationFieldAdoption
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 
 internal class FeatureTaskRuntimeRunPreparation(
@@ -289,6 +290,9 @@ private fun goalContinuationContext(
   validationDepth = continuation.validationDepth
     ?: request.goalContinuation?.validationDepth
     ?: ValidationDepth.DEFAULT,
+  qualityGateSelection = continuation.qualityGateSelection
+    ?: request.goalContinuation?.qualityGateSelection
+    ?: FeatureTaskRuntimeQualityGateSelection.VALIDATE,
   parallelReviewAgent = continuation.parallelReviewAgent,
   subtaskName = continuation.subtaskName,
   reviewBaseline = baseline,

@@ -42,23 +42,35 @@ private data class ValidationGateCycleState(
   val onGateRunCount: (Int) -> Unit,
 )
 
-@Inject
-class FeatureTaskRuntimeValidationGateProgressStore(
-  private val recorder: FeatureTaskRuntimePhaseRecorder,
+class FeatureTaskRuntimeValidationGateProgressStore private constructor(
+  private val recorder: FeatureTaskRuntimePhaseRecorder?,
+  private val delegate: ValidationGateProgressStore?,
 ) : ValidationGateProgressStore {
+  @Inject
+  constructor(recorder: FeatureTaskRuntimePhaseRecorder) : this(recorder, null)
+
+  internal constructor(delegate: ValidationGateProgressStore) : this(null, delegate)
+
   override fun persist(workflowId: String, progress: FeatureTaskRuntimeValidationGateProgress, dbOverride: String?) {
-    recorder.persistValidationGateProgress(workflowId, progress, dbOverride)
+    when {
+      delegate != null -> delegate.persist(workflowId, progress, dbOverride)
+      recorder != null -> recorder.persistValidationGateProgress(workflowId, progress, dbOverride)
+      else -> error("FeatureTaskRuntimeValidationGateProgressStore has no backing store.")
+    }
   }
 
-  override fun load(workflowId: String, dbOverride: String?): FeatureTaskRuntimeValidationGateProgress? =
-    recorder.loadValidationGateProgress(workflowId, dbOverride)
+  override fun load(workflowId: String, dbOverride: String?): FeatureTaskRuntimeValidationGateProgress? = when {
+    delegate != null -> delegate.load(workflowId, dbOverride)
+    recorder != null -> recorder.loadValidationGateProgress(workflowId, dbOverride)
+    else -> error("FeatureTaskRuntimeValidationGateProgressStore has no backing store.")
+  }
 }
 
 @Inject
 class FeatureTaskRuntimeValidationGateCoordinator(
   private val resolver: ValidationGateResolver,
   private val runner: ValidationGateRunner,
-  private val progressStore: ValidationGateProgressStore,
+  private val progressStore: FeatureTaskRuntimeValidationGateProgressStore,
   private val repoLocalConfig: RepoLocalConfigPort,
   private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
 ) {

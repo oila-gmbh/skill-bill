@@ -43,6 +43,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
   const val PHASE_PLAN_FIX: String = "plan_fix"
   const val PHASE_IMPLEMENT_FIX: String = "implement_fix"
   const val PHASE_REVIEW: String = "review"
+  const val PHASE_BUILD: String = "build"
   const val PHASE_AUDIT: String = "audit"
   const val PHASE_VALIDATE: String = "validate"
   const val PHASE_WRITE_HISTORY: String = "write_history"
@@ -131,6 +132,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     PHASE_PLAN_FIX,
     PHASE_IMPLEMENT_FIX,
     PHASE_REVIEW,
+    PHASE_BUILD,
     PHASE_AUDIT,
     PHASE_VALIDATE,
   )
@@ -156,6 +158,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       PHASE_PLAN_FIX,
       PHASE_IMPLEMENT_FIX,
       PHASE_REVIEW,
+      PHASE_BUILD,
       PHASE_VALIDATE,
       PHASE_WRITE_HISTORY,
       PHASE_COMMIT_PUSH,
@@ -170,6 +173,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       PHASE_PLAN_FIX to "Phase 4a: Plan Fix",
       PHASE_IMPLEMENT_FIX to "Phase 4b: Implement Fix",
       PHASE_REVIEW to "Phase 5: Code Review",
+      PHASE_BUILD to "Phase 5a: Build",
       PHASE_VALIDATE to "Phase 6: Quality Validation",
       PHASE_WRITE_HISTORY to "Phase 7: Boundary History",
       PHASE_COMMIT_PUSH to "Phase 8: Commit and Push",
@@ -184,6 +188,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       PHASE_PLAN_FIX to listOf(PHASE_REVIEW, PHASE_PREPLAN, PHASE_PLAN),
       PHASE_IMPLEMENT_FIX to listOf(PHASE_REVIEW, PHASE_PLAN_FIX),
       PHASE_REVIEW to listOf(PHASE_AUDIT),
+      PHASE_BUILD to listOf(PHASE_IMPLEMENT, PHASE_AUDIT),
       PHASE_VALIDATE to listOf(PHASE_IMPLEMENT, PHASE_AUDIT),
       PHASE_WRITE_HISTORY to listOf(PHASE_IMPLEMENT, PHASE_VALIDATE),
       PHASE_COMMIT_PUSH to listOf(PHASE_IMPLEMENT, PHASE_VALIDATE, PHASE_WRITE_HISTORY),
@@ -203,8 +208,8 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
         "Resume the implement-fix phase from the latest repair plan and review findings, reconciling the " +
         "current tree, then persist the validated output.",
       PHASE_AUDIT to "Resume the completeness audit from the latest plan and implement outputs.",
-      PHASE_REVIEW to
-        "Resume code review from the latest implement and audit outputs and the derived diff context.",
+      PHASE_REVIEW to "Resume code review from the latest implement and audit outputs and the derived diff context.",
+      PHASE_BUILD to "Resume compile/build proof from the latest implement and audit outputs.",
       PHASE_VALIDATE to "Resume quality validation from the latest implement and audit outputs.",
       PHASE_WRITE_HISTORY to
         "Resume boundary history writing from the latest implement and validate outputs.",
@@ -246,6 +251,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     const val CHANGE_RECEIPT: String = "feature_task_runtime.change_receipt"
     const val VALIDATION_REQUEST: String = "feature_task_runtime.validation_request"
     const val VALIDATION_RECEIPT: String = "feature_task_runtime.validation_receipt"
+    const val BUILD_RECEIPT: String = "feature_task_runtime.build_receipt"
     const val BOUNDARY_CANDIDATES: String = "feature_task_runtime.boundary_candidates"
     const val HISTORY_RECEIPT: String = "feature_task_runtime.history_receipt"
     const val COMMIT_REQUEST: String = "feature_task_runtime.commit_request"
@@ -506,6 +512,29 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
         FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
       ),
     ),
+    PHASE_BUILD to listOf(
+      phaseProjection(
+        PHASE_BUILD,
+        PHASE_IMPLEMENT,
+        "validation_request",
+        PhaseProjectionContract.VALIDATION_REQUEST,
+        listOf(
+          "validation_strategy",
+          "changed_paths",
+          "required_checks",
+          "repository_checkpoint",
+        ),
+        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+      ),
+      phaseProjection(
+        PHASE_BUILD,
+        PHASE_AUDIT,
+        "audit_clearance",
+        PhaseProjectionContract.AUDIT_CLEARANCE,
+        listOf("verdict", "repository_checkpoint"),
+        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+      ),
+    ),
     PHASE_WRITE_HISTORY to listOf(
       phaseProjection(
         PHASE_WRITE_HISTORY,
@@ -605,6 +634,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
    */
   fun runtimeProjectorProducerPhaseIds(consumerPhaseId: String): Set<String> = when (consumerPhaseId) {
     PHASE_VALIDATE -> setOf(PHASE_PLAN, PHASE_IMPLEMENT, PHASE_AUDIT)
+    PHASE_BUILD -> setOf(PHASE_PLAN, PHASE_IMPLEMENT, PHASE_AUDIT)
     PHASE_WRITE_HISTORY -> setOf(PHASE_IMPLEMENT, PHASE_VALIDATE)
     PHASE_COMMIT_PUSH -> setOf(PHASE_IMPLEMENT, PHASE_VALIDATE, PHASE_WRITE_HISTORY)
     PHASE_PR -> setOf(PHASE_IMPLEMENT, PHASE_VALIDATE, PHASE_COMMIT_PUSH)
@@ -715,7 +745,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
           capScope = FeatureTaskRuntimeBackwardEdgeCapScope.PER_SUBTASK,
         ),
       ),
-      loopOnlyPhaseIds = setOf(PHASE_PLAN_FIX, PHASE_IMPLEMENT_FIX),
+      loopOnlyPhaseIds = setOf(PHASE_PLAN_FIX, PHASE_IMPLEMENT_FIX, PHASE_BUILD),
       loopOnlySuccessors = mapOf(PHASE_PLAN_FIX to PHASE_IMPLEMENT_FIX),
     )
 

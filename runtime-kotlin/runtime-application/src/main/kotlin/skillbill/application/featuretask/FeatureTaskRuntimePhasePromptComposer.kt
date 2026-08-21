@@ -50,6 +50,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     validationGateFindings: ValidationFindingSetProjection? = null,
     agentRunValidateFallback: Boolean = false,
     packCollectAllCommand: String? = null,
+    packBuildCommand: String? = null,
     repairLedger: FeatureTaskRuntimeRepairLedger? = null,
     priorReviewContext: FeatureTaskRuntimePriorReviewContext? = null,
   ): String {
@@ -71,10 +72,11 @@ object FeatureTaskRuntimePhasePromptComposer {
     // corrective path must render only the schema rejection plus authorized repair context.
     val effectiveContinuation = implementationContinuation.takeUnless { correctiveRepairContext != null }
     return listOf(
-      header(issueKey, briefing.phaseId, agentRunValidateFallback, packCollectAllCommand),
+      header(issueKey, briefing.phaseId, agentRunValidateFallback, packCollectAllCommand, packBuildCommand),
       ceremonyDirective(briefing, reviewPassNumber),
       mutatingPhaseIdempotencyDirective(briefing.phaseId),
       nonValidatePhaseValidationOwnershipDirective(briefing.phaseId),
+      nonBuildPhaseBuildOwnershipDirective(briefing.phaseId),
       minimalismDisciplineDirective(briefing.phaseId),
       testValueDisciplineDirective(briefing.phaseId),
       goalContinuationDirective(briefing.phaseId, suppressDecomposition),
@@ -297,9 +299,10 @@ object FeatureTaskRuntimePhasePromptComposer {
     phaseId: String,
     agentRunValidateFallback: Boolean = false,
     packCollectAllCommand: String? = null,
+    packBuildCommand: String? = null,
   ): String {
     val label = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepLabels[phaseId] ?: phaseId
-    val directive = phaseTaskDirective(phaseId, agentRunValidateFallback, packCollectAllCommand)
+    val directive = phaseTaskDirective(phaseId, agentRunValidateFallback, packCollectAllCommand, packBuildCommand)
     return """
       You are executing exactly one phase of the EXPERIMENTAL skill-bill feature-task-runtime
       loop ($forwardPhaseOrder)
@@ -401,6 +404,7 @@ object FeatureTaskRuntimePhasePromptComposer {
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD,
       -> FeatureTaskRuntimePhaseProjectionShapes.exampleFor(
         phaseId,
         agentRunValidateFallback,
@@ -531,14 +535,26 @@ object FeatureTaskRuntimePhasePromptComposer {
     }
 
   private fun validationGateFindingsDirective(phaseId: String, findings: ValidationFindingSetProjection?): String {
-    if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE || findings == null) return ""
-    val lines = buildList {
-      add("## Runtime validation gate findings")
-      add(
+    if (findings == null) return ""
+    val (sectionTitle, preamble) = when (phaseId) {
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE -> Pair(
+        "## Runtime validation gate findings",
         "A prior gate run parsed these items; they are a hint. Run only the pack-declared collect-all " +
           "command, read that output, and fix every finding in this session. Do not run `skill-bill " +
           "validate`, `npx agnix`, or `scripts/validate_agent_configs`. Do not launch another agent.",
       )
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD -> Pair(
+        "## Runtime build gate findings",
+        "A prior gate run parsed these items; they are a hint. Run only the pack-declared build " +
+          "command, read that output, and fix every finding in this session. Do not run `skill-bill " +
+          "validate`, `bill-code-check`, `./gradlew check`, `check " + "--" + "continue`, or the pack " +
+          "collect_all_full_gate_command. Do not launch another agent.",
+      )
+      else -> return ""
+    }
+    val lines = buildList {
+      add(sectionTitle)
+      add(preamble)
       findings.findings.forEachIndexed { index, finding ->
         add(
           "${index + 1}. module=${finding.module} id=${finding.ruleOrTestId} " +

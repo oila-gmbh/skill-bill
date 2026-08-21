@@ -258,6 +258,21 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
+  fun `build prompt names pack build_command and forbids collect-all and validate checklists`() {
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD),
+      packBuildCommand = "./gradlew compileKotlin",
+    )
+    assertContains(prompt, "./gradlew compileKotlin")
+    assertContains(prompt, "collect_all_full_gate_command")
+    assertContains(prompt, "skill-bill validate")
+    assertContains(prompt, "bill-code-check")
+    assertContains(prompt, "check --continue")
+    assertContains(prompt, "build_receipt")
+  }
+
+  @Test
   fun `absent gate agent-run validate prompt restores bill-code-check and surfaces degradation`() {
     val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
@@ -356,6 +371,26 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     }
   }
 
+  @Test
+  fun `runtime-owned build prompt names the complete finding set`() {
+    val finding = skillbill.ports.validation.model.ValidationGateFinding("m", "t", "broken", "loc")
+    val page = skillbill.application.featuretask.validation.model.ValidationFindingSetProjection(
+      findings = listOf(finding),
+    )
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD),
+      validationGateFindings = page,
+      packBuildCommand = "./gradlew compileKotlin",
+    )
+    assertContains(prompt, "## Runtime build gate findings")
+    assertContains(prompt, "A prior gate run parsed these items; they are a hint")
+    assertContains(prompt, "pack-declared build command")
+    assertContains(prompt, "collect_all_full_gate_command")
+    assertContains(prompt, "Do not launch another agent")
+    assertContains(prompt, "module=m id=t location=loc message=broken")
+  }
+
   // SKILL-180: FULL validate must carry no-suppression; other phases must not.
   @Test
   fun `full validate prompt carries no-suppression clause absent from non-validate phases`() {
@@ -377,6 +412,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR,

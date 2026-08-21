@@ -429,6 +429,7 @@ runtime-ports
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope.fromEnvelopeMap`
     - `skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope`
     - `skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator.validatePlanningProjection`
+    - `skillbill.workflow.FeatureTaskRuntimeBuildReceiptValidator.validateBuildReceipt`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord.fromArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef.toDeclarationMap`
@@ -857,7 +858,11 @@ claims only: validation scope, boundary candidates, commit inclusions and
 exclusions, and PR changed paths are derived from the resolved inventory. Runtime
 continuation exposes bounded validation, boundary, history,
 commit, and PR requests or receipts; it never substitutes the private audit,
-review, implementation, validation, or history artifacts.
+review, implementation, validation, or history artifacts. The `build` phase
+(SKILL-204) runs only the pack `validation_gate.build_command` for
+compile/buildability proof and never invokes the collect-all validation gate.
+Default standalone runs skip `build` (`review -> validate`); goal continuation
+stamps which quality gate a child runs (subtask 2).
 
 **4. Phase-local instructions.** Run identity remains durable state on every
 briefing, but prompt rendering is selected per phase by
@@ -1190,6 +1195,7 @@ Categories:
 - `skillbill.workflow.GoalPlanningPreparationEnvelopeValidator.validate`
 - `skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope`
 - `skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator.validatePlanningProjection`
+- `skillbill.workflow.FeatureTaskRuntimeBuildReceiptValidator.validateBuildReceipt`
 - `skillbill.review.context.ReviewContextEnvelopeValidator.validate`
 - `skillbill.review.context.ReviewContextEnvelopeValidator.validateSpecIntentProjection`
 - `skillbill.application.review.model.ReviewContextEnvelope.asWireMap`

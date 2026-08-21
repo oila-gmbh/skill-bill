@@ -1170,18 +1170,53 @@ internal fun parseValidationGate(manifest: Map<*, *>, slug: String): ValidationG
   val gate = raw as? Map<*, *> ?: throw InvalidValidationGateDeclarationError(
     "Platform pack '$slug': 'validation_gate' must be a mapping when present.",
   )
+  val collectAllFullGateCommand = requireGateArgv(gate, slug, "collect_all_full_gate_command")
+  val cacheBypassingCollectAllFullGateCommand = requireGateArgv(
+    gate,
+    slug,
+    "cache_bypassing_collect_all_full_gate_command",
+  )
+  val buildCommand = optionalGateArgv(gate, slug, "build_command")
+  val cacheBypassingBuildCommand = optionalGateArgv(gate, slug, "cache_bypassing_build_command")
+  validateBuildCommandsDistinctFromCollectAll(
+    slug,
+    buildCommand,
+    cacheBypassingBuildCommand,
+    collectAllFullGateCommand,
+    cacheBypassingCollectAllFullGateCommand,
+  )
   return ValidationGateDeclaration(
     fullGateCommand = requireGateArgv(gate, slug, "full_gate_command"),
     cacheBypassingFullGateCommand = requireGateArgv(gate, slug, "cache_bypassing_full_gate_command"),
-    collectAllFullGateCommand = requireGateArgv(gate, slug, "collect_all_full_gate_command"),
-    cacheBypassingCollectAllFullGateCommand = requireGateArgv(
-      gate,
-      slug,
-      "cache_bypassing_collect_all_full_gate_command",
-    ),
+    collectAllFullGateCommand = collectAllFullGateCommand,
+    cacheBypassingCollectAllFullGateCommand = cacheBypassingCollectAllFullGateCommand,
     findings = parseValidationGateFindings(gate, slug),
+    buildCommand = buildCommand,
+    cacheBypassingBuildCommand = cacheBypassingBuildCommand,
     suppressionMarkers = parseSuppressionMarkers(gate, slug),
   )
+}
+
+private fun validateBuildCommandsDistinctFromCollectAll(
+  slug: String,
+  buildCommand: List<String>?,
+  cacheBypassingBuildCommand: List<String>?,
+  collectAllFullGateCommand: List<String>,
+  cacheBypassingCollectAllFullGateCommand: List<String>,
+) {
+  if (buildCommand == null) return
+  if (buildCommand == collectAllFullGateCommand) {
+    throw InvalidValidationGateDeclarationError(
+      "Platform pack '$slug': 'validation_gate.build_command' must not be byte-identical to " +
+        "'validation_gate.collect_all_full_gate_command'.",
+    )
+  }
+  if (cacheBypassingBuildCommand == cacheBypassingCollectAllFullGateCommand) {
+    throw InvalidValidationGateDeclarationError(
+      "Platform pack '$slug': 'validation_gate.cache_bypassing_build_command' must not be " +
+        "byte-identical to 'validation_gate.cache_bypassing_collect_all_full_gate_command'.",
+    )
+  }
 }
 
 /**
@@ -1207,6 +1242,15 @@ private fun requireGateArgv(gate: Map<*, *>, slug: String, key: String): List<St
   val raw = gate[key] ?: throw InvalidValidationGateDeclarationError(
     "Platform pack '$slug': 'validation_gate.$key' is required when validation_gate is present.",
   )
+  return parseGateArgv(raw, slug, key)
+}
+
+private fun optionalGateArgv(gate: Map<*, *>, slug: String, key: String): List<String>? {
+  val raw = gate[key] ?: return null
+  return parseGateArgv(raw, slug, key)
+}
+
+private fun parseGateArgv(raw: Any?, slug: String, key: String): List<String> {
   val values = raw as? List<*> ?: throw InvalidValidationGateDeclarationError(
     "Platform pack '$slug': 'validation_gate.$key' must be a non-empty argv array.",
   )

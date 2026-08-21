@@ -542,6 +542,17 @@ class InvalidFeatureTaskRuntimeSharedEvidenceProjectionSchemaError(
   cause,
 )
 
+class InvalidFeatureTaskRuntimeBuildReceiptSchemaError(
+  val sourceLabel: String,
+  val reason: String,
+  cause: Throwable? = null,
+  val payloadFreeReason: String? = null,
+  val failureCode: String = "schema_invalid",
+) : ShellContentContractException(
+  "Feature-task-runtime build receipt '$sourceLabel' fails schema validation: $reason",
+  cause,
+)
+
 /**
  * Surfaced when a feature-task-runtime path would enter a gated phase before its gating phase
  * settled with the required verdict — for example entering `review` before `audit` reached

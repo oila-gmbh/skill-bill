@@ -46,6 +46,7 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN_FIX,
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD,
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY,
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH,
@@ -62,6 +63,7 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN_FIX to "Phase 4a: Plan Fix",
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX to "Phase 4b: Implement Fix",
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW to "Phase 5: Code Review",
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD to "Phase 5a: Build",
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE to "Phase 6: Quality Validation",
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY to "Phase 7: Boundary History",
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH to "Phase 8: Commit and Push",
@@ -97,6 +99,13 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
     assertEquals(
       listOf(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT),
       dependenciesOf(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW),
+    )
+    assertEquals(
+      listOf(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
+      ),
+      dependenciesOf(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD),
     )
     assertEquals(
       listOf(
@@ -152,7 +161,10 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
     assertTrue(def.isMutatingPhase(def.PHASE_IMPLEMENT))
     assertFalse(def.isMutatingPhase(def.PHASE_PLAN_FIX))
     val transitions = def.transitions
-    assertEquals(setOf(def.PHASE_PLAN_FIX, def.PHASE_IMPLEMENT_FIX), transitions.loopOnlyPhaseIds)
+    assertEquals(
+      setOf(def.PHASE_PLAN_FIX, def.PHASE_IMPLEMENT_FIX, def.PHASE_BUILD),
+      transitions.loopOnlyPhaseIds,
+    )
     assertEquals(mapOf(def.PHASE_PLAN_FIX to def.PHASE_IMPLEMENT_FIX), transitions.loopOnlySuccessors)
     val edge = transitions.backwardEdges.single { it.loopId == def.REVIEW_FIX_LOOP_ID }
     assertEquals(def.PHASE_REVIEW, edge.fromPhaseId)
@@ -305,6 +317,10 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
         def.PHASE_AUDIT to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_CLEARANCE,
       ),
       def.PHASE_VALIDATE to setOf(
+        def.PHASE_IMPLEMENT to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_REQUEST,
+        def.PHASE_AUDIT to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_CLEARANCE,
+      ),
+      def.PHASE_BUILD to setOf(
         def.PHASE_IMPLEMENT to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_REQUEST,
         def.PHASE_AUDIT to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_CLEARANCE,
       ),
@@ -495,6 +511,7 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
     assertTrue(ids.indexOf(def.PHASE_IMPLEMENT) < ids.indexOf(def.PHASE_AUDIT))
     assertTrue(ids.indexOf(def.PHASE_AUDIT) < ids.indexOf(def.PHASE_REVIEW))
     assertTrue(ids.indexOf(def.PHASE_REVIEW) < ids.indexOf(def.PHASE_VALIDATE))
+    assertTrue(def.PHASE_BUILD in def.transitions.loopOnlyPhaseIds)
     val gate = def.transitions.entryGates.single()
     assertEquals(def.PHASE_REVIEW, gate.phaseId)
     assertEquals(def.PHASE_AUDIT, gate.requiredPhaseId)

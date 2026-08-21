@@ -1,5 +1,5 @@
 platform: valid_pack
-contract_version: '1.6'
+contract_version: '1.7'
 display_name: Valid Fixture Pack
 routing_signals:
   strong:

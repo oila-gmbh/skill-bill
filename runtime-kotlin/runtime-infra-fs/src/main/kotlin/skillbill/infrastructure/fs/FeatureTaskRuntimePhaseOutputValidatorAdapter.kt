@@ -1,11 +1,15 @@
 package skillbill.infrastructure.fs
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.contracts.JsonSupport
+import skillbill.contracts.workflow.FeatureTaskRuntimeBuildReceiptSchemaValidator
 import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputSchemaValidator
 import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputStructuralRepair
 import skillbill.contracts.workflow.FeatureTaskRuntimePhaseOutputStructuralRepairDecision
+import skillbill.error.InvalidFeatureTaskRuntimeBuildReceiptSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputFailureCode
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputValidationResult
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
@@ -35,17 +39,24 @@ class FeatureTaskRuntimePhaseOutputValidatorAdapter : FeatureTaskRuntimePhaseOut
           decision.text,
           sourceLabel,
         )
+        validateNestedBuildReceipt(normalized, sourceLabel)
         if (decision.evidence == null) {
           FeatureTaskRuntimePhaseOutputValidationResult.AcceptedUnchanged(normalized)
         } else {
           FeatureTaskRuntimePhaseOutputValidationResult.AcceptedAfterRepair(normalized, decision.evidence)
         }
       } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
-        // Syntax repair may have accepted the capture; keep digest/location evidence on Rejected so
-        // the corrective retry can mark acceptedAfterStructuralRepair without claiming schema accept.
         FeatureTaskRuntimePhaseOutputValidationResult.Rejected(
           code = FeatureTaskRuntimePhaseOutputFailureCode.fromWire(error.failureCode),
           reason = error.payloadFreeReason ?: "Phase output failed the phase-specific schema contract.",
+          diagnosticReason = error.reason,
+          payloadFreeReason = error.payloadFreeReason,
+          structuralRepairEvidence = decision.evidence,
+        )
+      } catch (error: InvalidFeatureTaskRuntimeBuildReceiptSchemaError) {
+        FeatureTaskRuntimePhaseOutputValidationResult.Rejected(
+          code = FeatureTaskRuntimePhaseOutputFailureCode.fromWire(error.failureCode),
+          reason = error.payloadFreeReason ?: "Build receipt failed the build-receipt schema contract.",
           diagnosticReason = error.reason,
           payloadFreeReason = error.payloadFreeReason,
           structuralRepairEvidence = decision.evidence,
@@ -66,4 +77,21 @@ class FeatureTaskRuntimePhaseOutputValidatorAdapter : FeatureTaskRuntimePhaseOut
     sourceLabel: String,
   ): NormalizedFeatureTaskRuntimePhaseOutput =
     validatePhaseOutput(phaseOutputText, sourceLabel).requireAccepted(sourceLabel)
+
+  private fun validateNestedBuildReceipt(normalized: NormalizedFeatureTaskRuntimePhaseOutput, sourceLabel: String) {
+    if (sourceLabel != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD) return
+    val produced = JsonSupport.anyToStringAnyMap(normalized.envelope["produced_outputs"])
+      ?: throw InvalidFeatureTaskRuntimeBuildReceiptSchemaError(
+        sourceLabel = sourceLabel,
+        reason = "produced_outputs must be present for the build phase envelope.",
+        payloadFreeReason = "produced_outputs must be present for the build phase envelope.",
+      )
+    val buildReceipt = JsonSupport.anyToStringAnyMap(produced["build_receipt"])
+      ?: throw InvalidFeatureTaskRuntimeBuildReceiptSchemaError(
+        sourceLabel = sourceLabel,
+        reason = "produced_outputs.build_receipt is required for the build phase envelope.",
+        payloadFreeReason = "produced_outputs.build_receipt is required for the build phase envelope.",
+      )
+    FeatureTaskRuntimeBuildReceiptSchemaValidator.validate(buildReceipt, sourceLabel)
+  }
 }

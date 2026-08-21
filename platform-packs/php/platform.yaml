@@ -1,5 +1,5 @@
 platform: php
-contract_version: "1.6"
+contract_version: "1.7"
 display_name: PHP
 
 routing_signals:

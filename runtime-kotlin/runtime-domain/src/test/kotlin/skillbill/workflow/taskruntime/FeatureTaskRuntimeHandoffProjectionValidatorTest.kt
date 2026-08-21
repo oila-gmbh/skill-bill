@@ -277,6 +277,14 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
   }
 
   @Test
+  fun `build_receipt contract id is registered for handoff projection parsing`() {
+    assertEquals(
+      "feature_task_runtime.build_receipt",
+      FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.BUILD_RECEIPT,
+    )
+  }
+
+  @Test
   fun `validation_receipt declared fields stay validation_status checks repository_checkpoint`() {
     val expected = listOf(
       "validation_status",
