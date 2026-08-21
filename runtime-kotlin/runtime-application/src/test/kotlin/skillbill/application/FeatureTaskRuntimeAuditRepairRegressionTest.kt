@@ -29,8 +29,8 @@ class FeatureTaskRuntimeAuditRepairRegressionTest {
       .map { requireNotNull(it.skillRunRequest.promptOverride) }
       .filter { phaseIdFromPrompt(it) == "implement" }
     assertTrue(
-      implementPrompts.any { it.contains("audit-repair-result") },
-      "production-only repair must be named on the implement retry prompt",
+      implementPrompts.any { it.contains("left these carried repair items unaccounted for") },
+      "a production-only repair owes the plan's remaining items, and the re-entry must name them",
     )
 
     val repairState = requireNotNull(harness.recorder.loadAuditRepairState(WORKFLOW_ID))
@@ -113,14 +113,9 @@ class FeatureTaskRuntimeAuditRepairRegressionTest {
       },
     )
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
-    val implementPrompts = harness.launcher.requests
-      .map { requireNotNull(it.skillRunRequest.promptOverride) }
-      .filter { phaseIdFromPrompt(it) == "implement" }
-    assertTrue(
-      implementPrompts.any { it.contains("audit-repair-result") },
-      "structured deferred work on a completed remediation must be named on the retry prompt",
-    )
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    assertGateBlockNamesRule(blocked.blockedReason, "audit-repair-result")
     val diagnostic = harness.io.database.rejectedDiagnostics().last().metadata
     assertEquals("audit_repair.completed.deferred_work", diagnostic.rule)
   }
@@ -164,7 +159,7 @@ class FeatureTaskRuntimeAuditRepairRegressionTest {
       },
     )
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+    assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
     val diagnostic = harness.io.database.rejectedDiagnostics().last().metadata
     assertEquals("audit_repair.completed.unresolvable_repair", diagnostic.rule)
     assertEquals("/produced_outputs/unresolvable_repair", diagnostic.path)
@@ -201,7 +196,7 @@ class FeatureTaskRuntimeAuditRepairRegressionTest {
         },
       )
 
-      assertIs<FeatureTaskRuntimeRunReport.Completed>(
+      assertIs<FeatureTaskRuntimeRunReport.Blocked>(
         harness.runner.run(harness.request()),
         invalid.name,
       )
@@ -248,7 +243,7 @@ class FeatureTaskRuntimeAuditRepairRegressionTest {
       },
     )
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+    assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
 
     val implementRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["implement"])
     assertEquals(null, implementRecord.rejectedOutput)

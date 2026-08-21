@@ -299,9 +299,11 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
     val parity = standaloneAndGoalChildParity(launcher = ::launcher)
 
     assertIs<GoalRunnerRunReport.Completed>(parity.report)
-    val diagnostic = parity.runtime.io.database.rejectedDiagnostics().last().metadata
-    assertEquals("audit_repair.results.identifiers", diagnostic.rule)
-    assertContains(diagnostic.reason, "ac-002-gap-1-item-2")
+    val implementPrompts = parity.runtime.launcher.requests
+      .map { requireNotNull(it.skillRunRequest.promptOverride) }
+      .filter { phaseIdFromPrompt(it) == "implement" }
+    val owedPrompt = implementPrompts.first { it.contains("left these carried repair items unaccounted for") }
+    assertContains(owedPrompt, "ac-002-gap-1-item-2")
   }
 
   @Test
@@ -445,13 +447,10 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
       acceptanceCriteria = (1..3).map { "AC-$it" },
     )
 
-    assertIs<GoalRunnerRunReport.Completed>(parity.report)
-    val auditPrompts = parity.runtime.launcher.requests
-      .map { requireNotNull(it.skillRunRequest.promptOverride) }
-      .filter { phaseIdFromPrompt(it) == "audit" }
+    assertIs<GoalRunnerRunReport.Stopped>(parity.report)
     assertTrue(
-      auditPrompts.any { it.contains("audit-closed-criterion") },
-      "a new gap against a durably closed criterion must be named on the audit retry prompt",
+      parity.runtime.io.database.rejectedDiagnostics().any { it.metadata.rule.contains("closed") },
+      "a new gap against a durably closed criterion must be recorded as its own rejection",
     )
   }
 

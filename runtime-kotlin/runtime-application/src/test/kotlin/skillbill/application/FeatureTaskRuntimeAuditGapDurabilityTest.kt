@@ -46,14 +46,14 @@ class FeatureTaskRuntimeAuditGapDurabilityTest {
       },
     )
 
-    val report = harness.runner.run(harness.request())
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
-    assertEquals(3, implementLaunches)
-    val retryPrompt = harness.launcher.requests
-      .map { requireNotNull(it.skillRunRequest.promptOverride) }
-      .filter { phaseIdFromPrompt(it) == "implement" }[2]
-    assertTrue(retryPrompt.contains("reconcil"), retryPrompt)
+    assertEquals(2, implementLaunches, "the re-implement blocks on its own output, without a relaunch")
+    assertGateBlockNamesRule(blocked.blockedReason, "mutating-reconciliation")
+    assertTrue(
+      harness.io.database.rejectedDiagnostics()
+        .first { it.metadata.phaseId == "implement" }.metadata.reason.contains("reconcil"),
+    )
   }
 
   @Test
@@ -88,7 +88,7 @@ class FeatureTaskRuntimeAuditGapDurabilityTest {
       },
     )
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+    assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
     val diagnostic = harness.io.database.rejectedDiagnostics().last().metadata
     assertEquals("audit_repair.results.executed_verification", diagnostic.rule)
     assertEquals("/produced_outputs/repair_item_results/0/executed_verification", diagnostic.path)
@@ -125,7 +125,7 @@ class FeatureTaskRuntimeAuditGapDurabilityTest {
       },
     )
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+    assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
     val diagnostic = harness.io.database.rejectedDiagnostics().last()
     assertEquals("audit_repair.results.result_evidence", diagnostic.metadata.rule)
     assertTrue(diagnostic.metadata.reason.contains("observation"), diagnostic.metadata.reason)
@@ -469,14 +469,14 @@ class FeatureTaskRuntimeAuditGapDurabilityTest {
       },
     )
 
-    val report = harness.runner.run(harness.request())
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
-    assertEquals(2, auditLaunches)
-    val retryPrompt = harness.launcher.requests
-      .map { requireNotNull(it.skillRunRequest.promptOverride) }
-      .filter { phaseIdFromPrompt(it) == "audit" }[1]
-    assertRetryPromptNamesConstraint(retryPrompt, "output-verification", "verification signal")
+    assertEquals(1, auditLaunches, "a one-attempt budget leaves no relaunch")
+    assertGateBlockNamesRule(blocked.blockedReason, "output-verification")
+    assertDiagnosticNamesConstraint(
+      harness.io.database.rejectedDiagnostics().first { it.metadata.phaseId == "audit" }.metadata.reason,
+      "verification signal",
+    )
   }
 
   @Test
@@ -500,8 +500,8 @@ class FeatureTaskRuntimeAuditGapDurabilityTest {
         },
       )
 
-      assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
-      assertEquals(2, auditLaunches)
+      assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+      assertEquals(1, auditLaunches)
       assertTrue(harness.launchedPromptPhaseOrder().count { it == "implement" } == 1)
       assertTrue(
         harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
@@ -528,8 +528,8 @@ class FeatureTaskRuntimeAuditGapDurabilityTest {
       },
     )
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
-    assertEquals(2, auditLaunches)
+    assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    assertEquals(1, auditLaunches)
     assertTrue(
       harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
         .none { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && it.loopId == "audit_gap" },

@@ -44,4 +44,67 @@ class FeatureTaskRuntimeAttemptBudgetsTest {
     assertContains(requireNotNull(reason), "cap=1")
     assertContains(reason, "blocks rather than relaunching")
   }
+
+  @Test
+  fun `a round that drops findings is sent back while it keeps closing them, and blocks when it stalls`() {
+    val phase = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX
+    val firstOmission = setOf("F-001", "F-003")
+
+    assertEquals(
+      null,
+      FeatureTaskRuntimeAttemptBudgets.findingCoverageBlockReason(phase, firstOmission, priorOmitted = null),
+    )
+    assertEquals(
+      null,
+      FeatureTaskRuntimeAttemptBudgets.findingCoverageBlockReason(phase, setOf("F-003"), firstOmission),
+    )
+
+    val stalled = requireNotNull(
+      FeatureTaskRuntimeAttemptBudgets.findingCoverageBlockReason(phase, firstOmission, firstOmission),
+    )
+    assertContains(stalled, "F-001, F-003")
+    assertContains(stalled, "attempted_unresolved")
+
+    val substituted = requireNotNull(
+      FeatureTaskRuntimeAttemptBudgets.findingCoverageBlockReason(phase, setOf("F-002"), setOf("F-001")),
+    )
+    assertContains(substituted, "no progress on coverage")
+  }
+
+  @Test
+  fun `a finding reported unresolved gets one more fix attempt and blocks on the second report`() {
+    val phase = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX
+    val detail = "F-001 (the migration path has no owner)"
+
+    assertEquals(
+      null,
+      FeatureTaskRuntimeAttemptBudgets.unresolvedFindingBlockReason(
+        phase,
+        unresolved = setOf("F-001"),
+        priorUnresolved = emptySet(),
+        detail = detail,
+      ),
+    )
+    assertEquals(
+      null,
+      FeatureTaskRuntimeAttemptBudgets.unresolvedFindingBlockReason(
+        phase,
+        unresolved = setOf("F-002"),
+        priorUnresolved = setOf("F-001"),
+        detail = detail,
+      ),
+    )
+
+    val repeated = requireNotNull(
+      FeatureTaskRuntimeAttemptBudgets.unresolvedFindingBlockReason(
+        phase,
+        unresolved = setOf("F-001", "F-003"),
+        priorUnresolved = setOf("F-001"),
+        detail = detail,
+      ),
+    )
+    assertContains(repeated, "F-001")
+    assertTrue(!repeated.contains("F-003"), "only the repeated finding exhausted its retry: $repeated")
+    assertContains(repeated, detail)
+  }
 }

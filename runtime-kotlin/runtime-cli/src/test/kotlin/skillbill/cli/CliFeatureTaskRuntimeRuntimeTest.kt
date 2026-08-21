@@ -975,7 +975,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
       fixture.context(RecordingPhaseLauncher()),
     )
     assertEquals(0, completedStatus.exitCode, completedStatus.stdout)
-    assertContains(completedStatus.stdout, "phase: id=implement status=completed attempt=3")
+    assertContains(completedStatus.stdout, "phase: id=implement status=completed attempt=2")
     val resumedPrompts = resumedLauncher.requests.map { it.skillRunRequest.promptOverride.orEmpty() }
     assertContains(resumedPrompts.first(), operatorReason)
     assertTrue(resumedPrompts.drop(1).none { it.contains(operatorReason) })

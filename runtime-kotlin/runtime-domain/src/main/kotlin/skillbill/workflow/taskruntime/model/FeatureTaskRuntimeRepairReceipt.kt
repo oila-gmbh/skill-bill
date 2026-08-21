@@ -10,6 +10,7 @@ const val REPAIR_RECEIPT_MAX_INTENT_UTF8_BYTES: Int = 256
 const val REPAIR_RECEIPT_MAX_CONSTRUCT_SYMBOL_UTF8_BYTES: Int = 256
 const val REPAIR_RECEIPT_MAX_CONSTRUCT_FILE_UTF8_BYTES: Int = 128
 const val REPAIR_RECEIPT_MAX_NO_EDIT_REASON_UTF8_BYTES: Int = 256
+const val REPAIR_RECEIPT_MAX_UNRESOLVED_REASON_UTF8_BYTES: Int = 256
 const val REPAIR_RECEIPT_MAX_LABEL_UTF8_BYTES: Int = 256
 const val REPAIR_RECEIPT_MAX_TEXT_UTF8_BYTES: Int = 256
 const val REPAIR_RECEIPT_MAX_DISTURBED_REMEDIES: Int = 50
@@ -40,6 +41,15 @@ private fun <T> anchoredToDecodePath(path: String, decode: () -> T): T = try {
 enum class FeatureTaskRuntimeRepairOutcome(val wireValue: String) {
   ADDRESSED("addressed"),
   NO_EDIT_REQUIRED("no_edit_required"),
+
+  /**
+   * The round tried and the finding is still open. Without it a round that could not close a finding
+   * has no honest entry to write: `addressed` asserts an edit that closed it and `no_edit_required`
+   * asserts no edit was warranted, so the only exit was to omit the finding — which is exactly the
+   * silent loss the coverage gate exists to catch. The finding gets one more fix attempt; reported
+   * unresolved twice it blocks, carrying the producer's own account of what still fails.
+   */
+  ATTEMPTED_UNRESOLVED("attempted_unresolved"),
   ;
 
   companion object {
@@ -140,6 +150,7 @@ data class FeatureTaskRuntimeRepairReceiptEntry(
   val intent: String,
   val findingId: String? = null,
   val noEditReason: String? = null,
+  val unresolvedReason: String? = null,
 ) {
   init {
     if (severity !in setOf("blocker", "major", "minor", "nit")) {
@@ -163,11 +174,28 @@ data class FeatureTaskRuntimeRepairReceiptEntry(
         if (noEditReason != null) {
           receiptError("no_edit_reason", "must be absent when outcome is addressed.")
         }
+        if (unresolvedReason != null) {
+          receiptError("unresolved_reason", "must be absent when outcome is addressed.")
+        }
       }
       FeatureTaskRuntimeRepairOutcome.NO_EDIT_REQUIRED -> {
         val reason = noEditReason
           ?: receiptError("no_edit_reason", "must be present when outcome is no_edit_required.")
         requireReceiptSanitizedText(reason, "no_edit_reason", REPAIR_RECEIPT_MAX_NO_EDIT_REASON_UTF8_BYTES)
+        if (unresolvedReason != null) {
+          receiptError("unresolved_reason", "must be absent when outcome is no_edit_required.")
+        }
+      }
+      FeatureTaskRuntimeRepairOutcome.ATTEMPTED_UNRESOLVED -> {
+        if (constructs.isEmpty()) {
+          receiptError("constructs", "an attempted_unresolved entry must name the constructs it touched.")
+        }
+        if (noEditReason != null) {
+          receiptError("no_edit_reason", "must be absent when outcome is attempted_unresolved.")
+        }
+        val reason = unresolvedReason
+          ?: receiptError("unresolved_reason", "must be present when outcome is attempted_unresolved.")
+        requireReceiptSanitizedText(reason, "unresolved_reason", REPAIR_RECEIPT_MAX_UNRESOLVED_REASON_UTF8_BYTES)
       }
     }
   }
@@ -187,13 +215,24 @@ data class FeatureTaskRuntimeRepairReceiptEntry(
   ).apply {
     findingId?.let { put("finding_id", it) }
     noEditReason?.let { put("no_edit_reason", it) }
+    unresolvedReason?.let { put("unresolved_reason", it) }
   }
 
   companion object {
     @OpenBoundaryMap("Repair receipt entry decode from the durable workflow-artifact map")
     fun fromArtifactMap(raw: Map<String, Any?>, path: String): FeatureTaskRuntimeRepairReceiptEntry {
       raw.requireOnlyReviewStateKeys(
-        setOf("severity", "label", "text", "outcome", "constructs", "intent", "finding_id", "no_edit_reason"),
+        setOf(
+          "severity",
+          "label",
+          "text",
+          "outcome",
+          "constructs",
+          "intent",
+          "finding_id",
+          "no_edit_reason",
+          "unresolved_reason",
+        ),
         path,
       )
       val constructs = raw.requireReviewStateList("constructs", path).mapIndexed { index, value ->
@@ -212,6 +251,7 @@ data class FeatureTaskRuntimeRepairReceiptEntry(
           intent = raw.requireReviewStateString("intent", path),
           findingId = raw.optionalReviewStateString("finding_id", path),
           noEditReason = raw.optionalReviewStateString("no_edit_reason", path),
+          unresolvedReason = raw.optionalReviewStateString("unresolved_reason", path),
         )
       }
     }
@@ -347,11 +387,21 @@ fun GoalSubtaskReviewState.upsertRepairReceipt(receipt: FeatureTaskRuntimeRepair
  */
 fun FeatureTaskRuntimeRepairReceipt.coversCarriedFindings(
   carriedFindings: List<GoalSubtaskReviewCompactFinding>,
-): Boolean {
-  if (carriedFindings.isEmpty()) return true
+): Boolean = omittedCarriedFindings(carriedFindings).isEmpty()
+
+/**
+ * The carried findings this receipt never accounted for, in carried order. The runtime sends the
+ * round back for exactly these, so it needs the identities rather than a boolean: naming them is
+ * what lets the next attempt close the omission instead of guessing at it, and it is what makes a
+ * non-shrinking omission set detectable.
+ */
+fun FeatureTaskRuntimeRepairReceipt.omittedCarriedFindings(
+  carriedFindings: List<GoalSubtaskReviewCompactFinding>,
+): List<GoalSubtaskReviewCompactFinding> {
+  if (carriedFindings.isEmpty()) return emptyList()
   val reportedIds = entries.mapNotNull { entry -> entry.findingId?.let(::normalizeIdentityPart) }.toSet()
   val reportedCompact = entries.mapTo(linkedSetOf(), FeatureTaskRuntimeRepairReceiptEntry::findingIdentity)
-  return carriedFindings.all { carried ->
+  return carriedFindings.filterNot { carried ->
     val id = carried.findingId?.let(::normalizeIdentityPart)
     if (id != null) {
       id in reportedIds
@@ -360,6 +410,10 @@ fun FeatureTaskRuntimeRepairReceipt.coversCarriedFindings(
     }
   }
 }
+
+/** Entries declaring the round tried and left the finding open. Each one is an operator dead end. */
+fun FeatureTaskRuntimeRepairReceipt.attemptedUnresolvedEntries(): List<FeatureTaskRuntimeRepairReceiptEntry> =
+  entries.filter { it.outcome == FeatureTaskRuntimeRepairOutcome.ATTEMPTED_UNRESOLVED }
 
 internal fun compactReviewFindingIdentity(finding: GoalSubtaskReviewCompactFinding): String =
   listOf(finding.severity, finding.label, finding.text).joinToString("|", transform = ::normalizeIdentityPart)

@@ -13,84 +13,74 @@ import kotlin.test.assertTrue
 
 /**
  * SKILL-140 Subtask 1: the producer gate. A phase that owns a bounded planning projection must emit
- * one its consumer can parse; a completed-but-malformed digest/plan/receipt re-enters that phase's
- * own schema-correction loop until a valid projection lands. The same
+ * one its consumer can parse; a completed-but-malformed digest/plan/receipt settles the run at that
+ * phase rather than reaching its consumer. The same
  * `featureTaskRuntimePlanningProjectionFromEnvelope` the launch seam uses decides acceptance
- * (AC-003), and the retry prompt names the phase, the expected projection kind, and the
- * validation failure (AC-006).
+ * (AC-003), and the private diagnostic keeps the expected projection kind and the validation failure
+ * (AC-006) that a producer would need to repair it.
+ *
+ * The output-gate budget is one attempt, so a rejection is terminal: what each test pins is that the
+ * gate rejects its fixture, blocks at the producing phase, keeps the consumer unlaunched, and records
+ * the constraint privately.
  */
 class FeatureTaskRuntimeProducerProjectionGateTest {
 
   @Test
-  fun `a plan output missing projection_kind re-enters the fix loop then advances`() {
-    val outcome = runRejectingThenValidProducer("plan", PLAN_MISSING_PROJECTION_KIND)
+  fun `a plan output missing projection_kind blocks plan and never reaches implement`() {
+    val outcome = runRejectedProducer("plan", PLAN_MISSING_PROJECTION_KIND)
 
-    assertEquals(2, outcome.launchCount("plan"))
-    assertRetryPromptNamesConstraint(
-      outcome.retryPrompt,
-      "producer-projection",
-      "executable_plan",
-      "projection_kind is missing",
-    )
-    assertTrue(outcome.launched("implement"), "a repaired producer must advance to its consumer")
+    assertEquals(1, outcome.launchCount("plan"), "a one-attempt budget leaves no relaunch")
+    assertGateBlockNamesRule(outcome.blocked.blockedReason, "producer-projection")
+    assertDiagnosticNamesConstraint(outcome.diagnosticReason, "executable_plan", "projection_kind is missing")
+    assertTrue(!outcome.launched("implement"), "a rejected producer must not reach its consumer")
   }
 
   @Test
-  fun `a plan output on the wrong contract version re-enters the fix loop then advances`() {
-    val outcome = runRejectingThenValidProducer("plan", PLAN_WRONG_CONTRACT_VERSION)
+  fun `a plan output on the wrong contract version blocks plan`() {
+    val outcome = runRejectedProducer("plan", PLAN_WRONG_CONTRACT_VERSION)
 
-    assertEquals(2, outcome.launchCount("plan"))
-    assertRetryPromptNamesConstraint(outcome.retryPrompt, "producer-projection", "contract_version")
+    assertEquals(1, outcome.launchCount("plan"))
+    assertGateBlockNamesRule(outcome.blocked.blockedReason, "producer-projection")
+    assertDiagnosticNamesConstraint(outcome.diagnosticReason, "contract_version")
   }
 
   @Test
-  fun `a plan output with an undeclared dependency reference re-enters the fix loop then advances`() {
-    val outcome = runRejectingThenValidProducer("plan", PLAN_UNDECLARED_DEPENDENCY)
+  fun `a plan output with an undeclared dependency reference blocks plan`() {
+    val outcome = runRejectedProducer("plan", PLAN_UNDECLARED_DEPENDENCY)
 
-    assertEquals(2, outcome.launchCount("plan"))
-    assertRetryPromptNamesConstraint(outcome.retryPrompt, "producer-projection", "undeclared task")
+    assertEquals(1, outcome.launchCount("plan"))
+    assertGateBlockNamesRule(outcome.blocked.blockedReason, "producer-projection")
+    assertDiagnosticNamesConstraint(outcome.diagnosticReason, "undeclared task")
   }
 
   @Test
-  fun `a preplan digest whose rollout is an array instead of an object retries then advances (RDN-29)`() {
-    val outcome = runRejectingThenValidProducer("preplan", PREPLAN_ROLLOUT_AS_ARRAY)
+  fun `a preplan digest whose rollout is an array instead of an object blocks preplan (RDN-29)`() {
+    val outcome = runRejectedProducer("preplan", PREPLAN_ROLLOUT_AS_ARRAY)
 
-    assertEquals(2, outcome.launchCount("preplan"))
-    assertRetryPromptNamesConstraint(
-      outcome.retryPrompt,
-      "producer-projection",
-      "preplanning_digest",
-      "rollout",
-    )
-    assertTrue(outcome.launched("plan"))
+    assertEquals(1, outcome.launchCount("preplan"))
+    assertGateBlockNamesRule(outcome.blocked.blockedReason, "producer-projection")
+    assertDiagnosticNamesConstraint(outcome.diagnosticReason, "preplanning_digest", "rollout")
+    assertTrue(!outcome.launched("plan"))
   }
 
   @Test
-  fun `an implement receipt whose deviations are free-text strings retries then advances (RDN-29)`() {
-    val outcome = runRejectingThenValidProducer("implement", IMPLEMENT_DEVIATIONS_AS_STRINGS)
+  fun `an implement receipt whose deviations are free-text strings blocks implement (RDN-29)`() {
+    val outcome = runRejectedProducer("implement", IMPLEMENT_DEVIATIONS_AS_STRINGS)
 
-    assertEquals(2, outcome.launchCount("implement"))
-    assertRetryPromptNamesConstraint(
-      outcome.retryPrompt,
-      "producer-projection",
-      "implementation_receipt",
-      "deviations",
-    )
-    assertTrue(outcome.launched("audit"))
+    assertEquals(1, outcome.launchCount("implement"))
+    assertGateBlockNamesRule(outcome.blocked.blockedReason, "producer-projection")
+    assertDiagnosticNamesConstraint(outcome.diagnosticReason, "implementation_receipt", "deviations")
+    assertTrue(!outcome.launched("audit"))
   }
 
   @Test
-  fun `a validation receipt with a string checkpoint re-enters validate then advances`() {
-    val outcome = runRejectingThenValidProducer("validate", VALIDATION_CHECKPOINT_AS_STRING)
+  fun `a validation receipt with a string checkpoint blocks validate`() {
+    val outcome = runRejectedProducer("validate", VALIDATION_CHECKPOINT_AS_STRING)
 
-    assertEquals(2, outcome.launchCount("validate"))
-    assertRetryPromptNamesConstraint(
-      outcome.retryPrompt,
-      "consumer-projection",
-      "repository_checkpoint",
-      "non-blank fingerprint",
-    )
-    assertTrue(outcome.launched("write_history"))
+    assertEquals(1, outcome.launchCount("validate"))
+    assertGateBlockNamesRule(outcome.blocked.blockedReason, "consumer-projection")
+    assertDiagnosticNamesConstraint(outcome.diagnosticReason, "repository_checkpoint", "non-blank fingerprint")
+    assertTrue(!outcome.launched("write_history"))
   }
 
   @Test
@@ -102,13 +92,7 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
         when (phaseId) {
           "implement" -> {
             implementLaunches += 1
-            facts(
-              when (implementLaunches) {
-                1 -> validJsonOutput("implement")
-                2 -> IMPLEMENT_DEVIATIONS_AS_STRINGS
-                else -> validJsonOutput("implement")
-              },
-            )
+            facts(if (implementLaunches == 1) validJsonOutput("implement") else IMPLEMENT_DEVIATIONS_AS_STRINGS)
           }
           else -> facts(validJsonOutput(phaseId))
         }
@@ -117,18 +101,19 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
       runtimeConfig = reviewFixRuntimeConfig(2),
     )
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request(IMPLEMENT_REENTRY_CYCLE)))
-    assertEquals(
-      3,
-      implementLaunches,
-      "the re-entered implement must reject the malformed receipt once then accept a valid one",
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(
+      harness.runner.run(harness.request(IMPLEMENT_REENTRY_CYCLE)),
     )
-    val implementPrompts = harness.launcher.requests
-      .map { requireNotNull(it.skillRunRequest.promptOverride) }
-      .filter { phaseIdFromPrompt(it) == "implement" }
-    assertRetryPromptNamesConstraint(
-      implementPrompts[2],
-      "producer-projection",
+
+    assertEquals(
+      2,
+      implementLaunches,
+      "the re-entered implement must reject the malformed receipt and stop, not relaunch",
+    )
+    assertEquals("implement", blocked.lastIncompletePhase)
+    assertGateBlockNamesRule(blocked.blockedReason, "producer-projection")
+    assertDiagnosticNamesConstraint(
+      harness.io.database.rejectedDiagnostics().first { it.metadata.phaseId == "implement" }.metadata.reason,
       "implementation_receipt",
       "deviations",
     )
@@ -136,31 +121,23 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
 
   @Test
   fun `a decompose-shaped preplan output faces the gate because preplan owns no decompose backstop`() {
-    val outcome = runRejectingThenValidProducer("preplan", PREPLAN_DECOMPOSE_SHAPED)
+    val outcome = runRejectedProducer("preplan", PREPLAN_DECOMPOSE_SHAPED)
 
-    assertEquals(2, outcome.launchCount("preplan"))
-    assertRetryPromptNamesConstraint(
-      outcome.retryPrompt,
-      "producer-projection",
-      "preplanning_digest",
-      "is not a valid",
-    )
-    assertEquals(1, outcome.launchCount("plan"), "a decompose-shaped preplan must not bypass the gate and wedge plan")
+    assertEquals(1, outcome.launchCount("preplan"))
+    assertGateBlockNamesRule(outcome.blocked.blockedReason, "producer-projection")
+    assertDiagnosticNamesConstraint(outcome.diagnosticReason, "preplanning_digest", "is not a valid")
+    assertEquals(0, outcome.launchCount("plan"), "a decompose-shaped preplan must not bypass the gate and wedge plan")
   }
 
   @Test
   fun `a decompose-shaped implement receipt faces the gate because only plan owns the decompose backstop`() {
-    val outcome = runRejectingThenValidProducer("implement", IMPLEMENT_DECOMPOSE_SHAPED)
+    val outcome = runRejectedProducer("implement", IMPLEMENT_DECOMPOSE_SHAPED)
 
-    assertEquals(2, outcome.launchCount("implement"))
-    assertRetryPromptNamesConstraint(
-      outcome.retryPrompt,
-      "producer-projection",
-      "implementation_receipt",
-      "is not a valid",
-    )
+    assertEquals(1, outcome.launchCount("implement"))
+    assertGateBlockNamesRule(outcome.blocked.blockedReason, "producer-projection")
+    assertDiagnosticNamesConstraint(outcome.diagnosticReason, "implementation_receipt", "is not a valid")
     assertEquals(
-      1,
+      0,
       outcome.launchCount("audit"),
       "a decompose-shaped implement must not bypass the gate and wedge audit",
     )
@@ -180,13 +157,13 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
   }
 
   @Test
-  fun `the retry prompt carries the violated constraint alongside the private diagnostic pointer`() {
-    val outcome = runRejectingThenValidProducer("plan", PLAN_MISSING_PROJECTION_KIND)
+  fun `the private diagnostic carries the violated constraint the blocked reason withholds`() {
+    val outcome = runRejectedProducer("plan", PLAN_MISSING_PROJECTION_KIND)
 
-    assertRetryPromptNamesConstraint(
-      outcome.retryPrompt,
-      "producer-projection",
-      "projection_kind is missing",
+    assertDiagnosticNamesConstraint(outcome.diagnosticReason, "projection_kind is missing")
+    assertTrue(
+      !outcome.blocked.blockedReason.contains("projection_kind is missing"),
+      "the operator surface points at the diagnostic instead of embedding the constraint",
     )
   }
 
@@ -206,14 +183,12 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
       ),
     )
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
-    assertEquals(2, preplanAttempts)
-    val retryPrompt = harness.launcher.requests
-      .map { requireNotNull(it.skillRunRequest.promptOverride) }
-      .filter { phaseIdFromPrompt(it) == "preplan" }[1]
-    assertRetryPromptNamesConstraint(retryPrompt, "producer-projection")
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    assertEquals(1, preplanAttempts)
+    assertGateBlockNamesRule(blocked.blockedReason, "producer-projection")
     assertTrue(
-      !retryPrompt.contains("x".repeat(1_000)),
+      !blocked.blockedReason.contains("x".repeat(1_000)),
       "the validator's oversized reason must be truncated, not embedded whole",
     )
   }
@@ -283,58 +258,33 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
 
   @Test
   fun `a missing required field on a closed projection object names the required property`() {
-    val retryPrompt = firstRealValidatorRetryPrompt("plan", PLAN_TASK_MISSING_TEST_OBLIGATIONS)
+    val reason = realValidatorRejectionReason("plan", PLAN_TASK_MISSING_TEST_OBLIGATIONS)
 
-    assertRetryPromptNamesConstraint(
-      retryPrompt,
-      "producer-projection",
-      "required property 'test_obligations' not found",
-    )
+    assertDiagnosticNamesConstraint(reason, "required property 'test_obligations' not found")
   }
 
   @Test
   fun `a wrong-typed field on a closed projection object names the found and expected types`() {
-    val retryPrompt = firstRealValidatorRetryPrompt("plan", PLAN_TASKS_AS_STRING)
+    val reason = realValidatorRejectionReason("plan", PLAN_TASKS_AS_STRING)
 
-    assertRetryPromptNamesConstraint(
-      retryPrompt,
-      "producer-projection",
-      "string found, array expected",
-    )
+    assertDiagnosticNamesConstraint(reason, "string found, array expected")
   }
 
   @Test
   fun `a receipt asserting reconciled false is told which envelope carries unfinished work`() {
-    val retryPrompt = firstRealValidatorRetryPrompt("implement", RECEIPT_ASSERTING_UNRECONCILED)
+    val reason = realValidatorRejectionReason("implement", RECEIPT_ASSERTING_UNRECONCILED)
 
-    assertRetryPromptNamesConstraint(retryPrompt, "producer-projection", "must be the constant value")
-    assertContains(retryPrompt, "A 'completed' implementation_receipt asserts a reconciled working tree")
-    assertContains(retryPrompt, "leave this phase through a 'blocked' or 'failed' envelope instead")
+    assertDiagnosticNamesConstraint(reason, "must be the constant value")
   }
 
-  private fun firstRealValidatorRetryPrompt(targetPhase: String, malformedOutput: String): String {
-    var attempts = 0
-    val harness = runnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        if (phaseId == targetPhase) {
-          attempts += 1
-          facts(if (attempts == 1) malformedOutput else validJsonOutput(phaseId))
-        } else {
-          facts(validJsonOutput(phaseId))
-        }
-      },
-      agentAssignment = phasePerAgentAssignment(),
+  private fun realValidatorRejectionReason(targetPhase: String, malformedOutput: String): String {
+    val outcome = runRejectedProducer(
+      targetPhase,
+      malformedOutput,
       runtimeConfig = RuntimeHarnessConfig(planningProjectionValidator = realPlanningProjectionValidator),
     )
-
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
-
-    val prompts = harness.launcher.requests
-      .map { requireNotNull(it.skillRunRequest.promptOverride) }
-      .filter { phaseIdFromPrompt(it) == targetPhase }
-    assertTrue(prompts.size >= 2, "$targetPhase must retry after an unrepaired rejection")
-    return prompts[1]
+    assertGateBlockNamesRule(outcome.blocked.blockedReason, "producer-projection")
+    return outcome.diagnosticReason
   }
 
   private class ProducerBlockOutcome(
@@ -342,34 +292,32 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
     private val launchedOrder: List<String>,
   )
 
-  private class ProducerRetryOutcome(
-    val retryPrompt: String,
+  private class ProducerRejectionOutcome(
+    val blocked: FeatureTaskRuntimeRunReport.Blocked,
+    val diagnosticReason: String,
     private val launchedOrder: List<String>,
   ) {
     fun launchCount(phaseId: String): Int = launchedOrder.count { it == phaseId }
     fun launched(phaseId: String): Boolean = launchedOrder.contains(phaseId)
   }
 
-  private fun runRejectingThenValidProducer(targetPhase: String, malformedOutput: String): ProducerRetryOutcome {
-    var attempts = 0
+  private fun runRejectedProducer(
+    targetPhase: String,
+    malformedOutput: String,
+    runtimeConfig: RuntimeHarnessConfig = RuntimeHarnessConfig(),
+  ): ProducerRejectionOutcome {
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        if (phaseId == targetPhase) {
-          attempts += 1
-          facts(if (attempts == 1) malformedOutput else validJsonOutput(phaseId))
-        } else {
-          facts(validJsonOutput(phaseId))
-        }
+        facts(if (phaseId == targetPhase) malformedOutput else validJsonOutput(phaseId))
       },
       agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = runtimeConfig,
     )
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
-    val prompts = harness.launcher.requests
-      .map { requireNotNull(it.skillRunRequest.promptOverride) }
-      .filter { phaseIdFromPrompt(it) == targetPhase }
-    assertTrue(prompts.size >= 2, "$targetPhase must retry after a projection rejection")
-    return ProducerRetryOutcome(prompts[1], harness.launchedPromptPhaseOrder())
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    assertEquals(targetPhase, blocked.lastIncompletePhase, "the run must settle at the rejected producer")
+    val diagnostic = harness.io.database.rejectedDiagnostics().first { it.metadata.phaseId == targetPhase }
+    return ProducerRejectionOutcome(blocked, diagnostic.metadata.reason, harness.launchedPromptPhaseOrder())
   }
 }
 

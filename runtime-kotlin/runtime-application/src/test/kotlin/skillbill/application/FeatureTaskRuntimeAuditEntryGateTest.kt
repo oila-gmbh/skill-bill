@@ -265,31 +265,17 @@ class FeatureTaskRuntimeAuditEntryGateTest {
       },
     )
 
-    val report = harness.runner.run(harness.request())
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
-    assertEquals(2, auditLaunches, "an undecidable audit must retry in band rather than settle once")
-    val auditRetry = harness.launcher.requests
-      .map { requireNotNull(it.skillRunRequest.promptOverride) }
-      .filter { phaseIdFromPrompt(it) == "audit" }
-      .getOrNull(1)
-    requireNotNull(auditRetry)
-    assertRetryPromptWithholdsResponseDerivedDetail(
-      auditRetry,
-      "output-verification",
-      "off-vocabulary verdict 'x' and no y'",
-      "x' and no y",
-      " and no y'",
+    assertEquals(1, auditLaunches, "an undecidable audit settles on its own gate, without a relaunch")
+    assertGateBlockNamesRule(blocked.blockedReason, "output-verification")
+    assertTrue(
+      !blocked.blockedReason.contains("off-vocabulary verdict 'x' and no y'"),
+      "the blocked reason must not quote the response wire verdict",
     )
     assertTrue(
-      !auditRetry.substringBefore("## Untrusted prior phase output").contains("off-vocabulary verdict 'x' and no y'"),
-      "scrubbed retry reason must not quote the response wire verdict outside the repair section",
-    )
-    val launched = harness.launchOrder()
-    assertTrue(
-      launched.indexOf("review") > launched.indexOfLast { it == "audit" } - 1 &&
-        launched.indexOf("review") > launched.indexOf("audit"),
-      "review must stay unreachable until audit has settled: launched=$launched",
+      !harness.launchOrder().contains("review"),
+      "review must stay unreachable until audit has settled: launched=${harness.launchOrder()}",
     )
   }
 

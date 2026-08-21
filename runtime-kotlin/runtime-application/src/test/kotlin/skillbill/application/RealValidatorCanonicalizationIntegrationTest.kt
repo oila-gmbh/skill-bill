@@ -48,30 +48,24 @@ class RealValidatorCanonicalizationIntegrationTest {
   }
 
   @Test
-  fun `a structural violation in an otherwise canonicalizable plan still rejects until repaired`() {
-    var planAttempts = 0
+  fun `a structural violation in an otherwise canonicalizable plan still rejects`() {
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        if (phaseId != "plan") {
-          facts(validJsonOutput(phaseId))
-        } else {
-          planAttempts += 1
-          facts(if (planAttempts == 1) CANONICALIZABLE_PLAN_MISSING_OBLIGATION else validJsonOutput("plan"))
-        }
+        facts(if (phaseId == "plan") CANONICALIZABLE_PLAN_MISSING_OBLIGATION else validJsonOutput(phaseId))
       },
       agentAssignment = phasePerAgentAssignment(),
       runtimeConfig = RuntimeHarnessConfig(planningProjectionValidator = realPlanningProjectionValidator),
     )
 
-    val report = harness.runner.run(harness.request())
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
     assertEquals(
-      2,
-      harness.launchedPromptPhaseOrder().count { it == "plan" },
-      "canonicalization must not fabricate the missing obligation; the structural violation must retry",
+      "plan",
+      blocked.lastIncompletePhase,
+      "canonicalization must not fabricate the missing obligation; the structural violation must reject",
     )
+    assertGateBlockNamesRule(blocked.blockedReason, "producer-projection")
   }
 }
 

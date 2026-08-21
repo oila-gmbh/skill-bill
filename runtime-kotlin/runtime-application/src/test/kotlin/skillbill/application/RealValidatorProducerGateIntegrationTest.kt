@@ -10,11 +10,11 @@ import kotlin.test.assertTrue
 
 /**
  * The real Draft 2020-12 validator wired into the run loop, on the two fates a closed-variant violation
- * can have. An undeclared top-level wire key is canonicalized away before validation and costs no
- * fix-loop attempt (SKILL-152 AC-005); a violation the canonicalizer must not repair — a wrong-typed
- * governed field — re-enters the plan phase until a valid projection lands, with the retry prompt
- * carrying the violated constraint back (SKILL-140 AC-001, SKILL-152 AC-009). Assertions read
- * observable run-loop state (launch counts, retry prompts), never internal validator calls.
+ * can have. An undeclared top-level wire key is canonicalized away before validation and costs the phase
+ * nothing (SKILL-152 AC-005); a violation the canonicalizer must not repair — a wrong-typed governed
+ * field — rejects, and under a one-attempt output-gate budget that settles the run at plan with the
+ * violated constraint kept on the private diagnostic (SKILL-140 AC-001, SKILL-152 AC-009). Assertions
+ * read observable run-loop state (launch counts, blocked reasons), never internal validator calls.
  */
 class RealValidatorProducerGateIntegrationTest {
   @Test
@@ -32,57 +32,45 @@ class RealValidatorProducerGateIntegrationTest {
   }
 
   @Test
-  fun `a wrong-typed field in a plan projection retries once then advances with the constraint named`() {
-    val harness = realValidatorHarness(PLAN_WITH_WRONG_TYPED_TASKS, repairAfterFirst = true)
+  fun `a wrong-typed field in a plan projection blocks plan with the constraint kept private`() {
+    val harness = realValidatorHarness(PLAN_WITH_WRONG_TYPED_TASKS)
 
-    val report = harness.runner.run(harness.request())
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
-    val planPrompts = harness.launcher.requests
-      .map { requireNotNull(it.skillRunRequest.promptOverride) }
-      .filter { phaseIdFromPrompt(it) == "plan" }
-    assertEquals(2, planPrompts.size)
-    assertRetryPromptNamesConstraint(
-      planPrompts[1],
-      "producer-projection",
-      "string found, array expected",
-    )
-    assertNoRawResponseSpanOutsideAuthorizedRepairSection(planPrompts[1], "MUST NOT SURVIVE")
+    assertEquals("plan", blocked.lastIncompletePhase)
+    assertGateBlockNamesRule(blocked.blockedReason, "producer-projection")
+    assertEquals(1, harness.launchedPromptPhaseOrder().count { it == "plan" })
     assertTrue(
-      harness.launchedPromptPhaseOrder().contains("implement"),
-      "a repaired plan must advance to its consumer",
+      !harness.launchedPromptPhaseOrder().contains("implement"),
+      "a rejected plan must not reach its consumer",
+    )
+    assertDiagnosticNamesConstraint(
+      harness.io.database.rejectedDiagnostics().first { it.metadata.phaseId == "plan" }.metadata.reason,
+      "string found, array expected",
     )
   }
 
   @Test
   fun `an absorbed undeclared key never masks a coexisting violation`() {
-    val harness = realValidatorHarness(PLAN_WITH_UNDECLARED_KEY_AND_WRONG_TYPED_TASKS, repairAfterFirst = true)
+    val harness = realValidatorHarness(PLAN_WITH_UNDECLARED_KEY_AND_WRONG_TYPED_TASKS)
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
 
-    assertEquals(2, harness.launchedPromptPhaseOrder().count { it == "plan" })
-    val retryPrompt = harness.launcher.requests
-      .map { requireNotNull(it.skillRunRequest.promptOverride) }
-      .filter { phaseIdFromPrompt(it) == "plan" }[1]
-    assertRetryPromptNamesConstraint(retryPrompt, "producer-projection", "string found, array expected")
-  }
-
-  private fun realValidatorHarness(planOutput: String, repairAfterFirst: Boolean = false): RunnerHarness {
-    var planAttempts = 0
-    return runnerHarness(
-      launcher = RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        if (phaseId != "plan") {
-          facts(validJsonOutput(phaseId))
-        } else {
-          planAttempts += 1
-          facts(if (repairAfterFirst && planAttempts > 1) validJsonOutput("plan") else planOutput)
-        }
-      },
-      agentAssignment = phasePerAgentAssignment(),
-      runtimeConfig = RuntimeHarnessConfig(planningProjectionValidator = realPlanningProjectionValidator),
+    assertGateBlockNamesRule(blocked.blockedReason, "producer-projection")
+    assertDiagnosticNamesConstraint(
+      harness.io.database.rejectedDiagnostics().first { it.metadata.phaseId == "plan" }.metadata.reason,
+      "string found, array expected",
     )
   }
+
+  private fun realValidatorHarness(planOutput: String): RunnerHarness = runnerHarness(
+    launcher = RuntimeRecordingLauncher { request ->
+      val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+      facts(if (phaseId == "plan") planOutput else validJsonOutput(phaseId))
+    },
+    agentAssignment = phasePerAgentAssignment(),
+    runtimeConfig = RuntimeHarnessConfig(planningProjectionValidator = realPlanningProjectionValidator),
+  )
 }
 
 // A structurally sound executable_plan carrying one undeclared top-level wire key. It carries no governed

@@ -3629,14 +3629,14 @@ class FeatureTaskRuntimeReviewFixLoopTest {
       runtimeConfig = reviewFixRuntimeConfig(2),
     )
 
-    val report = harness.runner.run(harness.request())
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
-    assertEquals(2, implementFixLaunches)
-    val retryPrompt = harness.launcher.requests
-      .map { requireNotNull(it.skillRunRequest.promptOverride) }
-      .filter { phaseIdFromPrompt(it) == "implement_fix" }[1]
-    assertTrue(retryPrompt.contains("reconcil"), retryPrompt)
+    assertEquals(1, implementFixLaunches, "a one-attempt budget leaves no relaunch")
+    assertGateBlockNamesRule(blocked.blockedReason, "mutating-reconciliation")
+    assertTrue(
+      harness.io.database.rejectedDiagnostics()
+        .first { it.metadata.phaseId == "implement_fix" }.metadata.reason.contains("reconcil"),
+    )
   }
 
   // (g) AC5/AC10: a crash mid-loop (implement_fix re-entered then spawn-fails) resumes at the correct
@@ -5093,14 +5093,14 @@ class FeatureTaskRuntimeCheckpointHistoryOnResumeTest {
       },
     )
 
-    val report = harness.runner.run(harness.request())
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
-    assertEquals(2, implementLaunches)
-    val retryPrompt = harness.launcher.requests
-      .map { requireNotNull(it.skillRunRequest.promptOverride) }
-      .filter { phaseIdFromPrompt(it) == "implement" }[1]
-    assertRetryPromptNamesConstraint(retryPrompt, "mutating-reconciliation", "reconciliation report")
+    assertEquals(1, implementLaunches, "a one-attempt budget leaves no relaunch")
+    assertGateBlockNamesRule(blocked.blockedReason, "mutating-reconciliation")
+    assertDiagnosticNamesConstraint(
+      harness.io.database.rejectedDiagnostics().first { it.metadata.phaseId == "implement" }.metadata.reason,
+      "reconciliation report",
+    )
   }
 
   // (b) A simulated mid-implement crash then a clean resume reconciles to target without double-apply,

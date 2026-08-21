@@ -174,16 +174,19 @@ internal fun implementationContinuationDirective(
  */
 internal class PriorAttemptCorrection private constructor(
   private val reason: String,
-  private val terminal: Boolean,
+  private val kind: Kind,
   val correctiveRepairContext: FeatureTaskRuntimeCorrectiveRepairContext? = null,
 ) {
-  val schemaGateReason: String? get() = reason.takeUnless { terminal }
-  val retryableTerminalReason: String? get() = reason.takeIf { terminal }
+  internal enum class Kind { SCHEMA_GATE, RETRYABLE_TERMINAL, FINDING_COVERAGE }
+
+  val schemaGateReason: String? get() = reason.takeIf { kind == Kind.SCHEMA_GATE }
+  val retryableTerminalReason: String? get() = reason.takeIf { kind == Kind.RETRYABLE_TERMINAL }
+  val findingCoverageReason: String? get() = reason.takeIf { kind == Kind.FINDING_COVERAGE }
 
   init {
-    require(correctiveRepairContext == null || !terminal) {
+    require(correctiveRepairContext == null || kind == Kind.SCHEMA_GATE) {
       "PriorAttemptCorrection: corrective repair context belongs only to schema-gate retries, " +
-        "not retryable-terminal envelopes."
+        "not retryable-terminal envelopes or finding-coverage continuations."
     }
   }
 
@@ -192,11 +195,34 @@ internal class PriorAttemptCorrection private constructor(
       reason: String,
       correctiveRepairContext: FeatureTaskRuntimeCorrectiveRepairContext? = null,
     ): PriorAttemptCorrection =
-      PriorAttemptCorrection(reason, terminal = false, correctiveRepairContext = correctiveRepairContext)
+      PriorAttemptCorrection(reason, Kind.SCHEMA_GATE, correctiveRepairContext = correctiveRepairContext)
 
     fun retryableTerminal(reason: String): PriorAttemptCorrection =
-      PriorAttemptCorrection(reason, terminal = true, correctiveRepairContext = null)
+      PriorAttemptCorrection(reason, Kind.RETRYABLE_TERMINAL, correctiveRepairContext = null)
+
+    fun unaccountedFindings(reason: String): PriorAttemptCorrection =
+      PriorAttemptCorrection(reason, Kind.FINDING_COVERAGE, correctiveRepairContext = null)
   }
+}
+
+/**
+ * Emitted when the prior attempt's repair receipt left carried review findings out.
+ *
+ * Deliberately not the schema-correction directive: the receipt validated. Telling its author the
+ * output was rejected invites a re-serialization of the same two entries, which is exactly what has
+ * to stop happening — what is missing is repair work on the named findings, not a better document.
+ */
+internal fun findingCoverageDirective(priorFindingCoverage: String?): String {
+  if (priorFindingCoverage.isNullOrBlank()) return ""
+  return """
+    ## Findings still owed — continue this round
+    Your previous attempt at this phase emitted a VALID repair receipt. It was NOT rejected and its
+    format was NOT wrong. It was incomplete:
+    $priorFindingCoverage
+    Keep the entries you already wrote and add the missing ones. Do the repair work first, then write
+    the entry that describes it. Repeating the same receipt without accounting for the named findings
+    blocks the run.
+  """.trimIndent()
 }
 
 /**
@@ -341,10 +367,13 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "produced_outputs.repair_receipt " +
     "with contract_version \"$FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION\" and exactly one " +
     "entry per carried finding: the finding's severity, label, " +
-    "and sanitized text, an explicit outcome (addressed, or no_edit_required with no_edit_reason), " +
+    "and sanitized text, an explicit outcome (addressed; no_edit_required with no_edit_reason; or " +
+    "attempted_unresolved with unresolved_reason when you tried and the finding is still open), " +
     "symbol-granularity closing constructs (Type or Type.member, optional file basename — never a bare " +
     "path), and a bounded one-line repair intent. A legitimately unedited finding still needs its " +
-    "no_edit_required entry; omission is rejected.",
+    "no_edit_required entry, and a finding you could not close needs its attempted_unresolved entry, " +
+    "which buys it one more attempt before it goes to an operator. Leaving a carried finding out is " +
+    "never an outcome: the round is sent back for it.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW to
     "The runtime owns this review. Do not run bill-code-review, do not emit findings, and do not " +
     "report unsatisfied acceptance criteria. Criterion-gap detection remains exclusive to the audit phase.",

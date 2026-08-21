@@ -7,6 +7,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceiptEntry
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.REPAIR_RECEIPT_MAX_TEXT_UTF8_BYTES
+import skillbill.workflow.taskruntime.model.omittedCarriedFindings
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -97,11 +98,11 @@ class FeatureTaskRuntimeRepairReceiptParserTest {
         noEditReason = "construct already matched the finding",
       ),
     )
-    assertNull(featureTaskRuntimeRepairReceiptCoverageRejection(receipt, listOf(edited, leftover)))
+    assertTrue(receipt.omittedCarriedFindings(listOf(edited, leftover)).isEmpty())
   }
 
   @Test
-  fun `a receipt that omits a carried finding is rejected`() {
+  fun `a receipt that omits a carried finding names it for the next attempt without echoing it`() {
     val edited = GoalSubtaskReviewCompactFinding("blocker", "Type", "unsafe mutation at the seam")
     val leftover = GoalSubtaskReviewCompactFinding("major", "Policy", "stale comment is already gone")
     val receipt = receiptFor(
@@ -114,10 +115,51 @@ class FeatureTaskRuntimeRepairReceiptParserTest {
         intent = "close the finding at Type.member",
       ),
     )
-    val reason = assertNotNull(featureTaskRuntimeRepairReceiptCoverageRejection(receipt, listOf(edited, leftover)))
-    assertTrue(reason.contains("no_edit_required"))
+    val omitted = receipt.omittedCarriedFindings(listOf(edited, leftover))
+
+    assertEquals(listOf(leftover), omitted)
+    val reason = featureTaskRuntimeOmittedFindingsRetryReason(omitted)
+    assertTrue(reason.contains("attempted_unresolved"))
     assertTrue(!reason.contains(leftover.text))
-    assertTrue(!reason.contains(leftover.label))
+  }
+
+  @Test
+  fun `an attempted_unresolved entry carries the finding ref and the producer's own account`() {
+    val carried = GoalSubtaskReviewCompactFinding("major", "Policy", "the gate still admits an empty set", "F-002")
+    val receipt = receiptFor(
+      FeatureTaskRuntimeRepairReceiptEntry(
+        severity = carried.severity,
+        label = carried.label,
+        text = carried.text,
+        outcome = FeatureTaskRuntimeRepairOutcome.ATTEMPTED_UNRESOLVED,
+        constructs = listOf(FeatureTaskRuntimeRepairConstruct(symbol = "Policy.gate")),
+        intent = "reject an empty disposition set at the gate",
+        findingId = carried.findingId,
+        unresolvedReason = "the gate has no access to the review pass ids it would have to compare",
+      ),
+    )
+
+    assertTrue(receipt.omittedCarriedFindings(listOf(carried)).isEmpty())
+    val unresolved = assertNotNull(featureTaskRuntimeUnresolvedFindings(receipt))
+    assertEquals(setOf("F-002"), unresolved.refs)
+    assertTrue(unresolved.detail.contains("the gate has no access to the review pass ids"))
+    assertTrue(unresolved.retryReason.contains("one more attempt"))
+  }
+
+  @Test
+  fun `a receipt with no attempted_unresolved entry owes nothing`() {
+    val receipt = receiptFor(
+      FeatureTaskRuntimeRepairReceiptEntry(
+        severity = "major",
+        label = "Policy",
+        text = "the gate still admits an empty set",
+        outcome = FeatureTaskRuntimeRepairOutcome.ADDRESSED,
+        constructs = listOf(FeatureTaskRuntimeRepairConstruct(symbol = "Policy.gate")),
+        intent = "reject an empty disposition set at the gate",
+      ),
+    )
+
+    assertNull(featureTaskRuntimeUnresolvedFindings(receipt))
   }
 
   @Test
@@ -140,7 +182,7 @@ class FeatureTaskRuntimeRepairReceiptParserTest {
         findingId = "F-001",
       ),
     )
-    assertNull(featureTaskRuntimeRepairReceiptCoverageRejection(receipt, listOf(locationBearing)))
+    assertTrue(receipt.omittedCarriedFindings(listOf(locationBearing)).isEmpty())
     val entry = receipt.entries.single()
     assertEquals("TypeKt", entry.label)
     assertEquals("resolve the finding at the reported location", entry.text)

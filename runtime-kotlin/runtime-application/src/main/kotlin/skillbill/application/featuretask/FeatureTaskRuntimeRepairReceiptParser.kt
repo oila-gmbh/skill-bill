@@ -6,9 +6,7 @@ import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairConstruct
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt
-import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
-import skillbill.workflow.taskruntime.model.coversCarriedFindings
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeRemediationRoundNumber
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeUndeclaredDisturbances
 
@@ -104,16 +102,18 @@ internal fun featureTaskRuntimeRepairReceiptShapeRejection(producedOutputs: Map<
   }
 }
 
+/**
+ * The receipt defects that are the producer's serialization to repair, so they belong to the
+ * output-gate budget. Coverage is deliberately NOT among them: an omitted finding is unfinished
+ * repair work, not a malformed document, and charging it here is what blocked a round after one
+ * attempt instead of sending it back for the finding it dropped.
+ */
 internal fun featureTaskRuntimeRepairReceiptSettleRejection(
   receipt: FeatureTaskRuntimeRepairReceipt,
   reviewState: GoalSubtaskReviewState,
-): String? = featureTaskRuntimeRepairReceiptCoverageRejection(
-  receipt,
-  reviewState.passResults.lastOrNull()?.findings.orEmpty(),
-)
-  ?: derivedRepairLedgerOrNull(reviewState)?.let { ledger ->
-    featureTaskRuntimeRepairReceiptDisturbanceRejection(receipt, ledger)
-  }
+): String? = derivedRepairLedgerOrNull(reviewState)?.let { ledger ->
+  featureTaskRuntimeRepairReceiptDisturbanceRejection(receipt, ledger)
+}
 
 // A ledger that cannot be derived rejects nothing: the disturbance gate is a memory check, and a
 // round must not be refused because the memory of earlier rounds is unreadable.
@@ -134,18 +134,5 @@ internal fun featureTaskRuntimeRepairReceiptDisturbanceRejection(
     "disturbed_remedies",
     "must name every settled finding whose closing constructs this round rewrote, with a reason. " +
       "Undeclared: $disturbed.",
-  )
-}
-
-internal fun featureTaskRuntimeRepairReceiptCoverageRejection(
-  receipt: FeatureTaskRuntimeRepairReceipt,
-  carriedFindings: List<GoalSubtaskReviewCompactFinding>,
-): String? = if (receipt.coversCarriedFindings(carriedFindings)) {
-  null
-} else {
-  featureTaskRuntimeRepairReceiptRejectionDetail(
-    "entries",
-    "must include one entry for every finding carried into this round; omitted findings require an " +
-      "explicit no_edit_required outcome.",
   )
 }

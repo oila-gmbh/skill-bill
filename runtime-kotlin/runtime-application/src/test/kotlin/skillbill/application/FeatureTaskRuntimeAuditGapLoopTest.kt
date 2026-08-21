@@ -307,12 +307,9 @@ class FeatureTaskRuntimeAuditGapLoopTest {
       },
     )
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
-    val retryPrompt = harness.launcher.requests
-      .map { requireNotNull(it.skillRunRequest.promptOverride) }
-      .filter { phaseIdFromPrompt(it) == "audit" }
-      .first { it.contains("audit-durable-ledger") }
-    assertContains(retryPrompt, "Rejected output violated 'audit-durable-ledger'")
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    assertGateBlockNamesRule(blocked.blockedReason, "audit-durable-ledger")
   }
 
   @Test
@@ -378,7 +375,7 @@ class FeatureTaskRuntimeAuditGapLoopTest {
       },
     )
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+    assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
     val diagnostic = harness.io.database.rejectedDiagnostics().last()
     assertTrue(
       diagnostic.metadata.reason.contains("AC-001") || diagnostic.metadata.rule.contains("closed") ||
@@ -408,7 +405,7 @@ class FeatureTaskRuntimeAuditGapLoopTest {
       },
     )
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+    assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
     val diagnostic = harness.io.database.rejectedDiagnostics().last()
     assertTrue(diagnostic.metadata.reason.contains("AC-999") || diagnostic.metadata.rule.contains("closed-criterion"))
     assertEquals(null, harness.recorder.loadAuditRepairState(WORKFLOW_ID))
@@ -467,18 +464,12 @@ class FeatureTaskRuntimeAuditGapLoopTest {
       },
     )
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
-    val auditPrompts = harness.launcher.requests
-      .map { requireNotNull(it.skillRunRequest.promptOverride) }
-      .filter { phaseIdFromPrompt(it) == "audit" }
-    val retryPrompt = auditPrompts.first { it.contains("Rejected output violated 'audit-followup-evidence'") }
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    assertContains(blocked.blockedReason, "Rejected output violated")
     assertTrue(
-      !retryPrompt.contains("Violated constraint:"),
-      "output-derived gate detail must stay out of the retry reason",
-    )
-    assertTrue(
-      !retryPrompt.contains("must appear as a reported gap"),
-      "value-bearing disposition detail must not be appended outside the repair section",
+      !blocked.blockedReason.contains("must appear as a reported gap"),
+      "value-bearing disposition detail must stay on the private diagnostic",
     )
   }
 
@@ -547,19 +538,12 @@ class FeatureTaskRuntimeAuditGapLoopTest {
       },
     )
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
-    val auditPrompts = harness.launcher.requests
-      .map { requireNotNull(it.skillRunRequest.promptOverride) }
-      .filter { phaseIdFromPrompt(it) == "audit" }
-    val retryPrompt = auditPrompts[1]
-    assertContains(retryPrompt, "Rejected output violated 'audit-followup-evidence'")
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+
+    assertGateBlockNamesRule(blocked.blockedReason, "audit-followup-evidence")
     assertTrue(
-      !retryPrompt.contains("Violated constraint:"),
-      "output-derived gate detail must stay out of the retry reason",
-    )
-    assertTrue(
-      !retryPrompt.contains("carries no unresolved gap"),
-      "value-bearing disposition detail must not be appended outside the repair section",
+      !blocked.blockedReason.contains("carries no unresolved gap"),
+      "value-bearing disposition detail must stay on the private diagnostic",
     )
   }
 

@@ -703,7 +703,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
-  fun `verifying phases name the exact structured signal the schema gate keys on`() {
+  fun `verifying phases name the structured signal the schema gate keys on`() {
     val reviewPrompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("review"))
     val auditPrompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("audit"))
 
@@ -711,69 +711,63 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(reviewPrompt, "\"findings\" array", false, "review names the findings signal")
     assertContains(reviewPrompt, "\"approved\" or \"changes_requested\"", false, "review names the verdict values")
     assertContains(auditPrompt, "VERIFYING phase", false, "audit names itself a verifying phase")
-    assertContains(
-      auditPrompt,
-      "produced_outputs.gaps array",
-      false,
-      "audit names the compact gaps signal",
-    )
-    assertContains(
-      auditPrompt,
-      "satisfied | gaps_found",
-      false,
-      "audit names the verdict values",
-    )
-    assertContains(
+    assertAuditPromptNamesSignal(auditPrompt, "produced_outputs.gaps array", "the compact gaps signal")
+    assertAuditPromptNamesSignal(auditPrompt, "satisfied | gaps_found", "the verdict values")
+    assertAuditPromptNamesSignal(
       auditPrompt,
       "for audit, top-level \"verdict\" is REQUIRED",
-      false,
-      "audit contradicts the optional-verdict bullet",
+      "the contradiction of the optional-verdict bullet",
     )
-    assertContains(
+    assertAuditPromptNamesSignal(
       auditPrompt,
       "resolution_verified | recurrence_verified",
-      false,
-      "audit names the closed observation tokens",
+      "the closed observation tokens",
     )
     assertContains(auditPrompt, "\"verdict\": optional top-level string", false, "top-level verdict is documented")
+  }
+
+  @Test
+  fun `audit prompt scopes gaps to production and routes tests to validation`() {
+    val auditPrompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("audit"))
+
     assertContains(auditPrompt, "TEST EXCLUSION", false, "audit makes the test-only exclusion explicit")
     assertContains(auditPrompt, "NEVER audit gaps", false, "audit rejects test-only gaps")
-    assertContains(
-      auditPrompt,
-      "Validation owns test execution and failures",
-      false,
-      "audit routes tests to validation",
-    )
-    assertContains(
+    assertAuditPromptNamesSignal(auditPrompt, "Validation owns test execution and failures", "the test routing")
+    assertAuditPromptNamesSignal(
       auditPrompt,
       "production behavior or production implementation",
-      false,
-      "audit scopes gaps to production",
+      "the production scope of a gap",
     )
-    assertContains(
+  }
+
+  @Test
+  fun `audit prompt requires repair impact analysis over the evidenced blast radius`() {
+    val auditPrompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("audit"))
+
+    assertAuditPromptNamesSignal(
       auditPrompt,
       "PROSPECTIVE REPAIR IMPACT ANALYSIS",
-      false,
-      "audit requires counterfactual repair analysis before accepting a plan",
+      "the counterfactual analysis a plan owes before acceptance",
     )
-    assertContains(
+    assertAuditPromptNamesSignal(
       auditPrompt,
       "already-satisfied criteria as non-regression constraints",
-      false,
-      "audit protects previously satisfied behavior while planning repairs",
+      "the protection of previously satisfied behavior",
     )
-    assertContains(
+    assertAuditPromptNamesSignal(
       auditPrompt,
       "cumulative repair delta and cross-repair interactions",
-      false,
-      "follow-up audit checks repair interactions instead of only prior symbols",
+      "repair interactions rather than only prior symbols",
     )
-    assertContains(
+    assertAuditPromptNamesSignal(
       auditPrompt,
       "closure-complete for that blast",
-      false,
-      "repair plans must cover the complete evidenced blast radius",
+      "coverage of the complete evidenced blast radius",
     )
+  }
+
+  private fun assertAuditPromptNamesSignal(auditPrompt: String, fragment: String, what: String) {
+    assertContains(auditPrompt, fragment, false, "audit names $what")
   }
 
   @Test
@@ -826,7 +820,12 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       false,
       "follow-up supplies a copyable envelope with the carried gap ids",
     )
-    assertContains(followUpPrompt, "\"observation\":\"resolution_verified\"", false, "the copyable envelope uses the token")
+    assertContains(
+      followUpPrompt,
+      "\"observation\":\"resolution_verified\"",
+      false,
+      "the copyable envelope uses the token",
+    )
     assertContains(
       followUpPrompt,
       "example of REJECTED",

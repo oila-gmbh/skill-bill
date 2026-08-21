@@ -18,6 +18,35 @@ internal object FeatureTaskRuntimeAuditGenerationGates {
    * terminal disposition. Partial repair is not a failure — it is a retryable continuation, and naming the
    * exact unclosed item is what makes the next attempt resumable instead of speculative.
    */
+  /**
+   * The carried repair items this receipt left with no terminal disposition. Exposed apart from
+   * [repairClosureBlockReason] because unaccounted items are unfinished repair work the phase can
+   * still finish, not a malformed receipt: the runtime sends the round back naming them rather than
+   * spending the output-gate budget, which is what blocked partial repairs the message already
+   * describes as resumable.
+   */
+  fun unclosedRepairItemIds(
+    activeBatch: FeatureTaskRuntimeRepairBatch?,
+    reportedRepairItemIds: Collection<String>,
+  ): List<String> {
+    if (activeBatch == null) return emptyList()
+    val reported = reportedRepairItemIds.toSet()
+    if (reported.any { it !in activeBatch.repairItemIds }) return emptyList()
+    val closed = activeBatch.repairItemDispositions.mapTo(linkedSetOf()) { it.repairItemId } + reported
+    return activeBatch.repairItemIds.filterNot(closed::contains).sorted()
+  }
+
+  /** The carried audit gaps this follow-up audit neither re-reported nor dispositioned. */
+  fun undispositionedCarriedGapIds(
+    history: FeatureTaskRuntimeAuditGenerationHistory,
+    dispositionedGapIds: Collection<String>,
+  ): List<String> {
+    val carriedGapIds = history.latestGapStates().filterValues { it.open }.keys
+    if (carriedGapIds.isEmpty()) return emptyList()
+    val dispositioned = dispositionedGapIds.toSet()
+    return carriedGapIds.filterNot(dispositioned::contains).sorted()
+  }
+
   fun repairClosureBlockReason(
     activeBatch: FeatureTaskRuntimeRepairBatch?,
     reportedRepairItemIds: Collection<String>,

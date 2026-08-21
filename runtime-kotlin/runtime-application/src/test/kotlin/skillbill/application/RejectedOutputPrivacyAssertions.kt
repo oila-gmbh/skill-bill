@@ -13,6 +13,31 @@ internal fun assertPrivateDiagnosticRejection(rendered: String, rule: String, va
 }
 
 /**
+ * The operator-facing shape of a gate rejection under a one-attempt output-gate budget: the phase
+ * blocks on its first rejection, and the blocked reason names the rule and the exhausted budget
+ * without the validator's value-bearing text, which stays in the private diagnostic row.
+ */
+internal fun assertGateBlockNamesRule(blockedReason: String, rule: String) {
+  assertContains(blockedReason, "exhausted the bounded output-gate correction budget")
+  assertContains(blockedReason, "cap=1")
+  assertContains(blockedReason, "Rejected output violated '$rule'")
+}
+
+/**
+ * The private diagnostic is the only surface carrying the validator's constraint once a rejection is
+ * terminal, so what a producer would have been told is asserted there instead of on a retry prompt.
+ */
+internal fun assertDiagnosticNamesConstraint(reason: String, vararg constraintFragments: String) {
+  constraintFragments.forEach { fragment ->
+    assertContains(
+      reason,
+      fragment,
+      message = "The private diagnostic withheld the violated constraint '$fragment'.",
+    )
+  }
+}
+
+/**
  * A retry prompt is the one surface that MUST name the violated constraint: a producer cannot repair an
  * output it is only told was rejected. The payload-free sentence stays the prefix, so this asserts both —
  * the operator-facing pointer AND the schema-side constraint fragments the producer needs.

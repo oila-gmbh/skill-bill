@@ -582,10 +582,9 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
     }
   }
 
-  private fun auditPrompts(harness: RunnerHarness): List<String> =
-    harness.launcher.requests
-      .map { requireNotNull(it.skillRunRequest.promptOverride) }
-      .filter { phaseIdFromPrompt(it) == "audit" }
+  private fun auditPrompts(harness: RunnerHarness): List<String> = harness.launcher.requests
+    .map { requireNotNull(it.skillRunRequest.promptOverride) }
+    .filter { phaseIdFromPrompt(it) == "audit" }
 
   private fun realAuditValidator(): FeatureTaskRuntimePhaseOutputValidator =
     object : FeatureTaskRuntimePhaseOutputValidator {

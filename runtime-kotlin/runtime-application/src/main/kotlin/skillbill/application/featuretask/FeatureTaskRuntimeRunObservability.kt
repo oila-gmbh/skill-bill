@@ -23,6 +23,14 @@ internal enum class FeatureTaskRuntimeContinuationKind(val wireValue: String) {
   PROCESS_RETRY("process_retry"),
   CRASH_RESUME("crash_resume"),
   VERIFIER_REENTRY("verifier_reentry"),
+
+  /**
+   * The phase is running again because its output left carried items out — review findings, audit
+   * gaps, or repair items. Its own kind so the ledger separates unfinished item coverage from a schema
+   * correction: those outputs validated, and reading them as schema corrections hid that the phase was
+   * still owed work.
+   */
+  ITEM_COVERAGE("item_coverage"),
   ;
 
   companion object {

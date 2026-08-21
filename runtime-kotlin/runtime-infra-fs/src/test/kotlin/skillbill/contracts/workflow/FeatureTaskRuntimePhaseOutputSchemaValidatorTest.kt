@@ -425,55 +425,9 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
   }
 
   @Test
-  fun `compact audit gaps for one criterion keep every repair site when the joined artifact_ref would exceed the bound`() {
-    val output =
-      """
-      {
-        "contract_version":"0.3",
-        "phase_id":"audit",
-        "status":"completed",
-        "summary":"One criterion has four distinct production gaps.",
-        "verdict":"gaps_found",
-        "produced_outputs":{
-          "gaps":[
-            {
-              "criterion":"AC-006",
-              "severity":"major",
-              "location":"GoalSubtaskReviewState.pauseForNonConvergence",
-              "file":"GoalSubtaskReviewState.kt",
-              "issue":"Non-convergence pause remains.",
-              "fix":"Remove the pause."
-            },
-            {
-              "criterion":"AC-006",
-              "severity":"major",
-              "location":"FeatureTaskRuntimeRepairPlanEntry",
-              "file":"FeatureTaskRuntimeRepairPlan.kt",
-              "issue":"Repair-plan classification remains.",
-              "fix":"Remove the repair-plan model."
-            },
-            {
-              "criterion":"AC-006",
-              "severity":"major",
-              "location":"FeatureTaskRuntimeNextPhase.TerminalPause",
-              "file":"FeatureTaskRuntimeTransitionModels.kt",
-              "issue":"TerminalPause remains.",
-              "fix":"Remove TerminalPause."
-            },
-            {
-              "criterion":"AC-006",
-              "severity":"major",
-              "location":"FeatureTaskRuntimeRepairLedgerEntry",
-              "file":"FeatureTaskRuntimeRepairLedger.kt",
-              "issue":"Cross-round ledger remains.",
-              "fix":"Remove cross-round ledger status."
-            }
-          ]
-        }
-      }
-      """.trimIndent()
-
-    val normalized = FeatureTaskRuntimePhaseOutputValidatorAdapter().normalizePhaseOutput(output, "audit")
+  fun `compact audit gaps keep every repair site inside the artifact_ref bound`() {
+    val normalized = FeatureTaskRuntimePhaseOutputValidatorAdapter()
+      .normalizePhaseOutput(FOUR_GAP_ONE_CRITERION_AUDIT, "audit")
     val produced = JsonSupport.anyToStringAnyMap(normalized.envelope["produced_outputs"]).orEmpty()
     val plan = JsonSupport.anyToStringAnyMap(produced["audit_repair_plan"]).orEmpty()
     val gaps = (plan["gaps"] as List<*>).map { JsonSupport.anyToStringAnyMap(it).orEmpty() }
@@ -833,3 +787,52 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
       """"outcome":"addressed","constructs":[{"symbol":"Type.member","file":"Type.kt"}],""" +
       """"intent":"close the finding at Type.member"}]}"""
 }
+
+// One criterion with four distinct production gaps: joining every site into one pointer would overflow
+// the 256-char artifact_ref cap, so the compact expansion has to keep each site as its own repair item.
+private val FOUR_GAP_ONE_CRITERION_AUDIT: String =
+  """
+        {
+          "contract_version":"0.3",
+          "phase_id":"audit",
+          "status":"completed",
+          "summary":"One criterion has four distinct production gaps.",
+          "verdict":"gaps_found",
+          "produced_outputs":{
+            "gaps":[
+              {
+                "criterion":"AC-006",
+                "severity":"major",
+                "location":"GoalSubtaskReviewState.pauseForNonConvergence",
+                "file":"GoalSubtaskReviewState.kt",
+                "issue":"Non-convergence pause remains.",
+                "fix":"Remove the pause."
+              },
+              {
+                "criterion":"AC-006",
+                "severity":"major",
+                "location":"FeatureTaskRuntimeRepairPlanEntry",
+                "file":"FeatureTaskRuntimeRepairPlan.kt",
+                "issue":"Repair-plan classification remains.",
+                "fix":"Remove the repair-plan model."
+              },
+              {
+                "criterion":"AC-006",
+                "severity":"major",
+                "location":"FeatureTaskRuntimeNextPhase.TerminalPause",
+                "file":"FeatureTaskRuntimeTransitionModels.kt",
+                "issue":"TerminalPause remains.",
+                "fix":"Remove TerminalPause."
+              },
+              {
+                "criterion":"AC-006",
+                "severity":"major",
+                "location":"FeatureTaskRuntimeRepairLedgerEntry",
+                "file":"FeatureTaskRuntimeRepairLedger.kt",
+                "issue":"Cross-round ledger remains.",
+                "fix":"Remove cross-round ledger status."
+              }
+            ]
+          }
+        }
+  """.trimIndent()

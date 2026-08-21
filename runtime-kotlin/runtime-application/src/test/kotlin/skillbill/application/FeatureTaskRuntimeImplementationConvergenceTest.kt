@@ -213,7 +213,7 @@ class FeatureTaskRuntimeImplementationConvergenceTest {
     // continuation segment before blocking. The structural gates must see it first.
     val harness = runnerHarness(launcher = malformedProjectionImplementLauncher())
 
-    harness.runner.run(harness.request())
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
 
     val attempts = harness.recorder.loadImplementationAttempts(WORKFLOW_ID).orEmpty()
       .filter { it.phaseId == "implement" }
@@ -222,13 +222,14 @@ class FeatureTaskRuntimeImplementationConvergenceTest {
       attempts.filter { it.status == FeatureTaskRuntimeImplementationAttemptStatus.INCOMPLETE },
       "a receipt failing its projection contract is a structural failure, not an incomplete-work segment",
     )
-    val implementPrompts = harness.launcher.requests
-      .map { requireNotNull(it.skillRunRequest.promptOverride) }
-      .filter { phaseIdFromPrompt(it) == "implement" }
-    assertTrue(implementPrompts.size > 1, "the structural-repair path must re-prompt the phase")
-    assertTrue(
-      implementPrompts.drop(1).any { it.contains("REJECTED by the schema gate") },
-      "the repairable contract defect must be named to the agent rather than silently retried",
+    assertEquals("implement", blocked.lastIncompletePhase)
+    assertGateBlockNamesRule(blocked.blockedReason, "producer-projection")
+    assertEquals(
+      1,
+      harness.launcher.requests
+        .map { requireNotNull(it.skillRunRequest.promptOverride) }
+        .count { phaseIdFromPrompt(it) == "implement" },
+      "the structural gate settles the phase instead of burning continuation segments",
     )
   }
 }

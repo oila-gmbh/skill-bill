@@ -1284,6 +1284,7 @@ internal class FeatureTaskRuntimeRunLoop(
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
   ): AttemptResult? {
     val settlement = implementFixRepairReceiptSettlement(run, outputMap)
+    owedFindingsAttempt(settlement, fileManifest)?.let { return it }
     settlement.rejectionDetail?.let { detail -> return reject("repair-receipt", detail) }
     val writeFailure = settlement.writeFailureReason ?: return null
     return AttemptResult.settled(
@@ -1296,6 +1297,109 @@ internal class FeatureTaskRuntimeRunLoop(
         fileManifest = fileManifest,
       ),
     )
+  }
+
+  /**
+   * Reclassifies the two audit gates whose rejection is an unaccounted-item count rather than a
+   * malformed document: a follow-up audit that left carried gaps undispositioned, and a repair receipt
+   * that left carried repair items unclosed. Both messages already call the state resumable, but
+   * routing them through the output-gate budget blocked them on first sight. Naming the items and
+   * re-entering the phase is what lets one round work through every item it was given.
+   *
+   * Every other rejection under these rules — an undeclared item, a malformed disposition, an absent
+   * blast-radius record — stays on the output-gate budget, because those are documents to repair.
+   */
+  private fun unaccountedAuditItemsAttempt(
+    run: PhaseRun,
+    rule: String,
+    outputMap: Map<String, Any?>,
+    fileManifest: FeatureTaskRuntimePhaseFileManifest,
+  ): AttemptResult? {
+    val produced = JsonSupport.anyToStringAnyMap(outputMap["produced_outputs"]).orEmpty()
+    val (itemNoun, unaccounted) = when (rule) {
+      RULE_AUDIT_FOLLOWUP_EVIDENCE ->
+        "audit gaps" to FeatureTaskRuntimeAuditGenerationGates
+          .undispositionedCarriedGapIds(
+            history = recorder.loadAuditGenerationHistory(request.workflowId, request.dbPathOverride),
+            dispositionedGapIds = dispositionedCarriedGapIds(produced, expandedPlanGapIds(produced)),
+          )
+      RULE_AUDIT_REPAIR_CLOSURE ->
+        "repair items" to FeatureTaskRuntimeAuditGenerationGates
+          .unclosedRepairItemIds(
+            activeBatch = recorder.loadAuditGenerationHistory(request.workflowId, request.dbPathOverride)
+              .activeRepairBatch(),
+            reportedRepairItemIds = reportedRepairItemIds(produced),
+          )
+      RULE_AUDIT_REPAIR_RESULT -> "repair items" to unaccountedRepairPlanItemIds(outputMap, produced)
+      else -> return null
+    }
+    if (unaccounted.isEmpty()) return null
+    return AttemptResult.unaccountedItems(
+      phaseId = run.phaseId,
+      itemNoun = itemNoun,
+      unaccountedRefs = unaccounted,
+      retryReason = "Your output left these carried $itemNoun unaccounted for: " +
+        unaccounted.joinToString(", ") + ". Continue this attempt: work through each one and report " +
+        "it. Every carried item needs an explicit outcome; leaving one out is not an outcome, and " +
+        "reporting the same set again stops the run for an operator.",
+      fileManifest = fileManifest,
+    )
+  }
+
+  /**
+   * The accepted plan's repair items a completed remediation reported no outcome for.
+   *
+   * Empty for every other way the results can be wrong — a duplicate identifier, one the plan does not
+   * carry, a superseded item that overlaps a result, a malformed deferred list, or a blocked remediation
+   * that legitimately defers work. Those are documents to repair, so they keep the output-gate budget;
+   * only "you have not reported these items yet" is unfinished work worth re-entering the phase for.
+   */
+  private fun unaccountedRepairPlanItemIds(outputMap: Map<String, Any?>, produced: Map<String, Any?>): List<String> {
+    if (outputMap["status"] != STATUS_COMPLETED) return emptyList()
+    val expected = activeReentry
+      ?.takeIf { it.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID }
+      ?.auditRepairPlan?.gaps.orEmpty()
+      .flatMap { it.repairItems }
+      .map { it.repairItemId }
+    if (expected.isEmpty()) return emptyList()
+    val resultMaps = (produced["repair_item_results"] as? List<*>).orEmpty()
+      .mapNotNull(JsonSupport::anyToStringAnyMap)
+    val actual = resultMaps.mapNotNull { (it["repair_item_id"] as? String)?.let(::canonicalAuditIdentifier) }
+    val superseded = supersededRepairItemIds(produced)
+    val deferredRaw = produced["deferred_repair_item_ids"]
+    val onlyDefectIsMissingItems = actual.size == resultMaps.size &&
+      actual.size == actual.toSet().size &&
+      actual.all { it in expected } &&
+      superseded.all { it in expected } &&
+      actual.toSet().intersect(superseded).isEmpty() &&
+      deferredRaw is List<*> &&
+      deferredRaw.isEmpty()
+    if (!onlyDefectIsMissingItems) return emptyList()
+    val closed = actual.toSet() + superseded
+    return expected.filterNot(closed::contains)
+  }
+
+  private fun owedFindingsAttempt(
+    settlement: RepairReceiptSettlement,
+    fileManifest: FeatureTaskRuntimePhaseFileManifest,
+  ): AttemptResult? {
+    settlement.unaccountedOmittedRefs?.let { omittedRefs ->
+      return AttemptResult.unaccountedItems(
+        phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
+        itemNoun = "review findings",
+        unaccountedRefs = omittedRefs,
+        retryReason = requireNotNull(settlement.unaccountedRetryReason),
+        fileManifest = fileManifest,
+      )
+    }
+    return settlement.unresolvedRefs?.let { refs ->
+      AttemptResult.unresolvedFindings(
+        unresolvedRefs = refs,
+        detail = requireNotNull(settlement.unresolvedDetail),
+        retryReason = requireNotNull(settlement.unresolvedRetryReason),
+        fileManifest = fileManifest,
+      )
+    }
   }
 
   private fun implementFixRepairReceiptSettlement(
@@ -1312,13 +1416,34 @@ internal class FeatureTaskRuntimeRunLoop(
     }
   }
 
+  /**
+   * Order is the policy. Coverage runs first and is retryable, so a round that dropped a finding is
+   * sent back for it while it can still be fixed. The declared dead end is settled only once nothing
+   * was omitted, and it persists the receipt first so the operator inherits the producer's own
+   * account of what still fails.
+   */
   private fun settledRepairReceipt(
     receipt: FeatureTaskRuntimeRepairReceipt,
     reviewState: GoalSubtaskReviewState,
   ): RepairReceiptSettlement = featureTaskRuntimeRepairReceiptSettleRejection(receipt, reviewState)
     ?.let { detail -> RepairReceiptSettlement.rejected(detail) }
+    ?: unaccountedFindingsSettlement(receipt, reviewState)
     ?: persistImplementFixRepairReceipt(receipt)?.let { reason -> RepairReceiptSettlement.writeFailed(reason) }
+    ?: featureTaskRuntimeUnresolvedFindings(receipt)?.let { unresolved ->
+      RepairReceiptSettlement.unresolved(unresolved.refs, unresolved.detail, unresolved.retryReason)
+    }
     ?: RepairReceiptSettlement.None
+
+  private fun unaccountedFindingsSettlement(
+    receipt: FeatureTaskRuntimeRepairReceipt,
+    reviewState: GoalSubtaskReviewState,
+  ): RepairReceiptSettlement? {
+    val omitted = featureTaskRuntimeRepairReceiptOmittedFindings(receipt, reviewState).ifEmpty { return null }
+    return RepairReceiptSettlement.unaccounted(
+      omittedRefs = omitted.map(::featureTaskRuntimeCompactFindingRef),
+      retryReason = featureTaskRuntimeOmittedFindingsRetryReason(omitted),
+    )
+  }
 
   private fun repairReceiptShapeSettlement(produced: Map<String, Any?>): RepairReceiptSettlement =
     featureTaskRuntimeRepairReceiptShapeRejection(produced)
@@ -3719,6 +3844,10 @@ internal class FeatureTaskRuntimeRunLoop(
         // schema-VALID, so prompting it with the schema-correction directive, reporting its block as a
         // schema-gate failure, or dispositioning it INVALID_OUTPUT would all misdescribe it.
         attempt.retryableTerminalRetryReason != null -> settleRetryableTerminal(context)
+        // Before the semantic branch and after the terminal one: a receipt that still owes findings
+        // is schema-valid, so charging it to the output-gate budget would block the round for work it
+        // can still finish.
+        attempt.findingsOwedKind != null -> settleFindingsOwed(context)
         else -> settleSemanticFailure(context)
       }
     }
@@ -3733,6 +3862,9 @@ internal class FeatureTaskRuntimeRunLoop(
     var semanticIteration: Int,
     var continuationSegmentCount: Int,
     var priorCorrection: PriorAttemptCorrection? = null,
+    var priorUnaccountedFindings: Set<String>? = null,
+    var priorUnresolvedFindings: Set<String> = emptySet(),
+    var itemCoverageSegmentCount: Int = 0,
   )
 
   /** Everything a fix-loop branch handler reads; they only ever travel as a set. */
@@ -3772,6 +3904,60 @@ internal class FeatureTaskRuntimeRunLoop(
       loop.iteration,
       loop.continuationSegmentCount,
       FeatureTaskRuntimeContinuationKind.IMPLEMENTATION_CONTINUATION,
+    )
+    return null
+  }
+
+  /**
+   * Sends the round back for the findings it still owes, or blocks when the owed set stopped moving.
+   *
+   * Both budgets are counted in finding references rather than attempts, which is what keeps a round
+   * from being blocked while it still has real repair work left. An omitted finding must be accounted
+   * for on the next attempt; a finding reported unresolved gets one more fix attempt and then belongs
+   * to an operator.
+   */
+  private fun settleFindingsOwed(context: FixLoopBranchContext): PhaseOutcome? {
+    val (run, attempt, loop, observability, agentId) = context
+    val refs = requireNotNull(attempt.findingsOwedRefs)
+    val blockReason = when (requireNotNull(attempt.findingsOwedKind)) {
+      FindingsOwedKind.OMITTED -> FeatureTaskRuntimeAttemptBudgets.findingCoverageBlockReason(
+        run.phaseId,
+        refs,
+        loop.priorUnaccountedFindings,
+      )
+      FindingsOwedKind.UNRESOLVED -> FeatureTaskRuntimeAttemptBudgets.unresolvedFindingBlockReason(
+        run.phaseId,
+        refs,
+        loop.priorUnresolvedFindings,
+        requireNotNull(attempt.findingsOwedDetail),
+      )
+    }
+    blockReason?.let { reason ->
+      return blockAndPersistInPhase(
+        run,
+        loop.iteration,
+        reason,
+        observability,
+        failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
+        fileManifest = attempt.fileManifest,
+      )
+    }
+    when (attempt.findingsOwedKind) {
+      FindingsOwedKind.OMITTED -> loop.priorUnaccountedFindings = refs
+      FindingsOwedKind.UNRESOLVED -> loop.priorUnresolvedFindings = loop.priorUnresolvedFindings + refs
+      null -> Unit
+    }
+    loop.itemCoverageSegmentCount += 1
+    loop.iteration += 1
+    loop.priorCorrection = PriorAttemptCorrection.unaccountedFindings(
+      requireNotNull(attempt.findingsOwedRetryReason),
+    )
+    observability.continuation(
+      run.phaseId,
+      agentId,
+      loop.iteration,
+      loop.itemCoverageSegmentCount,
+      FeatureTaskRuntimeContinuationKind.ITEM_COVERAGE,
     )
     return null
   }
@@ -4654,6 +4840,7 @@ internal class FeatureTaskRuntimeRunLoop(
     )
     fun reject(rule: String, detail: String): AttemptResult = rejectValidatedOutput(capture, outputMap, rule, detail)
     firstValidatedOutputRejection(run.phaseId, outputTextCanonical, outputMap)?.let { (rule, reason) ->
+      unaccountedAuditItemsAttempt(run, rule, outputMap, fileManifest)?.let { return it }
       return reject(rule, reason)
     }
     val repositoryFingerprint = completedPhaseRepositoryFingerprint(run)?.let { result ->
@@ -5103,12 +5290,12 @@ internal class FeatureTaskRuntimeRunLoop(
   ): Pair<String, String>? =
     mutatingReconciliationGateReason(phaseId, outputMap)?.let { "mutating-reconciliation" to it }
       ?: terminalAuditRepairBlockGateReason(phaseId, outputMap)?.let { "terminal-audit-repair" to it }
-      ?: auditRepairResultGateReason(phaseId, outputMap)?.let { "audit-repair-result" to it }
-      ?: repairClosureGateReason(phaseId, outputMap)?.let { "audit-repair-closure" to it }
+      ?: auditRepairResultGateReason(phaseId, outputMap)?.let { RULE_AUDIT_REPAIR_RESULT to it }
+      ?: repairClosureGateReason(phaseId, outputMap)?.let { RULE_AUDIT_REPAIR_CLOSURE to it }
       ?: nonCompactAuditDurableLedgerGateReason(phaseId, outputText, outputMap)
         ?.let { "audit-durable-ledger" to it }
       ?: followUpAuditEvidenceGateReason(phaseId, outputMap)
-        ?.let { "audit-followup-evidence" to it }
+        ?.let { RULE_AUDIT_FOLLOWUP_EVIDENCE to it }
       ?: auditClosedCriterionGateReason(phaseId, outputMap)?.let { "audit-closed-criterion" to it }
 
   /**
@@ -6270,6 +6457,7 @@ internal class FeatureTaskRuntimeRunLoop(
       priorReviewContext = remediationPriorReviewContext(run.phaseId, passNumber),
       priorSchemaFailure = priorCorrection?.schemaGateReason,
       priorTerminalFailure = priorCorrection?.retryableTerminalReason,
+      priorFindingCoverage = priorCorrection?.findingCoverageReason,
       correctiveRepairContext = priorCorrection?.correctiveRepairContext,
       operatorBlockRetry = operatorBlockRetry
         ?.takeIf { it.phaseId == run.phaseId && !operatorBlockRetryCompleted },
@@ -6697,18 +6885,50 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private data class RepairReceiptAnchor(val baseSha: String, val roundNumber: Int)
 
+  /** Why a schema-valid repair receipt still owes work, which selects the budget that reads it. */
+  private enum class FindingsOwedKind { OMITTED, UNRESOLVED }
+
   private sealed interface RepairReceiptSettlement {
     private data class Rejected(val detail: String) : RepairReceiptSettlement
     private data class WriteFailed(val reason: String) : RepairReceiptSettlement
+
+    /**
+     * The round left carried findings out of its receipt. Separate from [Rejected] because the
+     * document is well-formed: the repair work is unfinished, so the round is sent back for exactly
+     * these findings instead of spending the output-gate budget on a serialization it got right.
+     */
+    private data class Unaccounted(
+      val omittedRefs: List<String>,
+      val retryReason: String,
+    ) : RepairReceiptSettlement
+
+    /**
+     * The round declared it tried and could not close a finding. Retryable once per finding, so it
+     * carries the refs the budget counts as well as the producer's account of what still fails.
+     */
+    private data class Unresolved(
+      val refs: Set<String>,
+      val detail: String,
+      val retryReason: String,
+    ) : RepairReceiptSettlement
 
     data object None : RepairReceiptSettlement
 
     val rejectionDetail: String? get() = (this as? Rejected)?.detail
     val writeFailureReason: String? get() = (this as? WriteFailed)?.reason
+    val unaccountedOmittedRefs: List<String>? get() = (this as? Unaccounted)?.omittedRefs
+    val unaccountedRetryReason: String? get() = (this as? Unaccounted)?.retryReason
+    val unresolvedRefs: Set<String>? get() = (this as? Unresolved)?.refs
+    val unresolvedDetail: String? get() = (this as? Unresolved)?.detail
+    val unresolvedRetryReason: String? get() = (this as? Unresolved)?.retryReason
 
     companion object {
       fun rejected(detail: String): RepairReceiptSettlement = Rejected(detail)
       fun writeFailed(reason: String): RepairReceiptSettlement = WriteFailed(reason)
+      fun unaccounted(omittedRefs: List<String>, retryReason: String): RepairReceiptSettlement =
+        Unaccounted(omittedRefs, retryReason)
+      fun unresolved(refs: Set<String>, detail: String, retryReason: String): RepairReceiptSettlement =
+        Unresolved(refs, detail, retryReason)
     }
   }
 
@@ -6854,6 +7074,25 @@ internal class FeatureTaskRuntimeRunLoop(
       val failureDisposition: FeatureTaskRuntimeFailureDisposition,
     ) : AttemptResult
 
+    /**
+     * A well-formed repair receipt that still owes work on named carried findings — either it left
+     * them out, or it reported it tried and they are still open.
+     *
+     * Its own variant for the same reason [IncompleteWork] is: nothing about the document is invalid,
+     * so it must not spend the output-gate budget. It is not [IncompleteWork] either, because that
+     * path rebuilds a plan-task continuation projection from durable implementation attempts, and
+     * what this round owes is a named set of findings, not an unclosed obligation. The finding refs
+     * are the budget, and [kind] selects which rule reads them.
+     */
+    private data class FindingsOwed(
+      val kind: FindingsOwedKind,
+      val operatorReason: String,
+      val retryReason: String,
+      val refs: Set<String>,
+      val detail: String?,
+      override val fileManifest: FeatureTaskRuntimePhaseFileManifest,
+    ) : AttemptResult
+
     val settledOutcome: PhaseOutcome? get() = (this as? Settled)?.outcome
     val schemaInvalidOperatorReason: String? get() = (this as? SchemaInvalid)?.operatorReason
     val schemaInvalidRetryReason: String? get() = (this as? SchemaInvalid)?.retryReason
@@ -6862,6 +7101,7 @@ internal class FeatureTaskRuntimeRunLoop(
         is SchemaInvalid -> fileManifest
         is IncompleteWork -> fileManifest
         is RetryableTerminal -> fileManifest
+        is FindingsOwed -> fileManifest
         else -> null
       }
     val rejectedOutput: String? get() = (this as? SchemaInvalid)?.rejectedOutput
@@ -6875,6 +7115,7 @@ internal class FeatureTaskRuntimeRunLoop(
         is SchemaInvalid -> operatorReason
         is IncompleteWork -> operatorReason
         is RetryableTerminal -> operatorReason
+        is FindingsOwed -> operatorReason
         else -> null
       }
 
@@ -6898,6 +7139,18 @@ internal class FeatureTaskRuntimeRunLoop(
     val retryableTerminalDisposition: FeatureTaskRuntimeFailureDisposition?
       get() = (this as? RetryableTerminal)?.failureDisposition
 
+    /** Why this round still owes findings, or null when it owes none. */
+    val findingsOwedKind: FindingsOwedKind? get() = (this as? FindingsOwed)?.kind
+
+    /** The finding references the owed-work budget counts. */
+    val findingsOwedRefs: Set<String>? get() = (this as? FindingsOwed)?.refs
+
+    /** Prompt-facing continuation text naming what is still owed. */
+    val findingsOwedRetryReason: String? get() = (this as? FindingsOwed)?.retryReason
+
+    /** The producer's own account of what still fails, carried only by an unresolved report. */
+    val findingsOwedDetail: String? get() = (this as? FindingsOwed)?.detail
+
     val incompleteWorkContinuationReason: String? get() = (this as? IncompleteWork)?.continuationReason
     val incompleteWorkOutput: NormalizedFeatureTaskRuntimePhaseOutput?
       get() = (this as? IncompleteWork)?.normalizedOutput
@@ -6911,6 +7164,37 @@ internal class FeatureTaskRuntimeRunLoop(
         fileManifest: FeatureTaskRuntimePhaseFileManifest,
         normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
       ): AttemptResult = IncompleteWork(operatorReason, continuationReason, fileManifest, normalizedOutput)
+
+      fun unaccountedItems(
+        phaseId: String,
+        itemNoun: String,
+        unaccountedRefs: List<String>,
+        retryReason: String,
+        fileManifest: FeatureTaskRuntimePhaseFileManifest,
+      ): AttemptResult = FindingsOwed(
+        kind = FindingsOwedKind.OMITTED,
+        operatorReason = "Phase '$phaseId' left carried $itemNoun unaccounted for in its output: " +
+          unaccountedRefs.joinToString(", ") + ".",
+        retryReason = retryReason,
+        refs = unaccountedRefs.toSet(),
+        detail = null,
+        fileManifest = fileManifest,
+      )
+
+      fun unresolvedFindings(
+        unresolvedRefs: Set<String>,
+        detail: String,
+        retryReason: String,
+        fileManifest: FeatureTaskRuntimePhaseFileManifest,
+      ): AttemptResult = FindingsOwed(
+        kind = FindingsOwedKind.UNRESOLVED,
+        operatorReason = "Phase 'implement_fix' reported carried review findings still open after " +
+          "its attempt: ${unresolvedRefs.joinToString(", ")}.",
+        retryReason = retryReason,
+        refs = unresolvedRefs,
+        detail = detail,
+        fileManifest = fileManifest,
+      )
 
       fun retryableTerminal(
         operatorReason: String,
@@ -6984,6 +7268,12 @@ private const val READ_ONLY_PHASE_PROGRESS_IDLE_TIMEOUT_MINUTES = 30L
 // Stands in for a repository fingerprint that could not be computed. Comparing it against itself
 // yields "unchanged", so an audit that cannot prove the repository moved cannot claim progress.
 private const val UNPROVEN_REPOSITORY_FINGERPRINT = "<unproven>"
+
+// The two gate rules whose rejection counts unaccounted carried items instead of naming a malformed
+// document, so a phase that still owes items is re-entered for them rather than blocked.
+private const val RULE_AUDIT_FOLLOWUP_EVIDENCE = "audit-followup-evidence"
+private const val RULE_AUDIT_REPAIR_CLOSURE = "audit-repair-closure"
+private const val RULE_AUDIT_REPAIR_RESULT = "audit-repair-result"
 
 // Bounds the goal-facing pause-reason label list so the reason stays a summary, not a transcript.
 private const val MAX_PAUSE_REASON_LABELS = 5

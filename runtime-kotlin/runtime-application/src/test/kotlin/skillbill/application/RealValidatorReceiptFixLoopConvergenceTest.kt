@@ -9,16 +9,16 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /**
- * SKILL-152 subtask 1 (AC-010): the three malformed-`implementation_receipt` classes observed in the field
- * all report at `$.reconciliation_evidence`, and all three previously spent the implement phase's whole fix
- * loop because the retry prompt was told only that something was rejected, never which constraint failed.
- * With the constraint text carried, each class must CONVERGE — the producer repairs the receipt and the run
- * completes strictly before the cap — rather than exhaust its attempts.
+ * SKILL-152 subtask 1 (AC-010): the malformed-`implementation_receipt` classes observed in the field all
+ * report at `$.reconciliation_evidence`, and what separates them is whether canonicalization may repair
+ * them. The extra-key class is repairable — an unknown key inside a nested fully-enumerated closed object is
+ * discarded during canonicalization, so it costs the phase nothing and advances on its first launch
+ * (AC-005). The other three are genuine structural faults that canonicalization must never paper over, so
+ * each one rejects, and the constraint that failed is recorded where a repair would be read from.
  *
- * The extra-key class converges more strongly than the other two: an unknown key inside a nested
- * fully-enumerated closed object is discarded during canonicalization, so it costs no fix-loop attempt at
- * all (AC-005). The other two are genuine structural faults that canonicalization must not repair, so they
- * cost exactly one attempt and are fixed from the constraint text.
+ * The output-gate budget is one attempt, so a rejection settles the run at implement. Each case pins which
+ * side of the canonicalization line its fixture falls on, which is the distinction that regressed in the
+ * field.
  */
 class RealValidatorReceiptFixLoopConvergenceTest {
   @Test
@@ -43,16 +43,16 @@ class RealValidatorReceiptFixLoopConvergenceTest {
   }
 
   @Test
-  fun `a receipt missing reconciliation_evidence evidence converges before the cap`() {
-    assertConvergesFromConstraintText(
+  fun `a receipt missing reconciliation_evidence evidence is rejected, never synthesized`() {
+    assertRejectedWithConstraintText(
       malformedReceipt = RECEIPT_MISSING_EVIDENCE,
       expectedConstraintFragments = arrayOf("required property 'evidence' not found"),
     )
   }
 
   @Test
-  fun `a receipt with a string in place of reconciliation_evidence converges before the cap`() {
-    assertConvergesFromConstraintText(
+  fun `a receipt with a string in place of reconciliation_evidence is rejected, never coerced`() {
+    assertRejectedWithConstraintText(
       malformedReceipt = RECEIPT_EVIDENCE_AS_STRING,
       expectedConstraintFragments = arrayOf("string found, object expected"),
     )
@@ -61,58 +61,46 @@ class RealValidatorReceiptFixLoopConvergenceTest {
   /**
    * SKILL-169: the fourth field-observed class, and the one that actually reached a user. An over-length
    * `evidence` differs from the three above in that the producer's content is not wrong — only its size —
-   * so the echoed reason alone left the agent re-arguing the same case at the same length until the cap
-   * exhausted. Convergence here proves the retry carries the compression directive, not just the constraint.
+   * which is exactly the case canonicalization must not silently truncate to make the receipt fit.
    */
   @Test
-  fun `an over-length reconciliation evidence converges instead of exhausting the cap`() {
-    assertConvergesFromConstraintText(
+  fun `an over-length reconciliation evidence is rejected, never truncated to fit`() {
+    assertRejectedWithConstraintText(
       malformedReceipt = RECEIPT_EVIDENCE_TOO_LONG,
       expectedConstraintFragments = arrayOf("must be at most 4,096 characters long"),
-      expectedRetryGuidance = arrayOf(
-        "bounded SUMMARY, not a verification transcript",
-        "rejected for length alone",
-      ),
     )
   }
 
-  // The producer emits the malformed receipt once, then — as an agent reading an actionable rejection
-  // would — emits a valid one. Convergence is the assertion: the run completes, implement launched exactly
-  // twice, and that is strictly under the cap. A regression that drops the constraint text does not fail
-  // here by leaking; it fails at the retry-prompt assertion, which is the signal this test exists for.
-  private fun assertConvergesFromConstraintText(
-    malformedReceipt: String,
-    expectedConstraintFragments: Array<String>,
-    expectedRetryGuidance: Array<String> = emptyArray(),
-  ) {
-    var implementAttempts = 0
+  // A structural fault canonicalization must not repair: the gate rejects it, the run settles at implement
+  // without reaching audit, and the constraint that failed is recorded on the private diagnostic. A
+  // regression that quietly canonicalizes one of these fixtures fails here by completing the run.
+  private fun assertRejectedWithConstraintText(malformedReceipt: String, expectedConstraintFragments: Array<String>) {
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        if (phaseId != "implement") {
-          facts(validJsonOutput(phaseId))
-        } else {
-          implementAttempts += 1
-          facts(if (implementAttempts == 1) malformedReceipt else validJsonOutput("implement"))
-        }
+        facts(if (phaseId == "implement") malformedReceipt else validJsonOutput(phaseId))
       },
       agentAssignment = phasePerAgentAssignment(),
       runtimeConfig = RuntimeHarnessConfig(planningProjectionValidator = realPlanningProjectionValidator),
     )
 
-    val report = harness.runner.run(harness.request())
+    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
-    val implementLaunches = harness.launchedPromptPhaseOrder().count { it == "implement" }
-    assertEquals(2, implementLaunches, "the receipt must be repaired on the first retry")
-
-    val retryPrompt = harness.launcher.requests
-      .map { requireNotNull(it.skillRunRequest.promptOverride) }
-      .filter { phaseIdFromPrompt(it) == "implement" }[1]
-    assertRetryPromptNamesConstraint(retryPrompt, "producer-projection", *expectedConstraintFragments)
-    expectedRetryGuidance.forEach { guidance ->
-      assertTrue(retryPrompt.contains(guidance), "the retry prompt withheld the correction '$guidance'.")
-    }
+    assertEquals("implement", blocked.lastIncompletePhase)
+    assertGateBlockNamesRule(blocked.blockedReason, "producer-projection")
+    assertEquals(
+      1,
+      harness.launchedPromptPhaseOrder().count { it == "implement" },
+      "a one-attempt budget leaves no relaunch",
+    )
+    assertTrue(
+      !harness.launchedPromptPhaseOrder().contains("audit"),
+      "a rejected receipt must not reach its consumer",
+    )
+    assertDiagnosticNamesConstraint(
+      harness.io.database.rejectedDiagnostics().first { it.metadata.phaseId == "implement" }.metadata.reason,
+      *expectedConstraintFragments,
+    )
   }
 }
 

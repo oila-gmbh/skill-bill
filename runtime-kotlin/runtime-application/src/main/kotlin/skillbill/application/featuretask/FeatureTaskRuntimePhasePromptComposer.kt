@@ -43,6 +43,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     reviewDecidingRule: String? = null,
     priorSchemaFailure: String? = null,
     priorTerminalFailure: String? = null,
+    priorFindingCoverage: String? = null,
     correctiveRepairContext: FeatureTaskRuntimeCorrectiveRepairContext? = null,
     operatorBlockRetry: FeatureTaskRuntimeOperatorBlockRetry? = null,
     implementationContinuation: FeatureTaskRuntimeImplementationContinuation? = null,
@@ -60,6 +61,10 @@ object FeatureTaskRuntimePhasePromptComposer {
     require(correctiveRepairContext == null || priorTerminalFailure.isNullOrBlank()) {
       "correctiveRepairContext cannot accompany a retryable-terminal failure; the correction kinds " +
         "must stay separate."
+    }
+    require(priorFindingCoverage.isNullOrBlank() || priorSchemaFailure.isNullOrBlank()) {
+      "priorFindingCoverage cannot accompany a schema-gate failure; a receipt is either short of its " +
+        "carried findings or rejected, never both in one correction."
     }
     // Schema-correction retries suppress any durable continuation projection instead of rejecting the
     // combination: after incomplete mutating work, the next launch may still carry both, and the
@@ -96,6 +101,7 @@ object FeatureTaskRuntimePhasePromptComposer {
       implementationContinuationDirective(briefing.phaseId, effectiveContinuation),
       retryCorrectionDirective(briefing, priorSchemaFailure, correctiveRepairContext),
       terminalRetryDirective(priorTerminalFailure),
+      findingCoverageDirective(priorFindingCoverage),
       outputContract(briefing, agentRunValidateFallback),
     ).filter(String::isNotBlank).joinToString(separator = "\n\n")
   }

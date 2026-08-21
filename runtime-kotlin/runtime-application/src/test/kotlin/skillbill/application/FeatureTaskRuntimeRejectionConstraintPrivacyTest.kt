@@ -161,10 +161,9 @@ class FeatureTaskRuntimeRejectionConstraintPrivacyTest {
     assertEquals(rejectedBody.encodeToByteArray().toList(), diagnostic.payload?.toList())
   }
 
-  private fun auditPrompts(harness: RunnerHarness): List<String> =
-    harness.launcher.requests
-      .map { requireNotNull(it.skillRunRequest.promptOverride) }
-      .filter { phaseIdFromPrompt(it) == "audit" }
+  private fun auditPrompts(harness: RunnerHarness): List<String> = harness.launcher.requests
+    .map { requireNotNull(it.skillRunRequest.promptOverride) }
+    .filter { phaseIdFromPrompt(it) == "audit" }
 
   private fun rejectingHarness(error: (String) -> Throwable): RunnerHarness {
     var auditAttempts = 0

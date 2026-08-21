@@ -113,7 +113,9 @@ internal object FeatureTaskRuntimePhaseProjectionShapes {
     "\n    - Required produced_outputs.repair_receipt shape. Emit one entry per carried finding;\n" +
       "      constructs are Type or Type.member with an optional file basename, never a bare path;\n" +
       "      intent is one line with no diff hunk, source body, or line number. A finding that needed\n" +
-      "      no edit still needs its no_edit_required entry. Add disturbed_remedies only when this round\n" +
+      "      no edit still needs its no_edit_required entry, and a finding you attempted and could not\n" +
+      "      close needs outcome attempted_unresolved with unresolved_reason and the constructs you\n" +
+      "      touched. Add disturbed_remedies only when this round\n" +
       "      removed or materially rewrote a construct a resolved repair_ledger entry names; omit it\n" +
       "      otherwise. The round number and the pre-fix checkpoint sha are runtime-owned: omit them,\n" +
       "      never guess them from a briefing hash:\n" +

@@ -134,8 +134,16 @@ $defs:
         minLength: 1
         maxLength: 256
       outcome:
+        description: >-
+          addressed: the round edited the named constructs and closed the finding. no_edit_required:
+          the finding needs no change, with the reason. attempted_unresolved: the round tried and the
+          finding is still open, with the reason and the constructs it touched. Additive and does not
+          bump contract_version; a producer written before it existed still validates. Omitting a
+          carried finding is never an outcome: the round is sent back for the omitted findings. A
+          finding reported attempted_unresolved gets one more fix attempt; reported unresolved twice,
+          it blocks for an operator carrying the reason instead of being lost silently.
         type: string
-        enum: [addressed, no_edit_required]
+        enum: [addressed, no_edit_required, attempted_unresolved]
       constructs:
         type: array
         maxItems: 16
@@ -150,6 +158,14 @@ $defs:
         minLength: 1
         maxLength: 256
         pattern: "^[^\\n\\r`]*\\S[^\\n\\r`]*$"
+      unresolved_reason:
+        description: >-
+          Why the attempt did not close the finding, on an attempted_unresolved entry. Read by an
+          operator, so it names what was tried and what still fails.
+        type: string
+        minLength: 1
+        maxLength: 256
+        pattern: "^[^\\n\\r`]*\\S[^\\n\\r`]*$"
     allOf:
       - if:
           properties:
@@ -158,13 +174,25 @@ $defs:
         then:
           properties:
             constructs: { minItems: 1 }
-          not: { required: [no_edit_reason] }
+          allOf:
+            - not: { required: [no_edit_reason] }
+            - not: { required: [unresolved_reason] }
       - if:
           properties:
             outcome: { const: no_edit_required }
           required: [outcome]
         then:
           required: [no_edit_reason]
+          not: { required: [unresolved_reason] }
+      - if:
+          properties:
+            outcome: { const: attempted_unresolved }
+          required: [outcome]
+        then:
+          required: [unresolved_reason]
+          properties:
+            constructs: { minItems: 1 }
+          not: { required: [no_edit_reason] }
   repairDisturbedRemedy:
     type: object
     additionalProperties: false

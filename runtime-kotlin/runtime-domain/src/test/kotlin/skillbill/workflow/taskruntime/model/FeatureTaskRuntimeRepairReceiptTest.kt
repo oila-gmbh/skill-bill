@@ -152,6 +152,61 @@ class FeatureTaskRuntimeRepairReceiptTest {
     assertTrue(!omittedSecond.coversCarriedFindings(carried))
   }
 
+  @Test
+  fun `an attempted_unresolved entry must carry a reason and the constructs it touched`() {
+    val unresolved = FeatureTaskRuntimeRepairReceiptEntry(
+      severity = "major",
+      label = "Policy",
+      text = "the gate still admits an empty set",
+      outcome = FeatureTaskRuntimeRepairOutcome.ATTEMPTED_UNRESOLVED,
+      constructs = listOf(FeatureTaskRuntimeRepairConstruct(symbol = "Policy.gate")),
+      intent = "reject an empty disposition set at the gate",
+      unresolvedReason = "the gate cannot reach the review pass ids it would compare",
+    )
+    assertEquals(
+      unresolved,
+      FeatureTaskRuntimeRepairReceiptEntry.fromArtifactMap(unresolved.toArtifactMap(), "repair_receipt.entries[0]"),
+    )
+
+    val reasonless = assertFailsWith<InvalidFeatureTaskRuntimeRepairReceiptError> {
+      unresolved.copy(unresolvedReason = null)
+    }
+    assertTrue(reasonless.payloadFreeReason.contains("must be present when outcome is attempted_unresolved"))
+
+    val constructless = assertFailsWith<InvalidFeatureTaskRuntimeRepairReceiptError> {
+      unresolved.copy(constructs = emptyList())
+    }
+    assertTrue(constructless.payloadFreeReason.contains("must name the constructs it touched"))
+  }
+
+  @Test
+  fun `an unresolved entry keeps the finding accounted for and separable from a closed one`() {
+    val carried = listOf(
+      GoalSubtaskReviewCompactFinding("blocker", "TypeKt", "closed this round", "F-001"),
+      GoalSubtaskReviewCompactFinding("major", "Policy", "still open", "F-002"),
+    )
+    val receipt = FeatureTaskRuntimeRepairReceipt(
+      roundNumber = 1,
+      preFixCheckpointSha = sha,
+      entries = listOf(
+        addressedEntry(label = "TypeKt", text = "closed this round", findingId = "F-001"),
+        FeatureTaskRuntimeRepairReceiptEntry(
+          severity = "major",
+          label = "Policy",
+          text = "still open",
+          outcome = FeatureTaskRuntimeRepairOutcome.ATTEMPTED_UNRESOLVED,
+          constructs = listOf(FeatureTaskRuntimeRepairConstruct(symbol = "Policy.gate")),
+          intent = "reject an empty disposition set at the gate",
+          findingId = "F-002",
+          unresolvedReason = "the gate cannot reach the review pass ids it would compare",
+        ),
+      ),
+    )
+
+    assertTrue(receipt.omittedCarriedFindings(carried).isEmpty())
+    assertEquals(listOf("F-002"), receipt.attemptedUnresolvedEntries().map { it.findingId })
+  }
+
   private fun validReceipt() = FeatureTaskRuntimeRepairReceipt(
     roundNumber = 1,
     preFixCheckpointSha = sha,
