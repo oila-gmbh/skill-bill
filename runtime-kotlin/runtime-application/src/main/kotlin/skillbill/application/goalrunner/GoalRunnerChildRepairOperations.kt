@@ -13,6 +13,7 @@ import skillbill.application.model.GoalRunnerWedgeClass
 import skillbill.application.model.GoalRunnerWedgeFinding
 import skillbill.application.workflow.WorkflowFamily
 import skillbill.application.workflow.updateGoalParentForBlockedPhaseRetry
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.goalrunner.model.GoalRunnerTerminalStatus
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.ports.persistence.WorkflowStateRepository
@@ -25,6 +26,7 @@ import skillbill.workflow.WorkflowEngine
 import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_PLANNING_IMPORT_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
@@ -40,6 +42,7 @@ internal const val PASSED_REVIEW_BASE: String = "review_base_reachable"
 internal const val PASSED_REMEDIATION_BASE: String = "remediation_base_reachable_or_absent"
 internal const val PASSED_CONTINUATION_OUTCOME: String = "continuation_outcome_corroborated_or_absent"
 internal const val PASSED_UPSTREAM_OUTPUT: String = "upstream_output_present"
+internal const val PASSED_PHASE_OUTPUT_CONTRACT: String = "phase_output_contract_compatible"
 
 /**
  * Shared diagnosis/repair helpers for [WorkflowGoalRunnerOutcomeStore]. Reachability uses
@@ -68,6 +71,7 @@ internal class GoalRunnerChildRepairOperations(
     diagnoseReviewBases(artifacts, repoRoot, wedges, passed)
     diagnoseStaleBlockedOutcome(record, artifacts, issueKey, subtaskId, wedges, passed)
     diagnoseCompletedUpstreamMissingOutput(artifacts, wedges, passed)
+    diagnosePhaseOutputContract(artifacts, wedges, passed)
 
     return GoalRunnerChildWedgeDiagnosis(
       subtaskId = subtaskId,
@@ -106,6 +110,7 @@ internal class GoalRunnerChildRepairOperations(
 
     for (wedgeClass in wedgeClasses.distinct()) {
       when (wedgeClass) {
+        GoalRunnerWedgeClass.PHASE_OUTPUT_CONTRACT_INCOMPATIBLE -> continue
         GoalRunnerWedgeClass.MISSING_VALIDATION_DEPTH -> {
           val continuation = workingContinuation ?: continue
           if (continuation.validationDepth != null) continue
@@ -289,8 +294,27 @@ internal class GoalRunnerChildRepairOperations(
       PASSED_REMEDIATION_BASE,
       PASSED_CONTINUATION_OUTCOME,
       PASSED_UPSTREAM_OUTPUT,
+      PASSED_PHASE_OUTPUT_CONTRACT,
     ),
   )
+
+  private fun diagnosePhaseOutputContract(
+    artifacts: Map<String, Any?>,
+    wedges: MutableList<GoalRunnerWedgeFinding>,
+    passed: MutableList<String>,
+  ) {
+    val importArtifact = artifacts[FEATURE_TASK_RUNTIME_GOAL_PLANNING_IMPORT_ARTIFACT_KEY] as? Map<*, *>
+    val storedVersion = importArtifact?.get("phase_output_contract_version") as? String
+    if (storedVersion == null || storedVersion == FEATURE_TASK_RUNTIME_CONTRACT_VERSION) {
+      passed += PASSED_PHASE_OUTPUT_CONTRACT
+      return
+    }
+    wedges += GoalRunnerWedgeFinding(
+      wedgeClass = GoalRunnerWedgeClass.PHASE_OUTPUT_CONTRACT_INCOMPATIBLE,
+      field = GoalRunnerWedgeClass.PHASE_OUTPUT_CONTRACT_INCOMPATIBLE.durableField,
+      currentValue = storedVersion,
+    )
+  }
 
   private fun diagnoseCompletedUpstreamMissingOutput(
     artifacts: Map<String, Any?>,

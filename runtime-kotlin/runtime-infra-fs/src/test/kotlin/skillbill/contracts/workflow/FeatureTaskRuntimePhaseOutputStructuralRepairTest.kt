@@ -16,7 +16,7 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
   private val adapter = FeatureTaskRuntimePhaseOutputValidatorAdapter()
 
   private val validJson =
-    """{"contract_version":"0.3","phase_id":"plan","status":"completed","summary":"Plan output.",""" +
+    """{"contract_version":"0.4","phase_id":"plan","status":"completed","summary":"Plan output.",""" +
       """"produced_outputs":{"tasks":["task-1"]}}"""
 
   @Test
@@ -62,7 +62,7 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
   @Test
   fun `one missing nested delimiter is inserted before the existing outer closer`() {
     val validNestedJson =
-      """{"contract_version":"0.3","phase_id":"plan","status":"completed","summary":"Plan output.",""" +
+      """{"contract_version":"0.4","phase_id":"plan","status":"completed","summary":"Plan output.",""" +
         """"produced_outputs":{"tasks":[{"id":"task-1"}]}}"""
     val malformed = validNestedJson.replace("[{\"id\":\"task-1\"}]}}", "[{\"id\":\"task-1\"}}}")
 
@@ -130,7 +130,7 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
   @Test
   fun `structural characters inside JSON strings remain unchanged`() {
     val payload =
-      """{"contract_version":"0.3","phase_id":"plan","status":"completed",""" +
+      """{"contract_version":"0.4","phase_id":"plan","status":"completed",""" +
         """"summary":"literal } ] and escaped \"quote\"","produced_outputs":{"tasks":["task-1"]}}"""
 
     val result = adapter.validatePhaseOutput(payload, "plan")
@@ -154,7 +154,7 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
   @Test
   fun `duplicate object keys merge contents and concatenate arrays`() {
     val payload =
-      """{"contract_version":"0.3","phase_id":"plan","status":"completed","summary":"Plan output.",""" +
+      """{"contract_version":"0.4","phase_id":"plan","status":"completed","summary":"Plan output.",""" +
         """"produced_outputs":{"tasks":["task-1"]},"produced_outputs":{"notes":["n-1"],"tasks":["task-2"]}}"""
 
     val result = adapter.validatePhaseOutput(payload, "plan")
@@ -185,7 +185,7 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
 
   @Test
   fun `repaired syntax that fails schema remains rejected`() {
-    val malformed = """{"contract_version":"0.3","phase_id":"plan","status":"completed"}""".dropLast(1)
+    val malformed = """{"contract_version":"0.4","phase_id":"plan","status":"completed"}""".dropLast(1)
 
     val result = adapter.validatePhaseOutput(malformed, "plan")
 
@@ -206,7 +206,7 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
   @Test
   fun `conservative YAML flow repair preserves quoted scalar content`() {
     val malformed =
-      "{\"contract_version\": \"0.3\", phase_id: \"plan\", status: \"completed\", " +
+      "{\"contract_version\": \"0.4\", phase_id: \"plan\", status: \"completed\", " +
         "summary: \"brace } in a scalar\", produced_outputs: {tasks: [\"task-1\"]}"
     val repairedText = "$malformed}"
 
@@ -221,7 +221,7 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
 
   @Test
   fun `many unmatched closing delimiters stop candidate generation at the bounded limit`() {
-    val malformed = "{\"contract_version\":\"0.3\"" + "]".repeat(9)
+    val malformed = "{\"contract_version\":\"0.4\"" + "]".repeat(9)
 
     val result = adapter.validatePhaseOutput(malformed, "plan")
 
@@ -235,7 +235,7 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
     val malformedRejection = assertIs<FeatureTaskRuntimePhaseOutputValidationResult.Rejected>(malformed)
     assertEquals(FeatureTaskRuntimePhaseOutputFailureCode.MALFORMED, malformedRejection.code)
 
-    val truncated = adapter.validatePhaseOutput("{\"contract_version\":\"0.3\",", "plan")
+    val truncated = adapter.validatePhaseOutput("{\"contract_version\":\"0.4\",", "plan")
     val truncatedRejection = assertIs<FeatureTaskRuntimePhaseOutputValidationResult.Rejected>(truncated)
     assertEquals(FeatureTaskRuntimePhaseOutputFailureCode.NO_REPAIR_CANDIDATE, truncatedRejection.code)
 
@@ -308,8 +308,8 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
   @Test
   fun `audit extra closer before trailing verdict is dropped and the envelope is kept`() {
     val payload =
-      """{"contract_version":"0.3","phase_id":"audit","status":"completed","summary":"Audited production.",""" +
-        """"produced_outputs":{"gaps":[]},"derived_notes":"no production gap"},"verdict":"satisfied"}"""
+      """{"contract_version":"0.4","phase_id":"audit","status":"completed","summary":"Audited production.",""" +
+        """"produced_outputs":{"unmet_criteria":[]},"derived_notes":"no production gap"},"verdict":"satisfied"}"""
 
     val result = adapter.validatePhaseOutput(payload, "audit")
 
@@ -325,8 +325,8 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
   @Test
   fun `audit nested verdict with a missing closer is closed then aligned to the expected shape`() {
     val malformed =
-      """{"contract_version":"0.3","phase_id":"audit","status":"completed","summary":"Audited production.",""" +
-        """"produced_outputs":{"gaps":[],"verdict":"satisfied"}"""
+      """{"contract_version":"0.4","phase_id":"audit","status":"completed","summary":"Audited production.",""" +
+        """"produced_outputs":{"unmet_criteria":[],"verdict":"satisfied"}"""
 
     val result = adapter.validatePhaseOutput(malformed, "audit")
 
@@ -338,8 +338,8 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
   @Test
   fun `audit nested verdict is hoisted onto the expected envelope shape`() {
     val nested =
-      """{"contract_version":"0.3","phase_id":"audit","status":"completed","summary":"Audited production.",""" +
-        """"produced_outputs":{"gaps":[],"verdict":"satisfied"}}"""
+      """{"contract_version":"0.4","phase_id":"audit","status":"completed","summary":"Audited production.",""" +
+        """"produced_outputs":{"unmet_criteria":[],"verdict":"satisfied"}}"""
 
     val result = adapter.validatePhaseOutput(nested, "audit")
 
@@ -359,13 +359,13 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
     // SKILL-187 AC-005: block indentation is outside conservative flow repair; never invent closers.
     val blockYaml =
       """
-        contract_version: "0.3"
+        contract_version: "0.4"
         phase_id: "audit"
         status: "completed"
         summary: "SKILL187-UNSUPPORTED-YAML"
         verdict: "satisfied"
         produced_outputs:
-          gaps: []
+          unmet_criteria: []
       """.trimIndent()
 
     val decision = StructuralRepairCandidateEngine.repairExactText(blockYaml, "audit")

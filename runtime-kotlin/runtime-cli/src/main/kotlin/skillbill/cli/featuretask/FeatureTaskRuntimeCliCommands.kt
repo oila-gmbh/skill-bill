@@ -1161,12 +1161,7 @@ private fun FeatureTaskRuntimeStatusProjection?.toRuntimeStatusCliMap(workflowId
       "audit_repair" to it.auditRepair?.let { progress ->
         linkedMapOf(
           "first_pass_convergence" to progress.firstPassConvergence,
-          "recurring_gap_count" to progress.recurringGapCount,
-          "new_gap_count" to progress.newGapCount,
-          "attempted_repair_item_count" to progress.attemptedRepairItemCount,
-          "resolved_repair_item_count" to progress.resolvedRepairItemCount,
           "audit_gap_iteration_count" to progress.auditGapIterationCount,
-          "cached_counter_disagreement" to progress.cachedCounterDisagreement,
         )
       },
       "degraded_diagnostic" to it.degradedDiagnostic?.let { degraded ->

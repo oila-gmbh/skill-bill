@@ -4,6 +4,10 @@ import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CO
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_REPAIR_PLAN_CONTRACT_VERSION
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.REPAIR_RECEIPT_MAX_ENTRIES
+import skillbill.workflow.taskruntime.model.REPAIR_RECEIPT_MAX_INTENT_UTF8_BYTES
+import skillbill.workflow.taskruntime.model.REPAIR_RECEIPT_MAX_NO_EDIT_REASON_UTF8_BYTES
+import skillbill.workflow.taskruntime.model.REPAIR_RECEIPT_MAX_UNRESOLVED_REASON_UTF8_BYTES
 
 /**
  * The preplan, plan, and implement phases each emit a bounded planning projection that the NEXT
@@ -115,7 +119,13 @@ internal object FeatureTaskRuntimePhaseProjectionShapes {
       "      intent is one line with no diff hunk, source body, or line number. A finding that needed\n" +
       "      no edit still needs its no_edit_required entry, and a finding you attempted and could not\n" +
       "      close needs outcome attempted_unresolved with unresolved_reason and the constructs you\n" +
-      "      touched. Add disturbed_remedies only when this round\n" +
+      "      touched. HARD SIZE LIMITS, enforced by the schema: at most $REPAIR_RECEIPT_MAX_ENTRIES\n" +
+      "      entries; intent at most $REPAIR_RECEIPT_MAX_INTENT_UTF8_BYTES characters;\n" +
+      "      no_edit_reason at most $REPAIR_RECEIPT_MAX_NO_EDIT_REASON_UTF8_BYTES characters;\n" +
+      "      unresolved_reason at most $REPAIR_RECEIPT_MAX_UNRESOLVED_REASON_UTF8_BYTES characters.\n" +
+      "      Count the characters before you emit and compress to fit: one bounded sentence per field,\n" +
+      "      naming the decision rather than arguing it. An over-length field is rejected on content\n" +
+      "      that was otherwise correct. Add disturbed_remedies only when this round\n" +
       "      removed or materially rewrote a construct a resolved repair_ledger entry names; omit it\n" +
       "      otherwise. The round number and the pre-fix checkpoint sha are runtime-owned: omit them,\n" +
       "      never guess them from a briefing hash:\n" +

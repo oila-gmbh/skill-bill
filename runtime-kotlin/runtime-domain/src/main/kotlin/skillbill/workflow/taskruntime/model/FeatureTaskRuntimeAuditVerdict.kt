@@ -59,3 +59,24 @@ data class FeatureTaskRuntimeAuditVerdict(
       FeatureTaskRuntimeVerdict.GAPS_FOUND
     }
 }
+
+/** The one-line bound on an unmet-criterion note, mirroring `unmetCriterion.note` in the schema. */
+const val FEATURE_TASK_RUNTIME_AUDIT_NOTE_MAX_CHARS: Int = 356
+
+// Criterion refs are canonically uppercase (`AC-005`) while identifiers derived from them are
+// canonically lowercase, so a transcription of a ref into an identifier arrives in a case the domain
+// would otherwise reject with no way to discover the rule. Ingest seams canonicalize instead.
+fun canonicalAuditIdentifier(rawIdentifier: String): String = rawIdentifier.trim().lowercase()
+
+/**
+ * What the audit loop is worth observing once the report is just a criterion list: whether the first
+ * audit already found every criterion implemented, and how many remediation rounds the loop ran.
+ *
+ * The gap and repair-item counters this replaced described a per-item repair ledger the runtime no
+ * longer keeps: an audit names unmet criteria, the next implement round plans them, and the following
+ * audit re-decides every criterion from scratch. There are no item identities left to count.
+ */
+data class FeatureTaskRuntimeAuditProgress(
+  val firstPassConvergence: Boolean,
+  val auditGapIterationCount: Int,
+)

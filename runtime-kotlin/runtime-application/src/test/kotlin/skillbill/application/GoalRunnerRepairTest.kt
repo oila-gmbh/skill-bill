@@ -8,6 +8,7 @@ import skillbill.application.featuretask.phaseRecordsFrom
 import skillbill.application.goalrunner.GOAL_CHILD_REPAIR_EVIDENCE_ARTIFACT_KEY
 import skillbill.application.goalrunner.GoalRunnerStatusService
 import skillbill.application.goalrunner.PASSED_CONTINUATION_OUTCOME
+import skillbill.application.goalrunner.PASSED_PHASE_OUTPUT_CONTRACT
 import skillbill.application.goalrunner.PASSED_REMEDIATION_BASE
 import skillbill.application.goalrunner.PASSED_REVIEW_BASE
 import skillbill.application.goalrunner.PASSED_UPSTREAM_OUTPUT
@@ -57,6 +58,7 @@ import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_K
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import java.nio.file.Path
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
@@ -131,8 +133,62 @@ internal class GoalRunnerRepairTest : GoalRunnerRepairFixtures() {
         PASSED_REMEDIATION_BASE,
         PASSED_CONTINUATION_OUTCOME,
         PASSED_UPSTREAM_OUTPUT,
+        PASSED_PHASE_OUTPUT_CONTRACT,
       ),
       diagnosis.passedChecks,
+    )
+  }
+
+  @Test
+  fun `diagnosis names phase output contract incompatibility and apply refuses hard reset`() {
+    val workflows = InMemoryWorkflowStates()
+    val workflowId = "wftr-repair-contract-version"
+    workflows.saveFeatureTaskRuntimeWorkflow(
+      repairChildRecord(
+        workflowId = workflowId,
+        continuation = continuationMap(includeValidationDepth = true),
+        reviewState = healthyReviewState(),
+        extraArtifacts = mapOf(
+          "goal_planning_import" to mapOf(
+            "phase_output_contract_version" to "0.3",
+          ),
+        ),
+      ),
+    )
+    val store = repairStore(workflows, git = ReachableGit())
+    val diagnosis = store.diagnoseChildWedges(
+      workflowId = workflowId,
+      issueKey = ISSUE_KEY,
+      subtaskId = 1,
+      subtasks = listOf(subtask(1, workflowId)),
+      repoRoot = Path.of("."),
+    )
+    assertFalse(diagnosis.isHealthy)
+    assertEquals(
+      GoalRunnerWedgeClass.PHASE_OUTPUT_CONTRACT_INCOMPATIBLE,
+      diagnosis.wedges.single().wedgeClass,
+    )
+    assertEquals("0.3", diagnosis.wedges.single().currentValue)
+
+    val service = GoalRunnerStatusService(
+      manifestStore = RepairManifestStore(workflowId),
+      outcomeStore = store,
+      phaseRecorder = goalTestPhaseRecorder(),
+      childRepairStore = store,
+    )
+    val applied = service.repair(
+      GoalRunnerRepairRequest(
+        issueKey = ISSUE_KEY,
+        apply = true,
+        subtaskId = 1,
+        repoRoot = Path.of("."),
+      ),
+    )
+    assertEquals(GoalRunnerRepairStatus.OPERATOR_REQUIRED, applied.status)
+    assertTrue(applied.appliedRepairs.isEmpty())
+    assertContains(
+      applied.refusalReason.orEmpty(),
+      "skill-bill goal reset $ISSUE_KEY --hard --yes",
     )
   }
 
@@ -728,6 +784,7 @@ internal abstract class GoalRunnerRepairFixtures {
     goalContinuationOutcome: Map<String, Any?>? = null,
     commitSha: String? = null,
     abandonedBlockedStepId: String? = null,
+    extraArtifacts: Map<String, Any?> = emptyMap(),
   ): WorkflowStateRecord {
     val definition = WorkflowFamily.TASK_RUNTIME.definition
     val engine = WorkflowEngine(testWorkflowSnapshotValidator)
@@ -743,6 +800,7 @@ internal abstract class GoalRunnerRepairFixtures {
     }
     goalContinuationOutcome?.let { artifacts["goal_continuation_outcome"] = it }
     commitSha?.let { artifacts["commit_sha"] = it }
+    artifacts.putAll(extraArtifacts)
     return engine.updateRecord(
       definition,
       opened,

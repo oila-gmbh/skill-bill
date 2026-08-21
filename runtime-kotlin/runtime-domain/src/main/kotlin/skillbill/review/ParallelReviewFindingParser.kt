@@ -21,7 +21,8 @@ object ParallelReviewFindingParser {
       "(?<confidenceLevel>High|Medium|Low)\\s+\\|\\s+" +
       "(?:specialist=(?<specialistSkillName>[a-z0-9-]+)\\s+\\|\\s+)?" +
       "(?:commits=(?<commits>[^|\\r\\n]+?)\\s+\\|\\s+)?" +
-      "(?:path=(?<path>\"(?:\\\\.|[^\"\\\\])*\")\\s+\\|\\s+line=(?<line>\\d+)" +
+      "(?:path=(?:(?<pathQuoted>\"(?:\\\\.|[^\"\\\\])*\")|(?<pathBare>[^|\\r\\n]+?))\\s+\\|\\s+" +
+      "line=(?<line>\\d+)" +
       "|(?<legacyPath>[^|\\r\\n]+?):(?<legacyLine>\\d+))\\s+\\|\\s+" +
       "(?<description>.+)$",
     RegexOption.MULTILINE,
@@ -110,12 +111,11 @@ object ParallelReviewFindingParser {
   }
 
   private fun resolvePath(match: MatchResult): ResolvedPath {
-    val structuredPath = match.groups["path"]?.value
-    val decoded = if (structuredPath == null) {
-      match.groups["legacyPath"]?.value?.trim().orEmpty()
-    } else {
-      try {
-        decodeStructuredString(structuredPath)
+    val quoted = match.groups["pathQuoted"]?.value
+    val bare = match.groups["pathBare"]?.value?.trim()
+    val decoded = when {
+      quoted != null -> try {
+        decodeStructuredString(quoted)
       } catch (_: IllegalArgumentException) {
         return ResolvedPath(
           UNASSIGNED_REPOSITORY_PATH,
@@ -127,6 +127,8 @@ object ParallelReviewFindingParser {
           ParallelReviewFindingRejectionReason.UNPARSEABLE_STRUCTURED_PATH,
         )
       }
+      bare != null -> bare
+      else -> match.groups["legacyPath"]?.value?.trim().orEmpty()
     }
     if (decoded.isNotEmpty()) {
       try {

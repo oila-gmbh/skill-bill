@@ -50,10 +50,18 @@ Review is read-only. Do not build, compile, or run tests — no Gradle, Maven, n
 
 ## Output
 
-Return, in order:
+Return free-form review prose. There is no findings-register format gate and no `NO_FINDINGS` token — imperfect or missing register lines never fail the review.
 
-- the area checklist, one line per declared area with its checked status
-- the Risk Register as `- [F-NNN] Severity | Confidence | file:line | description`, using Blocker, Major, Minor, Nit and High, Medium, Low
-- the verdict
+Include:
+
+- the area checklist (which concerns you carried)
+- the defects and risks you found (or an explicit statement that none met the admission bar)
+- a final line exactly as `verdict: approved` or `verdict: changes_requested`
+
+When you have concrete defects, also emit optional `[F-XXX]` register lines so claim verification can re-check them:
+
+`[F-NNN] Severity | Confidence | specialist=<exact resolved rubric identity> | commits=<sha>[,<sha>] | path="<repo-relative path>" | line=<positive integer> | description`
+
+Use Blocker, Major, Minor, Nit and High, Medium, Low. Prefer quoted `path="..."`. Lines that do not parse are ignored for verification; they do not block settlement.
 
 State that specialist depth was not applied and that this result is not equivalent to a delegated result.

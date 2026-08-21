@@ -335,9 +335,9 @@ class FeatureTaskRuntimeCorrectiveRepairContextTest {
 class CorrectiveRepairContextConformanceTest {
   @Test
   fun `JSON and YAML synthetic responses project with matching digest metadata and payload-free fallbacks`() {
-    val jsonBody = """{"contract_version":"0.3","phase_id":"audit","status":"completed","sentinel":"SKILL187-JSON"}"""
+    val jsonBody = """{"contract_version":"0.4","phase_id":"audit","status":"completed","sentinel":"SKILL187-JSON"}"""
     val yamlBody = """
-      |contract_version: "0.3"
+      |contract_version: "0.4"
       |phase_id: audit
       |status: completed
       |sentinel: SKILL187-YAML

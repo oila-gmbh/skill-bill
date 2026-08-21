@@ -7,11 +7,6 @@ data class FeatureTaskRuntimeAuditRepairProgressDecision(
   val reason: String?,
 )
 
-data class FeatureTaskRuntimeAuditRepairGapIdentities(
-  val gapIds: Set<String>,
-  val criterionRefs: Set<String>,
-)
-
 /**
  * Advance-blocking finding identities compared across consecutive remediation review passes.
  * Finding ids renumber every pass, so identity is severity + label + text (already sanitized).
@@ -21,32 +16,26 @@ data class FeatureTaskRuntimeReviewRemediationFindingIdentities(
   val identities: Set<String>,
 )
 
-// Gap-id equality alone is defeatable: dispositioning a gap resolved and re-reporting the same criterion
-// under the next generation churns every identifier while the defect set is untouched. The criterion-ref
-// set is the churn-proof key, so either an unchanged identity set or an unchanged criterion set counts as
-// an equivalent gap set.
+/**
+ * Audit-side non-convergence: the same unmet acceptance criteria across consecutive audits with an
+ * unchanged repository blocks instead of re-entering implement. The criterion refs are the whole key —
+ * there are no gap identities left to churn — so an audit that keeps naming the same criteria while the
+ * tree stands still has stopped making progress. An empty current set is convergence, not a stall.
+ */
 fun detectAuditRepairNonProgress(
-  previous: FeatureTaskRuntimeAuditRepairGapIdentities,
-  current: FeatureTaskRuntimeAuditRepairGapIdentities,
+  previousCriterionRefs: Set<String>,
+  currentCriterionRefs: Set<String>,
   previousRepositoryFingerprint: String,
   currentRepositoryFingerprint: String,
-  newlyResolvedRepairItemCount: Int,
 ): FeatureTaskRuntimeAuditRepairProgressDecision {
-  val equivalentGapIds = previous.gapIds == current.gapIds
-  val equivalentCriteria = previous.criterionRefs.isNotEmpty() && previous.criterionRefs == current.criterionRefs
-  val equivalentGaps = equivalentGapIds || equivalentCriteria
+  val equivalentCriteria = currentCriterionRefs.isNotEmpty() && previousCriterionRefs == currentCriterionRefs
   val repositoryUnchanged = previousRepositoryFingerprint == currentRepositoryFingerprint
-  val blocked = equivalentGaps && (repositoryUnchanged || newlyResolvedRepairItemCount == 0)
-  val identityDetail = if (equivalentGapIds) {
-    "unresolved gap identities are unchanged"
-  } else {
-    "the unresolved acceptance criteria are unchanged (${current.criterionRefs.sorted()}) under renamed gap ids"
-  }
+  val blocked = equivalentCriteria && repositoryUnchanged
   return FeatureTaskRuntimeAuditRepairProgressDecision(
     blocked = blocked,
     reason = if (blocked) {
-      "Audit repair made no progress: $identityDetail and " +
-        if (repositoryUnchanged) "the repository fingerprint is unchanged." else "no repair item was newly resolved."
+      "Audit made no progress: the unmet acceptance criteria are unchanged " +
+        "(${currentCriterionRefs.sorted()}) and the repository fingerprint is unchanged."
     } else {
       null
     },

@@ -421,39 +421,6 @@ class InvalidFeatureTaskRuntimeRepairPlanError(
   cause,
 )
 
-class InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError(
-  val sourceLabel: String,
-  val reason: String,
-  cause: Throwable? = null,
-  /**
-   * The same violation as [reason], restated with schema-side content only: the violated rule, the
-   * expected shape, and the offending field's name or path. It never carries an instance value, a body
-   * fragment, or any other span of the response that failed — [reason] is the value-bearing variant and
-   * belongs only in a private diagnostic row or a local log. Null means the throwing seam had no
-   * mechanically value-free restatement available; a consumer must then fall back to its own payload-free
-   * rejection sentence and must never substitute [reason].
-   */
-  val payloadFreeReason: String? = null,
-) : ShellContentContractException(
-  "Feature-task-runtime audit repair plan '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation: $reason",
-  cause,
-)
-
-/**
- * Surfaced when an append-only audit generation fails the canonical audit-generation schema. Distinct
- * from [InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError] because a generation is durable history:
- * rejecting one quarantines and regenerates the workflow's audit authority rather than re-prompting a
- * producer for a better plan.
- */
-class InvalidFeatureTaskRuntimeAuditGenerationSchemaError(
-  val sourceLabel: String,
-  val reason: String,
-  cause: Throwable? = null,
-) : ShellContentContractException(
-  "Feature-task-runtime audit generation '${sourceLabel.ifBlank { "<unknown>" }}' fails schema validation: $reason",
-  cause,
-)
-
 /**
  * Surfaced when a feature-task-runtime planning projection (preplanning digest, executable plan,
  * plan commitment, or implementation receipt) fails the canonical planning-projections schema.

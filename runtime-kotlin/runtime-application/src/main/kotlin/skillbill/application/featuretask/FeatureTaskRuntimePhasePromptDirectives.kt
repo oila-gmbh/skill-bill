@@ -10,6 +10,8 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorReviewContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
+import skillbill.workflow.taskruntime.model.REPAIR_RECEIPT_MAX_NO_EDIT_REASON_UTF8_BYTES
+import skillbill.workflow.taskruntime.model.REPAIR_RECEIPT_MAX_UNRESOLVED_REASON_UTF8_BYTES
 
 // Phase-scoped prompt directives and the per-phase task directive table, split out of
 // FeatureTaskRuntimePhasePromptComposer so the composer object stays within its size budget.
@@ -332,12 +334,11 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "it applied none, names what already satisfied the work, and stops — the audit re-reads the tree " +
     "itself, so proving convergence path by path here only risks overflowing the field. When the " +
     "briefing carries audit_gaps, reuse its immutable initial preplan and plan outputs and change " +
-    "only what the latest listed gaps require; do not regenerate planning, expand scope, or disturb " +
-    "settled implementation. Under the audit-gap loop, report repair_item_results for every carried " +
-    "repair item with a terminal fixed or already_satisfied outcome, or list it in " +
-    "superseded_repair_items with its governing decision, authority_ref, and rationale. Reporting fewer " +
-    "items than you were carried is a resumable partial repair, not a completion. Repair evidence is " +
-    "read-only repository facts: do not run builds or tests here.",
+    "only what the listed acceptance criteria require; do not regenerate planning, expand scope, or " +
+    "disturb settled implementation. The receipt is the same implementation_receipt as any other " +
+    "round: there are no repair-item identifiers to report and no per-item evidence to record, because " +
+    "the next audit re-reads the tree and decides every criterion again. Repair evidence is read-only " +
+    "repository facts: do not run builds or tests here.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN_FIX to
     "Decide the root cause of each carried review finding before any edit is made. Do not modify " +
     "repository files during this phase; the following implement_fix phase applies your plan. Read the " +
@@ -373,28 +374,29 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "path), and a bounded one-line repair intent. A legitimately unedited finding still needs its " +
     "no_edit_required entry, and a finding you could not close needs its attempted_unresolved entry, " +
     "which buys it one more attempt before it goes to an operator. Leaving a carried finding out is " +
-    "never an outcome: the round is sent back for it.",
+    "never an outcome: the round is sent back for it. Fit every field inside its limit rather than " +
+    "writing to length and hoping: no_edit_reason and unresolved_reason are capped at " +
+    "$REPAIR_RECEIPT_MAX_NO_EDIT_REASON_UTF8_BYTES and " +
+    "$REPAIR_RECEIPT_MAX_UNRESOLVED_REASON_UTF8_BYTES characters. State the decision in one sentence " +
+    "and stop; do not restate the contract, cite acceptance criteria, or argue the case. A field over " +
+    "its cap is rejected even when what it says is right.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW to
     "The runtime owns this review. Do not run bill-code-review, do not emit findings, and do not " +
     "report unsatisfied acceptance criteria. Criterion-gap detection remains exclusive to the audit phase.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT to
-    "Run the encoded completeness audit ceremony and report production-behavior or production-implementation " +
-    "acceptance-criterion gaps only. Never report test adequacy, coverage, fixtures, assertions, or other " +
-    "test-only concerns as audit gaps. The upstream implementation receipt is a producer CLAIM, not " +
-    "evidence: read the repository itself at the resolved checkpoint in the briefing — the diff over its " +
-    "base_ref/head_ref plus its scoped_owned_paths — and compare that actual state against the plan " +
-    "commitment and the acceptance criteria. A criterion is satisfied only by repository evidence you " +
-    "read; never mark one satisfied because the receipt lists a completed task id, a changed path, or " +
-    "reconciliation_evidence claiming reconciled. A claim contradicted by the tree is itself a gap. " +
-    "Emit audit_result with clearance_status, review_scope, and the exact repository_checkpoint; " +
-    "keep audit reasoning and repair history outside the clearance. Account for every carried gap the " +
-    "briefing lists against repository evidence: a defect still present keeps its identity and is re-reported " +
-    "in gaps under its existing gap_id, and one you verified fixed gets a carried_gap_dispositions entry " +
-    "with status resolved and evidence.observation exactly resolution_verified (never a sentence). Leaving " +
-    "a carried gap out claims nothing and is rejected. Before emitting a satisfied clearance, also emit " +
-    "blast_radius_inspection naming the repair batch's changed production paths, the gap ids any newly " +
-    "introduced defect opens, and evidence.observation exactly resolution_verified. All evidence is " +
-    "read-only repository facts: never run a " +
+    "Answer one question: is every acceptance criterion in the briefing implemented in the repository? " +
+    "Read the tree itself at the resolved checkpoint — the diff over its base_ref/head_ref plus its " +
+    "scoped_owned_paths. The upstream implementation receipt is a producer CLAIM, not evidence: never " +
+    "mark a criterion satisfied because the receipt lists a completed task id, a changed path, or " +
+    "reconciliation_evidence claiming reconciled. A claim the tree contradicts is itself unmet. " +
+    "Report the answer as verdict plus produced_outputs.unmet_criteria: verdict satisfied with an " +
+    "empty array when every criterion is implemented, or verdict gaps_found with one entry per unmet " +
+    "criterion, each carrying its criterion ref and one line on what is missing. That is the entire " +
+    "audit report — no repair plan, no per-item identifiers, no verification bookkeeping. The next " +
+    "implement round receives the refs you name and plans the work itself; a later audit re-checks " +
+    "every criterion from scratch, so you never need to account for what an earlier audit said. " +
+    "Judge production behavior and production implementation only: test adequacy, coverage, fixtures, " +
+    "and assertions are never unmet criteria. All evidence is read-only repository facts: never run a " +
     "build, a test, or any other command as audit evidence; validation owns test execution and failures.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE to RUNTIME_OWNED_VALIDATE_PHASE_TASK,
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY to

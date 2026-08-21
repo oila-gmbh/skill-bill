@@ -14,8 +14,7 @@ import skillbill.application.model.IdeStatusCurrentPhaseExecution
 import skillbill.application.model.IdeStatusCurrentPhaseExecutionKind
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGenerationHistory
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
@@ -55,23 +54,14 @@ class FeatureTaskRuntimeStatusService(
   fun status(request: FeatureTaskRuntimeStatusRequest): FeatureTaskRuntimeStatusProjection? {
     val records = recorder.loadPhaseRecords(request.workflowId, request.dbPathOverride) ?: return null
     val decomposeTerminal = decomposeTerminalRecorder.loadDecomposeTerminal(request.workflowId, request.dbPathOverride)
-    val cachedAuditRepairProgress =
-      recorder.loadAuditRepairState(request.workflowId, request.dbPathOverride)?.progress
     val ledger = recorder.loadPhaseLedger(request.workflowId, request.dbPathOverride).orEmpty()
-    val auditRepairProgress = auditRepairProgressFrom(
-      recorder.loadAuditGenerationHistory(request.workflowId, request.dbPathOverride),
-      ledger,
-      cachedAuditRepairProgress,
-    )
+    val auditRepairProgress = auditProgressFrom(records, ledger)
     val durableBlockedPhaseIds = records.filterValues { it.status == PHASE_STATUS_BLOCKED }.keys
     val blockedPhaseIds = durableBlockedPhaseIds + ledgerBlockedPhaseIds(ledger, durableBlockedPhaseIds)
     val phases = phaseStatuses(records, blockedPhaseIds, ledger)
     val terminalDecomposeRecorded = decomposeTerminal != null
     val currentPhaseId = resolveCurrentPhaseId(terminalDecomposeRecorded, records, phases, ledger)
-    val auditRepair = auditRepairStatus(
-      auditRepairProgress,
-      cachedCounterDisagreement(auditRepairProgress, cachedAuditRepairProgress),
-    )
+    val auditRepair = auditRepairStatus(auditRepairProgress)
     val gateRunCount = recorder.loadValidationGateProgress(request.workflowId, request.dbPathOverride)?.gateRunCount
     return FeatureTaskRuntimeStatusProjection(
       workflowId = request.workflowId,
@@ -132,59 +122,31 @@ class FeatureTaskRuntimeStatusService(
   }
 
   /**
-   * Audit-convergence counters, derived from the append-only generation history rather than read from a
-   * stored counter. The audit-loop count comes from the phase ledger's own audit-gap edge trail. The
-   * replaceable cache is written before the loop edge it will later reflect and the ledger is pruned while
-   * the cache is monotone, so the two disagreeing is an ordinary bookkeeping state: status reports the
-   * derived value and names the disagreement as a field instead of failing the operator's only view of the
-   * run.
+   * The audit loop's progress, derived by the shared [FeatureTaskRuntimeAuditConvergence] so this
+   * projection and finished telemetry cannot disagree about the same workflow. Absent when no audit
+   * record exists, which keeps "never audited" distinct from "audited and found gaps".
    */
-  private fun auditRepairProgressFrom(
-    history: FeatureTaskRuntimeAuditGenerationHistory,
+  private fun auditProgressFrom(
+    records: Map<String, FeatureTaskRuntimePhaseRecord>,
     ledger: List<FeatureTaskRuntimePhaseLedgerEntry>,
-    cached: FeatureTaskRuntimeAuditRepairProgress?,
-  ): FeatureTaskRuntimeAuditRepairProgress? {
-    val ledgerCount = ledgerAuditGapIterationCount(ledger)
-    if (history.generations.isEmpty()) {
-      // The replaceable cache may hold a nonzero count written before its LOOP_EDGE lands.
-      // Without durable audit-gap edge evidence, never expose that cache as a semantic loop.
-      return cached?.copy(auditGapIterationCount = ledgerCount)
-    }
-    return history.deriveProgress(auditGapIterationCount = ledgerCount)
-  }
-
-  private fun cachedCounterDisagreement(
-    derived: FeatureTaskRuntimeAuditRepairProgress?,
-    cached: FeatureTaskRuntimeAuditRepairProgress?,
-  ): String? {
-    if (derived == null || cached == null || cached === derived) return null
-    if (cached.auditGapIterationCount == derived.auditGapIterationCount) return null
-    return "audit_gap_iteration_count derived from durable generations is ${derived.auditGapIterationCount}; " +
-      "the replaceable audit-repair cache holds ${cached.auditGapIterationCount}. The derived value is reported."
+  ): FeatureTaskRuntimeAuditProgress? {
+    val auditRecord = records[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT] ?: return null
+    return FeatureTaskRuntimeAuditConvergence.progressFrom(
+      auditRecord = auditRecord,
+      auditGapIterationCount = ledgerAuditGapIterationCount(ledger),
+    )
   }
 
   private fun ledgerAuditGapIterationCount(ledger: List<FeatureTaskRuntimePhaseLedgerEntry>): Int =
-    ledger.filter { it.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID }
-      .mapNotNull { it.edgeIteration }
-      .maxOrNull()
-      ?: 0
+    FeatureTaskRuntimeAuditConvergence.auditGapIterationCount(ledger)
 
-  // Derived from the generation history alone: a completed audit always appends its generation, so an absent
-  // progress projection means no audit has settled, not that one converged on its first pass.
-  private fun auditRepairStatus(
-    progress: FeatureTaskRuntimeAuditRepairProgress?,
-    cachedCounterDisagreement: String?,
-  ): FeatureTaskRuntimeAuditRepairStatus? = progress?.let {
-    FeatureTaskRuntimeAuditRepairStatus(
-      cachedCounterDisagreement = cachedCounterDisagreement,
-      firstPassConvergence = it.firstPassConvergence,
-      recurringGapCount = it.recurringGapCount,
-      newGapCount = it.newGapCount,
-      attemptedRepairItemCount = it.attemptedRepairItemCount,
-      resolvedRepairItemCount = it.resolvedRepairItemCount,
-      auditGapIterationCount = it.auditGapIterationCount,
-    )
-  }
+  private fun auditRepairStatus(progress: FeatureTaskRuntimeAuditProgress?): FeatureTaskRuntimeAuditRepairStatus? =
+    progress?.let {
+      FeatureTaskRuntimeAuditRepairStatus(
+        firstPassConvergence = it.firstPassConvergence,
+        auditGapIterationCount = it.auditGapIterationCount,
+      )
+    }
 
   // Supplementary ledger-derived blocked-ness: a phase is blocked when its newest ledger entry is
   // BLOCKED and no durable blocked record already covers it; a later entry from a resumed run

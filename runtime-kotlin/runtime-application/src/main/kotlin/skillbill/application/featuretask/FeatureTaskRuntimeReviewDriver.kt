@@ -31,9 +31,12 @@ fun interface FeatureTaskRuntimeReviewDriver {
   companion object {
     val EMPTY: FeatureTaskRuntimeReviewDriver = FeatureTaskRuntimeReviewDriver { request ->
       ParallelCodeReviewResult(
-        mergeResult = ParallelReviewMergeResult(findings = emptyList(), formattedOutput = "NO_FINDINGS"),
+        mergeResult = ParallelReviewMergeResult(
+          findings = emptyList(),
+          formattedOutput = "verdict: approved",
+        ),
         lane1 = ParallelReviewLaneStatus(agentId = request.agent1Id, success = true),
-        lane2 = ParallelReviewLaneStatus(agentId = request.agent2Id.orEmpty(), success = true),
+        lane2 = ParallelReviewLaneStatus(agentId = "", success = true),
       )
     }
   }
@@ -75,7 +78,7 @@ internal object FeatureTaskRuntimeReviewDriverMapper {
     val resolution = FeatureTaskRuntimeReviewPassSequence.resolveForPass(pass.pinnedMode, pass.passNumber)
     return ParallelCodeReviewRequest(
       agent1Id = agents.agent1Id,
-      agent2Id = agents.parallelReviewAgent?.takeIf(String::isNotBlank),
+      agent2Id = null,
       scope = ParallelReviewScope.UNSTAGED,
       repoRoot = workspace.repoRoot,
       timeout = workspace.timeout,
@@ -100,15 +103,17 @@ internal object FeatureTaskRuntimeReviewDriverMapper {
 internal object FeatureTaskRuntimeReviewEnvelope {
   private val CRITERION_GAP_KEYS = setOf("unmet_criteria", "gaps", "failing_criteria")
   private const val REVIEW_RUN_ID_SUFFIX_LENGTH = 4
+  private const val SUMMARY_MAX_CHARS = 2_000
 
   fun assemble(
     result: ParallelCodeReviewResult,
     reviewRunId: String,
     cycle: FeatureTaskRuntimeReviewCycleContext,
   ): String {
+    val prose = result.mergeResult.formattedOutput.trim().ifBlank { "Review completed." }
     val findings = result.mergeResult.findings.map(::findingPayload)
     val produced = linkedMapOf<String, Any?>(
-      FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS to findings,
+      FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS to emptyList<Any?>(),
       FeatureTaskRuntimeVerificationSignalKeys.REVIEW_RUN_ID to reviewRunId,
       "repository_checkpoint" to mapOf("fingerprint" to cycle.repositoryFingerprint),
     )
@@ -118,18 +123,40 @@ internal object FeatureTaskRuntimeReviewEnvelope {
     commitFocusedAccounting(result, cycle.resolvedTier)?.let { accounting ->
       produced["commit_focused_accounting"] = accounting.toArtifactMap()
     }
-    laneDiagnostics(result)?.let { produced["lane_diagnostics"] = it }
     CRITERION_GAP_KEYS.forEach { key -> produced.remove(key) }
     val envelope = linkedMapOf<String, Any?>(
       "contract_version" to FEATURE_TASK_RUNTIME_CONTRACT_VERSION,
       "phase_id" to "review",
       "status" to STATUS_COMPLETED,
-      "summary" to reviewSummary(findings.size),
+      "summary" to prose.take(SUMMARY_MAX_CHARS),
       "produced_outputs" to produced,
+      FeatureTaskRuntimeVerificationSignalKeys.VERDICT to extractReviewVerdict(prose).wireValue,
     )
     val outcome = GoalSubtaskReviewSummaryReducer.outcomeFor(envelope)
+    produced[FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS] = findings
     envelope[FeatureTaskRuntimeVerificationSignalKeys.VERDICT] = outcome.verdict.wireValue
     return JsonSupport.mapToJsonString(envelope)
+  }
+
+  fun extractReviewVerdict(prose: String): FeatureTaskRuntimeVerdict {
+    val line = prose.lineSequence()
+      .map { it.trim() }
+      .lastOrNull { it.startsWith("verdict:", ignoreCase = true) }
+      ?: prose.lineSequence().map { it.trim() }.lastOrNull {
+        it.equals("approved", ignoreCase = true) ||
+          it.equals("changes_requested", ignoreCase = true) ||
+          it.equals("needs_fix", ignoreCase = true)
+      }
+    val token = when {
+      line == null -> return FeatureTaskRuntimeVerdict.APPROVED
+      line.startsWith("verdict:", ignoreCase = true) ->
+        line.substringAfter(':').trim().lowercase()
+      else -> line.lowercase()
+    }
+    return when (token) {
+      "changes_requested", "needs_fix" -> FeatureTaskRuntimeVerdict.CHANGES_REQUESTED
+      else -> FeatureTaskRuntimeVerdict.APPROVED
+    }
   }
 
   fun envelopeMap(outputText: String): Map<String, Any?> = JsonSupport.parseObjectOrNull(outputText)
@@ -143,19 +170,6 @@ internal object FeatureTaskRuntimeReviewEnvelope {
     val suffix = CharArray(REVIEW_RUN_ID_SUFFIX_LENGTH) { alphabet.random() }.concatToString()
     return "rvw-$stamp-$suffix"
   }
-
-  private fun reviewSummary(findingCount: Int): String = if (findingCount == 0) {
-    "Runtime-owned review completed with no findings."
-  } else {
-    "Runtime-owned review completed with $findingCount findings."
-  }
-
-  private fun laneDiagnostics(result: ParallelCodeReviewResult): List<Map<String, Any?>>? =
-    listOf(result.lane1, result.lane2)
-      .mapNotNull { lane ->
-        lane.droppedCandidateDiagnostic?.let { mapOf("agent_id" to lane.agentId, "diagnostic" to it) }
-      }
-      .takeIf { it.isNotEmpty() }
 
   private fun findingPayload(finding: ParallelReviewMergedFinding): Map<String, Any?> = buildMap {
     put("finding_id", finding.fNumber)

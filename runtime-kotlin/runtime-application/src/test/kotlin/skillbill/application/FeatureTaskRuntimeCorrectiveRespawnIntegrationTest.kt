@@ -114,7 +114,8 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
   @Test
   fun `a later phase retry cannot receive a stale repair body from an earlier phase`() {
     val planBody = completedPhaseBody("0.2", "plan", "SKILL187-PLAN-STALE", """{"mode":"direct","tasks":[]}""")
-    val auditBody = completedPhaseBody("0.3", "audit", "SKILL187-AUDIT-CURRENT", """{"gaps":[]}""", "satisfied")
+    val auditBody =
+      completedPhaseBody("0.4", "audit", "SKILL187-AUDIT-CURRENT", """{"unmet_criteria":[]}""", "satisfied")
     var planAttempts = 0
     var auditAttempts = 0
     val harness = runnerHarness(
@@ -165,10 +166,10 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
   @Test
   fun `delimiter repair then expected-shape restore accepts nested verdict without a relaunch`() {
     val malformed = completedPhaseBody(
-      "0.3",
+      "0.4",
       "audit",
       "SKILL187-DELIMITER",
-      """{"gaps":[],"verdict":"satisfied"}""",
+      """{"unmet_criteria":[],"verdict":"satisfied"}""",
     ).dropLast(1)
     var auditAttempts = 0
     val harness = runnerHarness(
@@ -498,37 +499,6 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
   }
 
   @Test
-  fun `audit unauthorized observation and oversized artifact_ref thread exact captures into corrective launches`() {
-    // SKILL-187 AC-003/AC-004: real adapter rejects; next launch sees the body plus payload-free cues.
-    listOf(
-      Skill187SyntheticAuditResponses.unauthorizedObservation() to
-        Skill187SyntheticAuditResponses.OBSERVATION_SENTINEL,
-      Skill187SyntheticAuditResponses.oversizedExpandedArtifactRef() to
-        Skill187SyntheticAuditResponses.ARTIFACT_SENTINEL,
-    ).forEach { (rejectedBody, sentinel) ->
-      var auditAttempts = 0
-      val harness = runnerHarness(
-        launcher = RuntimeRecordingLauncher { request ->
-          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-          if (phaseId != "audit") return@RuntimeRecordingLauncher facts(defaultPhaseOutput(request))
-          auditAttempts += 1
-          facts(
-            if (auditAttempts == 1) rejectedBody else Skill187SyntheticAuditResponses.correctedSatisfied(),
-          )
-        },
-        validator = realAuditValidator(),
-      )
-
-      val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
-      assertContains(blocked.blockedReason, "cap=1")
-      assertEquals(1, auditAttempts)
-      val diagnostic = harness.io.database.rejectedDiagnostics().single { it.metadata.phaseId == "audit" }
-      assertEquals(rejectedBody.encodeToByteArray().toList(), diagnostic.payload?.toList())
-      assertNoRawResponseSpan(blocked.blockedReason, sentinel)
-    }
-  }
-
-  @Test
   fun `delimiter plus nested verdict is restored on the existing capture`() {
     val malformed = Skill187SyntheticAuditResponses.nestedVerdictMissingDelimiter()
     var auditAttempts = 0
@@ -553,7 +523,7 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
 
   @Test
   fun `audit schema correction keeps INVALID_OUTPUT payload-free on every operator surface`() {
-    val rejectedBody = Skill187SyntheticAuditResponses.unauthorizedObservation()
+    val rejectedBody = Skill187SyntheticAuditResponses.invalidCriterionShape()
     var auditAttempts = 0
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->

@@ -3,7 +3,6 @@
 package skillbill.application
 
 import skillbill.application.model.FeatureTaskRuntimeRunReport
-import skillbill.error.InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import kotlin.test.Test
@@ -91,23 +90,6 @@ class FeatureTaskRuntimeRejectionConstraintPrivacyTest {
     assertNoRawResponseSpan(blocked.blockedReason, rawSpan)
     val writeHistoryRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["write_history"])
     assertNoRawResponseSpan(requireNotNull(writeHistoryRecord.blockedReason), rawSpan, payloadFreeConstraint)
-  }
-
-  @Test
-  fun `an audit-repair-plan rejection routes its two reasons the same way`() {
-    val harness = rejectingHarness { sourceLabel ->
-      InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError(
-        sourceLabel = sourceLabel,
-        reason = valueBearingReason,
-        payloadFreeReason = payloadFreeConstraint,
-      )
-    }
-
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
-    assertContains(blocked.blockedReason, "cap=1")
-    assertPrivateDiagnosticRejection(blocked.blockedReason, "audit-repair-plan-schema", rawSpan, payloadFreeConstraint)
-    val diagnostic = harness.io.database.rejectedDiagnostics().single { it.metadata.phaseId == "audit" }
-    assertContains(diagnostic.metadata.reason, rawSpan)
   }
 
   @Test

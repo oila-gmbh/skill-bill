@@ -35,7 +35,6 @@ import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
 import skillbill.error.FeatureTaskRuntimePhaseOrderViolationError
 import skillbill.error.FeatureTaskRuntimePhaseOutputFailureKind
-import skillbill.error.InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseBriefingFramingError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
@@ -77,9 +76,6 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimeTransitionFunction
 import skillbill.workflow.taskruntime.model.CorrectiveRepairCapturedResponse
 import skillbill.workflow.taskruntime.model.CorrectiveRepairDiagnosticLocator
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairGapIdentities
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
@@ -95,7 +91,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorReviewContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProducerIteration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionFailureClassification
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairBatch
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
@@ -117,7 +112,6 @@ import skillbill.workflow.taskruntime.model.QUARANTINE_REJECTION_CLASS_PLANNING_
 import skillbill.workflow.taskruntime.model.ReviewPassResolution
 import skillbill.workflow.taskruntime.model.acceptanceCriterionRefsFor
 import skillbill.workflow.taskruntime.model.advanceBlockingFindingIdentities
-import skillbill.workflow.taskruntime.model.canonicalAuditIdentifier
 import skillbill.workflow.taskruntime.model.detectAuditRepairNonProgress
 import skillbill.workflow.taskruntime.model.detectReviewRemediationNonProgress
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeReviewRemediationChurn
@@ -248,6 +242,15 @@ internal class FeatureTaskRuntimeRunLoop(
   private var pendingReentry: PendingReentry? = resumedReentry()
   private var activeReentry: PendingReentry? = pendingReentry
 
+  /**
+   * What the previous audit in this process decided: the criteria it named and the tree it read. The
+   * non-progress bound compares against these rather than a durable repair ledger, which no longer
+   * exists. A fresh process after a crash starts without them and simply skips one comparison; the
+   * audit_gap edge cap is the absolute bound either way.
+   */
+  private var previousAuditCriterionRefs: Set<String> = emptySet()
+  private var previousAuditFingerprint: String? = null
+
   // SKILL-140: set when a phase launch quarantined an upstream record and requested regeneration, so
   // advance() settles the consumer with the RECORD_REJECTED verdict rather than a normal completion.
   private var recordRejectionSettlementPending: Boolean = false
@@ -265,21 +268,6 @@ internal class FeatureTaskRuntimeRunLoop(
     }
     state.recordEdgeIteration(loopId, reentry.edgeIteration)
     val auditGapLoop = loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
-    val auditRepairState = if (auditGapLoop) {
-      recorder.loadAuditRepairState(request.workflowId, request.dbPathOverride)
-    } else {
-      null
-    }
-    // A blocked audit attempt replaces the phase record, erasing its copy of the accepted plan and the
-    // unmet criteria. The durable repair state is the single authority and still holds both, and
-    // drive() requires the phase-record copy to equal the durable accepted plan anyway, so recover from
-    // the authority rather than blocking a resume that already has everything it needs.
-    val auditRepairPlan = if (auditGapLoop) {
-      state.auditRepairPlan(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT)
-        ?: auditRepairState?.acceptedPlans?.lastOrNull()
-    } else {
-      null
-    }
     return PendingReentry(
       phaseId = reentry.destinationPhaseId,
       loopId = loopId,
@@ -287,12 +275,9 @@ internal class FeatureTaskRuntimeRunLoop(
       drivingVerdict = reentry.drivingVerdict,
       reentryGapCriteria = if (auditGapLoop) {
         state.unmetAuditCriteria(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT)
-          .ifEmpty { auditRepairPlan?.gaps.orEmpty().map { it.acceptanceCriterionRef } }
       } else {
         emptyList()
       },
-      auditRepairPlan = auditRepairPlan,
-      auditRepairState = auditRepairState,
       expectedRepositoryCheckpoint = if (
         loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID
       ) {
@@ -328,18 +313,11 @@ internal class FeatureTaskRuntimeRunLoop(
         blockInvalidAuditGapRecovery(resumedReentry, reason)
         return
       }
-      if (resumedReentry.auditRepairPlan == null || resumedReentry.auditRepairState == null) {
+      if (resumedReentry.reentryGapCriteria.isEmpty()) {
         blockInvalidAuditGapRecovery(
           resumedReentry,
-          "Audit-gap recovery requires the exact durably persisted audit repair plan and state.",
-        )
-        return
-      }
-      if (resumedReentry.auditRepairPlan != resumedReentry.auditRepairState.acceptedPlans.lastOrNull()) {
-        blockInvalidAuditGapRecovery(
-          resumedReentry,
-          "Audit-gap recovery requires the phase-record repair plan to be identical to the latest durable " +
-            "accepted plan.",
+          "Audit-gap recovery requires the unmet acceptance criteria the audit reported; the resumed " +
+            "audit record carries none.",
         )
         return
       }
@@ -707,11 +685,10 @@ internal class FeatureTaskRuntimeRunLoop(
     }
   }
 
-  private fun authoritativeAuditRepairPlanMatches(auditPhaseId: String): Boolean {
-    val normalizedPlan = state.auditRepairPlan(auditPhaseId) ?: return false
-    val durableState = recorder.loadAuditRepairState(request.workflowId, request.dbPathOverride) ?: return false
-    return durableState.acceptedPlans.lastOrNull() == normalizedPlan
-  }
+  // An audit reports unmet criteria and nothing durable is accepted from it, so there is no plan
+  // identity for a resumed re-entry to match: the criteria on the audit record are the whole authority.
+  private fun authoritativeAuditRepairPlanMatches(auditPhaseId: String): Boolean =
+    state.unmetAuditCriteria(auditPhaseId).isNotEmpty()
 
   private fun reentersMutatingPhase(edge: FeatureTaskRuntimeBackwardEdge, destinationPhaseId: String): Boolean =
     spanBetween(destinationPhaseId, edge.fromPhaseId).any(FeatureTaskRuntimePhaseWorkflowDefinition::isMutatingPhase)
@@ -1299,86 +1276,6 @@ internal class FeatureTaskRuntimeRunLoop(
     )
   }
 
-  /**
-   * Reclassifies the two audit gates whose rejection is an unaccounted-item count rather than a
-   * malformed document: a follow-up audit that left carried gaps undispositioned, and a repair receipt
-   * that left carried repair items unclosed. Both messages already call the state resumable, but
-   * routing them through the output-gate budget blocked them on first sight. Naming the items and
-   * re-entering the phase is what lets one round work through every item it was given.
-   *
-   * Every other rejection under these rules — an undeclared item, a malformed disposition, an absent
-   * blast-radius record — stays on the output-gate budget, because those are documents to repair.
-   */
-  private fun unaccountedAuditItemsAttempt(
-    run: PhaseRun,
-    rule: String,
-    outputMap: Map<String, Any?>,
-    fileManifest: FeatureTaskRuntimePhaseFileManifest,
-  ): AttemptResult? {
-    val produced = JsonSupport.anyToStringAnyMap(outputMap["produced_outputs"]).orEmpty()
-    val (itemNoun, unaccounted) = when (rule) {
-      RULE_AUDIT_FOLLOWUP_EVIDENCE ->
-        "audit gaps" to FeatureTaskRuntimeAuditGenerationGates
-          .undispositionedCarriedGapIds(
-            history = recorder.loadAuditGenerationHistory(request.workflowId, request.dbPathOverride),
-            dispositionedGapIds = dispositionedCarriedGapIds(produced, expandedPlanGapIds(produced)),
-          )
-      RULE_AUDIT_REPAIR_CLOSURE ->
-        "repair items" to FeatureTaskRuntimeAuditGenerationGates
-          .unclosedRepairItemIds(
-            activeBatch = recorder.loadAuditGenerationHistory(request.workflowId, request.dbPathOverride)
-              .activeRepairBatch(),
-            reportedRepairItemIds = reportedRepairItemIds(produced),
-          )
-      RULE_AUDIT_REPAIR_RESULT -> "repair items" to unaccountedRepairPlanItemIds(outputMap, produced)
-      else -> return null
-    }
-    if (unaccounted.isEmpty()) return null
-    return AttemptResult.unaccountedItems(
-      phaseId = run.phaseId,
-      itemNoun = itemNoun,
-      unaccountedRefs = unaccounted,
-      retryReason = "Your output left these carried $itemNoun unaccounted for: " +
-        unaccounted.joinToString(", ") + ". Continue this attempt: work through each one and report " +
-        "it. Every carried item needs an explicit outcome; leaving one out is not an outcome, and " +
-        "reporting the same set again stops the run for an operator.",
-      fileManifest = fileManifest,
-    )
-  }
-
-  /**
-   * The accepted plan's repair items a completed remediation reported no outcome for.
-   *
-   * Empty for every other way the results can be wrong — a duplicate identifier, one the plan does not
-   * carry, a superseded item that overlaps a result, a malformed deferred list, or a blocked remediation
-   * that legitimately defers work. Those are documents to repair, so they keep the output-gate budget;
-   * only "you have not reported these items yet" is unfinished work worth re-entering the phase for.
-   */
-  private fun unaccountedRepairPlanItemIds(outputMap: Map<String, Any?>, produced: Map<String, Any?>): List<String> {
-    if (outputMap["status"] != STATUS_COMPLETED) return emptyList()
-    val expected = activeReentry
-      ?.takeIf { it.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID }
-      ?.auditRepairPlan?.gaps.orEmpty()
-      .flatMap { it.repairItems }
-      .map { it.repairItemId }
-    if (expected.isEmpty()) return emptyList()
-    val resultMaps = (produced["repair_item_results"] as? List<*>).orEmpty()
-      .mapNotNull(JsonSupport::anyToStringAnyMap)
-    val actual = resultMaps.mapNotNull { (it["repair_item_id"] as? String)?.let(::canonicalAuditIdentifier) }
-    val superseded = supersededRepairItemIds(produced)
-    val deferredRaw = produced["deferred_repair_item_ids"]
-    val onlyDefectIsMissingItems = actual.size == resultMaps.size &&
-      actual.size == actual.toSet().size &&
-      actual.all { it in expected } &&
-      superseded.all { it in expected } &&
-      actual.toSet().intersect(superseded).isEmpty() &&
-      deferredRaw is List<*> &&
-      deferredRaw.isEmpty()
-    if (!onlyDefectIsMissingItems) return emptyList()
-    val closed = actual.toSet() + superseded
-    return expected.filterNot(closed::contains)
-  }
-
   private fun owedFindingsAttempt(
     settlement: RepairReceiptSettlement,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
@@ -1826,16 +1723,6 @@ internal class FeatureTaskRuntimeRunLoop(
       edgeIteration,
       verdict,
       reentryGapCriteria,
-      if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) {
-        state.auditRepairPlan(edge.fromPhaseId)
-      } else {
-        null
-      },
-      if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) {
-        recorder.loadAuditRepairState(request.workflowId, request.dbPathOverride)
-      } else {
-        null
-      },
       if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID) {
         reviewedCheckpointFingerprint()
       } else {
@@ -2652,8 +2539,6 @@ internal class FeatureTaskRuntimeRunLoop(
     val edgeIteration: Int,
     val drivingVerdict: FeatureTaskRuntimeVerdict,
     val reentryGapCriteria: List<String> = emptyList(),
-    val auditRepairPlan: FeatureTaskRuntimeAuditRepairPlan? = null,
-    val auditRepairState: FeatureTaskRuntimeAuditRepairState? = null,
     val expectedRepositoryCheckpoint: String? = null,
   )
 
@@ -2704,7 +2589,6 @@ internal class FeatureTaskRuntimeRunLoop(
       specSource = specSource,
       reentry = reentry,
     )
-    settledFullyClosedAudit(run, state, observability)?.let { return it }
     preLaunchBlock(run, state, observability)?.let { return it }
     return when (val prepared = prepareGoalReviewRun(run, observability)) {
       is GoalReviewRunReady -> when {
@@ -2726,104 +2610,13 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun declaredCriterionRefs(): List<String> =
     acceptanceCriterionRefsFor(request.runInvariants.acceptanceCriteria.size)
 
-  private fun durablyClosedCriterionRefs(): List<String> {
-    val closed = recorder.loadAuditRepairState(request.workflowId, request.dbPathOverride)
-      ?.satisfiedCriterionRefs
-      .orEmpty()
-    val undeclared = closed.filterNot { it in declaredCriterionRefs().toSet() }.sorted()
-    if (undeclared.isNotEmpty()) {
-      throw InvalidWorkflowStateSchemaError(
-        "audit_repair_state.satisfied_criterion_refs contains criteria not declared by this run: $undeclared.",
-      )
-    }
-    return closed
-  }
+  // Empty by construction: every audit re-decides every declared criterion against the tree, so no
+  // criterion is ever durably closed against a later audit. Kept as a seam because the audit briefing
+  // and the open-criteria projection both read it.
+  private fun durablyClosedCriterionRefs(): List<String> = emptyList()
 
   private fun openAuditCriterionRefs(closedCriterionRefs: List<String> = durablyClosedCriterionRefs()): List<String> =
     declaredCriterionRefs() - closedCriterionRefs.toSet()
-
-  /**
-   * Settles the audit as satisfied without launching a child when every acceptance criterion is
-   * already durably closed. The audit has nothing left to verify, so launching one could only produce
-   * a gap against a closed criterion, which the closure gate rejects anyway.
-   */
-  private fun settledFullyClosedAudit(
-    run: PhaseRun,
-    state: FeatureTaskRuntimeRunState,
-    observability: FeatureTaskRuntimeRunObservability,
-  ): PhaseOutcome? {
-    val closedCriterionRefs = fullyClosedAuditCriterionRefs(run) ?: return null
-    val iteration = state.nextIteration(run.phaseId)
-    val outputText = fullyClosedAuditOutput(closedCriterionRefs)
-    val acceptedOutput = runCatching {
-      outputValidator.validatePhaseOutput(outputText, sourceLabel = run.phaseId).requireAcceptedOutput(run.phaseId)
-    }.getOrElse { error ->
-      return blockAndPersistInPhase(
-        run,
-        iteration,
-        "Audit settlement derived from durable criterion closure did not validate: ${error.message.orEmpty()}",
-        observability,
-      )
-    }
-    val normalizedOutput = acceptedOutput.normalizedOutput
-    val persisted = recorder.recordCompletedPhase(
-      phaseStateRequest(
-        run,
-        iteration,
-        STATUS_COMPLETED,
-        finished = true,
-        outputArtifact = outputText,
-        normalizedOutput = normalizedOutput,
-        repairEvidence = acceptedOutput.repairEvidence,
-      ),
-      run.request.dbPathOverride,
-    )
-    if (!persisted) {
-      return blockAndPersistInPhase(
-        run,
-        iteration,
-        "Audit settlement derived from durable criterion closure could not be persisted.",
-        observability,
-        failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
-      )
-    }
-    observability.completed(run.phaseId, run.resolvedAgent.resolvedAgentId, iteration)
-    return PhaseOutcome.completed(
-      FeatureTaskRuntimePhaseOutput(
-        run.phaseId,
-        iteration,
-        normalizedOutput.canonicalJson,
-        normalizedOutput,
-        acceptedOutput.repairEvidence,
-      ),
-    )
-  }
-
-  private fun fullyClosedAuditCriterionRefs(run: PhaseRun): List<String>? {
-    if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) return null
-    val repairState = recorder.loadAuditRepairState(request.workflowId, request.dbPathOverride) ?: return null
-    val closedCriterionRefs = repairState.satisfiedCriterionRefs
-    return closedCriterionRefs.takeIf {
-      repairState.unresolvedGapLedger.unresolvedGaps.isEmpty() &&
-        closedCriterionRefs.isNotEmpty() &&
-        openAuditCriterionRefs(closedCriterionRefs).isEmpty()
-    }
-  }
-
-  private fun fullyClosedAuditOutput(closedCriterionRefs: List<String>): String = JsonSupport.mapToJsonString(
-    mapOf(
-      "contract_version" to FEATURE_TASK_RUNTIME_CONTRACT_VERSION,
-      "phase_id" to FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
-      "status" to STATUS_COMPLETED,
-      "verdict" to FeatureTaskRuntimeVerdict.SATISFIED.wireValue,
-      "summary" to "Every acceptance criterion reached a satisfied verdict in an earlier audit and is durably " +
-        "closed, so this audit settles satisfied from that closure without re-verifying a closed criterion.",
-      "produced_outputs" to mapOf(
-        "unmet_criteria" to emptyList<Any?>(),
-        "durably_closed_criteria" to closedCriterionRefs.sorted(),
-      ),
-    ),
-  )
 
   private fun prepareGoalReviewRun(
     run: PhaseRun,
@@ -3094,8 +2887,7 @@ internal class FeatureTaskRuntimeRunLoop(
     val recoverableAuditRepairSource =
       run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT &&
         run.reentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID &&
-        run.reentry.auditRepairPlan != null &&
-        run.reentry.auditRepairState != null
+        run.reentry.reentryGapCriteria.isNotEmpty()
     return missingUpstream(run.declaration, state.outputs())
       ?.filterNot {
         recoverableAuditRepairSource && it == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT
@@ -4686,30 +4478,6 @@ internal class FeatureTaskRuntimeRunLoop(
         structuralRepairEvidence = repairEvidence,
       ),
     )
-  } catch (error: InvalidFeatureTaskRuntimeAuditRepairPlanSchemaError) {
-    val path = rejectionPath(error.reason)
-    val reason = payloadFreeRejectionReason("audit-repair-plan-schema", path)
-    val diagnosticWrite = recordRejectedOutput(
-      run, iteration, "audit-repair-plan-schema", error.reason, outputBytes, path = path,
-      outputTruncated = outputTruncated, outputByteSize = outputByteSize, outputSha256 = outputSha256,
-    )
-    schemaInvalidAttempt(
-      reason,
-      fileManifest,
-      retryReason = retryRejectionReason(reason, error.payloadFreeReason),
-      correctiveRepairContext = correctiveRepairContextForRejection(
-        run = run,
-        iteration = iteration,
-        outputText = outputText,
-        outputTruncated = outputTruncated,
-        outputByteSize = outputByteSize,
-        outputSha256 = outputSha256,
-        diagnosticWrite = diagnosticWrite,
-        rejectionRule = "audit-repair-plan-schema",
-        rejectionPath = path,
-        payloadFreeConstraint = error.payloadFreeReason.orEmpty(),
-      ),
-    )
   }
 
   /**
@@ -4825,7 +4593,6 @@ internal class FeatureTaskRuntimeRunLoop(
     // validation_receipt consumer projection requires them. Attest measured-absent counts here so
     // the first completed attempt satisfies write_history without burning a fix-loop retry.
     val attested = attestAbsentGateValidationReceipt(run, normalizedOutput)
-    val outputTextCanonical = attested.canonicalJson
     val outputMap = attested.envelope
     val capture = ValidatedOutputCapture(
       run = run,
@@ -4839,8 +4606,7 @@ internal class FeatureTaskRuntimeRunLoop(
       fileManifest = fileManifest,
     )
     fun reject(rule: String, detail: String): AttemptResult = rejectValidatedOutput(capture, outputMap, rule, detail)
-    firstValidatedOutputRejection(run.phaseId, outputTextCanonical, outputMap)?.let { (rule, reason) ->
-      unaccountedAuditItemsAttempt(run, rule, outputMap, fileManifest)?.let { return it }
+    firstValidatedOutputRejection(run.phaseId, outputMap)?.let { (rule, reason) ->
       return reject(rule, reason)
     }
     val repositoryFingerprint = completedPhaseRepositoryFingerprint(run)?.let { result ->
@@ -4956,10 +4722,9 @@ internal class FeatureTaskRuntimeRunLoop(
     rule: String,
     detail: String,
   ): AttemptResult {
-    val structuredIdentity = structuredRepairDiagnosticIdentity(detail)
-    val diagnosticRule = structuredIdentity?.first ?: rule
-    val path = structuredIdentity?.second ?: rejectionPath(detail)
-    val reason = payloadFreeRejectionReason(rule, if (structuredIdentity == null) path else "/")
+    val diagnosticRule = rule
+    val path = rejectionPath(detail)
+    val reason = payloadFreeRejectionReason(rule, path)
     // Only scrubbed semantic templates reach the retry reason. Response-derived dumps stay in the
     // private diagnostic and the authorized repair body.
     val retryFacingConstraint = payloadFreeSemanticGateConstraint(rule, detail, outputMap)
@@ -5220,9 +4985,7 @@ internal class FeatureTaskRuntimeRunLoop(
       .orEmpty().values
     return FeatureTaskRuntimeImplementationObligations(
       plannedTaskIds = featureTaskRuntimePlannedTaskIdsFrom(delivered, run.phaseId),
-      carriedRepairItemIds = featureTaskRuntimeCarriedRepairItemIds(
-        run.reentry?.auditRepairPlan?.gaps.orEmpty().flatMap { gap -> gap.repairItems.map { it.repairItemId } },
-      ),
+      carriedRepairItemIds = featureTaskRuntimeCarriedRepairItemIds(emptyList()),
       loopId = loopId,
       edgeIteration = run.reentry?.edgeIteration,
     )
@@ -5246,12 +5009,6 @@ internal class FeatureTaskRuntimeRunLoop(
     return featureTaskRuntimeImplementationContinuationFrom(run.phaseId, attempts, implementationObligations(run))
       ?.takeIf { it.openObligationIds.isNotEmpty() || it.unresolvedItems.isNotEmpty() }
   }
-
-  private fun nonCompactAuditDurableLedgerGateReason(
-    phaseId: String,
-    outputText: String,
-    outputMap: Map<String, Any?>,
-  ): String? = if (isCompactAuditOutput(phaseId, outputText)) null else auditDurableLedgerGateReason(phaseId, outputMap)
 
   /**
    * The structural contract a phase claiming completion owes its consumer, as the first failing rule.
@@ -5283,123 +5040,8 @@ internal class FeatureTaskRuntimeRunLoop(
     )?.let { "consumer-projection" to it }
     ?: outputVerificationGateReason(run.phaseId, outputMap)?.let { "output-verification" to it }
 
-  private fun firstValidatedOutputRejection(
-    phaseId: String,
-    outputText: String,
-    outputMap: Map<String, Any?>,
-  ): Pair<String, String>? =
+  private fun firstValidatedOutputRejection(phaseId: String, outputMap: Map<String, Any?>): Pair<String, String>? =
     mutatingReconciliationGateReason(phaseId, outputMap)?.let { "mutating-reconciliation" to it }
-      ?: terminalAuditRepairBlockGateReason(phaseId, outputMap)?.let { "terminal-audit-repair" to it }
-      ?: auditRepairResultGateReason(phaseId, outputMap)?.let { RULE_AUDIT_REPAIR_RESULT to it }
-      ?: repairClosureGateReason(phaseId, outputMap)?.let { RULE_AUDIT_REPAIR_CLOSURE to it }
-      ?: nonCompactAuditDurableLedgerGateReason(phaseId, outputText, outputMap)
-        ?.let { "audit-durable-ledger" to it }
-      ?: followUpAuditEvidenceGateReason(phaseId, outputMap)
-        ?.let { RULE_AUDIT_FOLLOWUP_EVIDENCE to it }
-      ?: auditClosedCriterionGateReason(phaseId, outputMap)?.let { "audit-closed-criterion" to it }
-
-  /**
-   * Producer-side closure gate for an audit-gap repair attempt, evaluated against the durable generation
-   * authority rather than the receipt's own account of what it was carrying. A receipt that dispositions
-   * fewer items than the active batch carries is a resumable partial repair, so it is named and re-entered
-   * instead of settling as completion.
-   */
-  @Suppress("ReturnCount")
-  private fun repairClosureGateReason(phaseId: String, outputMap: Map<String, Any?>): String? {
-    if (activeReentry?.loopId != FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) return null
-    if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(phaseId)) return null
-    if (outputMap["status"] != STATUS_COMPLETED) return null
-    val activeBatch = recorder.loadAuditGenerationHistory(request.workflowId, request.dbPathOverride)
-      .activeRepairBatch()
-      ?: return null
-    val produced = JsonSupport.anyToStringAnyMap(outputMap["produced_outputs"]).orEmpty()
-    return FeatureTaskRuntimeAuditGenerationGates.repairClosureBlockReason(
-      activeBatch,
-      reportedRepairItemIds = reportedRepairItemIds(produced),
-    )
-  }
-
-  /**
-   * Every terminal disposition a repair receipt claims: a verified outcome, or a governed supersession. Both
-   * close a carried obligation; nothing else does.
-   */
-  private fun reportedRepairItemIds(produced: Map<String, Any?>): Set<String> {
-    val results = (produced["repair_item_results"] as? List<*>).orEmpty()
-      .mapNotNull(JsonSupport::anyToStringAnyMap)
-      .mapNotNull { (it["repair_item_id"] as? String)?.let(::canonicalAuditIdentifier) }
-    return results.toSet() + supersededRepairItemIds(produced)
-  }
-
-  /**
-   * A malformed supersession claim is a repairable contract defect, so it is named to the agent as a gate
-   * reason rather than escaping as an exception that would end the run with no durable block.
-   */
-  private fun supersededRepairItemDiagnostic(produced: Map<String, Any?>): String? =
-    runCatching { supersededRepairItemsFrom(produced) }.exceptionOrNull()?.let { failure ->
-      structuredRepairDiagnostic(
-        "audit_repair.superseded_repair_items.shape",
-        "/produced_outputs/superseded_repair_items",
-        "A governed supersession must name repair_item_id, governing_decision, authority_ref, and rationale: " +
-          failure.diagnosticMessage(),
-      )
-    }
-
-  private fun supersededRepairItemIds(produced: Map<String, Any?>): Set<String> =
-    runCatching { supersededRepairItemsFrom(produced).keys }.getOrDefault(emptySet())
-
-  /**
-   * A follow-up audit reaches a satisfied verdict only after it dispositions every carried gap and records the
-   * repair batch's production blast radius. Evaluated against the EXPANDED envelope, never the raw compact
-   * output: the mandated audit shape always carries `produced_outputs.gaps`, so short-circuiting on that key
-   * disabled this gate in production entirely.
-   */
-  @Suppress("ReturnCount")
-  private fun followUpAuditEvidenceGateReason(phaseId: String, outputMap: Map<String, Any?>): String? {
-    if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) return null
-    val history = recorder.loadAuditGenerationHistory(request.workflowId, request.dbPathOverride)
-    val produced = JsonSupport.anyToStringAnyMap(outputMap["produced_outputs"]).orEmpty()
-    val reportedGapIds = expandedPlanGapIds(produced)
-    // Decoded before the no-history short-circuit: an initial audit that emits a disposition anyway is
-    // dispositioning a gap nothing carries, and that defect belongs in the fix loop too.
-    FeatureTaskRuntimeAuditGenerationGates.carriedGapDispositionDefect(
-      producedOutputs = produced,
-      carriedGapIds = history.latestGapStates().filterValues { it.open }.keys,
-      reportedGapIds = reportedGapIds,
-    )?.let { return it }
-    // Decoded before the no-history short-circuit for the same reason: the recorder parses this key inside its
-    // durable write transaction, and the phase-output schema does not validate it, so an unnamed decode failure
-    // on an initial audit would kill the run instead of entering the bounded audit fix loop.
-    val blastRadius = runCatching { blastRadiusInspectionFrom(produced, phaseId) }
-    blastRadius.exceptionOrNull()?.let { failure ->
-      return "Audit blast_radius_inspection is not contract-safe: ${failure.diagnosticMessage()}"
-    }
-    if (history.generations.isEmpty()) return null
-    return FeatureTaskRuntimeAuditGenerationGates.followUpAuditBlockReason(
-      history = history,
-      dispositionedGapIds = dispositionedCarriedGapIds(produced, reportedGapIds),
-      blastRadiusInspection = blastRadius.getOrNull(),
-      reportsGaps = reportedGapIds.isNotEmpty(),
-    )
-  }
-
-  private fun expandedPlanGapIds(produced: Map<String, Any?>): Set<String> =
-    (JsonSupport.anyToStringAnyMap(produced["audit_repair_plan"])?.get("gaps") as? List<*>)
-      .orEmpty()
-      .mapNotNull { JsonSupport.anyToStringAnyMap(it)?.get("gap_id") as? String }
-      .mapTo(linkedSetOf(), ::canonicalAuditIdentifier)
-
-  /**
-   * Which carried gaps this audit actually spoke to. A re-reported gap recurs under its own identity. Any
-   * other carried gap must be dispositioned explicitly: the expanded envelope's `prior_gap_dispositions`, or
-   * `carried_gap_dispositions`, which the mandated compact audit shape can carry alongside `gaps`. Omission
-   * is deliberately not counted — claiming a gap resolved by staying silent about it is the laundering this
-   * gate exists to stop.
-   */
-  private fun dispositionedCarriedGapIds(produced: Map<String, Any?>, reportedGapIds: Set<String>): Set<String> =
-    FEATURE_TASK_RUNTIME_AUDIT_GAP_DISPOSITION_KEYS
-      .flatMap { key -> (produced[key] as? List<*>).orEmpty() }
-      .mapNotNull { JsonSupport.anyToStringAnyMap(it)?.get("gap_id") as? String }
-      .mapTo(linkedSetOf(), ::canonicalAuditIdentifier) + reportedGapIds
 
   /**
    * A completed producer must satisfy the exact projection its immediate forward consumer will parse.
@@ -5672,40 +5314,25 @@ internal class FeatureTaskRuntimeRunLoop(
     outputMap: Map<String, Any?>,
     repositoryFingerprint: String?,
   ): String? {
-    if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT ||
-      run.reentry?.loopId != FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
-    ) {
-      return null
-    }
-    val prior = recorder.loadAuditRepairState(request.workflowId, request.dbPathOverride) ?: return null
-    // Review no longer sits inside the reopened [implement, audit] span, so non-progress detection is
-    // the only bound left on the uncapped audit-gap cycle. An absent fingerprint means repository
-    // change could not be proven, which is not evidence that anything moved: treat it as unchanged so
-    // an equivalent recurring gap set blocks, rather than disarming the bound and looping forever.
-    val previousFingerprint = prior.repositoryFingerprint ?: UNPROVEN_REPOSITORY_FINGERPRINT
-    val currentFingerprint = repositoryFingerprint ?: UNPROVEN_REPOSITORY_FINGERPRINT
-    val produced = JsonSupport.anyToStringAnyMap(outputMap["produced_outputs"]).orEmpty()
-    val currentPlan = produced["audit_repair_plan"]?.let {
-      auditRepairPlanFromWire(it, "audit.produced_outputs.audit_repair_plan")
-    }
-    val currentGapIds = currentPlan?.gaps.orEmpty().mapTo(linkedSetOf()) { it.gapId }
-    if (currentGapIds.isEmpty()) return null
-    val latestPlanItemIds = prior.acceptedPlans.last().gaps
-      .flatMap { it.repairItems }
-      .mapTo(linkedSetOf()) { it.repairItemId }
-    val resolvedCount = prior.repairItemResults.count { it.repairItemId in latestPlanItemIds }
+    if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) return null
+    // The criteria the previous audit reported are exactly what this remediation round was given, so the
+    // re-entry carries them; the current output carries what this audit decided. No durable repair
+    // ledger is involved. An absent fingerprint means repository change could not be proven, which is
+    // not evidence that anything moved: treat it as unchanged so an unchanged criterion set blocks
+    // rather than disarming the only bound on the audit-gap cycle.
+    val currentCriterionRefs = FeatureTaskRuntimeOutputVerification
+      .unmetAuditCriteria(outputMap)
+      .mapTo(linkedSetOf()) { it.uppercase() }
+    val previousCriterionRefs = previousAuditCriterionRefs
+    val previousFingerprint = previousAuditFingerprint
+    previousAuditCriterionRefs = currentCriterionRefs
+    previousAuditFingerprint = repositoryFingerprint
+    if (previousCriterionRefs.isEmpty() || currentCriterionRefs.isEmpty()) return null
     return detectAuditRepairNonProgress(
-      previous = FeatureTaskRuntimeAuditRepairGapIdentities(
-        gapIds = prior.unresolvedGapLedger.unresolvedGaps.mapTo(linkedSetOf()) { it.gapId },
-        criterionRefs = prior.unresolvedGapLedger.unresolvedGaps.mapTo(linkedSetOf()) { it.acceptanceCriterionRef },
-      ),
-      current = FeatureTaskRuntimeAuditRepairGapIdentities(
-        gapIds = currentGapIds,
-        criterionRefs = currentPlan?.gaps.orEmpty().mapTo(linkedSetOf()) { it.acceptanceCriterionRef },
-      ),
-      previousRepositoryFingerprint = previousFingerprint,
-      currentRepositoryFingerprint = currentFingerprint,
-      newlyResolvedRepairItemCount = resolvedCount,
+      previousCriterionRefs = previousCriterionRefs,
+      currentCriterionRefs = currentCriterionRefs,
+      previousRepositoryFingerprint = previousFingerprint ?: UNPROVEN_REPOSITORY_FINGERPRINT,
+      currentRepositoryFingerprint = repositoryFingerprint ?: UNPROVEN_REPOSITORY_FINGERPRINT,
     ).reason
   }
 
@@ -5747,265 +5374,6 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun outputVerificationGateReason(phaseId: String, outputMap: Map<String, Any?>): String? =
     reviewVerificationSignalGateReason(phaseId, outputMap)
       ?: auditVerificationSignalGateReason(phaseId, outputMap)
-
-  private fun isCompactAuditOutput(phaseId: String, canonicalJson: String): Boolean {
-    if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) return false
-    val wireOutput = JsonSupport.parseObjectOrNull(canonicalJson)
-      ?.let(JsonSupport::jsonElementToValue)
-      ?.let(JsonSupport::anyToStringAnyMap)
-      ?: return false
-    val produced = JsonSupport.anyToStringAnyMap(wireOutput["produced_outputs"]) ?: return false
-    return produced.containsKey(FeatureTaskRuntimeVerificationSignalKeys.AUDIT_GAPS)
-  }
-
-  @Suppress("ReturnCount", "CyclomaticComplexMethod")
-  private fun auditRepairResultGateReason(phaseId: String, outputMap: Map<String, Any?>): String? {
-    val reentry = activeReentry?.takeIf {
-      it.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
-    } ?: return null
-    if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(phaseId)) return null
-    val expected = reentry.auditRepairPlan?.gaps.orEmpty()
-      .flatMap { it.repairItems }
-      .map { it.repairItemId }
-    if (expected.isEmpty()) return "Audit-gap remediation is missing its persisted audit_repair_plan."
-    val produced = JsonSupport.anyToStringAnyMap(outputMap["produced_outputs"]).orEmpty()
-    val results = (produced["repair_item_results"] as? List<*>).orEmpty()
-    val resultMaps = results.mapNotNull(JsonSupport::anyToStringAnyMap)
-    val actual = resultMaps.mapNotNull { (it["repair_item_id"] as? String)?.let(::canonicalAuditIdentifier) }
-    val blocked = outputMap["status"] == STATUS_BLOCKED
-    val deferredRaw = produced["deferred_repair_item_ids"]
-    if (deferredRaw !is List<*>) {
-      return structuredRepairDiagnostic(
-        "audit_repair.deferred_work.required",
-        "/produced_outputs/deferred_repair_item_ids",
-        "Audit-gap remediation must explicitly report deferred repair-item identifiers.",
-      )
-    }
-    val deferred = deferredRaw.mapNotNull { (it as? String)?.let(::canonicalAuditIdentifier) }
-    if (deferred.size != deferredRaw.size || deferred.size != deferred.toSet().size ||
-      deferred.any { it !in expected }
-    ) {
-      return structuredRepairDiagnostic(
-        "audit_repair.deferred_work.identifiers",
-        "/produced_outputs/deferred_repair_item_ids",
-        "Deferred repair-item identifiers must be unique exact identifiers from the accepted plan; " +
-          "expected=$expected actual=$deferred.",
-      )
-    }
-    if (!blocked && deferred.isNotEmpty()) {
-      return structuredRepairDiagnostic(
-        "audit_repair.completed.deferred_work",
-        "/produced_outputs/deferred_repair_item_ids",
-        "Completed audit-gap remediation requires an empty deferred-repair representation.",
-      )
-    }
-    if (!blocked && produced.containsKey("unresolvable_repair")) {
-      return structuredRepairDiagnostic(
-        "audit_repair.completed.unresolvable_repair",
-        "/produced_outputs/unresolvable_repair",
-        "Only blocked audit-gap remediation may identify an unresolvable repair item.",
-      )
-    }
-    supersededRepairItemDiagnostic(produced)?.let { return it }
-    // A governed supersession is a terminal disposition, so it closes a carried item exactly as a verified
-    // outcome does; counting it here is what keeps the plan-exhaustion rule and the closure gate agreeing.
-    val superseded = supersededRepairItemIds(produced)
-    val closed = actual.toSet() + superseded
-    val identifiersInvalid = actual.size != resultMaps.size || actual.size != actual.toSet().size ||
-      superseded.any { it !in expected } || actual.toSet().intersect(superseded).isNotEmpty() ||
-      if (blocked) {
-        closed + deferred.toSet() != expected.toSet() ||
-          closed.intersect(deferred.toSet()).isNotEmpty()
-      } else {
-        closed != expected.toSet()
-      }
-    if (identifiersInvalid) {
-      return structuredRepairDiagnostic(
-        "audit_repair.results.identifiers",
-        "/produced_outputs/repair_item_results",
-        "Audit-gap remediation results and deferred identifiers must exhaust the accepted plan exactly once; " +
-          "expected=$expected actual=$actual deferred=$deferred.",
-      )
-    }
-    val expectedOrder = expected.withIndex().associate { (index, id) -> id to index }
-    val actualOrder = actual.withIndex().associate { (index, id) -> id to index }
-    val planItems = reentry.auditRepairPlan?.gaps.orEmpty().flatMap { it.repairItems }
-    planItems.forEach { item ->
-      val itemId = item.repairItemId
-      val itemPosition = actualOrder[itemId] ?: return@forEach
-      item.dependsOn.forEach { dependency ->
-        val dependencyPosition = actualOrder[dependency] ?: return structuredRepairDiagnostic(
-          "audit_repair.results.dependency_terminal",
-          "/produced_outputs/repair_item_results/$itemPosition/repair_item_id",
-          "Repair item '$itemId' cannot be terminal while dependency '$dependency' is deferred or missing.",
-        )
-        val expectedDependency = expectedOrder[dependency] ?: return@forEach
-        val expectedItem = expectedOrder[itemId] ?: return@forEach
-        if (dependencyPosition >= itemPosition || expectedDependency >= expectedItem) {
-          return structuredRepairDiagnostic(
-            "audit_repair.results.dependency_order",
-            "/produced_outputs/repair_item_results/$itemPosition/repair_item_id",
-            "Repair item '$itemId' depends on '$dependency', which must have a preceding terminal result.",
-          )
-        }
-      }
-    }
-    resultMaps.forEachIndexed { index, result ->
-      auditRepairResultError(result, index)?.let { return it }
-    }
-    if (blocked) {
-      val unresolvable = JsonSupport.anyToStringAnyMap(
-        produced["unresolvable_repair"],
-      )
-      val blockedItemId = (unresolvable?.get("repair_item_id") as? String)?.let(::canonicalAuditIdentifier)
-      if (blockedItemId == null || blockedItemId !in deferred) {
-        return structuredRepairDiagnostic(
-          "audit_repair.blocked.deferred_item",
-          "/produced_outputs/deferred_repair_item_ids",
-          "Blocked remediation must include the item named by unresolvable_repair among its remaining work.",
-        )
-      }
-    }
-    return null
-  }
-
-  private fun auditRepairResultError(result: Map<String, Any?>, index: Int): String? {
-    val label = (result["repair_item_id"] as? String)?.takeIf(String::isNotBlank)
-      ?: "repair_item_results[$index]"
-    val expectedKeys = setOf(
-      "repair_item_id",
-      "outcome",
-      "changed_paths_or_symbols",
-      "executed_verification",
-      "result_evidence",
-    )
-    val missing = expectedKeys - result.keys
-    val unknown = result.keys - expectedKeys
-    val decodeFailure = runCatching { repairItemResultFromWire(result, "repair_item_results[$index]") }
-      .exceptionOrNull()
-    return when {
-      missing.isNotEmpty() || unknown.isNotEmpty() ->
-        structuredRepairDiagnostic(
-          "audit_repair.results.shape",
-          "/produced_outputs/repair_item_results/$index",
-          "Repair item '$label' has invalid fields; missing=${missing.sorted()} unknown=${unknown.sorted()}.",
-        )
-      result["outcome"] !in setOf("fixed", "already_satisfied") ->
-        structuredRepairDiagnostic(
-          "audit_repair.results.terminal_outcome",
-          "/produced_outputs/repair_item_results/$index/outcome",
-          "Repair item '$label' outcome must be fixed or already_satisfied.",
-        )
-      hasNoNonBlankStrings(result["changed_paths_or_symbols"]) ->
-        structuredRepairDiagnostic(
-          "audit_repair.results.repository_evidence",
-          "/produced_outputs/repair_item_results/$index/changed_paths_or_symbols",
-          "Repair item '$label' must name at least one changed path or symbol.",
-        )
-      hasNoNonBlankStrings(result["executed_verification"]) ->
-        structuredRepairDiagnostic(
-          "audit_repair.results.executed_verification",
-          "/produced_outputs/repair_item_results/$index/executed_verification",
-          "Repair item '$label' must report at least one executed verification and result.",
-        )
-      decodeFailure != null ->
-        structuredRepairDiagnostic(
-          "audit_repair.results.result_evidence",
-          "/produced_outputs/repair_item_results/$index/result_evidence",
-          "Repair item '$label' is not contract-safe: ${decodeFailure.diagnosticMessage()}",
-        )
-      result["outcome"] == "already_satisfied" && !alreadySatisfiedEvidenceIsDistinct(result) ->
-        structuredRepairDiagnostic(
-          "audit_repair.results.distinct_evidence",
-          "/produced_outputs/repair_item_results/$index",
-          "Repair item '$label' must distinguish repository evidence from executed verification.",
-        )
-      else -> null
-    }
-  }
-
-  private fun structuredRepairDiagnostic(ruleId: String, jsonPath: String, detail: String): String =
-    "[$ruleId] $jsonPath: $detail"
-
-  private fun structuredRepairDiagnosticIdentity(detail: String): Pair<String, String>? =
-    Regex("""^\[([A-Za-z0-9_.-]+)]\s+(/[^\s:]*):\s""")
-      .find(detail)
-      ?.destructured
-      ?.let { (ruleId, jsonPath) -> ruleId to jsonPath }
-
-  private fun hasNoNonBlankStrings(value: Any?): Boolean =
-    (value as? List<*>)?.filterIsInstance<String>()?.none(String::isNotBlank) != false
-
-  private fun alreadySatisfiedEvidenceIsDistinct(result: Map<String, Any?>): Boolean {
-    val repositoryEvidence = (result["changed_paths_or_symbols"] as? List<*>)
-      .orEmpty().filterIsInstance<String>().filter(String::isNotBlank)
-    val verificationEvidence = (result["executed_verification"] as? List<*>)
-      .orEmpty().filterIsInstance<String>().filter(String::isNotBlank)
-    return repositoryEvidence.isNotEmpty() && verificationEvidence.isNotEmpty() &&
-      repositoryEvidence.toSet() != verificationEvidence.toSet()
-  }
-
-  @Suppress("ReturnCount")
-  private fun auditDurableLedgerGateReason(phaseId: String, outputMap: Map<String, Any?>): String? {
-    if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) return null
-    val repairState = recorder.loadAuditRepairState(request.workflowId, request.dbPathOverride)
-    val priorIds = repairState?.unresolvedGapLedger?.unresolvedGaps.orEmpty()
-      .mapTo(linkedSetOf()) { it.gapId }
-    if (priorIds.isEmpty()) return null
-    val produced = JsonSupport.anyToStringAnyMap(outputMap["produced_outputs"]).orEmpty()
-    val dispositions = (produced["prior_gap_dispositions"] as? List<*>).orEmpty()
-      .mapNotNull(JsonSupport::anyToStringAnyMap)
-    val dispositionIds = dispositions.mapNotNull { it["gap_id"] as? String }
-    if (dispositionIds.size != dispositions.size || dispositionIds.toSet() != priorIds) {
-      return "The following audit must disposition every durable unresolved gap exactly once; " +
-        "expected=$priorIds actual=$dispositionIds."
-    }
-    dispositions.forEachIndexed { index, disposition ->
-      val decodeFailure = runCatching {
-        priorGapDispositionFromWire(disposition, "prior_gap_dispositions[$index]")
-      }.exceptionOrNull()
-      if (decodeFailure != null) {
-        val gapId = disposition["gap_id"] as? String ?: "prior_gap_dispositions[$index]"
-        return "Prior gap disposition '$gapId' is not contract-safe: ${decodeFailure.diagnosticMessage()}"
-      }
-    }
-    val recurring = dispositions.filter { it["status"] == "recurring" }
-    if (recurring.size + dispositions.count { it["status"] == "resolved" } != dispositions.size) {
-      return "Prior gap dispositions must be resolved or recurring."
-    }
-    if (outputMap["verdict"] == "satisfied" && recurring.isNotEmpty()) {
-      return "An audit cannot report satisfied while the durable unresolved-gap ledger remains non-empty."
-    }
-    return null
-  }
-
-  // Closure is only durable if nothing can quietly reopen it: an audit naming a closed criterion under
-  // any gap id, or naming a criterion the run never declared, is rejected here rather than reconciled.
-  private fun auditClosedCriterionGateReason(phaseId: String, outputMap: Map<String, Any?>): String? {
-    if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) return null
-    val produced = JsonSupport.anyToStringAnyMap(outputMap["produced_outputs"]).orEmpty()
-    val planRefs = (JsonSupport.anyToStringAnyMap(produced["audit_repair_plan"])?.get("gaps") as? List<*>)
-      .orEmpty()
-      .mapNotNull { gap -> JsonSupport.anyToStringAnyMap(gap)?.get("acceptance_criterion_ref") as? String }
-    val criteriaRefs = (produced["unmet_criteria"] as? List<*>).orEmpty()
-      .mapNotNull { entry -> JsonSupport.anyToStringAnyMap(entry)?.get("acceptance_criterion_ref") as? String }
-    val referenced = (planRefs + criteriaRefs).distinct()
-    if (referenced.isEmpty()) return null
-    val undeclared = referenced.filterNot { it in declaredCriterionRefs().toSet() }.sorted()
-    if (undeclared.isNotEmpty()) {
-      return "Audit reported acceptance criteria not declared by this run: $undeclared."
-    }
-    val reopened = referenced.filter { it in durablyClosedCriterionRefs().toSet() }.sorted()
-    return if (reopened.isEmpty()) {
-      null
-    } else {
-      "Audit reported a gap against durably closed acceptance criteria $reopened; a criterion that reached a " +
-        "satisfied verdict is closed and is not re-verified by a later audit."
-    }
-  }
-
-  private fun Throwable.diagnosticMessage(): String =
-    message?.takeIf(String::isNotBlank) ?: this::class.simpleName.orEmpty().ifBlank { "unknown decode failure" }
 
   /**
    * Rebuilds payload-free structural-repair evidence from digest/location fields carried on the
@@ -6052,63 +5420,6 @@ internal class FeatureTaskRuntimeRunLoop(
         column = requireNotNull(sourceColumn),
       ),
     )
-  }
-
-  @Suppress("ReturnCount")
-  private fun terminalAuditRepairBlockGateReason(phaseId: String, outputMap: Map<String, Any?>): String? {
-    if (outputMap["status"] != STATUS_BLOCKED) return null
-    val reentry = activeReentry?.takeIf {
-      it.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
-    } ?: return null
-    if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(phaseId)) return null
-    val produced = JsonSupport.anyToStringAnyMap(outputMap["produced_outputs"]).orEmpty()
-    val block = JsonSupport.anyToStringAnyMap(produced["unresolvable_repair"])
-      ?: return structuredRepairDiagnostic(
-        "audit_repair.blocked.unresolvable_repair.required",
-        "/produced_outputs/unresolvable_repair",
-        "Blocked audit remediation must persist an object with gap_id and repair_item_id.",
-      )
-    val gapId = block["gap_id"] as? String
-    val itemId = block["repair_item_id"] as? String
-    if (gapId.isNullOrBlank()) {
-      return structuredRepairDiagnostic(
-        "audit_repair.blocked.gap_id",
-        "/produced_outputs/unresolvable_repair/gap_id",
-        "Blocked audit remediation requires a nonblank gap_id from the accepted repair plan.",
-      )
-    }
-    if (itemId.isNullOrBlank()) {
-      return structuredRepairDiagnostic(
-        "audit_repair.blocked.repair_item_id",
-        "/produced_outputs/unresolvable_repair/repair_item_id",
-        "Blocked audit remediation requires a nonblank repair_item_id from the named gap.",
-      )
-    }
-    runCatching {
-      auditEvidenceFromWire(block["evidence"], "unresolvable_repair.evidence")
-    }.exceptionOrNull()?.let { decodeFailure ->
-      return structuredRepairDiagnostic(
-        "audit_repair.blocked.evidence",
-        "/produced_outputs/unresolvable_repair/evidence",
-        "Blocked audit remediation evidence is not contract-safe: ${decodeFailure.diagnosticMessage()}",
-      )
-    }
-    val owningGap = reentry.auditRepairPlan?.gaps.orEmpty().firstOrNull { it.gapId == gapId }
-      ?: return structuredRepairDiagnostic(
-        "audit_repair.blocked.gap_id",
-        "/produced_outputs/unresolvable_repair/gap_id",
-        "Blocked audit remediation references unknown gap_id '$gapId'.",
-      )
-    val carriedItems = owningGap.repairItems.map { it.repairItemId }
-    return if (itemId !in carriedItems) {
-      structuredRepairDiagnostic(
-        "audit_repair.blocked.repair_item_id",
-        "/produced_outputs/unresolvable_repair/repair_item_id",
-        "Blocked audit remediation references repair_item_id '$itemId' outside gap '$gapId'.",
-      )
-    } else {
-      null
-    }
   }
 
   private fun persistAcceptedOutput(
@@ -6363,16 +5674,6 @@ internal class FeatureTaskRuntimeRunLoop(
     return LaunchedModelDirective(model, effort, effort)
   }
 
-  /**
-   * The active repair batch read from the durable generation authority at the launch seam, so first entry,
-   * in-process retry, and fresh-process resume all project the same open obligations from the same records.
-   */
-  private fun activeAuditRepairBatch(run: PhaseRun): FeatureTaskRuntimeRepairBatch? {
-    if (run.reentry?.loopId != FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) return null
-    return recorder.loadAuditGenerationHistory(run.request.workflowId, run.request.dbPathOverride)
-      .activeRepairBatch()
-  }
-
   private fun reviewPassNumber(run: PhaseRun, state: FeatureTaskRuntimeRunState): Int? {
     if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) return null
     // In-memory outputs hold at most one record per phase, so their count collapses to <= 1 after a
@@ -6398,9 +5699,6 @@ internal class FeatureTaskRuntimeRunLoop(
       recordedOutputs = state.outputs(),
       drivingVerdict = run.reentry?.drivingVerdict,
       reentryGapCriteria = auditGapCriteriaFor(run, state),
-      auditRepairPlan = run.reentry?.auditRepairPlan,
-      auditRepairState = run.reentry?.auditRepairState,
-      activeRepairBatch = activeAuditRepairBatch(run),
       durablyClosedCriterionRefs = durablyClosedCriterionRefs,
       repairLedger = remediationRepairLedger(run.phaseId),
       repositoryCheckpoint = repositoryCheckpoint,
@@ -6411,9 +5709,7 @@ internal class FeatureTaskRuntimeRunLoop(
         ) {
           repositoryCheckpoint?.fingerprint
         } else {
-          run.reentry?.expectedRepositoryCheckpoint
-            ?: run.reentry?.auditRepairState?.repositoryFingerprint
-            ?: repositoryCheckpoint?.fingerprint
+          run.reentry?.expectedRepositoryCheckpoint ?: repositoryCheckpoint?.fingerprint
         }
         )
         ?.let(::FeatureTaskRuntimeRepositoryCheckpoint),
@@ -7268,12 +6564,6 @@ private const val READ_ONLY_PHASE_PROGRESS_IDLE_TIMEOUT_MINUTES = 30L
 // Stands in for a repository fingerprint that could not be computed. Comparing it against itself
 // yields "unchanged", so an audit that cannot prove the repository moved cannot claim progress.
 private const val UNPROVEN_REPOSITORY_FINGERPRINT = "<unproven>"
-
-// The two gate rules whose rejection counts unaccounted carried items instead of naming a malformed
-// document, so a phase that still owes items is re-entered for them rather than blocked.
-private const val RULE_AUDIT_FOLLOWUP_EVIDENCE = "audit-followup-evidence"
-private const val RULE_AUDIT_REPAIR_CLOSURE = "audit-repair-closure"
-private const val RULE_AUDIT_REPAIR_RESULT = "audit-repair-result"
 
 // Bounds the goal-facing pause-reason label list so the reason stays a summary, not a transcript.
 private const val MAX_PAUSE_REASON_LABELS = 5

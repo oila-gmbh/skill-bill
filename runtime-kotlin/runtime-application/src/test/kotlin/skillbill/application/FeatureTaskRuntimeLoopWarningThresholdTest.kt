@@ -334,9 +334,9 @@ private fun bothLoopsLauncher(convergeOnAudit: Int, convergeOnReview: Int): Runt
         auditLaunches += 1
         facts(
           if (auditLaunches < convergeOnAudit) {
-            auditGapsOutput(followUp = auditLaunches > 1)
+            auditGapsOutput()
           } else {
-            auditSatisfiedOutput(followUp = auditLaunches > 1)
+            auditSatisfiedOutput()
           },
         )
       }

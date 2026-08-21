@@ -7,6 +7,7 @@ import skillbill.application.featuretask.transitionsFor
 import skillbill.application.model.FeatureTaskRuntimeGoalContinuationContext
 import skillbill.application.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.model.FeatureTaskRuntimeRunReport
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
 import skillbill.ports.persistence.ProducerOutputEvidence
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
@@ -541,6 +542,36 @@ class FeatureTaskRuntimeAuditEntryGateTest {
     harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_STEPS_OUTPUT)
     harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
   }
+
+  @Test
+  fun `gaps_found with absent, empty, or malformed unmet criteria blocks before remediation`() {
+    listOf(
+      "{}",
+      "{\"unmet_criteria\":[]}",
+      "{\"unmet_criteria\":[{\"note\":\"AC4 is missing\"},{}]}",
+      "{\"unmet_criteria\":[{\"criterion\":\"AC-004\"}]}",
+    ).forEach { producedOutputs ->
+      var auditLaunches = 0
+      val harness = runnerHarness(
+        agentAssignment = phasePerAgentAssignment(),
+        launcher = RuntimeRecordingLauncher { request ->
+          val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+          if (phaseId != "audit") return@RuntimeRecordingLauncher facts(defaultPhaseOutput(request))
+          auditLaunches += 1
+          facts(gapsFoundAuditOutput(producedOutputs))
+        },
+      )
+
+      assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+      assertEquals(1, auditLaunches, producedOutputs)
+      assertTrue(!harness.launchOrder().contains("review"), "a rejected audit must not reach review")
+    }
+  }
+
+  private fun gapsFoundAuditOutput(producedOutputs: String): String =
+    """{"contract_version":"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION","phase_id":"audit",""" +
+      """"status":"completed","verdict":"gaps_found","summary":"Audit found unmet criteria.",""" +
+      """"produced_outputs":$producedOutputs}"""
 }
 
 private const val LEGACY_FIRST_REVIEW_MARKER = "legacy-review-generation-attempt-one"

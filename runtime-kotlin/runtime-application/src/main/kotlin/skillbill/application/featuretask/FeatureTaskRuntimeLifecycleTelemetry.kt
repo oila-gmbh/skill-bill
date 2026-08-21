@@ -11,7 +11,7 @@ import skillbill.application.telemetry.LifecycleTelemetryService
 import skillbill.application.telemetry.normalizedBlockedReason
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditProgress
 
 private val emptyRegenerationTelemetry: () -> FeatureTaskRuntimeRegenerationTelemetry =
   { FeatureTaskRuntimeRegenerationTelemetry() }
@@ -54,7 +54,7 @@ class FeatureTaskRuntimeLifecycleTelemetry(
     phaseOutcomes: () -> Map<String, String>,
     reviewFixIterationCount: () -> Int,
     auditGapIterationCount: () -> Int,
-    auditRepairProgress: () -> FeatureTaskRuntimeAuditRepairProgress? = { null },
+    auditRepairProgress: () -> FeatureTaskRuntimeAuditProgress? = { null },
     regenerationTelemetry: () -> FeatureTaskRuntimeRegenerationTelemetry = emptyRegenerationTelemetry,
     dbOverride: String?,
     phaseTokenData: () -> Pair<String?, Int?> = { null to null },
@@ -82,10 +82,12 @@ class FeatureTaskRuntimeLifecycleTelemetry(
           reviewFixIterationCount = runCatching(reviewFixIterationCount).getOrDefault(0),
           auditGapIterationCount = runCatching(auditGapIterationCount).getOrDefault(0),
           auditFirstPassConvergence = auditProgress?.firstPassConvergence ?: false,
-          auditRecurringGapCount = auditProgress?.recurringGapCount ?: 0,
-          auditNewGapCount = auditProgress?.newGapCount ?: 0,
-          auditAttemptedRepairItemCount = auditProgress?.attemptedRepairItemCount ?: 0,
-          auditResolvedRepairItemCount = auditProgress?.resolvedRepairItemCount ?: 0,
+          // Always zero: the per-item repair ledger these counted is gone. The fields stay on the
+          // request because the relay's wire contract still declares them.
+          auditRecurringGapCount = 0,
+          auditNewGapCount = 0,
+          auditAttemptedRepairItemCount = 0,
+          auditResolvedRepairItemCount = 0,
           regenerationActivationCount = regeneration.activationCount,
           regenerationAttemptCount = regeneration.attemptCount,
           regenerationOutcomeCounts = regeneration.outcomeCounts,
@@ -110,7 +112,7 @@ class FeatureTaskRuntimeLifecycleTelemetry(
     phaseOutcomes: () -> Map<String, String>,
     reviewFixIterationCount: () -> Int,
     auditGapIterationCount: () -> Int,
-    auditRepairProgress: () -> FeatureTaskRuntimeAuditRepairProgress? = { null },
+    auditRepairProgress: () -> FeatureTaskRuntimeAuditProgress? = { null },
     regenerationTelemetry: () -> FeatureTaskRuntimeRegenerationTelemetry = emptyRegenerationTelemetry,
     dbOverride: String?,
     phaseTokenData: () -> Pair<String?, Int?> = { null to null },
@@ -150,10 +152,12 @@ class FeatureTaskRuntimeLifecycleTelemetry(
           reviewFixIterationCount = runCatching(reviewFixIterationCount).getOrDefault(0),
           auditGapIterationCount = runCatching(auditGapIterationCount).getOrDefault(0),
           auditFirstPassConvergence = auditProgress?.firstPassConvergence ?: false,
-          auditRecurringGapCount = auditProgress?.recurringGapCount ?: 0,
-          auditNewGapCount = auditProgress?.newGapCount ?: 0,
-          auditAttemptedRepairItemCount = auditProgress?.attemptedRepairItemCount ?: 0,
-          auditResolvedRepairItemCount = auditProgress?.resolvedRepairItemCount ?: 0,
+          // Always zero: the per-item repair ledger these counted is gone. The fields stay on the
+          // request because the relay's wire contract still declares them.
+          auditRecurringGapCount = 0,
+          auditNewGapCount = 0,
+          auditAttemptedRepairItemCount = 0,
+          auditResolvedRepairItemCount = 0,
           regenerationActivationCount = regeneration.activationCount,
           regenerationAttemptCount = regeneration.attemptCount,
           regenerationOutcomeCounts = regeneration.outcomeCounts,

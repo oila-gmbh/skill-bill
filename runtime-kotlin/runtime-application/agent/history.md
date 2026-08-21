@@ -1,3 +1,20 @@
+## [2026-08-21] Soft-admit optional register lines for claim verification
+Areas: runtime-application/review, runtime-application/featuretask, skills/bill-code-review-inline
+- Parent stdout stays free-form prose plus `verdict:`; missing or imperfect register lines never fail the lane.
+- Optional `[F-XXX]` lines that parse are soft-admitted into merge findings so claim verification and spec adjudication run again.
+- Settlement still derives advance from prose `verdict:` first; soft findings are attached to the envelope after that reduction so Minor-only rows cannot override `changes_requested`.
+Feature flag: N/A
+Acceptance criteria: 3/3 implemented
+
+## [2026-08-21] Prose-only single-subagent review
+Areas: runtime-application/review, runtime-application/featuretask, runtime-cli/codereview, skills/bill-code-review-inline
+- Dual-agent parallel lanes disconnected: `code-review-parallel` fails loud; `code-review` and feature-task never set `agent2Id`.
+- Parent review outcome is free-form prose plus `verdict:`; no register parse admission, no `NO_FINDINGS` gate, no unread-evidence shape block.
+- Feature-task review envelope keeps empty `findings` and drives remediation from parent verdict only.
+- Delegated mode still fans specialists inside the parent agent; runtime does not verify specialist register shape.
+Feature flag: N/A
+Acceptance criteria: 4/4 implemented
+
 ## [2026-08-20] Output-gate JSON failures block on the first invalid envelope
 Areas: runtime-application/featuretask
 - Extracted phase JSON is aligned to that phase's expected fields before the schema gate; nested or trailing required fields are restored on the existing capture.

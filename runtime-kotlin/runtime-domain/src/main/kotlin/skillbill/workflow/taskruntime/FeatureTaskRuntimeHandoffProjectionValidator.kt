@@ -298,8 +298,7 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
     if (
       declaration.projectionContractId !=
       FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_REPAIR_REQUEST ||
-      inputs.auditRepairPlan == null ||
-      inputs.auditRepairState == null
+      inputs.unmetCriterionRefs.isEmpty()
     ) {
       return null
     }
@@ -537,23 +536,12 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
       "repository_checkpoint" to inputs.resolvedCheckpoint?.let { mapOf("fingerprint" to it.fingerprint) },
       "verdict" to auditClearanceStatus(produced),
     )
-    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_REPAIR_REQUEST -> {
-      val plan = inputs.auditRepairPlan
-      val state = inputs.auditRepairState
-      mapOf(
-        "audit_repair_plan" to plan?.let(::auditRepairPlanProjection),
-        "prior_terminal_repair_outcomes" to state?.repairItemResults?.map { result ->
-          mapOf(
-            "repair_item_id" to result.repairItemId,
-            "outcome" to result.outcome.name.lowercase(),
-          )
-        }.orEmpty(),
-        "unresolved_gap_ids" to state?.unresolvedGapLedger?.unresolvedGaps?.map { it.gapId }
-          .orEmpty()
-          .ifEmpty { plan?.gaps?.map { it.gapId }.orEmpty() },
-        "repository_checkpoint" to inputs.resolvedCheckpoint?.let { mapOf("fingerprint" to it.fingerprint) },
-      )
-    }
+    // The whole audit-remediation handoff: which acceptance criteria are unmet, and the checkpoint the
+    // round starts from. The implement round plans the work itself, so there is nothing else to carry.
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_REPAIR_REQUEST -> mapOf(
+      "unmet_criteria" to inputs.unmetCriterionRefs,
+      "repository_checkpoint" to inputs.resolvedCheckpoint?.let { mapOf("fingerprint" to it.fingerprint) },
+    )
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REVIEW_REPAIR_REQUEST -> mapOf(
       "unresolved_blocker_findings" to reviewBlockerProjection(produced, inputs.recordedFindingVerdicts),
       "repository_checkpoint" to inputs.resolvedCheckpoint?.let { mapOf("fingerprint" to it.fingerprint) },
@@ -614,32 +602,6 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
         "task_refs" to (finding["task_refs"] ?: emptyList<String>()),
       ).filterValues { it != null }
     }
-
-  private fun auditRepairPlanProjection(
-    plan: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan,
-  ): Map<String, Any?> = mapOf(
-    "contract_version" to plan.contractVersion,
-    "gaps" to plan.gaps.map { gap ->
-      mapOf(
-        "gap_id" to gap.gapId,
-        "acceptance_criterion_ref" to gap.acceptanceCriterionRef,
-        "acceptance_criterion_text" to gap.acceptanceCriterionText,
-        "diagnosis" to gap.diagnosis,
-        "affected_boundary" to gap.affectedBoundary,
-        "repair_items" to gap.repairItems.map { item ->
-          mapOf(
-            "repair_item_id" to item.repairItemId,
-            "intended_outcome" to item.intendedOutcome,
-            "implementation_actions" to item.implementationActions,
-            "affected_paths_or_symbols" to item.affectedPathsOrSymbols,
-            "required_verification" to item.requiredVerification,
-            "depends_on" to item.dependsOn,
-            "status" to item.status.name.lowercase(),
-          )
-        },
-      )
-    },
-  )
 
   private fun finalizationProjectionValues(
     inputs: FeatureTaskRuntimeHandoffProjectionInputs,

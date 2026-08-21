@@ -183,7 +183,7 @@ class FeatureTaskRuntimeSharedEvidenceEndToEndTest {
             if (fingerprintsAtAudit.size == 1) {
               auditGapsOutput()
             } else {
-              auditSatisfiedOutput(followUp = true)
+              auditSatisfiedOutput()
             },
           )
         }

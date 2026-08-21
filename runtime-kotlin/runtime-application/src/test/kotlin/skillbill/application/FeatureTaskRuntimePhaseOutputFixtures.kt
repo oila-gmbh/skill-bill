@@ -209,46 +209,32 @@ internal object Skill187SyntheticAuditResponses {
 
   /** Missing closing brace; verdict nested under produced_outputs (SKILL-16 shape). */
   fun nestedVerdictMissingDelimiter(): String =
-    """{"contract_version":"0.3","phase_id":"audit","status":"completed","summary":"$NESTED_VERDICT_SENTINEL",""" +
-      """"produced_outputs":{"gaps":[],"verdict":"satisfied"}"""
+    """{"contract_version":"0.4","phase_id":"audit","status":"completed","summary":"$NESTED_VERDICT_SENTINEL",""" +
+      """"produced_outputs":{"unmet_criteria":[],"verdict":"satisfied"}"""
 
   /** Same nested-verdict defect with balanced braces (schema-only rejection). */
   fun nestedVerdictComplete(): String =
-    """{"contract_version":"0.3","phase_id":"audit","status":"completed","summary":"$NESTED_VERDICT_SENTINEL",""" +
-      """"produced_outputs":{"gaps":[],"verdict":"satisfied"}}"""
+    """{"contract_version":"0.4","phase_id":"audit","status":"completed","summary":"$NESTED_VERDICT_SENTINEL",""" +
+      """"produced_outputs":{"unmet_criteria":[],"verdict":"satisfied"}}"""
 
   /** Conservative flow-YAML twin of [nestedVerdictComplete]. */
   fun nestedVerdictConservativeYaml(): String =
-    "{contract_version: \"0.3\", phase_id: \"audit\", status: \"completed\", " +
-      "summary: \"$YAML_NESTED_SENTINEL\", produced_outputs: {gaps: [], verdict: \"satisfied\"}}"
+    "{contract_version: \"0.4\", phase_id: \"audit\", status: \"completed\", " +
+      "summary: \"$YAML_NESTED_SENTINEL\", produced_outputs: {unmet_criteria: [], verdict: \"satisfied\"}}"
 
-  /** Unauthorized observation enum on carried_gap_dispositions (audit wire vocabulary). */
-  fun unauthorizedObservation(): String =
-    """{"contract_version":"0.3","phase_id":"audit","status":"completed","summary":"$OBSERVATION_SENTINEL",""" +
-      """"verdict":"satisfied","produced_outputs":{"gaps":[],"carried_gap_dispositions":[{""" +
-      """"gap_id":"ac-001-gap-1","status":"resolved","evidence":{""" +
-      """"observation":"blast_radius_inspected","artifact_ref":"runtime-kotlin","check_ref":"AC-001"}}]}}"""
-
-  /**
-   * Compact gap whose expanded audit_repair_plan artifact_ref exceeds the 256-char bound
-   * (file 128 + location 256 + separators).
-   */
-  fun oversizedExpandedArtifactRef(): String {
-    val file = "f".repeat(128)
-    val location = "L" + "o".repeat(255)
-    return """{"contract_version":"0.3","phase_id":"audit","status":"completed","summary":"$ARTIFACT_SENTINEL",""" +
-      """"verdict":"gaps_found","produced_outputs":{"gaps":[{""" +
-      """"criterion":"AC-001","severity":"blocker","location":"$location","issue":"Missing behavior.",""" +
-      """"fix":"Restore the behavior.","file":"$file"}]}}"""
-  }
+  /** An unmet-criterion entry carrying a key the closed schema does not define. */
+  fun invalidCriterionShape(): String =
+    """{"contract_version":"0.4","phase_id":"audit","status":"completed","summary":"$OBSERVATION_SENTINEL",""" +
+      """"verdict":"gaps_found","produced_outputs":{"unmet_criteria":[{"criterion":"AC-001",""" +
+      """"note":"the behavior is absent","severity":"blocker"}]}}"""
 
   fun correctedSatisfied(): String =
-    """{"contract_version":"0.3","phase_id":"audit","status":"completed","summary":"criteria met",""" +
-      """"verdict":"satisfied","produced_outputs":{"gaps":[],"non_blocking_findings":[]}}"""
+    """{"contract_version":"0.4","phase_id":"audit","status":"completed","summary":"criteria met",""" +
+      """"verdict":"satisfied","produced_outputs":{"unmet_criteria":[],"non_blocking_findings":[]}}"""
 
   /** Block-style YAML that must not receive guessed structural repair. */
   fun unsupportedBlockYaml(): String = """
-      contract_version: "0.3"
+      contract_version: "0.4"
       phase_id: "audit"
       status: "completed"
       summary: "$UNSUPPORTED_YAML_SENTINEL"

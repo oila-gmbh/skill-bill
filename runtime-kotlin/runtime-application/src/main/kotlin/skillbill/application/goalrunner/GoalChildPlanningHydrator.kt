@@ -4,6 +4,7 @@ import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.featuretask.requireValidPlanningProjection
 import skillbill.application.featuretask.sha256HexUtf8
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
+import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidGoalPlanningPreparationSchemaError
 import skillbill.ports.goalrunner.model.GoalChildPlanningHydrationRequest
 import skillbill.ports.goalrunner.model.GoalRunnerChildWorkflowSetup
@@ -285,9 +286,9 @@ private class GoalChildPlanningImportMatcher(
       request.descriptor.governedSubSpecPath,
     )
     validateAvailablePayloads(shared, plan, setup, request)
+    val provenanceDivergence = provenanceDivergence(expected, request)
     return when {
-      !provenanceMatches(expected, request) ->
-        "stored import provenance differs from the hydration request"
+      provenanceDivergence != null -> provenanceDivergence
       !preparedMatches(shared, plan, expected, request) ->
         "parent planning checkpoints are missing or differ from the imported payload digests"
       !ledgerMatches(artifacts) ->
@@ -325,20 +326,42 @@ private class GoalChildPlanningImportMatcher(
     try {
       payloadValidator.requireValid(phaseId, payload, digest, setup.workflowId)
     } catch (error: InvalidGoalPlanningPreparationSchemaError) {
-      throw IncompatibleGoalPlanningPreparationRecoveryError(
-        request.identity.parentGoalWorkflowId,
-        setup.subtaskId,
-        "stored goal planning '$phaseId' record for subtask ${request.descriptor.subtaskId} was already " +
-          "imported by this child and the stored version now fails its projection contract. " +
-          "This occurs when the shared preplan or subtask plan was regenerated after the child was hydrated, " +
-          "making the previously-imported bytes stale. Projection failure: ${error.message.orEmpty()}",
-        error,
-      )
+      throw importedPayloadRecoveryError(phaseId, setup, request, error)
+    } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
+      throw importedPayloadRecoveryError(phaseId, setup, request, error)
     }
   }
 
-  private fun provenanceMatches(expected: Map<*, *>, request: GoalChildPlanningHydrationRequest): Boolean =
-    expectedProvenance(request).all { (key, value) -> expected[key] == value }
+  private fun importedPayloadRecoveryError(
+    phaseId: String,
+    setup: GoalRunnerChildWorkflowSetup,
+    request: GoalChildPlanningHydrationRequest,
+    error: Throwable,
+  ): IncompatibleGoalPlanningPreparationRecoveryError {
+    val detail = error.message.orEmpty()
+    val reason = if (classifyGoalPlanningRecovery(detail, error) == GoalPlanningRecoveryKind.HARD_RESET) {
+      "stored goal planning '$phaseId' record for subtask ${request.descriptor.subtaskId} fails the " +
+        "installed phase-output contract and requires a hard reset. Projection failure: $detail"
+    } else {
+      "stored goal planning '$phaseId' record for subtask ${request.descriptor.subtaskId} was already " +
+        "imported by this child and the stored version now fails its projection contract. " +
+        "This occurs when the shared preplan or subtask plan was regenerated after the child was hydrated, " +
+        "making the previously-imported bytes stale. Projection failure: $detail"
+    }
+    return IncompatibleGoalPlanningPreparationRecoveryError(
+      request.identity.parentGoalWorkflowId,
+      setup.subtaskId,
+      reason,
+      error,
+    )
+  }
+
+  private fun provenanceDivergence(expected: Map<*, *>, request: GoalChildPlanningHydrationRequest): String? {
+    val mismatched = expectedProvenance(request).filter { (key, value) -> expected[key] != value }.keys
+    if (mismatched.isEmpty()) return null
+    return "stored import provenance differs from the hydration request at " +
+      mismatched.joinToString(", ")
+  }
 
   private fun preparedMatches(
     shared: SharedGoalPreplanCheckpoint?,

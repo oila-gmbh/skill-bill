@@ -12,8 +12,7 @@ class CodeReviewCommand(
   configResolutionService: ConfigResolutionService,
 ) : CodeReviewDriverCommand(
   "code-review",
-  "Run a standalone runtime-driven code review. An omitted second lane uses code_review_parallel_agent, then none.",
-  agent2Required = false,
+  "Run a standalone single-agent runtime-driven code review (inline or delegated).",
   runner = runner,
   state = state,
   configResolutionService = configResolutionService,

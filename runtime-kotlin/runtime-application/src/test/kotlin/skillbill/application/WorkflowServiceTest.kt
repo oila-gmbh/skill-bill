@@ -2893,7 +2893,7 @@ private fun workflowRecord(
 
 private const val LEGACY_CONTRACT_MANIFEST_YAML: String = """
 ---
-contract_version: "0.3"
+contract_version: "0.4"
 issue_key: "SKILL-80"
 current_subtask_intent:
   subtask_id: null

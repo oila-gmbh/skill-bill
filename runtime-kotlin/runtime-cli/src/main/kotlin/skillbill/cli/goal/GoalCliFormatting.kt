@@ -63,7 +63,9 @@ internal fun Map<String, Any?>.goalRepairExitCode(): Int = when (this["status"])
   GoalRunnerRepairStatus.HEALTHY.wireValue,
   GoalRunnerRepairStatus.REPAIRED.wireValue,
   -> 0
-  GoalRunnerRepairStatus.INSPECTED.wireValue -> 2
+  GoalRunnerRepairStatus.INSPECTED.wireValue,
+  GoalRunnerRepairStatus.OPERATOR_REQUIRED.wireValue,
+  -> 2
   else -> 1
 }
 

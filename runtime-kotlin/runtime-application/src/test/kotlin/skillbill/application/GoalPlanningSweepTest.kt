@@ -4,6 +4,7 @@ import skillbill.application.featuretask.sha256HexUtf8
 import skillbill.application.goalrunner.DefaultGoalPlanningSweep
 import skillbill.application.goalrunner.GoalPlanningAttemptRecorder
 import skillbill.application.goalrunner.GoalPlanningProvenanceRecoverability
+import skillbill.application.goalrunner.GoalPlanningRecoveryKind
 import skillbill.application.goalrunner.GoalPlanningRefreshLiveness
 import skillbill.application.goalrunner.GoalPlanningRejectionRecorder
 import skillbill.application.goalrunner.GoalPlanningSharedContextPacket
@@ -981,10 +982,11 @@ class GoalPlanningSweepTest {
     )
 
     assertIs<GoalPlanningProvenanceRecoverability.Invalid>(result)
+    assertEquals(GoalPlanningRecoveryKind.SCOPED_REPLAN, result.recoveryKind)
   }
 
   @Test
-  fun `recoverability classifier returns Reuse when only installed runtime schema ids drift`() {
+  fun `recoverability classifier returns Invalid when installed runtime schema ids drift`() {
     val parentSpec = "# Stable parent contract"
     val checkpoint = recoverabilityCheckpoint(parentSpec = parentSpec)
     val current = checkpoint.provenance.copy(
@@ -1002,8 +1004,8 @@ class GoalPlanningSweepTest {
       currentParentSpec = parentSpec,
     )
 
-    val reuse = assertIs<GoalPlanningProvenanceRecoverability.Reuse>(result)
-    assertEquals(checkpoint.provenance, reuse.provenance)
+    assertIs<GoalPlanningProvenanceRecoverability.Invalid>(result)
+    assertEquals(GoalPlanningRecoveryKind.HARD_RESET, result.recoveryKind)
   }
 
   @Test

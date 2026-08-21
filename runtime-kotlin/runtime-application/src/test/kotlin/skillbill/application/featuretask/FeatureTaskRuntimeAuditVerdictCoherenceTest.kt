@@ -22,7 +22,7 @@ class FeatureTaskRuntimeAuditVerdictCoherenceTest {
     )
     assertContains(reason, "failing_criteria")
     assertContains(reason, "unmet_criteria")
-    assertContains(reason, "audit_repair_plan")
+    assertContains(reason, "exactly one representation")
   }
 
   @Test

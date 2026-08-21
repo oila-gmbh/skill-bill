@@ -715,9 +715,8 @@ data class FeatureTaskRuntimeHandoffProjectionInputs(
    * never reaches a filesystem to find one.
    */
   val sharedReviewEvidence: FeatureTaskRuntimeSharedReviewEvidenceReference? = null,
-  /** Durable runtime-owned repair state used to construct audit-remediation projections. */
-  val auditRepairPlan: FeatureTaskRuntimeAuditRepairPlan? = null,
-  val auditRepairState: FeatureTaskRuntimeAuditRepairState? = null,
+  /** The unmet acceptance criteria an audit-gap implementation re-entry is scoped to. */
+  val unmetCriterionRefs: List<String> = emptyList(),
   val repairLedger: FeatureTaskRuntimeRepairLedger? = null,
   val recordedFindingVerdicts: List<ReviewFindingVerdict> = emptyList(),
   /** Runtime-owned branch identity used only by bounded finalization request projectors. */
@@ -740,3 +739,9 @@ data class FeatureTaskRuntimeHandoffProjectionInputs(
   val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator =
     NoopFeatureTaskRuntimePlanningProjectionValidator,
 )
+
+/** Bound on a repository-fingerprint pointer carried in a handoff projection. */
+const val MAX_REPOSITORY_FINGERPRINT_LENGTH: Int = 256
+
+/** Bound on a governed pointer — a path, a path:symbol, or an identifier — carried on the wire. */
+const val MAX_BOUNDED_POINTER_LENGTH: Int = 256

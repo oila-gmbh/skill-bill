@@ -27,8 +27,6 @@ data class FeatureTaskRuntimePhaseLaunchBriefing(
   val briefingText: String,
   /** Wire value of the driving verdict for a backward-edge re-entry; null for a forward launch. */
   val drivingVerdict: String? = null,
-  /** Ordered repair-item ids carried by an audit-gap implementation re-entry. */
-  val auditRepairItemIds: List<String> = emptyList(),
   /** Durable unresolved-gap ids that a following audit must disposition exactly once. */
   val unresolvedAuditGapIds: List<String> = emptyList(),
   /** Canonical refs of criteria already closed by a satisfied verdict; an audit must not re-verify them. */
@@ -63,7 +61,6 @@ data class FeatureTaskRuntimePhaseLaunchBriefing(
   ).let { base ->
     LinkedHashMap(base).apply {
       drivingVerdict?.let { put("driving_verdict", it) }
-      if (auditRepairItemIds.isNotEmpty()) put("audit_repair_item_ids", auditRepairItemIds)
       if (unresolvedAuditGapIds.isNotEmpty()) put("unresolved_audit_gap_ids", unresolvedAuditGapIds)
       if (durablyClosedCriterionRefs.isNotEmpty()) {
         put("durably_closed_criterion_refs", durablyClosedCriterionRefs)
@@ -110,7 +107,6 @@ data class FeatureTaskRuntimePhaseLaunchBriefing(
         derivedContextKeys = raw.requireStringListField("derived_context_keys"),
         briefingText = raw.requireStringField("briefing_text"),
         drivingVerdict = raw.optionalStringField("driving_verdict"),
-        auditRepairItemIds = raw.optionalStringListField("audit_repair_item_ids"),
         unresolvedAuditGapIds = raw.optionalStringListField("unresolved_audit_gap_ids"),
         durablyClosedCriterionRefs = raw.optionalStringListField("durably_closed_criterion_refs"),
       )
@@ -177,7 +173,6 @@ data class FeatureTaskRuntimePhaseLaunchBriefing(
       "derived_context_keys",
       "briefing_text",
       "driving_verdict",
-      "audit_repair_item_ids",
       "unresolved_audit_gap_ids",
       "durably_closed_criterion_refs",
     )

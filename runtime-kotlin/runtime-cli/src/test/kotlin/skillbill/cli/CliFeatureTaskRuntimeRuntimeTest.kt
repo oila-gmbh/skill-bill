@@ -2029,12 +2029,12 @@ private class RecordingPhaseLauncher(
     const val INVALID_PHASE_OUTPUT = "not a json object"
 
     fun validPhaseOutput(phaseId: String): String {
-      // A clean review/audit must emit a verification signal (an empty findings/gaps array
+      // A clean review/audit must emit a verification signal (an empty findings/unmet_criteria array
       // affirms no blocking findings / every criterion met) or the runtime gate blocks it (SKILL-85
       // Subtask 4 F-003 for review, Subtask 5 AC1 for audit).
       val producedOutputs = when (phaseId) {
         "review" -> "findings: []"
-        "audit" -> "gaps: []"
+        "audit" -> "unmet_criteria: []"
         // preplan, plan, and implement feed the bounded planning projections, so they emit the
         // declared projection body rather than a generic task list.
         "preplan" -> PREPLAN_DIGEST_OUTPUTS
@@ -2047,7 +2047,7 @@ private class RecordingPhaseLauncher(
       }
       val base =
         """
-        contract_version: "0.3"
+        contract_version: "0.4"
         phase_id: "$phaseId"
         status: "completed"
         summary: "Phase produced a validated output."
@@ -2098,7 +2098,7 @@ private class RecordingPhaseLauncher(
 
     val DECOMPOSE_PLAN_OUTPUT: String = """
       {
-        "contract_version": "0.3",
+        "contract_version": "0.4",
         "phase_id": "plan",
         "status": "completed",
         "summary": "Plan needs ordered subtasks.",

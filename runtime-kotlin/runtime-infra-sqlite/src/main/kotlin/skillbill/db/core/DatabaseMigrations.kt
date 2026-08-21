@@ -471,6 +471,11 @@ internal object DatabaseMigrations {
         name = "add-review-run-pass-claims",
         operation = DatabaseReviewColumnMigrations::ensureReviewStageStateTables,
       ),
+      DatabaseMigration(
+        version = 32,
+        name = "allow-goal-planning-phase-output-0-4",
+        operation = ::rebuildGoalPlanningPlansForPhaseOutputV04,
+      ),
     ).also(::requireDeterministicMigrations)
 
   fun apply(connection: Connection) {

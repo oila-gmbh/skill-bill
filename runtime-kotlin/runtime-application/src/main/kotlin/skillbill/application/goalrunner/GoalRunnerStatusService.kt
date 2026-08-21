@@ -728,6 +728,23 @@ class GoalRunnerStatusService(
         },
       )
     }
+    val hardResetRequired = wedged.any { diagnosis ->
+      diagnosis.wedges.any { it.wedgeClass.operatorRequired }
+    }
+    if (hardResetRequired) {
+      return GoalRunnerRepairResult(
+        issueKey = request.issueKey,
+        status = if (request.apply) {
+          GoalRunnerRepairStatus.OPERATOR_REQUIRED
+        } else {
+          GoalRunnerRepairStatus.INSPECTED
+        },
+        parentWorkflowId = loaded.parentWorkflowId,
+        diagnoses = diagnoses,
+        refusalReason = "Phase-output contract version is incompatible with the installed runtime. " +
+          "Recover with: '${goalPlanningHardResetRemedy(request.issueKey)}'.",
+      )
+    }
     if (!request.apply) {
       return GoalRunnerRepairResult(
         issueKey = request.issueKey,

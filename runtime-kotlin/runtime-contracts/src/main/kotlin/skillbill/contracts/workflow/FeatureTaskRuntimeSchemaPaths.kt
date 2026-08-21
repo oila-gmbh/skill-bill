@@ -4,7 +4,7 @@ package skillbill.contracts.workflow
  * Runtime-side mirror of the schema's `contract_version`; a parity test fails
  * the build if they diverge. Bump both sites together.
  */
-const val FEATURE_TASK_RUNTIME_CONTRACT_VERSION: String = "0.3"
+const val FEATURE_TASK_RUNTIME_CONTRACT_VERSION: String = "0.4"
 
 /**
  * Version of the `implement_fix` repair-receipt payload nested under
@@ -178,26 +178,6 @@ object FeatureTaskRuntimeImplementationAttemptSchemaPaths {
     "https://skill-bill.dev/contracts/feature-task-runtime-implementation-attempt-schema.yaml"
 }
 
-const val FEATURE_TASK_RUNTIME_AUDIT_REPAIR_CONTRACT_VERSION: String = "0.2"
-
-/**
- * Runtime-side mirror of the audit-generation schema's `contract_version`;
- * `FeatureTaskRuntimeAuditGenerationSchemaContractVersionTest` fails the build if they diverge.
- * Pins the append-only audit-generation history that is the sole durable authority for gap identity,
- * gap state, recurrence, and repair-batch disposition. The replaceable audit-repair-state artifact
- * pinned by [FEATURE_TASK_RUNTIME_AUDIT_REPAIR_CONTRACT_VERSION] is a derived cache of it.
- */
-const val FEATURE_TASK_RUNTIME_AUDIT_GENERATION_CONTRACT_VERSION: String = "0.1"
-
-object FeatureTaskRuntimeAuditGenerationSchemaPaths {
-  const val REPO_RELATIVE_PATH: String =
-    "orchestration/contracts/feature-task-runtime-audit-generation-schema.yaml"
-  const val CLASSPATH_RESOURCE: String =
-    "skillbill/contracts/feature-task-runtime-audit-generation-schema.yaml"
-  const val EXPECTED_SCHEMA_ID: String =
-    "https://skill-bill.dev/contracts/feature-task-runtime-audit-generation-schema.yaml"
-}
-
 /**
  * Runtime-side mirror of the checkpoint-identity schema's `contract_version`;
  * `FeatureTaskRuntimeCheckpointIdentitySchemaContractVersionTest` fails the build if they diverge.
@@ -215,15 +195,6 @@ object FeatureTaskRuntimeCheckpointIdentitySchemaPaths {
     "skillbill/contracts/feature-task-runtime-checkpoint-identity-schema.yaml"
   const val EXPECTED_SCHEMA_ID: String =
     "https://skill-bill.dev/contracts/feature-task-runtime-checkpoint-identity-schema.yaml"
-}
-
-object FeatureTaskRuntimeAuditRepairPlanSchemaPaths {
-  const val REPO_RELATIVE_PATH: String =
-    "orchestration/contracts/feature-task-runtime-audit-repair-plan-schema.yaml"
-  const val CLASSPATH_RESOURCE: String =
-    "skillbill/contracts/feature-task-runtime-audit-repair-plan-schema.yaml"
-  const val EXPECTED_SCHEMA_ID: String =
-    "https://skill-bill.dev/contracts/feature-task-runtime-audit-repair-plan-schema.yaml"
 }
 
 /**

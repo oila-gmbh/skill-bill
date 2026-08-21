@@ -1,8 +1,6 @@
 package skillbill.workflow.taskruntime
 
 import skillbill.workflow.model.ValidationDepth
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseHandoff
@@ -76,9 +74,6 @@ object FeatureTaskRuntimeHandoffContract {
     recordedOutputs: List<FeatureTaskRuntimePhaseOutput>,
     drivingVerdict: FeatureTaskRuntimeVerdict? = null,
     reentryGapCriteria: List<String> = emptyList(),
-    auditRepairPlan: FeatureTaskRuntimeAuditRepairPlan? = null,
-    auditRepairState: FeatureTaskRuntimeAuditRepairState? = null,
-    activeRepairBatch: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairBatch? = null,
     durablyClosedCriterionRefs: List<String> = emptyList(),
     repairLedger: FeatureTaskRuntimeRepairLedger? = null,
     repositoryCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
@@ -99,9 +94,6 @@ object FeatureTaskRuntimeHandoffContract {
     validationDepth = validationDepth,
     drivingVerdict = drivingVerdict,
     reentryGapCriteria = reentryGapCriteria,
-    auditRepairPlan = auditRepairPlan,
-    auditRepairState = auditRepairState,
-    activeRepairBatch = activeRepairBatch,
     durablyClosedCriterionRefs = durablyClosedCriterionRefs,
     repairLedger = repairLedger,
   )

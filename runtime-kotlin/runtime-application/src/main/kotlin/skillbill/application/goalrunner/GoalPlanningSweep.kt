@@ -256,7 +256,7 @@ class DefaultGoalPlanningSweep(
       val recoverability = classifyRecoverability(existingShared, currentProvenance, working)
     ) {
       is GoalPlanningProvenanceRecoverability.Invalid ->
-        return SharedPreplanSettlement.Halt(incompatibleProvenance(working))
+        return SharedPreplanSettlement.Halt(incompatibleProvenance(working, recoverability.recoveryKind))
       is GoalPlanningProvenanceRecoverability.Reuse -> {
         val settled = existingShared ?: produceSharedPreplan(working, request, recoverability.provenance)
           .getOrElse { error ->
@@ -326,10 +326,9 @@ class DefaultGoalPlanningSweep(
       val second = classifyRecoverability(afterRefresh, currentProvenance, working)
     ) {
       is GoalPlanningProvenanceRecoverability.Invalid ->
-        return SharedPreplanSettlement.Halt(incompatibleProvenance(working))
+        return SharedPreplanSettlement.Halt(incompatibleProvenance(working, second.recoveryKind))
       is GoalPlanningProvenanceRecoverability.Reuse -> second.provenance to afterRefresh
       is GoalPlanningProvenanceRecoverability.StaleValid -> {
-        // Latch: a second stale classification in this prepare must not re-enter refresh.
         refreshStaleSharedPreplan(
           existing = afterRefresh,
           shared = working,
@@ -472,15 +471,19 @@ class DefaultGoalPlanningSweep(
     return packet + ("integrity_sha256" to GoalPlanningSharedContextPacket.digest(packet))
   }
 
-  private fun incompatibleProvenance(shared: GoalPlanningSharedContext): GoalPlanningSweepOutcome.Stopped {
-    val remedySubtaskId = goalPlanningRemedySubtaskId(shared.manifest.subtasks)
-    return stopped(
-      shared,
-      0,
-      goalPlanningIncompatibleProvenanceStopReason(shared.issueKey, remedySubtaskId),
-      PHASE_PREPLAN,
-    )
-  }
+  private fun incompatibleProvenance(
+    shared: GoalPlanningSharedContext,
+    kind: GoalPlanningRecoveryKind,
+  ): GoalPlanningSweepOutcome.Stopped = stopped(
+    shared,
+    0,
+    goalPlanningIncompatibleProvenanceStopReason(
+      shared.issueKey,
+      goalPlanningRemedySubtaskId(shared.manifest.subtasks),
+      kind,
+    ),
+    PHASE_PREPLAN,
+  )
 
   private fun recoverySubtaskId(error: Throwable): Int {
     val recoveryError = error as? IncompatibleGoalPlanningPreparationRecoveryError
@@ -1420,12 +1423,18 @@ class DefaultGoalPlanningSweep(
 internal sealed interface GoalPlanningProvenanceRecoverability {
   class Reuse(val provenance: GoalPlanningContractProvenance) : GoalPlanningProvenanceRecoverability
   class StaleValid(val provenance: GoalPlanningContractProvenance) : GoalPlanningProvenanceRecoverability
-  data object Invalid : GoalPlanningProvenanceRecoverability
+  data class Invalid(val recoveryKind: GoalPlanningRecoveryKind) : GoalPlanningProvenanceRecoverability
 }
 
 /**
- * Validity: manifest hash, parent-spec self-hash, and payload sha. Runtime schema ids are install
- * identity and are not validity. Freshness: canonical parent-spec equality.
+ * Validity: manifest hash, parent-spec self-hash, payload sha, and runtime contract identity.
+ * A phase-output or planning contract bump under a live goal is not reusable: the schema's breaking
+ * shape requires a hard reset, so mismatched contract id/version is Invalid rather than StaleValid.
+ * Freshness: canonical parent-spec equality.
+ *
+ * Invalid carries the [GoalPlanningRecoveryKind] the operator must run. This is the only owner of that
+ * decision — a caller that re-derives it from provenance fields drifts the moment a contract identity
+ * field is added here, advertising a replan for a state only a hard reset clears.
  *
  * A selected heading id that no longer resolves is not a validity failure. The body resolver already
  * refuses an off-catalog id and reports it in `unresolvedHeadingIds`, which reaches the plan prompt, so
@@ -1441,11 +1450,19 @@ internal fun classifyGoalPlanningProvenanceRecoverability(
 ): GoalPlanningProvenanceRecoverability {
   if (existing == null) return GoalPlanningProvenanceRecoverability.Reuse(current)
   val saved = existing.provenance
+  val contractCompatible =
+    saved.planningContractId == current.planningContractId &&
+      saved.planningContractVersion == current.planningContractVersion &&
+      saved.phaseOutputContractId == current.phaseOutputContractId &&
+      saved.phaseOutputContractVersion == current.phaseOutputContractVersion
+  if (!contractCompatible) {
+    return GoalPlanningProvenanceRecoverability.Invalid(GoalPlanningRecoveryKind.HARD_RESET)
+  }
   val valid = saved.decompositionManifestHash == current.decompositionManifestHash &&
     savedParentSpec != null &&
     sha256HexUtf8(savedParentSpec) == saved.parentSpecHash &&
     sha256HexUtf8(existing.preplanPayload) == existing.payloadSha256
-  if (!valid) return GoalPlanningProvenanceRecoverability.Invalid
+  if (!valid) return GoalPlanningProvenanceRecoverability.Invalid(GoalPlanningRecoveryKind.SCOPED_REPLAN)
   val fresh = GoalPlanningSpecCanonicalization.canonical(savedParentSpec) ==
     GoalPlanningSpecCanonicalization.canonical(currentParentSpec)
   return if (fresh) {

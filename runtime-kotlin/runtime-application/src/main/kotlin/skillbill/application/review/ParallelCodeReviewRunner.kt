@@ -207,7 +207,9 @@ class ParallelCodeReviewRunner(
       verificationVerdicts + adjudicationVerdicts,
     )
     emitReviewStageDegradations(initial.request.reviewRunId, outcomes)
+    val prose = result.mergeResult.formattedOutput
     val assembled = ParallelReviewMerger.withRecordedVerdicts(result.mergeResult, recordedVerdicts)
+      .copy(formattedOutput = prose)
     result.accountingSummary?.let { summary ->
       database.transaction { unitOfWork ->
         unitOfWork.reviews.saveAccounting(
@@ -223,10 +225,9 @@ class ParallelCodeReviewRunner(
 
   private fun prepareInitialRun(originalRequest: ParallelCodeReviewRequest): InitialRun {
     val agent1 = resolveAgent(originalRequest.agent1Id, "--agent1")
-    val agent2 = originalRequest.agent2Id?.let { resolveAgent(it, "--agent2") }
-    if (agent2 != null && agent1.id == agent2.id) {
+    if (!originalRequest.agent2Id.isNullOrBlank()) {
       throw UsageValidationException(
-        "agent1 and agent2 must be different agents; both resolved to '${agent1.id}'.",
+        "Dual-agent parallel lanes are disconnected. Omit agent2Id; single-agent review uses agent1 only.",
       )
     }
     val revisions = resolveReviewRevisions(originalRequest)
@@ -245,8 +246,6 @@ class ParallelCodeReviewRunner(
     val budget = repoLocalConfig.readRepoLocalConfig(ReadRepoLocalConfigRequest(originalRequest.repoRoot))
       .config.reviewContextBudget
     val lane1ResolvedMode = resolvedMode(originalRequest)
-    // Pin lane 1's depth onto the request before either lane starts, so lane 2 inherits it and a
-    // mixed-tier pairing is rejected by the request's own invariant rather than by convention.
     val request = originalRequest.withResolvedTier(lane1ResolvedMode.toCodeReviewExecutionMode())
     val resolvedMode = ReviewExecutionModePolicy.resolve(request.lane2Tier)
     val compiled = prepare(
@@ -258,7 +257,7 @@ class ParallelCodeReviewRunner(
       detection.routed,
       detection.manifests,
       detection.ownedPathsBySlug,
-      listOfNotNull(agent1.id, agent2?.id),
+      listOf(agent1.id),
       budget,
       sharedEvidence.storePath,
     )
@@ -267,7 +266,7 @@ class ParallelCodeReviewRunner(
       detection = detection,
       resolvedMode = resolvedMode,
       agent1Id = agent1.id,
-      agent2Id = agent2?.id,
+      agent2Id = null,
       preparedLaunchRequests = compiled.toRun,
       compiledLaunchRequests = compiled.all,
       budget = budget,
@@ -1362,46 +1361,50 @@ class ParallelCodeReviewRunner(
     )
     val launchReason = budgetOutcome?.let { ReviewContextBudgetExceededException(it).message }
       ?: laneFailureReason(outcome)
-    val parsed = if (launchReason == null) {
-      parseLaneRegisterSeam(outcome.stdout, launch.assignment.lane, registerParse)
-    } else {
-      null
-    }
-    val findings = parsed?.let { attributeInlineFindings(it, launch.selected) }.orEmpty()
-    val rejectedCount = parsed?.rejections?.size ?: 0
-    val registerReason = parsed?.let { registerAbsenceReason(outcome.stdout, it) }
     val evidenceAccounting = evidenceBroker.accounting()
     val completion = brokerEvidenceCompletionState(bundleState, evidenceAccounting)
-    val reason = launchReason
-      ?: registerReason
-      ?: unreadEvidenceReason(launch, evidenceAccounting, findings.isEmpty())
+    val softFindings = if (launchReason == null) {
+      softAdmitFindings(outcome.stdout, launch)
+    } else {
+      emptyList()
+    }
     return ParallelReviewLaneOutcome(
-      success = reason == null,
+      success = launchReason == null,
       rawOutput = outcome.stdout,
-      failureReason = reason,
-      droppedCandidateDiagnostic = parsed?.let(::rejectedCandidateDiagnostic),
+      failureReason = launchReason,
+      droppedCandidateDiagnostic = null,
       budgetOutcome = budgetOutcome,
       tokenUsage = providerTokenUsage(outcome),
       accounting = inlineParentAccounting(
         launch,
-        if (registerReason != null) {
-          REGISTER_ABSENT_TERMINAL_STATUS
-        } else {
-          inlineTerminalStatus(outcome, completion.disposition)
-        },
+        inlineTerminalStatus(outcome, completion.disposition),
         outcome,
         evidenceAccounting,
         completion,
       ),
-      findings = if (reason == null) findings else emptyList(),
+      findings = softFindings,
       reviewDisposition = completion.disposition,
       bundleCompositionDigest = completion.bundleCompositionDigest,
       segmentAccounting = completion.segments,
       unreviewedSegmentIds = completion.unreviewedSegmentIds,
       budgetDimension = completion.budgetDimension,
       unreviewedUnits = completion.unreviewedUnits,
-      rejectedCandidateCount = rejectedCount,
+      rejectedCandidateCount = 0,
     )
+  }
+
+  /**
+   * Best-effort register admission for claim verification. Never fails the lane: prose + verdict are
+   * the settlement contract; optional `[F-XXX]` lines that parse cleanly become verification inputs.
+   */
+  private fun softAdmitFindings(
+    stdout: String,
+    launch: InlineParentLaunch,
+  ): List<ParallelReviewRawFinding> = try {
+    val parsed = parseLaneRegisterSeam(stdout, launch.assignment.lane, registerParse)
+    attributeInlineFindings(parsed, launch.selected)
+  } catch (@Suppress("TooGenericExceptionCaught") _: Exception) {
+    emptyList()
   }
 
   /**
@@ -1467,9 +1470,9 @@ class ParallelCodeReviewRunner(
       appendLine("Run one bill-code-review mode:delegated review over the routed specialist fan-out.")
       appendLine("Resolved execution mode: delegated")
       appendLine(
-        "Depth: full. Launch one specialist worker per resolved rubric below and merge their " +
-          "registers. Inability to launch a required worker blocks loudly; never degrade to the " +
-          "single-prompt inline lane.",
+        "Depth: full. Launch one specialist worker per resolved rubric below. Pass each specialist's " +
+          "raw return through unchanged — do not require a register shape from them. You alone author " +
+          "the final review prose and verdict from whatever they returned.",
       )
     }
   }
@@ -1489,7 +1492,7 @@ class ParallelCodeReviewRunner(
           "[paths=${launch.assignment.assignedPaths.joinToString(",") { structuredString(it) }};" +
           "add-ons=${decision.addOns.joinToString("+").ifBlank { "none" }};" +
           "origins=${decision.originLayerChains.joinToString("|") { it.joinToString("->") }}]"
-      }.ifBlank { "parallel-code-review" }
+      }.ifBlank { "code-review" }
       appendLine("Authoritative routed rubric identities: $rubricLabel")
       selected.forEach { launch ->
         val decision = launch.assignment.laneDecision
@@ -1506,17 +1509,17 @@ class ParallelCodeReviewRunner(
       )
       appendLine(if (inline) INLINE_DEPTH_DIRECTIVE else DELEGATED_DEPTH_DIRECTIVE)
       appendLine(
-        "Return only '[F-XXX] Severity | Confidence | specialist=<exact resolved rubric identity> | " +
-          "commits=<sha>[,<sha>] | path=<JSON string> | line=<positive integer> | description' lines. " +
-          "The commits= segment is optional for a finding confined to a single assigned commit and " +
-          "required whenever a finding relates code from more than one assigned commit; list the " +
-          "involved commit shas in the bundle's commit order.",
+        "Return free-form review prose and end with an explicit verdict line: " +
+          "`verdict: approved` or `verdict: changes_requested` (needs_fix is accepted as changes_requested). " +
+          "There is no findings-register format gate and no $NO_FINDINGS_TOKEN requirement — " +
+          "missing or imperfect register lines never fail the review.",
       )
       appendLine(
-        "If the full assigned review executed and no finding met the admission gate, return exactly " +
-          "$NO_FINDINGS_TOKEN on its own line. Never return an empty or prose-only result: output " +
-          "with neither [F-XXX] lines nor $NO_FINDINGS_TOKEN is treated as a lane that did not " +
-          "execute and fails the run.",
+        "When you have concrete defects, also emit optional `[F-XXX]` register lines so claim " +
+          "verification can re-check them: " +
+          "'[F-XXX] Severity | Confidence | specialist=<exact resolved rubric identity> | " +
+          "commits=<sha>[,<sha>] | path=\"<repo-relative path>\" | line=<positive integer> | description'. " +
+          "Lines that do not parse are ignored; they do not block settlement.",
       )
       appendLine()
       selected.forEach { launch ->
@@ -1881,36 +1884,22 @@ private fun parallelResult(
   budget: ReviewContextBudgetPolicy,
   stageResume: ReviewStageResumeReport?,
 ): ParallelCodeReviewResult {
+  val prose = outcomes.lane1.rawOutput.trim().ifBlank { "Review completed with no prose body." }
   val lane1Result = ParallelReviewLaneResult(
     agentId = agent1Id,
-    findings = outcomes.lane1.findings.ifEmpty {
-      if (outcomes.lane1.success) ParallelReviewFindingParser.parse(outcomes.lane1.rawOutput).findings else emptyList()
-    },
+    findings = outcomes.lane1.findings,
   )
-  val lane2Result = ParallelReviewLaneResult(
-    agentId = agent2Id.orEmpty(),
-    findings = if (agent2Id == null) {
-      emptyList()
-    } else {
-      outcomes.lane2.findings.ifEmpty {
-        if (outcomes.lane2.success) {
-          ParallelReviewFindingParser.parse(
-            outcomes.lane2.rawOutput,
-          ).findings
-        } else {
-          emptyList()
-        }
-      }
-    },
+  val merged = ParallelReviewMerger.merge(
+    lane1Result,
+    ParallelReviewLaneResult(agentId = "", findings = emptyList()),
+    integration.findings.takeIf { it.isNotEmpty() }
+      ?.let { ParallelReviewLaneResult(ReviewIntegrationPassRunner.INTEGRATION_LANE, it) },
   )
-  val integrationResult = integration.findings
-    .takeIf { it.isNotEmpty() }
-    ?.let { ParallelReviewLaneResult(ReviewIntegrationPassRunner.INTEGRATION_LANE, it) }
   return ParallelCodeReviewResult(
-    mergeResult = ParallelReviewMerger.merge(lane1Result, lane2Result, integrationResult),
+    mergeResult = merged.copy(formattedOutput = prose),
     lane1 = outcomes.lane1.toStatus(agent1Id),
-    lane2 = outcomes.lane2.toStatus(agent2Id.orEmpty()),
-    accountingSummary = parallelAccountingSummary(outcomes, includeLane2 = agent2Id != null)
+    lane2 = ParallelReviewLaneStatus(agentId = "", success = true),
+    accountingSummary = parallelAccountingSummary(outcomes, includeLane2 = false)
       ?.withCommitFocusedAccounting(packet, budget, integration, coverage),
     integration = integration,
     coverage = coverage,
@@ -2078,19 +2067,13 @@ private fun inlineParentAccounting(
 private const val INLINE_DEPTH_DIRECTIVE: String =
   "Merge every routed rubric above into one combined checklist, then traverse the diff exactly " +
     "once against it at reduced depth in this agent context, holding all rubrics in mind " +
-    "simultaneously, and do not launch specialists. Never re-walk the diff once per rubric: " +
-    "iterating rubrics over the same code is the same review repeated N times at N times the " +
-    "cost, and it misses defects that only surface where two rubrics intersect. " +
-    "Follow only the signals that appear; do not build a case for a marginal finding. " +
-    "Depth and budget are lowered here — the severity vocabulary, the finding admission gate, the " +
-    "evidence and observable-consequence requirements, the F-XXX register format, and telemetry are " +
-    "inherited unchanged."
+    "simultaneously, and do not launch specialists. Never re-walk the diff once per rubric. " +
+    "Write free-form prose findings; do not emit a machine findings register."
 
 private const val DELEGATED_DEPTH_DIRECTIVE: String =
-  "Assign each routed rubric above to its own specialist worker over that rubric's owned paths " +
-    "and merge the returned registers. The severity vocabulary, the finding admission gate, the " +
-    "evidence and observable-consequence requirements, the F-XXX register format, and telemetry " +
-    "are the same as every other mode."
+  "Assign each routed rubric above to its own specialist worker over that rubric's owned paths. " +
+    "Accept each specialist's raw return as-is with no shape check. Synthesize the final review " +
+    "prose and verdict yourself from those returns."
 
 /** Terminal status of a resume pass that had no incomplete lane left to launch a worker for. */
 internal const val NO_OP_RESUME_TERMINAL_STATUS: String = "no_op_resume"

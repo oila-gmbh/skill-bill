@@ -284,9 +284,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       name = "audit_repair_request",
       contractId = PhaseProjectionContract.AUDIT_REPAIR_REQUEST,
       fields = listOf(
-        "audit_repair_plan",
-        "prior_terminal_repair_outcomes",
-        "unresolved_gap_ids",
+        "unmet_criteria",
         "repository_checkpoint",
       ),
       checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,

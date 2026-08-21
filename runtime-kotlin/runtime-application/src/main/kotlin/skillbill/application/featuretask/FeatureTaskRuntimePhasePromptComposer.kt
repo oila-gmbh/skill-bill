@@ -5,13 +5,13 @@ import skillbill.application.featuretask.validation.model.ValidationFindingSetPr
 import skillbill.application.model.FeatureTaskRuntimeImplementationContinuation
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_CONTRACT_VERSION
-import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION
 import skillbill.error.FeatureTaskRuntimeHandoffProjectionFailureKind
 import skillbill.error.InvalidFeatureTaskRuntimeHandoffProjectionError
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.review.model.ReviewIssueCategory
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_AUDIT_NOTE_MAX_CHARS
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionBudget
@@ -212,14 +212,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     val repairProjection = correctiveRepairContext?.let { context ->
       "\n\n" + context.promptProjection().renderAuthorizedRepairSection()
     }.orEmpty()
-    val remediationCorrection = if (briefing.auditRepairItemIds.isEmpty()) {
-      ""
-    } else {
-      "\nCorrect every carried item exactly once and in this order: " +
-        briefing.auditRepairItemIds.joinToString() + ".\n" +
-        auditRemediationOutputExample(briefing.auditRepairItemIds)
-    }
-    return base + structuralRepairNote + repairProjection + remediationCorrection +
+    return base + structuralRepairNote + repairProjection +
       unparseableRootCorrection(priorSchemaFailure) +
       FeatureTaskRuntimeSchemaFailureCorrections.lengthViolation(priorSchemaFailure) +
       FeatureTaskRuntimeSchemaFailureCorrections.closedEnumeration(priorSchemaFailure) +
@@ -271,16 +264,11 @@ object FeatureTaskRuntimePhasePromptComposer {
         "\"${FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS}\": [], " +
           "\"${FeatureTaskRuntimeVerificationSignalKeys.REVIEW_RUN_ID}\": \"<the Review run ID this pass " +
           "reported>\""
-      else -> if (briefing.auditRepairItemIds.isEmpty()) {
-        "\"result\": \"<concrete output for downstream phases>\""
-      } else {
-        "\"reconciled_state\": { \"reconciled\": true, \"evidence\": \"<verified end state>\" }, " +
-          "\"repair_item_results\": ${repairItemResultsJson(briefing.auditRepairItemIds)}"
-      }
+      else -> "\"result\": \"<concrete output for downstream phases>\""
     }
 
   private fun auditProducedOutputsSkeleton(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String {
-    val gaps = "\"${FeatureTaskRuntimeVerificationSignalKeys.AUDIT_GAPS}\": []"
+    val gaps = "\"${FeatureTaskRuntimeVerificationSignalKeys.AUDIT_UNMET_CRITERIA}\": []"
     val nonBlocking =
       "\"${FeatureTaskRuntimeVerificationSignalKeys.AUDIT_NON_BLOCKING_FINDINGS}\": []"
     if (briefing.unresolvedAuditGapIds.isEmpty()) return "$gaps, $nonBlocking"
@@ -444,25 +432,15 @@ object FeatureTaskRuntimePhasePromptComposer {
     agentRunValidateFallback: Boolean,
   ): String {
     val phaseId = briefing.phaseId
-    val remediation = if (briefing.auditRepairItemIds.isEmpty()) {
+    val remediation = if (briefing.unresolvedAuditGapIds.isEmpty()) {
       ""
     } else {
-      "\n    - This is AUDIT-GAP REMEDIATION. produced_outputs MUST also include repair_item_results " +
-        "with exactly these ids in order: ${briefing.auditRepairItemIds.joinToString()}. Every result must " +
-        "contain only repair_item_id, outcome (fixed or already_satisfied), non-empty " +
-        "changed_paths_or_symbols, non-empty executed_verification, and structured result_evidence " +
-        "with observation, artifact_ref, and check_ref. observation MUST be exactly one of " +
-        "required_behavior_absent, verification_failed, contract_rejected, state_mismatch, fix_verified, " +
-        "already_satisfied_verified, resolution_verified, or recurrence_verified; use " +
-        "already_satisfied_verified when the behavior already existed and you verified it, and do not " +
-        "invent a synonym outside this list. artifact_ref MUST be a repository-relative path " +
-        "optionally followed by one :symbol; do not put a sentence, spaces, test description, command, " +
-        "result, or additional prose in artifact_ref. check_ref MUST be AC-###, F-###, or a single " +
-        "name ending in Test or Check (optionally followed by :symbol); do not put a command, result, " +
-        "sentence, spaces, or shell punctuation in check_ref.\n" +
-        "    - produced_outputs MUST include deferred_repair_item_ids. Completed remediation uses []; " +
-        "blocked remediation lists every remaining item, while unresolvable_repair identifies exactly one.\n" +
-        auditRemediationOutputExample(briefing.auditRepairItemIds)
+      "\n    - This is AUDIT-GAP REMEDIATION for these acceptance criteria: " +
+        briefing.unresolvedAuditGapIds.joinToString() + ". Plan and implement them in this one " +
+        "invocation, then report the ordinary implementation receipt. There are no repair-item " +
+        "identifiers to echo and no per-item evidence to record: the next audit re-reads the tree and " +
+        "decides every criterion again. If a criterion is genuinely unimplementable, leave through a " +
+        "blocked envelope naming it and why."
     }
     return "\n    - produced_outputs MUST include a reconciliation report: a \"reconciled_state\" object\n" +
       "      (or a \"reconciled_state\" entry) with \"reconciled\": true and concrete evidence that the\n" +
@@ -505,119 +483,41 @@ object FeatureTaskRuntimePhasePromptComposer {
       "      REJECTED: omitting verdict; any other string; nesting verdict only inside produced_outputs.\n" +
       "      ACCEPTED root: {\"contract_version\":\"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION\"," +
       "\"phase_id\":\"audit\",\"status\":\"completed\",\"verdict\":\"satisfied\"," +
-      "\"summary\":\"<one sentence>\",\"produced_outputs\":{\"gaps\":[]}}.\n" +
-      "      Emit exactly one shallow produced_outputs.gaps array. Use [] for satisfied. For gaps_found,\n" +
-      "      each entry contains only criterion, severity (blocker or major), location, optional file, " +
-      "issue, and fix.\n" +
-      "      location MUST be ClassName or ClassName.memberName, never a package-qualified class name.\n" +
-      "      file is the basename only and SHOULD be omitted unless the location is ambiguous. Example:\n" +
-      "      {\"criterion\":\"AC-003\",\"severity\":\"major\",\"location\":\"ReviewRunner.merge\",\n" +
-      "       \"file\":\"ReviewRunner.kt\",\"issue\":\"Rejected lanes are omitted\",\n" +
-      "       \"fix\":\"Include rejected lanes in the aggregate\"}.\n" +
-      "      A gaps entry never carries a gap ID, a repair-item ID, a dependency array, acceptance-criterion\n" +
-      "      text, or repeated paths, and produced_outputs never carries unmet_criteria, audit_repair_plan,\n" +
-      "      or prior_gap_dispositions; the runtime derives its durable repair model.\n" +
-      auditCarriedDispositionContract() +
+      "\"summary\":\"<one sentence>\",\"produced_outputs\":{\"unmet_criteria\":[]}}.\n" +
+      "      Emit exactly one shallow produced_outputs.unmet_criteria array. Use [] for satisfied. For\n" +
+      "      gaps_found, one entry per unmet criterion, each carrying only its criterion ref and one line\n" +
+      "      on what is missing: {\"criterion\":\"AC-003\",\"note\":\"Rejected lanes are omitted from the " +
+      "aggregate\"}.\n" +
+      "      criterion is AC-###. note is one line of at most " +
+      "$FEATURE_TASK_RUNTIME_AUDIT_NOTE_MAX_CHARS characters, naming what is missing — never a diff\n" +
+      "      hunk, a source body, or a line number.\n" +
+      "      produced_outputs carries nothing else about the audit: no gaps, no audit_repair_plan, no\n" +
+      "      carried_gap_dispositions, no blast_radius_inspection, no gap or repair-item identifiers.\n" +
+      "      Every audit re-checks every listed criterion from scratch against the tree, so there is no\n" +
+      "      earlier audit to account for and nothing to carry forward.\n" +
       "      Minor and nit entries go only in produced_outputs.non_blocking_findings and they\n" +
-      "      NEVER trigger gaps_found. Those entries use their own shape, not the gap shape:\n" +
-      "      severity (minor or nit) is required, acceptance_criterion_ref and message are expected.\n" +
-      "      Example: {\"acceptance_criterion_ref\":\"AC-004\",\n" +
+      "      NEVER trigger gaps_found: severity (minor or nit) is required, acceptance_criterion_ref and\n" +
+      "      message are expected. Example: {\"acceptance_criterion_ref\":\"AC-004\",\n" +
       "       \"message\":\"Naming could be clearer\",\"severity\":\"nit\"}.\n" +
       "      TEST EXCLUSION: missing tests, weak tests, incomplete test coverage, unrealistic fixtures,\n" +
-      "      insufficient assertions, and any other test-only concern are NEVER audit gaps. Do not inspect\n" +
-      "      or assess test adequacy, cite test files as an affected boundary, or create repair items that\n" +
-      "      add or change tests. Validation owns test execution and failures. Audit may report only a\n" +
-      "      concrete defect in production behavior or production implementation; when no such defect is\n" +
-      "      evidenced, emit satisfied even if test coverage is absent or inadequate.\n" +
-      auditRoundScopeAddendum(briefing) +
-      auditClosedCriterionAddendum(briefing.durablyClosedCriterionRefs)
+      "      insufficient assertions, and any other test-only concern are NEVER unmet criteria. Do not\n" +
+      "      inspect or assess test adequacy and do not cite test files. Validation owns test execution\n" +
+      "      and failures. Report only a concrete defect in production behavior or production\n" +
+      "      implementation; when no such defect is evidenced, emit satisfied even if test coverage is\n" +
+      "      absent or inadequate." +
+      auditRoundScopeAddendum(briefing)
 
-  private fun auditCarriedDispositionContract(): String =
-    "      Carried gaps use produced_outputs.carried_gap_dispositions. Each evidence.observation is a " +
-      "closed token, not a sentence. Copy exactly one of: resolution_verified | recurrence_verified.\n" +
-      "      Pairing is closed too: status resolved ONLY with observation resolution_verified; status " +
-      "recurring ONLY with observation recurrence_verified.\n" +
-      "      ACCEPTED: {\"gap_id\":\"ac-006-gap-1\",\"status\":\"resolved\"," +
-      "\"evidence\":{\"observation\":\"resolution_verified\",\"artifact_ref\":\"AuditGates.kt:AuditGates\"," +
-      "\"check_ref\":\"AC-006\"}}.\n" +
-      "      REJECTED observation values: any paragraph, synonym, or description of what you verified " +
-      "(example of REJECTED: \"The governed prose now states one review pass\").\n" +
-      "      Put that paragraph in summary only. artifact_ref is one path or path:symbol; check_ref is " +
-      "AC-###. A resolved carried gap MUST NOT also appear in gaps; a still-recurring carried gap is " +
-      "re-reported in gaps instead of dispositioned. Follow-up satisfied also requires " +
-      "produced_outputs.blast_radius_inspection whose evidence.observation is exactly resolution_verified.\n"
-
+  // The unmet criteria a previous audit named are the round's focus, but never its boundary: a
+  // criterion an earlier audit passed can regress under a later repair, and only a full re-check
+  // catches that. Naming the carried refs orients the round without narrowing what it must decide.
   private fun auditRoundScopeAddendum(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String =
     if (briefing.unresolvedAuditGapIds.isEmpty()) {
-      "      INITIAL AUDIT SCOPE: inspect every listed acceptance criterion once. " +
-        "PROSPECTIVE REPAIR IMPACT ANALYSIS\n" +
-        "      belongs only to this initial pass: before reporting gaps, analyze the complete proposed repair batch\n" +
-        "      so each fix is closure-complete for that blast radius. Treat " +
-        "already-satisfied criteria as non-regression constraints\n" +
-        "      and account for the cumulative repair delta and cross-repair interactions\n" +
-        "      now, allowing every evidenced gap to be repaired together in one implementation invocation. Verify\n" +
-        "      concrete production behavior and do not invent speculative gaps.\n"
-    } else {
-      "      FOLLOW-UP AUDIT SCOPE: verify ONLY the carried unresolved gaps and the repair work performed\n" +
-        "      for them in this round (${briefing.unresolvedAuditGapIds.joinToString()}). Inspect only the\n" +
-        "      repaired symbols and the directly necessary production evidence needed to decide whether each\n" +
-        "      carried gap is resolved or recurring. Do not rescan the full subtask, the full acceptance-criterion\n" +
-        "      surface, or the cumulative diff. Do not hunt for unrelated or newly discoverable gaps. A recurring\n" +
-        "      disposition is legal ONLY when the carried gap's ORIGINAL failure_evidence check still fails at its\n" +
-        "      recorded artifact_ref; a stricter reading of the criterion, a new concern at the same location, or\n" +
-        "      a preference for a different repair approach never makes a resolved gap recurring. Emit a\n" +
-        "      compact gap only when one of the carried gaps still recurs. Silence about a carried gap claims " +
-        "nothing and is rejected.\n" +
-        auditFollowUpSatisfiedExample(briefing.unresolvedAuditGapIds)
-    }
-
-  private fun auditFollowUpSatisfiedExample(gapIds: List<String>): String {
-    val dispositions = gapIds.joinToString(",") { id ->
-      "{\"gap_id\":\"$id\",\"status\":\"resolved\",\"evidence\":{" +
-        "\"observation\":\"resolution_verified\",\"artifact_ref\":\"Type.kt:Type.member\"," +
-        "\"check_ref\":\"AC-001\"}}"
-    }
-    return "      COPY this satisfied follow-up envelope (keep the gap_id values; replace Type.kt:Type.member " +
-      "and AC-001 with the real pointer). Do not put prose in observation:\n" +
-      "      {\"contract_version\":\"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION\",\"phase_id\":\"audit\"," +
-      "\"status\":\"completed\",\"verdict\":\"satisfied\",\"summary\":\"Carried gaps are closed.\"," +
-      "\"produced_outputs\":{\"gaps\":[],\"carried_gap_dispositions\":[$dispositions]," +
-      "\"blast_radius_inspection\":{\"inspected_paths\":[\"Type.kt\"],\"newly_introduced_gap_ids\":[]," +
-      "\"evidence\":{\"observation\":\"resolution_verified\",\"artifact_ref\":\"Type.kt\"," +
-      "\"check_ref\":\"AC-001\"}}}}.\n"
-  }
-
-  private fun auditClosedCriterionAddendum(closedCriterionRefs: List<String>): String =
-    if (closedCriterionRefs.isEmpty()) {
       ""
     } else {
-      "\n      The acceptance criteria ${closedCriterionRefs.sorted().joinToString()} already reached a " +
-        "satisfied verdict and are durably closed: verify ONLY the criteria this briefing still lists, and " +
-        "never report a compact gap against a closed criterion. Doing " +
-        "so fails the schema gate loudly."
+      "\n      The previous audit reported these criteria unmet: " +
+        "${briefing.unresolvedAuditGapIds.joinToString()}. Start there, then still decide every listed\n" +
+        "      criterion from the tree: a repair can regress a criterion an earlier audit passed."
     }
-
-  // repair_item_results and reconciled_state are co-residents on the implementation_receipt the audit
-  // consumer parses, not a replacement for it. Presenting them under their own "Required
-  // produced_outputs shape" heading made the phase emit only those two keys and fail the receipt gate
-  // on every attempt until the loop cap.
-  private fun auditRemediationOutputExample(repairItemIds: List<String>): String =
-    "\n      Required produced_outputs shape: the SAME implementation_receipt object, carrying the two\n" +
-      "      remediation fields alongside its own. They are co-residents, NOT a replacement shape:\n" +
-      "      projection_kind, contract_version, and every other receipt field stay REQUIRED here:\n" +
-      "      ```json\n" +
-      "      { \"projection_kind\": \"implementation_receipt\",\n" +
-      "        \"contract_version\": \"$FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION\",\n" +
-      "        \"completed_task_ids\": [\"task-1\"], \"changed_paths\": [\"path/Changed.kt\"],\n" +
-      "        \"tests_added\": [], \"tests_updated\": [], \"tests_executed\": [],\n" +
-      "        \"deviations\": [ { \"ref\": \"task-1\", \"note\": \"<one-line what deviated and why>\" } ],\n" +
-      "        \"unresolved_items\": [],\n" +
-      "        \"reconciliation_evidence\": { \"reconciled\": true, \"evidence\": \"<tree at target>\" },\n" +
-      "        \"repository_checkpoint\": { \"fingerprint\": \"<checkpoint fingerprint>\" },\n" +
-      "        \"reconciled_state\": { \"reconciled\": true, \"evidence\": \"<verified end state>\" },\n" +
-      "        \"deferred_repair_item_ids\": [],\n" +
-      "        \"repair_item_results\": ${repairItemResultsJson(repairItemIds)} }\n" +
-      "      ```"
 
   private fun validationGateFindingsDirective(phaseId: String, findings: ValidationFindingSetProjection?): String {
     if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE || findings == null) return ""
@@ -636,17 +536,5 @@ object FeatureTaskRuntimePhasePromptComposer {
       }
     }
     return lines.joinToString("\n")
-  }
-
-  private fun repairItemResultsJson(repairItemIds: List<String>): String = repairItemIds.joinToString(
-    prefix = "[",
-    postfix = "]",
-    separator = ", ",
-  ) { repairItemId ->
-    "{ \"repair_item_id\": \"$repairItemId\", \"outcome\": \"fixed\", " +
-      "\"changed_paths_or_symbols\": [\"<path or symbol>\"], " +
-      "\"executed_verification\": [\"<command and result>\"], " +
-      "\"result_evidence\": { \"observation\": \"fix_verified\", " +
-      "\"artifact_ref\": \"src/main/Example.kt:Example\", \"check_ref\": \"ExampleTest\" } }"
   }
 }

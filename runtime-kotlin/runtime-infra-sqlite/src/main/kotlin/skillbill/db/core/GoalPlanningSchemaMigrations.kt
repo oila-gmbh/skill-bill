@@ -61,6 +61,26 @@ internal fun requireGoalPlanningPhaseOutputV02(connection: Connection) {
   }
 }
 
+internal fun rebuildGoalPlanningPlansForPhaseOutputV04(connection: Connection) {
+  connection.createStatement().use { statement ->
+    statement.execute("ALTER TABLE goal_subtask_plans RENAME TO $LEGACY_PLANS_PRE_0_4")
+    statement.execute("ALTER TABLE goal_shared_preplans RENAME TO $LEGACY_PREPLANS_PRE_0_4")
+    statement.execute(connection.sharedPreplansDdl(LEGACY_PREPLANS_PRE_0_4, PHASE_OUTPUT_CHECK_THROUGH_0_4))
+    statement.execute(connection.subtaskPlansDdl(LEGACY_PLANS_PRE_0_4, PHASE_OUTPUT_CHECK_THROUGH_0_4))
+    statement.execute("INSERT INTO goal_shared_preplans SELECT * FROM $LEGACY_PREPLANS_PRE_0_4")
+    statement.execute("INSERT INTO goal_subtask_plans SELECT * FROM $LEGACY_PLANS_PRE_0_4")
+    statement.execute("DROP TABLE $LEGACY_PLANS_PRE_0_4")
+    statement.execute("DROP TABLE $LEGACY_PREPLANS_PRE_0_4")
+    statement.execute(ORDERED_SUBTASK_PLANS_INDEX)
+  }
+}
+
+private const val PHASE_OUTPUT_CHECK_THROUGH_0_4 = "IN ('0.2', '0.3', '0.4')"
+
+private const val LEGACY_PREPLANS_PRE_0_4 = "goal_shared_preplans_pre_0_4"
+
+private const val LEGACY_PLANS_PRE_0_4 = "goal_subtask_plans_pre_0_4"
+
 private const val LEGACY_PREPLANS = "goal_shared_preplans_pre_0_2"
 
 private const val LEGACY_PLANS = "goal_subtask_plans_pre_0_2"

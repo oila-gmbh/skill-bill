@@ -11,7 +11,6 @@ import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.featuretask.FeatureTaskRuntimeRunInvariantsStore
 import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.featuretask.agentAttributionFromPhaseState
-import skillbill.application.featuretask.auditRepairStateToWire
 import skillbill.application.model.FeatureTaskRuntimePhaseLedgerRequest
 import skillbill.application.model.FeatureTaskRuntimePhaseStateRequest
 import skillbill.application.model.FeatureTaskRuntimeStatusRequest
@@ -30,16 +29,9 @@ import skillbill.ports.persistence.model.FeatureImplementSessionSummary
 import skillbill.ports.persistence.model.FeatureVerifySessionSummary
 import skillbill.ports.persistence.model.WorkflowStateRecord
 import skillbill.workflow.WorkflowSnapshotValidator
-import skillbill.workflow.taskruntime.model.AUDIT_REPAIR_CONTRACT_VERSION
-import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DIAGNOSTIC_SIGNALS_ARTIFACT_KEY
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGap
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticFailureClass
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDiagnosticSignal
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeEvidence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.BLOCKED
@@ -47,10 +39,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.RESUME
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction.START
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItem
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeUnresolvedGap
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeUnresolvedGapLedger
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRunRecord
 import java.nio.file.Path
@@ -721,34 +710,6 @@ class FeatureTaskRuntimeStatusAttributionTest {
   }
 
   @Test
-  fun `cached nonzero audit-gap count without durable edge does not mislabel first audit as loop 1`() {
-    val harness = statusHarness()
-    harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
-    listOf("preplan", "plan", "implement").forEach { harness.recordCompleted(it, attemptCount = 1) }
-    harness.recordRunning("audit", attemptCount = 1)
-    harness.seedCachedAuditRepairProgress(
-      FeatureTaskRuntimeAuditRepairProgress(
-        firstPassConvergence = false,
-        recurringGapCount = 0,
-        newGapCount = 1,
-        attemptedRepairItemCount = 0,
-        resolvedRepairItemCount = 0,
-        auditGapIterationCount = 1,
-      ),
-    )
-
-    val projection = requireNotNull(
-      harness.service.status(FeatureTaskRuntimeStatusRequest(workflowId = WORKFLOW_ID)),
-    )
-    val execution = requireNotNull(projection.currentPhaseExecution)
-
-    assertEquals("audit", projection.currentPhaseId)
-    assertEquals(IdeStatusCurrentPhaseExecutionKind.PASS, execution.kind)
-    assertEquals(1, execution.count)
-    assertEquals(0, projection.auditRepair?.auditGapIterationCount)
-  }
-
-  @Test
   fun `audit-gap reentry reports durable loop iteration and does not reset to zero`() {
     val harness = statusHarness()
     harness.recorder.ensureWorkflowOpen(WORKFLOW_ID, SESSION_ID)
@@ -1178,54 +1139,6 @@ private class StatusHarness(
       edgeIteration = edgeIteration,
     ),
   )
-
-  fun seedCachedAuditRepairProgress(progress: FeatureTaskRuntimeAuditRepairProgress) {
-    val row = requireNotNull(repository.getFeatureTaskRuntimeWorkflow(WORKFLOW_ID))
-    val artifacts = decodeArtifacts(row.artifactsJson).toMutableMap()
-    artifacts[FEATURE_TASK_RUNTIME_AUDIT_REPAIR_STATE_ARTIFACT_KEY] = auditRepairStateToWire(
-      FeatureTaskRuntimeAuditRepairState(
-        acceptedPlans = listOf(
-          FeatureTaskRuntimeAuditRepairPlan(
-            contractVersion = AUDIT_REPAIR_CONTRACT_VERSION,
-            gaps = listOf(
-              FeatureTaskRuntimeAuditGap(
-                gapId = "ac-001-gap-1",
-                acceptanceCriterionRef = "AC-001",
-                acceptanceCriterionText = "Criterion",
-                failureEvidence = FeatureTaskRuntimeEvidence(
-                  observation = FeatureTaskRuntimeEvidence.Observation.REQUIRED_BEHAVIOR_ABSENT,
-                  artifactRef = "src/Example.kt",
-                  checkRef = "AC-001",
-                ),
-                diagnosis = "Diagnosis",
-                affectedBoundary = "runtime",
-                repairItems = listOf(
-                  FeatureTaskRuntimeRepairItem(
-                    repairItemId = "ac-001-gap-1-item-1",
-                    intendedOutcome = "Outcome",
-                    implementationActions = listOf("Implement"),
-                    affectedPathsOrSymbols = listOf("src/Example.kt"),
-                    requiredVerification = listOf("Test"),
-                    dependsOn = emptyList(),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-        repairItemResults = emptyList(),
-        priorGapDispositions = emptyList(),
-        unresolvedGapLedger = FeatureTaskRuntimeUnresolvedGapLedger(
-          listOf(FeatureTaskRuntimeUnresolvedGap("ac-001-gap-1", "AC-001", 1)),
-        ),
-        repositoryFingerprint = "fingerprint",
-        progress = progress,
-      ),
-    )
-    repository.saveFeatureTaskRuntimeWorkflow(
-      row.copy(artifactsJson = JsonSupport.mapToJsonString(artifacts)),
-    )
-  }
 
   fun seedDiagnosticSignals(vararg signals: FeatureTaskRuntimeDiagnosticSignal) {
     seedDiagnosticSignalsArtifact(signals.map { it.toArtifactMap() })

@@ -16,25 +16,16 @@ import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
-import skillbill.workflow.taskruntime.model.AUDIT_REPAIR_CONTRACT_VERSION
 import skillbill.workflow.taskruntime.model.CorrectiveRepairCapturedResponse
 import skillbill.workflow.taskruntime.model.CorrectiveRepairDiagnosticLocator
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGap
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairBudget
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeEvidence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionKind
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItem
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeUnresolvedGap
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeUnresolvedGapLedger
 import skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope
 import java.nio.file.Files
 import java.nio.file.Path
@@ -711,17 +702,12 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(reviewPrompt, "\"findings\" array", false, "review names the findings signal")
     assertContains(reviewPrompt, "\"approved\" or \"changes_requested\"", false, "review names the verdict values")
     assertContains(auditPrompt, "VERIFYING phase", false, "audit names itself a verifying phase")
-    assertAuditPromptNamesSignal(auditPrompt, "produced_outputs.gaps array", "the compact gaps signal")
+    assertAuditPromptNamesSignal(auditPrompt, "produced_outputs.unmet_criteria array", "the criterion list")
     assertAuditPromptNamesSignal(auditPrompt, "satisfied | gaps_found", "the verdict values")
     assertAuditPromptNamesSignal(
       auditPrompt,
       "for audit, top-level \"verdict\" is REQUIRED",
       "the contradiction of the optional-verdict bullet",
-    )
-    assertAuditPromptNamesSignal(
-      auditPrompt,
-      "resolution_verified | recurrence_verified",
-      "the closed observation tokens",
     )
     assertContains(auditPrompt, "\"verdict\": optional top-level string", false, "top-level verdict is documented")
   }
@@ -731,38 +717,12 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     val auditPrompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("audit"))
 
     assertContains(auditPrompt, "TEST EXCLUSION", false, "audit makes the test-only exclusion explicit")
-    assertContains(auditPrompt, "NEVER audit gaps", false, "audit rejects test-only gaps")
-    assertAuditPromptNamesSignal(auditPrompt, "Validation owns test execution and failures", "the test routing")
+    assertContains(auditPrompt, "NEVER unmet criteria", false, "audit rejects test-only findings")
+    assertAuditPromptNamesSignal(auditPrompt, "Validation owns test execution", "the test routing")
     assertAuditPromptNamesSignal(
       auditPrompt,
-      "production behavior or production implementation",
-      "the production scope of a gap",
-    )
-  }
-
-  @Test
-  fun `audit prompt requires repair impact analysis over the evidenced blast radius`() {
-    val auditPrompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("audit"))
-
-    assertAuditPromptNamesSignal(
-      auditPrompt,
-      "PROSPECTIVE REPAIR IMPACT ANALYSIS",
-      "the counterfactual analysis a plan owes before acceptance",
-    )
-    assertAuditPromptNamesSignal(
-      auditPrompt,
-      "already-satisfied criteria as non-regression constraints",
-      "the protection of previously satisfied behavior",
-    )
-    assertAuditPromptNamesSignal(
-      auditPrompt,
-      "cumulative repair delta and cross-repair interactions",
-      "repair interactions rather than only prior symbols",
-    )
-    assertAuditPromptNamesSignal(
-      auditPrompt,
-      "closure-complete for that blast",
-      "coverage of the complete evidenced blast radius",
+      "production behavior or production",
+      "the production scope of an unmet criterion",
     )
   }
 
@@ -788,61 +748,10 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
-  fun `follow-up audit prompt binds recurring dispositions to the original failure evidence`() {
-    val followUpPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
-      ISSUE_KEY,
-      briefingFor("audit", auditRepairState = carriedGapRepairState()),
-    )
-
-    assertContains(followUpPrompt, "FOLLOW-UP AUDIT SCOPE", false, "carried unresolved gaps select the follow-up scope")
-    assertContains(followUpPrompt, "ac-001-gap-1", false, "the carried gap ids are named in the scope")
-    assertContains(
-      followUpPrompt,
-      "ORIGINAL failure_evidence check still fails at its",
-      false,
-      "recurring requires the original check to still fail",
-    )
-    assertContains(
-      followUpPrompt,
-      "never makes a resolved gap recurring",
-      false,
-      "reinterpretation of the criterion cannot reopen a repaired gap",
-    )
-    assertContains(
-      followUpPrompt,
-      "resolution_verified | recurrence_verified",
-      false,
-      "follow-up names the closed observation tokens",
-    )
-    assertContains(
-      followUpPrompt,
-      "COPY this satisfied follow-up envelope",
-      false,
-      "follow-up supplies a copyable envelope with the carried gap ids",
-    )
-    assertContains(
-      followUpPrompt,
-      "\"observation\":\"resolution_verified\"",
-      false,
-      "the copyable envelope uses the token",
-    )
-    assertContains(
-      followUpPrompt,
-      "example of REJECTED",
-      false,
-      "follow-up shows a prose observation as rejected",
-    )
-    assertFalse(
-      followUpPrompt.contains("INITIAL AUDIT SCOPE"),
-      "a carried-gap round must not rescan the full criterion surface",
-    )
-  }
-
-  @Test
   fun `carried disposition observation enumeration failure names the closed token set`() {
     val retry = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
-      briefingFor("audit", auditRepairState = carriedGapRepairState()),
+      briefingFor("audit", unmetCriterionRefs = listOf("AC-001")),
       priorSchemaFailure =
       "produced_outputs.carried_gap_dispositions[0].evidence.observation: does not have a value in the " +
         "enumeration [\"resolution_verified\", \"recurrence_verified\"]",
@@ -853,21 +762,10 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
-  fun `initial audit prompt carries no recurrence vocabulary`() {
-    val initialPrompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("audit"))
-
-    assertContains(initialPrompt, "INITIAL AUDIT SCOPE", false, "no carried gaps selects the initial scope")
-    assertFalse(
-      initialPrompt.contains("FOLLOW-UP AUDIT SCOPE"),
-      "the initial pass must not receive the carried-gap scope",
-    )
-  }
-
-  @Test
   fun `audit prompt separates blocking gaps from non blocking findings`() {
     val auditPrompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("audit"))
 
-    assertContains(auditPrompt, "blocker or major", true, "audit limits remediation gaps by severity")
+    assertContains(auditPrompt, "non_blocking_findings", false, "minor and nit findings have their own sink")
     assertContains(auditPrompt, "non_blocking_findings", false, "audit preserves minor and nit findings")
     assertContains(auditPrompt, "NEVER trigger gaps_found", false, "non-blocking findings cannot reopen implementation")
     assertContains(
@@ -1001,7 +899,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(auditRetry, "<one sentence describing what this phase did>", false, "audit hands back a skeleton")
     assertContains(auditRetry, "\"phase_id\": \"audit\"", false, "skeleton pins the phase id")
     assertContains(auditRetry, "\"verdict\": \"satisfied\"", false, "audit skeleton seeds the audit verdict")
-    assertContains(auditRetry, "\"gaps\": []", false, "audit skeleton seeds the audit signal key")
+    assertContains(auditRetry, "\"unmet_criteria\": []", false, "audit skeleton seeds the criterion list")
     assertContains(
       auditRetry,
       "\"non_blocking_findings\": []",
@@ -1132,42 +1030,21 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
-  fun `audit remediation output contract names every carried item and required evidence field`() {
+  fun `audit remediation names the criteria it must implement in this invocation`() {
     val briefing = briefingFor("implement").copy(
-      auditRepairItemIds = listOf("ac-004-gap-2-item-1", "ac-005-gap-1-item-1"),
+      unresolvedAuditGapIds = listOf("AC-004", "AC-005"),
     )
 
     val prompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefing)
 
     assertContains(prompt, "AUDIT-GAP REMEDIATION")
-    assertContains(prompt, "ac-004-gap-2-item-1")
-    assertContains(prompt, "ac-005-gap-1-item-1")
-    assertContains(prompt, "\"repair_item_results\"")
-    assertContains(prompt, "\"changed_paths_or_symbols\"")
-    assertContains(prompt, "\"executed_verification\"")
-    assertContains(prompt, "\"result_evidence\"")
-    assertContains(prompt, "artifact_ref MUST be a repository-relative path")
-    assertContains(prompt, "do not put a sentence, spaces, test description, command")
-    assertContains(prompt, "\"reconciled_state\"")
-  }
-
-  @Test
-  fun `audit remediation retry repeats the exact item ids and complete output skeleton`() {
-    val briefing = briefingFor("implement").copy(
-      auditRepairItemIds = listOf("ac-004-gap-2-item-1", "ac-005-gap-1-item-1"),
+    assertContains(prompt, "AC-004")
+    assertContains(prompt, "AC-005")
+    assertContains(prompt, "ordinary implementation receipt")
+    assertTrue(
+      !prompt.contains("repair_item_results"),
+      "the remediation round owes no per-item results",
     )
-
-    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
-      ISSUE_KEY,
-      briefing,
-      priorSchemaFailure =
-      "Audit repair item 'ac-005-gap-1-item-1' executed_verification must contain concrete verification evidence.",
-    )
-
-    assertContains(prompt, "Correct every carried item exactly once and in this order")
-    assertContains(prompt, "ac-004-gap-2-item-1, ac-005-gap-1-item-1")
-    assertContains(prompt, "Required produced_outputs shape")
-    assertContains(prompt, "<command and result>")
   }
 
   @Test
@@ -1570,7 +1447,7 @@ private val PREPLAN_OUTPUT = projectionEnvelope("preplan", PlanningProjectionFix
 private val PLAN_OUTPUT = projectionEnvelope("plan", PlanningProjectionFixtures.EXECUTABLE_PLAN)
 
 private fun projectionEnvelope(phaseId: String, producedOutputs: String): String =
-  """{"contract_version":"0.3","phase_id":"$phaseId","status":"completed",""" +
+  """{"contract_version":"0.4","phase_id":"$phaseId","status":"completed",""" +
     """"summary":"Phase produced a validated output.","produced_outputs":$producedOutputs}"""
 
 // The last case is the audit_gap re-entry: it used to REPLACE implement's example with a repair-only
@@ -1616,7 +1493,7 @@ private fun projectionExampleCases() = listOf(
   Triple(
     implementPhase,
     receiptKind,
-    briefingFor(implementPhase).copy(auditRepairItemIds = listOf("ac-004-gap-2-item-1")),
+    briefingFor(implementPhase).copy(unresolvedAuditGapIds = listOf("AC-004")),
   ),
 )
 
@@ -1628,7 +1505,7 @@ private val receiptKind = FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIP
 private fun briefingFor(
   phaseId: String,
   featureSize: FeatureTaskRuntimeFeatureSize = FeatureTaskRuntimeFeatureSize.MEDIUM,
-  auditRepairState: FeatureTaskRuntimeAuditRepairState? = null,
+  unmetCriterionRefs: List<String> = emptyList(),
   validationDepth: ValidationDepth = ValidationDepth.DEFAULT,
 ): FeatureTaskRuntimePhaseLaunchBriefing {
   val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint(fingerprint = "fixture-checkpoint-1")
@@ -1651,51 +1528,11 @@ private fun briefingFor(
         FeatureTaskRuntimePhaseOutput("write_history", 1, validJsonOutput("write_history")),
         FeatureTaskRuntimePhaseOutput("commit_push", 1, FINALISED_COMMIT_PUSH_OUTPUT),
       ),
-      auditRepairState = auditRepairState,
+      reentryGapCriteria = unmetCriterionRefs,
       // audit's implementation-receipt edge refreshes from a resolved checkpoint (AC-012).
       repositoryCheckpoint = checkpoint,
       expectedRepositoryCheckpoint = checkpoint,
       validationDepth = validationDepth,
     ),
-  )
-}
-
-private fun carriedGapRepairState(): FeatureTaskRuntimeAuditRepairState {
-  val plan = FeatureTaskRuntimeAuditRepairPlan(
-    contractVersion = AUDIT_REPAIR_CONTRACT_VERSION,
-    gaps = listOf(
-      FeatureTaskRuntimeAuditGap(
-        gapId = "ac-001-gap-1",
-        acceptanceCriterionRef = "AC-001",
-        acceptanceCriterionText = "The seam is durable.",
-        failureEvidence = FeatureTaskRuntimeEvidence(
-          FeatureTaskRuntimeEvidence.Observation.STATE_MISMATCH,
-          "FeatureTaskRuntimeRunLoop.prepareLaunch",
-          "AC-001",
-        ),
-        diagnosis = "The seam drops the durable checkpoint.",
-        affectedBoundary = "runtime application",
-        repairItems = listOf(
-          FeatureTaskRuntimeRepairItem(
-            repairItemId = "ac-001-gap-1-item-1",
-            intendedOutcome = "Preserve the durable checkpoint",
-            implementationActions = listOf("Thread the checkpoint through prepareLaunch"),
-            affectedPathsOrSymbols = listOf("FeatureTaskRuntimeRunLoop.prepareLaunch"),
-            requiredVerification = listOf("Verify AC-001 at prepareLaunch"),
-            dependsOn = emptyList(),
-          ),
-        ),
-      ),
-    ),
-  )
-  return FeatureTaskRuntimeAuditRepairState(
-    acceptedPlans = listOf(plan),
-    repairItemResults = emptyList(),
-    priorGapDispositions = emptyList(),
-    unresolvedGapLedger = FeatureTaskRuntimeUnresolvedGapLedger(
-      listOf(FeatureTaskRuntimeUnresolvedGap("ac-001-gap-1", "AC-001", 1)),
-    ),
-    repositoryFingerprint = "digest",
-    progress = FeatureTaskRuntimeAuditRepairProgress(false, 0, 1, 0, 0, 1),
   )
 }

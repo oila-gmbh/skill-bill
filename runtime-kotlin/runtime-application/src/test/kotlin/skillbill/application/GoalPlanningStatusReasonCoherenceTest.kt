@@ -2,6 +2,7 @@ package skillbill.application
 
 import skillbill.application.featuretask.sha256HexUtf8
 import skillbill.application.goalrunner.GoalPlanningProvenanceRecoverability
+import skillbill.application.goalrunner.GoalPlanningRecoveryKind
 import skillbill.application.goalrunner.alignPlanningStatusWithLaunchRecoverability
 import skillbill.application.goalrunner.classifyGoalPlanningProvenanceRecoverability
 import skillbill.application.goalrunner.goalPlanningIncludeSharedPreplanRemedy
@@ -43,7 +44,7 @@ class GoalPlanningStatusReasonCoherenceTest {
 
     val aligned = alignPlanningStatusWithLaunchRecoverability(
       snapshot = snapshot,
-      recoverability = GoalPlanningProvenanceRecoverability.Invalid,
+      recoverability = GoalPlanningProvenanceRecoverability.Invalid(GoalPlanningRecoveryKind.SCOPED_REPLAN),
       issueKey = "WE-4719",
       remedySubtaskId = 2,
     )
@@ -165,8 +166,10 @@ class GoalPlanningStatusReasonCoherenceTest {
       currentParentSpec = parentSpec,
     )
     assertIs<GoalPlanningProvenanceRecoverability.Invalid>(recoverability)
+    assertEquals(GoalPlanningRecoveryKind.SCOPED_REPLAN, recoverability.recoveryKind)
 
-    val stopReason = goalPlanningIncompatibleProvenanceStopReason("SKILL-181", 1)
+    val stopReason =
+      goalPlanningIncompatibleProvenanceStopReason("SKILL-181", 1, recoverability.recoveryKind)
     assertTrue(stopReason.contains(goalPlanningIncludeSharedPreplanRemedy("SKILL-181", 1)))
     assertFalse(stopReason.contains("cannot be recovered"))
   }
@@ -195,7 +198,7 @@ class GoalPlanningStatusReasonCoherenceTest {
 
   private fun phasePayload(phase: String): String = """
     {
-      "contract_version": "0.3",
+      "contract_version": "0.4",
       "phase_id": "$phase",
       "status": "completed",
       "summary": "fixture",

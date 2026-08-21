@@ -21,11 +21,9 @@ import skillbill.application.review.toBoundedPayload
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
 import skillbill.cli.model.CliExecutionResult
-import skillbill.config.model.RepoLocalConfig
 import skillbill.contracts.JsonSupport
 import skillbill.error.ReviewAggregationIntegrityError
 import skillbill.error.ShellContentContractException
-import skillbill.install.model.InstallAgent
 import skillbill.install.model.InvokingAgentContextResolver
 import skillbill.workflow.model.CodeReviewExecutionMode
 import java.nio.file.Path
@@ -34,9 +32,9 @@ import kotlin.time.Duration.Companion.minutes
 open class CodeReviewDriverCommand(
   name: String,
   help: String,
-  private val agent2Required: Boolean,
   private val runner: ParallelCodeReviewRunner,
   private val state: CliRunState,
+  @Suppress("UnusedPrivateProperty")
   private val configResolutionService: ConfigResolutionService,
 ) : DocumentedCliCommand(name, help) {
   private val agent1 by option(
@@ -46,16 +44,11 @@ open class CodeReviewDriverCommand(
   )
   private val agent2 by option(
     "--agent2",
-    help = if (agent2Required) {
-      "Agent for the alternative lane. Required. Supported: ${InstallAgent.supportedIds.joinToString()}."
-    } else {
-      "Optional alternative lane. Omission uses code_review_parallel_agent, then none. " +
-        "Supported: ${InstallAgent.supportedIds.joinToString()}."
-    },
+    help = "Removed. Dual-agent parallel lanes are disconnected; omit this option.",
   )
   private val model2 by option(
     "--model2",
-    help = "Model override for the alternative lane agent (e.g. claude-opus-4-8, o3). Optional.",
+    help = "Removed. Dual-agent parallel lanes are disconnected; omit this option.",
   )
   private val scope by option(
     "--scope",
@@ -87,8 +80,8 @@ open class CodeReviewDriverCommand(
   ).multiple()
   private val codeReviewMode by option(
     "--execution-mode",
-    help = "Shared execution mode for both lanes: inline (default, one review prompt per lane), " +
-      "auto (also resolves inline), or delegated (experimental specialist fan-out).",
+    help = "Execution mode: inline (default, one review prompt), auto (resolves inline), " +
+      "or delegated (parent launches specialists; parent authors the final prose result).",
   ).default(CodeReviewExecutionMode.DEFAULT.wireValue)
   private val baselineUntrackedIncludes by option(
     "--baseline-untracked-include",
@@ -107,42 +100,28 @@ open class CodeReviewDriverCommand(
   override fun run() {
     val resolvedAgent1 = resolveAgent1()
     val repo = Path.of(repoRoot).toAbsolutePath().normalize()
-    val resolvedAgent2 = agent2ForRepo(repo)
+    if (!agent2.isNullOrBlank() || !model2.isNullOrBlank()) {
+      throw UsageError(
+        "Dual-agent parallel lanes are disconnected. Omit --agent2/--model2; " +
+          "single-agent review uses --agent1 only.",
+      )
+    }
     val result = runParallelReviewDriver(
       runner,
-      request(resolvedAgent1, resolvedAgent2, parsedReviewScope(scope), repo),
+      request(resolvedAgent1, parsedReviewScope(scope), repo),
       state,
     ) ?: return
     writeParallelReviewResult(state, result)
   }
 
-  private fun agent2ForRepo(repo: Path): String? = try {
-    resolveAgent2(repo)
-  } catch (error: ShellContentContractException) {
-    usageError(error)
-  }
-
-  private fun resolveAgent2(repo: Path): String? {
-    val explicit = agent2?.takeIf(String::isNotBlank)
-    if (explicit != null) return explicit
-    if (agent2Required) {
-      throw UsageError(
-        "Option --agent2 is required. Supported agents: ${InstallAgent.supportedIds.joinToString()}.",
-      )
-    }
-    val resolved = configResolutionService.resolveCodeReviewParallelAgent(repo, null)
-    return resolved.takeUnless { it == RepoLocalConfig.NO_PARALLEL_AGENT }
-  }
-
   private fun request(
     resolvedAgent1: String,
-    resolvedAgent2: String?,
     resolvedScope: ParallelReviewScope,
     repo: Path,
   ) = ParallelCodeReviewRequest(
     agent1Id = resolvedAgent1,
-    agent2Id = resolvedAgent2,
-    agent2Model = model2?.takeIf(String::isNotBlank),
+    agent2Id = null,
+    agent2Model = null,
     scope = resolvedScope,
     repoRoot = repo,
     timeout = timeoutMinutes?.minutes,

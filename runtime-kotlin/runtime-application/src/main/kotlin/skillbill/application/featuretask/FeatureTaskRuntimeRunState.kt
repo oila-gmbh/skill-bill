@@ -4,7 +4,6 @@ import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
@@ -539,14 +538,6 @@ internal class FeatureTaskRuntimeRunState(
 
   fun repairPlan(phaseId: String): FeatureTaskRuntimeRepairPlan? =
     FeatureTaskRuntimeOutputVerification.repairPlanFrom(parsedOutput(outputFor(phaseId)))
-
-  fun auditRepairPlan(phaseId: String): FeatureTaskRuntimeAuditRepairPlan? = outputFor(phaseId)
-    ?.normalizedOutput
-    ?.envelope
-    ?.get("produced_outputs")
-    ?.let(JsonSupport::anyToStringAnyMap)
-    ?.get("audit_repair_plan")
-    ?.let { auditRepairPlanFromWire(it, "$phaseId.produced_outputs.audit_repair_plan") }
 
   // The latest validated output for the phase (highest iteration), or null when none is present.
   fun outputFor(phaseId: String): FeatureTaskRuntimePhaseOutput? =

@@ -24,6 +24,7 @@ import skillbill.review.model.ReviewScopeDisposition
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition
 import skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDispositionVerdict
 import java.nio.file.Files
@@ -50,7 +51,11 @@ class FeatureTaskRuntimeReviewDelegationTest {
     assertTrue(request.scope != ParallelReviewScope.BRANCH)
     assertEquals(CodeReviewExecutionMode.DELEGATED, request.codeReviewMode)
     assertEquals(CodeReviewExecutionMode.DELEGATED, request.resolvedTier)
-    assertEquals("claude", request.agent2Id)
+    assertEquals(
+      null,
+      request.agent2Id,
+      "dual-agent parallel lanes are disconnected; parallelReviewAgent must not map to agent2Id",
+    )
     assertEquals(Path.of("spec.md"), request.specPath)
   }
 
@@ -140,7 +145,23 @@ class FeatureTaskRuntimeReviewDelegationTest {
   }
 
   @Test
-  fun `settlement envelope takes findings and review_run_id from the driver register`() {
+  fun `extractReviewVerdict reads changes_requested and defaults to approved`() {
+    assertEquals(
+      FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+      FeatureTaskRuntimeReviewEnvelope.extractReviewVerdict("notes\nverdict: needs_fix"),
+    )
+    assertEquals(
+      FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
+      FeatureTaskRuntimeReviewEnvelope.extractReviewVerdict("verdict: changes_requested"),
+    )
+    assertEquals(
+      FeatureTaskRuntimeVerdict.APPROVED,
+      FeatureTaskRuntimeReviewEnvelope.extractReviewVerdict("clean prose without a verdict line"),
+    )
+  }
+
+  @Test
+  fun `settlement envelope keeps soft-admitted findings and derives verdict from prose`() {
     val result = FeatureTaskRuntimeReviewDriver.EMPTY.run(
       mappedRequest(
         agents = FeatureTaskRuntimeReviewDriverAgents("codex", null),
@@ -160,7 +181,7 @@ class FeatureTaskRuntimeReviewDelegationTest {
             claimVerdict = ReviewClaimVerdict.CONFIRMED,
           ),
         ),
-        formattedOutput = "findings",
+        formattedOutput = "Naming drift in Foo.\nverdict: changes_requested",
       ),
     )
     val output = FeatureTaskRuntimeReviewEnvelope.assemble(
@@ -181,10 +202,9 @@ class FeatureTaskRuntimeReviewDelegationTest {
     val finding = JsonSupport.anyToStringAnyMap(findings.single()).orEmpty()
     assertEquals("F-001", finding["finding_id"])
     assertEquals("minor", finding["severity"])
-    assertEquals("spec_deviation", finding["scope_disposition"])
+    assertEquals("changes_requested", envelope["verdict"])
+    assertTrue((envelope["summary"] as String).contains("Naming drift"))
     assertFalse(produced.containsKey("unmet_criteria"))
-    assertFalse(produced.containsKey("gaps"))
-    assertFalse(produced.containsKey("failing_criteria"))
   }
 
   @Test

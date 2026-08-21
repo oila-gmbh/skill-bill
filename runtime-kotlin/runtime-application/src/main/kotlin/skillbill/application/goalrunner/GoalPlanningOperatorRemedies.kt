@@ -19,19 +19,30 @@ internal fun goalPlanningIncludeSharedPreplanRemedy(issueKey: String, subtaskId:
 internal fun goalPlanningRemedySubtaskId(subtasks: List<DecompositionSubtask>): Int? =
   subtasks.firstOrNull { it.status != "complete" && it.status != "skipped" }?.id
 
-private fun recoverySuffix(issueKey: String, subtaskId: Int?): String = if (subtaskId == null) {
-  "No subtask is replannable, so reset the goal before planning can be repaired."
-} else {
-  "Recover with: ${goalPlanningIncludeSharedPreplanRemedy(issueKey, subtaskId)}"
+private fun recoverySuffix(issueKey: String, subtaskId: Int?, kind: GoalPlanningRecoveryKind): String = when (kind) {
+  GoalPlanningRecoveryKind.HARD_RESET ->
+    "Recover with: ${goalPlanningHardResetRemedy(issueKey)}"
+  GoalPlanningRecoveryKind.SCOPED_REPLAN -> if (subtaskId == null) {
+    "No subtask is replannable, so reset the goal before planning can be repaired."
+  } else {
+    "Recover with: ${goalPlanningIncludeSharedPreplanRemedy(issueKey, subtaskId)}"
+  }
 }
 
-internal fun goalPlanningIncompatibleProvenanceStopReason(issueKey: String, subtaskId: Int?): String =
-  "Goal planning shared preplan provenance is incompatible with the current governed inputs. " +
-    recoverySuffix(issueKey, subtaskId)
+internal fun goalPlanningIncompatibleProvenanceStopReason(
+  issueKey: String,
+  subtaskId: Int?,
+  kind: GoalPlanningRecoveryKind,
+): String = when (kind) {
+  GoalPlanningRecoveryKind.HARD_RESET -> contractVersionHardResetStopReason(issueKey)
+  GoalPlanningRecoveryKind.SCOPED_REPLAN ->
+    "Goal planning shared preplan provenance is incompatible with the current governed inputs. " +
+      recoverySuffix(issueKey, subtaskId, kind)
+}
 
 internal fun goalPlanningMissingSharedContextPacketStopReason(issueKey: String, subtaskId: Int?): String =
   "Goal planning shared preplan does not contain a valid shared context packet. " +
-    recoverySuffix(issueKey, subtaskId)
+    recoverySuffix(issueKey, subtaskId, GoalPlanningRecoveryKind.SCOPED_REPLAN)
 
 /**
  * Surviving preparation-state hard stop. Uses [IncompatibleGoalPlanningPreparationRecoveryError.reason]
@@ -42,13 +53,17 @@ internal fun goalPlanningPreparationStateReadStopReason(error: Throwable, issueK
   val recovery = error as? IncompatibleGoalPlanningPreparationRecoveryError
     ?: return "Goal planning preparation state could not be read: ${error.message.orEmpty()}"
   val remedySubtaskId = subtaskId?.takeIf { it > 0 } ?: recovery.subtaskId.takeIf { it > 0 }
+  val kind = classifyGoalPlanningRecovery(recovery)
   return "Goal planning preparation state could not be read: ${recovery.reason}. " +
-    recoverySuffix(issueKey, remedySubtaskId)
+    recoverySuffix(issueKey, remedySubtaskId, kind)
 }
 
-internal fun goalPlanningNonResumableStatusReason(issueKey: String, subtaskId: Int?): String =
-  "Saved planning is not resumable until provenance is repaired. " +
-    recoverySuffix(issueKey, subtaskId)
+internal fun goalPlanningNonResumableStatusReason(
+  issueKey: String,
+  subtaskId: Int?,
+  kind: GoalPlanningRecoveryKind,
+): String = "Saved planning is not resumable until provenance is repaired. " +
+  recoverySuffix(issueKey, subtaskId, kind)
 
 /**
  * Launch refuses when shared-preplan classification cannot complete (identity mismatch, schema
@@ -57,8 +72,11 @@ internal fun goalPlanningNonResumableStatusReason(issueKey: String, subtaskId: I
  */
 internal fun statusRecoverabilityOrRefuse(
   classify: () -> GoalPlanningProvenanceRecoverability,
-): GoalPlanningProvenanceRecoverability =
-  runCatching(classify).getOrElse { GoalPlanningProvenanceRecoverability.Invalid }
+): GoalPlanningProvenanceRecoverability = runCatching(classify).getOrElse { error ->
+  GoalPlanningProvenanceRecoverability.Invalid(
+    classifyGoalPlanningRecovery(error.message.orEmpty(), error),
+  )
+}
 
 /**
  * Replaces resume-claiming status reasons when launch would refuse the same durable planning state.
@@ -79,5 +97,7 @@ internal fun alignPlanningStatusWithLaunchRecoverability(
     return snapshot
   }
   if (!GoalPlanningStatusReasons.claimsResume(snapshot.reason)) return snapshot
-  return snapshot.copy(reason = goalPlanningNonResumableStatusReason(issueKey, remedySubtaskId))
+  return snapshot.copy(
+    reason = goalPlanningNonResumableStatusReason(issueKey, remedySubtaskId, recoverability.recoveryKind),
+  )
 }

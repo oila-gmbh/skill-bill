@@ -360,12 +360,16 @@ enum class GoalRunnerWedgeClass(val wireValue: String, val durableField: String)
   UNREACHABLE_REMEDIATION_BASE("unreachable_remediation_base", "remediation_base_sha"),
   STALE_BLOCKED_CONTINUATION_OUTCOME("stale_blocked_continuation_outcome", "goal_continuation_outcome"),
   COMPLETED_UPSTREAM_MISSING_OUTPUT("completed_upstream_missing_output", "phase_output"),
+  PHASE_OUTPUT_CONTRACT_INCOMPATIBLE("phase_output_contract_incompatible", "phase_output_contract_version"),
   ;
 
   companion object {
     fun fromWire(value: String): GoalRunnerWedgeClass = entries.firstOrNull { it.wireValue == value }
       ?: error("Unknown goal-repair wedge class '$value'.")
   }
+
+  val operatorRequired: Boolean
+    get() = this == PHASE_OUTPUT_CONTRACT_INCOMPATIBLE
 }
 
 enum class GoalRunnerRepairStatus(val wireValue: String) {
@@ -383,6 +387,12 @@ enum class GoalRunnerRepairStatus(val wireValue: String) {
 
   /** A targeted child holds a live worker lease. */
   LIVE_LEASE_REFUSED("live_lease_refused"),
+
+  /**
+   * At least one finding requires an operator hard reset; clearable wedges are not applied while
+   * that blocker remains.
+   */
+  OPERATOR_REQUIRED("operator_required"),
 
   /** No decomposed goal exists for the issue key. */
   NOT_FOUND("not_found"),

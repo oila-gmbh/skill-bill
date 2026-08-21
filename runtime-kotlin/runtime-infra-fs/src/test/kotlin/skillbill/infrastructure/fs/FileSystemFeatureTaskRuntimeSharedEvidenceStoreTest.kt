@@ -114,6 +114,28 @@ class FileSystemFeatureTaskRuntimeSharedEvidenceStoreTest {
   }
 
   @Test
+  fun `a cold miss does not emit a cache degradation record`() {
+    val records = mutableListOf<LogRecord>()
+    val handler = object : Handler() {
+      override fun publish(record: LogRecord) {
+        records += record
+      }
+      override fun flush() = Unit
+      override fun close() = Unit
+    }
+    sharedEvidenceStoreLog.addHandler(handler)
+    try {
+      store.resolve(request("fp-cold"), CountingDeriver())
+      assertTrue(
+        records.none { it.message.contains("cache degraded") },
+        "first resolve at an empty address is derivation, not degradation: ${records.map { it.message }}",
+      )
+    } finally {
+      sharedEvidenceStoreLog.removeHandler(handler)
+    }
+  }
+
+  @Test
   fun `a leftover staging directory is never served as an artifact`() {
     val address = artifactDir(request("fp-staged"))
     Files.createDirectories(address.parent)

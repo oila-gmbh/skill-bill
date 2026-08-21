@@ -1,6 +1,6 @@
 package skillbill.application.featuretask
 
-import skillbill.workflow.taskruntime.model.MAX_AUDIT_REPAIR_REF_LENGTH
+import skillbill.workflow.taskruntime.model.MAX_BOUNDED_POINTER_LENGTH
 
 /**
  * The retry corrections derivable from the validator's reason alone.
@@ -98,7 +98,7 @@ internal object FeatureTaskRuntimeSchemaFailureCorrections {
     } else {
       "one acceptance-criterion, finding, test, or check identifier, such as AC-005 or McpStdioServerTest"
     }
-    val statedCap = if (cap == UNSTATED_CAP) MAX_AUDIT_REPAIR_REF_LENGTH else cap
+    val statedCap = if (cap == UNSTATED_CAP) MAX_BOUNDED_POINTER_LENGTH else cap
     return """
 
       The rejected $field is a bounded pointer, not an evidence container. Replace it with $replacement.

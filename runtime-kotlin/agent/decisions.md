@@ -4,6 +4,26 @@ This file records architectural and implementation decisions that span the
 `runtime-kotlin/` boundary. Each entry is dated and explains the trade-off,
 not the implementation detail.
 
+## [2026-08-21] Soft-admit findings for verification; prose still settles
+
+Context: Prose-only review emptied merge findings, so claim verification always no-oped even when the parent named concrete defects.
+
+Decision: Soft-parse optional `[F-XXX]` lines from parent stdout into merge findings for claim verification and adjudication. Never fail the lane on register shape. Keep advance settlement on parent `verdict:`; attach soft findings to the feature-task envelope only after that reduction.
+
+Reason: Verification needs structured F-ids; settlement must stay relaxed and not let Minor-only rows flip `changes_requested` to approved.
+
+Alternatives considered: Restore hard register gates (rejected). Change `outcomeFor` ordering globally (deferred; local assemble order preserves prose-first without wider verdict churn).
+
+## [2026-08-21] Review is single-agent prose; dual-agent lanes disconnected
+
+Context: Parallel lane register parsing blocked runs on format drift while findings were meant for the same review owner to interpret.
+
+Decision: Disconnect dual-agent `agent2` paths. Inline and delegated review use one parent agent; delegated specialists return raw text to that parent with no register verification. Remediation opens only from an explicit parent `verdict`.
+
+Reason: Machine admission of register lines dropped usable findings and blocked on punctuation; prose plus verdict is enough for advance vs `implement_fix`.
+
+Alternatives considered: Soften the parser only (rejected: still two agents and a hard merge gate). Keep dual lanes under one owner (deferred: disconnect first).
+
 ## [2026-08-20] Output-gate failures block on the first invalid envelope
 
 Context: The one salvage agent launch after a schema-invalid audit did not recover. SKILL-202 burned both attempts on missing `verdict` then prose in `carried_gap_dispositions.evidence.observation`.

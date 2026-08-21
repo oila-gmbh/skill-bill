@@ -764,19 +764,25 @@ class GoalRunner(
     error: Throwable,
     request: GoalRunnerRunRequest,
   ): GoalRunnerIterationResult {
-    val (targetSubtaskId, reason, _) = when (error) {
+    val (targetSubtaskId, reason) = when (error) {
       is skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError ->
-        Triple(
+        error.subtaskId to goalPlanningChildImportConflictBlockedReason(
+          state.manifest.issueKey,
           error.subtaskId,
-          "Goal-subtask planning import conflicts with the stored shared preplan or subtask plan. " +
-            "This occurs when a shared preplan was regenerated after the child was hydrated, " +
-            "making the previously-imported planning bytes stale. " +
-            "Recover this subtask's child without discarding sibling planning or completed commits: " +
-            "'${staleChildPlanningRecoveryCommand(state.manifest.issueKey, error.subtaskId)}'. " +
-            "Planning failure: ${error.message.orEmpty()}",
-          "preplan",
+          error,
         )
       else -> throw error
+    }
+    state.manifest.workflowIdFor(targetSubtaskId)?.takeIf(String::isNotBlank)?.let { workflowId ->
+      runCatching {
+        outcomeStore.markBlocked(
+          workflowId = workflowId,
+          blockedReason = reason,
+          lastResumableStep = "preplan",
+          supervisionEvent = null,
+          dbPathOverride = request.dbPathOverride,
+        )
+      }
     }
     return blockedReviewBaselineIteration(state, targetSubtaskId, reason, request)
   }

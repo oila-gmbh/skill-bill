@@ -185,14 +185,16 @@ private fun readableSize(payload: Path): Long? = try {
 }
 
 private fun readEnvelope(mapper: ObjectMapper, path: Path): ObjectNode? {
+  if (!Files.exists(path)) {
+    return null
+  }
   if (!Files.isRegularFile(path)) {
-    return degraded("stored_envelope_file", "re-derive", "regular file at $path", "absent or not a regular file")
+    return degraded("stored_envelope_file", "re-derive", "regular file at $path", "not a regular file")
   }
   return try {
     mapper.readTree(Files.readString(path)) as? ObjectNode
       ?: degraded("stored_envelope_parse", "re-derive", "JSON object at $path", "parsed to a non-object node")
   } catch (@Suppress("TooGenericExceptionCaught") error: Exception) {
-    // Unreadable or unparseable: the cache misses, the run continues, the record explains why.
     degraded(
       seam = "stored_envelope_parse",
       used = "re-derive",

@@ -94,16 +94,12 @@ internal fun mutatingReconciliationGateReason(phaseId: String, outputMap: Map<St
 internal fun reviewVerificationSignalGateReason(phaseId: String, outputMap: Map<String, Any?>): String? {
   if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) return null
   val hasVerdict = (outputMap[FeatureTaskRuntimeVerificationSignalKeys.VERDICT] as? String)?.isNotBlank() == true
-  val producedOutputs = outputMap["produced_outputs"] as? Map<*, *>
-  val findingsKey = FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS
-  val hasFindingsArray = producedOutputs?.containsKey(findingsKey) == true && producedOutputs[findingsKey] is List<*>
-  return if (hasVerdict || hasFindingsArray) {
+  return if (hasVerdict) {
     null
   } else {
-    "Review phase reported 'completed' without a verification signal: the output must carry either a " +
-      "top-level 'verdict' or a 'produced_outputs.findings' array (an explicit empty array affirms no " +
-      "blocking findings). A review that emits neither cannot advance past a possible Blocker/Major; " +
-      "the schema gate fails rather than silently advancing to validation."
+    "Review phase reported 'completed' without a top-level 'verdict'. " +
+      "Emit verdict approved or changes_requested; the runtime does not derive remediation from " +
+      "a findings register."
   }
 }
 

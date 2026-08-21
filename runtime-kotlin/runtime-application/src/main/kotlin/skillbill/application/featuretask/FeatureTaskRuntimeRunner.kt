@@ -27,7 +27,7 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeProviderLimitDetector
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgress
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
@@ -304,34 +304,22 @@ class FeatureTaskRuntimeRunner(
       .maxOrNull()
       ?: 0
 
-  private fun loadAuditRepairProgress(request: FeatureTaskRuntimeRunRequest): FeatureTaskRuntimeAuditRepairProgress? {
-    // The append-only generation history is the authority; the replaceable audit-repair-state artifact is a
-    // derived cache of it. The cache is written before the loop edge it will later reflect, so preferring the
-    // derivation is what makes the emitted counters agree with the ledger — a disagreement is bookkeeping
-    // drift, not grounds for dropping the telemetry.
-    val history = recorder.loadAuditGenerationHistory(request.workflowId, request.dbPathOverride)
-    val cached = recorder.loadAuditRepairState(request.workflowId, request.dbPathOverride)?.progress
-    if (history.generations.isNotEmpty()) {
-      return history.deriveProgress(auditGapIterationCount = loadAuditGapIterationCount(request))
-    }
-    // No phase-record fallback: a completed audit always appends its generation, including the zero-gap one,
-    // so first-pass convergence is derived from the durable authority rather than inferred from a record's
-    // status. Only a legacy workflow predating the generation table falls back to its replaceable cache.
-    return cached
-  }
+  /**
+   * The audit loop's progress for telemetry, derived by the shared
+   * [FeatureTaskRuntimeAuditConvergence] so this value and the operator status projection cannot
+   * disagree about the same workflow.
+   */
+  private fun loadAuditRepairProgress(request: FeatureTaskRuntimeRunRequest): FeatureTaskRuntimeAuditProgress =
+    FeatureTaskRuntimeAuditConvergence.progressFrom(
+      auditRecord = recorder.loadPhaseRecords(request.workflowId, request.dbPathOverride)
+        ?.get(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT),
+      auditGapIterationCount = loadAuditGapIterationCount(request),
+    )
 
-  // The highest durable `audit_gap` per-edge iteration recorded on the LOOP_EDGE ledger (0 when the
-  // loop never fired): the runtime-owned audit->implement iteration count for finished telemetry (AC7).
   private fun loadAuditGapIterationCount(request: FeatureTaskRuntimeRunRequest): Int =
-    recorder.loadPhaseLedger(request.workflowId, request.dbPathOverride)
-      .orEmpty()
-      .filter {
-        it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE &&
-          it.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
-      }
-      .mapNotNull { it.edgeIteration }
-      .maxOrNull()
-      ?: 0
+    FeatureTaskRuntimeAuditConvergence.auditGapIterationCount(
+      recorder.loadPhaseLedger(request.workflowId, request.dbPathOverride).orEmpty(),
+    )
 
   // SKILL-140: per-run quarantine-and-regenerate telemetry (AC-006), all sourced from the runtime's own
   // durable state (quarantine store + LOOP_EDGE ledger + blocked records), never agent-self-reported.

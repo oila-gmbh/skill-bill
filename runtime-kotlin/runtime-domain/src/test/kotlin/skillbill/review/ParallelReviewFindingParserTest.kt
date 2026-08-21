@@ -10,6 +10,21 @@ import kotlin.test.assertTrue
 
 class ParallelReviewFindingParserTest {
   @Test
+  fun `specialist ahead of unquoted path still admits the finding`() {
+    val parsed = ParallelReviewFindingParser.parse(
+      "[F-001] Major | High | specialist=bill-kotlin-code-review-architecture | " +
+        "path=src/Auth.kt | line=12 | missing check",
+    )
+    val finding = parsed.findings.single()
+
+    assertEquals("bill-kotlin-code-review-architecture", finding.specialistSkillName)
+    assertEquals("src/Auth.kt", finding.repositoryPath)
+    assertEquals(12, finding.line)
+    assertEquals("missing check", finding.description)
+    assertEquals(emptyList(), parsed.rejections)
+  }
+
+  @Test
   fun `parser retains explicit inline specialist identity`() {
     val finding = ParallelReviewFindingParser.parse(
       "[F-001] Major | High | specialist=bill-kotlin-code-review-security | " +

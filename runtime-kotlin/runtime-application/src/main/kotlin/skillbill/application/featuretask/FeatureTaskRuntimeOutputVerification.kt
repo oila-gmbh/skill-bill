@@ -52,9 +52,9 @@ internal object FeatureTaskRuntimeOutputVerification {
       wireVerdict != FeatureTaskRuntimeVerdict.GAPS_FOUND.wireValue && !criteriaDriveGapsFound -> null
       raw !is List<*> -> "Audit verdict 'gaps_found' requires a non-empty produced_outputs.unmet_criteria array."
       raw.isEmpty() || parsedCriteria.size != raw.size ->
-        "Audit verdict 'gaps_found' requires every produced_outputs.unmet_criteria entry " +
-          "to carry a non-blank message and severity blocker or major; move minor and nit findings " +
-          "to produced_outputs.${FeatureTaskRuntimeVerificationSignalKeys.AUDIT_NON_BLOCKING_FINDINGS}."
+        "Audit verdict 'gaps_found' requires every produced_outputs.unmet_criteria entry to carry a " +
+          "criterion ref and a one-line note on what is missing; move minor and nit findings to " +
+          "produced_outputs.${FeatureTaskRuntimeVerificationSignalKeys.AUDIT_NON_BLOCKING_FINDINGS}."
       else -> null
     }
   }
@@ -123,18 +123,16 @@ internal object FeatureTaskRuntimeOutputVerification {
     return FeatureTaskRuntimeAuditVerdict(gaps)
   }
 
+  /**
+   * One unmet-criterion entry: the criterion ref and one line on what is missing. Every entry an
+   * audit reports blocks the run, so there is no severity to read — an audit that considers a finding
+   * non-blocking puts it in non_blocking_findings instead of grading it here.
+   */
   private fun auditCriterionGap(entry: Any?): FeatureTaskRuntimeAuditCriterionGap? {
-    val parsed = if (entry is String) {
-      entry.takeIf(String::isNotBlank)?.let { it to FeatureTaskRuntimeAuditSeverity.MAJOR }
-    } else {
-      val map = JsonSupport.anyToStringAnyMap(entry)
-      val message = map?.let { ((it["message"] ?: it["criterion"]) as? String)?.takeIf(String::isNotBlank) }
-      val severity = map?.let {
-        runCatching { FeatureTaskRuntimeAuditSeverity.fromWire(it["severity"] as? String) }.getOrNull()
-      }
-      if (message != null && severity?.blocksAuditGap == true) message to severity else null
-    }
-    return parsed?.let { (message, severity) -> FeatureTaskRuntimeAuditCriterionGap(message, severity) }
+    val map = JsonSupport.anyToStringAnyMap(entry) ?: return null
+    val criterion = (map["criterion"] as? String)?.takeIf(String::isNotBlank) ?: return null
+    val note = (map["note"] as? String)?.takeIf(String::isNotBlank) ?: return null
+    return FeatureTaskRuntimeAuditCriterionGap("$criterion: $note", FeatureTaskRuntimeAuditSeverity.MAJOR)
   }
 }
 
@@ -142,9 +140,8 @@ private fun rejectedCriteriaAliasError(producedOutputs: Map<String, Any?>?): Str
   val alias = FeatureTaskRuntimeVerificationSignalKeys.AUDIT_FAILING_CRITERIA_REJECTED_ALIAS
   if (producedOutputs?.containsKey(alias) != true) return null
   return "Audit produced_outputs carries '$alias'; the canonical unmet-criteria key is " +
-    "'${FeatureTaskRuntimeVerificationSignalKeys.AUDIT_UNMET_CRITERIA}'. Rename the array and pair it with a " +
-    "complete produced_outputs.audit_repair_plan. The audit criteria signal has exactly one representation " +
-    "so no alias can reach the audit_gap edge without passing the repair-plan gate."
+    "'${FeatureTaskRuntimeVerificationSignalKeys.AUDIT_UNMET_CRITERIA}'. Rename the array. The audit " +
+    "criteria signal has exactly one representation, so no alias reaches the audit_gap edge."
 }
 
 private fun auditSatisfiedPayloadError(raw: Any?): String? = when {

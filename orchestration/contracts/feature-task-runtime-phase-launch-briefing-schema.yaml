@@ -44,10 +44,10 @@ properties:
   driving_verdict:
     type: string
     minLength: 1
-  audit_repair_item_ids:
-    type: array
-    items: { type: string }
   unresolved_audit_gap_ids:
+    description: >-
+      The acceptance criteria the previous audit reported unmet, carried into an audit_gap
+      implementation re-entry. Criterion refs only: there are no gap or repair-item identities.
     type: array
     items: { type: string }
   durably_closed_criterion_refs:

@@ -16,7 +16,6 @@ import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
-import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -272,87 +271,6 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
   }
 
   @Test
-  fun `goal child rejects a partial remediation with the same identifier-equality reason`() {
-    fun launcher(): RuntimeRecordingLauncher {
-      var implementLaunches = 0
-      var audits = 0
-      return RuntimeRecordingLauncher { request ->
-        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
-        when (phaseId) {
-          "audit" -> facts(if (++audits == 1) auditTwoItemGoalGapOutput() else auditSatisfiedOutput())
-          "implement" -> {
-            implementLaunches += 1
-            facts(
-              when (implementLaunches) {
-                1 -> validJsonOutput(phaseId)
-                2 -> goalRemediationOutput(reportedItemIds = listOf("ac-002-gap-1-item-1"))
-                else -> goalRemediationOutput(
-                  reportedItemIds = listOf("ac-002-gap-1-item-1", "ac-002-gap-1-item-2"),
-                )
-              },
-            )
-          }
-          else -> facts(validJsonOutput(phaseId))
-        }
-      }
-    }
-    val parity = standaloneAndGoalChildParity(launcher = ::launcher)
-
-    assertIs<GoalRunnerRunReport.Completed>(parity.report)
-    val implementPrompts = parity.runtime.launcher.requests
-      .map { requireNotNull(it.skillRunRequest.promptOverride) }
-      .filter { phaseIdFromPrompt(it) == "implement" }
-    val owedPrompt = implementPrompts.first { it.contains("left these carried repair items unaccounted for") }
-    assertContains(owedPrompt, "ac-002-gap-1-item-2")
-  }
-
-  @Test
-  fun `standalone and goal child complete the same exhaustive multi-item repair`() {
-    fun launcher(): RuntimeRecordingLauncher {
-      var audits = 0
-      var initialImplementComplete = false
-      return RuntimeRecordingLauncher { request ->
-        val prompt = requireNotNull(request.skillRunRequest.promptOverride)
-        when (val phaseId = phaseIdFromPrompt(prompt)) {
-          "audit" -> {
-            audits += 1
-            facts(if (audits == 1) auditTwoItemGoalGapOutput() else auditSatisfiedOutput())
-          }
-          "implement" -> {
-            if (!initialImplementComplete) {
-              initialImplementComplete = true
-              facts(validJsonOutput(phaseId))
-            } else {
-              facts(
-                goalRemediationOutput(
-                  listOf("ac-002-gap-1-item-1", "ac-002-gap-1-item-2"),
-                ),
-              )
-            }
-          }
-          else -> facts(validJsonOutput(phaseId))
-        }
-      }
-    }
-
-    val parity = standaloneAndGoalChildParity(launcher = ::launcher)
-
-    assertIs<GoalRunnerRunReport.Completed>(parity.report)
-    val observation = parity.runtime.goalChildObservation(
-      parity.childReports.last(),
-      parity.authoritativeOutcome(),
-    )
-    assertEquals(
-      listOf("ac-002-gap-1-item-1", "ac-002-gap-1-item-2"),
-      observation.repairResults.map { result ->
-        (result as skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItemResult).repairItemId
-      },
-    )
-    assertEquals(observation.terminalReport, observation.authoritativeOutcome)
-    assertTrue(observation.unresolvedLedger.toString().contains("unresolvedGaps=[]"))
-  }
-
-  @Test
   fun `goal child accepts future phase prose when structured repair results are exhaustive`() {
     fun launcher(): RuntimeRecordingLauncher {
       var auditLaunches = 0
@@ -388,14 +306,7 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
       parity.childReports.last(),
       parity.authoritativeOutcome(),
     )
-    assertEquals(
-      listOf("ac-002-gap-1-item-1"),
-      observation.repairResults.map { result ->
-        (result as skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairItemResult).repairItemId
-      },
-    )
     assertEquals(observation.terminalReport, observation.authoritativeOutcome)
-    assertTrue(observation.unresolvedLedger.toString().contains("unresolvedGaps=[]"))
   }
 
   @Test
@@ -410,66 +321,9 @@ class GoalRunnerFeatureTaskRuntimeIntegrationTest {
 
     assertIs<GoalRunnerRunReport.Stopped>(parity.report)
     val blocked = assertNotNull(parity.blockedChildReason())
-    assertContains(blocked, "Audit repair made no progress")
+    assertContains(blocked, "Audit made no progress")
     assertContains(blocked, "repository fingerprint is unchanged")
-    val repairState = requireNotNull(parity.runtime.recorder.loadAuditRepairState(WORKFLOW_ID))
-    assertEquals(
-      listOf("ac-002-gap-1"),
-      repairState.unresolvedGapLedger.unresolvedGaps.map { it.gapId },
-      "the carried gap keeps its identity across the goal child's audit iterations",
-    )
     assertTrue(parity.runtime.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["validate"] == null)
-  }
-
-  @Test
-  fun `standalone and goal child reject a new gap against a durably closed criterion`() {
-    fun launcher(): RuntimeRecordingLauncher {
-      var audits = 0
-      return RuntimeRecordingLauncher { request ->
-        when (val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))) {
-          "audit" -> {
-            audits += 1
-            facts(
-              when (audits) {
-                1 -> auditGapsOutput()
-                2 -> auditTwoGapsOutput()
-                else -> auditSatisfiedOutput()
-              },
-            )
-          }
-          else -> facts(validJsonOutput(phaseId))
-        }
-      }
-    }
-
-    val parity = standaloneAndGoalChildParity(
-      launcher = ::launcher,
-      acceptanceCriteria = (1..3).map { "AC-$it" },
-    )
-
-    assertIs<GoalRunnerRunReport.Stopped>(parity.report)
-    assertTrue(
-      parity.runtime.io.database.rejectedDiagnostics().any { it.metadata.rule.contains("closed") },
-      "a new gap against a durably closed criterion must be recorded as its own rejection",
-    )
-  }
-
-  @Test
-  fun `standalone and goal child resume the same durable scenario after a mid-item crash`() {
-    val standaloneCompletion = MidItemParityScenario("standalone-mid-item").completeStandalone()
-    val goalCompletion = MidItemParityScenario("goal-mid-item").completeGoalChild()
-    val standaloneObservation = standaloneCompletion.runtime.goalChildObservation(standaloneCompletion.report)
-    val goalObservation = goalCompletion.runtime.goalChildObservation(
-      goalCompletion.report,
-      requireNotNull(goalCompletion.authoritativeOutcome),
-    )
-    assertEquals(
-      standaloneObservation.copy(reviewComposition = goalObservation.reviewComposition),
-      goalObservation,
-    )
-    assertReviewCompositionParity(standaloneObservation, goalObservation)
-    assertTrue(standaloneCompletion.runtime.hasPhase("validate"))
-    assertTrue(goalCompletion.runtime.hasPhase("validate"))
   }
 
   @Test
@@ -510,10 +364,6 @@ private data class GoalChildObservation(
   val phaseOrder: List<String>,
   val persistedOutputs: Map<String, String>,
   val auditGapEdgeIterations: List<Int>,
-  val acceptedPlans: List<Any>,
-  val repairResults: List<Any>,
-  val unresolvedLedger: Any?,
-  val dispositions: List<Any>,
   val remediationHandoffs: List<String>,
   val reviewComposition: List<String>,
   val terminalReport: TerminalObservation,
@@ -527,124 +377,6 @@ private data class TerminalObservation(
   val workflowId: String,
   val lastResumableStep: String,
 )
-
-private data class MidItemCompletion(
-  val runtime: RunnerHarness,
-  val report: FeatureTaskRuntimeRunReport.Completed,
-  val authoritativeOutcome: GoalRunnerStoredOutcome? = null,
-)
-
-private class MidItemParityScenario(tempDirectoryPrefix: String) {
-  private val repository = MidItemScenarioRepository(Files.createTempDirectory(tempDirectoryPrefix))
-  private val gitOperations = RecordingWorkflowGitOperations(currentBranchValue = "feat/SKILL-56-goal")
-    .apply { headCommitShaValue = "goal-child-commit" }
-  private val outcomes = RecordingOutcomeStore().apply { seedReviewState(WORKFLOW_ID) }
-
-  fun completeStandalone(): MidItemCompletion {
-    val beforeCrash = runtime(crashAfterLanding = true)
-    assertEquals(null, beforeCrash.request().goalContinuation)
-    assertIs<FeatureTaskRuntimeRunReport.Blocked>(beforeCrash.runner.run(beforeCrash.request()))
-    assertEquals(setOf("item-1"), repository.effects())
-
-    repository.removeEffect("item-1")
-    val missingEffect = runtime(crashAfterLanding = false, landingEnabled = false)
-    assertIs<FeatureTaskRuntimeRunReport.Blocked>(missingEffect.runner.run(missingEffect.request()))
-    assertTrue(!missingEffect.hasPhase("validate"))
-
-    repository.landEffect("item-1")
-    val completedRuntime = runtime(crashAfterLanding = false)
-    val report = assertIs<FeatureTaskRuntimeRunReport.Completed>(
-      completedRuntime.runner.run(completedRuntime.request()),
-    )
-    return MidItemCompletion(completedRuntime, report)
-  }
-
-  fun completeGoalChild(): MidItemCompletion {
-    val crashedReport = runGoal(runtime(crashAfterLanding = true)).second
-    assertIs<FeatureTaskRuntimeRunReport.Blocked>(crashedReport)
-    assertEquals(setOf("item-1"), repository.effects())
-
-    repository.removeEffect("item-1")
-    val missingEffect = runtime(crashAfterLanding = false, landingEnabled = false)
-    assertIs<FeatureTaskRuntimeRunReport.Blocked>(runGoal(missingEffect).second)
-    assertTrue(!missingEffect.hasPhase("validate"))
-
-    repository.landEffect("item-1")
-    val (completedRuntime, completedReport) = runGoal(runtime(crashAfterLanding = false))
-    return MidItemCompletion(
-      completedRuntime,
-      assertIs<FeatureTaskRuntimeRunReport.Completed>(completedReport),
-      requireNotNull(outcomes.terminalOutcome(WORKFLOW_ID, "SKILL-56", 1, null)),
-    )
-  }
-
-  private fun runtime(crashAfterLanding: Boolean, landingEnabled: Boolean = true): RunnerHarness = runnerHarness(
-    launcher = launcher(crashAfterLanding, landingEnabled),
-    repository = repository.workflow,
-    runtimeConfig = RuntimeHarnessConfig(
-      branchSetup = BranchSetupTestConfig(gitOperations = gitOperations),
-    ),
-  )
-
-  private fun runGoal(runtime: RunnerHarness): Pair<RunnerHarness, FeatureTaskRuntimeRunReport> {
-    val childLauncher = RuntimeChildLauncher(runtime.runner, runtime.request(), outcomes)
-    GoalRunner(
-      manifestStore = InMemoryGoalManifestStore(manifest(subtaskCount = 1).withWorkflowId(1, WORKFLOW_ID)),
-      subtaskLauncher = childLauncher,
-      outcomeStore = outcomes,
-      pullRequestPort = RecordingPullRequestPort(),
-    ).run(GoalRunnerRunRequest("SKILL-56", runtime.request().repoRoot, INVOKED_AGENT))
-    return runtime to childLauncher.reports.last()
-  }
-
-  private fun launcher(crashAfterLanding: Boolean, landingEnabled: Boolean): RuntimeRecordingLauncher =
-    RuntimeRecordingLauncher { request ->
-      val prompt = requireNotNull(request.skillRunRequest.promptOverride)
-      when (val phaseId = phaseIdFromPrompt(prompt)) {
-        "audit" -> facts(if (repository.hasEffect("item-1")) auditSatisfiedOutput() else auditGapsOutput())
-        "implement" -> implementFacts(prompt, phaseId, crashAfterLanding, landingEnabled)
-        else -> facts(validJsonOutput(phaseId))
-      }
-    }
-
-  private fun implementFacts(prompt: String, phaseId: String, crashAfterLanding: Boolean, landingEnabled: Boolean) =
-    when {
-      !prompt.contains("audit_repair_plan") -> facts(validJsonOutput(phaseId))
-      !repository.hasEffect("item-1") && !landingEnabled -> spawnFailedFacts()
-      !repository.hasEffect("item-1") -> {
-        repository.landEffect("item-1")
-        if (crashAfterLanding) spawnFailedFacts() else facts(validJsonOutput(phaseId))
-      }
-      crashAfterLanding -> {
-        assertTrue(runCatching { repository.landEffect("item-1") }.isFailure)
-        spawnFailedFacts()
-      }
-      else -> facts(validJsonOutput(phaseId))
-    }
-}
-
-private fun RunnerHarness.hasPhase(phaseId: String): Boolean =
-  recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()[phaseId] != null
-
-private class MidItemScenarioRepository(private val repositoryRoot: Path) {
-  val workflow = InMemoryRuntimeWorkflowRepository()
-
-  fun hasEffect(effect: String): Boolean = Files.exists(effectPath(effect))
-
-  fun landEffect(effect: String) {
-    Files.createFile(effectPath(effect))
-  }
-
-  fun removeEffect(effect: String) {
-    check(Files.deleteIfExists(effectPath(effect))) { "missing repository effect: $effect" }
-  }
-
-  fun effects(): Set<String> = Files.list(repositoryRoot).use { paths ->
-    paths.map { it.fileName.toString() }.toList().toSet()
-  }
-
-  private fun effectPath(effect: String): Path = repositoryRoot.resolve(effect)
-}
 
 private fun RunnerHarness.goalChildObservation(
   report: FeatureTaskRuntimeRunReport,
@@ -671,12 +403,8 @@ private fun RunnerHarness.goalChildObservation(
     auditGapEdgeIterations = recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
       .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && it.loopId == "audit_gap" }
       .mapNotNull { it.edgeIteration },
-    acceptedPlans = recorder.loadAuditRepairState(WORKFLOW_ID)?.acceptedPlans.orEmpty(),
-    repairResults = recorder.loadAuditRepairState(WORKFLOW_ID)?.repairItemResults.orEmpty(),
-    unresolvedLedger = recorder.loadAuditRepairState(WORKFLOW_ID)?.unresolvedGapLedger,
-    dispositions = recorder.loadAuditRepairState(WORKFLOW_ID)?.priorGapDispositions.orEmpty(),
     remediationHandoffs = launcher.requests.mapNotNull { it.skillRunRequest.promptOverride }
-      .filter { it.contains("Phase: implement") && it.contains("audit_repair_plan") }
+      .filter { it.contains("Phase: implement") && it.contains("audit_gaps:") }
       .map { prompt ->
         prompt
           .replace(Regex("for issue SKILL-\\d+\\."), "for issue <issue>.")
@@ -941,78 +669,6 @@ private fun goalChildParityRun(
     childLauncher.continuationRequestCount,
     outcomes,
   ) { goalRunner.run(runRequest) }
-}
-
-// A goal-child gaps_found audit whose single gap carries two repair items, so a partial remediation is
-// expressible.
-private fun auditTwoItemGoalGapOutput(): String = """
-  {
-    "contract_version": "0.2",
-    "phase_id": "audit",
-    "status": "completed",
-    "summary": "Audit found unmet acceptance criteria.",
-    "verdict": "gaps_found",
-    "produced_outputs": {
-      "unmet_criteria": [{"acceptance_criterion_ref":"AC-002","message": "$AUDIT_GAP_MESSAGE"}],
-      "audit_repair_plan": {
-        "contract_version":"0.2",
-        "gaps":[{
-          "gap_id":"ac-002-gap-1",
-          "acceptance_criterion_ref":"AC-002",
-          "acceptance_criterion_text":"The audit gap is repaired.",
-          "failure_evidence":{"observation":"required_behavior_absent","artifact_ref":"runtime-kotlin","check_ref":"AC-002"},
-          "diagnosis":"Implement and verify the missing behavior in two ordered steps.",
-          "affected_boundary":"runtime application",
-          "repair_items":[{
-            "repair_item_id":"ac-002-gap-1-item-1",
-            "intended_outcome":"The behavior is implemented.",
-            "implementation_actions":["Reconcile the implementation."],
-            "affected_paths_or_symbols":["src/Foo.kt"],
-            "required_verification":["Run the focused test."],
-            "depends_on":[],
-            "status":"pending"
-          },{
-            "repair_item_id":"ac-002-gap-1-item-2",
-            "intended_outcome":"The behavior is covered by a durable test.",
-            "implementation_actions":["Add the focused regression."],
-            "affected_paths_or_symbols":["src/FooTest.kt"],
-            "required_verification":["Run the focused test."],
-            "depends_on":["ac-002-gap-1-item-1"],
-            "status":"pending"
-          }]
-        }]
-      }
-    }
-  }
-""".trimIndent()
-
-private fun goalRemediationOutput(reportedItemIds: List<String>): String {
-  val results = reportedItemIds.joinToString(",") { itemId ->
-    """
-      {
-        "repair_item_id":"$itemId",
-        "outcome":"fixed",
-        "changed_paths_or_symbols":["src/Foo.kt"],
-        "executed_verification":["Focused test passed."],
-        "result_evidence":{"observation":"fix_verified","artifact_ref":"src/Foo.kt","check_ref":"AC-002"}
-      }
-    """.trimIndent()
-  }
-  return """
-    {
-      "contract_version": "0.2",
-      "phase_id": "implement",
-      "status": "completed",
-      "summary": "Goal-child remediation reported its repair item results.",
-      "produced_outputs": {
-        ${PlanningProjectionFixtures.RECEIPT_FIELDS}
-        "changed_files":["src/Foo.kt"],
-        "reconciled_state":{"reconciled":true},
-        "deferred_repair_item_ids":[],
-        "repair_item_results":[$results]
-      }
-    }
-  """.trimIndent()
 }
 
 private class RuntimeChildLauncher(

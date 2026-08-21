@@ -2,14 +2,11 @@ package skillbill.application.featuretask
 
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
-import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskRuntimePhaseBriefingFramingError
 import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.NoopFeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffProjectionValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairPlan
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairState
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionBudget
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionInputs
@@ -17,7 +14,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionV
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffPromptVisibility
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseHandoff
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairBatch
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariantPromptField
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedReviewEvidenceReference
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
@@ -135,10 +131,7 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
       derivedContextKeys = handoff.derivedContextKeys,
       briefingText = briefingText,
       drivingVerdict = handoff.drivingVerdict?.wireValue,
-      auditRepairItemIds = handoff.auditRepairPlan?.gaps.orEmpty()
-        .flatMap { gap -> gap.repairItems.map { it.repairItemId } },
-      unresolvedAuditGapIds = handoff.auditRepairState?.unresolvedGapLedger?.unresolvedGaps.orEmpty()
-        .map { it.gapId },
+      unresolvedAuditGapIds = handoff.reentryGapCriteria,
       durablyClosedCriterionRefs = handoff.durablyClosedCriterionRefs,
     )
   }
@@ -159,8 +152,7 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
     resolvedCheckpoint = handoff.repositoryCheckpoint,
     sharedReviewEvidence = sharedReviewEvidence,
     expectedCheckpoint = handoff.expectedRepositoryCheckpoint,
-    auditRepairPlan = handoff.auditRepairPlan,
-    auditRepairState = handoff.auditRepairState,
+    unmetCriterionRefs = handoff.reentryGapCriteria,
     repairLedger = handoff.repairLedger,
     recordedFindingVerdicts = handoff.recordedFindingVerdicts,
     branchIdentity = handoff.branchIdentity,
@@ -248,45 +240,12 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
       appendLine("audit_gaps:")
       handoff.reentryGapCriteria.forEach { gap -> appendLine("  - $gap") }
     }
-    handoff.auditRepairPlan?.let {
-      appendLine("audit_remediation_execution_rules:")
+    if (handoff.reentryGapCriteria.isNotEmpty()) {
+      appendLine("audit_remediation_rules:")
       appendLine("  - Use the immutable initial preplan and plan; do not regenerate general planning.")
-      appendLine(
-        "  - Repair every carried gap in this single implementation invocation; never launch one pass per gap.",
-      )
-      appendLine("  - Treat the complete repair-item set as the exhaustive execution checklist for this invocation.")
-      appendLine("  - Honor dependency order internally without deferring any runnable item to another round.")
-      appendLine(
-        "  - After each item, verify its repository outcome and record its terminal result before continuing.",
-      )
-      appendLine(
-        "  - A fixed outcome requires executed_verification to show the gap's original failure_evidence " +
-          "check no longer failing at its recorded artifact_ref: re-read the repaired symbols and state " +
-          "the concrete repository fact that discharges that exact check. Generic inspection notes or " +
-          "git diff output alone never justify fixed. Builds and tests stay deferred to validate.",
-      )
-      appendLine("  - Do not finish until every carried repair_item_id has exactly one terminal result.")
-      appendLine("  - Emit exactly one terminal repair_item_result for every carried repair_item_id.")
-      appendLine("  - already_satisfied requires distinct concrete repository and verification evidence.")
-      appendLine("  - Do not defer or assign carried work to review, audit, validation, or a later phase.")
-      appendLine(
-        "  - If an item is genuinely unresolvable, block with both gap_id and repair_item_id " +
-          "and preserve partial terminal evidence.",
-      )
-    }
-    handoff.auditRepairState?.let { repairState ->
-      val currentItemIds = handoff.auditRepairPlan?.gaps.orEmpty()
-        .flatMap { gap -> gap.repairItems.map { it.repairItemId } }
-      appendLine("audit_remediation_context:")
-      JsonSupport.mapToJsonString(
-        mapOf(
-          "carried_repair_item_ids" to currentItemIds,
-          "unresolved_gap_ids" to repairState.unresolvedGapLedger.unresolvedGaps.map { it.gapId },
-          "prior_terminal_result_count" to repairState.repairItemResults.size,
-          "audit_gap_iteration_count" to repairState.progress.auditGapIterationCount,
-          "repository_fingerprint" to repairState.repositoryFingerprint,
-        ) + auditRepairReentryProjection(handoff.auditRepairPlan, repairState, handoff.activeRepairBatch),
-      ).lineSequence().forEach { appendLine("  $it") }
+      appendLine("  - Plan and implement every listed criterion in this single invocation.")
+      appendLine("  - Builds and tests stay deferred to validate.")
+      appendLine("  - If a criterion is genuinely unimplementable, block and say which one and why.")
     }
     appendLine()
     appendLine("## Upstream projections (layer 2, declared and validated)")
@@ -314,48 +273,6 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
         },
       )
     }
-  }
-
-  /**
-   * The complete ordered set of still-open repair obligations, reconstructed from durable audit-repair state
-   * alone. First entry, in-process retry, and fresh-process resume all reach this from the same records, so a
-   * resumed repair is delivered the same batch it would have been delivered originally — each still-open item
-   * exactly once, with its dependencies, the evidence prior attempts already recorded, and the criteria a
-   * repair must not regress.
-   */
-  private fun auditRepairReentryProjection(
-    plan: FeatureTaskRuntimeAuditRepairPlan?,
-    repairState: FeatureTaskRuntimeAuditRepairState,
-    activeBatch: FeatureTaskRuntimeRepairBatch?,
-  ): Map<String, Any?> {
-    val priorResults = repairState.repairItemResults.associateBy { it.repairItemId }
-    val items = plan?.gaps.orEmpty().flatMap { gap -> gap.repairItems.map { gap.gapId to it } }
-    // Closure is scoped to the ACTIVE batch, not to every retained result. A recurring gap regenerates the
-    // same repair_item_id, so an earlier round's result for that id is prior evidence for a re-opened
-    // obligation; filtering on it delivered an empty open set while the completion gate still demanded a
-    // terminal result. Only a workflow with no durable generation falls back to the retained results.
-    val closed = activeBatch?.repairItemDispositions?.mapTo(linkedSetOf()) { it.repairItemId }
-      ?: priorResults.keys
-    return mapOf(
-      "open_repair_items" to items.filterNot { (_, item) -> item.repairItemId in closed }
-        .map { (gapId, item) ->
-          mapOf(
-            "gap_id" to gapId,
-            "repair_item_id" to item.repairItemId,
-            "depends_on" to item.dependsOn,
-          )
-        },
-      "prior_repair_item_evidence" to items.mapNotNull { (_, item) -> priorResults[item.repairItemId] }
-        .map { result ->
-          mapOf(
-            "repair_item_id" to result.repairItemId,
-            "outcome" to result.outcome.name.lowercase(),
-            "artifact_ref" to result.resultEvidence.artifactRef,
-            "check_ref" to result.resultEvidence.checkRef,
-          )
-        },
-      "non_regression_criterion_refs" to repairState.satisfiedCriterionRefs,
-    )
   }
 
   private const val SHARED_EVIDENCE_PROJECTION: String =

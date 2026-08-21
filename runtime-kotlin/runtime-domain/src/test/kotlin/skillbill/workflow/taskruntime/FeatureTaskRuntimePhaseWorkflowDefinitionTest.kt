@@ -379,13 +379,9 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
     )
     assertTrue(auditRemediation.none { it.projectionContractId == def.UPSTREAM_PHASE_RECEIPT_CONTRACT_ID })
     assertEquals(
-      listOf(
-        "audit_repair_plan",
-        "prior_terminal_repair_outcomes",
-        "unresolved_gap_ids",
-        "repository_checkpoint",
-      ),
+      listOf("unmet_criteria", "repository_checkpoint"),
       auditRemediation.last().declaredFieldNames,
+      "the remediation handoff carries the unmet criteria and the checkpoint, and nothing else",
     )
 
     val reviewRetry = def.reviewRetryProjections()

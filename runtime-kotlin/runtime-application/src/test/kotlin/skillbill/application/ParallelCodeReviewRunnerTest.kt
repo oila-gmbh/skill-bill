@@ -111,70 +111,72 @@ class ParallelCodeReviewRunnerTest {
   }
 
   @Test
-  fun `blank agent2 throws UsageValidationException before any launch`() {
+  fun `non-blank agent2 throws UsageValidationException before any launch`() {
     val launcher = ParallelSubtaskLauncher()
     val runner = runner(launcher)
 
     assertThrowsUsageValidation {
-      runner.run(baseRequest(agent2Id = ""))
+      runner.run(baseRequest(agent2Id = "codex"))
     }
     assertTrue(launcher.requests.isEmpty())
   }
 
   @Test
-  fun `unsupported agent id throws UsageValidationException`() {
+  fun `unsupported agent1 id throws UsageValidationException`() {
     val launcher = ParallelSubtaskLauncher()
     val runner = runner(launcher)
 
     assertThrowsUsageValidation {
-      runner.run(baseRequest(agent2Id = "unknown-agent-xyz"))
+      runner.run(baseRequest(agent1Id = "unknown-agent-xyz"))
     }
     assertTrue(launcher.requests.isEmpty())
   }
 
   @Test
-  fun `agent1 and agent2 same id throws UsageValidationException`() {
-    val launcher = ParallelSubtaskLauncher()
-    val runner = runner(launcher)
-
-    assertThrowsUsageValidation {
-      runner.run(baseRequest(agent1Id = "claude", agent2Id = "claude"))
-    }
-    assertTrue(launcher.requests.isEmpty())
-  }
-
-  @Test
-  fun `agent1 empty falls back to default and matches agent2 throws UsageValidationException`() {
-    val launcher = ParallelSubtaskLauncher()
-    val runner = runner(launcher)
-
-    assertThrowsUsageValidation {
-      runner.run(baseRequest(agent1Id = "", agent2Id = ""))
-    }
-    assertTrue(launcher.requests.isEmpty())
-  }
-
-  @Test
-  fun `both lanes succeed and findings overlap produces coalesced output`() {
+  fun `single agent prose result soft-admits register lines for verification without failing shape`() {
     val tempDir = createGitRepo()
     createStagedFile(tempDir)
-    val sharedFinding = "- [F-001] Major | High | path=\"Test.kt\" | line=1 | Shared issue"
-    val launcher = alwaysSuccessLauncher(sharedFinding)
+    val prose = """
+      Shared issue in Test.kt
+      - [F-001] Major | High | path="Test.kt" | line=1 | Shared issue
+      verdict: changes_requested
+    """.trimIndent()
+    val launcher = alwaysSuccessLauncher(prose)
     val runner = runner(launcher)
 
     val result = runner.run(
       baseRequest(
         agent1Id = "claude",
-        agent2Id = "codex",
         scope = ParallelReviewScope.STAGED,
         repoRoot = tempDir,
       ),
     )
 
     assertTrue(result.lane1.success)
-    assertTrue(result.lane2.success)
+    assertEquals(prose, result.mergeResult.formattedOutput)
     assertEquals(1, result.mergeResult.findings.size)
-    assertEquals(listOf("claude", "codex"), result.mergeResult.findings[0].agentIds)
+    assertEquals("F-001", result.mergeResult.findings.single().fNumber)
+  }
+
+  @Test
+  fun `single agent prose without register lines still succeeds with empty findings`() {
+    val tempDir = createGitRepo()
+    createStagedFile(tempDir)
+    val prose = "Shared issue in Test.kt\nverdict: changes_requested"
+    val launcher = alwaysSuccessLauncher(prose)
+    val runner = runner(launcher)
+
+    val result = runner.run(
+      baseRequest(
+        agent1Id = "claude",
+        scope = ParallelReviewScope.STAGED,
+        repoRoot = tempDir,
+      ),
+    )
+
+    assertTrue(result.lane1.success)
+    assertEquals(emptyList(), result.mergeResult.findings)
+    assertEquals(prose, result.mergeResult.formattedOutput)
   }
 
   @Test
@@ -226,7 +228,7 @@ class ParallelCodeReviewRunnerTest {
     val runner = runner(launcher)
 
     val result = runner.run(
-      baseRequest(agent1Id = "claude", agent2Id = "codex", scope = ParallelReviewScope.STAGED, repoRoot = tempDir),
+      baseRequest(agent1Id = "claude", scope = ParallelReviewScope.STAGED, repoRoot = tempDir),
     )
 
     assertFalse(result.lane1.success)
@@ -263,7 +265,7 @@ class ParallelCodeReviewRunnerTest {
     val runner = runner(launcher)
 
     val result = runner.run(
-      baseRequest(agent1Id = "claude", agent2Id = "codex", scope = ParallelReviewScope.STAGED, repoRoot = tempDir),
+      baseRequest(agent1Id = "claude", scope = ParallelReviewScope.STAGED, repoRoot = tempDir),
     )
 
     assertFalse(result.lane1.success)
@@ -279,7 +281,7 @@ class ParallelCodeReviewRunnerTest {
     val launcher = ParallelSubtaskLauncher()
     val runner = runner(launcher, diffResolver = resolver)
 
-    runner.run(baseRequest(agent1Id = "claude", agent2Id = "codex", scope = ParallelReviewScope.STAGED))
+    runner.run(baseRequest(agent1Id = "claude", scope = ParallelReviewScope.STAGED))
 
     assertContains(resolver.calls, listOf("git", "diff", "--cached"))
   }
@@ -298,7 +300,7 @@ class ParallelCodeReviewRunnerTest {
     val runner = runner(launcher, diffResolver = resolver)
 
     runner.run(
-      baseRequest(agent1Id = "claude", agent2Id = "codex", scope = ParallelReviewScope.BRANCH).detectingRevisions(),
+      baseRequest(agent1Id = "claude", scope = ParallelReviewScope.BRANCH).detectingRevisions(),
     )
 
     assertContains(resolver.calls, listOf("git", "merge-base", "HEAD", "main"))
@@ -320,7 +322,7 @@ class ParallelCodeReviewRunnerTest {
     val runner = runner(ParallelSubtaskLauncher(), diffResolver = resolver)
 
     runner.run(
-      baseRequest(agent1Id = "claude", agent2Id = "codex", scope = ParallelReviewScope.PR).detectingRevisions(),
+      baseRequest(agent1Id = "claude", scope = ParallelReviewScope.PR).detectingRevisions(),
     )
 
     assertContains(resolver.calls, listOf("gh", "pr", "view", "--json", "baseRefOid", "--jq", ".baseRefOid"))
@@ -331,7 +333,7 @@ class ParallelCodeReviewRunnerTest {
   }
 
   @Test
-  fun `review prompt asks for the commit attribution segment the parser reads`() {
+  fun `review prompt asks for free-form prose and an explicit verdict`() {
     val launcher = ParallelSubtaskLauncher()
     val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))
 
@@ -340,14 +342,12 @@ class ParallelCodeReviewRunnerTest {
     assertTrue(launcher.requests.isNotEmpty())
     launcher.requests.forEach { request ->
       val prompt = request.skillRunRequest.promptOverride.orEmpty()
-      assertContains(prompt, "commits=<sha>[,<sha>] | path=<JSON string>")
-      assertContains(prompt, "required whenever a finding relates code from more than one assigned commit")
+      assertContains(prompt, "free-form review prose")
+      assertContains(prompt, "verdict: approved")
+      assertContains(prompt, "verdict: changes_requested")
+      assertContains(prompt, "optional `[F-XXX]` register lines")
+      assertFalse(prompt.contains("Return only '[F-XXX]"))
     }
-    val parsed = ParallelReviewFindingParser.parse(
-      "[F-001] Major | High | specialist=generic-security | commits=aaa111,bbb222 | " +
-        "path=\"A.kt\" | line=4 | contract introduced then changed",
-    )
-    assertEquals(listOf("aaa111", "bbb222"), parsed.findings.single().commitShas)
   }
 
   @Test
@@ -359,7 +359,7 @@ class ParallelCodeReviewRunnerTest {
       baseRequest(scope = ParallelReviewScope.STAGED).copy(codeReviewMode = CodeReviewExecutionMode.INLINE),
     )
 
-    assertEquals(2, launcher.requests.size)
+    assertEquals(1, launcher.requests.size)
     launcher.requests.forEach { request ->
       assertNotNull(request.skillRunRequest.reviewEvidenceBroker)
       assertContains(request.skillRunRequest.promptOverride.orEmpty(), "bill-code-review mode:inline")
@@ -379,9 +379,9 @@ class ParallelCodeReviewRunnerTest {
     )
 
     assertEquals(
-      listOf("claude", "codex"),
-      launcher.requests.map { it.invokedAgentId }.sorted(),
-      "Inline runs one prompt for the primary lane and one for the parallel-review lane, nothing else.",
+      listOf("claude"),
+      launcher.requests.map { it.invokedAgentId },
+      "Inline runs one prompt for the single parent agent.",
     )
     launcher.requests.forEach { request ->
       assertEquals(
@@ -407,7 +407,7 @@ class ParallelCodeReviewRunnerTest {
       baseRequest(scope = ParallelReviewScope.STAGED).copy(codeReviewMode = CodeReviewExecutionMode.DEFAULT),
     )
 
-    assertEquals(2, launcher.requests.size)
+    assertEquals(1, launcher.requests.size)
     launcher.requests.forEach { request ->
       val prompt = request.skillRunRequest.promptOverride.orEmpty()
       assertContains(prompt, "bill-code-review mode:inline")
@@ -430,7 +430,7 @@ class ParallelCodeReviewRunnerTest {
         baseRequest(scope = ParallelReviewScope.STAGED).copy(codeReviewMode = requested),
       )
 
-      assertEquals(2, launcher.requests.size, "$requested must run a primary lane and a second lane.")
+      assertEquals(1, launcher.requests.size, "$requested must run a single parent agent.")
       launcher.requests.forEach { request ->
         assertContains(
           request.skillRunRequest.promptOverride.orEmpty(),
@@ -536,7 +536,7 @@ class ParallelCodeReviewRunnerTest {
 
     runner.run(baseRequest(scope = ParallelReviewScope.STAGED))
 
-    assertEquals(2, launcher.requests.size, "empty testing lanes must be dropped for both review agents")
+    assertEquals(1, launcher.requests.size, "single parent agent receives the routed rubric set")
     launcher.requests.forEach { request ->
       val prompt = request.skillRunRequest.promptOverride.orEmpty()
       assertContains(prompt, "architecture specialist rubric")
@@ -565,7 +565,7 @@ class ParallelCodeReviewRunnerTest {
         AgentRunLaunchFacts(
           agent = agent,
           exitStatus = 0,
-          stdout = "- [F-001] Major | High | path=\"src/FooTest.kt\" | line=1 | Testing issue",
+          stdout = "Testing issue\nverdict: changes_requested",
           stderr = "",
           timedOut = false,
           spawnFailed = false,
@@ -590,9 +590,8 @@ class ParallelCodeReviewRunnerTest {
 
     val result = runner.run(baseRequest(scope = ParallelReviewScope.STAGED))
 
-    assertFalse(result.lane1.success, "The lane as a whole failed because its architecture specialist failed.")
-    assertFalse(result.lane2.success, "Incomplete delegated worker coverage must block the aggregate result.")
-    assertTrue(result.mergeResult.findings.isEmpty(), "Blocked aggregation must not publish partial findings.")
+    assertFalse(result.lane1.success, "Parent fails when its process exits non-zero.")
+    assertTrue(result.mergeResult.findings.isEmpty(), "Prose path never publishes a findings register.")
   }
 
   @Test
@@ -601,7 +600,7 @@ class ParallelCodeReviewRunnerTest {
       AgentRunLaunchFacts(
         agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),
         exitStatus = 0,
-        stdout = "NO_FINDINGS",
+        stdout = "verdict: approved",
         stderr = "",
         timedOut = false,
         spawnFailed = false,
@@ -616,10 +615,10 @@ class ParallelCodeReviewRunnerTest {
       .run(baseRequest(scope = ParallelReviewScope.STAGED))
 
     assertEquals(70, result.lane1.tokenUsage?.freshTokenApproximation)
-    assertEquals(110, result.lane2.tokenUsage?.totalTokens)
+    assertEquals(110, result.lane1.tokenUsage?.totalTokens)
     assertEquals("claude", result.lane1.accounting?.lane)
     assertEquals(1, result.lane1.accounting?.modelTurns)
-    assertEquals("NO_FINDINGS".toByteArray().size.toLong(), result.lane1.accounting?.resultBytes)
+    assertEquals("verdict: approved".toByteArray().size.toLong(), result.lane1.accounting?.resultBytes)
   }
 
   @Test
@@ -905,7 +904,7 @@ class ParallelCodeReviewRunnerFailureTest {
     }
     val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))
 
-    val result = runner.run(baseRequest(agent1Id = "claude", agent2Id = "codex", scope = ParallelReviewScope.STAGED))
+    val result = runner.run(baseRequest(agent1Id = "claude", scope = ParallelReviewScope.STAGED))
 
     assertFalse(result.lane1.success)
     assertEquals("agent was interrupted", result.lane1.failureReason)
@@ -938,7 +937,7 @@ class ParallelCodeReviewRunnerFailureTest {
     }
     val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))
 
-    val result = runner.run(baseRequest(agent1Id = "claude", agent2Id = "codex", scope = ParallelReviewScope.STAGED))
+    val result = runner.run(baseRequest(agent1Id = "claude", scope = ParallelReviewScope.STAGED))
 
     assertFalse(result.lane1.success)
     assertTrue(result.lane2.success)
@@ -965,7 +964,7 @@ class ParallelCodeReviewRunnerFailureTest {
     }
     val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))
 
-    val result = runner.run(baseRequest(agent1Id = "claude", agent2Id = "codex", scope = ParallelReviewScope.STAGED))
+    val result = runner.run(baseRequest(agent1Id = "claude", scope = ParallelReviewScope.STAGED))
 
     assertFalse(result.lane1.success)
     assertContains(result.lane1.failureReason.orEmpty(), "IllegalStateException")
@@ -996,7 +995,7 @@ class ParallelCodeReviewRunnerFailureTest {
     )
 
     val result = runner.run(
-      baseRequest(agent1Id = "claude", agent2Id = "codex", scope = ParallelReviewScope.STAGED, timeout = 1.seconds)
+      baseRequest(agent1Id = "claude", scope = ParallelReviewScope.STAGED, timeout = 1.seconds)
         .copy(codeReviewMode = CodeReviewExecutionMode.INLINE),
     )
 
@@ -1046,7 +1045,7 @@ class ParallelCodeReviewRunnerFailureTest {
     }
     val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))
 
-    val result = runner.run(baseRequest(agent1Id = "claude", agent2Id = "codex", scope = ParallelReviewScope.STAGED))
+    val result = runner.run(baseRequest(agent1Id = "claude", scope = ParallelReviewScope.STAGED))
 
     assertFalse(result.lane1.success)
     assertContains(result.lane1.failureReason.orEmpty(), "unsupported agent")
@@ -1066,7 +1065,7 @@ class ParallelCodeReviewRunnerFailureTest {
     }
     val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))
 
-    val result = runner.run(baseRequest(agent1Id = "claude", agent2Id = "codex", scope = ParallelReviewScope.STAGED))
+    val result = runner.run(baseRequest(agent1Id = "claude", scope = ParallelReviewScope.STAGED))
 
     assertFalse(result.lane1.success)
     assertContains(result.lane1.failureReason.orEmpty(), "status 1")
@@ -1083,7 +1082,7 @@ class ParallelCodeReviewRunnerFailureTest {
     )
 
     val error = assertFailsWith<StackDetectionException> {
-      runner.run(baseRequest(agent1Id = "claude", agent2Id = "codex", scope = ParallelReviewScope.STAGED))
+      runner.run(baseRequest(agent1Id = "claude", scope = ParallelReviewScope.STAGED))
     }
     assertContains(error.message.orEmpty(), "Installed platform pack discovery failed")
     assertTrue(launcher.requests.isEmpty(), "lanes must not launch when stack detection fails")
@@ -1517,7 +1516,7 @@ private val HEAD_BRANCH_QUERY = listOf("git", "rev-parse", "--abbrev-ref", "HEAD
 
 internal fun baseRequest(
   agent1Id: String = "claude",
-  agent2Id: String? = "codex",
+  agent2Id: String? = null,
   scope: ParallelReviewScope = ParallelReviewScope.STAGED,
   repoRoot: Path = Files.createTempDirectory("pr-runner-test"),
   timeout: Duration? = null,
