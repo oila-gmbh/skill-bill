@@ -2,253 +2,293 @@
 
 ## Context
 
-The runtime models provider token usage with a single type, `ProviderTokenUsage`
-(`runtime-domain/.../review/context/model/ReviewContextModels.kt:380-405`), whose invariants encode
-**one** provider's convention as if it were universal:
+The runtime decodes provider-reported token counts off four agent transports, folds them into a
+review accounting tree, writes them to `review_accounting`, ships thresholds to every review
+specialist, and declares them in two contracts. None of it produces a usable number, and almost
+none of it is read.
+
+### One column, two incompatible conventions
+
+`ProviderTokenUsage` (`runtime-domain/.../review/context/model/ReviewContextModels.kt`) holds a
+single set of token fields. The decoders fill them from two providers whose conventions disagree:
+
+- Codex reports `input_tokens` inclusive of `cached_input_tokens`.
+- Anthropic reports `input_tokens` as the uncached remainder, with `cache_read_input_tokens` and
+  `cache_creation_input_tokens` additive on top.
+
+`ReviewTreeAccounting` sums those values across lanes, so `aggregate_direct_usage` adds an inclusive
+Codex total to an additive Anthropic remainder. The result is not a quantity in any unit.
+
+`freshTokenApproximation` assumes the inclusive convention:
 
 ```kotlin
-require(cachedInputTokens == null || cachedInputTokens <= inputTokens!!) {
-  "Cached-input tokens cannot exceed input tokens."
-}
+get() = (inputTokens ?: 0) - (cachedInputTokens ?: 0) + (outputTokens ?: 0)
 ```
 
-That holds for OpenAI/Codex, where `input_tokens` is inclusive of `cached_input_tokens`. It is false
-for Anthropic, where `input_tokens` is the *uncached remainder* and `cache_read_input_tokens` /
-`cache_creation_input_tokens` are additive: total prompt = `input + cache_read + cache_creation`.
+Under Anthropic semantics `input_tokens` already excludes cache reads, so this subtracts them a
+second time and goes negative. `ReviewAccountingProjection` patches the symptom with
+`it.coerceAtLeast(0)`, because `review-context-schema.yaml` declares `minimum: 0` on the field.
 
-The decoders are faithful. `AgentRunAdapters.kt:230` and `:259` map `cache_read_input_tokens` →
-`cachedInputTokens` exactly as reported, and `AgentRunLaunchFacts`
-(`AgentRunLauncherModels.kt:272-284`) only checks non-negativity. So a truthful Anthropic value
-crosses the port boundary intact and detonates one layer up, when the review domain constructs
-`ProviderTokenUsage` from it.
+`cache_creation_input_tokens` is decoded by no adapter, so cache-write cost has never been counted
+for either provider.
 
-### The SKILL-190 incident
+### What the recorded data shows
 
-A cached Claude review lane reported `input_tokens: 2, cache_read_input_tokens: 17931`. The throw
-site is `ParallelCodeReviewRunner.kt:1247`, inside `launchedParentOutcome`, which runs **after** the
-child review agent has finished and its findings already sit in `outcome.stdout`. The exception
-discarded a completed review pass and blocked the goal:
+Rows from `~/.skill-bill/review-metrics.db`, `review_accounting.aggregate_direct_usage`:
 
 ```
-goal SKILL-190: blocked at subtask 2 — Feature-task-runtime phase 'review' lane launch threw
-IllegalArgumentException: Cached-input tokens cannot exceed input tokens.
+{"input_tokens":8,  "cached_input_tokens":61852,  "output_tokens":7174, "fresh_token_approximation":0}
+{"input_tokens":6,  "cached_input_tokens":107339, "output_tokens":8167, "fresh_token_approximation":0}
+{"input_tokens":24, "cached_input_tokens":4308091,"output_tokens":20052,"fresh_token_approximation":0}
+{"input_tokens":278123,                           "output_tokens":25166,"fresh_token_approximation":303289}
+{"input_tokens":18,                               "output_tokens":7599, "fresh_token_approximation":7617}
 ```
 
-Nothing about the review failed. The accounting layer rejected a correct measurement.
+Every cached Anthropic lane records `fresh_token_approximation: 0`, the coercion floor. The third row
+sums cache reads to 4,308,091, which is 143 times the configured 30,000 `cachedInputTokens`
+threshold. The fourth is a Codex inclusive total in the same column. The fifth claims an 18-token
+prompt for a real review lane, because the cache-write dimension is never decoded.
 
-### It never worked, and the repository already knew
+### Nothing enforces it and almost nothing reads it
 
-The violating payload shape is checked into the repository as a decoder fixture:
+- `ReviewEvidenceBroker.evaluateProviderUsage` has no production caller.
+  `NativeReviewOperationProtocol.providerUsage`, the `enforceable = true` seam that could terminate a
+  lane, has no production caller either. `ProviderTokenThresholds` therefore never fires, and
+  `ReviewBudgetRegression` has no reachable producer.
+- `ReviewEnvelopeFragments` ships `provider_token_thresholds` into every review specialist's launch
+  envelope. Each lane is handed a 30,000 cached-token budget it routinely exceeds by a factor of
+  three or more, with no consequence, because nothing evaluates it.
+- `GoalSessionAccounting` declares `inputTokens`, `cachedInputTokens`, `outputTokens`, and
+  `reasoningOutputTokens`. `GoalRunnerLedgerRecorder` constructs `GoalSessionAccountingFields`
+  without any of them, always. Across 295 stored `goal_session_accounting` artifacts, not one
+  carries a token key. Its `available` flag flips true whenever a child session path exists, so the
+  record reports session identity that `GoalAttemptLedgerEntry` already carries, under an accounting
+  name.
+- `telemetry-event-schema.yaml` defines `boundedReviewAccounting` with
+  `contract_version: { const: "0.6" }` and `additionalProperties: false`, while the projection emits
+  `2.1` plus `commit_routing_accounting`, `parent_analysis_consumption`, and `integration`. The
+  definition no longer describes anything the runtime produces.
 
-```
-runtime-infra-fs/.../AgentRunCommandBuildersTest.kt:80
-{"input_tokens":2,"cache_read_input_tokens":17931,"output_tokens":6,"total_tokens":120}
-```
+The one live consumer is `loadReviewAccounting`, read by
+`ReviewFinishedPayloadSupport` into `review_context_accounting` on the review-finished telemetry
+payload, and printed by `CodeReviewDriverCommand` as `# Review accounting — {json}` at the end of a
+CLI review. Both surface the numbers above verbatim.
 
-That test asserts the decode round-trips, and it passes, because the port model permits the value.
-Nothing constructs `ProviderTokenUsage` from the fixture, so the contradiction between the two
-layers has no test that can observe it. Meanwhile `ReviewContextModelsTest.kt:130` asserts that
-`input=1, cached=2` *must* throw — pinning the wrong convention as intended behaviour.
+### The SKILL-190 crash is already fixed
 
-All 52 rows in `~/.skill-bill/review-metrics.db` recorded `cached_input_tokens: 0`. The invariant had
-never once been exercised against a nonzero Anthropic cache read. The large recorded `input_tokens`
-values (775872, 245513, 217156) are Codex-shaped inclusive totals; the single `input_tokens: 2` row
-is Anthropic-shaped but happened to report zero cache reads.
-
-A second defect follows from the same assumption:
-
-```kotlin
-val freshTokenApproximation get() = (inputTokens ?: 0) - (cachedInputTokens ?: 0) + (outputTokens ?: 0)
-```
-
-Under Anthropic semantics `input_tokens` already excludes cache reads, so this subtracts them twice
-and goes negative. That was patched downstream rather than at the model —
-`ReviewAccountingProjection.kt:114` applies `it.coerceAtLeast(0)`. The coercion is the fingerprint of
-additive semantics leaking through before anyone named the cause.
-
-`cache_creation_input_tokens` is never decoded by any adapter, so cache-write cost has always been
-invisible. The accounting has therefore never produced a correct number for either provider: wrong
-by construction for Anthropic, and silently missing a cost dimension for both.
+`ProviderTokenUsage` once required `cachedInputTokens <= inputTokens`, which threw on truthful
+Anthropic reports and blocked goal SKILL-190 after its review lane had already produced findings.
+Commit `161fef09e` removed that requirement and replaced the test that pinned it with
+`additive provider cache reads exceeding input are accepted`. No crash remains, and this program is
+not a fix for one. It removes a measurement that cannot be made correct at the seam where it is
+taken.
 
 ### Why removal rather than repair
 
-Repair means teaching every seam which provider convention it is holding, then re-deriving
-thresholds that were picked against the wrong units. The `cachedInputTokens` threshold is 30,000
-(`ReviewContextModels.kt:324`) against real Anthropic cache reads well above 100,000 — so on the one
-path where thresholds affect behaviour (`NativeReviewOperationProtocol.kt:42` passes
-`enforceable = true`, letting a breach terminate a lane) the current configuration would fire on
-nearly every cached lane. The subsystem is a hazard, not a safeguard, and nothing consumes its output
-for a decision anyone relies on.
+Repair means tagging every value with its provider convention, teaching the tree not to add across
+conventions, adding cache-write decoding, and re-deriving thresholds against units nobody has
+validated. Nothing consumes the output for a decision, so that work buys a correct number no caller
+asked for. The provider-independent byte-derived estimates the runtime computes itself are unaffected
+and stay.
 
 ## Intended Outcome
 
-No provider-reported token value is read, computed, stored, projected, or enforced anywhere in the
+No provider-reported token value is decoded, computed, stored, projected, or enforced anywhere in the
 runtime. The review accounting tree keeps its byte, count, coverage, routing, and integration
-surfaces, which are orthogonal and correct. Locally computed byte-derived token *estimates* stay,
+surfaces, which are orthogonal and correct. Locally computed byte-derived token estimates stay,
 because they are provider-independent arithmetic on bytes the runtime owns and one of them is
 load-bearing for the least-context projection budget.
 
-Removal is invisible at every boundary. A pre-existing durable record carrying retired token keys
-reads without quarantine or regeneration; a `.skill-bill/config.yaml` carrying
-`provider_token_thresholds` parses and the key is ignored; a goal whose stored artifacts include
-`goal_session_accounting` reports observability without it. Every such tolerated path emits a
-degradation record. Loud-fail remains intact for genuine contract drift.
+Removal is invisible at every boundary. A pre-existing `review_accounting` row carrying retired usage
+keys reads without quarantine or regeneration. A pre-existing `goal_session_accounting` artifact
+reads and the goal's observability projection omits it. A `.skill-bill/config.yaml` carrying
+`provider_token_thresholds` parses and the key is ignored, with a degradation record. Loud-fail stays
+intact for genuine contract drift.
 
 ## Acceptance Criteria
 
-1. `ProviderTokenUsage`, `ProviderTokenThresholds`, `TokenOwnership`, and `freshTokenApproximation`
-   no longer exist, and no provider-reported token value is read, computed, stored, projected, or
-   enforced anywhere in the runtime.
-2. The five provider token fields, `tokenOwnership`, and `providerUsageEnforceable` are gone from
-   `AgentRunLaunchFacts` and `DecodedAgentRunOutput`, and none of the four decoders in
-   `AgentRunAdapters.kt` reads a provider usage key.
-3. `GoalSessionAccounting`, its parser, fields, history, artifact key, retention entry, and MCP
-   projection are gone; `GoalAttemptLedger` and `GoalAttemptLedgerEntry` are unchanged.
-4. A goal run whose review lane reports `input_tokens` smaller than `cache_read_input_tokens`
-   completes its review phase without error.
-5. Reading a pre-existing `review_accounting` row that still carries `aggregate_direct_usage` or
-   `aggregate_inclusive_usage` succeeds, is not quarantined, and is not regenerated.
-6. Reading a pre-existing `goal_session_accounting` workflow artifact succeeds, and the goal's
-   observability projection omits it without failing.
-7. A `.skill-bill/config.yaml` containing `provider_token_thresholds` parses successfully and the key
-   is ignored rather than rejected.
-8. Every ignored retired-key path emits an observability record per `docs/observability-policy.md`.
-9. `review-context-schema.yaml` is at contract version `2.1`, defines no provider token fields, no
-   longer requires `provider_token_thresholds` or the aggregate usage fields, and has a
-   contract-version parity test.
-10. `telemetry-event-schema.yaml` no longer defines `reviewAccountingUsage`, its contract version is
-    bumped, and it has a contract-version parity test.
+1. `ProviderTokenUsage`, `ProviderTokenThresholds`, `TokenOwnership`, `freshTokenApproximation`,
+   `ReviewBudgetEvaluator.providerUsageOutcome`, `ReviewBudgetRegression`, and
+   `REVIEW_BUDGET_REGRESSION` no longer exist, and no review accounting type carries a provider token
+   field.
+2. `evaluateProviderUsage` is gone from `ReviewEvidenceBroker`, its filesystem implementation, and
+   `NativeReviewOperationProtocol`, and no code path can terminate or regress a lane on a token
+   threshold. No replacement enforcement is introduced.
+3. `provider_token_thresholds` is gone from the review specialist launch envelope, and no review
+   specialist is handed a token budget.
+4. The five provider token fields, `tokenOwnership`, `AgentRunTokenOwnership`, and
+   `providerUsageEnforceable` are gone from `AgentRunLaunchFacts` and `DecodedAgentRunOutput`, and
+   none of the four decoders reads a provider usage key.
+5. `GoalSessionAccounting`, its parser, fields, history, artifact key, retention entry, and MCP
+   projection are gone. `GoalAttemptLedger` and `GoalAttemptLedgerEntry` are unchanged and still
+   record child session identity and terminal outcome.
+6. The planning-sweep empty-turn evidence carries no token counts, and its operator summary line
+   reads as well-formed text with no dangling clause.
+7. `review-context-schema.yaml` is at contract version `2.2`, defines no provider token fields, and
+   does not require `provider_token_thresholds`, `aggregate_direct_usage`,
+   `aggregate_inclusive_usage`, or `budget_regression`, with a contract-version parity test.
+8. `telemetry-event-schema.yaml` no longer defines `reviewAccountingUsage` or
+   `boundedReviewAccounting`, `review_context_accounting` is gone from the review-finished event, the
+   contract version is bumped, and a parity test pins it.
+9. A `.skill-bill/config.yaml` containing `provider_token_thresholds` parses successfully, the key is
+   ignored rather than rejected, and one degradation record is emitted per
+   `docs/observability-policy.md`. A config without the block emits none.
+10. A pre-existing `review_accounting` row carrying `aggregate_direct_usage` reads back without error,
+    is not quarantined, and is not regenerated. A pre-existing `goal_session_accounting` artifact
+    reads back and the goal observability projection omits it without failing.
 11. The byte and count review accounting surface is behaviourally unchanged: `ReviewAccountingCounters`,
     segment accounting, `unreviewedSegmentIds`, commit routing, parent analysis, and integration
     terminal state all record exactly as before.
 12. The local byte-derived token estimates are untouched: `estimated_tokens` on the projection
     measurement and `estimated_input_tokens` / `estimated_output_tokens` in lifecycle telemetry still
     record.
-13. Tests that pinned the OpenAI convention are deleted rather than adapted, specifically the
-    `ReviewContextModelsTest` assertion that `input=1, cached=2` throws.
-14. The delegated review path no longer terminates or regresses a lane on a token threshold, and no
-    replacement enforcement is introduced.
-15. Governed boundary records that name provider token accounting are updated to record its removal.
+13. Tests that encoded provider token behaviour as intended are deleted rather than adapted, including
+    the `freshTokenApproximation` and usage-aggregation expectations and the
+    `additive provider cache reads exceeding input are accepted` case whose subject no longer exists.
+14. Governed boundary records that name provider token accounting are updated to record its removal,
+    its cause, and the retained local estimates.
+15. A repository-wide search finds no remaining reference to the deleted provider token types, fields,
+    or contract definitions.
 
 ## Scope
 
-- Delete the review-side token model, thresholds, evaluator path, regression type, tree folding, and
-  projection emission.
+- Delete the review-side token model, thresholds, evaluator path, regression type, tree folding,
+  projection emission, broker and protocol methods, and the launch-envelope fragment.
 - Delete the transport-level provider token fields and their decoding in all four agent adapters.
 - Delete `GoalSessionAccounting` and its durable artifact, retention, port, recorder, store, and MCP
   surfaces.
-- Delete the planning-sweep token counters and their progress rendering, and the repo-local
-  `provider_token_thresholds` config read.
-- Version `review-context-schema.yaml` to `2.1` and bump `telemetry-event-schema.yaml`, each with the
-  full contract ceremony.
-- Introduce one read-side normalization seam that accepts and ignores retired token keys, with a
-  degradation record, so no legacy record or config can fail a read.
+- Delete the planning-sweep token counters and their operator rendering.
+- Retire the repo-local `provider_token_thresholds` config read while keeping the key accepted and
+  ignored, with a degradation record.
+- Version `review-context-schema.yaml` to `2.2` and bump `telemetry-event-schema.yaml`, each with the
+  full contract ceremony: schema, Kotlin `*_CONTRACT_VERSION`, parity test, typed error.
 
 ## Constraints
 
-- The removal must never fail a run, a durable read, or a config parse. Retired token keys are
-  accepted and ignored; they are not a drift signal.
-- Loud-fail behaviour is retained for genuine contract drift. Only the specific retired token keys
-  become tolerated.
-- Existing durable records are neither quarantined nor regenerated. Normalize on read so
-  `additionalProperties: false` stays honest in `2.1` without rejecting legacy payloads.
-- Each contract version bump lands schema, Kotlin `*_CONTRACT_VERSION`, parity test, and typed error
-  together, so no intermediate subtask leaves the tree failing.
-- The tolerant-read seam lands before any field is removed, so no subtask window exists in which a
-  legacy record fails.
+- The removal must never fail a run, a durable read, or a config parse.
+- Loud-fail behaviour is retained for genuine contract drift. Only the retired token keys are
+  tolerated, and only where a seam would otherwise reject them.
+- Existing durable records are neither quarantined nor regenerated.
+- Each contract version bump lands schema, Kotlin constant, parity test, and typed error together, so
+  no subtask leaves the tree failing.
+- Both subtasks must compile and pass `check` on their own. The review domain reads the transport
+  fields, so consumers are removed before producers.
 - Every tolerated degradation emits a record per `docs/observability-policy.md`.
 - No comments are added to any changed file.
 
 ## Non-Goals
 
-- Repairing, normalizing, or re-deriving provider token accounting. It is deleted, not fixed.
-- Replacing the delegated-review token threshold with any other lane-termination signal.
+- Repairing, normalizing, or re-deriving provider token accounting.
+- Adding `cache_creation_input_tokens` decoding, or any other usage key.
+- Replacing the deleted lane-termination threshold with any other signal.
+- Building a general retired-key normalization registry. Two of the three read seams need no
+  tolerance at all: the workflow artifacts map is `additionalProperties: true` by contract, and no
+  reader survives to parse a legacy `goal_session_accounting` key. Only the repo-local config
+  loud-fails unknown budget keys, and that is one allowed-key entry.
 - Touching the local byte-derived estimates: `estimatedTokens = (projection.utf8ByteSize + 3) / 4`
-  (`FeatureTaskRuntimePhaseRecorder.kt:1298`, `FeatureTaskRuntimeHandoffFoundationModels`), required
-  by `feature-task-runtime-projection-measurement-schema.yaml:16`; and `serializeTokenData` /
-  `phaseTokenAccumulator` / `estimatedTotalTokens`
-  (`FeatureTaskRuntimeRunnerPolicies.kt:30`), which emit `estimated_input_tokens` and
-  `estimated_output_tokens`.
+  (`FeatureTaskRuntimePhaseRecorder`, `FeatureTaskRuntimeHandoffFoundationModels`), required by
+  `feature-task-runtime-projection-measurement-schema.yaml`; and `serializeTokenData` /
+  `phaseTokenAccumulator` / `estimatedTotalTokens` (`FeatureTaskRuntimeRunnerPolicies`), which emit
+  `estimated_input_tokens` and `estimated_output_tokens`.
 - Touching `ReviewAccountingCounters`, segment accounting, `unreviewedSegmentIds`, commit routing,
   parent analysis, or integration terminal state.
 - Touching `GoalAttemptLedger` or `GoalAttemptLedgerEntry`.
 - Dropping the `review_accounting` table or migrating its historical rows.
-- Adding cache-write (`cache_creation_input_tokens`) decoding.
-- Unblocking SKILL-190 by any means other than this removal landing.
 
 ## Diagnostic Evidence
 
-Model and invariants being deleted:
+Review side:
 
-- `runtime-domain/.../review/context/model/ReviewContextModels.kt:380-405` — `ProviderTokenUsage`,
-  the two cross-field requires, `freshTokenApproximation`.
-- `:322-336` — `ProviderTokenThresholds`, including the 30,000 `cachedInputTokens` default.
-- `:378` — `TokenOwnership`.
-- `:1397-1453` — `ReviewBudgetEvaluator`, specifically `providerUsageOutcome` at `:1413-1433`.
-
-Producers and consumers:
-
-- `runtime-infra-fs/.../launcher/agentrun/AgentRunAdapters.kt:224-235` (claude json), `:242-264`
-  (claude stream-json), `:266-285` (codex jsonl), `:369` (cursor stream-json).
-- `runtime-ports/.../agentrun/model/AgentRunLauncherModels.kt:247-253`, `:272-284`.
-- `runtime-application/.../review/ParallelCodeReviewRunner.kt:1247` (throw site), `:1776-1797`
-  (`providerTokenUsage`), `:1622`, `:1688`.
-- `runtime-domain/.../review/context/ReviewTreeAccounting.kt:22`, `:30-39`, `:60-70`.
-- `runtime-application/.../review/ReviewAccountingProjection.kt:109-114`, including the
+- `runtime-domain/.../review/context/model/ReviewContextModels.kt` — `ProviderTokenUsage`,
+  `freshTokenApproximation`, `ProviderTokenThresholds` with its 30,000 `cachedInputTokens` default,
+  `TokenOwnership`, `ReviewBudgetRegression`, `REVIEW_BUDGET_REGRESSION`,
+  `ReviewBudgetEvaluator.providerUsageOutcome`.
+- `runtime-domain/.../review/context/ReviewTreeAccounting.kt` — usage folding and the
+  `budgetRegression` derivation.
+- `runtime-domain/.../review/context/model/ReviewAccountingModels.kt` — `usage` on
+  `ReviewAccountingInput` and `ReviewIntegrationAccounting`; `providerUsage`, `directUsage`,
+  `inclusiveUsage` on `ReviewAccountingNode`; `aggregateDirectUsage`, `aggregateInclusiveUsage`,
+  `budgetRegression` on `ReviewAccountingSummary`.
+- `runtime-application/.../review/ReviewAccountingProjection.kt` — usage emission and the
   `coerceAtLeast(0)` symptom patch.
-- `runtime-infra-fs/.../FileSystemReviewEvidenceBroker.kt:344` and
-  `runtime-ports/.../review/NativeReviewOperationProtocol.kt:42` — the only path where a token
-  threshold can terminate a lane.
-- `runtime-domain/.../goalrunner/model/GoalRunnerAccountingModels.kt:5-137` —
-  `GoalSessionAccounting` and its parser, fields, history, and artifact keys.
-- `runtime-application/.../model/GoalPlanningSweepModels.kt:104-122` and
-  `runtime-application/.../goalrunner/GoalPlanningSweep.kt:1266-1267`.
-- `runtime-infra-fs/.../FileSystemRepoLocalConfig.kt:106`.
+- `runtime-application/.../review/ReviewEnvelopeFragments.kt` — the `provider_token_thresholds`
+  envelope fragment.
+- `runtime-application/.../review/ParallelCodeReviewRunner.kt` — `providerTokenUsage` and its call
+  sites.
+- `runtime-ports/.../review/ReviewEvidenceBroker.kt`,
+  `runtime-ports/.../review/NativeReviewOperationProtocol.kt`,
+  `runtime-infra-fs/.../FileSystemReviewEvidenceBroker.kt` — `evaluateProviderUsage` and the
+  unreachable `enforceable = true` seam.
+- `runtime-cli/.../codereview/CodeReviewDriverCommand.kt` — prints the bounded payload to stdout.
+- `runtime-infra-sqlite/.../review/ReviewFinishedPayloadSupport.kt` — reads `review_accounting` into
+  the review-finished telemetry payload.
 
-Contracts that make the fields required:
+Transport:
 
-- `orchestration/contracts/review-context-schema.yaml:616` — `provider_token_thresholds` required on
-  the budget object; `:628-638` its def; `:660-665` `provider_token_usage` and
-  `fresh_token_approximation`; `:670` `aggregate_direct_usage` and `aggregate_inclusive_usage`
-  required on the accounting summary.
-- `orchestration/contracts/telemetry-event-schema.yaml:1219-1227` — the `reviewAccountingUsage` def.
+- `runtime-ports/.../agentrun/model/AgentRunLauncherModels.kt` — the five fields, `tokenOwnership`,
+  `AgentRunTokenOwnership`, `providerUsageEnforceable`, and their non-negativity require.
+- `runtime-infra-fs/.../launcher/agentrun/AgentRunAdapters.kt` — `DecodedAgentRunOutput` fields and
+  the usage reads in `decodeClaudeJson`, `decodeClaudeStreamJson`, and `decodeCodexJsonl`.
+- `runtime-infra-fs/.../launcher/agentrun/CursorAgentRunDecoding.kt` — the `cursorTokens` reads.
 
-Boundary records to update:
+Goal, sweep, config:
+
+- `runtime-domain/.../goalrunner/model/GoalRunnerAccountingModels.kt` — `GoalSessionAccounting`, its
+  parser, fields, history, artifact key, and limit.
+- `runtime-application/.../goalrunner/GoalRunnerLedgerRecorder.kt` — writes the artifact and never
+  populates a token field.
+- `runtime-application/.../goalrunner/GoalRunnerWorkflowStores.kt`,
+  `runtime-domain/.../workflow/model/GoalHistoryArtifactRetention.kt`,
+  `runtime-mcp/.../workflow/WorkflowGoalObservabilityMcpMapping.kt` — store, retention, projection.
+- `runtime-application/.../model/GoalPlanningSweepModels.kt`,
+  `runtime-application/.../goalrunner/GoalPlanningSweep.kt` — `inputTokens` / `outputTokens` on
+  `GoalPlanningEmptyTurnEvidence` and its `summary()` rendering.
+- `runtime-infra-fs/.../FileSystemRepoLocalConfig.kt` — the `provider_token_thresholds` read and the
+  allowed-key set that loud-fails unknown budget keys.
+
+Contracts:
+
+- `orchestration/contracts/review-context-schema.yaml` — `provider_token_thresholds` required on the
+  budget object and its `$defs`; the `usage` def including `fresh_token_approximation`;
+  `aggregate_direct_usage`, `aggregate_inclusive_usage`, and `budget_regression` required on the
+  accounting summary.
+- `orchestration/contracts/telemetry-event-schema.yaml` — `reviewAccountingUsage`,
+  `boundedReviewAccounting` with its stale `const: "0.6"`, and the `review_context_accounting`
+  property on the review-finished event.
+
+Boundary records:
 
 - `runtime-kotlin/agent/decisions.md`
 - `runtime-kotlin/.../review/agent/history.md` where it records provider usage accounting
 
 ## Subtasks
 
-1. Retired-key tolerance foundation.
-2. Review token accounting removal and review-context contract 2.1.
-3. Goal session accounting removal.
-4. Planning-sweep counters and repo-local config retirement.
-5. Transport-layer provider token removal.
-6. Telemetry contract bump, convention-pinning test removal, and integrated verification.
+1. Review-side removal and review-context contract 2.2.
+2. Producer, goal, sweep, config, and telemetry removal.
 
 ## Validation Strategy
 
-Each subtask validates its own seam, then the module checks. The behaviour that matters is observable
-at two boundaries: a review lane whose provider report violates the deleted invariant, and a legacy
-durable record or config that must still read.
+Each subtask validates its own seam, then `(cd runtime-kotlin && ./gradlew check)`. The tree compiles
+and passes at both boundaries: subtask 1 removes every consumer of the transport fields, leaving them
+present but unread; subtask 2 removes the fields.
 
-The load-bearing scenarios:
+The load-bearing behaviour is what survives, not what goes:
 
-- A review lane fed `input_tokens: 2, cache_read_input_tokens: 17931` completes and records its
-  findings.
-- A `review_accounting` row written before this change, still carrying `aggregate_direct_usage`,
-  reads back without quarantine and without regeneration.
-- A stored `goal_session_accounting` artifact reads back and the goal observability projection omits
-  it without failing.
-- A `.skill-bill/config.yaml` carrying `provider_token_thresholds` parses and the key is ignored,
-  with a degradation record emitted.
-- Byte, count, coverage, routing, and integration accounting are unchanged across a full review.
+- A full review still records byte, count, coverage, routing, parent-analysis, and integration
+  accounting exactly as before, and a lane whose provider report has `input_tokens` smaller than
+  `cache_read_input_tokens` still completes with findings attributed.
+- Each decoder still harvests text identically, the Claude stream decoder still selects the last
+  `type: "result"` event and still degrades to a bounded excerpt when none arrives, and session
+  identity and stdout digest fields are unchanged.
+- A pre-existing `review_accounting` row and a stored `goal_session_accounting` artifact both read
+  back without quarantine or regeneration.
+- A `.skill-bill/config.yaml` carrying `provider_token_thresholds` parses with the key ignored and one
+  degradation record; every other config field resolves as before.
 - `estimated_tokens` and the lifecycle `estimated_*_tokens` values still record.
 
 Close with `skill-bill validate`, `(cd runtime-kotlin && ./gradlew check)`, and
-`scripts/validate_agent_configs`. Note the known pre-existing `:runtime-infra-fs:sourcesJar` failure
-on `./gradlew build`; verify with `-x sourcesJar` if that path is used.
+`scripts/validate_agent_configs`. The pre-existing `:runtime-infra-fs:sourcesJar` failure on
+`./gradlew build` is not introduced by this program; verify with `-x sourcesJar` if that path is used.
 
 ## Next Path
 
