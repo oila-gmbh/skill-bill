@@ -202,8 +202,8 @@ The runtime owns everything after launch: it opens the durable runtime workflow,
 runs each phase through its own agent, validates each phase output against the
 schema gate, persists per-phase state, and blocks loudly on a failed
 non-validation gate or a missing upstream output. Only the validate phase may run the pack collect-all gate (`./gradlew check` and
-equivalents). `implement` and `implement_fix` edit source and may write tests; they must
-not compile, build, execute tests, or run check. The validate agent runs only the
+equivalents). Every other phase — including `implement`, `implement_fix`, `audit`, and
+`review` — must not compile, build, execute tests, or run check. The validate agent runs only the
 pack-declared collect-all command, reads that output, fixes every finding in that session,
 then runs that same command once to confirm. It must not run `skill-bill validate`,
 `npx agnix`, `scripts/validate_agent_configs`, or any other repo-root checklist.

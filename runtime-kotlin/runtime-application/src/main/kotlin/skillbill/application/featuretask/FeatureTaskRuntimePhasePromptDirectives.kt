@@ -37,19 +37,18 @@ internal fun mutatingPhaseIdempotencyDirective(phaseId: String): String {
   """.trimIndent()
 }
 
-internal fun mutatingPhaseValidationOwnershipDirective(phaseId: String): String {
-  if (!FeatureTaskRuntimePhaseWorkflowDefinition.isMutatingPhase(phaseId)) {
+internal fun nonValidatePhaseValidationOwnershipDirective(phaseId: String): String {
+  if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE) {
     return ""
   }
   return """
     ## Validation ownership
     Only the validate phase may run the pack validation gate
     (`validation_gate.collect_all_full_gate_command`), `./gradlew check`, `check --continue`,
-    `bill-code-check`, or any other full repository check suite. This phase edits source and may
-    write tests; it must not compile, build, or execute tests, and it must not run check to prove
-    the work. Ignore any Validation Strategy, plan note, acceptance text, or prior habit that asks
-    you to run check here — that work waits for validate. If the receipt carries `tests_executed`,
-    leave it empty.
+    `bill-code-check`, or any other full repository check suite. This phase must not compile, build,
+    execute tests, or run check to prove the work. Ignore any Validation Strategy, plan note,
+    acceptance text, review habit, or prior habit that asks you to run check here — that work waits
+    for validate. If a receipt carries `tests_executed`, leave it empty.
   """.trimIndent()
 }
 
@@ -398,7 +397,8 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "its cap is rejected even when what it says is right.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW to
     "The runtime owns this review. Do not run bill-code-review, do not emit findings, and do not " +
-    "report unsatisfied acceptance criteria. Criterion-gap detection remains exclusive to the audit phase.",
+    "report unsatisfied acceptance criteria. Criterion-gap detection remains exclusive to the audit phase. " +
+    "Do not run `./gradlew check`, the pack collect-all gate, or `bill-code-check`; validate owns those.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT to
     "Answer one question: is every acceptance criterion in the briefing implemented in the repository? " +
     "Read the tree itself at the resolved checkpoint — the diff over its base_ref/head_ref plus its " +

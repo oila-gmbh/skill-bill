@@ -174,16 +174,24 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   @Test
   fun `only validate may run the pack check gate`() {
     val ownershipTitle = "Validation ownership"
-    val mutatingPhases = listOf(
+    val forbiddenPhases = listOf(
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN_FIX,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR,
     )
-    mutatingPhases.forEach { phaseId ->
+    forbiddenPhases.forEach { phaseId ->
       val prompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor(phaseId))
       assertContains(prompt, ownershipTitle, false, "ownership title for $phaseId")
       assertContains(prompt, "Only the validate phase may run the pack validation gate", false, phaseId)
       assertContains(prompt, "./gradlew check", false, phaseId)
-      assertContains(prompt, "must not compile, build, or execute tests", false, phaseId)
+      assertContains(prompt, "must not compile, build,", false, phaseId)
     }
 
     val validatePrompt = FeatureTaskRuntimePhasePromptComposer.compose(
@@ -192,15 +200,15 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     )
     assertFalse(
       validatePrompt.contains(ownershipTitle),
-      "validate must not carry the mutating-phase forbid; it owns the gate",
+      "validate must not carry the non-validate forbid; it owns the gate",
     )
     assertContains(validatePrompt, "Run only the pack-declared validation_gate collect_all_full_gate_command")
 
-    val planPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
+    val reviewPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
-      briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN),
+      briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW),
     )
-    assertFalse(planPrompt.contains(ownershipTitle), "plan is not a mutating phase")
+    assertContains(reviewPrompt, "validate owns those")
   }
 
   @Test

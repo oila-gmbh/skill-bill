@@ -74,7 +74,7 @@ object FeatureTaskRuntimePhasePromptComposer {
       header(issueKey, briefing.phaseId, agentRunValidateFallback, packCollectAllCommand),
       ceremonyDirective(briefing, reviewPassNumber),
       mutatingPhaseIdempotencyDirective(briefing.phaseId),
-      mutatingPhaseValidationOwnershipDirective(briefing.phaseId),
+      nonValidatePhaseValidationOwnershipDirective(briefing.phaseId),
       minimalismDisciplineDirective(briefing.phaseId),
       testValueDisciplineDirective(briefing.phaseId),
       goalContinuationDirective(briefing.phaseId, suppressDecomposition),
