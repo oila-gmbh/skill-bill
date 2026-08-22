@@ -63,12 +63,14 @@ data class FeatureTaskRuntimeReviewFinding(
 }
 
 /**
- * The structured verdict a `review` phase emits: the full ordered finding list. [verdict] is derived
- * purely from the findings ([FeatureTaskRuntimeVerdict.CHANGES_REQUESTED] when any finding
+ * The structured verdict a `review` phase emits: the full ordered finding list after the same
+ * actionability filter the implement_fix projection uses. [verdict] is derived purely from those
+ * actionable findings ([FeatureTaskRuntimeVerdict.CHANGES_REQUESTED] when any finding
  * [FeatureTaskRuntimeReviewFinding.severity] requires remediation, else
- * [FeatureTaskRuntimeVerdict.APPROVED]). [remediationFindings] and [unresolvedFindings] are the
- * Blocker and Major findings a fix pass must clear and that hard-block the run once the remediation
- * budget is exhausted.
+ * [FeatureTaskRuntimeVerdict.APPROVED]). Refuted, unresolved, and out-of-scope findings stay in the
+ * register envelope but never reopen `review_fix`. [remediationFindings] and [unresolvedFindings]
+ * are the Blocker and Major findings a fix pass must clear and that hard-block the run once the
+ * remediation budget is exhausted.
  */
 data class FeatureTaskRuntimeReviewVerdict(
   val findings: List<FeatureTaskRuntimeReviewFinding>,

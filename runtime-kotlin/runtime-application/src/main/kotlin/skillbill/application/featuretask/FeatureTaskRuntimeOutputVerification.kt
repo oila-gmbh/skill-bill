@@ -1,6 +1,9 @@
 package skillbill.application.featuretask
 
 import skillbill.contracts.JsonSupport
+import skillbill.review.ReviewFindingActionability
+import skillbill.review.model.ReviewClaimVerdict
+import skillbill.review.model.ReviewScopeDisposition
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditCriterionGap
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditSeverity
@@ -106,13 +109,30 @@ internal object FeatureTaskRuntimeOutputVerification {
       ?.let(JsonSupport::anyToStringAnyMap)
       ?.get(FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS) as? List<*>
       ?: return null
-    val findings = findingsRaw.mapNotNull { entry ->
-      val map = JsonSupport.anyToStringAnyMap(entry) ?: return@mapNotNull null
-      val severity = (map["severity"] as? String)?.takeIf(String::isNotBlank) ?: return@mapNotNull null
-      val message = (map["message"] as? String)?.takeIf(String::isNotBlank) ?: return@mapNotNull null
-      FeatureTaskRuntimeReviewFinding(FeatureTaskRuntimeReviewSeverity.fromWire(severity), message)
-    }
+    val findings = findingsRaw.mapNotNull(::actionableReviewFinding)
     return FeatureTaskRuntimeReviewVerdict(findings)
+  }
+
+  private fun actionableReviewFinding(entry: Any?): FeatureTaskRuntimeReviewFinding? {
+    val map = JsonSupport.anyToStringAnyMap(entry) ?: return null
+    val severity = (map["severity"] as? String)?.takeIf(String::isNotBlank) ?: return null
+    val message = (map["message"] as? String)?.takeIf(String::isNotBlank) ?: return null
+    val claimVerdict = optionalClaimVerdict(map["claim_verdict"])
+    val scopeDisposition = optionalScopeDisposition(map["scope_disposition"])
+    if (!ReviewFindingActionability.isActionable(claimVerdict, scopeDisposition)) {
+      return null
+    }
+    return FeatureTaskRuntimeReviewFinding(FeatureTaskRuntimeReviewSeverity.fromWire(severity), message)
+  }
+
+  private fun optionalClaimVerdict(raw: Any?): ReviewClaimVerdict? {
+    val value = (raw as? String)?.trim()?.takeIf(String::isNotBlank) ?: return null
+    return ReviewClaimVerdict.entries.firstOrNull { it.wireValue == value }
+  }
+
+  private fun optionalScopeDisposition(raw: Any?): ReviewScopeDisposition? {
+    val value = (raw as? String)?.trim()?.takeIf(String::isNotBlank) ?: return null
+    return ReviewScopeDisposition.entries.firstOrNull { it.wireValue == value }
   }
 
   private fun auditVerdictFrom(outputObject: Map<String, Any?>?): FeatureTaskRuntimeAuditVerdict? {
