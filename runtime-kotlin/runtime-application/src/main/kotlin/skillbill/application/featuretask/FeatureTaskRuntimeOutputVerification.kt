@@ -53,8 +53,7 @@ internal object FeatureTaskRuntimeOutputVerification {
       raw !is List<*> -> "Audit verdict 'gaps_found' requires a non-empty produced_outputs.unmet_criteria array."
       raw.isEmpty() || parsedCriteria.size != raw.size ->
         "Audit verdict 'gaps_found' requires every produced_outputs.unmet_criteria entry to carry a " +
-          "criterion ref and a one-line note with diagnosis plus a complete fix plan; move minor and nit " +
-          "findings to " +
+          "criterion ref and a one-line note on what is missing; move minor and nit findings to " +
           "produced_outputs.${FeatureTaskRuntimeVerificationSignalKeys.AUDIT_NON_BLOCKING_FINDINGS}."
       else -> null
     }

@@ -772,10 +772,10 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   fun `audit prompt requires a complete blast-radius-aware fix plan in each gap note`() {
     val auditPrompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("audit"))
 
-    assertContains(auditPrompt, "complete implement-ready fix plan", false, "each gap note must plan the repair")
-    assertContains(auditPrompt, "blast radius", false, "audit must inspect blast radius before naming a gap")
-    assertContains(auditPrompt, "will not open", false, "audit must avoid plans that open a new gap")
-    assertContains(auditPrompt, "the note IS the fix plan", false, "the compact note carries the plan")
+    assertContains(auditPrompt, "fix plan", false, "each gap note should guide the repair")
+    assertContains(auditPrompt, "blast radius", false, "audit should consider blast radius before naming a gap")
+    assertContains(auditPrompt, "free-form note prose", false, "plan quality is guidance, not a wire template")
+    assertContains(auditPrompt, "no required keywords", false, "schema must not invent plan-shape blocks")
     assertContains(
       FeatureTaskRuntimePhasePromptComposer.compose(
         ISSUE_KEY,
@@ -783,7 +783,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       ),
       "Follow that plan completely",
       false,
-      "implement remediation must execute the audit's plan",
+      "implement remediation should prefer the audit's plan",
     )
   }
 
