@@ -1475,9 +1475,11 @@ class ParallelCodeReviewRunner(
       appendLine(
         "When you have concrete defects, also emit optional `[F-XXX]` register lines so claim " +
           "verification can re-check them: " +
-          "'[F-XXX] Severity | Confidence | specialist=<exact resolved rubric identity> | " +
+          "'[F-XXX] Severity | Confidence | specialist=<skill name from Resolved rubric> | " +
           "commits=<sha>[,<sha>] | path=\"<repo-relative path>\" | line=<positive integer> | description'. " +
-          "Lines that do not parse are ignored; they do not block settlement.",
+          "Use only the bare skill name for specialist — never copy the [paths=...;add-ons=...;origins=...] " +
+          "annotation from the routed rubric catalog. Lines that still do not parse are ignored; " +
+          "they do not block settlement.",
       )
       appendLine()
       selected.forEach { launch ->

@@ -19,7 +19,7 @@ object ParallelReviewFindingParser {
     "^\\s*(?:-\\s+)?\\[(?<findingId>F-\\d{3})]\\s+" +
       "(?<severity>[A-Za-z]+)\\s+\\|\\s+" +
       "(?<confidenceLevel>High|Medium|Low)\\s+\\|\\s+" +
-      "(?:specialist=(?<specialistSkillName>[a-z0-9-]+)\\s+\\|\\s+)?" +
+      "(?:specialist=(?<specialistSkillName>[a-z0-9-]+)(?:\\[[^\\]]*\\])?\\s+\\|\\s+)?" +
       "(?:commits=(?<commits>[^|\\r\\n]+?)\\s+\\|\\s+)?" +
       "(?:path=(?:(?<pathQuoted>\"(?:\\\\.|[^\"\\\\])*\")|(?<pathBare>[^|\\r\\n]+?))\\s+\\|\\s+" +
       "line=(?<line>\\d+)" +

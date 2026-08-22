@@ -205,6 +205,21 @@ class ParallelReviewFindingParserTest {
   }
 
   @Test
+  fun `routed rubric annotation after specialist skill name is peeled and the finding admits`() {
+    val finding = ParallelReviewFindingParser.parse(
+      "[F-001] Minor | High | specialist=bill-generic-code-review-api-contracts" +
+        "[paths=\"src/Auth.kt\";add-ons=none;origins=generic] | " +
+        "commits=synthetic:synthetic_supplied_diff | path=\"src/Auth.kt\" | line=65 | " +
+        "fixture cannot distinguish omitted from null",
+    ).findings.single()
+
+    assertEquals("bill-generic-code-review-api-contracts", finding.specialistSkillName)
+    assertEquals("src/Auth.kt", finding.repositoryPath)
+    assertEquals(65, finding.line)
+    assertEquals("fixture cannot distinguish omitted from null", finding.description)
+  }
+
+  @Test
   fun `near miss finding ids are reported as unadmitted candidates rather than absence`() {
     val nearMisses = listOf(
       "- [F-1] Major | High | src/A.kt:1 | short id",
