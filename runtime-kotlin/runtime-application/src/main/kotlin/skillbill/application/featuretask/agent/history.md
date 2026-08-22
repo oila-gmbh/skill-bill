@@ -2,6 +2,16 @@
 
 Revisit when: prune eligibility or the checkpoint namespace layout changes.
 
+## [2026-08-22] SKILL-205 subtask 2 — Prior-gap memory for continuing audit_gap rounds
+Areas: runtime-application/featuretask, runtime-application/goalrunner, runtime-domain/workflow/taskruntime/model, orchestration/contracts, platform-packs/{kotlin,kmp}/quality-check
+- Added bounded durable `prior_gap_memory` to audit-gap handoffs, retaining unmet criterion refs/notes and subsequent implement claims while degrading legacy workflows to empty memory.
+- Implement re-entry prioritizes sticky unmet criteria while still closing every current gap; follow-up audit requires explicit re-justification for repeated sticky ids and rereads the repository as authority.
+- Schema-first handoff projection and envelope contracts are validated at producer and consumer seams; Kotlin and KMP quality-check guidance stays aligned. reusable
+- Pattern: carry only bounded criterion memory across remediation edges, deriving it from durable audit and implement receipts rather than treating implement claims as proof.
+- Limitation: memory improves audit_gap retries only; subtask 1's no-progress comparison and pause policy remain authoritative.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
 ## [2026-08-22] SKILL-205 subtask 1 — No-progress and warn-threshold pause for audit_gap
 Areas: runtime-application/featuretask, runtime-application/goalrunner, runtime-domain/workflow/taskruntime/model, runtime-domain/config/model
 - `audit_gap` re-entry now compares the new unmet criterion set against the prior round's: any cleared prior criterion ref is progress; a non-shrinking set with an unchanged (or unprovable) repository mints a durable no-progress pause instead of another implement launch.
