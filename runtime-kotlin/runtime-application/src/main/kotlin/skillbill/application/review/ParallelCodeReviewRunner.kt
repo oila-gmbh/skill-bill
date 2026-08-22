@@ -1363,16 +1363,16 @@ class ParallelCodeReviewRunner(
       ?: laneFailureReason(outcome)
     val evidenceAccounting = evidenceBroker.accounting()
     val completion = brokerEvidenceCompletionState(bundleState, evidenceAccounting)
-    val softFindings = if (launchReason == null) {
+    val softAdmission = if (launchReason == null) {
       softAdmitFindings(outcome.stdout, launch)
     } else {
-      emptyList()
+      SoftRegisterAdmission(emptyList(), null, 0)
     }
     return ParallelReviewLaneOutcome(
       success = launchReason == null,
       rawOutput = outcome.stdout,
       failureReason = launchReason,
-      droppedCandidateDiagnostic = null,
+      droppedCandidateDiagnostic = softAdmission.droppedCandidateDiagnostic,
       budgetOutcome = budgetOutcome,
       tokenUsage = providerTokenUsage(outcome),
       accounting = inlineParentAccounting(
@@ -1382,77 +1382,35 @@ class ParallelCodeReviewRunner(
         evidenceAccounting,
         completion,
       ),
-      findings = softFindings,
+      findings = softAdmission.findings,
       reviewDisposition = completion.disposition,
       bundleCompositionDigest = completion.bundleCompositionDigest,
       segmentAccounting = completion.segments,
       unreviewedSegmentIds = completion.unreviewedSegmentIds,
       budgetDimension = completion.budgetDimension,
       unreviewedUnits = completion.unreviewedUnits,
-      rejectedCandidateCount = 0,
+      rejectedCandidateCount = softAdmission.rejectedCandidateCount,
     )
   }
 
-  /**
-   * Best-effort register admission for claim verification. Never fails the lane: prose + verdict are
-   * the settlement contract; optional `[F-XXX]` lines that parse cleanly become verification inputs.
-   */
+  private data class SoftRegisterAdmission(
+    val findings: List<ParallelReviewRawFinding>,
+    val droppedCandidateDiagnostic: String?,
+    val rejectedCandidateCount: Int,
+  )
+
   private fun softAdmitFindings(
     stdout: String,
     launch: InlineParentLaunch,
-  ): List<ParallelReviewRawFinding> = try {
+  ): SoftRegisterAdmission = try {
     val parsed = parseLaneRegisterSeam(stdout, launch.assignment.lane, registerParse)
-    attributeInlineFindings(parsed, launch.selected)
+    SoftRegisterAdmission(
+      findings = attributeInlineFindings(parsed, launch.selected),
+      droppedCandidateDiagnostic = rejectedCandidateDiagnostic(parsed),
+      rejectedCandidateCount = parsed.rejections.size,
+    )
   } catch (@Suppress("TooGenericExceptionCaught") _: Exception) {
-    emptyList()
-  }
-
-  /**
-   * A lane that never read a byte of its assigned evidence reviewed nothing, whatever its register
-   * says. `NO_FINDINGS` from such a lane asserts a completed review, so admitting it would launder
-   * an unexercised evidence surface into clean coverage; the lane fails loudly instead.
-   */
-  private fun unreadEvidenceReason(
-    launch: InlineParentLaunch,
-    accounting: ReviewLaneAccounting,
-    reportedNothing: Boolean,
-  ): String? {
-    if (!reportedNothing) return null
-    if (accounting.authorizedReadCount > 0) return null
-    if (launch.selected.none { it.assignment.assignedHunks.isNotEmpty() }) return null
-    val hunkCount = launch.selected.sumOf { it.assignment.assignedHunks.size }
-    val paths = launch.selected.flatMap { it.assignment.assignedPaths }.distinct().sorted()
-    return buildString {
-      append(
-        "governed evidence was never read: the lane answered '$NO_FINDINGS_TOKEN' without opening " +
-          "its assignment. It read 0 of $hunkCount assigned hunk(s) across " +
-          "${paths.size} assigned path(s): ${paths.joinToString(", ")}.",
-      )
-      append(refusalDetail(accounting))
-      append(
-        " read_evidence admits an assigned repository-relative path; an evidence_locator store_path " +
-          "or payload_file is hunk identity, never a read argument.",
-      )
-    }
-  }
-
-  /**
-   * Names every operation the broker turned down. Without it a refused lane reports only how many
-   * calls failed, which cannot distinguish a lane that asked for the wrong path from one that
-   * exhausted a budget, and leaves the operator reproducing the launch to find out.
-   */
-  private fun refusalDetail(accounting: ReviewLaneAccounting): String {
-    if (accounting.refusals.isEmpty()) {
-      return if (accounting.refusedOperationCount > 0) {
-        " The broker refused ${accounting.refusedOperationCount} operation(s) it did not record."
-      } else {
-        " The broker refused nothing, so the lane never called it."
-      }
-    }
-    val reported = accounting.refusals.take(MAX_REPORTED_REFUSALS)
-    val elided = accounting.refusals.size - reported.size
-    val tail = if (elided > 0) " (and $elided more)" else ""
-    return " Refused: ${reported.joinToString("; ")}$tail."
+    SoftRegisterAdmission(emptyList(), null, 0)
   }
 
   private fun modeFraming(resolvedMode: ResolvedReviewExecutionMode): String = buildString {
@@ -1815,19 +1773,6 @@ class ParallelCodeReviewRunner(
       rejection.lineText.take(REGISTER_ABSENCE_EXCERPT_MAX_LENGTH)
   }
 
-  private fun registerAbsenceReason(stdout: String, parsed: ParallelReviewParseResult): String? {
-    if (parsed.findings.isNotEmpty()) return null
-    if (stdout.lineSequence().any { it.trim() == NO_FINDINGS_TOKEN }) return null
-    val bytes = stdout.toByteArray().size
-    if (parsed.candidateCount > 0) {
-      return "lane emitted ${parsed.candidateCount} [F-XXX] candidate line(s) in $bytes bytes but none " +
-        "were admissible; register format drift: ${rejectedCandidateDiagnostic(parsed) ?: "no rejection detail"}"
-    }
-    val excerpt = stdout.trim().take(REGISTER_ABSENCE_EXCERPT_MAX_LENGTH).ifBlank { "<empty>" }
-    return "lane did not emit a findings register; zero [F-XXX] candidate lines without $NO_FINDINGS_TOKEN " +
-      "means the review did not execute. Lane returned $bytes bytes starting: $excerpt"
-  }
-
   private sealed class GovernedEvidenceBind {
     class Bound(
       val broker: ReviewEvidenceBroker,
@@ -1863,7 +1808,6 @@ class ParallelCodeReviewRunner(
     const val INLINE_NATIVE_WORKER = "bill-code-review-inline"
     const val NO_SEQUENCE_DIGEST = "no-commit-sequence"
     const val NO_FINDINGS_TOKEN = "NO_FINDINGS"
-    const val MAX_REPORTED_REFUSALS = 5
   }
 
   private data class StackDetection(
@@ -2078,7 +2022,6 @@ private const val DELEGATED_DEPTH_DIRECTIVE: String =
 /** Terminal status of a resume pass that had no incomplete lane left to launch a worker for. */
 internal const val NO_OP_RESUME_TERMINAL_STATUS: String = "no_op_resume"
 internal const val UNSUPPORTED_PROVIDER_TERMINAL_STATUS: String = "unsupported_provider"
-internal const val REGISTER_ABSENT_TERMINAL_STATUS: String = "register_absent"
 
 internal const val INLINE_FINDING_PARSE_SEAM: String = "attributeInlineFindings"
 
