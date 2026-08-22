@@ -243,7 +243,10 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
     if (handoff.reentryGapCriteria.isNotEmpty()) {
       appendLine("audit_remediation_rules:")
       appendLine("  - Use the immutable initial preplan and plan; do not regenerate general planning.")
-      appendLine("  - Plan and implement every listed criterion in this single invocation.")
+      appendLine("  - Each audit_gaps entry already includes the audit's fix plan after the criterion ref.")
+      appendLine("  - Follow that plan completely; do not invent a narrower substitute.")
+      appendLine("  - Respect blast radius: check callers, DI/bindings, sibling phases, and shared contracts.")
+      appendLine("  - Close every listed criterion without opening a new gap or regressing neighbors.")
       appendLine("  - Builds and tests stay deferred to validate.")
       appendLine("  - If a criterion is genuinely unimplementable, block and say which one and why.")
     }

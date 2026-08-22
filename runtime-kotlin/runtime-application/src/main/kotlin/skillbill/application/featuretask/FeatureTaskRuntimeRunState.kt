@@ -429,6 +429,7 @@ internal class FeatureTaskRuntimeRunState(
         .filter { it.sequenceNumber > latestEdge.sequenceNumber }
         .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.COMPLETE }
         .map { it.phaseId }
+        .filter { phaseId -> initialRecords[phaseId]?.status == STATUS_COMPLETED }
         .toMutableSet()
       initialRecords.values
         .filter { record ->
@@ -627,4 +628,7 @@ internal data class InFlightReentry(
   val span: List<String>,
   val completedAfterEdge: Set<String>,
   val edgeSequenceNumber: Int,
-)
+) {
+  val resumePhaseId: String
+    get() = span.firstOrNull { phaseId -> phaseId !in completedAfterEdge } ?: destinationPhaseId
+}

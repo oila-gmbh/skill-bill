@@ -268,13 +268,14 @@ internal class FeatureTaskRuntimeRunLoop(
     }
     state.recordEdgeIteration(loopId, reentry.edgeIteration)
     val auditGapLoop = loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
+    val resumePhaseId = reentry.resumePhaseId
     return PendingReentry(
-      phaseId = reentry.destinationPhaseId,
+      phaseId = resumePhaseId,
       loopId = loopId,
       edgeIteration = reentry.edgeIteration,
       drivingVerdict = reentry.drivingVerdict,
-      reentryGapCriteria = if (auditGapLoop) {
-        state.unmetAuditCriteria(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT)
+      reentryGapCriteria = if (auditGapLoop && resumePhaseId == reentry.destinationPhaseId) {
+        auditGapCriteriaForResume()
       } else {
         emptyList()
       },
@@ -286,6 +287,15 @@ internal class FeatureTaskRuntimeRunLoop(
         null
       },
     )
+  }
+
+  private fun auditGapCriteriaForResume(): List<String> {
+    val fromAudit = state.unmetAuditCriteria(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT)
+    if (fromAudit.isNotEmpty()) return fromAudit
+    return recorder.loadPhaseBriefings(request.workflowId, request.dbPathOverride)
+      ?.get(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT)
+      ?.unresolvedAuditGapIds
+      .orEmpty()
   }
 
   private fun reviewedCheckpointFingerprint(): String? =
@@ -308,7 +318,10 @@ internal class FeatureTaskRuntimeRunLoop(
       }
     }
     val resumedReentry = pendingReentry
-    if (resumedReentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) {
+    if (
+      resumedReentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID &&
+      resumedReentry.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT
+    ) {
       state.auditGapPlanningContextError()?.let { reason ->
         blockInvalidAuditGapRecovery(resumedReentry, reason)
         return
@@ -316,8 +329,7 @@ internal class FeatureTaskRuntimeRunLoop(
       if (resumedReentry.reentryGapCriteria.isEmpty()) {
         blockInvalidAuditGapRecovery(
           resumedReentry,
-          "Audit-gap recovery requires the unmet acceptance criteria the audit reported; the resumed " +
-            "audit record carries none.",
+          EMPTY_AUDIT_GAP_CRITERIA_BLOCK_REASON,
         )
         return
       }
@@ -1314,22 +1326,37 @@ internal class FeatureTaskRuntimeRunLoop(
   }
 
   /**
-   * Order is the policy. Coverage runs first and is retryable, so a round that dropped a finding is
-   * sent back for it while it can still be fixed. The declared dead end is settled only once nothing
-   * was omitted, and it persists the receipt first so the operator inherits the producer's own
-   * account of what still fails.
+   * Order is the policy. Undeclared disturbances are stamped onto the receipt first so a round that
+   * rewrote settled constructs cannot burn the output-gate budget on a missing declaration.
+   * Coverage runs next and is retryable. The declared dead end is settled only once nothing was
+   * omitted, and it persists the receipt first so the operator inherits the producer's own account
+   * of what still fails.
    */
   private fun settledRepairReceipt(
     receipt: FeatureTaskRuntimeRepairReceipt,
     reviewState: GoalSubtaskReviewState,
-  ): RepairReceiptSettlement = featureTaskRuntimeRepairReceiptSettleRejection(receipt, reviewState)
-    ?.let { detail -> RepairReceiptSettlement.rejected(detail) }
-    ?: unaccountedFindingsSettlement(receipt, reviewState)
-    ?: persistImplementFixRepairReceipt(receipt)?.let { reason -> RepairReceiptSettlement.writeFailed(reason) }
-    ?: featureTaskRuntimeUnresolvedFindings(receipt)?.let { unresolved ->
-      RepairReceiptSettlement.unresolved(unresolved.refs, unresolved.detail, unresolved.retryReason)
+  ): RepairReceiptSettlement {
+    val undeclaredRefs = featureTaskRuntimeRepairReceiptRuntimeDeclaredDisturbanceRefs(receipt, reviewState)
+    val settledReceipt = featureTaskRuntimeRepairReceiptWithDeclaredDisturbances(receipt, reviewState)
+    if (undeclaredRefs.isNotEmpty()) {
+      runCatching {
+        diagnostics.warning(
+          "Feature-task-runtime stamped disturbed_remedies for ${undeclaredRefs.joinToString(", ")} " +
+            "on issue ${request.issueKey}, workflow ${request.workflowId}: the producer rewrote " +
+            "their closing constructs without declaring them. The ledger still reopens those " +
+            "findings for the next review.",
+        )
+      }
     }
-    ?: RepairReceiptSettlement.None
+    return unaccountedFindingsSettlement(settledReceipt, reviewState)
+      ?: persistImplementFixRepairReceipt(settledReceipt)?.let { reason ->
+        RepairReceiptSettlement.writeFailed(reason)
+      }
+      ?: featureTaskRuntimeUnresolvedFindings(settledReceipt)?.let { unresolved ->
+        RepairReceiptSettlement.unresolved(unresolved.refs, unresolved.detail, unresolved.retryReason)
+      }
+      ?: RepairReceiptSettlement.None
+  }
 
   private fun unaccountedFindingsSettlement(
     receipt: FeatureTaskRuntimeRepairReceipt,
@@ -1832,6 +1859,7 @@ internal class FeatureTaskRuntimeRunLoop(
       invokedAgentId = request.invokedAgentId,
     ).resolvedAgentId
     val attempt = state.nextIteration(phaseId)
+    val previous = state.recordFor(phaseId)
     recorder.recordPhaseState(
       FeatureTaskRuntimePhaseStateRequest(
         workflowId = request.workflowId,
@@ -1840,6 +1868,8 @@ internal class FeatureTaskRuntimeRunLoop(
         attemptCount = attempt,
         resolvedAgentId = resolvedAgentId,
         finished = false,
+        outputArtifact = previous?.outputArtifact,
+        rejectedOutput = previous?.rejectedOutput,
         blockedReason = reason,
         failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
         loopId = reentry.loopId,
@@ -2922,6 +2952,10 @@ internal class FeatureTaskRuntimeRunLoop(
     phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT &&
       "exhausted the bounded implementation-continuation budget" in reason
 
+  private fun isStaleEmptyAuditGapCriteriaBlock(phaseId: String, reason: String): Boolean =
+    phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT &&
+      reason == EMPTY_AUDIT_GAP_CRITERIA_BLOCK_REASON
+
   // A pre-quarantine build blocked a launch-seam planning-projection rejection with a terminal
   // needs_user_action disposition; the current seam instead quarantines the upstream record and
   // regenerates its producer. Such a legacy row is stale, not terminal: re-enter the phase so the live
@@ -2957,10 +2991,12 @@ internal class FeatureTaskRuntimeRunLoop(
     val reenterableRecordRejection = isReenterableRecordRejection(state, phaseId, persistedReason)
     val removedContinuationBudget =
       isRemovedImplementationContinuationBudgetBlock(phaseId, persistedReason)
+    val staleEmptyAuditGapCriteria = isStaleEmptyAuditGapCriteriaBlock(phaseId, persistedReason)
     val restartsBudget = listOf(
       retryReviewPreparation,
       reenterableRecordRejection,
       removedContinuationBudget,
+      staleEmptyAuditGapCriteria,
       operatorReopenedPhase(phaseId),
     ).any { it }
     if (restartsBudget) {
@@ -2991,6 +3027,7 @@ internal class FeatureTaskRuntimeRunLoop(
       reenterableRecordRejection -> true
       isRemovedGoalReviewSchemaGateBlock(phaseId, persistedReason) -> true
       isRemovedImplementationContinuationBudgetBlock(phaseId, persistedReason) -> true
+      isStaleEmptyAuditGapCriteriaBlock(phaseId, persistedReason) -> true
       disposition != null -> disposition.retryOnResume
       else -> FeatureTaskRuntimePhaseWorkflowDefinition.retriesOnInvalidOutput(phaseId)
     }
@@ -6573,6 +6610,10 @@ private const val MAX_PAUSE_REASON_LABELS = 5
 // so this phrase is emitted by no live path and only ever matches a legacy durable row.
 private const val LEGACY_PLANNING_PROJECTION_LAUNCH_SEAM_REJECTION =
   "rejected an upstream bounded planning projection at the launch seam"
+
+private const val EMPTY_AUDIT_GAP_CRITERIA_BLOCK_REASON =
+  "Audit-gap recovery requires the unmet acceptance criteria the audit reported; the resumed " +
+    "audit record carries none."
 
 // NUL delimiter of the `-z` plumbing listing the checkpoint owned-path inventory is derived from.
 private const val OWNED_PATH_DELIMITER = '\u0000'

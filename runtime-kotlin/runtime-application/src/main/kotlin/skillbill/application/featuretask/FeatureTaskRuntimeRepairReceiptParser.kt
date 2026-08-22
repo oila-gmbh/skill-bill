@@ -4,6 +4,7 @@ import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidFeatureTaskRuntimeRepairReceiptError
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairConstruct
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairDisturbedRemedy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
@@ -103,36 +104,45 @@ internal fun featureTaskRuntimeRepairReceiptShapeRejection(producedOutputs: Map<
 }
 
 /**
- * The receipt defects that are the producer's serialization to repair, so they belong to the
- * output-gate budget. Coverage is deliberately NOT among them: an omitted finding is unfinished
- * repair work, not a malformed document, and charging it here is what blocked a round after one
- * attempt instead of sending it back for the finding it dropped.
+ * Coverage and undeclared disturbances are unfinished repair work on a well-formed receipt, so they
+ * must not spend the output-gate budget. Shape defects still reject through
+ * [featureTaskRuntimeRepairReceiptShapeRejection].
+ *
+ * When a round rewrites constructs that hold a settled finding closed but omits
+ * `disturbed_remedies`, the runtime stamps the missing declarations. The ledger still reopens those
+ * findings for the next review; the producer is not allowed to silently drop them from memory.
  */
-internal fun featureTaskRuntimeRepairReceiptSettleRejection(
+internal fun featureTaskRuntimeRepairReceiptWithDeclaredDisturbances(
   receipt: FeatureTaskRuntimeRepairReceipt,
   reviewState: GoalSubtaskReviewState,
-): String? = derivedRepairLedgerOrNull(reviewState)?.let { ledger ->
-  featureTaskRuntimeRepairReceiptDisturbanceRejection(receipt, ledger)
-}
+): FeatureTaskRuntimeRepairReceipt =
+  derivedRepairLedgerOrNull(reviewState)?.let { ledger ->
+    featureTaskRuntimeRepairReceiptWithDeclaredDisturbances(receipt, ledger)
+  } ?: receipt
 
-// A ledger that cannot be derived rejects nothing: the disturbance gate is a memory check, and a
-// round must not be refused because the memory of earlier rounds is unreadable.
-private fun derivedRepairLedgerOrNull(reviewState: GoalSubtaskReviewState): FeatureTaskRuntimeRepairLedger? =
-  runCatching { reviewState.repairLedger }.getOrNull()
-
-internal fun featureTaskRuntimeRepairReceiptDisturbanceRejection(
+internal fun featureTaskRuntimeRepairReceiptWithDeclaredDisturbances(
   receipt: FeatureTaskRuntimeRepairReceipt,
   ledger: FeatureTaskRuntimeRepairLedger,
-): String? {
+): FeatureTaskRuntimeRepairReceipt {
   val undeclared = featureTaskRuntimeUndeclaredDisturbances(receipt, ledger)
-  if (undeclared.isEmpty()) return null
-  val disturbed = undeclared.joinToString("; ") { entry ->
+  if (undeclared.isEmpty()) return receipt
+  val additions = undeclared.map { entry ->
     val symbols = entry.constructs.joinToString(", ", transform = FeatureTaskRuntimeRepairConstruct::symbol)
-    "${entry.disturbanceRef} (holds closed by $symbols)"
+    FeatureTaskRuntimeRepairDisturbedRemedy(
+      findingRef = entry.disturbanceRef,
+      reason = "Runtime declared: this round rewrote constructs that closed this finding ($symbols).",
+    )
   }
-  return featureTaskRuntimeRepairReceiptRejectionDetail(
-    "disturbed_remedies",
-    "must name every settled finding whose closing constructs this round rewrote, with a reason. " +
-      "Undeclared: $disturbed.",
-  )
+  return receipt.copy(disturbedRemedies = receipt.disturbedRemedies + additions)
 }
+
+internal fun featureTaskRuntimeRepairReceiptRuntimeDeclaredDisturbanceRefs(
+  receipt: FeatureTaskRuntimeRepairReceipt,
+  reviewState: GoalSubtaskReviewState,
+): List<String> {
+  val ledger = derivedRepairLedgerOrNull(reviewState) ?: return emptyList()
+  return featureTaskRuntimeUndeclaredDisturbances(receipt, ledger).map { it.disturbanceRef }
+}
+
+private fun derivedRepairLedgerOrNull(reviewState: GoalSubtaskReviewState): FeatureTaskRuntimeRepairLedger? =
+  runCatching { reviewState.repairLedger }.getOrNull()

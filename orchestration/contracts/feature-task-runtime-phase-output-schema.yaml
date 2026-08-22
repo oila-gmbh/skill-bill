@@ -60,21 +60,27 @@ $defs:
     type: object
     additionalProperties: false
     description: >-
-      One acceptance criterion this audit found unimplemented: its ref, and one line on what is
-      missing. That is the whole audit report. The runtime carries these refs into the next implement
-      round, which plans and implements them as ordinary work; a later audit re-checks every criterion
-      from scratch. No repair plan, no per-item identifiers, and no verification bookkeeping: an
-      audit that can name the unmet criteria has said everything the loop needs.
+      One acceptance criterion this audit found unimplemented: its ref, and one
+      dense line that both diagnoses what is missing and hands the next implement
+      round a complete fix plan. The runtime carries that line into implement as
+      ordinary remediation work; a later audit re-checks every criterion from
+      scratch. Keep the report compact (criterion + note only): no separate repair
+      plan object, no per-item identifiers, and no verification bookkeeping.
     required: [criterion, note]
     properties:
       criterion:
         type: string
         pattern: "^AC-[0-9]{3}$"
       note:
-        description: "One line on what is missing. Never a diff hunk, source body, or line number."
+        description: >-
+          One dense line: what is missing, then a complete implementation plan for
+          that gap (touched symbols/paths at symbol or basename granularity, blast
+          radius, non-regression checks against surrounding callers/contracts, and
+          why the plan will not open a new gap). Never a diff hunk, source body, or
+          line number.
         type: string
         minLength: 1
-        maxLength: 356
+        maxLength: 1024
         pattern: "^[^\\n\\r`]*\\S[^\\n\\r`]*$"
   repairConstruct:
     type: object
@@ -403,10 +409,11 @@ properties:
       non-empty string; `null` is not a valid value. The field itself is
       additive and optional — existing phase outputs that omit it still
       validate — but the `audit` phase constraints in `allOf` make a
-      `gaps_found` verdict require one or more unmet criteria. The audit report is the criterion list
-      and nothing else: no repair plan, no per-item identifiers, no verification bookkeeping. That
-      breaking shape is why contract_version is `0.4`; workflows created under an earlier version
-      require a hard reset.
+      `gaps_found` verdict require one or more unmet criteria. Each unmet criterion note must carry a
+      complete implement-ready fix plan; the report stays compact (criterion + note only) with no
+      separate repair-plan object, per-item identifiers, or verification bookkeeping. That compact
+      shape is why contract_version is `0.4`; workflows created under an earlier version require a hard
+      reset.
     type: string
     minLength: 1
 allOf:

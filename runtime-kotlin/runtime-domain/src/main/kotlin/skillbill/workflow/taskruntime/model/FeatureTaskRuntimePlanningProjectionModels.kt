@@ -832,9 +832,7 @@ private fun FeatureTaskRuntimeImplementationReceipt.Companion.fromMap(
   }
   return FeatureTaskRuntimeImplementationReceipt(
     completedTaskIds = map.optionalStringList("completed_task_ids"),
-    changedPaths = map.optionalStringList("changed_paths").ifEmpty {
-      throw malformed("changed_paths", "must contain at least one repository-relative path")
-    },
+    changedPaths = map.optionalStringList("changed_paths"),
     testsAdded = map.optionalStringList("tests_added"),
     testsUpdated = map.optionalStringList("tests_updated"),
     testsExecuted = executed,
