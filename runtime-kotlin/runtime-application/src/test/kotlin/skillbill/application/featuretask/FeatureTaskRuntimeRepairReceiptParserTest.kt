@@ -2,11 +2,15 @@ package skillbill.application.featuretask
 
 import skillbill.error.InvalidFeatureTaskRuntimeRepairReceiptError
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairConstruct
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedgerEntry
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedgerStatus
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceiptEntry
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.REPAIR_RECEIPT_MAX_TEXT_UTF8_BYTES
+import skillbill.workflow.taskruntime.model.featureTaskRuntimeUndeclaredDisturbances
 import skillbill.workflow.taskruntime.model.omittedCarriedFindings
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -211,6 +215,43 @@ class FeatureTaskRuntimeRepairReceiptParserTest {
   fun `a rejection detail names the offending receipt field as a json pointer`() {
     val detail = featureTaskRuntimeRepairReceiptRejectionDetail("repair_receipt.entries[0].text", "must be one line.")
     assertEquals("[repair-receipt] /repair_receipt/entries/0/text: must be one line.", detail)
+  }
+
+  @Test
+  fun `runtime stamps disturbed_remedies when a round rewrites settled closing constructs`() {
+    val ledger = FeatureTaskRuntimeRepairLedger(
+      entries = listOf(
+        FeatureTaskRuntimeRepairLedgerEntry(
+          findingIdentity = "f-001",
+          severity = "major",
+          label = "Gate",
+          findingId = "F-001",
+          intent = "close gate finding",
+          constructs = listOf(FeatureTaskRuntimeRepairConstruct(symbol = "Gate.validate")),
+          status = FeatureTaskRuntimeRepairLedgerStatus.RESOLVED,
+          originRound = 1,
+          statusRound = 1,
+        ),
+      ),
+    )
+    val receipt = receiptFor(
+      FeatureTaskRuntimeRepairReceiptEntry(
+        severity = "minor",
+        label = "Gate",
+        text = "tighten gate wording",
+        outcome = FeatureTaskRuntimeRepairOutcome.ADDRESSED,
+        constructs = listOf(FeatureTaskRuntimeRepairConstruct(symbol = "Gate.validate")),
+        intent = "close the minor at Gate.validate",
+        findingId = "F-002",
+      ),
+    )
+    val stamped = featureTaskRuntimeRepairReceiptWithDeclaredDisturbances(receipt, ledger)
+    assertEquals(listOf("F-001"), stamped.disturbedRemedies.map { it.findingRef })
+    assertTrue(stamped.disturbedRemedies.single().reason.contains("Gate.validate"))
+    assertEquals(
+      emptyList(),
+      featureTaskRuntimeUndeclaredDisturbances(stamped, ledger),
+    )
   }
 
   private fun receiptFor(vararg entries: FeatureTaskRuntimeRepairReceiptEntry) = FeatureTaskRuntimeRepairReceipt(

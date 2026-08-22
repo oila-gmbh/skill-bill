@@ -1326,22 +1326,37 @@ internal class FeatureTaskRuntimeRunLoop(
   }
 
   /**
-   * Order is the policy. Coverage runs first and is retryable, so a round that dropped a finding is
-   * sent back for it while it can still be fixed. The declared dead end is settled only once nothing
-   * was omitted, and it persists the receipt first so the operator inherits the producer's own
-   * account of what still fails.
+   * Order is the policy. Undeclared disturbances are stamped onto the receipt first so a round that
+   * rewrote settled constructs cannot burn the output-gate budget on a missing declaration.
+   * Coverage runs next and is retryable. The declared dead end is settled only once nothing was
+   * omitted, and it persists the receipt first so the operator inherits the producer's own account
+   * of what still fails.
    */
   private fun settledRepairReceipt(
     receipt: FeatureTaskRuntimeRepairReceipt,
     reviewState: GoalSubtaskReviewState,
-  ): RepairReceiptSettlement = featureTaskRuntimeRepairReceiptSettleRejection(receipt, reviewState)
-    ?.let { detail -> RepairReceiptSettlement.rejected(detail) }
-    ?: unaccountedFindingsSettlement(receipt, reviewState)
-    ?: persistImplementFixRepairReceipt(receipt)?.let { reason -> RepairReceiptSettlement.writeFailed(reason) }
-    ?: featureTaskRuntimeUnresolvedFindings(receipt)?.let { unresolved ->
-      RepairReceiptSettlement.unresolved(unresolved.refs, unresolved.detail, unresolved.retryReason)
+  ): RepairReceiptSettlement {
+    val undeclaredRefs = featureTaskRuntimeRepairReceiptRuntimeDeclaredDisturbanceRefs(receipt, reviewState)
+    val settledReceipt = featureTaskRuntimeRepairReceiptWithDeclaredDisturbances(receipt, reviewState)
+    if (undeclaredRefs.isNotEmpty()) {
+      runCatching {
+        diagnostics.warning(
+          "Feature-task-runtime stamped disturbed_remedies for ${undeclaredRefs.joinToString(", ")} " +
+            "on issue ${request.issueKey}, workflow ${request.workflowId}: the producer rewrote " +
+            "their closing constructs without declaring them. The ledger still reopens those " +
+            "findings for the next review.",
+        )
+      }
     }
-    ?: RepairReceiptSettlement.None
+    return unaccountedFindingsSettlement(settledReceipt, reviewState)
+      ?: persistImplementFixRepairReceipt(settledReceipt)?.let { reason ->
+        RepairReceiptSettlement.writeFailed(reason)
+      }
+      ?: featureTaskRuntimeUnresolvedFindings(settledReceipt)?.let { unresolved ->
+        RepairReceiptSettlement.unresolved(unresolved.refs, unresolved.detail, unresolved.retryReason)
+      }
+      ?: RepairReceiptSettlement.None
+  }
 
   private fun unaccountedFindingsSettlement(
     receipt: FeatureTaskRuntimeRepairReceipt,
