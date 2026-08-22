@@ -204,7 +204,8 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       validatePrompt.contains(ownershipTitle),
       "validate must not carry the non-validate forbid; it owns the gate",
     )
-    assertContains(validatePrompt, "Run only the pack-declared validation_gate collect_all_full_gate_command")
+    assertContains(validatePrompt, "Invoke bill-code-check for collect-all and confirmation")
+    assertContains(validatePrompt, "validation_gate")
 
     val reviewPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
@@ -232,12 +233,13 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE),
     )
 
-    assertContains(prompt, "Run only the pack-declared validation_gate collect_all_full_gate_command")
+    assertContains(prompt, "Invoke bill-code-check for collect-all and confirmation")
+    assertContains(prompt, "validation_gate")
     assertContains(prompt, "only validate agent for this step")
     assertContains(prompt, "will not launch another agent")
     assertContains(prompt, "Do not run `skill-bill validate`")
     assertContains(prompt, "`npx agnix`")
-    assertFalse(prompt.contains("Invoke bill-code-check"))
+    assertTrue(prompt.contains("Invoke bill-code-check"))
   }
 
   @Test
@@ -248,13 +250,13 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       packCollectAllCommand = "./gradlew check --continue",
     )
 
-    assertContains(prompt, "Run only this pack-declared collect-all command")
+    assertContains(prompt, "Invoke bill-code-check for collect-all and confirmation")
     assertContains(prompt, "`./gradlew check --continue`")
     assertContains(prompt, "Do not run `skill-bill validate`")
     assertContains(prompt, "`npx agnix`")
     assertContains(prompt, "scripts/validate_agent_configs")
-    assertContains(prompt, "Do not run `bill-code-check`")
-    assertFalse(prompt.contains("collect_all_full_gate_command"))
+    assertContains(prompt, "exactly that argv")
+    assertFalse(prompt.contains("Do not run `bill-code-check`"))
   }
 
   @Test
@@ -280,7 +282,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       agentRunValidateFallback = true,
     )
 
-    assertContains(prompt, "Invoke bill-code-check for those gate runs")
+    assertContains(prompt, "Invoke bill-code-check for collect-all and confirmation")
     assertContains(prompt, "Validation gate degradation")
     assertContains(prompt, "declares no validation_gate")
     assertContains(
@@ -291,7 +293,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
-  fun `full and non-goal validate prompts carry runtime-owned gate contract`() {
+  fun `full and non-goal validate prompts carry bill-code-check pack gate contract`() {
     val fullPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
       ISSUE_KEY,
       briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE),
@@ -302,11 +304,12 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     )
 
     listOf(fullPrompt, defaultPrompt).forEach { prompt ->
-      assertContains(prompt, "Run only the pack-declared validation_gate collect_all_full_gate_command")
+      assertContains(prompt, "Invoke bill-code-check for collect-all and confirmation")
+      assertContains(prompt, "validation_gate")
       assertContains(prompt, "Do not run `skill-bill validate`")
       assertContains(prompt, "`npx agnix`")
       assertContains(prompt, "scripts/validate_agent_configs")
-      assertContains(prompt, "that same collect-all command once to confirm")
+      assertContains(prompt, "run bill-code-check once to confirm")
       assertContains(prompt, "only validate agent for this step")
       assertContains(prompt, "will not launch another agent")
       assertContains(prompt, "delegated subagents")
@@ -318,7 +321,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
         prompt,
         "never silence them with annotations, baselines, disabled rules, weakened configuration, or skipped tests",
       )
-      assertFalse(prompt.contains("Invoke bill-code-check"))
+      assertFalse(prompt.contains("Do not run `bill-code-check`"))
       assertFalse(prompt.contains("Goal-continuation validate depth"))
       assertFalse(prompt.contains("runtime owns execution of the repository validation gate"))
     }
@@ -365,7 +368,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     )
     listOf(fullPrompt, defaultPrompt).forEach { prompt ->
       assertContains(prompt, "A prior gate run parsed these items; they are a hint")
-      assertContains(prompt, "Run only the pack-declared collect-all command")
+      assertContains(prompt, "Invoke bill-code-check")
       assertContains(prompt, "Do not run `skill-bill validate`")
       assertContains(prompt, "Do not launch another agent")
     }
@@ -402,7 +405,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       validatePrompt,
       "never silence them with annotations, baselines, disabled rules, weakened configuration, or skipped tests",
     )
-    assertFalse(validatePrompt.contains("Invoke bill-code-check"))
+    assertContains(validatePrompt, "Invoke bill-code-check for collect-all and confirmation")
     assertFalse(validatePrompt.contains("Invoke bill-kotlin-code-check"))
 
     val nonValidatePhases = listOf(
@@ -420,7 +423,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     nonValidatePhases.forEach { phaseId ->
       val prompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor(phaseId))
       assertFalse(
-        prompt.contains("Invoke bill-code-check for those gate runs"),
+        prompt.contains("Invoke bill-code-check for collect-all and confirmation"),
         "phase $phaseId must not carry the validate gate-invocation clause",
       )
       assertFalse(

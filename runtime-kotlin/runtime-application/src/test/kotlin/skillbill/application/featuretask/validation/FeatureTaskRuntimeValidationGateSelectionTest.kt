@@ -153,6 +153,21 @@ class FeatureTaskRuntimeValidationGateSelectionTest {
   }
 
   @Test
+  fun `empty path routing still selects a pack that declares validation_gate`() {
+    val resolver = ValidationGateResolver {
+      listOf(
+        kotlinPackWithoutGate(),
+        kotlinPackWithoutGate().copy(
+          slug = "kotlin-gated",
+          validationGate = validationGateTestDeclaration,
+        ),
+      )
+    }
+    val declared = assertIs<ValidationGateResolution.Declared>(resolver.resolve(emptyList()))
+    assertEquals("kotlin-gated", declared.packSlug)
+  }
+
+  @Test
   fun `findings_open resume skips discovery and hands back the persisted open set`() {
     val findingOne = ValidationGateFinding("m1", "r1", "msg1", "loc1")
     val findingTwo = ValidationGateFinding("m2", "r2", "msg2", "loc2")

@@ -39,7 +39,10 @@ internal fun diagnoseUnsettledCompletedUpstreamPhaseId(
     val declaration = phaseDeclaration(consumerPhaseId, featureSize, qualityGateSelection)
     val blockedReason = phaseRecords[consumerPhaseId]?.blockedReason.orEmpty()
     val missing = missingUpstream(declaration, recordedOutputs)
-      ?.filter { upstreamId -> phaseRecords[upstreamId]?.outputArtifact.isNullOrBlank() }
+      ?.filter { upstreamId ->
+        val upstream = phaseRecords[upstreamId] ?: return@filter false
+        upstream.outputArtifact.isNullOrBlank()
+      }
     if (!missing.isNullOrEmpty()) {
       return missing.minBy { stepOrder.indexOf(it).takeIf { index -> index >= 0 } ?: Int.MAX_VALUE }
     }

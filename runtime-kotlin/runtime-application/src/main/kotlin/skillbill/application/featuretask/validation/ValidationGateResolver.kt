@@ -41,7 +41,9 @@ class ValidationGateResolver(
   }
 
   private fun selectDominantPack(manifests: List<PlatformManifest>, routedSlugs: Set<String>): PlatformManifest? {
-    if (routedSlugs.isEmpty()) return null
-    return manifests.firstOrNull { it.slug in routedSlugs }
+    if (routedSlugs.isNotEmpty()) {
+      return manifests.firstOrNull { it.slug in routedSlugs }
+    }
+    return manifests.firstOrNull { it.validationGate != null } ?: manifests.firstOrNull()
   }
 }

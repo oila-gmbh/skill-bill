@@ -28,6 +28,7 @@ import skillbill.workflow.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_PLANNING_IMPORT_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import skillbill.workflow.taskruntime.model.GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewArtifactDecoder
@@ -38,6 +39,7 @@ import java.time.Instant
 internal const val GOAL_CHILD_REPAIR_EVIDENCE_ARTIFACT_KEY: String = "goal_child_repair_evidence"
 
 internal const val PASSED_VALIDATION_DEPTH: String = "validation_depth_present"
+internal const val PASSED_QUALITY_GATE_SELECTION: String = "quality_gate_selection_present"
 internal const val PASSED_REVIEW_BASE: String = "review_base_reachable"
 internal const val PASSED_REMEDIATION_BASE: String = "remediation_base_reachable_or_absent"
 internal const val PASSED_CONTINUATION_OUTCOME: String = "continuation_outcome_corroborated_or_absent"
@@ -68,6 +70,7 @@ internal class GoalRunnerChildRepairOperations(
     val passed = mutableListOf<String>()
 
     diagnoseValidationDepth(artifacts, wedges, passed)
+    diagnoseQualityGateSelection(artifacts, wedges, passed)
     diagnoseReviewBases(artifacts, repoRoot, wedges, passed)
     diagnoseStaleBlockedOutcome(record, artifacts, issueKey, subtaskId, wedges, passed)
     diagnoseCompletedUpstreamMissingOutput(artifacts, wedges, passed)
@@ -125,6 +128,24 @@ internal class GoalRunnerChildRepairOperations(
             field = wedgeClass.durableField,
             priorValue = null,
             newValue = depth.wireValue,
+          )
+          applied += repair
+          evidenceEntries += repairEvidenceMap(repair)
+        }
+        GoalRunnerWedgeClass.MISSING_QUALITY_GATE_SELECTION -> {
+          val continuation = workingContinuation ?: continue
+          if (continuation.qualityGateSelection != null) continue
+          val selection = FeatureTaskRuntimeQualityGateSelection.VALIDATE
+          val healed = continuation.copy(qualityGateSelection = selection)
+          workingContinuation = healed
+          patch[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY] = healed.toArtifactMap()
+          val repair = GoalRunnerAppliedRepair(
+            subtaskId = subtaskId,
+            workflowId = workflowId,
+            wedgeClass = wedgeClass,
+            field = wedgeClass.durableField,
+            priorValue = null,
+            newValue = selection.wireValue,
           )
           applied += repair
           evidenceEntries += repairEvidenceMap(repair)
@@ -226,7 +247,13 @@ internal class GoalRunnerChildRepairOperations(
         GoalRunnerWedgeClass.COMPLETED_UPSTREAM_MISSING_OUTPUT -> {
           val phaseRecords = phaseRecordsFrom(artifacts)
           val featureSize = featureSizeFromArtifacts(artifacts)
-          val resumePhaseId = diagnoseUnsettledCompletedUpstreamPhaseId(phaseRecords, featureSize) ?: continue
+          val qualityGateSelection = workingContinuation?.qualityGateSelection
+            ?: FeatureTaskRuntimeQualityGateSelection.VALIDATE
+          val resumePhaseId = diagnoseUnsettledCompletedUpstreamPhaseId(
+            phaseRecords,
+            featureSize,
+            qualityGateSelection,
+          ) ?: continue
           val input = buildCompletedUpstreamMissingOutputRepair(
             phaseRecords = phaseRecords,
             ledger = phaseLedgerFrom(artifacts),
@@ -234,6 +261,7 @@ internal class GoalRunnerChildRepairOperations(
             resumePhaseId = resumePhaseId,
             reason = "Operator goal repair reopened '$resumePhaseId' because a completed upstream phase " +
               "record had no settled output for a blocked consumer.",
+            qualityGateSelection = qualityGateSelection,
           )
           val updated = engine.updateRecord(WorkflowFamily.TASK_RUNTIME.definition, record, input)
           WorkflowFamily.TASK_RUNTIME.save(workflowStates, updated)
@@ -290,6 +318,7 @@ internal class GoalRunnerChildRepairOperations(
     workflowId = workflowId,
     passedChecks = listOf(
       PASSED_VALIDATION_DEPTH,
+      PASSED_QUALITY_GATE_SELECTION,
       PASSED_REVIEW_BASE,
       PASSED_REMEDIATION_BASE,
       PASSED_CONTINUATION_OUTCOME,
@@ -322,9 +351,12 @@ internal class GoalRunnerChildRepairOperations(
     passed: MutableList<String>,
   ) {
     val phaseRecords = phaseRecordsFrom(artifacts)
+    val qualityGateSelection = continuationArtifact(artifacts)?.qualityGateSelection
+      ?: FeatureTaskRuntimeQualityGateSelection.VALIDATE
     val resumePhaseId = diagnoseUnsettledCompletedUpstreamPhaseId(
       phaseRecords,
       featureSizeFromArtifacts(artifacts),
+      qualityGateSelection,
     )
     if (resumePhaseId == null) {
       passed += PASSED_UPSTREAM_OUTPUT
@@ -350,6 +382,23 @@ internal class GoalRunnerChildRepairOperations(
     wedges += GoalRunnerWedgeFinding(
       wedgeClass = GoalRunnerWedgeClass.MISSING_VALIDATION_DEPTH,
       field = GoalRunnerWedgeClass.MISSING_VALIDATION_DEPTH.durableField,
+      currentValue = null,
+    )
+  }
+
+  private fun diagnoseQualityGateSelection(
+    artifacts: Map<String, Any?>,
+    wedges: MutableList<GoalRunnerWedgeFinding>,
+    passed: MutableList<String>,
+  ) {
+    val continuation = continuationArtifact(artifacts)
+    if (continuation == null || continuation.qualityGateSelection != null) {
+      passed += PASSED_QUALITY_GATE_SELECTION
+      return
+    }
+    wedges += GoalRunnerWedgeFinding(
+      wedgeClass = GoalRunnerWedgeClass.MISSING_QUALITY_GATE_SELECTION,
+      field = GoalRunnerWedgeClass.MISSING_QUALITY_GATE_SELECTION.durableField,
       currentValue = null,
     )
   }

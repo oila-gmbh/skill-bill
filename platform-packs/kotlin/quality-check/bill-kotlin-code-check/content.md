@@ -12,15 +12,15 @@ Run the repository's authoritative Kotlin workflow, fix root causes only in chan
 
 ## Execution Steps
 
-1. Establish scope from the requested work unit and `git diff --name-only`; record changed modules, source sets, generated code, and build logic.
-2. Discover build files, the Gradle wrapper, and CI configuration in `settings.gradle.kts`, module `build.gradle.kts` files, convention plugins, `gradle/libs.versions.toml`, `gradlew`, and repository scripts before falling back to `./gradlew check`.
-3. List Gradle tasks when ownership is unclear, then invoke the pack's quality-check entrypoint using the discovered repository command.
-4. Run focused compiler and API validation such as `./gradlew :module:compileKotlin`, `apiCheck`, `binaryCompatibilityCheck`, or configured equivalents.
-5. Run configured formatting and static analysis such as `ktlintCheck`, `detekt`, `spotlessCheck`, and compiler warning gates.
-6. Run focused tests such as `./gradlew :module:test`, then integration, contract, or broader `check` tasks required by the changed boundary.
-7. Run configured dependency and security validation such as `dependencyCheckAnalyze`, dependency verification, version-catalog checks, or repository scanners.
-8. Validate Java and Kotlin toolchains, `jvmTarget` alignment, source-set targets, Gradle compatibility, and configured build matrices.
-9. Validate KSP, kapt, protobuf, OpenAPI, and other generated sources by running their generation and compilation tasks and checking freshness where the repository defines it.
+1. Establish files in scope from the requested work unit and `git diff --name-only`; record changed modules, source sets, generated code, and build logic.
+2. Discover the build file, Gradle wrapper, and CI configuration in `settings.gradle.kts`, module `build.gradle.kts` files, convention plugins, `gradle/libs.versions.toml`, `gradlew`, and repository scripts, in that order, before falling back to a conventional Gradle entrypoint.
+3. For feature-task validate and any collect-all pass, run the pack's quality-check entrypoint as the pack `validation_gate.collect_all_full_gate_command` exactly: `./gradlew check --continue` from the Gradle project root that owns the wrapper (this repository: `runtime-kotlin`). Do not substitute a rediscovered `./gradlew check` without `--continue`, and do not invent alternate full-suite entrypoints.
+4. List Gradle tasks when ownership is unclear, then run focused compiler and API validation such as `./gradlew :module:compileKotlin`, `apiCheck`, `binaryCompatibilityCheck`, or configured equivalents while repairing.
+5. Run configured formatting and static analysis such as `ktlintCheck`, `detekt`, `spotlessCheck`, and compiler warning gates as targeted repair tasks when they are part of the same pack gate.
+6. Run focused tests such as `./gradlew :module:test`, then broader tasks only when required to clear a finding from the collect-all set.
+7. Run configured dependency and security validation such as `dependencyCheckAnalyze`, dependency verification, version-catalog checks, or repository scanners when those failures appear in the collect-all output.
+8. Validate Java and Kotlin toolchains, `jvmTarget` alignment, source-set targets, Gradle compatibility, and configured build matrices when those failures appear in the collect-all output.
+9. Validate KSP, kapt, protobuf, OpenAPI, and other generated sources by running their generation and compilation tasks when those failures appear in the collect-all output.
 10. Capture full output, retain the files in scope, and attribute each failure to scoped work, pre-existing state, environment, or maintainer-owned configuration.
 
 ## Fix Strategy
@@ -37,9 +37,7 @@ Never suppress a failure with annotations, baselines, disabled rules, or skipped
 
 ### Repair Window
 
-Run the collect-all check once and read that output. Fix every finding in the same session. Do not invoke the full gate after each individual finding. Targeted compile, test, and module checks are allowed while repairing. Repair every finding at its root cause; run one confirmation check after the full set is repaired.
-
-Once the complete set is repaired, re-run the discovered verification task in one cache-bypassing pass.
+Run `./gradlew check --continue` once and read that output. Fix every finding in the same session. Do not invoke the full collect-all gate after each individual finding. Targeted compile, test, and module checks are allowed while repairing. Repair every finding at its root cause; run `./gradlew check --continue` once to confirm after the full set is repaired. When a cache-bypassing confirm is required, use the pack `validation_gate.cache_bypassing_collect_all_full_gate_command`.
 
 Run the full suite when targeted checks cannot establish safety, including when build logic, shared APIs, toolchains, generated sources, dependencies, or cross-module behavior changed.
 

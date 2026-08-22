@@ -13,6 +13,10 @@ Route dominant-stack quality checks to the pack-declared quality-check sidecar. 
 
 Run the collect-all check once and read that output. Fix every finding in the same session. Do not invoke the full gate, collect-all gate, or `bill-code-check` after each individual finding. Targeted compile, test, and module checks are allowed while repairing. When the set looks clean, run one confirmation check. If that fails, its output is the new complete finding set.
 
+## Pack validation_gate
+
+When the dominant pack declares `validation_gate`, collect-all and confirmation are exactly that pack's `collect_all_full_gate_command` (and the pack's cache-bypassing collect-all when a cache-bypassing confirm is required). Do not rediscover a different full-suite command. When the pack declares no `validation_gate`, follow the routed sidecar's discovered entrypoint.
+
 ## Routing
 
 Auto-route to the pack-declared quality-check skill for the dominant stack. Never name a stack-specific checker directly from this shell. Honor the routed sidecar Repair Window and Fix Strategy without reintroducing per-fix reruns here.

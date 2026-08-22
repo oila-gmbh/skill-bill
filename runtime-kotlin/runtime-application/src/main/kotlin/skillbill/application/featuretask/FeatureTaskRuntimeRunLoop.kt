@@ -3738,7 +3738,7 @@ internal class FeatureTaskRuntimeRunLoop(
   }
 
   private fun packCollectAllCommand(run: PhaseRun, state: FeatureTaskRuntimeRunState): String? {
-    if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE || run.agentRunValidateFallback) {
+    if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE) {
       return null
     }
     return when (val resolution = phaseGates.validationGateResolver.resolve(validationChangedPaths(state))) {

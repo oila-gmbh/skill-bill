@@ -539,9 +539,10 @@ object FeatureTaskRuntimePhasePromptComposer {
     val (sectionTitle, preamble) = when (phaseId) {
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE -> Pair(
         "## Runtime validation gate findings",
-        "A prior gate run parsed these items; they are a hint. Run only the pack-declared collect-all " +
-          "command, read that output, and fix every finding in this session. Do not run `skill-bill " +
-          "validate`, `npx agnix`, or `scripts/validate_agent_configs`. Do not launch another agent.",
+        "A prior gate run parsed these items; they are a hint. Invoke bill-code-check, run the pack " +
+          "collect-all command, read that output, and fix every finding in this session. Do not run " +
+          "`skill-bill validate`, `npx agnix`, or `scripts/validate_agent_configs`. Do not launch " +
+          "another agent.",
       )
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD -> Pair(
         "## Runtime build gate findings",
