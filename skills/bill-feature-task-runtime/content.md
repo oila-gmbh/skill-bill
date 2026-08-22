@@ -315,13 +315,15 @@ audit emits `satisfied` even if test coverage is absent or inadequate.
 
 - On `satisfied`, the run advances to `review`.
 - On `gaps_found`, the runtime takes a backward edge re-entering `implement`,
-  then `audit`. The implementation handoff contains the immutable
-  original `preplan` and `plan` outputs plus the complete durably accepted audit
-  repair plan and cumulative unresolved-gap ledger. Every gap has a stable id,
-  criterion reference, evidence, diagnosis, boundary, and dependency-ordered
-  repair items. One remediation invocation repairs the complete carried gap set,
-  honoring internal dependencies without launching a separate pass per gap, and
-  emits an exact terminal result for every repair item; review or validation
+  then `audit`. The implementation handoff contains the immutable original
+  `preplan` and `plan` outputs plus each unmet criterion's diagnosis and
+  implement-ready fix plan from the audit note. Audit must plan carefully before
+  naming a gap: blast radius across callers, DI/bindings, sibling phases, and
+  shared contracts; non-regression against neighboring criteria; and a complete
+  plan that one implement round can execute without inventing follow-up work or
+  opening a new gap. Implement follows that plan rather than inventing a
+  narrower substitute. One remediation invocation repairs the complete carried
+  gap set and emits an ordinary implementation receipt; review or validation
   cannot substitute for executing carried work. This
   `audit` → `implement` → `audit` cycle has no
   iteration cap — repair and re-audit continue while any blocking gap remains —

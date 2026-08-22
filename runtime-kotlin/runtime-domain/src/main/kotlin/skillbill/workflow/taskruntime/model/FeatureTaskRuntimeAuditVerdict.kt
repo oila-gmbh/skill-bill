@@ -61,7 +61,7 @@ data class FeatureTaskRuntimeAuditVerdict(
 }
 
 /** The one-line bound on an unmet-criterion note, mirroring `unmetCriterion.note` in the schema. */
-const val FEATURE_TASK_RUNTIME_AUDIT_NOTE_MAX_CHARS: Int = 356
+const val FEATURE_TASK_RUNTIME_AUDIT_NOTE_MAX_CHARS: Int = 1024
 
 // Criterion refs are canonically uppercase (`AC-005`) while identifiers derived from them are
 // canonically lowercase, so a transcription of a ref into an identifier arrives in a case the domain

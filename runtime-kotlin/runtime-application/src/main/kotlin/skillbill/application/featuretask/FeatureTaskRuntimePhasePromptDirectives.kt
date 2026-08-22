@@ -410,13 +410,20 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "reconciliation_evidence claiming reconciled. A claim the tree contradicts is itself unmet. " +
     "Report the answer as verdict plus produced_outputs.unmet_criteria: verdict satisfied with an " +
     "empty array when every criterion is implemented, or verdict gaps_found with one entry per unmet " +
-    "criterion, each carrying its criterion ref and one line on what is missing. That is the entire " +
-    "audit report — no repair plan, no per-item identifiers, no verification bookkeeping. The next " +
-    "implement round receives the refs you name and plans the work itself; a later audit re-checks " +
-    "every criterion from scratch, so you never need to account for what an earlier audit said. " +
-    "Judge production behavior and production implementation only: test adequacy, coverage, fixtures, " +
-    "and assertions are never unmet criteria. All evidence is read-only repository facts: never run a " +
-    "build, a test, or any other command as audit evidence; validation owns test execution and failures.",
+    "criterion. Every unmet entry must carry its criterion ref and one dense note that both names " +
+    "what is missing and hands implement a complete fix plan for that gap. Before you emit a gap, " +
+    "plan the repair carefully: name the minimal production change that closes the criterion; " +
+    "inspect blast radius across callers, DI/bindings, sibling phases, contracts, and fixtures that " +
+    "share the touched surface; confirm the plan does not regress neighboring criteria or break " +
+    "other functionality; and confirm the plan is complete enough that one implement round can close " +
+    "the gap without inventing follow-up work or opening a new gap. Prefer a slightly broader correct " +
+    "plan over a narrow patch that leaves a sibling hole for the next audit. Do not emit a separate " +
+    "repair-plan object, per-item identifiers, or verification bookkeeping — the note is the plan. " +
+    "A later audit re-checks every criterion from scratch, so you never need to account for what an " +
+    "earlier audit said. Judge production behavior and production implementation only: test " +
+    "adequacy, coverage, fixtures, and assertions are never unmet criteria. All evidence is " +
+    "read-only repository facts: never run a build, a test, or any other command as audit evidence; " +
+    "validation owns test execution and failures.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE to RUNTIME_OWNED_VALIDATE_PHASE_TASK,
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY to
     "Invoke bill-boundary-history inline and apply its write/skip rules for the implemented " +

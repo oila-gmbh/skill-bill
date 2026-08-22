@@ -768,6 +768,25 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     )
   }
 
+  @Test
+  fun `audit prompt requires a complete blast-radius-aware fix plan in each gap note`() {
+    val auditPrompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("audit"))
+
+    assertContains(auditPrompt, "complete implement-ready fix plan", false, "each gap note must plan the repair")
+    assertContains(auditPrompt, "blast radius", false, "audit must inspect blast radius before naming a gap")
+    assertContains(auditPrompt, "will not open", false, "audit must avoid plans that open a new gap")
+    assertContains(auditPrompt, "the note IS the fix plan", false, "the compact note carries the plan")
+    assertContains(
+      FeatureTaskRuntimePhasePromptComposer.compose(
+        ISSUE_KEY,
+        briefingFor("implement", unmetCriterionRefs = listOf("AC-003: missing DI binding")),
+      ),
+      "Follow that plan completely",
+      false,
+      "implement remediation must execute the audit's plan",
+    )
+  }
+
   private fun assertAuditPromptNamesSignal(auditPrompt: String, fragment: String, what: String) {
     assertContains(auditPrompt, fragment, false, "audit names $what")
   }
