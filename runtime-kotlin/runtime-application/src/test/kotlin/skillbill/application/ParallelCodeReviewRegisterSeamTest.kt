@@ -47,10 +47,9 @@ class ParallelCodeReviewRegisterSeamTest {
   }
 
   @Test
-  fun `a near-miss register line soft-admits with a dropped-candidate diagnostic`() {
-    val drifted = "[F-1] Major | High | a.kt:3 | x"
+  fun `a short F-id register line is padded and admitted instead of soft-dropped`() {
     val runner = runner(
-      stdoutLauncher("$drifted\nverdict: approved"),
+      stdoutLauncher("[F-1] Major | High | a.kt:3 | x\nverdict: approved"),
       diffResolver = RecordingDiffResolver(default = diffFor("A.kt")),
     )
 
@@ -60,10 +59,8 @@ class ParallelCodeReviewRegisterSeamTest {
 
     assertTrue(result.lane1.success)
     assertNull(result.lane1.failureReason)
-    assertTrue(result.mergeResult.findings.isEmpty())
-    val diagnostic = assertNotNull(result.lane1.droppedCandidateDiagnostic)
-    assertTrue(diagnostic.contains(drifted), "the offending line must be named: $diagnostic")
-    assertTrue(diagnostic.contains("unmatched_candidate_line"), "the typed rejection reason must be given: $diagnostic")
+    assertNull(result.lane1.droppedCandidateDiagnostic)
+    assertEquals(1, result.mergeResult.findings.size)
   }
 
   @Test
@@ -122,10 +119,13 @@ class ParallelCodeReviewRegisterSeamTest {
   }
 
   @Test
-  fun `a partially drifted register keeps its admitted findings and still reports the dropped candidate`() {
-    val drifted = "[F-2] Major | High | a.kt:3 | dropped"
+  fun `a short sibling F-id is padded and admitted alongside a canonical register line`() {
     val runner = runner(
-      stdoutLauncher("[F-001] Major | High | path=\"A.kt\" | line=1 | admissible\n$drifted\nverdict: approved"),
+      stdoutLauncher(
+        "[F-001] Major | High | path=\"A.kt\" | line=1 | admissible\n" +
+          "[F-2] Major | High | a.kt:3 | also admissible after pad\n" +
+          "verdict: approved",
+      ),
       diffResolver = RecordingDiffResolver(default = diffFor("A.kt")),
     )
 
@@ -135,13 +135,44 @@ class ParallelCodeReviewRegisterSeamTest {
 
     assertTrue(result.lane1.success)
     assertNull(result.lane1.failureReason)
-    assertEquals(1, result.mergeResult.findings.size)
-    val diagnostic = assertNotNull(
-      result.lane1.droppedCandidateDiagnostic,
-      "a silently dropped candidate line must still be reported",
+    assertNull(result.lane1.droppedCandidateDiagnostic)
+    assertEquals(2, result.mergeResult.findings.size)
+  }
+
+  @Test
+  fun `a finding body without an F-token is assigned the next id and admitted`() {
+    val runner = runner(
+      stdoutLauncher("Major | High | a.kt:3 | missing token\nverdict: approved"),
+      diffResolver = RecordingDiffResolver(default = diffFor("A.kt")),
     )
-    assertTrue(diagnostic.contains(drifted), "the dropped line must be named: $diagnostic")
-    assertTrue(diagnostic.contains("unmatched_candidate_line"), "the rejection reason must be given: $diagnostic")
+
+    val result = runner.run(
+      baseRequest(scope = ParallelReviewScope.STAGED).copy(codeReviewMode = CodeReviewExecutionMode.INLINE),
+    )
+
+    assertTrue(result.lane1.success)
+    assertNull(result.lane1.failureReason)
+    assertNull(result.lane1.droppedCandidateDiagnostic)
+    assertEquals(1, result.mergeResult.findings.size)
+  }
+
+  @Test
+  fun `a register line that remains unparseable after F-id padding is soft-dropped with a diagnostic`() {
+    val broken = "[F-1] Major | High | not-a-location | missing line anchor"
+    val runner = runner(
+      stdoutLauncher("$broken\nverdict: approved"),
+      diffResolver = RecordingDiffResolver(default = diffFor("A.kt")),
+    )
+
+    val result = runner.run(
+      baseRequest(scope = ParallelReviewScope.STAGED).copy(codeReviewMode = CodeReviewExecutionMode.INLINE),
+    )
+
+    assertTrue(result.lane1.success)
+    assertNull(result.lane1.failureReason)
+    assertTrue(result.mergeResult.findings.isEmpty())
+    val diagnostic = assertNotNull(result.lane1.droppedCandidateDiagnostic)
+    assertTrue(diagnostic.contains("unmatched_candidate_line"), "still-broken shape must be named: $diagnostic")
   }
 
   @Test

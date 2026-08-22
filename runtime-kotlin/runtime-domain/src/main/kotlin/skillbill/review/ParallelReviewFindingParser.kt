@@ -32,16 +32,27 @@ object ParallelReviewFindingParser {
 
   val findingCandidatePattern: Regex = Regex("\\[F-\\d+]")
 
+  private val findingNumberPattern: Regex = Regex("\\[F-(\\d+)]")
+
+  private val nearMissFindingIdLine: Regex = Regex(
+    """^(\s*(?:-\s+)?)(?:\|\s*)?(?:\*{1,2}|_{1,2})?\[F-(\d+)](?:\*{1,2}|_{1,2})?(?:\s*\|)?\s+(.*)$""",
+  )
+
+  private val findingBodyWithoutId: Regex = Regex(
+    """^(\s*(?:-\s+)?)(?!(?:\|\s*)?(?:\*{1,2}|_{1,2})?\[F-)(?:Major|Minor|Blocker|Nit|Critical)\s+\|\s+(?:High|Medium|Low)\s+\|\s+\S.*$""",
+  )
+
   fun countRegisterCandidates(text: String): Int =
     text.lineSequence().count { findingCandidatePattern.containsMatchIn(it) }
 
   fun parse(text: String): ParallelReviewParseResult {
-    val lines = text.lines()
+    val normalizedText = normalizeRegisterText(text)
+    val lines = normalizedText.lines()
     val admitted = mutableListOf<ParallelReviewRawFinding>()
     val rejections = mutableListOf<ParallelReviewFindingRejection>()
     val matchedPositions = mutableSetOf<Int>()
-    parallelFindingPattern.findAll(text).forEach { match ->
-      val position = text.take(match.range.first).count { it == '\n' } + 1
+    parallelFindingPattern.findAll(normalizedText).forEach { match ->
+      val position = linePositionOfFindingToken(normalizedText, match)
       matchedPositions += position
       val outcome = parseMatch(match)
       outcome.finding?.let { admitted += it }
@@ -69,6 +80,35 @@ object ParallelReviewFindingParser {
       rejections = rejections.sortedBy(ParallelReviewFindingRejection::linePosition),
       candidateCount = candidateCount,
     )
+  }
+
+  internal fun normalizeRegisterText(text: String): String {
+    val working = text.lines().map { normalizeRegisterLine(it) }.toMutableList()
+    var next = working.maxOfOrNull(::maxFindingNumberIn) ?: 0
+    for (index in working.indices) {
+      val line = working[index]
+      if (findingCandidatePattern.containsMatchIn(line)) continue
+      val body = findingBodyWithoutId.matchEntire(line) ?: continue
+      next = (next + 1).coerceAtMost(999)
+      val id = "F-" + next.toString().padStart(3, '0')
+      working[index] = "${body.groupValues[1]}[$id] ${line.drop(body.groupValues[1].length)}"
+    }
+    return working.joinToString("\n")
+  }
+
+  internal fun normalizeRegisterLine(line: String): String {
+    val match = nearMissFindingIdLine.matchEntire(line) ?: return line
+    val number = match.groupValues[2].toIntOrNull() ?: return line
+    val paddedId = "F-" + number.coerceIn(0, 999).toString().padStart(3, '0')
+    return "${match.groupValues[1]}[$paddedId] ${match.groupValues[3]}"
+  }
+
+  private fun maxFindingNumberIn(line: String): Int =
+    findingNumberPattern.findAll(line).mapNotNull { it.groupValues[1].toIntOrNull() }.maxOrNull() ?: 0
+
+  private fun linePositionOfFindingToken(text: String, match: MatchResult): Int {
+    val tokenAt = match.value.indexOf('[').takeIf { it >= 0 } ?: 0
+    return text.take(match.range.first + tokenAt).count { it == '\n' } + 1
   }
 
   private data class MatchOutcome(
