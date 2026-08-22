@@ -134,6 +134,7 @@ $defs:
           - plan_fix
           - implement_fix
           - review
+          - build
           - audit
           - validate
           - write_history
@@ -154,6 +155,7 @@ $defs:
                     - plan_fix
                     - implement_fix
                     - review
+                    - build
                     - audit
                     - validate
                     - write_history
