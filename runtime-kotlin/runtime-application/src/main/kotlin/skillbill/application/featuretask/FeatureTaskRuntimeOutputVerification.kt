@@ -47,12 +47,11 @@ internal object FeatureTaskRuntimeOutputVerification {
    * whole message: progress identity is the criterion, never the agent's note text. Distinct refs,
    * preserving order, empty when the audit is absent or satisfied.
    */
-  fun canonicalAuditCriterionRefs(outputObject: Map<String, Any?>?): List<String> =
-    auditVerdictFrom(outputObject)
-      ?.blockingCriteria
-      ?.mapNotNull { AUDIT_CRITERION_REF.find(it.message)?.value?.uppercase() }
-      ?.distinct()
-      .orEmpty()
+  fun canonicalAuditCriterionRefs(outputObject: Map<String, Any?>?): List<String> = auditVerdictFrom(outputObject)
+    ?.blockingCriteria
+    ?.mapNotNull { AUDIT_CRITERION_REF.find(it.message)?.value?.uppercase() }
+    ?.distinct()
+    .orEmpty()
 
   private val AUDIT_CRITERION_REF: Regex = Regex("""(AC-\d+)""", RegexOption.IGNORE_CASE)
 

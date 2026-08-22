@@ -1,12 +1,14 @@
 package skillbill.application
 
 import skillbill.application.featuretask.FeatureTaskRuntimeRunInvariantPromptAllowlist
+import skillbill.application.featuretask.phaseDeclaration
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.application.model.FeatureTaskRuntimeRunReport
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffProjectionValidator
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FORBIDDEN_PROJECTION_FIELD_NAMES
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDeliveredProjectionRecord
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionBudget
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffPromptVisibility
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
@@ -72,7 +74,10 @@ class FeatureTaskRuntimeLeastContextEndToEndTest {
     briefing: FeatureTaskRuntimePhaseLaunchBriefing,
     delivered: FeatureTaskRuntimeDeliveredProjectionRecord,
   ) {
-    val declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations.getValue(phaseId)
+    val declaration = phaseDeclaration(
+      phaseId,
+      FeatureTaskRuntimeFeatureSize.valueOf(briefing.featureSize),
+    )
     // required=false declarations (shared_review_evidence) may omit when the resolver has no
     // store path; the closed world still forbids undeclared projections and requires every
     // required declaration plus all run-invariant projections.

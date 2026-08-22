@@ -45,8 +45,11 @@ fun detectAuditRepairNonProgress(
     return FeatureTaskRuntimeAuditRepairProgressDecision(blocked = false, reason = null)
   }
   // Any prior criterion ref cleared is progress, even when new criteria appeared alongside.
-  val clearedPriorRef = (previousCriterionRefs - currentCriterionRefs).isNotEmpty()
-  if (clearedPriorRef) {
+  val clearedPriorRefs = previousCriterionRefs - currentCriterionRefs
+  val retainedPriorRefs = previousCriterionRefs intersect currentCriterionRefs
+  val madeProgress = clearedPriorRefs.isNotEmpty() &&
+    (currentCriterionRefs.size < previousCriterionRefs.size || retainedPriorRefs.isNotEmpty())
+  if (madeProgress) {
     return FeatureTaskRuntimeAuditRepairProgressDecision(blocked = false, reason = null)
   }
   // No cleared prior ref (identical set, or substitution without a shrink): stall when the repository

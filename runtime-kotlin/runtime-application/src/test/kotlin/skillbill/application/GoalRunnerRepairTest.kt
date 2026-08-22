@@ -1011,27 +1011,26 @@ internal abstract class GoalRunnerRepairFixtures {
   protected fun continuationMap(
     includeValidationDepth: Boolean,
     includeQualityGateSelection: Boolean = true,
-  ): Map<String, Any?> =
-    FeatureTaskRuntimeGoalContinuationArtifact(
-      issueKey = ISSUE_KEY,
-      subtaskId = 1,
-      suppressPr = true,
-      goalBranch = GOAL_BRANCH,
-      parentWorkflowId = "wfl-parent",
-      codeReviewMode = CodeReviewExecutionMode.INLINE,
-      validationDepth = if (includeValidationDepth) ValidationDepth.FULL else null,
-      qualityGateSelection = if (includeQualityGateSelection) {
-        FeatureTaskRuntimeQualityGateSelection.VALIDATE
-      } else {
-        null
-      },
-    ).toArtifactMap().let { map ->
-      buildMap {
-        putAll(map)
-        if (!includeValidationDepth) remove("validation_depth")
-        if (!includeQualityGateSelection) remove("quality_gate_selection")
-      }
+  ): Map<String, Any?> = FeatureTaskRuntimeGoalContinuationArtifact(
+    issueKey = ISSUE_KEY,
+    subtaskId = 1,
+    suppressPr = true,
+    goalBranch = GOAL_BRANCH,
+    parentWorkflowId = "wfl-parent",
+    codeReviewMode = CodeReviewExecutionMode.INLINE,
+    validationDepth = if (includeValidationDepth) ValidationDepth.FULL else null,
+    qualityGateSelection = if (includeQualityGateSelection) {
+      FeatureTaskRuntimeQualityGateSelection.VALIDATE
+    } else {
+      null
+    },
+  ).toArtifactMap().let { map ->
+    buildMap {
+      putAll(map)
+      if (!includeValidationDepth) remove("validation_depth")
+      if (!includeQualityGateSelection) remove("quality_gate_selection")
     }
+  }
 
   protected fun healthyReviewState(): GoalSubtaskReviewState = GoalSubtaskReviewState.initial(
     reviewBaseSha = REACHABLE_SHA,

@@ -1,5 +1,7 @@
 package skillbill.workflow.taskruntime.model
 
+import skillbill.boundary.OpenBoundaryMap
+
 /**
  * The bounded prior-gap memory an `audit_gap` remediation round carries into the next implement and
  * audit briefings. It records, per round: the unmet criterion ref+note lines the audit that fired the
@@ -40,7 +42,10 @@ data class FeatureTaskRuntimePriorGapMemory(
 
   /** Emits exactly the four declared fields using the closed Text/TextList value shapes. */
   fun toProjectionFields(): List<FeatureTaskRuntimeHandoffProjectionField> = listOf(
-    FeatureTaskRuntimeHandoffProjectionField(FIELD_ROUND, FeatureTaskRuntimeHandoffProjectionValue.Text(round.toString())),
+    FeatureTaskRuntimeHandoffProjectionField(
+      FIELD_ROUND,
+      FeatureTaskRuntimeHandoffProjectionValue.Text(round.toString()),
+    ),
     FeatureTaskRuntimeHandoffProjectionField(
       FIELD_PRIOR_UNMET_CRITERIA,
       FeatureTaskRuntimeHandoffProjectionValue.TextList(priorUnmetCriteria),
@@ -70,16 +75,20 @@ data class FeatureTaskRuntimePriorGapMemory(
     )
 
     /** Decodes a wire map into the typed memory, reusing the same bounds as construction. */
+    @OpenBoundaryMap("Feature-task-runtime prior-gap memory decode from the handoff projection wire map")
     fun fromMap(raw: Map<String, Any?>): FeatureTaskRuntimePriorGapMemory = FeatureTaskRuntimePriorGapMemory(
       round = (raw[FIELD_ROUND] as? Number)?.toInt()
         ?: (raw[FIELD_ROUND] as? String)?.toIntOrNull()
         ?: throw IllegalArgumentException("$FIELD_ROUND must decode to an integer."),
-      priorUnmetCriteria = (raw[FIELD_PRIOR_UNMET_CRITERIA] as? List<*>)?.map { it as? String }
-        ?: throw IllegalArgumentException("$FIELD_PRIOR_UNMET_CRITERIA must decode to a list of strings."),
-      lastImplementClaims = (raw[FIELD_LAST_IMPLEMENT_CLAIMS] as? List<*>)?.map { it as? String }
-        ?: throw IllegalArgumentException("$FIELD_LAST_IMPLEMENT_CLAIMS must decode to a list of strings."),
-      stickyIds = (raw[FIELD_STICKY_IDS] as? List<*>)?.map { it as? String }
-        ?: throw IllegalArgumentException("$FIELD_STICKY_IDS must decode to a list of strings."),
+      priorUnmetCriteria = (raw[FIELD_PRIOR_UNMET_CRITERIA] as? List<*>)?.map {
+        it as? String ?: throw IllegalArgumentException("$FIELD_PRIOR_UNMET_CRITERIA entries must be strings.")
+      } ?: throw IllegalArgumentException("$FIELD_PRIOR_UNMET_CRITERIA must decode to a list of strings."),
+      lastImplementClaims = (raw[FIELD_LAST_IMPLEMENT_CLAIMS] as? List<*>)?.map {
+        it as? String ?: throw IllegalArgumentException("$FIELD_LAST_IMPLEMENT_CLAIMS entries must be strings.")
+      } ?: throw IllegalArgumentException("$FIELD_LAST_IMPLEMENT_CLAIMS must decode to a list of strings."),
+      stickyIds = (raw[FIELD_STICKY_IDS] as? List<*>)?.map {
+        it as? String ?: throw IllegalArgumentException("$FIELD_STICKY_IDS entries must be strings.")
+      } ?: throw IllegalArgumentException("$FIELD_STICKY_IDS must decode to a list of strings."),
     )
   }
 }

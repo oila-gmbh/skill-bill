@@ -1,3 +1,5 @@
+@file:Suppress("TooManyFunctions")
+
 package skillbill.application.featuretask
 
 import skillbill.application.model.FeatureTaskRuntimeImplementationContinuation
@@ -45,10 +47,7 @@ internal fun mutatingPhaseIdempotencyDirective(phaseId: String): String {
  * never narrow scope to only the sticky items. Empty for a forward implement (no memory) and for every
  * other phase, so first-pass briefings render neither the memory block nor this directive (AC-002).
  */
-internal fun priorGapMemoryRemediationDirective(
-  phaseId: String,
-  memory: FeatureTaskRuntimePriorGapMemory?,
-): String {
+internal fun priorGapMemoryRemediationDirective(phaseId: String, memory: FeatureTaskRuntimePriorGapMemory?): String {
   if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT || memory == null) {
     return ""
   }

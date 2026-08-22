@@ -2,12 +2,8 @@ package skillbill.cli
 
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliRuntimeContext
-import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.AgentRunLauncher
 import skillbill.ports.agentrun.ExecutableLookup
-import skillbill.ports.agentrun.model.AgentRunLaunchFacts
-import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
-import skillbill.ports.agentrun.model.AgentRunLaunchRequest
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
@@ -29,9 +25,12 @@ class CliCodeReviewParallelRuntimeTest {
     val result = CliRuntime.run(
       listOf(
         "code-review-parallel",
-        "--agent1", "claude",
-        "--agent2", "codex",
-        "--repo-root", tempDir.toString(),
+        "--agent1",
+        "claude",
+        "--agent2",
+        "codex",
+        "--repo-root",
+        tempDir.toString(),
       ),
       parallelReviewContext(),
     )
@@ -47,9 +46,12 @@ class CliCodeReviewParallelRuntimeTest {
     val result = CliRuntime.run(
       listOf(
         "code-review",
-        "--agent1", "claude",
-        "--agent2", "codex",
-        "--repo-root", tempDir.toString(),
+        "--agent1",
+        "claude",
+        "--agent2",
+        "codex",
+        "--repo-root",
+        tempDir.toString(),
       ),
       parallelReviewContext(),
     )

@@ -37,7 +37,7 @@ import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
  * [phaseDeclarations] adds the derived-context declarations that the `WorkflowDefinition`
  * shape cannot express.
  */
-@Suppress("TooManyFunctions")
+@Suppress("LargeClass", "TooManyFunctions")
 object FeatureTaskRuntimePhaseWorkflowDefinition {
   const val PHASE_PREPLAN: String = "preplan"
   const val PHASE_PLAN: String = "plan"
@@ -216,7 +216,8 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       PHASE_WRITE_HISTORY to
         "Resume boundary history writing from the latest implement and settled build or validate output.",
       PHASE_COMMIT_PUSH to
-        "Resume commit/push after verifying implement, the settled quality gate, and write_history outputs are current.",
+        "Resume commit/push after verifying implement, the settled quality gate, " +
+        "and write_history outputs are current.",
       PHASE_PR to "Resume PR creation from the latest implement output, commit output, and derived diff context.",
     ),
     continuationReferenceSections = emptyMap(),

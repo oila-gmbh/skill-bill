@@ -83,24 +83,25 @@ import skillbill.workflow.taskruntime.model.CorrectiveRepairDiagnosticLocator
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapPause
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapProgress
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgressDecision
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeExecutablePlan
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationReceipt
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionKind
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeExecutablePlan
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationReceipt
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeNextPhase
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorReviewContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProducerIteration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionFailureClassification
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionKind
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
@@ -124,7 +125,6 @@ import skillbill.workflow.taskruntime.model.QUARANTINE_REJECTION_CLASS_PLANNING_
 import skillbill.workflow.taskruntime.model.ReviewPassResolution
 import skillbill.workflow.taskruntime.model.acceptanceCriterionRefsFor
 import skillbill.workflow.taskruntime.model.advanceBlockingFindingIdentities
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgressDecision
 import skillbill.workflow.taskruntime.model.detectAuditRepairNonProgress
 import skillbill.workflow.taskruntime.model.detectReviewRemediationNonProgress
 import skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope
@@ -311,6 +311,7 @@ internal class FeatureTaskRuntimeRunLoop(
       ?.get(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
       ?.repositoryCheckpointFingerprint
 
+  @Suppress("CyclomaticComplexMethod", "ReturnCount")
   fun drive() {
     if (FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW in state.phasesRequiringDurableGateInvalidation()) {
       val generation = checkNotNull(
@@ -326,30 +327,24 @@ internal class FeatureTaskRuntimeRunLoop(
       }
     }
     val auditGapPause = recorder.loadAuditGapPause(request.workflowId, request.dbPathOverride)
-    if (auditGapPause != null && pendingReentry == null) {
+    if (auditGapPause != null) {
       when (auditGapPause.operatorDecision) {
-        null -> {
-          // A parked pause with no decision re-surfaces. A consumed grant (grant_consumed=true with the
-          // decision cleared after a retry) means the run already moved on; a later crash must not
-          // re-park it on a resolved pause.
+        AUDIT_GAP_PAUSE_DECISION_ABANDON_SUBTASK -> {
+          abandonAuditGapSubtask(auditGapPause)
+          return
+        }
+        null -> if (pendingReentry == null) {
           if (!auditGapPause.grantConsumed) {
             reSurfaceAuditGapPause(auditGapPause)
             return
           }
         }
-        AUDIT_GAP_PAUSE_DECISION_ABANDON_SUBTASK -> {
-          abandonAuditGapSubtask(auditGapPause)
-          return
-        }
         AUDIT_GAP_PAUSE_DECISION_RETRY_FIX -> {
           if (!auditGapPause.grantConsumed) {
-            // Settle the paused audit from its carried-forward output (handled in advance()), then the
-            // transition seam takes the audit_gap edge while the unconsumed grant suppresses both
-            // pause checks.
             auditGapRetryResumePending = true
           }
         }
-        else -> {
+        else -> if (pendingReentry == null) {
           if (!auditGapPause.grantConsumed) {
             reSurfaceAuditGapPause(auditGapPause)
             return
@@ -824,6 +819,7 @@ internal class FeatureTaskRuntimeRunLoop(
     is FeatureTaskRuntimeNextPhase.Next -> nextTransitionTarget(phaseId, edge, effectiveVerdict, transition)
   }
 
+  @Suppress("CyclomaticComplexMethod")
   private fun nextTransitionTarget(
     phaseId: String,
     edge: FeatureTaskRuntimeBackwardEdge?,
@@ -2253,12 +2249,11 @@ internal class FeatureTaskRuntimeRunLoop(
    * durable review state or the audit-gap pause artifact. Re-pausing clears `operator_decision`, so a
    * subsequent unresolved pass has no grant left and pauses again.
    */
-  private fun operatorRetryGrantActive(): Boolean =
-    FeatureTaskRuntimeOperatorRetryGrant.active(
-      consumed = operatorRetryGrantConsumed,
-      inSessionGrant = operatorGrantedFixIteration,
-      persistedDecision = goalReviewStateOrNull()?.operatorDecision,
-    ) || auditGapPauseGrantActive()
+  private fun operatorRetryGrantActive(): Boolean = FeatureTaskRuntimeOperatorRetryGrant.active(
+    consumed = operatorRetryGrantConsumed,
+    inSessionGrant = operatorGrantedFixIteration,
+    persistedDecision = goalReviewStateOrNull()?.operatorDecision,
+  ) || auditGapPauseGrantActive()
 
   /**
    * The single-use audit-gap retry grant, read off the durable pause artifact: unconsumed and the
@@ -2741,6 +2736,7 @@ internal class FeatureTaskRuntimeRunLoop(
    * abandon path. For an audit-gap pause, the allowlist is `retry_fix` and `abandon_subtask`; an unmet
    * acceptance criterion cannot be accepted-and-advanced.
    */
+  @Suppress("ReturnCount")
   internal fun applyOperatorDecision(decision: GoalSubtaskOperatorDecision): String? {
     val auditGapPause = recorder.loadAuditGapPause(request.workflowId, request.dbPathOverride)
     if (auditGapPause != null) {
@@ -2874,7 +2870,7 @@ internal class FeatureTaskRuntimeRunLoop(
     val expectedRepositoryCheckpoint: String? = null,
   )
 
-  @Suppress("LongParameterList")
+  @Suppress("LongParameterList", "CyclomaticComplexMethod")
   private fun runPhase(
     phaseId: String,
     request: FeatureTaskRuntimeRunRequest,
@@ -2889,7 +2885,11 @@ internal class FeatureTaskRuntimeRunLoop(
       assignment = request.agentAssignment,
       invokedAgentId = request.invokedAgentId,
     )
-    val declaration = phaseDeclaration(phaseId, request.runInvariants.featureSize, qualityGateSelection()).let { declaration ->
+    val declaration = phaseDeclaration(
+      phaseId,
+      request.runInvariants.featureSize,
+      qualityGateSelection(),
+    ).let { declaration ->
       if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT &&
         reentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
       ) {
@@ -5804,7 +5804,7 @@ internal class FeatureTaskRuntimeRunLoop(
     run: PhaseRun,
     outputMap: Map<String, Any?>,
     repositoryFingerprint: String?,
-    auditOutputArtifact: String,
+    @Suppress("UnusedParameter") auditOutputArtifact: String,
   ): FeatureTaskRuntimeAuditGapPause? {
     if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) return null
     val currentCriterionRefs = FeatureTaskRuntimeOutputVerification
@@ -6651,8 +6651,10 @@ internal class FeatureTaskRuntimeRunLoop(
     if (!implementReentry && !auditAfterRemediation) {
       return null
     }
-    val round = (run.reentry?.takeIf { it.loopId == def.AUDIT_GAP_LOOP_ID }?.edgeIteration
-      ?: state.edgeIterationCount(def.AUDIT_GAP_LOOP_ID)).coerceAtLeast(1)
+    val round = (
+      run.reentry?.takeIf { it.loopId == def.AUDIT_GAP_LOOP_ID }?.edgeIteration
+        ?: state.edgeIterationCount(def.AUDIT_GAP_LOOP_ID)
+      ).coerceAtLeast(1)
     val auditOutputs = state.outputs()
       .filter { it.phaseId == def.PHASE_AUDIT }
       .sortedBy { it.iteration }
@@ -6680,6 +6682,7 @@ internal class FeatureTaskRuntimeRunLoop(
    * The criterion refs the most recent completed implement receipt claimed to address, joined through
    * the plan output's task-to-criterion mapping. Empty when either output is absent or does not parse.
    */
+  @Suppress("ReturnCount")
   private fun lastImplementClaims(state: FeatureTaskRuntimeRunState): List<String> {
     val def = FeatureTaskRuntimePhaseWorkflowDefinition
     val implement = state.outputFor(def.PHASE_IMPLEMENT) ?: return emptyList()

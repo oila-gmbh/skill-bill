@@ -1399,10 +1399,7 @@ class ParallelCodeReviewRunner(
     val rejectedCandidateCount: Int,
   )
 
-  private fun softAdmitFindings(
-    stdout: String,
-    launch: InlineParentLaunch,
-  ): SoftRegisterAdmission = try {
+  private fun softAdmitFindings(stdout: String, launch: InlineParentLaunch): SoftRegisterAdmission = try {
     val parsed = parseLaneRegisterSeam(stdout, launch.assignment.lane, registerParse)
     SoftRegisterAdmission(
       findings = attributeInlineFindings(parsed, launch.selected),

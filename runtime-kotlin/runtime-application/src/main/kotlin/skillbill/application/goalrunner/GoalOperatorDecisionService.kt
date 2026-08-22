@@ -22,6 +22,7 @@ class GoalOperatorDecisionService(
   private val goalContinuationRecorder: FeatureTaskRuntimeGoalContinuationRecorder,
   private val recorder: FeatureTaskRuntimePhaseRecorder,
 ) {
+  @Suppress("ReturnCount")
   fun record(request: GoalRunnerOperatorDecisionRequest): GoalRunnerOperatorDecisionResult {
     val loaded = manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
     val subtask = loaded?.manifest?.subtasks?.firstOrNull { it.id == request.subtaskId }

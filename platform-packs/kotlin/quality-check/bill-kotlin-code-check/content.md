@@ -30,14 +30,14 @@ Use this priority-ordered fix ladder:
 1. Repair structural, source-set, Gradle, compiler, toolchain, and generated-source failures.
 2. Repair public API or binary compatibility regressions according to the intended contract.
 3. Apply repository formatters and fix static-analysis findings at their source.
-4. Fix behavioral test failures without weakening assertions or deleting coverage.
+4. Repair behavioral test failures without weakening assertions or deleting coverage.
 5. Resolve dependency or security failures through supported versions and verification metadata.
 
 Never suppress a failure with annotations, baselines, disabled rules, or skipped tests.
 
 ### Repair Window
 
-Run `./gradlew check --continue` once and read that output. Fix every finding in the same session. Do not invoke the full collect-all gate after each individual finding. Targeted compile, test, and module checks are allowed while repairing. Repair every finding at its root cause; run `./gradlew check --continue` once to confirm after the full set is repaired. When a cache-bypassing confirm is required, use the pack `validation_gate.cache_bypassing_collect_all_full_gate_command`.
+Run `./gradlew check --continue` once and read that output. Fix every finding in the same session. Do not invoke the full collect-all gate after each individual finding. Targeted compile, test, and module checks are allowed while repairing. Repair every finding at its root cause; re-run `./gradlew check --continue` once to confirm after the full set is repaired. When a cache-bypassing confirm is required, use the pack `validation_gate.cache_bypassing_collect_all_full_gate_command`.
 
 Run the full suite when targeted checks cannot establish safety, including when build logic, shared APIs, toolchains, generated sources, dependencies, or cross-module behavior changed.
 

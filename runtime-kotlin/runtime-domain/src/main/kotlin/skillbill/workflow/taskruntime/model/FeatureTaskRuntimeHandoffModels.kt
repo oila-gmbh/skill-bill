@@ -5,7 +5,6 @@ import skillbill.boundary.OpenBoundaryMap
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.ValidationDepth
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 
 /**
  * Domain models for the inter-phase handoff contract. The handoff is an

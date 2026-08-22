@@ -7,6 +7,7 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
 import skillbill.application.featuretask.FeatureTaskRuntimePhasePromptComposer
 import skillbill.application.featuretask.FeatureTaskRuntimeVerificationSignalKeys
+import skillbill.application.featuretask.phaseDeclaration
 import skillbill.application.model.FeatureTaskRuntimeImplementationContinuation
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.contracts.JsonSupport
@@ -1149,7 +1150,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
-  fun `audit_gap implement re-entry with memory renders the sticky-priority directive but a forward implement does not`() {
+  fun `audit_gap implement re-entry renders sticky-priority directive but forward implement does not`() {
     val memory = FeatureTaskRuntimePriorGapMemory(
       round = 2,
       priorUnmetCriteria = listOf("AC-002: $AUDIT_GAP_MESSAGE"),
@@ -1174,7 +1175,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
-  fun `audit after remediation with memory requires sticky re-justification while a first audit keeps the blank-slate wording`() {
+  fun `audit after remediation requires sticky re-justification while first audit keeps blank-slate wording`() {
     val memory = FeatureTaskRuntimePriorGapMemory(
       round = 2,
       priorUnmetCriteria = listOf("AC-002: $AUDIT_GAP_MESSAGE"),
@@ -1661,7 +1662,7 @@ private fun briefingFor(
   val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint(fingerprint = "fixture-checkpoint-1")
   return FeatureTaskRuntimePhaseBriefingAssembler.assemble(
     FeatureTaskRuntimeHandoffContract.assembleHandoff(
-      declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclaration(phaseId, featureSize),
+      declaration = phaseDeclaration(phaseId, featureSize),
       runInvariants = FeatureTaskRuntimeRunInvariants(
         specReference = SPEC_REFERENCE,
         featureSize = featureSize,

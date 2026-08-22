@@ -3,7 +3,6 @@ package skillbill.workflow.taskruntime.model
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertTrue
 
 class FeatureTaskRuntimePriorGapMemoryTest {
   @Test
@@ -66,7 +65,14 @@ class FeatureTaskRuntimePriorGapMemoryTest {
       lastImplementClaims = emptyList(),
       stickyIds = emptyList(),
     )
-    assertTrue(empty.toProjectionFields().all { it.value.itemCount == 0 })
+    assertEquals(
+      listOf(
+        FeatureTaskRuntimePriorGapMemory.FIELD_PRIOR_UNMET_CRITERIA,
+        FeatureTaskRuntimePriorGapMemory.FIELD_LAST_IMPLEMENT_CLAIMS,
+        FeatureTaskRuntimePriorGapMemory.FIELD_STICKY_IDS,
+      ),
+      empty.toProjectionFields().filter { it.value.itemCount == 0 }.map { it.name },
+    )
   }
 
   @Test

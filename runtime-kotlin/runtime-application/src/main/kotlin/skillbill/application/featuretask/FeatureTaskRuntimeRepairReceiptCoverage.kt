@@ -57,8 +57,7 @@ internal fun featureTaskRuntimeUnresolvedFindings(
   )
 }
 
-private fun unresolvedEntryRef(entry: FeatureTaskRuntimeRepairReceiptEntry): String =
-  entry.findingId
+private fun unresolvedEntryRef(entry: FeatureTaskRuntimeRepairReceiptEntry): String = entry.findingId
 
 private fun unresolvedEntryDetail(entry: FeatureTaskRuntimeRepairReceiptEntry): String =
   "${unresolvedEntryRef(entry)} (${entry.unresolvedReason.orEmpty()})"

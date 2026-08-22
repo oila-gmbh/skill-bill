@@ -303,6 +303,7 @@ object FeatureTaskRuntimePhasePromptComposer {
       .filterNot { it in FeatureTaskRuntimePhaseWorkflowDefinition.transitions.loopOnlyPhaseIds }
       .joinToString(" -> ")
 
+  @Suppress("LongParameterList")
   private fun header(
     issueKey: String,
     phaseId: String,

@@ -51,6 +51,7 @@ internal const val PASSED_PHASE_OUTPUT_CONTRACT: String = "phase_output_contract
  * [WorkflowGitOperations.isCommitAncestor] (subtask 2); stale blocked outcomes use
  * [derivedTerminalOutcomeFor] / [nonCompleteStoredOutcomeIsCorroborated] (subtask 4).
  */
+@Suppress("TooManyFunctions")
 internal class GoalRunnerChildRepairOperations(
   private val engine: WorkflowEngine,
   private val gitOperations: WorkflowGitOperations,
