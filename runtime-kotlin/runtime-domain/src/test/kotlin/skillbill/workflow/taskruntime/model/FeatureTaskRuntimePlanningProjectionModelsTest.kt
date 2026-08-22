@@ -145,6 +145,31 @@ class FeatureTaskRuntimePlanningProjectionModelsTest {
   }
 
   @Test
+  fun `receipt accepts an empty changed_paths list for a reconciled no-op`() {
+    val produced = linkedMapOf<String, Any?>(
+      "projection_kind" to "implementation_receipt",
+      "contract_version" to FeatureTaskRuntimePlanningProjectionContract.VERSION,
+      "completed_task_ids" to listOf("task-01"),
+      "changed_paths" to emptyList<String>(),
+      "tests_executed" to emptyList<Any?>(),
+      "reconciliation_evidence" to linkedMapOf(
+        "reconciled" to true,
+        "evidence" to "tree already matches target; no edits this turn",
+      ),
+      "repository_checkpoint" to linkedMapOf("fingerprint" to "abc123"),
+    )
+    val parsed = assertIs<FeatureTaskRuntimeImplementationReceipt>(
+      featureTaskRuntimePlanningProjectionFromEnvelope(
+        envelope = linkedMapOf("produced_outputs" to produced),
+        producingPhaseId = "implement",
+        expectedKind = FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT,
+        schemaValidator = NoopFeatureTaskRuntimePlanningProjectionValidator,
+      ),
+    )
+    assertEquals(emptyList<String>(), parsed.changedPaths)
+  }
+
+  @Test
   fun `an unknown projection kind is rejected at the parse seam`() {
     assertFailsWith<InvalidFeatureTaskRuntimePlanningProjectionSchemaError> {
       featureTaskRuntimePlanningProjectionFromEnvelope(

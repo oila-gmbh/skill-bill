@@ -293,7 +293,6 @@ $defs:
       changed_paths:
         type: array
         uniqueItems: true
-        minItems: 1
         maxItems: 512
         items: { $ref: "#/$defs/repoPath" }
       tests_added:

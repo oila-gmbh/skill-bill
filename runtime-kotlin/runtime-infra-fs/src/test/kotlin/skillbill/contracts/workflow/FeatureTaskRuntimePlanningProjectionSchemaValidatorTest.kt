@@ -177,24 +177,19 @@ class FeatureTaskRuntimePlanningProjectionSchemaValidatorTest {
   }
 
   @Test
-  fun `an empty changed_paths list on a receipt is rejected by the schema`() {
-    // F-002: the model rejects an empty changed_paths (.ifEmpty{throw}); before minItems:1 the schema
-    // accepted it, so a no-op receipt passed this gate and then threw in fromMap, wedging the consumer.
-    val error = assertFailsWith<InvalidFeatureTaskRuntimePlanningProjectionSchemaError> {
-      FeatureTaskRuntimePlanningProjectionSchemaValidator.validate(
-        payload = linkedMapOf<String, Any?>(
-          "projection_kind" to "implementation_receipt",
-          "contract_version" to FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION,
-          "completed_task_ids" to listOf("task-01"),
-          "changed_paths" to emptyList<String>(),
-          "tests_executed" to listOf(linkedMapOf("name" to "XTest.kt", "outcome" to "passed")),
-          "reconciliation_evidence" to linkedMapOf("reconciled" to true, "evidence" to "files at target"),
-          "repository_checkpoint" to linkedMapOf("fingerprint" to "abc123"),
-        ),
-        sourceLabel = "implement#1",
-      )
-    }
-    assertTrue(error.reason.isNotBlank(), "rejection reason must be non-empty")
+  fun `an empty changed_paths list on a receipt is accepted by the schema`() {
+    FeatureTaskRuntimePlanningProjectionSchemaValidator.validate(
+      payload = linkedMapOf<String, Any?>(
+        "projection_kind" to "implementation_receipt",
+        "contract_version" to FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION,
+        "completed_task_ids" to listOf("task-01"),
+        "changed_paths" to emptyList<String>(),
+        "tests_executed" to listOf(linkedMapOf("name" to "XTest.kt", "outcome" to "passed")),
+        "reconciliation_evidence" to linkedMapOf("reconciled" to true, "evidence" to "files at target"),
+        "repository_checkpoint" to linkedMapOf("fingerprint" to "abc123"),
+      ),
+      sourceLabel = "implement#1",
+    )
   }
 
   @Test
