@@ -19,6 +19,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 
 /** Public CLI-facing install operations backed by the internal install primitives. */
+@Suppress("TooManyFunctions")
 object InstallOperations {
   fun planInstall(request: InstallPlanRequest): InstallPlan = buildInstallPlan(request)
 

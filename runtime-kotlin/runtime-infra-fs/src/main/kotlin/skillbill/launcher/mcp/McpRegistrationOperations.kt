@@ -89,7 +89,6 @@ object McpRegistrationOperations {
     mutate: (Path) -> McpMutationResult,
   ): McpMutationResult = profileFanOut(
     agent = agent,
-    home = home,
     profilePaths = claudeProfileConfigPaths(home, environment),
     representativePath = home.resolve(".claude.json"),
     failureLabel = "Claude",
@@ -103,7 +102,6 @@ object McpRegistrationOperations {
     mutate: (Path) -> McpMutationResult,
   ): McpMutationResult = profileFanOut(
     agent = agent,
-    home = home,
     profilePaths = codexProfileConfigPaths(home, environment),
     representativePath = home.resolve(".codex/config.toml"),
     failureLabel = "Codex",
@@ -112,7 +110,6 @@ object McpRegistrationOperations {
 
   private fun profileFanOut(
     agent: String,
-    home: Path,
     profilePaths: List<Path>,
     representativePath: Path,
     failureLabel: String,

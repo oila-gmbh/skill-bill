@@ -151,16 +151,18 @@ internal fun materializeSelectedPlatformSkills(
   }
 }
 
-private fun multiRootDefaultTargets(home: Path, environment: Map<String, String> = System.getenv()): List<InstallAgentDefaultTarget> =
-  agentPaths(home, environment).flatMap { (agentId, path) ->
-    val agent = InstallAgent.fromId(agentId)
-    when (agentId) {
-      "claude" -> claudeSkillTargets(home, environment).map { skillPath ->
-        InstallAgentDefaultTarget(agent = agent, path = skillPath)
-      }
-      "codex" -> codexSkillTargets(home, environment).map { skillPath ->
-        InstallAgentDefaultTarget(agent = agent, path = skillPath)
-      }
-      else -> listOf(InstallAgentDefaultTarget(agent = agent, path = path))
+private fun multiRootDefaultTargets(
+  home: Path,
+  environment: Map<String, String> = System.getenv(),
+): List<InstallAgentDefaultTarget> = agentPaths(home, environment).flatMap { (agentId, path) ->
+  val agent = InstallAgent.fromId(agentId)
+  when (agentId) {
+    "claude" -> claudeSkillTargets(home, environment).map { skillPath ->
+      InstallAgentDefaultTarget(agent = agent, path = skillPath)
     }
+    "codex" -> codexSkillTargets(home, environment).map { skillPath ->
+      InstallAgentDefaultTarget(agent = agent, path = skillPath)
+    }
+    else -> listOf(InstallAgentDefaultTarget(agent = agent, path = path))
   }
+}

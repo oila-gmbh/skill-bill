@@ -762,6 +762,7 @@ internal object InstallerShellFixtures {
     |fi
     """.trimMargin()
 
+  @Suppress("LongMethod")
   fun seedInstallerRuntime(repoRoot: Path) {
     val cliBin = repoRoot.resolve("runtime-kotlin/runtime-cli/build/install/runtime-cli/bin/runtime-cli")
     val mcpBin = repoRoot.resolve("runtime-kotlin/runtime-mcp/build/install/runtime-mcp/bin/runtime-mcp")
@@ -848,6 +849,7 @@ internal object InstallerShellFixtures {
     Files.writeString(orchestrationDir.resolve("PLAYBOOK.md"), "# Review orchestrator\n")
   }
 
+  @Suppress("LongMethod")
   fun seedUninstallerRuntime(repoRoot: Path, failingNativeUnlinkCommand: String? = null) {
     val cliBin = repoRoot.resolve("runtime-kotlin/runtime-cli/build/install/runtime-cli/bin/runtime-cli")
     Files.createDirectories(cliBin.parent)
@@ -913,6 +915,7 @@ internal object InstallerShellFixtures {
   // A fake Gradle wrapper. The prebuilt path never calls it; the auto-fallback
   // path does, and build_kotlin_runtime_distributions clears build/install before
   // invoking installDist, so the fake must recreate runnable application images.
+  @Suppress("LongMethod")
   fun seedFakeGradlew(repoRoot: Path) {
     val gradlew = repoRoot.resolve("runtime-kotlin/gradlew")
     Files.createDirectories(gradlew.parent)

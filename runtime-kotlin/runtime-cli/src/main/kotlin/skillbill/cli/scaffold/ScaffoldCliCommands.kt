@@ -32,6 +32,7 @@ import skillbill.cli.install.InstallClaudeRootsCommand
 import skillbill.cli.install.InstallCodexRootsCommand
 import skillbill.cli.install.InstallCleanupAgentTargetCommand
 import skillbill.cli.install.InstallCodexAgentsPathCommand
+import skillbill.cli.install.InstallCodexRootsCommand
 import skillbill.cli.install.InstallCursorAgentsPathCommand
 import skillbill.cli.install.InstallJunieAgentsPathCommand
 import skillbill.cli.install.InstallLinkClaudeAgentsCommand
