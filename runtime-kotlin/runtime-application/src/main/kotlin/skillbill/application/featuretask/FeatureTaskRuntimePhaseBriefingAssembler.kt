@@ -161,6 +161,7 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
     planningProjectionValidator = planningProjectionValidator,
     addonContentBySlug = addonContentBySlug,
     validationDepth = handoff.validationDepth,
+    qualityGateSelection = handoff.qualityGateSelection,
   )
 
   private fun invariantDeclarations(phaseId: String): List<PhaseHandoffProjectionDeclaration> =

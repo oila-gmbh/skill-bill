@@ -13,3 +13,6 @@ enum class FeatureTaskRuntimeQualityGateSelection(val wireValue: String) {
     }
   }
 }
+
+fun FeatureTaskRuntimeQualityGateSelection?.orLegacyValidate(): FeatureTaskRuntimeQualityGateSelection =
+  this ?: FeatureTaskRuntimeQualityGateSelection.VALIDATE

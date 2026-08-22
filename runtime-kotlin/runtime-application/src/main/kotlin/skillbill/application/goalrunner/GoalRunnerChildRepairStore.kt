@@ -49,6 +49,7 @@ object NoopGoalRunnerChildRepairStore : GoalRunnerChildRepairStore {
     workflowId = workflowId,
     passedChecks = listOf(
       "validation_depth_present",
+      "quality_gate_selection_present",
       "review_base_reachable",
       "remediation_base_reachable_or_absent",
       "continuation_outcome_corroborated_or_absent",

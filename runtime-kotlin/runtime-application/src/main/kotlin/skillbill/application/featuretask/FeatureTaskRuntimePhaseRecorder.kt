@@ -72,6 +72,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProducerIteration
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionFailureClassification
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionKind
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionMeasurement
@@ -1301,6 +1302,15 @@ class FeatureTaskRuntimePhaseRecorder(
     val raw = decodeArtifacts(record.artifactsJson)[FEATURE_TASK_RUNTIME_BUILD_GATE_PROGRESS_ARTIFACT_KEY]
     val artifact = JsonSupport.anyToStringAnyMap(raw) ?: return@read null
     FeatureTaskRuntimeValidationGateProgress.fromArtifactMap(artifact)
+  }
+
+  fun loadGoalContinuationQualityGateSelection(
+    workflowId: String,
+    dbOverride: String? = null,
+  ): FeatureTaskRuntimeQualityGateSelection? = database.read(dbOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
+    GoalSubtaskReviewArtifactDecoder.decodeContinuationOnly(decodeArtifacts(record.artifactsJson))
+      ?.qualityGateSelection
   }
 
   fun persistBuildGateProgress(

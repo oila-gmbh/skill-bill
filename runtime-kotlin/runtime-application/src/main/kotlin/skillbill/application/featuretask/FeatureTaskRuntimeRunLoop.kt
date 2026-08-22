@@ -2046,7 +2046,7 @@ internal class FeatureTaskRuntimeRunLoop(
     )
     val run = PhaseRun(
       phaseId = phaseId,
-      declaration = phaseDeclaration(phaseId, request.runInvariants.featureSize),
+      declaration = phaseDeclaration(phaseId, request.runInvariants.featureSize, qualityGateSelection()),
       resolvedAgent = resolvedAgent,
       modelDirective = FeatureTaskRuntimeModelResolver.resolve(
         phaseId,
@@ -2088,8 +2088,8 @@ internal class FeatureTaskRuntimeRunLoop(
   /**
    * Routes a recorded operator decision to the outcome it names. `retry_fix` is handled by the grant
    * seam and falls through to the normal backward-edge transition; `accept_and_advance` releases the
-   * subtask forward to `validate` with its unresolved Blockers accepted; `abandon_subtask` ends it.
-   * Every decision is consumed durably so the release happens exactly once.
+   * subtask forward to the child's stamped quality gate with its unresolved Blockers accepted;
+   * `abandon_subtask` ends it. Every decision is consumed durably so the release happens exactly once.
    */
   private fun operatorPauseRelease(phaseId: String): PauseReleaseTarget? {
     if (
@@ -2102,7 +2102,9 @@ internal class FeatureTaskRuntimeRunLoop(
       null, GoalSubtaskPauseRelease.RETRY_FIX -> null
       GoalSubtaskPauseRelease.ADVANCE -> {
         consumeOperatorRetryGrant()
-        PauseReleaseTarget(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE)
+        PauseReleaseTarget(
+          FeatureTaskRuntimeQualityGateRouting.selectedGatePhase(qualityGateSelection()),
+        )
       }
       GoalSubtaskPauseRelease.ABANDON -> {
         consumeOperatorRetryGrant()
@@ -2491,8 +2493,8 @@ internal class FeatureTaskRuntimeRunLoop(
   /**
    * The operator-decision entry point. `retry_fix` grants one fresh `implement_fix` iteration that is
    * exempt from the `review_fix` per-edge cap accounting — the operator choice is the bound, not the
-   * cap — while `accept_and_advance` releases the subtask forward to `validate` and `abandon_subtask`
-   * takes the existing abandon path.
+   * cap — while `accept_and_advance` releases the subtask forward to the stamped quality gate and
+   * `abandon_subtask` takes the existing abandon path.
    */
   internal fun applyOperatorDecision(decision: GoalSubtaskOperatorDecision): String? {
     val reviewState = goalReviewStateOrNull()
@@ -2602,7 +2604,7 @@ internal class FeatureTaskRuntimeRunLoop(
       assignment = request.agentAssignment,
       invokedAgentId = request.invokedAgentId,
     )
-    val declaration = phaseDeclaration(phaseId, request.runInvariants.featureSize).let { declaration ->
+    val declaration = phaseDeclaration(phaseId, request.runInvariants.featureSize, qualityGateSelection()).let { declaration ->
       if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT &&
         reentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
       ) {
@@ -3478,6 +3480,30 @@ internal class FeatureTaskRuntimeRunLoop(
         "Build gate cycle could not resolve a repository checkpoint fingerprint.",
       )
     val iteration = state.nextIteration(run.phaseId)
+    val runningPhaseState = phaseStateRequest(
+      run,
+      iteration,
+      STATUS_RUNNING,
+      finished = false,
+      outputArtifact = null,
+    )
+    state.reserveReviewPass(runningPhaseState.reviewPassNumber)
+    if (!recorder.recordPhaseState(runningPhaseState, run.request.dbPathOverride)) {
+      return blockAndPersistInPhase(
+        run,
+        iteration,
+        "Build gate cycle could not persist running build phase before gate execution.",
+        observability,
+        failureDisposition = FeatureTaskRuntimeFailureDisposition.PROCESS_FAILURE,
+      )
+    }
+    observability.started(
+      run.phaseId,
+      run.resolvedAgent.resolvedAgentId,
+      iteration,
+      run.modelDirective,
+      FeatureTaskRuntimePhaseStartReentry.FIRST_VISIT,
+    )
     val cycle = buildGateCoordinator.execute(
       cycle = ValidationGateCycleRequest(
         repoRoot = run.request.repoRoot,
@@ -3502,21 +3528,13 @@ internal class FeatureTaskRuntimeRunLoop(
     return when (cycle) {
       ValidationGateCycleResult.AbsentFallback ->
         PhaseOutcome.blocked("Build gate could not run: pack declares no usable build_command.")
-      is ValidationGateCycleResult.Terminal -> {
-        observability.started(
-          run.phaseId,
-          run.resolvedAgent.resolvedAgentId,
-          iteration,
-          run.modelDirective,
-          FeatureTaskRuntimePhaseStartReentry.FIRST_VISIT,
-        )
+      is ValidationGateCycleResult.Terminal ->
         when (val terminal = cycle.outcome) {
           is ValidationGateCycleTerminalOutcome.Completed ->
             settleRuntimeOwnedBuild(run, iteration, terminal.output.payload, observability)
           is ValidationGateCycleTerminalOutcome.Blocked ->
             blockAndPersistInPhase(run, iteration, terminal.reason, observability)
         }
-      }
     }
   }
 
@@ -5245,7 +5263,7 @@ internal class FeatureTaskRuntimeRunLoop(
     val producerIndex = transitions.forwardPhaseIds.indexOf(run.phaseId)
     if (producerIndex < 0 || producerIndex == transitions.forwardPhaseIds.lastIndex) return null
     val consumerPhaseId = transitions.forwardPhaseIds[producerIndex + 1]
-    val declaration = phaseDeclaration(consumerPhaseId, run.request.runInvariants.featureSize)
+    val declaration = phaseDeclaration(consumerPhaseId, run.request.runInvariants.featureSize, qualityGateSelection())
     val currentOutput = FeatureTaskRuntimePhaseOutput(
       phaseId = run.phaseId,
       iteration = iteration,
@@ -5898,6 +5916,7 @@ internal class FeatureTaskRuntimeRunLoop(
       branchIdentity = resolvedBranch,
       baseBranch = resolvedBranchRecord?.baseBranch ?: "main",
       validationDepth = run.request.goalContinuation?.validationDepth ?: ValidationDepth.DEFAULT,
+      qualityGateSelection = qualityGateSelection(),
     ).copy(recordedFindingVerdicts = recordedFindingVerdictsForFixHandoff(run, state))
     recorder.validateHandoffDeclarations(handoff.projectionDeclarations)
     val sharedEvidence = resolveSharedReviewEvidence(run, repositoryCheckpoint)

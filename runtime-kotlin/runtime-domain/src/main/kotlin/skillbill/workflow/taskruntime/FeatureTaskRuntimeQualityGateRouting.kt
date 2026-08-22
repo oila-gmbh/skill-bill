@@ -4,6 +4,11 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeNextPhase
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 
 object FeatureTaskRuntimeQualityGateRouting {
+  fun selectedGatePhase(selection: FeatureTaskRuntimeQualityGateSelection): String = when (selection) {
+    FeatureTaskRuntimeQualityGateSelection.BUILD -> FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD
+    FeatureTaskRuntimeQualityGateSelection.VALIDATE -> FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE
+  }
+
   fun applyAfterReview(
     currentPhaseId: String,
     transition: FeatureTaskRuntimeNextPhase,

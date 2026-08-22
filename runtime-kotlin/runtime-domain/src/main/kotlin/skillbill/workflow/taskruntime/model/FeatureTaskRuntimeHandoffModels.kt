@@ -5,6 +5,7 @@ import skillbill.boundary.OpenBoundaryMap
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.ValidationDepth
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 
 /**
  * Domain models for the inter-phase handoff contract. The handoff is an
@@ -165,6 +166,7 @@ data class FeatureTaskRuntimePhaseHandoff(
    * solo/legacy/non-goal runs keep today's validate projection and prompt behavior.
    */
   val validationDepth: ValidationDepth = ValidationDepth.DEFAULT,
+  val qualityGateSelection: FeatureTaskRuntimeQualityGateSelection = FeatureTaskRuntimeQualityGateSelection.VALIDATE,
   /**
    * The driving verdict for a backward-edge re-entry (e.g. the review findings for an
    * `implement_fix` re-entry); null for an ordinary forward launch. Upstream outputs are still

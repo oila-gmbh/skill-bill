@@ -101,6 +101,7 @@ import skillbill.workflow.model.GoalProgressEvent
 import skillbill.workflow.model.GoalProgressEventKind
 import skillbill.workflow.model.GoalProgressOutcome
 import skillbill.workflow.model.ValidationDepth
+import skillbill.goalrunner.GoalRunnerQualityGateSelectionResolver
 import skillbill.workflow.model.WorkflowStateSnapshot
 import skillbill.workflow.model.WorkflowStepState
 import skillbill.workflow.model.WorkflowUpdateInput
@@ -711,6 +712,7 @@ class WorkflowGoalRunnerManifestStore(
       parentWorkflowId = parentWorkflowId,
       codeReviewMode = setup.reviewPolicy.codeReviewMode,
       validationDepth = ValidationDepth.FULL,
+      qualityGateSelection = GoalRunnerQualityGateSelectionResolver.resolve(state.manifest, setup.subtaskId),
       parallelReviewAgent = setup.reviewPolicy.parallelReviewAgent,
       subtaskName = state.manifest.subtasks.firstOrNull { it.id == setup.subtaskId }?.name?.takeIf(String::isNotBlank),
     ).toArtifactMap(),

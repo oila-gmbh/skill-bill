@@ -8,6 +8,7 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_LEDGER_LI
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_RUN_INVARIANTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
@@ -28,12 +29,14 @@ internal fun featureSizeFromArtifacts(artifacts: Map<String, Any?>): FeatureTask
 internal fun diagnoseUnsettledCompletedUpstreamPhaseId(
   phaseRecords: Map<String, FeatureTaskRuntimePhaseRecord>,
   featureSize: FeatureTaskRuntimeFeatureSize,
+  qualityGateSelection: FeatureTaskRuntimeQualityGateSelection =
+    FeatureTaskRuntimeQualityGateSelection.VALIDATE,
 ): String? {
   val recordedOutputs = settledPhaseOutputs(phaseRecords)
   val stepOrder = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds
   val blockedConsumers = phaseRecords.filterValues { it.status == "blocked" }.keys
   for (consumerPhaseId in blockedConsumers) {
-    val declaration = phaseDeclaration(consumerPhaseId, featureSize)
+    val declaration = phaseDeclaration(consumerPhaseId, featureSize, qualityGateSelection)
     val blockedReason = phaseRecords[consumerPhaseId]?.blockedReason.orEmpty()
     val missing = missingUpstream(declaration, recordedOutputs)
       ?.filter { upstreamId -> phaseRecords[upstreamId]?.outputArtifact.isNullOrBlank() }
@@ -56,6 +59,8 @@ internal fun buildCompletedUpstreamMissingOutputRepair(
   featureSize: FeatureTaskRuntimeFeatureSize,
   resumePhaseId: String,
   reason: String,
+  qualityGateSelection: FeatureTaskRuntimeQualityGateSelection =
+    FeatureTaskRuntimeQualityGateSelection.VALIDATE,
 ): WorkflowUpdateInput {
   val stepOrder = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepIds
   val recordedOutputs = settledPhaseOutputs(phaseRecords)
@@ -65,7 +70,10 @@ internal fun buildCompletedUpstreamMissingOutputRepair(
       add(resumePhaseId)
       phaseRecords.forEach { (phaseId, record) ->
         if (record.status == "blocked") {
-          val missing = missingUpstream(phaseDeclaration(phaseId, featureSize), recordedOutputs)
+          val missing = missingUpstream(
+            phaseDeclaration(phaseId, featureSize, qualityGateSelection),
+            recordedOutputs,
+          )
           if (missing?.contains(resumePhaseId) == true) add(phaseId)
         }
       }

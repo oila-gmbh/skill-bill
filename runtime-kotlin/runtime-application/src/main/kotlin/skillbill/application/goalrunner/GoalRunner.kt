@@ -19,6 +19,7 @@ import skillbill.application.workflow.repoRoot
 import skillbill.contracts.JsonSupport
 import skillbill.error.InvalidUnaddressedFindingsLedgerSchemaError
 import skillbill.error.UnaddressedFindingsLedgerAbsentError
+import skillbill.goalrunner.GoalRunnerQualityGateSelectionResolver
 import skillbill.goalrunner.GoalRunnerOutcomeReconciler
 import skillbill.goalrunner.GoalRunnerPlanner
 import skillbill.goalrunner.model.GoalAttemptLedgerAction
@@ -1914,6 +1915,7 @@ internal class GoalRunnerLaunchReconciler(
         assignedWorkflowId = assignedWorkflowId,
         codeReviewMode = request.codeReviewMode ?: CodeReviewExecutionMode.DEFAULT,
         validationDepth = ValidationDepth.FULL,
+        qualityGateSelection = GoalRunnerQualityGateSelectionResolver.resolve(state.manifest, subtaskId),
         parallelReviewAgent = request.parallelReviewAgent,
         agentAddonSelection = manifestStore.effectiveAgentAddonSelection(state.parentWorkflowId, request),
         reviewBaseline = state.manifest.workflowIdFor(subtaskId)

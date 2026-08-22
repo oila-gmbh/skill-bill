@@ -9,6 +9,7 @@ import skillbill.application.goalrunner.GOAL_CHILD_REPAIR_EVIDENCE_ARTIFACT_KEY
 import skillbill.application.goalrunner.GoalRunnerStatusService
 import skillbill.application.goalrunner.PASSED_CONTINUATION_OUTCOME
 import skillbill.application.goalrunner.PASSED_PHASE_OUTPUT_CONTRACT
+import skillbill.application.goalrunner.PASSED_QUALITY_GATE_SELECTION
 import skillbill.application.goalrunner.PASSED_REMEDIATION_BASE
 import skillbill.application.goalrunner.PASSED_REVIEW_BASE
 import skillbill.application.goalrunner.PASSED_UPSTREAM_OUTPUT
@@ -52,6 +53,7 @@ import skillbill.workflow.model.WorkflowUpdateInput
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY
@@ -105,6 +107,34 @@ internal class GoalRunnerRepairTest : GoalRunnerRepairFixtures() {
   }
 
   @Test
+  fun `diagnosis names missing quality_gate_selection with absent current value`() {
+    val workflows = InMemoryWorkflowStates()
+    val workflowId = "wftr-repair-missing-selection"
+    workflows.saveFeatureTaskRuntimeWorkflow(
+      repairChildRecord(
+        workflowId = workflowId,
+        continuation = continuationMap(includeValidationDepth = true, includeQualityGateSelection = false),
+        reviewState = healthyReviewState(),
+      ),
+    )
+    val store = repairStore(workflows, git = ReachableGit())
+
+    val diagnosis = store.diagnoseChildWedges(
+      workflowId = workflowId,
+      issueKey = ISSUE_KEY,
+      subtaskId = 1,
+      subtasks = listOf(subtask(1, workflowId)),
+      repoRoot = Path.of("."),
+    )
+
+    assertEquals(1, diagnosis.wedges.size)
+    assertEquals(GoalRunnerWedgeClass.MISSING_QUALITY_GATE_SELECTION, diagnosis.wedges.single().wedgeClass)
+    assertEquals("quality_gate_selection", diagnosis.wedges.single().field)
+    assertNull(diagnosis.wedges.single().currentValue)
+    assertFalse(PASSED_QUALITY_GATE_SELECTION in diagnosis.passedChecks)
+  }
+
+  @Test
   fun `healthy child diagnosis names every check that passed`() {
     val workflows = InMemoryWorkflowStates()
     val workflowId = "wftr-repair-healthy"
@@ -129,6 +159,7 @@ internal class GoalRunnerRepairTest : GoalRunnerRepairFixtures() {
     assertEquals(
       listOf(
         PASSED_VALIDATION_DEPTH,
+        PASSED_QUALITY_GATE_SELECTION,
         PASSED_REVIEW_BASE,
         PASSED_REMEDIATION_BASE,
         PASSED_CONTINUATION_OUTCOME,
@@ -347,6 +378,129 @@ internal class GoalRunnerRepairTest : GoalRunnerRepairFixtures() {
   }
 
   @Test
+  fun `diagnosis names build not validate for build-stamped child missing settled build output`() {
+    val workflows = InMemoryWorkflowStates()
+    val workflowId = "wftr-repair-unsettled-build-upstream"
+    val artifacts = linkedMapOf<String, Any?>(
+      "goal_continuation" to FeatureTaskRuntimeGoalContinuationArtifact(
+        issueKey = ISSUE_KEY,
+        subtaskId = 1,
+        suppressPr = true,
+        goalBranch = GOAL_BRANCH,
+        parentWorkflowId = "wfl-parent",
+        codeReviewMode = CodeReviewExecutionMode.INLINE,
+        validationDepth = ValidationDepth.FULL,
+        qualityGateSelection = FeatureTaskRuntimeQualityGateSelection.BUILD,
+      ).toArtifactMap(),
+      GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to healthyReviewState().toArtifactMap(),
+      FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to mapOf(
+        "review" to unsettledUpstreamPhaseRecord("review", status = "completed").copy(
+          outputArtifact = """{"contract_version":"0.1"}""",
+        ).toArtifactMap(),
+        "build" to unsettledUpstreamPhaseRecord("build").toArtifactMap(),
+        "write_history" to unsettledUpstreamPhaseRecord(
+          phaseId = "write_history",
+          status = "blocked",
+          blockedReason = "Phase 'write_history' requires upstream output(s) build that are not present",
+        ).toArtifactMap(),
+      ),
+    )
+    val definition = WorkflowFamily.TASK_RUNTIME.definition
+    val engine = WorkflowEngine(testWorkflowSnapshotValidator)
+    val opened = engine.openRecord(definition, workflowId, "fis-repair", "write_history")
+    workflows.saveFeatureTaskRuntimeWorkflow(
+      engine.updateRecord(
+        definition,
+        opened,
+        WorkflowUpdateInput(
+          workflowStatus = "running",
+          currentStepId = "write_history",
+          stepUpdates = null,
+          artifactsPatch = artifacts,
+          sessionId = "ftr-repair",
+        ),
+      ).toRecord(),
+    )
+    val store = repairStore(workflows, git = ReachableGit())
+
+    val diagnosis = store.diagnoseChildWedges(
+      workflowId = workflowId,
+      issueKey = ISSUE_KEY,
+      subtaskId = 1,
+      subtasks = listOf(subtask(1, workflowId)),
+      repoRoot = Path.of("."),
+    )
+
+    assertEquals(GoalRunnerWedgeClass.COMPLETED_UPSTREAM_MISSING_OUTPUT, diagnosis.wedges.single().wedgeClass)
+    assertEquals("build", diagnosis.wedges.single().field)
+    assertFalse(PASSED_UPSTREAM_OUTPUT in diagnosis.passedChecks)
+  }
+
+  @Test
+  fun `repairing build-stamped completed upstream missing output reopens build not validate`() {
+    val workflows = InMemoryWorkflowStates()
+    val workflowId = "wftr-repair-apply-unsettled-build-upstream"
+    val artifacts = linkedMapOf<String, Any?>(
+      "goal_continuation" to FeatureTaskRuntimeGoalContinuationArtifact(
+        issueKey = ISSUE_KEY,
+        subtaskId = 1,
+        suppressPr = true,
+        goalBranch = GOAL_BRANCH,
+        parentWorkflowId = "wfl-parent",
+        codeReviewMode = CodeReviewExecutionMode.INLINE,
+        validationDepth = ValidationDepth.FULL,
+        qualityGateSelection = FeatureTaskRuntimeQualityGateSelection.BUILD,
+      ).toArtifactMap(),
+      GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to healthyReviewState().toArtifactMap(),
+      FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY to mapOf(
+        "review" to unsettledUpstreamPhaseRecord("review", status = "completed").copy(
+          outputArtifact = """{"contract_version":"0.1"}""",
+        ).toArtifactMap(),
+        "build" to unsettledUpstreamPhaseRecord("build").toArtifactMap(),
+        "write_history" to unsettledUpstreamPhaseRecord(
+          phaseId = "write_history",
+          status = "blocked",
+          blockedReason = "Phase 'write_history' requires upstream output(s) build that are not present",
+        ).toArtifactMap(),
+      ),
+    )
+    val definition = WorkflowFamily.TASK_RUNTIME.definition
+    val engine = WorkflowEngine(testWorkflowSnapshotValidator)
+    val opened = engine.openRecord(definition, workflowId, "fis-repair", "write_history")
+    workflows.saveFeatureTaskRuntimeWorkflow(
+      engine.updateRecord(
+        definition,
+        opened,
+        WorkflowUpdateInput(
+          workflowStatus = "blocked",
+          currentStepId = "write_history",
+          stepUpdates = null,
+          artifactsPatch = artifacts,
+          sessionId = "ftr-repair",
+        ),
+      ).toRecord(),
+    )
+    val store = repairStore(workflows, git = ReachableGit())
+
+    val applied = store.applyChildWedgeRepairs(
+      workflowId = workflowId,
+      issueKey = ISSUE_KEY,
+      subtaskId = 1,
+      wedgeClasses = listOf(GoalRunnerWedgeClass.COMPLETED_UPSTREAM_MISSING_OUTPUT),
+      repoRoot = Path.of("."),
+    )
+
+    assertEquals(1, applied.repairs.size)
+    assertEquals("build", applied.repairs.single().field)
+    val updated = requireNotNull(workflows.getFeatureTaskRuntimeWorkflow(workflowId))
+    assertEquals("running", updated.workflowStatus)
+    assertEquals("build", updated.currentStepId)
+    val records = phaseRecordsFrom(decodeArtifacts(updated.artifactsJson))
+    assertEquals("pending", records.getValue("build").status)
+    assertEquals("pending", records.getValue("write_history").status)
+  }
+
+  @Test
   fun `repairing completed upstream missing output reopens plan_fix and clears implement_fix block`() {
     val workflows = InMemoryWorkflowStates()
     val workflowId = "wftr-repair-apply-unsettled-upstream"
@@ -462,6 +616,40 @@ internal class GoalRunnerRepairContinuationTest : GoalRunnerRepairFixtures() {
     assertEquals("pending", records.getValue("plan_fix").status)
     assertEquals("pending", records.getValue("implement_fix").status)
     assertEquals(2, (after[GOAL_CHILD_REPAIR_EVIDENCE_ARTIFACT_KEY] as List<*>).size)
+  }
+
+  @Test
+  fun `repairing missing quality_gate_selection stamps validate with evidence`() {
+    val workflows = InMemoryWorkflowStates()
+    val workflowId = "wftr-repair-apply-selection"
+    workflows.saveFeatureTaskRuntimeWorkflow(
+      repairChildRecord(
+        workflowId = workflowId,
+        continuation = continuationMap(includeValidationDepth = true, includeQualityGateSelection = false),
+        reviewState = healthyReviewState(),
+      ),
+    )
+    val store = repairStore(workflows, git = ReachableGit())
+
+    val applied = store.applyChildWedgeRepairs(
+      workflowId = workflowId,
+      issueKey = ISSUE_KEY,
+      subtaskId = 1,
+      wedgeClasses = listOf(GoalRunnerWedgeClass.MISSING_QUALITY_GATE_SELECTION),
+      repoRoot = Path.of("."),
+    )
+
+    assertEquals(1, applied.repairs.size)
+    assertEquals(GoalRunnerWedgeClass.MISSING_QUALITY_GATE_SELECTION, applied.repairs.single().wedgeClass)
+    val after = decodeArtifacts(
+      requireNotNull(workflows.getFeatureTaskRuntimeWorkflow(workflowId)).artifactsJson,
+    )
+    val continuation = after["goal_continuation"] as Map<*, *>
+    assertEquals("validate", continuation["quality_gate_selection"])
+    val evidence = (after[GOAL_CHILD_REPAIR_EVIDENCE_ARTIFACT_KEY] as List<*>).single() as Map<*, *>
+    assertEquals("missing_quality_gate_selection", evidence["wedge_class"])
+    assertEquals("quality_gate_selection", evidence["field"])
+    assertEquals("validate", evidence["new_value"])
   }
 
   @Test
@@ -819,7 +1007,10 @@ internal abstract class GoalRunnerRepairFixtures {
     ).toRecord()
   }
 
-  protected fun continuationMap(includeValidationDepth: Boolean): Map<String, Any?> =
+  protected fun continuationMap(
+    includeValidationDepth: Boolean,
+    includeQualityGateSelection: Boolean = true,
+  ): Map<String, Any?> =
     FeatureTaskRuntimeGoalContinuationArtifact(
       issueKey = ISSUE_KEY,
       subtaskId = 1,
@@ -828,8 +1019,17 @@ internal abstract class GoalRunnerRepairFixtures {
       parentWorkflowId = "wfl-parent",
       codeReviewMode = CodeReviewExecutionMode.INLINE,
       validationDepth = if (includeValidationDepth) ValidationDepth.FULL else null,
+      qualityGateSelection = if (includeQualityGateSelection) {
+        FeatureTaskRuntimeQualityGateSelection.VALIDATE
+      } else {
+        null
+      },
     ).toArtifactMap().let { map ->
-      if (includeValidationDepth) map else map.filterKeys { it != "validation_depth" }
+      buildMap {
+        putAll(map)
+        if (!includeValidationDepth) remove("validation_depth")
+        if (!includeQualityGateSelection) remove("quality_gate_selection")
+      }
     }
 
   protected fun healthyReviewState(): GoalSubtaskReviewState = GoalSubtaskReviewState.initial(

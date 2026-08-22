@@ -5,8 +5,11 @@ import skillbill.error.InvalidWorkflowStateSchemaError
 import skillbill.workflow.model.RequiredArtifactPresenceResolver
 import skillbill.workflow.model.ResolvedRequiredArtifact
 import skillbill.workflow.model.WorkflowSnapshotView
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 
 /**
  * Family-aware presence resolver for the feature-task-runtime pipeline. The runtime never
@@ -30,8 +33,9 @@ object FeatureTaskRuntimeRequiredArtifactPresenceResolver : RequiredArtifactPres
     if (requiredArtifacts.isEmpty()) {
       return emptyList()
     }
+    val gateAdjustedRequired = qualityGateAdjustedRequiredArtifacts(snapshot, resumeStepId, requiredArtifacts)
     val completedPhaseIds = completedPhaseIds(snapshot)
-    return requiredArtifacts.filterNot(completedPhaseIds::contains)
+    return gateAdjustedRequired.filterNot(completedPhaseIds::contains)
   }
 
   override fun resolveRequiredArtifact(snapshot: WorkflowSnapshotView, artifactKey: String): ResolvedRequiredArtifact {
@@ -44,6 +48,45 @@ object FeatureTaskRuntimeRequiredArtifactPresenceResolver : RequiredArtifactPres
       present = true,
       value = record.outputArtifact ?: record.toArtifactMap(),
     )
+  }
+
+  private fun qualityGateAdjustedRequiredArtifacts(
+    snapshot: WorkflowSnapshotView,
+    resumeStepId: String,
+    requiredArtifacts: List<String>,
+  ): List<String> {
+    if (
+      resumeStepId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY &&
+      resumeStepId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH
+    ) {
+      return requiredArtifacts
+    }
+    val selection = goalContinuationQualityGateSelection(snapshot) ?: FeatureTaskRuntimeQualityGateSelection.VALIDATE
+    val gatePhase = when (selection) {
+      FeatureTaskRuntimeQualityGateSelection.BUILD -> FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD
+      FeatureTaskRuntimeQualityGateSelection.VALIDATE -> FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE
+    }
+    return requiredArtifacts.map { phaseId ->
+      when (phaseId) {
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD,
+        -> gatePhase
+        else -> phaseId
+      }
+    }
+  }
+
+  private fun goalContinuationQualityGateSelection(
+    snapshot: WorkflowSnapshotView,
+  ): FeatureTaskRuntimeQualityGateSelection? {
+    val raw = snapshot.artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY] as? Map<*, *>
+      ?: return null
+    val continuationMap = JsonSupport.anyToStringAnyMap(raw) ?: return null
+    return try {
+      FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(continuationMap).qualityGateSelection
+    } catch (_: InvalidWorkflowStateSchemaError) {
+      null
+    }
   }
 
   private fun completedPhaseIds(snapshot: WorkflowSnapshotView): Set<String> = decodePhaseRecords(snapshot)

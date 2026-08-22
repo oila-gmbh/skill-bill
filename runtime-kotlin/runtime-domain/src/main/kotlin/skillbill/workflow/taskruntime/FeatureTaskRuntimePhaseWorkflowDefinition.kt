@@ -19,6 +19,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePlanCommitment
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePlanningProjectionContract
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePrePlanningDigest
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePreplanCeremony
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewScope
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedReviewEvidenceReference
@@ -212,9 +213,9 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       PHASE_BUILD to "Resume compile/build proof from the latest implement and audit outputs.",
       PHASE_VALIDATE to "Resume quality validation from the latest implement and audit outputs.",
       PHASE_WRITE_HISTORY to
-        "Resume boundary history writing from the latest implement and validate outputs.",
+        "Resume boundary history writing from the latest implement and settled build or validate output.",
       PHASE_COMMIT_PUSH to
-        "Resume commit/push after verifying implement, validate, and write_history outputs are current.",
+        "Resume commit/push after verifying implement, the settled quality gate, and write_history outputs are current.",
       PHASE_PR to "Resume PR creation from the latest implement output, commit output, and derived diff context.",
     ),
     continuationReferenceSections = emptyMap(),
@@ -559,6 +560,21 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
         ),
         FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
       ),
+      phaseProjection(
+        PHASE_WRITE_HISTORY,
+        PHASE_BUILD,
+        "build_receipt",
+        PhaseProjectionContract.BUILD_RECEIPT,
+        listOf(
+          "validation_status",
+          "checks",
+          "repository_checkpoint",
+          "gate_run_count",
+          "gate_runs",
+          "suppression_justifications",
+        ),
+        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+      ),
     ),
     PHASE_COMMIT_PUSH to listOf(
       phaseProjection(
@@ -581,6 +597,21 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
         PHASE_VALIDATE,
         "validation_receipt",
         PhaseProjectionContract.VALIDATION_RECEIPT,
+        listOf(
+          "validation_status",
+          "checks",
+          "repository_checkpoint",
+          "gate_run_count",
+          "gate_runs",
+          "suppression_justifications",
+        ),
+        FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
+      ),
+      phaseProjection(
+        PHASE_COMMIT_PUSH,
+        PHASE_BUILD,
+        "build_receipt",
+        PhaseProjectionContract.BUILD_RECEIPT,
         listOf(
           "validation_status",
           "checks",
@@ -635,8 +666,8 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
   fun runtimeProjectorProducerPhaseIds(consumerPhaseId: String): Set<String> = when (consumerPhaseId) {
     PHASE_VALIDATE -> setOf(PHASE_PLAN, PHASE_IMPLEMENT, PHASE_AUDIT)
     PHASE_BUILD -> setOf(PHASE_PLAN, PHASE_IMPLEMENT, PHASE_AUDIT)
-    PHASE_WRITE_HISTORY -> setOf(PHASE_IMPLEMENT, PHASE_VALIDATE)
-    PHASE_COMMIT_PUSH -> setOf(PHASE_IMPLEMENT, PHASE_VALIDATE, PHASE_WRITE_HISTORY)
+    PHASE_WRITE_HISTORY -> setOf(PHASE_IMPLEMENT, PHASE_VALIDATE, PHASE_BUILD)
+    PHASE_COMMIT_PUSH -> setOf(PHASE_IMPLEMENT, PHASE_VALIDATE, PHASE_BUILD, PHASE_WRITE_HISTORY)
     PHASE_PR -> setOf(PHASE_IMPLEMENT, PHASE_VALIDATE, PHASE_COMMIT_PUSH)
     else -> emptySet()
   }
@@ -782,5 +813,27 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       FeatureTaskRuntimeReviewScope.BRANCH_DIFF -> "diff"
     }
     return base.copy(derivedContextKeys = listOf(reviewKey))
+  }
+
+  fun phaseDeclarationForQualityGate(
+    phaseId: String,
+    featureSize: FeatureTaskRuntimeFeatureSize,
+    qualityGateSelection: FeatureTaskRuntimeQualityGateSelection,
+  ): FeatureTaskRuntimePhaseDeclaration {
+    val base = phaseDeclaration(phaseId, featureSize)
+    if (phaseId != PHASE_WRITE_HISTORY && phaseId != PHASE_COMMIT_PUSH) {
+      return base
+    }
+    val selectedGatePhase = when (qualityGateSelection) {
+      FeatureTaskRuntimeQualityGateSelection.BUILD -> PHASE_BUILD
+      FeatureTaskRuntimeQualityGateSelection.VALIDATE -> PHASE_VALIDATE
+    }
+    val omittedGatePhase = if (selectedGatePhase == PHASE_BUILD) PHASE_VALIDATE else PHASE_BUILD
+    return base.copy(
+      projectionDeclarations = base.projectionDeclarations.filter { declaration ->
+        val source = declaration.sourceRef as? FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput
+        source?.producingPhaseId != omittedGatePhase
+      },
+    )
   }
 }

@@ -55,6 +55,9 @@ private fun suppliedGoalContinuationConflict(
   durable.validationDepth?.takeIf { it != supplied.validationDepth }?.let {
     "The supplied goal-continuation validation depth conflicts with its durable child policy."
   },
+  durable.qualityGateSelection?.takeIf { it != supplied.qualityGateSelection }?.let {
+    "The supplied goal-continuation quality gate selection conflicts with its durable child policy."
+  },
   // parallelReviewAgent: omitted key and explicit no-agent share null by construction of
   // toArtifactMap; absent and none are the same policy value, not a conflation to heal.
   supplied.parallelReviewAgent?.takeIf { it != durable.parallelReviewAgent }?.let {

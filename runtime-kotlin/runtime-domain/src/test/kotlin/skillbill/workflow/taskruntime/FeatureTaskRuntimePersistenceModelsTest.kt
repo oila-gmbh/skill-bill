@@ -681,6 +681,38 @@ class FeatureTaskRuntimeGoalContinuationPersistenceModelsTest {
   }
 
   @Test
+  fun `goal-continuation artifact round-trips quality_gate_selection and absent decodes as validate`() {
+    val build = FeatureTaskRuntimeGoalContinuationArtifact(
+      issueKey = "SKILL-204",
+      subtaskId = 1,
+      suppressPr = true,
+      goalBranch = "feat/SKILL-204",
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
+      qualityGateSelection = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.BUILD,
+    )
+    assertEquals("build", build.toArtifactMap()["quality_gate_selection"])
+    assertEquals(
+      build,
+      FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(build.toArtifactMap()),
+    )
+
+    val absent = FeatureTaskRuntimeGoalContinuationArtifact(
+      issueKey = "SKILL-204",
+      subtaskId = 2,
+      suppressPr = true,
+      goalBranch = "feat/SKILL-204",
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
+    )
+    assertNull(absent.toArtifactMap()["quality_gate_selection"])
+    assertEquals(
+      skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.VALIDATE,
+      FeatureTaskRuntimeGoalContinuationArtifact.fromArtifactMap(
+        absent.toArtifactMap() + ("quality_gate_selection" to "validate"),
+      ).qualityGateSelection,
+    )
+  }
+
+  @Test
   fun `goal-continuation outcome round trips agent attribution through its artifact map`() {
     val outcome = FeatureTaskRuntimeGoalContinuationOutcome(
       issueKey = "SKILL-89",

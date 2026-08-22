@@ -11,6 +11,18 @@ class FeatureTaskRuntimeQualityGateRoutingTest {
   private val def = FeatureTaskRuntimePhaseWorkflowDefinition
 
   @Test
+  fun `selected gate phase maps build and validate stamps to their gate phases`() {
+    assertEquals(
+      def.PHASE_BUILD,
+      FeatureTaskRuntimeQualityGateRouting.selectedGatePhase(FeatureTaskRuntimeQualityGateSelection.BUILD),
+    )
+    assertEquals(
+      def.PHASE_VALIDATE,
+      FeatureTaskRuntimeQualityGateRouting.selectedGatePhase(FeatureTaskRuntimeQualityGateSelection.VALIDATE),
+    )
+  }
+
+  @Test
   fun `default forward path advances review to validate skipping loop-only build`() {
     val transition = FeatureTaskRuntimeTransitionFunction.nextTransition(
       declaration = def.transitions,

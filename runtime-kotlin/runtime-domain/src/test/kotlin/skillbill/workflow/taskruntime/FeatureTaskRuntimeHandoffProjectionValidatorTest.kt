@@ -310,6 +310,39 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
   }
 
   @Test
+  fun `build-stamped write_history rejects settled validate output`() {
+    val consumer = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY
+    val declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarationForQualityGate(
+      consumer,
+      FeatureTaskRuntimeFeatureSize.MEDIUM,
+      skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.BUILD,
+    )
+    assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
+      FeatureTaskRuntimeHandoffProjectionValidator.validate(
+        inputs(
+          consumerPhaseId = consumer,
+          declarations = declaration.projectionDeclarations,
+          resolvedUpstream = FeatureTaskRuntimeResolvedUpstreamOutputs(
+            mapOf(
+              FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT to FeatureTaskRuntimePhaseOutput(
+                phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
+                iteration = 1,
+                payload = """{"produced_outputs":{}}""",
+              ),
+              FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE to FeatureTaskRuntimePhaseOutput(
+                phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+                iteration = 1,
+                payload = """{"produced_outputs":{}}""",
+              ),
+            ),
+          ),
+          qualityGateSelection = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.BUILD,
+        ),
+      )
+    }
+  }
+
+  @Test
   fun `audit clearance derives gate status scope and checkpoint from runtime-owned facts`() {
     val consumer = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW
     val producer = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT
@@ -692,6 +725,8 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
     resolvedCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
     expectedCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
     validationDepth: ValidationDepth = ValidationDepth.DEFAULT,
+    qualityGateSelection: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection =
+      skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.VALIDATE,
   ) = FeatureTaskRuntimeHandoffProjectionInputs(
     consumerPhaseId = consumerPhaseId,
     declarations = declarations,
@@ -701,6 +736,7 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
     expectedCheckpoint = expectedCheckpoint,
     workflowId = "wftr-1",
     validationDepth = validationDepth,
+    qualityGateSelection = qualityGateSelection,
   )
 
   private fun validationRequestFields(

@@ -16,6 +16,7 @@ import skillbill.workflow.model.GoalProgressEvent
 import skillbill.workflow.model.GoalProgressEventKind
 import skillbill.workflow.model.GoalProgressOutcome
 import skillbill.workflow.model.ValidationDepth
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import java.nio.file.Path
 import kotlin.time.Duration
 
@@ -120,6 +121,8 @@ data class SkillRunGoalContinuationContext(
   val assignedWorkflowId: String? = null,
   val codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.DEFAULT,
   val validationDepth: ValidationDepth = ValidationDepth.DEFAULT,
+  val qualityGateSelection: FeatureTaskRuntimeQualityGateSelection =
+    FeatureTaskRuntimeQualityGateSelection.VALIDATE,
   val parallelReviewAgent: String? = null,
   val reviewBaseline: GoalSubtaskReviewBaseline? = null,
   val agentAddonSelection: AgentAddonSelection = AgentAddonSelection(),
