@@ -1,6 +1,7 @@
 package skillbill.application.featuretask
 
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -52,6 +53,63 @@ class FeatureTaskRuntimeCompletedUpstreamRepairTest {
       diagnoseUnsettledCompletedUpstreamPhaseId(
         phaseRecords,
         FeatureTaskRuntimeFeatureSize.MEDIUM,
+      ),
+    )
+  }
+
+  @Test
+  fun `diagnose returns build when build-stamped write_history is blocked on missing build output`() {
+    val phaseRecords = mapOf(
+      "review" to completedPhaseRecord("review"),
+      "build" to phaseRecord(
+        phaseId = "build",
+        status = "completed",
+        outputArtifact = null,
+      ),
+      "write_history" to phaseRecord(
+        phaseId = "write_history",
+        status = "blocked",
+        blockedReason = "Phase 'write_history' requires upstream output(s) build that are not present",
+      ),
+    )
+
+    assertEquals(
+      "build",
+      diagnoseUnsettledCompletedUpstreamPhaseId(
+        phaseRecords,
+        FeatureTaskRuntimeFeatureSize.MEDIUM,
+        FeatureTaskRuntimeQualityGateSelection.BUILD,
+      ),
+    )
+  }
+
+  @Test
+  fun `diagnose does not return validate when build-stamped child lacks settled build output`() {
+    val phaseRecords = mapOf(
+      "review" to completedPhaseRecord("review"),
+      "build" to phaseRecord(
+        phaseId = "build",
+        status = "completed",
+        outputArtifact = null,
+      ),
+      "validate" to phaseRecord(
+        phaseId = "validate",
+        status = "completed",
+        outputArtifact = """{"contract_version":"0.1"}""",
+      ),
+      "write_history" to phaseRecord(
+        phaseId = "write_history",
+        status = "blocked",
+        blockedReason = "Phase 'write_history' requires upstream output(s) build that are not present",
+      ),
+    )
+
+    assertEquals(
+      "build",
+      diagnoseUnsettledCompletedUpstreamPhaseId(
+        phaseRecords,
+        FeatureTaskRuntimeFeatureSize.MEDIUM,
+        FeatureTaskRuntimeQualityGateSelection.BUILD,
       ),
     )
   }

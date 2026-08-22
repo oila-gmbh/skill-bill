@@ -255,7 +255,7 @@ class DefaultGoalPlanningSweep(
     val (provenance, sharedCheckpoint) = when (
       val recoverability = classifyRecoverability(existingShared, currentProvenance, working)
     ) {
-      is GoalPlanningProvenanceRecoverability.Invalid ->
+      is GoalPlanningProvenanceRecoverability.Irrecoverable ->
         return SharedPreplanSettlement.Halt(incompatibleProvenance(working, recoverability.recoveryKind))
       is GoalPlanningProvenanceRecoverability.Reuse -> {
         val settled = existingShared ?: produceSharedPreplan(working, request, recoverability.provenance)
@@ -325,7 +325,7 @@ class DefaultGoalPlanningSweep(
     val (provenance, sharedCheckpoint) = when (
       val second = classifyRecoverability(afterRefresh, currentProvenance, working)
     ) {
-      is GoalPlanningProvenanceRecoverability.Invalid ->
+      is GoalPlanningProvenanceRecoverability.Irrecoverable ->
         return SharedPreplanSettlement.Halt(incompatibleProvenance(working, second.recoveryKind))
       is GoalPlanningProvenanceRecoverability.Reuse -> second.provenance to afterRefresh
       is GoalPlanningProvenanceRecoverability.StaleValid -> {
@@ -1423,7 +1423,7 @@ class DefaultGoalPlanningSweep(
 internal sealed interface GoalPlanningProvenanceRecoverability {
   class Reuse(val provenance: GoalPlanningContractProvenance) : GoalPlanningProvenanceRecoverability
   class StaleValid(val provenance: GoalPlanningContractProvenance) : GoalPlanningProvenanceRecoverability
-  data class Invalid(val recoveryKind: GoalPlanningRecoveryKind) : GoalPlanningProvenanceRecoverability
+  class Irrecoverable(val recoveryKind: GoalPlanningRecoveryKind) : GoalPlanningProvenanceRecoverability
 }
 
 /**
@@ -1456,13 +1456,13 @@ internal fun classifyGoalPlanningProvenanceRecoverability(
       saved.phaseOutputContractId == current.phaseOutputContractId &&
       saved.phaseOutputContractVersion == current.phaseOutputContractVersion
   if (!contractCompatible) {
-    return GoalPlanningProvenanceRecoverability.Invalid(GoalPlanningRecoveryKind.HARD_RESET)
+    return GoalPlanningProvenanceRecoverability.Irrecoverable(GoalPlanningRecoveryKind.HARD_RESET)
   }
   val valid = saved.decompositionManifestHash == current.decompositionManifestHash &&
     savedParentSpec != null &&
     sha256HexUtf8(savedParentSpec) == saved.parentSpecHash &&
     sha256HexUtf8(existing.preplanPayload) == existing.payloadSha256
-  if (!valid) return GoalPlanningProvenanceRecoverability.Invalid(GoalPlanningRecoveryKind.SCOPED_REPLAN)
+  if (!valid) return GoalPlanningProvenanceRecoverability.Irrecoverable(GoalPlanningRecoveryKind.SCOPED_REPLAN)
   val fresh = GoalPlanningSpecCanonicalization.canonical(savedParentSpec) ==
     GoalPlanningSpecCanonicalization.canonical(currentParentSpec)
   return if (fresh) {

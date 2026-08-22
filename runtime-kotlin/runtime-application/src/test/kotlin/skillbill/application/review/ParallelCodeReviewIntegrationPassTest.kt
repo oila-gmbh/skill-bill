@@ -65,7 +65,7 @@ class ParallelCodeReviewIntegrationPassTest {
     reviewHarness(delegatedConfig(sixCommitPaths.take(3)), three).run(delegatedRequest())
     reviewHarness(delegatedConfig(sixCommitPaths), six).run(delegatedRequest())
 
-    assertEquals(2, three.specialistLaunches.size)
+    assertEquals(1, three.specialistLaunches.size)
     assertEquals(
       three.specialistLaunches.size,
       six.specialistLaunches.size,
@@ -97,7 +97,9 @@ class ParallelCodeReviewIntegrationPassTest {
     val finding = integration.findings.single()
     assertEquals(listOf("c4", "head-revision"), finding.commitShas)
     assertEquals(ReviewIntegrationPassRunner.INTEGRATION_LANE, finding.specialistSkillName)
-    assertTrue(result.mergeResult.formattedOutput.contains("contract drift across commits"))
+    assertTrue(
+      result.mergeResult.findings.any { it.description.contains("contract drift across commits") },
+    )
   }
 
   // AC-001: an unusable cited commit costs its own finding, never the whole finished review.
@@ -127,7 +129,9 @@ class ParallelCodeReviewIntegrationPassTest {
       integration.findings.map { it.commitShas },
       "The hallucinated-commit finding drops; the usable cross-commit finding survives.",
     )
-    assertTrue(result.mergeResult.formattedOutput.contains("contract drift across commits"))
+    assertTrue(
+      result.mergeResult.findings.any { it.description.contains("contract drift across commits") },
+    )
   }
 
   @Test fun `a single-commit sequence skips the integration pass with a stated reason`() {
@@ -168,7 +172,7 @@ class ParallelCodeReviewIntegrationPassTest {
       recorder,
     ).run(delegatedRequest(reviewRunId = RUN_ID))
 
-    assertEquals(2, recorder.specialistLaunches.size)
+    assertEquals(1, recorder.specialistLaunches.size)
     assertEquals(
       ReviewIntegrationTerminalOutcome.SPAWN_FAILURE.wireValue,
       assertNotNull(recorder.durableIntegrationPass).terminalOutcome,
@@ -177,7 +181,7 @@ class ParallelCodeReviewIntegrationPassTest {
     val resumed = reviewHarness(delegatedConfig(sixCommitPaths), recorder).run(delegatedRequest(reviewRunId = RUN_ID))
 
     assertEquals(
-      2,
+      1,
       recorder.specialistLaunches.size,
       "A lane holding a durable complete result must not be re-run by the resume.",
     )

@@ -259,6 +259,29 @@ class FeatureTaskRuntimeSubtaskFinalisationTest {
     assertEquals("", remoteBranchTip(repo.remote), "a refused finalisation must not publish")
   }
 
+  // The bug: a partial changed_paths list stages and publishes while validate (or other) repairs stay
+  // dirty; same-branch goal finalization then refuses those leftovers after the subtask already looks
+  // complete.
+  @Test
+  fun `a partial changed_paths list is refused while dirty implementation paths remain`() {
+    val repo = repoWithRemote()
+    Files.writeString(repo.root.resolve("owned.txt"), "enumerated\n")
+    Files.writeString(repo.root.resolve("leftover.txt"), "validate repair\n")
+    Files.createDirectories(repo.root.resolve(".feature-specs/$issueKey"))
+    Files.writeString(repo.root.resolve(".feature-specs/$issueKey/spec.md"), "spec dirt ok\n")
+    val baseSha = git(repo.root, "rev-parse", "HEAD")
+
+    val blocked = assertIs<FeatureTaskRuntimeSubtaskFinalisationBlocked>(
+      finalise(repo, durableCommitSha = null, paths = listOf("owned.txt")),
+    )
+
+    assertContains(blocked.reason, "omitted dirty implementation paths")
+    assertContains(blocked.reason, "leftover.txt")
+    assertEquals(baseSha, git(repo.root, "rev-parse", "HEAD"), "HEAD must be untouched")
+    assertEquals("", git(repo.root, "diff", "--cached", "--name-only"), "nothing may be left staged")
+    assertEquals("", remoteBranchTip(repo.remote), "a refused finalisation must not publish")
+  }
+
   @Test
   fun `a blank outcome message is rejected before any git write`() {
     val blank = FeatureTaskRuntimeSubtaskFinalisation.readHandoff(

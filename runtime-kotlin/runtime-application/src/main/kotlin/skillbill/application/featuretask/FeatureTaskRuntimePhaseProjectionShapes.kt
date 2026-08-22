@@ -1,5 +1,6 @@
 package skillbill.application.featuretask
 
+import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_BUILD_RECEIPT_CONTRACT_VERSION
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_REPAIR_PLAN_CONTRACT_VERSION
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION
@@ -32,6 +33,7 @@ internal object FeatureTaskRuntimePhaseProjectionShapes {
       } else {
         VALIDATION + VALIDATION_FULL_RUNTIME_OWNED_REPAIR
       }
+    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD -> BUILD
     else -> ""
   }
 
@@ -175,4 +177,21 @@ internal object FeatureTaskRuntimePhaseProjectionShapes {
       "      Do not run skill-bill validate, agnix, or validate_agent_configs.\n" +
       "      The runtime may record one cache-bypassing verify afterward; gate_run_count and\n" +
       "      gate_runs stay runtime-measured — never invent them."
+
+  private const val BUILD: String =
+    "\n    - Required produced_outputs shape: emit a build_receipt OBJECT with contract_version\n" +
+      "      \"$FEATURE_TASK_RUNTIME_BUILD_RECEIPT_CONTRACT_VERSION\":\n" +
+      "      ```json\n" +
+      "      { \"build_receipt\": {\n" +
+      "          \"contract_version\": \"$FEATURE_TASK_RUNTIME_BUILD_RECEIPT_CONTRACT_VERSION\",\n" +
+      "          \"validation_status\": \"passed\",\n" +
+      "          \"checks\": [],\n" +
+      "          \"repository_checkpoint\": { \"fingerprint\": \"<checkpoint fingerprint>\" },\n" +
+      "          \"gate_run_count\": 1,\n" +
+      "          \"gate_runs\": [ { \"duration_ms\": 1, \"outcome\": \"passed\",\n" +
+      "            \"cache_mode\": \"forced_full\", \"executed_work_units\": 1 } ]\n" +
+      "        } }\n" +
+      "      ```\n" +
+      "      Run only the pack build_command. Do not run collect_all_full_gate_command, check " + "--" + "continue,\n" +
+      "      skill-bill validate, or bill-code-check. gate_run_count and gate_runs are runtime-measured."
 }

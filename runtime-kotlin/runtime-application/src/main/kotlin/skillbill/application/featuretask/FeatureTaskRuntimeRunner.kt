@@ -28,10 +28,12 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimeProviderLimitDetector
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_BLOCKED
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditProgress
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProviderLimitSignal
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
@@ -551,8 +553,20 @@ internal fun invalidateLegacyPlanWithoutPreplan(completed: MutableSet<String>) {
 
 internal fun phaseDeclaration(
   phaseId: String,
-  featureSize: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize,
-): FeatureTaskRuntimePhaseDeclaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclaration(phaseId, featureSize)
+  featureSize: FeatureTaskRuntimeFeatureSize,
+  qualityGateSelection: FeatureTaskRuntimeQualityGateSelection = FeatureTaskRuntimeQualityGateSelection.VALIDATE,
+): FeatureTaskRuntimePhaseDeclaration = if (
+  phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY ||
+  phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH
+) {
+  FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarationForQualityGate(
+    phaseId,
+    featureSize,
+    qualityGateSelection,
+  )
+} else {
+  FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclaration(phaseId, featureSize)
+}
 
 internal fun missingUpstream(
   declaration: FeatureTaskRuntimePhaseDeclaration,

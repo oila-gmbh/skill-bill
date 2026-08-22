@@ -20,6 +20,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
+import skillbill.workflow.taskruntime.model.orLegacyValidate
 
 private const val PHASE_STATUS_PENDING = "pending"
 private const val PHASE_STATUS_COMPLETED = "completed"
@@ -51,6 +53,7 @@ class FeatureTaskRuntimeStatusService(
    * distinguishing "no such workflow" from "workflow exists but no phase has a record yet"
    * (an empty record map projects every phase as pending).
    */
+  @Suppress("LongMethod")
   fun status(request: FeatureTaskRuntimeStatusRequest): FeatureTaskRuntimeStatusProjection? {
     val records = recorder.loadPhaseRecords(request.workflowId, request.dbPathOverride) ?: return null
     val decomposeTerminal = decomposeTerminalRecorder.loadDecomposeTerminal(request.workflowId, request.dbPathOverride)
@@ -60,9 +63,25 @@ class FeatureTaskRuntimeStatusService(
     val blockedPhaseIds = durableBlockedPhaseIds + ledgerBlockedPhaseIds(ledger, durableBlockedPhaseIds)
     val phases = phaseStatuses(records, blockedPhaseIds, ledger)
     val terminalDecomposeRecorded = decomposeTerminal != null
-    val currentPhaseId = resolveCurrentPhaseId(terminalDecomposeRecorded, records, phases, ledger)
+    val qualityGateSelection = recorder
+      .loadGoalContinuationQualityGateSelection(request.workflowId, request.dbPathOverride)
+      .orLegacyValidate()
+    val currentPhaseId = resolveCurrentPhaseId(
+      terminalDecomposeRecorded,
+      records,
+      phases,
+      ledger,
+      qualityGateSelection,
+    )
     val auditRepair = auditRepairStatus(auditRepairProgress)
-    val gateRunCount = recorder.loadValidationGateProgress(request.workflowId, request.dbPathOverride)?.gateRunCount
+    val validationGateRunCount = recorder.loadValidationGateProgress(request.workflowId, request.dbPathOverride)
+      ?.gateRunCount
+    val buildGateRunCount = recorder.loadBuildGateProgress(request.workflowId, request.dbPathOverride)?.gateRunCount
+    val gateRunCount = when (currentPhaseId) {
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD -> buildGateRunCount
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE -> validationGateRunCount
+      else -> validationGateRunCount ?: buildGateRunCount
+    }
     return FeatureTaskRuntimeStatusProjection(
       workflowId = request.workflowId,
       featureSize = runInvariantsStore.resolve(request.workflowId, request.dbPathOverride)?.featureSize?.name,
@@ -188,6 +207,8 @@ private class CurrentPhaseExecutionDeriver {
         reviewExecution(phaseId, phaseStatus, record, context.ledger)
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE ->
         validationExecution(phaseId, phaseStatus, context.gateRunCount)
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD ->
+        buildExecution(phaseId, phaseStatus, context.gateRunCount)
       else ->
         edgeExecution(phaseId, record, context.ledger) ?: attemptExecution(phaseId, phaseStatus.attemptCount)
     }
@@ -226,6 +247,18 @@ private class CurrentPhaseExecutionDeriver {
   } ?: attemptExecution(phaseId, phaseStatus.attemptCount)
 
   private fun validationExecution(
+    phaseId: String,
+    phaseStatus: FeatureTaskRuntimePhaseStatus,
+    gateRunCount: Int?,
+  ): IdeStatusCurrentPhaseExecution? = gateRunExecution(phaseId, phaseStatus, gateRunCount)
+
+  private fun buildExecution(
+    phaseId: String,
+    phaseStatus: FeatureTaskRuntimePhaseStatus,
+    gateRunCount: Int?,
+  ): IdeStatusCurrentPhaseExecution? = gateRunExecution(phaseId, phaseStatus, gateRunCount)
+
+  private fun gateRunExecution(
     phaseId: String,
     phaseStatus: FeatureTaskRuntimePhaseStatus,
     gateRunCount: Int?,
@@ -333,12 +366,33 @@ private fun resolveCurrentPhaseId(
   records: Map<String, FeatureTaskRuntimePhaseRecord>,
   phases: List<FeatureTaskRuntimePhaseStatus>,
   ledger: List<FeatureTaskRuntimePhaseLedgerEntry>,
+  qualityGateSelection: FeatureTaskRuntimeQualityGateSelection,
 ): String? {
   if (terminalDecomposeRecorded) return null
   return currentReentryPhaseId(records, ledger) ?: phases.firstOrNull {
     it.status != PHASE_STATUS_COMPLETED &&
-      !(it.phaseId in LOOP_ONLY_PHASE_IDS && it.status == PHASE_STATUS_PENDING)
+      !shouldSkipPendingLoopOnlyPhase(it.phaseId, it.status, records, qualityGateSelection)
   }?.phaseId
+}
+
+private fun shouldSkipPendingLoopOnlyPhase(
+  phaseId: String,
+  status: String,
+  records: Map<String, FeatureTaskRuntimePhaseRecord>,
+  qualityGateSelection: FeatureTaskRuntimeQualityGateSelection,
+): Boolean {
+  if (status != PHASE_STATUS_PENDING || phaseId !in LOOP_ONLY_PHASE_IDS) {
+    return false
+  }
+  val buildStampedCurrent =
+    phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD &&
+      qualityGateSelection == FeatureTaskRuntimeQualityGateSelection.BUILD &&
+      records[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW]?.status == PHASE_STATUS_COMPLETED &&
+      records[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD]?.status != PHASE_STATUS_COMPLETED
+  if (buildStampedCurrent) {
+    return false
+  }
+  return true
 }
 
 private fun currentReentryPhaseId(

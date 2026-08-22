@@ -9,6 +9,8 @@ import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationFieldAdoption
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
+import skillbill.workflow.taskruntime.model.orLegacyValidate
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 
 internal class FeatureTaskRuntimeRunPreparation(
@@ -118,22 +120,35 @@ internal class FeatureTaskRuntimeRunPreparation(
   ): Boolean {
     val suppliedDepth = request.goalContinuation?.validationDepth
     val adoptedDepth = suppliedDepth.takeIf { initial.continuation.validationDepth == null }
-    val fieldAdoption = adoptedDepth?.let { depth ->
-      FeatureTaskRuntimeGoalContinuationFieldAdoption(
+    val legacySelectionHeal = initial.continuation.qualityGateSelection == null
+    val healedSelection = if (legacySelectionHeal) {
+      FeatureTaskRuntimeQualityGateSelection.VALIDATE
+    } else {
+      initial.continuation.qualityGateSelection
+    }
+    val fieldAdoption = when {
+      adoptedDepth != null -> FeatureTaskRuntimeGoalContinuationFieldAdoption(
         field = "validation_depth",
-        adoptedValue = depth.wireValue,
+        adoptedValue = adoptedDepth.wireValue,
         reason =
         "durable goal-continuation row predated the validation_depth contract; " +
           "adopted launcher-supplied depth",
       )
+      legacySelectionHeal -> FeatureTaskRuntimeGoalContinuationFieldAdoption(
+        field = "quality_gate_selection",
+        adoptedValue = healedSelection.orLegacyValidate().wireValue,
+        reason =
+        "durable goal-continuation row predated the quality_gate_selection contract; " +
+          "resolved legacy selection to validate",
+      )
+      else -> null
     }
     return continuationRecorder.recordGoalContinuationState(
       request = GoalContinuationStateRecordRequest(
         workflowId = request.workflowId,
-        // A resume that supplies no add-ons is silent about them, not a request to erase them: the
-        // add-on directory can simply be unavailable on the resuming host.
         continuation = initial.continuation.copy(
           validationDepth = adoptedDepth ?: initial.continuation.validationDepth,
+          qualityGateSelection = healedSelection,
           agentAddonSelection = request.agentAddonSelection.persisted
             .takeUnless { it.entries.isEmpty() }
             ?: initial.continuation.agentAddonSelection,
@@ -190,6 +205,7 @@ internal class FeatureTaskRuntimeRunPreparation(
           parentWorkflowId = context.parentWorkflowId,
           codeReviewMode = selectedMode,
           validationDepth = context.validationDepth,
+          qualityGateSelection = context.qualityGateSelection,
           parallelReviewAgent = context.parallelReviewAgent ?: request.parallelReviewAgent,
           subtaskName = context.subtaskName,
           agentAddonSelection = context.agentAddonSelection.takeUnless { it.entries.isEmpty() }
@@ -289,6 +305,7 @@ private fun goalContinuationContext(
   validationDepth = continuation.validationDepth
     ?: request.goalContinuation?.validationDepth
     ?: ValidationDepth.DEFAULT,
+  qualityGateSelection = continuation.qualityGateSelection.orLegacyValidate(),
   parallelReviewAgent = continuation.parallelReviewAgent,
   subtaskName = continuation.subtaskName,
   reviewBaseline = baseline,

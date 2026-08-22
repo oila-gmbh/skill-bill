@@ -38,14 +38,17 @@ internal fun mutatingPhaseIdempotencyDirective(phaseId: String): String {
 }
 
 internal fun nonValidatePhaseValidationOwnershipDirective(phaseId: String): String {
-  if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE) {
+  if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE ||
+    phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD
+  ) {
     return ""
   }
   return """
     ## Validation ownership
     Only the validate phase may run the pack validation gate
-    (`validation_gate.collect_all_full_gate_command`), `./gradlew check`, `check --continue`,
-    `bill-code-check`, or any other full repository check suite. This phase must not compile, build,
+    (`validation_gate.collect_all_full_gate_command`), `./gradlew check`, `check ${"--"}continue`,
+    `bill-code-check`, or any other full repository check suite. Only the build phase may run the
+    pack build_command for compile/buildability proof. This phase must not compile, build,
     execute tests, or run check to prove the work. Ignore any Validation Strategy, plan note,
     acceptance text, review habit, or prior habit that asks you to run check here — that work waits
     for validate. If a receipt carries `tests_executed`, leave it empty.
@@ -434,7 +437,8 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "resolved feature branch from what you emit here. Emit commit_push_result with `message` (the " +
     "commit subject describing the implemented, reviewed, audited, validated, and history-updated " +
     "outcome) and `changed_paths` (every implementation path this subtask touched, enumerated; the " +
-    "runtime stages exactly this set). A missing or blank `message` blocks the subtask rather than " +
+    "runtime stages exactly this set and refuses when dirty non-`.feature-specs/` paths remain outside " +
+    "it, including validate repairs). A missing or blank `message` blocks the subtask rather than " +
     "publishing a provisional subject. Do not emit commit_sha: the runtime captures it after the " +
     "commit. If goal-continuation suppresses PR, this successful phase is the terminal success " +
     "signal for the goal subtask.",

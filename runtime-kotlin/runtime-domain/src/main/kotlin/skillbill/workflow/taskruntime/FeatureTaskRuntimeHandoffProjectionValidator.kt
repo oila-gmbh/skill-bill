@@ -18,6 +18,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionI
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionValue
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationReceipt
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePlanningProjectionContract
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProducerIteration
@@ -43,6 +44,7 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
 
   @Suppress("ThrowsCount")
   fun validate(inputs: FeatureTaskRuntimeHandoffProjectionInputs): FeatureTaskRuntimeHandoffEnvelope {
+    rejectConflictingGateReceipts(inputs)
     rejectDuplicateProjectionNames(inputs)
     val projections = inputs.declarations.mapNotNull { declaration ->
       requireSameConsumer(inputs, declaration)
@@ -84,6 +86,42 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
       }
     }
     else -> declaration.producerIteration
+  }
+
+  private fun rejectConflictingGateReceipts(inputs: FeatureTaskRuntimeHandoffProjectionInputs) {
+    val consumer = inputs.consumerPhaseId
+    if (
+      consumer != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY &&
+      consumer != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH
+    ) {
+      return
+    }
+    val buildCompleted = inputs.resolvedUpstream.outputsByPhaseId.containsKey(
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD,
+    )
+    val validateCompleted = inputs.resolvedUpstream.outputsByPhaseId.containsKey(
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+    )
+    when (inputs.qualityGateSelection) {
+      FeatureTaskRuntimeQualityGateSelection.BUILD ->
+        if (validateCompleted) {
+          reject(
+            inputs,
+            inputs.declarations.first(),
+            FeatureTaskRuntimeHandoffProjectionFailureKind.MALFORMED_FIELD,
+            "build-stamped child cannot carry a settled validation_receipt from validate.",
+          )
+        }
+      FeatureTaskRuntimeQualityGateSelection.VALIDATE ->
+        if (buildCompleted) {
+          reject(
+            inputs,
+            inputs.declarations.first(),
+            FeatureTaskRuntimeHandoffProjectionFailureKind.MALFORMED_FIELD,
+            "validate-stamped child cannot carry a settled build_receipt from build.",
+          )
+        }
+    }
   }
 
   private fun rejectDuplicateProjectionNames(inputs: FeatureTaskRuntimeHandoffProjectionInputs) {
@@ -481,6 +519,7 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.CHANGE_RECEIPT,
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_REQUEST,
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_RECEIPT,
+    FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.BUILD_RECEIPT,
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.BOUNDARY_CANDIDATES,
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.HISTORY_RECEIPT,
     FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.COMMIT_REQUEST,
@@ -728,6 +767,7 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
       "audit_result",
       "review_result",
       "validation_result",
+      "build_receipt",
       "history_result",
       "commit_push_result",
       "pr_result",

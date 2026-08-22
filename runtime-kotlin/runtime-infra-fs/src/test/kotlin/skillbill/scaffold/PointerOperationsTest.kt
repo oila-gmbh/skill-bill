@@ -240,7 +240,7 @@ class PointerOperationsTest {
       packRoot.resolve("platform.yaml"),
       """
       platform: fixturepack
-      contract_version: "1.6"
+      contract_version: "1.7"
 
       routing_signals:
         strong:

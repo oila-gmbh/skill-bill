@@ -356,6 +356,7 @@ data class GoalRunnerReplanSnapshot(
 /** Wedge classes `goal repair` can diagnose and clear. */
 enum class GoalRunnerWedgeClass(val wireValue: String, val durableField: String) {
   MISSING_VALIDATION_DEPTH("missing_validation_depth", "validation_depth"),
+  MISSING_QUALITY_GATE_SELECTION("missing_quality_gate_selection", "quality_gate_selection"),
   UNREACHABLE_REVIEW_BASE("unreachable_review_base", "review_base_sha"),
   UNREACHABLE_REMEDIATION_BASE("unreachable_remediation_base", "remediation_base_sha"),
   STALE_BLOCKED_CONTINUATION_OUTCOME("stale_blocked_continuation_outcome", "goal_continuation_outcome"),

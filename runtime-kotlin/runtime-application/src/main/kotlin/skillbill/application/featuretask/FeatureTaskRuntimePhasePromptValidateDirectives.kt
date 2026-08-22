@@ -61,7 +61,11 @@ internal fun phaseTaskDirective(
   phaseId: String,
   agentRunValidateFallback: Boolean = false,
   packCollectAllCommand: String? = null,
+  packBuildCommand: String? = null,
 ): String {
+  if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD) {
+    return runtimeOwnedBuildPhaseTask(packBuildCommand)
+  }
   if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE && agentRunValidateFallback) {
     return AGENT_RUN_VALIDATE_PHASE_TASK
   }

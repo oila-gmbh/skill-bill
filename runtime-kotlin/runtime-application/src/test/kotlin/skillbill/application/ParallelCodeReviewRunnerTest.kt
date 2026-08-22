@@ -718,7 +718,7 @@ class ParallelCodeReviewSuppliedDiffTest {
   }
 
   @Test
-  fun `supplied exact diff bypasses branch-scope resolution for both lanes`() {
+  fun `supplied exact diff bypasses branch-scope resolution for the inline parent lane`() {
     val resolver = RecordingDiffResolver(default = "unexpected branch diff")
     val launcher = ParallelSubtaskLauncher()
     val runner = runner(
@@ -731,7 +731,7 @@ class ParallelCodeReviewSuppliedDiffTest {
     runner.run(baseRequest(scope = ParallelReviewScope.BRANCH).copy(suppliedDiff = exactDiff))
 
     assertEquals(listOf(HEAD_BRANCH_QUERY), resolver.calls)
-    assertEquals(2, launcher.requests.size)
+    assertEquals(1, launcher.requests.size)
     launcher.requests.forEach { request ->
       val prompt = request.skillRunRequest.promptOverride.orEmpty()
       assertContains(prompt, "Resolved execution mode: inline")
@@ -976,27 +976,17 @@ class ParallelCodeReviewRunnerFailureTest {
     val launcher = GoalRunnerSubtaskLauncher { request ->
       AgentRunLaunchFacts(
         agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),
-        exitStatus = 0,
+        exitStatus = null,
         stdout = "",
         stderr = "",
-        timedOut = false,
+        timedOut = true,
         spawnFailed = false,
       )
     }
-    val runner = runnerWithParallelLane(
-      launcher,
-      RecordingDiffResolver(default = diffFor("A.kt")),
-      StaticParallelLaneRunner(
-        ParallelReviewLaneRunResult(
-          lane1 = ParallelReviewLaneOutcome(false, "", "lane timed out (cancelled by shared budget)"),
-          lane2 = ParallelReviewLaneOutcome(true, ""),
-        ),
-      ),
-    )
+    val runner = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))
 
     val result = runner.run(
-      baseRequest(agent1Id = "claude", scope = ParallelReviewScope.STAGED, timeout = 1.seconds)
-        .copy(codeReviewMode = CodeReviewExecutionMode.INLINE),
+      baseRequest(agent1Id = "claude", scope = ParallelReviewScope.STAGED, timeout = 1.seconds),
     )
 
     assertFalse(result.lane1.success)
@@ -1099,7 +1089,7 @@ class ParallelCodeReviewRunnerFailureTest {
 
     runner.run(baseRequest(scope = ParallelReviewScope.STAGED))
 
-    assertEquals(2, launcher.requests.size)
+    assertEquals(1, launcher.requests.size)
   }
 
   @Test
@@ -1143,7 +1133,7 @@ class ParallelCodeReviewRunnerFailureTest {
     runner.run(baseRequest(scope = ParallelReviewScope.STAGED))
 
     assertEquals(null, resolvedSlug)
-    assertEquals(2, launcher.requests.size)
+    assertEquals(1, launcher.requests.size)
     launcher.requests.forEach { request ->
       assertContains(request.skillRunRequest.promptOverride.orEmpty(), "horizontal base rubric")
     }

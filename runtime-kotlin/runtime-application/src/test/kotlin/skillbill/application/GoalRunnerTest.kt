@@ -99,6 +99,7 @@ import skillbill.workflow.model.GoalProgressEventKind
 import skillbill.workflow.model.GoalProgressOutcome
 import skillbill.workflow.model.SpecSource
 import skillbill.workflow.model.ValidationDepth
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewPassResult
@@ -715,6 +716,85 @@ class GoalRunnerValidationDepthTest {
     assertEquals(
       listOf(ValidationDepth.FULL, ValidationDepth.FULL),
       launcher.requests.map { requireNotNull(it.skillRunRequest.goalContinuation).validationDepth },
+    )
+  }
+
+  private fun runRequest(): GoalRunnerRunRequest = GoalRunnerRunRequest(
+    issueKey = "SKILL-56",
+    repoRoot = Path.of("/tmp/skillbill-goal-runner"),
+    invokedAgentId = "claude",
+    dbPathOverride = "/tmp/skillbill-goal-runner/metrics.db",
+  )
+}
+
+class GoalRunnerQualityGateSelectionTest {
+  @Test
+  fun `three-child goal stamps build build validate`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 3))
+    val outcomes = RecordingOutcomeStore()
+    val launcher = RecordingSubtaskLauncher { request ->
+      val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+      store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
+      outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)
+      launchFacts()
+    }
+    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+
+    assertIs<GoalRunnerRunReport.Completed>(runner.run(runRequest()))
+
+    assertEquals(
+      listOf(
+        FeatureTaskRuntimeQualityGateSelection.BUILD,
+        FeatureTaskRuntimeQualityGateSelection.BUILD,
+        FeatureTaskRuntimeQualityGateSelection.VALIDATE,
+      ),
+      launcher.requests.map { requireNotNull(it.skillRunRequest.goalContinuation).qualityGateSelection },
+    )
+  }
+
+  @Test
+  fun `single-subtask goal stamps validate`() {
+    val store = InMemoryGoalManifestStore(manifest = manifest(subtaskCount = 1))
+    val outcomes = RecordingOutcomeStore()
+    val launcher = RecordingSubtaskLauncher { request ->
+      val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+      store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
+      outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)
+      launchFacts()
+    }
+    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+
+    assertIs<GoalRunnerRunReport.Completed>(runner.run(runRequest()))
+
+    assertEquals(
+      FeatureTaskRuntimeQualityGateSelection.VALIDATE,
+      requireNotNull(launcher.requests.single().skillRunRequest.goalContinuation).qualityGateSelection,
+    )
+  }
+
+  @Test
+  fun `ordinal-last skipped promotes validate to previous last non-skipped`() {
+    val initial = manifest(subtaskCount = 3).copy(
+      subtasks = manifest(subtaskCount = 3).subtasks.map { subtask ->
+        if (subtask.id == 3) subtask.copy(status = "skipped") else subtask
+      },
+    )
+    val store = InMemoryGoalManifestStore(manifest = initial)
+    val outcomes = RecordingOutcomeStore()
+    val launcher = RecordingSubtaskLauncher { request ->
+      val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
+      store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
+      outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)
+      launchFacts()
+    }
+    val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
+
+    assertIs<GoalRunnerRunReport.Completed>(runner.run(runRequest()))
+
+    assertEquals(listOf(1, 2), launcher.requests.map { it.skillRunRequest.subtaskId })
+    assertEquals(
+      listOf(FeatureTaskRuntimeQualityGateSelection.BUILD, FeatureTaskRuntimeQualityGateSelection.VALIDATE),
+      launcher.requests.map { requireNotNull(it.skillRunRequest.goalContinuation).qualityGateSelection },
     )
   }
 

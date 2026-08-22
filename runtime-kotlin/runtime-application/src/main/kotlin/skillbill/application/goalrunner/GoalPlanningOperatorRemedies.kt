@@ -67,13 +67,13 @@ internal fun goalPlanningNonResumableStatusReason(
 
 /**
  * Launch refuses when shared-preplan classification cannot complete (identity mismatch, schema
- * drift). Status must treat that failure as [GoalPlanningProvenanceRecoverability.Invalid] so a
+ * drift). Status must treat that failure as [GoalPlanningProvenanceRecoverability.Irrecoverable] so a
  * resume-claiming `planning_reason` cannot survive.
  */
 internal fun statusRecoverabilityOrRefuse(
   classify: () -> GoalPlanningProvenanceRecoverability,
 ): GoalPlanningProvenanceRecoverability = runCatching(classify).getOrElse { error ->
-  GoalPlanningProvenanceRecoverability.Invalid(
+  GoalPlanningProvenanceRecoverability.Irrecoverable(
     classifyGoalPlanningRecovery(error.message.orEmpty(), error),
   )
 }
@@ -89,7 +89,7 @@ internal fun alignPlanningStatusWithLaunchRecoverability(
   issueKey: String,
   remedySubtaskId: Int?,
 ): GoalPlanningStatusSnapshot {
-  if (recoverability !is GoalPlanningProvenanceRecoverability.Invalid) return snapshot
+  if (recoverability !is GoalPlanningProvenanceRecoverability.Irrecoverable) return snapshot
   if (
     snapshot.state != GoalPlanningStatusState.PREPLANNED &&
     snapshot.state != GoalPlanningStatusState.PARTIALLY_PLANNED

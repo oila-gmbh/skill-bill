@@ -102,8 +102,10 @@ import skillbill.ports.workflow.model.WorkflowWorktreeActivityResult
 import skillbill.telemetry.model.FeatureTaskRuntimeFinishedRecord
 import skillbill.telemetry.model.FeatureTaskRuntimeStartedRecord
 import skillbill.telemetry.model.TelemetrySettings
+import skillbill.workflow.FeatureTaskRuntimeBuildReceiptValidator
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
 import skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator
+import skillbill.workflow.NoopFeatureTaskRuntimeBuildReceiptValidator
 import skillbill.workflow.NoopFeatureTaskRuntimePlanningProjectionValidator
 import skillbill.workflow.WorkflowSnapshotValidator
 import skillbill.workflow.model.CodeReviewExecutionMode
@@ -5249,7 +5251,7 @@ private fun kotlinPackWithValidationGate(): skillbill.scaffold.model.PlatformMan
   skillbill.scaffold.model.PlatformManifest(
     slug = "kotlin",
     packRoot = Path.of("/tmp/repo/platform-packs/kotlin"),
-    contractVersion = "1.6",
+    contractVersion = "1.7",
     routingSignals = skillbill.scaffold.model.RoutingSignals(
       strong = listOf("src"),
       tieBreakers = emptyList(),
@@ -5665,6 +5667,8 @@ internal data class RuntimeHarnessConfig(
   // allow-list is pinned by PlanningProjectionNoopValidatorGuardTest.
   val planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator =
     NoopFeatureTaskRuntimePlanningProjectionValidator,
+  val buildReceiptValidator: FeatureTaskRuntimeBuildReceiptValidator =
+    NoopFeatureTaskRuntimeBuildReceiptValidator,
   val parallelReviewAgent: String? = null,
   val codeReviewMode: CodeReviewExecutionMode = CodeReviewExecutionMode.DEFAULT,
   val sharedEvidenceResolver: skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort =
@@ -5690,6 +5694,8 @@ private fun runtimePhaseGates(
   specGate: FeatureTaskRuntimeSpecGate = testSpecGate(),
   planningProjectionValidator: FeatureTaskRuntimePlanningProjectionValidator =
     NoopFeatureTaskRuntimePlanningProjectionValidator,
+  buildReceiptValidator: FeatureTaskRuntimeBuildReceiptValidator =
+    NoopFeatureTaskRuntimeBuildReceiptValidator,
   sharedEvidenceResolver: skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort =
     skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort.NONE,
   diffResolver: skillbill.ports.diff.DiffResolverPort = object : skillbill.ports.diff.DiffResolverPort {
@@ -5722,12 +5728,19 @@ private fun runtimePhaseGates(
     gitOperations,
     specGate,
     planningProjectionValidator,
+    buildReceiptValidator,
     validationGateResolver,
     validationGateRunner,
     skillbill.application.featuretask.validation.FeatureTaskRuntimeValidationGateCoordinator(
       validationGateResolver,
       validationGateRunner,
       skillbill.application.featuretask.validation.FeatureTaskRuntimeValidationGateProgressStore(recorder),
+      defaultRepoLocalConfigPort(),
+    ),
+    skillbill.application.featuretask.validation.FeatureTaskRuntimeBuildGateCoordinator(
+      validationGateResolver,
+      validationGateRunner,
+      skillbill.application.featuretask.validation.FeatureTaskRuntimeBuildGateProgressStore(recorder),
       defaultRepoLocalConfigPort(),
     ),
     sharedEvidenceResolver,
@@ -5883,6 +5896,7 @@ private fun harnessRunner(
       runtimeConfig.branchSetup.gitOperations,
       testSpecGate(specScratchStore, specStatusWriter),
       runtimeConfig.planningProjectionValidator,
+      runtimeConfig.buildReceiptValidator,
       runtimeConfig.sharedEvidenceResolver,
       runtimeConfig.diffResolver,
       recorder,

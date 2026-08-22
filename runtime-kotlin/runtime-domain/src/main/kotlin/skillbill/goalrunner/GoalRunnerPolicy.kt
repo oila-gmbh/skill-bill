@@ -15,6 +15,18 @@ import skillbill.goalrunner.model.GoalRunnerWorkerSubtaskSchedulingResult
 import skillbill.workflow.model.DecompositionDependency
 import skillbill.workflow.model.DecompositionManifest
 import skillbill.workflow.model.DecompositionSubtask
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
+
+object GoalRunnerQualityGateSelectionResolver {
+  fun resolve(manifest: DecompositionManifest, subtaskId: Int): FeatureTaskRuntimeQualityGateSelection {
+    val lastNonSkippedId = manifest.subtasks.lastOrNull { it.status != "skipped" }?.id
+    return if (lastNonSkippedId == subtaskId) {
+      FeatureTaskRuntimeQualityGateSelection.VALIDATE
+    } else {
+      FeatureTaskRuntimeQualityGateSelection.BUILD
+    }
+  }
+}
 
 object GoalRunnerPlanner {
   fun selectNext(manifest: DecompositionManifest): GoalRunnerSelection {

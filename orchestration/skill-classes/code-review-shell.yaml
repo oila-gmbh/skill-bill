@@ -1,5 +1,5 @@
 class: code-review-shell
-contract_version: "1.6"
+contract_version: "1.7"
 
 matchers:
   - exact: bill-code-review
@@ -26,7 +26,7 @@ sections:
       - invoke `skill-bill code-review` with the resolved arguments
       - present the returned register without rewriting it
 
-      The shell targets shell contract version `1.6`. Platform packs must declare the same `contract_version` in their `platform.yaml`. Version mismatch is a hard failure — see the loud-fail rules below.
+      The shell targets shell contract version `1.7`. Platform packs must declare the same `contract_version` in their `platform.yaml`. Version mismatch is a hard failure — see the loud-fail rules below.
 
   - heading: Setup
     body: |

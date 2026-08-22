@@ -7,6 +7,7 @@ import skillbill.config.model.CompactionSettings
 import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.ValidationDepth
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptDeviation
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReceiptReconciliation
@@ -73,6 +74,7 @@ data class FeatureTaskRuntimeGoalContinuationContext(
   val lastResumableStep: String? = null,
   val codeReviewMode: CodeReviewExecutionMode? = null,
   val validationDepth: ValidationDepth = ValidationDepth.DEFAULT,
+  val qualityGateSelection: FeatureTaskRuntimeQualityGateSelection = FeatureTaskRuntimeQualityGateSelection.VALIDATE,
   val parallelReviewAgent: String? = null,
   val subtaskName: String? = null,
   val reviewBaseline: GoalSubtaskReviewBaseline? = null,

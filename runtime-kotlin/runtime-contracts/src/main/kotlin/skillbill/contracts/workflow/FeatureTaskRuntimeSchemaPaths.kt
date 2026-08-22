@@ -205,6 +205,17 @@ object FeatureTaskRuntimeCheckpointIdentitySchemaPaths {
  */
 const val FEATURE_TASK_RUNTIME_SHARED_EVIDENCE_PROJECTION_CONTRACT_VERSION: String = "0.1"
 
+const val FEATURE_TASK_RUNTIME_BUILD_RECEIPT_CONTRACT_VERSION: String = "0.1"
+
+object FeatureTaskRuntimeBuildReceiptSchemaPaths {
+  const val REPO_RELATIVE_PATH: String =
+    "orchestration/contracts/feature-task-runtime-build-receipt.yaml"
+  const val CLASSPATH_RESOURCE: String =
+    "skillbill/contracts/feature-task-runtime-build-receipt.yaml"
+  const val EXPECTED_SCHEMA_ID: String =
+    "https://skill-bill.dev/contracts/feature-task-runtime-build-receipt.yaml"
+}
+
 object FeatureTaskRuntimeSharedEvidenceProjectionSchemaPaths {
   const val REPO_RELATIVE_PATH: String =
     "orchestration/contracts/feature-task-runtime-shared-evidence-projection-schema.yaml"

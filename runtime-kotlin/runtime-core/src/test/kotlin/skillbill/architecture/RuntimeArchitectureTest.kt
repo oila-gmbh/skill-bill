@@ -2007,6 +2007,7 @@ class RuntimeArchitectureTest {
       // SKILL-137: domain-owned canonical planning-projections schema gate (infra-fs adapter
       // bound in DI). Raw-map because the schema validates the produced_outputs wire map.
       "skillbill.workflow.FeatureTaskRuntimePlanningProjectionValidator.validatePlanningProjection",
+      "skillbill.workflow.FeatureTaskRuntimeBuildReceiptValidator.validateBuildReceipt",
       "skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput.envelope",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.toArtifactMap",
       "skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord.fromArtifactMap",

@@ -26,6 +26,8 @@ class ShellContentLoaderValidationGateTest {
       listOf("./gradlew", "check", "--continue", "--rerun-tasks"),
       gate.cacheBypassingCollectAllFullGateCommand,
     )
+    assertEquals(listOf("./gradlew", "compileKotlin"), gate.buildCommand)
+    assertEquals(listOf("./gradlew", "compileKotlin", "--no-build-cache"), gate.cacheBypassingBuildCommand)
     assertEquals("junit_xml", gate.findings.format.wireValue)
     assertEquals("gradle_kotlin_compiler_stdout", gate.findings.compilerDiagnostics.format.wireValue)
     assertEquals(listOf("@Suppress", "@file:Suppress"), gate.suppressionMarkers)
@@ -72,6 +74,46 @@ class ShellContentLoaderValidationGateTest {
   }
 
   @Test
+  fun `blank build_command loud-fails`() {
+    val gate = wellFormedGate().toMutableMap()
+    gate["build_command"] = listOf("./gradlew", " ")
+    val manifest = mapOf("validation_gate" to gate)
+    assertFailsWith<InvalidValidationGateDeclarationError> {
+      parseValidationGate(manifest, "kotlin")
+    }
+  }
+
+  @Test
+  fun `build_command identical to collect_all_full_gate_command loud-fails`() {
+    val gate = wellFormedGate().toMutableMap()
+    gate["build_command"] = listOf("./gradlew", "check", "--continue")
+    val manifest = mapOf("validation_gate" to gate)
+    val error = assertFailsWith<InvalidValidationGateDeclarationError> {
+      parseValidationGate(manifest, "kotlin")
+    }
+    assertEquals(
+      "Platform pack 'kotlin': 'validation_gate.build_command' must not be byte-identical to " +
+        "'validation_gate.collect_all_full_gate_command'.",
+      error.message,
+    )
+  }
+
+  @Test
+  fun `cache_bypassing_build_command identical to cache_bypassing_collect_all loud-fails`() {
+    val gate = wellFormedGate().toMutableMap()
+    gate["cache_bypassing_build_command"] = listOf("./gradlew", "check", "--continue", "--rerun-tasks")
+    val manifest = mapOf("validation_gate" to gate)
+    val error = assertFailsWith<InvalidValidationGateDeclarationError> {
+      parseValidationGate(manifest, "kotlin")
+    }
+    assertEquals(
+      "Platform pack 'kotlin': 'validation_gate.cache_bypassing_build_command' must not be " +
+        "byte-identical to 'validation_gate.cache_bypassing_collect_all_full_gate_command'.",
+      error.message,
+    )
+  }
+
+  @Test
   fun `malformed validation_gate loud-fails`() {
     val manifest = Yaml().load<Map<String, Any?>>(
       """
@@ -91,6 +133,8 @@ class ShellContentLoaderValidationGateTest {
     "cache_bypassing_full_gate_command" to listOf("./gradlew", "check", "--rerun-tasks"),
     "collect_all_full_gate_command" to listOf("./gradlew", "check", "--continue"),
     "cache_bypassing_collect_all_full_gate_command" to listOf("./gradlew", "check", "--continue", "--rerun-tasks"),
+    "build_command" to listOf("./gradlew", "compileKotlin"),
+    "cache_bypassing_build_command" to listOf("./gradlew", "compileKotlin", "--no-build-cache"),
     "findings" to mapOf(
       "format" to "junit_xml",
       "artifact_globs" to listOf("**/build/test-results/**/*.xml"),

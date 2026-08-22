@@ -205,24 +205,87 @@ class ParallelReviewFindingParserTest {
   }
 
   @Test
-  fun `near miss finding ids are reported as unadmitted candidates rather than absence`() {
-    val nearMisses = listOf(
-      "- [F-1] Major | High | src/A.kt:1 | short id",
-      "- [F-0001] Major | High | src/A.kt:1 | long id",
-      "**[F-001]** Major | High | src/A.kt:1 | bolded id",
-      "| [F-001] | Major | High | src/A.kt:1 | table wrapped id",
+  fun `routed rubric annotation after specialist skill name is peeled and the finding admits`() {
+    val finding = ParallelReviewFindingParser.parse(
+      "[F-001] Minor | High | specialist=bill-generic-code-review-api-contracts" +
+        "[paths=\"src/Auth.kt\";add-ons=none;origins=generic] | " +
+        "commits=synthetic:synthetic_supplied_diff | path=\"src/Auth.kt\" | line=65 | " +
+        "fixture cannot distinguish omitted from null",
+    ).findings.single()
+
+    assertEquals("bill-generic-code-review-api-contracts", finding.specialistSkillName)
+    assertEquals("src/Auth.kt", finding.repositoryPath)
+    assertEquals(65, finding.line)
+    assertEquals("fixture cannot distinguish omitted from null", finding.description)
+  }
+
+  @Test
+  fun `near miss finding ids are padded and unwrapped so the finding admits`() {
+    val cases = listOf(
+      "- [F-1] Major | High | src/A.kt:1 | short id" to "src/A.kt",
+      "- [F-0001] Major | High | src/A.kt:1 | long id" to "src/A.kt",
+      "**[F-001]** Major | High | src/A.kt:1 | bolded id" to "src/A.kt",
+      "| [F-001] | Major | High | src/A.kt:1 | table wrapped id" to "src/A.kt",
     )
 
-    nearMisses.forEach { line ->
+    cases.forEach { (line, path) ->
       val result = ParallelReviewFindingParser.parse("Preamble prose.\n\n$line")
 
-      assertEquals(emptyList(), result.findings, line)
+      assertEquals(listOf(path), result.findings.map { it.repositoryPath }, line)
+      assertEquals(emptyList(), result.rejections, line)
       assertEquals(1, result.candidateCount, line)
-      val rejection = result.rejections.single()
-      assertEquals(line, rejection.lineText, line)
-      assertEquals(3, rejection.linePosition, line)
-      assertEquals(ParallelReviewFindingRejectionReason.UNMATCHED_CANDIDATE_LINE, rejection.reason, line)
     }
+  }
+
+  @Test
+  fun `normalizeRegisterLine pads short and long F-ids and strips bold or table wrappers`() {
+    assertEquals(
+      "[F-001] Major | High | src/A.kt:1 | short",
+      ParallelReviewFindingParser.normalizeRegisterLine("[F-1] Major | High | src/A.kt:1 | short"),
+    )
+    assertEquals(
+      "- [F-001] Major | High | src/A.kt:1 | long",
+      ParallelReviewFindingParser.normalizeRegisterLine("- [F-0001] Major | High | src/A.kt:1 | long"),
+    )
+    assertEquals(
+      "[F-001] Major | High | src/A.kt:1 | bolded",
+      ParallelReviewFindingParser.normalizeRegisterLine("**[F-001]** Major | High | src/A.kt:1 | bolded"),
+    )
+    assertEquals(
+      "[F-001] Major | High | src/A.kt:1 | table",
+      ParallelReviewFindingParser.normalizeRegisterLine("| [F-001] | Major | High | src/A.kt:1 | table"),
+    )
+  }
+
+  @Test
+  fun `a finding body without an F-token gets the next sequential id in the lane`() {
+    val result = ParallelReviewFindingParser.parse(
+      """
+      [F-001] Major | High | src/A.kt:1 | first
+      Major | High | src/B.kt:2 | missing token
+      - Minor | Low | src/C.kt:3 | bullet missing token
+      """.trimIndent(),
+    )
+
+    assertEquals(
+      listOf("src/A.kt", "src/B.kt", "src/C.kt"),
+      result.findings.map { it.repositoryPath },
+    )
+    assertEquals(emptyList(), result.rejections)
+    assertEquals(
+      listOf(
+        "[F-001] Major | High | src/A.kt:1 | first",
+        "[F-002] Major | High | src/B.kt:2 | missing token",
+        "- [F-003] Minor | Low | src/C.kt:3 | bullet missing token",
+      ),
+      ParallelReviewFindingParser.normalizeRegisterText(
+        """
+        [F-001] Major | High | src/A.kt:1 | first
+        Major | High | src/B.kt:2 | missing token
+        - Minor | Low | src/C.kt:3 | bullet missing token
+        """.trimIndent(),
+      ).lines(),
+    )
   }
 
   @Test

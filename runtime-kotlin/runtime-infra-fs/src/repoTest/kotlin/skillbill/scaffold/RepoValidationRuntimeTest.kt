@@ -319,7 +319,7 @@ class RepoValidationRuntimeTest {
       packRoot.resolve("platform.yaml"),
       """
       platform: kmp
-      contract_version: "1.6"
+      contract_version: "1.7"
       routing_signals:
         strong: ["androidMain"]
       declared_code_review_areas: []
@@ -1180,7 +1180,7 @@ class RepoValidationRuntimeTest {
       repoRoot.resolve("platform-packs/$slug/platform.yaml"),
       """
       |platform: $slug
-      |contract_version: "1.6"
+      |contract_version: "1.7"
       |display_name: $slug
       |routing_signals:
       |  strong:

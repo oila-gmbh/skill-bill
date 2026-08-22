@@ -7,6 +7,9 @@ import skillbill.error.InvalidWorkflowStateSchemaError
 const val FEATURE_TASK_RUNTIME_VALIDATION_GATE_PROGRESS_ARTIFACT_KEY: String =
   "feature_task_runtime_validation_gate_progress"
 
+const val FEATURE_TASK_RUNTIME_BUILD_GATE_PROGRESS_ARTIFACT_KEY: String =
+  "feature_task_runtime_build_gate_progress"
+
 enum class FeatureTaskRuntimeValidationGateRepairWindowPhase(val wireValue: String) {
   NONE("none"),
   FINDINGS_OPEN("findings_open"),

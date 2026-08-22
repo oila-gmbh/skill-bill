@@ -94,7 +94,7 @@ class ParallelCodeReviewRegressionTest {
     val summary = assertNotNull(runner.run(harnessRequest()).accountingSummary)
 
     val lanes = summary.lanes.filter { it.children.isEmpty() }
-    assertEquals(2, lanes.size, "No lane is relabeled or duplicated in the accounting tree.")
+    assertEquals(1, lanes.size, "No lane is relabeled or duplicated in the accounting tree.")
     assertEquals(lanes.size, lanes.map { it.lane }.distinct().size)
     lanes.forEach { lane ->
       assertTrue(lane.counters.launchBytes > 0)

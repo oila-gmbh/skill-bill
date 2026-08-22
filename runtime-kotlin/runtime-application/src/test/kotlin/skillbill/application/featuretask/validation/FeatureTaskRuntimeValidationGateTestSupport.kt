@@ -48,7 +48,7 @@ internal val validationGateTestDeclaration: ValidationGateDeclaration = Validati
 
 internal fun outOfContractResolver(): ValidationGateResolver = ValidationGateResolver {
   throw ContractVersionMismatchError(
-    "Platform pack 'fallback': declares contract_version '0.1' but the shell expects '1.6'.",
+    "Platform pack 'fallback': declares contract_version '0.1' but the shell expects '1.7'.",
   )
 }
 
@@ -77,7 +77,7 @@ internal fun coordinator(
 ): FeatureTaskRuntimeValidationGateCoordinator = FeatureTaskRuntimeValidationGateCoordinator(
   resolver,
   runner,
-  ValidationGateProgressStore { _, p, _ -> progress += p },
+  FeatureTaskRuntimeValidationGateProgressStore(ValidationGateProgressStore { _, p, _ -> progress += p }),
   repoLocalConfig(gradleWrapper),
   diagnostics,
 )
@@ -89,7 +89,7 @@ internal fun coordinator(
 ): FeatureTaskRuntimeValidationGateCoordinator = FeatureTaskRuntimeValidationGateCoordinator(
   resolver,
   runner,
-  progressStore,
+  FeatureTaskRuntimeValidationGateProgressStore(progressStore),
   repoLocalConfig(),
   skillbill.ports.diagnostics.NoopRuntimeDiagnostics,
 )
@@ -205,7 +205,7 @@ internal fun completedRepair(
 internal fun kotlinPackWithoutGate(): PlatformManifest = PlatformManifest(
   slug = "kotlin",
   packRoot = validationGateTestRepoRoot.resolve("platform-packs/kotlin"),
-  contractVersion = "1.6",
+  contractVersion = "1.7",
   routingSignals = RoutingSignals(
     strong = listOf("runtime-kotlin"),
     tieBreakers = emptyList(),

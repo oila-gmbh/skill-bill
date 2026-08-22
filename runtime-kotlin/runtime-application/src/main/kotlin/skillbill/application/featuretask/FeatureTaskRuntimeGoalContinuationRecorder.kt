@@ -32,6 +32,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationArtifact
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationFieldAdoption
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_REVIEW_BASE_RECOVERIES_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_INPUT_ARTIFACT_KEY
@@ -1017,9 +1018,11 @@ private fun FeatureTaskRuntimeGoalContinuationArtifact?.compatibleWith(
   if (this == null || supplied == null) return true
   // Agent add-ons are launch guidance and may change on resume. An absent validation depth may be
   // healed to the launcher-supplied value in the same write; a recorded depth remains immutable.
+  // Legacy rows missing quality_gate_selection always resolve to validate; non-null stamps stay immutable.
   val healed = copy(
     agentAddonSelection = skillbill.agentaddon.model.AgentAddonSelection(),
     validationDepth = validationDepth ?: supplied.validationDepth,
+    qualityGateSelection = qualityGateSelection ?: FeatureTaskRuntimeQualityGateSelection.VALIDATE,
   )
   return healed == supplied.copy(agentAddonSelection = skillbill.agentaddon.model.AgentAddonSelection())
 }

@@ -277,6 +277,14 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
   }
 
   @Test
+  fun `build_receipt contract id is registered for handoff projection parsing`() {
+    assertEquals(
+      "feature_task_runtime.build_receipt",
+      FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.BUILD_RECEIPT,
+    )
+  }
+
+  @Test
   fun `validation_receipt declared fields stay validation_status checks repository_checkpoint`() {
     val expected = listOf(
       "validation_status",
@@ -298,6 +306,39 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
             FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_RECEIPT
         }
       assertEquals(expected, receipt.declaredFieldNames)
+    }
+  }
+
+  @Test
+  fun `build-stamped write_history rejects settled validate output`() {
+    val consumer = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY
+    val declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarationForQualityGate(
+      consumer,
+      FeatureTaskRuntimeFeatureSize.MEDIUM,
+      skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.BUILD,
+    )
+    assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
+      FeatureTaskRuntimeHandoffProjectionValidator.validate(
+        inputs(
+          consumerPhaseId = consumer,
+          declarations = declaration.projectionDeclarations,
+          resolvedUpstream = FeatureTaskRuntimeResolvedUpstreamOutputs(
+            mapOf(
+              FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT to FeatureTaskRuntimePhaseOutput(
+                phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
+                iteration = 1,
+                payload = """{"produced_outputs":{}}""",
+              ),
+              FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE to FeatureTaskRuntimePhaseOutput(
+                phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
+                iteration = 1,
+                payload = """{"produced_outputs":{}}""",
+              ),
+            ),
+          ),
+          qualityGateSelection = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.BUILD,
+        ),
+      )
     }
   }
 
@@ -684,6 +725,8 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
     resolvedCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
     expectedCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
     validationDepth: ValidationDepth = ValidationDepth.DEFAULT,
+    qualityGateSelection: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection =
+      skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.VALIDATE,
   ) = FeatureTaskRuntimeHandoffProjectionInputs(
     consumerPhaseId = consumerPhaseId,
     declarations = declarations,
@@ -693,6 +736,7 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
     expectedCheckpoint = expectedCheckpoint,
     workflowId = "wftr-1",
     validationDepth = validationDepth,
+    qualityGateSelection = qualityGateSelection,
   )
 
   private fun validationRequestFields(

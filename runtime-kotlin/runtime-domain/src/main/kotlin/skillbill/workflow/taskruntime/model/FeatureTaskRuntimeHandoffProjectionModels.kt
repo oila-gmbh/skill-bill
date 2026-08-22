@@ -731,6 +731,7 @@ data class FeatureTaskRuntimeHandoffProjectionInputs(
    * GoalContinuationContext type.
    */
   val validationDepth: ValidationDepth = ValidationDepth.DEFAULT,
+  val qualityGateSelection: FeatureTaskRuntimeQualityGateSelection = FeatureTaskRuntimeQualityGateSelection.VALIDATE,
   /**
    * Canonical planning-projections schema gate, called before a bounded projection is parsed. The
    * default leaves the schema unenforced and exists only for suites asserting the typed Kotlin rules

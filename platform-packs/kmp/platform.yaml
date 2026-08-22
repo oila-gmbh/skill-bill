@@ -1,5 +1,5 @@
 platform: kmp
-contract_version: "1.6"
+contract_version: "1.7"
 display_name: "Android & Kotlin Multiplatform"
 
 routing_signals:
@@ -70,6 +70,13 @@ validation_gate:
     - ./gradlew
     - check
     - --continue
+  build_command:
+    - ./gradlew
+    - compileKotlin
+  cache_bypassing_build_command:
+    - ./gradlew
+    - compileKotlin
+    - --no-build-cache
   cache_bypassing_collect_all_full_gate_command:
     - ./gradlew
     - check

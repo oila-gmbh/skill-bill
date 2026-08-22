@@ -120,10 +120,8 @@ data class ValidationGateDeclaration(
   val collectAllFullGateCommand: List<String>,
   val cacheBypassingCollectAllFullGateCommand: List<String>,
   val findings: ValidationGateFindingsLocator,
-  /**
-   * Pack-declared suppression marker literals. Empty means this pack is not
-   * gated for suppressions; a malformed declaration never coerces to empty.
-   */
+  val buildCommand: List<String>? = null,
+  val cacheBypassingBuildCommand: List<String>? = null,
   val suppressionMarkers: List<String> = emptyList(),
 ) {
   init {
@@ -147,6 +145,25 @@ data class ValidationGateDeclaration(
     }
     require(suppressionMarkers.all(String::isNotBlank)) {
       "validation_gate.suppression_markers entries must be non-blank when present."
+    }
+    if (buildCommand != null || cacheBypassingBuildCommand != null) {
+      require(buildCommand != null && cacheBypassingBuildCommand != null) {
+        "validation_gate.build_command and validation_gate.cache_bypassing_build_command must both be " +
+          "present when either is declared."
+      }
+      require(buildCommand.isNotEmpty() && buildCommand.all(String::isNotBlank)) {
+        "validation_gate.build_command must be a non-empty argv of non-blank strings when present."
+      }
+      require(cacheBypassingBuildCommand.isNotEmpty() && cacheBypassingBuildCommand.all(String::isNotBlank)) {
+        "validation_gate.cache_bypassing_build_command must be a non-empty argv of non-blank strings when present."
+      }
+      require(buildCommand != collectAllFullGateCommand) {
+        "validation_gate.build_command must not be byte-identical to validation_gate.collect_all_full_gate_command."
+      }
+      require(cacheBypassingBuildCommand != cacheBypassingCollectAllFullGateCommand) {
+        "validation_gate.cache_bypassing_build_command must not be byte-identical to " +
+          "validation_gate.cache_bypassing_collect_all_full_gate_command."
+      }
     }
   }
 }

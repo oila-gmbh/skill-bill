@@ -66,6 +66,7 @@ import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import skillbill.workflow.taskruntime.model.GoalSubtaskOperatorDecision
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
@@ -168,6 +169,10 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
     "--suppress-pr",
     help = "Suppress the runtime PR phase. Required with goal-continuation options.",
   ).flag(default = false)
+  protected val qualityGateSelections by option(
+    "--quality-gate-selection",
+    help = "Goal-child quality gate: build (compile proof) or validate (full collect-all). Defaults to validate.",
+  ).multiple()
   protected val explicitWorkflowId by option(
     "--workflow-id",
     help = "Open the run under this exact workflow id instead of minting a new one. Used by the goal " +
@@ -340,6 +345,7 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
       lastResumableStep = goalLastResumableStep?.takeIf(String::isNotBlank),
       codeReviewMode = requestedReviewMode,
       validationDepth = ValidationDepth.FULL,
+      qualityGateSelection = requestedQualityGateSelection(),
       parallelReviewAgent = parallelReviewAgent?.takeIf(String::isNotBlank),
       reviewBaseline = requireNotNull(goalReviewBaseSha?.takeIf(String::isNotBlank)) {
         "--goal-review-base-sha is required with goal-continuation options."
@@ -347,6 +353,26 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
         GoalSubtaskReviewBaseline(base, goalBaselineUntrackedPaths.distinct().sorted())
       },
     )
+  }
+
+  private fun requestedQualityGateSelection(): FeatureTaskRuntimeQualityGateSelection {
+    val fromEnv = System.getenv("SKILL_BILL_QUALITY_GATE_SELECTION")
+      ?.takeIf(String::isNotBlank)
+      ?.let(FeatureTaskRuntimeQualityGateSelection::fromWire)
+    val fromCli = when (qualityGateSelections.size) {
+      0 -> null
+      1 -> FeatureTaskRuntimeQualityGateSelection.fromWire(qualityGateSelections.single())
+      else -> {
+        val raw = qualityGateSelections.joinToString(", ")
+        if (qualityGateSelections.distinct().size == 1) {
+          throw UsageError("Duplicate --quality-gate-selection '$raw' is not allowed; supply it at most once.")
+        }
+        throw UsageError(
+          "Conflicting --quality-gate-selection values '$raw' are not allowed; supply exactly one selection.",
+        )
+      }
+    }
+    return fromCli ?: fromEnv ?: FeatureTaskRuntimeQualityGateSelection.VALIDATE
   }
 
   private fun requestedOperatorDecision(): GoalSubtaskOperatorDecision? {

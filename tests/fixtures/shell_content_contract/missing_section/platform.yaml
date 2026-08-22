@@ -1,5 +1,5 @@
 platform: missing_section
-contract_version: '1.6'
+contract_version: '1.7'
 routing_signals:
   strong:
   - .missing-section
