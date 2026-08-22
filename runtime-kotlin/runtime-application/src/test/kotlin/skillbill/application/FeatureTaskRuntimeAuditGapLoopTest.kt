@@ -676,6 +676,51 @@ internal fun auditGapLauncher(convergeOnAudit: Int): RuntimeRecordingLauncher {
   }
 }
 
+  // AC-005: two gaps_found rounds deliver the prior-gap memory projection on the second audit_gap
+  // implement re-entry (with sticky ids from the two prior audits) and on the audit that follows it.
+  @Test
+  fun `prior-gap memory appears on the second audit_gap implement and the audit that follows it`() {
+    val harness = runnerHarness(launcher = auditGapLauncher(convergeOnAudit = 3))
+
+    val report = harness.runner.run(harness.request())
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    val briefings = harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()
+    val implementBriefing = requireNotNull(briefings["implement"]).briefingText
+    val auditBriefing = requireNotNull(briefings["audit"]).briefingText
+    // The second audit_gap implement (round 2) carries the memory projection; sticky ids come from the
+    // two prior audits both reporting AC-002.
+    assertContains(implementBriefing, "prior_gap_memory")
+    assertContains(implementBriefing, "sticky_ids")
+    assertContains(implementBriefing, "AC-002")
+    // Sticky ids are the two refs both audits reported, never the ref+note text: the directive pins the
+    // exact ref set, which a leaked "AC-002: <note>" line would break.
+    assertContains(implementBriefing, "Prioritize the sticky criterion ids (AC-003, AC-002)")
+    // last_implement_claims is the union of the prior implement receipt's completed task criterion refs
+    // through the plan mapping (task-1 -> AC-001).
+    assertContains(implementBriefing, "last_implement_claims")
+    assertContains(implementBriefing, "AC-001")
+    // The audit that follows remediation also carries the memory projection.
+    assertContains(auditBriefing, "prior_gap_memory")
+    assertContains(auditBriefing, "sticky_ids")
+  }
+
+  // AC-004: an in-flight workflow without a second comparable audit still completes with empty memory;
+  // the first audit_gap implement delivers the memory projection with no sticky ids rather than failing.
+  @Test
+  fun `in-flight workflow without a second comparable audit completes with empty sticky memory`() {
+    val harness = runnerHarness(launcher = auditGapLauncher(convergeOnAudit = 2))
+
+    val report = harness.runner.run(harness.request())
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    val implementBriefing = requireNotNull(
+      harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()["implement"],
+    ).briefingText
+    assertContains(implementBriefing, "prior_gap_memory")
+    assertContains(implementBriefing, "sticky_ids")
+  }
+
 class FeatureTaskRuntimeAuditGapSharedEvidenceTest {
   @Test
   fun `audit_gap at an unchanged checkpoint reuses shared evidence without a second derivation`() {

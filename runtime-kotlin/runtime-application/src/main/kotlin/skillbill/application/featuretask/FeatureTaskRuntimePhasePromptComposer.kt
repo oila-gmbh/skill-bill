@@ -16,6 +16,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairCo
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionBudget
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorReviewContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
 import skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting
@@ -72,13 +73,21 @@ object FeatureTaskRuntimePhasePromptComposer {
     // corrective path must render only the schema rejection plus authorized repair context.
     val effectiveContinuation = implementationContinuation.takeUnless { correctiveRepairContext != null }
     return listOf(
-      header(issueKey, briefing.phaseId, agentRunValidateFallback, packCollectAllCommand, packBuildCommand),
+      header(
+        issueKey,
+        briefing.phaseId,
+        agentRunValidateFallback,
+        packCollectAllCommand,
+        packBuildCommand,
+        briefing.priorGapMemory,
+      ),
       ceremonyDirective(briefing, reviewPassNumber),
       mutatingPhaseIdempotencyDirective(briefing.phaseId),
       nonValidatePhaseValidationOwnershipDirective(briefing.phaseId),
       nonBuildPhaseBuildOwnershipDirective(briefing.phaseId),
       minimalismDisciplineDirective(briefing.phaseId),
       testValueDisciplineDirective(briefing.phaseId),
+      priorGapMemoryRemediationDirective(briefing.phaseId, briefing.priorGapMemory),
       goalContinuationDirective(briefing.phaseId, suppressDecomposition),
       absentValidationGateDegradationDirective(briefing.phaseId, agentRunValidateFallback),
       validationGateFindingsDirective(briefing.phaseId, validationGateFindings),
@@ -300,9 +309,16 @@ object FeatureTaskRuntimePhasePromptComposer {
     agentRunValidateFallback: Boolean = false,
     packCollectAllCommand: String? = null,
     packBuildCommand: String? = null,
+    priorGapMemory: FeatureTaskRuntimePriorGapMemory? = null,
   ): String {
     val label = FeatureTaskRuntimePhaseWorkflowDefinition.definition.stepLabels[phaseId] ?: phaseId
-    val directive = phaseTaskDirective(phaseId, agentRunValidateFallback, packCollectAllCommand, packBuildCommand)
+    val directive = phaseTaskDirective(
+      phaseId,
+      agentRunValidateFallback,
+      packCollectAllCommand,
+      packBuildCommand,
+      priorGapMemory,
+    )
     return """
       You are executing exactly one phase of the EXPERIMENTAL skill-bill feature-task-runtime
       loop ($forwardPhaseOrder)
@@ -506,8 +522,7 @@ object FeatureTaskRuntimePhasePromptComposer {
       "      produced_outputs carries nothing else about the audit: no gaps, no audit_repair_plan, no\n" +
       "      carried_gap_dispositions, no blast_radius_inspection, no gap or repair-item identifiers —\n" +
       "      put planning guidance in the note only.\n" +
-      "      Every audit re-checks every listed criterion from scratch against the tree, so there is no\n" +
-      "      earlier audit to account for and nothing to carry forward except the notes you emit now.\n" +
+      auditNoEarlierAuditLine(briefing) +
       "      Minor and nit entries go only in produced_outputs.non_blocking_findings and they\n" +
       "      NEVER trigger gaps_found: severity (minor or nit) is required, acceptance_criterion_ref and\n" +
       "      message are expected. Example: {\"acceptance_criterion_ref\":\"AC-004\",\n" +
@@ -520,11 +535,38 @@ object FeatureTaskRuntimePhasePromptComposer {
       "      absent or inadequate." +
       auditRoundScopeAddendum(briefing)
 
+  // The blank-slate line in the audit output addendum. Subordinated for a memory-carrying audit (which
+  // must account for the earlier audit's claims) while staying byte-identical for a first or forward audit.
+  private fun auditNoEarlierAuditLine(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String =
+    if (briefing.priorGapMemory == null) {
+      "      Every audit re-checks every listed criterion from scratch against the tree, so there is no\n" +
+        "      earlier audit to account for and nothing to carry forward except the notes you emit now.\n"
+    } else {
+      "      Every audit re-checks every listed criterion from scratch against the tree; when this\n" +
+        "      briefing carries prior-gap memory, the earlier audit's claims are context you must\n" +
+        "      account for, and a repeated sticky criterion id needs an explicit re-justification (below).\n"
+    }
+
   // The unmet criteria a previous audit named are the round's focus, but never its boundary: a
   // criterion an earlier audit passed can regress under a later repair, and only a full re-check
   // catches that. Naming the carried refs orients the round without narrowing what it must decide.
-  private fun auditRoundScopeAddendum(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String =
-    if (briefing.unresolvedAuditGapIds.isEmpty()) {
+  // When prior-gap memory is present, the round also renders the memory (prior refs+notes, the last
+  // implement claims, sticky ids) and requires explicit re-justification for any repeated sticky id.
+  private fun auditRoundScopeAddendum(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String {
+    val memoryBlock = briefing.priorGapMemory?.let { memory ->
+      val claims = memory.lastImplementClaims.takeIf { it.isNotEmpty() }?.joinToString() ?: "none"
+      val sticky = memory.stickyIds.takeIf { it.isNotEmpty() }?.joinToString() ?: "none"
+      buildString {
+        append("\n      Prior-gap memory (round ${memory.round}): the audit that fired this edge reported:\n")
+        memory.priorUnmetCriteria.forEach { note -> append("        - $note\n") }
+        append("      The subsequent implement receipt claimed: $claims.\n")
+        append("      Sticky ids (unmet in the last two audits): $sticky.\n")
+        append("      Repeating any sticky criterion id requires explicit re-justification: name what\n")
+        append("      the prior implement claimed and why the tree still fails it. The blanket 'no earlier\n")
+        append("      audit' note above does not apply to a memory-carrying audit.\n")
+      }
+    }.orEmpty()
+    val scopeBlock = if (briefing.unresolvedAuditGapIds.isEmpty()) {
       ""
     } else {
       "\n      The previous audit reported these criteria unmet: " +
@@ -533,6 +575,8 @@ object FeatureTaskRuntimePhasePromptComposer {
         "      narrow patch can open a new sibling gap. When you emit gaps_found again, prefer notes\n" +
         "      that still hand implement a careful fix plan, not only a fresh diagnosis."
     }
+    return memoryBlock + scopeBlock
+  }
 
   private fun validationGateFindingsDirective(phaseId: String, findings: ValidationFindingSetProjection?): String {
     if (findings == null) return ""

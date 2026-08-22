@@ -8,6 +8,7 @@ import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorReviewContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
 import skillbill.workflow.taskruntime.model.REPAIR_RECEIPT_MAX_NO_EDIT_REASON_UTF8_BYTES
@@ -34,6 +35,30 @@ internal fun mutatingPhaseIdempotencyDirective(phaseId: String): String {
     be safe to run again: reconciling to target, not re-applying from scratch. Before finishing,
     verify every changed file is at its intended state and report that reconciled end-state in
     produced_outputs (see the reconciliation report in the required output below).
+  """.trimIndent()
+}
+
+/**
+ * Emitted only for an `audit_gap` implement re-entry that carries prior-gap memory. It turns the
+ * delivered prior_gap_memory projection into an instruction: prioritize the sticky criterion ids while
+ * still closing every listed gap in this one invocation, treat the memory as authoritative context, and
+ * never narrow scope to only the sticky items. Empty for a forward implement (no memory) and for every
+ * other phase, so first-pass briefings render neither the memory block nor this directive (AC-002).
+ */
+internal fun priorGapMemoryRemediationDirective(
+  phaseId: String,
+  memory: FeatureTaskRuntimePriorGapMemory?,
+): String {
+  if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT || memory == null) {
+    return ""
+  }
+  val sticky = memory.stickyIds.takeIf { it.isNotEmpty() }?.joinToString() ?: "none yet (only one audit so far)"
+  return """
+    ## Prior-gap memory — sticky criteria take priority
+    The prior_gap_memory projection above records the earlier audit_gap round. Treat it as authoritative
+    context for this round, not optional color. Prioritize the sticky criterion ids ($sticky) while still
+    closing every entry in the audit_gaps list in this one invocation. Never narrow scope to only the
+    sticky items: each currently listed gap must close here.
   """.trimIndent()
 }
 
@@ -447,3 +472,26 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "pull request for the branch idempotently, and emit pr_result with the PR URL/number, " +
     "title, and whether a new PR was created.",
 )
+
+// The blank-slate sentence in the shared PHASE_AUDIT directive. It is subordinated for a
+// memory-carrying audit (which must account for the earlier audit's claims) while staying byte-identical
+// for a first or forward audit.
+private const val AUDIT_NO_EARLIER_AUDIT_SENTENCE: String =
+  "A later audit re-checks every criterion from scratch, so you never need to account for what an " +
+    "earlier audit said."
+
+private const val AUDIT_STICKY_REJUSTIFICATION_SENTENCE: String =
+  "A later audit re-checks every criterion from scratch. When this briefing carries prior-gap memory, " +
+    "treat that memory as authoritative context: repeating a sticky criterion id requires you to " +
+    "explicitly re-justify it — name what the prior implement claimed and why the tree still fails it."
+
+/**
+ * The audit phase task directive, memory-aware. A first or forward audit (no memory) returns the
+ * shared static wording byte-for-byte; a memory-carrying audit swaps the blank-slate sentence for the
+ * sticky re-justification requirement (AC-003).
+ */
+internal fun auditPhaseTaskDirective(memory: FeatureTaskRuntimePriorGapMemory?): String {
+  val base = phaseDirectives.getValue(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT)
+  if (memory == null) return base
+  return base.replace(AUDIT_NO_EARLIER_AUDIT_SENTENCE, AUDIT_STICKY_REJUSTIFICATION_SENTENCE)
+}

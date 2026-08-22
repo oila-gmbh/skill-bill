@@ -86,6 +86,10 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeExecutablePlan
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeImplementationReceipt
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionKind
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
@@ -123,6 +127,7 @@ import skillbill.workflow.taskruntime.model.advanceBlockingFindingIdentities
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgressDecision
 import skillbill.workflow.taskruntime.model.detectAuditRepairNonProgress
 import skillbill.workflow.taskruntime.model.detectReviewRemediationNonProgress
+import skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeReviewRemediationChurn
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 import skillbill.workflow.taskruntime.model.upsertRepairReceipt
@@ -2897,6 +2902,14 @@ internal class FeatureTaskRuntimeRunLoop(
       ) {
         declaration.copy(
           projectionDeclarations = FeatureTaskRuntimePhaseWorkflowDefinition.reviewRetryProjections(),
+        )
+      } else if (
+        phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT &&
+        state.edgeIterationCount(FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) > 0
+      ) {
+        declaration.copy(
+          projectionDeclarations = declaration.projectionDeclarations +
+            FeatureTaskRuntimePhaseWorkflowDefinition.priorGapMemoryDeclaration(phaseId),
         )
       } else {
         declaration
@@ -6209,6 +6222,7 @@ internal class FeatureTaskRuntimeRunLoop(
       recordedOutputs = state.outputs(),
       drivingVerdict = run.reentry?.drivingVerdict,
       reentryGapCriteria = auditGapCriteriaFor(run, state),
+      priorGapMemory = priorGapMemoryFor(run, state),
       durablyClosedCriterionRefs = durablyClosedCriterionRefs,
       repairLedger = remediationRepairLedger(run.phaseId),
       repositoryCheckpoint = repositoryCheckpoint,
@@ -6620,6 +6634,80 @@ internal class FeatureTaskRuntimeRunLoop(
     }
     return state.unmetAuditCriteria(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT)
   }
+
+  /**
+   * Derives the bounded prior-gap memory for an `audit_gap` remediation round, or null when none is
+   * owed. Memory is derived only for the audit_gap implement re-entry and the audit that follows a
+   * remediation implement; every other launch (forward implement, first forward audit) receives null
+   * so its briefing stays byte-identical. Absent plan/receipt/audit data degrades to empty lists
+   * rather than failing the launch (AC-004).
+   */
+  private fun priorGapMemoryFor(run: PhaseRun, state: FeatureTaskRuntimeRunState): FeatureTaskRuntimePriorGapMemory? {
+    val def = FeatureTaskRuntimePhaseWorkflowDefinition
+    val auditGapFired = state.edgeIterationCount(def.AUDIT_GAP_LOOP_ID) > 0
+    val implementReentry = run.phaseId == def.PHASE_IMPLEMENT &&
+      (run.reentry?.loopId == def.AUDIT_GAP_LOOP_ID || auditGapFired)
+    val auditAfterRemediation = run.phaseId == def.PHASE_AUDIT && auditGapFired
+    if (!implementReentry && !auditAfterRemediation) {
+      return null
+    }
+    val round = (run.reentry?.takeIf { it.loopId == def.AUDIT_GAP_LOOP_ID }?.edgeIteration
+      ?: state.edgeIterationCount(def.AUDIT_GAP_LOOP_ID)).coerceAtLeast(1)
+    val auditOutputs = state.outputs()
+      .filter { it.phaseId == def.PHASE_AUDIT }
+      .sortedBy { it.iteration }
+    val lastAudit = auditOutputs.lastOrNull() ?: return null
+    val lastAuditObject = outputEnvelopeOf(lastAudit)
+    val priorUnmetCriteria = FeatureTaskRuntimeOutputVerification.unmetAuditCriteria(lastAuditObject)
+    val stickyIds = if (auditOutputs.size >= 2) {
+      val refsLast = FeatureTaskRuntimeOutputVerification.canonicalAuditCriterionRefs(lastAuditObject)
+      val refsPrior = FeatureTaskRuntimeOutputVerification.canonicalAuditCriterionRefs(
+        outputEnvelopeOf(auditOutputs[auditOutputs.size - 2]),
+      )
+      refsLast.filter { it in refsPrior }
+    } else {
+      emptyList()
+    }
+    return FeatureTaskRuntimePriorGapMemory(
+      round = round,
+      priorUnmetCriteria = priorUnmetCriteria,
+      lastImplementClaims = lastImplementClaims(state),
+      stickyIds = stickyIds,
+    )
+  }
+
+  /**
+   * The criterion refs the most recent completed implement receipt claimed to address, joined through
+   * the plan output's task-to-criterion mapping. Empty when either output is absent or does not parse.
+   */
+  private fun lastImplementClaims(state: FeatureTaskRuntimeRunState): List<String> {
+    val def = FeatureTaskRuntimePhaseWorkflowDefinition
+    val implement = state.outputFor(def.PHASE_IMPLEMENT) ?: return emptyList()
+    val receipt = runCatching {
+      featureTaskRuntimePlanningProjectionFromEnvelope(
+        envelope = outputEnvelopeOf(implement) ?: return@runCatching null,
+        producingPhaseId = def.PHASE_IMPLEMENT,
+        expectedKind = FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT,
+        schemaValidator = planningProjectionValidator,
+      )
+    }.getOrNull() as? FeatureTaskRuntimeImplementationReceipt ?: return emptyList()
+    val plan = state.outputFor(def.PHASE_PLAN) ?: return emptyList()
+    val planProjection = runCatching {
+      featureTaskRuntimePlanningProjectionFromEnvelope(
+        envelope = outputEnvelopeOf(plan) ?: return@runCatching null,
+        producingPhaseId = def.PHASE_PLAN,
+        expectedKind = FeatureTaskRuntimeProjectionKind.EXECUTABLE_PLAN,
+        schemaValidator = planningProjectionValidator,
+      )
+    }.getOrNull() as? FeatureTaskRuntimeExecutablePlan ?: return emptyList()
+    val refsByTask = planProjection.tasks.associate { it.taskId to it.criterionRefs }
+    return receipt.completedTaskIds.flatMap { refsByTask[it].orEmpty() }.distinct()
+  }
+
+  private fun outputEnvelopeOf(output: FeatureTaskRuntimePhaseOutput): Map<String, Any?>? =
+    output.normalizedOutput?.envelope?.takeIf { it.isNotEmpty() }
+      ?: JsonSupport.parseObjectOrNull(output.payload)?.let(JsonSupport::jsonElementToValue)
+        ?.let(JsonSupport::anyToStringAnyMap)
 
   private fun reconcileLaunch(
     phaseId: String,

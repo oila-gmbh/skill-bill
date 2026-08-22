@@ -2,6 +2,7 @@ package skillbill.workflow.taskruntime
 
 import skillbill.workflow.model.ValidationDepth
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseHandoff
@@ -83,6 +84,7 @@ object FeatureTaskRuntimeHandoffContract {
     baseBranch: String = "main",
     validationDepth: ValidationDepth = ValidationDepth.DEFAULT,
     qualityGateSelection: FeatureTaskRuntimeQualityGateSelection = FeatureTaskRuntimeQualityGateSelection.VALIDATE,
+    priorGapMemory: FeatureTaskRuntimePriorGapMemory? = null,
   ): FeatureTaskRuntimePhaseHandoff = FeatureTaskRuntimePhaseHandoff(
     phaseId = declaration.phaseId,
     runInvariants = runInvariants,
@@ -99,5 +101,6 @@ object FeatureTaskRuntimeHandoffContract {
     reentryGapCriteria = reentryGapCriteria,
     durablyClosedCriterionRefs = durablyClosedCriterionRefs,
     repairLedger = repairLedger,
+    priorGapMemory = priorGapMemory,
   )
 }

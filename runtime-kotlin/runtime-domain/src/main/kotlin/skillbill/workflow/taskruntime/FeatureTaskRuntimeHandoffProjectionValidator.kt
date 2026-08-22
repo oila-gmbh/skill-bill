@@ -303,6 +303,7 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
     FeatureTaskRuntimeHandoffSourceRef.SharedReviewEvidence ->
       inputs.sharedReviewEvidence?.toProjectionFields()
     FeatureTaskRuntimeHandoffSourceRef.RepairLedger -> repairLedgerFields(inputs)
+    FeatureTaskRuntimeHandoffSourceRef.PriorGapMemory -> inputs.priorGapMemory?.toProjectionFields()
     is FeatureTaskRuntimeHandoffSourceRef.AddonContentRef ->
       inputs.addonContentBySlug[sourceRef.slug]?.let { content ->
         listOf(

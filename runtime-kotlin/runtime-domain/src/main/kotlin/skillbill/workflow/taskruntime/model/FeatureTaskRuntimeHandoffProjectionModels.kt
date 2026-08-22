@@ -61,6 +61,15 @@ sealed interface FeatureTaskRuntimeHandoffSourceRef {
     override val wireValue: String get() = REPAIR_LEDGER_WIRE
   }
 
+  /**
+   * The runtime-derived bounded prior-gap memory for an `audit_gap` remediation round. Like shared
+   * review evidence it has no producing phase: the runtime derives it from the durable audit and
+   * implement outputs, so it is its own source kind rather than an upstream phase output.
+   */
+  object PriorGapMemory : FeatureTaskRuntimeHandoffSourceRef {
+    override val wireValue: String get() = PRIOR_GAP_MEMORY_WIRE
+  }
+
   /** Hydrated content of one selected add-on, budgeted separately from phase receipts. */
   data class AddonContentRef(val slug: String) : FeatureTaskRuntimeHandoffSourceRef {
     init {
@@ -77,11 +86,13 @@ sealed interface FeatureTaskRuntimeHandoffSourceRef {
     const val DERIVED_CEREMONY_SCALING_WIRE: String = "derived_ceremony_scaling"
     const val SHARED_REVIEW_EVIDENCE_WIRE: String = "shared_review_evidence"
     const val REPAIR_LEDGER_WIRE: String = "repair_ledger"
+    const val PRIOR_GAP_MEMORY_WIRE: String = "prior_gap_memory"
 
     fun fromWire(value: String): FeatureTaskRuntimeHandoffSourceRef = when {
       value == DERIVED_CEREMONY_SCALING_WIRE -> DerivedCeremonyScaling
       value == SHARED_REVIEW_EVIDENCE_WIRE -> SharedReviewEvidence
       value == REPAIR_LEDGER_WIRE -> RepairLedger
+      value == PRIOR_GAP_MEMORY_WIRE -> PriorGapMemory
       value.startsWith(UPSTREAM_PHASE_OUTPUT_PREFIX) ->
         UpstreamPhaseOutput(value.removePrefix(UPSTREAM_PHASE_OUTPUT_PREFIX))
       value.startsWith(RUN_INVARIANT_FIELD_PREFIX) ->
@@ -100,6 +111,7 @@ sealed interface FeatureTaskRuntimeHandoffSourceRef {
     DerivedCeremonyScaling -> mapOf("kind" to "derived_ceremony_scaling", "id" to "ceremony_scaling")
     SharedReviewEvidence -> mapOf("kind" to SHARED_REVIEW_EVIDENCE_WIRE, "id" to SHARED_REVIEW_EVIDENCE_WIRE)
     RepairLedger -> mapOf("kind" to REPAIR_LEDGER_WIRE, "id" to REPAIR_LEDGER_WIRE)
+    PriorGapMemory -> mapOf("kind" to PRIOR_GAP_MEMORY_WIRE, "id" to PRIOR_GAP_MEMORY_WIRE)
     is AddonContentRef -> mapOf("kind" to "addon_content", "id" to slug)
   }
 }
@@ -497,6 +509,8 @@ data class PhaseHandoffProjectionDeclaration(
         FeatureTaskRuntimeHandoffSourceRef.SharedReviewEvidence
       FeatureTaskRuntimeHandoffSourceRef.REPAIR_LEDGER_WIRE ->
         FeatureTaskRuntimeHandoffSourceRef.RepairLedger
+      FeatureTaskRuntimeHandoffSourceRef.PRIOR_GAP_MEMORY_WIRE ->
+        FeatureTaskRuntimeHandoffSourceRef.PriorGapMemory
       else -> invalid()
     }
 
@@ -717,6 +731,12 @@ data class FeatureTaskRuntimeHandoffProjectionInputs(
   val sharedReviewEvidence: FeatureTaskRuntimeSharedReviewEvidenceReference? = null,
   /** The unmet acceptance criteria an audit-gap implementation re-entry is scoped to. */
   val unmetCriterionRefs: List<String> = emptyList(),
+  /**
+   * The runtime-derived bounded prior-gap memory for an `audit_gap` remediation round, or null when
+   * none is derivable (forward launches and in-flight runs that predate the projection). Null omits
+   * the non-required declaration rather than delivering it empty.
+   */
+  val priorGapMemory: FeatureTaskRuntimePriorGapMemory? = null,
   val repairLedger: FeatureTaskRuntimeRepairLedger? = null,
   val recordedFindingVerdicts: List<ReviewFindingVerdict> = emptyList(),
   /** Runtime-owned branch identity used only by bounded finalization request projectors. */

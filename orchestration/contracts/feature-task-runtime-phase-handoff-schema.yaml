@@ -80,6 +80,7 @@ $defs:
           - addon_content
           - shared_review_evidence
           - repair_ledger
+          - prior_gap_memory
       id:
         type: string
         minLength: 1
