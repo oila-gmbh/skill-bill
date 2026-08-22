@@ -74,9 +74,15 @@ import skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeQualityGateRouting
 import skillbill.workflow.taskruntime.FeatureTaskRuntimeTransitionFunction
+import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_DECISION_ABANDON_SUBTASK
+import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_DECISION_RETRY_FIX
+import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_KIND_NO_PROGRESS
+import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_KIND_WARN_THRESHOLD
 import skillbill.workflow.taskruntime.model.CorrectiveRepairCapturedResponse
 import skillbill.workflow.taskruntime.model.CorrectiveRepairDiagnosticLocator
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_STANDALONE_SUBTASK_ID
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapPause
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeBackwardEdge
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCheckpointIdentity
@@ -114,6 +120,7 @@ import skillbill.workflow.taskruntime.model.QUARANTINE_REJECTION_CLASS_PLANNING_
 import skillbill.workflow.taskruntime.model.ReviewPassResolution
 import skillbill.workflow.taskruntime.model.acceptanceCriterionRefsFor
 import skillbill.workflow.taskruntime.model.advanceBlockingFindingIdentities
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditRepairProgressDecision
 import skillbill.workflow.taskruntime.model.detectAuditRepairNonProgress
 import skillbill.workflow.taskruntime.model.detectReviewRemediationNonProgress
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeReviewRemediationChurn
@@ -235,6 +242,7 @@ internal class FeatureTaskRuntimeRunLoop(
   private var paused: FeatureTaskRuntimeRunReport.Paused? = null
   private var operatorGrantedFixIteration: Boolean = false
   private var operatorRetryGrantConsumed: Boolean = false
+  private var auditGapRetryResumePending: Boolean = false
   private var decomposed: FeatureTaskRuntimeRunReport.Decomposed? = null
   private val operatorBlockRetry: FeatureTaskRuntimeOperatorBlockRetry? = recorder
     .loadOperatorBlockRetry(request.workflowId, request.dbPathOverride)
@@ -245,15 +253,6 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private var pendingReentry: PendingReentry? = resumedReentry()
   private var activeReentry: PendingReentry? = pendingReentry
-
-  /**
-   * What the previous audit in this process decided: the criteria it named and the tree it read. The
-   * non-progress bound compares against these rather than a durable repair ledger, which no longer
-   * exists. A fresh process after a crash starts without them and simply skips one comparison; the
-   * audit_gap edge cap is the absolute bound either way.
-   */
-  private var previousAuditCriterionRefs: Set<String> = emptySet()
-  private var previousAuditFingerprint: String? = null
 
   // SKILL-140: set when a phase launch quarantined an upstream record and requested regeneration, so
   // advance() settles the consumer with the RECORD_REJECTED verdict rather than a normal completion.
@@ -321,6 +320,38 @@ internal class FeatureTaskRuntimeRunLoop(
         activeReentry = null
       }
     }
+    val auditGapPause = recorder.loadAuditGapPause(request.workflowId, request.dbPathOverride)
+    if (auditGapPause != null && pendingReentry == null) {
+      when (auditGapPause.operatorDecision) {
+        null -> {
+          // A parked pause with no decision re-surfaces. A consumed grant (grant_consumed=true with the
+          // decision cleared after a retry) means the run already moved on; a later crash must not
+          // re-park it on a resolved pause.
+          if (!auditGapPause.grantConsumed) {
+            reSurfaceAuditGapPause(auditGapPause)
+            return
+          }
+        }
+        AUDIT_GAP_PAUSE_DECISION_ABANDON_SUBTASK -> {
+          abandonAuditGapSubtask(auditGapPause)
+          return
+        }
+        AUDIT_GAP_PAUSE_DECISION_RETRY_FIX -> {
+          if (!auditGapPause.grantConsumed) {
+            // Settle the paused audit from its carried-forward output (handled in advance()), then the
+            // transition seam takes the audit_gap edge while the unconsumed grant suppresses both
+            // pause checks.
+            auditGapRetryResumePending = true
+          }
+        }
+        else -> {
+          if (!auditGapPause.grantConsumed) {
+            reSurfaceAuditGapPause(auditGapPause)
+            return
+          }
+        }
+      }
+    }
     val resumedReentry = pendingReentry
     if (
       resumedReentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID &&
@@ -361,6 +392,11 @@ internal class FeatureTaskRuntimeRunLoop(
       if (carriedForward != null) {
         return carriedForward
       }
+    }
+    if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT && auditGapRetryResumePending) {
+      auditGapRetryResumePending = false
+      val carried = settleCarriedForwardAuditGapAudit()
+      if (carried != null) return carried
     }
     val reason = if (state.isComplete(phaseId)) {
       state.outputFor(phaseId)
@@ -607,6 +643,119 @@ internal class FeatureTaskRuntimeRunLoop(
     return PhaseSettlement.stop()
   }
 
+  private fun reSurfaceAuditGapPause(pause: FeatureTaskRuntimeAuditGapPause) {
+    pauseAt(
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
+      pause.reason,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
+    )
+  }
+
+  private fun abandonAuditGapSubtask(pause: FeatureTaskRuntimeAuditGapPause) {
+    recorder.persistAuditGapPause(
+      request.workflowId,
+      pause.copy(grantConsumed = true, operatorDecision = null),
+      request.dbPathOverride,
+    )
+    blockAt(
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
+      "The operator chose abandon_subtask while the subtask was paused on the audit gap: ${pause.reason}",
+    )
+    goalContinuationRecorder.recordGoalContinuationState(
+      GoalContinuationStateRecordRequest(
+        workflowId = request.workflowId,
+        workflowStatus = STATUS_ABANDONED,
+      ),
+      dbOverride = request.dbPathOverride,
+    )
+  }
+
+  /**
+   * Resume seam for a run parked on an audit-gap pause with an unconsumed retry_fix: settles the
+   * paused audit phase from its preserved output (mirroring [carriedForwardGoalReviewSettlement]) so
+   * the transition seam can take the audit_gap edge. Returns null when no retry is pending, letting
+   * the normal phase path run.
+   */
+  private fun settleCarriedForwardAuditGapAudit(): PhaseSettlement? = runCatching {
+    recorder.loadAuditGapPause(request.workflowId, request.dbPathOverride)
+  }.fold(
+    onSuccess = { pause ->
+      if (pause == null || pause.operatorDecision != AUDIT_GAP_PAUSE_DECISION_RETRY_FIX || pause.grantConsumed) {
+        null
+      } else {
+        settleCarriedForwardAudit()
+      }
+    },
+    onFailure = { error -> blockCarriedForwardAudit(error.message.orEmpty()) },
+  )
+
+  private fun settleCarriedForwardAudit(): PhaseSettlement {
+    val auditPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT
+    val outputArtifact = state.recordFor(auditPhaseId)?.outputArtifact
+      ?: return blockCarriedForwardAudit("missing")
+    return runCatching {
+      val acceptedOutput = outputValidator
+        .validatePhaseOutput(outputArtifact, auditPhaseId)
+        .requireAcceptedOutput(auditPhaseId)
+      recordCarriedForwardAudit(acceptedOutput.normalizedOutput, acceptedOutput.repairEvidence)
+    }.fold(
+      onSuccess = {
+        PhaseSettlement.completed(auditPhaseId, FeatureTaskRuntimeVerdict.GAPS_FOUND)
+      },
+      onFailure = { error -> blockCarriedForwardAudit(error.message.orEmpty()) },
+    )
+  }
+
+  private fun recordCarriedForwardAudit(
+    normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
+    repairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence?,
+  ) {
+    val phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT
+    if (state.isComplete(phaseId)) {
+      return
+    }
+    val iteration = state.nextIteration(phaseId)
+    val priorRecord = state.recordFor(phaseId)
+    val persisted = recorder.recordCompletedPhase(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = request.workflowId,
+        phaseId = phaseId,
+        status = STATUS_COMPLETED,
+        attemptCount = iteration,
+        resolvedAgentId = priorRecord?.resolvedAgentId ?: "user-directed",
+        finished = true,
+        outputArtifact = normalizedOutput.canonicalJson,
+        normalizedOutput = normalizedOutput,
+        repairEvidence = repairEvidence,
+        loopId = FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID,
+        edgeIteration = priorRecord?.edgeIteration,
+      ),
+      request.dbPathOverride,
+    )
+    if (!persisted) {
+      error("Carried-forward audit could not atomically persist its canonical result.")
+    }
+    state.recordCompleted(
+      FeatureTaskRuntimePhaseOutput(
+        phaseId,
+        iteration,
+        normalizedOutput.canonicalJson,
+        normalizedOutput,
+        repairEvidence,
+      ),
+    )
+  }
+
+  private fun blockCarriedForwardAudit(detail: String): PhaseSettlement {
+    val reason = if (detail == "missing") {
+      "The paused audit record carries no preserved output to settle from."
+    } else {
+      "The paused audit could not be settled from its carried-forward output: $detail"
+    }
+    blockAt(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT, reason)
+    return PhaseSettlement.stop()
+  }
+
   @Suppress("CyclomaticComplexMethod", "ReturnCount")
   private fun nextPhaseAfter(phaseId: String, verdict: FeatureTaskRuntimeVerdict): String? {
     operatorPauseRelease(phaseId)?.let { return it.target }
@@ -697,7 +846,29 @@ internal class FeatureTaskRuntimeRunLoop(
         null
       }
       else -> {
-        if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID) {
+        if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) {
+          val gapIteration = requireNotNull(transition.edgeIteration)
+          val gapEdge = requireNotNull(edge)
+          if (warnThresholdPauseApplies(gapEdge, gapIteration)) {
+            // The threshold crossing is now control flow: pause for an operator decision instead of
+            // recording the edge. The advisory stays a side effect, emitted here since recordBackwardEdge
+            // no longer runs on this path.
+            warnOnThresholdCrossing(gapEdge, gapIteration)
+            mintAuditGapPause(
+              FeatureTaskRuntimeAuditGapPause(
+                pauseKind = AUDIT_GAP_PAUSE_KIND_WARN_THRESHOLD,
+                reason = warnThresholdPauseReason(gapEdge, gapIteration),
+                edgeIteration = gapIteration,
+              ),
+              phaseId,
+              state.outputFor(phaseId)?.payload,
+            )
+            return null
+          }
+        }
+        if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID ||
+          loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
+        ) {
           consumeOperatorRetryGrant()
         }
         recordBackwardEdge(
@@ -1796,7 +1967,7 @@ internal class FeatureTaskRuntimeRunLoop(
     "Remediation loop '$loopId' exceeded its warning threshold of $threshold: entering iteration " +
       "$edgeIteration for issue ${request.issueKey}, workflow ${request.workflowId}, subtask " +
       "${request.goalContinuation?.subtaskId ?: request.issueKey}, spec " +
-      "${request.runInvariants.specReference}. Remediation will continue."
+      "${request.runInvariants.specReference}."
 
   private fun capExhaustedOnResume(phaseId: String): String? {
     // An operator reopen releases the per-edge cap for this phase too: the reopened record still
@@ -2074,14 +2245,24 @@ internal class FeatureTaskRuntimeRunLoop(
 
   /**
    * The grant survives the process that recorded it: a resumed run reads `retry_fix` back off the
-   * durable review state. Re-pausing clears `operator_decision`, so a subsequent unresolved pass has
-   * no grant left and pauses again.
+   * durable review state or the audit-gap pause artifact. Re-pausing clears `operator_decision`, so a
+   * subsequent unresolved pass has no grant left and pauses again.
    */
-  private fun operatorRetryGrantActive(): Boolean = FeatureTaskRuntimeOperatorRetryGrant.active(
-    consumed = operatorRetryGrantConsumed,
-    inSessionGrant = operatorGrantedFixIteration,
-    persistedDecision = goalReviewStateOrNull()?.operatorDecision,
-  )
+  private fun operatorRetryGrantActive(): Boolean =
+    FeatureTaskRuntimeOperatorRetryGrant.active(
+      consumed = operatorRetryGrantConsumed,
+      inSessionGrant = operatorGrantedFixIteration,
+      persistedDecision = goalReviewStateOrNull()?.operatorDecision,
+    ) || auditGapPauseGrantActive()
+
+  /**
+   * The single-use audit-gap retry grant, read off the durable pause artifact: unconsumed and the
+   * operator chose retry_fix. A consumed grant or any other decision yields no grant.
+   */
+  private fun auditGapPauseGrantActive(): Boolean =
+    recorder.loadAuditGapPause(request.workflowId, request.dbPathOverride)
+      ?.let { !it.grantConsumed && it.operatorDecision == AUDIT_GAP_PAUSE_DECISION_RETRY_FIX }
+      ?: false
 
   private class PauseReleaseTarget(val target: String?)
 
@@ -2137,6 +2318,17 @@ internal class FeatureTaskRuntimeRunLoop(
     if (isGoalContinuationRun(request)) {
       goalContinuationRecorder.updateReviewState(request.workflowId, request.dbPathOverride) { state ->
         state.consumeOperatorDecision()
+      }
+    }
+    // The audit-gap grant is single-use and durable: mark it consumed and clear the decision so a
+    // resumed run cannot re-read the same retry_fix and re-grant forever.
+    recorder.loadAuditGapPause(request.workflowId, request.dbPathOverride)?.let { pause ->
+      if (pause.operatorDecision != null && !pause.grantConsumed) {
+        recorder.persistAuditGapPause(
+          request.workflowId,
+          pause.copy(grantConsumed = true, operatorDecision = null),
+          request.dbPathOverride,
+        )
       }
     }
   }
@@ -2491,12 +2683,64 @@ internal class FeatureTaskRuntimeRunLoop(
   }
 
   /**
-   * The operator-decision entry point. `retry_fix` grants one fresh `implement_fix` iteration that is
-   * exempt from the `review_fix` per-edge cap accounting — the operator choice is the bound, not the
-   * cap — while `accept_and_advance` releases the subtask forward to the stamped quality gate and
-   * `abandon_subtask` takes the existing abandon path.
+   * Mints a durable audit-gap pause: persists the pause artifact, records the audit phase as PAUSED
+   * with a NEEDS_USER_ACTION disposition (preserving the audit output artifact so criteria stay
+   * readable), records goal_continuation_state PAUSED, and surfaces the Paused report. This is the
+   * audit-gap analogue of [pauseOnAdvanceBlockingFindings], but it is its own record sharing only the
+   * operator-decision vocabulary — it neither consumes nor mints a review pass and never touches
+   * GoalSubtaskReviewState.
+   */
+  private fun mintAuditGapPause(
+    pause: FeatureTaskRuntimeAuditGapPause,
+    auditPhaseId: String,
+    auditOutputArtifact: String?,
+  ) {
+    recorder.persistAuditGapPause(request.workflowId, pause, request.dbPathOverride)
+    if (isGoalContinuationRun(request)) {
+      goalContinuationRecorder.recordGoalContinuationState(
+        GoalContinuationStateRecordRequest(
+          workflowId = request.workflowId,
+          workflowStatus = STATUS_PAUSED,
+        ),
+        dbOverride = request.dbPathOverride,
+      )
+    }
+    val resolvedAgent = FeatureTaskRuntimeAgentResolver.resolve(
+      phaseId = auditPhaseId,
+      assignment = request.agentAssignment,
+      invokedAgentId = request.invokedAgentId,
+    )
+    recorder.recordPhaseState(
+      FeatureTaskRuntimePhaseStateRequest(
+        workflowId = request.workflowId,
+        phaseId = auditPhaseId,
+        status = STATUS_PAUSED,
+        attemptCount = state.nextIteration(auditPhaseId),
+        resolvedAgentId = resolvedAgent.resolvedAgentId,
+        finished = false,
+        blockedReason = pause.reason,
+        failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
+        loopId = FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID,
+        edgeIteration = pause.edgeIteration,
+        outputArtifact = auditOutputArtifact,
+      ),
+      dbOverride = request.dbPathOverride,
+    )
+    pauseAt(auditPhaseId, pause.reason, FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT)
+  }
+
+  /**
+   * The operator-decision entry point. For a review-fix pause, `retry_fix` grants one fresh
+   * `implement_fix` iteration exempt from the `review_fix` per-edge cap accounting, `accept_and_advance`
+   * releases the subtask forward to the stamped quality gate, and `abandon_subtask` takes the existing
+   * abandon path. For an audit-gap pause, the allowlist is `retry_fix` and `abandon_subtask`; an unmet
+   * acceptance criterion cannot be accepted-and-advanced.
    */
   internal fun applyOperatorDecision(decision: GoalSubtaskOperatorDecision): String? {
+    val auditGapPause = recorder.loadAuditGapPause(request.workflowId, request.dbPathOverride)
+    if (auditGapPause != null) {
+      return applyAuditGapPauseDecision(auditGapPause, decision)
+    }
     val reviewState = goalReviewStateOrNull()
       ?: return "No goal-subtask review state is present to apply an operator decision to."
     if (!reviewState.acceptsOperatorDecision) {
@@ -2511,6 +2755,42 @@ internal class FeatureTaskRuntimeRunLoop(
       GoalSubtaskOperatorDecision.ABANDON_SUBTASK -> operatorGrantedFixIteration = false
     }
     return null
+  }
+
+  /**
+   * Applies an operator decision to a durable audit-gap pause without any review state. `retry_fix`
+   * sets the single-use grant (in-session flag plus the durable decision); `abandon_subtask` records
+   * the decision for the abandon path on resume; `accept_and_advance` is rejected for this pause class.
+   */
+  private fun applyAuditGapPauseDecision(
+    pause: FeatureTaskRuntimeAuditGapPause,
+    decision: GoalSubtaskOperatorDecision,
+  ): String? {
+    if (pause.grantConsumed) {
+      return "The audit-gap pause's retry grant is already consumed; a new operator decision is required to act."
+    }
+    return when (decision) {
+      GoalSubtaskOperatorDecision.RETRY_FIX -> {
+        recorder.persistAuditGapPause(
+          request.workflowId,
+          pause.copy(operatorDecision = AUDIT_GAP_PAUSE_DECISION_RETRY_FIX),
+          request.dbPathOverride,
+        )
+        operatorGrantedFixIteration = true
+        null
+      }
+      GoalSubtaskOperatorDecision.ABANDON_SUBTASK -> {
+        recorder.persistAuditGapPause(
+          request.workflowId,
+          pause.copy(operatorDecision = AUDIT_GAP_PAUSE_DECISION_ABANDON_SUBTASK),
+          request.dbPathOverride,
+        )
+        null
+      }
+      GoalSubtaskOperatorDecision.ACCEPT_AND_ADVANCE ->
+        "An unmet acceptance criterion cannot be accepted-and-advanced; choose retry_fix or abandon_subtask " +
+          "for an audit-gap pause."
+    }
   }
 
   private fun remediationCheckpointBlockedReason(branch: String, error: String): String =
@@ -4824,19 +5104,9 @@ internal class FeatureTaskRuntimeRunLoop(
       }
       result.value
     }
-    auditRepairNonProgressReason(run, outputMap, repositoryFingerprint)?.let { reason ->
-      return AttemptResult.settled(
-        blockAndPersistInPhase(
-          run,
-          iteration,
-          reason,
-          observability,
-          failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
-          fileManifest = fileManifest,
-          normalizedOutput = attested,
-          repairEvidence = repairEvidence,
-        ),
-      )
+    auditGapProgressPause(run, outputMap, repositoryFingerprint, attested.canonicalJson)?.let { pause ->
+      mintAuditGapPause(pause, run.phaseId, attested.canonicalJson)
+      return AttemptResult.settled(PhaseOutcome.paused(pause.reason))
     }
     terminalBlockedReasonFrom(run.phaseId, outputMap)?.let { reason ->
       return terminalOutputAttempt(
@@ -5508,32 +5778,72 @@ internal class FeatureTaskRuntimeRunLoop(
     null
   }
 
+  /**
+   * Whether this settled gaps audit should mint a no-progress pause instead of re-entering implement.
+   * Reads the previous completed audit from the durable progress artifact (the OLD value), runs the
+   * upgraded shrink-based rule against this audit's canonical criterion refs and the already-computed
+   * repository fingerprint, then writes the artifact with this audit's refs+fingerprint so the next
+   * audit compares consecutive rounds. Returns the pause to mint, or null to continue. The first gaps
+   * audit (artifact absent) and any satisfied audit (empty current set) continue.
+   */
   @Suppress("ReturnCount")
-  private fun auditRepairNonProgressReason(
+  private fun auditGapProgressPause(
     run: PhaseRun,
     outputMap: Map<String, Any?>,
     repositoryFingerprint: String?,
-  ): String? {
+    auditOutputArtifact: String,
+  ): FeatureTaskRuntimeAuditGapPause? {
     if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) return null
-    // The criteria the previous audit reported are exactly what this remediation round was given, so the
-    // re-entry carries them; the current output carries what this audit decided. No durable repair
-    // ledger is involved. An absent fingerprint means repository change could not be proven, which is
-    // not evidence that anything moved: treat it as unchanged so an unchanged criterion set blocks
-    // rather than disarming the only bound on the audit-gap cycle.
     val currentCriterionRefs = FeatureTaskRuntimeOutputVerification
-      .unmetAuditCriteria(outputMap)
-      .mapTo(linkedSetOf()) { it.uppercase() }
-    val previousCriterionRefs = previousAuditCriterionRefs
-    val previousFingerprint = previousAuditFingerprint
-    previousAuditCriterionRefs = currentCriterionRefs
-    previousAuditFingerprint = repositoryFingerprint
-    if (previousCriterionRefs.isEmpty() || currentCriterionRefs.isEmpty()) return null
-    return detectAuditRepairNonProgress(
-      previousCriterionRefs = previousCriterionRefs,
-      currentCriterionRefs = currentCriterionRefs,
-      previousRepositoryFingerprint = previousFingerprint ?: UNPROVEN_REPOSITORY_FINGERPRINT,
-      currentRepositoryFingerprint = repositoryFingerprint ?: UNPROVEN_REPOSITORY_FINGERPRINT,
-    ).reason
+      .canonicalAuditCriterionRefs(outputMap)
+      .toSet()
+    val previous = recorder.loadAuditGapProgress(request.workflowId, request.dbPathOverride)
+    val decision = if (previous == null || currentCriterionRefs.isEmpty()) {
+      FeatureTaskRuntimeAuditRepairProgressDecision(blocked = false, reason = null)
+    } else {
+      detectAuditRepairNonProgress(
+        previousCriterionRefs = previous.criterionRefs,
+        currentCriterionRefs = currentCriterionRefs,
+        previousRepositoryFingerprint = previous.repositoryFingerprint ?: UNPROVEN_REPOSITORY_FINGERPRINT,
+        currentRepositoryFingerprint = repositoryFingerprint ?: UNPROVEN_REPOSITORY_FINGERPRINT,
+      )
+    }
+    // Only a gaps verdict (a non-empty current set) advances the comparison; a satisfied audit writes
+    // nothing so a later stale read cannot re-arm the bound against an empty prior round.
+    if (currentCriterionRefs.isNotEmpty()) {
+      recorder.persistAuditGapProgress(
+        request.workflowId,
+        FeatureTaskRuntimeAuditGapProgress(
+          criterionRefs = currentCriterionRefs,
+          repositoryFingerprint = repositoryFingerprint,
+        ),
+        request.dbPathOverride,
+      )
+    }
+    if (!decision.blocked) return null
+    return FeatureTaskRuntimeAuditGapPause(
+      pauseKind = AUDIT_GAP_PAUSE_KIND_NO_PROGRESS,
+      reason = noProgressPauseReason(requireNotNull(decision.reason)),
+      edgeIteration = state.edgeIterationCount(FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID) + 1,
+    )
+  }
+
+  private fun noProgressPauseReason(decisionReason: String): String =
+    "$decisionReason The subtask is paused for an operator decision: choose retry_fix to allow one " +
+      "further remediation attempt, or abandon_subtask to end the subtask."
+
+  private fun warnThresholdPauseReason(edge: FeatureTaskRuntimeBackwardEdge, edgeIteration: Int): String =
+    "Audit remediation loop '${edge.loopId}' crossed its warning threshold of " +
+      "${edge.warnAfterIterations} by entering iteration $edgeIteration for issue ${request.issueKey}, " +
+      "workflow ${request.workflowId}, subtask ${request.goalContinuation?.subtaskId ?: request.issueKey}. " +
+      "The run pauses on a warn-threshold condition for an operator decision: choose retry_fix to allow " +
+      "one further remediation attempt, or abandon_subtask to end the subtask."
+
+  private fun warnThresholdPauseApplies(edge: FeatureTaskRuntimeBackwardEdge, edgeIteration: Int): Boolean {
+    val threshold = edge.warnAfterIterations ?: return false
+    if (edgeIteration < threshold + 1) return false
+    if (operatorRetryGrantActive()) return false
+    return true
   }
 
   private fun terminalOutputAttempt(
@@ -6765,7 +7075,8 @@ private const val READ_ONLY_PHASE_PROGRESS_IDLE_TIMEOUT_MINUTES = 30L
 
 // Stands in for a repository fingerprint that could not be computed. Comparing it against itself
 // yields "unchanged", so an audit that cannot prove the repository moved cannot claim progress.
-private const val UNPROVEN_REPOSITORY_FINGERPRINT = "<unproven>"
+private const val UNPROVEN_REPOSITORY_FINGERPRINT =
+  skillbill.workflow.taskruntime.model.UNPROVEN_REPOSITORY_FINGERPRINT
 
 // Bounds the goal-facing pause-reason label list so the reason stays a summary, not a transcript.
 private const val MAX_PAUSE_REASON_LABELS = 5

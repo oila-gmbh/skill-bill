@@ -10,9 +10,12 @@ import kotlin.test.assertIs
 import kotlin.test.assertNull
 
 /**
- * SKILL-157: exactly two backward edges are uncapped — `review_fix` and `audit_gap` — and widening
- * either must not widen any other bounded edge. Every remaining backward edge keeps its finite cap
- * and its cap-exhaustion behavior.
+ * SKILL-157/SKILL-205: exactly two backward edges are uncapped — `review_fix` and `audit_gap` — and
+ * widening either must not widen any other bounded edge. Every remaining backward edge keeps its
+ * finite cap and its cap-exhaustion behavior. The topology stays uncapped for both loops; SKILL-205
+ * moved the audit_gap bound out of the topology into the runtime (the warn-threshold pause), so the
+ * transition function still returns a Next edge above iteration three while the application layer
+ * pauses. The application-level pause tests own the control-flow expectation.
  */
 class UnboundedRemediationLoopRegressionTest {
   private val def = FeatureTaskRuntimePhaseWorkflowDefinition
@@ -34,7 +37,11 @@ class UnboundedRemediationLoopRegressionTest {
   )
 
   @Test
-  fun `audit_gap stays uncapped and re-enters implement above iteration three`() {
+  fun `audit_gap topology stays uncapped and returns the Next edge above iteration three`() {
+    // The transition function is the topology: it still returns a Next edge at every gap iteration,
+    // and the edge's perEdgeCap stays null. The runtime (not this topology) applies the warn-threshold
+    // pause above iteration three; see FeatureTaskRuntimeLoopWarningThresholdTest and
+    // FeatureTaskRuntimeAuditGapLoopTest for the application-level pause expectation.
     listOf(0, 3, 4, 11, 30).forEach { consumed ->
       val next = assertIs<FeatureTaskRuntimeNextPhase.Next>(
         transition(def.PHASE_AUDIT, FeatureTaskRuntimeVerdict.GAPS_FOUND, consumed),

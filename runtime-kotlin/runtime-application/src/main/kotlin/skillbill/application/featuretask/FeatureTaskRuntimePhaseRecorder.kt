@@ -41,6 +41,8 @@ import skillbill.workflow.model.WorkflowStateSnapshot
 import skillbill.workflow.model.WorkflowUpdateInput
 import skillbill.workflow.model.appendBoundedHistoryBySequence
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_AUDIT_GAP_PAUSE_ARTIFACT_KEY
+import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_AUDIT_GAP_PROGRESS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_BUILD_GATE_PROGRESS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_CHECKPOINT_IDENTITIES_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_DECOMPOSE_TERMINAL_ARTIFACT_KEY
@@ -80,6 +82,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRejectionMeasurement
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedEvidenceMeasurement
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapPause
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY
@@ -1290,6 +1294,62 @@ class FeatureTaskRuntimePhaseRecorder(
         unitOfWork.workflowStates,
         record,
         mapOf(FEATURE_TASK_RUNTIME_VALIDATION_GATE_PROGRESS_ARTIFACT_KEY to progress.toArtifactMap()),
+      )
+    }
+  }
+
+  fun loadAuditGapProgress(
+    workflowId: String,
+    dbOverride: String? = null,
+  ): FeatureTaskRuntimeAuditGapProgress? = database.read(dbOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
+    val raw = decodeArtifacts(record.artifactsJson)[FEATURE_TASK_RUNTIME_AUDIT_GAP_PROGRESS_ARTIFACT_KEY]
+    val artifact = JsonSupport.anyToStringAnyMap(raw) ?: return@read null
+    FeatureTaskRuntimeAuditGapProgress.fromArtifactMap(artifact)
+  }
+
+  fun persistAuditGapProgress(
+    workflowId: String,
+    progress: FeatureTaskRuntimeAuditGapProgress,
+    dbOverride: String? = null,
+  ) {
+    database.transaction(dbOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+        ?: throw InvalidWorkflowStateSchemaError(
+          "Cannot persist audit gap progress: workflow '$workflowId' is missing.",
+        )
+      persistPatch(
+        unitOfWork.workflowStates,
+        record,
+        mapOf(FEATURE_TASK_RUNTIME_AUDIT_GAP_PROGRESS_ARTIFACT_KEY to progress.toArtifactMap()),
+      )
+    }
+  }
+
+  fun loadAuditGapPause(
+    workflowId: String,
+    dbOverride: String? = null,
+  ): FeatureTaskRuntimeAuditGapPause? = database.read(dbOverride) { unitOfWork ->
+    val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId) ?: return@read null
+    val raw = decodeArtifacts(record.artifactsJson)[FEATURE_TASK_RUNTIME_AUDIT_GAP_PAUSE_ARTIFACT_KEY]
+    val artifact = JsonSupport.anyToStringAnyMap(raw) ?: return@read null
+    FeatureTaskRuntimeAuditGapPause.fromArtifactMap(artifact)
+  }
+
+  fun persistAuditGapPause(
+    workflowId: String,
+    pause: FeatureTaskRuntimeAuditGapPause,
+    dbOverride: String? = null,
+  ) {
+    database.transaction(dbOverride) { unitOfWork ->
+      val record = WorkflowFamily.TASK_RUNTIME.get(unitOfWork.workflowStates, workflowId)
+        ?: throw InvalidWorkflowStateSchemaError(
+          "Cannot persist audit gap pause: workflow '$workflowId' is missing.",
+        )
+      persistPatch(
+        unitOfWork.workflowStates,
+        record,
+        mapOf(FEATURE_TASK_RUNTIME_AUDIT_GAP_PAUSE_ARTIFACT_KEY to pause.toArtifactMap()),
       )
     }
   }

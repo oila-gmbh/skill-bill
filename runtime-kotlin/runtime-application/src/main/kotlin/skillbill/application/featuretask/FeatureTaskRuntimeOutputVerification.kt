@@ -41,6 +41,21 @@ internal object FeatureTaskRuntimeOutputVerification {
   fun unmetAuditCriteria(outputObject: Map<String, Any?>?): List<String> =
     auditVerdictFrom(outputObject)?.blockingCriteria?.map { it.message }.orEmpty()
 
+  /**
+   * The canonical criterion refs an audit reports unmet, uppercased to the `AC-###` identity. The
+   * blocking criteria carry ref+note in one message string, so the ref is extracted rather than the
+   * whole message: progress identity is the criterion, never the agent's note text. Distinct refs,
+   * preserving order, empty when the audit is absent or satisfied.
+   */
+  fun canonicalAuditCriterionRefs(outputObject: Map<String, Any?>?): List<String> =
+    auditVerdictFrom(outputObject)
+      ?.blockingCriteria
+      ?.mapNotNull { AUDIT_CRITERION_REF.find(it.message)?.value?.uppercase() }
+      ?.distinct()
+      .orEmpty()
+
+  private val AUDIT_CRITERION_REF: Regex = Regex("""(AC-\d+)""", RegexOption.IGNORE_CASE)
+
   fun auditGapPayloadError(outputObject: Map<String, Any?>): String? {
     val wireVerdict = outputObject["verdict"] as? String
     val producedOutputs = JsonSupport.anyToStringAnyMap(outputObject["produced_outputs"])

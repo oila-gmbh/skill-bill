@@ -2,6 +2,12 @@ package skillbill.workflow.taskruntime.model
 
 private const val CHURN_REASON_MAX_NAMED_CONSTRUCTS: Int = 8
 
+/**
+ * A repository fingerprint that could not be proven: change cannot be asserted, so a comparison
+ * against it fails closed rather than letting an unchanged audit pass as progress.
+ */
+const val UNPROVEN_REPOSITORY_FINGERPRINT: String = "<unproven>"
+
 data class FeatureTaskRuntimeAuditRepairProgressDecision(
   val blocked: Boolean,
   val reason: String?,
@@ -17,10 +23,12 @@ data class FeatureTaskRuntimeReviewRemediationFindingIdentities(
 )
 
 /**
- * Audit-side non-convergence: the same unmet acceptance criteria across consecutive audits with an
- * unchanged repository blocks instead of re-entering implement. The criterion refs are the whole key —
- * there are no gap identities left to churn — so an audit that keeps naming the same criteria while the
- * tree stands still has stopped making progress. An empty current set is convergence, not a stall.
+ * Audit-side non-convergence: whether re-entering `implement` after another `audit_gap` is progress
+ * or a stall. Identity is the canonical criterion ref, and the whole key is the set of refs the
+ * audit still reports unmet. An empty current set is convergence, not a stall. Any prior ref cleared
+ * is progress even when new criteria appeared. With no cleared prior ref — an identical set, or a
+ * pure substitution of equal or larger cardinality — the audit has not shrunk its unmet set, so it
+ * stalls when the repository stands still, and fails closed when change cannot be proven.
  */
 fun detectAuditRepairNonProgress(
   previousCriterionRefs: Set<String>,
@@ -28,9 +36,25 @@ fun detectAuditRepairNonProgress(
   previousRepositoryFingerprint: String,
   currentRepositoryFingerprint: String,
 ): FeatureTaskRuntimeAuditRepairProgressDecision {
-  val equivalentCriteria = currentCriterionRefs.isNotEmpty() && previousCriterionRefs == currentCriterionRefs
+  // An empty current set is convergence: the audit satisfied every criterion, so nothing blocks.
+  if (currentCriterionRefs.isEmpty()) {
+    return FeatureTaskRuntimeAuditRepairProgressDecision(blocked = false, reason = null)
+  }
+  // An empty previous set means there is no prior round to compare against, so nothing blocks.
+  if (previousCriterionRefs.isEmpty()) {
+    return FeatureTaskRuntimeAuditRepairProgressDecision(blocked = false, reason = null)
+  }
+  // Any prior criterion ref cleared is progress, even when new criteria appeared alongside.
+  val clearedPriorRef = (previousCriterionRefs - currentCriterionRefs).isNotEmpty()
+  if (clearedPriorRef) {
+    return FeatureTaskRuntimeAuditRepairProgressDecision(blocked = false, reason = null)
+  }
+  // No cleared prior ref (identical set, or substitution without a shrink): stall when the repository
+  // is unchanged, or when the previous fingerprint is unproven (fails closed). Only a proven change
+  // continues.
   val repositoryUnchanged = previousRepositoryFingerprint == currentRepositoryFingerprint
-  val blocked = equivalentCriteria && repositoryUnchanged
+  val previousUnproven = previousRepositoryFingerprint == UNPROVEN_REPOSITORY_FINGERPRINT
+  val blocked = repositoryUnchanged || previousUnproven
   return FeatureTaskRuntimeAuditRepairProgressDecision(
     blocked = blocked,
     reason = if (blocked) {
