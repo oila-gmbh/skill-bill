@@ -370,6 +370,49 @@ class FeatureTaskRuntimeAuditGapLoopTest {
       "review_fix never exceeds the single re-review allowance",
     )
   }
+
+  // Operator stop / crash after the audit_gap re-implement completed and the re-audit had started:
+  // resume must continue at audit, not re-block implement because the running audit no longer carries
+  // unmet_criteria.
+  @Test
+  fun `m2 crash after audit_gap implement completes resumes at audit without empty-criteria block`() {
+    var auditLaunches = 0
+    var crashOnReAudit = true
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        when (phaseId) {
+          "audit" -> {
+            auditLaunches += 1
+            when {
+              auditLaunches == 1 -> facts(auditGapsOutput())
+              auditLaunches == 2 && crashOnReAudit -> spawnFailedFacts()
+              else -> facts(auditSatisfiedOutput())
+            }
+          }
+          else -> facts(validJsonOutput(phaseId))
+        }
+      },
+    )
+
+    val firstReport = harness.runner.run(harness.request())
+    assertIs<FeatureTaskRuntimeRunReport.Blocked>(firstReport)
+    assertTrue(
+      "carries none" !in firstReport.blockedReason,
+      "first interruption is the re-audit spawn failure, not an empty-criteria wedge",
+    )
+    assertEquals(2, auditLaunches, "gaps_found audit plus one crashed re-audit")
+
+    crashOnReAudit = false
+    val resumeReport = harness.runner.run(harness.request())
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(resumeReport)
+    assertTrue(auditLaunches >= 3, "resume relaunches audit rather than blocking on empty criteria")
+    assertEquals(
+      2,
+      harness.launchedPromptPhaseOrder().count { it == "implement" },
+      "implement is not relaunched after it already completed the audit_gap span",
+    )
+  }
 }
 
 // The unique unmet-criterion message a gaps_found audit carries, so the implementation-remediation briefing

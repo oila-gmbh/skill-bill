@@ -367,7 +367,9 @@ private fun currentReentryPhaseId(
     .asSequence()
     .filter { it.sequenceNumber > edgeEntry.sequenceNumber }
     .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.COMPLETE }
-    .mapTo(mutableSetOf()) { it.phaseId }
+    .map { it.phaseId }
+    .filter { phaseId -> records[phaseId]?.status == PHASE_STATUS_COMPLETED }
+    .toMutableSet()
   records.values
     .filter {
       it.status == PHASE_STATUS_COMPLETED &&
