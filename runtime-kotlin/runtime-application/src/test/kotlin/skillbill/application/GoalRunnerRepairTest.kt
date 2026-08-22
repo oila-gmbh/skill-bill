@@ -436,6 +436,7 @@ internal class GoalRunnerRepairTest : GoalRunnerRepairFixtures() {
     assertFalse(PASSED_UPSTREAM_OUTPUT in diagnosis.passedChecks)
   }
 
+  @Suppress("LongMethod")
   @Test
   fun `repairing build-stamped completed upstream missing output reopens build not validate`() {
     val workflows = InMemoryWorkflowStates()

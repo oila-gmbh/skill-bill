@@ -1,5 +1,15 @@
 # goalrunner boundary history
 
+## [2026-08-22] SKILL-204 subtask 2 — Route non-last goal children through build
+Areas: runtime-application/goalrunner, runtime-application/featuretask, runtime-domain/workflow/taskruntime, runtime-cli/featuretask, runtime-infra-fs/launcher/agentrun
+- Goal continuation stamps `build` for every non-skipped child before the last non-skipped manifest entry, and `validate` for that last child; skipped ordinal-last promotes validation, while single-child and non-goal launches keep `validate`.
+- Child loop and status carry the active build selection; build-stamped visits skip collect-all validation and settle into write-history.
+- Write-history and commit-push handoffs require exactly the selected settled receipt (`build_receipt` or `validation_receipt`); legacy or absent selection resolves to `validate`.
+- Pattern: persist gate choice on goal-continuation context and validate the selected receipt at the downstream phase edge. reusable
+- Limitation: intermediate build children defer full validation debt to the final non-skipped child.
+Feature flag: N/A
+Acceptance criteria: 6/6 implemented
+
 ## [2026-08-20] SKILL-190 — Completed-upstream-missing-output child repair wedge
 Areas: runtime-application/goalrunner, runtime-application/featuretask, runtime-cli/goal
 - `GoalRunnerChildRepairOperations` diagnoses and applies `COMPLETED_UPSTREAM_MISSING_OUTPUT`: earliest unsettled `completed` upstream for a blocked consumer is reopened to `pending` with ledger retry evidence

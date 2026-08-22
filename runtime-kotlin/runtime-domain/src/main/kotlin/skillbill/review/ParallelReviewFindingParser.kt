@@ -85,13 +85,15 @@ object ParallelReviewFindingParser {
   internal fun normalizeRegisterText(text: String): String {
     val working = text.lines().map { normalizeRegisterLine(it) }.toMutableList()
     var next = working.maxOfOrNull(::maxFindingNumberIn) ?: 0
-    for (index in working.indices) {
+    working.indices.forEach { index ->
       val line = working[index]
-      if (findingCandidatePattern.containsMatchIn(line)) continue
-      val body = findingBodyWithoutId.matchEntire(line) ?: continue
-      next = (next + 1).coerceAtMost(999)
-      val id = "F-" + next.toString().padStart(3, '0')
-      working[index] = "${body.groupValues[1]}[$id] ${line.drop(body.groupValues[1].length)}"
+      if (!findingCandidatePattern.containsMatchIn(line)) {
+        findingBodyWithoutId.matchEntire(line)?.let { body ->
+          next = (next + 1).coerceAtMost(999)
+          val id = "F-" + next.toString().padStart(3, '0')
+          working[index] = "${body.groupValues[1]}[$id] ${line.drop(body.groupValues[1].length)}"
+        }
+      }
     }
     return working.joinToString("\n")
   }

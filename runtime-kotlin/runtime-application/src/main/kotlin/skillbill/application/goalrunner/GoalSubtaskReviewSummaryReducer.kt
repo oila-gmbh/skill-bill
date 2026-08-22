@@ -84,15 +84,16 @@ internal object GoalSubtaskReviewSummaryReducer {
           findingId = finding.findingId,
         )
       }
-      .let(::withStableFindingRefs)
       .groupBy { finding ->
-        finding.findingId?.lowercase() ?: finding.label.lowercase()
+        finding.findingId?.trim()?.lowercase()?.takeIf(String::isNotBlank)
+          ?: finding.label.lowercase()
       }
       .values
       .map { sameKeyFindings ->
         sameKeyFindings.minByOrNull(::severityRank)
           ?: error("A grouped compact review summary must contain at least one finding.")
       }
+      .let(::withStableFindingRefs)
   }
 
   /**

@@ -53,6 +53,7 @@ class FeatureTaskRuntimeStatusService(
    * distinguishing "no such workflow" from "workflow exists but no phase has a record yet"
    * (an empty record map projects every phase as pending).
    */
+  @Suppress("LongMethod")
   fun status(request: FeatureTaskRuntimeStatusRequest): FeatureTaskRuntimeStatusProjection? {
     val records = recorder.loadPhaseRecords(request.workflowId, request.dbPathOverride) ?: return null
     val decomposeTerminal = decomposeTerminalRecorder.loadDecomposeTerminal(request.workflowId, request.dbPathOverride)
@@ -383,12 +384,12 @@ private fun shouldSkipPendingLoopOnlyPhase(
   if (status != PHASE_STATUS_PENDING || phaseId !in LOOP_ONLY_PHASE_IDS) {
     return false
   }
-  if (
+  val buildStampedCurrent =
     phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD &&
-    qualityGateSelection == FeatureTaskRuntimeQualityGateSelection.BUILD &&
-    records[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW]?.status == PHASE_STATUS_COMPLETED &&
-    records[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD]?.status != PHASE_STATUS_COMPLETED
-  ) {
+      qualityGateSelection == FeatureTaskRuntimeQualityGateSelection.BUILD &&
+      records[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW]?.status == PHASE_STATUS_COMPLETED &&
+      records[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD]?.status != PHASE_STATUS_COMPLETED
+  if (buildStampedCurrent) {
     return false
   }
   return true

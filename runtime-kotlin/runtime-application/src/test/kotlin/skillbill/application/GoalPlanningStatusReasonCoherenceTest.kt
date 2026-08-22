@@ -44,7 +44,7 @@ class GoalPlanningStatusReasonCoherenceTest {
 
     val aligned = alignPlanningStatusWithLaunchRecoverability(
       snapshot = snapshot,
-      recoverability = GoalPlanningProvenanceRecoverability.Invalid(GoalPlanningRecoveryKind.SCOPED_REPLAN),
+      recoverability = GoalPlanningProvenanceRecoverability.Irrecoverable(GoalPlanningRecoveryKind.SCOPED_REPLAN),
       issueKey = "WE-4719",
       remedySubtaskId = 2,
     )
@@ -119,7 +119,7 @@ class GoalPlanningStatusReasonCoherenceTest {
         "stored goal or repository identity differs from expected identity",
       )
     }
-    assertIs<GoalPlanningProvenanceRecoverability.Invalid>(recoverability)
+    assertIs<GoalPlanningProvenanceRecoverability.Irrecoverable>(recoverability)
 
     val snapshot = GoalPlanningStatusSnapshot(
       state = GoalPlanningStatusState.PARTIALLY_PLANNED,
@@ -165,7 +165,7 @@ class GoalPlanningStatusReasonCoherenceTest {
       savedParentSpec = parentSpec,
       currentParentSpec = parentSpec,
     )
-    assertIs<GoalPlanningProvenanceRecoverability.Invalid>(recoverability)
+    assertIs<GoalPlanningProvenanceRecoverability.Irrecoverable>(recoverability)
     assertEquals(GoalPlanningRecoveryKind.SCOPED_REPLAN, recoverability.recoveryKind)
 
     val stopReason =

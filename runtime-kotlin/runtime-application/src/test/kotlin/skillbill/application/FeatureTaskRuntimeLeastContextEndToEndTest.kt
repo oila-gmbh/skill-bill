@@ -66,6 +66,7 @@ class FeatureTaskRuntimeLeastContextEndToEndTest {
     }
   }
 
+  @Suppress("LongMethod")
   private fun assertConsumerDelivery(
     phaseId: String,
     briefing: FeatureTaskRuntimePhaseLaunchBriefing,

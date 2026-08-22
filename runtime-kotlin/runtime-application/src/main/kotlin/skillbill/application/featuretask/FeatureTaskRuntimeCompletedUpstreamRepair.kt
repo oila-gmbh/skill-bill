@@ -53,6 +53,7 @@ internal fun diagnoseUnsettledCompletedUpstreamPhaseId(
   return null
 }
 
+@Suppress("LongParameterList", "LongMethod")
 internal fun buildCompletedUpstreamMissingOutputRepair(
   phaseRecords: Map<String, FeatureTaskRuntimePhaseRecord>,
   ledger: List<FeatureTaskRuntimePhaseLedgerEntry>,

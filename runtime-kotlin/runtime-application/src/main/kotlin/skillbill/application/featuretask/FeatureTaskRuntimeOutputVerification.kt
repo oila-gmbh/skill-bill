@@ -115,8 +115,9 @@ internal object FeatureTaskRuntimeOutputVerification {
 
   private fun actionableReviewFinding(entry: Any?): FeatureTaskRuntimeReviewFinding? {
     val map = JsonSupport.anyToStringAnyMap(entry) ?: return null
-    val severity = (map["severity"] as? String)?.takeIf(String::isNotBlank) ?: return null
-    val message = (map["message"] as? String)?.takeIf(String::isNotBlank) ?: return null
+    val severity = (map["severity"] as? String)?.takeIf(String::isNotBlank)
+    val message = (map["message"] as? String)?.takeIf(String::isNotBlank)
+    if (severity == null || message == null) return null
     val claimVerdict = optionalClaimVerdict(map["claim_verdict"])
     val scopeDisposition = optionalScopeDisposition(map["scope_disposition"])
     if (!ReviewFindingActionability.isActionable(claimVerdict, scopeDisposition)) {

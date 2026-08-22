@@ -981,7 +981,7 @@ class GoalPlanningSweepTest {
       currentParentSpec = parentSpec,
     )
 
-    assertIs<GoalPlanningProvenanceRecoverability.Invalid>(result)
+    assertIs<GoalPlanningProvenanceRecoverability.Irrecoverable>(result)
     assertEquals(GoalPlanningRecoveryKind.SCOPED_REPLAN, result.recoveryKind)
   }
 
@@ -1004,7 +1004,7 @@ class GoalPlanningSweepTest {
       currentParentSpec = parentSpec,
     )
 
-    assertIs<GoalPlanningProvenanceRecoverability.Invalid>(result)
+    assertIs<GoalPlanningProvenanceRecoverability.Irrecoverable>(result)
     assertEquals(GoalPlanningRecoveryKind.HARD_RESET, result.recoveryKind)
   }
 
@@ -1021,7 +1021,7 @@ class GoalPlanningSweepTest {
       currentParentSpec = parentSpec,
     )
 
-    assertIs<GoalPlanningProvenanceRecoverability.Invalid>(result)
+    assertIs<GoalPlanningProvenanceRecoverability.Irrecoverable>(result)
   }
 
   @Test

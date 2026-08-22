@@ -1822,7 +1822,7 @@ class ParallelCodeReviewRunner(
 @Suppress("LongParameterList") // assembles the full result record; every part is required
 private fun parallelResult(
   agent1Id: String,
-  agent2Id: String?,
+  @Suppress("UnusedParameter") agent2Id: String?,
   outcomes: skillbill.ports.review.model.ParallelReviewLaneRunResult,
   integration: ReviewIntegrationPassOutcome,
   coverage: ReviewCoverageReport?,

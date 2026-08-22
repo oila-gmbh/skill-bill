@@ -18,6 +18,9 @@ private const val OUTCOME_MESSAGE_KEY = "message"
 private const val CHANGED_PATHS_KEY = "changed_paths"
 private const val COMMIT_SHA_KEY = "commit_sha"
 private const val GOVERNED_SPEC_ROOT = ".feature-specs/"
+private const val GIT_PORCELAIN_MIN_LENGTH = 4
+private const val GIT_PORCELAIN_STATUS_PREFIX_LENGTH = 3
+private const val MAX_REPORTED_UNENUMERATED_DIRTY_PATHS = 8
 
 /** The agent's half of the finalisation contract: what to say, and which paths the runtime may stage. */
 internal data class FeatureTaskRuntimeCommitPushHandoff(
@@ -89,6 +92,7 @@ internal class FeatureTaskRuntimeSubtaskFinalisation(
       .sorted()
     if (excluded.isNotEmpty()) record(specExclusionRecord(identity, excluded))
     if (stageable.isEmpty()) return blocked(emptyStageableReason(excluded))
+    refuseUnenumeratedDirtyPaths(stageable)?.let { return blocked(it) }
 
     val snapshot = gitOperations.captureIndexState(repoRoot, stageable)
     if (!snapshot.ok) return blocked("the pre-finalisation index could not be captured (${snapshot.error})")
@@ -202,6 +206,31 @@ internal class FeatureTaskRuntimeSubtaskFinalisation(
     }
   }
 
+  private fun refuseUnenumeratedDirtyPaths(stageable: List<String>): String? {
+    val status = gitOperations.worktreeStatus(repoRoot)
+    if (!status.ok) {
+      return "the worktree status could not be read before staging (${status.error})"
+    }
+    val enumerated = stageable.map(::normalizeRepoPath).toSet()
+    val leftovers = parseGitPorcelainPaths(status.value.orEmpty())
+      .filterNot(::isGovernedSpecPath)
+      .map(::normalizeRepoPath)
+      .filter { it.isNotBlank() && it !in enumerated }
+      .distinct()
+      .sorted()
+    if (leftovers.isEmpty()) return null
+    val sample = leftovers.take(MAX_REPORTED_UNENUMERATED_DIRTY_PATHS).joinToString(", ")
+    val suffix = if (leftovers.size > MAX_REPORTED_UNENUMERATED_DIRTY_PATHS) {
+      " (+${leftovers.size - MAX_REPORTED_UNENUMERATED_DIRTY_PATHS} more)"
+    } else {
+      ""
+    }
+    return "`$COMMIT_PUSH_RESULT_KEY.$CHANGED_PATHS_KEY` omitted dirty implementation paths " +
+      "($sample$suffix). Finalisation stages exactly the enumerated set, so those edits would stay " +
+      "uncommitted and later block same-branch goal finalization. Re-run commit_push enumerating every " +
+      "implementation path this subtask touched, including validate repairs"
+  }
+
   private fun blocked(reason: String) = FeatureTaskRuntimeSubtaskFinalisationBlocked(
     "needs_human: subtask finalisation could not complete because $reason.",
   )
@@ -260,8 +289,30 @@ internal class FeatureTaskRuntimeSubtaskFinalisation(
         "and an enumerated `$CHANGED_PATHS_KEY`.",
     )
 
-    private fun isGovernedSpecPath(path: String): Boolean = path.trim().startsWith(GOVERNED_SPEC_ROOT)
+    private fun isGovernedSpecPath(path: String): Boolean =
+      normalizeRepoPath(path).startsWith(GOVERNED_SPEC_ROOT)
 
+    private fun normalizeRepoPath(path: String): String =
+      path.trim().removeSurrounding("\"").removePrefix("./")
+
+    private fun parseGitPorcelainPaths(output: String): List<String> = output
+      .lineSequence()
+      .map(String::trimEnd)
+      .filter { line -> line.length >= GIT_PORCELAIN_MIN_LENGTH }
+      .map(::pathFromPorcelainLine)
+      .filter(String::isNotBlank)
+      .toList()
+
+    private fun pathFromPorcelainLine(line: String): String {
+      val pathPart = when {
+        line.length >= 2 &&
+          line[0] != ' ' &&
+          line[1] == ' ' &&
+          (line.length < 3 || line[2] != ' ') -> line.drop(2)
+        else -> line.drop(GIT_PORCELAIN_STATUS_PREFIX_LENGTH)
+      }
+      return pathPart.substringAfterLast(" -> ").trim().removeSurrounding("\"")
+    }
     /**
      * The empty-stageable refusal, load-bearing for the same reason the blank-message one is. Staging an
      * empty pathspec set is a silent no-op, and finalisation amends with `allowUnchangedIndex`, so the

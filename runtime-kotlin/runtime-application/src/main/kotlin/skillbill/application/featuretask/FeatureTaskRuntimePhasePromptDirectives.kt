@@ -437,7 +437,8 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "resolved feature branch from what you emit here. Emit commit_push_result with `message` (the " +
     "commit subject describing the implemented, reviewed, audited, validated, and history-updated " +
     "outcome) and `changed_paths` (every implementation path this subtask touched, enumerated; the " +
-    "runtime stages exactly this set). A missing or blank `message` blocks the subtask rather than " +
+    "runtime stages exactly this set and refuses when dirty non-`.feature-specs/` paths remain outside " +
+    "it, including validate repairs). A missing or blank `message` blocks the subtask rather than " +
     "publishing a provisional subject. Do not emit commit_sha: the runtime captures it after the " +
     "commit. If goal-continuation suppresses PR, this successful phase is the terminal success " +
     "signal for the goal subtask.",

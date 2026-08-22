@@ -861,15 +861,15 @@ class CliFeatureTaskRuntimeRuntimeTest {
     assertEquals(0, status.exitCode, status.stdout)
     assertContains(status.stdout, "status: ok")
     assertContains(status.stdout, "feature_size: SMALL")
-    // A clean run launches the nine forward phases; the loop-only implement_fix is never launched, so
-    // it stays pending in the durable projection even on a fully forward-completed run (SKILL-85 M1).
-    assertContains(status.stdout, "complete: ${ALL_PHASES.size}")
-    assertContains(status.stdout, "pending: 2")
+    // A clean run completes every forward phase; loop-only plan_fix, implement_fix, and build stay pending.
+    assertContains(status.stdout, "complete: 9")
+    assertContains(status.stdout, "pending: 3")
     assertContains(status.stdout, "blocked: 0")
     assertContains(status.stdout, "phase: id=plan status=completed")
     assertContains(status.stdout, "origin=agent-executed")
     assertContains(status.stdout, "phase: id=plan_fix status=pending")
     assertContains(status.stdout, "phase: id=implement_fix status=pending")
+    assertContains(status.stdout, "phase: id=build status=pending")
     // SKILL-85 Subtask 4 (F-005): a fully forward-completed run reports no current phase — the
     // loop-only implement_fix (still pending) must NOT be projected as the current phase to operators.
     assertContains(status.stdout, "current_phase: none")
@@ -2183,8 +2183,8 @@ private class InterruptAtImplementLauncher : AgentRunLauncher {
 }
 
 private val ALL_PHASES =
-  listOf("preplan", "plan", "implement", "audit", "review", "validate", "write_history", "commit_push", "pr")
-private val AGENT_LAUNCHED_PHASES = ALL_PHASES.filterNot { it == "review" }
+  listOf("preplan", "plan", "implement", "audit", "review", "build", "validate", "write_history", "commit_push", "pr")
+private val AGENT_LAUNCHED_PHASES = ALL_PHASES.filterNot { it == "review" || it == "build" }
 
 // Records checkouts and reports a configurable current branch so branch-setup is exercised through
 // the CLI without a real git repo. The default reports an existing feature branch (reuse path).
@@ -2449,8 +2449,9 @@ class CursorAgentRuntimeCliTest {
 
     assertEquals(0, result.exitCode, result.stdout)
     assertTrue(
-      launcher.requests.any { it.agentId == "cursor" },
-      "parallel review agent cursor must launch a driver stage",
+      launcher.requests.none { it.agentId == "cursor" },
+      "dual-agent parallel lanes are disconnected; parallel-review-agent is continuation policy only",
     )
+    assertTrue(launcher.requests.all { it.agentId == "codex" })
   }
 }
