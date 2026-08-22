@@ -2,8 +2,9 @@
 
 package skillbill.nativeagent.rendering
 
-import skillbill.install.plan.detectCodexAgentsTarget
+import skillbill.install.plan.detectCodexAgentsTargets
 import skillbill.install.support.claudeConfigRoots
+import skillbill.install.support.codexAgentsTargets
 import skillbill.nativeagent.composition.NativeAgentSource
 import skillbill.nativeagent.composition.declaresReadOnlyToolset
 import java.nio.file.Files
@@ -19,8 +20,7 @@ enum class NativeAgentProvider(
   },
   Codex("codex-agents", "toml") {
     override fun render(source: NativeAgentSource): String = renderCodexAgentToml(source)
-    override fun homeAgentDirs(home: Path): List<Path> =
-      listOf(home.resolve(".codex/agents"), home.resolve(".agents/agents"))
+    override fun homeAgentDirs(home: Path): List<Path> = codexAgentsTargets(home)
   },
   Junie("junie-agents", "md") {
     override fun render(source: NativeAgentSource): String = renderFrontmatterAgent(source, toolsetFields(source))
@@ -41,7 +41,7 @@ enum class NativeAgentProvider(
 
   fun activeHomeAgentDirs(home: Path): List<Path> = when (this) {
     Claude -> homeAgentDirs(home)
-    Codex -> listOfNotNull(detectCodexAgentsTarget(home)?.path)
+    Codex -> detectCodexAgentsTargets(home).map { it.path }
     Junie -> homeAgentDirs(home).takeIf { Files.exists(home.resolve(".junie")) }.orEmpty()
     Cursor -> homeAgentDirs(home).takeIf { Files.exists(home.resolve(".cursor")) }.orEmpty()
   }.map { it.toAbsolutePath().normalize() }

@@ -40,7 +40,13 @@ object InstallOperations {
     return claudeConfigRoots(resolvedHome, environment)
   }
 
-  fun codexAgentsPath(home: Path? = null): Path = skillbill.install.plan.codexAgentsPath(home)
+  fun codexAgentsPath(home: Path? = null, environment: Map<String, String> = System.getenv()): Path =
+    skillbill.install.plan.codexAgentsPath(home, environment)
+
+  fun codexRoots(home: Path? = null, environment: Map<String, String> = System.getenv()): List<Path> {
+    val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
+    return skillbill.install.support.codexConfigRoots(resolvedHome, environment)
+  }
 
   fun claudeAgentsPath(home: Path? = null, environment: Map<String, String> = System.getenv()): Path {
     val resolvedHome = home ?: Path.of(System.getProperty("user.home"))

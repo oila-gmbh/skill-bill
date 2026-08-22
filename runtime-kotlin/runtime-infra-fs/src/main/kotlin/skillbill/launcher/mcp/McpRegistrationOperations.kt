@@ -5,6 +5,7 @@ import skillbill.install.model.InstallAgent
 import skillbill.install.model.McpMutationResult
 import skillbill.install.model.McpProfileOutcome
 import skillbill.install.support.claudeConfigRoots
+import skillbill.install.support.codexConfigRoots
 import java.nio.file.Path
 
 object McpRegistrationOperations {
@@ -20,8 +21,10 @@ object McpRegistrationOperations {
       InstallAgent.CLAUDE -> claudeFanOut(agent, resolvedHome, environment) { perProfilePath ->
         McpJsonConfig.register(agent, perProfilePath, command)
       }
+      InstallAgent.CODEX -> codexFanOut(agent, resolvedHome, environment) { perProfilePath ->
+        McpTomlConfig.register(agent, perProfilePath, command)
+      }
       InstallAgent.COPILOT -> McpJsonConfig.register(agent, configPathFor(installAgent, resolvedHome), command)
-      InstallAgent.CODEX -> McpTomlConfig.register(agent, configPathFor(installAgent, resolvedHome), command)
       InstallAgent.JUNIE -> McpJsonConfig.register(agent, configPathFor(installAgent, resolvedHome), command)
       InstallAgent.CURSOR -> McpJsonConfig.register(agent, configPathFor(installAgent, resolvedHome), command)
     }
@@ -37,8 +40,10 @@ object McpRegistrationOperations {
       InstallAgent.CLAUDE -> claudeFanOut(agent, resolvedHome, environment) { perProfilePath ->
         McpJsonConfig.unregister(agent, perProfilePath)
       }
+      InstallAgent.CODEX -> codexFanOut(agent, resolvedHome, environment) { perProfilePath ->
+        McpTomlConfig.unregister(agent, perProfilePath)
+      }
       InstallAgent.COPILOT -> McpJsonConfig.unregister(agent, configPathFor(installAgent, resolvedHome))
-      InstallAgent.CODEX -> McpTomlConfig.unregister(agent, configPathFor(installAgent, resolvedHome))
       InstallAgent.JUNIE -> McpJsonConfig.unregister(agent, configPathFor(installAgent, resolvedHome))
       InstallAgent.CURSOR -> McpJsonConfig.unregister(agent, configPathFor(installAgent, resolvedHome))
     }
@@ -68,14 +73,51 @@ object McpRegistrationOperations {
     }
   }
 
+  private fun codexProfileConfigPaths(home: Path, environment: Map<String, String>): List<Path> {
+    val roots = codexConfigRoots(home, environment)
+    return if (roots.isNotEmpty()) {
+      roots.map { root -> root.resolve("config.toml") }
+    } else {
+      listOf(home.resolve(".codex/config.toml"))
+    }
+  }
+
   private fun claudeFanOut(
     agent: String,
     home: Path,
     environment: Map<String, String>,
     mutate: (Path) -> McpMutationResult,
+  ): McpMutationResult = profileFanOut(
+    agent = agent,
+    home = home,
+    profilePaths = claudeProfileConfigPaths(home, environment),
+    representativePath = home.resolve(".claude.json"),
+    failureLabel = "Claude",
+    mutate = mutate,
+  )
+
+  private fun codexFanOut(
+    agent: String,
+    home: Path,
+    environment: Map<String, String>,
+    mutate: (Path) -> McpMutationResult,
+  ): McpMutationResult = profileFanOut(
+    agent = agent,
+    home = home,
+    profilePaths = codexProfileConfigPaths(home, environment),
+    representativePath = home.resolve(".codex/config.toml"),
+    failureLabel = "Codex",
+    mutate = mutate,
+  )
+
+  private fun profileFanOut(
+    agent: String,
+    home: Path,
+    profilePaths: List<Path>,
+    representativePath: Path,
+    failureLabel: String,
+    mutate: (Path) -> McpMutationResult,
   ): McpMutationResult {
-    val profilePaths = claudeProfileConfigPaths(home, environment)
-    val representativePath = home.resolve(".claude.json")
     val outcomes = mutableListOf<McpProfileOutcome>()
     val failures = mutableListOf<Pair<Path, Throwable>>()
 
@@ -88,7 +130,7 @@ object McpRegistrationOperations {
     if (failures.isNotEmpty()) {
       val names = failures.joinToString("; ") { (path, error) -> "$path: ${error.message}" }
       throw ClaudeMcpProfileFailure(
-        "Failed to update Claude MCP config for profile(s): $names",
+        "Failed to update $failureLabel MCP config for profile(s): $names",
         succeeded = outcomes.toList(),
       )
     }

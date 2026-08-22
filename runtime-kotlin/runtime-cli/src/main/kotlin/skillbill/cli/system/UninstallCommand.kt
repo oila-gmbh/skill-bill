@@ -72,13 +72,13 @@ class UninstallCommand(
     val claudeTargets = installAgentService.claudeRoots(home, state.environment).flatMap { root ->
       listOf(root.resolve("skills"), root.resolve("commands"))
     }
+    val codexTargets = installAgentService.codexRoots(home, state.environment).map { root -> root.resolve("skills") }
     val agentTargets = listOf(
       home.resolve(".copilot/skills"),
-      home.resolve(".codex/skills"),
       home.resolve(".agents/skills"),
       home.resolve(".junie/skills"),
       home.resolve(".cursor/skills"),
-    ) + claudeTargets
+    ) + claudeTargets + codexTargets
     val stateRuntimeRoot = stateRoot.resolve("runtime")
     val binDir = state.environment["SKILL_BILL_BIN_DIR"]?.let(Path::of) ?: home.resolve(".local/bin")
     return UninstallPlan(

@@ -12,6 +12,10 @@ import skillbill.install.staging.resolveStagedSymlinkTarget
 import skillbill.install.support.claudeConfigRoot
 import skillbill.install.support.claudeConfigRoots
 import skillbill.install.support.claudeSkillTargets
+import skillbill.install.support.codexAgentsTargets
+import skillbill.install.support.codexConfigRoot
+import skillbill.install.support.codexConfigRoots
+import skillbill.install.support.codexSkillTargets
 import skillbill.scaffold.authoring.parseInternalForFrontmatter
 import skillbill.scaffold.model.PlatformManifest
 import java.nio.file.Files
@@ -30,19 +34,13 @@ internal fun agentPaths(home: Path? = null, environment: Map<String, String> = S
     "claude" to claudeConfigRoot(resolvedHome, environment).resolve("skills"),
     "junie" to resolvedHome.resolve(".junie/skills"),
     "cursor" to resolvedHome.resolve(".cursor/skills"),
-    "codex" to codexPath(resolvedHome),
+    "codex" to codexConfigRoot(resolvedHome, environment).resolve("skills"),
   )
 }
 
-internal fun codexAgentsPath(home: Path? = null): Path {
+internal fun codexAgentsPath(home: Path? = null, environment: Map<String, String> = System.getenv()): Path {
   val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
-  val codexRoot = resolvedHome.resolve(".codex")
-  val codexAgents = codexRoot.resolve("agents")
-  return if (Files.exists(codexRoot) || Files.exists(codexAgents)) {
-    codexAgents
-  } else {
-    resolvedHome.resolve(".agents/agents")
-  }
+  return codexConfigRoot(resolvedHome, environment).resolve("agents")
 }
 
 internal fun detectAgents(home: Path? = null, environment: Map<String, String> = System.getenv()): List<AgentTarget> {
@@ -51,6 +49,12 @@ internal fun detectAgents(home: Path? = null, environment: Map<String, String> =
     if (agent == "claude") {
       if (agentIsPresent(resolvedHome, agent, agentPaths(resolvedHome, environment).getValue(agent), environment)) {
         claudeSkillTargets(resolvedHome, environment).map { path -> AgentTarget("claude", path) }
+      } else {
+        emptyList()
+      }
+    } else if (agent == "codex") {
+      if (agentIsPresent(resolvedHome, agent, agentPaths(resolvedHome, environment).getValue(agent), environment)) {
+        codexSkillTargets(resolvedHome, environment).map { path -> AgentTarget("codex", path) }
       } else {
         emptyList()
       }
@@ -65,10 +69,15 @@ internal fun detectAgents(home: Path? = null, environment: Map<String, String> =
   }
 }
 
-internal fun detectCodexAgentsTarget(home: Path? = null): AgentTarget? {
+internal fun detectCodexAgentsTargets(
+  home: Path? = null,
+  environment: Map<String, String> = System.getenv(),
+): List<AgentTarget> {
   val resolvedHome = home ?: Path.of(System.getProperty("user.home"))
-  val path = codexAgentsPath(resolvedHome)
-  return if (agentIsPresent(resolvedHome, "codex", path)) AgentTarget(CODEX_AGENTS_KIND, path) else null
+  if (!agentIsPresent(resolvedHome, "codex", agentPaths(resolvedHome, environment).getValue("codex"), environment)) {
+    return emptyList()
+  }
+  return codexAgentsTargets(resolvedHome, environment).map { path -> AgentTarget(CODEX_AGENTS_KIND, path) }
 }
 
 /**
@@ -142,12 +151,6 @@ internal fun uninstallTargets(createdSymlinks: Iterable<Path>): List<Path> {
   return removed
 }
 
-private fun codexPath(home: Path): Path {
-  val codexRoot = home.resolve(".codex")
-  val codexSkills = codexRoot.resolve("skills")
-  return if (Files.exists(codexRoot) || Files.exists(codexSkills)) codexSkills else home.resolve(".agents/skills")
-}
-
 private fun agentIsPresent(
   home: Path,
   agent: String,
@@ -162,7 +165,10 @@ private fun agentIsPresent(
     "claude" -> claudeConfigRoots(home, environment)
     "junie" -> listOf(home.resolve(".junie"))
     "cursor" -> listOf(home.resolve(".cursor"))
-    "codex" -> listOf(home.resolve(".codex"), home.resolve(".agents"))
+    "codex" -> {
+      val roots = codexConfigRoots(home, environment)
+      if (roots.isNotEmpty()) roots else listOf(home.resolve(".codex"), home.resolve(".agents"))
+    }
     else -> emptyList()
   }
   return roots.any(Files::exists)

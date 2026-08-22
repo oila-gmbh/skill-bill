@@ -14,6 +14,7 @@ import skillbill.install.model.InstallPolicyInput
 import skillbill.install.model.validateInstallPlanWireSnapshot
 import skillbill.install.policy.InstallPlanPolicy
 import skillbill.install.support.claudeSkillTargets
+import skillbill.install.support.codexSkillTargets
 import skillbill.ports.install.plan.model.InstallPlanningFacts
 import skillbill.review.plan.ReviewFallbackResolver
 import skillbill.scaffold.model.PlatformManifest
@@ -86,7 +87,7 @@ private fun buildInstallPolicyInput(
         source = InstallAgentTargetSource.DETECTED,
       )
     },
-    defaultAgentTargets = claudeMultiRootDefaultTargets(request.home),
+    defaultAgentTargets = multiRootDefaultTargets(request.home),
   )
 }
 
@@ -127,7 +128,7 @@ internal fun collectInstallPlanningFacts(request: InstallPlanRequest): InstallPl
         source = InstallAgentTargetSource.DETECTED,
       )
     },
-    defaultAgentTargets = claudeMultiRootDefaultTargets(request.home),
+    defaultAgentTargets = multiRootDefaultTargets(request.home),
   )
 }
 
@@ -150,16 +151,16 @@ internal fun materializeSelectedPlatformSkills(
   }
 }
 
-/**
- * Default agent targets, expanding claude into one row per discovered config root so install/apply
- * fans skill links across every profile while other agents keep their single default path.
- */
-private fun claudeMultiRootDefaultTargets(home: Path): List<InstallAgentDefaultTarget> =
-  agentPaths(home).flatMap { (agentId, path) ->
+private fun multiRootDefaultTargets(home: Path, environment: Map<String, String> = System.getenv()): List<InstallAgentDefaultTarget> =
+  agentPaths(home, environment).flatMap { (agentId, path) ->
     val agent = InstallAgent.fromId(agentId)
-    if (agentId == "claude") {
-      claudeSkillTargets(home).map { skillPath -> InstallAgentDefaultTarget(agent = agent, path = skillPath) }
-    } else {
-      listOf(InstallAgentDefaultTarget(agent = agent, path = path))
+    when (agentId) {
+      "claude" -> claudeSkillTargets(home, environment).map { skillPath ->
+        InstallAgentDefaultTarget(agent = agent, path = skillPath)
+      }
+      "codex" -> codexSkillTargets(home, environment).map { skillPath ->
+        InstallAgentDefaultTarget(agent = agent, path = skillPath)
+      }
+      else -> listOf(InstallAgentDefaultTarget(agent = agent, path = path))
     }
   }

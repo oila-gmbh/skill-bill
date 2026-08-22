@@ -16,6 +16,8 @@ import skillbill.launcher.mcp.McpRegistrationOperations
 import skillbill.ports.install.agent.InstallAgentTargetPort
 import skillbill.ports.install.agent.model.ClaudeConfigRootsRequest
 import skillbill.ports.install.agent.model.ClaudeConfigRootsResult
+import skillbill.ports.install.agent.model.CodexConfigRootsRequest
+import skillbill.ports.install.agent.model.CodexConfigRootsResult
 import skillbill.ports.install.agent.model.DetectInstallAgentTargetsRequest
 import skillbill.ports.install.agent.model.DetectInstallAgentTargetsResult
 import skillbill.ports.install.agent.model.InstallAgentDirectoryRequest
@@ -187,16 +189,21 @@ class FileSystemInstallAgentTargets : InstallAgentTargetPort {
   override fun claudeConfigRoots(request: ClaudeConfigRootsRequest): ClaudeConfigRootsResult =
     ClaudeConfigRootsResult(InstallOperations.claudeRoots(request.home, request.environment))
 
-  override fun agentDirectory(request: InstallAgentDirectoryRequest): InstallAgentDirectoryResult =
-    InstallAgentDirectoryResult(
+  override fun codexConfigRoots(request: CodexConfigRootsRequest): CodexConfigRootsResult =
+    CodexConfigRootsResult(InstallOperations.codexRoots(request.home, request.environment))
+
+  override fun agentDirectory(request: InstallAgentDirectoryRequest): InstallAgentDirectoryResult {
+    val environment = request.environment.ifEmpty { System.getenv().toMap() }
+    return InstallAgentDirectoryResult(
       when (request.agent) {
-        "codex" -> InstallOperations.codexAgentsPath(request.home)
-        "claude" -> InstallOperations.claudeAgentsPath(request.home)
+        "codex" -> InstallOperations.codexAgentsPath(request.home, environment)
+        "claude" -> InstallOperations.claudeAgentsPath(request.home, environment)
         "junie" -> InstallOperations.junieAgentsPath(request.home)
         "cursor" -> InstallOperations.cursorAgentsPath(request.home)
-        else -> InstallOperations.agentPath(request.agent, request.home)
+        else -> InstallOperations.agentPath(request.agent, request.home, environment)
       },
     )
+  }
 
   override fun cleanupAgentTarget(request: InstallAgentTargetCleanupRequest): InstallAgentTargetCleanupResult {
     val (removed, skipped) = InstallCleanupOperations.cleanupAgentTarget(

@@ -93,7 +93,7 @@ Supported install targets:
 | GitHub Copilot                             | `~/.copilot/skills/`                      |
 | Claude Code                                | `~/.claude/skills/`                       |
 | Claude Code (native subagent markdown)     | `~/.claude/agents/`                       |
-| OpenAI Codex (skills)                      | `~/.codex/skills/` or `~/.agents/skills/` |
+| OpenAI Codex (skills)                      | `~/.codex/skills/`, `~/.codex-<name>/skills/`, or `~/.agents/skills/` |
 | OpenAI Codex (native subagent TOMLs)       | `~/.codex/agents/`                        |
 | Cursor (skills)                            | `~/.cursor/skills/`                       |
 | Cursor (native subagent markdown)          | `~/.cursor/agents/`                       |

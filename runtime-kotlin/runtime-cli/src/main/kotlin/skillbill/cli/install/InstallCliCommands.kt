@@ -537,12 +537,26 @@ class InstallClaudeRootsCommand(
 }
 
 @Inject
+class InstallCodexRootsCommand(
+  private val state: CliRunState,
+  private val installAgentService: InstallAgentService,
+) : DocumentedCliCommand("codex-roots", "Print every resolved Codex config root, one per line.") {
+  override fun run() {
+    val roots = installAgentService.codexRoots(state.userHome, state.environment)
+    state.completeText(
+      roots.joinToString("\n") { root -> root.toString() },
+      mapOf("roots" to roots.map(Path::toString)),
+    )
+  }
+}
+
+@Inject
 class InstallCodexAgentsPathCommand(
   private val state: CliRunState,
   private val installAgentService: InstallAgentService,
 ) : DocumentedCliCommand("codex-agents-path", "Print the Codex native subagent TOML directory.") {
   override fun run() {
-    state.completeText(installAgentService.codexAgentsPath(state.userHome).toString(), emptyMap())
+    state.completeText(installAgentService.codexAgentsPath(state.userHome, state.environment).toString(), emptyMap())
   }
 }
 

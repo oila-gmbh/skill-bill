@@ -29,6 +29,7 @@ import skillbill.cli.install.InstallApplyCommand
 import skillbill.cli.install.InstallApplyExternalAddonsCommand
 import skillbill.cli.install.InstallClaudeAgentsPathCommand
 import skillbill.cli.install.InstallClaudeRootsCommand
+import skillbill.cli.install.InstallCodexRootsCommand
 import skillbill.cli.install.InstallCleanupAgentTargetCommand
 import skillbill.cli.install.InstallCodexAgentsPathCommand
 import skillbill.cli.install.InstallCursorAgentsPathCommand
@@ -113,6 +114,7 @@ class InstallTopLevelCommands(
   agentPathCommand: InstallAgentPathCommand,
   detectAgentsCommand: InstallDetectAgentsCommand,
   claudeRootsCommand: InstallClaudeRootsCommand,
+  codexRootsCommand: InstallCodexRootsCommand,
   linkSkillCommand: InstallLinkSkillCommand,
   codexAgentsPathCommand: InstallCodexAgentsPathCommand,
   claudeAgentsPathCommand: InstallClaudeAgentsPathCommand,
@@ -144,6 +146,7 @@ class InstallTopLevelCommands(
         agentPathCommand,
         detectAgentsCommand,
         claudeRootsCommand,
+        codexRootsCommand,
         linkSkillCommand,
         codexAgentsPathCommand,
         claudeAgentsPathCommand,

@@ -1986,6 +1986,16 @@ apply_external_addon_overlay() {
   ok "External addon overlay completed"
 }
 
+print_codex_roots_summary() {
+  local roots root
+  roots="$(run_runtime_cli install codex-roots 2>/dev/null)" || return 0
+  [[ -z "$roots" ]] && return 0
+  while IFS= read -r root; do
+    [[ -z "$root" ]] && continue
+    info "Codex config root: $root"
+  done <<< "$roots"
+}
+
 print_claude_roots_summary() {
   local roots root
   roots="$(run_runtime_cli install claude-roots 2>/dev/null)" || return 0
@@ -2121,6 +2131,7 @@ run_full_install() {
   fi
 
   print_claude_roots_summary
+  print_codex_roots_summary
 
   print_postinstall_path_warning
   print_postinstall_agent_warning

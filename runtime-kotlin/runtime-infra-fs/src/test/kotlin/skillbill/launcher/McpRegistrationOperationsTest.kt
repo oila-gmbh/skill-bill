@@ -183,17 +183,17 @@ class McpRegistrationOperationsTest {
   }
 
   @Test
-  fun `non-claude agents stay single-target`() {
+  fun `non-claude agents stay single-target except codex multi-home fan-out`() {
     val home = Files.createTempDirectory("mcp-single-target")
+    Files.createDirectories(home.resolve(".codex"))
 
-    val expectedPaths = mapOf(
-      "codex" to home.resolve(".codex/config.toml"),
+    val singleTargetAgents = mapOf(
       "junie" to home.resolve(".junie/mcp/mcp.json"),
       "cursor" to home.resolve(".cursor/mcp.json"),
       "copilot" to home.resolve(".copilot/mcp-config.json"),
     )
 
-    expectedPaths.forEach { (agent, expected) ->
+    singleTargetAgents.forEach { (agent, expected) ->
       val result = McpRegistrationOperations.register(agent, runtimeMcpBin, home, environment = emptyMap())
       assertEquals(expected, result.configPath, agent)
       assertTrue(result.profiles.isEmpty(), agent)
@@ -201,6 +201,29 @@ class McpRegistrationOperationsTest {
       val unregistered = McpRegistrationOperations.unregister(agent, home, environment = emptyMap())
       assertEquals(expected, unregistered.configPath, agent)
       assertTrue(unregistered.profiles.isEmpty(), agent)
+    }
+
+    val codexResult = McpRegistrationOperations.register("codex", runtimeMcpBin, home, environment = emptyMap())
+    assertEquals(home.resolve(".codex/config.toml"), codexResult.configPath)
+    assertEquals(listOf(home.resolve(".codex/config.toml")), codexResult.profiles.map { it.configPath })
+  }
+
+  @Test
+  fun `codex mcp registration fans into every resolved home`() {
+    val home = Files.createTempDirectory("mcp-codex-multi")
+    Files.createDirectories(home.resolve(".codex"))
+    val openRouter = home.resolve(".codex-or")
+    Files.createDirectories(openRouter)
+    Files.writeString(openRouter.resolve("config.toml"), "model = \"test\"\n")
+
+    val result = McpRegistrationOperations.register("codex", runtimeMcpBin, home, environment = emptyMap())
+
+    assertEquals(
+      setOf(home.resolve(".codex/config.toml"), openRouter.resolve("config.toml")),
+      result.profiles.map { it.configPath }.toSet(),
+    )
+    listOf(home.resolve(".codex/config.toml"), openRouter.resolve("config.toml")).forEach { path ->
+      assertTrue(Files.readString(path).contains("skill-bill"))
     }
   }
 

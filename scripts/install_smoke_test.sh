@@ -97,6 +97,7 @@ case "$cmd" in
       echo "  reconcile               reconcile authored source"
       echo "  apply                   apply install"
       echo "  claude-roots            list claude config roots"
+      echo "  codex-roots             list codex config roots"
       echo "  detect-agents           detect configured agents"
     fi
     ;;
@@ -151,7 +152,8 @@ case "$cmd" in
     esac
     ;;
 
-  "install claude-roots")
+  "install claude-roots"
+  "install codex-roots")
     echo "${home_dir:-$HOME}/.claude"
     ;;
 

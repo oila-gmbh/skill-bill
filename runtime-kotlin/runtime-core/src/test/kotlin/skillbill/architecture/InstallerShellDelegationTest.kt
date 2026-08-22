@@ -797,6 +797,10 @@ internal object InstallerShellFixtures {
       |  printf '%s\n' "${'$'}home/.claude"
       |  exit 0
       |fi
+      |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "codex-roots" ]]; then
+      |  printf '%s\n' "${'$'}home/.codex"
+      |  exit 0
+      |fi
       |$reconcileFakeCliBlock
       |# Pre-install uninstall (AC6 path) drives the same CLI for cleanup commands;
       |# answer them with empty output + success so the clean slate reset succeeds.
@@ -878,6 +882,10 @@ internal object InstallerShellFixtures {
       |  printf '%s\n' "${'$'}home/.claude"
       |  exit 0
       |fi
+      |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "codex-roots" ]]; then
+      |  printf '%s\n' "${'$'}home/.codex"
+      |  exit 0
+      |fi
       |# SKILL-76 subtask 2: whitelist `install reconcile` here too (BOTH stubs) so an
       |# unexpected reconcile call returns a clean LINE-ORIENTED report instead of the
       |# catch-all exit 2. The uninstaller path never drives reconcile, but the whitelist
@@ -940,6 +948,10 @@ internal object InstallerShellFixtures {
       |fi
       |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "claude-roots" ]]; then
       |  printf '%s\n' "${'$'}home/.claude"
+      |  exit 0
+      |fi
+      |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "codex-roots" ]]; then
+      |  printf '%s\n' "${'$'}home/.codex"
       |  exit 0
       |fi
       |if [[ "${'$'}{1:-}" == "install" && "${'$'}{2:-}" == "reconcile" ]]; then

@@ -24,6 +24,7 @@ data class DetectInstallAgentTargetsResult(
 data class InstallAgentDirectoryRequest(
   val agent: String,
   val home: Path?,
+  val environment: Map<String, String> = emptyMap(),
 )
 
 data class ClaudeConfigRootsRequest(
@@ -32,6 +33,15 @@ data class ClaudeConfigRootsRequest(
 )
 
 data class ClaudeConfigRootsResult(
+  val roots: List<Path>,
+)
+
+data class CodexConfigRootsRequest(
+  val home: Path?,
+  val environment: Map<String, String>,
+)
+
+data class CodexConfigRootsResult(
   val roots: List<Path>,
 )
 
