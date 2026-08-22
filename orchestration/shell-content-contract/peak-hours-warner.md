@@ -4,14 +4,17 @@ This sidecar applies to `bill-feature` and the feature-task runtime launch
 surface.
 
 After any required update check and before intake, confirmation, workflow open,
-or child continuation, read the optional repo-local operator config at
-`.skill-bill/config.yaml`.
+or child continuation, read the optional peak-hours operator config. The
+repo-local config at `.skill-bill/config.yaml` takes precedence. When it is
+absent, or when it contains no `peak_hours` section, fall back to the
+machine-global config at `~/.config/skill-bill/config.json` (or the
+`SKILL_BILL_CONFIG_PATH` override) and read its `peak_hours` section.
 
-If the config file is absent, or if it does not contain a `peak_hours` section,
-skip this warning silently. Do not print a notice, infer fallback defaults, or
-ask the user to configure peak-hour windows.
+If neither config contains a `peak_hours` section, skip this warning silently.
+Do not print a notice, infer fallback defaults, or ask the user to configure
+peak-hour windows.
 
-The optional config shape is:
+The repo-local config shape is YAML:
 
 ```yaml
 peak_hours:
@@ -22,6 +25,22 @@ peak_hours:
   matches:
     - provider: "<provider-label>"
       model: "<model-label>"
+```
+
+The machine-global config is JSON; its `peak_hours` value uses the same fields:
+
+```json
+{
+  "peak_hours": {
+    "timezone": "<iana-timezone>",
+    "windows": [
+      { "start": "<local-start-time>", "end": "<local-end-time>" }
+    ],
+    "matches": [
+      { "provider": "<provider-label>", "model": "<model-label>" }
+    ]
+  }
+}
 ```
 
 The `timezone` value defines how the configured windows are interpreted. Each
@@ -40,8 +59,8 @@ agent/model path that this launch is about to use:
 - each `--phase-agent <phase-id>=<agent-id>` entry
 - `parallel-review:<agent>` / `--parallel-review-agent`
 
-Match only against provider/model labels configured in `.skill-bill/config.yaml`.
-Do not infer a model family from an agent name alone.
+Match only against provider/model labels configured in the repo-local or
+machine-global config. Do not infer a model family from an agent name alone.
 
 When at least one launch path is known to match the configured provider/model
 labels, tell the user:
