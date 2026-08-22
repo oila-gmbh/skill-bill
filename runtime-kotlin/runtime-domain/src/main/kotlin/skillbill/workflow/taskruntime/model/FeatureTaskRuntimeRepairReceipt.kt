@@ -422,8 +422,9 @@ internal fun compactReviewFindingIdentity(finding: GoalSubtaskReviewCompactFindi
   listOf(finding.severity, finding.label, finding.text).joinToString("|", transform = ::normalizeIdentityPart)
 
 private val FINDING_REF_ALIASES = listOf("finding_id", "finding_ref", "id", "ref")
+private const val FINDING_REF_NUMERIC_WIDTH = 3
 
-internal fun requireFindingRefAlias(raw: Map<String, Any?>, path: String): String {
+internal fun requireFindingRefAlias(raw: Map<String, Any?>, @Suppress("UnusedParameter") path: String): String {
   for (key in FINDING_REF_ALIASES) {
     val value = raw[key] as? String ?: continue
     val normalized = canonicalizeFindingRef(value)
@@ -446,9 +447,7 @@ internal fun canonicalizeFindingRef(raw: String): String? {
   return trimmed.takeIf { it.isNotEmpty() }
 }
 
-fun withStableFindingRefs(
-  findings: List<GoalSubtaskReviewCompactFinding>,
-): List<GoalSubtaskReviewCompactFinding> {
+fun withStableFindingRefs(findings: List<GoalSubtaskReviewCompactFinding>): List<GoalSubtaskReviewCompactFinding> {
   val used = findings.mapNotNull { it.findingId?.let(::normalizeIdentityPart) }.toMutableSet()
   var next = 1
   return findings.map { finding ->
@@ -459,7 +458,7 @@ fun withStableFindingRefs(
     } else {
       var assigned: String
       do {
-        assigned = "F-" + next.toString().padStart(3, '0')
+        assigned = "F-" + next.toString().padStart(FINDING_REF_NUMERIC_WIDTH, '0')
         next++
       } while (normalizeIdentityPart(assigned) in used)
       used += normalizeIdentityPart(assigned)

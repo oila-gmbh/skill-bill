@@ -79,6 +79,7 @@ class FeatureTaskRuntimeGoalContinuationAdoptionPersistenceTest {
       prepared.request.goalContinuation?.qualityGateSelection,
     )
     val artifacts = harness.repository.taskRuntimeArtifacts(workflowId)
+
     @Suppress("UNCHECKED_CAST")
     val continuation = artifacts[FEATURE_TASK_RUNTIME_GOAL_CONTINUATION_ARTIFACT_KEY] as Map<String, Any?>
     assertEquals("validate", continuation["quality_gate_selection"])
@@ -144,18 +145,17 @@ class FeatureTaskRuntimeGoalContinuationAdoptionPersistenceTest {
   private fun preContractContinuationMap(
     includeValidationDepth: String? = null,
     includeQualityGateSelection: String? = null,
-  ): Map<String, Any?> =
-    linkedMapOf<String, Any?>(
-      "issue_key" to "SKILL-176",
-      "subtask_id" to 1,
-      "suppress_pr" to true,
-      "goal_branch" to "feat/SKILL-176",
-      "parent_workflow_id" to "wfl-parent",
-      "code_review_mode" to "inline",
-    ).apply {
-      includeValidationDepth?.let { put("validation_depth", it) }
-      includeQualityGateSelection?.let { put("quality_gate_selection", it) }
-    }
+  ): Map<String, Any?> = linkedMapOf<String, Any?>(
+    "issue_key" to "SKILL-176",
+    "subtask_id" to 1,
+    "suppress_pr" to true,
+    "goal_branch" to "feat/SKILL-176",
+    "parent_workflow_id" to "wfl-parent",
+    "code_review_mode" to "inline",
+  ).apply {
+    includeValidationDepth?.let { put("validation_depth", it) }
+    includeQualityGateSelection?.let { put("quality_gate_selection", it) }
+  }
 
   private fun resumeRequest(
     validationDepth: ValidationDepth,

@@ -12,6 +12,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionV
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffPromptVisibility
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProducerIteration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
@@ -673,6 +674,42 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
     assertContains(error.message.orEmpty(), "private evidence artifact")
   }
 
+  @Test
+  fun `null prior gap memory omits the optional projection while present memory enforces the declared shape`() {
+    val consumer = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT
+    val memoryDeclaration = FeatureTaskRuntimePhaseWorkflowDefinition.priorGapMemoryDeclaration(consumer)
+    // Absent memory omits the optional projection rather than rejecting a predating in-flight run (AC-004).
+    val omitted = FeatureTaskRuntimeHandoffProjectionValidator.validate(
+      inputs(consumerPhaseId = consumer, declarations = listOf(memoryDeclaration)),
+    )
+    assertTrue(omitted.projections.isEmpty(), "absent memory must omit the optional projection")
+
+    // Present memory is delivered with exactly the declared field shape.
+    val memory = FeatureTaskRuntimePriorGapMemory(
+      round = 2,
+      priorUnmetCriteria = listOf("AC-002: gap note"),
+      lastImplementClaims = listOf("AC-001"),
+      stickyIds = listOf("AC-002"),
+    )
+    val delivered = FeatureTaskRuntimeHandoffProjectionValidator.validate(
+      inputs(consumerPhaseId = consumer, declarations = listOf(memoryDeclaration), priorGapMemory = memory),
+    )
+    val projection = delivered.projections.single()
+    assertEquals(FeatureTaskRuntimePriorGapMemory.DECLARED_FIELD_NAMES, projection.fields.map { it.name })
+
+    // A field outside the declared shape is rejected rather than silently accepted.
+    val error = assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
+      FeatureTaskRuntimeHandoffProjectionValidator.validate(
+        inputs(
+          consumerPhaseId = consumer,
+          declarations = listOf(memoryDeclaration.copy(declaredFieldNames = listOf("unknown_field"))),
+          priorGapMemory = memory,
+        ),
+      )
+    }
+    assertEquals(FeatureTaskRuntimeHandoffProjectionFailureKind.UNDECLARED_FIELD, error.failureKind)
+  }
+
   @Suppress("LongParameterList") // mirrors the declaration record under test; each field is varied by a case
   private fun declaration(
     consumerPhaseId: String = CONSUMER,
@@ -727,6 +764,7 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
     validationDepth: ValidationDepth = ValidationDepth.DEFAULT,
     qualityGateSelection: skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection =
       skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection.VALIDATE,
+    priorGapMemory: FeatureTaskRuntimePriorGapMemory? = null,
   ) = FeatureTaskRuntimeHandoffProjectionInputs(
     consumerPhaseId = consumerPhaseId,
     declarations = declarations,
@@ -737,6 +775,7 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
     workflowId = "wftr-1",
     validationDepth = validationDepth,
     qualityGateSelection = qualityGateSelection,
+    priorGapMemory = priorGapMemory,
   )
 
   private fun validationRequestFields(

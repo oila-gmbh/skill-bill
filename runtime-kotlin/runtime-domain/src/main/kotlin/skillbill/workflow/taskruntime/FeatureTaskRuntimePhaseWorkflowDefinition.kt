@@ -19,6 +19,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePlanCommitment
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePlanningProjectionContract
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePrePlanningDigest
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePreplanCeremony
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewScope
@@ -36,7 +37,7 @@ import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
  * [phaseDeclarations] adds the derived-context declarations that the `WorkflowDefinition`
  * shape cannot express.
  */
-@Suppress("TooManyFunctions")
+@Suppress("LargeClass", "TooManyFunctions")
 object FeatureTaskRuntimePhaseWorkflowDefinition {
   const val PHASE_PREPLAN: String = "preplan"
   const val PHASE_PLAN: String = "plan"
@@ -215,7 +216,8 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       PHASE_WRITE_HISTORY to
         "Resume boundary history writing from the latest implement and settled build or validate output.",
       PHASE_COMMIT_PUSH to
-        "Resume commit/push after verifying implement, the settled quality gate, and write_history outputs are current.",
+        "Resume commit/push after verifying implement, the settled quality gate, " +
+        "and write_history outputs are current.",
       PHASE_PR to "Resume PR creation from the latest implement output, commit output, and derived diff context.",
     ),
     continuationReferenceSections = emptyMap(),
@@ -258,6 +260,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
     const val COMMIT_REQUEST: String = "feature_task_runtime.commit_request"
     const val COMMIT_RECEIPT: String = "feature_task_runtime.commit_receipt"
     const val PR_REQUEST: String = "feature_task_runtime.pr_request"
+    const val PRIOR_GAP_MEMORY: String = "feature_task_runtime.prior_gap_memory"
   }
 
   @Suppress("LongParameterList")
@@ -296,6 +299,7 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
       ),
       checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.REFRESH_FROM_REPOSITORY,
     ),
+    priorGapMemoryDeclaration(PHASE_IMPLEMENT),
   )
 
   fun reviewRetryProjections(): List<PhaseHandoffProjectionDeclaration> = listOf(
@@ -430,6 +434,29 @@ object FeatureTaskRuntimePhaseWorkflowDefinition {
 
   /** The projection name the rewritten derived-context instructions point the agent at. */
   const val SHARED_REVIEW_EVIDENCE_PROJECTION_NAME: String = "shared_review_evidence"
+
+  /** The projection name the prior-gap-memory declaration delivers under. */
+  const val PRIOR_GAP_MEMORY_PROJECTION_NAME: String = "prior_gap_memory"
+
+  /**
+   * The runtime-derived prior-gap memory for an `audit_gap` remediation round, delivered to the
+   * implement re-entry and the audit that follows it. `required = false` is load-bearing for AC-004:
+   * absent memory must omit the projection rather than reject the launch of an in-flight workflow
+   * that predates the projection.
+   */
+  fun priorGapMemoryDeclaration(consumerPhaseId: String): PhaseHandoffProjectionDeclaration =
+    PhaseHandoffProjectionDeclaration(
+      consumerPhaseId = consumerPhaseId,
+      sourceRef = FeatureTaskRuntimeHandoffSourceRef.PriorGapMemory,
+      projectionName = PRIOR_GAP_MEMORY_PROJECTION_NAME,
+      projectionContractId = PhaseProjectionContract.PRIOR_GAP_MEMORY,
+      projectionContractVersion = PhaseProjectionContract.VERSION,
+      promptVisibility = FeatureTaskRuntimeHandoffPromptVisibility.PROMPT_VISIBLE,
+      budget = FeatureTaskRuntimeHandoffProjectionBudget.PLANNING_PROJECTION,
+      declaredFieldNames = FeatureTaskRuntimePriorGapMemory.DECLARED_FIELD_NAMES,
+      checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.NOT_REQUIRED,
+      required = false,
+    )
 
   /**
    * Closed-world projection matrix for every phase. Every upstream edge has an explicit typed

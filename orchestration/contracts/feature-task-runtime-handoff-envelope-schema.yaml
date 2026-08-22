@@ -111,8 +111,8 @@ $defs:
         description: >-
           Wire form of the single declared source: `upstream_phase_output:<phase_id>`,
           `run_invariant_field:<field>`, `derived_ceremony_scaling`, `shared_review_evidence`,
-          `repair_ledger`, or `addon_content:<slug>`.
-        pattern: "^(upstream_phase_output:.+|run_invariant_field:.+|addon_content:.+|derived_ceremony_scaling|shared_review_evidence|repair_ledger)$"
+          `repair_ledger`, `prior_gap_memory`, or `addon_content:<slug>`.
+        pattern: "^(upstream_phase_output:.+|run_invariant_field:.+|addon_content:.+|derived_ceremony_scaling|shared_review_evidence|repair_ledger|prior_gap_memory)$"
       projection_contract_id:
         type: string
         minLength: 1

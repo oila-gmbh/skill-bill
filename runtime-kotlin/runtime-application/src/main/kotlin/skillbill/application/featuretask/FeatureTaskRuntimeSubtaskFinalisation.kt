@@ -289,11 +289,9 @@ internal class FeatureTaskRuntimeSubtaskFinalisation(
         "and an enumerated `$CHANGED_PATHS_KEY`.",
     )
 
-    private fun isGovernedSpecPath(path: String): Boolean =
-      normalizeRepoPath(path).startsWith(GOVERNED_SPEC_ROOT)
+    private fun isGovernedSpecPath(path: String): Boolean = normalizeRepoPath(path).startsWith(GOVERNED_SPEC_ROOT)
 
-    private fun normalizeRepoPath(path: String): String =
-      path.trim().removeSurrounding("\"").removePrefix("./")
+    private fun normalizeRepoPath(path: String): String = path.trim().removeSurrounding("\"").removePrefix("./")
 
     private fun parseGitPorcelainPaths(output: String): List<String> = output
       .lineSequence()
@@ -308,11 +306,15 @@ internal class FeatureTaskRuntimeSubtaskFinalisation(
         line.length >= 2 &&
           line[0] != ' ' &&
           line[1] == ' ' &&
-          (line.length < 3 || line[2] != ' ') -> line.drop(2)
+          (
+            line.length < GIT_PORCELAIN_STATUS_PREFIX_LENGTH + 1 ||
+              line[GIT_PORCELAIN_STATUS_PREFIX_LENGTH] != ' '
+            ) -> line.drop(2)
         else -> line.drop(GIT_PORCELAIN_STATUS_PREFIX_LENGTH)
       }
       return pathPart.substringAfterLast(" -> ").trim().removeSurrounding("\"")
     }
+
     /**
      * The empty-stageable refusal, load-bearing for the same reason the blank-message one is. Staging an
      * empty pathspec set is a silent no-op, and finalisation amends with `allowUnchangedIndex`, so the

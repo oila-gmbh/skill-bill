@@ -520,6 +520,11 @@ runtime-ports
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRunRecord.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapPause.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapPause.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapProgress.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapProgress.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory.fromMap`
     - `skillbill.application.telemetry.lifecycleOkPayload`
     - `skillbill.application.telemetry.lifecycleSkippedPayload`
     - `skillbill.application.telemetry.lifecycleErrorPayload`
@@ -1337,6 +1342,11 @@ Categories:
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateRunRecord.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapPause.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapPause.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapProgress.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapProgress.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory.fromMap`
 - `skillbill.application.model.WorkflowUpdateRequest.stepUpdates`
 - `skillbill.application.model.WorkflowUpdateRequest.artifactsPatch`
 - `skillbill.application.model.DecompositionManifestWriteRequest.planningResult`

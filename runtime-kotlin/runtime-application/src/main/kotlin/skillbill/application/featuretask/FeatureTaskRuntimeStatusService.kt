@@ -14,6 +14,7 @@ import skillbill.application.model.IdeStatusCurrentPhaseExecution
 import skillbill.application.model.IdeStatusCurrentPhaseExecutionKind
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditGapPause
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeAuditProgress
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeDecomposeTerminal
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFailureDisposition
@@ -73,7 +74,15 @@ class FeatureTaskRuntimeStatusService(
       ledger,
       qualityGateSelection,
     )
-    val auditRepair = auditRepairStatus(auditRepairProgress)
+    val auditGapPause = recorder.loadAuditGapPause(request.workflowId, request.dbPathOverride)
+    // On a paused run the pausing audit_gap edge is not on the ledger, so the ledger-derived count
+    // would under-report the honest edge iteration the run reached; the pause artifact is authoritative.
+    val effectiveAuditGapIteration = auditGapPause?.edgeIteration
+      ?: auditRepairProgress?.auditGapIterationCount
+      ?: ledgerAuditGapIterationCount(ledger)
+    val auditRepair = auditRepairStatus(
+      auditRepairProgress?.copy(auditGapIterationCount = effectiveAuditGapIteration),
+    )
     val validationGateRunCount = recorder.loadValidationGateProgress(request.workflowId, request.dbPathOverride)
       ?.gateRunCount
     val buildGateRunCount = recorder.loadBuildGateProgress(request.workflowId, request.dbPathOverride)?.gateRunCount
@@ -105,13 +114,12 @@ class FeatureTaskRuntimeStatusService(
           records = records,
           phases = phases,
           ledger = ledger,
-          auditGapIterationCount = auditRepair?.auditGapIterationCount
-            ?: ledgerAuditGapIterationCount(ledger),
+          auditGapIterationCount = effectiveAuditGapIteration,
           gateRunCount = gateRunCount,
         ),
       ),
       degradedDiagnostic = degradedDiagnosticStatus(request.workflowId, request.dbPathOverride),
-      operatorDecisionPause = operatorDecisionPause(records),
+      operatorDecisionPause = operatorDecisionPause(records, auditGapPause),
     )
   }
 
@@ -436,17 +444,29 @@ private fun currentReentryPhaseId(
 
 private fun operatorDecisionPause(
   records: Map<String, FeatureTaskRuntimePhaseRecord>,
-): FeatureTaskRuntimeOperatorDecisionPause? = records.values
-  .firstOrNull { record ->
-    record.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED &&
-      record.failureDisposition == FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION
-  }
-  ?.let { record ->
-    FeatureTaskRuntimeOperatorDecisionPause(
-      phaseId = record.phaseId,
-      reason = record.blockedReason?.takeIf(String::isNotBlank),
+  auditGapPause: FeatureTaskRuntimeAuditGapPause?,
+): FeatureTaskRuntimeOperatorDecisionPause? {
+  // The audit-gap pause artifact is the authority for its kind-distinct reason (no-progress vs
+  // warn-threshold), distinct from output-gate/schema failures. A consumed grant (the retry was taken
+  // and the run moved on) is no longer an active pause.
+  auditGapPause?.takeIf { !it.grantConsumed }?.let { pause ->
+    return FeatureTaskRuntimeOperatorDecisionPause(
+      phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
+      reason = pause.reason,
     )
   }
+  return records.values
+    .firstOrNull { record ->
+      record.status == FEATURE_TASK_RUNTIME_PHASE_STATUS_PAUSED &&
+        record.failureDisposition == FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION
+    }
+    ?.let { record ->
+      FeatureTaskRuntimeOperatorDecisionPause(
+        phaseId = record.phaseId,
+        reason = record.blockedReason?.takeIf(String::isNotBlank),
+      )
+    }
+}
 
 private fun latestContinuationKind(ledger: List<FeatureTaskRuntimePhaseLedgerEntry>, phaseId: String): String? = ledger
   .filter { it.phaseId == phaseId && it.action in CONTINUATION_KIND_ACTIONS }

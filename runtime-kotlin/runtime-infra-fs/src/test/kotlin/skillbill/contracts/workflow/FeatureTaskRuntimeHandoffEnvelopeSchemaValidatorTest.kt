@@ -53,6 +53,33 @@ class FeatureTaskRuntimeHandoffEnvelopeSchemaValidatorTest {
   }
 
   @Test
+  fun `a delivered prior_gap_memory source ref passes the schema gate`() {
+    validator.validateEnvelope(priorGapMemoryEnvelope(), workflowId = "wftr-1")
+  }
+
+  private fun priorGapMemoryEnvelope(): Map<String, Any?> = envelope().toMutableMap().apply {
+    put(
+      "projections",
+      listOf(
+        mapOf(
+          "projection_name" to "prior_gap_memory",
+          "source_ref" to "prior_gap_memory",
+          "projection_contract_id" to "feature_task_runtime.prior_gap_memory",
+          "projection_contract_version" to "0.1",
+          "prompt_visibility" to "prompt_visible",
+          "producer_iteration" to mapOf("phase_id" to "implement", "iteration" to 1),
+          "fields" to listOf(
+            mapOf("name" to "round", "kind" to "text", "text" to "2"),
+            mapOf("name" to "prior_unmet_criteria", "kind" to "text_list", "items" to listOf("AC-002: gap")),
+            mapOf("name" to "last_implement_claims", "kind" to "text_list", "items" to listOf("AC-001")),
+            mapOf("name" to "sticky_ids", "kind" to "text_list", "items" to listOf("AC-002")),
+          ),
+        ),
+      ),
+    )
+  }
+
+  @Test
   fun `a compact reference longer than the schema bound is rejected`() {
     assertFailsWith<InvalidFeatureTaskRuntimeHandoffProjectionError> {
       validator.validateEnvelope(

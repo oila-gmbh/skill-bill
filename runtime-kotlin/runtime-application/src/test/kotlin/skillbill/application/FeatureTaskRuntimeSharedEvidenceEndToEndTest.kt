@@ -168,7 +168,7 @@ class FeatureTaskRuntimeSharedEvidenceEndToEndTest {
             git.ownedPathsValue = listOf("src/A.kt", "src/Remediation.kt")
             git.worktreeStatusValue = " M src/A.kt\n?? src/Remediation.kt"
           }
-          facts(validJsonOutput(phaseId))
+          facts(validJsonOutputForGitPhase(phaseId, git))
         }
         "audit" -> {
           val fingerprint = git.repositoryFingerprintOperations
@@ -187,7 +187,7 @@ class FeatureTaskRuntimeSharedEvidenceEndToEndTest {
             },
           )
         }
-        else -> facts(validJsonOutput(phaseId))
+        else -> facts(validJsonOutputForGitPhase(phaseId, git))
       }
     }
   }

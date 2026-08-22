@@ -124,13 +124,34 @@ class InstallPlanContractCoverageTest {
       ),
     )
 
-    assertEquals(InstallAgent.entries.toList(), plan.agents.map { target -> target.agent })
-    assertEquals(InstallAgent.entries.toList(), plan.mcpRegistrationIntent.agents)
+    assertEquals(
+      listOf(
+        InstallAgent.COPILOT,
+        InstallAgent.CLAUDE,
+        InstallAgent.CODEX,
+        InstallAgent.CODEX,
+        InstallAgent.JUNIE,
+        InstallAgent.CURSOR,
+      ),
+      plan.agents.map { target -> target.agent },
+    )
+    assertEquals(
+      listOf(
+        InstallAgent.COPILOT,
+        InstallAgent.CLAUDE,
+        InstallAgent.CODEX,
+        InstallAgent.CODEX,
+        InstallAgent.JUNIE,
+        InstallAgent.CURSOR,
+      ),
+      plan.mcpRegistrationIntent.agents,
+    )
     assertEquals(
       listOf(
         fixture.home.resolve(".copilot/skills"),
         fixture.home.resolve(".claude/skills"),
         fixture.home.resolve(".codex/skills"),
+        fixture.home.resolve(".agents/skills"),
         fixture.home.resolve(".junie/skills"),
         fixture.home.resolve(".cursor/skills"),
       ),

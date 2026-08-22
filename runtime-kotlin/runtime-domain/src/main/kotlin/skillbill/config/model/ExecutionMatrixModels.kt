@@ -24,6 +24,7 @@ val DEFAULT_PHASE_TIERS: Map<String, ExecutionTier> = mapOf(
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN_FIX to ExecutionTier.REASONING,
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX to ExecutionTier.IMPLEMENTATION,
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW to ExecutionTier.REASONING,
+  FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD to ExecutionTier.IMPLEMENTATION,
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT to ExecutionTier.REASONING,
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE to ExecutionTier.REASONING,
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY to ExecutionTier.IMPLEMENTATION,

@@ -18,7 +18,7 @@ class ParallelCodeReviewEndToEndTest {
   private val kotlinAreas = listOf("architecture", "security", "testing")
   private val kmpAreas = listOf("platform-correctness", "ui")
 
-  @Test fun `kotlin diff discovers once and launches exactly the two inline parent lanes`() {
+  @Test fun `kotlin diff discovers once and launches one inline parent lane`() {
     val recorder = ReviewRecorder()
     val runner = reviewHarness(
       kotlinConfig { RecordedWorkerResponse(stdout = finding("src/Repo.kt", KOTLIN_ARCHITECTURE)) },
@@ -33,17 +33,16 @@ class ParallelCodeReviewEndToEndTest {
       "Scope discovery must happen once for the whole review, not once per lane.",
     )
     assertEquals(
-      2,
+      1,
       recorder.parentLaunches.filter { it.skillRunRequest.issueKey == "code-review-parallel" }.size,
-      "The surviving fan-out runs exactly two parent lanes.",
+      "Single-agent parallel review runs one parent lane.",
     )
     assertEquals(
-      listOf("claude", "codex"),
+      listOf("codex"),
       recorder.parentLaunches
         .filter { it.skillRunRequest.issueKey == "code-review-parallel" }
-        .map { it.invokedAgentId }
-        .sorted(),
-      "parallel-review keeps a second lane on a distinct agent.",
+        .map { it.invokedAgentId },
+      "Single-agent parallel review uses agent1 only.",
     )
     recorder.parentLaunches
       .filter { it.skillRunRequest.issueKey == "code-review-parallel" }
@@ -137,7 +136,7 @@ class ParallelCodeReviewEndToEndTest {
     val summary = assertNotNull(runner.run(harnessRequest()).accountingSummary)
 
     val lanes = summary.lanes.filter { it.children.isEmpty() }
-    assertEquals(2, lanes.size, "Each inline parent lane owns exactly one accounting node.")
+    assertEquals(1, lanes.size, "Single-agent inline review owns exactly one accounting node.")
     lanes.forEach { lane ->
       assertTrue(lane.counters.launchBytes > 0, "Lane '${lane.lane}' reported no launch bytes.")
       assertEquals(0, lane.counters.evidenceBytes, "Assigned hunk envelopes require no filesystem evidence reads.")

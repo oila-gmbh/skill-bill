@@ -27,6 +27,7 @@ import skillbill.application.featuretask.GoalSubtaskReviewInputBlocked
 import skillbill.application.featuretask.GoalSubtaskReviewInputReady
 import skillbill.application.featuretask.RemediationBaseCoherent
 import skillbill.application.featuretask.SpecSourceResolver
+import skillbill.application.featuretask.phaseDeclaration
 import skillbill.application.featuretask.reconcileCheckpointPathInventory
 import skillbill.application.model.FeatureTaskRuntimeAgentAssignment
 import skillbill.application.model.FeatureTaskRuntimeGoalContinuationContext
@@ -412,11 +413,10 @@ class FeatureTaskRuntimeRunnerTest {
     )
 
     val briefings = ALL_PHASES.associateWith { phaseId ->
-      val declaration =
-        skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclaration(
-          phaseId,
-          invariants.featureSize,
-        )
+      val declaration = phaseDeclaration(
+        phaseId,
+        invariants.featureSize,
+      )
       val handoff = skillbill.workflow.taskruntime.FeatureTaskRuntimeHandoffContract.assembleHandoff(
         declaration = declaration,
         runInvariants = invariants,
@@ -1954,6 +1954,7 @@ class FeatureTaskRuntimeGoalContinuationPersistenceTest {
         "code_review_mode" to "inline",
         "validation_depth" to "full",
         "parent_workflow_id" to "wfl-parent",
+        "quality_gate_selection" to "validate",
       ),
       artifacts["goal_continuation"],
     )

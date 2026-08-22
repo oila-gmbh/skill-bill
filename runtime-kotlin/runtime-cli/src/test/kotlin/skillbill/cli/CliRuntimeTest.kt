@@ -551,6 +551,7 @@ class CliRuntimeTest {
       copilot	${tempDir.resolve(".copilot/skills")}
       claude	${tempDir.resolve(".claude/skills")}
       codex	${tempDir.resolve(".codex/skills")}
+      codex	${tempDir.resolve(".agents/skills")}
       junie	${tempDir.resolve(".junie/skills")}
       cursor	${tempDir.resolve(".cursor/skills")}
       """.trimIndent(),

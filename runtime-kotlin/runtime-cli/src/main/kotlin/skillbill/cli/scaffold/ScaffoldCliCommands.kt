@@ -29,9 +29,9 @@ import skillbill.cli.install.InstallApplyCommand
 import skillbill.cli.install.InstallApplyExternalAddonsCommand
 import skillbill.cli.install.InstallClaudeAgentsPathCommand
 import skillbill.cli.install.InstallClaudeRootsCommand
-import skillbill.cli.install.InstallCodexRootsCommand
 import skillbill.cli.install.InstallCleanupAgentTargetCommand
 import skillbill.cli.install.InstallCodexAgentsPathCommand
+import skillbill.cli.install.InstallCodexRootsCommand
 import skillbill.cli.install.InstallCursorAgentsPathCommand
 import skillbill.cli.install.InstallJunieAgentsPathCommand
 import skillbill.cli.install.InstallLinkClaudeAgentsCommand

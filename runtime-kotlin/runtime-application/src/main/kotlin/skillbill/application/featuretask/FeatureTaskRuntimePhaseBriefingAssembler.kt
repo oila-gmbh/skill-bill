@@ -133,6 +133,7 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
       drivingVerdict = handoff.drivingVerdict?.wireValue,
       unresolvedAuditGapIds = handoff.reentryGapCriteria,
       durablyClosedCriterionRefs = handoff.durablyClosedCriterionRefs,
+      priorGapMemory = handoff.priorGapMemory,
     )
   }
 
@@ -153,6 +154,7 @@ object FeatureTaskRuntimePhaseBriefingAssembler {
     sharedReviewEvidence = sharedReviewEvidence,
     expectedCheckpoint = handoff.expectedRepositoryCheckpoint,
     unmetCriterionRefs = handoff.reentryGapCriteria,
+    priorGapMemory = handoff.priorGapMemory,
     repairLedger = handoff.repairLedger,
     recordedFindingVerdicts = handoff.recordedFindingVerdicts,
     branchIdentity = handoff.branchIdentity,

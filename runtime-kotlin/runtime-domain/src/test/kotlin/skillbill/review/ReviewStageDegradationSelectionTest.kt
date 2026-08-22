@@ -42,7 +42,7 @@ class ReviewStageDegradationSelectionTest {
 
   @Test
   fun `near miss register yields one rejected-candidate record carrying the count`() {
-    val parsed = ParallelReviewFindingParser.parse("- [F-1] Major | High | src/A.kt:1 | short id")
+    val parsed = ParallelReviewFindingParser.parse("- [F-1] Major | High | short id")
     val rejected = parsed.rejections.size
     assertTrue(rejected > 0)
 

@@ -2,6 +2,28 @@
 
 Revisit when: prune eligibility or the checkpoint namespace layout changes.
 
+## [2026-08-22] SKILL-205 subtask 2 — Prior-gap memory for continuing audit_gap rounds
+Areas: runtime-application/featuretask, runtime-application/goalrunner, runtime-domain/workflow/taskruntime/model, orchestration/contracts, platform-packs/{kotlin,kmp}/quality-check
+- Added bounded durable `prior_gap_memory` to audit-gap handoffs, retaining unmet criterion refs/notes and subsequent implement claims while degrading legacy workflows to empty memory.
+- Implement re-entry prioritizes sticky unmet criteria while still closing every current gap; follow-up audit requires explicit re-justification for repeated sticky ids and rereads the repository as authority.
+- Schema-first handoff projection and envelope contracts are validated at producer and consumer seams; Kotlin and KMP quality-check guidance stays aligned. reusable
+- Pattern: carry only bounded criterion memory across remediation edges, deriving it from durable audit and implement receipts rather than treating implement claims as proof.
+- Limitation: memory improves audit_gap retries only; subtask 1's no-progress comparison and pause policy remain authoritative.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
+## [2026-08-22] SKILL-205 subtask 1 — No-progress and warn-threshold pause for audit_gap
+Areas: runtime-application/featuretask, runtime-application/goalrunner, runtime-domain/workflow/taskruntime/model, runtime-domain/config/model
+- `audit_gap` re-entry now compares the new unmet criterion set against the prior round's: any cleared prior criterion ref is progress; a non-shrinking set with an unchanged (or unprovable) repository mints a durable no-progress pause instead of another implement launch.
+- Crossing `warnAfterIterations` (iteration 4 at threshold 3) is control flow now: it pauses for an operator decision; the advisory side channel still emits.
+- `FeatureTaskRuntimeAuditGapPause` durable artifact carries `pause_kind` (no_progress | warn_threshold), `edge_iteration`, `operator_decision`, `grant_consumed`; the recorder gains load/persist seams for the progress and pause artifacts and canonical criterion-ref extraction moves into output verification.
+- Goal operator decision handles an audit-gap pause without review state: `retry_fix` persists the decision, resume settles the paused audit from carried-forward output and consumes the grant for exactly one further attempt; `abandon_subtask` consumes the grant; re-pausing clears `operator_decision` so a second no-progress or threshold condition pauses again.
+- Status and blocked reasons source from the pause artifact, so no-progress and warn-threshold pauses read distinct from output-gate/schema failures; a consumed grant is no longer an active pause.
+- Progress detection fails closed when the previous repository fingerprint is unproven (`UNPROVEN_REPOSITORY_FINGERPRINT`), so an unchanged audit cannot pass as progress when change cannot be proven.
+- Reusable: durable pause artifact + single-grant operator-decision loop for any unbounded remediation edge; fails-closed shrink-or-fingerprint progress comparison.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
 ## [2026-08-22] SKILL-204 subtask 1 — First-class build phase and pack build command
 Areas: runtime-application/featuretask, runtime-domain/workflow/taskruntime, runtime-infra-fs/contracts/workflow, orchestration/contracts, platform-packs/{kotlin,kmp}, AGENTS.md
 - Added a real `build` phase between clean review and write-history, with runtime-owned discover → repair → confirm gate execution.

@@ -39,7 +39,8 @@ object ParallelReviewFindingParser {
   )
 
   private val findingBodyWithoutId: Regex = Regex(
-    """^(\s*(?:-\s+)?)(?!(?:\|\s*)?(?:\*{1,2}|_{1,2})?\[F-)(?:Major|Minor|Blocker|Nit|Critical)\s+\|\s+(?:High|Medium|Low)\s+\|\s+\S.*$""",
+    """^(\s*(?:-\s+)?)(?!(?:\|\s*)?(?:\*{1,2}|_{1,2})?\[F-)""" +
+      """(?:Major|Minor|Blocker|Nit|Critical)\s+\|\s+(?:High|Medium|Low)\s+\|\s+\S.*$""",
   )
 
   fun countRegisterCandidates(text: String): Int =

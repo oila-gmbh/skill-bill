@@ -8,6 +8,8 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffSourceRef
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseEntryGate
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePlanningProjectionContract
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeSharedReviewEvidenceReference
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
@@ -19,6 +21,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+@Suppress("LargeClass")
 class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
   private val definition = FeatureTaskRuntimePhaseWorkflowDefinition.definition
 
@@ -250,9 +253,18 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
   @Test
   fun `phase declarations mirror the dependency set and pr is split off the review diff key`() {
     val declarations = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclarations
+    val def = FeatureTaskRuntimePhaseWorkflowDefinition
     definition.stepIds.forEach { phaseId ->
-      val declaration = declarations.getValue(phaseId)
-      assertEquals(dependenciesOf(phaseId), declaration.consumedUpstreamPhaseIds)
+      val declaration = when (phaseId) {
+        def.PHASE_WRITE_HISTORY, def.PHASE_COMMIT_PUSH ->
+          def.phaseDeclarationForQualityGate(
+            phaseId,
+            FeatureTaskRuntimeFeatureSize.MEDIUM,
+            FeatureTaskRuntimeQualityGateSelection.VALIDATE,
+          )
+        else -> declarations.getValue(phaseId)
+      }
+      assertEquals(dependenciesOf(phaseId), declaration.consumedUpstreamPhaseIds, phaseId)
     }
     assertEquals(
       listOf("diff"),
@@ -327,10 +339,12 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
       def.PHASE_WRITE_HISTORY to setOf(
         def.PHASE_IMPLEMENT to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.BOUNDARY_CANDIDATES,
         def.PHASE_VALIDATE to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_RECEIPT,
+        def.PHASE_BUILD to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.BUILD_RECEIPT,
       ),
       def.PHASE_COMMIT_PUSH to setOf(
         def.PHASE_IMPLEMENT to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.COMMIT_REQUEST,
         def.PHASE_VALIDATE to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.VALIDATION_RECEIPT,
+        def.PHASE_BUILD to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.BUILD_RECEIPT,
         def.PHASE_WRITE_HISTORY to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.HISTORY_RECEIPT,
       ),
       def.PHASE_PR to setOf(
@@ -383,20 +397,26 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
   fun `remediation selectors retain only the immutable plan and applicable repair projection`() {
     val def = FeatureTaskRuntimePhaseWorkflowDefinition
     val auditRemediation = def.auditRemediationProjections()
+    val upstreamRemediation = auditRemediation.filter {
+      it.sourceRef is FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput
+    }
     assertEquals(
       listOf(
         def.PHASE_PLAN to "feature_task_runtime.executable_plan",
         def.PHASE_AUDIT to FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.AUDIT_REPAIR_REQUEST,
       ),
-      auditRemediation.map {
+      upstreamRemediation.map {
         (it.sourceRef as FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput).producingPhaseId to
           it.projectionContractId
       },
     )
+    assertTrue(
+      auditRemediation.any { it.sourceRef == FeatureTaskRuntimeHandoffSourceRef.PriorGapMemory },
+    )
     assertTrue(auditRemediation.none { it.projectionContractId == def.UPSTREAM_PHASE_RECEIPT_CONTRACT_ID })
     assertEquals(
       listOf("unmet_criteria", "repository_checkpoint"),
-      auditRemediation.last().declaredFieldNames,
+      upstreamRemediation.last().declaredFieldNames,
       "the remediation handoff carries the unmet criteria and the checkpoint, and nothing else",
     )
 
@@ -490,11 +510,11 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
       def.runtimeProjectorProducerPhaseIds(def.PHASE_VALIDATE),
     )
     assertEquals(
-      setOf(def.PHASE_IMPLEMENT, def.PHASE_VALIDATE),
+      setOf(def.PHASE_IMPLEMENT, def.PHASE_VALIDATE, def.PHASE_BUILD),
       def.runtimeProjectorProducerPhaseIds(def.PHASE_WRITE_HISTORY),
     )
     assertEquals(
-      setOf(def.PHASE_IMPLEMENT, def.PHASE_VALIDATE, def.PHASE_WRITE_HISTORY),
+      setOf(def.PHASE_IMPLEMENT, def.PHASE_VALIDATE, def.PHASE_BUILD, def.PHASE_WRITE_HISTORY),
       def.runtimeProjectorProducerPhaseIds(def.PHASE_COMMIT_PUSH),
     )
     assertEquals(
@@ -632,6 +652,37 @@ class FeatureTaskRuntimePhaseWorkflowDefinitionTest {
       semantic.map { Triple(it.fromPhaseId, it.triggeringVerdict, it.destinationPhaseId) },
     )
     assertTrue(semantic.all { it.perEdgeCap == null })
+  }
+
+  @Test
+  fun `prior gap memory source ref round-trips and the declaration matches the model field set`() {
+    val def = FeatureTaskRuntimePhaseWorkflowDefinition
+    val source = FeatureTaskRuntimeHandoffSourceRef.fromWire(
+      FeatureTaskRuntimeHandoffSourceRef.PRIOR_GAP_MEMORY_WIRE,
+    )
+    assertEquals(FeatureTaskRuntimeHandoffSourceRef.PriorGapMemory, source)
+    assertEquals(
+      mapOf("kind" to "prior_gap_memory", "id" to "prior_gap_memory"),
+      source.toDeclarationMap(),
+    )
+    assertEquals(
+      FeatureTaskRuntimeHandoffSourceRef.PriorGapMemory,
+      FeatureTaskRuntimeHandoffSourceRef.fromWire(
+        FeatureTaskRuntimeHandoffSourceRef.fromWire(
+          FeatureTaskRuntimeHandoffSourceRef.PRIOR_GAP_MEMORY_WIRE,
+        ).wireValue,
+      ),
+    )
+
+    val declaration = def.priorGapMemoryDeclaration(def.PHASE_IMPLEMENT)
+    assertEquals(def.PRIOR_GAP_MEMORY_PROJECTION_NAME, declaration.projectionName)
+    assertEquals(
+      FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.PRIOR_GAP_MEMORY,
+      declaration.projectionContractId,
+    )
+    assertEquals(FeatureTaskRuntimeHandoffSourceRef.PriorGapMemory, declaration.sourceRef)
+    assertEquals(FeatureTaskRuntimePriorGapMemory.DECLARED_FIELD_NAMES, declaration.declaredFieldNames)
+    assertEquals(false, declaration.required, "absent memory must omit, never reject a predating in-flight run")
   }
 
   private fun dependenciesOf(phaseId: String): List<String> = definition.requiredArtifactsByStep.getValue(phaseId)

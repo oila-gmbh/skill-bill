@@ -4,6 +4,9 @@ import skillbill.application.featuretask.FeatureTaskRuntimeStatusService
 import skillbill.application.model.FeatureTaskRuntimeRunReport
 import skillbill.application.model.FeatureTaskRuntimeStatusRequest
 import skillbill.workflow.model.CodeReviewExecutionMode
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_DECISION_ABANDON_SUBTASK
+import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_DECISION_RETRY_FIX
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -116,7 +119,8 @@ class FeatureTaskRuntimeAuditGapLoopTest {
       ),
     )
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+    val report = harness.runner.run(harness.request())
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
 
     assertEquals(2, commitMessagesObservedAtReview.size)
     assertContains(commitMessagesObservedAtReview[0], "remediation checkpoint")
@@ -169,36 +173,42 @@ class FeatureTaskRuntimeAuditGapLoopTest {
   }
 
   @Test
-  fun `m2 audit gaps continue until a later audit satisfies the criteria`() {
+  fun `m2 audit gaps pause at the warn-threshold crossing instead of continuing past iteration three`() {
+    val threshold = FeatureTaskRuntimePhaseWorkflowDefinition.SEMANTIC_LOOP_WARNING_THRESHOLD
     val harness = runnerHarness(launcher = auditGapLauncher(convergeOnAudit = 99))
 
-    val report = harness.runner.run(harness.request())
+    val report = assertIs<FeatureTaskRuntimeRunReport.Paused>(harness.runner.run(harness.request()))
 
-    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
-    val launched = harness.launchedPromptPhaseOrder()
-    assertEquals(1, launched.count { it == "plan" })
-    assertEquals(99, launched.count { it == "audit" })
-    assertTrue(launched.any { it == "validate" })
-    val auditRecord = requireNotNull(harness.recorder.loadPhaseRecords(WORKFLOW_ID).orEmpty()["audit"])
-    assertEquals("completed", auditRecord.status)
+    assertContains(report.pauseReason, "warn-threshold")
+    assertContains(report.pauseReason, "iteration ${threshold + 1}")
     val loopEdges = harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
       .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && it.loopId == "audit_gap" }
-    assertEquals(98, loopEdges.maxOf { requireNotNull(it.edgeIteration) })
+      .mapNotNull { it.edgeIteration }
+    assertEquals((1..threshold).toList(), loopEdges, "the crossing iteration pauses rather than recording an edge")
+    assertTrue(harness.launchedPromptPhaseOrder().none { it == "validate" })
   }
 
   @Test
-  fun `equivalent recurring gaps with an unchanged repository block as non progress`() {
+  fun `equivalent recurring gaps with an unchanged repository pause as non progress`() {
     val git = RecordingWorkflowGitOperations().apply { repositoryFingerprintValue = "unchanged" }
     val harness = runnerHarness(
       launcher = auditGapLauncher(convergeOnAudit = 3),
       runtimeConfig = RuntimeHarnessConfig(branchSetup = BranchSetupTestConfig(gitOperations = git)),
     )
 
-    val report = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    val report = assertIs<FeatureTaskRuntimeRunReport.Paused>(harness.runner.run(harness.request()))
 
-    assertContains(report.blockedReason, "Audit made no progress")
-    assertContains(report.blockedReason, "repository fingerprint is unchanged")
+    assertContains(report.pauseReason, "Audit made no progress")
+    assertContains(report.pauseReason, "repository fingerprint is unchanged")
+    assertContains(report.pauseReason, "retry_fix")
     assertTrue(harness.launchedPromptPhaseOrder().none { it == "validate" })
+    assertEquals(
+      listOf(1),
+      harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
+        .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && it.loopId == "audit_gap" }
+        .mapNotNull { it.edgeIteration },
+      "the no-progress pause fires before the second recurring edge is recorded",
+    )
   }
 
   @Test
@@ -413,6 +423,178 @@ class FeatureTaskRuntimeAuditGapLoopTest {
       "implement is not relaunched after it already completed the audit_gap span",
     )
   }
+
+  @Test
+  fun `continue on shrink even when the repository is unchanged`() {
+    var auditLaunches = 0
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        if (phaseId == "audit") {
+          auditLaunches += 1
+          facts(
+            when (auditLaunches) {
+              1 -> auditCriteriaOutput("AC-002", "AC-003")
+              2 -> auditCriteriaOutput("AC-001", "AC-002")
+              else -> auditSatisfiedOutput()
+            },
+          )
+        } else {
+          facts(validJsonOutput(phaseId))
+        }
+      },
+      runtimeConfig = RuntimeHarnessConfig(
+        branchSetup = BranchSetupTestConfig(
+          gitOperations = RecordingWorkflowGitOperations().apply { repositoryFingerprintValue = "unchanged" },
+        ),
+      ),
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
+
+    val edges = harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
+      .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.LOOP_EDGE && it.loopId == "audit_gap" }
+      .mapNotNull { it.edgeIteration }
+    assertEquals(listOf(1, 2), edges, "AC-003 was cleared, so the run continues across the unchanged tree")
+  }
+
+  @Test
+  fun `substitution without a clear and an unchanged repository pauses as no progress`() {
+    var auditLaunches = 0
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        if (phaseId == "audit") {
+          auditLaunches += 1
+          facts(
+            if (auditLaunches == 1) {
+              auditCriteriaOutput("AC-002")
+            } else {
+              auditCriteriaOutput("AC-001", "AC-002")
+            },
+          )
+        } else {
+          facts(validJsonOutput(phaseId))
+        }
+      },
+      runtimeConfig = RuntimeHarnessConfig(
+        branchSetup = BranchSetupTestConfig(
+          gitOperations = RecordingWorkflowGitOperations().apply { repositoryFingerprintValue = "unchanged" },
+        ),
+      ),
+    )
+
+    val report = assertIs<FeatureTaskRuntimeRunReport.Paused>(harness.runner.run(harness.request()))
+
+    assertContains(report.pauseReason, "Audit made no progress")
+    assertContains(report.pauseReason, "repository fingerprint is unchanged")
+  }
+
+  @Test
+  fun `a retry_fix grant allows exactly one further round then pauses again`() {
+    val harness = runnerHarness(
+      launcher = auditGapLauncher(convergeOnAudit = 99),
+      runtimeConfig = RuntimeHarnessConfig(
+        branchSetup = BranchSetupTestConfig(
+          gitOperations = RecordingWorkflowGitOperations().apply { repositoryFingerprintValue = "unchanged" },
+        ),
+      ),
+    )
+
+    val first = assertIs<FeatureTaskRuntimeRunReport.Paused>(harness.runner.run(harness.request()))
+    assertContains(first.pauseReason, "Audit made no progress")
+    val auditsBeforeRetry = harness.launchedPromptPhaseOrder().count { it == "audit" }
+
+    val pause = harness.recorder.loadAuditGapPause(WORKFLOW_ID)
+    assertNotNull(pause)
+    harness.recorder.persistAuditGapPause(
+      WORKFLOW_ID,
+      pause.copy(operatorDecision = AUDIT_GAP_PAUSE_DECISION_RETRY_FIX),
+    )
+
+    val second = assertIs<FeatureTaskRuntimeRunReport.Paused>(harness.runner.run(harness.request()))
+    assertContains(second.pauseReason, "Audit made no progress")
+    val auditsAfterRetry = harness.launchedPromptPhaseOrder().count { it == "audit" }
+    assertEquals(
+      auditsBeforeRetry + 1,
+      auditsAfterRetry,
+      "exactly one further audit round runs on the grant before the repeated no-progress re-pauses",
+    )
+  }
+
+  @Test
+  fun `resume with no decision re-pauses without relaunching implement`() {
+    val harness = runnerHarness(
+      launcher = auditGapLauncher(convergeOnAudit = 99),
+      runtimeConfig = RuntimeHarnessConfig(
+        branchSetup = BranchSetupTestConfig(
+          gitOperations = RecordingWorkflowGitOperations().apply { repositoryFingerprintValue = "unchanged" },
+        ),
+      ),
+    )
+
+    val first = assertIs<FeatureTaskRuntimeRunReport.Paused>(harness.runner.run(harness.request()))
+    assertContains(first.pauseReason, "Audit made no progress")
+    val implementsBeforeResume = harness.launchedPromptPhaseOrder().count { it == "implement" }
+
+    val reSurfaced = assertIs<FeatureTaskRuntimeRunReport.Paused>(harness.runner.run(harness.request()))
+    assertContains(reSurfaced.pauseReason, "Audit made no progress")
+    assertEquals(
+      implementsBeforeResume,
+      harness.launchedPromptPhaseOrder().count { it == "implement" },
+      "a decision-less resume must not relaunch implement",
+    )
+  }
+
+  @Test
+  fun `abandon_subtask on an audit-gap pause terminalizes the subtask`() {
+    val harness = runnerHarness(
+      launcher = auditGapLauncher(convergeOnAudit = 99),
+      runtimeConfig = RuntimeHarnessConfig(
+        branchSetup = BranchSetupTestConfig(
+          gitOperations = RecordingWorkflowGitOperations().apply { repositoryFingerprintValue = "unchanged" },
+        ),
+      ),
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Paused>(harness.runner.run(harness.request()))
+    val pause = harness.recorder.loadAuditGapPause(WORKFLOW_ID)
+    assertNotNull(pause)
+    harness.recorder.persistAuditGapPause(
+      WORKFLOW_ID,
+      pause.copy(operatorDecision = AUDIT_GAP_PAUSE_DECISION_ABANDON_SUBTASK),
+    )
+
+    val report = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
+    assertContains(report.blockedReason, "abandon_subtask")
+  }
+
+  @Test
+  fun `a paused audit-gap child surfaces an operator-decision pause with the honest iteration count`() {
+    val harness = runnerHarness(
+      launcher = auditGapLauncher(convergeOnAudit = 99),
+      runtimeConfig = RuntimeHarnessConfig(
+        branchSetup = BranchSetupTestConfig(
+          gitOperations = RecordingWorkflowGitOperations().apply { repositoryFingerprintValue = "unchanged" },
+        ),
+      ),
+    )
+
+    assertIs<FeatureTaskRuntimeRunReport.Paused>(harness.runner.run(harness.request()))
+
+    val status = FeatureTaskRuntimeStatusService(
+      harness.recorder,
+      harness.runInvariantsStore,
+      harness.decomposeTerminalRecorder,
+    ).status(FeatureTaskRuntimeStatusRequest(WORKFLOW_ID))
+    val resolved = requireNotNull(status)
+    assertContains(requireNotNull(resolved.operatorDecisionPause?.reason), "Audit made no progress")
+    assertEquals(
+      2,
+      requireNotNull(resolved.auditRepair).auditGapIterationCount,
+      "the pause reports the honest edge iteration the run reached",
+    )
+  }
 }
 
 // The unique unmet-criterion message a gaps_found audit carries, so the implementation-remediation briefing
@@ -463,6 +645,21 @@ internal fun auditSatisfiedOutput(): String = """
   }
 """.trimIndent()
 
+internal fun auditCriteriaOutput(vararg criteria: String): String = """
+  {
+    "contract_version": "0.4",
+    "phase_id": "audit",
+    "status": "completed",
+    "summary": "Audit found unmet acceptance criteria.",
+    "verdict": "gaps_found",
+    "produced_outputs": {
+      "unmet_criteria": [
+        ${criteria.joinToString(",\n        ") { """{"criterion":"$it","note":"$AUDIT_GAP_MESSAGE"}""" }}
+      ]
+    }
+  }
+""".trimIndent()
+
 internal fun auditGapLauncher(convergeOnAudit: Int): RuntimeRecordingLauncher {
   var auditLaunches = 0
   return RuntimeRecordingLauncher { request ->
@@ -480,6 +677,51 @@ internal fun auditGapLauncher(convergeOnAudit: Int): RuntimeRecordingLauncher {
       facts(validJsonOutput(phaseId))
     }
   }
+}
+
+// AC-005: two gaps_found rounds deliver the prior-gap memory projection on the second audit_gap
+// implement re-entry (with sticky ids from the two prior audits) and on the audit that follows it.
+@Test
+fun `prior-gap memory appears on the second audit_gap implement and the audit that follows it`() {
+  val harness = runnerHarness(launcher = auditGapLauncher(convergeOnAudit = 3))
+
+  val report = harness.runner.run(harness.request())
+
+  assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+  val briefings = harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()
+  val implementBriefing = requireNotNull(briefings["implement"]).briefingText
+  val auditBriefing = requireNotNull(briefings["audit"]).briefingText
+  // The second audit_gap implement (round 2) carries the memory projection; sticky ids come from the
+  // two prior audits both reporting AC-002.
+  assertContains(implementBriefing, "prior_gap_memory")
+  assertContains(implementBriefing, "sticky_ids")
+  assertContains(implementBriefing, "AC-002")
+  // Sticky ids are the two refs both audits reported, never the ref+note text: the directive pins the
+  // exact ref set, which a leaked "AC-002: <note>" line would break.
+  assertContains(implementBriefing, "Prioritize the sticky criterion ids (AC-003, AC-002)")
+  // last_implement_claims is the union of the prior implement receipt's completed task criterion refs
+  // through the plan mapping (task-1 -> AC-001).
+  assertContains(implementBriefing, "last_implement_claims")
+  assertContains(implementBriefing, "AC-001")
+  // The audit that follows remediation also carries the memory projection.
+  assertContains(auditBriefing, "prior_gap_memory")
+  assertContains(auditBriefing, "sticky_ids")
+}
+
+// AC-004: an in-flight workflow without a second comparable audit still completes with empty memory;
+// the first audit_gap implement delivers the memory projection with no sticky ids rather than failing.
+@Test
+fun `in-flight workflow without a second comparable audit completes with empty sticky memory`() {
+  val harness = runnerHarness(launcher = auditGapLauncher(convergeOnAudit = 2))
+
+  val report = harness.runner.run(harness.request())
+
+  assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+  val implementBriefing = requireNotNull(
+    harness.recorder.loadPhaseBriefings(WORKFLOW_ID).orEmpty()["implement"],
+  ).briefingText
+  assertContains(implementBriefing, "prior_gap_memory")
+  assertContains(implementBriefing, "sticky_ids")
 }
 
 class FeatureTaskRuntimeAuditGapSharedEvidenceTest {

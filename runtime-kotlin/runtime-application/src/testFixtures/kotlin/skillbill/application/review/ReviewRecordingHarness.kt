@@ -406,7 +406,7 @@ private fun recordingCatalogGateway(manifests: List<PlatformManifest>): Scaffold
 fun harnessRequest(
   repoRoot: Path = Files.createTempDirectory("review-e2e"),
   agent1Id: String = "codex",
-  agent2Id: String? = "claude",
+  agent2Id: String? = null,
   timeout: Duration? = null,
   reviewRunId: String? = null,
   prelaunchExpansions: List<ReviewPrelaunchExpansion> = emptyList(),

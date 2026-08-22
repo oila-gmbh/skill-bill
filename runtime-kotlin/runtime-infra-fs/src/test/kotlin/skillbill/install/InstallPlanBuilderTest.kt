@@ -231,9 +231,18 @@ class InstallPlanBuilderTest {
       ),
     )
 
-    assertEquals(listOf(InstallAgent.CODEX), plan.agents.map { target -> target.agent })
-    assertEquals(listOf(InstallAgentTargetSource.DETECTED), plan.agents.map { target -> target.source })
-    assertEquals(fixture.home.resolve(".codex/skills"), plan.agents.single().path)
+    assertEquals(listOf(InstallAgent.CODEX, InstallAgent.CODEX), plan.agents.map { target -> target.agent })
+    assertEquals(
+      listOf(InstallAgentTargetSource.DETECTED, InstallAgentTargetSource.DETECTED),
+      plan.agents.map { target -> target.source },
+    )
+    assertEquals(
+      listOf(
+        fixture.home.resolve(".codex/skills"),
+        fixture.home.resolve(".agents/skills"),
+      ),
+      plan.agents.map { target -> target.path },
+    )
   }
 
   @Test

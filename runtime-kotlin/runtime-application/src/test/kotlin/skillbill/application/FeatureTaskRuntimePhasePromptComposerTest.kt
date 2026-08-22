@@ -7,6 +7,7 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseBriefingAssembler
 import skillbill.application.featuretask.FeatureTaskRuntimePhasePromptComposer
 import skillbill.application.featuretask.FeatureTaskRuntimeVerificationSignalKeys
+import skillbill.application.featuretask.phaseDeclaration
 import skillbill.application.model.FeatureTaskRuntimeImplementationContinuation
 import skillbill.application.model.FeatureTaskRuntimePhaseLaunchBriefing
 import skillbill.contracts.JsonSupport
@@ -23,6 +24,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCorrectiveRepairCo
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFeatureSize
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeOperatorBlockRetry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionKind
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
@@ -1148,6 +1150,54 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
+  fun `audit_gap implement re-entry renders sticky-priority directive but forward implement does not`() {
+    val memory = FeatureTaskRuntimePriorGapMemory(
+      round = 2,
+      priorUnmetCriteria = listOf("AC-002: $AUDIT_GAP_MESSAGE"),
+      lastImplementClaims = listOf("AC-001"),
+      stickyIds = listOf("AC-002"),
+    )
+    val remediation = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("implement", priorGapMemory = memory),
+    )
+    assertContains(remediation, "Prior-gap memory — sticky criteria take priority")
+    assertContains(remediation, "AC-002")
+    assertContains(remediation, "Never narrow scope to only the")
+    assertContains(remediation, "closing every entry in the audit_gaps list")
+
+    val forward = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("implement"),
+    )
+    assertTrue(!forward.contains("Prior-gap memory — sticky criteria take priority"))
+    assertTrue(!forward.contains("prior_gap_memory"))
+  }
+
+  @Test
+  fun `audit after remediation requires sticky re-justification while first audit keeps blank-slate wording`() {
+    val memory = FeatureTaskRuntimePriorGapMemory(
+      round = 2,
+      priorUnmetCriteria = listOf("AC-002: $AUDIT_GAP_MESSAGE"),
+      lastImplementClaims = listOf("AC-001"),
+      stickyIds = listOf("AC-002"),
+    )
+    val remediation = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("audit", priorGapMemory = memory),
+    )
+    assertContains(remediation, "explicit re-justification")
+    assertContains(remediation, "Sticky ids")
+    assertContains(remediation, "AC-002")
+    assertTrue(!remediation.contains("nothing to carry forward"), "blank-slate wording must be subordinated")
+    assertTrue(!remediation.contains("never need to account for what an earlier audit said"))
+
+    val firstAudit = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor("audit"))
+    assertContains(firstAudit, "nothing to carry forward")
+    assertContains(firstAudit, "never need to account for what an earlier audit said")
+  }
+
+  @Test
   fun `a blank prior schema failure yields no correction directive`() {
     // F-002: retryCorrectionDirective treats null and blank identically (isNullOrBlank). A blank reason
     // must not emit a no-op "REJECTED" heading with nothing under it.
@@ -1607,11 +1657,12 @@ private fun briefingFor(
   featureSize: FeatureTaskRuntimeFeatureSize = FeatureTaskRuntimeFeatureSize.MEDIUM,
   unmetCriterionRefs: List<String> = emptyList(),
   validationDepth: ValidationDepth = ValidationDepth.DEFAULT,
+  priorGapMemory: FeatureTaskRuntimePriorGapMemory? = null,
 ): FeatureTaskRuntimePhaseLaunchBriefing {
   val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint(fingerprint = "fixture-checkpoint-1")
   return FeatureTaskRuntimePhaseBriefingAssembler.assemble(
     FeatureTaskRuntimeHandoffContract.assembleHandoff(
-      declaration = FeatureTaskRuntimePhaseWorkflowDefinition.phaseDeclaration(phaseId, featureSize),
+      declaration = phaseDeclaration(phaseId, featureSize),
       runInvariants = FeatureTaskRuntimeRunInvariants(
         specReference = SPEC_REFERENCE,
         featureSize = featureSize,
@@ -1633,6 +1684,7 @@ private fun briefingFor(
       repositoryCheckpoint = checkpoint,
       expectedRepositoryCheckpoint = checkpoint,
       validationDepth = validationDepth,
+      priorGapMemory = priorGapMemory,
     ),
   )
 }

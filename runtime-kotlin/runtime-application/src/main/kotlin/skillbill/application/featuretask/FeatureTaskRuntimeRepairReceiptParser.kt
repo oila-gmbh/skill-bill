@@ -115,10 +115,9 @@ internal fun featureTaskRuntimeRepairReceiptShapeRejection(producedOutputs: Map<
 internal fun featureTaskRuntimeRepairReceiptWithDeclaredDisturbances(
   receipt: FeatureTaskRuntimeRepairReceipt,
   reviewState: GoalSubtaskReviewState,
-): FeatureTaskRuntimeRepairReceipt =
-  derivedRepairLedgerOrNull(reviewState)?.let { ledger ->
-    featureTaskRuntimeRepairReceiptWithDeclaredDisturbances(receipt, ledger)
-  } ?: receipt
+): FeatureTaskRuntimeRepairReceipt = derivedRepairLedgerOrNull(reviewState)?.let { ledger ->
+  featureTaskRuntimeRepairReceiptWithDeclaredDisturbances(receipt, ledger)
+} ?: receipt
 
 internal fun featureTaskRuntimeRepairReceiptWithDeclaredDisturbances(
   receipt: FeatureTaskRuntimeRepairReceipt,

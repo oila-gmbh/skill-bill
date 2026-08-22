@@ -152,8 +152,7 @@ case "$cmd" in
     esac
     ;;
 
-  "install claude-roots"
-  "install codex-roots")
+  "install claude-roots"|"install codex-roots")
     echo "${home_dir:-$HOME}/.claude"
     ;;
 

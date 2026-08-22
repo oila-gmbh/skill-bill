@@ -114,28 +114,25 @@ open class CodeReviewDriverCommand(
     writeParallelReviewResult(state, result)
   }
 
-  private fun request(
-    resolvedAgent1: String,
-    resolvedScope: ParallelReviewScope,
-    repo: Path,
-  ) = ParallelCodeReviewRequest(
-    agent1Id = resolvedAgent1,
-    agent2Id = null,
-    agent2Model = null,
-    scope = resolvedScope,
-    repoRoot = repo,
-    timeout = timeoutMinutes?.minutes,
-    codeReviewMode = parseExecutionMode(codeReviewMode),
-    suppliedDiffPath = suppliedDiffPath(),
-    reviewRunId = reviewRunId?.takeIf(String::isNotBlank),
-    baseRevision = baseRevision?.takeIf(String::isNotBlank),
-    headRevision = headRevision?.takeIf(String::isNotBlank),
-    prelaunchExpansions = expandFiles.map(::parseExpansion),
-    baselineUntrackedPolicy = ParallelCodeReviewRequest.baselineUntrackedPolicy(
-      baselineUntrackedIncludes,
-      baselineUntrackedExcludes,
-    ),
-  )
+  private fun request(resolvedAgent1: String, resolvedScope: ParallelReviewScope, repo: Path) =
+    ParallelCodeReviewRequest(
+      agent1Id = resolvedAgent1,
+      agent2Id = null,
+      agent2Model = null,
+      scope = resolvedScope,
+      repoRoot = repo,
+      timeout = timeoutMinutes?.minutes,
+      codeReviewMode = parseExecutionMode(codeReviewMode),
+      suppliedDiffPath = suppliedDiffPath(),
+      reviewRunId = reviewRunId?.takeIf(String::isNotBlank),
+      baseRevision = baseRevision?.takeIf(String::isNotBlank),
+      headRevision = headRevision?.takeIf(String::isNotBlank),
+      prelaunchExpansions = expandFiles.map(::parseExpansion),
+      baselineUntrackedPolicy = ParallelCodeReviewRequest.baselineUntrackedPolicy(
+        baselineUntrackedIncludes,
+        baselineUntrackedExcludes,
+      ),
+    )
 
   private fun resolveAgent1(): String = agent1?.takeIf(String::isNotBlank)
     ?: state.environment["SKILL_BILL_AGENT"]?.takeIf(String::isNotBlank)

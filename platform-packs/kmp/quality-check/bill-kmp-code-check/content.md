@@ -33,6 +33,6 @@ Use a priority-ordered fix ladder: repair source-set and Gradle topology first, 
 
 ### Repair Window
 
-Run the pack `validation_gate.collect_all_full_gate_command` once — for this pack `./gradlew check --continue` from the Gradle project root that owns the wrapper — and read that output. Fix every finding in the same session. Do not invoke the full collect-all gate after each individual finding. Targeted compile, test, and module checks are allowed while repairing. Repair every finding at its root cause; run the same collect-all command once to confirm after the full set is repaired. When a cache-bypassing confirm is required, use the pack `validation_gate.cache_bypassing_collect_all_full_gate_command`.
+Run the pack `validation_gate.collect_all_full_gate_command` once — for this pack `./gradlew check --continue` from the Gradle project root that owns the wrapper — and read that output. Fix every finding in the same session. Do not invoke the full collect-all gate after each individual finding. Targeted compile, test, and module checks are allowed while repairing. Repair every finding at its root cause; re-run the same collect-all command once to confirm after the full set is repaired. When a cache-bypassing confirm is required, use the pack `validation_gate.cache_bypassing_collect_all_full_gate_command`.
 
 When the host cannot supply a required SDK, simulator, signing identity, browser, or native toolchain, return a blocker containing the discovered task, host constraint, affected target, and the command maintainers must run on a capable runner.

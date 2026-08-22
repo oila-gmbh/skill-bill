@@ -51,12 +51,16 @@ internal val FINALISED_COMMIT_PUSH_OUTPUT: String = """
 // pre- and post-finalisation fixtures are built here so the sha lands inside commit_push_result by
 // construction; deriving one from the other by text substitution let a template rename yield a fixture
 // that silently no longer carried the finalised shape.
-internal fun commitPushProducedOutputs(commitSha: String?): String {
+internal fun commitPushProducedOutputs(
+  commitSha: String? = null,
+  changedPaths: List<String> = listOf("src/Foo.kt"),
+): String {
   val sha = commitSha?.let { """"commit_sha":"$it",""" } ?: ""
+  val pathsJson = changedPaths.joinToString(",") { "\"$it\"" }
   return """{"commit_push_result":{
     $sha
     "message":"SKILL-65: runtime feature-task parity",
-    "changed_paths":["src/Runtime.kt"],
+    "changed_paths":[$pathsJson],
     "branch":"feat/SKILL-65-runtime-feature-task-parity",
     "base_branch":"main",
     "pushed":true
@@ -64,34 +68,47 @@ internal fun commitPushProducedOutputs(commitSha: String?): String {
   """.trimIndent()
 }
 
-internal fun validJsonOutput(phaseId: String): String = """
+internal fun validJsonOutput(phaseId: String, commitPushChangedPaths: List<String>? = null): String = """
   {
     "contract_version": "0.2",
     "phase_id": "$phaseId",
     "status": "completed",
     "summary": "Phase produced a validated output.",
-    "produced_outputs": ${validProducedOutputs(phaseId)}
+    "produced_outputs": ${validProducedOutputs(phaseId, commitPushChangedPaths)}
   }
 """.trimIndent()
 
+internal fun validJsonOutputForGitPhase(phaseId: String, git: RecordingWorkflowGitOperations): String = validJsonOutput(
+  phaseId,
+  commitPushChangedPaths = if (phaseId == "commit_push" && git.ownedPathsValue.isNotEmpty()) {
+    git.ownedPathsValue
+  } else {
+    null
+  },
+)
+
 @Suppress("LongMethod")
-internal fun validProducedOutputs(phaseId: String): String = when (phaseId) {
-  "validate" ->
-    """{"validation_result":{
+internal fun validProducedOutputs(phaseId: String, commitPushChangedPaths: List<String>? = null): String =
+  when (phaseId) {
+    "validate" ->
+      """{"validation_result":{
       "validation_status":"passed",
       "checks":["FooTest"],
       "repository_checkpoint":{"fingerprint":"fixture-checkpoint-1"},
       "gate_run_count":1,
       "gate_runs":[{"duration_ms":1,"outcome":"passed","cache_mode":"forced_full","executed_work_units":1}]
     }}
-    """.trimIndent()
-  "write_history" ->
-    """{"history_result":{"changed_paths":["agent/history.md"],"decisions_recorded":[]}}"""
-  "commit_push" -> commitPushProducedOutputs(commitSha = null)
-  // preplan and plan feed the bounded planning projections on the preplan->plan and plan->implement
-  // (and plan->audit commitment) edges, so their fixture payloads carry the declared projection shape.
-  "preplan" ->
-    """{
+      """.trimIndent()
+    "write_history" ->
+      """{"history_result":{"changed_paths":["agent/history.md"],"decisions_recorded":[]}}"""
+    "commit_push" -> commitPushProducedOutputs(
+      commitSha = null,
+      changedPaths = commitPushChangedPaths ?: listOf("src/Foo.kt"),
+    )
+    // preplan and plan feed the bounded planning projections on the preplan->plan and plan->implement
+    // (and plan->audit commitment) edges, so their fixture payloads carry the declared projection shape.
+    "preplan" ->
+      """{
       "projection_kind":"preplanning_digest",
       "contract_version":"0.1",
       "affected_boundaries":["runtime-application"],
@@ -99,9 +116,9 @@ internal fun validProducedOutputs(phaseId: String): String = when (phaseId) {
       "rollout":{"flag_required":false,"flag_pattern":"none","notes":"No flag needed."},
       "validation_strategy":["Focused runtime tests."]
     }
-    """.trimIndent()
-  "plan" ->
-    """{
+      """.trimIndent()
+    "plan" ->
+      """{
       "projection_kind":"executable_plan",
       "contract_version":"0.1",
       "mode":"direct",
@@ -114,21 +131,21 @@ internal fun validProducedOutputs(phaseId: String): String = when (phaseId) {
       }],
       "validation_strategy":["Focused runtime tests."]
     }
-    """.trimIndent()
-  // Mutating phases must carry the reconciliation report or the runtime's reconciliation gate
-  // rejects the output (SKILL-85 Subtask 3). implement_fix is mutating too (SKILL-85 Subtask 4).
-  // implement additionally feeds audit's bounded implementation-receipt projection.
-  //
-  // SKILL-140 Subtask 3 (task-8) decision: the implementation_receipt variant is
-  // additionalProperties:false and declares `changed_paths` (normalized repo-relative paths) plus the
-  // governed co-residents `reconciled_state` and `repair_item_results`. It does NOT declare
-  // `changed_files`. The prior fixture carried a redundant `changed_files` list that duplicated
-  // `changed_paths` and is rejected by the real Draft 2020-12 validator. We remove the undeclared key
-  // rather than widen implementation_receipt to admit it: widening the schema to keep a duplicate wire
-  // field is the rejected alternative (schema-shape changes are a stated non-goal, and `changed_paths`
-  // already carries the path list this variant delivers).
-  "plan_fix" ->
-    """{
+      """.trimIndent()
+    // Mutating phases must carry the reconciliation report or the runtime's reconciliation gate
+    // rejects the output (SKILL-85 Subtask 3). implement_fix is mutating too (SKILL-85 Subtask 4).
+    // implement additionally feeds audit's bounded implementation-receipt projection.
+    //
+    // SKILL-140 Subtask 3 (task-8) decision: the implementation_receipt variant is
+    // additionalProperties:false and declares `changed_paths` (normalized repo-relative paths) plus the
+    // governed co-residents `reconciled_state` and `repair_item_results`. It does NOT declare
+    // `changed_files`. The prior fixture carried a redundant `changed_files` list that duplicated
+    // `changed_paths` and is rejected by the real Draft 2020-12 validator. We remove the undeclared key
+    // rather than widen implementation_receipt to admit it: widening the schema to keep a duplicate wire
+    // field is the rejected alternative (schema-shape changes are a stated non-goal, and `changed_paths`
+    // already carries the path list this variant delivers).
+    "plan_fix" ->
+      """{
       "repair_plan":{
         "contract_version":"0.1",
         "round_number":1,
@@ -141,8 +158,8 @@ internal fun validProducedOutputs(phaseId: String): String = when (phaseId) {
       }
     }
     """
-  "implement", "implement_fix" ->
-    """{
+    "implement", "implement_fix" ->
+      """{
       "projection_kind":"implementation_receipt",
       "contract_version":"0.1",
       "completed_task_ids":["task-1"],
@@ -160,15 +177,15 @@ internal fun validProducedOutputs(phaseId: String): String = when (phaseId) {
         "result_evidence":{"observation":"fix_verified","artifact_ref":"runtime-kotlin","check_ref":"AC-002"}
       }]
     }
-    """.trimIndent()
-  // A clean review must emit a verification signal or the review gate blocks (SKILL-85 Subtask 4):
-  // an explicit empty findings array affirms "no blocking findings" and advances.
-  "review" -> """{"findings": []}"""
-  // A clean audit must emit a verification signal or the audit gate blocks (SKILL-85 Subtask 5):
-  // an explicit empty unmet_criteria array affirms "every acceptance criterion is met" and advances.
-  "audit" -> """{"unmet_criteria": []}"""
-  else -> """{"tasks":["task-1"]}"""
-}
+      """.trimIndent()
+    // A clean review must emit a verification signal or the review gate blocks (SKILL-85 Subtask 4):
+    // an explicit empty findings array affirms "no blocking findings" and advances.
+    "review" -> """{"findings": []}"""
+    // A clean audit must emit a verification signal or the audit gate blocks (SKILL-85 Subtask 5):
+    // an explicit empty unmet_criteria array affirms "every acceptance criterion is met" and advances.
+    "audit" -> """{"unmet_criteria": []}"""
+    else -> """{"tasks":["task-1"]}"""
+  }
 
 // SKILL-140 Subtask 3 (task-6/task-7): the enumerable parity corpus. Each entry carries a stable id
 // used verbatim in parity-failure messages.

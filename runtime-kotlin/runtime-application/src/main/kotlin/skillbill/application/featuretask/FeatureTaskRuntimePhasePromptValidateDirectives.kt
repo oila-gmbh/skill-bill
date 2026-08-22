@@ -1,6 +1,7 @@
 package skillbill.application.featuretask
 
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
 
 private const val VALIDATE_PHASE_FORBIDDEN_EXTRAS: String =
   "Do not run `skill-bill validate`, `npx agnix`, `scripts/validate_agent_configs`, or any other " +
@@ -57,6 +58,7 @@ internal fun phaseTaskDirective(
   agentRunValidateFallback: Boolean = false,
   packCollectAllCommand: String? = null,
   packBuildCommand: String? = null,
+  priorGapMemory: FeatureTaskRuntimePriorGapMemory? = null,
 ): String {
   if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD) {
     return runtimeOwnedBuildPhaseTask(packBuildCommand)
@@ -66,6 +68,9 @@ internal fun phaseTaskDirective(
       packCollectAllCommand = packCollectAllCommand,
       packGateDeclared = !agentRunValidateFallback,
     )
+  }
+  if (phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) {
+    return auditPhaseTaskDirective(priorGapMemory)
   }
   return phaseDirectives[phaseId] ?: error("No phase directive for runtime phase '$phaseId'.")
 }

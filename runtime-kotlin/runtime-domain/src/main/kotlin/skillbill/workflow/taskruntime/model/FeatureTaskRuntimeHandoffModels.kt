@@ -5,7 +5,6 @@ import skillbill.boundary.OpenBoundaryMap
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.workflow.model.CodeReviewExecutionMode
 import skillbill.workflow.model.ValidationDepth
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 
 /**
  * Domain models for the inter-phase handoff contract. The handoff is an
@@ -187,6 +186,12 @@ data class FeatureTaskRuntimePhaseHandoff(
   val durablyClosedCriterionRefs: List<String> = emptyList(),
   val repairLedger: FeatureTaskRuntimeRepairLedger? = null,
   val recordedFindingVerdicts: List<ReviewFindingVerdict> = emptyList(),
+  /**
+   * The runtime-derived bounded prior-gap memory for an `audit_gap` remediation round, or null for a
+   * forward launch or an in-flight run with no comparable prior audit. Null omits the non-required
+   * declaration, so a predating in-flight workflow never fails this launch (AC-004).
+   */
+  val priorGapMemory: FeatureTaskRuntimePriorGapMemory? = null,
 )
 
 /**
