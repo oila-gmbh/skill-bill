@@ -8,6 +8,8 @@ import skillbill.application.evidence.FeatureTaskRuntimeSharedReviewEvidenceReso
 import skillbill.application.evidence.FeatureTaskRuntimeSharedReviewEvidenceResolver
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointDecision
 import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointScopeInput
+import skillbill.application.featuretask.model.FeatureTaskRuntimeFindingBoundaryMemoryRequest
+import skillbill.application.featuretask.model.FeatureTaskRuntimeFindingBoundaryMemorySection
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRejectedOutputWrite
 import skillbill.application.featuretask.validation.model.ValidationFindingSetProjection
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairLauncher
@@ -27,6 +29,7 @@ import skillbill.application.model.FeatureTaskRuntimeRunReport
 import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.model.ParallelCodeReviewRequest
 import skillbill.application.model.ParallelCodeReviewResult
+import skillbill.application.review.toProjectionPayload
 import skillbill.application.workflow.repoRoot
 import skillbill.config.model.PhaseCompactionDirective
 import skillbill.config.model.PhaseModelDirective
@@ -53,7 +56,6 @@ import skillbill.ports.persistence.ProducerOutputEvidence
 import skillbill.ports.workflow.buildGoalSubtaskReviewInput
 import skillbill.ports.workflow.captureIndexState
 import skillbill.ports.workflow.headCommitMessage
-import skillbill.ports.workflow.model.GoalSubtaskReviewBaseline
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.ports.workflow.model.WorkflowGitOperationResult
 import skillbill.ports.workflow.pathContentIdentities
@@ -65,6 +67,9 @@ import skillbill.ports.workflow.runtimePhaseChangedPathsBetweenCommits
 import skillbill.ports.workflow.runtimePhaseHeadCommit
 import skillbill.ports.workflow.stagePaths
 import skillbill.ports.workflow.stagedPaths
+import skillbill.review.context.model.ReviewContextBudgetPolicy
+import skillbill.review.context.model.SpecIntentProjectionResolveRequest
+import skillbill.review.context.model.SpecIntentResolution
 import skillbill.review.model.ReviewFindingVerdict
 import skillbill.telemetry.estimation.estimateTokens
 import skillbill.workflow.FeatureTaskRuntimePhaseOutputValidator
@@ -98,39 +103,33 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseRecord
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorGapMemory
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePriorReviewContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProducerIteration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionFailureClassification
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionKind
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedger
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewFinding
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewPassSequence
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewRemediationChurnEvidence
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.GOAL_SUBTASK_REVIEW_BLOCKER_SEVERITY
 import skillbill.workflow.taskruntime.model.GoalSubtaskOperatorDecision
-import skillbill.workflow.taskruntime.model.GoalSubtaskPauseRelease
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
 import skillbill.workflow.taskruntime.model.QUARANTINE_REJECTION_CLASS_PLANNING_PROJECTION
 import skillbill.workflow.taskruntime.model.ReviewPassResolution
 import skillbill.workflow.taskruntime.model.acceptanceCriterionRefsFor
-import skillbill.workflow.taskruntime.model.advanceBlockingFindingIdentities
 import skillbill.workflow.taskruntime.model.detectAuditRepairNonProgress
-import skillbill.workflow.taskruntime.model.detectReviewRemediationNonProgress
 import skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope
-import skillbill.workflow.taskruntime.model.featureTaskRuntimeReviewRemediationChurn
 import skillbill.workflow.taskruntime.model.requireAcceptedOutput
 import skillbill.workflow.taskruntime.model.upsertRepairReceipt
+import skillbill.workflow.taskruntime.model.validateDispositionCoverage
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 
@@ -205,8 +204,15 @@ internal fun reconcileCheckpointPathInventory(
 
 // A reservation at or below the completed-review-output count is a stale latch from the pass that
 // already produced a result: re-entry must report the next ordinal, not replay pass one forever.
-internal fun resolveReviewPassNumber(reservedPassNumber: Int?, completedReviewPassCount: Int): Int =
-  reservedPassNumber?.takeIf { it > completedReviewPassCount } ?: (completedReviewPassCount + 1)
+internal fun resolveReviewPassNumber(reservedPassNumber: Int?, completedReviewPassCount: Int): Int {
+  reservedPassNumber?.let { pass ->
+    require(pass == 1) { "Review reservation allows only pass 1, was $pass." }
+  }
+  require(completedReviewPassCount <= 1) {
+    "Review completed-pass count cannot exceed one, was $completedReviewPassCount."
+  }
+  return 1
+}
 
 @Suppress("LargeClass", "LongMethod", "LongParameterList", "TooManyFunctions")
 internal class FeatureTaskRuntimeRunLoop(
@@ -245,8 +251,6 @@ internal class FeatureTaskRuntimeRunLoop(
   private var checkpointOwnershipDecided: Boolean = false
   private var blocked: FeatureTaskRuntimeRunReport.Blocked? = null
   private var paused: FeatureTaskRuntimeRunReport.Paused? = null
-  private var operatorGrantedFixIteration: Boolean = false
-  private var operatorRetryGrantConsumed: Boolean = false
   private var auditGapRetryResumePending: Boolean = false
   private var decomposed: FeatureTaskRuntimeRunReport.Decomposed? = null
   private val operatorBlockRetry: FeatureTaskRuntimeOperatorBlockRetry? = recorder
@@ -270,7 +274,13 @@ internal class FeatureTaskRuntimeRunLoop(
     // never ran. Entering at its destination would step over the gating phase for the rest of the
     // run, so the stale re-entry is dropped and the run restarts from the pipeline head, walking the
     // already-completed phases until it reaches the gating one.
-    if (state.spanBlockedByEntryGate(reentry.span)) {
+    if (
+      state.spanBlockedByEntryGate(reentry.span) ||
+      (
+        loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID &&
+          FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW !in state.completedPhaseIds()
+        )
+    ) {
       state.discardStaleReentry(loopId)
       return null
     }
@@ -417,10 +427,6 @@ internal class FeatureTaskRuntimeRunLoop(
         recordRejectionSettlementPending = false
         PhaseSettlement.completed(phaseId, FeatureTaskRuntimeVerdict.RECORD_REJECTED)
       }
-      reason != null && paused == null && bestEffortAdvisoryPhase(phaseId) -> {
-        recordAdvisoryPhaseDegradation(phaseId, reason)
-        PhaseSettlement.completed(phaseId, FeatureTaskRuntimeVerdict.REPAIR_PLANNED)
-      }
       reason != null -> {
         // A phase that paused already owns the report. Recording a block over it would hand a
         // terminal blocked reason to every consumer that reads the blocked report directly, which is
@@ -528,29 +534,12 @@ internal class FeatureTaskRuntimeRunLoop(
   }.fold(
     onSuccess = { reviewState ->
       reviewState
-        ?.takeUnless {
-          // A granted retry round makes the recorded pass result stale: replaying it would re-settle
-          // the verdict the operator overrode and the committed fix would never be re-reviewed.
-          it.retryReviewPending || it.pauseRelease != null
-        }
-        ?.takeIf { it.reviewCapReached || it.pausedForOperatorDecision || it.reviewSkippedByUser }
+        ?.takeIf { it.reviewCapReached || it.reviewSkippedByUser }
         ?.let {
-          if (it.pausedForOperatorDecision) {
-            val reason = state.recordFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
-              ?.blockedReason
-              ?: "Goal-subtask review is paused for an operator decision."
-            pauseAt(
-              FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
-              reason,
-              FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
-            )
-            PhaseSettlement.stop()
-          } else {
-            settleCarriedForwardGoalReview(
-              it,
-              activeReentry,
-            )
-          }
+          settleCarriedForwardGoalReview(
+            it,
+            activeReentry,
+          )
         }
     },
     onFailure = { error -> blockCarriedForwardReview(error.message.orEmpty()) },
@@ -758,8 +747,6 @@ internal class FeatureTaskRuntimeRunLoop(
 
   @Suppress("CyclomaticComplexMethod", "ReturnCount")
   private fun nextPhaseAfter(phaseId: String, verdict: FeatureTaskRuntimeVerdict): String? {
-    operatorPauseRelease(phaseId)?.let { return it.target }
-    if (repairEscalationPaused(phaseId, verdict)) return null
     val effectiveVerdict = if (
       phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
       isGoalContinuationRun(request) &&
@@ -779,7 +766,6 @@ internal class FeatureTaskRuntimeRunLoop(
         edgeIterationCount = edge?.let { effectiveEdgeIterationCount(it) } ?: 0,
         context = FeatureTaskRuntimeTransitionContext(
           settledVerdictsByPhaseId = state.settledVerdictsByPhaseId(),
-          unresolvedBlockerPresent = unresolvedBlockerDispositionPresent(),
         ),
       )
     }.getOrElse { error ->
@@ -812,10 +798,6 @@ internal class FeatureTaskRuntimeRunLoop(
       blockOnCapExhaustion(phaseId, transition)
       null
     }
-    is FeatureTaskRuntimeNextPhase.TerminalPause -> {
-      pauseOnUnresolvedBlocker(phaseId, transition)
-      null
-    }
     is FeatureTaskRuntimeNextPhase.Next -> nextTransitionTarget(phaseId, edge, effectiveVerdict, transition)
   }
 
@@ -830,12 +812,6 @@ internal class FeatureTaskRuntimeRunLoop(
     return when {
       loopId == null && !establishForwardCheckpoint(phaseId, transition.phaseId) -> null
       loopId == null -> transition.phaseId
-      loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID &&
-        pauseOnReviewRemediationNonConvergence(
-          phaseId,
-          requireNotNull(edge),
-          requireNotNull(transition.edgeIteration),
-        ) -> null
       reentersMutatingPhase(requireNotNull(edge), transition.phaseId) &&
         !establishRemediationCheckpoint(phaseId, loopId) -> null
       loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID &&
@@ -851,9 +827,6 @@ internal class FeatureTaskRuntimeRunLoop(
           val gapIteration = requireNotNull(transition.edgeIteration)
           val gapEdge = requireNotNull(edge)
           if (warnThresholdPauseApplies(gapEdge, gapIteration)) {
-            // The threshold crossing is now control flow: pause for an operator decision instead of
-            // recording the edge. The advisory stays a side effect, emitted here since recordBackwardEdge
-            // no longer runs on this path.
             warnOnThresholdCrossing(gapEdge, gapIteration)
             mintAuditGapPause(
               FeatureTaskRuntimeAuditGapPause(
@@ -866,11 +839,7 @@ internal class FeatureTaskRuntimeRunLoop(
             )
             return null
           }
-        }
-        if (loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID ||
-          loopId == FeatureTaskRuntimePhaseWorkflowDefinition.AUDIT_GAP_LOOP_ID
-        ) {
-          consumeOperatorRetryGrant()
+          consumeAuditGapOperatorRetryGrant()
         }
         recordBackwardEdge(
           edge = edge,
@@ -1460,7 +1429,6 @@ internal class FeatureTaskRuntimeRunLoop(
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
   ): AttemptResult? {
     val settlement = implementFixRepairReceiptSettlement(run, outputMap)
-    owedFindingsAttempt(settlement, fileManifest)?.let { return it }
     settlement.rejectionDetail?.let { detail -> return reject("repair-receipt", detail) }
     val writeFailure = settlement.writeFailureReason ?: return null
     return AttemptResult.settled(
@@ -1473,29 +1441,6 @@ internal class FeatureTaskRuntimeRunLoop(
         fileManifest = fileManifest,
       ),
     )
-  }
-
-  private fun owedFindingsAttempt(
-    settlement: RepairReceiptSettlement,
-    fileManifest: FeatureTaskRuntimePhaseFileManifest,
-  ): AttemptResult? {
-    settlement.unaccountedOmittedRefs?.let { omittedRefs ->
-      return AttemptResult.unaccountedItems(
-        phaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
-        itemNoun = "review findings",
-        unaccountedRefs = omittedRefs,
-        retryReason = requireNotNull(settlement.unaccountedRetryReason),
-        fileManifest = fileManifest,
-      )
-    }
-    return settlement.unresolvedRefs?.let { refs ->
-      AttemptResult.unresolvedFindings(
-        unresolvedRefs = refs,
-        detail = requireNotNull(settlement.unresolvedDetail),
-        retryReason = requireNotNull(settlement.unresolvedRetryReason),
-        fileManifest = fileManifest,
-      )
-    }
   }
 
   private fun implementFixRepairReceiptSettlement(
@@ -1512,49 +1457,13 @@ internal class FeatureTaskRuntimeRunLoop(
     }
   }
 
-  /**
-   * Order is the policy. Undeclared disturbances are stamped onto the receipt first so a round that
-   * rewrote settled constructs cannot burn the output-gate budget on a missing declaration.
-   * Coverage runs next and is retryable. The declared dead end is settled only once nothing was
-   * omitted, and it persists the receipt first so the operator inherits the producer's own account
-   * of what still fails.
-   */
   private fun settledRepairReceipt(
     receipt: FeatureTaskRuntimeRepairReceipt,
     reviewState: GoalSubtaskReviewState,
-  ): RepairReceiptSettlement {
-    val undeclaredRefs = featureTaskRuntimeRepairReceiptRuntimeDeclaredDisturbanceRefs(receipt, reviewState)
-    val settledReceipt = featureTaskRuntimeRepairReceiptWithDeclaredDisturbances(receipt, reviewState)
-    if (undeclaredRefs.isNotEmpty()) {
-      runCatching {
-        diagnostics.warning(
-          "Feature-task-runtime stamped disturbed_remedies for ${undeclaredRefs.joinToString(", ")} " +
-            "on issue ${request.issueKey}, workflow ${request.workflowId}: the producer rewrote " +
-            "their closing constructs without declaring them. The ledger still reopens those " +
-            "findings for the next review.",
-        )
-      }
-    }
-    return unaccountedFindingsSettlement(settledReceipt, reviewState)
-      ?: persistImplementFixRepairReceipt(settledReceipt)?.let { reason ->
-        RepairReceiptSettlement.writeFailed(reason)
-      }
-      ?: featureTaskRuntimeUnresolvedFindings(settledReceipt)?.let { unresolved ->
-        RepairReceiptSettlement.unresolved(unresolved.refs, unresolved.detail, unresolved.retryReason)
-      }
-      ?: RepairReceiptSettlement.None
-  }
-
-  private fun unaccountedFindingsSettlement(
-    receipt: FeatureTaskRuntimeRepairReceipt,
-    reviewState: GoalSubtaskReviewState,
-  ): RepairReceiptSettlement? {
-    val omitted = featureTaskRuntimeRepairReceiptOmittedFindings(receipt, reviewState).ifEmpty { return null }
-    return RepairReceiptSettlement.unaccounted(
-      omittedRefs = omitted.map(::featureTaskRuntimeCompactFindingRef),
-      retryReason = featureTaskRuntimeOmittedFindingsRetryReason(omitted),
-    )
-  }
+  ): RepairReceiptSettlement = featureTaskRuntimeRepairReceiptSettleRejection(receipt, reviewState)
+    ?.let { detail -> RepairReceiptSettlement.rejected(detail) }
+    ?: persistImplementFixRepairReceipt(receipt)?.let { reason -> RepairReceiptSettlement.writeFailed(reason) }
+    ?: RepairReceiptSettlement.None
 
   private fun repairReceiptShapeSettlement(produced: Map<String, Any?>): RepairReceiptSettlement =
     featureTaskRuntimeRepairReceiptShapeRejection(produced)
@@ -1883,8 +1792,13 @@ internal class FeatureTaskRuntimeRunLoop(
    * keep replaying the already-reviewed fix instead of earning the next remediation pass.
    */
   private fun resumeInFlightReviewFix(edge: FeatureTaskRuntimeBackwardEdge): String? {
-    if (edge.loopId != FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID) return null
-    if (state.isLoopLiveClaimed(edge.loopId)) return null
+    if (
+      edge.loopId != FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID ||
+      state.isLoopLiveClaimed(edge.loopId) ||
+      state.isComplete(edge.destinationPhaseId)
+    ) {
+      return null
+    }
     val destinationRecord = state.recordFor(edge.destinationPhaseId)
       ?.takeIf { it.loopId == edge.loopId && it.edgeIteration == state.edgeIterationCount(edge.loopId) }
       ?: return null
@@ -2168,19 +2082,6 @@ internal class FeatureTaskRuntimeRunLoop(
     observability.branchSetupBlocked(phaseId, BRANCH_SETUP_AGENT_ID, reason)
   }
 
-  private fun bestEffortAdvisoryPhase(phaseId: String): Boolean =
-    phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN_FIX
-
-  private fun recordAdvisoryPhaseDegradation(phaseId: String, reason: String) {
-    val resolvedAgentId = FeatureTaskRuntimeAgentResolver.resolve(
-      phaseId = phaseId,
-      assignment = request.agentAssignment,
-      invokedAgentId = request.invokedAgentId,
-    ).resolvedAgentId
-    observability.blocked(phaseId, resolvedAgentId, 1, reason)
-    blocked = null
-  }
-
   private fun blockAt(phaseId: String, reason: String) {
     blocked = FeatureTaskRuntimeRunReport.Blocked(
       issueKey = request.issueKey,
@@ -2244,84 +2145,12 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun effectiveEdgeIterationCount(edge: FeatureTaskRuntimeBackwardEdge): Int =
     state.edgeIterationCount(edge.loopId)
 
-  /**
-   * The grant survives the process that recorded it: a resumed run reads `retry_fix` back off the
-   * durable review state or the audit-gap pause artifact. Re-pausing clears `operator_decision`, so a
-   * subsequent unresolved pass has no grant left and pauses again.
-   */
-  private fun operatorRetryGrantActive(): Boolean = FeatureTaskRuntimeOperatorRetryGrant.active(
-    consumed = operatorRetryGrantConsumed,
-    inSessionGrant = operatorGrantedFixIteration,
-    persistedDecision = goalReviewStateOrNull()?.operatorDecision,
-  ) || auditGapPauseGrantActive()
-
-  /**
-   * The single-use audit-gap retry grant, read off the durable pause artifact: unconsumed and the
-   * operator chose retry_fix. A consumed grant or any other decision yields no grant.
-   */
   private fun auditGapPauseGrantActive(): Boolean =
     recorder.loadAuditGapPause(request.workflowId, request.dbPathOverride)
       ?.let { !it.grantConsumed && it.operatorDecision == AUDIT_GAP_PAUSE_DECISION_RETRY_FIX }
       ?: false
 
-  private class PauseReleaseTarget(val target: String?)
-
-  /**
-   * Routes a recorded operator decision to the outcome it names. `retry_fix` is handled by the grant
-   * seam and falls through to the normal backward-edge transition; `accept_and_advance` releases the
-   * subtask forward to the child's stamped quality gate with its unresolved Blockers accepted;
-   * `abandon_subtask` ends it. Every decision is consumed durably so the release happens exactly once.
-   */
-  private fun operatorPauseRelease(phaseId: String): PauseReleaseTarget? {
-    if (
-      phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
-      phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN_FIX
-    ) {
-      return null
-    }
-    return when (goalReviewStateOrNull()?.pauseRelease) {
-      null, GoalSubtaskPauseRelease.RETRY_FIX -> null
-      GoalSubtaskPauseRelease.ADVANCE -> {
-        consumeOperatorRetryGrant()
-        PauseReleaseTarget(
-          FeatureTaskRuntimeQualityGateRouting.selectedGatePhase(qualityGateSelection()),
-        )
-      }
-      GoalSubtaskPauseRelease.ABANDON -> {
-        consumeOperatorRetryGrant()
-        abandonOnOperatorDecision(phaseId)
-        PauseReleaseTarget(null)
-      }
-    }
-  }
-
-  private fun abandonOnOperatorDecision(phaseId: String) {
-    val unresolvedCount = goalReviewStateOrNull()?.unresolvedBlockerDispositions?.size ?: 0
-    blockAt(
-      phaseId,
-      "The operator chose abandon_subtask while the subtask was paused with $unresolvedCount " +
-        "unresolved Blocker disposition(s). The subtask is abandoned rather than repaired.",
-    )
-    goalContinuationRecorder.recordGoalContinuationState(
-      GoalContinuationStateRecordRequest(
-        workflowId = request.workflowId,
-        workflowStatus = STATUS_ABANDONED,
-      ),
-      dbOverride = request.dbPathOverride,
-    )
-  }
-
-  private fun consumeOperatorRetryGrant() {
-    operatorRetryGrantConsumed = true
-    operatorGrantedFixIteration = false
-    // Durable, not just in-session: a resumed run must not read the same decision back and re-grant.
-    if (isGoalContinuationRun(request)) {
-      goalContinuationRecorder.updateReviewState(request.workflowId, request.dbPathOverride) { state ->
-        state.consumeOperatorDecision()
-      }
-    }
-    // The audit-gap grant is single-use and durable: mark it consumed and clear the decision so a
-    // resumed run cannot re-read the same retry_fix and re-grant forever.
+  private fun consumeAuditGapOperatorRetryGrant() {
     recorder.loadAuditGapPause(request.workflowId, request.dbPathOverride)?.let { pause ->
       if (pause.operatorDecision != null && !pause.grantConsumed) {
         recorder.persistAuditGapPause(
@@ -2358,315 +2187,10 @@ internal class FeatureTaskRuntimeRunLoop(
       .mapIndexed { index, finding -> finding.findingId ?: "pass${priorPass.passNumber}-blocker-${index + 1}" }
   }
 
-  /**
-   * An unreadable review record still loud-fails: swallowing it would report no unresolved Blocker and
-   * walk the child straight past the pause gate. Deriving carried context from a record that did read
-   * is advisory, so a malformed entry degrades to no context and the phase launches anyway. Losing the
-   * memory costs the round its history; refusing to launch costs the subtask its review.
-   */
-  private fun remediationRepairLedger(phaseId: String): FeatureTaskRuntimeRepairLedger? {
-    if (phaseId !in REMEDIATION_LEDGER_CONSUMER_PHASE_IDS) return null
-    val reviewState = goalReviewStateOrNull() ?: return null
-    return advisoryContext("repair ledger") { reviewState.repairLedger }
-      ?.takeUnless(FeatureTaskRuntimeRepairLedger::isEmpty)
-  }
-
-  private fun remediationPriorReviewContext(phaseId: String, passNumber: Int?): FeatureTaskRuntimePriorReviewContext? {
-    if (phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) return null
-    if ((passNumber ?: 1) < 2) return null
-    val reviewState = goalReviewStateOrNull() ?: return null
-    return advisoryContext("prior review pass context") { reviewState.priorReviewContext }
-  }
-
-  private fun <T> advisoryContext(label: String, derive: () -> T?): T? = runCatching(derive).getOrElse { error ->
-    if (error is Error) throw error
-    runCatching {
-      diagnostics.warning(
-        "Feature-task-runtime could not derive the $label for issue ${request.issueKey}, workflow " +
-          "${request.workflowId}: ${error.message ?: error::class.simpleName}. The phase runs without it.",
-      )
-    }
-    null
-  }
-
   private fun goalReviewStateOrNull(): GoalSubtaskReviewState? = if (!isGoalContinuationRun(request)) {
     null
   } else {
     goalContinuationRecorder.reviewState(request.workflowId, request.dbPathOverride)
-  }
-
-  /**
-   * An operator-granted `retry_fix` suppresses the unresolved-Blocker pause for exactly one
-   * transition, so the granted `implement_fix` iteration is actually entered instead of the carried
-   * PAUSED disposition re-pausing the subtask on resume.
-   */
-  private fun unresolvedBlockerDispositionPresent(): Boolean =
-    FeatureTaskRuntimeOperatorRetryGrant.pausesOnUnresolvedBlocker(
-      grantActive = operatorRetryGrantActive(),
-      unresolvedBlockerPresent = goalReviewStateOrNull()?.unresolvedBlockerDispositions?.isNotEmpty() == true ||
-        goalReviewStateOrNull()?.passResults?.lastOrNull()?.blocksAdvance == true,
-    )
-
-  /**
-   * Same advance-blocking finding set across consecutive remediation passes with an unchanged
-   * reviewed-delta digest pauses for an operator decision instead of re-entering `implement_fix`.
-   * An active retry grant suppresses this for exactly one transition, matching the disposition pause.
-   *
-   * `reviewedDeltaDigest` is the digest of the tree the previous remediation edge judged under the
-   * immutable baseline — not a frozen pass-1 snapshot. When this edge continues (findings moved or
-   * the tree changed), advance it to the current immutable digest so the next edge compares
-   * consecutive reviews. Leaving it at pass 1 after a tree-changing fix would keep digests unequal
-   * forever and fail open into an unbounded remediation loop.
-   */
-  private fun pauseOnReviewRemediationNonConvergence(
-    phaseId: String,
-    edge: FeatureTaskRuntimeBackwardEdge,
-    edgeIteration: Int,
-  ): Boolean {
-    if (operatorRetryGrantActive()) return false
-    val reviewState = goalReviewStateOrNull()
-    if (reviewState == null || reviewState.completedPassCount < 2) return false
-    val previous = reviewState.passResults[reviewState.completedPassCount - 2]
-    val current = reviewState.passResults.last()
-    val previousIdentities = advanceBlockingFindingIdentities(previous.findings)
-    val currentIdentities = advanceBlockingFindingIdentities(current.findings)
-    val previousDigest = reviewState.reviewedDeltaDigest ?: UNPROVEN_REPOSITORY_FINGERPRINT
-    val currentDigest = currentImmutableReviewDeltaDigest(reviewState) ?: UNPROVEN_REPOSITORY_FINGERPRINT
-    val decision = detectReviewRemediationNonProgress(
-      previous = previousIdentities,
-      current = currentIdentities,
-      previousRepositoryFingerprintOrDigest = previousDigest,
-      currentRepositoryFingerprintOrDigest = currentDigest,
-    )
-    val churn = remediationChurnEvidence(
-      reviewState,
-      FeatureTaskRuntimePhaseWorkflowDefinition.REMEDIATION_CHURN_CONSECUTIVE_ROUND_THRESHOLD,
-    )
-    if (!decision.blocked && churn == null) {
-      advanceReviewedDeltaDigestAfterRemediationProgress(reviewState, currentDigest)
-      return false
-    }
-    pauseOnRemediationNonProgress(phaseId, edge.loopId, edgeIteration, reviewState, churn)
-    return true
-  }
-
-  private fun remediationChurnEvidence(
-    reviewState: GoalSubtaskReviewState,
-    minimumConsecutiveRounds: Int,
-  ): FeatureTaskRuntimeReviewRemediationChurnEvidence? = advisoryContext("remediation churn evidence") {
-    featureTaskRuntimeReviewRemediationChurn(
-      ledger = reviewState.repairLedger,
-      passResults = reviewState.passResults,
-      minimumConsecutiveRounds = minimumConsecutiveRounds,
-    )
-  }
-
-  private fun pauseOnRemediationNonProgress(
-    phaseId: String,
-    loopId: String,
-    edgeIteration: Int,
-    reviewState: GoalSubtaskReviewState,
-    churn: FeatureTaskRuntimeReviewRemediationChurnEvidence?,
-  ) {
-    val paused = goalContinuationRecorder.updateReviewState(request.workflowId, request.dbPathOverride) { state ->
-      state.pauseForNonConvergence()
-    } ?: reviewState.pauseForNonConvergence()
-    pauseOnAdvanceBlockingFindings(
-      phaseId = phaseId,
-      loopId = loopId,
-      edgeIteration = edgeIteration,
-      reviewState = paused,
-      nonConvergence = true,
-      churn = churn,
-    )
-  }
-
-  /**
-   * Records the immutable-baseline digest of the tree this remediation edge just accepted as
-   * progress, so the next non-convergence check compares consecutive review trees.
-   */
-  private fun advanceReviewedDeltaDigestAfterRemediationProgress(
-    reviewState: GoalSubtaskReviewState,
-    currentDigest: String,
-  ) {
-    if (currentDigest == UNPROVEN_REPOSITORY_FINGERPRINT) return
-    if (currentDigest == reviewState.reviewedDeltaDigest) return
-    goalContinuationRecorder.updateReviewState(request.workflowId, request.dbPathOverride) { state ->
-      state.copy(reviewedDeltaDigest = currentDigest)
-    }
-  }
-
-  private fun currentImmutableReviewDeltaDigest(reviewState: GoalSubtaskReviewState): String? {
-    val goalBranch = request.goalContinuation?.goalBranch ?: return null
-    val resolved = recorder.loadResolvedBranch(request.workflowId, request.dbPathOverride)
-    val baseline = resolved
-      ?.let {
-        FeatureTaskRuntimeScopedReviewBaseline.of(
-          phaseGates.gitOperations,
-          request.repoRoot,
-          it,
-          reviewState.reviewBaseSha,
-        )
-      }
-      ?: GoalSubtaskReviewBaseline(reviewState.reviewBaseSha, reviewState.baselineUntrackedPaths)
-    return phaseGates.gitOperations.buildGoalSubtaskReviewInput(
-      request.repoRoot,
-      baseline,
-      goalBranch,
-    ).input?.deltaDigest
-  }
-
-  /**
-   * SKILL-141's non-terminal resumable status, not a block: the persisted review state, its
-   * `review_base_sha`, the baseline untracked inventory, and the consumed pass count survive intact
-   * so resume never re-reserves a consumed pass. The bounded operator decision over `retry_fix`,
-   * `accept_and_advance`, and `abandon_subtask` is what releases it.
-   */
-  private fun repairEscalationPaused(phaseId: String, verdict: FeatureTaskRuntimeVerdict): Boolean {
-    if (
-      phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN_FIX ||
-      verdict != FeatureTaskRuntimeVerdict.ESCALATED
-    ) {
-      return false
-    }
-    if (!designSymptomAlreadyAttempted(phaseId)) return false
-    pauseOnRepairEscalation(phaseId)
-    return true
-  }
-
-  private fun designSymptomAlreadyAttempted(planFixPhaseId: String): Boolean {
-    val escalatedRefs = state.repairPlan(planFixPhaseId)?.designSymptomRefs.orEmpty()
-    if (escalatedRefs.isEmpty()) return false
-    val reviewState = goalReviewStateOrNull() ?: return false
-    return advisoryContext("repair ledger") { reviewState.repairLedger }
-      ?.hasReopenedEntryFor(escalatedRefs) == true
-  }
-
-  private fun pauseOnRepairEscalation(phaseId: String) {
-    val reviewState = goalReviewStateOrNull()?.let { state ->
-      if (state.pausedForOperatorDecision) {
-        state
-      } else {
-        goalContinuationRecorder.updateReviewState(request.workflowId, request.dbPathOverride) {
-          it.pauseForNonConvergence()
-        } ?: state.pauseForNonConvergence()
-      }
-    }
-    pauseOnAdvanceBlockingFindings(
-      phaseId = phaseId,
-      loopId = FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID,
-      edgeIteration = state.edgeIterationCount(FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID)
-        .coerceAtLeast(1),
-      reviewState = reviewState,
-      nonConvergence = true,
-      churn = reviewState?.let {
-        remediationChurnEvidence(
-          it,
-          FeatureTaskRuntimePhaseWorkflowDefinition.REMEDIATION_ESCALATION_EVIDENCE_MIN_CONSECUTIVE_ROUNDS,
-        )
-      },
-    )
-  }
-
-  private fun pauseOnUnresolvedBlocker(phaseId: String, transition: FeatureTaskRuntimeNextPhase.TerminalPause) {
-    val reviewState = goalReviewStateOrNull()?.let { state ->
-      if (state.pausedForOperatorDecision) {
-        state
-      } else {
-        goalContinuationRecorder.updateReviewState(request.workflowId, request.dbPathOverride) {
-          it.pauseForNonConvergence()
-        } ?: state.pauseForNonConvergence()
-      }
-    }
-    pauseOnAdvanceBlockingFindings(
-      phaseId = phaseId,
-      loopId = transition.loopId,
-      edgeIteration = transition.edgeIteration,
-      reviewState = reviewState,
-      nonConvergence = false,
-    )
-  }
-
-  /**
-   * Goal-facing pause reasons carry severity, count, and sanitized labels only — never paths, line
-   * numbers, diff hunks, or raw child-review output. Location evidence stays in the durable artifact
-   * for `skill-bill goal findings --issue-key`.
-   */
-  private fun pauseOnAdvanceBlockingFindings(
-    phaseId: String,
-    loopId: String,
-    edgeIteration: Int,
-    reviewState: GoalSubtaskReviewState?,
-    nonConvergence: Boolean,
-    churn: FeatureTaskRuntimeReviewRemediationChurnEvidence? = null,
-  ) {
-    val reason = goalFacingPauseReason(reviewState, edgeIteration, nonConvergence, churn)
-    goalContinuationRecorder.recordGoalContinuationState(
-      GoalContinuationStateRecordRequest(
-        workflowId = request.workflowId,
-        workflowStatus = STATUS_PAUSED,
-      ),
-      dbOverride = request.dbPathOverride,
-    )
-    val resolvedAgent = FeatureTaskRuntimeAgentResolver.resolve(
-      phaseId = phaseId,
-      assignment = request.agentAssignment,
-      invokedAgentId = request.invokedAgentId,
-    )
-    // STATUS_PAUSED, not STATUS_BLOCKED: workflowStatusFor maps a blocked phase request back to a
-    // blocked workflow row, which would overwrite the paused row written immediately above and turn a
-    // resumable pause into a terminal block.
-    recorder.recordPhaseState(
-      FeatureTaskRuntimePhaseStateRequest(
-        workflowId = request.workflowId,
-        phaseId = phaseId,
-        status = STATUS_PAUSED,
-        attemptCount = state.nextIteration(phaseId),
-        resolvedAgentId = resolvedAgent.resolvedAgentId,
-        finished = false,
-        blockedReason = reason,
-        failureDisposition = FeatureTaskRuntimeFailureDisposition.NEEDS_USER_ACTION,
-        loopId = loopId,
-        edgeIteration = edgeIteration,
-      ),
-      dbOverride = request.dbPathOverride,
-    )
-    pauseAt(phaseId, reason, FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX)
-  }
-
-  private fun goalFacingPauseReason(
-    reviewState: GoalSubtaskReviewState?,
-    edgeIteration: Int,
-    nonConvergence: Boolean,
-    churn: FeatureTaskRuntimeReviewRemediationChurnEvidence?,
-  ): String {
-    val blocking = reviewState?.passResults?.lastOrNull()?.findings
-      ?.filter { it.blocksAdvance }
-      .orEmpty()
-    val blockerCount = blocking.count { it.severity == GOAL_SUBTASK_REVIEW_BLOCKER_SEVERITY }
-    val majorCount = blocking.count { it.severity == "major" }
-    val dispositionCount = reviewState?.unresolvedBlockerDispositions?.size ?: 0
-    val total = when {
-      blocking.isNotEmpty() -> blocking.size
-      dispositionCount > 0 -> dispositionCount
-      else -> 0
-    }
-    val labels = blocking.map { it.label }.distinct().take(MAX_PAUSE_REASON_LABELS)
-    val labelSuffix = if (labels.isEmpty()) {
-      ""
-    } else {
-      ": " + labels.joinToString(", ")
-    }
-    val trigger = if (nonConvergence) {
-      "unchanged across consecutive remediation passes with no repository change"
-    } else {
-      "still unresolved after remediation"
-    }
-    val churnClause = churn?.let { " " + it.pauseReasonClause() }.orEmpty()
-    return "Goal-subtask review pass $edgeIteration paused with $total advance-blocking " +
-      "finding(s) ($blockerCount Blocker, $majorCount Major) $trigger$labelSuffix.$churnClause " +
-      "The subtask is paused and resumable; choose retry_fix, accept_and_advance, or abandon_subtask " +
-      "to continue. Location-bearing evidence: skill-bill goal findings --issue-key <KEY>."
   }
 
   private fun pauseAt(phaseId: String, reason: String, resumableStep: String) {
@@ -2682,14 +2206,6 @@ internal class FeatureTaskRuntimeRunLoop(
     )
   }
 
-  /**
-   * Mints a durable audit-gap pause: persists the pause artifact, records the audit phase as PAUSED
-   * with a NEEDS_USER_ACTION disposition (preserving the audit output artifact so criteria stay
-   * readable), records goal_continuation_state PAUSED, and surfaces the Paused report. This is the
-   * audit-gap analogue of [pauseOnAdvanceBlockingFindings], but it is its own record sharing only the
-   * operator-decision vocabulary — it neither consumes nor mints a review pass and never touches
-   * GoalSubtaskReviewState.
-   */
   private fun mintAuditGapPause(
     pause: FeatureTaskRuntimeAuditGapPause,
     auditPhaseId: String,
@@ -2729,33 +2245,13 @@ internal class FeatureTaskRuntimeRunLoop(
     pauseAt(auditPhaseId, pause.reason, FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT)
   }
 
-  /**
-   * The operator-decision entry point. For a review-fix pause, `retry_fix` grants one fresh
-   * `implement_fix` iteration exempt from the `review_fix` per-edge cap accounting, `accept_and_advance`
-   * releases the subtask forward to the stamped quality gate, and `abandon_subtask` takes the existing
-   * abandon path. For an audit-gap pause, the allowlist is `retry_fix` and `abandon_subtask`; an unmet
-   * acceptance criterion cannot be accepted-and-advanced.
-   */
-  @Suppress("ReturnCount")
   internal fun applyOperatorDecision(decision: GoalSubtaskOperatorDecision): String? {
     val auditGapPause = recorder.loadAuditGapPause(request.workflowId, request.dbPathOverride)
     if (auditGapPause != null) {
       return applyAuditGapPauseDecision(auditGapPause, decision)
     }
-    val reviewState = goalReviewStateOrNull()
-      ?: return "No goal-subtask review state is present to apply an operator decision to."
-    if (!reviewState.acceptsOperatorDecision) {
-      return "The subtask carries no unresolved Blocker or Major; an operator decision is only accepted while it does."
-    }
-    goalContinuationRecorder.updateReviewState(request.workflowId, request.dbPathOverride) { state ->
-      state.applyOperatorDecision(decision)
-    } ?: return "The operator decision could not be persisted onto the durable review state."
-    when (decision) {
-      GoalSubtaskOperatorDecision.RETRY_FIX -> operatorGrantedFixIteration = true
-      GoalSubtaskOperatorDecision.ACCEPT_AND_ADVANCE -> operatorGrantedFixIteration = false
-      GoalSubtaskOperatorDecision.ABANDON_SUBTASK -> operatorGrantedFixIteration = false
-    }
-    return null
+    return "Operator decisions over review remediation are removed; " +
+      "the run advances to validate after one implement_fix round."
   }
 
   /**
@@ -2777,7 +2273,6 @@ internal class FeatureTaskRuntimeRunLoop(
           pause.copy(operatorDecision = AUDIT_GAP_PAUSE_DECISION_RETRY_FIX),
           request.dbPathOverride,
         )
-        operatorGrantedFixIteration = true
         null
       }
       GoalSubtaskOperatorDecision.ABANDON_SUBTASK -> {
@@ -2895,13 +2390,6 @@ internal class FeatureTaskRuntimeRunLoop(
       ) {
         declaration.copy(
           projectionDeclarations = FeatureTaskRuntimePhaseWorkflowDefinition.auditRemediationProjections(),
-        )
-      } else if (
-        phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
-        reentry?.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID
-      ) {
-        declaration.copy(
-          projectionDeclarations = FeatureTaskRuntimePhaseWorkflowDefinition.reviewRetryProjections(),
         )
       } else if (
         phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT &&
@@ -4944,6 +4432,7 @@ internal class FeatureTaskRuntimeRunLoop(
       outputText, outputBytes, outputTruncated, outputByteSize, outputSha256,
     )
   } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
+    persistVerifyFindingsCheckpointIfPresent(run, outputText)
     val path = rejectionPath(error.reason)
     val reason = payloadFreeRejectionReason("phase-output-schema", path)
     val diagnosticWrite = recordRejectedOutput(
@@ -5099,6 +4588,9 @@ internal class FeatureTaskRuntimeRunLoop(
       fileManifest = fileManifest,
     )
     fun reject(rule: String, detail: String): AttemptResult = rejectValidatedOutput(capture, outputMap, rule, detail)
+    FeatureTaskRuntimeVerificationGateReasons.verifyFindingsWorktree(run.phaseId, fileManifest)?.let { reason ->
+      return reject("verify-findings-worktree", reason)
+    }
     firstValidatedOutputRejection(run.phaseId, outputMap)?.let { (rule, reason) ->
       return reject(rule, reason)
     }
@@ -5521,7 +5013,7 @@ internal class FeatureTaskRuntimeRunLoop(
       repairEvidence,
       repositoryFingerprint,
     )?.let { "consumer-projection" to it }
-    ?: outputVerificationGateReason(run.phaseId, outputMap)?.let { "output-verification" to it }
+    ?: outputVerificationGateReason(run, outputMap)?.let { "output-verification" to it }
 
   private fun firstValidatedOutputRejection(phaseId: String, outputMap: Map<String, Any?>): Pair<String, String>? =
     mutatingReconciliationGateReason(phaseId, outputMap)?.let { "mutating-reconciliation" to it }
@@ -5591,10 +5083,7 @@ internal class FeatureTaskRuntimeRunLoop(
     run: PhaseRun,
     state: FeatureTaskRuntimeRunState,
   ): List<ReviewFindingVerdict> {
-    if (
-      run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN_FIX &&
-      run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX
-    ) {
+    if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX) {
       return emptyList()
     }
     val review = state.outputFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) ?: return emptyList()
@@ -5855,7 +5344,7 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun warnThresholdPauseApplies(edge: FeatureTaskRuntimeBackwardEdge, edgeIteration: Int): Boolean {
     val threshold = edge.warnAfterIterations ?: return false
     if (edgeIteration < threshold + 1) return false
-    if (operatorRetryGrantActive()) return false
+    if (auditGapPauseGrantActive()) return false
     return true
   }
 
@@ -5894,9 +5383,128 @@ internal class FeatureTaskRuntimeRunLoop(
     }
   }
 
-  private fun outputVerificationGateReason(phaseId: String, outputMap: Map<String, Any?>): String? =
-    reviewVerificationSignalGateReason(phaseId, outputMap)
-      ?: auditVerificationSignalGateReason(phaseId, outputMap)
+  private fun outputVerificationGateReason(run: PhaseRun, outputMap: Map<String, Any?>): String? =
+    findingVerificationBoundaryBodyDeliveryGate(run, outputMap)
+      ?: findingVerificationBoundaryDispositionGate(run, outputMap)
+      ?: FeatureTaskRuntimeVerificationGateReasons.reviewVerificationSignal(run.phaseId, outputMap)
+      ?: FeatureTaskRuntimeVerificationGateReasons.findingVerificationDisposition(
+        run.phaseId,
+        outputMap,
+        reviewFindingIdsForVerification(),
+      )
+      ?: FeatureTaskRuntimeVerificationGateReasons.auditVerificationSignal(run.phaseId, outputMap)
+
+  private fun findingVerificationBoundarySections(run: PhaseRun): List<FeatureTaskRuntimeFindingBoundaryMemorySection> {
+    val reviewOutput = state.outputFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
+      ?.normalizedOutput?.envelope
+    val recordedVerdicts = reviewOutput?.let {
+      recorder.recordedFindingVerdicts(
+        it,
+        run.request.dbPathOverride,
+      )
+    }.orEmpty()
+    val findings = reviewOutput?.let {
+      skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer.structuredFindings(it, recordedVerdicts)
+    }.orEmpty()
+    return phaseGates.findingVerificationBoundaryMemory.sectionsForFindings(
+      run.request.repoRoot,
+      findings.mapNotNull { finding ->
+        val findingId = finding.findingId?.takeIf(String::isNotBlank) ?: return@mapNotNull null
+        FeatureTaskRuntimeFindingBoundaryMemoryRequest(
+          findingId = findingId,
+          findingPaths = findingPathsForBoundaryMemory(finding),
+        )
+      },
+    )
+  }
+
+  private fun findingVerificationBoundaryBodyDeliveryGate(run: PhaseRun, outputMap: Map<String, Any?>): String? =
+    findingVerificationBoundaryBodyDeliveryGateImpl(run, outputMap)
+
+  @Suppress("ReturnCount")
+  private fun findingVerificationBoundaryBodyDeliveryGateImpl(run: PhaseRun, outputMap: Map<String, Any?>): String? {
+    if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS) return null
+    val dispositions = FeatureTaskRuntimeOutputVerification.dispositionsFrom(outputMap)
+    if (dispositions.isEmpty()) return null
+    if (validateDispositionCoverage(dispositions, reviewFindingIdsForVerification()) != null) return null
+    val sections = findingVerificationBoundarySections(run)
+    val memory = phaseGates.findingVerificationBoundaryMemory
+    memory.validateDispositionBoundaryContext(sections, dispositions)?.let { return it }
+    memory.validateDispositionBoundaryProvenance(sections, dispositions)?.let { return it }
+    val selections = memory.selectionsRequiringBodyDelivery(sections, dispositions)
+    if (selections.isEmpty()) return null
+    val delivered = recorder.loadFindingVerificationBoundarySelection(
+      run.request.workflowId,
+      run.request.dbPathOverride,
+    )
+    if (delivered != null) return null
+    recorder.persistFindingVerificationBoundarySelection(
+      workflowId = run.request.workflowId,
+      selections = selections,
+      dbOverride = run.request.dbPathOverride,
+    )
+    recorder.persistFindingVerificationCheckpoint(
+      workflowId = run.request.workflowId,
+      dispositions = dispositions,
+      dbOverride = run.request.dbPathOverride,
+    )
+    return "Selected boundary headings recorded; re-read the briefing with resolved entry bodies and re-emit " +
+      "finding_dispositions before verify_findings can settle."
+  }
+
+  private fun findingVerificationBoundaryDispositionGate(run: PhaseRun, outputMap: Map<String, Any?>): String? =
+    findingVerificationBoundaryDispositionGateImpl(run, outputMap)
+
+  @Suppress("ReturnCount")
+  private fun findingVerificationBoundaryDispositionGateImpl(run: PhaseRun, outputMap: Map<String, Any?>): String? {
+    if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS) return null
+    val dispositions = FeatureTaskRuntimeOutputVerification.dispositionsFrom(outputMap)
+    if (dispositions.isEmpty()) return null
+    if (validateDispositionCoverage(dispositions, reviewFindingIdsForVerification()) != null) return null
+    val sections = findingVerificationBoundarySections(run)
+    val memory = phaseGates.findingVerificationBoundaryMemory
+    memory.validateDispositionBoundaryContext(sections, dispositions)?.let { return it }
+    memory.validateDispositionBoundaryProvenance(sections, dispositions)?.let { return it }
+    val persisted = recorder.loadFindingVerificationBoundarySelection(
+      run.request.workflowId,
+      run.request.dbPathOverride,
+    )
+    memory.validateBoundarySelectionsDelivered(sections, dispositions, persisted)?.let { return it }
+    if (persisted != null) {
+      return memory.validateDispositionBoundaryBodies(
+        repoRoot = run.request.repoRoot,
+        sections = sections,
+        dispositions = dispositions,
+        persistedSelections = persisted,
+      )
+    }
+    return null
+  }
+
+  private fun persistVerifyFindingsCheckpointIfPresent(run: PhaseRun, outputText: String) {
+    if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS) return
+    val outputMap = JsonSupport.parseObjectOrNull(outputText)
+      ?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
+      ?: return
+    val dispositions = FeatureTaskRuntimeOutputVerification.dispositionsFrom(outputMap)
+    if (dispositions.isEmpty()) return
+    recorder.persistFindingVerificationCheckpoint(
+      workflowId = run.request.workflowId,
+      dispositions = dispositions,
+      dbOverride = run.request.dbPathOverride,
+    )
+  }
+
+  private fun reviewFindingIdsForVerification(): Set<String> {
+    val reviewOutput = state.outputFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
+      ?.normalizedOutput?.envelope
+      ?: return emptySet()
+    val recordedVerdicts = recorder.recordedFindingVerdicts(reviewOutput, request.dbPathOverride)
+    return GoalSubtaskReviewSummaryReducer.structuredFindings(reviewOutput, recordedVerdicts)
+      .mapNotNull { it.findingId }
+      .toSet()
+  }
 
   /**
    * Rebuilds payload-free structural-repair evidence from digest/location fields carried on the
@@ -5982,6 +5590,9 @@ internal class FeatureTaskRuntimeRunLoop(
         return AttemptResult.settled(outcome)
       }
     } else {
+      if (run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS) {
+        persistRejectedVerificationFindings(run, normalizedOutput.envelope)
+      }
       val persisted = recorder.recordCompletedPhase(
         phaseStateRequest(
           run,
@@ -6020,6 +5631,35 @@ internal class FeatureTaskRuntimeRunLoop(
           repairEvidence,
         ),
       ),
+    )
+  }
+
+  private fun persistRejectedVerificationFindings(run: PhaseRun, verifyOutput: Map<String, Any?>) {
+    if (!isGoalContinuationRun(run.request)) return
+    val continuation = run.request.goalContinuation ?: return
+    val reviewOutput = state.outputFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
+      ?.normalizedOutput?.envelope
+      ?: return
+    val reviewState = goalContinuationRecorder.reviewState(run.request.workflowId, run.request.dbPathOverride)
+    val passNumber = reviewState?.completedPassCount?.takeIf { it > 0 } ?: 1
+    val recordedVerdicts = recorder.recordedFindingVerdicts(reviewOutput, run.request.dbPathOverride)
+    val rejected = GoalSubtaskReviewSummaryReducer.rejectedVerificationFindings(
+      verifyOutput = verifyOutput,
+      reviewOutput = reviewOutput,
+      scope = UnaddressedFindingLedgerScope(
+        issueKey = continuation.parentIssueKey,
+        subtaskId = continuation.subtaskId,
+        workflowId = run.request.workflowId,
+        reviewPassNumber = passNumber,
+      ),
+      recordedVerdicts = recordedVerdicts,
+    )
+    if (rejected.isEmpty()) return
+    recorder.appendRejectedVerificationFindings(
+      workflowId = run.request.workflowId,
+      passNumber = passNumber,
+      rejected = rejected,
+      dbOverride = run.request.dbPathOverride,
     )
   }
 
@@ -6199,12 +5839,10 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private fun reviewPassNumber(run: PhaseRun, state: FeatureTaskRuntimeRunState): Int? {
     if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW) return null
-    // In-memory outputs hold at most one record per phase, so their count collapses to <= 1 after a
-    // resume while the durable pass watermark keeps climbing. The durable state is the counter.
-    val durable = goalReviewStateOrNull()
+    val durable = goalReviewStateOrNull() ?: return 1
     return resolveReviewPassNumber(
-      reservedPassNumber = durable?.reservedPassNumber ?: state.currentReviewPassNumber(),
-      completedReviewPassCount = durable?.completedPassCount ?: state.outputCountFor(run.phaseId),
+      reservedPassNumber = durable.reservedPassNumber ?: state.currentReviewPassNumber(),
+      completedReviewPassCount = durable.completedPassCount,
     )
   }
 
@@ -6224,7 +5862,7 @@ internal class FeatureTaskRuntimeRunLoop(
       reentryGapCriteria = auditGapCriteriaFor(run, state),
       priorGapMemory = priorGapMemoryFor(run, state),
       durablyClosedCriterionRefs = durablyClosedCriterionRefs,
-      repairLedger = remediationRepairLedger(run.phaseId),
+      repairLedger = null,
       repositoryCheckpoint = repositoryCheckpoint,
       expectedRepositoryCheckpoint = (
         if (
@@ -6275,7 +5913,7 @@ internal class FeatureTaskRuntimeRunLoop(
       resolvedReviewTier = depthResolution?.resolvedTier,
       reviewDecidingRule = depthResolution?.decidingRule,
       repairLedger = handoff.repairLedger,
-      priorReviewContext = remediationPriorReviewContext(run.phaseId, passNumber),
+      priorReviewContext = null,
       priorSchemaFailure = priorCorrection?.schemaGateReason,
       priorTerminalFailure = priorCorrection?.retryableTerminalReason,
       priorFindingCoverage = priorCorrection?.findingCoverageReason,
@@ -6287,8 +5925,67 @@ internal class FeatureTaskRuntimeRunLoop(
       agentRunValidateFallback = run.agentRunValidateFallback,
       packCollectAllCommand = packCollectAllCommand(run, state),
       packBuildCommand = packBuildCommand(run, state),
-    )
+    ) + verifyFindingsSpecIntentSection(run)
     return PreparedLaunch(briefing, prompt)
+  }
+
+  private fun findingPathsForBoundaryMemory(
+    finding: skillbill.application.goalrunner.StructuredGoalReviewFinding,
+  ): List<String> = skillbill.application.goalrunner.GoalSubtaskReviewSummaryReducer
+    .verificationBoundaryFindingPaths(finding)
+
+  private fun verifyFindingsSpecIntentSection(run: PhaseRun): String {
+    if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS) return ""
+    val checkpoint = recorder.loadFindingVerificationCheckpoint(run.request.workflowId, run.request.dbPathOverride)
+    val boundarySelection = phaseGates.findingVerificationBoundaryMemory.boundarySelectionsForResolvedBodies(
+      persisted = recorder.loadFindingVerificationBoundarySelection(
+        run.request.workflowId,
+        run.request.dbPathOverride,
+      ),
+    )
+    val resolution = phaseGates.specIntentProjectionResolver.resolve(
+      SpecIntentProjectionResolveRequest(
+        repoRoot = run.request.repoRoot,
+        explicitSpecPath = java.nio.file.Path.of(run.request.runInvariants.specReference),
+        branchName = resolvedBranch ?: "HEAD",
+        changedPaths = emptyList(),
+        budget = ReviewContextBudgetPolicy.DEFAULT,
+      ),
+    )
+    val boundarySections = findingVerificationBoundarySections(run)
+    return buildString {
+      when (resolution) {
+        is SpecIntentResolution.Resolved -> {
+          appendLine()
+          appendLine("## Spec intent projection (verify_findings)")
+          appendLine(JsonSupport.mapToJsonString(resolution.projection.toProjectionPayload()))
+        }
+        else -> Unit
+      }
+      append(phaseGates.findingVerificationBoundaryMemory.promptSection(boundarySections))
+      if (boundarySelection != null) {
+        append(
+          phaseGates.findingVerificationBoundaryMemory.resolvedBodiesPromptSection(
+            repoRoot = run.request.repoRoot,
+            sections = boundarySections,
+            selectionsByFindingId = boundarySelection,
+          ),
+        )
+      }
+      if (!checkpoint.isNullOrEmpty()) {
+        appendLine()
+        appendLine("## Persisted verify_findings checkpoint")
+        appendLine(
+          "Reuse these in-flight dispositions verbatim unless repository evidence contradicts them; " +
+            "do not mint a second verification pass.",
+        )
+        appendLine(
+          checkpoint.joinToString(prefix = "[", postfix = "]") { disposition ->
+            JsonSupport.mapToJsonString(disposition.toArtifactMap())
+          },
+        )
+      }
+    }
   }
 
   @Suppress("ReturnCount")
@@ -6319,6 +6016,7 @@ internal class FeatureTaskRuntimeRunLoop(
     }
     val briefing = prepared.briefing
     val isReviewPhase = run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW
+    val isVerifyFindingsPhase = run.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS
 
     val launched = launchedModelDirective(run)
 
@@ -6335,8 +6033,9 @@ internal class FeatureTaskRuntimeRunLoop(
           effortOverride = launched.effortOverride,
           compaction = run.compaction,
           promptOverride = prepared.prompt,
-          readOnlyPhase = isReviewPhase,
-          progressIdleTimeout = READ_ONLY_PHASE_PROGRESS_IDLE_TIMEOUT_MINUTES.minutes.takeIf { isReviewPhase },
+          readOnlyPhase = isReviewPhase || isVerifyFindingsPhase,
+          progressIdleTimeout = READ_ONLY_PHASE_PROGRESS_IDLE_TIMEOUT_MINUTES.minutes
+            .takeIf { isReviewPhase || isVerifyFindingsPhase },
         ),
       ),
     )
@@ -6791,43 +6490,14 @@ internal class FeatureTaskRuntimeRunLoop(
     private data class Rejected(val detail: String) : RepairReceiptSettlement
     private data class WriteFailed(val reason: String) : RepairReceiptSettlement
 
-    /**
-     * The round left carried findings out of its receipt. Separate from [Rejected] because the
-     * document is well-formed: the repair work is unfinished, so the round is sent back for exactly
-     * these findings instead of spending the output-gate budget on a serialization it got right.
-     */
-    private data class Unaccounted(
-      val omittedRefs: List<String>,
-      val retryReason: String,
-    ) : RepairReceiptSettlement
-
-    /**
-     * The round declared it tried and could not close a finding. Retryable once per finding, so it
-     * carries the refs the budget counts as well as the producer's account of what still fails.
-     */
-    private data class Unresolved(
-      val refs: Set<String>,
-      val detail: String,
-      val retryReason: String,
-    ) : RepairReceiptSettlement
-
     data object None : RepairReceiptSettlement
 
     val rejectionDetail: String? get() = (this as? Rejected)?.detail
     val writeFailureReason: String? get() = (this as? WriteFailed)?.reason
-    val unaccountedOmittedRefs: List<String>? get() = (this as? Unaccounted)?.omittedRefs
-    val unaccountedRetryReason: String? get() = (this as? Unaccounted)?.retryReason
-    val unresolvedRefs: Set<String>? get() = (this as? Unresolved)?.refs
-    val unresolvedDetail: String? get() = (this as? Unresolved)?.detail
-    val unresolvedRetryReason: String? get() = (this as? Unresolved)?.retryReason
 
     companion object {
       fun rejected(detail: String): RepairReceiptSettlement = Rejected(detail)
       fun writeFailed(reason: String): RepairReceiptSettlement = WriteFailed(reason)
-      fun unaccounted(omittedRefs: List<String>, retryReason: String): RepairReceiptSettlement =
-        Unaccounted(omittedRefs, retryReason)
-      fun unresolved(refs: Set<String>, detail: String, retryReason: String): RepairReceiptSettlement =
-        Unresolved(refs, detail, retryReason)
     }
   }
 
@@ -7169,9 +6839,6 @@ private const val READ_ONLY_PHASE_PROGRESS_IDLE_TIMEOUT_MINUTES = 30L
 private const val UNPROVEN_REPOSITORY_FINGERPRINT =
   skillbill.workflow.taskruntime.model.UNPROVEN_REPOSITORY_FINGERPRINT
 
-// Bounds the goal-facing pause-reason label list so the reason stays a summary, not a transcript.
-private const val MAX_PAUSE_REASON_LABELS = 5
-
 // The block reason a pre-quarantine build persisted when a launch seam rejected an upstream bounded
 // planning projection. The current seam quarantines the record and regenerates its producer instead,
 // so this phrase is emitted by no live path and only ever matches a legacy durable row.
@@ -7247,10 +6914,4 @@ private val INVENTORY_EXTENDING_PHASES: Set<String> = setOf(
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE,
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY,
-)
-
-private val REMEDIATION_LEDGER_CONSUMER_PHASE_IDS: Set<String> = setOf(
-  FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN_FIX,
-  FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
-  FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
 )

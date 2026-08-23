@@ -299,7 +299,8 @@ class FeatureTaskRuntimeAuditGapLoopTest {
     assertEquals(listOf(1), auditGapIterations)
     assertTrue(reviewFixIterations.all { it == 1 })
     assertEquals(1, reviewFixIterations.size, "the approving re-review settled the loop after one fix")
-    assertEquals(2, harness.launchOrder().count { it == "review" }, "one fix earned one re-review")
+    assertEquals(1, harness.launchOrder().count { it == "review" }, "one fix still runs exactly one review pass")
+    assertTrue(harness.launchOrder().contains("verify_findings"), "findings are verified before the fix round")
   }
 
   @Test
@@ -371,9 +372,9 @@ class FeatureTaskRuntimeAuditGapLoopTest {
       "every review_fix edge is minted after the audit_gap loop has already closed",
     )
     assertEquals(
-      2,
+      1,
       harness.launchOrder().count { it == "review" },
-      "the durable budget prevents a third review launch",
+      "review runs exactly once after the audit gap closes",
     )
     assertTrue(
       reviewFixEdges.mapNotNull { it.edgeIteration }.all { it <= 1 },
@@ -440,7 +441,7 @@ class FeatureTaskRuntimeAuditGapLoopTest {
             },
           )
         } else {
-          facts(validJsonOutput(phaseId))
+          facts(defaultPhaseOutput(request))
         }
       },
       runtimeConfig = RuntimeHarnessConfig(
@@ -601,8 +602,8 @@ class FeatureTaskRuntimeAuditGapLoopTest {
 // and a cap-exhaustion block can be asserted to contain it.
 internal const val AUDIT_GAP_MESSAGE = "AC-2 acceptance criterion is not yet implemented"
 
-// A schema-valid audit output whose unmet_criteria drive the verdict: a non-empty array => gaps_found
-// (the runtime classifies from the criteria, no top-level verdict needed), an empty array => satisfied.
+// A schema-valid audit output whose gaps drive the verdict: a non-empty array => gaps_found
+// (the runtime classifies from the gaps, no top-level verdict needed), an empty array => satisfied.
 internal fun auditGapsOutput(): String = """
   {
     "contract_version": "0.4",
@@ -611,7 +612,7 @@ internal fun auditGapsOutput(): String = """
     "summary": "Audit found unmet acceptance criteria.",
     "verdict": "gaps_found",
     "produced_outputs": {
-      "unmet_criteria": [{"criterion":"AC-002","note":"$AUDIT_GAP_MESSAGE"}]
+      "gaps": [{"criterion":"AC-002","note":"$AUDIT_GAP_MESSAGE"}]
     }
   }
 """.trimIndent()
@@ -624,7 +625,7 @@ internal fun auditTwoGapsOutput(): String = """
     "summary": "Audit found unmet acceptance criteria.",
     "verdict": "gaps_found",
     "produced_outputs": {
-      "unmet_criteria": [
+      "gaps": [
         {"criterion":"AC-003","note":"$AUDIT_GAP_MESSAGE"},
         {"criterion":"AC-002","note":"$AUDIT_GAP_MESSAGE"}
       ]
@@ -640,7 +641,7 @@ internal fun auditSatisfiedOutput(): String = """
     "summary": "Every acceptance criterion is met.",
     "verdict": "satisfied",
     "produced_outputs": {
-      "unmet_criteria": []
+      "gaps": []
     }
   }
 """.trimIndent()
@@ -653,8 +654,10 @@ internal fun auditCriteriaOutput(vararg criteria: String): String = """
     "summary": "Audit found unmet acceptance criteria.",
     "verdict": "gaps_found",
     "produced_outputs": {
-      "unmet_criteria": [
-        ${criteria.joinToString(",\n        ") { """{"criterion":"$it","note":"$AUDIT_GAP_MESSAGE"}""" }}
+      "gaps": [
+        ${criteria.joinToString(
+  ",\n        ",
+) { """{"criterion":"$it","note":"$AUDIT_GAP_MESSAGE"}""" }}
       ]
     }
   }
@@ -674,7 +677,7 @@ internal fun auditGapLauncher(convergeOnAudit: Int): RuntimeRecordingLauncher {
         },
       )
     } else {
-      facts(validJsonOutput(phaseId))
+      facts(defaultPhaseOutput(request))
     }
   }
 }

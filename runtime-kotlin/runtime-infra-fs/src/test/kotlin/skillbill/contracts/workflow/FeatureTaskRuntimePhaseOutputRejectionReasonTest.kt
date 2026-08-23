@@ -100,14 +100,14 @@ class FeatureTaskRuntimePhaseOutputRejectionReasonTest {
     val offendingNote = "The ```prepareLaunch``` checkpoint is absent."
     val envelope =
       """{"contract_version":"0.4","phase_id":"audit","status":"completed","summary":"audit",""" +
-        """"verdict":"gaps_found","produced_outputs":{"unmet_criteria":[""" +
+        """"verdict":"gaps_found","produced_outputs":{"gaps":[""" +
         """{"criterion":"AC-001","note":"$offendingNote"}]}}"""
 
     val error = assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
       FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(envelope, "audit")
     }
 
-    assertContains(error.reason, "produced_outputs.unmet_criteria")
+    assertContains(error.reason, "produced_outputs.gaps")
     val payloadFree = assertNotNull(error.payloadFreeReason)
     assertFalse(payloadFree.contains(offendingNote), "payload-free reason leaked a value: $payloadFree")
   }

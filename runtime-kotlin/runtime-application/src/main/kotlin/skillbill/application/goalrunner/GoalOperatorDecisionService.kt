@@ -1,25 +1,17 @@
 package skillbill.application.goalrunner
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.featuretask.FeatureTaskRuntimeGoalContinuationRecorder
 import skillbill.application.featuretask.FeatureTaskRuntimePhaseRecorder
 import skillbill.application.model.GoalRunnerOperatorDecisionRequest
 import skillbill.application.model.GoalRunnerOperatorDecisionResult
-import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.ports.goalrunner.GoalRunnerManifestStore
 import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_DECISION_ABANDON_SUBTASK
 import skillbill.workflow.taskruntime.model.AUDIT_GAP_PAUSE_DECISION_RETRY_FIX
 import skillbill.workflow.taskruntime.model.GoalSubtaskOperatorDecision
 
-/**
- * Records an out-of-band operator decision on a paused goal child. A review-fix pause persists onto
- * durable review state; an audit-gap pause persists onto its durable pause artifact — both never edit
- * `decomposition-manifest.yaml`. Resume consumes the decision.
- */
 @Inject
 class GoalOperatorDecisionService(
   private val manifestStore: GoalRunnerManifestStore,
-  private val goalContinuationRecorder: FeatureTaskRuntimeGoalContinuationRecorder,
   private val recorder: FeatureTaskRuntimePhaseRecorder,
 ) {
   @Suppress("ReturnCount")
@@ -41,42 +33,15 @@ class GoalOperatorDecisionService(
     }
     val parentWorkflowId = requireNotNull(loaded).parentWorkflowId
     val childWorkflowId = requireNotNull(workflowId)
-    // An audit-gap pause carries no review state: the decision is recorded on its durable pause
-    // artifact, and an unmet acceptance criterion cannot be accepted-and-advanced.
     val auditGapPause = recorder.loadAuditGapPause(childWorkflowId, request.dbPathOverride)
     if (auditGapPause != null) {
       return recordAuditGapPauseDecision(request, parentWorkflowId, childWorkflowId, auditGapPause)
     }
-    val reviewState = goalContinuationRecorder.reviewState(childWorkflowId, request.dbPathOverride)
-    val reviewRejectReason = when {
-      reviewState == null ->
-        "Subtask ${request.subtaskId} has no durable review state for an operator decision."
-      !reviewState.acceptsOperatorDecision ->
-        "Subtask ${request.subtaskId} does not accept an operator decision; it carries no unresolved " +
-          "Blocker or Major."
-      else -> null
-    }
-    if (reviewRejectReason != null) {
-      return GoalRunnerOperatorDecisionResult.Rejected(request.issueKey, reviewRejectReason)
-    }
-    val updated = try {
-      goalContinuationRecorder.updateReviewState(childWorkflowId, request.dbPathOverride) { state ->
-        state.applyOperatorDecision(request.decision)
-      }
-    } catch (error: InvalidGoalSubtaskReviewStateSchemaError) {
-      return GoalRunnerOperatorDecisionResult.Rejected(
-        request.issueKey,
-        error.message.orEmpty().ifBlank { "The operator decision was rejected by review-state validation." },
-      )
-    }
-    return if (updated == null) {
-      GoalRunnerOperatorDecisionResult.Rejected(
-        request.issueKey,
-        "The operator decision could not be persisted onto the durable review state.",
-      )
-    } else {
-      recordedResult(request, parentWorkflowId, childWorkflowId)
-    }
+    return GoalRunnerOperatorDecisionResult.Rejected(
+      request.issueKey,
+      "Operator decisions over review remediation are removed; " +
+        "the run advances to validate after one implement_fix round.",
+    )
   }
 
   private fun recordAuditGapPauseDecision(

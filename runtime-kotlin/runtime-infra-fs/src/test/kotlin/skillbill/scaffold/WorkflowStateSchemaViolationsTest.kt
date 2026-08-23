@@ -187,12 +187,40 @@ class WorkflowStateSchemaViolationsTest {
     assertContains(verifyError.message.orEmpty(), "workflow_status")
   }
 
+  @Test
+  fun `plan_fix step id loud-fails on feature-task-runtime snapshots`() {
+    val currentStep = baseTaskRuntimeSnapshot().toMutableMap().apply {
+      put("current_step_id", "plan_fix")
+    }
+    val currentStepError = assertFailsWith<InvalidWorkflowStateSchemaError> {
+      validator.validate(currentStep, "bill-feature-task")
+    }
+    assertContains(currentStepError.message.orEmpty(), "plan_fix")
+
+    val stepsSnapshot = baseTaskRuntimeSnapshot().toMutableMap().apply {
+      put(
+        "steps",
+        listOf(
+          linkedMapOf<String, Any?>(
+            "step_id" to "plan_fix",
+            "status" to "pending",
+            "attempt_count" to 0,
+          ),
+        ),
+      )
+    }
+    val stepsError = assertFailsWith<InvalidWorkflowStateSchemaError> {
+      validator.validate(stepsSnapshot, "bill-feature-task")
+    }
+    assertContains(stepsError.message.orEmpty(), "plan_fix")
+  }
+
   private fun baseTaskRuntimeSnapshot(): Map<String, Any?> = linkedMapOf(
     "workflow_id" to "wftr-19700101-000000-aaaa",
     "session_id" to "",
     "workflow_name" to "bill-feature-task",
     "mode" to "runtime",
-    "contract_version" to "0.1",
+    "contract_version" to "0.3",
     "workflow_status" to "running",
     "current_step_id" to "plan",
     "steps" to listOf(
@@ -212,7 +240,7 @@ class WorkflowStateSchemaViolationsTest {
     "workflow_id" to "wfv-19700101-000000-aaaa",
     "session_id" to "",
     "workflow_name" to "bill-feature-verify",
-    "contract_version" to "0.1",
+    "contract_version" to "0.3",
     "workflow_status" to "running",
     "current_step_id" to "gather_diff",
     "steps" to listOf(

@@ -4,6 +4,7 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.application.featuretask.validation.FeatureTaskRuntimeBuildGateCoordinator
 import skillbill.application.featuretask.validation.FeatureTaskRuntimeValidationGateCoordinator
 import skillbill.application.featuretask.validation.ValidationGateResolver
+import skillbill.application.review.SpecIntentProjectionResolver
 import skillbill.ports.diff.DiffResolverPort
 import skillbill.ports.taskruntime.FeatureTaskRuntimeSharedEvidenceResolverPort
 import skillbill.ports.validation.ValidationGateRunner
@@ -31,6 +32,8 @@ class FeatureTaskRuntimePhaseGates(
     FeatureTaskRuntimeSharedEvidenceResolverPort.NONE,
   val diffResolver: DiffResolverPort = UnreadableDiffResolver,
   val reviewDriver: FeatureTaskRuntimeReviewDriver = FeatureTaskRuntimeReviewDriver.EMPTY,
+  val specIntentProjectionResolver: SpecIntentProjectionResolver,
+  val findingVerificationBoundaryMemory: FeatureTaskRuntimeFindingVerificationBoundaryMemory,
 )
 
 /** No repository access at all: every derivation reports the diff as unreadable and yields no evidence. */

@@ -49,7 +49,7 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
   fun `schema-invalid result body and digest match the private diagnostic capture`() {
     // Realistic bug: gateOutput records one capture diagnostically, then rebuilds Exact from a
     // different string/hash so the authorized repair section disagrees with the diagnostic row.
-    val rejectedBody = completedPhaseBody("0.2", "audit", rawSpan, """{"unmet_criteria":[]}""")
+    val rejectedBody = completedPhaseBody("0.2", "audit", rawSpan, """{"gaps":[]}""")
     var auditAttempts = 0
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
@@ -72,8 +72,8 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
 
   @Test
   fun `first launch has no repair context and matching retry carries only that attempts body`() {
-    val firstBody = completedPhaseBody("0.2", "audit", "SKILL187-ATTEMPT-1", """{"unmet_criteria":[]}""")
-    val secondBody = completedPhaseBody("0.2", "audit", "SKILL187-ATTEMPT-2", """{"unmet_criteria":[]}""")
+    val firstBody = completedPhaseBody("0.2", "audit", "SKILL187-ATTEMPT-1", """{"gaps":[]}""")
+    val secondBody = completedPhaseBody("0.2", "audit", "SKILL187-ATTEMPT-2", """{"gaps":[]}""")
     var auditAttempts = 0
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->
@@ -115,7 +115,7 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
   fun `a later phase retry cannot receive a stale repair body from an earlier phase`() {
     val planBody = completedPhaseBody("0.2", "plan", "SKILL187-PLAN-STALE", """{"mode":"direct","tasks":[]}""")
     val auditBody =
-      completedPhaseBody("0.4", "audit", "SKILL187-AUDIT-CURRENT", """{"unmet_criteria":[]}""", "satisfied")
+      completedPhaseBody("0.4", "audit", "SKILL187-AUDIT-CURRENT", """{"gaps":[]}""", "satisfied")
     var planAttempts = 0
     var auditAttempts = 0
     val harness = runnerHarness(
@@ -169,7 +169,7 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
       "0.4",
       "audit",
       "SKILL187-DELIMITER",
-      """{"unmet_criteria":[],"verdict":"satisfied"}""",
+      """{"gaps":[],"verdict":"satisfied"}""",
     ).dropLast(1)
     var auditAttempts = 0
     val harness = runnerHarness(
@@ -195,7 +195,7 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
 
   @Test
   fun `throwing telemetry status and diagnostic observers cannot change outcomes or leak the response`() {
-    val rejectedBody = completedPhaseBody("0.2", "audit", rawSpan, """{"unmet_criteria":[]}""")
+    val rejectedBody = completedPhaseBody("0.2", "audit", rawSpan, """{"gaps":[]}""")
     val throwingSink = FeatureTaskRuntimeRunEventSink {
       error("status/telemetry observer refused event ${it::class.simpleName}")
     }
@@ -312,13 +312,13 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
       "0.2",
       "audit",
       "SKILL187-ENUM",
-      """{"unmet_criteria":[{"severity":"catastrophic"}]}""",
+      """{"gaps":[{"severity":"catastrophic"}]}""",
     )
     val compoundRef = completedPhaseBody(
       "0.2",
       "audit",
       "SKILL187-ARTIFACT",
-      """{"unmet_criteria":[{"artifact_ref":"a.kt;b.kt;c.kt"}]}""",
+      """{"gaps":[{"artifact_ref":"a.kt;b.kt;c.kt"}]}""",
     )
     listOf(invalidEnum to "SKILL187-ENUM", compoundRef to "SKILL187-ARTIFACT").forEach { (rejectedBody, sentinel) ->
       var auditAttempts = 0
@@ -359,7 +359,7 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
       "0.2",
       "audit",
       "SKILL187-TRUNCATED-EXCERPT",
-      """{"unmet_criteria":[]}""",
+      """{"gaps":[]}""",
     )
     val fullStreamDigest = "a".repeat(64)
     val fullStreamBytes = 12_345L
@@ -411,7 +411,7 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
       "0.2",
       "audit",
       "SKILL187-DEGRADED-EXCERPT",
-      """{"unmet_criteria":[]}""",
+      """{"gaps":[]}""",
     )
     val fullStreamDigest = "b".repeat(64)
     val fullStreamBytes = 9_001L

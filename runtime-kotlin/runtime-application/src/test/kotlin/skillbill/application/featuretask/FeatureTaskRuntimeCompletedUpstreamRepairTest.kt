@@ -9,23 +9,22 @@ import kotlin.test.assertNull
 
 class FeatureTaskRuntimeCompletedUpstreamRepairTest {
   @Test
-  fun `diagnose returns plan_fix when implement_fix is blocked on missing settled output`() {
+  fun `diagnose returns verify_findings when implement_fix is blocked on missing settled output`() {
     val phaseRecords = mapOf(
-      "review" to completedPhaseRecord("review"),
-      "plan_fix" to phaseRecord(
-        phaseId = "plan_fix",
+      "verify_findings" to phaseRecord(
+        phaseId = "verify_findings",
         status = "completed",
         outputArtifact = null,
       ),
       "implement_fix" to phaseRecord(
         phaseId = "implement_fix",
         status = "blocked",
-        blockedReason = "missing plan_fix output",
+        blockedReason = "missing verify_findings output",
       ),
     )
 
     assertEquals(
-      "plan_fix",
+      "verify_findings",
       diagnoseUnsettledCompletedUpstreamPhaseId(
         phaseRecords,
         FeatureTaskRuntimeFeatureSize.MEDIUM,
@@ -36,11 +35,10 @@ class FeatureTaskRuntimeCompletedUpstreamRepairTest {
   @Test
   fun `diagnose is null when completed upstream has settled output`() {
     val phaseRecords = mapOf(
-      "review" to completedPhaseRecord("review"),
-      "plan_fix" to phaseRecord(
-        phaseId = "plan_fix",
+      "verify_findings" to phaseRecord(
+        phaseId = "verify_findings",
         status = "completed",
-        outputArtifact = """{"repair_plan":{"contract_version":"0.1","round_number":1,"entries":[]}}""",
+        outputArtifact = """{"contract_version":"0.2","verdict":"no_findings_verified","finding_dispositions":[]}""",
       ),
       "implement_fix" to phaseRecord(
         phaseId = "implement_fix",
@@ -60,7 +58,11 @@ class FeatureTaskRuntimeCompletedUpstreamRepairTest {
   @Test
   fun `diagnose returns build when build-stamped write_history is blocked on missing build output`() {
     val phaseRecords = mapOf(
-      "review" to completedPhaseRecord("review"),
+      "review" to phaseRecord(
+        phaseId = "review",
+        status = "completed",
+        outputArtifact = """{"contract_version":"0.1"}""",
+      ),
       "build" to phaseRecord(
         phaseId = "build",
         status = "completed",
@@ -86,7 +88,11 @@ class FeatureTaskRuntimeCompletedUpstreamRepairTest {
   @Test
   fun `diagnose does not return validate when build-stamped child lacks settled build output`() {
     val phaseRecords = mapOf(
-      "review" to completedPhaseRecord("review"),
+      "review" to phaseRecord(
+        phaseId = "review",
+        status = "completed",
+        outputArtifact = """{"contract_version":"0.1"}""",
+      ),
       "build" to phaseRecord(
         phaseId = "build",
         status = "completed",
@@ -117,16 +123,15 @@ class FeatureTaskRuntimeCompletedUpstreamRepairTest {
   @Test
   fun `diagnose returns blocked consumer when upstream block reason is stale`() {
     val phaseRecords = mapOf(
-      "review" to completedPhaseRecord("review"),
-      "plan_fix" to phaseRecord(
-        phaseId = "plan_fix",
+      "verify_findings" to phaseRecord(
+        phaseId = "verify_findings",
         status = "completed",
-        outputArtifact = """{"repair_plan":{"contract_version":"0.1","round_number":1,"entries":[]}}""",
+        outputArtifact = """{"contract_version":"0.2","verdict":"findings_verified","finding_dispositions":[]}""",
       ),
       "implement_fix" to phaseRecord(
         phaseId = "implement_fix",
         status = "blocked",
-        blockedReason = "Phase 'implement_fix' requires upstream output(s) plan_fix that are not present",
+        blockedReason = "Phase 'implement_fix' requires upstream output(s) verify_findings that are not present",
       ),
     )
 
@@ -135,12 +140,6 @@ class FeatureTaskRuntimeCompletedUpstreamRepairTest {
       diagnoseUnsettledCompletedUpstreamPhaseId(phaseRecords, FeatureTaskRuntimeFeatureSize.MEDIUM),
     )
   }
-
-  private fun completedPhaseRecord(phaseId: String): FeatureTaskRuntimePhaseRecord = phaseRecord(
-    phaseId = phaseId,
-    status = "completed",
-    outputArtifact = """{"contract_version":"0.1"}""",
-  )
 
   private fun phaseRecord(
     phaseId: String,
@@ -151,11 +150,10 @@ class FeatureTaskRuntimeCompletedUpstreamRepairTest {
     phaseId = phaseId,
     status = status,
     attemptCount = 1,
-    startedAt = "2026-08-19T10:00:00Z",
-    resolvedAgentId = "cursor",
+    startedAt = "2026-01-01T00:00:00Z",
+    firstStartedAt = "2026-01-01T00:00:00Z",
+    resolvedAgentId = "claude",
     outputArtifact = outputArtifact,
     blockedReason = blockedReason,
-    loopId = "review_fix",
-    edgeIteration = 1,
   )
 }

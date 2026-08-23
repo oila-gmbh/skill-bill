@@ -33,6 +33,10 @@ data class FeatureTaskRuntimeVerdict(
      */
     val CHANGES_REQUESTED: FeatureTaskRuntimeVerdict = FeatureTaskRuntimeVerdict("changes_requested")
 
+    val FINDINGS_VERIFIED: FeatureTaskRuntimeVerdict = FeatureTaskRuntimeVerdict("findings_verified")
+
+    val NO_FINDINGS_VERIFIED: FeatureTaskRuntimeVerdict = FeatureTaskRuntimeVerdict("no_findings_verified")
+
     /**
      * Goal-only continuation verdict retained so legacy durable records stay decodable. SKILL-157
      * retired the count-based stop that minted it; pass accounting never produces it again.
@@ -62,7 +66,17 @@ data class FeatureTaskRuntimeVerdict(
 
     val ESCALATED: FeatureTaskRuntimeVerdict = FeatureTaskRuntimeVerdict("escalated")
 
-    val PLAN_FIX_VERDICTS: Set<FeatureTaskRuntimeVerdict> = setOf(REPAIR_PLANNED, ESCALATED)
+    val REMOVED_VERDICTS: Set<FeatureTaskRuntimeVerdict> = setOf(REPAIR_PLANNED, ESCALATED)
+
+    fun rejectRemovedVerdict(value: String, context: String): FeatureTaskRuntimeVerdict {
+      val verdict = fromWire(value)
+      if (verdict in REMOVED_VERDICTS) {
+        throw InvalidWorkflowStateSchemaError(
+          "Feature-task-runtime verdict '$value' is removed ($context); records naming it must be regenerated.",
+        )
+      }
+      return verdict
+    }
 
     /**
      * The closed audit vocabulary. [fromWire] deliberately accepts any non-blank value so durable

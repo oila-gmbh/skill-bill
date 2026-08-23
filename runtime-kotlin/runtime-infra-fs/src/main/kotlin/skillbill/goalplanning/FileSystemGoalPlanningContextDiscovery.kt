@@ -1,34 +1,80 @@
 package skillbill.goalplanning
 
 import me.tatarka.inject.annotations.Inject
+import skillbill.contracts.goalplanning.GoalPlanningDiscoveryExclusions
+import skillbill.contracts.goalplanning.GoalVerificationBoundaryCaps
+import skillbill.error.GoalVerificationBoundaryCapExceededError
 import skillbill.ports.goalrunner.GoalPlanningContextDiscovery
 import skillbill.ports.goalrunner.model.GoalPlanningBoundaryHeading
 import skillbill.ports.goalrunner.model.GoalPlanningContext
+import skillbill.ports.goalrunner.model.GoalVerificationBoundaryDiscovery
 import java.nio.file.Path
 
 @Inject
 class FileSystemGoalPlanningContextDiscovery : GoalPlanningContextDiscovery {
   override fun discover(repoRoot: Path): GoalPlanningContext {
     val canonicalRoot = GoalPlanningRepositoryScope.canonicalRoot(repoRoot)
-    // Load-bearing discovery order — not incidental argument order: agent/history.md then
-    // agent/decisions.md per agent directory, over agent directories sorted lexicographically by
-    // repo-relative path. Every candidate is canonicalized and denied by repo-relative path against
-    // the checked-in exclusion contract, so platform-packs/ never contributes planning memory. The
-    // catalog carries headings only; bodies are resolved later for selected headings by
-    // FileSystemGoalPlanningBoundaryBodyResolver, which reads under the same per-file cap so both
-    // passes parse identical text and produce identical heading ids.
-    val catalog = discoverCatalog(canonicalRoot)
-    return GoalPlanningContext(
+    val walk = GoalPlanningRepositoryScope.agentDirectories(canonicalRoot)
+    return buildContext(canonicalRoot, walk, PlanningDiscoveryCaps)
+  }
+
+  override fun discoverForFindingPaths(
+    repoRoot: Path,
+    findingPaths: List<String>,
+    loudFailOnCapExceeded: Boolean,
+  ): GoalVerificationBoundaryDiscovery {
+    val canonicalRoot = GoalPlanningRepositoryScope.canonicalRoot(repoRoot)
+    val normalizedPaths = findingPaths.mapNotNull(GoalPlanningRepositoryScope::normalizeFindingPath)
+      .distinct()
+      .filterNot(GoalPlanningDiscoveryExclusions::isExcluded)
+    if (normalizedPaths.isEmpty()) {
+      return GoalVerificationBoundaryDiscovery(
+        boundaryCatalog = emptyList(),
+        boundaryCatalogTruncated = false,
+        boundaryContextUnavailable = true,
+      )
+    }
+    val agentDirectories = GoalPlanningRepositoryScope.owningAgentDirectories(canonicalRoot, normalizedPaths)
+    if (agentDirectories.isEmpty()) {
+      return GoalVerificationBoundaryDiscovery(
+        boundaryCatalog = emptyList(),
+        boundaryCatalogTruncated = false,
+        boundaryContextUnavailable = true,
+      )
+    }
+    val walk = AgentDirectoryWalk(
+      directories = agentDirectories,
+      incomplete = false,
+    )
+    val catalog = discoverCatalog(canonicalRoot, walk, VerificationDiscoveryCaps, loudFailOnCapExceeded)
+    return GoalVerificationBoundaryDiscovery(
       boundaryCatalog = catalog.headings,
       boundaryCatalogTruncated = catalog.truncated,
-      validationGuidance = readValidationGuidance(canonicalRoot),
+      boundaryContextUnavailable = false,
     )
   }
 
-  private fun discoverCatalog(repoRoot: Path): Catalog {
-    val walk = GoalPlanningRepositoryScope.agentDirectories(repoRoot)
+  private fun buildContext(canonicalRoot: Path, walk: AgentDirectoryWalk, caps: DiscoveryCaps): GoalPlanningContext {
+    val catalog = discoverCatalog(canonicalRoot, walk, caps)
+    return GoalPlanningContext(
+      boundaryCatalog = catalog.headings,
+      boundaryCatalogTruncated = catalog.truncated,
+      validationGuidance = if (caps.includeValidationGuidance) {
+        readValidationGuidance(canonicalRoot)
+      } else {
+        ""
+      },
+    )
+  }
+
+  private fun discoverCatalog(
+    repoRoot: Path,
+    walk: AgentDirectoryWalk,
+    caps: DiscoveryCaps,
+    loudFailOnCapExceeded: Boolean = false,
+  ): Catalog {
     val candidates = candidateFiles(repoRoot, walk.directories)
-    val eligible = candidates.take(GoalPlanningContext.MAX_DISCOVERY_FILE_COUNT)
+    val eligible = candidates.take(caps.maxDiscoveryFileCount)
     var truncated = walk.incomplete || eligible.size < candidates.size
     val perFile = mutableListOf<List<GoalPlanningBoundaryHeading>>()
     for (candidate in eligible) {
@@ -37,17 +83,13 @@ class FileSystemGoalPlanningContextDiscovery : GoalPlanningContextDiscovery {
         GoalPlanningContext.MAX_BOUNDARY_FILE_BYTES,
       )
       if (read == null) {
-        // The file is present and in scope but unreadable. Skipping it silently would publish a
-        // catalog that claims completeness while a whole module's memory is missing.
         truncated = true
       } else {
-        // A file cut at the per-file cap parses into fewer entries than it holds. Reporting it keeps
-        // the catalog from claiming completeness it does not have.
         if (read.cut) truncated = true
         val entries = BoundaryMemoryHeadingParser.parse(candidate.relative, read.text)
-        if (entries.size > GoalPlanningContext.MAX_HEADINGS_PER_FILE) truncated = true
+        if (entries.size > caps.maxHeadingsPerFile) truncated = true
         perFile.add(
-          entries.take(GoalPlanningContext.MAX_HEADINGS_PER_FILE).map { entry ->
+          entries.take(caps.maxHeadingsPerFile).map { entry ->
             GoalPlanningBoundaryHeading(
               headingId = entry.headingId,
               sourcePath = candidate.relative,
@@ -58,10 +100,17 @@ class FileSystemGoalPlanningContextDiscovery : GoalPlanningContextDiscovery {
         )
       }
     }
-    val quotas = fairQuotas(perFile.map(List<GoalPlanningBoundaryHeading>::size))
+    val quotas = fairQuotas(perFile.map(List<GoalPlanningBoundaryHeading>::size), caps.maxCatalogHeadings)
+    val headings = perFile.flatMapIndexed { index, headings -> headings.take(quotas[index]) }
+    truncated = truncated || perFile.indices.any { index -> quotas[index] < perFile[index].size }
+    if (loudFailOnCapExceeded && truncated) {
+      throw GoalVerificationBoundaryCapExceededError(
+        "finding verification boundary discovery exceeded a verification cap",
+      )
+    }
     return Catalog(
-      headings = perFile.flatMapIndexed { index, headings -> headings.take(quotas[index]) },
-      truncated = truncated || perFile.indices.any { index -> quotas[index] < perFile[index].size },
+      headings = headings,
+      truncated = truncated,
     )
   }
 
@@ -73,14 +122,9 @@ class FileSystemGoalPlanningContextDiscovery : GoalPlanningContextDiscovery {
       }
     }
 
-  /**
-   * Spends the catalog cap round-robin across files. A straight sequential take would give the whole
-   * cap to whichever module sorts first, so one large early history file would hide every later
-   * module's boundary memory outright — the bigger it grew, the more it hid.
-   */
-  private fun fairQuotas(sizes: List<Int>): List<Int> {
+  private fun fairQuotas(sizes: List<Int>, maxCatalogHeadings: Int): List<Int> {
     val quotas = MutableList(sizes.size) { 0 }
-    var remaining = GoalPlanningContext.MAX_CATALOG_HEADINGS
+    var remaining = maxCatalogHeadings
     var progressed = true
     while (remaining > 0 && progressed) {
       progressed = false
@@ -110,4 +154,26 @@ class FileSystemGoalPlanningContextDiscovery : GoalPlanningContextDiscovery {
   private data class Candidate(val canonical: Path, val relative: String, val kind: String)
 
   private data class Catalog(val headings: List<GoalPlanningBoundaryHeading>, val truncated: Boolean)
+
+  private data class DiscoveryCaps(
+    val maxDiscoveryFileCount: Int,
+    val maxHeadingsPerFile: Int,
+    val maxCatalogHeadings: Int,
+    val includeValidationGuidance: Boolean,
+  )
+
+  private companion object {
+    val PlanningDiscoveryCaps = DiscoveryCaps(
+      maxDiscoveryFileCount = GoalPlanningContext.MAX_DISCOVERY_FILE_COUNT,
+      maxHeadingsPerFile = GoalPlanningContext.MAX_HEADINGS_PER_FILE,
+      maxCatalogHeadings = GoalPlanningContext.MAX_CATALOG_HEADINGS,
+      includeValidationGuidance = true,
+    )
+    val VerificationDiscoveryCaps = DiscoveryCaps(
+      maxDiscoveryFileCount = GoalVerificationBoundaryCaps.maxDiscoveryFileCount,
+      maxHeadingsPerFile = GoalVerificationBoundaryCaps.maxHeadingsPerFile,
+      maxCatalogHeadings = GoalVerificationBoundaryCaps.maxCatalogHeadings,
+      includeValidationGuidance = false,
+    )
+  }
 }

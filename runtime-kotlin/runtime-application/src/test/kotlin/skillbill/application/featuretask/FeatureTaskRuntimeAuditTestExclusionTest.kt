@@ -34,7 +34,7 @@ class FeatureTaskRuntimeAuditTestExclusionTest {
     val auditDirective = requireNotNull(phaseDirectives[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT])
     assertContains(auditDirective, "read-only repository facts")
     assertContains(auditDirective, "validation owns test execution")
-    assertContains(auditDirective, "unmet_criteria")
+    assertContains(auditDirective, "gaps")
   }
 
   private companion object {

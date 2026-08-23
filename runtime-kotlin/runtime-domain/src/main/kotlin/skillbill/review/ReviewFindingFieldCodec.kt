@@ -34,14 +34,16 @@ object ReviewFindingFieldCodec {
 
   fun citationsOf(raw: Any?): List<ReviewFindingCitation> {
     val items = raw as? List<*> ?: return emptyList()
-    return items.mapNotNull { item ->
-      val map = JsonSupport.anyToStringAnyMap(item) ?: return@mapNotNull null
-      val path = (map["path"] as? String)?.trim()?.takeIf(String::isNotBlank) ?: return@mapNotNull null
+    return items.map { item ->
+      val map = JsonSupport.anyToStringAnyMap(item)
+        ?: error("Finding citation entry must be an object.")
+      val path = (map["path"] as? String)?.trim()?.takeIf(String::isNotBlank)
+        ?: error("Finding citation path must be non-blank.")
       val line = when (val value = map["line"]) {
         is Number -> value.toInt()
         is String -> value.trim().toIntOrNull()
         else -> null
-      } ?: return@mapNotNull null
+      } ?: error("Finding citation line must be a positive integer.")
       ReviewFindingCitation(path, line)
     }
   }

@@ -21,12 +21,24 @@ class GoalSubtaskBlockerDispositionParseTest {
     val parsed = GoalSubtaskReviewSummaryReducer.blockerDispositions(
       output(
         mapOf("finding_id" to "F-001", "verdict" to "resolved", "evidence" to listOf("guard added at the write seam")),
-        mapOf("finding_id" to "F-002", "verdict" to "superseded", "evidence" to listOf("call site deleted")),
+        mapOf("finding_id" to "F-002", "verdict" to "unresolved", "evidence" to listOf("still reproduces")),
       ),
     )
     assertEquals(listOf("F-001", "F-002"), parsed.map { it.findingId })
     assertEquals(GoalSubtaskBlockerDispositionVerdict.RESOLVED, parsed.first().verdict)
-    assertEquals(GoalSubtaskBlockerDispositionVerdict.SUPERSEDED, parsed.last().verdict)
+    assertEquals(GoalSubtaskBlockerDispositionVerdict.UNRESOLVED, parsed.last().verdict)
+  }
+
+  @Test
+  fun `superseded verdict loud-fails at the parse seam`() {
+    val error = assertFailsWith<InvalidGoalSubtaskReviewStateSchemaError> {
+      GoalSubtaskReviewSummaryReducer.blockerDispositions(
+        output(
+          mapOf("finding_id" to "F-001", "verdict" to "superseded", "evidence" to listOf("call site deleted")),
+        ),
+      )
+    }
+    assertTrue(error.message.orEmpty().contains("superseded"))
   }
 
   @Test

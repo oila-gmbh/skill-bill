@@ -20,8 +20,9 @@ internal class UnaddressedFindingsRuntime(private val connection: Connection) {
         issue_key, workflow_id, subtask_id, review_pass_number, finding_ordinal,
         severity, issue_category, location, summary, review_run_id, finding_id,
         claim_verdict, scope_disposition, citations,
-        severity_adjustment_direction, severity_adjustment_justification
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        severity_adjustment_direction, severity_adjustment_justification,
+        verification_disposition, verification_reason
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       """.trimIndent(),
     ).use { statement ->
       findings.forEach { finding ->
@@ -41,7 +42,9 @@ internal class UnaddressedFindingsRuntime(private val connection: Connection) {
         statement.setString(parameterIndex++, finding.scopeDisposition?.wireValue)
         statement.setString(parameterIndex++, ReviewFindingCitation.encodeList(finding.citations))
         statement.setString(parameterIndex++, finding.severityAdjustment?.direction?.wireValue)
-        statement.setString(parameterIndex, finding.severityAdjustment?.justification)
+        statement.setString(parameterIndex++, finding.severityAdjustment?.justification)
+        statement.setString(parameterIndex++, finding.verificationDisposition)
+        statement.setString(parameterIndex, finding.verificationReason)
         statement.addBatch()
       }
       statement.executeBatch()
@@ -179,7 +182,8 @@ internal class UnaddressedFindingsRuntime(private val connection: Connection) {
     SELECT issue_key, workflow_id, subtask_id, review_pass_number, finding_ordinal,
            severity, issue_category, location, summary, review_run_id, finding_id,
            claim_verdict, scope_disposition, citations,
-           severity_adjustment_direction, severity_adjustment_justification
+           severity_adjustment_direction, severity_adjustment_justification,
+           verification_disposition, verification_reason
     FROM unaddressed_findings
     WHERE $column = ?
     ORDER BY subtask_id, review_pass_number, finding_ordinal
@@ -211,6 +215,8 @@ internal class UnaddressedFindingsRuntime(private val connection: Connection) {
                 rows.getString("severity_adjustment_direction"),
                 rows.getString("severity_adjustment_justification"),
               ),
+              verificationDisposition = rows.getString("verification_disposition"),
+              verificationReason = rows.getString("verification_reason"),
             ),
           )
         }

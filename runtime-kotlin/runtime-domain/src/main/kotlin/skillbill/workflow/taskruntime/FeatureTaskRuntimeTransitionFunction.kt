@@ -8,30 +8,6 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionContext
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeTransitionDeclaration
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 
-/**
- * Pure, deterministic transition function for the bounded-cyclic phase executor. Given a settled
- * phase, its verdict, and how many times the matching backward edge has already fired
- * ([edgeIterationCount], the durable per-edge counter the runtime mints), it computes the next
- * transition target:
- *
- * - A backward edge whose [FeatureTaskRuntimeBackwardEdge.fromPhaseId] and
- *   [FeatureTaskRuntimeBackwardEdge.triggeringVerdict] match the settled phase yields a backward
- *   [FeatureTaskRuntimeNextPhase.Next] while its optional cap permits another iteration.
- * - A bounded edge at its cap either advances along the forward pipeline or yields a
- *   [FeatureTaskRuntimeNextPhase.TerminalBlock], according to its declared exhaustion behavior.
- * - Otherwise the default forward edge fires: the next forward index whose phase is not loop-only
- *   (loop-only phases are reachable only as backward-edge destinations), or
- *   [FeatureTaskRuntimeNextPhase.TerminalAdvance] when no such phase remains.
- * - Whichever rule produced the target, a declared
- *   [skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseEntryGate] on that target is checked
- *   against [settledVerdictsByPhaseId]. An unsatisfied gate throws
- *   [FeatureTaskRuntimePhaseOrderViolationError] rather than redirecting or advancing silently.
- *   Guarding the computed target rather than the source phase makes the gate fire uniformly for
- *   forward advance, for a cap-exhaustion ADVANCE, and for any future edge with the same destination.
- *
- * There is no clock, random, or IO here; the executor in runtime-application owns counter minting and
- * persistence.
- */
 object FeatureTaskRuntimeTransitionFunction {
   fun nextTransition(
     declaration: FeatureTaskRuntimeTransitionDeclaration,
@@ -39,9 +15,8 @@ object FeatureTaskRuntimeTransitionFunction {
     verdict: FeatureTaskRuntimeVerdict,
     edgeIterationCount: Int,
     context: FeatureTaskRuntimeTransitionContext = FeatureTaskRuntimeTransitionContext(),
-  ): FeatureTaskRuntimeNextPhase =
-    computeTransition(declaration, currentPhaseId, verdict, edgeIterationCount, context.unresolvedBlockerPresent)
-      .also { transition -> guardEntryGate(declaration, transition, context.settledVerdictsByPhaseId) }
+  ): FeatureTaskRuntimeNextPhase = computeTransition(declaration, currentPhaseId, verdict, edgeIterationCount)
+    .also { transition -> guardEntryGate(declaration, transition, context.settledVerdictsByPhaseId) }
 
   private fun guardEntryGate(
     declaration: FeatureTaskRuntimeTransitionDeclaration,
@@ -59,34 +34,11 @@ object FeatureTaskRuntimeTransitionFunction {
     }
   }
 
-  /**
-   * The single constructor for an unresolved-Blocker pause. Callers that detect the pause outside
-   * `computeTransition` route through this so the loop id, iteration count, and verdict cannot drift
-   * from the declared behavior — a fabricated pause would disagree with the declaration and make
-   * changing the declared behavior stop changing reachable behavior.
-   */
-  fun terminalPauseFor(
-    edge: FeatureTaskRuntimeBackwardEdge,
-    edgeIterationCount: Int,
-    verdict: FeatureTaskRuntimeVerdict,
-  ): FeatureTaskRuntimeNextPhase.TerminalPause {
-    require(edge.capExhaustionBehavior == FeatureTaskRuntimeCapExhaustionBehavior.ADVANCE_UNLESS_UNRESOLVED_BLOCKER) {
-      "Only an ADVANCE_UNLESS_UNRESOLVED_BLOCKER edge may pause on an unresolved Blocker; " +
-        "'${edge.loopId}' declares ${edge.capExhaustionBehavior}."
-    }
-    return FeatureTaskRuntimeNextPhase.TerminalPause(
-      loopId = edge.loopId,
-      edgeIteration = edgeIterationCount,
-      unresolvedVerdict = verdict,
-    )
-  }
-
   private fun computeTransition(
     declaration: FeatureTaskRuntimeTransitionDeclaration,
     currentPhaseId: String,
     verdict: FeatureTaskRuntimeVerdict,
     edgeIterationCount: Int,
-    unresolvedBlockerPresent: Boolean,
   ): FeatureTaskRuntimeNextPhase {
     require(edgeIterationCount >= 0) {
       "FeatureTaskRuntimeTransitionFunction.edgeIterationCount must be non-negative, was $edgeIterationCount."
@@ -102,12 +54,6 @@ object FeatureTaskRuntimeTransitionFunction {
       } else {
         when (edge.capExhaustionBehavior) {
           FeatureTaskRuntimeCapExhaustionBehavior.ADVANCE -> forwardTransition(declaration, currentPhaseId)
-          FeatureTaskRuntimeCapExhaustionBehavior.ADVANCE_UNLESS_UNRESOLVED_BLOCKER ->
-            if (unresolvedBlockerPresent) {
-              terminalPauseFor(edge, edgeIterationCount, verdict)
-            } else {
-              forwardTransition(declaration, currentPhaseId)
-            }
           FeatureTaskRuntimeCapExhaustionBehavior.BLOCK -> FeatureTaskRuntimeNextPhase.TerminalBlock(
             loopId = edge.loopId,
             edgeIteration = edgeIterationCount,

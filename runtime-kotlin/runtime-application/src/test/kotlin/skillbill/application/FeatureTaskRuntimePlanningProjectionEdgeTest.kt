@@ -595,12 +595,12 @@ class FeatureTaskRuntimePlanningProjectionEdgeTest {
     val edge = FeatureTaskRuntimePhaseWorkflowDefinition.transitions.backwardEdges.single {
       it.loopId == FeatureTaskRuntimePhaseWorkflowDefinition.REVIEW_FIX_LOOP_ID
     }
-    assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW, edge.fromPhaseId)
-    assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN_FIX, edge.destinationPhaseId)
+    assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS, edge.fromPhaseId)
+    assertEquals(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX, edge.destinationPhaseId)
+    assertEquals(1, edge.perEdgeCap)
     assertEquals(
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
-      FeatureTaskRuntimePhaseWorkflowDefinition.transitions
-        .loopOnlySuccessors[FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN_FIX],
+      skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCapExhaustionBehavior.ADVANCE,
+      edge.capExhaustionBehavior,
     )
   }
 

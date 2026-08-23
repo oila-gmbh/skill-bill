@@ -9,14 +9,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNull
 
-/**
- * SKILL-157/SKILL-205: exactly two backward edges are uncapped — `review_fix` and `audit_gap` — and
- * widening either must not widen any other bounded edge. Every remaining backward edge keeps its
- * finite cap and its cap-exhaustion behavior. The topology stays uncapped for both loops; SKILL-205
- * moved the audit_gap bound out of the topology into the runtime (the warn-threshold pause), so the
- * transition function still returns a Next edge above iteration three while the application layer
- * pauses. The application-level pause tests own the control-flow expectation.
- */
 class UnboundedRemediationLoopRegressionTest {
   private val def = FeatureTaskRuntimePhaseWorkflowDefinition
   private val transitions = def.transitions
@@ -63,18 +55,22 @@ class UnboundedRemediationLoopRegressionTest {
   }
 
   @Test
-  fun `only the two remediation loops are uncapped`() {
+  fun `only audit_gap is uncapped among semantic remediation loops`() {
     assertEquals(
-      setOf(def.REVIEW_FIX_LOOP_ID, def.AUDIT_GAP_LOOP_ID),
+      setOf(def.AUDIT_GAP_LOOP_ID),
       transitions.backwardEdges.filter { it.perEdgeCap == null }.map { it.loopId }.toSet(),
+    )
+    assertEquals(
+      1,
+      transitions.backwardEdges.single { it.loopId == def.REVIEW_FIX_LOOP_ID }.perEdgeCap,
     )
   }
 
   @Test
   fun `every record-regeneration edge keeps its finite cap and blocking exhaustion`() {
     val regenerationEdges = transitions.backwardEdges.filter { def.isRegenerationLoopId(it.loopId) }
-    assertEquals(3, regenerationEdges.size, "All three quarantine-and-regenerate edges must survive.")
-    assertEquals(2, def.MAX_RECORD_REGENERATION_ATTEMPTS, "The regeneration cap is pinned, not derived.")
+    assertEquals(3, regenerationEdges.size)
+    assertEquals(2, def.MAX_RECORD_REGENERATION_ATTEMPTS)
     regenerationEdges.forEach { edge ->
       assertEquals(
         def.MAX_RECORD_REGENERATION_ATTEMPTS,
@@ -86,9 +82,9 @@ class UnboundedRemediationLoopRegressionTest {
   }
 
   @Test
-  fun `every capped edge keeps its cap and gains no threshold warning`() {
+  fun `every regeneration edge keeps its cap and gains no threshold warning`() {
     transitions.backwardEdges
-      .filter { it.perEdgeCap != null }
+      .filter { def.isRegenerationLoopId(it.loopId) }
       .forEach { edge ->
         assertEquals(
           def.MAX_RECORD_REGENERATION_ATTEMPTS,

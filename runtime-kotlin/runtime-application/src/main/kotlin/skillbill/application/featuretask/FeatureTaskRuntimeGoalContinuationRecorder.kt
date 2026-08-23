@@ -45,7 +45,6 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskReviewCompactFinding
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewDisposition
 import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.featureTaskRuntimeCheckpointIdentitiesFromArtifact
-import skillbill.workflow.taskruntime.model.unionRefutedBlockerDispositions
 import java.time.Instant
 
 @Inject
@@ -120,26 +119,6 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
     val artifacts = decodeArtifacts(record.artifactsJson)
     val state = reviewStateFromArtifacts(artifacts)
       ?: return@transaction GoalSubtaskReviewPassReservation.MissingState
-    // An operator-granted retry round re-opens the consumed final pass instead of carrying its stale
-    // result forward, so the fix the operator paid for is actually re-reviewed. The pass number is
-    // unchanged: no new pass is reserved.
-    val retryReopened = state.reserveNextPass()
-    if (state.retryReviewPending && retryReopened != state) {
-      // The raw results map is keyed by completed pass and is validated against passResults on every
-      // read, so dropping the re-opened pass's result in the same patch is what keeps the record
-      // decodable rather than leaving an orphaned entry behind.
-      val keptResults = rawReviewResultsFromArtifacts(artifacts, state)
-        .filterKeys { passNumber -> passNumber != state.completedPassCount.toString() }
-      savePatch(
-        record,
-        unitOfWork.workflowStates,
-        mapOf(
-          GOAL_SUBTASK_REVIEW_STATE_ARTIFACT_KEY to retryReopened.toArtifactMap(),
-          GOAL_SUBTASK_REVIEW_RESULTS_ARTIFACT_KEY to keptResults,
-        ),
-      )
-      return@transaction GoalSubtaskReviewPassReserved(retryReopened)
-    }
     if (state.reviewCapReached || state.reviewSkippedByUser) {
       return@transaction GoalSubtaskReviewPassCarryForward(state)
     }
@@ -262,18 +241,7 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
       recordedVerdicts = recordedVerdicts,
     )
     val supersededFindings = unitOfWork.unaddressedFindings.fetchWorkflowLedger(request.workflowId)
-    val dispositions = if (reservedPass <= 1) {
-      request.blockerDispositions
-    } else {
-      unionRefutedBlockerDispositions(
-        request.blockerDispositions,
-        GoalSubtaskReviewSummaryReducer.refutedBlockerSupersedes(
-          supersededFindings,
-          ledgerFindings,
-          recordedVerdicts,
-        ),
-      )
-    }
+    val dispositions = request.blockerDispositions
     return GoalReviewPassWrite(
       record = record,
       state = state,
@@ -344,16 +312,11 @@ class FeatureTaskRuntimeGoalContinuationRecorder(
       state to continuation
     } ?: return GoalSubtaskReviewInputPreparation.MissingState
     val (state, continuation) = durable
-    // Pass one is unchanged: the immutable review_base_sha and baseline untracked inventory stay its
-    // sole authority. Every remediation pass from two onward is rescoped to that round's
-    // diff(pre-fix tree -> HEAD), so the scope union the prompt states has a materialized input
-    // behind it.
+    // Pass one uses the immutable review base. After it completes, an orphaned remediation base is
+    // recovered through this seam when implement_fix scope materialization fails — there is no pass two.
     val exclusions = scope.scopedUntrackedExclusions ?: state.baselineUntrackedPaths
     val remediationBaseline = state.remediationBaseSha
-      ?.takeIf { (state.reservedPassNumber ?: 0) >= 2 }
-      // The untracked exclusion list is not a per-pass detail: dropping it would materialize every
-      // untracked file in the worktree into the pass-two input as an owned change. Only the base sha
-      // is rescoped.
+      ?.takeIf { state.completedPassCount >= 1 && state.reservedPassNumber == null }
       ?.let { preFixSha -> GoalSubtaskReviewBaseline(preFixSha, exclusions, scope.ownedPathspec) }
     val selectedBaseline = remediationBaseline
       ?: GoalSubtaskReviewBaseline(state.reviewBaseSha, exclusions, scope.ownedPathspec)

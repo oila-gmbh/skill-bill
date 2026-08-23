@@ -2,6 +2,16 @@
 
 Revisit when: prune eligibility or the checkpoint namespace layout changes.
 
+## [2026-08-23] SKILL-202 subtask 3 — scoped boundary memory for verification
+Areas: runtime-application/{featuretask,goalrunner,review}, runtime-domain/{review,taskruntime}, runtime-infra-fs/goalplanning, runtime-ports/goalrunner, runtime contracts, runtime-cli/goal, governed feature-task skills
+- Verification now discovers boundary memory by title first and scopes it to boundaries owning each finding's paths; excluded roots contribute nothing and unmatched paths stay intent-only.
+- Verification-specific discovery and body caps are declared below planning caps; the shared maximum boundary-file size remains unchanged, and over-budget resolution loud-fails without truncation.
+- Dispositions persist selected heading ids with source paths and expose that provenance through goal findings; unselected history and decision bodies never enter prompts.
+- Pattern: reuse GoalPlanningContextDiscovery and GoalPlanningBoundaryBodyResolver with a path-scoped, titles-first projection. reusable
+- Limitation: findings with no eligible owning boundary retain intent-only verification and record unavailable boundary context.
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
 ## [2026-08-22] SKILL-205 subtask 2 — Prior-gap memory for continuing audit_gap rounds
 Areas: runtime-application/featuretask, runtime-application/goalrunner, runtime-domain/workflow/taskruntime/model, orchestration/contracts, platform-packs/{kotlin,kmp}/quality-check
 - Added bounded durable `prior_gap_memory` to audit-gap handoffs, retaining unmet criterion refs/notes and subsequent implement claims while degrading legacy workflows to empty memory.
@@ -34,6 +44,25 @@ Areas: runtime-application/featuretask, runtime-domain/workflow/taskruntime, run
 - Limitation: goal-child routing still defaults to `review → validate`; selecting `build` for intermediate children is subtask 2.
 Feature flag: N/A
 Acceptance criteria: 6/6 implemented
+
+## [2026-08-21] SKILL-202 subtask 2 — verify_findings phase
+Areas: runtime-application/{featuretask,goalrunner}, runtime-domain/taskruntime, runtime-infra-sqlite, runtime-cli/goal, runtime-infra-fs/install, runtime contracts, governed feature-task skills
+- Added the declared `verify_findings` phase between review and implement_fix; each review finding receives one bounded `verified` or `rejected` disposition against the spec intent projection.
+- Verified findings of every severity drive the single capped implement_fix round; rejected findings retain their reason and severity in the unaddressed-findings ledger and are never fixed.
+- Pattern: keep phase topology, entry gates, durable records, status, telemetry, CLI, and governed prompts aligned around one review pass and one fix round. reusable
+- Durable verification records and retired values loud-fail rather than being coerced; resume reuses in-flight dispositions without rerunning review.
+- Limitation: verified findings that remain after the one fix round proceed to validate under the accepted bounded-remediation trade-off.
+Feature flag: N/A
+Acceptance criteria: 15/15 implemented
+
+## [2026-08-21] SKILL-202 — single-pass review remediation
+Areas: runtime-application/featuretask, runtime-application/goalrunner, runtime-domain/taskruntime, runtime contracts, governed feature-task skills
+- Review remediation is one `implement_fix` round: `review --changes_requested` uses a per-subtask cap of one and advances to validate after that round.
+- Removed `plan_fix`, second-round escalation, churn, and unresolved-finding pause vocabulary from runtime projections, durable review state, transition wiring, and prompts.
+- Pattern: declare bounded remediation edges in workflow topology and keep prompts, persistence, schemas, and projections aligned. reusable
+- Durable records naming retired phase, verdict, or ledger values loud-fail rather than being coerced; audit-gap and rejected-output loops retain their independent behavior.
+Feature flag: N/A
+Acceptance criteria: 11/11 implemented
 
 ## [2026-08-20] Validate runs only the pack collect-all command
 Areas: runtime-application/featuretask (validate directives, prompt composer, run loop), AGENTS.md, skills/bill-feature-task-runtime

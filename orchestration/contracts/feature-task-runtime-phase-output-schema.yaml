@@ -60,12 +60,13 @@ $defs:
     type: object
     additionalProperties: false
     description: >-
-      One acceptance criterion this audit found unimplemented: its ref, and one
-      dense line that both diagnoses what is missing and hands the next implement
-      round a complete fix plan. The runtime carries that line into implement as
-      ordinary remediation work; a later audit re-checks every criterion from
-      scratch. Keep the report compact (criterion + note only): no separate repair
-      plan object, no per-item identifiers, and no verification bookkeeping.
+      One acceptance criterion this audit found unimplemented, carried under
+      produced_outputs.gaps: its ref, and one dense line that both diagnoses what
+      is missing and hands the next implement round a complete fix plan. The
+      runtime carries that line into implement as ordinary remediation work; a
+      later audit re-checks every criterion from scratch. Keep the report compact
+      (criterion + note only): no separate repair plan object, no per-item
+      identifiers, and no verification bookkeeping.
     required: [criterion, note]
     properties:
       criterion:
@@ -204,6 +205,21 @@ $defs:
           properties:
             constructs: { minItems: 1 }
           not: { required: [no_edit_reason] }
+  verificationBoundaryHeadingProvenance:
+    type: object
+    additionalProperties: false
+    required: [heading_id, source_path]
+    properties:
+      heading_id:
+        type: string
+        minLength: 1
+        maxLength: 256
+        pattern: "^[^\\n\\r`]*\\S[^\\n\\r`]*$"
+      source_path:
+        type: string
+        minLength: 1
+        maxLength: 256
+        pattern: "^[^\\n\\r`]*\\S[^\\n\\r`]*$"
   repairDisturbedRemedy:
     type: object
     additionalProperties: false
@@ -251,13 +267,6 @@ $defs:
         type: array
         maxItems: 50
         items: { $ref: "#/$defs/repairReceiptEntry" }
-      disturbed_remedies:
-        description: >-
-          Optional and additive: omitted by a round that disturbed nothing settled. Adding it does
-          not bump contract_version, so a producer written before it existed still validates.
-        type: array
-        maxItems: 50
-        items: { $ref: "#/$defs/repairDisturbedRemedy" }
   repairPlanEntry:
     type: object
     additionalProperties: false
@@ -427,17 +436,17 @@ allOf:
         verdict: { enum: [satisfied, gaps_found] }
         produced_outputs:
           type: object
-          required: [unmet_criteria]
+          required: [gaps]
           not:
             anyOf:
-              - required: [gaps]
+              - required: [unmet_criteria]
               - required: [audit_repair_plan]
               - required: [carried_gap_dispositions]
               - required: [blast_radius_inspection]
               - required: [prior_gap_dispositions]
               - required: [failing_criteria]
           properties:
-            unmet_criteria:
+            gaps:
               type: array
               maxItems: 50
               items: { $ref: "#/$defs/unmetCriterion" }
@@ -470,7 +479,7 @@ allOf:
         produced_outputs:
           type: object
           properties:
-            unmet_criteria: { type: array, maxItems: 0 }
+            gaps: { type: array, maxItems: 0 }
   - if:
       properties:
         phase_id: { const: audit }
@@ -481,9 +490,49 @@ allOf:
         produced_outputs:
           type: object
           properties:
-            unmet_criteria:
+            gaps:
               type: array
               minItems: 1
+  - if:
+      properties:
+        phase_id: { const: verify_findings }
+      required: [phase_id]
+    then:
+      required: [verdict]
+      properties:
+        verdict: { enum: [findings_verified, no_findings_verified] }
+        produced_outputs:
+          type: object
+          required: [finding_dispositions]
+          properties:
+            finding_dispositions:
+              type: array
+              maxItems: 100
+              items:
+                allOf:
+                  - type: object
+                    additionalProperties: false
+                    required: [finding_id, disposition, reason, severity, location, message]
+                    properties:
+                      finding_id: { type: string, minLength: 1, pattern: ".*\\S.*" }
+                      disposition: { enum: [verified, rejected] }
+                      reason: { type: string, minLength: 1, maxLength: 280 }
+                      severity: { enum: [blocker, major, minor, nit] }
+                      location: { type: string, minLength: 1, maxLength: 180 }
+                      message: { type: string, minLength: 1, maxLength: 280 }
+                      boundary_context_unavailable: { type: boolean }
+                      selected_boundary_headings:
+                        type: array
+                        maxItems: 12
+                        items: { $ref: "#/$defs/verificationBoundaryHeadingProvenance" }
+                  - if:
+                      properties:
+                        boundary_context_unavailable: { const: true }
+                      required: [boundary_context_unavailable]
+                    then:
+                      properties:
+                        selected_boundary_headings:
+                          maxItems: 0
   - if:
       properties:
         phase_id: { const: implement_fix }
@@ -496,15 +545,3 @@ allOf:
           required: [repair_receipt]
           properties:
             repair_receipt: { $ref: "#/$defs/repairReceipt" }
-  - if:
-      properties:
-        phase_id: { const: plan_fix }
-        status: { const: completed }
-      required: [phase_id, status]
-    then:
-      properties:
-        produced_outputs:
-          type: object
-          required: [repair_plan]
-          properties:
-            repair_plan: { $ref: "#/$defs/repairPlan" }

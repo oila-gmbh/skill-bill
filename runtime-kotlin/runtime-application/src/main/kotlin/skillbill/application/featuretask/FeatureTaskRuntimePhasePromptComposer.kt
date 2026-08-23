@@ -81,7 +81,7 @@ object FeatureTaskRuntimePhasePromptComposer {
         packBuildCommand,
         briefing.priorGapMemory,
       ),
-      ceremonyDirective(briefing, reviewPassNumber),
+      ceremonyDirective(briefing),
       mutatingPhaseIdempotencyDirective(briefing.phaseId),
       nonValidatePhaseValidationOwnershipDirective(briefing.phaseId),
       nonBuildPhaseBuildOwnershipDirective(briefing.phaseId),
@@ -265,6 +265,7 @@ object FeatureTaskRuntimePhasePromptComposer {
     return when (phaseId) {
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT -> "  \"$verdict\": \"satisfied\","
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW -> "  \"$verdict\": \"approved\","
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS -> "  \"$verdict\": \"findings_verified\","
       else -> null
     }
   }
@@ -276,11 +277,16 @@ object FeatureTaskRuntimePhasePromptComposer {
         "\"${FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS}\": [], " +
           "\"${FeatureTaskRuntimeVerificationSignalKeys.REVIEW_RUN_ID}\": \"<the Review run ID this pass " +
           "reported>\""
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS ->
+        "\"${FeatureTaskRuntimeVerificationSignalKeys.FINDINGS_VERIFICATION_DISPOSITIONS}\": [ " +
+          "{ \"finding_id\": \"F-001\", \"disposition\": \"verified\", " +
+          "\"reason\": \"<bounded reason against spec intent>\", \"severity\": \"major\", " +
+          "\"location\": \"<location>\", \"message\": \"<finding message>\" } ]"
       else -> "\"result\": \"<concrete output for downstream phases>\""
     }
 
   private fun auditProducedOutputsSkeleton(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String {
-    val gaps = "\"${FeatureTaskRuntimeVerificationSignalKeys.AUDIT_UNMET_CRITERIA}\": []"
+    val gaps = "\"${FeatureTaskRuntimeVerificationSignalKeys.AUDIT_GAPS}\": []"
     val nonBlocking =
       "\"${FeatureTaskRuntimeVerificationSignalKeys.AUDIT_NON_BLOCKING_FINDINGS}\": []"
     if (briefing.unresolvedAuditGapIds.isEmpty()) return "$gaps, $nonBlocking"
@@ -331,24 +337,17 @@ object FeatureTaskRuntimePhasePromptComposer {
     """.trimIndent()
   }
 
-  private fun ceremonyDirective(briefing: FeatureTaskRuntimePhaseLaunchBriefing, reviewPassNumber: Int?): String {
+  private fun ceremonyDirective(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String {
     val featureSize = FeatureTaskRuntimeFeatureSize.fromWire(briefing.featureSize)
     val scaling = FeatureTaskRuntimePhaseWorkflowDefinition.ceremonyScaling(featureSize)
-    val remediationReview = briefing.phaseId == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW &&
-      (reviewPassNumber ?: 1) >= 2
     val reviewScope = scaling.reviewScope.wireValue
     val phaseSpecific = when (briefing.phaseId) {
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN ->
         "Apply ${scaling.preplanCeremony.promptLabel}. Keep the gate real: identify concrete scope, " +
           "affected boundaries, risks, and unknowns at the requested depth."
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW -> if (remediationReview) {
-        "Runtime-owned review uses mode:${CodeReviewExecutionMode.INLINE.wireValue} context:feature-remediation, " +
-          "bounded to the remediation delta: all findings addressed in that round union " +
-          "diff(pre-fix tree -> post-fix tree). Do not re-review the subtask's full base-to-current delta."
-      } else {
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW ->
         "The runtime owns ${scaling.reviewScope.promptLabel}. Keep the review gate real: inspect the implemented " +
           "change for defects and record concrete file references."
-      }
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT ->
         "Apply ${scaling.auditCeremony.promptLabel}. Keep the audit gate real: verify acceptance " +
           "criteria, report concrete gaps, and attach a complete blast-radius-aware fix plan in each " +
@@ -442,6 +441,20 @@ object FeatureTaskRuntimePhasePromptComposer {
           "      finding here to the imported review run, so a finding's \"id\" plus this run id must be the same\n" +
           "      pair that review recorded. Omit it ONLY if the review genuinely reported no run id; never\n" +
           "      invent, reuse an older, or guess one." + commitFocusedAccountingAddendum()
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS ->
+        "\n    - This is a VERIFYING phase: set top-level \"$verdict\" to \"findings_verified\" or " +
+          "\"no_findings_verified\" and emit exactly one " +
+          "produced_outputs.${FeatureTaskRuntimeVerificationSignalKeys.FINDINGS_VERIFICATION_DISPOSITIONS} " +
+          "array with one entry per review finding. Each entry carries finding_id, disposition " +
+          "(verified or rejected), reason, severity, location, message, optional " +
+          "selected_boundary_headings (heading_id and source_path), and boundary_context_unavailable " +
+          "when no eligible boundary owns the finding paths. Do not edit the worktree.\n" +
+          "      Example: {\"finding_id\":\"F-001\",\"disposition\":\"verified\"," +
+          "\"reason\":\"Matches spec intent AC-002.\",\"severity\":\"major\"," +
+          "\"location\":\"FeatureTaskRuntimePhaseWorkflowDefinition.kt\"," +
+          "\"message\":\"Missing verify_findings wiring\"," +
+          "\"selected_boundary_headings\":[{\"heading_id\":\"runtime-kotlin/agent/history.md#abc\"," +
+          "\"source_path\":\"runtime-kotlin/agent/history.md\"}]}."
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT -> auditProducedOutputsAddendum(
         verdict = verdict,
         briefing = briefing,
@@ -509,8 +522,8 @@ object FeatureTaskRuntimePhasePromptComposer {
       "      REJECTED: omitting verdict; any other string; nesting verdict only inside produced_outputs.\n" +
       "      ACCEPTED root: {\"contract_version\":\"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION\"," +
       "\"phase_id\":\"audit\",\"status\":\"completed\",\"verdict\":\"satisfied\"," +
-      "\"summary\":\"<one sentence>\",\"produced_outputs\":{\"unmet_criteria\":[]}}.\n" +
-      "      Emit exactly one shallow produced_outputs.unmet_criteria array. Use [] for satisfied. For\n" +
+      "\"summary\":\"<one sentence>\",\"produced_outputs\":{\"gaps\":[]}}.\n" +
+      "      Emit exactly one shallow produced_outputs.gaps array. Use [] for satisfied. For\n" +
       "      gaps_found, one entry per unmet criterion: {\"criterion\":\"AC-003\",\"note\":\"...\"}.\n" +
       "      Wire shape stays exactly those two fields — free-form note prose; no required keywords,\n" +
       "      sections, or extra keys (extra keys fail the schema gate).\n" +
@@ -520,9 +533,9 @@ object FeatureTaskRuntimePhasePromptComposer {
       "      production change, blast radius on callers/DI/sibling phases/contracts, and how to avoid\n" +
       "      regressing neighbors or opening a new gap. Prefer a complete correct plan over a narrow\n" +
       "      patch. Never a diff hunk, a source body, or a line number.\n" +
-      "      produced_outputs carries nothing else about the audit: no gaps, no audit_repair_plan, no\n" +
-      "      carried_gap_dispositions, no blast_radius_inspection, no gap or repair-item identifiers —\n" +
-      "      put planning guidance in the note only.\n" +
+      "      produced_outputs carries nothing else about the audit: no unmet_criteria, no\n" +
+      "      audit_repair_plan, no carried_gap_dispositions, no blast_radius_inspection, no gap or\n" +
+      "      repair-item identifiers — put planning guidance in the note only.\n" +
       auditNoEarlierAuditLine(briefing) +
       "      Minor and nit entries go only in produced_outputs.non_blocking_findings and they\n" +
       "      NEVER trigger gaps_found: severity (minor or nit) is required, acceptance_criterion_ref and\n" +

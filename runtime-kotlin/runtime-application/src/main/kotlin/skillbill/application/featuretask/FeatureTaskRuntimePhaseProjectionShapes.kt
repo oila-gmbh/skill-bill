@@ -2,7 +2,6 @@ package skillbill.application.featuretask
 
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_BUILD_RECEIPT_CONTRACT_VERSION
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION
-import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_REPAIR_PLAN_CONTRACT_VERSION
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.REPAIR_RECEIPT_MAX_ENTRIES
@@ -25,7 +24,6 @@ internal object FeatureTaskRuntimePhaseProjectionShapes {
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN -> PREPLAN
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN -> PLAN
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT -> IMPLEMENT
-    FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN_FIX -> PLAN_FIX
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX -> IMPLEMENT_FIX
     FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE ->
       if (agentRunValidateFallback) {
@@ -101,21 +99,6 @@ internal object FeatureTaskRuntimePhaseProjectionShapes {
       "        validate) is not open work at all. Populate it only under a 'blocked' or 'failed'\n" +
       "        envelope, as a plain line or the same { \"ref\", \"note\" } pair deviations uses."
 
-  private val PLAN_FIX: String =
-    "\n    - Required produced_outputs.repair_plan shape. One entry per carried finding; root_cause and\n" +
-      "      minimal_change are one line each with no diff hunk, source body, or line number.\n" +
-      "      prior_round_remedy_ref is admissible only on a design_symptom entry:\n" +
-      "      ```json\n" +
-      "      { \"repair_plan\": {\n" +
-      "          \"contract_version\": \"$FEATURE_TASK_RUNTIME_REPAIR_PLAN_CONTRACT_VERSION\",\n" +
-      "          \"round_number\": 1,\n" +
-      "          \"entries\": [ { \"finding_ref\": \"F-001\",\n" +
-      "            \"root_cause\": \"<why the defect exists>\",\n" +
-      "            \"minimal_change\": \"<smallest change that closes it>\",\n" +
-      "            \"classification\": \"local_patch_site\" } ] } }\n" +
-      "      ```\n" +
-      "      Name each finding with the briefing's finding_id (finding_ref / id / ref aliases accepted)."
-
   private val IMPLEMENT_FIX: String =
     "\n    - Required produced_outputs.repair_receipt shape. Emit one entry per carried finding,\n" +
       "      named by finding_id (aliases finding_ref, id, ref accepted). Coverage matches on\n" +
@@ -130,19 +113,15 @@ internal object FeatureTaskRuntimePhaseProjectionShapes {
       "      unresolved_reason at most $REPAIR_RECEIPT_MAX_UNRESOLVED_REASON_UTF8_BYTES characters.\n" +
       "      Count the characters before you emit and compress to fit: one bounded sentence per field,\n" +
       "      naming the decision rather than arguing it. An over-length field is rejected on content\n" +
-      "      that was otherwise correct. Add disturbed_remedies only when this round\n" +
-      "      removed or materially rewrote a construct a resolved repair_ledger entry names; omit it\n" +
-      "      otherwise. The round number and the pre-fix checkpoint sha are runtime-owned: omit them,\n" +
-      "      never guess them from a briefing hash:\n" +
+      "      that was otherwise correct. The round number and the pre-fix checkpoint sha are runtime-owned:\n" +
+      "      omit them, never guess them from a briefing hash:\n" +
       "      ```json\n" +
       "      { \"repair_receipt\": {\n" +
       "          \"contract_version\": \"$FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION\",\n" +
       "          \"entries\": [ { \"finding_id\": \"F-001\", \"severity\": \"blocker\",\n" +
       "            \"outcome\": \"addressed\",\n" +
       "            \"constructs\": [ { \"symbol\": \"Type.member\", \"file\": \"Type.kt\" } ],\n" +
-      "            \"intent\": \"<one-line repair intent>\" } ],\n" +
-      "          \"disturbed_remedies\": [ { \"finding_ref\": \"<ledger finding_ref>\",\n" +
-      "            \"reason\": \"<one line on why the settled construct had to change>\" } ] } }\n" +
+      "            \"intent\": \"<one-line repair intent>\" } ] } }\n" +
       "      ```\n" +
       "      Compilation and test execution belong exclusively to the validate phase. Do NOT build,\n" +
       "      compile, run tests, or invoke `./gradlew check` / the pack collect-all gate here."

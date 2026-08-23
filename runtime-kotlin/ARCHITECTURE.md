@@ -6,7 +6,7 @@ This document defines the enforced architecture for `runtime-kotlin`.
 
 Feature-task continuation is repository-scoped and database-authoritative. At workflow creation, an immutable identity row binds the workflow id to a normalized issue key, canonical real-path Git-root identity, repository-relative governed spec path, persisted mode, and standalone/goal-child route scope. Read-only lookup never chooses among multiple eligible rows by timestamp.
 
-The feature `spec.md` remains the governed product contract; it is not a mutable workflow ledger. A sibling `decomposition-manifest.yaml` is the sole prepared-feature authority marker and always contains one or more executable subtasks; a bare `spec.md` is preparation intake. Continuation lookup remains authoritative and precedes artifact discovery. Pre-planning, planning, phase outputs, and the phase ledger remain durable database artifacts. Initial implementation continuation is hydrated from the completed `plan`. Audit-gap remediation reuses the immutable original completed `preplan` and `plan` outputs and never loops back to either planning phase. A `gaps_found` audit must produce a versioned, complete repair plan. That normalized plan is persisted before the backward edge, and remediation reconciles its dependency-ordered repair items with an exact terminal result set. Subsequent audits retain recurring gap identities, distinguish genuinely new gaps, and block equivalent non-progress loops without storing prompts, diffs, source bodies, or raw tool output.
+The feature `spec.md` remains the governed product contract; it is not a mutable workflow ledger. A sibling `decomposition-manifest.yaml` is the sole prepared-feature authority marker and always contains one or more executable subtasks; a bare `spec.md` is preparation intake. Continuation lookup remains authoritative and precedes artifact discovery. Pre-planning, planning, phase outputs, and the phase ledger remain durable database artifacts. Initial implementation continuation is hydrated from the completed `plan`. Audit-gap remediation reuses the immutable original completed `preplan` and `plan` outputs and never loops back to either planning phase. A `gaps_found` audit must produce a versioned, complete repair plan. That normalized plan is persisted before the backward edge, and remediation reconciles its dependency-ordered repair items with an exact terminal result set. Subsequent audits retain recurring gap identities, distinguish genuinely new gaps, and block equivalent non-progress loops without storing prompts, diffs, source bodies, or raw tool output. Review remediation is a single bounded round: `review` runs once, `changes_requested` may launch one `implement_fix` pass (`review_fix` cap 1, then advance to `validate`), and review does not run again after that fix.
 
 Decomposed goals execute discovery and preplan once at the parent, then persist a distinct immutable plan checkpoint for each ordered subtask. Normalized checkpoint tables are the continuation authority. Status reads only bounded fields: shared-preplan readiness, planned and total counts, first missing subtask, and a concise reason. Resume reuses compatible checkpoints; hard reset atomically invalidates planning and child continuation state.
 
@@ -496,14 +496,14 @@ runtime-ports
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairDisturbedRemedy.fromArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedgerEntry.toProjectionMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedgerProjection.toProjectionMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairPlanEntry.toArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairPlanEntry.fromArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairPlan.toArtifactMap`
-    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairPlan.fromArtifactMap`
     - `skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting.fromArtifactMap`
     - `skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition.fromArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerificationBoundaryHeadingProvenance.toArtifactMap`
+    - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerificationBoundaryHeadingProvenance.fromArtifactMap`
     - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewState.boundedDispositionSummary`
     - `skillbill.ports.workflow.model.GoalSubtaskReviewInput.toArtifactMap`
     - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome.toArtifactMap`
@@ -1318,14 +1318,14 @@ Categories:
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairDisturbedRemedy.fromArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedgerEntry.toProjectionMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairLedgerProjection.toProjectionMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairPlanEntry.toArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairPlanEntry.fromArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairPlan.toArtifactMap`
-- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairPlan.fromArtifactMap`
 - `skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting.fromArtifactMap`
 - `skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.GoalSubtaskBlockerDisposition.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition.fromArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerificationBoundaryHeadingProvenance.toArtifactMap`
+- `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerificationBoundaryHeadingProvenance.fromArtifactMap`
 - `skillbill.workflow.taskruntime.model.GoalSubtaskReviewState.boundedDispositionSummary`
 - `skillbill.ports.workflow.model.GoalSubtaskReviewInput.toArtifactMap`
 - `skillbill.workflow.taskruntime.model.FeatureTaskRuntimeGoalContinuationOutcome.toArtifactMap`

@@ -24,21 +24,30 @@ internal object FeatureTaskRuntimeVerificationSignalKeys {
    */
   const val REVIEW_RUN_ID = "review_run_id"
 
-  /** produced_outputs key the audit gate reads: unmet acceptance criteria (an empty [] affirms all met). */
+  /**
+   * Legacy produced_outputs key for unmet acceptance criteria. Rejected when non-empty: agents must
+   * emit [AUDIT_GAPS]. An empty array is still tolerated so a satisfied audit that has not yet been
+   * re-prompted does not fail the gate twice for the same migration.
+   */
   const val AUDIT_UNMET_CRITERIA = "unmet_criteria"
 
-  /** Compact agent-facing audit gaps; normalized into the durable unmet-criteria and repair-plan model. */
+  /**
+   * Compact agent-facing audit gaps (an empty [] affirms all criteria met). Normalized into the durable
+   * unmet-criteria and repair-plan model on the audit_gap edge.
+   */
   const val AUDIT_GAPS = "gaps"
 
   /** produced_outputs key for Minor/Nit audit findings that never reopen implementation. */
   const val AUDIT_NON_BLOCKING_FINDINGS = "non_blocking_findings"
 
   /**
-   * Spelling agents reach for in place of [AUDIT_UNMET_CRITERIA]. It is rejected, not accepted: while it
-   * was an accepted alias, an audit emitting only this key was classified `gaps_found` by the verdict
-   * readers but skipped the repair-plan gate, which keys on the canonical name, and the run blocked much
-   * later on a misleading durability message. One canonical representation is the only way the gate and
-   * the verdict cannot disagree.
+   * Spelling agents reach for in place of [AUDIT_GAPS]. It is rejected, not accepted: while it was an
+   * accepted alias, an audit emitting only this key was classified `gaps_found` by the verdict readers
+   * but skipped the repair-plan gate, which keys on the canonical name, and the run blocked much later
+   * on a misleading durability message. One canonical representation is the only way the gate and the
+   * verdict cannot disagree.
    */
   const val AUDIT_FAILING_CRITERIA_REJECTED_ALIAS = "failing_criteria"
+
+  const val FINDINGS_VERIFICATION_DISPOSITIONS = "finding_dispositions"
 }

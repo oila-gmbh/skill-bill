@@ -425,6 +425,7 @@ class IdeStatusServiceTest {
             null,
             options = PhaseRecordOptions(reviewPassNumber = 3),
           ),
+          "verify_findings" to phaseRecordWire("verify_findings", "completed", null),
           "validate" to phaseRecordWire(
             "validate",
             "running",

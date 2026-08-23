@@ -52,6 +52,11 @@ class ReviewContextModelsTest {
     assertFailsWith<IllegalArgumentException> { requireRepositoryRelativePath("src/broken-\uD83D.kt") }
     assertFailsWith<IllegalArgumentException> { requireRepositoryRelativePath("src/broken-\uDE80.kt") }
   }
+
+  @Test fun `repository paths reject backslash-separated traversal segments`() {
+    assertFailsWith<IllegalArgumentException> { requireRepositoryRelativePath("runtime-kotlin\\..\\secret.kt") }
+    requireRepositoryRelativePath("A|b\\c\\t.kt")
+  }
   private fun lane(name: String, paths: List<String>, reason: String = "routed") = ReviewLaneDecision(
     name,
     true,

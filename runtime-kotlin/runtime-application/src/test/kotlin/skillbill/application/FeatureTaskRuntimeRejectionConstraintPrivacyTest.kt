@@ -113,7 +113,7 @@ class FeatureTaskRuntimeRejectionConstraintPrivacyTest {
     // PriorAttemptCorrection reaches the next launch, so the agent never sees the exact rejected body.
     val rejectedBody =
       "{\"contract_version\":\"0.2\",\"phase_id\":\"audit\",\"status\":\"completed\"," +
-        "\"summary\":\"SKILL187-GATEOUTPUT-SENTINEL\",\"produced_outputs\":{\"unmet_criteria\":[]}}"
+        "\"summary\":\"SKILL187-GATEOUTPUT-SENTINEL\",\"produced_outputs\":{\"gaps\":[]}}"
     var auditAttempts = 0
     val harness = runnerHarness(
       launcher = RuntimeRecordingLauncher { request ->

@@ -79,6 +79,8 @@ data class UnaddressedFinding(
   val scopeDisposition: ReviewScopeDisposition? = null,
   val citations: List<ReviewFindingCitation> = emptyList(),
   val severityAdjustment: ReviewSeverityAdjustment? = null,
+  val verificationDisposition: String? = null,
+  val verificationReason: String? = null,
 ) {
   val findingKey: String get() = reviewFindingIdentityKey(location, summary)
 }

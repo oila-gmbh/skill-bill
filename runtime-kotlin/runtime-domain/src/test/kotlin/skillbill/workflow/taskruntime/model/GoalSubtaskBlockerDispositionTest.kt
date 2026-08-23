@@ -8,33 +8,25 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/**
- * SKILL-142 AC-010 to AC-014 and AC-017, carried to the SKILL-157 unbounded loop: the evidenced
- * per-Blocker disposition, never a pass count, decides whether remediation continues.
- */
 class GoalSubtaskBlockerDispositionTest {
-  private fun reservedPassTwo(): GoalSubtaskReviewState = GoalSubtaskReviewState.initial(
+  private fun reservedPassOne(): GoalSubtaskReviewState = GoalSubtaskReviewState.initial(
     reviewBaseSha = "b".repeat(40),
     baselineUntrackedPaths = emptyList(),
     codeReviewMode = CodeReviewExecutionMode.AUTO,
-  ).reserveNextPass().completeReservedPass(
-    verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
-    unresolvedFindingCount = 1,
-    findings = listOf(GoalSubtaskReviewCompactFinding("blocker", "Repository", "Unsafe mutation")),
   ).reserveNextPass()
 
   private fun disposition(id: String, verdict: GoalSubtaskBlockerDispositionVerdict) =
     GoalSubtaskBlockerDisposition(id, verdict, listOf("changed line settling $id"))
 
   @Test
-  fun `every blocker resolved or superseded advances the child`() {
-    val settled = reservedPassTwo().completeReservedPass(
+  fun `every resolved blocker advances the child`() {
+    val settled = reservedPassOne().completeReservedPass(
       verdict = FeatureTaskRuntimeVerdict.APPROVED,
       unresolvedFindingCount = 0,
       findings = emptyList(),
       blockerDispositions = listOf(
         disposition("F-001", GoalSubtaskReviewDispositionFixtures.RESOLVED),
-        disposition("F-002", GoalSubtaskReviewDispositionFixtures.SUPERSEDED),
+        disposition("F-002", GoalSubtaskReviewDispositionFixtures.RESOLVED),
       ),
     )
     assertFalse(settled.pausedForOperatorDecision)
@@ -43,8 +35,8 @@ class GoalSubtaskBlockerDispositionTest {
   }
 
   @Test
-  fun `an unresolved blocker reserves the next remediation pass instead of pausing or blocking`() {
-    val unresolved = reservedPassTwo().completeReservedPass(
+  fun `an unresolved blocker does not reserve a second review pass`() {
+    val unresolved = reservedPassOne().completeReservedPass(
       verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
       unresolvedFindingCount = 1,
       findings = listOf(GoalSubtaskReviewCompactFinding("blocker", "Repository", "Still unsafe")),
@@ -53,31 +45,26 @@ class GoalSubtaskBlockerDispositionTest {
         disposition("F-002", GoalSubtaskReviewDispositionFixtures.UNRESOLVED),
       ),
     )
-    assertFalse(unresolved.pausedForOperatorDecision, "The unbounded loop remediates instead of pausing itself.")
-    assertFalse(unresolved.reviewCapReached, "No pass count exhausts the remediation loop.")
+    assertFalse(unresolved.reviewCapReached)
     assertEquals(1, unresolved.unresolvedBlockerDispositions.size)
-    assertEquals(2, unresolved.completedPassCount)
-    assertEquals(3, unresolved.reserveNextPass().reservedPassNumber)
-    assertTrue(
-      unresolved.acceptsOperatorDecision,
-      "An operator may still take over a subtask carrying an unresolved Blocker.",
-    )
+    assertEquals(1, unresolved.completedPassCount)
+    assertEquals(unresolved, unresolved.reserveNextPass())
   }
 
   @Test
   fun `dispositions and their evidence survive encode and decode`() {
-    val paused = reservedPassTwo().completeReservedPass(
+    val settled = reservedPassOne().completeReservedPass(
       verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
       unresolvedFindingCount = 1,
       findings = listOf(GoalSubtaskReviewCompactFinding("blocker", "Repository", "Still unsafe")),
       blockerDispositions = listOf(disposition("F-002", GoalSubtaskReviewDispositionFixtures.UNRESOLVED)),
     )
-    val reloaded = GoalSubtaskReviewState.fromArtifactMap(paused.toArtifactMap())
-    assertEquals(paused.blockerDispositions, reloaded.blockerDispositions)
-    assertEquals(paused.toArtifactMap(), reloaded.toArtifactMap())
-    assertEquals(2, reloaded.completedPassCount, "Resume must never re-reserve a consumed pass.")
-    assertEquals(paused.reviewBaseSha, reloaded.reviewBaseSha)
-    assertEquals(paused.baselineUntrackedPaths, reloaded.baselineUntrackedPaths)
+    val reloaded = GoalSubtaskReviewState.fromArtifactMap(settled.toArtifactMap())
+    assertEquals(settled.blockerDispositions, reloaded.blockerDispositions)
+    assertEquals(settled.toArtifactMap(), reloaded.toArtifactMap())
+    assertEquals(1, reloaded.completedPassCount)
+    assertEquals(settled.reviewBaseSha, reloaded.reviewBaseSha)
+    assertEquals(settled.baselineUntrackedPaths, reloaded.baselineUntrackedPaths)
   }
 
   @Test
@@ -95,7 +82,7 @@ class GoalSubtaskBlockerDispositionTest {
 
   @Test
   fun `major findings stay out of disposition scope`() {
-    val settled = reservedPassTwo().completeReservedPass(
+    val settled = reservedPassOne().completeReservedPass(
       verdict = FeatureTaskRuntimeVerdict.APPROVED,
       unresolvedFindingCount = 0,
       findings = listOf(GoalSubtaskReviewCompactFinding("major", "Service", "Missing behavior")),
@@ -108,33 +95,21 @@ class GoalSubtaskBlockerDispositionTest {
 
   @Test
   fun `the review result artifact still equals the prefix plus its exact pass number`() {
-    val settled = reservedPassTwo().completeReservedPass(
+    val settled = reservedPassOne().completeReservedPass(
       verdict = FeatureTaskRuntimeVerdict.APPROVED,
       unresolvedFindingCount = 0,
       findings = emptyList(),
       blockerDispositions = listOf(disposition("F-001", GoalSubtaskReviewDispositionFixtures.RESOLVED)),
     )
     assertEquals(
-      "$GOAL_SUBTASK_REVIEW_RESULT_ARTIFACT_PREFIX.2",
+      "$GOAL_SUBTASK_REVIEW_RESULT_ARTIFACT_PREFIX.1",
       settled.passResults.last().reviewResultArtifact,
     )
-    assertEquals(2, settled.completedPassCount)
+    assertEquals(1, settled.completedPassCount)
   }
 
   @Test
-  fun `the operator decision vocabulary is bounded and only applies while paused`() {
-    val paused = reservedPassTwo().completeReservedPass(
-      verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
-      unresolvedFindingCount = 1,
-      findings = listOf(GoalSubtaskReviewCompactFinding("blocker", "Repository", "Still unsafe")),
-      blockerDispositions = listOf(disposition("F-002", GoalSubtaskReviewDispositionFixtures.UNRESOLVED)),
-    )
-    GoalSubtaskOperatorDecision.entries.forEach { decision ->
-      val decided = paused.applyOperatorDecision(decision)
-      assertEquals(decision, decided.operatorDecision)
-      assertEquals(2, decided.completedPassCount, "retry_fix is a disposition round, never a new pass.")
-      assertEquals(null, decided.reservedPassNumber)
-    }
+  fun `the operator decision vocabulary remains decodable for legacy records`() {
     assertEquals(
       setOf("retry_fix", "accept_and_advance", "abandon_subtask"),
       GoalSubtaskOperatorDecision.entries.map { it.wireValue }.toSet(),
@@ -146,7 +121,7 @@ class GoalSubtaskBlockerDispositionTest {
 
   @Test
   fun `the bounded disposition summary carries no location bearing evidence`() {
-    val paused = reservedPassTwo().completeReservedPass(
+    val settled = reservedPassOne().completeReservedPass(
       verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
       unresolvedFindingCount = 1,
       findings = listOf(GoalSubtaskReviewCompactFinding("blocker", "Repository", "Still unsafe")),
@@ -158,51 +133,18 @@ class GoalSubtaskBlockerDispositionTest {
         ),
       ),
     )
-    val summary = paused.boundedDispositionSummary().toString()
+    val summary = settled.boundedDispositionSummary().toString()
     assertFalse(summary.contains("Repo.kt"), "No path may reach a goal-facing surface.")
     assertFalse(summary.contains(":42"), "No line number may reach a goal-facing surface.")
     assertTrue(summary.contains("unresolved"))
     assertTrue(
-      paused.toArtifactMap().toString().contains("Repo.kt"),
+      settled.toArtifactMap().toString().contains("Repo.kt"),
       "Location-bearing evidence stays in the durable artifact for goal findings retrieval.",
     )
-  }
-
-  @Test
-  fun `Major non-convergence pause reason carries severity count and labels without paths`() {
-    val major = GoalSubtaskReviewCompactFinding("major", "Service", "Missing behavior")
-    val passOne = GoalSubtaskReviewState.initial(
-      reviewBaseSha = "b".repeat(40),
-      baselineUntrackedPaths = emptyList(),
-      codeReviewMode = CodeReviewExecutionMode.AUTO,
-    ).reserveNextPass().completeReservedPass(
-      verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
-      unresolvedFindingCount = 1,
-      findings = listOf(major),
-    )
-    val paused = passOne.reserveNextPass().completeReservedPass(
-      verdict = FeatureTaskRuntimeVerdict.CHANGES_REQUESTED,
-      unresolvedFindingCount = 1,
-      findings = listOf(major.copy(findingId = "F-001")),
-    ).pauseForNonConvergence()
-    assertTrue(paused.pausedForOperatorDecision)
-    assertTrue(paused.acceptsOperatorDecision)
-    val identities = advanceBlockingFindingIdentities(paused.passResults.last().findings)
-    val decision = detectReviewRemediationNonProgress(
-      previous = advanceBlockingFindingIdentities(passOne.passResults.last().findings),
-      current = identities,
-      previousRepositoryFingerprintOrDigest = "same",
-      currentRepositoryFingerprintOrDigest = "same",
-    )
-    assertTrue(decision.blocked)
-    val reason = requireNotNull(decision.reason)
-    assertFalse(reason.contains("/"), "Non-convergence reason must stay path-free.")
-    assertFalse(Regex(":\\d+").containsMatchIn(reason))
   }
 }
 
 private object GoalSubtaskReviewDispositionFixtures {
   val RESOLVED = GoalSubtaskBlockerDispositionVerdict.RESOLVED
   val UNRESOLVED = GoalSubtaskBlockerDispositionVerdict.UNRESOLVED
-  val SUPERSEDED = GoalSubtaskBlockerDispositionVerdict.SUPERSEDED
 }

@@ -21,6 +21,11 @@ val canonicalGoalPlanningDiscoveryExclusionsPath: String =
     .resolve("orchestration/contracts/goal-planning-discovery-exclusions.yaml")
     .absolutePath
 
+val canonicalGoalVerificationBoundaryCapsPath: String =
+  rootProject.projectDir.parentFile
+    .resolve("orchestration/contracts/goal-verification-boundary-caps.yaml")
+    .absolutePath
+
 val copyGoalPlanningDiscoveryExclusions =
   tasks.register<Copy>("copyGoalPlanningDiscoveryExclusions") {
     val contractPath = canonicalGoalPlanningDiscoveryExclusionsPath
@@ -34,6 +39,19 @@ val copyGoalPlanningDiscoveryExclusions =
     }
   }
 
+val copyGoalVerificationBoundaryCaps =
+  tasks.register<Copy>("copyGoalVerificationBoundaryCaps") {
+    val contractPath = canonicalGoalVerificationBoundaryCapsPath
+    from(contractPath)
+    into(layout.buildDirectory.dir("generated/skillbill-contracts/skillbill/contracts"))
+    inputs.file(contractPath)
+    doFirst {
+      require(File(contractPath).exists()) {
+        "SKILL-202: goal verification boundary caps contract is missing at $contractPath."
+      }
+    }
+  }
+
 sourceSets.named("main") {
   resources.srcDir(layout.buildDirectory.dir("generated/skillbill-contracts"))
 }
@@ -43,7 +61,7 @@ sourceSets.named("main") {
 // source set too and fails on a clean build without it.
 listOf("processResources", "processTestResources", "sourcesJar").forEach { consumer ->
   tasks.matching { task -> task.name == consumer }.configureEach {
-    dependsOn(copyGoalPlanningDiscoveryExclusions)
+    dependsOn(copyGoalPlanningDiscoveryExclusions, copyGoalVerificationBoundaryCaps)
   }
 }
 

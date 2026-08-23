@@ -4,7 +4,6 @@ package skillbill.application.featuretask
 
 import skillbill.application.model.FeatureTaskRuntimeImplementationContinuation
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION
-import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_REPAIR_PLAN_CONTRACT_VERSION
 import skillbill.contracts.workflow.FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION
 import skillbill.ports.workflow.model.GoalSubtaskReviewInput
 import skillbill.workflow.model.CodeReviewExecutionMode
@@ -376,38 +375,17 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "it applied none, names what already satisfied the work, and stops — the audit re-reads the tree " +
     "itself, so proving convergence path by path here only risks overflowing the field. When the " +
     "briefing carries audit_gaps, reuse its immutable initial preplan and plan outputs and change " +
-    "only what the listed acceptance criteria require; do not regenerate planning, expand scope, or " +
-    "disturb settled implementation. The receipt is the same implementation_receipt as any other " +
-    "round: there are no repair-item identifiers to report and no per-item evidence to record, because " +
-    "the next audit re-reads the tree and decides every criterion again. Repair evidence is read-only " +
-    "repository facts: do not run builds or tests here.",
-  FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN_FIX to
-    "Decide the root cause of each carried review finding before any edit is made. Do not modify " +
-    "repository files during this phase; the following implement_fix phase applies your plan. Read the " +
-    "carried findings, the repair_ledger of what earlier rounds of this same remediation already fixed, " +
-    "and the immutable initial preplan and plan outputs as read-only context — you never regenerate, " +
-    "mutate, or overwrite them. Emit produced_outputs.repair_plan with contract_version " +
-    "\"$FEATURE_TASK_RUNTIME_REPAIR_PLAN_CONTRACT_VERSION\", the round number, and exactly one entry per " +
-    "carried finding: finding_id (the briefing's finding_id; aliases finding_ref, id, and ref are " +
-    "accepted), the root_cause, the minimal_change that addresses it, and a " +
-    "classification of local_patch_site or design_symptom. Classify design_symptom when the finding is a " +
-    "consequence of an earlier round's remedy rather than a local defect, and name that earlier finding " +
-    "in prior_round_remedy_ref. A design_symptom classification escalates the round for an operator " +
-    "decision instead of advancing to implement_fix, so use it when another local patch would be the " +
-    "wrong repair — not merely when the fix is awkward.",
+    "only what the latest listed gaps require; do not regenerate planning, expand scope, or disturb " +
+    "settled implementation. Under the audit-gap loop, follow each listed gap's implement-ready fix " +
+    "plan in this one invocation and report the ordinary implementation receipt; the next audit " +
+    "re-reads the tree and decides every criterion again. Repair evidence is read-only repository " +
+    "facts: do not run builds or tests here.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX to
-    "Address the carried findings from the preceding review pass on the CURRENT working tree as " +
-    "incremental reconciliation. Every finding in the briefing — Blocker, Major, Minor, and Nit — is in " +
+    "Address every verified finding from verify_findings on the CURRENT working tree as " +
+    "incremental reconciliation. Every carried finding — Blocker, Major, Minor, and Nit — is in " +
     "scope; specialist narratives and raw review output are not. Do not re-apply " +
     "the plan from scratch or expand scope beyond the carried findings. Treat any fix already present " +
-    "as a no-op. See the mutating-phase idempotency contract below. From round two onward the briefing " +
-    "also carries repair_ledger: what earlier rounds of this same remediation already fixed and which " +
-    "named constructs hold each finding closed. Those entries are settled load-bearing work, not open " +
-    "findings awaiting action — do not re-address a resolved entry and do not treat it as scope. If " +
-    "closing a carried finding requires you to remove or materially rewrite a construct a resolved " +
-    "entry names, say so: list that entry's finding_id in produced_outputs.repair_receipt." +
-    "disturbed_remedies with a one-line reason. Silent removal is rejected, because the finding that " +
-    "construct closed can otherwise be reintroduced without anyone seeing it. Emit " +
+    "as a no-op. See the mutating-phase idempotency contract below. Emit " +
     "produced_outputs.repair_receipt " +
     "with contract_version \"$FEATURE_TASK_RUNTIME_REPAIR_RECEIPT_CONTRACT_VERSION\" and exactly one " +
     "entry per carried finding named by finding_id (the briefing's finding_id values; aliases " +
@@ -429,13 +407,25 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "The runtime owns this review. Do not run bill-code-review, do not emit findings, and do not " +
     "report unsatisfied acceptance criteria. Criterion-gap detection remains exclusive to the audit phase. " +
     "Do not run `./gradlew check`, the pack collect-all gate, or `bill-code-check`; validate owns those.",
+  FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS to
+    "Verify every finding from the single preceding review pass against the subtask spec intent " +
+    "projection and the scoped boundary-memory catalog in the briefing. Each finding receives a " +
+    "titles-only heading catalog for boundaries that own its paths; select relevant heading_id " +
+    "values in selected_boundary_headings and set boundary_context_unavailable when no eligible " +
+    "boundary owns the finding paths. Emit exactly one disposition per finding — verified or " +
+    "rejected — each with a bounded reason derived from that intent projection and selected " +
+    "boundary titles. Do not edit the worktree. Settle once: verdict findings_verified when at " +
+    "least one finding is verified, otherwise no_findings_verified. Emit " +
+    "produced_outputs.${FeatureTaskRuntimeVerificationSignalKeys.FINDINGS_VERIFICATION_DISPOSITIONS} " +
+    "with finding_id, disposition, reason, severity, location, message, optional " +
+    "selected_boundary_headings, and boundary_context_unavailable per entry.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT to
     "Answer one question: is every acceptance criterion in the briefing implemented in the repository? " +
     "Read the tree itself at the resolved checkpoint — the diff over its base_ref/head_ref plus its " +
     "scoped_owned_paths. The upstream implementation receipt is a producer CLAIM, not evidence: never " +
     "mark a criterion satisfied because the receipt lists a completed task id, a changed path, or " +
     "reconciliation_evidence claiming reconciled. A claim the tree contradicts is itself unmet. " +
-    "Report the answer as verdict plus produced_outputs.unmet_criteria: verdict satisfied with an " +
+    "Report the answer as verdict plus produced_outputs.gaps: verdict satisfied with an " +
     "empty array when every criterion is implemented, or verdict gaps_found with one entry per unmet " +
     "criterion. Every unmet entry must carry its criterion ref and one dense note that both names " +
     "what is missing and hands implement a complete fix plan for that gap. Before you emit a gap, " +

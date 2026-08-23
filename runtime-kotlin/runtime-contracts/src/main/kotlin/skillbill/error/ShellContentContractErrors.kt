@@ -223,6 +223,12 @@ class InvalidProducerOutputEvidenceSchemaError(message: String) :
 class InvalidGoalPlanningDiscoveryExclusionsSchemaError(message: String) :
   ShellContentContractException(message)
 
+class InvalidGoalVerificationBoundaryCapsSchemaError(message: String) :
+  ShellContentContractException(message)
+
+class GoalVerificationBoundaryCapExceededError(message: String) :
+  ShellContentContractException(message)
+
 /**
  * SKILL-51: surfaced when a parent decomposition manifest fails the
  * canonical `orchestration/contracts/decomposition-manifest-schema.yaml`
@@ -418,6 +424,14 @@ class InvalidFeatureTaskRuntimeRepairPlanError(
   cause: Throwable? = null,
 ) : ShellContentContractException(
   "Feature-task-runtime repair plan fails at '${fieldPath.ifBlank { "<root>" }}': $reason",
+  cause,
+)
+
+class InvalidFeatureTaskRuntimeFindingVerificationRecordError(
+  val reason: String,
+  cause: Throwable? = null,
+) : ShellContentContractException(
+  "Feature-task-runtime finding verification record is invalid: $reason",
   cause,
 )
 

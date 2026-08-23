@@ -3,6 +3,7 @@ package skillbill.application.featuretask
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.goalrunner.stderrExcerpt
 import skillbill.application.model.FeatureTaskRuntimeCrashReconciliationResult
+import skillbill.application.model.FeatureTaskRuntimeFindingVerificationTelemetry
 import skillbill.application.model.FeatureTaskRuntimeGoalContinuationContext
 import skillbill.application.model.FeatureTaskRuntimePreparation
 import skillbill.application.model.FeatureTaskRuntimeRegenerationTelemetry
@@ -11,6 +12,7 @@ import skillbill.application.model.FeatureTaskRuntimeRunReport
 import skillbill.application.model.FeatureTaskRuntimeRunRequest
 import skillbill.application.model.FeatureTaskRuntimeSubtaskOutcome
 import skillbill.application.workflow.repoRoot
+import skillbill.contracts.JsonSupport
 import skillbill.error.FeatureTaskRuntimeOperatorDecisionRejectedError
 import skillbill.goalrunner.model.GoalRunnerLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
@@ -151,6 +153,7 @@ class FeatureTaskRuntimeRunner(
       loadAuditRepairProgress(runRequest)
     }
     val regenerationTelemetry = { loadRegenerationTelemetry(runRequest) }
+    val findingVerificationTelemetry = { loadFindingVerificationTelemetry(runRequest) }
     val transitions = transitionsFor(runRequest)
     val phaseTokenAccumulator: MutableMap<String, Pair<Int, Int>> = mutableMapOf()
     val report = runCatching {
@@ -211,6 +214,7 @@ class FeatureTaskRuntimeRunner(
         reviewFixIterationCount,
         auditGapIterationCount,
         auditRepairProgress,
+        findingVerificationTelemetry,
         regenerationTelemetry,
         runRequest.dbPathOverride,
         phaseTokenData = { serializeTokenData(phaseTokenAccumulator) },
@@ -227,6 +231,7 @@ class FeatureTaskRuntimeRunner(
       reviewFixIterationCount,
       auditGapIterationCount,
       auditRepairProgress,
+      findingVerificationTelemetry,
       regenerationTelemetry,
       runRequest.dbPathOverride,
       phaseTokenData = { serializeTokenData(phaseTokenAccumulator) },
@@ -317,6 +322,28 @@ class FeatureTaskRuntimeRunner(
         ?.get(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT),
       auditGapIterationCount = loadAuditGapIterationCount(request),
     )
+
+  private fun loadFindingVerificationTelemetry(
+    request: FeatureTaskRuntimeRunRequest,
+  ): FeatureTaskRuntimeFindingVerificationTelemetry {
+    val verifyRecord = recorder.loadPhaseRecords(request.workflowId, request.dbPathOverride)
+      ?.get(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS)
+      ?: return FeatureTaskRuntimeFindingVerificationTelemetry(
+        reviewFixCapExhausted = loadReviewFixIterationCount(request) >= 1,
+      )
+    val outputMap = verifyRecord.outputArtifact
+      ?.let(JsonSupport::parseObjectOrNull)
+      ?.let(JsonSupport::jsonElementToValue)
+      ?.let(JsonSupport::anyToStringAnyMap)
+      ?: return FeatureTaskRuntimeFindingVerificationTelemetry(
+        reviewFixCapExhausted = loadReviewFixIterationCount(request) >= 1,
+      )
+    return FeatureTaskRuntimeFindingVerificationTelemetry(
+      verifiedCount = FeatureTaskRuntimeOutputVerification.verifiedFindingDispositions(outputMap).size,
+      rejectedCount = FeatureTaskRuntimeOutputVerification.rejectedFindingDispositions(outputMap).size,
+      reviewFixCapExhausted = loadReviewFixIterationCount(request) >= 1,
+    )
+  }
 
   private fun loadAuditGapIterationCount(request: FeatureTaskRuntimeRunRequest): Int =
     FeatureTaskRuntimeAuditConvergence.auditGapIterationCount(

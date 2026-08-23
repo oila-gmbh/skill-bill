@@ -117,9 +117,6 @@ internal object FeatureTaskRuntimeReviewEnvelope {
       FeatureTaskRuntimeVerificationSignalKeys.REVIEW_RUN_ID to reviewRunId,
       "repository_checkpoint" to mapOf("fingerprint" to cycle.repositoryFingerprint),
     )
-    if (cycle.passNumber >= 2) {
-      produced["blocker_dispositions"] = cycle.blockerDispositions.map(GoalSubtaskBlockerDisposition::toArtifactMap)
-    }
     commitFocusedAccounting(result, cycle.resolvedTier)?.let { accounting ->
       produced["commit_focused_accounting"] = accounting.toArtifactMap()
     }
@@ -176,6 +173,7 @@ internal object FeatureTaskRuntimeReviewEnvelope {
     put("severity", finding.severity.name.lowercase())
     put("message", finding.description)
     put("location", finding.location)
+    finding.repositoryPath?.let { put("repository_path", it) }
     finding.claimVerdict?.let { put("claim_verdict", it.wireValue) }
     finding.scopeDisposition?.let { put("scope_disposition", it.wireValue) }
     if (finding.citations.isNotEmpty()) {

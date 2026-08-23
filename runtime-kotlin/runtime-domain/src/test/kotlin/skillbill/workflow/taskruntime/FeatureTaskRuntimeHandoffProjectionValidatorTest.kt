@@ -126,12 +126,12 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
   }
 
   @Test
-  fun `review repair projection carries preceding-pass findings with severities and exact checkpoint`() {
+  fun `review repair projection carries verified findings with severities and exact checkpoint`() {
     val consumer = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX
     val declaration = declaration(
       consumerPhaseId = consumer,
       sourceRef = FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(
-        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS,
       ),
       projectionName = "review_repair_request",
       projectionContractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REVIEW_REPAIR_REQUEST,
@@ -145,14 +145,18 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
         declarations = listOf(declaration),
         resolvedUpstream = FeatureTaskRuntimeResolvedUpstreamOutputs(
           mapOf(
-            FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW to FeatureTaskRuntimePhaseOutput(
-              FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+            FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS to FeatureTaskRuntimePhaseOutput(
+              FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS,
               1,
-              """{"produced_outputs":{"findings":[""" +
-                """{"finding_id":"F-001","severity":"Blocker","location":"A.kt:1","message":"fix"},""" +
-                """{"finding_id":"F-002","severity":"Major","location":"B.kt:1","message":"later"},""" +
-                """{"finding_id":"F-003","severity":"Minor","location":"C.kt:1","message":"polish"},""" +
-                """{"finding_id":"F-004","severity":"Nit","location":"D.kt:1","message":"typo"}]}}""",
+              """{"produced_outputs":{"finding_dispositions":[""" +
+                """{"finding_id":"F-001","disposition":"verified","reason":"Matches spec.",""" +
+                """"severity":"blocker","location":"A.kt:1","message":"fix"},""" +
+                """{"finding_id":"F-002","disposition":"verified","reason":"Matches spec.",""" +
+                """"severity":"major","location":"B.kt:1","message":"later"},""" +
+                """{"finding_id":"F-003","disposition":"verified","reason":"Matches spec.",""" +
+                """"severity":"minor","location":"C.kt:1","message":"polish"},""" +
+                """{"finding_id":"F-004","disposition":"verified","reason":"Matches spec.",""" +
+                """"severity":"nit","location":"D.kt:1","message":"typo"}]}}""",
             ),
           ),
         ),
@@ -165,10 +169,10 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
     assertEquals(listOf("unresolved_blocker_findings", "repository_checkpoint"), fields.map { it.name })
     val projected = assertIs<FeatureTaskRuntimeHandoffProjectionValue.TextList>(fields.first().value)
     assertEquals(4, projected.items.size)
-    assertTrue(projected.items.any { it.contains("F-001") && it.contains("Blocker") })
-    assertTrue(projected.items.any { it.contains("F-002") && it.contains("Major") })
-    assertTrue(projected.items.any { it.contains("F-003") && it.contains("Minor") })
-    assertTrue(projected.items.any { it.contains("F-004") && it.contains("Nit") })
+    assertTrue(projected.items.any { it.contains("F-001") && it.contains("blocker") })
+    assertTrue(projected.items.any { it.contains("F-002") && it.contains("major") })
+    assertTrue(projected.items.any { it.contains("F-003") && it.contains("minor") })
+    assertTrue(projected.items.any { it.contains("F-004") && it.contains("nit") })
   }
 
   @Test

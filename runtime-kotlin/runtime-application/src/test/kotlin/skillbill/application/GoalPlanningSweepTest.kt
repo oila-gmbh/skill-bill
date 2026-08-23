@@ -2877,8 +2877,8 @@ internal const val FIXTURE_HEADING_ID = "runtime-kotlin/agent/history.md#0-00000
 internal const val FIXTURE_HEADING = "## [2026-08-01] fixture-entry"
 internal const val FIXTURE_BODY = "distinctive fixture body sentence"
 
-private val fakeContextDiscovery = GoalPlanningContextDiscovery {
-  GoalPlanningContext(
+private val fakeContextDiscovery = object : GoalPlanningContextDiscovery {
+  override fun discover(repoRoot: Path): GoalPlanningContext = GoalPlanningContext(
     boundaryCatalog = listOf(
       GoalPlanningBoundaryHeading(
         headingId = FIXTURE_HEADING_ID,
@@ -2890,14 +2890,27 @@ private val fakeContextDiscovery = GoalPlanningContextDiscovery {
     boundaryCatalogTruncated = false,
     validationGuidance = "Run focused Gradle checks.",
   )
+
+  override fun discoverForFindingPaths(repoRoot: Path, findingPaths: List<String>, loudFailOnCapExceeded: Boolean) =
+    skillbill.ports.goalrunner.model.GoalVerificationBoundaryDiscovery(
+      boundaryCatalog = discover(repoRoot).boundaryCatalog,
+      boundaryCatalogTruncated = false,
+      boundaryContextUnavailable = findingPaths.isEmpty(),
+    )
 }
 
-private val fakeBoundaryBodyResolver = GoalPlanningBoundaryBodyResolver { _, ids, _ ->
-  GoalPlanningResolvedBoundaryBodies(
-    bodies = ids.filter { id -> id == FIXTURE_HEADING_ID }.map { id ->
+private val fakeBoundaryBodyResolver = object : GoalPlanningBoundaryBodyResolver {
+  override fun resolve(
+    repoRoot: Path,
+    headingIds: List<String>,
+    catalogHeadingIds: Set<String>,
+    caps: skillbill.ports.goalrunner.model.GoalPlanningBoundaryBodyResolutionCaps,
+    loudFailOnCapExceeded: Boolean,
+  ) = GoalPlanningResolvedBoundaryBodies(
+    bodies = headingIds.filter { id -> id == FIXTURE_HEADING_ID }.map { id ->
       GoalPlanningBoundaryBody(id, "runtime-kotlin/agent/history.md", FIXTURE_HEADING, FIXTURE_BODY)
     },
-    unresolvedHeadingIds = ids.filterNot { id -> id == FIXTURE_HEADING_ID },
+    unresolvedHeadingIds = headingIds.filterNot { id -> id == FIXTURE_HEADING_ID },
   )
 }
 
@@ -2985,6 +2998,9 @@ private class CountingContextDiscovery : GoalPlanningContextDiscovery {
     calls += 1
     return fakeContextDiscovery.discover(repoRoot)
   }
+
+  override fun discoverForFindingPaths(repoRoot: Path, findingPaths: List<String>, loudFailOnCapExceeded: Boolean) =
+    fakeContextDiscovery.discoverForFindingPaths(repoRoot, findingPaths, loudFailOnCapExceeded)
 }
 
 private class MutableContextDiscovery : GoalPlanningContextDiscovery {
@@ -3011,6 +3027,13 @@ private class MutableContextDiscovery : GoalPlanningContextDiscovery {
       validationGuidance = "Run focused Gradle checks.",
     )
   }
+
+  override fun discoverForFindingPaths(repoRoot: Path, findingPaths: List<String>, loudFailOnCapExceeded: Boolean) =
+    skillbill.ports.goalrunner.model.GoalVerificationBoundaryDiscovery(
+      boundaryCatalog = catalog,
+      boundaryCatalogTruncated = false,
+      boundaryContextUnavailable = findingPaths.isEmpty(),
+    )
 }
 
 private fun recoverabilityCheckpoint(

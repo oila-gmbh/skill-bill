@@ -190,6 +190,65 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   }
 
   @Test
+  fun `verify_findings disposition accepts boundary provenance and unavailable flag`() {
+    val verifyFindings =
+      """
+      contract_version: "0.4"
+      phase_id: "verify_findings"
+      status: "completed"
+      summary: "Verified findings against spec intent."
+      verdict: "findings_verified"
+      produced_outputs:
+        finding_dispositions:
+          - finding_id: "F-001"
+            disposition: "verified"
+            reason: "Matches spec intent AC-002."
+            severity: "major"
+            location: "FeatureTaskRuntimePhaseWorkflowDefinition.kt"
+            message: "Missing verify_findings wiring"
+            boundary_context_unavailable: false
+            selected_boundary_headings:
+              - heading_id: "runtime-kotlin/agent/history.md#abc"
+                source_path: "runtime-kotlin/agent/history.md"
+          - finding_id: "F-002"
+            disposition: "verified"
+            reason: "Intent-only path with no eligible boundary."
+            severity: "minor"
+            location: "Foo.kt"
+            message: "Out-of-tree reference"
+            boundary_context_unavailable: true
+      """.trimIndent()
+    FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(verifyFindings, "verify_findings")
+  }
+
+  @Test
+  fun `verify_findings disposition rejects boundary selections when context is unavailable`() {
+    val verifyFindings =
+      """
+      contract_version: "0.4"
+      phase_id: "verify_findings"
+      status: "completed"
+      summary: "Verified findings against spec intent."
+      verdict: "findings_verified"
+      produced_outputs:
+        finding_dispositions:
+          - finding_id: "F-001"
+            disposition: "verified"
+            reason: "Intent-only path with no eligible boundary."
+            severity: "minor"
+            location: "Foo.kt"
+            message: "Out-of-tree reference"
+            boundary_context_unavailable: true
+            selected_boundary_headings:
+              - heading_id: "runtime-kotlin/agent/history.md#abc"
+                source_path: "runtime-kotlin/agent/history.md"
+      """.trimIndent()
+    assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
+      FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(verifyFindings, "verify_findings")
+    }
+  }
+
+  @Test
   fun `output omitting the optional verdict still validates`() {
     FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(wellFormed, "plan")
   }
@@ -309,10 +368,10 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
       """
       For reference the shape is:
       {"contract_version":"0.4","phase_id":"audit","status":"completed","summary":"example",
-       "verdict":"satisfied","produced_outputs":{"unmet_criteria":[]}}
+       "verdict":"satisfied","produced_outputs":{"gaps":[]}}
       Here is the real output:
       {"contract_version":"0.4","phase_id":"audit","status":"completed",
-       "summary":"every criterion met","verdict":"satisfied","produced_outputs":{"unmet_criteria":[]}}
+       "summary":"every criterion met","verdict":"satisfied","produced_outputs":{"gaps":[]}}
       """.trimIndent()
     val error = assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
       FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(twoObjects, "audit")
@@ -324,11 +383,11 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
   fun `audit requires one coherent compact gaps array`() {
     val invalidProducedOutputs = listOf(
       """"verdict":"satisfied","produced_outputs":{"evidence":"complete"}""",
-      """"verdict":"satisfied","produced_outputs":{"unmet_criteria":"none"}""",
-      """"verdict":"satisfied","produced_outputs":{"unmet_criteria":[{"criterion":"AC-001"}]}""",
-      """"verdict":"gaps_found","produced_outputs":{"unmet_criteria":[]}""",
-      """"verdict":"gaps_found","produced_outputs":{"unmet_criteria":"gap"}""",
-      """"verdict":"gaps_found","produced_outputs":{"unmet_criteria":[]}""",
+      """"verdict":"satisfied","produced_outputs":{"gaps":"none"}""",
+      """"verdict":"satisfied","produced_outputs":{"gaps":[{"criterion":"AC-001"}]}""",
+      """"verdict":"gaps_found","produced_outputs":{"gaps":[]}""",
+      """"verdict":"gaps_found","produced_outputs":{"gaps":"gap"}""",
+      """"verdict":"gaps_found","produced_outputs":{"gaps":[]}""",
     )
 
     invalidProducedOutputs.forEach { suffix ->
@@ -380,12 +439,12 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
       Earlier draft of the audit result:
       ```json
       {"contract_version":"0.4","phase_id":"audit","status":"completed","summary":"draft",
-       "verdict":"satisfied","produced_outputs":{"unmet_criteria":[]}}
+       "verdict":"satisfied","produced_outputs":{"gaps":[]}}
       ```
       Corrected final answer:
       ```json
       {"contract_version":"0.4","phase_id":"audit","status":"completed",
-      "verdict":"gaps_found","produced_outputs":{"unmet_criteria":[{
+      "verdict":"gaps_found","produced_outputs":{"gaps":[{
         "criterion":"AC-128","note":"Integration behavior is missing."}]}}
       ```
       """.trimIndent()
@@ -404,12 +463,12 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
       Discarded draft, missing its summary:
       ```json
       {"contract_version":"0.4","phase_id":"audit","status":"completed",
-       "verdict":"satisfied","produced_outputs":{"unmet_criteria":[]}}
+       "verdict":"satisfied","produced_outputs":{"gaps":[]}}
       ```
       Corrected final answer:
       ```json
       {"contract_version":"0.4","phase_id":"audit","status":"completed","summary":"one gap remains",
-       "verdict":"gaps_found","produced_outputs":{"unmet_criteria":[{
+       "verdict":"gaps_found","produced_outputs":{"gaps":[{
          "criterion":"AC-128","note":"Rejected lanes are omitted from the aggregate."}]}}
       ```
       """.trimIndent()

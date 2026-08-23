@@ -309,7 +309,7 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
   fun `audit extra closer before trailing verdict is dropped and the envelope is kept`() {
     val payload =
       """{"contract_version":"0.4","phase_id":"audit","status":"completed","summary":"Audited production.",""" +
-        """"produced_outputs":{"unmet_criteria":[]},"derived_notes":"no production gap"},"verdict":"satisfied"}"""
+        """"produced_outputs":{"gaps":[]},"derived_notes":"no production gap"},"verdict":"satisfied"}"""
 
     val result = adapter.validatePhaseOutput(payload, "audit")
 
@@ -326,7 +326,7 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
   fun `audit nested verdict with a missing closer is closed then aligned to the expected shape`() {
     val malformed =
       """{"contract_version":"0.4","phase_id":"audit","status":"completed","summary":"Audited production.",""" +
-        """"produced_outputs":{"unmet_criteria":[],"verdict":"satisfied"}"""
+        """"produced_outputs":{"gaps":[],"verdict":"satisfied"}"""
 
     val result = adapter.validatePhaseOutput(malformed, "audit")
 
@@ -339,7 +339,7 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
   fun `audit nested verdict is hoisted onto the expected envelope shape`() {
     val nested =
       """{"contract_version":"0.4","phase_id":"audit","status":"completed","summary":"Audited production.",""" +
-        """"produced_outputs":{"unmet_criteria":[],"verdict":"satisfied"}}"""
+        """"produced_outputs":{"gaps":[],"verdict":"satisfied"}}"""
 
     val result = adapter.validatePhaseOutput(nested, "audit")
 
@@ -365,7 +365,7 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
         summary: "SKILL187-UNSUPPORTED-YAML"
         verdict: "satisfied"
         produced_outputs:
-          unmet_criteria: []
+          gaps: []
       """.trimIndent()
 
     val decision = StructuralRepairCandidateEngine.repairExactText(blockYaml, "audit")

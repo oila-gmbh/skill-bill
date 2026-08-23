@@ -2,6 +2,7 @@ package skillbill.application.featuretask
 
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.model.FeatureTaskRuntimeCrashReconciliationResult
+import skillbill.application.model.FeatureTaskRuntimeFindingVerificationTelemetry
 import skillbill.application.model.FeatureTaskRuntimeFinishedRequest
 import skillbill.application.model.FeatureTaskRuntimeRegenerationTelemetry
 import skillbill.application.model.FeatureTaskRuntimeRunReport
@@ -55,6 +56,9 @@ class FeatureTaskRuntimeLifecycleTelemetry(
     reviewFixIterationCount: () -> Int,
     auditGapIterationCount: () -> Int,
     auditRepairProgress: () -> FeatureTaskRuntimeAuditProgress? = { null },
+    findingVerificationTelemetry: () -> FeatureTaskRuntimeFindingVerificationTelemetry = {
+      FeatureTaskRuntimeFindingVerificationTelemetry()
+    },
     regenerationTelemetry: () -> FeatureTaskRuntimeRegenerationTelemetry = emptyRegenerationTelemetry,
     dbOverride: String?,
     phaseTokenData: () -> Pair<String?, Int?> = { null to null },
@@ -67,6 +71,9 @@ class FeatureTaskRuntimeLifecycleTelemetry(
       val outcomes = phaseOutcomes()
       val (tokenBreakdownJson, totalTokens) = runCatching(phaseTokenData).getOrDefault(null to null)
       val auditProgress = runCatching(auditRepairProgress).getOrNull()
+      val verificationTelemetry = runCatching(
+        findingVerificationTelemetry,
+      ).getOrDefault(FeatureTaskRuntimeFindingVerificationTelemetry())
       val regeneration = runCatching(regenerationTelemetry).getOrNull() ?: FeatureTaskRuntimeRegenerationTelemetry()
       val reconciliation = runCatching(crashReconciliation).getOrNull()
         ?: FeatureTaskRuntimeCrashReconciliationResult.NONE
@@ -95,6 +102,9 @@ class FeatureTaskRuntimeLifecycleTelemetry(
           crashReconciliationReasonCounts = reconciliation.reasonClassCounts,
           estimatedPhaseTokenBreakdownJson = tokenBreakdownJson,
           estimatedTotalTokens = totalTokens,
+          findingVerificationVerifiedCount = verificationTelemetry.verifiedCount,
+          findingVerificationRejectedCount = verificationTelemetry.rejectedCount,
+          reviewFixCapExhausted = verificationTelemetry.reviewFixCapExhausted,
         ),
         dbOverride = dbOverride,
       )
@@ -113,6 +123,9 @@ class FeatureTaskRuntimeLifecycleTelemetry(
     reviewFixIterationCount: () -> Int,
     auditGapIterationCount: () -> Int,
     auditRepairProgress: () -> FeatureTaskRuntimeAuditProgress? = { null },
+    findingVerificationTelemetry: () -> FeatureTaskRuntimeFindingVerificationTelemetry = {
+      FeatureTaskRuntimeFindingVerificationTelemetry()
+    },
     regenerationTelemetry: () -> FeatureTaskRuntimeRegenerationTelemetry = emptyRegenerationTelemetry,
     dbOverride: String?,
     phaseTokenData: () -> Pair<String?, Int?> = { null to null },
@@ -133,6 +146,9 @@ class FeatureTaskRuntimeLifecycleTelemetry(
         .getOrDefault(emptyMap())
       val (tokenBreakdownJson, totalTokens) = runCatching(phaseTokenData).getOrDefault(null to null)
       val auditProgress = runCatching(auditRepairProgress).getOrNull()
+      val verificationTelemetry = runCatching(
+        findingVerificationTelemetry,
+      ).getOrDefault(FeatureTaskRuntimeFindingVerificationTelemetry())
       val regeneration = runCatching(regenerationTelemetry).getOrNull() ?: FeatureTaskRuntimeRegenerationTelemetry()
       val reconciliation = runCatching(crashReconciliation).getOrNull()
         ?: FeatureTaskRuntimeCrashReconciliationResult.NONE
@@ -165,6 +181,9 @@ class FeatureTaskRuntimeLifecycleTelemetry(
           crashReconciliationReasonCounts = reconciliation.reasonClassCounts,
           estimatedPhaseTokenBreakdownJson = tokenBreakdownJson,
           estimatedTotalTokens = totalTokens,
+          findingVerificationVerifiedCount = verificationTelemetry.verifiedCount,
+          findingVerificationRejectedCount = verificationTelemetry.rejectedCount,
+          reviewFixCapExhausted = verificationTelemetry.reviewFixCapExhausted,
         ),
         dbOverride = dbOverride,
       )

@@ -1500,10 +1500,12 @@ fun requireRepositoryRelativePath(path: String) {
     "Review paths must contain valid Unicode and no NUL."
   }
   require(!WINDOWS_ABSOLUTE_PATH.matches(path)) { "Review paths must be repository-relative." }
-  require(path.split('/').none { it.isEmpty() || it == "." || it == ".." }) {
+  require(repositoryPathSegments(path).none { it == "." || it == ".." }) {
     "Review paths must use non-traversing Git path components."
   }
 }
+
+internal fun repositoryPathSegments(path: String): List<String> = path.split('/', '\\').filter { it.isNotEmpty() }
 
 private val WINDOWS_ABSOLUTE_PATH = Regex("^[A-Za-z]:[/\\\\].*")
 

@@ -4,6 +4,8 @@ import skillbill.application.featuretask.FeatureTaskRuntimeVerificationSignalKey
 import skillbill.contracts.JsonSupport
 import skillbill.goalrunner.model.ReviewFindingOutcome
 import skillbill.goalrunner.model.ReviewFindingOutcomeRecord
+import skillbill.goalrunner.model.UNADDRESSED_FINDING_DEFAULT_CATEGORY
+import skillbill.goalrunner.model.UNADDRESSED_FINDING_DEFAULT_SEVERITY
 import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.goalrunner.model.normalizedUnaddressedFindingCategory
 import skillbill.goalrunner.model.normalizedUnaddressedFindingSeverity
@@ -11,6 +13,7 @@ import skillbill.goalrunner.model.toOutcomeRecord
 import skillbill.ports.persistence.UnitOfWork
 import skillbill.review.ReviewFindingActionability
 import skillbill.review.ReviewFindingFieldCodec
+import skillbill.review.context.model.requireRepositoryRelativePath
 import skillbill.review.model.ReviewClaimVerdict
 import skillbill.review.model.ReviewFindingCitation
 import skillbill.review.model.ReviewFindingVerdict
@@ -32,6 +35,7 @@ internal data class StructuredGoalReviewFinding(
   val location: String,
   val compactLabel: String,
   val findingId: String? = null,
+  val repositoryPath: String? = null,
   val claimVerdict: ReviewClaimVerdict? = null,
   val scopeDisposition: ReviewScopeDisposition? = null,
   val citations: List<ReviewFindingCitation> = emptyList(),
@@ -150,6 +154,7 @@ internal object GoalSubtaskReviewSummaryReducer {
           finding["finding_id"],
           finding["f_number"],
         ),
+        repositoryPath = admissibleRepositoryPath(finding["repository_path"] as? String),
         claimVerdict = overlay.claimVerdict,
         scopeDisposition = overlay.scopeDisposition,
         citations = overlay.citations,
@@ -176,6 +181,39 @@ internal object GoalSubtaskReviewSummaryReducer {
     return unitOfWork.reviews.fetchFindingVerdicts(reviewRunId)
   }
 
+  fun verificationBoundaryFindingPaths(finding: StructuredGoalReviewFinding): List<String> {
+    val paths = mutableListOf<String>()
+    finding.repositoryPath?.let { paths += it }
+    finding.citations.map(ReviewFindingCitation::path).filter { it.isNotBlank() }.forEach { paths += it }
+    pathFromLocationLine(finding.location)?.let { paths += it }
+    return paths.distinct()
+  }
+
+  private fun admissibleRepositoryPath(raw: String?): String? {
+    val trimmed = raw?.trim()?.takeIf(String::isNotBlank) ?: return null
+    return runCatching {
+      requireRepositoryRelativePath(trimmed)
+      trimmed
+    }.getOrNull()
+  }
+
+  private fun pathFromLocationLine(location: String): String? {
+    val token = location.trim()
+    if (token.isBlank() || token == "<unknown>") return null
+    val colon = token.lastIndexOf(':')
+    val candidate = if (colon > 0) {
+      val line = token.substring(colon + 1).trim().toIntOrNull()
+      if (line != null && line >= 1) {
+        token.substring(0, colon).trim().takeIf(String::isNotBlank)
+      } else {
+        token
+      }
+    } else {
+      token
+    }
+    return admissibleRepositoryPath(candidate)
+  }
+
   fun unaddressedFindings(
     output: Map<String, Any?>,
     scope: UnaddressedFindingLedgerScope,
@@ -199,6 +237,57 @@ internal object GoalSubtaskReviewSummaryReducer {
         scopeDisposition = finding.scopeDisposition,
         citations = finding.citations,
         severityAdjustment = finding.severityAdjustment,
+      )
+    }
+  }
+
+  @Suppress("CyclomaticComplexMethod")
+  fun rejectedVerificationFindings(
+    verifyOutput: Map<String, Any?>,
+    reviewOutput: Map<String, Any?>,
+    scope: UnaddressedFindingLedgerScope,
+    recordedVerdicts: List<ReviewFindingVerdict> = emptyList(),
+  ): List<UnaddressedFinding> {
+    val reviewRunId = reviewRunIdOf(reviewOutput)
+    val reviewById = structuredFindings(reviewOutput, recordedVerdicts).associateBy { it.findingId.orEmpty() }
+    val dispositionsRaw = verifyOutput["produced_outputs"]
+      ?.let(JsonSupport::anyToStringAnyMap)
+      ?.get(FeatureTaskRuntimeVerificationSignalKeys.FINDINGS_VERIFICATION_DISPOSITIONS) as? List<*>
+      ?: return emptyList()
+    return dispositionsRaw.mapIndexedNotNull { index, entry ->
+      val map = JsonSupport.anyToStringAnyMap(entry) ?: return@mapIndexedNotNull null
+      if ((map["disposition"] as? String)?.trim()?.lowercase() != "rejected") return@mapIndexedNotNull null
+      val findingId = (map["finding_id"] as? String)?.takeIf(String::isNotBlank) ?: return@mapIndexedNotNull null
+      val reason = (map["reason"] as? String)?.takeIf(String::isNotBlank) ?: return@mapIndexedNotNull null
+      val reviewFinding = reviewById[findingId]
+      val existingOrdinal = reviewFinding?.let {
+        structuredFindings(reviewOutput, recordedVerdicts).indexOfFirst { candidate ->
+          candidate.findingId == findingId
+        }.takeIf { it >= 0 }?.plus(1)
+      }
+      val severity = (map["severity"] as? String)?.takeIf(String::isNotBlank)
+        ?: reviewFinding?.severity
+        ?: UNADDRESSED_FINDING_DEFAULT_SEVERITY
+      UnaddressedFinding(
+        issueKey = scope.issueKey,
+        subtaskId = scope.subtaskId,
+        workflowId = scope.workflowId,
+        reviewPassNumber = scope.reviewPassNumber,
+        findingOrdinal = existingOrdinal ?: (index + 1),
+        severity = normalizedUnaddressedFindingSeverity(severity),
+        issueCategory = normalizedUnaddressedFindingCategory(
+          reviewFinding?.issueCategory ?: UNADDRESSED_FINDING_DEFAULT_CATEGORY,
+        ),
+        location = (map["location"] as? String)?.takeIf(String::isNotBlank) ?: reviewFinding?.location ?: "<unknown>",
+        summary = (map["message"] as? String)?.takeIf(String::isNotBlank) ?: reviewFinding?.message ?: reason,
+        reviewRunId = reviewRunId,
+        findingId = findingId,
+        claimVerdict = reviewFinding?.claimVerdict,
+        scopeDisposition = reviewFinding?.scopeDisposition,
+        citations = reviewFinding?.citations.orEmpty(),
+        severityAdjustment = reviewFinding?.severityAdjustment,
+        verificationDisposition = "rejected",
+        verificationReason = reason,
       )
     }
   }
@@ -235,19 +324,12 @@ internal object GoalSubtaskReviewSummaryReducer {
     fun supersededOutcome(finding: UnaddressedFinding): ReviewFindingOutcome =
       when (dispositionVerdictsByKey[finding.findingKey]) {
         GoalSubtaskBlockerDispositionVerdict.RESOLVED -> ReviewFindingOutcome.ADDRESSED
-        GoalSubtaskBlockerDispositionVerdict.SUPERSEDED -> ReviewFindingOutcome.REJECTED
         GoalSubtaskBlockerDispositionVerdict.UNRESOLVED -> ReviewFindingOutcome.CARRIED
         null -> ReviewFindingOutcome.ADDRESSED
       }
 
-    // A finding this pass still reports was not addressed, whatever the disposition claimed. Only an
-    // explicit supersede — the loop declining the finding — is a terminal outcome for a survivor.
-    fun currentOutcome(finding: UnaddressedFinding): ReviewFindingOutcome =
-      if (dispositionVerdictsByKey[finding.findingKey] == GoalSubtaskBlockerDispositionVerdict.SUPERSEDED) {
-        ReviewFindingOutcome.REJECTED
-      } else {
-        ReviewFindingOutcome.CARRIED
-      }
+    fun currentOutcome(@Suppress("UNUSED_PARAMETER") finding: UnaddressedFinding): ReviewFindingOutcome =
+      ReviewFindingOutcome.CARRIED
     val supersededOutcomes = supersededFindings
       .filter { finding -> finding.findingKey !in stillReported }
       .map { finding -> finding.toOutcomeRecord(supersededOutcome(finding)) }
@@ -305,7 +387,7 @@ internal object GoalSubtaskReviewSummaryReducer {
       if (evidence.isEmpty()) return@mapNotNull null
       GoalSubtaskBlockerDisposition(
         findingId = findingId,
-        verdict = GoalSubtaskBlockerDispositionVerdict.SUPERSEDED,
+        verdict = GoalSubtaskBlockerDispositionVerdict.RESOLVED,
         evidence = evidence,
       )
     }
@@ -429,7 +511,7 @@ private fun blockerDisposition(index: Int, entry: Any?): GoalSubtaskBlockerDispo
       ?: reviewStateError("$path.finding_id", "must be a non-blank prior Blocker finding id."),
     verdict = GoalSubtaskBlockerDispositionVerdict.fromWire(
       (disposition["verdict"] as? String)?.trim()
-        ?: reviewStateError("$path.verdict", "must be resolved, unresolved, or superseded."),
+        ?: reviewStateError("$path.verdict", "must be resolved or unresolved."),
     ),
     evidence = evidence,
   )

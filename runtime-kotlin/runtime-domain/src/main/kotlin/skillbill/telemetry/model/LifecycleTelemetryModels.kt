@@ -38,6 +38,9 @@ data class FeatureTaskRuntimeFinishedRecord(
   val crashReconciliationReasonCounts: Map<String, Int> = emptyMap(),
   val estimatedPhaseTokenBreakdownJson: String? = null,
   val estimatedTotalTokens: Int? = null,
+  val findingVerificationVerifiedCount: Int = 0,
+  val findingVerificationRejectedCount: Int = 0,
+  val reviewFixCapExhausted: Boolean = false,
 )
 
 data class QualityCheckStartedRecord(

@@ -1,6 +1,7 @@
 package skillbill.goalplanning
 
 import skillbill.contracts.goalplanning.GoalPlanningDiscoveryExclusions
+import skillbill.review.context.model.requireRepositoryRelativePath
 import java.nio.file.Files
 import java.nio.file.Path
 
@@ -21,6 +22,7 @@ internal data class AgentDirectoryWalk(val directories: List<Path>, val incomple
  * when its real path stays under the repo root and its canonical repo-relative form survives the
  * checked-in exclusion contract, so a symlink cannot re-admit an excluded root.
  */
+@Suppress("TooManyFunctions")
 internal object GoalPlanningRepositoryScope {
   const val AGENT_DIRECTORY = "agent"
   val BOUNDARY_MEMORY_FILES = listOf("history.md", "decisions.md")
@@ -73,6 +75,36 @@ internal object GoalPlanningRepositoryScope {
       directories = found.sortedBy { agentDir -> repoRoot.relativize(agentDir).joinToString("/") },
       incomplete = pending.isNotEmpty() || unlistable,
     )
+  }
+
+  fun owningAgentDirectory(repoRoot: Path, findingPath: String): Path? {
+    val normalized = normalizeFindingPath(findingPath) ?: return null
+    if (GoalPlanningDiscoveryExclusions.isExcluded(normalized)) return null
+    val segments = normalized.split("/")
+    for (segmentCount in segments.size downTo 0) {
+      val prefix = segments.take(segmentCount).joinToString("/")
+      val agentRelative = if (prefix.isEmpty()) AGENT_DIRECTORY else "$prefix/$AGENT_DIRECTORY"
+      val agentDir = repoRoot.resolve(agentRelative)
+      val includedAgent = included(repoRoot, agentDir) ?: continue
+      if (BOUNDARY_MEMORY_FILES.any { fileName -> includedRegularFile(repoRoot, "$agentRelative/$fileName") != null }) {
+        return includedAgent.first
+      }
+    }
+    return null
+  }
+
+  fun owningAgentDirectories(repoRoot: Path, findingPaths: List<String>): List<Path> =
+    findingPaths.mapNotNull { path -> owningAgentDirectory(repoRoot, path) }
+      .distinct()
+      .sortedBy { agentDir -> repoRoot.relativize(agentDir).joinToString("/") }
+
+  fun normalizeFindingPath(findingPath: String): String? {
+    val trimmed = findingPath.trim()
+    if (trimmed.isBlank()) return null
+    return runCatching {
+      requireRepositoryRelativePath(trimmed)
+      trimmed
+    }.getOrNull()
   }
 
   /** Null means the file exists but could not be read — the caller must treat that as a degradation. */

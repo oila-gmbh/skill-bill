@@ -119,7 +119,7 @@ class VerdictAwareRegisterAndConsumersTest {
     )
     val superseded = GoalSubtaskReviewSummaryReducer.refutedBlockerSupersedes(prior, current, recordedVerdicts)
     assertEquals("F-001", superseded.single().findingId)
-    assertEquals(GoalSubtaskBlockerDispositionVerdict.SUPERSEDED, superseded.single().verdict)
+    assertEquals(GoalSubtaskBlockerDispositionVerdict.RESOLVED, superseded.single().verdict)
     assertEquals(listOf("Auth.kt:10"), superseded.single().evidence)
   }
 
@@ -164,7 +164,7 @@ class VerdictAwareRegisterAndConsumersTest {
           PhaseHandoffProjectionDeclaration(
             consumerPhaseId = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
             sourceRef = FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(
-              FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+              FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS,
             ),
             projectionName = "review_repair_request",
             projectionContractId =
@@ -179,12 +179,10 @@ class VerdictAwareRegisterAndConsumersTest {
         ),
         resolvedUpstream = FeatureTaskRuntimeResolvedUpstreamOutputs(
           mapOf(
-            FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW to FeatureTaskRuntimePhaseOutput(
-              FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
+            FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS to FeatureTaskRuntimePhaseOutput(
+              FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS,
               1,
-              """{"produced_outputs":{"findings":[{"finding_id":"F-001","severity":"Blocker",""" +
-                """"location":"Auth.kt:10","message":"Token logged",""" +
-                """"citations":[{"path":"Auth.kt","line":10}]}]}}""",
+              """{"produced_outputs":{"finding_dispositions":[]}}""",
             ),
           ),
         ),

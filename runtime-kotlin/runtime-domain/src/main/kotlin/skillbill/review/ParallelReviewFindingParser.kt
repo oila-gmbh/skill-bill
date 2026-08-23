@@ -231,7 +231,7 @@ object ParallelReviewFindingParser {
     if (colon <= 0) return@mapNotNull null
     val path = trimmed.substring(0, colon).trim().takeIf(String::isNotBlank) ?: return@mapNotNull null
     val line = trimmed.substring(colon + 1).trim().toIntOrNull()?.takeIf { it > 0 } ?: return@mapNotNull null
-    ReviewFindingCitation(path, line)
+    runCatching { ReviewFindingCitation(path, line) }.getOrNull()
   }
 
   private fun parseSeverityAdjustmentToken(raw: String): ReviewSeverityAdjustment? {

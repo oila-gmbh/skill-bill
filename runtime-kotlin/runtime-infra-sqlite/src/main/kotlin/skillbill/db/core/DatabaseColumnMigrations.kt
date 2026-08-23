@@ -312,6 +312,7 @@ internal object DatabaseColumnMigrations {
     )
   }
 
+  @Suppress("LongMethod")
   private fun ensureFeatureTaskRuntimeSessionColumns(connection: Connection) {
     ensureColumn(connection, "feature_task_runtime_sessions", "started_at", "TEXT NOT NULL DEFAULT ''")
     backfillBlankColumn(connection, "feature_task_runtime_sessions", "started_at", "CURRENT_TIMESTAMP")
@@ -355,6 +356,24 @@ internal object DatabaseColumnMigrations {
     ensureColumn(connection, "feature_task_runtime_sessions", "crash_reconciliation_reason_counts_json", "TEXT")
     ensureColumn(connection, "feature_task_runtime_sessions", "estimated_phase_tokens_json", "TEXT")
     ensureColumn(connection, "feature_task_runtime_sessions", "estimated_total_tokens", "INTEGER")
+    ensureColumn(
+      connection = connection,
+      tableName = "feature_task_runtime_sessions",
+      columnName = "finding_verification_verified_count",
+      definition = "INTEGER NOT NULL DEFAULT 0",
+    )
+    ensureColumn(
+      connection = connection,
+      tableName = "feature_task_runtime_sessions",
+      columnName = "finding_verification_rejected_count",
+      definition = "INTEGER NOT NULL DEFAULT 0",
+    )
+    ensureColumn(
+      connection = connection,
+      tableName = "feature_task_runtime_sessions",
+      columnName = "review_fix_cap_exhausted",
+      definition = "INTEGER NOT NULL DEFAULT 0",
+    )
     ensureColumn(
       connection = connection,
       tableName = "feature_task_runtime_sessions",

@@ -167,30 +167,26 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     )
     assertContains(prompt, "specialist narratives and raw review output are not")
     assertContains(prompt, "Do not re-apply the plan from scratch")
-    assertContains(prompt, "settled load-bearing work, not open")
-    assertContains(prompt, "disturbed_remedies")
-    assertFalse(
-      prompt.contains("prior repair history are not"),
-      "Prior repair history is carried now, so the withholding clause must be gone.",
-    )
+    assertContains(prompt, "repair_receipt")
+    assertContains(prompt, "\"symbol\": \"Type.member\"")
   }
 
   @Test
   fun `only validate may run the pack check gate`() {
     val ownershipTitle = "Validation ownership"
-    val forbiddenPhases = listOf(
+    val phasesRequiringValidationOwnership = listOf(
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PREPLAN,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
-      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PLAN_FIX,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_COMMIT_PUSH,
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR,
     )
-    forbiddenPhases.forEach { phaseId ->
+    phasesRequiringValidationOwnership.forEach { phaseId ->
       val prompt = FeatureTaskRuntimePhasePromptComposer.compose(ISSUE_KEY, briefingFor(phaseId))
       assertContains(prompt, ownershipTitle, false, "ownership title for $phaseId")
       assertContains(prompt, "Only the validate phase may run the pack validation gate", false, phaseId)
@@ -214,6 +210,13 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW),
     )
     assertContains(reviewPrompt, "validate owns those")
+
+    val buildPrompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD),
+    )
+    assertFalse(buildPrompt.contains(ownershipTitle), "build owns compile proof, not validate gate ownership")
+    assertContains(buildPrompt, "pack build_command")
   }
 
   @Test
@@ -467,36 +470,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
   }
 
   @Test
-  fun `second standalone review pass stays inline and receives the materialized immutable-base delta`() {
-    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
-      ISSUE_KEY,
-      briefingFor("review"),
-      codeReviewMode = CodeReviewExecutionMode.INLINE,
-      reviewPassNumber = 2,
-      goalSubtaskReviewInput = GoalSubtaskReviewInput(
-        reviewBaseSha = "0".repeat(40),
-        currentHeadSha = "1".repeat(40),
-        trackedDelta = "tracked delta",
-        ownedUntrackedPatches = "owned untracked patch",
-      ),
-    )
-
-    assertFalse(prompt.contains("bill-code-review mode:inline"))
-    assertContains(prompt, "context:feature-remediation")
-    assertContains(prompt, "review_scope: branch_diff")
-    // SKILL-142 AC-012 / SKILL-178: pass two is bounded to all findings addressed union the
-    // pre-fix-to-post-fix diff. The immutable-base framing is pass one's authority and must not
-    // be restated here, or the two would contradict.
-    assertContains(prompt, "Reserved remediation pass (pass 2)")
-    assertContains(prompt, "all findings addressed in that round")
-    assertFalse(prompt.contains("Immutable-base review scope"))
-    assertContains(prompt, "${"0".repeat(40)}")
-    assertContains(prompt, "tracked delta")
-    assertContains(prompt, "owned untracked patch")
-  }
-
-  @Test
-  fun `each review pass receives its own scope framing over the same materialized delta`() {
+  fun `the single review pass receives immutable-base scope framing`() {
     val input = GoalSubtaskReviewInput(
       reviewBaseSha = "a".repeat(40),
       currentHeadSha = "b".repeat(40),
@@ -504,26 +478,17 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       ownedUntrackedPatches = "run-owned untracked delta",
     )
 
-    val prompts = listOf(1, 2).map { pass ->
-      FeatureTaskRuntimePhasePromptComposer.compose(
-        ISSUE_KEY,
-        briefingFor("review"),
-        codeReviewMode = if (pass == 1) CodeReviewExecutionMode.INLINE else CodeReviewExecutionMode.INLINE,
-        reviewPassNumber = pass,
-        goalSubtaskReviewInput = input,
-      )
-    }
-
-    prompts.forEach { prompt ->
-      assertContains(prompt, input.trackedDelta)
-      assertContains(prompt, input.ownedUntrackedPatches)
-    }
-    assertContains(prompts[0], "durable base `${input.reviewBaseSha}` to current HEAD `${input.currentHeadSha}`")
-    assertContains(
-      prompts[1],
-      "pre-fix tree `${input.reviewBaseSha}` to post-fix HEAD `${input.currentHeadSha}`",
+    val prompt = FeatureTaskRuntimePhasePromptComposer.compose(
+      ISSUE_KEY,
+      briefingFor("review"),
+      codeReviewMode = CodeReviewExecutionMode.INLINE,
+      reviewPassNumber = 1,
+      goalSubtaskReviewInput = input,
     )
-    assertFalse(prompts[1].contains("Immutable-base review scope"))
+
+    assertContains(prompt, input.trackedDelta)
+    assertContains(prompt, input.ownedUntrackedPatches)
+    assertContains(prompt, "durable base `${input.reviewBaseSha}` to current HEAD `${input.currentHeadSha}`")
   }
 
   @Test
@@ -785,7 +750,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(reviewPrompt, "\"findings\" array", false, "review names the findings signal")
     assertContains(reviewPrompt, "\"approved\" or \"changes_requested\"", false, "review names the verdict values")
     assertContains(auditPrompt, "VERIFYING phase", false, "audit names itself a verifying phase")
-    assertAuditPromptNamesSignal(auditPrompt, "produced_outputs.unmet_criteria array", "the criterion list")
+    assertAuditPromptNamesSignal(auditPrompt, "produced_outputs.gaps array", "the criterion list")
     assertAuditPromptNamesSignal(auditPrompt, "satisfied | gaps_found", "the verdict values")
     assertAuditPromptNamesSignal(
       auditPrompt,
@@ -1001,7 +966,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(auditRetry, "<one sentence describing what this phase did>", false, "audit hands back a skeleton")
     assertContains(auditRetry, "\"phase_id\": \"audit\"", false, "skeleton pins the phase id")
     assertContains(auditRetry, "\"verdict\": \"satisfied\"", false, "audit skeleton seeds the audit verdict")
-    assertContains(auditRetry, "\"unmet_criteria\": []", false, "audit skeleton seeds the criterion list")
+    assertContains(auditRetry, "\"gaps\": []", false, "audit skeleton seeds the criterion list")
     assertContains(
       auditRetry,
       "\"non_blocking_findings\": []",
@@ -1675,6 +1640,7 @@ private fun briefingFor(
         FeatureTaskRuntimePhaseOutput("implement", 1, IMPLEMENT_OUTPUT),
         FeatureTaskRuntimePhaseOutput("audit", 1, validJsonOutput("audit")),
         FeatureTaskRuntimePhaseOutput("review", 1, validJsonOutput("review")),
+        verifyFindingsPhaseOutput(),
         FeatureTaskRuntimePhaseOutput("validate", 1, validJsonOutput("validate")),
         FeatureTaskRuntimePhaseOutput("write_history", 1, validJsonOutput("write_history")),
         FeatureTaskRuntimePhaseOutput("commit_push", 1, FINALISED_COMMIT_PUSH_OUTPUT),
