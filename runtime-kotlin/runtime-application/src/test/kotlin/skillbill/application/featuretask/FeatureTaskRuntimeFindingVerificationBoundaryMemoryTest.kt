@@ -1,6 +1,7 @@
 package skillbill.application.featuretask
 
 import skillbill.application.featuretask.model.FeatureTaskRuntimeFindingBoundaryMemoryRequest
+import skillbill.contracts.goalplanning.GoalVerificationBoundaryCaps
 import skillbill.goalplanning.FileSystemGoalPlanningBoundaryBodyResolver
 import skillbill.goalplanning.FileSystemGoalPlanningContextDiscovery
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition
@@ -179,10 +180,14 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
   fun `over budget verification resolution surfaces through disposition validation helper`() {
     val repo = Files.createTempDirectory("verify-findings-cap-gate")
     val agent = Files.createDirectories(repo.resolve("modules/a/agent"))
-    val headings = (0 until 20).joinToString("\n\n") { index ->
-      "## [2026-08-${"%02d".format((index % 28) + 1)}] entry-$index\n\nbody $index"
+    val headings = (0 until GoalVerificationBoundaryCaps.maxHeadingsPerFile).joinToString("\n\n") { index ->
+      "## [2026-08-${"%02d".format((index % 28) + 1)}] history-$index\n\nhistory body $index"
+    }
+    val decisions = (0 until GoalVerificationBoundaryCaps.maxHeadingsPerFile).joinToString("\n\n") { index ->
+      "## [2026-08-${"%02d".format((index % 28) + 1)}] decision-$index\n\ndecision body $index"
     }
     Files.writeString(agent.resolve("history.md"), "# Boundary History\n\n$headings\n")
+    Files.writeString(agent.resolve("decisions.md"), "# Boundary Decisions\n\n$decisions\n")
     val sections = memory.sectionsForFindings(
       repo,
       listOf(FeatureTaskRuntimeFindingBoundaryMemoryRequest("F-001", listOf("modules/a/src/Main.kt"))),

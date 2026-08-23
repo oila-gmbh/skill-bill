@@ -1,13 +1,11 @@
 package skillbill.goalplanning
 
 import skillbill.contracts.goalplanning.GoalVerificationBoundaryCaps
-import skillbill.error.GoalVerificationBoundaryCapExceededError
 import skillbill.ports.goalrunner.model.GoalPlanningContext
 import skillbill.ports.goalrunner.model.GoalVerificationContext
 import java.nio.file.Files
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class GoalVerificationBoundaryCapsParityTest {
@@ -34,20 +32,23 @@ class GoalVerificationBoundaryCapsParityTest {
 
 class FileSystemGoalPlanningVerificationDiscoveryCapTest {
   @Test
-  fun `over budget verification discovery loud fails instead of truncating the catalog`() {
+  fun `verification discovery keeps only the newest recent entries per boundary file`() {
     val repo = Files.createTempDirectory("goal-verification-discovery-cap")
     val agent = Files.createDirectories(repo.resolve("modules/a/agent"))
-    val headings = (0 until GoalVerificationBoundaryCaps.maxHeadingsPerFile + 2).joinToString("\n\n") { index ->
+    val headings = (0 until GoalVerificationBoundaryCaps.maxHeadingsPerFile + 5).joinToString("\n\n") { index ->
       "## [2026-08-${"%02d".format((index % 28) + 1)}] entry-$index\n\nbody $index"
     }
     Files.writeString(agent.resolve("history.md"), "# Boundary History\n\n$headings\n")
 
-    assertFailsWith<GoalVerificationBoundaryCapExceededError> {
-      FileSystemGoalPlanningContextDiscovery().discoverForFindingPaths(
-        repo,
-        listOf("modules/a/src/Main.kt"),
-        loudFailOnCapExceeded = true,
-      )
-    }
+    val discovery = FileSystemGoalPlanningContextDiscovery().discoverForFindingPaths(
+      repo,
+      listOf("modules/a/src/Main.kt"),
+    )
+
+    assertEquals(GoalVerificationBoundaryCaps.maxHeadingsPerFile, discovery.boundaryCatalog.size)
+    assertTrue(discovery.boundaryCatalogTruncated)
+    assertTrue(discovery.boundaryCatalog.all { it.heading.contains("entry-") })
+    assertTrue(discovery.boundaryCatalog.none { it.heading.contains("entry-14") })
+    assertTrue(discovery.boundaryCatalog.any { it.heading.contains("entry-0") })
   }
 }
