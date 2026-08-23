@@ -136,7 +136,7 @@ private fun featureAddonPointerSpecsFor(
   skillName: String,
   selectedPlatformManifests: List<PlatformManifest>,
 ): List<PointerSpec> {
-  if (skillName != "bill-feature-task") {
+  if (skillName != "bill-feature") {
     return emptyList()
   }
   val collected = mutableListOf<PointerSpec>()

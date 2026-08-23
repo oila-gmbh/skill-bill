@@ -1,17 +1,13 @@
 ---
 name: bill-feature
-description: "Primary feature entry: prepare governed specs, then dispatch via bill-feature-goal. Use when implementing a feature, running feature-task, checking goal status, or resuming a goal."
+description: "Primary feature entry: prepare governed specs, then dispatch via bill-feature-goal. Use when implementing a feature, checking goal status, or resuming a goal."
 ---
 
 # Feature Content
 
-`bill-feature` is the primary feature entry point. It owns routing only: prepare the governed feature-spec artifacts first, then choose the correct downstream executor from the prepared result.
+`bill-feature` is the primary feature entry point. It owns routing only: prepare the governed feature-spec artifacts first, then dispatch the prepared goal.
 
-It does not replace `bill-feature-spec`, `bill-feature-task`, or `bill-feature-goal`. It composes them:
-
-- `bill-feature-spec` owns feature-spec preparation.
-- `bill-feature-task` owns each executable implementation unit.
-- `bill-feature-goal` owns every prepared feature's one-or-more-subtask loop with durable state.
+`bill-feature-spec` owns feature-spec preparation, and `bill-feature-goal` owns every prepared feature's one-or-more-subtask loop with durable state.
 
 ## Code-review selection
 
@@ -69,7 +65,7 @@ If the issue key is missing, stop and ask for it. Do not invent one.
 
 Before discovering or preparing governed artifacts, perform the read-only, repository-scoped continuation lookup for the normalized issue key and current canonical Git root by running `skill-bill feature-task lookup <issue-key> --repo-root <repo-root> --format json`. This is a CLI command, not an MCP tool — there is no `feature_task_continuation_lookup` MCP tool; it was removed in favor of the CLI form. Pass the plain filesystem path to the repository as `--repo-root`; the CLI derives the canonical repository identity internally, so never construct or guess a `repository_identity` string yourself. Parse the `result` field of the JSON output (`no_match`, `resumable`, `already_running`, `ambiguous`, `terminal_only`, `goal_continuation`) per the handling rules below. The workflow database and immutable execution identity are authoritative; `spec.md` is the governed feature contract, not a planning checkpoint.
 
-Handle `resumable`, `already_running`, `ambiguous`, `terminal_only`, and `goal_continuation` before new-work preparation. For `resumable`, dispatch directly to the task sidecar with the persisted `workflow-id:<id>` and spec path; continuation authority predates the unified manifest invariant. Report and stop for running or terminal rows, and report every ambiguous candidate rather than selecting by recency. Only `no_match` may continue below. A malformed request, identity/snapshot/version error, selector mismatch, or explicit conflicting args must loud-fail rather than becoming `no_match`.
+Handle `resumable`, `already_running`, `ambiguous`, `terminal_only`, and `goal_continuation` before new-work preparation. Standalone `STANDALONE` rows are retired, so report `resumable` and stop without dispatching a task sidecar. Report and stop for `already_running` and `terminal_only`, and report every `ambiguous` candidate rather than selecting by recency. Dispatch `goal_continuation` through `bill-feature-goal`. A `no_match` result proceeds to preparation and the goal dispatch below. A malformed request, identity/snapshot/version error, selector mismatch, or explicit conflicting args must loud-fail rather than becoming `no_match`.
 
 `goal_continuation` means a prepared goal for this issue already owns durable state in this repository; it is continuation, never new work. Report the goal's parent workflow id, status, current subtask and action, and the complete/pending/blocked counts, then dispatch through `bill-feature-goal.md` as continuation. When its status is `running`, stop instead: a second goal run against the same durable state is never correct. Never re-prepare a spec, reset, or hand-edit the manifest projection in response to this result.
 

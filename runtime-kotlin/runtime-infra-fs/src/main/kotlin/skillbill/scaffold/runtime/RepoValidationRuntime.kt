@@ -748,7 +748,7 @@ object RepoValidationRuntime {
   private fun validateFeatureAddonDeclarations(root: Path, issues: MutableList<String>) {
     val staticTargets = supportingFileTargets(root).keys
     val classes = runCatching { skillbill.scaffold.platformpack.discoverSkillClasses(root) }.getOrDefault(emptyList())
-    val featureClassPointers = resolveSkillClass("bill-feature-task", classes)
+    val featureClassPointers = resolveSkillClass("bill-feature", classes)
       ?.pointers
       ?.map { pointer -> "$pointer.md" }
       .orEmpty()
@@ -979,6 +979,9 @@ object RepoValidationRuntime {
 
   private fun isDocumentedExampleReference(file: Path, root: Path, referenced: String): Boolean {
     val relative = file.relativeTo(root).toString()
+    if (relative == "orchestration/workflow-contract/PLAYBOOK.md") {
+      return referenced == "bill-feature-task"
+    }
     if (relative == "orchestration/shell-content-contract/SCAFFOLD_PAYLOAD.md") {
       return referenced in setOf(
         "bill-java-code-review",

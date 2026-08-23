@@ -35,13 +35,11 @@ private val LEGACY_POINTER_GOLDEN: Map<String, Set<String>> = mapOf(
   ),
   "bill-code-check" to setOf("stack-routing.md", "telemetry-contract.md", "shell-ceremony.md"),
   "bill-pr-description" to setOf("shell-ceremony.md", "telemetry-contract.md"),
-  "bill-feature" to setOf("peak-hours-warner.md"),
-  "bill-feature-task" to setOf(
+  "bill-feature" to setOf(
     "peak-hours-warner.md",
     "shell-ceremony.md",
     "telemetry-contract.md",
   ),
-  "bill-feature-task-runtime" to setOf("peak-hours-warner.md"),
   "bill-feature-verify" to setOf("shell-ceremony.md", "telemetry-contract.md"),
 )
 
@@ -68,7 +66,7 @@ private val LEGACY_PATTERN_GOLDEN: List<Pair<Regex, Set<String>>> = listOf(
 private fun goldenPointerSetFor(skillName: String): Set<String>? = LEGACY_POINTER_GOLDEN[skillName]
   ?: LEGACY_PATTERN_GOLDEN.firstOrNull { (pattern, _) -> pattern.matches(skillName) }?.second
 
-private const val FEATURE_TASK_CEREMONY_GOLDEN = """
+private const val FEATURE_ENTRY_CEREMONY_GOLDEN = """
 ## Ceremony
 
 Before launch, follow [peak-hours-warner.md](peak-hours-warner.md).
@@ -248,7 +246,7 @@ class SkillClassLoaderTest {
     val repoRoot = currentRepoRootForClassLoader()
     val kmpManifest = loadPlatformManifest(repoRoot.resolve("platform-packs/kmp"))
 
-    val pointers = requiredSupportingFilesForSkill("bill-feature-task", repoRoot, listOf(kmpManifest))
+    val pointers = requiredSupportingFilesForSkill("bill-feature", repoRoot, listOf(kmpManifest))
 
     assertEquals(
       listOf(
@@ -280,15 +278,15 @@ class SkillClassLoaderTest {
   }
 
   @Test
-  fun `feature task class replaces retired manifest filename`() {
+  fun `feature entry class owns merged ceremony`() {
     val repoRoot = currentRepoRootForClassLoader()
     val classes = discoverSkillClasses(repoRoot)
-    val manifest = resolveSkillClass("bill-feature-task", classes)
+    val manifest = resolveSkillClass("bill-feature", classes)
 
-    assertEquals("feature-task", manifest?.classId)
-    assertTrue(Files.isRegularFile(repoRoot.resolve("$SKILL_CLASSES_DIR/feature-task.yaml")))
-    assertTrue(!Files.exists(repoRoot.resolve("$SKILL_CLASSES_DIR/feature-" + "implement.yaml")))
-    assertEquals(FEATURE_TASK_CEREMONY_GOLDEN.trimStart(), renderCeremonySection(manifest))
+    assertEquals("feature-launch-warning", manifest?.classId)
+    assertTrue(Files.isRegularFile(repoRoot.resolve("$SKILL_CLASSES_DIR/feature-launch-warning.yaml")))
+    assertTrue(!Files.exists(repoRoot.resolve("$SKILL_CLASSES_DIR/feature-task.yaml")))
+    assertEquals(FEATURE_ENTRY_CEREMONY_GOLDEN.trimStart(), renderCeremonySection(manifest))
   }
 
   @Test

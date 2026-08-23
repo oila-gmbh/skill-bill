@@ -120,7 +120,7 @@ Accounting preserves direct and inclusive ownership. Direct usage belongs to one
 
 ## Shared Caller Integration Notes
 
-- If a review is invoked from `bill-feature-task`, `bill-feature-verify`, or another orchestration skill, do not pause for user selection. Return prioritized findings so the caller can auto-fix P0/P1 items and decide whether to carry Minor items forward.
+- If a review is invoked from a feature workflow, `bill-feature-verify`, or another orchestration skill, do not pause for user selection. Return prioritized findings so the caller can auto-fix P0/P1 items and decide whether to carry Minor items forward.
 - After all P0 and P1 items are resolved, run `bill-code-check` as final verification when the project uses a routed quality-check path and the review is being run standalone.
 
 ## Shared Report Structure

@@ -296,8 +296,8 @@ ids are:
 11. `pr_description`
 12. `finish`
 
-For this pilot, the authored workflow source stays in
-`skills/bill-feature-task/content.md`. Install and render flows generate the
+For this pilot, the authored workflow entry source stays in
+`skills/bill-feature/content.md`. Install and render flows generate the
 runtime `SKILL.md` wrapper from that source plus the shared shell contract.
 Generated wrappers are not committed under `skills/`.
 The rendered `SKILL.md` remains the runtime-facing source of truth for:
