@@ -315,9 +315,9 @@ internal fun commitExclusionDirective(phaseId: String, issueKey: String): String
     Feature specs are workflow inputs, not implementation output. Never list any `.feature-specs/`
     path in `commit_push_result.changed_paths` — especially this feature's
     `.feature-specs/$issueKey-*` (or `.feature-specs/$issueKey/`) tree, including the parent spec,
-    every subtask spec, and `decomposition-manifest.yaml`. The runtime stages the paths you enumerate
-    and nothing else; it never runs `git add -A` / `git add .`. Leave `.feature-specs/` dirty locally
-    if it changed. Never amend, reset, or restage a commit this runtime does not own, including a
+    every subtask spec, and `decomposition-manifest.yaml`. The runtime stages every dirty non-ignored
+    implementation path in the worktree and never stages `.feature-specs/`. Leave `.feature-specs/`
+    dirty locally if it changed. Never amend, reset, or restage a commit this runtime does not own, including a
     commit a human operator authored: leave those alone.
   """.trimIndent()
 }
@@ -450,10 +450,11 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "Run no git command in this phase. The runtime stages, commits, and pushes the subtask on the " +
     "resolved feature branch from what you emit here. Emit commit_push_result with `message` (the " +
     "commit subject describing the implemented, reviewed, audited, validated, and history-updated " +
-    "outcome) and `changed_paths` (every implementation path this subtask touched, enumerated; the " +
-    "runtime stages exactly this set and refuses when dirty non-`.feature-specs/` paths remain outside " +
-    "it, including validate repairs). A missing or blank `message` blocks the subtask rather than " +
-    "publishing a provisional subject. Do not emit commit_sha: the runtime captures it after the " +
+    "outcome) and optional `changed_paths` (advisory). The runtime stages every dirty non-ignored " +
+    "worktree path except `.feature-specs/` — including validate repairs and concurrent operator " +
+    "edits — so an incomplete list cannot strand deliverable dirt. A missing or blank `message` " +
+    "blocks the subtask rather than publishing a provisional subject. Do not emit commit_sha: the " +
+    "runtime captures it after the " +
     "commit. If goal-continuation suppresses PR, this successful phase is the terminal success " +
     "signal for the goal subtask.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_PR to

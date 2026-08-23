@@ -321,7 +321,8 @@ Required workflow artifacts for the pilot:
 - `validation_result` — routed skill or repo-native validator result
 - `history_result` — written/skipped outcome for boundary history
 - `commit_push_result` — reserved shell-owned artifact name for Step 10; the agent emits
-  `message` and `changed_paths` only. The runtime performs staging, amend, sha capture,
+  a non-blank `message` (and optional advisory `changed_paths`). The runtime stages every dirty
+  non-ignored path except `.feature-specs/`, then performs amend, sha capture,
   push, and checkpoint-ref pruning after the manifest records `commit_sha`.
 - `pr_result` — PR url/title or terminal failure note
 

@@ -84,7 +84,7 @@ When goal routing selects the build quality gate and the dominant platform pack 
 
 Decomposed goal runs use `same_branch_commit_per_subtask`: each completed subtask leaves exactly one commit on the feature branch, not a chain of checkpoint commits in branch history.
 
-- The runtime owns finalisation: it stages the agent's enumerated path set, amends (or creates) the subtask commit, captures the post-amend sha, pushes, and records `commit_sha` into the decomposition manifest. The agent supplies the outcome message and path list in `commit_push_result`; it does not run `git commit` or `git push` for a subtask.
+- The runtime owns finalisation: it stages every dirty non-ignored worktree path except `.feature-specs/`, amends (or creates) the subtask commit, captures the post-amend sha, pushes, and records `commit_sha` into the decomposition manifest. The agent supplies the outcome message in `commit_push_result` (`changed_paths` is advisory); it does not run `git commit` or `git push` for a subtask.
 - Checkpoint history lives under `refs/skill-bill/checkpoints/<issue-key>/<subtask-id>/<sequence>`. Those refs preserve pre-amend commits the branch no longer names; they are not reachable through `git log` on the branch without an explicit ref argument.
 - Pruning deletes a subtask's checkpoint refs only after that subtask's commit is pushed and its manifest entry records a non-blank `commit_sha`. Pruning is idempotent; a hard manifest reset prunes the refs of the subtasks it reset. Blocked or abandoned subtasks keep their refs for recovery.
 

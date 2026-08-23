@@ -20,9 +20,8 @@ private const val COMMIT_SHA_KEY = "commit_sha"
 private const val GOVERNED_SPEC_ROOT = ".feature-specs/"
 private const val GIT_PORCELAIN_MIN_LENGTH = 4
 private const val GIT_PORCELAIN_STATUS_PREFIX_LENGTH = 3
-private const val MAX_REPORTED_UNENUMERATED_DIRTY_PATHS = 8
 
-/** The agent's half of the finalisation contract: what to say, and which paths the runtime may stage. */
+/** The agent's half of the finalisation contract: the commit subject. `changedPaths` is advisory. */
 internal data class FeatureTaskRuntimeCommitPushHandoff(
   val outcomeMessage: String,
   val changedPaths: List<String>,
@@ -54,12 +53,13 @@ internal data class FeatureTaskRuntimeSubtaskFinalisationBlocked(
 /**
  * SKILL-190: the runtime half of `commit_push`.
  *
- * The agent describes the outcome and enumerates what it touched; every git write below is the
- * runtime's. Order is load-bearing: the handoff is validated before anything is staged, so a rejected
- * finalisation leaves the repository exactly as the agent left it; the message is applied in the same
- * amend that stages the content, so no commit ever reaches a pushed state carrying the provisional
- * subject; and the sha is captured after that amend, so the value threaded into the manifest is the
- * final one rather than an intermediate.
+ * The agent supplies the commit subject; every git write below is the runtime's. Staging sweeps every
+ * dirty non-ignored worktree path except governed `.feature-specs/` inputs (gitignored paths never
+ * appear in porcelain status, so they stay out). Order is load-bearing: the handoff message is
+ * validated before anything is staged, so a rejected finalisation leaves the repository exactly as
+ * the agent left it; the message is applied in the same amend that stages the content, so no commit
+ * ever reaches a pushed state carrying the provisional subject; and the sha is captured after that
+ * amend, so the value threaded into the manifest is the final one rather than an intermediate.
  *
  * [recordCommit] persists the durable pointer to the commit just written and runs BEFORE the push,
  * returning a blocking reason when it cannot. Recording after the push left a failed push blocked with
@@ -85,14 +85,13 @@ internal class FeatureTaskRuntimeSubtaskFinalisation(
     manifestCommitSha: String? = null,
   ): FeatureTaskRuntimeSubtaskFinalisationResult {
     val branch = metadata.branch
-    val excluded = handoff.changedPaths.filter(::isGovernedSpecPath).distinct().sorted()
-    val stageable = handoff.changedPaths.filter(String::isNotBlank)
-      .filterNot(::isGovernedSpecPath)
-      .distinct()
-      .sorted()
+    val dirtyOrError = dirtyImplementationPaths()
+    if (dirtyOrError is DirtyPathsError) return blocked(dirtyOrError.reason)
+    val dirtyPaths = (dirtyOrError as DirtyPaths).paths
+    val excluded = dirtyPaths.filter(::isGovernedSpecPath).distinct().sorted()
+    val stageable = dirtyPaths.filterNot(::isGovernedSpecPath).distinct().sorted()
     if (excluded.isNotEmpty()) record(specExclusionRecord(identity, excluded))
     if (stageable.isEmpty()) return blocked(emptyStageableReason(excluded))
-    refuseUnenumeratedDirtyPaths(stageable)?.let { return blocked(it) }
 
     val snapshot = gitOperations.captureIndexState(repoRoot, stageable)
     if (!snapshot.ok) return blocked("the pre-finalisation index could not be captured (${snapshot.error})")
@@ -206,30 +205,27 @@ internal class FeatureTaskRuntimeSubtaskFinalisation(
     }
   }
 
-  private fun refuseUnenumeratedDirtyPaths(stageable: List<String>): String? {
+  /**
+   * Every dirty non-ignored path in the worktree. Porcelain status already omits gitignored files, so
+   * a sweep here matches "stage everything dirty except ignored". Governed specs stay in the list for
+   * exclusion reporting and are filtered out before staging.
+   */
+  private fun dirtyImplementationPaths(): DirtyPathsResult {
     val status = gitOperations.worktreeStatus(repoRoot)
     if (!status.ok) {
-      return "the worktree status could not be read before staging (${status.error})"
+      return DirtyPathsError("the worktree status could not be read before staging (${status.error})")
     }
-    val enumerated = stageable.map(::normalizeRepoPath).toSet()
-    val leftovers = parseGitPorcelainPaths(status.value.orEmpty())
-      .filterNot(::isGovernedSpecPath)
+    val paths = parseGitPorcelainPaths(status.value.orEmpty())
       .map(::normalizeRepoPath)
-      .filter { it.isNotBlank() && it !in enumerated }
+      .filter { it.isNotBlank() }
       .distinct()
       .sorted()
-    if (leftovers.isEmpty()) return null
-    val sample = leftovers.take(MAX_REPORTED_UNENUMERATED_DIRTY_PATHS).joinToString(", ")
-    val suffix = if (leftovers.size > MAX_REPORTED_UNENUMERATED_DIRTY_PATHS) {
-      " (+${leftovers.size - MAX_REPORTED_UNENUMERATED_DIRTY_PATHS} more)"
-    } else {
-      ""
-    }
-    return "`$COMMIT_PUSH_RESULT_KEY.$CHANGED_PATHS_KEY` omitted dirty implementation paths " +
-      "($sample$suffix). Finalisation stages exactly the enumerated set, so those edits would stay " +
-      "uncommitted and later block same-branch goal finalization. Re-run commit_push enumerating every " +
-      "implementation path this subtask touched, including validate repairs"
+    return DirtyPaths(paths)
   }
+
+  private sealed interface DirtyPathsResult
+  private data class DirtyPaths(val paths: List<String>) : DirtyPathsResult
+  private data class DirtyPathsError(val reason: String) : DirtyPathsResult
 
   private fun blocked(reason: String) = FeatureTaskRuntimeSubtaskFinalisationBlocked(
     "needs_human: subtask finalisation could not complete because $reason.",
@@ -247,13 +243,12 @@ internal class FeatureTaskRuntimeSubtaskFinalisation(
         ?: return invalid("`produced_outputs.$COMMIT_PUSH_RESULT_KEY` is absent")
       val message = result[OUTCOME_MESSAGE_KEY]?.toString()?.trim()?.takeIf(String::isNotBlank)
         ?: return invalid("`$COMMIT_PUSH_RESULT_KEY.$OUTCOME_MESSAGE_KEY` is missing or blank")
-      val paths = changedPaths(result) ?: return invalid(
-        if (result.containsKey(CHANGED_PATHS_KEY)) {
-          "`$COMMIT_PUSH_RESULT_KEY.$CHANGED_PATHS_KEY` is not a list of paths"
-        } else {
-          "`$COMMIT_PUSH_RESULT_KEY.$CHANGED_PATHS_KEY` is absent"
-        },
-      )
+      val paths = when {
+        !result.containsKey(CHANGED_PATHS_KEY) -> emptyList()
+        else -> changedPaths(result) ?: return invalid(
+          "`$COMMIT_PUSH_RESULT_KEY.$CHANGED_PATHS_KEY` is not a list of paths",
+        )
+      }
       return FeatureTaskRuntimeCommitPushHandoffValid(
         FeatureTaskRuntimeCommitPushHandoff(outcomeMessage = message, changedPaths = paths),
       )
@@ -323,14 +318,13 @@ internal class FeatureTaskRuntimeSubtaskFinalisation(
      */
     private fun emptyStageableReason(excluded: List<String>): String {
       val cause = if (excluded.isEmpty()) {
-        "`$COMMIT_PUSH_RESULT_KEY.$CHANGED_PATHS_KEY` enumerated no paths"
+        "the worktree has no dirty non-ignored paths"
       } else {
-        "every path in `$COMMIT_PUSH_RESULT_KEY.$CHANGED_PATHS_KEY` is a governed `$GOVERNED_SPEC_ROOT` " +
-          "path (${excluded.joinToString(", ")}), which finalisation never stages"
+        "the only dirty paths are governed `$GOVERNED_SPEC_ROOT` inputs " +
+          "(${excluded.joinToString(", ")}), which finalisation never stages"
       }
       return "$cause, so there is nothing to stage. Finalisation would otherwise publish the " +
-        "already-committed checkpoint tree and silently drop this subtask's remaining work. Re-run " +
-        "commit_push enumerating the deliverable paths this subtask changed"
+        "already-committed checkpoint tree with no deliverable content"
     }
 
     /** Names the seam, the value used, the value expected, and the cause, per docs/observability-policy.md. */

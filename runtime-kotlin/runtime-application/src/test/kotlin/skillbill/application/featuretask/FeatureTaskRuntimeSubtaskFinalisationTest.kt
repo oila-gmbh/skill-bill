@@ -237,9 +237,8 @@ class FeatureTaskRuntimeSubtaskFinalisationTest {
     assertTrue(finalised.commitSha != publishedSha)
   }
 
-  // The bug: an enumerated path set that is empty, or that holds nothing but governed spec paths,
-  // stages nothing; the amend then succeeds on the unchanged checkpoint tree and the subtask reports a
-  // commit sha while every post-checkpoint edit stays uncommitted and out of the deliverable.
+  // Clean implementation worktree (only governed spec dirt): finalisation must refuse rather than
+  // amend/publish the unchanged checkpoint tree as if deliverable work landed.
   @Test
   fun `a finalisation with nothing stageable is refused instead of publishing the checkpoint tree`() {
     val repo = repoWithRemote()
@@ -247,10 +246,11 @@ class FeatureTaskRuntimeSubtaskFinalisationTest {
     git(repo.root, "add", "owned.txt")
     git(repo.root, "commit", "-m", "$issueKey: subtask $subtaskId\n\nprovisional\n\n${identity.trailer}")
     val checkpointSha = git(repo.root, "rev-parse", "HEAD")
-    Files.writeString(repo.root.resolve("owned.txt"), "work the agent forgot to enumerate\n")
+    Files.createDirectories(repo.root.resolve(".feature-specs/$issueKey"))
+    Files.writeString(repo.root.resolve(".feature-specs/$issueKey/spec.md"), "spec only\n")
 
     val blocked = assertIs<FeatureTaskRuntimeSubtaskFinalisationBlocked>(
-      finalise(repo, durableCommitSha = checkpointSha, paths = listOf(".feature-specs/spec.md")),
+      finalise(repo, durableCommitSha = checkpointSha, paths = listOf(".feature-specs/$issueKey/spec.md")),
     )
 
     assertContains(blocked.reason, "nothing to stage")
@@ -259,27 +259,32 @@ class FeatureTaskRuntimeSubtaskFinalisationTest {
     assertEquals("", remoteBranchTip(repo.remote), "a refused finalisation must not publish")
   }
 
-  // The bug: a partial changed_paths list stages and publishes while validate (or other) repairs stay
-  // dirty; same-branch goal finalization then refuses those leftovers after the subtask already looks
-  // complete.
+  // Incomplete agent changed_paths must not strand validate repairs (or operator edits): finalisation
+  // sweeps every dirty non-ignored implementation path, while still leaving governed specs local.
   @Test
-  fun `a partial changed_paths list is refused while dirty implementation paths remain`() {
+  fun `a partial changed_paths list still commits every dirty implementation path`() {
     val repo = repoWithRemote()
+    Files.createDirectories(repo.root.resolve(".feature-specs/$issueKey"))
+    Files.writeString(repo.root.resolve(".feature-specs/$issueKey/spec.md"), "spec\n")
+    git(repo.root, "add", ".feature-specs")
+    git(repo.root, "commit", "-m", "operator committed the spec")
+    Files.writeString(repo.root.resolve(".feature-specs/$issueKey/spec.md"), "spec dirt ok\n")
     Files.writeString(repo.root.resolve("owned.txt"), "enumerated\n")
     Files.writeString(repo.root.resolve("leftover.txt"), "validate repair\n")
-    Files.createDirectories(repo.root.resolve(".feature-specs/$issueKey"))
-    Files.writeString(repo.root.resolve(".feature-specs/$issueKey/spec.md"), "spec dirt ok\n")
-    val baseSha = git(repo.root, "rev-parse", "HEAD")
 
-    val blocked = assertIs<FeatureTaskRuntimeSubtaskFinalisationBlocked>(
+    val finalised = assertIs<FeatureTaskRuntimeSubtaskFinalised>(
       finalise(repo, durableCommitSha = null, paths = listOf("owned.txt")),
     )
 
-    assertContains(blocked.reason, "omitted dirty implementation paths")
-    assertContains(blocked.reason, "leftover.txt")
-    assertEquals(baseSha, git(repo.root, "rev-parse", "HEAD"), "HEAD must be untouched")
-    assertEquals("", git(repo.root, "diff", "--cached", "--name-only"), "nothing may be left staged")
-    assertEquals("", remoteBranchTip(repo.remote), "a refused finalisation must not publish")
+    val committed = git(repo.root, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD")
+      .lines().filter { it.isNotBlank() }.sorted()
+    assertEquals(listOf("leftover.txt", "owned.txt"), committed)
+    assertEquals(
+      ".feature-specs/$issueKey/spec.md",
+      git(repo.root, "diff", "--name-only"),
+      "governed specs stay dirty locally",
+    )
+    assertEquals(finalised.commitSha, remoteBranchTip(repo.remote))
   }
 
   @Test
@@ -299,10 +304,7 @@ class FeatureTaskRuntimeSubtaskFinalisationTest {
       assertIs<FeatureTaskRuntimeCommitPushHandoffInvalid>(blank).reason,
       "`commit_push_result.message` is missing or blank",
     )
-    assertContains(
-      assertIs<FeatureTaskRuntimeCommitPushHandoffInvalid>(absentPaths).reason,
-      "`commit_push_result.changed_paths` is absent",
-    )
+    assertIs<FeatureTaskRuntimeCommitPushHandoffValid>(absentPaths)
   }
 
   @Test
