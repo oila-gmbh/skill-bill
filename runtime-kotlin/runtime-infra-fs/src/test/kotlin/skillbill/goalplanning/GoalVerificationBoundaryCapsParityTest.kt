@@ -48,7 +48,7 @@ class FileSystemGoalPlanningVerificationDiscoveryCapTest {
     assertEquals(GoalVerificationBoundaryCaps.maxHeadingsPerFile, discovery.boundaryCatalog.size)
     assertTrue(discovery.boundaryCatalogTruncated)
     assertTrue(discovery.boundaryCatalog.all { it.heading.contains("entry-") })
-    assertTrue(discovery.boundaryCatalog.none { it.heading.contains("entry-14") })
+    assertTrue(discovery.boundaryCatalog.none { it.heading.contains("entry-${GoalVerificationBoundaryCaps.maxHeadingsPerFile}") })
     assertTrue(discovery.boundaryCatalog.any { it.heading.contains("entry-0") })
   }
 }
