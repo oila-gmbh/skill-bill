@@ -37,6 +37,21 @@ class GitScopedStagingOperationsTest {
   }
 
   @Test
+  fun `stagePaths expands an untracked directory pathspec into its files`() {
+    write("owned/nested/One.kt", "one\n")
+    write("owned/nested/Two.kt", "two\n")
+    write("foreign/Skip.kt", "skip\n")
+
+    val result = GitScopedStagingOperations.stagePaths(repo, listOf("owned/nested/"))
+
+    assertTrue(result.ok, result.error)
+    val index = indexSnapshot().keys
+    assertTrue("owned/nested/One.kt" in index)
+    assertTrue("owned/nested/Two.kt" in index)
+    assertFalse("foreign/Skip.kt" in index)
+  }
+
+  @Test
   fun `stagePaths stages exactly the listed paths and leaves foreign entries index-identical`() {
     write("owned/Owned.kt", "owned\n")
     write("foreign/Untracked.kt", "untracked\n")

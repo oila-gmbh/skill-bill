@@ -113,12 +113,38 @@ internal object GitScopedStagingOperations : ScopedStagingGitOperations {
         indexEntryPath(entry)?.let { indexed += it }
       }
     }
-    val presentOrIndexed = normalized.filter { Files.isRegularFile(repoRoot.resolve(it)) || it in indexed }
+    val materialized = materializePathspecs(repoRoot, normalized)
+    val presentOrIndexed = materialized.filter { Files.isRegularFile(repoRoot.resolve(it)) || it in indexed }
     val ignored = ignoredUntrackedPaths(repoRoot, presentOrIndexed)
     if (!ignored.ok) return ignored
     val ignoredSet = ignored.value.orEmpty().split(GIT_NUL).filter(String::isNotBlank).toSet()
     val stageable = presentOrIndexed.filterNot { it in ignoredSet }
     return WorkflowGitOperationResult(status = "ok", value = stageable.joinToString(GIT_NUL.toString()))
+  }
+
+  /**
+   * Porcelain may still hand us a trailing-slash directory (`?? owned/dir/`) when a caller does not
+   * use `-uall`. Expand directories to their regular files so staging cannot silently drop a whole
+   * untracked tree. Non-directory pathspecs pass through unchanged, including deletions that exist
+   * only in the index.
+   */
+  private fun materializePathspecs(repoRoot: Path, paths: List<String>): List<String> {
+    val materialized = LinkedHashSet<String>()
+    for (raw in paths) {
+      val relative = raw.trim().removeSuffix("/")
+      if (relative.isEmpty()) continue
+      val resolved = repoRoot.resolve(relative)
+      if (Files.isDirectory(resolved)) {
+        Files.walk(resolved).use { walk ->
+          walk.filter { Files.isRegularFile(it) }.forEach { file ->
+            materialized += repoRoot.relativize(file).toString().replace('\\', '/')
+          }
+        }
+      } else {
+        materialized += relative
+      }
+    }
+    return materialized.toList()
   }
 
   private fun ignoredUntrackedPaths(repoRoot: Path, paths: List<String>): WorkflowGitOperationResult {

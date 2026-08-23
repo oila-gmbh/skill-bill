@@ -288,6 +288,25 @@ class FeatureTaskRuntimeSubtaskFinalisationTest {
   }
 
   @Test
+  fun `an untracked nested directory is committed file-by-file rather than left behind`() {
+    val repo = repoWithRemote()
+    Files.createDirectories(repo.root.resolve("owned/nested"))
+    Files.writeString(repo.root.resolve("owned/nested/One.kt"), "one\n")
+    Files.writeString(repo.root.resolve("owned/nested/Two.kt"), "two\n")
+
+    val finalised = assertIs<FeatureTaskRuntimeSubtaskFinalised>(
+      finalise(repo, durableCommitSha = null, paths = emptyList()),
+    )
+
+    val committed = git(repo.root, "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD")
+      .lines().filter { it.isNotBlank() }.sorted()
+    assertEquals(listOf("owned/nested/One.kt", "owned/nested/Two.kt"), committed)
+    assertEquals(finalised.commitSha, remoteBranchTip(repo.remote))
+    assertEquals("", git(repo.root, "status", "--porcelain"), "no deliverable dirt may remain")
+  }
+
+
+  @Test
   fun `a blank outcome message is rejected before any git write`() {
     val blank = FeatureTaskRuntimeSubtaskFinalisation.readHandoff(
       envelope(message = "   ", paths = listOf("owned.txt")),
