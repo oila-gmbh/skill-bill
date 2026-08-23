@@ -260,7 +260,9 @@ private object GitStandardWorkflowGitOperations : WorkflowGitOperations {
   }
 
   override fun worktreeStatus(repoRoot: Path): WorkflowGitOperationResult =
-    runGitCommand(repoRoot, "status", "--porcelain")
+    // `-uall` expands untracked directories to their files. Default porcelain collapses them to
+    // `?? dir/`, which finalisation then cannot stage through the regular-file path filter.
+    runGitCommand(repoRoot, "status", "--porcelain", "-uall")
 
   override fun worktreeActivity(repoRoot: Path): WorkflowWorktreeActivityResult =
     GitRepositoryFingerprintOperations.worktreeActivity(repoRoot)

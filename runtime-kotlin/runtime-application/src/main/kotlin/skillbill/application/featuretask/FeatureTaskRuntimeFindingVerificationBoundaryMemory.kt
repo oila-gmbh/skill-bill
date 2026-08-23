@@ -29,7 +29,7 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemory(
       discovery = contextDiscovery.discoverForFindingPaths(
         repoRoot = repoRoot,
         findingPaths = request.findingPaths,
-        loudFailOnCapExceeded = true,
+        loudFailOnCapExceeded = false,
       ),
     )
   }
