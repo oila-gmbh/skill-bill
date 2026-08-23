@@ -9,6 +9,8 @@ import skillbill.ports.goalrunner.model.GoalPlanningBoundaryHeading
 import skillbill.ports.goalrunner.model.GoalPlanningContext
 import skillbill.ports.goalrunner.model.GoalVerificationBoundaryDiscovery
 import java.nio.file.Path
+import java.time.LocalDate
+import java.time.ZoneOffset
 
 @Inject
 class FileSystemGoalPlanningContextDiscovery : GoalPlanningContextDiscovery {
@@ -86,7 +88,15 @@ class FileSystemGoalPlanningContextDiscovery : GoalPlanningContextDiscovery {
         truncated = true
       } else {
         if (read.cut) truncated = true
-        val entries = BoundaryMemoryHeadingParser.parse(candidate.relative, read.text)
+        var entries = BoundaryMemoryHeadingParser.parse(candidate.relative, read.text)
+        if (caps.historyRecencyDays != null && candidate.kind == GoalPlanningContext.KIND_HISTORY) {
+          val cutoff = LocalDate.now(ZoneOffset.UTC).minusDays(caps.historyRecencyDays.toLong())
+          val beforeRecencyFilter = entries.size
+          entries = entries.filter { entry ->
+            BoundaryMemoryHeadingParser.entryDate(entry.heading)?.let { entryDate -> entryDate >= cutoff } == true
+          }
+          if (entries.size < beforeRecencyFilter) truncated = true
+        }
         if (entries.size > caps.maxHeadingsPerFile) truncated = true
         perFile.add(
           entries.take(caps.maxHeadingsPerFile).map { entry ->
@@ -160,6 +170,7 @@ class FileSystemGoalPlanningContextDiscovery : GoalPlanningContextDiscovery {
     val maxHeadingsPerFile: Int,
     val maxCatalogHeadings: Int,
     val includeValidationGuidance: Boolean,
+    val historyRecencyDays: Int? = null,
   )
 
   private companion object {
@@ -174,6 +185,7 @@ class FileSystemGoalPlanningContextDiscovery : GoalPlanningContextDiscovery {
       maxHeadingsPerFile = GoalVerificationBoundaryCaps.maxHeadingsPerFile,
       maxCatalogHeadings = GoalVerificationBoundaryCaps.maxCatalogHeadings,
       includeValidationGuidance = false,
+      historyRecencyDays = GoalVerificationBoundaryCaps.historyRecencyDays,
     )
   }
 }

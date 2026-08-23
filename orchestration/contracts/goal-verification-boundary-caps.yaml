@@ -1,7 +1,8 @@
-contract_version: "0.1"
+contract_version: "0.2"
 max_discovery_file_count: 16
 max_headings_per_file: 50
 max_catalog_headings: 128
+history_recency_days: 30
 max_selected_bodies: 12
 max_body_bytes: 4096
 max_total_body_bytes: 32768

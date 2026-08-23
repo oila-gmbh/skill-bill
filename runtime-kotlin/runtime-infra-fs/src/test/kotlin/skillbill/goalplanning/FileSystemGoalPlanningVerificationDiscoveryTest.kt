@@ -1,7 +1,10 @@
 package skillbill.goalplanning
 
 import skillbill.contracts.goalplanning.GoalPlanningDiscoveryExclusions
+import skillbill.contracts.goalplanning.GoalVerificationBoundaryCaps
 import java.nio.file.Files
+import java.time.LocalDate
+import java.time.ZoneOffset
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -95,6 +98,59 @@ class FileSystemGoalPlanningVerificationDiscoveryTest {
     )
     assertTrue(fromBackslashTraversal.boundaryContextUnavailable)
     assertTrue(fromBackslashTraversal.boundaryCatalog.isEmpty())
+  }
+
+  @Test
+  fun `verification discovery filters history entries older than the configured recency window`() {
+    val repo = Files.createTempDirectory("goal-verification-history-recency")
+    val agent = Files.createDirectories(repo.resolve("modules/a/agent"))
+    val recent = LocalDate.now(ZoneOffset.UTC).minusDays(5)
+    val stale = LocalDate.now(ZoneOffset.UTC).minusDays(GoalVerificationBoundaryCaps.historyRecencyDays + 1L)
+    Files.writeString(
+      agent.resolve("history.md"),
+      """
+      # Boundary History
+
+      ## [$recent] recent-entry
+
+      recent body
+
+      ## [$stale] stale-entry
+
+      stale body
+      """.trimIndent() + "\n",
+    )
+
+    val discovery = FileSystemGoalPlanningContextDiscovery().discoverForFindingPaths(
+      repo,
+      listOf("modules/a/src/Main.kt"),
+    )
+
+    assertFalse(discovery.boundaryContextUnavailable)
+    assertEquals(1, discovery.boundaryCatalog.size)
+    assertTrue(discovery.boundaryCatalog.single().heading.contains("recent-entry"))
+    assertTrue(discovery.boundaryCatalogTruncated)
+  }
+
+  @Test
+  fun `verification discovery does not filter decisions by history recency`() {
+    val repo = Files.createTempDirectory("goal-verification-decisions-recency")
+    val agent = Files.createDirectories(repo.resolve("modules/a/agent"))
+    val stale = LocalDate.now(ZoneOffset.UTC).minusDays(GoalVerificationBoundaryCaps.historyRecencyDays + 1L)
+    Files.writeString(
+      agent.resolve("decisions.md"),
+      "# Boundary Decisions\n\n## [$stale] stale-decision\n\nstale decision body\n",
+    )
+
+    val discovery = FileSystemGoalPlanningContextDiscovery().discoverForFindingPaths(
+      repo,
+      listOf("modules/a/src/Main.kt"),
+    )
+
+    assertFalse(discovery.boundaryContextUnavailable)
+    assertEquals(1, discovery.boundaryCatalog.size)
+    assertTrue(discovery.boundaryCatalog.single().heading.contains("stale-decision"))
+    assertFalse(discovery.boundaryCatalogTruncated)
   }
 
   private fun writeEntries(file: java.nio.file.Path, title: String, body: String) {

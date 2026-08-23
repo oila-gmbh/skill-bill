@@ -14,6 +14,7 @@ class GoalVerificationBoundaryCapsParityTest {
     assertEquals(GoalVerificationBoundaryCaps.maxDiscoveryFileCount, GoalVerificationContext.MAX_DISCOVERY_FILE_COUNT)
     assertEquals(GoalVerificationBoundaryCaps.maxHeadingsPerFile, GoalVerificationContext.MAX_HEADINGS_PER_FILE)
     assertEquals(GoalVerificationBoundaryCaps.maxCatalogHeadings, GoalVerificationContext.MAX_CATALOG_HEADINGS)
+    assertEquals(GoalVerificationBoundaryCaps.historyRecencyDays, GoalVerificationContext.HISTORY_RECENCY_DAYS)
     assertEquals(GoalVerificationBoundaryCaps.maxSelectedBodies, GoalVerificationContext.MAX_SELECTED_BODIES)
     assertEquals(GoalVerificationBoundaryCaps.maxBodyBytes, GoalVerificationContext.MAX_BODY_BYTES)
     assertEquals(GoalVerificationBoundaryCaps.maxTotalBodyBytes, GoalVerificationContext.MAX_TOTAL_BODY_BYTES)

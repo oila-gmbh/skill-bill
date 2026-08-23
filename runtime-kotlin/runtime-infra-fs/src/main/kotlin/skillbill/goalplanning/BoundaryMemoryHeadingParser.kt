@@ -1,6 +1,7 @@
 package skillbill.goalplanning
 
 import java.security.MessageDigest
+import java.time.LocalDate
 
 /** One conforming boundary-memory entry: its governed H2 heading and the body span beneath it. */
 data class BoundaryMemoryEntry(
@@ -19,6 +20,7 @@ data class BoundaryMemoryEntry(
  */
 object BoundaryMemoryHeadingParser {
   private val ENTRY_HEADING = Regex("^##\\s+\\[[^\\[\\]]+]\\s+\\S.*$")
+  private val ENTRY_DATE = Regex("^##\\s+\\[([^\\[\\]]+)]")
   private val FENCE = Regex("^\\s{0,3}(`{3,}|~{3,})")
   private const val HEADING_ID_DIGEST_CHARS = 12
   private const val BYTE_ORDER_MARK = '\uFEFF'
@@ -47,6 +49,11 @@ object BoundaryMemoryHeadingParser {
     "$sourcePath#${digest(heading)}" + if (occurrence == 0) "" else "-$occurrence"
 
   fun sourcePathOf(headingId: String): String? = headingId.substringBeforeLast('#', "").takeIf(String::isNotEmpty)
+
+  fun entryDate(heading: String): LocalDate? = runCatching {
+    val dateText = ENTRY_DATE.find(heading.trim())?.groupValues?.get(1) ?: return null
+    LocalDate.parse(dateText)
+  }.getOrNull()
 
   private data class Scan(val entries: List<Pair<String, String>>, val unclosedFence: Boolean)
 
