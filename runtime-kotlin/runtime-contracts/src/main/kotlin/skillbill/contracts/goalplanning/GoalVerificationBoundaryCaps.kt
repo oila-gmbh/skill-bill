@@ -4,7 +4,7 @@ import org.yaml.snakeyaml.Yaml
 import skillbill.error.InvalidGoalVerificationBoundaryCapsSchemaError
 
 object GoalVerificationBoundaryCaps {
-  const val CONTRACT_VERSION = "0.1"
+  const val CONTRACT_VERSION = "0.2"
   const val RESOURCE_PATH = "skillbill/contracts/goal-verification-boundary-caps.yaml"
   const val CONTRACT_FILE = "orchestration/contracts/goal-verification-boundary-caps.yaml"
   const val SCHEMA_FILE = "orchestration/contracts/goal-verification-boundary-caps-schema.yaml"
@@ -14,6 +14,7 @@ object GoalVerificationBoundaryCaps {
     "max_discovery_file_count",
     "max_headings_per_file",
     "max_catalog_headings",
+    "history_recency_days",
     "max_selected_bodies",
     "max_body_bytes",
     "max_total_body_bytes",
@@ -25,6 +26,7 @@ object GoalVerificationBoundaryCaps {
   val maxDiscoveryFileCount: Int get() = contract.maxDiscoveryFileCount
   val maxHeadingsPerFile: Int get() = contract.maxHeadingsPerFile
   val maxCatalogHeadings: Int get() = contract.maxCatalogHeadings
+  val historyRecencyDays: Int get() = contract.historyRecencyDays
   val maxSelectedBodies: Int get() = contract.maxSelectedBodies
   val maxBodyBytes: Int get() = contract.maxBodyBytes
   val maxTotalBodyBytes: Int get() = contract.maxTotalBodyBytes
@@ -34,6 +36,7 @@ object GoalVerificationBoundaryCaps {
     val maxDiscoveryFileCount: Int,
     val maxHeadingsPerFile: Int,
     val maxCatalogHeadings: Int,
+    val historyRecencyDays: Int,
     val maxSelectedBodies: Int,
     val maxBodyBytes: Int,
     val maxTotalBodyBytes: Int,
@@ -57,6 +60,7 @@ object GoalVerificationBoundaryCaps {
       maxDiscoveryFileCount = requiredPositiveInt(root, "max_discovery_file_count"),
       maxHeadingsPerFile = requiredPositiveInt(root, "max_headings_per_file"),
       maxCatalogHeadings = requiredPositiveInt(root, "max_catalog_headings"),
+      historyRecencyDays = requiredPositiveInt(root, "history_recency_days"),
       maxSelectedBodies = requiredPositiveInt(root, "max_selected_bodies"),
       maxBodyBytes = requiredPositiveInt(root, "max_body_bytes"),
       maxTotalBodyBytes = requiredPositiveInt(root, "max_total_body_bytes"),

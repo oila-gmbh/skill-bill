@@ -13,13 +13,14 @@ required:
   - max_discovery_file_count
   - max_headings_per_file
   - max_catalog_headings
+  - history_recency_days
   - max_selected_bodies
   - max_body_bytes
   - max_total_body_bytes
   - max_boundary_file_bytes
 properties:
   contract_version:
-    const: "0.1"
+    const: "0.2"
   max_discovery_file_count:
     type: integer
     minimum: 1
@@ -27,6 +28,9 @@ properties:
     type: integer
     minimum: 1
   max_catalog_headings:
+    type: integer
+    minimum: 1
+  history_recency_days:
     type: integer
     minimum: 1
   max_selected_bodies:

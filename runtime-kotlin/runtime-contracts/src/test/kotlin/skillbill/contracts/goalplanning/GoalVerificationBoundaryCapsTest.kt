@@ -14,6 +14,7 @@ class GoalVerificationBoundaryCapsTest {
     assertEquals(parsed.maxDiscoveryFileCount, GoalVerificationBoundaryCaps.maxDiscoveryFileCount)
     assertEquals(parsed.maxHeadingsPerFile, GoalVerificationBoundaryCaps.maxHeadingsPerFile)
     assertEquals(parsed.maxCatalogHeadings, GoalVerificationBoundaryCaps.maxCatalogHeadings)
+    assertEquals(parsed.historyRecencyDays, GoalVerificationBoundaryCaps.historyRecencyDays)
     assertEquals(parsed.maxSelectedBodies, GoalVerificationBoundaryCaps.maxSelectedBodies)
     assertEquals(parsed.maxBodyBytes, GoalVerificationBoundaryCaps.maxBodyBytes)
     assertEquals(parsed.maxTotalBodyBytes, GoalVerificationBoundaryCaps.maxTotalBodyBytes)
