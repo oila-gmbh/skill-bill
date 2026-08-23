@@ -16,6 +16,7 @@ enum class ValidationGateCacheMode(val wireValue: String) {
 enum class ValidationGateRunOutcome(val wireValue: String) {
   PASSED("passed"),
   FAILED("failed"),
+  /** Historical wire value only; runners no longer emit this outcome. */
   REJECTED_ZERO_WORK("rejected_zero_work"),
   ;
 

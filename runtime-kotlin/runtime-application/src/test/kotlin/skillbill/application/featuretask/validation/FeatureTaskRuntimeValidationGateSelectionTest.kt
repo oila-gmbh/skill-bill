@@ -168,6 +168,31 @@ class FeatureTaskRuntimeValidationGateSelectionTest {
   }
 
   @Test
+  fun `gated stack pack wins over co-routed no-gate fallback despite catalog order`() {
+    // Mirrors SKILL-18 subtask 3: .kt paths route to kotlin; an unmatched .txt falls back to
+    // generic. Catalog order lists generic first — the old selector blocked build on that.
+    val generic = reviewFallbackPackWithoutGate()
+    val kotlin = kotlinPackWithoutGate().copy(
+      routingSignals = skillbill.scaffold.model.RoutingSignals(
+        strong = listOf(".kt"),
+        tieBreakers = emptyList(),
+        path = listOf(".kt"),
+      ),
+      validationGate = validationGateTestDeclaration,
+    )
+    val resolver = ValidationGateResolver { listOf(generic, kotlin) }
+    val declared = assertIs<ValidationGateResolution.Declared>(
+      resolver.resolve(
+        listOf(
+          "application/src/main/kotlin/dev/skillbill/Foo.kt",
+          ".feature-specs/SKILL-18/subtask_3_commit_message.txt",
+        ),
+      ),
+    )
+    assertEquals("kotlin", declared.packSlug)
+  }
+
+  @Test
   fun `findings_open resume skips discovery and hands back the persisted open set`() {
     val findingOne = ValidationGateFinding("m1", "r1", "msg1", "loc1")
     val findingTwo = ValidationGateFinding("m2", "r2", "msg2", "loc2")

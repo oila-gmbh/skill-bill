@@ -1,7 +1,7 @@
 package skillbill.application.featuretask
 
 import me.tatarka.inject.annotations.Inject
-import skillbill.application.goalrunner.stderrExcerpt
+import skillbill.application.goalrunner.agentFailureExcerpt
 import skillbill.application.model.FeatureTaskRuntimeCrashReconciliationResult
 import skillbill.application.model.FeatureTaskRuntimeFindingVerificationTelemetry
 import skillbill.application.model.FeatureTaskRuntimeGoalContinuationContext
@@ -508,15 +508,14 @@ private fun goalContinuationOutcomeFor(
 internal fun infraFailureReason(phaseId: String, facts: AgentRunLaunchFacts): String? = when {
   facts.spawnFailed -> {
     val base = "Feature-task-runtime phase '$phaseId' failed to launch: the agent process could not be spawned."
-    val excerpt = stderrExcerpt(facts.stderr, GoalRunnerLaunchFacts.STDERR_EXCERPT_MAX_CHARS)
+    val excerpt = agentFailureExcerpt(facts.stderr, facts.stdout, GoalRunnerLaunchFacts.STDERR_EXCERPT_MAX_CHARS)
     if (excerpt != null) "$base\n$excerpt" else base
   }
   facts.timedOut -> "Feature-task-runtime phase '$phaseId' launch timed out before the agent produced an output."
   facts.interrupted -> "Feature-task-runtime phase '$phaseId' launch was interrupted before completion."
   facts.exitStatus != null && facts.exitStatus != 0 -> {
     val base = "Feature-task-runtime phase '$phaseId' agent exited with non-zero status ${facts.exitStatus}."
-    val output = facts.stderr.takeIf(String::isNotBlank) ?: facts.stdout.takeIf(String::isNotBlank)
-    val excerpt = output?.let { stderrExcerpt(it, GoalRunnerLaunchFacts.STDERR_EXCERPT_MAX_CHARS) }
+    val excerpt = agentFailureExcerpt(facts.stderr, facts.stdout, GoalRunnerLaunchFacts.STDERR_EXCERPT_MAX_CHARS)
     if (excerpt != null) "$base\n$excerpt" else base
   }
   else -> null

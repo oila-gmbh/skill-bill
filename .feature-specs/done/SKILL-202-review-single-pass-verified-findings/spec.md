@@ -91,7 +91,7 @@ Three pieces of the wanted design already exist and must be reused rather than
 rebuilt:
 
 - `SpecIntentProjectionResolver`
-  (`runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/review/SpecIntentProjectionResolver.kt`)
+  (`../../../runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/review/SpecIntentProjectionResolver.kt`)
   owns `SpecIntentProjectionExtractor` and already resolves a budgeted intent
   projection from a governed spec, including the manifest-unreadable and
   parent-spec-unavailable degradation seams. `ParallelCodeReviewRunner:149` is
@@ -235,11 +235,11 @@ Settled at spec level so no subtask re-litigates them.
   without its full wiring set (below) does not fail late at run time; it throws at
   object init and takes most of the runtime test suite with it.
 - Prose that governs runtime behaviour ships in the same commit as the behaviour
-  it describes. `skills/bill-feature-task-runtime/content.md` and
-  `skills/bill-feature-goal/content.md` are read by the agent at run time.
+  it describes. `../../../skills/bill-feature-task-runtime/content.md` and
+  `../../../skills/bill-feature-goal/content.md` are read by the agent at run time.
 - Telemetry for a phase ships in the same commit as the phase. A commit that
   persists dispositions without emitting a record violates
-  `docs/observability-policy.md`.
+  `../../../docs/observability-policy.md`.
 - Reuse `SpecIntentProjectionResolver` for intent. Do not add a second spec
   reader and do not call `SpecIntentProjectionExtractor` around the resolver.
 - Reuse the `GoalPlanningContextDiscovery` and `GoalPlanningBoundaryBodyResolver`
@@ -255,7 +255,7 @@ Settled at spec level so no subtask re-litigates them.
 - Contract and schema changes follow the existing versioning discipline: bump
   what the durable contract requires and loud-fail an incompatible record.
 - Validation runs through the runtime-owned gate declared in
-  `.skill-bill/config.yaml` (`validation_gate.gradle_wrapper:
+  `../../../.skill-bill/config.yaml` (`validation_gate.gradle_wrapper:
   runtime-kotlin/gradlew`). Read the gate's findings rather than trusting a
   wrapper exit code.
 - Branch prefix `feat/`. No AI co-author footers.

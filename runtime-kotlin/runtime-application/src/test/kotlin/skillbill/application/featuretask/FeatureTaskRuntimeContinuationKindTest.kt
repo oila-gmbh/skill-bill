@@ -7,10 +7,10 @@ import kotlin.test.assertTrue
 
 class FeatureTaskRuntimeContinuationKindTest {
   @Test
-  fun `the six kinds are distinguishable on the wire`() {
+  fun `the seven kinds are distinguishable on the wire`() {
     val wireValues = FeatureTaskRuntimeContinuationKind.entries.map { it.wireValue }
 
-    assertEquals(6, wireValues.size)
+    assertEquals(7, wireValues.size)
     assertEquals(wireValues.size, wireValues.distinct().size, "continuation kinds must not collide on the wire")
     assertEquals(
       listOf(
@@ -20,6 +20,7 @@ class FeatureTaskRuntimeContinuationKindTest {
         "crash_resume",
         "verifier_reentry",
         "item_coverage",
+        "verification_body_delivery",
       ),
       wireValues,
     )

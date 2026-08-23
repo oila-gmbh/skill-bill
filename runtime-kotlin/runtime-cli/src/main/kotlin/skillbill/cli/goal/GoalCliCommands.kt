@@ -853,7 +853,8 @@ class GoalAcceptCommand(
   private val state: CliRunState,
 ) : DocumentedCliCommand(
   "accept",
-  "Record that a subtask's work landed outside the runtime, so the goal advances past it.",
+  "Restore an acceptance discarded by hard reset (--restore-after-hard-reset only). " +
+    "Ordinary out-of-band accept is disabled; repair or resume blocked children instead.",
 ) {
   private val issueKey by argument(help = "Parent issue key for the decomposed goal.")
   private val subtaskId by option("--subtask", help = "Subtask id whose work already landed.")

@@ -2,10 +2,13 @@ package skillbill.infrastructure.fs.validation
 
 import skillbill.ports.validation.model.ValidationGateCacheMode
 import skillbill.ports.validation.model.ValidationGateFindingParseMode
+import skillbill.ports.validation.model.ValidationGateRunOutcome
 import skillbill.ports.validation.model.ValidationGateRunRequest
 import skillbill.scaffold.model.ValidationGateCompilerDiagnosticsFormat
 import skillbill.scaffold.model.ValidationGateCompilerDiagnosticsLocator
 import skillbill.scaffold.model.ValidationGateDeclaration
+import skillbill.scaffold.model.ValidationGateExecutedWorkFormat
+import skillbill.scaffold.model.ValidationGateExecutedWorkSignal
 import skillbill.scaffold.model.ValidationGateFindingsFormat
 import skillbill.scaffold.model.ValidationGateFindingsLocator
 import java.nio.file.Files
@@ -73,6 +76,36 @@ class FileSystemValidationGateRunnerTest {
       )
       assertEquals(listOf("kotlin_compiler"), result.findings.map { it.ruleOrTestId })
       assertTrue(result.findings.none { it.ruleOrTestId == "unparseable_gate_failure" })
+    } finally {
+      repo.toFile().deleteRecursively()
+    }
+  }
+
+  @Test
+  fun `terminal verifying with zero executed work and exit 0 is passed`() {
+    val repo = Files.createTempDirectory("gate-zero-work-pass")
+    try {
+      val script = repo.resolve("gate.sh")
+      Files.writeString(
+        script,
+        """
+        #!/bin/sh
+        printf '%s\n' '9 actionable tasks: 9 up-to-date'
+        exit 0
+        """.trimIndent(),
+      )
+      val result = FileSystemValidationGateRunner().run(
+        request(
+          repo,
+          argv = listOf("sh", script.toString()),
+          parseMode = ValidationGateFindingParseMode.COLLECT_ALL,
+          terminalVerifying = true,
+          withExecutedWorkSignal = true,
+        ),
+      )
+      assertEquals(ValidationGateRunOutcome.PASSED, result.outcome)
+      assertEquals(0, result.executedWorkUnits)
+      assertEquals(emptyList(), result.findings)
     } finally {
       repo.toFile().deleteRecursively()
     }
@@ -216,6 +249,8 @@ class FileSystemValidationGateRunnerTest {
     repo: Path,
     argv: List<String>,
     parseMode: ValidationGateFindingParseMode,
+    terminalVerifying: Boolean = false,
+    withExecutedWorkSignal: Boolean = false,
   ): ValidationGateRunRequest = ValidationGateRunRequest(
     repoRoot = repo,
     argv = argv,
@@ -231,9 +266,14 @@ class FileSystemValidationGateRunnerTest {
         compilerDiagnostics = ValidationGateCompilerDiagnosticsLocator(
           ValidationGateCompilerDiagnosticsFormat.GRADLE_KOTLIN_COMPILER_STDOUT,
         ),
+        executedWork = if (withExecutedWorkSignal) {
+          ValidationGateExecutedWorkSignal(ValidationGateExecutedWorkFormat.GRADLE_ACTIONABLE_SUMMARY)
+        } else {
+          null
+        },
       ),
     ),
-    terminalVerifying = false,
+    terminalVerifying = terminalVerifying,
     findingParseMode = parseMode,
   )
 }

@@ -797,15 +797,19 @@ class GoalRunnerStatusService(
     }
   }
 
-  // The runtime cannot observe work an operator finished by hand after a child blocked. Without a
-  // durable acceptance the goal keeps re-deriving that subtask as unstarted and proposes running it
-  // again, so this is the supported alternative to hand-editing the manifest projection.
+  // Out-of-band accept used to let operators (and agents) mark a subtask complete when a child
+  // blocked. That skipped audit/review and became the default recovery path for Laguna. Accept is
+  // disabled for normal use; only restoring an acceptance discarded by hard reset remains.
   fun accept(request: GoalRunnerAcceptRequest): GoalRunnerAcceptResult {
-    val loaded = if (request.restoreAfterHardReset) {
-      manifestStore.loadDurableByIssueKey(request.issueKey, request.dbPathOverride)
-    } else {
-      manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, request.repoRoot)
+    if (!request.restoreAfterHardReset) {
+      return rejected(
+        request,
+        "Out-of-band accept is disabled. Repair or resume the child through the runtime; " +
+          "accepting past an incomplete or blocked subtask is not supported. " +
+          "Only --restore-after-hard-reset remains for recoveries that hard reset discarded.",
+      )
     }
+    val loaded = manifestStore.loadDurableByIssueKey(request.issueKey, request.dbPathOverride)
       ?: return rejected(request, "No prepared goal exists for '${request.issueKey}'.")
     val repoRoot = request.repoRoot
       ?: return rejected(request, "A repository root is required to verify the accepted commit.")
@@ -820,11 +824,7 @@ class GoalRunnerStatusService(
       acceptedAt = OffsetDateTime.now(ZoneOffset.UTC).toString(),
     )
     manifestStore.persistOutOfBandAcceptance(loaded.parentWorkflowId, acceptance, request.dbPathOverride)
-    val refreshed = if (request.restoreAfterHardReset) {
-      manifestStore.loadDurableByIssueKey(request.issueKey, request.dbPathOverride)
-    } else {
-      manifestStore.loadByIssueKey(request.issueKey, request.dbPathOverride, repoRoot)
-    } ?: loaded
+    val refreshed = manifestStore.loadDurableByIssueKey(request.issueKey, request.dbPathOverride) ?: loaded
     val reconciled = reconcileGoalManifest(
       manifest = refreshed.manifest,
       dbPathOverride = request.dbPathOverride,
@@ -876,8 +876,6 @@ class GoalRunnerStatusService(
     return when {
       request.restoreAfterHardReset && !clearedByHardReset ->
         "Subtask ${request.subtaskId} is not in the cleared reset state required for acceptance restoration."
-      !request.restoreAfterHardReset && clearedByHardReset ->
-        "Subtask ${request.subtaskId} is in a cleared reset state; rerun the hard-reset restoration command."
       subtask.status == "complete" -> "Subtask ${request.subtaskId} is already complete."
       else -> null
     }

@@ -71,17 +71,15 @@ class FeatureTaskRuntimeValidationGateFullDiscoverTest {
   }
 
   @Test
-  fun `failing verify after the single agent session blocks without launching another agent`() {
+  fun `failing verify keeps launching repair until the three-turn cap then records remaining findings`() {
     val progress = mutableListOf<FeatureTaskRuntimeValidationGateProgress>()
     val discovery = ValidationGateFinding("app", "compile", "first", "A.kt")
     val verifyFinding = ValidationGateFinding("later", "LaterTest", "still failing", "LaterTest.kt")
     val repairIds = mutableListOf<List<String>>()
-    val runner = ScriptedGateRunner(
-      listOf(
-        failedWith(discovery),
-        failedWith(verifyFinding),
-      ),
-    )
+    val maxTurns = FeatureTaskRuntimeValidationGateCoordinator.MAX_REPAIR_TURNS
+    val runnerResults = mutableListOf(failedWith(discovery))
+    repeat(maxTurns) { runnerResults += failedWith(verifyFinding) }
+    val runner = ScriptedGateRunner(runnerResults)
     val cycle = coordinator(declaredResolver(), runner, progress).execute(
       cycle = fullCycle { findings, _ ->
         repairIds += findings.findings.map { it.ruleOrTestId }
@@ -91,18 +89,19 @@ class FeatureTaskRuntimeValidationGateFullDiscoverTest {
     val blocked = assertIs<ValidationGateCycleTerminalOutcome.Blocked>(
       assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,
     )
-    assertEquals(listOf(listOf("compile")), repairIds)
-    assertEquals(2, runner.calls)
-    assertEquals(listOf("echo", "collect-all"), runner.requests[0].argv)
-    assertEquals(listOf("echo", "collect-all-full"), runner.requests[1].argv)
-    assertTrue(runner.requests.none { it.argv == declaration.fullGateCommand })
-    assertTrue(blocked.reason.contains("will not launch another agent"))
+    assertEquals(maxTurns, repairIds.size)
+    assertEquals(listOf("compile"), repairIds.first())
+    assertTrue(repairIds.drop(1).all { it == listOf("LaterTest") })
+    assertEquals(1 + maxTurns, runner.calls)
+    assertTrue(blocked.reason.contains("after $maxTurns repair"))
+    assertTrue(blocked.reason.contains("recorded for the operator"))
     assertEquals("LaterTest", blocked.remainingFindings?.findings?.single()?.ruleOrTestId)
     assertEquals(
       FeatureTaskRuntimeValidationGateRepairWindowPhase.FINDINGS_OPEN,
       progress.last().repairWindowPhase,
     )
     assertEquals(1, progress.last().completeFindings.size)
+    assertEquals(maxTurns, progress.last().repairsUsed)
   }
 
   private fun fullCycle(repair: ValidationGateAgentRepairLauncher): ValidationGateCycleRequest =

@@ -13,15 +13,15 @@ internal fun runtimeOwnedBuildPhaseTask(packBuildCommand: String?): String {
   } else {
     "Run only this pack-declared build command and read that command's output: `$packBuildCommand`."
   }
-  return "You are the only build agent for this step; the runtime will not launch another agent to " +
-    "continue your work. $gateLine $BUILD_PHASE_FORBIDDEN_EXTRAS" +
+  return "You are the only build agent for this step — do not spawn delegated subagents. The runtime may " +
+    "give you up to three repair turns against the remaining findings; each turn is another session of " +
+    "this same agent. $gateLine $BUILD_PHASE_FORBIDDEN_EXTRAS" +
     "This phase is compile/buildability proof only: no suite tests, no full check, no substitute " +
-    "agent-run gate. Fix every finding in this same session. Do not rerun the pack build command " +
+    "agent-run gate. Address every open finding in the same turn. Do not rerun the pack build command " +
     "after each individual fix; targeted compile tasks are allowed while repairing when they are " +
-    "part of that same pack gate. When the set looks clean, run that same build command once to " +
-    "confirm. Do not launch delegated subagents. After you signal complete, the runtime may run one " +
-    "cache-bypassing verify. Emit a bounded build_receipt containing validation_status, checks, " +
-    "repository_checkpoint, gate_run_count, and gate_runs; do not embed raw command output."
+    "part of that same pack gate. When the set looks clean, you may run that same build command once to " +
+    "sanity-check. After you stop, the runtime re-runs the pack build command and mints the receipt — " +
+    "do not emit build_receipt, gate_run_count, or any phase-output JSON."
 }
 
 internal fun nonBuildPhaseBuildOwnershipDirective(phaseId: String): String {

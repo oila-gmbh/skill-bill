@@ -858,6 +858,46 @@ class FeatureTaskRuntimeRunnerTest {
   }
 
   @Test
+  fun `gate repair with non-schema agent stdout still settles after gate re-verify`() {
+    val gateCalls = java.util.concurrent.atomic.AtomicInteger(0)
+    val harness = runnerHarness(
+      agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = RuntimeHarnessConfig(
+        validationGateRunner = failThenPassValidationGateRunner(gateCalls),
+        validationGatePlatformManifests = listOf(kotlinPackWithValidationGate()),
+      ),
+      launcher = RuntimeRecordingLauncher { request ->
+        val prompt = requireNotNull(request.skillRunRequest.promptOverride)
+        val phaseId = phaseIdFromPrompt(prompt)
+        if (phaseId == "validate" && prompt.contains("Gate repair — prose only, no phase-output schema")) {
+          facts("Fixed A.kt from the compiler console. Deliberately not a phase envelope.")
+        } else {
+          facts(validJsonOutput(phaseId))
+        }
+      },
+    )
+    harness.seedPhase("preplan", "completed", 1, phaseAgent("preplan"), PREPLAN_OUTPUT)
+    harness.seedPhase("plan", "completed", 1, phaseAgent("plan"), PLAN_OUTPUT)
+    harness.seedPhase("implement", "completed", 1, phaseAgent("implement"), IMPLEMENT_OUTPUT)
+    harness.seedPhase("audit", "completed", 1, phaseAgent("audit"), VALID_AUDIT_OUTPUT)
+    harness.seedPhase("review", "completed", 1, phaseAgent("review"), VALID_OUTPUT)
+
+    val report = harness.runner.run(harness.request())
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertEquals(2, gateCalls.get())
+    assertTrue(
+      harness.io.database.rejectedDiagnostics().none { it.metadata.phaseId == "validate" },
+      "gate repair must not charge phase-output-schema rejection",
+    )
+    assertTrue(
+      harness.launcher.requests.any {
+        it.skillRunRequest.promptOverride?.contains("Gate repair — prose only, no phase-output schema") == true
+      },
+    )
+  }
+
+  @Test
   fun `absent-gate validate without gate_run_count completes on first attempt`() {
     // Packs without validation_gate use agent-run validate. Agents are told not to invent
     // gate_run_count; the runtime must attest measured-absent counts before consumer projection.

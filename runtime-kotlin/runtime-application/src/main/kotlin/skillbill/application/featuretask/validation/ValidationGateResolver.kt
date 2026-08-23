@@ -6,6 +6,7 @@ import skillbill.error.ShellContentContractException
 import skillbill.ports.scaffold.InstalledPlatformPackCatalogPort
 import skillbill.review.plan.ReviewStackRouting
 import skillbill.review.plan.model.ReviewRoutingChangedFile
+import skillbill.review.plan.model.ReviewStackRoutingResult
 import skillbill.scaffold.model.PlatformManifest
 
 @Inject
@@ -31,7 +32,7 @@ class ValidationGateResolver(
       manifests,
       changedPaths.map { ReviewRoutingChangedFile(it, "") },
     )
-    val dominant = selectDominantPack(manifests, routing.routedSlugs)
+    val dominant = selectDominantPack(manifests, routing)
     val declaration = dominant?.validationGate
     return if (dominant != null && declaration != null) {
       ValidationGateResolution.Declared(dominant.slug, declaration)
@@ -40,10 +41,29 @@ class ValidationGateResolver(
     }
   }
 
-  private fun selectDominantPack(manifests: List<PlatformManifest>, routedSlugs: Set<String>): PlatformManifest? {
-    if (routedSlugs.isNotEmpty()) {
-      return manifests.firstOrNull { it.slug in routedSlugs }
+  /**
+   * Pick the pack whose validation_gate (if any) the build/validate phases should run.
+   *
+   * Catalog order must not decide this: review routing can co-route a no-gate fallback (e.g. generic
+   * for an unmatched `.txt`) alongside the stack pack that owns the `.kt` files. Taking
+   * `manifests.first { slug in routed }` then preferred `generic` alphabetically and blocked build
+   * even though Kotlin declared the gate. Prefer routed packs that declare a gate, ranked by how
+   * many changed paths they own. With no routed slugs, keep the prior empty-path fallback: first
+   * pack that declares a gate.
+   */
+  private fun selectDominantPack(
+    manifests: List<PlatformManifest>,
+    routing: ReviewStackRoutingResult,
+  ): PlatformManifest? {
+    val bySlug = manifests.associateBy { it.slug }
+    val routed = routing.routedSlugs.mapNotNull(bySlug::get)
+    if (routed.isEmpty()) {
+      return manifests.firstOrNull { it.validationGate != null } ?: manifests.firstOrNull()
     }
-    return manifests.firstOrNull { it.validationGate != null } ?: manifests.firstOrNull()
+    val gated = routed.filter { it.validationGate != null }
+    if (gated.isEmpty()) {
+      return routed.firstOrNull()
+    }
+    return gated.maxByOrNull { pack -> routing.ownedPathsBySlug[pack.slug]?.size ?: 0 }
   }
 }

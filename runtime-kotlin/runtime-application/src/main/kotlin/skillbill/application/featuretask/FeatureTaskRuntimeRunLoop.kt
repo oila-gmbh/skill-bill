@@ -1204,6 +1204,16 @@ internal class FeatureTaskRuntimeRunLoop(
       .toSet()
     val phaseWritten = phaseWrittenPaths(precedingPhaseId, worktreeDelta, persistedOwned)
       .filterNot { it in evictedFeatureSpecs }
+    val writingIntroduced = writingPhaseIntroducedPaths(worktreeDelta)
+    val seedOwned = (
+      resolved?.workflowOwnedPaths.orEmpty() +
+        phaseWritten.takeIf { mayExtendOwnedInventory(precedingPhaseId) }.orEmpty() +
+        writingIntroduced
+      ).distinct()
+    val deletedPaths = absorbableDeletedPaths(
+      deleted = checkpointDeletedPaths(),
+      ownedOrIntroduced = seedOwned + phaseWritten,
+    )
     val ownedInventory = reconcileCheckpointPathInventory(
       repoRoot = request.repoRoot,
       issueKey = request.issueKey,
@@ -1213,11 +1223,9 @@ internal class FeatureTaskRuntimeRunLoop(
       // someone else's concurrent edit used to be adopted and committed as this run's work.
       // Governed feature specs never become owned, so the persisted inventory contains implementation
       // paths only. The runtime never stages them; a human operator may already have committed them.
-      paths = (
-        resolved?.workflowOwnedPaths.orEmpty() +
-          phaseWritten.takeIf { mayExtendOwnedInventory(precedingPhaseId) }.orEmpty() +
-          writingPhaseIntroducedPaths(worktreeDelta)
-        ).distinct()
+      // Delete sources that share a move parent with owned/introduced destinations are absorbed so a
+      // package move can stage both halves.
+      paths = (seedOwned + deletedPaths)
         .filterNot { path -> isFeatureSpecPathForIssue(path, request.issueKey) }
         .filterNot { FeatureTaskRuntimeCheckpointScope.isForeignGovernedSpecPath(it, request.issueKey) },
     )
@@ -1235,8 +1243,34 @@ internal class FeatureTaskRuntimeRunLoop(
         worktreeDeltaPaths = worktreeDelta,
         foreignStagedPaths = stagedPaths,
         concurrentlyModifiedOwnedPaths = concurrentlyModifiedOwnedPaths(precedingPhaseId, ownedInventory),
+        deletedPaths = deletedPaths,
       ),
     )
+  }
+
+  private fun checkpointDeletedPaths(): List<String> {
+    val status = phaseGates.gitOperations.worktreeStatus(request.repoRoot)
+    if (!status.ok) return emptyList()
+    return FeatureTaskRuntimePhaseSafetyPolicy.deletedPaths(status.value.orEmpty())
+  }
+
+  /**
+   * Delete sources that belong to this run's package move: they share a parent directory with an
+   * already-owned or writing-phase-introduced destination. Unrelated deletes stay foreign.
+   */
+  private fun absorbableDeletedPaths(deleted: List<String>, ownedOrIntroduced: List<String>): List<String> {
+    if (deleted.isEmpty() || ownedOrIntroduced.isEmpty()) return emptyList()
+    val anchors = ownedOrIntroduced.map { path -> path.substringBeforeLast('/', missingDelimiterValue = path) }
+      .filter(String::isNotBlank)
+      .distinct()
+    return deleted.filter { removed ->
+      val parent = removed.substringBeforeLast('/', missingDelimiterValue = removed)
+      anchors.any { anchor ->
+        parent == anchor ||
+          anchor.startsWith("$parent/") ||
+          parent.startsWith("$anchor/")
+      }
+    }
   }
 
   /**
@@ -3392,67 +3426,38 @@ internal class FeatureTaskRuntimeRunLoop(
     findings: ValidationFindingSetProjection,
     repairTurn: Int,
   ): ValidationGateAgentRepairResult {
-    // The phase attempt deliberately does NOT advance across repair turns for the durable watermark:
-    // charging honest gate-finding repairs to the phase semantic budget would block runs early. Schema-
-    // invalid *repair receipts* still earn a bounded corrective re-launch inside this turn, carrying
-    // the rejected body via PriorAttemptCorrection — the same contract as every other fix-loop phase.
+    // Gate repair agents fix code from runtime-parsed findings. Their stdout is not a phase receipt
+    // (gateOutput skips schema for repairTurn > 0); the coordinator re-runs the pack command and mints
+    // the receipt. Do not charge the output-gate budget here — that budget is for schema/repair of
+    // ordinary phase envelopes, not this internal fix loop.
     val repairRun = run.copy(validationGateFindings = findings, validationGateRepairTurn = repairTurn)
-    var priorCorrection: PriorAttemptCorrection? = null
-    var attemptIteration = iteration
-    var outputGateFailures = 0
-    var result: ValidationGateAgentRepairResult? = null
-    while (result == null) {
-      val attempt = attemptOnce(
-        repairRun,
-        state,
-        attemptIteration,
-        observability,
-        priorCorrection,
-        phaseTokenAccumulator,
+    val attempt = attemptOnce(
+      repairRun,
+      state,
+      iteration,
+      observability,
+      priorCorrection = null,
+      phaseTokenAccumulator,
+    )
+    val settled = attempt.settledOutcome
+    val completed = settled?.completedOutput
+    return when {
+      completed != null -> ValidationGateAgentRepairResult.Completed(completed)
+      settled != null -> ValidationGateAgentRepairResult.Blocked(
+        settled.blockedReason
+          ?: settled.pausedReason
+          ?: "Validation repair attempt blocked.",
       )
-      val settled = attempt.settledOutcome
-      val completed = settled?.completedOutput
-      when {
-        completed != null -> result = ValidationGateAgentRepairResult.Completed(completed)
-        settled != null -> result = ValidationGateAgentRepairResult.Blocked(
-          settled.blockedReason
-            ?: settled.pausedReason
-            ?: "Validation repair attempt blocked.",
-        )
-        attempt.malformedOutput || attempt.schemaInvalidRetryReason != null -> {
-          var blockedReason: String? = null
-          outputGateFailures += 1
-          FeatureTaskRuntimeAttemptBudgets.outputGateBlockReason(
-            run.phaseId,
-            outputGateFailures,
-          )?.let { formatBlock ->
-            blockedReason = withSchemaGateDetail(
-              formatBlock,
-              requireNotNull(attempt.schemaInvalidOperatorReason),
-            )
-          }
-          if (blockedReason != null) {
-            result = ValidationGateAgentRepairResult.Blocked(blockedReason)
-          } else {
-            priorCorrection = PriorAttemptCorrection.schemaGate(
-              requireNotNull(attempt.schemaInvalidRetryReason),
-              correctiveRepairContext = attempt.correctiveRepairContext,
-            )
-            attemptIteration += 1
-          }
-        }
-        else -> result = ValidationGateAgentRepairResult.Completed(
-          FeatureTaskRuntimePhaseOutput(
-            phaseId = run.phaseId,
-            iteration = iteration,
-            payload =
-            """{"contract_version":"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION","phase_id":"validate",""" +
-              """"status":"completed","summary":"Gate repair segment.","produced_outputs":{}}""",
-          ),
-        )
-      }
+      else -> ValidationGateAgentRepairResult.Completed(
+        FeatureTaskRuntimePhaseOutput(
+          phaseId = run.phaseId,
+          iteration = iteration,
+          payload =
+          """{"contract_version":"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION","phase_id":"${run.phaseId}",""" +
+            """"status":"completed","summary":"Gate repair segment.","produced_outputs":{}}""",
+        ),
+      )
     }
-    return requireNotNull(result)
   }
 
   private fun settleRuntimeOwnedValidation(
@@ -3612,6 +3617,7 @@ internal class FeatureTaskRuntimeRunLoop(
       val context = FixLoopBranchContext(run, attempt, loop, observability, agentId)
       outcome = attempt.settledOutcome ?: when {
         attempt.incompleteWorkContinuationReason != null -> settleIncompleteWork(context)
+        attempt.boundaryBodyDeliveryContinuationReason != null -> settleBoundaryBodyDelivery(context)
         attempt.malformedOutput -> settleMalformedOutput(context)
         // Its own branch, not the semantic-schema one: a retryable blocked/failed envelope is
         // schema-VALID, so prompting it with the schema-correction directive, reporting its block as a
@@ -3677,6 +3683,29 @@ internal class FeatureTaskRuntimeRunLoop(
       loop.iteration,
       loop.continuationSegmentCount,
       FeatureTaskRuntimeContinuationKind.IMPLEMENTATION_CONTINUATION,
+    )
+    return null
+  }
+
+  /**
+   * Continues verify_findings after a schema-valid heading-selection pass.
+   *
+   * The output-gate budget is for agent schema/repair failures (including audit-repair receipts), not
+   * for this internal handshake. Charging it here blocked the required body-delivery turn under
+   * cap=1. Resolved bodies ride the durable selection into the next briefing; no schema-correction
+   * directive is appropriate.
+   */
+  private fun settleBoundaryBodyDelivery(context: FixLoopBranchContext): PhaseOutcome? {
+    val (run, _, loop, observability, agentId) = context
+    loop.continuationSegmentCount += 1
+    loop.iteration += 1
+    loop.priorCorrection = null
+    observability.continuation(
+      run.phaseId,
+      agentId,
+      loop.iteration,
+      loop.continuationSegmentCount,
+      FeatureTaskRuntimeContinuationKind.VERIFICATION_BODY_DELIVERY,
     )
     return null
   }
@@ -4423,43 +4452,61 @@ internal class FeatureTaskRuntimeRunLoop(
     outputSha256: String,
     observability: FeatureTaskRuntimeRunObservability,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
-  ): AttemptResult = try {
-    val acceptedOutput = outputValidator
-      .validatePhaseOutput(outputText, sourceLabel = run.phaseId)
-      .requireAcceptedOutput(run.phaseId)
-    settleValidatedOutput(
-      run, iteration, acceptedOutput.normalizedOutput, acceptedOutput.repairEvidence, observability, fileManifest,
-      outputText, outputBytes, outputTruncated, outputByteSize, outputSha256,
-    )
-  } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
-    persistVerifyFindingsCheckpointIfPresent(run, outputText)
-    val path = rejectionPath(error.reason)
-    val reason = payloadFreeRejectionReason("phase-output-schema", path)
-    val diagnosticWrite = recordRejectedOutput(
-      run, iteration, "phase-output-schema", error.reason, outputBytes, path = path,
-      outputTruncated = outputTruncated, outputByteSize = outputByteSize, outputSha256 = outputSha256,
-    )
-    val repairEvidence = structuralRepairEvidenceFromSchemaError(error)
-    schemaInvalidAttempt(
-      reason,
-      fileManifest,
-      malformedOutput = error.failureKind == FeatureTaskRuntimePhaseOutputFailureKind.MALFORMED,
-      retryReason = retryRejectionReason(reason, error.payloadFreeReason),
-      correctiveRepairContext = correctiveRepairContextForRejection(
-        run = run,
-        iteration = iteration,
-        outputText = outputText,
-        outputTruncated = outputTruncated,
-        outputByteSize = outputByteSize,
-        outputSha256 = outputSha256,
-        diagnosticWrite = diagnosticWrite,
-        rejectionRule = "phase-output-schema",
-        rejectionPath = path,
-        payloadFreeConstraint = error.payloadFreeReason.orEmpty(),
-        acceptedAfterStructuralRepair = error.acceptedAfterStructuralRepair,
-        structuralRepairEvidence = repairEvidence,
-      ),
-    )
+  ): AttemptResult {
+    // Build/validate gate repair: the agent mutates the tree from runtime-parsed findings. Stdout is
+    // not a phase receipt — the coordinator re-runs the pack command and mints build_receipt /
+    // validation_receipt. Requiring schema here blocked honest fixes under the output-gate cap.
+    if (run.validationGateRepairTurn > 0) {
+      return AttemptResult.settled(
+        PhaseOutcome.completed(
+          FeatureTaskRuntimePhaseOutput(
+            phaseId = run.phaseId,
+            iteration = iteration,
+            payload =
+            """{"contract_version":"$FEATURE_TASK_RUNTIME_CONTRACT_VERSION","phase_id":"${run.phaseId}",""" +
+              """"status":"completed","summary":"Gate repair segment.","produced_outputs":{}}""",
+          ),
+        ),
+      )
+    }
+    return try {
+      val acceptedOutput = outputValidator
+        .validatePhaseOutput(outputText, sourceLabel = run.phaseId)
+        .requireAcceptedOutput(run.phaseId)
+      settleValidatedOutput(
+        run, iteration, acceptedOutput.normalizedOutput, acceptedOutput.repairEvidence, observability, fileManifest,
+        outputText, outputBytes, outputTruncated, outputByteSize, outputSha256,
+      )
+    } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
+      persistVerifyFindingsCheckpointIfPresent(run, outputText)
+      val path = rejectionPath(error.reason)
+      val reason = payloadFreeRejectionReason("phase-output-schema", path)
+      val diagnosticWrite = recordRejectedOutput(
+        run, iteration, "phase-output-schema", error.reason, outputBytes, path = path,
+        outputTruncated = outputTruncated, outputByteSize = outputByteSize, outputSha256 = outputSha256,
+      )
+      val repairEvidence = structuralRepairEvidenceFromSchemaError(error)
+      schemaInvalidAttempt(
+        reason,
+        fileManifest,
+        malformedOutput = error.failureKind == FeatureTaskRuntimePhaseOutputFailureKind.MALFORMED,
+        retryReason = retryRejectionReason(reason, error.payloadFreeReason),
+        correctiveRepairContext = correctiveRepairContextForRejection(
+          run = run,
+          iteration = iteration,
+          outputText = outputText,
+          outputTruncated = outputTruncated,
+          outputByteSize = outputByteSize,
+          outputSha256 = outputSha256,
+          diagnosticWrite = diagnosticWrite,
+          rejectionRule = "phase-output-schema",
+          rejectionPath = path,
+          payloadFreeConstraint = error.payloadFreeReason.orEmpty(),
+          acceptedAfterStructuralRepair = error.acceptedAfterStructuralRepair,
+          structuralRepairEvidence = repairEvidence,
+        ),
+      )
+    }
   }
 
   /**
@@ -4590,6 +4637,12 @@ internal class FeatureTaskRuntimeRunLoop(
     fun reject(rule: String, detail: String): AttemptResult = rejectValidatedOutput(capture, outputMap, rule, detail)
     FeatureTaskRuntimeVerificationGateReasons.verifyFindingsWorktree(run.phaseId, fileManifest)?.let { reason ->
       return reject("verify-findings-worktree", reason)
+    }
+    when (val bodyDelivery = findingVerificationBoundaryBodyDeliveryDecision(run, outputMap)) {
+      is BoundaryBodyDeliveryDecision.Reject -> return reject("output-verification", bodyDelivery.reason)
+      is BoundaryBodyDeliveryDecision.Continue ->
+        return AttemptResult.boundaryBodyDelivery(bodyDelivery.reason, fileManifest)
+      BoundaryBodyDeliveryDecision.NotApplicable -> Unit
     }
     firstValidatedOutputRejection(run.phaseId, outputMap)?.let { (rule, reason) ->
       return reject(rule, reason)
@@ -5384,8 +5437,7 @@ internal class FeatureTaskRuntimeRunLoop(
   }
 
   private fun outputVerificationGateReason(run: PhaseRun, outputMap: Map<String, Any?>): String? =
-    findingVerificationBoundaryBodyDeliveryGate(run, outputMap)
-      ?: findingVerificationBoundaryDispositionGate(run, outputMap)
+    findingVerificationBoundaryDispositionGate(run, outputMap)
       ?: FeatureTaskRuntimeVerificationGateReasons.reviewVerificationSignal(run.phaseId, outputMap)
       ?: FeatureTaskRuntimeVerificationGateReasons.findingVerificationDisposition(
         run.phaseId,
@@ -5393,6 +5445,12 @@ internal class FeatureTaskRuntimeRunLoop(
         reviewFindingIdsForVerification(),
       )
       ?: FeatureTaskRuntimeVerificationGateReasons.auditVerificationSignal(run.phaseId, outputMap)
+
+  private sealed interface BoundaryBodyDeliveryDecision {
+    data object NotApplicable : BoundaryBodyDeliveryDecision
+    data class Continue(val reason: String) : BoundaryBodyDeliveryDecision
+    data class Reject(val reason: String) : BoundaryBodyDeliveryDecision
+  }
 
   private fun findingVerificationBoundarySections(run: PhaseRun): List<FeatureTaskRuntimeFindingBoundaryMemorySection> {
     val reviewOutput = state.outputFor(FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_REVIEW)
@@ -5418,26 +5476,33 @@ internal class FeatureTaskRuntimeRunLoop(
     )
   }
 
-  private fun findingVerificationBoundaryBodyDeliveryGate(run: PhaseRun, outputMap: Map<String, Any?>): String? =
-    findingVerificationBoundaryBodyDeliveryGateImpl(run, outputMap)
-
-  @Suppress("ReturnCount")
-  private fun findingVerificationBoundaryBodyDeliveryGateImpl(run: PhaseRun, outputMap: Map<String, Any?>): String? {
-    if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS) return null
+  private fun findingVerificationBoundaryBodyDeliveryDecision(
+    run: PhaseRun,
+    outputMap: Map<String, Any?>,
+  ): BoundaryBodyDeliveryDecision {
+    if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS) {
+      return BoundaryBodyDeliveryDecision.NotApplicable
+    }
     val dispositions = FeatureTaskRuntimeOutputVerification.dispositionsFrom(outputMap)
-    if (dispositions.isEmpty()) return null
-    if (validateDispositionCoverage(dispositions, reviewFindingIdsForVerification()) != null) return null
+    if (dispositions.isEmpty()) return BoundaryBodyDeliveryDecision.NotApplicable
+    if (validateDispositionCoverage(dispositions, reviewFindingIdsForVerification()) != null) {
+      return BoundaryBodyDeliveryDecision.NotApplicable
+    }
     val sections = findingVerificationBoundarySections(run)
     val memory = phaseGates.findingVerificationBoundaryMemory
-    memory.validateDispositionBoundaryContext(sections, dispositions)?.let { return it }
-    memory.validateDispositionBoundaryProvenance(sections, dispositions)?.let { return it }
+    memory.validateDispositionBoundaryContext(sections, dispositions)?.let {
+      return BoundaryBodyDeliveryDecision.Reject(it)
+    }
+    memory.validateDispositionBoundaryProvenance(sections, dispositions)?.let {
+      return BoundaryBodyDeliveryDecision.Reject(it)
+    }
     val selections = memory.selectionsRequiringBodyDelivery(sections, dispositions)
-    if (selections.isEmpty()) return null
+    if (selections.isEmpty()) return BoundaryBodyDeliveryDecision.NotApplicable
     val delivered = recorder.loadFindingVerificationBoundarySelection(
       run.request.workflowId,
       run.request.dbPathOverride,
     )
-    if (delivered != null) return null
+    if (delivered != null) return BoundaryBodyDeliveryDecision.NotApplicable
     recorder.persistFindingVerificationBoundarySelection(
       workflowId = run.request.workflowId,
       selections = selections,
@@ -5448,8 +5513,10 @@ internal class FeatureTaskRuntimeRunLoop(
       dispositions = dispositions,
       dbOverride = run.request.dbPathOverride,
     )
-    return "Selected boundary headings recorded; re-read the briefing with resolved entry bodies and re-emit " +
-      "finding_dispositions before verify_findings can settle."
+    return BoundaryBodyDeliveryDecision.Continue(
+      "Selected boundary headings recorded; re-read the briefing with resolved entry bodies and re-emit " +
+        "finding_dispositions before verify_findings can settle.",
+    )
   }
 
   private fun findingVerificationBoundaryDispositionGate(run: PhaseRun, outputMap: Map<String, Any?>): String? =
@@ -6644,6 +6711,16 @@ internal class FeatureTaskRuntimeRunLoop(
     ) : AttemptResult
 
     /**
+     * A schema-VALID verify_findings disposition that selected boundary headings and must continue
+     * once the runtime delivers those entry bodies. Own variant so the handshake never spends the
+     * output-gate budget the way [SchemaInvalid] does.
+     */
+    private data class BoundaryBodyDelivery(
+      val continuationReason: String,
+      override val fileManifest: FeatureTaskRuntimePhaseFileManifest,
+    ) : AttemptResult
+
+    /**
      * A well-formed repair receipt that still owes work on named carried findings — either it left
      * them out, or it reported it tried and they are still open.
      *
@@ -6671,6 +6748,7 @@ internal class FeatureTaskRuntimeRunLoop(
         is IncompleteWork -> fileManifest
         is RetryableTerminal -> fileManifest
         is FindingsOwed -> fileManifest
+        is BoundaryBodyDelivery -> fileManifest
         else -> null
       }
     val rejectedOutput: String? get() = (this as? SchemaInvalid)?.rejectedOutput
@@ -6723,9 +6801,16 @@ internal class FeatureTaskRuntimeRunLoop(
     val incompleteWorkContinuationReason: String? get() = (this as? IncompleteWork)?.continuationReason
     val incompleteWorkOutput: NormalizedFeatureTaskRuntimePhaseOutput?
       get() = (this as? IncompleteWork)?.normalizedOutput
+    val boundaryBodyDeliveryContinuationReason: String?
+      get() = (this as? BoundaryBodyDelivery)?.continuationReason
 
     companion object {
       fun settled(outcome: PhaseOutcome): AttemptResult = Settled(outcome)
+
+      fun boundaryBodyDelivery(
+        continuationReason: String,
+        fileManifest: FeatureTaskRuntimePhaseFileManifest,
+      ): AttemptResult = BoundaryBodyDelivery(continuationReason, fileManifest)
 
       fun incompleteWork(
         operatorReason: String,

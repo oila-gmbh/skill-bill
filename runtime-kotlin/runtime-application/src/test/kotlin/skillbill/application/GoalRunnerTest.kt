@@ -2433,14 +2433,52 @@ class GoalRunnerObservabilityTest {
   }
 
   @Test
-  fun `accept records a blocked subtask that landed out of band and advances the goal`() {
+  fun `accept refuses ordinary out-of-band acceptance even when the subtask is not yet marked blocked`() {
+    val store = InMemoryGoalManifestStore(
+      manifest = manifest(subtaskCount = 2).copy(
+        status = "running",
+        currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "start"),
+        subtasks = manifest(subtaskCount = 2).subtasks.map { subtask ->
+          if (subtask.id == 1) {
+            subtask.copy(status = "pending")
+          } else {
+            subtask
+          }
+        },
+      ),
+    )
+    val service = GoalRunnerStatusService(
+      manifestStore = store,
+      outcomeStore = RecordingOutcomeStore(),
+      phaseRecorder = goalTestPhaseRecorder(),
+      gitOperations = AcceptGitOperations(),
+    )
+
+    val result = service.accept(
+      GoalRunnerAcceptRequest(
+        issueKey = "SKILL-56",
+        subtaskId = 1,
+        commitSha = "abc1234",
+        reason = "...",
+        repoRoot = Path.of("."),
+      ),
+    )
+
+    val rejected = assertIs<GoalRunnerAcceptResult.Rejected>(result)
+    assertContains(rejected.reason, "Out-of-band accept is disabled")
+    assertEquals(emptyList(), store.acceptedParentWorkflowIds)
+    assertEquals("pending", store.manifest.subtasks.first { it.id == 1 }.status)
+  }
+
+  @Test
+  fun `accept refuses a blocked subtask instead of skipping the durable block`() {
     val store = InMemoryGoalManifestStore(
       manifest = manifest(subtaskCount = 2).copy(
         status = "blocked",
         currentSubtaskIntent = CurrentSubtaskIntent(subtaskId = 1, action = "blocked"),
         subtasks = manifest(subtaskCount = 2).subtasks.map { subtask ->
           if (subtask.id == 1) {
-            subtask.copy(status = "blocked", blockedReason = "session limit", lastResumableStep = "implement")
+            subtask.copy(status = "blocked", blockedReason = "session limit", lastResumableStep = "review")
           } else {
             subtask
           }
@@ -2464,14 +2502,10 @@ class GoalRunnerObservabilityTest {
       ),
     )
 
-    val accepted = assertIs<GoalRunnerAcceptResult.Accepted>(result)
-    assertEquals("abc1234abc1234abc1234abc1234abc1234abcd", accepted.commitSha)
-    assertEquals(listOf("wfl-parent"), store.acceptedParentWorkflowIds)
-    val subtaskOne = store.manifest.subtasks.first { it.id == 1 }
-    assertEquals("complete", subtaskOne.status)
-    assertEquals("abc1234abc1234abc1234abc1234abc1234abcd", subtaskOne.commitSha)
-    assertNull(subtaskOne.blockedReason)
-    assertEquals(CurrentSubtaskIntent(subtaskId = 2, action = "start"), store.manifest.currentSubtaskIntent)
+    val rejected = assertIs<GoalRunnerAcceptResult.Rejected>(result)
+    assertContains(rejected.reason, "Out-of-band accept is disabled")
+    assertEquals(emptyList(), store.acceptedParentWorkflowIds)
+    assertEquals("blocked", store.manifest.subtasks.first { it.id == 1 }.status)
   }
 
   @Test
@@ -2532,20 +2566,21 @@ class GoalRunnerObservabilityTest {
         },
       ),
     )
+    // Seed a pre-existing acceptance artifact; ordinary accept is disabled and cannot create one.
+    store.persistOutOfBandAcceptance(
+      parentWorkflowId = "wfl-parent",
+      acceptance = GoalRunnerOutOfBandAcceptance(
+        subtaskId = 1,
+        commitSha = "abc1234abc1234abc1234abc1234abc1234abcd",
+        reason = "landed by hand",
+        acceptedAt = "2026-01-01T00:00:00Z",
+      ),
+    )
     val service = GoalRunnerStatusService(
       manifestStore = store,
       outcomeStore = RecordingOutcomeStore(),
       phaseRecorder = goalTestPhaseRecorder(),
       gitOperations = AcceptGitOperations(),
-    )
-    service.accept(
-      GoalRunnerAcceptRequest(
-        issueKey = "SKILL-56",
-        subtaskId = 1,
-        commitSha = "abc1234",
-        reason = "landed by hand",
-        repoRoot = Path.of("."),
-      ),
     )
 
     val projection = service.status(
@@ -2751,25 +2786,26 @@ class GoalRunnerObservabilityTest {
       reason = "finished outside runtime",
     )
     val store = InMemoryGoalManifestStore(original)
+    val acceptedSha = "abc1234abc1234abc1234abc1234abc1234abcd"
+    val acceptedAt = "2026-01-01T00:00:00Z"
+    store.persistOutOfBandAcceptance(
+      parentWorkflowId = "wfl-parent",
+      acceptance = GoalRunnerOutOfBandAcceptance(
+        subtaskId = 1,
+        commitSha = acceptedSha,
+        reason = "reviewed; ship it",
+        acceptedAt = acceptedAt,
+      ),
+    )
     val service = GoalRunnerStatusService(
       store,
       RecordingOutcomeStore(),
       goalTestPhaseRecorder(),
       AcceptGitOperations(),
     )
-    val accepted = service.accept(
-      GoalRunnerAcceptRequest(
-        issueKey = "SKILL-56",
-        subtaskId = 1,
-        commitSha = "abc1234",
-        reason = "reviewed; ship it",
-        repoRoot = Path.of("."),
-      ),
-    )
-    val acceptedSha = assertIs<GoalRunnerAcceptResult.Accepted>(accepted).commitSha
 
     assertEquals(
-      listOf(GoalRunnerAcceptedSubtask(1, acceptedSha, "reviewed; ship it", accepted.acceptedAt)),
+      listOf(GoalRunnerAcceptedSubtask(1, acceptedSha, "reviewed; ship it", acceptedAt)),
       service.hardResetPreflight("SKILL-56", null),
     )
     service.reset(GoalRunnerResetRequest(issueKey = "SKILL-56", hard = true, repoRoot = Path.of(".")))

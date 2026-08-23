@@ -217,6 +217,26 @@ internal fun kotlinPackWithoutGate(): PlatformManifest = PlatformManifest(
   validationGate = null,
 )
 
+/** Review-fallback pack: co-routed for unmatched paths; must not steal build/validate gate selection. */
+internal fun reviewFallbackPackWithoutGate(): PlatformManifest = PlatformManifest(
+  slug = "generic",
+  packRoot = validationGateTestRepoRoot.resolve("platform-packs/generic"),
+  contractVersion = "1.7",
+  routingSignals = RoutingSignals(
+    strong = emptyList(),
+    tieBreakers = emptyList(),
+    path = emptyList(),
+  ),
+  declaredCodeReviewAreas = emptyList(),
+  declaredFiles = DeclaredFiles(
+    baseline = validationGateTestRepoRoot.resolve("code-review/bill-generic-code-review/content.md"),
+    areas = emptyMap(),
+  ),
+  areaMetadata = emptyMap(),
+  fallbackCapabilities = setOf("code-review"),
+  validationGate = null,
+)
+
 internal class ScriptedGateRunner(
   private val results: List<ValidationGateRunResult>,
 ) : ValidationGateRunner {

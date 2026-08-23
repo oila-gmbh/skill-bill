@@ -34,4 +34,47 @@ class FeatureTaskRuntimePhaseSafetyPolicyTest {
 
     assertEquals(listOf(".skill-bill/config.yaml", "src/Main.kt"), paths)
   }
+
+  @Test
+  fun `pure deletes are omitted from changedPaths and collected as deletedPaths`() {
+    val status =
+      """
+       M src/Kept.kt
+       D src/Removed.kt
+      D  src/IndexRemoved.kt
+      ?? src/New.kt
+      R  src/OldName.kt -> src/NewName.kt
+      """.trimIndent()
+
+    assertEquals(
+      listOf("src/Kept.kt", "src/New.kt", "src/NewName.kt"),
+      FeatureTaskRuntimePhaseSafetyPolicy.changedPaths(status),
+    )
+    assertEquals(
+      listOf("src/IndexRemoved.kt", "src/OldName.kt", "src/Removed.kt"),
+      FeatureTaskRuntimePhaseSafetyPolicy.deletedPaths(status),
+    )
+  }
+
+  @Test
+  fun `package-move porcelain does not treat delete sources as introductions`() {
+    val status =
+      """
+       D application/compile/model/compilation/ActivationReason.kt
+      ?? application/compile/model/compilation/run/
+      ?? application/compile/model/compilation/platformpack/
+      """.trimIndent()
+
+    assertEquals(
+      listOf(
+        "application/compile/model/compilation/platformpack/",
+        "application/compile/model/compilation/run/",
+      ),
+      FeatureTaskRuntimePhaseSafetyPolicy.changedPaths(status),
+    )
+    assertEquals(
+      listOf("application/compile/model/compilation/ActivationReason.kt"),
+      FeatureTaskRuntimePhaseSafetyPolicy.deletedPaths(status),
+    )
+  }
 }

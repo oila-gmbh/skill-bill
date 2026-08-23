@@ -1,0 +1,121 @@
+package skillbill.application
+
+import skillbill.application.featuretask.FeatureTaskRuntimeContinuationKind
+import skillbill.application.model.FeatureTaskRuntimeRunReport
+import skillbill.goalplanning.FileSystemGoalPlanningContextDiscovery
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseLedgerAction
+import java.nio.file.Files
+import kotlin.test.Test
+import kotlin.test.assertContains
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
+import kotlin.test.assertTrue
+
+class FeatureTaskRuntimeVerifyFindingsBodyDeliveryTest {
+  @Test
+  fun `verify_findings heading selection continues for body delivery without burning the output-gate cap`() {
+    val repoRoot = Files.createTempDirectory("skillbill-verify-findings-body-delivery")
+    val findingPath = "runtime-kotlin/runtime-application/src/Foo.kt"
+    val sourcePath = "runtime-kotlin/runtime-application/agent/history.md"
+    val agent = Files.createDirectories(repoRoot.resolve("runtime-kotlin/runtime-application/agent"))
+    Files.writeString(
+      agent.resolve("history.md"),
+      "# Boundary History\n\n## [2026-08-01] selected-title\n\nselected body sentence\n",
+    )
+    val headingId = FileSystemGoalPlanningContextDiscovery()
+      .discoverForFindingPaths(repoRoot, listOf(findingPath), loudFailOnCapExceeded = true)
+      .boundaryCatalog
+      .single()
+      .headingId
+
+    var verifyLaunches = 0
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        if (phaseId == "verify_findings") {
+          verifyLaunches += 1
+          val prompt = requireNotNull(request.skillRunRequest.promptOverride)
+          if (verifyLaunches == 1) {
+            assertTrue(prompt.contains("selected-title"), "first pass catalogs titles")
+            assertFalse(prompt.contains("selected body sentence"), "first pass withholds bodies")
+            assertFalse(prompt.contains("REJECTED by the schema gate"), "handshake is not a schema rejection")
+          } else {
+            assertTrue(prompt.contains("Selected boundary memory"), "second pass delivers bodies")
+            assertTrue(prompt.contains("selected body sentence"), "second pass includes selected body")
+            assertFalse(prompt.contains("REJECTED by the schema gate"), "continuation is not a schema rejection")
+          }
+          facts(verifyFindingsSelectingBoundary(findingPath, headingId, sourcePath))
+        } else {
+          facts(validJsonOutput(phaseId))
+        }
+      },
+      runtimeConfig = RuntimeHarnessConfig(repoRoot = repoRoot),
+    )
+    harness.seedPhase("preplan", "completed", 1, INVOKED_AGENT, validJsonOutput("preplan"))
+    harness.seedPhase("plan", "completed", 1, INVOKED_AGENT, validJsonOutput("plan"))
+    harness.seedPhase("implement", "completed", 1, INVOKED_AGENT, IMPLEMENT_OUTPUT)
+    harness.seedPhase("audit", "completed", 1, INVOKED_AGENT, auditSatisfiedOutput())
+    harness.seedReviewPhase("completed", 1, reviewFindingWithLocation(findingPath), 1)
+    harnessPendingVerifyFindingIds = listOf(REVIEW_FIX_BLOCKER_FINDING_ID)
+
+    val report = harness.runner.run(harness.request())
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertEquals(2, verifyLaunches, "heading selection must continue once for body delivery")
+    assertTrue(
+      harness.io.database.rejectedDiagnostics().none { it.metadata.phaseId == "verify_findings" },
+      "body delivery must not record a rejected-output diagnostic",
+    )
+    val bodyDeliveryContinuations = harness.recorder.loadPhaseLedger(WORKFLOW_ID).orEmpty()
+      .filter { it.action == FeatureTaskRuntimePhaseLedgerAction.FIX_LOOP_ITERATION }
+      .mapNotNull { FeatureTaskRuntimeContinuationKind.fromLedgerDetail(it.blockedReason) }
+    assertContains(bodyDeliveryContinuations, FeatureTaskRuntimeContinuationKind.VERIFICATION_BODY_DELIVERY)
+  }
+}
+
+private fun reviewFindingWithLocation(locationPath: String): String = """
+  {
+    "contract_version": "0.3",
+    "phase_id": "review",
+    "status": "completed",
+    "summary": "Review produced a validated output.",
+    "produced_outputs": {
+      "findings": [{
+        "severity": "blocker",
+        "finding_id": "$REVIEW_FIX_BLOCKER_FINDING_ID",
+        "message": "$REVIEW_BLOCKER_MESSAGE",
+        "location": "$locationPath:1"
+      }],
+      "blocker_dispositions": []
+    }
+  }
+""".trimIndent()
+
+private fun verifyFindingsSelectingBoundary(
+  locationPath: String,
+  headingId: String,
+  sourcePath: String,
+): String = """
+  {
+    "contract_version": "0.4",
+    "phase_id": "verify_findings",
+    "status": "completed",
+    "summary": "Verified the finding against scoped boundary memory.",
+    "verdict": "findings_verified",
+    "produced_outputs": {
+      "finding_dispositions": [{
+        "finding_id": "$REVIEW_FIX_BLOCKER_FINDING_ID",
+        "disposition": "verified",
+        "reason": "Matches spec intent AC-002.",
+        "severity": "blocker",
+        "location": "$locationPath:1",
+        "message": "$REVIEW_BLOCKER_MESSAGE",
+        "selected_boundary_headings": [{
+          "heading_id": "$headingId",
+          "source_path": "$sourcePath"
+        }]
+      }]
+    }
+  }
+""".trimIndent()

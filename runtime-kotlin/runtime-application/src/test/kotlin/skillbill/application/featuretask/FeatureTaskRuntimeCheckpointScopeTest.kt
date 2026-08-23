@@ -74,6 +74,20 @@ class FeatureTaskRuntimeCheckpointScopeTest {
   }
 
   @Test
+  fun `package-move delete sources are adopted instead of blocking outside inventory`() {
+    val decision = decide(
+      ownedPaths = listOf("src/run/Owned.kt"),
+      phaseIntroducedPaths = listOf("src/Owned.kt", "src/run/Owned.kt"),
+      worktreeDeltaPaths = listOf("src/Owned.kt", "src/run/Owned.kt"),
+      deletedPaths = listOf("src/Owned.kt"),
+    )
+
+    val stage = assertIs<FeatureTaskRuntimeCheckpointDecision.Stage>(decision)
+    assertEquals(listOf("src/Owned.kt", "src/run/Owned.kt"), stage.ownedPaths)
+    assertEquals(listOf("src/Owned.kt"), stage.adoptedPaths)
+  }
+
+  @Test
   fun `a concurrently prepared foreign feature spec blocks and never enters the inventory`() {
     val decision = decide(
       ownedPaths = listOf(".feature-specs/$ISSUE-scoped/spec.md"),
@@ -389,6 +403,7 @@ class FeatureTaskRuntimeCheckpointScopeTest {
     worktreeDeltaPaths: List<String> = (ownedPaths + phaseIntroducedPaths).distinct(),
     foreignStagedPaths: List<String> = emptyList(),
     concurrentlyModifiedOwnedPaths: List<String> = emptyList(),
+    deletedPaths: List<String> = emptyList(),
   ): FeatureTaskRuntimeCheckpointDecision = FeatureTaskRuntimeCheckpointScope.decide(
     FeatureTaskRuntimeCheckpointScopeInput(
       issueKey = ISSUE,
@@ -397,6 +412,7 @@ class FeatureTaskRuntimeCheckpointScopeTest {
       worktreeDeltaPaths = worktreeDeltaPaths,
       foreignStagedPaths = foreignStagedPaths,
       concurrentlyModifiedOwnedPaths = concurrentlyModifiedOwnedPaths,
+      deletedPaths = deletedPaths,
     ),
   )
 

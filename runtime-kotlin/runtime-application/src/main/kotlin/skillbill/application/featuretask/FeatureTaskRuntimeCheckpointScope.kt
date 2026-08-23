@@ -18,7 +18,12 @@ private const val MAX_REPORTED_PATHS = 10
 @Suppress("TooManyFunctions") // single cohesive decision surface for the checkpoint scope guards and messages
 internal object FeatureTaskRuntimeCheckpointScope {
   fun decide(input: FeatureTaskRuntimeCheckpointScopeInput): FeatureTaskRuntimeCheckpointDecision {
-    val declared = input.ownedPaths.filter(String::isNotBlank).distinct().sorted()
+    val deleted = input.deletedPaths.filter(String::isNotBlank)
+      .filterNot { isForeignGovernedSpecPath(it, input.issueKey) }
+      .filterNot(::isRuntimePrivatePath)
+      .distinct()
+      .sorted()
+    val declared = (input.ownedPaths + deleted).filter(String::isNotBlank).distinct().sorted()
     val declaredAliases = declared.map(::normalizeForAliasComparison).toSet()
     // A foreign issue's governed spec is never staged, even when it reached the durable inventory:
     // ownership is not a licence to commit another workflow's authority. Evicting it here also keeps
@@ -33,8 +38,15 @@ internal object FeatureTaskRuntimeCheckpointScope {
       .filterNot(::isRuntimePrivatePath)
       .map(::normalizeForAliasComparison)
       .toSet()
-    val adopted = adoptedDivergentPaths(input, ownedAliases)
-    val stageable = (owned.filter { normalizeForAliasComparison(it) in deltaAliases } + adopted).distinct().sorted()
+    val divergentAdopted = adoptedDivergentPaths(input, ownedAliases)
+    val ownedSpelling = input.ownedPaths.map(::normalizeForAliasComparison).toSet()
+    val deletedAdopted = deleted.filterNot { normalizeForAliasComparison(it) in ownedSpelling }
+    val adopted = (divergentAdopted + deletedAdopted).distinct().sorted()
+    val stageable = (
+      owned.filter { normalizeForAliasComparison(it) in deltaAliases } +
+        divergentAdopted +
+        deleted
+      ).distinct().sorted()
     return if (stageable.isEmpty()) {
       FeatureTaskRuntimeCheckpointDecision.Skip
     } else {
@@ -82,11 +94,17 @@ internal object FeatureTaskRuntimeCheckpointScope {
       .filterNot { normalizeForAliasComparison(it) in declaredAliases }
       .distinct().sorted().takeIf { it.isNotEmpty() }
       ?.let { blockForeignGovernedSpec(input.issueKey, it) }
+    val deletedAliases = input.deletedPaths.filter(String::isNotBlank)
+      .map(::normalizeForAliasComparison)
+      .toSet()
     val outside = input.phaseIntroducedPaths.filter(String::isNotBlank).distinct()
       .filterNot { isForeignGovernedSpecPath(it, input.issueKey) }
       // Runtime-private evidence under `.skill-bill/` is written by the runtime itself; treating it as
       // phase-introduced feature work is a self-conflict (shared review evidence is the usual case).
       .filterNot(::isRuntimePrivatePath)
+      // Pure deletes and rename sources are removals, not introductions. Blocking on them strands
+      // package moves whose destinations are already owned.
+      .filterNot { path -> normalizeForAliasComparison(path) in deletedAliases }
       .filterNot { path -> normalizeForAliasComparison(path) in ownedAliases }
       .sorted().takeIf { it.isNotEmpty() }
       ?.let { blockOutsideInventory(input.issueKey, it) }

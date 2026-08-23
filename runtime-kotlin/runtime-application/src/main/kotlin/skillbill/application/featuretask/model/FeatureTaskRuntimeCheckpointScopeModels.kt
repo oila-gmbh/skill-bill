@@ -40,6 +40,8 @@ sealed interface FeatureTaskRuntimeCheckpointDecision {
  * @param foreignStagedPaths paths already staged by someone else before this checkpoint ran.
  * @param concurrentlyModifiedOwnedPaths owned paths whose working-tree content changed after the
  * active phase finished writing them, so the change cannot be attributed to this workflow.
+ * @param deletedPaths tracked paths removed from the worktree (or rename sources). Removals are not
+ * introductions: they are adopted into the owned inventory so a package move can stage both halves.
  */
 data class FeatureTaskRuntimeCheckpointScopeInput(
   val issueKey: String,
@@ -48,4 +50,5 @@ data class FeatureTaskRuntimeCheckpointScopeInput(
   val worktreeDeltaPaths: List<String>,
   val foreignStagedPaths: List<String> = emptyList(),
   val concurrentlyModifiedOwnedPaths: List<String> = emptyList(),
+  val deletedPaths: List<String> = emptyList(),
 )

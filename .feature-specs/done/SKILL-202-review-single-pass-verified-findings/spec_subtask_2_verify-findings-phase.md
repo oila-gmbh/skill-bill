@@ -74,8 +74,8 @@ Surfaces, in this commit because they describe what this phase persists:
   the cap-exhaustion outcome, with no path-bearing detail in compact surfaces.
   `phase_id` is a free string in the telemetry schema, so no schema change is
   needed for the phase itself.
-- `skills/bill-feature-task-runtime/content.md` and
-  `skills/bill-feature-goal/content.md` describe the phase, the gate, the
+- `../../../skills/bill-feature-task-runtime/content.md` and
+  `../../../skills/bill-feature-goal/content.md` describe the phase, the gate, the
   severity-independent round, and the accepted trade-off that an unfixed verified
   finding reaches `validate`. Regenerate the governed `SKILL.md` outputs.
 
@@ -94,7 +94,7 @@ Surfaces, in this commit because they describe what this phase persists:
 11. Telemetry for `verify_findings` and the round carries disposition counts and the cap-exhaustion outcome without path-bearing detail in compact surfaces.
 12. Resume lands correctly when a run is interrupted inside `verify_findings` or inside the round, without minting a second verification pass or a second round.
 13. Durable verification records that this change invalidates loud-fail with a named error rather than being coerced.
-14. `skills/bill-feature-task-runtime/content.md` and `skills/bill-feature-goal/content.md` describe one review pass, per-finding verification, at most one fix round, then validate, including the accepted trade-off.
+14. `../../../skills/bill-feature-task-runtime/content.md` and `../../../skills/bill-feature-goal/content.md` describe one review pass, per-finding verification, at most one fix round, then validate, including the accepted trade-off.
 15. `(cd runtime-kotlin && ./gradlew check --continue)` passes.
 
 ## Non-Goals

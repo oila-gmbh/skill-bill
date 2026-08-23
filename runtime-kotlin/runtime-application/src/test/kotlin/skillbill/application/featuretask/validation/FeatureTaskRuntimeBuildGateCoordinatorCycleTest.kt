@@ -10,6 +10,7 @@ import skillbill.ports.validation.model.ValidationGateFindingParseMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 class FeatureTaskRuntimeBuildGateCoordinatorCycleTest {
   @Test
@@ -66,6 +67,42 @@ class FeatureTaskRuntimeBuildGateCoordinatorCycleTest {
       ),
     )
     assertEquals(ValidationGateFindingParseMode.COLLECT_ALL, runner.requests.single().findingParseMode)
+  }
+
+  @Test
+  fun `build gate keeps repairing until the three-turn cap then records remaining findings`() {
+    val finding = ValidationGateFinding("m", "compile", "broken", "Foo.kt")
+    val maxTurns = FeatureTaskRuntimeBuildGateCoordinator.MAX_REPAIR_TURNS
+    val runnerResults = mutableListOf(failedWith(finding))
+    repeat(maxTurns) { runnerResults += failedWith(finding) }
+    val runner = ScriptedGateRunner(runnerResults)
+    val recorded = mutableListOf<skillbill.workflow.taskruntime.model.FeatureTaskRuntimeValidationGateProgress>()
+    val progress = RecordingProgressStore(recorded, null)
+    var repairLaunches = 0
+    val cycle = buildCoordinator(declaredResolver(declarationWithBuild()), runner, progress).execute(
+      ValidationGateCycleRequest(
+        repoRoot = validationGateTestRepoRoot,
+        request = minimalRequest(),
+        validationDepth = skillbill.workflow.model.ValidationDepth.DEFAULT,
+        changedPaths = listOf("runtime-kotlin/foo.kt"),
+        repositoryCheckpoint = "checkpoint",
+        agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _ ->
+          repairLaunches++
+          ValidationGateAgentRepairResult.Completed(
+            skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutput("build", 1, "{}"),
+          )
+        },
+      ),
+    )
+    val blocked = assertIs<ValidationGateCycleTerminalOutcome.Blocked>(
+      assertIs<ValidationGateCycleResult.Terminal>(cycle).outcome,
+    )
+    assertEquals(maxTurns, repairLaunches)
+    assertEquals(1 + maxTurns, runner.calls)
+    assertTrue(blocked.reason.contains("after $maxTurns repair"))
+    assertTrue(blocked.reason.contains("recorded for the operator"))
+    assertEquals("compile", blocked.remainingFindings?.findings?.single()?.ruleOrTestId)
+    assertEquals(maxTurns, recorded.last().repairsUsed)
   }
 
   private fun declarationWithBuild() = validationGateTestDeclaration.copy(

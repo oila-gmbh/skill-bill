@@ -79,12 +79,12 @@ Contracts:
 
 Prose, in this commit because the agent reads it at run time:
 
-- `skills/bill-feature-task-runtime/content.md` phase order and the
+- `../../../skills/bill-feature-task-runtime/content.md` phase order and the
   remediation-loop section.
-- `skills/bill-feature-goal/content.md` child-review paragraphs, including the
+- `../../../skills/bill-feature-goal/content.md` child-review paragraphs, including the
   claim that a later pass runs via `context:feature-remediation`. The review
   contract keeps that context; the runtime stops claiming it.
-- `runtime-kotlin/ARCHITECTURE.md` where it names `plan_fix` or the uncapped loop.
+- `../../../runtime-kotlin/ARCHITECTURE.md` where it names `plan_fix` or the uncapped loop.
 - Regenerate the governed `SKILL.md` outputs the generated-artifact guard checks.
 
 ## Acceptance Criteria
@@ -98,7 +98,7 @@ Prose, in this commit because the agent reads it at run time:
 7. The `audit_gap` loop and the `record_rejected` regeneration edges keep their current behaviour, caps, and warning threshold.
 8. Durable state written before this change stays decodable where its shape is still valid, and a record naming a removed phase, verdict, or ledger status loud-fails with a named error rather than being coerced.
 9. Resume lands correctly when a run is interrupted inside the single `implement_fix` round, and no resume path mints a second round.
-10. `skills/bill-feature-task-runtime/content.md`, `skills/bill-feature-goal/content.md`, and `runtime-kotlin/ARCHITECTURE.md` describe one review pass and at most one fix round. No surface claims that remediation continues while findings survive, that Blocker and Major reopen a loop, or that a later pass runs against a remediation delta.
+10. `../../../skills/bill-feature-task-runtime/content.md`, `../../../skills/bill-feature-goal/content.md`, and `../../../runtime-kotlin/ARCHITECTURE.md` describe one review pass and at most one fix round. No surface claims that remediation continues while findings survive, that Blocker and Major reopen a loop, or that a later pass runs against a remediation delta.
 11. `(cd runtime-kotlin && ./gradlew check --continue)` passes.
 
 ## Non-Goals

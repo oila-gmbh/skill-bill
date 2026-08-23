@@ -241,7 +241,8 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(prompt, "Invoke bill-code-check for collect-all and confirmation")
     assertContains(prompt, "validation_gate")
     assertContains(prompt, "only validate agent for this step")
-    assertContains(prompt, "will not launch another agent")
+    assertContains(prompt, "do not spawn delegated subagents")
+    assertContains(prompt, "up to three repair turns")
     assertContains(prompt, "Do not run `skill-bill validate`")
     assertContains(prompt, "`npx agnix`")
     assertTrue(prompt.contains("Invoke bill-code-check"))
@@ -276,7 +277,8 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(prompt, "skill-bill validate")
     assertContains(prompt, "bill-code-check")
     assertContains(prompt, "check --continue")
-    assertContains(prompt, "build_receipt")
+    assertContains(prompt, "do not emit build_receipt")
+    assertContains(prompt, "up to three repair turns")
   }
 
   @Test
@@ -316,7 +318,8 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       assertContains(prompt, "scripts/validate_agent_configs")
       assertContains(prompt, "run bill-code-check once to confirm")
       assertContains(prompt, "only validate agent for this step")
-      assertContains(prompt, "will not launch another agent")
+      assertContains(prompt, "do not spawn delegated subagents")
+      assertContains(prompt, "up to three repair turns")
       assertContains(prompt, "delegated subagents")
       assertContains(prompt, "`detekt`")
       assertContains(prompt, "`ktlintCheck`")
@@ -345,7 +348,8 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(prompt, "`test`")
     assertContains(prompt, "`compileKotlin`")
     assertContains(prompt, "only validate agent for this step")
-    assertContains(prompt, "will not launch another agent")
+    assertContains(prompt, "do not spawn delegated subagents")
+    assertContains(prompt, "up to three repair turns")
     assertContains(prompt, "Do not rerun the full gate, bill-code-check, or a cache-bypassing full check")
     assertContains(prompt, "Do not run `skill-bill validate`")
     assertContains(prompt, "`npx agnix`")
@@ -372,10 +376,14 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       validationGateFindings = page,
     )
     listOf(fullPrompt, defaultPrompt).forEach { prompt ->
-      assertContains(prompt, "A prior gate run parsed these items; they are a hint")
+      assertContains(prompt, "A prior gate run parsed these items")
+      assertContains(prompt, "full open set for this repair turn")
       assertContains(prompt, "Invoke bill-code-check")
       assertContains(prompt, "Do not run `skill-bill validate`")
-      assertContains(prompt, "Do not launch another agent")
+      assertContains(prompt, "Do not spawn delegated subagents")
+      assertContains(prompt, "Gate repair — prose only, no phase-output schema")
+      assertContains(prompt, "blast radius")
+      assertFalse(prompt.contains("Required final output (validated schema gate)"))
     }
   }
 
@@ -392,11 +400,16 @@ class FeatureTaskRuntimePhasePromptComposerTest {
       packBuildCommand = "./gradlew compileKotlin",
     )
     assertContains(prompt, "## Runtime build gate findings")
-    assertContains(prompt, "A prior gate run parsed these items; they are a hint")
+    assertContains(prompt, "A prior gate run parsed these items")
+    assertContains(prompt, "full open set for this repair turn")
     assertContains(prompt, "pack-declared build command")
     assertContains(prompt, "collect_all_full_gate_command")
-    assertContains(prompt, "Do not launch another agent")
+    assertContains(prompt, "Do not spawn delegated subagents")
     assertContains(prompt, "module=m id=t location=loc message=broken")
+    assertContains(prompt, "Gate repair — prose only, no phase-output schema")
+    assertContains(prompt, "blast radius")
+    assertFalse(prompt.contains("Required final output (validated schema gate)"))
+    assertFalse(prompt.contains("Required produced_outputs shape: emit a build_receipt"))
   }
 
   // SKILL-180: FULL validate must carry no-suppression; other phases must not.

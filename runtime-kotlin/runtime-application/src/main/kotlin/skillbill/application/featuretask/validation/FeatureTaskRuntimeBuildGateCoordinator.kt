@@ -112,71 +112,56 @@ class FeatureTaskRuntimeBuildGateCoordinator(
   ): ValidationGateCycleResult {
     val measurements = state.measurements
     var repairsUsed = initialRepairsUsed
-    val projection = ValidationFindingSetProjection(findings = openFindings)
-    if (repairsUsed >= MAX_REPAIR_TURNS) {
+    var currentFindings = openFindings
+    while (true) {
+      if (currentFindings.isEmpty()) {
+        return terminalCompletedResult(state.cycle.repositoryCheckpoint, measurements)
+      }
+      val projection = ValidationFindingSetProjection(findings = currentFindings)
+      if (repairsUsed >= MAX_REPAIR_TURNS) {
+        persistProgress(
+          state = state,
+          repairWindowPhase = FeatureTaskRuntimeValidationGateRepairWindowPhase.FINDINGS_OPEN,
+          remainingFindings = projection,
+          completeFindings = currentFindings,
+          repairsUsed = repairsUsed,
+        )
+        return terminalBlockedResult(
+          "Build gate still reports ${currentFindings.size} finding(s) after $MAX_REPAIR_TURNS repair " +
+            "turns; remaining findings are recorded for the operator.",
+          remainingFindings = projection,
+          measurements = measurements,
+        )
+      }
       persistProgress(
         state = state,
         repairWindowPhase = FeatureTaskRuntimeValidationGateRepairWindowPhase.FINDINGS_OPEN,
-        remainingFindings = projection,
-        completeFindings = openFindings,
+        remainingFindings = null,
+        completeFindings = currentFindings,
         repairsUsed = repairsUsed,
       )
-      return terminalBlockedResult(
-        "Build gate still reports ${openFindings.size} finding(s) after $MAX_REPAIR_TURNS repair turn(s).",
-        remainingFindings = projection,
-        measurements = measurements,
+      when (val repair = state.cycle.agentRepairLauncher.launch(projection, repairsUsed + 1)) {
+        is ValidationGateAgentRepairResult.Blocked -> return terminalBlockedResult(
+          repair.reason,
+          remainingFindings = projection,
+          measurements = measurements,
+        )
+        is ValidationGateAgentRepairResult.Completed -> repairsUsed++
+      }
+      val verify = runGate(state.cycle, declaration, ValidationGateCyclePhase.POST_REPAIR_VERIFY)
+      val verifyFindings = buildFindingsForRepairFromResult(verify)
+      recordGateProgress(
+        state = state,
+        result = verify,
+        findings = verifyFindings,
+        repairWindowPhase = repairWindowPhaseFor(verifyFindings),
+        repairsUsed = repairsUsed,
       )
+      if (verifyFindings.isEmpty()) {
+        return terminalCompletedResult(state.cycle.repositoryCheckpoint, measurements)
+      }
+      currentFindings = verifyFindings
     }
-    persistProgress(
-      state = state,
-      repairWindowPhase = FeatureTaskRuntimeValidationGateRepairWindowPhase.FINDINGS_OPEN,
-      remainingFindings = null,
-      completeFindings = openFindings,
-      repairsUsed = repairsUsed,
-    )
-    when (val repair = state.cycle.agentRepairLauncher.launch(projection, repairsUsed + 1)) {
-      is ValidationGateAgentRepairResult.Blocked -> return terminalBlockedResult(
-        repair.reason,
-        remainingFindings = projection,
-        measurements = measurements,
-      )
-      is ValidationGateAgentRepairResult.Completed -> repairsUsed++
-    }
-    return verifyAfterRepair(state = state, declaration = declaration, repairsUsed = repairsUsed)
-  }
-
-  private fun verifyAfterRepair(
-    state: BuildGateCycleState,
-    declaration: ValidationGateDeclaration,
-    repairsUsed: Int,
-  ): ValidationGateCycleResult {
-    val cycle = state.cycle
-    val measurements = state.measurements
-    val verify = runGate(cycle, declaration, ValidationGateCyclePhase.POST_REPAIR_VERIFY)
-    val verifyFindings = buildFindingsForRepairFromResult(verify)
-    recordGateProgress(
-      state = state,
-      result = verify,
-      findings = verifyFindings,
-      repairWindowPhase = repairWindowPhaseFor(verifyFindings),
-      repairsUsed = repairsUsed,
-    )
-    if (verifyFindings.isEmpty()) {
-      return terminalCompletedResult(cycle.repositoryCheckpoint, measurements)
-    }
-    val remaining = ValidationFindingSetProjection(findings = verifyFindings)
-    persistProgress(
-      state = state,
-      repairWindowPhase = FeatureTaskRuntimeValidationGateRepairWindowPhase.FINDINGS_OPEN,
-      remainingFindings = remaining,
-      completeFindings = verifyFindings,
-      repairsUsed = repairsUsed,
-    )
-    return terminalBlockedResult(
-      "Build gate still reports ${verifyFindings.size} finding(s) after the build agent session.",
-      remainingFindings = remaining,
-      measurements = measurements,
-    )
   }
 
   private fun repairWindowPhaseFor(
@@ -268,7 +253,7 @@ class FeatureTaskRuntimeBuildGateCoordinator(
   }
 
   companion object {
-    const val MAX_REPAIR_TURNS: Int = 1
+    const val MAX_REPAIR_TURNS: Int = 3
 
     private fun operatorResumeRepairTurns(repairsUsed: Int): Int =
       if (repairsUsed >= MAX_REPAIR_TURNS) 0 else repairsUsed

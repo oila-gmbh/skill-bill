@@ -114,9 +114,37 @@ object FeatureTaskRuntimePhasePromptComposer {
       retryCorrectionDirective(briefing, priorSchemaFailure, correctiveRepairContext),
       terminalRetryDirective(priorTerminalFailure),
       findingCoverageDirective(priorFindingCoverage),
-      outputContract(briefing, agentRunValidateFallback),
+      if (validationGateFindings != null) {
+        gateRepairNoOutputSchemaDirective(briefing.phaseId)
+      } else {
+        outputContract(briefing, agentRunValidateFallback)
+      },
     ).filter(String::isNotBlank).joinToString(separator = "\n\n")
   }
+
+  /**
+   * Gate-repair launches fix code from runtime-parsed findings in prose. The phase receipt is minted
+   * by the coordinator after it re-runs the pack command — no schema envelope, no structured plan
+   * object, and no subagents that need structured input.
+   */
+  private fun gateRepairNoOutputSchemaDirective(phaseId: String): String = """
+    ## Gate repair — prose only, no phase-output schema
+    This launch is a repair turn for the runtime-owned `$phaseId` gate. Do not emit a Required final
+    output JSON object, build_receipt, validation_receipt, gate_run_count, or any other phase envelope.
+    Do not spawn delegated subagents. Work in this single agent session in ordinary prose.
+
+    The runtime already ran the pack command and parsed the failures listed in this briefing. It will
+    re-run that command after you stop, and it may give you up to three repair turns against whatever
+    remains. Address every open finding in this turn — all at once, not one finding per turn.
+
+    Before editing, do brief reasoned planning in prose for each finding (or for a shared root cause
+    that covers several). Scale the plan to the finding:
+    - Small / obvious: a few lines of due diligence, then fix.
+    - Complex: a real short plan — blast radius, surrounding callers/contracts you checked, whether
+      the change can introduce new bugs, and how you will keep the fix local.
+
+    No defined plan schema. Do the thinking, then edit. When you are done fixing, stop.
+  """.trimIndent()
 
   /**
    * Applies the add-on content budget before hydrated content reaches the prompt.
@@ -597,17 +625,19 @@ object FeatureTaskRuntimePhasePromptComposer {
     val (sectionTitle, preamble) = when (phaseId) {
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VALIDATE -> Pair(
         "## Runtime validation gate findings",
-        "A prior gate run parsed these items; they are a hint. Invoke bill-code-check, run the pack " +
-          "collect-all command, read that output, and fix every finding in this session. Do not run " +
-          "`skill-bill validate`, `npx agnix`, or `scripts/validate_agent_configs`. Do not launch " +
-          "another agent.",
+        "A prior gate run parsed these items. They are the full open set for this repair turn — fix " +
+          "every one in this session (shared root causes may collapse several into one change). Invoke " +
+          "bill-code-check / the pack collect-all command only as needed to understand failures; do not " +
+          "run `skill-bill validate`, `npx agnix`, or `scripts/validate_agent_configs`. Do not spawn " +
+          "delegated subagents.",
       )
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_BUILD -> Pair(
         "## Runtime build gate findings",
-        "A prior gate run parsed these items; they are a hint. Run only the pack-declared build " +
-          "command, read that output, and fix every finding in this session. Do not run `skill-bill " +
+        "A prior gate run parsed these items. They are the full open set for this repair turn — fix " +
+          "every one in this session (shared root causes may collapse several into one change). Run only " +
+          "the pack-declared build command when you need console detail. Do not run `skill-bill " +
           "validate`, `bill-code-check`, `./gradlew check`, `check " + "--" + "continue`, or the pack " +
-          "collect_all_full_gate_command. Do not launch another agent.",
+          "collect_all_full_gate_command. Do not spawn delegated subagents.",
       )
       else -> return ""
     }

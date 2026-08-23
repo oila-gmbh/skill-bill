@@ -40,7 +40,7 @@ class FileSystemValidationGateRunner : ValidationGateRunner {
       val executedWorkUnits = deriveExecutedWorkUnits(request, stdout)
       val exitCode = process.exitValue()
       val parsedFindings = parseFindings(request, stdout)
-      val outcome = deriveOutcome(exitCode, parsedFindings, executedWorkUnits, request.terminalVerifying)
+      val outcome = deriveOutcome(exitCode, parsedFindings)
       ValidationGateRunResult(
         exitCode = exitCode,
         durationMs = durationMs,
@@ -57,10 +57,7 @@ class FileSystemValidationGateRunner : ValidationGateRunner {
   private fun deriveOutcome(
     exitCode: Int,
     findings: List<ValidationGateFinding>,
-    executedWorkUnits: Int,
-    terminalVerifying: Boolean,
   ): ValidationGateRunOutcome = when {
-    terminalVerifying && executedWorkUnits == 0 -> ValidationGateRunOutcome.REJECTED_ZERO_WORK
     findings.isNotEmpty() || exitCode != 0 -> ValidationGateRunOutcome.FAILED
     else -> ValidationGateRunOutcome.PASSED
   }

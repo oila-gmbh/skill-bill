@@ -6,6 +6,7 @@ import skillbill.application.evidence.SharedReviewEvidenceProjection
 import skillbill.application.evidence.SharedReviewEvidenceQuery
 import skillbill.application.evidence.SharedReviewEvidenceResolution
 import skillbill.application.featuretask.sha256HexUtf8
+import skillbill.application.goalrunner.agentFailureExcerpt
 import skillbill.application.model.DiffResolutionException
 import skillbill.application.model.ParallelCodeReviewRequest
 import skillbill.application.model.ParallelCodeReviewResult
@@ -1746,16 +1747,16 @@ class ParallelCodeReviewRunner(
     facts.timedOut -> "agent timed out"
     facts.spawnFailed -> buildString {
       append("agent process failed to spawn")
-      facts.stderr.trim().lineSequence().firstOrNull { it.isNotBlank() }?.let { line ->
-        append(" — ${line.take(STDERR_EXCERPT_MAX_LENGTH)}")
+      agentFailureExcerpt(facts.stderr, facts.stdout, STDERR_EXCERPT_MAX_LENGTH)?.let { excerpt ->
+        append(" — ${excerpt.lineSequence().first().take(STDERR_EXCERPT_MAX_LENGTH)}")
       }
     }
     facts.interrupted -> "agent was interrupted"
     facts.exitStatus == null -> "agent exited with unknown status"
     facts.exitStatus != 0 -> buildString {
       append("agent exited with status ${facts.exitStatus}")
-      facts.stderr.trim().lineSequence().firstOrNull { it.isNotBlank() }?.let { line ->
-        append(" — ${line.take(STDERR_EXCERPT_MAX_LENGTH)}")
+      agentFailureExcerpt(facts.stderr, facts.stdout, STDERR_EXCERPT_MAX_LENGTH)?.let { excerpt ->
+        append(" — ${excerpt.lineSequence().first().take(STDERR_EXCERPT_MAX_LENGTH)}")
       }
     }
     // A truncated stdout means the retained bytes may not contain the agent's actual result at

@@ -58,7 +58,36 @@ class FeatureTaskRuntimeQualityGateRoutingTest {
       verdict = FeatureTaskRuntimeVerdict.SATISFIED,
       edgeIterationCount = 0,
     )
-    val routed = FeatureTaskRuntimeQualityGateRouting.applyAfterBuild(def.PHASE_BUILD, transition)
+    assertEquals(def.PHASE_VALIDATE, assertIs<FeatureTaskRuntimeNextPhase.Next>(transition).phaseId)
+    // Same order as FeatureTaskRuntimeRunLoop.nextPhaseAfter: review remap then build remap.
+    val routed = FeatureTaskRuntimeQualityGateRouting.applyAfterBuild(
+      def.PHASE_BUILD,
+      FeatureTaskRuntimeQualityGateRouting.applyAfterReview(
+        def.PHASE_BUILD,
+        transition,
+        FeatureTaskRuntimeQualityGateSelection.BUILD,
+      ),
+    )
     assertEquals(def.PHASE_WRITE_HISTORY, assertIs<FeatureTaskRuntimeNextPhase.Next>(routed).phaseId)
+  }
+
+  @Test
+  fun `build-selected leave-build must not remap validate back to build`() {
+    val transition = FeatureTaskRuntimeTransitionFunction.nextTransition(
+      declaration = def.transitions,
+      currentPhaseId = def.PHASE_BUILD,
+      verdict = FeatureTaskRuntimeVerdict.SATISFIED,
+      edgeIterationCount = 0,
+    )
+    val afterReview = FeatureTaskRuntimeQualityGateRouting.applyAfterReview(
+      def.PHASE_BUILD,
+      transition,
+      FeatureTaskRuntimeQualityGateSelection.BUILD,
+    )
+    assertEquals(
+      def.PHASE_VALIDATE,
+      assertIs<FeatureTaskRuntimeNextPhase.Next>(afterReview).phaseId,
+      "leaving build must keep validate so applyAfterBuild can advance to write_history",
+    )
   }
 }

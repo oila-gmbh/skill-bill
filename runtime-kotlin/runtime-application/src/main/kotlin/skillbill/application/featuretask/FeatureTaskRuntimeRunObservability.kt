@@ -11,11 +11,11 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
- * Why a phase is running again. Five kinds that a bare fix-loop iteration counter could not tell
- * apart, and that call for different operator responses: schema correction is the runtime repairing
- * malformed output, implementation continuation is honest partial work being carried forward, process
- * retry and crash resume are infrastructure recovery, and audit/review re-entry is a verifier sending
- * work back.
+ * Why a phase is running again. Kinds a bare fix-loop iteration counter could not tell apart, and that
+ * call for different operator responses: schema correction is the runtime repairing malformed output,
+ * implementation continuation is honest partial work being carried forward, process retry and crash
+ * resume are infrastructure recovery, audit/review re-entry is a verifier sending work back, and
+ * verification body delivery is the verify_findings heading-selection handshake.
  */
 internal enum class FeatureTaskRuntimeContinuationKind(val wireValue: String) {
   IMPLEMENTATION_CONTINUATION("implementation_continuation"),
@@ -31,6 +31,14 @@ internal enum class FeatureTaskRuntimeContinuationKind(val wireValue: String) {
    * still owed work.
    */
   ITEM_COVERAGE("item_coverage"),
+
+  /**
+   * verify_findings selected boundary headings on a schema-valid disposition pass; the runtime
+   * persisted those selections and must relaunch with resolved entry bodies before settlement.
+   * Deliberately not [SCHEMA_CORRECTION]: the envelope validated, and charging the output-gate budget
+   * would block the required second turn under cap=1.
+   */
+  VERIFICATION_BODY_DELIVERY("verification_body_delivery"),
   ;
 
   companion object {

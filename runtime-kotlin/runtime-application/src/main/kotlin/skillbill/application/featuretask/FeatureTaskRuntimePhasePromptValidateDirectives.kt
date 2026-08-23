@@ -26,18 +26,18 @@ internal fun validatePhaseTask(packCollectAllCommand: String?, packGateDeclared:
         "quality-check skill; never name a stack-specific quality-check skill such as " +
         "bill-kotlin-code-check."
   }
-  return "You are the only validate agent for this step; the runtime will not launch another agent to continue your " +
-    "work. $collectAllLine Read that output, and fix every finding in this same session. " +
+  return "You are the only validate agent for this step — do not spawn delegated subagents. The runtime " +
+    "may give you up to three repair turns against the remaining findings; each turn is another session " +
+    "of this same agent. $collectAllLine Read that output, and fix every finding in this same session. " +
     VALIDATE_PHASE_FORBIDDEN_EXTRAS +
     "Do not rerun the full gate, bill-code-check, or a cache-bypassing full check after each individual " +
     "finding; you may run targeted `test`, `compileKotlin`, `detekt`, and `ktlintCheck` while repairing " +
     "when those tasks are part of the routed pack checker. When the set looks clean, run bill-code-check " +
-    "once to confirm (same pack collect-all). Do not launch delegated subagents. Findings that share one " +
-    "root cause are one fix, not several. Validation findings are repair work, not a reason to block the " +
-    "phase. Fix findings at their root cause; never silence them with annotations, baselines, disabled " +
-    "rules, weakened configuration, or skipped tests. After you signal complete, the runtime may run one " +
-    "cache-bypassing verify. Emit a bounded validation_result containing validation_status, checks, and " +
-    "repository_checkpoint; do not embed raw command output or telemetry."
+    "once to confirm (same pack collect-all). Findings that share one root cause are one fix, not several. " +
+    "Validation findings are repair work, not a reason to block the phase. Fix findings at their root " +
+    "cause; never silence them with annotations, baselines, disabled rules, weakened configuration, or " +
+    "skipped tests. After you stop, the runtime re-runs the pack gate and mints the receipt — do not emit " +
+    "validation_result, gate_run_count, or any phase-output JSON."
 }
 
 internal fun absentValidationGateDegradationDirective(phaseId: String, agentRunValidateFallback: Boolean): String {
