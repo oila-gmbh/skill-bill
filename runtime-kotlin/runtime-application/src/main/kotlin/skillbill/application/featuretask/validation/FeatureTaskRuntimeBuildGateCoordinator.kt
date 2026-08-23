@@ -51,8 +51,7 @@ class FeatureTaskRuntimeBuildGateCoordinator(
 ) {
   fun execute(cycle: ValidationGateCycleRequest, onGateRunCount: (Int) -> Unit = {}): ValidationGateCycleResult =
     when (val resolution = resolver.resolve(cycle.changedPaths)) {
-      is ValidationGateResolution.Absent ->
-        terminalBlockedResult("Dominant platform pack declares no validation_gate; build cannot run.")
+      is ValidationGateResolution.Absent -> ValidationGateCycleResult.AbsentFallback
       is ValidationGateResolution.Incompatible -> terminalBlockedResult(resolution.reason)
       is ValidationGateResolution.Declared -> {
         val declaration = resolution.declaration

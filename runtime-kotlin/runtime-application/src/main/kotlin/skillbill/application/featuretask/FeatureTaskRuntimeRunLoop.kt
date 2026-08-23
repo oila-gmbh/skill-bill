@@ -11,6 +11,7 @@ import skillbill.application.featuretask.model.FeatureTaskRuntimeCheckpointScope
 import skillbill.application.featuretask.model.FeatureTaskRuntimeFindingBoundaryMemoryRequest
 import skillbill.application.featuretask.model.FeatureTaskRuntimeFindingBoundaryMemorySection
 import skillbill.application.featuretask.model.FeatureTaskRuntimeRejectedOutputWrite
+import skillbill.application.featuretask.validation.FeatureTaskRuntimeBuildGateCoordinator
 import skillbill.application.featuretask.validation.model.ValidationFindingSetProjection
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairLauncher
 import skillbill.application.featuretask.validation.model.ValidationGateAgentRepairResult
@@ -3342,7 +3343,16 @@ internal class FeatureTaskRuntimeRunLoop(
     )
     return when (cycle) {
       ValidationGateCycleResult.AbsentFallback ->
-        PhaseOutcome.blocked("Build gate could not run: pack declares no usable build_command.")
+        settleRuntimeOwnedBuild(
+          run,
+          iteration,
+          FeatureTaskRuntimeBuildGateCoordinator.runtimeOwnedBuildOutput(
+            repositoryCheckpoint = checkpoint,
+            measurements = emptyList(),
+            checks = emptyList(),
+          ).payload,
+          observability,
+        )
       is ValidationGateCycleResult.Terminal ->
         when (val terminal = cycle.outcome) {
           is ValidationGateCycleTerminalOutcome.Completed ->
