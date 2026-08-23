@@ -1,3 +1,13 @@
+## [2026-08-24] SKILL-200 subtask 1 — orphaned feature-task prose removal
+Areas: skills/bill-feature, orchestration/skill-classes, platform-packs/kmp, install/render/validator tests
+- Removed the orphaned feature-task prose surfaces and repointed surviving dispatch and add-on declarations to the goal entry surface.
+- Retired matcher and launch-warning references without producers; kept governed pointers on the surviving feature surface.
+- Updated staging, rendering, and validator expectations so the feature family retains supported sidecars without deleted outputs.
+- Pattern: remove a governed skill surface together with its manifests, matchers, add-on consumers, and generated-output assertions. reusable
+- Breaking changes or known limitations: direct callers of the removed skill names have no compatibility shim; durable runtime identity and CLI remain unchanged.
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
 ## [2026-08-20] Validate runs only the pack collect-all command
 Areas: skills/bill-feature-task-runtime
 - Feature-task validate uses only the pack-declared collect-all command. Repo-root `skill-bill validate` / agnix / validate_agent_configs stay off that phase.
