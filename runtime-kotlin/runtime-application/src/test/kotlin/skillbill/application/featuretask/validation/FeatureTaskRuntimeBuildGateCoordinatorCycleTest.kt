@@ -70,6 +70,33 @@ class FeatureTaskRuntimeBuildGateCoordinatorCycleTest {
   }
 
   @Test
+  fun `absent validation gate skips build instead of blocking`() {
+    val cycle = FeatureTaskRuntimeBuildGateCoordinator(
+      ValidationGateResolver { emptyList() },
+      ScriptedGateRunner(emptyList()),
+      FeatureTaskRuntimeBuildGateProgressStore(
+        persist = { _, _, _ -> },
+        load = { _, _ -> null },
+      ),
+      repoLocalConfig(),
+      skillbill.ports.diagnostics.NoopRuntimeDiagnostics,
+    ).execute(
+      ValidationGateCycleRequest(
+        repoRoot = validationGateTestRepoRoot,
+        request = minimalRequest(),
+        validationDepth = skillbill.workflow.model.ValidationDepth.DEFAULT,
+        changedPaths = listOf("skills/bill-feature/content.md"),
+        repositoryCheckpoint = "checkpoint",
+        agentRepairLauncher = ValidationGateAgentRepairLauncher { _, _ ->
+          error("repair must not launch when validation gate is absent")
+        },
+      ),
+    )
+
+    assertEquals(ValidationGateCycleResult.AbsentFallback, cycle)
+  }
+
+  @Test
   fun `build gate keeps repairing until the three-turn cap then records remaining findings`() {
     val finding = ValidationGateFinding("m", "compile", "broken", "Foo.kt")
     val maxTurns = FeatureTaskRuntimeBuildGateCoordinator.MAX_REPAIR_TURNS
