@@ -29,7 +29,21 @@ class InvokingAgentContextResolverTest {
   }
 
   @Test
-  fun `no marker returns null so callers use the documented last-resort default`() {
+  fun `codex config home is not an invoking context and never outranks the running session`() {
+    assertNull(InvokingAgentContextResolver.detect(mapOf("CODEX_HOME" to "/home/dev/.codex")))
+    assertEquals(
+      InstallAgent.CURSOR,
+      InvokingAgentContextResolver.detect(
+        mapOf(
+          "CODEX_HOME" to "/home/dev/.codex",
+          "CURSOR_AGENT" to "1",
+        ),
+      ),
+    )
+  }
+
+  @Test
+  fun `no marker returns null so callers refuse instead of guessing an agent`() {
     assertNull(InvokingAgentContextResolver.detect(emptyMap()))
     assertNull(InvokingAgentContextResolver.detect(mapOf("UNRELATED" to "x")))
   }

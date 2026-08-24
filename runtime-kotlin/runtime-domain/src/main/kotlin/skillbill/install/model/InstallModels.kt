@@ -106,11 +106,11 @@ fun supportsModelDirective(agentId: String?): Boolean {
  * CLI/adapter layer reads the process environment (or test fixtures) and passes
  * the resulting immutable map in, keeping detection deterministic and testable.
  *
- * Detection is best-effort and conservative: it returns `null` when the
- * invoking agent cannot be determined so that callers can fall through to a
- * documented last-resort default rather than guessing. Agent-specific markers
- * are checked in a stable order; if multiple markers are present the first
- * matching agent in [INVOKING_AGENT_CONTEXT_SIGNALS] order wins.
+ * Detection is conservative: it returns `null` when the invoking agent cannot
+ * be determined, and callers refuse to launch rather than guessing an agent.
+ * Agent-specific markers are checked in a stable order; if multiple markers are
+ * present the first matching agent in [INVOKING_AGENT_CONTEXT_SIGNALS] order
+ * wins.
  */
 object InvokingAgentContextResolver {
   /**
@@ -118,17 +118,22 @@ object InvokingAgentContextResolver {
    * Order is significant: earlier entries win when several markers are present.
    * Markers are matched only when the variable is present with a non-blank
    * value, mirroring how each agent populates its own execution context.
+   *
+   * Every marker here must be one an agent sets for the duration of its own
+   * session. Config-location variables such as `CODEX_HOME` are deliberately
+   * excluded: operators export them from their shell profile and the runtime
+   * itself forwards them into isolated child launches, so a present value says
+   * nothing about who is running.
    */
   val INVOKING_AGENT_CONTEXT_SIGNALS: List<InvokingAgentContextSignal> = listOf(
     InvokingAgentContextSignal(InstallAgent.CLAUDE, listOf("CLAUDECODE", "CLAUDE_CODE", "CLAUDE_CODE_ENTRYPOINT")),
-    InvokingAgentContextSignal(InstallAgent.CODEX, listOf("CODEX_SANDBOX", "CODEX_SANDBOX_ENV", "CODEX_HOME")),
+    InvokingAgentContextSignal(InstallAgent.CODEX, listOf("CODEX_SANDBOX", "CODEX_SANDBOX_ENV")),
     InvokingAgentContextSignal(InstallAgent.CURSOR, listOf("CURSOR_AGENT", "CURSOR_INVOKED_AS")),
   )
 
   /**
    * Resolve the invoking agent from [environment]. Returns `null` when no
-   * agent-specific marker is present, signalling callers to use their
-   * documented last-resort default.
+   * agent-specific marker is present.
    */
   fun detect(environment: Map<String, String>): InstallAgent? = INVOKING_AGENT_CONTEXT_SIGNALS
     .firstOrNull { signal -> signal.markerKeys.any { key -> environment[key]?.isNotBlank() == true } }

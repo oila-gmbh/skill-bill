@@ -20,11 +20,12 @@ import skillbill.application.review.RequestedReviewMode
 import skillbill.application.review.toBoundedPayload
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
+import skillbill.cli.core.invokingAgentResolutionHelp
+import skillbill.cli.core.requireInvokingAgentId
 import skillbill.cli.model.CliExecutionResult
 import skillbill.contracts.JsonSupport
 import skillbill.error.ReviewAggregationIntegrityError
 import skillbill.error.ShellContentContractException
-import skillbill.install.model.InvokingAgentContextResolver
 import skillbill.workflow.model.CodeReviewExecutionMode
 import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
@@ -39,8 +40,7 @@ open class CodeReviewDriverCommand(
 ) : DocumentedCliCommand(name, help) {
   private val agent1 by option(
     "--agent1",
-    help = "Agent for the default lane. Resolution order: --agent1, then SKILL_BILL_AGENT, " +
-      "then the detected invoking-agent context, then a documented last-resort default ($DEFAULT_AGENT).",
+    help = "Agent for the default lane. " + invokingAgentResolutionHelp("--agent1"),
   )
   private val agent2 by option(
     "--agent2",
@@ -134,10 +134,7 @@ open class CodeReviewDriverCommand(
       ),
     )
 
-  private fun resolveAgent1(): String = agent1?.takeIf(String::isNotBlank)
-    ?: state.environment["SKILL_BILL_AGENT"]?.takeIf(String::isNotBlank)
-    ?: InvokingAgentContextResolver.detect(state.environment)?.id
-    ?: DEFAULT_AGENT
+  private fun resolveAgent1(): String = requireInvokingAgentId(agent1, state.environment, "--agent1")
 
   private fun parseExecutionMode(value: String): CodeReviewExecutionMode = RequestedReviewMode.parse(value)
 
@@ -156,10 +153,6 @@ open class CodeReviewDriverCommand(
       path = value.substring(laneSeparator + 1, reasonSeparator),
       reachabilityReason = value.substring(reasonSeparator + 1),
     )
-  }
-
-  private companion object {
-    const val DEFAULT_AGENT = "codex"
   }
 }
 

@@ -46,15 +46,16 @@ import skillbill.application.workflow.WorkflowService
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
 import skillbill.cli.core.formatOption
+import skillbill.cli.core.invokingAgentResolutionHelp
 import skillbill.cli.core.refuseUnavailableAgentLaunchers
 import skillbill.cli.core.refuseUnsupportedModelDirectives
+import skillbill.cli.core.requireInvokingAgentId
 import skillbill.cli.telemetry.drainTelemetryOnCompletion
 import skillbill.cli.workflow.toCliMap
 import skillbill.config.model.CompactionSettings
 import skillbill.config.model.PhaseModelDirective
 import skillbill.contracts.JsonSupport
 import skillbill.install.model.InstallAgent
-import skillbill.install.model.InvokingAgentContextResolver
 import skillbill.ports.agentaddon.AgentAddonSelectionPort
 import skillbill.ports.agentrun.ExecutableLookup
 import skillbill.ports.featurespec.FeatureSpecPathResolverPort
@@ -104,8 +105,7 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
   ).flag(default = false)
   protected val agent by option(
     "--agent",
-    help = "Agent invoking the feature runtime. Resolution order: --agent, then SKILL_BILL_AGENT, then the " +
-      "detected invoking-agent execution context, then a documented last-resort default ($DEFAULT_RUNTIME_AGENT).",
+    help = invokingAgentResolutionHelp("--agent"),
   )
   protected val agentOverride by option(
     "--agent-override",
@@ -1061,10 +1061,7 @@ private fun invalidAgentAddonSelection(message: String, cause: Throwable? = null
 }
 
 private fun resolveInvokedRuntimeAgentId(explicitAgent: String?, environment: Map<String, String>): String =
-  explicitAgent?.takeIf(String::isNotBlank)
-    ?: environment["SKILL_BILL_AGENT"]?.takeIf(String::isNotBlank)
-    ?: InvokingAgentContextResolver.detect(environment)?.id
-    ?: DEFAULT_RUNTIME_AGENT
+  requireInvokingAgentId(explicitAgent, environment, "--agent")
 
 private fun FeatureTaskRuntimeRunReport.toRuntimeRunCliMap(): Map<String, Any?> = when (this) {
   is FeatureTaskRuntimeRunReport.Completed -> linkedMapOf(
@@ -1279,9 +1276,6 @@ private fun runtimeStatusText(payload: Map<String, Any?>): String = buildString 
     )
   }
 }
-
-// Last-resort default used only when no explicit flag, env, or detected invoking-agent context resolves.
-private const val DEFAULT_RUNTIME_AGENT = "codex"
 
 private const val DECOMPOSE_GUIDANCE: String =
   "Work the first subtask first, then continue through the ordered spec_subtask_*.md files."

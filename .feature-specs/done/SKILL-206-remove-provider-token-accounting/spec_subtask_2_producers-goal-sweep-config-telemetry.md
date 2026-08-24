@@ -37,7 +37,7 @@ estimates.
    and telemetry behavior are updated or deleted to assert the retained boundary behavior.
 9. Repository-wide search finds no remaining reference to deleted provider token types, fields,
    contract definitions, or goal session accounting surfaces.
-10. `skill-bill validate`, `scripts/validate_agent_configs`, and `(cd runtime-kotlin &&
+10. `skill-bill validate`, `../../../scripts/validate_agent_configs`, and `(cd runtime-kotlin &&
     ./gradlew check)` pass after the complete removal.
 
 ## Non-Goals
@@ -61,7 +61,7 @@ before transport producers and their decoded output fields can be deleted.
 Run focused transport-decoder, goal-accounting, planning-sweep, config-degradation, legacy-read,
 telemetry projection, and contract parity tests. Verify repository-wide absence of retired symbols
 and preservation of local estimates and load-bearing accounting. Then run `skill-bill validate`,
-`scripts/validate_agent_configs`, and `(cd runtime-kotlin && ./gradlew check)`.
+`../../../scripts/validate_agent_configs`, and `(cd runtime-kotlin && ./gradlew check)`.
 
 ## Next Path
 

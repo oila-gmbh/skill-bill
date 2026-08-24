@@ -177,7 +177,7 @@ fun interface GoalRunnerEventSink {
 
 data class GoalRunnerStatusRequest(
   val issueKey: String,
-  val invokedAgentId: String,
+  val invokedAgentId: String? = null,
   val configuredAgentOverrideId: String? = null,
   val dbPathOverride: String? = null,
   val repoRoot: Path? = null,
@@ -189,7 +189,7 @@ data class GoalRunnerStatusRequest(
 ) {
   init {
     require(issueKey.isNotBlank()) { "issueKey is required." }
-    require(invokedAgentId.isNotBlank()) { "invokedAgentId is required." }
+    invokedAgentId?.let { require(it.isNotBlank()) { "invokedAgentId must not be blank." } }
     configuredAgentOverrideId?.let { require(it.isNotBlank()) { "configuredAgentOverrideId must not be blank." } }
     require(selectedDiffHunkPaths.all { it.isNotBlank() }) { "selectedDiffHunkPaths must not contain blanks." }
     require(selectedDiffMaxHunks > 0) { "selectedDiffMaxHunks must be positive." }

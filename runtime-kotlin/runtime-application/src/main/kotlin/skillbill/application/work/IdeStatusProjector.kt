@@ -89,7 +89,6 @@ class IdeStatusProjector(
     val projection = goalRunnerStatusService.status(
       GoalRunnerStatusRequest(
         issueKey = issueKey,
-        invokedAgentId = "ide-status",
         dbPathOverride = context.dbOverride,
         repoRoot = context.repoRoot,
       ),

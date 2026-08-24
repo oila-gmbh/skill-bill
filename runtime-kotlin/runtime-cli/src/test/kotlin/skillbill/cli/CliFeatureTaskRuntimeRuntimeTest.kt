@@ -476,7 +476,7 @@ class CliFeatureTaskRuntimeRuntimeTest {
   }
 
   @Test
-  fun `feature-task-runtime run falls back to the documented codex default when nothing resolves`() {
+  fun `feature-task-runtime run refuses to launch when no invoking agent resolves`() {
     val fixture = runtimeFixture()
     val launcher = RecordingPhaseLauncher()
 
@@ -485,8 +485,9 @@ class CliFeatureTaskRuntimeRuntimeTest {
       fixture.context(launcher, environment = emptyMap()),
     )
 
-    assertEquals(0, result.exitCode, result.stdout)
-    assertEquals(listOf("codex"), launcher.requests.map { it.agentId }.distinct())
+    assertEquals(1, result.exitCode, result.stdout)
+    assertContains(result.stdout, "Cannot determine the invoking agent")
+    assertEquals(emptyList(), launcher.requests.map { it.agentId })
   }
 
   @Test
@@ -2401,7 +2402,7 @@ class CursorAgentRuntimeCliTest {
     val launcher = RecordingPhaseLauncher()
 
     val result = CliRuntime.run(
-      fixture.runCommand(extra = listOf("--phase-agent", "plan=cursor")),
+      fixture.runCommand(extra = listOf("--agent", "codex", "--phase-agent", "plan=cursor")),
       fixture.context(launcher),
     )
 
@@ -2426,7 +2427,7 @@ class CursorAgentRuntimeCliTest {
     val launcher = RecordingPhaseLauncher()
 
     val result = CliRuntime.run(
-      fixture.runCommand(extra = listOf("--agent-override", "cursor")),
+      fixture.runCommand(extra = listOf("--agent", "codex", "--agent-override", "cursor")),
       fixture.context(launcher),
     )
 

@@ -158,6 +158,34 @@ class GitWorkflowGitOperationsTest {
   }
 
   @Test
+  fun `checkout keeps the staged and unstaged split when no local change conflicts`() {
+    val repoRoot = Files.createTempDirectory("skillbill-git-checkout-clean-replay")
+    git(repoRoot, "init", "-b", "main")
+    git(repoRoot, "config", "user.email", "skill-bill@example.test")
+    git(repoRoot, "config", "user.name", "Skill Bill")
+    Files.writeString(repoRoot.resolve("unstaged.txt"), "base\n")
+    Files.writeString(repoRoot.resolve("staged.txt"), "base\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "initial")
+    git(repoRoot, "checkout", "-b", "feat/takeover")
+    Files.writeString(repoRoot.resolve("branch-only.txt"), "branch only\n")
+    git(repoRoot, "add", "branch-only.txt")
+    git(repoRoot, "commit", "-m", "branch change")
+    git(repoRoot, "checkout", "main")
+    Files.writeString(repoRoot.resolve("unstaged.txt"), "unstaged change\n")
+    Files.writeString(repoRoot.resolve("staged.txt"), "staged change\n")
+    git(repoRoot, "add", "staged.txt")
+
+    val result = GitWorkflowGitOperations().checkoutBranch(repoRoot, "feat/takeover")
+
+    assertTrue(result.ok, result.error)
+    assertEquals("feat/takeover", git(repoRoot, "branch", "--show-current"))
+    val status = git(repoRoot, "status", "--porcelain")
+    assertContains(status, "M  staged.txt")
+    assertContains(status, " M unstaged.txt")
+  }
+
+  @Test
   fun `worktree activity summarizes changed files and diff stat`() {
     val repoRoot = Files.createTempDirectory("skillbill-git-worktree-activity")
     git(repoRoot, "init")
