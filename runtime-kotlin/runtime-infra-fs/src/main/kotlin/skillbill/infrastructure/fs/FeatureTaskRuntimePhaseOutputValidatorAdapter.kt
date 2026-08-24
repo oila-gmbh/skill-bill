@@ -35,10 +35,17 @@ class FeatureTaskRuntimePhaseOutputValidatorAdapter : FeatureTaskRuntimePhaseOut
         )
 
       is FeatureTaskRuntimePhaseOutputStructuralRepairDecision.Accepted -> try {
-        val normalized = FeatureTaskRuntimePhaseOutputSchemaValidator.normalizePhaseOutput(
-          decision.text,
-          sourceLabel,
-        )
+        val normalized = if (sourceLabel == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) {
+          FeatureTaskRuntimePhaseOutputSchemaValidator.normalizeAuditPhaseOutputLenient(
+            decision.text,
+            sourceLabel,
+          )
+        } else {
+          FeatureTaskRuntimePhaseOutputSchemaValidator.normalizePhaseOutput(
+            decision.text,
+            sourceLabel,
+          )
+        }
         validateNestedBuildReceipt(normalized, sourceLabel)
         if (decision.evidence == null) {
           FeatureTaskRuntimePhaseOutputValidationResult.AcceptedUnchanged(normalized)
