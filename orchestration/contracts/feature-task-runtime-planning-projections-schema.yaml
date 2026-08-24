@@ -282,7 +282,6 @@ $defs:
       - changed_paths
       - tests_executed
       - reconciliation_evidence
-      - repository_checkpoint
     properties:
       projection_kind: { const: "implementation_receipt" }
       contract_version: { $ref: "#/$defs/contractVersion" }

@@ -381,7 +381,7 @@ data class FeatureTaskRuntimeImplementationReceipt(
   val deviations: List<FeatureTaskRuntimeDeviation> = emptyList(),
   val unresolvedItems: List<String> = emptyList(),
   val reconciliationEvidence: FeatureTaskRuntimeReconciliationEvidence,
-  val repositoryCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint,
+  val repositoryCheckpoint: FeatureTaskRuntimeRepositoryCheckpoint? = null,
 ) : FeatureTaskRuntimePlanningProjection {
   override val projectionKind: FeatureTaskRuntimeProjectionKind =
     FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT
@@ -421,14 +421,19 @@ data class FeatureTaskRuntimeImplementationReceipt(
       FIELD_RECONCILIATION_EVIDENCE,
       FeatureTaskRuntimeHandoffProjectionValue.Text(reconciliationEvidence.evidence),
     ),
-    field(
-      FIELD_REPOSITORY_CHECKPOINT,
-      FeatureTaskRuntimeHandoffProjectionValue.CompactReference(
-        kind = FeatureTaskRuntimeCompactReferenceKind.REPOSITORY_CHECKPOINT,
-        value = repositoryCheckpoint.fingerprint,
-      ),
-    ),
-  )
+  ).let { fields ->
+    if (repositoryCheckpoint == null) {
+      fields
+    } else {
+      fields + field(
+        FIELD_REPOSITORY_CHECKPOINT,
+        FeatureTaskRuntimeHandoffProjectionValue.CompactReference(
+          kind = FeatureTaskRuntimeCompactReferenceKind.REPOSITORY_CHECKPOINT,
+          value = repositoryCheckpoint.fingerprint,
+        ),
+      )
+    }
+  }
 
   companion object {
     val DECLARED_FIELD_NAMES: List<String> = listOf(
@@ -804,7 +809,6 @@ private fun FeatureTaskRuntimeImplementationReceipt.Companion.fromMap(
   map: Map<String, Any?>,
 ): FeatureTaskRuntimeImplementationReceipt {
   val checkpointMap = map.stringAnyMap("repository_checkpoint")
-    ?: throw malformed("repository_checkpoint", "must be an object")
   val reconciliationMap = map.stringAnyMap("reconciliation_evidence")
     ?: throw malformed("reconciliation_evidence", "must be an object")
   val rawExecuted = map["tests_executed"] as? List<*>
@@ -843,12 +847,14 @@ private fun FeatureTaskRuntimeImplementationReceipt.Companion.fromMap(
         ?: throw malformed("reconciliation_evidence.reconciled", "must be a boolean"),
       evidence = reconciliationMap.firstString("evidence"),
     ),
-    repositoryCheckpoint = FeatureTaskRuntimeRepositoryCheckpoint(
-      fingerprint = checkpointMap.requireString("fingerprint", "repository_checkpoint.fingerprint"),
-      baseRef = checkpointMap["base_ref"]?.toString()?.takeIf(String::isNotBlank),
-      headRef = checkpointMap["head_ref"]?.toString()?.takeIf(String::isNotBlank),
-      workingTreeOwnedPaths = checkpointMap.optionalStringList("working_tree_owned_paths"),
-    ),
+    repositoryCheckpoint = checkpointMap?.let { map ->
+      FeatureTaskRuntimeRepositoryCheckpoint(
+        fingerprint = map.requireString("fingerprint", "repository_checkpoint.fingerprint"),
+        baseRef = map["base_ref"]?.toString()?.takeIf(String::isNotBlank),
+        headRef = map["head_ref"]?.toString()?.takeIf(String::isNotBlank),
+        workingTreeOwnedPaths = map.optionalStringList("working_tree_owned_paths"),
+      )
+    },
   )
 }
 

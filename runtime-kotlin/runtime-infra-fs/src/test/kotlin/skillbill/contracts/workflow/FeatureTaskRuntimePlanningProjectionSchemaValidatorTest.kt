@@ -64,6 +64,21 @@ class FeatureTaskRuntimePlanningProjectionSchemaValidatorTest {
   }
 
   @Test
+  fun `an implementation receipt without repository_checkpoint validates`() {
+    FeatureTaskRuntimePlanningProjectionSchemaValidator.validate(
+      payload = linkedMapOf<String, Any?>(
+        "projection_kind" to "implementation_receipt",
+        "contract_version" to FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION,
+        "completed_task_ids" to listOf("task-01"),
+        "changed_paths" to listOf("runtime-domain/model/X.kt"),
+        "tests_executed" to emptyList<Any?>(),
+        "reconciliation_evidence" to linkedMapOf("reconciled" to true, "evidence" to "files at target"),
+      ),
+      sourceLabel = "implement#1",
+    )
+  }
+
+  @Test
   fun `an unknown projection kind is rejected`() {
     val error = assertFailsWith<InvalidFeatureTaskRuntimePlanningProjectionSchemaError> {
       FeatureTaskRuntimePlanningProjectionSchemaValidator.validate(

@@ -144,6 +144,23 @@ class FeatureTaskRuntimeProducerProjectionGateTest {
   }
 
   @Test
+  fun `an implement receipt with an invented checkpoint advances without blocking`() {
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        facts(if (phaseId == "implement") IMPLEMENT_INVENTED_CHECKPOINT else validJsonOutput(phaseId))
+      },
+      agentAssignment = phasePerAgentAssignment(),
+    )
+
+    val report = harness.runner.run(harness.request())
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertEquals(1, harness.launchedPromptPhaseOrder().count { it == "implement" })
+    assertTrue(harness.launchedPromptPhaseOrder().contains("audit"))
+  }
+
+  @Test
   fun `conforming preplan plan and implement projections each advance without a retry`() {
     val harness = runnerHarness(agentAssignment = phasePerAgentAssignment())
 
@@ -410,6 +427,15 @@ private val PREPLAN_ROLLOUT_AS_ARRAY: String = envelope(
   "preplan",
   """{"projection_kind":"preplanning_digest","contract_version":"0.1","affected_boundaries":["b"],""" +
     """"risks":["r"],"rollout":[{"flag_required":false,"notes":"n"}],"validation_strategy":["v"]}""",
+)
+
+private val IMPLEMENT_INVENTED_CHECKPOINT: String = envelope(
+  "implement",
+  """{"projection_kind":"implementation_receipt","contract_version":"0.1","completed_task_ids":["task-1"],""" +
+    """"changed_paths":["src/Foo.kt"],"tests_executed":[{"name":"FooTest","outcome":"passed"}],""" +
+    """"reconciliation_evidence":{"reconciled":true,"evidence":"Tree at target."},""" +
+    """"repository_checkpoint":{"fingerprint":"tracked_diff=deadbeef;new_service=deadbeef;status=deadbeef"},""" +
+    """"reconciled_state":{"reconciled":true}}""",
 )
 
 private val IMPLEMENT_DEVIATIONS_AS_STRINGS: String = envelope(
