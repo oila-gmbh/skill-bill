@@ -492,7 +492,7 @@ class CliRuntimeTest {
     val tempDir = Files.createTempDirectory("skillbill-cli-install")
     Files.createDirectories(tempDir.resolve(".claude"))
     Files.createDirectories(tempDir.resolve(".junie"))
-    val context = CliRuntimeContext(userHome = tempDir, environment = emptyMap())
+    val context = CliRuntimeContext(userHome = tempDir, environment = isolatedCliEnvironment(tempDir))
 
     val agentPathResult = CliRuntime.run(listOf("install", "agent-path", "codex"), context)
     val detectAgentsResult = CliRuntime.run(listOf("install", "detect-agents"), context)
@@ -542,7 +542,7 @@ class CliRuntimeTest {
 
     val result = CliRuntime.run(
       listOf("install", "detect-agents"),
-      CliRuntimeContext(userHome = tempDir, environment = emptyMap()),
+      CliRuntimeContext(userHome = tempDir, environment = isolatedCliEnvironment(tempDir)),
     )
 
     assertEquals(0, result.exitCode, result.stdout)
@@ -562,7 +562,11 @@ class CliRuntimeTest {
   @Test
   fun `link-skill stages content managed skills when repo root is supplied`() {
     val tempDir = Files.createTempDirectory("skillbill-cli-install-staged")
-    val context = CliRuntimeContext(userHome = tempDir.resolve("home"), environment = emptyMap())
+    val context =
+      CliRuntimeContext(
+        userHome = tempDir.resolve("home"),
+        environment = isolatedCliEnvironment(tempDir.resolve("home")),
+      )
     val repoRoot = tempDir.resolve("repo")
     val skillName = "bill-cli-staged"
     val sourceSkill = repoRoot.resolve("skills").resolve(skillName)
@@ -615,7 +619,7 @@ class CliRuntimeTest {
         listOf(
           "doctor",
           "skill",
-          "bill-feature-task",
+          "bill-feature",
           "--repo-root",
           ".",
           "--content",
@@ -628,7 +632,7 @@ class CliRuntimeTest {
     assertEquals(1, result.exitCode)
     assertEquals(
       "doctor skill was retired in SKILL-32; use " +
-        "`skill-bill show bill-feature-task --repo-root . --content none` instead.",
+        "`skill-bill show bill-feature --repo-root . --content none` instead.",
       result.stdout,
     )
   }
@@ -1248,7 +1252,7 @@ private fun statsRequester(capturedRequests: MutableList<Map<String, Any?>>): Ht
             "source": "custom_capabilities",
             "supports_ingest": true,
             "supports_stats": true,
-            "supported_workflows": ["bill-feature-verify", "bill-feature-task", "feature-task-runtime"],
+            "supported_workflows": ["bill-feature-verify", "feature-task-runtime"],
             "region": "eu"
           }
           """.trimIndent(),
@@ -1396,7 +1400,7 @@ private fun expectedCapabilitiesPayload(): Map<String, Any?> = linkedMapOf(
   "capabilities_url" to "https://telemetry.example.dev/ingest/capabilities",
   "supports_ingest" to true,
   "supports_stats" to true,
-  "supported_workflows" to listOf("bill-feature-verify", "bill-feature-task", "feature-task-runtime"),
+  "supported_workflows" to listOf("bill-feature-verify", "feature-task-runtime"),
   "region" to "eu",
 )
 

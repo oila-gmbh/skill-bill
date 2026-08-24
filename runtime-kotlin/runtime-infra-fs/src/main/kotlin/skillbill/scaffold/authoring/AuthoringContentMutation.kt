@@ -6,7 +6,6 @@ import java.nio.file.Files
 
 private val horizontalSkillFamilies: Map<String, String> =
   mapOf(
-    "bill-feature-task" to "workflow",
     "bill-feature-verify" to "workflow",
     "bill-boundary-decisions" to "advisor",
     "bill-boundary-history" to "advisor",

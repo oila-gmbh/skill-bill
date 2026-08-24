@@ -8,22 +8,22 @@ Date: 2026-06-03
 >
 > The promote-vs-prose comparison procedure in this document is **retired** and
 > the prose engine it compared against **no longer exists**. SKILL-175 removed
-> the `bill-feature-task` prose orchestrator and made **runtime the single
+> the retired prose orchestrator and made **runtime the single
 > feature execution engine**; there is no prose path to run, so no comparison
 > can or should be executed, and this document imposes **no dual-maintenance
 > obligation** on the codebase. It is retained only as the archival record of
 > the SKILL-65 promote decision it fed. Any references below to
-> `bill-feature-task`, `feature_implement_workflow_update`, or a prose
+> `feature_implement_workflow_update`, or a prose
 > orchestrator describe a retired surface and must not be read as current
 > product behavior.
 
 ## Purpose
 
 This is the documented, reproducible procedure for evaluating the experimental
-`feature-task-runtime` capability against the established `bill-feature-task`
-prose orchestrator by running the **same governed spec** through both and
+`feature-task-runtime` capability against the retired prose orchestrator by
+running the **same governed spec** through both and
 capturing comparable evidence. It is a **procedure only** — running it does not
-promote, retire, or re-route `bill-feature-task`, and it must not weaken any
+promote, retire, or re-route the feature workflow, and it must not weaken any
 review, audit, or validation gate to make either side look favorable. The
 decision the evidence feeds is the promote/kill criterion recorded
 authoritatively in
@@ -53,7 +53,7 @@ not impressions.
 4. Do not modify any gate (review, audit, validation, schema) for the duration of
    the comparison.
 
-## Run A — `bill-feature-task` (prose orchestrator baseline)
+## Run A — retired prose orchestrator baseline
 
 Run the governed spec through the standard feature-task flow. This is the prose
 orchestrator: an agent reads the skill and decides phase sequencing, completion,
@@ -129,7 +129,7 @@ from any agent self-report:
 
 The central comparison. For each captured field, classify the source:
 
-| Field | Run A (`bill-feature-task`) | Run B (`feature-task-runtime`) |
+| Field | Run A (retired prose baseline) | Run B (`feature-task-runtime`) |
 |-------|------------------------------|-------------------------------|
 | start / finish timestamps | agent self-reported via workflow update | runtime-minted on `FeatureTaskRuntimePhaseRecord` |
 | duration | inferred from self-reported times | `durationMillis` measured by the runtime |

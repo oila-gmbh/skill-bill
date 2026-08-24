@@ -46,6 +46,12 @@ interface GoalRunnerManifestLookup {
     repoRoot: Path? = null,
   ): GoalRunnerManifestState? = loadByIssueKey(issueKey, dbPathOverride, repoRoot)
 
+  fun readByIssueKeyIfPresent(
+    issueKey: String,
+    dbPathOverride: String? = null,
+    repoRoot: Path? = null,
+  ): GoalRunnerManifestState? = readByIssueKey(issueKey, dbPathOverride, repoRoot)
+
   fun loadDurableByIssueKey(issueKey: String, dbPathOverride: String? = null): GoalRunnerManifestState? =
     loadByIssueKey(issueKey, dbPathOverride, null)
 }

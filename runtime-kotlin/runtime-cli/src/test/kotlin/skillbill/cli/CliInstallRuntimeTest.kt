@@ -611,7 +611,7 @@ class CliInstallRuntimeTest {
 
   private fun installCliContext(home: Path): CliRuntimeContext = CliRuntimeContext(
     userHome = home,
-    environment = emptyMap(),
+    environment = isolatedCliEnvironment(home),
   )
 
   private fun installFixture(): InstallFixture {

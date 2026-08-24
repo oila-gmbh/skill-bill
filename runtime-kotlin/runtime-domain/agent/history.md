@@ -1,5 +1,15 @@
 # Boundary History — runtime-domain
 
+## [2026-08-24] SKILL-200 subtask 2 — Continuation map and documentation cleanup
+Areas: runtime-domain/workflow, runtime-kotlin docs, docs, install
+- Removed dead continuation content-path entries for `bill-feature-task` and `feature-task-runtime`; continuation prompts now add normal-instructions guidance only for retained mappings.
+- Runtime-specific branching identifies `FeatureTaskRuntimePhaseWorkflowDefinition` by durable workflow name, while runtime persistence labels the implementation skill `bill-feature`; durable `workflow_name=bill-feature-task` identity remains unchanged.
+- Repointed install guidance and internal-skill, source-generation, capability, and architecture documentation to the retained `bill-feature` and `bill-feature-goal` surfaces.
+- Pattern: keep workflow identity separate from authored instruction paths and use definition metadata instead of deleted skill-name branches. reusable
+- Breaking changes or known limitations: deleted authored continuation surfaces have no compatibility shim; the `skill-bill feature-task` CLI and durable workflow identity remain unchanged.
+Feature flag: N/A
+Acceptance criteria: 9/11 implemented
+
 ## [2026-08-20] SKILL-201 subtask 4 — Reporting schema and projections
 Areas: runtime-infra-sqlite/sqlite/review, runtime-core/review (test)
 - `loadReviewAccounting` quarantines persisted accounting rows whose lanes still list `evidence-unreviewable` in `unreviewed_segment_ids`; read returns null and emits `ACCOUNTING_CONTRACT_QUARANTINED` degradation telemetry instead of serving stale projection semantics or crashing

@@ -397,6 +397,7 @@ class FeatureTaskRuntimeCheckpointScopeTest {
   }
 
   // The delta defaults to everything owned or introduced, so each case names only what it is about.
+  @Suppress("LongParameterList")
   private fun decide(
     ownedPaths: List<String>,
     phaseIntroducedPaths: List<String>,

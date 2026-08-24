@@ -10,9 +10,13 @@ Under one `curl` command is a full system. Each capability below is doing real w
 </details>
 
 <details>
-<summary><b>2. <code>bill-feature-task</code> — the end-to-end feature factory</b></summary>
+<summary><b>2. <code>bill-feature</code> — the end-to-end feature factory</b></summary>
 
-One slash command that takes a spec or design doc and walks it all the way to a merged-ready PR, scaling ceremony to the size of the work. The pipeline: assessment → branch → pre-planning digest → planning (or decomposition) → implementation → code review → completeness audit → quality check → history/decisions → commit/push → PR description.
+One slash command takes a spec or design doc through the runtime-owned
+pipeline to a merged-ready PR, scaling ceremony to the size of the work. The
+pipeline: assessment → branch → pre-planning digest → planning (or
+decomposition) → implementation → code review → completeness audit → quality
+check → history/decisions → commit/push → PR description.
 
 Cross-cutting properties:
 
@@ -75,9 +79,9 @@ The shipped `typescript` pack uses the same manifest-driven path: tsconfig and f
 <details>
 <summary><b>4. Manifest-driven task decomposition, auto-resume by issue key</b></summary>
 
-When planning detects work is too big (rules of thumb: more than 15 atomic tasks, more than 6 boundaries, multiple independently resumable milestones, or sequencing with verify-able foundations), `bill-feature-task` switches into `mode: "decompose"` instead of implementing.
+When planning detects work is too big (rules of thumb: more than 15 atomic tasks, more than 6 boundaries, multiple independently resumable milestones, or sequencing with verify-able foundations), the feature factory switches into `mode: "decompose"` instead of implementing.
 
-- **Subtask specs are real artifacts**: planning writes `.feature-specs/{ISSUE_KEY}-{feature-name}/spec_subtask_1_foundation.md`, `_2_runtime-wiring.md`, etc. — each with its own acceptance criteria, non-goals, dependency notes, validation strategy, and the exact `bill-feature-task` prompt to run for it later.
+- **Subtask specs are real artifacts**: planning writes `.feature-specs/{ISSUE_KEY}-{feature-name}/spec_subtask_1_foundation.md`, `_2_runtime-wiring.md`, etc. — each with its own acceptance criteria, non-goals, dependency notes, validation strategy, and the exact `bill-feature` prompt to run for it later.
 - **Schema-validated prepared state**: every prepared feature has a `decomposition-manifest.yaml` with one or more executable subtasks. A bare `spec.md` is intake, so the manifest is the sole prepared-feature authority marker.
 - **You only need the issue key**: when you come back and say "continue SKILL-51", the runtime resolves the parent manifest, finds the in-progress subtask at its last durable workflow step, and picks up there. If none is in-progress, it starts the first pending subtask whose dependencies are complete. You never have to remember "was I on subtask 2 step 4 or subtask 3 step 1."
 - **Fresh context per subtask, no context rot**: every subtask starts in a fresh session briefed from curated durable artifacts (the subtask spec, boundary `history.md`, recorded decisions) instead of inheriting a long-lived transcript. Long goals do not degrade as hours accumulate, because no context lives long enough to rot — continuity travels through durable state, not through an ever-growing conversation.
@@ -91,7 +95,7 @@ When planning detects work is too big (rules of thumb: more than 15 atomic tasks
 <details>
 <summary><b>5. Stateful, resumable workflows with native subagents</b></summary>
 
-`bill-feature-task` is not a monolithic prompt; it is an orchestrator over durable state and a fleet of purpose-built subagents.
+`bill-feature` is not a monolithic prompt; it is the entry point for durable feature execution and a fleet of purpose-built subagents.
 
 - **Durable state**: the Kotlin feature-task runtime owns the single feature engine. `skill-bill feature-task` / `skill-bill goal` mint and advance durable workflow rows; every phase boundary persists through the runtime, and resume continues from that state. If a session dies mid-run, continuation re-opens the exact phase from durable records — full durable state is available on demand through read-only workflow status surfaces. The run survives crashes, compaction, even a host reboot. The same durable shape exists for `bill-feature-verify` (`feature_verify_workflow_*`).
 - **Native subagents per review layer**: every shipped platform-pack bundle registers its baseline reviewer and each specialist reviewer as native subagents.
@@ -129,7 +133,7 @@ Every skill reads the project's override file as part of its shared ceremony, so
 - **Action mandates at named lifecycle positions**: overrides can declare mandates that fire at specific orchestrator lifecycle points (e.g. before applying the skill body, at end-of-run for state writes). Skills cannot quietly skip them.
 - **Composable with `AGENTS.md`**: the shared ceremony loads both general project conventions and per-skill targeted tweaks.
 
-Net effect: you fine-tune `bill-code-review` with an extra checklist item, or force `bill-feature-task` to call a project-specific telemetry tool, by editing one markdown file in the repo. No skill fork, no agent reinstall.
+Net effect: you fine-tune `bill-code-review` with an extra checklist item, or force `bill-feature` to call a project-specific telemetry tool, by editing one markdown file in the repo. No skill fork, no agent reinstall.
 
 </details>
 

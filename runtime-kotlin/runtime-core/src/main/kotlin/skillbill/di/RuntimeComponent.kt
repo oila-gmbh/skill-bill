@@ -25,6 +25,7 @@ import skillbill.application.goalrunner.GoalPlanningRefreshLiveness
 import skillbill.application.goalrunner.GoalPlanningRejectionRecorder
 import skillbill.application.goalrunner.GoalPlanningStatusReasonCoherence
 import skillbill.application.goalrunner.GoalPlanningSweep
+import skillbill.application.goalrunner.GoalPreflightService
 import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.goalrunner.GoalRunnerChildRepairStore
 import skillbill.application.goalrunner.GoalRunnerExecutionCoordinator
@@ -830,6 +831,7 @@ abstract class RuntimeComponent(
   abstract val featureTaskRuntimeRunInvariantsSource: FeatureTaskRuntimeRunInvariantsSource
   abstract val featureSpecPathResolverPort: FeatureSpecPathResolverPort
   abstract val goalRunner: GoalRunner
+  abstract val goalPreflightService: GoalPreflightService
   abstract val goalRunnerStatusService: GoalRunnerStatusService
   abstract val goalPlanningLogService: GoalPlanningLogService
   abstract val goalOperatorDecisionService: GoalOperatorDecisionService

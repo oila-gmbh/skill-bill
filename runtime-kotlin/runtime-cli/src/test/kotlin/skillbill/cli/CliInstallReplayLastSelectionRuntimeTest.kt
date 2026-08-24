@@ -26,7 +26,13 @@ class CliInstallReplayLastSelectionRuntimeTest {
       ),
     )
 
-    val result = CliRuntime.run(replayLastSelectionArguments(fixture), CliRuntimeContext(userHome = fixture.home))
+    val result = CliRuntime.run(
+      replayLastSelectionArguments(fixture),
+      CliRuntimeContext(
+        userHome = fixture.home,
+        environment = isolatedCliEnvironment(fixture.home),
+      ),
+    )
 
     assertEquals(0, result.exitCode, result.stdout)
     assertContains(result.stdout, "agent\tcodex\t${fixture.home.resolve(".agents/skills")}")
@@ -52,7 +58,13 @@ class CliInstallReplayLastSelectionRuntimeTest {
       ),
     )
 
-    val result = CliRuntime.run(replayLastSelectionArguments(fixture), CliRuntimeContext(userHome = fixture.home))
+    val result = CliRuntime.run(
+      replayLastSelectionArguments(fixture),
+      CliRuntimeContext(
+        userHome = fixture.home,
+        environment = isolatedCliEnvironment(fixture.home),
+      ),
+    )
 
     assertEquals(1, result.exitCode, result.stdout)
     assertContains(result.stdout, "retired")
@@ -62,7 +74,13 @@ class CliInstallReplayLastSelectionRuntimeTest {
   fun `install replay last selection fails when shared record is missing`() {
     val fixture = replayFixture()
 
-    val result = CliRuntime.run(replayLastSelectionArguments(fixture), CliRuntimeContext(userHome = fixture.home))
+    val result = CliRuntime.run(
+      replayLastSelectionArguments(fixture),
+      CliRuntimeContext(
+        userHome = fixture.home,
+        environment = isolatedCliEnvironment(fixture.home),
+      ),
+    )
 
     assertEquals(1, result.exitCode, result.stdout)
     assertContains(result.stdout, "Install selection record is missing")
@@ -74,7 +92,13 @@ class CliInstallReplayLastSelectionRuntimeTest {
     Files.createDirectories(installSelectionPath(fixture.home).parent)
     Files.writeString(installSelectionPath(fixture.home), "[]")
 
-    val result = CliRuntime.run(replayLastSelectionArguments(fixture), CliRuntimeContext(userHome = fixture.home))
+    val result = CliRuntime.run(
+      replayLastSelectionArguments(fixture),
+      CliRuntimeContext(
+        userHome = fixture.home,
+        environment = isolatedCliEnvironment(fixture.home),
+      ),
+    )
 
     assertEquals(1, result.exitCode, result.stdout)
     assertContains(result.stdout, "Install selection record")

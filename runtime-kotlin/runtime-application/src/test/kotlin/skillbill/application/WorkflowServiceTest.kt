@@ -1278,17 +1278,16 @@ class WorkflowServiceTest {
       planningProjectionValidator = realPlanningProjectionValidator,
     )
 
-    val error = assertFailsWith<IllegalStateException> {
+    val error = assertFailsWith<InvalidDecompositionManifestSchemaError> {
       store.loadByIssueKey("SKILL-52.1", repoRoot = repoRoot)
     }
 
-    assertEquals(
-      "Ambiguous checked-in decomposition manifests for 'SKILL-52.1': " +
-        ".feature-specs/SKILL-52.1-a-implementation/decomposition-manifest.yaml, " +
-        ".feature-specs/SKILL-52.1-b-implementation/decomposition-manifest.yaml. " +
-        "Pass an explicit workflow or manifest selector before continuing.",
-      error.message,
+    assertContains(
+      error.message.orEmpty(),
+      "multiple active decomposition manifests match the requested issue key",
     )
+    assertContains(error.message.orEmpty(), ".feature-specs/SKILL-52.1-a-implementation/decomposition-manifest.yaml")
+    assertContains(error.message.orEmpty(), ".feature-specs/SKILL-52.1-b-implementation/decomposition-manifest.yaml")
   }
 
   private fun newService(): WorkflowService {

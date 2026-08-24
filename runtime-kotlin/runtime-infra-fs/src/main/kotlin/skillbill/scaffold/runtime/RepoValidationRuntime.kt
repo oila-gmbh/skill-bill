@@ -748,7 +748,7 @@ object RepoValidationRuntime {
   private fun validateFeatureAddonDeclarations(root: Path, issues: MutableList<String>) {
     val staticTargets = supportingFileTargets(root).keys
     val classes = runCatching { skillbill.scaffold.platformpack.discoverSkillClasses(root) }.getOrDefault(emptyList())
-    val featureClassPointers = resolveSkillClass("bill-feature-task", classes)
+    val featureClassPointers = resolveSkillClass("bill-feature", classes)
       ?.pointers
       ?.map { pointer -> "$pointer.md" }
       .orEmpty()

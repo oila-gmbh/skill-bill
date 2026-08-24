@@ -806,8 +806,6 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
       JsonSupport.anyToStringAnyMap(produced[container])?.get(name)
     }
     if (nested != null) return nested
-    // Optional on clean validate receipts: absent means zero justifications, not a malformed receipt.
-    if (name == "suppression_justifications") return emptyList<Any?>()
     return null
   }
 

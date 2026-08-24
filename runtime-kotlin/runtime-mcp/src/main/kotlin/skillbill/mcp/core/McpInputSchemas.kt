@@ -27,10 +27,8 @@ internal val remoteStatsWorkflowSchema: Map<String, Any?> =
     enum =
     listOf(
       "verify",
-      "goal",
       "bill-feature-verify",
       "feature-task-runtime",
-      "bill-feature-goal",
     ),
   )
 

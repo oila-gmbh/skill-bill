@@ -1,5 +1,14 @@
 # goalrunner boundary history
 
+## [2026-08-24] SKILL-200 subtask 4 — Runtime-owned preflight and add-on resolution
+Areas: runtime-application/{goalrunner,featuretask,decomposition,workflow}, runtime-domain, runtime-cli/goal, runtime-infra-{fs,sqlite}, runtime-ports, orchestration/contracts
+- Added read-only `skill-bill goal preflight` projections for continuation verdicts, the confirmation gate, and missing Linear spec rehydration targets without launch-side effects.
+- Reused continuation classification and resolved raw ordered add-on slugs inside `goal`, while preserving structured source-identity and content-digest verification.
+- Pattern: keep pre-launch decisions in a read-only runtime projection and share classification and selection seams with launch. reusable
+- Limitation: Linear fetching remains agent-side; preflight reports missing targets but does not retrieve them.
+Feature flag: N/A
+Acceptance criteria: 17/17 implemented
+
 ## [2026-08-22] SKILL-204 subtask 2 — Route non-last goal children through build
 Areas: runtime-application/goalrunner, runtime-application/featuretask, runtime-domain/workflow/taskruntime, runtime-cli/featuretask, runtime-infra-fs/launcher/agentrun
 - Goal continuation stamps `build` for every non-skipped child before the last non-skipped manifest entry, and `validate` for that last child; skipped ordinal-last promotes validation, while single-child and non-goal launches keep `validate`.

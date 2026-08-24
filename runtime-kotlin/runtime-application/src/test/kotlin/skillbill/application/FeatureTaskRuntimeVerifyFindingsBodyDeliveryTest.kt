@@ -92,11 +92,7 @@ private fun reviewFindingWithLocation(locationPath: String): String = """
   }
 """.trimIndent()
 
-private fun verifyFindingsSelectingBoundary(
-  locationPath: String,
-  headingId: String,
-  sourcePath: String,
-): String = """
+private fun verifyFindingsSelectingBoundary(locationPath: String, headingId: String, sourcePath: String): String = """
   {
     "contract_version": "0.4",
     "phase_id": "verify_findings",

@@ -18,7 +18,7 @@ Non-negotiable contracts:
 
 ## Product Intent
 
-`bill-feature-task` presents one confirmation gate, then delegates to the foreground runtime driver with durable state, telemetry, packs, add-ons, and native subagents.
+`bill-feature` presents one confirmation gate, then delegates to the foreground runtime driver with durable state, telemetry, packs, add-ons, and native subagents.
 
 Bundled skills and packs are defaults, not the framework boundary. Teams may replace them while retaining governed source shape, generated-output boundaries, manifests, install staging, validators, dynamic discovery, and loud-fail.
 

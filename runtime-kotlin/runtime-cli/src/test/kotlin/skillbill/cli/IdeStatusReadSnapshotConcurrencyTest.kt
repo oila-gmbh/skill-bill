@@ -119,7 +119,7 @@ class IdeStatusReadSnapshotConcurrencyTest {
   private fun foreignChildWorkflow(): WorkflowStateRecord = WorkflowStateRecord(
     workflowId = FOREIGN_CHILD_WORKFLOW_ID,
     sessionId = "ftr-$FOREIGN_CHILD_WORKFLOW_ID",
-    workflowName = "bill-feature-task-runtime",
+    workflowName = "bill-feature-task",
     contractVersion = "1.0",
     workflowStatus = "running",
     currentStepId = "implement",

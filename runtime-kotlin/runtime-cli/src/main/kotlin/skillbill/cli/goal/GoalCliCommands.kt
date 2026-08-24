@@ -1,4 +1,4 @@
-@file:Suppress("TooManyFunctions")
+@file:Suppress("TooManyFunctions", "LongMethod")
 
 package skillbill.cli.goal
 
@@ -16,11 +16,15 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.agentaddon.model.AgentAddonConsumer
 import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.application.featuretask.FeatureTaskExecutionIdentityPolicy
+import skillbill.application.featuretask.model.FeatureTaskContinuationCandidate
 import skillbill.application.goalrunner.GoalOperatorDecisionService
 import skillbill.application.goalrunner.GoalPlanningLogService
+import skillbill.application.goalrunner.GoalPreflightService
 import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.goalrunner.GoalRunnerStatusService
 import skillbill.application.goalrunner.UnaddressedFindingsLedgerService
+import skillbill.application.goalrunner.model.GoalPreflightRequest
+import skillbill.application.goalrunner.model.GoalPreflightResult
 import skillbill.application.model.DEFAULT_GOAL_PLANNING_BUDGET
 import skillbill.application.model.GoalPlanningLog
 import skillbill.application.model.GoalPlanningLogRequest
@@ -43,6 +47,7 @@ import skillbill.application.system.RuntimeProvenanceService
 import skillbill.application.telemetry.TelemetryService
 import skillbill.cli.core.CliRunState
 import skillbill.cli.core.DocumentedCliCommand
+import skillbill.cli.core.formatOption
 import skillbill.cli.core.refuseUnavailableAgentLaunchers
 import skillbill.cli.featuretask.parseAgentAddonSelection
 import skillbill.cli.telemetry.drainTelemetryOnCompletion
@@ -56,6 +61,8 @@ import skillbill.goalrunner.model.UnaddressedFindingsLedger
 import skillbill.install.model.InstallAgent
 import skillbill.install.model.InvokingAgentContextResolver
 import skillbill.ports.agentaddon.AgentAddonSelectionPort
+import skillbill.ports.agentaddon.ExternalAgentAddonSourceConfigPort
+import skillbill.ports.agentaddon.model.ExternalAgentAddonSourceConfigRequest
 import skillbill.ports.agentrun.ExecutableLookup
 import skillbill.ports.agentrun.model.AgentRunOutputSink
 import skillbill.ports.agentrun.model.AgentRunOutputStream
@@ -84,6 +91,7 @@ class GoalControlSubcommands(
 
 @Inject
 class GoalRunSubcommands(
+  val preflight: GoalPreflightCommand,
   val status: GoalStatusCommand,
   val watch: GoalWatchCommand,
   val controls: GoalControlSubcommands,
@@ -97,6 +105,7 @@ class GoalRunCommand(
   private val goalRunner: GoalRunner,
   private val runtimeProvenanceService: RuntimeProvenanceService,
   private val agentAddonSelectionPort: AgentAddonSelectionPort,
+  private val externalAgentAddonSourceConfigPort: ExternalAgentAddonSourceConfigPort,
   private val executableLookup: ExecutableLookup,
   goalRunSubcommands: GoalRunSubcommands,
   private val telemetryService: TelemetryService,
@@ -108,7 +117,7 @@ class GoalRunCommand(
   private val issueKey by argument(help = "Parent issue key for the decomposed goal.").optional()
   private val agent by option(
     "--agent",
-    help = "Agent invoking bill-feature-goal. Resolution order: --agent, then SKILL_BILL_AGENT, then the " +
+    help = "Agent invoking the goal runtime. Resolution order: --agent, then SKILL_BILL_AGENT, then the " +
       "detected invoking-agent execution context, then a documented last-resort default ($DEFAULT_GOAL_AGENT).",
   )
   private val agentOverride by option(
@@ -130,8 +139,12 @@ class GoalRunCommand(
   )
   private val agentAddonSelectionJson by option(
     "--agent-addon-selection-json",
-    help = "Already-resolved ordered agent add-on selection JSON. Raw agent-addon tokens are not accepted here.",
+    help = "Already-resolved ordered agent add-on selection JSON. Use --agent-addon for raw slugs.",
   )
+  private val agentAddonSlugs by option(
+    "--agent-addon",
+    help = "Raw agent add-on slug. Repeat to preserve caller order; invalid values are rejected before launch.",
+  ).multiple()
   private val maxWallClockMinutes by option(
     "--max-wall-clock-minutes",
     "--timeout-minutes",
@@ -166,6 +179,7 @@ class GoalRunCommand(
 
   init {
     subcommands(
+      goalRunSubcommands.preflight,
       goalRunSubcommands.status,
       goalRunSubcommands.watch,
       goalRunSubcommands.controls.pause,
@@ -185,8 +199,11 @@ class GoalRunCommand(
     if (currentContext.invokedSubcommand != null) {
       return
     }
+    val effectiveRepoRoot = repoRoot?.let(Path::of)?.toAbsolutePath()?.normalize()
+      ?: Path.of("").toAbsolutePath().normalize()
+    val invokedAgentId = resolveInvokedAgentId(agent, state.environment)
     val candidateAgentIds = listOf(
-      resolveInvokedAgentId(agent, state.environment),
+      invokedAgentId,
       agentOverride,
       parallelReviewAgent?.takeIf(String::isNotBlank),
     )
@@ -197,14 +214,26 @@ class GoalRunCommand(
     if (stopAfterSubtask != null && requireNotNull(stopAfterSubtask) <= 0) {
       throw UsageError("--stop-after-subtask must be a positive integer.")
     }
-    val invokedAgentId = resolveInvokedAgentId(agent, state.environment)
     val receivingAgents = listOfNotNull(
       invokedAgentId,
       agentOverride?.takeIf(String::isNotBlank),
       parallelReviewAgent?.takeIf(String::isNotBlank),
     ).distinct()
+    if (agentAddonSlugs.isNotEmpty() && agentAddonSelectionJson != null) {
+      throw UsageError("Use either --agent-addon or --agent-addon-selection-json, not both.")
+    }
     val persistedSelection = parseAgentAddonSelection(agentAddonSelectionJson)
-    val hydratedSelection = if (persistedSelection.entries.isEmpty()) {
+    val hydratedSelection = if (agentAddonSlugs.isNotEmpty()) {
+      agentAddonSelectionPort.resolveInitial(
+        repoRoot = effectiveRepoRoot,
+        requestedSlugs = agentAddonSlugs,
+        consumer = AgentAddonConsumer.BILL_FEATURE,
+        receivingAgentIds = receivingAgents,
+        externalSourceRoots = externalAgentAddonSourceConfigPort.readExternalAgentAddonSources(
+          ExternalAgentAddonSourceConfigRequest(state.userHome, state.environment),
+        ).sources.map { it.path },
+      )
+    } else if (persistedSelection.entries.isEmpty()) {
       HydratedAgentAddonSelection()
     } else {
       agentAddonSelectionPort.verifyPersisted(
@@ -213,8 +242,6 @@ class GoalRunCommand(
         receivingAgents,
       )
     }
-    val effectiveRepoRoot = repoRoot?.let(Path::of)?.toAbsolutePath()?.normalize()
-      ?: Path.of("").toAbsolutePath().normalize()
     val presenter = GoalRunPresenter(
       issueKey = runIssueKey,
       state = state,
@@ -263,7 +290,140 @@ class GoalRunCommand(
   )
 }
 
+@Inject
+class GoalPreflightCommand(
+  private val service: GoalPreflightService,
+  private val state: CliRunState,
+) : DocumentedCliCommand(
+  "preflight",
+  "Show the read-only goal verdict, confirmation gate, and missing spec targets before launch.",
+) {
+  private val issueKey by argument(help = "Parent issue key for the decomposed goal.")
+  private val repoRoot by option("--repo-root", help = "Repository root for the goal.")
+  private val agent by option(
+    "--agent",
+    help = "Agent invoking the goal runtime. Resolution order: --agent, then SKILL_BILL_AGENT, then detection.",
+  )
+  private val agentOverride by option(
+    "--agent-override",
+    help = "Agent to use for child subtask runs instead of the invoking agent.",
+  )
+  private val parallelReviewAgent by option(
+    "--parallel-review-agent",
+    help = "Run every child review with a second parallel agent lane.",
+  )
+  private val codeReviewMode by option(
+    "--code-review-mode",
+    help = "Review mode: inline (default), auto, or delegated (experimental).",
+  )
+  private val agentAddonSlugs by option(
+    "--agent-addon",
+    help = "Raw agent add-on slug. Repeat to preserve caller order.",
+  ).multiple()
+  private val format by formatOption()
+
+  override fun run() {
+    val root = repoRoot?.let(Path::of)?.toAbsolutePath()?.normalize()
+      ?: Path.of("").toAbsolutePath().normalize()
+    val invokedAgentId = resolveInvokedAgentId(agent, state.environment)
+    val result = service.preflight(
+      GoalPreflightRequest(
+        issueKey = issueKey,
+        repoRoot = root,
+        invokedAgentId = invokedAgentId,
+        agentOverrideId = agentOverride,
+        parallelReviewAgent = parallelReviewAgent,
+        requestedReviewMode = codeReviewMode?.let(RequestedReviewMode::parse),
+        requestedAgentAddonSlugs = agentAddonSlugs,
+        dbPathOverride = state.dbOverride,
+        userHome = state.userHome,
+        environment = state.environment,
+      ),
+    )
+    val payload = result.toGoalPreflightCliMap()
+    state.complete(payload, format)
+  }
+}
+
 private fun parseCodeReviewMode(raw: String?): CodeReviewExecutionMode? = raw?.let(RequestedReviewMode::parse)
+
+private fun GoalPreflightResult.toGoalPreflightCliMap(): Map<String, Any?> = linkedMapOf(
+  "verdict" to verdict,
+  "issue_key" to issueKey,
+  "candidate" to candidate?.toGoalPreflightCandidateMap(),
+  "candidates" to candidates.map { it.toGoalPreflightCandidateMap() },
+  "goal" to goal?.let {
+    linkedMapOf(
+      "parent_workflow_id" to it.parentWorkflowId,
+      "issue_key" to it.issueKey,
+      "status" to it.status,
+      "current_subtask_id" to it.currentSubtaskId,
+      "current_action" to it.currentAction,
+      "complete_count" to it.completeCount,
+      "pending_count" to it.pendingCount,
+      "blocked_count" to it.blockedCount,
+      "updated_at" to it.updatedAt,
+      "summary" to it.summary,
+    )
+  },
+  "gate_block" to gateBlock?.let { block ->
+    linkedMapOf(
+      "issue_key" to block.issueKey,
+      "feature_name" to block.featureName,
+      "subtasks" to block.subtasks.map { subtask ->
+        linkedMapOf(
+          "id" to subtask.id,
+          "name" to subtask.name,
+          "status" to subtask.status,
+          "dependencies" to subtask.dependencies.map { dependency ->
+            linkedMapOf(
+              "subtask_id" to dependency.subtaskId,
+              "optional" to dependency.optional,
+              "skipped" to dependency.skipped,
+              "note" to dependency.note,
+            )
+          },
+        )
+      },
+      "expected_first_runnable_subtask" to block.expectedFirstRunnableSubtask,
+      "child_agent" to block.childAgent,
+      "child_agent_override" to block.childAgentOverride,
+      "parallel_review_agent" to block.parallelReviewAgent,
+      "review_mode" to block.reviewMode,
+      "agent_addons" to block.agentAddons.map { addon ->
+        linkedMapOf(
+          "slug" to addon.slug,
+          "description" to addon.description,
+        )
+      },
+    )
+  },
+  "rehydrate_targets" to rehydrateTargets.map {
+    linkedMapOf(
+      "issue_key" to it.issueKey,
+      "linear_issue_id" to it.linearIssueId,
+      "target_path" to it.targetPath,
+    )
+  },
+  "manifest_missing" to manifestMissing,
+)
+
+private fun FeatureTaskContinuationCandidate.toGoalPreflightCandidateMap(): Map<String, Any?> = linkedMapOf(
+  "workflow_id" to workflowId,
+  "mode" to mode.wireValue,
+  "status" to status,
+  "current_step" to currentStep,
+  "governed_spec_path" to governedSpecPath,
+  "updated_at" to updatedAt,
+  "liveness" to liveness?.let {
+    linkedMapOf(
+      "classification" to it.classification,
+      "last_evidence_at" to it.lastEvidenceAt,
+      "evidence" to it.evidence,
+    )
+  },
+  "summary" to summary,
+)
 
 @Inject
 class GoalPlanningLogCommand(
@@ -478,7 +638,7 @@ class GoalStatusCommand(
   ).flag(default = false)
   private val agent by option(
     "--agent",
-    help = "Agent invoking bill-feature-goal. Resolution order: --agent, then SKILL_BILL_AGENT, then the " +
+    help = "Agent invoking the goal runtime. Resolution order: --agent, then SKILL_BILL_AGENT, then the " +
       "detected invoking-agent execution context, then a documented last-resort default.",
   )
   private val agentOverride by option(
@@ -616,7 +776,7 @@ class GoalWatchCommand(
   private val issueKey by argument(help = "Parent issue key for the decomposed goal.")
   private val agent by option(
     "--agent",
-    help = "Agent invoking bill-feature-goal. Resolution order: --agent, then SKILL_BILL_AGENT, then the " +
+    help = "Agent invoking the goal runtime. Resolution order: --agent, then SKILL_BILL_AGENT, then the " +
       "detected invoking-agent execution context, then a documented last-resort default.",
   )
   private val agentOverride by option(

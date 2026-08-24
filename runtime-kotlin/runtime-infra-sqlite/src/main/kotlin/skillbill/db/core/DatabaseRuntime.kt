@@ -41,15 +41,30 @@ object DatabaseRuntime {
     userHome: Path = Paths.get(System.getProperty("user.home")),
   ): OpenDatabase {
     val dbPath = resolveDbPath(cliValue = cliValue, environment = environment, userHome = userHome)
-    // Deliberate exception: an absent database is bootstrapped here because callers of the read seam
-    // rely on first-use creation. A file that exists but carries no schema — a zero-byte file left by
-    // an interrupted create, or a store whose base schema never ran — is the same state wearing a
-    // different mask: opening it read-only reports an empty store instead of building one. Both
-    // escalate to the migrating open; a schema-complete database is still opened read-only below.
     if (!Files.exists(dbPath) || isSchemaless(dbPath)) {
       return OpenDatabase(connection = ensureDatabase(dbPath), dbPath = dbPath)
     }
+    return openReadOnlyDb(dbPath)
+  }
 
+  fun openReadDbIfPresent(
+    cliValue: String? = null,
+    environment: Map<String, String> = System.getenv(),
+    userHome: Path = Paths.get(System.getProperty("user.home")),
+  ): OpenDatabase? {
+    val dbPath = resolveDbPath(cliValue = cliValue, environment = environment, userHome = userHome)
+    if (!Files.exists(dbPath)) return null
+    if (isSchemaless(dbPath)) {
+      throw DatabaseAccessError(
+        dbPath = dbPath.toAbsolutePath().normalize().toString(),
+        operation = DatabaseAccessOperation.READ,
+        condition = "database schema is missing",
+      )
+    }
+    return openReadOnlyDb(dbPath)
+  }
+
+  private fun openReadOnlyDb(dbPath: Path): OpenDatabase {
     val connection = asTypedFailure(dbPath, DatabaseAccessOperation.READ) {
       DriverManager.getConnection(
         "jdbc:sqlite:${dbPath.toAbsolutePath().normalize()}",

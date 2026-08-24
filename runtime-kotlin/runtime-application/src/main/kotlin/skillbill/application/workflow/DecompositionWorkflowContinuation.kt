@@ -5,7 +5,7 @@ package skillbill.application.workflow
 import skillbill.application.decomposition.DECOMPOSITION_RUNTIME_ARTIFACT_KEY
 import skillbill.application.decomposition.decodeArtifacts
 import skillbill.application.decomposition.encodeDecompositionManifestMap
-import skillbill.application.decomposition.loadManifestOrNull
+import skillbill.application.decomposition.resolveDecompositionManifest
 import skillbill.application.decomposition.withBlockedSubtask
 import skillbill.application.goalrunner.migrateLegacyGoalRunnerControls
 import skillbill.application.model.GoalContinuationOutcome
@@ -64,24 +64,14 @@ internal class DecompositionWorkflowContinuation(
     return result
   }
 
-  private fun findProjectedManifestByIssueKey(issueKey: String): DecompositionManifest? = try {
-    val root = repoRootProvider()
-    fileStore.findDecompositionManifestFiles(root)
-      .asSequence()
-      .sortedBy { it.toString() }
-      .filter { path ->
-        runCatching { root.relativize(path).toString() }.getOrElse { path.toString() }.contains(issueKey)
-      }
-      .mapNotNull { path -> loadManifestOrNull(path, validator, fileStore) }
-      .filter { it.issueKey == issueKey }
-      .toList()
-      .let { candidates ->
-        val active = candidates.filter { it.isActiveGoalRuntime() }
-        if (active.size > 1) error("Ambiguous decomposition manifests for '$issueKey'")
-        active.firstOrNull() ?: candidates.firstOrNull()
-      }
-  } catch (_: Exception) {
-    null
+  private fun findProjectedManifestByIssueKey(issueKey: String): DecompositionManifest? {
+    if (fileStore === UnavailableDecompositionManifestFileStore) return null
+    return resolveDecompositionManifest(
+      repoRoot = repoRootProvider(),
+      issueKey = issueKey,
+      fileStore = fileStore,
+      validator = validator,
+    )
   }
 
   private fun bootstrapParentWorkflowFromManifest(

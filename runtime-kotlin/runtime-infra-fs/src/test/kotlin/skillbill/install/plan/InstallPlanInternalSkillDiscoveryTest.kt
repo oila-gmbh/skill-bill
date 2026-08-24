@@ -33,11 +33,11 @@ class InstallPlanInternalSkillDiscoveryTest {
   fun `discoverBaseSkills carries internal-for classification onto the install plan`() {
     val repoRoot = Files.createTempDirectory("skillbill-plan-discovery").also(tempDirs::add)
     seedSkill(repoRoot, "bill-feature", null)
-    seedSkill(repoRoot, "bill-feature-task", "bill-feature")
+    seedSkill(repoRoot, "bill-feature-helper", "bill-feature")
 
     val skills = discoverBaseSkills(repoRoot.resolve("skills"))
 
-    val child = skills.single { it.name == "bill-feature-task" }
+    val child = skills.single { it.name == "bill-feature-helper" }
     assertEquals("bill-feature", child.internalFor)
     val parent = skills.single { it.name == "bill-feature" }
     assertEquals(null, parent.internalFor)
@@ -47,24 +47,24 @@ class InstallPlanInternalSkillDiscoveryTest {
   fun `validateInstallPlanInternalSkills passes for a valid parent and child`() {
     val skills = listOf(
       planSkill("bill-feature", internalFor = null),
-      planSkill("bill-feature-task", internalFor = "bill-feature"),
+      planSkill("bill-feature-helper", internalFor = "bill-feature"),
     )
     validateInstallPlanInternalSkills(skills)
   }
 
   @Test
   fun `validateInstallPlanInternalSkills fails for an unknown parent`() {
-    val skills = listOf(planSkill("bill-feature-task", internalFor = "bill-featur"))
+    val skills = listOf(planSkill("bill-feature-helper", internalFor = "bill-featur"))
     val error = assertFailsWith<InvalidInternalSkillClassificationError> {
       validateInstallPlanInternalSkills(skills)
     }
     assertTrue(error.message.orEmpty().contains("not a discovered skill"))
-    assertTrue(error.message.orEmpty().contains("bill-feature-task"))
+    assertTrue(error.message.orEmpty().contains("bill-feature-helper"))
   }
 
   @Test
   fun `validateInstallPlanInternalSkills fails for a self parent`() {
-    val skills = listOf(planSkill("bill-feature-task", internalFor = "bill-feature-task"))
+    val skills = listOf(planSkill("bill-feature-helper", internalFor = "bill-feature-helper"))
     val error = assertFailsWith<InvalidInternalSkillClassificationError> {
       validateInstallPlanInternalSkills(skills)
     }
@@ -73,7 +73,7 @@ class InstallPlanInternalSkillDiscoveryTest {
 
   @Test
   fun `validateInstallPlanInternalSkills fails for an empty internal-for value`() {
-    val skills = listOf(planSkill("bill-feature-task", internalFor = "  "))
+    val skills = listOf(planSkill("bill-feature-helper", internalFor = "  "))
     val error = assertFailsWith<InvalidInternalSkillClassificationError> {
       validateInstallPlanInternalSkills(skills)
     }
@@ -85,13 +85,13 @@ class InstallPlanInternalSkillDiscoveryTest {
     val skills = listOf(
       planSkill("bill-other", internalFor = null),
       planSkill("bill-feature", internalFor = "bill-other"),
-      planSkill("bill-feature-task", internalFor = "bill-feature"),
+      planSkill("bill-feature-helper", internalFor = "bill-feature"),
     )
     val error = assertFailsWith<InvalidInternalSkillClassificationError> {
       validateInstallPlanInternalSkills(skills)
     }
     assertTrue(error.message.orEmpty().contains("chained internal-for"))
-    assertTrue(error.message.orEmpty().contains("bill-feature-task"))
+    assertTrue(error.message.orEmpty().contains("bill-feature-helper"))
   }
 
   @Test
@@ -130,7 +130,7 @@ class InstallPlanInternalSkillDiscoveryTest {
   fun `validateInstallPlanInternalSkills fails when the parent is a platform-pack skill`() {
     val skills = listOf(
       planSkill("bill-kotlin-code-review", internalFor = null, kind = InstallPlanSkillKind.PLATFORM_PACK),
-      planSkill("bill-feature-task", internalFor = "bill-kotlin-code-review"),
+      planSkill("bill-feature-helper", internalFor = "bill-kotlin-code-review"),
     )
     val error = assertFailsWith<InvalidInternalSkillClassificationError> {
       validateInstallPlanInternalSkills(skills)
@@ -141,13 +141,13 @@ class InstallPlanInternalSkillDiscoveryTest {
   @Test
   fun `a blank internal-for value in content md loud-fails through discovery and validation`() {
     val repoRoot = Files.createTempDirectory("skillbill-plan-blank").also(tempDirs::add)
-    val skillDir = repoRoot.resolve("skills/bill-feature-task")
+    val skillDir = repoRoot.resolve("skills/bill-feature-helper")
     Files.createDirectories(skillDir)
     Files.writeString(
       skillDir.resolve("content.md"),
       """
       ---
-      name: bill-feature-task
+      name: bill-feature-helper
       description: Internal.
       internal-for:
       ---

@@ -462,16 +462,16 @@ class RepoValidationRuntimeTest {
     createRepoValidationSkillFixture(repoRoot)
     val ledger = repoRoot.resolve("skills/agent/history.md")
     Files.createDirectories(ledger.parent)
-    Files.writeString(ledger, "Areas: skills/bill-feature-task-prose, skills/bill-feature-task-subtask-runner\n")
+    Files.writeString(ledger, "Areas: skills/legacy-feature-prose, skills/legacy-feature-runner\n")
 
     val report = RepoValidationRuntime.validateRepo(repoRoot)
 
     assertFalse(
-      report.issues.any { it.contains("references unknown skill 'bill-feature-task-prose'") },
+      report.issues.any { it.contains("references unknown skill 'legacy-feature-prose'") },
       report.issues.joinToString("\n"),
     )
     assertFalse(
-      report.issues.any { it.contains("references unknown skill 'bill-feature-task-subtask-runner'") },
+      report.issues.any { it.contains("references unknown skill 'legacy-feature-runner'") },
       report.issues.joinToString("\n"),
     )
   }
@@ -1059,7 +1059,7 @@ class RepoValidationRuntimeTest {
     val repoRoot = Files.createTempDirectory("skillbill-valid-internal")
     createRepoValidationSkillFixture(repoRoot)
     seedInternalSkill(repoRoot, "bill-feature", null)
-    seedInternalSkill(repoRoot, "bill-feature-task", "bill-feature")
+    seedInternalSkill(repoRoot, "bill-feature-helper", "bill-feature")
 
     val report = RepoValidationRuntime.validateRepo(repoRoot)
 
@@ -1071,12 +1071,12 @@ class RepoValidationRuntimeTest {
   fun `repo validation rejects internal-for with unknown parent`() {
     val repoRoot = Files.createTempDirectory("skillbill-unknown-parent")
     createRepoValidationSkillFixture(repoRoot)
-    seedInternalSkill(repoRoot, "bill-feature-task", "bill-featur")
+    seedInternalSkill(repoRoot, "bill-feature-helper", "bill-featur")
 
     val report = RepoValidationRuntime.validateRepo(repoRoot)
 
     assertTrue(
-      report.issues.any { it.contains("not a discovered skill") && it.contains("bill-feature-task") },
+      report.issues.any { it.contains("not a discovered skill") && it.contains("bill-feature-helper") },
       report.issues.joinToString("\n"),
     )
   }
@@ -1085,12 +1085,12 @@ class RepoValidationRuntimeTest {
   fun `repo validation rejects internal-for with self parent`() {
     val repoRoot = Files.createTempDirectory("skillbill-self-parent")
     createRepoValidationSkillFixture(repoRoot)
-    seedInternalSkill(repoRoot, "bill-feature-task", "bill-feature-task")
+    seedInternalSkill(repoRoot, "bill-feature-helper", "bill-feature-helper")
 
     val report = RepoValidationRuntime.validateRepo(repoRoot)
 
     assertTrue(
-      report.issues.any { it.contains("skill itself") && it.contains("bill-feature-task") },
+      report.issues.any { it.contains("skill itself") && it.contains("bill-feature-helper") },
       report.issues.joinToString("\n"),
     )
   }
@@ -1101,7 +1101,7 @@ class RepoValidationRuntimeTest {
     createRepoValidationSkillFixture(repoRoot)
     seedInternalSkill(repoRoot, "bill-other", null)
     seedInternalSkill(repoRoot, "bill-feature", "bill-other")
-    seedInternalSkill(repoRoot, "bill-feature-task", "bill-feature")
+    seedInternalSkill(repoRoot, "bill-feature-helper", "bill-feature")
 
     val report = RepoValidationRuntime.validateRepo(repoRoot)
 
@@ -1116,16 +1116,16 @@ class RepoValidationRuntimeTest {
     val repoRoot = Files.createTempDirectory("skillbill-collision")
     createRepoValidationSkillFixture(repoRoot)
     seedInternalSkill(repoRoot, "bill-feature", null)
-    seedInternalSkill(repoRoot, "bill-feature-task", "bill-feature")
+    seedInternalSkill(repoRoot, "bill-feature-helper", "bill-feature")
     Files.writeString(
-      repoRoot.resolve("skills/bill-feature/bill-feature-task.md"),
+      repoRoot.resolve("skills/bill-feature/bill-feature-helper.md"),
       "authored collision\n",
     )
 
     val report = RepoValidationRuntime.validateRepo(repoRoot)
 
     assertTrue(
-      report.issues.any { it.contains("collides") && it.contains("bill-feature-task.md") },
+      report.issues.any { it.contains("collides") && it.contains("bill-feature-helper.md") },
       report.issues.joinToString("\n"),
     )
   }
@@ -1135,7 +1135,7 @@ class RepoValidationRuntimeTest {
     val repoRoot = Files.createTempDirectory("skillbill-readme-internal")
     createRepoValidationSkillFixture(repoRoot)
     seedInternalSkill(repoRoot, "bill-feature", null)
-    seedInternalSkill(repoRoot, "bill-feature-task", "bill-feature")
+    seedInternalSkill(repoRoot, "bill-feature-helper", "bill-feature")
     // README catalog lists the listed skills but intentionally omits the internal one.
     Files.writeString(
       repoRoot.resolve("README.md"),

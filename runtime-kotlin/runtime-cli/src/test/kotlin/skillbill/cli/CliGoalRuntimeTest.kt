@@ -72,6 +72,48 @@ class CliGoalRuntimeTest {
     assertContains(result.stdout, "repair")
     assertContains(result.stdout, "--debug-child-output")
     assertContains(result.stdout, "raw child streams hidden")
+
+    val preflightHelp = CliRuntime.run(listOf("goal", "preflight", "--help"), CliRuntimeContext())
+    assertEquals(0, preflightHelp.exitCode, preflightHelp.stdout)
+    assertContains(preflightHelp.stdout, "read-only goal verdict")
+    assertContains(preflightHelp.stdout, "--format")
+    assertContains(preflightHelp.stdout, "--agent-addon")
+  }
+
+  @Test
+  fun `goal preflight emits one json verdict without launching a child`() {
+    val fixture = goalFixture(subtaskCount = 2, seedWorkflow = false)
+    val launcher = GoalFixtureAgentRunLauncher(fixture)
+    val result = CliRuntime.run(
+      listOf(
+        "--db",
+        fixture.dbPath.toString(),
+        "goal",
+        "preflight",
+        "SKILL-901",
+        "--agent",
+        "codex",
+        "--repo-root",
+        fixture.tempDir.toString(),
+        "--format",
+        "json",
+      ),
+      fixture.context(launcher = launcher),
+    )
+
+    assertEquals(0, result.exitCode, result.stdout)
+    val payload = requireNotNull(
+      JsonSupport.anyToStringAnyMap(
+        JsonSupport.jsonElementToValue(requireNotNull(JsonSupport.parseObjectOrNull(result.stdout))),
+      ),
+    ) { "Expected preflight JSON object but got: ${result.stdout}" }
+    assertEquals("new_work", payload["verdict"])
+    assertEquals("SKILL-901", payload["issue_key"])
+    assertEquals(true, payload["manifest_missing"])
+    assertTrue(payload.containsKey("gate_block"))
+    assertTrue(payload.containsKey("rehydrate_targets"))
+    assertTrue(launcher.requests.isEmpty())
+    assertTrue(launcher.childLaunches.isEmpty())
   }
 
   @Test
@@ -1697,7 +1739,7 @@ internal data class GoalCliFixture(
     requester: HttpRequester = UnconfiguredHttpRequester,
   ): CliRuntimeContext = CliRuntimeContext(
     userHome = tempDir.also { installFakeRuntimeMcpBin(it) },
-    environment = emptyMap(),
+    environment = isolatedCliEnvironment(tempDir),
     requester = requester,
     workflowGitOperations = workflowGitOperations,
     agentRunLauncher = launcher,
@@ -1916,7 +1958,7 @@ private fun forcePendingPauseRequest(dbPath: Path) {
   }
 }
 
-internal fun goalFixture(subtaskCount: Int): GoalCliFixture {
+internal fun goalFixture(subtaskCount: Int, seedWorkflow: Boolean = true): GoalCliFixture {
   val tempDir = Files.createTempDirectory("skillbill-cli-goal")
   val parentSpec = tempDir.resolve(".feature-specs/SKILL-901-goal/spec.md")
   Files.createDirectories(parentSpec.parent)
@@ -1941,7 +1983,9 @@ internal fun goalFixture(subtaskCount: Int): GoalCliFixture {
     parentSpec = parentSpec,
     subtaskSpecs = subtaskSpecs,
   )
-  seedParentWorkflow(fixture)
+  if (seedWorkflow) {
+    seedParentWorkflow(fixture)
+  }
   return fixture
 }
 

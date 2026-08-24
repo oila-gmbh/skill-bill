@@ -5,7 +5,7 @@ description: Prepare manifest-backed feature-spec artifacts with executable subt
 
 # Feature Spec Preparation
 
-`bill-feature-spec` prepares governed feature-spec artifacts without starting implementation. Every successful preparation emits a parent spec, one or more distinct executable subtask specs, and a schema-valid manifest for `bill-feature-goal` execution.
+`bill-feature-spec` prepares governed feature-spec artifacts without starting implementation. Every successful preparation emits a parent spec, one or more distinct executable subtask specs, and a schema-valid manifest for the goal runtime.
 
 ## Intake Contract
 
@@ -108,7 +108,7 @@ Run when the resolved spec-source mode is `local` (no config, `spec_type: local`
 
 ## Shared Preparation Path
 
-Always route preparation through the shared feature-spec preparation path. Do not fork logic between `bill-feature-spec`, `bill-feature-task`, and `bill-feature-goal`.
+Always route preparation through the shared feature-spec preparation path. Do not fork logic between `bill-feature-spec` and `bill-feature`.
 
 The agent writes all governed artifacts through one validate-and-render path: parent `spec.md`, one or more ordered `spec_subtask_*.md` files, and `decomposition-manifest.yaml` using the template below. Construct and schema-validate the complete bundle before the first write, then atomically replace each file. A bare existing `spec.md` is intake: preserve its intended outcome, acceptance criteria, constraints, and non-goals while upgrading it to this artifact set.
 

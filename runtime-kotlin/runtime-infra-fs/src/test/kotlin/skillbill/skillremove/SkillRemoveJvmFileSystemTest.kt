@@ -411,7 +411,7 @@ class SkillRemoveJvmFileSystemTest {
       |class: feature-task
       |contract_version: "1.7"
       |matchers:
-      |  - exact: bill-feature-task
+      |  - exact: bill-feature
       |pointers:
       |  - shell-ceremony
       |  - android-compose-edge-to-edge

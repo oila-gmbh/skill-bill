@@ -229,7 +229,7 @@ class InternalSkillStagingTest {
 
     val alone = stageInstalledSkill(repoRoot, parentDir, home)
 
-    seedSkill(repoRoot, "bill-feature-task", "bill-feature-task", "Listed sibling.")
+    seedSkill(repoRoot, "bill-feature-helper", "bill-feature-helper", "Listed sibling.")
     val withListedSibling = stageInstalledSkill(repoRoot, parentDir, home)
     assertEquals(
       alone.contentHash,
@@ -238,7 +238,7 @@ class InternalSkillStagingTest {
     )
     assertTrue(withListedSibling.renderedSidecarFiles.isEmpty())
 
-    seedInternalChild(repoRoot, "bill-feature-task", "bill-feature")
+    seedInternalChild(repoRoot, "bill-feature-helper", "bill-feature")
     val withInternalChild = stageInstalledSkill(repoRoot, parentDir, home)
     assertNotEquals(
       alone.contentHash,
@@ -247,7 +247,7 @@ class InternalSkillStagingTest {
     )
     assertTrue(
       Files.isRegularFile(
-        withInternalChild.stagingDir.resolve("bill-feature-task.md"),
+        withInternalChild.stagingDir.resolve("bill-feature-helper.md"),
         LinkOption.NOFOLLOW_LINKS,
       ),
     )
@@ -312,7 +312,7 @@ class InternalSkillStagingTest {
   @Test
   fun `standaloneInstallableSkills excludes internal skills that nativeAgentSourceRoots retains`() {
     val parent = planSkill("bill-feature", internalFor = null)
-    val child = planSkill("bill-feature-task", internalFor = "bill-feature")
+    val child = planSkill("bill-feature-helper", internalFor = "bill-feature")
     val packSkill = planSkill("bill-kotlin-code-review", internalFor = null, platformSlug = "kotlin")
     val unselectedPackSkill = planSkill("bill-ios-code-review", internalFor = null, platformSlug = "ios")
     val skills = listOf(parent, child, packSkill, unselectedPackSkill)
@@ -405,12 +405,12 @@ class InternalSkillStagingTest {
   @Test
   fun `repo validation rejects unknown internal parent at validate time`() {
     val repoRoot = Files.createTempDirectory("skillbill-internal-validate-unknown").also(tempDirs::add)
-    seedSkill(repoRoot, "bill-feature-task", "bill-feature-task", "Internal.")
+    seedSkill(repoRoot, "bill-feature-helper", "bill-feature-helper", "Internal.")
     Files.writeString(
-      repoRoot.resolve("skills/bill-feature-task/content.md"),
+      repoRoot.resolve("skills/bill-feature-helper/content.md"),
       """
       ---
-      name: bill-feature-task
+      name: bill-feature-helper
       description: Internal.
       internal-for: bill-featur
       ---
@@ -431,12 +431,12 @@ class InternalSkillStagingTest {
   @Test
   fun `repo validation rejects a blank internal-for value read from content md`() {
     val repoRoot = Files.createTempDirectory("skillbill-internal-validate-blank").also(tempDirs::add)
-    seedSkill(repoRoot, "bill-feature-task", "bill-feature-task", "Internal.")
+    seedSkill(repoRoot, "bill-feature-helper", "bill-feature-helper", "Internal.")
     Files.writeString(
-      repoRoot.resolve("skills/bill-feature-task/content.md"),
+      repoRoot.resolve("skills/bill-feature-helper/content.md"),
       """
       ---
-      name: bill-feature-task
+      name: bill-feature-helper
       description: Internal.
       internal-for:
       ---
@@ -449,7 +449,7 @@ class InternalSkillStagingTest {
 
     assertFalse(report.passed)
     assertTrue(
-      report.issues.any { it.contains("empty value") && it.contains("bill-feature-task") },
+      report.issues.any { it.contains("empty value") && it.contains("bill-feature-helper") },
       "a blank internal-for must fail loudly, not degrade to listed; issues=${report.issues}",
     )
   }
@@ -511,7 +511,7 @@ class InternalSkillStagingTest {
   @Test
   fun `repo validation accepts the parent referencing its own child sidecar`() {
     val fixture = setupParentWithInternalChild(
-      parentBody = "Read the file `bill-feature-task.md` located in this skill's installed directory.",
+      parentBody = "Read the file `bill-feature-helper.md` located in this skill's installed directory.",
     )
 
     val report = RepoValidationRuntime.validateRepo(fixture.repoRoot)
@@ -968,7 +968,7 @@ class InternalSkillStagingTest {
   private fun setupParentWithInternalChild(parentBody: String = "Authored body."): ParentChildFixture {
     val (repoRoot, home) = setupRepoBase()
     val parentName = "bill-feature"
-    val childName = "bill-feature-task"
+    val childName = "bill-feature-helper"
     val parentDir = seedSkill(
       repoRoot,
       parentName,

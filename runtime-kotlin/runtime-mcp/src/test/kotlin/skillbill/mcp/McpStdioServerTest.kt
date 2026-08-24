@@ -116,10 +116,8 @@ class McpStdioServerTest {
     assertEquals(
       listOf(
         "verify",
-        "goal",
         "bill-feature-verify",
         "feature-task-runtime",
-        "bill-feature-goal",
       ),
       tools.schemaFor("telemetry_remote_stats").properties().enumFor("workflow"),
     )

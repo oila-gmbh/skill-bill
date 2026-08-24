@@ -151,7 +151,7 @@ The pipeline loud-fails with a typed, actionable error
 
 A separate collision guard (`InternalSkillSidecarCollisionError`) fails staging
 when an authored file in the parent's source directory already occupies a
-would-be sidecar name (e.g. an authored `bill-feature/bill-feature-task.md`);
+would-be sidecar name (e.g. an authored `bill-code-review/bill-kotlin-code-review.md`);
 `skill-bill validate` surfaces the same collision before install. Validation
 also checks every `` `<skill-name>.md` `` sidecar reference inside a skill's
 content.md: the referenced skill must be internal and share the referencing
@@ -166,7 +166,7 @@ directs to the parent, so an internal skill can never gain its own
 ### Installed layout (PD2 / PD6)
 
 Install renders an internal skill's governed content as a markdown sidecar named
-`<skill-name>.md` (the full skill name, e.g. `bill-feature-task.md`, never an
+`<skill-name>.md` (the full skill name, e.g. `bill-kotlin-code-review.md`, never an
 abbreviated form) placed at the top level of the parent skill's installed
 directory, next to the parent's `SKILL.md`. The sidecar carries the same
 governed wrapper a listed skill's `SKILL.md` would carry (frontmatter,
@@ -251,24 +251,13 @@ orchestrator — no worker ever resolves a hidden skill via the Skill tool or a
 standalone `skills_dir` path. Lane-2 parallel reviews keep invoking
 `/bill-code-review`, which remains listed.
 
-### Worked example: the feature-execution family
+### Worked example: the feature entry family
 
-The feature-execution family is the canonical worked example. Exactly three
-skills are internal, all with parent `bill-feature`: `bill-feature-task`,
-`bill-feature-task-runtime`, and `bill-feature-goal`. After install, the
-agent skill list shows `bill-feature` (and the standalone listed
-`bill-feature-spec`) but none of the three. `bill-feature` dispatches to task and
-goal execution by reading the rendered sidecar files installed inside its own
-directory (`bill-feature-task.md`, `bill-feature-goal.md`) and executing them.
-`bill-feature-spec` stays listed and standalone because it is a different kind
-of skill (spec preparation without implementation), so it is still invoked via
-the Skill tool. Repo source directories for the internal skills do not move or
-rename (PD3): `skills/bill-feature-task/content.md`,
-`skills/bill-feature-task-runtime/content.md`, and
-`skills/bill-feature-goal/content.md` stay exactly where they are;
-only frontmatter and body text inside them change. Workflow identity strings, the DB
-`workflow_name` CHECK constraint, telemetry constants, and MCP tool names are
-byte-for-byte unchanged (PD4) even though the skills are no longer listed.
+The feature entry family has one listed skill, `bill-feature`, and a separate
+listed `bill-feature-spec` skill for specification preparation. The feature
+entry calls the goal runtime directly after its preflight gate; there is no
+feature goal sidecar. The runtime workflow identity, database constraint,
+telemetry constants, and MCP tool names remain durable contracts.
 
 ### Worked example: the code-review family
 
@@ -370,7 +359,7 @@ Worked example: `orchestration/skill-classes/feature-task.yaml` matches
 `^bill-[a-z0-9-]*feature-task$` and injects ceremony lines for
 `peak-hours-warner.md`, `shell-ceremony.md`, and `telemetry-contract.md`.
 `orchestration/skill-classes/feature-launch-warning.yaml` exactly matches
-`bill-feature` and `bill-feature-task-runtime`; it injects the `peak-hours-warner.md`
+`bill-feature`; it injects the `peak-hours-warner.md`
 ceremony line. `peak-hours-warner.md` is an operator launch warning/config
 pointer, so warning behavior comes from the operator-facing configuration
 surface rather than hard-coded product-specific wording in each skill.
