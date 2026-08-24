@@ -2,7 +2,7 @@
 contract_version: "0.5"
 issue_key: "SKILL-206"
 feature_name: "remove-provider-token-accounting"
-parent_spec_path: ".feature-specs/SKILL-206-remove-provider-token-accounting/spec.md"
+parent_spec_path: ".feature-specs/done/SKILL-206-remove-provider-token-accounting/spec.md"
 status: "complete"
 execution_model: "same_branch_commit_per_subtask"
 base_branch: "main"
@@ -14,7 +14,7 @@ current_subtask_intent:
 subtasks:
 - id: 1
   name: "Review-side removal and review-context contract 2.2"
-  spec_path: ".feature-specs/SKILL-206-remove-provider-token-accounting/spec_subtask_1_review-side-and-review-context-contract.md"
+  spec_path: ".feature-specs/done/SKILL-206-remove-provider-token-accounting/spec_subtask_1_review-side-and-review-context-contract.md"
   status: "complete"
   branch: null
   commit_sha: null
@@ -27,7 +27,7 @@ subtasks:
   dependencies: []
 - id: 2
   name: "Producer, goal, sweep, config, and telemetry removal"
-  spec_path: ".feature-specs/SKILL-206-remove-provider-token-accounting/spec_subtask_2_producers-goal-sweep-config-telemetry.md"
+  spec_path: ".feature-specs/done/SKILL-206-remove-provider-token-accounting/spec_subtask_2_producers-goal-sweep-config-telemetry.md"
   status: "complete"
   branch: null
   commit_sha: null

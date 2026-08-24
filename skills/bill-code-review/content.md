@@ -1,9 +1,22 @@
 ---
 name: bill-code-review
-description: Dominant-stack code-review entry point. Use when reviewing code, reviewing a PR, reviewing staged changes, or when the user asks for a code review.
+description: Dominant-stack code-review entry point. Use when reviewing code, a commit, a PR, staged changes, or when the user asks for a code review.
 ---
 
 # Code review entry
+
+## No-argument invocation
+
+When invoked without arguments, print the accepted arguments and do not invoke
+the driver:
+
+```text
+Accepted arguments:
+  <commit>                         Review a commit against its first parent.
+  mode:auto|inline|delegated       Select review depth.
+  parallel:<agent>[:<model>]      Add a parallel review lane.
+  context:feature-remediation     Review a bounded remediation delta.
+```
 
 ## Review mode argument
 
@@ -56,6 +69,17 @@ state `resolved`, `unresolved`, or `superseded` under the durable
 `blocker_dispositions` key, and cite the specific changed lines that settle it.
 A disposition without that evidence is not admissible.
 
+## Commit target argument
+
+Recognize at most one non-blank positional commit target. Pass it through to the
+driver as the positional commit argument so the driver reviews that commit
+against its first parent.
+
+A positional commit target cannot be combined with `--diff-file`,
+`--base-revision`, `--head-revision`, or a non-default `--scope`.
+When a commit target is supplied, omit `--scope`; the driver uses its default
+branch scope. Without a commit target, pass the caller's scope normally.
+
 ## Parallel lane argument
 
 When the caller passes `parallel:<agent>` or `parallel:<agent>:<model>` in args —
@@ -95,8 +119,9 @@ runtime driver once and present what it returns:
 
 ```bash
 skill-bill code-review \
+  [<commit>] \
   --execution-mode <resolved-mode> \
-  --scope <caller-scope> \
+  [--scope <caller-scope>] \
   --repo-root <repo-root>
 ```
 

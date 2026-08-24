@@ -38,6 +38,7 @@ open class CodeReviewDriverCommand(
   @Suppress("UnusedPrivateProperty")
   private val configResolutionService: ConfigResolutionService,
 ) : DocumentedCliCommand(name, help) {
+  protected open val commitTarget: String? = null
   private val agent1 by option(
     "--agent1",
     help = "Agent for the default lane. " + invokingAgentResolutionHelp("--agent1"),
@@ -100,6 +101,7 @@ open class CodeReviewDriverCommand(
   override fun run() {
     val resolvedAgent1 = resolveAgent1()
     val repo = Path.of(repoRoot).toAbsolutePath().normalize()
+    validateCommitTarget()
     if (!agent2.isNullOrBlank() || !model2.isNullOrBlank()) {
       throw UsageError(
         "Dual-agent parallel lanes are disconnected. Omit --agent2/--model2; " +
@@ -125,8 +127,8 @@ open class CodeReviewDriverCommand(
       codeReviewMode = parseExecutionMode(codeReviewMode),
       suppliedDiffPath = suppliedDiffPath(),
       reviewRunId = reviewRunId?.takeIf(String::isNotBlank),
-      baseRevision = baseRevision?.takeIf(String::isNotBlank),
-      headRevision = headRevision?.takeIf(String::isNotBlank),
+      baseRevision = commitTarget?.let { "$it^" } ?: baseRevision?.takeIf(String::isNotBlank),
+      headRevision = commitTarget ?: headRevision?.takeIf(String::isNotBlank),
       prelaunchExpansions = expandFiles.map(::parseExpansion),
       baselineUntrackedPolicy = ParallelCodeReviewRequest.baselineUntrackedPolicy(
         baselineUntrackedIncludes,
@@ -135,6 +137,19 @@ open class CodeReviewDriverCommand(
     )
 
   private fun resolveAgent1(): String = requireInvokingAgentId(agent1, state.environment, "--agent1")
+
+  private fun validateCommitTarget() {
+    if (commitTarget.isNullOrBlank()) return
+    if (scope != "branch") {
+      throw UsageError("A commit target cannot be combined with --scope '$scope'; use the default branch scope.")
+    }
+    if (diffFile != null) {
+      throw UsageError("A commit target cannot be combined with --diff-file.")
+    }
+    if (baseRevision != null || headRevision != null) {
+      throw UsageError("A commit target cannot be combined with --base-revision or --head-revision.")
+    }
+  }
 
   private fun parseExecutionMode(value: String): CodeReviewExecutionMode = RequestedReviewMode.parse(value)
 

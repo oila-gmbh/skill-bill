@@ -20,6 +20,35 @@ class CliCodeReviewParallelRuntimeTest {
   }
 
   @Test
+  fun `code-review help documents an optional commit target`() {
+    val help = CliRuntime.run(listOf("code-review", "--help"), parallelReviewContext())
+
+    assertEquals(0, help.exitCode, help.stdout)
+    assertContains(help.stdout, "Commit to review against its first parent.")
+  }
+
+  @Test
+  fun `code-review rejects a commit target combined with an exact diff`() {
+    val tempDir = createGitRepo()
+    val result = CliRuntime.run(
+      listOf(
+        "code-review",
+        "2e17a490e025a5b947e03bf67e41eaa589319960",
+        "--agent1",
+        "claude",
+        "--diff-file",
+        tempDir.resolve("review.diff").toString(),
+        "--repo-root",
+        tempDir.toString(),
+      ),
+      parallelReviewContext(),
+    )
+
+    assertEquals(1, result.exitCode, result.stdout)
+    assertContains(result.stdout, "cannot be combined with --diff-file")
+  }
+
+  @Test
   fun `code-review-parallel run fails loud that dual-agent lanes are removed`() {
     val tempDir = createGitRepo()
     val result = CliRuntime.run(

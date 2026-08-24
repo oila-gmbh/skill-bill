@@ -1,5 +1,7 @@
 package skillbill.cli.codereview
 
+import com.github.ajalt.clikt.parameters.arguments.argument
+import com.github.ajalt.clikt.parameters.arguments.optional
 import me.tatarka.inject.annotations.Inject
 import skillbill.application.config.ConfigResolutionService
 import skillbill.application.review.ParallelCodeReviewRunner
@@ -16,4 +18,12 @@ class CodeReviewCommand(
   runner = runner,
   state = state,
   configResolutionService = configResolutionService,
-)
+) {
+  private val commitArgument by argument(
+    name = "commit",
+    help = "Commit to review against its first parent.",
+  ).optional()
+
+  override val commitTarget: String?
+    get() = commitArgument
+}
