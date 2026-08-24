@@ -23,6 +23,16 @@ before resolving the review policy.
 
 ## Update Check
 
+Call `mcp__skill-bill__update_check` before any other action.
+
+When the tool returns `status: "update_available"`:
+- Show the user: installed version (`installed_version`) → latest version (`latest_version`).
+- Ask: **Update now or continue with the current version?**
+  - If the user chooses to update: stop and show the `recommended_install_command`. Do not proceed to Intake.
+  - If the user chooses to continue: proceed to Intake unchanged.
+
+When the tool returns any other status (`up_to_date`, `ahead_of_release`, or `unknown`): silently proceed to Intake with no prompt.
+
 ## Agent add-on selection
 
 Accept zero or more ordered `agent-addon:<slug>` arguments alongside the existing
@@ -39,16 +49,6 @@ No downstream router or worker may parse the original tokens or rediscover the
 catalogue. Agent add-ons are launch guidance rather than workflow identity: the
 newly resolved selection becomes effective for future work and may differ from a
 prior launch without blocking continuation.
-
-Call `mcp__skill-bill__update_check` before any other action.
-
-When the tool returns `status: "update_available"`:
-- Show the user: installed version (`installed_version`) → latest version (`latest_version`).
-- Ask: **Update now or continue with the current version?**
-  - If the user chooses to update: stop and show the `recommended_install_command`. Do not proceed to Intake.
-  - If the user chooses to continue: proceed to Intake unchanged.
-
-When the tool returns any other status (`up_to_date`, `ahead_of_release`, or `unknown`): silently proceed to Intake with no prompt.
 
 ## Intake
 
@@ -119,11 +119,3 @@ governed child context are authoritative.
 
 If the user asks for status on a prepared feature, read the `bill-feature-goal.md` sidecar in this skill's own installed directory and follow its status behavior. Do not use the Skill tool — `bill-feature-goal` is an internal skill.
 
-## Least-Context Runtime Handoffs
-
-Runtime phases consume workflow-declared, versioned projections rather than a
-complete artifact map. Private phase evidence remains diagnostic-only; the
-prompt-visible delivery is budgeted before launch and persisted exactly with
-its producer iteration and repository checkpoint. Resume, retry, crash
-recovery, and remediation must reuse this same boundary. An incompatible legacy
-record fails loudly and requires restart or an explicit migration.

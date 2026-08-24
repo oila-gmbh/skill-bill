@@ -1,3 +1,12 @@
+## [2026-08-24] SKILL-200 subtask 3 — delete unread bill-feature prose
+Areas: skills/bill-feature-goal, skills/bill-feature
+- Removed runtime-enforced internals, CLI-rendered output instructions, duplicated intake and handoff prose, and excess status catalogue text while retaining agent-owned guidance.
+- Reunited the `bill-feature` Update Check heading with its body.
+- Pattern: keep feature skills focused on action-bearing guidance; leave runtime behavior and generated output to their owners. reusable
+- Breaking changes or known limitations: content-only deletion; runtime, contract, CLI, test, and install behavior are unchanged.
+Feature flag: N/A
+Acceptance criteria: 10/12 implemented
+
 ## [2026-08-24] SKILL-200 subtask 1 — orphaned feature-task prose removal
 Areas: skills/bill-feature, orchestration/skill-classes, platform-packs/kmp, install/render/validator tests
 - Removed the orphaned feature-task prose surfaces and repointed surviving dispatch and add-on declarations to the goal entry surface.
