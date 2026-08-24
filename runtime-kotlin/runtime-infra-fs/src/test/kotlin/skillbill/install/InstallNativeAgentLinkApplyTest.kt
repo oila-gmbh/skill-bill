@@ -572,6 +572,29 @@ class InstallNativeAgentLinkApplyTest : InstallApplyTestSupport() {
   }
 
   @Test
+  fun `native agent install replaces a dangling link carried over from another machine`() {
+    val targetDir = Files.createTempDirectory("skillbill-native-target").also(tempDirs::add)
+    val managedRoot = Files.createTempDirectory("skillbill-native-managed-root").also(tempDirs::add)
+    val foreignHome = Files.createTempDirectory("skillbill-native-foreign-home").also(tempDirs::add)
+    val newSource = managedRoot.resolve("bill-worker.md")
+    Files.writeString(newSource, "new")
+    val absentTarget = foreignHome.resolve(
+      ".skill-bill/installed-skills/native-agents-other-0123456789abcdef/claude-agents/bill-worker.md",
+    )
+    val linkPath = targetDir.resolve("bill-worker.md")
+    createSymlinkOrSkip(linkPath, absentTarget)
+
+    val result = installNativeAgentFile(
+      source = newSource,
+      agentTarget = AgentTarget("claude", targetDir),
+      managedSourceRoots = listOf(managedRoot),
+    )
+
+    assertTrue(result is InstallNativeAgentResult.Linked)
+    assertEquals(newSource.toAbsolutePath().normalize(), readSymlinkTarget(linkPath))
+  }
+
+  @Test
   fun `native agent install preserves external symlink under similarly named provider directory`() {
     val targetDir = Files.createTempDirectory("skillbill-native-target").also(tempDirs::add)
     val managedRoot = Files.createTempDirectory("skillbill-native-managed-root").also(tempDirs::add)
