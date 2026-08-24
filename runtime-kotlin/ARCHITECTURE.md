@@ -636,30 +636,12 @@ skillbill.workflow.verify
 - `bill-feature-task` is the public workflow identity for the runtime-backed
   feature-task engine. Feature-verify remains a distinct workflow family and
   store.
-- `bill-feature-task-runtime` is the runtime trigger surface. The Kotlin
-  runtime owns its phase loop (`plan -> implement -> audit -> review ->
-  validate`) and launches one agent per phase, reusing the goal-runner launcher
-  and `WorkflowEngine`. Its definition is
+- The Kotlin runtime definition is
   `skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition`
   (id prefix `wftr`, contract version `FEATURE_TASK_RUNTIME_CONTRACT_VERSION`);
-  persisted rows use `workflow_name=bill-feature-task`, `mode=runtime`, and
-  `implementation_skill=bill-feature-task-runtime`.
-- Legacy `mode=prose` rows are quarantined (SKILL-175 subtask 6): they remain
-  historically readable, are never executed as a live prose engine, and resume
-  raises the typed `LegacyProseWorkflowError` naming the runtime re-run path
-  (`skill-bill goal <KEY>`). The prose skill trees are deleted and callers no
-  longer select prose as an engine. SKILL-132 removed the duplicate
-  `feature_task_runtime_*` MCP tools: the foreground runtime driver calls
-  `WorkflowService`, `LifecycleTelemetryService`, and
-  `FeatureTaskContinuationLookupService` directly, and `skill-bill feature-task`
-  / `feature-task-stats` remain the CLI surface. `bill-feature` routes
-  single-spec work to the canonical `bill-feature-task` runtime entry.
-- The authoritative recorded promote decision lives in
-  `.feature-specs/SKILL-65-experimental-feature-task-runtime/spec.md`; SKILL-70
-  owned the earlier router/prose/runtime split.
-- The comparison procedure that produced the promotion evidence remains
-  documented in
-  [`docs/architecture/feature-task-runtime-comparison.md`](docs/architecture/feature-task-runtime-comparison.md).
+  persisted rows use `workflow_name=bill-feature-task` and `mode=runtime`.
+- `skill-bill feature-task` and `feature-task-stats` are the CLI surfaces for
+  this workflow family.
 
 ## Runtime Contract And Schema Seams
 

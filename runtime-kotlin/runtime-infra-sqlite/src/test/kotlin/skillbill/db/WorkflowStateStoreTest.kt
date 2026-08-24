@@ -42,7 +42,7 @@ class WorkflowStateStoreTest {
         workflowRow(
           "wftr-goal-parent",
           "ftr-goal",
-          "bill-feature-task-runtime",
+          "bill-feature-task",
           "plan",
           FeatureTaskWorkflowMode.RUNTIME,
         )
@@ -53,7 +53,7 @@ class WorkflowStateStoreTest {
           ),
       )
       store.saveFeatureTaskRuntimeWorkflow(
-        workflowRow("wftr-legacy", "ftr-legacy", "bill-feature-task-runtime", "plan", FeatureTaskWorkflowMode.RUNTIME)
+        workflowRow("wftr-legacy", "ftr-legacy", "bill-feature-task", "plan", FeatureTaskWorkflowMode.RUNTIME)
           .copy(issueKey = "SKILL-128", workflowStatus = "paused"),
       )
 
@@ -112,7 +112,7 @@ class WorkflowStateStoreTest {
       seedRunningRowWithLease(store, "wftr-live", "owner-token-live00001", expiresAt = "2999-01-01T00:00:00Z")
       // Terminal row with no lease: not a candidate.
       store.saveFeatureTaskRuntimeWorkflow(
-        workflowRow("wftr-done", "ftr-done", "bill-feature-task-runtime", "implement", FeatureTaskWorkflowMode.RUNTIME)
+        workflowRow("wftr-done", "ftr-done", "bill-feature-task", "implement", FeatureTaskWorkflowMode.RUNTIME)
           .copy(workflowStatus = "completed"),
       )
 
@@ -131,7 +131,7 @@ class WorkflowStateStoreTest {
       val row = workflowRow(
         "wftr-crash",
         "ftr-crash",
-        "bill-feature-task-runtime",
+        "bill-feature-task",
         "implement",
         FeatureTaskWorkflowMode.RUNTIME,
       ).copy(workflowStatus = "running", artifactsJson = """{"phase_records":{"preplan":"done"}}""")
@@ -171,7 +171,7 @@ class WorkflowStateStoreTest {
       val row = workflowRow(
         "wftr-fence",
         "ftr-fence",
-        "bill-feature-task-runtime",
+        "bill-feature-task",
         "implement",
         FeatureTaskWorkflowMode.RUNTIME,
       ).copy(workflowStatus = "running")
@@ -210,7 +210,7 @@ class WorkflowStateStoreTest {
       val row = workflowRow(
         workflowId = "wftr-worker",
         sessionId = "ftr-worker",
-        workflowName = "bill-feature-task-runtime",
+        workflowName = "bill-feature-task",
         currentStepId = "implement",
         mode = FeatureTaskWorkflowMode.RUNTIME,
       ).copy(workflowStatus = "running")
@@ -238,7 +238,7 @@ class WorkflowStateStoreTest {
       val row = workflowRow(
         workflowId = "wftr-contention",
         sessionId = "ftr-contention",
-        workflowName = "bill-feature-task-runtime",
+        workflowName = "bill-feature-task",
         currentStepId = "implement",
         mode = FeatureTaskWorkflowMode.RUNTIME,
       ).copy(workflowStatus = "paused")
@@ -260,7 +260,7 @@ class WorkflowStateStoreTest {
       val row = workflowRow(
         workflowId = "wftr-invalid-lease",
         sessionId = "ftr-invalid-lease",
-        workflowName = "bill-feature-task-runtime",
+        workflowName = "bill-feature-task",
         currentStepId = "implement",
         mode = FeatureTaskWorkflowMode.RUNTIME,
       ).copy(workflowStatus = "paused")
@@ -652,7 +652,7 @@ class WorkflowStateStoreTest {
       assertEquals(DbConstants.FEATURE_TASK_RUNTIME_WORKFLOW_CONTRACT_VERSION, saved.contractVersion)
       assertEquals("bill-feature-task", saved.workflowName)
       assertEquals(FeatureTaskWorkflowMode.RUNTIME, saved.mode)
-      assertEquals("bill-feature-task-runtime", saved.implementationSkill)
+      assertEquals("bill-feature", saved.implementationSkill)
       assertEquals("plan", saved.currentStepId)
       assertEquals(artifactsJson, saved.artifactsJson)
 
@@ -673,7 +673,7 @@ class WorkflowStateStoreTest {
       val row = workflowRow(
         workflowId = "wftr-audit-repair",
         sessionId = "ftr-audit-repair",
-        workflowName = "bill-feature-task-runtime",
+        workflowName = "bill-feature-task",
         currentStepId = "implement",
         mode = FeatureTaskWorkflowMode.RUNTIME,
       ).copy(artifactsJson = auditRepairArtifactsJson())
@@ -880,7 +880,7 @@ private fun seedRunningRowWithLease(
     workflowRow(
       workflowId,
       "ftr-$workflowId",
-      "bill-feature-task-runtime",
+      "bill-feature-task",
       "implement",
       FeatureTaskWorkflowMode.RUNTIME,
     ).copy(workflowStatus = "running"),
@@ -1059,7 +1059,7 @@ private fun workflowRow(
 private fun goalChildWorkflow(workflowId: String, parentWorkflowId: String): WorkflowStateRow = workflowRow(
   workflowId = workflowId,
   sessionId = "ftr-$workflowId",
-  workflowName = "bill-feature-task-runtime",
+  workflowName = "bill-feature-task",
   currentStepId = "preplan",
   mode = FeatureTaskWorkflowMode.RUNTIME,
 ).copy(

@@ -24,6 +24,7 @@ import skillbill.workflow.model.WorkflowStepState
 import skillbill.workflow.model.WorkflowSummaryView
 import skillbill.workflow.model.WorkflowUpdateAcknowledgementView
 import skillbill.workflow.model.WorkflowUpdateInput
+import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import java.math.BigDecimal
 import java.math.BigInteger
 
@@ -251,7 +252,7 @@ class WorkflowEngine(
     val currentStepArtifactKeys = resume.requiredArtifacts
     val omittedArtifactKeys = resume.availableArtifacts.filterNot(currentStepArtifactKeys::contains)
     val extraFields =
-      if (definition.skillName == "bill-feature-task") {
+      if (definition.workflowName == FeatureTaskRuntimePhaseWorkflowDefinition.definition.workflowName) {
         implementExtraFields(snapshot.artifacts)
       } else {
         emptyMap()
@@ -731,9 +732,12 @@ class WorkflowEngine(
       val stepLabel = definition.stepLabels[resumeStepId] ?: resumeStepId
       val currentArtifacts = currentStepArtifactKeys.joinToString().ifBlank { "none" }
       val omittedArtifacts = omittedArtifactKeys.joinToString().ifBlank { "none" }
-      val instructionPath = "`${continuationContentPath(definition.skillName)}`"
+      val instructionPath = CONTINUATION_CONTENT_PATHS[definition.skillName]
+        ?.let { path -> " Follow the normal step instructions in `$path`." }
+        .orEmpty()
       return "Resume `${definition.skillName}` workflow `$workflowId` from `$stepLabel` (`$resumeStepId`). " +
-        "Follow the normal step instructions in $instructionPath. " +
+        instructionPath +
+        " " +
         "Use `current_step_artifacts` in this compact payload ($currentArtifacts) as authoritative " +
         "current-step context instead of reconstructing prior context from chat history. " +
         "Omitted artifact keys ($omittedArtifacts) remain private phase context. Explicit operator diagnostics " +
@@ -771,7 +775,7 @@ class WorkflowEngine(
           "Continue status: $continueStatus",
           "Resume step: $resumeStepId (${definition.stepLabels[resumeStepId] ?: resumeStepId})",
         )
-      if (definition.skillName == "bill-feature-task") {
+      if (definition.workflowName == FeatureTaskRuntimePhaseWorkflowDefinition.definition.workflowName) {
         commonLines += "Feature: ${(extraFields["feature_name"] as String).ifBlank { "(unknown)" }}"
         commonLines += "Feature size: ${(extraFields["feature_size"] as String).ifBlank { "(unknown)" }}"
         commonLines += "Branch: ${(extraFields["branch_name"] as String).ifBlank { "(unknown)" }}"
@@ -813,9 +817,6 @@ class WorkflowEngine(
         "branch_name" to branchName,
       )
     }
-
-    private fun continuationContentPath(skillName: String): String =
-      CONTINUATION_CONTENT_PATHS[skillName] ?: "skills/$skillName/content.md"
 
     private fun step(stepId: String, status: String, attemptCount: Int): Map<String, Any?> =
       linkedMapOf("step_id" to stepId, "status" to status, "attempt_count" to attemptCount)
@@ -912,10 +913,6 @@ class WorkflowEngine(
 private const val COMPACT_ARTIFACT_INLINE_MAX_BYTES = 4096
 private const val COMPACT_ARTIFACT_PREVIEW_CHARS = 1024
 
-// Maps a definition's skillName to its resume content.md. feature-task-runtime needs
-// an explicit entry because its shipped skill dir (bill-feature-task) differs.
 private val CONTINUATION_CONTENT_PATHS: Map<String, String> = mapOf(
-  "bill-feature-task" to "skills/bill-feature-task/content.md",
   "bill-feature-verify" to "skills/bill-feature-verify/content.md",
-  "feature-task-runtime" to "skills/bill-feature-task/content.md",
 )

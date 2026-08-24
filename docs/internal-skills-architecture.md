@@ -28,13 +28,12 @@ executing its instructions in the current session**. This reuses a pattern
 the install pipeline already had (support pointers like `shell-ceremony.md`)
 and works identically on every agent, because reading a file is universal
 where Skill-tool mechanics are not. SKILL-175 later removed the legacy prose
-orchestrator and subtask-runner sidecars; the retained family is the runtime
-router, runtime executor, and goal sidecar.
+orchestrator and subtask-runner sidecars.
 
 ## What install produces
 
-The agent skill list shows `bill-feature` and `bill-feature-spec` but none of
-the three execution sidecars. The symlink in the agent's skills dir points into
+The agent skill list shows `bill-feature` and `bill-feature-spec` but not the
+goal execution sidecar. The symlink in the agent's skills dir points into
 the content-addressed staging cache, where the sidecars sit next to the
 parent's `SKILL.md`:
 
@@ -43,8 +42,6 @@ parent's `SKILL.md`:
   → ~/.skill-bill/installed-skills/bill-feature-<content-hash>/
       SKILL.md                            rendered governed wrapper — what the agent lists
       content.md                          authored source, copied verbatim
-      bill-feature-task.md                sidecar: runtime router
-      bill-feature-task-runtime.md        sidecar: runtime executor
       bill-feature-goal.md                sidecar: decomposed-goal executor
       platform-packs → …                  symlink for pack pointer resolution
 ```
@@ -61,28 +58,24 @@ still install their own native subagents outside the skills directory.
 
 ## Where the source lives (nothing moved)
 
-Pinned decision PD3 froze the repo layout. Every internal skill still lives
-exactly where it did, as a normal skill directory with a `content.md` — the
-*only* authored change that classifies it is one frontmatter line:
+Pinned decision PD3 froze the repo layout. The retained internal skill still
+lives exactly where it did, as a normal skill directory with a `content.md`;
+the *only* authored change that classifies it is one frontmatter line:
 
 ```
 skills/
   bill-feature/content.md                     listed — the single entry point
   bill-feature-spec/content.md                listed — spec preparation, still Skill-tool invoked
-  bill-feature-task/content.md                internal-for: bill-feature
-  bill-feature-task-runtime/content.md        internal-for: bill-feature
   bill-feature-goal/content.md                internal-for: bill-feature
 ```
 
 Keeping the paths frozen is load-bearing, not cosmetic. The Kotlin runtime
-binds to these files by repo path: `WorkflowEngine.CONTINUATION_CONTENT_PATHS`
-reads `skills/bill-feature-task/content.md` when it builds a resume payload,
-and `RepoValidationRuntime` asserts workflow-step markers inside retained
-workflow surfaces such as `bill-feature-verify/content.md`. Likewise every
+binds to retained workflow files by repo path, and `RepoValidationRuntime`
+asserts workflow-step markers inside retained workflow surfaces such as
+`bill-feature-verify/content.md`. Likewise every
 identity string is
-byte-for-byte unchanged (PD4): workflow rows are still named
-`bill-feature-task`, and the DB `workflow_name` CHECK constraint, telemetry
-constants, and MCP tool names are untouched. The feature changed *listing and
+byte-for-byte unchanged (PD4): workflow rows, the DB `workflow_name` CHECK
+constraint, telemetry constants, and MCP tool names are untouched. The feature changed *listing and
 invocation plumbing* — never identity or runtime behavior.
 
 Internal skills are deliberately **not** nested under their parent's source
@@ -105,7 +98,6 @@ user: "implement feature …" / "goal status" / …
   ▼
 bill-feature                                     [listed]
   │  continuation lookup, then artifact detection:
-  │    resumable durable workflow                    → task sidecar (direct resume)
   │    .feature-specs/{KEY}-*/spec.md only          → prepare intake through feature-spec
   │    .feature-specs/{KEY}-*/decomposition-manifest → goal sidecar (direct dispatch)
   │    nothing                                      → prepare a spec first
@@ -120,25 +112,23 @@ bill-feature-spec                                [listed, Skill tool]
                                order, limit-pause + resume)
 ```
 
-The dispatch sentence is the whole contract. Every hop above (except
-`bill-feature-spec`) is literally the parent executing prose of the form:
+The dispatch sentence is the whole contract. The goal hop is literally the
+parent executing prose of the form:
 
-> Read the file `bill-feature-task.md` located in this skill's own installed
+> Read the file `bill-feature-goal.md` located in this skill's own installed
 > directory (a sibling of this `SKILL.md`) and execute its instructions in
 > the current session with args: `<issue-key> …`. Do not use the
-> Skill tool for this — `bill-feature-task` is an internal skill and is not
+> Skill tool for this — `bill-feature-goal` is an internal skill and is not
 > listed.
 
 Arguments flow through unchanged — issue key, spec path,
 `parallel-review:`, `--agent-override` — so downstream behavior is identical
 to the Skill-tool era.
 
-## The three sidecars at a glance
+## The goal sidecar at a glance
 
 | Sidecar | Role | Terminal action |
 |---|---|---|
-| `bill-feature-task.md` | Runtime router for one implementation unit; confirmation gate | Reads the runtime sibling |
-| `bill-feature-task-runtime.md` | Runtime-backed single-spec execution | Launches `skill-bill feature-task` |
 | `bill-feature-goal.md` | Decomposed-goal gate and status behavior | Launches `skill-bill goal` |
 
 ## How the install pipeline produces this
@@ -181,7 +171,7 @@ consumed at three seams:
 
 - All classification rules above, as repo-validation issues.
 - **Collision guard:** an authored file in the parent's source dir occupying
-  a would-be sidecar name (e.g. an authored `bill-feature/bill-feature-task.md`)
+  a would-be sidecar name (e.g. an authored `bill-feature/bill-feature-goal.md`)
   fails validation and staging (`InternalSkillSidecarCollisionError`).
 - **Reference co-location:** every `` `<skill-name>.md` `` sidecar reference
   inside any skill's prose must resolve to an internal skill sharing the
@@ -206,9 +196,6 @@ consumed at three seams:
   constraint, telemetry history, and MCP dispatch all bind to the old names
   and paths; the blast radius stayed inside the install pipeline and the
   skill prose.
-- **Direct dispatch** — hiding `bill-feature-task` removed the old shortcut
-  of invoking it directly when a spec already exists; the artifact-detection
-  route in `bill-feature` restores that with zero user-facing ceremony.
 - **`bill-feature-spec` stayed listed** — it is a different kind of skill
   (preparation without implementation) with a legitimate standalone life, so
   it keeps its Skill-tool contract.
@@ -226,7 +213,7 @@ consumed at three seams:
 | Direct link-skill guard | `…/install/plan/InstallPrimitives.kt` |
 | Validate-time rules incl. sidecar references | `…/scaffold/runtime/RepoValidationRuntime.kt` |
 | Typed errors | `runtime-kotlin/runtime-contracts/…/error/ShellContentContractErrors.kt` |
-| Routing prose (the actual dispatch sentences) | `skills/bill-feature/content.md`, `skills/bill-feature-task/content.md` |
+| Routing prose (the actual dispatch sentences) | `skills/bill-feature/content.md` |
 | Authored contract (normative) | `docs/skill-source-generation.md` → Internal Skills |
 | Tests | `InternalSkillStagingTest`, `InternalSkillClassificationTest`, `InstallPlanInternalSkillDiscoveryTest`, `RepoValidationRuntimeTest` |
 

@@ -1817,7 +1817,7 @@ class DatabaseMigrationsTest {
             workflow_id, session_id, mode, implementation_skill, contract_version,
             workflow_status, current_step_id, steps_json, artifacts_json, started_at, updated_at
           ) VALUES (
-            'wf-legacy-duration', 'fis-legacy-duration', 'runtime', 'bill-feature-task-runtime', '0.1',
+            'wf-legacy-duration', 'fis-legacy-duration', 'runtime', 'bill-feature', '0.1',
             'running', 'implement', '[]', '{}', '$LEGACY_FEATURE_TASK_WORKFLOW_STARTED_AT',
             '$LEGACY_FEATURE_TASK_WORKFLOW_STARTED_AT'
           )

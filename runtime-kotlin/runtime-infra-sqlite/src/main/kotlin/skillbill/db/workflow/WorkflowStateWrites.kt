@@ -16,8 +16,8 @@ private val sqliteInsertionTimestampFormatter: DateTimeFormatter =
 
 internal val FeatureTaskWorkflowMode.defaultImplementationSkill: String
   get() = when (this) {
-    FeatureTaskWorkflowMode.PROSE -> "bill-feature-task-prose"
-    FeatureTaskWorkflowMode.RUNTIME -> "bill-feature-task-runtime"
+    FeatureTaskWorkflowMode.PROSE -> "bill-feature"
+    FeatureTaskWorkflowMode.RUNTIME -> "bill-feature"
   }
 
 internal val FeatureTaskWorkflowMode.defaultContractVersion: String

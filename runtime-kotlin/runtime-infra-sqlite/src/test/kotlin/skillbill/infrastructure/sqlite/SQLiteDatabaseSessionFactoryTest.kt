@@ -352,7 +352,7 @@ class SQLiteDatabaseSessionFactoryTest {
   private fun runtimeRow(workflowId: String) = WorkflowStateRecord(
     workflowId = workflowId,
     sessionId = "ftr-crash-reconcile",
-    workflowName = "bill-feature-task-runtime",
+    workflowName = "bill-feature-task",
     contractVersion = "1.0",
     workflowStatus = "running",
     currentStepId = "implement",
