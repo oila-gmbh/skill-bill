@@ -9,10 +9,27 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairE
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairOperation
 
 internal object FeatureTaskRuntimePhaseOutputEnvelopeWalker {
-  fun select(text: String, phaseId: String): FeatureTaskRuntimePhaseOutputStructuralRepairDecision? {
+  /**
+   * A complete envelope always decides the response. Only when the text holds none at all is the
+   * scan repeated with the absent-`summary` fill enabled.
+   *
+   * The order is what keeps the fill safe. A phase that emits a summary-less draft and then a
+   * corrected envelope must settle on the correction; filling during the first scan would promote
+   * the draft to a second valid candidate and turn a recoverable response into a conflict. Two
+   * summary-less candidates and nothing complete still conflict, which is the honest answer.
+   */
+  fun select(text: String, phaseId: String): FeatureTaskRuntimePhaseOutputStructuralRepairDecision? =
+    selectMatching(text, phaseId, recoverSummary = false)
+      ?: selectMatching(text, phaseId, recoverSummary = true)
+
+  private fun selectMatching(
+    text: String,
+    phaseId: String,
+    recoverSummary: Boolean,
+  ): FeatureTaskRuntimePhaseOutputStructuralRepairDecision? {
     val matches = linkedMapOf<String, WalkedEnvelope>()
     StructuralRepairSyntax.balancedTopLevelObjectSpans(text).forEach { span ->
-      considerSpan(text, span, phaseId)?.let { envelope ->
+      considerSpan(text, span, phaseId, recoverSummary)?.let { envelope ->
         matches[canonical(envelope.node)] = envelope
       }
     }
@@ -46,24 +63,32 @@ internal object FeatureTaskRuntimePhaseOutputEnvelopeWalker {
     return StructuralRepairDecisions.accepted(selected.envelopeText, selected.node, evidence)
   }
 
-  private fun considerSpan(text: String, span: IntRange, phaseId: String): WalkedEnvelope? {
-    shapedEnvelope(text.substring(span), span, spliced = false, spliceOffset = null, phaseId)?.let {
+  private fun considerSpan(text: String, span: IntRange, phaseId: String, recoverSummary: Boolean): WalkedEnvelope? {
+    val summarySource = if (recoverSummary) text.substring(0, span.first) else null
+    shapedEnvelope(text.substring(span), span, spliceOffset = null, phaseId, summarySource)?.let {
       return it
     }
     if (!StructuralRepairSyntax.looksLikeObjectFieldContinuation(text, span.last + 1)) return null
     val repaired = text.removeRange(span.last, span.last + 1).substring(span.first)
-    return shapedEnvelope(repaired, span, spliced = true, spliceOffset = span.last, phaseId)
+    return shapedEnvelope(repaired, span, spliceOffset = span.last, phaseId, summarySource)
   }
 
+  // `spliced` is exactly `spliceOffset != null` — the only splice this walker performs records where
+  // it cut — so the offset carries both facts and the two can never disagree. `summarySource` is
+  // likewise both the switch and the input: null leaves an absent summary fatal to the candidate.
   private fun shapedEnvelope(
     slice: String,
     span: IntRange,
-    spliced: Boolean,
     spliceOffset: Int?,
     phaseId: String,
+    summarySource: String?,
   ): WalkedEnvelope? {
     val parsed = parseObject(slice) ?: return null
-    val (aligned, changed) = PhaseOutputExpectedShape.align(parsed, phaseId)
+    val (alignedShape, shapeChanged) = PhaseOutputExpectedShape.align(parsed, phaseId)
+    val (aligned, summaryRecovered) = summarySource
+      ?.let { PhaseOutputExpectedShape.withRecoveredSummary(alignedShape, phaseId, it) }
+      ?: (alignedShape to false)
+    val changed = shapeChanged || summaryRecovered
     if (!PhaseOutputExpectedShape.matches(aligned, phaseId)) return null
     val envelopeText = if (changed) PhaseOutputExpectedShape.writeJson(aligned) else slice
     return WalkedEnvelope(
@@ -71,7 +96,7 @@ internal object FeatureTaskRuntimePhaseOutputEnvelopeWalker {
       node = aligned,
       sourceStart = span.first,
       sourceEnd = span.last + 1,
-      spliced = spliced,
+      spliced = spliceOffset != null,
       shapeAligned = changed,
       spliceOffset = spliceOffset,
     )
@@ -133,6 +158,12 @@ internal object FeatureTaskRuntimePhaseOutputEnvelopeWalker {
 
 internal object PhaseOutputExpectedShape {
   private val mapper = ObjectMapper()
+  private const val SUMMARY_FIELD = "summary"
+  private const val RECOVERED_SUMMARY_MAX_CHARS = 2_000
+  private val FENCED_BLOCK = Regex("```.*?```", RegexOption.DOT_MATCHES_ALL)
+  private val FENCE_MARKER_LINE = Regex("(?m)^[ \\t]*```[A-Za-z0-9_-]*[ \\t]*$")
+  private val PARAGRAPH_BREAK = Regex("\\r?\\n[ \\t]*\\r?\\n")
+  private val WHITESPACE_RUN = Regex("\\s+")
 
   fun matches(node: JsonNode, phaseId: String): Boolean {
     if (!node.isObject) return false
@@ -202,6 +233,58 @@ internal object PhaseOutputExpectedShape {
     return true
   }
 
+  /**
+   * Fills an absent `summary` rather than discarding the envelope over it.
+   *
+   * `summary` is descriptive, never load-bearing: consumers read it as `.orEmpty()`, and the runtime
+   * already authors one itself for its own gate-executed phases. Blocking a phase whose entire
+   * `produced_outputs` is present and valid, over the one field nothing branches on, spends a
+   * session to recover a sentence.
+   *
+   * The fill prefers the producer's own prose immediately before the envelope, which is where a
+   * phase that narrated its work and then emitted JSON actually put its summary — the same recovery
+   * the review path performs when it assembles an envelope from prose. Nothing is invented there;
+   * the text is the producer's, only its placement was wrong. With no such prose, the marker says
+   * plainly that no summary was reported rather than fabricating one.
+   *
+   * Deliberately narrow: it fires only when `phase_id` matches and every other required field is
+   * already present, so an unrelated object never becomes a candidate. That alone is not enough —
+   * a summary-less *draft* of the same phase would still qualify — which is why [select] runs this
+   * only after a scan without it found no complete envelope at all.
+   */
+  fun withRecoveredSummary(node: JsonNode, phaseId: String, precedingText: String): Pair<JsonNode, Boolean> {
+    val root = (node as? ObjectNode)?.takeIf { onlySummaryIsMissing(it, phaseId) } ?: return node to false
+    val recovered = root.deepCopy()
+    recovered.put(SUMMARY_FIELD, proseSummary(precedingText) ?: absentSummaryMarker(phaseId))
+    return recovered to true
+  }
+
+  /** Matching `phase_id` plus every other required field present: the fill can add nothing else. */
+  private fun onlySummaryIsMissing(root: ObjectNode, phaseId: String): Boolean =
+    root.path("phase_id").asText("") == phaseId &&
+      !root.hasNonNull(SUMMARY_FIELD) &&
+      requiredFields(phaseId).none { field -> field != SUMMARY_FIELD && !root.hasNonNull(field) }
+
+  private fun absentSummaryMarker(phaseId: String): String =
+    "Phase '$phaseId' reported no summary; its produced_outputs carries the phase's output."
+
+  /**
+   * The last paragraph before the envelope, fences removed and whitespace collapsed. The last one
+   * rather than the first: a phase narrates its work in order, so the paragraph nearest the envelope
+   * is the one describing the state the envelope reports.
+   */
+  private fun proseSummary(precedingText: String): String? = precedingText
+    .replace(FENCED_BLOCK, " ")
+    // The envelope's own opening fence is unmatched in the text preceding it — its closer sits past
+    // the envelope — so it survives the pair strip above and would otherwise be read as the summary.
+    .replace(FENCE_MARKER_LINE, "")
+    .split(PARAGRAPH_BREAK)
+    .lastOrNull(String::isNotBlank)
+    ?.replace(WHITESPACE_RUN, " ")
+    ?.trim()
+    ?.takeIf(String::isNotEmpty)
+    ?.take(RECOVERED_SUMMARY_MAX_CHARS)
+
   fun writeJson(node: JsonNode): String = mapper.writeValueAsString(node)
 
   fun alignDecision(
@@ -210,7 +293,11 @@ internal object PhaseOutputExpectedShape {
     originalText: String,
   ): FeatureTaskRuntimePhaseOutputStructuralRepairDecision {
     val accepted = decision as? FeatureTaskRuntimePhaseOutputStructuralRepairDecision.Accepted ?: return decision
-    val (aligned, changed) = align(accepted.node, phaseId)
+    val (alignedShape, shapeChanged) = align(accepted.node, phaseId)
+    // A whole-document parse succeeded, so there is no prose outside the envelope to recover from:
+    // the fill can only be the marker, and the missing sentence still must not cost a session.
+    val (aligned, summaryRecovered) = withRecoveredSummary(alignedShape, phaseId, precedingText = "")
+    val changed = shapeChanged || summaryRecovered
     if (!changed) return accepted
     val repairedText = writeJson(aligned)
     val evidence = accepted.evidence?.copy(repairedDigest = StructuralRepairSyntax.sha256(repairedText))

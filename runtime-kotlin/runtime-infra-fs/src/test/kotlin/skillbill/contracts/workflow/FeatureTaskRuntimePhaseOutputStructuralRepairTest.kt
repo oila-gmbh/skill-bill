@@ -65,6 +65,104 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
   }
 
   @Test
+  fun `an absent summary is recovered from the prose the producer wrote before the envelope`() {
+    // The shape observed on wftr-20260824-173259-uiwi: a 13-task implement receipt discarded because
+    // the one descriptive field nothing branches on was narrated above the fence instead of inside it.
+    val narrated = """
+      |Formatting-risk check is clean: no added line exceeds 100 characters outside imports.
+      |
+      |All 13 plan tasks are converged; no build, test, or lint invocation was made in this phase.
+      |
+      |```json
+      |{"contract_version":"0.4","phase_id":"implement","status":"completed",
+      |"produced_outputs":{"projection_kind":"implementation_receipt","changed_paths":["a/B.kt"]}}
+      |```
+    """.trimMargin()
+
+    val result = adapter.validatePhaseOutput(narrated, "implement")
+
+    val repaired = assertIs<FeatureTaskRuntimePhaseOutputValidationResult.AcceptedAfterRepair>(result)
+    assertEquals(
+      "All 13 plan tasks are converged; no build, test, or lint invocation was made in this phase.",
+      repaired.normalizedOutput.envelope["summary"],
+      "the paragraph nearest the envelope describes the state the envelope reports",
+    )
+    @Suppress("UNCHECKED_CAST")
+    val produced = repaired.normalizedOutput.envelope["produced_outputs"] as Map<String, Any?>
+    assertEquals(listOf("a/B.kt"), produced["changed_paths"], "the receipt itself must survive intact")
+  }
+
+  @Test
+  fun `an absent summary with no prose to recover is marked rather than fabricated`() {
+    val bare =
+      """{"contract_version":"0.4","phase_id":"implement","status":"completed",""" +
+        """"produced_outputs":{"projection_kind":"implementation_receipt"}}"""
+
+    val result = adapter.validatePhaseOutput(bare, "implement")
+
+    val repaired = assertIs<FeatureTaskRuntimePhaseOutputValidationResult.AcceptedAfterRepair>(result)
+    val summary = repaired.normalizedOutput.envelope["summary"] as String
+    assertTrue(
+      summary.contains("reported no summary"),
+      "with nothing of the producer's to recover, the fill must say so rather than invent a claim",
+    )
+  }
+
+  @Test
+  fun `a summary-less draft never competes with the complete envelope that follows it`() {
+    // The fill would otherwise promote the draft to a second valid candidate and turn a response
+    // the walker could already read into a multiple-candidates conflict.
+    val draftThenReal = """
+      |Discarded draft, missing its summary:
+      |
+      |```json
+      |{"contract_version":"0.4","phase_id":"plan","status":"completed",
+      |"produced_outputs":{"tasks":["draft"]}}
+      |```
+      |
+      |Corrected final answer:
+      |
+      |```json
+      |{"contract_version":"0.4","phase_id":"plan","status":"completed","summary":"Plan output.",
+      |"produced_outputs":{"tasks":["task-1"]}}
+      |```
+    """.trimMargin()
+
+    val result = adapter.validatePhaseOutput(draftThenReal, "plan")
+
+    val envelope = when (result) {
+      is FeatureTaskRuntimePhaseOutputValidationResult.AcceptedAfterRepair -> result.normalizedOutput.envelope
+      is FeatureTaskRuntimePhaseOutputValidationResult.AcceptedUnchanged -> result.normalizedOutput.envelope
+      else -> error("the complete envelope must decide the response, got $result")
+    }
+    assertEquals("Plan output.", envelope["summary"])
+    @Suppress("UNCHECKED_CAST")
+    val produced = envelope["produced_outputs"] as Map<String, Any?>
+    assertEquals(listOf("task-1"), produced["tasks"], "the draft must not win")
+  }
+
+  @Test
+  fun `a summary the producer did state is never replaced by surrounding prose`() {
+    val narrated = """
+      |Some narration that is not the summary.
+      |
+      |```json
+      |{"contract_version":"0.4","phase_id":"plan","status":"completed","summary":"Plan output.",
+      |"produced_outputs":{"tasks":["task-1"]}}
+      |```
+    """.trimMargin()
+
+    val result = adapter.validatePhaseOutput(narrated, "plan")
+
+    val envelope = when (val outcome = adapter.validatePhaseOutput(narrated, "plan")) {
+      is FeatureTaskRuntimePhaseOutputValidationResult.AcceptedAfterRepair -> outcome.normalizedOutput.envelope
+      is FeatureTaskRuntimePhaseOutputValidationResult.AcceptedUnchanged -> outcome.normalizedOutput.envelope
+      else -> error("an envelope in a fence must be accepted, got $result")
+    }
+    assertEquals("Plan output.", envelope["summary"])
+  }
+
+  @Test
   fun `a stray root key does not overwrite a member produced_outputs already states`() {
     val collision =
       """{"contract_version":"0.4","phase_id":"implement","status":"completed","summary":"Done.",""" +

@@ -4,6 +4,16 @@ This file records architectural and implementation decisions that span the
 `runtime-kotlin/` boundary. Each entry is dated and explains the trade-off,
 not the implementation detail.
 
+## [2026-08-24] An absent summary is filled from the producer's prose, not rejected
+
+Context: WE-4860 subtask 3's implement receipt narrated its work in prose, then emitted a fenced envelope carrying all thirteen closed tasks and no `summary`. The envelope walker requires every declared field before a span can be a candidate, so nothing matched and a 23KB receipt was discarded over the one root field no consumer branches on — `terminalBlockedReasonFrom` reads it as `.orEmpty()`, and the runtime already authors its own for gate-executed phases.
+
+Decision: `PhaseOutputExpectedShape.withRecoveredSummary` fills an absent `summary` from the last paragraph of the producer's prose preceding the envelope, or from a marker naming the phase when there is no such prose. It fires only when `phase_id` matches and every other required field is present. `select` runs a scan without the fill first and only falls back to a scan with it when the text holds no complete envelope at all.
+
+Reason: The prose is the producer's own account of the phase, misplaced rather than missing — the same judgement as the misplaced-key decision below, and the same recovery the review path already performs when it assembles an envelope from prose. The two-pass order is what makes it safe: a phase that emits a summary-less draft and then a corrected envelope must settle on the correction, and filling during the first scan would promote the draft to a competing candidate. `FeatureTaskRuntimePhaseOutputSchemaValidatorTest` proved that regression before it shipped.
+
+Alternatives considered: Fill from `reconciliation_evidence.evidence` (rejected: that field is the tree-state evidence, not a phase summary; repurposing it would misreport what the phase did). Marker only, never prose (rejected: it discards a sentence the producer actually wrote and that is already on the wire). Relax `matches` to drop `summary` from the required set (rejected: the field stays contractually required, and the envelope written back carries a real value rather than a hole later readers must handle).
+
 ## [2026-08-24] A bare evidence string is promoted to reconciliation_evidence, not rejected
 
 Context: WE-4860 subtask 2's implement receipt emitted `reconciliation_evidence` as the evidence string itself rather than `{ reconciled, evidence }`. The producer-projection gate rejected it and, at a one-attempt budget, blocked the run — discarding a 22KB receipt whose read-only sweep was already on the wire. `RealValidatorReceiptFixLoopConvergenceTest` pinned that rejection deliberately, as one of three SKILL-152 classes "canonicalization must never paper over".
