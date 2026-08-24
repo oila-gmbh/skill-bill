@@ -23,6 +23,26 @@ YELLOW='\033[0;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
+# The Kotlin runtime is compiled for Java 21, and build-logic:convention sits on
+# the Gradle buildscript classpath, so the Gradle daemon JVM itself must be 21+.
+# Reuse the same guard that is baked into the generated runtime start scripts so
+# SKILL_BILL_JAVA_HOME resolves identically at build time and at run time.
+BUILD_JVM_GUARD="$RUNTIME_KOTLIN_DIR/build-logic/convention/src/main/resources/skill-bill-java-guard.sh"
+
+ensure_build_jvm() {
+  [[ -r "$BUILD_JVM_GUARD" ]] || return 0
+  local resolved
+  # The guard exports JAVA_HOME, unsets it when the PATH java already qualifies,
+  # or exits 1 after printing remediation to stderr. Run it in a subshell and
+  # replay its decision here so a failure stays recoverable by the caller.
+  resolved=$(. "$BUILD_JVM_GUARD" >/dev/null; printf '%s' "${JAVA_HOME:-}") || return 1
+  if [[ -n "$resolved" ]]; then
+    export JAVA_HOME="$resolved"
+  else
+    unset JAVA_HOME
+  fi
+}
+
 info()  { printf "${CYAN}▸${NC} %s\n" "$1"; }
 ok()    { printf "${GREEN}✓${NC} %s\n" "$1"; }
 warn()  { printf "${YELLOW}⚠${NC} %s\n" "$1"; }
@@ -157,6 +177,17 @@ build_kotlin_runtime_distribution() {
       return 0
     fi
     warn "No Gradle wrapper and no installed runtime CLI; skipping runtime-driven cleanup."
+    return 0
+  fi
+
+  # Cleanup only needs a runnable CLI, so a missing Java 21+ JVM degrades to the
+  # already-installed runtime instead of blocking the uninstall.
+  if ! ensure_build_jvm; then
+    if [[ -x "$RUNTIME_CLI_BIN" || -x "$RUNTIME_CLI_BUILD_BIN" ]]; then
+      warn "No Java 21+ JVM found; reusing the installed runtime CLI for cleanup."
+      return 0
+    fi
+    warn "No Java 21+ JVM and no installed runtime CLI; skipping runtime-driven cleanup."
     return 0
   fi
 

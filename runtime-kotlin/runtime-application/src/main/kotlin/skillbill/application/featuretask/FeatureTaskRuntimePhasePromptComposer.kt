@@ -476,9 +476,13 @@ object FeatureTaskRuntimePhasePromptComposer {
           "array with one entry per review finding. Recommended fields per entry: finding_id, disposition " +
           "(verified or rejected), reason, severity, location, message, optional " +
           "selected_boundary_headings (heading_id and source_path), and boundary_context_unavailable " +
-          "when no eligible boundary owns the finding paths. The runtime reads dispositions leniently and " +
-          "does not block on reason length, extra keys, or other schema polish; decidable verification " +
-          "signals still gate advancement. Do not edit the worktree.\n" +
+          "when no eligible boundary owns the finding paths. Boundary memory is optional supporting " +
+          "evidence only: the disposition still settles from spec intent when headings are omitted or " +
+          "invalid. When you cite boundary memory, copy heading_id and source_path verbatim from that " +
+          "finding's boundary_catalog only — never invent hashes or reuse another finding's catalog. " +
+          "The runtime reads dispositions leniently and does not block on reason length, extra keys, " +
+          "invalid boundary selections, or other schema polish; decidable verification signals still " +
+          "gate advancement. Do not edit the worktree.\n" +
           "      Example: {\"finding_id\":\"F-001\",\"disposition\":\"verified\"," +
           "\"reason\":\"Matches spec intent AC-002.\",\"severity\":\"major\"," +
           "\"location\":\"FeatureTaskRuntimePhaseWorkflowDefinition.kt\"," +

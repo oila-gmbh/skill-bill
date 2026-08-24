@@ -57,10 +57,15 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemory(
     val sectionByFindingId = sections.associateBy(FeatureTaskRuntimeFindingBoundaryMemorySection::findingId)
     return dispositions.mapNotNull { disposition ->
       val section = sectionByFindingId[disposition.findingId] ?: return@mapNotNull null
-      if (section.discovery.boundaryContextUnavailable || disposition.selectedBoundaryHeadings.isEmpty()) {
+      if (section.discovery.boundaryContextUnavailable) {
         return@mapNotNull null
       }
-      disposition.findingId to disposition.selectedBoundaryHeadings
+      val validated = catalogValidatedBoundaryHeadings(
+        catalog = section.discovery.boundaryCatalog,
+        selected = disposition.selectedBoundaryHeadings,
+      )
+      if (validated.isEmpty()) return@mapNotNull null
+      disposition.findingId to validated
     }.toMap()
   }
 
@@ -93,35 +98,30 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemory(
   fun validateDispositionBoundaryProvenance(
     sections: List<FeatureTaskRuntimeFindingBoundaryMemorySection>,
     dispositions: List<FeatureTaskRuntimeFindingVerificationDisposition>,
-  ): String? {
-    val sectionByFindingId = sections.associateBy(FeatureTaskRuntimeFindingBoundaryMemorySection::findingId)
-    for (disposition in dispositions) {
-      if (disposition.boundaryContextUnavailable || disposition.selectedBoundaryHeadings.isEmpty()) continue
-      val catalog = sectionByFindingId[disposition.findingId]?.discovery?.boundaryCatalog.orEmpty()
-        .associateBy(GoalPlanningBoundaryHeading::headingId)
-      for (heading in disposition.selectedBoundaryHeadings) {
-        val catalogEntry = catalog[heading.headingId]
-          ?: return "finding verification disposition for ${disposition.findingId} selects heading_id " +
-            "'${heading.headingId}' absent from the scoped boundary catalog."
-        if (catalogEntry.sourcePath != heading.sourcePath) {
-          return "finding verification disposition for ${disposition.findingId} records source_path " +
-            "'${heading.sourcePath}' for heading_id '${heading.headingId}' but the catalog declares " +
-            "'${catalogEntry.sourcePath}'."
-        }
-      }
-    }
-    return null
+  ): String? = null
+
+  fun catalogValidatedBoundaryHeadings(
+    catalog: List<GoalPlanningBoundaryHeading>,
+    selected: List<FeatureTaskRuntimeVerificationBoundaryHeadingProvenance>,
+  ): List<FeatureTaskRuntimeVerificationBoundaryHeadingProvenance> {
+    if (selected.isEmpty()) return emptyList()
+    val byId = catalog.associateBy(GoalPlanningBoundaryHeading::headingId)
+    return selected.filter { heading -> byId[heading.headingId]?.sourcePath == heading.sourcePath }
   }
 
   fun validatePersistedBoundarySelectionsMatch(
+    sections: List<FeatureTaskRuntimeFindingBoundaryMemorySection>,
     dispositions: List<FeatureTaskRuntimeFindingVerificationDisposition>,
     persisted: Map<String, List<FeatureTaskRuntimeVerificationBoundaryHeadingProvenance>>,
   ): String? {
+    val sectionByFindingId = sections.associateBy(FeatureTaskRuntimeFindingBoundaryMemorySection::findingId)
     for ((findingId, persistedForFinding) in persisted) {
       val disposition = dispositions.firstOrNull { it.findingId == findingId }
         ?: return "finding verification disposition must cover every finding whose boundary headings were " +
           "delivered; missing finding_id $findingId."
-      if (!boundaryHeadingsMatch(persistedForFinding, disposition.selectedBoundaryHeadings)) {
+      val catalog = sectionByFindingId[findingId]?.discovery?.boundaryCatalog.orEmpty()
+      val validated = catalogValidatedBoundaryHeadings(catalog, disposition.selectedBoundaryHeadings)
+      if (!boundaryHeadingsMatch(persistedForFinding, validated)) {
         return "finding verification disposition for $findingId must reuse the persisted " +
           "selected_boundary_headings verbatim; do not change heading selections after the initial settlement pass."
       }
@@ -132,24 +132,13 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemory(
   fun validatePersistedBoundarySelectionsAgainstCatalog(
     sections: List<FeatureTaskRuntimeFindingBoundaryMemorySection>,
     persisted: Map<String, List<FeatureTaskRuntimeVerificationBoundaryHeadingProvenance>>,
-  ): String? {
+  ): Map<String, List<FeatureTaskRuntimeVerificationBoundaryHeadingProvenance>> {
     val sectionByFindingId = sections.associateBy(FeatureTaskRuntimeFindingBoundaryMemorySection::findingId)
-    for ((findingId, selections) in persisted) {
-      if (selections.isEmpty()) continue
+    return persisted.mapNotNull { (findingId, selections) ->
       val catalog = sectionByFindingId[findingId]?.discovery?.boundaryCatalog.orEmpty()
-        .associateBy(GoalPlanningBoundaryHeading::headingId)
-      for (heading in selections) {
-        val catalogEntry = catalog[heading.headingId]
-          ?: return "persisted boundary selection for $findingId references heading_id " +
-            "'${heading.headingId}' absent from the scoped boundary catalog."
-        if (catalogEntry.sourcePath != heading.sourcePath) {
-          return "persisted boundary selection for $findingId records source_path " +
-            "'${heading.sourcePath}' for heading_id '${heading.headingId}' but the catalog declares " +
-            "'${catalogEntry.sourcePath}'."
-        }
-      }
-    }
-    return null
+      val validated = catalogValidatedBoundaryHeadings(catalog, selections)
+      if (validated.isEmpty()) null else findingId to validated
+    }.toMap()
   }
 
   fun validateBoundarySelectionsDelivered(
@@ -159,8 +148,7 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemory(
   ): String? {
     val pending = selectionsRequiringBodyDelivery(sections, dispositions)
     if (persisted != null) {
-      validatePersistedBoundarySelectionsMatch(dispositions, persisted)?.let { return it }
-      validatePersistedBoundarySelectionsAgainstCatalog(sections, persisted)?.let { return it }
+      validatePersistedBoundarySelectionsMatch(sections, dispositions, persisted)?.let { return it }
       for ((findingId, pendingSelections) in pending) {
         val persistedForFinding = persisted[findingId]
           ?: return "finding verification disposition for $findingId selected boundary headings but " +
@@ -187,10 +175,11 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemory(
   ): String? {
     val sectionByFindingId = sections.associateBy(FeatureTaskRuntimeFindingBoundaryMemorySection::findingId)
     for (disposition in dispositions) {
-      val selections = persistedSelections?.get(disposition.findingId) ?: disposition.selectedBoundaryHeadings
-      if (selections.isEmpty()) continue
       val section = sectionByFindingId[disposition.findingId] ?: continue
       if (section.discovery.boundaryContextUnavailable) continue
+      val selections = persistedSelections?.get(disposition.findingId)
+        ?: catalogValidatedBoundaryHeadings(section.discovery.boundaryCatalog, disposition.selectedBoundaryHeadings)
+      if (selections.isEmpty()) continue
       try {
         resolveSelectedBodies(
           repoRoot = repoRoot,
@@ -210,10 +199,9 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemory(
     selectionsByFindingId: Map<String, List<FeatureTaskRuntimeVerificationBoundaryHeadingProvenance>>,
   ): String {
     if (selectionsByFindingId.isEmpty()) return ""
-    validatePersistedBoundarySelectionsAgainstCatalog(sections, selectionsByFindingId)?.let { reason ->
-      error(reason)
-    }
     val sectionByFindingId = sections.associateBy(FeatureTaskRuntimeFindingBoundaryMemorySection::findingId)
+    val validatedSelections = validatePersistedBoundarySelectionsAgainstCatalog(sections, selectionsByFindingId)
+    if (validatedSelections.isEmpty()) return ""
     return buildString {
       appendLine()
       appendLine("## Selected boundary memory (verify_findings)")
@@ -221,7 +209,7 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemory(
         "Resolved entry bodies for the heading ids you selected. Unselected bodies and whole " +
           "history.md or decisions.md files are absent by design.",
       )
-      for ((findingId, selections) in selectionsByFindingId) {
+      for ((findingId, selections) in validatedSelections) {
         val section = sectionByFindingId[findingId] ?: continue
         val resolved = resolveSelectedBodies(
           repoRoot = repoRoot,
@@ -251,9 +239,13 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemory(
       appendLine("## Scoped boundary memory (verify_findings)")
       appendLine(
         "Each finding below carries a titles-only heading catalog scoped to the boundaries that own " +
-          "its paths. Select heading_id values semantically in each disposition's " +
-          "selected_boundary_headings. Only selected entry bodies are resolved after settlement; " +
-          "unselected bodies and whole history.md or decisions.md files never belong in this briefing.",
+          "its paths. Boundary memory is optional supporting evidence only: your disposition still " +
+          "settles from spec intent even when you omit selected_boundary_headings or when the runtime " +
+          "ignores an invalid selection. When you cite boundary memory, copy heading_id and source_path " +
+          "verbatim from this finding's boundary_catalog only — never invent hashes, reuse another " +
+          "finding's catalog, or prefix a heading_id with a different source_path. Only selected entry " +
+          "bodies are resolved after settlement; unselected bodies and whole history.md or decisions.md " +
+          "files never belong in this briefing.",
       )
       for (section in sections) {
         appendLine()

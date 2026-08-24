@@ -45,6 +45,26 @@ YELLOW='\033[0;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
+# The Kotlin runtime is compiled for Java 21, and build-logic:convention sits on
+# the Gradle buildscript classpath, so the Gradle daemon JVM itself must be 21+.
+# Reuse the same guard that is baked into the generated runtime start scripts so
+# SKILL_BILL_JAVA_HOME resolves identically at build time and at run time.
+BUILD_JVM_GUARD="$RUNTIME_KOTLIN_DIR/build-logic/convention/src/main/resources/skill-bill-java-guard.sh"
+
+ensure_build_jvm() {
+  [[ -r "$BUILD_JVM_GUARD" ]] || return 0
+  local resolved
+  # The guard exports JAVA_HOME, unsets it when the PATH java already qualifies,
+  # or exits 1 after printing remediation to stderr. Run it in a subshell and
+  # replay its decision here so a failure stays recoverable by the caller.
+  resolved=$(. "$BUILD_JVM_GUARD" >/dev/null; printf '%s' "${JAVA_HOME:-}") || return 1
+  if [[ -n "$resolved" ]]; then
+    export JAVA_HOME="$resolved"
+  else
+    unset JAVA_HOME
+  fi
+}
+
 info()  { printf "${CYAN}▸${NC} %s\n" "$1"; }
 ok()    { printf "${GREEN}✓${NC} %s\n" "$1"; }
 warn()  { printf "${YELLOW}⚠${NC} %s\n" "$1"; }
@@ -1077,6 +1097,11 @@ build_kotlin_runtime_distributions() {
     return 1
   fi
 
+  if ! ensure_build_jvm; then
+    err "Building the Kotlin runtime requires a Java 21+ JVM (see the message above)."
+    return 1
+  fi
+
   info "Building packaged Kotlin runtime distributions..."
   rm -rf \
     "$RUNTIME_KOTLIN_DIR/runtime-cli/build/install/runtime-cli" \
@@ -1110,6 +1135,8 @@ build_selection_replay_runtime_cli() {
   if [[ ! -x "$gradlew" ]]; then
     return 1
   fi
+
+  ensure_build_jvm || return 1
 
   info "Preparing source runtime CLI for saved selection replay..."
   (

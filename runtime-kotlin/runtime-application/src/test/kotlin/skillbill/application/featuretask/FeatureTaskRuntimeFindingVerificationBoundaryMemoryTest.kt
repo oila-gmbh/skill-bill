@@ -10,6 +10,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeReviewSeverity
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerificationBoundaryHeadingProvenance
 import java.nio.file.Files
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -246,7 +247,7 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
   }
 
   @Test
-  fun `disposition provenance must match catalog heading ids and source paths`() {
+  fun `invalid boundary heading selections are ignored without blocking`() {
     val repo = Files.createTempDirectory("verify-findings-provenance")
     val agent = Files.createDirectories(repo.resolve("runtime-kotlin/runtime-application/agent"))
     Files.writeString(
@@ -263,7 +264,7 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
       ),
     )
     val catalogEntry = sections.single().discovery.boundaryCatalog.single()
-    val wrongSourcePath = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition(
+    val disposition = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition(
       findingId = "F-001",
       disposition = FeatureTaskRuntimeFindingVerificationDispositionVerdict.VERIFIED,
       reason = "Matches intent",
@@ -275,12 +276,65 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
           headingId = catalogEntry.headingId,
           sourcePath = "wrong/path/history.md",
         ),
+        FeatureTaskRuntimeVerificationBoundaryHeadingProvenance(
+          headingId = "off-catalog-id",
+          sourcePath = catalogEntry.sourcePath,
+        ),
       ),
     )
 
-    val reason = memory.validateDispositionBoundaryProvenance(sections, listOf(wrongSourcePath))
+    assertEquals(null, memory.validateDispositionBoundaryProvenance(sections, listOf(disposition)))
+    assertTrue(
+      memory.catalogValidatedBoundaryHeadings(
+        sections.single().discovery.boundaryCatalog,
+        disposition.selectedBoundaryHeadings,
+      ).isEmpty(),
+    )
+    assertTrue(memory.selectionsRequiringBodyDelivery(sections, listOf(disposition)).isEmpty())
+  }
 
-    assertTrue(reason?.contains("source_path") == true)
+  @Test
+  fun `valid boundary heading selections are retained for body delivery`() {
+    val repo = Files.createTempDirectory("verify-findings-valid-provenance")
+    val agent = Files.createDirectories(repo.resolve("runtime-kotlin/runtime-application/agent"))
+    Files.writeString(
+      agent.resolve("history.md"),
+      "# Boundary History\n\n## [2026-08-01] selected-title\n\nselected body sentence\n",
+    )
+    val sections = memory.sectionsForFindings(
+      repo,
+      listOf(
+        FeatureTaskRuntimeFindingBoundaryMemoryRequest(
+          findingId = "F-001",
+          findingPaths = listOf("runtime-kotlin/runtime-application/src/Foo.kt"),
+        ),
+      ),
+    )
+    val catalogEntry = sections.single().discovery.boundaryCatalog.single()
+    val disposition = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition(
+      findingId = "F-001",
+      disposition = FeatureTaskRuntimeFindingVerificationDispositionVerdict.VERIFIED,
+      reason = "Matches intent",
+      severity = FeatureTaskRuntimeReviewSeverity.MAJOR,
+      location = "Foo.kt",
+      message = "example",
+      selectedBoundaryHeadings = listOf(
+        FeatureTaskRuntimeVerificationBoundaryHeadingProvenance(
+          headingId = catalogEntry.headingId,
+          sourcePath = catalogEntry.sourcePath,
+        ),
+      ),
+    )
+
+    val validated = memory.catalogValidatedBoundaryHeadings(
+      sections.single().discovery.boundaryCatalog,
+      disposition.selectedBoundaryHeadings,
+    )
+    assertEquals(1, validated.size)
+    assertEquals(
+      mapOf("F-001" to validated),
+      memory.selectionsRequiringBodyDelivery(sections, listOf(disposition)),
+    )
   }
 
   @Test
@@ -309,8 +363,9 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
     )
 
     val reason = memory.validatePersistedBoundarySelectionsMatch(
-      listOf(changed),
-      persisted,
+      sections = emptyList(),
+      dispositions = listOf(changed),
+      persisted = persisted,
     )
 
     assertTrue(reason?.contains("persisted") == true)
@@ -434,7 +489,7 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
   }
 
   @Test
-  fun `persisted boundary selections must match scoped catalog`() {
+  fun `persisted boundary selections drop invalid catalog entries`() {
     val repo = Files.createTempDirectory("verify-findings-persisted-catalog")
     val agent = Files.createDirectories(repo.resolve("runtime-kotlin/runtime-application/agent"))
     Files.writeString(
@@ -450,7 +505,7 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
         ),
       ),
     )
-    val reason = memory.validatePersistedBoundarySelectionsAgainstCatalog(
+    val sanitized = memory.validatePersistedBoundarySelectionsAgainstCatalog(
       sections,
       mapOf(
         "F-001" to listOf(
@@ -462,6 +517,6 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
       ),
     )
 
-    assertTrue(reason?.contains("absent from the scoped boundary catalog") == true)
+    assertTrue(sanitized.isEmpty())
   }
 }

@@ -41,7 +41,7 @@ skill-bill update
 
 > If `skill-bill` is **not found**, the launcher directory (`~/.local/bin` by default) isn't on your `PATH`. Add it — `export PATH="$HOME/.local/bin:$PATH"` — and put that line in your shell's rc file (`~/.bashrc`, `~/.zshrc`, `~/.config/fish/config.fish`).
 
-**Contributors or unsupported hosts:** clone the repo and run `./install.sh --from-source` (requires a JDK). Any host not in the four prebuilt targets falls back to this automatically.
+**Contributors or unsupported hosts:** clone the repo and run `./install.sh --from-source` (requires a JDK 21+; point `SKILL_BILL_JAVA_HOME` at it if it is not your default). Any host not in the four prebuilt targets falls back to this automatically.
 
 ## Why it exists
 
