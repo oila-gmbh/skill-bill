@@ -91,12 +91,28 @@ internal class FeatureTaskRuntimeSubtaskFinalisation(
     val excluded = dirtyPaths.filter(::isGovernedSpecPath).distinct().sorted()
     val stageable = dirtyPaths.filterNot(::isGovernedSpecPath).distinct().sorted()
     if (excluded.isNotEmpty()) record(specExclusionRecord(identity, excluded))
-    if (stageable.isEmpty()) return blocked(emptyStageableReason(excluded))
+    // Nothing stageable refuses only when the worktree still holds dirt finalisation will not stage:
+    // governed `.feature-specs/` inputs. That is the case worth blocking, because the agent's
+    // deliverable is then unaccounted for while an unchanged tree would publish anyway. A worktree
+    // with no dirty non-ignored paths at all has nothing that could be silently dropped — the
+    // checkpoint commit already carries the deliverable — so finalisation applies the final message
+    // under allowUnchangedIndex and completes. Blocking that case regressed every run whose phases
+    // left a clean tree.
+    val alreadyCommitted = stageable.isEmpty()
+    if (alreadyCommitted && excluded.isNotEmpty()) return blocked(emptyStageableReason(excluded))
 
-    val snapshot = gitOperations.captureIndexState(repoRoot, stageable)
-    if (!snapshot.ok) return blocked("the pre-finalisation index could not be captured (${snapshot.error})")
-    val staged = gitOperations.stagePaths(repoRoot, stageable)
-    if (!staged.ok) return blocked(restoring(staged.error, stageable, snapshot.value.orEmpty()))
+    // No observability record here: an already-committed clean tree is ordinary completion, not a
+    // fallback, degradation, or swallowed failure.
+    val restoreState: String
+    if (alreadyCommitted) {
+      restoreState = ""
+    } else {
+      val snapshot = gitOperations.captureIndexState(repoRoot, stageable)
+      if (!snapshot.ok) return blocked("the pre-finalisation index could not be captured (${snapshot.error})")
+      val staged = gitOperations.stagePaths(repoRoot, stageable)
+      if (!staged.ok) return blocked(restoring(staged.error, stageable, snapshot.value.orEmpty()))
+      restoreState = snapshot.value.orEmpty()
+    }
 
     val decision = decide(branch, identity, durableCommitSha, sequenceNumber)
     val rewrites = decision is FeatureTaskRuntimeSubtaskCommitAmend
@@ -110,9 +126,9 @@ internal class FeatureTaskRuntimeSubtaskFinalisation(
       allowUnchangedIndex = true,
       record = record,
     )
-    if (!commit.ok) return blocked(restoring(commit.error, stageable, snapshot.value.orEmpty()))
+    if (!commit.ok) return blocked(restoring(commit.error, stageable, restoreState))
     val commitSha = commit.value.orEmpty().trim().takeIf(String::isNotBlank)
-      ?: return blocked(restoring("the finalisation commit returned an empty sha", stageable, snapshot.value.orEmpty()))
+      ?: return blocked(restoring("the finalisation commit returned an empty sha", stageable, restoreState))
 
     recordCommit(commitSha, stageable)?.let { return FeatureTaskRuntimeSubtaskFinalisationBlocked(it) }
 

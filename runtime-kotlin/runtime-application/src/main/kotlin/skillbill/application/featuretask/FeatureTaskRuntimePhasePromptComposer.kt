@@ -30,6 +30,9 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting
  */
 @Suppress("TooManyFunctions") // one cohesive prompt-composition seam; each function is a named directive
 object FeatureTaskRuntimePhasePromptComposer {
+  /** Indent the phase directives are authored against; stripped when the header is composed. */
+  private const val TEMPLATE_INDENT = "      "
+
   @Suppress(
     "LongParameterList",
     "LongMethod",
@@ -359,15 +362,23 @@ object FeatureTaskRuntimePhasePromptComposer {
       packBuildCommand,
       priorGapMemory,
     )
-    return """
-      You are executing exactly one phase of the EXPERIMENTAL skill-bill feature-task-runtime
-      loop ($forwardPhaseOrder)
-      for issue $issueKey. The runtime owns the loop; do not run other phases, do not open
-      or continue any other skill-bill workflow, and do not call `skill-bill workflow continue`.
-
-      Phase: $phaseId ($label)
-      Task: $directive
-    """.trimIndent()
+    // Composed directly rather than as an indented raw string with trimIndent(). trimIndent() runs
+    // after interpolation and strips only the common minimal indent, so one column-0 line anywhere
+    // in $directive drives that common indent to zero and dedents nothing — the header then reaches
+    // the agent indented, hiding the `Phase:` line from line-anchored readers and rendering as a
+    // markdown code block. Directive continuation lines are authored with TEMPLATE_INDENT so the
+    // old raw string aligned; that prefix is stripped explicitly here, which reproduces the intended
+    // output for every directive instead of depending on all of them staying well-formed.
+    return buildString {
+      appendLine("You are executing exactly one phase of the EXPERIMENTAL skill-bill feature-task-runtime")
+      appendLine("loop ($forwardPhaseOrder)")
+      appendLine("for issue $issueKey. The runtime owns the loop; do not run other phases, do not open")
+      appendLine("or continue any other skill-bill workflow, and do not call `skill-bill workflow continue`.")
+      appendLine()
+      appendLine("Phase: $phaseId ($label)")
+      append("Task: ")
+      append(directive.lineSequence().joinToString("\n") { it.removePrefix(TEMPLATE_INDENT) })
+    }
   }
 
   private fun ceremonyDirective(briefing: FeatureTaskRuntimePhaseLaunchBriefing): String {

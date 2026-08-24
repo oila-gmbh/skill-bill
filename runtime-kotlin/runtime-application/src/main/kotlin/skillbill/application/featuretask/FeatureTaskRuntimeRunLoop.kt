@@ -4991,8 +4991,12 @@ internal class FeatureTaskRuntimeRunLoop(
     run: PhaseRun,
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
   ): NormalizedFeatureTaskRuntimePhaseOutput {
-    if (run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT) return normalizedOutput
-    if (normalizedOutput.envelope["status"] != STATUS_COMPLETED) return normalizedOutput
+    if (
+      run.phaseId != FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT ||
+      normalizedOutput.envelope["status"] != STATUS_COMPLETED
+    ) {
+      return normalizedOutput
+    }
     val produced = JsonSupport.anyToStringAnyMap(normalizedOutput.envelope["produced_outputs"])?.toMutableMap()
       ?: return normalizedOutput
     if (produced["projection_kind"] != FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT.wireValue) {
@@ -5012,9 +5016,7 @@ internal class FeatureTaskRuntimeRunLoop(
     ).requireAcceptedOutput(run.phaseId).normalizedOutput
   }
 
-  private fun authoritativeImplementationRepositoryCheckpoint(
-    run: PhaseRun,
-  ): FeatureTaskRuntimeRepositoryCheckpoint? =
+  private fun authoritativeImplementationRepositoryCheckpoint(run: PhaseRun): FeatureTaskRuntimeRepositoryCheckpoint? =
     buildRepositoryCheckpoint(run)
       ?: gitOperations.repositoryFingerprint(run.request.repoRoot)
         .takeIf { it.ok }
