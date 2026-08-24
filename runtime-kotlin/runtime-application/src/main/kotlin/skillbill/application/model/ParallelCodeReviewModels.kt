@@ -109,7 +109,10 @@ data class ParallelCodeReviewResult(
    */
   val coverage: ReviewCoverageReport? = null,
   val stageResume: ReviewStageResumeReport? = null,
-)
+) {
+  val output: String
+    get() = mergeResult.output
+}
 
 data class ParallelReviewLaneStatus(
   val agentId: String,

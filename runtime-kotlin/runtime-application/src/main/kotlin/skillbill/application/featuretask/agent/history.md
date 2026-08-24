@@ -2,6 +2,16 @@
 
 Revisit when: prune eligibility or the checkpoint namespace layout changes.
 
+## [2026-08-24] SKILL-207 subtask 1 — Phase I/O envelope and prose review handoff
+Areas: runtime-application/{featuretask,model,review}, runtime-domain/{agent,review}, runtime-cli/codereview
+- Added shared `AgentPhaseInput` and `AgentPhaseOutput` string envelopes for phase handoffs.
+- Review driver, runner, and CLI preserve worker-returned prose as authoritative output; register parsing remains optional diagnostics, so near-miss lines survive.
+- Typed launch dependencies remain on launch plumbing outside the phase string fields.
+- Pattern: preserve full worker prose at the phase boundary while keeping structured register parsing non-authoritative. reusable
+- Limitation: claim verification and governed skill-content rewrites remain subtask 2; plan, implement, and validate do not use the envelope.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
 ## [2026-08-23] SKILL-202 subtask 3 — scoped boundary memory for verification
 Areas: runtime-application/{featuretask,goalrunner,review}, runtime-domain/{review,taskruntime}, runtime-infra-fs/goalplanning, runtime-ports/goalrunner, runtime contracts, runtime-cli/goal, governed feature-task skills
 - Verification now discovers boundary memory by title first and scopes it to boundaries owning each finding's paths; excluded roots contribute nothing and unmatched paths stay intent-only.

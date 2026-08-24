@@ -208,7 +208,7 @@ private fun writeParallelReviewResult(state: CliRunState, result: ParallelCodeRe
   val lanes = listOf(result.lane1, result.lane2).filter { it.agentId.isNotBlank() }
   val exitCode = if (lanes.all(ParallelReviewLaneStatus::success)) 0 else 1
   val output = buildString {
-    append(laneStatusOutput(lanes, result.mergeResult.formattedOutput))
+    append(laneStatusOutput(lanes, result.output))
     laneDiagnosticsOutput(lanes)?.let { diagnostics ->
       appendLine()
       append(diagnostics)

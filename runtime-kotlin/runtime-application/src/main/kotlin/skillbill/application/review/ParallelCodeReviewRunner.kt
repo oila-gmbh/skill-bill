@@ -205,7 +205,7 @@ class ParallelCodeReviewRunner(
       verificationVerdicts + adjudicationVerdicts,
     )
     emitReviewStageDegradations(initial.request.reviewRunId, outcomes)
-    val prose = result.mergeResult.formattedOutput
+    val prose = result.output
     val assembled = ParallelReviewMerger.withRecordedVerdicts(result.mergeResult, recordedVerdicts)
       .copy(formattedOutput = prose)
     result.accountingSummary?.let { summary ->
@@ -1824,7 +1824,7 @@ private fun parallelResult(
   budget: ReviewContextBudgetPolicy,
   stageResume: ReviewStageResumeReport?,
 ): ParallelCodeReviewResult {
-  val prose = outcomes.lane1.rawOutput.trim().ifBlank { "Review completed with no prose body." }
+  val prose = outcomes.lane1.rawOutput.ifBlank { "Review completed with no prose body." }
   val lane1Result = ParallelReviewLaneResult(
     agentId = agent1Id,
     findings = outcomes.lane1.findings,

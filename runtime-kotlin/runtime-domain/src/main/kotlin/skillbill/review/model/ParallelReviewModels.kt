@@ -64,4 +64,7 @@ data class ParallelReviewMergedFinding(
 data class ParallelReviewMergeResult(
   val findings: List<ParallelReviewMergedFinding>,
   val formattedOutput: String,
-)
+) {
+  val output: String
+    get() = formattedOutput
+}
