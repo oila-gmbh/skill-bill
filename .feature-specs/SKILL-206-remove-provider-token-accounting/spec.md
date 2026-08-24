@@ -1,4 +1,4 @@
-# SKILL-194 — Remove provider-reported token accounting
+# SKILL-206 — Remove provider-reported token accounting
 
 ## Context
 
@@ -293,5 +293,5 @@ Close with `skill-bill validate`, `(cd runtime-kotlin && ./gradlew check)`, and
 ## Next Path
 
 ```bash
-skill-bill goal SKILL-194
+skill-bill goal SKILL-206
 ```

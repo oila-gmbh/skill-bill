@@ -121,6 +121,43 @@ class GitWorkflowGitOperationsTest {
   }
 
   @Test
+  fun `checkout preserves local tracked and untracked changes when switching branches`() {
+    val repoRoot = Files.createTempDirectory("skillbill-git-checkout-preserves-changes")
+    git(repoRoot, "init", "-b", "main")
+    git(repoRoot, "config", "user.email", "skill-bill@example.test")
+    git(repoRoot, "config", "user.name", "Skill Bill")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "base\ntarget\nlocal\n")
+    Files.writeString(repoRoot.resolve("staged.txt"), "base\n")
+    git(repoRoot, "add", ".")
+    git(repoRoot, "commit", "-m", "initial")
+    git(repoRoot, "checkout", "-b", "feat/takeover")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "base\ntarget-change\nlocal\n")
+    Files.writeString(repoRoot.resolve("target-only.txt"), "target-only change\n")
+    git(repoRoot, "add", "target-only.txt")
+    git(repoRoot, "commit", "-am", "target change")
+    git(repoRoot, "checkout", "main")
+    Files.writeString(repoRoot.resolve("tracked.txt"), "base\ntarget\nlocal-change\n")
+    Files.writeString(repoRoot.resolve("staged.txt"), "staged change\n")
+    git(repoRoot, "add", "staged.txt")
+    Files.writeString(repoRoot.resolve("untracked.txt"), "untracked change\n")
+
+    val result = GitWorkflowGitOperations().checkoutBranch(repoRoot, "feat/takeover")
+
+    assertTrue(result.ok, result.error)
+    assertEquals("feat/takeover", git(repoRoot, "branch", "--show-current"))
+    assertEquals(
+      "base\ntarget\nlocal-change\n",
+      Files.readString(repoRoot.resolve("tracked.txt")),
+    )
+    assertEquals("target-only change\n", Files.readString(repoRoot.resolve("target-only.txt")))
+    assertEquals("staged change\n", Files.readString(repoRoot.resolve("staged.txt")))
+    assertEquals("untracked change\n", Files.readString(repoRoot.resolve("untracked.txt")))
+    assertContains(git(repoRoot, "status", "--porcelain"), "M  tracked.txt")
+    assertContains(git(repoRoot, "status", "--porcelain"), "M  staged.txt")
+    assertContains(git(repoRoot, "status", "--porcelain"), "?? untracked.txt")
+  }
+
+  @Test
   fun `worktree activity summarizes changed files and diff stat`() {
     val repoRoot = Files.createTempDirectory("skillbill-git-worktree-activity")
     git(repoRoot, "init")

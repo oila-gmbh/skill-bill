@@ -85,15 +85,43 @@ private object GitStandardWorkflowGitOperations : WorkflowGitOperations {
     }
     val existing = runGitCommand(repoRoot, "rev-parse", "--verify", "--quiet", normalizedBranch)
     return if (existing.ok) {
-      runGitCommand(repoRoot, "checkout", normalizedBranch).withValue(normalizedBranch)
+      checkoutPreservingLocalChanges(repoRoot, listOf("checkout", "--merge", normalizedBranch))
+        .withValue(normalizedBranch)
     } else {
       val base = baseBranch?.trim().orEmpty()
       if (base.isBlank()) {
-        runGitCommand(repoRoot, "checkout", "-b", normalizedBranch).withValue(normalizedBranch)
+        checkoutPreservingLocalChanges(repoRoot, listOf("checkout", "--merge", "-b", normalizedBranch))
+          .withValue(normalizedBranch)
       } else {
-        runGitCommand(repoRoot, "checkout", "-b", normalizedBranch, base).withValue(normalizedBranch)
+        checkoutPreservingLocalChanges(repoRoot, listOf("checkout", "--merge", "-b", normalizedBranch, base))
+          .withValue(normalizedBranch)
       }
     }
+  }
+
+  private fun checkoutPreservingLocalChanges(repoRoot: Path, args: List<String>): WorkflowGitOperationResult {
+    val existingConflictMarkers = conflictMarkerPaths(repoRoot)
+    val checkout = runGitCommand(repoRoot, args)
+    val paths = conflictMarkerPaths(repoRoot).filterNot(existingConflictMarkers::contains)
+    if (paths.isEmpty()) return checkout
+    val resolved = runGitCommand(repoRoot, listOf("checkout", "--theirs", "--") + paths)
+    if (!resolved.ok) return checkout
+    val staged = runGitCommand(repoRoot, listOf("add", "--all", "--") + paths)
+    return if (staged.ok) {
+      WorkflowGitOperationResult(status = "ok", value = checkout.value)
+    } else {
+      staged
+    }
+  }
+
+  private fun conflictMarkerPaths(repoRoot: Path): List<String> {
+    val check = runGitForActivity(repoRoot, listOf("diff", "--check"))
+    if (check.ok) return emptyList()
+    val markerPattern = Regex("""^(.*):\d+: leftover conflict marker$""")
+    return check.error.lineSequence()
+      .mapNotNull { line -> markerPattern.matchEntire(line)?.groupValues?.get(1) }
+      .distinct()
+      .toList()
   }
 
   override fun branchExists(repoRoot: Path, branch: String): WorkflowGitOperationResult {
