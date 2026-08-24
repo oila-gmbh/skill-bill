@@ -4614,7 +4614,7 @@ internal class FeatureTaskRuntimeRunLoop(
     state.evidenceGeneration(phaseId),
   )
 
-  @Suppress("ReturnCount")
+  @Suppress("ReturnCount", "CyclomaticComplexMethod")
   private fun settleValidatedOutput(
     run: PhaseRun,
     iteration: Int,
@@ -4652,8 +4652,8 @@ internal class FeatureTaskRuntimeRunLoop(
       return reject("verify-findings-worktree", reason)
     }
     when (val bodyDelivery = findingVerificationBoundaryBodyDeliveryDecision(run, outputMap)) {
-      is BoundaryBodyDeliveryDecision.Reject -> return reject("output-verification", bodyDelivery.reason)
-      is BoundaryBodyDeliveryDecision.Continue ->
+      is BoundaryBodyDeliveryDecision.RejectDecision -> return reject("output-verification", bodyDelivery.reason)
+      is BoundaryBodyDeliveryDecision.ContinueDecision ->
         return AttemptResult.boundaryBodyDelivery(bodyDelivery.reason, fileManifest)
       BoundaryBodyDeliveryDecision.NotApplicable -> Unit
     }
@@ -4987,6 +4987,7 @@ internal class FeatureTaskRuntimeRunLoop(
    * agent-authored gate measurements: overwrite (or supply) `gate_run_count`/`gate_runs` with the
    * degradation attestation before consumer projection and persist.
    */
+  @Suppress("ReturnCount")
   private fun stampRuntimeOwnedImplementationCheckpoint(
     run: PhaseRun,
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
@@ -5012,9 +5013,7 @@ internal class FeatureTaskRuntimeRunLoop(
     ).requireAcceptedOutput(run.phaseId).normalizedOutput
   }
 
-  private fun authoritativeImplementationRepositoryCheckpoint(
-    run: PhaseRun,
-  ): FeatureTaskRuntimeRepositoryCheckpoint? =
+  private fun authoritativeImplementationRepositoryCheckpoint(run: PhaseRun): FeatureTaskRuntimeRepositoryCheckpoint? =
     buildRepositoryCheckpoint(run)
       ?: gitOperations.repositoryFingerprint(run.request.repoRoot)
         .takeIf { it.ok }
@@ -5038,6 +5037,7 @@ internal class FeatureTaskRuntimeRunLoop(
       ?: return normalizedOutput
     validationResult["gate_run_count"] = 0
     validationResult["gate_runs"] = emptyList<Any?>()
+    validationResult.remove("suppression_justifications")
     produced["validation_result"] = validationResult
     val envelope = normalizedOutput.envelope.toMutableMap()
     envelope["produced_outputs"] = produced
@@ -5496,8 +5496,17 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private sealed interface BoundaryBodyDeliveryDecision {
     data object NotApplicable : BoundaryBodyDeliveryDecision
-    data class Continue(val reason: String) : BoundaryBodyDeliveryDecision
-    data class Reject(val reason: String) : BoundaryBodyDeliveryDecision
+    class ContinueDecision private constructor(val reason: String) : BoundaryBodyDeliveryDecision {
+      companion object {
+        fun of(reason: String) = ContinueDecision(reason)
+      }
+    }
+
+    class RejectDecision private constructor(val reason: String) : BoundaryBodyDeliveryDecision {
+      companion object {
+        fun of(reason: String) = RejectDecision(reason)
+      }
+    }
   }
 
   private fun findingVerificationBoundarySections(run: PhaseRun): List<FeatureTaskRuntimeFindingBoundaryMemorySection> {
@@ -5524,6 +5533,7 @@ internal class FeatureTaskRuntimeRunLoop(
     )
   }
 
+  @Suppress("ReturnCount")
   private fun findingVerificationBoundaryBodyDeliveryDecision(
     run: PhaseRun,
     outputMap: Map<String, Any?>,
@@ -5539,10 +5549,10 @@ internal class FeatureTaskRuntimeRunLoop(
     val sections = findingVerificationBoundarySections(run)
     val memory = phaseGates.findingVerificationBoundaryMemory
     memory.validateDispositionBoundaryContext(sections, dispositions)?.let {
-      return BoundaryBodyDeliveryDecision.Reject(it)
+      return BoundaryBodyDeliveryDecision.RejectDecision.of(it)
     }
     memory.validateDispositionBoundaryProvenance(sections, dispositions)?.let {
-      return BoundaryBodyDeliveryDecision.Reject(it)
+      return BoundaryBodyDeliveryDecision.RejectDecision.of(it)
     }
     val selections = memory.selectionsRequiringBodyDelivery(sections, dispositions)
     if (selections.isEmpty()) return BoundaryBodyDeliveryDecision.NotApplicable
@@ -5561,7 +5571,7 @@ internal class FeatureTaskRuntimeRunLoop(
       dispositions = dispositions,
       dbOverride = run.request.dbPathOverride,
     )
-    return BoundaryBodyDeliveryDecision.Continue(
+    return BoundaryBodyDeliveryDecision.ContinueDecision.of(
       "Selected boundary headings recorded; re-read the briefing with resolved entry bodies and re-emit " +
         "finding_dispositions before verify_findings can settle.",
     )

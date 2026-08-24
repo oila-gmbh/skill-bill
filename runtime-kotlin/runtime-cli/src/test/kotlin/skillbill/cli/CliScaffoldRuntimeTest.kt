@@ -229,6 +229,7 @@ class CliScaffoldRuntimeTest {
         CliRuntimeContext(
           stdinText = listOf("2", "java").joinToString("\n"),
           userHome = tempDir,
+          environment = isolatedCliEnvironment(tempDir),
           liveStdout = { liveStdout.append(it) },
         ),
       )

@@ -540,10 +540,8 @@ $defs:
         type: string
         enum:
           - verify
-          - goal
           - bill-feature-verify
           - feature-task-runtime
-          - bill-feature-goal
       since:
         type: string
       date_from:

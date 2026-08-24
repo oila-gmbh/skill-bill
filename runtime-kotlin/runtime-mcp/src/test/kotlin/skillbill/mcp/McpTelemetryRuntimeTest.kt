@@ -79,33 +79,6 @@ class McpTelemetryRuntimeTest {
   }
 
   @Test
-  fun `telemetry remote stats tool maps the goal alias to bill-feature-goal`() {
-    val tempDir = Files.createTempDirectory("skillbill-mcp-telemetry-task-passthrough")
-    val configPath = writeMcpTelemetryConfig(tempDir, "off")
-    val env =
-      mapOf(
-        CONFIG_ENVIRONMENT_KEY to configPath.toString(),
-        TELEMETRY_PROXY_URL_ENVIRONMENT_KEY to "https://telemetry.example.dev/ingest",
-        TELEMETRY_PROXY_STATS_TOKEN_ENVIRONMENT_KEY to "stats-token-123",
-      )
-    val capturedRequests = mutableListOf<Map<String, Any?>>()
-    val context =
-      McpRuntimeContext(
-        requester = mcpTelemetryRequester(capturedRequests),
-        environment = env,
-        userHome = tempDir,
-      )
-
-    McpToolDispatcher.call(
-      "telemetry_remote_stats",
-      mapOf("workflow" to "goal", "date_from" to "2026-04-01", "date_to" to "2026-04-22"),
-      context,
-    )
-
-    assertTrue(capturedRequests.last()["body"].toString().contains("\"workflow\":\"bill-feature-goal\""))
-  }
-
-  @Test
   fun `telemetry remote stats mapper preserves explicit null capabilities`() {
     val result =
       TelemetryRemoteStatsResult(
@@ -161,7 +134,7 @@ private fun mcpTelemetryRequester(capturedRequests: MutableList<Map<String, Any?
           {
             "supports_ingest": true,
             "supports_stats": true,
-            "supported_workflows": ["bill-feature-goal", "bill-feature-verify"],
+            "supported_workflows": ["bill-feature-verify"],
             "region": "eu"
           }
           """.trimIndent(),
@@ -217,7 +190,7 @@ private fun expectedMcpCapabilitiesPayload(): Map<String, Any?> = linkedMapOf(
   "capabilities_url" to "https://telemetry.example.dev/ingest/capabilities",
   "supports_ingest" to true,
   "supports_stats" to true,
-  "supported_workflows" to listOf("bill-feature-goal", "bill-feature-verify"),
+  "supported_workflows" to listOf("bill-feature-verify"),
   "region" to "eu",
 )
 

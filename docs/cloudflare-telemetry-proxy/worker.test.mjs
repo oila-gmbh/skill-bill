@@ -24,13 +24,6 @@ describe("validateStatsRequest", () => {
     assert.ok(!err.includes(INGEST_SCHEMA_ERROR_FRAGMENT), "must not return the ingest-schema error");
   });
 
-  it("returns clean rejection for bill-feature-goal (unsupported workflow)", () => {
-    const err = validateStatsRequest({ workflow: "bill-feature-goal", ...VALID_DATE_RANGE });
-    assert.ok(err, "should return an error string");
-    assert.match(err, /workflow must be one of/);
-    assert.ok(!err.includes(INGEST_SCHEMA_ERROR_FRAGMENT), "must not return the ingest-schema error");
-  });
-
   it("returns clean rejection for a retired feature workflow", () => {
     const err = validateStatsRequest({ workflow: "retired-feature-workflow", ...VALID_DATE_RANGE });
     assert.ok(err, "should return an error string");

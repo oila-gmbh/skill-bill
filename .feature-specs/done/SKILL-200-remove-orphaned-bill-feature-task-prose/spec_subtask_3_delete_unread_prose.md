@@ -33,7 +33,7 @@ Delete from `skills/bill-feature-goal/content.md`:
   semantics paragraph and the review-mode, parallel-review, and add-on token rules already stated
   in `bill-feature`.
 
-Delete from `skills/bill-feature/content.md`:
+Delete from `../../../skills/bill-feature/content.md`:
 
 - Least-Context Runtime Handoffs (8 lines). Runtime internals with no agent action.
 - Two of the three fresh-conversation handoff copies, keeping one.
@@ -56,9 +56,9 @@ Subtask 5 rewrites those; deleting and rewriting in one commit would hide which 
 7. The `## Update Check` section in `bill-feature` contains its own body, with no content belonging to it placed under another heading.
 8. Replan and hard-reset operator semantics are stated at most once across the feature family.
 9. The Decomposition Proposal gate, Confirmed Handoff, Linear rehydrate section, and launch-mode completion rules are still present and unmodified, since subtask 5 owns their rewrite.
-10. No runtime, contract, CLI, test, or install behavior changes: `git diff --stat` for this subtask touches only files under `skills/`.
+10. No runtime, contract, CLI, test, or install behavior changes: `git diff --stat` for this subtask touches only files under `../../../skills`.
 11. `skill-bill validate` passes, a clean `./install.sh` succeeds, and the Kotlin suites covering install staging and feature-family rendering pass with any governed-content assertions updated to match the reduced prose.
-12. `npx --yes agnix --strict .` and `scripts/validate_agent_configs` pass.
+12. `npx --yes agnix --strict .` and `../../../scripts/validate_agent_configs` pass.
 
 ## Non-Goals
 
@@ -79,7 +79,7 @@ preflight verb is still being designed.
 
 ## Validation Strategy
 
-`git diff --stat` is the primary check for criterion 10: anything outside `skills/` means scope
+`git diff --stat` is the primary check for criterion 10: anything outside `../../../skills` means scope
 leaked. Then `skill-bill validate` and `./install.sh`. Governed-content tests that assert deleted
 headings will fail; update them to the reduced prose rather than restoring the text.
 

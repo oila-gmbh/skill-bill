@@ -71,6 +71,7 @@ class FeatureTaskContinuationLookupService(
     readIfPresent = true,
   )
 
+  @Suppress("LongParameterList")
   private fun lookup(
     issueKey: String,
     repositoryIdentity: String,
@@ -124,7 +125,7 @@ class FeatureTaskContinuationLookupService(
       ) {
         return classified
       }
-      unitOfWork.workflowStates.goalContinuationFor(
+      return unitOfWork.workflowStates.goalContinuationFor(
         normalizedIssueKey,
         repositoryIdentity,
         decompositionManifestValidator,

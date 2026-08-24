@@ -137,25 +137,19 @@ internal object FeatureTaskRuntimePhaseProjectionShapes {
       "          \"repository_checkpoint\": { \"fingerprint\": \"<checkpoint fingerprint>\" },\n" +
       "          \"gate_run_count\": 1,\n" +
       "          \"gate_runs\": [ { \"duration_ms\": 1, \"outcome\": \"passed\",\n" +
-      "            \"cache_mode\": \"forced_full\", \"executed_work_units\": 1 } ],\n" +
-      "          \"suppression_justifications\": [ {\n" +
-      "            \"path\": \"<repo-relative path>\",\n" +
-      "            \"silenced_rule_or_check\": \"<rule or check id>\",\n" +
-      "            \"rationale\": \"<short why a root-cause fix was not possible>\"\n" +
-      "          } ]\n" +
+      "            \"cache_mode\": \"forced_full\", \"executed_work_units\": 1 } ]\n" +
       "        } }\n" +
       "      ```\n" +
       "      gate_run_count and gate_runs are runtime-measured evidence; never invent or overwrite them\n" +
-      "      from agent claims. suppression_justifications is optional and required only when the\n" +
-      "      runtime measures a non-zero suppression delta; omit it on clean runs. Each entry needs\n" +
-      "      path, silenced_rule_or_check, and a short rationale — never raw command output,\n" +
-      "      transcripts, or telemetry."
+      "      from agent claims. Never introduce suppressions (@Suppress, @file:Suppress, baselines,\n" +
+      "      disabled rules, or skipped tests) to silence findings; fix root causes instead."
 
   private const val VALIDATION_FULL_RUNTIME_OWNED_REPAIR: String =
     "\n      You run only the pack-declared collect-all command and the same command once to confirm.\n" +
       "      Do not run skill-bill validate, agnix, or validate_agent_configs.\n" +
       "      The runtime may record one cache-bypassing verify afterward; gate_run_count and\n" +
-      "      gate_runs stay runtime-measured — never invent them."
+      "      gate_runs stay runtime-measured — never invent them. Never add @Suppress, @file:Suppress,\n" +
+      "      baselines, disabled rules, or skipped tests to silence findings; fix root causes instead."
 
   private const val BUILD: String =
     "\n    - Required produced_outputs shape: emit a build_receipt OBJECT with contract_version\n" +

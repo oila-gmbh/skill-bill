@@ -6,11 +6,12 @@ import skillbill.agentaddon.model.HydratedAgentAddonSelectionEntry
 import skillbill.agentaddon.model.PersistedAgentAddonSelectionEntry
 import skillbill.application.decomposition.encodeDecompositionManifestYaml
 import skillbill.application.featuretask.FeatureTaskContinuationLookupService
-import skillbill.application.goalrunner.GoalPreflightRequest
 import skillbill.application.goalrunner.GoalPreflightService
+import skillbill.application.goalrunner.model.GoalPreflightRequest
 import skillbill.error.InvalidAgentAddonSelectionError
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
+import skillbill.goalrunner.model.GoalRunnerExecutionLease
 import skillbill.install.model.ExternalAgentAddonSource
 import skillbill.ports.agentaddon.AgentAddonSelectionPort
 import skillbill.ports.agentaddon.ExternalAgentAddonSourceConfigPort
@@ -273,6 +274,7 @@ class GoalPreflightServiceTest {
     )
   }
 
+  @Suppress("LongParameterList")
   private fun request(
     root: Path,
     issueKey: String = "SKILL-901",
@@ -290,55 +292,66 @@ class GoalPreflightServiceTest {
     requestedAgentAddonSlugs = addons,
   )
 
-  private fun manifest(specSource: SpecSource = SpecSource.LOCAL): DecompositionManifest =
-    DecompositionManifest(
-      issueKey = "SKILL-901",
-      featureName = "preflight-test",
-      parentSpecPath = ".feature-specs/SKILL-901-goal/spec.md",
-      specSource = specSource,
-      status = "in_progress",
-      baseBranch = "main",
-      featureBranch = "feat/SKILL-901-goal",
-      currentSubtaskIntent = CurrentSubtaskIntent(1, "start"),
-      subtasks = listOf(
-        DecompositionSubtask(
-          id = 1,
-          name = "first",
-          specPath = ".feature-specs/SKILL-901-goal/spec_subtask_1.md",
-          status = "complete",
-          linearIssueId = "SKILL-901",
-        ),
-        DecompositionSubtask(
-          id = 2,
-          name = "second",
-          specPath = ".feature-specs/SKILL-901-goal/spec_subtask_2.md",
-          dependencies = listOf(DecompositionDependency(1)),
-          linearIssueId = "SKILL-901",
-        ),
+  private fun manifest(specSource: SpecSource = SpecSource.LOCAL): DecompositionManifest = DecompositionManifest(
+    issueKey = "SKILL-901",
+    featureName = "preflight-test",
+    parentSpecPath = ".feature-specs/SKILL-901-goal/spec.md",
+    specSource = specSource,
+    status = "in_progress",
+    baseBranch = "main",
+    featureBranch = "feat/SKILL-901-goal",
+    currentSubtaskIntent = CurrentSubtaskIntent(1, "start"),
+    subtasks = listOf(
+      DecompositionSubtask(
+        id = 1,
+        name = "first",
+        specPath = ".feature-specs/SKILL-901-goal/spec_subtask_1.md",
+        status = "complete",
+        linearIssueId = "SKILL-901",
       ),
-    )
+      DecompositionSubtask(
+        id = 2,
+        name = "second",
+        specPath = ".feature-specs/SKILL-901-goal/spec_subtask_2.md",
+        dependencies = listOf(DecompositionDependency(1)),
+        linearIssueId = "SKILL-901",
+      ),
+    ),
+  )
 }
 
 private class TestManifestStore(
   private val state: GoalRunnerManifestState?,
   private val persistedReviewPolicy: GoalRunnerReviewPolicy? = null,
 ) : GoalRunnerManifestStore {
-  override fun loadByIssueKey(
-    issueKey: String,
-    dbPathOverride: String?,
-    repoRoot: Path?,
-  ): GoalRunnerManifestState? = state
+  override fun loadByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? =
+    state
 
-  override fun readByIssueKey(
-    issueKey: String,
-    dbPathOverride: String?,
-    repoRoot: Path?,
-  ): GoalRunnerManifestState? = state
+  override fun readByIssueKey(issueKey: String, dbPathOverride: String?, repoRoot: Path?): GoalRunnerManifestState? =
+    state
 
-  override fun reviewPolicy(
+  override fun reviewPolicy(parentWorkflowId: String, dbPathOverride: String?): GoalRunnerReviewPolicy? =
+    persistedReviewPolicy
+
+  override fun acquireExecutionLease(
     parentWorkflowId: String,
+    lease: GoalRunnerExecutionLease,
+    expectedOwnerToken: String?,
     dbPathOverride: String?,
-  ): GoalRunnerReviewPolicy? = persistedReviewPolicy
+  ): Boolean = true
+
+  override fun heartbeatExecutionLease(
+    parentWorkflowId: String,
+    lease: GoalRunnerExecutionLease,
+    dbPathOverride: String?,
+  ): Boolean = true
+
+  override fun releaseExecutionLease(
+    parentWorkflowId: String,
+    ownerToken: String,
+    generation: Long,
+    dbPathOverride: String?,
+  ): Boolean = true
 
   override fun save(state: GoalRunnerManifestState, dbPathOverride: String?): GoalRunnerManifestState =
     error("Preflight must not save manifest state.")
@@ -370,14 +383,13 @@ private object TestAgentAddonSelectionPort : AgentAddonSelectionPort {
     receivingAgentIds: List<String>,
   ): HydratedAgentAddonSelection = hydrated(selection.entries.map { it.slug })
 
-  private fun hydrated(slugs: List<String>): HydratedAgentAddonSelection =
-    HydratedAgentAddonSelection(
-      slugs.mapIndexed { index, slug ->
-        HydratedAgentAddonSelectionEntry(
-          persisted = PersistedAgentAddonSelectionEntry(slug, "source-$index", "a".repeat(64)),
-          description = "Description for $slug",
-          content = "content-$slug",
-        )
-      },
-    )
+  private fun hydrated(slugs: List<String>): HydratedAgentAddonSelection = HydratedAgentAddonSelection(
+    slugs.mapIndexed { index, slug ->
+      HydratedAgentAddonSelectionEntry(
+        persisted = PersistedAgentAddonSelectionEntry(slug, "source-$index", "a".repeat(64)),
+        description = "Description for $slug",
+        content = "content-$slug",
+      )
+    },
+  )
 }

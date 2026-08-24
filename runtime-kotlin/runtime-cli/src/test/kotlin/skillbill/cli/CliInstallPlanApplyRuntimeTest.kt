@@ -240,7 +240,7 @@ class CliInstallPlanApplyRuntimeTest {
         "--format",
         "json",
       ),
-      CliRuntimeContext(userHome = componentHome, environment = emptyMap()),
+      CliRuntimeContext(userHome = componentHome, environment = isolatedCliEnvironment(componentHome)),
     )
 
     assertEquals(0, result.exitCode, result.stdout)
@@ -1217,7 +1217,7 @@ private const val WINDOWS_SYMLINK_GUIDANCE =
 
 private fun installPlanCliContext(home: Path): CliRuntimeContext = CliRuntimeContext(
   userHome = home,
-  environment = emptyMap(),
+  environment = isolatedCliEnvironment(home),
 )
 
 private fun Map<String, Any?>.mapValue(key: String): Map<String, Any?> = requireStringAnyMap(get(key), key)

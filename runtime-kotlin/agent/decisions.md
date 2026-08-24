@@ -644,8 +644,8 @@ rather than scattered edits that drift. Enforcement is defense-in-depth over two
 layers: (L1) the runtime CLI preflights — feature-task, goal, and
 `code-review-parallel` — all funnel their reachable agent ids through one shared gate
 `skillbill.cli.core.refuseRuntimeRefusedAgents`, which throws a `UsageError` with the
-actionable message naming the governed prose alternative and `bill-feature-goal
-mode:prose`; (L2) the launcher source-disablement —
+actionable message naming the governed prose alternative and the prose mode;
+(L2) the launcher source-disablement —
 `OpencodeAgentRunCommandBuilder` is removed and `headlessAgentRunAdapters` filters out
 `RUNTIME_REFUSED_AGENTS`, so `FileSystemAgentRunLauncher` yields
 `UnsupportedAgentRunLaunch` for opencode (mirroring copilot) as an unbypassable

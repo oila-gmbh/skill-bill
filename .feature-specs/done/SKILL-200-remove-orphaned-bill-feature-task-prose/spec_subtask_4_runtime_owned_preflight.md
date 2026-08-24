@@ -56,7 +56,7 @@ no lifecycle telemetry event.
 14. The runtime gains no Linear dependency: no Linear client, MCP call, or Linear-specific network path is added.
 15. Launch behavior is unchanged for every existing invocation: durable state, telemetry events, review severity gating, and the exit codes `complete=0`, `failed=1`, `paused=2`, `blocked=3`.
 16. `(cd runtime-kotlin && ./gradlew check)` passes, with coverage for each verdict, gate-block composition, both `spec_source` rehydrate paths, and each add-on rejection reason.
-17. `skill-bill validate`, `npx --yes agnix --strict .`, and `scripts/validate_agent_configs` pass.
+17. `skill-bill validate`, `npx --yes agnix --strict .`, and `../../../scripts/validate_agent_configs` pass.
 
 ## Non-Goals
 

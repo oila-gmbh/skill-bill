@@ -27,7 +27,6 @@ import skillbill.application.workflow.toRecord
 import skillbill.application.workflow.toSnapshot
 import skillbill.contracts.JsonSupport
 import skillbill.error.IncompatibleGoalPlanningPreparationRecoveryError
-import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidGoalSubtaskReviewStateSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
@@ -916,7 +915,7 @@ class WorkflowGoalRunnerManifestStore(
     ) ?: return null
     val snapshot = record.toSnapshot()
     val manifest = snapshot.decompositionRuntime(decompositionManifestValidator) ?: return null
-    GoalRunnerManifestState(
+    return GoalRunnerManifestState(
       parentWorkflowId = snapshot.workflowId,
       dbPath = unitOfWork.dbPath.toString(),
       manifest = manifest,
@@ -981,17 +980,14 @@ class WorkflowGoalRunnerManifestStore(
     }
   }
 
-  private fun findProjectedManifest(
-    repoRoot: Path,
-    issueKey: String,
-    recoverPending: Boolean = true,
-  ) = resolveDecompositionManifest(
-    repoRoot = repoRoot,
-    issueKey = issueKey,
-    fileStore = decompositionManifestFileStore,
-    validator = decompositionManifestValidator,
-    recoverPending = recoverPending,
-  )
+  private fun findProjectedManifest(repoRoot: Path, issueKey: String, recoverPending: Boolean = true) =
+    resolveDecompositionManifest(
+      repoRoot = repoRoot,
+      issueKey = issueKey,
+      fileStore = decompositionManifestFileStore,
+      validator = decompositionManifestValidator,
+      recoverPending = recoverPending,
+    )
 }
 
 private class GoalRunnerControlCoordinator(

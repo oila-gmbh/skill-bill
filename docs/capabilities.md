@@ -12,7 +12,11 @@ Under one `curl` command is a full system. Each capability below is doing real w
 <details>
 <summary><b>2. <code>bill-feature</code> — the end-to-end feature factory</b></summary>
 
-One slash command that takes a spec or design doc and walks it all the way to a merged-ready PR, scaling ceremony to the size of the work. The pipeline: assessment → branch → pre-planning digest → planning (or decomposition) → implementation → code review → completeness audit → quality check → history/decisions → commit/push → PR description.
+One slash command takes a spec or design doc through the runtime-owned
+pipeline to a merged-ready PR, scaling ceremony to the size of the work. The
+pipeline: assessment → branch → pre-planning digest → planning (or
+decomposition) → implementation → code review → completeness audit → quality
+check → history/decisions → commit/push → PR description.
 
 Cross-cutting properties:
 

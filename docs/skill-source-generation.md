@@ -151,7 +151,7 @@ The pipeline loud-fails with a typed, actionable error
 
 A separate collision guard (`InternalSkillSidecarCollisionError`) fails staging
 when an authored file in the parent's source directory already occupies a
-would-be sidecar name (e.g. an authored `bill-feature/bill-feature-goal.md`);
+would-be sidecar name (e.g. an authored `bill-code-review/bill-kotlin-code-review.md`);
 `skill-bill validate` surfaces the same collision before install. Validation
 also checks every `` `<skill-name>.md` `` sidecar reference inside a skill's
 content.md: the referenced skill must be internal and share the referencing
@@ -166,7 +166,7 @@ directs to the parent, so an internal skill can never gain its own
 ### Installed layout (PD2 / PD6)
 
 Install renders an internal skill's governed content as a markdown sidecar named
-`<skill-name>.md` (the full skill name, e.g. `bill-feature-goal.md`, never an
+`<skill-name>.md` (the full skill name, e.g. `bill-kotlin-code-review.md`, never an
 abbreviated form) placed at the top level of the parent skill's installed
 directory, next to the parent's `SKILL.md`. The sidecar carries the same
 governed wrapper a listed skill's `SKILL.md` would carry (frontmatter,
@@ -251,21 +251,13 @@ orchestrator — no worker ever resolves a hidden skill via the Skill tool or a
 standalone `skills_dir` path. Lane-2 parallel reviews keep invoking
 `/bill-code-review`, which remains listed.
 
-### Worked example: the feature-execution family
+### Worked example: the feature entry family
 
-The feature-execution family is the canonical worked example. The internal
-`bill-feature-goal` skill has parent `bill-feature`. After install, the agent
-skill list shows `bill-feature` (and the standalone listed `bill-feature-spec`)
-but not the goal sidecar. `bill-feature` dispatches to goal execution by reading
-the rendered sidecar file installed inside its own directory
-(`bill-feature-goal.md`) and executing it.
-`bill-feature-spec` stays listed and standalone because it is a different kind
-of skill (spec preparation without implementation), so it is still invoked via
-the Skill tool. The source directory for the internal skill does not move or
-rename (PD3): `skills/bill-feature-goal/content.md` stays exactly where it is;
-only frontmatter and body text inside it change. Workflow identity strings, the DB
-`workflow_name` CHECK constraint, telemetry constants, and MCP tool names are
-byte-for-byte unchanged (PD4) even though the skills are no longer listed.
+The feature entry family has one listed skill, `bill-feature`, and a separate
+listed `bill-feature-spec` skill for specification preparation. The feature
+entry calls the goal runtime directly after its preflight gate; there is no
+feature goal sidecar. The runtime workflow identity, database constraint,
+telemetry constants, and MCP tool names remain durable contracts.
 
 ### Worked example: the code-review family
 

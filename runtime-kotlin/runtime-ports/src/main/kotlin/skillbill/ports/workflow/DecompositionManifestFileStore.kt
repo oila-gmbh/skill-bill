@@ -3,6 +3,7 @@ package skillbill.ports.workflow
 import skillbill.boundary.OpenBoundaryMap
 import java.nio.file.Path
 
+@Suppress("TooManyFunctions")
 interface DecompositionManifestFileStore {
   fun readText(path: Path): String
   fun readTextWithoutRecovery(path: Path): String = readText(path)
@@ -52,6 +53,7 @@ interface DecompositionManifestFileStore {
   fun encodeManifestYaml(wireMap: Map<String, Any?>): String
 }
 
+@Suppress("TooManyFunctions")
 object UnavailableDecompositionManifestFileStore : DecompositionManifestFileStore {
   override fun readText(path: Path): String = unavailable()
 

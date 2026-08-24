@@ -20,8 +20,10 @@ internal fun runtimeOwnedBuildPhaseTask(packBuildCommand: String?): String {
     "agent-run gate. Address every open finding in the same turn. Do not rerun the pack build command " +
     "after each individual fix; targeted compile tasks are allowed while repairing when they are " +
     "part of that same pack gate. When the set looks clean, you may run that same build command once to " +
-    "sanity-check. After you stop, the runtime re-runs the pack build command and mints the receipt — " +
-    "do not emit build_receipt, gate_run_count, or any phase-output JSON."
+    "sanity-check. Never silence findings with @Suppress, @file:Suppress, baselines, disabled rules, " +
+    "weakened configuration, or skipped tests — fix root causes instead. After you stop, the runtime " +
+    "re-runs the pack build command and mints the receipt — do not emit build_receipt, gate_run_count, " +
+    "or any phase-output JSON."
 }
 
 internal fun nonBuildPhaseBuildOwnershipDirective(phaseId: String): String {

@@ -733,11 +733,10 @@ class WorkflowEngine(
       val currentArtifacts = currentStepArtifactKeys.joinToString().ifBlank { "none" }
       val omittedArtifacts = omittedArtifactKeys.joinToString().ifBlank { "none" }
       val instructionPath = CONTINUATION_CONTENT_PATHS[definition.skillName]
-        ?.let { path -> " Follow the normal step instructions in `$path`." }
+        ?.let { path -> "Follow the normal step instructions in `$path`. " }
         .orEmpty()
       return "Resume `${definition.skillName}` workflow `$workflowId` from `$stepLabel` (`$resumeStepId`). " +
         instructionPath +
-        " " +
         "Use `current_step_artifacts` in this compact payload ($currentArtifacts) as authoritative " +
         "current-step context instead of reconstructing prior context from chat history. " +
         "Omitted artifact keys ($omittedArtifacts) remain private phase context. Explicit operator diagnostics " +

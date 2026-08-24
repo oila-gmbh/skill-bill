@@ -1,3 +1,12 @@
+## [2026-08-24] SKILL-200 subtask 5 — collapse feature entry family to one skill
+Areas: skills/bill-feature, skills/bill-feature-spec, docs, orchestration/contracts, runtime-kotlin
+- Rewrote `bill-feature` as the sole feature entry point for intake, update checks, token forwarding, one preflight gate, selective rehydration, launch, and verbatim relay.
+- Removed the `bill-feature-goal` sidecar and obsolete feature-family references from documentation, staging/rendering checks, telemetry contracts, and runtime adapters while preserving durable goal identities.
+- Pattern: keep confirmation and issue rehydration in the entry skill; keep goal orchestration, telemetry, and durable state in their owning runtime boundaries. reusable
+- Breaking changes or known limitations: direct callers of removed skill names have no compatibility shim; the durable workflow identity and CLI goal command remain.
+Feature flag: N/A
+Acceptance criteria: 15/15 implemented
+
 ## [2026-08-24] SKILL-200 subtask 3 — delete unread bill-feature prose
 Areas: skills/bill-feature-goal, skills/bill-feature
 - Removed runtime-enforced internals, CLI-rendered output instructions, duplicated intake and handoff prose, and excess status catalogue text while retaining agent-owned guidance.

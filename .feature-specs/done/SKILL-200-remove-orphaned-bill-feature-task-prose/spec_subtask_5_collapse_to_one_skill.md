@@ -9,7 +9,7 @@ listed as missing, launches one command, and relays runtime output verbatim.
 
 ## Scope
 
-Rewrite `skills/bill-feature/content.md` to exactly these responsibilities:
+Rewrite `../../../skills/bill-feature/content.md` to exactly these responsibilities:
 
 - **Intake.** Establish the issue key; stop and ask if it is missing, and never invent one.
   Establish the intended outcome, acceptance criteria, constraints, and non-goals well enough for
@@ -35,8 +35,8 @@ Rewrite `skills/bill-feature/content.md` to exactly these responsibilities:
 
 Delete `skills/bill-feature-goal/`. Update the `feature-launch-warning` skill class, install
 staging, and the `internal-for` sidecar documentation so the family has one member. Update
-`docs/internal-skills-architecture.md`, `docs/skill-source-generation.md`, and
-`docs/capabilities.md` to describe one skill. Update `runtime-kotlin/ARCHITECTURE.md` if it still
+`../../../docs/internal-skills-architecture.md`, `../../../docs/skill-source-generation.md`, and
+`../../../docs/capabilities.md` to describe one skill. Update `../../../runtime-kotlin/ARCHITECTURE.md` if it still
 maps a goal sidecar.
 
 ## Acceptance Criteria
@@ -49,13 +49,13 @@ maps a goal sidecar.
 6. `bill-feature` relays runtime output verbatim and composes no monitor block, completion line, summary line, or progress relay of its own.
 7. `bill-feature`'s prose covers only intake, update check, token forwarding, preflight, the gate, rehydrate, launch, and relay.
 8. No file read of a sibling sidecar remains in the feature entry path, and no skill instructs an agent to read another skill's file and execute it.
-9. `orchestration/skill-classes/feature-launch-warning.yaml` matches only skills that exist.
+9. `../../../orchestration/skill-classes/feature-launch-warning.yaml` matches only skills that exist.
 10. A clean `./install.sh` stages `bill-feature/` with the seven `kmp` Android add-ons and its governed support pointers, and with none of `bill-feature-task.md`, `bill-feature-task-runtime.md`, or `bill-feature-goal.md`.
-11. `docs/internal-skills-architecture.md`, `docs/skill-source-generation.md`, `docs/capabilities.md`, and `runtime-kotlin/ARCHITECTURE.md` describe a single-skill feature entry family with no goal sidecar.
-12. Outside `.feature-specs/` and `agent/history.md`, no live source, contract, doc, or script references `bill-feature-goal` or `bill-feature-task-runtime`, and the only surviving references to `bill-feature-task` are the durable workflow identity and the CLI command name.
+11. `../../../docs/internal-skills-architecture.md`, `../../../docs/skill-source-generation.md`, `../../../docs/capabilities.md`, and `../../../runtime-kotlin/ARCHITECTURE.md` describe a single-skill feature entry family with no goal sidecar.
+12. Outside `../..` and `../../../agent/history.md`, no live source, contract, doc, or script references `bill-feature-goal` or `bill-feature-task-runtime`, and the only surviving references to `bill-feature-task` are the durable workflow identity and the CLI command name.
 13. A goal launched end to end through the single skill reaches a terminal outcome with the same durable state, telemetry events, review behavior, and exit codes as before: `complete=0`, `failed=1`, `paused=2`, `blocked=3`.
 14. A goal that is already running is reported and not relaunched, and a goal with a requested pause still clears that pause on relaunch exactly as it does today.
-15. `skill-bill validate`, `(cd runtime-kotlin && ./gradlew check)`, `npx --yes agnix --strict .`, and `scripts/validate_agent_configs` pass.
+15. `skill-bill validate`, `(cd runtime-kotlin && ./gradlew check)`, `npx --yes agnix --strict .`, and `../../../scripts/validate_agent_configs` pass.
 
 ## Non-Goals
 
@@ -84,8 +84,8 @@ pre-change baseline. Criterion 14 needs the already-running and pause-requested 
 deliberately, since those are the two behaviors most easily lost when a branch table is replaced
 by a single verdict.
 
-Prove criterion 12 with a repository sweep for all three names, excluding `.feature-specs/` and
-`agent/history.md`, and confirm each surviving hit is the workflow identity or the CLI command.
+Prove criterion 12 with a repository sweep for all three names, excluding `../..` and
+`../../../agent/history.md`, and confirm each surviving hit is the workflow identity or the CLI command.
 
 Verify criterion 10 by listing the staged `bill-feature/` directory after a clean install.
 

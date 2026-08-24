@@ -347,7 +347,7 @@ directory.
 
 ## Goal Observability
 
-`bill-feature-goal` hands confirmed decompositions to the foreground
+`bill-feature` hands confirmed goals to the foreground
 `skill-bill goal` runtime. The runtime owns a flat worker model: one runnable
 subtask, one durable child workflow, one fresh child process. Native or nested
 subagents may help the child session stay focused, but workflow-store state is

@@ -1,4 +1,4 @@
-@file:Suppress("TooManyFunctions")
+@file:Suppress("TooManyFunctions", "LongMethod")
 
 package skillbill.cli.goal
 
@@ -18,13 +18,13 @@ import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.application.featuretask.FeatureTaskExecutionIdentityPolicy
 import skillbill.application.featuretask.model.FeatureTaskContinuationCandidate
 import skillbill.application.goalrunner.GoalOperatorDecisionService
-import skillbill.application.goalrunner.GoalPreflightRequest
-import skillbill.application.goalrunner.GoalPreflightResult
-import skillbill.application.goalrunner.GoalPreflightService
 import skillbill.application.goalrunner.GoalPlanningLogService
+import skillbill.application.goalrunner.GoalPreflightService
 import skillbill.application.goalrunner.GoalRunner
 import skillbill.application.goalrunner.GoalRunnerStatusService
 import skillbill.application.goalrunner.UnaddressedFindingsLedgerService
+import skillbill.application.goalrunner.model.GoalPreflightRequest
+import skillbill.application.goalrunner.model.GoalPreflightResult
 import skillbill.application.model.DEFAULT_GOAL_PLANNING_BUDGET
 import skillbill.application.model.GoalPlanningLog
 import skillbill.application.model.GoalPlanningLogRequest
@@ -117,7 +117,7 @@ class GoalRunCommand(
   private val issueKey by argument(help = "Parent issue key for the decomposed goal.").optional()
   private val agent by option(
     "--agent",
-    help = "Agent invoking bill-feature-goal. Resolution order: --agent, then SKILL_BILL_AGENT, then the " +
+    help = "Agent invoking the goal runtime. Resolution order: --agent, then SKILL_BILL_AGENT, then the " +
       "detected invoking-agent execution context, then a documented last-resort default ($DEFAULT_GOAL_AGENT).",
   )
   private val agentOverride by option(
@@ -302,7 +302,7 @@ class GoalPreflightCommand(
   private val repoRoot by option("--repo-root", help = "Repository root for the goal.")
   private val agent by option(
     "--agent",
-    help = "Agent invoking bill-feature-goal. Resolution order: --agent, then SKILL_BILL_AGENT, then detection.",
+    help = "Agent invoking the goal runtime. Resolution order: --agent, then SKILL_BILL_AGENT, then detection.",
   )
   private val agentOverride by option(
     "--agent-override",
@@ -638,7 +638,7 @@ class GoalStatusCommand(
   ).flag(default = false)
   private val agent by option(
     "--agent",
-    help = "Agent invoking bill-feature-goal. Resolution order: --agent, then SKILL_BILL_AGENT, then the " +
+    help = "Agent invoking the goal runtime. Resolution order: --agent, then SKILL_BILL_AGENT, then the " +
       "detected invoking-agent execution context, then a documented last-resort default.",
   )
   private val agentOverride by option(
@@ -776,7 +776,7 @@ class GoalWatchCommand(
   private val issueKey by argument(help = "Parent issue key for the decomposed goal.")
   private val agent by option(
     "--agent",
-    help = "Agent invoking bill-feature-goal. Resolution order: --agent, then SKILL_BILL_AGENT, then the " +
+    help = "Agent invoking the goal runtime. Resolution order: --agent, then SKILL_BILL_AGENT, then the " +
       "detected invoking-agent execution context, then a documented last-resort default.",
   )
   private val agentOverride by option(

@@ -305,7 +305,6 @@ class FeatureTaskRuntimeSubtaskFinalisationTest {
     assertEquals("", git(repo.root, "status", "--porcelain"), "no deliverable dirt may remain")
   }
 
-
   @Test
   fun `a blank outcome message is rejected before any git write`() {
     val blank = FeatureTaskRuntimeSubtaskFinalisation.readHandoff(

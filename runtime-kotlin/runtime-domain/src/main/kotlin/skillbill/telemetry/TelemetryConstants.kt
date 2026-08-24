@@ -16,4 +16,4 @@ const val HTTP_OK_MAX: Int = 299
 
 val telemetryLevels: List<String> = listOf("off", "anonymous", "full")
 val remoteStatsWorkflows: List<String> =
-  listOf("feature-task-prose", "bill-feature-verify", "bill-feature-goal", "feature-task-runtime")
+  listOf("feature-task-prose", "bill-feature-verify", "feature-task-runtime")

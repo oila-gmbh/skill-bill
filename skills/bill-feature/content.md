@@ -1,58 +1,32 @@
 ---
 name: bill-feature
-description: "Primary feature entry: prepare governed specs, then dispatch via bill-feature-goal. Use when implementing a feature, checking goal status, or resuming a goal."
+description: "Single entry point for governed feature work."
 ---
 
-# Feature Content
+# Feature Entry
 
-`bill-feature` is the primary feature entry point. It owns routing only: prepare the governed feature-spec artifacts first, then dispatch the prepared goal.
-
-`bill-feature-spec` owns feature-spec preparation, and `bill-feature-goal` owns every prepared feature's one-or-more-subtask loop with durable state.
-
-## Code-review selection
-
-Accept zero or one `code-review:auto`, `code-review:inline`, or
-`code-review:delegated` argument. Omission resolves to inline review; `delegated`
-is the experimental full-depth tier and is reached only by an explicit argument.
-Reject a malformed, unknown, repeated, or conflicting `code-review:` argument
-before preparing a spec, presenting confirmation, opening a workflow, or
-launching a child. Carry an explicit argument unchanged into the selected task
-or goal sidecar. When omitted, do not synthesize a `code-review:` token; preserve
-the omission so the downstream confirmation gate can show `inline (default)`
-before resolving the review policy.
+`bill-feature` is the only feature entry point. It gathers request details,
+checks for updates, asks one runtime-composed confirmation question, launches
+the goal, and relays the result.
 
 ## Update Check
 
 Call `mcp__skill-bill__update_check` before any other action.
 
 When the tool returns `status: "update_available"`:
-- Show the user: installed version (`installed_version`) → latest version (`latest_version`).
-- Ask: **Update now or continue with the current version?**
-  - If the user chooses to update: stop and show the `recommended_install_command`. Do not proceed to Intake.
-  - If the user chooses to continue: proceed to Intake unchanged.
 
-When the tool returns any other status (`up_to_date`, `ahead_of_release`, or `unknown`): silently proceed to Intake with no prompt.
+- Show the installed version (`installed_version`) and latest version
+  (`latest_version`).
+- Ask whether to update or continue with the current version.
+- If the user chooses to update, stop and show `recommended_install_command`.
+- If the user chooses to continue, proceed to Intake.
 
-## Agent add-on selection
-
-Accept zero or more ordered `agent-addon:<slug>` arguments alongside the existing
-review, parallel-review, agent, agent-override, and phase-agent arguments.
-Omission preserves existing behaviour. Before spec preparation, confirmation,
-workflow creation, or child launch, call the read-only `agent-addon
-resolve-selection` boundary once with every receiving agent assignment. Reject
-empty or malformed values, duplicates, unknown sources, unsupported consumers,
-and incompatible agents. Preserve caller order.
-
-After resolution, forward only the structured selection object containing slug,
-canonical manifest source identity, content digest, and confirmation description.
-No downstream router or worker may parse the original tokens or rediscover the
-catalogue. Agent add-ons are launch guidance rather than workflow identity: the
-newly resolved selection becomes effective for future work and may differ from a
-prior launch without blocking continuation.
+For `up_to_date`, `ahead_of_release`, or `unknown`, proceed to Intake without
+prompting.
 
 ## Intake
 
-Clarify the user's feature request enough to identify:
+Establish:
 
 - the issue key
 - the intended outcome
@@ -61,61 +35,53 @@ Clarify the user's feature request enough to identify:
 
 If the issue key is missing, stop and ask for it. Do not invent one.
 
-## Prepare Spec
+## Token Forwarding
 
-Before discovering or preparing governed artifacts, perform the read-only, repository-scoped continuation lookup for the normalized issue key and current canonical Git root by running `skill-bill feature-task lookup <issue-key> --repo-root <repo-root> --format json`. This is a CLI command, not an MCP tool — there is no `feature_task_continuation_lookup` MCP tool; it was removed in favor of the CLI form. Pass the plain filesystem path to the repository as `--repo-root`; the CLI derives the canonical repository identity internally, so never construct or guess a `repository_identity` string yourself. Parse the `result` field of the JSON output (`no_match`, `resumable`, `already_running`, `ambiguous`, `terminal_only`, `goal_continuation`) per the handling rules below. The workflow database and immutable execution identity are authoritative; `spec.md` is the governed feature contract, not a planning checkpoint.
+Accept at most one `code-review:auto|inline|delegated`, at most one
+`parallel-review:<agent>`, and zero or more ordered `agent-addon:<slug>`
+arguments. Forward supplied values as flags without resolving a catalogue or
+constructing JSON. Omitted values remain omitted.
 
-Handle `resumable`, `already_running`, `ambiguous`, `terminal_only`, and `goal_continuation` before new-work preparation. Standalone `STANDALONE` rows are retired, so report `resumable` and stop without dispatching a task sidecar. Report and stop for `already_running` and `terminal_only`, and report every `ambiguous` candidate rather than selecting by recency. Dispatch `goal_continuation` through `bill-feature-goal`. A `no_match` result proceeds to preparation and the goal dispatch below. A malformed request, identity/snapshot/version error, selector mismatch, or explicit conflicting args must loud-fail rather than becoming `no_match`.
+## Preflight
 
-`goal_continuation` means a prepared goal for this issue already owns durable state in this repository; it is continuation, never new work. Report the goal's parent workflow id, status, current subtask and action, and the complete/pending/blocked counts, then dispatch through `bill-feature-goal.md` as continuation. When its status is `running`, stop instead: a second goal run against the same durable state is never correct. Never re-prepare a spec, reset, or hand-edit the manifest projection in response to this result.
-
-When a child is durably blocked, repair or resume it through the runtime (`skill-bill goal repair`, then
-`skill-bill goal` / resume). Never run `skill-bill goal accept` to skip a block — ordinary out-of-band
-accept is disabled. Do not edit `decomposition-manifest.yaml` to force progress.
-
-When a subtask spec is amended after that subtask's plan is already checkpointed, handle it with `skill-bill goal replan <issue-key> --subtask <id>` (add `--include-shared-preplan` only when the shared preplan must also be discarded). That is a replan of planning rows, not an acceptance and not a manifest edit. Do not hand-edit `decomposition-manifest.yaml`, and do not hard-reset then compensate with `accept --restore-after-hard-reset` unless a hard reset already discarded completed acceptances: hard reset discards every completed subtask's `commit_sha` and `workflow_id`, and scoped replan is the supported path that preserves them.
-
-A goal reported as paused carries a durable operator pause. Launching the goal again clears it and continues; `skill-bill goal resume <issue-key>` clears the pause boundary without starting child runs when you want the state cleared first. Do not reset or hand-edit durable state to leave a pause.
-
-For `no_match`, invoke `bill-feature-spec` first in the current session unless the direct-dispatch rules below find existing governed artifacts. Do not write spec artifacts directly and do not fork spec-preparation logic.
-
-Wait for `bill-feature-spec` to produce a parent spec, one or more executable subtask specs, and a schema-valid manifest under `.feature-specs/{ISSUE_KEY}-{feature-name}/`. Preparation mode is sizing metadata and does not select the executor.
-
-## Direct Dispatch When Governed Artifacts Exist
-
-Before running spec preparation, check `.feature-specs/{ISSUE_KEY}-*/` for the issue key:
-
-- A bare governed `spec.md` without `decomposition-manifest.yaml` is intake, not prepared state. Invoke `bill-feature-spec` to preserve its contract content and upgrade it through the shared preparation path.
-- Exactly one issue-matching, schema-valid `decomposition-manifest.yaml` is the sole prepared-feature authority marker. Dispatch it through `bill-feature-goal.md`, including when it contains exactly one subtask.
-- Multiple matching manifests, malformed manifests, selector conflicts, or invalid prepared artifacts loud-fail. Never choose by recency and never fall back from an invalid manifest to a bare spec.
-- Only invoke `bill-feature-spec` when there is no authoritative manifest.
-
-## Dispatch
-
-For every authoritative manifest, regardless of preparation mode or subtask cardinality:
-
-  - Read the file `bill-feature-goal.md` located in this skill's own installed directory (a sibling of this `SKILL.md`) and execute its instructions in the current session with args: `<issue-key> parallel-review:<agent> code-review:<explicit-mode> agent-addon-selection:<structured-selection>`, including the structured resolver output only when non-empty, omitting `parallel-review:<agent>` when the caller did not provide it and omitting the `code-review:` token when the caller did not provide it. Do not reconstruct raw add-on tokens. Do not use the Skill tool for this — `bill-feature-goal` is an internal skill and is not listed.
-- Do not ask an extra confirmation before dispatching to the goal sidecar; the goal sidecar owns the one confirmation gate before starting `skill-bill goal`.
-- Treat `skill-bill goal <issue_key>` as runtime behavior with durable workflow state, not as spec authoring.
-
-If `bill-feature-spec` cannot produce valid artifacts, stop and surface the failure instead of guessing a route.
-
-## Fresh-conversation follow-up
-
-For a fresh conversation, the durable handoff is the canonical repository realpath
-and issue key. The next session should inspect or resume the existing runtime
-state from those values:
+Call this command exactly once:
 
 ```text
-repository: repo-root-realpath-v1:/absolute/path/to/repository
-issue_key: SKILL-154
+skill-bill goal preflight <issue-key> --format json
 ```
 
-Do not copy the transcript or transfer planning, implementation, audit, review,
-validation, diagnostic, or raw child payloads. Durable workflow state and the
-governed child context are authoritative.
+Forward the agent, review, parallel-review, and agent add-on values as flags.
+Derive the next action from the returned `verdict`. Invoke `bill-feature-spec`
+after this preflight when the verdict reports new work, retaining the returned
+gate state without recomputing it. Report and stop for an already-running or
+terminal-only goal. Report every candidate for an ambiguous verdict. Surface
+loud failures.
 
-## Status Requests
+## Gate
 
-If the user asks for status on a prepared feature, read the `bill-feature-goal.md` sidecar in this skill's own installed directory and follow its status behavior. Do not use the Skill tool — `bill-feature-goal` is an internal skill.
+Print the returned `gate_block` verbatim from the preflight result and ask
+exactly one question: whether to proceed. Do not launch while unconfirmed. If
+the user declines, stop.
 
+## Rehydrate
+
+For each entry in `rehydrate_targets`, fetch the listed issue from Linear and
+write the returned spec content to the target path. Fetch nothing when the list is empty.
+
+## Launch
+
+After confirmation and any required rehydration, run:
+
+```text
+skill-bill goal <issue-key> --agent <currently-executing-agent> --no-live-output
+```
+
+Forward the supplied review, parallel-review, and agent add-on flags. Never ask
+the user to run the command manually.
+
+## Relay
+
+Await the launched process through the harness completion primitive. Relay its
+output verbatim, adding nothing. Do not poll, sleep, tail logs, re-read status,
+launch an observer, or compose monitoring, completion, summary, or progress
+output. Run goal status only when the user explicitly asks.

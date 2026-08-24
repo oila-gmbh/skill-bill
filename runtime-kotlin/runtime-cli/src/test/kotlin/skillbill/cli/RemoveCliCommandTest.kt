@@ -24,7 +24,7 @@ class RemoveCliCommandTest {
     val tempDir = Files.createTempDirectory("skillbill-cli-remove-missing-target")
     val result = CliRuntime.run(
       listOf("remove", "--format", "json"),
-      CliRuntimeContext(userHome = tempDir),
+      CliRuntimeContext(userHome = tempDir, environment = isolatedCliEnvironment(tempDir)),
     )
     val payload = decodeJsonObject(result.stdout)
     val error = payload["error"].toString()
@@ -48,7 +48,7 @@ class RemoveCliCommandTest {
     Files.write(contentFile, contentBytes)
     Files.write(manifestFile, manifestBytes)
 
-    val context = CliRuntimeContext(userHome = tempDir)
+    val context = CliRuntimeContext(userHome = tempDir, environment = isolatedCliEnvironment(tempDir))
     val result = CliRuntime.run(
       // SKILL-49: `bill-*` skills are the product surface; the maintainer CLI still allows
       // removal via `--allow-shipped` (same shape as `kotlin` / `kmp`).
@@ -85,7 +85,7 @@ class RemoveCliCommandTest {
     val skillDir = repoRoot.resolve("skills/bill-foo")
     Files.createDirectories(skillDir)
     Files.writeString(skillDir.resolve("content.md"), "# bill-foo\n")
-    val context = CliRuntimeContext(userHome = contextHome)
+    val context = CliRuntimeContext(userHome = contextHome, environment = isolatedCliEnvironment(contextHome))
 
     val result = CliRuntime.run(
       listOf(
@@ -123,7 +123,7 @@ class RemoveCliCommandTest {
   @Test
   fun `remove refuses dot-bill-shared with status error`() {
     val tempDir = Files.createTempDirectory("skillbill-cli-remove-shared")
-    val context = CliRuntimeContext(userHome = tempDir)
+    val context = CliRuntimeContext(userHome = tempDir, environment = isolatedCliEnvironment(tempDir))
     val result = CliRuntime.run(
       listOf(
         "remove",
@@ -147,7 +147,7 @@ class RemoveCliCommandTest {
     // Delete affordance via `isBuiltInName`; this test pins the matching CLI refusal so the
     // domain `enforceRefusalPolicy` predicate is the load-bearing rule on every surface.
     val tempDir = Files.createTempDirectory("skillbill-cli-remove-bill")
-    val context = CliRuntimeContext(userHome = tempDir)
+    val context = CliRuntimeContext(userHome = tempDir, environment = isolatedCliEnvironment(tempDir))
     val result = CliRuntime.run(
       listOf(
         "remove",
@@ -175,7 +175,7 @@ class RemoveCliCommandTest {
   @Test
   fun `remove treats kotlin as a normal horizontal skill name after pre-shell pruning`() {
     val tempDir = Files.createTempDirectory("skillbill-cli-remove-kotlin")
-    val context = CliRuntimeContext(userHome = tempDir)
+    val context = CliRuntimeContext(userHome = tempDir, environment = isolatedCliEnvironment(tempDir))
     val result = CliRuntime.run(
       listOf("remove", "skill:kotlin", "--repo-root", tempDir.toString(), "--dry-run", "--format", "json"),
       context,
@@ -189,7 +189,7 @@ class RemoveCliCommandTest {
     // (`kotlin`, `kmp`) are user-removable from the CLI without `--allow-shipped`.
     val tempDir = Files.createTempDirectory("skillbill-cli-remove-platform-kotlin")
     Files.createDirectories(tempDir.resolve("platform-packs/kotlin"))
-    val context = CliRuntimeContext(userHome = tempDir)
+    val context = CliRuntimeContext(userHome = tempDir, environment = isolatedCliEnvironment(tempDir))
     val result = CliRuntime.run(
       listOf(
         "remove",
@@ -213,7 +213,7 @@ class RemoveCliCommandTest {
     val platformPackRoot = tempDir.resolve("platform-packs/example")
     Files.createDirectories(platformPackRoot.resolve("code-review/bill-example-code-review"))
     Files.writeString(platformPackRoot.resolve("code-review/bill-example-code-review/content.md"), "# example\n")
-    val context = CliRuntimeContext(userHome = tempDir)
+    val context = CliRuntimeContext(userHome = tempDir, environment = isolatedCliEnvironment(tempDir))
 
     val result = CliRuntime.run(
       listOf(
@@ -236,7 +236,7 @@ class RemoveCliCommandTest {
   @Test
   fun `remove kotlin succeeds when --allow-shipped is passed in dry-run`() {
     val tempDir = Files.createTempDirectory("skillbill-cli-remove-kotlin-allow")
-    val context = CliRuntimeContext(userHome = tempDir)
+    val context = CliRuntimeContext(userHome = tempDir, environment = isolatedCliEnvironment(tempDir))
     val result = CliRuntime.run(
       listOf(
         "remove",

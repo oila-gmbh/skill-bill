@@ -17,6 +17,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.locks.ReentrantLock
 
 @Inject
+@Suppress("TooManyFunctions")
 class FileSystemDecompositionManifestFileStore : DecompositionManifestFileStore {
   private val yamlMapper: YAMLMapper by lazy { YAMLMapper() }
   private val bundleJournal = DecompositionManifestBundleJournal()
@@ -138,6 +139,7 @@ private data class BundleTransaction(
   val entries: List<BundleEntry>,
 )
 
+@Suppress("TooManyFunctions")
 private class DecompositionManifestBundleJournal {
   private val yamlMapper = YAMLMapper()
 

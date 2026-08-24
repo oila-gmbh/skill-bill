@@ -297,7 +297,6 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
       "repository_checkpoint",
       "gate_run_count",
       "gate_runs",
-      "suppression_justifications",
     )
     listOf(
       FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_WRITE_HISTORY,

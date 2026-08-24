@@ -105,7 +105,8 @@ class AuthoringRenderOutputTest {
     )
     Files.writeString(
       internalDir.resolve("content.md"),
-      "---\nname: bill-feature-helper\ninternal-for: bill-feature\ndescription: Feature helper.\n---\n\nRun feature helper work.\n",
+      "---\nname: bill-feature-helper\ninternal-for: bill-feature\n" +
+        "description: Feature helper.\n---\n\nRun feature helper work.\n",
     )
     val addonDir = repoRoot.resolve("agent-addons/review-helper")
     Files.createDirectories(addonDir)

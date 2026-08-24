@@ -30,7 +30,10 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskCommitFocusedAccounting
  */
 @Suppress("TooManyFunctions") // one cohesive prompt-composition seam; each function is a named directive
 object FeatureTaskRuntimePhasePromptComposer {
-  @Suppress("LongParameterList") // one cohesive phase-prompt delivery; bundling these would only hide them
+  @Suppress(
+    "LongParameterList",
+    "LongMethod",
+  ) // one cohesive phase-prompt delivery; bundling these would only hide them
   fun compose(
     issueKey: String,
     briefing: FeatureTaskRuntimePhaseLaunchBriefing,
@@ -144,6 +147,8 @@ object FeatureTaskRuntimePhasePromptComposer {
       the change can introduce new bugs, and how you will keep the fix local.
 
     No defined plan schema. Do the thinking, then edit. When you are done fixing, stop.
+    Never silence findings with @Suppress, @file:Suppress, baselines, disabled rules, weakened
+    configuration, or skipped tests — fix the root cause instead.
   """.trimIndent()
 
   /**

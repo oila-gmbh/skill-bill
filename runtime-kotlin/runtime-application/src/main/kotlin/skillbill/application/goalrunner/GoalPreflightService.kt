@@ -6,12 +6,18 @@ import skillbill.agentaddon.model.HydratedAgentAddonSelection
 import skillbill.application.decomposition.resolveDecompositionManifest
 import skillbill.application.featuretask.FeatureTaskContinuationLookupService
 import skillbill.application.featuretask.FeatureTaskExecutionIdentityPolicy
-import skillbill.application.featuretask.model.FeatureTaskContinuationCandidate
 import skillbill.application.featuretask.model.FeatureTaskContinuationLookupResult
 import skillbill.application.featuretask.model.GoalContinuationCandidate
+import skillbill.application.goalrunner.model.GoalPreflightAgentAddon
+import skillbill.application.goalrunner.model.GoalPreflightDependency
+import skillbill.application.goalrunner.model.GoalPreflightGateBlock
+import skillbill.application.goalrunner.model.GoalPreflightRehydrateTarget
+import skillbill.application.goalrunner.model.GoalPreflightRequest
+import skillbill.application.goalrunner.model.GoalPreflightResult
+import skillbill.application.goalrunner.model.GoalPreflightSubtask
+import skillbill.error.InvalidAgentAddonSelectionError
 import skillbill.error.InvalidDecompositionManifestSchemaError
 import skillbill.error.InvalidFeatureTaskExecutionIdentitySchemaError
-import skillbill.error.InvalidAgentAddonSelectionError
 import skillbill.goalrunner.GoalRunnerPlanner
 import skillbill.goalrunner.model.GoalRunnerSelection
 import skillbill.ports.agentaddon.AgentAddonSelectionPort
@@ -26,6 +32,7 @@ import skillbill.workflow.model.DecompositionSubtask
 import java.nio.file.Path
 
 @Inject
+@Suppress("LongMethod", "CyclomaticComplexMethod", "ThrowsCount", "LongParameterList")
 class GoalPreflightService(
   private val continuationLookup: FeatureTaskContinuationLookupService,
   private val manifestStore: GoalRunnerManifestStore,
@@ -174,7 +181,8 @@ class GoalPreflightService(
       if (persisted != null) {
         if (persisted.entries.map { it.slug } != request.requestedAgentAddonSlugs) {
           throw InvalidAgentAddonSelectionError(
-            "Cannot change agent add-on selection on goal resume: the parent workflow has a different durable selection.",
+            "Cannot change agent add-on selection on goal resume: " +
+              "the parent workflow has a different durable selection.",
           )
         }
       }
@@ -248,25 +256,24 @@ class GoalPreflightService(
     )
   }
 
-  private fun subtaskBlock(subtask: DecompositionSubtask): GoalPreflightSubtask =
-    GoalPreflightSubtask(
-      id = subtask.id,
-      name = subtask.name,
-      status = subtask.status,
-      dependencies = subtask.dependencies.map { dependency ->
-        GoalPreflightDependency(
-          subtaskId = dependency.subtaskId,
-          optional = dependency.optional,
-          skipped = dependency.skipped,
-          note = if (dependency.optional) {
-            "optional dependency on subtask ${dependency.subtaskId}" +
-              if (dependency.skipped) " is skipped" else ""
-          } else {
-            "requires subtask ${dependency.subtaskId}"
-          },
-        )
-      },
-    )
+  private fun subtaskBlock(subtask: DecompositionSubtask): GoalPreflightSubtask = GoalPreflightSubtask(
+    id = subtask.id,
+    name = subtask.name,
+    status = subtask.status,
+    dependencies = subtask.dependencies.map { dependency ->
+      GoalPreflightDependency(
+        subtaskId = dependency.subtaskId,
+        optional = dependency.optional,
+        skipped = dependency.skipped,
+        note = if (dependency.optional) {
+          "optional dependency on subtask ${dependency.subtaskId}" +
+            if (dependency.skipped) " is skipped" else ""
+        } else {
+          "requires subtask ${dependency.subtaskId}"
+        },
+      )
+    },
+  )
 
   private fun rehydrateTargets(root: Path, manifest: DecompositionManifest): List<GoalPreflightRehydrateTarget> {
     if (manifest.specSource != skillbill.workflow.model.SpecSource.LINEAR) return emptyList()
@@ -323,67 +330,6 @@ class GoalPreflightService(
     }
   }
 }
-
-data class GoalPreflightRequest(
-  val issueKey: String,
-  val repoRoot: Path,
-  val invokedAgentId: String,
-  val agentOverrideId: String? = null,
-  val parallelReviewAgent: String? = null,
-  val requestedReviewMode: CodeReviewExecutionMode? = null,
-  val requestedAgentAddonSlugs: List<String> = emptyList(),
-  val dbPathOverride: String? = null,
-  val userHome: Path = Path.of(System.getProperty("user.home")),
-  val environment: Map<String, String> = System.getenv(),
-)
-
-data class GoalPreflightResult(
-  val verdict: String,
-  val issueKey: String,
-  val candidate: FeatureTaskContinuationCandidate? = null,
-  val candidates: List<FeatureTaskContinuationCandidate> = emptyList(),
-  val goal: GoalContinuationCandidate? = null,
-  val gateBlock: GoalPreflightGateBlock? = null,
-  val rehydrateTargets: List<GoalPreflightRehydrateTarget> = emptyList(),
-  val manifestMissing: Boolean = false,
-)
-
-data class GoalPreflightGateBlock(
-  val issueKey: String,
-  val featureName: String,
-  val subtasks: List<GoalPreflightSubtask>,
-  val expectedFirstRunnableSubtask: Int?,
-  val childAgent: String,
-  val childAgentOverride: String?,
-  val parallelReviewAgent: String,
-  val reviewMode: String,
-  val agentAddons: List<GoalPreflightAgentAddon>,
-)
-
-data class GoalPreflightSubtask(
-  val id: Int,
-  val name: String,
-  val status: String,
-  val dependencies: List<GoalPreflightDependency>,
-)
-
-data class GoalPreflightDependency(
-  val subtaskId: Int,
-  val optional: Boolean,
-  val skipped: Boolean,
-  val note: String,
-)
-
-data class GoalPreflightAgentAddon(
-  val slug: String,
-  val description: String,
-)
-
-data class GoalPreflightRehydrateTarget(
-  val issueKey: String,
-  val linearIssueId: String?,
-  val targetPath: String,
-)
 
 private fun CodeReviewExecutionMode.displayName(omitted: Boolean): String = when {
   omitted && this == CodeReviewExecutionMode.INLINE -> "inline (default)"

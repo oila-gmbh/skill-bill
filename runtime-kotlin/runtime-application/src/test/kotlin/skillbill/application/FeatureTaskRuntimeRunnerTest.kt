@@ -6695,7 +6695,7 @@ internal class RecordingWorkflowGitOperations(
   // Models the working-tree cleanliness the remediation-checkpoint boundary reads: blank => clean
   // (no checkpoint commit), non-blank => dirty (a checkpoint commit is created). worktreeStatusResult
   // overrides with a raw result to model an unreadable worktree.
-  var worktreeStatusValue: String = ""
+  var worktreeStatusValue: String = " M src/Foo.kt"
   var worktreeStatusResult: WorkflowGitOperationResult? = null
   val worktreeStatusSequence = ArrayDeque<String>()
 

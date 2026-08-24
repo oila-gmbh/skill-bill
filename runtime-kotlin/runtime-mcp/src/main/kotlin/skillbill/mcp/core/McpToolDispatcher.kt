@@ -208,10 +208,9 @@ internal fun telemetryRemoteStats(arguments: Map<String, Any?>, context: McpRunt
 
 private fun mapRemoteStatsWorkflow(workflow: String): String = when (workflow) {
   "verify" -> "bill-feature-verify"
-  "goal" -> "bill-feature-goal"
-  "bill-feature-verify", "feature-task-runtime", "bill-feature-goal" -> workflow
+  "bill-feature-verify", "feature-task-runtime" -> workflow
   else -> throw IllegalArgumentException(
-    "workflow must be one of: verify, goal, bill-feature-verify, feature-task-runtime, bill-feature-goal.",
+    "workflow must be one of: verify, bill-feature-verify, feature-task-runtime.",
   )
 }
 

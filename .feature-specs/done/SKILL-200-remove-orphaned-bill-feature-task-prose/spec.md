@@ -12,7 +12,7 @@ Three separate problems produced it.
 
 ### A dead layer nothing reaches
 
-SKILL-133 (unified manifest authority) made `skills/bill-feature/content.md` dispatch every
+SKILL-133 (unified manifest authority) made `../../../skills/bill-feature/content.md` dispatch every
 authoritative `decomposition-manifest.yaml` to `bill-feature-goal.md`, explicitly "including when
 it contains exactly one subtask." That orphaned `bill-feature-task` and its downstream
 `bill-feature-task-runtime` sidecar.
@@ -88,7 +88,7 @@ classification, manifest discovery, add-on token resolution, and gate rendering.
 ## Acceptance Criteria
 
 1. `skills/bill-feature-task/`, `skills/bill-feature-task-runtime/`, and `skills/bill-feature-goal/` are absent from the repository, and `bill-feature` is the only skill in the feature entry family.
-2. The durable `bill-feature-task` workflow identity is unchanged: the `DatabaseSchema.kt` CHECK constraint, the `orchestration/contracts/workflow-state-schema.yaml` `const`, the telemetry enum, and `FeatureTaskRuntimePhaseWorkflowDefinition`'s `skillName` and `workflowName`.
+2. The durable `bill-feature-task` workflow identity is unchanged: the `DatabaseSchema.kt` CHECK constraint, the `../../../orchestration/contracts/workflow-state-schema.yaml` `const`, the telemetry enum, and `FeatureTaskRuntimePhaseWorkflowDefinition`'s `skillName` and `workflowName`.
 3. The `skill-bill feature-task run|resume|status|lookup|abandon|repair-identity` CLI is unchanged and still launches goal children.
 4. No skill restates the runtime worker model, the child review contract, the remediation loops, review-base capture, pass accounting, severity gating, planning-discovery caps, or thin-retention rules.
 5. No skill documents `--diff-stat`, `--diff-hunk`, or their sample output.
@@ -103,17 +103,17 @@ classification, manifest discovery, add-on token resolution, and gate rendering.
 14. `bill-feature`'s prose covers only intake, preflight, the single confirmation gate, the Linear MCP fetch for preflight-listed targets, launch, and verbatim relay.
 15. Preflight performs no durable write: it does not open a workflow, mutate manifest state, launch a child, clear a pause, or emit a lifecycle telemetry event.
 16. A goal launched through the reduced surface reaches a terminal outcome with the same durable state, telemetry events, review behavior, and exit codes as before: `complete=0`, `failed=1`, `paused=2`, `blocked=3`.
-17. `skill-bill validate`, `(cd runtime-kotlin && ./gradlew check)`, `npx --yes agnix --strict .`, and `scripts/validate_agent_configs` all pass.
+17. `skill-bill validate`, `(cd runtime-kotlin && ./gradlew check)`, `npx --yes agnix --strict .`, and `../../../scripts/validate_agent_configs` all pass.
 18. A clean `./install.sh` stages `bill-feature/` with the seven `kmp` Android add-ons and its governed support pointers, and with none of `bill-feature-task.md`, `bill-feature-task-runtime.md`, or `bill-feature-goal.md`.
-19. Outside `.feature-specs/` and `agent/history.md`, no live source, contract, doc, or script references `bill-feature-task-runtime` or `bill-feature-goal`, and the only surviving references to `bill-feature-task` are the durable workflow identity and the CLI command name.
+19. Outside `../..` and `../../../agent/history.md`, no live source, contract, doc, or script references `bill-feature-task-runtime` or `bill-feature-goal`, and the only surviving references to `bill-feature-task` are the durable workflow identity and the CLI command name.
 
 ## Scope
 
 Governed skill sources under `skills/bill-feature*`. The `feature-task` and
 `feature-launch-warning` skill classes. The `kmp` pack add-on declarations. `WorkflowEngine.kt`'s
 continuation content-path map. The goal CLI: a new read-only preflight verb, gate-block rendering,
-rehydrate-target reporting, and raw add-on slug resolution. `install.sh`'s closing hint,
-`runtime-kotlin/ARCHITECTURE.md`, and the three documentation files that map the feature family.
+rehydrate-target reporting, and raw add-on slug resolution. `../../../install.sh`'s closing hint,
+`../../../runtime-kotlin/ARCHITECTURE.md`, and the three documentation files that map the feature family.
 Tests that stage or assert the feature family.
 
 ## Constraints
@@ -135,7 +135,7 @@ Prose deletion and runtime-ownership changes land in separate commits, so a bise
 markdown edit from a behavior change.
 
 A live SKILL-190 goal was mid-review when this spec was prepared. Do not begin implementation until
-that goal is terminal or paused, because writing to `skills/` lands inside the SKILL-190 subtask's
+that goal is terminal or paused, because writing to `../../../skills` lands inside the SKILL-190 subtask's
 review delta.
 
 ## Non-Goals
@@ -176,7 +176,7 @@ test asserting no durable write, no workflow open, no pause clear, and no lifecy
 Subtask 5 is verified end to end: launch a real goal through the single reduced skill and confirm
 criterion 16 against durable state, telemetry, and exit code.
 
-Every subtask finishes with `npx --yes agnix --strict .` and `scripts/validate_agent_configs`.
+Every subtask finishes with `npx --yes agnix --strict .` and `../../../scripts/validate_agent_configs`.
 
 ## Next Path
 

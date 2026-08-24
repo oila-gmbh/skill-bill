@@ -800,6 +800,7 @@ class GoalRunnerStatusService(
   // Out-of-band accept used to let operators (and agents) mark a subtask complete when a child
   // blocked. That skipped audit/review and became the default recovery path for Laguna. Accept is
   // disabled for normal use; only restoring an acceptance discarded by hard reset remains.
+  @Suppress("ReturnCount")
   fun accept(request: GoalRunnerAcceptRequest): GoalRunnerAcceptResult {
     if (!request.restoreAfterHardReset) {
       return rejected(

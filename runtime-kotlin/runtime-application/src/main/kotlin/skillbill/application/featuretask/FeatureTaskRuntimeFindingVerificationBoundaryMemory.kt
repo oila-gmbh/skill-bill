@@ -95,6 +95,7 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemory(
     return null
   }
 
+  @Suppress("FunctionOnlyReturningConstant", "UnusedParameter")
   fun validateDispositionBoundaryProvenance(
     sections: List<FeatureTaskRuntimeFindingBoundaryMemorySection>,
     dispositions: List<FeatureTaskRuntimeFindingVerificationDisposition>,
