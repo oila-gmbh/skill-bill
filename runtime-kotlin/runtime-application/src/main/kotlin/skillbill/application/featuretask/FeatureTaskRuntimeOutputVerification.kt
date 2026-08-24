@@ -60,9 +60,7 @@ internal object FeatureTaskRuntimeOutputVerification {
   fun auditGapPayloadError(outputObject: Map<String, Any?>): String? {
     val wireVerdict = outputObject["verdict"] as? String
     val producedOutputs = JsonSupport.anyToStringAnyMap(outputObject["produced_outputs"])
-    return rejectedCriteriaAliasError(producedOutputs)
-      ?: rejectedLegacyCriteriaKeyError(producedOutputs)
-      ?: auditGapsArrayPayloadError(wireVerdict, producedOutputs)
+    return auditGapsArrayPayloadError(wireVerdict, producedOutputs)
       ?: if (producedOutputs?.containsKey(FeatureTaskRuntimeVerificationSignalKeys.AUDIT_GAPS) == true) {
         null
       } else {
@@ -85,10 +83,12 @@ internal object FeatureTaskRuntimeOutputVerification {
       ?.let(JsonSupport::anyToStringAnyMap)
       ?.get(FeatureTaskRuntimeVerificationSignalKeys.FINDINGS_VERIFICATION_DISPOSITIONS) as? List<*>
       ?: return null
-    val dispositions = FeatureTaskRuntimeFindingVerificationDisposition.parseList(
-      dispositionsRaw,
-      "produced_outputs.${FeatureTaskRuntimeVerificationSignalKeys.FINDINGS_VERIFICATION_DISPOSITIONS}",
-    )
+    val dispositions = runCatching {
+      FeatureTaskRuntimeFindingVerificationDisposition.parseList(
+        dispositionsRaw,
+        "produced_outputs.${FeatureTaskRuntimeVerificationSignalKeys.FINDINGS_VERIFICATION_DISPOSITIONS}",
+      )
+    }.getOrNull() ?: return null
     return FeatureTaskRuntimeFindingVerificationVerdict(dispositions)
   }
 
@@ -183,29 +183,6 @@ private fun auditCriterionGapMessage(criterion: String?, note: String?, issue: S
   issue != null -> issue
   criterion != null -> criterion
   else -> null
-}
-
-private fun rejectedCriteriaAliasError(producedOutputs: Map<String, Any?>?): String? {
-  val alias = FeatureTaskRuntimeVerificationSignalKeys.AUDIT_FAILING_CRITERIA_REJECTED_ALIAS
-  if (producedOutputs?.containsKey(alias) != true) return null
-  return "Audit produced_outputs carries '$alias'; the canonical gap signal is " +
-    "'${FeatureTaskRuntimeVerificationSignalKeys.AUDIT_GAPS}'. Rename the array. The audit " +
-    "criteria signal has exactly one representation, so no alias reaches the audit_gap edge."
-}
-
-private fun rejectedLegacyCriteriaKeyError(producedOutputs: Map<String, Any?>?): String? {
-  val legacyKey = FeatureTaskRuntimeVerificationSignalKeys.AUDIT_UNMET_CRITERIA
-  if (
-    producedOutputs?.containsKey(legacyKey) != true ||
-    producedOutputs.containsKey(FeatureTaskRuntimeVerificationSignalKeys.AUDIT_GAPS)
-  ) {
-    return null
-  }
-  val legacy = producedOutputs[legacyKey]
-  if (legacy is List<*> && legacy.isEmpty()) return null
-  return "Audit produced_outputs carries '$legacyKey'; " +
-    "the canonical gap signal is '${FeatureTaskRuntimeVerificationSignalKeys.AUDIT_GAPS}'. " +
-    "Rename the array to gaps and pair it with the compact audit gap vocabulary."
 }
 
 private fun auditGapsArrayPayloadError(wireVerdict: String?, producedOutputs: Map<String, Any?>?): String? {

@@ -81,6 +81,100 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorTest {
   }
 
   @Test
+  fun `inner repair receipt shape violations are accepted with demoted diagnostics`() {
+    val output =
+      """
+      contract_version: "0.4"
+      phase_id: "implement"
+      status: "completed"
+      summary: "Applied the implementation."
+      produced_outputs:
+        repair_receipt:
+          contract_version: "0.2"
+          entries:
+            - severity: blocker
+              finding_id: F-001
+              outcome: addressed
+              constructs:
+                - symbol: Type.member
+              intent: "Close the finding."
+              text: "${"x".repeat(257)}"
+      """.trimIndent()
+
+    val result = FeatureTaskRuntimePhaseOutputValidatorAdapter().validatePhaseOutput(output, "implement")
+    val accepted = assertIs<FeatureTaskRuntimePhaseOutputValidationResult.AcceptedUnchanged>(result)
+
+    assertTrue(accepted.demotedViolations.any { it.pointer.endsWith("/text") })
+    assertTrue(accepted.demotedViolations.any { it.rule.contains("repair-receipt-entry") })
+  }
+
+  @Test
+  fun `audit still requires its verdict and gaps routing fields`() {
+    val missingVerdict =
+      """
+      contract_version: "0.4"
+      phase_id: "audit"
+      status: "completed"
+      summary: "Audited the change."
+      produced_outputs:
+        gaps: []
+      """.trimIndent()
+
+    val error = assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
+      FeatureTaskRuntimePhaseOutputValidatorAdapter().validatePhaseOutputText(missingVerdict, "audit")
+    }
+
+    assertContains(error.payloadFreeReason.orEmpty(), "top-level verdict")
+  }
+
+  @Test
+  fun `audit finding identity aliases settle as demoted diagnostics when gaps are present`() {
+    val output =
+      """
+      contract_version: "0.4"
+      phase_id: "audit"
+      status: "completed"
+      summary: "Found a production gap."
+      verdict: "gaps_found"
+      produced_outputs:
+        gaps:
+          - criterion: AC-001
+            note: "The production behavior is incomplete."
+        failing_criteria:
+          - acceptance_criterion_ref: AC-001
+            message: "The production behavior is incomplete."
+      """.trimIndent()
+
+    val result = FeatureTaskRuntimePhaseOutputValidatorAdapter().validatePhaseOutput(output, "audit")
+    val accepted = assertIs<FeatureTaskRuntimePhaseOutputValidationResult.AcceptedUnchanged>(result)
+
+    assertTrue(accepted.demotedViolations.any { it.pointer.endsWith("/failing_criteria") })
+  }
+
+  @Test
+  fun `verify findings still requires its disposition container`() {
+    val missingDispositions =
+      """
+      contract_version: "0.4"
+      phase_id: "verify_findings"
+      status: "completed"
+      summary: "Verified the findings."
+      verdict: "no_findings_verified"
+      produced_outputs:
+        result: "none"
+      """.trimIndent()
+
+    val error = assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
+      FeatureTaskRuntimePhaseOutputValidatorAdapter().validatePhaseOutputText(
+        missingDispositions,
+        "verify_findings",
+      )
+    }
+
+    assertContains(error.payloadFreeReason.orEmpty(), "finding_dispositions")
+  }
+
+  @Test
   fun `empty object fails validation`() {
     assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
       FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText("{}", "plan")
@@ -585,17 +679,18 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
   }
 
   @Test
-  fun `completed implement_fix with a path-only construct is rejected`() {
+  fun `completed implement_fix with a path-only construct is accepted with a diagnostic`() {
     val pathOnly = validRepairReceiptJson().replace(
       """"symbol":"Type.member","file":"Type.kt"""",
       """"symbol":"runtime-kotlin/src/Type.kt"""",
     )
-    assertFailsWith<InvalidFeatureTaskRuntimePhaseOutputSchemaError> {
-      FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(
-        implementFixEnvelope(pathOnly),
-        "implement_fix",
-      )
-    }
+    val result = FeatureTaskRuntimePhaseOutputValidatorAdapter().validatePhaseOutput(
+      implementFixEnvelope(pathOnly),
+      "implement_fix",
+    )
+
+    val accepted = assertIs<FeatureTaskRuntimePhaseOutputValidationResult.AcceptedUnchanged>(result)
+    assertTrue(accepted.demotedViolations.any { it.rule.contains("construct-symbol") })
   }
 
   @Test

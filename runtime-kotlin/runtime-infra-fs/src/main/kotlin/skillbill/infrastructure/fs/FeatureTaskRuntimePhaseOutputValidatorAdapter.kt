@@ -33,8 +33,13 @@ class FeatureTaskRuntimePhaseOutputValidatorAdapter : FeatureTaskRuntimePhaseOut
       // rejection is retried — accepted repairs keep their evidence — so this can turn a block into
       // an acceptance but never the reverse.
       is FeatureTaskRuntimePhaseOutputStructuralRepairDecision.Rejected ->
-        leniently(phaseOutputText, sourceLabel)
-          ?.let { FeatureTaskRuntimePhaseOutputValidationResult.AcceptedUnchanged(it) }
+        leniently(phaseOutputText, sourceLabel)?.let { normalized ->
+          FeatureTaskRuntimePhaseOutputValidationResult.AcceptedUnchanged(
+            normalizedOutput = normalized,
+            demotedViolations = FeatureTaskRuntimePhaseOutputSchemaValidator.demotedViolations(normalized.envelope) +
+              structuralRepairViolation(decision),
+          )
+        }
           ?: FeatureTaskRuntimePhaseOutputValidationResult.Rejected(
             code = decision.code,
             reason = decision.reason,
@@ -54,10 +59,20 @@ class FeatureTaskRuntimePhaseOutputValidatorAdapter : FeatureTaskRuntimePhaseOut
           )
         }
         validateNestedBuildReceipt(normalized, sourceLabel)
+        val demoted = FeatureTaskRuntimePhaseOutputSchemaValidator.demotedViolations(
+          normalized.envelope,
+        )
         if (decision.evidence == null) {
-          FeatureTaskRuntimePhaseOutputValidationResult.AcceptedUnchanged(normalized)
+          FeatureTaskRuntimePhaseOutputValidationResult.AcceptedUnchanged(
+            normalizedOutput = normalized,
+            demotedViolations = demoted,
+          )
         } else {
-          FeatureTaskRuntimePhaseOutputValidationResult.AcceptedAfterRepair(normalized, decision.evidence)
+          FeatureTaskRuntimePhaseOutputValidationResult.AcceptedAfterRepair(
+            normalizedOutput = normalized,
+            evidence = decision.evidence,
+            demotedViolations = demoted + repairEvidenceViolation(decision.evidence),
+          )
         }
       } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
         FeatureTaskRuntimePhaseOutputValidationResult.Rejected(
@@ -84,12 +99,15 @@ class FeatureTaskRuntimePhaseOutputValidatorAdapter : FeatureTaskRuntimePhaseOut
    * not settle either. Null keeps the original rejection; it never invents an acceptance.
    */
   private fun leniently(phaseOutputText: String, sourceLabel: String): NormalizedFeatureTaskRuntimePhaseOutput? {
-    if (sourceLabel !in LENIENT_VERIFYING_PHASE_OUTPUT_SCHEMA) return null
     return try {
-      val normalized = FeatureTaskRuntimePhaseOutputSchemaValidator.normalizeVerifyingPhaseOutputLenient(
-        phaseOutputText,
-        sourceLabel,
-      )
+      val normalized = if (sourceLabel in LENIENT_VERIFYING_PHASE_OUTPUT_SCHEMA) {
+        FeatureTaskRuntimePhaseOutputSchemaValidator.normalizeVerifyingPhaseOutputLenient(
+          phaseOutputText,
+          sourceLabel,
+        )
+      } else {
+        FeatureTaskRuntimePhaseOutputSchemaValidator.normalizePhaseOutputLenient(phaseOutputText, sourceLabel)
+      }
       validateNestedBuildReceipt(normalized, sourceLabel)
       normalized
     } catch (_: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
@@ -98,6 +116,28 @@ class FeatureTaskRuntimePhaseOutputValidatorAdapter : FeatureTaskRuntimePhaseOut
       null
     }
   }
+
+  private fun structuralRepairViolation(
+    decision: FeatureTaskRuntimePhaseOutputStructuralRepairDecision.Rejected,
+  ) = listOf(
+    skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputDemotedViolation(
+      rule = "phase-output-structural-repair",
+      pointer = "/",
+      reason = decision.reason,
+    ),
+  )
+
+  private fun repairEvidenceViolation(
+    evidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence?,
+  ) = evidence?.let {
+    listOf(
+      skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputDemotedViolation(
+        rule = "phase-output-structural-repair",
+        pointer = "/",
+        reason = "Structural repair applied: ${it.operation.wireValue}.",
+      ),
+    )
+  }.orEmpty()
 
   override fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
     validatePhaseOutput(phaseOutputText, sourceLabel).requireAccepted(sourceLabel)

@@ -176,6 +176,51 @@ class FeatureTaskRuntimeHandoffProjectionValidatorTest {
   }
 
   @Test
+  fun `review repair projection preserves decidable verified aliases without parsing malformed rows`() {
+    val consumer = FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX
+    val declaration = declaration(
+      consumerPhaseId = consumer,
+      sourceRef = FeatureTaskRuntimeHandoffSourceRef.UpstreamPhaseOutput(
+        FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS,
+      ),
+      projectionName = "review_repair_request",
+      projectionContractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.REVIEW_REPAIR_REQUEST,
+      declaredFieldNames = listOf("unresolved_blocker_findings", "repository_checkpoint"),
+      checkpointPolicy = FeatureTaskRuntimeRepositoryCheckpointPolicy.MUST_MATCH,
+    )
+    val checkpoint = FeatureTaskRuntimeRepositoryCheckpoint("reviewed-tree")
+    val envelope = FeatureTaskRuntimeHandoffProjectionValidator.validate(
+      inputs(
+        consumerPhaseId = consumer,
+        declarations = listOf(declaration),
+        resolvedUpstream = FeatureTaskRuntimeResolvedUpstreamOutputs(
+          mapOf(
+            FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS to FeatureTaskRuntimePhaseOutput(
+              FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS,
+              1,
+              """{"produced_outputs":{"finding_dispositions":[""" +
+                """{"finding_ref":"F-ALIAS","disposition":" VERIFIED ","severity":"unknown",""" +
+                """"location":null,"message":null},"malformed",{"finding_id":"F-REJECTED",""" +
+                """"disposition":"rejected","severity":"major","location":"A.kt:1","message":"done"}]}}""",
+            ),
+          ),
+        ),
+        resolvedCheckpoint = checkpoint,
+        expectedCheckpoint = checkpoint,
+      ),
+    )
+
+    val projected = assertIs<FeatureTaskRuntimeHandoffProjectionValue.TextList>(
+      envelope.projections.single().fields.first().value,
+    )
+    assertEquals(1, projected.items.size)
+    assertTrue(projected.items.single().contains("F-ALIAS"))
+    assertTrue(projected.items.single().contains("blocker"))
+    assertTrue(projected.items.single().contains("repository"))
+    assertTrue(projected.items.single().contains("Verified finding."))
+  }
+
+  @Test
   fun `change receipt derives changed paths from the runtime checkpoint`() {
     val declaration = declaration(
       projectionContractId = FeatureTaskRuntimePhaseWorkflowDefinition.PhaseProjectionContract.CHANGE_RECEIPT,

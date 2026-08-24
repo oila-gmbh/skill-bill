@@ -1,7 +1,6 @@
 package skillbill.application.featuretask
 
 import skillbill.contracts.JsonSupport
-import skillbill.error.InvalidFeatureTaskRuntimeFindingVerificationRecordError
 import skillbill.workflow.taskruntime.FeatureTaskRuntimePhaseWorkflowDefinition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
@@ -35,13 +34,7 @@ internal object FeatureTaskRuntimeVerificationGateReasons {
       )
     }.fold(
       onSuccess = { validateDispositionCoverage(it, reviewFindingIds) },
-      onFailure = { failure ->
-        when (failure) {
-          is InvalidFeatureTaskRuntimeFindingVerificationRecordError ->
-            failure.message ?: "finding verification dispositions are not contract-safe."
-          else -> failure.message ?: "finding verification dispositions are not contract-safe."
-        }
-      },
+      onFailure = { null },
     )
   }
 

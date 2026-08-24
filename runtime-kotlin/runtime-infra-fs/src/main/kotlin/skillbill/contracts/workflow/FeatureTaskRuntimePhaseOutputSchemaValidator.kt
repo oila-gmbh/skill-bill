@@ -15,6 +15,7 @@ import com.networknt.schema.SpecVersion
 import com.networknt.schema.ValidationMessage
 import skillbill.contracts.LOCALE_STABLE_SCHEMA_CONFIG
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputDemotedViolation
 import skillbill.workflow.taskruntime.model.NormalizedFeatureTaskRuntimePhaseOutput
 import java.nio.file.Files
 import java.nio.file.Path
@@ -37,14 +38,17 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
   private val yamlMapper: YAMLMapper by lazy {
     YAMLMapper(YAMLFactory().apply { enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION) })
   }
+  private val lenientYamlMapper: YAMLMapper by lazy { YAMLMapper(YAMLFactory()) }
   private val mapType = object : TypeReference<Map<String, Any?>>() {}
 
   fun validate(phaseOutput: Map<String, Any?>, sourceLabel: String) {
     val instance: JsonNode = mapper.valueToTree(phaseOutput)
     val errors: Set<ValidationMessage> = schema.validate(instance)
-    if (errors.isNotEmpty()) {
-      featureTaskRuntimePhaseOutputLog.log(Level.WARNING, buildSchemaDriftLog(sourceLabel, errors))
-      val reasons = formatViolationReasons(errors.sortedWith(violationOrdering), instance)
+    val demoted = errors.filter { error -> isDemotedViolation(error, instance) }
+    val loadBearing = errors - demoted.toSet()
+    if (loadBearing.isNotEmpty()) {
+      featureTaskRuntimePhaseOutputLog.log(Level.WARNING, buildSchemaDriftLog(sourceLabel, loadBearing))
+      val reasons = formatViolationReasons(loadBearing.sortedWith(violationOrdering), instance)
       throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
         sourceLabel = sourceLabel,
         reason = reasons.valueBearing,
@@ -61,6 +65,24 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
         failureCode = "phase_id_mismatch",
       )
     }
+  }
+
+  private fun validateAndCollectDemoted(
+    phaseOutput: Map<String, Any?>,
+  ): List<FeatureTaskRuntimePhaseOutputDemotedViolation> {
+    val instance: JsonNode = mapper.valueToTree(phaseOutput)
+    return schema.validate(instance)
+      .filter { error -> isDemotedViolation(error, instance) }
+      .sortedWith(violationOrdering)
+      .map { error ->
+        val location = error.instanceLocation?.toString().orEmpty()
+        FeatureTaskRuntimePhaseOutputDemotedViolation(
+          rule = demotedRule(error),
+          pointer = validationPointer(location, error.message.orEmpty()),
+          reason = "${featureTaskRuntimePhaseOutputDottedFieldPath(location).ifBlank { "<root>" }}: " +
+            error.message.orEmpty(),
+        )
+      }
   }
 
   fun validatePhaseOutputText(phaseOutputText: String, sourceLabel: String) {
@@ -86,18 +108,35 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
     )
   }
 
+  fun normalizePhaseOutputLenient(
+    phaseOutputText: String,
+    sourceLabel: String,
+  ): NormalizedFeatureTaskRuntimePhaseOutput {
+    val node = readPhaseOutputObjectNodeLenient(phaseOutputText, sourceLabel)
+    val parsed = phaseOutputObjectNodeToMap(PhaseOutputExpectedShape.align(node, sourceLabel).first, sourceLabel)
+    validate(parsed, sourceLabel)
+    return NormalizedFeatureTaskRuntimePhaseOutput(
+      canonicalJson = mapper.writeValueAsString(parsed),
+      envelope = parsed,
+    )
+  }
+
   fun normalizeVerifyingPhaseOutputLenient(
     phaseOutputText: String,
     sourceLabel: String,
   ): NormalizedFeatureTaskRuntimePhaseOutput {
     val node = readPhaseOutputObjectNodeLenient(phaseOutputText, sourceLabel)
-    val parsed = phaseOutputObjectNodeToMap(node, sourceLabel)
+    val parsed = phaseOutputObjectNodeToMap(PhaseOutputExpectedShape.align(node, sourceLabel).first, sourceLabel)
     validateVerifyingEnvelopeShell(parsed, sourceLabel)
     return NormalizedFeatureTaskRuntimePhaseOutput(
       canonicalJson = mapper.writeValueAsString(parsed),
       envelope = parsed,
     )
   }
+
+  fun demotedViolations(
+    phaseOutput: Map<String, Any?>,
+  ): List<FeatureTaskRuntimePhaseOutputDemotedViolation> = validateAndCollectDemoted(phaseOutput)
 
   fun normalizeAuditPhaseOutputLenient(
     phaseOutputText: String,
@@ -132,7 +171,7 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
   }
 
   private fun readPhaseOutputObjectNodeLenient(phaseOutputText: String, sourceLabel: String): JsonNode {
-    val parsedCandidates = phaseOutputObjectCandidates(phaseOutputText).mapNotNull(::tryParseObjectNode)
+    val parsedCandidates = phaseOutputObjectCandidates(phaseOutputText).mapNotNull(::tryParseObjectNodeLenient)
     val envelopeCandidates = parsedCandidates.filter { candidate ->
       candidate.path("phase_id").asText("") == sourceLabel
     }
@@ -160,13 +199,142 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
       )
     }
     val status = parsed["status"] as? String
-    if (status.isNullOrBlank()) {
+    if (parsed["contract_version"] != FEATURE_TASK_RUNTIME_CONTRACT_VERSION) {
       throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
         sourceLabel = sourceLabel,
-        reason = "status is required.",
-        payloadFreeReason = "status is required.",
+        reason = "contract_version must be '$FEATURE_TASK_RUNTIME_CONTRACT_VERSION'.",
+        payloadFreeReason = "contract_version must be '$FEATURE_TASK_RUNTIME_CONTRACT_VERSION'.",
       )
     }
+    if (status !in setOf("completed", "blocked", "failed")) {
+      throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
+        sourceLabel = sourceLabel,
+        reason = "status must be completed, blocked, or failed.",
+        payloadFreeReason = "status must be completed, blocked, or failed.",
+      )
+    }
+    val failureDisposition = parsed["failure_disposition"] as? String
+    if (
+      failureDisposition != null &&
+      failureDisposition !in setOf(
+        "retryable",
+        "non_retryable_policy_conflict",
+        "needs_user_action",
+        "process_failure",
+        "invalid_output",
+      )
+    ) {
+      throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
+        sourceLabel = sourceLabel,
+        reason = "failure_disposition is not a supported value.",
+        payloadFreeReason = "failure_disposition is not a supported value.",
+      )
+    }
+    if (status != "completed" && failureDisposition == null) {
+      throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
+        sourceLabel = sourceLabel,
+        reason = "failure_disposition is required for a blocked or failed phase.",
+        payloadFreeReason = "failure_disposition is required for a blocked or failed phase.",
+      )
+    }
+    if ((parsed["summary"] as? String).isNullOrBlank()) {
+      throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
+        sourceLabel = sourceLabel,
+        reason = "summary is required.",
+        payloadFreeReason = "summary is required.",
+      )
+    }
+    val produced = parsed["produced_outputs"] as? Map<*, *>
+    if (produced == null || produced.isEmpty()) {
+      throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
+        sourceLabel = sourceLabel,
+        reason = "produced_outputs must be a non-empty object.",
+        payloadFreeReason = "produced_outputs must be a non-empty object.",
+      )
+    }
+    when (sourceLabel) {
+      "audit" -> {
+        val verdict = parsed["verdict"] as? String
+        if (verdict.isNullOrBlank() || verdict !in setOf("satisfied", "gaps_found")) {
+          throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
+            sourceLabel = sourceLabel,
+            reason = "audit requires a top-level verdict of satisfied or gaps_found.",
+            payloadFreeReason = "audit requires a top-level verdict.",
+          )
+        }
+        if (produced["gaps"] !is List<*>) {
+          throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
+            sourceLabel = sourceLabel,
+            reason = "audit requires produced_outputs.gaps.",
+            payloadFreeReason = "audit requires produced_outputs.gaps.",
+          )
+        }
+      }
+      "verify_findings" -> {
+        val verdict = parsed["verdict"] as? String
+        if (verdict.isNullOrBlank() || verdict !in setOf("findings_verified", "no_findings_verified")) {
+          throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
+            sourceLabel = sourceLabel,
+            reason = "verify_findings requires a top-level verdict.",
+            payloadFreeReason = "verify_findings requires a top-level verdict.",
+          )
+        }
+        if (produced["finding_dispositions"] !is List<*>) {
+          throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
+            sourceLabel = sourceLabel,
+            reason = "verify_findings requires produced_outputs.finding_dispositions.",
+            payloadFreeReason = "verify_findings requires produced_outputs.finding_dispositions.",
+          )
+        }
+      }
+    }
+  }
+
+  private fun isDemotedViolation(error: ValidationMessage, instance: JsonNode): Boolean {
+    val location = error.instanceLocation?.toString().orEmpty()
+    val message = error.message.orEmpty()
+    return when {
+      location.matches(Regex("""^\$\.produced_outputs\.repair_receipt\.entries\[\d+]\.constructs\[\d+]\.symbol$""")) ->
+        true
+      location.matches(Regex("""^\$\.produced_outputs\.repair_receipt\.entries\[\d+].*""")) -> true
+      location.matches(Regex("""^\$\.produced_outputs\.repair_plan\.entries\[\d+].*""")) -> true
+      location.matches(Regex("""^\$\.produced_outputs\.gaps\[\d+]\.note$""")) -> true
+      location.matches(Regex("""^\$\.produced_outputs\.finding_dispositions\[\d+].*""")) -> true
+      location.startsWith("$.produced_outputs") &&
+        message.contains("additional propert", ignoreCase = true) &&
+        Regex("""['"`]?(finding_ref|finding_id|id|ref)['"`]?""").containsMatchIn(message) -> true
+      location == "$.produced_outputs" &&
+        (instance.path("produced_outputs").has("failing_criteria") ||
+          instance.path("produced_outputs").has("unmet_criteria")) -> true
+      else -> false
+    }
+  }
+
+  private fun demotedRule(error: ValidationMessage): String {
+    val location = error.instanceLocation?.toString().orEmpty()
+    return when {
+      location.contains(".constructs[") -> "phase-output-schema.construct-symbol"
+      location.contains(".repair_receipt.entries[") -> "phase-output-schema.repair-receipt-entry"
+      location.contains(".repair_plan.entries[") -> "phase-output-schema.repair-plan-entry"
+      location.contains(".gaps[") -> "phase-output-schema.unmet-criterion-note"
+      location.contains(".finding_dispositions[") -> "phase-output-schema.finding-disposition-entry"
+      else -> "phase-output-schema.finding-identity-alias"
+    }
+  }
+
+  private fun validationPointer(location: String, message: String): String {
+    val base = when {
+      location.startsWith("$.") -> "/" + location.removePrefix("$.")
+        .replace(Regex("""\[([0-9]+)]"""), "/$1")
+        .replace(".", "/")
+      location == "$" || location == "/" || location.isBlank() -> "/"
+      else -> "/" + location.trimStart('/').replace(".", "/")
+    }
+    val property = Regex("""(?:property|field)\s+['"`]?([A-Za-z_][A-Za-z0-9_-]*)""", RegexOption.IGNORE_CASE)
+      .find(message)
+      ?.groupValues
+      ?.get(1)
+    return if (property == null || base.endsWith("/$property")) base else "$base/$property"
   }
 
   // Key order carries no meaning in the envelope, so one restated envelope must not read as two.
@@ -193,6 +361,12 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
       "Phase-output candidate did not parse; trying the next one.",
       error,
     )
+    null
+  }
+
+  private fun tryParseObjectNodeLenient(candidate: String): JsonNode? = try {
+    lenientYamlMapper.readTree(candidate)?.takeIf(JsonNode::isObject)
+  } catch (_: JsonProcessingException) {
     null
   }
 
