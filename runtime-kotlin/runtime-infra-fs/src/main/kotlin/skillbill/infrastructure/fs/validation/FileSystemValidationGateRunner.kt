@@ -54,10 +54,7 @@ class FileSystemValidationGateRunner : ValidationGateRunner {
     }
   }
 
-  private fun deriveOutcome(
-    exitCode: Int,
-    findings: List<ValidationGateFinding>,
-  ): ValidationGateRunOutcome = when {
+  private fun deriveOutcome(exitCode: Int, findings: List<ValidationGateFinding>): ValidationGateRunOutcome = when {
     findings.isNotEmpty() || exitCode != 0 -> ValidationGateRunOutcome.FAILED
     else -> ValidationGateRunOutcome.PASSED
   }
