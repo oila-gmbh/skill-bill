@@ -261,6 +261,20 @@ class FeatureTaskRuntimeRepairReceiptTest {
     assertEquals(listOf("F-002"), receipt.attemptedUnresolvedEntries().map { it.findingId })
   }
 
+  @Test
+  fun `refutation drops a carried finding by normalized ref and leaves an unnamed one carried`() {
+    val carried = listOf(
+      GoalSubtaskReviewCompactFinding("blocker", "TypeKt", "closed this round", "F-001"),
+      GoalSubtaskReviewCompactFinding("nit", "Query", "the selection is never read", "F-003"),
+      GoalSubtaskReviewCompactFinding("major", "Policy", "review named no ref"),
+    )
+
+    val remaining = withoutRefutedFindings(carried, setOf(" f-003 "))
+
+    assertEquals(listOf("F-001", null), remaining.map(GoalSubtaskReviewCompactFinding::findingId))
+    assertEquals(carried, withoutRefutedFindings(carried, emptySet()))
+  }
+
   private fun validReceipt() = FeatureTaskRuntimeRepairReceipt(
     roundNumber = 1,
     preFixCheckpointSha = sha,

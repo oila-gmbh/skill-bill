@@ -6,6 +6,7 @@ import skillbill.goalrunner.model.ReviewFindingOutcome
 import skillbill.goalrunner.model.ReviewFindingOutcomeRecord
 import skillbill.goalrunner.model.UNADDRESSED_FINDING_DEFAULT_CATEGORY
 import skillbill.goalrunner.model.UNADDRESSED_FINDING_DEFAULT_SEVERITY
+import skillbill.goalrunner.model.UNADDRESSED_FINDING_REJECTED_DISPOSITION
 import skillbill.goalrunner.model.UnaddressedFinding
 import skillbill.goalrunner.model.normalizedUnaddressedFindingCategory
 import skillbill.goalrunner.model.normalizedUnaddressedFindingSeverity
@@ -256,7 +257,8 @@ internal object GoalSubtaskReviewSummaryReducer {
       ?: return emptyList()
     return dispositionsRaw.mapIndexedNotNull { index, entry ->
       val map = JsonSupport.anyToStringAnyMap(entry) ?: return@mapIndexedNotNull null
-      if ((map["disposition"] as? String)?.trim()?.lowercase() != "rejected") return@mapIndexedNotNull null
+      val disposition = (map["disposition"] as? String)?.trim()?.lowercase()
+      if (disposition != UNADDRESSED_FINDING_REJECTED_DISPOSITION) return@mapIndexedNotNull null
       val findingId = (map["finding_id"] as? String)?.takeIf(String::isNotBlank) ?: return@mapIndexedNotNull null
       val reason = (map["reason"] as? String)?.takeIf(String::isNotBlank) ?: return@mapIndexedNotNull null
       val reviewFinding = reviewById[findingId]
@@ -286,7 +288,7 @@ internal object GoalSubtaskReviewSummaryReducer {
         scopeDisposition = reviewFinding?.scopeDisposition,
         citations = reviewFinding?.citations.orEmpty(),
         severityAdjustment = reviewFinding?.severityAdjustment,
-        verificationDisposition = "rejected",
+        verificationDisposition = UNADDRESSED_FINDING_REJECTED_DISPOSITION,
         verificationReason = reason,
       )
     }

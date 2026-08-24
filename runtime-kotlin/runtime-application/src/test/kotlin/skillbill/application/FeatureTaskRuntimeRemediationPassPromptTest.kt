@@ -21,8 +21,13 @@ class FeatureTaskRuntimeRemediationPassPromptTest {
   fun `pass two ceremony directive orders the remediation delta, not the complete immutable-base delta`() {
     val prompt = implementFixPrompt()
 
-    assertContains(prompt, "Address every verified finding from verify_findings")
+    assertContains(prompt, "Address every finding verify_findings carried")
     assertContains(prompt, "Every carried finding — Blocker, Major, Minor, and Nit — is in scope")
+    // The earlier "every *verified* finding" wording read as a narrower scope than the coverage gate
+    // measured, so a round that skipped a refuted finding was correct by the prose and rejected by
+    // the gate. Carried is now the only scope word, and the refuted carve-out is stated once.
+    assertContains(prompt, "a finding verification refuted is not carried at all")
+    assertFalse(prompt.contains("Address every verified finding"))
     assertFalse(
       prompt.contains("to the subtask's complete delta from its immutable base"),
       "implement_fix must not order the complete immutable-base delta.",

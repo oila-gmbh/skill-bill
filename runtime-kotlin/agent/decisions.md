@@ -4,6 +4,16 @@ This file records architectural and implementation decisions that span the
 `runtime-kotlin/` boundary. Each entry is dated and explains the trade-off,
 not the implementation detail.
 
+## [2026-08-24] A finding verification refuted is not carried, so the repair receipt owes it no entry
+
+Context: On wftr-20260824-125937-qn99 review reported three findings and `verify_findings` refuted `F-003`, a nit. The fix phase closed the two survivors and reported exactly that. The repair-receipt coverage gate then rejected the round, because it measures against `reviewState.passResults.last().findings` — the raw review output, which nothing subtracts the refuted findings from. The round blocked with both real findings already fixed on the tree. The phase prose carried the same contradiction: it opened with "Address every *verified* finding from verify_findings" and then declared every carried finding in scope, so the agent's reading was the defensible one.
+
+Decision: `featureTaskRuntimeCarriedFindings` becomes the single definition of the carried set for both the coverage rejection and the omitted-findings retry reason, and drops every finding whose durable ledger row records `verification_disposition = rejected` for that pass. The refuted refs are read from the unaddressed-findings ledger scoped to the pass being repaired, never workflow-wide: each pass renumbers from `F-001`, so an unscoped read would let an earlier pass's refutation waive whichever finding inherited its ordinal. A ledger that cannot be read waives nothing. The parser's coverage path now also stabilizes refs, which it previously skipped — a review that omitted a ref failed coverage on an identity it never had.
+
+Reason: Verification exists to drop findings that do not survive scrutiny. Requiring a `no_edit_required` entry for a claim the runtime itself refuted made the stage decorative and blocked a round on paperwork the runtime had already decided was unnecessary. Not blocking, and interpreting what the runtime already knows, is the standing preference — the same judgement as the misplaced-key decision below.
+
+Alternatives considered: Synthesize the `no_edit_required` entry from the refutation reason (rejected: it writes a repair-ledger row for work no one did, and the ledger's value is that every row is a real decision). Fix only the prose (kept as well, but it cannot settle a receipt already emitted, and the gate would still block a correct one). Read refuted refs from `review_run_finding_verdicts` instead of the ledger (rejected: it needs the review run id re-derived from phase output at a seam that holds only the review state, and the ledger is the merged record the reducer already writes).
+
 ## [2026-08-24] A key placed beside produced_outputs is moved into it, not rejected
 
 Context: An implement receipt on wftr-20260824-125937-qn99 carried `reconciled_state` at the envelope root instead of inside `produced_outputs`. The closed root rejected it as an unknown property, discarding 42KB of output describing 227 changed files that were already on disk. The contract calls the reconciliation report an *additional* report, which reads as a sibling of `produced_outputs` rather than a member of it.

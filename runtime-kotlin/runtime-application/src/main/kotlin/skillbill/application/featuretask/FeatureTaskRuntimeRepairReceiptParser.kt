@@ -99,9 +99,10 @@ internal fun featureTaskRuntimeRepairReceiptShapeRejection(producedOutputs: Map<
 internal fun featureTaskRuntimeRepairReceiptSettleRejection(
   receipt: FeatureTaskRuntimeRepairReceipt,
   reviewState: GoalSubtaskReviewState,
+  refutedFindingIds: Set<String> = emptySet(),
 ): String? = featureTaskRuntimeRepairReceiptCoverageRejection(
   receipt,
-  reviewState.passResults.lastOrNull()?.findings.orEmpty(),
+  featureTaskRuntimeCarriedFindings(reviewState, refutedFindingIds),
 )
 
 internal fun featureTaskRuntimeRepairReceiptCoverageRejection(
@@ -113,6 +114,7 @@ internal fun featureTaskRuntimeRepairReceiptCoverageRejection(
   featureTaskRuntimeRepairReceiptRejectionDetail(
     "entries",
     "must include one entry for every finding carried into this round; omitted findings require an " +
-      "explicit no_edit_required outcome.",
+      "explicit no_edit_required outcome. Findings verification refuted are not carried and owe no " +
+      "entry.",
   )
 }

@@ -17,6 +17,14 @@ val UNADDRESSED_FINDING_DEFAULT_CATEGORY: String = ReviewIssueCategory.OTHER.wir
  */
 const val UNADDRESSED_FINDING_DEFAULT_SEVERITY: String = "nit"
 
+/**
+ * [UnaddressedFinding.verificationDisposition] for a finding the verification stage refuted. Shared
+ * because the repair-receipt coverage gate reads exactly what the review reducer writes: a literal on
+ * one side and not the other silently stops waiving refuted findings, and the round blocks again on
+ * paperwork the runtime itself decided was unnecessary.
+ */
+const val UNADDRESSED_FINDING_REJECTED_DISPOSITION: String = "rejected"
+
 fun normalizedUnaddressedFindingCategory(issueCategory: String): String =
   issueCategory.takeIf { it in UNADDRESSED_FINDING_CATEGORIES } ?: UNADDRESSED_FINDING_DEFAULT_CATEGORY
 

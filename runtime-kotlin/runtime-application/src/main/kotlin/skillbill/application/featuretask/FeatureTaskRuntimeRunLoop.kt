@@ -44,6 +44,7 @@ import skillbill.error.InvalidFeatureTaskRuntimePhaseBriefingFramingError
 import skillbill.error.InvalidFeatureTaskRuntimePhaseOutputSchemaError
 import skillbill.error.InvalidFeatureTaskRuntimePlanningProjectionSchemaError
 import skillbill.error.InvalidWorkflowStateSchemaError
+import skillbill.goalrunner.model.UNADDRESSED_FINDING_REJECTED_DISPOSITION
 import skillbill.install.model.InstallAgent
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
@@ -1493,10 +1494,43 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun settledRepairReceipt(
     receipt: FeatureTaskRuntimeRepairReceipt,
     reviewState: GoalSubtaskReviewState,
-  ): RepairReceiptSettlement = featureTaskRuntimeRepairReceiptSettleRejection(receipt, reviewState)
+  ): RepairReceiptSettlement = featureTaskRuntimeRepairReceiptSettleRejection(
+    receipt,
+    reviewState,
+    refutedCarriedFindingIds(reviewState),
+  )
     ?.let { detail -> RepairReceiptSettlement.rejected(detail) }
     ?: persistImplementFixRepairReceipt(receipt)?.let { reason -> RepairReceiptSettlement.writeFailed(reason) }
     ?: RepairReceiptSettlement.None
+
+  /**
+   * The refs verification refuted in the pass this round is repairing. Read from the durable ledger
+   * rather than the review output so the runtime's own recorded verdict decides, and scoped to that
+   * one pass because every pass renumbers from `F-001`: an unscoped read would let a refutation from
+   * an earlier pass waive whichever finding inherited its ordinal.
+   *
+   * A ledger that cannot be read waives nothing. Coverage then behaves exactly as it did before this
+   * set existed, which is the safe direction: the round is sent back rather than advanced on a guess.
+   */
+  private fun refutedCarriedFindingIds(reviewState: GoalSubtaskReviewState): Set<String> {
+    val passNumber = reviewState.passResults.lastOrNull()?.passNumber ?: return emptySet()
+    return runCatching {
+      recorder.fetchUnaddressedLedger(request.workflowId, request.dbPathOverride)
+        .asSequence()
+        .filter { finding -> finding.reviewPassNumber == passNumber }
+        .filter { finding -> finding.verificationDisposition == UNADDRESSED_FINDING_REJECTED_DISPOSITION }
+        .mapNotNull { finding -> finding.findingId?.takeIf(String::isNotBlank) }
+        .toSet()
+    }.getOrElse { error ->
+      diagnostics.warning(
+        "Feature-task-runtime could not read the unaddressed-findings ledger for issue " +
+          "${request.issueKey}, workflow ${request.workflowId}; repair-receipt coverage waives no " +
+          "refuted finding for this round.",
+        error,
+      )
+      emptySet()
+    }
+  }
 
   private fun repairReceiptShapeSettlement(produced: Map<String, Any?>): RepairReceiptSettlement =
     featureTaskRuntimeRepairReceiptShapeRejection(produced)

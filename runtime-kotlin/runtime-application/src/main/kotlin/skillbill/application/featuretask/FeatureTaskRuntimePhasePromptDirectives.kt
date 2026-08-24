@@ -382,9 +382,10 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "re-reads the tree and decides every criterion again. Repair evidence is read-only repository " +
     "facts: do not run builds or tests here.",
   FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_IMPLEMENT_FIX to
-    "Address every verified finding from verify_findings on the CURRENT working tree as " +
+    "Address every finding verify_findings carried on the CURRENT working tree as " +
     "incremental reconciliation. Every carried finding — Blocker, Major, Minor, and Nit — is in " +
-    "scope; specialist narratives and raw review output are not. Do not re-apply " +
+    "scope; specialist narratives and raw review output are not, and a finding verification " +
+    "refuted is not carried at all: do not fix it and do not file an entry for it. Do not re-apply " +
     "the plan from scratch or expand scope beyond the carried findings. Treat any fix already present " +
     "as a no-op. See the mutating-phase idempotency contract below. Emit " +
     "produced_outputs.repair_receipt " +
@@ -397,8 +398,9 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "symbol-granularity closing constructs (Type or Type.member, optional file basename — never a bare " +
     "path), and a bounded one-line repair intent. A legitimately unedited finding still needs its " +
     "no_edit_required entry, and a finding you could not close needs its attempted_unresolved entry, " +
-    "which buys it one more attempt before it goes to an operator. Leaving a carried finding out is " +
-    "never an outcome: the round is sent back for it. Fit every field inside its limit rather than " +
+    "which buys it one more attempt before it goes to an operator. Leaving a *carried* finding out is " +
+    "never an outcome: the round is sent back for it. A refuted finding is the one exception, because " +
+    "it was never carried. Fit every field inside its limit rather than " +
     "writing to length and hoping: no_edit_reason and unresolved_reason are capped at " +
     "$REPAIR_RECEIPT_MAX_NO_EDIT_REASON_UTF8_BYTES and " +
     "$REPAIR_RECEIPT_MAX_UNRESOLVED_REASON_UTF8_BYTES characters. State the decision in one sentence " +

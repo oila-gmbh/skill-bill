@@ -7,18 +7,28 @@ import skillbill.workflow.taskruntime.model.GoalSubtaskReviewState
 import skillbill.workflow.taskruntime.model.attemptedUnresolvedEntries
 import skillbill.workflow.taskruntime.model.omittedCarriedFindings
 import skillbill.workflow.taskruntime.model.withStableFindingRefs
+import skillbill.workflow.taskruntime.model.withoutRefutedFindings
 
+/**
+ * The findings the last review pass carries into this round. Refs are stabilized first so a review
+ * that omitted one cannot fail coverage on an identity it never had, and findings verification
+ * refuted are then dropped: they are not carried, so nothing owes them an entry.
+ */
 internal fun featureTaskRuntimeCarriedFindings(
   reviewState: GoalSubtaskReviewState,
-): List<GoalSubtaskReviewCompactFinding> =
-  withStableFindingRefs(reviewState.passResults.lastOrNull()?.findings.orEmpty())
+  refutedFindingIds: Set<String> = emptySet(),
+): List<GoalSubtaskReviewCompactFinding> = withoutRefutedFindings(
+  withStableFindingRefs(reviewState.passResults.lastOrNull()?.findings.orEmpty()),
+  refutedFindingIds,
+)
 
 /** The carried findings this round neither closed, waived, nor declared it had tried and failed. */
 internal fun featureTaskRuntimeRepairReceiptOmittedFindings(
   receipt: FeatureTaskRuntimeRepairReceipt,
   reviewState: GoalSubtaskReviewState,
+  refutedFindingIds: Set<String> = emptySet(),
 ): List<GoalSubtaskReviewCompactFinding> =
-  receipt.omittedCarriedFindings(featureTaskRuntimeCarriedFindings(reviewState))
+  receipt.omittedCarriedFindings(featureTaskRuntimeCarriedFindings(reviewState, refutedFindingIds))
 
 internal fun featureTaskRuntimeCompactFindingRef(finding: GoalSubtaskReviewCompactFinding): String =
   finding.findingId?.takeIf(String::isNotBlank)
