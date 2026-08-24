@@ -616,7 +616,7 @@ class InstallAgentPathCommand(
   private val agent by argument(help = "Agent name.")
 
   override fun run() {
-    val path = installAgentService.agentPath(agent, state.userHome)
+    val path = installAgentService.agentPath(agent, state.userHome, state.environment)
     state.result = CliExecutionResult(exitCode = 0, stdout = "$path\n")
   }
 }
@@ -628,7 +628,7 @@ class InstallDetectAgentsCommand(
 ) : DocumentedCliCommand("detect-agents", "List detected agents as 'name\\tpath' lines.") {
   override fun run() {
     val output =
-      installAgentService.detectAgentTargets(state.userHome)
+      installAgentService.detectAgentTargets(state.userHome, state.environment)
         .joinToString(separator = "") { target -> "${target.name}\t${target.path}\n" }
     state.result = CliExecutionResult(exitCode = 0, stdout = output)
   }
@@ -715,7 +715,10 @@ private fun collectAssistedScaffoldWizardPayload(
   )
   val kind = normalizeWizardKind(promptRequired(state, "Kind"))
   val agent =
-    promptAssistedAgent(state, installAgentService.detectAgentTargets(state.userHome).map { target -> target.name })
+    promptAssistedAgent(
+      state,
+      installAgentService.detectAgentTargets(state.userHome, state.environment).map { target -> target.name },
+    )
   state.liveStdout(
     "Assisted generator: $agent. Scaffold suggestions are deterministic local defaults; " +
       "agent-backed generation needs a structured scaffold output contract.\n",

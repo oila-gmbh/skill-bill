@@ -346,6 +346,10 @@ class ParallelCodeReviewRunnerTest {
       assertContains(prompt, "verdict: approved")
       assertContains(prompt, "verdict: changes_requested")
       assertContains(prompt, "optional `[F-XXX]` register lines")
+      assertContains(prompt, "best-effort verification hints")
+      assertFalse(prompt.contains("Lines that still do not parse are ignored"))
+      assertFalse(prompt.contains("prose-only is invalid"))
+      assertFalse(prompt.contains("admit-or-drop"))
       assertFalse(prompt.contains("Return only '[F-XXX]"))
     }
   }

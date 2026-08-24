@@ -1,5 +1,6 @@
 package skillbill.cli
 
+import skillbill.cli.codereview.resolveCodeReviewRevisions
 import skillbill.cli.core.CliRuntime
 import skillbill.cli.model.CliRuntimeContext
 import skillbill.ports.agentrun.AgentRunLauncher
@@ -9,6 +10,7 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 
 class CliCodeReviewParallelRuntimeTest {
   @Test
@@ -25,6 +27,34 @@ class CliCodeReviewParallelRuntimeTest {
 
     assertEquals(0, help.exitCode, help.stdout)
     assertContains(help.stdout, "Commit to review against its first parent.")
+  }
+
+  @Test
+  fun `commit target derives parent and head revisions`() {
+    assertEquals(
+      "2e17a490e025a5b947e03bf67e41eaa589319960^" to "2e17a490e025a5b947e03bf67e41eaa589319960",
+      resolveCodeReviewRevisions(
+        commitTarget = "2e17a490e025a5b947e03bf67e41eaa589319960",
+        baseRevision = "ignored-base",
+        headRevision = "ignored-head",
+      ),
+    )
+  }
+
+  @Test
+  fun `blank commit target falls through to explicit revisions`() {
+    assertEquals(
+      "abc" to "def",
+      resolveCodeReviewRevisions(commitTarget = "", baseRevision = "abc", headRevision = "def"),
+    )
+    assertEquals(
+      "abc" to "def",
+      resolveCodeReviewRevisions(commitTarget = "   ", baseRevision = "abc", headRevision = "def"),
+    )
+    assertEquals(
+      null to null,
+      resolveCodeReviewRevisions(commitTarget = "", baseRevision = "", headRevision = "   "),
+    )
   }
 
   @Test
@@ -46,6 +76,88 @@ class CliCodeReviewParallelRuntimeTest {
 
     assertEquals(1, result.exitCode, result.stdout)
     assertContains(result.stdout, "cannot be combined with --diff-file")
+  }
+
+  @Test
+  fun `code-review rejects a commit target combined with a non-default scope`() {
+    val tempDir = createGitRepo()
+    val result = CliRuntime.run(
+      listOf(
+        "code-review",
+        "2e17a490e025a5b947e03bf67e41eaa589319960",
+        "--agent1",
+        "claude",
+        "--scope",
+        "staged",
+        "--repo-root",
+        tempDir.toString(),
+      ),
+      parallelReviewContext(),
+    )
+
+    assertEquals(1, result.exitCode, result.stdout)
+    assertContains(result.stdout, "cannot be combined with --scope 'staged'")
+  }
+
+  @Test
+  fun `code-review rejects a commit target combined with explicit revisions`() {
+    val tempDir = createGitRepo()
+    val withBase = CliRuntime.run(
+      listOf(
+        "code-review",
+        "2e17a490e025a5b947e03bf67e41eaa589319960",
+        "--agent1",
+        "claude",
+        "--base-revision",
+        "abc",
+        "--repo-root",
+        tempDir.toString(),
+      ),
+      parallelReviewContext(),
+    )
+    val withHead = CliRuntime.run(
+      listOf(
+        "code-review",
+        "2e17a490e025a5b947e03bf67e41eaa589319960",
+        "--agent1",
+        "claude",
+        "--head-revision",
+        "def",
+        "--repo-root",
+        tempDir.toString(),
+      ),
+      parallelReviewContext(),
+    )
+
+    assertEquals(1, withBase.exitCode, withBase.stdout)
+    assertContains(withBase.stdout, "cannot be combined with --base-revision or --head-revision")
+    assertEquals(1, withHead.exitCode, withHead.stdout)
+    assertContains(withHead.stdout, "cannot be combined with --base-revision or --head-revision")
+  }
+
+  @Test
+  fun `code-review treats blank explicit revisions as unset beside a commit target`() {
+    val tempDir = createGitRepo()
+    val result = CliRuntime.run(
+      listOf(
+        "code-review",
+        "2e17a490e025a5b947e03bf67e41eaa589319960",
+        "--agent1",
+        "claude",
+        "--base-revision",
+        "",
+        "--head-revision",
+        "",
+        "--repo-root",
+        tempDir.toString(),
+      ),
+      parallelReviewContext(),
+    )
+
+    assertFalse(
+      result.stdout.contains("cannot be combined with --base-revision or --head-revision"),
+      result.stdout,
+    )
   }
 
   @Test

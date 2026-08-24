@@ -1,5 +1,7 @@
 package skillbill.application.review
 
+import skillbill.agent.model.AgentPhaseInput
+import skillbill.agent.model.AgentPhaseOutput
 import skillbill.application.review.model.ReviewClaimVerificationOutcome
 import skillbill.contracts.JsonSupport
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
@@ -34,6 +36,7 @@ class ReviewClaimVerificationRunner(
   @Suppress("LongParameterList")
   fun run(
     packet: ReviewContextPacket?,
+    reviewOutput: String = "",
     findings: List<ParallelReviewMergedFinding>,
     existingVerdicts: List<ReviewFindingVerdict>,
     mode: ResolvedReviewExecutionMode,
@@ -51,10 +54,23 @@ class ReviewClaimVerificationRunner(
       )
     }
     if (findings.isEmpty()) {
-      return ReviewClaimVerificationOutcome(
-        verdicts = emptyList(),
-        skipReason = "the review pass emitted no findings, so there is nothing to verify",
-      )
+      return when {
+        !reviewOutputNeedsProseVerification(reviewOutput) -> ReviewClaimVerificationOutcome(
+          verdicts = emptyList(),
+          skipReason = "the review pass emitted no findings, so there is nothing to verify",
+        )
+        else -> verifyReviewOutput(
+          packet = packet,
+          reviewOutput = reviewOutput,
+          mode = mode,
+          budget = budget,
+          brokerId = brokerId,
+          repoRoot = repoRoot,
+          timeout = timeout,
+          modelOverride = modelOverride,
+          promptSuffix = promptSuffix,
+        )
+      }
     }
     val durableRefs = existingVerdicts
       .filter { it.stage == ReviewStage.VERIFICATION }
@@ -71,6 +87,7 @@ class ReviewClaimVerificationRunner(
     val verdicts = pending.map { finding ->
       verifyOne(
         packet = packet,
+        reviewOutput = reviewOutput,
         finding = finding,
         mode = mode,
         budget = budget,
@@ -89,8 +106,67 @@ class ReviewClaimVerificationRunner(
   }
 
   @Suppress("LongParameterList")
+  private fun verifyReviewOutput(
+    packet: ReviewContextPacket,
+    reviewOutput: String,
+    mode: ResolvedReviewExecutionMode,
+    budget: ReviewContextBudgetPolicy,
+    brokerId: String,
+    repoRoot: Path,
+    timeout: Duration,
+    modelOverride: String?,
+    promptSuffix: String,
+  ): ReviewClaimVerificationOutcome {
+    if (reviewOutput.isBlank()) {
+      return ReviewClaimVerificationOutcome(
+        verdicts = emptyList(),
+        skipReason = "the review phase produced no output to verify",
+      )
+    }
+    val phaseInput = AgentPhaseInput(
+      input = reviewOutput,
+      requestedAction = VERIFY_CLAIMS_ACTION,
+    )
+    val prompt = appendPromptSuffix(
+      proseVerificationPrompt(packet, phaseInput, mode),
+      promptSuffix,
+    )
+    if (prompt.toByteArray(Charsets.UTF_8).size.toLong() > budget.maxLaneLaunchBytes) {
+      return ReviewClaimVerificationOutcome(
+        verdicts = emptyList(),
+        skipReason = "verification phase launch exceeded max_lane_launch_bytes",
+      )
+    }
+    val outcome = launcher.launch(
+      GoalRunnerSubtaskLaunchRequest(
+        invokedAgentId = brokerId,
+        configuredAgentOverrideId = null,
+        skillRunRequest = SkillRunRequest(
+          issueKey = ISSUE_KEY,
+          repoRoot = repoRoot,
+          timeout = timeout,
+          promptOverride = prompt,
+          modelOverride = modelOverride,
+        ),
+      ),
+    )
+    return when (outcome) {
+      is UnsupportedAgentRunLaunch -> ReviewClaimVerificationOutcome(
+        verdicts = emptyList(),
+        skipReason = "unsupported agent: ${outcome.reason}",
+      )
+      is AgentRunLaunchFacts -> ReviewClaimVerificationOutcome(
+        verdicts = emptyList(),
+        output = AgentPhaseOutput(outcome.stdout),
+        skipReason = launchFailureReason(outcome),
+      )
+    }
+  }
+
+  @Suppress("LongParameterList")
   private fun verifyOne(
     packet: ReviewContextPacket,
+    reviewOutput: String,
     finding: ParallelReviewMergedFinding,
     mode: ResolvedReviewExecutionMode,
     budget: ReviewContextBudgetPolicy,
@@ -124,7 +200,10 @@ class ReviewClaimVerificationRunner(
       )
     }
     envelopeValidator.validate(envelope, "review verification launch for ${finding.fNumber}")
-    val prompt = appendPromptSuffix(verificationPrompt(launch), promptSuffix)
+    val prompt = appendPromptSuffix(
+      verificationPrompt(launch, AgentPhaseInput(reviewOutput, VERIFY_CLAIMS_ACTION)),
+      promptSuffix,
+    )
     val outcome = launcher.launch(
       GoalRunnerSubtaskLaunchRequest(
         invokedAgentId = brokerId,
@@ -158,28 +237,52 @@ class ReviewClaimVerificationRunner(
     return ReviewClaimVerdictAdmission.admit(finding, worker, recordedAt).verdict
   }
 
-  private fun verificationPrompt(launch: GovernedReviewVerificationLaunch): String = buildString {
-    appendLine("Verify exactly one review finding against the cited region and the delta.")
-    appendLine("Do not receive or use a spec intent projection, reviewer narrative, or parent transcript.")
-    appendLine("Do not inspect sibling findings.")
+  private fun verificationPrompt(launch: GovernedReviewVerificationLaunch, phaseInput: AgentPhaseInput): String =
+    buildString {
+      appendLine("Verify exactly one review finding against the cited region and the delta.")
+      appendLine("Phase input:")
+      appendLine(phaseInput.input)
+      appendLine("Requested action: ${phaseInput.requestedAction}")
+      appendLine("The structured finding below is optional enrichment; the phase input is authoritative.")
+      appendLine("Do not receive or use a spec intent projection or parent transcript.")
+      appendLine("Do not inspect sibling findings.")
+      appendLine("Review is read-only: do not build, compile, or run tests.")
+      appendLine("Evidence surface: ${launch.evidenceSurfaceRules}")
+      appendLine(
+        "Finding ${launch.finding.fNumber}: ${launch.finding.severity.displayName} | " +
+          "${launch.finding.location} | ${launch.finding.description}",
+      )
+      appendLine(
+        "Cited region: ${launch.citedRegion.path}:" +
+          "${launch.citedRegion.startLine}-${launch.citedRegion.endLine}",
+      )
+      appendLine("Delta: ${launch.packet.baseRevision}..${launch.packet.headRevision}")
+      appendLine(
+        "Return free-form verification prose describing confirmed, refuted, or unresolved. " +
+          "An optional claim_verdict and citations as [{path, line}] may enrich the result.",
+      )
+      appendLine("A refuted verdict must cite the file:line construct that makes the code safe.")
+      appendLine("Do not change the finding text, severity, or location.")
+    }
+
+  private fun proseVerificationPrompt(
+    packet: ReviewContextPacket,
+    phaseInput: AgentPhaseInput,
+    mode: ResolvedReviewExecutionMode,
+  ): String = buildString {
+    appendLine("Verify each claim in the review phase output against the repository delta.")
+    appendLine("Phase input:")
+    appendLine(phaseInput.input)
+    appendLine("Requested action: ${phaseInput.requestedAction}")
     appendLine("Review is read-only: do not build, compile, or run tests.")
-    appendLine("Evidence surface: ${launch.evidenceSurfaceRules}")
-    appendLine(
-      "Finding ${launch.finding.fNumber}: ${launch.finding.severity.displayName} | " +
-        "${launch.finding.location} | ${launch.finding.description}",
-    )
-    appendLine("Cited region: ${launch.citedRegion.path}:${launch.citedRegion.startLine}-${launch.citedRegion.endLine}")
-    appendLine("Delta: ${launch.packet.baseRevision}..${launch.packet.headRevision}")
-    appendLine(
-      "Return a JSON object with claim_verdict (confirmed|refuted|unresolved) " +
-        "and citations as [{path, line}].",
-    )
-    appendLine("A refuted verdict must cite the file:line construct that makes the code safe.")
-    appendLine("Do not change the finding text, severity, or location.")
+    appendLine("Verification depth: ${mode.name.lowercase()}.")
+    appendLine("Delta: ${packet.baseRevision}..${packet.headRevision}")
+    appendLine("Return free-form verification prose. The output string is authoritative.")
   }
 
   companion object {
     const val ISSUE_KEY: String = "code-review-verification"
+    const val VERIFY_CLAIMS_ACTION: String = "Verify each claim in that input against the repository delta."
   }
 }
 

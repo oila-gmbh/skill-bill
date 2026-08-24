@@ -129,6 +129,7 @@ class InstallPlanBuilderPolicyBoundaryTest {
         state = WindowsSymlinkPreflightState.NOT_WINDOWS,
         decision = WindowsSymlinkDecision.NOT_REQUIRED,
       ),
+      environment = installTestEnvironment(home),
     )
   }
 }

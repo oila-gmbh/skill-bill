@@ -50,7 +50,7 @@ Review is read-only. Do not build, compile, or run tests — no Gradle, Maven, n
 
 ## Output
 
-Return free-form review prose. There is no findings-register format gate and no `NO_FINDINGS` token — imperfect or missing register lines never fail the review.
+Return free-form review prose. Register shape is best-effort guidance. The phase result is the agent output string; the runtime governs launch, evidence, and persistence rather than policing the format. There is no `NO_FINDINGS` token requirement.
 
 Include:
 
@@ -62,6 +62,6 @@ When you have concrete defects, also emit optional `[F-XXX]` register lines so c
 
 `[F-NNN] Severity | Confidence | specialist=<exact resolved rubric identity> | commits=<sha>[,<sha>] | path="<repo-relative path>" | line=<positive integer> | description`
 
-Use Blocker, Major, Minor, Nit and High, Medium, Low. Prefer quoted `path="..."`. Lines that do not parse are ignored for verification; they do not block settlement.
+Use Blocker, Major, Minor, Nit and High, Medium, Low. Prefer quoted `path="..."`. The runtime may use well-formed lines as optional verification enrichment, while the full prose remains authoritative.
 
 State that specialist depth was not applied and that this result is not equivalent to a delegated result.

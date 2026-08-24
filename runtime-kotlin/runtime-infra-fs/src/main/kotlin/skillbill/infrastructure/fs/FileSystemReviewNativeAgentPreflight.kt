@@ -6,6 +6,8 @@ import me.tatarka.inject.annotations.Inject
 import skillbill.error.MissingInstalledNativeAgentError
 import skillbill.install.nativeagent.NativeAgentLinkInventory
 import skillbill.install.nativeagent.NativeAgentLinkInventoryEntry
+import skillbill.install.plan.detectCodexAgentsTargets
+import skillbill.install.support.claudeConfigRoots
 import skillbill.model.EnvironmentContext
 import skillbill.nativeagent.rendering.NativeAgentProvider
 import skillbill.ports.review.ReviewNativeAgentPreflightPort
@@ -107,8 +109,19 @@ class FileSystemReviewNativeAgentPreflight(
     else -> null
   }
 
-  private fun activeProviderDirs(provider: NativeAgentProvider, home: Path): List<Path> =
-    provider.activeHomeAgentDirs(home)
+  private fun activeProviderDirs(provider: NativeAgentProvider, home: Path): List<Path> {
+    val env = environment.environment.ifEmpty { System.getenv() }
+    return when (provider) {
+      NativeAgentProvider.Claude -> claudeConfigRoots(home, env).map { it.resolve("agents") }
+      NativeAgentProvider.Codex -> detectCodexAgentsTargets(home, env).map { it.path }
+      NativeAgentProvider.Junie -> provider.homeAgentDirs(
+        home,
+      ).takeIf { Files.exists(home.resolve(".junie")) }.orEmpty()
+      NativeAgentProvider.Cursor -> provider.homeAgentDirs(
+        home,
+      ).takeIf { Files.exists(home.resolve(".cursor")) }.orEmpty()
+    }.map { it.toAbsolutePath().normalize() }
+  }
 
   private fun parseLogicalName(path: Path, provider: NativeAgentProvider): String {
     val text = Files.readString(path)

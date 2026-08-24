@@ -202,6 +202,7 @@ data class ApplyFixture(
       targetPaths = targetPaths,
       windowsSymlinkPreflight = windowsSymlinkPreflight,
       replaceExistingSkillBillLinks = replaceExistingSkillBillLinks,
+      environment = installTestEnvironment(home),
     )
   }
 

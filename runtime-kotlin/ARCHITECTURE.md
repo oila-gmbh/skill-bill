@@ -162,6 +162,7 @@ runtime-ports
   name is retained on the moved validators to preserve their classpath resource
   paths and import compatibility (recorded in `agent/decisions.md` 2026-06-12).
 - `skillbill.error`: runtime exception taxonomy.
+- `skillbill.agent.model`: phase handoff string envelopes for agent phase input and output owned by `runtime-domain`.
 - `skillbill.agentaddon` and `skillbill.agentaddon.model`: governed agent-add-on
   filesystem discovery and schema validation owned by `runtime-infra-fs`, plus
   typed declaration models owned by `runtime-domain`.
@@ -598,6 +599,7 @@ runtime-ports
 The subsystem package set is:
 
 ```text
+skillbill.agent.model
 skillbill.agentaddon
 skillbill.application
 skillbill.boundary

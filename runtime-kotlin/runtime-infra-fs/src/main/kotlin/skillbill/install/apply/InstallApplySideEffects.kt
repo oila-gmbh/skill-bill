@@ -27,7 +27,10 @@ internal fun applyTelemetryIntent(
   warnings: MutableList<InstallApplyIssue>,
   telemetryLevelMutator: TelemetryLevelMutator? = null,
 ): InstallTelemetryApplyOutcome {
-  val environmentContext = EnvironmentContext(environment = emptyMap(), userHome = plan.request.home)
+  val environmentContext = EnvironmentContext(
+    environment = plan.request.environment.ifEmpty { System.getenv() },
+    userHome = plan.request.home,
+  )
   val configPath = resolveTelemetryConfigPath(environmentContext.environment, environmentContext.userHome)
   val existedBefore = Files.exists(configPath)
   return runCatching {
@@ -156,7 +159,12 @@ private fun registerMcpAgent(
   plan: InstallPlan,
   warnings: MutableList<InstallApplyIssue>,
 ): McpRegistrationApplyOutcome = runCatching {
-  val result = McpRegistrationOperations.register(agent.id, runtimeMcpBin, plan.request.home)
+  val result = McpRegistrationOperations.register(
+    agent.id,
+    runtimeMcpBin,
+    plan.request.home,
+    plan.request.environment.ifEmpty { System.getenv() },
+  )
   McpRegistrationApplyOutcome(
     agent = agent,
     status = McpRegistrationApplyStatus.SUCCESS,

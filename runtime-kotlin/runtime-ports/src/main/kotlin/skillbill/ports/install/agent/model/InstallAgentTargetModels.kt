@@ -7,6 +7,7 @@ import java.nio.file.Path
 data class InstallAgentPathRequest(
   val agent: String,
   val home: Path?,
+  val environment: Map<String, String> = emptyMap(),
 )
 
 data class InstallAgentPathResult(
@@ -15,6 +16,7 @@ data class InstallAgentPathResult(
 
 data class DetectInstallAgentTargetsRequest(
   val home: Path?,
+  val environment: Map<String, String> = emptyMap(),
 )
 
 data class DetectInstallAgentTargetsResult(

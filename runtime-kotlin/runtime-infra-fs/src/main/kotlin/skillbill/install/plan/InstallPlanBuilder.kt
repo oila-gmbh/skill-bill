@@ -80,14 +80,14 @@ private fun buildInstallPolicyInput(
         baselineLayers = manifest.codeReviewComposition?.baselineLayers.orEmpty(),
       )
     },
-    detectedAgentTargets = detectAgents(request.home).map { target ->
+    detectedAgentTargets = detectAgents(request.home, installPlanEnvironment(request)).map { target ->
       InstallAgentTarget(
         agent = InstallAgent.fromId(target.name),
         path = target.path,
         source = InstallAgentTargetSource.DETECTED,
       )
     },
-    defaultAgentTargets = multiRootDefaultTargets(request.home),
+    defaultAgentTargets = multiRootDefaultTargets(request.home, installPlanEnvironment(request)),
   )
 }
 
@@ -121,14 +121,14 @@ internal fun collectInstallPlanningFacts(request: InstallPlanRequest): InstallPl
   return InstallPlanningFacts(
     baseSkills = discoverBaseSkills(request.targetPaths.skillsRoot),
     platformManifests = platformManifests,
-    detectedAgentTargets = detectAgents(request.home).map { target ->
+    detectedAgentTargets = detectAgents(request.home, installPlanEnvironment(request)).map { target ->
       InstallAgentTarget(
         agent = InstallAgent.fromId(target.name),
         path = target.path,
         source = InstallAgentTargetSource.DETECTED,
       )
     },
-    defaultAgentTargets = multiRootDefaultTargets(request.home),
+    defaultAgentTargets = multiRootDefaultTargets(request.home, installPlanEnvironment(request)),
   )
 }
 
@@ -150,6 +150,9 @@ internal fun materializeSelectedPlatformSkills(
     )
   }
 }
+
+private fun installPlanEnvironment(request: InstallPlanRequest): Map<String, String> =
+  request.environment.ifEmpty { System.getenv() }
 
 private fun multiRootDefaultTargets(
   home: Path,

@@ -7,7 +7,6 @@ import skillbill.review.model.ReviewStageReached
 import skillbill.workflow.model.CodeReviewExecutionMode
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
@@ -57,7 +56,7 @@ class ParallelCodeReviewClaimVerificationTest {
     assertEquals(verificationCount + 1, recorder.verificationLaunches.size)
     val prompt = recorder.verificationLaunches.last().skillRunRequest.promptOverride.orEmpty()
     assertTrue("F-002" in prompt)
-    assertFalse("F-001" in prompt)
+    assertTrue("F-001" in prompt)
     val resume = assertNotNull(resumed.stageResume)
     assertTrue(resume.holdsDurableResult(ReviewStage.VERIFICATION))
     assertEquals(ReviewStage.ADJUDICATION, resume.reentryStage)
@@ -91,12 +90,33 @@ class ParallelCodeReviewClaimVerificationTest {
     val laterPrompt = recorder.verificationLaunches.last().skillRunRequest.promptOverride.orEmpty()
     assertTrue("F-002" in laterPrompt)
     assertTrue("test name is vague" in laterPrompt)
-    assertFalse("F-001" in laterPrompt)
     assertTrue(
       recorder.durableStageBoundaries.any {
         it.stage == ReviewStage.VERIFICATION && it.reached == ReviewStageReached.REACHED
       },
     )
+  }
+
+  @Test
+  fun `prose claims still launch verification when register admission is empty`() {
+    val recorder = ReviewRecorder()
+    val prose = """
+      The review found a missing validation branch.
+      [F-001] Major | architecture | path="src/Main.kt" | line=1 | validation is missing
+      verdict: changes_requested
+    """.trimIndent()
+
+    reviewHarness(
+      verificationConfig(
+        paths = listOf("src/Main.kt"),
+        findings = prose,
+      ),
+      recorder,
+    ).run(delegatedRequest())
+
+    val verificationPrompt = recorder.verificationLaunches.single().skillRunRequest.promptOverride.orEmpty()
+    assertTrue(prose in verificationPrompt)
+    assertTrue(ReviewClaimVerificationRunner.VERIFY_CLAIMS_ACTION in verificationPrompt)
   }
 
   private fun delegatedRequest() = harnessRequest(

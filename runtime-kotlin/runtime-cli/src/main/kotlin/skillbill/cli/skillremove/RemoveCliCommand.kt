@@ -90,6 +90,7 @@ class RemoveCliCommand(
       target = parsed,
       repoRootAbsolutePath = absoluteRepoRoot,
       userHomeAbsolutePath = state.userHome.toAbsolutePath().normalize().toString(),
+      environment = state.environment,
     )
     val outcome = try {
       if (dryRun) skillRemoveService.previewRemoval(request) else skillRemoveService.executeRemoval(request)

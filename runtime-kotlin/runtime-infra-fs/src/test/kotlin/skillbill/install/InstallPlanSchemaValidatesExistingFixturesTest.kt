@@ -210,6 +210,7 @@ class InstallPlanSchemaValidatesExistingFixturesTest {
       runtimeDistributionInputs = RuntimeDistributionInputs(runtimeInstallRoot = runtimeInstallRoot),
       targetPaths = targetPaths,
       windowsSymlinkPreflight = windowsSymlinkPreflight,
+      environment = installTestEnvironment(home),
     )
   }
 }

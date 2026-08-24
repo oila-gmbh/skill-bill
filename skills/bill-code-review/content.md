@@ -56,10 +56,11 @@ review with no pass number, and every follow-up or remediation pass. Preserve an
 report the applicable named auto rule for telemetry. `auto` never reaches the
 experimental delegated tier — only an explicit `mode:delegated` does.
 
-Depth is the only thing the light tier lowers. The severity vocabulary, the
-finding admission gate, the evidence and observable-consequence requirements, the
-F-XXX risk register format, and telemetry are inherited unchanged and are never
-restated per tier.
+Depth is the only thing the light tier lowers. The severity vocabulary, evidence
+and observable-consequence requirements, F-XXX register guidance, and telemetry
+are inherited unchanged and are never restated per tier. Register shape is
+best-effort guidance. The phase result is the agent output string; the runtime
+governs launch, evidence, and persistence rather than policing the format.
 
 With `context:feature-remediation`, the pass is bounded to the supplied
 remediation delta — all findings addressed in that round unioned with the

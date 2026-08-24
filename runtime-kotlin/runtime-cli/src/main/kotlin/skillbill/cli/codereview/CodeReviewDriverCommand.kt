@@ -54,7 +54,7 @@ open class CodeReviewDriverCommand(
   private val scope by option(
     "--scope",
     help = "Diff scope: staged, unstaged, branch (default), or pr.",
-  ).choice("staged", "unstaged", "branch", "pr").default("branch")
+  ).choice("staged", "unstaged", "branch", "pr").default(DEFAULT_CODE_REVIEW_SCOPE)
   private val repoRoot by option(
     "--repo-root",
     help = "Repository root for diff and agent runs.",
@@ -116,8 +116,9 @@ open class CodeReviewDriverCommand(
     writeParallelReviewResult(state, result)
   }
 
-  private fun request(resolvedAgent1: String, resolvedScope: ParallelReviewScope, repo: Path) =
-    ParallelCodeReviewRequest(
+  private fun request(resolvedAgent1: String, resolvedScope: ParallelReviewScope, repo: Path): ParallelCodeReviewRequest {
+    val (resolvedBase, resolvedHead) = resolveCodeReviewRevisions(commitTarget, baseRevision, headRevision)
+    return ParallelCodeReviewRequest(
       agent1Id = resolvedAgent1,
       agent2Id = null,
       agent2Model = null,
@@ -127,27 +128,30 @@ open class CodeReviewDriverCommand(
       codeReviewMode = parseExecutionMode(codeReviewMode),
       suppliedDiffPath = suppliedDiffPath(),
       reviewRunId = reviewRunId?.takeIf(String::isNotBlank),
-      baseRevision = commitTarget?.let { "$it^" } ?: baseRevision?.takeIf(String::isNotBlank),
-      headRevision = commitTarget ?: headRevision?.takeIf(String::isNotBlank),
+      baseRevision = resolvedBase,
+      headRevision = resolvedHead,
       prelaunchExpansions = expandFiles.map(::parseExpansion),
       baselineUntrackedPolicy = ParallelCodeReviewRequest.baselineUntrackedPolicy(
         baselineUntrackedIncludes,
         baselineUntrackedExcludes,
       ),
     )
+  }
 
   private fun resolveAgent1(): String = requireInvokingAgentId(agent1, state.environment, "--agent1")
 
   private fun validateCommitTarget() {
     if (commitTarget.isNullOrBlank()) return
-    if (scope != "branch") {
-      throw UsageError("A commit target cannot be combined with --scope '$scope'; use the default branch scope.")
+    val error = when {
+      scope != DEFAULT_CODE_REVIEW_SCOPE ->
+        "A commit target cannot be combined with --scope '$scope'; use the default branch scope."
+      diffFile != null -> "A commit target cannot be combined with --diff-file."
+      !baseRevision.isNullOrBlank() || !headRevision.isNullOrBlank() ->
+        "A commit target cannot be combined with --base-revision or --head-revision."
+      else -> null
     }
-    if (diffFile != null) {
-      throw UsageError("A commit target cannot be combined with --diff-file.")
-    }
-    if (baseRevision != null || headRevision != null) {
-      throw UsageError("A commit target cannot be combined with --base-revision or --head-revision.")
+    if (error != null) {
+      throw UsageError(error)
     }
   }
 
@@ -171,10 +175,22 @@ open class CodeReviewDriverCommand(
   }
 }
 
+internal const val DEFAULT_CODE_REVIEW_SCOPE = "branch"
+
+internal fun resolveCodeReviewRevisions(
+  commitTarget: String?,
+  baseRevision: String?,
+  headRevision: String?,
+): Pair<String?, String?> {
+  val target = commitTarget?.takeIf(String::isNotBlank)
+  if (target != null) return "$target^" to target
+  return baseRevision?.takeIf(String::isNotBlank) to headRevision?.takeIf(String::isNotBlank)
+}
+
 private fun parsedReviewScope(scope: String): ParallelReviewScope = when (scope) {
   "staged" -> ParallelReviewScope.STAGED
   "unstaged" -> ParallelReviewScope.UNSTAGED
-  "branch" -> ParallelReviewScope.BRANCH
+  DEFAULT_CODE_REVIEW_SCOPE -> ParallelReviewScope.BRANCH
   "pr" -> ParallelReviewScope.PR
   else -> throw UsageError("Invalid scope: $scope")
 }
@@ -208,7 +224,7 @@ private fun writeParallelReviewResult(state: CliRunState, result: ParallelCodeRe
   val lanes = listOf(result.lane1, result.lane2).filter { it.agentId.isNotBlank() }
   val exitCode = if (lanes.all(ParallelReviewLaneStatus::success)) 0 else 1
   val output = buildString {
-    append(laneStatusOutput(lanes, result.mergeResult.formattedOutput))
+    append(laneStatusOutput(lanes, result.output))
     laneDiagnosticsOutput(lanes)?.let { diagnostics ->
       appendLine()
       append(diagnostics)

@@ -8,6 +8,7 @@ import skillbill.ports.goalrunner.GoalRunnerSubtaskLauncher
 import skillbill.review.context.model.ReviewRegisterParseSeamException
 import skillbill.workflow.model.CodeReviewExecutionMode
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
@@ -173,6 +174,23 @@ class ParallelCodeReviewRegisterSeamTest {
     assertTrue(result.mergeResult.findings.isEmpty())
     val diagnostic = assertNotNull(result.lane1.droppedCandidateDiagnostic)
     assertTrue(diagnostic.contains("unmatched_candidate_line"), "still-broken shape must be named: $diagnostic")
+  }
+
+  @Test
+  fun `an unmatched candidate remains in authoritative review output`() {
+    val nearMiss = "[F-001] Major | architecture | path=\"A.kt\" | line=1 | missing validation"
+    val runner = runner(
+      stdoutLauncher("$nearMiss\nverdict: changes_requested"),
+      diffResolver = RecordingDiffResolver(default = diffFor("A.kt")),
+    )
+
+    val result = runner.run(
+      baseRequest(scope = ParallelReviewScope.STAGED).copy(codeReviewMode = CodeReviewExecutionMode.INLINE),
+    )
+
+    assertTrue(result.mergeResult.findings.isEmpty())
+    assertContains(result.output, nearMiss)
+    assertContains(result.lane1.droppedCandidateDiagnostic.orEmpty(), "unmatched_candidate_line")
   }
 
   @Test

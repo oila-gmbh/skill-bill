@@ -116,7 +116,7 @@ class InstallNativeAgentLinkApplyTest : InstallApplyTestSupport() {
     )
 
     val error = assertFailsWith<MissingInstalledNativeAgentError> {
-      FileSystemReviewNativeAgentPreflight(EnvironmentContext(userHome = fixture.home)).verify(
+      FileSystemReviewNativeAgentPreflight(preflightContext(fixture.home)).verify(
         ReviewNativeAgentPreflightRequest(
           repoRoot = fixture.repoRoot,
           agentIds = listOf("codex"),
@@ -196,7 +196,7 @@ class InstallNativeAgentLinkApplyTest : InstallApplyTestSupport() {
     val result = InstallOperations.applyInstall(plan)
     assertEquals(InstallApplyStatus.SUCCESS, result.status)
 
-    FileSystemReviewNativeAgentPreflight(EnvironmentContext(userHome = fixture.home)).verify(
+    FileSystemReviewNativeAgentPreflight(preflightContext(fixture.home)).verify(
       ReviewNativeAgentPreflightRequest(
         repoRoot = fixture.repoRoot,
         agentIds = listOf("codex"),
@@ -308,7 +308,7 @@ class InstallNativeAgentLinkApplyTest : InstallApplyTestSupport() {
     Files.delete(installed)
 
     val failure = assertFailsWith<MissingInstalledNativeAgentError> {
-      FileSystemReviewNativeAgentPreflight(EnvironmentContext(userHome = fixture.home)).verify(
+      FileSystemReviewNativeAgentPreflight(preflightContext(fixture.home)).verify(
         ReviewNativeAgentPreflightRequest(
           repoRoot = fixture.repoRoot,
           agentIds = listOf("cursor"),
@@ -334,7 +334,7 @@ class InstallNativeAgentLinkApplyTest : InstallApplyTestSupport() {
     }
     val reviewedRepo = Files.createTempDirectory("skillbill-reviewed-repo").also(tempDirs::add)
 
-    FileSystemReviewNativeAgentPreflight(EnvironmentContext(userHome = fixture.home)).verify(
+    FileSystemReviewNativeAgentPreflight(preflightContext(fixture.home)).verify(
       ReviewNativeAgentPreflightRequest(
         repoRoot = reviewedRepo,
         agentIds = listOf("codex"),
@@ -954,4 +954,9 @@ class InstallNativeAgentLinkApplyTest : InstallApplyTestSupport() {
   )}","source_root":"$sourceRoot"}
     ]}
   """.trimIndent()
+
+  private fun preflightContext(home: Path): EnvironmentContext = EnvironmentContext(
+    userHome = home,
+    environment = installTestEnvironment(home),
+  )
 }

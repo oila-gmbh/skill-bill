@@ -26,7 +26,8 @@ import skillbill.domain.skillremove.model.SkillRemovalRequest
 import skillbill.domain.skillremove.model.SkillRemovalTarget
 import skillbill.install.nativeagent.InstallNativeAgentOperations
 import skillbill.install.nativeagent.NativeAgentLinkRequest
-import skillbill.nativeagent.rendering.NativeAgentProvider
+import skillbill.install.support.claudeConfigRoots
+import skillbill.install.support.codexAgentsTargets
 import skillbill.scaffold.manifest.removeAddonReferences
 import skillbill.scaffold.manifest.removeCodeReviewArea
 import skillbill.scaffold.manifest.removeDeclaredFilesBaseline
@@ -490,12 +491,11 @@ class SkillRemoveJvmFileSystem(
     cascadedSkillNames: List<String>,
   ): List<AgentSymlinkUnlink> {
     val resolvedHome = userHome(request)
+    val environment = request.environment.ifEmpty { System.getenv() }
     val out = mutableListOf<AgentSymlinkUnlink>()
     cascadedSkillNames.forEach { name ->
       AgentSymlinkProvider.values().forEach { provider ->
-        val homeDirs = nativeProvider(provider).homeAgentDirs(resolvedHome)
-        homeDirs.forEach { dir ->
-          // The actual unlink is performed by install primitives; we report likely paths.
+        agentHomeDirs(provider, resolvedHome, environment).forEach { dir ->
           val candidate = dir.resolve("$name.md")
           out += AgentSymlinkUnlink(provider = provider, path = candidate.toString().replace('\\', '/'))
         }
@@ -506,10 +506,10 @@ class SkillRemoveJvmFileSystem(
 
   private fun agentUnlinksForPlatform(request: SkillRemovalRequest, platform: String): List<AgentSymlinkUnlink> {
     val resolvedHome = userHome(request)
+    val environment = request.environment.ifEmpty { System.getenv() }
     val out = mutableListOf<AgentSymlinkUnlink>()
     AgentSymlinkProvider.values().forEach { provider ->
-      val homeDirs = nativeProvider(provider).homeAgentDirs(resolvedHome)
-      homeDirs.forEach { dir ->
+      agentHomeDirs(provider, resolvedHome, environment).forEach { dir ->
         out += AgentSymlinkUnlink(
           provider = provider,
           path = dir.resolve("bill-$platform-*").toString().replace('\\', '/'),
@@ -519,12 +519,13 @@ class SkillRemoveJvmFileSystem(
     return out
   }
 
-  private fun nativeProvider(provider: AgentSymlinkProvider): NativeAgentProvider = when (provider) {
-    AgentSymlinkProvider.CLAUDE -> NativeAgentProvider.Claude
-    AgentSymlinkProvider.CODEX -> NativeAgentProvider.Codex
-    AgentSymlinkProvider.JUNIE -> NativeAgentProvider.Junie
-    AgentSymlinkProvider.CURSOR -> NativeAgentProvider.Cursor
-  }
+  private fun agentHomeDirs(provider: AgentSymlinkProvider, home: Path, environment: Map<String, String>): List<Path> =
+    when (provider) {
+      AgentSymlinkProvider.CLAUDE -> claudeConfigRoots(home, environment).map { it.resolve("agents") }
+      AgentSymlinkProvider.CODEX -> codexAgentsTargets(home, environment)
+      AgentSymlinkProvider.JUNIE -> listOf(home.resolve(".junie/agents"))
+      AgentSymlinkProvider.CURSOR -> listOf(home.resolve(".cursor/agents"))
+    }
 
   private fun providerUnlink(provider: AgentSymlinkProvider): (NativeAgentLinkRequest) -> List<Path> = when (provider) {
     AgentSymlinkProvider.CLAUDE -> InstallNativeAgentOperations::unlinkClaudeAgents

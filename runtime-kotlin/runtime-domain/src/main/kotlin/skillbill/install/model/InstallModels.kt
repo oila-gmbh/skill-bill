@@ -241,6 +241,7 @@ data class InstallPlanRequest(
   val targetPaths: InstallationTargetPaths,
   val windowsSymlinkPreflight: WindowsSymlinkPreflight,
   val replaceExistingSkillBillLinks: Boolean = false,
+  val environment: Map<String, String> = emptyMap(),
 )
 
 enum class InstallPlanSkillKind {

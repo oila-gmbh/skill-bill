@@ -110,7 +110,7 @@ internal object FeatureTaskRuntimeReviewEnvelope {
     reviewRunId: String,
     cycle: FeatureTaskRuntimeReviewCycleContext,
   ): String {
-    val prose = result.mergeResult.formattedOutput.trim().ifBlank { "Review completed." }
+    val prose = result.output.trim().ifBlank { "Review completed." }
     val findings = result.mergeResult.findings.map(::findingPayload)
     val produced = linkedMapOf<String, Any?>(
       FeatureTaskRuntimeVerificationSignalKeys.REVIEW_FINDINGS to emptyList<Any?>(),
