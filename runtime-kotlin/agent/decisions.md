@@ -4,6 +4,16 @@ This file records architectural and implementation decisions that span the
 `runtime-kotlin/` boundary. Each entry is dated and explains the trade-off,
 not the implementation detail.
 
+## [2026-08-24] A key placed beside produced_outputs is moved into it, not rejected
+
+Context: An implement receipt on wftr-20260824-125937-qn99 carried `reconciled_state` at the envelope root instead of inside `produced_outputs`. The closed root rejected it as an unknown property, discarding 42KB of output describing 227 changed files that were already on disk. The contract calls the reconciliation report an *additional* report, which reads as a sibling of `produced_outputs` rather than a member of it.
+
+Decision: `PhaseOutputExpectedShape.align` gains the mirror of its nested-required-field pass: a root key outside the envelope's declared root fields moves into `produced_outputs`. A member `produced_outputs` already states keeps its value; the stray root copy is dropped either way. `ENVELOPE_ROOT_FIELDS` is pinned to the schema's root properties by a parity test.
+
+Reason: The envelope root is closed and `produced_outputs` is open, so an undeclared root key can only be a misplaced member — the shape already says where it belongs. Correcting placement in the capture we hold beats spending a session regenerating work the producer already did, which is the same judgement as the 2026-08-20 decisions to repair in place rather than relaunch.
+
+Alternatives considered: Give envelope failures their own retry budget (rejected: this is the salvage relaunch the 2026-08-20 decision removed after observing zero recoveries, and a second process cannot see the first session's context). Fix only the prompt wording (kept as well, but it cannot recover a receipt already emitted). Demote by an explicit key allowlist (rejected: the closed root already identifies a stray key, and an allowlist would miss the next misplacement).
+
 ## [2026-08-21] Soft-admit findings for verification; prose still settles
 
 Context: Prose-only review emptied merge findings, so claim verification always no-oped even when the parent named concrete defects.

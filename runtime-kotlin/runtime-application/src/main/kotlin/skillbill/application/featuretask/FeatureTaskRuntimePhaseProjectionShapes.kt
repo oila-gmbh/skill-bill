@@ -68,7 +68,10 @@ internal object FeatureTaskRuntimePhaseProjectionShapes {
 
   private val IMPLEMENT: String =
     "\n    - Required produced_outputs shape: emit the implementation_receipt fields DIRECTLY on\n" +
-      "      produced_outputs (the bounded claim audit consumes) alongside the reconciled_state report.\n" +
+      "      produced_outputs (the bounded claim audit consumes them), and put the reconciled_state\n" +
+      "      report inside produced_outputs as well. EVERY key below is a member of produced_outputs:\n" +
+      "      the output envelope is closed, so a key placed beside produced_outputs instead of in it\n" +
+      "      is rejected as an unknown property and the whole receipt is discarded.\n" +
       "      completed_task_ids reuse the plan's task_ids; changed_paths are repository-relative; every\n" +
       "      deviations entry is an OBJECT { \"ref\", \"note\" }, never a free-text string:\n" +
       "      ```json\n" +

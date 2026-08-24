@@ -145,6 +145,25 @@ internal object PhaseOutputExpectedShape {
     if (phaseId == "audit") add("verdict")
   }
 
+  /**
+   * Every key the envelope declares at its root.
+   *
+   * The root is closed and `produced_outputs` is open, so a key outside this set is not an unknown
+   * envelope field — it is a `produced_outputs` member the producer placed one level too high.
+   * `PhaseOutputEnvelopeRootFieldsParityTest` fails if the schema grows a root field this set does
+   * not name, which is what keeps a genuinely new envelope field from being demoted as a stray.
+   */
+  val ENVELOPE_ROOT_FIELDS: Set<String> = setOf(
+    "contract_version",
+    "phase_id",
+    "status",
+    "failure_disposition",
+    "summary",
+    "produced_outputs",
+    "derived_notes",
+    "verdict",
+  )
+
   fun align(node: JsonNode, phaseId: String): Pair<JsonNode, Boolean> {
     val root = (node as? ObjectNode)?.deepCopy() ?: return node to false
     val produced = root.get("produced_outputs") as? ObjectNode ?: return node to false
@@ -156,7 +175,31 @@ internal object PhaseOutputExpectedShape {
         changed = true
       }
     }
+    if (demoteStrayRootFields(root, produced)) changed = true
     return root to changed
+  }
+
+  /**
+   * Moves a key the producer put beside `produced_outputs` into it.
+   *
+   * The mirror of the nested-required-field case above, and the same judgement: the producer already
+   * emitted this value and the shape says where it belongs, so correcting the placement beats
+   * discarding a phase's completed work over it. `reconciled_state` on a mutating phase is the
+   * common one — the contract calls it an additional report, which reads as a sibling of
+   * `produced_outputs` rather than a member of it.
+   *
+   * A key `produced_outputs` already carries keeps the value it already has: the producer named that
+   * member deliberately, and overwriting it would replace a stated value with a guess. The stray
+   * root copy still goes, because the closed root is what rejects the envelope.
+   */
+  private fun demoteStrayRootFields(root: ObjectNode, produced: ObjectNode): Boolean {
+    val stray = root.fieldNames().asSequence().filterNot(ENVELOPE_ROOT_FIELDS::contains).toList()
+    if (stray.isEmpty()) return false
+    stray.forEach { field ->
+      if (!produced.has(field)) produced.set<JsonNode>(field, root.get(field))
+      root.remove(field)
+    }
+    return true
   }
 
   fun writeJson(node: JsonNode): String = mapper.writeValueAsString(node)

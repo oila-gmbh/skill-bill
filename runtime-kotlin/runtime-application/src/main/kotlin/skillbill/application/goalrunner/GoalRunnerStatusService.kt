@@ -278,7 +278,19 @@ class GoalRunnerStatusService(
         is FeatureTaskRuntimeProcessInspection.OwnershipMismatch,
         is FeatureTaskRuntimeProcessInspection.Unsupported,
         -> outcome(GoalRunnerStopStatus.IDENTITY_MISMATCH)
-        FeatureTaskRuntimeProcessInspection.NotRunning -> outcome(noLiveLease)
+        FeatureTaskRuntimeProcessInspection.NotRunning -> {
+          // A lease outlives its owner by design: it lapses on a term, not on the process exiting. So
+          // a confirmed-dead owner leaves every later status read reporting a live goal for the rest
+          // of that term, with no runner behind it. Releasing it here is what makes the stop
+          // observable, and it is safe precisely because the owner was just confirmed gone.
+          manifestStore.releaseExecutionLease(
+            parentWorkflowId = loaded.parentWorkflowId,
+            ownerToken = lease.ownerToken,
+            generation = lease.generation,
+            dbPathOverride = dbPathOverride,
+          )
+          outcome(noLiveLease)
+        }
         FeatureTaskRuntimeProcessInspection.ExactLive -> {
           terminateOwner(ownership)
           outcome(GoalRunnerStopStatus.STOPPED, terminationAttempted = true)
@@ -359,7 +371,7 @@ class GoalRunnerStatusService(
       } else {
         val ownership = phaseRecorder.workerOwnership(workflowId, dbPathOverride)
         if (ownership != null && Instant.parse(ownership.expiresAt).isAfter(clock.instant())) {
-          ExecutionLiveness.LIVE
+          livenessOfLeaseOwner(ownership)
         } else {
           ExecutionLiveness.IDLE
         }
@@ -374,11 +386,30 @@ class GoalRunnerStatusService(
       val lease = manifestStore.executionLease(parentWorkflowId, dbPathOverride)
         ?: return@runCatching ExecutionLiveness.IDLE
       if (Instant.parse(lease.expiresAt).isAfter(clock.instant())) {
-        ExecutionLiveness.LIVE
+        livenessOfLeaseOwner(lease.asWorkerOwnership(parentWorkflowId))
       } else {
         ExecutionLiveness.IDLE
       }
     }.getOrDefault(ExecutionLiveness.UNKNOWN)
+
+  /**
+   * Liveness of an unexpired lease, decided by its owner rather than by its term.
+   *
+   * A lease lapses on a term, not on its owner exiting, so a runner killed out of band leaves every
+   * later read reporting a live goal for the rest of that term with no process behind it. A locally
+   * confirmed-dead owner is therefore idle. Anything the supervisor cannot settle — an owner on
+   * another host or boot, or a platform it cannot inspect — stays LIVE: absence of proof that a
+   * runner is alive is not proof that it is gone, and claiming idle there would invite a second
+   * runner onto durable state someone else still owns.
+   */
+  private fun livenessOfLeaseOwner(ownership: FeatureTaskRuntimeWorkerOwnership): ExecutionLiveness =
+    when (workerSupervisor.inspect(ownership)) {
+      FeatureTaskRuntimeProcessInspection.NotRunning -> ExecutionLiveness.IDLE
+      FeatureTaskRuntimeProcessInspection.ExactLive,
+      is FeatureTaskRuntimeProcessInspection.OwnershipMismatch,
+      is FeatureTaskRuntimeProcessInspection.Unsupported,
+      -> ExecutionLiveness.LIVE
+    }
 
   private fun Map<Int, GoalRunnerOutOfBandAcceptance>.toAcceptedSubtasks(): List<GoalRunnerAcceptedSubtask> =
     values.sortedBy(GoalRunnerOutOfBandAcceptance::subtaskId).map { acceptance ->

@@ -30,10 +30,23 @@ data class GoalPlanningLogAttempt(
   val rejectedOutputIdentity: String? = null,
   val rejectedOutputBytes: Long? = null,
 ) {
+  /**
+   * Measured interval, or null when these two stamps cannot express one.
+   *
+   * A completion stamped before its own start is not a duration, and returning the negative number
+   * let it silently subtract from the planning total. Reporting the interval as absent keeps the
+   * total honest while [timestampsInconsistent] carries the anomaly instead of hiding it.
+   */
   val durationMs: Long?
     get() = startedAt?.let { start ->
-      finishedAt?.let { end -> Duration.between(start, end).toMillis() }
+      finishedAt?.let { end ->
+        if (end.isBefore(start)) null else Duration.between(start, end).toMillis()
+      }
     }
+
+  /** A finish stamped before its own start: the record is unusable for timing and says so. */
+  val timestampsInconsistent: Boolean
+    get() = startedAt != null && finishedAt != null && finishedAt.isBefore(startedAt)
 
   val inFlight: Boolean get() = startedAt != null && finishedAt == null
 }

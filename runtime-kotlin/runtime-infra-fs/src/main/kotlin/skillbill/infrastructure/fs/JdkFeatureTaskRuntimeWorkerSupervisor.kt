@@ -13,13 +13,35 @@ import skillbill.ports.taskruntime.model.FeatureTaskRuntimeProcessInspection
 import java.net.InetAddress
 import java.nio.file.Files
 import java.nio.file.Path
-import java.time.Duration
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
+
+private const val INIT_PID: Long = 1L
+private const val BOOT_IDENTITY_UNAVAILABLE: String = "boot-identity-unavailable"
+
+/** Written by the per-process fallback this file replaced; never a valid boot identity. */
+private const val LEGACY_BOOT_IDENTITY_PREFIX: String = "fallback-"
+
+/**
+ * Whether two boot identities positively disagree.
+ *
+ * A mismatch only settles the question when both sides actually know their boot. An unknown value,
+ * or one written by the drifting per-process fallback this replaced, says nothing about whether the
+ * owner is alive — and treating it as a mismatch reported every live worker as not running, which is
+ * what let `goal stop` find no live lease and let a second runner reclaim a lease whose owner was
+ * still working. With the boot check abstaining, the reused-pid guard falls to the process-birth
+ * token, which discriminates one process from another more precisely than a boot id does.
+ */
+private fun bootIdentitiesConflict(stored: String, local: String): Boolean =
+  bootIdentityIsDecisive(stored) && bootIdentityIsDecisive(local) && stored != local
+
+private fun bootIdentityIsDecisive(value: String): Boolean = value.isNotBlank() &&
+  value != BOOT_IDENTITY_UNAVAILABLE &&
+  !value.startsWith(LEGACY_BOOT_IDENTITY_PREFIX)
 
 @Inject
 class JdkFeatureTaskRuntimeWorkerSupervisor(
@@ -53,7 +75,9 @@ class JdkFeatureTaskRuntimeWorkerSupervisor(
         "Worker ownership belongs to a different host.",
       )
     }
-    if (ownership.bootIdentity != local.bootIdentity) return FeatureTaskRuntimeProcessInspection.NotRunning
+    if (bootIdentitiesConflict(ownership.bootIdentity, local.bootIdentity)) {
+      return FeatureTaskRuntimeProcessInspection.NotRunning
+    }
 
     val handle = ProcessHandle.of(ownership.pid).orElse(null)
       ?: return FeatureTaskRuntimeProcessInspection.NotRunning
@@ -97,12 +121,32 @@ class JdkFeatureTaskRuntimeWorkerSupervisor(
   private fun birthToken(handle: ProcessHandle): String? =
     handle.info().startInstant().orElse(null)?.toEpochMilli()?.toString()
 
+  /**
+   * An identity that is the same for every process on this boot and changes across reboots.
+   *
+   * The kernel boot id is authoritative where it exists. Elsewhere the start instant of pid 1 stands
+   * in: the kernel starts it at boot, it outlives every runtime process, and every process reads the
+   * same value for it. What this must never be is a value derived from the *calling* process, which
+   * is what the earlier fallback did — start instant minus accumulated CPU time drifts downward as a
+   * process runs and differs between any two processes, so no stored identity could ever match a
+   * later reading of it.
+   */
   private fun bootIdentity(): String {
     val linuxBootId = Path.of("/proc/sys/kernel/random/boot_id")
-    if (Files.isReadable(linuxBootId)) return Files.readString(linuxBootId).trim()
-    val uptime = ProcessHandle.current().info().startInstant().orElseThrow()
-      .minus(Duration.ofMillis(ProcessHandle.current().info().totalCpuDuration().orElse(Duration.ZERO).toMillis()))
-    return "fallback-${uptime.epochSecond}"
+    if (Files.isReadable(linuxBootId)) {
+      runCatching { Files.readString(linuxBootId).trim() }
+        .getOrNull()
+        ?.takeIf(String::isNotBlank)
+        ?.let { return it }
+    }
+    runCatching { ProcessHandle.of(INIT_PID).flatMap { it.info().startInstant() }.orElse(null) }
+      .getOrNull()
+      ?.let { return "boot-${it.toEpochMilli()}" }
+    diagnostics.warning(
+      "This platform exposes no kernel boot id and no start instant for pid $INIT_PID, so worker " +
+        "ownership carries no boot identity. Process-birth evidence remains the reused-pid guard.",
+    )
+    return BOOT_IDENTITY_UNAVAILABLE
   }
 }
 

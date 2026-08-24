@@ -27,6 +27,7 @@ import skillbill.application.goalrunner.model.GoalPreflightRequest
 import skillbill.application.goalrunner.model.GoalPreflightResult
 import skillbill.application.model.DEFAULT_GOAL_PLANNING_BUDGET
 import skillbill.application.model.GoalPlanningLog
+import skillbill.application.model.GoalPlanningLogAttempt
 import skillbill.application.model.GoalPlanningLogRequest
 import skillbill.application.model.GoalRunnerAcceptRequest
 import skillbill.application.model.GoalRunnerAcceptResult
@@ -471,6 +472,7 @@ class GoalPlanningLogCommand(
           "started_at" to attempt.startedAt?.toString(),
           "finished_at" to attempt.finishedAt?.toString(),
           "duration_ms" to attempt.durationMs,
+          "timestamps_inconsistent" to attempt.timestampsInconsistent,
           "outcome" to attempt.outcome,
           "rule" to attempt.rule,
           "reason" to attempt.reason,
@@ -482,6 +484,15 @@ class GoalPlanningLogCommand(
     )
     state.completeText(renderPlanningLog(log), payload)
   }
+}
+
+/**
+ * `none` already means an attempt that has not finished, so an interval the stamps cannot express
+ * reads as its own value: an operator sees a record to distrust instead of a plausible blank.
+ */
+private fun durationField(attempt: GoalPlanningLogAttempt): String = when {
+  attempt.timestampsInconsistent -> "inconsistent"
+  else -> attempt.durationMs?.toString() ?: "none"
 }
 
 private fun renderPlanningLog(log: GoalPlanningLog): String = buildString {
@@ -499,7 +510,7 @@ private fun renderPlanningLog(log: GoalPlanningLog): String = buildString {
     appendLine(
       "phase=${attempt.phaseId} attempt=${attempt.attempt} " +
         "started=${attempt.startedAt ?: "unknown"} finished=${attempt.finishedAt ?: "in_flight"} " +
-        "duration_ms=${attempt.durationMs ?: "none"} outcome=${attempt.outcome}",
+        "duration_ms=${durationField(attempt)} outcome=${attempt.outcome}",
     )
     attempt.reason?.let { reason ->
       appendLine("  rule=${attempt.rule} agent=${attempt.agentId ?: "unknown"} $reason")
@@ -507,8 +518,9 @@ private fun renderPlanningLog(log: GoalPlanningLog): String = buildString {
     attempt.rejectedOutputIdentity?.let { identity ->
       appendLine(
         "  rejected_output=$identity bytes=${attempt.rejectedOutputBytes ?: 0} " +
-          "(read it with: skill-bill rejected-output inspect --workflow-id ${log.parentWorkflowId} " +
-          "--phase-id ${attempt.phaseId} --attempt ${attempt.attempt} --raw-output)",
+          "(read it with: skill-bill feature-task rejected-output " +
+          "--workflow ${log.parentWorkflowId} --phase ${attempt.phaseId} " +
+          "--attempt ${attempt.attempt} --raw-output)",
       )
     }
   }

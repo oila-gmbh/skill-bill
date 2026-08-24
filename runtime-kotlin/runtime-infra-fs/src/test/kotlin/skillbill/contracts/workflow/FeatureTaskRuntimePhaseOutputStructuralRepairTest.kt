@@ -29,6 +29,62 @@ class FeatureTaskRuntimePhaseOutputStructuralRepairTest {
   }
 
   @Test
+  fun `a reconciliation report placed beside produced_outputs is moved into it`() {
+    // The shape observed on wftr-20260824-125937-qn99: an implement receipt whose work landed, then
+    // 42KB of it discarded because reconciled_state sat next to produced_outputs instead of in it.
+    val misplaced =
+      """{"contract_version":"0.4","phase_id":"implement","status":"completed",""" +
+        """"summary":"Reconciled the repository to the intended state.",""" +
+        """"produced_outputs":{"projection_kind":"implementation_receipt","changed_paths":["a/B.kt"],""" +
+        """"reconciliation_evidence":{"reconciled":true,"evidence":"tree at target"}},""" +
+        """"reconciled_state":{"reconciled":true}}"""
+
+    val result = adapter.validatePhaseOutput(misplaced, "implement")
+
+    val repaired = assertIs<FeatureTaskRuntimePhaseOutputValidationResult.AcceptedAfterRepair>(result)
+    assertEquals(
+      FeatureTaskRuntimePhaseOutputRepairOperation.RESTORE_EXPECTED_SHAPE,
+      repaired.evidence.operation,
+    )
+    assertFalse(
+      repaired.normalizedOutput.envelope.containsKey("reconciled_state"),
+      "the stray root key is what the closed envelope rejects, so it must not survive at the root",
+    )
+    assertTrue(
+      repaired.normalizedOutput.canonicalJson.contains("\"reconciled_state\""),
+      "the report itself is the producer's evidence and must be kept, one level down",
+    )
+    @Suppress("UNCHECKED_CAST")
+    val produced = repaired.normalizedOutput.envelope["produced_outputs"] as Map<String, Any?>
+    assertEquals(mapOf("reconciled" to true), produced["reconciled_state"])
+    assertEquals(
+      mapOf("reconciled" to true, "evidence" to "tree at target"),
+      produced["reconciliation_evidence"],
+      "a member produced_outputs already carried is untouched",
+    )
+  }
+
+  @Test
+  fun `a stray root key does not overwrite a member produced_outputs already states`() {
+    val collision =
+      """{"contract_version":"0.4","phase_id":"implement","status":"completed","summary":"Done.",""" +
+        """"produced_outputs":{"reconciled_state":{"reconciled":true,"evidence":"stated"}},""" +
+        """"reconciled_state":{"reconciled":false}}"""
+
+    val result = adapter.validatePhaseOutput(collision, "implement")
+
+    val repaired = assertIs<FeatureTaskRuntimePhaseOutputValidationResult.AcceptedAfterRepair>(result)
+
+    @Suppress("UNCHECKED_CAST")
+    val produced = repaired.normalizedOutput.envelope["produced_outputs"] as Map<String, Any?>
+    assertEquals(
+      mapOf("reconciled" to true, "evidence" to "stated"),
+      produced["reconciled_state"],
+      "the value the producer placed deliberately wins over the stray copy",
+    )
+  }
+
+  @Test
   fun `observed extra closing delimiter is removed outside strings`() {
     val malformed = "$validJson]"
     val result = adapter.validatePhaseOutput(malformed, "plan")
