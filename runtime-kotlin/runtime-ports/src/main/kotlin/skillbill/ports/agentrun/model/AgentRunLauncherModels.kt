@@ -256,13 +256,6 @@ data class AgentRunLaunchFacts(
   val mcpStartupObserved: Boolean = false,
   val childSessionPath: String? = null,
   val childSessionId: String? = null,
-  val inputTokens: Long? = null,
-  val cachedInputTokens: Long? = null,
-  val outputTokens: Long? = null,
-  val reasoningTokens: Long? = null,
-  val totalTokens: Long? = null,
-  val tokenOwnership: AgentRunTokenOwnership = AgentRunTokenOwnership.DIRECT,
-  val providerUsageEnforceable: Boolean = false,
   /**
    * Count of provider assistant turns the decoder observed, when the transport exposes them. A zero
    * count on a zero-exit launch distinguishes "the provider answered nothing" from "the provider
@@ -285,13 +278,6 @@ data class AgentRunLaunchFacts(
     require(!timedOut || exitStatus == null) { "timedOut launch facts must not report an exitStatus." }
     require(!interrupted || exitStatus == null) { "interrupted launch facts must not report an exitStatus." }
     require(!spawnFailed || exitStatus == null) { "spawnFailed launch facts must not report an exitStatus." }
-    require(
-      listOf(inputTokens, cachedInputTokens, outputTokens, reasoningTokens, totalTokens).all {
-        it == null || it >= 0
-      },
-    ) {
-      "Provider token values cannot be negative."
-    }
     assistantEventCount?.let { count -> require(count >= 0) { "assistantEventCount cannot be negative." } }
   }
 }
@@ -305,11 +291,6 @@ fun AgentRunLaunchFacts.reviewProcessOutcome(): ReviewProcessOutcome = when {
   exitStatus == null -> ReviewProcessOutcome.NON_ZERO_EXIT
   exitStatus != 0 -> ReviewProcessOutcome.NON_ZERO_EXIT
   else -> ReviewProcessOutcome.ZERO_EXIT
-}
-
-enum class AgentRunTokenOwnership {
-  DIRECT,
-  INCLUSIVE,
 }
 
 data class UnsupportedAgentRunLaunch(

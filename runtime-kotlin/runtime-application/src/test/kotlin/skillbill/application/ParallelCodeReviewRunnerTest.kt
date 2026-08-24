@@ -595,31 +595,6 @@ class ParallelCodeReviewRunnerTest {
   }
 
   @Test
-  fun `transport token fields do not become review accounting`() {
-    val launcher = GoalRunnerSubtaskLauncher { request ->
-      AgentRunLaunchFacts(
-        agent = InstallAgent.fromNormalizedId(request.invokedAgentId, label = "agentId"),
-        exitStatus = 0,
-        stdout = "verdict: approved",
-        stderr = "",
-        timedOut = false,
-        spawnFailed = false,
-        inputTokens = 100,
-        cachedInputTokens = 40,
-        outputTokens = 10,
-        totalTokens = 110,
-      )
-    }
-
-    val result = runner(launcher, diffResolver = RecordingDiffResolver(default = diffFor("A.kt")))
-      .run(baseRequest(scope = ParallelReviewScope.STAGED))
-
-    assertEquals("claude", result.lane1.accounting?.lane)
-    assertEquals(1, result.lane1.accounting?.modelTurns)
-    assertEquals("verdict: approved".toByteArray().size.toLong(), result.lane1.accounting?.resultBytes)
-  }
-
-  @Test
   fun `excessive lane result terminates with typed budget outcome`() {
     val runner = runner(
       alwaysSuccessLauncher("x".repeat(65_537)),

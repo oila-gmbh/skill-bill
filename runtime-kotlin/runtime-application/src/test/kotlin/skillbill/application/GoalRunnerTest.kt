@@ -61,7 +61,6 @@ import skillbill.ports.goalrunner.model.GoalRunnerOutOfBandAcceptance
 import skillbill.ports.goalrunner.model.GoalRunnerProgressEventRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
 import skillbill.ports.goalrunner.model.GoalRunnerReviewPolicy
-import skillbill.ports.goalrunner.model.GoalRunnerSessionAccountingRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerSubtaskLaunchRequest
 import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
 import skillbill.ports.persistence.DatabaseSessionFactory
@@ -3302,15 +3301,12 @@ internal class InMemoryGoalManifestStore(
   }
 }
 
-// SKILL-64 Subtask 3 (F-D01): the append-only attempt ledger and best-effort
-// session accounting must not restart sequence numbers at 0 on resume. The
-// recorder seeds its monotonic counters from the persisted watermarks.
 class GoalRunnerLedgerRecorderSeedingTest {
   @Test
-  fun `recorder seeds ledger and accounting sequences from persisted watermarks`() {
+  fun `recorder seeds ledger sequence from persisted watermark`() {
     val outcomes = RecordingOutcomeStore()
     outcomes.ledgerSequenceWatermarks =
-      GoalRunnerLedgerSequenceWatermarks(maxLedgerSequence = 7, maxAccountingSequence = 3)
+      GoalRunnerLedgerSequenceWatermarks(maxLedgerSequence = 7)
     val recorder = GoalRunnerLedgerRecorder(outcomes, ledgerRunRequest())
 
     recorder.recordLedgerEntry(
@@ -3321,10 +3317,7 @@ class GoalRunnerLedgerRecorderSeedingTest {
         subtaskId = 1,
       ),
     )
-    recorder.recordAccounting("wfl-child", subtaskId = 1, phase = "implement", launchOutcome = launchFacts())
-
     assertEquals(8, outcomes.attemptLedgerRecords.single().entry.sequenceNumber)
-    assertEquals(4, outcomes.sessionAccountingRecords.single().accounting.sequenceNumber)
   }
 
   @Test
@@ -3342,57 +3335,6 @@ class GoalRunnerLedgerRecorderSeedingTest {
     )
 
     assertEquals(0, outcomes.attemptLedgerRecords.single().entry.sequenceNumber)
-  }
-
-  @Test
-  fun `accounting is available with session path and id when launch facts expose them`() {
-    // SKILL-64 Subtask 3 (AC6, AC11): provider-neutral child session path/id from
-    // launch facts make accounting available=true and populate the ledger entry.
-    val outcomes = RecordingOutcomeStore()
-    val recorder = GoalRunnerLedgerRecorder(outcomes, ledgerRunRequest())
-    val facts = launchFacts().copy(childSessionPath = "/work/child", childSessionId = "claude:SKILL-56:subtask-1")
-
-    recorder.recordAccounting("wfl-child", subtaskId = 1, phase = "implement", launchOutcome = facts)
-    recorder.recordLedgerEntry(
-      GoalRunnerLedgerContext(
-        workflowId = "wfl-child",
-        action = GoalAttemptLedgerAction.CHILD_ACTIVATION,
-        issueKey = "SKILL-56",
-        subtaskId = 1,
-        launchOutcome = facts,
-      ),
-    )
-
-    val accounting = outcomes.sessionAccountingRecords.single().accounting
-    assertTrue(accounting.available)
-    assertEquals("/work/child", accounting.childSessionPath)
-    assertEquals("claude:SKILL-56:subtask-1", accounting.childSessionId)
-    val ledgerEntry = outcomes.attemptLedgerRecords.single().entry
-    assertEquals("/work/child", ledgerEntry.childSessionPath)
-    assertEquals("claude:SKILL-56:subtask-1", ledgerEntry.childSessionId)
-  }
-
-  @Test
-  fun `accounting is unavailable with reason when no session path id or tokens exist`() {
-    val outcomes = RecordingOutcomeStore()
-    val recorder = GoalRunnerLedgerRecorder(outcomes, ledgerRunRequest())
-    val facts = launchFacts().copy(childSessionPath = null, childSessionId = null)
-
-    recorder.recordAccounting("wfl-child", subtaskId = 1, phase = "implement", launchOutcome = facts)
-
-    val accounting = outcomes.sessionAccountingRecords.single().accounting
-    assertTrue(!accounting.available)
-    assertNull(accounting.childSessionPath)
-    assertNull(accounting.childSessionId)
-    assertContains(requireNotNull(accounting.unavailableReason), "not available")
-  }
-
-  @Test
-  fun `best-effort accounting write failure never throws`() {
-    val outcomes = RecordingOutcomeStore().apply { throwOnSessionAccountingRecord = true }
-    val recorder = GoalRunnerLedgerRecorder(outcomes, ledgerRunRequest())
-
-    recorder.recordAccounting("wfl-child", subtaskId = 1, phase = "implement", launchOutcome = launchFacts())
   }
 
   private fun ledgerRunRequest(): GoalRunnerRunRequest = GoalRunnerRunRequest(
@@ -3793,27 +3735,14 @@ internal class RecordingOutcomeStore : GoalRunnerWorkflowOutcomeStore {
   }
 
   val progressEventRecords: MutableList<GoalRunnerProgressEventRecordRequest> = mutableListOf()
-  val sessionAccountingRecords: MutableList<GoalRunnerSessionAccountingRecordRequest> = mutableListOf()
   val attemptLedgerRecords: MutableList<GoalRunnerAttemptLedgerRecordRequest> = mutableListOf()
   var throwOnProgressEventRecord: Boolean = false
-  var throwOnSessionAccountingRecord: Boolean = false
 
   override fun recordProgressEvent(request: GoalRunnerProgressEventRecordRequest, dbPathOverride: String?): Boolean {
     if (throwOnProgressEventRecord) {
       error("progress event persistence failed")
     }
     progressEventRecords += request
-    return true
-  }
-
-  override fun recordSessionAccounting(
-    request: GoalRunnerSessionAccountingRecordRequest,
-    dbPathOverride: String?,
-  ): Boolean {
-    if (throwOnSessionAccountingRecord) {
-      error("session accounting persistence failed")
-    }
-    sessionAccountingRecords += request
     return true
   }
 

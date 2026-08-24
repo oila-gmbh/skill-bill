@@ -42,7 +42,6 @@ class ParallelCodeReviewRegressionTest {
       config {
         RecordedWorkerResponse(
           stdout = finding("src/Repo.kt", specialist = "bill-kotlin-code-review-architecture"),
-          usage = RecordedTransportUsage(500, 100, 50, 10, 550),
         )
       },
       recorder,
@@ -82,7 +81,7 @@ class ParallelCodeReviewRegressionTest {
 
   @Test fun `each lane accounts its own launch bytes and terminal outcome`() {
     val recorder = ReviewRecorder()
-    val runner = reviewHarness(config { RecordedWorkerResponse(usage = RecordedTransportUsage(120, 20, 8)) }, recorder)
+    val runner = reviewHarness(config { RecordedWorkerResponse() }, recorder)
 
     val summary = assertNotNull(runner.run(harnessRequest()).accountingSummary)
 

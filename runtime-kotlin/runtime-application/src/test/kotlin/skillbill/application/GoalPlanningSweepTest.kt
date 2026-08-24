@@ -1394,7 +1394,7 @@ class GoalPlanningSweepTest {
     val first = recorded.single()
     assertContains(first.reason, "EmptyProviderTurn")
     assertContains(first.reason, "assistantEvents=0")
-    assertContains(first.reason, "outputTokens=0")
+    assertFalse(first.reason.contains("Tokens"))
     assertFalse(
       first.reason.contains("schema-invalid"),
       "an operator must not be told the schema rejected output that was never produced",
@@ -2199,7 +2199,7 @@ private fun GoalPlanningPreparationRecord.preplanRoot(): Map<String, Any?> =
 
 private fun validPhaseOutcome(phase: String): AgentRunLaunchOutcome = launchFacts(stdout = phasePayload(phase))
 
-/** A provider turn that charged input, emitted no assistant event, and still exited zero. */
+/** A provider turn that emitted no assistant event and still exited zero. */
 private fun emptyProviderTurnOutcome(): AgentRunLaunchOutcome = AgentRunLaunchFacts(
   agent = InstallAgent.CLAUDE,
   exitStatus = 0,
@@ -2208,8 +2208,6 @@ private fun emptyProviderTurnOutcome(): AgentRunLaunchOutcome = AgentRunLaunchFa
   timedOut = false,
   interrupted = false,
   spawnFailed = false,
-  inputTokens = 33110,
-  outputTokens = 0,
   assistantEventCount = 0,
   rawOutputPreview = "{\"type\":\"result\",\"result\":\"\"}",
 )

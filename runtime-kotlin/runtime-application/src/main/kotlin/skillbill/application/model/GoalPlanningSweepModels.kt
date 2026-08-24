@@ -101,8 +101,6 @@ data class GoalPlanningEmptyTurnEvidence(
   val agentId: String,
   val durationMs: Long,
   val exitStatus: Int?,
-  val inputTokens: Long?,
-  val outputTokens: Long?,
   val assistantEventCount: Int?,
   val rawOutputPreview: String?,
 ) {
@@ -116,10 +114,6 @@ data class GoalPlanningEmptyTurnEvidence(
     append(exitStatus ?: "none")
     append(" assistantEvents=")
     append(assistantEventCount ?: "unknown")
-    append(" inputTokens=")
-    append(inputTokens ?: "unknown")
-    append(" outputTokens=")
-    append(outputTokens ?: "unknown")
   }
 }
 

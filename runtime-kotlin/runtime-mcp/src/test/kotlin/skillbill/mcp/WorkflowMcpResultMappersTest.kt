@@ -62,6 +62,21 @@ class WorkflowMcpResultMappersTest {
   }
 
   @Test
+  fun `workflow mapper tolerates legacy goal session artifact without projecting it`() {
+    val mapped = WorkflowGetResult.Ok(
+      workflowId = "wfl-1",
+      dbPath = "/tmp/metrics.db",
+      snapshot = snapshotWithObservability().copy(
+        artifacts = mapOf(
+          "goal_session_accounting" to listOf(mapOf("sequence_number" to 1)),
+        ),
+      ),
+    ).toMcpMap(testGoalObservabilityEventValidator)
+
+    assertFalse(mapped.containsKey("goal_session_accounting_latest"))
+  }
+
+  @Test
   fun `workflow mapper loud-fails malformed goal observability latest event`() {
     val error = assertFailsWith<InvalidGoalObservabilityEventSchemaError> {
       WorkflowGetResult.Ok(

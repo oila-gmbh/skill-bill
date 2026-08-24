@@ -18,8 +18,8 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 /**
- * SKILL-64 Subtask 4 (AC4, AC5): the attempt/event ledger and best-effort
- * session accounting must explain every case — first start, resume/retry,
+ * SKILL-64 Subtask 4 (AC4, AC5): the attempt/event ledger must explain every
+ * case — first start, resume/retry,
  * terminal done check, timeout/interruption, policy-blocked, and the final
  * reconciled result — WITHOUT provider JSONL scraping.
  *
@@ -38,7 +38,6 @@ class GoalRunnerLedgerTest {
       val subtaskId = requireNotNull(request.skillRunRequest.subtaskId)
       store.mutate { current -> current.withWorkflowId(subtaskId, "wfl-$subtaskId") }
       outcomes["wfl-$subtaskId"] = completeOutcome(subtaskId)
-      // Provider-neutral child session descriptors present -> accounting available.
       launchFacts().copy(childSessionPath = "/work/child-1", childSessionId = "claude:SKILL-56:subtask-1")
     }
     val runner = GoalRunner(store, launcher, outcomes, RecordingPullRequestPort())
@@ -64,12 +63,10 @@ class GoalRunnerLedgerTest {
       outcomes.attemptLedgerRecords.map { it.entry.sequenceNumber },
     )
 
-    // AC4: best-effort accounting persisted and available when provider session
-    // data exists.
-    val accounting = outcomes.sessionAccountingRecords.single().accounting
-    assertTrue(accounting.available)
-    assertEquals("/work/child-1", accounting.childSessionPath)
-    assertEquals("claude:SKILL-56:subtask-1", accounting.childSessionId)
+    val activation = outcomes.attemptLedgerRecords
+      .first { it.entry.action.wireValue == "child_activation" }.entry
+    assertEquals("/work/child-1", activation.childSessionPath)
+    assertEquals("claude:SKILL-56:subtask-1", activation.childSessionId)
   }
 
   @Test
@@ -201,12 +198,6 @@ class GoalRunnerLedgerTest {
 
     val timeout = outcomes.attemptLedgerRecords.first { it.entry.action.wireValue == "timeout" }.entry
     assertEquals("timeout", timeout.stopReason)
-    // AC4: accounting is recorded as unavailable (no provider data) WITHOUT
-    // failing the run.
-    assertTrue(outcomes.sessionAccountingRecords.isNotEmpty())
-    val unavailable = outcomes.sessionAccountingRecords.last().accounting
-    assertFalse(unavailable.available)
-    assertContains(requireNotNull(unavailable.unavailableReason), "not available")
   }
 
   @Test

@@ -54,7 +54,6 @@ fun reviewFinishedPayload(
     executionMode = reviewSummary.executionMode,
     reviewFinishedAt = reviewSummary.reviewFinishedAt,
     learnings = learningsSection,
-    reviewContextAccounting = loadReviewAccounting(connection, reviewSummary.reviewRunId)?.boundedPayload,
     stageMetrics = stageMetrics,
   )
 }

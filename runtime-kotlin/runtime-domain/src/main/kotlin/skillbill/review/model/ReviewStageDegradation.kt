@@ -51,6 +51,6 @@ data class ReviewStageDegradationMeasurement(
 }
 
 const val REVIEW_STAGE_DEGRADATION_EVENT_NAME: String = "skillbill_review_stage_degradation"
-const val REVIEW_STAGE_DEGRADATION_CONTRACT_VERSION: String = "1.10.0"
+const val REVIEW_STAGE_DEGRADATION_CONTRACT_VERSION: String = "1.11.0"
 const val REVIEW_FINISHED_LEGACY_CONTRACT_VERSION: String = "1.8.0"
 const val REVIEW_FINISHED_LEGACY_REGENERATED_EVENT_NAME: String = "skillbill_review_finished_legacy_regenerated"

@@ -3,24 +3,20 @@ package skillbill.application.goalrunner
 import skillbill.application.model.GoalRunnerRunRequest
 import skillbill.goalrunner.model.GoalAttemptLedgerAction
 import skillbill.goalrunner.model.GoalAttemptLedgerEntry
-import skillbill.goalrunner.model.GoalSessionAccountingFields
-import skillbill.goalrunner.model.GoalSessionAccountingParser
 import skillbill.ports.agentrun.model.AgentRunLaunchFacts
 import skillbill.ports.agentrun.model.AgentRunLaunchOutcome
 import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
 import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.ports.goalrunner.GoalRunnerWorkflowOutcomeStore
 import skillbill.ports.goalrunner.model.GoalRunnerAttemptLedgerRecordRequest
-import skillbill.ports.goalrunner.model.GoalRunnerSessionAccountingRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
 import java.time.Instant
 
 /**
- * SKILL-64 Subtask 3 (AC6, AC7, AC10, AC11): isolates the durable side effects
- * for best-effort session accounting and the append-only attempt/event ledger.
- * Timestamps are minted here (the adapter/effect layer), keeping the domain
- * models effect-free. Writes are best-effort: a failure to record never fails
- * an otherwise valid goal run.
+ * SKILL-64 Subtask 3 (AC10, AC11): isolates the durable side effects for the
+ * append-only attempt/event ledger. Timestamps are minted here (the
+ * adapter/effect layer), keeping the domain models effect-free. Writes are
+ * best-effort: a failure to record never fails an otherwise valid goal run.
  *
  * The ledger sequence space is distinct from the goal_event and
  * goal_observability sequence spaces.
@@ -30,58 +26,20 @@ internal class GoalRunnerLedgerRecorder(
   private val request: GoalRunnerRunRequest,
   private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
 ) {
-  // SKILL-64 Subtask 3 (F-D01): the durable attempt ledger and session
-  // accounting are append-only across resume runs. Seed each monotonic counter
-  // from the persisted max sequence for this issue so a resume continues the
-  // stream instead of restarting at 0 and emitting duplicate, non-monotonic
-  // sequence numbers. A fresh run (no durable entries) starts from the base.
+  // SKILL-64 Subtask 3 (F-D01): the durable attempt ledger is append-only
+  // across resume runs. Seed its monotonic counter from the persisted max
+  // sequence for this issue so a resume continues the stream instead of
+  // restarting at 0 and emitting duplicate, non-monotonic sequence numbers. A
+  // fresh run (no durable entries) starts from the base.
   private val watermarks = runCatching {
     outcomeStore.ledgerSequenceWatermarks(request.issueKey, request.dbPathOverride)
   }.getOrNull()
-  private var accountingSequence: Int = watermarks?.maxAccountingSequence?.let { it + 1 } ?: 0
   private var ledgerSequence: Int = watermarks?.maxLedgerSequence?.let { it + 1 } ?: 0
 
   // Cumulative backward-edge counts keyed by "subtaskId:loopId". Seeded from persisted watermarks
   // so a resume continues each loop's count rather than restarting from 0.
   private val cumulativeBackwardEdgeCounts: MutableMap<String, Int> =
     watermarks?.backwardEdgeCounts?.toMutableMap() ?: mutableMapOf()
-
-  fun recordAccounting(workflowId: String, subtaskId: Int, phase: String, launchOutcome: AgentRunLaunchOutcome) {
-    val facts = launchOutcome as? AgentRunLaunchFacts
-    val accounting = GoalSessionAccountingParser.parse(
-      subtaskId = subtaskId,
-      phase = phase.ifBlank { "goal_runner_supervision" },
-      sequenceNumber = accountingSequence++,
-      timestamp = Instant.now().toString(),
-      // SKILL-64 Subtask 3 (AC6, AC7): best-effort, provider-neutral. Launch
-      // facts now expose a provider-neutral child session path/id (the launcher-
-      // controlled working dir + session marker). When either is determinable
-      // the parser yields available=true; only when NO token data AND no session
-      // path/id exist is accounting recorded unavailable. Provider-private token
-      // logs are never required (Non-Goal).
-      fields = GoalSessionAccountingFields(
-        childSessionPath = facts?.childSessionPath,
-        childSessionId = facts?.childSessionId,
-        finalStatus = facts?.let { launchFinalStatus(it) },
-        unavailableReason = facts?.let { "Provider session token accounting was not available from launch facts." }
-          ?: "No launch facts were produced for this child run.",
-      ),
-    )
-    runCatching {
-      outcomeStore.recordSessionAccounting(
-        GoalRunnerSessionAccountingRecordRequest(workflowId = workflowId, accounting = accounting),
-        request.dbPathOverride,
-      )
-    }
-      .onFailure { error ->
-        logBestEffortFailure("session_accounting", workflowId, subtaskId, error)
-      }
-      .onSuccess { recorded ->
-        if (!recorded) {
-          logBestEffortMissingWorkflow("session_accounting", workflowId, subtaskId)
-        }
-      }
-  }
 
   fun recordBackwardEdgeEntry(edge: GoalRunnerBackwardEdge) {
     val key = "${edge.subtaskId}:${edge.loopId}"
@@ -155,10 +113,10 @@ internal class GoalRunnerLedgerRecorder(
       }
   }
 
-  // SKILL-64 Subtask 3 (F-R02): best-effort ledger/accounting writes must never
-  // fail the run, but a silent gap must be detectable. Log WARNING on both a
-  // thrown failure and a false return (workflow not found). The message carries
-  // only workflowId/action/subtaskId — never secrets or prompt content.
+  // SKILL-64 Subtask 3 (F-R02): best-effort ledger writes must never fail the
+  // run, but a silent gap must be detectable. Log WARNING on both a thrown
+  // failure and a false return (workflow not found). The message carries only
+  // workflowId/action/subtaskId — never secrets or prompt content.
   private fun logBestEffortFailure(action: String, workflowId: String, subtaskId: Int, error: Throwable) {
     diagnostics.warning(
       "Best-effort goal ledger write failed: action='$action' workflowId='$workflowId' subtaskId=$subtaskId " +

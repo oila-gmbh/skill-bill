@@ -1,3 +1,14 @@
+## [2026-08-24] SKILL-206 subtask 2 — Remove provider token accounting producers and projections
+Areas: runtime-kotlin/{application/goalrunner,domain,ports,infra-fs,infra-sqlite,mcp,core}, orchestration/contracts, docs
+- Removed provider-reported token fields and usage-key decoding from agent-run models and decoders while preserving child-session identity, terminal outcomes, and local byte-derived estimates.
+- Deleted `GoalSessionAccounting` across planning, persistence, history, artifact retention, and MCP projections; planning-sweep empty-turn evidence now carries no provider counts and its operator summary is well-formed.
+- Retired `provider_token_thresholds` reads while accepting the legacy block with one degradation record; unknown configuration remains loud.
+- Removed review-finished accounting telemetry projections and bumped the telemetry contract with Kotlin parity and typed validation. Legacy persisted usage keys and goal-session artifacts remain readable but stay out of current projections. reusable
+- Pattern: preserve backward-compatible reads for retired persisted keys while removing producer and projection surfaces; emit degradation once at the compatibility boundary. reusable
+- Limitations: provider token accounting and threshold termination are not replaced; estimated local byte/count accounting remains.
+Feature flag: N/A
+Acceptance criteria: 10/10 implemented
+
 ## [2026-08-18] SKILL-195 subtask 5 — Provider parity, contract bump, and stopgap removal
 Areas: orchestration/contracts, runtime-contracts/review, runtime-contracts/error, runtime-infra-fs/launcher/{agentrun,mcp,review}, runtime-infra-sqlite/review, runtime-domain/review/model
 - Codex and Cursor governed review launches now take the same governed-only tool list and per-launch MCP isolation as Claude: Codex via `--ignore-user-config` plus TOML `--config` overrides; Cursor via per-launch `.cursor/mcp.json` and `cli.json` allow/deny plus retained `--workspace`.

@@ -42,8 +42,8 @@ private fun requireBoundedAccountingPayload(payload: Map<String, Any?>) {
   )
   requireCounters(payload["aggregate_counters"])
   if (legacy) {
-    requireUsage(payload["aggregate_direct_usage"], ownershipRequired = false)
-    requireUsage(payload["aggregate_inclusive_usage"], ownershipRequired = false)
+    require(payload["aggregate_direct_usage"] is Map<*, *>)
+    require(payload["aggregate_inclusive_usage"] is Map<*, *>)
     require(payload["budget_regression"] is Boolean)
   }
 }
@@ -65,9 +65,9 @@ private fun requireAccountingNode(value: Any?, legacy: Boolean) {
   COUNTER_KEYS.forEach { key -> require((node[key] as? Number)?.toLong()?.let { it >= 0 } == true) }
   requireCounters(node["inclusive_counters"])
   if (legacy) {
-    requireUsage(node["provider_usage"], ownershipRequired = true)
-    requireUsage(node["direct_usage"], ownershipRequired = false)
-    requireUsage(node["inclusive_usage"], ownershipRequired = false)
+    require(node["provider_usage"] is Map<*, *>)
+    require(node["direct_usage"] is Map<*, *>)
+    require(node["inclusive_usage"] is Map<*, *>)
   }
   requireBundleAccounting(node)
 }
@@ -112,21 +112,5 @@ private val COUNTER_KEYS = setOf(
   "tool_calls",
   "model_turns",
 )
-
-private fun requireUsage(value: Any?, ownershipRequired: Boolean) {
-  val usage = value as? Map<*, *> ?: error("Review accounting usage must be an object.")
-  val tokenKeys = setOf(
-    "input_tokens",
-    "cached_input_tokens",
-    "output_tokens",
-    "reasoning_tokens",
-    "total_tokens",
-    "fresh_token_approximation",
-  )
-  require(usage.keys.all { it in tokenKeys || it == "ownership" })
-  val tokenCounts = usage.filterKeys { it != "ownership" }.values
-  require(tokenCounts.all { (it as? Number)?.toLong()?.let { count -> count >= 0 } == true })
-  if (ownershipRequired) require(usage["ownership"] in setOf("direct", "inclusive"))
-}
 
 private const val LEGACY_REVIEW_CONTEXT_CONTRACT_VERSION: String = "2.1"

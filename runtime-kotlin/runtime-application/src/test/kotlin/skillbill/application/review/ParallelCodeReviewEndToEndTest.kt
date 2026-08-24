@@ -103,7 +103,6 @@ class ParallelCodeReviewEndToEndTest {
         kmpConfig {
           RecordedWorkerResponse(
             stdout = finding("src/main/kotlin/App.kt", KOTLIN_ARCHITECTURE),
-            usage = RecordedTransportUsage(1_000, 400, 200, 50, 1_200),
           )
         },
         recorder,
@@ -126,7 +125,6 @@ class ParallelCodeReviewEndToEndTest {
       kotlinConfig {
         RecordedWorkerResponse(
           stdout = finding("src/Repo.kt", KOTLIN_ARCHITECTURE),
-          usage = RecordedTransportUsage(1_000, 400, 200, 50, 1_200),
         )
       },
       recorder,
@@ -149,7 +147,7 @@ class ParallelCodeReviewEndToEndTest {
   @Test fun `durable accounting is persisted exactly once per review`() {
     val recorder = ReviewRecorder()
 
-    reviewHarness(kotlinConfig { RecordedWorkerResponse(usage = RecordedTransportUsage(10, 2, 3)) }, recorder)
+    reviewHarness(kotlinConfig { RecordedWorkerResponse() }, recorder)
       .run(harnessRequest())
 
     val record = recorder.savedAccounting.single()
@@ -161,7 +159,7 @@ class ParallelCodeReviewEndToEndTest {
     val recorder = ReviewRecorder()
     val reviewRunId = "rvw-20260722-101500-ab12"
 
-    reviewHarness(kotlinConfig { RecordedWorkerResponse(usage = RecordedTransportUsage(10, 2, 3)) }, recorder)
+    reviewHarness(kotlinConfig { RecordedWorkerResponse() }, recorder)
       .run(harnessRequest(reviewRunId = reviewRunId))
 
     val record = recorder.savedAccounting.single()
@@ -172,7 +170,7 @@ class ParallelCodeReviewEndToEndTest {
   @Test fun `accounting falls back to the packet review id when no run id is supplied`() {
     val recorder = ReviewRecorder()
 
-    reviewHarness(kotlinConfig { RecordedWorkerResponse(usage = RecordedTransportUsage(10, 2, 3)) }, recorder)
+    reviewHarness(kotlinConfig { RecordedWorkerResponse() }, recorder)
       .run(harnessRequest())
 
     assertTrue(recorder.savedAccounting.single().reviewId.startsWith("code-review-parallel-"))

@@ -450,19 +450,6 @@ class ReviewContextSchemaValidatorTest {
     }
   }
 
-  @Test fun `retired provider budget fields are rejected`() {
-    val launch =
-      GovernedReviewLaunch(assignment, packet, "contract", "rubric", "broker", ReviewContextBudgetPolicy.DEFAULT)
-    val envelope = launch.toLaunchEnvelope().asWireMap().toMutableMap()
-    val budget = requireNotNull(JsonSupport.anyToStringAnyMap(envelope["budget"])).toMutableMap()
-    budget["provider_token_thresholds"] = mapOf("total_tokens" to 1)
-    envelope["budget"] = budget
-
-    assertFailsWith<InvalidReviewContextSchemaError> {
-      ReviewContextSchemaValidator.validateLaunch(envelope, "launch")
-    }
-  }
-
   @Test fun `index hunks reject inlined diff bodies on parent assignment and launch`() {
     val parent = packet.toParentPacketEnvelope().asWireMap().toMutableMap()
 

@@ -17,13 +17,17 @@ import skillbill.error.UnreadableRepoLocalConfigError
 import skillbill.ports.config.RepoLocalConfigPort
 import skillbill.ports.config.model.ReadRepoLocalConfigRequest
 import skillbill.ports.config.model.ReadRepoLocalConfigResult
+import skillbill.ports.diagnostics.NoopRuntimeDiagnostics
+import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
 
 @Inject
-class FileSystemRepoLocalConfig : RepoLocalConfigPort {
+class FileSystemRepoLocalConfig(
+  private val diagnostics: RuntimeDiagnostics = NoopRuntimeDiagnostics,
+) : RepoLocalConfigPort {
   private val yamlMapper: YAMLMapper by lazy { YAMLMapper() }
 
   override fun readRepoLocalConfig(request: ReadRepoLocalConfigRequest): ReadRepoLocalConfigResult {
@@ -67,10 +71,17 @@ class FileSystemRepoLocalConfig : RepoLocalConfigPort {
 
   private fun parseReviewContextBudget(path: Path, value: Any?): ReviewContextBudgetPolicy {
     val raw = budgetMapping(path, "review_context_budget", value)
-    validateBudgetKeys(path, raw, "review_context_budget", REVIEW_CONTEXT_BUDGET_KEYS)
+    if (raw.containsKey("provider_token_thresholds")) {
+      diagnostics.warning(
+        "Repo-local config degradation: seam=provider_token_thresholds used=ignored " +
+          "expected=absent cause=retired configuration block",
+      )
+    }
+    val active = raw - "provider_token_thresholds"
+    validateBudgetKeys(path, active, "review_context_budget", REVIEW_CONTEXT_BUDGET_KEYS)
     val defaults = ReviewContextBudgetPolicy.DEFAULT
     return try {
-      buildReviewContextBudget(path, raw, defaults)
+      buildReviewContextBudget(path, active, defaults)
     } catch (error: IllegalArgumentException) {
       throw MalformedRepoLocalConfigError(
         path.toString(),
@@ -203,7 +214,6 @@ private val REVIEW_CONTEXT_BUDGET_KEYS = setOf(
   "max_specialist_model_turns",
   "max_routing_analysis_pairs",
   "max_routing_analysis_bytes",
-  "provider_token_thresholds",
 )
 
 private fun java.math.BigInteger.longValueExactOrNull(): Long? = try {

@@ -30,7 +30,6 @@ import skillbill.ports.goalrunner.model.GoalRunnerManifestState
 import skillbill.ports.goalrunner.model.GoalRunnerObservabilityRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerProgressEventRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerReconcileGate
-import skillbill.ports.goalrunner.model.GoalRunnerSessionAccountingRecordRequest
 import skillbill.ports.goalrunner.model.GoalRunnerWorkflowProgress
 import skillbill.ports.persistence.DatabaseSessionFactory
 import skillbill.ports.persistence.EmptyFeatureTaskRuntimeAuditGenerationRepository
@@ -1621,11 +1620,6 @@ private object EmptyOutcomeStore : GoalRunnerWorkflowOutcomeStore {
 
   override fun recordProgressEvent(request: GoalRunnerProgressEventRecordRequest, dbPathOverride: String?): Boolean =
     false
-
-  override fun recordSessionAccounting(
-    request: GoalRunnerSessionAccountingRecordRequest,
-    dbPathOverride: String?,
-  ): Boolean = false
 
   override fun recordAttemptLedgerEntry(
     request: GoalRunnerAttemptLedgerRecordRequest,

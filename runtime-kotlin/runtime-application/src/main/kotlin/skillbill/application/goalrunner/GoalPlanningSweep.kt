@@ -1266,8 +1266,6 @@ class DefaultGoalPlanningSweep(
       agentId = outcome.agent.id,
       durationMs = durationMs,
       exitStatus = outcome.exitStatus,
-      inputTokens = outcome.inputTokens,
-      outputTokens = outcome.outputTokens,
       assistantEventCount = outcome.assistantEventCount,
       rawOutputPreview = outcome.rawOutputPreview,
     )

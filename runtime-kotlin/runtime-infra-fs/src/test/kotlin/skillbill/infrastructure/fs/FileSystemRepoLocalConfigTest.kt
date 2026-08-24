@@ -4,6 +4,7 @@ import skillbill.config.model.RepoLocalConfig
 import skillbill.config.model.SpecType
 import skillbill.error.MalformedRepoLocalConfigError
 import skillbill.ports.config.model.ReadRepoLocalConfigRequest
+import skillbill.ports.diagnostics.RuntimeDiagnostics
 import skillbill.review.context.model.ReviewContextBudgetPolicy
 import java.nio.file.Files
 import java.nio.file.Path
@@ -11,6 +12,7 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 
 class FileSystemRepoLocalConfigTest {
   private val adapter = FileSystemRepoLocalConfig()
@@ -164,6 +166,7 @@ class FileSystemRepoLocalConfigTest {
 
   @Test
   fun `review context budget accepts retained and retired keys`() {
+    val diagnostics = RecordingDiagnostics()
     val repoRoot = writeConfig(
       """
       review_context_budget:
@@ -186,7 +189,8 @@ class FileSystemRepoLocalConfigTest {
       """.trimIndent(),
     )
 
-    val budget = adapter.readRepoLocalConfig(ReadRepoLocalConfigRequest(repoRoot)).config.reviewContextBudget
+    val budget = FileSystemRepoLocalConfig(diagnostics)
+      .readRepoLocalConfig(ReadRepoLocalConfigRequest(repoRoot)).config.reviewContextBudget
 
     assertEquals(700_000, budget.maxParentPacketBytes)
     assertEquals(70_000, budget.maxLaneLaunchBytes)
@@ -198,6 +202,23 @@ class FileSystemRepoLocalConfigTest {
     assertEquals(30, budget.maxSpecialistModelTurns)
     assertEquals(1_024, budget.maxRoutingAnalysisPairs)
     assertEquals(2_048_000, budget.maxRoutingAnalysisBytes)
+    assertEquals(1, diagnostics.warnings.size)
+    assertContains(diagnostics.warnings.single(), "provider_token_thresholds")
+  }
+
+  @Test
+  fun `review context budget without retired block emits no degradation`() {
+    val diagnostics = RecordingDiagnostics()
+    val repoRoot = writeConfig(
+      """
+      review_context_budget:
+        max_parent_packet_bytes: 700000
+      """.trimIndent(),
+    )
+
+    FileSystemRepoLocalConfig(diagnostics).readRepoLocalConfig(ReadRepoLocalConfigRequest(repoRoot))
+
+    assertTrue(diagnostics.warnings.isEmpty())
   }
 
   @Test
@@ -319,5 +340,15 @@ class FileSystemRepoLocalConfigTest {
     Files.createDirectories(configPath.parent)
     Files.writeString(configPath, content)
     return repoRoot
+  }
+
+  private class RecordingDiagnostics : RuntimeDiagnostics {
+    val warnings = mutableListOf<String>()
+
+    override fun warning(message: String, error: Throwable?) {
+      warnings += message
+    }
+
+    override fun error(message: String, error: Throwable?) = Unit
   }
 }

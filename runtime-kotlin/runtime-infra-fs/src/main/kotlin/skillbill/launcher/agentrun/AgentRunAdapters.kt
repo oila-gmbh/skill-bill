@@ -72,21 +72,8 @@ class ProcessAgentRunAdapter(
       stdoutTruncated = result.stdoutTruncated,
       stdoutByteSize = if (result.stdoutTruncated) result.stdoutByteSize else decodedBodyBytes.size.toLong(),
       stdoutSha256 = if (result.stdoutTruncated) result.stdoutSha256 else sha256(decodedBodyBytes),
-      // SKILL-64 Subtask 3 (AC6, AC11): provider-neutral child-session
-      // descriptors derived from launch context the launcher controls — the
-      // child working directory (session path) and a deterministic, non-secret
-      // session marker (agent + subtask + working dir). No provider-private
-      // token-log format is consulted (Non-Goal).
       childSessionPath = command.workingDirectory.toString(),
       childSessionId = childSessionId(agent, request, command.workingDirectory),
-      inputTokens = decoded.inputTokens,
-      cachedInputTokens = decoded.cachedInputTokens,
-      outputTokens = decoded.outputTokens,
-      reasoningTokens = decoded.reasoningTokens,
-      totalTokens = decoded.totalTokens,
-      // This decoder runs after process completion. Completion facts are never an enforceable
-      // provider seam, irrespective of what a future command builder can expose in flight.
-      providerUsageEnforceable = false,
       assistantEventCount = decoded.assistantEventCount,
       rawOutputPreview = decoded.rawOutputPreview,
     )
@@ -175,11 +162,6 @@ private fun sha256(bytes: ByteArray): String =
 
 data class DecodedAgentRunOutput(
   val text: String,
-  val inputTokens: Long? = null,
-  val cachedInputTokens: Long? = null,
-  val outputTokens: Long? = null,
-  val reasoningTokens: Long? = null,
-  val totalTokens: Long? = null,
   /** Assistant turns observed on transports that expose them; null when the transport has no such event. */
   val assistantEventCount: Int? = null,
   /** Bounded raw-transport excerpt, set only when decoding produced no usable text. */
@@ -224,14 +206,8 @@ internal val structuredOutputMapper: ObjectMapper by lazy { ObjectMapper() }
 
 private fun decodeClaudeJson(stdout: String): DecodedAgentRunOutput = runCatching {
   val root = structuredOutputMapper.readTree(stdout.trim())
-  val usage = root.path("usage")
   DecodedAgentRunOutput(
     text = root.path("result").takeIf { it.isTextual }?.asText().orEmpty(),
-    inputTokens = usage.longOrNull("input_tokens"),
-    cachedInputTokens = usage.longOrNull("cache_read_input_tokens"),
-    outputTokens = usage.longOrNull("output_tokens"),
-    reasoningTokens = usage.longOrNull("reasoning_tokens"),
-    totalTokens = usage.longOrNull("total_tokens"),
   )
 }.getOrElse { DecodedAgentRunOutput(stdout) }
 
@@ -253,42 +229,26 @@ private fun decodeClaudeStreamJson(stdout: String): DecodedAgentRunOutput {
       text = "",
       rawOutputPreview = stdout.take(RAW_OUTPUT_PREVIEW_MAX_CHARS),
     )
-  val usage = terminal.path("usage")
   return DecodedAgentRunOutput(
     text = terminal.path("result").takeIf { it.isTextual }?.asText().orEmpty(),
-    inputTokens = usage.longOrNull("input_tokens"),
-    cachedInputTokens = usage.longOrNull("cache_read_input_tokens"),
-    outputTokens = usage.longOrNull("output_tokens"),
-    reasoningTokens = usage.longOrNull("reasoning_tokens"),
-    totalTokens = usage.longOrNull("total_tokens"),
   )
 }
 
 private fun decodeCodexJsonl(stdout: String): DecodedAgentRunOutput {
   var text: String? = null
-  var usage: com.fasterxml.jackson.databind.JsonNode? = null
   var decodedEnvelope = false
   stdout.lineSequence().filter(String::isNotBlank).forEach { line ->
     runCatching { structuredOutputMapper.readTree(line) }.getOrNull()?.let { event ->
       decodedEnvelope = true
       event.path("item").path("text").takeIf { it.isTextual }?.asText()?.let { text = it }
-      event.path("usage").takeUnless { it.isMissingNode || it.isNull }?.let { usage = it }
     }
   }
   return DecodedAgentRunOutput(
     text = text ?: if (decodedEnvelope) "" else stdout,
-    inputTokens = usage?.longOrNull("input_tokens"),
-    cachedInputTokens = usage?.longOrNull("cached_input_tokens"),
-    outputTokens = usage?.longOrNull("output_tokens"),
-    reasoningTokens = usage?.longOrNull("reasoning_tokens"),
-    totalTokens = usage?.longOrNull("total_tokens"),
   )
 }
 
 internal const val RAW_OUTPUT_PREVIEW_MAX_CHARS = 2_000
-
-internal fun com.fasterxml.jackson.databind.JsonNode.longOrNull(field: String): Long? =
-  path(field).takeIf { it.isIntegralNumber && it.canConvertToLong() }?.longValue()
 
 fun headlessAgentRunAdapters(
   processRunner: AgentRunProcessRunner,

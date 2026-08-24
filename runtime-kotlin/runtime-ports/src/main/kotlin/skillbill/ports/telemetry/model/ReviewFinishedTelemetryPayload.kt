@@ -32,7 +32,6 @@ private class ReviewFinishedTelemetryPayloadContract(
     put("review_finished_at", telemetry.reviewFinishedAt)
     put("learnings", telemetry.learnings.toPayload())
     putAll(telemetry.stageMetrics.toStageMetricsPayload())
-    telemetry.reviewContextAccounting?.let { put("review_context_accounting", it) }
   }
 }
 

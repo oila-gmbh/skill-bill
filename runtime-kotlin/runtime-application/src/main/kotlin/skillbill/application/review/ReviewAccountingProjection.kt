@@ -93,4 +93,3 @@ private fun ReviewAccountingCounters.toPayload(): Map<String, Long> = linkedMapO
   "tool_calls" to toolCalls.toLong(),
   "model_turns" to modelTurns.toLong(),
 )
-

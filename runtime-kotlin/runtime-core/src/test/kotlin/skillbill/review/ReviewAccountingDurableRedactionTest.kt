@@ -14,12 +14,9 @@ import skillbill.contracts.review.REVIEW_CONTEXT_CONTRACT_VERSION
 import skillbill.contracts.review.ReviewContextSchemaValidator
 import skillbill.db.core.DatabaseRuntime
 import skillbill.infrastructure.sqlite.review.loadReviewAccounting
-import skillbill.infrastructure.sqlite.review.reviewFinishedPayload
 import skillbill.infrastructure.sqlite.review.upsertReviewAccounting
 import skillbill.ports.persistence.model.ReviewAccountingRecord
-import skillbill.ports.telemetry.model.toReviewFinishedTelemetryPayload
 import skillbill.review.context.model.ReviewAccountingSummary
-import skillbill.review.model.ReviewSummary
 import java.nio.file.Files
 import java.sql.Connection
 import kotlin.test.Test
@@ -181,45 +178,6 @@ class ReviewAccountingDurableRedactionTest {
     }
   }
 
-  @Test fun `review-finished telemetry carries bounded accounting and no measured content`() {
-    withConnection { connection ->
-      val summary = recordedReview().second
-      upsertReviewAccounting(
-        connection,
-        ReviewAccountingRecord(REVIEW_RUN_ID, summary.packetDigest, summary.toBoundedPayload()),
-      )
-
-      val telemetry = reviewFinishedPayload(connection, reviewSummary(), findingRows = emptyList(), level = "full")
-      val payload = telemetry.toReviewFinishedTelemetryPayload().toPayload()
-
-      @Suppress("UNCHECKED_CAST")
-      val accounting = assertNotNull(payload["review_context_accounting"] as? Map<String, Any?>)
-      assertEquals(
-        JsonSupport.mapToJsonString(summary.toBoundedPayload()),
-        JsonSupport.mapToJsonString(accounting),
-      )
-      assertNoSentinels(payload.toString())
-      assertTrue(accounting.keys.none { it.contains("prompt") })
-    }
-  }
-
-  @Test fun `accounting keyed by anything other than the review run id is unreachable from telemetry`() {
-    withConnection { connection ->
-      val summary = recordedReview().second
-      upsertReviewAccounting(
-        connection,
-        ReviewAccountingRecord("code-review-parallel-abc123", summary.packetDigest, summary.toBoundedPayload()),
-      )
-
-      val telemetry = reviewFinishedPayload(connection, reviewSummary(), findingRows = emptyList(), level = "full")
-
-      assertNull(
-        telemetry.toReviewFinishedTelemetryPayload().toPayload()["review_context_accounting"],
-        "Review accounting must be written under the same review run id review_finished resolves.",
-      )
-    }
-  }
-
   /**
    * One production review whose every content-bearing input carries a sentinel: the diff and the
    * changed guidance file, the resolved rubric, and the lane result.
@@ -330,19 +288,6 @@ class ReviewAccountingDurableRedactionTest {
         buildString { while (rows.next()) append(rows.getString(1)) }
       }
     }
-
-  private fun reviewSummary() = ReviewSummary(
-    reviewRunId = REVIEW_RUN_ID,
-    reviewSessionId = "rvs-1",
-    routedSkill = "bill-kotlin-code-review",
-    detectedScope = "branch diff",
-    detectedStack = "kotlin",
-    executionMode = "delegated",
-    specialistReviewsRaw = "architecture",
-    reviewFinishedAt = "2026-07-22T00:00:00Z",
-    reviewFinishedEventEmittedAt = null,
-    orchestratedRun = true,
-  )
 
   private fun withConnection(block: (Connection) -> Unit) {
     val dbPath = Files.createTempDirectory("review-accounting-redaction").resolve("metrics.db")

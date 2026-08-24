@@ -23,7 +23,6 @@ interface NativeReviewOperationProtocol {
 
   /** Called synchronously for decoded lane-result content. A non-null result forbids further work. */
   fun laneResultChunk(chunk: String): ReviewBudgetOutcome?
-
 }
 
 class BrokerBackedNativeReviewOperationProtocol(

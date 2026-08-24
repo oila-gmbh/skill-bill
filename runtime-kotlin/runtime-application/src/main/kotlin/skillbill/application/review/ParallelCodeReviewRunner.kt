@@ -2063,4 +2063,3 @@ private fun inlineTerminalStatus(facts: AgentRunLaunchFacts, disposition: Review
   facts.exitStatus != 0 -> "process_failure"
   else -> "completed"
 }
-
