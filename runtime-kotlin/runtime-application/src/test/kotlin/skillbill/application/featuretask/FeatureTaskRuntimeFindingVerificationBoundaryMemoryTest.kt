@@ -247,6 +247,37 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemoryTest {
   }
 
   @Test
+  fun `over-reported boundary context unavailable is ignored when a catalog is available`() {
+    val repo = Files.createTempDirectory("verify-findings-over-reported-availability")
+    val agent = Files.createDirectories(repo.resolve("runtime-kotlin/runtime-application/agent"))
+    Files.writeString(
+      agent.resolve("history.md"),
+      "# Boundary History\n\n## [2026-08-01] selected-title\n\nselected body sentence\n",
+    )
+    val sections = memory.sectionsForFindings(
+      repo,
+      listOf(
+        FeatureTaskRuntimeFindingBoundaryMemoryRequest(
+          findingId = "F-001",
+          findingPaths = listOf("runtime-kotlin/runtime-application/src/Foo.kt"),
+        ),
+      ),
+    )
+    assertFalse(sections.single().discovery.boundaryContextUnavailable)
+    val disposition = skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition(
+      findingId = "F-001",
+      disposition = FeatureTaskRuntimeFindingVerificationDispositionVerdict.VERIFIED,
+      reason = "Matches intent",
+      severity = FeatureTaskRuntimeReviewSeverity.MAJOR,
+      location = "Foo.kt",
+      message = "example",
+      boundaryContextUnavailable = true,
+    )
+
+    assertEquals(null, memory.validateDispositionBoundaryContext(sections, listOf(disposition)))
+  }
+
+  @Test
   fun `invalid boundary heading selections are ignored without blocking`() {
     val repo = Files.createTempDirectory("verify-findings-provenance")
     val agent = Files.createDirectories(repo.resolve("runtime-kotlin/runtime-application/agent"))

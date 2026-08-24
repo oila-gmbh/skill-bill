@@ -4987,7 +4987,6 @@ internal class FeatureTaskRuntimeRunLoop(
    * agent-authored gate measurements: overwrite (or supply) `gate_run_count`/`gate_runs` with the
    * degradation attestation before consumer projection and persist.
    */
-  @Suppress("ReturnCount")
   private fun stampRuntimeOwnedImplementationCheckpoint(
     run: PhaseRun,
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
@@ -5013,7 +5012,9 @@ internal class FeatureTaskRuntimeRunLoop(
     ).requireAcceptedOutput(run.phaseId).normalizedOutput
   }
 
-  private fun authoritativeImplementationRepositoryCheckpoint(run: PhaseRun): FeatureTaskRuntimeRepositoryCheckpoint? =
+  private fun authoritativeImplementationRepositoryCheckpoint(
+    run: PhaseRun,
+  ): FeatureTaskRuntimeRepositoryCheckpoint? =
     buildRepositoryCheckpoint(run)
       ?: gitOperations.repositoryFingerprint(run.request.repoRoot)
         .takeIf { it.ok }

@@ -103,6 +103,7 @@ private fun decideInstallAction(
         existingTarget == normalizedRoot.resolve(resolvedSource.parent.fileName).resolve(resolvedSource.fileName)
     } ->
       InstallAction.Replace
+    existingTarget != null && Files.notExists(existingTarget) -> InstallAction.Replace
     else -> InstallAction.Skip
   }
 }

@@ -80,9 +80,11 @@ internal object FeatureTaskRuntimePhaseProjectionShapes {
       "        \"deviations\": [ { \"ref\": \"task-1\", \"note\": \"<one-line what deviated and why>\" } ],\n" +
       "        \"unresolved_items\": [],\n" +
       "        \"reconciliation_evidence\": { \"reconciled\": true, \"evidence\": \"<tree at target>\" },\n" +
-      "        \"repository_checkpoint\": { \"fingerprint\": \"<checkpoint fingerprint>\" },\n" +
       "        \"reconciled_state\": { \"reconciled\": true, \"evidence\": \"<tree at target>\" } }\n" +
       "      ```\n" +
+      "      repository_checkpoint is runtime-owned: omit it entirely. Never compute, concatenate, or\n" +
+      "      guess a fingerprint; invented values are discarded and the runtime stamps the authoritative\n" +
+      "      digest before the receipt is accepted.\n" +
       "      Compilation and test execution belong exclusively to the validate phase. Do NOT build,\n" +
       "      compile, or run tests here: write the tests the plan obligates and leave them unexecuted.\n" +
       "      tests_executed stays [] in this phase; validate runs them and owns their outcomes.\n" +

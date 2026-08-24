@@ -370,8 +370,8 @@ internal val phaseDirectives: Map<String, String> = mapOf(
     "\"$FEATURE_TASK_RUNTIME_PLANNING_PROJECTIONS_CONTRACT_VERSION\": completed_task_ids, " +
     "normalized changed_paths, " +
     "tests_added, tests_updated, deviations, unresolved_items, " +
-    "reconciliation_evidence, and the repository_checkpoint the audit will verify against). Every " +
-    "receipt field is a bounded summary, not a transcript: a segment that applied no edits reports that " +
+    "and reconciliation_evidence). repository_checkpoint is runtime-owned: omit it and never invent a\n" +
+    "fingerprint. Every receipt field is a bounded summary, not a transcript: a segment that applied no edits reports that " +
     "it applied none, names what already satisfied the work, and stops — the audit re-reads the tree " +
     "itself, so proving convergence path by path here only risks overflowing the field. When the " +
     "briefing carries audit_gaps, reuse its immutable initial preplan and plan outputs and change " +

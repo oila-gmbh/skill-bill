@@ -145,6 +145,35 @@ class FeatureTaskRuntimePlanningProjectionModelsTest {
   }
 
   @Test
+  fun `receipt without repository_checkpoint omits that projection field`() {
+    val produced = linkedMapOf<String, Any?>(
+      "projection_kind" to "implementation_receipt",
+      "contract_version" to FeatureTaskRuntimePlanningProjectionContract.VERSION,
+      "completed_task_ids" to listOf("task-01"),
+      "changed_paths" to listOf("runtime-domain/model/X.kt"),
+      "tests_executed" to emptyList<Any?>(),
+      "reconciliation_evidence" to linkedMapOf("reconciled" to true, "evidence" to "files at target"),
+    )
+    val parsed = assertIs<FeatureTaskRuntimeImplementationReceipt>(
+      featureTaskRuntimePlanningProjectionFromEnvelope(
+        envelope = linkedMapOf("produced_outputs" to produced),
+        producingPhaseId = "implement",
+        expectedKind = FeatureTaskRuntimeProjectionKind.IMPLEMENTATION_RECEIPT,
+        schemaValidator = NoopFeatureTaskRuntimePlanningProjectionValidator,
+      ),
+    )
+
+    assertEquals(null, parsed.repositoryCheckpoint)
+    val fieldNames = parsed.toProjectionFields().map { it.name }
+    assertEquals(
+      FeatureTaskRuntimeImplementationReceipt.DECLARED_FIELD_NAMES.filter {
+        it != FeatureTaskRuntimeImplementationReceipt.FIELD_REPOSITORY_CHECKPOINT
+      },
+      fieldNames,
+    )
+  }
+
+  @Test
   fun `receipt accepts an empty changed_paths list for a reconciled no-op`() {
     val produced = linkedMapOf<String, Any?>(
       "projection_kind" to "implementation_receipt",

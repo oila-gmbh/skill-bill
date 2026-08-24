@@ -121,7 +121,8 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(prompt, "changed_paths")
     assertContains(prompt, "tests_executed")
     assertContains(prompt, "reconciliation_evidence")
-    assertContains(prompt, "repository_checkpoint")
+    assertContains(prompt, "runtime-owned")
+    assertContains(prompt, "omit it entirely")
     assertContains(
       prompt,
       "\"projection_kind\": \"implementation_receipt\"",

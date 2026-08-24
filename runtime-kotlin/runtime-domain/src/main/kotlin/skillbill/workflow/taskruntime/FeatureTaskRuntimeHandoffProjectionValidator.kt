@@ -197,9 +197,22 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
       return fields
     }
     val resolvedFingerprint = inputs.resolvedCheckpoint?.fingerprint ?: return fields
-    return fields.map { field ->
+    val refreshed = fields.map { field ->
       resolvedCheckpointField(field, resolvedFingerprint, carried)
     }
+    if (
+      FeatureTaskRuntimeImplementationReceipt.FIELD_REPOSITORY_CHECKPOINT in declaration.declaredFieldNames &&
+      refreshed.none { it.name == FeatureTaskRuntimeImplementationReceipt.FIELD_REPOSITORY_CHECKPOINT }
+    ) {
+      return refreshed + FeatureTaskRuntimeHandoffProjectionField(
+        FeatureTaskRuntimeImplementationReceipt.FIELD_REPOSITORY_CHECKPOINT,
+        FeatureTaskRuntimeHandoffProjectionValue.CompactReference(
+          kind = FeatureTaskRuntimeCompactReferenceKind.REPOSITORY_CHECKPOINT,
+          value = resolvedFingerprint,
+        ),
+      )
+    }
+    return refreshed
   }
 
   private fun checkpointPolicyViolation(
