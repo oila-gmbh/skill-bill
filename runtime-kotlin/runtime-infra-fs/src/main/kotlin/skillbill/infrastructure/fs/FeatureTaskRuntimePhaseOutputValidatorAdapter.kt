@@ -35,8 +35,8 @@ class FeatureTaskRuntimePhaseOutputValidatorAdapter : FeatureTaskRuntimePhaseOut
         )
 
       is FeatureTaskRuntimePhaseOutputStructuralRepairDecision.Accepted -> try {
-        val normalized = if (sourceLabel == FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT) {
-          FeatureTaskRuntimePhaseOutputSchemaValidator.normalizeAuditPhaseOutputLenient(
+        val normalized = if (sourceLabel in LENIENT_VERIFYING_PHASE_OUTPUT_SCHEMA) {
+          FeatureTaskRuntimePhaseOutputSchemaValidator.normalizeVerifyingPhaseOutputLenient(
             decision.text,
             sourceLabel,
           )
@@ -100,5 +100,12 @@ class FeatureTaskRuntimePhaseOutputValidatorAdapter : FeatureTaskRuntimePhaseOut
         payloadFreeReason = "produced_outputs.build_receipt is required for the build phase envelope.",
       )
     FeatureTaskRuntimeBuildReceiptSchemaValidator.validate(buildReceipt, sourceLabel)
+  }
+
+  private companion object {
+    val LENIENT_VERIFYING_PHASE_OUTPUT_SCHEMA: Set<String> = setOf(
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
+      FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_VERIFY_FINDINGS,
+    )
   }
 }
