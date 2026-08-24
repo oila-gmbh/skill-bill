@@ -979,9 +979,6 @@ object RepoValidationRuntime {
 
   private fun isDocumentedExampleReference(file: Path, root: Path, referenced: String): Boolean {
     val relative = file.relativeTo(root).toString()
-    if (relative == "orchestration/workflow-contract/PLAYBOOK.md") {
-      return referenced == "bill-feature-task"
-    }
     if (relative == "orchestration/shell-content-contract/SCAFFOLD_PAYLOAD.md") {
       return referenced in setOf(
         "bill-java-code-review",

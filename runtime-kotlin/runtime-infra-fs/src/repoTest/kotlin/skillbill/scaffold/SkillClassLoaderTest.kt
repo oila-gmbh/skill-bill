@@ -139,7 +139,7 @@ class SkillClassLoaderTest {
       "code-review-specialist",
       resolveSkillClass("bill-kotlin-code-review-security", classes)?.classId,
     )
-    assertNull(resolveSkillClass("bill-feature-task", classes))
+    assertNull(resolveSkillClass("bill-unmatched", classes))
   }
 
   @Test

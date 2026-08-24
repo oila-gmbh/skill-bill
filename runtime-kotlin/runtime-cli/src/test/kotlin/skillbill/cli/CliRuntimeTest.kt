@@ -615,7 +615,7 @@ class CliRuntimeTest {
         listOf(
           "doctor",
           "skill",
-          "bill-feature-task",
+          "bill-feature",
           "--repo-root",
           ".",
           "--content",
@@ -628,7 +628,7 @@ class CliRuntimeTest {
     assertEquals(1, result.exitCode)
     assertEquals(
       "doctor skill was retired in SKILL-32; use " +
-        "`skill-bill show bill-feature-task --repo-root . --content none` instead.",
+        "`skill-bill show bill-feature --repo-root . --content none` instead.",
       result.stdout,
     )
   }
@@ -1248,7 +1248,7 @@ private fun statsRequester(capturedRequests: MutableList<Map<String, Any?>>): Ht
             "source": "custom_capabilities",
             "supports_ingest": true,
             "supports_stats": true,
-            "supported_workflows": ["bill-feature-verify", "bill-feature-task", "feature-task-runtime"],
+            "supported_workflows": ["bill-feature-verify", "feature-task-runtime"],
             "region": "eu"
           }
           """.trimIndent(),
@@ -1396,7 +1396,7 @@ private fun expectedCapabilitiesPayload(): Map<String, Any?> = linkedMapOf(
   "capabilities_url" to "https://telemetry.example.dev/ingest/capabilities",
   "supports_ingest" to true,
   "supports_stats" to true,
-  "supported_workflows" to listOf("bill-feature-verify", "bill-feature-task", "feature-task-runtime"),
+  "supported_workflows" to listOf("bill-feature-verify", "feature-task-runtime"),
   "region" to "eu",
 )
 

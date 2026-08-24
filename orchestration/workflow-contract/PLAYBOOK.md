@@ -20,7 +20,7 @@ whose behavior already spans multiple sequential child steps.
 The current workflow contract version is **`0.1`**.
 
 - `0.x` means the shape is piloted and may still tighten before a stable `1.0`.
-- The first pilot scope is `bill-feature-task`.
+- The first pilot scope is the feature-task runtime.
 - `bill-feature-verify` is the next intended adopter.
 
 ## When To Use A Workflow
@@ -61,7 +61,7 @@ backend, but the shape below is the contract:
 ```json
 {
   "workflow_id": "wfl-20260421-142530-a1b2",
-  "workflow_name": "bill-feature-task",
+  "workflow_name": "feature-task-runtime",
   "contract_version": "0.1",
   "status": "running",
   "current_step_id": "plan",
@@ -80,7 +80,7 @@ backend, but the shape below is the contract:
 Required top-level fields:
 
 - `workflow_id` — unique id for the workflow run
-- `workflow_name` — stable top-level command name, e.g. `bill-feature-task`
+- `workflow_name` — stable top-level command name, e.g. `feature-task-runtime`
 - `contract_version` — workflow contract version string
 - `status` — `pending | running | completed | failed | abandoned`
 - `current_step_id` — stable step id currently being evaluated, or empty when
@@ -278,9 +278,9 @@ or block; the ledger sequence space is distinct from the `goal_event` and
 > provider cached-token totals as a diagnostic signal, not a Skill Bill
 > guarantee or billing input.
 
-## Pilot: `bill-feature-task`
+## Pilot: feature-task runtime
 
-`bill-feature-task` is the first workflow contract pilot. Its stable step
+The feature-task runtime is the first workflow contract pilot. Its stable step
 ids are:
 
 1. `assess`

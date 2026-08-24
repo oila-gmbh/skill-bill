@@ -220,12 +220,10 @@ if data is not None:
         skill_names = [os.path.basename(p) for p in glob.glob(os.path.join(skills_path, "*"))]
         n = len(skill_names)
         chk("skills_installed", n > 0, f"{n} skills in {skills_path}")
-        prose_skill = "bill-feature-task-" + "prose"
         prose_skills = [
             s for s in skill_names
-            if s in (prose_skill, prose_skill + ".md",
-                     "bill-feature-task-subtask-runner", "bill-feature-task-subtask-runner.md")
-            or ("feature-task-" + "prose") in s
+            if s.endswith("-prose") or s.endswith("-prose.md") or
+            s.endswith("-subtask-runner") or s.endswith("-subtask-runner.md")
         ]
         chk("no_prose_skills", not prose_skills, ",".join(prose_skills))
 

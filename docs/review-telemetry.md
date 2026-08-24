@@ -682,7 +682,7 @@ Client capability contract:
   "supports_stats": true,
   "supported_workflows": [
     "bill-feature-verify",
-    "bill-feature-task"
+    "feature-task-runtime"
   ]
 }
 ```
@@ -721,7 +721,7 @@ Normalized remote stats payloads now include:
 - optional `group_by`
 - optional `series`
 
-For `bill-feature-task`, normalized remote stats also include:
+For `feature-task-runtime`, normalized remote stats also include:
 
 - `boundary_history_written_runs`
 - `boundary_history_written_rate`

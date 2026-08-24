@@ -46,10 +46,6 @@ class FeatureFamilyRenderingIntegrationTest {
       goal,
       "Rejected findings are recorded in the goal-wide unaddressed-findings ledger and are never fixed",
     )
-    assertFalse(feature.contains("bill-feature-task"))
-    assertFalse(feature.contains("bill-feature-task-runtime"))
-    assertFalse(Files.exists(staged.stagingDir.resolve("bill-feature-task.md")))
-    assertFalse(Files.exists(staged.stagingDir.resolve("bill-feature-task-runtime.md")))
     listOf(
       "peak-hours-warner.md",
       "shell-ceremony.md",

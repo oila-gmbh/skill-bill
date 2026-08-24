@@ -10,8 +10,8 @@ import java.nio.file.Path
  * inert inputs (issue key, spec reference, and the branch the run currently sits on). The caller
  * (the runner) performs the git side effects through the injected `WorkflowGitOperations` port.
  *
- * The target branch follows the `bill-feature-task` convention `feat/{ISSUE_KEY}-{feature-name}`,
- * deriving BOTH the issue key and the feature name from the spec's parent directory through the
+ * The target branch follows the feature convention `feat/{ISSUE_KEY}-{feature-name}`, deriving
+ * BOTH the issue key and the feature name from the spec's parent directory through the
  * same `issueAndFeature` seam as `DecompositionManifestWriterPlan.defaultFeatureBranch`, so the
  * runtime can never compute a branch that diverges from the canonical one. The protected-branch
  * guard mirrors `GoalRunner` (`PROTECTED_GOAL_BRANCHES` + `protectedBranchName`) so a run never

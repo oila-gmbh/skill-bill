@@ -25,7 +25,7 @@ class FileSystemAgentRunLauncher internal constructor(
     val adapter = adapters[agent]
       ?: return UnsupportedAgentRunLaunch(
         agent = agent,
-        reason = "Agent '${agent.id}' does not have a supported headless bill-feature-task launch path.",
+        reason = "Agent '${agent.id}' does not have a supported headless feature runtime launch path.",
       )
     return adapter.launch(request.skillRunRequest)
   }

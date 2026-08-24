@@ -104,7 +104,7 @@ abstract class FeatureTaskRuntimePhaseAgentCommand(
   ).flag(default = false)
   protected val agent by option(
     "--agent",
-    help = "Agent invoking bill-feature-task. Resolution order: --agent, then SKILL_BILL_AGENT, then the " +
+    help = "Agent invoking the feature runtime. Resolution order: --agent, then SKILL_BILL_AGENT, then the " +
       "detected invoking-agent execution context, then a documented last-resort default ($DEFAULT_RUNTIME_AGENT).",
   )
   protected val agentOverride by option(

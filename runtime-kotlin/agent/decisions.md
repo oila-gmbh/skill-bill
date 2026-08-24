@@ -262,8 +262,8 @@ Decision:
 1. **Runtime is the sole feature execution engine.** There is no mode selector
    on feature entry — no `mode:prose`, no `mode:runtime`, no engine choice
    exposed by skills, CLI, or MCP.
-2. **The prose engine surface is deleted, not renamed.** `bill-feature-task-prose`,
-   `bill-feature-task-subtask-runner`, `feature_task_prose_*` / legacy
+2. **The prose engine surface is deleted, not renamed.** The legacy prose
+   workflow and subtask-runner surfaces, `feature_task_prose_*` / legacy
    `feature_implement_*` / `goal_prose_*` MCP tools, the `skill-bill workflow`
    family (`TASK_PROSE`), `implement-stats`, `FeatureImplement*`,
    `WorkflowFamily.IMPLEMENT`, and the IDE `feature-task-prose` family go away.
@@ -438,11 +438,9 @@ removal surface.
 ### Ordering precondition on subtask 3
 
 Runtime phase prompt directives currently lockstep with the prose native agents,
-so `skills/bill-feature-task-prose/native-agents/agents.yaml` holds the only copy
-of some governed briefing text. Before that file and
-`skills/bill-feature-task-subtask-runner/` are deleted, the governed briefing
-text **must** first be re-homed into `skills/bill-feature-task-runtime/content.md`
-and the runtime phase-briefing composition in
+so one native-agent source holds the only copy of some governed briefing text.
+Before the prose source is deleted, the governed briefing text **must** first be
+re-homed into the runtime phase-briefing composition in
 `runtime-kotlin/runtime-application/src/main/kotlin/skillbill/application/featuretask/FeatureTaskRuntimePhaseBriefingAssembler.kt`
 (with `FeatureTaskRuntimeBriefingRendering.kt`). This is an ordering precondition
 on subtask 3, not a suggestion: deletion before re-homing loses the only
@@ -583,10 +581,9 @@ restamp). Kept for history.
 
 ## 2026-07-04 — internal skills are file-read sidecars; repo paths did not move (SKILL-102)
 
-Context: Five feature-execution skills (`bill-feature-task`, `-runtime`, `-prose`,
-`-subtask-runner`, `bill-feature-goal`) needed to stop appearing in every agent's
-skill list because they are dispatch targets selected by `bill-feature`, not user
-entry points. The install pipeline derived listing from the same `content.md`
+Context: The feature-execution dispatch targets needed to stop appearing in every
+agent's skill list because they are selected by `bill-feature`, not user entry
+points. The install pipeline derived listing from the same `content.md`
 discovery that drives staging, so hiding a skill required a new internal-skill
 classification.
 
@@ -602,17 +599,16 @@ skills is necessarily a file read. The file-read pattern was already established
 for other sibling sidecars (`shell-ceremony.md`, `compose-guidelines.md`) and is
 more portable across agents than Skill-tool mechanics. Repo source directories
 did not move or rename (PD3) because `WorkflowEngine.CONTINUATION_CONTENT_PATHS`
-and `RepoValidationRuntime` content-marker checks bind to the existing repo
-paths (`skills/bill-feature-task/content.md`,
-`skills/bill-feature-task-prose/content.md`); moving them would have changed
-runtime path bindings, workflow identity, the DB `workflow_name` CHECK
-constraint, and telemetry constants (PD4) for no listing benefit.
+and `RepoValidationRuntime` content-marker checks bind to the existing repository
+paths; moving them would have changed runtime path bindings, workflow identity,
+the DB `workflow_name` CHECK constraint, and telemetry constants (PD4) for no
+listing benefit.
 
 Alternatives considered: (1) A separate `config.yaml` visibility switch per
 skill — rejected as a per-skill preference system, the opposite of a repo-level
 authored classification. (2) Moving internal skills' source directories under
-the parent (`skills/bill-feature/bill-feature-task/`) — rejected because it
-breaks runtime path bindings and identity strings (PD3/PD4). (3) Trimming the
+the parent — rejected because it breaks runtime path bindings and identity
+strings (PD3/PD4). (3) Trimming the
 sidecar to a token-light format — rejected by PD6 (behavior parity over token
 savings).
 
@@ -648,8 +644,8 @@ rather than scattered edits that drift. Enforcement is defense-in-depth over two
 layers: (L1) the runtime CLI preflights — feature-task, goal, and
 `code-review-parallel` — all funnel their reachable agent ids through one shared gate
 `skillbill.cli.core.refuseRuntimeRefusedAgents`, which throws a `UsageError` with the
-actionable message naming both prose alternatives (`bill-feature-task-prose` /
-`bill-feature-goal mode:prose`); (L2) the launcher source-disablement —
+actionable message naming the governed prose alternative and `bill-feature-goal
+mode:prose`; (L2) the launcher source-disablement —
 `OpencodeAgentRunCommandBuilder` is removed and `headlessAgentRunAdapters` filters out
 `RUNTIME_REFUSED_AGENTS`, so `FileSystemAgentRunLauncher` yields
 `UnsupportedAgentRunLaunch` for opencode (mirroring copilot) as an unbypassable

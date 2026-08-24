@@ -24,8 +24,7 @@ import skillbill.error.InvalidWorkflowStateSchemaError
  *    (durable-record read)
  *  - `WorkflowEngine.continueDecision` (chained via [resumeView])
  *
- * The `slug` argument is the snapshot's `workflow_name` (e.g.
- * `bill-feature-task`); implementations should weave it into the
+ * The `slug` argument is the snapshot's `workflow_name`; implementations should weave it into the
  * loud-fail message so per-skill regressions stay easy to spot.
  */
 interface WorkflowSnapshotValidator {
