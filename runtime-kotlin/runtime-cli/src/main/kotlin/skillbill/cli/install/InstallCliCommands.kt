@@ -287,6 +287,7 @@ class InstallReplayLastSelectionCommand(
       state = WindowsSymlinkPreflightState.NOT_WINDOWS,
       decision = WindowsSymlinkDecision.NOT_REQUIRED,
     ),
+    environment = state.environment,
   )
 
   private fun skillbill.install.model.SharedInstallSelection.toReplayText(): String = buildString {
@@ -294,7 +295,7 @@ class InstallReplayLastSelectionCommand(
       append("agent\t")
       append(agentId)
       append('\t')
-      append(installAgentService.agentPath(agentId, state.userHome))
+      append(installAgentService.agentPath(agentId, state.userHome, state.environment))
       append('\n')
     }
     append("platform-mode\t")
@@ -436,6 +437,7 @@ abstract class InstallRequestCommand(
         message = windowsSymlinkMessage,
       ),
       replaceExistingSkillBillLinks = replaceExistingSkillBillLinks,
+      environment = state.environment,
     )
   }
 

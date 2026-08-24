@@ -85,7 +85,7 @@ class RemoveCliCommandTest {
     val skillDir = repoRoot.resolve("skills/bill-foo")
     Files.createDirectories(skillDir)
     Files.writeString(skillDir.resolve("content.md"), "# bill-foo\n")
-    val context = CliRuntimeContext(userHome = contextHome, environment = isolatedCliEnvironment(contextHome))
+    val context = CliRuntimeContext(userHome = contextHome, environment = isolatedCliEnvironment(selectedHome))
 
     val result = CliRuntime.run(
       listOf(

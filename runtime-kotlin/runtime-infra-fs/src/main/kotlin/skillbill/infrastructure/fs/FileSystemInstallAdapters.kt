@@ -180,11 +180,15 @@ class FileSystemInstallSkillLink : InstallSkillLinkPort {
 
 @Inject
 class FileSystemInstallAgentTargets : InstallAgentTargetPort {
-  override fun agentPath(request: InstallAgentPathRequest): InstallAgentPathResult =
-    InstallAgentPathResult(InstallOperations.agentPath(request.agent, request.home))
+  override fun agentPath(request: InstallAgentPathRequest): InstallAgentPathResult {
+    val environment = request.environment.ifEmpty { System.getenv() }
+    return InstallAgentPathResult(InstallOperations.agentPath(request.agent, request.home, environment))
+  }
 
-  override fun detectAgentTargets(request: DetectInstallAgentTargetsRequest): DetectInstallAgentTargetsResult =
-    DetectInstallAgentTargetsResult(InstallOperations.detectAgentTargets(request.home))
+  override fun detectAgentTargets(request: DetectInstallAgentTargetsRequest): DetectInstallAgentTargetsResult {
+    val environment = request.environment.ifEmpty { System.getenv() }
+    return DetectInstallAgentTargetsResult(InstallOperations.detectAgentTargets(request.home, environment))
+  }
 
   override fun claudeConfigRoots(request: ClaudeConfigRootsRequest): ClaudeConfigRootsResult =
     ClaudeConfigRootsResult(InstallOperations.claudeRoots(request.home, request.environment))

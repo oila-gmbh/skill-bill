@@ -1,5 +1,15 @@
 # Review Boundary History
 
+## [2026-08-24] SKILL-207 subtask 2 — claim verification as phase call and skill alignment
+Areas: runtime-application/review, runtime-application/review/model, skills/bill-code-review, skills/bill-code-review-inline
+- Claim verification now receives review prose through the `input` + `requestedAction` phase envelope; optional parsed findings enrich per-claim checks instead of gating launch.
+- Empty admitted finding lists still launch one prose verification pass when review output is present; blank output remains a recorded skip.
+- Verification output is preserved as an `AgentPhaseOutput` for later enrichment, and prompts treat the prose blob as authoritative.
+- Pattern: best-effort register shape with runtime-owned launch, evidence, and persistence; reusable for later phase I/O envelope adoption.
+- Known limitation: structured verdicts/citations remain optional enrichment, not a typed replacement for verifier prose.
+Feature flag: N/A
+Acceptance criteria: 5/5 implemented
+
 ## [2026-08-19] SKILL-196 subtask 3 — exclude fallback lanes per area
 Areas: application/review, domain/review/plan
 - `ReviewPerAreaFallbackExclusion.partition` runs after per-root lane assembly and before cross-root reconciliation; a fallback pack contributes a lane for area A only when no native routed pack in the assembled plan declares A.

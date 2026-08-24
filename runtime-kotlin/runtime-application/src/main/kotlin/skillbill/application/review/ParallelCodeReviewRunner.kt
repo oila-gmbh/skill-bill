@@ -15,6 +15,7 @@ import skillbill.application.model.ParallelReviewScope
 import skillbill.application.model.ReviewLaneIntegrationInput
 import skillbill.application.model.StackDetectionException
 import skillbill.application.model.UsageValidationException
+import skillbill.application.review.model.ReviewClaimVerificationOutcome
 import skillbill.application.review.model.ReviewRubricProjection
 import skillbill.application.review.model.ReviewSpecAdjudicationOutcome
 import skillbill.application.review.model.ReviewSpecialistLaunchRequest
@@ -594,35 +595,24 @@ class ParallelCodeReviewRunner(
 
   private fun runClaimVerification(initial: InitialRun, result: ParallelCodeReviewResult): List<ReviewFindingVerdict> {
     val reviewRunId = initial.request.reviewRunId
-    val claims = if (reviewRunId == null) {
-      result.mergeResult.findings
-    } else {
-      val boundaries = database.transaction { unitOfWork ->
-        unitOfWork.reviews.fetchStageBoundaries(reviewRunId)
-      }
-      val reviewReached = boundaries.any {
-        it.stage == ReviewStage.REVIEW && it.reached == ReviewStageReached.REACHED
-      }
-      if (!reviewReached) return emptyList()
-      database.transaction { unitOfWork -> unitOfWork.reviews.fetchReviewPassClaims(reviewRunId) }
-        ?.findings
-        .orEmpty()
-    }
-    val existing = if (reviewRunId == null) {
-      emptyList()
-    } else {
-      database.transaction { unitOfWork -> unitOfWork.reviews.fetchFindingVerdicts(reviewRunId) }
-    }
+    val boundaries = reviewStageBoundaries(reviewRunId)
+    val claims = claimVerificationClaims(reviewRunId, boundaries, result.mergeResult.findings)
+    val existing = reviewFindingVerdicts(reviewRunId)
     val verifiedRefs = existing
       .filter { it.stage == ReviewStage.VERIFICATION }
       .map { it.findingRef }
       .toSet()
-    if (claims.all { it.fNumber in verifiedRefs }) {
+    if (claims.isNotEmpty() && claims.all { it.fNumber in verifiedRefs }) {
       if (reviewRunId != null) recordVerificationBoundary(reviewRunId)
       return existing
     }
+    val verificationInput = verificationReviewOutput(result.output, claims)
+    if (claims.isEmpty()) {
+      emptyClaimsVerificationShortCircuit(reviewRunId, boundaries, verificationInput, existing)?.let { return it }
+    }
     val outcome = ReviewClaimVerificationRunner(parentReviewLauncher, reviewContextEnvelopeValidator).run(
       packet = initial.compiledLaunchRequests.firstOrNull()?.packet,
+      reviewOutput = verificationInput,
       findings = claims,
       existingVerdicts = existing,
       mode = initial.resolvedMode,
@@ -632,6 +622,65 @@ class ParallelCodeReviewRunner(
       timeout = initial.request.timeout ?: DEFAULT_TIMEOUT_MINUTES.minutes,
       promptSuffix = initial.request.selectedAgentAddonsSection,
     )
+    return persistClaimVerificationOutcome(reviewRunId, claims, existing, outcome)
+  }
+
+  private fun reviewStageBoundaries(reviewRunId: String?): List<ReviewStageBoundary> = if (reviewRunId == null) {
+    emptyList()
+  } else {
+    database.transaction { unitOfWork -> unitOfWork.reviews.fetchStageBoundaries(reviewRunId) }
+  }
+
+  private fun claimVerificationClaims(
+    reviewRunId: String?,
+    boundaries: List<ReviewStageBoundary>,
+    mergedFindings: List<ParallelReviewMergedFinding>,
+  ): List<ParallelReviewMergedFinding> = if (reviewRunId == null) {
+    mergedFindings
+  } else {
+    val reviewReached = boundaries.any {
+      it.stage == ReviewStage.REVIEW && it.reached == ReviewStageReached.REACHED
+    }
+    if (!reviewReached) {
+      emptyList()
+    } else {
+      database.transaction { unitOfWork -> unitOfWork.reviews.fetchReviewPassClaims(reviewRunId) }
+        ?.findings
+        .orEmpty()
+    }
+  }
+
+  private fun reviewFindingVerdicts(reviewRunId: String?): List<ReviewFindingVerdict> = if (reviewRunId == null) {
+    emptyList()
+  } else {
+    database.transaction { unitOfWork -> unitOfWork.reviews.fetchFindingVerdicts(reviewRunId) }
+  }
+
+  private fun emptyClaimsVerificationShortCircuit(
+    reviewRunId: String?,
+    boundaries: List<ReviewStageBoundary>,
+    verificationInput: String,
+    existing: List<ReviewFindingVerdict>,
+  ): List<ReviewFindingVerdict>? {
+    if (
+      reviewRunId != null &&
+      boundaries.any { it.stage == ReviewStage.VERIFICATION && it.reached == ReviewStageReached.REACHED }
+    ) {
+      return existing
+    }
+    if (!reviewOutputNeedsProseVerification(verificationInput)) {
+      if (reviewRunId != null) recordVerificationBoundary(reviewRunId)
+      return existing
+    }
+    return null
+  }
+
+  private fun persistClaimVerificationOutcome(
+    reviewRunId: String?,
+    claims: List<ParallelReviewMergedFinding>,
+    existing: List<ReviewFindingVerdict>,
+    outcome: ReviewClaimVerificationOutcome,
+  ): List<ReviewFindingVerdict> {
     if (reviewRunId == null) return existing + outcome.verdicts
     if (outcome.verdicts.isNotEmpty()) {
       database.transaction { unitOfWork ->
@@ -642,7 +691,9 @@ class ParallelCodeReviewRunner(
       .filter { it.stage == ReviewStage.VERIFICATION }
       .map { it.findingRef }
       .toSet()
-    if (claims.all { it.fNumber in recordedRefs }) {
+    if (claims.isNotEmpty() && claims.all { it.fNumber in recordedRefs }) {
+      recordVerificationBoundary(reviewRunId)
+    } else if (claims.isEmpty() && outcome.skipReason == null) {
       recordVerificationBoundary(reviewRunId)
     }
     return existing + outcome.verdicts
@@ -1472,8 +1523,8 @@ class ParallelCodeReviewRunner(
           "'[F-XXX] Severity | Confidence | specialist=<skill name from Resolved rubric> | " +
           "commits=<sha>[,<sha>] | path=\"<repo-relative path>\" | line=<positive integer> | description'. " +
           "Use only the bare skill name for specialist — never copy the [paths=...;add-ons=...;origins=...] " +
-          "annotation from the routed rubric catalog. Lines that still do not parse are ignored; " +
-          "they do not block settlement.",
+          "annotation from the routed rubric catalog. Imperfect lines remain part of the prose result " +
+          "and never block settlement; parsed lines are optional verification enrichment.",
       )
       appendLine()
       selected.forEach { launch ->
@@ -2004,7 +2055,7 @@ private const val INLINE_DEPTH_DIRECTIVE: String =
   "Merge every routed rubric above into one combined checklist, then traverse the diff exactly " +
     "once against it at reduced depth in this agent context, holding all rubrics in mind " +
     "simultaneously, and do not launch specialists. Never re-walk the diff once per rubric. " +
-    "Write free-form prose findings; do not emit a machine findings register."
+    "Write free-form prose findings. Optional register lines are best-effort verification hints."
 
 private const val DELEGATED_DEPTH_DIRECTIVE: String =
   "Assign each routed rubric above to its own specialist worker over that rubric's owned paths. " +

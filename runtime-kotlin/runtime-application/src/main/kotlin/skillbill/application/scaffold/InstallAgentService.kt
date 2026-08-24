@@ -15,11 +15,11 @@ import java.nio.file.Path
 class InstallAgentService(
   private val agentTargetPort: InstallAgentTargetPort,
 ) {
-  fun agentPath(agent: String, home: Path? = null): Path =
-    agentTargetPort.agentPath(InstallAgentPathRequest(agent = agent, home = home)).path
+  fun agentPath(agent: String, home: Path? = null, environment: Map<String, String> = emptyMap()): Path =
+    agentTargetPort.agentPath(InstallAgentPathRequest(agent = agent, home = home, environment = environment)).path
 
-  fun detectAgentTargets(home: Path? = null) =
-    agentTargetPort.detectAgentTargets(DetectInstallAgentTargetsRequest(home)).targets
+  fun detectAgentTargets(home: Path? = null, environment: Map<String, String> = emptyMap()) =
+    agentTargetPort.detectAgentTargets(DetectInstallAgentTargetsRequest(home, environment)).targets
 
   fun claudeRoots(home: Path? = null, environment: Map<String, String>): List<Path> =
     agentTargetPort.claudeConfigRoots(ClaudeConfigRootsRequest(home = home, environment = environment)).roots
