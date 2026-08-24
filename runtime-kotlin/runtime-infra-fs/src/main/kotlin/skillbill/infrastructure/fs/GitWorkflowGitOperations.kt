@@ -99,8 +99,33 @@ private object GitStandardWorkflowGitOperations : WorkflowGitOperations {
     }
   }
 
+  /**
+   * Switches branches without letting the switch overwrite local work.
+   *
+   * `checkout --merge` refuses outright while anything is staged — `fatal: cannot continue with
+   * staged changes` — so the index is cleared for the switch and the same paths are staged again
+   * afterwards. Clearing it touches the index only: every worktree byte the caller wanted preserved
+   * is still on disk for the merge to carry across, and the paths are restaged whether the checkout
+   * succeeded or failed, so a refused switch does not silently unstage the caller's work.
+   */
   private fun checkoutPreservingLocalChanges(repoRoot: Path, args: List<String>): WorkflowGitOperationResult {
     val existingConflictMarkers = conflictMarkerPaths(repoRoot)
+    val previouslyStaged = stagedPaths(repoRoot)
+    if (previouslyStaged.isNotEmpty()) {
+      val cleared = runGitCommand(repoRoot, "reset", "--quiet")
+      if (!cleared.ok) return cleared
+    }
+    val outcome = mergeCheckout(repoRoot, args, existingConflictMarkers)
+    if (previouslyStaged.isEmpty()) return outcome
+    val restaged = runGitCommand(repoRoot, listOf("add", "--all", "--") + previouslyStaged)
+    return if (restaged.ok) outcome else restaged
+  }
+
+  private fun mergeCheckout(
+    repoRoot: Path,
+    args: List<String>,
+    existingConflictMarkers: List<String>,
+  ): WorkflowGitOperationResult {
     val checkout = runGitCommand(repoRoot, args)
     val paths = conflictMarkerPaths(repoRoot).filterNot(existingConflictMarkers::contains)
     if (paths.isEmpty()) return checkout
@@ -112,6 +137,13 @@ private object GitStandardWorkflowGitOperations : WorkflowGitOperations {
     } else {
       staged
     }
+  }
+
+  /** Paths the index carries ahead of HEAD; empty when there is no HEAD to compare against yet. */
+  private fun stagedPaths(repoRoot: Path): List<String> {
+    val staged = runGitCommand(repoRoot, "diff", "--cached", "--name-only", "-z", "HEAD")
+    if (!staged.ok) return emptyList()
+    return staged.value.split('\u0000').filter(String::isNotBlank)
   }
 
   private fun conflictMarkerPaths(repoRoot: Path): List<String> {
