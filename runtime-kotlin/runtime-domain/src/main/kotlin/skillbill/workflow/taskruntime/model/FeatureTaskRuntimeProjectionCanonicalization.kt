@@ -102,7 +102,7 @@ internal object FeatureTaskRuntimeProjectionCanonicalizer {
         "rollout.notes",
       )
     }
-    "reconciliation_evidence" -> mapObject(value) {
+    "reconciliation_evidence" -> mapObject(promotedReconciliationEvidence(value, records)) {
       trimNonBlank(
         discardUnknownKeys(it, RECONCILIATION_EVIDENCE_KEYS, key, records),
         "evidence",
@@ -287,6 +287,29 @@ internal object FeatureTaskRuntimeProjectionCanonicalizer {
     }
   }
 
+  /**
+   * A bare string at `reconciliation_evidence` becomes the object the schema declares.
+   *
+   * `reconciled` is pinned to `const: true` on the receipt variant, so it carries no information the
+   * contract had not already fixed, and the only field left to fill is `evidence` — which is exactly
+   * what the producer wrote. Promoting is therefore lossless, unlike rejecting a completed receipt
+   * whose evidence sweep is already on the wire.
+   *
+   * A blank string promotes nothing: `evidence` is `nonBlank`, so the promotion would only trade a
+   * type error for a value error while inventing a `reconciled: true` claim the producer never made.
+   */
+  private fun promotedReconciliationEvidence(
+    value: Any?,
+    records: MutableList<FeatureTaskRuntimeProjectionCanonicalizationRecord>,
+  ): Any? {
+    val evidence = (value as? String)?.trim()?.takeIf(String::isNotEmpty) ?: return value
+    records += textFreeRecord(
+      "reconciliation_evidence",
+      listOf(FeatureTaskRuntimeProjectionCanonicalizationTransform.SCALAR_PROMOTED_TO_OBJECT),
+    )
+    return linkedMapOf<String, Any?>("reconciled" to true, "evidence" to evidence)
+  }
+
   private fun trimNonBlank(
     map: Map<String, Any?>,
     key: String,
@@ -426,6 +449,9 @@ enum class FeatureTaskRuntimeProjectionCanonicalizationTransform(val wireValue: 
   BACKTICKS_STRIPPED("backticks_stripped"),
   TRIMMED("trimmed"),
   UNKNOWN_KEY_DISCARDED("unknown_key_discarded"),
+
+  /** A scalar rewritten as the single-meaningful-field object its declared shape expects. */
+  SCALAR_PROMOTED_TO_OBJECT("scalar_promoted_to_object"),
 }
 
 /**

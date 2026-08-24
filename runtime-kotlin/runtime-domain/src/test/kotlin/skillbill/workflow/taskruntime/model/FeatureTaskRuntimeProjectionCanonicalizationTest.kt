@@ -185,6 +185,49 @@ class FeatureTaskRuntimeProjectionCanonicalizationTest {
   // --- SKILL-152 AC-005: the scoped unknown-key discard -----------------------------------------
 
   @Test
+  fun `a bare evidence string is promoted to the declared reconciliation_evidence object`() {
+    val produced = mapOf("reconciliation_evidence" to "  Read-only sweep after the last edit: 0 hits.  ")
+
+    val result = FeatureTaskRuntimeProjectionCanonicalizer.canonicalize(produced)
+
+    assertEquals(
+      mapOf("reconciled" to true, "evidence" to "Read-only sweep after the last edit: 0 hits."),
+      result.canonical["reconciliation_evidence"] as Map<*, *>,
+    )
+    val record = result.diagnostics.single { it.fieldPath == "reconciliation_evidence" }
+    assertEquals(listOf(Transform.SCALAR_PROMOTED_TO_OBJECT), record.transforms)
+    assertNull(record.originalId, "a promotion must never record the producer's evidence text")
+    assertNull(record.canonicalId)
+  }
+
+  @Test
+  fun `a blank evidence string is left for the schema gate rather than promoted to a reconciled claim`() {
+    val result = FeatureTaskRuntimeProjectionCanonicalizer.canonicalize(
+      mapOf("reconciliation_evidence" to "   "),
+    )
+
+    assertEquals("   ", result.canonical["reconciliation_evidence"])
+    assertTrue(result.diagnostics.none { it.fieldPath == "reconciliation_evidence" })
+  }
+
+  @Test
+  fun `a non-scalar reconciliation_evidence is never promoted`() {
+    val alreadyShaped = FeatureTaskRuntimeProjectionCanonicalizer.canonicalize(
+      mapOf("reconciliation_evidence" to mapOf("reconciled" to true, "evidence" to "at target")),
+    )
+    val wrongContainer = FeatureTaskRuntimeProjectionCanonicalizer.canonicalize(
+      mapOf("reconciliation_evidence" to listOf("at target")),
+    )
+
+    assertTrue(
+      alreadyShaped.diagnostics.none {
+        it.transforms.contains(Transform.SCALAR_PROMOTED_TO_OBJECT)
+      },
+    )
+    assertEquals(listOf("at target"), wrongContainer.canonical["reconciliation_evidence"])
+  }
+
+  @Test
   fun `an unknown key on a nested closed object is discarded and recorded without its value`() {
     val produced = mapOf(
       "reconciliation_evidence" to mapOf(

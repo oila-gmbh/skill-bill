@@ -11,10 +11,12 @@ import kotlin.test.assertTrue
 /**
  * SKILL-152 subtask 1 (AC-010): the malformed-`implementation_receipt` classes observed in the field all
  * report at `$.reconciliation_evidence`, and what separates them is whether canonicalization may repair
- * them. The extra-key class is repairable — an unknown key inside a nested fully-enumerated closed object is
- * discarded during canonicalization, so it costs the phase nothing and advances on its first launch
- * (AC-005). The other three are genuine structural faults that canonicalization must never paper over, so
- * each one rejects, and the constraint that failed is recorded where a repair would be read from.
+ * them. Repairable means the repair neither loses producer content nor invents an assertion the producer
+ * did not make: an unknown key inside a nested closed object is discarded, and a bare evidence string is
+ * promoted to the object the schema declares. Both cost the phase nothing and advance on the first launch
+ * (AC-005). A missing `evidence` and an over-length one are genuine structural faults that canonicalization
+ * must never paper over, so each rejects, and the constraint that failed is recorded where a repair would
+ * be read from.
  *
  * The output-gate budget is one attempt, so a rejection settles the run at implement. Each case pins which
  * side of the canonicalization line its fixture falls on, which is the distinction that regressed in the
@@ -50,10 +52,43 @@ class RealValidatorReceiptFixLoopConvergenceTest {
     )
   }
 
+  /**
+   * Moved across the canonicalization line on 2026-08-24, having blocked WE-4860 subtask 2 in the
+   * field. The line this file draws is whether a repair loses or invents producer content, and this
+   * class does neither: the string IS the `evidence`, and `reconciled` is `const: true` on the
+   * receipt variant, so no other value was ever available to assert. The two classes that do lose or
+   * invent content — a missing `evidence` and an over-length one — still reject below.
+   */
   @Test
-  fun `a receipt with a string in place of reconciliation_evidence is rejected, never coerced`() {
+  fun `a bare evidence string is promoted and consumes no fix-loop attempt`() {
+    val harness = runnerHarness(
+      launcher = RuntimeRecordingLauncher { request ->
+        val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
+        facts(if (phaseId == "implement") RECEIPT_EVIDENCE_AS_STRING else validJsonOutput(phaseId))
+      },
+      agentAssignment = phasePerAgentAssignment(),
+      runtimeConfig = RuntimeHarnessConfig(planningProjectionValidator = realPlanningProjectionValidator),
+    )
+
+    val report = harness.runner.run(harness.request())
+
+    assertIs<FeatureTaskRuntimeRunReport.Completed>(report)
+    assertEquals(
+      1,
+      harness.launchedPromptPhaseOrder().count { it == "implement" },
+      "a promotable receipt must advance on its first launch",
+    )
+  }
+
+  /**
+   * The promotion stops at a blank string. `evidence` is `nonBlank`, so promoting would trade a type
+   * error for a value error while manufacturing the `reconciled: true` assertion the producer never
+   * made — which is the fabrication the class below exists to refuse.
+   */
+  @Test
+  fun `a blank evidence string is rejected rather than promoted to a reconciled claim`() {
     assertRejectedWithConstraintText(
-      malformedReceipt = RECEIPT_EVIDENCE_AS_STRING,
+      malformedReceipt = RECEIPT_EVIDENCE_AS_BLANK_STRING,
       expectedConstraintFragments = arrayOf("string found, object expected"),
     )
   }
@@ -122,9 +157,13 @@ private val RECEIPT_WITH_EXTRA_EVIDENCE_KEY: String =
 // and the producer must add it.
 private val RECEIPT_MISSING_EVIDENCE: String = receiptEnvelope("""{"reconciled":true}""")
 
-// Class 3: a string where the closed object belongs. Canonicalization never coerces a type, so the schema
-// rejects and the producer must emit the object.
+// Class 3: a string where the closed object belongs. The string is the evidence and `reconciled` is pinned
+// to true, so canonicalization promotes it to the declared object and the receipt advances.
 private val RECEIPT_EVIDENCE_AS_STRING: String = receiptEnvelope(""""tree is at target state"""")
+
+// Class 3b: the promotion's boundary. A blank string names no evidence, so there is nothing to promote and
+// synthesizing `reconciled: true` around it would assert a reconciliation the producer never claimed.
+private val RECEIPT_EVIDENCE_AS_BLANK_STRING: String = receiptEnvelope(""""   """")
 
 // Class 4: every governed key present and well-typed, but `evidence` past its 4096-char cap — the shape a
 // no-op reconciliation segment produces when it proves convergence path by path instead of reporting it.

@@ -4,6 +4,16 @@ This file records architectural and implementation decisions that span the
 `runtime-kotlin/` boundary. Each entry is dated and explains the trade-off,
 not the implementation detail.
 
+## [2026-08-24] A bare evidence string is promoted to reconciliation_evidence, not rejected
+
+Context: WE-4860 subtask 2's implement receipt emitted `reconciliation_evidence` as the evidence string itself rather than `{ reconciled, evidence }`. The producer-projection gate rejected it and, at a one-attempt budget, blocked the run — discarding a 22KB receipt whose read-only sweep was already on the wire. `RealValidatorReceiptFixLoopConvergenceTest` pinned that rejection deliberately, as one of three SKILL-152 classes "canonicalization must never paper over".
+
+Decision: `FeatureTaskRuntimeProjectionCanonicalizer` promotes a non-blank string at `reconciliation_evidence` to `{ reconciled: true, evidence: <trimmed> }`, recorded as a new `scalar_promoted_to_object` transform. A blank string is left alone. The SKILL-152 guard's line is restated as *whether the repair loses producer content or invents an assertion*: the missing-`evidence` and over-length-`evidence` classes still reject, and the type-mismatch class moves across.
+
+Reason: `reconciled` is `const: true` on the receipt variant, so the promotion asserts nothing the contract had not already fixed, and the string it promotes is exactly the `evidence` the producer wrote — nothing is lost or invented. The original guard grouped this with two classes that genuinely do lose or fabricate content; the distinguishing test it names separates them once `reconciled` being a const is taken into account. Not blocking, and interpreting output that is not shaped exactly as expected, is the standing preference.
+
+Alternatives considered: Keep the rejection and fix only the prose (rejected: the prose already showed the correct object shape, so it was not a briefing gap, and the gate would still discard a receipt already emitted). Promote a blank string too (rejected: `evidence` is `nonBlank`, so it trades a type error for a value error while manufacturing a `reconciled: true` claim the producer never made). Promote in the structural repair walker beside the root-key demotion (rejected: that layer is phase-shape-only and phase-agnostic; this is projection knowledge, and canonicalization already owns the field and runs immediately before validation).
+
 ## [2026-08-24] A finding verification refuted is not carried, so the repair receipt owes it no entry
 
 Context: On wftr-20260824-125937-qn99 review reported three findings and `verify_findings` refuted `F-003`, a nit. The fix phase closed the two survivors and reported exactly that. The repair-receipt coverage gate then rejected the round, because it measures against `reviewState.passResults.last().findings` — the raw review output, which nothing subtracts the refuted findings from. The round blocked with both real findings already fixed on the tree. The phase prose carried the same contradiction: it opened with "Address every *verified* finding from verify_findings" and then declared every carried finding in scope, so the agent's reading was the defensible one.
