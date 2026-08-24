@@ -1,5 +1,6 @@
 package skillbill.install.apply
 
+import skillbill.error.SkillContentIdentityMismatchError
 import skillbill.install.model.InstallAppliedSkill
 import skillbill.install.model.InstallApplyIssue
 import skillbill.install.model.InstallApplyIssueKind
@@ -169,6 +170,12 @@ private fun stagePlannedSkill(
   )
   staging.toStagingOutcome(skill.sourceDir)
 }.getOrElse { error ->
+  // An identity mismatch is a precondition for the whole install, not one skill's problem: it means
+  // this apply was pointed at a different source root than the installed one. Collecting it let the
+  // skills that did stage keep the new identity while the rest kept the old, leaving an install
+  // split across two source roots that neither root could then apply. Rethrow so the surrounding
+  // transaction rolls the whole apply back and the operator sees one precondition failure.
+  if (error is SkillContentIdentityMismatchError) throw error
   failedStagingOutcome(skill.sourceDir, skill.name, error).also { outcome ->
     outcome.issue?.let(failures::add)
   }
