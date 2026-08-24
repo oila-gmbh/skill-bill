@@ -76,6 +76,12 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemory(
     val sectionByFindingId = sections.associateBy(FeatureTaskRuntimeFindingBoundaryMemorySection::findingId)
     for (disposition in dispositions) {
       val section = sectionByFindingId[disposition.findingId] ?: continue
+      // A disposition that reports boundary_context_unavailable while a catalog is available is
+      // ignored rather than rejected. The section discovery is the authoritative availability
+      // signal, so the self-report is redundant there, and rejecting it wedges the phase: the
+      // reported flag is diagnostic annotation, and a deterministic over-report can never clear
+      // the bounded correction budget. Under-reporting still blocks, because the phase then owes
+      // an availability signal the runtime cannot derive from the disposition alone.
       if (section.discovery.boundaryContextUnavailable) {
         if (!disposition.boundaryContextUnavailable) {
           return "finding verification disposition for ${disposition.findingId} must set " +
@@ -85,11 +91,6 @@ class FeatureTaskRuntimeFindingVerificationBoundaryMemory(
           return "finding verification disposition for ${disposition.findingId} must not select " +
             "boundary headings when boundary context is unavailable."
         }
-        continue
-      }
-      if (disposition.boundaryContextUnavailable) {
-        return "finding verification disposition for ${disposition.findingId} must not set " +
-          "boundary_context_unavailable when a scoped boundary catalog is available."
       }
     }
     return null
