@@ -181,11 +181,13 @@ sealed interface FeatureTaskRuntimePhaseOutputValidationResult {
 
   data class AcceptedUnchanged(
     override val normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
+    val demotedViolations: List<FeatureTaskRuntimePhaseOutputDemotedViolation> = emptyList(),
   ) : FeatureTaskRuntimePhaseOutputValidationResult
 
   data class AcceptedAfterRepair(
     override val normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
     val evidence: FeatureTaskRuntimePhaseOutputRepairEvidence,
+    val demotedViolations: List<FeatureTaskRuntimePhaseOutputDemotedViolation> = emptyList(),
   ) : FeatureTaskRuntimePhaseOutputValidationResult
 
   data class Rejected(
@@ -208,15 +210,28 @@ sealed interface FeatureTaskRuntimePhaseOutputValidationResult {
 data class AcceptedFeatureTaskRuntimePhaseOutput(
   val normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
   val repairEvidence: FeatureTaskRuntimePhaseOutputRepairEvidence?,
+  val demotedViolations: List<FeatureTaskRuntimePhaseOutputDemotedViolation> = emptyList(),
 )
+
+data class FeatureTaskRuntimePhaseOutputDemotedViolation(
+  val rule: String,
+  val pointer: String,
+  val reason: String,
+) {
+  init {
+    require(rule.isNotBlank())
+    require(pointer.isNotBlank())
+    require(reason.isNotBlank())
+  }
+}
 
 fun FeatureTaskRuntimePhaseOutputValidationResult.requireAcceptedOutput(
   sourceLabel: String,
 ): AcceptedFeatureTaskRuntimePhaseOutput = when (this) {
   is FeatureTaskRuntimePhaseOutputValidationResult.AcceptedUnchanged ->
-    AcceptedFeatureTaskRuntimePhaseOutput(normalizedOutput, null)
+    AcceptedFeatureTaskRuntimePhaseOutput(normalizedOutput, null, demotedViolations)
   is FeatureTaskRuntimePhaseOutputValidationResult.AcceptedAfterRepair ->
-    AcceptedFeatureTaskRuntimePhaseOutput(normalizedOutput, evidence)
+    AcceptedFeatureTaskRuntimePhaseOutput(normalizedOutput, evidence, demotedViolations)
   is FeatureTaskRuntimePhaseOutputValidationResult.Rejected -> {
     requireAccepted(sourceLabel)
     error("Rejected phase-output validation unexpectedly returned an accepted payload.")

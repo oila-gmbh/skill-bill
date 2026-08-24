@@ -234,6 +234,7 @@ class FeatureTaskRuntimePhaseRecorder(
           request.phaseId,
           request.attempt,
           request.repairTurn,
+          request.diagnosticDiscriminator,
         ),
       )
       is DiagnosticWriteOutcome.Degraded -> FeatureTaskRuntimeRejectedOutputWrite.Degraded(outcome.failureClass)

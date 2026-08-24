@@ -9,7 +9,7 @@ import kotlin.test.assertNotNull
 
 class FeatureTaskRuntimeAuditVerdictCoherenceTest {
   @Test
-  fun `failing criteria alias is rejected at the audit gate naming the canonical key`() {
+  fun `failing criteria alias is left for the schema diagnostic`() {
     val aliasEnvelope = mapOf(
       "phase_id" to FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
       "produced_outputs" to mapOf(
@@ -17,15 +17,13 @@ class FeatureTaskRuntimeAuditVerdictCoherenceTest {
       ),
     )
 
-    val reason = assertNotNull(
+    assertEquals(
+      null,
       FeatureTaskRuntimeVerificationGateReasons.auditVerificationSignal(
         FeatureTaskRuntimePhaseWorkflowDefinition.PHASE_AUDIT,
         aliasEnvelope,
       ),
     )
-    assertContains(reason, "failing_criteria")
-    assertContains(reason, "gaps")
-    assertContains(reason, "exactly one representation")
   }
 
   @Test
@@ -47,8 +45,9 @@ class FeatureTaskRuntimeAuditVerdictCoherenceTest {
   }
 
   @Test
-  fun `legacy unmet criteria key is rejected when gaps are required`() {
-    assertNotNull(
+  fun `legacy unmet criteria key is left for the schema diagnostic`() {
+    assertEquals(
+      null,
       FeatureTaskRuntimeOutputVerification.auditGapPayloadError(
         mapOf(
           "verdict" to "gaps_found",

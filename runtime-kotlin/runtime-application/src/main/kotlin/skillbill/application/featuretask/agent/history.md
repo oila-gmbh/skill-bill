@@ -17,6 +17,16 @@ Areas: runtime-application/featuretask
 Feature flag: N/A
 Acceptance criteria: n/a (main hotfix)
 
+## [2026-08-25] SKILL-208 subtask 1 — Demote payload shape policing to diagnostics
+Areas: runtime-application/featuretask, runtime-domain/taskruntime, runtime-infra-fs/contracts/workflow
+- Nested repair-receipt and phase-output entry constraints now emit demoted violations instead of blocking settlement or charging correction budgets.
+- Structural-repair and duplicate-key outcomes remain observable, while routing-bearing fields (`audit` verdict/gaps and `verify_findings` verdict/finding dispositions) stay required.
+- Finding identity aliases and malformed verified dispositions are tolerated at projection boundaries with bounded fallback values so the next verification pass can re-decide from the repository.
+- Pattern: separate payload-shape diagnostics from the fields that control phase routing. reusable
+- Limitation: envelope requirements and routing-field validation remain unchanged; demoted schema rules are retained for diagnostics.
+Feature flag: N/A
+Acceptance criteria: 7/7 implemented
+
 ## [2026-08-24] SKILL-207 subtask 1 — Phase I/O envelope and prose review handoff
 Areas: runtime-application/{featuretask,model,review}, runtime-domain/{agent,review}, runtime-cli/codereview
 - Added shared `AgentPhaseInput` and `AgentPhaseOutput` string envelopes for phase handoffs.

@@ -54,6 +54,7 @@ internal object FeatureTaskRuntimeSchemaFailureCorrections {
   // burned three identical implement attempts while an over-long `artifact_ref` recovered on its next one.
   // So the length branch is decided by the violation, and the field only selects which advice follows.
   fun lengthViolation(priorSchemaFailure: String): String {
+    if (demotedPayloadViolation(priorSchemaFailure)) return ""
     val cap = statedCap(priorSchemaFailure) ?: return ""
     // The two pointer fields are matched by name rather than by position: their advice is about what the
     // field is for, so it holds wherever in the message they are named, including the audit-repair
@@ -89,6 +90,19 @@ internal object FeatureTaskRuntimeSchemaFailureCorrections {
     return pointer.split('.', '/')
       .map { it.substringBefore('[') }
       .lastOrNull { it.isNotBlank() }
+  }
+
+  private fun demotedPayloadViolation(reason: String): Boolean {
+    val normalized = reason.lowercase()
+    return listOf(
+      "repair_receipt.entries[",
+      "repair_plan.entries[",
+      "produced_outputs.gaps[",
+      "produced_outputs.finding_dispositions[",
+      "constructs[",
+      "finding_ref",
+      "finding_id",
+    ).any(normalized::contains)
   }
 
   private fun boundedPointerAdvice(field: String, cap: Int): String {

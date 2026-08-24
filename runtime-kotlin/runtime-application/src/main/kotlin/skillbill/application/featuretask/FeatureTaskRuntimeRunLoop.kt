@@ -113,6 +113,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeProjectionKind
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQualityGateSelection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeQuarantineEntry
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepairReceipt
+import skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputDemotedViolation
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpoint
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRepositoryCheckpointPolicy
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeResolvedBranch
@@ -1457,13 +1458,26 @@ internal class FeatureTaskRuntimeRunLoop(
   private fun settleAndPersistImplementFixRepairReceipt(
     run: PhaseRun,
     outputMap: Map<String, Any?>,
-    reject: (String, String) -> AttemptResult,
+    capture: ValidatedOutputCapture,
     iteration: Int,
     observability: FeatureTaskRuntimeRunObservability,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
   ): AttemptResult? {
     val settlement = implementFixRepairReceiptSettlement(run, outputMap)
-    settlement.rejectionDetail?.let { detail -> return reject("repair-receipt", detail) }
+    settlement.diagnostics.forEachIndexed { index, detail ->
+      recordRejectedOutput(
+        run = run,
+        iteration = iteration,
+        rule = "repair-receipt",
+        reason = detail,
+        outputBytes = capture.outputBytes,
+        path = rejectionPath(detail),
+        outputTruncated = capture.outputTruncated,
+        outputByteSize = capture.outputByteSize,
+        outputSha256 = capture.outputSha256,
+        diagnosticDiscriminator = "repair-receipt:$index:${rejectionPath(detail)}",
+      )
+    }
     val writeFailure = settlement.writeFailureReason ?: return null
     return AttemptResult.settled(
       blockAndPersistInPhase(
@@ -1486,7 +1500,7 @@ internal class FeatureTaskRuntimeRunLoop(
     val anchor = repairReceiptAnchor(reviewState) ?: return repairReceiptShapeSettlement(produced)
     return when (val parsed = featureTaskRuntimeParseRepairReceipt(produced, anchor.baseSha, anchor.roundNumber)) {
       FeatureTaskRuntimeRepairReceiptMissing -> RepairReceiptSettlement.None
-      is FeatureTaskRuntimeRepairReceiptRejected -> RepairReceiptSettlement.rejected(parsed.rejectionDetail)
+      is FeatureTaskRuntimeRepairReceiptRejected -> RepairReceiptSettlement.diagnostic(parsed.rejectionDetail)
       is FeatureTaskRuntimeRepairReceiptValid -> settledRepairReceipt(parsed.receipt, reviewState)
     }
   }
@@ -1534,7 +1548,7 @@ internal class FeatureTaskRuntimeRunLoop(
 
   private fun repairReceiptShapeSettlement(produced: Map<String, Any?>): RepairReceiptSettlement =
     featureTaskRuntimeRepairReceiptShapeRejection(produced)
-      ?.let { detail -> RepairReceiptSettlement.rejected(detail) }
+      ?.let { detail -> RepairReceiptSettlement.diagnostic(detail) }
       ?: RepairReceiptSettlement.None
 
   private fun repairReceiptAnchor(reviewState: GoalSubtaskReviewState): RepairReceiptAnchor? {
@@ -1567,7 +1581,7 @@ internal class FeatureTaskRuntimeRunLoop(
     run: PhaseRun,
     outputMap: Map<String, Any?>,
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
-    reject: (String, String) -> AttemptResult,
+    capture: ValidatedOutputCapture,
     iteration: Int,
     observability: FeatureTaskRuntimeRunObservability,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
@@ -1583,7 +1597,7 @@ internal class FeatureTaskRuntimeRunLoop(
     return settleAndPersistImplementFixRepairReceipt(
       run,
       outputMap,
-      reject,
+      capture,
       iteration,
       observability,
       fileManifest,
@@ -4313,6 +4327,11 @@ internal class FeatureTaskRuntimeRunLoop(
       ?.groupValues
       ?.get(1)
       ?.let { return it }
+    Regex("""(?:^|\s)(/[A-Za-z0-9_.\-/\[\]]+)""")
+      .find(detail)
+      ?.groupValues
+      ?.get(1)
+      ?.let { return it }
     val dollarPath = Regex("""\$(?:\.[A-Za-z0-9_-]+|\[[0-9]+])+""").find(detail)?.value ?: return "/"
     return dollarPath.removePrefix("$")
       .replace(Regex("""\.([A-Za-z0-9_-]+)"""), "/${'$'}1")
@@ -4514,7 +4533,13 @@ internal class FeatureTaskRuntimeRunLoop(
         .validatePhaseOutput(outputText, sourceLabel = run.phaseId)
         .requireAcceptedOutput(run.phaseId)
       settleValidatedOutput(
-        run, iteration, acceptedOutput.normalizedOutput, acceptedOutput.repairEvidence, observability, fileManifest,
+        run,
+        iteration,
+        acceptedOutput.normalizedOutput,
+        acceptedOutput.repairEvidence,
+        acceptedOutput.demotedViolations,
+        observability,
+        fileManifest,
         outputText, outputBytes, outputTruncated, outputByteSize, outputSha256,
       )
     } catch (error: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
@@ -4620,6 +4645,7 @@ internal class FeatureTaskRuntimeRunLoop(
     outputTruncated: Boolean = false,
     outputByteSize: Long = outputBytes.size.toLong(),
     outputSha256: String = RejectedOutputDiagnosticService.sha256(outputBytes),
+    diagnosticDiscriminator: String? = null,
     // A repair turn belongs to the phase this run is executing. A rejection attributed to some other
     // producer phase is that producer's own capture, so it stays at turn 0 unless the caller knows
     // otherwise from the producer's retained evidence.
@@ -4639,6 +4665,7 @@ internal class FeatureTaskRuntimeRunLoop(
       observedSha256 = outputSha256,
       truncated = outputTruncated,
       repairTurn = repairTurn,
+      diagnosticDiscriminator = diagnosticDiscriminator,
     ),
     run.request.dbPathOverride,
     state.evidenceGeneration(phaseId),
@@ -4652,6 +4679,7 @@ internal class FeatureTaskRuntimeRunLoop(
     iteration: Int,
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
     repairEvidence: skillbill.workflow.taskruntime.model.FeatureTaskRuntimePhaseOutputRepairEvidence?,
+    demotedViolations: List<FeatureTaskRuntimePhaseOutputDemotedViolation>,
     observability: FeatureTaskRuntimeRunObservability,
     fileManifest: FeatureTaskRuntimePhaseFileManifest,
     outputText: String,
@@ -4679,6 +4707,20 @@ internal class FeatureTaskRuntimeRunLoop(
       repairEvidence = repairEvidence,
       fileManifest = fileManifest,
     )
+    demotedViolations.forEachIndexed { index, violation ->
+      recordRejectedOutput(
+        run = run,
+        iteration = iteration,
+        rule = violation.rule,
+        reason = violation.reason,
+        outputBytes = outputBytes,
+        path = violation.pointer,
+        outputTruncated = outputTruncated,
+        outputByteSize = outputByteSize,
+        outputSha256 = outputSha256,
+        diagnosticDiscriminator = "${violation.rule}:$index:${violation.pointer}",
+      )
+    }
     fun reject(rule: String, detail: String): AttemptResult = rejectValidatedOutput(capture, outputMap, rule, detail)
     FeatureTaskRuntimeVerificationGateReasons.verifyFindingsWorktree(run.phaseId, fileManifest)?.let { reason ->
       return reject("verify-findings-worktree", reason)
@@ -4746,7 +4788,7 @@ internal class FeatureTaskRuntimeRunLoop(
       run,
       outputMap,
       attested,
-      ::reject,
+      capture,
       iteration,
       observability,
       fileManifest,
@@ -6662,16 +6704,17 @@ internal class FeatureTaskRuntimeRunLoop(
   private enum class FindingsOwedKind { OMITTED, UNRESOLVED }
 
   private sealed interface RepairReceiptSettlement {
-    private data class Rejected(val detail: String) : RepairReceiptSettlement
+    private data class Diagnostic(val detail: String) : RepairReceiptSettlement
     private data class WriteFailed(val reason: String) : RepairReceiptSettlement
 
     data object None : RepairReceiptSettlement
 
-    val rejectionDetail: String? get() = (this as? Rejected)?.detail
+    val diagnostics: List<String>
+      get() = (this as? Diagnostic)?.let { listOf(it.detail) }.orEmpty()
     val writeFailureReason: String? get() = (this as? WriteFailed)?.reason
 
     companion object {
-      fun rejected(detail: String): RepairReceiptSettlement = Rejected(detail)
+      fun diagnostic(detail: String): RepairReceiptSettlement = Diagnostic(detail)
       fun writeFailed(reason: String): RepairReceiptSettlement = WriteFailed(reason)
     }
   }

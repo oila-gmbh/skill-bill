@@ -8,8 +8,6 @@ import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_FORBIDDEN_PROJE
 import skillbill.workflow.taskruntime.model.FEATURE_TASK_RUNTIME_PHASE_RECORDS_ARTIFACT_KEY
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeCompactReferenceKind
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeExecutablePlan
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDisposition
-import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeFindingVerificationDispositionVerdict
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffEnvelope
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjection
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeHandoffProjectionField
@@ -28,6 +26,7 @@ import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariantPrompt
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeRunInvariants
 import skillbill.workflow.taskruntime.model.FeatureTaskRuntimeVerdict
 import skillbill.workflow.taskruntime.model.PhaseHandoffProjectionDeclaration
+import skillbill.workflow.taskruntime.model.MAX_BOUNDED_POINTER_LENGTH
 import skillbill.workflow.taskruntime.model.featureTaskRuntimePlanningProjectionFromEnvelope
 
 /**
@@ -636,21 +635,49 @@ object FeatureTaskRuntimeHandoffProjectionValidator {
   }
 
   private fun verifiedFindingsProjection(produced: Map<String, Any?>): List<Map<String, Any?>> =
-    FeatureTaskRuntimeFindingVerificationDisposition.parseList(
-      produced["finding_dispositions"],
-      "produced_outputs.finding_dispositions",
-    )
-      .filter { it.disposition == FeatureTaskRuntimeFindingVerificationDispositionVerdict.VERIFIED }
-      .map { disposition ->
-        mapOf(
-          "finding_id" to disposition.findingId,
-          "severity" to disposition.severity.wireValue,
-          "location" to disposition.location,
-          "expected_outcome" to disposition.message,
-          "criterion_refs" to emptyList<String>(),
-          "task_refs" to emptyList<String>(),
-        )
+    (produced["finding_dispositions"] as? List<*>)
+      .orEmpty()
+      .mapNotNull(::verifiedFindingProjectionEntry)
+
+  private fun verifiedFindingProjectionEntry(entry: Any?): Map<String, Any?>? {
+    val raw = JsonSupport.anyToStringAnyMap(entry) ?: return null
+    val disposition = (raw["disposition"] as? String)?.trim()?.lowercase()
+    if (disposition != "verified") return null
+    val findingId = listOf("finding_id", "finding_ref", "id", "ref")
+      .asSequence()
+      .mapNotNull { key ->
+        (raw[key] as? String)
+          ?.trim()
+          ?.takeIf(String::isNotBlank)
+          ?.takeIf { it.length <= MAX_BOUNDED_POINTER_LENGTH }
       }
+      .firstOrNull() ?: return null
+    val severity = (raw["severity"] as? String)
+      ?.trim()
+      ?.lowercase()
+      ?.takeIf { it in setOf("blocker", "major", "minor", "nit") }
+      ?: "blocker"
+    val location = boundedProjectionText(raw["location"], "repository")
+    val expectedOutcome = boundedProjectionText(
+      raw["message"] ?: raw["expected_outcome"] ?: raw["reason"],
+      "Verified finding.",
+    )
+    return mapOf(
+      "finding_id" to findingId,
+      "severity" to severity,
+      "location" to location,
+      "expected_outcome" to expectedOutcome,
+      "criterion_refs" to emptyList<String>(),
+      "task_refs" to emptyList<String>(),
+    )
+  }
+
+  private fun boundedProjectionText(raw: Any?, fallback: String): String =
+    (raw as? String)
+      ?.trim()
+      ?.takeIf(String::isNotBlank)
+      ?.take(MAX_BOUNDED_POINTER_LENGTH)
+      ?: fallback
 
   private fun reviewFindingsForVerificationProjection(produced: Map<String, Any?>): List<Map<String, Any?>> =
     (produced["findings"] as? List<*>).orEmpty()
