@@ -27,12 +27,19 @@ class FeatureTaskRuntimePhaseOutputValidatorAdapter : FeatureTaskRuntimePhaseOut
   ): FeatureTaskRuntimePhaseOutputValidationResult {
     val decision = FeatureTaskRuntimePhaseOutputStructuralRepair.inspect(phaseOutputText, sourceLabel)
     return when (decision) {
+      // A leniently-verified phase settles through output-verification, not the schema gate, so a
+      // structural rejection is not the last word: retry the original text with the lenient reader,
+      // which tolerates the extra keys and schema polish this phase is meant to accept. Only a
+      // rejection is retried — accepted repairs keep their evidence — so this can turn a block into
+      // an acceptance but never the reverse.
       is FeatureTaskRuntimePhaseOutputStructuralRepairDecision.Rejected ->
-        FeatureTaskRuntimePhaseOutputValidationResult.Rejected(
-          code = decision.code,
-          reason = decision.reason,
-          sourceLocation = decision.sourceLocation,
-        )
+        leniently(phaseOutputText, sourceLabel)
+          ?.let { FeatureTaskRuntimePhaseOutputValidationResult.AcceptedUnchanged(it) }
+          ?: FeatureTaskRuntimePhaseOutputValidationResult.Rejected(
+            code = decision.code,
+            reason = decision.reason,
+            sourceLocation = decision.sourceLocation,
+          )
 
       is FeatureTaskRuntimePhaseOutputStructuralRepairDecision.Accepted -> try {
         val normalized = if (sourceLabel in LENIENT_VERIFYING_PHASE_OUTPUT_SCHEMA) {
@@ -69,6 +76,26 @@ class FeatureTaskRuntimePhaseOutputValidatorAdapter : FeatureTaskRuntimePhaseOut
           structuralRepairEvidence = decision.evidence,
         )
       }
+    }
+  }
+
+  /**
+   * The lenient normalization of a phase output the structural gate rejected, or null when it does
+   * not settle either. Null keeps the original rejection; it never invents an acceptance.
+   */
+  private fun leniently(phaseOutputText: String, sourceLabel: String): NormalizedFeatureTaskRuntimePhaseOutput? {
+    if (sourceLabel !in LENIENT_VERIFYING_PHASE_OUTPUT_SCHEMA) return null
+    return try {
+      val normalized = FeatureTaskRuntimePhaseOutputSchemaValidator.normalizeVerifyingPhaseOutputLenient(
+        phaseOutputText,
+        sourceLabel,
+      )
+      validateNestedBuildReceipt(normalized, sourceLabel)
+      normalized
+    } catch (_: InvalidFeatureTaskRuntimePhaseOutputSchemaError) {
+      null
+    } catch (_: InvalidFeatureTaskRuntimeBuildReceiptSchemaError) {
+      null
     }
   }
 

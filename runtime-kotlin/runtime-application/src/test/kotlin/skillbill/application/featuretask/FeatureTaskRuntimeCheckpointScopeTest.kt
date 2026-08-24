@@ -397,6 +397,8 @@ class FeatureTaskRuntimeCheckpointScopeTest {
   }
 
   // The delta defaults to everything owned or introduced, so each case names only what it is about.
+  // The parameter list mirrors the production decision inputs on purpose: bundling them into a
+  // fixture object would hide which input each case is actually varying.
   @Suppress("LongParameterList")
   private fun decide(
     ownedPaths: List<String>,

@@ -4614,6 +4614,8 @@ internal class FeatureTaskRuntimeRunLoop(
     state.evidenceGeneration(phaseId),
   )
 
+  // Complexity here is the settle decision table itself: one branch per phase-output disposition.
+  // Splitting it would scatter a single contract across helpers without removing a branch.
   @Suppress("ReturnCount", "CyclomaticComplexMethod")
   private fun settleValidatedOutput(
     run: PhaseRun,
@@ -4987,6 +4989,9 @@ internal class FeatureTaskRuntimeRunLoop(
    * agent-authored gate measurements: overwrite (or supply) `gate_run_count`/`gate_runs` with the
    * degradation attestation before consumer projection and persist.
    */
+  // Each return is one runtime-owned stamping outcome the caller must distinguish: nothing to stamp,
+  // a degradation attestation, or a persisted checkpoint. Collapsing them would hide which happened.
+  @Suppress("ReturnCount")
   private fun stampRuntimeOwnedImplementationCheckpoint(
     run: PhaseRun,
     normalizedOutput: NormalizedFeatureTaskRuntimePhaseOutput,
@@ -5536,6 +5541,8 @@ internal class FeatureTaskRuntimeRunLoop(
     )
   }
 
+  // Every return is a distinct delivery decision — NotApplicable, Reject, or Continue — and the
+  // sibling disposition gate suppresses this rule for the same reason.
   @Suppress("ReturnCount")
   private fun findingVerificationBoundaryBodyDeliveryDecision(
     run: PhaseRun,

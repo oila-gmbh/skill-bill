@@ -61,19 +61,13 @@ object FeatureTaskRuntimePhasePromptComposer {
     repairLedger: FeatureTaskRuntimeRepairLedger? = null,
     priorReviewContext: FeatureTaskRuntimePriorReviewContext? = null,
   ): String {
-    require(issueKey.isNotBlank()) { "issueKey is required to compose a phase prompt." }
-    require(correctiveRepairContext == null || !priorSchemaFailure.isNullOrBlank()) {
-      "correctiveRepairContext requires a non-blank priorSchemaFailure; raw repair context belongs " +
-        "only to schema-gate retries."
-    }
-    require(correctiveRepairContext == null || priorTerminalFailure.isNullOrBlank()) {
-      "correctiveRepairContext cannot accompany a retryable-terminal failure; the correction kinds " +
-        "must stay separate."
-    }
-    require(priorFindingCoverage.isNullOrBlank() || priorSchemaFailure.isNullOrBlank()) {
-      "priorFindingCoverage cannot accompany a schema-gate failure; a receipt is either short of its " +
-        "carried findings or rejected, never both in one correction."
-    }
+    requireComposableInputs(
+      issueKey = issueKey,
+      priorSchemaFailure = priorSchemaFailure,
+      priorTerminalFailure = priorTerminalFailure,
+      priorFindingCoverage = priorFindingCoverage,
+      correctiveRepairContext = correctiveRepairContext,
+    )
     // Schema-correction retries suppress any durable continuation projection instead of rejecting the
     // combination: after incomplete mutating work, the next launch may still carry both, and the
     // corrective path must render only the schema rejection plus authorized repair context.
@@ -126,6 +120,29 @@ object FeatureTaskRuntimePhasePromptComposer {
         outputContract(briefing, agentRunValidateFallback)
       },
     ).filter(String::isNotBlank).joinToString(separator = "\n\n")
+  }
+
+  /** The mutually-exclusive correction combinations a composed prompt may never carry at once. */
+  private fun requireComposableInputs(
+    issueKey: String,
+    priorSchemaFailure: String?,
+    priorTerminalFailure: String?,
+    priorFindingCoverage: String?,
+    correctiveRepairContext: FeatureTaskRuntimeCorrectiveRepairContext?,
+  ) {
+    require(issueKey.isNotBlank()) { "issueKey is required to compose a phase prompt." }
+    require(correctiveRepairContext == null || !priorSchemaFailure.isNullOrBlank()) {
+      "correctiveRepairContext requires a non-blank priorSchemaFailure; raw repair context belongs " +
+        "only to schema-gate retries."
+    }
+    require(correctiveRepairContext == null || priorTerminalFailure.isNullOrBlank()) {
+      "correctiveRepairContext cannot accompany a retryable-terminal failure; the correction kinds " +
+        "must stay separate."
+    }
+    require(priorFindingCoverage.isNullOrBlank() || priorSchemaFailure.isNullOrBlank()) {
+      "priorFindingCoverage cannot accompany a schema-gate failure; a receipt is either short of its " +
+        "carried findings or rejected, never both in one correction."
+    }
   }
 
   /**
