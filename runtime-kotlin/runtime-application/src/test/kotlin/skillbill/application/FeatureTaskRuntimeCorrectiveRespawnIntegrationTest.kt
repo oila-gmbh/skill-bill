@@ -491,10 +491,9 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
       )
 
       assertIs<FeatureTaskRuntimeRunReport.Completed>(harness.runner.run(harness.request()))
-      assertEquals(1, auditAttempts, "nested verdict must be restored on the existing capture")
+      assertEquals(1, auditAttempts, "nested verdict must settle on the existing capture")
       val accepted = realFeatureTaskRuntimePhaseOutputValidator.validatePhaseOutput(rejectedBody, "audit")
-      assertIs<FeatureTaskRuntimePhaseOutputValidationResult.AcceptedAfterRepair>(accepted)
-      assertEquals("satisfied", accepted.normalizedOutput.envelope["verdict"])
+      assertIs<FeatureTaskRuntimePhaseOutputValidationResult.AcceptedUnchanged>(accepted)
     }
   }
 
@@ -522,7 +521,7 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
   }
 
   @Test
-  fun `audit schema correction keeps INVALID_OUTPUT payload-free on every operator surface`() {
+  fun `audit gap entries with extra keys or schema polish do not block on phase-output-schema`() {
     val rejectedBody = Skill187SyntheticAuditResponses.invalidCriterionShape()
     var auditAttempts = 0
     val harness = runnerHarness(
@@ -530,25 +529,23 @@ class FeatureTaskRuntimeCorrectiveRespawnIntegrationTest {
         val phaseId = phaseIdFromPrompt(requireNotNull(request.skillRunRequest.promptOverride))
         if (phaseId != "audit") return@RuntimeRecordingLauncher facts(defaultPhaseOutput(request))
         auditAttempts += 1
-        facts(
-          if (auditAttempts == 1) rejectedBody else Skill187SyntheticAuditResponses.correctedSatisfied(),
-        )
+        facts(rejectedBody)
       },
       validator = realAuditValidator(),
     )
 
-    val blocked = assertIs<FeatureTaskRuntimeRunReport.Blocked>(harness.runner.run(harness.request()))
-    assertContains(blocked.blockedReason, "cap=1")
-    assertPrivateDiagnosticRejection(
-      blocked.blockedReason,
-      "phase-output-schema",
-      Skill187SyntheticAuditResponses.OBSERVATION_SENTINEL,
+    val report = harness.runner.run(harness.request())
+    assertTrue(
+      report is FeatureTaskRuntimeRunReport.Completed || report is FeatureTaskRuntimeRunReport.Blocked,
+      "audit must settle through output-verification, not phase-output-schema",
     )
-    assertEquals(1, auditAttempts)
-    val diagnostics = harness.io.database.rejectedDiagnostics().filter { it.metadata.phaseId == "audit" }
-    assertTrue(diagnostics.isNotEmpty())
-    diagnostics.forEach { row ->
-      assertEquals(rejectedBody.encodeToByteArray().toList(), row.payload?.toList())
+    assertEquals(1, auditAttempts, "audit must not relaunch for schema polish on gap entries")
+    assertTrue(
+      harness.io.database.rejectedDiagnostics().none { it.metadata.phaseId == "audit" },
+      "schema-polish audit output must not record a phase-output-schema rejection",
+    )
+    if (report is FeatureTaskRuntimeRunReport.Blocked) {
+      assertFalse(report.blockedReason.contains("phase-output-schema"))
     }
   }
 

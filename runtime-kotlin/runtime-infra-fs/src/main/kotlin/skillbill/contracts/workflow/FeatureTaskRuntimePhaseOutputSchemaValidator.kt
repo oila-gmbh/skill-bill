@@ -86,6 +86,19 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
     )
   }
 
+  fun normalizeAuditPhaseOutputLenient(
+    phaseOutputText: String,
+    sourceLabel: String,
+  ): NormalizedFeatureTaskRuntimePhaseOutput {
+    val node = readPhaseOutputObjectNodeLenient(phaseOutputText, sourceLabel)
+    val parsed = phaseOutputObjectNodeToMap(node, sourceLabel)
+    validateAuditEnvelopeShell(parsed, sourceLabel)
+    return NormalizedFeatureTaskRuntimePhaseOutput(
+      canonicalJson = mapper.writeValueAsString(parsed),
+      envelope = parsed,
+    )
+  }
+
   // Agents launched via `claude --print` (and peers) emit a final message, not a bare payload:
   // the JSON object is commonly wrapped in a ``` fence or trailed by a closing remark. Candidate
   // order is most-specific-first, and that positional precedence decides which envelope is the
@@ -111,6 +124,44 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
     envelopeCandidates.firstOrNull()?.let { return it }
     parsedCandidates.firstOrNull()?.let { return it }
     return parseObjectNodeStrict(phaseOutputText.trim(), sourceLabel)
+  }
+
+  private fun readPhaseOutputObjectNodeLenient(phaseOutputText: String, sourceLabel: String): JsonNode {
+    val parsedCandidates = phaseOutputObjectCandidates(phaseOutputText).mapNotNull(::tryParseObjectNode)
+    val envelopeCandidates = parsedCandidates.filter { candidate ->
+      candidate.path("phase_id").asText("") == sourceLabel
+    }
+    val distinctEnvelopes = envelopeCandidates.distinctBy(::canonicalCandidateKey)
+    if (distinctEnvelopes.size > 1) {
+      throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
+        sourceLabel = sourceLabel,
+        reason = "Phase output contains multiple conflicting envelopes.",
+        payloadFreeReason = "Phase output contains multiple conflicting envelopes.",
+      )
+    }
+    envelopeCandidates.firstOrNull()?.let { return it }
+    parsedCandidates.firstOrNull()?.let { return it }
+    return parseObjectNodeStrict(phaseOutputText.trim(), sourceLabel)
+  }
+
+  private fun validateAuditEnvelopeShell(parsed: Map<String, Any?>, sourceLabel: String) {
+    val phaseId = parsed["phase_id"] as? String
+    if (phaseId != sourceLabel) {
+      throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
+        sourceLabel = sourceLabel,
+        reason = "phase_id must match the executing phase '$sourceLabel' but was '${phaseId.orEmpty()}'.",
+        payloadFreeReason = "phase_id must match the executing phase '$sourceLabel'.",
+        failureCode = "phase_id_mismatch",
+      )
+    }
+    val status = parsed["status"] as? String
+    if (status.isNullOrBlank()) {
+      throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
+        sourceLabel = sourceLabel,
+        reason = "status is required.",
+        payloadFreeReason = "status is required.",
+      )
+    }
   }
 
   // Key order carries no meaning in the envelope, so one restated envelope must not read as two.

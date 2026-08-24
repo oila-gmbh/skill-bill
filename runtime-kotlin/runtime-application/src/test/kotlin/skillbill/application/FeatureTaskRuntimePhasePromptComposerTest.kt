@@ -794,7 +794,7 @@ class FeatureTaskRuntimePhasePromptComposerTest {
     assertContains(auditPrompt, "fix plan", false, "each gap note should guide the repair")
     assertContains(auditPrompt, "blast radius", false, "audit should consider blast radius before naming a gap")
     assertContains(auditPrompt, "free-form note prose", false, "plan quality is guidance, not a wire template")
-    assertContains(auditPrompt, "no required keywords", false, "schema must not invent plan-shape blocks")
+    assertContains(auditPrompt, "does not block on note length", false, "audit schema is recommendation only")
     assertContains(
       FeatureTaskRuntimePhasePromptComposer.compose(
         ISSUE_KEY,

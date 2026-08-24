@@ -553,8 +553,9 @@ object FeatureTaskRuntimePhasePromptComposer {
       "\"summary\":\"<one sentence>\",\"produced_outputs\":{\"gaps\":[]}}.\n" +
       "      Emit exactly one shallow produced_outputs.gaps array. Use [] for satisfied. For\n" +
       "      gaps_found, one entry per unmet criterion: {\"criterion\":\"AC-003\",\"note\":\"...\"}.\n" +
-      "      Wire shape stays exactly those two fields — free-form note prose; no required keywords,\n" +
-      "      sections, or extra keys (extra keys fail the schema gate).\n" +
+      "      Recommended wire shape uses those two fields — free-form note prose; no required keywords\n" +
+      "      or sections. The runtime does not block on note length, extra gap keys, or other schema\n" +
+      "      polish; it reads gaps leniently and gates only on decidable verification signals.\n" +
       "      criterion is AC-###. note is one dense line of at most " +
       "$FEATURE_TASK_RUNTIME_AUDIT_NOTE_MAX_CHARS characters. Prefer notes that both name what is\n" +
       "      missing and give implement enough of a fix plan to close the gap carefully: the intended\n" +

@@ -547,6 +547,18 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
   }
 
   @Test
+  fun `lenient audit normalization accepts gap entries the strict schema would reject`() {
+    val body =
+      """{"contract_version":"0.4","phase_id":"audit","status":"completed","summary":"lenient-gap",""" +
+        """"verdict":"gaps_found","produced_outputs":{"gaps":[{"criterion":"AC-001",""" +
+        """"note":"the behavior is absent","severity":"blocker"}]}}"""
+    val lenient = FeatureTaskRuntimePhaseOutputSchemaValidator.normalizeAuditPhaseOutputLenient(body, "audit")
+
+    assertEquals("audit", lenient.envelope["phase_id"])
+    assertEquals("gaps_found", lenient.envelope["verdict"])
+  }
+
+  @Test
   fun `completed implement_fix with a valid repair receipt validates`() {
     FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(
       implementFixEnvelope(validRepairReceiptJson()),
