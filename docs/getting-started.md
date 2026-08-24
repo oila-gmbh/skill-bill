@@ -35,6 +35,26 @@ cd ~/Development/skill-bill
 
 The default `./install.sh` is the **prebuilt** path: it downloads and checksum-verifies the prebuilt release runtime images for your host, so it needs no JDK and no Gradle build. Supported prebuilt hosts are `macos-arm64`, `macos-x64`, `windows-x64`, and `linux-x64`; any other host auto-falls back to a from-source build.
 
+### Build prerequisites
+
+A from-source build needs a **JDK 21+**. The runtime targets Java 21 and
+`build-logic` runs on the Gradle buildscript classpath, so the Gradle daemon
+itself must be 21+ — a Java 17 daemon fails configuration with
+`Dependency requires at least JVM runtime version 21`.
+
+`./install.sh` resolves a qualifying JVM before invoking Gradle: it honours
+`SKILL_BILL_JAVA_HOME` first, then `JAVA_HOME`, then the `java` on `PATH`, and
+finally scans the usual install roots (`/usr/libexec/java_home`, Homebrew,
+SDKMAN, asdf, Gradle-provisioned JDKs). If none qualifies it fails with
+remediation instead of a Gradle stack trace. To pin one explicitly:
+
+```bash
+SKILL_BILL_JAVA_HOME=/opt/homebrew/opt/openjdk@21 ./install.sh --from-source
+```
+
+Note that a full local checkout installs from source by default, so this applies
+to `./install.sh` in a clone even without `--from-source`.
+
 For a pinned install, use the `--release TAG` mechanism (or the `SKILL_BILL_RELEASE_TAG` environment variable) instead of cloning a specific branch:
 
 ```bash
@@ -45,7 +65,7 @@ SKILL_BILL_RELEASE_TAG=v0.x.y ./install.sh
 
 `--release` pins the prebuilt artifacts to a specific release tag. It is ignored under `--from-source`, where the runtime is built from your current checkout.
 
-On the default prebuilt path the installer fetches and checksum-verifies the Kotlin CLI and MCP distribution images from the matching GitHub release — it does **not** build them locally. With `--from-source` the installer instead builds the Kotlin CLI and MCP distributions with Gradle (JDK required). Either way it then copies the packaged runtime into `~/.skill-bill/runtime/`, verifies the installed bin scripts, installs `skill-bill` and `skill-bill-mcp` launchers into `${SKILL_BILL_BIN_DIR:-~/.local/bin}`, renders selected skills into staging, then links those staged skills into detected agent directories. MCP registrations point at the installed runtime copy so Gradle cleanup or IDE rebuilds inside the checkout do not break agent startup. If that launcher directory is not on `PATH`, install finishes with an explicit warning.
+On the default prebuilt path the installer fetches and checksum-verifies the Kotlin CLI and MCP distribution images from the matching GitHub release — it does **not** build them locally. With `--from-source` the installer instead builds the Kotlin CLI and MCP distributions with Gradle (**JDK 21+ required**). Either way it then copies the packaged runtime into `~/.skill-bill/runtime/`, verifies the installed bin scripts, installs `skill-bill` and `skill-bill-mcp` launchers into `${SKILL_BILL_BIN_DIR:-~/.local/bin}`, renders selected skills into staging, then links those staged skills into detected agent directories. MCP registrations point at the installed runtime copy so Gradle cleanup or IDE rebuilds inside the checkout do not break agent startup. If that launcher directory is not on `PATH`, install finishes with an explicit warning.
 
 `./install.sh` collects install choices and delegates the durable work to the
 packaged runtime command `skill-bill install apply`. The shell script still owns

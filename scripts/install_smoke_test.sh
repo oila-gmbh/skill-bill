@@ -237,7 +237,7 @@ run_install() {
     SKILL_BILL_RELEASE_DIR="$RELEASE_DIR" \
     SKILL_BILL_SKIP_PREINSTALL_UNINSTALL=1 \
     SKILL_BILL_BIN_DIR="$fake_home/.local/bin" \
-    "${extra_env[@]}" \
+    "${extra_env[@]+"${extra_env[@]}"}" \
     bash "$INSTALL_SH" --reuse-last-selection "$@" \
     </dev/null
 }
