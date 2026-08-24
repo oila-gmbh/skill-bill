@@ -559,6 +559,24 @@ class FeatureTaskRuntimePhaseOutputSchemaValidatorEnvelopeTest {
   }
 
   @Test
+  fun `lenient verify_findings normalization accepts disposition fields the strict schema would reject`() {
+    val longReason = "x".repeat(400)
+    val body =
+      """{"contract_version":"0.4","phase_id":"verify_findings","status":"completed",""" +
+        """"summary":"lenient disposition","verdict":"findings_verified",""" +
+        """"produced_outputs":{"finding_dispositions":[{"finding_id":"F-001",""" +
+        """"disposition":"verified","reason":"$longReason","severity":"major",""" +
+        """"location":"Example.kt","message":"Finding one","extra_field":"ignored"}]}}"""
+    val lenient = FeatureTaskRuntimePhaseOutputSchemaValidator.normalizeVerifyingPhaseOutputLenient(
+      body,
+      "verify_findings",
+    )
+
+    assertEquals("verify_findings", lenient.envelope["phase_id"])
+    assertEquals("findings_verified", lenient.envelope["verdict"])
+  }
+
+  @Test
   fun `completed implement_fix with a valid repair receipt validates`() {
     FeatureTaskRuntimePhaseOutputSchemaValidator.validatePhaseOutputText(
       implementFixEnvelope(validRepairReceiptJson()),

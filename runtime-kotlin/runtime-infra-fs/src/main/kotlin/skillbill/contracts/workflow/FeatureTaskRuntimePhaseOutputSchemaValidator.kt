@@ -86,18 +86,23 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
     )
   }
 
-  fun normalizeAuditPhaseOutputLenient(
+  fun normalizeVerifyingPhaseOutputLenient(
     phaseOutputText: String,
     sourceLabel: String,
   ): NormalizedFeatureTaskRuntimePhaseOutput {
     val node = readPhaseOutputObjectNodeLenient(phaseOutputText, sourceLabel)
     val parsed = phaseOutputObjectNodeToMap(node, sourceLabel)
-    validateAuditEnvelopeShell(parsed, sourceLabel)
+    validateVerifyingEnvelopeShell(parsed, sourceLabel)
     return NormalizedFeatureTaskRuntimePhaseOutput(
       canonicalJson = mapper.writeValueAsString(parsed),
       envelope = parsed,
     )
   }
+
+  fun normalizeAuditPhaseOutputLenient(
+    phaseOutputText: String,
+    sourceLabel: String,
+  ): NormalizedFeatureTaskRuntimePhaseOutput = normalizeVerifyingPhaseOutputLenient(phaseOutputText, sourceLabel)
 
   // Agents launched via `claude --print` (and peers) emit a final message, not a bare payload:
   // the JSON object is commonly wrapped in a ``` fence or trailed by a closing remark. Candidate
@@ -144,7 +149,7 @@ object FeatureTaskRuntimePhaseOutputSchemaValidator {
     return parseObjectNodeStrict(phaseOutputText.trim(), sourceLabel)
   }
 
-  private fun validateAuditEnvelopeShell(parsed: Map<String, Any?>, sourceLabel: String) {
+  private fun validateVerifyingEnvelopeShell(parsed: Map<String, Any?>, sourceLabel: String) {
     val phaseId = parsed["phase_id"] as? String
     if (phaseId != sourceLabel) {
       throw InvalidFeatureTaskRuntimePhaseOutputSchemaError(
